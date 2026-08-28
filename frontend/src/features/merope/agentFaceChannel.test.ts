@@ -116,7 +116,11 @@ test('a finished stream keeps the whole-line fallback from repeating it', () => 
   reply.chunk('东京 25°C')
   reply.end()
 
-  channel.deliver({ messageId: 'msg-1', text: '  东京   25°C  ', locale: 'zh-CN' })
+  channel.deliver({
+    messageId: 'msg-1',
+    text: '  东京   25°C  ',
+    locale: 'zh-CN',
+  })
   assert.deepEqual(sink.utterances, [])
 
   channel.deliver({ messageId: 'msg-1', text: '换了一句', locale: 'zh-CN' })
@@ -140,7 +144,10 @@ test('an interrupted stream still allows the whole-line fallback', () => {
   reply.cancel()
   channel.deliver({ messageId: 'msg-1', text: '说到一半' })
 
-  assert.deepEqual(sink.utterances.map((item) => item.text), ['说到一半'])
+  assert.deepEqual(
+    sink.utterances.map((item) => item.text),
+    ['说到一半'],
+  )
 })
 
 test('message-wide cancellation carries no utterance id', () => {
@@ -170,7 +177,11 @@ test('proactive lines share the ledger without colliding with replies', () => {
   const channel = new AgentFaceChannel(sink)
 
   // 通知与回复是两套 id 空间：同样的正文互不遮挡。
-  channel.deliver({ messageId: 'notif-1', text: '报告生成好了', source: 'proactive' })
+  channel.deliver({
+    messageId: 'notif-1',
+    text: '报告生成好了',
+    source: 'proactive',
+  })
   channel.deliver({ messageId: 'msg-1', text: '报告生成好了' })
   assert.deepEqual(
     sink.utterances.map((item) => [item.source, item.utteranceId]),
@@ -181,7 +192,11 @@ test('proactive lines share the ledger without colliding with replies', () => {
   )
 
   // 同一条通知重复投递不再说第二遍。
-  channel.deliver({ messageId: 'notif-1', text: '报告生成好了', source: 'proactive' })
+  channel.deliver({
+    messageId: 'notif-1',
+    text: '报告生成好了',
+    source: 'proactive',
+  })
   assert.equal(sink.utterances.length, 2)
 })
 
@@ -232,7 +247,10 @@ test('a line without words still stages, and words without a plan still speak', 
     { text: '', source: 'reply', messageId: 'msg-1', performance },
     { text: '在的', source: 'reply', messageId: 'msg-2' },
   ])
-  assert.deepEqual(sink.utterances.map((item) => item.messageId), ['msg-2'])
+  assert.deepEqual(
+    sink.utterances.map((item) => item.messageId),
+    ['msg-2'],
+  )
 })
 
 test('state changes go straight through, unattached to any line', () => {

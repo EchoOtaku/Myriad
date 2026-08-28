@@ -197,7 +197,10 @@ export class AgentFaceChannel {
   }
 
   private remember(messageId: string, text: string): void {
-    if (!this.spoken.has(messageId) && this.spoken.size >= MAX_REMEMBERED_MESSAGES) {
+    if (
+      !this.spoken.has(messageId) &&
+      this.spoken.size >= MAX_REMEMBERED_MESSAGES
+    ) {
       const oldest = this.spoken.keys().next().value
       if (typeof oldest === 'string') this.spoken.delete(oldest)
     }

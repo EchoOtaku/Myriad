@@ -531,7 +531,7 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
               </div>
             </div>
           ))}
-          <div className="merope-ob-persona-view__row merope-motion-overview__dnd">
+          <div className="merope-ob-persona-view__row">
             <div className="merope-ob-persona-view__copy">
               <dt>{t.merope.overviewDoNotDisturb}</dt>
               <dd>

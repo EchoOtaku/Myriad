@@ -1189,6 +1189,45 @@ export default function Anime25DWorkbench({
                         }),
                         copyable: false,
                       },
+                      {
+                        key: 'performance',
+                        label: labels.anime25dInspectPerformance,
+                        value: fillInspect(
+                          labels.anime25dInspectPerformanceValue,
+                          {
+                            frame: snapshot.performance.frameCpuMs.toFixed(2),
+                            deform: snapshot.performance.deformMs.toFixed(2),
+                            upload:
+                              snapshot.performance.uploadSubmitMs.toFixed(2),
+                          },
+                        ),
+                        copyable: false,
+                      },
+                      {
+                        key: 'workload',
+                        label: labels.anime25dInspectWorkload,
+                        value: fillInspect(
+                          labels.anime25dInspectWorkloadValue,
+                          {
+                            vertices: Math.round(
+                              snapshot.performance.deformedVertices,
+                            ),
+                            skipped: Math.round(
+                              snapshot.performance.skippedVertices,
+                            ),
+                            kilobytes: Math.round(
+                              snapshot.performance.uploadedBytes / 1024,
+                            ),
+                            saved: Math.round(
+                              snapshot.performance.savedUploadBytes / 1024,
+                            ),
+                            draws: Math.round(
+                              snapshot.performance.drawCalls,
+                            ),
+                          },
+                        ),
+                        copyable: false,
+                      },
                     ]
                   : undefined
               }

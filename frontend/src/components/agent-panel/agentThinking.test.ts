@@ -9,11 +9,11 @@ import {
 
 function step(overrides: Partial<AgentMessageStep> = {}): AgentMessageStep {
   return {
-  id: 's1',
-  name: '查天气',
-  status: 'done',
-  ...overrides,
-}
+    id: 's1',
+    name: '查天气',
+    status: 'done',
+    ...overrides,
+  }
 }
 
 test('报出卡在哪一步、跑完几步、一共多久', () => {

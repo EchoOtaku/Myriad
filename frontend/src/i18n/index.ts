@@ -94,9 +94,6 @@ export interface TranslationKeys {
 
   merope: {
     title: string
-    statusLoading: string
-    statusNeedLogin: string
-    chat: string
     memories: string
     settings: string
     send: string
@@ -111,7 +108,6 @@ export interface TranslationKeys {
     psdLayerCountInvalid: string
     canvasUnsupported: string
     anime25dMissingFace: string
-    anime25dMissingHandwear: string
     anime25dMissingLayer: string
     anime25dPartCount: string
     anime25dContractMissing: string
@@ -129,7 +125,6 @@ export interface TranslationKeys {
     seeThroughStatusFailed: string
     anime25dWebglFailed: string
     anime25dPlaybackFailed: string
-    unread: string
     visualTitle: string
     visualRequirements: string
     visualRequirementsPlaceholder: string
@@ -187,6 +182,8 @@ export interface TranslationKeys {
     anime25dInspectEyesValue: string
     anime25dInspectMouthValue: string
     anime25dInspectCanvasValue: string
+    anime25dInspectPerformanceValue: string
+    anime25dInspectWorkloadValue: string
     clusterHead: string
     clusterEyes: string
     clusterBrows: string
@@ -258,6 +255,8 @@ export interface TranslationKeys {
     anime25dInspectEyes: string
     anime25dInspectMouth: string
     anime25dInspectCanvas: string
+    anime25dInspectPerformance: string
+    anime25dInspectWorkload: string
     anime25dInspectEmpty: string
     rigPathUpload: string
     rigPathUploadHint: string
@@ -1381,6 +1380,14 @@ export interface TranslationKeys {
     memorySaverGroupDesc: string
     memorySaver: string
     memorySaverHint: string
+    agentOptions: string
+    agentOptionsDesc: string
+    agentHeartbeatTitle: string
+    agentHeartbeatDesc: string
+    agentSkillsTitle: string
+    agentSkillsDesc: string
+    agentMemoryTitle: string
+    agentMemoryDesc: string
     agentPersona: string
     agentPersonaBeta: string
     agentPersonaHint: string
@@ -2204,9 +2211,20 @@ export interface TranslationKeys {
     }
     inputPlaceholder: string
     send: string
-    /** 展开到完整对话 / 收回上一档 */
+    /** 输入框里那枚状态灯兼添加附件 */
+    attach: {
+      /** 次要说明：这是一份附件 */
+      kind: string
+      add: string
+      remove: string
+      tooMany: string
+      tooLarge: string
+      unsupported: string
+      /** 只有附件没有字时发给后端的那句 */
+      fallback: string
+    }
+    /** 展开到完整对话 */
     expand: string
-    collapse: string
     /** 执行引擎的状态与错误文案（从旧面板的 arael 块搬过来） */
     accessDenied: string
     answerFailed: string
@@ -2248,7 +2266,6 @@ export interface TranslationKeys {
       title: string
       tabs: { heartbeat: string; skills: string; memory: string }
       needLogin: string
-      adminOnly: string
       loadFailed: string
       actionFailed: string
       emptyHeartbeat: string
@@ -2261,9 +2278,26 @@ export interface TranslationKeys {
       remove: string
       confirmRemove: string
       newTask: string
+      newTaskDesc: string
+      enabled: string
+      disabled: string
+      originManual: string
+      originLearned: string
+      originImproved: string
+      searchTasks: string
+      searchSkills: string
+      searchMemory: string
+      noneMatch: string
+      skillRecord: string
+      refreshDesc: string
+      enableTask: string
+      memoryContent: string
+      confirmRemoveMemory: string
       taskName: string
       taskAction: string
+      taskActionHint: string
       taskSchedule: string
+      taskScheduleHint: string
       save: string
       cancel: string
       badCron: string
@@ -2294,6 +2328,8 @@ export interface TranslationKeys {
       minutesAgo: string
       hoursAgo: string
       daysAgo: string
+      prev: string
+      next: string
     }
     /** 敏感操作确认卡片 */
     action: {

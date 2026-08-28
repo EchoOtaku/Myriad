@@ -6,4 +6,3 @@ export interface GazeTarget {
   attention?: number
   source?: GazeSource
 }
-

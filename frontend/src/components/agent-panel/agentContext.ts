@@ -7,13 +7,7 @@
 
 /** 报得出名字的路由。认不出来的一律 `other`，不瞎猜。 */
 export type AgentContextRoute =
-  | 'home'
-  | 'library'
-  | 'brew'
-  | 'reports'
-  | 'config'
-  | 'tapp'
-  | 'other'
+  'home' | 'library' | 'brew' | 'reports' | 'config' | 'tapp' | 'other'
 
 const ROUTE_PREFIXES: ReadonlyArray<readonly [string, AgentContextRoute]> = [
   ['/library', 'library'],
@@ -63,7 +57,9 @@ export function resolveAgentContext(input: {
   const title = input.pageTitle?.trim()
   // 有正文但没标题时仍然算 content —— 能总结的是正文，不是标题
   if (consent && input.hasPageContent) {
-    return title ? { kind: 'content', route, title } : { kind: 'content', route }
+    return title
+      ? { kind: 'content', route, title }
+      : { kind: 'content', route }
   }
   return { kind: 'route', route }
 }

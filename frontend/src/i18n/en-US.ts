@@ -92,9 +92,6 @@ export const enUS: TranslationKeys = {
 
   merope: {
     title: 'Face',
-    statusLoading: 'Loading…',
-    statusNeedLogin: 'Sign in to see the face',
-    chat: 'Chat',
     memories: 'Memories',
     settings: 'Settings',
     send: 'Send',
@@ -110,8 +107,6 @@ export const enUS: TranslationKeys = {
     canvasUnsupported: 'This browser does not support 2D Canvas.',
     anime25dMissingFace:
       'The Anime2.5DRig PSD is missing the required face layer.',
-    anime25dMissingHandwear:
-      'The Anime2.5DRig PSD is missing a handwear layer.',
     anime25dMissingLayer: 'The Anime2.5DRig PSD is missing the {role} layer.',
     anime25dPartCount: 'Anime2.5DRig part count must be 1–{max}.',
     anime25dContractMissing: 'The 2.5D visual contract is missing: {missing}',
@@ -130,7 +125,6 @@ export const enUS: TranslationKeys = {
     anime25dWebglFailed:
       'This browser does not support WebGL2, so 2.5D motion cannot play.',
     anime25dPlaybackFailed: '2.5D motion could not play.',
-    unread: 'unread messages',
     visualTitle: 'Master portrait',
     visualRequirements: 'Light and framing',
     visualRequirementsPlaceholder:
@@ -269,6 +263,12 @@ export const enUS: TranslationKeys = {
     anime25dInspectMouthValue: '{open} open · {close} closed',
     anime25dInspectCanvas: 'Canvas size',
     anime25dInspectCanvasValue: '{width}×{height} px',
+    anime25dInspectPerformance: 'In-frame CPU',
+    anime25dInspectPerformanceValue:
+      '{frame} ms total · {deform} ms deformation · {upload} ms upload submission',
+    anime25dInspectWorkload: 'Frame workload',
+    anime25dInspectWorkloadValue:
+      '{vertices} vertices computed · {skipped} skipped · {kilobytes} KB uploaded / {saved} KB saved · {draws} draws',
     anime25dInspectEmpty:
       'No rig data yet. Finish the layered rig to check that layers match the player.',
     rigPathUpload: 'Upload PSD',
@@ -357,10 +357,10 @@ export const enUS: TranslationKeys = {
     motionNeedsRig:
       'Finish the layered rig first. These controls can drive the portrait only after that.',
     motionPsdCommit: 'Commit preflighted rig',
-    adminTitle: 'Persona settings',
+    adminTitle: 'Character settings',
     adminDescription:
       'One site-wide face. Portrait first, then the rig, then expression and pose.',
-    faceOpen: 'Persona settings',
+    faceOpen: 'Character settings',
     personaLabelTemperament: 'Temperament',
     personaLabelLikes: 'Likes',
     personaLabelDrives: 'Drive',
@@ -1638,7 +1638,16 @@ export const enUS: TranslationKeys = {
     memorySaver: 'Memory saver',
     memorySaverHint:
       'A second notch below the bounded default: smaller chunk inflight, process caches, DB pool, password-hash concurrency, and video/audio peaks. Everyday messages still fit; large media should use chunked transfer, and lossless audio may reject sooner. Env MYRIAD_MEMORY_PROFILE can override. DB pool fully applies after backend restart.',
-    agentPersona: 'Agent persona',
+    agentOptions: 'Agent',
+    agentOptionsDesc: 'Persona, scheduled tasks, skills, and memories.',
+    agentHeartbeatTitle: 'Scheduled tasks',
+    agentHeartbeatDesc: 'Have it do something on its own when the time comes.',
+    agentSkillsTitle: 'Skills',
+    agentSkillsDesc: 'Ways it has learned. Delete ones you do not need.',
+    agentMemoryTitle: 'Memory',
+    agentMemoryDesc:
+      'Things it remembers. Open a row to rephrase, or delete it.',
+    agentPersona: 'Persona',
     agentPersonaBeta: 'Beta',
     agentPersonaHint:
       'When on, Agent speaks with the site persona, keeps per-person mood and diary, and may speak after named events. When off, it only chats and does tasks.',
@@ -2579,8 +2588,16 @@ export const enUS: TranslationKeys = {
     },
     inputPlaceholder: 'Ask anything…',
     send: 'Send',
+    attach: {
+      kind: 'File',
+      add: 'Add attachment',
+      remove: 'Remove attachment',
+      tooMany: 'Up to 4 attachments at a time',
+      tooLarge: 'That file is too large (max 8MB)',
+      unsupported: 'That file type is not supported',
+      fallback: 'Attached {names}',
+    },
     expand: 'Open conversation',
-    collapse: 'Collapse',
     accessDenied: 'You do not have permission to do that.',
     answerFailed: 'Answer failed: {error}',
     askArael: 'Ask Agent',
@@ -2620,26 +2637,49 @@ export const enUS: TranslationKeys = {
     manage: {
       title: 'Its settings',
       tabs: { heartbeat: 'Schedule', skills: 'Skills', memory: 'Memory' },
-      needLogin: 'Sign in to see this',
-      adminOnly: 'Only the owner can see scheduled tasks',
-      loadFailed: "Couldn't load this",
-      actionFailed: "That didn't go through",
-      emptyHeartbeat: 'Nothing scheduled',
-      emptySkills: 'Nothing learned yet',
-      emptyMemory: 'Nothing remembered yet',
-      personaElsewhere: 'Name and personality live in Settings › AI',
+      needLogin: 'Sign in to see scheduled tasks, skills, and memories',
+      loadFailed: "The list didn't load. Try again.",
+      actionFailed: "That change didn't save. Try again.",
+      emptyHeartbeat:
+        'No scheduled tasks yet. Use “Add a task” to write something it should do on time.',
+      emptySkills:
+        'No skills yet. Ones it learns in conversation will show up here.',
+      emptyMemory:
+        'No memories yet. Things it remembers will show up here; open a row to edit.',
+      personaElsewhere:
+        'Schedules, skills, memories, and persona live in Settings › AI',
       doNotDisturb: "Don't reach out to me",
-      lastRun: 'last {time}',
-      neverRun: 'never run',
-      remove: 'Remove',
-      confirmRemove: 'Remove "{name}"?',
-      newTask: 'Add one',
-      taskName: 'Called',
-      taskAction: 'Should do',
-      taskSchedule: 'How often',
+      lastRun: 'Last run: {time}',
+      neverRun: 'Not run yet',
+      remove: 'Delete',
+      confirmRemove: 'Delete “{name}”?',
+      newTask: 'Add a task',
+      newTaskDesc: 'Give it a name, what to do, and how often to run',
+      enabled: 'On',
+      disabled: 'Off',
+      originManual: 'Added by hand',
+      originLearned: 'Learned on its own',
+      originImproved: 'Revised later',
+      searchTasks: 'Search tasks by name or what they do',
+      searchSkills: 'Search skills by name or description',
+      searchMemory: 'Search memories by content',
+      noneMatch: 'Nothing matches',
+      skillRecord: '{ok} succeeded · {fail} failed',
+      refreshDesc: 'Reload the list',
+      enableTask: 'Turn “{name}” on or off',
+      memoryContent: 'Content',
+      confirmRemoveMemory:
+        'Delete this memory? It will stop using this the next time it acts.',
+      taskName: 'Name',
+      taskAction: 'What to do',
+      taskActionHint:
+        'The instruction it runs when the time comes, same as if you asked it yourself.',
+      taskSchedule: 'When',
+      taskScheduleHint:
+        'Pick an interval above, or write five fields: minute hour day month weekday. Daily 9:00 is 0 9 * * *',
       save: 'Save',
       cancel: 'Cancel',
-      badCron: 'A cron needs five fields',
+      badCron: 'That time isn’t valid. It needs five fields, like 0 9 * * *',
       everyMinutes: 'every {value} min',
       everyHours: 'every {value} h',
       hourly: 'hourly',
@@ -2665,6 +2705,8 @@ export const enUS: TranslationKeys = {
       minutesAgo: '{value}m ago',
       hoursAgo: '{value}h ago',
       daysAgo: '{value}d ago',
+      prev: 'Previous',
+      next: 'Next',
     },
     action: {
       risk: {

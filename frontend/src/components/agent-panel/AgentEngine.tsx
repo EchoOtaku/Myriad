@@ -24,6 +24,7 @@ import type {
   SummaryTokenEvent,
   TaskCreatedEvent,
 } from '../../services/agent'
+import type { AgentAttachment } from './agentAttachments'
 import type {
   ChatMessage,
   ChatSession,
@@ -48,6 +49,7 @@ import {
   generationFailureMessage,
 } from '../agent/onboarding/generationError'
 import { buildAgentPendingAction } from './agentAction'
+import { attachmentsForRequest } from './agentAttachments'
 import { getAgentContextConsent } from './agentContextConsent'
 import { setAgentMessages, setAgentSessionId } from './agentMessages'
 import {
@@ -60,7 +62,7 @@ import {
   agentPanelAnswerDetail,
   agentPanelCommand,
   agentPanelOpenSessionId,
-  agentPanelSubmitText,
+  agentPanelSubmitDetail,
   dispatchAgentPanelOpen,
 } from './agentPanelEvents'
 import {
@@ -126,7 +128,10 @@ export const AgentEngine: React.FC = () => {
   // 当前会话 ID（服务端持久化）
   const [sessionId, setSessionId] = useState<string | null>(null)
 
-  const handleSendRef = useRef<(text: string) => Promise<void>>(null)
+  const handleSendRef =
+    useRef<
+      (text: string, attachments?: readonly AgentAttachment[]) => Promise<void>
+    >(null)
 
   // 把对话同步给新 UI 的 Full 层。只送「谁说的、说了什么、说完没有」，执行追踪
   // 那一堆留在这边 —— 新 UI 不该认识旧面板的消息模型。
@@ -143,6 +148,17 @@ export const AgentEngine: React.FC = () => {
               ? ('streaming' as const)
               : undefined,
         ...(message.imageUrls?.length ? { imageUrls: message.imageUrls } : {}),
+        ...(message.attachments?.length
+          ? {
+              attachments: message.attachments.map((item) => ({
+                id: item.id,
+                name: item.name,
+                mime: item.mime,
+                size: item.size,
+                ...(item.previewUrl ? { previewUrl: item.previewUrl } : {}),
+              })),
+            }
+          : {}),
         at: message.createdAt.getTime(),
         ...(message.suggestions?.length
           ? { suggestions: message.suggestions }
@@ -505,11 +521,11 @@ export const AgentEngine: React.FC = () => {
   // 等 Full 层重做完，接住这条事件的换成新面板，overlay 那边不用改。
   useEffect(() => {
     const handleSubmit = (event: Event) => {
-      const text = agentPanelSubmitText(event)
-      if (!text) return
+      const detail = agentPanelSubmitDetail(event)
+      if (!detail) return
       // 不再把自己显示出来 —— 新 UI 的 Full 层已经在画这段对话了，
       // 两个面板同时开着只会让人不知道该看哪个。这边只管跑。
-      void handleSendRef.current?.(text)
+      void handleSendRef.current?.(detail.text, detail.attachments)
     }
     window.addEventListener(AGENT_PANEL_SUBMIT_EVENT, handleSubmit)
     return () =>
@@ -980,9 +996,14 @@ export const AgentEngine: React.FC = () => {
   // 发送消息
 
   const handleSend = useCallback(
-    async (text: string) => {
+    async (text: string, attachments: readonly AgentAttachment[] = []) => {
       const messageText = text.trim()
-      if (!messageText) return
+      if (!messageText && attachments.length === 0) return
+      const requestText =
+        messageText ||
+        format(t.agentPanel.attach.fallback, {
+          names: attachments.map((item) => item.name).join(', '),
+        })
 
       void import('../../utils/analyticsEvents').then(
         ({ trackProductEvent, AnalyticsEvents }) => {
@@ -1015,7 +1036,7 @@ export const AgentEngine: React.FC = () => {
 
       // 如果有待回答的问题，将输入路由到 answerQuestion（即使 isLoading 也允许）
       if (pendingAnswerMsg && answerQuestionRef.current) {
-        answerQuestionRef.current(pendingAnswerMsg.id, messageText)
+        answerQuestionRef.current(pendingAnswerMsg.id, requestText)
         return
       }
 
@@ -1036,11 +1057,12 @@ export const AgentEngine: React.FC = () => {
           role: 'user',
           content: messageText,
           createdAt: new Date(),
+          ...(attachments.length ? { attachments: [...attachments] } : {}),
         }
         setMessages((prev) => [...prev, userMessage])
         try {
           const result = await agentService.steerSession(
-            messageText,
+            requestText,
             activeTaskMessage.taskExecution.taskId,
           )
           updateMessageExecution(activeTaskMessage.id, {
@@ -1077,6 +1099,7 @@ export const AgentEngine: React.FC = () => {
         role: 'user',
         content: messageText,
         createdAt: new Date(),
+        ...(attachments.length ? { attachments: [...attachments] } : {}),
       }
 
       // 2. 创建 placeholder assistant 消息
@@ -1119,12 +1142,15 @@ export const AgentEngine: React.FC = () => {
             customData.pageContent = contentForAgent
           }
         }
+        if (attachments.length) {
+          customData.attachments = attachmentsForRequest(attachments)
+        }
         if (Object.keys(customData).length > 0) {
           context.customData = customData
         }
 
         const response = await agentService.processWithProgress(
-          messageText,
+          requestText,
           createProgressHandler(assistantMsgId),
           context,
         )

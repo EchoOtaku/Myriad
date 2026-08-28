@@ -92,9 +92,6 @@ export const jaJP: TranslationKeys = {
 
   merope: {
     title: 'ビジュアル',
-    statusLoading: '読み込み中…',
-    statusNeedLogin: 'ログインしてビジュアルを表示',
-    chat: '会話',
     memories: '記憶',
     settings: '設定',
     send: '送信',
@@ -111,7 +108,6 @@ export const jaJP: TranslationKeys = {
     canvasUnsupported: 'このブラウザは 2D Canvas に対応していません。',
     anime25dMissingFace:
       'Anime2.5DRig PSD に必須の face レイヤーがありません。',
-    anime25dMissingHandwear: 'Anime2.5DRig に handwear レイヤーがありません。',
     anime25dMissingLayer: 'Anime2.5DRig に {role} レイヤーがありません。',
     anime25dPartCount:
       'Anime2.5DRig のパーツ数は 1–{max} である必要があります。',
@@ -131,7 +127,6 @@ export const jaJP: TranslationKeys = {
     anime25dWebglFailed:
       'このブラウザは WebGL2 に対応していないため、2.5D モーションを再生できません。',
     anime25dPlaybackFailed: '2.5D モーションを再生できませんでした。',
-    unread: '件の未読メッセージ',
     visualTitle: 'メイン立ち絵',
     visualRequirements: '光と構図',
     visualRequirementsPlaceholder:
@@ -268,6 +263,12 @@ export const jaJP: TranslationKeys = {
     anime25dInspectMouthValue: '開き {open} 層 · 閉じ {close} 層',
     anime25dInspectCanvas: 'キャンバスサイズ',
     anime25dInspectCanvasValue: '{width}×{height} px',
+    anime25dInspectPerformance: 'フレーム内 CPU',
+    anime25dInspectPerformanceValue:
+      '合計 {frame} ms · 変形 {deform} ms · 転送発行 {upload} ms',
+    anime25dInspectWorkload: 'フレーム負荷',
+    anime25dInspectWorkloadValue:
+      '{vertices} 頂点を計算 · {skipped} 頂点を省略 · {kilobytes} KB 転送 / {saved} KB 削減 · {draws} ドロー',
     anime25dInspectEmpty:
       'リグデータがまだありません。レイヤーリグを完成させると、再生との対応を確認できます。',
     rigPathUpload: 'PSD を取り込む',
@@ -358,10 +359,10 @@ export const jaJP: TranslationKeys = {
     motionNeedsRig:
       '先にレイヤーリグを完成させてください。そのあとで立ち絵を操作できます。',
     motionPsdCommit: '検証済みリグを確定',
-    adminTitle: 'ペルソナ設定',
+    adminTitle: '人物設定',
     adminDescription:
       'サイト全体で一つのビジュアルです。立ち絵、リグ、表情とポーズの順。',
-    faceOpen: 'ペルソナ設定',
+    faceOpen: '人物設定',
     personaLabelTemperament: '気質',
     personaLabelLikes: '好み',
     personaLabelDrives: '原動力',
@@ -1618,7 +1619,15 @@ export const jaJP: TranslationKeys = {
     memorySaver: 'メモリ節約',
     memorySaverHint:
       '均衡プロファイルからもう一段締めます。転送チャンク同時量、プロセス内キャッシュ、DB プール、パスワードハッシュ同時数、動画／音声のピークを下げます。日常のメッセージは使えます。大きなメディアは分割転送を、ロスレス音声は節約オフを検討。MYRIAD_MEMORY_PROFILE で上書き可。DB プールは再起動後に完全適用。',
-    agentPersona: 'Agent ペルソナ',
+    agentOptions: 'Agent',
+    agentOptionsDesc: 'ペルソナ、定期実行、スキル、記憶。',
+    agentHeartbeatTitle: '定期実行',
+    agentHeartbeatDesc: '時間になったら自分で動きます。',
+    agentSkillsTitle: 'スキル',
+    agentSkillsDesc: '覚えたやり方です。不要なら削除できます。',
+    agentMemoryTitle: '記憶',
+    agentMemoryDesc: '覚えていることです。行を開いて言い回すか、削除できます。',
+    agentPersona: 'ペルソナ',
     agentPersonaBeta: 'Beta',
     agentPersonaHint:
       'オンにすると Agent はサイトの設定で話し、相手ごとの気持ちと日記を残し、名簿上の出来事で自分から口を開きます。オフなら会話と用事だけです。',
@@ -2551,8 +2560,16 @@ export const jaJP: TranslationKeys = {
     },
     inputPlaceholder: '何でも聞いてください…',
     send: '送信',
+    attach: {
+      kind: '添付',
+      add: '添付を追加',
+      remove: 'この添付を外す',
+      tooMany: '添付は一度に4つまで',
+      tooLarge: 'ファイルが大きすぎます（最大 8MB）',
+      unsupported: 'このファイル形式は未対応です',
+      fallback: '{names} を添付しました',
+    },
     expand: '会話を開く',
-    collapse: '閉じる',
     accessDenied: 'この操作を行う権限がありません。',
     answerFailed: '回答失敗：{error}',
     askArael: 'Agent に聞く',
@@ -2593,26 +2610,49 @@ export const jaJP: TranslationKeys = {
     manage: {
       title: 'この子の設定',
       tabs: { heartbeat: '定期実行', skills: 'スキル', memory: '記憶' },
-      needLogin: 'ログインすると見られます',
-      adminOnly: '定期実行はオーナーのみ',
-      loadFailed: '読み込めませんでした',
-      actionFailed: 'うまくいきませんでした',
-      emptyHeartbeat: '定期実行はありません',
-      emptySkills: 'まだ何も覚えていません',
-      emptyMemory: 'まだ何も記憶していません',
-      personaElsewhere: '名前と性格は「設定 › AI」で変えられます',
+      needLogin: 'ログインすると定期実行・スキル・記憶を見られます',
+      loadFailed: 'リストを読み込めませんでした。もう一度試してください',
+      actionFailed: '保存できませんでした。もう一度試してください',
+      emptyHeartbeat:
+        'まだ定期実行はありません。「タスクを追加」で、時間になったらやらせることを書いてください',
+      emptySkills:
+        'まだスキルはありません。会話で覚えたやり方がここに出ます',
+      emptyMemory:
+        'まだ記憶はありません。覚えたことはここに出ます。開いて直せます',
+      personaElsewhere:
+        '定期タスク、スキル、記憶、ペルソナは「設定 › AI」で変えます',
       doNotDisturb: '話しかけないで',
-      lastRun: '前回 {time}',
-      neverRun: '未実行',
+      lastRun: '前回の実行：{time}',
+      neverRun: 'まだ実行していません',
       remove: '削除',
       confirmRemove: '「{name}」を削除しますか？',
-      newTask: '追加',
+      newTask: 'タスクを追加',
+      newTaskDesc: '名前、やること、実行する間隔を書きます',
+      enabled: 'オン',
+      disabled: 'オフ',
+      originManual: '手で追加',
+      originLearned: '自分で習得',
+      originImproved: 'あとから改訂',
+      searchTasks: '名前や内容でタスクを探す',
+      searchSkills: '名前や説明でスキルを探す',
+      searchMemory: '内容で記憶を探す',
+      noneMatch: '該当する項目はありません',
+      skillRecord: '成功 {ok} · 失敗 {fail}',
+      refreshDesc: 'リストを再読み込み',
+      enableTask: '「{name}」のオン／オフ',
+      memoryContent: '内容',
+      confirmRemoveMemory:
+        'この記憶を削除しますか？削除すると、次からこの内容では動きません',
       taskName: '名前',
-      taskAction: 'させること',
-      taskSchedule: '頻度',
+      taskAction: 'やること',
+      taskActionHint:
+        '時間になったら実行させる一文です。普段頼むときと同じ書き方で構いません',
+      taskSchedule: '実行時間',
+      taskScheduleHint:
+        '上の間隔から選ぶか、5 項目で書きます（分 時 日 月 曜日）。毎日 9 時は 0 9 * * *',
       save: '保存',
-      cancel: 'やめる',
-      badCron: 'cron は 5 つの項目が必要です',
+      cancel: 'キャンセル',
+      badCron: '時間の形式が違います。5 項目が必要です。例：0 9 * * *',
       everyMinutes: '{value} 分ごと',
       everyHours: '{value} 時間ごと',
       hourly: '1 時間ごと',
@@ -2638,6 +2678,8 @@ export const jaJP: TranslationKeys = {
       minutesAgo: '{value} 分前',
       hoursAgo: '{value} 時間前',
       daysAgo: '{value} 日前',
+      prev: '前へ',
+      next: '次へ',
     },
     action: {
       risk: {

@@ -6,6 +6,8 @@
  * 说完没有」，两份分开，改界面才不会牵动状态机。
  */
 
+import type { AgentAttachment } from './agentAttachments'
+
 /** 执行步骤 */
 export interface ExecutionStep {
   id: string
@@ -108,6 +110,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
   createdAt: Date
+  /** 用户这条附上的文件。预览只给界面，不进请求。 */
+  attachments?: AgentAttachment[]
   /** assistant 消息的任务执行可视化 */
   taskExecution?: TaskExecution
   suggestions?: string[]

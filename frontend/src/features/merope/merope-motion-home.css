@@ -510,10 +510,6 @@ html.dark .merope-motion-page {
     color-mix(in srgb, var(--border-color, #d8dbe6) 70%, transparent);
 }
 
-.merope-motion-home__cluster.is-locked {
-  opacity: 0.72;
-}
-
 .merope-motion-home--settings .merope-motion-home__stage {
   min-height: 280px;
   height: min(42vh, 420px);

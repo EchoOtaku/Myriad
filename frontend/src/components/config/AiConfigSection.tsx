@@ -10,11 +10,11 @@ import {
   FaMicrophone,
   FaVolumeUp,
   LuChevronLeft,
-  LuPalette,
-  LuStore,
-  LuRefreshCw,
   LuNotebookPen,
+  LuPalette,
+  LuRefreshCw,
   LuSparkles,
+  LuStore,
   SiGooglegemini,
   SiOpenai,
   SiOpenrouter,
@@ -22,20 +22,20 @@ import {
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
-import { userFacingError } from '../../utils/userFacingError'
-import { agentService } from '../../services/agent'
-import { invalidatePublicConfigCache } from '../../utils/requestDedup'
-import {
-  ADDRESSEE_UPDATED_EVENT,
-  activityKey,
-  moodBand,
-} from '../agent/meropeVitals'
 import {
   FACE_UPDATED_EVENT,
 } from '../../features/merope/events'
 import SiteMotionWorkbench from '../../features/merope/SiteMotionWorkbench'
-import PersonaOnboardingPage from '../agent/onboarding/PersonaOnboardingPage'
+import { agentService } from '../../services/agent'
+import { invalidatePublicConfigCache } from '../../utils/requestDedup'
+import { userFacingError } from '../../utils/userFacingError'
+import {
+  activityKey,
+  ADDRESSEE_UPDATED_EVENT,
+  moodBand,
+} from '../agent/meropeVitals'
 import { parseFlattenedPersona } from '../agent/onboarding/onboardingTypes'
+import PersonaOnboardingPage from '../agent/onboarding/PersonaOnboardingPage'
 import {
   AutoHeight,
   InfoActionCard,
@@ -48,6 +48,9 @@ import {
   ToggleSwitch,
   useSettingGuide,
 } from '../settings'
+import AgentOptionsPanel, {
+  AgentNestedSection,
+} from './AgentOptionsPanel'
 import {
   defaultModelsForSource,
   parseVendorSources,
@@ -977,21 +980,28 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       </SettingGroup>
 
       <SettingGroup
-        title={t.config.agentPersona}
+        title={t.config.agentOptions}
         icon={<LuNotebookPen />}
-        description={personaGateLead}
-        titleExtra={
-          <SettingTitleTag variant="beta">{t.config.agentPersonaBeta}</SettingTitleTag>
-        }
+        description={t.config.agentOptionsDesc}
         {...bindGuide('ai.agentPersona', g.ai.agentPersona)}
-        switch={{
-          checked: meropeOn,
-          onChange: (value) =>
-            updateUiFieldValue('merope_enabled', value ? 'true' : 'false'),
-          disabled: !proEnabled,
-          ariaLabel: t.config.agentPersona,
-        }}
       >
+        <AgentNestedSection
+          title={t.config.agentPersona}
+          description={personaGateLead}
+          badge={
+            <SettingTitleTag variant="beta">
+              {t.config.agentPersonaBeta}
+            </SettingTitleTag>
+          }
+          toggle={{
+            checked: meropeOn,
+            onChange: (value) =>
+              updateUiFieldValue('merope_enabled', value ? 'true' : 'false'),
+            disabled: !proEnabled,
+            ariaLabel: t.config.agentPersona,
+            title: t.config.agentPersonaHint,
+          }}
+        >
         {meropeOn ? (
           <InfoActionCard
             copyable={false}
@@ -1068,6 +1078,8 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
             )}
           </InfoActionCard>
         ) : null}
+        </AgentNestedSection>
+        <AgentOptionsPanel />
       </SettingGroup>
 
       {/* 图片生成模型 */}

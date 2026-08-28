@@ -98,4 +98,17 @@ describe('composerActionKind', () => {
       'stop',
     )
   })
+
+  it('becomes send when the field is empty but files are attached', () => {
+    assert.equal(
+      composerActionKind({
+        hasText: false,
+        hasAttachments: true,
+        busy: false,
+        speechAvailable: true,
+        voiceLocked: false,
+      }),
+      'send',
+    )
+  })
 })

@@ -20,20 +20,6 @@ export type AgentStatus =
   | 'done'
   | 'error'
 
-/**
- * 设计语言里的符号。真正渲染建议画成图元 —— `≈` `···` 跨字体宽度差很大，
- * `◇` 在部分系统会被 emoji 化。这张表是权威说法，也用于 aria-label 与调试。
- */
-export const AGENT_STATUS_SYMBOL: Record<AgentStatus, string> = {
-  idle: '◇',
-  listening: '◌',
-  thinking: '≈',
-  working: '···',
-  needsInput: '!',
-  done: '✓',
-  error: '✗',
-}
-
 export interface AgentStatusState {
   status: AgentStatus
   /** 岛上那一行字：当前步骤、待答问题、错误原因。没有就不显示。 */

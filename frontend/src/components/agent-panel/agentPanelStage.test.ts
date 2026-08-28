@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  agentPanelIsMorphing,
   agentPanelIsOpen,
   agentPanelShowsStage,
   INITIAL_AGENT_PANEL_STAGE as start,
@@ -12,11 +11,9 @@ test('长按展开，动画播完才算落定', () => {
   const opening = step(start, { type: 'open', stage: 'overlay' })
   assert.deepEqual(opening, { stage: 'overlay', phase: 'opening' })
   assert.equal(agentPanelIsOpen(opening), true)
-  assert.equal(agentPanelIsMorphing(opening), true)
 
   const open = step(opening, { type: 'settle' })
   assert.deepEqual(open, { stage: 'overlay', phase: 'settled' })
-  assert.equal(agentPanelIsMorphing(open), false)
 })
 
 test('收起时内容留到动画播完，不硬切', () => {
@@ -72,5 +69,5 @@ test('已经在岛上时收起是空操作，settle 也不会乱改', () => {
 test('丢了动画事件也能靠超时把状态推回落定', () => {
   // settle 是唯一的落定入口，无论它来自 transitionend 还是超时
   const opening = step(start, { type: 'open', stage: 'overlay' })
-  assert.equal(agentPanelIsMorphing(step(opening, { type: 'settle' })), false)
+  assert.equal(step(opening, { type: 'settle' }).phase, 'settled')
 })

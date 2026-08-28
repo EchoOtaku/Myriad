@@ -4,7 +4,6 @@ import test from 'node:test'
 import {
   ACTION_REVERSIBILITY,
   agentActionReversibility,
-  agentUndoExpired,
   planAgentUndo,
   UNDO_WINDOW_MS,
 } from './agentUndo'
@@ -142,6 +141,5 @@ test('到点之后撤销机会作废', () => {
     nowMs: NOW,
   })
   assert.ok(offer)
-  assert.equal(agentUndoExpired(offer, NOW + UNDO_WINDOW_MS - 1), false)
-  assert.equal(agentUndoExpired(offer, NOW + UNDO_WINDOW_MS), true)
+  assert.equal(offer.expiresAtMs, NOW + UNDO_WINDOW_MS)
 })

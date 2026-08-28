@@ -6,26 +6,45 @@
  * 这条事件的换成新面板，overlay 这边一行都不用改。
  */
 
+import type { AgentAttachment } from './agentAttachments'
+
 export const AGENT_PANEL_SUBMIT_EVENT = 'agent-panel-submit'
 
 export interface AgentPanelSubmitDetail {
   text: string
+  attachments?: AgentAttachment[]
 }
 
-export function dispatchAgentPanelSubmit(text: string): void {
+export function dispatchAgentPanelSubmit(
+  text: string,
+  attachments?: readonly AgentAttachment[],
+): void {
   const trimmed = text.trim()
-  if (!trimmed) return
+  const files = attachments?.length ? [...attachments] : undefined
+  if (!trimmed && !files?.length) return
   window.dispatchEvent(
     new CustomEvent<AgentPanelSubmitDetail>(AGENT_PANEL_SUBMIT_EVENT, {
-      detail: { text: trimmed },
+      detail: {
+        text: trimmed,
+        ...(files ? { attachments: files } : {}),
+      },
     }),
   )
 }
 
-export function agentPanelSubmitText(event: Event): string | null {
+export function agentPanelSubmitDetail(
+  event: Event,
+): AgentPanelSubmitDetail | null {
   const detail = (event as CustomEvent<AgentPanelSubmitDetail>).detail
   const text = typeof detail?.text === 'string' ? detail.text.trim() : ''
-  return text || null
+  const attachments = Array.isArray(detail?.attachments)
+    ? detail.attachments
+    : undefined
+  if (!text && !attachments?.length) return null
+  return {
+    text,
+    ...(attachments?.length ? { attachments } : {}),
+  }
 }
 
 // 操作卡片的回话。同样只递不办 —— 真正调 /agent/confirm 的仍然是执行方。

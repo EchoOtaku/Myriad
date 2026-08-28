@@ -2,7 +2,6 @@ import type { AgentMessage } from './agentMessages'
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 import {
-  clearAgentMessages,
   getAgentMessagesSnapshot,
   setAgentMessages,
   subscribeAgentMessages,
@@ -10,15 +9,15 @@ import {
 
 function message(overrides: Partial<AgentMessage> = {}): AgentMessage {
   return {
-  id: 'm1',
-  role: 'assistant',
-  content: '你好',
-  ...overrides,
-}
+    id: 'm1',
+    role: 'assistant',
+    content: '你好',
+    ...overrides,
+  }
 }
 
 afterEach(() => {
-  clearAgentMessages()
+  setAgentMessages([])
 })
 
 test('换了内容才叫醒订阅者', () => {
@@ -64,9 +63,9 @@ test('条数、角色、状态、图片数量任一变了都算变了', () => {
 
 test('清空之后拿到的是同一个空数组，引用稳定', () => {
   setAgentMessages([message()])
-  clearAgentMessages()
+  setAgentMessages([])
   const first = getAgentMessagesSnapshot()
-  clearAgentMessages()
+  setAgentMessages([])
   assert.equal(getAgentMessagesSnapshot(), first)
   assert.equal(first.length, 0)
 })

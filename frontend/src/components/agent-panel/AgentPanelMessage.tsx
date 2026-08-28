@@ -4,6 +4,7 @@
  * 助手说的话可能带着四样东西：走过的步骤、反过来问你的话、产出的图、答完之后的
  * 建议。**顺序是有讲究的** —— 过程在最上（读之前先知道它怎么来的），正文在中间，
  * 需要你动手的（问题、建议）在最下，因为那是读完之后才轮到的事。
+ * 复制、收藏、重试不进气泡，统一挂在右侧外面。
  */
 
 import type { AgentMessage } from './agentMessages'
@@ -71,14 +72,48 @@ export const AgentPanelMessage: React.FC<AgentPanelMessageProps> = ({
       data-role={message.role}
       data-state={message.state ?? 'settled'}
     >
-      <div className="agent-panel-message-body">
+      <div
+        className={
+          message.role === 'system'
+            ? 'agent-panel-message-body'
+            : 'agent-panel-message-body glass'
+        }
+      >
         {isAssistant && message.steps && (
           <AgentPanelThinking steps={message.steps} />
         )}
 
         {message.role === 'user' ? (
-          // 用户自己打的字不当 Markdown 认 —— 他写的星号就是星号
-          <p className="agent-md-p">{message.content}</p>
+          <>
+            {message.attachments && message.attachments.length > 0 ? (
+              <div className="agent-panel-message-attach">
+                {message.attachments.map((item) => {
+                  const preview = item.previewUrl
+                  return preview ? (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="agent-panel-image-open"
+                      onClick={() => onZoomImage(preview)}
+                      aria-label={item.name}
+                    >
+                      <img src={preview} alt={item.name} />
+                    </button>
+                  ) : (
+                    <span key={item.id} className="agent-panel-attach-chip">
+                      <span className="agent-panel-attach-chip-name">
+                        {item.name}
+                      </span>
+                    </span>
+                  )
+                })}
+              </div>
+            ) : null}
+            {message.content ? (
+              // 用户自己打的字不当 Markdown 认 —— 他写的星号就是星号
+              <p className="agent-md-p">{message.content}</p>
+            ) : null}
+          </>
         ) : (
           <AgentMarkdown text={message.content} />
         )}
@@ -99,7 +134,7 @@ export const AgentPanelMessage: React.FC<AgentPanelMessageProps> = ({
           </div>
         )}
 
-        {question && (
+        {question ? (
           <div className="agent-panel-question">
             <p className="agent-panel-question-text">{question.text}</p>
             {question.context && (
@@ -113,8 +148,7 @@ export const AgentPanelMessage: React.FC<AgentPanelMessageProps> = ({
                   <button
                     key={option.value}
                     type="button"
-                    className="agent-panel-chip"
-                    // 答过之后按钮冻结，但仍然看得见当时选了什么
+                    className="agent-panel-tag"
                     data-active={
                       question.answered === option.value ? 'true' : 'false'
                     }
@@ -128,62 +162,56 @@ export const AgentPanelMessage: React.FC<AgentPanelMessageProps> = ({
               </div>
             )}
           </div>
-        )}
+        ) : null}
 
-        {message.suggestions && message.suggestions.length > 0 && (
+        {message.suggestions && message.suggestions.length > 0 ? (
           <div className="agent-panel-question-options">
             {message.suggestions.map((suggestion) => (
               <button
                 key={suggestion}
                 type="button"
-                className="agent-panel-chip"
+                className="agent-panel-tag"
                 onClick={() => onSuggest(suggestion)}
               >
                 {suggestion}
               </button>
             ))}
           </div>
-        )}
-
-        {showsFooter && (
-          <div className="agent-panel-message-footer">
-            {message.at && (
-              <span className="agent-panel-message-time">
-                {formatTime(message.at, locale)}
-              </span>
-            )}
+        ) : null}
+      </div>
+      {showsFooter ? (
+        <div className="agent-panel-message-footer">
+          {message.at && (
+            <span className="agent-panel-message-time">
+              {formatTime(message.at, locale)}
+            </span>
+          )}
+          <button
+            type="button"
+            className="agent-panel-tag"
+            onClick={copy}
+            title={copied ? t.agentPanel.copied : t.agentPanel.copy}
+            aria-label={copied ? t.agentPanel.copied : t.agentPanel.copy}
+          >
+            {copied ? t.agentPanel.copied : t.agentPanel.copy}
+          </button>
+          {!isAssistant && (
             <button
               type="button"
-              className="agent-panel-message-action"
-              onClick={copy}
-              title={copied ? t.agentPanel.copied : t.agentPanel.copy}
-              aria-label={copied ? t.agentPanel.copied : t.agentPanel.copy}
+              className="agent-panel-tag"
+              onClick={save}
+              disabled={saved}
             >
-              {copied ? t.agentPanel.copied : t.agentPanel.copy}
+              {saved ? t.agentPanel.saved : t.agentPanel.save}
             </button>
-            {/* 存成常用只对自己说过的话有意义 —— 收藏的是问法，不是答案 */}
-            {!isAssistant && (
-              <button
-                type="button"
-                className="agent-panel-message-action"
-                onClick={save}
-                disabled={saved}
-              >
-                {saved ? t.agentPanel.saved : t.agentPanel.save}
-              </button>
-            )}
-            {message.state === 'error' && onRetry && (
-              <button
-                type="button"
-                className="agent-panel-message-action"
-                onClick={onRetry}
-              >
-                {t.agentPanel.retry}
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+          )}
+          {message.state === 'error' && onRetry ? (
+            <button type="button" className="agent-panel-tag" onClick={onRetry}>
+              {t.agentPanel.retry}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -15,6 +15,7 @@ import {
   stepsWorthShowing,
   summarizeAgentSteps,
 } from './agentThinking'
+import { AgentPresence, AgentSwap } from './useAgentPresence'
 
 const STATUS_MARK: Record<AgentMessageStep['status'], string> = {
   pending: '·',
@@ -49,7 +50,11 @@ export const AgentPanelThinking: React.FC<{ steps: AgentMessageStep[] }> = ({
         onClick={() => setExpanded((open) => !open)}
         aria-expanded={expanded}
       >
-        <span className="agent-panel-thinking-headline">{headline}</span>
+        <span className="agent-panel-thinking-headline">
+          <AgentSwap id={headline} from="self">
+            <span>{headline}</span>
+          </AgentSwap>
+        </span>
         {summary.elapsedMs !== null && (
           <span className="agent-panel-thinking-elapsed">
             {formatStepDuration(summary.elapsedMs)}
@@ -70,7 +75,7 @@ export const AgentPanelThinking: React.FC<{ steps: AgentMessageStep[] }> = ({
         </svg>
       </button>
 
-      {expanded && (
+      <AgentPresence open={expanded} kind="row" from="self">
         <ol className="agent-panel-thinking-steps">
           {steps.map((step) => (
             <li key={step.id} data-status={step.status}>
@@ -89,7 +94,7 @@ export const AgentPanelThinking: React.FC<{ steps: AgentMessageStep[] }> = ({
             </li>
           ))}
         </ol>
-      )}
+      </AgentPresence>
     </div>
   )
 }

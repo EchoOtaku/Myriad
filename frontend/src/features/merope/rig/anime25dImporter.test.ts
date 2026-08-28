@@ -11,6 +11,11 @@ import { gridMesh } from './anime25dSkeletonCompiler'
 import { CHARACTER_ASSET_CONTRACT_VERSION } from './contract'
 
 test('matches Anime2.5DRig normalization without merging numbered hair groups', () => {
+  // PSD 图层名常带首尾空白和「のコピー N」后缀
+  assert.equal(
+    normalizeAnime25DLayerName(' Front Hair_1 のコピー 2 '),
+    'front-hair-1',
+  )
   assert.equal(normalizeAnime25DLayerName('mouth'), 'mouth-open')
   assert.equal(normalizeAnime25DLayerName('eyelash_c'), 'eye-close')
   assert.equal(normalizeAnime25DLayerName('eye_dizzy'), 'eye-dizzy')

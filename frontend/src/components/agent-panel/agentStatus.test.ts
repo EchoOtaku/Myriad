@@ -164,10 +164,10 @@ test('录音只在没事干的时候顶到最前', () => {
   // 任务跑着时，用户更需要看到它走到哪一步
   const working = run(runStarted, stepStarted)
   assert.deepEqual(withListening(working, true), working)
-  assert.deepEqual(
-    withListening({ status: 'needsInput', detail: '?' }, true),
-    { status: 'needsInput', detail: '?' },
-  )
+  assert.deepEqual(withListening({ status: 'needsInput', detail: '?' }, true), {
+    status: 'needsInput',
+    detail: '?',
+  })
 
   assert.deepEqual(withListening(working, false), working)
 })

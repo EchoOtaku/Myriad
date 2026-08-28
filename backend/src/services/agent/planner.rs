@@ -414,6 +414,30 @@ impl Planner {
                     prompt.push_str("\n页面上下文可用：true（可在 params 中用 \"inputFrom\": \"__page_context__\" 引用）");
                 }
 
+                if let Some(attachments) = custom_data.get("attachments").and_then(|v| v.as_array())
+                {
+                    if !attachments.is_empty() {
+                        prompt.push_str("\n\n<user_attachments>");
+                        for att in attachments {
+                            let name = att.get("name").and_then(|v| v.as_str()).unwrap_or("file");
+                            let mime = att.get("mime").and_then(|v| v.as_str()).unwrap_or("");
+                            let size = att.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
+                            prompt.push_str(&format!("\n- {} ({}, {} bytes)", name, mime, size));
+                            if let Some(text) = att.get("text").and_then(|v| v.as_str()) {
+                                if !text.is_empty() {
+                                    prompt.push_str("\n  <excerpt>\n");
+                                    prompt.push_str(text);
+                                    prompt.push_str("\n  </excerpt>");
+                                }
+                            } else if mime.starts_with("image/") {
+                                prompt
+                                    .push_str("\n  （图片像素未随请求发送，只能看到文件名和类型）");
+                            }
+                        }
+                        prompt.push_str("\n</user_attachments>");
+                    }
+                }
+
                 // 用户偏好
                 if let Some(prefs) = custom_data.get("user_preferences") {
                     if let Some(prefs_obj) = prefs.as_object() {
@@ -1137,6 +1161,41 @@ mod tests {
             prompt.contains("你是 Agent") || prompt.contains("You are Agent"),
             "identity names the product Agent"
         );
+    }
+
+    #[test]
+    fn user_prompt_includes_attachment_excerpts() {
+        let prompt = test_planner().build_user_prompt(
+            &UserRequest {
+                raw_input: "看看这个".to_string(),
+                timestamp: chrono::Utc::now(),
+                user_id: 1,
+                context: Some(RequestContext {
+                    custom_data: Some(serde_json::json!({
+                        "attachments": [
+                            {
+                                "name": "n.txt",
+                                "mime": "text/plain",
+                                "size": 4,
+                                "text": "hello"
+                            },
+                            {
+                                "name": "a.png",
+                                "mime": "image/png",
+                                "size": 12
+                            }
+                        ]
+                    })),
+                    ..Default::default()
+                }),
+            },
+            None,
+        );
+        assert!(prompt.contains("<user_attachments>"));
+        assert!(prompt.contains("n.txt"));
+        assert!(prompt.contains("hello"));
+        assert!(prompt.contains("a.png"));
+        assert!(prompt.contains("图片像素未随请求发送"));
     }
 
     #[test]

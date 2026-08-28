@@ -10,6 +10,7 @@
  * 才不会连着一串类型一起拆。
  */
 
+import type { AgentAttachment } from './agentAttachments'
 import type { AgentMessageStep } from './agentThinking'
 import { useSyncExternalStore } from 'react'
 
@@ -34,6 +35,8 @@ export interface AgentMessage {
   state?: 'streaming' | 'error'
   /** 助手这轮产出的图片 */
   imageUrls?: string[]
+  /** 用户这条附上的文件 */
+  attachments?: AgentAttachment[]
   /** 这轮走了哪几步。空着表示没有值得摆出来的过程。 */
   steps?: AgentMessageStep[]
   /** 它反过来问你的话 */
@@ -89,6 +92,10 @@ function sameList(
       x.content !== y.content ||
       x.state !== y.state ||
       x.imageUrls?.length !== y.imageUrls?.length ||
+      x.attachments?.length !== y.attachments?.length ||
+      x.attachments?.some(
+        (item, index) => item.id !== y.attachments?.[index]?.id,
+      ) ||
       x.question?.id !== y.question?.id ||
       x.question?.answered !== y.question?.answered ||
       x.suggestions?.length !== y.suggestions?.length ||
@@ -108,10 +115,6 @@ export function setAgentMessages(next: readonly AgentMessage[]): void {
   if (sameList(messages, next)) return
   messages = next.length === 0 ? EMPTY : next
   for (const listener of listeners) listener()
-}
-
-export function clearAgentMessages(): void {
-  setAgentMessages(EMPTY)
 }
 
 export function setAgentSessionId(next: string | null): void {

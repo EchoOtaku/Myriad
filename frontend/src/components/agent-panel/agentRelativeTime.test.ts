@@ -1,9 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {
-  RELATIVE_TIME_MAX_DAYS,
-  relativeTimeBucket,
-} from './agentRelativeTime'
+import { RELATIVE_TIME_MAX_DAYS, relativeTimeBucket } from './agentRelativeTime'
 
 const NOW = Date.parse('2026-08-28T12:00:00.000Z')
 const ago = (ms: number) => new Date(NOW - ms).toISOString()
@@ -29,7 +26,9 @@ test('按分、时、天分档', () => {
 })
 
 test('边界落在下一档的第一格，不出现「60 分钟前」', () => {
-  assert.deepEqual(relativeTimeBucket(ago(MINUTE - 1), NOW), { kind: 'justNow' })
+  assert.deepEqual(relativeTimeBucket(ago(MINUTE - 1), NOW), {
+    kind: 'justNow',
+  })
   assert.deepEqual(relativeTimeBucket(ago(MINUTE), NOW), {
     kind: 'minutes',
     value: 1,
@@ -38,11 +37,17 @@ test('边界落在下一档的第一格，不出现「60 分钟前」', () => {
     kind: 'hours',
     value: 1,
   })
-  assert.deepEqual(relativeTimeBucket(ago(DAY), NOW), { kind: 'days', value: 1 })
+  assert.deepEqual(relativeTimeBucket(ago(DAY), NOW), {
+    kind: 'days',
+    value: 1,
+  })
 })
 
 test('太久远改报日期 —— 别让人算「43 天前」是哪天', () => {
-  const bucket = relativeTimeBucket(ago((RELATIVE_TIME_MAX_DAYS + 1) * DAY), NOW)
+  const bucket = relativeTimeBucket(
+    ago((RELATIVE_TIME_MAX_DAYS + 1) * DAY),
+    NOW,
+  )
   assert.equal(bucket?.kind, 'date')
   assert.deepEqual(relativeTimeBucket(ago(RELATIVE_TIME_MAX_DAYS * DAY), NOW), {
     kind: 'days',

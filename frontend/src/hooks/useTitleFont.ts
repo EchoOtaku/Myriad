@@ -469,23 +469,6 @@ export function useTitleFont() {
 
 // 工具函数
 
-export function getTitleFontFamily(fontId?: string): string {
-  const id = fontId || globalState.font
-  return fontMap.get(id)?.family || AVAILABLE_FONTS[0].family
-}
-
-export function getCurrentTitleFontId(): string {
-  return globalState.font
-}
-
-export function getCurrentTitleFontSize(): number {
-  return globalState.fontSize
-}
-
-export function getCurrentTitleColorId(): string {
-  return globalState.color
-}
-
 /**
  * 解析标题颜色 CSS 值。
  * adaptive：对齐 Tapp 音乐播放器歌词填色 —— 基于 WCAG 对比度在主题背景下推导可读色。

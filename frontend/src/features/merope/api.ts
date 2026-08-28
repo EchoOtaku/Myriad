@@ -1,7 +1,4 @@
-import type {
-  MeropeRigImportSource,
-  MeropeRigManifest,
-} from './rig/types'
+import type { MeropeRigImportSource, MeropeRigManifest } from './rig/types'
 import { currentCopy } from '../../i18n/localeCopy'
 import api from '../../lib/api'
 import { httpStatusMessage } from '../../utils/userFacingError'
@@ -109,11 +106,7 @@ export async function getSiteFace(): Promise<SiteFace> {
       assetId: null,
     }
   }
-  assertSuccess(
-    response.status,
-    response.data,
-    currentCopy().merope.loadFailed,
-  )
+  assertSuccess(response.status, response.data, currentCopy().merope.loadFailed)
   const manifest = isLiveMeropeManifest(response.data.manifest)
     ? response.data.manifest
     : null

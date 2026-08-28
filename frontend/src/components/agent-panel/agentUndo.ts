@@ -109,7 +109,3 @@ export function planAgentUndo(input: {
     expiresAtMs: nowMs + UNDO_WINDOW_MS,
   }
 }
-
-export function agentUndoExpired(offer: AgentUndoOffer, nowMs: number): boolean {
-  return nowMs >= offer.expiresAtMs
-}

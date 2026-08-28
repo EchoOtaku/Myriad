@@ -102,7 +102,7 @@ export const AgentPanelActionCard: React.FC<AgentPanelActionCardProps> = ({
       <div className="agent-panel-action-buttons">
         <button
           type="button"
-          className="agent-panel-action-cancel"
+          className="agent-panel-tag"
           onClick={() => onDecide(false)}
           // 不可撤销的那一档把焦点放在「算了」上：回车不该替人拍板
           autoFocus={action.tier !== 'light'}
@@ -111,7 +111,8 @@ export const AgentPanelActionCard: React.FC<AgentPanelActionCardProps> = ({
         </button>
         <button
           type="button"
-          className="agent-panel-action-confirm"
+          className="agent-panel-tag agent-panel-tag-strong"
+          data-tone={action.tier === 'explicit' ? 'alert' : 'primary'}
           onClick={() => onDecide(true)}
           disabled={expired}
           autoFocus={action.tier === 'light'}

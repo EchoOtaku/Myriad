@@ -2241,6 +2241,10 @@ html.dark .platform-status-dot.is-unconfigured {
 }
 
 .ai-llm-tier-title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
   margin: 0;
   font-size: 0.8125rem;
   font-weight: 600;
