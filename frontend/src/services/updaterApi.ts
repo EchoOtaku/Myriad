@@ -172,13 +172,6 @@ export function clampSnapshotLimit(raw: number): number {
   )
 }
 
-/** True when n is an integer in SNAPSHOT_LIMIT_MIN..=SNAPSHOT_LIMIT_MAX. */
-export function isValidSnapshotLimit(n: number): boolean {
-  return (
-    Number.isInteger(n) && n >= SNAPSHOT_LIMIT_MIN && n <= SNAPSHOT_LIMIT_MAX
-  )
-}
-
 /** Shared shape for self-update / proxy-update durable last outcome. */
 export interface InfraUpdateLastStatus {
   status: 'pending' | 'succeeded' | 'failed'

@@ -2705,8 +2705,6 @@ export const enUS: TranslationKeys = {
       minutesAgo: '{value}m ago',
       hoursAgo: '{value}h ago',
       daysAgo: '{value}d ago',
-      prev: 'Previous',
-      next: 'Next',
     },
     action: {
       risk: {
@@ -2823,7 +2821,6 @@ export const enUS: TranslationKeys = {
         rain: 'Trench',
       },
       extraLabel: 'Extra notes',
-      extraHint: 'Optional. Shapes personality only.',
       extraPlaceholder: 'e.g. Quiet, earnest, softer with people they know',
       regeneratePersona: 'New set',
       regeneratingPersona: 'Generating',
@@ -3359,22 +3356,13 @@ export const enUS: TranslationKeys = {
     bio: 'Bio',
     account: 'Account',
     role: 'Role',
-    admin: 'Admin',
-    normalUser: 'User',
-    authMethod: 'Auth Method',
     localAccount: 'Local Account',
-    githubAccount: 'GitHub Account',
-    githubBinding: 'GitHub Binding',
     githubLinked: 'Linked',
     githubNotLinked: 'Not Linked',
-    hybridAccount: 'Local + GitHub',
-    hybridAccountWithProviders: 'Local + {providers}',
-    bindGithub: 'Link GitHub Account',
     changePassword: 'Change Password',
     currentPassword: 'Current Password',
     newPassword: 'New Password',
     confirmNewPassword: 'Confirm New Password',
-    enterCurrentPassword: 'Enter current password',
     atLeast8Chars: 'At least 8 characters',
     enterPasswordAgain: 'Enter password again',
     newPasswordMinLength: 'New password must be at least 8 characters',
@@ -3495,17 +3483,12 @@ export const enUS: TranslationKeys = {
     github: 'GitHub',
 
     // Danmaku defaults
-    danmakuDefaults: ['Warning', 'Next time', 'LOL', 'Nostalgia', 'Tears'],
 
     // Player type
     casualPlayer: 'Casual Player',
 
     // Developer levels
-    activeDeveloper: 'Active Developer',
-    legendary: 'Legendary',
     core: 'Core',
-    senior: 'Senior',
-    prolific: 'Prolific',
     active: 'Active',
 
     // Stats labels
@@ -3518,8 +3501,6 @@ export const enUS: TranslationKeys = {
     lists: 'Lists',
 
     // Status text
-    analyzingRepos: '> Analyzing repositories_',
-    noReposFound: '> No repos found_',
 
     // Toast messages
     noPlatformReports: 'No platform reports available',
@@ -3528,7 +3509,6 @@ export const enUS: TranslationKeys = {
     refreshingReport: 'Refreshing {platform} report...',
     reportRefreshSuccess: '{platform} report refreshed!',
     reportRefreshNoData: 'Report refresh complete, but no updated data found',
-    getLatestReportFailed: 'Failed to get latest report',
     refreshReportFailed: 'Failed to refresh {platform} report',
     adminOnlyGenerate: 'Only admin can generate reports',
     generateFailed: 'Generation failed',
@@ -3540,9 +3520,7 @@ export const enUS: TranslationKeys = {
 
     // UI text
     close: 'Close',
-    regenerateReport: 'Regenerate report',
     aiSummary: 'AI Summary',
-    deepInsightReport: 'Deep Insight Report',
     noEnabledPlatforms: 'No data platforms are enabled yet',
     noEnabledPlatformsDesc:
       'Enable at least one data platform in settings before platform cards can appear here.',
@@ -3569,19 +3547,14 @@ export const enUS: TranslationKeys = {
     dataEcho: 'Data Echo',
     deepInsight: 'Deep Insight',
     unknownPlatform: 'Unknown platform',
-    generating: 'Generating',
     generate: 'Generate',
     tenThousandSuffix: 'W',
     bangumiDone: 'Done',
     bangumiDoing: 'Doing',
     bangumiWish: 'Wish',
-    bangumiOnHold: 'On hold',
-    bangumiDropped: 'Dropped',
     malDone: 'Completed',
     malDoing: 'Watching',
     malWish: 'Plan to',
-    malOnHold: 'On hold',
-    malDropped: 'Dropped',
   },
 
   // Platform detail data management

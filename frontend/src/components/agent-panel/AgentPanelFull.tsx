@@ -35,25 +35,12 @@ export interface AgentPanelFullProps {
   onSubmit: (text: string) => void
   /** 设置那一面没有输入框，操作贴改由这里自己摆 */
   showChrome?: boolean
-  sessionPage?: number
-  sessionHasMore?: boolean
-  onSessionHasMore?: (more: boolean) => void
-  onSessionPage?: (page: number) => void
 }
 
 export const AgentPanelSessionChrome: React.FC<{
   view: AgentPanelFullView
   onView: (view: AgentPanelFullView) => void
-  sessionPage?: number
-  sessionHasMore?: boolean
-  onSessionPage?: (page: number) => void
-}> = ({
-  view,
-  onView,
-  sessionPage = 1,
-  sessionHasMore = false,
-  onSessionPage,
-}) => {
+}> = ({ view, onView }) => {
   const { t } = useI18n()
   const showsSessions = view === 'sessions'
   const viewLabel = view === 'manage' ? t.agentPanel.manage.title : null
@@ -87,52 +74,6 @@ export const AgentPanelSessionChrome: React.FC<{
           <path d="M12 5v14M5 12h14" />
         </svg>
       </button>
-      <AgentPresence open={showsSessions} kind="chip" from="attach">
-        <div className="agent-panel-session-pager">
-          <button
-            type="button"
-            className="agent-panel-tag"
-            data-icon="true"
-            disabled={sessionPage <= 1}
-            onClick={() => onSessionPage?.(Math.max(1, sessionPage - 1))}
-            title={t.agentPanel.sessions.prev}
-            aria-label={t.agentPanel.sessions.prev}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="m15 18-6-6 6-6" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className="agent-panel-tag"
-            data-icon="true"
-            disabled={!sessionHasMore}
-            onClick={() => onSessionPage?.(sessionPage + 1)}
-            title={t.agentPanel.sessions.next}
-            aria-label={t.agentPanel.sessions.next}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="m9 18 6-6-6-6" />
-            </svg>
-          </button>
-        </div>
-      </AgentPresence>
       <button
         type="button"
         className="agent-panel-tag"
@@ -165,10 +106,6 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
   onView,
   onSubmit,
   showChrome = false,
-  sessionPage = 1,
-  sessionHasMore = false,
-  onSessionHasMore,
-  onSessionPage,
 }) => {
   const { t } = useI18n()
   const messages = useAgentMessages()
@@ -187,9 +124,6 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
     view === 'sessions' ? (
       <AgentPanelSessions
         activeSessionId={sessionId}
-        page={sessionPage}
-        onHasMore={onSessionHasMore}
-        onEmptyPage={() => onSessionPage?.(Math.max(1, sessionPage - 1))}
         onSelect={(id) => {
           dispatchAgentPanelOpenSession(id)
           onView('messages')
@@ -251,13 +185,7 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
       {showChrome ? (
         <div className="agent-panel-tag-rail">
           <div className="agent-panel-tag-actions">
-            <AgentPanelSessionChrome
-              view={view}
-              onView={onView}
-              sessionPage={sessionPage}
-              sessionHasMore={sessionHasMore}
-              onSessionPage={onSessionPage}
-            />
+            <AgentPanelSessionChrome view={view} onView={onView} />
           </div>
         </div>
       ) : null}

@@ -80,8 +80,13 @@
   }
 }
 
-.agent-panel-overlay-anchor[data-phase='opening'] {
+.agent-panel-overlay-anchor[data-phase='opening'],
+.agent-panel-overlay-anchor[data-phase='closing'] {
   pointer-events: none;
+  will-change: opacity, translate, scale;
+}
+
+.agent-panel-overlay-anchor[data-phase='opening'] {
   opacity: 0;
   translate: -50% 22px;
   scale: 0.96;
@@ -90,12 +95,18 @@
 }
 
 .agent-panel-overlay-anchor[data-phase='closing'] {
-  pointer-events: none;
   opacity: 0;
   translate: -50% 22px;
   scale: 0.96;
   transition-timing-function: var(--agent-ease-exit);
   transition-delay: 0ms;
+}
+
+/* 对话 / 历史展开后整列已经很高：再缩会像往输入行里挤。只上移、只淡。 */
+.agent-panel-overlay-anchor[data-stage='full'][data-phase='opening'],
+.agent-panel-overlay-anchor[data-stage='full'][data-phase='closing'] {
+  translate: -50% 36px;
+  scale: 1;
 }
 
 .agent-panel-overlay {
@@ -115,8 +126,7 @@
 .agent-panel-overlay,
 .agent-panel-tag-rail,
 .agent-panel-composer,
-.agent-panel-messages-slot,
-.agent-panel-sessions {
+.agent-panel-messages-slot {
   opacity: 1;
   translate: 0 0;
   scale: 1;
@@ -205,6 +215,11 @@
     opacity: 0;
     translate: -50% 22px;
     scale: 0.96;
+  }
+
+  .agent-panel-overlay-anchor[data-stage='full'] {
+    translate: -50% 36px;
+    scale: 1;
   }
 
   .agent-panel-presence[data-from='composer'] {
@@ -399,8 +414,6 @@
   margin-left: 0;
 }
 
-
-
 /* ── 一切说明性的短句都是贴 ──────────────────────
 
    看得到什么、刚做了什么、为什么这里是空的、人设改到哪儿去了 —— 这些以前是六处
@@ -554,12 +567,6 @@
   flex-wrap: nowrap;
   gap: 6px;
   margin-left: auto;
-}
-
-.agent-panel-session-pager {
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
 /* 可点的那一半：回弹曲线跟站内其他流体控件同一条 */
@@ -1081,7 +1088,6 @@ button.agent-panel-tag:disabled {
   .agent-panel-tag-rail,
   .agent-panel-composer,
   .agent-panel-messages-slot,
-  .agent-panel-sessions,
   .agent-panel-message,
   .agent-panel-session,
   .agent-panel-tag,
@@ -1097,7 +1103,9 @@ button.agent-panel-tag:disabled {
   }
 
   .agent-panel-overlay-anchor[data-phase='opening'],
-  .agent-panel-overlay-anchor[data-phase='closing'] {
+  .agent-panel-overlay-anchor[data-phase='closing'],
+  .agent-panel-overlay-anchor[data-stage='full'][data-phase='opening'],
+  .agent-panel-overlay-anchor[data-stage='full'][data-phase='closing'] {
     translate: -50% 0;
     scale: 1;
   }
@@ -1109,7 +1117,8 @@ button.agent-panel-tag:disabled {
   }
 
   @starting-style {
-    .agent-panel-overlay-anchor {
+    .agent-panel-overlay-anchor,
+    .agent-panel-overlay-anchor[data-stage='full'] {
       opacity: 1;
       translate: -50% 0;
       scale: 1;
@@ -1127,7 +1136,8 @@ button.agent-panel-tag:disabled {
     transform: none;
   }
 
-  .agent-panel-message[data-leaving='true'] {
+  .agent-panel-message[data-leaving='true'],
+  .agent-panel-session[data-leaving='true'] {
     filter: none;
     transform: none;
   }
@@ -1194,7 +1204,8 @@ button.agent-panel-tag:disabled {
 
 /* 滚动退场走 transform / filter，不碰 opacity / translate / scale ——
    那三条是面板开合和卡片入场在用，加 transition 会把跟手拖成一坨。 */
-.agent-panel-message[data-leaving='true'] {
+.agent-panel-message[data-leaving='true'],
+.agent-panel-session[data-leaving='true'] {
   transform-origin: center center;
   transform: translateY(calc(var(--exit, 0) * var(--exit-y, 0px)))
     scale(calc(1 - var(--exit, 0) * 0.045));
@@ -1202,7 +1213,8 @@ button.agent-panel-tag:disabled {
     blur(calc(var(--exit, 0) * 10px));
 }
 
-html[data-perf-mode='exlight'] .agent-panel-message[data-leaving='true'] {
+html[data-perf-mode='exlight'] .agent-panel-message[data-leaving='true'],
+html[data-perf-mode='exlight'] .agent-panel-session[data-leaving='true'] {
   filter: opacity(calc(1 - var(--exit, 0) * 0.86));
 }
 
@@ -1508,28 +1520,6 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
 }
 
 /* ── 之前聊过的 ─────────────────────────────────── */
-
-.agent-panel-sessions {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  padding: 12px 16px 6px;
-  overflow: visible;
-}
-
-.agent-panel-sessions > .agent-panel-swap {
-  width: 100%;
-  place-items: stretch;
-  interpolate-size: numeric-only;
-  transition:
-    opacity var(--agent-swap, 320ms) var(--agent-ease),
-    translate var(--agent-swap, 320ms) var(--agent-ease),
-    scale var(--agent-swap, 320ms) var(--agent-ease);
-}
-
-.agent-panel-sessions > .agent-panel-swap:has(.agent-panel-session) {
-  margin-bottom: 10px;
-}
 
 .agent-panel-session {
   display: flex;

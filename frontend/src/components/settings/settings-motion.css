@@ -221,10 +221,6 @@
   animation: sm-enter var(--sm-dur-slow) var(--sm-ease-enter) backwards;
 }
 
-.sm-fade-in {
-  animation: sm-fade-in var(--sm-dur-base) var(--sm-ease-standard) backwards;
-}
-
 /* 层级面板：data-nav 决定推入方向，同一套时长 */
 .sm-pane {
   min-width: 0;
@@ -313,14 +309,6 @@ html.dark .sm-pane[data-nav] .platform-card {
   background: var(--cfg-subtle-bg-hover);
 }
 
-.sm-pop-in {
-  animation: sm-pop-in var(--sm-dur-base) var(--sm-ease-enter) backwards;
-}
-
-.sm-rise-in {
-  animation: sm-rise-in var(--sm-dur-slow) var(--sm-ease-spring) backwards;
-}
-
 /* 列表逐个进入：只给前 10 个排延迟，之后一起出（避免长列表拖尾） */
 .sm-stagger > * {
   animation: sm-enter var(--sm-dur-base) var(--sm-ease-enter) backwards;
@@ -360,15 +348,6 @@ html.dark .sm-pane[data-nav] .platform-card {
 
 .sm-stagger > :nth-child(n + 9) {
   animation-delay: calc(var(--sm-stagger) * 8);
-}
-
-/* 按下反馈：松手由 spring 收回 */
-.sm-press {
-  transition: var(--sm-t-transform);
-}
-
-.sm-press:active {
-  transform: scale(var(--sm-scale-press));
 }
 
 /* ==========================================
@@ -437,9 +416,6 @@ html.dark .sm-pane[data-nav] .platform-card {
   }
 
   .sm-enter,
-  .sm-fade-in,
-  .sm-pop-in,
-  .sm-rise-in,
   .sm-stagger > *,
   .sm-pane[data-nav],
   .sm-switch[data-phase] .config-section > * {

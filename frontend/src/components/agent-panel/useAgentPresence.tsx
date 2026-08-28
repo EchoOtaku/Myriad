@@ -6,7 +6,7 @@
  * 同名的 .ts（进出场记账），浏览器就拿不到这些组件。
  */
 
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { PresenceEntry } from './agentPresenceState'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
@@ -97,12 +97,14 @@ function PresenceBox({
   from,
   phase,
   appear = true,
+  stagger = 0,
   children,
 }: {
   kind: AgentPresenceKind
   from: AgentPresenceFrom
   phase: PresenceEntry<unknown>['phase']
   appear?: boolean
+  stagger?: number
   children: ReactNode
 }) {
   return (
@@ -112,6 +114,9 @@ function PresenceBox({
       data-from={from}
       data-presence={phase}
       data-appear={appear ? undefined : 'skip'}
+      style={
+        { '--agent-stagger': stagger } as CSSProperties
+      }
     >
       {children}
     </div>
@@ -196,17 +201,17 @@ export function AgentPresenceList<T>({
   from?: AgentPresenceFrom
   children: (item: T) => ReactNode
 }) {
-  const appear = useAppearGate()
   const entries = useKeyedPresence(items, keyOf, AGENT_ROW_MS)
+  const last = entries.length - 1
   return (
     <>
-      {entries.map((entry) => (
+      {entries.map((entry, index) => (
         <PresenceBox
           key={entry.key}
           kind={kind}
           from={from}
           phase={entry.phase}
-          appear={appear}
+          stagger={Math.min(Math.max(last - index, 0), 6)}
         >
           {children(entry.item)}
         </PresenceBox>

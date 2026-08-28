@@ -5,6 +5,7 @@ import {
   conversationExitKey,
   conversationExitStyle,
   conversationMaxScroll,
+  conversationShellLimit,
   conversationViewHeight,
   decayVelocity,
   rubberband,
@@ -25,8 +26,8 @@ describe('conversationMaxScroll', () => {
 })
 
 describe('conversationViewHeight', () => {
-  it('keeps the track height when the shell has not been laid out', () => {
-    assert.equal(conversationViewHeight(800, 0), 800)
+  it('does not treat the whole track as the window when the shell is unknown', () => {
+    assert.equal(conversationViewHeight(800, 0), 0)
   })
 
   it('caps at the space above the composer', () => {
@@ -35,6 +36,16 @@ describe('conversationViewHeight', () => {
 
   it('does not invent extra room when the thread is short', () => {
     assert.equal(conversationViewHeight(120, 400), 120)
+  })
+})
+
+describe('conversationShellLimit', () => {
+  it('uses the resolved max-height when the browser gave pixels', () => {
+    assert.equal(conversationShellLimit(800, 900), 800)
+  })
+
+  it('falls back to the viewport when max-height is none', () => {
+    assert.equal(conversationShellLimit(Number.NaN, 900), 868)
   })
 })
 
@@ -64,8 +75,8 @@ describe('smoothToward', () => {
   })
 
   it('moves a fraction of the remaining gap', () => {
-    const next = smoothToward(0, 100, 0.016, 0.055)
-    assert.ok(next > 20 && next < 35)
+    const next = smoothToward(0, 100, 0.016, 0.028)
+    assert.ok(next > 40 && next < 50)
   })
 })
 

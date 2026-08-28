@@ -10,10 +10,12 @@ import {
   CONVERSATION_FADE_PX,
   CONVERSATION_FLING_TAU,
   CONVERSATION_FOLLOW_TAU,
+  CONVERSATION_LOAD_MORE_PX,
   CONVERSATION_NEAR_BOTTOM_PX,
   conversationExitKey,
   conversationExitStyle,
   conversationMaxScroll,
+  conversationShellLimit,
   conversationViewHeight,
   decayVelocity,
   rubberband,
@@ -55,6 +57,7 @@ export function useConversationPan(
     let dragging = false
     let touchY = 0
     let frame = 0
+    let exitFrame = 0
     let last = 0
     let trackH = 0
     let viewH = 0
@@ -64,7 +67,13 @@ export function useConversationPan(
     const maxScroll = () => conversationMaxScroll(trackH, viewH)
 
     const recache = () => {
-      const prevH = trackH
+      const nextH = track.offsetHeight
+      if (trackH > 0 && nextH > trackH && !nearBottom) {
+        const delta = nextH - trackH
+        current += delta
+        target += delta
+      }
+      trackH = nextH
       cards = [...track.querySelectorAll<HTMLElement>(cardSelector)].map(
         (el) => {
           const box =
@@ -77,27 +86,24 @@ export function useConversationPan(
           }
         },
       )
-      trackH = track.offsetHeight
-      // 顶上插了更早的卡片：把位移补上，眼前这张还停在原地。
-      if (prevH > 0 && trackH > prevH && !nearBottom) {
-        const delta = trackH - prevH
-        current += delta
-        target += delta
-      }
     }
 
     const measure = () => {
-      trackH = track.offsetHeight
       const anchor = viewport.closest('.agent-panel-overlay-anchor')
       if (anchor instanceof HTMLElement) {
+        const style = getComputedStyle(anchor)
         const composer = anchor.querySelector('.agent-panel-composer')
         const rail = anchor.querySelector('.agent-panel-tag-rail')
-        const gap = Number.parseFloat(getComputedStyle(anchor).rowGap) || 12
+        const gap = Number.parseFloat(style.rowGap) || 12
         const reserved =
           (composer instanceof HTMLElement ? composer.offsetHeight : 0) +
           (rail instanceof HTMLElement ? rail.offsetHeight : 0) +
           gap
-        viewH = conversationViewHeight(trackH, anchor.clientHeight - reserved)
+        const shell = conversationShellLimit(
+          Number.parseFloat(style.maxHeight),
+          window.innerHeight,
+        )
+        viewH = conversationViewHeight(trackH, Math.max(48, shell - reserved))
       } else {
         viewH = viewport.clientHeight
       }
@@ -105,6 +111,11 @@ export function useConversationPan(
 
     const writeExit = () => {
       if (viewH < 32) return
+      const shell = viewport.closest('.agent-panel-overlay-anchor')
+      // 退场整块在沉，卡片别再各自糊一层。
+      if (shell instanceof HTMLElement && shell.dataset.phase === 'closing') {
+        return
+      }
       for (const card of cards) {
         const style = conversationExitStyle(
           card.top - current,
@@ -129,14 +140,26 @@ export function useConversationPan(
       }
     }
 
-    const write = () => {
+    const writeTransform = () => {
       const max = maxScroll()
       writeCap(max)
       track.style.transform = max > 0 ? `translate3d(0, ${-current}px, 0)` : ''
-      writeExit()
-      if (max > 0 && current <= CONVERSATION_NEAR_BOTTOM_PX) {
+      if (max > 0 && current <= CONVERSATION_LOAD_MORE_PX) {
         nearStartRef.current?.()
       }
+    }
+
+    const scheduleExit = () => {
+      if (exitFrame) return
+      exitFrame = requestAnimationFrame(() => {
+        exitFrame = 0
+        writeExit()
+      })
+    }
+
+    const write = () => {
+      writeTransform()
+      writeExit()
     }
 
     const clearExit = () => {
@@ -148,7 +171,9 @@ export function useConversationPan(
 
     const stop = () => {
       if (frame) cancelAnimationFrame(frame)
+      if (exitFrame) cancelAnimationFrame(exitFrame)
       frame = 0
+      exitFrame = 0
       last = 0
       track.style.willChange = ''
     }
@@ -201,8 +226,11 @@ export function useConversationPan(
         target + wheelDeltaY(event.deltaY, event.deltaMode),
         max,
       )
+      current = target
       nearBottom = max - target <= CONVERSATION_NEAR_BOTTOM_PX
-      kick()
+      track.style.willChange = 'transform'
+      writeTransform()
+      scheduleExit()
     }
 
     const onTouchStart = (event: TouchEvent) => {
@@ -233,7 +261,8 @@ export function useConversationPan(
         CONVERSATION_NEAR_BOTTOM_PX
       samples.push({ t: event.timeStamp, x: target })
       if (samples.length > 12) samples.shift()
-      write()
+      writeTransform()
+      scheduleExit()
     }
 
     const onTouchEnd = (event: TouchEvent) => {
@@ -251,15 +280,15 @@ export function useConversationPan(
       kick()
     }
 
-    measure()
     recache()
+    measure()
     if (nearBottom) target = maxScroll()
     current = target
     write()
 
     const resize = new ResizeObserver(() => {
-      measure()
       recache()
+      measure()
       if (nearBottom) target = maxScroll()
       kick()
     })

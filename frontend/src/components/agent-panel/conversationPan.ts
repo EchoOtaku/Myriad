@@ -5,15 +5,16 @@
  * 胶囊（顶上那截完整画出去），只剩最后一截才整张化开。
  */
 
-export const CONVERSATION_NEAR_BOTTOM_PX = 48
+export const CONVERSATION_NEAR_BOTTOM_PX = 8
+export const CONVERSATION_LOAD_MORE_PX = 72
 export const CONVERSATION_FADE_PX = 96
 export const CONVERSATION_SHIFT_PX = 16
 
-/** 跟手时间常数（秒）。越小越贴目标。 */
-export const CONVERSATION_FOLLOW_TAU = 0.055
+/** 惯性跟手时间常数（秒）。滚轮/拖拽直接贴目标，这条只给甩出去之后。 */
+export const CONVERSATION_FOLLOW_TAU = 0.028
 
 /** 甩出去之后的衰减时间常数（秒） */
-export const CONVERSATION_FLING_TAU = 0.32
+export const CONVERSATION_FLING_TAU = 0.22
 
 const SETTLE_PX = 0.35
 const FLING_MIN_PX_S = 90
@@ -26,16 +27,26 @@ export function conversationMaxScroll(
 }
 
 /**
- * 看得见的窗口高度：锚点扣掉输入行之后剩下的那截。
- * 不能用量轨道自己的高度 —— 那永远等于内容，滚动会被算成 0，卡片还会被当成全部离开。
+ * 看得见的窗口高度：外壳上限扣掉输入行之后剩下的那截。
+ * 不能用量轨道自己的高度 —— 那永远等于内容，滚动算成 0，卡片会当成全在视口里，铺到页面上。
+ * 外壳还没量到时返回 0，宁可先不画退场，也不能把整列当成窗口。
  */
 export function conversationViewHeight(
   trackHeight: number,
   availableHeight: number,
 ): number {
   if (trackHeight <= 0) return 0
-  if (availableHeight <= 1) return trackHeight
+  if (availableHeight <= 1) return 0
   return Math.min(trackHeight, availableHeight)
+}
+
+/** 锚点 max-height 解析成像素。getComputedStyle 会把 dvh 算成 px。 */
+export function conversationShellLimit(
+  maxHeightPx: number,
+  viewportPx: number,
+): number {
+  if (maxHeightPx > 32) return maxHeightPx
+  return Math.max(48, viewportPx - 32)
 }
 
 export function clampConversationScroll(scroll: number, max: number): number {

@@ -2543,8 +2543,6 @@ export const zhCN: TranslationKeys = {
       minutesAgo: '{value} 分钟前',
       hoursAgo: '{value} 小时前',
       daysAgo: '{value} 天前',
-      prev: '上一页',
-      next: '下一页',
     },
     action: {
       risk: {
@@ -2661,7 +2659,6 @@ export const zhCN: TranslationKeys = {
         rain: '风衣',
       },
       extraLabel: '补充要求',
-      extraHint: '可选，将影响性格。',
       extraPlaceholder: '例如：话少，认真，对熟人会软一点',
       regeneratePersona: '换一批',
       regeneratingPersona: '生成中',
@@ -3155,22 +3152,13 @@ export const zhCN: TranslationKeys = {
     bio: '个人简介',
     account: '账户',
     role: '角色',
-    admin: '管理员',
-    normalUser: '普通用户',
-    authMethod: '认证方式',
     localAccount: '本地账户',
-    githubAccount: 'GitHub 账户',
-    githubBinding: 'GitHub 绑定',
     githubLinked: '已绑定',
     githubNotLinked: '未绑定',
-    hybridAccount: '本地 + GitHub',
-    hybridAccountWithProviders: '本地 + {providers}',
-    bindGithub: '绑定 GitHub 账户',
     changePassword: '修改密码',
     currentPassword: '当前密码',
     newPassword: '新密码',
     confirmNewPassword: '确认新密码',
-    enterCurrentPassword: '请输入当前密码',
     atLeast8Chars: '至少 8 个字符',
     enterPasswordAgain: '再次输入新密码',
     newPasswordMinLength: '新密码至少需要 8 个字符',
@@ -3286,17 +3274,12 @@ export const zhCN: TranslationKeys = {
     github: 'GitHub',
 
     // 弹幕默认文本
-    danmakuDefaults: ['高能预警', '下次一定', 'AWSL', '爷青回', '泪目'],
 
     // 玩家类型
     casualPlayer: '休闲玩家',
 
     // 开发者级别
-    activeDeveloper: '活跃开发者',
-    legendary: '传奇',
     core: '核心',
-    senior: '资深',
-    prolific: '高产',
     active: '活跃',
 
     // 统计标签
@@ -3309,8 +3292,6 @@ export const zhCN: TranslationKeys = {
     lists: '歌单',
 
     // 状态文本
-    analyzingRepos: '> 正在分析仓库_',
-    noReposFound: '> 未找到仓库_',
 
     // Toast 消息
     noPlatformReports: '没有可用的平台报告',
@@ -3319,7 +3300,6 @@ export const zhCN: TranslationKeys = {
     refreshingReport: '正在刷新 {platform} 报告...',
     reportRefreshSuccess: '{platform} 报告刷新成功！',
     reportRefreshNoData: '报告刷新完成，但未找到更新数据',
-    getLatestReportFailed: '获取最新报告失败',
     refreshReportFailed: '刷新 {platform} 报告失败',
     adminOnlyGenerate: '仅管理员可生成报告',
     generateFailed: '生成失败',
@@ -3329,9 +3309,7 @@ export const zhCN: TranslationKeys = {
 
     // UI 文本
     close: '关闭',
-    regenerateReport: '重新生成报告',
     aiSummary: 'AI 总结',
-    deepInsightReport: '深度洞察报告',
     noEnabledPlatforms: '还没有启用任何数据平台',
     noEnabledPlatformsDesc:
       '请先在设置中开启至少一个数据平台，报告页才会显示对应的平台卡片。',
@@ -3358,19 +3336,14 @@ export const zhCN: TranslationKeys = {
     dataEcho: '数据回响',
     deepInsight: '深度洞察',
     unknownPlatform: '未知平台',
-    generating: '生成中',
     generate: '生成',
     tenThousandSuffix: '万',
     bangumiDone: '看过',
     bangumiDoing: '在看',
     bangumiWish: '想看',
-    bangumiOnHold: '搁置',
-    bangumiDropped: '抛弃',
     malDone: '完成',
     malDoing: '在看',
     malWish: '计划',
-    malOnHold: '搁置',
-    malDropped: '弃番',
   },
 
   // 平台二级页数据管理

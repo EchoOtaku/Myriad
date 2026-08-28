@@ -81,20 +81,11 @@ export const AgentPanel: React.FC = () => {
    * 「跟它说话」这回事，输入框得收起来，而收的人在外面。
    */
   const [fullView, setFullView] = useState<AgentPanelFullView>('messages')
-  const [sessionPage, setSessionPage] = useState(1)
-  const [sessionHasMore, setSessionHasMore] = useState(false)
 
   // 收起之后重新唤起，从对话那一面开始 —— 上次翻到设置页不该留到下一次
   useEffect(() => {
     if (!showsFull) setFullView('messages')
   }, [showsFull])
-
-  useEffect(() => {
-    if (fullView !== 'sessions') {
-      setSessionPage(1)
-      setSessionHasMore(false)
-    }
-  }, [fullView])
 
   /** 等人拍板时那一档整块让给操作卡片；设置那一面没有「跟它说话」这回事。 */
   const showsComposer = !pendingAction && !(showsFull && fullView === 'manage')
@@ -227,6 +218,7 @@ export const AgentPanel: React.FC = () => {
           ref={overlayRef}
           className="agent-panel-overlay-anchor"
           data-phase={stage.phase}
+          data-stage={stage.stage}
         >
           {showsFull ? (
             <AgentPanelFull
@@ -234,10 +226,6 @@ export const AgentPanel: React.FC = () => {
               onView={setFullView}
               onSubmit={submit}
               showChrome={fullView === 'manage'}
-              sessionPage={sessionPage}
-              sessionHasMore={sessionHasMore}
-              onSessionHasMore={setSessionHasMore}
-              onSessionPage={setSessionPage}
             />
           ) : (
             <AgentPanelOverlay
@@ -286,9 +274,6 @@ export const AgentPanel: React.FC = () => {
                         dispatch({ type: 'open', stage: 'full' })
                       }
                     }}
-                    sessionPage={sessionPage}
-                    sessionHasMore={sessionHasMore}
-                    onSessionPage={setSessionPage}
                   />
                   <AgentPresence
                     open={!showsFull && messages.length > 0}

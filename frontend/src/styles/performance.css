@@ -243,7 +243,6 @@ html.dark[data-perf-mode='exlight']:not(
 
 /* 装饰性光晕：exlight 不画（GlowBackground 组件也会 return null） */
 html[data-perf-mode='exlight'] .glow-orb,
-html[data-perf-mode='exlight'] .friend-links-spotlight::before,
 html[data-perf-mode='exlight'] .music-play-btn::before {
   display: none !important;
 }
@@ -306,8 +305,6 @@ html[data-perf-mode='exlight'] .updater-hero,
 html[data-perf-mode='exlight'] .updater-progress,
 html[data-perf-mode='exlight'] .updater-channel-card,
 html[data-perf-mode='exlight'] .updater-commit-list,
-html[data-perf-mode='exlight'] .updater-snapshot-item,
-html[data-perf-mode='exlight'] .updater-transport-option,
 html[data-perf-mode='exlight'] .updater-panel .updater-infra-grid.is-card .setting-group,
 html[data-perf-mode='exlight'] .field-select-menu,
 html[data-perf-mode='exlight'] .toast-message,
@@ -340,8 +337,6 @@ html.dark[data-perf-mode='exlight'] .updater-hero,
 html.dark[data-perf-mode='exlight'] .updater-progress,
 html.dark[data-perf-mode='exlight'] .updater-channel-card,
 html.dark[data-perf-mode='exlight'] .updater-commit-list,
-html.dark[data-perf-mode='exlight'] .updater-snapshot-item,
-html.dark[data-perf-mode='exlight'] .updater-transport-option,
 html.dark[data-perf-mode='exlight'] .updater-panel .updater-infra-grid.is-card .setting-group,
 html.dark[data-perf-mode='exlight'] .field-select-menu,
 html.dark[data-perf-mode='exlight'] .toast-message,
@@ -464,16 +459,6 @@ html[data-perf-mode='exlight']:not([data-surface]) .glass-solid {
 /* Georgia 字体（用于引用等装饰性文字） */
 .font-georgia {
   font-family: Georgia, serif;
-}
-
-/* 主题色文本 */
-.text-primary-color {
-  color: var(--color-primary);
-}
-
-/* 强调色文本 */
-.text-accent-color {
-  color: var(--color-accent);
 }
 
 /* 热力图单元格优化 */

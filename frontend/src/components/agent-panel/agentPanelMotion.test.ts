@@ -2,7 +2,7 @@
  * 面板进出场的联调契约。
  *
  * 动效回归几乎都是「CSS 选择器还在写已经不存在的 DOM」。肉眼对一次不够，
- * 把层次写进测试：开合只动锚点、对话区不能再单独位移、翻页键贴着加号、
+ * 把层次写进测试：开合只动锚点、对话区不能再单独位移、
  * 时长和 CSS 令牌对齐。改结构时这组断言会红。
  *
  * Run from frontend/:
@@ -69,6 +69,31 @@ describe('agent panel motion contract', () => {
     assert.match(closing, /--agent-ease-exit/)
   })
 
+  it('opens expanded conversation and history as a rising sheet, not a scaled slab', () => {
+    const panel = readFileSync(
+      new URL('./AgentPanel.tsx', import.meta.url),
+      'utf8',
+    )
+    assert.match(panel, /data-stage=\{stage\.stage\}/)
+    assert.match(
+      css,
+      /\[data-stage='full'\]\[data-phase='opening'\][\s\S]*translate:\s*-50%\s+36px/,
+    )
+    assert.match(
+      css,
+      /\[data-stage='full'\]\[data-phase='opening'\][\s\S]*scale:\s*1/,
+    )
+    assert.match(
+      css,
+      /\[data-stage='full'\]\[data-phase='closing'\][\s\S]*translate:\s*-50%\s+36px/,
+    )
+    const pan = readFileSync(
+      new URL('./useConversationPan.ts', import.meta.url),
+      'utf8',
+    )
+    assert.match(pan, /dataset\.phase === 'closing'/)
+  })
+
   it('does not let conversation surfaces run a second open/close', () => {
     assert.doesNotMatch(
       css,
@@ -121,19 +146,14 @@ describe('agent panel motion contract', () => {
     )
   })
 
-  it('keeps history cards in place and pagers as one object from the plus', () => {
+  it('scrolls history with the same pan and blur-exit as chat', () => {
     assert.match(sessions, /from="place"/)
+    assert.match(sessions, /useConversationPan/)
+    assert.match(sessions, /\.agent-panel-session/)
     assert.doesNotMatch(sessions, /from="clock"/)
-    assert.match(full, /from="attach"/)
-    assert.match(full, /agent-panel-session-pager/)
-    assert.equal((full.match(/from="attach"/g) ?? []).length, 1)
-    assert.match(
-      css,
-      /\.agent-panel-sessions \{[\s\S]*padding:\s*12px 16px 6px/,
-    )
-    assert.match(
-      css,
-      /\.agent-panel-sessions > \.agent-panel-swap:has\(\.agent-panel-session\) \{[\s\S]*margin-bottom:\s*10px/,
-    )
+    assert.doesNotMatch(full, /agent-panel-session-pager/)
+    assert.doesNotMatch(full, /sessions\.prev/)
+    assert.doesNotMatch(full, /sessions\.next/)
+    assert.match(css, /\.agent-panel-session\[data-leaving='true'\]/)
   })
 })

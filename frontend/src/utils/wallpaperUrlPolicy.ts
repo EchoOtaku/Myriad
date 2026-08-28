@@ -169,8 +169,3 @@ export function sanitizeWallpaperUrl(
 
   return parsed.toString()
 }
-
-/** True when sanitizeWallpaperUrl accepts the value. */
-export function isSafeWallpaperUrl(raw: string | null | undefined): boolean {
-  return sanitizeWallpaperUrl(raw) != null
-}

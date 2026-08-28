@@ -2328,8 +2328,6 @@ export interface TranslationKeys {
       minutesAgo: string
       hoursAgo: string
       daysAgo: string
-      prev: string
-      next: string
     }
     /** 敏感操作确认卡片 */
     action: {
@@ -2448,7 +2446,6 @@ export interface TranslationKeys {
         rain: string
       }
       extraLabel: string
-      extraHint: string
       extraPlaceholder: string
       regeneratePersona: string
       regeneratingPersona: string
@@ -2935,24 +2932,15 @@ export interface TranslationKeys {
     bio: string
     account: string
     role: string
-    admin: string
-    normalUser: string
-    authMethod: string
     localAccount: string
-    githubAccount: string
-    githubBinding: string
     githubLinked: string
     githubNotLinked: string
     /** @deprecated Prefer hybridAccountWithProviders; kept for fallbacks */
-    hybridAccount: string
     /** e.g. 本地 + {providers} — providers already joined */
-    hybridAccountWithProviders: string
-    bindGithub: string
     changePassword: string
     currentPassword: string
     newPassword: string
     confirmNewPassword: string
-    enterCurrentPassword: string
     atLeast8Chars: string
     enterPasswordAgain: string
     newPasswordMinLength: string
@@ -3066,17 +3054,12 @@ export interface TranslationKeys {
     github: string
 
     // 弹幕默认文本
-    danmakuDefaults: string[]
 
     // 玩家类型
     casualPlayer: string
 
     // 开发者级别
-    activeDeveloper: string
-    legendary: string
     core: string
-    senior: string
-    prolific: string
     active: string
 
     // 统计标签
@@ -3089,8 +3072,6 @@ export interface TranslationKeys {
     lists: string
 
     // 状态文本
-    analyzingRepos: string
-    noReposFound: string
 
     // Toast 消息
     noPlatformReports: string
@@ -3099,7 +3080,6 @@ export interface TranslationKeys {
     refreshingReport: string
     reportRefreshSuccess: string
     reportRefreshNoData: string
-    getLatestReportFailed: string
     refreshReportFailed: string
     adminOnlyGenerate: string
     generateFailed: string
@@ -3109,9 +3089,7 @@ export interface TranslationKeys {
 
     // UI 文本
     close: string
-    regenerateReport: string
     aiSummary: string
-    deepInsightReport: string
     noEnabledPlatforms: string
     noEnabledPlatformsDesc: string
     platformReport: string
@@ -3137,19 +3115,14 @@ export interface TranslationKeys {
     dataEcho: string
     deepInsight: string
     unknownPlatform: string
-    generating: string
     generate: string
     tenThousandSuffix: string
     bangumiDone: string
     bangumiDoing: string
     bangumiWish: string
-    bangumiOnHold: string
-    bangumiDropped: string
     malDone: string
     malDoing: string
     malWish: string
-    malOnHold: string
-    malDropped: string
   }
 
   // 平台二级页数据管理

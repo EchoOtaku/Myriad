@@ -2678,8 +2678,6 @@ export const jaJP: TranslationKeys = {
       minutesAgo: '{value} 分前',
       hoursAgo: '{value} 時間前',
       daysAgo: '{value} 日前',
-      prev: '前へ',
-      next: '次へ',
     },
     action: {
       risk: {
@@ -2797,7 +2795,6 @@ export const jaJP: TranslationKeys = {
         rain: 'トレンチ',
       },
       extraLabel: '補足',
-      extraHint: '任意。性格にだけ効きます。',
       extraPlaceholder: '例：口数が少ない、まじめ、親しい人には少しやわらかい',
       regeneratePersona: '別のセット',
       regeneratingPersona: '生成中',
@@ -3352,22 +3349,13 @@ export const jaJP: TranslationKeys = {
     bio: '自己紹介',
     account: 'アカウント',
     role: '役割',
-    admin: '管理者',
-    normalUser: '一般ユーザー',
-    authMethod: '認証方法',
     localAccount: 'ローカルアカウント',
-    githubAccount: 'GitHubアカウント',
-    githubBinding: 'GitHub連携',
     githubLinked: '連携済み',
     githubNotLinked: '未連携',
-    hybridAccount: 'ローカル + GitHub',
-    hybridAccountWithProviders: 'ローカル + {providers}',
-    bindGithub: 'GitHubアカウントを連携',
     changePassword: 'パスワード変更',
     currentPassword: '現在のパスワード',
     newPassword: '新しいパスワード',
     confirmNewPassword: '新しいパスワードの確認',
-    enterCurrentPassword: '現在のパスワードを入力してください',
     atLeast8Chars: '8文字以上',
     enterPasswordAgain: '新しいパスワードを再入力',
     newPasswordMinLength: '新しいパスワードは8文字以上必要です',
@@ -3489,17 +3477,12 @@ export const jaJP: TranslationKeys = {
     github: 'GitHub',
 
     // 弾幕デフォルトテキスト
-    danmakuDefaults: ['神回', '草', 'かわいい', '懐かしい', '泣いた'],
 
     // プレイヤータイプ
     casualPlayer: 'カジュアルプレイヤー',
 
     // 開発者レベル
-    activeDeveloper: 'アクティブ開発者',
-    legendary: 'レジェンド',
     core: 'コア',
-    senior: 'シニア',
-    prolific: '多産',
     active: 'アクティブ',
 
     // 統計ラベル
@@ -3512,8 +3495,6 @@ export const jaJP: TranslationKeys = {
     lists: 'リスト',
 
     // 状態テキスト
-    analyzingRepos: '> リポジトリを分析中_',
-    noReposFound: '> リポジトリが見つかりません_',
 
     // Toastメッセージ
     noPlatformReports: '利用可能なプラットフォームレポートがありません',
@@ -3522,7 +3503,6 @@ export const jaJP: TranslationKeys = {
     refreshingReport: '{platform}レポートを更新中...',
     reportRefreshSuccess: '{platform}レポートを更新しました！',
     reportRefreshNoData: 'レポート更新完了、更新データが見つかりませんでした',
-    getLatestReportFailed: '最新レポートの取得に失敗しました',
     refreshReportFailed: '{platform}レポートの更新に失敗しました',
     adminOnlyGenerate: '管理者のみレポートを生成できます',
     generateFailed: '生成失敗',
@@ -3534,9 +3514,7 @@ export const jaJP: TranslationKeys = {
 
     // UIテキスト
     close: '閉じる',
-    regenerateReport: 'レポートを再生成',
     aiSummary: 'AI要約',
-    deepInsightReport: 'ディープインサイトレポート',
     noEnabledPlatforms: '有効なデータプラットフォームがまだありません',
     noEnabledPlatformsDesc:
       '設定で少なくとも1つのデータプラットフォームを有効にすると、ここに対応するカードが表示されます。',
@@ -3563,19 +3541,14 @@ export const jaJP: TranslationKeys = {
     dataEcho: 'データエコー',
     deepInsight: 'ディープインサイト',
     unknownPlatform: '不明なプラットフォーム',
-    generating: '生成中',
     generate: '生成',
     tenThousandSuffix: '万',
     bangumiDone: '視聴済',
     bangumiDoing: '視聴中',
     bangumiWish: '視聴予定',
-    bangumiOnHold: '保留',
-    bangumiDropped: '中止',
     malDone: '完了',
     malDoing: '視聴中',
     malWish: '予定',
-    malOnHold: '保留',
-    malDropped: '中止',
   },
 
   // プラットフォーム詳細のデータ管理
