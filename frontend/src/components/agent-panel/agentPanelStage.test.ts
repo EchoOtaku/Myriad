@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   agentPanelIsOpen,
+  agentPanelSettleTimeoutMs,
   agentPanelShowsStage,
   INITIAL_AGENT_PANEL_STAGE as start,
   agentPanelStageReducer as step,
@@ -70,4 +71,10 @@ test('丢了动画事件也能靠超时把状态推回落定', () => {
   // settle 是唯一的落定入口，无论它来自 transitionend 还是超时
   const opening = step(start, { type: 'open', stage: 'overlay' })
   assert.equal(step(opening, { type: 'settle' }).phase, 'settled')
+})
+
+test('展开对话时收起要等逐张动画走完', () => {
+  assert.ok(
+    agentPanelSettleTimeoutMs('full') > agentPanelSettleTimeoutMs('overlay'),
+  )
 })

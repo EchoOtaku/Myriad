@@ -30,6 +30,10 @@ const presence = readFileSync(
   new URL('./useAgentPresence.tsx', import.meta.url),
   'utf8',
 )
+const pan = readFileSync(
+  new URL('./useConversationPan.ts', import.meta.url),
+  'utf8',
+)
 
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '')
@@ -77,21 +81,15 @@ describe('agent panel motion contract', () => {
     assert.match(panel, /data-stage=\{stage\.stage\}/)
     assert.match(
       css,
-      /\[data-stage='full'\]\[data-phase='opening'\][\s\S]*translate:\s*-50%\s+36px/,
+      /\[data-stage='full'\]\[data-phase='opening'\][\s\S]*translate:\s*-50%\s+0/,
     )
     assert.match(
       css,
       /\[data-stage='full'\]\[data-phase='opening'\][\s\S]*scale:\s*1/,
     )
-    assert.match(
-      css,
-      /\[data-stage='full'\]\[data-phase='closing'\][\s\S]*translate:\s*-50%\s+36px/,
-    )
-    const pan = readFileSync(
-      new URL('./useConversationPan.ts', import.meta.url),
-      'utf8',
-    )
+    assert.match(css, /presence:not\(\[data-kind='row'\]\)/)
     assert.match(pan, /dataset\.phase === 'closing'/)
+    assert.match(pan, /conversationShellLimit/)
   })
 
   it('does not let conversation surfaces run a second open/close', () => {
@@ -119,11 +117,14 @@ describe('agent panel motion contract', () => {
     )
   })
 
-  it('skips first-paint presence so a mounted list does not fly in with the sheet', () => {
-    assert.match(presence, /export function useAppearGate/)
-    assert.match(presence, /data-appear=\{appear \? undefined : 'skip'\}/)
-    assert.match(presence, /const appear = useAppearGate\(\)/)
-    assert.match(css, /\[data-appear='skip'\]/)
+  it('staggers each conversation and history row as its own motion object', () => {
+    assert.match(presence, /--agent-stagger/)
+    assert.match(css, /--agent-stagger-step:\s*72ms/)
+    assert.match(css, /--agent-row-exit:\s*320ms/)
+    assert.match(css, /data-exiting='true'/)
+    assert.match(sessions, /from="composer"/)
+    assert.match(full, /data-exiting/)
+    assert.match(pan, /data-exiting/)
   })
 
   it('collapses tag chips beside the plus, not the send button', () => {
@@ -147,7 +148,6 @@ describe('agent panel motion contract', () => {
   })
 
   it('scrolls history with the same pan and blur-exit as chat', () => {
-    assert.match(sessions, /from="place"/)
     assert.match(sessions, /useConversationPan/)
     assert.match(sessions, /\.agent-panel-session/)
     assert.doesNotMatch(sessions, /from="clock"/)

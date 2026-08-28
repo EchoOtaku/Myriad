@@ -20,6 +20,7 @@ import { useConversationPan } from './useConversationPan'
 export interface AgentPanelSessionsProps {
   activeSessionId: string | null
   onSelect: (sessionId: string) => void
+  exiting?: boolean
 }
 
 const SESSION_PAGE = 20
@@ -27,6 +28,7 @@ const SESSION_PAGE = 20
 export const AgentPanelSessions: React.FC<AgentPanelSessionsProps> = ({
   activeSessionId,
   onSelect,
+  exiting = false,
 }) => {
   const { t, format, locale } = useI18n()
   const { isAuthenticated } = useAuth()
@@ -116,7 +118,10 @@ export const AgentPanelSessions: React.FC<AgentPanelSessionsProps> = ({
   )
 
   return (
-    <div className="agent-panel-messages-slot">
+    <div
+      className="agent-panel-messages-slot"
+      data-exiting={exiting ? 'true' : undefined}
+    >
       <div className="agent-panel-messages" ref={listRef}>
         <div className="agent-panel-messages-track" ref={trackRef}>
           <AgentPresence open={!!error} kind="row" from="composer">
@@ -139,7 +144,7 @@ export const AgentPanelSessions: React.FC<AgentPanelSessionsProps> = ({
             items={visible}
             keyOf={(session) => session.id}
             kind="row"
-            from="place"
+            from="composer"
           >
             {(session) => {
               const when = describe(session)

@@ -141,7 +141,7 @@ export const AgentPanel: React.FC = () => {
         clearTimeout(fallback)
       }
     }
-    const timer = setTimeout(dispatch, agentPanelSettleTimeoutMs(), {
+    const timer = setTimeout(dispatch, agentPanelSettleTimeoutMs(stage.stage), {
       type: 'settle',
     })
     return () => clearTimeout(timer)

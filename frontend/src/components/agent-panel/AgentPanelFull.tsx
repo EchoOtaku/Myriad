@@ -12,7 +12,7 @@
  * 规矩得由摆放它的人执行。
  */
 
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { useAgentMessages, useAgentSessionId } from './agentMessages'
 import {
@@ -23,8 +23,35 @@ import {
 import { AgentPanelManage } from './AgentPanelManage'
 import { AgentPanelMessage } from './AgentPanelMessage'
 import { AgentPanelSessions } from './AgentPanelSessions'
+import { AGENT_ROW_EXIT_MS, AGENT_ROW_STAGGER_MS } from './agentPanelStage'
 import { AgentPresence, AgentPresenceList } from './useAgentPresence'
 import { useConversationPan } from './useConversationPan'
+
+function useHeldView(view: AgentPanelFullView): {
+  held: AgentPanelFullView
+  exiting: boolean
+} {
+  const [held, setHeld] = useState(view)
+  const [exiting, setExiting] = useState(false)
+  useEffect(() => {
+    if (view === held) return
+    if (held === 'manage' || view === 'manage') {
+      setHeld(view)
+      setExiting(false)
+      return
+    }
+    setExiting(true)
+    const timer = setTimeout(
+      () => {
+        setHeld(view)
+        setExiting(false)
+      },
+      AGENT_ROW_EXIT_MS + AGENT_ROW_STAGGER_MS * 4,
+    )
+    return () => clearTimeout(timer)
+  }, [held, view])
+  return { held, exiting }
+}
 
 /** 同一档里的三面：读当前对话、翻历史、改设置。 */
 export type AgentPanelFullView = 'messages' | 'sessions' | 'manage'
@@ -110,31 +137,36 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
   const { t } = useI18n()
   const messages = useAgentMessages()
   const sessionId = useAgentSessionId()
+  const { held, exiting } = useHeldView(view)
   const [zoomed, setZoomed] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const trackRef = useRef<HTMLDivElement>(null)
   useConversationPan(
     listRef,
     trackRef,
-    view === 'messages' && !zoomed,
+    held === 'messages' && !zoomed,
     sessionId,
   )
 
   const conversation =
-    view === 'sessions' ? (
+    held === 'sessions' ? (
       <AgentPanelSessions
         activeSessionId={sessionId}
+        exiting={exiting}
         onSelect={(id) => {
           dispatchAgentPanelOpenSession(id)
           onView('messages')
         }}
       />
-    ) : view === 'manage' ? (
+    ) : held === 'manage' ? (
       <div className="agent-panel-overlay agent-panel-full glass">
         <AgentPanelManage />
       </div>
     ) : (
-      <div className="agent-panel-messages-slot">
+      <div
+        className="agent-panel-messages-slot"
+        data-exiting={exiting ? 'true' : undefined}
+      >
         <div className="agent-panel-messages agent-panel-full" ref={listRef}>
           <div className="agent-panel-messages-track" ref={trackRef}>
             <AgentPresenceList

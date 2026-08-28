@@ -42,7 +42,15 @@ export const AGENT_PANEL_ENTER_MS = 480
 export const AGENT_PANEL_EXIT_MS = AGENT_PANEL_ENTER_MS
 
 /** 等 transitionend 的宽限。丢事件时靠它把状态推回 settled。 */
-export const AGENT_PANEL_SETTLE_SLACK_MS = 80
+export const AGENT_PANEL_SETTLE_SLACK_MS = 140
+
+/** 对话/历史逐张收起：每张错开的间隔，和 CSS `--agent-stagger-step` 对齐。 */
+export const AGENT_ROW_STAGGER_MS = 72
+
+export const AGENT_ROW_STAGGER_MAX = 8
+
+/** 单张退场时长，和 CSS `--agent-row-exit` 对齐。 */
+export const AGENT_ROW_EXIT_MS = 320
 
 export function agentPanelStageReducer(
   state: AgentPanelStageState,
@@ -94,7 +102,13 @@ export function agentPanelIsOpen(state: AgentPanelStageState): boolean {
   return state.stage !== 'island' && state.phase !== 'closing'
 }
 
-/** 超时兜底的等待时长。 */
-export function agentPanelSettleTimeoutMs(): number {
-  return AGENT_PANEL_EXIT_MS + AGENT_PANEL_SETTLE_SLACK_MS
+/** 超时兜底的等待时长。展开对话/历史时要等逐张收完。 */
+export function agentPanelSettleTimeoutMs(
+  stage: AgentPanelStage = 'overlay',
+): number {
+  const wave =
+    stage === 'full'
+      ? AGENT_ROW_EXIT_MS + AGENT_ROW_STAGGER_MS * AGENT_ROW_STAGGER_MAX
+      : AGENT_PANEL_EXIT_MS
+  return wave + AGENT_PANEL_SETTLE_SLACK_MS
 }

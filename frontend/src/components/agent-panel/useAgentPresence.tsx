@@ -114,9 +114,7 @@ function PresenceBox({
       data-from={from}
       data-presence={phase}
       data-appear={appear ? undefined : 'skip'}
-      style={
-        { '--agent-stagger': stagger } as CSSProperties
-      }
+      style={{ '--agent-stagger': stagger } as CSSProperties}
     >
       {children}
     </div>
@@ -211,7 +209,7 @@ export function AgentPresenceList<T>({
           kind={kind}
           from={from}
           phase={entry.phase}
-          stagger={Math.min(Math.max(last - index, 0), 6)}
+          stagger={Math.min(Math.max(last - index, 0), 8)}
         >
           {children(entry.item)}
         </PresenceBox>

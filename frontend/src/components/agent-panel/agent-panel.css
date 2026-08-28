@@ -46,11 +46,13 @@
   /* 卡片在上，那一行独立控件在下 —— 它们并排，不是包含。
      外壳不裁切：阴影要完整，玻璃还要采到壁纸。每行整张进整张出。
      进出同一条贝塞尔：出场是入场的镜像。
-     开合只动这一层：初次挂上靠 @starting-style，避免子元素各自再入一次场。 */
+     空输入态开合动外壳；对话/历史每张卡自己从输入行来回。 */
   --agent-ease: cubic-bezier(0.32, 0.72, 0, 1);
   --agent-ease-exit: cubic-bezier(1, 0, 0.68, 0.28);
   --agent-move: 480ms;
   --agent-swap: 320ms;
+  --agent-stagger-step: 72ms;
+  --agent-row-exit: 320ms;
 
   display: flex;
   flex-direction: column;
@@ -83,6 +85,10 @@
 .agent-panel-overlay-anchor[data-phase='opening'],
 .agent-panel-overlay-anchor[data-phase='closing'] {
   pointer-events: none;
+}
+
+.agent-panel-overlay-anchor[data-phase='opening']:not([data-stage='full']),
+.agent-panel-overlay-anchor[data-phase='closing']:not([data-stage='full']) {
   will-change: opacity, translate, scale;
 }
 
@@ -102,11 +108,52 @@
   transition-delay: 0ms;
 }
 
-/* 对话 / 历史展开后整列已经很高：再缩会像往输入行里挤。只上移、只淡。 */
+/* 对话 / 历史展开：外壳不再整块位移，每张卡自己从输入行来回。 */
 .agent-panel-overlay-anchor[data-stage='full'][data-phase='opening'],
 .agent-panel-overlay-anchor[data-stage='full'][data-phase='closing'] {
-  translate: -50% 36px;
+  opacity: 1;
+  translate: -50% 0;
   scale: 1;
+}
+
+.agent-panel-overlay-anchor[data-stage='full'] .agent-panel-composer,
+.agent-panel-overlay-anchor[data-stage='full']
+  .agent-panel-presence[data-kind='row'] {
+  transition-duration: var(--agent-row-exit);
+}
+
+.agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']
+  .agent-panel-composer {
+  opacity: 0;
+  translate: 0 16px;
+  scale: 0.96;
+  transition-delay: calc(3 * var(--agent-stagger-step));
+  transition-timing-function: var(--agent-ease-exit);
+}
+
+.agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']
+  .agent-panel-presence[data-kind='row'],
+.agent-panel-messages-slot[data-exiting='true'] .agent-panel-presence[data-kind='row'] {
+  pointer-events: none;
+  transition-duration: var(--agent-row-exit);
+  transition-delay: calc(var(--agent-stagger, 0) * var(--agent-stagger-step));
+  transition-timing-function: var(--agent-ease-exit);
+}
+
+.agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']
+  .agent-panel-presence[data-kind='row'][data-from='composer'],
+.agent-panel-messages-slot[data-exiting='true']
+  .agent-panel-presence[data-kind='row'][data-from='composer'] {
+  opacity: 0;
+  translate: 0 16px;
+  scale: 0.96;
+}
+
+.agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']
+  .agent-panel-presence[data-kind='row'][data-from='place'],
+.agent-panel-messages-slot[data-exiting='true']
+  .agent-panel-presence[data-kind='row'][data-from='place'] {
+  opacity: 0;
 }
 
 .agent-panel-overlay {
@@ -184,6 +231,11 @@
   flex-direction: column;
   width: 100%;
   margin-bottom: 10px;
+
+  /* 入场：输入行先动，卡片从它上面一张张叠上去。 */
+  transition-delay: calc(
+    (var(--agent-stagger, 0) + 1) * var(--agent-stagger-step, 72ms)
+  );
 }
 
 .agent-panel-presence[data-kind='chip'] {
@@ -218,8 +270,15 @@
   }
 
   .agent-panel-overlay-anchor[data-stage='full'] {
-    translate: -50% 36px;
+    opacity: 1;
+    translate: -50% 0;
     scale: 1;
+  }
+
+  .agent-panel-overlay-anchor[data-stage='full'] .agent-panel-composer {
+    opacity: 0;
+    translate: 0 16px;
+    scale: 0.96;
   }
 
   .agent-panel-presence[data-from='composer'] {
@@ -378,8 +437,10 @@
   grid-area: stack;
 }
 
-.agent-panel-overlay-anchor[data-phase='opening'] .agent-panel-presence,
-.agent-panel-overlay-anchor[data-phase='closing'] .agent-panel-presence,
+.agent-panel-overlay-anchor[data-phase='opening']
+  .agent-panel-presence:not([data-kind='row']),
+.agent-panel-overlay-anchor[data-phase='closing']
+  .agent-panel-presence:not([data-kind='row']),
 .agent-panel-overlay-anchor[data-phase='opening'] .agent-panel-swap,
 .agent-panel-overlay-anchor[data-phase='closing'] .agent-panel-swap {
   opacity: 1;
@@ -1124,6 +1185,7 @@ button.agent-panel-tag:disabled {
       scale: 1;
     }
 
+    .agent-panel-overlay-anchor[data-stage='full'] .agent-panel-composer,
     .agent-panel-presence {
       opacity: 1;
       translate: 0 0;
@@ -1190,6 +1252,9 @@ button.agent-panel-tag:disabled {
   display: flex;
   flex-direction: column;
   gap: 0;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
   padding: 12px 16px 6px;
   overflow: visible;
 }
@@ -1525,7 +1590,9 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
   display: flex;
   align-items: center;
   gap: 8px;
+  box-sizing: border-box;
   width: 100%;
+  max-width: 100%;
   padding: 14px 12px 14px 16px;
   border-radius: 22px;
   color: var(--text-primary, #111827);

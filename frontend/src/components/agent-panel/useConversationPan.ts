@@ -109,11 +109,22 @@ export function useConversationPan(
       }
     }
 
+    const clearExit = () => {
+      for (const card of cards) {
+        applyConversationExit(card.el, { exit: 0, shift: 0, hidden: false })
+        card.key = ''
+      }
+    }
+
     const writeExit = () => {
       if (viewH < 32) return
       const shell = viewport.closest('.agent-panel-overlay-anchor')
-      // 退场整块在沉，卡片别再各自糊一层。
-      if (shell instanceof HTMLElement && shell.dataset.phase === 'closing') {
+      const leaving =
+        (shell instanceof HTMLElement && shell.dataset.phase === 'closing') ||
+        Boolean(viewport.closest('[data-exiting="true"]'))
+      // 逐张收回时先去掉滚动模糊，免得和位移叠两层。
+      if (leaving) {
+        clearExit()
         return
       }
       for (const card of cards) {
@@ -160,13 +171,6 @@ export function useConversationPan(
     const write = () => {
       writeTransform()
       writeExit()
-    }
-
-    const clearExit = () => {
-      for (const card of cards) {
-        applyConversationExit(card.el, { exit: 0, shift: 0, hidden: false })
-        card.key = ''
-      }
     }
 
     const stop = () => {
@@ -297,6 +301,20 @@ export function useConversationPan(
     if (viewport.parentElement) resize.observe(viewport.parentElement)
     const anchor = viewport.closest('.agent-panel-overlay-anchor')
     if (anchor instanceof HTMLElement) resize.observe(anchor)
+    const phaseWatch = new MutationObserver(() => write())
+    if (anchor instanceof HTMLElement) {
+      phaseWatch.observe(anchor, {
+        attributes: true,
+        attributeFilter: ['data-phase'],
+      })
+    }
+    const slot = viewport.closest('.agent-panel-messages-slot')
+    if (slot instanceof HTMLElement) {
+      phaseWatch.observe(slot, {
+        attributes: true,
+        attributeFilter: ['data-exiting'],
+      })
+    }
     viewport.addEventListener('wheel', onWheel, { passive: false })
     viewport.addEventListener('touchstart', onTouchStart, { passive: true })
     viewport.addEventListener('touchmove', onTouchMove, { passive: false })
@@ -306,6 +324,7 @@ export function useConversationPan(
     return () => {
       stop()
       resize.disconnect()
+      phaseWatch.disconnect()
       viewport.removeEventListener('wheel', onWheel)
       viewport.removeEventListener('touchstart', onTouchStart)
       viewport.removeEventListener('touchmove', onTouchMove)
