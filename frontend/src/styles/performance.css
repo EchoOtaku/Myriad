@@ -267,9 +267,6 @@ html[data-perf-mode='exlight'] .tapp-app-card__icon-pulse,
 html[data-perf-mode='exlight'] .playground-island-aura,
 html[data-perf-mode='exlight'] .playground-text-shimmer,
 html[data-perf-mode='exlight'] .tapp-detail-status-dot.is-running,
-html[data-perf-mode='exlight'] .arael-empty-hero-name,
-html[data-perf-mode='exlight'] .arael-empty-hero-name::after,
-html[data-perf-mode='exlight'] .arael-current-step-text,
 html[data-perf-mode='exlight'] .user-modal-hero-bg,
 html[data-perf-mode='exlight'] .user-modal-avatar-wrapper,
 html[data-perf-mode='exlight'] .user-modal-online-dot,
@@ -282,23 +279,11 @@ html[data-perf-mode='exlight'] .as-detail__progress-bar > i::after {
   animation: none !important;
 }
 
-html[data-perf-mode='exlight'] .playground-text-shimmer,
-html[data-perf-mode='exlight'] .arael-empty-hero-name {
+html[data-perf-mode='exlight'] .playground-text-shimmer {
   background-image: none;
   background-clip: border-box;
   color: var(--color-primary, #10b981);
   -webkit-text-fill-color: var(--color-primary, #10b981);
-}
-
-html[data-perf-mode='exlight'] .arael-empty-hero-name::after {
-  display: none;
-}
-
-html[data-perf-mode='exlight'] .arael-current-step-text {
-  background-image: none;
-  background-clip: border-box;
-  color: var(--text-muted, #9ca3af);
-  -webkit-text-fill-color: var(--text-muted, #9ca3af);
 }
 
 /*
@@ -326,11 +311,6 @@ html[data-perf-mode='exlight'] .updater-transport-option,
 html[data-perf-mode='exlight'] .updater-panel .updater-infra-grid.is-card .setting-group,
 html[data-perf-mode='exlight'] .field-select-menu,
 html[data-perf-mode='exlight'] .toast-message,
-html[data-perf-mode='exlight'] .arael-panel,
-html[data-perf-mode='exlight'] .arael-input-wrapper,
-html[data-perf-mode='exlight'] .arael-favorite-capsule,
-html[data-perf-mode='exlight'] .arael-voice-btn,
-html[data-perf-mode='exlight'] .arael-sessions-search,
 html[data-perf-mode='exlight'] .modal-content,
 html[data-perf-mode='exlight'] .user-modal,
 html[data-perf-mode='exlight'] .user-modal-login-only,
@@ -365,11 +345,6 @@ html.dark[data-perf-mode='exlight'] .updater-transport-option,
 html.dark[data-perf-mode='exlight'] .updater-panel .updater-infra-grid.is-card .setting-group,
 html.dark[data-perf-mode='exlight'] .field-select-menu,
 html.dark[data-perf-mode='exlight'] .toast-message,
-html.dark[data-perf-mode='exlight'] .arael-panel,
-html.dark[data-perf-mode='exlight'] .arael-input-wrapper,
-html.dark[data-perf-mode='exlight'] .arael-favorite-capsule,
-html.dark[data-perf-mode='exlight'] .arael-voice-btn,
-html.dark[data-perf-mode='exlight'] .arael-sessions-search,
 html.dark[data-perf-mode='exlight'] .modal-content,
 html.dark[data-perf-mode='exlight'] .user-modal,
 html.dark[data-perf-mode='exlight'] .user-modal-login-only,

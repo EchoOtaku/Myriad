@@ -1,0 +1,1693 @@
+/* ==========================================
+   Agent Panel — 底部岛
+   ==========================================
+
+   颜色一律走站点表面令牌（--surface-* / --text-*），不自带底色：
+   站长切 solid / flat / liquid 时这块要跟着变，不能是全站唯一不变的地方。
+   底色与边框由同元素上的 .glass 提供。
+   ========================================== */
+
+.agent-panel-island {
+  position: fixed;
+
+  /* 和 .nav-container 同一处锚点：移动端顶替时不会跳位 */
+  inset: auto auto 1rem 50%;
+  transform: translateX(-50%);
+
+  /* 导航岛是 50；压在它上面，但让位给面板与浮层（100 起） */
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+  box-sizing: border-box;
+  height: 52px;
+  padding: 0 18px;
+  border-radius: 999px;
+  color: var(--text-secondary, #6b7280);
+  font-size: 14px;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  transition:
+    color 0.25s ease,
+    max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 只有符号时收成一枚圆点，有话说才展开 */
+.agent-panel-island[data-has-detail='false'] {
+  padding: 0 14px;
+}
+
+.agent-panel-island-glyph {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.agent-panel-island-detail {
+  max-width: min(52vw, 300px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 进度是一条压在胶囊底边的发丝线，不做成进度条抢注意力 */
+.agent-panel-island-progress {
+  position: absolute;
+  inset: auto 0 0;
+  height: 2px;
+  background: var(--color-primary, #10b981);
+  transform-origin: left center;
+  transition: transform 0.3s ease;
+}
+
+/* ── 各状态的取色 ───────────────────────────────── */
+
+.agent-panel-island[data-status='idle'] {
+  color: var(--text-muted, #9ca3af);
+  opacity: 0.75;
+}
+
+.agent-panel-island[data-status='listening'],
+.agent-panel-island[data-status='thinking'],
+.agent-panel-island[data-status='working'] {
+  color: var(--color-primary, #10b981);
+}
+
+.agent-panel-island[data-status='needsInput'] {
+  color: var(--color-accent, #f59e0b);
+}
+
+.agent-panel-island[data-status='done'] {
+  color: var(--color-primary, #10b981);
+}
+
+.agent-panel-island[data-status='error'] {
+  color: var(--color-error, #ef4444);
+}
+
+/* ── 动效 ───────────────────────────────────────── */
+
+/* 听：虚线圈慢慢转 */
+.agent-panel-island[data-status='listening'] .agent-panel-island-glyph {
+  animation: agent-panel-spin 3.6s linear infinite;
+  transform-origin: center;
+}
+
+/* 想：波纹轻轻起伏 */
+.agent-panel-island[data-status='thinking'] .agent-panel-island-glyph {
+  animation: agent-panel-breathe 1.8s ease-in-out infinite;
+}
+
+/* 做：三点依次亮 */
+.agent-panel-dot {
+  animation: agent-panel-blink 1.2s ease-in-out infinite;
+}
+
+.agent-panel-dot:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.agent-panel-dot:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+/* 要人回话：不闪，只是稳稳地在那儿等 —— 闪烁会变成催促 */
+
+@keyframes agent-panel-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@keyframes agent-panel-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes agent-panel-blink {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  40% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-panel-island,
+  .agent-panel-island .agent-panel-island-glyph,
+  .agent-panel-dot,
+  .agent-panel-island-progress {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* 安全区域（刘海屏/底部指示条）—— 与 .nav-container 保持一致 */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .agent-panel-island {
+    bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}
+
+/* ==========================================
+   Quick Overlay
+   ==========================================
+
+   从岛长出来的一小块。贴底、不铺满、不遮死当前页面 —— 助手不抢当前工作。
+   ========================================== */
+
+.agent-panel-overlay-anchor {
+  position: fixed;
+  inset: auto auto 1rem 50%;
+  transform: translateX(-50%);
+  z-index: 61;
+
+  /* 卡片在上，那一行独立控件在下 —— 它们并排，不是包含 */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(92vw, 560px);
+}
+
+@supports (padding: env(safe-area-inset-bottom)) {
+  .agent-panel-overlay-anchor {
+    bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}
+
+.agent-panel-overlay {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-sizing: border-box;
+  padding: 20px;
+  border-radius: 26px;
+  color: var(--text-primary, #111827);
+  transform-origin: bottom center;
+  transition:
+    opacity 260ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* 从岛的高度长起来，收起时缩回去 */
+.agent-panel-overlay[data-phase='opening'],
+.agent-panel-overlay[data-phase='closing'] {
+  opacity: 0;
+  transform: translateY(8px) scale(0.96);
+}
+
+.agent-panel-overlay[data-phase='settled'] {
+  opacity: 1;
+  transform: none;
+}
+
+/* ── 一切说明性的短句都是贴 ──────────────────────
+
+   看得到什么、刚做了什么、为什么这里是空的、人设改到哪儿去了 —— 这些以前是六处
+   裸文本，各自一套字号和留白，读起来像六个人写的。现在只有一种东西：贴。可点的
+   （开关、撤销、图标键）多一层悬停和回弹，不可点的就是同一张贴的静态版。
+
+   `.agent-panel-chip` 是同一副骨架的另一半：贴说的是「事实」，chip 是「能做的事」。
+   共用一条基线，只靠语气区分，不做成两种视觉语言。
+
+   **贴不吃 backdrop-filter**：它们长在 `.agent-panel-overlay` 这张玻璃里，而父级
+   玻璃自己就是 backdrop root —— 子层再滤一次采不到卡片背后的东西，只会糊成乳白带
+   （theme.css 记过这一跤）。真正的流体玻璃留给卡片外面的输入框和那一枚动作。
+   ================================================ */
+
+.agent-panel-tag,
+.agent-panel-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  padding: 8px 14px;
+  border: 1px solid var(--surface-border, rgb(0 0 0 / 8%));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted, #9ca3af) 9%, transparent);
+  color: var(--text-secondary, #6b7280);
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.agent-panel-tag-text {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-panel-tag-glyph {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+/* 只装一个图标的贴：收成正圆，不留文字那份横向留白 */
+.agent-panel-tag[data-icon='true'] {
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+}
+
+.agent-panel-tag[data-icon='true'] svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* 独占一行的贴：空态、加载失败这类整段话，居中摆一张 */
+.agent-panel-tag[data-block='true'] {
+  align-self: center;
+  margin: 14px 0;
+  white-space: normal;
+}
+
+/* 语气。中性是默认；primary 是「这跟你刚做的事有关」；alert 是「有东西被关掉了」 */
+.agent-panel-tag[data-tone='primary'] {
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 38%,
+    transparent
+  );
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 12%,
+    transparent
+  );
+  color: var(--color-primary, #10b981);
+}
+
+.agent-panel-tag[data-tone='alert'] {
+  border-color: color-mix(
+    in srgb,
+    var(--color-error, #ef4444) 34%,
+    transparent
+  );
+  background: color-mix(in srgb, var(--color-error, #ef4444) 10%, transparent);
+  color: var(--color-error, #ef4444);
+}
+
+/* 「就等你点」的那种贴要更实一点 */
+.agent-panel-tag-strong {
+  font-weight: 600;
+}
+
+.agent-panel-tag-strong[data-tone='primary'] {
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 22%,
+    transparent
+  );
+}
+
+/* 一排贴：说明在左，图标键靠右 */
+.agent-panel-tag-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.agent-panel-tag-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* ── 就着这份上下文能一键做的事 ─────────────────── */
+
+.agent-panel-overlay-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 可点的那一半：回弹曲线跟站内其他流体控件同一条 */
+button.agent-panel-tag,
+.agent-panel-chip {
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+button.agent-panel-tag:not(:disabled):hover,
+.agent-panel-chip:not(:disabled):hover {
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 40%,
+    transparent
+  );
+  color: var(--color-primary, #10b981);
+}
+
+/* 关掉的那道闸悬停时不该变成主色 —— 它说的是「有东西没在读」 */
+button.agent-panel-tag[data-tone='alert']:not(:disabled):hover {
+  border-color: color-mix(
+    in srgb,
+    var(--color-error, #ef4444) 55%,
+    transparent
+  );
+  color: var(--color-error, #ef4444);
+}
+
+button.agent-panel-tag:not(:disabled):active,
+.agent-panel-chip:not(:disabled):active {
+  transform: scale(0.94);
+  transition-duration: 90ms;
+}
+
+/* 收藏的常用问法：和上下文动作同一排语言，但标题可能很长，收窄一点。
+   按字宽收而不是按百分比 —— 窄屏上 40% 只剩四个字，连意思都读不出来 */
+.agent-panel-chip-saved {
+  max-width: 12em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 输入那一行：输入框 + 一枚动作 ────────────────
+
+   输入框和右侧那一枚动作各自是一块独立的玻璃，摆在卡片外面。**搬出来是有技术
+   必要的**：套在 `.glass` 里的子层采不到卡片背后的画面，再滤一次只会糊成乳白带，
+   只有并排才吃得到真正的流体质感。
+
+   那一枚动作按框里有没有字、现在忙不忙换身份：空着且语音可用是语音，有字是发送，
+   正在跑是终止；语音没配置时空着不画。底、边框、阴影、滤镜全部由同元素上的
+   `.glass` 从表面令牌取，这里只管
+   形状、尺寸和手感 —— 和 Tapp 商店那几枚流体控件同一条路子。**但不像它那样钉死
+   `.glass-liquid`**：站主选了 solid，卡片会变成不透明白底，强制流体的胶囊浮在
+   底下会明显脱节；而且 solid/flat 是真正的性能档，钉死等于替他把 backdrop-filter
+   加回来。跟着令牌走，站主切到 liquid 时它们自然拿到吸色底、磨砂噪点和边缘弯光环。
+
+   刻意不叠写死的顶部高光：流体表面自带随环境走的光学，静态高光压上去只会跟它
+   打架（theme.css 里写过这条）。
+   ================================================ */
+
+.agent-panel-composer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.agent-panel-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 96px;
+  height: 56px;
+  padding: 0 28px;
+  border-radius: 999px;
+  color: var(--text-secondary, #6b7280);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color 180ms ease,
+    background 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 380ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    filter 180ms ease-out;
+}
+
+.agent-panel-control svg {
+  position: relative;
+
+  /* 流体的弯光环走 ::before，图标得压在它上面 */
+  z-index: 1;
+  width: 22px;
+  height: 22px;
+}
+
+@media (hover: hover) {
+  .agent-panel-control:not(:disabled):hover {
+    color: var(--color-primary, #10b981);
+    transform: translateY(-1px) scale(1.045);
+    filter: brightness(1.04);
+  }
+}
+
+.agent-panel-control:not(:disabled):active {
+  transform: translateY(0) scale(0.94);
+  filter: brightness(1.08);
+  transition-duration: 90ms;
+}
+
+.agent-panel-control:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.agent-panel-control:focus-visible {
+  outline: 2px solid
+    color-mix(in srgb, var(--color-primary, #10b981) 68%, white);
+  outline-offset: 2px;
+}
+
+/* 在听的时候一直亮着 —— 录音这种事必须一眼看得出还开着。
+   压过 .glass 的令牌底，所以要两层类名 */
+.agent-panel-composer .agent-panel-mic[data-on='true'] {
+  background:
+    linear-gradient(
+      color-mix(in srgb, var(--color-error, #ef4444) 26%, transparent),
+      color-mix(in srgb, var(--color-error, #ef4444) 18%, transparent)
+    ),
+    var(--surface-bg, rgb(var(--surface-rgb) / var(--surface-alpha)));
+  color: var(--color-error, #ef4444);
+}
+
+/* 发送才叠主色。空着（没语音可用、也没字）保持普通玻璃，不要一枚褪色的绿点。
+   主色压在流体底上 —— 换掉整块底会把噪点/高光/吸色那几层一起丢掉，所以是叠一层，
+   不是替一层 */
+.agent-panel-composer .agent-panel-send:not(:disabled) {
+  background:
+    linear-gradient(
+      color-mix(in srgb, var(--color-primary, #10b981) 92%, transparent),
+      color-mix(in srgb, var(--color-primary, #10b981) 78%, transparent)
+    ),
+    var(--surface-bg, rgb(var(--surface-rgb) / var(--surface-alpha)));
+  color: #fff;
+}
+
+@media (hover: hover) {
+  .agent-panel-composer .agent-panel-send:not(:disabled):hover {
+    color: #fff;
+  }
+}
+
+/* 停止键：颜色说清楚它不是「再发一次」 */
+.agent-panel-composer .agent-panel-stop {
+  background:
+    linear-gradient(
+      color-mix(in srgb, var(--color-error, #ef4444) 92%, transparent),
+      color-mix(in srgb, var(--color-error, #ef4444) 78%, transparent)
+    ),
+    var(--surface-bg, rgb(var(--surface-rgb) / var(--surface-alpha)));
+}
+
+.agent-panel-field-shell {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  box-sizing: border-box;
+  min-width: 0;
+  height: 56px;
+  padding: 0 22px;
+  border-radius: 999px;
+  transition: border-color 180ms ease;
+}
+
+.agent-panel-field {
+  position: relative;
+
+  /* 同上：别被弯光环盖住 */
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-primary, #111827);
+  font-size: 16px;
+  outline: none;
+}
+
+.agent-panel-field::placeholder {
+  color: var(--text-muted, #9ca3af);
+}
+
+.agent-panel-field-shell:focus-within {
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 55%,
+    transparent
+  ) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-panel-overlay,
+  .agent-panel-tag,
+  .agent-panel-chip,
+  .agent-panel-control,
+  .agent-panel-field-shell {
+    transition-duration: 0.01ms !important;
+  }
+
+  .agent-panel-control:hover,
+  .agent-panel-control:active {
+    transform: none;
+  }
+}
+
+/* ==========================================
+   Full 层
+   ==========================================
+
+   最大的那一档，仍然贴底、仍然是那块岛长出来的。高度让给内容，但留住上限：
+   它是覆盖在当前页面上的一层，不是把页面顶掉的另一个页面。
+   ========================================== */
+
+.agent-panel-full {
+  max-height: min(78vh, 760px);
+}
+
+.agent-panel-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding: 8px 2px;
+  scrollbar-width: thin;
+}
+
+.agent-panel-messages::-webkit-scrollbar {
+  width: 4px;
+}
+
+.agent-panel-messages::-webkit-scrollbar-thumb {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text-muted, #9ca3af) 35%, transparent);
+}
+
+.agent-panel-message {
+  display: flex;
+  max-width: 100%;
+}
+
+.agent-panel-message[data-role='user'] {
+  justify-content: flex-end;
+}
+
+.agent-panel-message-body {
+  max-width: 86%;
+  min-width: 0;
+  color: var(--text-primary, #111827);
+  font-size: 15px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+/* 用户说的话有个底，助手说的话没有 —— 助手是在跟你说话，不是在递卡片 */
+.agent-panel-message[data-role='user'] .agent-panel-message-body {
+  padding: 12px 16px;
+  border-radius: 20px 20px 6px;
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 16%,
+    transparent
+  );
+}
+
+.agent-panel-message[data-role='system'] {
+  justify-content: center;
+}
+
+.agent-panel-message[data-role='system'] .agent-panel-message-body {
+  color: var(--text-muted, #9ca3af);
+  font-size: 11px;
+}
+
+.agent-panel-message[data-state='error'] .agent-panel-message-body {
+  color: var(--color-error, #ef4444);
+}
+
+/* 还在说的时候，句尾跟一个光标。
+   挂在最后一个块的末尾而不是气泡上 —— 挂气泡上它会另起一行，看着像说完了。 */
+.agent-panel-message[data-state='streaming']
+  .agent-panel-message-body
+  > :last-child::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 0.95em;
+  margin-left: 2px;
+  border-radius: 1px;
+  background: currentcolor;
+  vertical-align: text-bottom;
+  animation: agent-panel-caret 1s steps(2) infinite;
+}
+
+@keyframes agent-panel-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+.agent-panel-message-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.agent-panel-message-images img {
+  max-width: 100%;
+  border-radius: 10px;
+}
+
+/* ── 它的设置 ───────────────────────────────────── */
+
+.agent-panel-manage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.agent-panel-manage-tabs {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.agent-panel-manage-tab {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-muted, #9ca3af);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.agent-panel-manage-tab[data-active='true'] {
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 16%,
+    transparent
+  );
+  color: var(--color-primary, #10b981);
+  font-weight: 600;
+}
+
+.agent-panel-manage-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+}
+
+.agent-panel-manage-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.agent-panel-manage-body::-webkit-scrollbar-thumb {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text-muted, #9ca3af) 35%, transparent);
+}
+
+.agent-panel-manage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  transition: background 0.15s ease;
+}
+
+.agent-panel-manage-row:hover {
+  background: color-mix(in srgb, var(--text-muted, #9ca3af) 10%, transparent);
+}
+
+.agent-panel-manage-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: inherit;
+}
+
+button.agent-panel-manage-main {
+  cursor: pointer;
+}
+
+.agent-panel-manage-name {
+  overflow: hidden;
+  color: var(--text-primary, #111827);
+  font-size: 13.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-panel-manage-meta {
+  overflow: hidden;
+  color: var(--text-muted, #9ca3af);
+  font-size: 11px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+}
+
+/* 记忆没有标题，正文可以多占两行 */
+.agent-panel-manage-row:not(:has(.agent-panel-manage-name))
+  .agent-panel-manage-meta {
+  display: -webkit-box;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.agent-panel-manage-toggle {
+  position: relative;
+  flex-shrink: 0;
+  width: 30px;
+  height: 17px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted, #9ca3af) 35%, transparent);
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.agent-panel-manage-toggle[data-on='true'] {
+  background: var(--color-primary, #10b981);
+}
+
+.agent-panel-manage-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+  transition: translate 0.18s ease;
+}
+
+.agent-panel-manage-toggle[data-on='true'] .agent-panel-manage-knob {
+  translate: 13px 0;
+}
+
+.agent-panel-manage-remove {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-muted, #9ca3af);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease;
+}
+
+/* 删除键平时藏着 —— 一排叉号会让人不敢碰列表 */
+.agent-panel-manage-row:hover .agent-panel-manage-remove,
+.agent-panel-manage-row:focus-within .agent-panel-manage-remove {
+  opacity: 1;
+}
+
+.agent-panel-manage-remove:hover {
+  color: var(--color-error, #ef4444);
+}
+
+.agent-panel-manage-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--text-muted, #9ca3af) 10%, transparent);
+}
+
+.agent-panel-manage-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.agent-panel-manage-presets .agent-panel-chip[data-active='true'] {
+  border-color: var(--color-primary, #10b981);
+  color: var(--color-primary, #10b981);
+}
+
+/* 设置里那些输入框长在卡片里面，所以不走上面那套流体外壳 —— 嵌套的
+   backdrop-filter 采不到卡片背后的画面。它们只要一条边和一点内缩。 */
+.agent-panel-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--surface-border, rgb(0 0 0 / 8%));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted, #9ca3af) 8%, transparent);
+  color: var(--text-primary, #111827);
+  font-size: 13.5px;
+  outline: none;
+  transition: border-color 0.18s ease;
+}
+
+.agent-panel-input::placeholder {
+  color: var(--text-muted, #9ca3af);
+}
+
+.agent-panel-input:focus {
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 55%,
+    transparent
+  );
+}
+
+.agent-panel-manage-cron {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.agent-panel-manage-add {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.agent-panel-manage-hint {
+  flex-shrink: 0;
+  margin: 6px 0 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-panel-manage-toggle,
+  .agent-panel-manage-knob,
+  .agent-panel-manage-remove {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── 思考过程 ───────────────────────────────────── */
+
+.agent-panel-thinking {
+  margin-bottom: 6px;
+  color: var(--text-muted, #9ca3af);
+  font-size: 11px;
+}
+
+.agent-panel-thinking-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-panel-thinking-headline {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-panel-thinking[data-failed='true'] .agent-panel-thinking-headline {
+  color: var(--color-error, #ef4444);
+}
+
+.agent-panel-thinking-elapsed {
+  flex-shrink: 0;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-panel-thinking-arrow {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: rotate 0.15s ease;
+}
+
+.agent-panel-thinking-arrow[data-open='true'] {
+  rotate: 90deg;
+}
+
+.agent-panel-thinking-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 5px 0 0;
+  padding: 0 0 0 2px;
+  list-style: none;
+}
+
+.agent-panel-thinking-steps li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.agent-panel-thinking-mark {
+  flex-shrink: 0;
+  width: 9px;
+  text-align: center;
+}
+
+.agent-panel-thinking-steps li[data-status='done'] .agent-panel-thinking-mark {
+  color: var(--color-primary, #10b981);
+}
+
+.agent-panel-thinking-steps li[data-status='error'] .agent-panel-thinking-mark {
+  color: var(--color-error, #ef4444);
+}
+
+/* 正在跑的那一步单独亮起来，眼睛一扫就知道停在哪 */
+.agent-panel-thinking-steps li[data-status='running'] {
+  color: var(--text-secondary, #6b7280);
+}
+
+.agent-panel-thinking-steps
+  li[data-status='running']
+  .agent-panel-thinking-mark {
+  animation: agent-panel-blink 1.2s ease-in-out infinite;
+}
+
+.agent-panel-thinking-steps li[data-status='pending'] {
+  opacity: 0.55;
+}
+
+.agent-panel-thinking-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-panel-thinking-note {
+  min-width: 0;
+  overflow: hidden;
+  opacity: 0.7;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-panel-thinking-arrow,
+  .agent-panel-thinking-steps
+    li[data-status='running']
+    .agent-panel-thinking-mark {
+    animation: none;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── 之前聊过的 ─────────────────────────────────── */
+
+.agent-panel-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  padding: 2px;
+  scrollbar-width: thin;
+}
+
+.agent-panel-sessions::-webkit-scrollbar {
+  width: 4px;
+}
+
+.agent-panel-sessions::-webkit-scrollbar-thumb {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text-muted, #9ca3af) 35%, transparent);
+}
+
+.agent-panel-session {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 12px;
+  background: none;
+  color: var(--text-primary, #111827);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.agent-panel-session-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-panel-session-time {
+  flex-shrink: 0;
+  color: var(--text-muted, #9ca3af);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 它反过来问你的话 ───────────────────────────── */
+
+.agent-panel-question {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--color-accent, #f59e0b) 10%, transparent);
+}
+
+.agent-panel-question-text {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.agent-panel-question-context {
+  align-self: flex-start;
+  margin-top: 5px;
+  white-space: pre-wrap;
+}
+
+.agent-panel-question-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* 答过之后按钮冻结，但仍然看得见当时选了哪个 */
+.agent-panel-question-options .agent-panel-chip[data-active='true'] {
+  border-color: var(--color-primary, #10b981);
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 16%,
+    transparent
+  );
+  color: var(--color-primary, #10b981);
+}
+
+.agent-panel-question-options .agent-panel-chip:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.agent-panel-question-options
+  .agent-panel-chip:disabled:not([data-active='true']) {
+  opacity: 0.35;
+}
+
+/* 收藏胶囊：整体是一颗，右边那个 × 只在鼠标过来时露出来 */
+.agent-panel-saved {
+  position: relative;
+  display: inline-flex;
+  max-width: 44%;
+}
+
+.agent-panel-saved-remove {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-error, #ef4444);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.agent-panel-saved:hover .agent-panel-saved-remove,
+.agent-panel-saved:focus-within .agent-panel-saved-remove {
+  opacity: 1;
+}
+
+.agent-panel-message-action:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* 会话一行：正文可点，删除键悬停才出 */
+.agent-panel-session-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 10px;
+  transition: background 0.15s ease;
+}
+
+.agent-panel-session-row:hover {
+  background: color-mix(in srgb, var(--text-muted, #9ca3af) 12%, transparent);
+}
+
+.agent-panel-session-row[data-active='true'] {
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 14%,
+    transparent
+  );
+}
+
+.agent-panel-session-row:hover .agent-panel-manage-remove,
+.agent-panel-session-row:focus-within .agent-panel-manage-remove {
+  opacity: 1;
+}
+
+.agent-panel-session-row .agent-panel-manage-remove {
+  margin-right: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-panel-saved-remove,
+  .agent-panel-session-row {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── 消息脚注：时间、复制、重试 ─────────────────── */
+
+.agent-panel-message-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+  color: var(--text-muted, #9ca3af);
+  font-size: 10.5px;
+
+  /* 平时不抢注意力，鼠标过来才亮 —— 每条消息挂两个按钮会很吵 */
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.agent-panel-message:hover .agent-panel-message-footer,
+.agent-panel-message:focus-within .agent-panel-message-footer {
+  opacity: 1;
+}
+
+.agent-panel-message-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-panel-message-action {
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.agent-panel-message-action:hover {
+  color: var(--color-primary, #10b981);
+}
+
+/* ── 看大图 ─────────────────────────────────────── */
+
+.agent-panel-image-open {
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  line-height: 0;
+  cursor: zoom-in;
+}
+
+.agent-panel-image-open img {
+  max-width: 100%;
+  border-radius: 10px;
+}
+
+.agent-panel-lightbox {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  border: none;
+  border-radius: 20px;
+  background: rgb(0 0 0 / 78%);
+  cursor: zoom-out;
+}
+
+.agent-panel-lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 12px;
+  object-fit: contain;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-panel-message-footer {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── 助手回复里那点 Markdown ─────────────────────── */
+
+.agent-md-p {
+  margin: 0 0 6px;
+}
+
+.agent-md-p:last-child {
+  margin-bottom: 0;
+}
+
+.agent-md-heading {
+  margin: 8px 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.agent-md-heading:first-child {
+  margin-top: 0;
+}
+
+.agent-md-list {
+  margin: 0 0 6px;
+  padding-left: 1.2em;
+}
+
+.agent-md-code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--text-muted, #9ca3af) 18%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+
+.agent-md-pre {
+  overflow-x: auto;
+  margin: 6px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--text-muted, #9ca3af) 14%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.agent-md-quote {
+  margin: 6px 0;
+  padding-left: 10px;
+  border-left: 2px solid
+    color-mix(in srgb, var(--text-muted, #9ca3af) 40%, transparent);
+  color: var(--text-secondary, #6b7280);
+}
+
+.agent-md-hr {
+  margin: 10px 0;
+  border: none;
+  border-top: 1px solid var(--surface-border, rgb(0 0 0 / 8%));
+}
+
+.agent-md-img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.agent-md-link {
+  color: var(--color-primary, #10b981);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* 宽表自己横向滚，不把气泡撑破 */
+.agent-md-table-scroll {
+  overflow-x: auto;
+  margin: 6px 0;
+}
+
+.agent-md-table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.agent-md-table th,
+.agent-md-table td {
+  padding: 5px 9px;
+  border: 1px solid var(--surface-border, rgb(0 0 0 / 8%));
+  text-align: left;
+  white-space: nowrap;
+}
+
+.agent-md-table th {
+  background: color-mix(in srgb, var(--text-muted, #9ca3af) 12%, transparent);
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-panel-message[data-state='streaming']
+    .agent-panel-message-body
+    > :last-child::after {
+    animation: none;
+  }
+}
+
+/* ==========================================
+   Action Card
+   ==========================================
+
+   要动真格之前问的那一下。按操作本身排：风险和时限在最上，接着是它准备做什么、
+   会影响什么，最后才是两个键。三档只差摊开多少。
+   ========================================== */
+
+.agent-panel-action {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agent-panel-action-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px;
+  font-size: 11px;
+}
+
+.agent-panel-action-risk {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* 可撤销的不涂红 —— 颜色是拿来分轻重的，不是拿来一律吓人的 */
+.agent-panel-action[data-tier='light'] .agent-panel-action-risk {
+  background: color-mix(in srgb, var(--text-muted, #9ca3af) 18%, transparent);
+  color: var(--text-secondary, #6b7280);
+}
+
+.agent-panel-action[data-tier='preview'] .agent-panel-action-risk {
+  background: color-mix(in srgb, var(--color-accent, #f59e0b) 18%, transparent);
+  color: var(--color-accent, #f59e0b);
+}
+
+.agent-panel-action[data-tier='explicit'] .agent-panel-action-risk {
+  background: color-mix(in srgb, var(--color-error, #ef4444) 16%, transparent);
+  color: var(--color-error, #ef4444);
+}
+
+.agent-panel-action-ttl {
+  color: var(--text-muted, #9ca3af);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-panel-action-ttl[data-expired='true'] {
+  color: var(--color-error, #ef4444);
+}
+
+.agent-panel-action-prompt {
+  margin: 0;
+  padding: 0 4px;
+  color: var(--text-primary, #111827);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.agent-panel-action-section {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--text-muted, #9ca3af) 10%, transparent);
+}
+
+.agent-panel-action-impact {
+  background: color-mix(in srgb, var(--color-error, #ef4444) 8%, transparent);
+}
+
+.agent-panel-action-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-muted, #9ca3af);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.agent-panel-action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-secondary, #6b7280);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.agent-panel-action-step-name {
+  margin-right: 6px;
+  color: var(--text-primary, #111827);
+  font-weight: 600;
+}
+
+.agent-panel-action-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.agent-panel-action-cancel,
+.agent-panel-action-confirm {
+  padding: 12px 20px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.agent-panel-action-cancel {
+  border: 1px solid var(--surface-border, rgb(0 0 0 / 8%));
+  background: transparent;
+  color: var(--text-secondary, #6b7280);
+}
+
+.agent-panel-action-confirm {
+  border: none;
+  background: var(--color-primary, #10b981);
+  color: #fff;
+}
+
+/* 不可撤销的那一档，确认键自己也说清楚它是什么 */
+.agent-panel-action[data-tier='explicit'] .agent-panel-action-confirm {
+  background: var(--color-error, #ef4444);
+}
+
+.agent-panel-action-confirm:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.agent-panel-action-cancel:active,
+.agent-panel-action-confirm:not(:disabled):active {
+  transform: scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-panel-action-cancel,
+  .agent-panel-action-confirm {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ==========================================
+   长按指示环
+   ==========================================
+
+   唤起 Agent 的手势反馈：按下即冒点，到时长成一圈。跟着指针走，永不吃事件。
+   ========================================== */
+
+.agent-panel-longpress {
+  position: fixed;
+  width: 40px;
+  height: 40px;
+  pointer-events: none;
+  z-index: 999999;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: opacity 0.1s ease-out;
+}
+
+.agent-panel-longpress.active {
+  opacity: 1;
+}
+
+.agent-panel-lp-dot {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  border-radius: 50%;
+  background: var(--color-primary, #6366f1);
+  box-shadow: 0 0 6px
+    color-mix(in srgb, var(--color-primary, #6366f1) 40%, transparent);
+}
+
+.agent-panel-longpress.active .agent-panel-lp-dot {
+  animation: agent-panel-lp-dot-morph 220ms cubic-bezier(0.22, 0.61, 0.36, 1)
+    forwards;
+}
+
+@keyframes agent-panel-lp-dot-morph {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    background: var(--color-primary, #6366f1);
+    opacity: 1;
+  }
+
+  35% {
+    transform: translate(-50%, -50%) scale(0.25);
+    background: var(--color-primary, #6366f1);
+    opacity: 1;
+  }
+
+  70% {
+    transform: translate(-50%, -50%) scale(0.88);
+    background: transparent;
+    box-shadow: inset 0 0 0 2.5px var(--color-primary, #6366f1);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    background: transparent;
+    box-shadow: inset 0 0 0 2.5px var(--color-primary, #6366f1);
+    opacity: 0;
+  }
+}
+
+.agent-panel-lp-pulse {
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--color-primary, #6366f1) 20%, transparent) 0%,
+    transparent 70%
+  );
+  opacity: 0;
+  transform: scale(0.3);
+}
+
+.agent-panel-longpress.active .agent-panel-lp-pulse {
+  animation: agent-panel-lp-pulse 350ms ease-out 120ms forwards;
+}
+
+@keyframes agent-panel-lp-pulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+
+  30% {
+    opacity: 0.9;
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(2.2);
+  }
+}
+
+.agent-panel-lp-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: scale(0);
+  opacity: 0;
+}
+
+.agent-panel-longpress.active .agent-panel-lp-svg {
+  animation:
+    agent-panel-lp-svg-expand 160ms cubic-bezier(0.22, 0.61, 0.36, 1) 140ms
+      forwards,
+    agent-panel-lp-breathe 400ms ease-in-out 300ms infinite alternate;
+}
+
+@keyframes agent-panel-lp-svg-expand {
+  0% {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes agent-panel-lp-breathe {
+  from {
+    transform: scale(0.92);
+    opacity: 0.7;
+  }
+
+  to {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+}
+
+.agent-panel-lp-track {
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-primary, #6366f1) 10%, transparent);
+  stroke-width: 2.5;
+}
+
+.agent-panel-lp-ring {
+  fill: none;
+  stroke: var(--color-primary, #6366f1);
+  stroke-width: 2.5;
+  filter: drop-shadow(
+    0 0 4px color-mix(in srgb, var(--color-primary, #6366f1) 45%, transparent)
+  );
+}

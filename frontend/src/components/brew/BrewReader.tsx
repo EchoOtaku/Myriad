@@ -24,7 +24,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { API_URL as CONFIG_API_URL } from '../../config'
 import { useI18n } from '../../contexts/I18nContext'
-import { useNavigation } from '../../contexts/NavigationContext'
+import { useImmersiveChrome } from '../../contexts/NavigationContext'
 import { usePageContentOptional } from '../../contexts/PageContentContext'
 
 import { useReadingListOptional } from '../../contexts/ReadingListContext'
@@ -311,7 +311,7 @@ export default function BrewReader({
   }, [item.id])
 
   // 沉浸模式 - 进入阅读器时隐藏导航栏和控制面板
-  const { setImmersiveMode } = useNavigation()
+  useImmersiveChrome('brew-reader', true)
 
   // 页面内容上下文 - 用于 Agent 访问当前阅读的文章
   const { setPageContent, clearPageContent } = usePageContentOptional() || {}
@@ -703,14 +703,6 @@ export default function BrewReader({
 
     return () => clearTimeout(timer)
   }, [enableAnimations, readerTransition.duration])
-
-  // 沉浸模式控制 - 进入阅读器时隐藏导航岛和控制面板
-  useEffect(() => {
-    setImmersiveMode(true)
-    return () => {
-      setImmersiveMode(false)
-    }
-  }, [setImmersiveMode])
 
   // 格式化日期 - useMemo 缓存
   const formattedDate = useMemo(() => {

@@ -206,7 +206,7 @@ export class AgentFaceChannel {
 }
 
 /**
- * 全站唯一实例。两个发送方 —— Arael 面板的回复、通知中心的主动开口 ——
+ * 全站唯一实例。两个发送方 —— 执行引擎的回复、通知中心的主动开口 ——
  * 共用同一份 id 序号和去重账本，形象那边只看见一条说话流。
  */
 export const agentFace = new AgentFaceChannel()

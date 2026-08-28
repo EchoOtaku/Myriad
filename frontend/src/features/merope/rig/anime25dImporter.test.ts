@@ -3,11 +3,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   anime25DBaseRole,
-  gridMesh,
   isAnime25DDocument,
   normalizeAnime25DLayerName,
   prepareAnime25DRigPsd,
 } from './anime25dImporter'
+import { gridMesh } from './anime25dSkeletonCompiler'
 import { CHARACTER_ASSET_CONTRACT_VERSION } from './contract'
 
 test('matches Anime2.5DRig normalization without merging numbered hair groups', () => {
@@ -94,6 +94,21 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
       prepared.source.bones.find((candidate) => candidate.id === id)
     assert.equal(prepared.partCount >= 15, true)
     assert.equal(prepared.analysisReference.type, 'image/png')
+    // Manga accents and the wandering silly irides never enter the neutral
+    // reference the design model reads back, even though they ship in the atlas.
+    const accentIds = [
+      'a25d-maniac-eye-shadow-left',
+      'a25d-maniac-eye-shadow-right',
+      'a25d-maniac-mouth-shadow',
+      'a25d-iris-silly-left',
+      'a25d-iris-silly-right',
+      'a25d-anger-mark',
+      'a25d-speechless-sweat',
+      'a25d-lovestruck-heart-left',
+      'a25d-lovestruck-heart-right',
+      'a25d-lovestruck-face-effect',
+      'a25d-lovestruck-drool',
+    ]
     const neutralLayerCount = layers.filter(
       (layer) =>
         !(
@@ -101,8 +116,7 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
           layer.variant !== 'open'
         ) &&
         !(layer.slot === 'mouth' && layer.variant !== 'closed') &&
-        layer.id !== 'a25d-anger-mark' &&
-        layer.id !== 'a25d-speechless-sweat',
+        !accentIds.includes(layer.id),
     ).length
     assert.equal(canvases[0]?.context.drawCount, layers.length)
     assert.equal(canvases[1]?.context.drawCount, neutralLayerCount)
@@ -220,6 +234,19 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
       'speechless sweat accent is synthesized independently',
     )
     assert.ok(
+      layers.some((layer) => layer.id === 'a25d-lovestruck-heart-left') &&
+        layers.some((layer) => layer.id === 'a25d-lovestruck-heart-right'),
+      'each eye receives a separately anchored heart pupil',
+    )
+    assert.ok(
+      layers.some((layer) => layer.id === 'a25d-lovestruck-face-effect'),
+      'blush, hatch marks, and sweat share one face-local effect layer',
+    )
+    assert.ok(
+      layers.some((layer) => layer.id === 'a25d-lovestruck-drool'),
+      'drool remains separate so it can follow the animated mouth corner',
+    )
+    assert.ok(
       layers
         .filter((layer) => /hair|topwear|handwear/.test(layer.id))
         .every((layer) => (layer.mesh?.vertices.length || 0) > 8),
@@ -330,7 +357,7 @@ test('preflight rejects a PSD that cannot satisfy the rigid two-arm contract', a
   } as Psd
   await assert.rejects(
     () => prepareWithFakeCanvas(withoutArms),
-    /left\/right sleeve-forearm-hand fragments/,
+    /rigid-left-arm-fragment, rigid-right-arm-fragment/,
   )
 })
 

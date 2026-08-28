@@ -29,7 +29,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { Spinner } from '../../components/Spinner'
 import { useI18n } from '../../contexts/I18nContext'
-import { useNavigation } from '../../contexts/NavigationContext'
+import { useImmersiveChrome } from '../../contexts/NavigationContext'
 import { isExlight, useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { usePageSeo } from '../../hooks/usePageSeo'
 import { useBreakpoints } from '../../hooks/useSharedEventListener'
@@ -500,7 +500,6 @@ export function TappPlaygroundPage() {
   const navigate = useNavigate()
   const { t, locale, format } = useI18n()
   const { isMobile } = useBreakpoints()
-  const { setImmersiveMode } = useNavigation()
   const animConfig = useAnimationLevel()
 
   usePageSeo(
@@ -639,11 +638,7 @@ export function TappPlaygroundPage() {
   useEffect(() => () => workspaceObserverRef.current?.disconnect(), [])
 
   // 进入沉浸模式，隐藏底部导航岛给控制岛让位（桌面端 only；移动端会立刻重定向）
-  useEffect(() => {
-    if (isMobile) return
-    setImmersiveMode(true)
-    return () => setImmersiveMode(false)
-  }, [isMobile, setImmersiveMode])
+  useImmersiveChrome('tapp-playground', !isMobile)
 
   useEffect(() => {
     saveSessionsStore(store)

@@ -6,7 +6,10 @@
 
 use std::time::{Duration, Instant};
 
-use myriad_merope::{parse_performance_plan, ChatPerformancePlan};
+use myriad_merope::{
+    parse_performance_plan, ChatPerformancePlan, PERFORMANCE_BASELINE_EXPRESSIONS,
+    PERFORMANCE_CUE_INTENTS, PERFORMANCE_INTERRUPT_MODES, PERFORMANCE_POSTURES,
+};
 use serde::{Deserialize, Serialize};
 
 use super::MoodTransition;
@@ -90,12 +93,8 @@ pub async fn direct_motion(context: MotionContext) -> Option<PerformanceDirectiv
     .to_string();
 
     let schema = motion_schema();
-    let call = analyzer.analyze_json(
-        MOTION_SYSTEM_PROMPT,
-        &input,
-        MOTION_SCHEMA_NAME,
-        Some(&schema),
-    );
+    let system_prompt = motion_system_prompt();
+    let call = analyzer.analyze_json(&system_prompt, &input, MOTION_SCHEMA_NAME, Some(&schema));
     let result = tokio::time::timeout(
         MOTION_TOTAL_TIMEOUT,
         crate::services::ai_cost_ledger::with_site_ai_ledger(
@@ -143,10 +142,12 @@ fn truncate(value: &str, max_chars: usize) -> String {
     value.chars().take(max_chars).collect()
 }
 
-const MOTION_SYSTEM_PROMPT: &str = r#"你是 Merope 的动作导演。输入中的 mood 是已保存的事实，不要修改心情。
+fn motion_system_prompt() -> String {
+    format!(
+        r#"你是 Merope 的动作导演。输入中的 mood 是已保存的事实，不要修改心情。
 只选择语义表演，不输出骨骼、坐标、角度、blendshape、口型或逐帧数据。
-baseline.expression 只能是 withdrawn/subdued/steady/warm；baseline.posture 只能是 closed/neutral/open。
-cues.intent 只能是 greet/respond/question/delight/emphasize/listen/notify/think/dizzy/cry/angry/speechless/maniac，最多 3 个。
+baseline.expression 只能是 {}；baseline.posture 只能是 {}。
+cues.intent 只能是 {}，最多 3 个。
 reaction 要立即回应用户输入；delivery 配合即将说出的话；outcome 配合任务结果。
 只有确实需要斟酌、回忆或推理时才使用 think；不要让每次普通回复都思考。
 只有文本明确表现眩晕、失去平衡或认知过载时才使用 dizzy；普通困惑、无奈或失败不要使用。
@@ -154,7 +155,14 @@ reaction 要立即回应用户输入；delivery 配合即将说出的话；outco
 只有文本明确表现生气、恼怒或受挫时才使用 angry；普通失败、不同意或严肃说明不要使用。
 只有文本明确表现无语、尴尬或对荒谬情况无奈时才使用 speechless；它是短暂反应，不代表静默或停止说话。
 只有文本明确表现失控狂笑、疯癫式兴奋或故意夸张的疯狂时才使用 maniac；普通开心、笑话或胜利不要使用。
-低心情应克制，高心情可以更开放，但不要夸张。输出必须符合 JSON schema。"#;
+只有文本明确表现发呆、走神、没反应过来或自嘲犯傻时才使用 silly；它会让眼神完全涣散，普通俏皮、玩笑或思考不要使用。
+只有文本明确表现被迷住、强烈心动、害羞到招架不住或故意夸张的沉醉时才使用 lovestruck；普通友好、感谢、开心或称赞不要使用。
+低心情应克制，高心情可以更开放，但不要夸张。输出必须符合 JSON schema。"#,
+        PERFORMANCE_BASELINE_EXPRESSIONS.join("/"),
+        PERFORMANCE_POSTURES.join("/"),
+        PERFORMANCE_CUE_INTENTS.join("/")
+    )
+}
 
 fn motion_schema() -> serde_json::Value {
     serde_json::json!({
@@ -163,8 +171,8 @@ fn motion_schema() -> serde_json::Value {
             "baseline": {
                 "type": "object",
                 "properties": {
-                    "expression": { "type": "string", "enum": ["withdrawn", "subdued", "steady", "warm"] },
-                    "posture": { "type": "string", "enum": ["closed", "neutral", "open"] },
+                    "expression": { "type": "string", "enum": PERFORMANCE_BASELINE_EXPRESSIONS },
+                    "posture": { "type": "string", "enum": PERFORMANCE_POSTURES },
                     "motionEnergy": { "type": "number", "minimum": 0.2, "maximum": 1.4 },
                     "attention": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
                 },
@@ -176,13 +184,13 @@ fn motion_schema() -> serde_json::Value {
                 "items": {
                     "type": "object",
                     "properties": {
-                        "intent": { "type": "string", "enum": ["greet", "respond", "question", "delight", "emphasize", "listen", "notify", "think", "dizzy", "cry", "angry", "speechless", "maniac"] },
+                        "intent": { "type": "string", "enum": PERFORMANCE_CUE_INTENTS },
                         "atMs": { "type": "integer", "minimum": 0, "maximum": 5000 },
                         "intensity": { "type": "number", "minimum": 0.2, "maximum": 1.4 },
                         "tempo": { "type": "number", "minimum": 0.5, "maximum": 1.6 },
                         "fadeInMs": { "type": "integer", "minimum": 40, "maximum": 600 },
                         "fadeOutMs": { "type": "integer", "minimum": 60, "maximum": 800 },
-                        "interrupt": { "type": "string", "enum": ["replace", "queue", "if-lower"] }
+                        "interrupt": { "type": "string", "enum": PERFORMANCE_INTERRUPT_MODES }
                     },
                     "required": ["intent", "atMs", "intensity", "tempo", "fadeInMs", "fadeOutMs", "interrupt"]
                 }
@@ -248,7 +256,13 @@ mod tests {
         assert!(intents.iter().any(|value| value == "angry"));
         assert!(intents.iter().any(|value| value == "speechless"));
         assert!(intents.iter().any(|value| value == "maniac"));
-        assert!(MOTION_SYSTEM_PROMPT.contains("普通低心情、失败或道歉不要使用"));
-        assert!(!MOTION_SYSTEM_PROMPT.contains("angleZ"));
+        assert!(intents.iter().any(|value| value == "silly"));
+        assert!(intents.iter().any(|value| value == "lovestruck"));
+        let prompt = motion_system_prompt();
+        assert!(prompt.contains("普通低心情、失败或道歉不要使用"));
+        assert!(prompt.contains(&PERFORMANCE_BASELINE_EXPRESSIONS.join("/")));
+        assert!(prompt.contains(&PERFORMANCE_POSTURES.join("/")));
+        assert!(prompt.contains(&PERFORMANCE_CUE_INTENTS.join("/")));
+        assert!(!prompt.contains("angleZ"));
     }
 }

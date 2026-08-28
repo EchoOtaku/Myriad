@@ -5,7 +5,8 @@ import type {
   RigAssetPreflight,
 } from '../assets/pipeline'
 import type { RigCharacterHandle } from '../rig/RigCharacter'
-import type { Anime25DDebugSnapshot, Anime25DDriver } from './player'
+import type { Anime25DDriver } from './driver'
+import type { Anime25DDebugSnapshot } from './player'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { generationFailureMessage } from '../../../components/agent/onboarding/generationError'
 import {
@@ -19,16 +20,18 @@ import {
 } from '../../../components/settings'
 import { useI18n } from '../../../contexts/I18nContext'
 import { userFacingError } from '../../../utils/userFacingError'
+import { WORKBENCH_DRIVER } from './driver'
 import {
   ANGRY_EXPRESSION_PRESET,
   CRY_EXPRESSION_PRESET,
   DIZZY_EXPRESSION_PRESET,
+  LOVESTRUCK_EXPRESSION_PRESET,
   MANIAC_EXPRESSION_PRESET,
-  SQUEEZE_EXPRESSION_PRESET,
+  SILLY_EXPRESSION_PRESET,
   SPEECHLESS_EXPRESSION_PRESET,
+  SQUEEZE_EXPRESSION_PRESET,
   THINKING_EXPRESSION_PRESET,
 } from './expressionPresets'
-import { WORKBENCH_DRIVER } from './player'
 
 interface Props {
   characterRef: RefObject<RigCharacterHandle | null>
@@ -153,6 +156,14 @@ const PRESETS: Array<{ id: string; driver: Partial<Anime25DDriver> }> = [
   {
     id: 'maniac',
     driver: { ...MANIAC_EXPRESSION_PRESET },
+  },
+  {
+    id: 'silly',
+    driver: { ...SILLY_EXPRESSION_PRESET },
+  },
+  {
+    id: 'lovestruck',
+    driver: { ...LOVESTRUCK_EXPRESSION_PRESET },
   },
   {
     id: 'winkL',
@@ -1336,6 +1347,8 @@ function presetLabel(labels: TranslationKeys['merope'], id: string): string {
   if (id === 'angry') return labels.anime25dPresetAngry
   if (id === 'speechless') return labels.anime25dPresetSpeechless
   if (id === 'maniac') return labels.anime25dPresetManiac
+  if (id === 'silly') return labels.anime25dPresetSilly
+  if (id === 'lovestruck') return labels.anime25dPresetLovestruck
   if (id === 'winkL') return labels.anime25dPresetWinkLeft
   if (id === 'winkR') return labels.anime25dPresetWinkRight
   return id

@@ -248,6 +248,8 @@ export interface TranslationKeys {
     anime25dPresetAngry: string
     anime25dPresetSpeechless: string
     anime25dPresetManiac: string
+    anime25dPresetSilly: string
+    anime25dPresetLovestruck: string
     anime25dBlinkNow: string
     anime25dResetPose: string
     anime25dInspect: string
@@ -2157,6 +2159,166 @@ export interface TranslationKeys {
   // 报告
   reports: {
     title: string
+  }
+
+  // Agent 岛的状态语言（供无障碍播报与调试）
+  agentPanel: {
+    status: {
+      idle: string
+      listening: string
+      thinking: string
+      working: string
+      needsInput: string
+      done: string
+      error: string
+    }
+    context: {
+      watching: string
+      onPage: string
+      selected: string
+      /** 关掉读页之后那一行 */
+      blind: string
+      allowHint: string
+      muteHint: string
+      routes: {
+        home: string
+        library: string
+        brew: string
+        reports: string
+        config: string
+        tapp: string
+        other: string
+      }
+    }
+    actions: {
+      summarize: string
+      translate: string
+      explain: string
+    }
+    /** 动作胶囊按下后真正发出去的话 */
+    prompts: {
+      summarize: string
+      translate: string
+      explainSelection: string
+      translateSelection: string
+    }
+    inputPlaceholder: string
+    send: string
+    /** 展开到完整对话 / 收回上一档 */
+    expand: string
+    collapse: string
+    /** 执行引擎的状态与错误文案（从旧面板的 arael 块搬过来） */
+    accessDenied: string
+    answerFailed: string
+    askArael: string
+    cancelFailed: string
+    confirmExpiredHint: string
+    errorWithDetail: string
+    executionFailed: string
+    failReason: string
+    interrupted: string
+    loginRequiredHint: string
+    queueBusy: string
+    quotaCooldown: string
+    quotaExhausted: string
+    requestTimeout: string
+    streamError: string
+    taskCompleted: string
+    agentPersonaOff: string
+    presetTitleTooLong: string
+    presetSummaryTooLong: string
+    presetStepsTooLarge: string
+    presetHistoryTooLong: string
+    save: string
+    saved: string
+    unsave: string
+    edit: string
+    removeSession: string
+    confirmRemoveSession: string
+    copy: string
+    copied: string
+    retry: string
+    zoomImage: string
+    closeImage: string
+    newSession: string
+    stop: string
+    voice: { start: string; stop: string; working: string }
+    /** 定时任务 / 技能 / 记忆 */
+    manage: {
+      title: string
+      tabs: { heartbeat: string; skills: string; memory: string }
+      needLogin: string
+      adminOnly: string
+      loadFailed: string
+      actionFailed: string
+      emptyHeartbeat: string
+      emptySkills: string
+      emptyMemory: string
+      personaElsewhere: string
+      doNotDisturb: string
+      lastRun: string
+      neverRun: string
+      remove: string
+      confirmRemove: string
+      newTask: string
+      taskName: string
+      taskAction: string
+      taskSchedule: string
+      save: string
+      cancel: string
+      badCron: string
+      everyMinutes: string
+      everyHours: string
+      hourly: string
+      dailyAt: string
+      preset15m: string
+      preset30m: string
+      preset1h: string
+      preset6h: string
+      presetDaily9: string
+      presetCustom: string
+    }
+    /** 思考过程那一行 */
+    thinking: {
+      doneSteps: string
+      failed: string
+    }
+    /** 会话一览 */
+    sessions: {
+      title: string
+      empty: string
+      untitled: string
+      loadFailed: string
+      needLogin: string
+      justNow: string
+      minutesAgo: string
+      hoursAgo: string
+      daysAgo: string
+    }
+    /** 敏感操作确认卡片 */
+    action: {
+      risk: {
+        none: string
+        low: string
+        medium: string
+        high: string
+        critical: string
+      }
+      steps: string
+      impact: string
+      expiresIn: string
+      expired: string
+      confirm: string
+      cancel: string
+    }
+    /** 撤销刚才那一下 */
+    undo: {
+      button: string
+      did: {
+        navigate: string
+        brew_open_article: string
+      }
+    }
   }
 
   // Agent 人设设定引导
@@ -4453,193 +4615,6 @@ export interface TranslationKeys {
   }
 
   // Agent
-  arael: {
-    // 问候语
-    greeting: {
-      lateNight: string
-      morning: string
-      afternoon: string
-      evening: string
-    }
-    // 页面提示
-    pageHints: {
-      library: string[]
-      brew: string[]
-      reports: string[]
-      config: string[]
-      tapp: string[]
-    }
-    generalHints: string[]
-    // 空状态
-    heroSub: string
-    askArael: string
-    recentConversations: string
-    noRecentConversations: string
-    unnamedConversation: string
-    // 输入
-    inputPlaceholder: string
-    recording: string
-    recognizing: string
-    stopRecording: string
-    voiceInput: string
-    stopConversation: string
-    stop: string
-    // 会话列表
-    historyTitle: string
-    newSession: string
-    noHistory: string
-    messageCount: string
-    // 相对时间
-    timeJustNow: string
-    timeMinutesAgo: string
-    timeHoursAgo: string
-    timeDaysAgo: string
-    // 管理面板
-    tabPersona: string
-    tabHeartbeat: string
-    tabSkills: string
-    tabMemory: string
-    personaName: string
-    personaPersonality: string
-    personaPersonalityHint: string
-    personaSave: string
-    personaReset: string
-    personaOwnerOnly: string
-    personaDoNotDisturb: string
-    agentPersonaOff: string
-    statusNeedLogin: string
-    emptyHeartbeat: string
-    emptyHeartbeatHint: string
-    emptySkills: string
-    emptyMemory: string
-    manageLoadError: string
-    manageActionError: string
-    heartbeatSaveFailed: string
-    heartbeatToggleFailed: string
-    heartbeatDeleteFailed: string
-    heartbeatLoadFailed: string
-    skillsLoadFailed: string
-    memoryLoadFailed: string
-    memorySaveFailed: string
-    memoryDeleteFailed: string
-    skillDeleteFailed: string
-    cancelFailed: string
-    loginRequiredHint: string
-    manageAdminOnly: string
-    editHeartbeat: string
-    saveHeartbeat: string
-    createHeartbeat: string
-    deleteHeartbeat: string
-    confirmDeleteHeartbeat: string
-    heartbeatName: string
-    heartbeatNamePlaceholder: string
-    heartbeatSchedule: string
-    heartbeatScheduleCustom: string
-    heartbeatCronHint: string
-    heartbeatAction: string
-    heartbeatActionPlaceholder: string
-    heartbeatEnabled: string
-    heartbeatActive: string
-    heartbeatPaused: string
-    heartbeatLastRun: string
-    heartbeatNeverRun: string
-    heartbeatCount: string
-    heartbeatPresetsAria: string
-    cronEveryMinutes: string
-    cronEveryHours: string
-    cronHourly: string
-    cronDaily: string
-    cronPreset15m: string
-    cronPreset30m: string
-    cronPreset1h: string
-    cronPreset6h: string
-    cronPresetDaily9: string
-    originManual: string
-    originAuto: string
-    originImproved: string
-    statSuccess: string
-    statFail: string
-    memPreference: string
-    memFact: string
-    memDecision: string
-    memNote: string
-    memKnowledge: string
-    memLesson: string
-    memPattern: string
-    memInsight: string
-    memSession: string
-    deleteMemory: string
-    editMemory: string
-    deleteSkill: string
-    // 聊天消息
-    waiting: string
-    failed: string
-    retryRequest: string
-    // 执行详情
-    loading: string
-    autoDegraded: string
-    retryCount: string
-    recalledMemories: string
-    skill: string
-    // 收藏
-    run: string
-    unfavorite: string
-    // 任务状态
-    processing: string
-    interrupted: string
-    executionFailed: string
-    unknownError: string
-    presetTitleTooLong: string
-    presetSummaryTooLong: string
-    presetStepsTooLarge: string
-    presetHistoryTooLong: string
-    partialComplete: string
-    failReason: string
-    answerFailed: string
-    /** Sensitive confirmation: risk badge */
-    confirmRisk: string
-    confirmExpiresIn: string
-    confirmExpired: string
-    confirmExpiredHint: string
-    // 思考面板
-    thinking: string
-    completed: string
-    errorOccurred: string
-    elapsedTime: string
-    totalTime: string
-    stepLabel: string
-    imageLoadFailed: string
-    taskCompleted: string
-    // 操作按钮
-    manage: string
-    debugPanel: string
-    inputAnswer: string
-    errorWithDetail: string
-    quotaCooldown: string
-    quotaExhausted: string
-    queueBusy: string
-    accessDenied: string
-    aiGeneratedImage: string
-    // 记忆 tier
-    memTierLong: string
-    memTierMid: string
-    memTierShort: string
-    // Heartbeat
-    toggleOn: string
-    toggleOff: string
-    // 错误消息
-    streamError: string
-    noResponse: string
-    requestTimeout: string
-    taskEndedWithStatus: string
-    // 消息操作
-    copyMessage: string
-    copied: string
-    // 会话管理
-    searchSessions: string
-    deleteSession: string
-    deleteSessionConfirm: string
-  }
 
   // 通知中心
   notificationCenter: {

@@ -101,7 +101,7 @@ function MeropeWidgetPreview({ compact }: { compact?: boolean }) {
       className={`merope-widget${compact ? ' merope-widget--compact' : ''}`}
     >
       <div className="merope-widget__surface">
-        <Nameplate name={DEFAULT_AGENT_NAME} compact={compact} />
+        <Nameplate name={DEFAULT_AGENT_NAME} band={null} compact={compact} />
       </div>
     </WidgetShell>
   )

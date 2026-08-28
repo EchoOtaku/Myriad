@@ -158,8 +158,8 @@ function classified(label: string, raw: string, hint = ''): string {
   return joinParts(
     label,
     keep,
-    size && keep.indexOf(size) < 0 ? size : '',
-    png && keep.toUpperCase().indexOf('PNG') < 0 ? png : '',
+    size && !keep.includes(size) ? size : '',
+    png && !keep.toUpperCase().includes('PNG') ? png : '',
     usefulExtra(hint, label, keep),
   )
 }
@@ -437,7 +437,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.dndScheduleIncomplete
   }
   if (code === 'merope_disabled' || /^agent persona is disabled$/i.test(raw)) {
-    return currentCopy().arael.agentPersonaOff
+    return currentCopy().agentPanel.agentPersonaOff
   }
   if (
     code === 'consent_required' ||
@@ -1142,7 +1142,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (
     code === 'agent_processing_failed' ||
     /^processing failed$/i.test(raw) ||
-    /^处理失败/.test(raw)
+    raw.startsWith('处理失败')
   ) {
     return classified(t.agentProcessingFailed, raw, hint)
   }
@@ -1173,7 +1173,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return t.agentStepRetrying
   }
-  if (/^confirmation failed$/i.test(raw) || /^确认执行失败/.test(raw)) {
+  if (/^confirmation failed$/i.test(raw) || raw.startsWith('确认执行失败')) {
     return t.agentConfirmFailed
   }
   if (
@@ -1430,7 +1430,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   }
   if (
     /^invalid url$/i.test(raw) ||
-    /^无效的 URL/.test(raw)
+    raw.startsWith('无效的 URL')
   ) {
     return t.invalidUrl
   }
@@ -1559,21 +1559,21 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (/^failed to submit refresh$|^提交失败/.test(raw)) {
     return t.taskSubmitFailed
   }
-  const arael = currentCopy().arael
+  const agentPanel = currentCopy().agentPanel
   if (code === 'preset_title_too_long' || /标题过长|title is too long/i.test(raw)) {
-    return arael.presetTitleTooLong
+    return agentPanel.presetTitleTooLong
   }
   if (code === 'preset_summary_too_long' || /摘要过长|summary is too long/i.test(raw)) {
-    return arael.presetSummaryTooLong
+    return agentPanel.presetSummaryTooLong
   }
   if (code === 'preset_steps_too_large' || /解析步骤数据过大|parsed steps are too large/i.test(raw)) {
-    return arael.presetStepsTooLarge
+    return agentPanel.presetStepsTooLarge
   }
   if (
     code === 'preset_history_too_long' ||
     /对话历史过长|conversation history is too long/i.test(raw)
   ) {
-    return arael.presetHistoryTooLong
+    return agentPanel.presetHistoryTooLong
   }
   if (
     code === 'notification_unavailable' ||

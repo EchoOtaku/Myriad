@@ -79,8 +79,10 @@ const TappPlayground = lazy(
   () => import('./tapp/pages/TappPlaygroundPage.tsx'),
 )
 
-// Agent 浮动面板（项目名 Arael）
-const AraelPanel = lazy(() => import('./components/agent/AraelPanel'))
+// Agent 新 UI —— 岛 / Quick Overlay / Full 的外壳
+const AgentPanel = lazy(() => import('./components/agent-panel/AgentPanel'))
+// 执行引擎 —— 不画任何东西，只跑任务
+const AgentEngine = lazy(() => import('./components/agent-panel/AgentEngine'))
 
 /**
  * 路由守卫：复用全局 AuthContext 认证状态
@@ -671,7 +673,8 @@ export function App() {
                     {/* Agent 浮动面板 - 长按触发 */}
                     <AgentAccessGate>
                       <Suspense fallback={null}>
-                        <AraelPanel />
+                        <AgentEngine />
+                        <AgentPanel />
                       </Suspense>
                     </AgentAccessGate>
                     <RouteLoader />

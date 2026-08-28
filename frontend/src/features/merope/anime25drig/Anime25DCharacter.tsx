@@ -7,14 +7,17 @@ import type { GazeSource, GazeTarget } from '../rig/motion'
 import type { MeropeRigManifest } from '../rig/types'
 import type { SingingSpectrumDrive } from '../singing/singingGroove'
 import type { MeropeActivity } from '../types'
-import type { Anime25DDebugSnapshot, Anime25DDriver } from './player'
+import type { Anime25DDriver } from './driver'
+import type { Anime25DDebugSnapshot } from './player'
 import type { Anime25DPlayback } from './types'
 import {
   forwardRef,
   useEffect,
   useImperativeHandle,
   useRef,
+  useState,
 } from 'react'
+import { IDENTITY_DRIVER } from './driver'
 import { activityExpressionDriverPatch } from './expressionPresets'
 import { PerformanceDirectiveGate } from './performanceExpression'
 import {
@@ -25,10 +28,8 @@ import {
   scheduleBodyCues,
   scheduledBodyCueRemainingDurationMs,
 } from './performanceMotion'
-import {
-  Anime25DPlayer,
-  IDENTITY_DRIVER,
-} from './player'
+import { Anime25DPlayer } from './player'
+import { shouldAnimateAnime25D } from './runtimePolicy'
 import {
   speechArticulationDriverPatch,
   speechEnergyDriverPatch,
@@ -43,6 +44,7 @@ interface Props {
   mood: number
   /** Settings page: sliders own the base pose; live acting stays additive. */
   manualControl?: boolean
+  onPlaybackError?: (error: unknown) => void
 }
 
 export interface Anime25DCharacterHandle {
@@ -70,10 +72,22 @@ export interface Anime25DCharacterHandle {
 }
 
 const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
-  ({ activity, manifest, playback, atlasUrl, mood, manualControl = false }, ref) => {
+  (
+    {
+      activity,
+      manifest,
+      playback,
+      atlasUrl,
+      mood,
+      manualControl = false,
+      onPlaybackError,
+    },
+    ref,
+  ) => {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const playerRef = useRef<Anime25DPlayer | null>(null)
     const readyRef = useRef(false)
+    const [ready, setReady] = useState(false)
     const wrapperRef = useRef<HTMLSpanElement>(null)
     const activityRef = useRef(activity)
     const moodRef = useRef(mood)
@@ -118,10 +132,7 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
           baselineRef.current,
           currentActivity === 'thinking',
         ),
-        ...idleSpeechDriverPatch(
-          moodRef.current,
-          speechActiveRef.current,
-        ),
+        ...idleSpeechDriverPatch(moodRef.current, speechActiveRef.current),
       })
     }
 
@@ -153,62 +164,66 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       )) {
         const cue = scheduled.cue
         let scheduledStartAt = scheduled.startMs
-        const timer = window.setTimeout(() => {
-          cueTimersRef.current.delete(timer)
-          const run = () => {
-            const priority = cuePriority(cue)
-            const now = performance.now()
-            const active = now < activeUntilRef.current
-            if (cue.interrupt === 'queue' && active) {
-              scheduledStartAt = activeUntilRef.current
-              const queued = window.setTimeout(() => {
-                cueTimersRef.current.delete(queued)
-                run()
-              }, scheduledStartAt - now)
-              cueTimersRef.current.add(queued)
-              return
-            }
-            if (
-              cue.interrupt === 'if-lower' &&
-              active &&
-              priority <= activePriorityRef.current
-            ) {
-              return
-            }
-            const duration = scheduledBodyCueRemainingDurationMs(
-              {
-                ...scheduled,
-                startMs: scheduledStartAt,
-                endMs:
-                  scheduled.endMs + (scheduledStartAt - scheduled.startMs),
-              },
-              now,
-            )
-            if (duration <= 0) return
-            if (restoreTimerRef.current !== null) window.clearTimeout(restoreTimerRef.current)
-            activePriorityRef.current = priority
-            activeUntilRef.current = now + duration
-            playerRef.current?.setTarget({
-              ...performanceRestDriverPatch(
-                baselineRef.current,
-                activityRef.current === 'thinking',
-              ),
-              // Authored cues own the pose until their restore timer fires.
-              // Ambient motion eases to neutral instead of competing.
-              rand: false,
-              ...cueDriverPatch(cue),
-            })
-            restoreTimerRef.current = window.setTimeout(() => {
-              activePriorityRef.current = 0
-              activeUntilRef.current = 0
-              restoreTimerRef.current = null
-              if (playerRef.current) {
-                applyPerformanceDriver(playerRef.current)
+        const timer = window.setTimeout(
+          () => {
+            cueTimersRef.current.delete(timer)
+            const run = () => {
+              const priority = cuePriority(cue)
+              const now = performance.now()
+              const active = now < activeUntilRef.current
+              if (cue.interrupt === 'queue' && active) {
+                scheduledStartAt = activeUntilRef.current
+                const queued = window.setTimeout(() => {
+                  cueTimersRef.current.delete(queued)
+                  run()
+                }, scheduledStartAt - now)
+                cueTimersRef.current.add(queued)
+                return
               }
-            }, duration)
-          }
-          run()
-        }, Math.max(0, scheduledStartAt - performance.now()))
+              if (
+                cue.interrupt === 'if-lower' &&
+                active &&
+                priority <= activePriorityRef.current
+              ) {
+                return
+              }
+              const duration = scheduledBodyCueRemainingDurationMs(
+                {
+                  ...scheduled,
+                  startMs: scheduledStartAt,
+                  endMs:
+                    scheduled.endMs + (scheduledStartAt - scheduled.startMs),
+                },
+                now,
+              )
+              if (duration <= 0) return
+              if (restoreTimerRef.current !== null)
+                window.clearTimeout(restoreTimerRef.current)
+              activePriorityRef.current = priority
+              activeUntilRef.current = now + duration
+              playerRef.current?.setTarget({
+                ...performanceRestDriverPatch(
+                  baselineRef.current,
+                  activityRef.current === 'thinking',
+                ),
+                // Authored cues own the pose until their restore timer fires.
+                // Ambient motion eases to neutral instead of competing.
+                rand: false,
+                ...cueDriverPatch(cue),
+              })
+              restoreTimerRef.current = window.setTimeout(() => {
+                activePriorityRef.current = 0
+                activeUntilRef.current = 0
+                restoreTimerRef.current = null
+                if (playerRef.current) {
+                  applyPerformanceDriver(playerRef.current)
+                }
+              }, duration)
+            }
+            run()
+          },
+          Math.max(0, scheduledStartAt - performance.now()),
+        )
         cueTimersRef.current.add(timer)
       }
     }
@@ -282,12 +297,19 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
           : now
         if (
           playerRef.current &&
-          !playerRef.current.playPerformance(directive, directiveStartedAt / 1_000)
+          !playerRef.current.playPerformance(
+            directive,
+            directiveStartedAt / 1_000,
+          )
         ) {
           return false
         }
         performanceRef.current = { directive, startedAtMs: directiveStartedAt }
-        schedulePerformanceBody(directive, directiveStartedAt, playerRef.current)
+        schedulePerformanceBody(
+          directive,
+          directiveStartedAt,
+          playerRef.current,
+        )
         return true
       },
       stopMotionPlan() {
@@ -347,7 +369,15 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       const canvas = canvasRef.current
       const wrapper = wrapperRef.current
       if (!canvas || !wrapper) return undefined
-      const player = new Anime25DPlayer(canvas, playback, manifest)
+      let player: Anime25DPlayer
+      try {
+        player = new Anime25DPlayer(canvas, playback, manifest)
+      } catch (error) {
+        readyRef.current = false
+        setReady(false)
+        onPlaybackError?.(error)
+        return undefined
+      }
       playerRef.current = player
       player.setSpeechActive(speechActiveRef.current)
       player.setSinging(singingActiveRef.current)
@@ -371,6 +401,9 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       let frame = 0
       let last = performance.now()
       let cancelled = false
+      let atlasReady = false
+      let pageVisible = document.visibilityState !== 'hidden'
+      let inViewport = true
       const onPointerMove = (event: PointerEvent) => {
         const bounds = canvas.getBoundingClientRect()
         if (bounds.width <= 0 || bounds.height <= 0) return
@@ -390,32 +423,75 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         player.resize(rect.width, rect.height, window.devicePixelRatio || 1)
       }
       const tick = (now: number) => {
-        if (cancelled) return
+        frame = 0
+        if (cancelled || !atlasReady || !pageVisible || !inViewport) return
         player.tick((now - last) / 1000)
         last = now
         frame = window.requestAnimationFrame(tick)
       }
+      const syncAnimation = () => {
+        const shouldRun = shouldAnimateAnime25D({
+          atlasReady,
+          pageVisible,
+          inViewport,
+          cancelled,
+        })
+        if (!shouldRun) {
+          if (frame !== 0) window.cancelAnimationFrame(frame)
+          frame = 0
+          return
+        }
+        if (frame !== 0) return
+        last = performance.now()
+        frame = window.requestAnimationFrame(tick)
+      }
+      const onVisibilityChange = () => {
+        pageVisible = document.visibilityState !== 'hidden'
+        syncAnimation()
+      }
       const observer = new ResizeObserver(resize)
       observer.observe(wrapper)
+      const viewportObserver =
+        typeof IntersectionObserver === 'undefined'
+          ? null
+          : new IntersectionObserver((entries) => {
+              inViewport = entries.some((entry) => entry.isIntersecting)
+              syncAnimation()
+            })
+      viewportObserver?.observe(wrapper)
+      document.addEventListener('visibilitychange', onVisibilityChange)
       resize()
-      void player.loadAtlas(atlasUrl).then(() => {
-        if (cancelled) return
-        readyRef.current = true
-        wrapper.classList.add('is-ready')
-        frame = window.requestAnimationFrame(tick)
-      })
+      void player
+        .loadAtlas(atlasUrl)
+        .then(() => {
+          if (cancelled) return
+          atlasReady = true
+          readyRef.current = true
+          setReady(true)
+          syncAnimation()
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return
+          atlasReady = false
+          readyRef.current = false
+          setReady(false)
+          onPlaybackError?.(error)
+        })
       return () => {
         cancelled = true
         clearCueTimers()
         window.cancelAnimationFrame(frame)
         observer.disconnect()
+        viewportObserver?.disconnect()
+        document.removeEventListener('visibilitychange', onVisibilityChange)
         canvas.removeEventListener('pointermove', onPointerMove)
         canvas.removeEventListener('pointerleave', onPointerLeave)
         player.dispose()
         playerRef.current = null
-        wrapper.classList.remove('is-ready')
+        readyRef.current = false
+        setReady(false)
       }
-    }, [atlasUrl, manifest, playback])
+    }, [atlasUrl, manifest, onPlaybackError, playback])
 
     useEffect(() => {
       if (manualRef.current || manualControl) return
@@ -425,7 +501,7 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
     return (
       <span
         ref={wrapperRef}
-        className="merope-rig"
+        className={ready ? 'merope-rig is-ready' : 'merope-rig'}
         data-rig-quality="layered-2d"
         data-runtime="Anime2.5DRig"
       >

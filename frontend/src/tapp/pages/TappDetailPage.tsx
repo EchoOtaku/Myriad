@@ -814,7 +814,7 @@ export function TappDetailPage() {
       : []),
     {
       key: 'ask-arael',
-      label: t.arael.askArael,
+      label: t.agentPanel.askArael,
       onClick: () =>
         window.dispatchEvent(
           new CustomEvent('arael-open-session', {

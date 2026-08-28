@@ -3,6 +3,8 @@
 # ============================================
 # Sourced by dev.sh. Do not execute directly.
 # macOS /bin/bash 3.2: no assoc arrays, no `wait -n`.
+# bash 3.2 leaks an FD on every process substitution (`<(...)`); never
+# use it on the idle/render path or the TUI hits "Too many open files".
 #
 # Overview is the start menu (mark + panel at ~90×26, compact below that).
 # Start/stop stay on this screen and write backend.log / frontend.log.
@@ -41,7 +43,7 @@ TUI_OVERVIEW_PULSE_AT=0
 TUI_OVERVIEW_PULSE_SECS=5
 TUI_POLL_FAST=3
 TUI_POLL_IDLE=10
-TUI_POLL_TIME=3
+TUI_POLL_TIME=10
 
 TUI_TAB_COUNT=5
 TUI_LOG_COUNT=4
@@ -49,6 +51,8 @@ TUI_MIN_COLS=72
 TUI_MIN_ROWS=18
 TUI_LOGO_FILE=""
 TUI_BODY_FILE=""
+TUI_PANEL_FILE=""
+TUI_KEYFILE=""
 TUI_LOGO_H=0
 TUI_LOGO_W=0
 TUI_IDLE=0
@@ -261,6 +265,14 @@ tui_leave() {
         rm -f "$TUI_BODY_FILE"
         TUI_BODY_FILE=""
     fi
+    if [[ -n "$TUI_PANEL_FILE" && -f "$TUI_PANEL_FILE" ]]; then
+        rm -f "$TUI_PANEL_FILE"
+        TUI_PANEL_FILE=""
+    fi
+    if [[ -n "$TUI_KEYFILE" && -f "$TUI_KEYFILE" ]]; then
+        rm -f "$TUI_KEYFILE"
+        TUI_KEYFILE=""
+    fi
 }
 
 tui_size() {
@@ -271,18 +283,21 @@ tui_size() {
 }
 
 tui_read_byte() {
-    # bash 3.2 `read -n` resets termios (VMIN=1 VTIME=0), so stty VTIME
-    # never fires and the TUI never idles. dd uses the current tty settings.
-    # `printf X` keeps a trailing newline (Enter) which $(...) would strip.
-    local raw
+    # bash 3.2 `read -n` on the TTY resets termios (VMIN=1 VTIME=0), so
+    # stty VTIME never fires. dd honors the current tty settings.
+    # Do not wrap tty-dd in $(...): that pipe+TTY path exhausts FDs.
     TUI_BYTE=""
     TUI_READ_RC=1
-    raw="$(dd bs=1 count=1 2>/dev/null; printf X)"
-    raw="${raw%X}"
-    if [[ -n "$raw" ]]; then
-        TUI_BYTE="$raw"
-        TUI_READ_RC=0
+    if [[ -z "$TUI_KEYFILE" ]]; then
+        TUI_KEYFILE="$(mktemp "${TMPDIR:-/tmp}/myriad-key.XXXXXX")" || return 0
     fi
+    : > "$TUI_KEYFILE"
+    dd bs=1 count=1 of="$TUI_KEYFILE" 2>/dev/null || true
+    [[ -s "$TUI_KEYFILE" ]] || return 0
+    # -d '' so Enter (newline) is data, not a delimiter. Redirected from a
+    # file so this `read -n` does not touch tty termios.
+    IFS= read -r -d '' -n 1 TUI_BYTE < "$TUI_KEYFILE" || true
+    TUI_READ_RC=0
 }
 
 tui_read_key() {
@@ -481,12 +496,13 @@ tui_refresh_procs() {
 }
 
 tui_refresh_status() {
-    local now line dbp="${DB_PORT:-5432}" have_db=0 have_be=0 have_fe=0 have_up=0
+    local now line dbp="${DB_PORT:-5432}" have_db=0 have_be=0 have_fe=0 have_up=0 lsof_out
     now="$(date +%s)"
     parse_db_url || true
     dbp="${DB_PORT:-5432}"
 
     if command -v lsof >/dev/null 2>&1; then
+        lsof_out="$(lsof -nP -iTCP:"$dbp" -iTCP:"$BACKEND_PORT" -iTCP:"$FRONTEND_PORT" -iTCP:1101 -sTCP:LISTEN 2>/dev/null || true)"
         while IFS= read -r line; do
             case "$line" in
                 *":${dbp}"*) have_db=1 ;;
@@ -500,7 +516,7 @@ tui_refresh_status() {
             case "$line" in
                 *:1101*) have_up=1 ;;
             esac
-        done < <(lsof -nP -iTCP:"$dbp" -iTCP:"$BACKEND_PORT" -iTCP:"$FRONTEND_PORT" -iTCP:1101 -sTCP:LISTEN 2>/dev/null)
+        done <<< "$lsof_out"
     fi
 
     if [[ $have_db -eq 1 ]]; then
@@ -770,6 +786,13 @@ tui_draw_overview() {
     tui_logo_init || true
 
     if tui_overview_fits_mark; then
+        if [[ -z "$TUI_PANEL_FILE" || ! -f "$TUI_PANEL_FILE" ]]; then
+            TUI_PANEL_FILE="$(mktemp "${TMPDIR:-/tmp}/myriad-panel.XXXXXX")" || {
+                tui_draw_overview_compact
+                return 0
+            }
+        fi
+        tui_draw_overview_panel "$(tui_overview_panel_w)" > "$TUI_PANEL_FILE"
         awk 'NR==FNR { a[FNR]=$0; n=FNR; next }
              {
                  if (FNR <= n) printf "%s  %s\n", a[FNR], $0
@@ -779,7 +802,7 @@ tui_draw_overview() {
              END {
                  if (m < n) for (i=m+1; i<=n; i++) print a[i]
              }' pad="$(printf '%*s' "$TUI_LOGO_W" "")" \
-            "$TUI_LOGO_FILE" <(tui_draw_overview_panel "$(tui_overview_panel_w)")
+            "$TUI_LOGO_FILE" "$TUI_PANEL_FILE"
         return 0
     fi
 
@@ -1252,8 +1275,8 @@ tui_overview_should_pulse() {
 }
 
 tui_apply_poll() {
-    local want="$TUI_POLL_FAST"
-    tui_stack_quiet && want="$TUI_POLL_IDLE"
+    local want="$TUI_POLL_IDLE"
+    tui_overview_should_pulse && want="$TUI_POLL_FAST"
     [[ "$want" -eq "$TUI_POLL_TIME" ]] && return 0
     TUI_POLL_TIME="$want"
     stty time "$TUI_POLL_TIME" min 0 2>/dev/null || true
@@ -1281,8 +1304,12 @@ tui_idle_tick() {
             return 0
         fi
     fi
-    # Booting: probe 0.3s, Overview redraw every 5s. All running: clock only, probe ~30s.
-    if [[ $quiet -eq 1 && $((TUI_IDLE % 30)) -ne 0 ]]; then
+    # Starting: probe every tick, Overview redraw every 5s.
+    # Stable (up or down): clock only, probe ~30s. Do not hammer lsof/ps
+    # while sitting on a stopped Overview — bash 3.2 used to leak those FDs.
+    if tui_overview_should_pulse; then
+        :
+    elif [[ $((TUI_IDLE % 30)) -ne 0 ]]; then
         return 0
     fi
     case "$TUI_TAB" in
@@ -1452,6 +1479,7 @@ tui_run_quiet() {
     [[ $- == *e* ]] && old_e=1
     tui_bg_on
     DEV_START_NOWAIT=1
+    tui_apply_poll
     set +e
     "$@" >"$tmp" 2>&1 </dev/null &
     pid=$!

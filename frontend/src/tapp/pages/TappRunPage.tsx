@@ -611,7 +611,7 @@ function TappRunPageStandard({
                   )
                 }
                 className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-400"
-                title={t.arael.askArael}
+                title={t.agentPanel.askArael}
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.02 }}

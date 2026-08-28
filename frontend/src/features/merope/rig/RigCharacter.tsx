@@ -1,16 +1,25 @@
 import type { PerformanceDirective } from '../../../services/agent/types'
 import type { Anime25DCharacterHandle } from '../anime25drig/Anime25DCharacter'
-import type {
-  Anime25DDebugSnapshot,
-  Anime25DDriver,
-} from '../anime25drig/player'
+import type { Anime25DDriver } from '../anime25drig/driver'
+import type { Anime25DDebugSnapshot } from '../anime25drig/player'
 import type { SingingSpectrumDrive } from '../singing/singingGroove'
 import type { MeropeActivity } from '../types'
 import type { SpeechArticulation } from './articulation'
 import type { GazeSource, GazeTarget } from './motion'
 import type { MeropeRigManifest } from './types'
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react'
 import Anime25DCharacter from '../anime25drig/Anime25DCharacter'
+import {
+  anime25DRuntimeKey,
+  shouldUseAnime25DRuntime,
+} from '../anime25drig/runtimePolicy'
 import { isAnime25DPlayback } from '../anime25drig/types'
 
 interface Props {
@@ -61,10 +70,22 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
       | { kind: 'articulation'; articulation: SpeechArticulation }
     >({ kind: 'auto', active: false })
     const playback =
-      manifest?.anime25dPlayback && isAnime25DPlayback(manifest.anime25dPlayback)
+      manifest?.anime25dPlayback &&
+      isAnime25DPlayback(manifest.anime25dPlayback)
         ? manifest.anime25dPlayback
         : null
     const atlasUrl = manifest?.textures[0]?.url || ''
+    const runtimeKey = anime25DRuntimeKey(
+      manifest?.sourceMasterAssetId,
+      manifest?.characterAssetContractVersion,
+      atlasUrl,
+    )
+    const [failedRuntimeKey, setFailedRuntimeKey] = useState<string | null>(
+      null,
+    )
+    const handlePlaybackError = useCallback(() => {
+      setFailedRuntimeKey(runtimeKey)
+    }, [runtimeKey])
 
     useEffect(() => {
       animeRef.current?.setSpeechActive(speechActiveRef.current)
@@ -149,7 +170,17 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
       setMouse: (x, y, inside) => animeRef.current?.setMouse(x, y, inside),
     }))
 
-    if (manifest && playback && atlasUrl) {
+    if (
+      shouldUseAnime25DRuntime({
+        hasManifest: Boolean(manifest),
+        hasPlayback: Boolean(playback),
+        atlasUrl,
+        runtimeKey,
+        failedRuntimeKey,
+      }) &&
+      manifest &&
+      playback
+    ) {
       return (
         <Anime25DCharacter
           ref={animeRef}
@@ -159,6 +190,7 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
           atlasUrl={atlasUrl}
           mood={mood}
           manualControl={manualControl}
+          onPlaybackError={handlePlaybackError}
         />
       )
     }
