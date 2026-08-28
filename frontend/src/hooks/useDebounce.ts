@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
-import { debounce, throttle } from '../utils/performance'
+import { useEffect, useState } from 'react'
 
 /**
  * 防抖 Hook - 延迟更新值直到指定时间内没有新的变化
@@ -22,19 +21,3 @@ export function useDebounce<T>(value: T, delay: number = 300): T {
 
   return debouncedValue
 }
-
-/**
- * 防抖回调Hook - 优化频繁触发的函数调用
- * @param callback 原始回调
- * @param delay 延迟时间(ms)
- * @param deps 依赖数组
- * @returns 防抖后的回调
- */
-export function useDebouncedCallback<T extends (...args: any[]) => any>(
-  callback: T,
-  delay: number = 300,
-  deps: React.DependencyList = [],
-): T {
-  return useCallback(debounce(callback, delay) as T, [delay, ...deps])
-}
-

@@ -3,7 +3,7 @@
  */
 
 import type { RefObject } from 'react'
-import { useLayoutEffect } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import {
   applyConversationExit,
   clampConversationScroll,
@@ -35,7 +35,12 @@ export function useConversationPan(
   trackRef: RefObject<HTMLElement | null>,
   enabled: boolean,
   resetKey: unknown,
+  cardSelector = '.agent-panel-message',
+  onNearStart?: () => void,
 ): void {
+  const nearStartRef = useRef(onNearStart)
+  nearStartRef.current = onNearStart
+
   useLayoutEffect(() => {
     if (!enabled) return
     const viewport = viewportRef.current
@@ -59,18 +64,26 @@ export function useConversationPan(
     const maxScroll = () => conversationMaxScroll(trackH, viewH)
 
     const recache = () => {
-      cards = [
-        ...track.querySelectorAll<HTMLElement>('.agent-panel-message'),
-      ].map((el) => {
-        const box =
-          (el.closest('.agent-panel-presence') as HTMLElement | null) ?? el
-        return {
-          el,
-          top: box.offsetTop,
-          height: box.offsetHeight,
-          key: '',
-        }
-      })
+      const prevH = trackH
+      cards = [...track.querySelectorAll<HTMLElement>(cardSelector)].map(
+        (el) => {
+          const box =
+            (el.closest('.agent-panel-presence') as HTMLElement | null) ?? el
+          return {
+            el,
+            top: box.offsetTop,
+            height: box.offsetHeight,
+            key: '',
+          }
+        },
+      )
+      trackH = track.offsetHeight
+      // 顶上插了更早的卡片：把位移补上，眼前这张还停在原地。
+      if (prevH > 0 && trackH > prevH && !nearBottom) {
+        const delta = trackH - prevH
+        current += delta
+        target += delta
+      }
     }
 
     const measure = () => {
@@ -121,6 +134,9 @@ export function useConversationPan(
       writeCap(max)
       track.style.transform = max > 0 ? `translate3d(0, ${-current}px, 0)` : ''
       writeExit()
+      if (max > 0 && current <= CONVERSATION_NEAR_BOTTOM_PX) {
+        nearStartRef.current?.()
+      }
     }
 
     const clearExit = () => {
@@ -272,5 +288,5 @@ export function useConversationPan(
       if (anchor instanceof HTMLElement) delete anchor.dataset.capped
       clearExit()
     }
-  }, [enabled, resetKey, trackRef, viewportRef])
+  }, [cardSelector, enabled, resetKey, trackRef, viewportRef])
 }

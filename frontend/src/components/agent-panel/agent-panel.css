@@ -41,12 +41,12 @@
 .agent-panel-overlay-anchor {
   position: fixed;
   inset: auto auto 1rem 50%;
-  transform: translateX(-50%);
   z-index: 61;
 
   /* 卡片在上，那一行独立控件在下 —— 它们并排，不是包含。
      外壳不裁切：阴影要完整，玻璃还要采到壁纸。每行整张进整张出。
-     进出同一条贝塞尔：出场是入场的镜像。 */
+     进出同一条贝塞尔：出场是入场的镜像。
+     开合只动这一层：初次挂上靠 @starting-style，避免子元素各自再入一次场。 */
   --agent-ease: cubic-bezier(0.32, 0.72, 0, 1);
   --agent-ease-exit: cubic-bezier(1, 0, 0.68, 0.28);
   --agent-move: 480ms;
@@ -60,6 +60,14 @@
   min-height: 0;
   max-height: calc(100dvh - 2rem);
   overflow: visible;
+  transform-origin: center bottom;
+  opacity: 1;
+  translate: -50% 0;
+  scale: 1;
+  transition:
+    opacity var(--agent-move) var(--agent-ease),
+    translate var(--agent-move) var(--agent-ease),
+    scale var(--agent-move) var(--agent-ease);
 }
 
 .agent-panel-overlay-anchor[data-capped='true'] {
@@ -72,9 +80,22 @@
   }
 }
 
-.agent-panel-overlay-anchor[data-phase='opening'],
+.agent-panel-overlay-anchor[data-phase='opening'] {
+  pointer-events: none;
+  opacity: 0;
+  translate: -50% 22px;
+  scale: 0.96;
+  transition-duration: 0.01ms;
+  transition-delay: 0ms;
+}
+
 .agent-panel-overlay-anchor[data-phase='closing'] {
   pointer-events: none;
+  opacity: 0;
+  translate: -50% 22px;
+  scale: 0.96;
+  transition-timing-function: var(--agent-ease-exit);
+  transition-delay: 0ms;
 }
 
 .agent-panel-overlay {
@@ -89,8 +110,8 @@
   transform-origin: bottom center;
 }
 
-/* 锚点里跟着开合走的几块：对话表面、历史、贴条、输入行。
-   卡片自己的 presence 在开合期间冻住，由这一层带着从底下长上来、原路沉回去。 */
+/* 对话 / 历史切面自己的位移：只在面板已经落定后才播（翻历史、回对话）。
+   开合由锚点带着走，这里再写一遍会和初次加载叠两层。 */
 .agent-panel-overlay,
 .agent-panel-tag-rail,
 .agent-panel-composer,
@@ -177,8 +198,15 @@
 
 /* 入场用 @starting-style，不再用 JS 的 enter。
    曾经卡在 data-presence=enter（opacity 0）上，双 rAF 被取消就永远不出现。
-   退场仍是 data-presence=out，值和入场同一组 —— 从哪来回哪去。 */
+   退场仍是 data-presence=out，值和入场同一组 —— 从哪来回哪去。
+   开合只动锚点。子元素入场靠 data-appear=skip 跳过整表首屏，避免和整块叠两层。 */
 @starting-style {
+  .agent-panel-overlay-anchor {
+    opacity: 0;
+    translate: -50% 22px;
+    scale: 0.96;
+  }
+
   .agent-panel-presence[data-from='composer'] {
     opacity: 0;
     translate: 0 16px;
@@ -217,7 +245,8 @@
     opacity: 0;
   }
 
-  .agent-panel-presence[data-kind='chip'] {
+  .agent-panel-composer-tags > .agent-panel-presence[data-kind='chip'],
+  .agent-panel-tag-actions > .agent-panel-presence[data-kind='chip'] {
     grid-template-columns: 0fr;
     overflow: hidden;
   }
@@ -228,6 +257,14 @@
 
   .agent-panel-tag-actions > .agent-panel-presence[data-kind='chip'] {
     margin-left: -6px;
+  }
+
+  .agent-panel-presence[data-appear='skip'] {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+    grid-template-columns: 1fr;
+    overflow: visible;
   }
 }
 
@@ -271,7 +308,10 @@
   scale: 1;
 }
 
-.agent-panel-presence[data-kind='chip'][data-presence='out'] {
+.agent-panel-composer-tags
+  > .agent-panel-presence[data-kind='chip'][data-presence='out'],
+.agent-panel-tag-actions
+  > .agent-panel-presence[data-kind='chip'][data-presence='out'] {
   overflow: hidden;
   grid-template-columns: 0fr;
 }
@@ -319,33 +359,14 @@
   margin-right: 6px;
 }
 
-.agent-panel-overlay-anchor > .agent-panel-swap {
-  flex: 0 1 auto;
-  width: 100%;
-  min-height: 0;
-  place-items: stretch;
-}
-
-.agent-panel-overlay-anchor[data-capped='true'] > .agent-panel-swap {
-  flex: 1 1 0;
-}
-
-.agent-panel-overlay-anchor > .agent-panel-swap > .agent-panel-presence {
-  min-height: 0;
-  height: 100%;
-}
-
-.agent-panel-overlay-anchor > .agent-panel-swap > .agent-panel-presence > * {
-  height: 100%;
-  min-height: 0;
-}
-
 .agent-panel-swap > .agent-panel-presence {
   grid-area: stack;
 }
 
 .agent-panel-overlay-anchor[data-phase='opening'] .agent-panel-presence,
-.agent-panel-overlay-anchor[data-phase='closing'] .agent-panel-presence {
+.agent-panel-overlay-anchor[data-phase='closing'] .agent-panel-presence,
+.agent-panel-overlay-anchor[data-phase='opening'] .agent-panel-swap,
+.agent-panel-overlay-anchor[data-phase='closing'] .agent-panel-swap {
   opacity: 1;
   translate: 0 0;
   scale: 1;
@@ -378,29 +399,7 @@
   margin-left: 0;
 }
 
-.agent-panel-overlay-anchor[data-phase='opening'] .agent-panel-overlay,
-.agent-panel-overlay-anchor[data-phase='opening'] .agent-panel-tag-rail,
-.agent-panel-overlay-anchor[data-phase='opening'] .agent-panel-composer,
-.agent-panel-overlay-anchor[data-phase='opening'] .agent-panel-messages-slot,
-.agent-panel-overlay-anchor[data-phase='opening'] .agent-panel-sessions {
-  opacity: 0;
-  translate: 0 22px;
-  scale: 0.96;
-  transition-duration: 0.01ms;
-  transition-delay: 0ms;
-}
 
-.agent-panel-overlay-anchor[data-phase='closing'] .agent-panel-overlay,
-.agent-panel-overlay-anchor[data-phase='closing'] .agent-panel-tag-rail,
-.agent-panel-overlay-anchor[data-phase='closing'] .agent-panel-composer,
-.agent-panel-overlay-anchor[data-phase='closing'] .agent-panel-messages-slot,
-.agent-panel-overlay-anchor[data-phase='closing'] .agent-panel-sessions {
-  opacity: 0;
-  translate: 0 22px;
-  scale: 0.96;
-  transition-timing-function: var(--agent-ease-exit);
-  transition-delay: 0ms;
-}
 
 /* ── 一切说明性的短句都是贴 ──────────────────────
 
@@ -1077,6 +1076,7 @@ button.agent-panel-tag:disabled {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .agent-panel-overlay-anchor,
   .agent-panel-overlay,
   .agent-panel-tag-rail,
   .agent-panel-composer,
@@ -1096,17 +1096,9 @@ button.agent-panel-tag:disabled {
     animation: none !important;
   }
 
-  .agent-panel-overlay-anchor[data-phase='opening'] .agent-panel-overlay,
-  .agent-panel-overlay-anchor[data-phase='opening'] .agent-panel-tag-rail,
-  .agent-panel-overlay-anchor[data-phase='opening'] .agent-panel-composer,
-  .agent-panel-overlay-anchor[data-phase='opening'] .agent-panel-messages-slot,
-  .agent-panel-overlay-anchor[data-phase='opening'] .agent-panel-sessions,
-  .agent-panel-overlay-anchor[data-phase='closing'] .agent-panel-overlay,
-  .agent-panel-overlay-anchor[data-phase='closing'] .agent-panel-tag-rail,
-  .agent-panel-overlay-anchor[data-phase='closing'] .agent-panel-composer,
-  .agent-panel-overlay-anchor[data-phase='closing'] .agent-panel-messages-slot,
-  .agent-panel-overlay-anchor[data-phase='closing'] .agent-panel-sessions {
-    translate: 0 0;
+  .agent-panel-overlay-anchor[data-phase='opening'],
+  .agent-panel-overlay-anchor[data-phase='closing'] {
+    translate: -50% 0;
     scale: 1;
   }
 
@@ -1117,6 +1109,12 @@ button.agent-panel-tag:disabled {
   }
 
   @starting-style {
+    .agent-panel-overlay-anchor {
+      opacity: 1;
+      translate: -50% 0;
+      scale: 1;
+    }
+
     .agent-panel-presence {
       opacity: 1;
       translate: 0 0;

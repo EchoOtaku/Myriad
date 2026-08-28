@@ -35,8 +35,8 @@ export const INITIAL_AGENT_PANEL_STAGE: AgentPanelStageState = {
   phase: 'settled',
 }
 
-/** 入场时长，和 CSS 里卡片那条 transition 对齐（输入行还要再错开一截）。 */
-export const AGENT_PANEL_ENTER_MS = 520
+/** 入场时长，和 CSS `--agent-move` 对齐。 */
+export const AGENT_PANEL_ENTER_MS = 480
 
 /** 退场和入场同一套时长，只是方向倒过来。 */
 export const AGENT_PANEL_EXIT_MS = AGENT_PANEL_ENTER_MS

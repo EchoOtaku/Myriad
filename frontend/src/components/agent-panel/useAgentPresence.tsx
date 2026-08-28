@@ -83,15 +83,26 @@ export function useKeyedPresence<T>(
   })
 }
 
+/** 首帧之后才允许 @starting-style。首屏整表挂上时不要每张卡再飞一遍。 */
+export function useAppearGate(): boolean {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    setReady(true)
+  }, [])
+  return ready
+}
+
 function PresenceBox({
   kind,
   from,
   phase,
+  appear = true,
   children,
 }: {
   kind: AgentPresenceKind
   from: AgentPresenceFrom
   phase: PresenceEntry<unknown>['phase']
+  appear?: boolean
   children: ReactNode
 }) {
   return (
@@ -100,6 +111,7 @@ function PresenceBox({
       data-kind={kind}
       data-from={from}
       data-presence={phase}
+      data-appear={appear ? undefined : 'skip'}
     >
       {children}
     </div>
@@ -140,11 +152,13 @@ export function AgentSwap({
   id,
   kind = 'swap',
   from = 'self',
+  appear = true,
   children,
 }: {
   id: string
   kind?: AgentPresenceKind
   from?: AgentPresenceFrom
+  appear?: boolean
   children: ReactNode
 }) {
   const entries = useKeyedPresence(
@@ -160,6 +174,7 @@ export function AgentSwap({
           kind={kind}
           from={from}
           phase={entry.phase}
+          appear={appear}
         >
           {entry.item.children}
         </PresenceBox>
@@ -181,6 +196,7 @@ export function AgentPresenceList<T>({
   from?: AgentPresenceFrom
   children: (item: T) => ReactNode
 }) {
+  const appear = useAppearGate()
   const entries = useKeyedPresence(items, keyOf, AGENT_ROW_MS)
   return (
     <>
@@ -190,6 +206,7 @@ export function AgentPresenceList<T>({
           kind={kind}
           from={from}
           phase={entry.phase}
+          appear={appear}
         >
           {children(entry.item)}
         </PresenceBox>

@@ -134,8 +134,8 @@ export const AgentPanel: React.FC = () => {
     !open,
   )
 
-  // 入场：先落到 opening（opacity 0），下一帧再 settled，transition 才会播。
-  // 退场：停在 closing 等到动画结束再卸。不用 transitionend —— 会被打断、被丢。
+  // 入场：先落到 opening（整块锚点 opacity 0），下一帧再 settled，transition 才会播。
+  // @starting-style 兜底初次挂上。退场停在 closing 等到动画结束再卸。
   useEffect(() => {
     if (stage.phase === 'settled') return
     if (stage.phase === 'opening') {

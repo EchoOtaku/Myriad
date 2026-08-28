@@ -10,7 +10,6 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { lockScroll } from '../utils/scrollLock'
 import { useSharedScroll } from './useSharedEventListener'
 
 interface ScrollOptimizationOptions {
@@ -130,4 +129,3 @@ export function useScrollOptimization(
 
   return state
 }
-

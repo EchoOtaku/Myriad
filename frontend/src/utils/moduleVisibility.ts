@@ -53,18 +53,6 @@ export const MODULE_VISIBILITY_LEVELS: ModuleVisibilityLevel[] = [
   'admin',
 ]
 
-export const AGENT_GUEST_USAGE_LEVELS: AgentGuestUsageLevel[] = [
-  'none',
-  'visible',
-]
-
-export const AGENT_USER_USAGE_LEVELS: AgentUserUsageLevel[] = [
-  'none',
-  'chat',
-  'standard',
-  'elevated',
-]
-
 export const MODULE_VISIBILITY_UPDATED_EVENT =
   'module-visibility-preferences-updated'
 
@@ -185,24 +173,6 @@ export function canUseAgent(
     return elevatedAiChat.user === true
   }
   return preferences.agentUsage.user !== 'none'
-}
-
-export function getModuleVisibilityKeyForPath(
-  pathname: string,
-): ModuleVisibilityKey | null {
-  if (pathname === '/library' || pathname.startsWith('/library/')) {
-    return 'library'
-  }
-  if (pathname === '/brew' || pathname.startsWith('/brew/')) {
-    return 'brew'
-  }
-  if (pathname === '/reports' || pathname.startsWith('/reports/')) {
-    return 'reports'
-  }
-  if (pathname === '/tapp' || pathname.startsWith('/tapp/')) {
-    return 'tapp'
-  }
-  return null
 }
 
 export async function fetchModuleVisibilityPreferences() {
