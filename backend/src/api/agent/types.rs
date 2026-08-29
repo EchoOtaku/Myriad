@@ -29,6 +29,9 @@ pub struct ProcessContext {
     pub conversation_history: Option<Vec<ConversationMessageApi>>,
     /// 自定义数据
     pub custom_data: Option<Value>,
+    /// 用户已接受、正在进入 Work 的自主提案。
+    pub intention_id: Option<String>,
+    pub autonomy_permission_cap: Option<Vec<String>>,
 }
 
 /// 对话消息（API 格式）

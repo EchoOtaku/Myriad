@@ -27,6 +27,7 @@ pub struct HandlerContext<'a> {
     pub task_id: Option<String>,
     /// 执行上下文快照（包含对话历史、角色身份等）
     pub execution_context: Option<ExecutionContext>,
+    pub autonomy_permission_cap: Option<Vec<String>>,
 }
 
 /// 根据能力类别分发执行

@@ -424,6 +424,19 @@ async fn run_server() -> anyhow::Result<()> {
                 // Re-create run hubs + wait-loops for waiting_for_input tasks so
                 // answer/subscribe work after process restart.
                 api::agent::restore_waiting_runs_after_boot().await;
+                api::agent::reclaim_stranded_running_intentions(&db).await;
+                {
+                    let autonomy_db = db.clone();
+                    tokio::spawn(async move {
+                        let mut interval =
+                            tokio::time::interval(std::time::Duration::from_secs(15));
+                        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                        loop {
+                            interval.tick().await;
+                            api::agent::tick_autonomy_work(autonomy_db.clone()).await;
+                        }
+                    });
+                }
                 tracing::info!("✅ Agent waiting-task run hubs restored");
 
                 // Expire persisted Tapp Agent interactions and resume their

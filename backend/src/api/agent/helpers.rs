@@ -32,6 +32,8 @@ pub(crate) fn build_request_context(ctx: ProcessContext) -> RequestContext {
         custom_data: ctx.custom_data,
         lane_key: None, // 由 API 层在调用处注入
         run_id: None,   // 由 process_stream 在 create_run 后注入
+        source_intent_id: ctx.intention_id,
+        autonomy_permission_cap: ctx.autonomy_permission_cap,
     }
 }
 

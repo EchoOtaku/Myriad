@@ -320,6 +320,10 @@ impl Agent {
                 None => {
                     let session_id = request.context.as_ref().and_then(|c| c.session_id.clone());
                     let run_id = request.context.as_ref().and_then(|c| c.run_id.clone());
+                    let source_intent_id = request
+                        .context
+                        .as_ref()
+                        .and_then(|c| c.source_intent_id.clone());
                     crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                     let response = self
                         .request_confirmation_v2(
@@ -329,6 +333,7 @@ impl Agent {
                             sensitive_steps,
                             session_id,
                             run_id,
+                            source_intent_id,
                         )
                         .await;
                     return attach_motion_to_result(
@@ -977,6 +982,10 @@ impl Agent {
                 None => {
                     let session_id = request.context.as_ref().and_then(|c| c.session_id.clone());
                     let run_id = request.context.as_ref().and_then(|c| c.run_id.clone());
+                    let source_intent_id = request
+                        .context
+                        .as_ref()
+                        .and_then(|c| c.source_intent_id.clone());
                     crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                     let response = self
                         .request_confirmation_v2(
@@ -986,6 +995,7 @@ impl Agent {
                             sensitive_steps,
                             session_id,
                             run_id,
+                            source_intent_id,
                         )
                         .await;
                     return attach_motion_to_result(
@@ -1637,6 +1647,7 @@ impl Agent {
                             sensitive_steps,
                             session_id,
                             None,
+                            None,
                         )
                         .await;
                 }
@@ -1957,6 +1968,7 @@ impl Agent {
                         .and_then(session_id_from_lane_key)
                 }),
                 run_id: pending.run_id.clone(),
+                source_intent_id: pending.source_intent_id.clone(),
             }))
     }
 }

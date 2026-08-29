@@ -1,5 +1,7 @@
 pub mod ai_process_pure;
 pub mod capability;
+pub mod chat_prompt;
+pub mod consciousness;
 pub mod dag_pure;
 pub mod data_read_pure;
 pub mod data_write_pure;
@@ -45,7 +47,7 @@ mod process_and_recipe;
 
 pub use agent_footer::{
     apply_pre_param_answer_to_recipe, cleanup_expired_confirmations, ensure_agent_usage_allowed,
-    get_capabilities_summary_for_user, get_user_permissions,
-    init_task_store, parse_pre_param_question_id, user_is_current_admin,
+    get_capabilities_summary_for_user, get_user_permissions, init_task_store,
+    parse_pre_param_question_id, user_is_current_admin,
 };
 pub use agent_header::{Agent, LANE_QUEUE, SYSTEM_USER_ID};

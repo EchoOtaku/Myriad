@@ -261,6 +261,7 @@ impl Agent {
             recipe.page_context.clone(),
             recipe.conversation_context.clone(),
         );
+        exec_ctx.autonomy_permission_cap = recipe.autonomy_permission_cap.clone();
         exec_ctx.pending_questions = questions;
 
         task_state.set_pending_question(question.clone());
@@ -441,6 +442,7 @@ impl Agent {
         sensitive_steps: Vec<PendingConfirmation>,
         session_id: Option<String>,
         run_id: Option<String>,
+        source_intent_id: Option<String>,
     ) -> Result<AgentResponse, String> {
         let confirmation_id = uuid::Uuid::new_v4().to_string();
 
@@ -478,6 +480,7 @@ impl Agent {
             planner_output: planner_output.clone(),
             session_id: session_id.filter(|s| !s.is_empty()),
             run_id: run_id.filter(|s| !s.is_empty()),
+            source_intent_id: source_intent_id.filter(|id| !id.is_empty()),
         };
         crate::services::tapp_registry::put(
             &self.db,
@@ -578,6 +581,10 @@ impl Agent {
             .and_then(|c| c.conversation_history.clone());
 
         let lane_key = request.context.as_ref().and_then(|c| c.lane_key.clone());
+        let autonomy_permission_cap = request
+            .context
+            .as_ref()
+            .and_then(|c| c.autonomy_permission_cap.clone());
 
         Recipe {
             id: format!("recipe_{}", uuid::Uuid::new_v4()),
@@ -592,6 +599,7 @@ impl Agent {
             page_context,
             conversation_context,
             lane_key,
+            autonomy_permission_cap,
         }
     }
 
@@ -1089,7 +1097,10 @@ impl Agent {
             .await
             .ok_or_else(|| "Lite model is not configured for Chat mode".to_string())?;
         let prompt = self.chat_response_prompt(request).await;
-        let response = analyzer.analyze(&prompt).await.map_err(|error| error.to_string())?;
+        let response = analyzer
+            .analyze(&prompt)
+            .await
+            .map_err(|error| error.to_string())?;
         let response = response.trim();
         if response.is_empty() {
             Err("Chat model returned an empty response".to_string())
@@ -1106,49 +1117,18 @@ impl Agent {
         let merope_block = crate::services::agent::merope::speaking_prompt_plain(
             &crate::services::agent::merope::speaking_prompt(request.user_id).await,
         );
-        let merope_prefix = if merope_block.is_empty() {
-            String::new()
-        } else {
-            format!("{merope_block}\n\n")
-        };
-
-        let history_text = request
+        let history = request
             .context
             .as_ref()
-            .and_then(|context| context.conversation_history.as_ref())
-            .map(|history| {
-                let recent: Vec<_> = history
-                    .iter()
-                    .rev()
-                    .take(10)
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .rev()
-                    .collect();
-                recent
-                    .iter()
-                    .map(|message| format!("{}：{}", message.role, message.content))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            })
-            .unwrap_or_default();
+            .and_then(|context| context.conversation_history.as_deref())
+            .unwrap_or(&[]);
 
-        if history_text.is_empty() {
-            format!(
-                "{soul}\n\n{merope_prefix}用户对你说：{input}\n\n\
-                 请以你的角色自然地回复用户。使用用户的语言。保持简短、温暖、自然。\
-                 不要输出任何 JSON 或格式标记，只输出纯文本回复。",
-                input = request.raw_input,
-            )
-        } else {
-            format!(
-                "{soul}\n\n{merope_prefix}以下是对话历史：\n{history_text}\n\n\
-                 用户最新消息：{input}\n\n\
-                 请以你的角色自然地回复用户。使用用户的语言。保持简短、温暖、自然。\
-                 不要输出任何 JSON 或格式标记，只输出纯文本回复。",
-                input = request.raw_input,
-            )
-        }
+        crate::services::agent::chat_prompt::build_chat_lite_prompt(
+            &soul,
+            &merope_block,
+            history,
+            &request.raw_input,
+        )
     }
 
     async fn stream_chat_response_with_analyzer(

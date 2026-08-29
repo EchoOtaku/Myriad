@@ -428,14 +428,16 @@ pub(crate) async fn persist_assistant_message(
     Ok(())
 }
 
-/// 加载会话历史消息作为对话上下文
+/// 加载会话历史消息作为对话上下文。
+///
+/// Chat (`for_chat`) 只保留对白；Work 仍可把任务元数据、确认卡和前端动作
+/// 追加进 planner 可见内容。
 pub(crate) async fn load_session_history(
     db: &DatabaseConnection,
     session_id: &str,
     max_messages: u64,
+    for_chat: bool,
 ) -> Vec<crate::services::agent::ConversationMessage> {
-    use crate::services::agent::ConversationMessage;
-
     let messages = agent_messages::Entity::find()
         .filter(agent_messages::Column::SessionId.eq(session_id))
         .order_by_desc(agent_messages::Column::CreatedAt)
@@ -444,46 +446,17 @@ pub(crate) async fn load_session_history(
         .await
         .unwrap_or_default();
 
-    // 反转为时间正序，assistant 消息附带 metadata 摘要
     messages
         .into_iter()
         .rev()
-        .map(|m| {
-            let mut content = m.content.clone();
-            // 将 metadata 中的关键信息追加到 assistant 内容，让 planner 了解上轮输出
-            if m.role == "assistant" {
-                if let Some(ref meta) = m.metadata {
-                    let mut extras = Vec::new();
-                    if let Some(data) = meta.get("data") {
-                        if !data.is_null() {
-                            // 截取摘要，避免过长
-                            let s = data.to_string();
-                            if s.len() > 2 && s != "null" {
-                                let truncated: String = s.chars().take(500).collect();
-                                extras.push(format!("[输出数据: {}]", truncated));
-                            }
-                        }
-                    }
-                    if let Some(dd) = meta.get("dataDisplay") {
-                        if let Some(display_type) = dd.get("type").and_then(|v| v.as_str()) {
-                            extras.push(format!("[展示类型: {}]", display_type));
-                        }
-                    }
-                    if let Some(fa) = meta.get("frontendAction") {
-                        if let Some(action) = fa.get("action").and_then(|v| v.as_str()) {
-                            extras.push(format!("[前端动作: {}]", action));
-                        }
-                    }
-                    if !extras.is_empty() {
-                        content.push_str(&format!("\n{}", extras.join(" ")));
-                    }
-                }
-            }
-            ConversationMessage {
-                role: m.role,
-                content,
-                created_at: Some(m.created_at.to_rfc3339()),
-            }
+        .map(|message| {
+            crate::services::agent::chat_prompt::reconstruct_conversation_message(
+                message.role,
+                message.content,
+                Some(message.created_at.to_rfc3339()),
+                message.metadata.as_ref(),
+                for_chat,
+            )
         })
         .collect()
 }

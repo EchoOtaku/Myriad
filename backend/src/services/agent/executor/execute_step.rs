@@ -56,16 +56,43 @@ impl Executor {
                 .ok_or_else(|| format!("Unknown capability: {}", step.capability_id))?;
 
         // 权限校验：检查 capability 声明的 required_permissions
-        if !capability.required_permissions.is_empty() {
+        if !capability.required_permissions.is_empty()
+            || handler_ctx.autonomy_permission_cap.is_some()
+        {
             let user_perms =
                 crate::services::agent::get_user_permissions(handler_ctx.db, handler_ctx.user_id)
                     .await;
-            for perm in &capability.required_permissions {
-                if !user_perms.contains(perm) {
-                    return Err(format!(
-                        "权限不足：执行 '{}' 需要 '{}' 权限",
-                        step.capability_id, perm
-                    ));
+            let granted: Vec<String> = user_perms.into_iter().collect();
+            if handler_ctx.autonomy_permission_cap.is_some() {
+                let grant = crate::services::agent::consciousness::AutonomyGrantStore::new(
+                    handler_ctx.db.clone(),
+                )
+                .find(handler_ctx.user_id)
+                .await
+                .ok()
+                .flatten();
+                if !crate::services::agent::consciousness::autonomy_cap_still_allows(
+                    handler_ctx.user_id,
+                    grant.as_ref(),
+                    &granted,
+                    handler_ctx.autonomy_permission_cap.as_deref(),
+                ) {
+                    return Err("Personal autonomy is no longer granted".into());
+                }
+            }
+            if !capability.required_permissions.is_empty() {
+                let effective =
+                    crate::services::agent::consciousness::effective_granted_permissions(
+                        &granted,
+                        handler_ctx.autonomy_permission_cap.as_deref(),
+                    );
+                for perm in &capability.required_permissions {
+                    if !effective.iter().any(|granted| granted == perm) {
+                        return Err(format!(
+                            "权限不足：执行 '{}' 需要 '{}' 权限",
+                            step.capability_id, perm
+                        ));
+                    }
                 }
             }
         }
@@ -279,6 +306,12 @@ impl Executor {
             let all_caps = cap_registry.get_all();
             for cap in &all_caps {
                 if gating_caps.contains(&cap.id) || cap.id.starts_with("ai.") {
+                    if !crate::services::agent::consciousness::required_permissions_within_cap(
+                        &cap.required_permissions,
+                        handler_ctx.autonomy_permission_cap.as_deref(),
+                    ) {
+                        continue;
+                    }
                     // 提取 required params
                     let params_hint = cap
                         .input_schema

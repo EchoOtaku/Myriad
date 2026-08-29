@@ -6,9 +6,14 @@
 
 use chrono::Utc;
 use sea_orm::DatabaseConnection;
+use std::collections::BTreeMap;
 
 use super::is_logged_in_addressee;
 use crate::config::ModelTier;
+use crate::services::agent::consciousness::{
+    consider_event, is_work_outcome, ConsciousnessAction, ConsciousnessEvent, EventUrgency,
+    IntentStore,
+};
 use crate::services::agent::notifications::{
     get_notification_manager, Notification, NotificationPriority, NotificationType,
 };
@@ -26,6 +31,39 @@ use super::{
 };
 
 const SAME_EVENT_MINUTES: i64 = 15;
+
+pub fn work_outcome_parent(
+    event_key: &str,
+    latest_work_source_event: Option<String>,
+) -> Option<String> {
+    if is_work_outcome(event_key) {
+        latest_work_source_event
+    } else {
+        None
+    }
+}
+
+pub fn stable_consciousness_event_id(user_id: i32, event_key: &str, summary: &str) -> String {
+    let key: String = event_key
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let distinguisher = if is_work_outcome(event_key) {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        summary.hash(&mut hasher);
+        format!("{:x}", hasher.finish())
+    } else {
+        (Utc::now().timestamp() / (SAME_EVENT_MINUTES * 60)).to_string()
+    };
+    format!("evt_{user_id}_{key}_{distinguisher}")
+}
 const MEROPE_OWNED_NOTIFY: &[&str] = &["agent.merope.platform_activity"];
 
 pub async fn is_enabled() -> bool {
@@ -178,11 +216,81 @@ pub async fn ingest(
         return Ok(());
     }
 
+    let parent_event_id = work_outcome_parent(
+        event_key,
+        IntentStore::new(db.clone())
+            .latest_work_source_event(user_id)
+            .await
+            .ok()
+            .flatten(),
+    );
+    let conscious_event = ConsciousnessEvent {
+        id: stable_consciousness_event_id(user_id, event_key, &summary),
+        source: "merope".into(),
+        kind: event_key.to_string(),
+        headline: summary.clone(),
+        summary: summary.clone(),
+        addressee_user_id: user_id,
+        urgency: if is_valuable_event(event_key) {
+            EventUrgency::Soon
+        } else {
+            EventUrgency::Normal
+        },
+        occurred_at: Utc::now(),
+        parent_event_id,
+        safe_facts: BTreeMap::new(),
+    };
+    let consideration = match consider_event(db, &conscious_event).await {
+        Ok(value) => value,
+        Err(error) => {
+            tracing::warn!(%error, event_key, "[Merope] consciousness decision failed");
+            None
+        }
+    };
+
+    if let Some(value) = consideration.as_ref() {
+        match value.decision.action {
+            ConsciousnessAction::Ignore => {
+                let _ = insert_diary(db, user_id, &summary, "event").await;
+                return Ok(());
+            }
+            ConsciousnessAction::Remember => {
+                let memory = value.decision.memory.as_deref().unwrap_or(&summary);
+                let _ = insert_diary(db, user_id, memory, "event").await;
+                return Ok(());
+            }
+            ConsciousnessAction::Speak
+            | ConsciousnessAction::Ask
+            | ConsciousnessAction::ProposeWork => {}
+        }
+    }
+
     // Only a line the addressee will actually read is worth a model call. The rest
     // of the transcript is a ledger with no reader — it exists so the next line
     // does not repeat itself — so the human-readable summary stands in for it.
-    let shown = speech_is_shown(event_key, decision.notify);
-    let spoken = if shown {
+    let source_intent_id = consideration
+        .as_ref()
+        .and_then(|value| value.intent.as_ref())
+        .map(|intent| intent.id.as_str());
+    // A Work proposal has no existing producer-owned surface. It must reach the
+    // addressee so they can review it; ordinary event speech keeps the existing
+    // duplicate-notification rule.
+    let shown = (source_intent_id.is_some() && is_valuable_event(event_key))
+        || speech_is_shown(event_key, decision.notify);
+    let selected_line = consideration
+        .as_ref()
+        .and_then(|value| match value.decision.action {
+            ConsciousnessAction::Speak => value.decision.speech.clone(),
+            ConsciousnessAction::Ask => value.decision.question.clone(),
+            ConsciousnessAction::ProposeWork => value
+                .intent
+                .as_ref()
+                .map(|intent| format!("我注意到{}。要不要交给我处理？", intent.proposal.title)),
+            ConsciousnessAction::Ignore | ConsciousnessAction::Remember => None,
+        });
+    let spoken = if let Some(selected) = selected_line {
+        selected
+    } else if shown {
         let _ = set_activity(db, user_id, "thinking").await;
         let line = compose_line(db, user_id, &summary).await;
         let _ = set_activity(db, user_id, "idle").await;
@@ -250,6 +358,7 @@ pub async fn ingest(
             &spoken,
             performance.as_ref(),
             motion_mood.as_ref(),
+            source_intent_id,
         )
         .await;
     }
@@ -448,6 +557,7 @@ async fn emit_speech_notification(
     spoken: &str,
     performance: Option<&super::PerformanceDirective>,
     mood: Option<&super::MoodTransition>,
+    source_intent_id: Option<&str>,
 ) {
     let Some(manager) = get_notification_manager() else {
         return;
@@ -477,6 +587,12 @@ async fn emit_speech_notification(
             object.insert(
                 "merope_state".to_string(),
                 serde_json::json!({ "mood": mood, "activity": "talking" }),
+            );
+        }
+        if let Some(intent_id) = source_intent_id {
+            object.insert(
+                "intention_id".to_string(),
+                serde_json::Value::String(intent_id.to_string()),
             );
         }
     }
@@ -523,6 +639,41 @@ mod tests {
         );
         assert_eq!(compact_summary("抓取失败 Bearer eyJhbGciOi"), "抓取失败");
         assert_eq!(compact_summary("  Steam  解锁了成就  "), "Steam 解锁了成就");
+    }
+
+    #[test]
+    fn work_outcome_event_ids_are_stable_for_the_same_summary() {
+        let a = stable_consciousness_event_id(7, "agent.task_completed", "报告写好了");
+        let b = stable_consciousness_event_id(7, "agent.task_completed", "报告写好了");
+        let c = stable_consciousness_event_id(7, "agent.task_completed", "另一件事");
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+        assert!(a.starts_with("evt_7_agent.task_completed_"));
+    }
+
+    #[test]
+    fn ordinary_event_ids_share_a_time_bucket() {
+        let a = stable_consciousness_event_id(7, "brew.source_error", "feed failed");
+        let b = stable_consciousness_event_id(7, "brew.source_error", "feed failed again");
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn work_outcomes_chain_parent_to_the_proposal_source() {
+        assert_eq!(
+            work_outcome_parent(
+                "agent.task_completed",
+                Some("evt_7_brew.source_error_1".into())
+            ),
+            Some("evt_7_brew.source_error_1".into())
+        );
+        assert_eq!(
+            work_outcome_parent(
+                "brew.source_error",
+                Some("evt_7_brew.source_error_1".into())
+            ),
+            None
+        );
     }
 
     #[test]

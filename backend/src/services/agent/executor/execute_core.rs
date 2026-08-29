@@ -133,6 +133,7 @@ impl Executor {
             recipe.page_context.clone(),
             recipe.conversation_context.clone(),
         );
+        context.autonomy_permission_cap = recipe.autonomy_permission_cap.clone();
         context.variables.insert(
             "_task_id".to_string(),
             Value::String(task_state.task_id.clone()),
@@ -427,6 +428,7 @@ impl Executor {
                                 user_id,
                                 task_id: Some(executor_task_id),
                                 execution_context: Some(ctx.clone()),
+                                autonomy_permission_cap: ctx.autonomy_permission_cap.clone(),
                             };
                             let pre_dyn = ctx.pending_dynamic_steps.len();
                             let pre_decisions = ctx.decision_history.len();
@@ -733,6 +735,9 @@ impl Executor {
                                                     user_id,
                                                     task_id: Some(executor_task_id),
                                                     execution_context: Some(ctx.clone()),
+                                                    autonomy_permission_cap: ctx
+                                                        .autonomy_permission_cap
+                                                        .clone(),
                                                 };
                                                 let pre_dyn = ctx.pending_dynamic_steps.len();
                                                 let pre_decisions = ctx.decision_history.len();

@@ -40,6 +40,9 @@ impl Executor {
 
         // 恢复执行上下文
         let mut context = task_state.execution_context.take().unwrap_or_default();
+        if context.autonomy_permission_cap.is_none() {
+            context.autonomy_permission_cap = recipe.autonomy_permission_cap.clone();
+        }
         context.variables.insert(
             "_task_id".to_string(),
             Value::String(task_state.task_id.clone()),

@@ -262,6 +262,38 @@ pub fn create_agent_routes(app_state: crate::state::AppState) -> Router<crate::s
                 middleware::auth::auth_middleware,
             )),
         )
+        // 自主 Work 提案：只有用户接受后，前端才把返回的 input 送入 Work。
+        .route(
+            "/intentions",
+            get(list_intentions).route_layer(from_fn_with_state(
+                app_state.clone(),
+                middleware::auth::auth_middleware,
+            )),
+        )
+        .route(
+            "/intentions/{intent_id}/accept",
+            post(accept_intention).route_layer(from_fn_with_state(
+                app_state.clone(),
+                middleware::auth::auth_middleware,
+            )),
+        )
+        .route(
+            "/intentions/{intent_id}/dismiss",
+            post(dismiss_intention).route_layer(from_fn_with_state(
+                app_state.clone(),
+                middleware::auth::auth_middleware,
+            )),
+        )
+        .route(
+            "/autonomy",
+            get(get_autonomy_grant)
+                .put(put_autonomy_grant)
+                .delete(delete_autonomy_grant)
+                .route_layer(from_fn_with_state(
+                    app_state.clone(),
+                    middleware::auth::auth_middleware,
+                )),
+        )
         // 会话管理路由
         // 创建会话
         .route(

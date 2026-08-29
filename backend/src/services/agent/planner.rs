@@ -166,7 +166,11 @@ impl Planner {
 
         // 校验步骤（如果是 plan 状态）
         if output.status == PlannerStatus::Plan && !output.steps.is_empty() {
-            if let Err(e) = self.validate_steps(&mut output).await {
+            let autonomy_cap = request
+                .context
+                .as_ref()
+                .and_then(|context| context.autonomy_permission_cap.as_deref());
+            if let Err(e) = self.validate_steps(&mut output, autonomy_cap).await {
                 tracing::warn!(error = %e, "[Planner] Step validation failed, trying to recover");
                 // 验证失败时降级为 chat
                 output.status = PlannerStatus::Chat;
@@ -229,6 +233,21 @@ impl Planner {
         }
 
         volatile.extend(crate::services::agent::merope::speaking_prompt(request.user_id).await);
+
+        if let Some(cap) = request
+            .context
+            .as_ref()
+            .and_then(|context| context.autonomy_permission_cap.as_ref())
+            .filter(|cap| !cap.is_empty())
+        {
+            volatile.push(format!(
+                "## 自治授权上限\n本轮办事只能使用当前授予权限与自治授权的交集，不得规划需要其他权限的步骤。允许的权限：\n{}",
+                cap.iter()
+                    .map(|permission| format!("- {permission}"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ));
+        }
 
         // 1.5. 多 Agent 角色概览（注入 worker 身份摘要）
         if let Some(mgr) = identity::get_identity_manager() {
@@ -565,7 +584,11 @@ impl Planner {
     }
 
     /// 校验步骤（加载完整 capability schema 验证）
-    async fn validate_steps(&self, output: &mut PlannerOutput) -> Result<(), String> {
+    async fn validate_steps(
+        &self,
+        output: &mut PlannerOutput,
+        autonomy_cap: Option<&[String]>,
+    ) -> Result<(), String> {
         let cap_ids: Vec<String> = output
             .steps
             .iter()
@@ -577,6 +600,20 @@ impl Planner {
         let test_steps = output.steps.clone();
         let reasoning = output.reasoning.clone();
         validate_and_convert_steps(test_steps, reasoning, &cap_schemas)?;
+
+        if autonomy_cap.is_some() {
+            for capability in &cap_schemas {
+                if !crate::services::agent::consciousness::required_permissions_within_cap(
+                    &capability.required_permissions,
+                    autonomy_cap,
+                ) {
+                    return Err(format!(
+                        "capability '{}' exceeds the autonomy permission cap",
+                        capability.id
+                    ));
+                }
+            }
+        }
 
         Ok(())
     }

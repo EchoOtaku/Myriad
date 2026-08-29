@@ -52,6 +52,7 @@ pub struct RequestContext {
     /// 当前页面/路由
     pub current_route: Option<String>,
     /// 最近活动的平台
+    #[serde(default)]
     pub active_platforms: Vec<String>,
     /// 用户偏好
     pub preferences: Option<Value>,
@@ -67,6 +68,13 @@ pub struct RequestContext {
     /// 当前后端 run id（确认续跑时复用同一 run，避免通知身份漂移）
     #[serde(default)]
     pub run_id: Option<String>,
+    /// User-accepted consciousness proposal that originated this Work turn.
+    #[serde(default)]
+    pub source_intent_id: Option<String>,
+    /// Extra ceiling for autonomy-accepted Work. Intersected with current
+    /// granted permissions at execute time. Never a secret.
+    #[serde(default)]
+    pub autonomy_permission_cap: Option<Vec<String>>,
 }
 
 /// 对话消息
@@ -297,6 +305,8 @@ pub struct Recipe {
     /// Lane key（用于队列追踪）
     #[serde(default)]
     pub lane_key: Option<String>,
+    #[serde(default)]
+    pub autonomy_permission_cap: Option<Vec<String>>,
 }
 
 /// 执行类型
@@ -938,6 +948,7 @@ impl Recipe {
             page_context: None,
             conversation_context: None,
             lane_key: None,
+            autonomy_permission_cap: None,
         }
     }
 
@@ -1071,6 +1082,9 @@ pub struct ExecutionContext {
     /// key = capability_id prefix (如 "ai"), value = 该角色的 SOUL 身份文本
     #[serde(default)]
     pub role_contexts: HashMap<String, String>,
+    /// Extra ceiling for autonomy-accepted Work. Names only.
+    #[serde(default)]
+    pub autonomy_permission_cap: Option<Vec<String>>,
     /// 全局重试预算剩余（跨 resume 保持）
     #[serde(default = "default_retry_budget")]
     pub retry_budget_remaining: u32,
@@ -1110,6 +1124,7 @@ impl Default for ExecutionContext {
             pending_questions: Vec::new(),
             memory_context: None,
             dynamic_step_ids: std::collections::HashSet::new(),
+            autonomy_permission_cap: None,
         }
     }
 }
