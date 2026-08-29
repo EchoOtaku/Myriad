@@ -41,6 +41,12 @@ export const AgentPanelActionCard: React.FC<AgentPanelActionCardProps> = ({
   const showsDetail = action.tier !== 'light'
   // 影响只在不可撤销那一档逐条摊开；可撤销的操作列影响是吓唬人
   const impacts = action.tier === 'explicit' ? agentActionImpacts(action) : []
+  const riskTone =
+    action.tier === 'explicit'
+      ? 'alert'
+      : action.tier === 'preview'
+        ? 'primary'
+        : undefined
 
   return (
     <div
@@ -51,8 +57,10 @@ export const AgentPanelActionCard: React.FC<AgentPanelActionCardProps> = ({
       aria-label={action.prompt}
     >
       <div className="agent-panel-action-head">
-        <span className="agent-panel-action-risk">
-          {t.agentPanel.action.risk[action.risk]}
+        <span className="agent-panel-tag" data-tone={riskTone}>
+          <span className="agent-panel-tag-text">
+            {t.agentPanel.action.risk[action.risk]}
+          </span>
         </span>
         {remaining !== null && (
           <span
@@ -79,7 +87,11 @@ export const AgentPanelActionCard: React.FC<AgentPanelActionCardProps> = ({
                 <span className="agent-panel-action-step-name">
                   {step.name}
                 </span>
-                {step.message}
+                {step.message ? (
+                  <span className="agent-panel-action-step-note">
+                    {step.message}
+                  </span>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -107,7 +119,9 @@ export const AgentPanelActionCard: React.FC<AgentPanelActionCardProps> = ({
           // 不可撤销的那一档把焦点放在「算了」上：回车不该替人拍板
           autoFocus={action.tier !== 'light'}
         >
-          {t.agentPanel.action.cancel}
+          <span className="agent-panel-tag-text">
+            {t.agentPanel.action.cancel}
+          </span>
         </button>
         <button
           type="button"
@@ -117,7 +131,9 @@ export const AgentPanelActionCard: React.FC<AgentPanelActionCardProps> = ({
           disabled={expired}
           autoFocus={action.tier === 'light'}
         >
-          {t.agentPanel.action.confirm}
+          <span className="agent-panel-tag-text">
+            {t.agentPanel.action.confirm}
+          </span>
         </button>
       </div>
     </div>

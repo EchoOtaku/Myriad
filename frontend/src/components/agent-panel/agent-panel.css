@@ -531,6 +531,12 @@
   white-space: normal;
 }
 
+.agent-panel-tag[data-block='true'] .agent-panel-tag-text {
+  overflow: visible;
+  white-space: inherit;
+  text-overflow: unset;
+}
+
 .agent-panel-tag[data-active='true'] {
   border-color: var(--color-primary, #10b981);
   background: color-mix(
@@ -640,9 +646,31 @@ button.agent-panel-tag:disabled {
    按字宽收而不是按百分比 —— 窄屏上 40% 只剩四个字，连意思都读不出来 */
 .agent-panel-tag-saved {
   max-width: 12em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.agent-panel-saved-open {
+  display: inline-flex;
+  min-width: 0;
+  flex: 1;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-panel-composer-tags .agent-panel-tag-saved:hover {
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary, #10b981) 40%,
+    transparent
+  );
+}
+
+.agent-panel-composer-tags .agent-panel-tag-saved:hover .agent-panel-tag-text {
+  color: var(--color-primary, #10b981);
 }
 
 /* ── 输入那一行：输入框 + 一枚动作 ────────────────
@@ -1044,36 +1072,6 @@ button.agent-panel-tag:disabled {
   pointer-events: none;
 }
 
-.agent-panel-attach-chip {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  box-sizing: border-box;
-  max-width: 100%;
-  height: 28px;
-  padding: 0 4px 0 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text-muted, #9ca3af) 14%, transparent);
-  color: var(--text-secondary, #6b7280);
-  font-size: 12px;
-  line-height: 28px;
-}
-
-.agent-panel-attach-chip img {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.agent-panel-attach-chip-name {
-  overflow: hidden;
-  min-width: 0;
-  max-width: 10em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .agent-panel-field,
 .agent-panel-field:focus {
   position: relative;
@@ -1257,6 +1255,16 @@ button.agent-panel-tag:disabled {
   overflow: visible;
 }
 
+.agent-panel-messages-track .agent-panel-tag[data-block='true'] {
+  align-self: stretch;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  background: var(--surface-bg, rgb(var(--surface-rgb) / var(--surface-alpha)));
+  backdrop-filter: var(--surface-filter);
+  box-shadow: var(--surface-shadow);
+}
+
 .agent-panel-message {
   display: flex;
   flex-direction: column;
@@ -1290,6 +1298,7 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
 }
 
 .agent-panel-message-body {
+  box-sizing: border-box;
   max-width: 86%;
   min-width: 0;
   color: var(--text-primary, #111827);
@@ -1298,12 +1307,36 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
   overflow-wrap: anywhere;
   interpolate-size: allow-keywords;
   height: auto;
-  transition: height 180ms var(--agent-ease, cubic-bezier(0.16, 1, 0.3, 1));
 }
 
 .agent-panel-message-body.glass {
   padding: 12px 16px;
   border-radius: 22px;
+}
+
+/* 正文在文档流里撑开气泡。思考收掉时改绝对定位叠在上面，
+   高度从上一帧收到正文，多出来的是思考被裁掉，不是一块空垫。 */
+.agent-panel-message-grow {
+  position: relative;
+}
+
+.agent-panel-thinking-slot {
+  opacity: 1;
+  transition: opacity 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.agent-panel-thinking-slot[data-open='false'] {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 1;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.agent-panel-message-answer {
+  min-width: 0;
 }
 
 /* 气泡和历史卡贴在壁纸上。backdrop-filter 会把立绘采进胶囊里糊成雾；
@@ -1325,7 +1358,7 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
 .agent-panel-message[data-role='system'] .agent-panel-message-body {
   align-self: center;
   color: var(--text-muted, #9ca3af);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .agent-panel-message[data-state='error'] .agent-panel-message-body {
@@ -1333,10 +1366,14 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
 }
 
 /* 还在说的时候，句尾跟一个光标。
-   挂在最后一个块的末尾而不是气泡上 —— 挂气泡上它会另起一行，看着像说完了。 */
+   挂在正文最后一个块的末尾。思考、提问、图不是「还在说」。 */
 .agent-panel-message[data-state='streaming']
-  .agent-panel-message-body
-  > :last-child:not(.agent-panel-thinking)::after {
+  .agent-panel-message-answer
+  > :last-child:not(
+    .agent-panel-question,
+    .agent-panel-question-options,
+    .agent-panel-message-images
+  )::after {
   content: '';
   display: inline-block;
   width: 2px;
@@ -1361,9 +1398,13 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   margin-top: 6px;
 }
 
+.agent-panel-message-images:first-child {
+  margin-top: 0;
+}
+
 .agent-panel-message-images img {
   max-width: 100%;
-  border-radius: 10px;
+  border-radius: 12px;
 }
 
 .agent-panel-message-attach {
@@ -1380,8 +1421,11 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   border-radius: 12px;
 }
 
-.agent-panel-message-attach .agent-panel-attach-chip {
-  background: color-mix(in srgb, var(--text-muted, #9ca3af) 18%, transparent);
+/* 气泡里的贴不加磨砂，给一层实底。 */
+.agent-panel-message-body .agent-panel-tag {
+  max-width: 100%;
+  background: var(--surface-bg, rgb(var(--surface-rgb) / var(--surface-alpha)));
+  box-shadow: var(--surface-shadow);
 }
 
 /* ── 它的设置 ───────────────────────────────────── */
@@ -1393,23 +1437,27 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   min-height: 0;
 }
 
+.agent-panel-manage .agent-panel-tag {
+  background: var(--surface-bg, rgb(var(--surface-rgb) / var(--surface-alpha)));
+  box-shadow: var(--surface-shadow);
+}
+
+.agent-panel-manage .agent-panel-tag[data-block='true'] {
+  align-self: stretch;
+  margin: 0;
+}
+
 .agent-panel-manage-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  padding: 10px 16px;
-  border-radius: 999px;
-  transition: background 0.15s ease;
+  width: 100%;
+  max-width: 100%;
 }
 
-.agent-panel-manage-row:hover {
-  background: color-mix(in srgb, var(--text-muted, #9ca3af) 10%, transparent);
-}
-
-.agent-panel-manage-name {
+.agent-panel-manage-row .agent-panel-tag-text {
   overflow: hidden;
-  color: var(--text-primary, #111827);
-  font-size: 13.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1446,11 +1494,6 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   translate: 13px 0;
 }
 
-.agent-panel-manage-hint {
-  flex-shrink: 0;
-  margin: 6px 0 0;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .agent-panel-manage-toggle,
   .agent-panel-manage-knob {
@@ -1468,6 +1511,10 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   interpolate-size: allow-keywords;
   height: auto;
   transition: height 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.agent-panel-thinking:last-child {
+  margin-bottom: 0;
 }
 
 .agent-panel-thinking[data-live='true'] {
@@ -1495,24 +1542,52 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   overflow: hidden auto;
 }
 
-/* 扫在字形上：挂 inline，背景跟着行盒走，不铺整段矩形。
-   overflow / color:transparent 叠在 block 上会把字扫没。 */
+.agent-panel-thinking-thought[data-live='true'] {
+  width: fit-content;
+  max-width: 100%;
+}
+
+/* 扫在字形上。clip 要配透明填充，所以渐变必须始终盖住整段字 ——
+   扫到 -100% 会把底滑出盒子，字就跟着没了。200% + 0%/100% 两端都盖住。 */
 .agent-panel-thinking-sweep {
   color: var(--text-muted, #9ca3af);
-  background-image: linear-gradient(
-    100deg,
-    var(--text-muted, #9ca3af) 0 42%,
-    var(--text-primary, #111827) 50%,
-    var(--text-muted, #9ca3af) 58% 100%
-  );
-  background-repeat: no-repeat;
-  background-size: 220% 100%;
-  background-clip: text;
-  /* stylelint-disable property-no-vendor-prefix -- clip + fill so glyphs stay visible */
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  /* stylelint-enable property-no-vendor-prefix */
-  animation: agent-panel-thought-sweep 2.8s linear infinite;
+}
+
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .agent-panel-thinking-sweep {
+    background-image: linear-gradient(
+      90deg,
+      var(--text-muted, #9ca3af) 0%,
+      var(--text-muted, #9ca3af) 40%,
+      color-mix(
+          in srgb,
+          var(--color-primary, #10b981) 55%,
+          var(--text-muted, #9ca3af)
+        )
+        48%,
+      var(--color-primary, #10b981) 50%,
+      color-mix(
+          in srgb,
+          var(--color-primary, #10b981) 55%,
+          var(--text-muted, #9ca3af)
+        )
+        52%,
+      var(--text-muted, #9ca3af) 60%,
+      var(--text-muted, #9ca3af) 100%
+    );
+    background-repeat: no-repeat;
+    background-size: 200% 100%;
+    background-position: 100% 0;
+    background-clip: text;
+    color: transparent;
+    /* stylelint-disable property-no-vendor-prefix -- clip to glyphs; clone so wraps do not share one slab */
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    -webkit-box-decoration-break: clone;
+    /* stylelint-enable property-no-vendor-prefix */
+    box-decoration-break: clone;
+    animation: agent-panel-thought-sweep 2.2s linear infinite;
+  }
 }
 
 @keyframes agent-panel-thought-sweep {
@@ -1521,7 +1596,7 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   }
 
   to {
-    background-position: -100% 0;
+    background-position: 0% 0;
   }
 }
 
@@ -1626,20 +1701,22 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   margin: 0;
   padding: 0;
   list-style: none;
+  color: var(--text-secondary, #6b7280);
+  font-size: 12px;
 }
 
 .agent-panel-tools li {
   display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) auto;
+  grid-template-columns: 7px minmax(0, 1fr) auto;
   align-items: start;
-  gap: 8px;
+  column-gap: 8px;
   min-width: 0;
 }
 
 .agent-panel-tool-status {
   width: 7px;
   height: 7px;
-  margin-top: 0.55em;
+  margin-top: 0.42em;
   border-radius: 50%;
   background: currentcolor;
   opacity: 0.32;
@@ -1667,6 +1744,11 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
 
 .agent-panel-tools li[data-status='running'] .agent-panel-tool-name {
   color: var(--text-primary, #111827);
+  font-weight: 600;
+}
+
+.agent-panel-tools li[data-status='error'] .agent-panel-tool-name {
+  color: var(--color-error, #ef4444);
 }
 
 .agent-panel-tool-copy {
@@ -1683,7 +1765,7 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
 
 .agent-panel-tool-note {
   color: var(--text-muted, #9ca3af);
-  font-size: 12px;
+  font-size: 11.5px;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
@@ -1698,7 +1780,7 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
 @media (prefers-reduced-motion: reduce) {
   .agent-panel-thinking-arrow,
   .agent-panel-thinking-dots span,
-  .agent-panel-thinking-thought[data-live='true'],
+  .agent-panel-thinking-sweep,
   .agent-panel-tools li[data-status='running'] .agent-panel-tool-status {
     animation: none;
     transition-duration: 0.01ms !important;
@@ -1708,10 +1790,22 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
     opacity: 0.55;
   }
 
-  .agent-panel-thinking-thought[data-live='true'] {
-    color: var(--text-muted, #9ca3af);
+  .agent-panel-thinking-sweep {
     background-image: none;
+    background-clip: border-box;
+    color: var(--text-muted, #9ca3af);
+    /* stylelint-disable-next-line property-no-vendor-prefix -- restore fill after clip */
+    -webkit-text-fill-color: var(--text-muted, #9ca3af);
   }
+}
+
+html[data-perf-mode='exlight'] .agent-panel-thinking-sweep {
+  animation: none;
+  background-image: none;
+  background-clip: border-box;
+  color: var(--text-muted, #9ca3af);
+  /* stylelint-disable-next-line property-no-vendor-prefix -- restore fill after clip */
+  -webkit-text-fill-color: var(--text-muted, #9ca3af);
 }
 
 /* ── 之前聊过的 ─────────────────────────────────── */
@@ -1723,7 +1817,7 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
-  padding: 14px 12px 14px 16px;
+  padding: 12px 16px;
   border-radius: 22px;
   color: var(--text-primary, #111827);
 }
@@ -1769,16 +1863,10 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
 
 .agent-panel-session-time {
   color: var(--text-muted, #9ca3af);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
-}
-
-.agent-panel-session[data-tone='alert'] .agent-panel-session-title {
-  color: var(--color-error, #ef4444);
-  font-weight: 500;
-  white-space: normal;
 }
 
 .agent-panel-session .agent-panel-tag-dismiss {
@@ -1786,16 +1874,21 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   height: 28px;
   margin: 0;
   color: var(--text-muted, #9ca3af);
-  opacity: 0;
   transition:
     opacity 150ms ease,
     color 150ms ease,
     background 150ms ease;
 }
 
-.agent-panel-session:hover .agent-panel-tag-dismiss,
-.agent-panel-session:focus-within .agent-panel-tag-dismiss {
-  opacity: 1;
+@media (hover: hover) {
+  .agent-panel-session .agent-panel-tag-dismiss {
+    opacity: 0;
+  }
+
+  .agent-panel-session:hover .agent-panel-tag-dismiss,
+  .agent-panel-session:focus-within .agent-panel-tag-dismiss {
+    opacity: 1;
+  }
 }
 
 .agent-panel-session .agent-panel-tag-dismiss:hover,
@@ -1816,10 +1909,13 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
 }
 
-.agent-panel-message-body > .agent-panel-question:not(:first-child) {
+.agent-panel-message-body > .agent-panel-question:not(:first-child),
+.agent-panel-message-body > .agent-panel-question-options:not(:first-child) {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--surface-border, rgb(0 0 0 / 8%));
@@ -1827,6 +1923,7 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
 
 .agent-panel-question-text {
   margin: 0;
+  color: var(--text-primary, #111827);
   font-size: 15px;
   line-height: 1.6;
 }
@@ -1842,7 +1939,8 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
 .agent-panel-question-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
+  max-width: 100%;
 }
 
 /* 答过之后按钮冻结，但仍然看得见当时选了哪个 */
@@ -1866,36 +1964,6 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   opacity: 0.35;
 }
 
-/* 收藏胶囊：整体是一颗，右边那个 × 只在鼠标过来时露出来 */
-.agent-panel-saved {
-  position: relative;
-  display: inline-flex;
-  max-width: 44%;
-}
-
-.agent-panel-saved-remove {
-  position: absolute;
-  top: -5px;
-  right: -5px;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: var(--color-error, #ef4444);
-  color: #fff;
-  font-size: 11px;
-  line-height: 1;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.agent-panel-saved:hover .agent-panel-saved-remove,
-.agent-panel-saved:focus-within .agent-panel-saved-remove {
-  opacity: 1;
-}
-
 .agent-panel-session[data-active='true'] {
   border-color: color-mix(
     in srgb,
@@ -1905,39 +1973,50 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .agent-panel-saved-remove,
   .agent-panel-session .agent-panel-tag-dismiss {
     transition-duration: 0.01ms !important;
   }
 }
 
-/* ── 消息脚注：时间、复制、重试 ─────────────────── */
+/* ── 消息脚注：时间、复制、重试 ───────────────────
+   贴在气泡下面、跟气泡同一侧。对话卡已经不套进 overlay 玻璃，
+   脚注贴直接铺在壁纸上，所以自己吃表面令牌。 */
 
 .agent-panel-message-footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  place-self: end;
   gap: 6px;
+  max-width: 86%;
   color: var(--text-muted, #9ca3af);
-  font-size: 10.5px;
-
-  /* 平时不抢注意力，鼠标过来才亮 —— 每条消息挂两个按钮会很吵 */
-  opacity: 0;
-  transition: opacity 0.15s ease;
+  font-size: 12px;
 }
 
-/* 脚注那几颗贴要压在正文上，所以给它们一层实底。
-   **刻意不加 backdrop-filter**：它们长在 .agent-panel-overlay 这张玻璃里，父级
-   自己就是 backdrop root —— 子层采到的是卡片已经画好的底，不是页面，滤出来只会
-   是一道乳白带（theme.css 记过这一跤）。 */
+.agent-panel-message[data-role='user'] .agent-panel-message-footer {
+  place-self: end;
+}
+
+.agent-panel-message[data-role='assistant'] .agent-panel-message-footer,
+.agent-panel-message[data-role='system'] .agent-panel-message-footer {
+  place-self: start;
+}
+
 .agent-panel-message-footer .agent-panel-tag {
   background: var(--surface-bg, rgb(var(--surface-rgb) / var(--surface-alpha)));
+  backdrop-filter: var(--surface-filter);
   box-shadow: var(--surface-shadow);
 }
 
-.agent-panel-message:hover .agent-panel-message-footer,
-.agent-panel-message:focus-within .agent-panel-message-footer {
-  opacity: 1;
+@media (hover: hover) {
+  .agent-panel-message-footer {
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  .agent-panel-message:hover .agent-panel-message-footer,
+  .agent-panel-message:focus-within .agent-panel-message-footer {
+    opacity: 1;
+  }
 }
 
 .agent-panel-message-time {
@@ -1949,7 +2028,7 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
 .agent-panel-image-open {
   padding: 0;
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   background: none;
   line-height: 0;
   cursor: zoom-in;
@@ -1957,7 +2036,7 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
 
 .agent-panel-image-open img {
   max-width: 100%;
-  border-radius: 10px;
+  border-radius: 12px;
 }
 
 .agent-panel-lightbox {
@@ -1969,7 +2048,7 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   justify-content: center;
   padding: 12px;
   border: none;
-  border-radius: 20px;
+  border-radius: 22px;
   background: rgb(0 0 0 / 78%);
   cursor: zoom-out;
 }
@@ -1993,8 +2072,20 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   margin: 0 0 6px;
 }
 
-.agent-md-p:last-child {
+.agent-md-p:last-child,
+.agent-md-list:last-child,
+.agent-md-pre:last-child,
+.agent-md-quote:last-child,
+.agent-md-hr:last-child,
+.agent-md-table-scroll:last-child {
   margin-bottom: 0;
+}
+
+.agent-md-pre:first-child,
+.agent-md-quote:first-child,
+.agent-md-list:first-child,
+.agent-md-table-scroll:first-child {
+  margin-top: 0;
 }
 
 .agent-md-heading {
@@ -2024,7 +2115,7 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   overflow-x: auto;
   margin: 6px 0;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: 12px;
   background: color-mix(in srgb, var(--text-muted, #9ca3af) 14%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
@@ -2047,7 +2138,7 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
 
 .agent-md-img {
   max-width: 100%;
-  border-radius: 8px;
+  border-radius: 12px;
 }
 
 .agent-md-link {
@@ -2082,9 +2173,17 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
 
 @media (prefers-reduced-motion: reduce) {
   .agent-panel-message[data-state='streaming']
-    .agent-panel-message-body
-    > :last-child:not(.agent-panel-thinking)::after {
+    .agent-panel-message-answer
+    > :last-child:not(
+      .agent-panel-question,
+      .agent-panel-question-options,
+      .agent-panel-message-images
+    )::after {
     animation: none;
+  }
+
+  .agent-panel-thinking-slot {
+    transition-duration: 0.01ms !important;
   }
 }
 
@@ -2099,7 +2198,9 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
 .agent-panel-action {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
 }
 
 .agent-panel-action-head {
@@ -2107,35 +2208,18 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 0 4px;
-  font-size: 11px;
+  width: 100%;
 }
 
-.agent-panel-action-risk {
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-/* 可撤销的不涂红 —— 颜色是拿来分轻重的，不是拿来一律吓人的 */
-.agent-panel-action[data-tier='light'] .agent-panel-action-risk {
-  background: color-mix(in srgb, var(--text-muted, #9ca3af) 18%, transparent);
-  color: var(--text-secondary, #6b7280);
-}
-
-.agent-panel-action[data-tier='preview'] .agent-panel-action-risk {
-  background: color-mix(in srgb, var(--color-accent, #f59e0b) 18%, transparent);
-  color: var(--color-accent, #f59e0b);
-}
-
-.agent-panel-action[data-tier='explicit'] .agent-panel-action-risk {
-  background: color-mix(in srgb, var(--color-error, #ef4444) 16%, transparent);
-  color: var(--color-error, #ef4444);
+.agent-panel-action .agent-panel-tag {
+  background: var(--surface-bg, rgb(var(--surface-rgb) / var(--surface-alpha)));
+  box-shadow: var(--surface-shadow);
 }
 
 .agent-panel-action-ttl {
+  flex-shrink: 0;
   color: var(--text-muted, #9ca3af);
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2145,35 +2229,29 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
 
 .agent-panel-action-prompt {
   margin: 0;
-  padding: 0 4px;
   color: var(--text-primary, #111827);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 15px;
+  line-height: 1.6;
 }
 
 .agent-panel-action-section {
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--text-muted, #9ca3af) 10%, transparent);
-}
-
-.agent-panel-action-impact {
-  background: color-mix(in srgb, var(--color-error, #ef4444) 8%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
 }
 
 .agent-panel-action-label {
-  display: block;
-  margin-bottom: 4px;
   color: var(--text-muted, #9ca3af);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .agent-panel-action-list {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -2182,16 +2260,34 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   line-height: 1.45;
 }
 
+.agent-panel-action-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .agent-panel-action-step-name {
-  margin-right: 6px;
   color: var(--text-primary, #111827);
   font-weight: 600;
 }
 
+.agent-panel-action-step-note {
+  color: var(--text-muted, #9ca3af);
+  overflow-wrap: anywhere;
+}
+
+.agent-panel-action-impact .agent-panel-action-label,
+.agent-panel-action-impact .agent-panel-action-list {
+  color: var(--color-error, #ef4444);
+}
+
 .agent-panel-action-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+  width: 100%;
 }
 
 /* ==========================================
@@ -2917,9 +3013,9 @@ html.dark .agent-panel-aurora[data-status='error']::after {
   left: 50%;
   transform: translate(-50%, -50%) scale(0);
   border-radius: 50%;
-  background: var(--color-primary, #6366f1);
+  background: var(--color-primary, #10b981);
   box-shadow: 0 0 6px
-    color-mix(in srgb, var(--color-primary, #6366f1) 40%, transparent);
+    color-mix(in srgb, var(--color-primary, #10b981) 40%, transparent);
 }
 
 .agent-panel-longpress.active .agent-panel-lp-dot {
@@ -2930,27 +3026,27 @@ html.dark .agent-panel-aurora[data-status='error']::after {
 @keyframes agent-panel-lp-dot-morph {
   0% {
     transform: translate(-50%, -50%) scale(0);
-    background: var(--color-primary, #6366f1);
+    background: var(--color-primary, #10b981);
     opacity: 1;
   }
 
   35% {
     transform: translate(-50%, -50%) scale(0.25);
-    background: var(--color-primary, #6366f1);
+    background: var(--color-primary, #10b981);
     opacity: 1;
   }
 
   70% {
     transform: translate(-50%, -50%) scale(0.88);
     background: transparent;
-    box-shadow: inset 0 0 0 2.5px var(--color-primary, #6366f1);
+    box-shadow: inset 0 0 0 2.5px var(--color-primary, #10b981);
     opacity: 1;
   }
 
   100% {
     transform: translate(-50%, -50%) scale(1);
     background: transparent;
-    box-shadow: inset 0 0 0 2.5px var(--color-primary, #6366f1);
+    box-shadow: inset 0 0 0 2.5px var(--color-primary, #10b981);
     opacity: 0;
   }
 }
@@ -2961,7 +3057,7 @@ html.dark .agent-panel-aurora[data-status='error']::after {
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    color-mix(in srgb, var(--color-primary, #6366f1) 20%, transparent) 0%,
+    color-mix(in srgb, var(--color-primary, #10b981) 20%, transparent) 0%,
     transparent 70%
   );
   opacity: 0;
@@ -3030,15 +3126,15 @@ html.dark .agent-panel-aurora[data-status='error']::after {
 
 .agent-panel-lp-track {
   fill: none;
-  stroke: color-mix(in srgb, var(--color-primary, #6366f1) 10%, transparent);
+  stroke: color-mix(in srgb, var(--color-primary, #10b981) 10%, transparent);
   stroke-width: 2.5;
 }
 
 .agent-panel-lp-ring {
   fill: none;
-  stroke: var(--color-primary, #6366f1);
+  stroke: var(--color-primary, #10b981);
   stroke-width: 2.5;
   filter: drop-shadow(
-    0 0 4px color-mix(in srgb, var(--color-primary, #6366f1) 45%, transparent)
+    0 0 4px color-mix(in srgb, var(--color-primary, #10b981) 45%, transparent)
   );
 }

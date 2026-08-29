@@ -7,13 +7,17 @@
 import type { ChatMessage } from './engineTypes'
 import type { AgentMessage } from './agentMessages'
 import { getAgentMessagesSnapshot, setAgentMessages } from './agentMessages'
-import { peelThoughtFromContent, splitThinkContent } from './agentThinking'
+import {
+  nonemptyContent,
+  peelThoughtFromContent,
+  splitThinkContent,
+} from './agentThinking'
 
 function projectState(message: ChatMessage): AgentMessage['state'] {
   if (message.taskExecution?.status === 'error') return 'error'
+  // waiting 是在等你答，不是还在说 —— 跟 streaming 会在问句后面拖一条光标。
   if (
     message.taskExecution?.status === 'processing' ||
-    message.taskExecution?.status === 'waiting' ||
     message.taskExecution?.status === 'cancelling'
   ) {
     return 'streaming'
@@ -86,7 +90,9 @@ export function projectAgentMessage(message: ChatMessage): AgentMessage {
     fromTags && (!fromExec || fromTags.length >= fromExec.length)
       ? fromTags
       : fromExec
-  const content = peelThoughtFromContent(tagged.content, thought ?? '')
+  const content = nonemptyContent(
+    peelThoughtFromContent(tagged.content, thought ?? ''),
+  )
   return {
     id: message.id,
     role: message.role,

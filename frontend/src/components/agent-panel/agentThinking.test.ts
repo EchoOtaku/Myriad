@@ -3,11 +3,15 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
+  BUBBLE_GROW_MS,
   formatStepDuration,
+  messageHasAnswer,
+  nonemptyContent,
   peelThoughtFromContent,
   splitThinkContent,
   stepsWorthShowing,
   summarizeAgentSteps,
+  THINKING_FOLD_MS,
   thinkingVisible,
 } from './agentThinking'
 
@@ -98,6 +102,14 @@ test('有判断说明、但还没有正文时才摆过程', () => {
   assert.equal(thinkingVisible([], false, '先查天气再写', true), false)
 })
 
+test('只有空白不算正文，否则思考会被卸掉、气泡里剩一圈空垫', () => {
+  assert.equal(nonemptyContent('\n\n'), '')
+  assert.equal(nonemptyContent('  你好'), '  你好')
+  assert.equal(messageHasAnswer({ content: '\n' }), false)
+  assert.equal(messageHasAnswer({ content: '答' }), true)
+  assert.equal(messageHasAnswer({ content: '', imageUrls: ['/a.png'] }), true)
+})
+
 test('思考过程本文要折行，不能被步骤名那套 ellipsis 裁掉', () => {
   const css = readFileSync(
     new URL('./agent-panel.css', import.meta.url),
@@ -114,24 +126,51 @@ test('思考过程本文要折行，不能被步骤名那套 ellipsis 裁掉', (
   assert.match(css, /@keyframes agent-panel-thought-sweep/)
   assert.match(
     css,
-    /\.agent-panel-thinking-thought\[data-live='true'\] \{[\s\S]*background-clip:\s*text/,
+    /\.agent-panel-thinking-sweep \{[\s\S]*background-clip:\s*text/,
+  )
+  assert.match(
+    css,
+    /\.agent-panel-thinking-sweep \{[\s\S]*box-decoration-break:\s*clone/,
+  )
+  assert.doesNotMatch(
+    css,
+    /@keyframes agent-panel-thought-sweep \{[\s\S]*?-100%/,
   )
   assert.doesNotMatch(
     css,
     /\.agent-panel-thinking-thought\[data-live='true'\]::after/,
   )
+  const liveThought = css.match(
+    /\.agent-panel-thinking-thought\[data-live='true'\] \{[^}]*\}/,
+  )?.[0]
+  assert.ok(liveThought)
+  assert.doesNotMatch(liveThought, /background-clip/)
   assert.match(css, /\.agent-panel-tools li/)
   assert.doesNotMatch(
     css,
     /\.agent-panel-question \{[\s\S]{0,180}border-radius:\s*24px/,
   )
-  assert.match(css, /> :last-child:not\(\.agent-panel-thinking\)::after/)
+  assert.match(
+    css,
+    /\.agent-panel-message-answer[\s\S]*:last-child:not\(\s*\.agent-panel-question/,
+  )
+  assert.match(css, /\.agent-panel-thinking-slot\[data-open='false'\]/)
+  assert.match(
+    css,
+    /\.agent-panel-thinking-slot\[data-open='false'\] \{[\s\S]*position:\s*absolute/,
+  )
+  assert.doesNotMatch(css, /grid-template-rows:\s*0fr/)
+  assert.equal(THINKING_FOLD_MS, 280)
+  assert.equal(BUBBLE_GROW_MS, 160)
+  assert.match(message, /el\.animate/)
+  assert.match(message, /prevH/)
   const thinking = readFileSync(
     new URL('./AgentPanelThinking.tsx', import.meta.url),
     'utf8',
   )
   assert.match(thinking, /data-live="true"/)
   assert.match(thinking, /agent-panel-tools/)
+  assert.match(thinking, /agent-panel-thinking-sweep/)
   assert.match(
     thinking,
     /note \? \(\s*<p className="agent-panel-thinking-thought" data-live="true">/,
@@ -140,6 +179,66 @@ test('思考过程本文要折行，不能被步骤名那套 ellipsis 裁掉', (
     message,
     /agent-panel-message-body[\s\S]*showsThinking[\s\S]*AgentPanelThinking/,
   )
+  assert.match(message, /agent-panel-message-grow/)
+  assert.match(message, /agent-panel-thinking-slot/)
+  assert.match(message, /agent-panel-tag-text/)
+})
+
+test('说明性的短句都是贴：操作、附件、收藏、脚注不再另起一套', () => {
+  const css = readFileSync(
+    new URL('./agent-panel.css', import.meta.url),
+    'utf8',
+  )
+  const message = readFileSync(
+    new URL('./AgentPanelMessage.tsx', import.meta.url),
+    'utf8',
+  )
+  const action = readFileSync(
+    new URL('./AgentPanelActionCard.tsx', import.meta.url),
+    'utf8',
+  )
+  const composer = readFileSync(
+    new URL('./AgentPanelComposer.tsx', import.meta.url),
+    'utf8',
+  )
+  const manage = readFileSync(
+    new URL('./AgentPanelManage.tsx', import.meta.url),
+    'utf8',
+  )
+  const sessions = readFileSync(
+    new URL('./AgentPanelSessions.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.doesNotMatch(css, /\.agent-panel-attach-chip/)
+  assert.doesNotMatch(css, /\.agent-panel-saved-remove/)
+  assert.doesNotMatch(css, /\.agent-panel-action-risk/)
+  assert.doesNotMatch(css, /\.agent-panel-action-label \{[\s\S]*text-transform/)
+  assert.doesNotMatch(
+    css,
+    /\.agent-panel-action-section \{[\s\S]{0,160}border-radius:\s*16px/,
+  )
+  assert.doesNotMatch(css, /#6366f1/)
+  assert.match(css, /\.agent-panel-thinking:last-child/)
+  assert.match(
+    css,
+    /@media \(hover: hover\) \{[\s\S]*\.agent-panel-message-footer/,
+  )
+  assert.match(action, /className="agent-panel-tag"/)
+  assert.match(action, /agent-panel-tag-text/)
+  assert.match(action, /agent-panel-action-step-note/)
+  assert.match(message, /agent-panel-tag-text/)
+  assert.doesNotMatch(message, /agent-panel-attach-chip/)
+  assert.match(composer, /agent-panel-tag-dismiss/)
+  assert.match(composer, /agent-panel-saved-open/)
+  assert.doesNotMatch(composer, /agent-panel-saved-remove/)
+  assert.match(manage, /agent-panel-tag agent-panel-manage-row/)
+  assert.match(manage, /agent-panel-tag-text/)
+  assert.match(sessions, /data-block="true"/)
+  assert.match(
+    sessions,
+    /className="agent-panel-tag"[\s\S]*data-block="true"[\s\S]*data-tone="alert"/,
+  )
+  assert.doesNotMatch(sessions, /agent-panel-session glass" data-tone/)
 })
 
 test('正文里的 think 标签拆成过程和答案', () => {

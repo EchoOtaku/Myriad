@@ -306,7 +306,9 @@ export const AgentPanel: React.FC = () => {
                           data-tone="primary"
                           onClick={undo}
                         >
-                          {t.agentPanel.undo.button}
+                          <span className="agent-panel-tag-text">
+                            {t.agentPanel.undo.button}
+                          </span>
                         </button>
                       ) : null}
                     </AgentPresence>

@@ -174,20 +174,24 @@ export const AgentPanelSessions: React.FC<AgentPanelSessionsProps> = ({
       <div className="agent-panel-messages" ref={listRef}>
         <div className="agent-panel-messages-track" ref={trackRef}>
           <AgentPresence open={!!error} kind="row" from="composer">
-            <div className="agent-panel-session glass" data-tone="alert">
-              <span className="agent-panel-session-title">{error}</span>
-            </div>
+            <span
+              className="agent-panel-tag"
+              data-block="true"
+              data-tone="alert"
+            >
+              <span className="agent-panel-tag-text">{error}</span>
+            </span>
           </AgentPresence>
           <AgentPresence
             open={!error && sessions !== null && sessions.length === 0}
             kind="row"
             from="composer"
           >
-            <div className="agent-panel-session glass">
-              <span className="agent-panel-session-time">
+            <span className="agent-panel-tag" data-block="true">
+              <span className="agent-panel-tag-text">
                 {t.agentPanel.sessions.empty}
               </span>
-            </div>
+            </span>
           </AgentPresence>
           <AgentPresenceList
             items={visible}

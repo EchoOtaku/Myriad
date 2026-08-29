@@ -248,6 +248,46 @@ test('会话里的 stepHistory 能还原成执行步骤', () => {
   assert.equal(steps[1]?.message, '超时')
 })
 
+test('只有换行的正文当没答，思考还留着', () => {
+  const projected = projectAgentMessage(
+    chat({
+      content: '\n\n',
+      taskExecution: {
+        taskId: '',
+        status: 'processing',
+        progress: 20,
+        steps: [],
+        reasoning: '先把问题想清楚。',
+      },
+    }),
+  )
+  assert.equal(projected.content, '')
+  assert.equal(projected.thought, '先把问题想清楚。')
+  assert.equal(projected.state, 'streaming')
+})
+
+test('等你回答时不是还在说，问句后面不该跟光标', () => {
+  const projected = projectAgentMessage(
+    chat({
+      content: '',
+      pendingQuestion: {
+        questionId: 'q1',
+        questionType: 'choice',
+        question: '发给谁？',
+        options: [{ value: 'a', label: '甲' }],
+      },
+      taskExecution: {
+        taskId: 't',
+        status: 'waiting',
+        progress: 40,
+        steps: [],
+      },
+    }),
+  )
+  assert.equal(projected.state, undefined)
+  assert.equal(projected.question?.text, '发给谁？')
+})
+
 test('流式时只投影最后一条，前面的对象沿用', () => {
   syncProjectedMessages([
     chat({ id: 'u', role: 'user', content: '问' }),

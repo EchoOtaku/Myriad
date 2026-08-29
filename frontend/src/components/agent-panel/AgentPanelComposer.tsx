@@ -400,7 +400,9 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
               )
             }
           >
-            {t.agentPanel.actions.explain}
+            <span className="agent-panel-tag-text">
+              {t.agentPanel.actions.explain}
+            </span>
           </button>
         </AgentPresence>
         <AgentPresence
@@ -419,7 +421,9 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
               )
             }
           >
-            {t.agentPanel.actions.translate}
+            <span className="agent-panel-tag-text">
+              {t.agentPanel.actions.translate}
+            </span>
           </button>
         </AgentPresence>
         <AgentPresence
@@ -432,7 +436,9 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
             className="agent-panel-tag"
             onClick={() => onSubmit(t.agentPanel.prompts.summarize)}
           >
-            {t.agentPanel.actions.summarize}
+            <span className="agent-panel-tag-text">
+              {t.agentPanel.actions.summarize}
+            </span>
           </button>
         </AgentPresence>
         <AgentPresence
@@ -445,7 +451,9 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
             className="agent-panel-tag"
             onClick={() => onSubmit(t.agentPanel.prompts.translate)}
           >
-            {t.agentPanel.actions.translate}
+            <span className="agent-panel-tag-text">
+              {t.agentPanel.actions.translate}
+            </span>
           </button>
         </AgentPresence>
         <AgentPresenceList
@@ -455,18 +463,20 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
           from="self"
         >
           {(preset) => (
-            <span className="agent-panel-saved">
+            <span className="agent-panel-tag agent-panel-tag-saved">
               <button
                 type="button"
-                className="agent-panel-tag agent-panel-tag-saved"
+                className="agent-panel-saved-open"
                 title={preset.input}
                 onClick={() => onSubmit(preset.input)}
               >
-                {preset.title?.trim() || preset.input}
+                <span className="agent-panel-tag-text">
+                  {preset.title?.trim() || preset.input}
+                </span>
               </button>
               <button
                 type="button"
-                className="agent-panel-saved-remove"
+                className="agent-panel-tag-dismiss"
                 title={t.agentPanel.unsave}
                 aria-label={t.agentPanel.unsave}
                 onClick={() => {
@@ -477,7 +487,16 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
                   void agentService.toggleFavorite(preset.id).catch(() => {})
                 }}
               >
-                ×
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  aria-hidden="true"
+                >
+                  <path d="M6 6l12 12M18 6l-12 12" />
+                </svg>
               </button>
             </span>
           )}

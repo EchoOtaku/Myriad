@@ -38,13 +38,16 @@ export const AgentPanelManage: React.FC = () => {
     <div className="agent-panel-manage">
       <AgentPresence open={!!note} kind="row" from="self">
         <span className="agent-panel-tag" data-block="true" data-tone="alert">
-          {note}
+          <span className="agent-panel-tag-text">{note}</span>
         </span>
       </AgentPresence>
 
       {doNotDisturb !== null && (
-        <div className="agent-panel-manage-row">
-          <span className="agent-panel-manage-name">
+        <div
+          className="agent-panel-tag agent-panel-manage-row"
+          data-block="true"
+        >
+          <span className="agent-panel-tag-text">
             {t.agentPanel.manage.doNotDisturb}
           </span>
           <button
@@ -69,11 +72,10 @@ export const AgentPanelManage: React.FC = () => {
         </div>
       )}
 
-      <span
-        className="agent-panel-tag agent-panel-manage-hint"
-        data-block="true"
-      >
-        {t.agentPanel.manage.personaElsewhere}
+      <span className="agent-panel-tag" data-block="true">
+        <span className="agent-panel-tag-text">
+          {t.agentPanel.manage.personaElsewhere}
+        </span>
       </span>
     </div>
   )

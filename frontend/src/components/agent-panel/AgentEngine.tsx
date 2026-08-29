@@ -60,7 +60,11 @@ import {
 import { buildAgentPendingAction } from './agentAction'
 import { attachmentsForRequest } from './agentAttachments'
 import { getAgentContextConsent } from './agentContextConsent'
-import { peelThoughtFromContent, splitThinkContent } from './agentThinking'
+import {
+  nonemptyContent,
+  peelThoughtFromContent,
+  splitThinkContent,
+} from './agentThinking'
 import { setAgentSessionId } from './agentMessages'
 import { syncProjectedMessages } from './projectAgentMessage'
 import {
@@ -797,9 +801,8 @@ export const AgentEngine: React.FC = () => {
               if (split.thought && split.thought !== streamedThinking) {
                 publishThinking(split.thought)
               }
-              const body = peelThoughtFromContent(
-                split.content,
-                streamedThinking,
+              const body = nonemptyContent(
+                peelThoughtFromContent(split.content, streamedThinking),
               )
               if (body) {
                 updateMessageExecution(assistantMessageId, {
@@ -814,9 +817,8 @@ export const AgentEngine: React.FC = () => {
               if (split.thought && split.thought !== streamedThinking) {
                 publishThinking(split.thought)
               }
-              const body = peelThoughtFromContent(
-                split.content,
-                streamedThinking,
+              const body = nonemptyContent(
+                peelThoughtFromContent(split.content, streamedThinking),
               )
               if (body) {
                 utterance.chunk(tokenEvent.token)

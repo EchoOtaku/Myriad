@@ -83,6 +83,33 @@ export function stepsWorthShowing(steps: readonly AgentMessageStep[]): boolean {
   )
 }
 
+/** 只有空白不算正文 —— 当答会让思考被卸掉，气泡里剩一圈垫。 */
+export function nonemptyContent(text: string): string {
+  return text.trim() ? text : ''
+}
+
+export function messageHasAnswer(message: {
+  content: string
+  imageUrls?: readonly string[]
+  question?: unknown
+  suggestions?: readonly string[]
+}): boolean {
+  return !!(
+    nonemptyContent(message.content) ||
+    message.imageUrls?.length ||
+    message.question ||
+    message.suggestions?.length
+  )
+}
+
+/** 思考收进正文那一下，格子还要播完。 */
+export const THINKING_FOLD_MS = 280
+
+/** 正文往下长的时候，高度跟着走，比收思考短一截。 */
+export const BUBBLE_GROW_MS = 160
+
+export const BUBBLE_SIZE_EASE = 'cubic-bezier(0.16, 1, 0.3, 1)'
+
 /**
  * 还在跑、气泡里还没有正文时才摆过程。
  * 答案一出来，过程就收掉 —— 用户要读的是答。
