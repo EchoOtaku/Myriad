@@ -734,24 +734,4 @@ export interface SkillInfo {
 
 // 中断/转向 (Phase 1A)
 
-/** 中断会话请求 */
-export interface InterruptRequest {
-  input: string
-}
-
-/** 转向会话请求 */
-export interface SteerRequest {
-  instruction: string
-}
-
 // 多 Agent (Phase 6)
-
-/** Agent 配置信息 */
-export interface AgentProfile {
-  id: string
-  role: AgentRole
-  description: string
-  defaultTier: string
-  maxConcurrency: number
-  capabilityPrefixes: string[]
-}

@@ -4,6 +4,7 @@
 
 import type { RefObject } from 'react'
 import { useLayoutEffect, useRef } from 'react'
+import { agentPanelStaggerSteps } from './agentPanelStage'
 import {
   applyConversationExit,
   clampConversationScroll,
@@ -107,12 +108,42 @@ export function useConversationPan(
       } else {
         viewH = viewport.clientHeight
       }
+      if (viewH < 32) {
+        viewH = conversationViewHeight(
+          trackH,
+          conversationShellLimit(0, window.innerHeight),
+        )
+      }
     }
+
+    const presenceOf = (card: Card): HTMLElement =>
+      (card.el.closest('.agent-panel-presence') as HTMLElement | null) ??
+      card.el
 
     const clearExit = () => {
       for (const card of cards) {
         applyConversationExit(card.el, { exit: 0, shift: 0, hidden: false })
+        presenceOf(card).style.removeProperty('--agent-exit-stagger')
         card.key = ''
+      }
+    }
+
+    const writeExitStagger = () => {
+      const ranked = cards
+        .filter((card) => card.el.style.visibility !== 'hidden')
+        .sort((a, b) => b.top + b.height - (a.top + a.height))
+      ranked.forEach((card, index) => {
+        presenceOf(card).style.setProperty(
+          '--agent-exit-stagger',
+          String(agentPanelStaggerSteps(index + 1)),
+        )
+      })
+      const anchor = viewport.closest('.agent-panel-overlay-anchor')
+      if (anchor instanceof HTMLElement) {
+        anchor.style.setProperty(
+          '--agent-stagger-wave',
+          String(agentPanelStaggerSteps(ranked.length)),
+        )
       }
     }
 
@@ -122,9 +153,14 @@ export function useConversationPan(
       const leaving =
         (shell instanceof HTMLElement && shell.dataset.phase === 'closing') ||
         Boolean(viewport.closest('[data-exiting="true"]'))
-      // 逐张收回时先去掉滚动模糊，免得和位移叠两层。
       if (leaving) {
-        clearExit()
+        // 越界的仍藏着。只把画面里的滚动模糊拿掉，交给 CSS 一张张收。
+        for (const card of cards) {
+          if (card.el.style.visibility === 'hidden') continue
+          applyConversationExit(card.el, { exit: 0, shift: 0, hidden: false })
+          card.key = ''
+        }
+        writeExitStagger()
         return
       }
       for (const card of cards) {
@@ -140,6 +176,7 @@ export function useConversationPan(
         card.key = key
         applyConversationExit(card.el, style)
       }
+      writeExitStagger()
     }
 
     const writeCap = (max: number) => {
@@ -254,7 +291,7 @@ export function useConversationPan(
     }
 
     const onTouchMove = (event: TouchEvent) => {
-      if (!dragging || event.touches.length !== 1) return
+      if (!dragging || event.touches.length !== 1 || blocked()) return
       measure()
       const max = maxScroll()
       if (max <= 0) return
@@ -277,6 +314,7 @@ export function useConversationPan(
     const onTouchEnd = (event: TouchEvent) => {
       if (!dragging) return
       dragging = false
+      if (blocked()) return
       measure()
       const max = maxScroll()
       velocity = sampleVelocity(samples, event.timeStamp)
@@ -296,6 +334,7 @@ export function useConversationPan(
     write()
 
     const resize = new ResizeObserver(() => {
+      if (blocked()) return
       recache()
       measure()
       if (nearBottom) target = maxScroll()
@@ -338,7 +377,10 @@ export function useConversationPan(
       track.style.transform = ''
       delete viewport.dataset.capped
       const anchor = viewport.closest('.agent-panel-overlay-anchor')
-      if (anchor instanceof HTMLElement) delete anchor.dataset.capped
+      if (anchor instanceof HTMLElement) {
+        delete anchor.dataset.capped
+        anchor.style.removeProperty('--agent-stagger-wave')
+      }
       clearExit()
     }
   }, [cardSelector, enabled, resetKey, trackRef, viewportRef])

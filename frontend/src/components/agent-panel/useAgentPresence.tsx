@@ -9,6 +9,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type { PresenceEntry } from './agentPresenceState'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { AGENT_ROW_STAGGER_MAX } from './agentPanelStage'
 import {
   AGENT_ROW_MS,
   AGENT_SWAP_MS,
@@ -199,7 +200,9 @@ export function AgentPresenceList<T>({
       {entries.map((entry, index) => {
         let stagger = staggerFor.current.get(entry.key)
         if (stagger === undefined) {
-          stagger = batch ? Math.min(Math.max(last - index, 0), 8) : 0
+          stagger = batch
+            ? Math.min(Math.max(last - index, 0), AGENT_ROW_STAGGER_MAX) + 1
+            : 0
           staggerFor.current.set(entry.key, stagger)
         }
         return (

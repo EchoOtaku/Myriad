@@ -62,8 +62,6 @@ export function isCheckStale(
   return age >= STALE_WHEN_OFF_SECS
 }
 
-export type AgoUnit = 'justNow' | 'min' | 'hour' | 'day'
-
 export type AgoParts =
   | { unit: 'justNow' }
   | { unit: 'min'; n: number }

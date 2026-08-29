@@ -18,7 +18,6 @@
 
 :root {
   /* 时长：一次交互只在四档里选 */
-  --sm-dur-instant: 90ms; /* 纯颜色翻转、焦点环 */
   --sm-dur-fast: 140ms; /* 悬停、按下、图标 */
   --sm-dur-base: 220ms; /* 控件状态、下拉、开关 */
   --sm-dur-slow: 320ms; /* 区块进入、层级推入、折叠 */
@@ -192,21 +191,6 @@
   to {
     opacity: 1;
     transform: translate3d(0, 0, 0);
-  }
-}
-
-/* 值发生变化的轻提示（保存成功、字段被远端更新） */
-@keyframes sm-pulse-once {
-  0% {
-    transform: scale(1);
-  }
-
-  45% {
-    transform: scale(var(--sm-scale-pop));
-  }
-
-  100% {
-    transform: scale(1);
   }
 }
 
@@ -400,7 +384,6 @@ html.dark .sm-pane[data-nav] .platform-card {
 
 @media (prefers-reduced-motion: reduce) {
   :root {
-    --sm-dur-instant: 1ms;
     --sm-dur-fast: 1ms;
     --sm-dur-base: 1ms;
     --sm-dur-slow: 1ms;

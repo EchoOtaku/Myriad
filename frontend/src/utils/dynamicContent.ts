@@ -13,7 +13,6 @@ export * from './weather'
 
 export type GreetingIconName =
   'sunrise' | 'sun' | 'cloud-sun' | 'sunset' | 'moon'
-export type ThemeIconName = 'sun' | 'moon'
 
 export interface GreetingData {
   text: string

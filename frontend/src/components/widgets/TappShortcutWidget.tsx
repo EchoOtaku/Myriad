@@ -49,10 +49,6 @@ import { WidgetShell } from './shared/WidgetShell'
 
 // Types
 
-export interface TappShortcutWidgetConfig {
-  tappId?: string
-}
-
 interface ResolvedTapp {
   id: string
   name: string

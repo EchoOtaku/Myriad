@@ -96,12 +96,6 @@
   }
 }
 
-@keyframes as-store-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 @keyframes as-store-label-swap {
   from {
     opacity: 0;
@@ -2613,7 +2607,6 @@ html.dark .as-detail__perm-card--privileged.checkbox-group-card {
 
   .as-detail__block--info .info-action-card {
     /* Tighter card padding on phone-width store surfaces */
-    --iac-pad: 0.65rem;
   }
 
   .as-store-configuration {

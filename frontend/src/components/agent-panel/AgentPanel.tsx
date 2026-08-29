@@ -48,8 +48,10 @@ import { clearAgentSelection, watchAgentSelection } from './agentSelection'
 import {
   clearAgentUndoOffer,
   useAgentPendingAction,
+  useAgentStatus,
   useAgentUndoOffer,
 } from './agentStatusStore'
+import { useAgentAuroraPrism } from './useAgentAuroraPrism'
 import { AgentPresence } from './useAgentPresence'
 import { LONG_PRESS_DURATION, useLongPress } from './useLongPress'
 import './agent-panel.css'
@@ -62,10 +64,19 @@ export const AgentPanel: React.FC = () => {
     INITIAL_AGENT_PANEL_STAGE,
   )
   const overlayRef = useRef<HTMLDivElement>(null)
+  const prismARef = useRef<HTMLSpanElement>(null)
+  const prismBRef = useRef<HTMLSpanElement>(null)
   const open = agentPanelIsOpen(stage)
   const showsOverlay = agentPanelShowsStage(stage, 'overlay')
   const showsFull = agentPanelShowsStage(stage, 'full')
   const messages = useAgentMessages()
+  const { status } = useAgentStatus()
+  useAgentAuroraPrism(
+    status,
+    showsOverlay || showsFull,
+    prismARef,
+    prismBRef,
+  )
 
   const navLayout = useSyncExternalStore(
     subscribeNavLayout,
@@ -141,11 +152,16 @@ export const AgentPanel: React.FC = () => {
         clearTimeout(fallback)
       }
     }
-    const timer = setTimeout(dispatch, agentPanelSettleTimeoutMs(stage.stage), {
-      type: 'settle',
-    })
+    const timer = setTimeout(
+      dispatch,
+      agentPanelSettleTimeoutMs(
+        stage.stage,
+        showsFull && fullView === 'messages' ? messages.length : undefined,
+      ),
+      { type: 'settle' },
+    )
     return () => clearTimeout(timer)
-  }, [stage])
+  }, [fullView, messages.length, showsFull, stage])
 
   // 一直盯着选区。必须常驻 —— 长按那一下会把选区收掉，等面板开了再看就晚了。
   useEffect(() => watchAgentSelection(), [])
@@ -214,98 +230,113 @@ export const AgentPanel: React.FC = () => {
   return (
     <>
       {(showsOverlay || showsFull) && (
-        <div
-          ref={overlayRef}
-          className="agent-panel-overlay-anchor"
-          data-phase={stage.phase}
-          data-stage={stage.stage}
-        >
-          {showsFull ? (
-            <AgentPanelFull
-              view={fullView}
-              onView={setFullView}
-              onSubmit={submit}
-              showChrome={fullView === 'manage'}
-            />
-          ) : (
-            <AgentPanelOverlay
-              pendingAction={pendingAction}
-              onDecide={decide}
-            />
-          )}
+        <>
+          <div
+            className="agent-panel-aurora"
+            data-phase={stage.phase}
+            data-status={status}
+            aria-hidden="true"
+          >
+            <span className="agent-panel-aurora-flow" />
+            <span ref={prismARef} className="agent-panel-aurora-prism" />
+            <span ref={prismBRef} className="agent-panel-aurora-prism" />
+            <span className="agent-panel-aurora-alert" />
+          </div>
+          <div
+            ref={overlayRef}
+            className="agent-panel-overlay-anchor"
+            data-phase={stage.phase}
+            data-stage={stage.stage}
+          >
+            {showsFull ? (
+              <AgentPanelFull
+                view={fullView}
+                onView={setFullView}
+                onSubmit={submit}
+                showChrome={fullView === 'manage'}
+              />
+            ) : (
+              <AgentPanelOverlay
+                pendingAction={pendingAction}
+                onDecide={decide}
+              />
+            )}
 
-          {/* 等人拍板、翻设置的时候没有话可说，这一行就不该杵在那儿 */}
-          {showsComposer && (
-            <AgentPanelComposer
-              onSubmit={submit}
-              autoFocus={fullView !== 'sessions' && stage.phase === 'settled'}
-              leading={
-                <>
-                  <AgentPresence open={!!undoOffer} kind="chip" from="self">
-                    {undoOffer ? (
-                      <span className="agent-panel-tag" data-tone="primary">
-                        <span className="agent-panel-tag-text">
-                          {t.agentPanel.undo.did[undoOffer.actionType]}
+            {/* 等人拍板、翻设置的时候没有话可说，这一行就不该杵在那儿 */}
+            {showsComposer && (
+              <AgentPanelComposer
+                onSubmit={submit}
+                autoFocus={fullView !== 'sessions' && stage.phase === 'settled'}
+                leading={
+                  <>
+                    <AgentPresence open={!!undoOffer} kind="chip" from="self">
+                      {undoOffer ? (
+                        <span className="agent-panel-tag" data-tone="primary">
+                          <span className="agent-panel-tag-text">
+                            {t.agentPanel.undo.did[undoOffer.actionType]}
+                          </span>
                         </span>
-                      </span>
-                    ) : null}
-                  </AgentPresence>
-                  <AgentPresence open={!!undoOffer} kind="chip" from="self">
-                    {undoOffer ? (
+                      ) : null}
+                    </AgentPresence>
+                    <AgentPresence open={!!undoOffer} kind="chip" from="self">
+                      {undoOffer ? (
+                        <button
+                          type="button"
+                          className="agent-panel-tag agent-panel-tag-strong"
+                          data-tone="primary"
+                          onClick={undo}
+                        >
+                          {t.agentPanel.undo.button}
+                        </button>
+                      ) : null}
+                    </AgentPresence>
+                  </>
+                }
+                trailing={
+                  <>
+                    <AgentPanelSessionChrome
+                      view={showsFull ? fullView : 'messages'}
+                      onView={(next) => {
+                        setFullView(next)
+                        if (next !== 'messages') {
+                          dispatch({ type: 'open', stage: 'full' })
+                        }
+                      }}
+                    />
+                    <AgentPresence
+                      open={!showsFull && messages.length > 0}
+                      kind="chip"
+                      from="self"
+                    >
                       <button
                         type="button"
-                        className="agent-panel-tag agent-panel-tag-strong"
-                        data-tone="primary"
-                        onClick={undo}
+                        className="agent-panel-tag"
+                        data-icon="true"
+                        onClick={() =>
+                          dispatch({ type: 'open', stage: 'full' })
+                        }
+                        title={t.agentPanel.expand}
+                        aria-label={t.agentPanel.expand}
                       >
-                        {t.agentPanel.undo.button}
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="m6 15 6-6 6 6" />
+                        </svg>
                       </button>
-                    ) : null}
-                  </AgentPresence>
-                </>
-              }
-              trailing={
-                <>
-                  <AgentPanelSessionChrome
-                    view={showsFull ? fullView : 'messages'}
-                    onView={(next) => {
-                      setFullView(next)
-                      if (next !== 'messages') {
-                        dispatch({ type: 'open', stage: 'full' })
-                      }
-                    }}
-                  />
-                  <AgentPresence
-                    open={!showsFull && messages.length > 0}
-                    kind="chip"
-                    from="self"
-                  >
-                    <button
-                      type="button"
-                      className="agent-panel-tag"
-                      data-icon="true"
-                      onClick={() => dispatch({ type: 'open', stage: 'full' })}
-                      title={t.agentPanel.expand}
-                      aria-label={t.agentPanel.expand}
-                    >
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
-                        <path d="m6 15 6-6 6 6" />
-                      </svg>
-                    </button>
-                  </AgentPresence>
-                </>
-              }
-            />
-          )}
-        </div>
+                    </AgentPresence>
+                  </>
+                }
+              />
+            )}
+          </div>
+        </>
       )}
 
       <div

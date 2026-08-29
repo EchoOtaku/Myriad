@@ -23,16 +23,24 @@ import {
 import { AgentPanelManage } from './AgentPanelManage'
 import { AgentPanelMessage } from './AgentPanelMessage'
 import { AgentPanelSessions, useAgentSessionList } from './AgentPanelSessions'
-import { AGENT_ROW_EXIT_MS, AGENT_ROW_STAGGER_MS } from './agentPanelStage'
+import { agentPanelRowWaveMs } from './agentPanelStage'
 import { AgentPresence, AgentPresenceList } from './useAgentPresence'
 import { useConversationPan } from './useConversationPan'
 
-function useHeldView(view: AgentPanelFullView): {
+function useHeldView(
+  view: AgentPanelFullView,
+  messagesCount: number,
+  sessionsCount: number,
+): {
   held: AgentPanelFullView
   exiting: boolean
 } {
   const [held, setHeld] = useState(view)
   const [exiting, setExiting] = useState(false)
+  const messagesCountRef = useRef(messagesCount)
+  const sessionsCountRef = useRef(sessionsCount)
+  messagesCountRef.current = messagesCount
+  sessionsCountRef.current = sessionsCount
   useEffect(() => {
     if (view === held) {
       setExiting(false)
@@ -44,12 +52,16 @@ function useHeldView(view: AgentPanelFullView): {
       return
     }
     setExiting(true)
+    const outgoing =
+      held === 'sessions'
+        ? sessionsCountRef.current
+        : messagesCountRef.current
     const timer = setTimeout(
       () => {
         setHeld(view)
         setExiting(false)
       },
-      AGENT_ROW_EXIT_MS + AGENT_ROW_STAGGER_MS * 2,
+      agentPanelRowWaveMs(outgoing),
     )
     return () => clearTimeout(timer)
   }, [held, view])
@@ -140,19 +152,20 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
   const { t } = useI18n()
   const messages = useAgentMessages()
   const sessionId = useAgentSessionId()
-  const { held, exiting } = useHeldView(view)
+  const sessionCountRef = useRef(0)
+  const { held, exiting } = useHeldView(
+    view,
+    messages.length,
+    sessionCountRef.current,
+  )
   const sessionList = useAgentSessionList(
     view === 'sessions' || held === 'sessions',
   )
+  sessionCountRef.current = sessionList.sessions?.length ?? 0
   const [zoomed, setZoomed] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const trackRef = useRef<HTMLDivElement>(null)
-  useConversationPan(
-    listRef,
-    trackRef,
-    held === 'messages' && !zoomed,
-    sessionId,
-  )
+  useConversationPan(listRef, trackRef, held === 'messages', sessionId)
 
   const conversation =
     held === 'sessions' ? (

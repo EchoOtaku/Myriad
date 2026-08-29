@@ -49,13 +49,6 @@ export interface VoiceInfo {
 }
 
 /**
- * 音色列表响应
- */
-export interface VoiceListResponse {
-  voices: VoiceInfo[]
-}
-
-/**
  * TTS 请求参数
  */
 export interface TTSRequest {
@@ -870,20 +863,6 @@ export function saveTTSSettings(settings: Partial<TTSSettings>) {
       )
     })
   }
-}
-
-/**
- * 缓存统计响应
- */
-export interface CacheStatsResponse {
-  /** 缓存文件数量 */
-  file_count: number
-  /** 缓存目录数量（不同文本） */
-  text_count: number
-  /** 缓存总大小（字节） */
-  total_size: number
-  /** 格式化的大小 */
-  total_size_formatted: string
 }
 
 /**

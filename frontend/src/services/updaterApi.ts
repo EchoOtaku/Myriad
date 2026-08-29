@@ -151,14 +151,13 @@ export interface LastFailedUpdate {
 
 /** UI presets for periodic update checks (seconds). */
 export const CHECK_INTERVAL_PRESETS = [0, 3600, 21600, 43200, 86400] as const
-export type CheckIntervalSecs = (typeof CHECK_INTERVAL_PRESETS)[number]
 
 /**
  * Snapshot retention limit presets (count of older non-keep backups kept).
  * BE accepts 1–20; presets cover common values and the max.
  */
 export const SNAPSHOT_LIMIT_PRESETS = [1, 2, 3, 5, 10, 15, 20] as const
-export type SnapshotLimitPreset = (typeof SNAPSHOT_LIMIT_PRESETS)[number]
+
 export const SNAPSHOT_LIMIT_DEFAULT = 3
 export const SNAPSHOT_LIMIT_MIN = 1
 export const SNAPSHOT_LIMIT_MAX = 20

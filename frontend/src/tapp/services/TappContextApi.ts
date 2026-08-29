@@ -244,13 +244,6 @@ export async function getContextGeo(
 
 // Tapp API 声明系统
 
-/** Tapp API 执行请求 */
-export interface TappApiExecuteRequest {
-  tappId: string
-  apiName: string
-  params?: Record<string, unknown>
-}
-
 /** Tapp API 执行响应 */
 export interface TappApiExecuteResponse {
   success: boolean

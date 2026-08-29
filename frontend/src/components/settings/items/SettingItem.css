@@ -718,7 +718,6 @@ html.dark .number-unit {
   --slider-rail-ring: rgb(0 0 0 / 5%);
   --slider-rail-inset: rgb(0 0 0 / 7%);
   --slider-tick: rgb(120 120 128 / 42%);
-  --slider-tick-passed: rgb(255 255 255 / 90%);
 
   /* 气泡 idle：与设置页 chip 同思路 */
   --slider-value-fg: var(--slider-p);
@@ -786,7 +785,6 @@ html.dark .slider-control {
   --slider-rail-ring: rgb(255 255 255 / 8%);
   --slider-rail-inset: rgb(0 0 0 / 40%);
   --slider-tick: rgb(255 255 255 / 22%);
-  --slider-tick-passed: rgb(255 255 255 / 88%);
   --slider-value-fg: var(--slider-p);
   --slider-value-bg: color-mix(in srgb, var(--slider-p) 16%, transparent);
   --slider-value-border: color-mix(in srgb, var(--slider-p) 28%, transparent);

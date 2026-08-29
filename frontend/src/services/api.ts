@@ -21,12 +21,6 @@ export interface ApiRequestOptions extends RequestInit {
   params?: Record<string, string | number | boolean | undefined>
 }
 
-export interface ApiResponse<T> {
-  data: T
-  status: number
-  ok: boolean
-}
-
 /**
  * API 错误类
  */

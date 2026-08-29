@@ -17,7 +17,6 @@
   --updater-subtle-bg: var(--cfg-subtle-bg);
   --updater-subtle-bg-hover: var(--cfg-subtle-bg-hover);
   --updater-subtle-border: var(--cfg-subtle-border);
-  --updater-subtle-border-hover: var(--cfg-subtle-border-hover);
   --updater-subtle-filter: none;
 
   display: flex;

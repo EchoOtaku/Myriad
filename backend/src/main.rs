@@ -1,11 +1,9 @@
 //! Myriad backend binary.
 //!
-//! Modularization left pure helpers and path-stable re-exports that are adopted
-//! incrementally by handlers/tests. Until that adoption finishes, dead_code and
-//! reexport unused_imports would fail CI `clippy -D warnings` without changing
-//! runtime behavior. Scoped allow keeps the tree green without mass-deleting
-//! intentional pure surfaces.
-#![allow(dead_code)]
+//! Re-exports are path-stable on purpose: submodules reach each other through
+//! `use super::*`, and several `use` lines only feed `#[cfg(test)]` blocks, so
+//! the non-test target reports them unused. Removing them breaks the test
+//! target — keep the allow rather than trusting `cargo fix --all-targets`.
 #![allow(unused_imports)]
 #![allow(private_interfaces)]
 // Style fallout from the large modularization split (doc formatting, signature

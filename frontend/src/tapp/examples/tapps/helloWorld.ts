@@ -105,8 +105,6 @@ const STYLES = `/* ========== CSS 变量 ========== */
   --hw-primary-rgb: 16, 185, 129;
   --hw-radius: 16px;
   --hw-radius-sm: 12px;
-  --hw-transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  --hw-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
 }
 
 /* 基础重置 */

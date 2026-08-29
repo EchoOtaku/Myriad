@@ -52,6 +52,18 @@ export const AGENT_ROW_STAGGER_MAX = 8
 /** 单张退场时长，和 CSS `--agent-row-exit` 对齐。 */
 export const AGENT_ROW_EXIT_MS = 320
 
+/** 首屏 / 可见卡片的 delay 步数。JS 写成 min(n, MAX)+1，上限 9。 */
+export function agentPanelStaggerSteps(count: number): number {
+  return Math.min(Math.max(Math.floor(count), 0), AGENT_ROW_STAGGER_MAX + 1)
+}
+
+/** 卡片收完：最远那张的 delay + 单张时长。短列表按张数收，不空等满波。 */
+export function agentPanelRowWaveMs(
+  count = AGENT_ROW_STAGGER_MAX + 1,
+): number {
+  return AGENT_ROW_EXIT_MS + AGENT_ROW_STAGGER_MS * agentPanelStaggerSteps(count)
+}
+
 export function agentPanelStageReducer(
   state: AgentPanelStageState,
   action: AgentPanelStageAction,
@@ -102,13 +114,16 @@ export function agentPanelIsOpen(state: AgentPanelStageState): boolean {
   return state.stage !== 'island' && state.phase !== 'closing'
 }
 
-/** 超时兜底的等待时长。展开对话/历史时要等逐张收完。 */
+/** 超时兜底的等待时长。展开对话/历史时要等卡片收完、输入行再走一步。 */
 export function agentPanelSettleTimeoutMs(
   stage: AgentPanelStage = 'overlay',
+  count?: number,
 ): number {
-  const wave =
-    stage === 'full'
-      ? AGENT_ROW_EXIT_MS + AGENT_ROW_STAGGER_MS * AGENT_ROW_STAGGER_MAX
-      : AGENT_PANEL_EXIT_MS
-  return wave + AGENT_PANEL_SETTLE_SLACK_MS
+  if (stage !== 'full') return AGENT_PANEL_EXIT_MS + AGENT_PANEL_SETTLE_SLACK_MS
+  const steps = agentPanelStaggerSteps(count ?? AGENT_ROW_STAGGER_MAX + 1)
+  return (
+    AGENT_ROW_EXIT_MS +
+    AGENT_ROW_STAGGER_MS * (steps + 1) +
+    AGENT_PANEL_SETTLE_SLACK_MS
+  )
 }

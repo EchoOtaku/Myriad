@@ -52,6 +52,8 @@
   --agent-move: 480ms;
   --agent-swap: 320ms;
   --agent-stagger-step: 72ms;
+  --agent-stagger-max: 8;
+  --agent-stagger-wave: 9;
   --agent-row-exit: 320ms;
 
   display: flex;
@@ -116,27 +118,30 @@
   scale: 1;
 }
 
-.agent-panel-overlay-anchor[data-stage='full'] .agent-panel-composer,
-.agent-panel-overlay-anchor[data-stage='full']
-  .agent-panel-presence[data-kind='row'] {
-  transition-duration: var(--agent-row-exit);
-}
-
 .agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']
   .agent-panel-composer {
   opacity: 0;
   translate: 0 16px;
   scale: 0.96;
-  transition-delay: calc(3 * var(--agent-stagger-step));
+  transition-duration: var(--agent-row-exit);
+
+  /* 输入行比画面里最远那张再晚一步，卡片还有地方可回。 */
+  transition-delay: calc(
+    (var(--agent-stagger-wave) + 1) * var(--agent-stagger-step)
+  );
   transition-timing-function: var(--agent-ease-exit);
 }
 
 .agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']
   .agent-panel-presence[data-kind='row'],
-.agent-panel-messages-slot[data-exiting='true'] .agent-panel-presence[data-kind='row'] {
+.agent-panel-messages-slot[data-exiting='true']
+  .agent-panel-presence[data-kind='row'] {
   pointer-events: none;
   transition-duration: var(--agent-row-exit);
-  transition-delay: calc(var(--agent-stagger, 0) * var(--agent-stagger-step));
+  transition-delay: calc(
+    var(--agent-exit-stagger, var(--agent-stagger, 0)) *
+      var(--agent-stagger-step)
+  );
   transition-timing-function: var(--agent-ease-exit);
 }
 
@@ -231,10 +236,14 @@
   width: 100%;
   margin-bottom: 10px;
 
-  /* 入场：输入行先动，卡片从它上面一张张叠上去。 */
+  /* 入场错开：初次展开从输入行往上叠。新气泡 stagger=0，马上进。 */
   transition-delay: calc(
-    (var(--agent-stagger, 0) + 1) * var(--agent-stagger-step, 72ms)
+    var(--agent-stagger, 0) * var(--agent-stagger-step, 72ms)
   );
+}
+
+.agent-panel-presence[data-kind='row']:last-child {
+  margin-bottom: 0;
 }
 
 .agent-panel-presence[data-kind='chip'] {
@@ -454,6 +463,13 @@
 .agent-panel-overlay-anchor[data-phase='closing']
   .agent-panel-presence[data-kind='row'] {
   margin-bottom: 10px;
+}
+
+.agent-panel-overlay-anchor[data-phase='opening']
+  .agent-panel-presence[data-kind='row']:last-child,
+.agent-panel-overlay-anchor[data-phase='closing']
+  .agent-panel-presence[data-kind='row']:last-child {
+  margin-bottom: 0;
 }
 
 .agent-panel-overlay-anchor[data-phase='opening']
@@ -1144,6 +1160,18 @@ button.agent-panel-tag:disabled {
 
 @media (prefers-reduced-motion: reduce) {
   .agent-panel-overlay-anchor,
+  .agent-panel-aurora,
+  .agent-panel-aurora::before,
+  .agent-panel-aurora::after,
+  .agent-panel-aurora-flow,
+  .agent-panel-aurora-flow::before,
+  .agent-panel-aurora-flow::after,
+  .agent-panel-aurora-prism,
+  .agent-panel-aurora-prism::before,
+  .agent-panel-aurora-prism::after,
+  .agent-panel-aurora-alert,
+  .agent-panel-aurora-alert::before,
+  .agent-panel-aurora-alert::after,
   .agent-panel-overlay,
   .agent-panel-tag-rail,
   .agent-panel-composer,
@@ -1170,6 +1198,11 @@ button.agent-panel-tag:disabled {
     scale: 1;
   }
 
+  .agent-panel-aurora[data-phase='opening'],
+  .agent-panel-aurora[data-phase='closing'] {
+    opacity: 1;
+  }
+
   .agent-panel-presence[data-presence='out'] {
     opacity: 1;
     translate: 0 0;
@@ -1182,6 +1215,10 @@ button.agent-panel-tag:disabled {
       opacity: 1;
       translate: -50% 0;
       scale: 1;
+    }
+
+    .agent-panel-aurora {
+      opacity: 1;
     }
 
     .agent-panel-overlay-anchor[data-stage='full'] .agent-panel-composer,
@@ -1258,7 +1295,6 @@ button.agent-panel-tag:disabled {
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
-  padding: 12px 16px 6px;
   overflow: visible;
 }
 
@@ -2057,6 +2093,610 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+}
+
+/* ==========================================
+   底部流光
+
+   面板开着时贴在屏幕底边，参考 Apple Intelligence 的虹彩边缘。
+   色从壁纸主色衍生。画面里只走主色两侧约 120°，来回是回文，
+   邻档 40°；整圈彩虹铺满底边会脏。色带拉长，一屏只看到两三色。
+   光在面板下面（z 60 / 61），从玻璃后面渗出来。
+   色带画两段相同的谱，位移 50% 接上；光斑只平移不缩放。
+   底下一层匀速铺色，上面一层反向走更紧的色团，两边光斑错开，
+   才看得出颜色在底边滑，而不是一团光在原地变色。
+   思考色带现场抽：色相、占比、软硬切、光斑都不写死，调色盘 5–8 色，
+   色带拉长所以一屏仍只看见两三块。两层交替淡入。失败叠淡红。
+   ========================================== */
+
+@property --agent-aurora-0 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #94a3b8;
+}
+
+@property --agent-aurora-1 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #94a3b8;
+}
+
+@property --agent-aurora-2 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #cbd5e1;
+}
+
+@property --agent-aurora-3 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #cbd5e1;
+}
+
+@property --agent-aurora-4 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #cbd5e1;
+}
+
+@property --agent-aurora-5 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #94a3b8;
+}
+
+@property --agent-aurora-6 {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #94a3b8;
+}
+
+@property --agent-aurora-west {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #94a3b8;
+}
+
+.agent-panel-aurora {
+  --agent-aurora-c-min: 0.1;
+  --agent-aurora-c-max: 0.17;
+  --agent-aurora-l-min: 0.62;
+  --agent-aurora-l-max: 0.78;
+  --agent-aurora-0: var(--color-primary);
+  --agent-aurora-1: color-mix(in oklab, var(--color-primary) 80%, white);
+  --agent-aurora-2: var(--color-accent);
+  --agent-aurora-3: color-mix(in oklab, var(--color-accent) 80%, white);
+  --agent-aurora-4: var(--color-accent);
+  --agent-aurora-5: color-mix(in oklab, var(--color-primary) 80%, white);
+  --agent-aurora-6: var(--color-primary);
+  --agent-aurora-west: color-mix(in oklab, var(--color-secondary) 74%, white);
+  --agent-aurora-stops:
+    var(--agent-aurora-0), var(--agent-aurora-1), var(--agent-aurora-2),
+    var(--agent-aurora-3), var(--agent-aurora-4), var(--agent-aurora-5),
+    var(--agent-aurora-6);
+  --agent-aurora-ribbon-ms: 8s;
+  --agent-aurora-core-ms: 5s;
+  --agent-aurora-drift-ms: 7s;
+  --agent-aurora-cross-ms: 9s;
+  --agent-aurora-width: 400%;
+  --agent-aurora-shift: 640ms;
+
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 60;
+  height: min(36vh, 280px);
+  pointer-events: none;
+  overflow: hidden;
+  opacity: 1;
+  mask-image: radial-gradient(140% 92% at 50% 118%, #000 10%, transparent 70%);
+  transition:
+    opacity var(--agent-move, 480ms)
+      var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1)),
+    --agent-aurora-0 var(--agent-aurora-shift)
+      var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1)),
+    --agent-aurora-1 var(--agent-aurora-shift)
+      var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1)),
+    --agent-aurora-2 var(--agent-aurora-shift)
+      var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1)),
+    --agent-aurora-3 var(--agent-aurora-shift)
+      var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1)),
+    --agent-aurora-4 var(--agent-aurora-shift)
+      var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1)),
+    --agent-aurora-5 var(--agent-aurora-shift)
+      var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1)),
+    --agent-aurora-6 var(--agent-aurora-shift)
+      var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1)),
+    --agent-aurora-west var(--agent-aurora-shift)
+      var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+html.dark .agent-panel-aurora {
+  --agent-aurora-c-min: 0.14;
+  --agent-aurora-c-max: 0.22;
+  --agent-aurora-l-min: 0.58;
+  --agent-aurora-l-max: 0.72;
+
+  mix-blend-mode: plus-lighter;
+}
+
+@supports (color: oklch(from red l c calc(h + 1deg))) {
+  .agent-panel-aurora {
+    --agent-aurora-0: oklch(
+      from var(--color-primary)
+        clamp(var(--agent-aurora-l-min), l, var(--agent-aurora-l-max))
+        clamp(var(--agent-aurora-c-min), c, var(--agent-aurora-c-max)) h
+    );
+    --agent-aurora-1: oklch(
+      from var(--color-primary)
+        clamp(var(--agent-aurora-l-min), l, var(--agent-aurora-l-max))
+        clamp(var(--agent-aurora-c-min), c, var(--agent-aurora-c-max))
+        calc(h + 40deg)
+    );
+    --agent-aurora-2: oklch(
+      from var(--color-primary)
+        clamp(var(--agent-aurora-l-min), l, var(--agent-aurora-l-max))
+        clamp(var(--agent-aurora-c-min), c, var(--agent-aurora-c-max))
+        calc(h + 80deg)
+    );
+    --agent-aurora-3: oklch(
+      from var(--color-primary)
+        clamp(var(--agent-aurora-l-min), l, var(--agent-aurora-l-max))
+        clamp(var(--agent-aurora-c-min), c, var(--agent-aurora-c-max))
+        calc(h + 120deg)
+    );
+    --agent-aurora-4: oklch(
+      from var(--color-primary)
+        clamp(var(--agent-aurora-l-min), l, var(--agent-aurora-l-max))
+        clamp(var(--agent-aurora-c-min), c, var(--agent-aurora-c-max))
+        calc(h + 80deg)
+    );
+    --agent-aurora-5: oklch(
+      from var(--color-primary)
+        clamp(var(--agent-aurora-l-min), l, var(--agent-aurora-l-max))
+        clamp(var(--agent-aurora-c-min), c, var(--agent-aurora-c-max))
+        calc(h + 40deg)
+    );
+    --agent-aurora-6: oklch(
+      from var(--color-primary)
+        clamp(var(--agent-aurora-l-min), l, var(--agent-aurora-l-max))
+        clamp(var(--agent-aurora-c-min), c, var(--agent-aurora-c-max)) h
+    );
+    --agent-aurora-west: oklch(
+      from var(--color-primary)
+        clamp(var(--agent-aurora-l-min), l, var(--agent-aurora-l-max))
+        clamp(var(--agent-aurora-c-min), c, var(--agent-aurora-c-max))
+        calc(h - 80deg)
+    );
+  }
+}
+
+.agent-panel-aurora[data-phase='opening'] {
+  opacity: 0;
+  transition-duration: 0.01ms;
+}
+
+.agent-panel-aurora[data-phase='closing'] {
+  opacity: 0;
+  transition-timing-function: var(
+    --agent-ease-exit,
+    cubic-bezier(1, 0, 0.68, 0.28)
+  );
+}
+
+.agent-panel-aurora::before {
+  content: '';
+  position: absolute;
+  left: -50%;
+  right: -50%;
+  bottom: -36%;
+  height: 180%;
+  background:
+    radial-gradient(
+      ellipse 46% 62% at 18% 78%,
+      color-mix(in oklab, var(--agent-aurora-2) 54%, transparent),
+      transparent 68%
+    ),
+    radial-gradient(
+      ellipse 42% 58% at 82% 78%,
+      color-mix(in oklab, var(--agent-aurora-west) 52%, transparent),
+      transparent 68%
+    ),
+    radial-gradient(
+      ellipse 48% 54% at 50% 96%,
+      color-mix(in oklab, var(--agent-aurora-0) 50%, transparent),
+      transparent 66%
+    ),
+    radial-gradient(
+      ellipse 30% 42% at 36% 84%,
+      color-mix(in oklab, var(--agent-aurora-1) 40%, transparent),
+      transparent 64%
+    ),
+    radial-gradient(
+      ellipse 28% 40% at 64% 84%,
+      color-mix(in oklab, var(--agent-aurora-5) 40%, transparent),
+      transparent 64%
+    );
+  z-index: 0;
+  opacity: 0.72;
+  will-change: transform;
+  animation: agent-panel-aurora-drift var(--agent-aurora-drift-ms)
+    ease-in-out infinite;
+  transition: opacity var(--agent-aurora-shift, 640ms)
+    var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.agent-panel-aurora::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  width: var(--agent-aurora-width, 400%);
+  bottom: -28px;
+  height: 88px;
+  background: linear-gradient(
+    90deg in oklch,
+    var(--agent-aurora-stops),
+    var(--agent-aurora-stops)
+  );
+  z-index: 1;
+  opacity: 0.34;
+  filter: blur(28px);
+  will-change: transform;
+  animation: agent-panel-aurora-ribbon var(--agent-aurora-ribbon-ms) linear
+    infinite;
+  transition:
+    opacity var(--agent-aurora-shift, 640ms)
+      var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1)),
+    filter var(--agent-aurora-shift, 640ms)
+      var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1)),
+    width var(--agent-aurora-shift, 640ms)
+      var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.agent-panel-aurora-flow {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: block;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 640ms var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.agent-panel-aurora-flow::before {
+  content: '';
+  position: absolute;
+  left: -50%;
+  right: -50%;
+  bottom: -36%;
+  height: 180%;
+  background:
+    radial-gradient(
+      ellipse 38% 54% at 8% 82%,
+      color-mix(in oklab, var(--agent-aurora-3) 48%, transparent),
+      transparent 66%
+    ),
+    radial-gradient(
+      ellipse 36% 50% at 92% 80%,
+      color-mix(in oklab, var(--agent-aurora-2) 46%, transparent),
+      transparent 66%
+    ),
+    radial-gradient(
+      ellipse 32% 44% at 32% 90%,
+      color-mix(in oklab, var(--agent-aurora-west) 42%, transparent),
+      transparent 64%
+    ),
+    radial-gradient(
+      ellipse 30% 42% at 68% 88%,
+      color-mix(in oklab, var(--agent-aurora-1) 40%, transparent),
+      transparent 64%
+    );
+  opacity: 0.55;
+  will-change: transform;
+  animation: agent-panel-aurora-drift-cross var(--agent-aurora-cross-ms)
+    ease-in-out infinite;
+  transition: opacity var(--agent-aurora-shift, 640ms)
+    var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.agent-panel-aurora-flow::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  width: var(--agent-aurora-width, 400%);
+  bottom: -18px;
+  height: 52px;
+  background: linear-gradient(
+    90deg in oklch,
+    var(--agent-aurora-0) 0%,
+    var(--agent-aurora-0) 8%,
+    var(--agent-aurora-1) 12%,
+    var(--agent-aurora-2) 18%,
+    var(--agent-aurora-3) 25%,
+    var(--agent-aurora-2) 32%,
+    var(--agent-aurora-1) 38%,
+    var(--agent-aurora-0) 42%,
+    var(--agent-aurora-0) 50%,
+    var(--agent-aurora-0) 58%,
+    var(--agent-aurora-1) 62%,
+    var(--agent-aurora-2) 68%,
+    var(--agent-aurora-3) 75%,
+    var(--agent-aurora-2) 82%,
+    var(--agent-aurora-1) 88%,
+    var(--agent-aurora-0) 92%,
+    var(--agent-aurora-0) 100%
+  );
+  opacity: 0.42;
+  filter: blur(12px);
+  will-change: transform;
+  animation: agent-panel-aurora-ribbon var(--agent-aurora-core-ms) linear
+    infinite reverse;
+  transition:
+    opacity var(--agent-aurora-shift, 640ms)
+      var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1)),
+    filter var(--agent-aurora-shift, 640ms)
+      var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1)),
+    width var(--agent-aurora-shift, 640ms)
+      var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+html.dark .agent-panel-aurora::before {
+  opacity: 0.82;
+}
+
+html.dark .agent-panel-aurora::after {
+  opacity: 0.42;
+}
+
+html.dark .agent-panel-aurora-flow::before {
+  opacity: 0.7;
+}
+
+html.dark .agent-panel-aurora-flow::after {
+  opacity: 0.55;
+}
+
+.agent-panel-aurora[data-status='thinking']::before,
+.agent-panel-aurora[data-status='working']::before {
+  opacity: 0.38;
+}
+
+.agent-panel-aurora[data-status='thinking']::after,
+.agent-panel-aurora[data-status='working']::after {
+  opacity: 0.16;
+}
+
+.agent-panel-aurora[data-status='thinking'] .agent-panel-aurora-flow,
+.agent-panel-aurora[data-status='working'] .agent-panel-aurora-flow {
+  opacity: 0.22;
+}
+
+.agent-panel-aurora[data-status='error']::before {
+  opacity: 0.28;
+}
+
+.agent-panel-aurora[data-status='error']::after {
+  opacity: 0.12;
+}
+
+.agent-panel-aurora[data-status='error'] .agent-panel-aurora-flow {
+  opacity: 0.16;
+}
+
+html.dark .agent-panel-aurora[data-status='thinking']::after,
+html.dark .agent-panel-aurora[data-status='working']::after {
+  opacity: 0.2;
+}
+
+html.dark .agent-panel-aurora[data-status='error']::after {
+  opacity: 0.14;
+}
+
+.agent-panel-aurora-prism,
+.agent-panel-aurora-alert {
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.agent-panel-aurora-prism {
+  --prism-ribbon: linear-gradient(
+    90deg in oklch,
+    var(--color-primary),
+    var(--color-accent),
+    var(--color-primary)
+  );
+  --prism-blobs: none;
+  --prism-width: 480%;
+  --prism-ribbon-ms: 5.2s;
+  --prism-wander-ms: 8.4s;
+
+  z-index: 3;
+  transition: opacity 520ms var(--agent-ease-exit, cubic-bezier(1, 0, 0.68, 0.28));
+}
+
+.agent-panel-aurora[data-status='thinking']
+  .agent-panel-aurora-prism[data-active='true'],
+.agent-panel-aurora[data-status='working']
+  .agent-panel-aurora-prism[data-active='true'] {
+  opacity: 1;
+  transition-duration: 760ms;
+  transition-timing-function: var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.agent-panel-aurora-prism::before {
+  content: '';
+  position: absolute;
+  left: -55%;
+  right: -55%;
+  bottom: -36%;
+  height: 180%;
+  background: var(--prism-blobs);
+  opacity: 0.9;
+  will-change: transform;
+  animation: agent-panel-aurora-wander var(--prism-wander-ms) ease-in-out
+    infinite;
+}
+
+.agent-panel-aurora-prism::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  width: var(--prism-width);
+  bottom: -22px;
+  height: 72px;
+  background: var(--prism-ribbon);
+  opacity: 0.62;
+  filter: blur(18px);
+  will-change: transform;
+  animation: agent-panel-aurora-ribbon var(--prism-ribbon-ms) linear infinite;
+}
+
+.agent-panel-aurora-alert {
+  --a0: color-mix(in oklab, var(--color-error, #ef4444) 38%, white);
+  --a1: color-mix(in oklab, var(--color-error, #ef4444) 22%, white);
+  --a2: color-mix(in oklab, var(--color-error, #ef4444) 44%, white);
+  --a3: color-mix(in oklab, var(--color-error, #ef4444) 18%, white);
+  --a-west: color-mix(in oklab, var(--color-error, #ef4444) 28%, white);
+
+  z-index: 4;
+  transition: opacity 560ms var(--agent-ease-exit, cubic-bezier(1, 0, 0.68, 0.28));
+}
+
+.agent-panel-aurora[data-status='error'] .agent-panel-aurora-alert {
+  opacity: 1;
+  transition-duration: 680ms;
+  transition-delay: 80ms;
+  transition-timing-function: var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.agent-panel-aurora-alert::before {
+  content: '';
+  position: absolute;
+  left: -50%;
+  right: -50%;
+  bottom: -36%;
+  height: 180%;
+  background:
+    radial-gradient(
+      ellipse 48% 56% at 22% 84%,
+      color-mix(in oklab, var(--a2) 50%, transparent),
+      transparent 66%
+    ),
+    radial-gradient(
+      ellipse 42% 52% at 78% 80%,
+      color-mix(in oklab, var(--a0) 46%, transparent),
+      transparent 66%
+    ),
+    radial-gradient(
+      ellipse 30% 44% at 52% 94%,
+      color-mix(in oklab, var(--a-west) 40%, transparent),
+      transparent 64%
+    );
+  opacity: 0.8;
+  will-change: transform;
+  animation: agent-panel-aurora-drift 3.1s ease-in-out infinite;
+}
+
+.agent-panel-aurora-alert::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  width: 400%;
+  bottom: -24px;
+  height: 80px;
+  background: linear-gradient(
+    90deg in oklch,
+    var(--a0),
+    var(--a1),
+    var(--a2),
+    var(--a3),
+    var(--a2),
+    var(--a1),
+    var(--a0),
+    var(--a1),
+    var(--a2),
+    var(--a3),
+    var(--a2),
+    var(--a1),
+    var(--a0)
+  );
+  opacity: 0.62;
+  filter: blur(22px);
+  will-change: transform;
+  animation: agent-panel-aurora-ribbon 3.2s linear infinite;
+}
+
+@keyframes agent-panel-aurora-drift {
+  0%,
+  100% {
+    transform: translate3d(-22%, 3%, 0);
+  }
+
+  25% {
+    transform: translate3d(14%, -4%, 0);
+  }
+
+  50% {
+    transform: translate3d(22%, 2%, 0);
+  }
+
+  75% {
+    transform: translate3d(-12%, -3%, 0);
+  }
+}
+
+@keyframes agent-panel-aurora-drift-cross {
+  0%,
+  100% {
+    transform: translate3d(20%, -2%, 0);
+  }
+
+  25% {
+    transform: translate3d(-16%, 3%, 0);
+  }
+
+  50% {
+    transform: translate3d(-22%, -2%, 0);
+  }
+
+  75% {
+    transform: translate3d(12%, 4%, 0);
+  }
+}
+
+@keyframes agent-panel-aurora-wander {
+  0%,
+  100% {
+    transform: translate3d(-22%, 2%, 0);
+  }
+
+  17% {
+    transform: translate3d(9%, -6%, 0);
+  }
+
+  39% {
+    transform: translate3d(26%, 4%, 0);
+  }
+
+  58% {
+    transform: translate3d(-4%, -3%, 0);
+  }
+
+  81% {
+    transform: translate3d(-28%, 1%, 0);
+  }
+}
+
+@keyframes agent-panel-aurora-ribbon {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
 }
 
 /* ==========================================

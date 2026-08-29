@@ -23,18 +23,6 @@
   backface-visibility: hidden;
 }
 
-/* 滚动容器优化 */
-[data-scroll-optimized='true'] {
-  /* 启用原生惯性滚动 */
-  -webkit-overflow-scrolling: touch;
-
-  /* 提示浏览器该区域会滚动 */
-  will-change: scroll-position;
-
-  /* 防止触摸操作被阻止 */
-  touch-action: pan-y;
-}
-
 /* 横向滚动容器 */
 
 /* ============================================
@@ -243,7 +231,8 @@ html.dark[data-perf-mode='exlight']:not(
 
 /* 装饰性光晕：exlight 不画（GlowBackground 组件也会 return null） */
 html[data-perf-mode='exlight'] .glow-orb,
-html[data-perf-mode='exlight'] .music-play-btn::before {
+html[data-perf-mode='exlight'] .music-play-btn::before,
+html[data-perf-mode='exlight'] .agent-panel-aurora {
   display: none !important;
 }
 

@@ -178,13 +178,6 @@ export class ObjectPool<T> {
 
 // 预定义的对象池
 
-/** DOM 节点复用池配置 */
-export interface DOMNodePoolConfig {
-  tagName: string
-  className?: string
-  maxSize?: number
-}
-
 /** 动画状态对象 */
 export interface AnimationStateObject {
   id: string

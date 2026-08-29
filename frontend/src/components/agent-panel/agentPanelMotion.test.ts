@@ -13,7 +13,14 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import { AGENT_ROW_MS } from './agentPresenceState'
-import { AGENT_PANEL_ENTER_MS } from './agentPanelStage'
+import {
+  AGENT_PANEL_ENTER_MS,
+  AGENT_ROW_EXIT_MS,
+  AGENT_ROW_STAGGER_MAX,
+  AGENT_ROW_STAGGER_MS,
+  agentPanelRowWaveMs,
+  agentPanelStaggerSteps,
+} from './agentPanelStage'
 
 const css = stripComments(
   readFileSync(new URL('./agent-panel.css', import.meta.url), 'utf8'),
@@ -119,15 +126,65 @@ describe('agent panel motion contract', () => {
 
   it('staggers each conversation and history row as its own motion object', () => {
     assert.match(presence, /--agent-stagger/)
+    assert.match(presence, /AGENT_ROW_STAGGER_MAX/)
     assert.match(css, /--agent-stagger-step:\s*72ms/)
+    assert.match(css, /--agent-stagger-max:\s*8/)
+    assert.match(css, /--agent-stagger-wave:\s*9/)
     assert.match(css, /--agent-row-exit:\s*320ms/)
     assert.match(css, /data-exiting='true'/)
+    assert.match(css, /:last-child \{\s*margin-bottom:\s*0/)
     assert.match(sessions, /from="composer"/)
     assert.match(sessions, /useAgentSessionList/)
     assert.match(full, /data-exiting/)
     assert.match(full, /setExiting\(false\)/)
+    assert.match(full, /agentPanelRowWaveMs\(outgoing\)/)
+    assert.doesNotMatch(full, /AGENT_ROW_STAGGER_MS \* 2/)
     assert.doesNotMatch(full, /!zoomed && !exiting/)
+    assert.match(full, /held === 'messages'/)
     assert.match(pan, /data-exiting/)
+    assert.match(pan, /visibility === 'hidden'/)
+    assert.match(pan, /--agent-exit-stagger/)
+    assert.match(pan, /--agent-stagger-wave/)
+    assert.doesNotMatch(pan, /if \(leaving\) \{\s*clearExit\(\)/)
+    assert.equal(agentPanelStaggerSteps(2), 2)
+    assert.equal(agentPanelStaggerSteps(20), AGENT_ROW_STAGGER_MAX + 1)
+    assert.equal(
+      agentPanelRowWaveMs(),
+      AGENT_ROW_EXIT_MS + AGENT_ROW_STAGGER_MS * (AGENT_ROW_STAGGER_MAX + 1),
+    )
+    assert.equal(
+      agentPanelRowWaveMs(2),
+      AGENT_ROW_EXIT_MS + AGENT_ROW_STAGGER_MS * 2,
+    )
+  })
+
+  it('keeps the composer until the last card has somewhere to return', () => {
+    const closingComposer = block(
+      css,
+      ".agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']\n  .agent-panel-composer {",
+      ".agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']\n  .agent-panel-presence[data-kind='row'],",
+    )
+    assert.match(
+      closingComposer,
+      /transition-duration:\s*var\(--agent-row-exit\)/,
+    )
+    assert.match(
+      closingComposer,
+      /transition-delay:\s*calc\(\s*\(var\(--agent-stagger-wave\) \+ 1\)/,
+    )
+    assert.doesNotMatch(closingComposer, /3 \* var\(--agent-stagger-step\)/)
+    assert.match(css, /--agent-exit-stagger, var\(--agent-stagger, 0\)/)
+  })
+
+  it('lets full-stage rows enter at move duration and leave at row-exit', () => {
+    assert.doesNotMatch(
+      css,
+      /\[data-stage='full'\] \.agent-panel-composer,\s*\n\s*\.agent-panel-overlay-anchor\[data-stage='full'\]/,
+    )
+    assert.match(
+      css,
+      /\[data-phase='closing'\][\s\S]*?transition-duration:\s*var\(--agent-row-exit\)/,
+    )
   })
 
   it('collapses tag chips beside the plus, not the send button', () => {
@@ -147,6 +204,64 @@ describe('agent panel motion contract', () => {
     assert.doesNotMatch(
       start,
       /^\s*\.agent-panel-presence\[data-kind='chip'\] \{/m,
+    )
+  })
+
+  it('lights the bottom of the screen while the panel is open', () => {
+    const panel = readFileSync(
+      new URL('./AgentPanel.tsx', import.meta.url),
+      'utf8',
+    )
+    assert.match(panel, /className="agent-panel-aurora"/)
+    assert.match(panel, /className="agent-panel-aurora-flow"/)
+    assert.match(panel, /className="agent-panel-aurora-prism"/)
+    assert.match(panel, /useAgentAuroraPrism/)
+    assert.match(panel, /prismARef/)
+    assert.match(panel, /prismBRef/)
+    assert.match(panel, /className="agent-panel-aurora-alert"/)
+    assert.match(panel, /data-status=\{status\}/)
+    assert.match(panel, /useAgentStatus/)
+    assert.match(panel, /aria-hidden="true"/)
+    assert.match(css, /\.agent-panel-aurora \{/)
+    assert.match(css, /z-index:\s*60/)
+    assert.match(css, /@keyframes agent-panel-aurora-drift/)
+    assert.match(css, /@keyframes agent-panel-aurora-drift-cross/)
+    assert.match(css, /@keyframes agent-panel-aurora-ribbon/)
+    assert.match(css, /--agent-aurora-0:\s*var\(--color-primary\)/)
+    assert.match(css, /90deg in oklch/)
+    assert.match(css, /oklch\(\s*from var\(--color-primary\)/)
+    assert.match(css, /calc\(h \+ 40deg\)/)
+    assert.match(css, /calc\(h \+ 120deg\)/)
+    assert.match(css, /--agent-aurora-width:\s*400%/)
+    assert.match(css, /@property --agent-aurora-0/)
+    assert.match(css, /\.agent-panel-aurora-prism \{/)
+    assert.match(css, /\.agent-panel-aurora-alert \{/)
+    assert.match(css, /@keyframes agent-panel-aurora-wander/)
+    assert.match(css, /--prism-ribbon/)
+    assert.match(css, /--prism-blobs/)
+    assert.match(css, /\[data-active='true'\]/)
+    assert.doesNotMatch(css, /var\(--p0\) 19%/)
+    assert.doesNotMatch(css, /oklch\(78% 0\.26 18deg\)/)
+    assert.doesNotMatch(css, /--p5:/)
+    assert.match(
+      css,
+      /\[data-status='thinking'\][\s\S]*?\.agent-panel-aurora-prism\[data-active='true'\][\s\S]*?opacity:\s*1/,
+    )
+    assert.match(
+      css,
+      /\[data-status='error'\] \.agent-panel-aurora-alert[\s\S]*opacity:\s*1/,
+    )
+    assert.match(
+      css,
+      /\[data-status='error'\][\s\S]*--color-error/,
+    )
+    assert.doesNotMatch(css, /oklch\(72% 0\.24 0deg\)/)
+    assert.doesNotMatch(css, /oklch\(72% 0\.24 60deg\)/)
+    assert.doesNotMatch(css, /longer hue/)
+    assert.doesNotMatch(css, /#5bcefa/)
+    assert.match(
+      css,
+      /prefers-reduced-motion: reduce[\s\S]*\.agent-panel-aurora,/,
     )
   })
 

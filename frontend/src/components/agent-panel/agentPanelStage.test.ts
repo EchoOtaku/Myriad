@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  AGENT_PANEL_EXIT_MS,
+  AGENT_PANEL_SETTLE_SLACK_MS,
+  AGENT_ROW_EXIT_MS,
+  AGENT_ROW_STAGGER_MAX,
+  AGENT_ROW_STAGGER_MS,
   agentPanelIsOpen,
+  agentPanelRowWaveMs,
   agentPanelSettleTimeoutMs,
   agentPanelShowsStage,
+  agentPanelStaggerSteps,
   INITIAL_AGENT_PANEL_STAGE as start,
   agentPanelStageReducer as step,
 } from './agentPanelStage'
@@ -74,7 +81,30 @@ test('丢了动画事件也能靠超时把状态推回落定', () => {
 })
 
 test('展开对话时收起要等逐张动画走完', () => {
-  assert.ok(
-    agentPanelSettleTimeoutMs('full') > agentPanelSettleTimeoutMs('overlay'),
+  assert.equal(
+    agentPanelSettleTimeoutMs('overlay'),
+    AGENT_PANEL_EXIT_MS + AGENT_PANEL_SETTLE_SLACK_MS,
   )
+  assert.equal(agentPanelStaggerSteps(0), 0)
+  assert.equal(agentPanelStaggerSteps(2), 2)
+  assert.equal(agentPanelStaggerSteps(20), AGENT_ROW_STAGGER_MAX + 1)
+  assert.equal(
+    agentPanelRowWaveMs(),
+    AGENT_ROW_EXIT_MS + AGENT_ROW_STAGGER_MS * (AGENT_ROW_STAGGER_MAX + 1),
+  )
+  assert.equal(
+    agentPanelRowWaveMs(2),
+    AGENT_ROW_EXIT_MS + AGENT_ROW_STAGGER_MS * 2,
+  )
+  assert.equal(
+    agentPanelSettleTimeoutMs('full'),
+    AGENT_ROW_EXIT_MS +
+      AGENT_ROW_STAGGER_MS * (AGENT_ROW_STAGGER_MAX + 2) +
+      AGENT_PANEL_SETTLE_SLACK_MS,
+  )
+  assert.equal(
+    agentPanelSettleTimeoutMs('full', 2),
+    AGENT_ROW_EXIT_MS + AGENT_ROW_STAGGER_MS * 3 + AGENT_PANEL_SETTLE_SLACK_MS,
+  )
+  assert.ok(agentPanelSettleTimeoutMs('full') > agentPanelRowWaveMs())
 })

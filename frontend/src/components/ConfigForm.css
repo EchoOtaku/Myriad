@@ -1537,7 +1537,6 @@ html.dark .section-description {
   /* 取自 logo：粉色发色 → 淡紫色发尾，珊瑚星星点缀 */
   --about-rose: #c98aa3;
   --about-rose-soft: #d9a3a7;
-  --about-lavender: #a48cc4;
   --about-tagline: #8b6b75;
   --about-shadow: rgb(201 138 163 / 28%);
 
@@ -1550,7 +1549,6 @@ html.dark .section-description {
 html.dark .about {
   --about-rose: #e8a8c0;
   --about-rose-soft: #d9a3a7;
-  --about-lavender: #c9b6e0;
   --about-tagline: #bfa0ac;
   --about-shadow: rgb(232 168 192 / 32%);
 }
