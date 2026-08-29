@@ -18,6 +18,45 @@ fn request_rig_state(request: &UserRequest) -> Option<myriad_merope::RigStateSum
         .and_then(|context| context.rig_state.clone())
 }
 
+async fn round_motion_style(
+    request: &UserRequest,
+    mood: Option<&crate::services::agent::merope::MoodTransition>,
+) -> String {
+    let Some(mood) = mood else {
+        return request_rig_state(request)
+            .map(|summary| summary.motion_style)
+            .filter(|style| myriad_merope::RIG_STATE_MOTION_STYLES.contains(&style.as_str()))
+            .unwrap_or_else(|| "even".to_string());
+    };
+    crate::services::agent::merope::resolve_round_motion_style(
+        request_rig_state(request).as_ref(),
+        mood.after.round() as i32,
+    )
+    .await
+}
+
+fn motion_context(
+    request: &UserRequest,
+    user_id: i32,
+    phase: crate::services::agent::merope::MotionPhase,
+    mood: crate::services::agent::merope::MoodTransition,
+    motion_style: String,
+    response_text: Option<String>,
+    task_success: Option<bool>,
+) -> crate::services::agent::merope::MotionContext {
+    crate::services::agent::merope::MotionContext {
+        user_id,
+        phase,
+        mood,
+        activity: "talking".to_string(),
+        user_text: request.raw_input.clone(),
+        response_text,
+        task_success,
+        rig_state: request_rig_state(request),
+        motion_style,
+    }
+}
+
 fn utterance_index_in_session(request: &UserRequest) -> u32 {
     request
         .context
@@ -86,18 +125,18 @@ impl Agent {
         )
         .await;
         let mood_before = mood_transition.as_ref().map(|transition| transition.before);
+        let round_motion_style = round_motion_style(&request, mood_transition.as_ref()).await;
         if let Some(mood) = mood_transition.clone() {
             spawn_motion_directive(
-                crate::services::agent::merope::MotionContext {
+                motion_context(
+                    &request,
                     user_id,
-                    phase: crate::services::agent::merope::MotionPhase::Reaction,
+                    crate::services::agent::merope::MotionPhase::Reaction,
                     mood,
-                    activity: "talking".to_string(),
-                    user_text: request.raw_input.clone(),
-                    response_text: None,
-                    task_success: None,
-                    rig_state: request_rig_state(&request),
-                },
+                    round_motion_style.clone(),
+                    None,
+                    None,
+                ),
                 None,
             );
         }
@@ -129,6 +168,7 @@ impl Agent {
                 }),
                 &request,
                 mood_transition.clone(),
+                &round_motion_style,
                 None,
             )
             .await;
@@ -179,6 +219,7 @@ impl Agent {
                     Ok(response),
                     &request,
                     mood_transition.clone(),
+                    &round_motion_style,
                     None,
                 )
                 .await;
@@ -212,6 +253,7 @@ impl Agent {
                     Ok(response),
                     &request,
                     mood_transition.clone(),
+                    &round_motion_style,
                     None,
                 )
                 .await;
@@ -245,6 +287,7 @@ impl Agent {
                     Ok(response),
                     &request,
                     mood_transition.clone(),
+                    &round_motion_style,
                     None,
                 )
                 .await;
@@ -262,6 +305,7 @@ impl Agent {
                         Ok(response),
                         &request,
                         mood_transition.clone(),
+                        &round_motion_style,
                         None,
                     )
                     .await;
@@ -315,6 +359,7 @@ impl Agent {
                         Ok(blocked),
                         &request,
                         mood_transition.clone(),
+                        &round_motion_style,
                         None,
                     )
                     .await;
@@ -342,6 +387,7 @@ impl Agent {
                         response,
                         &request,
                         mood_transition.clone(),
+                        &round_motion_style,
                         None,
                     )
                     .await;
@@ -360,6 +406,7 @@ impl Agent {
                     Ok(missing_response),
                     &request,
                     mood_transition.clone(),
+                    &round_motion_style,
                     None,
                 )
                 .await;
@@ -452,7 +499,14 @@ impl Agent {
             frontend_action,
             performance: None,
         };
-        attach_motion_to_result(Ok(response), &request, mood_transition, None).await
+        attach_motion_to_result(
+            Ok(response),
+            &request,
+            mood_transition,
+            &round_motion_style,
+            None,
+        )
+        .await
     }
 
     /// 处理用户请求（带实时进度回调）
@@ -503,6 +557,7 @@ impl Agent {
         )
         .await;
         let mood_before = mood_transition.as_ref().map(|transition| transition.before);
+        let round_motion_style = round_motion_style(&request, mood_transition.as_ref()).await;
 
         if let Some(mood) = mood_transition.clone() {
             let _ = progress_tx
@@ -512,16 +567,15 @@ impl Agent {
                 })
                 .await;
             spawn_motion_directive(
-                crate::services::agent::merope::MotionContext {
+                motion_context(
+                    &request,
                     user_id,
-                    phase: crate::services::agent::merope::MotionPhase::Reaction,
+                    crate::services::agent::merope::MotionPhase::Reaction,
                     mood,
-                    activity: "talking".to_string(),
-                    user_text: request.raw_input.clone(),
-                    response_text: None,
-                    task_success: None,
-                    rig_state: request_rig_state(&request),
-                },
+                    round_motion_style.clone(),
+                    None,
+                    None,
+                ),
                 Some(progress_tx.clone()),
             );
         }
@@ -556,16 +610,15 @@ impl Agent {
 
             let performance = if let Some(mood) = mood_transition.clone() {
                 spawn_motion_directive(
-                    crate::services::agent::merope::MotionContext {
+                    motion_context(
+                        &request,
                         user_id,
-                        phase: crate::services::agent::merope::MotionPhase::Delivery,
+                        crate::services::agent::merope::MotionPhase::Delivery,
                         mood,
-                        activity: "talking".to_string(),
-                        user_text: request.raw_input.clone(),
-                        response_text: Some(reply.clone()),
-                        task_success: None,
-                        rig_state: request_rig_state(&request),
-                    },
+                        round_motion_style.clone(),
+                        Some(reply.clone()),
+                        None,
+                    ),
                     Some(progress_tx.clone()),
                 )
                 .await
@@ -714,16 +767,15 @@ impl Agent {
 
                 let delivery = mood_transition.clone().map(|mood| {
                     spawn_motion_directive(
-                        crate::services::agent::merope::MotionContext {
+                        motion_context(
+                            &request,
                             user_id,
-                            phase: crate::services::agent::merope::MotionPhase::Delivery,
+                            crate::services::agent::merope::MotionPhase::Delivery,
                             mood,
-                            activity: "talking".to_string(),
-                            user_text: request.raw_input.clone(),
-                            response_text: Some(planner_reply.clone()),
-                            task_success: None,
-                            rig_state: request_rig_state(&request),
-                        },
+                            round_motion_style.clone(),
+                            Some(planner_reply.clone()),
+                            None,
+                        ),
                         Some(progress_tx.clone()),
                     )
                 });
@@ -790,6 +842,7 @@ impl Agent {
                     Ok(response),
                     &request,
                     mood_transition.clone(),
+                    &round_motion_style,
                     Some(progress_tx.clone()),
                 )
                 .await;
@@ -823,6 +876,7 @@ impl Agent {
                     Ok(response),
                     &request,
                     mood_transition.clone(),
+                    &round_motion_style,
                     Some(progress_tx.clone()),
                 )
                 .await;
@@ -840,6 +894,7 @@ impl Agent {
                         Ok(response),
                         &request,
                         mood_transition.clone(),
+                        &round_motion_style,
                         Some(progress_tx.clone()),
                     )
                     .await;
@@ -875,6 +930,7 @@ impl Agent {
                         Ok(response),
                         &request,
                         mood_transition.clone(),
+                        &round_motion_style,
                         Some(progress_tx.clone()),
                     )
                     .await;
@@ -966,6 +1022,7 @@ impl Agent {
                         Ok(blocked),
                         &request,
                         mood_transition.clone(),
+                        &round_motion_style,
                         Some(progress_tx.clone()),
                     )
                     .await;
@@ -993,6 +1050,7 @@ impl Agent {
                         response,
                         &request,
                         mood_transition.clone(),
+                        &round_motion_style,
                         Some(progress_tx.clone()),
                     )
                     .await;
@@ -1016,6 +1074,7 @@ impl Agent {
                     Ok(missing_response),
                     &request,
                     mood_transition.clone(),
+                    &round_motion_style,
                     Some(progress_tx.clone()),
                 )
                 .await;
@@ -1050,6 +1109,7 @@ impl Agent {
                 result,
                 &request,
                 mood_transition.clone(),
+                &round_motion_style,
                 Some(progress_tx.clone()),
             )
             .await;
@@ -1153,7 +1213,14 @@ impl Agent {
             .await;
         }
 
-        attach_motion_to_result(result, &request, mood_transition, Some(progress_tx)).await
+        attach_motion_to_result(
+            result,
+            &request,
+            mood_transition,
+            &round_motion_style,
+            Some(progress_tx),
+        )
+        .await
     }
 
     /// 执行配方（带进度回调和升级）— 使用 Planner
@@ -1987,6 +2054,7 @@ async fn attach_motion_to_result(
     result: Result<AgentResponse, String>,
     request: &UserRequest,
     mood: Option<crate::services::agent::merope::MoodTransition>,
+    motion_style: &str,
     progress_tx: Option<tokio::sync::mpsc::Sender<AgentProgressEvent>>,
 ) -> Result<AgentResponse, String> {
     let mut response = result?;
@@ -2004,16 +2072,15 @@ async fn attach_motion_to_result(
         crate::services::agent::merope::MotionPhase::Delivery
     };
     let handle = spawn_motion_directive(
-        crate::services::agent::merope::MotionContext {
-            user_id: request.user_id,
+        motion_context(
+            request,
+            request.user_id,
             phase,
             mood,
-            activity: "talking".to_string(),
-            user_text: request.raw_input.clone(),
-            response_text: Some(response.message.clone()),
+            motion_style.to_string(),
+            Some(response.message.clone()),
             task_success,
-            rig_state: request_rig_state(request),
-        },
+        ),
         progress_tx,
     );
     response.performance = handle.await.ok().flatten();

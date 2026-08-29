@@ -30,7 +30,7 @@ function useMotionRuntimeConsumer(
   }, [runtime, mood, activity])
 
   useEffect(() => {
-    if (capabilityKey) runtime.setCapabilities(capabilityKey.split(','))
+    runtime.setCapabilities(capabilityKey ? capabilityKey.split(',') : [])
   }, [runtime, capabilityKey])
 
   useEffect(() => {

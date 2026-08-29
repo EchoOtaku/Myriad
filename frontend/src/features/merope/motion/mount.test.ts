@@ -38,4 +38,8 @@ test('live faces share one motion owner; workbench preview stays isolated', () =
   )
   assert.match(lifecycle, /applyMotionFrame/)
   assert.match(lifecycle, /createPreviewMotionRuntime/)
+  assert.match(
+    lifecycle,
+    /setCapabilities\(capabilityKey \? capabilityKey\.split\(','\) : \[\]\)/,
+  )
 })

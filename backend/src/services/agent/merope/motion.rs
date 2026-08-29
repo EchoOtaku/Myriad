@@ -7,9 +7,10 @@
 use std::time::{Duration, Instant};
 
 use myriad_merope::{
-    motion_style_from_persona, parse_performance_plan, plan_is_empty, refine_performance_plan,
-    sanitize_rig_state, ChatPerformancePlan, RigStateSummary, PERFORMANCE_BASELINE_EXPRESSIONS,
+    parse_performance_plan, plan_is_empty, refine_performance_plan, round_motion_style,
+    ChatPerformancePlan, RigStateSummary, PERFORMANCE_BASELINE_EXPRESSIONS,
     PERFORMANCE_CUE_INTENTS, PERFORMANCE_INTERRUPT_MODES, PERFORMANCE_POSTURES,
+    RIG_STATE_MOTION_STYLES,
 };
 use serde::{Deserialize, Serialize};
 
@@ -52,6 +53,14 @@ pub struct MotionContext {
     pub response_text: Option<String>,
     pub task_success: Option<bool>,
     pub rig_state: Option<RigStateSummary>,
+    /// Resolved once per Chat/Work round. Client style is only a fallback.
+    pub motion_style: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum MotionDecision {
+    Continue,
+    Perform(ChatPerformancePlan),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,12 +76,8 @@ pub struct PerformanceDirective {
 pub async fn direct_motion(context: MotionContext) -> Option<PerformanceDirective> {
     let started = Instant::now();
     let phase = context.phase.as_str();
-    let rig_state =
-        enrich_rig_state(context.rig_state.clone(), context.mood.after.round() as i32).await;
-    if rig_state
-        .as_ref()
-        .is_some_and(|state| !state.page_visible || !state.face_visible)
-    {
+    let rig_state = apply_round_motion_style(context.rig_state.clone(), &context.motion_style);
+    if face_is_hidden(rig_state.as_ref()) {
         tracing::debug!(phase, "[MeropeMotion] Face hidden; ambient motion only");
         return None;
     }
@@ -135,58 +140,110 @@ pub async fn direct_motion(context: MotionContext) -> Option<PerformanceDirectiv
             return None;
         }
     };
-    let Some(parsed) = parse_performance_plan(&raw) else {
-        tracing::warn!(
-            phase,
-            elapsed_ms,
-            "[MeropeMotion] Invalid Lite plan dropped"
-        );
-        return None;
-    };
-    let plan = if let Some(state) = rig_state.as_ref() {
-        refine_performance_plan(parsed, state)
-    } else {
-        parsed
-    };
-    if plan_is_empty(&plan) {
-        tracing::debug!(phase, elapsed_ms, "[MeropeMotion] Lite continued ambient");
-        return None;
-    }
-    tracing::info!(phase, elapsed_ms, "[MeropeMotion] Lite plan ready");
-    Some(PerformanceDirective {
-        phase: context.phase,
-        mood_revision: context.mood.revision,
-        plan,
-    })
-}
-
-async fn enrich_rig_state(summary: Option<RigStateSummary>, mood: i32) -> Option<RigStateSummary> {
-    let mut summary = summary?;
-    if let Ok(db) = crate::services::tapp_registry::database().await {
-        if let Ok(Some(persona)) = get_persona(&db).await {
-            let temperament = persona
-                .persona_json
-                .as_ref()
-                .and_then(|value| value.get("temperament"))
-                .and_then(|value| value.as_array())
-                .map(|items| {
-                    items
-                        .iter()
-                        .filter_map(|item| item.as_str().map(str::to_string))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            let social = persona
-                .persona_json
-                .as_ref()
-                .and_then(|value| value.get("socialStyle"))
-                .and_then(|value| value.as_str())
-                .unwrap_or("");
-            summary.motion_style =
-                motion_style_from_persona(&temperament, social, mood).to_string();
+    match parse_motion_decision(&raw) {
+        Some(MotionDecision::Continue) => {
+            tracing::debug!(
+                phase,
+                elapsed_ms,
+                "[MeropeMotion] Lite continued current acting"
+            );
+            None
+        }
+        Some(MotionDecision::Perform(parsed)) => {
+            let plan = if let Some(state) = rig_state.as_ref() {
+                refine_performance_plan(parsed, state)
+            } else {
+                parsed
+            };
+            if plan_is_empty(&plan) {
+                tracing::debug!(
+                    phase,
+                    elapsed_ms,
+                    "[MeropeMotion] Lite plan had no capable cues"
+                );
+                return None;
+            }
+            tracing::info!(phase, elapsed_ms, "[MeropeMotion] Lite plan ready");
+            Some(PerformanceDirective {
+                phase: context.phase,
+                mood_revision: context.mood.revision,
+                plan,
+            })
+        }
+        None => {
+            tracing::warn!(
+                phase,
+                elapsed_ms,
+                "[MeropeMotion] Invalid Lite plan dropped"
+            );
+            None
         }
     }
+}
+
+/// One persona read per Chat/Work round. Client style is only used when the
+/// site persona cannot be loaded.
+pub async fn resolve_round_motion_style(client: Option<&RigStateSummary>, mood: i32) -> String {
+    let client_style = client.map(|summary| summary.motion_style.as_str());
+    if let Ok(db) = crate::services::tapp_registry::database().await {
+        if let Ok(Some(persona)) = get_persona(&db).await {
+            return round_motion_style(client_style, persona.persona_json.as_ref(), true, mood);
+        }
+    }
+    round_motion_style(client_style, None, false, mood)
+}
+
+fn apply_round_motion_style(
+    summary: Option<RigStateSummary>,
+    motion_style: &str,
+) -> Option<RigStateSummary> {
+    let mut summary = summary?;
+    summary.motion_style = if RIG_STATE_MOTION_STYLES.contains(&motion_style) {
+        motion_style.to_string()
+    } else {
+        summary.motion_style
+    };
     Some(summary)
+}
+
+fn face_is_hidden(state: Option<&RigStateSummary>) -> bool {
+    state.is_some_and(|summary| !summary.page_visible || !summary.face_visible)
+}
+
+fn parse_motion_decision(raw: &str) -> Option<MotionDecision> {
+    let stripped = strip_motion_json(raw);
+    let value: serde_json::Value = serde_json::from_str(stripped).ok()?;
+    let object = value.as_object()?;
+    match object.get("continue") {
+        Some(flag) if !flag.is_boolean() => return None,
+        Some(flag) if flag.as_bool() == Some(true) => {
+            if motion_payload_present(object) {
+                return None;
+            }
+            return Some(MotionDecision::Continue);
+        }
+        _ => {}
+    }
+    parse_performance_plan(stripped).map(MotionDecision::Perform)
+}
+
+fn motion_payload_present(object: &serde_json::Map<String, serde_json::Value>) -> bool {
+    let has_baseline = object.get("baseline").is_some_and(|value| !value.is_null());
+    let has_cues = object
+        .get("cues")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|cues| !cues.is_empty());
+    has_baseline || has_cues
+}
+
+fn strip_motion_json(raw: &str) -> &str {
+    let trimmed = raw.trim();
+    trimmed
+        .strip_prefix("```json")
+        .or_else(|| trimmed.strip_prefix("```"))
+        .and_then(|inner| inner.strip_suffix("```"))
+        .unwrap_or(trimmed)
+        .trim()
 }
 
 fn truncate(value: &str, max_chars: usize) -> String {
@@ -205,9 +262,10 @@ cues.intent 只能是 {}，最多 3 个。
 若 rig.owners.mouth 是 speech，嘴已被语音占用：只选表情或头身，不要试图做口型。
 若 rig.singing 或 rig.musicPlaying 为真，选与节奏兼容的动作：优先 listen/respond/think 等不抢头身的意图，tempo 贴近节拍。
 只使用 rig.capabilities 里有的能力；缺 dizzy-eye 就不要 dizzy，缺 lovestruck 就不要 lovestruck。
+若 rig.capabilities 为空，不要选择依赖特殊素材的表情，也不要选择占头身的动作。
 人设动作习惯是 rig.motionStyle：restrained 少用 open/delight，open 才更放开，even 保持克制的中度。
 reaction 立即回应用户输入；delivery 配合即将说出的话；outcome 配合任务结果。不要打乱这个阶段顺序。
-无合适动作时必须输出 {{"continue":true}}，让确定性环境动画继续。
+无合适动作时必须输出 {{"continue":true}}，不要输出空对象；空对象是无效输出。
 只有确实需要斟酌、回忆或推理时才使用 think；不要让每次普通回复都思考。
 只有文本明确表现眩晕、失去平衡或认知过载时才使用 dizzy；普通困惑、无奈或失败不要使用。
 只有文本明确表现正在哭泣、落泪、强烈悲伤或情绪崩溃时才使用 cry；普通低心情、失败或道歉不要使用。
@@ -325,11 +383,91 @@ mod tests {
         assert!(prompt.contains(&PERFORMANCE_CUE_INTENTS.join("/")));
         assert!(!prompt.contains("angleZ"));
         assert!(prompt.contains("continue"));
+        assert!(prompt.contains("不要输出空对象"));
+        assert!(prompt.contains("rig.capabilities 为空"));
         assert!(prompt.contains("rig.owners.mouth"));
         assert!(prompt.contains("musicPlaying"));
         assert!(prompt.contains("motionStyle"));
         assert!(prompt.contains("capabilities"));
         assert!(schema.pointer("/properties/continue").is_some());
         assert!(schema.get("required").is_none());
+    }
+
+    #[test]
+    fn explicit_continue_is_not_a_plan() {
+        assert_eq!(
+            parse_motion_decision(r#"{"continue":true}"#),
+            Some(MotionDecision::Continue)
+        );
+        assert_eq!(
+            parse_motion_decision(r#"{"continue":true,"cues":[]}"#),
+            Some(MotionDecision::Continue)
+        );
+        assert_eq!(
+            parse_motion_decision("```json\n{\"continue\": true}\n```"),
+            Some(MotionDecision::Continue)
+        );
+    }
+
+    #[test]
+    fn empty_object_is_invalid_not_continue() {
+        assert_eq!(parse_motion_decision("{}"), None);
+        assert_eq!(parse_motion_decision(r#"{"cues":[]}"#), None);
+        assert_eq!(parse_motion_decision(r#"{"continue":false}"#), None);
+    }
+
+    #[test]
+    fn illegal_baseline_without_cues_is_invalid() {
+        assert_eq!(
+            parse_motion_decision(
+                r#"{"baseline":{"expression":"angry","posture":"attack"},"cues":[]}"#
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn legal_plan_is_perform() {
+        let decision = parse_motion_decision(
+            r#"{"cues":[{"intent":"listen","atMs":0,"intensity":1,"tempo":1,"fadeInMs":80,"fadeOutMs":120,"interrupt":"if-lower"}]}"#,
+        );
+        match decision {
+            Some(MotionDecision::Perform(plan)) => {
+                assert_eq!(plan.cues.len(), 1);
+                assert_eq!(plan.cues[0].intent, "listen");
+            }
+            other => panic!("expected perform, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn continue_with_a_plan_is_rejected() {
+        assert_eq!(
+            parse_motion_decision(r#"{"continue":true,"cues":[{"intent":"listen"}]}"#),
+            None
+        );
+        assert_eq!(
+            parse_motion_decision(
+                r#"{"continue":true,"baseline":{"expression":"warm","posture":"open","motionEnergy":1,"attention":0.8}}"#
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn hidden_face_skips_motion() {
+        let hidden = myriad_merope::sanitize_rig_state(&serde_json::json!({
+            "pageVisible": false,
+            "faceVisible": true
+        }))
+        .unwrap();
+        assert!(face_is_hidden(Some(&hidden)));
+        let no_face = myriad_merope::sanitize_rig_state(&serde_json::json!({
+            "pageVisible": true,
+            "faceVisible": false
+        }))
+        .unwrap();
+        assert!(face_is_hidden(Some(&no_face)));
+        assert!(!face_is_hidden(None));
     }
 }

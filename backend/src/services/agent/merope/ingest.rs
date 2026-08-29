@@ -328,6 +328,8 @@ pub async fn ingest(
                     cause: event_key.to_string(),
                     revision: current.updated_at.with_timezone(&Utc).timestamp_millis(),
                 };
+                let motion_style =
+                    super::resolve_round_motion_style(None, current.mood.round() as i32).await;
                 let performance = super::direct_motion(super::MotionContext {
                     user_id,
                     phase: super::MotionPhase::Proactive,
@@ -337,6 +339,7 @@ pub async fn ingest(
                     response_text: Some(spoken.clone()),
                     task_success: None,
                     rig_state: None,
+                    motion_style,
                 })
                 .await;
                 (performance, Some(mood))
