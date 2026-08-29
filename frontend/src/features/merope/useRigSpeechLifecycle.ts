@@ -1,8 +1,10 @@
 import type { RefObject } from 'react'
+import type { RigMotionCoordinator } from './motion/coordinator'
 import type { RigCharacterHandle } from './rig/RigCharacter'
 import type { SpeechOccupancy } from './speechLifecycle'
 import { useEffect } from 'react'
 import { getRigMotionCoordinator } from './motion/coordinator'
+import { SpeechMotionLease } from './motion/speechLease'
 import { MEROPE_SPEECH_EVENT, meropeSpeechEventDetail } from './speechEvents'
 import { SpeechLifecycleController } from './speechLifecycle'
 
@@ -10,9 +12,10 @@ import { SpeechLifecycleController } from './speechLifecycle'
 export function useRigSpeechLifecycle(
   rigRef: RefObject<RigCharacterHandle | null>,
   occupancy?: SpeechOccupancy,
+  coordinator: RigMotionCoordinator = getRigMotionCoordinator(),
 ): void {
   useEffect(() => {
-    const coordinator = getRigMotionCoordinator()
+    const mouth = new SpeechMotionLease(coordinator)
     const controller = new SpeechLifecycleController(
       {
         setSpeechActive: (active) => rigRef.current?.setSpeechActive(active),
@@ -25,10 +28,7 @@ export function useRigSpeechLifecycle(
       },
       undefined,
       occupancy,
-      (busy) => {
-        if (busy) coordinator.claim('speech', ['mouth'])
-        else coordinator.release('speech', ['mouth'])
-      },
+      (busy) => mouth.setBusy(busy),
     )
     const onSpeech = (event: Event) => {
       const detail = meropeSpeechEventDetail(
@@ -40,6 +40,7 @@ export function useRigSpeechLifecycle(
     return () => {
       window.removeEventListener(MEROPE_SPEECH_EVENT, onSpeech)
       controller.dispose()
+      mouth.release()
     }
-  }, [occupancy, rigRef])
+  }, [occupancy, rigRef, coordinator])
 }

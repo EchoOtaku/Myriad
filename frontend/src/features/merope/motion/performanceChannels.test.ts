@@ -1,7 +1,10 @@
 import type { PerformanceDirective } from '../../../services/agent/types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { performanceOccupiedChannels } from './performanceChannels'
+import {
+  cueOccupiesHeadBody,
+  performanceOccupiedChannels,
+} from './performanceChannels'
 
 function directive(
   overrides: Partial<PerformanceDirective['plan']> = {},
@@ -21,6 +24,33 @@ function directive(
     },
   }
 }
+
+test('think does not occupy head/body; greet does', () => {
+  assert.equal(
+    cueOccupiesHeadBody({
+      intent: 'think',
+      atMs: 0,
+      intensity: 1,
+      tempo: 1,
+      fadeInMs: 80,
+      fadeOutMs: 120,
+      interrupt: 'replace',
+    }),
+    false,
+  )
+  assert.equal(
+    cueOccupiesHeadBody({
+      intent: 'greet',
+      atMs: 0,
+      intensity: 1,
+      tempo: 1,
+      fadeInMs: 80,
+      fadeOutMs: 120,
+      interrupt: 'replace',
+    }),
+    true,
+  )
+})
 
 test('a face-only plan does not take the singing body', () => {
   const channels = performanceOccupiedChannels(

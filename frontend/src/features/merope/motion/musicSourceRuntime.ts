@@ -2,11 +2,7 @@ import type { MusicMotionAudio, MusicMotionClock, MusicMotionVisibility } from '
 import { isPageVisible, onVisibility } from '../../../hooks/animation'
 import { audioManager } from '../../../utils/musicPlayer'
 import { getRigMotionCoordinator } from './coordinator'
-import {
-
-  MusicMotionSource,
-
-} from './musicSource'
+import { MusicMotionSource } from './musicSource'
 
 const productionClock: MusicMotionClock = {
   now: () => performance.now(),

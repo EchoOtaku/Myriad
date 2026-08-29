@@ -32,4 +32,10 @@ test('live faces share one motion owner; workbench preview stays isolated', () =
   assert.match(workbench, /replaceDriver/)
   assert.doesNotMatch(workbench, /useRigMotionLifecycle/)
   assert.doesNotMatch(workbench, /useRigSingingLifecycle/)
+  const lifecycle = readFileSync(
+    new URL('./useRigMotionLifecycle.ts', import.meta.url),
+    'utf8',
+  )
+  assert.match(lifecycle, /useRef\(false\)/)
+  assert.match(lifecycle, /new RigMotionCoordinator/)
 })

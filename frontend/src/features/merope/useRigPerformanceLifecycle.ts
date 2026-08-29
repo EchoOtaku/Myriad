@@ -1,8 +1,9 @@
 import type { RefObject } from 'react'
+import type { RigMotionCoordinator } from './motion/coordinator'
 import type { RigCharacterHandle } from './rig/RigCharacter'
 import { useEffect } from 'react'
 import { getRigMotionCoordinator } from './motion/coordinator'
-import { performanceOccupiedChannels } from './motion/performanceChannels'
+import { PerformanceMotionLeases } from './motion/performanceLeases'
 import {
   MEROPE_PERFORMANCE_EVENT,
   meropePerformanceEventDetail,
@@ -13,22 +14,20 @@ import { MEROPE_SPEECH_EVENT, meropeSpeechEventDetail } from './speechEvents'
 /** Connect one mounted rig to strict-Lite semantic performance events. */
 export function useRigPerformanceLifecycle(
   rigRef: RefObject<RigCharacterHandle | null>,
+  coordinator: RigMotionCoordinator = getRigMotionCoordinator(),
 ): void {
   useEffect(() => {
-    const coordinator = getRigMotionCoordinator()
+    const leases = new PerformanceMotionLeases(coordinator)
     const controller = new PerformanceLifecycleController({
       playMotionPlan: (performance) => {
         const accepted = rigRef.current?.playMotionPlan(performance) ?? false
         if (accepted) {
-          coordinator.claim(
-            'performance',
-            performanceOccupiedChannels(performance),
-          )
+          leases.apply(performance, globalThis.performance.now())
         }
         return accepted
       },
       stopMotionPlan: () => {
-        coordinator.release('performance')
+        leases.releaseAll()
         rigRef.current?.stopMotionPlan()
       },
     })
@@ -51,5 +50,5 @@ export function useRigPerformanceLifecycle(
       window.removeEventListener(MEROPE_SPEECH_EVENT, onSpeech)
       controller.dispose()
     }
-  }, [rigRef])
+  }, [rigRef, coordinator])
 }
