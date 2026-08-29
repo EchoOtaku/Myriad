@@ -49,6 +49,13 @@ export interface PendingQuestion {
   expiresInSeconds?: number
   /** 客户端收到确认时的 epoch ms，用于倒计时 */
   receivedAtMs?: number
+  /** 敏感确认：待执行步骤，打开会话后用来还原操作卡片 */
+  pendingSteps?: Array<{
+    stepId: string
+    capabilityName: string
+    message: string
+    impact: string[]
+  }>
 }
 
 /** 执行追踪汇总 */

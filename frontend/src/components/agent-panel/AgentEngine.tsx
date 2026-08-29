@@ -27,7 +27,13 @@ import type {
 } from '../../services/agent'
 import type { AgentAttachment } from './agentAttachments'
 import type { AgentPanelMode } from './agentPanelMode'
-import type { ChatMessage, ChatSession, ExecutionTrace, PendingQuestion, TaskExecution } from './engineTypes'
+import type {
+  ChatMessage,
+  ChatSession,
+  ExecutionTrace,
+  PendingQuestion,
+  TaskExecution,
+} from './engineTypes'
 import {
   useCallback,
   useEffect,
@@ -90,12 +96,14 @@ import {
   splitThinkContent,
 } from './agentThinking'
 import { planAgentUndo } from './agentUndo'
-import {
-
-  executionStepsFromHistory,
-} from './engineTypes'
+import { executionStepsFromHistory } from './engineTypes'
 
 import { syncProjectedMessages } from './projectAgentMessage'
+import {
+  pendingQuestionFromMetadata,
+  restoreFollowUpQuestion,
+  restorePendingActionFromMessages,
+} from './sessionPendingRestore'
 import { useMessageState } from './useMessageState'
 
 function currentPath(): string {
@@ -169,12 +177,12 @@ export const AgentEngine: React.FC = () => {
     work: false,
     chat: false,
   })
-  const loadingMessageIdByModeRef = useRef<Record<AgentPanelMode, string | null>>(
-    {
-      work: null,
-      chat: null,
-    },
-  )
+  const loadingMessageIdByModeRef = useRef<
+    Record<AgentPanelMode, string | null>
+  >({
+    work: null,
+    chat: null,
+  })
 
   const handleSendRef =
     useRef<
@@ -239,9 +247,7 @@ export const AgentEngine: React.FC = () => {
     }
     loadingByModeRef.current[current] = false
     loadingMessageIdByModeRef.current[current] = null
-    setIsLoading(
-      loadingByModeRef.current.work || loadingByModeRef.current.chat,
-    )
+    setIsLoading(loadingByModeRef.current.work || loadingByModeRef.current.chat)
     if (current === 'work') resetAgentStatus()
     sessionIdsByModeRef.current[current] = null
     setSessionId(null, current)
@@ -282,16 +288,26 @@ export const AgentEngine: React.FC = () => {
             if (!isNonTerminalTaskStatus(task.status)) continue
             isWaiting = task.status === 'waiting_for_input'
             progress = task.progress ?? 0
+            const existing = messagesToScan.find(
+              (message) => message.id === candidate.messageId,
+            )?.pendingQuestion
             if (task.pendingQuestion) {
               pendingQ = {
                 questionId: task.pendingQuestion.questionId,
+                confirmationId: existing?.confirmationId,
                 questionType: task.pendingQuestion.questionType,
                 question: task.pendingQuestion.question,
                 context: task.pendingQuestion.context,
                 options: task.pendingQuestion.options,
                 required: task.pendingQuestion.required,
                 defaultValue: task.pendingQuestion.defaultValue,
+                riskLevel: existing?.riskLevel,
+                expiresInSeconds: existing?.expiresInSeconds,
+                receivedAtMs: existing?.receivedAtMs,
+                pendingSteps: existing?.pendingSteps,
               }
+            } else if (existing) {
+              pendingQ = existing
             }
           } else if (!runId) {
             continue
@@ -330,7 +346,9 @@ export const AgentEngine: React.FC = () => {
             })
             .finally(() => {
               loadingByModeRef.current.work = false
-              if (loadingMessageIdByModeRef.current.work === candidate.messageId) {
+              if (
+                loadingMessageIdByModeRef.current.work === candidate.messageId
+              ) {
                 loadingMessageIdByModeRef.current.work = null
               }
               setIsLoading(
@@ -418,48 +436,11 @@ export const AgentEngine: React.FC = () => {
           }
 
           // 从持久化 metadata 恢复等待中的问题（reattach 会再与后端对齐）
-          let pendingQuestion: PendingQuestion | undefined
-          const pq =
-            (meta?.pendingQuestion as Record<string, unknown> | undefined) ||
-            (taskMeta?.pendingQuestion as Record<string, unknown> | undefined)
-          if (pq && typeof pq.question === 'string') {
-            pendingQuestion = {
-              questionId: String(pq.questionId ?? pq.question_id ?? ''),
-              confirmationId:
-                typeof pq.confirmationId === 'string'
-                  ? pq.confirmationId
-                  : typeof pq.confirmation_id === 'string'
-                    ? pq.confirmation_id
-                    : undefined,
-              questionType: String(
-                pq.questionType ?? pq.question_type ?? 'free_text',
-              ),
-              question: pq.question,
-              context: typeof pq.context === 'string' ? pq.context : undefined,
-              options: pq.options as PendingQuestion['options'],
-              required:
-                typeof pq.required === 'boolean' ? pq.required : undefined,
-              riskLevel:
-                typeof pq.riskLevel === 'string'
-                  ? pq.riskLevel
-                  : typeof pq.risk_level === 'string'
-                    ? pq.risk_level
-                    : undefined,
-              expiresInSeconds:
-                typeof pq.expiresInSeconds === 'number'
-                  ? pq.expiresInSeconds
-                  : typeof pq.expires_in_seconds === 'number'
-                    ? pq.expires_in_seconds
-                    : undefined,
-              defaultValue:
-                typeof pq.defaultValue === 'string'
-                  ? pq.defaultValue
-                  : typeof pq.default_value === 'string'
-                    ? pq.default_value
-                    : undefined,
-            }
-            if (taskExecution) taskExecution.status = 'waiting'
-          }
+          const pendingQuestion = pendingQuestionFromMetadata(
+            meta,
+            new Date(m.createdAt).getTime(),
+          )
+          if (pendingQuestion && taskExecution) taskExecution.status = 'waiting'
 
           return {
             id: `loaded_${m.id}_${idx}`,
@@ -475,6 +456,16 @@ export const AgentEngine: React.FC = () => {
           }
         })
         setMessages(loaded, requestedMode)
+        if (requestedMode === 'work') {
+          const action = restorePendingActionFromMessages(loaded, Date.now())
+          if (action) {
+            setAgentPendingAction(action)
+          } else {
+            clearAgentPendingAction()
+            const followUp = restoreFollowUpQuestion(loaded)
+            if (followUp) setAgentStatusAwaitingConfirmation(followUp)
+          }
+        }
         // 刷新 / 通知打开：探测非终态任务并 re-subscribe
         void reattachLiveWork(loaded, reattachHints)
       } catch (error) {
@@ -672,9 +663,7 @@ export const AgentEngine: React.FC = () => {
     }
     loadingByModeRef.current[current] = false
     loadingMessageIdByModeRef.current[current] = null
-    setIsLoading(
-      loadingByModeRef.current.work || loadingByModeRef.current.chat,
-    )
+    setIsLoading(loadingByModeRef.current.work || loadingByModeRef.current.chat)
     if (current === 'work') resetAgentStatus()
   }, [messagesRef, updateMessage, updateMessageExecution, t])
   // 界面上按的「开新对话」「停下」。真正的动作在这边，界面只递一个意思。
@@ -806,21 +795,22 @@ export const AgentEngine: React.FC = () => {
               imageUrl: stepEvent.imageUrl,
             })
             if (stepEvent.imageUrl) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMessageId
-                    ? {
-                        ...m,
-                        imageUrls: [
-                          ...(m.imageUrls || []).filter(
-                            (u) => u !== stepEvent.imageUrl,
-                          ),
-                          stepEvent.imageUrl!,
-                        ],
-                      }
-                    : m,
-                ),
-              mode,
+              setMessages(
+                (prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMessageId
+                      ? {
+                          ...m,
+                          imageUrls: [
+                            ...(m.imageUrls || []).filter(
+                              (u) => u !== stepEvent.imageUrl,
+                            ),
+                            stepEvent.imageUrl!,
+                          ],
+                        }
+                      : m,
+                  ),
+                mode,
               )
             }
             break
@@ -957,7 +947,9 @@ export const AgentEngine: React.FC = () => {
                 status: completedEvent.success ? 'completed' : 'error',
                 progress: 100,
               })
-              if (loadingMessageIdByModeRef.current[mode] === assistantMessageId) {
+              if (
+                loadingMessageIdByModeRef.current[mode] === assistantMessageId
+              ) {
                 loadingMessageIdByModeRef.current[mode] = null
                 setIsLoading(false)
               }
@@ -970,95 +962,97 @@ export const AgentEngine: React.FC = () => {
             if (pdEvent.reasoning && !streamedThinking) {
               publishThinking(pdEvent.reasoning)
             }
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id !== assistantMessageId || !m.taskExecution) return m
-                const existing = m.taskExecution.debugTrace ?? {
-                  stepDebugEntries: [],
-                }
-                const planned =
-                  m.taskExecution.planStepDescriptions ??
-                  pdEvent.steps
-                    .map((step) => (step.action || step.capabilityId).trim())
-                    .filter(Boolean)
-                return {
-                  ...m,
-                  taskExecution: {
-                    ...m.taskExecution,
-                    ...(planned.length
-                      ? { planStepDescriptions: planned }
-                      : {}),
-                    debugTrace: {
-                      ...existing,
-                      plannerDecision: {
-                        status: pdEvent.status,
-                        reasoning: pdEvent.reasoning,
-                        confidence: pdEvent.confidence,
-                        steps: pdEvent.steps,
-                        userRequest: pdEvent.userRequest,
+            setMessages(
+              (prev) =>
+                prev.map((m) => {
+                  if (m.id !== assistantMessageId || !m.taskExecution) return m
+                  const existing = m.taskExecution.debugTrace ?? {
+                    stepDebugEntries: [],
+                  }
+                  const planned =
+                    m.taskExecution.planStepDescriptions ??
+                    pdEvent.steps
+                      .map((step) => (step.action || step.capabilityId).trim())
+                      .filter(Boolean)
+                  return {
+                    ...m,
+                    taskExecution: {
+                      ...m.taskExecution,
+                      ...(planned.length
+                        ? { planStepDescriptions: planned }
+                        : {}),
+                      debugTrace: {
+                        ...existing,
+                        plannerDecision: {
+                          status: pdEvent.status,
+                          reasoning: pdEvent.reasoning,
+                          confidence: pdEvent.confidence,
+                          steps: pdEvent.steps,
+                          userRequest: pdEvent.userRequest,
+                        },
                       },
                     },
-                  },
-                }
-              }),
-            mode,
+                  }
+                }),
+              mode,
             )
             break
           }
 
           case 'step_debug': {
             const sdEvent = event as StepDebugEvent
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id !== assistantMessageId || !m.taskExecution) return m
-                const existing = m.taskExecution.debugTrace ?? {
-                  stepDebugEntries: [],
-                }
-                const entries = [...existing.stepDebugEntries]
+            setMessages(
+              (prev) =>
+                prev.map((m) => {
+                  if (m.id !== assistantMessageId || !m.taskExecution) return m
+                  const existing = m.taskExecution.debugTrace ?? {
+                    stepDebugEntries: [],
+                  }
+                  const entries = [...existing.stepDebugEntries]
 
-                if (sdEvent.phase === 'start') {
-                  entries.push({
-                    stepId: sdEvent.stepId,
-                    capabilityId: sdEvent.capabilityId,
-                    isDynamic: sdEvent.isDynamic,
-                    directive: sdEvent.directive,
-                    userRequest: sdEvent.userRequest,
-                    params: sdEvent.params,
-                  })
-                } else if (sdEvent.phase === 'complete') {
-                  const idx = entries.findIndex(
-                    (e) => e.stepId === sdEvent.stepId,
-                  )
-                  if (idx >= 0) {
-                    entries[idx] = {
-                      ...entries[idx],
-                      outputPreview: sdEvent.outputPreview,
-                      durationMs: sdEvent.durationMs,
-                      success: sdEvent.success,
-                      error: sdEvent.error,
-                    }
-                  } else {
+                  if (sdEvent.phase === 'start') {
                     entries.push({
                       stepId: sdEvent.stepId,
                       capabilityId: sdEvent.capabilityId,
                       isDynamic: sdEvent.isDynamic,
-                      outputPreview: sdEvent.outputPreview,
-                      durationMs: sdEvent.durationMs,
-                      success: sdEvent.success,
-                      error: sdEvent.error,
+                      directive: sdEvent.directive,
+                      userRequest: sdEvent.userRequest,
+                      params: sdEvent.params,
                     })
+                  } else if (sdEvent.phase === 'complete') {
+                    const idx = entries.findIndex(
+                      (e) => e.stepId === sdEvent.stepId,
+                    )
+                    if (idx >= 0) {
+                      entries[idx] = {
+                        ...entries[idx],
+                        outputPreview: sdEvent.outputPreview,
+                        durationMs: sdEvent.durationMs,
+                        success: sdEvent.success,
+                        error: sdEvent.error,
+                      }
+                    } else {
+                      entries.push({
+                        stepId: sdEvent.stepId,
+                        capabilityId: sdEvent.capabilityId,
+                        isDynamic: sdEvent.isDynamic,
+                        outputPreview: sdEvent.outputPreview,
+                        durationMs: sdEvent.durationMs,
+                        success: sdEvent.success,
+                        error: sdEvent.error,
+                      })
+                    }
                   }
-                }
 
-                return {
-                  ...m,
-                  taskExecution: {
-                    ...m.taskExecution,
-                    debugTrace: { ...existing, stepDebugEntries: entries },
-                  },
-                }
-              }),
-            mode,
+                  return {
+                    ...m,
+                    taskExecution: {
+                      ...m.taskExecution,
+                      debugTrace: { ...existing, stepDebugEntries: entries },
+                    },
+                  }
+                }),
+              mode,
             )
             break
           }
@@ -1109,16 +1103,19 @@ export const AgentEngine: React.FC = () => {
       // 发消息前引导登录，避免必 401。
       if (!isAuthenticated) {
         const loginHint = t.agentPanel.loginRequiredHint
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `msg_guest_hint_${Date.now()}`,
-            sessionId: modeSessionId || '',
-            role: 'assistant',
-            content: loginHint,
-            createdAt: new Date(),
-          },
-        ], mode)
+        setMessages(
+          (prev) => [
+            ...prev,
+            {
+              id: `msg_guest_hint_${Date.now()}`,
+              sessionId: modeSessionId || '',
+              role: 'assistant',
+              content: loginHint,
+              createdAt: new Date(),
+            },
+          ],
+          mode,
+        )
         window.setTimeout(() => {
           navigate(`/login?redirect=${encodeURIComponent(location.pathname)}`)
         }, 600)
@@ -1165,18 +1162,21 @@ export const AgentEngine: React.FC = () => {
             error,
             t.errors.agentSteeringFailed,
           )
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `msg_assistant_steer_error_${Date.now()}`,
+          setMessages(
+            (prev) => [
+              ...prev,
+              {
+                id: `msg_assistant_steer_error_${Date.now()}`,
                 sessionId: modeSessionId || '',
-              role: 'assistant',
-              content: format(t.agentPanel.errorWithDetail, {
-                error: errorMessage,
-              }),
-              createdAt: new Date(),
-            },
-          ], mode)
+                role: 'assistant',
+                content: format(t.agentPanel.errorWithDetail, {
+                  error: errorMessage,
+                }),
+                createdAt: new Date(),
+              },
+            ],
+            mode,
+          )
         }
         return
       }
@@ -1284,25 +1284,26 @@ export const AgentEngine: React.FC = () => {
         })
 
         // 保留已收集的 debugTrace 和步骤信息，只更新状态
-        setMessages((prev) =>
-          prev.map((m) => {
-            if (m.id !== assistantMsgId) return m
-            const existing = m.taskExecution
-            return {
-              ...m,
-              content:
-                m.content ||
-                t.agentPanel.errorWithDetail.replace('{error}', errorMsg),
-              taskExecution: {
-                taskId: existing?.taskId ?? '',
-                status: 'error' as const,
-                progress: existing?.progress ?? 0,
-                steps: existing?.steps ?? [],
-                debugTrace: existing?.debugTrace,
-                executionTrace: existing?.executionTrace,
-              },
-            }
-          }),
+        setMessages(
+          (prev) =>
+            prev.map((m) => {
+              if (m.id !== assistantMsgId) return m
+              const existing = m.taskExecution
+              return {
+                ...m,
+                content:
+                  m.content ||
+                  t.agentPanel.errorWithDetail.replace('{error}', errorMsg),
+                taskExecution: {
+                  taskId: existing?.taskId ?? '',
+                  status: 'error' as const,
+                  progress: existing?.progress ?? 0,
+                  steps: existing?.steps ?? [],
+                  debugTrace: existing?.debugTrace,
+                  executionTrace: existing?.executionTrace,
+                },
+              }
+            }),
           mode,
         )
       } finally {
@@ -1596,9 +1597,7 @@ export const AgentEngine: React.FC = () => {
           }
         : undefined
 
-      const liveSteps =
-        findMessage(messageId)?.taskExecution
-          ?.steps ?? []
+      const liveSteps = findMessage(messageId)?.taskExecution?.steps ?? []
       const historySteps = executionStepsFromHistory(
         stepHistory as Array<Record<string, unknown>> | undefined,
       )
