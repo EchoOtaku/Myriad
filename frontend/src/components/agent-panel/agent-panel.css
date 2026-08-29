@@ -166,21 +166,6 @@
   transform-origin: bottom center;
 }
 
-/* 切面静止态。开合位移在卡片和输入行上，不在这层再写一遍。 */
-.agent-panel-overlay,
-.agent-panel-tag-rail,
-.agent-panel-composer,
-.agent-panel-messages-slot {
-  opacity: 1;
-  translate: 0 0;
-  scale: 1;
-  transform-origin: center bottom;
-  transition:
-    opacity var(--agent-move) var(--agent-ease),
-    translate var(--agent-move) var(--agent-ease),
-    scale var(--agent-move) var(--agent-ease);
-}
-
 .agent-panel-presence {
   overflow: visible;
   min-width: 0;
@@ -684,6 +669,14 @@ button.agent-panel-tag:disabled {
   flex-shrink: 0;
   gap: 12px;
   width: 100%;
+  opacity: 1;
+  translate: 0 0;
+  scale: 1;
+  transform-origin: center bottom;
+  transition:
+    opacity var(--agent-move) var(--agent-ease),
+    translate var(--agent-move) var(--agent-ease),
+    scale var(--agent-move) var(--agent-ease);
 }
 
 .agent-panel-composer-row {
@@ -1145,7 +1138,11 @@ button.agent-panel-tag:disabled {
   .agent-panel-attach-bar,
   .agent-panel-attach-orb,
   .agent-panel-presence,
-  .agent-panel-swap {
+  .agent-panel-swap,
+  .agent-panel-longpress,
+  .agent-panel-lp-dot,
+  .agent-panel-lp-pulse,
+  .agent-panel-lp-svg {
     transition-duration: 0.01ms !important;
     transition-delay: 0ms !important;
     animation: none !important;
@@ -2285,8 +2282,8 @@ html.dark .agent-panel-aurora {
     );
   z-index: 0;
   opacity: 0.72;
-  animation: agent-panel-aurora-drift var(--agent-aurora-drift-ms)
-    ease-in-out infinite;
+  animation: agent-panel-aurora-drift var(--agent-aurora-drift-ms) ease-in-out
+    infinite;
   transition: opacity var(--agent-aurora-shift, 640ms)
     var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1));
 }
@@ -2517,7 +2514,8 @@ html.dark .agent-panel-aurora[data-status='error']::after {
   filter: blur(var(--blob-blur, 18px));
   animation: var(--blob-path, agent-panel-aurora-blob-a) var(--blob-ms, 8s)
     var(--blob-delay, 0s) ease-in-out infinite var(--blob-dir, normal);
-  transition: opacity 400ms var(--agent-ease-exit, cubic-bezier(1, 0, 0.68, 0.28));
+  transition: opacity 400ms
+    var(--agent-ease-exit, cubic-bezier(1, 0, 0.68, 0.28));
   transition-delay: calc(var(--blob-stagger, 0) * 64ms);
 }
 
@@ -2545,7 +2543,8 @@ html.dark .agent-panel-aurora[data-status='error']::after {
   --a-west: color-mix(in oklab, var(--color-error, #ef4444) 28%, white);
 
   z-index: 4;
-  transition: opacity 560ms var(--agent-ease-exit, cubic-bezier(1, 0, 0.68, 0.28));
+  transition: opacity 560ms
+    var(--agent-ease-exit, cubic-bezier(1, 0, 0.68, 0.28));
 }
 
 .agent-panel-aurora[data-status='error'] .agent-panel-aurora-alert {
@@ -2754,12 +2753,19 @@ html.dark .agent-panel-aurora[data-status='error']::after {
   pointer-events: none;
   z-index: 999999;
   transform: translate(-50%, -50%);
+  visibility: hidden;
   opacity: 0;
-  transition: opacity 0.1s ease-out;
+  transition:
+    opacity 0.1s ease-out,
+    visibility 0s linear 0.1s;
 }
 
 .agent-panel-longpress.active {
+  visibility: visible;
   opacity: 1;
+  transition:
+    opacity 0.1s ease-out,
+    visibility 0s linear 0s;
 }
 
 .agent-panel-lp-dot {

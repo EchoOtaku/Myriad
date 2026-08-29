@@ -53,16 +53,11 @@ function useHeldView(
     }
     setExiting(true)
     const outgoing =
-      held === 'sessions'
-        ? sessionsCountRef.current
-        : messagesCountRef.current
-    const timer = setTimeout(
-      () => {
-        setHeld(view)
-        setExiting(false)
-      },
-      agentPanelRowWaveMs(outgoing),
-    )
+      held === 'sessions' ? sessionsCountRef.current : messagesCountRef.current
+    const timer = setTimeout(() => {
+      setHeld(view)
+      setExiting(false)
+    }, agentPanelRowWaveMs(outgoing))
     return () => clearTimeout(timer)
   }, [held, view])
   return { held, exiting }
@@ -247,4 +242,3 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
     </>
   )
 }
-

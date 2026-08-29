@@ -15,6 +15,7 @@
  */
 
 import type { AgentAttachment, AttachError } from './agentAttachments'
+import type { RefObject } from 'react'
 import React, {
   useCallback,
   useEffect,
@@ -28,6 +29,11 @@ import { useI18n } from '../../contexts/I18nContext'
 import { agentService } from '../../services/agent'
 import { isImeComposing } from '../../utils/ime'
 import { AGENT_ATTACH_ACCEPT, collectAttachments } from './agentAttachments'
+import {
+  forgetComposerFavorite,
+  loadComposerFavorites,
+  type ComposerFavorite,
+} from './composerFavorites'
 import { dispatchAgentPanelCommand } from './agentPanelEvents'
 import { setAgentStatusRecording, useAgentStatus } from './agentStatusStore'
 import { attachOrbDriftSpeed, startAttachOrbDrift } from './attachOrbDrift'
@@ -58,16 +64,173 @@ export interface AgentPanelComposerProps {
   trailing?: React.ReactNode
 }
 
+function ComposerAttach({
+  fileRef,
+  errorLabel,
+}: {
+  fileRef: RefObject<HTMLInputElement | null>
+  errorLabel: string | null
+}) {
+  const { t } = useI18n()
+  const { status } = useAgentStatus()
+  const orbRef = useRef<HTMLSpanElement>(null)
+  const orbSpeedRef = useRef(attachOrbDriftSpeed(status))
+  orbSpeedRef.current = attachOrbDriftSpeed(status)
+  const orbActive = status !== 'idle'
+  const attachLabel = `${t.agentPanel.attach.add} · ${t.agentPanel.status[status]}`
+
+  useEffect(() => {
+    if (!orbActive) return
+    const node = orbRef.current
+    if (!node) return
+    if (document.documentElement.dataset.perfMode === 'exlight') return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    return startAttachOrbDrift(node, () => orbSpeedRef.current)
+  }, [orbActive])
+
+  return (
+    <button
+      type="button"
+      className="agent-panel-attach"
+      data-status={status}
+      title={errorLabel ?? attachLabel}
+      aria-label={attachLabel}
+      onClick={() => fileRef.current?.click()}
+    >
+      <span className="agent-panel-attach-plus" aria-hidden="true">
+        <span className="agent-panel-attach-bar" data-axis="x" />
+        <span className="agent-panel-attach-bar" data-axis="y" />
+      </span>
+      <span ref={orbRef} className="agent-panel-attach-orb" aria-hidden="true">
+        <span data-orb-blob="0" />
+        <span data-orb-blob="1" />
+        <span data-orb-blob="2" />
+      </span>
+    </button>
+  )
+}
+
+function ComposerAction({
+  hasText,
+  hasAttachments,
+  value,
+  submit,
+}: {
+  hasText: boolean
+  hasAttachments: boolean
+  value: string
+  submit: (text: string) => void
+}) {
+  const { t, locale } = useI18n()
+  const { status } = useAgentStatus()
+  const busy = status === 'thinking' || status === 'working'
+  const hasAttachmentsRef = useRef(hasAttachments)
+  hasAttachmentsRef.current = hasAttachments
+  const { speechAvailable, isRecording, isProcessingVoice, toggleRecording } =
+    useVoiceRecording((text: string) => {
+      if (text.trim() || hasAttachmentsRef.current) submit(text)
+    }, locale)
+
+  useEffect(() => {
+    setAgentStatusRecording(isRecording)
+    return () => setAgentStatusRecording(false)
+  }, [isRecording])
+
+  const kind = composerActionKind({
+    hasText,
+    hasAttachments,
+    busy,
+    speechAvailable,
+    voiceLocked: isRecording || isProcessingVoice,
+  })
+  const voiceLabel = isProcessingVoice
+    ? t.agentPanel.voice.working
+    : isRecording
+      ? t.agentPanel.voice.stop
+      : t.agentPanel.voice.start
+  const actionLabel =
+    kind === 'stop'
+      ? t.agentPanel.stop
+      : kind === 'send'
+        ? t.agentPanel.send
+        : voiceLabel
+
+  return (
+    <AgentPresence open={!!kind} kind="chip" from="self">
+      {kind ? (
+        <button
+          type="button"
+          className={[
+            'agent-panel-control',
+            'glass',
+            kind === 'stop'
+              ? 'agent-panel-stop'
+              : kind === 'voice'
+                ? 'agent-panel-mic'
+                : 'agent-panel-send',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          data-on={kind === 'voice' && isRecording ? 'true' : 'false'}
+          onClick={() => {
+            if (kind === 'stop') dispatchAgentPanelCommand('interrupt')
+            else if (kind === 'send') submit(value)
+            else toggleRecording()
+          }}
+          disabled={kind === 'voice' ? isProcessingVoice : false}
+          title={actionLabel}
+          aria-label={actionLabel}
+          aria-pressed={kind === 'voice' ? isRecording : undefined}
+        >
+          <AgentSwap id={kind} from="self">
+            {kind === 'stop' ? (
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <rect x="7" y="7" width="10" height="10" rx="2" />
+              </svg>
+            ) : kind === 'send' ? (
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 19V5" />
+                <path d="m5.5 11.5 6.5-6.5 6.5 6.5" />
+              </svg>
+            ) : (
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.9"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="9" y="3" width="6" height="11" rx="3" />
+                <path d="M5 11a7 7 0 0 0 14 0" />
+                <path d="M12 18v3" />
+              </svg>
+            )}
+          </AgentSwap>
+        </button>
+      ) : null}
+    </AgentPresence>
+  )
+}
+
 export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
   onSubmit,
   autoFocus = true,
   leading,
   trailing,
 }) => {
-  const { t, locale, format } = useI18n()
+  const { t, format } = useI18n()
   const { pathname } = useLocation()
   const { isAuthenticated } = useAuth()
-  const { status } = useAgentStatus()
   const {
     context,
     kicker,
@@ -79,22 +242,13 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
   } = useAgentPanelContext(pathname)
   const fieldRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
-  const orbRef = useRef<HTMLSpanElement>(null)
-  const orbSpeedRef = useRef(attachOrbDriftSpeed(status))
-  orbSpeedRef.current = attachOrbDriftSpeed(status)
   const [value, setValue] = useState('')
   const [attachments, setAttachments] = useState<AgentAttachment[]>([])
   const attachmentsRef = useRef(attachments)
   attachmentsRef.current = attachments
   const [attachError, setAttachError] = useState<AttachError | null>(null)
   const [dropping, setDropping] = useState(false)
-  const [favorites, setFavorites] = useState<
-    Array<{ id: number; input: string; title?: string }>
-  >([])
-
-  // 正在跑的时候，发送键换成停止键 —— 收起面板只是不看，停下才是真的停
-  const busy = status === 'thinking' || status === 'working'
-  const orbActive = status !== 'idle'
+  const [favorites, setFavorites] = useState<ComposerFavorite[]>([])
 
   const submit = useCallback(
     (text: string) => {
@@ -108,26 +262,6 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
     },
     [onSubmit],
   )
-
-  // 说完就发。识别出来的那句话不落回输入框再等一次回车 —— 开口本身就是「我要说」。
-  const { speechAvailable, isRecording, isProcessingVoice, toggleRecording } =
-    useVoiceRecording((text: string) => {
-      if (text.trim() || attachmentsRef.current.length) submit(text)
-    }, locale)
-
-  // 麦克风是本地状态，不走 SSE —— 单独告诉输入框里那颗点，它才好显示「在听」
-  useEffect(() => {
-    setAgentStatusRecording(isRecording)
-    return () => setAgentStatusRecording(false)
-  }, [isRecording])
-
-  useEffect(() => {
-    if (!orbActive) return
-    const node = orbRef.current
-    if (!node) return
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-    return startAttachOrbDrift(node, () => orbSpeedRef.current)
-  }, [orbActive])
 
   useEffect(() => {
     if (!autoFocus) return
@@ -144,8 +278,8 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
     let cancelled = false
     void (async () => {
       try {
-        const response = await agentService.getPresets()
-        if (!cancelled) setFavorites(response.favorites.slice(0, 4))
+        const next = await loadComposerFavorites()
+        if (!cancelled) setFavorites(next)
       } catch {
         // 拿不到收藏不影响问话
       }
@@ -213,26 +347,6 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
 
   const hasText = value.trim().length > 0
   const hasAttachments = attachments.length > 0
-  const kind = composerActionKind({
-    hasText,
-    hasAttachments,
-    busy,
-    speechAvailable,
-    voiceLocked: isRecording || isProcessingVoice,
-  })
-
-  const voiceLabel = isProcessingVoice
-    ? t.agentPanel.voice.working
-    : isRecording
-      ? t.agentPanel.voice.stop
-      : t.agentPanel.voice.start
-  const actionLabel =
-    kind === 'stop'
-      ? t.agentPanel.stop
-      : kind === 'send'
-        ? t.agentPanel.send
-        : voiceLabel
-  const attachLabel = `${t.agentPanel.attach.add} · ${t.agentPanel.status[status]}`
   const attachErrorLabel = attachError ? t.agentPanel.attach[attachError] : null
 
   return (
@@ -356,6 +470,7 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
                 title={t.agentPanel.unsave}
                 aria-label={t.agentPanel.unsave}
                 onClick={() => {
+                  forgetComposerFavorite(preset.id)
                   setFavorites((current) =>
                     current.filter((item) => item.id !== preset.id),
                   )
@@ -430,28 +545,7 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
           }}
           onDrop={handleDrop}
         >
-          <button
-            type="button"
-            className="agent-panel-attach"
-            data-status={status}
-            title={attachErrorLabel ?? attachLabel}
-            aria-label={attachLabel}
-            onClick={() => fileRef.current?.click()}
-          >
-            <span className="agent-panel-attach-plus" aria-hidden="true">
-              <span className="agent-panel-attach-bar" data-axis="x" />
-              <span className="agent-panel-attach-bar" data-axis="y" />
-            </span>
-            <span
-              ref={orbRef}
-              className="agent-panel-attach-orb"
-              aria-hidden="true"
-            >
-              <span data-orb-blob="0" />
-              <span data-orb-blob="1" />
-              <span data-orb-blob="2" />
-            </span>
-          </button>
+          <ComposerAttach fileRef={fileRef} errorLabel={attachErrorLabel} />
           <textarea
             ref={fieldRef}
             className="agent-panel-field"
@@ -479,75 +573,13 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
           />
         </div>
 
-        <AgentPresence open={!!kind} kind="chip" from="self">
-          {kind ? (
-            <button
-              type="button"
-              className={[
-                'agent-panel-control',
-                'glass',
-                kind === 'stop'
-                  ? 'agent-panel-stop'
-                  : kind === 'voice'
-                    ? 'agent-panel-mic'
-                    : 'agent-panel-send',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              data-on={kind === 'voice' && isRecording ? 'true' : 'false'}
-              onClick={() => {
-                if (kind === 'stop') dispatchAgentPanelCommand('interrupt')
-                else if (kind === 'send') submit(value)
-                else toggleRecording()
-              }}
-              disabled={kind === 'voice' ? isProcessingVoice : false}
-              title={actionLabel}
-              aria-label={actionLabel}
-              aria-pressed={kind === 'voice' ? isRecording : undefined}
-            >
-              <AgentSwap id={kind} from="self">
-                {kind === 'stop' ? (
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    aria-hidden="true"
-                  >
-                    <rect x="7" y="7" width="10" height="10" rx="2" />
-                  </svg>
-                ) : kind === 'send' ? (
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M12 19V5" />
-                    <path d="m5.5 11.5 6.5-6.5 6.5 6.5" />
-                  </svg>
-                ) : (
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.9"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <rect x="9" y="3" width="6" height="11" rx="3" />
-                    <path d="M5 11a7 7 0 0 0 14 0" />
-                    <path d="M12 18v3" />
-                  </svg>
-                )}
-              </AgentSwap>
-            </button>
-          ) : null}
-        </AgentPresence>
+        <ComposerAction
+          hasText={hasText}
+          hasAttachments={hasAttachments}
+          value={value}
+          submit={submit}
+        />
       </div>
     </div>
   )
 }
-

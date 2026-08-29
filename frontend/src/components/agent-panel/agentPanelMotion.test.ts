@@ -145,6 +145,8 @@ describe('agent panel motion contract', () => {
     assert.match(pan, /visibility === 'hidden'/)
     assert.match(pan, /--agent-exit-stagger/)
     assert.match(pan, /--agent-stagger-wave/)
+    assert.doesNotMatch(pan, /mask-image/)
+    assert.match(pan, /if \(leaving\) \{[\s\S]*?writeExitStagger\(\)/)
     assert.doesNotMatch(pan, /if \(leaving\) \{\s*clearExit\(\)/)
     assert.equal(agentPanelStaggerSteps(2), 2)
     assert.equal(agentPanelStaggerSteps(20), AGENT_ROW_STAGGER_MAX + 1)
@@ -217,6 +219,8 @@ describe('agent panel motion contract', () => {
     assert.match(panel, /className="agent-panel-aurora-prism"/)
     assert.doesNotMatch(panel, /agent-panel-aurora-prism-rev/)
     assert.match(panel, /useAgentAuroraPrism/)
+    assert.match(panel, /AgentPanelAurora/)
+    assert.match(panel, /useAgentMessageCount/)
     assert.match(panel, /prismARef/)
     assert.match(panel, /prismBRef/)
     const prism = readFileSync(
@@ -224,6 +228,7 @@ describe('agent panel motion contract', () => {
       'utf8',
     )
     assert.match(prism, /PRISM_HANDOFF_MS = 340/)
+    assert.match(prism, /PRISM_CLEAR_MS = 720/)
     assert.match(prism, /\[live, layerA, layerB\]/)
     assert.doesNotMatch(prism, /\[status, enabled, layerA, layerB\]/)
     assert.match(panel, /className="agent-panel-aurora-alert"/)
@@ -246,7 +251,7 @@ describe('agent panel motion contract', () => {
     assert.match(css, /@property --agent-aurora-0/)
     assert.match(css, /\.agent-panel-aurora-prism \{/)
     assert.match(css, /\.agent-panel-aurora-alert \{/)
-    assert.match(css, /@keyframes agent-panel-aurora-wander/)
+    assert.doesNotMatch(css, /@keyframes agent-panel-aurora-wander/)
     assert.match(css, /@keyframes agent-panel-aurora-blob-a/)
     assert.match(css, /@keyframes agent-panel-aurora-blob-d/)
     assert.match(css, /\.agent-panel-aurora-blob \{/)
@@ -266,10 +271,7 @@ describe('agent panel motion contract', () => {
       css,
       /\[data-status='error'\] \.agent-panel-aurora-alert[\s\S]*opacity:\s*1/,
     )
-    assert.match(
-      css,
-      /\[data-status='error'\][\s\S]*--color-error/,
-    )
+    assert.match(css, /\[data-status='error'\][\s\S]*--color-error/)
     assert.doesNotMatch(css, /oklch\(72% 0\.24 0deg\)/)
     assert.doesNotMatch(css, /oklch\(72% 0\.24 60deg\)/)
     assert.doesNotMatch(css, /longer hue/)
@@ -278,6 +280,16 @@ describe('agent panel motion contract', () => {
       css,
       /prefers-reduced-motion: reduce[\s\S]*\.agent-panel-aurora,/,
     )
+    assert.match(css, /contain:\s*layout paint/)
+    assert.match(css, /\[data-paused='true'\]/)
+    assert.match(css, /animation-play-state:\s*paused/)
+    assert.doesNotMatch(css, /data-from='clock'/)
+    assert.doesNotMatch(css, /data-from='place'/)
+    assert.doesNotMatch(presence, /'clock'/)
+    assert.match(panel, /stage\.phase !== 'opening'/)
+    assert.match(panel, /stage\.phase !== 'closing'/)
+    assert.match(panel, /auroraRef/)
+    assert.match(presence, /staggerFor\.current\.delete/)
   })
 
   it('scrolls history with the same pan and blur-exit as chat', () => {

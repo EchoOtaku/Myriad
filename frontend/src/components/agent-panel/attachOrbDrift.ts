@@ -36,10 +36,15 @@ export function startAttachOrbDrift(
   if (blobs.length === 0) return () => {}
 
   const seed = Math.random() * Math.PI * 2
-  const started = performance.now()
+  let started = performance.now()
+  let hiddenAt = 0
   let frame = 0
 
   const tick = (now: number) => {
+    if (document.hidden) {
+      frame = 0
+      return
+    }
     const t = ((now - started) / 1000) * speed()
     for (let i = 0; i < blobs.length; i += 1) {
       const spec = BLOBS[i] ?? BLOBS[0]
@@ -56,9 +61,25 @@ export function startAttachOrbDrift(
     frame = requestAnimationFrame(tick)
   }
 
+  const onVis = () => {
+    if (document.hidden) {
+      hiddenAt = performance.now()
+      if (frame) cancelAnimationFrame(frame)
+      frame = 0
+      return
+    }
+    if (hiddenAt) {
+      started += performance.now() - hiddenAt
+      hiddenAt = 0
+    }
+    if (!frame) frame = requestAnimationFrame(tick)
+  }
+
+  document.addEventListener('visibilitychange', onVis)
   frame = requestAnimationFrame(tick)
   return () => {
-    cancelAnimationFrame(frame)
+    document.removeEventListener('visibilitychange', onVis)
+    if (frame) cancelAnimationFrame(frame)
     for (const blob of blobs) blob.style.removeProperty('transform')
   }
 }

@@ -190,17 +190,10 @@ export function conversationExitKey(style: ConversationExitStyle): string {
   return `${style.exit.toFixed(2)}:${style.shift}`
 }
 
-function clearMask(el: HTMLElement): void {
-  el.style.removeProperty('mask-image')
-  el.style.removeProperty('-webkit-mask-image')
-}
-
 export function applyConversationExit(
   el: HTMLElement,
   style: ConversationExitStyle,
 ): void {
-  clearMask(el)
-
   if (style.hidden) {
     delete el.dataset.leaving
     el.style.removeProperty('--exit')

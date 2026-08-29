@@ -54,7 +54,11 @@ function Inline({ tokens }: { tokens: InlineToken[] }): React.ReactElement {
   )
 }
 
-function Block({ block }: { block: MarkdownBlock }): React.ReactElement {
+const Block = React.memo(function Block({
+  block,
+}: {
+  block: MarkdownBlock
+}): React.ReactElement {
   switch (block.kind) {
     case 'heading': {
       // 助手说的话嵌在气泡里，一级标题也不该有页面标题那么大
@@ -130,7 +134,7 @@ function Block({ block }: { block: MarkdownBlock }): React.ReactElement {
         </p>
       )
   }
-}
+})
 
 export const AgentMarkdown: React.FC<{ text: string }> = ({ text }) => (
   <>
@@ -139,4 +143,3 @@ export const AgentMarkdown: React.FC<{ text: string }> = ({ text }) => (
     ))}
   </>
 )
-

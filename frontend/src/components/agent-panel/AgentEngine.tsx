@@ -51,7 +51,8 @@ import {
 import { buildAgentPendingAction } from './agentAction'
 import { attachmentsForRequest } from './agentAttachments'
 import { getAgentContextConsent } from './agentContextConsent'
-import { setAgentMessages, setAgentSessionId } from './agentMessages'
+import { setAgentSessionId } from './agentMessages'
+import { syncProjectedMessages } from './projectAgentMessage'
 import {
   AGENT_PANEL_ACTION_EVENT,
   AGENT_PANEL_ANSWER_EVENT,
@@ -136,73 +137,7 @@ export const AgentEngine: React.FC = () => {
   // 把对话同步给新 UI 的 Full 层。只送「谁说的、说了什么、说完没有」，执行追踪
   // 那一堆留在这边 —— 新 UI 不该认识旧面板的消息模型。
   useEffect(() => {
-    setAgentMessages(
-      messages.map((message) => ({
-        id: message.id,
-        role: message.role,
-        content: message.content,
-        state:
-          message.taskExecution?.status === 'error'
-            ? ('error' as const)
-            : message.taskExecution?.status === 'processing'
-              ? ('streaming' as const)
-              : undefined,
-        ...(message.imageUrls?.length ? { imageUrls: message.imageUrls } : {}),
-        ...(message.attachments?.length
-          ? {
-              attachments: message.attachments.map((item) => ({
-                id: item.id,
-                name: item.name,
-                mime: item.mime,
-                size: item.size,
-                ...(item.previewUrl ? { previewUrl: item.previewUrl } : {}),
-              })),
-            }
-          : {}),
-        at: message.createdAt.getTime(),
-        ...(message.suggestions?.length
-          ? { suggestions: message.suggestions }
-          : {}),
-        // 敏感确认不走这条 —— 它有自己的操作卡片，摊开的东西完全不一样
-        ...(message.pendingQuestion && !message.pendingQuestion.confirmationId
-          ? {
-              question: {
-                id: message.pendingQuestion.questionId,
-                text: message.pendingQuestion.question,
-                ...(message.pendingQuestion.context
-                  ? { context: message.pendingQuestion.context }
-                  : {}),
-                ...(message.pendingQuestion.options?.length
-                  ? { options: message.pendingQuestion.options }
-                  : {}),
-                ...(message.selectedAnswer
-                  ? { answered: message.selectedAnswer }
-                  : {}),
-              },
-            }
-          : {}),
-        ...(message.taskExecution?.steps?.length
-          ? {
-              steps: message.taskExecution.steps.map((step) => ({
-                id: step.id,
-                name: step.name,
-                status:
-                  step.status === 'completed'
-                    ? ('done' as const)
-                    : step.status === 'error'
-                      ? ('error' as const)
-                      : step.status === 'running'
-                        ? ('running' as const)
-                        : ('pending' as const),
-                ...(typeof step.durationMs === 'number'
-                  ? { durationMs: step.durationMs }
-                  : {}),
-                ...(step.message ? { note: step.message } : {}),
-              })),
-            }
-          : {}),
-      })),
-    )
+    syncProjectedMessages(messages)
   }, [messages])
 
   // Refs

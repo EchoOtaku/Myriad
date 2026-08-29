@@ -123,4 +123,3 @@ export const AgentPanelActionCard: React.FC<AgentPanelActionCardProps> = ({
     </div>
   )
 }
-

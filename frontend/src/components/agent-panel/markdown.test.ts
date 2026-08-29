@@ -95,3 +95,19 @@ test('空输入产出空列表，不产出一个空段落', () => {
   assert.deepEqual(parseMarkdownBlocks(''), [])
   assert.deepEqual(parseMarkdownBlocks('\n\n'), [])
 })
+
+test('流式往后追加时前面认完的块沿用原对象', () => {
+  const first = parseMarkdownBlocks('# 题\n\n第一段')
+  const second = parseMarkdownBlocks('# 题\n\n第一段\n\n第二段还在写')
+  assert.equal(second[0], first[0])
+  assert.equal(second[1], first[1])
+  assert.equal(second[2]?.kind, 'paragraph')
+  assert.notEqual(second[2], first[1])
+})
+
+test('同一段原文再解析一次拿到同一份树', () => {
+  const source = '- 甲\n- 乙'
+  const first = parseMarkdownBlocks(source)
+  const second = parseMarkdownBlocks(source)
+  assert.equal(second, first)
+})

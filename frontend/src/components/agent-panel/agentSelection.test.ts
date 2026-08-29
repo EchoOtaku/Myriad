@@ -7,6 +7,7 @@ import {
   SELECTION_PREVIEW_LENGTH,
   selectionCounts,
   selectionIsFresh,
+  selectionIsFromPanel,
   selectionPreview,
 } from './agentSelection'
 
@@ -48,4 +49,22 @@ test('记住的选区有时效，过久就不再当成他想指的那段', () =>
 
 test('空选区任何时候都不新鲜', () => {
   assert.equal(selectionIsFresh({ text: '', capturedAtMs: NOW }, NOW), false)
+})
+
+test('面板里的选中不算指着页面', () => {
+  const panel = {
+    nodeType: 1,
+    closest(sel: string) {
+      return sel === '.agent-panel-overlay-anchor' ? this : null
+    },
+  }
+  const page = {
+    nodeType: 1,
+    closest() {
+      return null
+    },
+  }
+  assert.equal(selectionIsFromPanel(panel as never), true)
+  assert.equal(selectionIsFromPanel(page as never), false)
+  assert.equal(selectionIsFromPanel(null), false)
 })

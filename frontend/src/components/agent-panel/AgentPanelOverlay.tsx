@@ -28,4 +28,3 @@ export const AgentPanelOverlay: React.FC<AgentPanelOverlayProps> = ({
     </div>
   )
 }
-

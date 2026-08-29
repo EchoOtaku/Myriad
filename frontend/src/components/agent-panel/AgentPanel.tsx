@@ -27,7 +27,7 @@ import {
   getServerNavLayoutSnapshot,
   subscribeNavLayout,
 } from '../../utils/navLayout'
-import { useAgentMessages } from './agentMessages'
+import { useAgentMessageCount } from './agentMessages'
 import { AgentPanelComposer } from './AgentPanelComposer'
 import {
   AGENT_PANEL_OPEN_EVENT,
@@ -37,6 +37,7 @@ import {
 } from './agentPanelEvents'
 import { AgentPanelFull, AgentPanelSessionChrome } from './AgentPanelFull'
 import { AgentPanelOverlay } from './AgentPanelOverlay'
+import type { AgentPanelPhase } from './agentPanelStage'
 import {
   agentPanelIsOpen,
   agentPanelSettleTimeoutMs,
@@ -56,6 +57,41 @@ import { AgentPresence } from './useAgentPresence'
 import { LONG_PRESS_DURATION, useLongPress } from './useLongPress'
 import './agent-panel.css'
 
+const AgentPanelAurora: React.FC<{ phase: AgentPanelPhase }> = ({ phase }) => {
+  const { status } = useAgentStatus()
+  const auroraRef = useRef<HTMLDivElement>(null)
+  const prismARef = useRef<HTMLSpanElement>(null)
+  const prismBRef = useRef<HTMLSpanElement>(null)
+  useAgentAuroraPrism(status, true, prismARef, prismBRef)
+
+  useEffect(() => {
+    const node = auroraRef.current
+    if (!node) return
+    const sync = () => {
+      if (document.hidden) node.dataset.paused = 'true'
+      else delete node.dataset.paused
+    }
+    sync()
+    document.addEventListener('visibilitychange', sync)
+    return () => document.removeEventListener('visibilitychange', sync)
+  }, [])
+
+  return (
+    <div
+      ref={auroraRef}
+      className="agent-panel-aurora"
+      data-phase={phase}
+      data-status={status}
+      aria-hidden="true"
+    >
+      <span className="agent-panel-aurora-flow" />
+      <span ref={prismARef} className="agent-panel-aurora-prism" />
+      <span ref={prismBRef} className="agent-panel-aurora-prism" />
+      <span className="agent-panel-aurora-alert" />
+    </div>
+  )
+}
+
 export const AgentPanel: React.FC = () => {
   const { t } = useI18n()
   const location = useLocation()
@@ -64,20 +100,10 @@ export const AgentPanel: React.FC = () => {
     INITIAL_AGENT_PANEL_STAGE,
   )
   const overlayRef = useRef<HTMLDivElement>(null)
-  const auroraRef = useRef<HTMLDivElement>(null)
-  const prismARef = useRef<HTMLSpanElement>(null)
-  const prismBRef = useRef<HTMLSpanElement>(null)
   const open = agentPanelIsOpen(stage)
   const showsOverlay = agentPanelShowsStage(stage, 'overlay')
   const showsFull = agentPanelShowsStage(stage, 'full')
-  const messages = useAgentMessages()
-  const { status } = useAgentStatus()
-  useAgentAuroraPrism(
-    status,
-    showsOverlay || showsFull,
-    prismARef,
-    prismBRef,
-  )
+  const messageCount = useAgentMessageCount()
 
   const navLayout = useSyncExternalStore(
     subscribeNavLayout,
@@ -123,7 +149,7 @@ export const AgentPanel: React.FC = () => {
 
   // 档位跟着「有没有话要读」走：正说着的时候唤起，直接展开到能读的那一档，
   // 不该让人先看到一个空输入框再自己点开。
-  const hasConversation = messages.length > 0
+  const hasConversation = messageCount > 0
   const { indicator } = useLongPress(
     LONG_PRESS_DURATION,
     useCallback(
@@ -160,24 +186,12 @@ export const AgentPanel: React.FC = () => {
       dispatch,
       agentPanelSettleTimeoutMs(
         stage.stage,
-        showsFull && fullView === 'messages' ? messages.length : undefined,
+        showsFull && fullView === 'messages' ? messageCount : undefined,
       ),
       { type: 'settle' },
     )
     return () => clearTimeout(timer)
-  }, [fullView, messages.length, showsFull, stage.phase, stage.stage])
-
-  useEffect(() => {
-    const node = auroraRef.current
-    if (!node) return
-    const sync = () => {
-      if (document.hidden) node.dataset.paused = 'true'
-      else delete node.dataset.paused
-    }
-    sync()
-    document.addEventListener('visibilitychange', sync)
-    return () => document.removeEventListener('visibilitychange', sync)
-  }, [showsOverlay, showsFull])
+  }, [fullView, messageCount, showsFull, stage.phase, stage.stage])
 
   // 一直盯着选区。必须常驻 —— 长按那一下会把选区收掉，等面板开了再看就晚了。
   useEffect(() => watchAgentSelection(), [])
@@ -247,18 +261,7 @@ export const AgentPanel: React.FC = () => {
     <>
       {(showsOverlay || showsFull) && (
         <>
-          <div
-            ref={auroraRef}
-            className="agent-panel-aurora"
-            data-phase={stage.phase}
-            data-status={status}
-            aria-hidden="true"
-          >
-            <span className="agent-panel-aurora-flow" />
-            <span ref={prismARef} className="agent-panel-aurora-prism" />
-            <span ref={prismBRef} className="agent-panel-aurora-prism" />
-            <span className="agent-panel-aurora-alert" />
-          </div>
+          <AgentPanelAurora phase={stage.phase} />
           <div
             ref={overlayRef}
             className="agent-panel-overlay-anchor"
@@ -321,7 +324,7 @@ export const AgentPanel: React.FC = () => {
                       }}
                     />
                     <AgentPresence
-                      open={!showsFull && messages.length > 0}
+                      open={!showsFull && messageCount > 0}
                       kind="chip"
                       from="self"
                     >

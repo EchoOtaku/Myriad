@@ -76,13 +76,42 @@ function parseRow(row: string): string[] {
     .map((cell) => cell.trim())
 }
 
-export function parseMarkdownBlocks(source: string): MarkdownBlock[] {
-  const lines = source.split('\n')
+interface BlockRange {
+  start: number
+  end: number
+}
+
+interface ParseCache {
+  source: string
+  lines: string[]
+  blocks: MarkdownBlock[]
+  ranges: BlockRange[]
+}
+
+let cache: ParseCache = {
+  source: '',
+  lines: [],
+  blocks: [],
+  ranges: [],
+}
+
+function parseBlocksFrom(
+  lines: string[],
+  start: number,
+): { blocks: MarkdownBlock[]; ranges: BlockRange[] } {
   const blocks: MarkdownBlock[] = []
-  let i = 0
+  const ranges: BlockRange[] = []
+  let i = start
+
+  const push = (block: MarkdownBlock, from: number) => {
+    blocks.push(block)
+    ranges.push({ start: from, end: i })
+  }
 
   while (i < lines.length) {
+    const lineStart = i
     const line = lines[i]
+    if (line === undefined) break
 
     // 代码块。流式回复里经常只到了开头那三个反引号，没闭合也要当代码块收下，
     // 否则半截代码会被当成段落，一边流一边变形。
@@ -95,28 +124,34 @@ export function parseMarkdownBlocks(source: string): MarkdownBlock[] {
         i += 1
       }
       i += 1
-      blocks.push({
-        kind: 'code',
-        lang: lang || null,
-        text: codeLines.join('\n'),
-      })
+      push(
+        {
+          kind: 'code',
+          lang: lang || null,
+          text: codeLines.join('\n'),
+        },
+        lineStart,
+      )
       continue
     }
 
     const heading = line.match(HEADING_RE)
     if (heading) {
-      blocks.push({
-        kind: 'heading',
-        level: heading[1].length as 1 | 2 | 3,
-        inline: parseInlineTokens(heading[2]),
-      })
       i += 1
+      push(
+        {
+          kind: 'heading',
+          level: heading[1].length as 1 | 2 | 3,
+          inline: parseInlineTokens(heading[2]),
+        },
+        lineStart,
+      )
       continue
     }
 
     if (HR_RE.test(line)) {
-      blocks.push({ kind: 'rule' })
       i += 1
+      push({ kind: 'rule' }, lineStart)
       continue
     }
 
@@ -128,7 +163,7 @@ export function parseMarkdownBlocks(source: string): MarkdownBlock[] {
         quoted.push(parseInlineTokens(match[1]))
         i += 1
       }
-      blocks.push({ kind: 'quote', lines: quoted })
+      push({ kind: 'quote', lines: quoted }, lineStart)
       continue
     }
 
@@ -150,7 +185,7 @@ export function parseMarkdownBlocks(source: string): MarkdownBlock[] {
         rows.push(parseRow(lines[i]).map(parseInlineTokens))
         i += 1
       }
-      blocks.push({ kind: 'table', headers, rows })
+      push({ kind: 'table', headers, rows }, lineStart)
       continue
     }
 
@@ -162,7 +197,7 @@ export function parseMarkdownBlocks(source: string): MarkdownBlock[] {
         items.push(parseInlineTokens(lines[i].replace(marker, '')))
         i += 1
       }
-      blocks.push({ kind: 'list', ordered, items })
+      push({ kind: 'list', ordered, items }, lineStart)
       continue
     }
 
@@ -171,9 +206,42 @@ export function parseMarkdownBlocks(source: string): MarkdownBlock[] {
       continue
     }
 
-    blocks.push({ kind: 'paragraph', inline: parseInlineTokens(line) })
     i += 1
+    push({ kind: 'paragraph', inline: parseInlineTokens(line) }, lineStart)
   }
 
+  return { blocks, ranges }
+}
+
+/**
+ * 流式追加时前面已经认完的块沿用原对象，气泡里写完的标题/列表不用每字重绘。
+ */
+export function parseMarkdownBlocks(source: string): MarkdownBlock[] {
+  if (source === cache.source) return cache.blocks
+  const lines = source.split('\n')
+
+  let restart = 0
+  let keptBlocks: MarkdownBlock[] = []
+  let keptRanges: BlockRange[] = []
+
+  if (cache.ranges.length > 0) {
+    let firstDiff = 0
+    const limit = Math.min(cache.lines.length, lines.length)
+    while (firstDiff < limit && cache.lines[firstDiff] === lines[firstDiff]) {
+      firstDiff += 1
+    }
+    let keep = 0
+    while (keep < cache.ranges.length && cache.ranges[keep].end <= firstDiff) {
+      keep += 1
+    }
+    restart = keep < cache.ranges.length ? cache.ranges[keep].start : firstDiff
+    keptBlocks = cache.blocks.slice(0, keep)
+    keptRanges = cache.ranges.slice(0, keep)
+  }
+
+  const parsed = parseBlocksFrom(lines, restart)
+  const blocks = keptBlocks.concat(parsed.blocks)
+  const ranges = keptRanges.concat(parsed.ranges)
+  cache = { source, lines, blocks, ranges }
   return blocks
 }

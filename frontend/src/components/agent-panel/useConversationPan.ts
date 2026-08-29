@@ -28,6 +28,7 @@ import {
 
 interface Card {
   el: HTMLElement
+  box: HTMLElement
   top: number
   height: number
   key: string
@@ -51,6 +52,12 @@ export function useConversationPan(
     if (!viewport || !track) return
 
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const closestAnchor = viewport.closest('.agent-panel-overlay-anchor')
+    const anchor = closestAnchor instanceof HTMLElement ? closestAnchor : null
+    const closestSlot = viewport.closest('.agent-panel-messages-slot')
+    const slot = closestSlot instanceof HTMLElement ? closestSlot : null
+    const composer = anchor?.querySelector('.agent-panel-composer')
+    const rail = anchor?.querySelector('.agent-panel-tag-rail')
     let current = 0
     let target = 0
     let velocity = 0
@@ -81,6 +88,7 @@ export function useConversationPan(
             (el.closest('.agent-panel-presence') as HTMLElement | null) ?? el
           return {
             el,
+            box,
             top: box.offsetTop,
             height: box.offsetHeight,
             key: '',
@@ -90,11 +98,8 @@ export function useConversationPan(
     }
 
     const measure = () => {
-      const anchor = viewport.closest('.agent-panel-overlay-anchor')
-      if (anchor instanceof HTMLElement) {
+      if (anchor) {
         const style = getComputedStyle(anchor)
-        const composer = anchor.querySelector('.agent-panel-composer')
-        const rail = anchor.querySelector('.agent-panel-tag-rail')
         const gap = Number.parseFloat(style.rowGap) || 12
         const reserved =
           (composer instanceof HTMLElement ? composer.offsetHeight : 0) +
@@ -116,14 +121,10 @@ export function useConversationPan(
       }
     }
 
-    const presenceOf = (card: Card): HTMLElement =>
-      (card.el.closest('.agent-panel-presence') as HTMLElement | null) ??
-      card.el
-
     const clearExit = () => {
       for (const card of cards) {
         applyConversationExit(card.el, { exit: 0, shift: 0, hidden: false })
-        presenceOf(card).style.removeProperty('--agent-exit-stagger')
+        card.box.style.removeProperty('--agent-exit-stagger')
         card.key = ''
       }
     }
@@ -133,13 +134,12 @@ export function useConversationPan(
         .filter((card) => card.el.style.visibility !== 'hidden')
         .sort((a, b) => b.top + b.height - (a.top + a.height))
       ranked.forEach((card, index) => {
-        presenceOf(card).style.setProperty(
+        card.box.style.setProperty(
           '--agent-exit-stagger',
           String(agentPanelStaggerSteps(index + 1)),
         )
       })
-      const anchor = viewport.closest('.agent-panel-overlay-anchor')
-      if (anchor instanceof HTMLElement) {
+      if (anchor) {
         anchor.style.setProperty(
           '--agent-stagger-wave',
           String(agentPanelStaggerSteps(ranked.length)),
@@ -149,10 +149,8 @@ export function useConversationPan(
 
     const writeExit = () => {
       if (viewH < 32) return
-      const shell = viewport.closest('.agent-panel-overlay-anchor')
       const leaving =
-        (shell instanceof HTMLElement && shell.dataset.phase === 'closing') ||
-        Boolean(viewport.closest('[data-exiting="true"]'))
+        anchor?.dataset.phase === 'closing' || slot?.dataset.exiting === 'true'
       if (leaving) {
         // 越界的仍藏着。只把画面里的滚动模糊拿掉，交给 CSS 一张张收。
         for (const card of cards) {
@@ -176,15 +174,13 @@ export function useConversationPan(
         card.key = key
         applyConversationExit(card.el, style)
       }
-      writeExitStagger()
     }
 
     const writeCap = (max: number) => {
-      const on = max > 0
-      viewport.dataset.capped = on ? 'true' : 'false'
-      const anchor = viewport.closest('.agent-panel-overlay-anchor')
-      if (anchor instanceof HTMLElement) {
-        anchor.dataset.capped = on ? 'true' : 'false'
+      const flag = max > 0 ? 'true' : 'false'
+      if (viewport.dataset.capped !== flag) viewport.dataset.capped = flag
+      if (anchor && anchor.dataset.capped !== flag) {
+        anchor.dataset.capped = flag
       }
     }
 
@@ -252,14 +248,12 @@ export function useConversationPan(
     }
 
     const kick = () => {
-      track.style.willChange = 'transform'
+      if (maxScroll() > 0) track.style.willChange = 'transform'
       if (!frame) frame = requestAnimationFrame(tick)
     }
 
     const blocked = () =>
-      (viewport.closest('.agent-panel-overlay-anchor') as HTMLElement | null)
-        ?.dataset.phase === 'closing' ||
-      Boolean(viewport.closest('[data-exiting="true"]'))
+      anchor?.dataset.phase === 'closing' || slot?.dataset.exiting === 'true'
 
     const onWheel = (event: WheelEvent) => {
       if (event.ctrlKey || blocked()) return
@@ -335,30 +329,40 @@ export function useConversationPan(
 
     const resize = new ResizeObserver(() => {
       if (blocked()) return
-      recache()
+      const nextH = track.offsetHeight
+      if (nextH !== trackH || cards.length === 0) recache()
+      const prevView = viewH
+      const prevMax = maxScroll()
       measure()
-      if (nearBottom) target = maxScroll()
-      kick()
+      const max = maxScroll()
+      if (nearBottom) target = max
+      writeCap(max)
+      if (dragging || velocity !== 0 || Math.abs(target - current) > 0.35) {
+        kick()
+        return
+      }
+      if (viewH !== prevView || max !== prevMax) writeExit()
     })
-    resize.observe(viewport)
     resize.observe(track)
-    if (viewport.parentElement) resize.observe(viewport.parentElement)
-    const anchor = viewport.closest('.agent-panel-overlay-anchor')
-    if (anchor instanceof HTMLElement) resize.observe(anchor)
+    if (anchor) resize.observe(anchor)
     const phaseWatch = new MutationObserver(() => write())
-    if (anchor instanceof HTMLElement) {
+    if (anchor) {
       phaseWatch.observe(anchor, {
         attributes: true,
         attributeFilter: ['data-phase'],
       })
     }
-    const slot = viewport.closest('.agent-panel-messages-slot')
-    if (slot instanceof HTMLElement) {
+    if (slot) {
       phaseWatch.observe(slot, {
         attributes: true,
         attributeFilter: ['data-exiting'],
       })
     }
+    const onVis = () => {
+      if (document.hidden) stop()
+      else if (stillCoasting(current, target, velocity, dragging)) kick()
+    }
+    document.addEventListener('visibilitychange', onVis)
     viewport.addEventListener('wheel', onWheel, { passive: false })
     viewport.addEventListener('touchstart', onTouchStart, { passive: true })
     viewport.addEventListener('touchmove', onTouchMove, { passive: false })
@@ -369,6 +373,7 @@ export function useConversationPan(
       stop()
       resize.disconnect()
       phaseWatch.disconnect()
+      document.removeEventListener('visibilitychange', onVis)
       viewport.removeEventListener('wheel', onWheel)
       viewport.removeEventListener('touchstart', onTouchStart)
       viewport.removeEventListener('touchmove', onTouchMove)
@@ -376,8 +381,7 @@ export function useConversationPan(
       viewport.removeEventListener('touchcancel', onTouchEnd)
       track.style.transform = ''
       delete viewport.dataset.capped
-      const anchor = viewport.closest('.agent-panel-overlay-anchor')
-      if (anchor instanceof HTMLElement) {
+      if (anchor) {
         delete anchor.dataset.capped
         anchor.style.removeProperty('--agent-stagger-wave')
       }

@@ -11,7 +11,11 @@ import { notifyHttpRateLimit } from '../utils/httpRateLimitToast'
 import { userFacingError } from '../utils/userFacingError'
 import { ApiError, parseApiErrorBody } from './api'
 
-function speechHttpError(status: number, raw: string, fallback: string): ApiError {
+function speechHttpError(
+  status: number,
+  raw: string,
+  fallback: string,
+): ApiError {
   let parsed: unknown
   try {
     parsed = raw.trim() ? JSON.parse(raw) : undefined
@@ -245,13 +249,34 @@ async function request<T>(
  */
 export type SpeechAttributionHeaders = Record<string, string>
 
+let speechStatusCache: SpeechStatus | null = null
+let speechStatusInflight: Promise<SpeechStatus> | null = null
+
 /**
- * 获取语音服务状态
+ * 获取语音服务状态。
+ * 无归因头的调用共一份缓存（面板开开关关不该反复打 /status）；
+ * Tapp 沙箱带归因头的走原路，不和宿主那份混。
  */
 export async function getSpeechStatus(
   attributionHeaders?: SpeechAttributionHeaders,
 ): Promise<SpeechStatus> {
-  return request<SpeechStatus>('/status', { headers: attributionHeaders })
+  if (attributionHeaders) {
+    return request<SpeechStatus>('/status', { headers: attributionHeaders })
+  }
+  if (speechStatusCache) return speechStatusCache
+  if (!speechStatusInflight) {
+    speechStatusInflight = request<SpeechStatus>('/status')
+      .then((status) => {
+        speechStatusCache = status
+        speechStatusInflight = null
+        return status
+      })
+      .catch((error: unknown) => {
+        speechStatusInflight = null
+        throw error
+      })
+  }
+  return speechStatusInflight
 }
 
 /**
@@ -858,9 +883,7 @@ export function saveTTSSettings(settings: Partial<TTSSettings>) {
   } catch (e) {
     console.warn('[TTS] Failed to save settings:', e)
     void import('../utils/toastManager').then(({ showError }) => {
-      showError(
-        userFacingError(e, currentCopy().errors.ttsSettingsSaveFailed),
-      )
+      showError(userFacingError(e, currentCopy().errors.ttsSettingsSaveFailed))
     })
   }
 }

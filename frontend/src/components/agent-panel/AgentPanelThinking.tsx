@@ -98,4 +98,3 @@ export const AgentPanelThinking: React.FC<{ steps: AgentMessageStep[] }> = ({
     </div>
   )
 }
-

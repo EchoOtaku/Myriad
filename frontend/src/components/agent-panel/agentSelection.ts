@@ -63,8 +63,8 @@ export function selectionIsFresh(
 export function selectionIsFromPanel(node: Node | null | undefined): boolean {
   if (!node) return false
   const element =
-    node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement
-  return !!element?.closest('.agent-panel-overlay')
+    node.nodeType === 1 ? (node as Element) : node.parentElement
+  return !!element?.closest('.agent-panel-overlay-anchor')
 }
 
 let current: AgentSelectionSnapshot = EMPTY

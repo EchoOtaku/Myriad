@@ -77,6 +77,24 @@ function sameSteps(
   return true
 }
 
+function sameMessage(x: AgentMessage, y: AgentMessage): boolean {
+  return (
+    x.id === y.id &&
+    x.role === y.role &&
+    x.content === y.content &&
+    x.state === y.state &&
+    x.imageUrls?.length === y.imageUrls?.length &&
+    x.attachments?.length === y.attachments?.length &&
+    !x.attachments?.some(
+      (item, index) => item.id !== y.attachments?.[index]?.id,
+    ) &&
+    x.question?.id === y.question?.id &&
+    x.question?.answered === y.question?.answered &&
+    x.suggestions?.length === y.suggestions?.length &&
+    sameSteps(x.steps, y.steps)
+  )
+}
+
 function sameList(
   a: readonly AgentMessage[],
   b: readonly AgentMessage[],
@@ -84,36 +102,28 @@ function sameList(
   if (a === b) return true
   if (a.length !== b.length) return false
   for (let i = 0; i < a.length; i += 1) {
-    const x = a[i]
-    const y = b[i]
-    if (
-      x.id !== y.id ||
-      x.role !== y.role ||
-      x.content !== y.content ||
-      x.state !== y.state ||
-      x.imageUrls?.length !== y.imageUrls?.length ||
-      x.attachments?.length !== y.attachments?.length ||
-      x.attachments?.some(
-        (item, index) => item.id !== y.attachments?.[index]?.id,
-      ) ||
-      x.question?.id !== y.question?.id ||
-      x.question?.answered !== y.question?.answered ||
-      x.suggestions?.length !== y.suggestions?.length ||
-      !sameSteps(x.steps, y.steps)
-    ) {
-      return false
-    }
+    if (!sameMessage(a[i], b[i])) return false
   }
   return true
 }
 
 /**
  * 换一份对话。逐条比过再决定要不要通知 —— 流式回复每个 token 都会重建数组，
- * 只看引用的话每秒会把整个列表重渲染几十次。
+ * 只看引用的话每秒会把整个列表重渲染几十次。没变的那条沿用原来的对象，
+ * 列表重绘时旧气泡才能跳过。
  */
 export function setAgentMessages(next: readonly AgentMessage[]): void {
   if (sameList(messages, next)) return
-  messages = next.length === 0 ? EMPTY : next
+  if (next.length === 0) {
+    messages = EMPTY
+  } else {
+    const prevById = new Map<string, AgentMessage>()
+    for (const item of messages) prevById.set(item.id, item)
+    messages = next.map((item) => {
+      const old = prevById.get(item.id)
+      return old && sameMessage(old, item) ? old : item
+    })
+  }
   for (const listener of listeners) listener()
 }
 
@@ -159,5 +169,18 @@ export function useAgentMessages(): readonly AgentMessage[] {
     subscribeAgentMessages,
     getAgentMessagesSnapshot,
     getServerAgentMessagesSnapshot,
+  )
+}
+
+/** 外壳只要条数：内容在流，条数没变就不该把输入行跟着刷。 */
+export function getAgentMessageCountSnapshot(): number {
+  return messages.length
+}
+
+export function useAgentMessageCount(): number {
+  return useSyncExternalStore(
+    subscribeAgentMessages,
+    getAgentMessageCountSnapshot,
+    () => 0,
   )
 }

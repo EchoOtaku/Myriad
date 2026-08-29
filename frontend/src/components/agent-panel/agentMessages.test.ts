@@ -2,6 +2,7 @@ import type { AgentMessage } from './agentMessages'
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 import {
+  getAgentMessageCountSnapshot,
   getAgentMessagesSnapshot,
   setAgentMessages,
   subscribeAgentMessages,
@@ -59,6 +60,31 @@ test('条数、角色、状态、图片数量任一变了都算变了', () => {
 
   setAgentMessages([message(), message({ id: 'm2' })])
   assert.equal(getAgentMessagesSnapshot().length, 2)
+})
+
+test('没变的那条沿用原来的对象，流式追加不拖着整列重建', () => {
+  setAgentMessages([
+    message({ id: 'a', content: '问' }),
+    message({ id: 'b', role: 'assistant', content: '答' }),
+  ])
+  const snap = getAgentMessagesSnapshot()
+  setAgentMessages([
+    message({ id: 'a', content: '问' }),
+    message({ id: 'b', role: 'assistant', content: '答呀' }),
+  ])
+  const next = getAgentMessagesSnapshot()
+  assert.equal(next[0], snap[0])
+  assert.notEqual(next[1], snap[1])
+  assert.equal(next[1].content, '答呀')
+})
+
+test('外壳只关心条数：内容变了 count 不变', () => {
+  setAgentMessages([message()])
+  assert.equal(getAgentMessageCountSnapshot(), 1)
+  setAgentMessages([message({ content: '你好呀' })])
+  assert.equal(getAgentMessageCountSnapshot(), 1)
+  setAgentMessages([message(), message({ id: 'm2' })])
+  assert.equal(getAgentMessageCountSnapshot(), 2)
 })
 
 test('清空之后拿到的是同一个空数组，引用稳定', () => {

@@ -25,7 +25,7 @@ interface LongPressIndicator {
  * 它自己的按钮和输入框由下面的通用控件选择器兜住。
  */
 const EXCLUDED_SELECTORS =
-  '.agent-panel-overlay, input, textarea, button, a, [contenteditable], .global-control-bar, .control-panel-overlay'
+  '.agent-panel-overlay-anchor, input, textarea, button, a, [contenteditable], .global-control-bar, .control-panel-overlay'
 
 /** 按住多久算长按 (ms)。 */
 export const LONG_PRESS_DURATION = 500
@@ -45,7 +45,10 @@ export function useLongPress(
     active: false,
   })
 
+  const dropDragRef = useRef<() => void>(() => {})
+
   const cancel = useCallback(() => {
+    dropDragRef.current()
     if (timerRef.current) {
       clearTimeout(timerRef.current)
       timerRef.current = null
@@ -91,35 +94,57 @@ export function useLongPress(
   )
 
   useEffect(() => {
-    const handleMouseDown = (e: MouseEvent) => start(e)
-    const handleTouchStart = (e: TouchEvent) => start(e)
+    if (!enabled) {
+      cancel()
+      return undefined
+    }
+
+    let dragging = false
+    const handleMove = (e: MouseEvent | TouchEvent) => checkMovement(e)
     const handleUp = () => cancel()
-    const handleMouseMove = (e: MouseEvent) => checkMovement(e)
-    const handleTouchMove = (e: TouchEvent) => checkMovement(e)
-    // Safety net: context menu (right-click / ctrl-click) always aborts
-    const handleContextMenu = () => cancel()
+    const dropDrag = () => {
+      if (!dragging) return
+      dragging = false
+      document.removeEventListener('mouseup', handleUp)
+      document.removeEventListener('touchend', handleUp)
+      document.removeEventListener('touchcancel', handleUp)
+      document.removeEventListener('mousemove', handleMove)
+      document.removeEventListener('touchmove', handleMove)
+      document.removeEventListener('contextmenu', handleUp)
+    }
+    const takeDrag = () => {
+      if (dragging) return
+      dragging = true
+      document.addEventListener('mouseup', handleUp)
+      document.addEventListener('touchend', handleUp)
+      document.addEventListener('touchcancel', handleUp)
+      document.addEventListener('mousemove', handleMove)
+      document.addEventListener('touchmove', handleMove, { passive: true })
+      document.addEventListener('contextmenu', handleUp)
+    }
+    dropDragRef.current = dropDrag
+
+    const handleMouseDown = (e: MouseEvent) => {
+      start(e)
+      if (isPressing.current) takeDrag()
+    }
+    const handleTouchStart = (e: TouchEvent) => {
+      start(e)
+      if (isPressing.current) takeDrag()
+    }
 
     document.addEventListener('mousedown', handleMouseDown)
     document.addEventListener('touchstart', handleTouchStart, {
       passive: true,
     })
-    document.addEventListener('mouseup', handleUp)
-    document.addEventListener('touchend', handleUp)
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('touchmove', handleTouchMove, { passive: true })
-    document.addEventListener('contextmenu', handleContextMenu)
 
     return () => {
       document.removeEventListener('mousedown', handleMouseDown)
       document.removeEventListener('touchstart', handleTouchStart)
-      document.removeEventListener('mouseup', handleUp)
-      document.removeEventListener('touchend', handleUp)
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('touchmove', handleTouchMove)
-      document.removeEventListener('contextmenu', handleContextMenu)
       cancel()
+      dropDragRef.current = () => {}
     }
-  }, [start, cancel, checkMovement])
+  }, [enabled, start, cancel, checkMovement])
 
   return { indicator }
 }

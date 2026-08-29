@@ -67,16 +67,19 @@ export function useAgentAuroraPrism(
     let wait = 0
     let handoff = 0
     const schedule = () => {
-      wait = window.setTimeout(() => {
-        const next = 1 - current
-        paintLayer(layers[next])
-        layers[current].removeAttribute('data-active')
-        handoff = window.setTimeout(() => {
-          layers[next].dataset.active = 'true'
-          current = next
-          schedule()
-        }, PRISM_HANDOFF_MS)
-      }, 7800 + Math.random() * 5200)
+      wait = window.setTimeout(
+        () => {
+          const next = 1 - current
+          paintLayer(layers[next])
+          layers[current].removeAttribute('data-active')
+          handoff = window.setTimeout(() => {
+            layers[next].dataset.active = 'true'
+            current = next
+            schedule()
+          }, PRISM_HANDOFF_MS)
+        },
+        7800 + Math.random() * 5200,
+      )
     }
     schedule()
     return () => {
@@ -90,9 +93,12 @@ export function useAgentAuroraPrism(
 
   useLayoutEffect(() => {
     if (live) return undefined
+    const a = layerA.current
+    const b = layerB.current
+    if (!a?.childElementCount && !b?.childElementCount) return undefined
     const timer = window.setTimeout(() => {
-      layerA.current?.replaceChildren()
-      layerB.current?.replaceChildren()
+      a?.replaceChildren()
+      b?.replaceChildren()
     }, PRISM_CLEAR_MS)
     return () => window.clearTimeout(timer)
   }, [live, layerA, layerB])
