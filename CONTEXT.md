@@ -136,6 +136,26 @@ _Avoid_: 共享 storage、全局 storage、站点仓库、Tapp.data（那是数�
 用户界面叫 **Agent**。内部项目名是 Arael。站点助手：计划、执行、记忆、MCP。
 _Avoid_: Arael Agent、Arael 智能体、把 Arael 当产品名
 
+**办事（Work）**：
+面板里计划、执行、确认的那条路径。保留现有 Agent / Pro 能力。
+_Avoid_: 任务模式、Agent 模式、把 PlannerStatus 的 Chat 当成产品聊天档
+
+**聊天（Chat）**：
+面板里只用人设说话的那条路径，固定走 Lite。不能直接拿工具，也不能回落到 Standard / Pro。
+_Avoid_: 闲聊、planner Chat、把聊天当办事的降级分支
+
+**提案（work proposal）**：
+她注意到一件事之后，请说话对象决定要不要交给办事。接受后重新进入 Work 的计划与确认；提出提案本身不是执行授权。
+_Avoid_: 自动任务、自主执行、把意图账本当成第三种面板模式
+
+**用户接受**：
+说话对象在提案卡上点头。之后办事只受当前授予权限约束，不再复验自治授权。
+_Avoid_: 当成自治接受
+
+**自治接受**：
+说话对象事先给过自治授权，提案可以跳过提案卡进入办事。办事时仍要按自治授权与当前授予权限的交集执行；撤销后不能再走这条路。
+_Avoid_: 第三个面板模式、Heartbeat、SYSTEM_USER_ID
+
 ### Merope
 
 内部项目名是 Merope。用户界面叫 **Agent 人设**（en: Agent persona，ja: Agent ペルソナ）。站点一份的说话人格与上半身形象。这和 Myriad 作为「个人数字生活平台」的定位不是一回事。

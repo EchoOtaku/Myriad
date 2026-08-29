@@ -595,5 +595,129 @@ pub(crate) fn tables() -> Vec<TableDef> {
                 },
             ],
         },
+        TableDef {
+            name: "agent_intentions".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "source_event_id".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "summary".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "reason_code".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "status".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: Some("'proposed'".into()),
+                },
+                ColumnDef {
+                    name: "proposal".into(),
+                    data_type: "jsonb".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "work_session_id".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "work_run_id".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "result_summary".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "expires_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "accept_source".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: Some("'user'".into()),
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "updated_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+            ],
+        },
+        TableDef {
+            name: "agent_autonomy_grants".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "user_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "allowed_permissions".into(),
+                    data_type: "jsonb".into(),
+                    is_nullable: false,
+                    default_value: Some("'[]'::jsonb".into()),
+                },
+                ColumnDef {
+                    name: "revoked".into(),
+                    data_type: "boolean".into(),
+                    is_nullable: false,
+                    default_value: Some("false".into()),
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "updated_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+            ],
+        },
     ]
 }
