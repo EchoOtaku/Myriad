@@ -36,6 +36,6 @@ test('live faces share one motion owner; workbench preview stays isolated', () =
     new URL('./useRigMotionLifecycle.ts', import.meta.url),
     'utf8',
   )
-  assert.match(lifecycle, /useRef\(false\)/)
-  assert.match(lifecycle, /new RigMotionCoordinator/)
+  assert.match(lifecycle, /applyMotionFrame/)
+  assert.match(lifecycle, /createPreviewMotionRuntime/)
 })

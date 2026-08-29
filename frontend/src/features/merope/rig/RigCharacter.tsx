@@ -2,6 +2,7 @@ import type { PerformanceDirective } from '../../../services/agent/types'
 import type { Anime25DCharacterHandle } from '../anime25drig/Anime25DCharacter'
 import type { Anime25DDriver } from '../anime25drig/driver'
 import type { Anime25DDebugSnapshot } from '../anime25drig/player'
+import type { MotionChannelPolicy } from '../motion/policy'
 import type { SingingSpectrumDrive } from '../singing/singingGroove'
 import type { MeropeActivity } from '../types'
 import type { SpeechArticulation } from './articulation'
@@ -39,7 +40,10 @@ export interface RigCharacterHandle {
   setSpeechArticulation: (articulation: SpeechArticulation) => void
   enqueueSpeechText: (text: string, locale?: string) => void
   setGazeTarget: (target: GazeTarget | null, source?: GazeSource) => void
-  playMotionPlan: (performance: PerformanceDirective) => boolean
+  playMotionPlan: (
+    performance: PerformanceDirective,
+    startedAtMs?: number,
+  ) => boolean
   stopMotionPlan: () => void
   captureFrame: () => string | null
   setDriver: (partial: Partial<Anime25DDriver>) => void
@@ -49,6 +53,7 @@ export interface RigCharacterHandle {
   blinkNow: () => void
   debugSnapshot: () => Anime25DDebugSnapshot | null
   setMouse: (x: number, y: number, inside: boolean) => void
+  setMotionPolicy: (policy: MotionChannelPolicy) => void
 }
 
 const RigCharacter = forwardRef<RigCharacterHandle, Props>(
@@ -57,6 +62,7 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
     const speechActiveRef = useRef(false)
     const singingActiveRef = useRef(false)
     const singingSpectrumRef = useRef<SingingSpectrumDrive | null>(null)
+    const motionPolicyRef = useRef<MotionChannelPolicy | null>(null)
     const pendingSpeechTextRef = useRef<
       Array<{ text: string; locale?: string }>
     >([])
@@ -91,6 +97,9 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
       animeRef.current?.setSpeechActive(speechActiveRef.current)
       animeRef.current?.setSinging(singingActiveRef.current)
       animeRef.current?.setSingingSpectrum(singingSpectrumRef.current)
+      if (motionPolicyRef.current) {
+        animeRef.current?.setMotionPolicy(motionPolicyRef.current)
+      }
       const latest = latestSpeechRef.current
       if (latest.kind === 'auto') {
         animeRef.current?.setAutoSpeech(latest.active)
@@ -145,12 +154,12 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
       },
       setGazeTarget: (target, source) =>
         animeRef.current?.setGazeTarget(target, source),
-      playMotionPlan: (directive) => {
-        const startedAtMs = window.performance.now()
+      playMotionPlan: (directive, startedAtMs) => {
+        const started = startedAtMs ?? window.performance.now()
         const accepted =
-          animeRef.current?.playMotionPlan(directive, startedAtMs) ?? true
+          animeRef.current?.playMotionPlan(directive, started) ?? true
         if (!accepted) return false
-        latestPerformanceRef.current = { directive, startedAtMs }
+        latestPerformanceRef.current = { directive, startedAtMs: started }
         return true
       },
       stopMotionPlan: () => {
@@ -168,6 +177,10 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
       blinkNow: () => animeRef.current?.blinkNow(),
       debugSnapshot: () => animeRef.current?.debugSnapshot() ?? null,
       setMouse: (x, y, inside) => animeRef.current?.setMouse(x, y, inside),
+      setMotionPolicy: (policy) => {
+        motionPolicyRef.current = policy
+        animeRef.current?.setMotionPolicy(policy)
+      },
     }))
 
     if (

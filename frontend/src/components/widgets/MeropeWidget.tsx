@@ -119,7 +119,7 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
   const [vitalsReady, setVitalsReady] = useState(false)
   const faceRequestRef = useRef(0)
   const rigRef = useRef<RigCharacterHandle>(null)
-  useRigMotionLifecycle(rigRef)
+  useRigMotionLifecycle(rigRef, { mood, activity })
 
   const loadFace = useCallback(() => {
     const request = ++faceRequestRef.current

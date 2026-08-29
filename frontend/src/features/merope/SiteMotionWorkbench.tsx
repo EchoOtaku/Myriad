@@ -102,7 +102,10 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
     useState<StructuredPersona | null>(null)
   const [studioHost, setStudioHost] = useState<HTMLDivElement | null>(null)
   const rigCharacterRef = useRef<RigCharacterHandle>(null)
-  useRigPreviewMotionLifecycle(rigCharacterRef)
+  useRigPreviewMotionLifecycle(rigCharacterRef, {
+    mood,
+    activity: toMeropeActivity(activity),
+  })
   const o = t.agentPersona.onboarding
   const visualLabels: Record<UpperBodyVisualIdentityKey, string> = {
     faceDesign: o.visualFaceDesign,

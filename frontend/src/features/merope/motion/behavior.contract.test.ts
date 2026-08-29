@@ -88,26 +88,36 @@ test('player still composites groove, random, performance, expression, then spee
   assert.ok(random > 0 && groove > random)
 })
 
-test('live occupancy is a boolean ref, not a nested current.current object', () => {
+test('production faces consume the snapshot; sources do not take a rig', () => {
   const lifecycle = source('./useRigMotionLifecycle.ts')
-  assert.match(lifecycle, /useRef\(false\)/)
-  assert.doesNotMatch(lifecycle, /useRef\(\{\s*current:\s*false\s*\}\)/)
-  assert.match(source('./speechLease.ts'), /claim\('speech', \['mouth'\]\)/)
-  assert.doesNotMatch(
-    source('../useRigSpeechLifecycle.ts'),
-    /coordinator\.release\('speech'/,
-  )
+  const speechSource = source('./speechSource.ts')
+  const performanceSource = source('./performanceSource.ts')
+  const singing = source('../useRigSingingLifecycle.ts')
+  assert.match(lifecycle, /applyMotionFrame/)
+  assert.match(lifecycle, /getProductionMotionRuntime/)
+  assert.doesNotMatch(speechSource, /rigRef/)
+  assert.doesNotMatch(performanceSource, /rigRef/)
+  assert.match(speechSource, /claim\('coSpeech'/)
+  assert.doesNotMatch(singing, /applySingingWrite/)
+  assert.doesNotMatch(singing, /rigRef/)
 })
 
 test('workbench preview stays off the production coordinator', () => {
   const workbench = source('../anime25drig/Anime25DWorkbench.tsx')
   const studio = source('../SiteMotionWorkbench.tsx')
   const preview = source('./useRigMotionLifecycle.ts')
+  assert.match(workbench, /PreviewMotionScope/)
   assert.match(workbench, /replaceDriver/)
   assert.doesNotMatch(workbench, /useRigMotionLifecycle/)
   assert.doesNotMatch(workbench, /getRigMotionCoordinator/)
+  assert.doesNotMatch(workbench, /getProductionMotionRuntime/)
   assert.match(studio, /useRigPreviewMotionLifecycle/)
   assert.doesNotMatch(studio, /useRigSingingLifecycle/)
-  assert.match(preview, /new RigMotionCoordinator/)
-  assert.match(preview, /useRigPreviewMotionLifecycle/)
+  assert.match(preview, /createPreviewMotionRuntime/)
+})
+
+test('autonomy is a reserved source and never writes a rig', () => {
+  const autonomyWrites = source('./speechSource.ts') + source('./applyFrame.ts')
+  assert.doesNotMatch(autonomyWrites, /claim\('autonomy'/)
+  assert.match(source('./channels.ts'), /autonomy is reserved/)
 })

@@ -1,17 +1,12 @@
-import type { RefObject } from 'react'
-import type { RigCharacterHandle } from './rig/RigCharacter'
 import { useEffect, useRef } from 'react'
 import { useMusicPlayerControl } from '../../contexts/MusicPlayerContext'
-import { applySingingWrite } from './motion/applySnapshot'
 import { getMusicMotionSource } from './motion/musicSourceRuntime'
 
 /**
- * Drive one mounted rig from the site-wide music sampler.
- * Mouth writes yield to speech; groove stays unless another source owns head/body.
+ * Bind site playback to the global music sampler. Frames are consumed
+ * through MotionRuntime, not written here.
  */
-export function useRigSingingLifecycle(
-  rigRef: RefObject<RigCharacterHandle | null>,
-): void {
+export function useRigSingingLifecycle(): void {
   const { isPlaying, currentSong, lyrics, verbatimLyrics, hasVerbatimLyrics } =
     useMusicPlayerControl()
   const lastSongIdRef = useRef(currentSong?.id ?? '')
@@ -32,16 +27,4 @@ export function useRigSingingLifecycle(
   useEffect(() => {
     getMusicMotionSource().setPlayback(isPlaying, false)
   }, [isPlaying])
-
-  useEffect(() => {
-    const source = getMusicMotionSource()
-    return source.subscribe((frame) => {
-      const rig = rigRef.current
-      if (!rig) return
-      applySingingWrite(rig, frame.apply, {
-        spectrum: frame.spectrum,
-        articulation: frame.articulation,
-      })
-    })
-  }, [rigRef])
 }

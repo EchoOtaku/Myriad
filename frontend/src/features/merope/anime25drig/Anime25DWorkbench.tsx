@@ -20,6 +20,7 @@ import {
 } from '../../../components/settings'
 import { useI18n } from '../../../contexts/I18nContext'
 import { userFacingError } from '../../../utils/userFacingError'
+import { PreviewMotionScope } from '../motion/previewScope'
 import { WORKBENCH_DRIVER } from './driver'
 import {
   ANGRY_EXPRESSION_PRESET,
@@ -232,7 +233,23 @@ export default function Anime25DWorkbench({
   const [driver, setDriver] = useState<Anime25DDriver>({ ...WORKBENCH_DRIVER })
   const driverRef = useRef(driver)
   const syncedDriverRef = useRef(false)
+  const previewScopeRef = useRef<PreviewMotionScope | null>(null)
+  if (previewScopeRef.current === null) {
+    previewScopeRef.current = new PreviewMotionScope()
+  }
   driverRef.current = driver
+
+  const writePreview = (
+    write: (rig: RigCharacterHandle) => void,
+  ) => {
+    const scope = previewScopeRef.current
+    const rig = characterRef.current
+    if (!scope) return
+    scope.take()
+    if (!rig) return
+    rig.setMotionPolicy(scope.policy())
+    write(rig)
+  }
   const [snapshot, setSnapshot] = useState<Anime25DDebugSnapshot | null>(null)
   const rigPsdInputRef = useRef<HTMLInputElement>(null)
   const [rigImportStage, setRigImportStage] =
@@ -268,7 +285,7 @@ export default function Anime25DWorkbench({
       setSnapshot(next)
       if (next && motionEnabled && !syncedDriverRef.current) {
         syncedDriverRef.current = true
-        characterRef.current?.replaceDriver(driverRef.current)
+        writePreview((rig) => rig.replaceDriver(driverRef.current))
       }
     }, 200)
     return () => window.clearInterval(timer)
@@ -276,13 +293,13 @@ export default function Anime25DWorkbench({
 
   const applyDriver = (next: Anime25DDriver) => {
     setDriver(next)
-    characterRef.current?.replaceDriver(next)
+    writePreview((rig) => rig.replaceDriver(next))
   }
 
   const patchDriver = (partial: Partial<Anime25DDriver>) => {
     const next = { ...driver, ...partial }
     setDriver(next)
-    characterRef.current?.setDriver(partial)
+    writePreview((rig) => rig.setDriver(partial))
   }
 
   const applyPreset = (partial: Partial<Anime25DDriver>) => {

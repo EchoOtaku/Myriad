@@ -1,36 +1,65 @@
 import type { RefObject } from 'react'
 import type { RigCharacterHandle } from '../rig/RigCharacter'
-import { useRef } from 'react'
-import { useRigPerformanceLifecycle } from '../useRigPerformanceLifecycle'
+import type { MeropeActivity } from '../types'
+import type { MotionRuntime } from './runtime'
+import { useEffect, useRef } from 'react'
 import { useRigSingingLifecycle } from '../useRigSingingLifecycle'
-import { useRigSpeechLifecycle } from '../useRigSpeechLifecycle'
-import { RigMotionCoordinator } from './coordinator'
+import { applyMotionFrame, createMotionApplyState } from './applyFrame'
+import { createPreviewMotionRuntime } from './runtime'
+import { getProductionMotionRuntime } from './runtimeHost'
 
-/**
- * One owner for a live face: speech, Lite performance, and site music
- * go through the motion coordinator before they touch the player.
- */
-export function useRigMotionLifecycle(
+export interface RigMotionLifecycleOptions {
+  mood?: number
+  activity?: MeropeActivity
+}
+
+function useMotionRuntimeConsumer(
+  runtime: MotionRuntime,
   rigRef: RefObject<RigCharacterHandle | null>,
+  options: RigMotionLifecycleOptions = {},
 ): void {
-  const occupancy = useRef(false)
-  useRigPerformanceLifecycle(rigRef)
-  useRigSpeechLifecycle(rigRef, occupancy)
-  useRigSingingLifecycle(rigRef)
+  const mood = options.mood ?? 70
+  const activity = options.activity ?? 'idle'
+
+  useEffect(() => runtime.retain(), [runtime])
+
+  useEffect(() => {
+    runtime.mood.set(mood, activity)
+  }, [runtime, mood, activity])
+
+  useEffect(() => {
+    const state = createMotionApplyState()
+    return runtime.subscribe((frame) => {
+      const rig = rigRef.current
+      if (!rig) return
+      applyMotionFrame(rig, frame, state)
+    })
+  }, [runtime, rigRef])
 }
 
 /**
- * Workbench / persona studio: speech and performance only, on a private
- * coordinator so preview never takes production channels. Preview sliders
- * keep the highest channel priority by writing the isolated player directly.
+ * One owner for a live face. Sources publish intents to the production
+ * runtime; this hook only consumes the snapshot.
+ */
+export function useRigMotionLifecycle(
+  rigRef: RefObject<RigCharacterHandle | null>,
+  options: RigMotionLifecycleOptions = {},
+): void {
+  useRigSingingLifecycle()
+  useMotionRuntimeConsumer(getProductionMotionRuntime(), rigRef, options)
+}
+
+/**
+ * Workbench / persona studio: speech and performance on a private runtime
+ * so preview never takes production channels.
  */
 export function useRigPreviewMotionLifecycle(
   rigRef: RefObject<RigCharacterHandle | null>,
+  options: RigMotionLifecycleOptions = {},
 ): void {
-  const coordinatorRef = useRef<RigMotionCoordinator | null>(null)
-  if (coordinatorRef.current === null) {
-    coordinatorRef.current = new RigMotionCoordinator()
+  const runtimeRef = useRef<MotionRuntime | null>(null)
+  if (runtimeRef.current === null) {
+    runtimeRef.current = createPreviewMotionRuntime()
   }
-  useRigPerformanceLifecycle(rigRef, coordinatorRef.current)
-  useRigSpeechLifecycle(rigRef, undefined, coordinatorRef.current)
+  useMotionRuntimeConsumer(runtimeRef.current, rigRef, options)
 }

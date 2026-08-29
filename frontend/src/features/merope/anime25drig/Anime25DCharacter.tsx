@@ -2,6 +2,7 @@ import type {
   PerformanceBaseline,
   PerformanceDirective,
 } from '../../../services/agent/types'
+import type { MotionChannelPolicy } from '../motion/policy'
 import type { SpeechArticulation } from '../rig/articulation'
 import type { GazeSource, GazeTarget } from '../rig/motion'
 import type { MeropeRigManifest } from '../rig/types'
@@ -69,6 +70,7 @@ export interface Anime25DCharacterHandle {
   blinkNow: () => void
   debugSnapshot: () => Anime25DDebugSnapshot | null
   setMouse: (x: number, y: number, inside: boolean) => void
+  setMotionPolicy: (policy: MotionChannelPolicy) => void
 }
 
 const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
@@ -94,6 +96,7 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
     const speechActiveRef = useRef(false)
     const singingActiveRef = useRef(false)
     const singingSpectrumRef = useRef<SingingSpectrumDrive | null>(null)
+    const motionPolicyRef = useRef<MotionChannelPolicy | null>(null)
     const speechMouthFormRef = useRef(0)
     const pendingSpeechTextRef = useRef<
       Array<{ text: string; locale?: string }>
@@ -126,13 +129,24 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
     const applyDriver = (player: Anime25DPlayer) => {
       if (manualRef.current || manualControl) return
       const currentActivity = activityRef.current
+      const policy = player.getMotionPolicy()
+      const thinking = currentActivity === 'thinking'
+      const expressionFree =
+        policy.expression === 'idle' ||
+        policy.expression === 'mood' ||
+        policy.expression === 'ambient'
+      const mouthFree =
+        policy.mouth === 'idle' || policy.mouth === 'mood'
+      const headFree =
+        policy.headBody === 'idle' || policy.headBody === 'ambient'
       player.setTarget({
-        ...activityExpressionDriverPatch(currentActivity === 'thinking'),
-        ...performanceRestDriverPatch(
-          baselineRef.current,
-          currentActivity === 'thinking',
-        ),
-        ...idleSpeechDriverPatch(moodRef.current, speechActiveRef.current),
+        ...(expressionFree ? activityExpressionDriverPatch(thinking) : {}),
+        ...(headFree
+          ? performanceRestDriverPatch(baselineRef.current, thinking)
+          : { thinking }),
+        ...(mouthFree
+          ? idleSpeechDriverPatch(moodRef.current, speechActiveRef.current)
+          : {}),
       })
     }
 
@@ -363,6 +377,10 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       setMouse(x, y, inside) {
         playerRef.current?.setMouse(x, y, inside)
       },
+      setMotionPolicy(policy) {
+        motionPolicyRef.current = policy
+        playerRef.current?.setMotionPolicy(policy)
+      },
     }))
 
     useEffect(() => {
@@ -382,6 +400,7 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       player.setSpeechActive(speechActiveRef.current)
       player.setSinging(singingActiveRef.current)
       player.setSingingSpectrum(singingSpectrumRef.current)
+      if (motionPolicyRef.current) player.setMotionPolicy(motionPolicyRef.current)
       for (const chunk of pendingSpeechTextRef.current) {
         player.enqueueSpeechText(chunk.text, chunk.locale)
       }
