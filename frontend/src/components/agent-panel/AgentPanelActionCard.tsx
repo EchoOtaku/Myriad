@@ -124,4 +124,3 @@ export const AgentPanelActionCard: React.FC<AgentPanelActionCardProps> = ({
   )
 }
 
-export default AgentPanelActionCard

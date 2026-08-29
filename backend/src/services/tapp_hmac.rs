@@ -15,6 +15,7 @@ pub fn hmac_sha256(secret: &[u8], material: &[u8]) -> Vec<u8> {
     mac.finalize().into_bytes().to_vec()
 }
 
+#[allow(dead_code)] // 仅测试调用：本仓无生产调用点（编译器已核）。
 pub fn encode_hmac(mac: &[u8], encoding: TappRouteVerifyEncoding) -> String {
     match encoding {
         TappRouteVerifyEncoding::Hex => hex::encode(mac),

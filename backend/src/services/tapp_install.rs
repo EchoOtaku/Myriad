@@ -29,6 +29,7 @@ impl InvalidInstallSource {
         "Invalid source, must be 'direct' or 'store'"
     }
 
+    #[allow(dead_code)] // 仅测试调用：本仓无生产调用点（编译器已核）。
     pub fn status_hint(self) -> u16 {
         400
     }
@@ -43,11 +44,10 @@ pub fn parse_install_source(source: &str) -> Result<InstallSource, InvalidInstal
     }
 }
 
-/// Where client `widgetCss` / `pageCss` bodies should land for direct install.
+/// Widget/page CSS split into declared vs generated channels.
 ///
-/// Prefer declared `widget.styles` / `page.styles` paths when present.
-/// Otherwise treat the bodies as generated `widget.css` / `page.css` sidecars.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+/// 仅经 map_direct_css_channels 由本文件测试构造（安装路径当前不走这条分支）。
+#[allow(dead_code)]
 pub struct DirectCssChannels {
     pub widget_styles: Option<String>,
     pub generated_widget_css: Option<String>,
@@ -56,6 +56,7 @@ pub struct DirectCssChannels {
 }
 
 /// Route optional widget/page CSS bodies according to manifest declarations.
+#[allow(dead_code)] // 仅测试调用：本仓无生产调用点（编译器已核）。
 pub fn map_direct_css_channels(
     manifest_declares_widget_styles: bool,
     manifest_declares_page_styles: bool,

@@ -94,19 +94,6 @@ pub async fn capability_requires_confirmation_async(
         .map(|(msg, risk)| (msg.to_string(), *risk))
 }
 
-/// 获取能力摘要（用于 AI 提示 + GET /api/agent/capabilities）
-///
-/// 契约（FE agentApi.getCapabilities 依赖）：
-/// - `capabilities[]`：扁平列表（id/name/description/category/actions/requiresAi）
-/// - `total` / `totalCount`：数量
-/// - `byCategory` / `quickReference`：AI 提示用紧凑视图（保留兼容）
-///
-/// When `include_admin` is false, capabilities that require `system:admin`
-/// (e.g. system.metrics) are omitted from discovery — execute-time still gates.
-pub async fn get_capability_summary() -> Value {
-    get_capability_summary_filtered(true).await
-}
-
 pub async fn get_capability_summary_filtered(include_admin: bool) -> Value {
     let registry = get_registry().await;
     let all = registry.get_all();

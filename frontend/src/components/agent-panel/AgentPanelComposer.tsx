@@ -551,4 +551,3 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
   )
 }
 
-export default AgentPanelComposer

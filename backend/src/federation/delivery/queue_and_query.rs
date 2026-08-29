@@ -1165,19 +1165,6 @@ pub async fn delivery_stats_for_user(
     }))
 }
 
-/// Recent delivery queue rows for the current user (failed first).
-///
-/// Optional `status_filter` (pending|delivering|delivered|dead) scopes the
-/// query so the "delivered" tab is not empty when the default priority order
-/// fills the page with dead/pending only.
-pub async fn list_delivery_for_user(
-    db: &DatabaseConnection,
-    user_id: i32,
-    limit: i64,
-) -> Result<serde_json::Value, String> {
-    list_delivery_for_user_filtered(db, user_id, limit, None).await
-}
-
 pub async fn list_delivery_for_user_filtered(
     db: &DatabaseConnection,
     user_id: i32,

@@ -45,6 +45,7 @@ fn auth_store_app(context: &'static str, error: impl std::fmt::Display) -> HttpE
 /// change-password, set-password, setup create-admin, and admin create-user
 /// all share this single permit path via [`hash_password`] / [`verify_password`].
 /// Historical default concurrency (default memory profile). Saver uses 1 via memory_profile.
+#[allow(dead_code)] // 仅测试调用：本仓无生产调用点（编译器已核）。
 const PASSWORD_HASH_PERMITS: usize = 4;
 /// How long a request may wait for a hash/verify permit before 503.
 /// Acts as a short queue bound — waiters beyond this get 503, not harsher IP limits.

@@ -20,6 +20,7 @@ const JSON_CHUNK_TYPE: u32 = 0x4e4f_534a;
 
 #[derive(Debug, Clone)]
 pub struct TripoRuntimeConfig {
+    #[allow(dead_code)] // 仅经 {:?} 可见：public_label() 刻意不把上游细节回给调用方。
     pub enabled: bool,
     pub api_key: String,
     pub base_url: String,
@@ -91,11 +92,21 @@ impl TripoRuntimeConfig {
 pub enum TripoError {
     Disabled,
     NotConfigured,
+    #[allow(dead_code)] // 仅经 {:?} 可见：public_label() 刻意不把上游细节回给调用方。
     InvalidConfig(String),
+    #[allow(dead_code)] // 仅经 {:?} 可见：public_label() 刻意不把上游细节回给调用方。
     InvalidRequest(String),
-    Upstream { status: u16, message: String },
+    /// message 只进服务端日志与 {:?}：public_label() 刻意不把上游文案回给调用方。
+    Upstream {
+        status: u16,
+        #[allow(dead_code)]
+        message: String,
+    },
+    #[allow(dead_code)] // 仅经 {:?} 可见：public_label() 刻意不把上游细节回给调用方。
     Transport(String),
+    #[allow(dead_code)] // 仅经 {:?} 可见：public_label() 刻意不把上游细节回给调用方。
     InvalidModel(String),
+    #[allow(dead_code)] // 仅经 {:?} 可见：public_label() 刻意不把上游细节回给调用方。
     Storage(String),
     Timeout,
 }
@@ -765,6 +776,8 @@ async fn decode_response<T: for<'de> Deserialize<'de>>(
         if let Some(request_id) = envelope.request_id {
             message.push_str(&format!(" [request_id: {request_id}]"));
         }
+        // public_label() 只回一句笼统话，上游细节不会进响应——不落日志就彻底丢了。
+        tracing::error!(%status, %message, "Tripo upstream error");
         return Err(TripoError::Upstream {
             status: status.as_u16(),
             message,

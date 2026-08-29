@@ -318,6 +318,7 @@ pub fn resolve_image_prompt(params: &HashMap<String, Value>) -> Result<String, S
 }
 
 /// Extract negativePrompt from params or nested prompt object.
+#[allow(dead_code)] // 仅测试调用：本仓无生产调用点（编译器已核）。
 pub fn resolve_negative_prompt(params: &HashMap<String, Value>) -> Option<String> {
     params
         .get("negativePrompt")

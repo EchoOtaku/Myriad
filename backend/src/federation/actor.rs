@@ -333,19 +333,6 @@ pub async fn fetch_remote_actor(
         .map(|r| r.info)
 }
 
-/// Force re-fetch remote Actor (ignore 24h cache) and **persist**.
-///
-/// Prefer [`fetch_remote_actor_for_verify`] + [`persist_verified_remote_actor`]
-/// on the inbox auth path so untrusted documents never hit the DB first.
-pub async fn fetch_remote_actor_fresh(
-    db: &DatabaseConnection,
-    actor_url_str: &str,
-) -> Result<RemoteActorInfo, String> {
-    fetch_remote_actor_inner(db, actor_url_str, true, true)
-        .await
-        .map(|r| r.info)
-}
-
 /// Resolve a remote actor for **HTTP Signature verification only** (MYR-022).
 ///
 /// - May read a fresh row from `federation_remote_actors` (already trusted).

@@ -79,4 +79,3 @@ export const AgentPanelManage: React.FC = () => {
   )
 }
 
-export default AgentPanelManage

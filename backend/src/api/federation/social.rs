@@ -156,8 +156,6 @@ pub fn json_rejection_response(
     (status, Json(json!({"error": rejection.body_text()}))).into_response()
 }
 
-pub(crate) const FEDERATION_SMALL_BODY_LIMIT: usize = federation::limits::SMALL_CONTROL_BODY_LIMIT;
-
 // Federation Wrappers
 
 /// POST /api/admin/federation/domain-move

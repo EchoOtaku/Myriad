@@ -142,6 +142,7 @@ pub fn nonempty_content(value: Option<&String>) -> Option<&str> {
 }
 
 /// Prefer primary style channel; fall back to generated channel when non-empty.
+#[allow(dead_code)] // 仅测试调用：本仓无生产调用点（编译器已核）。
 pub fn resolved_style_content<'a>(
     primary: Option<&'a String>,
     generated_fallback: Option<&'a String>,
@@ -285,13 +286,6 @@ impl PreparedTappPackage {
         match &self.payload {
             PreparedTappPayload::Resources(resources) => Some(resources),
             PreparedTappPayload::Archive(_) => None,
-        }
-    }
-
-    pub fn archive_bytes(&self) -> Option<&[u8]> {
-        match &self.payload {
-            PreparedTappPayload::Archive(bytes) => Some(bytes.as_slice()),
-            PreparedTappPayload::Resources(_) => None,
         }
     }
 

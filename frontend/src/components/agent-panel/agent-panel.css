@@ -154,13 +154,6 @@
   scale: 0.96;
 }
 
-.agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']
-  .agent-panel-presence[data-kind='row'][data-from='place'],
-.agent-panel-messages-slot[data-exiting='true']
-  .agent-panel-presence[data-kind='row'][data-from='place'] {
-  opacity: 0;
-}
-
 .agent-panel-overlay {
   position: relative;
   display: flex;
@@ -206,10 +199,6 @@
   transform-origin: 50% 100%;
 }
 
-.agent-panel-presence[data-from='clock'] {
-  transform-origin: 100% 50%;
-}
-
 .agent-panel-presence[data-from='attach'] {
   transform-origin: 0 50%;
 }
@@ -219,10 +208,6 @@
 }
 
 .agent-panel-presence[data-from='self'] {
-  transform-origin: 50% 50%;
-}
-
-.agent-panel-presence[data-from='place'] {
   transform-origin: 50% 50%;
 }
 
@@ -295,12 +280,6 @@
     scale: 0.96;
   }
 
-  .agent-panel-presence[data-from='clock'] {
-    opacity: 0;
-    translate: 10px 0;
-    scale: 0.88;
-  }
-
   .agent-panel-presence[data-from='attach'] {
     opacity: 0;
     translate: -12px 0;
@@ -321,10 +300,6 @@
   .agent-panel-presence[data-kind='row'][data-from='self'] {
     translate: 0 -6px;
     scale: 1;
-  }
-
-  .agent-panel-presence[data-from='place'] {
-    opacity: 0;
   }
 
   .agent-panel-composer-tags > .agent-panel-presence[data-kind='chip'],
@@ -361,11 +336,6 @@
   scale: 0.96;
 }
 
-.agent-panel-presence[data-presence='out'][data-from='clock'] {
-  translate: 10px 0;
-  scale: 0.88;
-}
-
 .agent-panel-presence[data-presence='out'][data-from='attach'] {
   translate: -12px 0;
   scale: 0.88;
@@ -382,11 +352,6 @@
 
 .agent-panel-presence[data-presence='out'][data-kind='row'][data-from='self'] {
   translate: 0 -6px;
-  scale: 1;
-}
-
-.agent-panel-presence[data-presence='out'][data-from='place'] {
-  translate: 0 0;
   scale: 1;
 }
 
@@ -427,14 +392,6 @@
     scale var(--agent-move, 480ms) var(--agent-ease),
     height var(--agent-move, 480ms) var(--agent-ease),
     width var(--agent-move, 480ms) var(--agent-ease);
-}
-
-.agent-panel-swap[data-from='clock'] {
-  transform-origin: 100% 100%;
-}
-
-.agent-panel-swap[data-from='composer'] {
-  transform-origin: 50% 100%;
 }
 
 .agent-panel-composer-tags > .agent-panel-swap {
@@ -998,6 +955,11 @@ button.agent-panel-tag:disabled {
   inset: -55%;
   border-radius: 50%;
   filter: blur(2.5px);
+}
+
+.agent-panel-attach[data-status]:not([data-status='idle'])
+  .agent-panel-attach-orb
+  [data-orb-blob] {
   will-change: transform;
 }
 
@@ -1167,8 +1129,7 @@ button.agent-panel-tag:disabled {
   .agent-panel-aurora-flow::before,
   .agent-panel-aurora-flow::after,
   .agent-panel-aurora-prism,
-  .agent-panel-aurora-prism::before,
-  .agent-panel-aurora-prism::after,
+  .agent-panel-aurora-blob,
   .agent-panel-aurora-alert,
   .agent-panel-aurora-alert::before,
   .agent-panel-aurora-alert::after,
@@ -2105,8 +2066,8 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
    色带画两段相同的谱，位移 50% 接上；光斑只平移不缩放。
    底下一层匀速铺色，上面一层反向走更紧的色团，两边光斑错开，
    才看得出颜色在底边滑，而不是一团光在原地变色。
-   思考色带现场抽：色相、占比、软硬切、光斑都不写死，调色盘 5–8 色，
-   色带拉长所以一屏仍只看见两三块。两层交替淡入。失败叠淡红。
+   思考不用平移色带。五团色块铺满底边，高度贴空闲 88px 色带。
+   进出按车道错开；换谱同一位置旧团先收、新团再进。失败叠淡红。
    ========================================== */
 
 @property --agent-aurora-0 {
@@ -2180,6 +2141,11 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
   --agent-aurora-cross-ms: 9s;
   --agent-aurora-width: 400%;
   --agent-aurora-shift: 640ms;
+  --agent-aurora-band-height: 88px;
+  --agent-aurora-band-bottom: -28px;
+  --agent-aurora-band-blur: 28px;
+  --agent-aurora-core-height: 52px;
+  --agent-aurora-core-bottom: -18px;
 
   position: fixed;
   inset: auto 0 0;
@@ -2187,6 +2153,7 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
   height: min(36vh, 280px);
   pointer-events: none;
   overflow: hidden;
+  contain: layout paint;
   opacity: 1;
   mask-image: radial-gradient(140% 92% at 50% 118%, #000 10%, transparent 70%);
   transition:
@@ -2318,7 +2285,6 @@ html.dark .agent-panel-aurora {
     );
   z-index: 0;
   opacity: 0.72;
-  will-change: transform;
   animation: agent-panel-aurora-drift var(--agent-aurora-drift-ms)
     ease-in-out infinite;
   transition: opacity var(--agent-aurora-shift, 640ms)
@@ -2330,8 +2296,8 @@ html.dark .agent-panel-aurora {
   position: absolute;
   left: 0;
   width: var(--agent-aurora-width, 400%);
-  bottom: -28px;
-  height: 88px;
+  bottom: var(--agent-aurora-band-bottom, -28px);
+  height: var(--agent-aurora-band-height, 88px);
   background: linear-gradient(
     90deg in oklch,
     var(--agent-aurora-stops),
@@ -2339,8 +2305,7 @@ html.dark .agent-panel-aurora {
   );
   z-index: 1;
   opacity: 0.34;
-  filter: blur(28px);
-  will-change: transform;
+  filter: blur(var(--agent-aurora-band-blur, 28px));
   animation: agent-panel-aurora-ribbon var(--agent-aurora-ribbon-ms) linear
     infinite;
   transition:
@@ -2391,7 +2356,6 @@ html.dark .agent-panel-aurora {
       transparent 64%
     );
   opacity: 0.55;
-  will-change: transform;
   animation: agent-panel-aurora-drift-cross var(--agent-aurora-cross-ms)
     ease-in-out infinite;
   transition: opacity var(--agent-aurora-shift, 640ms)
@@ -2403,8 +2367,8 @@ html.dark .agent-panel-aurora {
   position: absolute;
   left: 0;
   width: var(--agent-aurora-width, 400%);
-  bottom: -18px;
-  height: 52px;
+  bottom: var(--agent-aurora-core-bottom, -18px);
+  height: var(--agent-aurora-core-height, 52px);
   background: linear-gradient(
     90deg in oklch,
     var(--agent-aurora-0) 0%,
@@ -2427,7 +2391,6 @@ html.dark .agent-panel-aurora {
   );
   opacity: 0.42;
   filter: blur(12px);
-  will-change: transform;
   animation: agent-panel-aurora-ribbon var(--agent-aurora-core-ms) linear
     infinite reverse;
   transition:
@@ -2457,34 +2420,64 @@ html.dark .agent-panel-aurora-flow::after {
 
 .agent-panel-aurora[data-status='thinking']::before,
 .agent-panel-aurora[data-status='working']::before {
-  opacity: 0.38;
+  opacity: 0.1;
+  transition-duration: 480ms;
 }
 
 .agent-panel-aurora[data-status='thinking']::after,
 .agent-panel-aurora[data-status='working']::after {
-  opacity: 0.16;
+  opacity: 0.08;
+  transition-duration: 480ms;
 }
 
 .agent-panel-aurora[data-status='thinking'] .agent-panel-aurora-flow,
 .agent-panel-aurora[data-status='working'] .agent-panel-aurora-flow {
-  opacity: 0.22;
+  opacity: 0.08;
+  transition-duration: 480ms;
 }
 
 .agent-panel-aurora[data-status='error']::before {
-  opacity: 0.28;
+  opacity: 0.1;
+  transition-duration: 480ms;
 }
 
 .agent-panel-aurora[data-status='error']::after {
-  opacity: 0.12;
+  opacity: 0.08;
+  transition-duration: 480ms;
 }
 
 .agent-panel-aurora[data-status='error'] .agent-panel-aurora-flow {
-  opacity: 0.16;
+  opacity: 0.08;
+  transition-duration: 480ms;
+}
+
+.agent-panel-aurora[data-status='thinking']::before,
+.agent-panel-aurora[data-status='thinking']::after,
+.agent-panel-aurora[data-status='thinking'] .agent-panel-aurora-flow::before,
+.agent-panel-aurora[data-status='thinking'] .agent-panel-aurora-flow::after,
+.agent-panel-aurora[data-status='working']::before,
+.agent-panel-aurora[data-status='working']::after,
+.agent-panel-aurora[data-status='working'] .agent-panel-aurora-flow::before,
+.agent-panel-aurora[data-status='working'] .agent-panel-aurora-flow::after,
+.agent-panel-aurora[data-status='error']::before,
+.agent-panel-aurora[data-status='error']::after,
+.agent-panel-aurora[data-status='error'] .agent-panel-aurora-flow::before,
+.agent-panel-aurora[data-status='error'] .agent-panel-aurora-flow::after {
+  animation-play-state: paused;
+}
+
+.agent-panel-aurora[data-paused='true'],
+.agent-panel-aurora[data-paused='true']::before,
+.agent-panel-aurora[data-paused='true']::after,
+.agent-panel-aurora[data-paused='true'] *,
+.agent-panel-aurora[data-paused='true'] *::before,
+.agent-panel-aurora[data-paused='true'] *::after {
+  animation-play-state: paused;
 }
 
 html.dark .agent-panel-aurora[data-status='thinking']::after,
 html.dark .agent-panel-aurora[data-status='working']::after {
-  opacity: 0.2;
+  opacity: 0.1;
 }
 
 html.dark .agent-panel-aurora[data-status='error']::after {
@@ -2501,56 +2494,47 @@ html.dark .agent-panel-aurora[data-status='error']::after {
 }
 
 .agent-panel-aurora-prism {
-  --prism-ribbon: linear-gradient(
-    90deg in oklch,
-    var(--color-primary),
-    var(--color-accent),
-    var(--color-primary)
-  );
-  --prism-blobs: none;
-  --prism-width: 480%;
-  --prism-ribbon-ms: 5.2s;
-  --prism-wander-ms: 8.4s;
-
   z-index: 3;
-  transition: opacity 520ms var(--agent-ease-exit, cubic-bezier(1, 0, 0.68, 0.28));
+  overflow: hidden;
+  opacity: 1;
+}
+
+.agent-panel-aurora-blob {
+  position: absolute;
+  left: var(--blob-x, 0%);
+  bottom: var(--blob-y, var(--agent-aurora-band-bottom, -28px));
+  width: var(--blob-w, 36%);
+  height: var(--blob-h, var(--agent-aurora-band-height, 88px));
+  border-radius: 50%;
+  pointer-events: none;
+  transform-origin: 50% 100%;
+  background: radial-gradient(
+    ellipse at 50% 70%,
+    var(--blob-color, var(--color-primary)),
+    transparent 72%
+  );
+  opacity: 0;
+  filter: blur(var(--blob-blur, 18px));
+  animation: var(--blob-path, agent-panel-aurora-blob-a) var(--blob-ms, 8s)
+    var(--blob-delay, 0s) ease-in-out infinite var(--blob-dir, normal);
+  transition: opacity 400ms var(--agent-ease-exit, cubic-bezier(1, 0, 0.68, 0.28));
+  transition-delay: calc(var(--blob-stagger, 0) * 64ms);
 }
 
 .agent-panel-aurora[data-status='thinking']
-  .agent-panel-aurora-prism[data-active='true'],
+  .agent-panel-aurora-prism[data-active='true']
+  .agent-panel-aurora-blob,
 .agent-panel-aurora[data-status='working']
-  .agent-panel-aurora-prism[data-active='true'] {
-  opacity: 1;
-  transition-duration: 760ms;
+  .agent-panel-aurora-prism[data-active='true']
+  .agent-panel-aurora-blob {
+  opacity: var(--blob-opacity, 0.75);
+  transition-duration: 520ms;
   transition-timing-function: var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1));
+  transition-delay: calc(var(--blob-stagger, 0) * 64ms);
 }
 
-.agent-panel-aurora-prism::before {
-  content: '';
-  position: absolute;
-  left: -55%;
-  right: -55%;
-  bottom: -36%;
-  height: 180%;
-  background: var(--prism-blobs);
-  opacity: 0.9;
-  will-change: transform;
-  animation: agent-panel-aurora-wander var(--prism-wander-ms) ease-in-out
-    infinite;
-}
-
-.agent-panel-aurora-prism::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  width: var(--prism-width);
-  bottom: -22px;
-  height: 72px;
-  background: var(--prism-ribbon);
-  opacity: 0.62;
-  filter: blur(18px);
-  will-change: transform;
-  animation: agent-panel-aurora-ribbon var(--prism-ribbon-ms) linear infinite;
+.agent-panel-aurora-prism:not([data-active='true']) .agent-panel-aurora-blob {
+  animation-play-state: paused;
 }
 
 .agent-panel-aurora-alert {
@@ -2567,36 +2551,34 @@ html.dark .agent-panel-aurora[data-status='error']::after {
 .agent-panel-aurora[data-status='error'] .agent-panel-aurora-alert {
   opacity: 1;
   transition-duration: 680ms;
-  transition-delay: 80ms;
+  transition-delay: 220ms;
   transition-timing-function: var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1));
 }
 
 .agent-panel-aurora-alert::before {
   content: '';
   position: absolute;
-  left: -50%;
-  right: -50%;
-  bottom: -36%;
-  height: 180%;
+  left: -20%;
+  right: -20%;
+  bottom: var(--agent-aurora-band-bottom, -28px);
+  height: var(--agent-aurora-band-height, 88px);
   background:
     radial-gradient(
-      ellipse 48% 56% at 22% 84%,
+      ellipse 48% 80% at 22% 80%,
       color-mix(in oklab, var(--a2) 50%, transparent),
-      transparent 66%
+      transparent 70%
     ),
     radial-gradient(
-      ellipse 42% 52% at 78% 80%,
+      ellipse 42% 76% at 78% 78%,
       color-mix(in oklab, var(--a0) 46%, transparent),
-      transparent 66%
+      transparent 70%
     ),
     radial-gradient(
-      ellipse 30% 44% at 52% 94%,
+      ellipse 30% 70% at 52% 92%,
       color-mix(in oklab, var(--a-west) 40%, transparent),
-      transparent 64%
+      transparent 68%
     );
   opacity: 0.8;
-  will-change: transform;
-  animation: agent-panel-aurora-drift 3.1s ease-in-out infinite;
 }
 
 .agent-panel-aurora-alert::after {
@@ -2604,8 +2586,8 @@ html.dark .agent-panel-aurora[data-status='error']::after {
   position: absolute;
   left: 0;
   width: 400%;
-  bottom: -24px;
-  height: 80px;
+  bottom: var(--agent-aurora-band-bottom, -28px);
+  height: var(--agent-aurora-band-height, 88px);
   background: linear-gradient(
     90deg in oklch,
     var(--a0),
@@ -2623,8 +2605,14 @@ html.dark .agent-panel-aurora[data-status='error']::after {
     var(--a0)
   );
   opacity: 0.62;
-  filter: blur(22px);
-  will-change: transform;
+  filter: blur(var(--agent-aurora-band-blur, 28px));
+}
+
+.agent-panel-aurora[data-status='error'] .agent-panel-aurora-alert::before {
+  animation: agent-panel-aurora-drift 3.1s ease-in-out infinite;
+}
+
+.agent-panel-aurora[data-status='error'] .agent-panel-aurora-alert::after {
   animation: agent-panel-aurora-ribbon 3.2s linear infinite;
 }
 
@@ -2666,26 +2654,79 @@ html.dark .agent-panel-aurora[data-status='error']::after {
   }
 }
 
-@keyframes agent-panel-aurora-wander {
+@keyframes agent-panel-aurora-blob-a {
   0%,
   100% {
-    transform: translate3d(-22%, 2%, 0);
+    transform: translate3d(-10%, 4%, 0) scale(0.95);
   }
 
-  17% {
-    transform: translate3d(9%, -6%, 0);
+  22% {
+    transform: translate3d(4%, -5%, 0) scale(1.06);
   }
 
-  39% {
-    transform: translate3d(26%, 4%, 0);
+  48% {
+    transform: translate3d(9%, 2%, 0) scale(1.02);
   }
 
-  58% {
-    transform: translate3d(-4%, -3%, 0);
+  73% {
+    transform: translate3d(-3%, 5%, 0) scale(1.08);
+  }
+}
+
+@keyframes agent-panel-aurora-blob-b {
+  0%,
+  100% {
+    transform: translate3d(8%, -3%, 0) scale(1.04);
+  }
+
+  18% {
+    transform: translate3d(-6%, 5%, 0) scale(0.96);
+  }
+
+  44% {
+    transform: translate3d(3%, -4%, 0) scale(1.07);
+  }
+
+  69% {
+    transform: translate3d(-9%, 2%, 0) scale(1.01);
+  }
+}
+
+@keyframes agent-panel-aurora-blob-c {
+  0%,
+  100% {
+    transform: translate3d(-7%, -4%, 0) scale(0.97);
+  }
+
+  26% {
+    transform: translate3d(10%, 3%, 0) scale(1.08);
+  }
+
+  51% {
+    transform: translate3d(-4%, 5%, 0) scale(1.03);
+  }
+
+  77% {
+    transform: translate3d(6%, -2%, 0) scale(0.94);
+  }
+}
+
+@keyframes agent-panel-aurora-blob-d {
+  0%,
+  100% {
+    transform: translate3d(9%, 3%, 0) scale(1.05);
+  }
+
+  24% {
+    transform: translate3d(-2%, -5%, 0) scale(0.95);
+  }
+
+  53% {
+    transform: translate3d(-10%, 4%, 0) scale(1.07);
   }
 
   81% {
-    transform: translate3d(-28%, 1%, 0);
+    transform: translate3d(5%, -3%, 0) scale(1.02);
   }
 }
 

@@ -58,6 +58,7 @@ fn insert_platform_field(
 
 /// Whether a platform field should be written to `.env`.
 /// Mask keeps the existing env value; empty clears it.
+#[allow(dead_code)] // 仅测试调用：配置构建的分支判定，生产走整表写入。
 fn should_write_platform_env_field(value: &str) -> bool {
     !is_masked_secret_value(value)
 }
@@ -5631,6 +5632,7 @@ impl ModuleVisibilityPreferences {
     }
 
     /// Agent 模块页面可见级别
+    #[allow(dead_code)] // 仅测试调用：配置构建的分支判定，生产走整表写入。
     pub fn agent_visibility(&self) -> &str {
         self.modules
             .get("agent")
@@ -5641,6 +5643,7 @@ impl ModuleVisibilityPreferences {
 
 /// 供 HTTP/config 层读取模块可见性。
 /// Agent 服务请用 `services::module_visibility::agent_module_visibility`。
+#[allow(dead_code)] // 仅测试调用：配置构建的分支判定，生产走整表写入。
 pub async fn load_module_visibility_preferences_for_agent(
     db: &DatabaseConnection,
 ) -> ModuleVisibilityPreferences {
@@ -5745,6 +5748,7 @@ pub const HITOKOTO_SOURCE_IDS: [&str; 5] = [
 
 /// Builtin quote API hosts (no port) matching FE `BUILTIN_HITOKOTO_SOURCES` URLs.
 /// Proxy SSRF policy is still `outbound_security`; this list is catalog alignment.
+#[allow(dead_code)] // 仅测试调用：配置构建的分支判定，生产走整表写入。
 pub const HITOKOTO_BUILTIN_HOSTS: [&str; 3] =
     ["v1.hitokoto.cn", "api.quotable.io", "meigen.doodlenote.net"];
 

@@ -39,7 +39,6 @@ static GEO_CACHE: Lazy<RwLock<HashMap<String, (GeoInfo, Instant)>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
 
 const GEO_CACHE_TTL: Duration = Duration::from_secs(600);
-const MAX_GEO_CACHE_ENTRIES: usize = 2048; // default profile; runtime: memory_profile
 
 // API 响应缓存
 
@@ -57,7 +56,6 @@ fn approx_json_bytes(value: &Value) -> usize {
 
 static API_CACHE: Lazy<RwLock<HashMap<String, CacheEntry>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
-const MAX_API_CACHE_ENTRIES: usize = 2048; // default profile; runtime: memory_profile
 const MAX_TAPP_HTTP_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
 // 上下文类型
@@ -589,6 +587,7 @@ impl TappApiService {
     }
 
     /// 执行 HTTP API
+    #[allow(dead_code)] // 仅测试调用：本仓无生产调用点（编译器已核）。
     async fn execute_http_api(
         api_def: &TappApiDef,
         context: &HashMap<String, Value>,

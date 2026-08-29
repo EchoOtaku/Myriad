@@ -255,4 +255,3 @@ export const AgentPanelSessions: React.FC<AgentPanelSessionsProps> = ({
   )
 }
 
-export default AgentPanelSessions

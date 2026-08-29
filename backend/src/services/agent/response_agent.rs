@@ -972,16 +972,6 @@ pub fn active_platforms(count: usize) -> String {
     format!("活跃在 {} 个平台", count)
 }
 
-/// TTS 未配置（operator guidance; full code path still implemented）
-pub fn tts_not_configured() -> String {
-    "Speech service is not configured".to_string()
-}
-
-/// 图片生成完成但无法提取 URL
-pub fn image_generated_no_url() -> String {
-    "The image was generated but no URL was returned".to_string()
-}
-
 /// API Key 未配置
 pub fn api_key_not_configured(_service: &str) -> String {
     "This service is not configured".to_string()

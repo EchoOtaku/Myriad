@@ -37,11 +37,13 @@ pub fn http_fetch_method(params: &HashMap<String, Value>) -> &str {
 }
 
 /// Whether Content-Length / body exceeds http.fetch limit.
+#[allow(dead_code)] // 仅测试调用：生产在各自调用点内联同等判定。
 pub fn http_body_exceeds_limit(len: u64) -> bool {
     len > HTTP_FETCH_MAX_BODY_BYTES
 }
 
 /// User-facing error when body is too large (Content-Length path).
+#[allow(dead_code)] // 仅测试调用：生产在各自调用点内联同等判定。
 pub fn http_content_length_error(content_length: u64) -> String {
     format!("Response Content-Length ({content_length} bytes) exceeds 10MB limit")
 }
@@ -97,6 +99,7 @@ pub fn scrape_max_length(params: &HashMap<String, Value>) -> usize {
 }
 
 /// Whether raw HTML exceeds scrape size gate.
+#[allow(dead_code)] // 仅测试调用：生产在各自调用点内联同等判定。
 pub fn scrape_html_too_large(html_len: usize) -> bool {
     html_len > WEB_SCRAPE_MAX_HTML_BYTES
 }

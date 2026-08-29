@@ -254,14 +254,19 @@ pub async fn create_channel(
     let channel_type = req.channel_type.as_deref().unwrap_or("text");
     let transport = req.transport.as_deref().unwrap_or("websocket");
 
-    // 验证 channel_type 和 transport
-    if !["text", "file-transfer", "rpc", "data-exchange", "stream"].contains(&channel_type) {
+    // 验证 channel_type 和 transport：取值表由 MFP 协议枚举自己拥有，
+    // 手抄一份字符串白名单只会和 ChannelType/ChannelTransport 各自漂移。
+    if serde_json::from_value::<crate::federation::types::ChannelType>(json!(channel_type))
+        .is_err()
+    {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "Invalid channel_type"})),
         ));
     }
-    if !["http", "websocket"].contains(&transport) {
+    if serde_json::from_value::<crate::federation::types::ChannelTransport>(json!(transport))
+        .is_err()
+    {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "Invalid transport"})),

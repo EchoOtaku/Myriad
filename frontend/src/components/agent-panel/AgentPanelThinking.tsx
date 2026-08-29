@@ -99,4 +99,3 @@ export const AgentPanelThinking: React.FC<{ steps: AgentMessageStep[] }> = ({
   )
 }
 
-export default AgentPanelThinking

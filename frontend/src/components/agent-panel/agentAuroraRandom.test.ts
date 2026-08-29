@@ -1,10 +1,17 @@
 /**
- * 思考流光抽签：同一种子可复现，换种子不能得到同一条谱。
+ * 思考流光抽签：同一种子可复现；同时在场的数量和底边范围锁死。
  */
 
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { paintAuroraPrism } from './agentAuroraRandom'
+import {
+  AURORA_BLOB_BOTTOM,
+  AURORA_BLOB_COUNT,
+  AURORA_BLOB_HEIGHT,
+  AURORA_HUE_COUNT,
+  BLOB_PATHS,
+  paintAuroraPrism,
+} from './agentAuroraRandom'
 
 function mulberry32(seed: number): () => number {
   let t = seed >>> 0
@@ -16,61 +23,67 @@ function mulberry32(seed: number): () => number {
   }
 }
 
+function pct(value: string): number {
+  return Number.parseFloat(value)
+}
+
 function huesOf(paint: ReturnType<typeof paintAuroraPrism>): number[] {
-  return [...paint.ribbon.matchAll(/(\d+(?:\.\d+)?)deg/g)].map((match) =>
-    Number(match[1]),
+  return paint.blobs.flatMap((blob) =>
+    [...blob.color.matchAll(/(\d+(?:\.\d+)?)deg/g)].map((match) =>
+      Number(match[1]),
+    ),
   )
 }
 
-const STOP =
-  /(color-mix\(in oklab, oklch\([^)]+\) \d+%, var\(--color-[a-z]+\))\) (\d+\.\d+)%/g
-
-function ribbonStops(
-  ribbon: string,
-): { color: string; pos: number }[] {
-  return [...ribbon.matchAll(STOP)].map((match) => ({
-    color: match[1] ?? '',
-    pos: Number(match[2]),
-  }))
-}
-
 describe('aurora prism paint', () => {
-  it('loops the ribbon by repeating a period at 0 / 50 / 100', () => {
-    const paint = paintAuroraPrism(mulberry32(7))
-    assert.match(paint.ribbon, /^linear-gradient\(90deg in oklch,/)
-    const stops = ribbonStops(paint.ribbon)
-    assert.ok(stops.length >= 8)
-    const at = (pos: number) => stops.find((stop) => stop.pos === pos)?.color
-    assert.equal(at(0), at(50))
-    assert.equal(at(50), at(100))
-  })
-
-  it('keeps stop positions non-decreasing', () => {
-    const stops = ribbonStops(paintAuroraPrism(mulberry32(19)).ribbon)
-    assert.ok(stops.length >= 8)
-    for (let i = 1; i < stops.length; i += 1) {
-      assert.ok(
-        stops[i].pos >= stops[i - 1].pos,
-        `${stops[i - 1].pos} -> ${stops[i].pos}`,
-      )
+  it('always plants five blobs across the bottom band', () => {
+    for (const seed of [1, 3, 7, 11, 19]) {
+      const { blobs } = paintAuroraPrism(mulberry32(seed))
+      assert.equal(blobs.length, AURORA_BLOB_COUNT)
+      const centers = blobs
+        .map((blob) => pct(blob.x) + pct(blob.w) / 2)
+        .sort((a, b) => a - b)
+      assert.ok(centers[0] >= 4 && centers[0] <= 22)
+      assert.ok(centers[4] >= 78 && centers[4] <= 96)
+      assert.ok(centers[4] - centers[0] >= 58)
+      for (const blob of blobs) {
+        const width = pct(blob.w)
+        const height = pct(blob.h)
+        const y = pct(blob.y)
+        const opacity = Number(blob.opacity)
+        assert.ok(width >= 34 && width <= 42)
+        assert.ok(
+          height >= AURORA_BLOB_HEIGHT.min && height <= AURORA_BLOB_HEIGHT.max,
+        )
+        assert.ok(y >= AURORA_BLOB_BOTTOM.min && y <= AURORA_BLOB_BOTTOM.max)
+        assert.match(blob.h, /px$/)
+        assert.match(blob.y, /px$/)
+        assert.ok(opacity >= 0.62)
+        assert.ok(BLOB_PATHS.includes(blob.path))
+        assert.equal(blob.stagger, String(blobs.indexOf(blob)))
+      }
     }
   })
 
-  it('draws more than three hues and does not reuse one recipe', () => {
+  it('keeps a bounded hue set on screen at once', () => {
+    const paint = paintAuroraPrism(mulberry32(7))
+    const unique = new Set(huesOf(paint))
+    assert.ok(unique.size >= AURORA_HUE_COUNT.min)
+    assert.ok(unique.size <= AURORA_HUE_COUNT.max)
+  })
+
+  it('draws more than three hues across recipes and does not reuse one', () => {
     const a = paintAuroraPrism(mulberry32(3))
     const b = paintAuroraPrism(mulberry32(11))
     const unique = new Set([...huesOf(a), ...huesOf(b)])
     assert.ok(unique.size > 3)
-    assert.notEqual(a.ribbon, b.ribbon)
-    assert.notEqual(a.blobs, b.blobs)
-    assert.notEqual(a.width, b.width)
+    assert.notEqual(JSON.stringify(a.blobs), JSON.stringify(b.blobs))
   })
 
-  it('paints random blobs as radial gradients', () => {
+  it('sends blobs along more than one path and direction', () => {
     const paint = paintAuroraPrism(mulberry32(5))
-    assert.match(paint.blobs, /radial-gradient\(/)
-    assert.match(paint.width, /%$/)
-    assert.match(paint.ribbonMs, /s$/)
-    assert.match(paint.wanderMs, /s$/)
+    assert.ok(new Set(paint.blobs.map((blob) => blob.path)).size >= 2)
+    assert.equal(new Set(paint.blobs.map((blob) => blob.dir)).size, 2)
+    assert.doesNotMatch(JSON.stringify(paint), /linear-gradient/)
   })
 })

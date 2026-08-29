@@ -22,8 +22,7 @@ import {
 export type AgentPresenceKind = 'row' | 'chip' | 'swap'
 
 /** 从哪来回哪去：进出共用这个原点。 */
-export type AgentPresenceFrom =
-  'composer' | 'clock' | 'attach' | 'context' | 'self' | 'place'
+export type AgentPresenceFrom = 'composer' | 'attach' | 'context' | 'self'
 
 export function useKeyedPresence<T>(
   items: readonly T[],
@@ -194,6 +193,10 @@ export function AgentPresenceList<T>({
   const entries = useKeyedPresence(items, keyOf, AGENT_ROW_MS)
   const last = entries.length - 1
   const staggerFor = useRef(new Map<string, number>())
+  const live = new Set(entries.map((entry) => entry.key))
+  for (const key of staggerFor.current.keys()) {
+    if (!live.has(key)) staggerFor.current.delete(key)
+  }
   const batch = staggerFor.current.size === 0
   return (
     <>

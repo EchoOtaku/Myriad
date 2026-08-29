@@ -74,6 +74,7 @@ pub fn parse_execution_target(
 }
 
 /// Build schedule config object from params + typed schedule kind.
+#[allow(dead_code)] // 仅测试调用：本仓无生产调用点（编译器已核）。
 pub fn build_schedule_config(
     schedule_type: AgentScheduleType,
     schedule_obj: Option<&Value>,

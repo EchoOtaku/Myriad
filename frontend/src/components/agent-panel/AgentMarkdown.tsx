@@ -140,4 +140,3 @@ export const AgentMarkdown: React.FC<{ text: string }> = ({ text }) => (
   </>
 )
 
-export default AgentMarkdown

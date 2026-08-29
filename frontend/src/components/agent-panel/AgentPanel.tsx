@@ -64,6 +64,7 @@ export const AgentPanel: React.FC = () => {
     INITIAL_AGENT_PANEL_STAGE,
   )
   const overlayRef = useRef<HTMLDivElement>(null)
+  const auroraRef = useRef<HTMLDivElement>(null)
   const prismARef = useRef<HTMLSpanElement>(null)
   const prismBRef = useRef<HTMLSpanElement>(null)
   const open = agentPanelIsOpen(stage)
@@ -137,21 +138,24 @@ export const AgentPanel: React.FC = () => {
   )
 
   // 入场：先落到 opening（整块锚点 opacity 0），下一帧再 settled，transition 才会播。
-  // @starting-style 兜底初次挂上。退场停在 closing 等到动画结束再卸。
+  // @starting-style 兜底初次挂上。不能把消息条数算进依赖 —— 流式追加会反复取消双 rAF，卡在 opening。
   useEffect(() => {
-    if (stage.phase === 'settled') return
-    if (stage.phase === 'opening') {
-      let inner = 0
-      const outer = requestAnimationFrame(() => {
-        inner = requestAnimationFrame(() => dispatch({ type: 'settle' }))
-      })
-      const fallback = setTimeout(dispatch, 80, { type: 'settle' })
-      return () => {
-        cancelAnimationFrame(outer)
-        cancelAnimationFrame(inner)
-        clearTimeout(fallback)
-      }
+    if (stage.phase !== 'opening') return
+    let inner = 0
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => dispatch({ type: 'settle' }))
+    })
+    const fallback = setTimeout(dispatch, 80, { type: 'settle' })
+    return () => {
+      cancelAnimationFrame(outer)
+      cancelAnimationFrame(inner)
+      clearTimeout(fallback)
     }
+  }, [stage.phase, stage.stage])
+
+  // 退场停在 closing 等到卡片收完再卸。
+  useEffect(() => {
+    if (stage.phase !== 'closing') return
     const timer = setTimeout(
       dispatch,
       agentPanelSettleTimeoutMs(
@@ -161,7 +165,19 @@ export const AgentPanel: React.FC = () => {
       { type: 'settle' },
     )
     return () => clearTimeout(timer)
-  }, [fullView, messages.length, showsFull, stage])
+  }, [fullView, messages.length, showsFull, stage.phase, stage.stage])
+
+  useEffect(() => {
+    const node = auroraRef.current
+    if (!node) return
+    const sync = () => {
+      if (document.hidden) node.dataset.paused = 'true'
+      else delete node.dataset.paused
+    }
+    sync()
+    document.addEventListener('visibilitychange', sync)
+    return () => document.removeEventListener('visibilitychange', sync)
+  }, [showsOverlay, showsFull])
 
   // 一直盯着选区。必须常驻 —— 长按那一下会把选区收掉，等面板开了再看就晚了。
   useEffect(() => watchAgentSelection(), [])
@@ -232,6 +248,7 @@ export const AgentPanel: React.FC = () => {
       {(showsOverlay || showsFull) && (
         <>
           <div
+            ref={auroraRef}
             className="agent-panel-aurora"
             data-phase={stage.phase}
             data-status={status}

@@ -216,4 +216,3 @@ export const AgentPanelMessage: React.FC<AgentPanelMessageProps> = ({
   )
 }
 
-export default AgentPanelMessage

@@ -1,11 +1,3 @@
-fn proxy_json_err(status: axum::http::StatusCode, error: &str) -> axum::response::Response {
-    use axum::response::IntoResponse;
-    crate::error::HttpError(myriad_error::AppError::from_status_u16(
-        status.as_u16(),
-        error,
-    ))
-    .into_response()
-}
 
 // 图片代理服务 - 用于处理Bilibili等平台的防盗链图片
 use axum::{

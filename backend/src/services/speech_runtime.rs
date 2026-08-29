@@ -14,7 +14,6 @@ use super::tencent_speech_service::{
     AsrRequest, TencentSpeechError, TencentSpeechService, TtsRequest,
 };
 
-pub const OPENAI_SPEECH_BASE_URL: &str = "https://api.openai.com/v1";
 pub const OPENROUTER_SPEECH_BASE_URL: &str = "https://openrouter.ai/api/v1";
 pub const DEFAULT_OPENAI_STT_MODEL: &str = "gpt-transcribe";
 pub const DEFAULT_OPENAI_TTS_MODEL: &str = "gpt-4o-mini-tts";
@@ -462,25 +461,6 @@ struct ResolvedOpenAiSpeech {
     voice: String,
     tts_available: bool,
     tts_skip_reason: Option<String>,
-}
-
-pub fn selected_speech_source(
-) -> impl std::future::Future<Output = Option<crate::config::AiVendorSource>> {
-    async {
-        let config = GLOBAL_DYNAMIC_CONFIG.read().await;
-        let slug = if config.speech_source.trim().is_empty() {
-            match SpeechProviderKind::parse(&config.speech_provider) {
-                SpeechProviderKind::OpenRouter => "openrouter",
-                SpeechProviderKind::OpenAi => "openai",
-                SpeechProviderKind::Gemini => "gemini",
-                SpeechProviderKind::Tencent => "tencent",
-            }
-            .to_string()
-        } else {
-            config.speech_source.clone()
-        };
-        config.find_vendor_source(&slug)
-    }
 }
 
 async fn resolve_openai_speech() -> Result<ResolvedOpenAiSpeech, OpenAiSpeechError> {

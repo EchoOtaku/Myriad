@@ -400,11 +400,6 @@ impl AgentTurnBudget {
 /// Agent 在配额与成本账里的 bucket key（与 `AiLedgerAttribution.tapp_id` 一致）
 pub(crate) const AGENT_LEDGER_TAPP_ID: &str = "__agent__";
 
-/// 获取系统能力摘要
-pub async fn get_capabilities_summary() -> serde_json::Value {
-    capability::get_capability_summary().await
-}
-
 /// Discovery list filtered by admin (hides system:admin caps for non-admin).
 pub async fn get_capabilities_summary_for_user(is_admin: bool) -> serde_json::Value {
     capability::get_capability_summary_filtered(is_admin).await

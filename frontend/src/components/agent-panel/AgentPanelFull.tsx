@@ -248,4 +248,3 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
   )
 }
 
-export default AgentPanelFull

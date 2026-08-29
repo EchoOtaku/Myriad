@@ -90,6 +90,7 @@ pub enum IntentAction {
 /// 意图目标类型
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value")]
+#[allow(dead_code)] // 仅测试调用：intent 模型已建模但执行器尚未接入。
 pub enum IntentTarget {
     /// 平台数据 (bilibili, steam, github 等)
     Platform(String),
@@ -115,6 +116,7 @@ pub enum IntentTarget {
 
 /// 意图约束条件
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[allow(dead_code)] // 仅测试调用：intent 模型已建模但执行器尚未接入。
 pub struct IntentConstraints {
     /// 时间范围
     pub time_range: Option<TimeRange>,
@@ -130,6 +132,7 @@ pub struct IntentConstraints {
 
 /// 时间范围
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)] // 仅测试调用：intent 模型已建模但执行器尚未接入。
 pub struct TimeRange {
     /// 开始时间
     pub start: Option<chrono::DateTime<chrono::Utc>>,
@@ -141,6 +144,7 @@ pub struct TimeRange {
 
 /// 排序规格
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)] // 仅测试调用：intent 模型已建模但执行器尚未接入。
 pub struct SortSpec {
     pub field: String,
     pub order: SortOrder,
@@ -148,6 +152,7 @@ pub struct SortSpec {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[allow(dead_code)] // 仅测试调用：intent 模型已建模但执行器尚未接入。
 pub enum SortOrder {
     Asc,
     Desc,
