@@ -1,28 +1,89 @@
 /**
  * 对话消息的增删改 —— 执行引擎的内部状态。
  *
- * 引擎这边的消息比新 UI 画出来的那份重得多：执行追踪、调试轨迹、待答问题都挂在
- * 上面。这些只在这里用，`agentMessages` 那份才是给界面看的。
- *
- * 提供的操作：
- * - updateMessage: 更新消息属性
- * - updateMessageExecution: 更新消息的执行状态
- * - addExecutionStep: 添加执行步骤
- * - updateExecutionStep: 更新执行步骤
+ * Work / Chat 各持一份列表。可见档决定界面读哪一份；按 id 的更新会扫两份，
+ * 这样后台办事的 SSE 在聊天档打开时仍能写进办事那份。
  */
 
+import type { AgentPanelMode } from './agentPanelMode'
 import type { ChatMessage, ExecutionStep, TaskExecution } from './engineTypes'
 import { useCallback, useRef, useState } from 'react'
 
-export function useMessageState() {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const messagesRef = useRef(messages)
-  messagesRef.current = messages
+export type MessagesByMode = Record<AgentPanelMode, ChatMessage[]>
+
+export function emptyMessagesByMode(): MessagesByMode {
+  return { work: [], chat: [] }
+}
+
+export function writeModeMessages(
+  bag: MessagesByMode,
+  mode: AgentPanelMode,
+  next: ChatMessage[],
+): MessagesByMode {
+  if (bag[mode] === next) return bag
+  return { ...bag, [mode]: next }
+}
+
+export function findMessageInBag(
+  bag: MessagesByMode,
+  messageId: string,
+): ChatMessage | undefined {
+  return findMessageWhereInBag(bag, (message) => message.id === messageId)
+}
+
+export function findMessageWhereInBag(
+  bag: MessagesByMode,
+  predicate: (message: ChatMessage) => boolean,
+): ChatMessage | undefined {
+  return bag.work.find(predicate) ?? bag.chat.find(predicate)
+}
+
+export function mapMessagesById(
+  bag: MessagesByMode,
+  messageId: string,
+  update: (message: ChatMessage) => ChatMessage,
+): MessagesByMode {
+  let changed = false
+  const next: MessagesByMode = { work: bag.work, chat: bag.chat }
+  for (const mode of ['work', 'chat'] as const) {
+    const list = bag[mode]
+    const mapped = list.map((message) => {
+      if (message.id !== messageId) return message
+      changed = true
+      return update(message)
+    })
+    next[mode] = mapped
+  }
+  return changed ? next : bag
+}
+
+export function useMessageState(visibleMode: AgentPanelMode) {
+  const [byMode, setByMode] = useState<MessagesByMode>(emptyMessagesByMode)
+  const messagesRef = useRef(byMode)
+  messagesRef.current = byMode
+  const messages = byMode[visibleMode]
+
+  const setMessages = useCallback(
+    (
+      next: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[]),
+      mode: AgentPanelMode = visibleMode,
+    ) => {
+      setByMode((prev) => {
+        const current = prev[mode]
+        const value = typeof next === 'function' ? next(current) : next
+        return writeModeMessages(prev, mode, value)
+      })
+    },
+    [visibleMode],
+  )
 
   const updateMessage = useCallback(
     (messageId: string, updates: Partial<ChatMessage>) => {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, ...updates } : m)),
+      setByMode((prev) =>
+        mapMessagesById(prev, messageId, (message) => ({
+          ...message,
+          ...updates,
+        })),
       )
     },
     [],
@@ -30,18 +91,17 @@ export function useMessageState() {
 
   const updateMessageExecution = useCallback(
     (messageId: string, updates: Partial<TaskExecution>) => {
-      setMessages((prev) =>
-        prev.map((m) => {
-          if (m.id !== messageId || !m.taskExecution) return m
-          // progress 仅递增，避免回退
+      setByMode((prev) =>
+        mapMessagesById(prev, messageId, (message) => {
+          if (!message.taskExecution) return message
           const newProgress =
             updates.progress != null
-              ? Math.max(updates.progress, m.taskExecution.progress)
-              : m.taskExecution.progress
+              ? Math.max(updates.progress, message.taskExecution.progress)
+              : message.taskExecution.progress
           return {
-            ...m,
+            ...message,
             taskExecution: {
-              ...m.taskExecution,
+              ...message.taskExecution,
               ...updates,
               progress: newProgress,
             },
@@ -54,26 +114,26 @@ export function useMessageState() {
 
   const addExecutionStep = useCallback(
     (messageId: string, step: ExecutionStep) => {
-      setMessages((prev) =>
-        prev.map((m) => {
-          if (m.id !== messageId || !m.taskExecution) return m
-          const exists = m.taskExecution.steps.some((s) => s.id === step.id)
+      setByMode((prev) =>
+        mapMessagesById(prev, messageId, (message) => {
+          if (!message.taskExecution) return message
+          const exists = message.taskExecution.steps.some((item) => item.id === step.id)
           if (exists) {
             return {
-              ...m,
+              ...message,
               taskExecution: {
-                ...m.taskExecution,
-                steps: m.taskExecution.steps.map((s) =>
-                  s.id === step.id ? { ...s, ...step } : s,
+                ...message.taskExecution,
+                steps: message.taskExecution.steps.map((item) =>
+                  item.id === step.id ? { ...item, ...step } : item,
                 ),
               },
             }
           }
           return {
-            ...m,
+            ...message,
             taskExecution: {
-              ...m.taskExecution,
-              steps: [...m.taskExecution.steps, step],
+              ...message.taskExecution,
+              steps: [...message.taskExecution.steps, step],
             },
           }
         }),
@@ -84,15 +144,15 @@ export function useMessageState() {
 
   const updateExecutionStep = useCallback(
     (messageId: string, stepId: string, updates: Partial<ExecutionStep>) => {
-      setMessages((prev) =>
-        prev.map((m) => {
-          if (m.id !== messageId || !m.taskExecution) return m
+      setByMode((prev) =>
+        mapMessagesById(prev, messageId, (message) => {
+          if (!message.taskExecution) return message
           return {
-            ...m,
+            ...message,
             taskExecution: {
-              ...m.taskExecution,
-              steps: m.taskExecution.steps.map((s) =>
-                s.id === stepId ? { ...s, ...updates } : s,
+              ...message.taskExecution,
+              steps: message.taskExecution.steps.map((item) =>
+                item.id === stepId ? { ...item, ...updates } : item,
               ),
             },
           }
@@ -102,10 +162,24 @@ export function useMessageState() {
     [],
   )
 
+  const findMessage = useCallback((messageId: string) => {
+    return findMessageInBag(messagesRef.current, messageId)
+  }, [])
+
+  const findMessageWhere = useCallback(
+    (predicate: (message: ChatMessage) => boolean) => {
+      return findMessageWhereInBag(messagesRef.current, predicate)
+    },
+    [],
+  )
+
   return {
     messages,
     setMessages,
     messagesRef,
+    byMode,
+    findMessage,
+    findMessageWhere,
     updateMessage,
     updateMessageExecution,
     addExecutionStep,

@@ -226,10 +226,14 @@ export const AgentPanelMessage: React.FC<AgentPanelMessageProps> = React.memo(
 
     const save = useCallback(() => {
       setSaved(true)
-      invalidateComposerFavorites()
-      void agentService.addToFavorites(message.content).catch(() => {
-        setSaved(false)
-      })
+      void agentService
+        .addToFavorites(message.content)
+        .then(() => {
+          invalidateComposerFavorites()
+        })
+        .catch(() => {
+          setSaved(false)
+        })
     }, [message.content])
 
     const isAssistant = message.role === 'assistant'

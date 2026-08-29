@@ -1,5 +1,7 @@
 /**
  * 对话列表的位移滚动：跟手、有惯性，不给列表设 overflow。
+ * 切聊天档时输入行头顶会留出人的高度，封顶窗口要在同一段 --agent-move 里重测，
+ * 贴底的卡片才会跟着上移、回来时下移。
  */
 
 import type { RefObject } from 'react'
@@ -59,6 +61,13 @@ export function useConversationPan(
     const slot = closestSlot instanceof HTMLElement ? closestSlot : null
     const composer = anchor?.querySelector('.agent-panel-composer')
     const rail = anchor?.querySelector('.agent-panel-tag-rail')
+    const moveMs = (() => {
+      const raw = anchor
+        ? getComputedStyle(anchor).getPropertyValue('--agent-move')
+        : ''
+      const parsed = Number.parseFloat(raw)
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : 480
+    })()
     let current = 0
     let target = 0
     let velocity = 0
@@ -70,6 +79,7 @@ export function useConversationPan(
     let last = 0
     let trackH = 0
     let viewH = 0
+    let followUntil = 0
     let cards: Card[] = []
     const samples: Array<{ t: number; x: number }> = []
 
@@ -237,6 +247,9 @@ export function useConversationPan(
     const tick = (now: number) => {
       const dt = last ? Math.min(0.032, (now - last) / 1000) : 1 / 60
       last = now
+      const following = now < followUntil
+      // 预留高度跟 CSS 同一条缓动。贴底时每帧钉住新窗口，不要再套一层 follow tau。
+      if (following) measure()
       const max = maxScroll()
 
       if (!dragging && velocity !== 0) {
@@ -252,12 +265,16 @@ export function useConversationPan(
 
       if (nearBottom && !dragging) target = max
       if (!dragging) target = clampConversationScroll(target, max)
-      current = reduce
-        ? target
-        : smoothToward(current, target, dt, CONVERSATION_FOLLOW_TAU)
+      current =
+        reduce || (following && nearBottom && !dragging)
+          ? target
+          : smoothToward(current, target, dt, CONVERSATION_FOLLOW_TAU)
       write()
 
-      if (stillCoasting(current, target, velocity, dragging)) {
+      if (
+        stillCoasting(current, target, velocity, dragging) ||
+        now < followUntil
+      ) {
         frame = requestAnimationFrame(tick)
       } else {
         current = target
@@ -267,8 +284,17 @@ export function useConversationPan(
     }
 
     const kick = () => {
-      if (maxScroll() > 0) track.style.willChange = 'transform'
+      if (maxScroll() > 0 || followUntil > 0)
+        track.style.willChange = 'transform'
       if (!frame) frame = requestAnimationFrame(tick)
+    }
+
+    const followComposer = () => {
+      if (blocked()) return
+      followUntil = performance.now() + moveMs + 32
+      measure()
+      if (nearBottom) target = maxScroll()
+      kick()
     }
 
     const blocked = () =>
@@ -362,6 +388,7 @@ export function useConversationPan(
       if (nearBottom && (wasPinned || current <= CONVERSATION_NEAR_BOTTOM_PX)) {
         current = target
         write()
+        if (viewH !== prevView) followComposer()
         return
       }
       writeCap(max)
@@ -376,12 +403,27 @@ export function useConversationPan(
       if (viewH !== prevView || max !== prevMax) writeExit()
     })
     resize.observe(track)
+    resize.observe(viewport)
     if (anchor) resize.observe(anchor)
+    if (composer instanceof HTMLElement) resize.observe(composer)
     const phaseWatch = new MutationObserver(() => write())
     if (anchor) {
       phaseWatch.observe(anchor, {
         attributes: true,
         attributeFilter: ['data-phase'],
+      })
+    }
+    const modeWatch = new MutationObserver(followComposer)
+    if (composer instanceof HTMLElement) {
+      modeWatch.observe(composer, {
+        attributes: true,
+        attributeFilter: ['data-mode'],
+      })
+    }
+    if (anchor) {
+      modeWatch.observe(anchor, {
+        attributes: true,
+        attributeFilter: ['data-mode'],
       })
     }
     if (slot) {
@@ -405,6 +447,7 @@ export function useConversationPan(
       stop()
       resize.disconnect()
       phaseWatch.disconnect()
+      modeWatch.disconnect()
       document.removeEventListener('visibilitychange', onVis)
       viewport.removeEventListener('wheel', onWheel)
       viewport.removeEventListener('touchstart', onTouchStart)

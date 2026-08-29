@@ -14,6 +14,11 @@
  * Quick Overlay 和 Full 共用这一行 —— 同一个动作在两档里不该是两套手感。
  * 办事 / 聊天一枚贴在输入框上面，贴里写着 Tab；聊天档只留这枚贴和右边的心情。
  * 人设形象叠在贴行之上，贴仍贴着输入框，不跟着人挪上去。
+ * 人按面板整宽居中，不按输入框；聊天档用头顶那截预留把对话顶上去。
+ * 人从输入框里托出来，办事贴先让；心情跟人对齐晚一拍。进出同一条缓动。
+ * 切模式是一座固定舞台：贴行三列钉死，左右贴位不动，中间只做透明度。
+ * 常用问法在中间列一行横滑，新对话 / 历史钉在右边。
+ * 叠层绝不用 visibility —— 隐藏那一层退出占位的话，淡出结束胶囊会突然收窄。
  */
 
 import type { RefObject } from 'react'
@@ -36,59 +41,26 @@ import { isImeComposing } from '../../utils/ime'
 import { AGENT_ATTACH_ACCEPT, collectAttachments } from './agentAttachments'
 import { dispatchAgentPanelCommand } from './agentPanelEvents'
 import { AgentPanelFace } from './AgentPanelFace'
-import { cycleAgentPanelMode, useAgentPanelMode } from './agentPanelMode'
-import { AGENT_ROW_MS, readPresenceDuration } from './agentPresenceState'
+import {
+  AGENT_PANEL_MODES,
+  cycleAgentPanelMode,
+  useAgentPanelMode,
+} from './agentPanelMode'
 import { setAgentStatusRecording, useAgentStatus } from './agentStatusStore'
 import { attachOrbDriftSpeed, startAttachOrbDrift } from './attachOrbDrift'
 import { composerActionKind } from './composerAction'
 import {
   forgetComposerFavorite,
   loadComposerFavorites,
+  subscribeComposerFavorites,
 } from './composerFavorites'
 import { useAddresseeMoodBand } from './useAddresseeMood'
 import { useAgentPanelContext } from './useAgentPanelContext'
 import { AgentPresence, AgentPresenceList, AgentSwap } from './useAgentPresence'
+import { useTagStripScroll } from './useTagStripScroll'
 import { useVoiceRecording } from './useVoiceRecording'
 
 const FIELD_MAX_PX = 168
-
-function useHeldOpen(open: boolean, holdMs: number): boolean {
-  const [held, setHeld] = useState(open)
-  useEffect(() => {
-    if (open) {
-      setHeld(true)
-      return undefined
-    }
-    const wait = readPresenceDuration(holdMs)
-    if (wait <= 0) {
-      setHeld(false)
-      return undefined
-    }
-    const timer = setTimeout(setHeld, wait, false)
-    return () => clearTimeout(timer)
-  }, [holdMs, open])
-  return open || held
-}
-
-/** 先挂上（opacity 0），下一帧再打开，透明度过渡才吃得到。 */
-function useRevealNextFrame(open: boolean): boolean {
-  const [revealed, setRevealed] = useState(false)
-  useLayoutEffect(() => {
-    if (!open) {
-      setRevealed(false)
-      return undefined
-    }
-    let inner = 0
-    const outer = requestAnimationFrame(() => {
-      inner = requestAnimationFrame(() => setRevealed(true))
-    })
-    return () => {
-      cancelAnimationFrame(outer)
-      cancelAnimationFrame(inner)
-    }
-  }, [open])
-  return revealed
-}
 
 function fitComposerField(el: HTMLTextAreaElement | null): void {
   if (!el) return
@@ -282,7 +254,13 @@ function ModeTag({ mode }: { mode: AgentPanelMode }) {
       onClick={() => cycleAgentPanelMode(1)}
     >
       <span className="agent-panel-tag-kicker">{shortcut}</span>
-      <span className="agent-panel-tag-text">{label}</span>
+      <span className="agent-panel-mode-labels" aria-hidden="true">
+        {AGENT_PANEL_MODES.map((id) => (
+          <span key={id} data-on={mode === id ? 'true' : 'false'}>
+            {t.agentPanel.mode[id]}
+          </span>
+        ))}
+      </span>
     </button>
   )
 }
@@ -312,8 +290,6 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
   const { t, format } = useI18n()
   const mode = useAgentPanelMode()
   const chatting = mode === 'chat'
-  const showFace = useHeldOpen(chatting, AGENT_ROW_MS)
-  const faceOpen = useRevealNextFrame(chatting)
   const moodBandValue = useAddresseeMoodBand()
   const { pathname } = useLocation()
   const { isAuthenticated } = useAuth()
@@ -335,6 +311,7 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
   const [attachError, setAttachError] = useState<AttachError | null>(null)
   const [dropping, setDropping] = useState(false)
   const [favorites, setFavorites] = useState<ComposerFavorite[]>([])
+  const tagScrollRef = useTagStripScroll(favorites.length)
 
   const submit = useCallback(
     (text: string) => {
@@ -362,16 +339,21 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
   useEffect(() => {
     if (!isAuthenticated) return
     let cancelled = false
-    void (async () => {
-      try {
-        const next = await loadComposerFavorites()
-        if (!cancelled) setFavorites(next)
-      } catch {
-        // 拿不到收藏不影响问话
-      }
-    })()
+    const load = () => {
+      void (async () => {
+        try {
+          const next = await loadComposerFavorites()
+          if (!cancelled) setFavorites(next)
+        } catch {
+          // 拿不到收藏不影响问话
+        }
+      })()
+    }
+    load()
+    const stop = subscribeComposerFavorites(load)
     return () => {
       cancelled = true
+      stop()
     }
   }, [isAuthenticated])
 
@@ -442,269 +424,286 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
 
   return (
     <div className="agent-panel-composer" data-mode={mode}>
-      {showFace ? (
-        <div
-          className="agent-panel-face-slot"
-          data-open={faceOpen ? 'true' : undefined}
-          aria-hidden={!faceOpen}
-        >
-          <AgentPanelFace />
-        </div>
-      ) : null}
       <div className="agent-panel-composer-tags">
         <ModeTag mode={mode} />
-        {chatting ? null : leading}
-        {chatting ? null : (
-          <>
-            <AgentSwap
-              id={`${canMute ? 'mute' : 'label'}:${context.kind}`}
-              from="self"
-            >
-              {canMute ? (
+        <div className="agent-panel-tag-mid">
+          <div
+            className="agent-panel-work-chrome"
+            ref={tagScrollRef}
+            inert={chatting}
+          >
+            {leading}
+            <span className="agent-panel-work-tags">
+              <AgentSwap
+                id={`${canMute ? 'mute' : 'label'}:${context.kind}`}
+                from="self"
+              >
+                {canMute ? (
+                  <button
+                    type="button"
+                    className="agent-panel-tag"
+                    data-tone={contextConsent ? 'neutral' : 'alert'}
+                    title={
+                      contextConsent
+                        ? t.agentPanel.context.muteHint
+                        : t.agentPanel.context.allowHint
+                    }
+                    aria-label={label}
+                    aria-pressed={contextConsent}
+                    onClick={() => setContextConsent(!contextConsent)}
+                  >
+                    <span className="agent-panel-tag-kicker">{kicker}</span>
+                    <span className="agent-panel-tag-text">{contextText}</span>
+                  </button>
+                ) : (
+                  <span
+                    className="agent-panel-tag"
+                    data-tone={
+                      context.kind === 'selection' ? 'primary' : 'neutral'
+                    }
+                  >
+                    <span className="agent-panel-tag-kicker">{kicker}</span>
+                    <span className="agent-panel-tag-text">{contextText}</span>
+                  </span>
+                )}
+              </AgentSwap>
+              <AgentPresence
+                open={context.kind === 'selection'}
+                kind="chip"
+                from="context"
+              >
                 <button
                   type="button"
                   className="agent-panel-tag"
-                  data-tone={contextConsent ? 'neutral' : 'alert'}
-                  title={
-                    contextConsent
-                      ? t.agentPanel.context.muteHint
-                      : t.agentPanel.context.allowHint
+                  onClick={() =>
+                    onSubmit(
+                      format(t.agentPanel.prompts.explainSelection, {
+                        text: context.selection ?? '',
+                      }),
+                    )
                   }
-                  aria-label={label}
-                  aria-pressed={contextConsent}
-                  onClick={() => setContextConsent(!contextConsent)}
                 >
-                  <span className="agent-panel-tag-kicker">{kicker}</span>
-                  <span className="agent-panel-tag-text">{contextText}</span>
+                  <span className="agent-panel-tag-text">
+                    {t.agentPanel.actions.explain}
+                  </span>
                 </button>
-              ) : (
-                <span
+              </AgentPresence>
+              <AgentPresence
+                open={context.kind === 'selection'}
+                kind="chip"
+                from="context"
+              >
+                <button
+                  type="button"
                   className="agent-panel-tag"
-                  data-tone={
-                    context.kind === 'selection' ? 'primary' : 'neutral'
+                  onClick={() =>
+                    onSubmit(
+                      format(t.agentPanel.prompts.translateSelection, {
+                        text: context.selection ?? '',
+                      }),
+                    )
                   }
                 >
-                  <span className="agent-panel-tag-kicker">{kicker}</span>
-                  <span className="agent-panel-tag-text">{contextText}</span>
-                </span>
-              )}
-            </AgentSwap>
-            <AgentPresence
-              open={context.kind === 'selection'}
-              kind="chip"
-              from="context"
-            >
-              <button
-                type="button"
-                className="agent-panel-tag"
-                onClick={() =>
-                  onSubmit(
-                    format(t.agentPanel.prompts.explainSelection, {
-                      text: context.selection ?? '',
-                    }),
-                  )
-                }
+                  <span className="agent-panel-tag-text">
+                    {t.agentPanel.actions.translate}
+                  </span>
+                </button>
+              </AgentPresence>
+              <AgentPresence
+                open={context.kind === 'content'}
+                kind="chip"
+                from="context"
               >
-                <span className="agent-panel-tag-text">
-                  {t.agentPanel.actions.explain}
-                </span>
-              </button>
-            </AgentPresence>
-            <AgentPresence
-              open={context.kind === 'selection'}
-              kind="chip"
-              from="context"
-            >
-              <button
-                type="button"
-                className="agent-panel-tag"
-                onClick={() =>
-                  onSubmit(
-                    format(t.agentPanel.prompts.translateSelection, {
-                      text: context.selection ?? '',
-                    }),
-                  )
-                }
-              >
-                <span className="agent-panel-tag-text">
-                  {t.agentPanel.actions.translate}
-                </span>
-              </button>
-            </AgentPresence>
-            <AgentPresence
-              open={context.kind === 'content'}
-              kind="chip"
-              from="context"
-            >
-              <button
-                type="button"
-                className="agent-panel-tag"
-                onClick={() => onSubmit(t.agentPanel.prompts.summarize)}
-              >
-                <span className="agent-panel-tag-text">
-                  {t.agentPanel.actions.summarize}
-                </span>
-              </button>
-            </AgentPresence>
-            <AgentPresence
-              open={context.kind === 'content'}
-              kind="chip"
-              from="context"
-            >
-              <button
-                type="button"
-                className="agent-panel-tag"
-                onClick={() => onSubmit(t.agentPanel.prompts.translate)}
-              >
-                <span className="agent-panel-tag-text">
-                  {t.agentPanel.actions.translate}
-                </span>
-              </button>
-            </AgentPresence>
-            <AgentPresenceList
-              items={favorites}
-              keyOf={(preset) => String(preset.id)}
-              kind="chip"
-              from="self"
-            >
-              {(preset) => (
-                <span className="agent-panel-tag agent-panel-tag-saved">
-                  <button
-                    type="button"
-                    className="agent-panel-saved-open"
-                    title={preset.input}
-                    onClick={() => onSubmit(preset.input)}
-                  >
-                    <span className="agent-panel-tag-text">
-                      {preset.title?.trim() || preset.input}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="agent-panel-tag-dismiss"
-                    title={t.agentPanel.unsave}
-                    aria-label={t.agentPanel.unsave}
-                    onClick={() => {
-                      forgetComposerFavorite(preset.id)
-                      setFavorites((current) =>
-                        current.filter((item) => item.id !== preset.id),
-                      )
-                      void agentService
-                        .toggleFavorite(preset.id)
-                        .catch(() => {})
-                    }}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M6 6l12 12M18 6l-12 12" />
-                    </svg>
-                  </button>
-                </span>
-              )}
-            </AgentPresenceList>
-          </>
-        )}
-        <AgentPresenceList
-          items={attachments}
-          keyOf={(item) => item.id}
-          kind="chip"
-          from="attach"
-        >
-          {(item) => (
-            <span className="agent-panel-tag">
-              {item.previewUrl ? <img src={item.previewUrl} alt="" /> : null}
-              <span className="agent-panel-tag-kicker">
-                {t.agentPanel.attach.kind}
-              </span>
-              <span className="agent-panel-tag-text">{item.name}</span>
-              <button
-                type="button"
-                className="agent-panel-tag-dismiss"
-                title={t.agentPanel.attach.remove}
-                aria-label={t.agentPanel.attach.remove}
-                onClick={() => removeAttachment(item.id)}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  aria-hidden="true"
+                <button
+                  type="button"
+                  className="agent-panel-tag"
+                  onClick={() => onSubmit(t.agentPanel.prompts.summarize)}
                 >
-                  <path d="M6 6l12 12M18 6l-12 12" />
-                </svg>
-              </button>
+                  <span className="agent-panel-tag-text">
+                    {t.agentPanel.actions.summarize}
+                  </span>
+                </button>
+              </AgentPresence>
+              <AgentPresence
+                open={context.kind === 'content'}
+                kind="chip"
+                from="context"
+              >
+                <button
+                  type="button"
+                  className="agent-panel-tag"
+                  onClick={() => onSubmit(t.agentPanel.prompts.translate)}
+                >
+                  <span className="agent-panel-tag-text">
+                    {t.agentPanel.actions.translate}
+                  </span>
+                </button>
+              </AgentPresence>
+              <AgentPresenceList
+                items={favorites}
+                keyOf={(preset) => String(preset.id)}
+                kind="chip"
+                from="self"
+              >
+                {(preset) => (
+                  <span className="agent-panel-tag agent-panel-tag-saved">
+                    <button
+                      type="button"
+                      className="agent-panel-saved-open"
+                      title={preset.input}
+                      onClick={() => onSubmit(preset.input)}
+                    >
+                      <span className="agent-panel-tag-text">
+                        {preset.title?.trim() || preset.input}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="agent-panel-tag-dismiss"
+                      title={t.agentPanel.unsave}
+                      aria-label={t.agentPanel.unsave}
+                      onClick={() => {
+                        forgetComposerFavorite(preset.id)
+                        setFavorites((current) =>
+                          current.filter((item) => item.id !== preset.id),
+                        )
+                        void agentService
+                          .toggleFavorite(preset.id)
+                          .catch(() => {})
+                      }}
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M6 6l12 12M18 6l-12 12" />
+                      </svg>
+                    </button>
+                  </span>
+                )}
+              </AgentPresenceList>
             </span>
-          )}
-        </AgentPresenceList>
-        <AgentPresence open={!!attachErrorLabel} kind="chip" from="attach">
-          <span className="agent-panel-tag" data-tone="alert" role="status">
-            <span className="agent-panel-tag-text">{attachErrorLabel}</span>
-          </span>
-        </AgentPresence>
-        {chatting ? (
-          <div className="agent-panel-tag-actions">
-            <AgentPresence open={!!moodBandValue} kind="chip" from="self">
-              {moodBandValue ? <MoodTag band={moodBandValue} /> : null}
-            </AgentPresence>
           </div>
-        ) : trailing ? (
-          <div className="agent-panel-tag-actions">{trailing}</div>
-        ) : null}
+          <AgentPresenceList
+            items={attachments}
+            keyOf={(item) => item.id}
+            kind="chip"
+            from="attach"
+          >
+            {(item) => (
+              <span className="agent-panel-tag">
+                {item.previewUrl ? <img src={item.previewUrl} alt="" /> : null}
+                <span className="agent-panel-tag-kicker">
+                  {t.agentPanel.attach.kind}
+                </span>
+                <span className="agent-panel-tag-text">{item.name}</span>
+                <button
+                  type="button"
+                  className="agent-panel-tag-dismiss"
+                  title={t.agentPanel.attach.remove}
+                  aria-label={t.agentPanel.attach.remove}
+                  onClick={() => removeAttachment(item.id)}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M6 6l12 12M18 6l-12 12" />
+                  </svg>
+                </button>
+              </span>
+            )}
+          </AgentPresenceList>
+          <AgentPresence open={!!attachErrorLabel} kind="chip" from="attach">
+            <span className="agent-panel-tag" data-tone="alert" role="status">
+              <span className="agent-panel-tag-text">{attachErrorLabel}</span>
+            </span>
+          </AgentPresence>
+        </div>
+        <div className="agent-panel-tag-actions">
+          <div className="agent-panel-end-slot">
+            <div
+              className="agent-panel-end-layer"
+              data-on={chatting ? 'false' : 'true'}
+              inert={chatting}
+            >
+              {trailing ? (
+                <span className="agent-panel-tag-cluster">{trailing}</span>
+              ) : null}
+            </div>
+            <div
+              className="agent-panel-end-layer"
+              data-on={chatting ? 'true' : 'false'}
+              inert={!chatting}
+            >
+              {moodBandValue ? <MoodTag band={moodBandValue} /> : null}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="agent-panel-composer-row">
         <div
-          className="agent-panel-field-shell glass"
-          data-drop={dropping ? 'true' : undefined}
-          onDragEnter={(event) => {
-            event.preventDefault()
-            setDropping(true)
-          }}
-          onDragOver={(event) => {
-            event.preventDefault()
-          }}
-          onDragLeave={(event) => {
-            if (event.currentTarget.contains(event.relatedTarget as Node)) {
-              return
-            }
-            setDropping(false)
-          }}
-          onDrop={handleDrop}
+          className="agent-panel-face-slot"
+          aria-hidden={!chatting}
+          inert={!chatting}
         >
-          <ComposerAttach fileRef={fileRef} errorLabel={attachErrorLabel} />
-          <textarea
-            ref={fieldRef}
-            className="agent-panel-field"
-            rows={1}
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            placeholder={placeholder}
-            aria-label={placeholder}
-          />
-          <input
-            ref={fileRef}
-            className="agent-panel-attach-input"
-            type="file"
-            multiple
-            accept={AGENT_ATTACH_ACCEPT}
-            tabIndex={-1}
-            aria-hidden="true"
-            onChange={(event) => {
-              const files = event.target.files
-              if (files?.length) void addFiles(files)
-              event.target.value = ''
+          <AgentPanelFace />
+        </div>
+        <div className="agent-panel-field-stage">
+          <div
+            className="agent-panel-field-shell glass"
+            data-drop={dropping ? 'true' : undefined}
+            onDragEnter={(event) => {
+              event.preventDefault()
+              setDropping(true)
             }}
-          />
+            onDragOver={(event) => {
+              event.preventDefault()
+            }}
+            onDragLeave={(event) => {
+              if (event.currentTarget.contains(event.relatedTarget as Node)) {
+                return
+              }
+              setDropping(false)
+            }}
+            onDrop={handleDrop}
+          >
+            <ComposerAttach fileRef={fileRef} errorLabel={attachErrorLabel} />
+            <textarea
+              ref={fieldRef}
+              className="agent-panel-field"
+              rows={1}
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              placeholder={placeholder}
+              aria-label={placeholder}
+            />
+            <input
+              ref={fileRef}
+              className="agent-panel-attach-input"
+              type="file"
+              multiple
+              accept={AGENT_ATTACH_ACCEPT}
+              tabIndex={-1}
+              aria-hidden="true"
+              onChange={(event) => {
+                const files = event.target.files
+                if (files?.length) void addFiles(files)
+                event.target.value = ''
+              }}
+            />
+          </div>
         </div>
 
         <ComposerAction

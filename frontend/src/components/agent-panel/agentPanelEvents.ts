@@ -16,12 +16,14 @@ export interface AgentPanelSubmitDetail {
   text: string
   attachments?: AgentAttachment[]
   mode: AgentPanelMode
+  intentionId?: string
 }
 
 export function dispatchAgentPanelSubmit(
   text: string,
   attachments?: readonly AgentAttachment[],
   mode: AgentPanelMode = getAgentPanelMode(),
+  intentionId?: string,
 ): void {
   const trimmed = text.trim()
   const files = attachments?.length ? [...attachments] : undefined
@@ -31,6 +33,7 @@ export function dispatchAgentPanelSubmit(
       detail: {
         text: trimmed,
         mode,
+        ...(intentionId ? { intentionId } : {}),
         ...(files ? { attachments: files } : {}),
       },
     }),
@@ -45,10 +48,15 @@ export function agentPanelSubmitDetail(
   const attachments = Array.isArray(detail?.attachments)
     ? detail.attachments
     : undefined
+  const intentionId =
+    typeof detail?.intentionId === 'string' && detail.intentionId
+      ? detail.intentionId
+      : undefined
   if (!text && !attachments?.length) return null
   return {
     text,
     mode: isAgentPanelMode(detail?.mode) ? detail.mode : 'work',
+    ...(intentionId ? { intentionId } : {}),
     ...(attachments?.length ? { attachments } : {}),
   }
 }

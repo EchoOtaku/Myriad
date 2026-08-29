@@ -122,7 +122,7 @@ export const AgentPanelThinking: React.FC<{
             </svg>
           </button>
 
-          <AgentPresence open={expanded} kind="swap" from="place">
+          <AgentPresence open={expanded} kind="swap" from="self">
             <ToolList steps={steps} />
           </AgentPresence>
         </>

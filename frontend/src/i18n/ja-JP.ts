@@ -2566,6 +2566,13 @@ export const jaJP: TranslationKeys = {
       chat: '会話',
       shortcut: 'Tab',
     },
+    intention: {
+      kicker: '気づいたことがあります',
+      accept: '任せる',
+      continue: '続ける',
+      dismiss: '今はしない',
+      failed: '処理できませんでした。もう一度お試しください。',
+    },
     mood: {
       kicker: '気持ち',
     },
@@ -2631,6 +2638,7 @@ export const jaJP: TranslationKeys = {
       personaElsewhere:
         '定期タスク、スキル、記憶、ペルソナは「設定 › AI」で変えます',
       doNotDisturb: '話しかけないで',
+      autonomyAllow: '自分で用事を進めさせて',
       lastRun: '前回の実行：{time}',
       neverRun: 'まだ実行していません',
       remove: '削除',

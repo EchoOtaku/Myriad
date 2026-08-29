@@ -147,18 +147,20 @@ export function AgentSwap({
   kind = 'swap',
   from = 'self',
   appear = true,
+  durationMs = AGENT_SWAP_MS,
   children,
 }: {
   id: string
   kind?: AgentPresenceKind
   from?: AgentPresenceFrom
   appear?: boolean
+  durationMs?: number
   children: ReactNode
 }) {
   const entries = useKeyedPresence(
     [{ id, children }],
     (item) => item.id,
-    AGENT_SWAP_MS,
+    durationMs,
   )
   return (
     <div className="agent-panel-swap" data-from={from}>

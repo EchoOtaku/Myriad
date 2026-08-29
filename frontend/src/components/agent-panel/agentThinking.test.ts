@@ -231,6 +231,10 @@ test('说明性的短句都是贴：操作、附件、收藏、脚注不再另�
     new URL('./AgentPanelSessions.tsx', import.meta.url),
     'utf8',
   )
+  const intention = readFileSync(
+    new URL('./AgentPanelIntention.tsx', import.meta.url),
+    'utf8',
+  )
   assert.doesNotMatch(css, /\.agent-panel-attach-chip/)
   assert.doesNotMatch(css, /\.agent-panel-saved-remove/)
   assert.doesNotMatch(css, /\.agent-panel-action-risk/)
@@ -245,13 +249,8 @@ test('说明性的短句都是贴：操作、附件、收藏、脚注不再另�
   assert.match(css, /\.agent-panel-face \{/)
   assert.match(css, /--agent-face-width:\s*calc\(128px \* 2\.5\)/)
   assert.match(css, /\* 4 \/ 5\)/)
-  assert.match(css, /--agent-face-overlap/)
-  assert.match(css, /--agent-tag-row-height/)
   assert.match(css, /--agent-face-fade/)
-  assert.match(
-    css,
-    /\.agent-panel-composer\[data-mode='chat'\] \.agent-panel-composer-row/,
-  )
+  assert.match(css, /\.agent-panel-face-slot \{[\s\S]*?position:\s*absolute/)
   assert.match(css, /backdrop-filter:\s*blur/)
   assert.match(
     css,
@@ -271,12 +270,74 @@ test('说明性的短句都是贴：操作、附件、收藏、脚注不再另�
   assert.match(composer, /agent-panel-mode/)
   assert.match(composer, /AgentPanelFace/)
   assert.match(composer, /agent-panel-face-slot/)
-  assert.match(composer, /useHeldOpen/)
-  assert.match(composer, /useRevealNextFrame/)
-  assert.match(composer, /requestAnimationFrame/)
+  assert.match(composer, /agent-panel-field-stage/)
+  assert.match(composer, /agent-panel-work-chrome/)
+  assert.match(composer, /useTagStripScroll/)
+  assert.match(composer, /subscribeComposerFavorites/)
+  assert.match(message, /addToFavorites[\s\S]*?invalidateComposerFavorites/)
+  assert.match(composer, /agent-panel-tag-mid/)
+  assert.match(
+    css,
+    /\.agent-panel-work-chrome \{[\s\S]*?overflow:\s*auto hidden/,
+  )
+  assert.match(css, /\.agent-panel-work-chrome \{[\s\S]*?flex:\s*1 1 auto/)
+  assert.match(css, /\[data-overflow='end'\]/)
+  assert.match(composer, /agent-panel-mode-labels/)
+  assert.match(composer, /agent-panel-end-slot/)
+  assert.match(composer, /agent-panel-end-layer/)
+  assert.match(css, /\[data-mode='chat'\] \.agent-panel-face-slot/)
+  assert.match(css, /\[data-mode='chat'\] \.agent-panel-work-chrome/)
+  assert.match(css, /\.agent-panel-intention \{/)
+  assert.match(
+    css,
+    /\.agent-panel-intention-copy > small\[data-tone='danger'\] \{/,
+  )
+  assert.doesNotMatch(
+    css,
+    /\.agent-panel-intention-copy > small \{\s*color:\s*var\(--color-danger/,
+  )
+  assert.match(intention, /data-tone="danger"/)
+  assert.match(intention, /dispatchAgentPanelSubmit|onAccept/)
+  assert.match(css, /\.agent-panel-face-slot \{[\s\S]*?position:\s*absolute/)
+  assert.match(css, /--agent-face-reserve/)
+  assert.match(css, /--agent-face-lift/)
+  assert.match(css, /--agent-mode-lag/)
+  assert.match(
+    css,
+    /\.agent-panel-composer\[data-mode='chat'\] \{[\s\S]*?padding-top:\s*var\(--agent-face-reserve\)/,
+  )
+  assert.match(
+    composer,
+    /agent-panel-composer-row[\s\S]*?agent-panel-face-slot[\s\S]*?agent-panel-field-stage/,
+  )
+  assert.match(css, /\.agent-panel-mode-labels/)
+  assert.match(
+    css,
+    /\.agent-panel-mode-labels > span \{[\s\S]*?grid-area:\s*1 \/ 1/,
+  )
+  assert.match(
+    css,
+    /\.agent-panel-end-slot \{[\s\S]*?place-items:\s*center end/,
+  )
+  assert.match(
+    css,
+    /\.agent-panel-composer-tags \{[\s\S]*?grid-template-columns:\s*auto minmax\(0, 1fr\) auto/,
+  )
+  assert.match(
+    css,
+    /\[data-mode='chat'\] \.agent-panel-work-chrome \{[^}]*opacity:\s*0/,
+  )
+  assert.doesNotMatch(
+    css,
+    /\[data-mode='chat'\] \.agent-panel-work-chrome \{[^}]*width:\s*0/,
+  )
+  assert.doesNotMatch(composer, /AgentSwap\s+id=\{mode\}/)
+  assert.doesNotMatch(composer, /id=\{chatting \? 'mood' : 'trail'\}/)
   assert.match(composer, /mode\.shortcut/)
   assert.match(composer, /MoodTag/)
   assert.match(composer, /agent-panel-mood/)
+  assert.match(composer, /agent-panel-work-tags/)
+  assert.match(composer, /agent-panel-tag-cluster/)
   assert.doesNotMatch(composer, /role="radiogroup"/)
   assert.doesNotMatch(face, /className=\{?['"][^'"]*glass/)
   assert.match(panel, /shouldCaptureModeTab/)

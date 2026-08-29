@@ -18,6 +18,8 @@ export interface ProcessContext {
   sessionId?: string
   /** 自定义数据 */
   customData?: Record<string, unknown>
+  /** 用户已接受、正在进入 Work 的自主提案。 */
+  intentionId?: string
 }
 
 /** 处理请求 */

@@ -238,7 +238,10 @@
   min-width: 0;
 }
 
-.agent-panel-composer-tags > .agent-panel-presence[data-kind='chip'] {
+.agent-panel-composer-tags > .agent-panel-presence[data-kind='chip'],
+.agent-panel-tag-mid > .agent-panel-presence[data-kind='chip'],
+.agent-panel-work-chrome > .agent-panel-presence[data-kind='chip'] {
+  flex-shrink: 0;
   margin-right: 6px;
 }
 
@@ -260,6 +263,14 @@
     opacity: 0;
     translate: -50% 22px;
     scale: 0.96;
+  }
+
+  /* 默认就是藏着的。先画亮再收到 0，plus-lighter 会闪一帧。 */
+  .agent-panel-aurora,
+  .agent-panel-aurora[data-phase='settled'],
+  .agent-panel-aurora[data-stage='full']:not([data-phase='closing']) {
+    opacity: 0;
+    translate: 0 var(--agent-aurora-rise, 40px);
   }
 
   .agent-panel-overlay-anchor[data-stage='full'] {
@@ -303,12 +314,16 @@
   }
 
   .agent-panel-composer-tags > .agent-panel-presence[data-kind='chip'],
+  .agent-panel-tag-mid > .agent-panel-presence[data-kind='chip'],
+  .agent-panel-work-chrome > .agent-panel-presence[data-kind='chip'],
   .agent-panel-tag-actions > .agent-panel-presence[data-kind='chip'] {
     grid-template-columns: 0fr;
     overflow: hidden;
   }
 
-  .agent-panel-composer-tags > .agent-panel-presence[data-kind='chip'] {
+  .agent-panel-composer-tags > .agent-panel-presence[data-kind='chip'],
+  .agent-panel-tag-mid > .agent-panel-presence[data-kind='chip'],
+  .agent-panel-work-chrome > .agent-panel-presence[data-kind='chip'] {
     margin-right: 0;
   }
 
@@ -357,6 +372,10 @@
 
 .agent-panel-composer-tags
   > .agent-panel-presence[data-kind='chip'][data-presence='out'],
+.agent-panel-tag-mid
+  > .agent-panel-presence[data-kind='chip'][data-presence='out'],
+.agent-panel-work-chrome
+  > .agent-panel-presence[data-kind='chip'][data-presence='out'],
 .agent-panel-tag-actions
   > .agent-panel-presence[data-kind='chip'][data-presence='out'] {
   overflow: hidden;
@@ -364,6 +383,10 @@
 }
 
 .agent-panel-composer-tags
+  > .agent-panel-presence[data-kind='chip'][data-presence='out'],
+.agent-panel-tag-mid
+  > .agent-panel-presence[data-kind='chip'][data-presence='out'],
+.agent-panel-work-chrome
   > .agent-panel-presence[data-kind='chip'][data-presence='out'] {
   margin-right: 0;
 }
@@ -434,6 +457,18 @@
   > .agent-panel-presence[data-kind='chip'],
 .agent-panel-overlay-anchor[data-phase='closing']
   .agent-panel-composer-tags
+  > .agent-panel-presence[data-kind='chip'],
+.agent-panel-overlay-anchor[data-phase='opening']
+  .agent-panel-tag-mid
+  > .agent-panel-presence[data-kind='chip'],
+.agent-panel-overlay-anchor[data-phase='closing']
+  .agent-panel-tag-mid
+  > .agent-panel-presence[data-kind='chip'],
+.agent-panel-overlay-anchor[data-phase='opening']
+  .agent-panel-work-chrome
+  > .agent-panel-presence[data-kind='chip'],
+.agent-panel-overlay-anchor[data-phase='closing']
+  .agent-panel-work-chrome
   > .agent-panel-presence[data-kind='chip'] {
   margin-right: 6px;
 }
@@ -608,6 +643,30 @@
   margin-left: auto;
 }
 
+.agent-panel-composer-tags > .agent-panel-tag-actions {
+  margin-left: 0;
+  min-width: max-content;
+}
+
+.agent-panel-work-tags,
+.agent-panel-tag-cluster {
+  display: flex;
+  align-items: center;
+}
+
+.agent-panel-work-tags {
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  gap: 6px;
+  width: max-content;
+}
+
+.agent-panel-tag-cluster {
+  flex-wrap: nowrap;
+  gap: 6px;
+  min-width: 0;
+}
+
 /* 可点的那一半：回弹曲线跟站内其他流体控件同一条 */
 button.agent-panel-tag {
   cursor: pointer;
@@ -625,6 +684,11 @@ button.agent-panel-tag[data-icon='true'] {
     border-color 0.18s ease,
     color 0.18s ease,
     transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* 切档只淡，不要让胶囊自己的 width 过渡再跟一刀。 */
+.agent-panel-composer-tags button.agent-panel-tag {
+  transition-property: background, border-color, color, transform;
 }
 
 button.agent-panel-tag:not(:disabled):hover {
@@ -707,15 +771,16 @@ button.agent-panel-tag:disabled {
 
 .agent-panel-composer {
   --agent-composer-gap: 12px;
-  --agent-tag-row-height: 32px;
   --agent-face-width: calc(128px * 2.5);
   --agent-face-visible-height: calc(var(--agent-face-width) * 4 / 3 * 4 / 5);
-
-  /* 贴行仍贴着输入框。人从贴行后面伸到输入框上沿，渐隐落在框上。 */
   --agent-face-fade: 40px;
-  --agent-face-overlap: calc(
-    var(--agent-tag-row-height) + var(--agent-composer-gap) +
-      var(--agent-face-fade)
+  --agent-face-lift: 10px;
+  --agent-mode-lag: 40ms;
+
+  /* 人头伸出贴行的那截。人仍绝对定位贴着输入框，对话靠这段 padding 让位。 */
+  --agent-face-reserve: calc(
+    var(--agent-face-visible-height) - var(--agent-face-fade) - 32px -
+      var(--agent-composer-gap)
   );
 
   display: flex;
@@ -724,6 +789,7 @@ button.agent-panel-tag:disabled {
   flex-shrink: 0;
   gap: var(--agent-composer-gap);
   width: 100%;
+  padding-top: 0;
   opacity: 1;
   translate: 0 0;
   scale: 1;
@@ -731,60 +797,285 @@ button.agent-panel-tag:disabled {
   transition:
     opacity var(--agent-move) var(--agent-ease),
     translate var(--agent-move) var(--agent-ease),
-    scale var(--agent-move) var(--agent-ease);
+    scale var(--agent-move) var(--agent-ease),
+    padding-top var(--agent-move) var(--agent-ease-exit);
+}
+
+.agent-panel-intention {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border-radius: 22px;
+  color: var(--text-primary, #111827);
+}
+
+.agent-panel-intention-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.agent-panel-intention-copy > span {
+  color: var(--color-primary, #10b981);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.agent-panel-intention-copy > strong,
+.agent-panel-intention-copy > p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-panel-intention-copy > strong {
+  white-space: nowrap;
+}
+
+.agent-panel-intention-copy > p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.agent-panel-intention-copy > p,
+.agent-panel-intention-copy > small {
+  margin: 0;
+  color: var(--text-secondary, #6b7280);
+  font-size: 0.78rem;
+}
+
+.agent-panel-intention-copy > small[data-tone='danger'] {
+  color: var(--color-danger, #ef4444);
+}
+
+.agent-panel-intention-actions {
+  display: flex;
+  gap: 7px;
+}
+
+.agent-panel-intention-actions > button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-solid, #fff) 72%, transparent);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.agent-panel-intention-actions > button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.agent-panel-intention-actions > .agent-panel-intention-accept {
+  background: var(--color-primary, #10b981);
+  color: white;
+}
+
+@media (width <= 520px) {
+  .agent-panel-intention {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-panel-intention-actions {
+    justify-content: flex-end;
+  }
+}
+
+.agent-panel-composer[data-mode='chat'] {
+  padding-top: var(--agent-face-reserve);
+  transition:
+    opacity var(--agent-move) var(--agent-ease),
+    translate var(--agent-move) var(--agent-ease),
+    scale var(--agent-move) var(--agent-ease),
+    padding-top var(--agent-move) var(--agent-ease);
 }
 
 .agent-panel-composer-row {
+  position: relative;
   display: flex;
   align-items: flex-end;
   gap: 12px;
   width: 100%;
 }
 
+.agent-panel-composer-tags,
+.agent-panel-field-shell,
+.agent-panel-composer-row > :not(.agent-panel-face-slot) {
+  position: relative;
+  z-index: 3;
+}
+
 .agent-panel-composer-tags {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px 0;
+  column-gap: 6px;
   min-width: 0;
-  interpolate-size: allow-keywords;
-  height: auto;
-  transition: height var(--agent-move, 480ms)
-    var(--agent-ease, cubic-bezier(0.16, 1, 0.3, 1));
+  contain: layout;
+}
+
+.agent-panel-tag-mid {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .agent-panel-mode {
   flex-shrink: 0;
-  margin-right: 6px;
+  min-width: max-content;
+  max-width: none;
+  interpolate-size: numeric-only;
+}
+
+/* 办事 / 聊天叠在同一格。只改透明度，visibility 会让隐藏那一层退出占位，胶囊跟着收。 */
+.agent-panel-mode-labels {
+  display: grid;
+  flex: 0 0 auto;
+  width: max-content;
+  justify-items: start;
+}
+
+.agent-panel-mode-labels > span {
+  grid-area: 1 / 1;
+  color: var(--text-primary, #111827);
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity var(--agent-move) linear;
+}
+
+.agent-panel-mode-labels > span[data-on='true'] {
+  opacity: 1;
+}
+
+.agent-panel-field-stage {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .agent-panel-face-slot {
-  /* 抵掉「人→贴」的 gap，再越过贴行和「贴→输入」的 gap，让人接到输入框。
-     进出只动透明度；卸节点放在淡出之后，避免画布闪回一帧。 */
-  margin-bottom: calc(
-    (var(--agent-composer-gap) + var(--agent-face-overlap)) * -1
-  );
+  position: absolute;
+  z-index: 0;
+  left: 50%;
+  bottom: calc(100% - var(--agent-face-fade));
+  width: var(--agent-face-width);
+  height: var(--agent-face-visible-height);
+  overflow: hidden;
   opacity: 0;
   pointer-events: none;
-  visibility: hidden;
+  translate: -50% var(--agent-face-lift);
   transition:
-    opacity var(--agent-move) var(--agent-ease),
-    visibility 0s linear var(--agent-move);
+    opacity var(--agent-move) var(--agent-ease-exit),
+    translate var(--agent-move) var(--agent-ease-exit);
 }
 
-.agent-panel-face-slot[data-open='true'] {
+.agent-panel-composer[data-mode='chat'] .agent-panel-face-slot {
   opacity: 1;
   pointer-events: auto;
-  visibility: visible;
+  translate: -50% 0;
   transition:
-    opacity var(--agent-move) var(--agent-ease),
-    visibility 0s;
+    opacity var(--agent-move) var(--agent-ease) var(--agent-mode-lag),
+    translate var(--agent-move) var(--agent-ease) var(--agent-mode-lag);
 }
 
-.agent-panel-composer[data-mode='chat'] .agent-panel-composer-tags,
-.agent-panel-composer[data-mode='chat'] .agent-panel-composer-row {
-  position: relative;
-  z-index: 3;
+/* 中间列吃掉弹性空位。办事贴只淡，占位不撤，左右贴才不会在淡出结束时被拽动。
+   进聊天：贴先让，人晚一拍托出来。回办事：人先收，贴再亮。
+   常用问法一行横滑，新对话 / 历史钉在右列，不被挤走。 */
+.agent-panel-work-chrome {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-right: 6px;
+  overflow: auto hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  scroll-padding-inline: 10px;
+  scroll-snap-type: x proximity;
+  touch-action: pan-x;
+  opacity: 1;
+  transition: opacity var(--agent-move) var(--agent-ease) var(--agent-mode-lag);
+}
+
+.agent-panel-work-chrome::-webkit-scrollbar {
+  display: none;
+}
+
+.agent-panel-work-chrome[data-overflow='end'] {
+  mask-image: linear-gradient(
+    to right,
+    #000 0,
+    #000 calc(100% - 18px),
+    transparent
+  );
+}
+
+.agent-panel-work-chrome[data-overflow='start'] {
+  mask-image: linear-gradient(to right, transparent, #000 18px, #000 100%);
+}
+
+.agent-panel-work-chrome[data-overflow='both'] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 18px,
+    #000 calc(100% - 18px),
+    transparent
+  );
+}
+
+.agent-panel-composer[data-mode='chat'] .agent-panel-work-chrome {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--agent-move) var(--agent-ease-exit);
+}
+
+.agent-panel-work-chrome > .agent-panel-work-tags {
+  width: max-content;
+  flex-wrap: nowrap;
+}
+
+.agent-panel-work-chrome > .agent-panel-presence[data-kind='chip'],
+.agent-panel-work-tags > .agent-panel-presence[data-kind='chip'] {
+  flex-shrink: 0;
+  scroll-snap-align: start;
+}
+
+.agent-panel-end-slot {
+  display: grid;
+  width: max-content;
+  min-width: max-content;
+  place-items: center end;
+  justify-self: end;
+}
+
+.agent-panel-end-layer {
+  grid-area: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: max-content;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--agent-move) linear;
+}
+
+.agent-panel-end-layer[data-on='true'] {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity var(--agent-move) linear var(--agent-mode-lag);
 }
 
 /* 聊天档：输入框上面的人设。3:4 画布放大 2.5，裁掉底下 1/5，底边模糊收掉。
@@ -1002,8 +1293,8 @@ button.agent-panel-tag:disabled {
   position: relative;
   display: flex;
   align-items: flex-start;
-  flex: 1;
   box-sizing: border-box;
+  width: 100%;
   min-width: 0;
   min-height: 56px;
   padding: 14px 20px 14px 18px;
@@ -1278,6 +1569,11 @@ button.agent-panel-tag:disabled {
   .agent-panel-face,
   .agent-panel-face-rig,
   .agent-panel-face-slot,
+  .agent-panel-work-chrome,
+  .agent-panel-tag-mid,
+  .agent-panel-mode-labels > span,
+  .agent-panel-end-layer,
+  .agent-panel-end-slot,
   .agent-panel-attach-bar,
   .agent-panel-attach-orb,
   .agent-panel-presence,
@@ -1302,6 +1598,7 @@ button.agent-panel-tag:disabled {
   .agent-panel-aurora[data-phase='opening'],
   .agent-panel-aurora[data-phase='closing'] {
     opacity: 1;
+    translate: 0 0;
   }
 
   .agent-panel-presence[data-presence='out'] {
@@ -1320,6 +1617,7 @@ button.agent-panel-tag:disabled {
 
     .agent-panel-aurora {
       opacity: 1;
+      translate: 0 0;
     }
 
     .agent-panel-overlay-anchor[data-stage='full'] .agent-panel-composer,
@@ -2446,6 +2744,7 @@ html[data-perf-mode='exlight'] .agent-panel-thinking-sweep {
    才看得出颜色在底边滑，而不是一团光在原地变色。
    思考不用平移色带。五团色块铺满底边，高度贴空闲 88px 色带。
    进出按车道错开；换谱同一位置旧团先收、新团再进。失败叠淡红。
+   默认藏着，落定才亮，避免 plus-lighter 先闪一帧。入场比外壳晚、从底下托上来。
    ========================================== */
 
 @property --agent-aurora-0 {
@@ -2524,6 +2823,8 @@ html[data-perf-mode='exlight'] .agent-panel-thinking-sweep {
   --agent-aurora-band-blur: 28px;
   --agent-aurora-core-height: 52px;
   --agent-aurora-core-bottom: -18px;
+  --agent-aurora-rise: 40px;
+  --agent-aurora-enter-ease: cubic-bezier(0.4, 0, 0.2, 1);
 
   position: fixed;
   inset: auto 0 0;
@@ -2532,11 +2833,12 @@ html[data-perf-mode='exlight'] .agent-panel-thinking-sweep {
   pointer-events: none;
   overflow: hidden;
   contain: layout paint;
-  opacity: 1;
+  opacity: 0;
+  translate: 0 var(--agent-aurora-rise);
   mask-image: radial-gradient(140% 92% at 50% 118%, #000 10%, transparent 70%);
   transition:
-    opacity var(--agent-move, 480ms)
-      var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1)),
+    opacity var(--agent-aurora-shift) var(--agent-aurora-enter-ease) 90ms,
+    translate 560ms var(--agent-aurora-enter-ease) 40ms,
     --agent-aurora-0 var(--agent-aurora-shift)
       var(--agent-ease, cubic-bezier(0.32, 0.72, 0, 1)),
     --agent-aurora-1 var(--agent-aurora-shift)
@@ -2615,13 +2917,19 @@ html.dark .agent-panel-aurora {
   }
 }
 
-.agent-panel-aurora[data-phase='opening'] {
-  opacity: 0;
-  transition-duration: 0.01ms;
+/* 默认藏着。落定才亮。先画成不透明再 0.01ms 灭掉会闪一帧。
+   快捷态→对话时光线已经在，full 且不是 closing 保持亮。 */
+.agent-panel-aurora[data-phase='settled'],
+.agent-panel-aurora[data-stage='full']:not([data-phase='closing']) {
+  opacity: 1;
+  translate: 0 0;
 }
 
 .agent-panel-aurora[data-phase='closing'] {
   opacity: 0;
+  translate: 0 var(--agent-aurora-rise);
+  transition-duration: var(--agent-move, 480ms);
+  transition-delay: 0ms;
   transition-timing-function: var(
     --agent-ease-exit,
     cubic-bezier(1, 0, 0.68, 0.28)

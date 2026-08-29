@@ -21,6 +21,10 @@ import { useAnimationPreference } from '../contexts/AnimationPreferenceContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { agentFace } from '../features/merope/agentFaceChannel'
+import {
+  deliverWorkNotificationFace,
+  faceSpeechGate,
+} from '../features/merope/faceSpeechArbitration'
 import { batchRead, batchWrite, observeResize } from '../hooks/animation'
 import {
   isReducedAnimation,
@@ -271,12 +275,11 @@ const GlobalControlPanel: React.FC = () => {
   const handleNewNotification = useCallback(
     (n: AppNotification) => {
       if (n.metadata?.performance) {
-        agentFace.updateState(n.metadata.merope_state)
-        agentFace.deliver({
-          messageId: n.id,
-          text: n.body,
-          source: 'proactive',
+        deliverWorkNotificationFace(agentFace, faceSpeechGate, {
+          id: n.id,
+          body: n.body,
           performance: n.metadata.performance,
+          meropeState: n.metadata.merope_state,
         })
       }
       const source = notificationSourceFor(n)

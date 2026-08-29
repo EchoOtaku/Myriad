@@ -2219,6 +2219,14 @@ export interface TranslationKeys {
       chat: string
       shortcut: string
     }
+    /** Agent noticed something and is asking permission to turn it into Work. */
+    intention: {
+      kicker: string
+      accept: string
+      continue: string
+      dismiss: string
+      failed: string
+    }
     /** 聊天档右边那枚心情贴。档位词复用设定页的 mood */
     mood: {
       kicker: string
@@ -2286,6 +2294,7 @@ export interface TranslationKeys {
       emptyMemory: string
       personaElsewhere: string
       doNotDisturb: string
+      autonomyAllow: string
       lastRun: string
       neverRun: string
       remove: string

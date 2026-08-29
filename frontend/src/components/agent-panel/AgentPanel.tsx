@@ -10,7 +10,7 @@
 
 import type { AgentAttachment } from './agentAttachments'
 import type { AgentPanelFullView } from './AgentPanelFull'
-import type { AgentPanelPhase } from './agentPanelStage'
+import type { AgentPanelPhase, AgentPanelStage } from './agentPanelStage'
 import React, {
   useCallback,
   useEffect,
@@ -37,8 +37,10 @@ import {
   dispatchAgentPanelSubmit,
 } from './agentPanelEvents'
 import { AgentPanelFull, AgentPanelSessionChrome } from './AgentPanelFull'
+import { AgentPanelIntention } from './AgentPanelIntention'
 import {
   cycleAgentPanelMode,
+  setAgentPanelMode,
   shouldCaptureModeTab,
   useAgentPanelMode,
 } from './agentPanelMode'
@@ -62,7 +64,10 @@ import { AgentPresence } from './useAgentPresence'
 import { LONG_PRESS_DURATION, useLongPress } from './useLongPress'
 import './agent-panel.css'
 
-const AgentPanelAurora: React.FC<{ phase: AgentPanelPhase }> = ({ phase }) => {
+const AgentPanelAurora: React.FC<{
+  phase: AgentPanelPhase
+  stage: AgentPanelStage
+}> = ({ phase, stage }) => {
   const { status } = useAgentStatus()
   const auroraRef = useRef<HTMLDivElement>(null)
   const prismARef = useRef<HTMLSpanElement>(null)
@@ -86,6 +91,7 @@ const AgentPanelAurora: React.FC<{ phase: AgentPanelPhase }> = ({ phase }) => {
       ref={auroraRef}
       className="agent-panel-aurora"
       data-phase={phase}
+      data-stage={stage}
       data-status={status}
       aria-hidden="true"
     >
@@ -253,6 +259,13 @@ export const AgentPanel: React.FC = () => {
     [mode],
   )
 
+  const acceptIntention = useCallback((intentionId: string, input: string) => {
+    setAgentPanelMode('work')
+    dispatchAgentPanelSubmit(input, undefined, 'work', intentionId)
+    setFullView('messages')
+    dispatch({ type: 'open', stage: 'full' })
+  }, [])
+
   // 撤销就是把逆操作再执行一遍 —— 不另起一套机制
   const undo = useCallback(() => {
     if (!undoOffer) return
@@ -274,7 +287,7 @@ export const AgentPanel: React.FC = () => {
     <>
       {(showsOverlay || showsFull) && (
         <>
-          <AgentPanelAurora phase={stage.phase} />
+          <AgentPanelAurora phase={stage.phase} stage={stage.stage} />
           <div
             ref={overlayRef}
             className="agent-panel-overlay-anchor"
@@ -295,6 +308,13 @@ export const AgentPanel: React.FC = () => {
                 onDecide={decide}
               />
             )}
+
+            {!pendingAction && (!showsFull || fullView === 'messages') ? (
+              <AgentPanelIntention
+                enabled={open && stage.phase === 'settled'}
+                onAccept={acceptIntention}
+              />
+            ) : null}
 
             {/* 等人拍板、翻设置的时候没有话可说，这一行就不该杵在那儿 */}
             {showsComposer && (

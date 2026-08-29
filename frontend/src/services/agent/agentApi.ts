@@ -34,6 +34,34 @@ const PERSONA_GENERATION_TIMEOUT_MS = 15 * 60 * 1000
 
 const personaGenerationInflight = new Map<string, Promise<unknown>>()
 
+export type AgentIntentionStatus =
+  | 'proposed'
+  | 'accepted'
+  | 'running'
+  | 'waiting'
+  | 'completed'
+  | 'failed'
+  | 'abandoned'
+  | 'expired'
+
+export interface AgentWorkProposal {
+  title: string
+  instruction: string
+  expected_outcome: string
+  source_event_id: string
+}
+
+export interface AgentIntention {
+  id: string
+  summary: string
+  reason_code: string
+  status: AgentIntentionStatus
+  proposal: AgentWorkProposal
+  created_at: string
+  updated_at: string
+  expires_at?: string
+}
+
 function sharePersonaGeneration<T>(
   key: string,
   start: () => Promise<T>,
@@ -209,16 +237,76 @@ export function normalizeCapabilityActions(raw: unknown): string[] {
 class AgentService {
   private baseUrl = '/agent'
 
-  /** 当前 SSE 请求；回答问题时主流与回答流会同时存在。 */
-  private activeAbortControllers = new Set<AbortController>()
+  /**
+   * SSE subscriptions split by panel mode so interrupting Chat cannot drop
+   * an in-flight Work run, and vice versa.
+   */
+  private activeAbortControllersByMode: Record<
+    'work' | 'chat',
+    Set<AbortController>
+  > = {
+    work: new Set<AbortController>(),
+    chat: new Set<AbortController>(),
+  }
 
   /**
    * 中断当前正在进行的 SSE 请求（客户端侧，用户意图）。
    *
    * 调用后 executeSSERequest 的 Promise 将 reject，且**不会**自动 re-subscribe 同一 run。
+   * Pass a mode to abort only that lane; omit to abort both.
    */
-  abortCurrentRequest(): void {
-    abortSseSubscriptions(this.activeAbortControllers, 'user')
+  abortCurrentRequest(mode?: 'work' | 'chat'): void {
+    const lanes: Array<'work' | 'chat'> = mode ? [mode] : ['work', 'chat']
+    for (const lane of lanes) {
+      abortSseSubscriptions(this.activeAbortControllersByMode[lane], 'user')
+    }
+  }
+
+  async listIntentions(): Promise<AgentIntention[]> {
+    const response = await apiService.get<{ intentions: AgentIntention[] }>(
+      `${this.baseUrl}/intentions`,
+    )
+    return response.intentions
+  }
+
+  async acceptIntention(
+    intentionId: string,
+  ): Promise<{ intention: AgentIntention; work: { mode: 'work'; input: string } }> {
+    return apiService.post(
+      `${this.baseUrl}/intentions/${encodeURIComponent(intentionId)}/accept`,
+    )
+  }
+
+  async dismissIntention(
+    intentionId: string,
+  ): Promise<{ intention: AgentIntention }> {
+    return apiService.post(
+      `${this.baseUrl}/intentions/${encodeURIComponent(intentionId)}/dismiss`,
+    )
+  }
+
+  async getAutonomyGrant(): Promise<{
+    grant: {
+      userId: number
+      allowedPermissions: string[]
+      revoked: boolean
+    } | null
+  }> {
+    return apiService.get(`${this.baseUrl}/autonomy`)
+  }
+
+  async putAutonomyGrant(
+    allowedPermissions: string[] = [],
+  ): Promise<{
+    grant: { userId: number; allowedPermissions: string[]; revoked: boolean }
+  }> {
+    return apiService.put(`${this.baseUrl}/autonomy`, { allowedPermissions })
+  }
+
+  async revokeAutonomyGrant(): Promise<{
+    grant: { userId: number; allowedPermissions: string[]; revoked: boolean }
+  }> {
+    return apiService.delete(`${this.baseUrl}/autonomy`)
   }
 
   /**
@@ -287,6 +375,7 @@ class AgentService {
       request,
       onProgress,
       false,
+      context?.mode === 'chat' ? 'chat' : 'work',
     )
   }
 
@@ -1045,6 +1134,7 @@ class AgentService {
     body?: unknown,
     onProgress?: ProgressCallback,
     abortPrevious = true,
+    lane: 'work' | 'chat' = 'work',
   ): Promise<AgentResponse> {
     return executeSSERequest({
       url,
@@ -1052,7 +1142,7 @@ class AgentService {
       body,
       onProgress,
       abortPrevious,
-      activeControllers: this.activeAbortControllers,
+      activeControllers: this.activeAbortControllersByMode[lane],
       pollTaskUntilComplete: (taskId, options) =>
         this.pollTaskUntilComplete(taskId, options),
     })

@@ -2594,6 +2594,13 @@ export const enUS: TranslationKeys = {
       chat: 'Chat',
       shortcut: 'Tab',
     },
+    intention: {
+      kicker: 'I noticed something',
+      accept: 'Take care of it',
+      continue: 'Continue',
+      dismiss: 'Not now',
+      failed: 'That did not go through. Please try again.',
+    },
     mood: {
       kicker: 'Mood',
     },
@@ -2659,6 +2666,7 @@ export const enUS: TranslationKeys = {
       personaElsewhere:
         'Schedules, skills, memories, and persona live in Settings › AI',
       doNotDisturb: "Don't reach out to me",
+      autonomyAllow: 'Let her handle things herself',
       lastRun: 'Last run: {time}',
       neverRun: 'Not run yet',
       remove: 'Delete',

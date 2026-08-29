@@ -2439,6 +2439,13 @@ export const zhCN: TranslationKeys = {
       chat: '聊天',
       shortcut: 'Tab',
     },
+    intention: {
+      kicker: '我注意到一件事',
+      accept: '交给你',
+      continue: '继续处理',
+      dismiss: '不用',
+      failed: '刚才没有处理成功，请再试一次。',
+    },
     mood: {
       kicker: '心情',
     },
@@ -2499,6 +2506,7 @@ export const zhCN: TranslationKeys = {
       emptyMemory: '还没有记忆。它记住的事会出现在这里，点开可以改',
       personaElsewhere: '定时、技能、记忆和人设都在「设置 · AI」里改',
       doNotDisturb: '别主动找我',
+      autonomyAllow: '允许她自己办事',
       lastRun: '上次运行：{time}',
       neverRun: '还没运行过',
       remove: '删除',

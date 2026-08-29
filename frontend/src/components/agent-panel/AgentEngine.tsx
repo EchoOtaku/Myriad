@@ -41,6 +41,12 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { usePageContentOptional } from '../../contexts/PageContentContext'
 import { agentFace } from '../../features/merope/agentFaceChannel'
+import {
+  cancelGatedSpeech,
+  deliverGatedLine,
+  faceSpeechGate,
+  openGatedReply,
+} from '../../features/merope/faceSpeechArbitration'
 import { agentService, executeFrontendAction } from '../../services/agent'
 import {
   collectReattachCandidates,
@@ -55,7 +61,6 @@ import { buildAgentPendingAction } from './agentAction'
 import { attachmentsForRequest } from './agentAttachments'
 import { getAgentContextConsent } from './agentContextConsent'
 import { setAgentSessionId } from './agentMessages'
-import { getAgentPanelMode } from './agentPanelMode'
 import {
   AGENT_PANEL_ACTION_EVENT,
   AGENT_PANEL_ANSWER_EVENT,
@@ -69,6 +74,7 @@ import {
   agentPanelSubmitDetail,
   dispatchAgentPanelOpen,
 } from './agentPanelEvents'
+import { getAgentPanelMode, useAgentPanelMode } from './agentPanelMode'
 import {
   clearAgentPendingAction,
   pushAgentStatusEvent,
@@ -124,23 +130,37 @@ export const AgentEngine: React.FC = () => {
   // 页面内容上下文
   const pageContentContext = usePageContentOptional()
 
-  const [isLoading, setIsLoading] = useState(false)
+  const [_isLoading, setIsLoading] = useState(false)
+  const mode = useAgentPanelMode()
 
-  // 对话系统核心状态
-
-  // 消息状态（提取到 useMessageState hook）
   const {
     messages,
     setMessages,
     messagesRef,
+    findMessage,
+    findMessageWhere,
     updateMessage,
     updateMessageExecution,
     addExecutionStep,
     updateExecutionStep,
-  } = useMessageState()
+  } = useMessageState(mode)
 
-  // 当前会话 ID（服务端持久化）
-  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [sessionIdByMode, setSessionIdByMode] = useState<
+    Record<AgentPanelMode, string | null>
+  >({
+    work: null,
+    chat: null,
+  })
+  const sessionId = sessionIdByMode[mode]
+  const setSessionId = useCallback(
+    (value: string | null, forMode: AgentPanelMode = mode) => {
+      setSessionIdByMode((prev) =>
+        prev[forMode] === value ? prev : { ...prev, [forMode]: value },
+      )
+      sessionIdsByModeRef.current[forMode] = value
+    },
+    [mode],
+  )
   const sessionIdsByModeRef = useRef<Record<AgentPanelMode, string | null>>({
     work: null,
     chat: null,
@@ -149,6 +169,12 @@ export const AgentEngine: React.FC = () => {
     work: false,
     chat: false,
   })
+  const loadingMessageIdByModeRef = useRef<Record<AgentPanelMode, string | null>>(
+    {
+      work: null,
+      chat: null,
+    },
+  )
 
   const handleSendRef =
     useRef<
@@ -156,6 +182,7 @@ export const AgentEngine: React.FC = () => {
         text: string,
         attachments?: readonly AgentAttachment[],
         mode?: AgentPanelMode,
+        intentionId?: string,
       ) => Promise<void>
     >(null)
 
@@ -167,17 +194,23 @@ export const AgentEngine: React.FC = () => {
 
   // Refs
   const handleAgentResponseRef =
-    useRef<(messageId: string, response: AgentResponse) => Promise<void>>(null)
+    useRef<
+      (
+        messageId: string,
+        response: AgentResponse,
+        mode?: AgentPanelMode,
+      ) => Promise<void>
+    >(null)
   const createProgressHandlerRef = useRef<
     ((assistantMessageId: string) => (event: ProgressEvent) => void) | null
   >(null)
   const answerQuestionRef =
     useRef<(messageId: string, answer: string) => void>(null)
-  const sessionTitleSetRef = useRef(false)
+  const sessionTitleSetByModeRef = useRef<Record<AgentPanelMode, boolean>>({
+    work: false,
+    chat: false,
+  })
   const handledResponseKeysRef = useRef(new Set<string>())
-  const loadingMessageIdRef = useRef<string | null>(null)
-  const sessionIdRef = useRef(sessionId)
-  sessionIdRef.current = sessionId
 
   // 检测是否有待回答的问题（用于将主输入框路由到回答逻辑）
   const pendingAnswerMsg = useMemo(() => {
@@ -199,18 +232,22 @@ export const AgentEngine: React.FC = () => {
 
   const startNewSession = useCallback(async () => {
     // 新建会话只切换前端视图。旧任务由后端 run 持续执行，并通过通知中心报告状态。
-    if (loadingMessageIdRef.current) {
-      agentFace.cancel(loadingMessageIdRef.current)
+    const current = getAgentPanelMode()
+    const loadingId = loadingMessageIdByModeRef.current[current]
+    if (loadingId) {
+      cancelGatedSpeech(agentFace, faceSpeechGate, loadingId)
     }
-    loadingMessageIdRef.current = null
-    setIsLoading(false)
-    resetAgentStatus()
-    const mode = getAgentPanelMode()
-    sessionIdsByModeRef.current[mode] = null
-    setSessionId(null)
-    setMessages([])
-    sessionTitleSetRef.current = false
-  }, [])
+    loadingByModeRef.current[current] = false
+    loadingMessageIdByModeRef.current[current] = null
+    setIsLoading(
+      loadingByModeRef.current.work || loadingByModeRef.current.chat,
+    )
+    if (current === 'work') resetAgentStatus()
+    sessionIdsByModeRef.current[current] = null
+    setSessionId(null, current)
+    setMessages([], current)
+    sessionTitleSetByModeRef.current[current] = false
+  }, [setSessionId, setMessages])
 
   /**
    * 将已加载会话中的非终态任务重新挂到 UI，并订阅 run 进度流。
@@ -274,7 +311,8 @@ export const AgentEngine: React.FC = () => {
 
           if (!runId) continue
 
-          loadingMessageIdRef.current = candidate.messageId
+          loadingMessageIdByModeRef.current.work = candidate.messageId
+          loadingByModeRef.current.work = true
           setIsLoading(true)
           setAgentStatusThinking()
           const onProgress = createProgressHandlerRef.current?.(
@@ -287,14 +325,17 @@ export const AgentEngine: React.FC = () => {
               handleAgentResponseRef.current?.(candidate.messageId, response)
             })
             .catch((error) => {
-              agentFace.cancel(candidate.messageId)
+              cancelGatedSpeech(agentFace, faceSpeechGate, candidate.messageId)
               console.warn('[AgentEngine] reattach stream ended:', error)
             })
             .finally(() => {
-              if (loadingMessageIdRef.current === candidate.messageId) {
-                loadingMessageIdRef.current = null
-                setIsLoading(false)
+              loadingByModeRef.current.work = false
+              if (loadingMessageIdByModeRef.current.work === candidate.messageId) {
+                loadingMessageIdByModeRef.current.work = null
               }
+              setIsLoading(
+                loadingByModeRef.current.work || loadingByModeRef.current.chat,
+              )
             })
           // 同一时刻只恢复一条 live stream
           break
@@ -313,8 +354,8 @@ export const AgentEngine: React.FC = () => {
       requestedMode: AgentPanelMode = session.mode ?? getAgentPanelMode(),
     ) => {
       sessionIdsByModeRef.current[requestedMode] = session.id
-      setSessionId(session.id)
-      sessionTitleSetRef.current = !!session.title
+      setSessionId(session.id, requestedMode)
+      sessionTitleSetByModeRef.current[requestedMode] = !!session.title
 
       try {
         const sessionMessages = await agentService.getSessionMessages(
@@ -384,6 +425,12 @@ export const AgentEngine: React.FC = () => {
           if (pq && typeof pq.question === 'string') {
             pendingQuestion = {
               questionId: String(pq.questionId ?? pq.question_id ?? ''),
+              confirmationId:
+                typeof pq.confirmationId === 'string'
+                  ? pq.confirmationId
+                  : typeof pq.confirmation_id === 'string'
+                    ? pq.confirmation_id
+                    : undefined,
               questionType: String(
                 pq.questionType ?? pq.question_type ?? 'free_text',
               ),
@@ -392,6 +439,18 @@ export const AgentEngine: React.FC = () => {
               options: pq.options as PendingQuestion['options'],
               required:
                 typeof pq.required === 'boolean' ? pq.required : undefined,
+              riskLevel:
+                typeof pq.riskLevel === 'string'
+                  ? pq.riskLevel
+                  : typeof pq.risk_level === 'string'
+                    ? pq.risk_level
+                    : undefined,
+              expiresInSeconds:
+                typeof pq.expiresInSeconds === 'number'
+                  ? pq.expiresInSeconds
+                  : typeof pq.expires_in_seconds === 'number'
+                    ? pq.expires_in_seconds
+                    : undefined,
               defaultValue:
                 typeof pq.defaultValue === 'string'
                   ? pq.defaultValue
@@ -415,7 +474,7 @@ export const AgentEngine: React.FC = () => {
             pendingQuestion,
           }
         })
-        setMessages(loaded)
+        setMessages(loaded, requestedMode)
         // 刷新 / 通知打开：探测非终态任务并 re-subscribe
         void reattachLiveWork(loaded, reattachHints)
       } catch (error) {
@@ -491,7 +550,12 @@ export const AgentEngine: React.FC = () => {
       if (!detail) return
       // 不再把自己显示出来 —— 新 UI 的 Full 层已经在画这段对话了，
       // 两个面板同时开着只会让人不知道该看哪个。这边只管跑。
-      void handleSendRef.current?.(detail.text, detail.attachments, detail.mode)
+      void handleSendRef.current?.(
+        detail.text,
+        detail.attachments,
+        detail.mode,
+        detail.intentionId,
+      )
     }
     window.addEventListener(AGENT_PANEL_SUBMIT_EVENT, handleSubmit)
     return () =>
@@ -505,7 +569,7 @@ export const AgentEngine: React.FC = () => {
       const detail = agentPanelActionDetail(event)
       if (!detail) return
       clearAgentPendingAction(detail.id)
-      const target = messagesRef.current.find(
+      const target = findMessageWhere(
         (message) =>
           message.pendingQuestion?.confirmationId === detail.id &&
           !message.selectedAnswer,
@@ -519,7 +583,7 @@ export const AgentEngine: React.FC = () => {
     window.addEventListener(AGENT_PANEL_ACTION_EVENT, handleDecision)
     return () =>
       window.removeEventListener(AGENT_PANEL_ACTION_EVENT, handleDecision)
-  }, [messagesRef])
+  }, [findMessageWhere])
 
   // 界面上点的那个选项。走的是和打字回答同一条路。
   useEffect(() => {
@@ -563,17 +627,18 @@ export const AgentEngine: React.FC = () => {
   // 中断
 
   const interruptCurrentTask = useCallback(async () => {
-    // 用户意图中断：标记 abort intent=user，SSE 层不会 re-subscribe 同一 run
-    agentService.abortCurrentRequest()
+    const current = getAgentPanelMode()
+    // Only abort this mode's SSE. Work and Chat can be in flight together.
+    agentService.abortCurrentRequest(current)
 
-    const processingMsgs = messages.filter(
+    const processingMsgs = messagesRef.current[current].filter(
       (m) =>
         m.taskExecution?.status === 'processing' ||
         m.taskExecution?.status === 'waiting' ||
         m.taskExecution?.status === 'cancelling',
     )
     for (const msg of processingMsgs) {
-      agentFace.cancel(msg.id)
+      cancelGatedSpeech(agentFace, faceSpeechGate, msg.id)
       const taskId = msg.taskExecution?.taskId
       // 先进入 cancelling，避免乐观地显示 error 而后端仍在跑
       updateMessageExecution(msg.id, { status: 'cancelling' })
@@ -605,10 +670,13 @@ export const AgentEngine: React.FC = () => {
         })
       }
     }
-    loadingMessageIdRef.current = null
-    setIsLoading(false)
-    resetAgentStatus()
-  }, [messages, updateMessage, updateMessageExecution])
+    loadingByModeRef.current[current] = false
+    loadingMessageIdByModeRef.current[current] = null
+    setIsLoading(
+      loadingByModeRef.current.work || loadingByModeRef.current.chat,
+    )
+    if (current === 'work') resetAgentStatus()
+  }, [messagesRef, updateMessage, updateMessageExecution, t])
   // 界面上按的「开新对话」「停下」。真正的动作在这边，界面只递一个意思。
   useEffect(() => {
     const handleCommand = (event: Event) => {
@@ -627,7 +695,13 @@ export const AgentEngine: React.FC = () => {
     (assistantMessageId: string, mode: AgentPanelMode = 'work') => {
       let streamedSummary = ''
       let streamedThinking = ''
-      const utterance = agentFace.openReply(assistantMessageId, locale)
+      const utterance = openGatedReply(
+        agentFace,
+        faceSpeechGate,
+        mode,
+        assistantMessageId,
+        locale,
+      )
 
       const publishThinking = (text: string) => {
         streamedThinking = text
@@ -642,8 +716,7 @@ export const AgentEngine: React.FC = () => {
           case 'run_started': {
             if (event.sessionId) {
               sessionIdsByModeRef.current[mode] = event.sessionId
-              setSessionId(event.sessionId)
-              sessionIdRef.current = event.sessionId
+              setSessionId(event.sessionId, mode)
             }
             if (event.runId) {
               updateMessageExecution(assistantMessageId, {
@@ -655,16 +728,14 @@ export const AgentEngine: React.FC = () => {
 
           case 'session_created': {
             sessionIdsByModeRef.current[mode] = event.sessionId
-            setSessionId(event.sessionId)
-            // 同步更新 ref，确保后续同帧事件能立即读到
-            sessionIdRef.current = event.sessionId
+            setSessionId(event.sessionId, mode)
             break
           }
 
           case 'session_title_updated': {
             // 后端并行 AI 生成的标题通过 SSE 推送
             if (event.title) {
-              sessionTitleSetRef.current = true
+              sessionTitleSetByModeRef.current[mode] = true
             }
             break
           }
@@ -749,6 +820,7 @@ export const AgentEngine: React.FC = () => {
                       }
                     : m,
                 ),
+              mode,
               )
             }
             break
@@ -859,7 +931,7 @@ export const AgentEngine: React.FC = () => {
 
           case 'performance_plan': {
             const performanceEvent = event as PerformancePlanEvent
-            agentFace.deliver({
+            deliverGatedLine(agentFace, faceSpeechGate, mode, {
               messageId: assistantMessageId,
               performance: performanceEvent.performance,
             })
@@ -885,8 +957,8 @@ export const AgentEngine: React.FC = () => {
                 status: completedEvent.success ? 'completed' : 'error',
                 progress: 100,
               })
-              if (loadingMessageIdRef.current === assistantMessageId) {
-                loadingMessageIdRef.current = null
+              if (loadingMessageIdByModeRef.current[mode] === assistantMessageId) {
+                loadingMessageIdByModeRef.current[mode] = null
                 setIsLoading(false)
               }
             }
@@ -929,6 +1001,7 @@ export const AgentEngine: React.FC = () => {
                   },
                 }
               }),
+            mode,
             )
             break
           }
@@ -985,6 +1058,7 @@ export const AgentEngine: React.FC = () => {
                   },
                 }
               }),
+            mode,
             )
             break
           }
@@ -997,6 +1071,8 @@ export const AgentEngine: React.FC = () => {
       addExecutionStep,
       updateExecutionStep,
       locale,
+      setSessionId,
+      setMessages,
     ],
   )
 
@@ -1008,7 +1084,8 @@ export const AgentEngine: React.FC = () => {
     async (
       text: string,
       attachments: readonly AgentAttachment[] = [],
-      mode: AgentPanelMode = 'work',
+      mode: AgentPanelMode = getAgentPanelMode(),
+      intentionId?: string,
     ) => {
       const messageText = text.trim()
       if (!messageText && attachments.length === 0) return
@@ -1041,7 +1118,7 @@ export const AgentEngine: React.FC = () => {
             content: loginHint,
             createdAt: new Date(),
           },
-        ])
+        ], mode)
         window.setTimeout(() => {
           navigate(`/login?redirect=${encodeURIComponent(location.pathname)}`)
         }, 600)
@@ -1074,7 +1151,7 @@ export const AgentEngine: React.FC = () => {
           createdAt: new Date(),
           ...(attachments.length ? { attachments: [...attachments] } : {}),
         }
-        setMessages((prev) => [...prev, userMessage])
+        setMessages((prev) => [...prev, userMessage], mode)
         try {
           const result = await agentService.steerSession(
             requestText,
@@ -1099,7 +1176,7 @@ export const AgentEngine: React.FC = () => {
               }),
               createdAt: new Date(),
             },
-          ])
+          ], mode)
         }
         return
       }
@@ -1133,8 +1210,8 @@ export const AgentEngine: React.FC = () => {
         },
       }
 
-      setMessages((prev) => [...prev, userMessage, assistantMessage])
-      loadingMessageIdRef.current = assistantMsgId
+      setMessages((prev) => [...prev, userMessage, assistantMessage], mode)
+      loadingMessageIdByModeRef.current[mode] = assistantMsgId
       loadingByModeRef.current[mode] = true
       setIsLoading(true)
       setAgentStatusThinking()
@@ -1149,6 +1226,7 @@ export const AgentEngine: React.FC = () => {
           context.sessionId = modeSessionId
         }
         context.mode = mode
+        if (intentionId) context.intentionId = intentionId
 
         // 页面内容
         const customData: Record<string, unknown> = {}
@@ -1173,10 +1251,10 @@ export const AgentEngine: React.FC = () => {
         )
 
         if (handleAgentResponseRef.current) {
-          handleAgentResponseRef.current(assistantMsgId, response)
+          handleAgentResponseRef.current(assistantMsgId, response, mode)
         }
       } catch (error) {
-        agentFace.cancel(assistantMsgId)
+        cancelGatedSpeech(agentFace, faceSpeechGate, assistantMsgId)
         // A budget rejection arrives on the same channel as a real failure and
         // reads as "出错了" without this: the stream is already HTTP 200 by then,
         // so the quota code on the error event is the only signal.
@@ -1225,11 +1303,12 @@ export const AgentEngine: React.FC = () => {
               },
             }
           }),
+          mode,
         )
       } finally {
         loadingByModeRef.current[mode] = false
-        if (loadingMessageIdRef.current === assistantMsgId) {
-          loadingMessageIdRef.current = null
+        if (loadingMessageIdByModeRef.current[mode] === assistantMsgId) {
+          loadingMessageIdByModeRef.current[mode] = null
         }
         setIsLoading(
           loadingByModeRef.current.work || loadingByModeRef.current.chat,
@@ -1257,7 +1336,11 @@ export const AgentEngine: React.FC = () => {
   // 处理 Agent 响应
 
   const handleAgentResponse = useCallback(
-    async (messageId: string, response: AgentResponse) => {
+    async (
+      messageId: string,
+      response: AgentResponse,
+      mode: AgentPanelMode = 'work',
+    ) => {
       const taskData = response.task as Record<string, unknown> | undefined
       let pendingQuestion = taskData?.pendingQuestion as
         PendingQuestion | undefined
@@ -1326,7 +1409,7 @@ export const AgentEngine: React.FC = () => {
               : ''),
           progress: 100,
         })
-        agentFace.deliver({
+        deliverGatedLine(agentFace, faceSpeechGate, mode, {
           messageId,
           text: pendingQuestion.question,
           locale,
@@ -1439,7 +1522,7 @@ export const AgentEngine: React.FC = () => {
 
       // 合并：SSE 实时收集的 + fallback，去重
       const existingImageUrls: string[] = ((): string[] => {
-        const msg = messagesRef.current.find((m) => m.id === messageId)
+        const msg = findMessage(messageId)
         return msg?.imageUrls ?? []
       })()
       const mergedImageUrls = [...existingImageUrls]
@@ -1463,7 +1546,7 @@ export const AgentEngine: React.FC = () => {
 
       const spokenReply = displayMessage || response.message
       if (isSuccess) {
-        agentFace.deliver({
+        deliverGatedLine(agentFace, faceSpeechGate, mode, {
           messageId,
           text: spokenReply,
           locale,
@@ -1514,7 +1597,7 @@ export const AgentEngine: React.FC = () => {
         : undefined
 
       const liveSteps =
-        messagesRef.current.find((m) => m.id === messageId)?.taskExecution
+        findMessage(messageId)?.taskExecution
           ?.steps ?? []
       const historySteps = executionStepsFromHistory(
         stepHistory as Array<Record<string, unknown>> | undefined,
@@ -1631,7 +1714,7 @@ export const AgentEngine: React.FC = () => {
 
   const answerQuestion = useCallback(
     async (messageId: string, answer: string) => {
-      const msg = messages.find((m) => m.id === messageId)
+      const msg = findMessage(messageId)
       if (!msg?.taskExecution?.taskId || !msg.pendingQuestion) return
 
       // 敏感确认过期后禁止 Confirm（Cancel 仍可关卡）
@@ -1663,7 +1746,8 @@ export const AgentEngine: React.FC = () => {
         status: 'processing',
         progress: 50,
       })
-      loadingMessageIdRef.current = messageId
+      loadingMessageIdByModeRef.current.work = messageId
+      loadingByModeRef.current.work = true
       setIsLoading(true)
       setAgentStatusThinking()
 
@@ -1673,32 +1757,34 @@ export const AgentEngine: React.FC = () => {
               msg.pendingQuestion.confirmationId,
               answer === 'confirm',
               undefined,
-              createProgressHandler(messageId),
+              createProgressHandler(messageId, 'work'),
             )
           : await agentService.answerQuestionWithProgress(
               msg.taskExecution.taskId,
               msg.pendingQuestion.questionId,
               answer,
-              createProgressHandler(messageId),
+              createProgressHandler(messageId, 'work'),
             )
-        handleAgentResponseRef.current?.(messageId, response)
+        handleAgentResponseRef.current?.(messageId, response, 'work')
       } catch (error) {
-        agentFace.cancel(messageId)
+        cancelGatedSpeech(agentFace, faceSpeechGate, messageId)
         const errorMsg = userFacingError(error, t.errors.agentConfirmFailed)
         updateMessage(messageId, {
           content: format(t.agentPanel.answerFailed, { error: errorMsg }),
         })
         updateMessageExecution(messageId, { status: 'error' })
       } finally {
-        // 安全保障：回答流完成后确保 isLoading 归位
-        if (loadingMessageIdRef.current === messageId) {
-          loadingMessageIdRef.current = null
-          setIsLoading(false)
+        loadingByModeRef.current.work = false
+        if (loadingMessageIdByModeRef.current.work === messageId) {
+          loadingMessageIdByModeRef.current.work = null
         }
+        setIsLoading(
+          loadingByModeRef.current.work || loadingByModeRef.current.chat,
+        )
       }
     },
     [
-      messages,
+      findMessage,
       updateMessage,
       updateMessageExecution,
       createProgressHandler,

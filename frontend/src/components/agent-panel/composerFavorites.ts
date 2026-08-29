@@ -1,16 +1,33 @@
 /**
  * 输入行收藏：开开关关面板不该反复打 presets。
- * 收藏有增删时清掉，下次打开再读。
+ * 收藏有增删时清掉，下次打开再读。存进常用后通知输入行立刻重读。
  */
 
 import { agentService } from '../../services/agent'
 
-export type ComposerFavorite = { id: number; input: string; title?: string }
+export interface ComposerFavorite {
+  id: number
+  input: string
+  title?: string
+}
 
-const FAVORITE_CAP = 4
+/** 中间列能横滑，不必只留三四枚。 */
+const FAVORITE_CAP = 12
 
 let cache: ComposerFavorite[] | null = null
 let inflight: Promise<ComposerFavorite[]> | null = null
+const listeners = new Set<() => void>()
+
+function notifyComposerFavorites(): void {
+  for (const listener of listeners) listener()
+}
+
+export function subscribeComposerFavorites(onChange: () => void): () => void {
+  listeners.add(onChange)
+  return () => {
+    listeners.delete(onChange)
+  }
+}
 
 export function loadComposerFavorites(): Promise<ComposerFavorite[]> {
   if (cache) return Promise.resolve(cache)
@@ -37,4 +54,5 @@ export function forgetComposerFavorite(id: number): void {
 export function invalidateComposerFavorites(): void {
   cache = null
   inflight = null
+  notifyComposerFavorites()
 }

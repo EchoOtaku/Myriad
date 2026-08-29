@@ -103,6 +103,11 @@ describe('agent panel motion contract', () => {
     assert.match(css, /presence:not\(\[data-kind='row'\]\)/)
     assert.match(pan, /dataset\.phase === 'closing'/)
     assert.match(pan, /conversationShellLimit/)
+    assert.match(pan, /followComposer/)
+    assert.match(pan, /attributeFilter: \['data-mode'\]/)
+    assert.match(pan, /resize\.observe\(composer/)
+    assert.match(pan, /now < followUntil/)
+    assert.match(pan, /following && nearBottom && !dragging/)
   })
 
   it('does not let conversation surfaces run a second open/close', () => {
@@ -205,6 +210,126 @@ describe('agent panel motion contract', () => {
     )
   })
 
+  it('switches work/chat on a fixed stage: ends stay, middle and face only fade', () => {
+    const composer = readFileSync(
+      new URL('./AgentPanelComposer.tsx', import.meta.url),
+      'utf8',
+    )
+    const panel = readFileSync(
+      new URL('./AgentPanel.tsx', import.meta.url),
+      'utf8',
+    )
+    const faceSlot = block(
+      css,
+      '.agent-panel-face-slot {',
+      ".agent-panel-composer[data-mode='chat'] .agent-panel-face-slot {",
+    )
+    assert.match(faceSlot, /position:\s*absolute/)
+    assert.match(faceSlot, /left:\s*50%/)
+    assert.match(faceSlot, /translate:\s*-50% var\(--agent-face-lift\)/)
+    assert.match(
+      faceSlot,
+      /opacity var\(--agent-move\) var\(--agent-ease-exit\)/,
+    )
+    assert.doesNotMatch(faceSlot, /transition:[\s\S]*(width|height|margin)/)
+    assert.match(
+      css,
+      /\[data-mode='chat'\] \.agent-panel-face-slot \{[\s\S]*?translate:\s*-50% 0/,
+    )
+    assert.match(css, /--agent-mode-lag:\s*40ms/)
+    assert.match(
+      css,
+      /\[data-mode='chat'\] \.agent-panel-face-slot \{[\s\S]*?var\(--agent-mode-lag\)/,
+    )
+    assert.match(
+      css,
+      /\.agent-panel-work-chrome \{[\s\S]*?var\(--agent-mode-lag\)/,
+    )
+    assert.match(
+      css,
+      /\.agent-panel-end-layer\[data-on='true'\] \{[\s\S]*?var\(--agent-mode-lag\)/,
+    )
+    assert.match(
+      css,
+      /\.agent-panel-composer-row \{[\s\S]*?position:\s*relative/,
+    )
+    assert.match(css, /--agent-face-reserve/)
+    assert.match(
+      css,
+      /\.agent-panel-composer \{[\s\S]*?padding-top var\(--agent-move\) var\(--agent-ease-exit\)/,
+    )
+    assert.match(
+      css,
+      /\.agent-panel-composer\[data-mode='chat'\] \{[\s\S]*?padding-top:\s*var\(--agent-face-reserve\)/,
+    )
+    assert.match(
+      css,
+      /\.agent-panel-composer\[data-mode='chat'\] \{[\s\S]*?padding-top var\(--agent-move\) var\(--agent-ease\)/,
+    )
+    const modeLabel = block(
+      css,
+      '.agent-panel-mode-labels > span {',
+      ".agent-panel-mode-labels > span[data-on='true'] {",
+    )
+    const endLayer = block(
+      css,
+      '.agent-panel-end-layer {',
+      ".agent-panel-end-layer[data-on='true'] {",
+    )
+    const workChrome = block(
+      css,
+      '.agent-panel-work-chrome {',
+      ".agent-panel-composer[data-mode='chat'] .agent-panel-work-chrome {",
+    )
+    assert.match(
+      css,
+      /\.agent-panel-mode-labels > span \{[\s\S]*?grid-area:\s*1 \/ 1/,
+    )
+    assert.match(css, /\.agent-panel-end-layer \{[\s\S]*?grid-area:\s*1 \/ 1/)
+    assert.match(
+      css,
+      /\.agent-panel-end-slot \{[\s\S]*?place-items:\s*center end/,
+    )
+    assert.doesNotMatch(modeLabel, /visibility/)
+    assert.doesNotMatch(endLayer, /visibility/)
+    assert.doesNotMatch(workChrome, /visibility/)
+    assert.match(
+      css,
+      /\.agent-panel-composer-tags button\.agent-panel-tag \{[\s\S]*?transition-property:\s*background/,
+    )
+    assert.match(
+      css,
+      /\.agent-panel-composer-tags \{[\s\S]*?grid-template-columns:\s*auto minmax\(0, 1fr\) auto/,
+    )
+    assert.match(css, /\.agent-panel-tag-mid \{/)
+    assert.match(
+      css,
+      /\.agent-panel-work-chrome \{[\s\S]*?overflow:\s*auto hidden/,
+    )
+    assert.match(css, /\.agent-panel-work-chrome \{[\s\S]*?flex:\s*1 1 auto/)
+    assert.match(
+      css,
+      /\.agent-panel-work-chrome \{[\s\S]*?scroll-snap-type:\s*x proximity/,
+    )
+    assert.match(css, /\[data-overflow='end'\]/)
+    assert.match(css, /\[data-overflow='both'\]/)
+    assert.match(
+      css,
+      /\[data-mode='chat'\] \.agent-panel-work-chrome \{[^}]*opacity:\s*0/,
+    )
+    assert.doesNotMatch(
+      css,
+      /\[data-mode='chat'\] \.agent-panel-work-chrome \{[^}]*width:\s*0/,
+    )
+    assert.match(composer, /agent-panel-mode-labels/)
+    assert.match(composer, /agent-panel-tag-mid/)
+    assert.match(composer, /agent-panel-end-layer/)
+    assert.doesNotMatch(composer, /AgentSwap\s+id=\{mode\}/)
+    assert.doesNotMatch(composer, /id=\{chatting \? 'mood' : 'trail'\}/)
+    assert.doesNotMatch(panel, /undoOffer && mode === 'work'/)
+    assert.doesNotMatch(panel, /messageCount > 0 && mode === 'work'/)
+  })
+
   it('collapses tag chips beside the plus, not the send button', () => {
     const start = block(
       css,
@@ -231,6 +356,7 @@ describe('agent panel motion contract', () => {
       'utf8',
     )
     assert.match(panel, /className="agent-panel-aurora"/)
+    assert.match(panel, /data-stage=\{stage\}/)
     assert.match(panel, /className="agent-panel-aurora-flow"/)
     assert.match(panel, /className="agent-panel-aurora-prism"/)
     assert.doesNotMatch(panel, /agent-panel-aurora-prism-rev/)
@@ -253,6 +379,35 @@ describe('agent panel motion contract', () => {
     assert.match(panel, /aria-hidden="true"/)
     assert.match(css, /\.agent-panel-aurora \{/)
     assert.match(css, /z-index:\s*60/)
+    assert.match(css, /--agent-aurora-rise:\s*40px/)
+    const auroraRest = block(
+      css,
+      '--agent-aurora-c-min:',
+      'html.dark .agent-panel-aurora {',
+    )
+    assert.match(auroraRest, /opacity:\s*0/)
+    assert.doesNotMatch(auroraRest, /opacity:\s*1/)
+    assert.match(
+      css,
+      /\.agent-panel-aurora\[data-phase='settled'\][\s\S]*?opacity:\s*1/,
+    )
+    assert.match(
+      css,
+      /\[data-stage='full'\]:not\(\[data-phase='closing'\]\)[\s\S]*?opacity:\s*1/,
+    )
+    assert.doesNotMatch(
+      css,
+      /\.agent-panel-aurora\[data-phase='opening'\]:not\(\[data-stage='full'\]\)/,
+    )
+    assert.match(
+      css,
+      /\.agent-panel-aurora\[data-phase='closing'\] \{[\s\S]*?transition-delay:\s*0ms/,
+    )
+    assert.match(
+      css,
+      /opacity var\(--agent-aurora-shift\) var\(--agent-aurora-enter-ease\) 90ms/,
+    )
+    assert.doesNotMatch(css, /\.agent-panel-aurora\[data-phase='opening'\] \{/)
     assert.match(css, /@keyframes agent-panel-aurora-drift/)
     assert.match(css, /@keyframes agent-panel-aurora-drift-cross/)
     assert.match(css, /@keyframes agent-panel-aurora-ribbon/)
