@@ -1,4 +1,8 @@
-import type { StructuredPersona, UpperBodyVisualIdentity, UpperBodyVisualIdentityKey } from '../../components/agent/onboarding/onboardingTypes'
+import type {
+  StructuredPersona,
+  UpperBodyVisualIdentity,
+  UpperBodyVisualIdentityKey,
+} from '../../components/agent/onboarding/onboardingTypes'
 import type { AgentPersona } from '../../services/agent/agentApi'
 import type { RigCharacterHandle } from './rig/RigCharacter'
 import type { MeropeRigManifest } from './rig/types'
@@ -15,7 +19,6 @@ import {
   flattenPersona,
   parseFlattenedPersona,
   personaFromApi,
-
   visualIdentityFromProfile,
 } from '../../components/agent/onboarding/onboardingTypes'
 import PersonaIdentityView from '../../components/agent/onboarding/ui/PersonaIdentityView'
@@ -35,14 +38,10 @@ import {
   getSiteFace,
   updateSeeThroughToken,
 } from './api'
-import {
-  commitRigPsdAsset,
-  preflightRigPsdAsset,
-} from './assets/pipeline'
+import { commitRigPsdAsset, preflightRigPsdAsset } from './assets/pipeline'
 import { notifyFaceUpdated } from './events'
+import { useRigPreviewMotionLifecycle } from './motion/useRigMotionLifecycle'
 import RigCharacter from './rig/RigCharacter'
-import { useRigPerformanceLifecycle } from './useRigPerformanceLifecycle'
-import { useRigSpeechLifecycle } from './useRigSpeechLifecycle'
 import './merope.css'
 import './merope-motion-home.css'
 
@@ -81,14 +80,13 @@ interface Props {
 
 export default function SiteMotionWorkbench({ mood, activity }: Props) {
   const { t } = useI18n()
-  const [rigManifest, setRigManifest] = useState<MeropeRigManifest | null>(
-    null,
-  )
+  const [rigManifest, setRigManifest] = useState<MeropeRigManifest | null>(null)
   const [portraitUrl, setPortraitUrl] = useState<string | null>(null)
   const [generationFingerprint, setGenerationFingerprint] = useState<
     string | null
   >(null)
-  const [seeThroughTokenConfigured, setSeeThroughTokenConfigured] = useState(false)
+  const [seeThroughTokenConfigured, setSeeThroughTokenConfigured] =
+    useState(false)
   const [error, setError] = useState('')
   const [generating, setGenerating] = useState(false)
   const [visualIdentity, setVisualIdentity] =
@@ -104,8 +102,7 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
     useState<StructuredPersona | null>(null)
   const [studioHost, setStudioHost] = useState<HTMLDivElement | null>(null)
   const rigCharacterRef = useRef<RigCharacterHandle>(null)
-  useRigPerformanceLifecycle(rigCharacterRef)
-  useRigSpeechLifecycle(rigCharacterRef)
+  useRigPreviewMotionLifecycle(rigCharacterRef)
   const o = t.agentPersona.onboarding
   const visualLabels: Record<UpperBodyVisualIdentityKey, string> = {
     faceDesign: o.visualFaceDesign,
@@ -131,15 +128,14 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
 
   useEffect(() => {
     let cancelled = false
-    void loadFace()
-      .catch((reason) => {
-        if (!cancelled) {
-          setRigManifest(null)
-          setPortraitUrl(null)
-          setGenerationFingerprint(null)
-          setError(userFacingError(reason, t.merope.loadFailed))
-        }
-      })
+    void loadFace().catch((reason) => {
+      if (!cancelled) {
+        setRigManifest(null)
+        setPortraitUrl(null)
+        setGenerationFingerprint(null)
+        setError(userFacingError(reason, t.merope.loadFailed))
+      }
+    })
     return () => {
       cancelled = true
     }
@@ -427,8 +423,8 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
 
   const motionEnabled = Boolean(
     rigManifest?.anime25dPlayback &&
-      isAnime25DPlayback(rigManifest.anime25dPlayback) &&
-      rigManifest.textures[0]?.url,
+    isAnime25DPlayback(rigManifest.anime25dPlayback) &&
+    rigManifest.textures[0]?.url,
   )
 
   const portraitStage = (
@@ -588,7 +584,9 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
         appearance="settings"
         name={personaSnapshot?.name.trim() || 'Arael'}
         disabled={generating}
-        onImported={(next) => void saveStructuredPersona(next, { resetVisual: true })}
+        onImported={(next) =>
+          void saveStructuredPersona(next, { resetVisual: true })
+        }
       />
       {structuredPersona ? (
         <PersonaIdentityView
@@ -681,7 +679,10 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
 
   return (
     <div className="merope-motion-page">
-      <aside className="merope-motion-page__stage" aria-label={t.merope.visualTitle}>
+      <aside
+        className="merope-motion-page__stage"
+        aria-label={t.merope.visualTitle}
+      >
         {portraitStage}
       </aside>
       <div className="merope-motion-page__settings">

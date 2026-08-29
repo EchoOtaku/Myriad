@@ -2,6 +2,7 @@ import type { RefObject } from 'react'
 import type { RigCharacterHandle } from './rig/RigCharacter'
 import type { SpeechOccupancy } from './speechLifecycle'
 import { useEffect } from 'react'
+import { getRigMotionCoordinator } from './motion/coordinator'
 import { MEROPE_SPEECH_EVENT, meropeSpeechEventDetail } from './speechEvents'
 import { SpeechLifecycleController } from './speechLifecycle'
 
@@ -11,6 +12,7 @@ export function useRigSpeechLifecycle(
   occupancy?: SpeechOccupancy,
 ): void {
   useEffect(() => {
+    const coordinator = getRigMotionCoordinator()
     const controller = new SpeechLifecycleController(
       {
         setSpeechActive: (active) => rigRef.current?.setSpeechActive(active),
@@ -23,6 +25,10 @@ export function useRigSpeechLifecycle(
       },
       undefined,
       occupancy,
+      (busy) => {
+        if (busy) coordinator.claim('speech', ['mouth'])
+        else coordinator.release('speech', ['mouth'])
+      },
     )
     const onSpeech = (event: Event) => {
       const detail = meropeSpeechEventDetail(

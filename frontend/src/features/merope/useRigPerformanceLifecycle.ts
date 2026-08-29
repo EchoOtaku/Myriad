@@ -1,6 +1,8 @@
 import type { RefObject } from 'react'
 import type { RigCharacterHandle } from './rig/RigCharacter'
 import { useEffect } from 'react'
+import { getRigMotionCoordinator } from './motion/coordinator'
+import { performanceOccupiedChannels } from './motion/performanceChannels'
 import {
   MEROPE_PERFORMANCE_EVENT,
   meropePerformanceEventDetail,
@@ -13,10 +15,22 @@ export function useRigPerformanceLifecycle(
   rigRef: RefObject<RigCharacterHandle | null>,
 ): void {
   useEffect(() => {
+    const coordinator = getRigMotionCoordinator()
     const controller = new PerformanceLifecycleController({
-      playMotionPlan: (performance) =>
-        rigRef.current?.playMotionPlan(performance) ?? false,
-      stopMotionPlan: () => rigRef.current?.stopMotionPlan(),
+      playMotionPlan: (performance) => {
+        const accepted = rigRef.current?.playMotionPlan(performance) ?? false
+        if (accepted) {
+          coordinator.claim(
+            'performance',
+            performanceOccupiedChannels(performance),
+          )
+        }
+        return accepted
+      },
+      stopMotionPlan: () => {
+        coordinator.release('performance')
+        rigRef.current?.stopMotionPlan()
+      },
     })
     const onPerformance = (event: Event) => {
       const detail = meropePerformanceEventDetail(

@@ -153,6 +153,30 @@ test('cancellation is scoped to its active message', () => {
   assert.deepEqual(rig.active, [true, false])
 })
 
+test('busy changes follow occupancy so the motion coordinator can claim the mouth', () => {
+  const scheduler = new FakeScheduler()
+  const rig = fakeTarget()
+  const occupancy = { current: false }
+  const busy: boolean[] = []
+  const controller = new SpeechLifecycleController(
+    rig.target,
+    scheduler,
+    occupancy,
+    (value) => busy.push(value),
+  )
+  const base = {
+    messageId: 'message-1',
+    utteranceId: 'message-1:final',
+    source: 'reply' as const,
+  }
+  controller.handle({ ...base, phase: 'start' })
+  assert.deepEqual(busy, [true])
+  controller.handle({ ...base, phase: 'chunk', text: '好。' })
+  controller.handle({ ...base, phase: 'end' })
+  scheduler.advance(3_000)
+  assert.deepEqual(busy, [true, false])
+})
+
 test('occupancy stays busy after end until the auto-speech tail finishes', () => {
   const scheduler = new FakeScheduler()
   const rig = fakeTarget()

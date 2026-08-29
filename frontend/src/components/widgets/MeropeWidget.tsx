@@ -12,14 +12,12 @@ import {
   FACE_UPDATED_EVENT,
   PERSONA_UPDATED_EVENT,
 } from '../../features/merope/events'
+import { useRigMotionLifecycle } from '../../features/merope/motion/useRigMotionLifecycle'
 import {
   MEROPE_STATE_EVENT,
   meropeStateEventDetail,
 } from '../../features/merope/performanceEvents'
 import RigCharacter from '../../features/merope/rig/RigCharacter'
-import { useRigPerformanceLifecycle } from '../../features/merope/useRigPerformanceLifecycle'
-import { useRigSingingLifecycle } from '../../features/merope/useRigSingingLifecycle'
-import { useRigSpeechLifecycle } from '../../features/merope/useRigSpeechLifecycle'
 import { agentService } from '../../services/agent'
 import { ADDRESSEE_UPDATED_EVENT, moodBand } from '../agent/meropeVitals'
 import { WidgetShell } from './shared/WidgetShell'
@@ -76,8 +74,8 @@ function hasPlayableRig(
 ): boolean {
   return Boolean(
     manifest &&
-      isAnime25DPlayback(manifest.anime25dPlayback) &&
-      manifest.textures[0]?.url,
+    isAnime25DPlayback(manifest.anime25dPlayback) &&
+    manifest.textures[0]?.url,
   )
 }
 
@@ -121,11 +119,7 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
   const [vitalsReady, setVitalsReady] = useState(false)
   const faceRequestRef = useRef(0)
   const rigRef = useRef<RigCharacterHandle>(null)
-  const speechOccupancyRef = useRef(false)
-
-  useRigPerformanceLifecycle(rigRef)
-  useRigSpeechLifecycle(rigRef, speechOccupancyRef)
-  useRigSingingLifecycle(rigRef, speechOccupancyRef)
+  useRigMotionLifecycle(rigRef)
 
   const loadFace = useCallback(() => {
     const request = ++faceRequestRef.current
