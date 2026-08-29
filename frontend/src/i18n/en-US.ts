@@ -2587,6 +2587,16 @@ export const enUS: TranslationKeys = {
       translateSelection: 'Translate this passage into English: "{text}"',
     },
     inputPlaceholder: 'Ask anything…',
+    chatPlaceholder: 'Talk with it…',
+    mode: {
+      label: 'Mode',
+      work: 'Work',
+      chat: 'Chat',
+      shortcut: 'Tab',
+    },
+    mood: {
+      kicker: 'Mood',
+    },
     send: 'Send',
     attach: {
       kind: 'File',

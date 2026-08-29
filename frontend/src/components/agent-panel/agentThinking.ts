@@ -102,13 +102,12 @@ export function messageHasAnswer(message: {
   )
 }
 
-/** 思考收进正文那一下，格子还要播完。 */
-export const THINKING_FOLD_MS = 280
+/** 思考淡出时长。高度用跟目标的平滑跟随，收完才卸思考。 */
+export const THINKING_FOLD_MS = 400
 
-/** 正文往下长的时候，高度跟着走，比收思考短一截。 */
-export const BUBBLE_GROW_MS = 160
-
-export const BUBBLE_SIZE_EASE = 'cubic-bezier(0.16, 1, 0.3, 1)'
+/** 高度跟随的时间常数（秒）。越小跟得越紧。收比长慢一截，空垫才不会闪。 */
+export const BUBBLE_SHRINK_TAU = 0.12
+export const BUBBLE_GROW_TAU = 0.07
 
 /**
  * 还在跑、气泡里还没有正文时才摆过程。

@@ -1053,6 +1053,40 @@ impl Agent {
             }
         };
 
+        match self
+            .stream_chat_response_with_analyzer(request, progress_tx, analyzer)
+            .await
+        {
+            Ok(reply) => reply,
+            Err(error) => {
+                // Work 路径的兼容降级：Planner 已经产生了可读回复。
+                tracing::warn!(%error, "[Agent] Streaming chat response failed, falling back to planner reply");
+                Self::stream_text_as_tokens(progress_tx, planner_reply).await;
+                planner_reply.to_string()
+            }
+        }
+    }
+
+    /// Chat 模式的唯一模型入口。严格 Lite 不可用时直接失败，绝不借用
+    /// Standard / Pro，否则“只聊天”会悄悄变成另一条 Work 费用路径。
+    pub(crate) async fn stream_strict_lite_chat_response(
+        &self,
+        request: &UserRequest,
+        progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
+    ) -> Result<String, String> {
+        let analyzer = crate::services::ai::create_strict_lite_ai_analyzer_with_timeout(None)
+            .await
+            .ok_or_else(|| "Lite model is not configured for Chat mode".to_string())?;
+        self.stream_chat_response_with_analyzer(request, progress_tx, analyzer)
+            .await
+    }
+
+    async fn stream_chat_response_with_analyzer(
+        &self,
+        request: &UserRequest,
+        progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
+        analyzer: crate::services::analyzer::AiAnalyzer,
+    ) -> Result<String, String> {
         // 加载 Agent 人格
         let soul = crate::services::agent::identity::get_speaking_soul()
             .await
@@ -1135,16 +1169,10 @@ impl Agent {
                         done: true,
                     })
                     .await;
-                full_text.trim().to_string()
+                Ok(full_text.trim().to_string())
             }
-            _ => {
-                // 流式失败，回退到 planner 的回复 + 模拟流式
-                tracing::warn!(
-                    "[Agent] Streaming chat response failed, falling back to planner reply"
-                );
-                Self::stream_text_as_tokens(progress_tx, planner_reply).await;
-                planner_reply.to_string()
-            }
+            Ok(_) => Err("Chat model returned an empty response".to_string()),
+            Err(error) => Err(error.to_string()),
         }
     }
 

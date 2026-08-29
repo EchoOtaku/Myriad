@@ -15,6 +15,20 @@ fn session_store_failed(context: &'static str, error: impl std::fmt::Display) ->
     format!("Failed to {context}")
 }
 
+fn session_mode(context: Option<&Value>) -> crate::services::agent::AgentInteractionMode {
+    match context
+        .and_then(|value| value.get("mode"))
+        .and_then(Value::as_str)
+    {
+        Some("chat") => crate::services::agent::AgentInteractionMode::Chat,
+        _ => crate::services::agent::AgentInteractionMode::Work,
+    }
+}
+
+fn session_context(mode: crate::services::agent::AgentInteractionMode) -> Value {
+    json!({ "mode": mode.as_str() })
+}
+
 // 会话管理 API
 
 /// 创建会话
@@ -31,7 +45,9 @@ pub async fn create_session(
         id: Set(session_id.clone()),
         user_id: Set(user_id),
         title: Set(None),
-        context: Set(None),
+        context: Set(Some(session_context(
+            crate::services::agent::AgentInteractionMode::Work,
+        ))),
         message_count: Set(0),
         archived: Set(false),
         created_at: Set(now),
@@ -97,6 +113,7 @@ pub async fn list_sessions(
                 "messageCount": s.message_count,
                 "lastActiveAt": s.last_active_at.to_rfc3339(),
                 "createdAt": s.created_at.to_rfc3339(),
+                "mode": session_mode(s.context.as_ref()).as_str(),
             })
         })
         .collect();
@@ -476,17 +493,25 @@ pub(crate) async fn ensure_session(
     db: &DatabaseConnection,
     session_id: Option<&str>,
     user_id: i32,
+    mode: crate::services::agent::AgentInteractionMode,
 ) -> Result<String, String> {
     if let Some(sid) = session_id {
         // 验证会话存在且属于当前用户
-        if agent_sessions::Entity::find_by_id(sid)
+        if let Some(session) = agent_sessions::Entity::find_by_id(sid)
             .filter(agent_sessions::Column::UserId.eq(user_id))
             .one(db)
             .await
             .map_err(|error| session_store_failed("find session", error))?
-            .is_some()
         {
-            return Ok(sid.to_string());
+            if session_mode(session.context.as_ref()) == mode {
+                return Ok(sid.to_string());
+            }
+            tracing::info!(
+                session_id = sid,
+                requested_mode = mode.as_str(),
+                stored_mode = session_mode(session.context.as_ref()).as_str(),
+                "[Agent API] Session mode mismatch; creating an isolated session"
+            );
         }
     }
 
@@ -497,7 +522,7 @@ pub(crate) async fn ensure_session(
         id: Set(new_id.clone()),
         user_id: Set(user_id),
         title: Set(None),
-        context: Set(None),
+        context: Set(Some(session_context(mode))),
         message_count: Set(0),
         archived: Set(false),
         created_at: Set(now),

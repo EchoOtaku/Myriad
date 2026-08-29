@@ -23,6 +23,7 @@ pub(crate) fn build_request_context(ctx: ProcessContext) -> RequestContext {
     });
 
     RequestContext {
+        interaction_mode: ctx.mode.unwrap_or_default(),
         current_route: ctx.current_route,
         active_platforms: ctx.active_platforms.unwrap_or_default(),
         preferences: None,

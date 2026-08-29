@@ -22,7 +22,8 @@ import {
 export type AgentPresenceKind = 'row' | 'chip' | 'swap'
 
 /** 从哪来回哪去：进出共用这个原点。 */
-export type AgentPresenceFrom = 'composer' | 'attach' | 'context' | 'self'
+export type AgentPresenceFrom =
+  'composer' | 'attach' | 'context' | 'self' | 'face'
 
 export function useKeyedPresence<T>(
   items: readonly T[],

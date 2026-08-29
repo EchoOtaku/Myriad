@@ -134,7 +134,7 @@
 }
 
 .agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']
-  .agent-panel-presence[data-kind='row'],
+  .agent-panel-presence[data-kind='row']:not([data-from='face']),
 .agent-panel-messages-slot[data-exiting='true']
   .agent-panel-presence[data-kind='row'] {
   pointer-events: none;
@@ -153,6 +153,20 @@
   opacity: 0;
   translate: 0 16px;
   scale: 0.96;
+}
+
+/* 2/3 窗口外那张半截卡：就地淡掉，不往输入行滑 —— 滑会把那截拉进画面。
+   延迟仍走 --agent-exit-stagger：它在最上面，最后才收。 */
+.agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']
+  .agent-panel-presence[data-kind='row'][data-from='composer']:has(
+    [data-leaving='true']
+  ),
+.agent-panel-messages-slot[data-exiting='true']
+  .agent-panel-presence[data-kind='row'][data-from='composer']:has(
+    [data-leaving='true']
+  ) {
+  translate: 0 0;
+  scale: 1;
 }
 
 .agent-panel-overlay {
@@ -283,6 +297,12 @@
     scale: 0.72;
   }
 
+  .agent-panel-presence[data-from='face'] {
+    opacity: 0;
+    translate: 0 0;
+    scale: 1;
+  }
+
   .agent-panel-presence[data-kind='row'][data-from='self'] {
     translate: 0 -6px;
     scale: 1;
@@ -334,6 +354,11 @@
 
 .agent-panel-presence[data-presence='out'][data-from='self'] {
   scale: 0.72;
+}
+
+.agent-panel-presence[data-presence='out'][data-from='face'] {
+  translate: 0 0;
+  scale: 1;
 }
 
 .agent-panel-presence[data-presence='out'][data-kind='row'][data-from='self'] {
@@ -692,11 +717,23 @@ button.agent-panel-tag:disabled {
    ================================================ */
 
 .agent-panel-composer {
+  --agent-composer-gap: 12px;
+  --agent-tag-row-height: 32px;
+  --agent-face-width: calc(128px * 2.5);
+  --agent-face-visible-height: calc(var(--agent-face-width) * 4 / 3 * 4 / 5);
+
+  /* 贴行仍贴着输入框。人从贴行后面伸到输入框上沿，渐隐落在框上。 */
+  --agent-face-fade: 40px;
+  --agent-face-overlap: calc(
+    var(--agent-tag-row-height) + var(--agent-composer-gap) +
+      var(--agent-face-fade)
+  );
+
   display: flex;
   flex-direction: column;
   align-items: stretch;
   flex-shrink: 0;
-  gap: 12px;
+  gap: var(--agent-composer-gap);
   width: 100%;
   opacity: 1;
   translate: 0 0;
@@ -725,6 +762,107 @@ button.agent-panel-tag:disabled {
   height: auto;
   transition: height var(--agent-move, 480ms)
     var(--agent-ease, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.agent-panel-mode {
+  flex-shrink: 0;
+  margin-right: 6px;
+}
+
+.agent-panel-composer > .agent-panel-presence[data-from='face'] {
+  /* 抵掉「人→贴」的 gap，再越过贴行和「贴→输入」的 gap，让人接到输入框。
+     进出只动透明度：底对齐时改边距会把人顶上去。 */
+  margin-bottom: calc(
+    (var(--agent-composer-gap) + var(--agent-face-overlap)) * -1
+  );
+  transition: opacity var(--agent-move) var(--agent-ease);
+}
+
+.agent-panel-composer[data-mode='chat'] .agent-panel-composer-tags,
+.agent-panel-composer[data-mode='chat'] .agent-panel-composer-row {
+  position: relative;
+  z-index: 3;
+}
+
+/* 聊天档：输入框上面的人设。3:4 画布放大 2.5，裁掉底下 1/5，底边模糊收掉。
+   不是玻璃 —— 输入框已经是 .glass，套进去会糊。 */
+.agent-panel-face {
+  --agent-face-portrait: 3 / 4;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.agent-panel-face:has(.agent-panel-face-rig) {
+  position: relative;
+  isolation: isolate;
+  width: var(--agent-face-width);
+  height: var(--agent-face-visible-height);
+  margin-inline: auto;
+  overflow: hidden;
+  mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - var(--agent-face-fade)),
+    transparent 100%
+  );
+}
+
+.agent-panel-face:has(.agent-panel-face-rig)::after {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: var(--agent-face-fade);
+  pointer-events: none;
+  backdrop-filter: blur(10px);
+  mask-image: linear-gradient(to bottom, transparent, #000 75%);
+}
+
+.agent-panel-face-rig {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  width: 100%;
+  aspect-ratio: var(--agent-face-portrait);
+}
+
+.agent-panel-face-rig .merope-rig {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.agent-panel-face-rig .merope-rig img,
+.agent-panel-face-rig .merope-rig canvas {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.agent-panel-face-rig .merope-rig img {
+  object-fit: contain;
+  object-position: center top;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.agent-panel-face-rig .merope-rig canvas {
+  pointer-events: auto;
+}
+
+.agent-panel-face .agent-panel-tag[data-block='true'] {
+  margin: 0;
+  max-width: calc(100% - 24px);
 }
 
 .agent-panel-composer-tags .agent-panel-tag img {
@@ -1134,6 +1272,8 @@ button.agent-panel-tag:disabled {
   .agent-panel-tag,
   .agent-panel-control,
   .agent-panel-field-shell,
+  .agent-panel-face,
+  .agent-panel-face-rig,
   .agent-panel-attach-bar,
   .agent-panel-attach-orb,
   .agent-panel-presence,
@@ -1305,7 +1445,6 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
   font-size: 15px;
   line-height: 1.6;
   overflow-wrap: anywhere;
-  interpolate-size: allow-keywords;
   height: auto;
 }
 
@@ -1315,14 +1454,17 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
 }
 
 /* 正文在文档流里撑开气泡。思考收掉时改绝对定位叠在上面，
-   高度从上一帧收到正文，多出来的是思考被裁掉，不是一块空垫。 */
+   高度从上一帧收到正文，多出来的是思考被裁掉，不是一块空垫。
+   grow 必须是内容高，不能跟着外框一起长，否则跟随会把目标越写越大。 */
 .agent-panel-message-grow {
   position: relative;
+  width: 100%;
+  height: max-content;
 }
 
 .agent-panel-thinking-slot {
   opacity: 1;
-  transition: opacity 280ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 400ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .agent-panel-thinking-slot[data-open='false'] {
@@ -1331,6 +1473,7 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
   right: 0;
   left: 0;
   z-index: 1;
+  overflow: hidden;
   opacity: 0;
   pointer-events: none;
 }
@@ -1508,9 +1651,6 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   margin: 0 0 6px;
   color: var(--text-muted, #9ca3af);
   font-size: 12px;
-  interpolate-size: allow-keywords;
-  height: auto;
-  transition: height 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .agent-panel-thinking:last-child {

@@ -148,12 +148,19 @@ describe('agent panel motion contract', () => {
     assert.doesNotMatch(full, /!zoomed && !exiting/)
     assert.match(full, /held === 'messages'/)
     assert.match(pan, /data-exiting/)
-    assert.match(pan, /visibility === 'hidden'/)
+    assert.match(pan, /visibility !== 'hidden'/)
     assert.match(pan, /--agent-exit-stagger/)
     assert.match(pan, /--agent-stagger-wave/)
     assert.doesNotMatch(pan, /mask-image/)
     assert.match(pan, /if \(leaving\) \{[\s\S]*?writeExitStagger\(\)/)
     assert.doesNotMatch(pan, /if \(leaving\) \{\s*clearExit\(\)/)
+    assert.match(pan, /conversationHoldExitOnClose/)
+    assert.doesNotMatch(pan, /dataset\.leaving !== 'true'/)
+    assert.doesNotMatch(pan, /--agent-exit-stagger', '0'/)
+    assert.match(
+      css,
+      /\[data-from='composer'\]:has\(\s*\[data-leaving='true'\]/,
+    )
     assert.match(pan, /!nearBottom/)
     assert.match(pan, /wasPinned/)
     assert.match(pan, /conversationExitKey/)
@@ -173,7 +180,7 @@ describe('agent panel motion contract', () => {
     const closingComposer = block(
       css,
       ".agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']\n  .agent-panel-composer {",
-      ".agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']\n  .agent-panel-presence[data-kind='row'],",
+      ".agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']\n  .agent-panel-presence[data-kind='row']:not([data-from='face']),",
     )
     assert.match(
       closingComposer,

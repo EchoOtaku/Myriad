@@ -17,6 +17,8 @@ pub struct ProcessRequest {
 #[derive(Debug, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessContext {
+    /// 面板模式：work 走完整 Agent，chat 只走严格 Lite 人设对话。
+    pub mode: Option<crate::services::agent::AgentInteractionMode>,
     /// 当前页面路由
     pub current_route: Option<String>,
     /// 活跃的平台

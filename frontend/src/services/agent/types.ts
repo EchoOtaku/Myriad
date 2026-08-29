@@ -8,6 +8,8 @@
 
 /** 处理上下文 */
 export interface ProcessContext {
+  /** 运行时路径：聊天只使用 Lite，办事保留完整 Agent。 */
+  mode?: 'work' | 'chat'
   /** 当前页面路由 */
   currentRoute?: string
   /** 活跃的平台 */

@@ -15,6 +15,7 @@ import {
   CONVERSATION_NEAR_BOTTOM_PX,
   conversationExitKey,
   conversationExitStyle,
+  conversationHoldExitOnClose,
   conversationMaxScroll,
   conversationShellLimit,
   conversationViewHeight,
@@ -152,11 +153,27 @@ export function useConversationPan(
       const leaving =
         anchor?.dataset.phase === 'closing' || slot?.dataset.exiting === 'true'
       if (leaving) {
-        // 越界的仍藏着。只把画面里的滚动淡出拿掉，交给 CSS 一张张收。
+        // 越界的淡出冻住，不拉回实心胶囊。半截露在 2/3 窗口外的那张
+        // 若先复原再交给 CSS 收，会闪一整张再播退场。
+        // 错开仍按位置：贴着输入行的先走，顶上那张半截最后才收。
         for (const card of cards) {
-          if (card.el.style.visibility === 'hidden') continue
+          const style = conversationExitStyle(
+            card.top - current,
+            card.top + card.height - current,
+            0,
+            viewH,
+            CONVERSATION_FADE_PX,
+          )
+          if (conversationHoldExitOnClose(style)) {
+            const key = conversationExitKey(style)
+            if (key !== card.key) {
+              card.key = key
+              applyConversationExit(card.el, style)
+            }
+            continue
+          }
           applyConversationExit(card.el, { exit: 0, shift: 0, hidden: false })
-          card.key = ''
+          card.key = 'r'
         }
         writeExitStagger()
         return

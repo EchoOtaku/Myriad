@@ -2210,6 +2210,19 @@ export interface TranslationKeys {
       translateSelection: string
     }
     inputPlaceholder: string
+    /** 聊天档输入框 */
+    chatPlaceholder: string
+    /** 办事 / 聊天。胶囊上写着快捷键，Tab 在输入行里切换 */
+    mode: {
+      label: string
+      work: string
+      chat: string
+      shortcut: string
+    }
+    /** 聊天档右边那枚心情贴。档位词复用设定页的 mood */
+    mood: {
+      kicker: string
+    }
     send: string
     /** 输入框里那枚状态灯兼添加附件 */
     attach: {

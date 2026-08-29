@@ -4,6 +4,7 @@ import {
   clampConversationScroll,
   conversationExitKey,
   conversationExitStyle,
+  conversationHoldExitOnClose,
   conversationMaxScroll,
   conversationShellLimit,
   conversationViewHeight,
@@ -210,6 +211,41 @@ describe('conversationExitStyle', () => {
     assert.equal(style.hidden, false)
     assert.ok(style.exit > 0.45 && style.exit < 0.55)
     assert.ok(style.shift < 0)
+  })
+
+  it('freezes overflow fade when the panel closes, instead of restoring a solid card', () => {
+    const fading = conversationExitStyle(
+      60,
+      140,
+      viewportTop,
+      viewportBottom,
+      fade,
+    )
+    assert.equal(conversationHoldExitOnClose(fading), true)
+    const gone = conversationExitStyle(
+      20,
+      80,
+      viewportTop,
+      viewportBottom,
+      fade,
+    )
+    assert.equal(conversationHoldExitOnClose(gone), true)
+    const inView = conversationExitStyle(
+      180,
+      240,
+      viewportTop,
+      viewportBottom,
+      fade,
+    )
+    assert.equal(conversationHoldExitOnClose(inView), false)
+    const tallStillReading = conversationExitStyle(
+      40,
+      400,
+      viewportTop,
+      viewportBottom,
+      fade,
+    )
+    assert.equal(conversationHoldExitOnClose(tallStillReading), false)
   })
 
   it('skips redundant writes with a stable key', () => {

@@ -454,6 +454,11 @@ impl Agent {
         tracing::info!(
             user_id = user_id,
             input = %request.raw_input,
+            mode = request
+                .context
+                .as_ref()
+                .map(|context| context.interaction_mode.as_str())
+                .unwrap_or("work"),
             has_history = request.context.as_ref().and_then(|c| c.conversation_history.as_ref()).is_some(),
             "[Agent] Processing request with progress tracking"
         );
@@ -487,6 +492,82 @@ impl Agent {
                 },
                 Some(progress_tx.clone()),
             );
+        }
+
+        // Chat 是独立的人设对话路径。在 Planner 之前分流才能保证：
+        // 1. 不消耗 Pro；2. 即使输入像操作指令，也不会生成 Recipe/Tool Call。
+        if request.context.as_ref().is_some_and(|context| {
+            context.interaction_mode == crate::services::agent::AgentInteractionMode::Chat
+        }) {
+            let _ = progress_tx
+                .send(AgentProgressEvent::Progress {
+                    progress: 5,
+                    completed_steps: 0,
+                    total_steps: 1,
+                    message: response_agent::understanding_request(),
+                })
+                .await;
+
+            crate::services::agent::merope::note_chat_diary(
+                &self.db,
+                user_id,
+                &request.raw_input,
+            )
+            .await;
+
+            let reply = match self
+                .stream_strict_lite_chat_response(&request, &progress_tx)
+                .await
+            {
+                Ok(reply) => reply,
+                Err(error) => {
+                    crate::services::agent::merope::mark_activity(&self.db, user_id, "idle")
+                        .await;
+                    return Err(error);
+                }
+            };
+
+            let performance = if let Some(mood) = mood_transition.clone() {
+                spawn_motion_directive(
+                    crate::services::agent::merope::MotionContext {
+                        user_id,
+                        phase: crate::services::agent::merope::MotionPhase::Delivery,
+                        mood,
+                        activity: "talking".to_string(),
+                        user_text: request.raw_input.clone(),
+                        response_text: Some(reply.clone()),
+                        task_success: None,
+                    },
+                    Some(progress_tx.clone()),
+                )
+                .await
+                .ok()
+                .flatten()
+            } else {
+                None
+            };
+
+            crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
+            let _ = progress_tx
+                .send(AgentProgressEvent::Progress {
+                    progress: 100,
+                    completed_steps: 1,
+                    total_steps: 1,
+                    message: response_agent::done_status(),
+                })
+                .await;
+
+            return Ok(AgentResponse {
+                response_type: AgentResponseType::Answer,
+                message: reply.clone(),
+                data: Some(json!({ "reply": reply, "type": "chat", "mode": "chat" })),
+                data_display: None,
+                suggestions: vec![],
+                task: None,
+                confirmation: None,
+                frontend_action: None,
+                performance,
+            });
         }
 
         // 1. Planner 规划（Pro AI 单次调用）

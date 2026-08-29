@@ -17,15 +17,15 @@ import React, {
 } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { agentService } from '../../services/agent'
-import { invalidateComposerFavorites } from './composerFavorites'
 import { AgentMarkdown } from './AgentMarkdown'
 import { AgentPanelThinking } from './AgentPanelThinking'
 import {
-  BUBBLE_GROW_MS,
-  BUBBLE_SIZE_EASE,
+  BUBBLE_GROW_TAU,
+  BUBBLE_SHRINK_TAU,
   messageHasAnswer,
   THINKING_FOLD_MS,
 } from './agentThinking'
+import { invalidateComposerFavorites } from './composerFavorites'
 
 export interface AgentPanelMessageProps {
   message: AgentMessage
@@ -49,97 +49,7 @@ function motionAllowed(): boolean {
   return !window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
-/**
- * 高度跟内容走。上一帧的高度记下来，这一帧布局若已经跳了，
- * 从记下的值接到新值，空档才不会停在气泡里。
- */
-function useBubbleHeight() {
-  const ref = useRef<HTMLDivElement>(null)
-  const primed = useRef(false)
-  const prevH = useRef(0)
-  const animRef = useRef<Animation | null>(null)
-
-  useLayoutEffect(
-    () => () => {
-      animRef.current?.cancel()
-      animRef.current = null
-    },
-    [],
-  )
-
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (!el) return
-
-    const unlock = () => {
-      animRef.current?.cancel()
-      animRef.current = null
-      el.style.height = ''
-      el.style.overflow = ''
-    }
-
-    if (!motionAllowed()) {
-      primed.current = true
-      prevH.current = 0
-      unlock()
-      return
-    }
-
-    const target = Math.round(el.scrollHeight)
-    const visual = el.getBoundingClientRect().height
-    if (!primed.current) {
-      primed.current = true
-      prevH.current = visual
-      return
-    }
-
-    const running =
-      animRef.current !== null && animRef.current.playState === 'running'
-    const from = running ? visual : Math.max(visual, prevH.current)
-    if (Math.abs(target - from) < 0.5) {
-      if (!running) {
-        unlock()
-        prevH.current = target
-      }
-      return
-    }
-
-    el.style.height = `${from}px`
-    animRef.current?.cancel()
-    const shrinking = target < from
-    el.style.overflow = shrinking ? 'hidden' : 'visible'
-    const duration = shrinking ? THINKING_FOLD_MS : BUBBLE_GROW_MS
-    const next = el.animate(
-      [{ height: `${from}px` }, { height: `${target}px` }],
-      {
-        duration,
-        easing: BUBBLE_SIZE_EASE,
-        fill: 'forwards',
-      },
-    )
-    animRef.current = next
-    prevH.current = target
-    const settle = () => {
-      if (animRef.current !== next) return
-      el.style.height = ''
-      el.style.overflow = ''
-      animRef.current = null
-      prevH.current = el.getBoundingClientRect().height
-    }
-    const failSafe = window.setTimeout(settle, duration + 48)
-    void next.finished.then(
-      () => {
-        window.clearTimeout(failSafe)
-        settle()
-      },
-      () => {
-        window.clearTimeout(failSafe)
-      },
-    )
-  })
-
-  return ref
-}
+const BUBBLE_SETTLE_PX = 1.5
 
 function useHeldOpen(open: boolean, holdMs: number): boolean {
   const [held, setHeld] = useState(open)
@@ -149,10 +59,149 @@ function useHeldOpen(open: boolean, holdMs: number): boolean {
       return undefined
     }
     const wait = motionAllowed() ? holdMs : 0
-    const timer = setTimeout(() => setHeld(false), wait)
+    const timer = setTimeout(setHeld, wait, false)
     return () => clearTimeout(timer)
   }, [holdMs, open])
   return open || held
+}
+
+/**
+ * 高度只跟内部内容走。外框是写进去的，不能再拿来当目标，否则会越跟越大。
+ * 动画过程不 setState，解开 auto 只发生一次，避免抖完再撑满整列。
+ */
+function useBubbleHeight(open: boolean): {
+  ref: React.RefObject<HTMLDivElement | null>
+  growRef: React.RefObject<HTMLDivElement | null>
+} {
+  const ref = useRef<HTMLDivElement>(null)
+  const growRef = useRef<HTMLDivElement>(null)
+  const currentH = useRef(0)
+  const targetH = useRef(0)
+  const settledH = useRef(0)
+  const chromeH = useRef(0)
+  const raf = useRef(0)
+  const lastTs = useRef(0)
+  const primed = useRef(false)
+  const running = useRef(false)
+  const followRef = useRef<() => void>(() => {})
+
+  useLayoutEffect(() => {
+    const el = ref.current
+    const grow = growRef.current
+    if (!open || !el || !grow) {
+      followRef.current = () => {}
+      if (raf.current) cancelAnimationFrame(raf.current)
+      raf.current = 0
+      running.current = false
+      primed.current = false
+      if (el) {
+        el.style.height = ''
+        el.style.overflow = ''
+      }
+      return
+    }
+
+    if (!motionAllowed()) {
+      followRef.current = () => {}
+      primed.current = true
+      el.style.height = ''
+      el.style.overflow = ''
+      return
+    }
+
+    const css = getComputedStyle(el)
+    chromeH.current =
+      (Number.parseFloat(css.paddingTop) || 0) +
+      (Number.parseFloat(css.paddingBottom) || 0) +
+      (Number.parseFloat(css.borderTopWidth) || 0) +
+      (Number.parseFloat(css.borderBottomWidth) || 0)
+
+    const dest = () => grow.offsetHeight + chromeH.current
+
+    const rest = () => {
+      if (raf.current) cancelAnimationFrame(raf.current)
+      raf.current = 0
+      lastTs.current = 0
+      running.current = false
+      const to = dest()
+      currentH.current = to
+      settledH.current = to
+      el.style.height = ''
+      el.style.overflow = ''
+    }
+
+    const tick = (ts: number) => {
+      const dt = lastTs.current
+        ? Math.min(0.048, (ts - lastTs.current) / 1000)
+        : 1 / 60
+      lastTs.current = ts
+      const to = targetH.current
+      let cur = currentH.current
+      const shrinking = to < cur - 0.5
+      const tau = shrinking ? BUBBLE_SHRINK_TAU : BUBBLE_GROW_TAU
+      cur += (to - cur) * (1 - Math.exp(-dt / tau))
+      if (Math.abs(to - cur) < BUBBLE_SETTLE_PX) {
+        rest()
+        return
+      }
+      currentH.current = cur
+      el.style.height = `${cur}px`
+      el.style.overflow = 'hidden'
+      raf.current = requestAnimationFrame(tick)
+    }
+
+    const follow = () => {
+      const to = dest()
+      targetH.current = to
+      if (!primed.current) {
+        primed.current = true
+        currentH.current = el.getBoundingClientRect().height
+        settledH.current = to
+        if (Math.abs(to - currentH.current) < BUBBLE_SETTLE_PX) return
+      }
+      if (Math.abs(to - currentH.current) < BUBBLE_SETTLE_PX) {
+        if (running.current) rest()
+        return
+      }
+      if (
+        !running.current &&
+        Math.abs(to - settledH.current) < BUBBLE_SETTLE_PX
+      ) {
+        return
+      }
+      if (!running.current) {
+        if (to < currentH.current - BUBBLE_SETTLE_PX) {
+          // 收的时候不要读已经跳矮的 visual，锁住上一帧的 currentH。
+          el.style.height = `${currentH.current}px`
+          el.style.overflow = 'hidden'
+        }
+        running.current = true
+        lastTs.current = 0
+      }
+      if (!raf.current) raf.current = requestAnimationFrame(tick)
+    }
+
+    followRef.current = follow
+    const ro = new ResizeObserver(() => follow())
+    ro.observe(grow)
+    follow()
+
+    return () => {
+      followRef.current = () => {}
+      ro.disconnect()
+      if (raf.current) cancelAnimationFrame(raf.current)
+      raf.current = 0
+      running.current = false
+      el.style.height = ''
+      el.style.overflow = ''
+    }
+  }, [open])
+
+  useLayoutEffect(() => {
+    followRef.current()
+  })
+
+  return { ref, growRef }
 }
 
 export const AgentPanelMessage: React.FC<AgentPanelMessageProps> = React.memo(
@@ -192,11 +241,11 @@ export const AgentPanelMessage: React.FC<AgentPanelMessageProps> = React.memo(
       !hasAnswer &&
       !!(message.steps || message.thought || message.state === 'streaming')
     const keepThinking = useHeldOpen(showsThinking, THINKING_FOLD_MS)
-    const bubbleRef = useBubbleHeight()
     const showsBody =
       message.role === 'user'
         ? !!(message.content || message.attachments?.length)
         : hasAnswer || showsThinking || keepThinking
+    const { ref: bubbleRef, growRef } = useBubbleHeight(showsBody)
 
     return (
       <div
@@ -213,7 +262,7 @@ export const AgentPanelMessage: React.FC<AgentPanelMessageProps> = React.memo(
                 : 'agent-panel-message-body glass'
             }
           >
-            <div className="agent-panel-message-grow">
+            <div className="agent-panel-message-grow" ref={growRef}>
               {keepThinking ? (
                 <div
                   className="agent-panel-thinking-slot"

@@ -10,6 +10,7 @@
 
 import type { AgentAttachment } from './agentAttachments'
 import type { AgentPanelFullView } from './AgentPanelFull'
+import type { AgentPanelPhase } from './agentPanelStage'
 import React, {
   useCallback,
   useEffect,
@@ -36,8 +37,12 @@ import {
   dispatchAgentPanelSubmit,
 } from './agentPanelEvents'
 import { AgentPanelFull, AgentPanelSessionChrome } from './AgentPanelFull'
+import {
+  cycleAgentPanelMode,
+  shouldCaptureModeTab,
+  useAgentPanelMode,
+} from './agentPanelMode'
 import { AgentPanelOverlay } from './AgentPanelOverlay'
-import type { AgentPanelPhase } from './agentPanelStage'
 import {
   agentPanelIsOpen,
   agentPanelSettleTimeoutMs,
@@ -112,6 +117,7 @@ export const AgentPanel: React.FC = () => {
   )
   const pendingAction = useAgentPendingAction()
   const undoOffer = useAgentUndoOffer()
+  const mode = useAgentPanelMode()
   /**
    * Full 档正看着哪一面。
    *
@@ -205,11 +211,18 @@ export const AgentPanel: React.FC = () => {
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') dispatch({ type: 'close' })
+      if (event.key === 'Escape') {
+        dispatch({ type: 'close' })
+        return
+      }
+      if (!showsComposer) return
+      if (!shouldCaptureModeTab(event, overlayRef.current)) return
+      event.preventDefault()
+      cycleAgentPanelMode(event.shiftKey ? -1 : 1)
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [open])
+  }, [open, showsComposer])
 
   useEffect(() => {
     if (!open) return
@@ -232,12 +245,12 @@ export const AgentPanel: React.FC = () => {
 
   const submit = useCallback(
     (text: string, attachments?: AgentAttachment[]) => {
-      dispatchAgentPanelSubmit(text, attachments)
+      dispatchAgentPanelSubmit(text, attachments, mode)
       // 展开到能读答案的那一档，而不是收起 —— 问完就把面板关掉等于让人白问
       setFullView('messages')
       dispatch({ type: 'open', stage: 'full' })
     },
-    [],
+    [mode],
   )
 
   // 撤销就是把逆操作再执行一遍 —— 不另起一套机制
@@ -267,6 +280,7 @@ export const AgentPanel: React.FC = () => {
             className="agent-panel-overlay-anchor"
             data-phase={stage.phase}
             data-stage={stage.stage}
+            data-mode={mode}
           >
             {showsFull ? (
               <AgentPanelFull

@@ -192,6 +192,17 @@ export function conversationExitKey(style: ConversationExitStyle): string {
   return `${style.exit.toFixed(2)}:${style.shift}`
 }
 
+/**
+ * 关面板时：已经越出 2/3 窗口的淡出要冻住。
+ * 若先拉回实心胶囊再交给 CSS 一张张收，顶上那张半截卡会闪一整张。
+ * 它仍参与错开，而且在最上面，所以是最后一张。
+ */
+export function conversationHoldExitOnClose(
+  style: ConversationExitStyle,
+): boolean {
+  return style.hidden || style.exit > 0.01
+}
+
 export function applyConversationExit(
   el: HTMLElement,
   style: ConversationExitStyle,

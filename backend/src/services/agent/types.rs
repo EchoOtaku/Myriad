@@ -9,6 +9,27 @@ use std::collections::HashMap;
 
 // 意图分析相关类型
 
+/// 一轮输入进入哪条运行时路径。
+///
+/// Work 保留完整 Planner / Executor；Chat 只是人设对话，不得因为
+/// 内容像指令就悄悄进入工具执行。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentInteractionMode {
+    #[default]
+    Work,
+    Chat,
+}
+
+impl AgentInteractionMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Work => "work",
+            Self::Chat => "chat",
+        }
+    }
+}
+
 /// 用户原始请求
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserRequest {
@@ -25,6 +46,9 @@ pub struct UserRequest {
 /// 请求上下文
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RequestContext {
+    /// 面板选中的运行时路径。缺省必须是 Work，保持旧客户端行为。
+    #[serde(default)]
+    pub interaction_mode: AgentInteractionMode,
     /// 当前页面/路由
     pub current_route: Option<String>,
     /// 最近活动的平台

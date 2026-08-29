@@ -64,6 +64,11 @@ pub async fn process(
 ) -> Result<Json<ApiResponse>, HttpError> {
     let user_id = parse_user_id_with_agent_access(&claims, &db).await?;
     validate_input(&req.input)?;
+    let interaction_mode = req
+        .context
+        .as_ref()
+        .and_then(|context| context.mode)
+        .unwrap_or_default();
 
     tracing::info!(
         user_id = user_id,
@@ -76,7 +81,12 @@ pub async fn process(
         .as_ref()
         .and_then(|c| c.session_id.as_deref())
         .map(str::to_string);
-    let session_id = ensure_session(&db, client_session_id.as_deref(), user_id)
+    let session_id = ensure_session(
+        &db,
+        client_session_id.as_deref(),
+        user_id,
+        interaction_mode,
+    )
         .await
         .map_err(|error| {
             tracing::error!(%error, "[Agent API] Failed to ensure session");
@@ -170,6 +180,11 @@ pub async fn process_stream(
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, HttpError> {
     let user_id = parse_user_id_with_agent_access(&claims, &db).await?;
     validate_input(&req.input)?;
+    let interaction_mode = req
+        .context
+        .as_ref()
+        .and_then(|context| context.mode)
+        .unwrap_or_default();
 
     tracing::info!(
         user_id = user_id,
@@ -184,7 +199,14 @@ pub async fn process_stream(
         .map(|s| s.to_string());
 
     // 确保会话存在（自动创建或验证已有会话）
-    let session_id = match ensure_session(&db, client_session_id.as_deref(), user_id).await {
+    let session_id = match ensure_session(
+        &db,
+        client_session_id.as_deref(),
+        user_id,
+        interaction_mode,
+    )
+    .await
+    {
         Ok(sid) => sid,
         Err(e) => {
             tracing::warn!("[Agent API] Failed to ensure session: {}", e);

@@ -26,6 +26,7 @@ import type {
   ThinkingTokenEvent,
 } from '../../services/agent'
 import type { AgentAttachment } from './agentAttachments'
+import type { AgentPanelMode } from './agentPanelMode'
 import {
   type ChatMessage,
   type ChatSession,
@@ -142,10 +143,18 @@ export const AgentEngine: React.FC = () => {
 
   // 当前会话 ID（服务端持久化）
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const sessionIdsByModeRef = useRef<Record<AgentPanelMode, string | null>>({
+    work: null,
+    chat: null,
+  })
 
   const handleSendRef =
     useRef<
-      (text: string, attachments?: readonly AgentAttachment[]) => Promise<void>
+      (
+        text: string,
+        attachments?: readonly AgentAttachment[],
+        mode?: AgentPanelMode,
+      ) => Promise<void>
     >(null)
 
   // 把对话同步给新 UI 的 Full 层。只送「谁说的、说了什么、说完没有」，执行追踪
@@ -475,7 +484,7 @@ export const AgentEngine: React.FC = () => {
       if (!detail) return
       // 不再把自己显示出来 —— 新 UI 的 Full 层已经在画这段对话了，
       // 两个面板同时开着只会让人不知道该看哪个。这边只管跑。
-      void handleSendRef.current?.(detail.text, detail.attachments)
+      void handleSendRef.current?.(detail.text, detail.attachments, detail.mode)
     }
     window.addEventListener(AGENT_PANEL_SUBMIT_EVENT, handleSubmit)
     return () =>
@@ -606,7 +615,7 @@ export const AgentEngine: React.FC = () => {
   // SSE 进度处理
 
   const createProgressHandler = useCallback(
-    (assistantMessageId: string) => {
+    (assistantMessageId: string, mode: AgentPanelMode = 'work') => {
       let streamedSummary = ''
       let streamedThinking = ''
       const utterance = agentFace.openReply(assistantMessageId, locale)
@@ -623,6 +632,7 @@ export const AgentEngine: React.FC = () => {
         switch (event.type) {
           case 'run_started': {
             if (event.sessionId) {
+              sessionIdsByModeRef.current[mode] = event.sessionId
               setSessionId(event.sessionId)
               sessionIdRef.current = event.sessionId
             }
@@ -635,6 +645,7 @@ export const AgentEngine: React.FC = () => {
           }
 
           case 'session_created': {
+            sessionIdsByModeRef.current[mode] = event.sessionId
             setSessionId(event.sessionId)
             // 同步更新 ref，确保后续同帧事件能立即读到
             sessionIdRef.current = event.sessionId
@@ -985,7 +996,11 @@ export const AgentEngine: React.FC = () => {
   // 发送消息
 
   const handleSend = useCallback(
-    async (text: string, attachments: readonly AgentAttachment[] = []) => {
+    async (
+      text: string,
+      attachments: readonly AgentAttachment[] = [],
+      mode: AgentPanelMode = 'work',
+    ) => {
       const messageText = text.trim()
       if (!messageText && attachments.length === 0) return
       const requestText =
@@ -1118,9 +1133,11 @@ export const AgentEngine: React.FC = () => {
           currentRoute: location.pathname,
         }
 
-        if (sessionId) {
-          context.sessionId = sessionId
+        const modeSessionId = sessionIdsByModeRef.current[mode]
+        if (modeSessionId) {
+          context.sessionId = modeSessionId
         }
+        context.mode = mode
 
         // 页面内容
         const customData: Record<string, unknown> = {}
@@ -1140,7 +1157,7 @@ export const AgentEngine: React.FC = () => {
 
         const response = await agentService.processWithProgress(
           requestText,
-          createProgressHandler(assistantMsgId),
+          createProgressHandler(assistantMsgId, mode),
           context,
         )
 

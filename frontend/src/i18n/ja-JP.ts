@@ -2559,6 +2559,16 @@ export const jaJP: TranslationKeys = {
       translateSelection: 'この部分を日本語に翻訳して：「{text}」',
     },
     inputPlaceholder: '何でも聞いてください…',
+    chatPlaceholder: '話しかけて…',
+    mode: {
+      label: 'モード',
+      work: '作業',
+      chat: '会話',
+      shortcut: 'Tab',
+    },
+    mood: {
+      kicker: '気持ち',
+    },
     send: '送信',
     attach: {
       kind: '添付',
@@ -2615,8 +2625,7 @@ export const jaJP: TranslationKeys = {
       actionFailed: '保存できませんでした。もう一度試してください',
       emptyHeartbeat:
         'まだ定期実行はありません。「タスクを追加」で、時間になったらやらせることを書いてください',
-      emptySkills:
-        'まだスキルはありません。会話で覚えたやり方がここに出ます',
+      emptySkills: 'まだスキルはありません。会話で覚えたやり方がここに出ます',
       emptyMemory:
         'まだ記憶はありません。覚えたことはここに出ます。開いて直せます',
       personaElsewhere:

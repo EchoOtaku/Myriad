@@ -7,17 +7,21 @@
  */
 
 import type { AgentAttachment } from './agentAttachments'
+import type { AgentPanelMode } from './agentPanelMode'
+import { getAgentPanelMode, isAgentPanelMode } from './agentPanelMode'
 
 export const AGENT_PANEL_SUBMIT_EVENT = 'agent-panel-submit'
 
 export interface AgentPanelSubmitDetail {
   text: string
   attachments?: AgentAttachment[]
+  mode: AgentPanelMode
 }
 
 export function dispatchAgentPanelSubmit(
   text: string,
   attachments?: readonly AgentAttachment[],
+  mode: AgentPanelMode = getAgentPanelMode(),
 ): void {
   const trimmed = text.trim()
   const files = attachments?.length ? [...attachments] : undefined
@@ -26,6 +30,7 @@ export function dispatchAgentPanelSubmit(
     new CustomEvent<AgentPanelSubmitDetail>(AGENT_PANEL_SUBMIT_EVENT, {
       detail: {
         text: trimmed,
+        mode,
         ...(files ? { attachments: files } : {}),
       },
     }),
@@ -43,6 +48,7 @@ export function agentPanelSubmitDetail(
   if (!text && !attachments?.length) return null
   return {
     text,
+    mode: isAgentPanelMode(detail?.mode) ? detail.mode : 'work',
     ...(attachments?.length ? { attachments } : {}),
   }
 }

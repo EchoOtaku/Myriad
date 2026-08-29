@@ -2432,6 +2432,16 @@ export const zhCN: TranslationKeys = {
       translateSelection: '把这段翻译成中文：“{text}”',
     },
     inputPlaceholder: '问点什么…',
+    chatPlaceholder: '跟它说…',
+    mode: {
+      label: '模式',
+      work: '办事',
+      chat: '聊天',
+      shortcut: 'Tab',
+    },
+    mood: {
+      kicker: '心情',
+    },
     send: '发送',
     attach: {
       kind: '附件',

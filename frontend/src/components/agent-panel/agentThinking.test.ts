@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
-  BUBBLE_GROW_MS,
+  BUBBLE_GROW_TAU,
+  BUBBLE_SHRINK_TAU,
   formatStepDuration,
   messageHasAnswer,
   nonemptyContent,
@@ -160,10 +161,23 @@ test('思考过程本文要折行，不能被步骤名那套 ellipsis 裁掉', (
     /\.agent-panel-thinking-slot\[data-open='false'\] \{[\s\S]*position:\s*absolute/,
   )
   assert.doesNotMatch(css, /grid-template-rows:\s*0fr/)
-  assert.equal(THINKING_FOLD_MS, 280)
-  assert.equal(BUBBLE_GROW_MS, 160)
-  assert.match(message, /el\.animate/)
-  assert.match(message, /prevH/)
+  assert.equal(THINKING_FOLD_MS, 400)
+  assert.ok(BUBBLE_SHRINK_TAU > BUBBLE_GROW_TAU)
+  assert.match(message, /requestAnimationFrame/)
+  assert.match(message, /currentH/)
+  assert.match(message, /ResizeObserver/)
+  assert.match(message, /growRef/)
+  assert.match(message, /THINKING_FOLD_MS/)
+  assert.doesNotMatch(message, /setMoving/)
+  assert.doesNotMatch(
+    css,
+    /\.agent-panel-message-body \{[\s\S]*?interpolate-size/,
+  )
+  assert.doesNotMatch(
+    css,
+    /\.agent-panel-thinking \{[\s\S]*?transition:\s*height/,
+  )
+  assert.match(css, /opacity 400ms/)
   const thinking = readFileSync(
     new URL('./AgentPanelThinking.tsx', import.meta.url),
     'utf8',
@@ -201,6 +215,14 @@ test('说明性的短句都是贴：操作、附件、收藏、脚注不再另�
     new URL('./AgentPanelComposer.tsx', import.meta.url),
     'utf8',
   )
+  const face = readFileSync(
+    new URL('./AgentPanelFace.tsx', import.meta.url),
+    'utf8',
+  )
+  const panel = readFileSync(
+    new URL('./AgentPanel.tsx', import.meta.url),
+    'utf8',
+  )
   const manage = readFileSync(
     new URL('./AgentPanelManage.tsx', import.meta.url),
     'utf8',
@@ -219,6 +241,22 @@ test('说明性的短句都是贴：操作、附件、收藏、脚注不再另�
   )
   assert.doesNotMatch(css, /#6366f1/)
   assert.match(css, /\.agent-panel-thinking:last-child/)
+  assert.match(css, /\.agent-panel-mode/)
+  assert.match(css, /\.agent-panel-face \{/)
+  assert.match(css, /--agent-face-width:\s*calc\(128px \* 2\.5\)/)
+  assert.match(css, /\* 4 \/ 5\)/)
+  assert.match(css, /--agent-face-overlap/)
+  assert.match(css, /--agent-tag-row-height/)
+  assert.match(css, /--agent-face-fade/)
+  assert.match(
+    css,
+    /\.agent-panel-composer\[data-mode='chat'\] \.agent-panel-composer-row/,
+  )
+  assert.match(css, /backdrop-filter:\s*blur/)
+  assert.match(
+    css,
+    /\.agent-panel-face-rig \.merope-rig img \{[\s\S]*object-fit:\s*contain/,
+  )
   assert.match(
     css,
     /@media \(hover: hover\) \{[\s\S]*\.agent-panel-message-footer/,
@@ -230,6 +268,17 @@ test('说明性的短句都是贴：操作、附件、收藏、脚注不再另�
   assert.doesNotMatch(message, /agent-panel-attach-chip/)
   assert.match(composer, /agent-panel-tag-dismiss/)
   assert.match(composer, /agent-panel-saved-open/)
+  assert.match(composer, /agent-panel-mode/)
+  assert.match(composer, /AgentPanelFace/)
+  assert.match(composer, /from="face"/)
+  assert.doesNotMatch(composer, /from="composer">\s*<AgentPanelFace/)
+  assert.match(composer, /mode\.shortcut/)
+  assert.match(composer, /MoodTag/)
+  assert.match(composer, /agent-panel-mood/)
+  assert.doesNotMatch(composer, /role="radiogroup"/)
+  assert.doesNotMatch(face, /className=\{?['"][^'"]*glass/)
+  assert.match(panel, /shouldCaptureModeTab/)
+  assert.match(panel, /cycleAgentPanelMode/)
   assert.doesNotMatch(composer, /agent-panel-saved-remove/)
   assert.match(manage, /agent-panel-tag agent-panel-manage-row/)
   assert.match(manage, /agent-panel-tag-text/)
