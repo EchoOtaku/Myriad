@@ -6,6 +6,38 @@
 
 // 处理上下文
 
+export type RigMotionStyle = 'restrained' | 'even' | 'open'
+export type RigMusicEnergy = 'quiet' | 'soft' | 'present' | 'strong'
+export type RigBeatPhase = 'rest' | 'downbeat' | 'pulse' | 'hold'
+
+export interface RigStateSummary {
+  expression: PerformanceBaseline['expression'] | 'steady'
+  posture: PerformanceBaseline['posture']
+  acting: {
+    intent: PerformanceCue['intent'] | null
+    phase: PerformancePhase | 'idle'
+    remainingMs: number
+  }
+  owners: {
+    mouth: string
+    expression: string
+    gaze: string
+    headBody: string
+  }
+  speaking: boolean
+  singing: boolean
+  musicPlaying: boolean
+  music?: {
+    energy: RigMusicEnergy
+    beat: RigBeatPhase
+  }
+  capabilities: string[]
+  recentIntents: PerformanceCue['intent'][]
+  motionStyle: RigMotionStyle
+  pageVisible: boolean
+  faceVisible: boolean
+}
+
 /** 处理上下文 */
 export interface ProcessContext {
   /** 运行时路径：聊天只使用 Lite，办事保留完整 Agent。 */
@@ -20,6 +52,8 @@ export interface ProcessContext {
   customData?: Record<string, unknown>
   /** 用户已接受、正在进入 Work 的自主提案。 */
   intentionId?: string
+  /** Semantic live-face snapshot. Event-scoped; never a driver. */
+  rigState?: RigStateSummary
 }
 
 /** 处理请求 */

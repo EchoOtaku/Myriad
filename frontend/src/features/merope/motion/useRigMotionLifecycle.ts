@@ -11,6 +11,7 @@ import { getProductionMotionRuntime } from './runtimeHost'
 export interface RigMotionLifecycleOptions {
   mood?: number
   activity?: MeropeActivity
+  capabilities?: readonly string[]
 }
 
 function useMotionRuntimeConsumer(
@@ -20,12 +21,17 @@ function useMotionRuntimeConsumer(
 ): void {
   const mood = options.mood ?? 70
   const activity = options.activity ?? 'idle'
+  const capabilityKey = options.capabilities?.join(',') ?? ''
 
   useEffect(() => runtime.retain(), [runtime])
 
   useEffect(() => {
     runtime.mood.set(mood, activity)
   }, [runtime, mood, activity])
+
+  useEffect(() => {
+    if (capabilityKey) runtime.setCapabilities(capabilityKey.split(','))
+  }, [runtime, capabilityKey])
 
   useEffect(() => {
     const state = createMotionApplyState()

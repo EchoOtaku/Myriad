@@ -53,6 +53,7 @@ import {
   faceSpeechGate,
   openGatedReply,
 } from '../../features/merope/faceSpeechArbitration'
+import { captureProductionRigStateSummary } from '../../features/merope/motion/runtimeHost'
 import { agentService, executeFrontendAction } from '../../services/agent'
 import {
   collectReattachCandidates,
@@ -1227,6 +1228,7 @@ export const AgentEngine: React.FC = () => {
         }
         context.mode = mode
         if (intentionId) context.intentionId = intentionId
+        context.rigState = captureProductionRigStateSummary()
 
         // 页面内容
         const customData: Record<string, unknown> = {}

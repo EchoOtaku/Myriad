@@ -34,6 +34,10 @@ pub(crate) fn build_request_context(ctx: ProcessContext) -> RequestContext {
         run_id: None,   // 由 process_stream 在 create_run 后注入
         source_intent_id: ctx.intention_id,
         autonomy_permission_cap: ctx.autonomy_permission_cap,
+        rig_state: ctx
+            .rig_state
+            .as_ref()
+            .and_then(myriad_merope::sanitize_rig_state),
     }
 }
 

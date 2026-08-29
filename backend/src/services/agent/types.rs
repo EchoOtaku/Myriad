@@ -75,6 +75,9 @@ pub struct RequestContext {
     /// granted permissions at execute time. Never a secret.
     #[serde(default)]
     pub autonomy_permission_cap: Option<Vec<String>>,
+    /// Semantic live-face snapshot from the client. Event-scoped, never a driver.
+    #[serde(default)]
+    pub rig_state: Option<myriad_merope::RigStateSummary>,
 }
 
 /// 对话消息

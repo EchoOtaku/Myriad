@@ -19,6 +19,7 @@ import {
   FACE_UPDATED_EVENT,
   PERSONA_UPDATED_EVENT,
 } from '../../features/merope/events'
+import { semanticRigCapabilities } from '../../features/merope/motion/rigStateSummary'
 import { useRigMotionLifecycle } from '../../features/merope/motion/useRigMotionLifecycle'
 import {
   MEROPE_STATE_EVENT,
@@ -66,7 +67,8 @@ export function AgentPanelFace() {
   const [failed, setFailed] = useState(false)
   const faceRequestRef = useRef(0)
   const rigRef = useRef<RigCharacterHandle>(null)
-  useRigMotionLifecycle(rigRef, { mood, activity })
+  const capabilities = useMemo(() => semanticRigCapabilities(manifest), [manifest])
+  useRigMotionLifecycle(rigRef, { mood, activity, capabilities })
 
   const loadFace = useCallback(() => {
     const request = ++faceRequestRef.current

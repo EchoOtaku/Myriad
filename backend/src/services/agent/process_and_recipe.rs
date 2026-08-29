@@ -11,6 +11,13 @@ use super::{
     skill_evolution, types,
 };
 
+fn request_rig_state(request: &UserRequest) -> Option<myriad_merope::RigStateSummary> {
+    request
+        .context
+        .as_ref()
+        .and_then(|context| context.rig_state.clone())
+}
+
 fn utterance_index_in_session(request: &UserRequest) -> u32 {
     request
         .context
@@ -89,6 +96,7 @@ impl Agent {
                     user_text: request.raw_input.clone(),
                     response_text: None,
                     task_success: None,
+                    rig_state: request_rig_state(&request),
                 },
                 None,
             );
@@ -119,8 +127,7 @@ impl Agent {
                     frontend_action: None,
                     performance: None,
                 }),
-                user_id,
-                &request.raw_input,
+                &request,
                 mood_transition.clone(),
                 None,
             )
@@ -170,8 +177,7 @@ impl Agent {
                 };
                 return attach_motion_to_result(
                     Ok(response),
-                    user_id,
-                    &request.raw_input,
+                    &request,
                     mood_transition.clone(),
                     None,
                 )
@@ -204,8 +210,7 @@ impl Agent {
                 };
                 return attach_motion_to_result(
                     Ok(response),
-                    user_id,
-                    &request.raw_input,
+                    &request,
                     mood_transition.clone(),
                     None,
                 )
@@ -238,8 +243,7 @@ impl Agent {
                 };
                 return attach_motion_to_result(
                     Ok(response),
-                    user_id,
-                    &request.raw_input,
+                    &request,
                     mood_transition.clone(),
                     None,
                 )
@@ -256,8 +260,7 @@ impl Agent {
                 {
                     return attach_motion_to_result(
                         Ok(response),
-                        user_id,
-                        &request.raw_input,
+                        &request,
                         mood_transition.clone(),
                         None,
                     )
@@ -310,8 +313,7 @@ impl Agent {
                     crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                     return attach_motion_to_result(
                         Ok(blocked),
-                        user_id,
-                        &request.raw_input,
+                        &request,
                         mood_transition.clone(),
                         None,
                     )
@@ -338,8 +340,7 @@ impl Agent {
                         .await;
                     return attach_motion_to_result(
                         response,
-                        user_id,
-                        &request.raw_input,
+                        &request,
                         mood_transition.clone(),
                         None,
                     )
@@ -357,8 +358,7 @@ impl Agent {
                 crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                 return attach_motion_to_result(
                     Ok(missing_response),
-                    user_id,
-                    &request.raw_input,
+                    &request,
                     mood_transition.clone(),
                     None,
                 )
@@ -452,14 +452,7 @@ impl Agent {
             frontend_action,
             performance: None,
         };
-        attach_motion_to_result(
-            Ok(response),
-            user_id,
-            &request.raw_input,
-            mood_transition,
-            None,
-        )
-        .await
+        attach_motion_to_result(Ok(response), &request, mood_transition, None).await
     }
 
     /// 处理用户请求（带实时进度回调）
@@ -527,6 +520,7 @@ impl Agent {
                     user_text: request.raw_input.clone(),
                     response_text: None,
                     task_success: None,
+                    rig_state: request_rig_state(&request),
                 },
                 Some(progress_tx.clone()),
             );
@@ -570,6 +564,7 @@ impl Agent {
                         user_text: request.raw_input.clone(),
                         response_text: Some(reply.clone()),
                         task_success: None,
+                        rig_state: request_rig_state(&request),
                     },
                     Some(progress_tx.clone()),
                 )
@@ -727,6 +722,7 @@ impl Agent {
                             user_text: request.raw_input.clone(),
                             response_text: Some(planner_reply.clone()),
                             task_success: None,
+                            rig_state: request_rig_state(&request),
                         },
                         Some(progress_tx.clone()),
                     )
@@ -792,8 +788,7 @@ impl Agent {
                 };
                 return attach_motion_to_result(
                     Ok(response),
-                    user_id,
-                    &request.raw_input,
+                    &request,
                     mood_transition.clone(),
                     Some(progress_tx.clone()),
                 )
@@ -826,8 +821,7 @@ impl Agent {
                 };
                 return attach_motion_to_result(
                     Ok(response),
-                    user_id,
-                    &request.raw_input,
+                    &request,
                     mood_transition.clone(),
                     Some(progress_tx.clone()),
                 )
@@ -844,8 +838,7 @@ impl Agent {
                 {
                     return attach_motion_to_result(
                         Ok(response),
-                        user_id,
-                        &request.raw_input,
+                        &request,
                         mood_transition.clone(),
                         Some(progress_tx.clone()),
                     )
@@ -880,8 +873,7 @@ impl Agent {
                     };
                     return attach_motion_to_result(
                         Ok(response),
-                        user_id,
-                        &request.raw_input,
+                        &request,
                         mood_transition.clone(),
                         Some(progress_tx.clone()),
                     )
@@ -972,8 +964,7 @@ impl Agent {
                     crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                     return attach_motion_to_result(
                         Ok(blocked),
-                        user_id,
-                        &request.raw_input,
+                        &request,
                         mood_transition.clone(),
                         Some(progress_tx.clone()),
                     )
@@ -1000,8 +991,7 @@ impl Agent {
                         .await;
                     return attach_motion_to_result(
                         response,
-                        user_id,
-                        &request.raw_input,
+                        &request,
                         mood_transition.clone(),
                         Some(progress_tx.clone()),
                     )
@@ -1024,8 +1014,7 @@ impl Agent {
                 crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                 return attach_motion_to_result(
                     Ok(missing_response),
-                    user_id,
-                    &request.raw_input,
+                    &request,
                     mood_transition.clone(),
                     Some(progress_tx.clone()),
                 )
@@ -1059,8 +1048,7 @@ impl Agent {
                 .await;
             return attach_motion_to_result(
                 result,
-                user_id,
-                &request.raw_input,
+                &request,
                 mood_transition.clone(),
                 Some(progress_tx.clone()),
             )
@@ -1165,14 +1153,7 @@ impl Agent {
             .await;
         }
 
-        attach_motion_to_result(
-            result,
-            user_id,
-            &request.raw_input,
-            mood_transition,
-            Some(progress_tx),
-        )
-        .await
+        attach_motion_to_result(result, &request, mood_transition, Some(progress_tx)).await
     }
 
     /// 执行配方（带进度回调和升级）— 使用 Planner
@@ -2004,8 +1985,7 @@ fn spawn_motion_directive(
 
 async fn attach_motion_to_result(
     result: Result<AgentResponse, String>,
-    user_id: i32,
-    user_text: &str,
+    request: &UserRequest,
     mood: Option<crate::services::agent::merope::MoodTransition>,
     progress_tx: Option<tokio::sync::mpsc::Sender<AgentProgressEvent>>,
 ) -> Result<AgentResponse, String> {
@@ -2025,13 +2005,14 @@ async fn attach_motion_to_result(
     };
     let handle = spawn_motion_directive(
         crate::services::agent::merope::MotionContext {
-            user_id,
+            user_id: request.user_id,
             phase,
             mood,
             activity: "talking".to_string(),
-            user_text: user_text.to_string(),
+            user_text: request.raw_input.clone(),
             response_text: Some(response.message.clone()),
             task_success,
+            rig_state: request_rig_state(request),
         },
         progress_tx,
     );

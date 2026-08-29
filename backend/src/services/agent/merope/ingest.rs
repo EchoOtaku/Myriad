@@ -336,6 +336,7 @@ pub async fn ingest(
                     user_text: summary.clone(),
                     response_text: Some(spoken.clone()),
                     task_success: None,
+                    rig_state: None,
                 })
                 .await;
                 (performance, Some(mood))

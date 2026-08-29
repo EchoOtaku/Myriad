@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "expressions": ["withdrawn", "subdued", "steady", "warm"],
+  "postures": ["closed", "neutral", "open"],
+  "channelOwners": [
+    "preview",
+    "speech",
+    "performance",
+    "music",
+    "coSpeech",
+    "mood",
+    "pointer",
+    "ambient",
+    "autonomy",
+    "idle"
+  ],
+  "specialIntents": [
+    "dizzy",
+    "cry",
+    "angry",
+    "speechless",
+    "maniac",
+    "silly",
+    "lovestruck"
+  ],
+  "headBodyIntents": [
+    "greet",
+    "question",
+    "delight",
+    "emphasize",
+    "notify",
+    "angry",
+    "speechless",
+    "maniac",
+    "silly",
+    "lovestruck"
+  ],
+  "capabilities": [
+    "blink",
+    "independent-eyes",
+    "dizzy-eye",
+    "squeeze-eye",
+    "cry-eye",
+    "silly-eye",
+    "lovestruck",
+    "cry-mouth",
+    "maniac-mouth",
+    "silly-mouth",
+    "mouth-shapes",
+    "head-body"
+  ],
+  "musicEnergies": ["quiet", "soft", "present", "strong"],
+  "beatPhases": ["rest", "downbeat", "pulse", "hold"],
+  "motionStyles": ["restrained", "even", "open"],
+  "maxRecentActions": 6
+}

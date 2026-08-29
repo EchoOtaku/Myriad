@@ -14,6 +14,7 @@ pub use ingest::{
     allow_existing_notify, is_enabled, spawn as spawn_ingest, spawn_diary, spawn_presence,
 };
 pub use motion::{direct_motion, MotionContext, MotionPhase, PerformanceDirective};
+pub use myriad_merope::RigStateSummary;
 pub use store::{
     acquire_portrait_generation, clear_persona_on, complete_portrait_generation,
     get_or_create_state, get_persona, get_persona_on, insert_diary, insert_proactive, latest_diary,

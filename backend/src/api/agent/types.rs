@@ -32,6 +32,9 @@ pub struct ProcessContext {
     /// 用户已接受、正在进入 Work 的自主提案。
     pub intention_id: Option<String>,
     pub autonomy_permission_cap: Option<Vec<String>>,
+    /// Semantic live-face snapshot. Extra keys are dropped at the sanitizer.
+    #[serde(default)]
+    pub rig_state: Option<serde_json::Value>,
 }
 
 /// 对话消息（API 格式）

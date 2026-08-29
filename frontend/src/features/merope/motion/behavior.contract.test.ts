@@ -116,6 +116,17 @@ test('workbench preview stays off the production coordinator', () => {
   assert.match(preview, /createPreviewMotionRuntime/)
 })
 
+test('agent turns send a semantic rig summary instead of per-frame drivers', () => {
+  const engine = source('../../../components/agent-panel/AgentEngine.tsx')
+  assert.match(engine, /captureProductionRigStateSummary/)
+  assert.match(engine, /rigState/)
+  const capture = source('./rigStateSummary.ts')
+  assert.doesNotMatch(capture, /mouthOpen/)
+  assert.doesNotMatch(capture, /angleX/)
+  const player = source('../anime25drig/player.ts')
+  assert.doesNotMatch(player, /captureRigStateSummary/)
+})
+
 test('autonomy is a reserved source and never writes a rig', () => {
   const autonomyWrites = source('./speechSource.ts') + source('./applyFrame.ts')
   assert.doesNotMatch(autonomyWrites, /claim\('autonomy'/)
