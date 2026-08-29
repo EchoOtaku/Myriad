@@ -1768,3 +1768,22 @@ pub struct QuestionOptionCompact {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 }
+
+#[cfg(test)]
+mod interaction_mode_tests {
+    use super::*;
+
+    #[test]
+    fn legacy_request_context_defaults_to_work() {
+        let context: RequestContext = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert_eq!(context.interaction_mode, AgentInteractionMode::Work);
+    }
+
+    #[test]
+    fn chat_mode_round_trips_as_snake_case() {
+        let encoded = serde_json::to_value(AgentInteractionMode::Chat).unwrap();
+        assert_eq!(encoded, serde_json::json!("chat"));
+        let decoded: AgentInteractionMode = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded, AgentInteractionMode::Chat);
+    }
+}

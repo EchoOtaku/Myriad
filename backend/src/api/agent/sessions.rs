@@ -535,3 +535,22 @@ pub(crate) async fn ensure_session(
 
     Ok(new_id)
 }
+
+#[cfg(test)]
+mod mode_tests {
+    use super::*;
+    use crate::services::agent::AgentInteractionMode;
+
+    #[test]
+    fn legacy_session_context_is_work() {
+        assert_eq!(session_mode(None), AgentInteractionMode::Work);
+        assert_eq!(session_mode(Some(&json!({}))), AgentInteractionMode::Work);
+    }
+
+    #[test]
+    fn session_context_preserves_chat_mode() {
+        let context = session_context(AgentInteractionMode::Chat);
+        assert_eq!(context, json!({ "mode": "chat" }));
+        assert_eq!(session_mode(Some(&context)), AgentInteractionMode::Chat);
+    }
+}

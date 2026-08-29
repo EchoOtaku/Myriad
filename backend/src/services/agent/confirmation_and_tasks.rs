@@ -1081,13 +1081,24 @@ impl Agent {
             .await
     }
 
-    async fn stream_chat_response_with_analyzer(
+    pub(crate) async fn strict_lite_chat_response(
         &self,
         request: &UserRequest,
-        progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
-        analyzer: crate::services::analyzer::AiAnalyzer,
     ) -> Result<String, String> {
-        // 加载 Agent 人格
+        let analyzer = crate::services::ai::create_strict_lite_ai_analyzer_with_timeout(None)
+            .await
+            .ok_or_else(|| "Lite model is not configured for Chat mode".to_string())?;
+        let prompt = self.chat_response_prompt(request).await;
+        let response = analyzer.analyze(&prompt).await.map_err(|error| error.to_string())?;
+        let response = response.trim();
+        if response.is_empty() {
+            Err("Chat model returned an empty response".to_string())
+        } else {
+            Ok(response.to_string())
+        }
+    }
+
+    async fn chat_response_prompt(&self, request: &UserRequest) -> String {
         let soul = crate::services::agent::identity::get_speaking_soul()
             .await
             .unwrap_or_default();
@@ -1101,11 +1112,10 @@ impl Agent {
             format!("{merope_block}\n\n")
         };
 
-        // 构建对话历史
         let history_text = request
             .context
             .as_ref()
-            .and_then(|c| c.conversation_history.as_ref())
+            .and_then(|context| context.conversation_history.as_ref())
             .map(|history| {
                 let recent: Vec<_> = history
                     .iter()
@@ -1117,33 +1127,37 @@ impl Agent {
                     .collect();
                 recent
                     .iter()
-                    .map(|msg| format!("{}：{}", msg.role, msg.content))
+                    .map(|message| format!("{}：{}", message.role, message.content))
                     .collect::<Vec<_>>()
                     .join("\n")
             })
             .unwrap_or_default();
 
-        let prompt = if history_text.is_empty() {
+        if history_text.is_empty() {
             format!(
-                "{soul}\n\n{merope}用户对你说：{input}\n\n\
+                "{soul}\n\n{merope_prefix}用户对你说：{input}\n\n\
                  请以你的角色自然地回复用户。使用用户的语言。保持简短、温暖、自然。\
                  不要输出任何 JSON 或格式标记，只输出纯文本回复。",
-                soul = soul,
-                merope = merope_prefix,
                 input = request.raw_input,
             )
         } else {
             format!(
-                "{soul}\n\n{merope}以下是对话历史：\n{history}\n\n\
+                "{soul}\n\n{merope_prefix}以下是对话历史：\n{history_text}\n\n\
                  用户最新消息：{input}\n\n\
                  请以你的角色自然地回复用户。使用用户的语言。保持简短、温暖、自然。\
                  不要输出任何 JSON 或格式标记，只输出纯文本回复。",
-                soul = soul,
-                merope = merope_prefix,
-                history = history_text,
                 input = request.raw_input,
             )
-        };
+        }
+    }
+
+    async fn stream_chat_response_with_analyzer(
+        &self,
+        request: &UserRequest,
+        progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
+        analyzer: crate::services::analyzer::AiAnalyzer,
+    ) -> Result<String, String> {
+        let prompt = self.chat_response_prompt(request).await;
 
         let tx = progress_tx.clone();
         match analyzer

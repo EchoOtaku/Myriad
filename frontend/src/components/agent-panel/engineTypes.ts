@@ -241,6 +241,7 @@ export interface StepDebugEntry {
 /** 会话 */
 export interface ChatSession {
   id: string
+  mode?: 'work' | 'chat'
   title: string | null
   messageCount: number
   lastActiveAt: string

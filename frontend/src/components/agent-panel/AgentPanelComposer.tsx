@@ -37,6 +37,7 @@ import { AGENT_ATTACH_ACCEPT, collectAttachments } from './agentAttachments'
 import { dispatchAgentPanelCommand } from './agentPanelEvents'
 import { AgentPanelFace } from './AgentPanelFace'
 import { cycleAgentPanelMode, useAgentPanelMode } from './agentPanelMode'
+import { AGENT_ROW_MS, readPresenceDuration } from './agentPresenceState'
 import { setAgentStatusRecording, useAgentStatus } from './agentStatusStore'
 import { attachOrbDriftSpeed, startAttachOrbDrift } from './attachOrbDrift'
 import { composerActionKind } from './composerAction'
@@ -50,6 +51,44 @@ import { AgentPresence, AgentPresenceList, AgentSwap } from './useAgentPresence'
 import { useVoiceRecording } from './useVoiceRecording'
 
 const FIELD_MAX_PX = 168
+
+function useHeldOpen(open: boolean, holdMs: number): boolean {
+  const [held, setHeld] = useState(open)
+  useEffect(() => {
+    if (open) {
+      setHeld(true)
+      return undefined
+    }
+    const wait = readPresenceDuration(holdMs)
+    if (wait <= 0) {
+      setHeld(false)
+      return undefined
+    }
+    const timer = setTimeout(setHeld, wait, false)
+    return () => clearTimeout(timer)
+  }, [holdMs, open])
+  return open || held
+}
+
+/** 先挂上（opacity 0），下一帧再打开，透明度过渡才吃得到。 */
+function useRevealNextFrame(open: boolean): boolean {
+  const [revealed, setRevealed] = useState(false)
+  useLayoutEffect(() => {
+    if (!open) {
+      setRevealed(false)
+      return undefined
+    }
+    let inner = 0
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setRevealed(true))
+    })
+    return () => {
+      cancelAnimationFrame(outer)
+      cancelAnimationFrame(inner)
+    }
+  }, [open])
+  return revealed
+}
 
 function fitComposerField(el: HTMLTextAreaElement | null): void {
   if (!el) return
@@ -273,6 +312,8 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
   const { t, format } = useI18n()
   const mode = useAgentPanelMode()
   const chatting = mode === 'chat'
+  const showFace = useHeldOpen(chatting, AGENT_ROW_MS)
+  const faceOpen = useRevealNextFrame(chatting)
   const moodBandValue = useAddresseeMoodBand()
   const { pathname } = useLocation()
   const { isAuthenticated } = useAuth()
@@ -401,9 +442,15 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
 
   return (
     <div className="agent-panel-composer" data-mode={mode}>
-      <AgentPresence open={mode === 'chat'} kind="row" from="face">
-        <AgentPanelFace />
-      </AgentPresence>
+      {showFace ? (
+        <div
+          className="agent-panel-face-slot"
+          data-open={faceOpen ? 'true' : undefined}
+          aria-hidden={!faceOpen}
+        >
+          <AgentPanelFace />
+        </div>
+      ) : null}
       <div className="agent-panel-composer-tags">
         <ModeTag mode={mode} />
         {chatting ? null : leading}

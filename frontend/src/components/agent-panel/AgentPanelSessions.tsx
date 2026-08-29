@@ -14,6 +14,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { agentService } from '../../services/agent'
 import { relativeTimeBucket } from './agentRelativeTime'
+import { useAgentPanelMode } from './agentPanelMode'
 import { AgentPresence, AgentPresenceList } from './useAgentPresence'
 import { useConversationPan } from './useConversationPan'
 
@@ -38,6 +39,7 @@ export function useAgentSessionList(enabled: boolean): {
 } {
   const { t } = useI18n()
   const { isAuthenticated } = useAuth()
+  const mode = useAgentPanelMode()
   const [sessions, setSessions] = useState<SessionInfo[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
@@ -65,7 +67,10 @@ export function useAgentSessionList(enabled: boolean): {
       try {
         const list = await agentService.listSessions(page, SESSION_PAGE)
         if (cancelled) return
-        const fresh = list.filter((item) => item.messageCount > 0)
+        const fresh = list.filter(
+          (item) =>
+            item.messageCount > 0 && (item.mode ?? 'work') === mode,
+        )
         const current = page === 1 ? null : sessionsRef.current
         const next =
           !current || page === 1
@@ -97,7 +102,7 @@ export function useAgentSessionList(enabled: boolean): {
     return () => {
       cancelled = true
     }
-  }, [enabled, isAuthenticated, page])
+  }, [enabled, isAuthenticated, mode, page])
 
   const onNearStart = useCallback(() => {
     if (fetchingRef.current || !hasMoreRef.current) return

@@ -626,6 +626,7 @@ export interface ConversationMessage {
 /** 会话信息 */
 export interface SessionInfo {
   id: string
+  mode?: 'work' | 'chat'
   title: string | null
   messageCount: number
   archived: boolean

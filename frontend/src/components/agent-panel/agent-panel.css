@@ -134,7 +134,7 @@
 }
 
 .agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']
-  .agent-panel-presence[data-kind='row']:not([data-from='face']),
+  .agent-panel-presence[data-kind='row'],
 .agent-panel-messages-slot[data-exiting='true']
   .agent-panel-presence[data-kind='row'] {
   pointer-events: none;
@@ -297,12 +297,6 @@
     scale: 0.72;
   }
 
-  .agent-panel-presence[data-from='face'] {
-    opacity: 0;
-    translate: 0 0;
-    scale: 1;
-  }
-
   .agent-panel-presence[data-kind='row'][data-from='self'] {
     translate: 0 -6px;
     scale: 1;
@@ -354,11 +348,6 @@
 
 .agent-panel-presence[data-presence='out'][data-from='self'] {
   scale: 0.72;
-}
-
-.agent-panel-presence[data-presence='out'][data-from='face'] {
-  translate: 0 0;
-  scale: 1;
 }
 
 .agent-panel-presence[data-presence='out'][data-kind='row'][data-from='self'] {
@@ -769,13 +758,27 @@ button.agent-panel-tag:disabled {
   margin-right: 6px;
 }
 
-.agent-panel-composer > .agent-panel-presence[data-from='face'] {
+.agent-panel-face-slot {
   /* 抵掉「人→贴」的 gap，再越过贴行和「贴→输入」的 gap，让人接到输入框。
-     进出只动透明度：底对齐时改边距会把人顶上去。 */
+     进出只动透明度；卸节点放在淡出之后，避免画布闪回一帧。 */
   margin-bottom: calc(
     (var(--agent-composer-gap) + var(--agent-face-overlap)) * -1
   );
-  transition: opacity var(--agent-move) var(--agent-ease);
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition:
+    opacity var(--agent-move) var(--agent-ease),
+    visibility 0s linear var(--agent-move);
+}
+
+.agent-panel-face-slot[data-open='true'] {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  transition:
+    opacity var(--agent-move) var(--agent-ease),
+    visibility 0s;
 }
 
 .agent-panel-composer[data-mode='chat'] .agent-panel-composer-tags,
@@ -1274,6 +1277,7 @@ button.agent-panel-tag:disabled {
   .agent-panel-field-shell,
   .agent-panel-face,
   .agent-panel-face-rig,
+  .agent-panel-face-slot,
   .agent-panel-attach-bar,
   .agent-panel-attach-orb,
   .agent-panel-presence,

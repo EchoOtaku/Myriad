@@ -94,6 +94,39 @@ impl Agent {
             );
         }
 
+        if request.context.as_ref().is_some_and(|context| {
+            context.interaction_mode == crate::services::agent::AgentInteractionMode::Chat
+        }) {
+            crate::services::agent::merope::note_chat_diary(&self.db, user_id, &request.raw_input)
+                .await;
+            let reply = match self.strict_lite_chat_response(&request).await {
+                Ok(reply) => reply,
+                Err(error) => {
+                    crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
+                    return Err(error);
+                }
+            };
+            crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
+            return attach_motion_to_result(
+                Ok(AgentResponse {
+                    response_type: AgentResponseType::Answer,
+                    message: reply.clone(),
+                    data: Some(json!({ "reply": reply, "type": "chat", "mode": "chat" })),
+                    data_display: None,
+                    suggestions: vec![],
+                    task: None,
+                    confirmation: None,
+                    frontend_action: None,
+                    performance: None,
+                }),
+                user_id,
+                &request.raw_input,
+                mood_transition.clone(),
+                None,
+            )
+            .await;
+        }
+
         // 1. Planner 规划
         let planner_output = match self.planner.plan(&request).await {
             Ok(output) => output,
@@ -508,12 +541,8 @@ impl Agent {
                 })
                 .await;
 
-            crate::services::agent::merope::note_chat_diary(
-                &self.db,
-                user_id,
-                &request.raw_input,
-            )
-            .await;
+            crate::services::agent::merope::note_chat_diary(&self.db, user_id, &request.raw_input)
+                .await;
 
             let reply = match self
                 .stream_strict_lite_chat_response(&request, &progress_tx)
@@ -521,8 +550,7 @@ impl Agent {
             {
                 Ok(reply) => reply,
                 Err(error) => {
-                    crate::services::agent::merope::mark_activity(&self.db, user_id, "idle")
-                        .await;
+                    crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                     return Err(error);
                 }
             };

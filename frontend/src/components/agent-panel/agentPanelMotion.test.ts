@@ -180,7 +180,7 @@ describe('agent panel motion contract', () => {
     const closingComposer = block(
       css,
       ".agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']\n  .agent-panel-composer {",
-      ".agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']\n  .agent-panel-presence[data-kind='row']:not([data-from='face']),",
+      ".agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']\n  .agent-panel-presence[data-kind='row'],",
     )
     assert.match(
       closingComposer,

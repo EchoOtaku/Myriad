@@ -27,14 +27,7 @@ import type {
 } from '../../services/agent'
 import type { AgentAttachment } from './agentAttachments'
 import type { AgentPanelMode } from './agentPanelMode'
-import {
-  type ChatMessage,
-  type ChatSession,
-  type ExecutionTrace,
-  type PendingQuestion,
-  type TaskExecution,
-  executionStepsFromHistory,
-} from './engineTypes'
+import type { ChatMessage, ChatSession, ExecutionTrace, PendingQuestion, TaskExecution } from './engineTypes'
 import {
   useCallback,
   useEffect,
@@ -61,13 +54,8 @@ import {
 import { buildAgentPendingAction } from './agentAction'
 import { attachmentsForRequest } from './agentAttachments'
 import { getAgentContextConsent } from './agentContextConsent'
-import {
-  nonemptyContent,
-  peelThoughtFromContent,
-  splitThinkContent,
-} from './agentThinking'
 import { setAgentSessionId } from './agentMessages'
-import { syncProjectedMessages } from './projectAgentMessage'
+import { getAgentPanelMode } from './agentPanelMode'
 import {
   AGENT_PANEL_ACTION_EVENT,
   AGENT_PANEL_ANSWER_EVENT,
@@ -90,8 +78,18 @@ import {
   setAgentStatusThinking,
   setAgentUndoOffer,
 } from './agentStatusStore'
-
+import {
+  nonemptyContent,
+  peelThoughtFromContent,
+  splitThinkContent,
+} from './agentThinking'
 import { planAgentUndo } from './agentUndo'
+import {
+
+  executionStepsFromHistory,
+} from './engineTypes'
+
+import { syncProjectedMessages } from './projectAgentMessage'
 import { useMessageState } from './useMessageState'
 
 function currentPath(): string {
@@ -146,6 +144,10 @@ export const AgentEngine: React.FC = () => {
   const sessionIdsByModeRef = useRef<Record<AgentPanelMode, string | null>>({
     work: null,
     chat: null,
+  })
+  const loadingByModeRef = useRef<Record<AgentPanelMode, boolean>>({
+    work: false,
+    chat: false,
   })
 
   const handleSendRef =
@@ -203,6 +205,8 @@ export const AgentEngine: React.FC = () => {
     loadingMessageIdRef.current = null
     setIsLoading(false)
     resetAgentStatus()
+    const mode = getAgentPanelMode()
+    sessionIdsByModeRef.current[mode] = null
     setSessionId(null)
     setMessages([])
     sessionTitleSetRef.current = false
@@ -306,7 +310,9 @@ export const AgentEngine: React.FC = () => {
     async (
       session: ChatSession,
       reattachHints?: { runId?: string; taskId?: string },
+      requestedMode: AgentPanelMode = session.mode ?? getAgentPanelMode(),
     ) => {
+      sessionIdsByModeRef.current[requestedMode] = session.id
       setSessionId(session.id)
       sessionTitleSetRef.current = !!session.title
 
@@ -451,6 +457,7 @@ export const AgentEngine: React.FC = () => {
           taskId:
             typeof detail?.taskId === 'string' ? detail.taskId : undefined,
         },
+        'work',
       )
     }
     window.addEventListener('arael-open-session', handleOpenSession)
@@ -531,8 +538,10 @@ export const AgentEngine: React.FC = () => {
     const handleOpenSession = (event: Event) => {
       const id = agentPanelOpenSessionId(event)
       if (!id) return
+      const mode = getAgentPanelMode()
       void loadSession({
         id,
+        mode,
         title: null,
         messageCount: 0,
         lastActiveAt: '',
@@ -1008,6 +1017,7 @@ export const AgentEngine: React.FC = () => {
         format(t.agentPanel.attach.fallback, {
           names: attachments.map((item) => item.name).join(', '),
         })
+      const modeSessionId = sessionIdsByModeRef.current[mode]
 
       void import('../../utils/analyticsEvents').then(
         ({ trackProductEvent, AnalyticsEvents }) => {
@@ -1026,7 +1036,7 @@ export const AgentEngine: React.FC = () => {
           ...prev,
           {
             id: `msg_guest_hint_${Date.now()}`,
-            sessionId: sessionId || '',
+            sessionId: modeSessionId || '',
             role: 'assistant',
             content: loginHint,
             createdAt: new Date(),
@@ -1039,12 +1049,13 @@ export const AgentEngine: React.FC = () => {
       }
 
       // 如果有待回答的问题，将输入路由到 answerQuestion（即使 isLoading 也允许）
-      if (pendingAnswerMsg && answerQuestionRef.current) {
+      if (mode === 'work' && pendingAnswerMsg && answerQuestionRef.current) {
         answerQuestionRef.current(pendingAnswerMsg.id, requestText)
         return
       }
 
-      if (isLoading) {
+      if (loadingByModeRef.current[mode]) {
+        if (mode === 'chat') return
         const activeTaskMessage = [...messages]
           .reverse()
           .find(
@@ -1057,7 +1068,7 @@ export const AgentEngine: React.FC = () => {
 
         const userMessage: ChatMessage = {
           id: `msg_user_steer_${Date.now()}`,
-          sessionId: sessionId || '',
+          sessionId: modeSessionId || '',
           role: 'user',
           content: messageText,
           createdAt: new Date(),
@@ -1081,7 +1092,7 @@ export const AgentEngine: React.FC = () => {
             ...prev,
             {
               id: `msg_assistant_steer_error_${Date.now()}`,
-              sessionId: sessionId || '',
+                sessionId: modeSessionId || '',
               role: 'assistant',
               content: format(t.agentPanel.errorWithDetail, {
                 error: errorMessage,
@@ -1099,7 +1110,7 @@ export const AgentEngine: React.FC = () => {
       const userMsgId = `msg_user_${Date.now()}`
       const userMessage: ChatMessage = {
         id: userMsgId,
-        sessionId: sessionId || '',
+        sessionId: modeSessionId || '',
         role: 'user',
         content: messageText,
         createdAt: new Date(),
@@ -1110,7 +1121,7 @@ export const AgentEngine: React.FC = () => {
       const assistantMsgId = `msg_assistant_${Date.now()}`
       const assistantMessage: ChatMessage = {
         id: assistantMsgId,
-        sessionId: sessionId || '',
+        sessionId: modeSessionId || '',
         role: 'assistant',
         content: '',
         createdAt: new Date(),
@@ -1124,6 +1135,7 @@ export const AgentEngine: React.FC = () => {
 
       setMessages((prev) => [...prev, userMessage, assistantMessage])
       loadingMessageIdRef.current = assistantMsgId
+      loadingByModeRef.current[mode] = true
       setIsLoading(true)
       setAgentStatusThinking()
 
@@ -1133,7 +1145,6 @@ export const AgentEngine: React.FC = () => {
           currentRoute: location.pathname,
         }
 
-        const modeSessionId = sessionIdsByModeRef.current[mode]
         if (modeSessionId) {
           context.sessionId = modeSessionId
         }
@@ -1216,16 +1227,17 @@ export const AgentEngine: React.FC = () => {
           }),
         )
       } finally {
+        loadingByModeRef.current[mode] = false
         if (loadingMessageIdRef.current === assistantMsgId) {
           loadingMessageIdRef.current = null
-          setIsLoading(false)
         }
+        setIsLoading(
+          loadingByModeRef.current.work || loadingByModeRef.current.chat,
+        )
       }
     },
     [
-      isLoading,
       messages,
-      sessionId,
       location.pathname,
       pageContentContext,
       createProgressHandler,
