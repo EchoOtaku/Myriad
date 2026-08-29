@@ -21,26 +21,38 @@ export interface AgentPanelSessionsProps {
   activeSessionId: string | null
   onSelect: (sessionId: string) => void
   exiting?: boolean
+  sessions: SessionInfo[] | null
+  error: string | null
+  onNearStart: () => void
+  removeSession: (id: string) => void
 }
 
 const SESSION_PAGE = 20
+const SESSION_FILL = 8
 
-export const AgentPanelSessions: React.FC<AgentPanelSessionsProps> = ({
-  activeSessionId,
-  onSelect,
-  exiting = false,
-}) => {
-  const { t, format, locale } = useI18n()
+export function useAgentSessionList(enabled: boolean): {
+  sessions: SessionInfo[] | null
+  error: string | null
+  onNearStart: () => void
+  removeSession: (id: string) => void
+} {
+  const { t } = useI18n()
   const { isAuthenticated } = useAuth()
   const [sessions, setSessions] = useState<SessionInfo[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const hasMoreRef = useRef(false)
   const fetchingRef = useRef(false)
-  const listRef = useRef<HTMLDivElement>(null)
-  const trackRef = useRef<HTMLDivElement>(null)
+  const sessionsRef = useRef(sessions)
+  sessionsRef.current = sessions
 
   useEffect(() => {
+    if (enabled) return
+    setPage(1)
+  }, [enabled])
+
+  useEffect(() => {
+    if (!enabled) return
     if (!isAuthenticated) {
       setSessions([])
       setError(t.agentPanel.sessions.needLogin)
@@ -54,16 +66,28 @@ export const AgentPanelSessions: React.FC<AgentPanelSessionsProps> = ({
         const list = await agentService.listSessions(page, SESSION_PAGE)
         if (cancelled) return
         const fresh = list.filter((item) => item.messageCount > 0)
+        const current = page === 1 ? null : sessionsRef.current
+        const next =
+          !current || page === 1
+            ? fresh
+            : current.concat(
+                fresh.filter(
+                  (item) => !current.some((seen) => seen.id === item.id),
+                ),
+              )
+        sessionsRef.current = next
         hasMoreRef.current = list.length >= SESSION_PAGE
-        setSessions((current) => {
-          if (page === 1 || !current) return fresh
-          const seen = new Set(current.map((item) => item.id))
-          return current.concat(fresh.filter((item) => !seen.has(item.id)))
-        })
+        setSessions(next)
         setError(null)
+        if (hasMoreRef.current && next.length < SESSION_FILL) {
+          setPage((value) => value + 1)
+        }
       } catch {
         if (cancelled) return
-        if (page === 1) setSessions([])
+        if (page === 1) {
+          sessionsRef.current = []
+          setSessions([])
+        }
         hasMoreRef.current = false
         setError(t.agentPanel.sessions.loadFailed)
       } finally {
@@ -74,6 +98,7 @@ export const AgentPanelSessions: React.FC<AgentPanelSessionsProps> = ({
       cancelled = true
     }
   }, [
+    enabled,
     isAuthenticated,
     page,
     t.agentPanel.sessions.needLogin,
@@ -85,6 +110,36 @@ export const AgentPanelSessions: React.FC<AgentPanelSessionsProps> = ({
     fetchingRef.current = true
     setPage((current) => current + 1)
   }, [])
+
+  const removeSession = useCallback(
+    (id: string) => {
+      setSessions((current) => {
+        const next = current?.filter((item) => item.id !== id) ?? current
+        sessionsRef.current = next
+        return next
+      })
+      void agentService.archiveSession(id).catch(() => {
+        setError(t.agentPanel.sessions.loadFailed)
+      })
+    },
+    [t.agentPanel.sessions.loadFailed],
+  )
+
+  return { sessions, error, onNearStart, removeSession }
+}
+
+export const AgentPanelSessions: React.FC<AgentPanelSessionsProps> = ({
+  activeSessionId,
+  onSelect,
+  exiting = false,
+  sessions,
+  error,
+  onNearStart,
+  removeSession,
+}) => {
+  const { t, format, locale } = useI18n()
+  const listRef = useRef<HTMLDivElement>(null)
+  const trackRef = useRef<HTMLDivElement>(null)
 
   useConversationPan(
     listRef,
@@ -176,14 +231,7 @@ export const AgentPanelSessions: React.FC<AgentPanelSessionsProps> = ({
                       if (!window.confirm(t.agentPanel.confirmRemoveSession)) {
                         return
                       }
-                      setSessions(
-                        (current) =>
-                          current?.filter((item) => item.id !== session.id) ??
-                          current,
-                      )
-                      void agentService.archiveSession(session.id).catch(() => {
-                        setError(t.agentPanel.sessions.loadFailed)
-                      })
+                      removeSession(session.id)
                     }}
                   >
                     <svg

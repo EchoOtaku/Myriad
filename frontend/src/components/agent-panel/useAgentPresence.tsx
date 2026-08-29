@@ -83,15 +83,6 @@ export function useKeyedPresence<T>(
   })
 }
 
-/** 首帧之后才允许 @starting-style。首屏整表挂上时不要每张卡再飞一遍。 */
-export function useAppearGate(): boolean {
-  const [ready, setReady] = useState(false)
-  useEffect(() => {
-    setReady(true)
-  }, [])
-  return ready
-}
-
 function PresenceBox({
   kind,
   from,
@@ -201,19 +192,28 @@ export function AgentPresenceList<T>({
 }) {
   const entries = useKeyedPresence(items, keyOf, AGENT_ROW_MS)
   const last = entries.length - 1
+  const staggerFor = useRef(new Map<string, number>())
+  const batch = staggerFor.current.size === 0
   return (
     <>
-      {entries.map((entry, index) => (
-        <PresenceBox
-          key={entry.key}
-          kind={kind}
-          from={from}
-          phase={entry.phase}
-          stagger={Math.min(Math.max(last - index, 0), 8)}
-        >
-          {children(entry.item)}
-        </PresenceBox>
-      ))}
+      {entries.map((entry, index) => {
+        let stagger = staggerFor.current.get(entry.key)
+        if (stagger === undefined) {
+          stagger = batch ? Math.min(Math.max(last - index, 0), 8) : 0
+          staggerFor.current.set(entry.key, stagger)
+        }
+        return (
+          <PresenceBox
+            key={entry.key}
+            kind={kind}
+            from={from}
+            phase={entry.phase}
+            stagger={stagger}
+          >
+            {children(entry.item)}
+          </PresenceBox>
+        )
+      })}
     </>
   )
 }

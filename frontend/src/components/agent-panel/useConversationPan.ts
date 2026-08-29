@@ -219,8 +219,13 @@ export function useConversationPan(
       if (!frame) frame = requestAnimationFrame(tick)
     }
 
+    const blocked = () =>
+      (viewport.closest('.agent-panel-overlay-anchor') as HTMLElement | null)
+        ?.dataset.phase === 'closing' ||
+      Boolean(viewport.closest('[data-exiting="true"]'))
+
     const onWheel = (event: WheelEvent) => {
-      if (event.ctrlKey) return
+      if (event.ctrlKey || blocked()) return
       measure()
       const max = maxScroll()
       if (max <= 0) return
@@ -238,7 +243,7 @@ export function useConversationPan(
     }
 
     const onTouchStart = (event: TouchEvent) => {
-      if (event.touches.length !== 1) return
+      if (event.touches.length !== 1 || blocked()) return
       dragging = true
       velocity = 0
       touchY = event.touches[0].clientY

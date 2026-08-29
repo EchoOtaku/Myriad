@@ -123,7 +123,10 @@ describe('agent panel motion contract', () => {
     assert.match(css, /--agent-row-exit:\s*320ms/)
     assert.match(css, /data-exiting='true'/)
     assert.match(sessions, /from="composer"/)
+    assert.match(sessions, /useAgentSessionList/)
     assert.match(full, /data-exiting/)
+    assert.match(full, /setExiting\(false\)/)
+    assert.doesNotMatch(full, /!zoomed && !exiting/)
     assert.match(pan, /data-exiting/)
   })
 

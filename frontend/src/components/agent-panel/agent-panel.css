@@ -168,8 +168,7 @@
   transform-origin: bottom center;
 }
 
-/* 对话 / 历史切面自己的位移：只在面板已经落定后才播（翻历史、回对话）。
-   开合由锚点带着走，这里再写一遍会和初次加载叠两层。 */
+/* 切面静止态。开合位移在卡片和输入行上，不在这层再写一遍。 */
 .agent-panel-overlay,
 .agent-panel-tag-rail,
 .agent-panel-composer,
@@ -1226,6 +1225,10 @@ button.agent-panel-tag:disabled {
   flex: 0 1 auto;
   min-height: 0;
   overflow: visible;
+}
+
+.agent-panel-messages-slot[data-exiting='true'] {
+  pointer-events: none;
 }
 
 .agent-panel-overlay-anchor[data-capped='true'] .agent-panel-messages-slot {

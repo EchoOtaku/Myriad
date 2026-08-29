@@ -238,7 +238,7 @@ export const AgentPanel: React.FC = () => {
           {showsComposer && (
             <AgentPanelComposer
               onSubmit={submit}
-              autoFocus={fullView !== 'sessions'}
+              autoFocus={fullView !== 'sessions' && stage.phase === 'settled'}
               leading={
                 <>
                   <AgentPresence open={!!undoOffer} kind="chip" from="self">

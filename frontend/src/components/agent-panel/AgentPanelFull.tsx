@@ -22,7 +22,7 @@ import {
 } from './agentPanelEvents'
 import { AgentPanelManage } from './AgentPanelManage'
 import { AgentPanelMessage } from './AgentPanelMessage'
-import { AgentPanelSessions } from './AgentPanelSessions'
+import { AgentPanelSessions, useAgentSessionList } from './AgentPanelSessions'
 import { AGENT_ROW_EXIT_MS, AGENT_ROW_STAGGER_MS } from './agentPanelStage'
 import { AgentPresence, AgentPresenceList } from './useAgentPresence'
 import { useConversationPan } from './useConversationPan'
@@ -34,7 +34,10 @@ function useHeldView(view: AgentPanelFullView): {
   const [held, setHeld] = useState(view)
   const [exiting, setExiting] = useState(false)
   useEffect(() => {
-    if (view === held) return
+    if (view === held) {
+      setExiting(false)
+      return
+    }
     if (held === 'manage' || view === 'manage') {
       setHeld(view)
       setExiting(false)
@@ -46,7 +49,7 @@ function useHeldView(view: AgentPanelFullView): {
         setHeld(view)
         setExiting(false)
       },
-      AGENT_ROW_EXIT_MS + AGENT_ROW_STAGGER_MS * 4,
+      AGENT_ROW_EXIT_MS + AGENT_ROW_STAGGER_MS * 2,
     )
     return () => clearTimeout(timer)
   }, [held, view])
@@ -138,6 +141,9 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
   const messages = useAgentMessages()
   const sessionId = useAgentSessionId()
   const { held, exiting } = useHeldView(view)
+  const sessionList = useAgentSessionList(
+    view === 'sessions' || held === 'sessions',
+  )
   const [zoomed, setZoomed] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const trackRef = useRef<HTMLDivElement>(null)
@@ -153,6 +159,10 @@ export const AgentPanelFull: React.FC<AgentPanelFullProps> = ({
       <AgentPanelSessions
         activeSessionId={sessionId}
         exiting={exiting}
+        sessions={sessionList.sessions}
+        error={sessionList.error}
+        onNearStart={sessionList.onNearStart}
+        removeSession={sessionList.removeSession}
         onSelect={(id) => {
           dispatchAgentPanelOpenSession(id)
           onView('messages')
