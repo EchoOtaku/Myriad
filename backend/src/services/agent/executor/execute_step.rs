@@ -63,37 +63,28 @@ impl Executor {
                 crate::services::agent::get_user_permissions(handler_ctx.db, handler_ctx.user_id)
                     .await;
             let granted: Vec<String> = user_perms.into_iter().collect();
-            if handler_ctx.autonomy_permission_cap.is_some() {
-                let grant = crate::services::agent::consciousness::AutonomyGrantStore::new(
+            let grant = if handler_ctx.autonomy_permission_cap.is_some() {
+                crate::services::agent::consciousness::AutonomyGrantStore::new(
                     handler_ctx.db.clone(),
                 )
                 .find(handler_ctx.user_id)
                 .await
                 .ok()
-                .flatten();
-                if !crate::services::agent::consciousness::autonomy_cap_still_allows(
+                .flatten()
+            } else {
+                None
+            };
+            if let Some(error) =
+                crate::services::agent::consciousness::autonomy_execute_permission_error(
                     handler_ctx.user_id,
                     grant.as_ref(),
                     &granted,
                     handler_ctx.autonomy_permission_cap.as_deref(),
-                ) {
-                    return Err("Personal autonomy is no longer granted".into());
-                }
-            }
-            if !capability.required_permissions.is_empty() {
-                let effective =
-                    crate::services::agent::consciousness::effective_granted_permissions(
-                        &granted,
-                        handler_ctx.autonomy_permission_cap.as_deref(),
-                    );
-                for perm in &capability.required_permissions {
-                    if !effective.iter().any(|granted| granted == perm) {
-                        return Err(format!(
-                            "权限不足：执行 '{}' 需要 '{}' 权限",
-                            step.capability_id, perm
-                        ));
-                    }
-                }
+                    &step.capability_id,
+                    &capability.required_permissions,
+                )
+            {
+                return Err(error);
             }
         }
 

@@ -14,16 +14,18 @@ mod snapshot;
 mod store;
 mod types;
 
-pub use dispatch::{autonomy_cap_from_grant, build_autonomy_work_request};
+pub use dispatch::{
+    autonomy_cap_from_grant, autonomy_claim_decision, build_autonomy_work_request, AutonomyClaim,
+};
 pub use engine::{
     consider_event, forbids_propose_work, is_work_outcome, pre_gate, ConsciousnessGate,
     Consideration,
 };
 pub use grant::{
-    autonomy_cap_still_allows, effective_granted_permissions, evaluate_autonomy_grant,
-    intention_may_enter_work, prepare_personal_grant, required_permissions_within_cap,
-    revoke_personal_grant, skips_user_review, AutonomyGrantView, AutonomyGrantWriteError,
-    AutonomyVerdict,
+    autonomy_cap_still_allows, autonomy_execute_permission_error, effective_granted_permissions,
+    evaluate_autonomy_grant, intention_may_enter_work, prepare_personal_grant,
+    required_permissions_within_cap, revoke_personal_grant, skips_user_review, AutonomyGrantView,
+    AutonomyGrantWriteError, AutonomyVerdict,
 };
 pub use grant_store::AutonomyGrantStore;
 pub use policy::{validate_decision, DecisionPolicyError};

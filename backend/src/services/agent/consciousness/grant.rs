@@ -127,6 +127,44 @@ pub fn effective_granted_permissions(
         .collect()
 }
 
+/// Execute-time permission check. Autonomy-capped Work re-reads the live grant
+/// and current granted permissions; a revoke or empty intersection fails closed.
+/// User-accepted Work (`autonomy_permission_cap` is `None`) only checks current
+/// granted permissions against the capability.
+pub fn autonomy_execute_permission_error(
+    user_id: i32,
+    grant: Option<&AutonomyGrantView>,
+    current_granted_permissions: &[String],
+    autonomy_permission_cap: Option<&[String]>,
+    capability_id: &str,
+    required_permissions: &[String],
+) -> Option<String> {
+    if autonomy_permission_cap.is_some()
+        && !autonomy_cap_still_allows(
+            user_id,
+            grant,
+            current_granted_permissions,
+            autonomy_permission_cap,
+        )
+    {
+        return Some("Personal autonomy is no longer granted".into());
+    }
+    if required_permissions.is_empty() {
+        return None;
+    }
+    let effective =
+        effective_granted_permissions(current_granted_permissions, autonomy_permission_cap);
+    required_permissions.iter().find_map(|perm| {
+        if effective.iter().any(|granted| granted == perm) {
+            None
+        } else {
+            Some(format!(
+                "权限不足：执行 '{capability_id}' 需要 '{perm}' 权限"
+            ))
+        }
+    })
+}
+
 /// True when every required permission is inside the autonomy ceiling.
 ///
 /// `None` means this turn is not autonomy-capped (user-accepted Work).
@@ -400,7 +438,12 @@ mod tests {
         let live = grant(7, &["calendar:read"], false);
         let current = vec!["calendar:read".to_string(), "mail:send".to_string()];
         let cap = vec!["calendar:read".to_string()];
-        assert!(autonomy_cap_still_allows(7, Some(&live), &current, Some(&cap)));
+        assert!(autonomy_cap_still_allows(
+            7,
+            Some(&live),
+            &current,
+            Some(&cap)
+        ));
         assert!(autonomy_cap_still_allows(7, Some(&live), &current, None));
         let revoked = grant(7, &["calendar:read"], true);
         assert!(!autonomy_cap_still_allows(
@@ -425,5 +468,85 @@ mod tests {
         match verdict {
             AutonomyVerdict::RequireUserReview | AutonomyVerdict::AllowPersonalWork { .. } => {}
         }
+    }
+
+    #[test]
+    fn execute_time_revoke_or_permission_drop_fails_closed() {
+        let live = grant(7, &["calendar:read"], false);
+        let cap = vec!["calendar:read".to_string()];
+        let current = vec!["calendar:read".to_string(), "mail:send".to_string()];
+        assert_eq!(
+            autonomy_execute_permission_error(
+                7,
+                Some(&live),
+                &current,
+                Some(&cap),
+                "calendar.read",
+                &["calendar:read".into()],
+            ),
+            None
+        );
+
+        let revoked = grant(7, &["calendar:read"], true);
+        assert_eq!(
+            autonomy_execute_permission_error(
+                7,
+                Some(&revoked),
+                &current,
+                Some(&cap),
+                "calendar.read",
+                &["calendar:read".into()],
+            )
+            .as_deref(),
+            Some("Personal autonomy is no longer granted")
+        );
+        assert_eq!(
+            autonomy_execute_permission_error(
+                7,
+                Some(&live),
+                &["mail:send".into()],
+                Some(&cap),
+                "calendar.read",
+                &["calendar:read".into()],
+            )
+            .as_deref(),
+            Some("Personal autonomy is no longer granted")
+        );
+        assert_eq!(
+            autonomy_execute_permission_error(
+                7,
+                Some(&live),
+                &current,
+                Some(&cap),
+                "mail.send",
+                &["mail:send".into()],
+            )
+            .as_deref(),
+            Some("权限不足：执行 'mail.send' 需要 'mail:send' 权限")
+        );
+
+        assert_eq!(
+            autonomy_execute_permission_error(
+                7,
+                None,
+                &current,
+                None,
+                "mail.send",
+                &["mail:send".into()],
+            ),
+            None
+        );
+        assert_eq!(
+            autonomy_execute_permission_error(
+                7,
+                None,
+                &["calendar:read".into()],
+                None,
+                "mail.send",
+                &["mail:send".into()],
+            )
+            .as_deref(),
+            Some("权限不足：执行 'mail.send' 需要 'mail:send' 权限")
+        );
     }
 }

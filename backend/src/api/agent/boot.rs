@@ -218,7 +218,9 @@ pub async fn reclaim_stranded_running_intentions(db: &DatabaseConnection) {
                 ) == session_id
         });
         let persisted_status = match session_id.as_deref() {
-            Some(session_id) => latest_task_status_for_session(db, intent.user_id, session_id).await,
+            Some(session_id) => {
+                latest_task_status_for_session(db, intent.user_id, session_id).await
+            }
             None => None,
         };
         match classify_stranded_running(attached_waiting, persisted_status.as_deref()) {
@@ -288,6 +290,13 @@ async fn latest_task_status_for_session(
         .map(|row| row.status)
 }
 
+pub(crate) fn wait_response_still_waiting(response_value: &Value) -> bool {
+    response_value
+        .pointer("/task/status")
+        .and_then(|s| s.as_str())
+        == Some("waiting_for_input")
+}
+
 /// Lightweight wait-loop for boot-restored tasks (same terminal guarantees as process_stream).
 pub(crate) async fn spawn_restored_wait_loop(
     user_id: i32,
@@ -320,10 +329,7 @@ pub(crate) async fn spawn_restored_wait_loop(
 
         match tokio::time::timeout(tokio::time::Duration::from_secs(2), done_rx).await {
             Ok(Ok(response_value)) => {
-                let still_waiting = response_value
-                    .pointer("/task/status")
-                    .and_then(|s| s.as_str())
-                    == Some("waiting_for_input");
+                let still_waiting = wait_response_still_waiting(&response_value);
                 if still_waiting {
                     if let Some(db) = &ledger_db {
                         if !session_id.is_empty() {
@@ -537,7 +543,8 @@ pub(crate) async fn spawn_restored_wait_loop(
 
 #[cfg(test)]
 mod tests {
-    use super::{classify_stranded_running, RunningRecovery};
+    use super::{classify_stranded_running, wait_response_still_waiting, RunningRecovery};
+    use serde_json::json;
 
     #[test]
     fn stranded_running_without_a_task_may_retry() {
@@ -568,5 +575,19 @@ mod tests {
                 "{status}"
             );
         }
+    }
+
+    #[test]
+    fn multi_round_wait_keeps_the_loop_open() {
+        assert!(wait_response_still_waiting(&json!({
+            "success": true,
+            "message": "还需要一个日期",
+            "task": { "taskId": "t1", "status": "waiting_for_input" }
+        })));
+        assert!(!wait_response_still_waiting(&json!({
+            "success": true,
+            "message": "办完了",
+            "task": { "taskId": "t1", "status": "completed" }
+        })));
     }
 }

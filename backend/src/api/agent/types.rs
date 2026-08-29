@@ -678,6 +678,35 @@ mod api_contract_tests {
     }
 
     #[test]
+    fn parked_confirmation_keeps_the_run_open() {
+        let response = ApiResponse {
+            success: true,
+            response_type: "confirmation_required".into(),
+            message: "confirm".into(),
+            data: None,
+            data_display: None,
+            suggestions: vec![],
+            task: None,
+            confirmation: Some(ConfirmationInfo {
+                confirmation_id: "c1".into(),
+                risk_level: "high".into(),
+                expires_in_seconds: 300,
+                pending_steps: vec![],
+            }),
+            frontend_action: None,
+            performance: None,
+            session_id: None,
+        };
+        let parked = park_confirmation_run(&response, "confirmation:c1");
+        let event = AgentProgressEvent::TaskCompleted {
+            task_id: "confirmation:c1".into(),
+            success: true,
+            response: Box::new(parked),
+        };
+        assert!(!agent_run_event_is_terminal(&event));
+    }
+
+    #[test]
     fn wait_loop_oneshot_drop_publishes_terminal_event() {
         let event = wait_loop_channel_dropped_event("task_orphaned");
         assert!(

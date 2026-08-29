@@ -237,6 +237,7 @@ mod tests {
         assert!(IntentStatus::Running.can_transition_to(IntentStatus::Waiting));
         assert!(IntentStatus::Running.can_transition_to(IntentStatus::Accepted));
         assert!(IntentStatus::Waiting.can_transition_to(IntentStatus::Completed));
+        assert!(IntentStatus::Waiting.can_transition_to(IntentStatus::Running));
         assert!(!IntentStatus::Proposed.can_transition_to(IntentStatus::Running));
         assert!(!IntentStatus::Completed.can_transition_to(IntentStatus::Running));
         assert!(IntentStatus::Failed.is_terminal());

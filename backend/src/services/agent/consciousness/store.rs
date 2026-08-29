@@ -464,16 +464,30 @@ mod ledger_db_tests {
             .mark_accepted(&first.id, user_id, AcceptSource::Autonomy)
             .await
             .expect("accept");
-        let claimed = store
-            .transition(&first.id, user_id, IntentStatus::Running, None, None, None)
+        let listed = store
+            .list_autonomy_accepted(8)
             .await
-            .expect("first claim");
-        assert_eq!(claimed.status, IntentStatus::Running);
-        assert!(store
-            .transition(&first.id, user_id, IntentStatus::Running, None, None, None,)
-            .await
-            .is_err());
+            .expect("list autonomy");
+        assert!(listed.iter().any(|row| row.id == first.id));
 
+        let store_a = store.clone();
+        let store_b = store.clone();
+        let first_id = first.id.clone();
+        let (left, right) = tokio::join!(
+            store_a.transition(&first_id, user_id, IntentStatus::Running, None, None, None),
+            store_b.transition(&first_id, user_id, IntentStatus::Running, None, None, None),
+        );
+        assert!(
+            left.is_ok() ^ right.is_ok(),
+            "exactly one concurrent claim may enter Running"
+        );
+        let claimed = left.or(right).expect("winner");
+        assert_eq!(claimed.status, IntentStatus::Running);
+
+        store
+            .reattach_work(&first.id, user_id, "ses_empty".into(), "run_empty".into())
+            .await
+            .expect("attach");
         assert!(store
             .reclaim_running_to_accepted(&first.id, user_id)
             .await
@@ -481,6 +495,35 @@ mod ledger_db_tests {
         let reclaimed = store.find(&first.id, user_id).await.expect("reload");
         assert_eq!(reclaimed.status, IntentStatus::Accepted);
         assert_eq!(reclaimed.accept_source, AcceptSource::Autonomy);
+        assert_eq!(reclaimed.work_session_id, None);
+        assert_eq!(reclaimed.work_run_id, None);
+
+        let mut user_accepted = record(
+            user_id,
+            &format!("evt_user_{}", uuid::Uuid::new_v4().simple()),
+            IntentStatus::Proposed,
+        );
+        user_accepted.accept_source = AcceptSource::User;
+        user_accepted = store
+            .create_proposed(user_accepted)
+            .await
+            .expect("user proposed");
+        user_accepted = store
+            .mark_accepted(&user_accepted.id, user_id, AcceptSource::User)
+            .await
+            .expect("user accept");
+        let autonomy_only = store
+            .list_autonomy_accepted(8)
+            .await
+            .expect("list after user accept");
+        assert!(!autonomy_only.iter().any(|row| row.id == user_accepted.id));
+        let _ = db
+            .execute_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "DELETE FROM agent_intentions WHERE id = $1",
+                [user_accepted.id.clone().into()],
+            ))
+            .await;
 
         let _ = db
             .execute_raw(Statement::from_sql_and_values(

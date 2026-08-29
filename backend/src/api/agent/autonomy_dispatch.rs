@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::services::agent::consciousness::{
-    autonomy_cap_from_grant, build_autonomy_work_request, AcceptSource, AutonomyGrantStore,
-    IntentRecord, IntentStatus, IntentStore,
+    autonomy_claim_decision, build_autonomy_work_request, AcceptSource, AutonomyClaim,
+    AutonomyGrantStore, IntentRecord, IntentStatus, IntentStore,
 };
 use crate::services::agent::queue::LaneQueue;
 use crate::services::agent::run_hub::create_run;
@@ -44,22 +44,16 @@ async fn dispatch_one(db: &DatabaseConnection, intent: IntentRecord) -> Result<(
         .await
         .into_iter()
         .collect();
-    let Some(cap) = autonomy_cap_from_grant(intent.user_id, grant.as_ref(), &granted) else {
-        // Revoked or empty after re-filter: leave Accepted so the user can still
-        // click the proposal card. User accept upgrades accept_source.
+    // Revoked or empty after re-filter: leave Accepted so the user can still
+    // click the proposal card. User accept upgrades accept_source.
+    let AutonomyClaim::Claim { cap } = autonomy_claim_decision(
+        intent.user_id,
+        intent.accept_source,
+        grant.as_ref(),
+        &granted,
+    ) else {
         return Ok(());
     };
-    if build_autonomy_work_request(
-        intent.user_id,
-        &intent.proposal.instruction,
-        &intent.id,
-        String::new(),
-        cap.clone(),
-    )
-    .is_none()
-    {
-        return Ok(());
-    }
 
     let store = IntentStore::new(db.clone());
     // CAS Accepted → Running first so concurrent ticks do not create empty sessions.
@@ -298,10 +292,7 @@ pub(crate) fn park_confirmation_run(api_response: &ApiResponse, task_id: &str) -
         .unwrap_or_else(|_| json!({"error": "serialization failed"}));
     if let Some(object) = value.as_object_mut() {
         object.insert("streamTerminal".into(), json!(false));
-        let mut task = object
-            .get("task")
-            .cloned()
-            .unwrap_or_else(|| json!({}));
+        let mut task = object.get("task").cloned().unwrap_or_else(|| json!({}));
         if !task.is_object() {
             task = json!({});
         }
@@ -500,5 +491,37 @@ mod tests {
         let parked = park_confirmation_run(&response, "confirmation:c1");
         assert_eq!(parked["task"]["status"], "waiting_for_input");
         assert_eq!(parked["streamTerminal"], false);
+
+        response.task = Some(TaskInfo {
+            task_id: "t2".into(),
+            status: "waiting_for_input".into(),
+            progress: 40,
+            error: None,
+            current_step: None,
+            completed_steps: 0,
+            total_steps: 1,
+            dynamic_steps_added: 0,
+            pending_question: Some(QuestionSummary {
+                question_id: "q2".into(),
+                question_type: "free_text".into(),
+                question: "Which day?".into(),
+                context: None,
+                options: None,
+                required: Some(true),
+                default_value: None,
+            }),
+            step_history: vec![],
+            execution_trace: None,
+        });
+        response.confirmation = None;
+        response.response_type = "answer".into();
+        let mut resume = work_turn_session_metadata(&response, "run_3", "t2");
+        resume
+            .as_object_mut()
+            .expect("object")
+            .insert("confirmationResume".into(), json!(true));
+        assert_eq!(resume["confirmationResume"], true);
+        assert_eq!(resume["runId"], "run_3");
+        assert_eq!(resume["task"]["pendingQuestion"]["questionId"], "q2");
     }
 }

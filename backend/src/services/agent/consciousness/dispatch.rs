@@ -7,7 +7,36 @@ use chrono::Utc;
 
 use crate::services::agent::{AgentInteractionMode, RequestContext, UserRequest, SYSTEM_USER_ID};
 
-use super::AutonomyGrantView;
+use super::{AcceptSource, AutonomyGrantView};
+
+/// Whether this tick may CAS-claim an Accepted intention.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AutonomyClaim {
+    /// Leave Accepted. User click can still start Work.
+    Skip,
+    Claim {
+        cap: Vec<String>,
+    },
+}
+
+/// Revoked grants, heartbeat identity, user-accepted rows, and empty
+/// re-filter stay Accepted so a later user click can still start Work.
+pub fn autonomy_claim_decision(
+    user_id: i32,
+    accept_source: AcceptSource,
+    grant: Option<&AutonomyGrantView>,
+    current_granted: &[String],
+) -> AutonomyClaim {
+    if accept_source != AcceptSource::Autonomy {
+        return AutonomyClaim::Skip;
+    }
+    match autonomy_cap_from_grant(user_id, grant, current_granted) {
+        Some(cap) if user_id != SYSTEM_USER_ID && user_id > 0 && !cap.is_empty() => {
+            AutonomyClaim::Claim { cap }
+        }
+        _ => AutonomyClaim::Skip,
+    }
+}
 
 /// Assemble the Work turn for an autonomy-accepted proposal.
 ///
@@ -95,5 +124,51 @@ mod tests {
         let cap = autonomy_cap_from_grant(7, Some(&grant), &["calendar:read".into()]).unwrap();
         assert_eq!(cap, vec!["calendar:read".to_string()]);
         assert!(autonomy_cap_from_grant(7, Some(&grant), &[]).is_none());
+    }
+
+    #[test]
+    fn claim_is_skipped_after_revoke_or_user_accept() {
+        let live = AutonomyGrantView {
+            user_id: 7,
+            allowed_permissions: vec!["calendar:read".into()],
+            revoked: false,
+        };
+        let revoked = AutonomyGrantView {
+            user_id: 7,
+            allowed_permissions: vec!["calendar:read".into()],
+            revoked: true,
+        };
+        let granted = vec!["calendar:read".to_string()];
+        assert_eq!(
+            autonomy_claim_decision(7, AcceptSource::Autonomy, Some(&live), &granted),
+            AutonomyClaim::Claim {
+                cap: vec!["calendar:read".into()]
+            }
+        );
+        assert_eq!(
+            autonomy_claim_decision(7, AcceptSource::Autonomy, Some(&revoked), &granted),
+            AutonomyClaim::Skip
+        );
+        assert_eq!(
+            autonomy_claim_decision(7, AcceptSource::Autonomy, Some(&live), &[]),
+            AutonomyClaim::Skip
+        );
+        assert_eq!(
+            autonomy_claim_decision(7, AcceptSource::User, Some(&live), &granted),
+            AutonomyClaim::Skip
+        );
+        assert_eq!(
+            autonomy_claim_decision(
+                SYSTEM_USER_ID,
+                AcceptSource::Autonomy,
+                Some(&AutonomyGrantView {
+                    user_id: SYSTEM_USER_ID,
+                    allowed_permissions: granted.clone(),
+                    revoked: false,
+                }),
+                &granted,
+            ),
+            AutonomyClaim::Skip
+        );
     }
 }

@@ -1466,13 +1466,11 @@ pub async fn confirm_operation_stream(
                 // Persist confirmation result (or missing-param question) into the
                 // original session history so refresh keeps the full thread.
                 if let Some(ref sid) = session_id {
-                    let metadata = json!({
-                        "suggestions": &api_response.suggestions,
-                        "dataDisplay": &api_response.data_display,
-                        "frontendAction": &api_response.frontend_action,
-                        "data": &api_response.data,
-                        "confirmationResume": true,
-                    });
+                    let mut metadata =
+                        work_turn_session_metadata(&api_response, run_for_task.run_id(), &task_id);
+                    if let Some(object) = metadata.as_object_mut() {
+                        object.insert("confirmationResume".into(), json!(true));
+                    }
                     if let Err(e) = persist_assistant_message(
                         &db_clone,
                         sid,
