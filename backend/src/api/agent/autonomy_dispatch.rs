@@ -75,13 +75,22 @@ async fn dispatch_one(db: &DatabaseConnection, intent: IntentRecord) -> Result<(
         .await
         .map_err(|error| error.to_string())?;
 
-    let session_id = ensure_session(
+    let session_id = match ensure_session(
         db,
         None,
         intent.user_id,
         crate::services::agent::AgentInteractionMode::Work,
     )
-    .await?;
+    .await
+    {
+        Ok(session_id) => session_id,
+        Err(error) => {
+            let _ = store
+                .reclaim_running_to_accepted(&intent.id, intent.user_id)
+                .await;
+            return Err(error);
+        }
+    };
     let run = create_run(intent.user_id, Some(session_id.clone())).await;
     let run_id = run.run_id().to_string();
     if let Err(error) = store
@@ -213,6 +222,8 @@ async fn finish_autonomy_turn(
         .as_ref()
         .is_some_and(|task| task.status == "waiting_for_input")
         && !task_id.is_empty();
+    let is_confirmation = api_response.confirmation.is_some()
+        || api_response.response_type == "confirmation_required";
     let metadata = work_turn_session_metadata(&api_response, run_id, &task_id);
     let _ = persist_assistant_message(
         db,
@@ -267,8 +278,12 @@ async fn finish_autonomy_turn(
         Some(api_response.message.clone()),
     )
     .await;
-    let response_value = serde_json::to_value(&api_response)
-        .unwrap_or_else(|_| json!({"error": "serialization failed"}));
+    let response_value = if is_confirmation {
+        park_confirmation_run(&api_response, &task_id)
+    } else {
+        serde_json::to_value(&api_response)
+            .unwrap_or_else(|_| json!({"error": "serialization failed"}))
+    };
     let _ = progress_tx
         .send(AgentProgressEvent::TaskCompleted {
             task_id,
@@ -276,6 +291,29 @@ async fn finish_autonomy_turn(
             response: Box::new(response_value),
         })
         .await;
+}
+
+pub(crate) fn park_confirmation_run(api_response: &ApiResponse, task_id: &str) -> Value {
+    let mut value = serde_json::to_value(api_response)
+        .unwrap_or_else(|_| json!({"error": "serialization failed"}));
+    if let Some(object) = value.as_object_mut() {
+        object.insert("streamTerminal".into(), json!(false));
+        let mut task = object
+            .get("task")
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+        if !task.is_object() {
+            task = json!({});
+        }
+        if let Some(task_object) = task.as_object_mut() {
+            if !task_id.is_empty() {
+                task_object.insert("taskId".into(), json!(task_id));
+            }
+            task_object.insert("status".into(), json!("waiting_for_input"));
+        }
+        object.insert("task".into(), task);
+    }
+    value
 }
 
 pub(crate) fn work_turn_session_metadata(
@@ -459,5 +497,8 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("mail.send"));
+        let parked = park_confirmation_run(&response, "confirmation:c1");
+        assert_eq!(parked["task"]["status"], "waiting_for_input");
+        assert_eq!(parked["streamTerminal"], false);
     }
 }

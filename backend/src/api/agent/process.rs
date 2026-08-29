@@ -598,23 +598,38 @@ pub async fn process_stream(
                     let _ = lane_guard.take();
                     // 正常流程：立即发送 TaskCompleted
 
-                    // 持久化 assistant 消息（含 runId/taskId，供会话恢复）
+                    let is_confirmation = api_response.confirmation.is_some()
+                        || api_response.response_type == "confirmation_required";
+                    let parked_task_id = api_response
+                        .confirmation
+                        .as_ref()
+                        .map(|c| format!("confirmation:{}", c.confirmation_id))
+                        .filter(|_| is_confirmation)
+                        .unwrap_or_else(|| task_id.clone());
                     if !session_id_clone.is_empty() {
-                        let metadata = json!({
-                            "suggestions": &api_response.suggestions,
-                            "dataDisplay": &api_response.data_display,
-                            "frontendAction": &api_response.frontend_action,
-                            "data": &api_response.data,
-                            "runId": run_id_for_meta,
-                            "taskId": if task_id.is_empty() { Value::Null } else { json!(task_id) },
-                        });
+                        let metadata = if is_confirmation {
+                            work_turn_session_metadata(
+                                &api_response,
+                                &run_id_for_meta,
+                                &parked_task_id,
+                            )
+                        } else {
+                            json!({
+                                "suggestions": &api_response.suggestions,
+                                "dataDisplay": &api_response.data_display,
+                                "frontendAction": &api_response.frontend_action,
+                                "data": &api_response.data,
+                                "runId": run_id_for_meta,
+                                "taskId": if task_id.is_empty() { Value::Null } else { json!(task_id) },
+                            })
+                        };
                         if let Err(e) = persist_assistant_message(
                             &db_clone,
                             &session_id_clone,
-                            if task_id.is_empty() {
+                            if parked_task_id.is_empty() {
                                 None
                             } else {
-                                Some(&task_id)
+                                Some(&parked_task_id)
                             },
                             &api_response.message,
                             Some(metadata),
@@ -627,9 +642,12 @@ pub async fn process_stream(
                             );
                         }
                     }
-
-                    let response_value = serde_json::to_value(&api_response)
-                        .unwrap_or_else(|_| json!({"error": "serialization failed"}));
+                    let response_value = if is_confirmation {
+                        park_confirmation_run(&api_response, &parked_task_id)
+                    } else {
+                        serde_json::to_value(&api_response)
+                            .unwrap_or_else(|_| json!({"error": "serialization failed"}))
+                    };
                     advance_intention_work(
                         &db_clone,
                         source_intent_id_for_work.as_deref(),
@@ -1491,225 +1509,16 @@ pub async fn confirm_operation_stream(
                         })
                         .await;
 
-                    // Keep run alive and register WAITING_TASKS so subsequent
-                    // answers (and final reply) stay on this session.
-                    loop {
-                        let (done_tx, done_rx) =
-                            tokio::sync::oneshot::channel::<serde_json::Value>();
-                        {
-                            let mut map = WAITING_TASKS.write().await;
-                            map.insert(
-                                task_id.clone(),
-                                WaitingTaskCtx {
-                                    user_id,
-                                    progress_tx: tx.clone(),
-                                    done_tx,
-                                    session_id: session_id.clone().unwrap_or_default(),
-                                },
-                            );
-                        }
-                        tracing::info!(
-                            task_id = %task_id,
-                            session_id = ?session_id,
-                            "[Agent API] Confirmation resume waiting for user input"
-                        );
-
-                        match tokio::time::timeout(tokio::time::Duration::from_secs(2), done_rx)
-                            .await
-                        {
-                            Ok(Ok(response_value)) => {
-                                let still_waiting = response_value
-                                    .pointer("/task/status")
-                                    .and_then(|s| s.as_str())
-                                    == Some("waiting_for_input");
-
-                                if still_waiting {
-                                    if let Some(ref sid) = session_id {
-                                        let msg = response_value
-                                            .get("message")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("需要更多信息");
-                                        let run_id = run_for_task.run_id();
-                                        let metadata = session_metadata_with_run_identity(
-                                            Some(response_value.clone()),
-                                            run_id,
-                                            &task_id,
-                                        );
-                                        let _ = persist_assistant_message(
-                                            &db_clone,
-                                            sid,
-                                            Some(&task_id),
-                                            msg,
-                                            Some(metadata),
-                                        )
-                                        .await;
-                                    }
-                                    continue;
-                                }
-
-                                if let Some(ref sid) = session_id {
-                                    let msg = response_value
-                                        .get("message")
-                                        .and_then(|v| v.as_str())
-                                        .unwrap_or("");
-                                    if !msg.is_empty() {
-                                        let run_id = run_for_task.run_id();
-                                        let metadata = session_metadata_with_run_identity(
-                                            Some(response_value.clone()),
-                                            run_id,
-                                            &task_id,
-                                        );
-                                        let _ = persist_assistant_message(
-                                            &db_clone,
-                                            sid,
-                                            Some(&task_id),
-                                            msg,
-                                            Some(metadata),
-                                        )
-                                        .await;
-                                    }
-                                }
-
-                                let task_success = response_value
-                                    .get("success")
-                                    .and_then(|v| v.as_bool())
-                                    .unwrap_or(true);
-                                advance_intention_work(
-                                    &db_clone,
-                                    source_intent_id.as_deref(),
-                                    user_id,
-                                    if task_success {
-                                        crate::services::agent::consciousness::IntentStatus::Completed
-                                    } else {
-                                        crate::services::agent::consciousness::IntentStatus::Failed
-                                    },
-                                    response_value
-                                        .get("message")
-                                        .and_then(Value::as_str)
-                                        .map(str::to_string),
-                                )
-                                .await;
-                                let _ = tx
-                                    .send(AgentProgressEvent::TaskCompleted {
-                                        task_id: task_id.clone(),
-                                        success: task_success,
-                                        response: Box::new(response_value),
-                                    })
-                                    .await;
-                                break;
-                            }
-                            Ok(Err(_)) => {
-                                tracing::warn!(
-                                    task_id = %task_id,
-                                    "[Agent API] Confirmation answer sender dropped; terminalizing run"
-                                );
-                                let _ = take_waiting_task(&task_id, user_id).await;
-                                advance_intention_work(
-                                    &db_clone,
-                                    source_intent_id.as_deref(),
-                                    user_id,
-                                    crate::services::agent::consciousness::IntentStatus::Failed,
-                                    Some("等待通道已关闭".into()),
-                                )
-                                .await;
-                                let _ = tx.send(wait_loop_channel_dropped_event(&task_id)).await;
-                                break;
-                            }
-                            Err(_) => {
-                                let _ = take_waiting_task(&task_id, user_id).await;
-                                let current_task =
-                                    crate::services::agent::executor::refresh_task_for_user(
-                                        &task_id, user_id,
-                                    )
-                                    .await;
-                                if current_task.as_ref().is_some_and(|task| {
-                                    matches!(
-                                        task.status,
-                                        crate::services::agent::types::TaskStatus::Pending
-                                            | crate::services::agent::types::TaskStatus::Running
-                                            | crate::services::agent::types::TaskStatus::WaitingForInput
-                                            | crate::services::agent::types::TaskStatus::Paused
-                                    )
-                                }) {
-                                    continue;
-                                }
-
-                                let (response_value, task_success) =
-                                    if let Some(task) = current_task {
-                                        let task_success = task.status
-                                            == crate::services::agent::types::TaskStatus::Completed;
-                                        let message = task.error.clone().unwrap_or_else(|| {
-                                            if task_success {
-                                                "The task finished".to_string()
-                                            } else {
-                                                "Processing failed".to_string()
-                                            }
-                                        });
-                                        (
-                                            json!({
-                                                "success": task_success,
-                                                "message": message,
-                                                "task": task,
-                                            }),
-                                            task_success,
-                                        )
-                                    } else {
-                                        (
-                                            json!({
-                                                "success": false,
-                                                "message": "任务状态已不可用",
-                                                "task": {
-                                                    "taskId": task_id.clone(),
-                                                    "status": "failed"
-                                                }
-                                            }),
-                                            false,
-                                        )
-                                    };
-
-                                if let Some(ref sid) = session_id {
-                                    let msg = response_value
-                                        .get("message")
-                                        .and_then(|v| v.as_str())
-                                        .unwrap_or("");
-                                    if !msg.is_empty() {
-                                        let _ = persist_assistant_message(
-                                            &db_clone,
-                                            sid,
-                                            Some(&task_id),
-                                            msg,
-                                            Some(response_value.clone()),
-                                        )
-                                        .await;
-                                    }
-                                }
-
-                                advance_intention_work(
-                                    &db_clone,
-                                    source_intent_id.as_deref(),
-                                    user_id,
-                                    if task_success {
-                                        crate::services::agent::consciousness::IntentStatus::Completed
-                                    } else {
-                                        crate::services::agent::consciousness::IntentStatus::Failed
-                                    },
-                                    response_value
-                                        .get("message")
-                                        .and_then(Value::as_str)
-                                        .map(str::to_string),
-                                )
-                                .await;
-                                let _ = tx
-                                    .send(AgentProgressEvent::TaskCompleted {
-                                        task_id: task_id.clone(),
-                                        success: task_success,
-                                        response: Box::new(response_value),
-                                    })
-                                    .await;
-                                break;
-                            }
-                        }
-                    }
+                    spawn_restored_wait_loop(
+                        user_id,
+                        task_id.clone(),
+                        session_id.clone().unwrap_or_default(),
+                        run_for_task.run_id().to_string(),
+                        tx.clone(),
+                        Some(db_clone.clone()),
+                        source_intent_id.clone(),
+                    )
+                    .await;
                 } else {
                     let mut response_value = serde_json::to_value(api_response).unwrap_or_else(
                         |_| json!({ "success": false, "message": "Serialization failed" }),
