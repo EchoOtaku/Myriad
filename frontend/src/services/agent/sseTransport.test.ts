@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import { ApiError } from '../api'
 import {
@@ -6,7 +7,51 @@ import {
   agentHttpFailure,
   AgentStreamError,
   decideStreamDropAction,
+  shouldYieldSsePaint,
 } from './sseTransport'
+
+describe('executeSSERequest headers', () => {
+  it('asks for an event stream so proxies do not buffer a JSON body', () => {
+    const src = readFileSync(
+      new URL('./sseTransport.ts', import.meta.url),
+      'utf8',
+    )
+    assert.match(src, /Accept:\s*'text\/event-stream'/)
+    assert.match(src, /getReader\(\)/)
+  })
+
+  it('does not drain a 200 SSE body to sniff CSRF', () => {
+    const src = readFileSync(
+      new URL('./sseTransport.ts', import.meta.url),
+      'utf8',
+    )
+    assert.match(src, /response\.status === 403/)
+    assert.doesNotMatch(
+      src,
+      /isCsrfBody\(response\.status,\s*await response\.clone\(\)\.text\(\)\)/,
+    )
+  })
+})
+
+describe('shouldYieldSsePaint', () => {
+  it('breaks React batching for thinking and answer tokens', () => {
+    assert.equal(shouldYieldSsePaint('thinking_token'), true)
+    assert.equal(shouldYieldSsePaint('summary_token'), true)
+    assert.equal(shouldYieldSsePaint('task_created'), false)
+  })
+})
+
+describe('dev proxy pipes agent SSE', () => {
+  it('does not treat process/stream as a buffered JSON body', () => {
+    const src = readFileSync(
+      new URL('../../../astro.config.mjs', import.meta.url),
+      'utf8',
+    )
+    assert.match(src, /function isAgentSsePath/)
+    assert.match(src, /\/api\/agent\/process\/stream/)
+    assert.match(src, /isAgentSsePath\(originalUrl\)/)
+  })
+})
 
 describe('decideStreamDropAction', () => {
   it('prefers a final completion response when present', () => {

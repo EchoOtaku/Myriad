@@ -82,3 +82,66 @@ export function stepsWorthShowing(steps: readonly AgentMessageStep[]): boolean {
     (step) => step.status === 'running' || step.status === 'error',
   )
 }
+
+/**
+ * 还在跑、气泡里还没有正文时才摆过程。
+ * 答案一出来，过程就收掉 —— 用户要读的是答。
+ */
+export function thinkingVisible(
+  steps: readonly AgentMessageStep[],
+  live: boolean,
+  thought?: string,
+  hasAnswer = false,
+): boolean {
+  if (hasAnswer) return false
+  if (live) return true
+  if (thought?.trim()) return true
+  return stepsWorthShowing(steps)
+}
+
+const THINK_OPEN = /<think>/i
+const THINK_CLOSE = /<\/think>/i
+
+/**
+ * 有的模型把思考链写在正文的 `<think>` 里，不走 reasoning_content。
+ * 拆开，思考进过程区，标签外的才是答。未闭合时整段都还在想。
+ */
+export function splitThinkContent(raw: string): {
+  thought: string
+  content: string
+} {
+  if (!raw) return { thought: '', content: '' }
+  const openIdx = raw.search(THINK_OPEN)
+  if (openIdx < 0) return { thought: '', content: raw }
+
+  const openLen = raw.match(THINK_OPEN)?.[0].length ?? 7
+  const afterOpen = raw.slice(openIdx + openLen)
+  const before = raw.slice(0, openIdx).trim()
+  const closeIdx = afterOpen.search(THINK_CLOSE)
+  if (closeIdx < 0) {
+    return { thought: afterOpen, content: before }
+  }
+  const closeLen = afterOpen.match(THINK_CLOSE)?.[0].length ?? 8
+  const thought = afterOpen.slice(0, closeIdx).trim()
+  const after = afterOpen.slice(closeIdx + closeLen).trim()
+  const content = [before, after].filter(Boolean).join('\n\n')
+  return { thought, content }
+}
+
+/**
+ * 正文若把思考链又抄了一遍，把那一段剥掉。
+ * 太短的不剥 —— 「好的，」这种开场白经常既是判断也是回答的开头。
+ */
+export function peelThoughtFromContent(
+  content: string,
+  thought: string,
+): string {
+  const t = thought.trim()
+  if (!t || t.length < 16) return content
+  const c = content
+  if (c.trim() === t) return ''
+  if (!c.startsWith(t)) return c
+  const rest = c.slice(t.length)
+  if (rest.length === 0 || /^\s/.test(rest)) return rest.replace(/^\s+/, '')
+  return c
+}

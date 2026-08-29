@@ -85,6 +85,7 @@ export type {
   StepStartedEvent,
   StepTrace,
   SummaryTokenEvent,
+  ThinkingTokenEvent,
   TaskCompletedEvent,
   // SSE 事件
   TaskCreatedEvent,

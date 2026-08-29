@@ -81,6 +81,11 @@ export type StreamAbortIntent = 'user' | 'replace' | 'timeout'
 
 const controllerIntents = new WeakMap<AbortController, StreamAbortIntent>()
 
+/** Token events must paint between reads; React 18 batches a sync for-loop. */
+export function shouldYieldSsePaint(type: string): boolean {
+  return type === 'thinking_token' || type === 'summary_token'
+}
+
 export type StreamDropAction =
   | 'use_final'
   | 'resume_run'
@@ -175,6 +180,8 @@ export async function executeSSERequest({
 
     const buildHeaders = (): Record<string, string> => {
       const headers: Record<string, string> = {
+        Accept: 'text/event-stream',
+        'Cache-Control': 'no-cache',
         'Content-Type': 'application/json',
       }
       if (csrfToken) headers['X-CSRF-Token'] = csrfToken
@@ -197,20 +204,22 @@ export async function executeSSERequest({
 
     startFetch()
       .then(async (response) => {
-        if (
-          method === 'POST' &&
-          !csrfRetried &&
-          isCsrfBody(response.status, await response.clone().text())
-        ) {
-          console.warn(
-            '[Agent SSE] CSRF rejection — refreshing token and retrying once',
-          )
-          clearCSRFToken()
-          csrfToken = await getCSRFToken(true)
-          csrfRetried = true
-          if (csrfToken) {
-            return startFetch()
+        // 必须先看 status。`clone().text()` 会把 SSE 整条流读完，
+        // 200 的进度事件就永远攒到结束才进 getReader。
+        if (method === 'POST' && !csrfRetried && response.status === 403) {
+          const text = await response.text()
+          if (isCsrfBody(response.status, text)) {
+            console.warn(
+              '[Agent SSE] CSRF rejection — refreshing token and retrying once',
+            )
+            clearCSRFToken()
+            csrfToken = await getCSRFToken(true)
+            csrfRetried = true
+            if (csrfToken) {
+              return startFetch()
+            }
           }
+          throw agentHttpFailure(response.status, text)
         }
         return response
       })
@@ -251,6 +260,15 @@ export async function executeSSERequest({
                 }
 
                 onProgress?.(event)
+                if (shouldYieldSsePaint(event.type)) {
+                  await new Promise<void>((resolve) => {
+                    if (typeof requestAnimationFrame === 'function') {
+                      requestAnimationFrame(() => resolve())
+                    } else {
+                      setTimeout(resolve, 0)
+                    }
+                  })
+                }
                 if (event.type === 'task_completed') {
                   finalResponse = (event as TaskCompletedEvent).response
                 } else if (event.type === 'error') {
@@ -397,8 +415,7 @@ function buildPolledResponse(task: TaskDetail): AgentResponse {
           `Task ${task.status}`)
 
   return {
-    success:
-      task.status === 'completed' || task.status === 'waiting_for_input',
+    success: task.status === 'completed' || task.status === 'waiting_for_input',
     responseType:
       task.status === 'waiting_for_input'
         ? 'task_progress'

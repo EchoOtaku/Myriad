@@ -1113,20 +1113,28 @@ impl Agent {
 
         let tx = progress_tx.clone();
         match analyzer
-            .analyze_stream(&prompt, |token| {
-                let _ = tx.try_send(AgentProgressEvent::SummaryToken {
-                    token: token.to_string(),
-                    done: false,
-                });
-                true
+            .analyze_stream_parts(&prompt, |delta| {
+                let tx = tx.clone();
+                async move {
+                    response_agent::emit_stream_delta(&tx, delta).await;
+                    true
+                }
             })
             .await
         {
             Ok(full_text) if !full_text.trim().is_empty() => {
-                let _ = tx.try_send(AgentProgressEvent::SummaryToken {
-                    token: String::new(),
-                    done: true,
-                });
+                let _ = tx
+                    .send(AgentProgressEvent::ThinkingToken {
+                        token: String::new(),
+                        done: true,
+                    })
+                    .await;
+                let _ = tx
+                    .send(AgentProgressEvent::SummaryToken {
+                        token: String::new(),
+                        done: true,
+                    })
+                    .await;
                 full_text.trim().to_string()
             }
             _ => {

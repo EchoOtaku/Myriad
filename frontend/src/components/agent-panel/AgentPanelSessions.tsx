@@ -97,13 +97,7 @@ export function useAgentSessionList(enabled: boolean): {
     return () => {
       cancelled = true
     }
-  }, [
-    enabled,
-    isAuthenticated,
-    page,
-    t.agentPanel.sessions.needLogin,
-    t.agentPanel.sessions.loadFailed,
-  ])
+  }, [enabled, isAuthenticated, page])
 
   const onNearStart = useCallback(() => {
     if (fetchingRef.current || !hasMoreRef.current) return

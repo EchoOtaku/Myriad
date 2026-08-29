@@ -199,7 +199,7 @@ describe('conversationExitStyle', () => {
     assert.ok(style.shift > 0)
   })
 
-  it('blurs the last remnant of a tall card as a whole', () => {
+  it('fades the last remnant of a tall card as a whole', () => {
     const style = conversationExitStyle(
       20,
       140,
@@ -216,6 +216,14 @@ describe('conversationExitStyle', () => {
     const a = conversationExitStyle(40, 400, viewportTop, viewportBottom, fade)
     const b = conversationExitStyle(40, 400, viewportTop, viewportBottom, fade)
     assert.equal(conversationExitKey(a), conversationExitKey(b))
-    assert.equal(conversationExitKey({ exit: 0, shift: 0, hidden: false }), '')
+    assert.equal(conversationExitKey({ exit: 0, shift: 0, hidden: false }), 'r')
+    assert.notEqual(
+      conversationExitKey({ exit: 0, shift: 0, hidden: false }),
+      '',
+    )
+    assert.equal(
+      conversationExitKey({ exit: 1, shift: -16, hidden: true }),
+      'h',
+    )
   })
 })

@@ -42,6 +42,14 @@ test('换了内容才叫醒订阅者', () => {
   assert.equal(notifications, 2)
 })
 
+test('思考过程变了也要叫醒订阅者', () => {
+  setAgentMessages([message()])
+  const snapshot = getAgentMessagesSnapshot()
+  setAgentMessages([message({ thought: '先查天气' })])
+  assert.notEqual(getAgentMessagesSnapshot(), snapshot)
+  assert.equal(getAgentMessagesSnapshot()[0]?.thought, '先查天气')
+})
+
 test('条数、角色、状态、图片数量任一变了都算变了', () => {
   const base = [message()]
   setAgentMessages(base)

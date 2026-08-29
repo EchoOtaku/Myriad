@@ -152,7 +152,7 @@ export function useConversationPan(
       const leaving =
         anchor?.dataset.phase === 'closing' || slot?.dataset.exiting === 'true'
       if (leaving) {
-        // 越界的仍藏着。只把画面里的滚动模糊拿掉，交给 CSS 一张张收。
+        // 越界的仍藏着。只把画面里的滚动淡出拿掉，交给 CSS 一张张收。
         for (const card of cards) {
           if (card.el.style.visibility === 'hidden') continue
           applyConversationExit(card.el, { exit: 0, shift: 0, hidden: false })
@@ -188,7 +188,9 @@ export function useConversationPan(
       const max = maxScroll()
       writeCap(max)
       track.style.transform = max > 0 ? `translate3d(0, ${-current}px, 0)` : ''
-      if (max > 0 && current <= CONVERSATION_LOAD_MORE_PX) {
+      // 贴底时 current 可能仍小于 72（整列刚好比窗口高一点）。
+      // 首次加载不能当「滚到顶了」去翻页，否则一边滑向底部一边塞旧记录。
+      if (max > 0 && !nearBottom && current <= CONVERSATION_LOAD_MORE_PX) {
         nearStartRef.current?.()
       }
     }
@@ -333,11 +335,24 @@ export function useConversationPan(
       if (nextH !== trackH || cards.length === 0) recache()
       const prevView = viewH
       const prevMax = maxScroll()
+      const wasPinned =
+        nearBottom && Math.abs(current - prevMax) <= CONVERSATION_NEAR_BOTTOM_PX
       measure()
       const max = maxScroll()
       if (nearBottom) target = max
+      // 首次从 0 高拉满、或本来就贴底：直接钉在底部，不要从顶上滑下来。
+      // 滑的过程会把还在窗口里的卡片写成 hidden，再重测时又还不回去。
+      if (nearBottom && (wasPinned || current <= CONVERSATION_NEAR_BOTTOM_PX)) {
+        current = target
+        write()
+        return
+      }
       writeCap(max)
-      if (dragging || velocity !== 0 || Math.abs(target - current) > 0.35) {
+      if (
+        dragging ||
+        velocity !== 0 ||
+        Math.abs(target - current) > CONVERSATION_NEAR_BOTTOM_PX
+      ) {
         kick()
         return
       }

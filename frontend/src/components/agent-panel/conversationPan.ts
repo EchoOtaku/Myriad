@@ -144,7 +144,7 @@ function leavingTop(
  * 轨道坐标里一张气泡怎么退场。viewportTop 一般为 0。
  *
  * 不切遮罩：卡片始终是完整胶囊。看得见的高度还够，就整张实心留着
- * （越出视口的那截照样画）；只剩 `fade` 那么一截，才整张一起淡、移、糊。
+ * （越出视口的那截照样画）；只剩 `fade` 那么一截，才整张一起淡、移。
  */
 export function conversationExitStyle(
   messageTop: number,
@@ -186,7 +186,9 @@ export function conversationExitStyle(
 
 export function conversationExitKey(style: ConversationExitStyle): string {
   if (style.hidden) return 'h'
-  if (style.exit <= 0.01) return ''
+  // 不能用空串：重测时 key 会清成 ''，再写成 rest 会被当成没变，
+  // visibility:hidden 就再也清不掉，历史首次加载会丢卡片。
+  if (style.exit <= 0.01) return 'r'
   return `${style.exit.toFixed(2)}:${style.shift}`
 }
 

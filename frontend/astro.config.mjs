@@ -138,6 +138,21 @@ function isAgentPersonaGenerationPath(urlPath) {
   )
 }
 
+/**
+ * Agent live progress. Must pipe even if the browser forgot Accept:
+ * text/event-stream — the buffering proxy collects the whole run (30s cap)
+ * and dumps thinking + answer as one body.
+ */
+function isAgentSsePath(urlPath) {
+  const path = requestPathname(urlPath)
+  return (
+    path === '/api/agent/process/stream' ||
+    path === '/api/agent/confirm/stream' ||
+    /^\/api\/agent\/runs\/[^/]+\/stream$/.test(path) ||
+    /^\/api\/agent\/tasks\/[^/]+\/answer\/stream$/.test(path)
+  )
+}
+
 /** Long-running federation transfer REST (initiate / list / chunk / cancel / get). */
 function isFederationTransferApiPath(urlPath) {
   const path = requestPathname(urlPath)
@@ -451,9 +466,13 @@ function backendDevProxyPlugin() {
           // GET /transfers/{id}/content (or a long-lived EventSource) hits the
           // ordinary timeout / memory path and turns a healthy stream into 502.
           const streamResponse =
-            headers.get('accept')?.toLowerCase().includes('text/event-stream') ||
+            headers
+              .get('accept')
+              ?.toLowerCase()
+              .includes('text/event-stream') ||
             originalUrl.startsWith('/api/tapp-playground/generate-stream') ||
-            isFederationTransferContentPath(originalUrl)
+            isFederationTransferContentPath(originalUrl) ||
+            isAgentSsePath(originalUrl)
 
           if (streamResponse) {
             await proxyBackendRequestStreaming(
@@ -595,7 +614,9 @@ function deferNonCriticalCssIntegration() {
         const stripCss = new Set()
 
         for (const rule of DEFER) {
-          const matchedCss = cssFiles.filter((f) => f.startsWith(rule.cssPrefix))
+          const matchedCss = cssFiles.filter((f) =>
+            f.startsWith(rule.cssPrefix),
+          )
           for (const cssName of matchedCss) {
             stripCss.add(cssName)
             const href = `/assets/${cssName}`
@@ -615,7 +636,13 @@ function deferNonCriticalCssIntegration() {
           const jsPath = path.join(assetsDir, jsName)
           const original = readFileSync(jsPath, 'utf8')
           // 避免重复注入
-          if (hrefs.every((h) => original.includes(h) && original.includes('createElement("link")'))) {
+          if (
+            hrefs.every(
+              (h) =>
+                original.includes(h) &&
+                original.includes('createElement("link")'),
+            )
+          ) {
             // 可能已有 vite 注入；仍确保我们的幂等片段存在
           }
           const banner = hrefs.map(cssInjectorSnippet).join('')
@@ -626,9 +653,9 @@ function deferNonCriticalCssIntegration() {
 
         // 从所有 HTML 去掉对应 <link rel="stylesheet">
         const stripRe = new RegExp(
-          `<link[^>]+href="/assets/(${[...stripCss].map((s) =>
-            s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
-          ).join('|')})"[^>]*>`,
+          `<link[^>]+href="/assets/(${[...stripCss]
+            .map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+            .join('|')})"[^>]*>`,
           'g',
         )
 

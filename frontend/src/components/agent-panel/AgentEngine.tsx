@@ -23,16 +23,25 @@ import type {
   StepStartedEvent,
   SummaryTokenEvent,
   TaskCreatedEvent,
+  ThinkingTokenEvent,
 } from '../../services/agent'
 import type { AgentAttachment } from './agentAttachments'
-import type {
-  ChatMessage,
-  ChatSession,
-  ExecutionTrace,
-  PendingQuestion,
-  TaskExecution,
+import {
+  type ChatMessage,
+  type ChatSession,
+  type ExecutionTrace,
+  type PendingQuestion,
+  type TaskExecution,
+  executionStepsFromHistory,
 } from './engineTypes'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
@@ -51,6 +60,7 @@ import {
 import { buildAgentPendingAction } from './agentAction'
 import { attachmentsForRequest } from './agentAttachments'
 import { getAgentContextConsent } from './agentContextConsent'
+import { peelThoughtFromContent, splitThinkContent } from './agentThinking'
 import { setAgentSessionId } from './agentMessages'
 import { syncProjectedMessages } from './projectAgentMessage'
 import {
@@ -136,7 +146,7 @@ export const AgentEngine: React.FC = () => {
 
   // 把对话同步给新 UI 的 Full 层。只送「谁说的、说了什么、说完没有」，执行追踪
   // 那一堆留在这边 —— 新 UI 不该认识旧面板的消息模型。
-  useEffect(() => {
+  useLayoutEffect(() => {
     syncProjectedMessages(messages)
   }, [messages])
 
@@ -326,9 +336,10 @@ export const AgentEngine: React.FC = () => {
           const taskMeta = meta?.task as Record<string, unknown> | undefined
           const statusFromMeta =
             typeof taskMeta?.status === 'string' ? taskMeta.status : undefined
+          const historySteps = executionStepsFromHistory(stepHistory)
 
           let taskExecution: TaskExecution | undefined
-          if (metaTaskId || metaRunId) {
+          if (metaTaskId || metaRunId || historySteps.length) {
             const waiting =
               statusFromMeta === 'waiting_for_input' ||
               !!taskMeta?.pendingQuestion
@@ -342,7 +353,7 @@ export const AgentEngine: React.FC = () => {
                   : waiting
                     ? 50
                     : 100,
-              steps: [],
+              steps: historySteps,
             }
           }
 
@@ -593,7 +604,13 @@ export const AgentEngine: React.FC = () => {
   const createProgressHandler = useCallback(
     (assistantMessageId: string) => {
       let streamedSummary = ''
+      let streamedThinking = ''
       const utterance = agentFace.openReply(assistantMessageId, locale)
+
+      const publishThinking = (text: string) => {
+        streamedThinking = text
+        updateMessageExecution(assistantMessageId, { reasoning: text })
+      }
 
       return (event: ProgressEvent) => {
         // 岛与面板读同一份状态：这里是唯一的入口，别处不再解读 SSE
@@ -729,6 +746,9 @@ export const AgentEngine: React.FC = () => {
             const progressEvent = event as ProgressUpdateEvent
             updateMessageExecution(assistantMessageId, {
               progress: progressEvent.progress,
+              ...(progressEvent.message?.trim()
+                ? { statusMessage: progressEvent.message }
+                : {}),
             })
             break
           }
@@ -762,25 +782,46 @@ export const AgentEngine: React.FC = () => {
             updateMessage(assistantMessageId, { content: event.message })
             break
 
+          case 'thinking_token': {
+            const tokenEvent = event as ThinkingTokenEvent
+            if (!tokenEvent.done && tokenEvent.token) {
+              publishThinking(streamedThinking + tokenEvent.token)
+            }
+            break
+          }
+
           case 'summary_token': {
             const tokenEvent = event as SummaryTokenEvent
             if (tokenEvent.done) {
-              // 一轮流式结束 — 保存快照到 statusMessage 供思考面板引用
-              if (streamedSummary) {
+              const split = splitThinkContent(streamedSummary)
+              if (split.thought && split.thought !== streamedThinking) {
+                publishThinking(split.thought)
+              }
+              const body = peelThoughtFromContent(
+                split.content,
+                streamedThinking,
+              )
+              if (body) {
                 updateMessageExecution(assistantMessageId, {
-                  statusMessage: streamedSummary,
+                  statusMessage: body,
                 })
+                updateMessage(assistantMessageId, { content: body })
               }
               utterance.end()
-              // 不清 streamedSummary — step_started 事件负责在步骤开始时重置
             } else {
               streamedSummary += tokenEvent.token
-              utterance.chunk(tokenEvent.token)
-              // announce_plan 和 ai_summarize 都写入正文，用户都看得到
-              // announce_plan: "好的，让我帮你查一下~"（执行前的温暖感）
-              // ai_summarize: "东京25°C，芙莉莲好看~"（执行后的结果）
-              // ai_summarize 自然替换 announce_plan（因为 step_started 已重置 streamedSummary）
-              updateMessage(assistantMessageId, { content: streamedSummary })
+              const split = splitThinkContent(streamedSummary)
+              if (split.thought && split.thought !== streamedThinking) {
+                publishThinking(split.thought)
+              }
+              const body = peelThoughtFromContent(
+                split.content,
+                streamedThinking,
+              )
+              if (body) {
+                utterance.chunk(tokenEvent.token)
+                updateMessage(assistantMessageId, { content: body })
+              }
             }
             break
           }
@@ -832,16 +873,27 @@ export const AgentEngine: React.FC = () => {
 
           case 'planner_decision': {
             const pdEvent = event as PlannerDecisionEvent
+            if (pdEvent.reasoning && !streamedThinking) {
+              publishThinking(pdEvent.reasoning)
+            }
             setMessages((prev) =>
               prev.map((m) => {
                 if (m.id !== assistantMessageId || !m.taskExecution) return m
                 const existing = m.taskExecution.debugTrace ?? {
                   stepDebugEntries: [],
                 }
+                const planned =
+                  m.taskExecution.planStepDescriptions ??
+                  pdEvent.steps
+                    .map((step) => (step.action || step.capabilityId).trim())
+                    .filter(Boolean)
                 return {
                   ...m,
                   taskExecution: {
                     ...m.taskExecution,
+                    ...(planned.length
+                      ? { planStepDescriptions: planned }
+                      : {}),
                     debugTrace: {
                       ...existing,
                       plannerDecision: {
@@ -1430,6 +1482,13 @@ export const AgentEngine: React.FC = () => {
           }
         : undefined
 
+      const liveSteps =
+        messagesRef.current.find((m) => m.id === messageId)?.taskExecution
+          ?.steps ?? []
+      const historySteps = executionStepsFromHistory(
+        stepHistory as Array<Record<string, unknown>> | undefined,
+      )
+
       updateMessageExecution(messageId, {
         status:
           isSuccess && !hasFailedSteps
@@ -1441,6 +1500,9 @@ export const AgentEngine: React.FC = () => {
                 : 'completed',
         progress: 100,
         ...(executionTrace ? { executionTrace } : {}),
+        ...(liveSteps.length === 0 && historySteps.length > 0
+          ? { steps: historySteps }
+          : {}),
       })
 
       // 执行前端动作

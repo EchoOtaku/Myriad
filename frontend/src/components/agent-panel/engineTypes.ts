@@ -141,10 +141,61 @@ export interface TaskExecution {
   queuePosition?: number
   /** 过程状态文本（进度描述、步骤摘要等） */
   statusMessage?: string
+  /**
+   * Planner 对自己这轮判断的说明。跟 debugTrace 里那份是同一段话，
+   * 单独拎出来是因为界面要画过程，不该去翻调试轨迹。
+   */
+  reasoning?: string
   /** 计划阶段的步骤描述列表（TaskCreated 时设置） */
   planStepDescriptions?: string[]
   /** 调试追踪数据（实时收集的 SSE 调试事件） */
   debugTrace?: DebugTrace
+}
+
+function historyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+/**
+ * 会话 metadata / 终态 task.stepHistory → 执行步骤。
+ * SSE 中途丢了 step_started 时，至少终态还能把走过的过程摆回来。
+ */
+export function executionStepsFromHistory(
+  history: ReadonlyArray<Record<string, unknown>> | undefined,
+): ExecutionStep[] {
+  if (!history?.length) return []
+  return history.map((raw, index) => {
+    const id =
+      historyString(raw.stepId) ?? historyString(raw.step_id) ?? `hist-${index}`
+    const name =
+      historyString(raw.capabilityName) ??
+      historyString(raw.capability_name) ??
+      historyString(raw.description) ??
+      id
+    const statusRaw = historyString(raw.status)
+    const status: ExecutionStep['status'] =
+      statusRaw === 'failed' || statusRaw === 'error'
+        ? 'error'
+        : statusRaw === 'running'
+          ? 'running'
+          : statusRaw === 'pending'
+            ? 'pending'
+            : 'completed'
+    const durationMs =
+      typeof raw.durationMs === 'number'
+        ? raw.durationMs
+        : typeof raw.duration_ms === 'number'
+          ? raw.duration_ms
+          : undefined
+    const note = historyString(raw.error) ?? historyString(raw.outputSummary)
+    return {
+      id,
+      name,
+      status,
+      ...(typeof durationMs === 'number' ? { durationMs } : {}),
+      ...(note ? { message: note } : {}),
+    }
+  })
 }
 
 /** 实时调试追踪数据（从 SSE 事件中收集） */

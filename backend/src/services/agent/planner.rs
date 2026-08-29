@@ -13,7 +13,7 @@ use crate::services::agent::memory;
 use crate::services::agent::recipe::validate_and_convert_steps;
 use crate::services::agent::types::*;
 use crate::services::ai::create_ai_analyzer_for_tier;
-use crate::services::analyzer::AiAnalyzer;
+use crate::services::analyzer::{AiAnalyzer, StreamDelta};
 
 /// Planner — 单次 Pro AI 调用完成意图理解 + 执行规划
 pub struct Planner {
@@ -40,7 +40,16 @@ impl Planner {
 
     /// 主入口：用户请求 → PlannerOutput
     pub async fn plan(&self, request: &UserRequest) -> Result<PlannerOutput, String> {
-        self.plan_internal(request, None).await
+        self.plan_internal(request, None, None).await
+    }
+
+    /// Live SSE path: reasoning deltas go out while the planner JSON is still forming.
+    pub async fn plan_with_progress(
+        &self,
+        request: &UserRequest,
+        progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
+    ) -> Result<PlannerOutput, String> {
+        self.plan_internal(request, None, Some(progress_tx)).await
     }
 
     /// 升级重规划（携带前次结果上下文）
@@ -49,7 +58,18 @@ impl Planner {
         request: &UserRequest,
         escalation_hint: &str,
     ) -> Result<PlannerOutput, String> {
-        self.plan_internal(request, Some(escalation_hint)).await
+        self.plan_internal(request, Some(escalation_hint), None)
+            .await
+    }
+
+    pub async fn replan_with_progress(
+        &self,
+        request: &UserRequest,
+        escalation_hint: &str,
+        progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
+    ) -> Result<PlannerOutput, String> {
+        self.plan_internal(request, Some(escalation_hint), Some(progress_tx))
+            .await
     }
 
     /// 内部规划逻辑
@@ -57,6 +77,7 @@ impl Planner {
         &self,
         request: &UserRequest,
         escalation_hint: Option<&str>,
+        progress_tx: Option<&tokio::sync::mpsc::Sender<AgentProgressEvent>>,
     ) -> Result<PlannerOutput, String> {
         // 尝试获取 AI（支持热加载配置）
         let runtime_analyzer;
@@ -84,20 +105,33 @@ impl Planner {
         // 走提供商原生的结构化输出：由 API 层保证返回是合法 JSON，
         // 而不是靠 prompt 里的「请只输出 JSON」再从自由文本里抠花括号。
         let schema = planner_output_schema();
-        let response = match ai_analyzer
-            .analyze_json(
-                &system_prompt,
-                &user_prompt,
-                PLANNER_SCHEMA_NAME,
-                Some(&schema),
-            )
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::warn!(error = %e, "[Planner] AI call failed, retrying once");
-                tokio::time::sleep(std::time::Duration::from_millis(400)).await;
-                match ai_analyzer
+        let mut response = None;
+        for attempt in 0..2 {
+            let result = if let Some(tx) = progress_tx {
+                ai_analyzer
+                    .analyze_json_streaming(
+                        &system_prompt,
+                        &user_prompt,
+                        PLANNER_SCHEMA_NAME,
+                        Some(&schema),
+                        |delta| {
+                            let tx = tx.clone();
+                            async move {
+                                if let StreamDelta::Reasoning(token) = delta {
+                                    let _ = tx
+                                        .send(AgentProgressEvent::ThinkingToken {
+                                            token,
+                                            done: false,
+                                        })
+                                        .await;
+                                }
+                                true
+                            }
+                        },
+                    )
+                    .await
+            } else {
+                ai_analyzer
                     .analyze_json(
                         &system_prompt,
                         &user_prompt,
@@ -105,18 +139,27 @@ impl Planner {
                         Some(&schema),
                     )
                     .await
-                {
-                    Ok(r) => r,
-                    Err(e2) => {
+            };
+            match result {
+                Ok(text) => {
+                    response = Some(text);
+                    break;
+                }
+                Err(error) => {
+                    if attempt == 0 {
+                        tracing::warn!(%error, "[Planner] AI call failed, retrying once");
+                        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+                    } else {
                         tracing::warn!(
-                            error = %e2,
+                            %error,
                             "[Planner] AI call failed after retry, using fallback plan"
                         );
                         return Ok(self.fallback_plan(request));
                     }
                 }
             }
-        };
+        }
+        let response = response.expect("loop sets response or returns");
 
         // 解析响应
         let mut output = self.parse_response(&response)?;

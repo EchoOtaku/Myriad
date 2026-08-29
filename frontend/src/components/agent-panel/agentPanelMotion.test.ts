@@ -57,6 +57,12 @@ function block(source: string, start: string, end: string): string {
 describe('agent panel motion contract', () => {
   it('keeps open/close duration on the CSS token', () => {
     assert.match(css, /--agent-move:\s*480ms/)
+    assert.match(css, /--agent-shell-max:\s*calc\(100dvh \* 2 \/ 3\)/)
+    assert.match(css, /max-height:\s*var\(--agent-shell-max\)/)
+    assert.match(
+      css,
+      /\[data-capped='true'\] \{\s*height:\s*var\(--agent-shell-max\)/,
+    )
     assert.equal(AGENT_PANEL_ENTER_MS, 480)
     assert.equal(AGENT_ROW_MS, 480)
   })
@@ -148,6 +154,9 @@ describe('agent panel motion contract', () => {
     assert.doesNotMatch(pan, /mask-image/)
     assert.match(pan, /if \(leaving\) \{[\s\S]*?writeExitStagger\(\)/)
     assert.doesNotMatch(pan, /if \(leaving\) \{\s*clearExit\(\)/)
+    assert.match(pan, /!nearBottom/)
+    assert.match(pan, /wasPinned/)
+    assert.match(pan, /conversationExitKey/)
     assert.equal(agentPanelStaggerSteps(2), 2)
     assert.equal(agentPanelStaggerSteps(20), AGENT_ROW_STAGGER_MAX + 1)
     assert.equal(
@@ -292,7 +301,7 @@ describe('agent panel motion contract', () => {
     assert.match(presence, /staggerFor\.current\.delete/)
   })
 
-  it('scrolls history with the same pan and blur-exit as chat', () => {
+  it('scrolls history with the same pan and fade-exit as chat', () => {
     assert.match(sessions, /useConversationPan/)
     assert.match(sessions, /\.agent-panel-session/)
     assert.doesNotMatch(sessions, /from="clock"/)
@@ -300,5 +309,21 @@ describe('agent panel motion contract', () => {
     assert.doesNotMatch(full, /sessions\.prev/)
     assert.doesNotMatch(full, /sessions\.next/)
     assert.match(css, /\.agent-panel-session\[data-leaving='true'\]/)
+    assert.match(
+      css,
+      /html \.agent-panel-message-body\.glass,\s*\n\s*html \.agent-panel-session\.glass \{[\s\S]*?backdrop-filter:\s*none/,
+    )
+    assert.match(
+      css,
+      /html:not\(\[data-surface='solid'\]\) \.agent-panel-message-body\.glass[\s\S]*?--surface-alpha:\s*84%/,
+    )
+    assert.match(
+      css,
+      /\.agent-panel-message\[data-leaving='true'\],\s*\n\s*\.agent-panel-session\[data-leaving='true'\] \{[\s\S]*?filter:\s*opacity\(/,
+    )
+    assert.doesNotMatch(
+      css,
+      /\.agent-panel-message\[data-leaving='true'\][\s\S]*?blur\(calc\(var\(--exit/,
+    )
   })
 })

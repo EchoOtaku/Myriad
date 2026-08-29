@@ -262,7 +262,7 @@ pub async fn process_stream(
     // Agent/executor 继续使用有背压的 mpsc；独立转发器负责写入 run hub。
     // On TaskCreated, persist runId/taskId into session history so mid-run
     // panel refresh can reattach (criterion 4) before wait/final complete.
-    let (tx, rx) = tokio::sync::mpsc::channel::<ProgressEvent>(32);
+    let (tx, rx) = tokio::sync::mpsc::channel::<ProgressEvent>(256);
     let run_for_forwarder = run.clone();
     let session_for_identity = session_id.clone();
     let db_for_identity = db.clone();
@@ -1084,7 +1084,7 @@ pub async fn answer_task_question_stream(
         "[Agent API] Answering task question (SSE stream mode)"
     );
 
-    let (tx, rx) = tokio::sync::mpsc::channel::<ProgressEvent>(32);
+    let (tx, rx) = tokio::sync::mpsc::channel::<ProgressEvent>(256);
 
     let db_clone = db.clone();
     tokio::spawn(async move {
@@ -1404,7 +1404,7 @@ pub async fn confirm_operation_stream(
     let db_clone = db.clone();
     tokio::spawn(async move {
         // Agent/executor progress events share the same run hub as the SSE subscriber.
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentProgressEvent>(32);
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentProgressEvent>(256);
         let run_for_forwarder = run_for_task.clone();
         tokio::spawn(async move {
             while let Some(event) = rx.recv().await {

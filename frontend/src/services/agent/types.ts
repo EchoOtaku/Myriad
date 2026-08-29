@@ -310,6 +310,13 @@ export interface SummaryTokenEvent {
   done: boolean
 }
 
+/** 模型思考链流式 token。进过程区，不进正文。 */
+export interface ThinkingTokenEvent {
+  type: 'thinking_token'
+  token: string
+  done: boolean
+}
+
 export interface PerformancePlanEvent {
   type: 'performance_plan'
   performance: PerformanceDirective
@@ -412,6 +419,7 @@ export type ProgressEvent =
   | SessionCreatedEvent
   | SessionTitleUpdatedEvent
   | SummaryTokenEvent
+  | ThinkingTokenEvent
   | PerformancePlanEvent
   | MeropeStateChangedEvent
   | PlannerDecisionEvent

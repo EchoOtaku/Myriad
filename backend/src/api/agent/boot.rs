@@ -48,7 +48,7 @@ pub async fn restore_waiting_runs_after_boot() {
         let run_id = run.run_id().to_string();
         let task_id = task.task_id.clone();
 
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentProgressEvent>(32);
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentProgressEvent>(256);
         let run_for_forwarder = run.clone();
         tokio::spawn(async move {
             while let Some(event) = rx.recv().await {

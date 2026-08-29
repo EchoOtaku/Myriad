@@ -1666,6 +1666,10 @@ pub enum AgentProgressEvent {
         /// 是否为最后一个 token
         done: bool,
     },
+    /// 模型思考链流式 token（reasoning_content / thought parts）
+    ///
+    /// 和 SummaryToken 分开：思考过程进气泡的过程区，不能写进正文。
+    ThinkingToken { token: String, done: bool },
     /// A low-latency semantic motion plan. It may precede the final response.
     PerformancePlan {
         performance: super::merope::PerformanceDirective,

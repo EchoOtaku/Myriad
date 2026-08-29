@@ -39,6 +39,11 @@ export interface AgentMessage {
   attachments?: AgentAttachment[]
   /** 这轮走了哪几步。空着表示没有值得摆出来的过程。 */
   steps?: AgentMessageStep[]
+  /**
+   * 思考过程本文：Planner 的判断说明，或还没排出步骤时的进度句。
+   * 跟正文不是同一段 —— 正文是答，这段是怎么想到的。
+   */
+  thought?: string
   /** 它反过来问你的话 */
   question?: AgentMessageQuestion
   /** 答完之后给的下一步建议 */
@@ -91,6 +96,7 @@ function sameMessage(x: AgentMessage, y: AgentMessage): boolean {
     x.question?.id === y.question?.id &&
     x.question?.answered === y.question?.answered &&
     x.suggestions?.length === y.suggestions?.length &&
+    x.thought === y.thought &&
     sameSteps(x.steps, y.steps)
   )
 }

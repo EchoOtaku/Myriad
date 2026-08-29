@@ -1,10 +1,14 @@
 import type { AgentMessageStep } from './agentThinking'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
   formatStepDuration,
+  peelThoughtFromContent,
+  splitThinkContent,
   stepsWorthShowing,
   summarizeAgentSteps,
+  thinkingVisible,
 } from './agentThinking'
 
 function step(overrides: Partial<AgentMessageStep> = {}): AgentMessageStep {
@@ -77,6 +81,93 @@ test('只有一步且已经跑完就不摆过程 —— 正文本身就是结果
   assert.equal(
     stepsWorthShowing([step({ id: 's1' }), step({ id: 's2' })]),
     true,
+  )
+})
+
+test('还在跑时即使没有步骤也要占一行', () => {
+  assert.equal(thinkingVisible([], true), true)
+  assert.equal(thinkingVisible([], false), false)
+  assert.equal(thinkingVisible([step({ status: 'done' })], false), false)
+  assert.equal(thinkingVisible([step({ status: 'done' })], true), true)
+})
+
+test('有判断说明、但还没有正文时才摆过程', () => {
+  assert.equal(thinkingVisible([], false, '先查天气再写'), true)
+  assert.equal(thinkingVisible([], false, '  '), false)
+  assert.equal(thinkingVisible([], true, '先查天气再写', true), false)
+  assert.equal(thinkingVisible([], false, '先查天气再写', true), false)
+})
+
+test('思考过程本文要折行，不能被步骤名那套 ellipsis 裁掉', () => {
+  const css = readFileSync(
+    new URL('./agent-panel.css', import.meta.url),
+    'utf8',
+  )
+  const message = readFileSync(
+    new URL('./AgentPanelMessage.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(
+    css,
+    /\.agent-panel-thinking-thought \{[\s\S]*white-space:\s*pre-wrap/,
+  )
+  assert.match(css, /@keyframes agent-panel-thought-sweep/)
+  assert.match(
+    css,
+    /\.agent-panel-thinking-thought\[data-live='true'\] \{[\s\S]*background-clip:\s*text/,
+  )
+  assert.doesNotMatch(
+    css,
+    /\.agent-panel-thinking-thought\[data-live='true'\]::after/,
+  )
+  assert.match(css, /\.agent-panel-tools li/)
+  assert.doesNotMatch(
+    css,
+    /\.agent-panel-question \{[\s\S]{0,180}border-radius:\s*24px/,
+  )
+  assert.match(css, /> :last-child:not\(\.agent-panel-thinking\)::after/)
+  const thinking = readFileSync(
+    new URL('./AgentPanelThinking.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(thinking, /data-live="true"/)
+  assert.match(thinking, /agent-panel-tools/)
+  assert.match(
+    thinking,
+    /note \? \(\s*<p className="agent-panel-thinking-thought" data-live="true">/,
+  )
+  assert.match(
+    message,
+    /agent-panel-message-body[\s\S]*showsThinking[\s\S]*AgentPanelThinking/,
+  )
+})
+
+test('正文里的 think 标签拆成过程和答案', () => {
+  assert.deepEqual(splitThinkContent('<think>先算\n再答</think>\n\n答案是 4'), {
+    thought: '先算\n再答',
+    content: '答案是 4',
+  })
+  assert.deepEqual(splitThinkContent('<think>还在想'), {
+    thought: '还在想',
+    content: '',
+  })
+  assert.deepEqual(splitThinkContent('就是答案'), {
+    thought: '',
+    content: '就是答案',
+  })
+})
+
+test('正文若把思考链抄一遍就剥掉，短开场白不动', () => {
+  assert.equal(
+    peelThoughtFromContent(
+      '这是一段足够长的思考过程，用来判断怎么回答。\n\n你好',
+      '这是一段足够长的思考过程，用来判断怎么回答。',
+    ),
+    '你好',
+  )
+  assert.equal(
+    peelThoughtFromContent('好的，今天天气不错', '好的，'),
+    '好的，今天天气不错',
   )
 })
 

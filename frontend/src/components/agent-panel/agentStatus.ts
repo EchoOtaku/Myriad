@@ -91,6 +91,10 @@ export function reduceAgentStatus(
     case 'progress':
       return { ...state, status: 'working', progress: event.progress }
 
+    // 模型还在写思考链：岛上保持思考，不要提前跳到「在做事」
+    case 'thinking_token':
+      return { ...state, status: 'thinking', detail: state.detail }
+
     // 流式回复也算在做事，直到 task_completed 才收
     case 'summary_token':
       return { ...state, status: 'working' }

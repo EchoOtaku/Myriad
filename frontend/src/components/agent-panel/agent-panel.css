@@ -55,6 +55,7 @@
   --agent-stagger-max: 8;
   --agent-stagger-wave: 9;
   --agent-row-exit: 320ms;
+  --agent-shell-max: calc(100dvh * 2 / 3);
 
   display: flex;
   flex-direction: column;
@@ -62,7 +63,7 @@
   gap: 12px;
   width: min(92vw, 560px);
   min-height: 0;
-  max-height: calc(100dvh - 2rem);
+  max-height: var(--agent-shell-max);
   overflow: visible;
   transform-origin: center bottom;
   opacity: 1;
@@ -75,7 +76,7 @@
 }
 
 .agent-panel-overlay-anchor[data-capped='true'] {
-  height: calc(100dvh - 2rem);
+  height: var(--agent-shell-max);
 }
 
 @supports (padding: env(safe-area-inset-bottom)) {
@@ -1264,19 +1265,13 @@ button.agent-panel-tag:disabled {
   max-width: 100%;
 }
 
-/* 滚动退场走 transform / filter，不碰 opacity / translate / scale ——
-   那三条是面板开合和卡片入场在用，加 transition 会把跟手拖成一坨。 */
+/* 滚动退场走 transform / filter:opacity，不碰 opacity / translate / scale ——
+   那三条是面板开合和卡片入场在用。不加 blur：高斯糊会把越界的卡片拖成一片脏雾。 */
 .agent-panel-message[data-leaving='true'],
 .agent-panel-session[data-leaving='true'] {
   transform-origin: center center;
   transform: translateY(calc(var(--exit, 0) * var(--exit-y, 0px)))
     scale(calc(1 - var(--exit, 0) * 0.045));
-  filter: opacity(calc(1 - var(--exit, 0) * 0.86))
-    blur(calc(var(--exit, 0) * 10px));
-}
-
-html[data-perf-mode='exlight'] .agent-panel-message[data-leaving='true'],
-html[data-perf-mode='exlight'] .agent-panel-session[data-leaving='true'] {
   filter: opacity(calc(1 - var(--exit, 0) * 0.86));
 }
 
@@ -1311,6 +1306,22 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
   border-radius: 22px;
 }
 
+/* 气泡和历史卡贴在壁纸上。backdrop-filter 会把立绘采进胶囊里糊成雾；
+   底、边、阴影仍走 .glass 令牌。去掉磨砂后默认 74% 会透穿，略抬不透明。
+   输入行那两块玻璃还要磨砂，不动。solid 已经不透明，不要往回减。 */
+html .agent-panel-message-body.glass,
+html .agent-panel-session.glass {
+  backdrop-filter: none;
+}
+
+html:not([data-surface='solid']) .agent-panel-message-body.glass,
+html:not([data-surface='solid']) .agent-panel-session.glass {
+  --surface-alpha: 84%;
+
+  background:
+    var(--surface-sheen), rgb(var(--surface-rgb) / var(--surface-alpha));
+}
+
 .agent-panel-message[data-role='system'] .agent-panel-message-body {
   align-self: center;
   color: var(--text-muted, #9ca3af);
@@ -1325,7 +1336,7 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
    挂在最后一个块的末尾而不是气泡上 —— 挂气泡上它会另起一行，看着像说完了。 */
 .agent-panel-message[data-state='streaming']
   .agent-panel-message-body
-  > :last-child::after {
+  > :last-child:not(.agent-panel-thinking)::after {
   content: '';
   display: inline-block;
   width: 2px;
@@ -1447,15 +1458,71 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
   }
 }
 
-/* ── 思考过程 ───────────────────────────────────── */
+/* ── 思考过程 ─────────────────────────────────────
+   在答案胶囊里面。正文一出来就卸掉，所以不必做成另一颗气泡。 */
 
 .agent-panel-thinking {
-  margin-bottom: 6px;
+  margin: 0 0 6px;
   color: var(--text-muted, #9ca3af);
-  font-size: 11px;
+  font-size: 12px;
   interpolate-size: allow-keywords;
   height: auto;
   transition: height 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.agent-panel-thinking[data-live='true'] {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 18px;
+  color: var(--text-secondary, #6b7280);
+  font-size: 13px;
+}
+
+.agent-panel-thinking-thought {
+  margin: 0;
+  min-width: 0;
+  color: var(--text-muted, #9ca3af);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.agent-panel-thinking-thought:not([data-live='true']) {
+  max-height: 16em;
+  overflow: hidden auto;
+}
+
+/* 扫在字形上：挂 inline，背景跟着行盒走，不铺整段矩形。
+   overflow / color:transparent 叠在 block 上会把字扫没。 */
+.agent-panel-thinking-sweep {
+  color: var(--text-muted, #9ca3af);
+  background-image: linear-gradient(
+    100deg,
+    var(--text-muted, #9ca3af) 0 42%,
+    var(--text-primary, #111827) 50%,
+    var(--text-muted, #9ca3af) 58% 100%
+  );
+  background-repeat: no-repeat;
+  background-size: 220% 100%;
+  background-clip: text;
+  /* stylelint-disable property-no-vendor-prefix -- clip + fill so glyphs stay visible */
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  /* stylelint-enable property-no-vendor-prefix */
+  animation: agent-panel-thought-sweep 2.8s linear infinite;
+}
+
+@keyframes agent-panel-thought-sweep {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -100% 0;
+  }
 }
 
 .agent-panel-thinking-head {
@@ -1476,6 +1543,45 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.agent-panel-thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 5px;
+  min-height: 18px;
+}
+
+.agent-panel-thinking-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentcolor;
+  opacity: 0.45;
+  animation: agent-panel-thinking-dot 1.2s ease-in-out infinite;
+}
+
+.agent-panel-thinking-dots span:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.agent-panel-thinking-dots span:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes agent-panel-thinking-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.45;
+    transform: translateY(0);
+  }
+
+  40% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
 }
 
 .agent-panel-thinking-headline .agent-panel-swap {
@@ -1512,72 +1618,99 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
   rotate: 90deg;
 }
 
-.agent-panel-thinking-steps {
+.agent-panel-tools {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  margin: 5px 0 0;
-  padding: 0 0 0 2px;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
   list-style: none;
 }
 
-.agent-panel-thinking-steps li {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
+.agent-panel-tools li {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
   min-width: 0;
 }
 
-.agent-panel-thinking-mark {
-  flex-shrink: 0;
-  width: 9px;
-  text-align: center;
+.agent-panel-tool-status {
+  width: 7px;
+  height: 7px;
+  margin-top: 0.55em;
+  border-radius: 50%;
+  background: currentcolor;
+  opacity: 0.32;
 }
 
-.agent-panel-thinking-steps li[data-status='done'] .agent-panel-thinking-mark {
-  color: var(--color-primary, #10b981);
-}
-
-.agent-panel-thinking-steps li[data-status='error'] .agent-panel-thinking-mark {
-  color: var(--color-error, #ef4444);
-}
-
-/* 正在跑的那一步单独亮起来，眼睛一扫就知道停在哪 */
-.agent-panel-thinking-steps li[data-status='running'] {
-  color: var(--text-secondary, #6b7280);
-}
-
-.agent-panel-thinking-steps
-  li[data-status='running']
-  .agent-panel-thinking-mark {
+.agent-panel-tools li[data-status='running'] .agent-panel-tool-status {
+  background: var(--color-primary, #10b981);
+  opacity: 1;
   animation: agent-panel-blink 1.2s ease-in-out infinite;
 }
 
-.agent-panel-thinking-steps li[data-status='pending'] {
-  opacity: 0.55;
+.agent-panel-tools li[data-status='done'] .agent-panel-tool-status {
+  background: var(--color-primary, #10b981);
+  opacity: 0.72;
 }
 
-.agent-panel-thinking-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.agent-panel-tools li[data-status='error'] .agent-panel-tool-status {
+  background: var(--color-error, #ef4444);
+  opacity: 1;
 }
 
-.agent-panel-thinking-note {
+.agent-panel-tools li[data-status='pending'] {
+  color: var(--text-muted, #9ca3af);
+}
+
+.agent-panel-tools li[data-status='running'] .agent-panel-tool-name {
+  color: var(--text-primary, #111827);
+}
+
+.agent-panel-tool-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
-  overflow: hidden;
+}
+
+.agent-panel-tool-name {
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.agent-panel-tool-note {
+  color: var(--text-muted, #9ca3af);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.agent-panel-tool-elapsed {
+  flex-shrink: 0;
+  margin-top: 0.15em;
   opacity: 0.7;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .agent-panel-thinking-arrow,
-  .agent-panel-thinking-steps
-    li[data-status='running']
-    .agent-panel-thinking-mark {
+  .agent-panel-thinking-dots span,
+  .agent-panel-thinking-thought[data-live='true'],
+  .agent-panel-tools li[data-status='running'] .agent-panel-tool-status {
     animation: none;
     transition-duration: 0.01ms !important;
+  }
+
+  .agent-panel-thinking-dots span {
+    opacity: 0.55;
+  }
+
+  .agent-panel-thinking-thought[data-live='true'] {
+    color: var(--text-muted, #9ca3af);
+    background-image: none;
   }
 }
 
@@ -1676,24 +1809,33 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
   height: 12px;
 }
 
-/* ── 它反过来问你的话 ───────────────────────────── */
+/* ── 它反过来问你的话 ─────────────────────────────
+   问句就是气泡正文，不再套一层色块。选项跟输入行那排贴同一套。 */
 
 .agent-panel-question {
-  margin-top: 12px;
-  padding: 12px 16px;
-  border-radius: 24px;
-  background: color-mix(in srgb, var(--color-accent, #f59e0b) 10%, transparent);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.agent-panel-message-body > .agent-panel-question:not(:first-child) {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--surface-border, rgb(0 0 0 / 8%));
 }
 
 .agent-panel-question-text {
   margin: 0;
-  font-size: 12.5px;
-  line-height: 1.5;
+  font-size: 15px;
+  line-height: 1.6;
 }
 
 .agent-panel-question-context {
-  align-self: flex-start;
-  margin-top: 5px;
+  margin: 0;
+  color: var(--text-muted, #9ca3af);
+  font-size: 12px;
+  line-height: 1.45;
   white-space: pre-wrap;
 }
 
@@ -1701,7 +1843,6 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 8px;
 }
 
 /* 答过之后按钮冻结，但仍然看得见当时选了哪个 */
@@ -1942,7 +2083,7 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
 @media (prefers-reduced-motion: reduce) {
   .agent-panel-message[data-state='streaming']
     .agent-panel-message-body
-    > :last-child::after {
+    > :last-child:not(.agent-panel-thinking)::after {
     animation: none;
   }
 }

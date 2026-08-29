@@ -12,6 +12,18 @@ use serde_json::Value;
 use super::ai_process_pure::USER_TEXT_MAX_CHARS;
 use super::identity;
 use super::types::AgentProgressEvent;
+use crate::services::analyzer::StreamDelta;
+
+pub(crate) async fn emit_stream_delta(
+    tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
+    delta: StreamDelta,
+) {
+    let event = match delta {
+        StreamDelta::Reasoning(token) => AgentProgressEvent::ThinkingToken { token, done: false },
+        StreamDelta::Text(token) => AgentProgressEvent::SummaryToken { token, done: false },
+    };
+    let _ = tx.send(event).await;
+}
 
 // ─────────────────────────────────────────────
 // 1. AI 驱动的最终回复生成（异步，支持流式）
@@ -224,20 +236,28 @@ async fn ai_announce_plan(
 
     let tx = progress_tx.clone();
     match analyzer
-        .analyze_stream(&prompt, |token| {
-            let _ = tx.try_send(AgentProgressEvent::SummaryToken {
-                token: token.to_string(),
-                done: false,
-            });
-            true
+        .analyze_stream_parts(&prompt, |delta| {
+            let tx = tx.clone();
+            async move {
+                emit_stream_delta(&tx, delta).await;
+                true
+            }
         })
         .await
     {
         Ok(full_text) if !full_text.trim().is_empty() => {
-            let _ = tx.try_send(AgentProgressEvent::SummaryToken {
-                token: String::new(),
-                done: true,
-            });
+            let _ = tx
+                .send(AgentProgressEvent::ThinkingToken {
+                    token: String::new(),
+                    done: true,
+                })
+                .await;
+            let _ = tx
+                .send(AgentProgressEvent::SummaryToken {
+                    token: String::new(),
+                    done: true,
+                })
+                .await;
             Some(full_text.trim().to_string())
         }
         Ok(_) => None,
@@ -514,20 +534,28 @@ async fn ai_summarize(
     if let Some(tx) = progress_tx {
         let tx = tx.clone();
         match analyzer
-            .analyze_stream(&prompt, |token| {
-                let _ = tx.try_send(AgentProgressEvent::SummaryToken {
-                    token: token.to_string(),
-                    done: false,
-                });
-                true
+            .analyze_stream_parts(&prompt, |delta| {
+                let tx = tx.clone();
+                async move {
+                    emit_stream_delta(&tx, delta).await;
+                    true
+                }
             })
             .await
         {
             Ok(full_text) if !full_text.trim().is_empty() => {
-                let _ = tx.try_send(AgentProgressEvent::SummaryToken {
-                    token: String::new(),
-                    done: true,
-                });
+                let _ = tx
+                    .send(AgentProgressEvent::ThinkingToken {
+                        token: String::new(),
+                        done: true,
+                    })
+                    .await;
+                let _ = tx
+                    .send(AgentProgressEvent::SummaryToken {
+                        token: String::new(),
+                        done: true,
+                    })
+                    .await;
                 Some(full_text.trim().to_string())
             }
             Ok(_) => None,

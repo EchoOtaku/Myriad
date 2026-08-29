@@ -62,6 +62,20 @@ export const AgentPanelMessage: React.FC<AgentPanelMessageProps> = React.memo(
     const isAssistant = message.role === 'assistant'
     const question = message.question
     const showsFooter = message.state !== 'streaming' && !!message.content
+    const hasAnswer = !!(
+      message.content ||
+      message.imageUrls?.length ||
+      question ||
+      message.suggestions?.length
+    )
+    const showsThinking =
+      isAssistant &&
+      !hasAnswer &&
+      !!(message.steps || message.thought || message.state === 'streaming')
+    const showsBody =
+      message.role === 'user'
+        ? !!(message.content || message.attachments?.length)
+        : hasAnswer || showsThinking
 
     return (
       <div
@@ -69,113 +83,120 @@ export const AgentPanelMessage: React.FC<AgentPanelMessageProps> = React.memo(
         data-role={message.role}
         data-state={message.state ?? 'settled'}
       >
-        <div
-          className={
-            message.role === 'system'
-              ? 'agent-panel-message-body'
-              : 'agent-panel-message-body glass'
-          }
-        >
-          {isAssistant && message.steps && (
-            <AgentPanelThinking steps={message.steps} />
-          )}
-
-          {message.role === 'user' ? (
-            <>
-              {message.attachments && message.attachments.length > 0 ? (
-                <div className="agent-panel-message-attach">
-                  {message.attachments.map((item) => {
-                    const preview = item.previewUrl
-                    return preview ? (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className="agent-panel-image-open"
-                        onClick={() => onZoomImage(preview)}
-                        aria-label={item.name}
-                      >
-                        <img src={preview} alt={item.name} />
-                      </button>
-                    ) : (
-                      <span key={item.id} className="agent-panel-attach-chip">
-                        <span className="agent-panel-attach-chip-name">
-                          {item.name}
+        {showsBody ? (
+          <div
+            className={
+              message.role === 'system'
+                ? 'agent-panel-message-body'
+                : 'agent-panel-message-body glass'
+            }
+          >
+            {showsThinking ? (
+              <AgentPanelThinking
+                steps={message.steps ?? []}
+                thought={message.thought}
+                live={message.state === 'streaming'}
+              />
+            ) : null}
+            {message.role === 'user' ? (
+              <>
+                {message.attachments && message.attachments.length > 0 ? (
+                  <div className="agent-panel-message-attach">
+                    {message.attachments.map((item) => {
+                      const preview = item.previewUrl
+                      return preview ? (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="agent-panel-image-open"
+                          onClick={() => onZoomImage(preview)}
+                          aria-label={item.name}
+                        >
+                          <img src={preview} alt={item.name} />
+                        </button>
+                      ) : (
+                        <span key={item.id} className="agent-panel-attach-chip">
+                          <span className="agent-panel-attach-chip-name">
+                            {item.name}
+                          </span>
                         </span>
-                      </span>
-                    )
-                  })}
-                </div>
-              ) : null}
-              {message.content ? (
-                // 用户自己打的字不当 Markdown 认 —— 他写的星号就是星号
-                <p className="agent-md-p">{message.content}</p>
-              ) : null}
-            </>
-          ) : (
-            <AgentMarkdown text={message.content} />
-          )}
+                      )
+                    })}
+                  </div>
+                ) : null}
+                {message.content ? (
+                  // 用户自己打的字不当 Markdown 认 —— 他写的星号就是星号
+                  <p className="agent-md-p">{message.content}</p>
+                ) : null}
+              </>
+            ) : message.content ? (
+              <AgentMarkdown text={message.content} />
+            ) : null}
 
-          {message.imageUrls && message.imageUrls.length > 0 && (
-            <div className="agent-panel-message-images">
-              {message.imageUrls.map((url) => (
-                <button
-                  key={url}
-                  type="button"
-                  className="agent-panel-image-open"
-                  onClick={() => onZoomImage(url)}
-                  aria-label={t.agentPanel.zoomImage}
-                >
-                  <img src={url} alt="" loading="lazy" />
-                </button>
-              ))}
-            </div>
-          )}
+            {message.imageUrls && message.imageUrls.length > 0 && (
+              <div className="agent-panel-message-images">
+                {message.imageUrls.map((url) => (
+                  <button
+                    key={url}
+                    type="button"
+                    className="agent-panel-image-open"
+                    onClick={() => onZoomImage(url)}
+                    aria-label={t.agentPanel.zoomImage}
+                  >
+                    <img src={url} alt="" loading="lazy" />
+                  </button>
+                ))}
+              </div>
+            )}
 
-          {question ? (
-            <div className="agent-panel-question">
-              <p className="agent-panel-question-text">{question.text}</p>
-              {question.context && (
-                <span className="agent-panel-tag agent-panel-question-context">
-                  {question.context}
-                </span>
-              )}
-              {question.options && question.options.length > 0 && (
-                <div className="agent-panel-question-options">
-                  {question.options.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      className="agent-panel-tag"
-                      data-active={
-                        question.answered === option.value ? 'true' : 'false'
-                      }
-                      disabled={!!question.answered}
-                      title={option.description}
-                      onClick={() => onAnswer(message.id, option.value)}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : null}
+            {question ? (
+              <div className="agent-panel-question">
+                <p className="agent-panel-question-text">{question.text}</p>
+                {question.context ? (
+                  <p className="agent-panel-question-context">
+                    {question.context}
+                  </p>
+                ) : null}
+                {question.options && question.options.length > 0 ? (
+                  <div className="agent-panel-question-options">
+                    {question.options.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className="agent-panel-tag"
+                        data-active={
+                          question.answered === option.value ? 'true' : 'false'
+                        }
+                        disabled={!!question.answered}
+                        title={option.description}
+                        onClick={() => onAnswer(message.id, option.value)}
+                      >
+                        <span className="agent-panel-tag-text">
+                          {option.label}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
-          {message.suggestions && message.suggestions.length > 0 ? (
-            <div className="agent-panel-question-options">
-              {message.suggestions.map((suggestion) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  className="agent-panel-tag"
-                  onClick={() => onSuggest(suggestion)}
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
+            {message.suggestions && message.suggestions.length > 0 ? (
+              <div className="agent-panel-question-options">
+                {message.suggestions.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    className="agent-panel-tag"
+                    onClick={() => onSuggest(suggestion)}
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {showsFooter ? (
           <div className="agent-panel-message-footer">
             {message.at && (

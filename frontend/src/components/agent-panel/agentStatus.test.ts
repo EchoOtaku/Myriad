@@ -27,6 +27,22 @@ const stepStarted: ProgressEvent = {
   description: '正在查天气',
 }
 
+test('思考链流式时岛上仍是思考，正文 token 才转到执行', () => {
+  const thinking = run(runStarted, {
+    type: 'thinking_token',
+    token: '先算一下',
+    done: false,
+  })
+  assert.equal(thinking.status, 'thinking')
+
+  const answering = reduceAgentStatus(thinking, {
+    type: 'summary_token',
+    token: '你好',
+    done: false,
+  })
+  assert.equal(answering.status, 'working')
+})
+
 test('接管后先是思考，排出步骤才转到执行', () => {
   assert.equal(run(runStarted).status, 'thinking')
 

@@ -499,7 +499,11 @@ impl Agent {
             })
             .await;
 
-        let planner_output = match self.planner.plan(&request).await {
+        let planner_output = match self
+            .planner
+            .plan_with_progress(&request, &progress_tx)
+            .await
+        {
             Ok(output) => output,
             Err(error) => {
                 crate::services::agent::merope::note_chat_diary(
@@ -1129,7 +1133,11 @@ impl Agent {
                 .await;
 
             // 使用 Planner.replan
-            match self.planner.replan(original_request, &hint).await {
+            match self
+                .planner
+                .replan_with_progress(original_request, &hint, &progress_tx)
+                .await
+            {
                 Ok(replan_output)
                     if replan_output.status == PlannerStatus::Plan
                         && !replan_output.steps.is_empty() =>
