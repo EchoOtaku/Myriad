@@ -21,6 +21,7 @@ import {
   agentPanelStaggerSteps,
 } from './agentPanelStage'
 import { AGENT_ROW_MS } from './agentPresenceState'
+import { LONG_PRESS_DURATION } from './useLongPress'
 
 const css = stripComments(
   readFileSync(new URL('./agent-panel.css', import.meta.url), 'utf8'),
@@ -486,6 +487,28 @@ describe('agent panel motion contract', () => {
     assert.doesNotMatch(
       css,
       /\.agent-panel-message\[data-leaving='true'\][\s\S]*?blur\(calc\(var\(--exit/,
+    )
+  })
+
+  it('draws the voice hold ring in the same 500ms as the panel long-press', () => {
+    const composer = readFileSync(
+      new URL('./AgentPanelComposer.tsx', import.meta.url),
+      'utf8',
+    )
+    assert.equal(LONG_PRESS_DURATION, 500)
+    assert.match(css, /--agent-voice-hold:\s*500ms/)
+    assert.match(
+      css,
+      /agent-panel-mic-hold-draw\s+var\(--agent-voice-hold\)/,
+    )
+    assert.match(css, /@keyframes agent-panel-mic-hold-draw/)
+    assert.match(css, /@keyframes agent-panel-mic-live/)
+    assert.match(composer, /data-holding/)
+    assert.match(composer, /agent-panel-mic-hold-ring/)
+    assert.match(composer, /enterConversation/)
+    assert.match(
+      css,
+      /prefers-reduced-motion: reduce[\s\S]*\.agent-panel-mic-hold-ring/,
     )
   })
 })
