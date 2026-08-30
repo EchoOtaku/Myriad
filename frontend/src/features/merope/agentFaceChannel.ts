@@ -3,6 +3,7 @@ import type {
   MeropeSpeechSource,
   SpeechUtteranceInput,
 } from './speechEvents'
+import { newMotionIntentId } from './motion/liveGeneration'
 import {
   dispatchMeropePerformance,
   dispatchMeropeState,
@@ -126,9 +127,14 @@ export class ReplyUtterance {
  */
 export class AgentFaceChannel {
   private sequence = 0
+  private generation = 0
   private readonly spoken = new Map<string, string>()
 
   constructor(private readonly sink: AgentFaceSink = windowSink) {}
+
+  setGeneration(generation: number): void {
+    this.generation = Math.max(0, Math.trunc(generation))
+  }
 
   /** 流式回复：SSE token 边到边说。 */
   openReply(messageId: string, locale?: string): ReplyUtterance {
@@ -136,7 +142,7 @@ export class AgentFaceChannel {
       messageId,
       locale,
       nextUtteranceId: () => this.nextUtteranceId('stream', messageId),
-      emit: (detail) => this.sink.speech(detail),
+      emit: (detail) => this.sink.speech(this.withGeneration(detail, 'reply')),
       remember: (text) => this.remember(messageId, text),
     })
   }
@@ -161,24 +167,39 @@ export class AgentFaceChannel {
     const source = line.source ?? 'reply'
     const text = line.text?.trim() ? line.text : ''
     if (text || line.performance) {
-      this.sink.performance({
-        text,
-        source,
-        messageId: line.messageId,
-        ...(line.performance ? { performance: line.performance } : {}),
-      })
+      this.sink.performance(
+        this.withGeneration(
+          {
+            text,
+            source,
+            messageId: line.messageId,
+            ...(line.performance
+              ? {
+                  performance: line.performance,
+                  motionIntentId: newMotionIntentId(),
+                }
+              : {}),
+          },
+          source,
+        ),
+      )
     }
     if (!text) return
     const spoken = normalizeSpokenText(text)
     if (!spoken || this.spoken.get(line.messageId) === spoken) return
     this.remember(line.messageId, spoken)
-    this.sink.utterance({
-      messageId: line.messageId,
-      source,
-      text: spoken,
-      utteranceId: this.nextUtteranceId(source, line.messageId),
-      ...(line.locale ? { locale: line.locale } : {}),
-    })
+    this.sink.utterance(
+      this.withGeneration(
+        {
+          messageId: line.messageId,
+          source,
+          text: spoken,
+          utteranceId: this.nextUtteranceId(source, line.messageId),
+          ...(line.locale ? { locale: line.locale } : {}),
+        },
+        source,
+      ),
+    )
   }
 
   /** 心情/活动变了。与某一条话无关，原样转交给事件层做校验。 */
@@ -189,6 +210,14 @@ export class AgentFaceChannel {
   /** 整条消息级中断：新建会话、打断执行、请求失败、重连断流。 */
   cancel(messageId: string): void {
     this.sink.speech({ phase: 'cancel', messageId, source: 'reply' })
+  }
+
+  private withGeneration<T extends { source?: MeropeSpeechSource | string }>(
+    detail: T,
+    source: MeropeSpeechSource | string,
+  ): T {
+    if (source !== 'reply' || this.generation <= 0) return detail
+    return { ...detail, generation: this.generation }
   }
 
   private nextUtteranceId(prefix: string, messageId: string): string {

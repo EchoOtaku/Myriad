@@ -608,7 +608,9 @@ impl Agent {
                 }
             };
 
-            let performance = if let Some(mood) = mood_transition.clone() {
+            // Streamed text completion must not wait on delivery motion.
+            // The spawned plan publishes performance_plan on the same run hub.
+            if let Some(mood) = mood_transition.clone() {
                 spawn_motion_directive(
                     motion_context(
                         &request,
@@ -620,13 +622,9 @@ impl Agent {
                         None,
                     ),
                     Some(progress_tx.clone()),
-                )
-                .await
-                .ok()
-                .flatten()
-            } else {
-                None
-            };
+                );
+            }
+            let performance = None;
 
             crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
             let _ = progress_tx
@@ -765,7 +763,7 @@ impl Agent {
                     .chat_reply
                     .unwrap_or_else(response_agent::greeting);
 
-                let delivery = mood_transition.clone().map(|mood| {
+                if let Some(mood) = mood_transition.clone() {
                     spawn_motion_directive(
                         motion_context(
                             &request,
@@ -777,17 +775,14 @@ impl Agent {
                             None,
                         ),
                         Some(progress_tx.clone()),
-                    )
-                });
+                    );
+                }
 
                 // 尝试真正的流式 AI 回复（token-by-token from model）
                 let reply = self
                     .stream_chat_response(&request, &planner_reply, &progress_tx)
                     .await;
-                let performance = match delivery {
-                    Some(handle) => handle.await.ok().flatten(),
-                    None => None,
-                };
+                let performance = None;
                 crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
 
                 let _ = progress_tx

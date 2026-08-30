@@ -215,9 +215,18 @@ test('a delivered line stages the performance before the words', () => {
   })
 
   assert.deepEqual(sink.order, ['performance', 'utterance'])
-  assert.deepEqual(sink.performances, [
-    { text: '好的', source: 'reply', messageId: 'msg-1', performance },
-  ])
+  const staged = sink.performances[0] as {
+    text: string
+    source: string
+    messageId: string
+    performance: typeof performance
+    motionIntentId?: string
+  }
+  assert.equal(staged.text, '好的')
+  assert.equal(staged.source, 'reply')
+  assert.equal(staged.messageId, 'msg-1')
+  assert.deepEqual(staged.performance, performance)
+  assert.equal(typeof staged.motionIntentId, 'string')
   assert.deepEqual(sink.utterances, [
     {
       messageId: 'msg-1',
@@ -243,10 +252,24 @@ test('a line without words still stages, and words without a plan still speak', 
   channel.deliver({ messageId: 'msg-3', text: '   ' })
 
   assert.deepEqual(sink.order, ['performance', 'performance', 'utterance'])
-  assert.deepEqual(sink.performances, [
-    { text: '', source: 'reply', messageId: 'msg-1', performance },
-    { text: '在的', source: 'reply', messageId: 'msg-2' },
-  ])
+  const first = sink.performances[0] as {
+    text: string
+    messageId: string
+    motionIntentId?: string
+    performance: typeof performance
+  }
+  const second = sink.performances[1] as {
+    text: string
+    messageId: string
+    motionIntentId?: string
+  }
+  assert.equal(first.text, '')
+  assert.equal(first.messageId, 'msg-1')
+  assert.deepEqual(first.performance, performance)
+  assert.equal(typeof first.motionIntentId, 'string')
+  assert.equal(second.text, '在的')
+  assert.equal(second.messageId, 'msg-2')
+  assert.equal(second.motionIntentId, undefined)
   assert.deepEqual(
     sink.utterances.map((item) => item.messageId),
     ['msg-2'],

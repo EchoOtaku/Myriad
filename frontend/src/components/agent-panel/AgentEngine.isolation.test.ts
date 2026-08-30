@@ -21,4 +21,6 @@ test('Work interrupt cannot abort Chat SSE, and session ids stay per mode', () =
   assert.match(engine, /chatTurnClockRef/)
   assert.match(engine, /isStreamSupersededError/)
   assert.match(engine, /isCurrentChatGeneration/)
+  assert.match(engine, /setLiveMotionGeneration/)
+  assert.match(engine, /agentFace.setGeneration/)
 })

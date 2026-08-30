@@ -455,6 +455,13 @@ mod tests {
     }
 
     #[test]
+    fn streaming_chat_does_not_join_delivery_before_text_completes() {
+        let src = include_str!("../process_and_recipe.rs");
+        assert!(src.contains("Streamed text completion must not wait on delivery motion"));
+        assert!(src.contains("let performance = None;"));
+    }
+
+    #[test]
     fn hidden_face_skips_motion() {
         let hidden = myriad_merope::sanitize_rig_state(&serde_json::json!({
             "pageVisible": false,

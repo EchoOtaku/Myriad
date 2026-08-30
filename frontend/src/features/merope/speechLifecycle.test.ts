@@ -205,3 +205,27 @@ test('bounds local duration estimates for short and very long replies', () => {
   assert.ok(estimateAutoSpeechDurationMs('This is a short answer.') >= 1_500)
   assert.equal(estimateAutoSpeechDurationMs('长'.repeat(2_000)), 12_000)
 })
+
+test('ignores speech from an older generation without cancelling the live one', async () => {
+  const { setLiveMotionGeneration } = await import('./motion/liveGeneration')
+  setLiveMotionGeneration(3)
+  const scheduler = new FakeScheduler()
+  const rig = fakeTarget()
+  const controller = new SpeechLifecycleController(rig.target, scheduler)
+  controller.handle({
+    phase: 'start',
+    messageId: 'message-new',
+    utteranceId: 'u-new',
+    source: 'reply',
+    generation: 3,
+  })
+  controller.handle({
+    phase: 'start',
+    messageId: 'message-old',
+    utteranceId: 'u-old',
+    source: 'reply',
+    generation: 2,
+  })
+  assert.deepEqual(rig.active, [true])
+  setLiveMotionGeneration(0)
+})

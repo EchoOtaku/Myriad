@@ -53,6 +53,7 @@ import {
   faceSpeechGate,
   openGatedReply,
 } from '../../features/merope/faceSpeechArbitration'
+import { setLiveMotionGeneration } from '../../features/merope/motion/liveGeneration'
 import { captureProductionRigStateSummary } from '../../features/merope/motion/runtimeHost'
 import { agentService, executeFrontendAction } from '../../services/agent'
 import {
@@ -1230,6 +1231,8 @@ export const AgentEngine: React.FC = () => {
       const chatGeneration =
         mode === 'chat' ? chatTurnClockRef.current.next() : 0
       if (mode === 'chat') {
+        setLiveMotionGeneration(chatGeneration)
+        agentFace.setGeneration(chatGeneration)
         const previousChatId = loadingMessageIdByModeRef.current.chat
         if (previousChatId) {
           cancelGatedSpeech(agentFace, faceSpeechGate, previousChatId)
