@@ -16,16 +16,16 @@ pub use ingest::{
     allow_existing_notify, is_enabled, spawn as spawn_ingest, spawn_diary, spawn_presence,
 };
 pub use motion::{
-    MotionContext, MotionPhase, PerformanceDirective, direct_motion, resolve_round_motion_style,
+    direct_motion, resolve_round_motion_style, MotionContext, MotionPhase, PerformanceDirective,
 };
 pub use myriad_merope::RigStateSummary;
 pub use store::{
-    JsonDocumentUpdate, PersonaContractUpdate, PortraitUpdate, acquire_portrait_generation,
-    clear_persona_on, complete_portrait_generation, get_or_create_state, get_persona,
-    get_persona_on, insert_diary, insert_proactive, latest_diary, list_diary_from_sources,
-    list_remembered, normalize_persona_fields, portrait_generation_is_pending, recent_proactive,
-    release_portrait_generation, save_departure_mood, save_mood, set_activity, set_dnd_schedule,
-    set_do_not_disturb, upsert_persona_on,
+    acquire_portrait_generation, clear_persona_on, complete_portrait_generation,
+    get_or_create_state, get_persona, get_persona_on, insert_diary, insert_proactive, latest_diary,
+    list_diary_from_sources, list_remembered, normalize_persona_fields,
+    portrait_generation_is_pending, recent_proactive, release_portrait_generation,
+    save_departure_mood, save_mood, set_activity, set_dnd_schedule, set_do_not_disturb,
+    upsert_persona_on, JsonDocumentUpdate, PersonaContractUpdate, PortraitUpdate,
 };
 
 /// Logged-in users only. Guests use negative ids; heartbeat is `SYSTEM_USER_ID` (0).
@@ -414,11 +414,11 @@ pub fn has_custom_persona(persona: &agent_persona::Model) -> bool {
     format_persona(persona).is_some()
 }
 
-pub use gates::{IngestDecision, decide_ingest, is_chatting, is_valuable_event};
+pub use gates::{decide_ingest, is_chatting, is_valuable_event, IngestDecision};
 pub use state::{
-    ACTIVITY_STALE_SECS, MOOD_FLOOR, MoodTransition, apply_departure, apply_mood_hint,
-    apply_task_outcome, apply_user_utterance, clamp_mood, detect_mood_cue, effective_activity,
-    is_extremely_low, mood_band, parse_mood_hint, should_apply_departure,
+    apply_departure, apply_mood_hint, apply_task_outcome, apply_user_utterance, clamp_mood,
+    detect_mood_cue, effective_activity, is_extremely_low, mood_band, parse_mood_hint,
+    should_apply_departure, MoodTransition, ACTIVITY_STALE_SECS, MOOD_FLOOR,
 };
 
 /// The activity to act on, with a stale one read as idle.
@@ -537,7 +537,9 @@ mod tests {
             name: "瞳".into(),
             ..blank.clone()
         };
-        assert_eq!(super::format_persona(&named).as_deref(), Some("你是瞳。"));
+        let named_text = super::format_persona(&named).unwrap();
+        assert!(named_text.starts_with("你是瞳。"));
+        assert!(named_text.contains(super::speaking_prompts::PERSONA_SPEAKING_CONTRACT));
         assert!(super::has_custom_persona(&named));
     }
 
@@ -557,13 +559,13 @@ mod tests {
         assert!(super::refuse_new_task_message(Some(10.0)).is_some());
         assert!(super::refuse_new_task_message(Some(10.1)).is_none());
         assert!(super::refuse_new_task_message(None).is_none());
-        assert!(super::mood_tone_instruction(70.0).contains("不要念出心情数字"));
+        assert!(super::speaking_prompts::PERSONA_SPEAKING_CONTRACT.contains("不要念心情"));
         assert!(super::mood_tone_instruction(8.0).contains("极低"));
         assert!(super::mood_tone_instruction(30.0).contains("偏低"));
         assert!(super::mood_tone_instruction(90.0).contains("轻松"));
         let section = super::format_mood_section(72.4);
         assert!(!section.contains("72/100"));
-        assert!(section.contains("不要念出心情数字"));
+        assert!(!section.contains("72.4"));
     }
 
     #[test]
@@ -573,11 +575,9 @@ mod tests {
         assert!(block.contains("## 关于这个人"));
         assert!(block.contains("你留下的事实"));
         assert!(block.contains("- 今天晚上想打独立游戏"));
-        assert!(
-            super::format_diary_section(&["Steam 解锁了成就".into()])
-                .unwrap()
-                .contains("## 最近")
-        );
+        assert!(super::format_diary_section(&["Steam 解锁了成就".into()])
+            .unwrap()
+            .contains("## 最近"));
     }
 
     #[test]

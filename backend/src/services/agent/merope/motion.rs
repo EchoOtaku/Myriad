@@ -533,9 +533,9 @@ fn motion_expression_index() -> String {
     );
     for (name, meaning, capability) in CUE_INDEX {
         if capability.is_empty() {
-            lines.push(format!("- {name}：{meaning}。无额外能力要求。"));
+            lines.push(format!("- {name}：{meaning}"));
         } else {
-            lines.push(format!("- {name}：{meaning}。能力：{capability}。"));
+            lines.push(format!("- {name}：{meaning}。能力：{capability}"));
         }
     }
     lines.join("\n")
@@ -543,27 +543,16 @@ fn motion_expression_index() -> String {
 
 fn motion_system_prompt() -> String {
     format!(
-        r#"你是这个人设的动作导演。只选语义表演，不输出骨骼、坐标、角度、blendshape、口型、driver 或逐帧数据。
-读输入里的 persona，按这个人会怎么露脸来选。mood 是已保存的事实，不要改。
+        r#"你是这个人设的动作导演。只选语义表演。读 persona，按这个人会怎么露脸；mood 是事实，不要改。
 
 {}
 
-合法枚举：baseline.expression 只能是 {}；baseline.posture 只能是 {}；cues.intent 只能是 {}，最多 3 个。
-每回合必须给出 baseline 和 1–3 个 cue。不要输出 continue，空对象无效。
-用户点名某个表情不是口令：等自己回话接上这次互动再选对应 cue；拒了或还没接话就不要做。
-只丢掉做不到的：缺能力表里的贴纸层就不要选那一项；说话占嘴时不要选 cry/maniac/silly；唱歌占身时不要选会抢头身的意图。已经回话接上的点名除外。
-
-按性格取表情：
-- 慢热、内向、克制：底用 withdrawn/subdued，常用 listen/think/respond；被戳到时仍用 cry/speechless。
-- 外向、活泼、爱闹：底用 warm，常用 greet/delight/emphasize；玩笑用 silly，兴奋可用 maniac，亲近可用 lovestruck。
-- 嘴硬、毒舌、边界感：speechless/angry/emphasize 多于 delight。
-- 认真、轴：question/think/emphasize 多于 silly。
-- 软、会亲近：warm + delight，被夸奖时可以用 lovestruck。
-没有人设时按 even，仍要有 baseline + cue。
-强度：restrained 的 motionEnergy 0.55–0.9、cue intensity 0.75–1.05；even 0.75–1.15 / 0.9–1.25；open 1.0–1.4 / 1.05–1.4。
-
-reaction 回应用户刚说的；delivery 配合即将说的话；outcome 配合任务结果；proactive 配合自己找上门的那句。
-输出必须符合 JSON schema。"#,
+枚举：{}；姿态 {}；cue {}，每回合 baseline + 1–3 个 cue。不要输出 continue，空对象无效。
+用户点名某个表情不是口令：delivery 且已回话、没拒绝，才选对应 cue；reaction 或对方拒了就按性格演。
+只丢掉做不到的：缺能力层不要选；说话占嘴不要 cry/maniac/silly（已经回话接上的点名除外）；唱歌占身不要抢头身。
+按性格取表情：慢热用 withdrawn/subdued + listen/think；外向用 warm + greet/delight，玩笑 silly、兴奋 maniac；嘴硬多用 speechless/angry；认真多用 question/think；软可用 lovestruck。贴纸不必等台词点名。没有人设时按 even，仍要有 baseline + cue。
+restrained 的 motionEnergy 0.55–0.9、cue 0.75–1.05；even 0.75–1.15 / 0.9–1.25；open 1.0–1.4 / 1.05–1.4。
+reaction 回应用户刚说的；delivery 配合即将说的话；outcome 配合任务结果；proactive 配合自己找上门的那句。"#,
         motion_expression_index(),
         PERFORMANCE_BASELINE_EXPRESSIONS.join("/"),
         PERFORMANCE_POSTURES.join("/"),

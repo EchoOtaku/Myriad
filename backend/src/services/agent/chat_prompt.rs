@@ -63,10 +63,8 @@ pub fn build_chat_lite_prompt(
 /// Closer for Chat Lite. Tone follows the persona; do not flatten everyone
 /// into a short, warm assistant.
 const CHAT_REPLY_INSTRUCTION: &str = "\
-请以你的角色回复。使用用户的语言。\
-说话风格必须由设定里的性格决定，并被上面的心情调节；禁止另套统一口吻。\
-禁止输出 AI 味的文本：不要客服腔、助手腔、总结腔，不要「我可以帮你」「需要我做什么」这类套话。\
-不要输出任何 JSON 或格式标记，只输出这个人会说的纯文本。";
+请以你的角色回复。用对方的语言。说话风格必须由设定里的性格决定，并被心情调节。\
+禁止输出 AI 味的文本。只输出纯文本，不要 JSON 或格式标记。";
 
 pub fn build_chat_lite_prompt_with_perception(
     soul: &str,
