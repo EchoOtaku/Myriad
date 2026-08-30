@@ -1,3 +1,4 @@
+import type { PageContent } from '../../../contexts/PageContentContext'
 import type { PerformanceDirective } from '../../../services/agent/types'
 import type { PerceptionSnapshot } from '../perception/registry'
 
@@ -33,7 +34,7 @@ export interface BodyAdapter {
 export interface PerceptionAdapter {
   capture: (input: {
     route: string
-    page: unknown
+    page: PageContent | null
     pageConsent: boolean
     selection?: string
   }) => PerceptionSnapshot[]
