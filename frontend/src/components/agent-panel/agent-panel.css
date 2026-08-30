@@ -1189,6 +1189,8 @@ button.agent-panel-tag:disabled {
 }
 
 .agent-panel-control {
+  --agent-voice-hold: 500ms;
+
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1254,6 +1256,132 @@ button.agent-panel-tag:disabled {
     ),
     var(--surface-bg, rgb(var(--surface-rgb) / var(--surface-alpha)));
   color: var(--color-error, #ef4444);
+}
+
+.agent-panel-mic {
+  position: relative;
+  overflow: visible;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.agent-panel-mic-fx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.agent-panel-control .agent-panel-mic-fx svg {
+  width: 40px;
+  height: 40px;
+  z-index: 0;
+}
+
+.agent-panel-mic-hold {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 40px;
+  height: 40px;
+  translate: -50% -50%;
+  opacity: 0;
+}
+
+.agent-panel-mic[data-holding='true'] .agent-panel-mic-hold {
+  opacity: 1;
+}
+
+.agent-panel-mic-hold-track {
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-primary, #10b981) 18%, transparent);
+  stroke-width: 2.5;
+}
+
+.agent-panel-mic-hold-ring {
+  fill: none;
+  stroke: var(--color-primary, #10b981);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 100.53;
+  stroke-dashoffset: 100.53;
+  transform: rotate(-90deg);
+  transform-origin: 20px 20px;
+}
+
+.agent-panel-mic[data-holding='true'] .agent-panel-mic-hold-ring {
+  animation: agent-panel-mic-hold-draw var(--agent-voice-hold) linear forwards;
+}
+
+@keyframes agent-panel-mic-hold-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.agent-panel-mic-live {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1.5px transparent;
+  opacity: 0;
+}
+
+.agent-panel-composer .agent-panel-mic[data-conversation='true'] {
+  background:
+    linear-gradient(
+      color-mix(in srgb, var(--color-primary, #10b981) 26%, transparent),
+      color-mix(in srgb, var(--color-primary, #10b981) 18%, transparent)
+    ),
+    var(--surface-bg, rgb(var(--surface-rgb) / var(--surface-alpha)));
+  color: var(--color-primary, #10b981);
+  animation: agent-panel-mic-enter var(--agent-swap) var(--agent-ease);
+}
+
+.agent-panel-mic[data-conversation='true'] .agent-panel-mic-live {
+  opacity: 1;
+  animation: agent-panel-mic-live 1.8s var(--agent-ease) infinite;
+}
+
+.agent-panel-mic[data-speaking='true'] .agent-panel-mic-live {
+  animation-duration: 900ms;
+}
+
+@keyframes agent-panel-mic-enter {
+  0% {
+    transform: scale(0.96);
+  }
+
+  45% {
+    transform: scale(1.05);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes agent-panel-mic-live {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 1.5px
+      color-mix(in srgb, var(--color-primary, #10b981) 0%, transparent);
+  }
+
+  50% {
+    box-shadow: inset 0 0 0 2px
+      color-mix(in srgb, var(--color-primary, #10b981) 48%, transparent);
+  }
+}
+
+.agent-panel-composer .agent-panel-mic[data-holding='true']:not(:disabled),
+.agent-panel-composer
+  .agent-panel-mic[data-holding='true']:not(:disabled):hover,
+.agent-panel-composer
+  .agent-panel-mic[data-holding='true']:not(:disabled):active {
+  transform: scale(1.03);
+  filter: none;
 }
 
 /* 发送才叠主色。空着（没语音可用、也没字）保持普通玻璃，不要一枚褪色的绿点。
@@ -1581,7 +1709,10 @@ button.agent-panel-tag:disabled {
   .agent-panel-longpress,
   .agent-panel-lp-dot,
   .agent-panel-lp-pulse,
-  .agent-panel-lp-svg {
+  .agent-panel-lp-svg,
+  .agent-panel-mic-hold-ring,
+  .agent-panel-mic-live,
+  .agent-panel-mic[data-conversation='true'] {
     transition-duration: 0.01ms !important;
     transition-delay: 0ms !important;
     animation: none !important;

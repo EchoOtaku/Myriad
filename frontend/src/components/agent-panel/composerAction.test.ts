@@ -99,6 +99,19 @@ describe('composerActionKind', () => {
     )
   })
 
+  it('keeps the mic during a live conversation even if a run is in flight', () => {
+    assert.equal(
+      composerActionKind({
+        hasText: false,
+        busy: true,
+        speechAvailable: true,
+        voiceLocked: true,
+        conversation: true,
+      }),
+      'voice',
+    )
+  })
+
   it('becomes send when the field is empty but files are attached', () => {
     assert.equal(
       composerActionKind({

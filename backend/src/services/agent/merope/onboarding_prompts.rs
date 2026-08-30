@@ -268,7 +268,9 @@ mod tests {
         assert!(TAGS_SYSTEM_PROMPT.contains("Not a sentence, metaphor"));
         assert!(PERSONA_SYSTEM_PROMPT.contains("Fail the draft if"));
         assert!(IMPORT_PERSONA_SYSTEM_PROMPT.contains("rewrite source into structured persona"));
-        assert!(IMPORT_PERSONA_SYSTEM_PROMPT.contains("`source` is an existing character write-up"));
+        assert!(
+            IMPORT_PERSONA_SYSTEM_PROMPT.contains("`source` is an existing character write-up")
+        );
         assert!(TAGS_SYSTEM_PROMPT.contains("Literary sludge"));
         assert!(PERSONA_SYSTEM_PROMPT.contains("not recite a poem"));
         assert!(!NAME_SYSTEM_PROMPT.contains("晚衡"));

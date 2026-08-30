@@ -36,6 +36,10 @@ import React, {
 import { useLocation } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
+import {
+  getVoicePresence,
+  subscribeVoicePresence,
+} from '../../features/merope/speech/voicePresence'
 import { agentService } from '../../services/agent'
 import { isImeComposing } from '../../utils/ime'
 import { AGENT_ATTACH_ACCEPT, collectAttachments } from './agentAttachments'
@@ -49,6 +53,7 @@ import {
 import { setAgentStatusRecording, useAgentStatus } from './agentStatusStore'
 import { attachOrbDriftSpeed, startAttachOrbDrift } from './attachOrbDrift'
 import { composerActionKind } from './composerAction'
+import { LONG_PRESS_DURATION } from './useLongPress'
 import {
   forgetComposerFavorite,
   loadComposerFavorites,
@@ -136,7 +141,9 @@ function ComposerAction({
   speechAvailable,
   isRecording,
   isProcessingVoice,
+  conversation,
   toggleRecording,
+  enterConversation,
 }: {
   hasText: boolean
   hasAttachments: boolean
@@ -145,16 +152,48 @@ function ComposerAction({
   speechAvailable: boolean
   isRecording: boolean
   isProcessingVoice: boolean
+  conversation: boolean
   toggleRecording: () => void
+  enterConversation: () => void
 }) {
   const { t } = useI18n()
   const { status } = useAgentStatus()
   const busy = status === 'thinking' || status === 'working'
+  const holdTimerRef = useRef<number | null>(null)
+  const holdOriginRef = useRef<{ x: number; y: number } | null>(null)
+  const holdFiredRef = useRef(false)
+  const [holding, setHolding] = useState(false)
+  const [speaking, setSpeaking] = useState(false)
 
   useEffect(() => {
     setAgentStatusRecording(isRecording)
     return () => setAgentStatusRecording(false)
   }, [isRecording])
+
+  useEffect(() => {
+    if (!conversation) {
+      setSpeaking(false)
+      return
+    }
+    const sync = () => setSpeaking(getVoicePresence().userSpeaking)
+    sync()
+    return subscribeVoicePresence(sync)
+  }, [conversation])
+
+  const clearHold = useCallback(() => {
+    if (holdTimerRef.current != null) {
+      window.clearTimeout(holdTimerRef.current)
+      holdTimerRef.current = null
+    }
+    holdOriginRef.current = null
+  }, [])
+
+  const endHold = useCallback(() => {
+    clearHold()
+    setHolding(false)
+  }, [clearHold])
+
+  useEffect(() => () => clearHold(), [clearHold])
 
   const kind = composerActionKind({
     hasText,
@@ -162,18 +201,25 @@ function ComposerAction({
     busy,
     speechAvailable,
     voiceLocked: isRecording || isProcessingVoice,
+    conversation,
   })
-  const voiceLabel = isProcessingVoice
-    ? t.agentPanel.voice.working
-    : isRecording
-      ? t.agentPanel.voice.stop
-      : t.agentPanel.voice.start
+  const voiceLabel = conversation
+    ? t.agentPanel.voice.conversationStop
+    : isProcessingVoice
+      ? t.agentPanel.voice.working
+      : isRecording
+        ? t.agentPanel.voice.stop
+        : t.agentPanel.voice.start
   const actionLabel =
     kind === 'stop'
       ? t.agentPanel.stop
       : kind === 'send'
         ? t.agentPanel.send
         : voiceLabel
+  const actionTitle =
+    kind === 'voice' && !conversation && !isRecording
+      ? `${t.agentPanel.voice.start} · ${t.agentPanel.voice.conversationHint}`
+      : actionLabel
 
   return (
     <AgentPresence open={!!kind} kind="chip" from="self">
@@ -192,16 +238,86 @@ function ComposerAction({
             .filter(Boolean)
             .join(' ')}
           data-on={kind === 'voice' && isRecording ? 'true' : 'false'}
+          data-conversation={
+            kind === 'voice' && conversation ? 'true' : undefined
+          }
+          data-holding={kind === 'voice' && holding ? 'true' : undefined}
+          data-speaking={kind === 'voice' && speaking ? 'true' : undefined}
+          onPointerDown={(event) => {
+            if (kind !== 'voice') return
+            if (event.button !== 0) return
+            holdFiredRef.current = false
+            if (conversation) return
+            holdOriginRef.current = { x: event.clientX, y: event.clientY }
+            event.currentTarget.setPointerCapture(event.pointerId)
+            setHolding(true)
+            holdTimerRef.current = window.setTimeout(() => {
+              holdFiredRef.current = true
+              holdTimerRef.current = null
+              setHolding(false)
+              void enterConversation()
+              if (navigator.vibrate) navigator.vibrate(50)
+            }, LONG_PRESS_DURATION)
+          }}
+          onPointerMove={(event) => {
+            const origin = holdOriginRef.current
+            if (!origin || holdFiredRef.current) return
+            if (
+              Math.abs(event.clientX - origin.x) > 10 ||
+              Math.abs(event.clientY - origin.y) > 10
+            ) {
+              endHold()
+              holdFiredRef.current = false
+            }
+          }}
+          onPointerUp={() => {
+            if (kind !== 'voice') {
+              endHold()
+              return
+            }
+            const fired = holdFiredRef.current
+            holdFiredRef.current = false
+            endHold()
+            if (fired) return
+            toggleRecording()
+          }}
+          onPointerCancel={() => {
+            holdFiredRef.current = false
+            endHold()
+          }}
+          onContextMenu={(event) => {
+            if (kind === 'voice') event.preventDefault()
+          }}
           onClick={() => {
             if (kind === 'stop') dispatchAgentPanelCommand('interrupt')
             else if (kind === 'send') submit(value)
-            else toggleRecording()
           }}
-          disabled={kind === 'voice' ? isProcessingVoice : false}
-          title={actionLabel}
+          disabled={kind === 'voice' && isProcessingVoice && !conversation}
+          title={actionTitle}
           aria-label={actionLabel}
           aria-pressed={kind === 'voice' ? isRecording : undefined}
         >
+          {kind === 'voice' ? (
+            <span className="agent-panel-mic-fx" aria-hidden="true">
+              <span className="agent-panel-mic-hold">
+                <svg viewBox="0 0 40 40">
+                  <circle
+                    className="agent-panel-mic-hold-track"
+                    cx="20"
+                    cy="20"
+                    r="16"
+                  />
+                  <circle
+                    className="agent-panel-mic-hold-ring"
+                    cx="20"
+                    cy="20"
+                    r="16"
+                  />
+                </svg>
+              </span>
+              <span className="agent-panel-mic-live" />
+            </span>
+          ) : null}
           <AgentSwap id={kind} from="self">
             {kind === 'stop' ? (
               <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -332,9 +448,10 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
     speechAvailable,
     isRecording,
     isProcessingVoice,
-    listening,
+    conversation,
     toggleRecording,
-    toggleListen,
+    enterConversation,
+    stopConversation,
   } = useVoiceRecording((text: string) => {
     if (text.trim() || attachmentsRef.current.length) submit(text)
   }, locale)
@@ -430,6 +547,10 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
   const hasAttachments = attachments.length > 0
   const attachErrorLabel = attachError ? t.agentPanel.attach[attachError] : null
 
+  useEffect(() => {
+    if ((hasText || hasAttachments) && conversation) stopConversation()
+  }, [hasText, hasAttachments, conversation, stopConversation])
+
   const placeholder =
     mode === 'chat'
       ? t.agentPanel.chatPlaceholder
@@ -480,21 +601,6 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
                   </span>
                 )}
               </AgentSwap>
-              {speechAvailable ? (
-                <button
-                  type="button"
-                  className="agent-panel-tag"
-                  data-tone={listening ? 'primary' : 'neutral'}
-                  title={t.agentPanel.voice.listenHint}
-                  aria-label={t.agentPanel.voice.listen}
-                  aria-pressed={listening}
-                  onClick={toggleListen}
-                >
-                  <span className="agent-panel-tag-kicker">
-                    {t.agentPanel.voice.listen}
-                  </span>
-                </button>
-              ) : null}
               <AgentPresence
                 open={context.kind === 'selection'}
                 kind="chip"
@@ -742,7 +848,9 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
           speechAvailable={speechAvailable}
           isRecording={isRecording}
           isProcessingVoice={isProcessingVoice}
+          conversation={conversation}
           toggleRecording={toggleRecording}
+          enterConversation={enterConversation}
         />
       </div>
     </div>

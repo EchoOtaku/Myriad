@@ -2435,7 +2435,7 @@ export const zhCN: TranslationKeys = {
     chatPlaceholder: '跟它说…',
     mode: {
       label: '模式',
-      work: '办事',
+      work: '做事',
       chat: '聊天',
       shortcut: 'Tab',
     },
@@ -2498,8 +2498,8 @@ export const zhCN: TranslationKeys = {
       start: '说给它听',
       stop: '说完了',
       working: '在认',
-      listen: '一直听着',
-      listenHint: '打开后，开口就会打断播报；说完一句才提交。默认不录音。',
+      conversationHint: '长按进入连续对话，再点一下退出。',
+      conversationStop: '结束连续对话',
     },
     manage: {
       title: '它的设置',

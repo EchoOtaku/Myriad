@@ -2590,7 +2590,7 @@ export const enUS: TranslationKeys = {
     chatPlaceholder: 'Talk with it…',
     mode: {
       label: 'Mode',
-      work: 'Work',
+      work: 'Help',
       chat: 'Chat',
       shortcut: 'Tab',
     },
@@ -2654,9 +2654,8 @@ export const enUS: TranslationKeys = {
       start: 'Speak',
       stop: 'Done',
       working: 'Transcribing',
-      listen: 'Keep listening',
-      listenHint:
-        'When on, speaking interrupts playback. Only a finished transcript is sent. Off by default.',
+      conversationHint: 'Press and hold for a live conversation. Tap to leave.',
+      conversationStop: 'End conversation',
     },
     manage: {
       title: 'Its settings',

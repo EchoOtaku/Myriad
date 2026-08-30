@@ -79,7 +79,7 @@ export async function preflightRigAsset(
       prepared.atlas,
       prepared.analysisReference,
     )
-    copyPreviewChestProfile(prepared.source, manifest)
+    copyPreviewPlaybackProfiles(prepared.source, manifest)
     emit(onStage, 'compile-preview', 'completed')
     emit(onStage, 'analyze-capabilities', 'started')
     const report = diagnoseRig(manifest)
@@ -92,13 +92,20 @@ export async function preflightRigAsset(
 }
 
 /** Preserve the one-shot preview analysis so persistence never calls AI again. */
-function copyPreviewChestProfile(
+function copyPreviewPlaybackProfiles(
   source: PreparedRigPsdImport['source'],
   manifest: MeropeRigManifest,
 ): void {
-  const profile = manifest.anime25dPlayback?.chestProfile
-  if (!profile || !source.anime25dPlayback) return
-  source.anime25dPlayback.chestProfile = { ...profile }
+  const playback = manifest.anime25dPlayback
+  if (!playback || !source.anime25dPlayback) return
+  if (playback.chestProfile) {
+    source.anime25dPlayback.chestProfile = { ...playback.chestProfile }
+  }
+  if (playback.shellProfile) {
+    source.anime25dPlayback.shellProfile = structuredClone(
+      playback.shellProfile,
+    )
+  }
 }
 
 /** Commits the exact source and atlas that passed preflight. */

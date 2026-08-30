@@ -135,7 +135,7 @@ test('preflight sends the imported PSD composition to one-shot vision analysis',
   assert.equal(receivedReference, analysisReference)
 })
 
-test('preflight carries one-shot chest analysis into the persisted source', async () => {
+test('preflight carries analyzed playback profiles into the persisted source', async () => {
   const source = {
     anime25dPlayback: {
       kind: 'anime-2.5d-rig',
@@ -167,6 +167,51 @@ test('preflight carries one-shot chest analysis into the persisted source', asyn
       garmentMotionScale: 0.8,
       confidence: 0.9,
     },
+    shellProfile: {
+      version: 1,
+      source: 'anchor-derived',
+      enabled: true,
+      blend: 0.5,
+      head: { centerX: 50, centerY: 35, radiusX: 25, radiusY: 30, radiusZ: 18 },
+      faceProfile: {
+        enabled: true,
+        startY: 10,
+        endY: 75,
+        points: [
+          { v: 0.06, z: 0.1 },
+          { v: 0.42, z: 0.02 },
+          { v: 0.62, z: 0.3 },
+          { v: 0.78, z: 0.06 },
+          { v: 0.97, z: 0.14 },
+        ],
+      },
+      hair: {
+        centerX: 50,
+        centerY: 33,
+        radiusX: 28,
+        radiusY: 33,
+        radiusZ: 19,
+        frontGap: 0.18,
+        frontBulge: 1,
+        backDepth: 0.35,
+        crownRound: 0,
+        hairlinePin: {
+          enabled: true,
+          centerX: 0,
+          centerY: -0.45,
+          halfWidth: 1.1,
+          halfHeight: 0.32,
+          feather: 0.06,
+        },
+      },
+      torso: {
+        enabled: true,
+        blend: 0.5,
+        centerX: 50,
+        radiusX: 40,
+        radiusZ: 25,
+      },
+    },
   } as never
   const result = await preflightRigAsset(file, 'master-asset', {
     prepare: async () => ({
@@ -180,6 +225,14 @@ test('preflight carries one-shot chest analysis into the persisted source', asyn
   assert.deepEqual(
     result.prepared.source.anime25dPlayback?.chestProfile,
     analyzed.anime25dPlayback.chestProfile,
+  )
+  assert.deepEqual(
+    result.prepared.source.anime25dPlayback?.shellProfile,
+    analyzed.anime25dPlayback.shellProfile,
+  )
+  assert.notEqual(
+    result.prepared.source.anime25dPlayback?.shellProfile,
+    analyzed.anime25dPlayback.shellProfile,
   )
 })
 

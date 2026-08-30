@@ -2212,7 +2212,7 @@ export interface TranslationKeys {
     inputPlaceholder: string
     /** 聊天档输入框 */
     chatPlaceholder: string
-    /** 办事 / 聊天。胶囊上写着快捷键，Tab 在输入行里切换 */
+    /** 做事 / 聊天。胶囊上写着快捷键，Tab 在输入行里切换 */
     mode: {
       label: string
       work: string
@@ -2285,8 +2285,8 @@ export interface TranslationKeys {
       start: string
       stop: string
       working: string
-      listen: string
-      listenHint: string
+      conversationHint: string
+      conversationStop: string
     }
     /** 定时任务 / 技能 / 记忆 */
     manage: {

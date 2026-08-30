@@ -1,9 +1,8 @@
 /**
  * 说给它听。
  *
- * Push-to-talk still records a whole clip then ASR.
- * Continuous listen is off until the person turns it on: local VAD stops TTS
- * immediately, then a paused clip is transcribed. Partial text is UI-only.
+ * 轻点是按住说话：整段录完再识别。
+ * 长按进入连续对话：本地 VAD 开口就停 TTS，说完一句才提交。麦克风一直开着。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -23,11 +22,6 @@ import {
   getSpeechStatus,
   speechToText,
 } from '../../services/speechApi'
-import {
-  getListenConsent,
-  setListenConsent,
-  subscribeListenConsent,
-} from './listenConsent'
 
 interface RecorderState {
   audioContext: AudioContext
@@ -49,7 +43,7 @@ const TTS_OPEN_THRESHOLD = 0.14
 const CLOSE_RATIO = 0.45
 const START_FRAMES = 4
 const END_FRAMES = 18
-/** Continuous listen must not keep an unbounded PCM tape. */
+/** Continuous conversation must not keep an unbounded PCM tape. */
 const MAX_LISTEN_SAMPLES = 16_000 * 20
 
 const WORKLET_SOURCE = `
@@ -106,11 +100,10 @@ export function useVoiceRecording(
   const [speechAvailable, setSpeechAvailable] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [isProcessingVoice, setIsProcessingVoice] = useState(false)
-  const [listening, setListening] = useState(getListenConsent)
+  const [conversation, setConversation] = useState(false)
   const recorderRef = useRef<RecorderState | null>(null)
   const isRecordingRef = useRef(false)
-  const listeningRef = useRef(listening)
-  listeningRef.current = listening
+  const conversationRef = useRef(false)
   const speakingRef = useRef(false)
   const openFramesRef = useRef(0)
   const closeFramesRef = useRef(0)
@@ -126,8 +119,6 @@ export function useVoiceRecording(
       .then((s) => setSpeechAvailable(s.available && !!s.asr_enabled))
       .catch(() => {})
   }, [])
-
-  useEffect(() => subscribeListenConsent(() => setListening(getListenConsent())), [])
 
   const transcribe = useCallback(async (pcmData: Float32Array[], sampleRate: number) => {
     if (pcmData.length === 0) {
@@ -147,7 +138,6 @@ export function useVoiceRecording(
       stampTurnTrace('input_final')
       if (isSubmittableTranscript(text)) onResultRef.current(text)
       else dropPendingTurnTrace()
-      patchVoicePresence({ partial: '' })
     } catch (err) {
       console.error('[useVoiceRecording] 语音识别出错:', err)
       dropPendingTurnTrace()
@@ -156,7 +146,7 @@ export function useVoiceRecording(
     }
   }, [])
 
-  const flushListenClip = useCallback(
+  const flushUtterance = useCallback(
     (recorder: RecorderState) => {
       const clip = utterancePcmRef.current
       utterancePcmRef.current = []
@@ -171,47 +161,50 @@ export function useVoiceRecording(
     [transcribe],
   )
 
-  const onPcm = useCallback((frame: Float32Array) => {
-    const recorder = recorderRef.current
-    if (!recorder || !isRecordingRef.current) return
-    if (!listeningRef.current) {
-      recorder.pcmData.push(frame)
-      return
-    }
-
-    const rms = frameRms(frame)
-    const open =
-      getVoicePresence().ttsPlaying ? TTS_OPEN_THRESHOLD : OPEN_THRESHOLD
-    const close = open * CLOSE_RATIO
-    if (!speakingRef.current) {
-      if (rms >= open) {
-        openFramesRef.current += 1
-        if (openFramesRef.current >= START_FRAMES) {
-          speakingRef.current = true
-          openFramesRef.current = 0
-          closeFramesRef.current = 0
-          utterancePcmRef.current = [frame]
-          utteranceSamplesRef.current = frame.length
-          patchVoicePresence({ userSpeaking: true, partial: '' })
-          stampTurnTrace('input_started')
-          getSpeechPipeline().cancel()
-        }
-      } else {
-        openFramesRef.current = 0
+  const onPcm = useCallback(
+    (frame: Float32Array) => {
+      const recorder = recorderRef.current
+      if (!recorder || !isRecordingRef.current) return
+      if (!conversationRef.current) {
+        recorder.pcmData.push(frame)
+        return
       }
-      return
-    }
-    utterancePcmRef.current.push(frame)
-    utteranceSamplesRef.current += frame.length
-    if (rms < close) closeFramesRef.current += 1
-    else closeFramesRef.current = 0
-    if (
-      utteranceSamplesRef.current >= MAX_LISTEN_SAMPLES ||
-      closeFramesRef.current >= END_FRAMES
-    ) {
-      flushListenClip(recorder)
-    }
-  }, [flushListenClip])
+
+      const rms = frameRms(frame)
+      const open =
+        getVoicePresence().ttsPlaying ? TTS_OPEN_THRESHOLD : OPEN_THRESHOLD
+      const close = open * CLOSE_RATIO
+      if (!speakingRef.current) {
+        if (rms >= open) {
+          openFramesRef.current += 1
+          if (openFramesRef.current >= START_FRAMES) {
+            speakingRef.current = true
+            openFramesRef.current = 0
+            closeFramesRef.current = 0
+            utterancePcmRef.current = [frame]
+            utteranceSamplesRef.current = frame.length
+            patchVoicePresence({ userSpeaking: true })
+            stampTurnTrace('input_started')
+            getSpeechPipeline().cancel()
+          }
+        } else {
+          openFramesRef.current = 0
+        }
+        return
+      }
+      utterancePcmRef.current.push(frame)
+      utteranceSamplesRef.current += frame.length
+      if (rms < close) closeFramesRef.current += 1
+      else closeFramesRef.current = 0
+      if (
+        utteranceSamplesRef.current >= MAX_LISTEN_SAMPLES ||
+        closeFramesRef.current >= END_FRAMES
+      ) {
+        flushUtterance(recorder)
+      }
+    },
+    [flushUtterance],
+  )
 
   const startRecording = useCallback(async () => {
     if (isRecordingRef.current || recorderRef.current) return
@@ -267,8 +260,8 @@ export function useVoiceRecording(
       }
       isRecordingRef.current = true
       setIsRecording(true)
-      stampTurnTrace('input_started')
-      patchVoicePresence({ listening: listeningRef.current })
+      if (!conversationRef.current) stampTurnTrace('input_started')
+      patchVoicePresence({ listening: conversationRef.current })
     } catch (err) {
       console.error('[useVoiceRecording] 无法访问麦克风:', err)
     }
@@ -278,19 +271,16 @@ export function useVoiceRecording(
     const recorder = recorderRef.current
     if (!recorder || !isRecordingRef.current) return
 
+    const fromConversation = conversationRef.current
     isRecordingRef.current = false
     setIsRecording(false)
+    conversationRef.current = false
+    setConversation(false)
     speakingRef.current = false
-    patchVoicePresence({
-      listening: false,
-      userSpeaking: false,
-      partial: '',
-    })
+    patchVoicePresence({ listening: false, userSpeaking: false })
 
     const sampleRate = recorder.audioContext.sampleRate || 16000
-    const pcmData = listeningRef.current
-      ? utterancePcmRef.current
-      : recorder.pcmData
+    const pcmData = fromConversation ? utterancePcmRef.current : recorder.pcmData
     utterancePcmRef.current = []
     utteranceSamplesRef.current = 0
     cleanupRecorder(recorder)
@@ -303,27 +293,40 @@ export function useVoiceRecording(
     else void startRecording()
   }, [startRecording, stopRecording])
 
-  const toggleListen = useCallback(() => {
-    const next = !getListenConsent()
-    setListenConsent(next)
-    setListening(next)
-    patchVoicePresence({ listening: next && isRecordingRef.current })
-  }, [])
+  const enterConversation = useCallback(async () => {
+    conversationRef.current = true
+    setConversation(true)
+    if (isRecordingRef.current) {
+      const recorder = recorderRef.current
+      if (recorder) recorder.pcmData.length = 0
+      patchVoicePresence({ listening: true })
+      return
+    }
+    await startRecording()
+    if (!isRecordingRef.current) {
+      conversationRef.current = false
+      setConversation(false)
+      return
+    }
+    patchVoicePresence({ listening: true })
+  }, [startRecording])
+
+  const stopConversation = useCallback(() => {
+    if (!conversationRef.current) return
+    void stopRecording()
+  }, [stopRecording])
 
   useEffect(() => {
     return () => {
       const recorder = recorderRef.current
       if (recorder) {
         isRecordingRef.current = false
+        conversationRef.current = false
         cleanupRecorder(recorder)
         recorderRef.current = null
       }
       dropPendingTurnTrace()
-      patchVoicePresence({
-        listening: false,
-        userSpeaking: false,
-        partial: '',
-      })
+      patchVoicePresence({ listening: false, userSpeaking: false })
     }
   }, [])
 
@@ -331,10 +334,11 @@ export function useVoiceRecording(
     speechAvailable,
     isRecording,
     isProcessingVoice,
-    listening,
+    conversation,
     startRecording,
     stopRecording,
     toggleRecording,
-    toggleListen,
+    enterConversation,
+    stopConversation,
   }
 }

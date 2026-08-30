@@ -21,12 +21,11 @@ test('speech never reaches the run hub and never persists visemes', () => {
   assert.doesNotMatch(trace, /phase: 'articulation'/)
 })
 
-test('recording never buffers audio while listening is off, and never interrupts a task', () => {
-  // Behaviour: components/agent-panel/listenConsent.test.ts (consent defaults
-  // off) and turnTrace.test.ts (an abandoned recording is dropped). The hook
-  // itself needs a DOM, so the two invariants below stay textual: both are
-  // absences, which is what this form can actually prove.
+test('recording never interrupts a work task', () => {
+  // Behaviour: turnTrace.test.ts (an abandoned recording is dropped). The hook
+  // itself needs a DOM, so the absences below stay textual. Barge-in may cancel
+  // TTS via getSpeechPipeline, but must not cancel the Agent run.
   const recording = source('../../../components/agent-panel/useVoiceRecording.ts')
   assert.doesNotMatch(recording, /interruptCurrentTask/)
-  assert.doesNotMatch(recording, /pcmData\.push[\s\S]{0,80}listeningRef\.current \?/)
+  assert.doesNotMatch(recording, /listenConsent/)
 })

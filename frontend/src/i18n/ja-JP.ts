@@ -2562,7 +2562,7 @@ export const jaJP: TranslationKeys = {
     chatPlaceholder: '話しかけて…',
     mode: {
       label: 'モード',
-      work: '作業',
+      work: '仕事',
       chat: '会話',
       shortcut: 'Tab',
     },
@@ -2627,9 +2627,8 @@ export const jaJP: TranslationKeys = {
       start: '話しかける',
       stop: '話し終えた',
       working: '認識中',
-      listen: '聞き続ける',
-      listenHint:
-        'オンにすると発話で再生を止めます。確定した一文だけ送ります。初期状態はオフです。',
+      conversationHint: '長押しで連続会話。もう一度タップで終了。',
+      conversationStop: '連続会話を終了',
     },
     manage: {
       title: 'この子の設定',
