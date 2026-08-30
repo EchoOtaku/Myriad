@@ -11,11 +11,11 @@ use std::collections::BTreeMap;
 use super::is_logged_in_addressee;
 use crate::config::ModelTier;
 use crate::services::agent::consciousness::{
-    consider_event, is_work_outcome, ConsciousnessAction, ConsciousnessEvent, EventUrgency,
-    IntentStore,
+    ConsciousnessAction, ConsciousnessEvent, EventUrgency, IntentStore, consider_event,
+    is_work_outcome, last_live_presence,
 };
 use crate::services::agent::notifications::{
-    get_notification_manager, Notification, NotificationPriority, NotificationType,
+    Notification, NotificationPriority, NotificationType, get_notification_manager,
 };
 use crate::services::agent::run_hub;
 use crate::services::ai::create_ai_analyzer_for_tier;
@@ -338,7 +338,7 @@ pub async fn ingest(
                     user_text: summary.clone(),
                     response_text: Some(spoken.clone()),
                     task_success: None,
-                    rig_state: None,
+                    rig_state: last_live_presence(user_id).rig_state,
                     motion_style,
                 })
                 .await;

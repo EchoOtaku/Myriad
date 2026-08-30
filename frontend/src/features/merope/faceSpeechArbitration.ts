@@ -68,10 +68,14 @@ export class FaceSpeechGate {
   constructor(private readonly visibleMode: () => AgentPanelMode = getAgentPanelMode) {}
 
   decide(incomingMode: AgentPanelMode): FaceSpeechVerdict {
+    const chatBusy =
+      this.chatUtteranceActive ||
+      (this.chatMessageId != null &&
+        getSpeechPipeline().isBusyWith(this.chatMessageId))
     return arbitrateFaceSpeech({
       visibleMode: this.visibleMode(),
       incomingMode,
-      chatUtteranceActive: this.chatUtteranceActive,
+      chatUtteranceActive: chatBusy,
     })
   }
 
@@ -85,7 +89,15 @@ export class FaceSpeechGate {
   }
 
   endIncoming(incomingMode: AgentPanelMode, messageId?: string): void {
-    if (incomingMode === 'chat') this.releaseChat(messageId)
+    if (incomingMode !== 'chat') return
+    this.chatUtteranceActive = false
+    if (
+      this.chatMessageId &&
+      getSpeechPipeline().isBusyWith(this.chatMessageId)
+    ) {
+      return
+    }
+    this.releaseChat(messageId)
   }
 
   /** Drop Chat occupancy when the engine cancels the owning message. */

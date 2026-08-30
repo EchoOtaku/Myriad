@@ -65,6 +65,10 @@ export class SpeechPipelineHost {
     return this.fedMessageIds.has(messageId)
   }
 
+  isBusyWith(messageId: string): boolean {
+    return this.pipeline.isBusyWith(messageId)
+  }
+
   /**
    * One finished line through the same TTS queue as streamed Chat.
    * Returns false when TTS is off so callers may fall back to text visemes.
@@ -76,7 +80,6 @@ export class SpeechPipelineHost {
     interrupt?: SpeechInterruptMode
   }): boolean {
     if (!this.enabled) return false
-    if (this.fedMessageIds.has(input.messageId)) return true
     const text = speakableText(input.text)
     if (!text) return false
     const interrupt = input.interrupt ?? 'queue'
@@ -91,10 +94,11 @@ export class SpeechPipelineHost {
   }
 
   cancel(messageId?: string): void {
-    this.cancelledAt = nowMs()
     if (messageId) this.fedMessageIds.delete(messageId)
     else this.fedMessageIds.clear()
-    this.pipeline.cancel(messageId)
+    const stopped = this.pipeline.cancel(messageId)
+    if (!stopped) return
+    this.cancelledAt = nowMs()
     patchVoicePresence({ ttsPlaying: false })
     this.noteSilence()
   }

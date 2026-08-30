@@ -3,6 +3,7 @@ import type { PerceptionSnapshot } from './registry'
 import { getScreenConsent } from '../../../components/agent-panel/screenConsent'
 import { captureProductionRigStateSummary } from '../motion/runtimeHost'
 import { getVoicePresence } from '../speech/voicePresence'
+import { pagePerceptionCopy } from './pageCopy'
 import { perceptionRegistry } from './registry'
 
 const PAGE_TTL_MS = 8_000
@@ -23,19 +24,16 @@ export function capturePerceptionSnapshots(input: {
 }): PerceptionSnapshot[] {
   const now = Date.now()
   if (input.pageConsent && input.page) {
-    const title = input.page.title?.trim() || input.route
-    const summary = (input.page.summary || input.page.plainText || '')
-      .trim()
-      .slice(0, 400)
+    const copy = pagePerceptionCopy(input.page, input.route)
     perceptionRegistry.replace({
       sourceId: 'page',
       kind: 'page',
       expiresAt: now + PAGE_TTL_MS,
-      summary: summary || title,
+      summary: copy.summary,
       safeFacts: {
-        title,
+        title: copy.title,
         type: input.page.type,
-        hasBody: Boolean(summary),
+        hasBody: copy.hasBody,
       },
       privacy: 'consented',
     })

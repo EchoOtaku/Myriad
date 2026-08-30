@@ -1,6 +1,31 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { pagePerceptionCopy } from './pageCopy'
 import { PerceptionRegistry } from './registry'
+
+test('page body text is not the Lite summary', () => {
+  const copy = pagePerceptionCopy(
+    {
+      type: 'brew_article',
+      title: 'Hello',
+      plainText: 'This is a long article body that must not enter Lite.',
+    },
+    '/x',
+  )
+  assert.equal(copy.summary, 'Hello')
+  assert.equal(copy.hasBody, true)
+  assert.equal(copy.summary.includes('long article'), false)
+  const withSummary = pagePerceptionCopy(
+    {
+      type: 'brew_article',
+      title: 'Hello',
+      summary: 'Short take.',
+      plainText: 'This is a long article body that must not enter Lite.',
+    },
+    '/x',
+  )
+  assert.equal(withSummary.summary, 'Short take.')
+})
 
 test('same source replaces instead of appending', () => {
   const registry = new PerceptionRegistry()

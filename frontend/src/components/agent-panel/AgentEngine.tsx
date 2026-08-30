@@ -722,6 +722,7 @@ export const AgentEngine: React.FC = () => {
     ) => {
       let streamedSummary = ''
       let streamedThinking = ''
+      let notedStaleGeneration = false
       const pipeline = getSpeechPipeline()
       void pipeline.probe()
       const segmenter = new SpeechSegmenter(assistantMessageId, generation)
@@ -743,7 +744,10 @@ export const AgentEngine: React.FC = () => {
           mode === 'chat' &&
           !isCurrentChatGeneration(generation, chatTurnClockRef.current.current())
         ) {
-          noteTurnTraceDrop('stale_generation')
+          if (!notedStaleGeneration) {
+            notedStaleGeneration = true
+            noteTurnTraceDrop('stale_generation')
+          }
           return
         }
         // 岛与面板读同一份状态：这里是唯一的入口，别处不再解读 SSE

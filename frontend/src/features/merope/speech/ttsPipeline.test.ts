@@ -133,6 +133,23 @@ test('a later utterance plays after the previous one even when sequences restart
   assert.deepEqual(played, ['A1', 'A2', 'B1', 'B2'])
 })
 
+test('cancel of another message does not stop the playing utterance', async () => {
+  const played: string[] = []
+  const pipeline = new TtsPipeline({
+    synthesize: async (item) => buffer(item.text),
+    play: (_audio, item, _onEnded) => {
+      played.push(item.text)
+      return { stop: () => played.push(`stop:${item.text}`) }
+    },
+  })
+  pipeline.enqueue([segment(1, 'chat', 'chat-1')])
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(pipeline.isBusyWith('chat-1'), true)
+  assert.equal(pipeline.cancel('work-1'), false)
+  assert.deepEqual(played, ['chat'])
+  assert.equal(pipeline.playing, true)
+})
+
 test('failed synthesis skips the segment and keeps later audio', async () => {
   const played: string[] = []
   const pipeline = new TtsPipeline({

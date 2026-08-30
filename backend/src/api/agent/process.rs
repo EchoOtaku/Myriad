@@ -468,10 +468,14 @@ pub async fn process_stream(
     let is_chat = interaction_mode == crate::services::agent::AgentInteractionMode::Chat;
     // Claim before the spawn so the previous Chat run is cancelled even while
     // this request waits for a lane permit. Work never claims this slot.
-    let chat_cancel = if is_chat {
+    let chat_claim = if is_chat {
         Some(crate::services::agent::turn::claim_chat_turn(user_id, &session_id).await)
     } else {
         None
+    };
+    let (chat_cancel, chat_slot_id) = match chat_claim {
+        Some((rx, slot_id)) => (Some(rx), Some(slot_id)),
+        None => (None, None),
     };
     // tx 会被移动到 spawn 中，确保 channel 在任务完成前不会关闭
     tokio::spawn(async move {
@@ -515,6 +519,14 @@ pub async fn process_stream(
                         code: "QUEUE_FULL".to_string(),
                     })
                     .await;
+                if let Some(slot_id) = chat_slot_id {
+                    crate::services::agent::turn::finish_chat_turn(
+                        user_id,
+                        &session_id_clone,
+                        slot_id,
+                    )
+                    .await;
+                }
                 return;
             }
         };
@@ -542,6 +554,14 @@ pub async fn process_stream(
                     let _ = tx
                         .send(crate::services::agent::turn::superseded_turn_event())
                         .await;
+                    if let Some(slot_id) = chat_slot_id {
+                        crate::services::agent::turn::finish_chat_turn(
+                            user_id,
+                            &session_id_clone,
+                            slot_id,
+                        )
+                        .await;
+                    }
                     return;
                 }
             }
@@ -740,6 +760,10 @@ pub async fn process_stream(
                     })
                     .await;
             }
+        }
+        if let Some(slot_id) = chat_slot_id {
+            crate::services::agent::turn::finish_chat_turn(user_id, &session_id_clone, slot_id)
+                .await;
         }
         // tx 在这里被 drop，channel 关闭，SSE 流结束
     });
@@ -1617,7 +1641,7 @@ pub async fn health() -> Json<Value> {
 #[cfg(test)]
 mod quota_error_tests {
     use super::{
-        agent_stream_error_code, completed_turn_intention_status, quota_code, ApiResponse,
+        ApiResponse, agent_stream_error_code, completed_turn_intention_status, quota_code,
     };
     use crate::services::agent::consciousness::IntentStatus;
     use serde_json::json;

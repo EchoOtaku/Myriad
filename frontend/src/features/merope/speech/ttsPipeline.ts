@@ -42,6 +42,7 @@ export class TtsPipeline {
   private nextPlay = 1
   private inflight = 0
   private readonly inflightIds = new Set<number>()
+  private readonly inflightByPlay = new Map<number, string>()
   private readonly pending: QueuedSegment[] = []
   private readonly ready = new Map<number, ReadySlot>()
   private handle: TtsAudioHandle | null = null
@@ -51,6 +52,20 @@ export class TtsPipeline {
 
   get playing(): boolean {
     return this.handle != null
+  }
+
+  isBusyWith(messageId: string): boolean {
+    if (this.playingMessageId === messageId) return true
+    if (this.pending.some((item) => item.segment.messageId === messageId)) {
+      return true
+    }
+    for (const slot of this.ready.values()) {
+      if (slot.segment.messageId === messageId) return true
+    }
+    for (const id of this.inflightByPlay.values()) {
+      if (id === messageId) return true
+    }
+    return false
   }
 
   get queueLength(): number {
@@ -79,15 +94,16 @@ export class TtsPipeline {
     this.pumpSynth()
   }
 
-  cancel(messageId?: string): void {
+  cancel(messageId?: string): boolean {
     if (messageId && this.playingMessageId && this.playingMessageId !== messageId) {
       if (this.dropMessage(messageId)) noteTurnTraceDrop('cancelled')
       this.noteQueue()
       this.tryPlay()
-      return
+      return false
     }
+    const stopped = this.handle != null
     const hadWork =
-      this.handle != null ||
+      stopped ||
       this.pending.length > 0 ||
       this.ready.size > 0 ||
       this.inflight > 0
@@ -96,6 +112,7 @@ export class TtsPipeline {
     this.pending.length = 0
     this.ready.clear()
     this.inflightIds.clear()
+    this.inflightByPlay.clear()
     this.nextPlayId = 0
     this.nextPlay = 1
     this.inflight = 0
@@ -104,6 +121,7 @@ export class TtsPipeline {
     this.noteQueue()
     if (hadWork) noteTurnTraceDrop('cancelled')
     if (id) this.host.onCancel?.(id)
+    return stopped
   }
 
   private replaceMessage(messageId: string): void {
@@ -129,6 +147,12 @@ export class TtsPipeline {
         dropped = true
       }
     }
+    for (const [playId, id] of [...this.inflightByPlay]) {
+      if (id === messageId) {
+        this.inflightByPlay.delete(playId)
+        dropped = true
+      }
+    }
     return dropped
   }
 
@@ -139,6 +163,7 @@ export class TtsPipeline {
       const started = nowMs()
       this.inflight += 1
       this.inflightIds.add(item.playId)
+      this.inflightByPlay.set(item.playId, item.segment.messageId)
       this.noteQueue()
       void this.host
         .synthesize(item.segment)
@@ -146,7 +171,12 @@ export class TtsPipeline {
         .then((audio) => {
           this.inflight = Math.max(0, this.inflight - 1)
           this.inflightIds.delete(item.playId)
+          const wanted = this.inflightByPlay.delete(item.playId)
           if (epoch !== this.epoch) {
+            this.pumpSynth()
+            return
+          }
+          if (!wanted) {
             this.pumpSynth()
             return
           }
