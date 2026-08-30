@@ -15,27 +15,6 @@ use tokio::sync::{oneshot, Mutex};
 use super::types::AgentProgressEvent;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TurnPhase {
-    Created,
-    Generating,
-    Responding,
-    Speaking,
-    Completed,
-    Cancelled,
-    Superseded,
-    Failed,
-}
-
-impl TurnPhase {
-    pub fn is_terminal(self) -> bool {
-        matches!(
-            self,
-            Self::Completed | Self::Cancelled | Self::Superseded | Self::Failed
-        )
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventPlane {
     /// Lifecycle and semantic events. These may use the run hub.
     Control,
@@ -141,32 +120,10 @@ pub fn superseded_turn_event() -> AgentProgressEvent {
     }
 }
 
-pub fn is_superseded_turn_event(event: &AgentProgressEvent) -> bool {
-    match event {
-        AgentProgressEvent::TaskCompleted { response, .. } => {
-            response.get("code").and_then(|value| value.as_str()) == Some(TURN_SUPERSEDED_CODE)
-        }
-        AgentProgressEvent::Error { code, .. } => code == TURN_SUPERSEDED_CODE,
-        _ => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::time::Duration;
-
-    #[test]
-    fn terminal_phases_are_explicit() {
-        assert!(!TurnPhase::Created.is_terminal());
-        assert!(!TurnPhase::Generating.is_terminal());
-        assert!(!TurnPhase::Responding.is_terminal());
-        assert!(!TurnPhase::Speaking.is_terminal());
-        assert!(TurnPhase::Completed.is_terminal());
-        assert!(TurnPhase::Cancelled.is_terminal());
-        assert!(TurnPhase::Superseded.is_terminal());
-        assert!(TurnPhase::Failed.is_terminal());
-    }
 
     #[test]
     fn current_progress_events_are_control_plane() {
@@ -203,7 +160,6 @@ mod tests {
     #[test]
     fn superseded_event_is_detectable_and_terminal_shaped() {
         let event = superseded_turn_event();
-        assert!(is_superseded_turn_event(&event));
         match &event {
             AgentProgressEvent::TaskCompleted {
                 success, response, ..

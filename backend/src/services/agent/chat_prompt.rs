@@ -51,15 +51,6 @@ pub fn chat_safe_content(content: &str) -> String {
         .to_string()
 }
 
-pub fn build_chat_lite_prompt(
-    soul: &str,
-    merope_block: &str,
-    history: &[ConversationMessage],
-    input: &str,
-) -> String {
-    build_chat_lite_prompt_with_perception(soul, merope_block, history, input, "")
-}
-
 /// Closer for Chat Lite. Tone follows the persona; do not flatten everyone
 /// into a short, warm assistant.
 const CHAT_REPLY_INSTRUCTION: &str = "\
@@ -276,7 +267,8 @@ mod tests {
                 true,
             ),
         ];
-        let prompt = build_chat_lite_prompt("你是 Agent。", "", &history, "再聊聊刚才");
+        let prompt =
+            build_chat_lite_prompt_with_perception("你是 Agent。", "", &history, "再聊聊刚才", "");
         assert!(prompt.contains("已经整理好了。"));
         assert!(prompt.contains("再聊聊刚才"));
         assert!(!prompt.contains("输出数据"));
@@ -295,7 +287,8 @@ mod tests {
 
     #[test]
     fn chat_lite_closer_follows_persona_instead_of_a_warm_default() {
-        let prompt = build_chat_lite_prompt("你是瞳。气质：毒舌。", "", &[], "嗨");
+        let prompt =
+            build_chat_lite_prompt_with_perception("你是瞳。气质：毒舌。", "", &[], "嗨", "");
         assert!(prompt.contains("你是瞳。气质：毒舌。"));
         assert!(prompt.contains(CHAT_REPLY_INSTRUCTION));
         assert!(CHAT_REPLY_INSTRUCTION.contains("禁止输出 AI 味"));
@@ -312,7 +305,8 @@ mod tests {
             crate::services::agent::merope::format_recent_section(&["Steam 解锁了成就".into()])
                 .unwrap();
         let block = crate::services::agent::merope::speaking_prompt_plain(&[remembered, recent]);
-        let prompt = build_chat_lite_prompt("你是瞳。", &block, &[], "今晚打游戏吗");
+        let prompt =
+            build_chat_lite_prompt_with_perception("你是瞳。", &block, &[], "今晚打游戏吗", "");
         assert!(prompt.contains("## 关于这个人"));
         assert!(prompt.contains("晚上想打独立游戏"));
         assert!(prompt.contains("## 最近"));

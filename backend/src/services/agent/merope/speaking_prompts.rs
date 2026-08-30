@@ -1,4 +1,4 @@
-//! Runtime speaking text: persona contract, addressee, mood, diary, proactive.
+//! Runtime speaking text: persona contract, addressee, mood, remembered facts, proactive.
 
 use crate::models::entities::agent_persona;
 
@@ -66,11 +66,6 @@ pub fn format_recent_section(contents: &[String]) -> Option<String> {
         "## 最近\n不要重复刚发生的事。\n{}",
         lines.join("\n")
     ))
-}
-
-/// Chronological diary dump. Prefer [`format_remembered_section`] for facts.
-pub fn format_diary_section(contents: &[String]) -> Option<String> {
-    format_recent_section(contents)
 }
 
 fn bullet_facts(contents: &[String]) -> Vec<String> {

@@ -329,7 +329,7 @@ pub async fn resolve_addressee_label(db: &sea_orm::DatabaseConnection, user_id: 
 }
 
 pub use speaking_prompts::{
-    addressee_speaking_section, format_activity_section, format_diary_section, format_mood_section,
+    addressee_speaking_section, format_activity_section, format_mood_section,
     format_persona, format_recent_section, format_remembered_section, guest_speaking_section,
     mood_tone_instruction, rank_remembered,
 };
@@ -570,12 +570,12 @@ mod tests {
 
     #[test]
     fn diary_section_skips_empty_and_compacts() {
-        assert!(super::format_diary_section(&[]).is_none());
+        assert!(super::format_recent_section(&[]).is_none());
         let block = super::format_remembered_section(&["今天晚上想打独立游戏".into()]).unwrap();
         assert!(block.contains("## 关于这个人"));
         assert!(block.contains("你留下的事实"));
         assert!(block.contains("- 今天晚上想打独立游戏"));
-        assert!(super::format_diary_section(&["Steam 解锁了成就".into()])
+        assert!(super::format_recent_section(&["Steam 解锁了成就".into()])
             .unwrap()
             .contains("## 最近"));
     }

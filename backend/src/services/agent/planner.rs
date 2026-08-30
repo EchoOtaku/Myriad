@@ -52,16 +52,6 @@ impl Planner {
         self.plan_internal(request, None, Some(progress_tx)).await
     }
 
-    /// 升级重规划（携带前次结果上下文）
-    pub async fn replan(
-        &self,
-        request: &UserRequest,
-        escalation_hint: &str,
-    ) -> Result<PlannerOutput, String> {
-        self.plan_internal(request, Some(escalation_hint), None)
-            .await
-    }
-
     pub async fn replan_with_progress(
         &self,
         request: &UserRequest,

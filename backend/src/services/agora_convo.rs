@@ -28,7 +28,7 @@ impl std::fmt::Display for AgoraConvoError {
             Self::NotConfigured(msg) => write!(f, "{msg}"),
             Self::Token(e) => write!(f, "{e}"),
             Self::Network(msg) => write!(f, "Network error: {msg}"),
-            Self::Api { message, .. } => write!(f, "{message}"),
+            Self::Api { status, message } => write!(f, "HTTP {status}: {message}"),
         }
     }
 }

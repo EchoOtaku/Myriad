@@ -1382,7 +1382,7 @@ impl AiAnalyzer {
 
                 let url = openai_chat_completions_url(self.base_url.as_deref());
 
-                let mut response = self
+                let response = self
                     .client
                     .post(&url)
                     .header("Authorization", format!("Bearer {}", self.api_key))
