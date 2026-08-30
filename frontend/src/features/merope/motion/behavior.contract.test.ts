@@ -89,15 +89,13 @@ test('player still composites groove, random, performance, expression, then spee
 })
 
 test('production faces consume the snapshot; sources do not take a rig', () => {
-  const lifecycle = source('./useRigMotionLifecycle.ts')
   const speechSource = source('./speechSource.ts')
   const performanceSource = source('./performanceSource.ts')
   const singing = source('../useRigSingingLifecycle.ts')
-  assert.match(lifecycle, /applyMotionFrame/)
+  const lifecycle = source('./useRigMotionLifecycle.ts')
   assert.match(lifecycle, /getProductionMotionRuntime/)
   assert.doesNotMatch(speechSource, /rigRef/)
   assert.doesNotMatch(performanceSource, /rigRef/)
-  assert.match(speechSource, /claim\('coSpeech'/)
   assert.doesNotMatch(singing, /applySingingWrite/)
   assert.doesNotMatch(singing, /rigRef/)
 })

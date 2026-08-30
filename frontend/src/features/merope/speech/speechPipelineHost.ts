@@ -140,6 +140,8 @@ export class SpeechPipelineHost {
         })
       },
       onEnded: () => {
+        onEnded()
+        if (this.pipeline.playing || this.pipeline.queueLength > 0) return
         dispatchMeropeSpeech({
           phase: 'end',
           messageId: segment.messageId,
@@ -147,11 +149,8 @@ export class SpeechPipelineHost {
           utteranceId,
           ...(generation ? { generation } : {}),
         })
-        onEnded()
-        if (!this.pipeline.playing) {
-          patchVoicePresence({ ttsPlaying: false })
-          markTurnTraceOnce('speech_ended')
-        }
+        patchVoicePresence({ ttsPlaying: false })
+        markTurnTraceOnce('speech_ended')
       },
     })
     return {

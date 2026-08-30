@@ -118,6 +118,11 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
 
     const applyPerformanceDriver = (player: Anime25DPlayer) => {
       if (manualRef.current || manualControl) return
+      const policy = player.getMotionPolicy()
+      if (policy.headBody !== 'performance') {
+        player.setTarget({ thinking: activityRef.current === 'thinking' })
+        return
+      }
       player.setTarget(
         performanceRestDriverPatch(
           baselineRef.current,
@@ -215,14 +220,18 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
                 window.clearTimeout(restoreTimerRef.current)
               activePriorityRef.current = priority
               activeUntilRef.current = now + duration
+              const headOwned =
+                playerRef.current?.getMotionPolicy().headBody === 'performance'
               playerRef.current?.setTarget({
-                ...performanceRestDriverPatch(
-                  baselineRef.current,
-                  activityRef.current === 'thinking',
-                ),
-                // Authored cues own the pose until their restore timer fires.
-                // Ambient motion eases to neutral instead of competing.
-                rand: false,
+                ...(headOwned
+                  ? {
+                      ...performanceRestDriverPatch(
+                        baselineRef.current,
+                        activityRef.current === 'thinking',
+                      ),
+                      rand: false,
+                    }
+                  : { thinking: activityRef.current === 'thinking' }),
                 ...cueDriverPatch(cue),
               })
               restoreTimerRef.current = window.setTimeout(() => {
