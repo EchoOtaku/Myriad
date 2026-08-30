@@ -176,8 +176,14 @@ pub async fn direct_motion(context: MotionContext) -> Option<PerformanceDirectiv
     if let Some(state) = rig_state.as_ref() {
         plan = refine_performance_plan(plan, state);
     }
-    // Named requests overlay Lite so a timeout cannot swallow "做一下狂笑".
-    plan = apply_user_requested_cue(plan, &context.user_text, rig_state.as_ref());
+    // A named ask is not a command; overlay only after this turn's reply.
+    plan = apply_user_requested_cue(
+        plan,
+        context.phase,
+        &context.user_text,
+        context.response_text.as_deref(),
+        rig_state.as_ref(),
+    );
     if plan_is_empty(&plan) {
         tracing::debug!(
             phase,
@@ -189,7 +195,12 @@ pub async fn direct_motion(context: MotionContext) -> Option<PerformanceDirectiv
     tracing::info!(
         phase,
         elapsed_ms,
-        requested = user_requested_cue(&context.user_text).is_some(),
+        requested = play_along_requested_cue(
+            context.phase,
+            &context.user_text,
+            context.response_text.as_deref(),
+        )
+        .is_some(),
         "[MeropeMotion] plan ready"
     );
     Some(PerformanceDirective {
@@ -382,12 +393,54 @@ fn landing_baseline(intent: &str) -> ChatPerformanceBaseline {
     }
 }
 
+const REQUEST_REFUSALS: &[&str] = &[
+    "才不",
+    "才不会",
+    "才不要",
+    "才不给",
+    "不要做",
+    "不做",
+    "不想做",
+    "拒绝",
+    "别做",
+    "i won't",
+    "i will not",
+    "no way",
+];
+
+fn response_refuses_requested_cue(response: &str) -> bool {
+    let folded = response.to_lowercase();
+    REQUEST_REFUSALS
+        .iter()
+        .any(|marker| response.contains(marker) || folded.contains(&marker.to_lowercase()))
+}
+
+fn play_along_requested_cue(
+    phase: MotionPhase,
+    user_text: &str,
+    response_text: Option<&str>,
+) -> Option<&'static str> {
+    if phase != MotionPhase::Delivery {
+        return None;
+    }
+    let response = response_text
+        .map(str::trim)
+        .filter(|text| !text.is_empty())?;
+    let intent = user_requested_cue(user_text)?;
+    if response_refuses_requested_cue(response) {
+        return None;
+    }
+    Some(intent)
+}
+
 fn apply_user_requested_cue(
     mut plan: ChatPerformancePlan,
+    phase: MotionPhase,
     user_text: &str,
+    response_text: Option<&str>,
     rig: Option<&RigStateSummary>,
 ) -> ChatPerformancePlan {
-    let Some(intent) = user_requested_cue(user_text) else {
+    let Some(intent) = play_along_requested_cue(phase, user_text, response_text) else {
         return plan;
     };
     if let Some(state) = rig {
@@ -497,8 +550,8 @@ fn motion_system_prompt() -> String {
 
 合法枚举：baseline.expression 只能是 {}；baseline.posture 只能是 {}；cues.intent 只能是 {}，最多 3 个。
 每回合必须给出 baseline 和 1–3 个 cue。不要输出 continue，空对象无效。
-若用户明确要求某个表情（做、来一个、表演 + 狂笑/呆呆/哭/生气等），必须选对应 cue。
-只丢掉做不到的：缺能力表里的贴纸层就不要选那一项；说话占嘴时不要选 cry/maniac/silly；唱歌占身时不要选会抢头身的意图。用户点名要做的表情除外。
+用户点名某个表情不是口令：等自己回话接上这次互动再选对应 cue；拒了或还没接话就不要做。
+只丢掉做不到的：缺能力表里的贴纸层就不要选那一项；说话占嘴时不要选 cry/maniac/silly；唱歌占身时不要选会抢头身的意图。已经回话接上的点名除外。
 
 按性格取表情：
 - 慢热、内向、克制：底用 withdrawn/subdued，常用 listen/think/respond；被戳到时仍用 cry/speechless。
@@ -681,8 +734,8 @@ mod tests {
         assert!(!prompt.contains("angleZ"));
         assert!(prompt.contains("不要输出 continue"));
         assert!(prompt.contains("空对象无效"));
-        assert!(prompt.contains("若用户明确要求某个表情"));
-        assert!(prompt.contains("用户点名要做的表情除外"));
+        assert!(prompt.contains("用户点名某个表情不是口令"));
+        assert!(prompt.contains("已经回话接上的点名除外"));
         assert!(prompt.contains("persona"));
         assert!(schema.pointer("/properties/continue").is_none());
         assert!(schema.get("required").is_none());
@@ -853,21 +906,70 @@ mod tests {
     }
 
     #[test]
+    fn asked_expression_waits_for_the_character_to_answer() {
+        assert_eq!(
+            play_along_requested_cue(MotionPhase::Reaction, "做一下狂笑", None),
+            None
+        );
+        assert_eq!(
+            play_along_requested_cue(MotionPhase::Delivery, "做一下狂笑", None),
+            None
+        );
+        assert_eq!(
+            play_along_requested_cue(MotionPhase::Delivery, "做一下狂笑", Some("  ")),
+            None
+        );
+        assert_eq!(
+            play_along_requested_cue(MotionPhase::Delivery, "做一下狂笑", Some("才不给你做。")),
+            None
+        );
+        assert_eq!(
+            play_along_requested_cue(MotionPhase::Delivery, "做一下狂笑", Some("好啊，看我的。")),
+            Some("maniac")
+        );
+    }
+
+    #[test]
     fn asked_expression_survives_lite_failure_when_the_face_can_play_it() {
-        let plan = apply_user_requested_cue(ChatPerformancePlan::default(), "做一下狂笑", None);
+        let plan = apply_user_requested_cue(
+            ChatPerformancePlan::default(),
+            MotionPhase::Delivery,
+            "做一下狂笑",
+            Some("好啊，看我的。"),
+            None,
+        );
         assert_eq!(plan.cues[0].intent, "maniac");
         assert_eq!(plan.cues[0].fade_in_ms, 140);
         assert_eq!(plan.cues[0].fade_out_ms, 320);
         assert_eq!(plan.baseline.as_ref().unwrap().expression, "warm");
-        let cry = apply_user_requested_cue(ChatPerformancePlan::default(), "来个哭脸", None);
+        let cry = apply_user_requested_cue(
+            ChatPerformancePlan::default(),
+            MotionPhase::Delivery,
+            "来个哭脸",
+            Some("行，给你哭一个。"),
+            None,
+        );
         assert_eq!(cry.baseline.as_ref().unwrap().expression, "withdrawn");
         let blocked = myriad_merope::sanitize_rig_state(&serde_json::json!({
             "capabilities": ["head-body"]
         }))
         .unwrap();
-        let skipped =
-            apply_user_requested_cue(ChatPerformancePlan::default(), "做一下狂笑", Some(&blocked));
+        let skipped = apply_user_requested_cue(
+            ChatPerformancePlan::default(),
+            MotionPhase::Delivery,
+            "做一下狂笑",
+            Some("好啊，看我的。"),
+            Some(&blocked),
+        );
         assert!(skipped.cues.is_empty());
+        let too_early = apply_user_requested_cue(
+            ChatPerformancePlan::default(),
+            MotionPhase::Reaction,
+            "做一下狂笑",
+            None,
+            None,
+        );
+        assert!(too_early.cues.is_empty());
     }
 
     #[test]
@@ -883,7 +985,13 @@ mod tests {
         .unwrap();
         let refined = refine_performance_plan(lite, &state);
         assert!(refined.cues.iter().all(|cue| cue.intent != "maniac"));
-        let plan = apply_user_requested_cue(refined, "做一下狂笑", Some(&state));
+        let plan = apply_user_requested_cue(
+            refined,
+            MotionPhase::Delivery,
+            "做一下狂笑",
+            Some("好啊，看我的。"),
+            Some(&state),
+        );
         assert_eq!(plan.cues[0].intent, "maniac");
     }
 
