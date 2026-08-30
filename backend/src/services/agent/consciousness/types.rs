@@ -46,11 +46,31 @@ pub struct RecentIntent {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Instant live-face / speech facts. Memory-only; never a grant or a tool.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default, rename_all = "camelCase")]
+pub struct SelfLivePresence {
+    pub speaking: bool,
+    pub face_visible: bool,
+    pub speech_interruptible: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visible_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub motion_intent: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speech_intent: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub perception: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rig_state: Option<myriad_merope::RigStateSummary>,
+}
+
 /// Trusted runtime facts describing who the Agent is speaking to and what it
 /// can actually do at this instant.
 ///
 /// `granted_permissions` is the runtime-filtered grant set. Declared or
 /// installation-approved permissions must never be substituted here.
+/// `live` is observational only and never expands what this layer may execute.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SelfSnapshot {
     pub persona_name: String,
@@ -65,6 +85,8 @@ pub struct SelfSnapshot {
     #[serde(default)]
     pub recent_intents: Vec<RecentIntent>,
     pub captured_at: DateTime<Utc>,
+    #[serde(default)]
+    pub live: SelfLivePresence,
 }
 
 /// Side-effect class selected by the consciousness model.

@@ -116,6 +116,10 @@ impl Agent {
             "[Agent] Processing request"
         );
 
+        crate::services::agent::consciousness::remember_live_presence(
+            user_id,
+            crate::services::agent::consciousness::live_presence_from_request(&request),
+        );
         crate::services::agent::merope::mark_activity(&self.db, user_id, "talking").await;
         let mood_transition = crate::services::agent::merope::note_user_turn(
             &self.db,
@@ -548,6 +552,10 @@ impl Agent {
             "[Agent] Processing request with progress tracking"
         );
 
+        crate::services::agent::consciousness::remember_live_presence(
+            user_id,
+            crate::services::agent::consciousness::live_presence_from_request(&request),
+        );
         crate::services::agent::merope::mark_activity(&self.db, user_id, "talking").await;
         let mood_transition = crate::services::agent::merope::note_user_turn(
             &self.db,

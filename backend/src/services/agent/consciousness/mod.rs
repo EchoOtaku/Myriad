@@ -10,6 +10,7 @@ mod engine;
 mod grant;
 mod grant_store;
 mod policy;
+mod presence;
 mod snapshot;
 mod store;
 mod types;
@@ -29,9 +30,10 @@ pub use grant::{
 };
 pub use grant_store::AutonomyGrantStore;
 pub use policy::{validate_decision, DecisionPolicyError};
+pub use presence::{live_presence_from_request, remember_live_presence};
 pub use snapshot::capture_self_snapshot;
 pub use store::IntentStore;
 pub use types::{
     AcceptSource, ConsciousnessAction, ConsciousnessDecision, ConsciousnessEvent, EventUrgency,
-    IntentRecord, IntentStatus, RecentIntent, SelfSnapshot, WorkProposal,
+    IntentRecord, IntentStatus, RecentIntent, SelfLivePresence, SelfSnapshot, WorkProposal,
 };

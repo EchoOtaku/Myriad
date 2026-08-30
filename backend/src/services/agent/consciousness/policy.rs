@@ -114,6 +114,7 @@ mod tests {
             granted_permissions: vec![],
             recent_intents: vec![],
             captured_at: Utc::now(),
+            live: Default::default(),
         }
     }
 
@@ -147,10 +148,23 @@ mod tests {
             validate_decision(&speech, &snapshot(true)),
             Err(DecisionPolicyError::DoNotDisturb)
         );
-
         let mut memory = decision(ConsciousnessAction::Remember);
         memory.memory = Some("The user prefers quiet hours.".into());
         assert_eq!(validate_decision(&memory, &snapshot(true)), Ok(()));
+    }
+
+    #[test]
+    fn live_presence_does_not_bypass_do_not_disturb() {
+        let mut state = snapshot(true);
+        state.live.speaking = true;
+        state.live.speech_interruptible = true;
+        state.granted_permissions = vec!["agent.execute".into()];
+        let mut speech = decision(ConsciousnessAction::Speak);
+        speech.speech = Some("hello".into());
+        assert_eq!(
+            validate_decision(&speech, &state),
+            Err(DecisionPolicyError::DoNotDisturb)
+        );
     }
 
     #[test]

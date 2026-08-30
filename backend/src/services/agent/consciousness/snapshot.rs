@@ -38,5 +38,6 @@ pub async fn capture_self_snapshot(
         granted_permissions,
         recent_intents: IntentStore::new(db.clone()).recent(user_id, 8).await?,
         captured_at: Utc::now(),
+        live: super::presence::last_live_presence(user_id),
     })
 }
