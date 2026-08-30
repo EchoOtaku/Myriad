@@ -1,7 +1,7 @@
 // Agent process / recipe execution paths.
 
 use sea_orm::DatabaseConnection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::agent_footer::*;
 use super::agent_header::*;
@@ -560,18 +560,6 @@ impl Agent {
                     activity: "talking".to_string(),
                 })
                 .await;
-            spawn_motion_directive(
-                motion_context(
-                    &request,
-                    user_id,
-                    crate::services::agent::merope::MotionPhase::Reaction,
-                    mood,
-                    round_motion_style.clone(),
-                    None,
-                    None,
-                ),
-                Some(progress_tx.clone()),
-            );
         }
 
         // Chat 是独立的人设对话路径。在 Planner 之前分流才能保证：
@@ -641,6 +629,21 @@ impl Agent {
                 frontend_action: None,
                 performance,
             });
+        }
+
+        if let Some(mood) = mood_transition.clone() {
+            spawn_motion_directive(
+                motion_context(
+                    &request,
+                    user_id,
+                    crate::services::agent::merope::MotionPhase::Reaction,
+                    mood,
+                    round_motion_style.clone(),
+                    None,
+                    None,
+                ),
+                Some(progress_tx.clone()),
+            );
         }
 
         // 1. Planner 规划（Pro AI 单次调用）
@@ -896,7 +899,11 @@ impl Agent {
                     let msg = format!(
                         "我对这个请求的理解置信度较低（{:.0}%），可能会误解你的意图。{}能再详细描述一下你想要做什么吗？",
                         planner_output.confidence * 100.0,
-                        planner_output.reasoning.as_deref().map(|r| format!("我的理解是：{}。", r)).unwrap_or_default()
+                        planner_output
+                            .reasoning
+                            .as_deref()
+                            .map(|r| format!("我的理解是：{}。", r))
+                            .unwrap_or_default()
                     );
                     Self::stream_text_as_tokens(&progress_tx, &msg).await;
                     crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;

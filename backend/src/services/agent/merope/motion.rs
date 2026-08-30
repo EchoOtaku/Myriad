@@ -19,8 +19,11 @@ use crate::models::entities::agent_persona;
 use super::MoodTransition;
 use super::store::get_persona;
 
-const MOTION_TIMEOUT: Duration = Duration::from_millis(1_400);
-const MOTION_TOTAL_TIMEOUT: Duration = Duration::from_millis(1_600);
+/// OpenRouter JSON-schema Lite never completed inside 1.4s in production
+/// (`Failed to read response` / connect error at ~1405ms). Chat Lite uses the
+/// analyzer default (120s) and succeeds; consciousness already budgets 4s/5s.
+const MOTION_TIMEOUT: Duration = Duration::from_secs(4);
+const MOTION_TOTAL_TIMEOUT: Duration = Duration::from_secs(5);
 const MOTION_SCHEMA_NAME: &str = "merope_motion";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -669,6 +672,23 @@ mod tests {
         let src = include_str!("../process_and_recipe.rs");
         assert!(src.contains("Streamed text completion must not wait on delivery motion"));
         assert!(src.contains("let performance = None;"));
+        let chat = src
+            .find("stream_strict_lite_chat_response")
+            .expect("chat lite call");
+        let reaction = src
+            .find("MotionPhase::Reaction")
+            .expect("work reaction motion");
+        assert!(
+            chat < reaction,
+            "Chat must not spawn reaction Lite beside the reply stream"
+        );
+    }
+
+    #[test]
+    fn motion_lite_timeout_is_wide_enough_for_openrouter_json() {
+        assert_eq!(MOTION_TIMEOUT, Duration::from_secs(4));
+        assert_eq!(MOTION_TOTAL_TIMEOUT, Duration::from_secs(5));
+        assert!(MOTION_TOTAL_TIMEOUT > MOTION_TIMEOUT);
     }
 
     #[test]
