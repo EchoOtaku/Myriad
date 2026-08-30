@@ -133,6 +133,27 @@ test('a later utterance plays after the previous one even when sequences restart
   assert.deepEqual(played, ['A1', 'A2', 'B1', 'B2'])
 })
 
+test('stopping A does not let a stale onended start the next B segment twice', async () => {
+  const played: string[] = []
+  const pipeline = new TtsPipeline({
+    synthesize: async (item) => buffer(item.text),
+    play: (_audio, item, onEnded) => {
+      played.push(item.text)
+      return {
+        stop: () => {
+          queueMicrotask(onEnded)
+        },
+      }
+    },
+  })
+  pipeline.enqueue([segment(1, 'A:1', 'A')])
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  pipeline.enqueue([segment(1, 'B:1', 'B'), segment(2, 'B:2', 'B')])
+  assert.equal(pipeline.cancel('A'), true)
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.deepEqual(played, ['A:1', 'B:1'])
+})
+
 test('cancelling the playing message leaves a later message in the queue', async () => {
   const played: string[] = []
   const ends: Array<() => void> = []

@@ -47,6 +47,7 @@ export class TtsPipeline {
   private readonly ready = new Map<number, ReadySlot>()
   private handle: TtsAudioHandle | null = null
   private playingMessageId: string | null = null
+  private playSeq = 0
 
   constructor(private readonly host: TtsPipelineHost) {}
 
@@ -223,10 +224,10 @@ export class TtsPipeline {
       return
     }
     this.playingMessageId = slot.segment.messageId
-    const epoch = this.epoch
+    const playSeq = this.playSeq
     markTurnTraceOnce('playback_started')
     this.handle = this.host.play(slot.audio, slot.segment, () => {
-      if (epoch !== this.epoch) return
+      if (playSeq !== this.playSeq) return
       this.handle = null
       this.noteQueue()
       this.tryPlay()
@@ -234,6 +235,7 @@ export class TtsPipeline {
   }
 
   private stopPlayback(): void {
+    this.playSeq += 1
     this.handle?.stop()
     this.handle = null
     this.noteQueue()

@@ -65,6 +65,7 @@ export function playTtsBuffer(
         raf = requestAnimationFrame(tick)
       }
       source.onended = () => {
+        if (stopped) return
         stop()
         hooks.onEnded()
       }
@@ -73,6 +74,7 @@ export function playTtsBuffer(
       tick()
     })
     .catch(() => {
+      if (stopped) return
       stop()
       hooks.onEnded()
     })
