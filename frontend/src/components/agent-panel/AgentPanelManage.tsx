@@ -6,6 +6,7 @@ import React, { useEffect, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { agentService } from '../../services/agent'
+import { AgentPanelTurnTrace } from './AgentPanelTurnTrace'
 import { AgentPresence } from './useAgentPresence'
 
 export function applyAutonomyToggle(
@@ -118,6 +119,8 @@ export const AgentPanelManage: React.FC = () => {
           </button>
         </div>
       )}
+
+      <AgentPanelTurnTrace />
 
       <span className="agent-panel-tag" data-block="true">
         <span className="agent-panel-tag-text">

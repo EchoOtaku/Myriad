@@ -23,4 +23,16 @@ test('manage panel wires the shipped autonomy API', () => {
   assert.match(source, /getAutonomyGrant/)
   assert.match(source, /applyAutonomyToggle/)
   assert.match(source, /autonomyAllow/)
+  assert.match(source, /AgentPanelTurnTrace/)
+})
+
+test('turn-trace panel exports the local ring and stays off the run hub', () => {
+  const source = readFileSync(
+    new URL('./AgentPanelTurnTrace.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(source, /subscribeTurnTrace/)
+  assert.match(source, /serializeTurnTrace/)
+  assert.match(source, /createObjectURL/)
+  assert.doesNotMatch(source, /run_hub|AgentProgressEvent|fetch\(/)
 })

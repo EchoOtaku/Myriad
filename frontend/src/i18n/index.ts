@@ -2301,6 +2301,10 @@ export interface TranslationKeys {
       personaElsewhere: string
       doNotDisturb: string
       autonomyAllow: string
+      turnTraceTitle: string
+      turnTraceIdle: string
+      turnTraceExport: string
+      turnTraceTiming: string
       lastRun: string
       neverRun: string
       remove: string

@@ -51,11 +51,27 @@ export interface TurnTraceCounters {
   asrMs: number
   ttsSynthMs: number
   llmFirstTokenMs: number
+  firstAudioMs: number
   frameCpuMs: number
   audioContexts: number
   voiceListeners: number
   liveLeases: number
 }
+
+export interface TurnTraceSnapshot {
+  turnId: string
+  marks: readonly TurnTraceMark[]
+  counters: TurnTraceCounters
+  delays: {
+    asrMs: number
+    llmFirstTokenMs: number
+    ttsSynthMs: number
+    cancelToSilenceMs: number
+    firstAudioMs: number
+  }
+}
+
+export type TurnTraceListener = (snapshot: TurnTraceSnapshot) => void
 
 const RING = 96
 
@@ -71,6 +87,7 @@ function emptyCounters(): TurnTraceCounters {
     asrMs: 0,
     ttsSynthMs: 0,
     llmFirstTokenMs: 0,
+    firstAudioMs: 0,
     frameCpuMs: 0,
     audioContexts: 0,
     voiceListeners: 0,
@@ -83,6 +100,7 @@ const firsts = new Set<string>()
 const marks: TurnTraceMark[] = []
 let counters = emptyCounters()
 const pending = new Map<TurnTraceSpan, { t: number; extra?: TurnTraceExtra }>()
+const listeners = new Set<TurnTraceListener>()
 
 function now(): number {
   return typeof performance === 'undefined' ? Date.now() : performance.now()
@@ -113,6 +131,11 @@ function record(mark: TurnTraceMark): void {
     counters.llmFirstTokenMs =
       delayBetween('request_sent', 'llm_first_token') ?? counters.llmFirstTokenMs
   }
+  if (mark.span === 'first_audio') {
+    counters.firstAudioMs =
+      delayBetween('playback_started', 'first_audio') ?? counters.firstAudioMs
+  }
+  notify()
 }
 
 function delayBetween(from: string, to: string): number | null {
@@ -128,6 +151,20 @@ function lastMark(span: string): TurnTraceMark | undefined {
     if (mark && mark.span === span && mark.turnId === turnId) return mark
   }
   return undefined
+}
+
+function notify(): void {
+  if (listeners.size === 0) return
+  const snap = snapshotTurnTrace()
+  for (const listener of listeners) listener(snap)
+}
+
+export function subscribeTurnTrace(listener: TurnTraceListener): () => void {
+  listeners.add(listener)
+  listener(snapshotTurnTrace())
+  return () => {
+    listeners.delete(listener)
+  }
 }
 
 export function beginTurnTrace(id: string): void {
@@ -169,6 +206,7 @@ export function noteTurnTraceDrop(reason: TurnTraceDropReason): void {
   if (reason === 'stale_generation') counters.staleGenerationDrops += 1
   if (reason === 'lease_conflict') {
     counters.leaseConflicts += 1
+    notify()
     return
   }
   markTurnTrace('drop', { reason })
@@ -178,6 +216,7 @@ export function noteTurnTraceQueue(length: number): void {
   const value = Math.max(0, Math.trunc(length))
   counters.ttsQueueLength = value
   if (value > counters.ttsQueuePeak) counters.ttsQueuePeak = value
+  notify()
 }
 
 export function noteTurnTraceDelay(
@@ -188,14 +227,17 @@ export function noteTurnTraceDelay(
   if (kind === 'asr') counters.asrMs = value
   else if (kind === 'tts') counters.ttsSynthMs = value
   else counters.llmFirstTokenMs = value
+  notify()
 }
 
 export function noteTurnTraceCancelToSilence(ms: number): void {
   counters.cancelToSilenceMs = Math.max(0, Math.round(ms))
+  notify()
 }
 
 export function noteTurnTraceLeaseExpiry(count = 1): void {
   counters.leaseExpiries += Math.max(0, Math.trunc(count))
+  notify()
 }
 
 export function noteTurnTraceFrame(input: {
@@ -206,6 +248,7 @@ export function noteTurnTraceFrame(input: {
   if (input.cpuMs != null && Number.isFinite(input.cpuMs)) {
     counters.frameCpuMs = Math.max(0, input.cpuMs)
   }
+  notify()
 }
 
 export function noteTurnTraceLeaks(sample: {
@@ -216,19 +259,10 @@ export function noteTurnTraceLeaks(sample: {
   counters.audioContexts = Math.max(0, Math.trunc(sample.audioContexts))
   counters.voiceListeners = Math.max(0, Math.trunc(sample.voiceListeners))
   counters.liveLeases = Math.max(0, Math.trunc(sample.leases))
+  notify()
 }
 
-export function snapshotTurnTrace(): {
-  turnId: string
-  marks: readonly TurnTraceMark[]
-  counters: TurnTraceCounters
-  delays: {
-    asrMs: number
-    llmFirstTokenMs: number
-    ttsSynthMs: number
-    cancelToSilenceMs: number
-  }
-} {
+export function snapshotTurnTrace(): TurnTraceSnapshot {
   return {
     turnId,
     marks: marks.slice(),
@@ -238,8 +272,13 @@ export function snapshotTurnTrace(): {
       llmFirstTokenMs: counters.llmFirstTokenMs,
       ttsSynthMs: counters.ttsSynthMs,
       cancelToSilenceMs: counters.cancelToSilenceMs,
+      firstAudioMs: counters.firstAudioMs,
     },
   }
+}
+
+export function serializeTurnTrace(): string {
+  return `${JSON.stringify(snapshotTurnTrace(), null, 2)}\n`
 }
 
 export function resetTurnTraceForTest(): void {
@@ -248,4 +287,5 @@ export function resetTurnTraceForTest(): void {
   marks.length = 0
   counters = emptyCounters()
   pending.clear()
+  listeners.clear()
 }

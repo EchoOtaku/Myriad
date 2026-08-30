@@ -1939,6 +1939,42 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   translate: 13px 0;
 }
 
+.agent-panel-manage-trace {
+  align-items: flex-start;
+}
+
+.agent-panel-manage-trace-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agent-panel-manage-trace-meta {
+  color: var(--text-muted, #9ca3af);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.agent-panel-manage-export {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #6b7280);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.agent-panel-manage-export:hover,
+.agent-panel-manage-export:focus-visible {
+  color: var(--text-primary, #111827);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .agent-panel-manage-toggle,
   .agent-panel-manage-knob {

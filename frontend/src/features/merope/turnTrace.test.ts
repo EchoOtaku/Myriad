@@ -7,8 +7,10 @@ import {
   noteTurnTraceDrop,
   noteTurnTraceQueue,
   resetTurnTraceForTest,
+  serializeTurnTrace,
   snapshotTurnTrace,
   stampTurnTrace,
+  subscribeTurnTrace,
   TURN_TRACE_SPANS,
 } from './turnTrace'
 
@@ -33,6 +35,7 @@ test('pending input stamps attach to the next turn without using the run hub', (
     ],
   )
   assert.ok(snap.delays.llmFirstTokenMs >= 0)
+  assert.equal(snap.delays.firstAudioMs, 0)
   assert.equal(TURN_TRACE_SPANS.length, 12)
 })
 
@@ -52,6 +55,22 @@ test('the ring drops the oldest marks and counts stale generations', () => {
   assert.equal(snap.counters.ttsQueueLength, 1)
 })
 
+test('subscribers see local marks and first-audio delay stays off the run hub', () => {
+  resetTurnTraceForTest()
+  const lengths: number[] = []
+  const unsub = subscribeTurnTrace((snap) => {
+    lengths.push(snap.marks.length)
+  })
+  beginTurnTrace('msg-3')
+  markTurnTraceOnce('playback_started')
+  markTurnTraceOnce('first_audio')
+  const snap = snapshotTurnTrace()
+  assert.equal(snap.delays.firstAudioMs >= 0, true)
+  assert.ok(lengths.length >= 3)
+  assert.doesNotMatch(serializeTurnTrace(), /viseme|run_hub|AgentProgressEvent/)
+  unsub()
+})
+
 test('trace sources stay off the run hub and never persist visemes', () => {
   const trace = readFileSync(new URL('./turnTrace.ts', import.meta.url), 'utf8')
   assert.doesNotMatch(trace, /run_hub|AgentProgressEvent/)
@@ -61,6 +80,8 @@ test('trace sources stay off the run hub and never persist visemes', () => {
     './speech/speechPipelineHost.ts',
     './speech/ttsPipeline.ts',
     '../../components/agent-panel/AgentEngine.tsx',
+    '../../components/agent-panel/AgentPanelTurnTrace.tsx',
+    '../../components/agent-panel/AgentPanelManage.tsx',
   ]
   for (const relative of files) {
     const source = readFileSync(new URL(relative, import.meta.url), 'utf8')
