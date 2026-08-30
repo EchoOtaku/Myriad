@@ -1336,12 +1336,12 @@ button.agent-panel-tag:disabled {
     ),
     var(--surface-bg, rgb(var(--surface-rgb) / var(--surface-alpha)));
   color: var(--color-primary, #10b981);
-  animation: agent-panel-mic-enter var(--agent-swap) var(--agent-ease);
+  animation: agent-panel-mic-enter var(--agent-swap, 320ms) var(--agent-ease, ease);
 }
 
 .agent-panel-mic[data-conversation='true'] .agent-panel-mic-live {
   opacity: 1;
-  animation: agent-panel-mic-live 1.8s var(--agent-ease) infinite;
+  animation: agent-panel-mic-live 1.8s var(--agent-ease, ease) infinite;
 }
 
 .agent-panel-mic[data-speaking='true'] .agent-panel-mic-live {
