@@ -18,7 +18,15 @@ const EXTRACT_SCHEMA_NAME: &str = "merope_chat_remember";
 const MIN_USER_CHARS: usize = 8;
 
 pub fn should_extract_chat_remember(user_text: &str) -> bool {
-    compact_summary(user_text).chars().count() >= MIN_USER_CHARS
+    should_extract_chat_remember_against(user_text, &[])
+}
+
+pub fn should_extract_chat_remember_against(user_text: &str, existing: &[String]) -> bool {
+    let compact = compact_summary(user_text);
+    if compact.chars().count() < MIN_USER_CHARS {
+        return false;
+    }
+    persona_remember_insert(&compact, existing).is_some()
 }
 
 pub fn parse_chat_remember_fact(raw: &str) -> Option<String> {
@@ -89,6 +97,9 @@ async fn extract_and_store(user_id: i32, user_text: &str, reply: &str) {
             .collect::<Vec<_>>(),
         Err(_) => return,
     };
+    if !should_extract_chat_remember_against(user_text, &existing) {
+        return;
+    }
     let Some(analyzer) =
         crate::services::ai::create_strict_lite_ai_analyzer_with_timeout(Some(EXTRACT_TIMEOUT))
             .await
@@ -145,6 +156,14 @@ mod tests {
         assert!(!should_extract_chat_remember("你好"));
         assert!(!should_extract_chat_remember("好"));
         assert!(should_extract_chat_remember("晚上想打独立游戏"));
+        assert!(!should_extract_chat_remember_against(
+            "晚上想打独立游戏",
+            &["晚上想打独立游戏".into()]
+        ));
+        assert!(should_extract_chat_remember_against(
+            "早上只喝美式咖啡",
+            &["晚上想打独立游戏".into()]
+        ));
     }
 
     #[test]

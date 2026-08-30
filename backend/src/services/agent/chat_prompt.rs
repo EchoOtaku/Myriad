@@ -306,6 +306,38 @@ mod tests {
     }
 
     #[test]
+    fn chat_lite_prompt_reads_persona_memory_not_work_lessons() {
+        let remembered =
+            crate::services::agent::merope::format_remembered_section(&["晚上想打独立游戏".into()])
+                .unwrap();
+        let recent =
+            crate::services::agent::merope::format_recent_section(&["Steam 解锁了成就".into()])
+                .unwrap();
+        let block = crate::services::agent::merope::speaking_prompt_plain(&[remembered, recent]);
+        let prompt = build_chat_lite_prompt("你是瞳。", &block, &[], "今晚打游戏吗");
+        assert!(prompt.contains("## 关于这个人"));
+        assert!(prompt.contains("晚上想打独立游戏"));
+        assert!(prompt.contains("## 最近"));
+        assert!(!prompt.contains("ExecutionLesson"));
+        assert!(!prompt.contains("effective_pattern"));
+        let chat_prompt_prod = include_str!("chat_prompt.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .unwrap();
+        let chat_call_src = include_str!("confirmation_and_tasks.rs");
+        assert!(!chat_prompt_prod.contains("recall_with_params"));
+        assert!(chat_call_src.contains("fn chat_response_prompt"));
+        assert!(chat_call_src.contains("speaking_prompt_with_query"));
+        let chat_fn = chat_call_src
+            .split("async fn chat_response_prompt")
+            .nth(1)
+            .and_then(|rest| rest.split("async fn ").next())
+            .unwrap();
+        assert!(!chat_fn.contains("recall_with_params"));
+        assert!(!chat_fn.contains("get_memory"));
+    }
+
+    #[test]
     fn untrusted_perception_is_labeled_and_expired_rows_drop() {
         let now = chrono::Utc::now().timestamp_millis();
         let block = format_perception_block(Some(&json!([
