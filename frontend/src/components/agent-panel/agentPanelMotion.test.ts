@@ -497,10 +497,13 @@ describe('agent panel motion contract', () => {
     )
     assert.equal(LONG_PRESS_DURATION, 500)
     assert.match(css, /--agent-voice-hold:\s*500ms/)
+    assert.match(css, /--agent-voice-hold-lead:\s*80ms/)
     assert.match(
       css,
-      /agent-panel-mic-hold-draw\s+var\(--agent-voice-hold\)/,
+      /calc\(var\(--agent-voice-hold\) - var\(--agent-voice-hold-lead\)\)/,
     )
+    assert.match(composer, /pathLength="100"/)
+    assert.doesNotMatch(composer, /agent-panel-mic-live/)
     assert.match(css, /@keyframes agent-panel-mic-hold-draw/)
     assert.match(css, /@keyframes agent-panel-mic-live/)
     assert.match(composer, /data-holding/)

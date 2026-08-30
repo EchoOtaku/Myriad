@@ -258,9 +258,10 @@ pub async fn ingest(
                 persist_persona_remember(db, user_id, value.decision.memory.as_deref()).await;
                 return Ok(());
             }
-            ConsciousnessAction::Speak
-            | ConsciousnessAction::Ask
-            | ConsciousnessAction::ProposeWork => {}
+            ConsciousnessAction::Speak | ConsciousnessAction::Ask => {
+                persist_persona_remember(db, user_id, value.decision.memory.as_deref()).await;
+            }
+            ConsciousnessAction::ProposeWork => {}
         }
     }
 
@@ -352,14 +353,6 @@ pub async fn ingest(
     let _ = insert_diary(db, user_id, &summary, "event").await;
     insert_proactive(db, user_id, &spoken, Some(event_key), shown).await?;
     let _ = touch_proactive(db, user_id).await;
-    if let Some(value) = consideration.as_ref() {
-        if matches!(
-            value.decision.action,
-            ConsciousnessAction::Speak | ConsciousnessAction::Ask
-        ) {
-            persist_persona_remember(db, user_id, value.decision.memory.as_deref()).await;
-        }
-    }
 
     if shown {
         emit_speech_notification(
@@ -715,6 +708,43 @@ mod tests {
         assert!(
             src.contains("persona_remember_insert(candidate, &existing)")
                 && src.contains("DIARY_SOURCE_REMEMBER")
+        );
+        let speak_arm = src
+            .find("ConsciousnessAction::Speak | ConsciousnessAction::Ask")
+            .expect("speak/ask arm");
+        let persist_in_arm = src[speak_arm..]
+            .find("persist_persona_remember")
+            .expect("persist in speak/ask arm");
+        let persist_at = speak_arm + persist_in_arm;
+        let trivial_at = src
+            .find("if is_trivial_line(&spoken)")
+            .expect("trivial-line gate");
+        let duplicate_at = src
+            .find("last.content.trim() == spoken.trim()")
+            .expect("duplicate-proactive gate");
+        assert!(
+            persist_at < trivial_at,
+            "Speak/Ask memory must persist before trivial-line return"
+        );
+        assert!(
+            persist_at < duplicate_at,
+            "Speak/Ask memory must persist before duplicate-proactive return"
+        );
+    }
+
+    #[test]
+    fn speak_memory_fact_is_kept_when_spoken_line_would_be_skipped() {
+        let speech = "晚上好。";
+        let memory = "晚上想打独立游戏";
+        assert!(!is_trivial_line(speech));
+        assert_eq!(speech.trim(), "晚上好。");
+        assert_eq!(
+            persona_remember_insert(memory, &[]).as_deref(),
+            Some("晚上想打独立游戏")
+        );
+        assert_eq!(
+            persona_remember_insert(memory, &["晚上想打独立游戏".into()]),
+            None
         );
     }
 

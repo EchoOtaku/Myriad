@@ -254,7 +254,6 @@ function ComposerAction({
             holdTimerRef.current = window.setTimeout(() => {
               holdFiredRef.current = true
               holdTimerRef.current = null
-              setHolding(false)
               void enterConversation()
               if (navigator.vibrate) navigator.vibrate(50)
             }, LONG_PRESS_DURATION)
@@ -300,22 +299,19 @@ function ComposerAction({
           {kind === 'voice' ? (
             <span className="agent-panel-mic-fx" aria-hidden="true">
               <span className="agent-panel-mic-hold">
-                <svg viewBox="0 0 40 40">
-                  <circle
+                <svg viewBox="0 0 96 56" preserveAspectRatio="none">
+                  <path
                     className="agent-panel-mic-hold-track"
-                    cx="20"
-                    cy="20"
-                    r="16"
+                    pathLength="100"
+                    d="M48 3 H68 A25 25 0 0 1 68 53 H28 A25 25 0 0 1 28 3 H48"
                   />
-                  <circle
+                  <path
                     className="agent-panel-mic-hold-ring"
-                    cx="20"
-                    cy="20"
-                    r="16"
+                    pathLength="100"
+                    d="M48 3 H68 A25 25 0 0 1 68 53 H28 A25 25 0 0 1 28 3 H48"
                   />
                 </svg>
               </span>
-              <span className="agent-panel-mic-live" />
             </span>
           ) : null}
           <AgentSwap id={kind} from="self">
