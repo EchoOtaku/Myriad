@@ -63,9 +63,10 @@ pub fn build_chat_lite_prompt(
 /// Closer for Chat Lite. Tone follows the persona; do not flatten everyone
 /// into a short, warm assistant.
 const CHAT_REPLY_INSTRUCTION: &str = "\
-请以你的角色自然地回复用户。使用用户的语言。\
-语气、长短和软硬跟设定一致，不要额外改成客服腔或统一的热情。\
-不要输出任何 JSON 或格式标记，只输出纯文本回复。";
+请以你的角色回复。使用用户的语言。\
+说话风格必须由设定里的性格决定，并被上面的心情调节；禁止另套统一口吻。\
+禁止输出 AI 味的文本：不要客服腔、助手腔、总结腔，不要「我可以帮你」「需要我做什么」这类套话。\
+不要输出任何 JSON 或格式标记，只输出这个人会说的纯文本。";
 
 pub fn build_chat_lite_prompt_with_perception(
     soul: &str,
@@ -289,7 +290,9 @@ mod tests {
         assert!(!prompt.contains("stepHistory"));
         assert!(!prompt.contains("task"));
         assert!(!prompt.contains("保持简短、温暖、自然"));
-        assert!(prompt.contains("跟设定一致"));
+        assert!(prompt.contains("由设定里的性格决定"));
+        assert!(prompt.contains("禁止输出 AI 味"));
+        assert!(prompt.contains("心情调节"));
     }
 
     #[test]
@@ -297,6 +300,8 @@ mod tests {
         let prompt = build_chat_lite_prompt("你是瞳。气质：毒舌。", "", &[], "嗨");
         assert!(prompt.contains("你是瞳。气质：毒舌。"));
         assert!(prompt.contains(CHAT_REPLY_INSTRUCTION));
+        assert!(CHAT_REPLY_INSTRUCTION.contains("禁止输出 AI 味"));
+        assert!(CHAT_REPLY_INSTRUCTION.contains("性格决定"));
         assert!(!prompt.contains("温暖"));
     }
 

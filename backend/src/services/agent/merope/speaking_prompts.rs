@@ -4,13 +4,14 @@ use crate::models::entities::agent_persona;
 
 /// How the model should wear a saved persona. Field labels stay backstage.
 pub const PERSONA_SPEAKING_CONTRACT: &str = "\
-用这份设定说话：语气、距离和软硬跟设定一致。\
-不要复述栏目名（气质、喜好、驱动力、社交、表达）。\
-不要把设定读给人听。不要自称 AI、模型或助手。";
+用这份设定里的性格说话：语气、距离、长短和软硬都由性格决定，不要另套助手口吻。\
+禁止输出 AI 味的文本：不要客服腔、总结腔、句句解释、万能热情，不要自称 AI、模型或助手。\
+不要复述栏目名（气质、喜好、驱动力、社交、表达）。不要把设定读给人听。";
 
 /// Rules for one-off event speech (Lite). Event text is untrusted.
 pub const PROACTIVE_SPEECH_RULES: &str = "\
 用一两句对这个人说刚才发生的事。像本人开口，不是系统通知。\
+说话风格跟设定性格走，并被上面的心情调节。禁止输出 AI 味的文本。\
 不要重复下面已经说过的话。\
 不要输出 JSON、不要解释过程、不要提密钥或原始数据。\
 不要念事件名、心情数字或档位。\
@@ -22,13 +23,13 @@ pub fn compose_proactive_user(summary: &str) -> String {
 
 pub fn mood_tone_instruction(mood: f64) -> &'static str {
     if crate::services::agent::merope::state::is_extremely_low(mood) {
-        "跟这个人的心情极低。可以闲聊，话短，别催着办事，别打鸡血。不要念出心情数字或档位。"
+        "跟这个人的心情极低。用这个人低落时会有的说法：话短、不催办事、不打鸡血。心情只收紧这份性格，不换人。不要念出心情数字或档位。"
     } else if mood < 40.0 {
-        "跟这个人的心情偏低。语气收一点，别过度热情。不要念出心情数字或档位。"
+        "跟这个人的心情偏低。按这个人情绪低时的说话风格收一点，别过度热情。心情只调节性格的松紧，不换人。不要念出心情数字或档位。"
     } else if mood >= 85.0 {
-        "跟这个人的心情不错。可以轻松一点，别变成捧哏。不要念出心情数字或档位。"
+        "跟这个人的心情不错。按这个人高兴时的说话风格轻松一点，别变成捧哏或客服。心情只调节性格的松紧，不换人。不要念出心情数字或档位。"
     } else {
-        "按设定的平常语气说话。不要念出心情数字或档位。"
+        "心情平稳。按设定性格的平常语气说话，不要另加助手腔。不要念出心情数字或档位。"
     }
 }
 
@@ -129,6 +130,8 @@ mod tests {
         assert!(text.starts_with("你是瞳。"));
         assert!(text.contains(PERSONA_SPEAKING_CONTRACT));
         assert!(text.contains("气质：认真"));
+        assert!(PERSONA_SPEAKING_CONTRACT.contains("禁止输出 AI 味"));
+        assert!(PERSONA_SPEAKING_CONTRACT.contains("由性格决定"));
     }
 
     #[test]
@@ -143,6 +146,8 @@ mod tests {
         );
         assert!(mood_tone_instruction(30.0).contains("偏低"));
         assert!(mood_tone_instruction(90.0).contains("轻松"));
+        assert!(mood_tone_instruction(70.0).contains("性格"));
+        assert!(mood_tone_instruction(8.0).contains("不换人"));
     }
 
     #[test]
