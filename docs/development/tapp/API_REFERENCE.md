@@ -1053,7 +1053,7 @@ await Tapp.federation.unfollow("https://peer.example/users/alice");
 `getFeed()` 是角色感知入口：游客只读公开 Activity，已登录用户合并公开 Activity 与自己的
 Timeline。需要同时展示公开内容时优先 `getFeed()`；`getTimeline()` 保留为原始个人 Timeline。
 
-`getRoomsFeed()`（Myriad ≥ v0.3.38）回答的是另一个问题：**本实例加入的每个群聊里，出现过
+`getRoomsFeed()`（Myriad ≥ v0.4.0）回答的是另一个问题：**本实例加入的每个群聊里，出现过
 的每个实例的每个用户**的公开帖，去重后按时间倒序。范围按 **实例（domain）** 算而不是按成员
 算 —— 只要某个实例在某个已加入的房间里有过一名活跃成员，该实例上全部用户的公开帖都在结果
 里，本站用户也算。与关注关系无关：关注那条线是 `getFeed()` / `getTimeline()`。
