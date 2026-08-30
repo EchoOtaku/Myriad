@@ -111,17 +111,21 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
 
     const applyPerformanceDriver = (player: Anime25DPlayer) => {
       if (manualRef.current || manualControl) return
+      const thinking = activityRef.current === 'thinking'
       const policy = player.getMotionPolicy()
       if (policy.headBody !== 'performance') {
-        player.setTarget({ thinking: activityRef.current === 'thinking' })
+        player.setTarget({
+          thinking,
+          rand: !thinking,
+          idle: true,
+          blink: true,
+          ...(policy.headBody === 'music' || policy.headBody === 'preview'
+            ? {}
+            : { body: 0, armY: 0, armPos: 0 }),
+        })
         return
       }
-      player.setTarget(
-        performanceRestDriverPatch(
-          baselineRef.current,
-          activityRef.current === 'thinking',
-        ),
-      )
+      player.setTarget(performanceRestDriverPatch(baselineRef.current, thinking))
     }
 
     const applyDriver = (player: Anime25DPlayer) => {
@@ -217,13 +221,10 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
                 playerRef.current?.getMotionPolicy().headBody === 'performance'
               playerRef.current?.setTarget({
                 ...(headOwned
-                  ? {
-                      ...performanceRestDriverPatch(
-                        baselineRef.current,
-                        activityRef.current === 'thinking',
-                      ),
-                      rand: false,
-                    }
+                  ? performanceRestDriverPatch(
+                      baselineRef.current,
+                      activityRef.current === 'thinking',
+                    )
                   : { thinking: activityRef.current === 'thinking' }),
                 ...cueDriverPatch(cue),
               })
