@@ -255,6 +255,7 @@ impl MiniMaxSpeech {
     }
 }
 
+#[derive(Debug)]
 enum T2aAudio {
     Bytes(Vec<u8>),
     Url(String),
