@@ -118,103 +118,8 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       })
     }
 
-    const clearCueTimers = () => {
-      for (const timer of cueTimersRef.current) window.clearTimeout(timer)
-      cueTimersRef.current.clear()
-      if (restoreTimerRef.current !== null) {
-        window.clearTimeout(restoreTimerRef.current)
-        restoreTimerRef.current = null
-      }
-      activePriorityRef.current = 0
-      activeUntilRef.current = 0
-    }
-
-    const schedulePerformanceBody = (
-      directive: PerformanceDirective,
-      directiveStartedAt: number,
-      player: Anime25DPlayer | null,
-    ) => {
-      if (manualRef.current || manualControl) return
-      if (directive.plan.baseline) {
-        baselineRef.current = directive.plan.baseline
-      }
-      if (player) applyPerformanceDriver(player)
-
-      for (const scheduled of scheduleBodyCues(
-        directive.plan.cues,
-        directiveStartedAt,
-      )) {
-        const cue = scheduled.cue
-        let scheduledStartAt = scheduled.startMs
-        const timer = window.setTimeout(
-          () => {
-            cueTimersRef.current.delete(timer)
-            const run = () => {
-              const priority = cuePriority(cue)
-              const now = performance.now()
-              const active = now < activeUntilRef.current
-              if (cue.interrupt === 'queue' && active) {
-                scheduledStartAt = activeUntilRef.current
-                const queued = window.setTimeout(() => {
-                  cueTimersRef.current.delete(queued)
-                  run()
-                }, scheduledStartAt - now)
-                cueTimersRef.current.add(queued)
-                return
-              }
-              if (
-                cue.interrupt === 'if-lower' &&
-                active &&
-                priority <= activePriorityRef.current
-              ) {
-                return
-              }
-              const duration = scheduledBodyCueRemainingDurationMs(
-                {
-                  ...scheduled,
-                  startMs: scheduledStartAt,
-                  endMs:
-                    scheduled.endMs + (scheduledStartAt - scheduled.startMs),
-                },
-                now,
-              )
-              if (duration <= 0) return
-              if (restoreTimerRef.current !== null)
-                window.clearTimeout(restoreTimerRef.current)
-              activePriorityRef.current = priority
-              activeUntilRef.current = now + duration
-              const headOwned =
-                playerRef.current?.getMotionPolicy().headBody === 'performance'
-              playerRef.current?.setTarget({
-                ...(headOwned
-                  ? performanceRestDriverPatch(
-                      baselineRef.current,
-                      activityRef.current === 'thinking',
-                    )
-                  : { thinking: activityRef.current === 'thinking' }),
-                ...cueDriverPatch(cue),
-              })
-              restoreTimerRef.current = window.setTimeout(() => {
-                activePriorityRef.current = 0
-                activeUntilRef.current = 0
-                restoreTimerRef.current = null
-                if (playerRef.current) {
-                  applyPerformanceDriver(playerRef.current)
-                }
-              }, duration)
-            }
-            run()
-          },
-          Math.max(0, scheduledStartAt - performance.now()),
-        )
-        cueTimersRef.current.add(timer)
-      }
-    }
-
     const enterManualControl = () => {
       if (manualRef.current) return
-      clearCueTimers()
-      if (playerRef.current) applyPerformanceDriver(playerRef.current)
       manualRef.current = true
     }
 
@@ -267,7 +172,6 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       playMotionPlan(directive, startedAtMs) {
         const acceptance = performanceGateRef.current.accept(directive)
         if (acceptance === 'reject') return false
-        if (acceptance === 'supersede') clearCueTimers()
         const now = performance.now()
         const directiveStartedAt = Number.isFinite(startedAtMs)
           ? Math.max(0, Math.min(now, startedAtMs as number))
@@ -281,21 +185,17 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         ) {
           return false
         }
+        if (directive.plan.baseline) {
+          baselineRef.current = directive.plan.baseline
+        }
         performanceRef.current = { directive, startedAtMs: directiveStartedAt }
-        schedulePerformanceBody(
-          directive,
-          directiveStartedAt,
-          playerRef.current,
-        )
         return true
       },
       stopMotionPlan() {
-        clearCueTimers()
         playerRef.current?.stopPerformance()
         baselineRef.current = null
         performanceRef.current = null
         performanceGateRef.current.reset()
-        if (playerRef.current) applyPerformanceDriver(playerRef.current)
       },
       setDriver(partial) {
         enterManualControl()
@@ -353,11 +253,6 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         player.playPerformance(
           performanceRef.current.directive,
           performanceRef.current.startedAtMs / 1_000,
-        )
-        schedulePerformanceBody(
-          performanceRef.current.directive,
-          performanceRef.current.startedAtMs,
-          player,
         )
       }
       applyDriver(player)
@@ -442,7 +337,6 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         })
       return () => {
         cancelled = true
-        clearCueTimers()
         window.cancelAnimationFrame(frame)
         observer.disconnect()
         viewportObserver?.disconnect()
