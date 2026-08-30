@@ -358,38 +358,18 @@ fn requested_cue(intent: &str) -> ChatPerformanceCue {
         at_ms: 0,
         intensity: 1.15,
         tempo: 1.0,
-        fade_in_ms: if sticker { 140 } else { 100 },
-        fade_out_ms: if sticker { 320 } else { 220 },
+        fade_in_ms: if sticker { 180 } else { 100 },
+        fade_out_ms: if sticker { 420 } else { 220 },
         interrupt: "replace".to_string(),
     }
 }
 
-fn landing_baseline(intent: &str) -> ChatPerformanceBaseline {
-    match intent {
-        "cry" => ChatPerformanceBaseline {
-            expression: "withdrawn".to_string(),
-            posture: "closed".to_string(),
-            motion_energy: 0.7,
-            attention: 0.65,
-        },
-        "angry" | "speechless" => ChatPerformanceBaseline {
-            expression: "subdued".to_string(),
-            posture: "neutral".to_string(),
-            motion_energy: 0.85,
-            attention: 0.7,
-        },
-        "dizzy" | "think" => ChatPerformanceBaseline {
-            expression: "steady".to_string(),
-            posture: "neutral".to_string(),
-            motion_energy: 0.8,
-            attention: 0.55,
-        },
-        _ => ChatPerformanceBaseline {
-            expression: "warm".to_string(),
-            posture: "neutral".to_string(),
-            motion_energy: 1.05,
-            attention: 0.7,
-        },
+fn landing_baseline(_intent: &str) -> ChatPerformanceBaseline {
+    ChatPerformanceBaseline {
+        expression: "steady".to_string(),
+        posture: "neutral".to_string(),
+        motion_energy: 1.0,
+        attention: 0.65,
     }
 }
 
@@ -928,9 +908,9 @@ mod tests {
             None,
         );
         assert_eq!(plan.cues[0].intent, "maniac");
-        assert_eq!(plan.cues[0].fade_in_ms, 140);
-        assert_eq!(plan.cues[0].fade_out_ms, 320);
-        assert_eq!(plan.baseline.as_ref().unwrap().expression, "warm");
+        assert_eq!(plan.cues[0].fade_in_ms, 180);
+        assert_eq!(plan.cues[0].fade_out_ms, 420);
+        assert_eq!(plan.baseline.as_ref().unwrap().expression, "steady");
         let cry = apply_user_requested_cue(
             ChatPerformancePlan::default(),
             MotionPhase::Delivery,
@@ -938,7 +918,7 @@ mod tests {
             Some("行，给你哭一个。"),
             None,
         );
-        assert_eq!(cry.baseline.as_ref().unwrap().expression, "withdrawn");
+        assert_eq!(cry.baseline.as_ref().unwrap().expression, "steady");
         let blocked = myriad_merope::sanitize_rig_state(&serde_json::json!({
             "capabilities": ["head-body"]
         }))
