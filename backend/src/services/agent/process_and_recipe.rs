@@ -144,6 +144,11 @@ impl Agent {
                 }
             };
             crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
+            crate::services::agent::merope::spawn_chat_remember(
+                user_id,
+                request.raw_input.clone(),
+                reply.clone(),
+            );
             return attach_motion_to_result(
                 Ok(AgentResponse {
                     response_type: AgentResponseType::Answer,
@@ -606,6 +611,11 @@ impl Agent {
                     Some(progress_tx.clone()),
                 );
             }
+            crate::services::agent::merope::spawn_chat_remember(
+                user_id,
+                request.raw_input.clone(),
+                reply.clone(),
+            );
             let performance = None;
 
             crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
@@ -1968,18 +1978,6 @@ impl Agent {
             frontend_action,
             performance: None,
         })
-    }
-
-    /// 处理用户确认
-    pub async fn confirmation_lane_key(
-        &self,
-        confirmation_id: &str,
-        user_id: i32,
-    ) -> Result<Option<String>, String> {
-        Ok(self
-            .confirmation_resume_context(confirmation_id, user_id)
-            .await?
-            .and_then(|ctx| ctx.lane_key))
     }
 
     /// Peek confirmation resume context without consuming the pending entry.

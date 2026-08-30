@@ -403,7 +403,11 @@ pub fn persona_remember_insert(candidate: &str, existing: &[String]) -> Option<S
     if duplicate { None } else { Some(compact) }
 }
 
-async fn persist_persona_remember(db: &DatabaseConnection, user_id: i32, candidate: Option<&str>) {
+pub(crate) async fn persist_persona_remember(
+    db: &DatabaseConnection,
+    user_id: i32,
+    candidate: Option<&str>,
+) {
     let Some(candidate) = candidate else {
         return;
     };
