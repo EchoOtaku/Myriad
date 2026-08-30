@@ -17,6 +17,7 @@ import React, {
 } from 'react'
 
 import { useNavigate } from 'react-router-dom'
+import { getAgentPanelVisible } from './agent-panel/agentPanelVisible'
 import { useAnimationPreference } from '../contexts/AnimationPreferenceContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
@@ -41,6 +42,7 @@ import {
   notificationSourceFor,
   notificationToastType,
   shouldDeliverNotification,
+  shouldEmitNotificationToast,
 } from '../services/notificationDelivery'
 import {
   getGreeting,
@@ -322,7 +324,13 @@ const GlobalControlPanel: React.FC = () => {
 
       // 2. 所有允许投递到 Toast 的通知都走同一全局容器。
       // 通知优先级只决定视觉类型，不再决定通知是否展示。
-      if (shouldDeliverNotification(notificationPreferences, n, 'toast')) {
+      if (
+        shouldEmitNotificationToast(
+          notificationPreferences,
+          n,
+          getAgentPanelVisible(),
+        )
+      ) {
         const showInPanel = shouldDeliverNotification(
           notificationPreferences,
           n,

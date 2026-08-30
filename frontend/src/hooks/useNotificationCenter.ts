@@ -103,8 +103,7 @@ export function useNotificationCenter({
           // broadcast 丢事件后后端发 resync；补拉历史避免漏通知
           void loadHistoryRef.current()
         }
-        // init / notification_read / notifications_read_all：
-        // 已读概念已移除，忽略（后端事件保留以兼容其他客户端）
+        // init / notification_read：已读动作已从本仓客户端拿掉，忽略。
       },
       {
         // EventSource 闪断重连后补拉，覆盖 resync 之外的丢包窗口

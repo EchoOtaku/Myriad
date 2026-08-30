@@ -19,10 +19,12 @@ import { useI18n } from '../../contexts/I18nContext'
 import { agentService } from '../../services/agent'
 import { AgentMarkdown } from './AgentMarkdown'
 import { AgentPanelThinking } from './AgentPanelThinking'
+import { useAgentPanelMode } from './agentPanelMode'
 import {
   BUBBLE_GROW_TAU,
   BUBBLE_SHRINK_TAU,
   messageHasAnswer,
+  messageShowsThinking,
   THINKING_FOLD_MS,
 } from './agentThinking'
 import { invalidateComposerFavorites } from './composerFavorites'
@@ -207,6 +209,7 @@ function useBubbleHeight(open: boolean): {
 export const AgentPanelMessage: React.FC<AgentPanelMessageProps> = React.memo(
   ({ message, onRetry, onAnswer, onSuggest, onZoomImage }) => {
     const { t, locale } = useI18n()
+    const mode = useAgentPanelMode()
     const [copied, setCopied] = useState(false)
 
     const copy = useCallback(() => {
@@ -240,10 +243,13 @@ export const AgentPanelMessage: React.FC<AgentPanelMessageProps> = React.memo(
     const question = message.question
     const hasAnswer = messageHasAnswer(message)
     const showsFooter = message.state !== 'streaming' && hasAnswer
-    const showsThinking =
-      isAssistant &&
-      !hasAnswer &&
-      !!(message.steps || message.thought || message.state === 'streaming')
+    const showsThinking = messageShowsThinking({
+      role: message.role,
+      hasAnswer,
+      streaming: message.state === 'streaming',
+      hasProcess: !!(message.steps?.length || message.thought),
+      hideThinking: mode === 'chat',
+    })
     const keepThinking = useHeldOpen(showsThinking, THINKING_FOLD_MS)
     const showsBody =
       message.role === 'user'

@@ -57,24 +57,6 @@ pub(crate) async fn toggle_heartbeat(
     }
 }
 
-/// 重新加载 Heartbeat 配置（HEARTBEAT.md 修改后调用）
-pub(crate) async fn reload_heartbeat(
-    State(db): State<DatabaseConnection>,
-    Extension(claims): Extension<Claims>,
-) -> Result<Json<Value>, HttpError> {
-    require_current_admin(&claims, &db).await?;
-    let manager = crate::services::agent::heartbeat::get_heartbeat().ok_or_else(|| {
-        HttpError::from((
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": "Heartbeat not initialized" })),
-        ))
-    })?;
-
-    manager.reload().await;
-    let tasks = manager.get_tasks().await;
-    Ok(Json(json!({ "reloaded": true, "task_count": tasks.len() })))
-}
-
 #[derive(Debug, Deserialize)]
 pub(crate) struct UpdateHeartbeatBody {
     name: Option<String>,
@@ -486,52 +468,6 @@ pub(crate) async fn delete_skill(
         .map_err(|e| HttpError::from((StatusCode::BAD_REQUEST, Json(json!({ "error": e })))))?;
 
     Ok(Json(json!({ "success": true })))
-}
-
-/// 获取能力缺口报告
-pub(crate) async fn list_capability_gaps(
-    State(db): State<DatabaseConnection>,
-    Extension(claims): Extension<Claims>,
-) -> Result<Json<Value>, HttpError> {
-    require_current_admin(&claims, &db).await?;
-    let evo = crate::services::agent::skill_evolution::get_skill_evolution().ok_or_else(|| {
-        HttpError::from((
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": "Skill evolution not initialized" })),
-        ))
-    })?;
-
-    let gaps = evo.get_all_gaps().await;
-    let significant_count = gaps.iter().filter(|g| g.confidence >= 0.7).count();
-
-    Ok(Json(json!({
-        "gaps": gaps,
-        "total": gaps.len(),
-        "significantCount": significant_count,
-    })))
-}
-
-// Multi-Agent Routing
-
-/// 获取所有 Agent 配置信息
-pub(crate) async fn list_agents() -> Json<Value> {
-    let router = crate::services::agent::routing::get_router();
-    let profiles: Vec<Value> = router
-        .get_all_profiles()
-        .iter()
-        .map(|p| {
-            json!({
-                "id": p.id,
-                "role": p.role,
-                "description": p.description,
-                "defaultTier": format!("{:?}", p.default_tier),
-                "maxConcurrency": p.max_concurrency,
-                "capabilityPrefixes": p.capability_prefixes,
-            })
-        })
-        .collect();
-
-    Json(json!({ "agents": profiles }))
 }
 
 // Session Control (Steer / Interrupt)

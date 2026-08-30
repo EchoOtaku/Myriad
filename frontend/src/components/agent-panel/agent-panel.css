@@ -52,7 +52,6 @@
   --agent-move: 480ms;
   --agent-swap: 320ms;
   --agent-stagger-step: 72ms;
-  --agent-stagger-max: 8;
   --agent-stagger-wave: 9;
   --agent-row-exit: 320ms;
   --agent-shell-max: calc(100dvh * 2 / 3);

@@ -125,6 +125,22 @@ export function thinkingVisible(
   return stepsWorthShowing(steps)
 }
 
+/**
+ * 气泡要不要摆思考。聊天档仍然收流，只是不画出来。
+ */
+export function messageShowsThinking(input: {
+  role: string
+  hasAnswer: boolean
+  streaming: boolean
+  hasProcess: boolean
+  hideThinking?: boolean
+}): boolean {
+  if (input.role !== 'assistant' || input.hasAnswer || input.hideThinking) {
+    return false
+  }
+  return input.hasProcess || input.streaming
+}
+
 const THINK_OPEN = /<think>/i
 const THINK_CLOSE = /<\/think>/i
 

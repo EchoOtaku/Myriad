@@ -61,7 +61,7 @@ export function agentPanelSubmitDetail(
   }
 }
 
-// 操作卡片的回话。同样只递不办 —— 真正调 /agent/confirm 的仍然是执行方。
+// 操作卡片的回话。同样只递不办 —— 真正调 /agent/confirm/stream 的仍然是执行方。
 
 export const AGENT_PANEL_ACTION_EVENT = 'agent-panel-action-decision'
 

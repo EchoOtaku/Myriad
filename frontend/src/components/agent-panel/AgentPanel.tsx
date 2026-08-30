@@ -52,6 +52,7 @@ import {
   agentPanelStageReducer,
   INITIAL_AGENT_PANEL_STAGE,
 } from './agentPanelStage'
+import { setAgentPanelVisible } from './agentPanelVisible'
 import { clearAgentSelection, watchAgentSelection } from './agentSelection'
 import {
   clearAgentUndoOffer,
@@ -115,6 +116,12 @@ export const AgentPanel: React.FC = () => {
   const showsOverlay = agentPanelShowsStage(stage, 'overlay')
   const showsFull = agentPanelShowsStage(stage, 'full')
   const messageCount = useAgentMessageCount()
+
+  useEffect(() => {
+    const visible = stage.stage !== 'island'
+    setAgentPanelVisible(visible)
+    return () => setAgentPanelVisible(false)
+  }, [stage.stage])
 
   const navLayout = useSyncExternalStore(
     subscribeNavLayout,

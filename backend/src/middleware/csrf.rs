@@ -818,7 +818,7 @@ mod tests {
         // Agent is NOT path-exempt (cookie sessions need CSRF).
         assert!(!is_csrf_exempt("/api/agent/process"));
         assert!(!is_csrf_exempt("/api/agent/process/stream"));
-        assert!(!is_csrf_exempt("/api/agent/confirm"));
+        assert!(!is_csrf_exempt("/api/agent/confirm/stream"));
         assert!(!is_csrf_exempt("/api/agent/presets"));
     }
 

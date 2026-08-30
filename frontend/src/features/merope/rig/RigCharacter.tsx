@@ -6,7 +6,6 @@ import type { MotionChannelPolicy } from '../motion/policy'
 import type { SingingSpectrumDrive } from '../singing/singingGroove'
 import type { MeropeActivity } from '../types'
 import type { SpeechArticulation } from './articulation'
-import type { GazeSource, GazeTarget } from './motion'
 import type { MeropeRigManifest } from './types'
 import {
   forwardRef,
@@ -39,20 +38,15 @@ export interface RigCharacterHandle {
   setSpeechEnergy: (energy: number | null) => void
   setSpeechArticulation: (articulation: SpeechArticulation) => void
   enqueueSpeechText: (text: string, locale?: string) => void
-  setGazeTarget: (target: GazeTarget | null, source?: GazeSource) => void
   playMotionPlan: (
     performance: PerformanceDirective,
     startedAtMs?: number,
   ) => boolean
   stopMotionPlan: () => void
-  captureFrame: () => string | null
   setDriver: (partial: Partial<Anime25DDriver>) => void
   replaceDriver: (driver: Anime25DDriver) => void
-  resetDriver: () => void
-  getDriver: () => Anime25DDriver | null
   blinkNow: () => void
   debugSnapshot: () => Anime25DDebugSnapshot | null
-  setMouse: (x: number, y: number, inside: boolean) => void
   setMotionPolicy: (policy: MotionChannelPolicy) => void
 }
 
@@ -152,8 +146,6 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
           pendingSpeechTextRef.current.push({ text, locale })
         }
       },
-      setGazeTarget: (target, source) =>
-        animeRef.current?.setGazeTarget(target, source),
       playMotionPlan: (directive, startedAtMs) => {
         const started = startedAtMs ?? window.performance.now()
         const accepted =
@@ -166,17 +158,10 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
         latestPerformanceRef.current = null
         animeRef.current?.stopMotionPlan()
       },
-      captureFrame: () => animeRef.current?.captureFrame() ?? null,
       setDriver: (partial) => animeRef.current?.setDriver(partial),
       replaceDriver: (driver) => animeRef.current?.replaceDriver(driver),
-      resetDriver: () => {
-        latestPerformanceRef.current = null
-        animeRef.current?.resetDriver()
-      },
-      getDriver: () => animeRef.current?.getDriver() ?? null,
       blinkNow: () => animeRef.current?.blinkNow(),
       debugSnapshot: () => animeRef.current?.debugSnapshot() ?? null,
-      setMouse: (x, y, inside) => animeRef.current?.setMouse(x, y, inside),
       setMotionPolicy: (policy) => {
         motionPolicyRef.current = policy
         animeRef.current?.setMotionPolicy(policy)

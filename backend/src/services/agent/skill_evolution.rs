@@ -1081,11 +1081,6 @@ origin: agent_generated
         self.stats.lock().await.clone()
     }
 
-    /// 获取所有能力缺口（用于调试/API）
-    pub async fn get_all_gaps(&self) -> Vec<CapabilityGap> {
-        self.capability_gaps.lock().await.clone()
-    }
-
     /// 手动删除一个 Agent 生成的 Skill（不允许删除 manual Skill）
     ///
     /// 软删除：移动到 skills/_trash/，不物理抹除。

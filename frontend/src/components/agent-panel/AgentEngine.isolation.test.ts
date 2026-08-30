@@ -28,4 +28,6 @@ test('Work interrupt cannot abort Chat SSE, and session ids stay per mode', () =
   assert.match(engine, /alreadyFed/)
   assert.doesNotMatch(engine, /if \(mode === 'chat'\) return/)
   assert.match(engine, /mode !== 'chat'/)
+  assert.match(engine, /case 'thinking_token'/)
+  assert.match(engine, /publishThinking/)
 })

@@ -7,6 +7,7 @@ import {
   BUBBLE_SHRINK_TAU,
   formatStepDuration,
   messageHasAnswer,
+  messageShowsThinking,
   nonemptyContent,
   peelThoughtFromContent,
   splitThinkContent,
@@ -103,6 +104,37 @@ test('有判断说明、但还没有正文时才摆过程', () => {
   assert.equal(thinkingVisible([], false, '先查天气再写', true), false)
 })
 
+test('聊天档不画思考，做事档流式时要占一行', () => {
+  assert.equal(
+    messageShowsThinking({
+      role: 'assistant',
+      hasAnswer: false,
+      streaming: true,
+      hasProcess: true,
+      hideThinking: true,
+    }),
+    false,
+  )
+  assert.equal(
+    messageShowsThinking({
+      role: 'assistant',
+      hasAnswer: false,
+      streaming: true,
+      hasProcess: false,
+    }),
+    true,
+  )
+  assert.equal(
+    messageShowsThinking({
+      role: 'user',
+      hasAnswer: false,
+      streaming: false,
+      hasProcess: true,
+    }),
+    false,
+  )
+})
+
 test('只有空白不算正文，否则思考会被卸掉、气泡里剩一圈空垫', () => {
   assert.equal(nonemptyContent('\n\n'), '')
   assert.equal(nonemptyContent('  你好'), '  你好')
@@ -193,6 +225,8 @@ test('思考过程本文要折行，不能被步骤名那套 ellipsis 裁掉', (
     message,
     /agent-panel-message-body[\s\S]*showsThinking[\s\S]*AgentPanelThinking/,
   )
+  assert.match(message, /messageShowsThinking/)
+  assert.match(message, /hideThinking: mode === 'chat'/)
   assert.match(message, /agent-panel-message-grow/)
   assert.match(message, /agent-panel-thinking-slot/)
   assert.match(message, /agent-panel-tag-text/)

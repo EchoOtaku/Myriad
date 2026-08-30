@@ -4,7 +4,6 @@ import type {
 } from '../../../services/agent/types'
 import type { MotionChannelPolicy } from '../motion/policy'
 import type { SpeechArticulation } from '../rig/articulation'
-import type { GazeSource, GazeTarget } from '../rig/motion'
 import type { MeropeRigManifest } from '../rig/types'
 import type { SingingSpectrumDrive } from '../singing/singingGroove'
 import type { MeropeActivity } from '../types'
@@ -18,7 +17,6 @@ import {
   useRef,
   useState,
 } from 'react'
-import { IDENTITY_DRIVER } from './driver'
 import { activityExpressionDriverPatch } from './expressionPresets'
 import { PerformanceDirectiveGate } from './performanceExpression'
 import {
@@ -56,20 +54,15 @@ export interface Anime25DCharacterHandle {
   setSpeechEnergy: (energy: number | null) => void
   setSpeechArticulation: (articulation: SpeechArticulation) => void
   enqueueSpeechText: (text: string, locale?: string) => void
-  setGazeTarget: (target: GazeTarget | null, source?: GazeSource) => void
   playMotionPlan: (
     performance: PerformanceDirective,
     startedAtMs?: number,
   ) => boolean
   stopMotionPlan: () => void
-  captureFrame: () => string | null
   setDriver: (partial: Partial<Anime25DDriver>) => void
   replaceDriver: (driver: Anime25DDriver) => void
-  resetDriver: () => void
-  getDriver: () => Anime25DDriver | null
   blinkNow: () => void
   debugSnapshot: () => Anime25DDebugSnapshot | null
-  setMouse: (x: number, y: number, inside: boolean) => void
   setMotionPolicy: (policy: MotionChannelPolicy) => void
 }
 
@@ -304,12 +297,6 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
           pendingSpeechTextRef.current.push({ text, locale })
         }
       },
-      setGazeTarget(target) {
-        playerRef.current?.setTarget({
-          angleX: target ? target.x * 0.35 : 0,
-          angleY: target ? target.y * 0.28 : 0,
-        })
-      },
       playMotionPlan(directive, startedAtMs) {
         const acceptance = performanceGateRef.current.accept(directive)
         if (acceptance === 'reject') return false
@@ -343,9 +330,6 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         performanceGateRef.current.reset()
         if (playerRef.current) applyPerformanceDriver(playerRef.current)
       },
-      captureFrame() {
-        return playerRef.current?.captureFrame() ?? null
-      },
       setDriver(partial) {
         enterManualControl()
         speechMouthFormRef.current = updatedSpeechMouthFormBaseline(
@@ -364,27 +348,11 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         )
         playerRef.current?.replaceTarget(driver)
       },
-      resetDriver() {
-        clearCueTimers()
-        playerRef.current?.stopPerformance()
-        baselineRef.current = null
-        performanceRef.current = null
-        performanceGateRef.current.reset()
-        manualRef.current = false
-        playerRef.current?.replaceTarget({ ...IDENTITY_DRIVER })
-        if (playerRef.current) applyDriver(playerRef.current)
-      },
-      getDriver() {
-        return playerRef.current?.getTarget() ?? null
-      },
       blinkNow() {
         playerRef.current?.blinkNow()
       },
       debugSnapshot() {
         return playerRef.current?.debugSnapshot() ?? null
-      },
-      setMouse(x, y, inside) {
-        playerRef.current?.setMouse(x, y, inside)
       },
       setMotionPolicy(policy) {
         motionPolicyRef.current = policy

@@ -140,7 +140,6 @@ describe('agent panel motion contract', () => {
     assert.match(presence, /--agent-stagger/)
     assert.match(presence, /AGENT_ROW_STAGGER_MAX/)
     assert.match(css, /--agent-stagger-step:\s*72ms/)
-    assert.match(css, /--agent-stagger-max:\s*8/)
     assert.match(css, /--agent-stagger-wave:\s*9/)
     assert.match(css, /--agent-row-exit:\s*320ms/)
     assert.match(css, /data-exiting='true'/)

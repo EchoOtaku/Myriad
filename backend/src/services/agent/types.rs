@@ -935,8 +935,8 @@ impl Default for Capability {
     }
 }
 
-#[allow(dead_code)]
 impl Recipe {
+    #[allow(dead_code)] // 仅测试调用：本仓无生产调用点（编译器已核）。
     pub fn new(name: &str, original_request: &str, execution_type: ExecutionType) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
@@ -953,19 +953,6 @@ impl Recipe {
             lane_key: None,
             autonomy_permission_cap: None,
         }
-    }
-
-    pub fn add_step(&mut self, step: RecipeStep) {
-        self.steps.push(step);
-        self.recalculate_duration();
-    }
-
-    fn recalculate_duration(&mut self) {
-        self.estimated_duration_ms = self
-            .steps
-            .iter()
-            .map(|s| s.timeout_ms.unwrap_or(5000))
-            .sum();
     }
 }
 
@@ -1069,8 +1056,6 @@ pub struct ExecutionContext {
     pub original_request: String,
     /// 用户意图描述
     pub user_intent: String,
-    /// 不确定性列表（需要澄清的点）
-    pub uncertainties: Vec<Uncertainty>,
     /// 已回答的问题
     pub answered_questions: HashMap<String, String>,
     /// 执行决策历史（用于追踪 AI 的决策过程）
@@ -1117,7 +1102,6 @@ impl Default for ExecutionContext {
             variables: HashMap::new(),
             original_request: String::new(),
             user_intent: String::new(),
-            uncertainties: Vec::new(),
             answered_questions: HashMap::new(),
             decision_history: Vec::new(),
             page_context: None,
@@ -1130,54 +1114,6 @@ impl Default for ExecutionContext {
             autonomy_permission_cap: None,
         }
     }
-}
-
-/// 不确定性 - 执行过程中发现的需要澄清的点
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Uncertainty {
-    /// 不确定性 ID
-    pub id: String,
-    /// 不确定性类型
-    pub uncertainty_type: UncertaintyType,
-    pub description: String,
-    /// 可能的选项
-    pub possible_values: Vec<String>,
-    /// 重要程度（影响后续执行的程度）
-    pub importance: UncertaintyImportance,
-    /// 发现时的步骤 ID
-    pub discovered_at_step: Option<String>,
-}
-
-/// 不确定性类型
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum UncertaintyType {
-    /// 目标不明确（如"那个应用"具体是哪个）
-    AmbiguousTarget,
-    /// 操作不明确（如"处理一下"具体要怎么处理）
-    AmbiguousAction,
-    /// 参数不明确（如"最近的"是多久）
-    AmbiguousParameter,
-    /// 多个匹配项（找到多个可能的目标）
-    MultipleMatches,
-    /// 缺少必要信息
-    MissingRequired,
-    /// 结果需要确认
-    NeedsConfirmation,
-    /// 意外情况（执行结果与预期不符）
-    UnexpectedResult,
-}
-
-/// 不确定性重要程度
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum UncertaintyImportance {
-    /// 关键 - 必须解决才能继续
-    Critical,
-    /// 重要 - 影响结果准确性
-    Important,
-    /// 次要 - 可以使用默认值
-    Minor,
 }
 
 /// 执行决策 - 记录 AI 在执行过程中的决策
@@ -1228,35 +1164,7 @@ pub struct InteractionTarget {
     pub params: Option<Value>,
 }
 
-#[allow(dead_code)]
 impl ExecutionContext {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// 从用户请求创建上下文
-    pub fn from_request(request: &str, intent: &str) -> Self {
-        Self {
-            original_request: request.to_string(),
-            user_intent: intent.to_string(),
-            ..Default::default()
-        }
-    }
-
-    /// 从用户请求创建上下文（带页面上下文）
-    pub fn from_request_with_page_context(
-        request: &str,
-        intent: &str,
-        page_context: Option<Value>,
-    ) -> Self {
-        Self {
-            original_request: request.to_string(),
-            user_intent: intent.to_string(),
-            page_context,
-            ..Default::default()
-        }
-    }
-
     /// 从用户请求创建完整上下文（包含对话历史和页面上下文）
     pub fn from_request_full(
         request: &str,
@@ -1278,11 +1186,6 @@ impl ExecutionContext {
         self.step_outputs.insert(step_id.to_string(), output);
     }
 
-    /// 获取步骤输出
-    pub fn get_output(&self, step_id: &str) -> Option<&Value> {
-        self.step_outputs.get(step_id)
-    }
-
     /// 获取所有步骤输出（用于向后续步骤共享已有结果）
     pub fn get_all_outputs(&self) -> &HashMap<String, Value> {
         &self.step_outputs
@@ -1291,11 +1194,6 @@ impl ExecutionContext {
     /// 设置变量
     pub fn set_var(&mut self, key: &str, value: Value) {
         self.variables.insert(key.to_string(), value);
-    }
-
-    /// 获取变量
-    pub fn get_var(&self, key: &str) -> Option<&Value> {
-        self.variables.get(key)
     }
 
     /// 添加待执行的动态步骤（硬上限 15 个，含 ID 去重和自依赖检测）
@@ -1352,23 +1250,6 @@ impl ExecutionContext {
         self.pending_dynamic_steps.extend(accepted);
     }
 
-    /// 在队列前端插入步骤（优先执行，受硬上限约束）
-    pub fn prepend_dynamic_steps(&mut self, steps: Vec<RecipeStep>) {
-        const MAX_DYNAMIC_QUEUE: usize = 15;
-        let remaining = MAX_DYNAMIC_QUEUE.saturating_sub(self.dynamic_steps_generated);
-        if remaining == 0 {
-            return;
-        }
-        let accepted: Vec<RecipeStep> = steps.into_iter().take(remaining).collect();
-        self.dynamic_steps_generated += accepted.len();
-        for step in &accepted {
-            self.dynamic_step_ids.insert(step.id.clone());
-        }
-        let mut new_steps = accepted;
-        new_steps.append(&mut self.pending_dynamic_steps);
-        self.pending_dynamic_steps = new_steps;
-    }
-
     /// 判断某步骤是否为动态生成（未经 Planner 层敏感操作确认）
     pub fn is_dynamic_step(&self, step_id: &str) -> bool {
         self.dynamic_step_ids.contains(step_id)
@@ -1386,27 +1267,6 @@ impl ExecutionContext {
     /// 检查是否有待执行的动态步骤
     pub fn has_pending_steps(&self) -> bool {
         !self.pending_dynamic_steps.is_empty()
-    }
-
-    /// 添加不确定性
-    pub fn add_uncertainty(&mut self, uncertainty: Uncertainty) {
-        self.uncertainties.push(uncertainty);
-    }
-
-    /// 检查是否有关键不确定性需要解决
-    pub fn has_critical_uncertainty(&self) -> bool {
-        self.uncertainties
-            .iter()
-            .any(|u| u.importance == UncertaintyImportance::Critical)
-    }
-
-    /// 获取所有未解决的关键不确定性
-    pub fn get_critical_uncertainties(&self) -> Vec<&Uncertainty> {
-        self.uncertainties
-            .iter()
-            .filter(|u| u.importance == UncertaintyImportance::Critical)
-            .filter(|u| !self.answered_questions.contains_key(&u.id))
-            .collect()
     }
 
     /// 记录用户回答
@@ -1430,19 +1290,6 @@ impl ExecutionContext {
             reasoning: reasoning.to_string(),
             related_step: step_id.map(|s| s.to_string()),
         });
-    }
-
-    /// 生成上下文摘要（用于 AI 分析）
-    pub fn generate_summary(&self) -> Value {
-        serde_json::json!({
-            "original_request": self.original_request,
-            "user_intent": self.user_intent,
-            "completed_steps": self.step_outputs.keys().collect::<Vec<_>>(),
-            "pending_steps": self.pending_dynamic_steps.len(),
-            "uncertainties": self.uncertainties.iter().map(|u| &u.description).collect::<Vec<_>>(),
-            "answered_questions": self.answered_questions,
-            "variables": self.variables,
-        })
     }
 }
 

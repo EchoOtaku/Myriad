@@ -457,9 +457,6 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (code === 'login_required') {
     return t.unauthorized
   }
-  if (code === 'confirmation_stream_required') {
-    return t.stepNeedsConfirm
-  }
   if (code === 'lyrics_fetch_failed' || /^failed to fetch (verbatim )?lyrics/i.test(raw)) {
     return t.lyricsFailed.replace('{status}', String(status || 502))
   }

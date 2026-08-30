@@ -35,7 +35,7 @@ export interface ExecutionStep {
 /** 待回答问题 */
 export interface PendingQuestion {
   questionId: string
-  /** 敏感操作确认 ID；存在时提交到 /agent/confirm */
+  /** 敏感操作确认 ID；存在时提交到 /agent/confirm/stream */
   confirmationId?: string
   questionType: string
   question: string

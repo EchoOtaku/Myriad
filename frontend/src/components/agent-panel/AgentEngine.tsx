@@ -584,7 +584,7 @@ export const AgentEngine: React.FC = () => {
       window.removeEventListener(AGENT_PANEL_SUBMIT_EVENT, handleSubmit)
   }, [])
 
-  // 操作卡片上按的那一下。卡片只递决定，真正调 /agent/confirm 的仍然是这里，
+  // 操作卡片上按的那一下。卡片只递决定，真正调 /agent/confirm/stream 的仍然是这里，
   // 过期校验、进度流、失败兜底都在原来那条路上。
   useEffect(() => {
     const handleDecision = (event: Event) => {
