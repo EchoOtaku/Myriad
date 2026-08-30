@@ -15,17 +15,19 @@ const FFT = 256
 /**
  * Plays a TTS buffer through WebAudio. Energy and visemes come from the
  * actual audio; the caller must not fall back to text visemes while this runs.
+ * `context` exists so the lifecycle can be tested without a real audio device.
  */
 export function playTtsBuffer(
   audio: ArrayBuffer,
   _segment: SpeechSegment,
   hooks: TtsPlayHooks,
+  context?: AudioContext,
 ): TtsPlayHandle {
-  if (typeof AudioContext === 'undefined') {
+  if (!context && typeof AudioContext === 'undefined') {
     queueMicrotask(hooks.onEnded)
     return { stop() {} }
   }
-  const ctx = speechAudioContext()
+  const ctx = context ?? speechAudioContext()
   let source: AudioBufferSourceNode | null = null
   let analyser: AnalyserNode | null = null
   let raf = 0

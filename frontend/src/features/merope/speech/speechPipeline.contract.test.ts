@@ -6,29 +6,27 @@ function source(relative: string): string {
   return readFileSync(new URL(relative, import.meta.url), 'utf8')
 }
 
-test('TTS audio stays off the run hub and cancel stops the buffer source', () => {
-  const player = source('./ttsPlayer.ts')
-  assert.match(player, /source\?\.stop/)
-  assert.match(player, /AudioBufferSourceNode/)
+/**
+ * Only "this path does not exist" belongs here: a regex over source text can
+ * prove an absence, never a behaviour. Everything these tests used to assert
+ * positively now has a real test, named alongside it.
+ */
+
+test('speech never reaches the run hub and never persists visemes', () => {
+  // Behaviour: speech/ttsPlayer.test.ts, speech/ttsPipeline.test.ts.
   const host = source('./speechPipelineHost.ts')
   assert.doesNotMatch(host, /run_hub|AgentProgressEvent/)
-  assert.match(host, /phase: 'cancel'/)
-  assert.match(host, /speakLine/)
-  const pipeline = source('./ttsPipeline.ts')
-  assert.match(pipeline, /MAX_SYNTH = 2/)
   const trace = source('../turnTrace.ts')
   assert.doesNotMatch(trace, /run_hub/)
   assert.doesNotMatch(trace, /phase: 'articulation'/)
 })
 
-test('continuous listen is off until the person turns it on', () => {
-  const consent = source('../../../components/agent-panel/listenConsent.ts')
-  assert.match(consent, /getServerListenConsent/)
-  assert.match(consent, /return false/)
+test('recording never buffers audio while listening is off, and never interrupts a task', () => {
+  // Behaviour: components/agent-panel/listenConsent.test.ts (consent defaults
+  // off) and turnTrace.test.ts (an abandoned recording is dropped). The hook
+  // itself needs a DOM, so the two invariants below stay textual: both are
+  // absences, which is what this form can actually prove.
   const recording = source('../../../components/agent-panel/useVoiceRecording.ts')
-  assert.match(recording, /getSpeechPipeline\(\)\.cancel\(\)/)
-  assert.match(recording, /dropPendingTurnTrace/)
-  assert.match(recording, /MAX_LISTEN_SAMPLES/)
-  assert.match(recording, /if \(!listeningRef\.current\) \{\s*recorder\.pcmData\.push/)
   assert.doesNotMatch(recording, /interruptCurrentTask/)
+  assert.doesNotMatch(recording, /pcmData\.push[\s\S]{0,80}listeningRef\.current \?/)
 })
