@@ -319,7 +319,7 @@ const CUE_INDEX: &[(&str, &str, &str)] = &[
 
 fn motion_expression_index() -> String {
     let mut lines = Vec::new();
-    lines.push("表情底 baseline.expression（除 continue 外每回合必选一个）：".to_string());
+    lines.push("表情底 baseline.expression（每回合必选一个）：".to_string());
     for (name, meaning) in BASELINE_INDEX {
         lines.push(format!("- {name}：{meaning}"));
     }
@@ -328,7 +328,7 @@ fn motion_expression_index() -> String {
         lines.push(format!("- {name}：{meaning}"));
     }
     lines.push(
-        "瞬时表情 cues.intent（除 continue 外每回合 1–3 个。下列每一项都是可调用的合法选择；按人设取用，不要因为话里没有字面关键词就整表弃用）："
+        "瞬时表情 cues.intent（每回合 1–3 个。下列每一项都是可调用的合法选择；按人设取用，不要因为话里没有字面关键词就整表弃用）："
             .to_string(),
     );
     for (name, meaning, capability) in CUE_INDEX {
@@ -343,36 +343,25 @@ fn motion_expression_index() -> String {
 
 fn motion_system_prompt() -> String {
     format!(
-        r#"你是这个人设的动作导演，不是统一的克制动画。
-只选语义表演，不输出骨骼、坐标、角度、blendshape、口型、driver 或逐帧数据。
-
-人设优先：读输入里的 persona（temperament / socialStyle / speechStyle / personality）。这个人会怎么露脸，你就怎么选。不要套「普通回复不要表情」。mood 是已保存的事实，不要改心情。
-rig.motionStyle 只是粗分：restrained 偏低强度但仍要有表情；even 按人设中度；open 更放开、更常上特殊表情。三者都不是「尽量 continue」。
+        r#"你是这个人设的动作导演。只选语义表演，不输出骨骼、坐标、角度、blendshape、口型、driver 或逐帧数据。
+读输入里的 persona，按这个人会怎么露脸来选。mood 是已保存的事实，不要改。
 
 {}
 
 合法枚举：baseline.expression 只能是 {}；baseline.posture 只能是 {}；cues.intent 只能是 {}，最多 3 个。
+每回合必须给出 baseline 和 1–3 个 cue。不要输出 continue，空对象无效。
+只丢掉做不到的：缺能力表里的贴纸层就不要选那一项；说话占嘴时不要选 cry/maniac/silly；唱歌占身时不要选会抢头身的意图。
 
-选用规则：
-- 除 continue 外，必须同时给出 baseline 和至少 1 个 cue。空对象无效。
-- 只有 rig.acting.remainingMs 仍大且当前 acting.intent 仍然适合这个人、这一句，才输出 {{"continue":true}}。普通闲聊、换了一句新话、人设会换脸时，不要 continue。
-- 不要连续重复 rig.recentIntents 里最近一次特殊表情（dizzy/cry/angry/speechless/maniac/silly/lovestruck），换一个仍符合人设的。
-- 只使用 rig.capabilities 里有的能力。缺对应能力就不要选那一项；有能力时这些表情都要能被选到。
-- rig.capabilities 为空时只能选 listen/respond/think，baseline 仍要选；有能力时不要用这三项凑数，把人设会用的表情用上。
-- rig.owners.mouth 是 speech 时不要选 cry/maniac/silly（嘴已被语音占用）。
-- 在唱歌或 musicPlaying 时优先 listen/respond/think，tempo 贴近节拍，不要抢头身。
-- reaction 回应用户刚说的；delivery 配合即将说的话；outcome 配合任务结果；proactive 配合自己找上门的那句。
-
-强度：restrained 的 motionEnergy 0.55–0.9、cue intensity 0.75–1.05；even 0.75–1.15 / 0.9–1.25；open 1.0–1.4 / 1.05–1.4。按人设偏开放的往上取。
-
-按性格取表情，而不是按字面情绪词：
-- 慢热、内向、克制：底用 withdrawn/subdued，常用 listen/think/respond；被真正戳到时仍要用 cry/speechless，不要整场无表情。
+按性格取表情：
+- 慢热、内向、克制：底用 withdrawn/subdued，常用 listen/think/respond；被戳到时仍用 cry/speechless。
 - 外向、活泼、爱闹：底用 warm，常用 greet/delight/emphasize；玩笑用 silly，兴奋可用 maniac，亲近可用 lovestruck。
 - 嘴硬、毒舌、边界感：speechless/angry/emphasize 多于 delight。
 - 认真、轴：question/think/emphasize 多于 silly。
-- 软、会亲近：warm + delight，心动或被夸奖时可以用 lovestruck。
-没有人设时按 even：每回合仍要有 baseline + cue。
+- 软、会亲近：warm + delight，被夸奖时可以用 lovestruck。
+没有人设时按 even，仍要有 baseline + cue。
+强度：restrained 的 motionEnergy 0.55–0.9、cue intensity 0.75–1.05；even 0.75–1.15 / 0.9–1.25；open 1.0–1.4 / 1.05–1.4。
 
+reaction 回应用户刚说的；delivery 配合即将说的话；outcome 配合任务结果；proactive 配合自己找上门的那句。
 输出必须符合 JSON schema。"#,
         motion_expression_index(),
         PERFORMANCE_BASELINE_EXPRESSIONS.join("/"),
@@ -468,7 +457,6 @@ fn motion_schema() -> serde_json::Value {
                     "required": ["intent", "atMs", "intensity", "tempo", "fadeInMs", "fadeOutMs", "interrupt"]
                 }
             },
-            "continue": { "type": "boolean" }
         },
         "additionalProperties": false
     })
@@ -533,23 +521,20 @@ mod tests {
         assert!(intents.iter().any(|value| value == "silly"));
         assert!(intents.iter().any(|value| value == "lovestruck"));
         let prompt = motion_system_prompt();
-        assert!(prompt.contains("人设优先"));
+        assert!(prompt.contains("按这个人会怎么露脸"));
         assert!(prompt.contains("按性格取表情"));
         assert!(!prompt.contains("只有文本明确表现"));
         assert!(!prompt.contains("不要夸张"));
+        assert!(!prompt.contains("不要连续重复"));
+        assert!(!prompt.contains("rig.capabilities 为空"));
         assert!(prompt.contains(&PERFORMANCE_BASELINE_EXPRESSIONS.join("/")));
         assert!(prompt.contains(&PERFORMANCE_POSTURES.join("/")));
         assert!(prompt.contains(&PERFORMANCE_CUE_INTENTS.join("/")));
         assert!(!prompt.contains("angleZ"));
-        assert!(prompt.contains("continue"));
+        assert!(prompt.contains("不要输出 continue"));
         assert!(prompt.contains("空对象无效"));
-        assert!(prompt.contains("rig.capabilities 为空"));
-        assert!(prompt.contains("rig.owners.mouth"));
-        assert!(prompt.contains("musicPlaying"));
-        assert!(prompt.contains("motionStyle"));
-        assert!(prompt.contains("capabilities"));
         assert!(prompt.contains("persona"));
-        assert!(schema.pointer("/properties/continue").is_some());
+        assert!(schema.pointer("/properties/continue").is_none());
         assert!(schema.get("required").is_none());
     }
 
