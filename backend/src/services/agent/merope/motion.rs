@@ -338,14 +338,47 @@ fn alias_request_pos(text: &str, folded: &str, alias: &str) -> Option<usize> {
 }
 
 fn requested_cue(intent: &str) -> ChatPerformanceCue {
+    let sticker = matches!(
+        intent,
+        "maniac" | "silly" | "cry" | "dizzy" | "lovestruck" | "angry"
+    );
     ChatPerformanceCue {
         intent: intent.to_string(),
         at_ms: 0,
         intensity: 1.15,
         tempo: 1.0,
-        fade_in_ms: 80,
-        fade_out_ms: 180,
+        fade_in_ms: if sticker { 140 } else { 100 },
+        fade_out_ms: if sticker { 320 } else { 220 },
         interrupt: "replace".to_string(),
+    }
+}
+
+fn landing_baseline(intent: &str) -> ChatPerformanceBaseline {
+    match intent {
+        "cry" => ChatPerformanceBaseline {
+            expression: "withdrawn".to_string(),
+            posture: "closed".to_string(),
+            motion_energy: 0.7,
+            attention: 0.65,
+        },
+        "angry" | "speechless" => ChatPerformanceBaseline {
+            expression: "subdued".to_string(),
+            posture: "neutral".to_string(),
+            motion_energy: 0.85,
+            attention: 0.7,
+        },
+        "dizzy" | "think" => ChatPerformanceBaseline {
+            expression: "steady".to_string(),
+            posture: "neutral".to_string(),
+            motion_energy: 0.8,
+            attention: 0.55,
+        },
+        _ => ChatPerformanceBaseline {
+            expression: "warm".to_string(),
+            posture: "neutral".to_string(),
+            motion_energy: 1.05,
+            attention: 0.7,
+        },
     }
 }
 
@@ -367,14 +400,7 @@ fn apply_user_requested_cue(
     if plan.cues.len() > 3 {
         plan.cues.truncate(3);
     }
-    if plan.baseline.is_none() {
-        plan.baseline = Some(ChatPerformanceBaseline {
-            expression: "warm".to_string(),
-            posture: "neutral".to_string(),
-            motion_energy: 1.1,
-            attention: 0.7,
-        });
-    }
+    plan.baseline = Some(landing_baseline(intent));
     plan
 }
 
@@ -830,7 +856,11 @@ mod tests {
     fn asked_expression_survives_lite_failure_when_the_face_can_play_it() {
         let plan = apply_user_requested_cue(ChatPerformancePlan::default(), "做一下狂笑", None);
         assert_eq!(plan.cues[0].intent, "maniac");
-        assert!(plan.baseline.is_some());
+        assert_eq!(plan.cues[0].fade_in_ms, 140);
+        assert_eq!(plan.cues[0].fade_out_ms, 320);
+        assert_eq!(plan.baseline.as_ref().unwrap().expression, "warm");
+        let cry = apply_user_requested_cue(ChatPerformancePlan::default(), "来个哭脸", None);
+        assert_eq!(cry.baseline.as_ref().unwrap().expression, "withdrawn");
         let blocked = myriad_merope::sanitize_rig_state(&serde_json::json!({
             "capabilities": ["head-body"]
         }))
