@@ -1,13 +1,79 @@
+import type { PerformanceDirective } from '../../../services/agent/types'
+import type { MotionFrame } from './intents'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { arbitrateFaceSpeech } from '../faceSpeechArbitration'
+import { applyMotionFrame, createMotionApplyState } from './applyFrame'
 import { applySingingWrite } from './applySnapshot'
 import { RigMotionCoordinator } from './coordinator'
 import { resolveSingingApply } from './singingApply'
 
 function source(relative: string): string {
   return readFileSync(new URL(relative, import.meta.url), 'utf8')
+}
+
+function recordingRig() {
+  const calls: string[] = []
+  return {
+    calls,
+    rig: {
+      setMotionPolicy: (policy: { mouth: string; expression: string }) =>
+        calls.push(`policy:${policy.mouth}:${policy.expression}`),
+      setSpeechActive: (value: boolean) => calls.push(`speechActive:${value}`),
+      setAutoSpeech: (value: boolean) => calls.push(`auto:${value}`),
+      setSpeechEnergy: () => undefined,
+      setSpeechArticulation: () => undefined,
+      enqueueSpeechText: (text: string) => calls.push(`text:${text}`),
+      playMotionPlan: () => {
+        calls.push('play')
+        return true
+      },
+      stopMotionPlan: () => calls.push('stop'),
+      setSinging: (value: boolean) => calls.push(`singing:${value}`),
+      setSingingSpectrum: () => undefined,
+    },
+  }
+}
+
+function frame(
+  coordinator: RigMotionCoordinator,
+  nowMs: number,
+  extra: Partial<MotionFrame> = {},
+): MotionFrame {
+  return {
+    snapshot: coordinator.snapshot(nowMs),
+    speech: null,
+    performance: null,
+    music: null,
+    mood: null,
+    autonomy: null,
+    ...extra,
+  }
+}
+
+const listenPlan: PerformanceDirective = {
+  phase: 'mood',
+  moodRevision: 0,
+  plan: {
+    baseline: {
+      expression: 'steady',
+      posture: 'neutral',
+      motionEnergy: 0.55,
+      attention: 0.45,
+    },
+    cues: [
+      {
+        intent: 'listen',
+        atMs: 0,
+        intensity: 0.55,
+        tempo: 1,
+        fadeInMs: 80,
+        fadeOutMs: 120,
+        interrupt: 'if-lower',
+      },
+    ],
+  },
 }
 
 test('Chat speech occupies only the mouth; music keeps head and body', () => {
@@ -73,19 +139,41 @@ test('background Work cannot take the visible Chat face', () => {
   )
 })
 
-test('player still composites groove, random, performance, expression, then speech', () => {
-  const player = source('../anime25drig/player.ts')
-  const ambient = player.indexOf('applyAnime25DAmbientMotion(')
-  const action = player.indexOf('applyAnime25DActionMotion(')
-  const stylized = player.indexOf('applyAnime25DStylizedMotion(')
-  const speech = player.indexOf('applyAnime25DSpeechMotion(')
-  assert.ok(ambient > 0 && action > ambient)
-  assert.ok(stylized > action)
-  assert.ok(speech > stylized)
-  const composition = source('../anime25drig/driverComposition.ts')
-  const random = composition.indexOf('applyRandomActionFrame(')
-  const groove = composition.indexOf('applySingingGroove(')
-  assert.ok(random > 0 && groove > random)
+test('applyFrame writes speech text only while speech owns the mouth', () => {
+  const coordinator = new RigMotionCoordinator()
+  coordinator.claim('music', ['mouth', 'headBody'], { nowMs: 0 })
+  coordinator.claim('speech', ['mouth'], { nowMs: 1 })
+  const host = recordingRig()
+  applyMotionFrame(
+    host.rig,
+    frame(coordinator, 1, {
+      speech: {
+        active: true,
+        autoSpeech: true,
+        energy: null,
+        articulation: null,
+        queuedText: [{ seq: 1, text: '你好' }],
+      },
+    }),
+    createMotionApplyState(),
+  )
+  assert.ok(host.calls.includes('policy:speech:idle'))
+  assert.ok(host.calls.includes('text:你好'))
+})
+
+test('applyFrame plays an autonomy plan only while autonomy owns the face', () => {
+  const coordinator = new RigMotionCoordinator()
+  const handle = coordinator.claim('autonomy', ['expression', 'gaze'], {
+    nowMs: 1,
+  })
+  const host = recordingRig()
+  const state = createMotionApplyState()
+  const autonomy = { directive: listenPlan, startedAtMs: 20 }
+  applyMotionFrame(host.rig, frame(coordinator, 1, { autonomy }), state)
+  coordinator.release(handle)
+  applyMotionFrame(host.rig, frame(coordinator, 2, { autonomy }), state)
+  assert.ok(host.calls.includes('play'))
+  assert.ok(host.calls.includes('stop'))
 })
 
 test('production faces consume the snapshot; sources do not take a rig', () => {
