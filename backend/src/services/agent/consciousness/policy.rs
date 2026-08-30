@@ -55,15 +55,11 @@ pub fn validate_decision(
         ConsciousnessAction::Remember => {
             memory.is_some() && speech.is_none() && question.is_none() && proposal.is_none()
         }
-        ConsciousnessAction::Speak => {
-            memory.is_none() && speech.is_some() && question.is_none() && proposal.is_none()
-        }
+        ConsciousnessAction::Speak => speech.is_some() && question.is_none() && proposal.is_none(),
         ConsciousnessAction::ProposeWork => {
             memory.is_none() && speech.is_none() && question.is_none() && proposal.is_some()
         }
-        ConsciousnessAction::Ask => {
-            memory.is_none() && speech.is_none() && question.is_some() && proposal.is_none()
-        }
+        ConsciousnessAction::Ask => speech.is_none() && question.is_some() && proposal.is_none(),
     };
     if !payload_matches {
         return Err(DecisionPolicyError::PayloadMismatch);
@@ -178,5 +174,37 @@ mod tests {
             source_event_id: "event-1".into(),
         });
         assert_eq!(validate_decision(&value, &snapshot(false)), Ok(()));
+        value.memory = Some("the user likes quiet hours".into());
+        assert_eq!(
+            validate_decision(&value, &snapshot(false)),
+            Err(DecisionPolicyError::PayloadMismatch)
+        );
+    }
+
+    #[test]
+    fn speak_and_ask_may_carry_optional_persona_memory() {
+        let mut speak = decision(ConsciousnessAction::Speak);
+        speak.speech = Some("晚上再聊。".into());
+        assert_eq!(validate_decision(&speak, &snapshot(false)), Ok(()));
+        speak.memory = Some("晚上想打独立游戏".into());
+        assert_eq!(validate_decision(&speak, &snapshot(false)), Ok(()));
+        speak.question = Some("现在方便吗？".into());
+        assert_eq!(
+            validate_decision(&speak, &snapshot(false)),
+            Err(DecisionPolicyError::PayloadMismatch)
+        );
+
+        let mut ask = decision(ConsciousnessAction::Ask);
+        ask.question = Some("今晚还打吗？".into());
+        assert_eq!(validate_decision(&ask, &snapshot(false)), Ok(()));
+        ask.memory = Some("晚上想打独立游戏".into());
+        assert_eq!(validate_decision(&ask, &snapshot(false)), Ok(()));
+
+        let mut ignore = decision(ConsciousnessAction::Ignore);
+        ignore.memory = Some("晚上想打独立游戏".into());
+        assert_eq!(
+            validate_decision(&ignore, &snapshot(false)),
+            Err(DecisionPolicyError::PayloadMismatch)
+        );
     }
 }

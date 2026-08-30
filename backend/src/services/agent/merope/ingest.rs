@@ -23,7 +23,8 @@ use crate::services::ai::create_ai_analyzer_for_tier;
 use super::gates::{decide_ingest, is_chatting, is_valuable_event};
 use super::store::{
     get_or_create_state, get_persona, insert_diary, insert_proactive, latest_open_session,
-    recent_proactive, recently_spoke_event, save_mood, set_activity, touch_proactive,
+    list_remembered, recent_proactive, recently_spoke_event, save_mood, set_activity,
+    touch_proactive,
 };
 use super::{
     addressee_speaking_section, apply_task_outcome, format_mood_section, is_extremely_low,
@@ -254,11 +255,7 @@ pub async fn ingest(
                 return Ok(());
             }
             ConsciousnessAction::Remember => {
-                let memory = compact_summary(value.decision.memory.as_deref().unwrap_or(&summary));
-                if !memory.is_empty() {
-                    let _ = insert_diary(db, user_id, &memory, super::store::DIARY_SOURCE_REMEMBER)
-                        .await;
-                }
+                persist_persona_remember(db, user_id, value.decision.memory.as_deref()).await;
                 return Ok(());
             }
             ConsciousnessAction::Speak
@@ -355,6 +352,14 @@ pub async fn ingest(
     let _ = insert_diary(db, user_id, &summary, "event").await;
     insert_proactive(db, user_id, &spoken, Some(event_key), shown).await?;
     let _ = touch_proactive(db, user_id).await;
+    if let Some(value) = consideration.as_ref() {
+        if matches!(
+            value.decision.action,
+            ConsciousnessAction::Speak | ConsciousnessAction::Ask
+        ) {
+            persist_persona_remember(db, user_id, value.decision.memory.as_deref()).await;
+        }
+    }
 
     if shown {
         emit_speech_notification(
@@ -390,6 +395,36 @@ pub fn fallback_line(summary: &str) -> String {
 pub fn is_trivial_line(text: &str) -> bool {
     let trimmed = text.trim();
     trimmed.chars().count() < 2 || trimmed.starts_with('{')
+}
+
+/// Compact a candidate persona-memory fact and skip empty or duplicate text.
+///
+/// `existing` is already-stored remember content for this addressee. Comparison
+/// uses the same compact form ingest writes, so ledger rows are not involved.
+pub fn persona_remember_insert(candidate: &str, existing: &[String]) -> Option<String> {
+    let compact = compact_summary(candidate);
+    if compact.is_empty() {
+        return None;
+    }
+    let duplicate = existing.iter().any(|fact| compact_summary(fact) == compact);
+    if duplicate { None } else { Some(compact) }
+}
+
+async fn persist_persona_remember(db: &DatabaseConnection, user_id: i32, candidate: Option<&str>) {
+    let Some(candidate) = candidate else {
+        return;
+    };
+    let existing = match list_remembered(db, user_id, 32).await {
+        Ok(notes) => notes
+            .into_iter()
+            .map(|note| note.content)
+            .collect::<Vec<_>>(),
+        Err(_) => return,
+    };
+    let Some(fact) = persona_remember_insert(candidate, &existing) else {
+        return;
+    };
+    let _ = insert_diary(db, user_id, &fact, super::store::DIARY_SOURCE_REMEMBER).await;
 }
 
 pub fn compact_summary(summary: &str) -> String {
@@ -648,12 +683,39 @@ mod tests {
     }
 
     #[test]
+    fn persona_remember_insert_skips_empty_and_duplicate_compact_text() {
+        assert_eq!(persona_remember_insert("{\"token\":\"abc\"}", &[]), None);
+        assert_eq!(persona_remember_insert("   ", &[]), None);
+        let kept = persona_remember_insert("  晚上想打独立游戏  ", &[]).unwrap();
+        assert_eq!(kept, "晚上想打独立游戏");
+        assert_eq!(
+            persona_remember_insert("晚上想打独立游戏", &[kept.clone()]),
+            None
+        );
+        assert_eq!(
+            persona_remember_insert("  晚上想打独立游戏  ", &["晚上想打独立游戏".into()]),
+            None
+        );
+        assert_eq!(
+            persona_remember_insert("早上喝美式", &["晚上想打独立游戏".into()]).as_deref(),
+            Some("早上喝美式")
+        );
+    }
+
+    #[test]
     fn remember_writes_persona_memory_not_event_ledger() {
         let src = include_str!("ingest.rs");
         assert!(src.contains("DIARY_SOURCE_REMEMBER"));
         assert!(src.contains("ConsciousnessAction::Remember"));
+        assert!(src.contains("persist_persona_remember"));
+        assert!(src.contains("ConsciousnessAction::Speak | ConsciousnessAction::Ask"));
         assert!(!src.contains("insert_diary(db, user_id, memory, \"event\")"));
+        assert!(!src.contains("insert_diary(db, user_id, &memory, \"event\")"));
         assert!(src.contains("ConsciousnessAction::Ignore =>") && src.contains("return Ok(());"));
+        assert!(
+            src.contains("persona_remember_insert(candidate, &existing)")
+                && src.contains("DIARY_SOURCE_REMEMBER")
+        );
     }
 
     #[test]
