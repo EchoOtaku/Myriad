@@ -8,8 +8,8 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import { API_URL } from '../../config'
 import { useI18n } from '../../contexts/I18nContext'
 import { fetchJson } from '../../utils/apiHelper'
-import { userFacingError } from '../../utils/userFacingError'
 import { resolvePlatformId } from '../../utils/platformId'
+import { userFacingError } from '../../utils/userFacingError'
 import { SettingGroup, useSettingGuide } from '../settings'
 import './PlatformDataPreview.css'
 

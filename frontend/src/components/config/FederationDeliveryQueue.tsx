@@ -22,13 +22,13 @@ import type {
 } from '../settings/ManagedList'
 import React, { useCallback, useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
-import { userFacingError } from '../../utils/userFacingError'
 import { FaRedo, FaSearch, FaSyncAlt, FaTrash } from '../../lib/icons'
 import { federationApi } from '../../services/federationApi'
 import {
   isCancelledDeliveryError,
   shouldOfferDeliveryRetry,
 } from '../../utils/federationDeliveryUi'
+import { userFacingError } from '../../utils/userFacingError'
 import { ManagedList } from '../settings/ManagedList'
 
 type Msg = (

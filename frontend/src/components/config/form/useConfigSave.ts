@@ -13,7 +13,6 @@ import type {
   ShowMessage,
 } from './types'
 import { useCallback } from 'react'
-import { userFacingError } from '../../../utils/userFacingError'
 import { API_URL } from '../../../config'
 import {
   reloadSystemConfig,
@@ -57,6 +56,7 @@ import {
   clearDedupCache,
   clearLibraryDataCache,
 } from '../../../utils/requestDedup'
+import { userFacingError } from '../../../utils/userFacingError'
 import {
   areFederationPoliciesEqual,
 

@@ -28,7 +28,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { Spinner } from '../../components/Spinner'
 import { useI18n } from '../../contexts/I18nContext'
-import { userFacingError } from '../../utils/userFacingError'
 import { isExlight, useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { usePageSeo } from '../../hooks/usePageSeo'
 import { useBreakpoints } from '../../hooks/useSharedEventListener'
@@ -36,6 +35,7 @@ import {
   canAccessModuleVisibility,
   useModuleVisibilityPreferences,
 } from '../../utils/moduleVisibility'
+import { userFacingError } from '../../utils/userFacingError'
 import { TappAppShell } from '../components/TappAppShell'
 import { TappIconBadge } from '../components/TappIconBadge'
 import { TappWindowManager } from '../components/TappWindowManager'

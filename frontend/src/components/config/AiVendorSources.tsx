@@ -1,4 +1,4 @@
-import type { AiVendorSource } from './aiVendorPresets'
+import type { AiVendorCapability, AiVendorSource } from './aiVendorPresets'
 import {
   FaPlus,
   FaTrash,
@@ -9,7 +9,7 @@ import {
   SiOpenrouter,
   SiX,
 } from '@lib/icons'
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useMemo } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import {
   CheckboxCard,
@@ -22,12 +22,12 @@ import {
   SetupFlow,
   ToggleSwitch,
 } from '../settings'
-import type { AiVendorCapability } from './aiVendorPresets'
 import {
   AI_VENDOR_PRESETS,
   findVendorPreset,
   sourceFromPreset,
 } from './aiVendorPresets'
+import { useAddedCardOpen, useAddedSlug } from './useAddedCard'
 import {
   AnthropicMark,
   AzureMark,
@@ -48,7 +48,6 @@ import {
   VolcengineMark,
   ZhipuMark,
 } from './vendorIcons'
-import { useAddedCardOpen, useAddedSlug } from './useAddedCard'
 import { getVendorSetupGuide } from './vendorSetupGuides'
 import './AiVendorAdd.css'
 

@@ -2,8 +2,8 @@ import type { AgentInteractionV2, TappInstance } from '../types'
 import type { TappBridge } from './TappBridge'
 import { currentCopy } from '../../i18n/localeCopy'
 import { executeFrontendAction } from '../../services/agent'
-import * as TappApiService from '../services/TappApiService'
 import { userFacingError } from '../../utils/userFacingError'
+import * as TappApiService from '../services/TappApiService'
 import { requestDataExchangeFromHost } from './DataExchangeBroker'
 
 const RECONNECT_DELAY_MS = 500

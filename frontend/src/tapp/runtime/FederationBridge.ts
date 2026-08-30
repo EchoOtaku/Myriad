@@ -24,10 +24,10 @@ import type { TappInstance, TappMessage } from '../types'
 import type { TappBridge } from './TappBridge'
 import { currentCopy } from '../../i18n/localeCopy'
 import { ApiError } from '../../services/api'
-import { userFacingError } from '../../utils/userFacingError'
 import { federationApi } from '../../services/federationApi'
 import { xShareApi } from '../../services/xShareApi'
 import { isKnownGuest } from '../../utils/authState'
+import { userFacingError } from '../../utils/userFacingError'
 import {
   getFederationFeed,
   getFederationRoomsFeed,

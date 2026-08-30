@@ -38,14 +38,14 @@ import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
 import { currentCopy } from '../../i18n/localeCopy'
 import { getCSRFToken } from '../../utils/csrf'
-import { showError } from '../../utils/toastManager'
-import { userFacingError } from '../../utils/userFacingError'
 import {
   clearDedupCache,
   getPublicConfigDeduped,
   getUIConfigDeduped,
 } from '../../utils/requestDedup'
 import { useThemeMode } from '../../utils/themeSubscriber'
+import { showError } from '../../utils/toastManager'
+import { userFacingError } from '../../utils/userFacingError'
 import { Spinner } from '../Spinner'
 import { parseCustomPlatforms } from './parseCustomPlatforms'
 import { GlowBackground } from './shared/GlowBackground'

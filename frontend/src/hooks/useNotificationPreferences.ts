@@ -5,13 +5,13 @@ import type {
 } from '../services/notificationPreferencesApi'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { currentCopy } from '../i18n/localeCopy'
-import { showError } from '../utils/toastManager'
-import { userFacingError } from '../utils/userFacingError'
 import notificationPreferencesApi, {
   DEFAULT_NOTIFICATION_CATALOG,
   DEFAULT_NOTIFICATION_PREFERENCES,
   NOTIFICATION_PREFERENCES_UPDATED_EVENT,
 } from '../services/notificationPreferencesApi'
+import { showError } from '../utils/toastManager'
+import { userFacingError } from '../utils/userFacingError'
 
 export function useNotificationPreferences(userId?: number) {
   const [preferences, setPreferences] = useState<NotificationPreferences>(

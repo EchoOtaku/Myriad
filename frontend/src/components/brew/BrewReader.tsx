@@ -42,9 +42,9 @@ import {
   processEmbeds,
 } from '../../utils/embedProcessor'
 import { escapeHtml } from '../../utils/inputSanitizer'
-import { userFacingError } from '../../utils/userFacingError'
 import { proxyImageUrl } from '../../utils/proxyImageUrl'
 import { processRssContent } from '../../utils/rssContentProcessor'
+import { userFacingError } from '../../utils/userFacingError'
 import {
   AnnotationTooltip,
   CommentInputPopup,

@@ -11,11 +11,11 @@
 import type { FrontendAction, PageElementTarget } from '../services/agent'
 import { useCallback, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { currentCopy } from '../i18n/localeCopy'
 import {
   registerActionHandler,
   unregisterActionHandler,
 } from '../services/agent'
-import { currentCopy } from '../i18n/localeCopy'
 import { useMusicPlayerControl } from './MusicPlayerContext'
 
 /**

@@ -1,6 +1,6 @@
 import { currentCopy } from '../i18n/localeCopy'
-import apiService from './api'
 import { userFacingError } from '../utils/userFacingError'
+import apiService from './api'
 
 export const NOTIFICATION_SOURCE_KEYS = [
   'agent',

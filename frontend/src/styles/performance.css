@@ -131,6 +131,7 @@ img[loading='lazy'] {
 /* light + exlight：关掉 Tailwind 毛玻璃工具类 */
 html[data-perf-mode='light'] [class*='backdrop-blur'],
 html[data-perf-mode='exlight'] [class*='backdrop-blur'] {
+  /* stylelint-disable-next-line property-no-vendor-prefix -- Safari < 16.4 needs the prefix; dropping it keeps the blur on in low-perf mode. */
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
@@ -177,6 +178,7 @@ html[data-perf-mode='exlight'] *,
 html[data-perf-mode='exlight'] *::before,
 html[data-perf-mode='exlight'] *::after,
 html[data-perf-mode='exlight'] ::backdrop {
+  /* stylelint-disable-next-line property-no-vendor-prefix -- Safari < 16.4 needs the prefix; dropping it keeps the blur on in low-perf mode. */
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }

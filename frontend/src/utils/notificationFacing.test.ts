@@ -1,6 +1,6 @@
+import type { AppNotification } from '../services/notificationApi'
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import type { AppNotification } from '../services/notificationApi'
 import {
   notificationFacingBody,
   notificationFacingTitle,

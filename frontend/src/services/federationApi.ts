@@ -57,9 +57,9 @@ import type {
   UpdateTrustRequest,
   UploadChunkRequest,
 } from '../types/federation'
+import type { ApiRequestOptions } from './api'
 import { currentCopy } from '../i18n/localeCopy'
 import { userFacingError } from '../utils/userFacingError'
-import type { ApiRequestOptions } from './api'
 import { apiService } from './api'
 
 const PREFIX = '/federation'

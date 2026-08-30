@@ -10,12 +10,12 @@ import type { TappManifest } from '../types'
 import type { RemoteStoreLocales } from '../utils/storeLocale'
 import type { StorePreviewDescriptor } from '../utils/storePreview'
 import { currentCopy } from '../../i18n/localeCopy'
+import api from '../../lib/api'
 import {
   httpStatusMessage,
   isUselessErrorText,
   userFacingError,
 } from '../../utils/userFacingError'
-import api from '../../lib/api'
 import { TAPP_ICON_TOKENS } from '../constants/icons'
 import { parseStoreLocales } from '../utils/storeLocale'
 import {

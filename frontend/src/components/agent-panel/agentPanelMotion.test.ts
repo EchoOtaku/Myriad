@@ -12,7 +12,6 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
-import { AGENT_ROW_MS } from './agentPresenceState'
 import {
   AGENT_PANEL_ENTER_MS,
   AGENT_ROW_EXIT_MS,
@@ -21,6 +20,7 @@ import {
   agentPanelRowWaveMs,
   agentPanelStaggerSteps,
 } from './agentPanelStage'
+import { AGENT_ROW_MS } from './agentPresenceState'
 
 const css = stripComments(
   readFileSync(new URL('./agent-panel.css', import.meta.url), 'utf8'),
@@ -202,7 +202,7 @@ describe('agent panel motion contract', () => {
   it('lets full-stage rows enter at move duration and leave at row-exit', () => {
     assert.doesNotMatch(
       css,
-      /\[data-stage='full'\] \.agent-panel-composer,\s*\n\s*\.agent-panel-overlay-anchor\[data-stage='full'\]/,
+      /\[data-stage='full'\] \.agent-panel-composer,[ \t]*\n\s*\.agent-panel-overlay-anchor\[data-stage='full'\]/,
     )
     assert.match(
       css,
@@ -473,7 +473,7 @@ describe('agent panel motion contract', () => {
     assert.match(css, /\.agent-panel-session\[data-leaving='true'\]/)
     assert.match(
       css,
-      /html \.agent-panel-message-body\.glass,\s*\n\s*html \.agent-panel-session\.glass \{[\s\S]*?backdrop-filter:\s*none/,
+      /html \.agent-panel-message-body\.glass,[ \t]*\n\s*html \.agent-panel-session\.glass \{[\s\S]*?backdrop-filter:\s*none/,
     )
     assert.match(
       css,
@@ -481,7 +481,7 @@ describe('agent panel motion contract', () => {
     )
     assert.match(
       css,
-      /\.agent-panel-message\[data-leaving='true'\],\s*\n\s*\.agent-panel-session\[data-leaving='true'\] \{[\s\S]*?filter:\s*opacity\(/,
+      /\.agent-panel-message\[data-leaving='true'\],[ \t]*\n\s*\.agent-panel-session\[data-leaving='true'\] \{[\s\S]*?filter:\s*opacity\(/,
     )
     assert.doesNotMatch(
       css,

@@ -4,8 +4,8 @@
  * 流式时通常只有最后一条在变：前面的行沿用 store 里的对象，少一次整列投影。
  */
 
-import type { ChatMessage } from './engineTypes'
 import type { AgentMessage } from './agentMessages'
+import type { ChatMessage } from './engineTypes'
 import { getAgentMessagesSnapshot, setAgentMessages } from './agentMessages'
 import {
   nonemptyContent,

@@ -9,8 +9,8 @@ import type {
 } from '../../../../services/brewApi'
 import type { ThemeKey } from '../types'
 import { useCallback, useRef, useState } from 'react'
-import { userFacingError } from '../../../../utils/userFacingError'
 import * as brewApi from '../../../../services/brewApi'
+import { userFacingError } from '../../../../utils/userFacingError'
 
 export interface UseCommentsOptions {
   itemId: number

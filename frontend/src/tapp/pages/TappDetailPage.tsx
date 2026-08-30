@@ -54,13 +54,13 @@ import { Spinner } from '../../components/Spinner'
 import Toast from '../../components/Toast'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
-import { userFacingError } from '../../utils/userFacingError'
 import { usePageSeo } from '../../hooks/usePageSeo'
 import { sanitizeUrl } from '../../utils/inputSanitizer'
 import {
   canAccessModuleVisibility,
   useModuleVisibilityPreferences,
 } from '../../utils/moduleVisibility'
+import { userFacingError } from '../../utils/userFacingError'
 import { TappIconBadge } from '../components/TappIconBadge'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
 import { PERMISSION_CONFIG } from '../constants/permissions'

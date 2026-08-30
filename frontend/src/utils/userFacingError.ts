@@ -219,7 +219,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return classified(t.agentSessionArchiveFailed, raw, hint)
   }
   if (
-    /^failed to (count persona reports|load persona|load persona reports)/i.test(
+    /^failed to (count persona reports|load persona)/i.test(
       raw,
     )
   ) {
@@ -1727,7 +1727,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (
     code === 'see_through_upstream_failed' ||
     code === 'see_through_invalid_input' ||
-    /see-through (returned|event stream|returned an invalid)/i.test(raw) ||
+    /see-through (returned|event stream)/i.test(raw) ||
     /hugging face token must be a valid/i.test(raw)
   ) {
     return classified(merope.motionSeeThroughUpstream, raw, hint)

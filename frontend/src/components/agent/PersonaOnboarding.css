@@ -443,13 +443,13 @@ html.dark .merope-ob-bar .merope-ob-cta {
   gap: 10px;
 }
 
-@media (max-width: 900px) {
+@media (width <= 900px) {
   .merope-ob-styles {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 640px) {
+@media (width <= 640px) {
   .merope-ob-styles {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -1084,6 +1084,7 @@ fieldset.merope-ob-field > .merope-ob-field__hint {
 /* Step 2: one field, style/roll chip inset on the right */
 .merope-ob-name-field {
   --name-dice-inset: 4px;
+
   position: relative;
   display: flex;
   gap: var(--name-dice-inset);

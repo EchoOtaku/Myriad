@@ -47,6 +47,7 @@ import {
   updateReportSettings,
 } from '../../../utils/reportSettings'
 import { clearLibraryDataCache } from '../../../utils/requestDedup'
+import { userFacingError } from '../../../utils/userFacingError'
 import {
   DEFAULT_FEDERATION_POLICY,
 
@@ -57,7 +58,6 @@ import {
 
   normalizeLibraryPreferences,
 } from '../ModuleConfigSection'
-import { userFacingError } from '../../../utils/userFacingError'
 import { DEFAULT_PERMISSION_CONFIG } from './defaults'
 
 export function useConfigSideDrafts(

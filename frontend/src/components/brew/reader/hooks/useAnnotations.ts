@@ -5,8 +5,8 @@
 
 import type { AnnotationItem } from '../../../../services/brewliaApi'
 import { useCallback, useRef, useState } from 'react'
-import { userFacingError } from '../../../../utils/userFacingError'
 import * as brewliaApi from '../../../../services/brewliaApi'
+import { userFacingError } from '../../../../utils/userFacingError'
 
 export interface UseAnnotationsOptions {
   itemId: number

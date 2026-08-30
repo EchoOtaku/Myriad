@@ -48,8 +48,6 @@ import {
   useTitleFont,
 } from '../hooks/useTitleFont'
 import { getCSRFToken } from '../utils/csrf'
-import { reportUserFacingError } from '../utils/reportError'
-import { userFacingError } from '../utils/userFacingError'
 import { notifyHttpRateLimit } from '../utils/httpRateLimitToast'
 import { buildModulePageSeo } from '../utils/modulePageSeo'
 import {
@@ -59,10 +57,12 @@ import {
 import { resolvePlatformId } from '../utils/platformId'
 import { notifyRecentActivityUpdated } from '../utils/recentActivity'
 import { REPORT_PLATFORM_IDS } from '../utils/reportCardVisuals'
+import { reportUserFacingError } from '../utils/reportError'
 import { invalidateLatestReportCache } from '../utils/requestDedup'
 import { hasSessionHint } from '../utils/sessionDetection'
-import ReportsStatusBar from './reports/ReportsStatusBar'
+import { userFacingError } from '../utils/userFacingError'
 import { pickReportHook } from './reports/reportsDynamicStatus'
+import ReportsStatusBar from './reports/ReportsStatusBar'
 import {
   REPORT_CARD_FLEX_BASIS,
   REPORT_CAROUSEL_CSS_VARS,

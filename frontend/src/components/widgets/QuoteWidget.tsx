@@ -9,7 +9,6 @@ import type { WidgetConfig } from '../WidgetGrid'
 import { motionShim as motion } from '@lib/motionShim'
 import { memo, useCallback, useEffect, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
-import { userFacingError } from '../../utils/userFacingError'
 import { useHomeVisibilityInterval } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
@@ -17,6 +16,7 @@ import {
   getRandomQuote,
   HITOKOTO_CONFIG_UPDATED_EVENT,
 } from '../../utils/dynamicContent'
+import { userFacingError } from '../../utils/userFacingError'
 import { Spinner } from '../Spinner'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'

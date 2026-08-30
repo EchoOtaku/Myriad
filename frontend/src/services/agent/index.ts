@@ -85,7 +85,6 @@ export type {
   StepStartedEvent,
   StepTrace,
   SummaryTokenEvent,
-  ThinkingTokenEvent,
   TaskCompletedEvent,
   // SSE 事件
   TaskCreatedEvent,
@@ -95,6 +94,7 @@ export type {
   TaskPresetListResponse,
   // 任务
   TaskStatus,
+  ThinkingTokenEvent,
   WaitCondition,
   WaitingForInputEvent,
   WindowTarget,

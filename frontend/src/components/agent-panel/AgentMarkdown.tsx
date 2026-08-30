@@ -54,11 +54,11 @@ function Inline({ tokens }: { tokens: InlineToken[] }): React.ReactElement {
   )
 }
 
-const Block = React.memo(function Block({
+const Block = React.memo(({
   block,
 }: {
   block: MarkdownBlock
-}): React.ReactElement {
+}): React.ReactElement => {
   switch (block.kind) {
     case 'heading': {
       // 助手说的话嵌在气泡里，一级标题也不该有页面标题那么大
