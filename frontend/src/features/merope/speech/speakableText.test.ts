@@ -8,11 +8,15 @@ test('strips markdown, code, and URLs so TTS does not read markup', () => {
   assert.equal(speakableText('见 https://example.com/a 吧'), '见 吧')
   assert.equal(
     speakableText('前文\n```js\nconsole.log(1)\n```\n后文'),
-    '前文 后文',
+    '前文\n后文',
   )
   assert.equal(speakableText('用 `code` 标记'), '用 标记')
   assert.equal(speakableText('[点这里](https://x.test) 继续'), '继续')
-  assert.equal(speakableText('# 标题\n- 一项'), '标题 一项')
+  assert.equal(speakableText('# 标题\n- 一项'), '标题\n一项')
+  assert.equal(
+    speakableText('第一步准备好素材\n第二步导入到工作台'),
+    '第一步准备好素材\n第二步导入到工作台',
+  )
 })
 
 test('emits a segment at a stable sentence end, not on every token', () => {
@@ -45,6 +49,58 @@ test('a short opening sentence merges with the next instead of blocking cuts', (
   assert.equal(segments.length, 2)
   assert.equal(segments[0], '嗯。我想想，这个问题其实挺有意思的。')
   assert.equal(segments[1], '你要不要再说细一点？')
+})
+
+test('English periods cut streaming TTS without splitting decimals', () => {
+  const splitter = new SpeechSegmenter('msg-en')
+  const tokens = [
+    'Okay. ',
+    'Let me check that for you. ',
+    "Here's what I found. ",
+    'It looks fine.',
+  ]
+  const segments: string[] = []
+  for (const token of tokens) {
+    for (const item of splitter.push(token)) segments.push(item.text)
+  }
+  for (const item of splitter.end()) segments.push(item.text)
+  assert.deepEqual(segments, [
+    'Okay.',
+    'Let me check that for you.',
+    "Here's what I found.",
+    'It looks fine.',
+  ])
+
+  const number = new SpeechSegmenter('msg-num')
+  assert.deepEqual(number.push('It is 3.5'), [])
+  const ready = number.push(' degrees now, almost ready.')
+  assert.equal(ready.length, 1)
+  assert.equal(ready[0]?.text, 'It is 3.5 degrees now, almost ready.')
+})
+
+test('list newlines become streaming cuts after markers are stripped', () => {
+  const splitter = new SpeechSegmenter('msg-list')
+  const ready = splitter.push(
+    '第一步准备好素材\n第二步导入到工作台\n第三步检查一下结果对不对',
+  )
+  assert.deepEqual(
+    ready.map((item) => item.text),
+    ['第一步准备好素材', '第二步导入到工作台'],
+  )
+  assert.deepEqual(
+    splitter.end().map((item) => item.text),
+    ['第三步检查一下结果对不对'],
+  )
+
+  const bullets = new SpeechSegmenter('msg-bullets')
+  assert.deepEqual(
+    bullets.push('- 准备素材\n- 导入工作台\n- 检查结果').map((item) => item.text),
+    ['准备素材', '导入工作台'],
+  )
+  assert.deepEqual(
+    bullets.end().map((item) => item.text),
+    ['检查结果'],
+  )
 })
 
 test('empty speakable leftovers do not emit a segment', () => {

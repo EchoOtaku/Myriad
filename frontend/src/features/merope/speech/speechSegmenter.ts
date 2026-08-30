@@ -11,7 +11,7 @@ export interface SpeechSegment {
   interrupt: SpeechInterruptMode
 }
 
-const SENTENCE_END = /[。！？!?…]/
+const CJK_SENTENCE_END = /[。！？!?…]/
 const MAX_CHARS = 120
 const MIN_CHARS = 4
 
@@ -59,8 +59,9 @@ export class SpeechSegmenter {
       generation: this.generation,
       interrupt,
     }
-    if (force && this.raw.trim()) {
-      return [segment, ...this.flush(true, 'queue')]
+    if (this.raw.trim()) {
+      const more = this.flush(force, force ? 'queue' : interrupt)
+      if (more.length > 0) return [segment, ...more]
     }
     return [segment]
   }
@@ -84,9 +85,7 @@ function nextCut(text: string, force: boolean): number {
 
 function firstSentenceEndAtLeast(text: string, minChars: number): number {
   for (let i = 0; i < text.length; i++) {
-    if (!SENTENCE_END.test(text[i]!)) continue
-    let end = i + 1
-    while (end < text.length && /[”’"')\]]/.test(text[end]!)) end += 1
+    const end = sentenceEndAfter(text, i)
     if (end >= minChars) return end
   }
   return -1
@@ -101,10 +100,27 @@ function firstNewlineAtLeast(text: string, minChars: number): number {
 
 function lastSentenceEnd(text: string): number {
   for (let i = text.length - 1; i >= 0; i--) {
-    if (!SENTENCE_END.test(text[i]!)) continue
-    let end = i + 1
+    const end = sentenceEndAfter(text, i)
+    if (end > 0) return end
+  }
+  return -1
+}
+
+/** Exclusive end index, or -1. ASCII `.` needs a following space and is not a decimal. */
+function sentenceEndAfter(text: string, index: number): number {
+  const ch = text[index]
+  if (!ch) return -1
+  if (CJK_SENTENCE_END.test(ch)) {
+    let end = index + 1
     while (end < text.length && /[”’"')\]]/.test(text[end]!)) end += 1
     return end
   }
-  return -1
+  if (ch !== '.') return -1
+  const prev = text[index - 1]
+  const next = text[index + 1]
+  if (prev && /\d/.test(prev) && next && /\d/.test(next)) return -1
+  if (next && !/\s/.test(next) && !/[”’"')\]]/.test(next)) return -1
+  let end = index + 1
+  while (end < text.length && /[”’"')\]]/.test(text[end]!)) end += 1
+  return end
 }

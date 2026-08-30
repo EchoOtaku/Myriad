@@ -28,5 +28,7 @@ export function speakableText(raw: string): string {
   text = text.replace(TABLE_ROW, ' ')
   text = text.replace(HTML, ' ')
   text = text.replace(EMPHASIS, '')
-  return text.replace(/\s+/g, ' ').trim()
+  text = text.replace(/[^\S\n]+/g, ' ')
+  text = text.replace(/ *\n */g, '\n')
+  return text.replace(/\n{2,}/g, '\n').trim()
 }
