@@ -49,6 +49,8 @@ const TTS_OPEN_THRESHOLD = 0.14
 const CLOSE_RATIO = 0.45
 const START_FRAMES = 4
 const END_FRAMES = 18
+/** Continuous listen must not keep an unbounded PCM tape. */
+const MAX_LISTEN_SAMPLES = 16_000 * 20
 
 const WORKLET_SOURCE = `
 class PcmCaptureProcessor extends AudioWorkletProcessor {
@@ -113,6 +115,7 @@ export function useVoiceRecording(
   const openFramesRef = useRef(0)
   const closeFramesRef = useRef(0)
   const utterancePcmRef = useRef<Float32Array[]>([])
+  const utteranceSamplesRef = useRef(0)
   const onResultRef = useRef(onResult)
   onResultRef.current = onResult
   const localeRef = useRef(locale)
@@ -148,11 +151,28 @@ export function useVoiceRecording(
     }
   }, [])
 
+  const flushListenClip = useCallback(
+    (recorder: RecorderState) => {
+      const clip = utterancePcmRef.current
+      utterancePcmRef.current = []
+      utteranceSamplesRef.current = 0
+      speakingRef.current = false
+      closeFramesRef.current = 0
+      patchVoicePresence({ userSpeaking: false })
+      if (clip.length === 0) return
+      const sampleRate = recorder.audioContext.sampleRate || 16000
+      void transcribe(clip, sampleRate)
+    },
+    [transcribe],
+  )
+
   const onPcm = useCallback((frame: Float32Array) => {
     const recorder = recorderRef.current
     if (!recorder || !isRecordingRef.current) return
-    recorder.pcmData.push(frame)
-    if (!listeningRef.current) return
+    if (!listeningRef.current) {
+      recorder.pcmData.push(frame)
+      return
+    }
 
     const rms = frameRms(frame)
     const open =
@@ -166,6 +186,7 @@ export function useVoiceRecording(
           openFramesRef.current = 0
           closeFramesRef.current = 0
           utterancePcmRef.current = [frame]
+          utteranceSamplesRef.current = frame.length
           patchVoicePresence({ userSpeaking: true, partial: '' })
           stampTurnTrace('input_started')
           getSpeechPipeline().cancel()
@@ -176,21 +197,16 @@ export function useVoiceRecording(
       return
     }
     utterancePcmRef.current.push(frame)
-    if (rms < close) {
-      closeFramesRef.current += 1
-      if (closeFramesRef.current >= END_FRAMES) {
-        speakingRef.current = false
-        closeFramesRef.current = 0
-        patchVoicePresence({ userSpeaking: false })
-        const clip = utterancePcmRef.current
-        utterancePcmRef.current = []
-        const sampleRate = recorder.audioContext.sampleRate || 16000
-        void transcribe(clip, sampleRate)
-      }
-    } else {
-      closeFramesRef.current = 0
+    utteranceSamplesRef.current += frame.length
+    if (rms < close) closeFramesRef.current += 1
+    else closeFramesRef.current = 0
+    if (
+      utteranceSamplesRef.current >= MAX_LISTEN_SAMPLES ||
+      closeFramesRef.current >= END_FRAMES
+    ) {
+      flushListenClip(recorder)
     }
-  }, [transcribe])
+  }, [flushListenClip])
 
   const startRecording = useCallback(async () => {
     if (isRecordingRef.current || recorderRef.current) return
@@ -271,6 +287,7 @@ export function useVoiceRecording(
       ? utterancePcmRef.current
       : recorder.pcmData
     utterancePcmRef.current = []
+    utteranceSamplesRef.current = 0
     cleanupRecorder(recorder)
     recorderRef.current = null
     await transcribe(pcmData, sampleRate)
