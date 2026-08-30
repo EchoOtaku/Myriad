@@ -1,7 +1,7 @@
 //! 语音服务 API
 //!
 //! 提供 TTS（文本转语音）和 ASR（语音转文本）的 HTTP API。
-//! 服务商由设置里的 `speech_provider` 决定：腾讯云、OpenAI、OpenRouter 或 Gemini。
+//! 服务商由设置里的 `speech_provider` 决定：腾讯云、OpenAI、OpenRouter、Gemini 或 MiniMax。
 
 use crate::middleware::auth::Claims;
 use axum::{

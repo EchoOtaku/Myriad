@@ -1941,6 +1941,8 @@ export const jaJP: TranslationKeys = {
     speechSttModel: '文字起こしモデル',
     speechTtsModel: '読み上げモデル',
     speechTtsVoice: '声',
+    speechMinimaxAsrHint:
+      '読み上げは MiniMax（既定 speech-2.8-turbo）です。聞き取りは設定済みの Tencent / OpenAI / Gemini を使います。',
     speechOpenRouterTtsHint:
       'OpenRouter には公式 OpenAI 読み上げモデルがありません。文字起こしは使えます。公式の読み上げは OpenAI を選んでください。',
     // プラットフォーム設定

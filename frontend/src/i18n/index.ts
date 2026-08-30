@@ -1671,6 +1671,7 @@ export interface TranslationKeys {
     speechTtsModel: string
     speechTtsVoice: string
     speechOpenRouterTtsHint: string
+    speechMinimaxAsrHint: string
     platformDescGithub: string
     platformDescBilibili: string
     platformDescBangumi: string

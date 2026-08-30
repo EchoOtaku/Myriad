@@ -1835,6 +1835,8 @@ export const zhCN: TranslationKeys = {
     speechSttModel: '转写模型',
     speechTtsModel: '播报模型',
     speechTtsVoice: '播报音色',
+    speechMinimaxAsrHint:
+      'MiniMax 默认用 speech-2.8-turbo 朗读。听写仍走已配置的腾讯云、OpenAI 或 Gemini。',
     speechOpenRouterTtsHint:
       'OpenRouter 目前没有官方 OpenAI 播报型号。转写可用；要官方播报请改选 OpenAI。',
     // 平台配置

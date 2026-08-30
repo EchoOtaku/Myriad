@@ -240,7 +240,9 @@ export const AI_VENDOR_PRESETS: AiVendorPreset[] = [
     display_name: 'MiniMax',
     base_url: 'https://api.minimaxi.com/v1',
     docs_url: 'https://platform.minimaxi.com/document/',
-    capabilities: ['text'],
+    capabilities: ['text', 'speech'],
+    defaultTtsModel: 'speech-2.8-turbo',
+    defaultVoice: 'female-shaonv',
   },
   {
     id: 'ollama',
@@ -339,6 +341,51 @@ export function findVendorPreset(source: {
     if (prefixed) return prefixed
   }
   return undefined
+}
+
+export function isMiniMaxSpeechSource(source: {
+  kind?: string
+  slug?: string
+  preset?: string | null
+  base_url?: string
+}): boolean {
+  const preset = findVendorPreset(source)
+  if (preset?.id === 'minimax') return true
+  const kind = source.kind?.trim().toLowerCase() ?? ''
+  if (kind === 'minimax') return true
+  const slug = source.slug?.trim().toLowerCase() ?? ''
+  if (slug === 'minimax' || slug.startsWith('minimax-')) return true
+  const host = source.base_url?.trim().toLowerCase() ?? ''
+  return (
+    host.includes('minimaxi.com') ||
+    host.includes('minimax.io') ||
+    host.includes('minimax.chat')
+  )
+}
+
+export function speechProviderKindFromSource(
+  source:
+    | {
+        kind?: string
+        slug?: string
+        preset?: string | null
+        base_url?: string
+      }
+    | undefined,
+  fallback: string,
+): string {
+  if (
+    isMiniMaxSpeechSource(
+      source ?? { kind: fallback, slug: fallback, preset: fallback },
+    )
+  ) {
+    return 'minimax'
+  }
+  const kind = source?.kind || fallback
+  if (kind === 'tencent') return 'tencent'
+  if (kind === 'openrouter') return 'openrouter'
+  if (kind === 'gemini') return 'gemini'
+  return 'openai'
 }
 
 export function vendorSupports(

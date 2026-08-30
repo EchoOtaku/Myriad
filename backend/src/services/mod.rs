@@ -33,6 +33,7 @@ pub mod library_items; // Library item pure builders (Bangumi/MAL/preferences)
 pub mod memory_profile; // default vs memory-saver process budgets
 pub mod merope_rig; // Site-wide compiled 2.5D face package
 pub mod metadata_service;
+pub mod minimax_speech; // MiniMax T2A speech synthesis
 pub mod module_visibility; // Module visibility for Agent (no api::config import)
 pub mod netease_service;
 pub mod netease_utils;

@@ -327,7 +327,7 @@ pub struct DynamicConfig {
     pub tencent_secret_id: Option<String>,
     pub tencent_secret_key: Option<String>,
     pub tencent_region: Option<String>, // 默认 ap-guangzhou
-    /// 语音服务商：tencent | openai | openrouter
+    /// 语音服务商：tencent | openai | openrouter | gemini | minimax
     pub speech_provider: String,
     /// 为 true 且专用密钥为空时，沿用 Standard 档文字模型的 OpenAI/OpenRouter 密钥
     pub speech_reuse_text_credentials: bool,

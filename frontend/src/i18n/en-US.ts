@@ -1965,6 +1965,8 @@ export const enUS: TranslationKeys = {
     speechTtsVoice: 'Voice',
     speechOpenRouterTtsHint:
       'OpenRouter does not currently list official OpenAI TTS models. Transcription works; pick OpenAI for official speech.',
+    speechMinimaxAsrHint:
+      'MiniMax reads aloud with speech-2.8-turbo by default. Listening still uses Tencent Cloud, OpenAI, or Gemini if one of those is configured.',
     // Platform configuration
     platformDescGithub: 'Repos, stars, and contributions',
     platformDescBilibili: 'Favorites, anime, and viewing history',

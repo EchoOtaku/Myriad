@@ -55,6 +55,7 @@ import {
   defaultModelsForSource,
   parseVendorSources,
   resolveUsedVendorSlug,
+  speechProviderKindFromSource,
   vendorSupports,
 } from './aiVendorPresets'
 import {
@@ -546,17 +547,9 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     (slug: string) => {
       updateValue('speech_source', slug)
       const source = vendorSources.find((item) => item.slug === slug)
-      const kind = source?.kind || slug
-      const mapped =
-        kind === 'tencent'
-          ? 'tencent'
-          : kind === 'openrouter'
-            ? 'openrouter'
-            : kind === 'gemini'
-              ? 'gemini'
-              : 'openai'
+      const mapped = speechProviderKindFromSource(source, slug)
       updateValue('speech_provider', mapped)
-      const models = defaultModelsForSource(source ?? { kind }, 'speech')
+      const models = defaultModelsForSource(source ?? { kind: slug }, 'speech')
       if (models.stt) updateValue('speech_stt_model', models.stt)
       if (models.tts !== undefined) updateValue('speech_tts_model', models.tts)
       if (models.voice) updateValue('speech_tts_voice', models.voice)
@@ -1160,66 +1153,99 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         />
 
         {(() => {
-          const selected =
-            vendorSources.find(
-              (item) =>
-                item.slug ===
-                (getFieldValue('speech_source') || currentSpeechProvider),
-            )?.kind || currentSpeechProvider
-          return (
+          const selectedSource = vendorSources.find(
+            (item) =>
+              item.slug ===
+              (getFieldValue('speech_source') || currentSpeechProvider),
+          )
+          const selected = speechProviderKindFromSource(
+            selectedSource,
+            selectedSource?.kind || currentSpeechProvider,
+          )
+          if (selected === 'minimax') {
+            return (
+              <>
+                <InputItem
+                  itemKey="speech_tts_model"
+                  label={t.config.speechTtsModel}
+                  value={getFieldValue('speech_tts_model')}
+                  onChange={(v) => updateValue('speech_tts_model', v)}
+                  placeholder="speech-2.8-turbo"
+                  inputType="text"
+                  layout="vertical"
+                />
+                <InputItem
+                  itemKey="speech_tts_voice"
+                  label={t.config.speechTtsVoice}
+                  value={getFieldValue('speech_tts_voice', 'female-shaonv')}
+                  onChange={(v) => updateValue('speech_tts_voice', v)}
+                  placeholder="female-shaonv"
+                  inputType="text"
+                  layout="vertical"
+                />
+                <p className="setting-hint">{t.config.speechMinimaxAsrHint}</p>
+              </>
+            )
+          }
+          if (
             selected === 'openai' ||
             selected === 'openrouter' ||
             selected === 'openai_compatible' ||
             selected === 'gemini'
-          )
-        })() && (
-          <>
-            <InputItem
-              itemKey="speech_stt_model"
-              label={t.config.speechSttModel}
-              value={getFieldValue('speech_stt_model')}
-              onChange={(v) => updateValue('speech_stt_model', v)}
-              placeholder={
-                currentSpeechProvider === 'openrouter'
-                  ? 'openai/gpt-transcribe'
-                  : currentSpeechProvider === 'gemini'
-                    ? 'gemini-3.6-flash'
-                    : 'gpt-transcribe'
-              }
-              inputType="text"
-              layout="vertical"
-            />
-            <InputItem
-              itemKey="speech_tts_model"
-              label={t.config.speechTtsModel}
-              value={getFieldValue('speech_tts_model')}
-              onChange={(v) => updateValue('speech_tts_model', v)}
-              placeholder={
-                currentSpeechProvider === 'openai'
-                  ? 'gpt-4o-mini-tts'
-                  : currentSpeechProvider === 'gemini'
-                    ? 'gemini-2.5-flash-preview-tts'
-                    : ''
-              }
-              inputType="text"
-              layout="vertical"
-            />
-            <InputItem
-              itemKey="speech_tts_voice"
-              label={t.config.speechTtsVoice}
-              value={getFieldValue('speech_tts_voice', 'marin')}
-              onChange={(v) => updateValue('speech_tts_voice', v)}
-              placeholder={
-                currentSpeechProvider === 'gemini' ? 'Kore' : 'marin'
-              }
-              inputType="text"
-              layout="vertical"
-            />
-            {currentSpeechProvider === 'openrouter' ? (
-              <p className="setting-hint">{t.config.speechOpenRouterTtsHint}</p>
-            ) : null}
-          </>
-        )}
+          ) {
+            return (
+              <>
+                <InputItem
+                  itemKey="speech_stt_model"
+                  label={t.config.speechSttModel}
+                  value={getFieldValue('speech_stt_model')}
+                  onChange={(v) => updateValue('speech_stt_model', v)}
+                  placeholder={
+                    currentSpeechProvider === 'openrouter'
+                      ? 'openai/gpt-transcribe'
+                      : currentSpeechProvider === 'gemini'
+                        ? 'gemini-3.6-flash'
+                        : 'gpt-transcribe'
+                  }
+                  inputType="text"
+                  layout="vertical"
+                />
+                <InputItem
+                  itemKey="speech_tts_model"
+                  label={t.config.speechTtsModel}
+                  value={getFieldValue('speech_tts_model')}
+                  onChange={(v) => updateValue('speech_tts_model', v)}
+                  placeholder={
+                    currentSpeechProvider === 'openai'
+                      ? 'gpt-4o-mini-tts'
+                      : currentSpeechProvider === 'gemini'
+                        ? 'gemini-2.5-flash-preview-tts'
+                        : ''
+                  }
+                  inputType="text"
+                  layout="vertical"
+                />
+                <InputItem
+                  itemKey="speech_tts_voice"
+                  label={t.config.speechTtsVoice}
+                  value={getFieldValue('speech_tts_voice', 'marin')}
+                  onChange={(v) => updateValue('speech_tts_voice', v)}
+                  placeholder={
+                    currentSpeechProvider === 'gemini' ? 'Kore' : 'marin'
+                  }
+                  inputType="text"
+                  layout="vertical"
+                />
+                {currentSpeechProvider === 'openrouter' ? (
+                  <p className="setting-hint">
+                    {t.config.speechOpenRouterTtsHint}
+                  </p>
+                ) : null}
+              </>
+            )
+          }
+          return null
+        })()}
       </SettingGroup>
             </>
           )}
