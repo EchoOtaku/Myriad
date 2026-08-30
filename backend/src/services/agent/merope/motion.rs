@@ -7,17 +7,18 @@
 use std::time::{Duration, Instant};
 
 use myriad_merope::{
-    ChatPerformancePlan, PERFORMANCE_BASELINE_EXPRESSIONS, PERFORMANCE_CUE_INTENTS,
-    PERFORMANCE_INTERRUPT_MODES, PERFORMANCE_POSTURES, RIG_STATE_MOTION_STYLES, RigStateSummary,
-    parse_performance_plan, plan_is_empty, refine_performance_plan, round_motion_style,
+    cue_is_playable, parse_performance_plan, plan_is_empty, refine_performance_plan,
+    round_motion_style, ChatPerformanceBaseline, ChatPerformanceCue, ChatPerformancePlan,
+    RigStateSummary, PERFORMANCE_BASELINE_EXPRESSIONS, PERFORMANCE_CUE_INTENTS,
+    PERFORMANCE_INTERRUPT_MODES, PERFORMANCE_POSTURES, RIG_STATE_MOTION_STYLES,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::models::entities::agent_persona;
 
-use super::MoodTransition;
 use super::store::get_persona;
+use super::MoodTransition;
 
 /// OpenRouter JSON-schema Lite never completed inside 1.4s in production
 /// (`Failed to read response` / connect error at ~1405ms). Chat Lite uses the
@@ -77,7 +78,7 @@ pub struct PerformanceDirective {
 }
 
 /// Runs exactly one Lite-tier call. Unavailable, slow or invalid Lite output
-/// yields no semantic directive; callers keep deterministic ambient motion.
+/// yields no director plan unless the user named an expression the face can play.
 pub async fn direct_motion(context: MotionContext) -> Option<PerformanceDirective> {
     let started = Instant::now();
     let phase = context.phase.as_str();
@@ -86,109 +87,116 @@ pub async fn direct_motion(context: MotionContext) -> Option<PerformanceDirectiv
         tracing::debug!(phase, "[MeropeMotion] Face hidden; ambient motion only");
         return None;
     }
-    let Some(analyzer) =
+    let analyzer =
         crate::services::ai::create_strict_lite_ai_analyzer_with_timeout(Some(MOTION_TIMEOUT))
-            .await
-    else {
+            .await;
+    let result = if let Some(analyzer) = analyzer {
+        let persona_row = match crate::services::tapp_registry::database().await {
+            Ok(db) => get_persona(&db).await.ok().flatten(),
+            Err(_) => None,
+        };
+        let input = serde_json::json!({
+            "phase": phase,
+            "mood": {
+                "value": context.mood.after,
+                "band": context.mood.band_after,
+                "previousBand": context.mood.band_before,
+                "delta": context.mood.delta,
+                "cause": context.mood.cause,
+                "revision": context.mood.revision,
+            },
+            "activity": context.activity,
+            "userText": truncate(&context.user_text, 600),
+            "responseText": context.response_text.as_deref().map(|value| truncate(value, 900)),
+            "taskSuccess": context.task_success,
+            "rig": rig_state.as_ref(),
+            "persona": motion_persona_payload(persona_row.as_ref(), &context.motion_style),
+        })
+        .to_string();
+
+        let schema = motion_schema();
+        let system_prompt = motion_system_prompt();
+        let call = analyzer.analyze_json(&system_prompt, &input, MOTION_SCHEMA_NAME, Some(&schema));
+        Some(
+            tokio::time::timeout(
+                MOTION_TOTAL_TIMEOUT,
+                crate::services::ai_cost_ledger::with_site_ai_ledger(
+                    context.user_id,
+                    "merope",
+                    &format!("motion_{phase}"),
+                    call,
+                ),
+            )
+            .await,
+        )
+    } else {
         tracing::debug!(
             phase,
-            "[MeropeMotion] Lite unavailable; ambient motion only"
+            "[MeropeMotion] Lite unavailable; requested cues may still play"
         );
-        return None;
+        None
     };
-
-    let persona_row = match crate::services::tapp_registry::database().await {
-        Ok(db) => get_persona(&db).await.ok().flatten(),
-        Err(_) => None,
-    };
-    let input = serde_json::json!({
-        "phase": phase,
-        "mood": {
-            "value": context.mood.after,
-            "band": context.mood.band_after,
-            "previousBand": context.mood.band_before,
-            "delta": context.mood.delta,
-            "cause": context.mood.cause,
-            "revision": context.mood.revision,
-        },
-        "activity": context.activity,
-        "userText": truncate(&context.user_text, 600),
-        "responseText": context.response_text.as_deref().map(|value| truncate(value, 900)),
-        "taskSuccess": context.task_success,
-        "rig": rig_state.as_ref(),
-        "persona": motion_persona_payload(persona_row.as_ref(), &context.motion_style),
-    })
-    .to_string();
-
-    let schema = motion_schema();
-    let system_prompt = motion_system_prompt();
-    let call = analyzer.analyze_json(&system_prompt, &input, MOTION_SCHEMA_NAME, Some(&schema));
-    let result = tokio::time::timeout(
-        MOTION_TOTAL_TIMEOUT,
-        crate::services::ai_cost_ledger::with_site_ai_ledger(
-            context.user_id,
-            "merope",
-            &format!("motion_{phase}"),
-            call,
-        ),
-    )
-    .await;
 
     let elapsed_ms = started.elapsed().as_millis() as u64;
-    let raw = match result {
-        Ok(Ok(raw)) => raw,
-        Ok(Err(error)) => {
+    let lite_plan = match result {
+        None => None,
+        Some(Ok(Ok(raw))) => match parse_motion_decision(&raw) {
+            Some(MotionDecision::Continue) => {
+                tracing::debug!(
+                    phase,
+                    elapsed_ms,
+                    "[MeropeMotion] Lite continued current acting"
+                );
+                None
+            }
+            Some(MotionDecision::Perform(parsed)) => Some(parsed),
+            None => {
+                tracing::warn!(
+                    phase,
+                    elapsed_ms,
+                    "[MeropeMotion] Invalid Lite plan dropped"
+                );
+                None
+            }
+        },
+        Some(Ok(Err(error))) => {
             tracing::warn!(phase, elapsed_ms, error = %error, "[MeropeMotion] Lite call dropped");
-            return None;
+            None
         }
-        Err(_) => {
+        Some(Err(_)) => {
             tracing::warn!(
                 phase,
                 elapsed_ms,
                 "[MeropeMotion] Lite total timeout; plan dropped"
             );
-            return None;
+            None
         }
     };
-    match parse_motion_decision(&raw) {
-        Some(MotionDecision::Continue) => {
-            tracing::debug!(
-                phase,
-                elapsed_ms,
-                "[MeropeMotion] Lite continued current acting"
-            );
-            None
-        }
-        Some(MotionDecision::Perform(parsed)) => {
-            let plan = if let Some(state) = rig_state.as_ref() {
-                refine_performance_plan(parsed, state)
-            } else {
-                parsed
-            };
-            if plan_is_empty(&plan) {
-                tracing::debug!(
-                    phase,
-                    elapsed_ms,
-                    "[MeropeMotion] Lite plan had no capable cues"
-                );
-                return None;
-            }
-            tracing::info!(phase, elapsed_ms, "[MeropeMotion] Lite plan ready");
-            Some(PerformanceDirective {
-                phase: context.phase,
-                mood_revision: context.mood.revision,
-                plan,
-            })
-        }
-        None => {
-            tracing::warn!(
-                phase,
-                elapsed_ms,
-                "[MeropeMotion] Invalid Lite plan dropped"
-            );
-            None
-        }
+    let mut plan = lite_plan.unwrap_or_else(ChatPerformancePlan::default);
+    if let Some(state) = rig_state.as_ref() {
+        plan = refine_performance_plan(plan, state);
     }
+    // Named requests overlay Lite so a timeout cannot swallow "做一下狂笑".
+    plan = apply_user_requested_cue(plan, &context.user_text, rig_state.as_ref());
+    if plan_is_empty(&plan) {
+        tracing::debug!(
+            phase,
+            elapsed_ms,
+            "[MeropeMotion] Lite plan had no capable cues"
+        );
+        return None;
+    }
+    tracing::info!(
+        phase,
+        elapsed_ms,
+        requested = user_requested_cue(&context.user_text).is_some(),
+        "[MeropeMotion] plan ready"
+    );
+    Some(PerformanceDirective {
+        phase: context.phase,
+        mood_revision: context.mood.revision,
+        plan,
+    })
 }
 
 /// One persona read per Chat/Work round. Client style is only used when the
@@ -258,6 +266,116 @@ fn strip_motion_json(raw: &str) -> &str {
 
 fn truncate(value: &str, max_chars: usize) -> String {
     value.chars().take(max_chars).collect()
+}
+
+const USER_CUE_REQUEST_MARKERS: &[&str] = &[
+    "做",
+    "来个",
+    "来一下",
+    "给我做",
+    "给我来",
+    "表演",
+    "露出",
+    "摆出",
+    "make a",
+    "do a",
+    "show me",
+];
+
+const USER_CUE_ALIASES: &[(&str, &[&str])] = &[
+    ("maniac", &["狂笑", "疯笑", "发狂", "maniac"]),
+    ("silly", &["呆呆", "发呆", "犯傻", "傻眼", "silly"]),
+    ("cry", &["哭脸", "哭一个", "哭泣", "哭一下", "cry"]),
+    ("angry", &["生气", "愤怒", "怒脸", "angry"]),
+    ("speechless", &["无语", "无语脸", "speechless"]),
+    ("dizzy", &["晕倒", "眩晕", "dizzy"]),
+    ("lovestruck", &["心动", "花痴", "lovestruck"]),
+    ("think", &["思考脸", "思考的表情", "think"]),
+];
+
+fn user_requested_cue(text: &str) -> Option<&'static str> {
+    let folded = text.to_lowercase();
+    let mut best: Option<(usize, &'static str)> = None;
+    for (intent, aliases) in USER_CUE_ALIASES {
+        for alias in *aliases {
+            let Some(pos) = alias_request_pos(text, &folded, alias) else {
+                continue;
+            };
+            if best.is_none_or(|(seen, _)| pos < seen) {
+                best = Some((pos, *intent));
+            }
+        }
+    }
+    best.map(|(_, intent)| intent)
+}
+
+fn alias_request_pos(text: &str, folded: &str, alias: &str) -> Option<usize> {
+    let alias_folded = alias.to_lowercase();
+    let pos = text.find(alias).or_else(|| folded.find(&alias_folded))?;
+    if alias.contains("一下") || alias.contains("一个") {
+        return Some(pos);
+    }
+    let asked = USER_CUE_REQUEST_MARKERS
+        .iter()
+        .any(|marker| text.contains(marker) || folded.contains(&marker.to_lowercase()));
+    if asked {
+        return Some(pos);
+    }
+    let compounds = [
+        format!("{alias}一下"),
+        format!("一下{alias}"),
+        format!("{alias}一个"),
+        format!("{alias}的表情"),
+        format!("做个{alias}"),
+        format!("make a {alias_folded}"),
+        format!("do a {alias_folded}"),
+        format!("show me {alias_folded}"),
+    ];
+    compounds
+        .iter()
+        .any(|phrase| text.contains(phrase) || folded.contains(&phrase.to_lowercase()))
+        .then_some(pos)
+}
+
+fn requested_cue(intent: &str) -> ChatPerformanceCue {
+    ChatPerformanceCue {
+        intent: intent.to_string(),
+        at_ms: 0,
+        intensity: 1.15,
+        tempo: 1.0,
+        fade_in_ms: 80,
+        fade_out_ms: 180,
+        interrupt: "replace".to_string(),
+    }
+}
+
+fn apply_user_requested_cue(
+    mut plan: ChatPerformancePlan,
+    user_text: &str,
+    rig: Option<&RigStateSummary>,
+) -> ChatPerformancePlan {
+    let Some(intent) = user_requested_cue(user_text) else {
+        return plan;
+    };
+    if let Some(state) = rig {
+        if !cue_is_playable(&state.capabilities, intent) {
+            return plan;
+        }
+    }
+    plan.cues.retain(|cue| cue.intent != intent);
+    plan.cues.insert(0, requested_cue(intent));
+    if plan.cues.len() > 3 {
+        plan.cues.truncate(3);
+    }
+    if plan.baseline.is_none() {
+        plan.baseline = Some(ChatPerformanceBaseline {
+            expression: "warm".to_string(),
+            posture: "neutral".to_string(),
+            motion_energy: 1.1,
+            attention: 0.7,
+        });
+    }
+    plan
 }
 
 /// Contract catalog the director may call. Keys must stay aligned with
@@ -353,7 +471,8 @@ fn motion_system_prompt() -> String {
 
 合法枚举：baseline.expression 只能是 {}；baseline.posture 只能是 {}；cues.intent 只能是 {}，最多 3 个。
 每回合必须给出 baseline 和 1–3 个 cue。不要输出 continue，空对象无效。
-只丢掉做不到的：缺能力表里的贴纸层就不要选那一项；说话占嘴时不要选 cry/maniac/silly；唱歌占身时不要选会抢头身的意图。
+若用户明确要求某个表情（做、来一个、表演 + 狂笑/呆呆/哭/生气等），必须选对应 cue。
+只丢掉做不到的：缺能力表里的贴纸层就不要选那一项；说话占嘴时不要选 cry/maniac/silly；唱歌占身时不要选会抢头身的意图。用户点名要做的表情除外。
 
 按性格取表情：
 - 慢热、内向、克制：底用 withdrawn/subdued，常用 listen/think/respond；被戳到时仍用 cry/speechless。
@@ -536,6 +655,8 @@ mod tests {
         assert!(!prompt.contains("angleZ"));
         assert!(prompt.contains("不要输出 continue"));
         assert!(prompt.contains("空对象无效"));
+        assert!(prompt.contains("若用户明确要求某个表情"));
+        assert!(prompt.contains("用户点名要做的表情除外"));
         assert!(prompt.contains("persona"));
         assert!(schema.pointer("/properties/continue").is_none());
         assert!(schema.get("required").is_none());
@@ -689,6 +810,51 @@ mod tests {
         assert_eq!(MOTION_TIMEOUT, Duration::from_secs(4));
         assert_eq!(MOTION_TOTAL_TIMEOUT, Duration::from_secs(5));
         assert!(MOTION_TOTAL_TIMEOUT > MOTION_TIMEOUT);
+    }
+
+    #[test]
+    fn user_can_ask_for_a_named_expression() {
+        assert_eq!(user_requested_cue("你能做一下呆呆的表情吗"), Some("silly"));
+        assert_eq!(user_requested_cue("做一下狂笑"), Some("maniac"));
+        assert_eq!(user_requested_cue("狂笑一下"), Some("maniac"));
+        assert_eq!(user_requested_cue("来个哭脸"), Some("cry"));
+        assert_eq!(user_requested_cue("哭一下"), Some("cry"));
+        assert_eq!(user_requested_cue("make a silly face"), Some("silly"));
+        assert_eq!(user_requested_cue("好开心"), None);
+        assert_eq!(user_requested_cue("昨晚我狂笑了一路"), None);
+        assert_eq!(user_requested_cue("做点好玩的表情"), None);
+        assert_eq!(user_requested_cue("你能告诉我昨天狂笑的事吗"), None);
+    }
+
+    #[test]
+    fn asked_expression_survives_lite_failure_when_the_face_can_play_it() {
+        let plan = apply_user_requested_cue(ChatPerformancePlan::default(), "做一下狂笑", None);
+        assert_eq!(plan.cues[0].intent, "maniac");
+        assert!(plan.baseline.is_some());
+        let blocked = myriad_merope::sanitize_rig_state(&serde_json::json!({
+            "capabilities": ["head-body"]
+        }))
+        .unwrap();
+        let skipped =
+            apply_user_requested_cue(ChatPerformancePlan::default(), "做一下狂笑", Some(&blocked));
+        assert!(skipped.cues.is_empty());
+    }
+
+    #[test]
+    fn asked_mouth_expression_plays_even_while_speaking() {
+        let state = myriad_merope::sanitize_rig_state(&serde_json::json!({
+            "speaking": true,
+            "capabilities": ["head-body", "maniac-mouth"]
+        }))
+        .unwrap();
+        let lite = parse_performance_plan(
+            r#"{"cues":[{"intent":"listen","atMs":0,"intensity":1,"tempo":1,"fadeInMs":80,"fadeOutMs":120,"interrupt":"replace"},{"intent":"maniac","atMs":0,"intensity":1,"tempo":1,"fadeInMs":80,"fadeOutMs":120,"interrupt":"replace"}]}"#,
+        )
+        .unwrap();
+        let refined = refine_performance_plan(lite, &state);
+        assert!(refined.cues.iter().all(|cue| cue.intent != "maniac"));
+        let plan = apply_user_requested_cue(refined, "做一下狂笑", Some(&state));
+        assert_eq!(plan.cues[0].intent, "maniac");
     }
 
     #[test]
