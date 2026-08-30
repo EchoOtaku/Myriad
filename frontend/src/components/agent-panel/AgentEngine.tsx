@@ -47,12 +47,13 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { usePageContentOptional } from '../../contexts/PageContentContext'
 import { agentFace } from '../../features/merope/agentFaceChannel'
-import { getLocalPerception } from '../../features/merope/body/host'
+import { getLocalPerception, getProductionBody } from '../../features/merope/body/host'
 import {
   cancelGatedSpeech,
   deliverGatedLine,
   faceSpeechGate,
   openGatedReply,
+  setLiveBody,
 } from '../../features/merope/faceSpeechArbitration'
 import { livePresenceFacts } from '../../features/merope/livePresence'
 import { setLiveMotionGeneration } from '../../features/merope/motion/liveGeneration'
@@ -616,6 +617,11 @@ export const AgentEngine: React.FC = () => {
     window.addEventListener(AGENT_PANEL_ANSWER_EVENT, handleAnswer)
     return () =>
       window.removeEventListener(AGENT_PANEL_ANSWER_EVENT, handleAnswer)
+  }, [])
+
+  useEffect(() => {
+    setLiveBody(getProductionBody())
+    return () => setLiveBody(null)
   }, [])
 
   // 新 UI 的历史列表挑了一条。取消息、重连进行中的任务都还是这边的活。

@@ -1,4 +1,5 @@
 import type { AgentFaceSink } from './agentFaceChannel'
+import type { BodyAdapter, BodyIntent } from './body/types'
 import type {
   MeropeSpeechEventDetail,
   SpeechUtteranceInput,
@@ -15,6 +16,7 @@ import {
   FaceSpeechGate,
   notificationCarriesMeropeSpeech,
   openGatedReply,
+  setLiveBody,
 } from './faceSpeechArbitration'
 import { setLiveFaceVisible } from './faceVisible'
 
@@ -210,6 +212,10 @@ test('notification center and engine cancel go through the gated Work/Chat helpe
   )
   assert.match(arbitration, /speakLine\(/)
   assert.match(arbitration, /liveFaceVisible\(\)/)
+  assert.match(arbitration, /liveBody\.intend/)
+  assert.match(arbitration, /setLiveBody/)
+  assert.doesNotMatch(arbitration, /body\/host|getProductionBody|runtimeHost/)
+  assert.match(engine, /setLiveBody\(getProductionBody\(\)\)/)
 })
 
 test('generic producer event keys are not persona speech', () => {
@@ -243,6 +249,63 @@ test('hidden face records a line instead of pretending it was spoken', () => {
   assert.equal(result.surface, 'record')
   assert.equal(sink.utterances.length, 0)
   setLiveFaceVisible(true)
+})
+
+test('a live body is the app-layer outlet for a finished line', () => {
+  setLiveFaceVisible(true)
+  const intended: BodyIntent[] = []
+  const body: BodyAdapter = {
+    capabilities: () => ({ semantic: [] }),
+    state: () => ({
+      expression: 'steady',
+      posture: 'neutral',
+      acting: null,
+      speaking: false,
+      faceVisible: true,
+      capabilities: [],
+    }),
+    intend: (intent) => {
+      intended.push(intent)
+    },
+  }
+  setLiveBody(body)
+  try {
+    const sink = new RecordingSink()
+    const channel = new AgentFaceChannel(sink)
+    const gate = new FaceSpeechGate(() => 'chat')
+    const result = deliverGatedLine(channel, gate, 'chat', {
+      messageId: 'chat-msg',
+      text: '想跟你说一声',
+      performance: { phase: 'delivery', moodRevision: 1, plan: { cues: [] } },
+    })
+    assert.equal(result.surface, 'speech')
+    assert.equal(intended.length, 1)
+    assert.equal(intended[0]?.speechText, '想跟你说一声')
+    assert.ok(intended[0]?.performance)
+    assert.equal(
+      (sink.performances[0] as { performance?: unknown } | undefined)
+        ?.performance,
+      undefined,
+    )
+    assert.deepEqual(
+      sink.utterances.map((item) => [item.messageId, item.text]),
+      [['chat-msg', '想跟你说一声']],
+    )
+
+    const chat = openGatedReply(channel, gate, 'chat', 'chat-busy')
+    chat.chunk('还在说')
+    intended.length = 0
+    const blocked = deliverGatedLine(channel, gate, 'work', {
+      messageId: 'work-msg',
+      text: '报告已经写好了',
+      performance: { phase: 'delivery', moodRevision: 2, plan: { cues: [] } },
+    })
+    assert.equal(blocked.surface, 'record')
+    assert.equal(intended.length, 0)
+    chat.end()
+  } finally {
+    setLiveBody(null)
+  }
 })
 
 test('Work completion still speaks when Chat is not talking and Work is visible', () => {

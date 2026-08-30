@@ -275,8 +275,9 @@ const GlobalControlPanel: React.FC = () => {
   /** 新通知到达：按统一投递策略分发到面板之外的展示位置。 */
   const handleNewNotification = useCallback(
     (n: AppNotification) => {
+      const metadata = n.metadata
       if (
-        notificationCarriesMeropeSpeech(n.metadata) &&
+        notificationCarriesMeropeSpeech(metadata) &&
         (shouldDeliverNotification(notificationPreferences, n, 'island') ||
           shouldDeliverNotification(notificationPreferences, n, 'toast') ||
           shouldDeliverNotification(notificationPreferences, n, 'panel'))
@@ -284,8 +285,8 @@ const GlobalControlPanel: React.FC = () => {
         deliverWorkNotificationFace(agentFace, faceSpeechGate, {
           id: n.id,
           body: n.body,
-          performance: n.metadata.performance,
-          meropeState: n.metadata.merope_state,
+          performance: metadata.performance,
+          meropeState: metadata.merope_state,
         })
       }
       const source = notificationSourceFor(n)

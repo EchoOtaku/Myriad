@@ -31,6 +31,7 @@ test('production chat and perception go through the body adapters', () => {
     'utf8',
   )
   assert.match(engine, /getLocalPerception/)
+  assert.match(engine, /setLiveBody\(getProductionBody\(\)\)/)
   assert.doesNotMatch(engine, /capturePerceptionSnapshots/)
   assert.doesNotMatch(engine, /runtime\.performance\.apply/)
   const adapter = readFileSync(new URL('./anime25dAdapter.ts', import.meta.url), 'utf8')

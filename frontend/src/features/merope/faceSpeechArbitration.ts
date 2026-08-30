@@ -1,5 +1,7 @@
 import type { AgentPanelMode } from '../../components/agent-panel/agentPanelMode'
+import type { PerformanceDirective } from '../../services/agent/types'
 import type { AgentFaceChannel, ReplyUtterance } from './agentFaceChannel'
+import type { BodyAdapter } from './body/types'
 import { getAgentPanelMode } from '../../components/agent-panel/agentPanelMode'
 import { liveFaceVisible } from './faceVisible'
 import { liveMotionGeneration } from './motion/liveGeneration'
@@ -117,6 +119,13 @@ export class FaceSpeechGate {
 
 export const faceSpeechGate = new FaceSpeechGate()
 
+let liveBody: BodyAdapter | null = null
+
+/** Production mounts the Anime2.5D body here. Tests leave it null. */
+export function setLiveBody(body: BodyAdapter | null): void {
+  liveBody = body
+}
+
 /** Open a streamed reply only when the gate allows speech. */
 export function openGatedReply(
   channel: AgentFaceChannel,
@@ -155,7 +164,7 @@ export function cancelGatedSpeech(
 /** Producer toasts with a generic event_key are not persona speech. */
 export function notificationCarriesMeropeSpeech(
   metadata: Record<string, unknown> | null | undefined,
-): boolean {
+): metadata is Record<string, unknown> {
   if (!metadata) return false
   if (
     metadata.performance != null ||
@@ -216,6 +225,24 @@ export function deliverGatedLine(
     noteTurnTraceDrop('hidden_face')
     return { surface: 'record', messageId: line.messageId, text }
   }
+  const performance = isPerformanceDirective(line.performance)
+    ? line.performance
+    : undefined
+  if (liveBody) {
+    liveBody.intend({
+      messageId: line.messageId,
+      speechText: text,
+      ...(performance ? { performance } : {}),
+    })
+    if (text && getSpeechPipeline().available) {
+      return { surface: 'speech', messageId: line.messageId, text }
+    }
+    if (text) {
+      channel.deliver({ ...line, performance: undefined })
+      return { surface: 'speech', messageId: line.messageId, text }
+    }
+    return { surface: 'speech', messageId: line.messageId }
+  }
   if (text && getSpeechPipeline().speakLine({
     messageId: line.messageId,
     text,
@@ -229,4 +256,10 @@ export function deliverGatedLine(
   }
   channel.deliver(line)
   return { surface: 'speech', messageId: line.messageId, text }
+}
+
+function isPerformanceDirective(value: unknown): value is PerformanceDirective {
+  return Boolean(
+    value && typeof value === 'object' && 'plan' in (value as object),
+  )
 }
