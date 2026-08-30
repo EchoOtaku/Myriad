@@ -210,12 +210,10 @@ test('notification center and engine cancel go through the gated Work/Chat helpe
     new URL('./faceSpeechArbitration.ts', import.meta.url),
     'utf8',
   )
-  assert.match(arbitration, /speakLine\(/)
-  assert.match(arbitration, /liveFaceVisible\(\)/)
-  assert.match(arbitration, /liveBody\.intend/)
-  assert.match(arbitration, /setLiveBody/)
+  assert.match(arbitration, /speakUnmountedLine/)
   assert.doesNotMatch(arbitration, /body\/host|getProductionBody|runtimeHost/)
-  assert.match(engine, /setLiveBody\(getProductionBody\(\)\)/)
+  assert.doesNotMatch(engine, /speakLine/)
+  assert.doesNotMatch(panel, /speakLine/)
 })
 
 test('generic producer event keys are not persona speech', () => {

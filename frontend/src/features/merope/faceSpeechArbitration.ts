@@ -121,7 +121,10 @@ export const faceSpeechGate = new FaceSpeechGate()
 
 let liveBody: BodyAdapter | null = null
 
-/** Production mounts the Anime2.5D body here. Tests leave it null. */
+/**
+ * Production mounts the Anime2.5D body here. Null means AgentEngine is
+ * unmounted; finished lines then use speakUnmountedLine, not a second runtime.
+ */
 export function setLiveBody(body: BodyAdapter | null): void {
   liveBody = body
 }
@@ -243,12 +246,7 @@ export function deliverGatedLine(
     }
     return { surface: 'speech', messageId: line.messageId }
   }
-  if (text && getSpeechPipeline().speakLine({
-    messageId: line.messageId,
-    text,
-    generation: liveMotionGeneration(),
-    interrupt: 'queue',
-  })) {
+  if (text && speakUnmountedLine(line.messageId, text)) {
     if (line.performance) {
       channel.deliver({ ...line, text: undefined })
     }
@@ -256,6 +254,20 @@ export function deliverGatedLine(
   }
   channel.deliver(line)
   return { surface: 'speech', messageId: line.messageId, text }
+}
+
+/**
+ * AgentEngine is not mounted, so there is no production body. This is the
+ * only app-layer speakLine outside Anime25DBodyAdapter.intend. Do not add
+ * another caller; mount a body or stay silent.
+ */
+function speakUnmountedLine(messageId: string, text: string): boolean {
+  return getSpeechPipeline().speakLine({
+    messageId,
+    text,
+    generation: liveMotionGeneration(),
+    interrupt: 'queue',
+  })
 }
 
 function isPerformanceDirective(value: unknown): value is PerformanceDirective {

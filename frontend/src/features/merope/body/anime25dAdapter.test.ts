@@ -48,16 +48,21 @@ test('production chat and perception go through the body adapters', () => {
     assert.doesNotMatch(source, /capturePerceptionSnapshots/)
     assert.doesNotMatch(source, /runtime\.performance\.apply/)
   }
-  assert.match(engine, /getLocalPerception/)
-  assert.match(engine, /setLiveBody\(getProductionBody\(\)\)/)
+  assert.doesNotMatch(engine, /speakLine/)
+  assert.doesNotMatch(panel, /speakLine/)
+  assert.doesNotMatch(
+    readFileSync(new URL('./host.ts', import.meta.url), 'utf8'),
+    /speakLine/,
+  )
+  assert.match(arbitration, /speakUnmountedLine/)
   const adapter = readFileSync(new URL('./anime25dAdapter.ts', import.meta.url), 'utf8')
-  assert.match(adapter, /this\.runtime\.performance\.apply/)
+  assert.doesNotMatch(adapter, /capturePerceptionSnapshots/)
   const perception = readFileSync(
     new URL('./perceptionAdapter.ts', import.meta.url),
     'utf8',
   )
-  assert.match(perception, /capturePerceptionSnapshots/)
   assert.doesNotMatch(perception, / as PageContent/)
+  assert.doesNotMatch(perception, /speakLine/)
 })
 
 test('hidden face does not pretend a body intent was played', () => {
