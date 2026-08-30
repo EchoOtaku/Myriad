@@ -15,6 +15,7 @@ import {
   deliverWorkNotificationFace,
   openGatedReply,
 } from './faceSpeechArbitration'
+import { setLiveFaceVisible } from './faceVisible'
 
 class RecordingSink implements AgentFaceSink {
   readonly speechEvents: MeropeSpeechEventDetail[] = []
@@ -199,6 +200,27 @@ test('notification center and engine cancel go through the gated Work/Chat helpe
   assert.doesNotMatch(panel, /agentFace\.deliver\(/)
   assert.match(engine, /cancelGatedSpeech\(/)
   assert.doesNotMatch(engine, /agentFace\.cancel\(/)
+  const arbitration = readFileSync(
+    new URL('./faceSpeechArbitration.ts', import.meta.url),
+    'utf8',
+  )
+  assert.match(arbitration, /speakLine\(/)
+  assert.match(arbitration, /liveFaceVisible\(\)/)
+})
+
+test('hidden face records a line instead of pretending it was spoken', () => {
+  setLiveFaceVisible(false)
+  const sink = new RecordingSink()
+  const channel = new AgentFaceChannel(sink)
+  const gate = new FaceSpeechGate(() => 'chat')
+  const result = deliverGatedLine(channel, gate, 'chat', {
+    messageId: 'proactive-1',
+    text: '想跟你说一声',
+    source: 'proactive',
+  })
+  assert.equal(result.surface, 'record')
+  assert.equal(sink.utterances.length, 0)
+  setLiveFaceVisible(true)
 })
 
 test('Work completion still speaks when Chat is not talking and Work is visible', () => {

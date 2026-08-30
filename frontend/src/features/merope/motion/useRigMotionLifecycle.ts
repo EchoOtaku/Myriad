@@ -3,6 +3,7 @@ import type { RigCharacterHandle } from '../rig/RigCharacter'
 import type { MeropeActivity } from '../types'
 import type { MotionRuntime } from './runtime'
 import { useEffect, useRef } from 'react'
+import { setLiveFaceVisible } from '../faceVisible'
 import { useRigSingingLifecycle } from '../useRigSingingLifecycle'
 import { applyMotionFrame, createMotionApplyState } from './applyFrame'
 import { createPreviewMotionRuntime } from './runtime'
@@ -18,12 +19,22 @@ function useMotionRuntimeConsumer(
   runtime: MotionRuntime,
   rigRef: RefObject<RigCharacterHandle | null>,
   options: RigMotionLifecycleOptions = {},
+  liveFace = false,
 ): void {
   const mood = options.mood ?? 70
   const activity = options.activity ?? 'idle'
   const capabilityKey = options.capabilities?.join(',') ?? ''
 
-  useEffect(() => runtime.retain(), [runtime])
+  useEffect(() => {
+    const release = runtime.retain()
+    if (liveFace) setLiveFaceVisible(true)
+    return () => {
+      release()
+      if (liveFace) {
+        setLiveFaceVisible(getProductionMotionRuntime().summaryFacts().faceVisible)
+      }
+    }
+  }, [runtime, liveFace])
 
   useEffect(() => {
     runtime.mood.set(mood, activity)
@@ -52,7 +63,12 @@ export function useRigMotionLifecycle(
   options: RigMotionLifecycleOptions = {},
 ): void {
   useRigSingingLifecycle()
-  useMotionRuntimeConsumer(getProductionMotionRuntime(), rigRef, options)
+  useMotionRuntimeConsumer(
+    getProductionMotionRuntime(),
+    rigRef,
+    options,
+    true,
+  )
 }
 
 /**

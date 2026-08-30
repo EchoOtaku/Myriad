@@ -274,7 +274,11 @@ const GlobalControlPanel: React.FC = () => {
   /** 新通知到达：按统一投递策略分发到面板之外的展示位置。 */
   const handleNewNotification = useCallback(
     (n: AppNotification) => {
-      if (n.metadata?.performance) {
+      if (
+        n.metadata?.performance ||
+        n.metadata?.merope_state ||
+        n.metadata?.event_key
+      ) {
         deliverWorkNotificationFace(agentFace, faceSpeechGate, {
           id: n.id,
           body: n.body,

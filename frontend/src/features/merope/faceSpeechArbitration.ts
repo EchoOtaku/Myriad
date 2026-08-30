@@ -1,11 +1,15 @@
 import type { AgentPanelMode } from '../../components/agent-panel/agentPanelMode'
-import { getAgentPanelMode } from '../../components/agent-panel/agentPanelMode'
 import type { AgentFaceChannel, ReplyUtterance } from './agentFaceChannel'
+import { getAgentPanelMode } from '../../components/agent-panel/agentPanelMode'
+import { liveFaceVisible } from './faceVisible'
+import { liveMotionGeneration } from './motion/liveGeneration'
+import { getSpeechPipeline } from './speech/speechPipelineHost'
+import { noteTurnTraceDrop } from './turnTrace'
 
 /** Visible panel mode owns the mouth; the other mode may only leave a record. */
 export type FaceSpeechVerdict = 'speak' | 'record-without-speech'
 
-export type FaceSpeechLine = {
+export interface FaceSpeechLine {
   messageId: string
   text?: string
   source?: 'reply' | 'proactive' | 'interaction' | 'preview'
@@ -13,7 +17,7 @@ export type FaceSpeechLine = {
   performance?: unknown
 }
 
-export type FaceDelivery = {
+export interface FaceDelivery {
   surface: 'speech' | 'record'
   messageId: string
   text?: string
@@ -175,7 +179,23 @@ export function deliverGatedLine(
 ): FaceDelivery {
   const text = line.text?.trim() ? line.text : undefined
   if (gate.decide(incomingMode) !== 'speak') {
+    noteTurnTraceDrop('gated_record')
     return { surface: 'record', messageId: line.messageId, text }
+  }
+  if (!liveFaceVisible()) {
+    noteTurnTraceDrop('hidden_face')
+    return { surface: 'record', messageId: line.messageId, text }
+  }
+  if (text && getSpeechPipeline().speakLine({
+    messageId: line.messageId,
+    text,
+    generation: liveMotionGeneration(),
+    interrupt: 'queue',
+  })) {
+    if (line.performance) {
+      channel.deliver({ ...line, text: undefined })
+    }
+    return { surface: 'speech', messageId: line.messageId, text }
   }
   channel.deliver(line)
   return { surface: 'speech', messageId: line.messageId, text }

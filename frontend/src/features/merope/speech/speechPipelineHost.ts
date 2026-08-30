@@ -1,7 +1,13 @@
-import type { SpeechSegment } from './speechSegmenter'
+import type { SpeechInterruptMode, SpeechSegment } from './speechSegmenter'
 import { getSpeechStatus, textToSpeech } from '../../../services/speechApi'
 import { liveMotionGeneration } from '../motion/liveGeneration'
 import { dispatchMeropeSpeech } from '../speechEvents'
+import {
+  markTurnTraceOnce,
+  noteTurnTraceCancelToSilence,
+} from '../turnTrace'
+import { speakableText } from './speakableText'
+import { SpeechSegmenter } from './speechSegmenter'
 import { TtsPipeline } from './ttsPipeline'
 import { playTtsBuffer } from './ttsPlayer'
 import { patchVoicePresence } from './voicePresence'
@@ -20,6 +26,7 @@ export class SpeechPipelineHost {
   readonly pipeline: TtsPipeline
   private enabled = false
   private probed = false
+  private cancelledAt: number | null = null
 
   constructor() {
     this.pipeline = new TtsPipeline({
@@ -52,9 +59,35 @@ export class SpeechPipelineHost {
     this.pipeline.enqueue(segments, mode)
   }
 
+  /**
+   * One finished line through the same TTS queue as streamed Chat.
+   * Returns false when TTS is off so callers may fall back to text visemes.
+   */
+  speakLine(input: {
+    messageId: string
+    text: string
+    generation?: number
+    interrupt?: SpeechInterruptMode
+  }): boolean {
+    if (!this.enabled) return false
+    const text = speakableText(input.text)
+    if (!text) return false
+    const interrupt = input.interrupt ?? 'queue'
+    const splitter = new SpeechSegmenter(input.messageId, input.generation ?? 0)
+    const segments = [
+      ...splitter.push(text, interrupt),
+      ...splitter.end(interrupt),
+    ]
+    if (segments.length === 0) return false
+    this.feed(segments)
+    return true
+  }
+
   cancel(messageId?: string): void {
+    this.cancelledAt = nowMs()
     this.pipeline.cancel(messageId)
     patchVoicePresence({ ttsPlaying: false })
+    this.noteSilence()
   }
 
   private async synthesize(segment: SpeechSegment): Promise<ArrayBuffer | null> {
@@ -88,6 +121,7 @@ export class SpeechPipelineHost {
     patchVoicePresence({ ttsPlaying: true })
     const handle = playTtsBuffer(audio, segment, {
       onEnergy: (energy, articulation) => {
+        markTurnTraceOnce('first_audio')
         dispatchMeropeSpeech({
           phase: 'energy',
           messageId: segment.messageId,
@@ -113,16 +147,27 @@ export class SpeechPipelineHost {
           utteranceId,
           ...(generation ? { generation } : {}),
         })
-        if (!this.pipeline.playing) patchVoicePresence({ ttsPlaying: false })
         onEnded()
+        if (!this.pipeline.playing) {
+          patchVoicePresence({ ttsPlaying: false })
+          markTurnTraceOnce('speech_ended')
+        }
       },
     })
     return {
       stop: () => {
         handle.stop()
         patchVoicePresence({ ttsPlaying: false })
+        this.noteSilence()
       },
     }
+  }
+
+  private noteSilence(): void {
+    if (this.cancelledAt == null) return
+    noteTurnTraceCancelToSilence(nowMs() - this.cancelledAt)
+    this.cancelledAt = null
+    markTurnTraceOnce('speech_ended')
   }
 
   private emitCancel(messageId: string): void {
@@ -139,4 +184,8 @@ let host: SpeechPipelineHost | null = null
 export function getSpeechPipeline(): SpeechPipelineHost {
   if (!host) host = new SpeechPipelineHost()
   return host
+}
+
+function nowMs(): number {
+  return typeof performance === 'undefined' ? Date.now() : performance.now()
 }

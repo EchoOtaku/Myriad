@@ -53,11 +53,18 @@ import {
   faceSpeechGate,
   openGatedReply,
 } from '../../features/merope/faceSpeechArbitration'
+import { livePresenceFacts } from '../../features/merope/livePresence'
 import { setLiveMotionGeneration } from '../../features/merope/motion/liveGeneration'
 import { captureProductionRigStateSummary } from '../../features/merope/motion/runtimeHost'
 import { capturePerceptionSnapshots } from '../../features/merope/perception/capture'
 import { getSpeechPipeline } from '../../features/merope/speech/speechPipelineHost'
 import { SpeechSegmenter } from '../../features/merope/speech/speechSegmenter'
+import {
+  beginTurnTrace,
+  markTurnTraceOnce,
+  noteTurnTraceDrop,
+} from '../../features/merope/turnTrace'
+import { sampleTurnTraceLeaks } from '../../features/merope/turnTraceSample'
 import { agentService, executeFrontendAction } from '../../services/agent'
 import {
   collectReattachCandidates,
@@ -123,6 +130,11 @@ function currentPath(): string {
 function stopTurnSpeech(messageId: string): void {
   cancelGatedSpeech(agentFace, faceSpeechGate, messageId)
   getSpeechPipeline().cancel(messageId)
+}
+
+function finishTurnTrace(): void {
+  sampleTurnTraceLeaks()
+  markTurnTraceOnce('turn_completed')
 }
 
 /**
@@ -725,6 +737,7 @@ export const AgentEngine: React.FC = () => {
           mode === 'chat' &&
           !isCurrentChatGeneration(generation, chatTurnClockRef.current.current())
         ) {
+          noteTurnTraceDrop('stale_generation')
           return
         }
         // 岛与面板读同一份状态：这里是唯一的入口，别处不再解读 SSE
@@ -923,10 +936,13 @@ export const AgentEngine: React.FC = () => {
                 updateMessage(assistantMessageId, { content: body })
               }
               if (pipeline.available) {
-                pipeline.feed(segmenter.end())
+                const tail = segmenter.end()
+                if (tail.length) markTurnTraceOnce('first_sentence')
+                pipeline.feed(tail)
               }
               utterance.end()
             } else {
+              if (tokenEvent.token) markTurnTraceOnce('llm_first_token')
               streamedSummary += tokenEvent.token
               const split = splitThinkContent(streamedSummary)
               if (split.thought && split.thought !== streamedThinking) {
@@ -937,7 +953,9 @@ export const AgentEngine: React.FC = () => {
               )
               if (body) {
                 if (pipeline.available) {
-                  pipeline.feed(segmenter.push(tokenEvent.token))
+                  const segments = segmenter.push(tokenEvent.token)
+                  if (segments.length) markTurnTraceOnce('first_sentence')
+                  pipeline.feed(segments)
                 } else {
                   utterance.chunk(tokenEvent.token)
                 }
@@ -958,6 +976,7 @@ export const AgentEngine: React.FC = () => {
 
           case 'performance_plan': {
             const performanceEvent = event as PerformancePlanEvent
+            markTurnTraceOnce('reaction_ready')
             deliverGatedLine(agentFace, faceSpeechGate, mode, {
               messageId: assistantMessageId,
               performance: performanceEvent.performance,
@@ -1249,6 +1268,9 @@ export const AgentEngine: React.FC = () => {
 
       const chatGeneration =
         mode === 'chat' ? chatTurnClockRef.current.next() : 0
+      beginTurnTrace(assistantMsgId)
+      markTurnTraceOnce('input_started')
+      markTurnTraceOnce('input_final')
       if (mode === 'chat') {
         setLiveMotionGeneration(chatGeneration)
         agentFace.setGeneration(chatGeneration)
@@ -1292,6 +1314,7 @@ export const AgentEngine: React.FC = () => {
           page: pageConsent ? (pageContentContext?.pageContent ?? null) : null,
           pageConsent,
         })
+        customData.presence = livePresenceFacts()
         if (attachments.length) {
           customData.attachments = attachmentsForRequest(attachments)
         }
@@ -1299,6 +1322,7 @@ export const AgentEngine: React.FC = () => {
           context.customData = customData
         }
 
+        markTurnTraceOnce('request_sent')
         const response = await agentService.processWithProgress(
           requestText,
           createProgressHandler(assistantMsgId, mode, chatGeneration),
@@ -1310,7 +1334,9 @@ export const AgentEngine: React.FC = () => {
         }
       } catch (error) {
         stopTurnSpeech(assistantMsgId)
+        finishTurnTrace()
         if (isStreamSupersededError(error)) {
+          noteTurnTraceDrop('superseded')
           updateMessageExecution(assistantMsgId, { status: 'error' })
           return
         }
@@ -1474,6 +1500,7 @@ export const AgentEngine: React.FC = () => {
           text: pendingQuestion.question,
           locale,
         })
+        finishTurnTrace()
         return
       }
 
@@ -1760,6 +1787,7 @@ export const AgentEngine: React.FC = () => {
           console.error('[AgentEngine] Frontend action failed:', error)
         }
       }
+      finishTurnTrace()
     },
     [locale, updateMessage, updateMessageExecution],
   )
@@ -1810,6 +1838,8 @@ export const AgentEngine: React.FC = () => {
       setAgentStatusThinking()
 
       try {
+        beginTurnTrace(messageId)
+        markTurnTraceOnce('request_sent')
         const response = msg.pendingQuestion.confirmationId
           ? await agentService.confirmOperation(
               msg.pendingQuestion.confirmationId,
@@ -1826,6 +1856,7 @@ export const AgentEngine: React.FC = () => {
         handleAgentResponseRef.current?.(messageId, response, 'work')
       } catch (error) {
         stopTurnSpeech(messageId)
+        finishTurnTrace()
         const errorMsg = userFacingError(error, t.errors.agentConfirmFailed)
         updateMessage(messageId, {
           content: format(t.agentPanel.answerFailed, { error: errorMsg }),
