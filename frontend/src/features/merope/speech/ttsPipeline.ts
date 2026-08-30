@@ -1,4 +1,10 @@
 import type { SpeechInterruptMode, SpeechSegment } from './speechSegmenter'
+import {
+  markTurnTraceOnce,
+  noteTurnTraceDelay,
+  noteTurnTraceDrop,
+  noteTurnTraceQueue,
+} from '../turnTrace'
 
 export interface TtsAudioHandle {
   stop: () => void
@@ -40,6 +46,15 @@ export class TtsPipeline {
     return this.handle != null
   }
 
+  get queueLength(): number {
+    return (
+      this.pending.length +
+      this.ready.size +
+      this.inflight +
+      (this.handle ? 1 : 0)
+    )
+  }
+
   enqueue(
     segments: readonly SpeechSegment[],
     mode: SpeechInterruptMode = 'queue',
@@ -49,14 +64,22 @@ export class TtsPipeline {
     if (mode === 'interrupt') this.cancel()
     else if (mode === 'replace') this.replaceMessage(messageId)
     for (const segment of segments) this.pending.push(segment)
+    markTurnTraceOnce('tts_queued', { n: segments.length })
+    this.noteQueue()
     this.pumpSynth()
   }
 
   cancel(messageId?: string): void {
     if (messageId && this.playingMessageId && this.playingMessageId !== messageId) {
-      this.dropMessage(messageId)
+      if (this.dropMessage(messageId)) noteTurnTraceDrop('cancelled')
+      this.noteQueue()
       return
     }
+    const hadWork =
+      this.handle != null ||
+      this.pending.length > 0 ||
+      this.ready.size > 0 ||
+      this.inflight > 0
     this.epoch += 1
     this.stopPlayback()
     this.pending.length = 0
@@ -65,28 +88,43 @@ export class TtsPipeline {
     this.inflight = 0
     const id = messageId ?? this.playingMessageId
     this.playingMessageId = null
+    this.noteQueue()
+    if (hadWork) noteTurnTraceDrop('cancelled')
     if (id) this.host.onCancel?.(id)
   }
 
   private replaceMessage(messageId: string): void {
-    this.dropMessage(messageId)
-    if (this.playingMessageId === messageId) this.stopPlayback()
+    const dropped = this.dropMessage(messageId)
+    const stopped = this.playingMessageId === messageId
+    if (stopped) this.stopPlayback()
+    if (dropped || stopped) noteTurnTraceDrop('queue_replaced')
+    this.noteQueue()
   }
 
-  private dropMessage(messageId: string): void {
+  private dropMessage(messageId: string): boolean {
+    let dropped = false
     for (let i = this.pending.length - 1; i >= 0; i--) {
-      if (this.pending[i]?.messageId === messageId) this.pending.splice(i, 1)
+      if (this.pending[i]?.messageId === messageId) {
+        this.pending.splice(i, 1)
+        dropped = true
+      }
     }
     for (const [sequence, slot] of [...this.ready]) {
-      if (slot.segment.messageId === messageId) this.ready.delete(sequence)
+      if (slot.segment.messageId === messageId) {
+        this.ready.delete(sequence)
+        dropped = true
+      }
     }
+    return dropped
   }
 
   private pumpSynth(): void {
     while (this.inflight < MAX_SYNTH && this.pending.length > 0) {
       const segment = this.pending.shift()!
       const epoch = this.epoch
+      const started = nowMs()
       this.inflight += 1
+      this.noteQueue()
       void this.host
         .synthesize(segment)
         .catch(() => null)
@@ -95,6 +133,12 @@ export class TtsPipeline {
           if (epoch !== this.epoch) {
             this.pumpSynth()
             return
+          }
+          if (audio) {
+            noteTurnTraceDelay('tts', nowMs() - started)
+            markTurnTraceOnce('tts_ready')
+          } else {
+            noteTurnTraceDrop('synth_failed')
           }
           this.ready.set(segment.sequence, { segment, audio })
           this.tryPlay()
@@ -115,9 +159,11 @@ export class TtsPipeline {
     }
     this.playingMessageId = slot.segment.messageId
     const epoch = this.epoch
+    markTurnTraceOnce('playback_started')
     this.handle = this.host.play(slot.audio, slot.segment, () => {
       if (epoch !== this.epoch) return
       this.handle = null
+      this.noteQueue()
       this.tryPlay()
     })
   }
@@ -125,5 +171,14 @@ export class TtsPipeline {
   private stopPlayback(): void {
     this.handle?.stop()
     this.handle = null
+    this.noteQueue()
   }
+
+  private noteQueue(): void {
+    noteTurnTraceQueue(this.queueLength)
+  }
+}
+
+function nowMs(): number {
+  return typeof performance === 'undefined' ? Date.now() : performance.now()
 }

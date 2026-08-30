@@ -36,6 +36,10 @@ export function subscribeVoicePresence(listener: () => void): () => void {
   }
 }
 
+export function voicePresenceListenerCount(): number {
+  return listeners.size
+}
+
 /** Barge-in during TTS needs a stronger local VAD so echo is not a submit. */
 export function bargeInAllowed(nowSpeaking: boolean): boolean {
   if (!nowSpeaking) return false

@@ -17,6 +17,7 @@ import {
   getVoicePresence,
   patchVoicePresence,
 } from '../../features/merope/speech/voicePresence'
+import { stampTurnTrace } from '../../features/merope/turnTrace'
 import {
   audioToBase64,
   getSpeechStatus,
@@ -137,6 +138,7 @@ export function useVoiceRecording(
         engine: LOCALE_ENGINE_MAP[localeRef.current] || '16k_zh',
       })
       const text = result.success ? result.text?.trim() ?? '' : ''
+      stampTurnTrace('input_final')
       if (isSubmittableTranscript(text)) onResultRef.current(text)
       patchVoicePresence({ partial: '' })
     } catch (err) {
@@ -165,6 +167,7 @@ export function useVoiceRecording(
           closeFramesRef.current = 0
           utterancePcmRef.current = [frame]
           patchVoicePresence({ userSpeaking: true, partial: '' })
+          stampTurnTrace('input_started')
           getSpeechPipeline().cancel()
         }
       } else {
@@ -243,6 +246,7 @@ export function useVoiceRecording(
       }
       isRecordingRef.current = true
       setIsRecording(true)
+      stampTurnTrace('input_started')
       patchVoicePresence({ listening: listeningRef.current })
     } catch (err) {
       console.error('[useVoiceRecording] 无法访问麦克风:', err)

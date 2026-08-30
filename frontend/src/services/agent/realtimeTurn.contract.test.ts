@@ -23,7 +23,7 @@ test('old Chat generation cannot keep applying after a newer Chat send', () => {
   assert.match(engine, /isCurrentChatGeneration\(generation/)
   assert.match(engine, /setLiveMotionGeneration\(chatGeneration\)/)
   const lifecycle = source('../../features/merope/performanceLifecycle.ts')
-  assert.match(lifecycle, /isLiveMotionGeneration\(event\.generation\)/)
+  assert.match(lifecycle, /acceptLiveMotionGeneration\(event\.generation\)/)
 })
 
 test('duplicate run sequences are dropped so speech and motion are not replayed', () => {

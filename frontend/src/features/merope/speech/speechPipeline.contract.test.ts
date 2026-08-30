@@ -13,8 +13,12 @@ test('TTS audio stays off the run hub and cancel stops the buffer source', () =>
   const host = source('./speechPipelineHost.ts')
   assert.doesNotMatch(host, /run_hub|AgentProgressEvent/)
   assert.match(host, /phase: 'cancel'/)
+  assert.match(host, /speakLine/)
   const pipeline = source('./ttsPipeline.ts')
   assert.match(pipeline, /MAX_SYNTH = 2/)
+  const trace = source('../turnTrace.ts')
+  assert.doesNotMatch(trace, /run_hub/)
+  assert.doesNotMatch(trace, /phase: 'articulation'/)
 })
 
 test('continuous listen is off until the person turns it on', () => {

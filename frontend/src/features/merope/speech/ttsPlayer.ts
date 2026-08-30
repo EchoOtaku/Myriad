@@ -89,6 +89,10 @@ function speechAudioContext(): AudioContext {
   return sharedContext
 }
 
+export function speechAudioContextOpen(): boolean {
+  return Boolean(sharedContext && sharedContext.state !== 'closed')
+}
+
 export function sampleMouth(bins: Uint8Array): SpeechArticulation {
   let sum = 0
   for (let i = 0; i < bins.length; i++) {
