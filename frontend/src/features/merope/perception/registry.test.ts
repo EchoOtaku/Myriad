@@ -64,6 +64,7 @@ test('expired snapshots disappear', () => {
     privacy: 'local',
   })
   assert.equal(registry.active(now + 10).length, 1)
+  assert.equal(registry.active(now + 10)[0]?.ttlMs, 40)
   assert.equal(registry.active(now + 50).length, 0)
 })
 

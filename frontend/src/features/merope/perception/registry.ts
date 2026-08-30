@@ -13,6 +13,8 @@ export interface PerceptionSnapshot {
   revision: number
   capturedAt: number
   expiresAt: number
+  /** Remaining life at list time. Server expiry uses this, not expiresAt. */
+  ttlMs: number
   summary: string
   safeFacts: Record<string, string | number | boolean>
   privacy: PerceptionPrivacy
@@ -35,7 +37,7 @@ export class PerceptionRegistry {
   private readonly revisions = new Map<string, number>()
 
   replace(
-    input: Omit<PerceptionSnapshot, 'revision' | 'capturedAt'> & {
+    input: Omit<PerceptionSnapshot, 'revision' | 'capturedAt' | 'ttlMs'> & {
       revision?: number
       capturedAt?: number
     },
@@ -50,6 +52,7 @@ export class PerceptionRegistry {
       revision,
       capturedAt,
       expiresAt: input.expiresAt,
+      ttlMs: Math.max(0, input.expiresAt - capturedAt),
       summary: input.summary.trim().slice(0, MAX_SUMMARY),
       safeFacts: boundFacts(input.safeFacts),
       privacy: input.privacy,
@@ -69,7 +72,10 @@ export class PerceptionRegistry {
         this.items.delete(id)
         continue
       }
-      live.push(snapshot)
+      live.push({
+        ...snapshot,
+        ttlMs: Math.max(0, snapshot.expiresAt - nowMs),
+      })
     }
     return live.sort(
       (left, right) =>
