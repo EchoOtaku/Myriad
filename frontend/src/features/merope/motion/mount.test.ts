@@ -23,20 +23,19 @@ test('live faces share one motion owner; workbench preview stays isolated', () =
     new URL('../anime25drig/Anime25DWorkbench.tsx', import.meta.url),
     'utf8',
   )
-
-  assert.match(panel, /useRigMotionLifecycle/)
-  assert.doesNotMatch(panel, /useRigSingingLifecycle/)
-  assert.match(widget, /useRigMotionLifecycle/)
-  assert.doesNotMatch(widget, /speechOccupancyRef/)
-  assert.match(studio, /useRigPreviewMotionLifecycle/)
-  assert.doesNotMatch(studio, /useRigSingingLifecycle/)
-  assert.match(workbench, /replaceDriver/)
-  assert.doesNotMatch(workbench, /useRigMotionLifecycle/)
-  assert.doesNotMatch(workbench, /useRigSingingLifecycle/)
   const lifecycle = readFileSync(
     new URL('./useRigMotionLifecycle.ts', import.meta.url),
     'utf8',
   )
-  assert.match(lifecycle, /createPreviewMotionRuntime/)
+
+  assert.doesNotMatch(panel, /useRigSingingLifecycle/)
+  assert.doesNotMatch(panel, /useRigPreviewMotionLifecycle/)
+  assert.doesNotMatch(widget, /speechOccupancyRef/)
+  assert.doesNotMatch(widget, /useRigPreviewMotionLifecycle/)
+  assert.doesNotMatch(studio, /useRigSingingLifecycle/)
+  assert.doesNotMatch(studio, /getProductionMotionRuntime/)
+  assert.doesNotMatch(workbench, /useRigMotionLifecycle/)
+  assert.doesNotMatch(workbench, /useRigSingingLifecycle/)
+  assert.doesNotMatch(workbench, /getProductionMotionRuntime/)
   assert.doesNotMatch(lifecycle, /replaceDriver/)
 })

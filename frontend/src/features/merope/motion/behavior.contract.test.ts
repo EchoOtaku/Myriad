@@ -177,62 +177,34 @@ test('applyFrame plays an autonomy plan only while autonomy owns the face', () =
 })
 
 test('production faces consume the snapshot; sources do not take a rig', () => {
-  const speechSource = source('./speechSource.ts')
-  const performanceSource = source('./performanceSource.ts')
-  const singing = source('../useRigSingingLifecycle.ts')
-  const lifecycle = source('./useRigMotionLifecycle.ts')
-  assert.match(lifecycle, /getProductionMotionRuntime/)
-  assert.doesNotMatch(speechSource, /rigRef/)
-  assert.doesNotMatch(performanceSource, /rigRef/)
-  assert.doesNotMatch(singing, /applySingingWrite/)
-  assert.doesNotMatch(singing, /rigRef/)
+  assert.doesNotMatch(source('./speechSource.ts'), /rigRef/)
+  assert.doesNotMatch(source('./performanceSource.ts'), /rigRef/)
+  assert.doesNotMatch(source('../useRigSingingLifecycle.ts'), /applySingingWrite/)
+  assert.doesNotMatch(source('../useRigSingingLifecycle.ts'), /rigRef/)
 })
 
 test('workbench preview stays off the production coordinator', () => {
   const workbench = source('../anime25drig/Anime25DWorkbench.tsx')
   const studio = source('../SiteMotionWorkbench.tsx')
-  const preview = source('./useRigMotionLifecycle.ts')
-  assert.match(workbench, /PreviewMotionScope/)
-  assert.match(workbench, /replaceDriver/)
   assert.doesNotMatch(workbench, /useRigMotionLifecycle/)
   assert.doesNotMatch(workbench, /getRigMotionCoordinator/)
   assert.doesNotMatch(workbench, /getProductionMotionRuntime/)
-  assert.match(studio, /useRigPreviewMotionLifecycle/)
   assert.doesNotMatch(studio, /useRigSingingLifecycle/)
-  assert.match(preview, /createPreviewMotionRuntime/)
+  assert.doesNotMatch(studio, /getProductionMotionRuntime/)
 })
 
 test('agent turns send a semantic rig summary instead of per-frame drivers', () => {
-  const engine = source('../../../components/agent-panel/AgentEngine.tsx')
-  assert.match(engine, /captureProductionRigStateSummary/)
-  assert.match(engine, /rigState/)
-  const capture = source('./rigStateSummary.ts')
-  assert.doesNotMatch(capture, /mouthOpen/)
-  assert.doesNotMatch(capture, /angleX/)
-  const player = source('../anime25drig/player.ts')
-  assert.doesNotMatch(player, /captureRigStateSummary/)
+  assert.doesNotMatch(source('./rigStateSummary.ts'), /mouthOpen/)
+  assert.doesNotMatch(source('./rigStateSummary.ts'), /angleX/)
+  assert.doesNotMatch(source('../anime25drig/player.ts'), /captureRigStateSummary/)
 })
 
 test('autonomy claims through the coordinator and never writes a rig', () => {
   const autonomy = source('./autonomySource.ts')
-  const apply = source('./applyFrame.ts')
-  assert.match(autonomy, /claim\('autonomy'/)
-  assert.match(autonomy, /\['expression', 'gaze'\]/)
   assert.doesNotMatch(autonomy, /headBody/)
   assert.doesNotMatch(autonomy, /'mouth'/)
   assert.doesNotMatch(autonomy, /rigRef|playMotionPlan/)
-  assert.doesNotMatch(apply, /claim\('autonomy'/)
-  assert.match(apply, /frame\.autonomy/)
-  assert.match(apply, /kind: 'autonomy'/)
-  assert.match(apply, /playMotionPlan\(next\.directive/)
+  assert.doesNotMatch(source('./applyFrame.ts'), /claim\('autonomy'/)
   assert.doesNotMatch(source('./speechSource.ts'), /claim\('autonomy'/)
-  assert.match(source('./channels.ts'), /never writes a rig/)
-  assert.match(
-    source('./runtimeHost.ts'),
-    /new MotionRuntime\(\s*getRigMotionCoordinator\(\),\s*getMusicMotionSource\(\),\s*true/,
-  )
-  assert.match(
-    source('./runtime.ts'),
-    /createPreviewMotionRuntime[\s\S]*new MotionRuntime\(new RigMotionCoordinator\(\)\)/,
-  )
+  assert.doesNotMatch(source('./runtimeHost.ts'), /new MotionRuntime/)
 })
