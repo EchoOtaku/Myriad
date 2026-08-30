@@ -251,12 +251,14 @@ pub async fn ingest(
     if let Some(value) = consideration.as_ref() {
         match value.decision.action {
             ConsciousnessAction::Ignore => {
-                let _ = insert_diary(db, user_id, &summary, "event").await;
                 return Ok(());
             }
             ConsciousnessAction::Remember => {
-                let memory = value.decision.memory.as_deref().unwrap_or(&summary);
-                let _ = insert_diary(db, user_id, memory, "event").await;
+                let memory = compact_summary(value.decision.memory.as_deref().unwrap_or(&summary));
+                if !memory.is_empty() {
+                    let _ = insert_diary(db, user_id, &memory, super::store::DIARY_SOURCE_REMEMBER)
+                        .await;
+                }
                 return Ok(());
             }
             ConsciousnessAction::Speak
@@ -643,6 +645,15 @@ mod tests {
         );
         assert_eq!(compact_summary("抓取失败 Bearer eyJhbGciOi"), "抓取失败");
         assert_eq!(compact_summary("  Steam  解锁了成就  "), "Steam 解锁了成就");
+    }
+
+    #[test]
+    fn remember_writes_persona_memory_not_event_ledger() {
+        let src = include_str!("ingest.rs");
+        assert!(src.contains("DIARY_SOURCE_REMEMBER"));
+        assert!(src.contains("ConsciousnessAction::Remember"));
+        assert!(!src.contains("insert_diary(db, user_id, memory, \"event\")"));
+        assert!(src.contains("ConsciousnessAction::Ignore =>") && src.contains("return Ok(());"));
     }
 
     #[test]

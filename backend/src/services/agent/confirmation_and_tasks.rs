@@ -1,7 +1,7 @@
 // Agent confirmation resume and task management paths.
 
 use chrono::{Duration, Utc};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 use super::agent_footer::*;
@@ -1115,7 +1115,11 @@ impl Agent {
             .unwrap_or_default();
         let soul: String = soul.chars().take(2000).collect();
         let merope_block = crate::services::agent::merope::speaking_prompt_plain(
-            &crate::services::agent::merope::speaking_prompt(request.user_id).await,
+            &crate::services::agent::merope::speaking_prompt_with_query(
+                request.user_id,
+                Some(request.raw_input.as_str()),
+            )
+            .await,
         );
         let history = request
             .context

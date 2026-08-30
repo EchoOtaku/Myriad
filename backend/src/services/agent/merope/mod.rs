@@ -14,16 +14,17 @@ pub use ingest::{
     allow_existing_notify, is_enabled, spawn as spawn_ingest, spawn_diary, spawn_presence,
 };
 pub use motion::{
-    direct_motion, resolve_round_motion_style, MotionContext, MotionPhase, PerformanceDirective,
+    MotionContext, MotionPhase, PerformanceDirective, direct_motion, resolve_round_motion_style,
 };
 pub use myriad_merope::RigStateSummary;
 pub use store::{
-    acquire_portrait_generation, clear_persona_on, complete_portrait_generation,
-    get_or_create_state, get_persona, get_persona_on, insert_diary, insert_proactive, latest_diary,
-    list_diary, normalize_persona_fields, portrait_generation_is_pending, recent_proactive,
-    release_portrait_generation, save_departure_mood, save_mood, set_activity, set_dnd_schedule,
-    set_do_not_disturb, upsert_persona_on, JsonDocumentUpdate, PersonaContractUpdate,
-    PortraitUpdate,
+    JsonDocumentUpdate, PersonaContractUpdate, PortraitUpdate, acquire_portrait_generation,
+    clear_persona_on, complete_portrait_generation, get_or_create_state, get_persona,
+    get_persona_on, insert_diary, insert_proactive, latest_diary, list_diary_from_sources,
+    list_remembered, normalize_persona_fields,
+    portrait_generation_is_pending, recent_proactive, release_portrait_generation,
+    save_departure_mood, save_mood, set_activity, set_dnd_schedule, set_do_not_disturb,
+    upsert_persona_on,
 };
 
 /// Logged-in users only. Guests use negative ids; heartbeat is `SYSTEM_USER_ID` (0).
@@ -274,7 +275,7 @@ async fn maybe_write_chat_diary(db: &sea_orm::DatabaseConnection, user_id: i32, 
         return;
     }
     let summary = crate::services::agent::merope::ingest::compact_summary(text);
-    let _ = insert_diary(db, user_id, &summary, "chat").await;
+    let _ = insert_diary(db, user_id, &summary, store::DIARY_SOURCE_CHAT).await;
 }
 
 /// Public face: 人设 off → Agent (product). Empty 人设 name → Arael.
@@ -328,11 +329,16 @@ pub async fn resolve_addressee_label(db: &sea_orm::DatabaseConnection, user_id: 
 
 pub use speaking_prompts::{
     addressee_speaking_section, format_activity_section, format_diary_section, format_mood_section,
-    format_persona, guest_speaking_section, mood_tone_instruction,
+    format_persona, format_recent_section, format_remembered_section, guest_speaking_section,
+    mood_tone_instruction, rank_remembered,
 };
 
 /// Prompt sections for whoever this turn is speaking to. Empty when Merope is off.
 pub async fn speaking_prompt(user_id: i32) -> Vec<String> {
+    speaking_prompt_with_query(user_id, None).await
+}
+
+pub async fn speaking_prompt_with_query(user_id: i32, query: Option<&str>) -> Vec<String> {
     if !is_enabled().await {
         return Vec::new();
     }
@@ -347,22 +353,48 @@ pub async fn speaking_prompt(user_id: i32) -> Vec<String> {
             user_id, None, None,
         ))];
     };
-    speaking_prompt_from_db(&db, user_id).await
+    speaking_prompt_from_db(&db, user_id, query).await
 }
 
-async fn speaking_prompt_from_db(db: &sea_orm::DatabaseConnection, user_id: i32) -> Vec<String> {
+const REMEMBERED_PROMPT_LIMIT: usize = 8;
+const REMEMBERED_CANDIDATE_LIMIT: u64 = 32;
+const RECENT_LEDGER_LIMIT: u64 = 4;
+
+async fn speaking_prompt_from_db(
+    db: &sea_orm::DatabaseConnection,
+    user_id: i32,
+    query: Option<&str>,
+) -> Vec<String> {
     let addressee = resolve_addressee_label(db, user_id).await;
     let mut sections = vec![addressee_speaking_section(&addressee)];
     let Ok(state) = get_or_create_state(db, user_id).await else {
         return sections;
     };
-    if let Ok(notes) = list_diary(db, user_id, 8).await {
+    if let Ok(notes) = list_remembered(db, user_id, REMEMBERED_CANDIDATE_LIMIT).await {
+        let facts: Vec<String> = notes
+            .into_iter()
+            .map(|note| ingest::compact_summary(&note.content))
+            .filter(|content| !content.is_empty())
+            .collect();
+        let ranked = rank_remembered(&facts, query, REMEMBERED_PROMPT_LIMIT);
+        if let Some(block) = format_remembered_section(&ranked) {
+            sections.push(block);
+        }
+    }
+    if let Ok(notes) = list_diary_from_sources(
+        db,
+        user_id,
+        &[store::DIARY_SOURCE_EVENT, store::DIARY_SOURCE_CHAT],
+        RECENT_LEDGER_LIMIT,
+    )
+    .await
+    {
         let contents: Vec<String> = notes
             .into_iter()
             .map(|note| ingest::compact_summary(&note.content))
             .filter(|content| !content.is_empty())
             .collect();
-        if let Some(block) = format_diary_section(&contents) {
+        if let Some(block) = format_recent_section(&contents) {
             sections.push(block);
         }
     }
@@ -381,11 +413,11 @@ pub fn has_custom_persona(persona: &agent_persona::Model) -> bool {
     format_persona(persona).is_some()
 }
 
-pub use gates::{decide_ingest, is_chatting, is_valuable_event, IngestDecision};
+pub use gates::{IngestDecision, decide_ingest, is_chatting, is_valuable_event};
 pub use state::{
-    apply_departure, apply_mood_hint, apply_task_outcome, apply_user_utterance, clamp_mood,
-    detect_mood_cue, effective_activity, is_extremely_low, mood_band, parse_mood_hint,
-    should_apply_departure, MoodTransition, ACTIVITY_STALE_SECS, MOOD_FLOOR,
+    ACTIVITY_STALE_SECS, MOOD_FLOOR, MoodTransition, apply_departure, apply_mood_hint,
+    apply_task_outcome, apply_user_utterance, clamp_mood, detect_mood_cue, effective_activity,
+    is_extremely_low, mood_band, parse_mood_hint, should_apply_departure,
 };
 
 /// The activity to act on, with a stale one read as idle.
@@ -536,10 +568,15 @@ mod tests {
     #[test]
     fn diary_section_skips_empty_and_compacts() {
         assert!(super::format_diary_section(&[]).is_none());
-        let block = super::format_diary_section(&["今天晚上想打会独立游戏".into()]).unwrap();
-        assert!(block.contains("## 关于这个人的日记"));
-        assert!(block.contains("不要当众报流水账"));
-        assert!(block.contains("- 今天晚上想打会独立游戏"));
+        let block = super::format_remembered_section(&["今天晚上想打独立游戏".into()]).unwrap();
+        assert!(block.contains("## 关于这个人"));
+        assert!(block.contains("你留下的事实"));
+        assert!(block.contains("- 今天晚上想打独立游戏"));
+        assert!(
+            super::format_diary_section(&["Steam 解锁了成就".into()])
+                .unwrap()
+                .contains("## 最近")
+        );
     }
 
     #[test]

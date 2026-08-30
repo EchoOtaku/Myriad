@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::DatabaseConnection;
 
-use crate::services::agent::{get_user_permissions, merope, run_hub, AgentInteractionMode};
+use crate::services::agent::{AgentInteractionMode, get_user_permissions, merope, run_hub};
 
 use super::{IntentStore, SelfSnapshot};
 
@@ -24,6 +24,14 @@ pub async fn capture_self_snapshot(
         .collect::<Vec<_>>();
     granted_permissions.sort_unstable();
 
+    let remembered = merope::list_remembered(db, user_id, 8)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|note| merope::ingest::compact_summary(&note.content))
+        .filter(|content| !content.is_empty())
+        .collect();
+
     Ok(SelfSnapshot {
         persona_name: merope::public_persona_name(
             enabled,
@@ -37,6 +45,7 @@ pub async fn capture_self_snapshot(
         has_active_work: run_hub::user_has_executing_run(user_id).await,
         granted_permissions,
         recent_intents: IntentStore::new(db.clone()).recent(user_id, 8).await?,
+        remembered,
         captured_at: Utc::now(),
         live: super::presence::last_live_presence(user_id),
     })

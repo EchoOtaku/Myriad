@@ -84,6 +84,9 @@ pub struct SelfSnapshot {
     pub granted_permissions: Vec<String>,
     #[serde(default)]
     pub recent_intents: Vec<RecentIntent>,
+    /// Persona-chosen facts about this addressee. Not Work memory.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub remembered: Vec<String>,
     pub captured_at: DateTime<Utc>,
     #[serde(default)]
     pub live: SelfLivePresence,

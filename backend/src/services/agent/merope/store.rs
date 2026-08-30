@@ -398,6 +398,10 @@ pub async fn save_departure_mood(
     Ok(active.update(db).await?)
 }
 
+pub const DIARY_SOURCE_EVENT: &str = "event";
+pub const DIARY_SOURCE_CHAT: &str = "chat";
+pub const DIARY_SOURCE_REMEMBER: &str = "remember";
+
 pub async fn insert_diary(
     db: &DatabaseConnection,
     user_id: i32,
@@ -428,17 +432,30 @@ pub async fn latest_diary(
     Ok(query.one(db).await?)
 }
 
-pub async fn list_diary(
+pub async fn list_diary_from_sources(
     db: &DatabaseConnection,
     user_id: i32,
+    sources: &[&str],
     limit: u64,
 ) -> Result<Vec<agent_diary::Model>, anyhow::Error> {
+    if sources.is_empty() || limit == 0 {
+        return Ok(Vec::new());
+    }
     Ok(agent_diary::Entity::find()
         .filter(agent_diary::Column::UserId.eq(user_id))
+        .filter(agent_diary::Column::Source.is_in(sources.iter().copied()))
         .order_by_desc(agent_diary::Column::CreatedAt)
         .limit(limit)
         .all(db)
         .await?)
+}
+
+pub async fn list_remembered(
+    db: &DatabaseConnection,
+    user_id: i32,
+    limit: u64,
+) -> Result<Vec<agent_diary::Model>, anyhow::Error> {
+    list_diary_from_sources(db, user_id, &[DIARY_SOURCE_REMEMBER], limit).await
 }
 
 pub async fn insert_proactive(
@@ -755,14 +772,16 @@ mod tests {
                 .portrait_generation
                 .as_ref()
         ));
-        assert!(!acquire_portrait_generation(
-            &transaction,
-            "Nova",
-            &profile,
-            &json!({ "token": "second" }),
-        )
-        .await
-        .unwrap());
+        assert!(
+            !acquire_portrait_generation(
+                &transaction,
+                "Nova",
+                &profile,
+                &json!({ "token": "second" }),
+            )
+            .await
+            .unwrap()
+        );
 
         upsert_persona_on(
             &transaction,
@@ -774,29 +793,33 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(complete_portrait_generation(
-            &transaction,
-            "Nova",
-            &profile,
-            "first",
-            "/portrait.png",
-            &json!({ "fingerprint": "a".repeat(64), "contract": {} }),
-            1,
-        )
-        .await
-        .unwrap());
+        assert!(
+            complete_portrait_generation(
+                &transaction,
+                "Nova",
+                &profile,
+                "first",
+                "/portrait.png",
+                &json!({ "fingerprint": "a".repeat(64), "contract": {} }),
+                1,
+            )
+            .await
+            .unwrap()
+        );
         let saved = get_persona_on(&transaction).await.unwrap().unwrap();
         assert_eq!(saved.personality, "more curious");
         assert_eq!(saved.portrait_asset_id.as_deref(), Some("/portrait.png"));
 
-        assert!(acquire_portrait_generation(
-            &transaction,
-            "Nova",
-            &profile,
-            &json!({ "token": "third" }),
-        )
-        .await
-        .unwrap());
+        assert!(
+            acquire_portrait_generation(
+                &transaction,
+                "Nova",
+                &profile,
+                &json!({ "token": "third" }),
+            )
+            .await
+            .unwrap()
+        );
         let changed_profile = json!({
             "gender": "unspecified",
             "visualIdentity": { "hairShape": "long ponytail" }
@@ -814,17 +837,19 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(!complete_portrait_generation(
-            &transaction,
-            "Nova",
-            &profile,
-            "third",
-            "/stale.png",
-            &json!({ "fingerprint": "b".repeat(64), "contract": {} }),
-            1,
-        )
-        .await
-        .unwrap());
+        assert!(
+            !complete_portrait_generation(
+                &transaction,
+                "Nova",
+                &profile,
+                "third",
+                "/stale.png",
+                &json!({ "fingerprint": "b".repeat(64), "contract": {} }),
+                1,
+            )
+            .await
+            .unwrap()
+        );
         transaction.rollback().await.unwrap();
     }
 }

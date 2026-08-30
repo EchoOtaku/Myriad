@@ -100,7 +100,7 @@ mod tests {
     use chrono::Utc;
 
     use super::*;
-    use crate::services::agent::{consciousness::WorkProposal, AgentInteractionMode};
+    use crate::services::agent::{AgentInteractionMode, consciousness::WorkProposal};
 
     fn snapshot(do_not_disturb: bool) -> SelfSnapshot {
         SelfSnapshot {
@@ -113,6 +113,7 @@ mod tests {
             has_active_work: false,
             granted_permissions: vec![],
             recent_intents: vec![],
+            remembered: vec![],
             captured_at: Utc::now(),
             live: Default::default(),
         }

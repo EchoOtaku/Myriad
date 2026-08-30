@@ -7,9 +7,9 @@ use serde_json::json;
 use crate::services::agent::AgentInteractionMode;
 
 use super::{
-    capture_self_snapshot, evaluate_autonomy_grant, skips_user_review, validate_decision,
     AcceptSource, AutonomyGrantStore, ConsciousnessAction, ConsciousnessDecision,
     ConsciousnessEvent, IntentRecord, IntentStatus, IntentStore, SelfSnapshot,
+    capture_self_snapshot, evaluate_autonomy_grant, skips_user_review, validate_decision,
 };
 
 const DECISION_REQUEST_TIMEOUT: Duration = Duration::from_secs(4);
@@ -237,9 +237,11 @@ fn decision_system_prompt(soul: &str) -> String {
 人设：
 {}
 
+self.remembered 是你已经为这个人留下的人设记忆。不要把同义事实再记一遍。
+
 从 ignore、remember、speak、propose_work、ask 中只选一个动作：
-- ignore：不值得处理；所有可选内容字段保持 null。
-- remember：只把一句简短事实放进 memory。
+- ignore：不值得处理；所有可选内容字段保持 null。不要把流水再写成记忆。
+- remember：只把一句新的短事实放进人设记忆，不要写办事教训或设定正文。
 - speak：只有现在值得主动说时才用，speech 必须是符合人设、面向说话对象的一句话。
 - ask：只有缺少一个关键事实时才用，question 只能问一个简短问题。
 - propose_work：只在确实值得采取行动时使用。它只是等待用户接受的自然语言提案，不是执行授权；不得选择工具、参数或权限。source_event_id 必须原样复制输入 event.id。
@@ -316,6 +318,7 @@ mod tests {
             has_active_work: false,
             granted_permissions: vec![],
             recent_intents: Vec::<RecentIntent>::new(),
+            remembered: vec![],
             captured_at: Utc::now(),
             live: Default::default(),
         }
@@ -348,6 +351,16 @@ mod tests {
             "agent.task_completed",
             ConsciousnessAction::Speak
         ));
+    }
+
+    #[test]
+    fn decision_prompt_reads_persona_memory() {
+        let prompt = decision_system_prompt("你是瞳。");
+        assert!(prompt.contains("你是瞳。"));
+        assert!(prompt.contains("self.remembered"));
+        assert!(prompt.contains("人设记忆"));
+        assert!(prompt.contains("不要把同义事实再记一遍"));
+        assert!(prompt.contains("不要写办事教训"));
     }
 
     #[test]

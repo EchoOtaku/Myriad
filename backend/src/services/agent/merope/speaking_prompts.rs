@@ -47,18 +47,112 @@ pub fn format_activity_section(activity: &str) -> Option<String> {
     Some(format!("## 这个人这边\n{line}"))
 }
 
-pub fn format_diary_section(contents: &[String]) -> Option<String> {
-    if contents.is_empty() {
+pub fn format_remembered_section(contents: &[String]) -> Option<String> {
+    let lines = bullet_facts(contents);
+    if lines.is_empty() {
         return None;
     }
-    let lines: Vec<String> = contents
-        .iter()
-        .map(|content| format!("- {content}"))
-        .collect();
     Some(format!(
-        "## 关于这个人的日记\n只在对话自然用到时想起，不要当众报流水账。\n{}",
+        "## 关于这个人\n这些是你留下的事实。只在对话自然用到时想起，不要当众报流水账，也不要复述成清单。\n{}",
         lines.join("\n")
     ))
+}
+
+pub fn format_recent_section(contents: &[String]) -> Option<String> {
+    let lines = bullet_facts(contents);
+    if lines.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "## 最近\n不要重复刚发生的事。\n{}",
+        lines.join("\n")
+    ))
+}
+
+/// Chronological diary dump. Prefer [`format_remembered_section`] for facts.
+pub fn format_diary_section(contents: &[String]) -> Option<String> {
+    format_recent_section(contents)
+}
+
+fn bullet_facts(contents: &[String]) -> Vec<String> {
+    contents
+        .iter()
+        .map(|content| content.trim())
+        .filter(|content| !content.is_empty())
+        .map(|content| format!("- {content}"))
+        .collect()
+}
+
+/// Pick remembered facts for a turn. With a query, overlapping facts come first;
+/// if nothing overlaps, keep recency. `facts` is newest-first.
+pub fn rank_remembered(facts: &[String], query: Option<&str>, limit: usize) -> Vec<String> {
+    let cleaned: Vec<String> = facts
+        .iter()
+        .map(|fact| fact.trim().to_string())
+        .filter(|fact| !fact.is_empty())
+        .collect();
+    if cleaned.is_empty() || limit == 0 {
+        return Vec::new();
+    }
+    let Some(query) = query.map(str::trim).filter(|query| !query.is_empty()) else {
+        return cleaned.into_iter().take(limit).collect();
+    };
+    let mut scored: Vec<(u32, usize, String)> = cleaned
+        .into_iter()
+        .enumerate()
+        .map(|(index, fact)| (overlap_score(query, &fact), index, fact))
+        .collect();
+    scored.sort_by(|left, right| right.0.cmp(&left.0).then(left.1.cmp(&right.1)));
+    if scored.iter().all(|item| item.0 == 0) {
+        scored.sort_by_key(|item| item.1);
+        return scored.into_iter().map(|item| item.2).take(limit).collect();
+    }
+    scored
+        .into_iter()
+        .filter(|item| item.0 > 0)
+        .map(|item| item.2)
+        .take(limit)
+        .collect()
+}
+
+fn overlap_score(query: &str, fact: &str) -> u32 {
+    let query_tokens = tokens(query);
+    if query_tokens.is_empty() {
+        return 0;
+    }
+    let fact_tokens = tokens(fact);
+    query_tokens
+        .iter()
+        .filter(|token| fact_tokens.contains(token))
+        .count() as u32
+}
+
+fn tokens(value: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut latin = String::new();
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() {
+            latin.push(ch.to_ascii_lowercase());
+            continue;
+        }
+        flush_latin(&mut latin, &mut out);
+        if !ch.is_whitespace() && !ch.is_ascii_punctuation() {
+            out.push(ch.to_string());
+        }
+    }
+    flush_latin(&mut latin, &mut out);
+    out
+}
+
+fn flush_latin(latin: &mut String, out: &mut Vec<String>) {
+    if latin.is_empty() {
+        return;
+    }
+    if latin.chars().count() >= 2 {
+        out.push(std::mem::take(latin));
+    } else {
+        latin.clear();
+    }
 }
 
 pub fn guest_speaking_section() -> String {
@@ -154,5 +248,39 @@ mod tests {
     fn activity_section_skips_idle() {
         assert!(format_activity_section("idle").is_none());
         assert!(format_activity_section("working").unwrap().contains("办事"));
+    }
+
+    #[test]
+    fn remembered_section_is_not_a_chronological_dump() {
+        assert!(format_remembered_section(&[]).is_none());
+        let block = format_remembered_section(&["晚上想打独立游戏".into()]).unwrap();
+        assert!(block.contains("## 关于这个人"));
+        assert!(block.contains("你留下的事实"));
+        assert!(block.contains("- 晚上想打独立游戏"));
+        assert!(!block.contains("日记"));
+        let recent = format_recent_section(&["Steam 解锁了成就".into()]).unwrap();
+        assert!(recent.contains("## 最近"));
+        assert!(!recent.contains("关于这个人"));
+    }
+
+    #[test]
+    fn rank_remembered_prefers_overlap_then_recency() {
+        let facts = vec![
+            "晚上想打独立游戏".into(),
+            "早上喝美式".into(),
+            "讨厌早会".into(),
+        ];
+        assert_eq!(
+            rank_remembered(&facts, Some("今晚打游戏吗"), 2),
+            vec!["晚上想打独立游戏".to_string()]
+        );
+        assert_eq!(
+            rank_remembered(&facts, None, 2),
+            vec!["晚上想打独立游戏".to_string(), "早上喝美式".to_string()]
+        );
+        assert_eq!(
+            rank_remembered(&facts, Some("完全无关的天气"), 2),
+            vec!["晚上想打独立游戏".to_string(), "早上喝美式".to_string()]
+        );
     }
 }
