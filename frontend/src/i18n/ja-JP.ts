@@ -2623,7 +2623,14 @@ export const jaJP: TranslationKeys = {
     closeImage: '閉じる',
     newSession: '新しい話題',
     stop: '止める',
-    voice: { start: '話しかける', stop: '話し終えた', working: '認識中' },
+    voice: {
+      start: '話しかける',
+      stop: '話し終えた',
+      working: '認識中',
+      listen: '聞き続ける',
+      listenHint:
+        'オンにすると発話で再生を止めます。確定した一文だけ送ります。初期状態はオフです。',
+    },
     manage: {
       title: 'この子の設定',
       tabs: { heartbeat: '定期実行', skills: 'スキル', memory: '記憶' },

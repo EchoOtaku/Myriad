@@ -55,6 +55,8 @@ import {
 } from '../../features/merope/faceSpeechArbitration'
 import { setLiveMotionGeneration } from '../../features/merope/motion/liveGeneration'
 import { captureProductionRigStateSummary } from '../../features/merope/motion/runtimeHost'
+import { getSpeechPipeline } from '../../features/merope/speech/speechPipelineHost'
+import { SpeechSegmenter } from '../../features/merope/speech/speechSegmenter'
 import { agentService, executeFrontendAction } from '../../services/agent'
 import {
   collectReattachCandidates,
@@ -115,6 +117,11 @@ import { useMessageState } from './useMessageState'
 
 function currentPath(): string {
   return `${window.location.pathname}${window.location.search}`
+}
+
+function stopTurnSpeech(messageId: string): void {
+  cancelGatedSpeech(agentFace, faceSpeechGate, messageId)
+  getSpeechPipeline().cancel(messageId)
 }
 
 /**
@@ -251,7 +258,7 @@ export const AgentEngine: React.FC = () => {
     const current = getAgentPanelMode()
     const loadingId = loadingMessageIdByModeRef.current[current]
     if (loadingId) {
-      cancelGatedSpeech(agentFace, faceSpeechGate, loadingId)
+      stopTurnSpeech(loadingId)
     }
     loadingByModeRef.current[current] = false
     loadingMessageIdByModeRef.current[current] = null
@@ -349,7 +356,7 @@ export const AgentEngine: React.FC = () => {
               handleAgentResponseRef.current?.(candidate.messageId, response)
             })
             .catch((error) => {
-              cancelGatedSpeech(agentFace, faceSpeechGate, candidate.messageId)
+              stopTurnSpeech(candidate.messageId)
               console.warn('[AgentEngine] reattach stream ended:', error)
             })
             .finally(() => {
@@ -637,7 +644,7 @@ export const AgentEngine: React.FC = () => {
         m.taskExecution?.status === 'cancelling',
     )
     for (const msg of processingMsgs) {
-      cancelGatedSpeech(agentFace, faceSpeechGate, msg.id)
+      stopTurnSpeech(msg.id)
       const taskId = msg.taskExecution?.taskId
       // 先进入 cancelling，避免乐观地显示 error 而后端仍在跑
       updateMessageExecution(msg.id, { status: 'cancelling' })
@@ -696,6 +703,9 @@ export const AgentEngine: React.FC = () => {
     ) => {
       let streamedSummary = ''
       let streamedThinking = ''
+      const pipeline = getSpeechPipeline()
+      void pipeline.probe()
+      const segmenter = new SpeechSegmenter(assistantMessageId, generation)
       const utterance = openGatedReply(
         agentFace,
         faceSpeechGate,
@@ -882,6 +892,7 @@ export const AgentEngine: React.FC = () => {
 
           case 'error':
             utterance.cancel()
+            pipeline.cancel(assistantMessageId)
             updateMessageExecution(assistantMessageId, { status: 'error' })
             updateMessage(assistantMessageId, { content: event.message })
             break
@@ -910,6 +921,9 @@ export const AgentEngine: React.FC = () => {
                 })
                 updateMessage(assistantMessageId, { content: body })
               }
+              if (pipeline.available) {
+                pipeline.feed(segmenter.end())
+              }
               utterance.end()
             } else {
               streamedSummary += tokenEvent.token
@@ -921,7 +935,11 @@ export const AgentEngine: React.FC = () => {
                 peelThoughtFromContent(split.content, streamedThinking),
               )
               if (body) {
-                utterance.chunk(tokenEvent.token)
+                if (pipeline.available) {
+                  pipeline.feed(segmenter.push(tokenEvent.token))
+                } else {
+                  utterance.chunk(tokenEvent.token)
+                }
                 updateMessage(assistantMessageId, { content: body })
               }
             }
@@ -1235,7 +1253,7 @@ export const AgentEngine: React.FC = () => {
         agentFace.setGeneration(chatGeneration)
         const previousChatId = loadingMessageIdByModeRef.current.chat
         if (previousChatId) {
-          cancelGatedSpeech(agentFace, faceSpeechGate, previousChatId)
+          stopTurnSpeech(previousChatId)
         }
       }
 
@@ -1284,7 +1302,7 @@ export const AgentEngine: React.FC = () => {
           handleAgentResponseRef.current(assistantMsgId, response, mode)
         }
       } catch (error) {
-        cancelGatedSpeech(agentFace, faceSpeechGate, assistantMsgId)
+        stopTurnSpeech(assistantMsgId)
         if (isStreamSupersededError(error)) {
           updateMessageExecution(assistantMsgId, { status: 'error' })
           return
@@ -1800,7 +1818,7 @@ export const AgentEngine: React.FC = () => {
             )
         handleAgentResponseRef.current?.(messageId, response, 'work')
       } catch (error) {
-        cancelGatedSpeech(agentFace, faceSpeechGate, messageId)
+        stopTurnSpeech(messageId)
         const errorMsg = userFacingError(error, t.errors.agentConfirmFailed)
         updateMessage(messageId, {
           content: format(t.agentPanel.answerFailed, { error: errorMsg }),

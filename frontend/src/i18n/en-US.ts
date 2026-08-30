@@ -2650,7 +2650,14 @@ export const enUS: TranslationKeys = {
     closeImage: 'Close',
     newSession: 'New topic',
     stop: 'Stop',
-    voice: { start: 'Speak', stop: 'Done', working: 'Transcribing' },
+    voice: {
+      start: 'Speak',
+      stop: 'Done',
+      working: 'Transcribing',
+      listen: 'Keep listening',
+      listenHint:
+        'When on, speaking interrupts playback. Only a finished transcript is sent. Off by default.',
+    },
     manage: {
       title: 'Its settings',
       tabs: { heartbeat: 'Schedule', skills: 'Skills', memory: 'Memory' },

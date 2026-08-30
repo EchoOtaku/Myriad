@@ -2494,7 +2494,13 @@ export const zhCN: TranslationKeys = {
     closeImage: '关掉',
     newSession: '换个话题',
     stop: '停下',
-    voice: { start: '说给它听', stop: '说完了', working: '在认' },
+    voice: {
+      start: '说给它听',
+      stop: '说完了',
+      working: '在认',
+      listen: '一直听着',
+      listenHint: '打开后，开口就会打断播报；说完一句才提交。默认不录音。',
+    },
     manage: {
       title: '它的设置',
       tabs: { heartbeat: '定时', skills: '技能', memory: '记忆' },

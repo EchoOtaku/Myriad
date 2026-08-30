@@ -1,18 +1,32 @@
 /**
  * 说给它听。
  *
- * 完整的录音链路：
- * - 使用 AudioWorklet 采集 PCM（替代已弃用的 ScriptProcessorNode）
- * - 转换为 WAV 格式
- * - 调用 ASR 服务识别文字
+ * Push-to-talk still records a whole clip then ASR.
+ * Continuous listen is off until the person turns it on: local VAD stops TTS
+ * immediately, then a paused clip is transcribed. Partial text is UI-only.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  frameRms,
+  isSubmittableTranscript,
+  pcmToWav,
+} from '../../features/merope/speech/audioWav'
+import { getSpeechPipeline } from '../../features/merope/speech/speechPipelineHost'
+import {
+  getVoicePresence,
+  patchVoicePresence,
+} from '../../features/merope/speech/voicePresence'
 import {
   audioToBase64,
   getSpeechStatus,
   speechToText,
 } from '../../services/speechApi'
+import {
+  getListenConsent,
+  setListenConsent,
+  subscribeListenConsent,
+} from './listenConsent'
 
 interface RecorderState {
   audioContext: AudioContext
@@ -29,8 +43,12 @@ const LOCALE_ENGINE_MAP: Record<string, string> = {
 }
 
 const WORKLET_PROCESSOR_NAME = 'pcm-capture-processor'
+const OPEN_THRESHOLD = 0.035
+const TTS_OPEN_THRESHOLD = 0.14
+const CLOSE_RATIO = 0.45
+const START_FRAMES = 4
+const END_FRAMES = 18
 
-/** Inline AudioWorklet processor — no separate asset / Vite plugin needed. */
 const WORKLET_SOURCE = `
 class PcmCaptureProcessor extends AudioWorkletProcessor {
   process(inputs) {
@@ -52,7 +70,6 @@ async function createPcmCaptureNode(
   if (!audioContext.audioWorklet) {
     throw new Error('AudioWorklet is not supported in this browser')
   }
-
   const blob = new Blob([WORKLET_SOURCE], { type: 'application/javascript' })
   const url = URL.createObjectURL(blob)
   try {
@@ -60,7 +77,6 @@ async function createPcmCaptureNode(
   } finally {
     URL.revokeObjectURL(url)
   }
-
   return new AudioWorkletNode(audioContext, WORKLET_PROCESSOR_NAME)
 }
 
@@ -87,9 +103,19 @@ export function useVoiceRecording(
   const [speechAvailable, setSpeechAvailable] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [isProcessingVoice, setIsProcessingVoice] = useState(false)
+  const [listening, setListening] = useState(getListenConsent)
   const recorderRef = useRef<RecorderState | null>(null)
-  // Keep latest isRecording for stop without stale closures
   const isRecordingRef = useRef(false)
+  const listeningRef = useRef(listening)
+  listeningRef.current = listening
+  const speakingRef = useRef(false)
+  const openFramesRef = useRef(0)
+  const closeFramesRef = useRef(0)
+  const utterancePcmRef = useRef<Float32Array[]>([])
+  const onResultRef = useRef(onResult)
+  onResultRef.current = onResult
+  const localeRef = useRef(locale)
+  localeRef.current = locale
 
   useEffect(() => {
     getSpeechStatus()
@@ -97,56 +123,71 @@ export function useVoiceRecording(
       .catch(() => {})
   }, [])
 
-  const pcmToWav = useCallback(
-    (pcmData: Float32Array[], sampleRate: number): Blob => {
-      const totalLength = pcmData.reduce((acc, arr) => acc + arr.length, 0)
-      const merged = new Float32Array(totalLength)
-      let offset = 0
-      for (const arr of pcmData) {
-        merged.set(arr, offset)
-        offset += arr.length
-      }
+  useEffect(() => subscribeListenConsent(() => setListening(getListenConsent())), [])
 
-      const buffer = new ArrayBuffer(44 + merged.length * 2)
-      const view = new DataView(buffer)
+  const transcribe = useCallback(async (pcmData: Float32Array[], sampleRate: number) => {
+    if (pcmData.length === 0) return
+    setIsProcessingVoice(true)
+    try {
+      const wavBlob = pcmToWav(pcmData, sampleRate)
+      const base64Audio = await audioToBase64(wavBlob)
+      const result = await speechToText({
+        audio_data: base64Audio,
+        format: 'wav',
+        engine: LOCALE_ENGINE_MAP[localeRef.current] || '16k_zh',
+      })
+      const text = result.success ? result.text?.trim() ?? '' : ''
+      if (isSubmittableTranscript(text)) onResultRef.current(text)
+      patchVoicePresence({ partial: '' })
+    } catch (err) {
+      console.error('[useVoiceRecording] 语音识别出错:', err)
+    } finally {
+      setIsProcessingVoice(false)
+    }
+  }, [])
 
-      const writeString = (off: number, string: string) => {
-        for (let i = 0; i < string.length; i++) {
-          view.setUint8(off + i, string.charCodeAt(i))
+  const onPcm = useCallback((frame: Float32Array) => {
+    const recorder = recorderRef.current
+    if (!recorder || !isRecordingRef.current) return
+    recorder.pcmData.push(frame)
+    if (!listeningRef.current) return
+
+    const rms = frameRms(frame)
+    const open =
+      getVoicePresence().ttsPlaying ? TTS_OPEN_THRESHOLD : OPEN_THRESHOLD
+    const close = open * CLOSE_RATIO
+    if (!speakingRef.current) {
+      if (rms >= open) {
+        openFramesRef.current += 1
+        if (openFramesRef.current >= START_FRAMES) {
+          speakingRef.current = true
+          openFramesRef.current = 0
+          closeFramesRef.current = 0
+          utterancePcmRef.current = [frame]
+          patchVoicePresence({ userSpeaking: true, partial: '' })
+          getSpeechPipeline().cancel()
         }
+      } else {
+        openFramesRef.current = 0
       }
-
-      writeString(0, 'RIFF')
-      view.setUint32(4, 36 + merged.length * 2, true)
-      writeString(8, 'WAVE')
-      writeString(12, 'fmt ')
-      view.setUint32(16, 16, true)
-      view.setUint16(20, 1, true)
-      view.setUint16(22, 1, true)
-      view.setUint32(24, sampleRate, true)
-      view.setUint32(28, sampleRate * 2, true)
-      view.setUint16(32, 2, true)
-      view.setUint16(34, 16, true)
-      writeString(36, 'data')
-      view.setUint32(40, merged.length * 2, true)
-
-      const int16MinMagnitude = 32768
-      const int16Max = 32767
-      let dataOffset = 44
-      for (let i = 0; i < merged.length; i++) {
-        const sample = Math.max(-1, Math.min(1, merged[i]))
-        view.setInt16(
-          dataOffset,
-          sample < 0 ? sample * int16MinMagnitude : sample * int16Max,
-          true,
-        )
-        dataOffset += 2
+      return
+    }
+    utterancePcmRef.current.push(frame)
+    if (rms < close) {
+      closeFramesRef.current += 1
+      if (closeFramesRef.current >= END_FRAMES) {
+        speakingRef.current = false
+        closeFramesRef.current = 0
+        patchVoicePresence({ userSpeaking: false })
+        const clip = utterancePcmRef.current
+        utterancePcmRef.current = []
+        const sampleRate = recorder.audioContext.sampleRate || 16000
+        void transcribe(clip, sampleRate)
       }
-
-      return new Blob([buffer], { type: 'audio/wav' })
-    },
-    [],
-  )
+    } else {
+      closeFramesRef.current = 0
+    }
+  }, [transcribe])
 
   const startRecording = useCallback(async () => {
     if (isRecordingRef.current || recorderRef.current) return
@@ -182,21 +223,16 @@ export function useVoiceRecording(
       }
 
       workletNode.port.onmessage = (event: MessageEvent<Float32Array>) => {
-        pcmData.push(event.data)
+        onPcm(event.data)
       }
 
-      // Keep the graph alive without routing mic audio to speakers
       const muteNode = audioContext.createGain()
       muteNode.gain.value = 0
-
       const source = audioContext.createMediaStreamSource(stream)
       source.connect(workletNode)
       workletNode.connect(muteNode)
       muteNode.connect(audioContext.destination)
-
-      if (audioContext.state === 'suspended') {
-        await audioContext.resume()
-      }
+      if (audioContext.state === 'suspended') await audioContext.resume()
 
       recorderRef.current = {
         audioContext,
@@ -207,10 +243,11 @@ export function useVoiceRecording(
       }
       isRecordingRef.current = true
       setIsRecording(true)
+      patchVoicePresence({ listening: listeningRef.current })
     } catch (err) {
       console.error('[useVoiceRecording] 无法访问麦克风:', err)
     }
-  }, [])
+  }, [onPcm])
 
   const stopRecording = useCallback(async () => {
     const recorder = recorderRef.current
@@ -218,44 +255,35 @@ export function useVoiceRecording(
 
     isRecordingRef.current = false
     setIsRecording(false)
+    speakingRef.current = false
+    patchVoicePresence({
+      listening: false,
+      userSpeaking: false,
+      partial: '',
+    })
 
     const sampleRate = recorder.audioContext.sampleRate || 16000
-    const pcmData = recorder.pcmData
+    const pcmData = listeningRef.current
+      ? utterancePcmRef.current
+      : recorder.pcmData
+    utterancePcmRef.current = []
     cleanupRecorder(recorder)
     recorderRef.current = null
-
-    if (pcmData.length === 0) return
-
-    setIsProcessingVoice(true)
-
-    try {
-      const wavBlob = pcmToWav(pcmData, sampleRate)
-      const base64Audio = await audioToBase64(wavBlob)
-      const result = await speechToText({
-        audio_data: base64Audio,
-        format: 'wav',
-        engine: LOCALE_ENGINE_MAP[locale] || '16k_zh',
-      })
-
-      if (result.success && result.text) {
-        onResult(result.text)
-      }
-    } catch (err) {
-      console.error('[useVoiceRecording] 语音识别出错:', err)
-    } finally {
-      setIsProcessingVoice(false)
-    }
-  }, [pcmToWav, onResult, locale])
+    await transcribe(pcmData, sampleRate)
+  }, [transcribe])
 
   const toggleRecording = useCallback(() => {
-    if (isRecordingRef.current) {
-      void stopRecording()
-    } else {
-      void startRecording()
-    }
+    if (isRecordingRef.current) void stopRecording()
+    else void startRecording()
   }, [startRecording, stopRecording])
 
-  // Unmount cleanup
+  const toggleListen = useCallback(() => {
+    const next = !getListenConsent()
+    setListenConsent(next)
+    setListening(next)
+    patchVoicePresence({ listening: next && isRecordingRef.current })
+  }, [])
+
   useEffect(() => {
     return () => {
       const recorder = recorderRef.current
@@ -264,6 +292,11 @@ export function useVoiceRecording(
         cleanupRecorder(recorder)
         recorderRef.current = null
       }
+      patchVoicePresence({
+        listening: false,
+        userSpeaking: false,
+        partial: '',
+      })
     }
   }, [])
 
@@ -271,8 +304,10 @@ export function useVoiceRecording(
     speechAvailable,
     isRecording,
     isProcessingVoice,
+    listening,
     startRecording,
     stopRecording,
     toggleRecording,
+    toggleListen,
   }
 }

@@ -2281,7 +2281,13 @@ export interface TranslationKeys {
     closeImage: string
     newSession: string
     stop: string
-    voice: { start: string; stop: string; working: string }
+    voice: {
+      start: string
+      stop: string
+      working: string
+      listen: string
+      listenHint: string
+    }
     /** 定时任务 / 技能 / 记忆 */
     manage: {
       title: string

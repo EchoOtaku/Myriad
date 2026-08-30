@@ -133,21 +133,23 @@ function ComposerAction({
   hasAttachments,
   value,
   submit,
+  speechAvailable,
+  isRecording,
+  isProcessingVoice,
+  toggleRecording,
 }: {
   hasText: boolean
   hasAttachments: boolean
   value: string
   submit: (text: string) => void
+  speechAvailable: boolean
+  isRecording: boolean
+  isProcessingVoice: boolean
+  toggleRecording: () => void
 }) {
-  const { t, locale } = useI18n()
+  const { t } = useI18n()
   const { status } = useAgentStatus()
   const busy = status === 'thinking' || status === 'working'
-  const hasAttachmentsRef = useRef(hasAttachments)
-  hasAttachmentsRef.current = hasAttachments
-  const { speechAvailable, isRecording, isProcessingVoice, toggleRecording } =
-    useVoiceRecording((text: string) => {
-      if (text.trim() || hasAttachmentsRef.current) submit(text)
-    }, locale)
 
   useEffect(() => {
     setAgentStatusRecording(isRecording)
@@ -287,7 +289,7 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
   leading,
   trailing,
 }) => {
-  const { t, format } = useI18n()
+  const { t, format, locale } = useI18n()
   const mode = useAgentPanelMode()
   const chatting = mode === 'chat'
   const moodBandValue = useAddresseeMoodBand()
@@ -325,6 +327,17 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
     },
     [onSubmit],
   )
+
+  const {
+    speechAvailable,
+    isRecording,
+    isProcessingVoice,
+    listening,
+    toggleRecording,
+    toggleListen,
+  } = useVoiceRecording((text: string) => {
+    if (text.trim() || attachmentsRef.current.length) submit(text)
+  }, locale)
 
   useEffect(() => {
     if (!autoFocus) return
@@ -467,6 +480,21 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
                   </span>
                 )}
               </AgentSwap>
+              {speechAvailable ? (
+                <button
+                  type="button"
+                  className="agent-panel-tag"
+                  data-tone={listening ? 'primary' : 'neutral'}
+                  title={t.agentPanel.voice.listenHint}
+                  aria-label={t.agentPanel.voice.listen}
+                  aria-pressed={listening}
+                  onClick={toggleListen}
+                >
+                  <span className="agent-panel-tag-kicker">
+                    {t.agentPanel.voice.listen}
+                  </span>
+                </button>
+              ) : null}
               <AgentPresence
                 open={context.kind === 'selection'}
                 kind="chip"
@@ -711,6 +739,10 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
           hasAttachments={hasAttachments}
           value={value}
           submit={submit}
+          speechAvailable={speechAvailable}
+          isRecording={isRecording}
+          isProcessingVoice={isProcessingVoice}
+          toggleRecording={toggleRecording}
         />
       </div>
     </div>
