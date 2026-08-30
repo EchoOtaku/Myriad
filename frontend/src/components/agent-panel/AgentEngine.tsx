@@ -59,6 +59,11 @@ import {
   collectReattachCandidates,
   isNonTerminalTaskStatus,
 } from '../../services/agent/reattach'
+import {
+  ChatTurnClock,
+  isCurrentChatGeneration,
+  isStreamSupersededError,
+} from '../../services/agent/turnIdentity'
 import { userFacingError } from '../../utils/userFacingError'
 import {
   errorCode,
@@ -220,6 +225,7 @@ export const AgentEngine: React.FC = () => {
     chat: false,
   })
   const handledResponseKeysRef = useRef(new Set<string>())
+  const chatTurnClockRef = useRef(new ChatTurnClock())
 
   // 检测是否有待回答的问题（用于将主输入框路由到回答逻辑）
   const pendingAnswerMsg = useMemo(() => {
@@ -682,7 +688,11 @@ export const AgentEngine: React.FC = () => {
   // SSE 进度处理
 
   const createProgressHandler = useCallback(
-    (assistantMessageId: string, mode: AgentPanelMode = 'work') => {
+    (
+      assistantMessageId: string,
+      mode: AgentPanelMode = 'work',
+      generation = 0,
+    ) => {
       let streamedSummary = ''
       let streamedThinking = ''
       const utterance = openGatedReply(
@@ -699,6 +709,12 @@ export const AgentEngine: React.FC = () => {
       }
 
       return (event: ProgressEvent) => {
+        if (
+          mode === 'chat' &&
+          !isCurrentChatGeneration(generation, chatTurnClockRef.current.current())
+        ) {
+          return
+        }
         // 岛与面板读同一份状态：这里是唯一的入口，别处不再解读 SSE
         pushAgentStatusEvent(event)
         // 记录关键 SSE 事件到调试日志
@@ -1211,6 +1227,15 @@ export const AgentEngine: React.FC = () => {
         },
       }
 
+      const chatGeneration =
+        mode === 'chat' ? chatTurnClockRef.current.next() : 0
+      if (mode === 'chat') {
+        const previousChatId = loadingMessageIdByModeRef.current.chat
+        if (previousChatId) {
+          cancelGatedSpeech(agentFace, faceSpeechGate, previousChatId)
+        }
+      }
+
       setMessages((prev) => [...prev, userMessage, assistantMessage], mode)
       loadingMessageIdByModeRef.current[mode] = assistantMsgId
       loadingByModeRef.current[mode] = true
@@ -1248,7 +1273,7 @@ export const AgentEngine: React.FC = () => {
 
         const response = await agentService.processWithProgress(
           requestText,
-          createProgressHandler(assistantMsgId, mode),
+          createProgressHandler(assistantMsgId, mode, chatGeneration),
           context,
         )
 
@@ -1257,6 +1282,10 @@ export const AgentEngine: React.FC = () => {
         }
       } catch (error) {
         cancelGatedSpeech(agentFace, faceSpeechGate, assistantMsgId)
+        if (isStreamSupersededError(error)) {
+          updateMessageExecution(assistantMsgId, { status: 'error' })
+          return
+        }
         // A budget rejection arrives on the same channel as a real failure and
         // reads as "出错了" without this: the stream is already HTTP 200 by then,
         // so the quota code on the error event is the only signal.

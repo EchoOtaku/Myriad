@@ -17,4 +17,8 @@ test('Work interrupt cannot abort Chat SSE, and session ids stay per mode', () =
   )
   assert.match(api, /activeAbortControllersByMode/)
   assert.match(api, /context\?\.mode === 'chat' \? 'chat' : 'work'/)
+  assert.match(api, /lane === 'chat'/)
+  assert.match(engine, /chatTurnClockRef/)
+  assert.match(engine, /isStreamSupersededError/)
+  assert.match(engine, /isCurrentChatGeneration/)
 })

@@ -366,7 +366,12 @@ WHERE namespace = $1 AND runtime_id = $2
     ///
     /// Live SSE must not wait on registry DB writes: a slow persist would fill the
     /// mpsc forwarder and freeze step progress. Persistence is best-effort async.
+    /// Data-plane frames (visemes, spectrum, VAD) must never reach this method.
     pub async fn publish(self: &Arc<Self>, event: AgentProgressEvent) {
+        if super::turn::event_plane(&event) == super::turn::EventPlane::Data {
+            tracing::error!("[Agent Run] data-plane event dropped from run hub");
+            return;
+        }
         let mut notify = false;
         let (envelope, task_id, status, progress, message, success) = {
             let mut state = self.state.lock().await;

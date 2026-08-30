@@ -465,6 +465,14 @@ pub async fn process_stream(
     let session_id_clone = session_id.clone();
     let queue = LANE_QUEUE.clone();
     let source_intent_id_for_work = source_intent_id.clone();
+    let is_chat = interaction_mode == crate::services::agent::AgentInteractionMode::Chat;
+    // Claim before the spawn so the previous Chat run is cancelled even while
+    // this request waits for a lane permit. Work never claims this slot.
+    let chat_cancel = if is_chat {
+        Some(crate::services::agent::turn::claim_chat_turn(user_id, &session_id).await)
+    } else {
+        None
+    };
     // tx 会被移动到 spawn 中，确保 channel 在任务完成前不会关闭
     tokio::spawn(async move {
         // 获取 Lane Queue 执行许可（同一用户串行，全局并发上限 4）
@@ -523,7 +531,24 @@ pub async fn process_stream(
         }
 
         // 使用带进度回调的处理方法
-        match agent.process_with_progress(user_request, tx.clone()).await {
+        // New Chat replaces the previous Chat run. Work is never registered here,
+        // so a Chat send cannot cancel background Work. Dropping this future
+        // does not run on SSE disconnect — only claim_chat_turn fires.
+        let turn_result = if let Some(cancelled) = chat_cancel {
+            tokio::select! {
+                biased;
+                result = agent.process_with_progress(user_request, tx.clone()) => result,
+                _ = cancelled => {
+                    let _ = tx
+                        .send(crate::services::agent::turn::superseded_turn_event())
+                        .await;
+                    return;
+                }
+            }
+        } else {
+            agent.process_with_progress(user_request, tx.clone()).await
+        };
+        match turn_result {
             Ok(response) => {
                 let api_response: ApiResponse = response.into();
                 let task_id = api_response

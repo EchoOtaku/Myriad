@@ -369,13 +369,14 @@ class AgentService {
       },
     }
 
+    const lane = context?.mode === 'chat' ? 'chat' : 'work'
     return this.executeSSERequest(
       `/api${this.baseUrl}/process/stream`,
       'POST',
       request,
       onProgress,
-      false,
-      context?.mode === 'chat' ? 'chat' : 'work',
+      lane === 'chat',
+      lane,
     )
   }
 

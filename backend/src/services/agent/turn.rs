@@ -1,0 +1,200 @@
+//! Turn identity and Chat supersession.
+//!
+//! `runId` is the durable root of a Chat/Work turn. Do not invent a second
+//! `turnId`. `generation` lives only in memory: a newer Chat request replaces
+//! the previous Chat run's text, speech, and motion. Work is never cancelled
+//! by Chat. SSE disconnect unsubscribes; it does not cancel the run.
+
+use std::collections::HashMap;
+
+use once_cell::sync::Lazy;
+use serde_json::json;
+use tokio::sync::{oneshot, Mutex};
+
+use super::types::AgentProgressEvent;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TurnPhase {
+    Created,
+    Generating,
+    Responding,
+    Speaking,
+    Completed,
+    Cancelled,
+    Superseded,
+    Failed,
+}
+
+impl TurnPhase {
+    pub fn is_terminal(self) -> bool {
+        matches!(
+            self,
+            Self::Completed | Self::Cancelled | Self::Superseded | Self::Failed
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EventPlane {
+    /// Lifecycle and semantic events. These may use the run hub.
+    Control,
+    /// Volume, visemes, spectrum, VAD, phonemes. Must never enter the run hub.
+    Data,
+}
+
+/// Exhaustive: a new `AgentProgressEvent` variant must pick a plane.
+pub fn event_plane(event: &AgentProgressEvent) -> EventPlane {
+    match event {
+        AgentProgressEvent::RunStarted { .. }
+        | AgentProgressEvent::TaskCreated { .. }
+        | AgentProgressEvent::TaskAssigned { .. }
+        | AgentProgressEvent::StepStarted { .. }
+        | AgentProgressEvent::StepCompleted { .. }
+        | AgentProgressEvent::Progress { .. }
+        | AgentProgressEvent::StepRetrying { .. }
+        | AgentProgressEvent::TaskCompleted { .. }
+        | AgentProgressEvent::WaitingForInput { .. }
+        | AgentProgressEvent::SessionCreated { .. }
+        | AgentProgressEvent::SessionTitleUpdated { .. }
+        | AgentProgressEvent::SummaryToken { .. }
+        | AgentProgressEvent::ThinkingToken { .. }
+        | AgentProgressEvent::PerformancePlan { .. }
+        | AgentProgressEvent::MeropeStateChanged { .. }
+        | AgentProgressEvent::Error { .. }
+        | AgentProgressEvent::PlannerDecision { .. }
+        | AgentProgressEvent::StepDebug { .. } => EventPlane::Control,
+    }
+}
+
+pub const TURN_SUPERSEDED_CODE: &str = "TURN_SUPERSEDED";
+
+static CHAT_TURNS: Lazy<Mutex<HashMap<(i32, String), oneshot::Sender<()>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+/// Register this Chat run as the live turn for the session. The previous Chat
+/// turn, if any, is cancelled. Work must not call this.
+pub async fn claim_chat_turn(user_id: i32, session_id: &str) -> oneshot::Receiver<()> {
+    let (tx, rx) = oneshot::channel();
+    let mut slots = CHAT_TURNS.lock().await;
+    if let Some(previous) = slots.insert((user_id, session_id.to_string()), tx) {
+        let _ = previous.send(());
+    }
+    rx
+}
+
+pub fn superseded_turn_event() -> AgentProgressEvent {
+    AgentProgressEvent::TaskCompleted {
+        task_id: String::new(),
+        success: false,
+        response: Box::new(json!({
+            "success": false,
+            "responseType": "error",
+            "message": "Replaced by a newer Chat turn",
+            "streamTerminal": true,
+            "code": TURN_SUPERSEDED_CODE,
+        })),
+    }
+}
+
+pub fn is_superseded_turn_event(event: &AgentProgressEvent) -> bool {
+    match event {
+        AgentProgressEvent::TaskCompleted { response, .. } => {
+            response.get("code").and_then(|value| value.as_str()) == Some(TURN_SUPERSEDED_CODE)
+        }
+        AgentProgressEvent::Error { code, .. } => code == TURN_SUPERSEDED_CODE,
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn terminal_phases_are_explicit() {
+        assert!(!TurnPhase::Created.is_terminal());
+        assert!(!TurnPhase::Generating.is_terminal());
+        assert!(!TurnPhase::Responding.is_terminal());
+        assert!(!TurnPhase::Speaking.is_terminal());
+        assert!(TurnPhase::Completed.is_terminal());
+        assert!(TurnPhase::Cancelled.is_terminal());
+        assert!(TurnPhase::Superseded.is_terminal());
+        assert!(TurnPhase::Failed.is_terminal());
+    }
+
+    #[test]
+    fn current_progress_events_are_control_plane() {
+        let events = [
+            AgentProgressEvent::RunStarted {
+                run_id: "run_1".into(),
+                session_id: None,
+            },
+            AgentProgressEvent::SummaryToken {
+                token: "hi".into(),
+                done: false,
+            },
+            superseded_turn_event(),
+        ];
+        for event in &events {
+            assert_eq!(event_plane(event), EventPlane::Control);
+        }
+        let encoded = serde_json::to_string(&events[0]).unwrap();
+        for forbidden in [
+            "viseme",
+            "articulation",
+            "spectrum",
+            "vad",
+            "phoneme",
+            "volume",
+        ] {
+            assert!(
+                !encoded.contains(forbidden),
+                "control event leaked data-plane field {forbidden}"
+            );
+        }
+    }
+
+    #[test]
+    fn superseded_event_is_detectable_and_terminal_shaped() {
+        let event = superseded_turn_event();
+        assert!(is_superseded_turn_event(&event));
+        match &event {
+            AgentProgressEvent::TaskCompleted {
+                success, response, ..
+            } => {
+                assert!(!*success);
+                assert_eq!(response["streamTerminal"], true);
+                assert_eq!(response["code"], TURN_SUPERSEDED_CODE);
+            }
+            other => panic!("expected task completed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn newer_chat_cancels_the_previous_chat_once() {
+        let first = claim_chat_turn(12, "chat-session").await;
+        let second = claim_chat_turn(12, "chat-session").await;
+        assert!(first.await.is_ok());
+        let third = claim_chat_turn(12, "chat-session").await;
+        assert!(second.await.is_ok());
+        drop(third);
+    }
+
+    #[tokio::test]
+    async fn different_sessions_do_not_cancel_each_other() {
+        let mut chat = claim_chat_turn(11, "chat-session").await;
+        let _work = claim_chat_turn(11, "work-session").await;
+        assert!(tokio::time::timeout(Duration::from_millis(30), &mut chat)
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn repeated_claim_is_idempotent_for_the_latest_turn() {
+        let first = claim_chat_turn(13, "s").await;
+        let _second = claim_chat_turn(13, "s").await;
+        let _again = claim_chat_turn(13, "s").await;
+        assert!(first.await.is_ok());
+    }
+}

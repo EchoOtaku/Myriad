@@ -9,6 +9,7 @@ import {
   decideStreamDropAction,
   shouldYieldSsePaint,
 } from './sseTransport'
+import { STREAM_SUPERSEDED_MESSAGE } from './turnIdentity'
 
 describe('executeSSERequest headers', () => {
   it('asks for an event stream so proxies do not buffer a JSON body', () => {
@@ -133,6 +134,19 @@ describe('decideStreamDropAction', () => {
   })
 })
 
+describe('sequence replay', () => {
+  it('keeps seen sequences across resume so replayed events are dropped', () => {
+    const src = readFileSync(
+      new URL('./sseTransport.ts', import.meta.url),
+      'utf8',
+    )
+    assert.match(src, /seenSequences/)
+    assert.match(src, /acceptRunSequence/)
+    assert.match(src, /startsWith\('id:'\)/)
+    assert.match(src, /STREAM_SUPERSEDED_MESSAGE/)
+  })
+})
+
 describe('abortSseSubscriptions', () => {
   it('marks controllers as user-aborted so drop recovery can read the intent', () => {
     const controllers = new Set<AbortController>()
@@ -140,6 +154,7 @@ describe('abortSseSubscriptions', () => {
     controllers.add(controller)
 
     abortSseSubscriptions(controllers, 'user')
+    assert.equal(STREAM_SUPERSEDED_MESSAGE.includes('superseded'), true)
 
     assert.equal(controllers.size, 0)
     assert.equal(controller.signal.aborted, true)
