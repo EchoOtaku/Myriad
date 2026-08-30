@@ -487,7 +487,7 @@ const CUE_INDEX: &[(&str, &str, &str)] = &[
     ),
     (
         "silly",
-        "呆、没反应过来、自嘲犯傻。俏皮人设遇到笑话时可用",
+        "自嘲、犯蠢、出糗、发呆、被逗到。对方让你讲糗事或你正在讲时用，不必出现「呆呆」",
         "silly-eye|silly-mouth",
     ),
     (
@@ -508,7 +508,7 @@ fn motion_expression_index() -> String {
         lines.push(format!("- {name}：{meaning}"));
     }
     lines.push(
-        "瞬时表情 cues.intent（每回合 1–3 个。下列每一项都是可调用的合法选择；按人设取用，不要因为话里没有字面关键词就整表弃用）："
+        "瞬时表情 cues.intent（每回合 1–3 个。读这一轮对话的意思取用，不要等表情名字）："
             .to_string(),
     );
     for (name, meaning, capability) in CUE_INDEX {
@@ -523,16 +523,15 @@ fn motion_expression_index() -> String {
 
 fn motion_system_prompt() -> String {
     format!(
-        r#"你是这个人设的动作导演。只选语义表演。读 persona，按这个人会怎么露脸；mood 是事实，不要改。
+        r#"你是这个人设的动作导演。只选语义表演。读 persona 和这一轮 userText/responseText 的意思，按这个人会怎么露脸。不要等「呆呆」「狂笑」「做一下」这类字。mood 是事实，不要改。
 
 {}
 
 枚举：{}；姿态 {}；cue {}，每回合 baseline + 1–3 个 cue。不要输出 continue，空对象无效。
-用户点名某个表情不是口令：delivery 且已回话、没拒绝，才选对应 cue；reaction 或对方拒了就按性格演。
-只丢掉做不到的：缺能力层不要选；说话占嘴不要 cry/maniac/silly（已经回话接上的点名除外）；唱歌占身不要抢头身。
-按性格取表情：慢热用 withdrawn/subdued + listen/think；外向用 warm + greet/delight，玩笑 silly、兴奋 maniac；嘴硬多用 speechless/angry；认真多用 question/think；软可用 lovestruck。贴纸不必等台词点名。没有人设时按 even，仍要有 baseline + cue。
+只丢掉物理上做不到的：缺能力层不要选；说话时 maniac 抢嘴所以不要选，silly/cry 用眼睛照演。唱歌占身不要抢头身。
+按性格取表情：慢热用 withdrawn/subdued + listen/think；外向用 warm + greet/delight，玩笑和自嘲用 silly、兴奋 maniac；嘴硬多用 speechless/angry；认真多用 question/think；软可用 lovestruck。没有人设时按 even，仍要有 baseline + cue。
 restrained 的 motionEnergy 0.55–0.9、cue 0.75–1.05；even 0.75–1.15 / 0.9–1.25；open 1.0–1.4 / 1.05–1.4。
-reaction 回应用户刚说的；delivery 配合即将说的话；outcome 配合任务结果；proactive 配合自己找上门的那句。"#,
+reaction 回应用户刚说的；delivery 配合即将说的话（讲糗事、自嘲出糗用 silly）；outcome 配合任务结果；proactive 配合自己找上门的那句。"#,
         motion_expression_index(),
         PERFORMANCE_BASELINE_EXPRESSIONS.join("/"),
         PERFORMANCE_POSTURES.join("/"),
@@ -703,8 +702,11 @@ mod tests {
         assert!(!prompt.contains("angleZ"));
         assert!(prompt.contains("不要输出 continue"));
         assert!(prompt.contains("空对象无效"));
-        assert!(prompt.contains("用户点名某个表情不是口令"));
-        assert!(prompt.contains("已经回话接上的点名除外"));
+        assert!(prompt.contains("不要等「呆呆」「狂笑」「做一下」这类字"));
+        assert!(prompt.contains("自嘲"));
+        assert!(prompt.contains("犯蠢"));
+        assert!(prompt.contains("讲糗事、自嘲出糗用 silly"));
+        assert!(prompt.contains("silly/cry 用眼睛照演"));
         assert!(prompt.contains("persona"));
         assert!(schema.pointer("/properties/continue").is_none());
         assert!(schema.get("required").is_none());
@@ -872,6 +874,7 @@ mod tests {
         assert_eq!(user_requested_cue("昨晚我狂笑了一路"), None);
         assert_eq!(user_requested_cue("做点好玩的表情"), None);
         assert_eq!(user_requested_cue("你能告诉我昨天狂笑的事吗"), None);
+        assert_eq!(user_requested_cue("说说你犯蠢的事吧"), None);
     }
 
     #[test]
