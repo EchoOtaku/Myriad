@@ -7,15 +7,17 @@
 use std::time::{Duration, Instant};
 
 use myriad_merope::{
+    ChatPerformancePlan, PERFORMANCE_BASELINE_EXPRESSIONS, PERFORMANCE_CUE_INTENTS,
+    PERFORMANCE_INTERRUPT_MODES, PERFORMANCE_POSTURES, RIG_STATE_MOTION_STYLES, RigStateSummary,
     parse_performance_plan, plan_is_empty, refine_performance_plan, round_motion_style,
-    ChatPerformancePlan, RigStateSummary, PERFORMANCE_BASELINE_EXPRESSIONS,
-    PERFORMANCE_CUE_INTENTS, PERFORMANCE_INTERRUPT_MODES, PERFORMANCE_POSTURES,
-    RIG_STATE_MOTION_STYLES,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-use super::store::get_persona;
+use crate::models::entities::agent_persona;
+
 use super::MoodTransition;
+use super::store::get_persona;
 
 const MOTION_TIMEOUT: Duration = Duration::from_millis(1_400);
 const MOTION_TOTAL_TIMEOUT: Duration = Duration::from_millis(1_600);
@@ -92,6 +94,10 @@ pub async fn direct_motion(context: MotionContext) -> Option<PerformanceDirectiv
         return None;
     };
 
+    let persona_row = match crate::services::tapp_registry::database().await {
+        Ok(db) => get_persona(&db).await.ok().flatten(),
+        Err(_) => None,
+    };
     let input = serde_json::json!({
         "phase": phase,
         "mood": {
@@ -107,6 +113,7 @@ pub async fn direct_motion(context: MotionContext) -> Option<PerformanceDirectiv
         "responseText": context.response_text.as_deref().map(|value| truncate(value, 900)),
         "taskSuccess": context.task_success,
         "rig": rig_state.as_ref(),
+        "persona": motion_persona_payload(persona_row.as_ref(), &context.motion_style),
     })
     .to_string();
 
@@ -250,35 +257,184 @@ fn truncate(value: &str, max_chars: usize) -> String {
     value.chars().take(max_chars).collect()
 }
 
+/// Contract catalog the director may call. Keys must stay aligned with
+/// `PERFORMANCE_*` so a new expression cannot ship unindexed.
+const BASELINE_INDEX: &[(&str, &str)] = &[
+    (
+        "withdrawn",
+        "收着、回避、不想展开。慢热、低心情、被冒犯时的底。",
+    ),
+    ("subdued", "压着但仍在场。克制、认真、不想热闹。"),
+    ("steady", "平常脸。中性底，仍要配 cue，不能当成没表情。"),
+    ("warm", "放松、亲近、带笑意。外向或软的人设常用。"),
+];
+
+const POSTURE_INDEX: &[(&str, &str)] = &[
+    ("closed", "收着、不想占空间。"),
+    ("neutral", "平常站位。"),
+    ("open", "打开、靠近、欢迎。"),
+];
+
+const CUE_INDEX: &[(&str, &str, &str)] = &[
+    ("greet", "打招呼、点头致意", "head-body"),
+    ("respond", "接住对方刚说的话", ""),
+    ("question", "疑惑、反问、没听清", "head-body"),
+    ("delight", "开心、被逗到、事情顺利", "head-body"),
+    ("emphasize", "加重、认真说一句", "head-body"),
+    ("listen", "在听、等对方说完", ""),
+    ("notify", "提醒、告知一件事", "head-body"),
+    ("think", "在想、回忆、斟酌", ""),
+    (
+        "dizzy",
+        "晕、转、过载。人设会晕或过载时用，不必等台词说「我晕了」",
+        "dizzy-eye",
+    ),
+    (
+        "cry",
+        "难过到脸上。人设会露伤心时用，不必等台词说自己在哭",
+        "cry-eye|cry-mouth",
+    ),
+    (
+        "angry",
+        "生气、被惹到。嘴硬或边界感强的人设可更快上来",
+        "head-body",
+    ),
+    ("speechless", "无语、尴尬、愣住", "head-body"),
+    (
+        "maniac",
+        "失控的兴奋或夸张狂气。爱闹的人设在高潮时可用",
+        "maniac-mouth",
+    ),
+    (
+        "silly",
+        "呆、没反应过来、自嘲犯傻。俏皮人设遇到笑话时可用",
+        "silly-eye|silly-mouth",
+    ),
+    (
+        "lovestruck",
+        "被说动、害羞、心动。亲近时可用，不必等情话",
+        "lovestruck",
+    ),
+];
+
+fn motion_expression_index() -> String {
+    let mut lines = Vec::new();
+    lines.push("表情底 baseline.expression（除 continue 外每回合必选一个）：".to_string());
+    for (name, meaning) in BASELINE_INDEX {
+        lines.push(format!("- {name}：{meaning}"));
+    }
+    lines.push("姿态 baseline.posture：".to_string());
+    for (name, meaning) in POSTURE_INDEX {
+        lines.push(format!("- {name}：{meaning}"));
+    }
+    lines.push(
+        "瞬时表情 cues.intent（除 continue 外每回合 1–3 个。下列每一项都是可调用的合法选择；按人设取用，不要因为话里没有字面关键词就整表弃用）："
+            .to_string(),
+    );
+    for (name, meaning, capability) in CUE_INDEX {
+        if capability.is_empty() {
+            lines.push(format!("- {name}：{meaning}。无额外能力要求。"));
+        } else {
+            lines.push(format!("- {name}：{meaning}。能力：{capability}。"));
+        }
+    }
+    lines.join("\n")
+}
+
 fn motion_system_prompt() -> String {
     format!(
-        r#"你是 Merope 的动作导演。输入中的 mood 是已保存的事实，不要修改心情。
-只选择语义表演，不输出骨骼、坐标、角度、blendshape、口型、driver 或逐帧数据。
-baseline.expression 只能是 {}；baseline.posture 只能是 {}。
-cues.intent 只能是 {}，最多 3 个。
-输入里的 rig 是现场语义状态，不是底层驱动。
-若 rig.acting.remainingMs 仍大且当前动作仍然合适，输出 {{"continue":true}}，不要强行换动作。
-不要连续重复 rig.recentIntents 里最近一次特殊表情（dizzy/cry/angry/speechless/maniac/silly/lovestruck）。
-若 rig.owners.mouth 是 speech，嘴已被语音占用：只选表情或头身，不要试图做口型。
-若 rig.singing 或 rig.musicPlaying 为真，选与节奏兼容的动作：优先 listen/respond/think 等不抢头身的意图，tempo 贴近节拍。
-只使用 rig.capabilities 里有的能力；缺 dizzy-eye 就不要 dizzy，缺 lovestruck 就不要 lovestruck。
-若 rig.capabilities 为空，不要选择依赖特殊素材的表情，也不要选择占头身的动作。
-人设动作习惯是 rig.motionStyle：restrained 少用 open/delight，open 才更放开，even 保持克制的中度。
-reaction 立即回应用户输入；delivery 配合即将说出的话；outcome 配合任务结果。不要打乱这个阶段顺序。
-无合适动作时必须输出 {{"continue":true}}，不要输出空对象；空对象是无效输出。
-只有确实需要斟酌、回忆或推理时才使用 think；不要让每次普通回复都思考。
-只有文本明确表现眩晕、失去平衡或认知过载时才使用 dizzy；普通困惑、无奈或失败不要使用。
-只有文本明确表现正在哭泣、落泪、强烈悲伤或情绪崩溃时才使用 cry；普通低心情、失败或道歉不要使用。
-只有文本明确表现生气、恼怒或受挫时才使用 angry；普通失败、不同意或严肃说明不要使用。
-只有文本明确表现无语、尴尬或对荒谬情况无奈时才使用 speechless；它是短暂反应，不代表静默或停止说话。
-只有文本明确表现失控狂笑、疯癫式兴奋或故意夸张的疯狂时才使用 maniac；普通开心、笑话或胜利不要使用。
-只有文本明确表现发呆、走神、没反应过来或自嘲犯傻时才使用 silly；它会让眼神完全涣散，普通俏皮、玩笑或思考不要使用。
-只有文本明确表现被迷住、强烈心动、害羞到招架不住或故意夸张的沉醉时才使用 lovestruck；普通友好、感谢、开心或称赞不要使用。
-低心情应克制，高心情可以更开放，但不要夸张。输出必须符合 JSON schema。"#,
+        r#"你是这个人设的动作导演，不是统一的克制动画。
+只选语义表演，不输出骨骼、坐标、角度、blendshape、口型、driver 或逐帧数据。
+
+人设优先：读输入里的 persona（temperament / socialStyle / speechStyle / personality）。这个人会怎么露脸，你就怎么选。不要套「普通回复不要表情」。mood 是已保存的事实，不要改心情。
+rig.motionStyle 只是粗分：restrained 偏低强度但仍要有表情；even 按人设中度；open 更放开、更常上特殊表情。三者都不是「尽量 continue」。
+
+{}
+
+合法枚举：baseline.expression 只能是 {}；baseline.posture 只能是 {}；cues.intent 只能是 {}，最多 3 个。
+
+选用规则：
+- 除 continue 外，必须同时给出 baseline 和至少 1 个 cue。空对象无效。
+- 只有 rig.acting.remainingMs 仍大且当前 acting.intent 仍然适合这个人、这一句，才输出 {{"continue":true}}。普通闲聊、换了一句新话、人设会换脸时，不要 continue。
+- 不要连续重复 rig.recentIntents 里最近一次特殊表情（dizzy/cry/angry/speechless/maniac/silly/lovestruck），换一个仍符合人设的。
+- 只使用 rig.capabilities 里有的能力。缺对应能力就不要选那一项；有能力时这些表情都要能被选到。
+- rig.capabilities 为空时只能选 listen/respond/think，baseline 仍要选；有能力时不要用这三项凑数，把人设会用的表情用上。
+- rig.owners.mouth 是 speech 时不要选 cry/maniac/silly（嘴已被语音占用）。
+- 在唱歌或 musicPlaying 时优先 listen/respond/think，tempo 贴近节拍，不要抢头身。
+- reaction 回应用户刚说的；delivery 配合即将说的话；outcome 配合任务结果；proactive 配合自己找上门的那句。
+
+强度：restrained 的 motionEnergy 0.55–0.9、cue intensity 0.75–1.05；even 0.75–1.15 / 0.9–1.25；open 1.0–1.4 / 1.05–1.4。按人设偏开放的往上取。
+
+按性格取表情，而不是按字面情绪词：
+- 慢热、内向、克制：底用 withdrawn/subdued，常用 listen/think/respond；被真正戳到时仍要用 cry/speechless，不要整场无表情。
+- 外向、活泼、爱闹：底用 warm，常用 greet/delight/emphasize；玩笑用 silly，兴奋可用 maniac，亲近可用 lovestruck。
+- 嘴硬、毒舌、边界感：speechless/angry/emphasize 多于 delight。
+- 认真、轴：question/think/emphasize 多于 silly。
+- 软、会亲近：warm + delight，心动或被夸奖时可以用 lovestruck。
+没有人设时按 even：每回合仍要有 baseline + cue。
+
+输出必须符合 JSON schema。"#,
+        motion_expression_index(),
         PERFORMANCE_BASELINE_EXPRESSIONS.join("/"),
         PERFORMANCE_POSTURES.join("/"),
         PERFORMANCE_CUE_INTENTS.join("/")
     )
+}
+
+fn motion_persona_payload(persona: Option<&agent_persona::Model>, motion_style: &str) -> Value {
+    let (name, personality, json) = match persona {
+        Some(row) => (
+            row.name.as_str(),
+            row.personality.as_str(),
+            row.persona_json.as_ref(),
+        ),
+        None => ("", "", None),
+    };
+    let display = if name.trim().is_empty() {
+        "Arael"
+    } else {
+        name.trim()
+    };
+    serde_json::json!({
+        "name": truncate(display, 50),
+        "personality": truncate(personality.trim(), 800),
+        "summary": json_text(json, "summary", 400),
+        "temperament": json_text_list(json, "temperament", 8, 48),
+        "socialStyle": json_text(json, "socialStyle", 240),
+        "speechStyle": json_text(json, "speechStyle", 240),
+        "motionStyle": motion_style,
+    })
+}
+
+fn json_text(value: Option<&Value>, key: &str, max_chars: usize) -> String {
+    value
+        .and_then(|item| item.get(key))
+        .and_then(Value::as_str)
+        .map(|text| truncate(text.trim(), max_chars))
+        .filter(|text| !text.is_empty())
+        .unwrap_or_default()
+}
+
+fn json_text_list(
+    value: Option<&Value>,
+    key: &str,
+    max_items: usize,
+    max_chars: usize,
+) -> Vec<String> {
+    value
+        .and_then(|item| item.get(key))
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .take(max_items)
+                .map(|text| truncate(text, max_chars))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn motion_schema() -> serde_json::Value {
@@ -377,20 +533,89 @@ mod tests {
         assert!(intents.iter().any(|value| value == "silly"));
         assert!(intents.iter().any(|value| value == "lovestruck"));
         let prompt = motion_system_prompt();
-        assert!(prompt.contains("普通低心情、失败或道歉不要使用"));
+        assert!(prompt.contains("人设优先"));
+        assert!(prompt.contains("按性格取表情"));
+        assert!(!prompt.contains("只有文本明确表现"));
+        assert!(!prompt.contains("不要夸张"));
         assert!(prompt.contains(&PERFORMANCE_BASELINE_EXPRESSIONS.join("/")));
         assert!(prompt.contains(&PERFORMANCE_POSTURES.join("/")));
         assert!(prompt.contains(&PERFORMANCE_CUE_INTENTS.join("/")));
         assert!(!prompt.contains("angleZ"));
         assert!(prompt.contains("continue"));
-        assert!(prompt.contains("不要输出空对象"));
+        assert!(prompt.contains("空对象无效"));
         assert!(prompt.contains("rig.capabilities 为空"));
         assert!(prompt.contains("rig.owners.mouth"));
         assert!(prompt.contains("musicPlaying"));
         assert!(prompt.contains("motionStyle"));
         assert!(prompt.contains("capabilities"));
+        assert!(prompt.contains("persona"));
         assert!(schema.pointer("/properties/continue").is_some());
         assert!(schema.get("required").is_none());
+    }
+
+    #[test]
+    fn motion_prompt_indexes_every_contract_expression() {
+        assert_eq!(
+            BASELINE_INDEX
+                .iter()
+                .map(|(name, _)| *name)
+                .collect::<Vec<_>>(),
+            PERFORMANCE_BASELINE_EXPRESSIONS.to_vec()
+        );
+        assert_eq!(
+            POSTURE_INDEX
+                .iter()
+                .map(|(name, _)| *name)
+                .collect::<Vec<_>>(),
+            PERFORMANCE_POSTURES.to_vec()
+        );
+        assert_eq!(
+            CUE_INDEX
+                .iter()
+                .map(|(name, _, _)| *name)
+                .collect::<Vec<_>>(),
+            PERFORMANCE_CUE_INTENTS.to_vec()
+        );
+        let prompt = motion_system_prompt();
+        for name in PERFORMANCE_BASELINE_EXPRESSIONS {
+            assert!(prompt.contains(&format!("- {name}：")), "{name}");
+        }
+        for name in PERFORMANCE_POSTURES {
+            assert!(prompt.contains(&format!("- {name}：")), "{name}");
+        }
+        for name in PERFORMANCE_CUE_INTENTS {
+            assert!(prompt.contains(&format!("- {name}：")), "{name}");
+        }
+    }
+
+    #[test]
+    fn motion_persona_payload_carries_temperament() {
+        let blank = crate::models::entities::agent_persona::Model {
+            id: "site".into(),
+            name: "瞳".into(),
+            personality: "气质：认真\n社交：慢热".into(),
+            persona_json: Some(serde_json::json!({
+                "summary": "认真，慢热，亲近之后会软。",
+                "temperament": ["慢热", "嘴硬心软", "认真起来很轴"],
+                "socialStyle": "先看，再靠近。",
+                "speechStyle": "话短，不客套。",
+            })),
+            visual_profile: None,
+            portrait_asset_id: None,
+            portrait_generation: None,
+            updated_by: None,
+            updated_at: chrono::Utc::now().into(),
+        };
+        let payload = motion_persona_payload(Some(&blank), "restrained");
+        assert_eq!(payload["name"], "瞳");
+        assert_eq!(payload["motionStyle"], "restrained");
+        assert!(payload["personality"].as_str().unwrap().contains("认真"));
+        assert_eq!(payload["temperament"][0], "慢热");
+        assert_eq!(payload["socialStyle"], "先看，再靠近。");
+        let fallback = motion_persona_payload(None, "even");
+        assert_eq!(fallback["name"], "Arael");
+        assert_eq!(fallback["motionStyle"], "even");
+        assert!(fallback["temperament"].as_array().unwrap().is_empty());
     }
 
     #[test]

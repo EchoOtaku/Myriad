@@ -60,6 +60,13 @@ pub fn build_chat_lite_prompt(
     build_chat_lite_prompt_with_perception(soul, merope_block, history, input, "")
 }
 
+/// Closer for Chat Lite. Tone follows the persona; do not flatten everyone
+/// into a short, warm assistant.
+const CHAT_REPLY_INSTRUCTION: &str = "\
+请以你的角色自然地回复用户。使用用户的语言。\
+语气、长短和软硬跟设定一致，不要额外改成客服腔或统一的热情。\
+不要输出任何 JSON 或格式标记，只输出纯文本回复。";
+
 pub fn build_chat_lite_prompt_with_perception(
     soul: &str,
     merope_block: &str,
@@ -86,15 +93,13 @@ pub fn build_chat_lite_prompt_with_perception(
     if history_text.is_empty() {
         format!(
             "{soul}\n\n{merope_prefix}用户对你说：{input}{perception_block}\n\n\
-             请以你的角色自然地回复用户。使用用户的语言。保持简短、温暖、自然。\
-             不要输出任何 JSON 或格式标记，只输出纯文本回复。",
+             {CHAT_REPLY_INSTRUCTION}",
         )
     } else {
         format!(
             "{soul}\n\n{merope_prefix}以下是对话历史：\n{history_text}\n\n\
              用户最新消息：{input}{perception_block}\n\n\
-             请以你的角色自然地回复用户。使用用户的语言。保持简短、温暖、自然。\
-             不要输出任何 JSON 或格式标记，只输出纯文本回复。",
+             {CHAT_REPLY_INSTRUCTION}",
         )
     }
 }
@@ -140,8 +145,7 @@ pub fn format_perception_block(value: Option<&Value>) -> String {
         let summary: String = if privacy == "local" {
             perception_facts_line(obj)
         } else {
-            obj
-                .get("summary")
+            obj.get("summary")
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .chars()
@@ -284,6 +288,16 @@ mod tests {
         assert!(!prompt.contains("cnf_1"));
         assert!(!prompt.contains("stepHistory"));
         assert!(!prompt.contains("task"));
+        assert!(!prompt.contains("保持简短、温暖、自然"));
+        assert!(prompt.contains("跟设定一致"));
+    }
+
+    #[test]
+    fn chat_lite_closer_follows_persona_instead_of_a_warm_default() {
+        let prompt = build_chat_lite_prompt("你是瞳。气质：毒舌。", "", &[], "嗨");
+        assert!(prompt.contains("你是瞳。气质：毒舌。"));
+        assert!(prompt.contains(CHAT_REPLY_INSTRUCTION));
+        assert!(!prompt.contains("温暖"));
     }
 
     #[test]
