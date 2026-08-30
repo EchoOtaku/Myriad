@@ -24,6 +24,7 @@ import { agentFace } from '../features/merope/agentFaceChannel'
 import {
   deliverWorkNotificationFace,
   faceSpeechGate,
+  notificationCarriesMeropeSpeech,
 } from '../features/merope/faceSpeechArbitration'
 import { batchRead, batchWrite, observeResize } from '../hooks/animation'
 import {
@@ -275,9 +276,10 @@ const GlobalControlPanel: React.FC = () => {
   const handleNewNotification = useCallback(
     (n: AppNotification) => {
       if (
-        n.metadata?.performance ||
-        n.metadata?.merope_state ||
-        n.metadata?.event_key
+        notificationCarriesMeropeSpeech(n.metadata) &&
+        (shouldDeliverNotification(notificationPreferences, n, 'island') ||
+          shouldDeliverNotification(notificationPreferences, n, 'toast') ||
+          shouldDeliverNotification(notificationPreferences, n, 'panel'))
       ) {
         deliverWorkNotificationFace(agentFace, faceSpeechGate, {
           id: n.id,

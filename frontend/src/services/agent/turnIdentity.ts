@@ -67,7 +67,12 @@ export function acceptRunSequence(
 }
 
 export const STREAM_SUPERSEDED_MESSAGE = 'Request superseded by a newer request'
+export const STREAM_INTERRUPTED_MESSAGE = 'Request interrupted by user'
 
 export function isStreamSupersededError(error: unknown): boolean {
   return error instanceof Error && error.message === STREAM_SUPERSEDED_MESSAGE
+}
+
+export function isUserInterruptError(error: unknown): boolean {
+  return error instanceof Error && error.message === STREAM_INTERRUPTED_MESSAGE
 }

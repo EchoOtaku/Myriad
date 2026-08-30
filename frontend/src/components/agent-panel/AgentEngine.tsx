@@ -74,6 +74,7 @@ import {
   ChatTurnClock,
   isCurrentChatGeneration,
   isStreamSupersededError,
+  isUserInterruptError,
 } from '../../services/agent/turnIdentity'
 import { userFacingError } from '../../utils/userFacingError'
 import {
@@ -234,6 +235,7 @@ export const AgentEngine: React.FC = () => {
         messageId: string,
         response: AgentResponse,
         mode?: AgentPanelMode,
+        generation?: number,
       ) => Promise<void>
     >(null)
   const createProgressHandlerRef = useRef<
@@ -649,6 +651,10 @@ export const AgentEngine: React.FC = () => {
     const current = getAgentPanelMode()
     // Only abort this mode's SSE. Work and Chat can be in flight together.
     agentService.abortCurrentRequest(current)
+    if (current === 'chat') {
+      const sessionId = sessionIdsByModeRef.current.chat
+      void agentService.cancelChatTurn(sessionId || '')
+    }
 
     const processingMsgs = messagesRef.current[current].filter(
       (m) =>
@@ -1184,8 +1190,7 @@ export const AgentEngine: React.FC = () => {
         return
       }
 
-      if (loadingByModeRef.current[mode]) {
-        if (mode === 'chat') return
+      if (loadingByModeRef.current[mode] && mode !== 'chat') {
         const activeTaskMessage = [...messages]
           .reverse()
           .find(
@@ -1330,13 +1335,23 @@ export const AgentEngine: React.FC = () => {
         )
 
         if (handleAgentResponseRef.current) {
-          handleAgentResponseRef.current(assistantMsgId, response, mode)
+          handleAgentResponseRef.current(
+            assistantMsgId,
+            response,
+            mode,
+            chatGeneration,
+          )
         }
       } catch (error) {
         stopTurnSpeech(assistantMsgId)
         finishTurnTrace()
         if (isStreamSupersededError(error)) {
           noteTurnTraceDrop('superseded')
+          updateMessageExecution(assistantMsgId, { status: 'error' })
+          return
+        }
+        if (isUserInterruptError(error)) {
+          noteTurnTraceDrop('cancelled')
           updateMessageExecution(assistantMsgId, { status: 'error' })
           return
         }
@@ -1392,8 +1407,8 @@ export const AgentEngine: React.FC = () => {
           mode,
         )
       } finally {
-        loadingByModeRef.current[mode] = false
         if (loadingMessageIdByModeRef.current[mode] === assistantMsgId) {
+          loadingByModeRef.current[mode] = false
           loadingMessageIdByModeRef.current[mode] = null
         }
         setIsLoading(
@@ -1426,6 +1441,7 @@ export const AgentEngine: React.FC = () => {
       messageId: string,
       response: AgentResponse,
       mode: AgentPanelMode = 'work',
+      generation = 0,
     ) => {
       const taskData = response.task as Record<string, unknown> | undefined
       let pendingQuestion = taskData?.pendingQuestion as
@@ -1632,10 +1648,19 @@ export const AgentEngine: React.FC = () => {
       })
 
       const spokenReply = displayMessage || response.message
-      if (isSuccess) {
+      const staleChat =
+        mode === 'chat' &&
+        generation > 0 &&
+        !isCurrentChatGeneration(
+          generation,
+          chatTurnClockRef.current.current(),
+        )
+      if (isSuccess && !staleChat) {
         deliverGatedLine(agentFace, faceSpeechGate, mode, {
           messageId,
-          text: spokenReply,
+          text: getSpeechPipeline().alreadyFed(messageId)
+            ? undefined
+            : spokenReply,
           locale,
           performance: response.performance,
         })

@@ -140,6 +140,24 @@ export function cancelGatedSpeech(
   gate.cancelSpeech(channel, messageId)
 }
 
+/** Producer toasts with a generic event_key are not persona speech. */
+export function notificationCarriesMeropeSpeech(
+  metadata: Record<string, unknown> | null | undefined,
+): boolean {
+  if (!metadata) return false
+  if (
+    metadata.performance != null ||
+    metadata.merope_state != null ||
+    metadata.intention_id != null
+  ) {
+    return true
+  }
+  return (
+    typeof metadata.event_key === 'string' &&
+    metadata.event_key.startsWith('agent.merope.')
+  )
+}
+
 /**
  * Notification-center Work completion (notify_task_status → merope ingest).
  * Incoming mode is always Work. The island/toast still records the notice

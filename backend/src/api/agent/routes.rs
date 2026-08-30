@@ -3,8 +3,8 @@ use super::*;
 
 // 路由构建
 
-use axum::routing::{delete, get, post, put};
 use axum::Router;
+use axum::routing::{delete, get, post, put};
 
 /// 创建 Agent API 路由
 pub fn create_agent_routes(app_state: crate::state::AppState) -> Router<crate::state::AppState> {
@@ -250,6 +250,13 @@ pub fn create_agent_routes(app_state: crate::state::AppState) -> Router<crate::s
         .route(
             "/session/interrupt",
             post(interrupt_session).route_layer(from_fn_with_state(
+                app_state.clone(),
+                middleware::auth::auth_middleware,
+            )),
+        )
+        .route(
+            "/session/cancel-chat",
+            post(cancel_chat_turn).route_layer(from_fn_with_state(
                 app_state.clone(),
                 middleware::auth::auth_middleware,
             )),

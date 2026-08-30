@@ -702,6 +702,10 @@ class AgentService {
     return apiService.post(`${this.baseUrl}/session/interrupt`, { input })
   }
 
+  async cancelChatTurn(sessionId: string): Promise<{ success: boolean }> {
+    return apiService.post(`${this.baseUrl}/session/cancel-chat`, { sessionId })
+  }
+
   /**
    * 向当前会话注入转向指令
    */

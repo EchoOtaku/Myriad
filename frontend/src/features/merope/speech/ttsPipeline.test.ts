@@ -100,6 +100,39 @@ test('interrupt stops playback, clears the queue, and ignores late synth', async
   assert.deepEqual(played, ['旧', '新'])
 })
 
+test('a later utterance plays after the previous one even when sequences restart', async () => {
+  const played: string[] = []
+  const ends: Array<() => void> = []
+  const pipeline = new TtsPipeline({
+    synthesize: async (item) => buffer(item.text),
+    play: (_audio, item, onEnded) => {
+      played.push(item.text)
+      ends.push(onEnded)
+      return { stop: () => undefined }
+    },
+  })
+  pipeline.enqueue([
+    segment(1, 'A1', 'msg-a'),
+    segment(2, 'A2', 'msg-a'),
+  ])
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.deepEqual(played, ['A1'])
+  ends[0]!()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.deepEqual(played, ['A1', 'A2'])
+  ends[1]!()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  pipeline.enqueue([
+    segment(1, 'B1', 'msg-b'),
+    segment(2, 'B2', 'msg-b'),
+  ])
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.deepEqual(played, ['A1', 'A2', 'B1'])
+  ends[2]!()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.deepEqual(played, ['A1', 'A2', 'B1', 'B2'])
+})
+
 test('failed synthesis skips the segment and keeps later audio', async () => {
   const played: string[] = []
   const pipeline = new TtsPipeline({

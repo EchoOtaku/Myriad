@@ -27,6 +27,7 @@ export class SpeechPipelineHost {
   private enabled = false
   private probed = false
   private cancelledAt: number | null = null
+  private readonly fedMessageIds = new Set<string>()
 
   constructor() {
     this.pipeline = new TtsPipeline({
@@ -55,8 +56,13 @@ export class SpeechPipelineHost {
 
   feed(segments: readonly SpeechSegment[]): void {
     if (!this.enabled || segments.length === 0) return
+    for (const segment of segments) this.fedMessageIds.add(segment.messageId)
     const mode = segments[0]!.interrupt
     this.pipeline.enqueue(segments, mode)
+  }
+
+  alreadyFed(messageId: string): boolean {
+    return this.fedMessageIds.has(messageId)
   }
 
   /**
@@ -70,6 +76,7 @@ export class SpeechPipelineHost {
     interrupt?: SpeechInterruptMode
   }): boolean {
     if (!this.enabled) return false
+    if (this.fedMessageIds.has(input.messageId)) return true
     const text = speakableText(input.text)
     if (!text) return false
     const interrupt = input.interrupt ?? 'queue'
@@ -85,6 +92,8 @@ export class SpeechPipelineHost {
 
   cancel(messageId?: string): void {
     this.cancelledAt = nowMs()
+    if (messageId) this.fedMessageIds.delete(messageId)
+    else this.fedMessageIds.clear()
     this.pipeline.cancel(messageId)
     patchVoicePresence({ ttsPlaying: false })
     this.noteSilence()

@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use once_cell::sync::Lazy;
 use serde_json::json;
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{Mutex, oneshot};
 
 use super::types::AgentProgressEvent;
 
@@ -80,6 +80,31 @@ pub async fn claim_chat_turn(user_id: i32, session_id: &str) -> oneshot::Receive
         let _ = previous.send(());
     }
     rx
+}
+
+/// Stop the live Chat turn without starting a replacement. Work must not call this.
+pub async fn cancel_chat_turn(user_id: i32, session_id: &str) -> bool {
+    let mut slots = CHAT_TURNS.lock().await;
+    if !session_id.is_empty() {
+        if let Some(previous) = slots.remove(&(user_id, session_id.to_string())) {
+            let _ = previous.send(());
+            return true;
+        }
+        return false;
+    }
+    let keys: Vec<_> = slots
+        .keys()
+        .filter(|(uid, _)| *uid == user_id)
+        .cloned()
+        .collect();
+    let mut cancelled = false;
+    for key in keys {
+        if let Some(previous) = slots.remove(&key) {
+            let _ = previous.send(());
+            cancelled = true;
+        }
+    }
+    cancelled
 }
 
 pub fn superseded_turn_event() -> AgentProgressEvent {
@@ -172,6 +197,14 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cancel_chat_turn_fires_the_live_slot_without_a_replacement() {
+        let first = claim_chat_turn(9, "chat-session").await;
+        assert!(cancel_chat_turn(9, "chat-session").await);
+        assert!(first.await.is_ok());
+        assert!(!cancel_chat_turn(9, "chat-session").await);
+    }
+
+    #[tokio::test]
     async fn newer_chat_cancels_the_previous_chat_once() {
         let first = claim_chat_turn(12, "chat-session").await;
         let second = claim_chat_turn(12, "chat-session").await;
@@ -185,9 +218,11 @@ mod tests {
     async fn different_sessions_do_not_cancel_each_other() {
         let mut chat = claim_chat_turn(11, "chat-session").await;
         let _work = claim_chat_turn(11, "work-session").await;
-        assert!(tokio::time::timeout(Duration::from_millis(30), &mut chat)
-            .await
-            .is_err());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(30), &mut chat)
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]

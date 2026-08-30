@@ -536,6 +536,20 @@ pub(crate) async fn list_agents() -> Json<Value> {
 
 // Session Control (Steer / Interrupt)
 
+/// Stop the live Chat generation. Does not cancel Work.
+pub(crate) async fn cancel_chat_turn(
+    Extension(claims): Extension<Claims>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, HttpError> {
+    let user_id = parse_user_id(&claims)?;
+    let session_id = body
+        .get("sessionId")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    let cancelled = crate::services::agent::turn::cancel_chat_turn(user_id, session_id).await;
+    Ok(Json(json!({ "success": cancelled })))
+}
+
 /// 中断当前正在执行的任务并替换为新请求
 pub(crate) async fn interrupt_session(
     State(db): State<DatabaseConnection>,

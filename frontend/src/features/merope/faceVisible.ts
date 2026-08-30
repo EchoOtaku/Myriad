@@ -1,5 +1,5 @@
-/** Production live-face mount. Default true so tests without a rig still speak. */
-let visible = true
+/** Production live-face mount. Fail closed until a live retain exists. */
+let visible = false
 
 export function setLiveFaceVisible(value: boolean): void {
   visible = value

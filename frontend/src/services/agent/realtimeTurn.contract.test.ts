@@ -44,6 +44,7 @@ test('Chat abort does not take the Work SSE lane', () => {
   assert.match(api, /lane === 'chat'/)
   const engine = source('../../components/agent-panel/AgentEngine.tsx')
   assert.match(engine, /abortCurrentRequest\(current\)/)
+  assert.match(api, /session\/cancel-chat/)
 })
 
 test('Work completion cannot take an active Chat mouth', () => {

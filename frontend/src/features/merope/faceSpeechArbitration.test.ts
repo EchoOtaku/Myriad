@@ -4,15 +4,16 @@ import type {
   SpeechUtteranceInput,
 } from './speechEvents'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { AgentFaceChannel } from './agentFaceChannel'
-import { readFileSync } from 'node:fs'
 import {
-  FaceSpeechGate,
   arbitrateFaceSpeech,
   cancelGatedSpeech,
   deliverGatedLine,
   deliverWorkNotificationFace,
+  FaceSpeechGate,
+  notificationCarriesMeropeSpeech,
   openGatedReply,
 } from './faceSpeechArbitration'
 import { setLiveFaceVisible } from './faceVisible'
@@ -126,7 +127,7 @@ test('Chat mid-utterance continues while a background Work completion is recorde
   )
 })
 
-type FaceDeliveryRecord = {
+interface FaceDeliveryRecord {
   surface: 'speech' | 'record'
   messageId: string
   text?: string
@@ -166,6 +167,7 @@ test('notification-center Work completion is recorded, not spoken, while Chat is
 })
 
 test('Chat start then engine cancel releases occupancy so visible Work may speak', () => {
+  setLiveFaceVisible(true)
   const sink = new RecordingSink()
   const channel = new AgentFaceChannel(sink)
   let visible: 'work' | 'chat' = 'chat'
@@ -197,6 +199,8 @@ test('notification center and engine cancel go through the gated Work/Chat helpe
     'utf8',
   )
   assert.match(panel, /deliverWorkNotificationFace\(/)
+  assert.match(panel, /notificationCarriesMeropeSpeech/)
+  assert.doesNotMatch(panel, /n\.metadata\?\.event_key/)
   assert.doesNotMatch(panel, /agentFace\.deliver\(/)
   assert.match(engine, /cancelGatedSpeech\(/)
   assert.doesNotMatch(engine, /agentFace\.cancel\(/)
@@ -206,6 +210,24 @@ test('notification center and engine cancel go through the gated Work/Chat helpe
   )
   assert.match(arbitration, /speakLine\(/)
   assert.match(arbitration, /liveFaceVisible\(\)/)
+})
+
+test('generic producer event keys are not persona speech', () => {
+  assert.equal(
+    notificationCarriesMeropeSpeech({ event_key: 'brew.source_error' }),
+    false,
+  )
+  assert.equal(
+    notificationCarriesMeropeSpeech({ event_key: 'agent.task_completed' }),
+    false,
+  )
+  assert.equal(
+    notificationCarriesMeropeSpeech({
+      event_key: 'agent.merope.platform_activity',
+    }),
+    true,
+  )
+  assert.equal(notificationCarriesMeropeSpeech({ performance: {} }), true)
 })
 
 test('hidden face records a line instead of pretending it was spoken', () => {
@@ -224,6 +246,7 @@ test('hidden face records a line instead of pretending it was spoken', () => {
 })
 
 test('Work completion still speaks when Chat is not talking and Work is visible', () => {
+  setLiveFaceVisible(true)
   const sink = new RecordingSink()
   const channel = new AgentFaceChannel(sink)
   const gate = new FaceSpeechGate(() => 'work')

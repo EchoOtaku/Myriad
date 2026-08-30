@@ -6,6 +6,8 @@ import {
   isCurrentChatGeneration,
   isStreamSupersededError,
   isTerminalTurnPhase,
+  isUserInterruptError,
+  STREAM_INTERRUPTED_MESSAGE,
   STREAM_SUPERSEDED_MESSAGE,
 } from './turnIdentity'
 
@@ -43,4 +45,9 @@ test('supersede errors are distinct from faults', () => {
   )
   assert.equal(isStreamSupersededError(new Error('Request timed out')), false)
   assert.equal(isStreamSupersededError('TURN_SUPERSEDED'), false)
+  assert.equal(
+    isUserInterruptError(new Error(STREAM_INTERRUPTED_MESSAGE)),
+    true,
+  )
+  assert.equal(isUserInterruptError(new Error(STREAM_SUPERSEDED_MESSAGE)), false)
 })

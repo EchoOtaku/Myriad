@@ -22,20 +22,27 @@ export interface TtsPipelineHost {
 
 const MAX_SYNTH = 2
 
+interface QueuedSegment {
+  playId: number
+  segment: SpeechSegment
+}
+
 interface ReadySlot {
   segment: SpeechSegment
   audio: ArrayBuffer | null
 }
 
 /**
- * Synthesize up to two segments at once; play strictly by sequence.
- * A failed synth skips that segment and does not fail the text reply.
+ * Synthesize up to two segments at once; play in enqueue order.
+ * Segment.sequence is per-utterance and must not be the play cursor.
  */
 export class TtsPipeline {
   private epoch = 0
-  private nextSequence = 1
+  private nextPlayId = 0
+  private nextPlay = 1
   private inflight = 0
-  private readonly pending: SpeechSegment[] = []
+  private readonly inflightIds = new Set<number>()
+  private readonly pending: QueuedSegment[] = []
   private readonly ready = new Map<number, ReadySlot>()
   private handle: TtsAudioHandle | null = null
   private playingMessageId: string | null = null
@@ -63,7 +70,10 @@ export class TtsPipeline {
     const messageId = segments[0]!.messageId
     if (mode === 'interrupt') this.cancel()
     else if (mode === 'replace') this.replaceMessage(messageId)
-    for (const segment of segments) this.pending.push(segment)
+    for (const segment of segments) {
+      this.nextPlayId += 1
+      this.pending.push({ playId: this.nextPlayId, segment })
+    }
     markTurnTraceOnce('tts_queued', { n: segments.length })
     this.noteQueue()
     this.pumpSynth()
@@ -73,6 +83,7 @@ export class TtsPipeline {
     if (messageId && this.playingMessageId && this.playingMessageId !== messageId) {
       if (this.dropMessage(messageId)) noteTurnTraceDrop('cancelled')
       this.noteQueue()
+      this.tryPlay()
       return
     }
     const hadWork =
@@ -84,7 +95,9 @@ export class TtsPipeline {
     this.stopPlayback()
     this.pending.length = 0
     this.ready.clear()
-    this.nextSequence = 1
+    this.inflightIds.clear()
+    this.nextPlayId = 0
+    this.nextPlay = 1
     this.inflight = 0
     const id = messageId ?? this.playingMessageId
     this.playingMessageId = null
@@ -99,19 +112,20 @@ export class TtsPipeline {
     if (stopped) this.stopPlayback()
     if (dropped || stopped) noteTurnTraceDrop('queue_replaced')
     this.noteQueue()
+    this.tryPlay()
   }
 
   private dropMessage(messageId: string): boolean {
     let dropped = false
     for (let i = this.pending.length - 1; i >= 0; i--) {
-      if (this.pending[i]?.messageId === messageId) {
+      if (this.pending[i]?.segment.messageId === messageId) {
         this.pending.splice(i, 1)
         dropped = true
       }
     }
-    for (const [sequence, slot] of [...this.ready]) {
+    for (const [playId, slot] of [...this.ready]) {
       if (slot.segment.messageId === messageId) {
-        this.ready.delete(sequence)
+        this.ready.delete(playId)
         dropped = true
       }
     }
@@ -120,16 +134,18 @@ export class TtsPipeline {
 
   private pumpSynth(): void {
     while (this.inflight < MAX_SYNTH && this.pending.length > 0) {
-      const segment = this.pending.shift()!
+      const item = this.pending.shift()!
       const epoch = this.epoch
       const started = nowMs()
       this.inflight += 1
+      this.inflightIds.add(item.playId)
       this.noteQueue()
       void this.host
-        .synthesize(segment)
+        .synthesize(item.segment)
         .catch(() => null)
         .then((audio) => {
           this.inflight = Math.max(0, this.inflight - 1)
+          this.inflightIds.delete(item.playId)
           if (epoch !== this.epoch) {
             this.pumpSynth()
             return
@@ -140,7 +156,7 @@ export class TtsPipeline {
           } else {
             noteTurnTraceDrop('synth_failed')
           }
-          this.ready.set(segment.sequence, { segment, audio })
+          this.ready.set(item.playId, { segment: item.segment, audio })
           this.tryPlay()
           this.pumpSynth()
         })
@@ -149,10 +165,11 @@ export class TtsPipeline {
 
   private tryPlay(): void {
     if (this.handle) return
-    const slot = this.ready.get(this.nextSequence)
+    this.skipMissingPlays()
+    const slot = this.ready.get(this.nextPlay)
     if (!slot) return
-    this.ready.delete(this.nextSequence)
-    this.nextSequence += 1
+    this.ready.delete(this.nextPlay)
+    this.nextPlay += 1
     if (!slot.audio) {
       this.tryPlay()
       return
@@ -172,6 +189,17 @@ export class TtsPipeline {
     this.handle?.stop()
     this.handle = null
     this.noteQueue()
+  }
+
+  private skipMissingPlays(): void {
+    while (
+      this.nextPlay <= this.nextPlayId &&
+      !this.ready.has(this.nextPlay) &&
+      !this.inflightIds.has(this.nextPlay) &&
+      !this.pending.some((item) => item.playId === this.nextPlay)
+    ) {
+      this.nextPlay += 1
+    }
   }
 
   private noteQueue(): void {
