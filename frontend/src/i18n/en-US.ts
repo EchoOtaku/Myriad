@@ -1266,7 +1266,7 @@ export const enUS: TranslationKeys = {
     updaterChannelPreviewDesc: 'Upcoming features; may be rough.',
     updaterChannelDev: 'Development',
     updaterChannelDevDesc:
-      'Preview-branch commits; can also install formal releases (e.g. v0.2.6). Least stable.',
+      'Preview-branch commits; can also install formal releases (e.g. v0.4.0). Least stable.',
     updaterChannelBadgeRecommended: 'Recommended',
     updaterChannelBadgeDev: 'Developers',
     updaterChannelSaved: 'Switched to “{label}” — re-checking for updates…',

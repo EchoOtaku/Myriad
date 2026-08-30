@@ -507,7 +507,7 @@ export const helloWorldTapp: ExampleTapp = {
     id: 'com.myriad.hello-world',
     name: 'Hello World',
     version: '1.0.0',
-    minSystemVersion: '0.2.1',
+    minSystemVersion: '0.4.0',
     description: '官方入门示例，演示 Tapp 生命周期与常用 API',
     locales: {
       'en-US': {

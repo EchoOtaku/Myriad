@@ -234,7 +234,7 @@ Page、Widget 和 headless core 是运行形态，由 `page`、`widgets` 和
   "backgroundRequirements": ["scheduler", "sync"],
   "homepage": "https://example.com",
   "repository": "https://github.com/example/my-tapp",
-  "minSystemVersion": "0.2.1",
+  "minSystemVersion": "0.4.0",
   "apis": {
     "weather": {
       "type": "http",

@@ -1255,7 +1255,7 @@ export const jaJP: TranslationKeys = {
     updaterChannelPreviewDesc: '次期機能を先行利用。不安定な場合あり。',
     updaterChannelDev: '開発版',
     updaterChannelDevDesc:
-      'preview ブランチのコミット。正式版（例: v0.2.6）もインストール可。最も不安定。',
+      'preview ブランチのコミット。正式版（例: v0.4.0）もインストール可。最も不安定。',
     updaterChannelBadgeRecommended: 'おすすめ',
     updaterChannelBadgeDev: '開発者向け',
     updaterChannelSaved: '「{label}」に切り替えました。更新を再確認しています…',

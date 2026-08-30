@@ -1192,7 +1192,7 @@ export const zhCN: TranslationKeys = {
     updaterChannelPreviewDesc: '即将发布的功能，可能不稳定。',
     updaterChannelDev: '开发版',
     updaterChannelDevDesc:
-      'preview 分支提交，也可安装正式版（如 v0.2.6）。最不稳定。',
+      'preview 分支提交，也可安装正式版（如 v0.4.0）。最不稳定。',
     updaterChannelBadgeRecommended: '推荐',
     updaterChannelBadgeDev: '开发者',
     updaterChannelSaved: '已切换到「{label}」，正在重新检查更新…',
