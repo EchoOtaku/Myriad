@@ -95,12 +95,26 @@ export class TtsPipeline {
   }
 
   cancel(messageId?: string): boolean {
-    if (messageId && this.playingMessageId && this.playingMessageId !== messageId) {
-      if (this.dropMessage(messageId)) noteTurnTraceDrop('cancelled')
-      this.noteQueue()
-      this.tryPlay()
-      return false
+    if (messageId) return this.cancelMessage(messageId)
+    return this.cancelAll()
+  }
+
+  private cancelMessage(messageId: string): boolean {
+    const stopped = this.playingMessageId === messageId
+    const dropped = this.dropMessage(messageId)
+    if (stopped) {
+      this.stopPlayback()
+      this.playingMessageId = null
+      this.host.onCancel?.(messageId)
     }
+    if (dropped || stopped) noteTurnTraceDrop('cancelled')
+    this.noteQueue()
+    this.tryPlay()
+    this.pumpSynth()
+    return stopped
+  }
+
+  private cancelAll(): boolean {
     const stopped = this.handle != null
     const hadWork =
       stopped ||
@@ -116,7 +130,7 @@ export class TtsPipeline {
     this.nextPlayId = 0
     this.nextPlay = 1
     this.inflight = 0
-    const id = messageId ?? this.playingMessageId
+    const id = this.playingMessageId
     this.playingMessageId = null
     this.noteQueue()
     if (hadWork) noteTurnTraceDrop('cancelled')
@@ -127,7 +141,10 @@ export class TtsPipeline {
   private replaceMessage(messageId: string): void {
     const dropped = this.dropMessage(messageId)
     const stopped = this.playingMessageId === messageId
-    if (stopped) this.stopPlayback()
+    if (stopped) {
+      this.stopPlayback()
+      this.playingMessageId = null
+    }
     if (dropped || stopped) noteTurnTraceDrop('queue_replaced')
     this.noteQueue()
     this.tryPlay()
@@ -150,6 +167,7 @@ export class TtsPipeline {
     for (const [playId, id] of [...this.inflightByPlay]) {
       if (id === messageId) {
         this.inflightByPlay.delete(playId)
+        this.inflightIds.delete(playId)
         dropped = true
       }
     }

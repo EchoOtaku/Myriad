@@ -133,6 +133,49 @@ test('a later utterance plays after the previous one even when sequences restart
   assert.deepEqual(played, ['A1', 'A2', 'B1', 'B2'])
 })
 
+test('cancelling the playing message leaves a later message in the queue', async () => {
+  const played: string[] = []
+  const ends: Array<() => void> = []
+  const pipeline = new TtsPipeline({
+    synthesize: async (item) => buffer(item.text),
+    play: (_audio, item, onEnded) => {
+      played.push(item.text)
+      ends.push(onEnded)
+      return { stop: () => played.push(`stop:${item.text}`) }
+    },
+  })
+  pipeline.enqueue([segment(1, 'A', 'msg-a')])
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  pipeline.enqueue([segment(1, 'B', 'msg-b')])
+  assert.equal(pipeline.cancel('msg-a'), true)
+  assert.deepEqual(played, ['A', 'stop:A'])
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.deepEqual(played, ['A', 'stop:A', 'B'])
+  assert.equal(pipeline.isBusyWith('msg-a'), false)
+  assert.equal(pipeline.isBusyWith('msg-b'), true)
+})
+
+test('cancelling a message that is not playing does not drop a later one', async () => {
+  const first = deferred<ArrayBuffer | null>()
+  const second = deferred<ArrayBuffer | null>()
+  const played: string[] = []
+  const pipeline = new TtsPipeline({
+    synthesize: (item) =>
+      item.text === 'A' ? first.promise : second.promise,
+    play: (_audio, item) => {
+      played.push(item.text)
+      return { stop: () => undefined }
+    },
+  })
+  pipeline.enqueue([segment(1, 'A', 'msg-a')])
+  pipeline.enqueue([segment(1, 'B', 'msg-b')])
+  assert.equal(pipeline.cancel('msg-a'), false)
+  first.resolve(buffer('A'))
+  second.resolve(buffer('B'))
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.deepEqual(played, ['B'])
+})
+
 test('cancel of another message does not stop the playing utterance', async () => {
   const played: string[] = []
   const pipeline = new TtsPipeline({
