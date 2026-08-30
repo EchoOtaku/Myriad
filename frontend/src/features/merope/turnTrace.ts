@@ -52,6 +52,7 @@ export interface TurnTraceCounters {
   ttsSynthMs: number
   llmFirstTokenMs: number
   firstAudioMs: number
+  requestToFirstAudioMs: number
   frameCpuMs: number
   audioContexts: number
   voiceListeners: number
@@ -68,6 +69,7 @@ export interface TurnTraceSnapshot {
     ttsSynthMs: number
     cancelToSilenceMs: number
     firstAudioMs: number
+    requestToFirstAudioMs: number
   }
 }
 
@@ -88,6 +90,7 @@ function emptyCounters(): TurnTraceCounters {
     ttsSynthMs: 0,
     llmFirstTokenMs: 0,
     firstAudioMs: 0,
+    requestToFirstAudioMs: 0,
     frameCpuMs: 0,
     audioContexts: 0,
     voiceListeners: 0,
@@ -134,6 +137,9 @@ function record(mark: TurnTraceMark): void {
   if (mark.span === 'first_audio') {
     counters.firstAudioMs =
       delayBetween('playback_started', 'first_audio') ?? counters.firstAudioMs
+    counters.requestToFirstAudioMs =
+      delayBetween('request_sent', 'first_audio') ??
+      counters.requestToFirstAudioMs
   }
   notify()
 }
@@ -273,6 +279,7 @@ export function snapshotTurnTrace(): TurnTraceSnapshot {
       ttsSynthMs: counters.ttsSynthMs,
       cancelToSilenceMs: counters.cancelToSilenceMs,
       firstAudioMs: counters.firstAudioMs,
+      requestToFirstAudioMs: counters.requestToFirstAudioMs,
     },
   }
 }

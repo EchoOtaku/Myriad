@@ -2677,7 +2677,7 @@ export const enUS: TranslationKeys = {
       turnTraceTitle: 'This turn',
       turnTraceIdle: 'Nothing spoken yet',
       turnTraceExport: 'Save this turn',
-      turnTraceTiming: 'heard {asr} · first word {llm} · first sound {audio}',
+      turnTraceTiming: 'heard {asr} · first word {llm} · synth {tts} · first sound {audio} · end-to-end {e2e}',
       lastRun: 'Last run: {time}',
       neverRun: 'Not run yet',
       remove: 'Delete',

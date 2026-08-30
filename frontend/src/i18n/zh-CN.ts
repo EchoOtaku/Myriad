@@ -2516,7 +2516,7 @@ export const zhCN: TranslationKeys = {
       turnTraceTitle: '这一轮',
       turnTraceIdle: '还没有开口',
       turnTraceExport: '导出这一轮',
-      turnTraceTiming: '听清 {asr} · 开口 {llm} · 出声 {audio}',
+      turnTraceTiming: '听清 {asr} · 开口 {llm} · 合成 {tts} · 出声 {audio} · 端到端 {e2e}',
       lastRun: '上次运行：{time}',
       neverRun: '还没运行过',
       remove: '删除',

@@ -41,7 +41,9 @@ export const AgentPanelTurnTrace: React.FC = () => {
             : format(t.agentPanel.manage.turnTraceTiming, {
                 asr: `${snap.delays.asrMs}ms`,
                 llm: `${snap.delays.llmFirstTokenMs}ms`,
+                tts: `${snap.delays.ttsSynthMs}ms`,
                 audio: `${snap.delays.firstAudioMs}ms`,
+                e2e: `${snap.delays.requestToFirstAudioMs}ms`,
               })}
         </span>
       </div>

@@ -2649,7 +2649,7 @@ export const jaJP: TranslationKeys = {
       turnTraceTitle: 'この発話',
       turnTraceIdle: 'まだ話していません',
       turnTraceExport: 'この発話を保存',
-      turnTraceTiming: '聞き取り {asr} · 最初の語 {llm} · 最初の音 {audio}',
+      turnTraceTiming: '聞き取り {asr} · 最初の語 {llm} · 合成 {tts} · 最初の音 {audio} · 端から端まで {e2e}',
       lastRun: '前回の実行：{time}',
       neverRun: 'まだ実行していません',
       remove: '削除',
