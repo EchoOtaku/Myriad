@@ -127,12 +127,16 @@ test('agent turns send a semantic rig summary instead of per-frame drivers', () 
 
 test('autonomy claims through the coordinator and never writes a rig', () => {
   const autonomy = source('./autonomySource.ts')
+  const apply = source('./applyFrame.ts')
   assert.match(autonomy, /claim\('autonomy'/)
   assert.match(autonomy, /\['expression', 'gaze'\]/)
   assert.doesNotMatch(autonomy, /headBody/)
   assert.doesNotMatch(autonomy, /'mouth'/)
   assert.doesNotMatch(autonomy, /rigRef|playMotionPlan/)
-  assert.doesNotMatch(source('./applyFrame.ts'), /claim\('autonomy'/)
+  assert.doesNotMatch(apply, /claim\('autonomy'/)
+  assert.match(apply, /frame\.autonomy/)
+  assert.match(apply, /kind: 'autonomy'/)
+  assert.match(apply, /playMotionPlan\(next\.directive/)
   assert.doesNotMatch(source('./speechSource.ts'), /claim\('autonomy'/)
   assert.match(source('./channels.ts'), /never writes a rig/)
   assert.match(
