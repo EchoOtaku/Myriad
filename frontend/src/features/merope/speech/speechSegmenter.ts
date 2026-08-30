@@ -21,6 +21,7 @@ const MIN_CHARS = 4
  */
 export class SpeechSegmenter {
   private raw = ''
+  private spokenOffset = 0
   private sequence = 0
   private readonly messageId: string
   private readonly generation: number
@@ -41,14 +42,23 @@ export class SpeechSegmenter {
 
   private flush(force: boolean, interrupt: SpeechInterruptMode): SpeechSegment[] {
     const spoken = speakableText(this.raw)
-    const cut = nextCut(spoken, force)
+    while (
+      this.spokenOffset < spoken.length &&
+      /\s/.test(spoken[this.spokenOffset]!)
+    ) {
+      this.spokenOffset += 1
+    }
+    const remaining = spoken.slice(this.spokenOffset)
+    const cut = nextCut(remaining, force)
     if (cut <= 0) {
-      if (force) this.raw = ''
+      if (force) {
+        this.raw = ''
+        this.spokenOffset = 0
+      }
       return []
     }
-    const text = spoken.slice(0, cut).trim()
-    const restSpoken = spoken.slice(cut).trimStart()
-    this.raw = restSpoken
+    const text = remaining.slice(0, cut).trim()
+    this.spokenOffset += cut
     if (!text) return force ? this.flush(true, interrupt) : []
     this.sequence += 1
     const segment: SpeechSegment = {
@@ -59,10 +69,8 @@ export class SpeechSegmenter {
       generation: this.generation,
       interrupt,
     }
-    if (this.raw.trim()) {
-      const more = this.flush(force, force ? 'queue' : interrupt)
-      if (more.length > 0) return [segment, ...more]
-    }
+    const more = this.flush(force, force ? 'queue' : interrupt)
+    if (more.length > 0) return [segment, ...more]
     return [segment]
   }
 }
@@ -106,6 +114,22 @@ function lastSentenceEnd(text: string): number {
   return -1
 }
 
+const PERIOD_ABBREVIATIONS = new Set([
+  'mr',
+  'mrs',
+  'ms',
+  'dr',
+  'prof',
+  'st',
+  'jr',
+  'sr',
+  'vs',
+  'inc',
+  'ltd',
+  'fig',
+  'no',
+])
+
 /** Exclusive end index, or -1. ASCII `.` needs a following space and is not a decimal. */
 function sentenceEndAfter(text: string, index: number): number {
   const ch = text[index]
@@ -122,5 +146,22 @@ function sentenceEndAfter(text: string, index: number): number {
   if (next && !/\s/.test(next) && !/[”’"')\]]/.test(next)) return -1
   let end = index + 1
   while (end < text.length && /[”’"')\]]/.test(text[end]!)) end += 1
+  if (isPeriodAbbreviation(text, index)) return -1
+  const first = text.slice(end).match(/\S/u)?.[0]
+  if (first && !looksLikeSentenceStart(first)) return -1
   return end
+}
+
+function isPeriodAbbreviation(text: string, periodIndex: number): boolean {
+  let start = periodIndex - 1
+  while (start >= 0 && /[A-Za-z]/.test(text[start]!)) start -= 1
+  const word = text.slice(start + 1, periodIndex)
+  return PERIOD_ABBREVIATIONS.has(word.toLowerCase())
+}
+
+function looksLikeSentenceStart(ch: string): boolean {
+  return (
+    /\p{Lu}/u.test(ch) ||
+    /\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}/u.test(ch)
+  )
 }

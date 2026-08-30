@@ -93,14 +93,41 @@ test('list newlines become streaming cuts after markers are stripped', () => {
   )
 
   const bullets = new SpeechSegmenter('msg-bullets')
-  assert.deepEqual(
-    bullets.push('- 准备素材\n- 导入工作台\n- 检查结果').map((item) => item.text),
-    ['准备素材', '导入工作台'],
-  )
-  assert.deepEqual(
-    bullets.end().map((item) => item.text),
-    ['检查结果'],
-  )
+  const tokens = ['- 准备素材\n', '- 导入工作台\n', '- 检查结果\n']
+  const spoken: string[] = []
+  for (const token of tokens) {
+    for (const item of bullets.push(token)) spoken.push(item.text)
+  }
+  for (const item of bullets.end()) spoken.push(item.text)
+  assert.deepEqual(spoken, ['准备素材', '导入工作台', '检查结果'])
+  for (const line of spoken) {
+    assert.doesNotMatch(line, /[-*#]/)
+  }
+})
+
+test('English abbreviations do not cut a sentence in the middle', () => {
+  const lines = [
+    'Ask Mr. Tanaka.',
+    'Use e.g. this one.',
+    'Sales etc. matter.',
+    'It is 10 a.m. now.',
+    'See Fig. 3 below.',
+  ]
+  for (const line of lines) {
+    const splitter = new SpeechSegmenter('msg-abbr')
+    const segments = [
+      ...splitter.push(line),
+      ...splitter.end(),
+    ].map((item) => item.text)
+    assert.deepEqual(segments, [line], line)
+  }
+  const ok = new SpeechSegmenter('msg-ok')
+  const parts: string[] = []
+  for (const token of ['Okay. ', 'Let me check.']) {
+    for (const item of ok.push(token)) parts.push(item.text)
+  }
+  for (const item of ok.end()) parts.push(item.text)
+  assert.deepEqual(parts, ['Okay.', 'Let me check.'])
 })
 
 test('empty speakable leftovers do not emit a segment', () => {
