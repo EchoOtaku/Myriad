@@ -11,6 +11,7 @@ export function getProductionMotionRuntime(): MotionRuntime {
     production.current = new MotionRuntime(
       getRigMotionCoordinator(),
       getMusicMotionSource(),
+      true,
     )
   }
   return production.current

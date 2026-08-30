@@ -125,8 +125,22 @@ test('agent turns send a semantic rig summary instead of per-frame drivers', () 
   assert.doesNotMatch(player, /captureRigStateSummary/)
 })
 
-test('autonomy is a reserved source and never writes a rig', () => {
-  const autonomyWrites = source('./speechSource.ts') + source('./applyFrame.ts')
-  assert.doesNotMatch(autonomyWrites, /claim\('autonomy'/)
-  assert.match(source('./channels.ts'), /autonomy is reserved/)
+test('autonomy claims through the coordinator and never writes a rig', () => {
+  const autonomy = source('./autonomySource.ts')
+  assert.match(autonomy, /claim\('autonomy'/)
+  assert.match(autonomy, /\['expression', 'gaze'\]/)
+  assert.doesNotMatch(autonomy, /headBody/)
+  assert.doesNotMatch(autonomy, /'mouth'/)
+  assert.doesNotMatch(autonomy, /rigRef|playMotionPlan/)
+  assert.doesNotMatch(source('./applyFrame.ts'), /claim\('autonomy'/)
+  assert.doesNotMatch(source('./speechSource.ts'), /claim\('autonomy'/)
+  assert.match(source('./channels.ts'), /never writes a rig/)
+  assert.match(
+    source('./runtimeHost.ts'),
+    /new MotionRuntime\(\s*getRigMotionCoordinator\(\),\s*getMusicMotionSource\(\),\s*true/,
+  )
+  assert.match(
+    source('./runtime.ts'),
+    /createPreviewMotionRuntime[\s\S]*new MotionRuntime\(new RigMotionCoordinator\(\)\)/,
+  )
 })
