@@ -1,7 +1,7 @@
-import type { PerformanceDirective } from '../../../services/agent/types'
 import type { MotionRuntime } from '../motion/runtime'
 import type { BodyAdapter, BodyCapabilities, BodyIntent, BodyState } from './types'
 import { liveFaceVisible } from '../faceVisible'
+import { liveMotionGeneration } from '../motion/liveGeneration'
 import { captureRigStateSummary } from '../motion/rigStateSummary'
 import { getSpeechPipeline } from '../speech/speechPipelineHost'
 
@@ -34,12 +34,12 @@ export class Anime25DBodyAdapter implements BodyAdapter {
       getSpeechPipeline().speakLine({
         messageId: intent.messageId,
         text: intent.speechText,
+        generation: liveMotionGeneration(),
         interrupt: 'queue',
       })
     }
-    const performance = intent.performance as PerformanceDirective | undefined
-    if (performance?.plan) {
-      this.runtime.performance.apply(performance)
+    if (intent.performance?.plan) {
+      this.runtime.performance.apply(intent.performance)
     }
   }
 }

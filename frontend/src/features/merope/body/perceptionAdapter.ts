@@ -1,4 +1,5 @@
 import type { PageContent } from '../../../contexts/PageContentContext'
+import type { PerceptionSnapshot } from '../perception/registry'
 import type { PerceptionAdapter } from './types'
 import { capturePerceptionSnapshots } from '../perception/capture'
 
@@ -8,7 +9,7 @@ export class LocalPerceptionAdapter implements PerceptionAdapter {
     page: unknown
     pageConsent: boolean
     selection?: string
-  }): unknown[] {
+  }): PerceptionSnapshot[] {
     return capturePerceptionSnapshots({
       route: input.route,
       page: (input.page as PageContent | null) ?? null,

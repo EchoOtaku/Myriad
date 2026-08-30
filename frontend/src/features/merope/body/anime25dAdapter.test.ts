@@ -25,6 +25,18 @@ test('adapter source never mentions Live2D or VRM placeholders', () => {
   assert.doesNotMatch(source, /mouthOpen|angleX/)
 })
 
+test('production chat and perception go through the body adapters', () => {
+  const engine = readFileSync(
+    new URL('../../../components/agent-panel/AgentEngine.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(engine, /getLocalPerception/)
+  assert.doesNotMatch(engine, /capturePerceptionSnapshots/)
+  assert.doesNotMatch(engine, /runtime\.performance\.apply/)
+  const adapter = readFileSync(new URL('./anime25dAdapter.ts', import.meta.url), 'utf8')
+  assert.match(adapter, /this\.runtime\.performance\.apply/)
+})
+
 test('hidden face does not pretend a body intent was played', () => {
   const runtime = new MotionRuntime(new RigMotionCoordinator())
   const body = new Anime25DBodyAdapter(runtime)

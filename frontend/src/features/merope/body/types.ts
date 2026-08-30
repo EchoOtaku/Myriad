@@ -1,3 +1,6 @@
+import type { PerformanceDirective } from '../../../services/agent/types'
+import type { PerceptionSnapshot } from '../perception/registry'
+
 /**
  * Body is the live face the site actually has. Semantic only — no drivers.
  */
@@ -9,7 +12,7 @@ export interface BodyCapabilities {
 export interface BodyIntent {
   speechText?: string
   messageId?: string
-  performance?: unknown
+  performance?: PerformanceDirective
 }
 
 export interface BodyState {
@@ -33,5 +36,5 @@ export interface PerceptionAdapter {
     page: unknown
     pageConsent: boolean
     selection?: string
-  }) => unknown[]
+  }) => PerceptionSnapshot[]
 }

@@ -47,6 +47,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { usePageContentOptional } from '../../contexts/PageContentContext'
 import { agentFace } from '../../features/merope/agentFaceChannel'
+import { getLocalPerception } from '../../features/merope/body/host'
 import {
   cancelGatedSpeech,
   deliverGatedLine,
@@ -56,7 +57,6 @@ import {
 import { livePresenceFacts } from '../../features/merope/livePresence'
 import { setLiveMotionGeneration } from '../../features/merope/motion/liveGeneration'
 import { captureProductionRigStateSummary } from '../../features/merope/motion/runtimeHost'
-import { capturePerceptionSnapshots } from '../../features/merope/perception/capture'
 import { getSpeechPipeline } from '../../features/merope/speech/speechPipelineHost'
 import { SpeechSegmenter } from '../../features/merope/speech/speechSegmenter'
 import {
@@ -1309,7 +1309,7 @@ export const AgentEngine: React.FC = () => {
             customData.pageContent = contentForAgent
           }
         }
-        customData.perception = capturePerceptionSnapshots({
+        customData.perception = getLocalPerception().capture({
           route: location.pathname,
           page: pageConsent ? (pageContentContext?.pageContent ?? null) : null,
           pageConsent,

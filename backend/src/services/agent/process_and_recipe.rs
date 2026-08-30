@@ -130,20 +130,6 @@ impl Agent {
         .await;
         let mood_before = mood_transition.as_ref().map(|transition| transition.before);
         let round_motion_style = round_motion_style(&request, mood_transition.as_ref()).await;
-        if let Some(mood) = mood_transition.clone() {
-            spawn_motion_directive(
-                motion_context(
-                    &request,
-                    user_id,
-                    crate::services::agent::merope::MotionPhase::Reaction,
-                    mood,
-                    round_motion_style.clone(),
-                    None,
-                    None,
-                ),
-                None,
-            );
-        }
 
         if request.context.as_ref().is_some_and(|context| {
             context.interaction_mode == crate::services::agent::AgentInteractionMode::Chat
@@ -771,6 +757,10 @@ impl Agent {
                     .chat_reply
                     .unwrap_or_else(response_agent::greeting);
 
+                // 尝试真正的流式 AI 回复（token-by-token from model）
+                let reply = self
+                    .stream_chat_response(&request, &planner_reply, &progress_tx)
+                    .await;
                 if let Some(mood) = mood_transition.clone() {
                     spawn_motion_directive(
                         motion_context(
@@ -779,17 +769,12 @@ impl Agent {
                             crate::services::agent::merope::MotionPhase::Delivery,
                             mood,
                             round_motion_style.clone(),
-                            Some(planner_reply.clone()),
+                            Some(reply.clone()),
                             None,
                         ),
                         Some(progress_tx.clone()),
                     );
                 }
-
-                // 尝试真正的流式 AI 回复（token-by-token from model）
-                let reply = self
-                    .stream_chat_response(&request, &planner_reply, &progress_tx)
-                    .await;
                 let performance = None;
                 crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
 
