@@ -103,6 +103,7 @@ const firsts = new Set<string>()
 const marks: TurnTraceMark[] = []
 let counters = emptyCounters()
 const pending = new Map<TurnTraceSpan, { t: number; extra?: TurnTraceExtra }>()
+const PENDING_TTL_MS = 8_000
 const listeners = new Set<TurnTraceListener>()
 
 function now(): number {
@@ -176,22 +177,30 @@ export function subscribeTurnTrace(listener: TurnTraceListener): () => void {
 export function beginTurnTrace(id: string): void {
   turnId = id
   firsts.clear()
+  const attached = now()
   for (const span of TURN_TRACE_SPANS) {
     const held = pending.get(span)
     if (!held) continue
+    if (attached - held.t > PENDING_TTL_MS) continue
     firsts.add(`${turnId}:${span}`)
     record({ span, t: held.t, turnId, extra: held.extra })
   }
   pending.clear()
 }
 
-/** Stamp a span before the owning turn exists (ASR start, VAD). */
+/** Stamp a span before the owning turn exists (ASR start, VAD). Latest wins. */
 export function stampTurnTrace(span: TurnTraceSpan, extra?: TurnTraceExtra): void {
   if (turnId) {
     markTurnTraceOnce(span, extra)
     return
   }
-  if (!pending.has(span)) pending.set(span, { t: now(), extra })
+  pending.set(span, { t: now(), extra })
+}
+
+/** Drop pending input stamps from an abandoned recording. */
+export function dropPendingTurnTrace(span?: TurnTraceSpan): void {
+  if (span) pending.delete(span)
+  else pending.clear()
 }
 
 export function markTurnTrace(span: string, extra?: TurnTraceExtra): void {

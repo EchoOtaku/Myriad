@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
   beginTurnTrace,
+  dropPendingTurnTrace,
   markTurnTraceOnce,
   noteTurnTraceDrop,
   noteTurnTraceQueue,
@@ -38,6 +39,18 @@ test('pending input stamps attach to the next turn without using the run hub', (
   assert.equal(snap.delays.firstAudioMs, 0)
   assert.equal(snap.delays.requestToFirstAudioMs, 0)
   assert.equal(TURN_TRACE_SPANS.length, 12)
+})
+
+test('an abandoned recording does not inflate the next turn asrMs', async () => {
+  resetTurnTraceForTest()
+  stampTurnTrace('input_started')
+  await new Promise((resolve) => setTimeout(resolve, 40))
+  dropPendingTurnTrace()
+  beginTurnTrace('msg-asr')
+  stampTurnTrace('input_started')
+  stampTurnTrace('input_final')
+  const snap = snapshotTurnTrace()
+  assert.ok(snap.delays.asrMs < 20)
 })
 
 test('the ring drops the oldest marks and counts stale generations', () => {

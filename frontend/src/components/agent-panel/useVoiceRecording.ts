@@ -17,7 +17,7 @@ import {
   getVoicePresence,
   patchVoicePresence,
 } from '../../features/merope/speech/voicePresence'
-import { stampTurnTrace } from '../../features/merope/turnTrace'
+import { dropPendingTurnTrace, stampTurnTrace } from '../../features/merope/turnTrace'
 import {
   audioToBase64,
   getSpeechStatus,
@@ -130,7 +130,10 @@ export function useVoiceRecording(
   useEffect(() => subscribeListenConsent(() => setListening(getListenConsent())), [])
 
   const transcribe = useCallback(async (pcmData: Float32Array[], sampleRate: number) => {
-    if (pcmData.length === 0) return
+    if (pcmData.length === 0) {
+      dropPendingTurnTrace()
+      return
+    }
     setIsProcessingVoice(true)
     try {
       const wavBlob = pcmToWav(pcmData, sampleRate)
@@ -143,9 +146,11 @@ export function useVoiceRecording(
       const text = result.success ? result.text?.trim() ?? '' : ''
       stampTurnTrace('input_final')
       if (isSubmittableTranscript(text)) onResultRef.current(text)
+      else dropPendingTurnTrace()
       patchVoicePresence({ partial: '' })
     } catch (err) {
       console.error('[useVoiceRecording] 语音识别出错:', err)
+      dropPendingTurnTrace()
     } finally {
       setIsProcessingVoice(false)
     }
@@ -313,6 +318,7 @@ export function useVoiceRecording(
         cleanupRecorder(recorder)
         recorderRef.current = null
       }
+      dropPendingTurnTrace()
       patchVoicePresence({
         listening: false,
         userSpeaking: false,

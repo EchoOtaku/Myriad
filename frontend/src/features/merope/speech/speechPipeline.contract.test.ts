@@ -27,6 +27,7 @@ test('continuous listen is off until the person turns it on', () => {
   assert.match(consent, /return false/)
   const recording = source('../../../components/agent-panel/useVoiceRecording.ts')
   assert.match(recording, /getSpeechPipeline\(\)\.cancel\(\)/)
+  assert.match(recording, /dropPendingTurnTrace/)
   assert.match(recording, /MAX_LISTEN_SAMPLES/)
   assert.match(recording, /if \(!listeningRef\.current\) \{\s*recorder\.pcmData\.push/)
   assert.doesNotMatch(recording, /interruptCurrentTask/)
