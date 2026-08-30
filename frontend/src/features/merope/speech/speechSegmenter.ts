@@ -75,19 +75,26 @@ function nextCut(text: string, force: boolean): number {
     const space = window.lastIndexOf(' ')
     return space >= MIN_CHARS ? space : MAX_CHARS
   }
-  const end = firstSentenceEnd(text)
+  const end = firstSentenceEndAtLeast(text, MIN_CHARS)
   if (end >= MIN_CHARS) return end
-  const newline = text.indexOf('\n')
-  if (newline >= MIN_CHARS) return newline + 1
+  const newline = firstNewlineAtLeast(text, MIN_CHARS)
+  if (newline >= MIN_CHARS) return newline
   return force ? text.length : 0
 }
 
-function firstSentenceEnd(text: string): number {
+function firstSentenceEndAtLeast(text: string, minChars: number): number {
   for (let i = 0; i < text.length; i++) {
     if (!SENTENCE_END.test(text[i]!)) continue
     let end = i + 1
     while (end < text.length && /[”’"')\]]/.test(text[end]!)) end += 1
-    return end
+    if (end >= minChars) return end
+  }
+  return -1
+}
+
+function firstNewlineAtLeast(text: string, minChars: number): number {
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '\n' && i + 1 >= minChars) return i + 1
   }
   return -1
 }

@@ -29,6 +29,24 @@ test('emits a segment at a stable sentence end, not on every token', () => {
   assert.equal(rest[0]?.text, '下')
 })
 
+test('a short opening sentence merges with the next instead of blocking cuts', () => {
+  const splitter = new SpeechSegmenter('msg-3')
+  const tokens = [
+    '嗯。',
+    '我想想，',
+    '这个问题其实挺有意思的。',
+    '你要不要再说细一点？',
+  ]
+  const segments: string[] = []
+  for (const token of tokens) {
+    for (const item of splitter.push(token)) segments.push(item.text)
+  }
+  for (const item of splitter.end()) segments.push(item.text)
+  assert.equal(segments.length, 2)
+  assert.equal(segments[0], '嗯。我想想，这个问题其实挺有意思的。')
+  assert.equal(segments[1], '你要不要再说细一点？')
+})
+
 test('empty speakable leftovers do not emit a segment', () => {
   const splitter = new SpeechSegmenter('msg-2')
   assert.deepEqual(splitter.push('```js\nfoo()\n```'), [])
