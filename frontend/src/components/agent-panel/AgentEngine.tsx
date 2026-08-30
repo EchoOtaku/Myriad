@@ -55,6 +55,7 @@ import {
 } from '../../features/merope/faceSpeechArbitration'
 import { setLiveMotionGeneration } from '../../features/merope/motion/liveGeneration'
 import { captureProductionRigStateSummary } from '../../features/merope/motion/runtimeHost'
+import { capturePerceptionSnapshots } from '../../features/merope/perception/capture'
 import { getSpeechPipeline } from '../../features/merope/speech/speechPipelineHost'
 import { SpeechSegmenter } from '../../features/merope/speech/speechSegmenter'
 import { agentService, executeFrontendAction } from '../../services/agent'
@@ -1278,13 +1279,19 @@ export const AgentEngine: React.FC = () => {
 
         // 页面内容
         const customData: Record<string, unknown> = {}
+        const pageConsent = getAgentContextConsent()
         // 用户关掉「读当前页」之后就真的不读 —— 界面上说了不看，请求里也不能捎上
-        if (getAgentContextConsent() && pageContentContext?.hasContent) {
+        if (pageConsent && pageContentContext?.hasContent) {
           const contentForAgent = pageContentContext.getContentForAgent()
           if (contentForAgent) {
             customData.pageContent = contentForAgent
           }
         }
+        customData.perception = capturePerceptionSnapshots({
+          route: location.pathname,
+          page: pageConsent ? (pageContentContext?.pageContent ?? null) : null,
+          pageConsent,
+        })
         if (attachments.length) {
           customData.attachments = attachmentsForRequest(attachments)
         }

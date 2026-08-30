@@ -1123,11 +1123,19 @@ impl Agent {
             .and_then(|context| context.conversation_history.as_deref())
             .unwrap_or(&[]);
 
-        crate::services::agent::chat_prompt::build_chat_lite_prompt(
+        let perception = crate::services::agent::chat_prompt::format_perception_block(
+            request
+                .context
+                .as_ref()
+                .and_then(|context| context.custom_data.as_ref())
+                .and_then(|data| data.get("perception")),
+        );
+        crate::services::agent::chat_prompt::build_chat_lite_prompt_with_perception(
             &soul,
             &merope_block,
             history,
             &request.raw_input,
+            &perception,
         )
     }
 
