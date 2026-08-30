@@ -61,6 +61,19 @@ pub struct AiVendorSource {
     pub secret_key: Option<String>,
     #[serde(default)]
     pub region: Option<String>,
+    /// Agora / Shengwang App ID (not the REST customer id).
+    #[serde(default)]
+    pub app_id: Option<String>,
+}
+
+impl AiVendorSource {
+    pub fn is_agora(&self) -> bool {
+        let slug = self.slug.trim().to_ascii_lowercase();
+        self.kind.trim().eq_ignore_ascii_case("agora")
+            || self.preset.trim().eq_ignore_ascii_case("agora")
+            || slug == "agora"
+            || slug.starts_with("agora-")
+    }
 }
 
 /// 解析后的 AI 配置（已根据 tier 确定具体的 provider/key/model）
@@ -352,6 +365,15 @@ pub struct DynamicConfig {
     pub pro_ai_source: String,
     pub ai_image_source: String,
     pub speech_source: String,
+
+    /// 声网 Conversational AI（实时对话通道）。默认关。
+    pub agora_convo_enabled: bool,
+    pub agora_app_id: String,
+    pub agora_app_certificate: String,
+    pub agora_customer_id: String,
+    pub agora_customer_secret: Option<String>,
+    /// 默认中国区 `https://api.agora.io/cn`
+    pub agora_api_base: String,
 
     // UI 配置
     pub ui_wallpaper_url: Option<String>,
@@ -698,6 +720,12 @@ impl Default for DynamicConfig {
             pro_ai_source: String::new(),
             ai_image_source: String::new(),
             speech_source: String::new(),
+            agora_convo_enabled: false,
+            agora_app_id: String::new(),
+            agora_app_certificate: String::new(),
+            agora_customer_id: String::new(),
+            agora_customer_secret: None,
+            agora_api_base: String::new(),
 
             ui_wallpaper_url: None,
             ui_wallpaper_blur: 3,
@@ -1020,6 +1048,7 @@ impl DynamicConfig {
             ("gemini", "text" | "image" | "speech") => true,
             ("volcengine", "text" | "image") => true,
             ("tencent", "speech") => true,
+            ("agora", "realtime") => true,
             _ => false,
         }
     }
@@ -1097,12 +1126,49 @@ impl DynamicConfig {
         sources
     }
 
+    fn synthesize_agora_source(&self) -> Option<AiVendorSource> {
+        let app_id = Self::nonempty_opt(Some(&self.agora_app_id));
+        let certificate = Self::nonempty_opt(Some(&self.agora_app_certificate));
+        let customer_id = Self::nonempty_opt(Some(&self.agora_customer_id));
+        let customer_secret = Self::nonempty_opt(self.agora_customer_secret.as_ref());
+        if app_id.is_none()
+            && certificate.is_none()
+            && customer_id.is_none()
+            && customer_secret.is_none()
+        {
+            return None;
+        }
+        Some(AiVendorSource {
+            slug: "agora".to_string(),
+            kind: "agora".to_string(),
+            display_name: "Shengwang / Agora".to_string(),
+            enabled: self.agora_convo_enabled,
+            preset: "agora".to_string(),
+            api_key: certificate,
+            secret_id: customer_id,
+            secret_key: customer_secret,
+            app_id,
+            base_url: if self.agora_api_base.trim().is_empty() {
+                "https://api.agora.io/cn".to_string()
+            } else {
+                self.agora_api_base.trim().to_string()
+            },
+            ..AiVendorSource::default()
+        })
+    }
+
     pub fn effective_vendor_sources(&self) -> Vec<AiVendorSource> {
-        if self.ai_vendor_sources.is_empty() {
+        let mut sources = if self.ai_vendor_sources.is_empty() {
             self.synthesize_vendor_sources()
         } else {
             self.ai_vendor_sources.clone()
+        };
+        if !sources.iter().any(AiVendorSource::is_agora) {
+            if let Some(agora) = self.synthesize_agora_source() {
+                sources.push(agora);
+            }
         }
+        sources
     }
 
     pub fn find_vendor_source(&self, slug: &str) -> Option<AiVendorSource> {

@@ -1874,10 +1874,12 @@ export const jaJP: TranslationKeys = {
     aiVendorUsedPro: 'Pro',
     aiVendorUsedImage: '画像',
     aiVendorUsedSpeech: '音声',
+    aiVendorUsedRealtime: 'リアルタイム',
     aiVendorUsedJoin: ' · ',
     aiVendorCapText: 'LLM',
     aiVendorCapImage: '画像',
     aiVendorCapSpeech: '音声',
+    aiVendorCapRealtime: 'リアルタイム',
     aiVendorSetupTitle: '設定方法',
     aiVendorSetupOpen: '開く',
     aiVendorSetupPortalTitle: '{name} のコンソールを開く',
@@ -1915,6 +1917,14 @@ export const jaJP: TranslationKeys = {
       'SecretId と SecretKey を作ってコピーします。',
     aiVendorSetupTencentFillTitle: 'このページに貼る',
     aiVendorSetupTencentFillDesc: '下の2欄に貼り、リージョンを選びます。',
+    aiVendorSetupAgoraPortalTitle: '声網 / Agora コンソールを開く',
+    aiVendorSetupAgoraPortalDesc: 'プロジェクトと Conversational AI へ進みます。',
+    aiVendorSetupAgoraCreateTitle: '資格情報をコピー',
+    aiVendorSetupAgoraCreateDesc:
+      'App ID、証明書、REST の Customer ID / Secret をコピーします。',
+    aiVendorSetupAgoraFillTitle: 'このページに貼る',
+    aiVendorSetupAgoraFillDesc:
+      'App ID、証明書、Customer ID、Secret を記入します。読み上げは MiniMax です。',
     // AI画像生成設定
     aiImageTitle: '画像生成モデル',
     aiImageDesc: '画像を生成。解像度はリクエストで指定',
@@ -1943,6 +1953,16 @@ export const jaJP: TranslationKeys = {
     speechTtsVoice: '声',
     speechMinimaxAsrHint:
       '読み上げは MiniMax（既定 speech-2.8-turbo）です。聞き取りは設定済みの Tencent / OpenAI / Gemini を使います。',
+    agoraConvoEnabled: '声網 / Agora リアルタイム会話',
+    agoraConvoEnabledDesc:
+      'マイク長押しで RTC 会話に入ります。MiniMax の読み上げと、声網から届く OpenAI 互換モデルが必要です。',
+    agoraConvoHint:
+      'App ID と証明書で RTC トークンを発行します。Customer ID/Secret で Agent を起動します。読み上げは MiniMax です。',
+    agoraAppId: '声網 / Agora App ID',
+    agoraAppCertificate: '声網 / Agora App Certificate',
+    agoraCustomerId: '声網 / Agora Customer ID',
+    agoraCustomerSecret: '声網 / Agora Customer Secret',
+    agoraApiBase: '声網 / Agora API ベース',
     speechOpenRouterTtsHint:
       'OpenRouter には公式 OpenAI 読み上げモデルがありません。文字起こしは使えます。公式の読み上げは OpenAI を選んでください。',
     // プラットフォーム設定

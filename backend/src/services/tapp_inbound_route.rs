@@ -24,7 +24,9 @@ pub enum InboundRouteError {
     VerifyInvalid,
     VerifyExpired,
     VerifyReplay,
-    Blocked { retry_after: u64 },
+    Blocked {
+        retry_after: u64,
+    },
     Paused,
     BodyTooLarge,
     InvalidParams,

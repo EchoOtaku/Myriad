@@ -642,6 +642,35 @@ impl ConfigService {
                 config.speech_tts_voice = s.to_string();
             }
         }
+        if let Some(v) = map.get("agora_convo_enabled") {
+            config.agora_convo_enabled = v
+                .as_bool()
+                .or_else(|| v.as_str().map(|s| s == "true" || s == "1"))
+                .unwrap_or(config.agora_convo_enabled);
+        }
+        if let Some(v) = map.get("agora_app_id") {
+            if let Some(s) = v.as_str() {
+                config.agora_app_id = s.to_string();
+            }
+        }
+        if let Some(v) = map.get("agora_app_certificate") {
+            if let Some(s) = v.as_str() {
+                config.agora_app_certificate = s.to_string();
+            }
+        }
+        if let Some(v) = map.get("agora_customer_id") {
+            if let Some(s) = v.as_str() {
+                config.agora_customer_id = s.to_string();
+            }
+        }
+        if let Some(v) = map.get("agora_customer_secret") {
+            config.agora_customer_secret = v.as_str().map(|s| s.to_string());
+        }
+        if let Some(v) = map.get("agora_api_base") {
+            if let Some(s) = v.as_str() {
+                config.agora_api_base = s.to_string();
+            }
+        }
 
         if let Some(v) = map.get("enable_auto_fetch") {
             if let Some(b) = v.as_bool() {

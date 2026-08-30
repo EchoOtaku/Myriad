@@ -2,6 +2,8 @@
 pub mod activity_event_service;
 pub mod agent;
 pub mod agent_interaction; // Agent ↔ Tapp interaction create surface
+pub mod agora_convo; // Shengwang Conversational AI join/leave
+pub mod agora_rtc_token; // Agora AccessToken2
 pub mod ai;
 pub mod ai_config; // Cached AI provider config (text + image tiers)
 pub mod ai_cost_ledger; // Append-only AI cost ledger writes

@@ -1773,10 +1773,12 @@ export const zhCN: TranslationKeys = {
     aiVendorUsedPro: 'Pro',
     aiVendorUsedImage: '图片',
     aiVendorUsedSpeech: '语音',
+    aiVendorUsedRealtime: '实时对话',
     aiVendorUsedJoin: ' · ',
     aiVendorCapText: '大语言',
     aiVendorCapImage: '图像',
     aiVendorCapSpeech: '音频',
+    aiVendorCapRealtime: '实时对话',
     aiVendorSetupTitle: '配置方法',
     aiVendorSetupOpen: '打开',
     aiVendorSetupPortalTitle: '打开 {name} 控制台',
@@ -1809,6 +1811,12 @@ export const zhCN: TranslationKeys = {
     aiVendorSetupTencentCreateDesc: '新建并复制 SecretId 与 SecretKey。',
     aiVendorSetupTencentFillTitle: '回到本页填写',
     aiVendorSetupTencentFillDesc: '填到下面两项，并选一个地域。',
+    aiVendorSetupAgoraPortalTitle: '打开声网 / Agora 控制台',
+    aiVendorSetupAgoraPortalDesc: '进入项目与 Conversational AI。',
+    aiVendorSetupAgoraCreateTitle: '复制凭证',
+    aiVendorSetupAgoraCreateDesc: '复制 App ID、证书，以及 REST 的 Customer ID / Secret。',
+    aiVendorSetupAgoraFillTitle: '回到本页填写',
+    aiVendorSetupAgoraFillDesc: '填 App ID、证书、Customer ID 和 Secret。朗读走已配置的 MiniMax。',
     // 图片生成模型配置
     aiImageTitle: '图片生成模型',
     aiImageDesc: '生成图片；分辨率由请求参数指定',
@@ -1837,6 +1845,16 @@ export const zhCN: TranslationKeys = {
     speechTtsVoice: '播报音色',
     speechMinimaxAsrHint:
       'MiniMax 默认用 speech-2.8-turbo 朗读。听写仍走已配置的腾讯云、OpenAI 或 Gemini。',
+    agoraConvoEnabled: '声网 / Agora 实时对话',
+    agoraConvoEnabledDesc:
+      '长按麦克风进入 RTC 实时对话。需要 MiniMax 朗读，以及声网云能访问的 OpenAI 兼容模型。',
+    agoraConvoHint:
+      'App ID 和证书用来签发 RTC token。Customer ID/Secret 用来创建对话 Agent。朗读走已配置的 MiniMax。',
+    agoraAppId: '声网 / Agora App ID',
+    agoraAppCertificate: '声网 / Agora App 证书',
+    agoraCustomerId: '声网 / Agora Customer ID',
+    agoraCustomerSecret: '声网 / Agora Customer Secret',
+    agoraApiBase: '声网 / Agora API 地址',
     speechOpenRouterTtsHint:
       'OpenRouter 目前没有官方 OpenAI 播报型号。转写可用；要官方播报请改选 OpenAI。',
     // 平台配置

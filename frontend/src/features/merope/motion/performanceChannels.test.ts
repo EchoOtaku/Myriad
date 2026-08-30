@@ -25,6 +25,10 @@ function directive(
   }
 }
 
+test('a baseline-only plan does not exclusive-claim expression', () => {
+  assert.deepEqual(performanceOccupiedChannels(directive()), [])
+})
+
 test('think does not occupy head/body; greet does', () => {
   assert.equal(
     cueOccupiesHeadBody({

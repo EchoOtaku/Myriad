@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import {
   AI_VENDOR_PRESETS,
   findVendorPreset,
+  isAgoraSource,
   isMiniMaxSpeechSource,
   resolveUsedVendorSlug,
   sourceFromPreset,
@@ -33,6 +34,7 @@ describe('AI vendor presets', () => {
         'fireworks',
         'perplexity',
         'minimax',
+        'agora',
         'ollama',
         'cloudflare',
         'cohere',
@@ -90,6 +92,11 @@ describe('AI vendor presets', () => {
       vendorSupports({ kind: 'openai_compatible', preset: 'minimax' }, 'image'),
       false,
     )
+    assert.equal(
+      vendorSupports({ kind: 'agora', preset: 'agora' }, 'realtime'),
+      true,
+    )
+    assert.equal(vendorSupports({ kind: 'agora', preset: 'agora' }, 'speech'), false)
   })
 
   it('declares text, image, and speech from endpoints this stack can call', () => {
@@ -115,6 +122,7 @@ describe('AI vendor presets', () => {
       fireworks: ['text'],
       perplexity: ['text'],
       minimax: ['speech', 'text'],
+      agora: ['realtime'],
       ollama: ['text'],
       cloudflare: ['text'],
       cohere: ['text'],
@@ -186,6 +194,10 @@ describe('AI vendor presets', () => {
     assert.equal(
       speechProviderKindFromSource({ kind: 'tencent', slug: 'tencent' }, 'tencent'),
       'tencent',
+    )
+    assert.equal(
+      isAgoraSource({ kind: 'agora', preset: 'agora', slug: 'agora' }),
+      true,
     )
   })
 })

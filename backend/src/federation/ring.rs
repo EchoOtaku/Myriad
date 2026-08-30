@@ -3,7 +3,6 @@
 //! 去中心化环网：Tapp 商店发现、Brew 推荐交换、Library 交换圈、实例目录
 //! 基于 Gossip 协议进行对等同步，每个节点维护 known_peers 列表
 
-
 use axum::{http::StatusCode, Json};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};

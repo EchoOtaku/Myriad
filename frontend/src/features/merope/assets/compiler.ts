@@ -98,14 +98,8 @@ function copyPreviewPlaybackProfiles(
 ): void {
   const playback = manifest.anime25dPlayback
   if (!playback || !source.anime25dPlayback) return
-  if (playback.chestProfile) {
-    source.anime25dPlayback.chestProfile = { ...playback.chestProfile }
-  }
-  if (playback.shellProfile) {
-    source.anime25dPlayback.shellProfile = structuredClone(
-      playback.shellProfile,
-    )
-  }
+  source.anime25dPlayback.chestProfile = { ...playback.chestProfile }
+  source.anime25dPlayback.shellProfile = structuredClone(playback.shellProfile)
 }
 
 /** Commits the exact source and atlas that passed preflight. */

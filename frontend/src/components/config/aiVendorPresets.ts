@@ -5,8 +5,9 @@ export type AiVendorKind =
   | 'gemini'
   | 'volcengine'
   | 'tencent'
+  | 'agora'
 
-export type AiVendorCapability = 'text' | 'image' | 'speech'
+export type AiVendorCapability = 'text' | 'image' | 'speech' | 'realtime'
 
 export interface AiVendorSource {
   slug: string
@@ -19,6 +20,7 @@ export interface AiVendorSource {
   secret_id?: string | null
   secret_key?: string | null
   region?: string | null
+  app_id?: string | null
 }
 
 export interface AiVendorPreset {
@@ -245,6 +247,15 @@ export const AI_VENDOR_PRESETS: AiVendorPreset[] = [
     defaultVoice: 'female-shaonv',
   },
   {
+    id: 'agora',
+    defaultSlug: 'agora',
+    kind: 'agora',
+    display_name: 'Shengwang / Agora',
+    base_url: 'https://api.agora.io/cn',
+    docs_url: 'https://www.shengwang.cn/ConversationalAI/',
+    capabilities: ['realtime'],
+  },
+  {
     id: 'ollama',
     defaultSlug: 'ollama',
     kind: 'openai_compatible',
@@ -343,6 +354,19 @@ export function findVendorPreset(source: {
   return undefined
 }
 
+export function isAgoraSource(source: {
+  kind?: string
+  slug?: string
+  preset?: string | null
+}): boolean {
+  const preset = findVendorPreset(source)
+  if (preset?.id === 'agora') return true
+  const kind = source.kind?.trim().toLowerCase() ?? ''
+  if (kind === 'agora') return true
+  const slug = source.slug?.trim().toLowerCase() ?? ''
+  return slug === 'agora' || slug.startsWith('agora-')
+}
+
 export function isMiniMaxSpeechSource(source: {
   kind?: string
   slug?: string
@@ -410,6 +434,8 @@ export function vendorSupports(
       return capability === 'text' || capability === 'image'
     case 'tencent':
       return capability === 'speech'
+    case 'agora':
+      return capability === 'realtime'
     default:
       return false
   }
@@ -465,6 +491,7 @@ export function sourceFromPreset(
     secret_id: '',
     secret_key: '',
     region: preset.kind === 'tencent' ? 'ap-guangzhou' : '',
+    app_id: '',
   }
 }
 

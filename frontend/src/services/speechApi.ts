@@ -171,6 +171,17 @@ export interface SpeechStatus {
   available: boolean
   tts_enabled: boolean
   asr_enabled: boolean
+  convo_enabled?: boolean
+  error?: string
+}
+
+export interface ConvoSession {
+  success: boolean
+  app_id: string
+  channel: string
+  uid: number
+  token: string
+  agent_id: string
   error?: string
 }
 
@@ -347,6 +358,29 @@ export async function speechToText(
     method: 'POST',
     body: JSON.stringify(req),
     headers: attributionHeaders,
+  })
+}
+
+export async function startConvoSession(language?: string): Promise<ConvoSession> {
+  return request<ConvoSession>('/convo/start', {
+    method: 'POST',
+    body: JSON.stringify({ language }),
+  })
+}
+
+export async function stopConvoSession(agentId: string): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>('/convo/stop', {
+    method: 'POST',
+    body: JSON.stringify({ agent_id: agentId }),
+  })
+}
+
+export async function interruptConvoSession(
+  agentId: string,
+): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>('/convo/interrupt', {
+    method: 'POST',
+    body: JSON.stringify({ agent_id: agentId }),
   })
 }
 

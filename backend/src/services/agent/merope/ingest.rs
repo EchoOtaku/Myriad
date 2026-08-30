@@ -11,11 +11,11 @@ use std::collections::BTreeMap;
 use super::is_logged_in_addressee;
 use crate::config::ModelTier;
 use crate::services::agent::consciousness::{
-    ConsciousnessAction, ConsciousnessEvent, EventUrgency, IntentStore, consider_event,
-    is_work_outcome, last_live_presence,
+    consider_event, is_work_outcome, last_live_presence, ConsciousnessAction, ConsciousnessEvent,
+    EventUrgency, IntentStore,
 };
 use crate::services::agent::notifications::{
-    Notification, NotificationPriority, NotificationType, get_notification_manager,
+    get_notification_manager, Notification, NotificationPriority, NotificationType,
 };
 use crate::services::agent::run_hub;
 use crate::services::ai::create_ai_analyzer_for_tier;
@@ -400,7 +400,11 @@ pub fn persona_remember_insert(candidate: &str, existing: &[String]) -> Option<S
         return None;
     }
     let duplicate = existing.iter().any(|fact| compact_summary(fact) == compact);
-    if duplicate { None } else { Some(compact) }
+    if duplicate {
+        None
+    } else {
+        Some(compact)
+    }
 }
 
 pub(crate) async fn persist_persona_remember(

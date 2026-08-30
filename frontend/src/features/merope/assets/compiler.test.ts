@@ -2,6 +2,8 @@ import type { MeropeRigManifest } from '../rig/types'
 import type { RigAssetCompileEvent } from './compiler'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { analyzeAnime25DMouthProfile } from '../anime25drig/mouthProfile'
+import { buildAnime25DPlayback } from '../anime25drig/playback'
 import { persistRigAsset, preflightRigAsset } from './compiler'
 
 const file = new File([new Uint8Array([1])], 'character.psd')
@@ -136,18 +138,37 @@ test('preflight sends the imported PSD composition to one-shot vision analysis',
 })
 
 test('preflight carries analyzed playback profiles into the persisted source', async () => {
+  const mouth = { x0: 40, y0: 48, x1: 60, y1: 60, cx: 50, cy: 54 }
   const source = {
-    anime25dPlayback: {
-      kind: 'anime-2.5d-rig',
-      version: 1,
-      engine: 'Anime2.5DRig',
-      engineUrl: 'https://github.com/852wa/Anime2.5DRig',
-      license: 'MIT',
-      copyright: 'Copyright (c) 2026 hakoniwa',
-      pixelCanvas: { width: 100, height: 120 },
-      layers: [],
-      anchors: {},
-    },
+    anime25dPlayback: buildAnime25DPlayback({
+      frameWidth: 100,
+      frameHeight: 120,
+      layers: [
+        {
+          id: 'face',
+          role: 'face',
+          side: null,
+          group: 'head',
+          bounds: { x: 0, y: 0, width: 1, height: 1 },
+          textureBounds: { x: 0, y: 0, width: 1, height: 1 },
+          strands: [],
+        },
+      ],
+      anchors: {
+        face: { x0: 25, y0: 10, x1: 75, y1: 65, cx: 50, cy: 37.5 },
+        neckPivot: { x: 50, y: 70 },
+        neckTop: 65,
+        neckBottom: 75,
+        bodyPivot: { x: 50, y: 120 },
+        mouth,
+        faceScale: 1,
+      },
+      mouthProfile: analyzeAnime25DMouthProfile(
+        [],
+        { x: 0, y: 0, width: 100, height: 120 },
+        mouth,
+      ),
+    }),
   }
   const analyzed = structuredClone(manifest)
   analyzed.anime25dPlayback = {
@@ -167,52 +188,7 @@ test('preflight carries analyzed playback profiles into the persisted source', a
       garmentMotionScale: 0.8,
       confidence: 0.9,
     },
-    shellProfile: {
-      version: 1,
-      source: 'anchor-derived',
-      enabled: true,
-      blend: 0.5,
-      head: { centerX: 50, centerY: 35, radiusX: 25, radiusY: 30, radiusZ: 18 },
-      faceProfile: {
-        enabled: true,
-        startY: 10,
-        endY: 75,
-        points: [
-          { v: 0.06, z: 0.1 },
-          { v: 0.42, z: 0.02 },
-          { v: 0.62, z: 0.3 },
-          { v: 0.78, z: 0.06 },
-          { v: 0.97, z: 0.14 },
-        ],
-      },
-      hair: {
-        centerX: 50,
-        centerY: 33,
-        radiusX: 28,
-        radiusY: 33,
-        radiusZ: 19,
-        frontGap: 0.18,
-        frontBulge: 1,
-        backDepth: 0.35,
-        crownRound: 0,
-        hairlinePin: {
-          enabled: true,
-          centerX: 0,
-          centerY: -0.45,
-          halfWidth: 1.1,
-          halfHeight: 0.32,
-          feather: 0.06,
-        },
-      },
-      torso: {
-        enabled: true,
-        blend: 0.5,
-        centerX: 50,
-        radiusX: 40,
-        radiusZ: 25,
-      },
-    },
-  } as never
+  }
   const result = await preflightRigAsset(file, 'master-asset', {
     prepare: async () => ({
       atlas: new Blob(),

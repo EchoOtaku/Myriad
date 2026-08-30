@@ -256,8 +256,7 @@ pub async fn create_channel(
 
     // 验证 channel_type 和 transport：取值表由 MFP 协议枚举自己拥有，
     // 手抄一份字符串白名单只会和 ChannelType/ChannelTransport 各自漂移。
-    if serde_json::from_value::<crate::federation::types::ChannelType>(json!(channel_type))
-        .is_err()
+    if serde_json::from_value::<crate::federation::types::ChannelType>(json!(channel_type)).is_err()
     {
         return Err((
             StatusCode::BAD_REQUEST,

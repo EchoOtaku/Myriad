@@ -19,14 +19,7 @@ import {
 } from 'react'
 import { activityExpressionDriverPatch } from './expressionPresets'
 import { PerformanceDirectiveGate } from './performanceExpression'
-import {
-  cueDriverPatch,
-  cuePriority,
-  idleSpeechDriverPatch,
-  performanceRestDriverPatch,
-  scheduleBodyCues,
-  scheduledBodyCueRemainingDurationMs,
-} from './performanceMotion'
+import { idleSpeechDriverPatch } from './performanceMotion'
 import { Anime25DPlayer } from './player'
 import { shouldAnimateAnime25D } from './runtimePolicy'
 import {
@@ -101,32 +94,9 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       startedAtMs: number
     } | null>(null)
     const performanceGateRef = useRef(new PerformanceDirectiveGate())
-    const cueTimersRef = useRef(new Set<number>())
-    const restoreTimerRef = useRef<number | null>(null)
-    const activePriorityRef = useRef(0)
-    const activeUntilRef = useRef(0)
     activityRef.current = activity
     moodRef.current = mood
     manualRef.current = manualControl || manualRef.current
-
-    const applyPerformanceDriver = (player: Anime25DPlayer) => {
-      if (manualRef.current || manualControl) return
-      const thinking = activityRef.current === 'thinking'
-      const policy = player.getMotionPolicy()
-      if (policy.headBody !== 'performance') {
-        player.setTarget({
-          thinking,
-          rand: !thinking,
-          idle: true,
-          blink: true,
-          ...(policy.headBody === 'music' || policy.headBody === 'preview'
-            ? {}
-            : { body: 0, armY: 0, armPos: 0 }),
-        })
-        return
-      }
-      player.setTarget(performanceRestDriverPatch(baselineRef.current, thinking))
-    }
 
     const applyDriver = (player: Anime25DPlayer) => {
       if (manualRef.current || manualControl) return
@@ -137,15 +107,11 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         policy.expression === 'idle' ||
         policy.expression === 'mood' ||
         policy.expression === 'ambient'
-      const mouthFree =
-        policy.mouth === 'idle' || policy.mouth === 'mood'
-      const headFree =
-        policy.headBody === 'idle' || policy.headBody === 'ambient'
+      const mouthFree = policy.mouth === 'idle' || policy.mouth === 'mood'
       player.setTarget({
+        thinking,
+        blink: true,
         ...(expressionFree ? activityExpressionDriverPatch(thinking) : {}),
-        ...(headFree
-          ? performanceRestDriverPatch(baselineRef.current, thinking)
-          : { thinking }),
         ...(mouthFree
           ? idleSpeechDriverPatch(moodRef.current, speechActiveRef.current)
           : {}),

@@ -16,7 +16,10 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 pub enum OpenAiSpeechError {
     ApiKeyNotConfigured,
     NetworkError(String),
-    ApiError { status: u16, message: String },
+    ApiError {
+        status: u16,
+        message: String,
+    },
     InvalidAudioData(String),
     /// 目前不构造：speech_runtime 走自己的可用性判定后才调这里。
     /// Display 臂保留，接入新供应商时直接可用。

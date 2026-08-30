@@ -2443,6 +2443,12 @@ pub(crate) const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "lite_ai_source",
     "pro_ai_source",
     "speech_source",
+    "agora_api_base",
+    "agora_app_certificate",
+    "agora_app_id",
+    "agora_convo_enabled",
+    "agora_customer_id",
+    "agora_customer_secret",
     "allow_local_registration",
     "analytics_enabled",
     "tapp_private_install_cleanup",
@@ -3411,6 +3417,41 @@ mod settings_backup_tests {
     }
 
     #[test]
+    fn saves_agora_realtime_talk_fields() {
+        let mut config = empty_config();
+        config.ai_config.config_fields = vec![
+            ui_field("agora_convo_enabled", "true"),
+            ui_field("agora_app_id", "970ca35de60c44645bbae8a215061b33"),
+            ui_field("agora_api_base", "https://api.agora.io/cn"),
+        ];
+        let updates = collect_database_updates(&config);
+        assert_eq!(updates.get("agora_convo_enabled"), Some(&json!(true)));
+        assert_eq!(
+            updates.get("agora_app_id"),
+            Some(&json!("970ca35de60c44645bbae8a215061b33"))
+        );
+        assert_eq!(
+            updates.get("agora_api_base"),
+            Some(&json!("https://api.agora.io/cn"))
+        );
+    }
+
+    #[test]
+    fn saving_vendors_without_agora_clears_legacy_realtime_talk() {
+        let mut config = empty_config();
+        config.ai_config.config_fields = vec![ui_field(
+            "ai_vendor_sources",
+            r#"[{"slug":"openai","kind":"openai","display_name":"OpenAI","enabled":true}]"#,
+        )];
+        let updates = collect_database_updates(&config);
+        assert_eq!(updates.get("agora_convo_enabled"), Some(&json!(false)));
+        assert_eq!(updates.get("agora_app_id"), Some(&json!("")));
+        assert_eq!(updates.get("agora_app_certificate"), Some(&json!("")));
+        assert_eq!(updates.get("agora_customer_id"), Some(&json!("")));
+        assert_eq!(updates.get("agora_customer_secret"), Some(&json!("")));
+    }
+
+    #[test]
     fn tripo_config_is_independent_clamped_and_keeps_masked_key() {
         let mut config = empty_config();
         config.tripo_config.config_fields = vec![
@@ -4043,6 +4084,26 @@ async fn save_to_database(
     Ok(())
 }
 
+fn vendor_json_is_agora(value: &serde_json::Value) -> bool {
+    let kind = value
+        .get("kind")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let preset = value
+        .get("preset")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let slug = value
+        .get("slug")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    kind.eq_ignore_ascii_case("agora")
+        || preset.eq_ignore_ascii_case("agora")
+        || slug == "agora"
+        || slug.starts_with("agora-")
+}
+
 fn merge_vendor_source_secrets(incoming: serde_json::Value) -> serde_json::Value {
     let Ok(mut sources) =
         serde_json::from_value::<Vec<crate::config::AiVendorSource>>(incoming.clone())
@@ -4370,6 +4431,21 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
             "pro_ai_source" => ("pro_ai_source", JsonValue::String(field.value.clone())),
             "ai_image_source" => ("ai_image_source", JsonValue::String(field.value.clone())),
             "speech_source" => ("speech_source", JsonValue::String(field.value.clone())),
+            "agora_convo_enabled" => (
+                "agora_convo_enabled",
+                JsonValue::Bool(field.value == "true"),
+            ),
+            "agora_app_id" => ("agora_app_id", JsonValue::String(field.value.clone())),
+            "agora_app_certificate" => (
+                "agora_app_certificate",
+                JsonValue::String(field.value.clone()),
+            ),
+            "agora_customer_id" => ("agora_customer_id", JsonValue::String(field.value.clone())),
+            "agora_customer_secret" => (
+                "agora_customer_secret",
+                JsonValue::String(field.value.clone()),
+            ),
+            "agora_api_base" => ("agora_api_base", JsonValue::String(field.value.clone())),
             "ai_vendor_sources" => {
                 let parsed = serde_json::from_str::<JsonValue>(&field.value)
                     .unwrap_or_else(|_| JsonValue::Array(Vec::new()));
@@ -4393,9 +4469,36 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                 | "ai_image_source"
                 | "speech_source"
                 | "ai_vendor_sources"
+                | "agora_convo_enabled"
+                | "agora_app_id"
+                | "agora_customer_id"
+                | "agora_api_base"
         );
         if (allow_empty_speech || !field.value.is_empty()) && !is_masked(&field.value) {
             updates.insert(key.to_string(), json_value);
+        }
+    }
+
+    if updates.contains_key("ai_vendor_sources") {
+        let has_agora = updates
+            .get("ai_vendor_sources")
+            .and_then(JsonValue::as_array)
+            .is_some_and(|sources| sources.iter().any(vendor_json_is_agora));
+        if !has_agora {
+            updates.insert("agora_convo_enabled".to_string(), JsonValue::Bool(false));
+            updates.insert("agora_app_id".to_string(), JsonValue::String(String::new()));
+            updates.insert(
+                "agora_app_certificate".to_string(),
+                JsonValue::String(String::new()),
+            );
+            updates.insert(
+                "agora_customer_id".to_string(),
+                JsonValue::String(String::new()),
+            );
+            updates.insert(
+                "agora_customer_secret".to_string(),
+                JsonValue::String(String::new()),
+            );
         }
     }
 

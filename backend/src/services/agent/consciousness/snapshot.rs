@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::DatabaseConnection;
 
-use crate::services::agent::{AgentInteractionMode, get_user_permissions, merope, run_hub};
+use crate::services::agent::{get_user_permissions, merope, run_hub, AgentInteractionMode};
 
 use super::{IntentStore, SelfSnapshot};
 

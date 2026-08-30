@@ -609,12 +609,12 @@ mod tests {
         assert!(profile["motionScale"].as_f64().unwrap() <= 1.14);
         assert!(profile["frequencyScale"].as_f64().unwrap() >= 0.9);
         assert_eq!(profile["supportScale"], 0.25);
-        assert_eq!(profile["garmentMotionScale"], 0.9);
+        assert!((profile["garmentMotionScale"].as_f64().unwrap() - 0.9).abs() < 1e-6);
         assert!(valid_profile(&profile, context, true));
     }
 
     #[test]
-    fn legacy_profile_without_garment_dynamics_is_not_reused() {
+    fn incomplete_profile_without_garment_dynamics_is_not_reused() {
         let context = playback_context(&playback()).expect("context");
         let mut profile = fallback_profile(context);
         profile["version"] = json!(1);

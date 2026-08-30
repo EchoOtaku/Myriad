@@ -6,7 +6,6 @@
 //! 3. allowlist / min_trust（`federation_policy_settings`，空 allowlist = 不限制）
 //! 4. 内容过滤（`federation_content_filters`）
 
-
 use axum::http::StatusCode;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};

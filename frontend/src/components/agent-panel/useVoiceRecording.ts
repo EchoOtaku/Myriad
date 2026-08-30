@@ -2,10 +2,15 @@
  * 说给它听。
  *
  * 轻点是按住说话：整段录完再识别。
- * 长按进入连续对话：本地 VAD 开口就停 TTS，说完一句才提交。麦克风一直开着。
+ * 长按进入连续对话：声网开着就走 RTC；否则本地 VAD 开口就停 TTS，说完一句才提交。麦克风一直开着。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  agoraConversationActive,
+  startAgoraConversation,
+  stopAgoraConversation,
+} from '../../features/merope/speech/agoraConversation'
 import {
   frameRms,
   isSubmittableTranscript,
@@ -98,6 +103,7 @@ export function useVoiceRecording(
   locale: string = 'zh-CN',
 ) {
   const [speechAvailable, setSpeechAvailable] = useState(false)
+  const convoRtcRef = useRef(false)
   const [isRecording, setIsRecording] = useState(false)
   const [isProcessingVoice, setIsProcessingVoice] = useState(false)
   const [conversation, setConversation] = useState(false)
@@ -116,7 +122,13 @@ export function useVoiceRecording(
 
   useEffect(() => {
     getSpeechStatus()
-      .then((s) => setSpeechAvailable(s.available && !!s.asr_enabled))
+      .then((s) => {
+        const convo = !!s.convo_enabled
+        convoRtcRef.current = convo
+        setSpeechAvailable(
+          Boolean(s.available && (s.asr_enabled || convo)),
+        )
+      })
       .catch(() => {})
   }, [])
 
@@ -268,6 +280,14 @@ export function useVoiceRecording(
   }, [onPcm])
 
   const stopRecording = useCallback(async () => {
+    if (agoraConversationActive()) {
+      isRecordingRef.current = false
+      setIsRecording(false)
+      conversationRef.current = false
+      setConversation(false)
+      await stopAgoraConversation()
+      return
+    }
     const recorder = recorderRef.current
     if (!recorder || !isRecordingRef.current) return
 
@@ -296,6 +316,21 @@ export function useVoiceRecording(
   const enterConversation = useCallback(async () => {
     conversationRef.current = true
     setConversation(true)
+    if (convoRtcRef.current) {
+      try {
+        const ok = await startAgoraConversation(localeRef.current)
+        if (!ok) throw new Error('convo start returned false')
+        isRecordingRef.current = true
+        setIsRecording(true)
+        patchVoicePresence({ listening: true })
+        return
+      } catch (err) {
+        console.error('[useVoiceRecording] 实时对话启动失败:', err)
+        conversationRef.current = false
+        setConversation(false)
+        return
+      }
+    }
     if (isRecordingRef.current) {
       const recorder = recorderRef.current
       if (recorder) recorder.pcmData.length = 0
@@ -318,6 +353,9 @@ export function useVoiceRecording(
 
   useEffect(() => {
     return () => {
+      if (agoraConversationActive()) {
+        void stopAgoraConversation()
+      }
       const recorder = recorderRef.current
       if (recorder) {
         isRecordingRef.current = false

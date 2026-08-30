@@ -499,6 +499,11 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     }
     add(getFieldValue('ai_image_source') || currentImageProvider, 'image')
     add(getFieldValue('speech_source') || currentSpeechProvider, 'speech')
+    for (const source of vendorSources) {
+      if (source.enabled && vendorSupports(source, 'realtime')) {
+        add(source.slug, 'realtime')
+      }
+    }
     return map
   }, [
     currentImageProvider,

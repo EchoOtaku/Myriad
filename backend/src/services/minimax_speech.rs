@@ -40,12 +40,7 @@ impl std::fmt::Display for MiniMaxSpeechError {
 impl std::error::Error for MiniMaxSpeechError {}
 
 pub fn is_minimax_vendor(source: &AiVendorSource) -> bool {
-    is_minimax_vendor_fields(
-        &source.kind,
-        &source.slug,
-        &source.preset,
-        &source.base_url,
-    )
+    is_minimax_vendor_fields(&source.kind, &source.slug, &source.preset, &source.base_url)
 }
 
 pub fn is_minimax_vendor_fields(kind: &str, slug: &str, preset: &str, base_url: &str) -> bool {

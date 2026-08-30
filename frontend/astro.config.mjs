@@ -24,7 +24,7 @@ const APP_VERSION = pkg.version || '0.4.0'
  */
 /** Align with proxy/backend: document-level geolocation for weather. */
 const DOCUMENT_PERMISSIONS_POLICY =
-  'geolocation=(self), microphone=(), camera=()'
+  'geolocation=(self), microphone=(self), camera=()'
 
 function spaFallbackPlugin() {
   return {
@@ -821,6 +821,11 @@ export default defineConfig({
         'react-dom/client',
         'react-router-dom',
       ],
+      // UMD bundle; Vite prebundle rewrites break createClient.
+      exclude: ['agora-rtc-sdk-ng'],
+    },
+    ssr: {
+      external: ['agora-rtc-sdk-ng'],
     },
     plugins: [
       tailwindcss(), // Tailwind CSS v4 Vite plugin

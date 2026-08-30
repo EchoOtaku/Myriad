@@ -163,9 +163,7 @@ pub async fn speech_probe() -> SpeechProbe {
                     error: if asr_enabled {
                         None
                     } else {
-                        Some(
-                            "Listening needs Tencent Cloud, OpenAI, or Gemini".to_string(),
-                        )
+                        Some("Listening needs Tencent Cloud, OpenAI, or Gemini".to_string())
                     },
                 }
             }
@@ -658,8 +656,8 @@ async fn fallback_openai_stt() -> Result<FallbackOpenAiStt, OpenAiSpeechError> {
     });
     let (api_key, base_url, stt_model, referer) = if let Some(source) = source {
         let kind = SpeechProviderKind::parse(&source.kind);
-        let key = crate::config::DynamicConfig::nonempty_opt(source.api_key.as_ref())
-            .unwrap_or_default();
+        let key =
+            crate::config::DynamicConfig::nonempty_opt(source.api_key.as_ref()).unwrap_or_default();
         let base = source.base_url.trim().to_string();
         if kind == SpeechProviderKind::OpenRouter {
             (

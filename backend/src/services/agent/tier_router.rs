@@ -130,6 +130,8 @@ impl TierRouter {
             "speech.tts" => TaskComplexity::Simple,
             // AI 图像生成（调用外部图像 API，不使用 LLM）
             "ai.image" => TaskComplexity::Simple,
+            // Tripo 3D：外部 API，能力表里 requires_ai = false
+            id if id.starts_with("model3d.") => TaskComplexity::Simple,
             // 数据库查询
             id if id.starts_with("database.") => TaskComplexity::Simple,
             // 其余只读查询
@@ -429,6 +431,10 @@ mod tests {
             "tapp.window.open",
             "tapp.window.close",
             "tapp.window.focus",
+            "model3d.status",
+            "model3d.generate",
+            "model3d.rig",
+            "model3d.retarget",
         ] {
             assert!(
                 TierRouter::has_explicit_rule(id),

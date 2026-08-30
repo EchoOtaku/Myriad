@@ -1894,10 +1894,12 @@ export const enUS: TranslationKeys = {
     aiVendorUsedPro: 'Pro',
     aiVendorUsedImage: 'Image',
     aiVendorUsedSpeech: 'Speech',
+    aiVendorUsedRealtime: 'Realtime',
     aiVendorUsedJoin: ' · ',
     aiVendorCapText: 'LLM',
     aiVendorCapImage: 'Image',
     aiVendorCapSpeech: 'Audio',
+    aiVendorCapRealtime: 'Realtime',
     aiVendorSetupTitle: 'Setup',
     aiVendorSetupOpen: 'Open',
     aiVendorSetupPortalTitle: 'Open the {name} console',
@@ -1936,6 +1938,14 @@ export const enUS: TranslationKeys = {
     aiVendorSetupTencentFillTitle: 'Paste them here',
     aiVendorSetupTencentFillDesc:
       'Fill the two fields below and pick a region.',
+    aiVendorSetupAgoraPortalTitle: 'Open the Shengwang / Agora console',
+    aiVendorSetupAgoraPortalDesc: 'Open your project and Conversational AI.',
+    aiVendorSetupAgoraCreateTitle: 'Copy credentials',
+    aiVendorSetupAgoraCreateDesc:
+      'Copy the App ID, certificate, and REST Customer ID / Secret.',
+    aiVendorSetupAgoraFillTitle: 'Paste them here',
+    aiVendorSetupAgoraFillDesc:
+      'Fill App ID, certificate, Customer ID, and Secret. Speech still uses MiniMax.',
     // AI Image Generation Configuration
     aiImageTitle: 'Image Generation Model',
     aiImageDesc: 'Generate images; size is set per request',
@@ -1967,6 +1977,16 @@ export const enUS: TranslationKeys = {
       'OpenRouter does not currently list official OpenAI TTS models. Transcription works; pick OpenAI for official speech.',
     speechMinimaxAsrHint:
       'MiniMax reads aloud with speech-2.8-turbo by default. Listening still uses Tencent Cloud, OpenAI, or Gemini if one of those is configured.',
+    agoraConvoEnabled: 'Shengwang / Agora realtime talk',
+    agoraConvoEnabledDesc:
+      'Long-press the mic to join a live RTC conversation. Needs MiniMax speech and a public OpenAI-compatible model.',
+    agoraConvoHint:
+      'App ID and certificate mint RTC tokens. Customer ID/Secret call the Conversational AI join API. TTS uses your MiniMax provider.',
+    agoraAppId: 'Shengwang / Agora App ID',
+    agoraAppCertificate: 'Shengwang / Agora App Certificate',
+    agoraCustomerId: 'Shengwang / Agora Customer ID',
+    agoraCustomerSecret: 'Shengwang / Agora Customer Secret',
+    agoraApiBase: 'Shengwang / Agora API base',
     // Platform configuration
     platformDescGithub: 'Repos, stars, and contributions',
     platformDescBilibili: 'Favorites, anime, and viewing history',

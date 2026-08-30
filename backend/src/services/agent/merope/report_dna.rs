@@ -9,12 +9,12 @@ use std::time::Duration;
 
 use sea_orm::{ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder};
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
-use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::config::ModelTier;
 use crate::models::entities::platform_reports;
 use crate::services::ai::create_ai_analyzer_for_tier_with_timeout;
+use crate::GLOBAL_DYNAMIC_CONFIG;
 
 use super::onboarding_prompts::TAGS_SYSTEM_PROMPT;
 
@@ -992,16 +992,12 @@ mod tests {
                 .sum::<usize>()
                 <= MAX_REPORT_INSIGHT_CHARS
         );
-        assert!(
-            !serde_json::to_string(&bundle.evidence)
-                .unwrap()
-                .contains("must not leave")
-        );
-        assert!(
-            bundle
-                .fallback_seed_keys
-                .contains(&"thoughtful".to_string())
-        );
+        assert!(!serde_json::to_string(&bundle.evidence)
+            .unwrap()
+            .contains("must not leave"));
+        assert!(bundle
+            .fallback_seed_keys
+            .contains(&"thoughtful".to_string()));
         assert_eq!(bundle.evidence[0].structured_labels, ["Rust"]);
     }
 
@@ -1074,16 +1070,12 @@ mod tests {
         let mixed = vec!["慢热".into(), "Night owl".into(), "境界線がはっきり".into()];
         let english = complete_ai_tag_deck(&mixed, "en-US", 8);
         assert!(english.contains(&"Night owl".to_string()));
-        assert!(
-            !english
-                .iter()
-                .any(|tag| tag == "慢热" || tag.contains('が'))
-        );
-        assert!(
-            english
-                .iter()
-                .all(|tag| tag_matches_ui_language(tag, "en-US"))
-        );
+        assert!(!english
+            .iter()
+            .any(|tag| tag == "慢热" || tag.contains('が')));
+        assert!(english
+            .iter()
+            .all(|tag| tag_matches_ui_language(tag, "en-US")));
         assert!(english.len() >= 8);
 
         assert!(!tag_matches_ui_language("慢热", "en-US"));

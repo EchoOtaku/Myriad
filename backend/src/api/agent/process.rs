@@ -1557,7 +1557,7 @@ pub async fn health() -> Json<Value> {
 #[cfg(test)]
 mod quota_error_tests {
     use super::{
-        ApiResponse, agent_stream_error_code, completed_turn_intention_status, quota_code,
+        agent_stream_error_code, completed_turn_intention_status, quota_code, ApiResponse,
     };
     use crate::services::agent::consciousness::IntentStatus;
     use serde_json::json;

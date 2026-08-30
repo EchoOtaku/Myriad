@@ -20,10 +20,11 @@ export function cueOccupiesHeadBody(cue: PerformanceCue): boolean {
 export function performanceOccupiedChannels(
   directive: PerformanceDirective,
 ): MotionChannel[] {
-  const channels = new Set<MotionChannel>(['expression'])
+  const channels = new Set<MotionChannel>()
   const baseline = directive.plan.baseline
   if (baseline && baseline.posture !== 'neutral') channels.add('headBody')
   for (const cue of directive.plan.cues) {
+    channels.add('expression')
     if (cueOccupiesHeadBody(cue)) channels.add('headBody')
   }
   return [...channels]

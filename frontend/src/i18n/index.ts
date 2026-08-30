@@ -1610,10 +1610,12 @@ export interface TranslationKeys {
     aiVendorUsedPro: string
     aiVendorUsedImage: string
     aiVendorUsedSpeech: string
+    aiVendorUsedRealtime: string
     aiVendorUsedJoin: string
     aiVendorCapText: string
     aiVendorCapImage: string
     aiVendorCapSpeech: string
+    aiVendorCapRealtime: string
     aiVendorSetupTitle: string
     aiVendorSetupOpen: string
     aiVendorSetupPortalTitle: string
@@ -1646,6 +1648,12 @@ export interface TranslationKeys {
     aiVendorSetupTencentCreateDesc: string
     aiVendorSetupTencentFillTitle: string
     aiVendorSetupTencentFillDesc: string
+    aiVendorSetupAgoraPortalTitle: string
+    aiVendorSetupAgoraPortalDesc: string
+    aiVendorSetupAgoraCreateTitle: string
+    aiVendorSetupAgoraCreateDesc: string
+    aiVendorSetupAgoraFillTitle: string
+    aiVendorSetupAgoraFillDesc: string
     aiImageTitle: string
     aiImageDesc: string
     speechServiceTitle: string
@@ -1672,6 +1680,14 @@ export interface TranslationKeys {
     speechTtsVoice: string
     speechOpenRouterTtsHint: string
     speechMinimaxAsrHint: string
+    agoraConvoEnabled: string
+    agoraConvoEnabledDesc: string
+    agoraConvoHint: string
+    agoraAppId: string
+    agoraAppCertificate: string
+    agoraCustomerId: string
+    agoraCustomerSecret: string
+    agoraApiBase: string
     platformDescGithub: string
     platformDescBilibili: string
     platformDescBangumi: string

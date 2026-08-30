@@ -1,7 +1,7 @@
 // Agent process / recipe execution paths.
 
 use sea_orm::DatabaseConnection;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use super::agent_footer::*;
 use super::agent_header::*;

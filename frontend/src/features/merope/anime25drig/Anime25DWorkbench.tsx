@@ -239,9 +239,7 @@ export default function Anime25DWorkbench({
   }
   driverRef.current = driver
 
-  const writePreview = (
-    write: (rig: RigCharacterHandle) => void,
-  ) => {
+  const writePreview = (write: (rig: RigCharacterHandle) => void) => {
     const scope = previewScopeRef.current
     const rig = characterRef.current
     if (!scope) return
@@ -280,16 +278,22 @@ export default function Anime25DWorkbench({
   }, [sourceGenerationFingerprint, sourceMasterAssetId])
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
+    if (panel !== 'motion' || !motionEnabled) {
+      setSnapshot(null)
+      return undefined
+    }
+    const refresh = () => {
       const next = characterRef.current?.debugSnapshot() ?? null
       setSnapshot(next)
-      if (next && motionEnabled && !syncedDriverRef.current) {
+      if (next && !syncedDriverRef.current) {
         syncedDriverRef.current = true
         writePreview((rig) => rig.replaceDriver(driverRef.current))
       }
-    }, 200)
+    }
+    refresh()
+    const timer = window.setInterval(refresh, 200)
     return () => window.clearInterval(timer)
-  }, [characterRef, motionEnabled])
+  }, [characterRef, motionEnabled, panel])
 
   const applyDriver = (next: Anime25DDriver) => {
     setDriver(next)
@@ -1238,9 +1242,7 @@ export default function Anime25DWorkbench({
                             saved: Math.round(
                               snapshot.performance.savedUploadBytes / 1024,
                             ),
-                            draws: Math.round(
-                              snapshot.performance.drawCalls,
-                            ),
+                            draws: Math.round(snapshot.performance.drawCalls),
                           },
                         ),
                         copyable: false,

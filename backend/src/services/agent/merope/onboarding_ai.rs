@@ -1,15 +1,15 @@
 //! Pro onboarding helpers: name roll, structured persona draft, visual design.
 //! Prompts live in `onboarding_prompts`.
 
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 use std::time::Duration;
 
 use crate::config::ModelTier;
 use crate::services::ai::create_ai_analyzer_for_tier_with_timeout;
 
 use super::onboarding_prompts::{
-    IMPORT_PERSONA_SYSTEM_PROMPT, NAME_SYSTEM_PROMPT, PERSONA_SYSTEM_PROMPT,
-    visual_design_system_prompt,
+    visual_design_system_prompt, IMPORT_PERSONA_SYSTEM_PROMPT, NAME_SYSTEM_PROMPT,
+    PERSONA_SYSTEM_PROMPT,
 };
 use super::report_dna::sanitize_onboarding_tags_for_language;
 
@@ -954,19 +954,19 @@ mod tests {
 
     #[test]
     fn name_parser_requires_a_meaning_clause() {
-        assert!(
-            parse_display_name_suggestion(
-                r#"{"name":"晚衡","meaning":"晚来仍能把方向稳住"}"#,
-                None,
-                "chinese",
-            )
-            .is_some()
-        );
+        assert!(parse_display_name_suggestion(
+            r#"{"name":"晚衡","meaning":"晚来仍能把方向稳住"}"#,
+            None,
+            "chinese",
+        )
+        .is_some());
         assert!(parse_display_name_suggestion(r#"{"name":"晚衡"}"#, None, "chinese").is_none());
-        assert!(
-            parse_display_name_suggestion(r#"{"name":"晚衡","meaning":" " }"#, None, "chinese",)
-                .is_none()
-        );
+        assert!(parse_display_name_suggestion(
+            r#"{"name":"晚衡","meaning":" " }"#,
+            None,
+            "chinese",
+        )
+        .is_none());
     }
 
     #[test]
