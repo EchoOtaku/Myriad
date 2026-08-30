@@ -132,6 +132,106 @@ test('English abbreviations do not cut a sentence in the middle', () => {
 
 test('empty speakable leftovers do not emit a segment', () => {
   const splitter = new SpeechSegmenter('msg-2')
-  assert.deepEqual(splitter.push('```js\nfoo()\n```'), [])
+  for (const token of ['```js\n', 'foo()\n', '```']) {
+    assert.deepEqual(splitter.push(token), [], token)
+  }
   assert.deepEqual(splitter.end(), [])
+})
+
+/** Every character of the speakable text, once, in order. Whitespace aside. */
+function dense(text: string): string {
+  return text.replace(/\s+/g, '')
+}
+
+function stream(tokens: readonly string[]): string[] {
+  const splitter = new SpeechSegmenter('msg-stream')
+  const spoken: string[] = []
+  for (const token of tokens) {
+    for (const item of splitter.push(token)) spoken.push(item.text)
+  }
+  for (const item of splitter.end()) spoken.push(item.text)
+  return spoken
+}
+
+test('a code fence arriving token by token is never spoken', () => {
+  const tokens = [
+    '好的，看这段：\n',
+    '```python\n',
+    'print(1)\n',
+    'sum([1, 2])\n',
+    '```\n',
+    '就是这样，我把要点再说一遍。',
+  ]
+  const spoken = stream(tokens)
+  for (const line of spoken) assert.doesNotMatch(line, /`|print|sum/, line)
+  assert.deepEqual(spoken, ['好的，看这段：', '就是这样，我把要点再说一遍。'])
+  assert.equal(dense(spoken.join('')), dense(speakableText(tokens.join(''))))
+})
+
+test('prose before a fence streams instead of waiting for the block to close', () => {
+  const splitter = new SpeechSegmenter('msg-lead')
+  assert.deepEqual(splitter.push('好的，看这段：\n'), [])
+  assert.deepEqual(
+    splitter.push('```python\n').map((item) => item.text),
+    ['好的，看这段：'],
+  )
+})
+
+test('an unterminated fence stays unspoken even at the end of the message', () => {
+  assert.deepEqual(stream(['给你代码。\n', '```js\n', 'let a = 1\n']), ['给你代码。'])
+})
+
+test('inline markup does not split a sentence or lose the text around it', () => {
+  const cases: ReadonlyArray<readonly string[]> = [
+    ['先执行 ', '`npm run ', 'build`', ' 然后看结果。'],
+    ['请看这个。', '[标题', '](https://x.test)', ' 然后继续。'],
+    ['访问 www.', 'example.com 看看。'],
+    ['这里有个 <', 'b>重点</b> 要记住。'],
+  ]
+  for (const tokens of cases) {
+    const spoken = stream(tokens)
+    assert.equal(
+      dense(spoken.join('')),
+      dense(speakableText(tokens.join(''))),
+      tokens.join(''),
+    )
+  }
+  assert.deepEqual(stream(['先执行 ', '`npm run ', 'build`', ' 然后看结果。']), [
+    '先执行 然后看结果。',
+  ])
+})
+
+test('brackets and comparisons that are not markup keep streaming', () => {
+  assert.deepEqual(
+    stream(['数组 [1, 2, 3] 就是这样。', '然后我们继续下一步。']),
+    ['数组 [1, 2, 3] 就是这样。', '然后我们继续下一步。'],
+  )
+  assert.deepEqual(stream(['如果 a < b 就成立。', '再看下一条。']), [
+    '如果 a < b 就成立。',
+    '再看下一条。',
+  ])
+})
+
+test('the speakable string never shrinks while a message streams', () => {
+  const tokens = [
+    '第一句已经说完了。\n',
+    '```python\n',
+    'print(1)\n',
+    '```\n',
+    '接着说第二句。',
+    '还有 `x` 和 ',
+    '[链接](https://x.test)。',
+    '最后一句收尾。',
+  ]
+  const splitter = new SpeechSegmenter('msg-mono')
+  let spoken = ''
+  for (const token of tokens) {
+    const before = spoken
+    for (const item of splitter.push(token)) spoken += item.text
+    assert.ok(spoken.startsWith(before), token)
+  }
+  const before = spoken
+  for (const item of splitter.end()) spoken += item.text
+  assert.ok(spoken.startsWith(before))
+  assert.equal(dense(spoken), dense(speakableText(tokens.join(''))))
 })

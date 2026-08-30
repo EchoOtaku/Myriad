@@ -41,7 +41,8 @@ export class SpeechSegmenter {
   }
 
   private flush(force: boolean, interrupt: SpeechInterruptMode): SpeechSegment[] {
-    const spoken = speakableText(this.raw)
+    const spoken = speakableText(this.raw.slice(0, stableRawEnd(this.raw, force)))
+    const sealed = force || blockFenceOpen(this.raw)
     while (
       this.spokenOffset < spoken.length &&
       /\s/.test(spoken[this.spokenOffset]!)
@@ -49,7 +50,7 @@ export class SpeechSegmenter {
       this.spokenOffset += 1
     }
     const remaining = spoken.slice(this.spokenOffset)
-    const cut = nextCut(remaining, force)
+    const cut = nextCut(remaining, sealed)
     if (cut <= 0) {
       if (force) {
         this.raw = ''
@@ -73,6 +74,101 @@ export class SpeechSegmenter {
     if (more.length > 0) return [segment, ...more]
     return [segment]
   }
+}
+
+/**
+ * End of the prefix whose speakable form can no longer change.
+ *
+ * `speakableText` only recognises a construct once it is closed, so an
+ * unterminated fence reads as plain text and would be spoken; when the closing
+ * marker finally arrives the whole block collapses and the speakable string
+ * gets *shorter*, invalidating `spokenOffset`. Holding back from the opener
+ * keeps that string monotonic, which is what the offset assumes.
+ *
+ * On `force` the message is over, so only unclosed code stays unspoken; a
+ * half-written link or tag is prose and is read as-is.
+ */
+function stableRawEnd(raw: string, force: boolean): number {
+  let end = raw.length
+  const code = openCode(raw)
+  if (code.fence >= 0) end = code.fence
+  else if (code.tick >= 0) end = code.tick
+  if (force) return end
+  const prose = openProseStart(raw)
+  if (prose >= 0 && prose < end) end = prose
+  return end
+}
+
+/**
+ * True when a fence opened on its own line is still unclosed. Everything
+ * before it is finished prose, so it may be cut even without a sentence end --
+ * otherwise a long code block would hold the preceding line until `end()`.
+ * Inline openers get no such seal: cutting there would split one sentence
+ * across two utterances.
+ */
+function blockFenceOpen(raw: string): boolean {
+  const fence = openCode(raw).fence
+  return fence === 0 || (fence > 0 && raw[fence - 1] === '\n')
+}
+
+/** Start of the unterminated fence and inline code span, each -1 when closed. */
+function openCode(raw: string): { fence: number; tick: number } {
+  let index = 0
+  let fence = -1
+  let tick = -1
+  while (index < raw.length) {
+    if (raw.startsWith('```', index)) {
+      fence = fence >= 0 ? -1 : index
+      index += 3
+      continue
+    }
+    if (fence >= 0) {
+      index += 1
+      continue
+    }
+    if (raw[index] === '`') tick = tick >= 0 ? -1 : index
+    index += 1
+  }
+  return { fence, tick }
+}
+
+/** Start of an unterminated link, HTML tag, or URL, or -1. */
+function openProseStart(raw: string): number {
+  let end = -1
+  const link = openLinkStart(raw)
+  if (link >= 0) end = link
+  const tag = openTagStart(raw)
+  if (tag >= 0 && (end < 0 || tag < end)) end = tag
+  const url = TRAILING_URL.exec(raw)?.index ?? -1
+  if (url >= 0 && (end < 0 || url < end)) end = url
+  return end
+}
+
+/** A trailing token that may still grow into a link `speakableText` strips. */
+const TRAILING_URL = /(?:\bwww|\bhttp)\S*$/i
+
+function openLinkStart(raw: string): number {
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] !== '[') continue
+    const close = raw.indexOf(']', i)
+    if (close < 0 || close + 1 >= raw.length) return i
+    if (raw[close + 1] !== '(') {
+      i = close
+      continue
+    }
+    const paren = raw.indexOf(')', close)
+    if (paren < 0) return i
+    i = paren
+  }
+  return -1
+}
+
+function openTagStart(raw: string): number {
+  const at = raw.lastIndexOf('<')
+  if (at < 0 || raw.includes('>', at)) return -1
+  const next = raw[at + 1]
+  if (next && !/[a-z/]/i.test(next)) return -1
+  return at
 }
 
 function nextCut(text: string, force: boolean): number {
@@ -154,7 +250,7 @@ function sentenceEndAfter(text: string, index: number): number {
 
 function isPeriodAbbreviation(text: string, periodIndex: number): boolean {
   let start = periodIndex - 1
-  while (start >= 0 && /[A-Za-z]/.test(text[start]!)) start -= 1
+  while (start >= 0 && /[A-Z]/i.test(text[start]!)) start -= 1
   const word = text.slice(start + 1, periodIndex)
   return PERIOD_ABBREVIATIONS.has(word.toLowerCase())
 }
@@ -162,6 +258,6 @@ function isPeriodAbbreviation(text: string, periodIndex: number): boolean {
 function looksLikeSentenceStart(ch: string): boolean {
   return (
     /\p{Lu}/u.test(ch) ||
-    /\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}/u.test(ch)
+    /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(ch)
   )
 }
