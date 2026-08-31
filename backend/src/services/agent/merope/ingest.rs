@@ -11,8 +11,9 @@ use std::collections::BTreeMap;
 use super::is_logged_in_addressee;
 use crate::config::ModelTier;
 use crate::services::agent::consciousness::{
-    consider_event, is_work_outcome, last_live_presence, ConsciousnessAction, ConsciousnessEvent,
-    EventUrgency, IntentStore,
+    consider_event, drain_speak_intents, enqueue_speak_intent, is_work_outcome, last_live_presence,
+    new_speak_intent, ConsciousnessAction, ConsciousnessEvent, EventUrgency, IntentStore,
+    SpeakIntent,
 };
 use crate::services::agent::notifications::{
     get_notification_manager, Notification, NotificationPriority, NotificationType,
@@ -24,7 +25,7 @@ use super::gates::{decide_ingest, is_chatting, is_valuable_event};
 use super::store::{
     get_or_create_state, get_persona, insert_diary, insert_proactive, latest_open_session,
     list_remembered, recent_proactive, recently_spoke_event, save_mood, set_activity,
-    touch_proactive,
+    touch_proactive, DIARY_SOURCE_EVENT,
 };
 use super::{
     addressee_speaking_section, apply_task_outcome, format_mood_section, is_extremely_low,
@@ -113,7 +114,7 @@ pub fn spawn_diary(user_id: i32, summary: impl Into<String>) {
         let Ok(db) = crate::services::tapp_registry::database().await else {
             return;
         };
-        if let Err(error) = insert_diary(&db, user_id, &summary, "event").await {
+        if let Err(error) = insert_diary(&db, user_id, &summary, DIARY_SOURCE_EVENT).await {
             tracing::debug!(%error, user_id, "[Merope] diary write failed");
         }
     });
@@ -215,11 +216,7 @@ pub async fn ingest(
     apply_task_mood(db, user_id, event_key, state.mood).await;
 
     if !decision.allow_model {
-        let _ = insert_diary(db, user_id, &summary, "event").await;
-        return Ok(());
-    }
-    if recently_spoke_event(db, user_id, event_key, SAME_EVENT_MINUTES).await? {
-        let _ = insert_diary(db, user_id, &summary, "event").await;
+        let _ = insert_diary(db, user_id, &summary, DIARY_SOURCE_EVENT).await;
         return Ok(());
     }
 
@@ -271,19 +268,7 @@ pub async fn ingest(
         }
     }
 
-    // Only a line the addressee will actually read is worth a model call. The rest
-    // of the transcript is a ledger with no reader — it exists so the next line
-    // does not repeat itself — so the human-readable summary stands in for it.
-    let source_intent_id = consideration
-        .as_ref()
-        .and_then(|value| value.intent.as_ref())
-        .map(|intent| intent.id.as_str());
-    // A Work proposal has no existing producer-owned surface. It must reach the
-    // addressee so they can review it; ordinary event speech keeps the existing
-    // duplicate-notification rule.
-    let shown = (source_intent_id.is_some() && is_valuable_event(event_key))
-        || speech_is_shown(event_key, decision.notify);
-    let selected_line = consideration
+    let gist = consideration
         .as_ref()
         .and_then(|value| match value.decision.action {
             ConsciousnessAction::Speak => value.decision.speech.clone(),
@@ -293,28 +278,81 @@ pub async fn ingest(
                 .as_ref()
                 .map(|intent| format!("我注意到{}。要不要交给我处理？", intent.proposal.title)),
             ConsciousnessAction::Ignore | ConsciousnessAction::Remember => None,
-        });
-    let spoken = if let Some(selected) = selected_line {
-        selected
-    } else if shown {
-        let _ = set_activity(db, user_id, "thinking").await;
-        let line = compose_line(db, user_id, &summary).await;
-        let _ = set_activity(db, user_id, "idle").await;
+        })
+        .filter(|text| !is_trivial_line(text));
+    if let Some(gist) = gist {
+        let work_intent_id = consideration
+            .as_ref()
+            .and_then(|value| value.intent.as_ref())
+            .map(|intent| intent.id.clone());
+        enqueue_speak_intent(new_speak_intent(
+            user_id,
+            conscious_event.id.clone(),
+            event_key.to_string(),
+            gist,
+            conscious_event.urgency,
+            work_intent_id,
+        ));
+    }
+
+    let _ = insert_diary(db, user_id, &summary, DIARY_SOURCE_EVENT).await;
+    Ok(())
+}
+
+/// Re-check chatting / dnd / working at redeem time. Produce-time gates
+/// are stale after the 15s autonomy loop.
+pub fn may_redeem_speech(event_key: &str, dnd: bool, chatting: bool, working: bool) -> bool {
+    decide_ingest(event_key, dnd, chatting, working).allow_model
+}
+
+pub async fn tick_speak_intents(db: DatabaseConnection) {
+    let now = Utc::now();
+    for intent in drain_speak_intents(now) {
+        if let Err(error) = redeem_speak_intent(&db, intent).await {
+            tracing::warn!(%error, "[Merope] redeem speak intent failed");
+        }
+    }
+}
+
+async fn redeem_speak_intent(
+    db: &DatabaseConnection,
+    intent: SpeakIntent,
+) -> Result<(), anyhow::Error> {
+    if intent.expires_at <= Utc::now() {
+        return Ok(());
+    }
+    let state = get_or_create_state(db, intent.user_id).await?;
+    let chatting = addressee_is_chatting(db, intent.user_id).await;
+    let working = super::current_activity(&state) == "working";
+    let dnd = super::effective_do_not_disturb(&state);
+    if !may_redeem_speech(&intent.topic, dnd, chatting, working) {
+        return Ok(());
+    }
+    let decision = decide_ingest(&intent.topic, dnd, chatting, working);
+    if recently_spoke_event(db, intent.user_id, &intent.topic, SAME_EVENT_MINUTES).await? {
+        return Ok(());
+    }
+
+    let source_intent_id = intent.work_intent_id.as_deref();
+    let shown = (source_intent_id.is_some() && is_valuable_event(&intent.topic))
+        || speech_is_shown(&intent.topic, decision.notify);
+    let spoken = if shown {
+        let _ = set_activity(db, intent.user_id, "thinking").await;
+        let line = compose_line(db, intent.user_id, &intent.gist).await;
+        let _ = set_activity(db, intent.user_id, "idle").await;
         line
     } else {
-        fallback_line(&summary)
+        fallback_line(&intent.gist)
     };
 
     if is_trivial_line(&spoken) {
-        let _ = insert_diary(db, user_id, &summary, "event").await;
         return Ok(());
     }
-    if let Ok(recent) = recent_proactive(db, user_id, 1).await {
+    if let Ok(recent) = recent_proactive(db, intent.user_id, 1).await {
         if recent
             .first()
             .is_some_and(|last| last.content.trim() == spoken.trim())
         {
-            let _ = insert_diary(db, user_id, &summary, "event").await;
             return Ok(());
         }
     }
@@ -322,7 +360,7 @@ pub async fn ingest(
     // Direct motion only after the line has passed every suppression check. This
     // keeps the Lite budget tied to speech the addressee will actually receive.
     let (performance, motion_mood) = if shown {
-        match get_or_create_state(db, user_id).await {
+        match get_or_create_state(db, intent.user_id).await {
             Ok(current) => {
                 let band = super::mood_band(current.mood).to_string();
                 let mood = super::MoodTransition {
@@ -331,20 +369,20 @@ pub async fn ingest(
                     band_before: band.clone(),
                     band_after: band,
                     delta: 0.0,
-                    cause: event_key.to_string(),
+                    cause: intent.topic.clone(),
                     revision: current.updated_at.with_timezone(&Utc).timestamp_millis(),
                 };
                 let motion_style =
                     super::resolve_round_motion_style(None, current.mood.round() as i32).await;
                 let performance = super::direct_motion(super::MotionContext {
-                    user_id,
+                    user_id: intent.user_id,
                     phase: super::MotionPhase::Proactive,
                     mood: mood.clone(),
                     activity: "talking".to_string(),
-                    user_text: summary.clone(),
+                    user_text: intent.gist.clone(),
                     response_text: Some(spoken.clone()),
                     task_success: None,
-                    rig_state: last_live_presence(user_id).rig_state,
+                    rig_state: last_live_presence(intent.user_id).rig_state,
                     motion_style,
                 })
                 .await;
@@ -356,15 +394,14 @@ pub async fn ingest(
         (None, None)
     };
 
-    let _ = insert_diary(db, user_id, &summary, "event").await;
-    insert_proactive(db, user_id, &spoken, Some(event_key), shown).await?;
-    let _ = touch_proactive(db, user_id).await;
+    insert_proactive(db, intent.user_id, &spoken, Some(&intent.topic), shown).await?;
+    let _ = touch_proactive(db, intent.user_id).await;
 
     if shown {
         emit_speech_notification(
             db,
-            user_id,
-            event_key,
+            intent.user_id,
+            &intent.topic,
             &spoken,
             performance.as_ref(),
             motion_mood.as_ref(),
@@ -741,20 +778,49 @@ mod tests {
             .find("persist_persona_remember")
             .expect("persist in speak/ask arm");
         let persist_at = speak_arm + persist_in_arm;
-        let trivial_at = src
-            .find("if is_trivial_line(&spoken)")
-            .expect("trivial-line gate");
-        let duplicate_at = src
-            .find("last.content.trim() == spoken.trim()")
-            .expect("duplicate-proactive gate");
+        let enqueue_at = speak_arm
+            + src[speak_arm..]
+                .find("enqueue_speak_intent")
+                .expect("produce enqueues a speak intent");
         assert!(
-            persist_at < trivial_at,
-            "Speak/Ask memory must persist before trivial-line return"
+            persist_at < enqueue_at,
+            "Speak/Ask memory must persist before enqueue"
         );
-        assert!(
-            persist_at < duplicate_at,
-            "Speak/Ask memory must persist before duplicate-proactive return"
-        );
+        let redeem = src
+            .split("async fn redeem_speak_intent")
+            .nth(1)
+            .expect("redeem path");
+        assert!(redeem.contains("if is_trivial_line(&spoken)"));
+        assert!(redeem.contains("last.content.trim() == spoken.trim()"));
+        assert!(redeem.contains("insert_proactive"));
+        assert!(redeem.contains("emit_speech_notification"));
+        assert!(redeem.contains("if shown {"));
+        assert!(redeem.contains("direct_motion"));
+        let produce = src
+            .split("async fn ingest(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn tick_speak_intents").next())
+            .expect("produce path");
+        assert!(produce.contains("enqueue_speak_intent"));
+        assert!(!produce.contains("insert_proactive"));
+        assert!(!produce.contains("emit_speech_notification"));
+        assert!(!produce.contains("direct_motion"));
+    }
+
+    #[test]
+    fn chatting_at_redeem_does_not_compose_a_sentence() {
+        assert!(!may_redeem_speech(
+            "agent.merope.platform_activity",
+            false,
+            true,
+            false
+        ));
+        assert!(may_redeem_speech(
+            "agent.merope.platform_activity",
+            false,
+            false,
+            false
+        ));
     }
 
     #[test]

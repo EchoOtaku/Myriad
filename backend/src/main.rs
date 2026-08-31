@@ -434,6 +434,8 @@ async fn run_server() -> anyhow::Result<()> {
                         loop {
                             interval.tick().await;
                             api::agent::tick_autonomy_work(autonomy_db.clone()).await;
+                            crate::services::agent::merope::tick_speak_intents(autonomy_db.clone())
+                                .await;
                         }
                     });
                 }
