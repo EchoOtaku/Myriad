@@ -65,8 +65,6 @@ export const AnalyticsEvents = {
 export type AnalyticsEventName =
   (typeof AnalyticsEvents)[keyof typeof AnalyticsEvents]
 
-  Object.values(AnalyticsEvents)
-
 const lastFired = new Map<string, number>()
 
 export interface TrackProductEventOpts {
