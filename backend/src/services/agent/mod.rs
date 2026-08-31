@@ -21,6 +21,7 @@ pub mod notification_preferences;
 pub mod notification_producers;
 pub mod notifications;
 pub mod orchestrator;
+pub mod perception_view;
 pub mod planner;
 pub mod queue;
 pub mod recipe;
