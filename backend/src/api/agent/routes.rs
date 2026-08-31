@@ -127,6 +127,13 @@ pub fn create_agent_routes(app_state: crate::state::AppState) -> Router<crate::s
                 middleware::auth::auth_middleware,
             )),
         )
+        .route(
+            "/presence",
+            post(super::post_live_presence).route_layer(from_fn_with_state(
+                app_state.clone(),
+                middleware::auth::auth_middleware,
+            )),
+        )
         // 能力列表（需要认证）
         .route(
             "/capabilities",
