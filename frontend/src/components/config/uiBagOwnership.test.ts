@@ -14,6 +14,7 @@ import {
   configChangesNeedPlatformsCacheInvalidation,
   configChangesNeedPwaReload,
   configChangesNeedRuntimeReload,
+  configChangesNeedSpeechPipelineReload,
   configChangesNeedWallpaperReload,
   RUNTIME_RELOAD_UI_BAG_KEYS,
 } from './uiBagOwnership'
@@ -37,9 +38,12 @@ describe('uiBagOwnership', () => {
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('analytics_enabled'))
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('music_enabled'))
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('merope_enabled'))
+    assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('merope_speech_enabled'))
     // The switch lives on the AI page now, so resetting Advanced must leave it alone.
     assert.ok(!ADVANCED_RESET_KEYS.includes('merope_enabled'))
+    assert.ok(!ADVANCED_RESET_KEYS.includes('merope_speech_enabled'))
     assert.ok(AI_UI_RESET_KEYS.includes('merope_enabled'))
+    assert.ok(AI_UI_RESET_KEYS.includes('merope_speech_enabled'))
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('proxy_url'))
     assert.ok(!ALL_OWNED_UI_BAG_KEYS.includes('base_url'))
   })
@@ -169,10 +173,22 @@ describe('uiBagOwnership', () => {
       false,
     )
     assert.equal(configChangesNeedRuntimeReload(nextMirror, prevMirror), true)
+    assert.equal(
+      configChangesNeedSpeechPipelineReload(nextMirror, prevMirror),
+      false,
+    )
+    assert.equal(
+      configChangesNeedSpeechPipelineReload(
+        cfg([{ key: 'merope_speech_enabled', value: 'true' }]),
+        cfg([{ key: 'merope_speech_enabled', value: 'false' }]),
+      ),
+      true,
+    )
 
     for (const key of [
       'memory_saver_enabled',
       'merope_enabled',
+      'merope_speech_enabled',
       'proxy_enabled',
       'proxy_url',
       'proxy_bypass',

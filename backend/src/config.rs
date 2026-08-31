@@ -442,6 +442,9 @@ pub struct DynamicConfig {
     /// Merope：设定、状态、主动对话、事件开口。默认关。用户界面叫 Agent 人设。
     pub merope_enabled: bool,
 
+    /// 人设形象是否开口朗读聊天回复。默认关；人设未生效时一律关。
+    pub merope_speech_enabled: bool,
+
     /// Agent 人设的页面形象：当前生效的 2.5D 图集包 id（sha256 hex）。
     /// None = 没有编译过的骨骼，浮动层只回退主立绘。站点级——全站一份形象。
     pub agent_rig_asset_id: Option<String>,
@@ -772,6 +775,7 @@ impl Default for DynamicConfig {
             ai_image_volcengine_api_key: None,
             ai_image_volcengine_base_url: "https://ark.cn-beijing.volces.com/api/v3".to_string(),
             merope_enabled: false,
+            merope_speech_enabled: false,
             agent_rig_asset_id: None,
             see_through_hf_token: None,
             // Tripo 3D（低模 Web 角色默认预算）
@@ -908,6 +912,11 @@ impl DynamicConfig {
     /// 开关开着却缺 Pro。设定引导和开关生效都要这一档。
     pub fn merope_needs_pro(&self) -> bool {
         self.merope_switch_on() && !self.pro_enabled
+    }
+
+    /// 人设开口朗读。人设未生效时一律关。
+    pub fn merope_speech_enabled_resolved(&self) -> bool {
+        self.merope_enabled_resolved() && self.merope_speech_enabled
     }
 
     pub fn is_openrouter_base(url: &str) -> bool {

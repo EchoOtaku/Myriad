@@ -2250,6 +2250,17 @@ pub(crate) async fn build_config(
                     placeholder: "false".to_string(),
                     required: false,
                 },
+                ConfigField {
+                    key: "merope_speech_enabled".to_string(),
+                    label: "Agent 人设说话".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.merope_speech_enabled.to_string())
+                        .unwrap_or_else(|| "false".to_string()),
+                    placeholder: "false".to_string(),
+                    required: false,
+                },
                 // 网络代理配置
                 ConfigField {
                     key: "proxy_enabled".to_string(),
@@ -2428,6 +2439,7 @@ pub(crate) struct SettingDescriptor {
 /// `github_client_*` / `github_redirect_url` 不在表里——旧备份里这些键会进 ignored。
 pub(crate) const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "merope_enabled",
+    "merope_speech_enabled",
     "agent_rig_asset_id",
     "ai_image_model",
     "ai_image_openai_api_key",
@@ -3518,6 +3530,18 @@ mod settings_backup_tests {
         config.ui_config.config_fields = vec![ui_field("merope_enabled", "false")];
         let off = collect_database_updates(&config);
         assert_eq!(off.get("merope_enabled"), Some(&json!(false)));
+    }
+
+    #[test]
+    fn ui_merope_speech_flag_persists_bool() {
+        let mut config = empty_config();
+        config.ui_config.config_fields = vec![ui_field("merope_speech_enabled", "true")];
+        let on = collect_database_updates(&config);
+        assert_eq!(on.get("merope_speech_enabled"), Some(&json!(true)));
+
+        config.ui_config.config_fields = vec![ui_field("merope_speech_enabled", "false")];
+        let off = collect_database_updates(&config);
+        assert_eq!(off.get("merope_speech_enabled"), Some(&json!(false)));
     }
 
     #[test]
@@ -4754,6 +4778,10 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
             "merope_enabled" => {
                 let enabled = field.value == "true";
                 ("merope_enabled", JsonValue::Bool(enabled))
+            }
+            "merope_speech_enabled" => {
+                let enabled = field.value == "true";
+                ("merope_speech_enabled", JsonValue::Bool(enabled))
             }
             _ => continue,
         };

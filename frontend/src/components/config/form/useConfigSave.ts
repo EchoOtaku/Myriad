@@ -26,6 +26,7 @@ import notificationPreferencesApi, {
   cloneNotificationPreferences,
 
 } from '../../../services/notificationPreferencesApi'
+import { invalidateSpeechStatusCache } from '../../../services/speechApi'
 import { getCSRFToken } from '../../../utils/csrf'
 import { deepEqual } from '../../../utils/deepEqual'
 import { dispatchLibraryPreferencesUpdated } from '../../../utils/libraryPreferences'
@@ -78,6 +79,7 @@ import {
   configChangesNeedPlatformsCacheInvalidation,
   configChangesNeedPwaReload,
   configChangesNeedRuntimeReload,
+  configChangesNeedSpeechPipelineReload,
   configChangesNeedWallpaperReload,
 } from '../uiBagOwnership'
 import { snapshotConfigNavScroll } from './configNavPersistence'
@@ -448,6 +450,9 @@ export function useConfigSave(args: {
       const needRuntimeReload =
         Boolean(initialConfig) &&
         configChangesNeedRuntimeReload(config, initialConfig!)
+      const needSpeechPipelineReload =
+        Boolean(initialConfig) &&
+        configChangesNeedSpeechPipelineReload(config, initialConfig!)
       const needWallpaperReload =
         Boolean(initialConfig) &&
         configChangesNeedWallpaperReload(config, initialConfig!)
@@ -499,6 +504,16 @@ export function useConfigSave(args: {
       }
       if (needPlatformsCachePurge) {
         clearLibraryDataCache()
+      }
+
+      if (needSpeechPipelineReload) {
+        invalidateSpeechStatusCache()
+        void import('../../../features/merope/speech/speechPipelineHost').then(
+          (m) => {
+            m.getSpeechPipeline().cancel()
+            void m.getSpeechPipeline().probe()
+          },
+        )
       }
 
       // Proxy / API mirrors: backend hot-reload only — no location.reload.

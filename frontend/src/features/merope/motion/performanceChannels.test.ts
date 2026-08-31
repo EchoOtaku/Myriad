@@ -72,7 +72,9 @@ test('a face-only plan does not take the singing body', () => {
       ],
     }),
   )
-  assert.deepEqual(channels, ['expression'])
+  // `think` drives eyeX/eyeY, so it owns gaze as well; what it must not take
+  // is the body the song is using.
+  assert.deepEqual(channels.sort(), ['expression', 'gaze'])
 })
 
 test('posture and body cues claim head/body without taking the mouth', () => {

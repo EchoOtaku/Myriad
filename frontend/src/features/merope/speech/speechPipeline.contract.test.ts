@@ -15,6 +15,7 @@ function source(relative: string): string {
 test('speech never reaches the run hub and never persists visemes', () => {
   // Behaviour: speech/ttsPlayer.test.ts, speech/ttsPipeline.test.ts.
   const host = source('./speechPipelineHost.ts')
+  assert.match(host, /persona_speech_enabled/)
   assert.doesNotMatch(host, /run_hub|AgentProgressEvent/)
   const trace = source('../turnTrace.ts')
   assert.doesNotMatch(trace, /run_hub/)

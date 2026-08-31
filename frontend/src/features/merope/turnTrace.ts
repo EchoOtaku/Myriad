@@ -8,6 +8,10 @@ export const TURN_TRACE_SPANS = [
   'input_final',
   'request_sent',
   'reaction_ready',
+  // A turn can act twice: the deterministic floor lands first, and the Lite
+  // refinement replaces it whenever it arrives at all. One span could not tell
+  // the two apart, so every plan looked like a reaction.
+  'performance_refined',
   'llm_first_token',
   'first_sentence',
   'tts_queued',

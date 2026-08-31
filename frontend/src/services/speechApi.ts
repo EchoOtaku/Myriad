@@ -172,6 +172,8 @@ export interface SpeechStatus {
   tts_enabled: boolean
   asr_enabled: boolean
   convo_enabled?: boolean
+  /** 人设开口朗读。缺省或 false 都不读。 */
+  persona_speech_enabled?: boolean
   error?: string
 }
 
@@ -262,6 +264,12 @@ export type SpeechAttributionHeaders = Record<string, string>
 
 let speechStatusCache: SpeechStatus | null = null
 let speechStatusInflight: Promise<SpeechStatus> | null = null
+
+/** Settings save: drop the cached /status so the next probe sees the new switch. */
+export function invalidateSpeechStatusCache(): void {
+  speechStatusCache = null
+  speechStatusInflight = null
+}
 
 /**
  * 获取语音服务状态。

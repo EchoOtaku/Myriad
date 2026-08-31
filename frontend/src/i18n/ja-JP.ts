@@ -1644,6 +1644,9 @@ export const jaJP: TranslationKeys = {
     agentPersonaDeleteConfirm:
       '今のペルソナを削除しますか？気分と日記も消えます。',
     agentPersonaDeleteFailed: 'ペルソナを削除できませんでした',
+    agentPersonaSpeech: '話す',
+    agentPersonaSpeechHint:
+      'オンにすると返信を音声で読みます。オフでも口は動きますが、声は出ません。既定はオフです。',
     enableProxy: 'ネットワークプロキシを有効化',
     enableProxyHint:
       '有効にすると、外部APIリクエストはプロキシ経由で送信されます',

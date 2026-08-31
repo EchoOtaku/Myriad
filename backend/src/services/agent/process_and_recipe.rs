@@ -584,6 +584,29 @@ impl Agent {
             crate::services::agent::merope::note_chat_diary(&self.db, user_id, &request.raw_input)
                 .await;
 
+            // Chat has no planner beat to react during, so the reaction comes
+            // from the deterministic floor and ships before the first token.
+            // Lite is not called here: the reply stream must not wait on it.
+            if let Some(mood) = mood_transition.clone() {
+                if let Some(reaction) = crate::services::agent::merope::local_directive(
+                    &motion_context(
+                        &request,
+                        user_id,
+                        crate::services::agent::merope::MotionPhase::Reaction,
+                        mood,
+                        round_motion_style.clone(),
+                        None,
+                        None,
+                    ),
+                ) {
+                    let _ = progress_tx
+                        .send(AgentProgressEvent::PerformancePlan {
+                            performance: reaction,
+                        })
+                        .await;
+                }
+            }
+
             let reply = match self
                 .stream_strict_lite_chat_response(&request, &progress_tx)
                 .await
@@ -2064,18 +2087,18 @@ async fn attach_motion_to_result(
     } else {
         crate::services::agent::merope::MotionPhase::Delivery
     };
-    let handle = spawn_motion_directive(
-        motion_context(
-            request,
-            request.user_id,
-            phase,
-            mood,
-            motion_style.to_string(),
-            Some(response.message.clone()),
-            task_success,
-        ),
-        progress_tx,
+    let context = motion_context(
+        request,
+        request.user_id,
+        phase,
+        mood,
+        motion_style.to_string(),
+        Some(response.message.clone()),
+        task_success,
     );
-    response.performance = handle.await.ok().flatten();
+    // The body carries the floor so a non-streaming client still gets acting;
+    // awaiting Lite here used to put its whole timeout in front of the reply.
+    response.performance = crate::services::agent::merope::local_directive(&context);
+    spawn_motion_directive(context, progress_tx);
     Ok(response)
 }

@@ -344,6 +344,8 @@ pub struct SpeechStatusResponse {
     pub tts_enabled: bool,
     pub asr_enabled: bool,
     pub convo_enabled: bool,
+    /// 人设开口朗读。人设未生效或开关关着时为 false。
+    pub persona_speech_enabled: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -909,12 +911,14 @@ pub async fn get_speech_status() -> impl IntoResponse {
     let probe = crate::services::speech_runtime::speech_probe().await;
     let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
     let convo_enabled = crate::services::agora_convo::convo_configured(&config);
+    let persona_speech_enabled = config.merope_speech_enabled_resolved();
     drop(config);
     Json(SpeechStatusResponse {
         available: probe.available || convo_enabled,
         tts_enabled: probe.tts_enabled,
         asr_enabled: probe.asr_enabled,
         convo_enabled,
+        persona_speech_enabled,
         provider: Some(probe.provider),
         error: probe.error,
     })

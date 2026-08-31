@@ -1,5 +1,9 @@
 import type { SpeechInterruptMode, SpeechSegment } from './speechSegmenter'
-import { getSpeechStatus, textToSpeech } from '../../../services/speechApi'
+import {
+  getSpeechStatus,
+  textToSpeech,
+  type SpeechStatus,
+} from '../../../services/speechApi'
 import { liveMotionGeneration } from '../motion/liveGeneration'
 import { dispatchMeropeSpeech } from '../speechEvents'
 import {
@@ -11,6 +15,18 @@ import { SpeechSegmenter } from './speechSegmenter'
 import { TtsPipeline } from './ttsPipeline'
 import { playTtsBuffer } from './ttsPlayer'
 import { patchVoicePresence } from './voicePresence'
+
+/** Map /api/speech/status onto the persona pipeline. Missing flag = off. */
+export function personaSpeechFlags(status: {
+  available: boolean
+  tts_enabled: boolean
+  persona_speech_enabled?: boolean
+}): { speechEnabled: boolean; ttsReady: boolean } {
+  return {
+    speechEnabled: Boolean(status.persona_speech_enabled),
+    ttsReady: Boolean(status.available && status.tts_enabled),
+  }
+}
 
 function audioFromBase64(base64: string): ArrayBuffer {
   const binary = atob(base64)
@@ -25,7 +41,9 @@ function audioFromBase64(base64: string): ArrayBuffer {
 export class SpeechPipelineHost {
   readonly pipeline: TtsPipeline
   private enabled = false
-  private probed = false
+  private wantsSpeech = false
+  private ttsReady = false
+  private statusEpoch = 0
   private cancelledAt: number | null = null
   private readonly fedMessageIds = new Set<string>()
 
@@ -39,17 +57,38 @@ export class SpeechPipelineHost {
   }
 
   get available(): boolean {
-    return this.enabled
+    return this.wantsSpeech && this.ttsReady
+  }
+
+  /** Owner opted the persona into speaking. Independent of TTS being ready. */
+  get speechEnabled(): boolean {
+    return this.wantsSpeech
+  }
+
+  applyStatus(status: Pick<
+    SpeechStatus,
+    'available' | 'tts_enabled' | 'persona_speech_enabled'
+  >): void {
+    this.statusEpoch += 1
+    const flags = personaSpeechFlags(status)
+    this.wantsSpeech = flags.speechEnabled
+    this.ttsReady = flags.ttsReady
+    this.enabled = flags.speechEnabled && flags.ttsReady
   }
 
   async probe(): Promise<boolean> {
-    if (this.probed) return this.enabled
-    this.probed = true
+    const epoch = this.statusEpoch
     try {
       const status = await getSpeechStatus()
-      this.enabled = Boolean(status.available && status.tts_enabled)
+      if (this.statusEpoch !== epoch) return this.enabled
+      this.applyStatus(status)
     } catch {
-      this.enabled = false
+      if (this.statusEpoch !== epoch) return this.enabled
+      this.applyStatus({
+        available: false,
+        tts_enabled: false,
+        persona_speech_enabled: false,
+      })
     }
     return this.enabled
   }

@@ -312,6 +312,23 @@ pub async fn build_public_http_client_via_proxy(
     Ok((parsed, client))
 }
 
+/// Names the failure mode without ever putting the URL, host or credential
+/// into the message — the string reaches sandboxed callers as payload.
+///
+/// One flattened string made every director drop look identical in the log
+/// while all of them were in fact the request timeout.
+fn body_read_error(error: reqwest::Error) -> String {
+    if error.is_timeout() {
+        "Response timed out".to_string()
+    } else if error.is_connect() {
+        "Connection closed while reading response".to_string()
+    } else if error.is_decode() {
+        "Failed to decode response".to_string()
+    } else {
+        "Failed to read response".to_string()
+    }
+}
+
 /// Read an HTTP body without ever buffering more than the declared limit.
 pub async fn read_limited_body(
     mut response: reqwest::Response,
@@ -325,11 +342,7 @@ pub async fn read_limited_body(
     }
     let mut body =
         Vec::with_capacity(response.content_length().unwrap_or(0).min(max_bytes as u64) as usize);
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|_| "Failed to read response".to_string())?
-    {
+    while let Some(chunk) = response.chunk().await.map_err(body_read_error)? {
         if body.len().saturating_add(chunk.len()) > max_bytes {
             return Err(format!("Response exceeds {max_bytes} bytes"));
         }

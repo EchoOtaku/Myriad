@@ -45,6 +45,7 @@ import {
   SettingsButton,
   SettingSection,
   SettingTitleTag,
+  SwitchItem,
   ToggleSwitch,
   useSettingGuide,
 } from '../settings'
@@ -360,6 +361,13 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
   const agentPersonaEnabled = useMemo(
     () =>
       uiConfigFields.find((field) => field.key === 'merope_enabled')
+        ?.value === 'true',
+    [uiConfigFields],
+  )
+
+  const agentPersonaSpeechEnabled = useMemo(
+    () =>
+      uiConfigFields.find((field) => field.key === 'merope_speech_enabled')
         ?.value === 'true',
     [uiConfigFields],
   )
@@ -1001,6 +1009,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
           }}
         >
         {meropeOn ? (
+          <>
           <InfoActionCard
             copyable={false}
             tone={!liteEnabled ? 'info' : 'default'}
@@ -1075,6 +1084,21 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               </p>
             )}
           </InfoActionCard>
+          <SwitchItem
+            itemKey="merope_speech_enabled"
+            label={t.config.agentPersonaSpeech}
+            description={t.config.agentPersonaSpeechHint}
+            {...bindGuide('ai.agentPersonaSpeech', g.ai.agentPersonaSpeech)}
+            value={agentPersonaSpeechEnabled}
+            onChange={(value) =>
+              updateUiFieldValue(
+                'merope_speech_enabled',
+                value ? 'true' : 'false',
+              )
+            }
+            layout="horizontal"
+          />
+          </>
         ) : null}
         </AgentNestedSection>
         <AgentOptionsPanel />

@@ -17,14 +17,18 @@ use serde_json::Value;
 
 use crate::models::entities::agent_persona;
 
+use super::motion_local::local_performance_plan;
 use super::store::get_persona;
 use super::MoodTransition;
 
-/// OpenRouter JSON-schema Lite never completed inside 1.4s in production
-/// (`Failed to read response` / connect error at ~1405ms). Chat Lite uses the
-/// analyzer default (120s) and succeeds; consciousness already budgets 4s/5s.
-const MOTION_TIMEOUT: Duration = Duration::from_secs(4);
-const MOTION_TOTAL_TIMEOUT: Duration = Duration::from_secs(5);
+/// At 4s/5s production dropped 196 of 217 director calls, every one of them
+/// sitting exactly on the request timeout; the two that returned took 4065ms
+/// and 7168ms. Lite is simply slower than that wall. Widening it is only safe
+/// because `local_performance_plan` now carries the round on its own: no
+/// caller waits on Lite for acting, so a long call costs nothing but arrives
+/// as a refinement or not at all.
+const MOTION_TIMEOUT: Duration = Duration::from_secs(9);
+const MOTION_TOTAL_TIMEOUT: Duration = Duration::from_secs(10);
 const MOTION_SCHEMA_NAME: &str = "merope_motion";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -172,7 +176,18 @@ pub async fn direct_motion(context: MotionContext) -> Option<PerformanceDirectiv
             None
         }
     };
-    let mut plan = lite_plan.unwrap_or_else(ChatPerformancePlan::default);
+    let refined_by_lite = lite_plan.is_some();
+    // Lite is a refinement. When it declines, times out or returns nothing the
+    // round still acts, from state the backend already holds.
+    let mut plan = lite_plan.unwrap_or_else(|| {
+        local_performance_plan(
+            context.phase,
+            &context.mood,
+            context.task_success,
+            context.response_text.as_deref(),
+            &context.motion_style,
+        )
+    });
     if let Some(state) = rig_state.as_ref() {
         plan = refine_performance_plan(plan, state);
     }
@@ -195,6 +210,7 @@ pub async fn direct_motion(context: MotionContext) -> Option<PerformanceDirectiv
     tracing::info!(
         phase,
         elapsed_ms,
+        source = if refined_by_lite { "lite" } else { "local" },
         requested = play_along_requested_cue(
             context.phase,
             &context.user_text,
@@ -203,6 +219,37 @@ pub async fn direct_motion(context: MotionContext) -> Option<PerformanceDirectiv
         .is_some(),
         "[MeropeMotion] plan ready"
     );
+    Some(PerformanceDirective {
+        phase: context.phase,
+        mood_revision: context.mood.revision,
+        plan,
+    })
+}
+
+/// The deterministic floor as a directive, with no network call and no await.
+///
+/// Chat plays this the moment the round starts so the character reacts before
+/// it speaks, and every response carries it so a non-streaming client still
+/// gets acting. The Lite refinement, when it lands, publishes over the run hub
+/// and replaces this.
+pub fn local_directive(context: &MotionContext) -> Option<PerformanceDirective> {
+    let rig_state = apply_round_motion_style(context.rig_state.clone(), &context.motion_style);
+    if face_is_hidden(rig_state.as_ref()) {
+        return None;
+    }
+    let mut plan = local_performance_plan(
+        context.phase,
+        &context.mood,
+        context.task_success,
+        context.response_text.as_deref(),
+        &context.motion_style,
+    );
+    if let Some(state) = rig_state.as_ref() {
+        plan = refine_performance_plan(plan, state);
+    }
+    if plan_is_empty(&plan) {
+        return None;
+    }
     Some(PerformanceDirective {
         phase: context.phase,
         mood_revision: context.mood.revision,
@@ -838,28 +885,65 @@ mod tests {
         );
     }
 
+    /// Chat may react instantly, but only from the local floor. A second Lite
+    /// call beside the reply stream would put the director's timeout back in
+    /// front of the first token.
     #[test]
-    fn streaming_chat_does_not_join_delivery_before_text_completes() {
+    fn streaming_chat_reacts_locally_and_never_joins_lite_before_text_completes() {
         let src = include_str!("../process_and_recipe.rs");
         assert!(src.contains("Streamed text completion must not wait on delivery motion"));
         assert!(src.contains("let performance = None;"));
         let chat = src
             .find("stream_strict_lite_chat_response")
             .expect("chat lite call");
-        let reaction = src
-            .find("MotionPhase::Reaction")
-            .expect("work reaction motion");
+        let local_reaction = src
+            .find("local_directive")
+            .expect("chat reacts from the local floor");
         assert!(
-            chat < reaction,
-            "Chat must not spawn reaction Lite beside the reply stream"
+            local_reaction < chat,
+            "Chat must react before the reply stream starts"
+        );
+        let spawned = src
+            .find("spawn_motion_directive")
+            .expect("director spawn site");
+        assert!(
+            chat < spawned,
+            "Chat must not spawn a Lite director beside the reply stream"
+        );
+    }
+
+    /// Production dropped 196 of 217 calls sitting exactly on the old 4s wall;
+    /// the two that returned took 4065ms and 7168ms. The budget is only allowed
+    /// to be this wide because no caller waits on it — see `local_directive`.
+    #[test]
+    fn motion_lite_budget_clears_the_observed_success_latency() {
+        assert!(MOTION_TIMEOUT >= Duration::from_secs(8));
+        assert!(MOTION_TOTAL_TIMEOUT > MOTION_TIMEOUT);
+        let src = include_str!("../process_and_recipe.rs");
+        assert!(
+            !src.contains("handle.await.ok().flatten()"),
+            "no request path may block on the director's budget"
         );
     }
 
     #[test]
-    fn motion_lite_timeout_is_wide_enough_for_openrouter_json() {
-        assert_eq!(MOTION_TIMEOUT, Duration::from_secs(4));
-        assert_eq!(MOTION_TOTAL_TIMEOUT, Duration::from_secs(5));
-        assert!(MOTION_TOTAL_TIMEOUT > MOTION_TIMEOUT);
+    fn a_dropped_lite_call_still_leaves_the_round_something_to_play() {
+        let plan = local_performance_plan(
+            MotionPhase::Delivery,
+            &MoodTransition {
+                before: 50.0,
+                after: 50.0,
+                band_before: "normal".to_string(),
+                band_after: "normal".to_string(),
+                delta: 0.0,
+                cause: "test".to_string(),
+                revision: 1,
+            },
+            None,
+            Some("已经好了。"),
+            "even",
+        );
+        assert!(!plan_is_empty(&plan));
     }
 
     #[test]

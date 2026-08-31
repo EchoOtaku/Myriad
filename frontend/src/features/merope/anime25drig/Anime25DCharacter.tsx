@@ -19,7 +19,11 @@ import {
 } from 'react'
 import { activityExpressionDriverPatch } from './expressionPresets'
 import { PerformanceDirectiveGate } from './performanceExpression'
-import { idleSpeechDriverPatch } from './performanceMotion'
+import {
+  baselineDriverPatch,
+  idleSpeechDriverPatch,
+  restEnergyDriverPatch,
+} from './performanceMotion'
 import { Anime25DPlayer } from './player'
 import { shouldAnimateAnime25D } from './runtimePolicy'
 import {
@@ -187,12 +191,21 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         }
         if (directive.plan.baseline) {
           baselineRef.current = directive.plan.baseline
+          // motionEnergy had no path to the rig at all: the only function that
+          // read it was reachable from nothing. A director that judges the
+          // persona should be more open still moved the same hair.
+          playerRef.current?.setTarget(
+            baselineDriverPatch(directive.plan.baseline),
+          )
         }
         performanceRef.current = { directive, startedAtMs: directiveStartedAt }
         return true
       },
       stopMotionPlan() {
         playerRef.current?.stopPerformance()
+        if (baselineRef.current) {
+          playerRef.current?.setTarget(restEnergyDriverPatch())
+        }
         baselineRef.current = null
         performanceRef.current = null
         performanceGateRef.current.reset()

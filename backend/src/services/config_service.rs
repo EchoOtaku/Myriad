@@ -487,6 +487,12 @@ impl ConfigService {
                 .or_else(|| v.as_str().map(|s| s == "true" || s == "1"))
                 .unwrap_or(config.merope_enabled);
         }
+        if let Some(v) = map.get("merope_speech_enabled") {
+            config.merope_speech_enabled = v
+                .as_bool()
+                .or_else(|| v.as_str().map(|s| s == "true" || s == "1"))
+                .unwrap_or(config.merope_speech_enabled);
+        }
         if let Some(v) = map.get("agent_rig_asset_id") {
             config.agent_rig_asset_id = v
                 .as_str()
@@ -1258,6 +1264,30 @@ mod tests {
     }
 
     #[test]
+    fn parses_merope_speech_flag_from_database_config() {
+        let on = ConfigService::parse_config(HashMap::from([(
+            "merope_speech_enabled".into(),
+            json!(true),
+        )]));
+        assert!(on.merope_speech_enabled);
+
+        let from_str = ConfigService::parse_config(HashMap::from([(
+            "merope_speech_enabled".into(),
+            json!("true"),
+        )]));
+        assert!(from_str.merope_speech_enabled);
+
+        let off = ConfigService::parse_config(HashMap::from([(
+            "merope_speech_enabled".into(),
+            json!(false),
+        )]));
+        assert!(!off.merope_speech_enabled);
+
+        let missing = ConfigService::parse_config(HashMap::new());
+        assert!(!missing.merope_speech_enabled);
+    }
+
+    #[test]
     fn parses_agent_rig_asset_id_from_database_config() {
         let hex = "a".repeat(64);
         let on = ConfigService::parse_config(HashMap::from([(
@@ -1384,6 +1414,41 @@ mod tests {
         );
         assert!(!with_tiers.merope_needs_lite());
         assert!(!with_tiers.merope_needs_pro());
+    }
+
+    #[test]
+    fn merope_speech_stays_off_unless_persona_is_on() {
+        let speech_off = DynamicConfig {
+            merope_enabled: true,
+            merope_speech_enabled: false,
+            pro_enabled: true,
+            ..DynamicConfig::default()
+        };
+        assert!(!speech_off.merope_speech_enabled_resolved());
+
+        let speech_on = DynamicConfig {
+            merope_enabled: true,
+            merope_speech_enabled: true,
+            pro_enabled: true,
+            ..DynamicConfig::default()
+        };
+        assert!(speech_on.merope_speech_enabled_resolved());
+
+        let persona_off = DynamicConfig {
+            merope_enabled: false,
+            merope_speech_enabled: true,
+            pro_enabled: true,
+            ..DynamicConfig::default()
+        };
+        assert!(!persona_off.merope_speech_enabled_resolved());
+
+        let no_pro = DynamicConfig {
+            merope_enabled: true,
+            merope_speech_enabled: true,
+            pro_enabled: false,
+            ..DynamicConfig::default()
+        };
+        assert!(!no_pro.merope_speech_enabled_resolved());
     }
 
     #[test]

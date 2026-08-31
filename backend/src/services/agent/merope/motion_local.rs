@@ -1,0 +1,294 @@
+//! Deterministic acting floor.
+//!
+//! Lite refines a performance; it must never be the only thing able to produce
+//! one. Production shows why: of 217 director calls only 2 returned a plan, and
+//! every failure sat on the request timeout. So every round also renders a plan
+//! from state the backend already holds — mood band, phase, activity, task
+//! outcome, motion style — with no network call and no latency. `direct_motion`
+//! falls back to this whenever Lite is unavailable, slow or invalid, and the
+//! Chat path plays it as an immediate reaction while the reply is still
+//! streaming.
+//!
+//! Amplitudes stay in the readable band the client uses for ambient action.
+//! A floor nobody can see is the same as no floor.
+
+use myriad_merope::{ChatPerformanceBaseline, ChatPerformanceCue, ChatPerformancePlan};
+
+use super::state::MoodTransition;
+use super::MotionPhase;
+
+/// Mood moves smaller than this are noise, not a change of bearing.
+const MOOD_NUDGE: f64 = 8.0;
+
+const EXPRESSION_LADDER: [&str; 4] = ["withdrawn", "subdued", "steady", "warm"];
+
+pub fn local_performance_plan(
+    phase: MotionPhase,
+    mood: &MoodTransition,
+    task_success: Option<bool>,
+    response_text: Option<&str>,
+    motion_style: &str,
+) -> ChatPerformancePlan {
+    let baseline = local_baseline(phase, mood, motion_style);
+    let cues = local_cue(phase, task_success, response_text, &baseline)
+        .into_iter()
+        .collect();
+    ChatPerformancePlan {
+        baseline: Some(baseline),
+        cues,
+    }
+}
+
+fn local_baseline(
+    phase: MotionPhase,
+    mood: &MoodTransition,
+    motion_style: &str,
+) -> ChatPerformanceBaseline {
+    ChatPerformanceBaseline {
+        expression: baseline_expression(&mood.band_after, mood.delta).to_string(),
+        posture: baseline_posture(motion_style, &mood.band_after).to_string(),
+        motion_energy: baseline_energy(motion_style, &mood.band_after),
+        attention: phase_attention(phase),
+    }
+}
+
+/// Band sets the rung; a decisive swing this round moves it one step.
+fn baseline_expression(band: &str, delta: f64) -> &'static str {
+    let rung = match band {
+        "floor" => 0i32,
+        "low" => 1,
+        "high" => 3,
+        _ => 2,
+    };
+    let step = if delta >= MOOD_NUDGE {
+        1
+    } else if delta <= -MOOD_NUDGE {
+        -1
+    } else {
+        0
+    };
+    EXPRESSION_LADDER[(rung + step).clamp(0, 3) as usize]
+}
+
+fn baseline_posture(motion_style: &str, band: &str) -> &'static str {
+    if band == "floor" {
+        return "closed";
+    }
+    match motion_style {
+        "restrained" => "closed",
+        "open" => "open",
+        _ if band == "high" => "open",
+        _ => "neutral",
+    }
+}
+
+fn baseline_energy(motion_style: &str, band: &str) -> f32 {
+    let style: f32 = match motion_style {
+        "restrained" => 0.6,
+        "open" => 1.2,
+        _ => 0.9,
+    };
+    let band_scale: f32 = match band {
+        "floor" => 0.85,
+        "low" => 0.92,
+        "high" => 1.12,
+        _ => 1.0,
+    };
+    (style * band_scale).clamp(0.2, 1.4)
+}
+
+/// How much of the face the round is willing to spend on the user right now.
+fn phase_attention(phase: MotionPhase) -> f32 {
+    match phase {
+        MotionPhase::Reaction => 0.9,
+        MotionPhase::Delivery => 0.72,
+        MotionPhase::Outcome => 0.6,
+        MotionPhase::Proactive => 0.55,
+        MotionPhase::Mood => 0.4,
+    }
+}
+
+/// One beat per phase. A mood shift is a change of bearing, not an event, so it
+/// moves the baseline and plays nothing.
+fn local_cue(
+    phase: MotionPhase,
+    task_success: Option<bool>,
+    response_text: Option<&str>,
+    baseline: &ChatPerformanceBaseline,
+) -> Option<ChatPerformanceCue> {
+    let intent = match phase {
+        MotionPhase::Reaction => "listen",
+        MotionPhase::Delivery => {
+            if reply_asks_back(response_text) {
+                "question"
+            } else {
+                "respond"
+            }
+        }
+        MotionPhase::Outcome => match task_success {
+            Some(true) => "delight",
+            _ => "respond",
+        },
+        MotionPhase::Proactive => "notify",
+        MotionPhase::Mood => return None,
+    };
+    let energy = baseline.motion_energy;
+    let (fade_in_ms, fade_out_ms) = match intent {
+        "listen" => (220, 420),
+        "question" => (140, 320),
+        "delight" => (120, 420),
+        "notify" => (110, 300),
+        _ => (160, 340),
+    };
+    Some(ChatPerformanceCue {
+        intent: intent.to_string(),
+        at_ms: 0,
+        intensity: (0.55 + energy * 0.45).clamp(0.5, 1.35),
+        tempo: (0.8 + energy * 0.3).clamp(0.6, 1.4),
+        fade_in_ms,
+        fade_out_ms,
+        // The floor never stomps acting that is already richer than it.
+        interrupt: "if-lower".to_string(),
+    })
+}
+
+fn reply_asks_back(response_text: Option<&str>) -> bool {
+    response_text
+        .map(str::trim_end)
+        .and_then(|text| text.chars().next_back())
+        .is_some_and(|last| last == '?' || last == '？')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use myriad_merope::{
+        plan_is_empty, PERFORMANCE_BASELINE_EXPRESSIONS, PERFORMANCE_CUE_INTENTS,
+        PERFORMANCE_INTERRUPT_MODES, PERFORMANCE_POSTURES,
+    };
+
+    fn mood(band: &str, delta: f64) -> MoodTransition {
+        MoodTransition {
+            before: 50.0,
+            after: 50.0 + delta,
+            band_before: "normal".to_string(),
+            band_after: band.to_string(),
+            delta,
+            cause: "test".to_string(),
+            revision: 1,
+        }
+    }
+
+    #[test]
+    fn every_phase_but_mood_renders_a_playable_plan() {
+        for phase in [
+            MotionPhase::Reaction,
+            MotionPhase::Delivery,
+            MotionPhase::Outcome,
+            MotionPhase::Proactive,
+        ] {
+            for style in ["restrained", "even", "open"] {
+                for band in ["floor", "low", "normal", "high"] {
+                    let plan =
+                        local_performance_plan(phase, &mood(band, 0.0), Some(true), None, style);
+                    assert!(!plan_is_empty(&plan), "{phase:?}/{style}/{band} was empty");
+                    assert_eq!(plan.cues.len(), 1);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_mood_shift_moves_the_baseline_without_playing_a_beat() {
+        let plan = local_performance_plan(MotionPhase::Mood, &mood("high", 12.0), None, None, "even");
+        assert!(plan.cues.is_empty());
+        assert_eq!(plan.baseline.unwrap().expression, "warm");
+    }
+
+    /// A local plan that the contract would reject is worse than no floor.
+    #[test]
+    fn the_floor_only_emits_contract_vocabulary() {
+        for phase in [
+            MotionPhase::Reaction,
+            MotionPhase::Delivery,
+            MotionPhase::Outcome,
+            MotionPhase::Proactive,
+            MotionPhase::Mood,
+        ] {
+            for style in ["restrained", "even", "open", "nonsense"] {
+                for band in ["floor", "low", "normal", "high", "nonsense"] {
+                    for delta in [-20.0, 0.0, 20.0] {
+                        let plan = local_performance_plan(
+                            phase,
+                            &mood(band, delta),
+                            Some(false),
+                            Some("好的？"),
+                            style,
+                        );
+                        let baseline = plan.baseline.expect("floor always sets a baseline");
+                        assert!(PERFORMANCE_BASELINE_EXPRESSIONS
+                            .contains(&baseline.expression.as_str()));
+                        assert!(PERFORMANCE_POSTURES.contains(&baseline.posture.as_str()));
+                        assert!((0.2..=1.4).contains(&baseline.motion_energy));
+                        assert!((0.0..=1.0).contains(&baseline.attention));
+                        for cue in &plan.cues {
+                            assert!(PERFORMANCE_CUE_INTENTS.contains(&cue.intent.as_str()));
+                            assert!(PERFORMANCE_INTERRUPT_MODES.contains(&cue.interrupt.as_str()));
+                            assert!(cue.intensity.is_finite() && cue.tempo.is_finite());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_reply_that_asks_back_answers_with_a_question_beat() {
+        let asking = local_performance_plan(
+            MotionPhase::Delivery,
+            &mood("normal", 0.0),
+            None,
+            Some("你想先看哪一份？"),
+            "even",
+        );
+        assert_eq!(asking.cues[0].intent, "question");
+        let telling = local_performance_plan(
+            MotionPhase::Delivery,
+            &mood("normal", 0.0),
+            None,
+            Some("已经改好了。"),
+            "even",
+        );
+        assert_eq!(telling.cues[0].intent, "respond");
+    }
+
+    #[test]
+    fn a_failed_task_does_not_celebrate() {
+        let failed = local_performance_plan(
+            MotionPhase::Outcome,
+            &mood("low", -12.0),
+            Some(false),
+            None,
+            "even",
+        );
+        assert_eq!(failed.cues[0].intent, "respond");
+        assert_eq!(failed.baseline.unwrap().expression, "withdrawn");
+        let done = local_performance_plan(
+            MotionPhase::Outcome,
+            &mood("high", 12.0),
+            Some(true),
+            None,
+            "even",
+        );
+        assert_eq!(done.cues[0].intent, "delight");
+    }
+
+    #[test]
+    fn a_restrained_persona_stays_restrained_when_the_mood_is_high() {
+        let plan =
+            local_performance_plan(MotionPhase::Delivery, &mood("high", 0.0), None, None, "restrained");
+        let baseline = plan.baseline.unwrap();
+        assert_eq!(baseline.posture, "closed");
+        assert!(baseline.motion_energy < 0.8);
+    }
+}

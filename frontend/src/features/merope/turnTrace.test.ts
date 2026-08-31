@@ -38,7 +38,7 @@ test('pending input stamps attach to the next turn without using the run hub', (
   assert.ok(snap.delays.llmFirstTokenMs >= 0)
   assert.equal(snap.delays.firstAudioMs, 0)
   assert.equal(snap.delays.requestToFirstAudioMs, 0)
-  assert.equal(TURN_TRACE_SPANS.length, 12)
+  assert.equal(TURN_TRACE_SPANS.length, 13)
 })
 
 test('an abandoned recording does not inflate the next turn asrMs', async () => {

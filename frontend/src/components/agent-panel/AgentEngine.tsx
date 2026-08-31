@@ -992,7 +992,16 @@ export const AgentEngine: React.FC = () => {
 
           case 'performance_plan': {
             const performanceEvent = event as PerformancePlanEvent
-            markTurnTraceOnce('reaction_ready')
+            // Chat's floor arrives as `reaction`; whatever the director sends
+            // afterwards is the refinement. Marking both as reaction_ready made
+            // a 4s Lite delivery indistinguishable from an instant one.
+            const performancePhase = performanceEvent.performance.phase
+            markTurnTraceOnce('reaction_ready', { phase: performancePhase })
+            if (performancePhase !== 'reaction') {
+              markTurnTraceOnce('performance_refined', {
+                phase: performancePhase,
+              })
+            }
             deliverGatedLine(agentFace, faceSpeechGate, mode, {
               messageId: assistantMessageId,
               performance: performanceEvent.performance,

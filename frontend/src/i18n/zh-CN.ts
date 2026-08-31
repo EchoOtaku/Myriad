@@ -1558,6 +1558,9 @@ export const zhCN: TranslationKeys = {
     agentPersonaDeleteConfirm:
       '确定删除现在的性格设定？心情和日记也会一起清掉。',
     agentPersonaDeleteFailed: '删除人设失败',
+    agentPersonaSpeech: '说话',
+    agentPersonaSpeechHint:
+      '打开后聊天回复会读出来。关上只动嘴、不播语音。默认关。',
     enableProxy: '启用网络代理',
     enableProxyHint: '开启后将使用代理访问外部API',
     proxyUrl: '代理地址',

@@ -1664,6 +1664,9 @@ export const enUS: TranslationKeys = {
     agentPersonaDeleteConfirm:
       'Delete the current persona? Mood and diary will be cleared too.',
     agentPersonaDeleteFailed: 'Could not delete the persona',
+    agentPersonaSpeech: 'Speak',
+    agentPersonaSpeechHint:
+      'When on, chat replies are spoken aloud. Off: the face still mouths the line, with no voice. Off by default.',
     enableProxy: 'Enable Network Proxy',
     enableProxyHint:
       'External API requests will be sent through the proxy when enabled',

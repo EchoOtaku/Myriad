@@ -1402,6 +1402,8 @@ export interface TranslationKeys {
     agentPersonaDelete: string
     agentPersonaDeleteConfirm: string
     agentPersonaDeleteFailed: string
+    agentPersonaSpeech: string
+    agentPersonaSpeechHint: string
     enableProxy: string
     enableProxyHint: string
     proxyUrl: string

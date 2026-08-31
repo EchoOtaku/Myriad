@@ -4,6 +4,7 @@ pub mod chat_remember;
 pub mod gates;
 pub mod ingest;
 pub mod motion;
+pub mod motion_local;
 pub mod onboarding_ai;
 pub mod onboarding_prompts;
 pub mod report_dna;
@@ -16,7 +17,8 @@ pub use ingest::{
     allow_existing_notify, is_enabled, spawn as spawn_ingest, spawn_diary, spawn_presence,
 };
 pub use motion::{
-    direct_motion, resolve_round_motion_style, MotionContext, MotionPhase, PerformanceDirective,
+    direct_motion, local_directive, resolve_round_motion_style, MotionContext, MotionPhase,
+    PerformanceDirective,
 };
 pub use myriad_merope::RigStateSummary;
 pub use store::{

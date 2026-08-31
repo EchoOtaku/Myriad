@@ -7,9 +7,16 @@ import { cueDriverPatch } from '../anime25drig/performanceMotion'
 
 const HEAD_BODY_KEYS = ['body', 'armY', 'armPos'] as const
 
+/** Cues whose expression offset drives the eyes away from where they look. */
+const GAZE_INTENTS = new Set<PerformanceCue['intent']>(['think'])
+
 export function cueOccupiesHeadBody(cue: PerformanceCue): boolean {
   const patch = cueDriverPatch(cue)
   return HEAD_BODY_KEYS.some((key) => typeof patch[key] === 'number')
+}
+
+export function cueOccupiesGaze(cue: PerformanceCue): boolean {
+  return GAZE_INTENTS.has(cue.intent)
 }
 
 /**
@@ -26,6 +33,8 @@ export function performanceOccupiedChannels(
   for (const cue of directive.plan.cues) {
     channels.add('expression')
     if (cueOccupiesHeadBody(cue)) channels.add('headBody')
+    // `think` writes eyeX/eyeY; it was moving the eyes without owning gaze.
+    if (cueOccupiesGaze(cue)) channels.add('gaze')
   }
   return [...channels]
 }

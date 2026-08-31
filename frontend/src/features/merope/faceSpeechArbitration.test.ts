@@ -19,6 +19,23 @@ import {
   setLiveBody,
 } from './faceSpeechArbitration'
 import { setLiveFaceVisible } from './faceVisible'
+import { getSpeechPipeline } from './speech/speechPipelineHost'
+
+function enablePersonaSpeech(tts = false): void {
+  getSpeechPipeline().applyStatus({
+    available: true,
+    tts_enabled: tts,
+    persona_speech_enabled: true,
+  })
+}
+
+function disablePersonaSpeech(): void {
+  getSpeechPipeline().applyStatus({
+    available: true,
+    tts_enabled: true,
+    persona_speech_enabled: false,
+  })
+}
 
 class RecordingSink implements AgentFaceSink {
   readonly speechEvents: MeropeSpeechEventDetail[] = []
@@ -169,6 +186,7 @@ test('notification-center Work completion is recorded, not spoken, while Chat is
 })
 
 test('Chat start then engine cancel releases occupancy so visible Work may speak', () => {
+  enablePersonaSpeech()
   setLiveFaceVisible(true)
   const sink = new RecordingSink()
   const channel = new AgentFaceChannel(sink)
@@ -250,6 +268,7 @@ test('hidden face records a line instead of pretending it was spoken', () => {
 })
 
 test('a live body is the app-layer outlet for a finished line', () => {
+  enablePersonaSpeech()
   setLiveFaceVisible(true)
   const intended: BodyIntent[] = []
   const body: BodyAdapter = {
@@ -307,6 +326,7 @@ test('a live body is the app-layer outlet for a finished line', () => {
 })
 
 test('Work completion still speaks when Chat is not talking and Work is visible', () => {
+  enablePersonaSpeech()
   setLiveFaceVisible(true)
   const sink = new RecordingSink()
   const channel = new AgentFaceChannel(sink)
@@ -322,4 +342,43 @@ test('Work completion still speaks when Chat is not talking and Work is visible'
     sink.utterances.map((item) => [item.messageId, item.text]),
     [['work-msg', '报告已经写好了']],
   )
+})
+
+test('persona speech switch off still mouths the line without TTS', () => {
+  disablePersonaSpeech()
+  assert.equal(getSpeechPipeline().available, false)
+  setLiveFaceVisible(true)
+  const intended: BodyIntent[] = []
+  const body: BodyAdapter = {
+    capabilities: () => ({ semantic: [] }),
+    state: () => ({
+      expression: 'steady',
+      posture: 'neutral',
+      acting: null,
+      speaking: false,
+      faceVisible: true,
+      capabilities: [],
+    }),
+    intend: (intent) => {
+      intended.push(intent)
+    },
+  }
+  setLiveBody(body)
+  try {
+    const sink = new RecordingSink()
+    const channel = new AgentFaceChannel(sink)
+    const gate = new FaceSpeechGate(() => 'chat')
+    const spoken = deliverGatedLine(channel, gate, 'chat', {
+      messageId: 'chat-msg',
+      text: '这句只动嘴',
+    })
+    assert.equal(spoken.surface, 'speech')
+    assert.equal(intended[0]?.speechText, '这句只动嘴')
+    assert.deepEqual(
+      sink.utterances.map((item) => [item.messageId, item.text]),
+      [['chat-msg', '这句只动嘴']],
+    )
+  } finally {
+    setLiveBody(null)
+  }
 })
