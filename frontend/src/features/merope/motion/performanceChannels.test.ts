@@ -30,7 +30,7 @@ test('a baseline-only plan does not exclusive-claim expression', () => {
   assert.deepEqual(performanceOccupiedChannels(directive()), [])
 })
 
-test('think does not occupy head/body; greet does', () => {
+test('head motion claims head/body for both think and greet', () => {
   assert.equal(
     cueOccupiesHeadBody({
       intent: 'think',
@@ -41,7 +41,7 @@ test('think does not occupy head/body; greet does', () => {
       fadeOutMs: 120,
       interrupt: 'replace',
     }),
-    false,
+    true,
   )
   assert.equal(
     cueOccupiesHeadBody({
@@ -57,7 +57,7 @@ test('think does not occupy head/body; greet does', () => {
   )
 })
 
-test('a face-only plan does not take the singing body', () => {
+test('a thinking head tilt temporarily owns the coarse head/body channel', () => {
   const channels = performanceOccupiedChannels(
     directive({
       cues: [
@@ -73,13 +73,15 @@ test('a face-only plan does not take the singing body', () => {
       ],
     }),
   )
-  // `think` drives eyeX/eyeY, so it owns gaze as well; what it must not take
-  // is the body the song is using.
-  assert.deepEqual(channels.sort(), ['expression', 'gaze'])
+  // The resource declaration is precise (`body.head`), while the current
+  // compatibility channel still groups head and torso together.
+  assert.deepEqual(channels.sort(), ['expression', 'gaze', 'headBody'])
 })
 
 test('every stylized cue that moves the eye axes claims gaze', () => {
-  const cue = (intent: PerformanceDirective['plan']['cues'][number]['intent']) =>
+  const cue = (
+    intent: PerformanceDirective['plan']['cues'][number]['intent'],
+  ) =>
     cueOccupiesGaze({
       intent,
       atMs: 0,
@@ -90,7 +92,12 @@ test('every stylized cue that moves the eye axes claims gaze', () => {
       interrupt: 'replace',
     })
 
-  for (const intent of ['think', 'speechless', 'maniac', 'lovestruck'] as const) {
+  for (const intent of [
+    'think',
+    'speechless',
+    'maniac',
+    'lovestruck',
+  ] as const) {
     assert.equal(cue(intent), true, intent)
   }
   for (const intent of ['angry', 'silly'] as const) {

@@ -504,13 +504,13 @@ const POSTURE_INDEX: &[(&str, &str)] = &[
 
 const CUE_INDEX: &[(&str, &str, &str)] = &[
     ("greet", "打招呼、点头致意", "head-body"),
-    ("respond", "接住对方刚说的话", ""),
+    ("respond", "接住对方刚说的话", "head-body"),
     ("question", "疑惑、反问、没听清", "head-body"),
     ("delight", "开心、被逗到、事情顺利", "head-body"),
     ("emphasize", "加重、认真说一句", "head-body"),
-    ("listen", "在听、等对方说完", ""),
+    ("listen", "在听、等对方说完", "head-body"),
     ("notify", "提醒、告知一件事", "head-body"),
-    ("think", "在想、回忆、斟酌", ""),
+    ("think", "在想、回忆、斟酌", "head-body"),
     (
         "dizzy",
         "晕、转、过载。人设会晕或过载时用，不必等台词说「我晕了」",
