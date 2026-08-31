@@ -58,6 +58,7 @@ pub async fn consider_event(
     match pre_gate(event, &snapshot) {
         ConsciousnessGate::Drop => return Ok(None),
         ConsciousnessGate::RememberOnly => {
+            record_attention(event, &event.summary);
             return Ok(Some(Consideration {
                 decision: ConsciousnessDecision {
                     action: ConsciousnessAction::Remember,
@@ -212,7 +213,23 @@ pub async fn consider_event(
         None
     };
 
+    let inner = decision
+        .memory
+        .clone()
+        .or_else(|| decision.speech.clone())
+        .unwrap_or_else(|| event.summary.clone());
+    record_attention(event, &inner);
     Ok(Some(Consideration { decision, intent }))
+}
+
+fn record_attention(event: &ConsciousnessEvent, inner: &str) {
+    super::touch_attention(
+        event.addressee_user_id,
+        &event.kind,
+        inner,
+        &event.id,
+        Utc::now(),
+    );
 }
 
 pub fn is_work_outcome(kind: &str) -> bool {
@@ -242,7 +259,7 @@ self.remembered 是已为这个人留下的人设记忆。不要把同义事实�
 只选一个动作：
 - ignore：不值得处理；可选字段全 null。不要把流水再写成记忆。
 - remember：只把一句新的短事实放进人设记忆，不要写办事教训或设定正文。
-- speak：现在值得主动说才用；speech 必须符合人设、对着说话对象。可附带 memory，memory 不能替代 speech。
+- speak：现在值得主动说才用；speech 是想说的意思，不要写成句。可附带 memory，memory 不能替代 speech。
 - ask：缺一个关键事实才用；question 只问一句。可附带 memory，不能替代 question。
 - propose_work：确实值得行动才用。只是等人接受的自然语言提案，不是执行授权；不得选工具、参数或权限。source_event_id 必须原样复制 event.id。memory 必须为 null。
 
@@ -320,6 +337,7 @@ mod tests {
             remembered: vec![],
             captured_at: Utc::now(),
             live: Default::default(),
+            attention: None,
         }
     }
 
@@ -363,6 +381,21 @@ mod tests {
         assert!(prompt.contains("memory 不能替代 speech"));
         assert!(prompt.contains("不能替代 question"));
         assert!(prompt.contains("memory 必须为 null"));
+        assert!(prompt.contains("想说的意思"));
+        assert!(prompt.contains("不要写成句"));
+    }
+
+    #[test]
+    fn consciousness_action_stays_five_variants() {
+        let src = include_str!("types.rs");
+        let prod = src.split("#[cfg(test)]").next().unwrap();
+        assert!(prod.contains("Ignore,"));
+        assert!(prod.contains("Remember,"));
+        assert!(prod.contains("Speak,"));
+        assert!(prod.contains("ProposeWork,"));
+        assert!(prod.contains("Ask,"));
+        assert!(!prod.contains("Enqueue"));
+        assert!(!prod.contains("Redeem"));
     }
 
     #[test]

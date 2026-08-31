@@ -48,5 +48,6 @@ pub async fn capture_self_snapshot(
         remembered,
         captured_at: Utc::now(),
         live: super::presence::last_live_presence(user_id),
+        attention: super::attention::last_attention(user_id),
     })
 }

@@ -112,6 +112,7 @@ mod tests {
             remembered: vec![],
             captured_at: Utc::now(),
             live: Default::default(),
+            attention: None,
         }
     }
 
