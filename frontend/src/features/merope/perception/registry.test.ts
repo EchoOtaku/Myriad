@@ -68,7 +68,7 @@ test('expired snapshots disappear', () => {
   assert.equal(registry.active(now + 50).length, 0)
 })
 
-test('kind order is page, pointer, music, voice, presence, screen', () => {
+test('kind order is page, pointer, surface, music, voice, presence, screen', () => {
   const registry = new PerceptionRegistry()
   const later = Date.now() + 5_000
   registry.replace({

@@ -37,6 +37,7 @@ import { useNotificationCenter } from '../hooks/useNotificationCenter'
 import { useNotificationPreferences } from '../hooks/useNotificationPreferences'
 import { usePerformanceProfile } from '../hooks/usePerformanceProfile'
 import { useWallpaper } from '../hooks/useWallpaper'
+import { setForegroundSurface } from '../features/merope/perception/surface'
 import { getDynamicContentProvider } from '../services/DynamicContentProvider'
 import {
   notificationSourceFor,
@@ -1275,6 +1276,7 @@ const GlobalControlPanel: React.FC = () => {
     // 会被 handleTogglePanel 误判成再关一次，面板打不开。
     isExpandedRef.current = false
     dispatchPanel({ type: 'close' })
+    setForegroundSurface('none')
   }, [])
 
   const handleTogglePanel = useCallback(
@@ -1283,6 +1285,9 @@ const GlobalControlPanel: React.FC = () => {
         handleClosePanel()
       } else {
         expandPanel(tab)
+        setForegroundSurface(
+          tab === 'notifications' ? 'notification' : 'control_panel',
+        )
         void import('../utils/analyticsEvents').then(
           ({ trackProductEvent, AnalyticsEvents }) => {
             trackProductEvent(AnalyticsEvents.CONTROL_PANEL_OPEN, {
@@ -1792,8 +1797,10 @@ const GlobalControlPanel: React.FC = () => {
                   role="tab"
                   aria-selected={panelTab === 'control'}
                   className={`notif-tab ${panelTab === 'control' ? 'active' : ''}`}
-                  onClick={() =>
-                    dispatchPanel({ type: 'selectTab', tab: 'control' })}
+                  onClick={() => {
+                    dispatchPanel({ type: 'selectTab', tab: 'control' })
+                    setForegroundSurface('control_panel')
+                  }}
                 >
                   {t.notificationCenter.tabControl}
                 </button>
@@ -1804,6 +1811,7 @@ const GlobalControlPanel: React.FC = () => {
                   className={`notif-tab ${panelTab === 'notifications' ? 'active' : ''}`}
                   onClick={() => {
                     dispatchPanel({ type: 'selectTab', tab: 'notifications' })
+                    setForegroundSurface('notification')
                     void import('../utils/analyticsEvents').then(
                       ({ trackProductEvent, AnalyticsEvents }) => {
                         trackProductEvent(AnalyticsEvents.NOTIFICATION_OPEN, {

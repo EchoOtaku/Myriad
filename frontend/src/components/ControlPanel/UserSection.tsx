@@ -14,6 +14,7 @@ import { lockScroll } from '../../utils/scrollLock'
 import { clearAllUserCache } from '../../utils/userInfoCache'
 import { Avatar } from '../Avatar'
 import LoginForm from '../LoginForm'
+import { setForegroundSurface } from '../../features/merope/perception/surface'
 import { UserModal } from './UserModal'
 
 interface UserInfo {
@@ -135,6 +136,7 @@ export const UserSection: React.FC<UserSectionProps> = memo(
       }
       if (modalState === 'closed') {
         setModalState('mounting')
+        setForegroundSurface('user_modal')
         void import('../../utils/analyticsEvents').then(
           ({ trackProductEvent, AnalyticsEvents }) => {
             trackProductEvent(AnalyticsEvents.USER_MODAL_OPEN, {
@@ -149,6 +151,7 @@ export const UserSection: React.FC<UserSectionProps> = memo(
     const closeModal = useCallback(() => {
       if (modalState === 'visible' || modalState === 'mounting') {
         setModalState('closing')
+        setForegroundSurface('control_panel')
       }
     }, [modalState])
 

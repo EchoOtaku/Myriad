@@ -1,6 +1,7 @@
 export type PerceptionKind =
   | 'page'
   | 'pointer'
+  | 'surface'
   | 'music'
   | 'voice'
   | 'presence'
@@ -20,9 +21,10 @@ export interface PerceptionSnapshot {
   privacy: PerceptionPrivacy
 }
 
-const KINDS: readonly PerceptionKind[] = [
+export const KINDS: readonly PerceptionKind[] = [
   'page',
   'pointer',
+  'surface',
   'music',
   'voice',
   'presence',
