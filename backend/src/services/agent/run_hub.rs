@@ -434,7 +434,7 @@ WHERE namespace = $1 AND runtime_id = $2
                     success,
                     response,
                 } => {
-                    notify = true;
+                    notify = !super::turn::is_chat_turn_completion(response);
                     if !task_id.is_empty() {
                         state.task_id = Some(task_id.clone());
                     }

@@ -2,6 +2,7 @@ import type { PerformanceDirective } from '../../../services/agent/types'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  cueOccupiesGaze,
   cueOccupiesHeadBody,
   performanceOccupiedChannels,
 } from './performanceChannels'
@@ -75,6 +76,26 @@ test('a face-only plan does not take the singing body', () => {
   // `think` drives eyeX/eyeY, so it owns gaze as well; what it must not take
   // is the body the song is using.
   assert.deepEqual(channels.sort(), ['expression', 'gaze'])
+})
+
+test('every stylized cue that moves the eye axes claims gaze', () => {
+  const cue = (intent: PerformanceDirective['plan']['cues'][number]['intent']) =>
+    cueOccupiesGaze({
+      intent,
+      atMs: 0,
+      intensity: 1,
+      tempo: 1,
+      fadeInMs: 80,
+      fadeOutMs: 120,
+      interrupt: 'replace',
+    })
+
+  for (const intent of ['think', 'speechless', 'maniac', 'lovestruck'] as const) {
+    assert.equal(cue(intent), true, intent)
+  }
+  for (const intent of ['angry', 'silly'] as const) {
+    assert.equal(cue(intent), false, intent)
+  }
 })
 
 test('posture and body cues claim head/body without taking the mouth', () => {

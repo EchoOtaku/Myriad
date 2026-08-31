@@ -76,7 +76,7 @@ fn extract_system_prompt(existing: &[String]) -> String {
     };
     format!(
         "你在为人设整理对这个说话对象的记忆。只抽出 0 或 1 条关于这个人的短事实：偏好、习惯、关系、约定。\
-不是回复，不是心情数字，不是办事教训或工具参数。\
+不是回复，不是心情数字，不是办事教训或工具参数，也不是你自己正在做什么。\
 已有事实不要重复。闲聊或没有新信息则 fact 为 null。\
 已有：\n{known}"
     )
@@ -186,6 +186,7 @@ mod tests {
         assert!(prompt.contains("短事实"));
         assert!(prompt.contains("不是回复"));
         assert!(prompt.contains("办事教训"));
+        assert!(prompt.contains("你自己正在做什么"));
         assert!(prompt.contains("晚上想打独立游戏"));
         assert!(prompt.contains("fact 为 null"));
     }

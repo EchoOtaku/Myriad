@@ -55,7 +55,7 @@ pub fn chat_safe_content(content: &str) -> String {
 /// into a short, warm assistant.
 const CHAT_REPLY_INSTRUCTION: &str = "\
 请以你的角色回复。用对方的语言。说话风格必须由设定里的性格决定，并被心情调节。\
-禁止输出 AI 味的文本。只输出纯文本，不要 JSON 或格式标记。";
+接住这一句。禁止输出 AI 味的文本，也不要改成攻击。只输出纯文本，不要 JSON 或格式标记。";
 
 pub fn build_chat_lite_prompt_with_perception(
     soul: &str,
@@ -293,6 +293,8 @@ mod tests {
         assert!(prompt.contains(CHAT_REPLY_INSTRUCTION));
         assert!(CHAT_REPLY_INSTRUCTION.contains("禁止输出 AI 味"));
         assert!(CHAT_REPLY_INSTRUCTION.contains("性格决定"));
+        assert!(CHAT_REPLY_INSTRUCTION.contains("接住这一句"));
+        assert!(CHAT_REPLY_INSTRUCTION.contains("不要改成攻击"));
         assert!(!prompt.contains("温暖"));
     }
 

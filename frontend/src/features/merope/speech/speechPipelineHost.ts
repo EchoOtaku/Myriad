@@ -1,15 +1,9 @@
+import type { SpeechStatus } from '../../../services/speechApi'
 import type { SpeechInterruptMode, SpeechSegment } from './speechSegmenter'
-import {
-  getSpeechStatus,
-  textToSpeech,
-  type SpeechStatus,
-} from '../../../services/speechApi'
+import { getSpeechStatus, textToSpeech } from '../../../services/speechApi'
 import { liveMotionGeneration } from '../motion/liveGeneration'
 import { dispatchMeropeSpeech } from '../speechEvents'
-import {
-  markTurnTraceOnce,
-  noteTurnTraceCancelToSilence,
-} from '../turnTrace'
+import { markTurnTraceOnce, noteTurnTraceCancelToSilence } from '../turnTrace'
 import { speakableText } from './speakableText'
 import { SpeechSegmenter } from './speechSegmenter'
 import { TtsPipeline } from './ttsPipeline'
@@ -65,10 +59,12 @@ export class SpeechPipelineHost {
     return this.wantsSpeech
   }
 
-  applyStatus(status: Pick<
-    SpeechStatus,
-    'available' | 'tts_enabled' | 'persona_speech_enabled'
-  >): void {
+  applyStatus(
+    status: Pick<
+      SpeechStatus,
+      'available' | 'tts_enabled' | 'persona_speech_enabled'
+    >,
+  ): void {
     this.statusEpoch += 1
     const flags = personaSpeechFlags(status)
     this.wantsSpeech = flags.speechEnabled
@@ -142,7 +138,9 @@ export class SpeechPipelineHost {
     this.noteSilence()
   }
 
-  private async synthesize(segment: SpeechSegment): Promise<ArrayBuffer | null> {
+  private async synthesize(
+    segment: SpeechSegment,
+  ): Promise<ArrayBuffer | null> {
     try {
       const result = await textToSpeech({
         text: segment.text.slice(0, 150),
@@ -172,8 +170,22 @@ export class SpeechPipelineHost {
     })
     patchVoicePresence({ ttsPlaying: true })
     const handle = playTtsBuffer(audio, segment, {
+      onStarted: () => markTurnTraceOnce('first_audio'),
+      onProsody: (timeline, timing) => {
+        dispatchMeropeSpeech({
+          phase: 'prosody',
+          messageId: segment.messageId,
+          source: 'reply',
+          utteranceId,
+          prosody: {
+            ...timeline,
+            utteranceId,
+            startedAtMs: timing.startedAtMs,
+          },
+          ...(generation ? { generation } : {}),
+        })
+      },
       onEnergy: (energy, articulation) => {
-        markTurnTraceOnce('first_audio')
         dispatchMeropeSpeech({
           phase: 'energy',
           messageId: segment.messageId,

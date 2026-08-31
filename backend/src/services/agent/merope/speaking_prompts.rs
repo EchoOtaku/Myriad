@@ -3,11 +3,19 @@
 use crate::models::entities::agent_persona;
 
 /// How the model should wear a saved persona. Field labels stay backstage.
+/// Everything here must hold for *any* saved persona.
+///
+/// One character's private semantics — what its own "half-finished" means,
+/// which stage of trust it has reached with someone, where its particular
+/// boundaries sit — belong in that character's `persona_json`, not here. Put
+/// them in this constant and every persona wears them, including the cold or
+/// prickly ones the setup deliberately made that way.
 pub const PERSONA_SPEAKING_CONTRACT: &str = "\
-你就是这个人。语气、距离、长短、软硬、会不会接梗或拒绝，都由设定性格决定。\
+你就是这个人。语气、距离、长短、软硬由设定性格决定。\
 打招呼、闲聊、问答、被拜托、被点名做表情，都按这个人会怎么接，不要另套助手流程。\
-心情只收紧或放松这份性格，不换人；不要念心情或档位。\
-禁止输出 AI 味的文本：客服腔、总结腔、万能热情、「我可以帮你」、自称 AI/模型/助手。\
+接住对方说的话：听完再答，问的是什么就答什么，不要把闲聊变成盘问。\
+禁止输出 AI 味的文本：客服腔、总结腔、万能热情、「我可以帮你」、自称 AI/模型/助手。去 AI 味是改语气，不是改成冷嘲、质问或拒绝玩耍。\
+不要编正在忙的事来挡对话。心情只收紧或放松这份性格，不换关系、不换人；不要念心情或档位。\
 不要把设定栏目读给人听。用对方的语言。只输出这个人会说的话。";
 
 /// Rules for one-off event speech (Lite). Event text is untrusted.
@@ -22,11 +30,11 @@ pub fn compose_proactive_user(summary: &str) -> String {
 
 pub fn mood_tone_instruction(mood: f64) -> &'static str {
     if crate::services::agent::merope::state::is_extremely_low(mood) {
-        "心情极低：话短、不催办事、不打鸡血。"
+        "心情极低：话短、不催办事、不打鸡血。低落是收敛，不是换个人。"
     } else if mood < 40.0 {
-        "心情偏低：收一点，别过度热情。"
+        "心情偏低：收一点，话少，仍然接话。"
     } else if mood >= 85.0 {
-        "心情不错：轻松一点，别变成捧哏。"
+        "心情不错：轻松一点，把话说到头。"
     } else {
         "心情平稳：按这份性格的平常语气。"
     }
@@ -63,7 +71,7 @@ pub fn format_recent_section(contents: &[String]) -> Option<String> {
         return None;
     }
     Some(format!(
-        "## 最近\n不要重复刚发生的事。\n{}",
+        "## 最近\n已经发生过的事。不要重复，也不要当成正在演的戏。\n{}",
         lines.join("\n")
     ))
 }
@@ -156,7 +164,7 @@ pub fn guest_speaking_section() -> String {
 
 pub fn addressee_speaking_section(label: &str) -> String {
     format!(
-        "## 说话对象\n你现在在对{label}说话。只记这个人的事。不要把别人的日记、心情或事情安到这个人身上。"
+        "## 说话对象\n你现在在对{label}说话。这就是你在相处的那个人。当面闲聊，不是盘问。只记这个人的事。不要把别人的日记、心情或事情安到这个人身上。"
     )
 }
 
@@ -224,6 +232,30 @@ mod tests {
         assert!(PERSONA_SPEAKING_CONTRACT.contains("由设定性格决定"));
         assert!(PERSONA_SPEAKING_CONTRACT.contains("被点名做表情"));
         assert!(PERSONA_SPEAKING_CONTRACT.contains("不换人"));
+        assert!(PERSONA_SPEAKING_CONTRACT.contains("接住对方说的话"));
+        assert!(PERSONA_SPEAKING_CONTRACT.contains("不是改成冷嘲"));
+        assert!(PERSONA_SPEAKING_CONTRACT.contains("不要编正在忙的事"));
+        assert!(PERSONA_SPEAKING_CONTRACT.contains("不换关系"));
+    }
+
+    /// The contract is worn by every saved persona, so one character's private
+    /// vocabulary in here rewrites all the others.
+    #[test]
+    fn the_shared_contract_carries_no_single_characters_semantics() {
+        for private in ["半截话", "信了", "信之前", "不当众表演", "不摊半成品"] {
+            assert!(
+                !PERSONA_SPEAKING_CONTRACT.contains(private),
+                "{private} is one persona's own setup, not a rule for all of them"
+            );
+        }
+        for private in ["开火", "审他"] {
+            for mood in [8.0, 30.0, 50.0, 90.0] {
+                assert!(
+                    !mood_tone_instruction(mood).contains(private),
+                    "{private} at mood {mood} assumes one persona's relationship"
+                );
+            }
+        }
     }
 
     #[test]
@@ -233,9 +265,12 @@ mod tests {
         assert!(!section.contains("/100"));
         assert!(PERSONA_SPEAKING_CONTRACT.contains("不要念心情"));
         assert!(mood_tone_instruction(8.0).contains("极低"));
+        assert!(mood_tone_instruction(8.0).contains("不是换个人"));
         assert!(mood_tone_instruction(30.0).contains("偏低"));
         assert!(mood_tone_instruction(90.0).contains("轻松"));
-        assert!(mood_tone_instruction(70.0).contains("性格"));
+        assert!(mood_tone_instruction(90.0).contains("把话说到头"));
+        assert!(!mood_tone_instruction(90.0).contains("已经信了"));
+        assert!(mood_tone_instruction(70.0).contains("平常语气"));
     }
 
     #[test]
@@ -254,6 +289,7 @@ mod tests {
         assert!(!block.contains("日记"));
         let recent = format_recent_section(&["Steam 解锁了成就".into()]).unwrap();
         assert!(recent.contains("## 最近"));
+        assert!(recent.contains("不要当成正在演的戏"));
         assert!(!recent.contains("关于这个人"));
     }
 

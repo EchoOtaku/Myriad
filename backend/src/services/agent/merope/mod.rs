@@ -331,8 +331,8 @@ pub async fn resolve_addressee_label(db: &sea_orm::DatabaseConnection, user_id: 
 }
 
 pub use speaking_prompts::{
-    addressee_speaking_section, format_activity_section, format_mood_section,
-    format_persona, format_recent_section, format_remembered_section, guest_speaking_section,
+    addressee_speaking_section, format_activity_section, format_mood_section, format_persona,
+    format_recent_section, format_remembered_section, guest_speaking_section,
     mood_tone_instruction, rank_remembered,
 };
 

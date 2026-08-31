@@ -1,11 +1,13 @@
-import type { PerformanceDirective } from '../../../services/agent/types'
 import type { Anime25DCharacterHandle } from '../anime25drig/Anime25DCharacter'
-import type { Anime25DDriver } from '../anime25drig/driver'
-import type { Anime25DDebugSnapshot } from '../anime25drig/player'
+import type { Anime25DWorkbenchPort } from '../anime25drig/workbenchPort'
+import type { RigBearing } from '../motion/bearing'
+import type { BehaviorPlan } from '../motion/behavior'
 import type { MotionChannelPolicy } from '../motion/policy'
 import type { SingingSpectrumDrive } from '../singing/singingGroove'
+import type { SpeechProsodyPlan } from '../speech/prosody'
 import type { MeropeActivity } from '../types'
 import type { SpeechArticulation } from './articulation'
+import type { RigMotionPort } from './motionPort'
 import type { MeropeRigManifest } from './types'
 import {
   forwardRef,
@@ -30,40 +32,25 @@ interface Props {
   manualControl?: boolean
 }
 
-export interface RigCharacterHandle {
-  setSpeechActive: (active: boolean) => void
-  setSinging: (active: boolean) => void
-  setSingingSpectrum: (drive: SingingSpectrumDrive | null) => void
-  setAutoSpeech: (active: boolean) => void
-  setSpeechEnergy: (energy: number | null) => void
-  setSpeechArticulation: (articulation: SpeechArticulation) => void
-  enqueueSpeechText: (text: string, locale?: string) => void
-  playMotionPlan: (
-    performance: PerformanceDirective,
-    startedAtMs?: number,
-  ) => boolean
-  stopMotionPlan: () => void
-  setDriver: (partial: Partial<Anime25DDriver>) => void
-  replaceDriver: (driver: Anime25DDriver) => void
-  blinkNow: () => void
-  debugSnapshot: () => Anime25DDebugSnapshot | null
-  setMotionPolicy: (policy: MotionChannelPolicy) => void
-}
+export interface RigCharacterHandle
+  extends RigMotionPort, Anime25DWorkbenchPort {}
 
 const RigCharacter = forwardRef<RigCharacterHandle, Props>(
   ({ activity, fallbackUrl, manifest, mood, manualControl = false }, ref) => {
     const animeRef = useRef<Anime25DCharacterHandle>(null)
     const speechActiveRef = useRef(false)
+    const speechProsodyRef = useRef<SpeechProsodyPlan | null>(null)
     const singingActiveRef = useRef(false)
+    const singingTrackRef = useRef<string | null>(null)
     const singingSpectrumRef = useRef<SingingSpectrumDrive | null>(null)
     const motionPolicyRef = useRef<MotionChannelPolicy | null>(null)
+    const moodRef = useRef(mood)
+    const activityRef = useRef(activity)
     const pendingSpeechTextRef = useRef<
       Array<{ text: string; locale?: string }>
     >([])
-    const latestPerformanceRef = useRef<{
-      directive: PerformanceDirective
-      startedAtMs: number
-    } | null>(null)
+    const bearingRef = useRef<RigBearing | null>(null)
+    const latestBehaviorPlanRef = useRef<BehaviorPlan | null>(null)
     const latestSpeechRef = useRef<
       | { kind: 'auto'; active: boolean }
       | { kind: 'energy'; energy: number | null }
@@ -89,11 +76,15 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
 
     useEffect(() => {
       animeRef.current?.setSpeechActive(speechActiveRef.current)
+      animeRef.current?.setSpeechProsody(speechProsodyRef.current)
       animeRef.current?.setSinging(singingActiveRef.current)
+      animeRef.current?.setSingingTrack(singingTrackRef.current)
       animeRef.current?.setSingingSpectrum(singingSpectrumRef.current)
       if (motionPolicyRef.current) {
         animeRef.current?.setMotionPolicy(motionPolicyRef.current)
       }
+      animeRef.current?.setBearing(bearingRef.current)
+      animeRef.current?.setMood(moodRef.current, activityRef.current)
       const latest = latestSpeechRef.current
       if (latest.kind === 'auto') {
         animeRef.current?.setAutoSpeech(latest.active)
@@ -106,15 +97,16 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
         animeRef.current?.enqueueSpeechText(chunk.text, chunk.locale)
       }
       pendingSpeechTextRef.current = []
-      if (latestPerformanceRef.current) {
-        animeRef.current?.playMotionPlan(
-          latestPerformanceRef.current.directive,
-          latestPerformanceRef.current.startedAtMs,
-        )
+      if (latestBehaviorPlanRef.current) {
+        animeRef.current?.playBehaviorPlan(latestBehaviorPlanRef.current)
       }
     }, [atlasUrl, playback])
 
     useImperativeHandle(ref, () => ({
+      setBearing: (bearing) => {
+        bearingRef.current = bearing
+        animeRef.current?.setBearing(bearing)
+      },
       setSpeechActive: (active) => {
         speechActiveRef.current = active
         animeRef.current?.setSpeechActive(active)
@@ -122,6 +114,10 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
       setSinging: (active) => {
         singingActiveRef.current = active
         animeRef.current?.setSinging(active)
+      },
+      setSingingTrack: (trackId) => {
+        singingTrackRef.current = trackId
+        animeRef.current?.setSingingTrack(trackId)
       },
       setSingingSpectrum: (drive) => {
         singingSpectrumRef.current = drive
@@ -139,6 +135,10 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
         latestSpeechRef.current = { kind: 'articulation', articulation }
         animeRef.current?.setSpeechArticulation(articulation)
       },
+      setSpeechProsody: (prosody) => {
+        speechProsodyRef.current = prosody
+        animeRef.current?.setSpeechProsody(prosody)
+      },
       enqueueSpeechText: (text, locale) => {
         if (animeRef.current) {
           animeRef.current.enqueueSpeechText(text, locale)
@@ -146,17 +146,14 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
           pendingSpeechTextRef.current.push({ text, locale })
         }
       },
-      playMotionPlan: (directive, startedAtMs) => {
-        const started = startedAtMs ?? window.performance.now()
-        const accepted =
-          animeRef.current?.playMotionPlan(directive, started) ?? true
-        if (!accepted) return false
-        latestPerformanceRef.current = { directive, startedAtMs: started }
-        return true
+      playBehaviorPlan: (plan) => {
+        latestBehaviorPlanRef.current = plan
+        return animeRef.current?.playBehaviorPlan(plan) ?? []
       },
-      stopMotionPlan: () => {
-        latestPerformanceRef.current = null
-        animeRef.current?.stopMotionPlan()
+      stopBehaviorPlan: (planId) => {
+        if (planId && latestBehaviorPlanRef.current?.id !== planId) return
+        latestBehaviorPlanRef.current = null
+        animeRef.current?.stopBehaviorPlan(planId)
       },
       setDriver: (partial) => animeRef.current?.setDriver(partial),
       replaceDriver: (driver) => animeRef.current?.replaceDriver(driver),
@@ -165,6 +162,11 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
       setMotionPolicy: (policy) => {
         motionPolicyRef.current = policy
         animeRef.current?.setMotionPolicy(policy)
+      },
+      setMood: (nextMood, nextActivity) => {
+        moodRef.current = nextMood
+        activityRef.current = nextActivity
+        animeRef.current?.setMood(nextMood, nextActivity)
       },
     }))
 

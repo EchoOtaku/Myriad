@@ -1,4 +1,5 @@
 import type { SpeechArticulation } from './rig/articulation'
+import type { SpeechProsodyPlan } from './speech/prosody'
 import type {
   SpeechLifecycleScheduler,
   SpeechLifecycleTarget,
@@ -51,16 +52,18 @@ function fakeTarget() {
   const auto: boolean[] = []
   const energy: Array<number | null> = []
   const articulation: SpeechArticulation[] = []
+  const prosody: Array<SpeechProsodyPlan | null> = []
   const text: Array<{ text: string; locale?: string }> = []
   const target: SpeechLifecycleTarget = {
     setSpeechActive: (value) => active.push(value),
     setAutoSpeech: (value) => auto.push(value),
     setSpeechEnergy: (value) => energy.push(value),
     setSpeechArticulation: (value) => articulation.push(value),
+    setSpeechProsody: (value) => prosody.push(value),
     enqueueSpeechText: (value, locale) =>
       text.push({ text: value, ...(locale ? { locale } : {}) }),
   }
-  return { target, active, auto, energy, articulation, text }
+  return { target, active, auto, energy, articulation, prosody, text }
 }
 
 test('keeps fallback prosody alive for a complete non-streamed reply', () => {
@@ -125,6 +128,27 @@ test('authored audio energy takes priority over auto prosody', () => {
     amount: 0,
   })
   assert.deepEqual(rig.active, [true, false])
+})
+
+test('forwards future accent anchors and clears them with the utterance', () => {
+  const scheduler = new FakeScheduler()
+  const rig = fakeTarget()
+  const controller = new SpeechLifecycleController(rig.target, scheduler)
+  const base = {
+    messageId: 'message-1',
+    utteranceId: 'message-1:audio',
+    source: 'reply' as const,
+  }
+  const prosody: SpeechProsodyPlan = {
+    utteranceId: base.utteranceId,
+    startedAtMs: 100,
+    durationMs: 800,
+    accents: [{ offsetMs: 300, intensity: 0.8 }],
+  }
+  controller.handle({ ...base, phase: 'start' })
+  controller.handle({ ...base, phase: 'prosody', prosody })
+  controller.handle({ ...base, phase: 'cancel' })
+  assert.deepEqual(rig.prosody, [prosody, null])
 })
 
 test('cancellation is scoped to its active message', () => {

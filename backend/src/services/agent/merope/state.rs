@@ -45,16 +45,13 @@ fn apply_delta(mood: f64, delta: f64) -> f64 {
 
 pub fn apply_user_utterance(
     mood: f64,
-    utterance_index_in_session: u32,
+    _utterance_index_in_session: u32,
     praised: bool,
     scolded: bool,
     first_today: bool,
     gap_hours: f64,
 ) -> f64 {
-    let mut delta = 2.0 - 0.5 * f64::from(utterance_index_in_session);
-    if delta < 0.5 {
-        delta = 0.5;
-    }
+    let mut delta = 0.0;
     if praised {
         delta += 4.0;
     }
@@ -186,7 +183,11 @@ mod tests {
     #[test]
     fn long_gap_then_talk_does_not_crash() {
         let next = apply_user_utterance(70.0, 0, false, false, false, 20.0);
-        assert!((next - 68.0).abs() < f64::EPSILON);
+        assert!((next - 66.0).abs() < f64::EPSILON);
+        assert_eq!(
+            apply_user_utterance(70.0, 0, false, false, false, 0.0),
+            70.0
+        );
     }
 
     #[test]

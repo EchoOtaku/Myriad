@@ -9,20 +9,22 @@ import { getMusicMotionSource } from './motion/musicSourceRuntime'
 export function useRigSingingLifecycle(): void {
   const { isPlaying, currentSong, lyrics, verbatimLyrics, hasVerbatimLyrics } =
     useMusicPlayerControl()
-  const lastSongIdRef = useRef(currentSong?.id ?? '')
-  const songId = currentSong?.id ?? ''
+  const trackId = currentSong
+    ? `${currentSong.source}:${currentSong.id}`
+    : ''
+  const lastTrackIdRef = useRef(trackId)
 
   useEffect(() => {
     const source = getMusicMotionSource()
-    if (songId && songId !== lastSongIdRef.current) source.markSwitching()
-    lastSongIdRef.current = songId
+    if (trackId && trackId !== lastTrackIdRef.current) source.markSwitching()
+    lastTrackIdRef.current = trackId
     source.setTrack({
-      songId,
+      trackId,
       duration: currentSong?.duration,
       verbatim: hasVerbatimLyrics ? verbatimLyrics : undefined,
       lines: lyrics,
     })
-  }, [songId, currentSong?.duration, hasVerbatimLyrics, lyrics, verbatimLyrics])
+  }, [trackId, currentSong?.duration, hasVerbatimLyrics, lyrics, verbatimLyrics])
 
   useEffect(() => {
     getMusicMotionSource().setPlayback(isPlaying, false)

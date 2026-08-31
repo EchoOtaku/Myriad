@@ -9,6 +9,32 @@
 export type RigMotionStyle = 'restrained' | 'even' | 'open'
 export type RigMusicEnergy = 'quiet' | 'soft' | 'present' | 'strong'
 export type RigBeatPhase = 'rest' | 'downbeat' | 'pulse' | 'hold'
+export type RigBehaviorFunction =
+  | 'orient'
+  | 'attend'
+  | 'acknowledge'
+  | 'understand'
+  | 'agree'
+  | 'disagree'
+  | 'uncertain'
+  | 'prepareSpeech'
+  | 'yieldTurn'
+  | 'emphasize'
+  | 'surprise'
+  | 'celebrate'
+  | 'relief'
+  | 'settle'
+  | 'entrain'
+  | 'express'
+  | 'idleShift'
+export type RigBehaviorPhase =
+  | 'planned'
+  | 'preparing'
+  | 'committed'
+  | 'holding'
+  | 'recovering'
+  | 'complete'
+  | 'rejected'
 
 export interface RigStateSummary {
   expression: PerformanceBaseline['expression'] | 'steady'
@@ -16,8 +42,18 @@ export interface RigStateSummary {
   acting: {
     intent: PerformanceCue['intent'] | null
     phase: PerformancePhase | 'idle'
+    function: RigBehaviorFunction | null
+    lifecycle: RigBehaviorPhase | null
     remainingMs: number
   }
+  /** Concurrent semantic behaviors; `acting` above remains the primary cue. */
+  activeBehaviors: {
+    function: RigBehaviorFunction
+    lifecycle: RigBehaviorPhase
+    source: string
+    resources: string[]
+    remainingMs: number
+  }[]
   owners: {
     mouth: string
     expression: string

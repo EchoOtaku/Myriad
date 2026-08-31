@@ -555,7 +555,7 @@ fn motion_expression_index() -> String {
         lines.push(format!("- {name}：{meaning}"));
     }
     lines.push(
-        "瞬时表情 cues.intent（每回合 1–3 个。读这一轮对话的意思取用，不要等表情名字）："
+        "瞬时表情 cues.intent（每回合 0–2 个；没有明确行为意义就留空。读这一轮对话的意思取用，不要等表情名字）："
             .to_string(),
     );
     for (name, meaning, capability) in CUE_INDEX {
@@ -574,11 +574,12 @@ fn motion_system_prompt() -> String {
 
 {}
 
-枚举：{}；姿态 {}；cue {}，每回合 baseline + 1–3 个 cue。不要输出 continue，空对象无效。
+枚举：{}；姿态 {}；cue {}。每回合必须有 baseline，cue 只在确有表达功能时选 0–2 个；同一功能不要为了热闹重复。不要输出 continue，空对象无效。
 只丢掉物理上做不到的：缺能力层不要选；说话时 maniac 抢嘴所以不要选，silly/cry 用眼睛照演。唱歌占身不要抢头身。
-按性格取表情：慢热用 withdrawn/subdued + listen/think；外向用 warm + greet/delight，玩笑和自嘲用 silly、兴奋 maniac；嘴硬多用 speechless/angry；认真多用 question/think；软可用 lovestruck。没有人设时按 even，仍要有 baseline + cue。
+按性格取表情：慢热用 withdrawn/subdued，确实在持续听时才用 listen；外向可用 warm + greet/delight，玩笑和自嘲用 silly、兴奋 maniac；嘴硬多用 speechless/angry；认真多用 question/think；软可用 lovestruck。没有人设时按 even；baseline 必须有，cue 可以没有。
 restrained 的 motionEnergy 0.55–0.9、cue 0.75–1.05；even 0.75–1.15 / 0.9–1.25；open 1.0–1.4 / 1.05–1.4。
-reaction 回应用户刚说的；delivery 配合即将说的话（讲糗事、自嘲出糗用 silly）；outcome 配合任务结果；proactive 配合自己找上门的那句。"#,
+像人一样安排反应：起势快、落势慢；一个明确反应完成或进入落势前，不要再叠同功能动作。rig.activeBehaviors 是同时在进行或准备中的语义行为，lifecycle 是 planned/preparing/committed/holding/recovering，resources 是它正在使用的脸、视线、头、躯干或肢体。已有同功能时不重复；资源冲突时删掉低意义 cue，确实要接续才用 queue 并把 atMs 放到 remainingMs 之后。音乐的 entrain 是持续的人体节律，不是特殊动画：唱歌占头身时只叠不冲突的脸/视线反应。
+reaction 回应用户已经说完的内容，不要假装仍在聆听；delivery 配合即将说的话（讲糗事、自嘲出糗用 silly）；outcome 配合任务结果；proactive 配合自己找上门的那句。atMs/fade 只给宽松的先后和风格，不要试图逐帧导演；现场调度器会按真实语音重音、节拍证据、资源占用和中断状态重定时，并保证 preparation→stroke→hold→recovery。"#,
         motion_expression_index(),
         PERFORMANCE_BASELINE_EXPRESSIONS.join("/"),
         PERFORMANCE_POSTURES.join("/"),
@@ -658,7 +659,7 @@ fn motion_schema() -> serde_json::Value {
             },
             "cues": {
                 "type": "array",
-                "maxItems": 3,
+                "maxItems": 2,
                 "items": {
                     "type": "object",
                     "properties": {
@@ -754,6 +755,9 @@ mod tests {
         assert!(prompt.contains("犯蠢"));
         assert!(prompt.contains("讲糗事、自嘲出糗用 silly"));
         assert!(prompt.contains("silly/cry 用眼睛照演"));
+        assert!(prompt.contains("rig.activeBehaviors"));
+        assert!(prompt.contains("preparation→stroke→hold→recovery"));
+        assert!(prompt.contains("音乐的 entrain 是持续的人体节律"));
         assert!(prompt.contains("persona"));
         assert!(schema.pointer("/properties/continue").is_none());
         assert!(schema.get("required").is_none());
@@ -910,6 +914,21 @@ mod tests {
             chat < spawned,
             "Chat must not spawn a Lite director beside the reply stream"
         );
+    }
+
+    #[test]
+    fn work_publishes_the_local_reaction_before_spawning_the_lite_director() {
+        let src = include_str!("../process_and_recipe.rs");
+        assert!(src.contains("spawn_motion_directive_with_floor(reaction_context"));
+        let helper = src
+            .find("fn spawn_motion_directive_with_floor")
+            .expect("predictive motion helper");
+        let body = &src[helper..];
+        let floor = body.find("local_directive(&context)").expect("local floor");
+        let refinement = body
+            .find("direct_motion(context).await")
+            .expect("Lite refinement");
+        assert!(floor < refinement);
     }
 
     /// Production dropped 196 of 217 calls sitting exactly on the old 4s wall;

@@ -1,15 +1,13 @@
-import type {
-  PerformanceBaseline,
-  PerformanceDirective,
-} from '../../../services/agent/types'
+import type { RigBearing } from '../motion/bearing'
+import type { BehaviorPlan, BehaviorRealizerReport } from '../motion/behavior'
 import type { MotionChannelPolicy } from '../motion/policy'
-import type { SpeechArticulation } from '../rig/articulation'
+import type { RigMotionPort } from '../rig/motionPort'
 import type { MeropeRigManifest } from '../rig/types'
 import type { SingingSpectrumDrive } from '../singing/singingGroove'
+import type { SpeechProsodyPlan } from '../speech/prosody'
 import type { MeropeActivity } from '../types'
-import type { Anime25DDriver } from './driver'
-import type { Anime25DDebugSnapshot } from './player'
 import type { Anime25DPlayback } from './types'
+import type { Anime25DWorkbenchPort } from './workbenchPort'
 import {
   forwardRef,
   useEffect,
@@ -17,13 +15,9 @@ import {
   useRef,
   useState,
 } from 'react'
+import { realizeAnime25DBehaviorPlan } from './behaviorRealizer'
 import { activityExpressionDriverPatch } from './expressionPresets'
-import { PerformanceDirectiveGate } from './performanceExpression'
-import {
-  baselineDriverPatch,
-  idleSpeechDriverPatch,
-  restEnergyDriverPatch,
-} from './performanceMotion'
+import { idleSpeechDriverPatch } from './performanceMotion'
 import { Anime25DPlayer } from './player'
 import { shouldAnimateAnime25D } from './runtimePolicy'
 import {
@@ -43,25 +37,8 @@ interface Props {
   onPlaybackError?: (error: unknown) => void
 }
 
-export interface Anime25DCharacterHandle {
-  setSpeechActive: (active: boolean) => void
-  setSinging: (active: boolean) => void
-  setSingingSpectrum: (drive: SingingSpectrumDrive | null) => void
-  setAutoSpeech: (active: boolean) => void
-  setSpeechEnergy: (energy: number | null) => void
-  setSpeechArticulation: (articulation: SpeechArticulation) => void
-  enqueueSpeechText: (text: string, locale?: string) => void
-  playMotionPlan: (
-    performance: PerformanceDirective,
-    startedAtMs?: number,
-  ) => boolean
-  stopMotionPlan: () => void
-  setDriver: (partial: Partial<Anime25DDriver>) => void
-  replaceDriver: (driver: Anime25DDriver) => void
-  blinkNow: () => void
-  debugSnapshot: () => Anime25DDebugSnapshot | null
-  setMotionPolicy: (policy: MotionChannelPolicy) => void
-}
+export interface Anime25DCharacterHandle
+  extends RigMotionPort, Anime25DWorkbenchPort {}
 
 const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
   (
@@ -84,7 +61,9 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
     const activityRef = useRef(activity)
     const moodRef = useRef(mood)
     const speechActiveRef = useRef(false)
+    const speechProsodyRef = useRef<SpeechProsodyPlan | null>(null)
     const singingActiveRef = useRef(false)
+    const singingTrackRef = useRef<string | null>(null)
     const singingSpectrumRef = useRef<SingingSpectrumDrive | null>(null)
     const motionPolicyRef = useRef<MotionChannelPolicy | null>(null)
     const speechMouthFormRef = useRef(0)
@@ -92,14 +71,8 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       Array<{ text: string; locale?: string }>
     >([])
     const manualRef = useRef(manualControl)
-    const baselineRef = useRef<PerformanceBaseline | null>(null)
-    const performanceRef = useRef<{
-      directive: PerformanceDirective
-      startedAtMs: number
-    } | null>(null)
-    const performanceGateRef = useRef(new PerformanceDirectiveGate())
-    activityRef.current = activity
-    moodRef.current = mood
+    const bearingRef = useRef<RigBearing | null>(null)
+    const behaviorPlanRef = useRef<BehaviorPlan | null>(null)
     manualRef.current = manualControl || manualRef.current
 
     const applyDriver = (player: Anime25DPlayer) => {
@@ -108,10 +81,8 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       const policy = player.getMotionPolicy()
       const thinking = currentActivity === 'thinking'
       const expressionFree =
-        policy.expression === 'idle' ||
-        policy.expression === 'mood' ||
-        policy.expression === 'ambient'
-      const mouthFree = policy.mouth === 'idle' || policy.mouth === 'mood'
+        policy.expression === 'idle' || policy.expression === 'mood'
+      const mouthFree = policy.mouth === 'idle'
       player.setTarget({
         thinking,
         blink: true,
@@ -120,6 +91,7 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
           ? idleSpeechDriverPatch(moodRef.current, speechActiveRef.current)
           : {}),
       })
+      if (bearingRef.current) player.setBearing(bearingRef.current)
     }
 
     const enterManualControl = () => {
@@ -128,6 +100,10 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
     }
 
     useImperativeHandle(ref, () => ({
+      setBearing(bearing) {
+        bearingRef.current = bearing
+        playerRef.current?.setBearing(bearing)
+      },
       setSpeechActive(active) {
         if (active && !speechActiveRef.current) {
           speechMouthFormRef.current =
@@ -139,6 +115,10 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       setSinging(active) {
         singingActiveRef.current = active
         playerRef.current?.setSinging(active)
+      },
+      setSingingTrack(trackId) {
+        singingTrackRef.current = trackId
+        playerRef.current?.setSingingTrack(trackId)
       },
       setSingingSpectrum(drive) {
         singingSpectrumRef.current = drive
@@ -166,6 +146,10 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
           ),
         )
       },
+      setSpeechProsody(prosody) {
+        speechProsodyRef.current = prosody
+        playerRef.current?.setSpeechProsody(prosody)
+      },
       enqueueSpeechText(text, locale) {
         if (playerRef.current) {
           playerRef.current.enqueueSpeechText(text, locale)
@@ -173,42 +157,24 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
           pendingSpeechTextRef.current.push({ text, locale })
         }
       },
-      playMotionPlan(directive, startedAtMs) {
-        const acceptance = performanceGateRef.current.accept(directive)
-        if (acceptance === 'reject') return false
+      playBehaviorPlan(plan) {
         const now = performance.now()
-        const directiveStartedAt = Number.isFinite(startedAtMs)
-          ? Math.max(0, Math.min(now, startedAtMs as number))
-          : now
-        if (
-          playerRef.current &&
-          !playerRef.current.playPerformance(
-            directive,
-            directiveStartedAt / 1_000,
+        const realization = realizeAnime25DBehaviorPlan(plan, now)
+        let reports = realization.reports
+        if (playerRef.current && realization.cues.length > 0) {
+          const accepted = playerRef.current.playBehaviorCues(
+            realization.cues,
+            Math.max(0, Math.min(now, plan.originMs)) / 1_000,
           )
-        ) {
-          return false
+          if (!accepted) reports = supersededReports(reports, now)
         }
-        if (directive.plan.baseline) {
-          baselineRef.current = directive.plan.baseline
-          // motionEnergy had no path to the rig at all: the only function that
-          // read it was reachable from nothing. A director that judges the
-          // persona should be more open still moved the same hair.
-          playerRef.current?.setTarget(
-            baselineDriverPatch(directive.plan.baseline),
-          )
-        }
-        performanceRef.current = { directive, startedAtMs: directiveStartedAt }
-        return true
+        behaviorPlanRef.current = plan
+        return reports
       },
-      stopMotionPlan() {
+      stopBehaviorPlan(planId) {
+        if (planId && behaviorPlanRef.current?.id !== planId) return
         playerRef.current?.stopPerformance()
-        if (baselineRef.current) {
-          playerRef.current?.setTarget(restEnergyDriverPatch())
-        }
-        baselineRef.current = null
-        performanceRef.current = null
-        performanceGateRef.current.reset()
+        behaviorPlanRef.current = null
       },
       setDriver(partial) {
         enterManualControl()
@@ -238,6 +204,11 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         motionPolicyRef.current = policy
         playerRef.current?.setMotionPolicy(policy)
       },
+      setMood(nextMood, nextActivity) {
+        moodRef.current = nextMood
+        activityRef.current = nextActivity
+        if (playerRef.current) applyDriver(playerRef.current)
+      },
     }))
 
     useEffect(() => {
@@ -255,18 +226,23 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       }
       playerRef.current = player
       player.setSpeechActive(speechActiveRef.current)
+      player.setSpeechProsody(speechProsodyRef.current)
       player.setSinging(singingActiveRef.current)
+      player.setSingingTrack(singingTrackRef.current)
       player.setSingingSpectrum(singingSpectrumRef.current)
-      if (motionPolicyRef.current) player.setMotionPolicy(motionPolicyRef.current)
+      if (motionPolicyRef.current)
+        player.setMotionPolicy(motionPolicyRef.current)
       for (const chunk of pendingSpeechTextRef.current) {
         player.enqueueSpeechText(chunk.text, chunk.locale)
       }
       pendingSpeechTextRef.current = []
-      if (performanceRef.current) {
-        player.playPerformance(
-          performanceRef.current.directive,
-          performanceRef.current.startedAtMs / 1_000,
-        )
+      player.setBearing(bearingRef.current)
+      if (behaviorPlanRef.current) {
+        const plan = behaviorPlanRef.current
+        const realization = realizeAnime25DBehaviorPlan(plan, performance.now())
+        if (realization.cues.length > 0) {
+          player.playBehaviorCues(realization.cues, plan.originMs / 1_000)
+        }
       }
       applyDriver(player)
       let frame = 0
@@ -363,11 +339,6 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       }
     }, [atlasUrl, manifest, onPlaybackError, playback])
 
-    useEffect(() => {
-      if (manualRef.current || manualControl) return
-      if (playerRef.current) applyDriver(playerRef.current)
-    }, [activity, mood, manualControl])
-
     return (
       <span
         ref={wrapperRef}
@@ -380,5 +351,21 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
     )
   },
 )
+
+function supersededReports(
+  reports: readonly BehaviorRealizerReport[],
+  atMs: number,
+): BehaviorRealizerReport[] {
+  return reports.map((report) =>
+    report.result === 'accepted'
+      ? {
+          ...report,
+          result: 'rejected',
+          atMs,
+          reason: 'superseded',
+        }
+      : report,
+  )
+}
 
 export default Anime25DCharacter

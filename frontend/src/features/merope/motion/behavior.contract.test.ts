@@ -1,4 +1,3 @@
-import type { PerformanceDirective } from '../../../services/agent/types'
 import type { MotionFrame } from './intents'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -20,17 +19,25 @@ function recordingRig() {
     rig: {
       setMotionPolicy: (policy: { mouth: string; expression: string }) =>
         calls.push(`policy:${policy.mouth}:${policy.expression}`),
+      setMood: () => undefined,
+      setBearing: () => undefined,
       setSpeechActive: (value: boolean) => calls.push(`speechActive:${value}`),
       setAutoSpeech: (value: boolean) => calls.push(`auto:${value}`),
       setSpeechEnergy: () => undefined,
       setSpeechArticulation: () => undefined,
+      setSpeechProsody: () => undefined,
       enqueueSpeechText: (text: string) => calls.push(`text:${text}`),
-      playMotionPlan: () => {
+      playBehaviorPlan: (plan: { behaviors: readonly { id: string }[] }) => {
         calls.push('play')
-        return true
+        return plan.behaviors.map((behavior) => ({
+          behaviorId: behavior.id,
+          result: 'accepted' as const,
+          atMs: 0,
+        }))
       },
-      stopMotionPlan: () => calls.push('stop'),
+      stopBehaviorPlan: () => calls.push('stop'),
       setSinging: (value: boolean) => calls.push(`singing:${value}`),
+      setSingingTrack: () => undefined,
       setSingingSpectrum: () => undefined,
     },
   }
@@ -43,37 +50,13 @@ function frame(
 ): MotionFrame {
   return {
     snapshot: coordinator.snapshot(nowMs),
+    bearing: null,
     speech: null,
     performance: null,
     music: null,
     mood: null,
-    autonomy: null,
     ...extra,
   }
-}
-
-const listenPlan: PerformanceDirective = {
-  phase: 'mood',
-  moodRevision: 0,
-  plan: {
-    baseline: {
-      expression: 'steady',
-      posture: 'neutral',
-      motionEnergy: 0.55,
-      attention: 0.45,
-    },
-    cues: [
-      {
-        intent: 'listen',
-        atMs: 0,
-        intensity: 0.55,
-        tempo: 1,
-        fadeInMs: 80,
-        fadeOutMs: 120,
-        interrupt: 'if-lower',
-      },
-    ],
-  },
 }
 
 test('Chat speech occupies only the mouth; music keeps head and body', () => {
@@ -98,6 +81,7 @@ test('Chat speech occupies only the mouth; music keeps head and body', () => {
   const writes: string[] = []
   applySingingWrite(
     {
+      setSingingTrack: (value) => writes.push(`track:${value}`),
       setSinging: (value) => writes.push(`singing:${value}`),
       setSingingSpectrum: (value) => writes.push(`spectrum:${value !== null}`),
       setSpeechArticulation: () => writes.push('articulation'),
@@ -105,11 +89,12 @@ test('Chat speech occupies only the mouth; music keeps head and body', () => {
     },
     apply,
     {
+      trackId: 'song-a',
       spectrum: { bass: 0.4, beat: 0.5, vocal: 0.6 },
       articulation: { energy: 0.6, viseme: 'open', amount: 0.8 },
     },
   )
-  assert.deepEqual(writes, ['singing:true', 'spectrum:true'])
+  assert.deepEqual(writes, ['track:song-a', 'singing:true', 'spectrum:true'])
 })
 
 test('background Work cannot take the visible Chat face', () => {
@@ -152,6 +137,8 @@ test('applyFrame writes speech text only while speech owns the mouth', () => {
         autoSpeech: true,
         energy: null,
         articulation: null,
+        prosody: null,
+        behaviors: [],
         queuedText: [{ seq: 1, text: '你好' }],
       },
     }),
@@ -161,26 +148,29 @@ test('applyFrame writes speech text only while speech owns the mouth', () => {
   assert.ok(host.calls.includes('text:你好'))
 })
 
-test('applyFrame plays an autonomy plan only while autonomy owns the face', () => {
-  const coordinator = new RigMotionCoordinator()
-  const handle = coordinator.claim('autonomy', ['expression', 'gaze'], {
-    nowMs: 1,
-  })
-  const host = recordingRig()
-  const state = createMotionApplyState()
-  const autonomy = { directive: listenPlan, startedAtMs: 20 }
-  applyMotionFrame(host.rig, frame(coordinator, 1, { autonomy }), state)
-  coordinator.release(handle)
-  applyMotionFrame(host.rig, frame(coordinator, 2, { autonomy }), state)
-  assert.ok(host.calls.includes('play'))
-  assert.ok(host.calls.includes('stop'))
-})
-
 test('production faces consume the snapshot; sources do not take a rig', () => {
   assert.doesNotMatch(source('./speechSource.ts'), /rigRef/)
   assert.doesNotMatch(source('./performanceSource.ts'), /rigRef/)
-  assert.doesNotMatch(source('../useRigSingingLifecycle.ts'), /applySingingWrite/)
+  assert.doesNotMatch(
+    source('../useRigSingingLifecycle.ts'),
+    /applySingingWrite/,
+  )
   assert.doesNotMatch(source('../useRigSingingLifecycle.ts'), /rigRef/)
+})
+
+test('the production rig port stays renderer-neutral', () => {
+  const port = source('../rig/motionPort.ts')
+  assert.doesNotMatch(port, /Anime25D|setDriver|debugSnapshot/)
+  assert.doesNotMatch(port, /PerformanceDirective|playMotionPlan/)
+  assert.doesNotMatch(source('./applyFrame.ts'), /RigCharacter/)
+  assert.doesNotMatch(source('./useRigMotionLifecycle.ts'), /RigCharacter/)
+})
+
+test('cue facts have one registry and dead motion channels stay removed', () => {
+  const channels = source('./performanceChannels.ts')
+  assert.doesNotMatch(channels, /speechless|maniac|lovestruck/)
+  assert.match(channels, /performanceCueDefinition/)
+  assert.doesNotMatch(source('./channels.ts'), /physics/)
 })
 
 test('workbench preview stays off the production coordinator', () => {
@@ -196,15 +186,14 @@ test('workbench preview stays off the production coordinator', () => {
 test('agent turns send a semantic rig summary instead of per-frame drivers', () => {
   assert.doesNotMatch(source('./rigStateSummary.ts'), /mouthOpen/)
   assert.doesNotMatch(source('./rigStateSummary.ts'), /angleX/)
-  assert.doesNotMatch(source('../anime25drig/player.ts'), /captureRigStateSummary/)
+  assert.doesNotMatch(
+    source('../anime25drig/player.ts'),
+    /captureRigStateSummary/,
+  )
 })
 
-test('autonomy claims through the coordinator and never writes a rig', () => {
-  const autonomy = source('./autonomySource.ts')
-  assert.doesNotMatch(autonomy, /headBody/)
-  assert.doesNotMatch(autonomy, /'mouth'/)
-  assert.doesNotMatch(autonomy, /rigRef|playMotionPlan/)
-  assert.doesNotMatch(source('./applyFrame.ts'), /claim\('autonomy'/)
-  assert.doesNotMatch(source('./speechSource.ts'), /claim\('autonomy'/)
+test('idle self-motion does not masquerade as a semantic directed plan', () => {
+  assert.doesNotMatch(source('./runtime.ts'), /AutonomyMotionSource/)
+  assert.doesNotMatch(source('./applyFrame.ts'), /autonomy/)
   assert.doesNotMatch(source('./runtimeHost.ts'), /new MotionRuntime/)
 })

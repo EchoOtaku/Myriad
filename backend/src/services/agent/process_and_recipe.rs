@@ -588,8 +588,8 @@ impl Agent {
             // from the deterministic floor and ships before the first token.
             // Lite is not called here: the reply stream must not wait on it.
             if let Some(mood) = mood_transition.clone() {
-                if let Some(reaction) = crate::services::agent::merope::local_directive(
-                    &motion_context(
+                if let Some(reaction) =
+                    crate::services::agent::merope::local_directive(&motion_context(
                         &request,
                         user_id,
                         crate::services::agent::merope::MotionPhase::Reaction,
@@ -597,8 +597,8 @@ impl Agent {
                         round_motion_style.clone(),
                         None,
                         None,
-                    ),
-                ) {
+                    ))
+                {
                     let _ = progress_tx
                         .send(AgentProgressEvent::PerformancePlan {
                             performance: reaction,
@@ -621,18 +621,16 @@ impl Agent {
             // Streamed text completion must not wait on delivery motion.
             // The spawned plan publishes performance_plan on the same run hub.
             if let Some(mood) = mood_transition.clone() {
-                spawn_motion_directive(
-                    motion_context(
-                        &request,
-                        user_id,
-                        crate::services::agent::merope::MotionPhase::Delivery,
-                        mood,
-                        round_motion_style.clone(),
-                        Some(reply.clone()),
-                        None,
-                    ),
-                    Some(progress_tx.clone()),
+                let delivery_context = motion_context(
+                    &request,
+                    user_id,
+                    crate::services::agent::merope::MotionPhase::Delivery,
+                    mood,
+                    round_motion_style.clone(),
+                    Some(reply.clone()),
+                    None,
                 );
+                spawn_motion_directive_with_floor(delivery_context, Some(progress_tx.clone()));
             }
             crate::services::agent::merope::spawn_chat_remember(
                 user_id,
@@ -665,18 +663,16 @@ impl Agent {
         }
 
         if let Some(mood) = mood_transition.clone() {
-            spawn_motion_directive(
-                motion_context(
-                    &request,
-                    user_id,
-                    crate::services::agent::merope::MotionPhase::Reaction,
-                    mood,
-                    round_motion_style.clone(),
-                    None,
-                    None,
-                ),
-                Some(progress_tx.clone()),
+            let reaction_context = motion_context(
+                &request,
+                user_id,
+                crate::services::agent::merope::MotionPhase::Reaction,
+                mood,
+                round_motion_style.clone(),
+                None,
+                None,
             );
+            spawn_motion_directive_with_floor(reaction_context, Some(progress_tx.clone()));
         }
 
         // 1. Planner 规划（Pro AI 单次调用）
@@ -798,18 +794,16 @@ impl Agent {
                     .stream_chat_response(&request, &planner_reply, &progress_tx)
                     .await;
                 if let Some(mood) = mood_transition.clone() {
-                    spawn_motion_directive(
-                        motion_context(
-                            &request,
-                            user_id,
-                            crate::services::agent::merope::MotionPhase::Delivery,
-                            mood,
-                            round_motion_style.clone(),
-                            Some(reply.clone()),
-                            None,
-                        ),
-                        Some(progress_tx.clone()),
+                    let delivery_context = motion_context(
+                        &request,
+                        user_id,
+                        crate::services::agent::merope::MotionPhase::Delivery,
+                        mood,
+                        round_motion_style.clone(),
+                        Some(reply.clone()),
+                        None,
                     );
+                    spawn_motion_directive_with_floor(delivery_context, Some(progress_tx.clone()));
                 }
                 let performance = None;
                 crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
@@ -2054,6 +2048,32 @@ fn spawn_motion_directive(
     progress_tx: Option<tokio::sync::mpsc::Sender<AgentProgressEvent>>,
 ) -> tokio::task::JoinHandle<Option<crate::services::agent::merope::PerformanceDirective>> {
     tokio::spawn(async move {
+        let performance = crate::services::agent::merope::direct_motion(context).await;
+        if let (Some(tx), Some(performance)) = (progress_tx, performance.as_ref()) {
+            let _ = tx
+                .send(AgentProgressEvent::PerformancePlan {
+                    performance: performance.clone(),
+                })
+                .await;
+        }
+        performance
+    })
+}
+
+/** Publishes the zero-network floor, then refines it, without blocking text. */
+fn spawn_motion_directive_with_floor(
+    context: crate::services::agent::merope::MotionContext,
+    progress_tx: Option<tokio::sync::mpsc::Sender<AgentProgressEvent>>,
+) -> tokio::task::JoinHandle<Option<crate::services::agent::merope::PerformanceDirective>> {
+    tokio::spawn(async move {
+        if let (Some(tx), Some(performance)) = (
+            progress_tx.as_ref(),
+            crate::services::agent::merope::local_directive(&context),
+        ) {
+            let _ = tx
+                .send(AgentProgressEvent::PerformancePlan { performance })
+                .await;
+        }
         let performance = crate::services::agent::merope::direct_motion(context).await;
         if let (Some(tx), Some(performance)) = (progress_tx, performance.as_ref()) {
             let _ = tx

@@ -235,3 +235,15 @@ test('the speakable string never shrinks while a message streams', () => {
   assert.ok(spoken.startsWith(before))
   assert.equal(dense(spoken), dense(speakableText(tokens.join(''))))
 })
+
+// The mouth timeline is compiled from this text downstream, and Han characters
+// alone cannot say which language it is.
+test('segments carry the language they were written in', () => {
+  const japanese = new SpeechSegmenter('m1', 0, 'ja-JP')
+  const [segment] = [...japanese.push('日本語です。'), ...japanese.end()]
+  assert.equal(segment?.locale, 'ja-JP')
+
+  const chinese = new SpeechSegmenter('m2', 0, 'zh-CN')
+  const [other] = [...chinese.push('这是中文。'), ...chinese.end()]
+  assert.equal(other?.locale, 'zh-CN')
+})

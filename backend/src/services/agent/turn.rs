@@ -48,6 +48,19 @@ pub fn event_plane(event: &AgentProgressEvent) -> EventPlane {
 
 pub const TURN_SUPERSEDED_CODE: &str = "TURN_SUPERSEDED";
 
+/// Chat completions are spoken lines, not Work outcomes. They must not become
+/// persona events, mood bumps, or task notifications.
+pub fn is_chat_turn_completion(response: &serde_json::Value) -> bool {
+    if response.get("code").and_then(|value| value.as_str()) == Some(TURN_SUPERSEDED_CODE) {
+        return true;
+    }
+    let Some(data) = response.get("data") else {
+        return false;
+    };
+    data.get("mode").and_then(|value| value.as_str()) == Some("chat")
+        || data.get("type").and_then(|value| value.as_str()) == Some("chat")
+}
+
 struct ChatTurnSlot {
     tx: oneshot::Sender<()>,
     slot_id: u64,
@@ -155,6 +168,26 @@ mod tests {
                 "control event leaked data-plane field {forbidden}"
             );
         }
+    }
+
+    #[test]
+    fn chat_turn_completion_is_not_a_persona_event() {
+        assert!(is_chat_turn_completion(&json!({
+            "success": true,
+            "message": "你好。",
+            "data": { "reply": "你好。", "type": "chat", "mode": "chat" }
+        })));
+        assert!(is_chat_turn_completion(&json!({
+            "success": false,
+            "message": "Replaced by a newer Chat turn",
+            "streamTerminal": true,
+            "code": TURN_SUPERSEDED_CODE,
+        })));
+        assert!(!is_chat_turn_completion(&json!({
+            "success": true,
+            "message": "The task finished",
+            "data": { "type": "work" }
+        })));
     }
 
     #[test]

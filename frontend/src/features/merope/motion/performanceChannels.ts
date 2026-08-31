@@ -3,20 +3,14 @@ import type {
   PerformanceDirective,
 } from '../../../services/agent/types'
 import type { MotionChannel } from './channels'
-import { cueDriverPatch } from '../anime25drig/performanceMotion'
-
-const HEAD_BODY_KEYS = ['body', 'armY', 'armPos'] as const
-
-/** Cues whose expression offset drives the eyes away from where they look. */
-const GAZE_INTENTS = new Set<PerformanceCue['intent']>(['think'])
+import { performanceCueDefinition } from '../anime25drig/performanceCueDefinitions'
 
 export function cueOccupiesHeadBody(cue: PerformanceCue): boolean {
-  const patch = cueDriverPatch(cue)
-  return HEAD_BODY_KEYS.some((key) => typeof patch[key] === 'number')
+  return performanceCueDefinition(cue.intent).channels.includes('headBody')
 }
 
 export function cueOccupiesGaze(cue: PerformanceCue): boolean {
-  return GAZE_INTENTS.has(cue.intent)
+  return performanceCueDefinition(cue.intent).channels.includes('gaze')
 }
 
 /**
@@ -31,10 +25,9 @@ export function performanceOccupiedChannels(
   const baseline = directive.plan.baseline
   if (baseline && baseline.posture !== 'neutral') channels.add('headBody')
   for (const cue of directive.plan.cues) {
-    channels.add('expression')
-    if (cueOccupiesHeadBody(cue)) channels.add('headBody')
-    // `think` writes eyeX/eyeY; it was moving the eyes without owning gaze.
-    if (cueOccupiesGaze(cue)) channels.add('gaze')
+    for (const channel of performanceCueDefinition(cue.intent).channels) {
+      channels.add(channel)
+    }
   }
   return [...channels]
 }

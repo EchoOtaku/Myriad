@@ -1,5 +1,5 @@
 import type { RefObject } from 'react'
-import type { RigCharacterHandle } from '../rig/RigCharacter'
+import type { RigMotionPort } from '../rig/motionPort'
 import type { MeropeActivity } from '../types'
 import type { MotionRuntime } from './runtime'
 import { useEffect, useRef } from 'react'
@@ -17,7 +17,7 @@ export interface RigMotionLifecycleOptions {
 
 function useMotionRuntimeConsumer(
   runtime: MotionRuntime,
-  rigRef: RefObject<RigCharacterHandle | null>,
+  rigRef: RefObject<RigMotionPort | null>,
   options: RigMotionLifecycleOptions = {},
   liveFace = false,
 ): void {
@@ -31,7 +31,9 @@ function useMotionRuntimeConsumer(
     return () => {
       release()
       if (liveFace) {
-        setLiveFaceVisible(getProductionMotionRuntime().summaryFacts().faceVisible)
+        setLiveFaceVisible(
+          getProductionMotionRuntime().summaryFacts().faceVisible,
+        )
       }
     }
   }, [runtime, liveFace])
@@ -49,7 +51,15 @@ function useMotionRuntimeConsumer(
     return runtime.subscribe((frame) => {
       const rig = rigRef.current
       if (!rig) return
-      applyMotionFrame(rig, frame, state)
+      applyMotionFrame(rig, frame, state, (feedback) => {
+        runtime.reportPerformanceRealizer(
+          feedback.planId,
+          feedback.behaviorId,
+          feedback.result,
+          feedback.atMs,
+          feedback.reason,
+        )
+      })
     })
   }, [runtime, rigRef])
 }
@@ -59,16 +69,11 @@ function useMotionRuntimeConsumer(
  * runtime; this hook only consumes the snapshot.
  */
 export function useRigMotionLifecycle(
-  rigRef: RefObject<RigCharacterHandle | null>,
+  rigRef: RefObject<RigMotionPort | null>,
   options: RigMotionLifecycleOptions = {},
 ): void {
   useRigSingingLifecycle()
-  useMotionRuntimeConsumer(
-    getProductionMotionRuntime(),
-    rigRef,
-    options,
-    true,
-  )
+  useMotionRuntimeConsumer(getProductionMotionRuntime(), rigRef, options, true)
 }
 
 /**
@@ -76,7 +81,7 @@ export function useRigMotionLifecycle(
  * so preview never takes production channels.
  */
 export function useRigPreviewMotionLifecycle(
-  rigRef: RefObject<RigCharacterHandle | null>,
+  rigRef: RefObject<RigMotionPort | null>,
   options: RigMotionLifecycleOptions = {},
 ): void {
   const runtimeRef = useRef<MotionRuntime | null>(null)

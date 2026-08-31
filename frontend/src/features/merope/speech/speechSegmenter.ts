@@ -1,3 +1,4 @@
+import { getDefaultLocale } from '../../../i18n'
 import { speakableText } from './speakableText'
 
 export type SpeechInterruptMode = 'queue' | 'replace' | 'interrupt'
@@ -9,6 +10,12 @@ export interface SpeechSegment {
   messageId: string
   generation: number
   interrupt: SpeechInterruptMode
+  /**
+   * UI language at the time the reply was written. Han characters alone cannot
+   * say whether a line is Chinese or Japanese, and reading Japanese kanji as
+   * pinyin gives the wrong mouth for the whole sentence.
+   */
+  locale?: string
 }
 
 const CJK_SENTENCE_END = /[。！？!?…]/
@@ -25,10 +32,12 @@ export class SpeechSegmenter {
   private sequence = 0
   private readonly messageId: string
   private readonly generation: number
+  private readonly locale: string
 
-  constructor(messageId: string, generation = 0) {
+  constructor(messageId: string, generation = 0, locale = getDefaultLocale()) {
     this.messageId = messageId
     this.generation = generation
+    this.locale = locale
   }
 
   push(token: string, interrupt: SpeechInterruptMode = 'queue'): SpeechSegment[] {
@@ -69,6 +78,7 @@ export class SpeechSegmenter {
       messageId: this.messageId,
       generation: this.generation,
       interrupt,
+      ...(this.locale ? { locale: this.locale } : {}),
     }
     const more = this.flush(force, force ? 'queue' : interrupt)
     if (more.length > 0) return [segment, ...more]

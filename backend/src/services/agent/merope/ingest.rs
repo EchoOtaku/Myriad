@@ -206,6 +206,12 @@ pub async fn ingest(
         chatting,
         working,
     );
+    // Whether this is a Chat completion is a property of the event, and it is
+    // already filtered twice: `run_hub` stops publishing one, and the match in
+    // `apply_task_mood` ignores every key but the three task outcomes. Whether
+    // the addressee happens to be chatting right now is a different question,
+    // and gating on it meant a real Work task that finished inside the chat
+    // window never counted — success or failure — for good.
     apply_task_mood(db, user_id, event_key, state.mood).await;
 
     if !decision.allow_model {
@@ -499,12 +505,23 @@ async fn addressee_is_chatting(db: &DatabaseConnection, user_id: i32) -> bool {
     is_chatting(last_active, executing_run, Utc::now())
 }
 
+/// Whether an event is a task outcome, and whether it went well.
+///
+/// This is the only thing that decides if mood moves — not what the addressee
+/// happened to be doing when the event arrived.
+fn task_mood_outcome(event_key: &str) -> Option<bool> {
+    match event_key {
+        "agent.task_completed" => Some(true),
+        "agent.task_failed" | "agent.task_cancelled" => Some(false),
+        _ => None,
+    }
+}
+
 async fn apply_task_mood(db: &DatabaseConnection, user_id: i32, event_key: &str, mood: f64) {
-    let next = match event_key {
-        "agent.task_completed" => apply_task_outcome(mood, true),
-        "agent.task_failed" | "agent.task_cancelled" => apply_task_outcome(mood, false),
-        _ => return,
+    let Some(succeeded) = task_mood_outcome(event_key) else {
+        return;
     };
+    let next = apply_task_outcome(mood, succeeded);
     let _ = save_mood(db, user_id, next, false).await;
     if !is_extremely_low(mood) && is_extremely_low(next) {
         spawn(
@@ -805,5 +822,42 @@ mod tests {
     fn json_shaped_speech_is_trivial() {
         assert!(is_trivial_line("{\"line\":\"hi\"}"));
         assert!(!is_trivial_line("刚才那件事做成了。"));
+    }
+
+    /// Mood follows what happened, not what the addressee was doing when it
+    /// happened. Chat completions are filtered by event kind — in `run_hub`,
+    /// and again by the match in `apply_task_mood` — so a Work outcome must
+    /// still count while the addressee is mid-conversation.
+    #[test]
+    fn task_mood_follows_the_event_kind_not_the_addressees_activity() {
+        let src = include_str!("ingest.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .unwrap();
+        let apply = src
+            .find("apply_task_mood(db")
+            .expect("apply_task_mood call");
+        let guard = src[..apply].rfind("if !chatting");
+        assert!(
+            guard.is_none_or(|at| apply - at > 400),
+            "a Work outcome must not be dropped because the addressee is chatting"
+        );
+        // `chatting` still decides whether she *says* something about it.
+        assert!(src.contains("chatting,\n        working,"));
+    }
+
+    #[test]
+    fn only_task_outcomes_move_mood() {
+        for key in [
+            "agent.task_progress",
+            "agent.clarification",
+            "agent.chat_completed",
+            "merope.diary",
+        ] {
+            assert_eq!(task_mood_outcome(key), None, "{key} must not move mood");
+        }
+        assert_eq!(task_mood_outcome("agent.task_completed"), Some(true));
+        assert_eq!(task_mood_outcome("agent.task_failed"), Some(false));
+        assert_eq!(task_mood_outcome("agent.task_cancelled"), Some(false));
     }
 }

@@ -117,7 +117,10 @@ fn local_cue(
     baseline: &ChatPerformanceBaseline,
 ) -> Option<ChatPerformanceCue> {
     let intent = match phase {
-        MotionPhase::Reaction => "listen",
+        // Text submission is already a completed turn. A small acknowledgement
+        // is honest; "listen" falsely claims an ongoing listener state that
+        // this path cannot observe.
+        MotionPhase::Reaction => "respond",
         MotionPhase::Delivery => {
             if reply_asks_back(response_text) {
                 "question"
@@ -134,7 +137,6 @@ fn local_cue(
     };
     let energy = baseline.motion_energy;
     let (fade_in_ms, fade_out_ms) = match intent {
-        "listen" => (220, 420),
         "question" => (140, 320),
         "delight" => (120, 420),
         "notify" => (110, 300),
@@ -200,7 +202,8 @@ mod tests {
 
     #[test]
     fn a_mood_shift_moves_the_baseline_without_playing_a_beat() {
-        let plan = local_performance_plan(MotionPhase::Mood, &mood("high", 12.0), None, None, "even");
+        let plan =
+            local_performance_plan(MotionPhase::Mood, &mood("high", 12.0), None, None, "even");
         assert!(plan.cues.is_empty());
         assert_eq!(plan.baseline.unwrap().expression, "warm");
     }
@@ -263,6 +266,18 @@ mod tests {
     }
 
     #[test]
+    fn submitted_text_gets_an_acknowledgement_not_a_fake_listening_state() {
+        let plan = local_performance_plan(
+            MotionPhase::Reaction,
+            &mood("normal", 0.0),
+            None,
+            None,
+            "even",
+        );
+        assert_eq!(plan.cues[0].intent, "respond");
+    }
+
+    #[test]
     fn a_failed_task_does_not_celebrate() {
         let failed = local_performance_plan(
             MotionPhase::Outcome,
@@ -285,8 +300,13 @@ mod tests {
 
     #[test]
     fn a_restrained_persona_stays_restrained_when_the_mood_is_high() {
-        let plan =
-            local_performance_plan(MotionPhase::Delivery, &mood("high", 0.0), None, None, "restrained");
+        let plan = local_performance_plan(
+            MotionPhase::Delivery,
+            &mood("high", 0.0),
+            None,
+            None,
+            "restrained",
+        );
         let baseline = plan.baseline.unwrap();
         assert_eq!(baseline.posture, "closed");
         assert!(baseline.motion_energy < 0.8);
