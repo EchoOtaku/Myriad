@@ -63,6 +63,9 @@ pub struct SelfLivePresence {
     pub perception: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rig_state: Option<myriad_merope::RigStateSummary>,
+    /// When this observation was written. `None` is treated as expired.
+    #[serde(default)]
+    pub captured_at: Option<DateTime<Utc>>,
 }
 
 /// Trusted runtime facts describing who the Agent is speaking to and what it
@@ -90,6 +93,8 @@ pub struct SelfSnapshot {
     pub captured_at: DateTime<Utc>,
     #[serde(default)]
     pub live: SelfLivePresence,
+    #[serde(default)]
+    pub attention: Option<super::attention::AttentionSegment>,
 }
 
 /// Side-effect class selected by the consciousness model.
