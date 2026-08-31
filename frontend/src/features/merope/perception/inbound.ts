@@ -2,7 +2,7 @@ import { getAgentContextConsent, subscribeAgentContextConsent } from '../../../c
 import { subscribeScreenConsent } from '../../../components/agent-panel/screenConsent'
 import type { PageContent } from '../../../contexts/PageContentContext'
 import { getCurrentPageContent } from '../../../contexts/currentPage'
-import { subscribeCurrentSong } from '../../../contexts/currentSong'
+import { bindPublishedMusicState, subscribeCurrentSong } from '../../../contexts/currentSong'
 import { getVoicePresence, subscribeVoicePresence } from '../speech/voicePresence'
 import type { PerceptionSnapshot } from './registry'
 import { subscribeForegroundSurface } from './surface'
@@ -126,6 +126,7 @@ export function startPresenceInbound(): () => void {
     return () => {}
   }
   started = true
+  bindPublishedMusicState()
   if (typeof location !== 'undefined') {
     lastRoute = location.pathname
   }

@@ -15,9 +15,17 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { pickMusicContextState } from '../utils/musicPlayerState'
-import { setCurrentSongSnapshot } from './currentSong'
+import {
+  applyPublishedMusicState,
+  bindPublishedMusicState,
+  setCurrentSongSnapshot,
+} from './currentSong'
 
-export { getCurrentSong, subscribeCurrentSong } from './currentSong'
+export {
+  applyPublishedMusicState,
+  getCurrentSong,
+  subscribeCurrentSong,
+} from './currentSong'
 
 /**
  * 全局音乐播放器状态管理 - 使用 React Context 实现实时状态同步
@@ -74,6 +82,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
     if (typeof window !== 'undefined') {
       const globalState = (window as any).__musicPlayerState
       if (globalState) {
+        applyPublishedMusicState(globalState)
         setState({
           currentSong: globalState.currentSong || null,
           isEnabled: globalState.isEnabled || false,
@@ -103,6 +112,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
         | undefined
       if (!detail) return
 
+      applyPublishedMusicState(detail)
       setState((prev) => ({
         ...prev,
         ...(pickMusicContextState(detail) as Partial<MusicPlayerState>),
@@ -293,7 +303,10 @@ if (typeof window !== 'undefined') {
   const initialState = (window as any).__musicPlayerState
   if (initialState) {
     globalMusicState = { ...globalMusicState, ...initialState }
+    applyPublishedMusicState(initialState)
   }
+  bindPublishedMusicState()
+  attachMusicEventListener()
 }
 
 // 降级方案：基于 useSyncExternalStore 的实现（高性能版本）

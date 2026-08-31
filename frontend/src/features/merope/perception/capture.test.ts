@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import type { Song } from '../../../utils/musicPlayer'
-import { setCurrentSongSnapshot } from '../../../contexts/currentSong'
+import {
+  applyPublishedMusicState,
+  getCurrentSong,
+  setCurrentSongSnapshot,
+} from '../../../contexts/currentSong'
 import {
   replaceMusicTrackSource,
   replaceSurfaceSource,
@@ -38,15 +42,20 @@ function captureConsented(pageConsent: boolean): void {
 
 test.describe('perception capture', { concurrency: false }, () => {
   test('music_track stays behind page consent', () => {
-    setCurrentSongSnapshot(sampleSong('Night', 'Lantern'))
+    applyPublishedMusicState({ currentSong: sampleSong('Night', 'Lantern') })
     setForegroundSurface('none')
     captureConsented(false)
     assert.equal(bySource('music_track'), undefined)
   })
 
-  test('song change bumps revision and omits url', () => {
+  test('player publish path names the track and omits url', () => {
     setForegroundSurface('none')
-    setCurrentSongSnapshot(sampleSong('Night', 'Lantern'))
+    setCurrentSongSnapshot(null)
+    applyPublishedMusicState({
+      currentSong: sampleSong('Night', 'Lantern'),
+      isPlaying: true,
+    })
+    assert.equal(getCurrentSong()?.name, 'Night')
     captureConsented(true)
     const first = bySource('music_track')
     assert.ok(first)
@@ -59,13 +68,22 @@ test.describe('perception capture', { concurrency: false }, () => {
     assert.equal('id' in first.safeFacts, false)
     const firstRevision = first.revision
 
-    setCurrentSongSnapshot(sampleSong('Dawn', 'Lantern'))
+    applyPublishedMusicState({
+      currentSong: sampleSong('Dawn', 'Lantern'),
+      isPlaying: true,
+    })
     captureConsented(true)
     const second = bySource('music_track')
     assert.ok(second)
     assert.equal(second.summary, 'Dawn — Lantern')
     assert.ok(second.revision > firstRevision)
     assert.equal('url' in second.safeFacts, false)
+  })
+
+  test('partial play/pause publish does not clear the track', () => {
+    applyPublishedMusicState({ currentSong: sampleSong('Night', 'Lantern') })
+    applyPublishedMusicState({ isPlaying: false })
+    assert.equal(getCurrentSong()?.name, 'Night')
   })
 
   test('closed overlay reports surface none', () => {
@@ -77,6 +95,24 @@ test.describe('perception capture', { concurrency: false }, () => {
     assert.equal(row.safeFacts.surface, 'none')
     assert.equal(row.privacy, 'local')
   })
+})
+
+test('provider event path writes the current-song snapshot', () => {
+  const source = readFileSync(
+    new URL('../../../contexts/MusicPlayerContext.tsx', import.meta.url),
+    'utf8',
+  )
+  const provider = source
+    .split('export function MusicPlayerProvider')[1]
+    ?.split('export function useMusicPlayerControl')[0]
+  assert.ok(provider)
+  assert.match(provider, /applyPublishedMusicState\(/)
+  assert.match(provider, /music-player-state-change/)
+  const boot = source.split('初始化：监听事件并更新全局状态')[1]
+  assert.ok(boot)
+  assert.match(boot, /applyPublishedMusicState\(/)
+  assert.match(boot, /bindPublishedMusicState\(/)
+  assert.match(boot, /attachMusicEventListener\(/)
 })
 
 test('capture wires consented sources', () => {
