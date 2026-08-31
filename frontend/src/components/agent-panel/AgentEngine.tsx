@@ -56,6 +56,10 @@ import {
   setLiveBody,
 } from '../../features/merope/faceSpeechArbitration'
 import { livePresenceFacts } from '../../features/merope/livePresence'
+import {
+  notePresenceRoute,
+  startPresenceInbound,
+} from '../../features/merope/perception/inbound'
 import { setLiveMotionGeneration } from '../../features/merope/motion/liveGeneration'
 import { captureProductionRigStateSummary } from '../../features/merope/motion/runtimeHost'
 import { getSpeechPipeline } from '../../features/merope/speech/speechPipelineHost'
@@ -166,6 +170,11 @@ export const AgentEngine: React.FC = () => {
 
   // 页面内容上下文
   const pageContentContext = usePageContentOptional()
+
+  useEffect(() => startPresenceInbound(), [])
+  useEffect(() => {
+    notePresenceRoute(location.pathname)
+  }, [location.pathname])
 
   const [_isLoading, setIsLoading] = useState(false)
   const mode = useAgentPanelMode()
