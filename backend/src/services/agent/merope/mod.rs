@@ -15,6 +15,7 @@ pub mod store;
 pub use chat_remember::spawn_chat_remember;
 pub use ingest::{
     allow_existing_notify, is_enabled, spawn as spawn_ingest, spawn_diary, spawn_presence,
+    tick_speak_intents,
 };
 pub use motion::{
     direct_motion, local_directive, resolve_round_motion_style, MotionContext, MotionPhase,
@@ -362,6 +363,8 @@ pub async fn speaking_prompt_with_query(user_id: i32, query: Option<&str>) -> Ve
 const REMEMBERED_PROMPT_LIMIT: usize = 8;
 const REMEMBERED_CANDIDATE_LIMIT: u64 = 32;
 const RECENT_LEDGER_LIMIT: u64 = 4;
+/// Chat diary only. Event diary reaches speaking via Remember, not this ledger.
+const RECENT_SPEAKING_DIARY_SOURCES: &[&str] = &[store::DIARY_SOURCE_CHAT];
 
 async fn speaking_prompt_from_db(
     db: &sea_orm::DatabaseConnection,
@@ -387,7 +390,7 @@ async fn speaking_prompt_from_db(
     if let Ok(notes) = list_diary_from_sources(
         db,
         user_id,
-        &[store::DIARY_SOURCE_EVENT, store::DIARY_SOURCE_CHAT],
+        RECENT_SPEAKING_DIARY_SOURCES,
         RECENT_LEDGER_LIMIT,
     )
     .await
@@ -580,6 +583,29 @@ mod tests {
         assert!(super::format_recent_section(&["Steam 解锁了成就".into()])
             .unwrap()
             .contains("## 最近"));
+    }
+
+    #[test]
+    fn speaking_recent_omits_event_diary_and_keeps_remembered() {
+        assert_eq!(
+            super::RECENT_SPEAKING_DIARY_SOURCES,
+            &[super::store::DIARY_SOURCE_CHAT]
+        );
+        assert!(!super::RECENT_SPEAKING_DIARY_SOURCES.contains(&super::store::DIARY_SOURCE_EVENT));
+        let remembered = super::format_remembered_section(&["晚上想打独立游戏".into()]).unwrap();
+        let event_line = "正在收尾一篇文章，还差最后一段";
+        let prompt = super::speaking_prompt_plain(&[remembered]);
+        assert!(prompt.contains("## 关于这个人"));
+        assert!(prompt.contains("晚上想打独立游戏"));
+        assert!(!prompt.contains(event_line));
+        let recent_src = include_str!("mod.rs")
+            .split("async fn speaking_prompt_from_db")
+            .nth(1)
+            .and_then(|rest| rest.split("pub fn speaking_prompt_plain").next())
+            .unwrap();
+        assert!(recent_src.contains("RECENT_SPEAKING_DIARY_SOURCES"));
+        assert!(recent_src.contains("format_remembered_section"));
+        assert!(!recent_src.contains("DIARY_SOURCE_EVENT"));
     }
 
     #[test]
