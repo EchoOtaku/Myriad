@@ -15,6 +15,9 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { pickMusicContextState } from '../utils/musicPlayerState'
+import { setCurrentSongSnapshot } from './currentSong'
+
+export { getCurrentSong, subscribeCurrentSong } from './currentSong'
 
 /**
  * 全局音乐播放器状态管理 - 使用 React Context 实现实时状态同步
@@ -204,6 +207,7 @@ function subscribeMusicState(listener: () => void) {
     const currentState = (window as any).__musicPlayerState
     if (currentState) {
       globalMusicState = { ...globalMusicState, ...currentState }
+      setCurrentSongSnapshot(globalMusicState.currentSong)
     }
   }
   attachMusicEventListener()
@@ -246,6 +250,7 @@ function updateGlobalMusicState(newState: Partial<MusicPlayerState>) {
 
   if (!changed) return
   globalMusicState = next
+  setCurrentSongSnapshot(next.currentSong)
   emitMusicStateChange()
 }
 

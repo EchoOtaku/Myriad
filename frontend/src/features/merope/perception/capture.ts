@@ -3,6 +3,7 @@ import type { PerceptionSnapshot } from './registry'
 import { getScreenConsent } from '../../../components/agent-panel/screenConsent'
 import { captureProductionRigStateSummary } from '../motion/runtimeHost'
 import { getVoicePresence } from '../speech/voicePresence'
+import { replaceMusicTrackSource, replaceSurfaceSource } from './consentedSources'
 import { pagePerceptionCopy } from './pageCopy'
 import { perceptionRegistry } from './registry'
 
@@ -61,6 +62,8 @@ export function capturePerceptionSnapshots(input: {
     })
   }
 
+  replaceSurfaceSource({ now, ttlMs: PRESENCE_TTL_MS })
+
   const rig = captureProductionRigStateSummary()
   perceptionRegistry.replace({
     sourceId: 'music',
@@ -76,6 +79,12 @@ export function capturePerceptionSnapshots(input: {
       beat: rig.music?.beat ?? 'rest',
     },
     privacy: 'system',
+  })
+
+  replaceMusicTrackSource({
+    now,
+    pageConsent: input.pageConsent,
+    ttlMs: MUSIC_TTL_MS,
   })
 
   const voice = getVoicePresence()
