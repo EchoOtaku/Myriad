@@ -17,8 +17,6 @@ use myriad_tapp_contract::manifest::{
     TappAiContextSource, TappAiOperation, TappAiOutputFormat, TappApiAccess, TappCredentialIn,
     TappCredentialSignAlg, TappHttpBodyMode, TappManifest, TappOpenUrlMatch, TappRouteVerifyOver,
 };
-use reqwest::header::HeaderName;
-use std::str::FromStr;
 
 use crate::services::permission_service::{tapp_permission_replacement_hint, TappPermission};
 
@@ -627,10 +625,12 @@ pub fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
                         }
                         match resolved.placement {
                             TappCredentialIn::Header => {
-                                let header =
-                                    HeaderName::from_str(&resolved.field).map_err(|_| {
-                                        format!("Invalid credential header for Tapp API {name}")
-                                    })?;
+                                let header = myriad_tapp_contract::headers::parse_http_header_name(
+                                    &resolved.field,
+                                )
+                                .map_err(|_| {
+                                    format!("Invalid credential header for Tapp API {name}")
+                                })?;
                                 crate::services::outbound_security::validate_outbound_header(
                                     &header,
                                 )
@@ -1559,7 +1559,8 @@ mod tests {
     #[test]
     fn generated_contract_forbidden_headers_match_outbound_guard() {
         for value in FORBIDDEN_OUTBOUND_HEADERS {
-            let header = HeaderName::from_str(value).expect("contract header name must be valid");
+            let header = myriad_tapp_contract::headers::parse_http_header_name(value)
+                .expect("contract header name must be valid");
             assert!(
                 crate::services::outbound_security::validate_outbound_header(&header).is_err(),
                 "generated CLI contract allows backend-forbidden header: {value}"

@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
 pub mod contract_rules;
+pub mod headers;
 pub mod manifest;
 pub mod paths;
 pub mod permission;
