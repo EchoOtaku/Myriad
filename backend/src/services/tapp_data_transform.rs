@@ -4,49 +4,11 @@
 //! and API paths share one evaluator. Handlers load/save items and call
 //! [`apply_pipeline`].
 
-use serde_json::{json, Value};
-
 pub use myriad_tapp_rules::{
-    apply_map_op, apply_pipeline, apply_process_step, DataTransformError, MapOp, ProcessStep,
-    MAX_MAP_OPERATIONS, MAX_PIPELINE_STEPS,
+    apply_map_op, apply_pipeline, apply_process_step, items_from_agent_input, items_from_value,
+    parse_pipeline_steps_lenient, DataTransformError, MapOp, ProcessStep, MAX_MAP_OPERATIONS,
+    MAX_PIPELINE_STEPS,
 };
-
-/// Normalize inline/platform/storage payloads into a list of items.
-pub fn items_from_value(data: Value) -> Vec<Value> {
-    data.as_array().cloned().unwrap_or_else(|| vec![data])
-}
-
-/// Agent `data.transform` input shape: array, or object with `items`, else empty.
-///
-/// Differs from [`items_from_value`] which wraps a lone object as a single item.
-pub fn items_from_agent_input(input: Value) -> Vec<Value> {
-    match input {
-        Value::Array(arr) => arr,
-        Value::Object(obj) => obj
-            .get("items")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default(),
-        _ => vec![],
-    }
-}
-
-/// Deserialize free-form pipeline JSON steps.
-///
-/// Unknown step shapes are skipped (historical agent `data.transform` behavior
-/// for unrecognized `type` values). Length is still capped at
-/// [`MAX_PIPELINE_STEPS`].
-pub fn parse_pipeline_steps_lenient(
-    pipeline: &[Value],
-) -> Result<Vec<ProcessStep>, DataTransformError> {
-    if pipeline.len() > MAX_PIPELINE_STEPS {
-        return Err(DataTransformError::TooManySteps);
-    }
-    Ok(pipeline
-        .iter()
-        .filter_map(|step| serde_json::from_value(step.clone()).ok())
-        .collect())
-}
 
 #[cfg(test)]
 mod tests {
