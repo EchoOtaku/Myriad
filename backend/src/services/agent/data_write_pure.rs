@@ -11,44 +11,11 @@ use serde_json::Value;
 use std::cmp::Reverse;
 use std::net::IpAddr;
 
-/// 订阅源名称最大长度
-pub const MAX_FEED_NAME_LEN: usize = 255;
-/// 订阅 URL 最大尝试数
-pub const MAX_FEED_URLS: usize = 10;
-/// platform.write 单次最大写入条目数
-pub const MAX_PLATFORM_WRITE_ITEMS: usize = 500;
-/// update_interval 最小值（分钟）
-pub const MIN_UPDATE_INTERVAL: i32 = 5;
-/// update_interval 最大值（分钟）
-pub const MAX_UPDATE_INTERVAL: i32 = 1440;
-
-/// 清洗并验证用户提供的订阅源名称。
-///
-/// - 限制最大长度
-/// - 去除首尾空白
-/// - 拒绝纯空白字符串
-pub fn sanitize_feed_name(name: &str) -> Result<String, String> {
-    let trimmed: String = name.chars().take(MAX_FEED_NAME_LEN).collect();
-    let trimmed = trimmed.trim().to_string();
-    if trimmed.is_empty() {
-        return Err("Feed name is required".to_string());
-    }
-    Ok(trimmed)
-}
-
-/// Clamp brew.subscribe update_interval minutes into contract bounds.
-pub fn clamp_update_interval_minutes(raw: i32) -> i32 {
-    raw.clamp(MIN_UPDATE_INTERVAL, MAX_UPDATE_INTERVAL)
-}
-
-/// Whether a platform.write items array exceeds the per-call cap.
-pub fn platform_write_items_over_cap(count: usize) -> bool {
-    count > MAX_PLATFORM_WRITE_ITEMS
-}
-
-pub fn platform_write_cap_error() -> String {
-    "Too many items to write at once".to_string()
-}
+pub use myriad_agent_rules::{
+    clamp_update_interval_minutes, platform_write_cap_error, platform_write_items_over_cap,
+    sanitize_feed_name, MAX_FEED_NAME_LEN, MAX_FEED_URLS, MAX_PLATFORM_WRITE_ITEMS,
+    MAX_UPDATE_INTERVAL, MIN_UPDATE_INTERVAL,
+};
 
 /// Disallowed hostname forms for subscribe URLs (before DNS).
 pub fn is_disallowed_subscribe_host(host: &str) -> bool {
