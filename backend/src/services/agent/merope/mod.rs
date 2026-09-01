@@ -223,7 +223,7 @@ pub fn should_write_chat_diary(text: &str, last_chat_age_minutes: Option<i64>) -
 }
 
 async fn maybe_write_chat_diary(db: &sea_orm::DatabaseConnection, user_id: i32, text: &str) {
-    let last_age = match latest_diary(db, user_id, Some("chat")).await {
+    let last_age = match latest_diary(db, user_id, store::DIARY_SOURCE_CHAT).await {
         Ok(Some(last)) => {
             Some((chrono::Utc::now() - last.created_at.with_timezone(&chrono::Utc)).num_minutes())
         }
@@ -563,6 +563,34 @@ mod tests {
         assert!(recent_src.contains("RECENT_SPEAKING_DIARY_SOURCES"));
         assert!(recent_src.contains("format_remembered_section"));
         assert!(!recent_src.contains("DIARY_SOURCE_EVENT"));
+    }
+
+    /// One diary table is safe only while every read names its source.
+    ///
+    /// `remember` holds facts the user stated; `event` and `chat` hold
+    /// summaries the platform wrote about them. An unscoped "latest row" would
+    /// let one arrive where the other is expected, which is the only way the
+    /// shared table could actually hurt — so the query cannot express it.
+    #[test]
+    fn every_diary_read_names_its_source() {
+        let store = include_str!("store.rs");
+        assert!(
+            !store.contains("source: Option<&str>"),
+            "latest_diary accepts an unscoped read again"
+        );
+        for signature in [
+            "pub async fn latest_diary(",
+            "pub async fn list_diary_from_sources(",
+        ] {
+            let body = store
+                .split(signature)
+                .nth(1)
+                .unwrap_or_else(|| panic!("{signature} is gone"));
+            assert!(
+                body.contains("Column::Source"),
+                "{signature} no longer filters by source"
+            );
+        }
     }
 
     #[test]

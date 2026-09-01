@@ -441,6 +441,15 @@ pub async fn save_affect(
     Ok(active.update(db).await?)
 }
 
+/// One table, three sources.
+///
+/// The rows are the same shape, are created and deleted together, and are read
+/// together (`list_diary_from_sources`), so a discriminator is the right split
+/// and three tables would only buy a three-way union. What the sources do not
+/// share is meaning: `remember` is a fact the user stated, while `event` and
+/// `chat` are summaries the platform generated about them. Reads are therefore
+/// always source-scoped — there is no "latest row of any kind" — so a stated
+/// fact can never arrive somewhere expecting a generated summary.
 pub const DIARY_SOURCE_EVENT: &str = "event";
 pub const DIARY_SOURCE_CHAT: &str = "chat";
 pub const DIARY_SOURCE_REMEMBER: &str = "remember";
@@ -464,15 +473,14 @@ pub async fn insert_diary(
 pub async fn latest_diary(
     db: &DatabaseConnection,
     user_id: i32,
-    source: Option<&str>,
+    source: &str,
 ) -> Result<Option<agent_diary::Model>, anyhow::Error> {
-    let mut query = agent_diary::Entity::find()
+    Ok(agent_diary::Entity::find()
         .filter(agent_diary::Column::UserId.eq(user_id))
-        .order_by_desc(agent_diary::Column::CreatedAt);
-    if let Some(source) = source {
-        query = query.filter(agent_diary::Column::Source.eq(source));
-    }
-    Ok(query.one(db).await?)
+        .filter(agent_diary::Column::Source.eq(source))
+        .order_by_desc(agent_diary::Column::CreatedAt)
+        .one(db)
+        .await?)
 }
 
 pub async fn list_diary_from_sources(
