@@ -9,43 +9,10 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 pub use myriad_agent_rules::{
-    build_schedule_config, heartbeat_task_id, heartbeat_update_has_fields, parse_execution_target,
-    parse_schedule_type, AgentExecutionTarget, AgentScheduleType,
+    build_schedule_config, extract_raw_backend_actions, heartbeat_task_id,
+    heartbeat_update_has_fields, parse_brew_schedule_action, parse_execution_target,
+    parse_schedule_type, AgentExecutionTarget, AgentScheduleType, BrewScheduleAction,
 };
-
-/// brew.schedule actions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BrewScheduleAction {
-    Start,
-    Stop,
-    Refresh,
-    Status,
-}
-
-/// Parse brew.schedule action string (default status).
-pub fn parse_brew_schedule_action(action: Option<&str>) -> Result<BrewScheduleAction, String> {
-    match action.unwrap_or("status") {
-        "start" => Ok(BrewScheduleAction::Start),
-        "stop" => Ok(BrewScheduleAction::Stop),
-        "refresh" => Ok(BrewScheduleAction::Refresh),
-        "status" => Ok(BrewScheduleAction::Status),
-        other => Err(format!("Unknown brew schedule action: {other}")),
-    }
-}
-
-/// Normalize backendActions / action field into optional array-bearing Value.
-pub fn extract_raw_backend_actions(params: &HashMap<String, Value>) -> Option<Value> {
-    params
-        .get("backendActions")
-        .or_else(|| params.get("backend_actions"))
-        .cloned()
-        .or_else(|| {
-            params.get("action").cloned().map(|action| match action {
-                Value::Array(_) => action,
-                _ => Value::Array(vec![action]),
-            })
-        })
-}
 
 #[cfg(test)]
 mod tests {
