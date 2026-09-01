@@ -5,8 +5,6 @@
 //! Limits re-export [`myriad_tapp_contract::contract_rules`] (shared with the
 //! offline CLI) so install and `check` cannot drift.
 
-use std::path::{Component, Path as FsPath};
-
 use myriad_tapp_contract::contract_rules::API_INJECT_RESERVED_PREFIXES;
 use myriad_tapp_contract::contract_rules::{
     MAX_OPEN_URLS, MAX_OPEN_URL_ID_LEN, OPEN_URL_PERMISSION,
@@ -18,7 +16,7 @@ use myriad_tapp_contract::manifest::{
     valid_agent_name, valid_event_topic, valid_inbound_route_path, valid_inbound_verify_header,
     TappAiContextSource, TappAiOperation, TappAiOutputFormat, TappApiAccess, TappCredentialIn,
     TappCredentialSignAlg, TappHttpBodyMode, TappManifest, TappOpenUrlMatch, TappRouteVerifyOver,
-    TappSettingDef, TappWidgetRefreshMode, TappWidgetRefreshPolicy,
+    TappSettingDef,
 };
 use reqwest::header::HeaderName;
 use std::str::FromStr;
@@ -41,146 +39,12 @@ pub use myriad_tapp_contract::contract_rules::{
     MAX_TAPP_RESOURCE_BYTES, MAX_TAPP_RUNTIME_MODULES, MAX_TAPP_UPLOAD_BYTES, MAX_WIDGETS_PER_TAPP,
     MIN_TAPP_GAME_PLAYERS, TAPP_RUNTIME_MODULES,
 };
-
-pub fn valid_data_exchange_id(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= MAX_DATA_EXCHANGE_ID_LEN
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
-}
-
-pub fn validate_inline_data_schema(schema: &serde_json::Value) -> Result<(), String> {
-    let object = schema
-        .as_object()
-        .ok_or_else(|| "Data Exchange schema must be an inline JSON object".to_string())?;
-    let encoded = serde_json::to_vec(schema)
-        .map_err(|_| "Data Exchange schema cannot be serialized".to_string())?;
-    if encoded.len() > MAX_DATA_EXCHANGE_SCHEMA_BYTES {
-        return Err(format!(
-            "Data Exchange schema is too large (max {MAX_DATA_EXCHANGE_SCHEMA_BYTES} bytes)"
-        ));
-    }
-
-    fn reject_refs(value: &serde_json::Value, depth: usize) -> Result<(), String> {
-        if depth > 32 {
-            return Err("Data Exchange schema nesting is too deep".to_string());
-        }
-        match value {
-            serde_json::Value::Object(map) => {
-                if map.contains_key("$ref") {
-                    return Err("Data Exchange schema does not support $ref".to_string());
-                }
-                for child in map.values() {
-                    reject_refs(child, depth + 1)?;
-                }
-            }
-            serde_json::Value::Array(values) => {
-                for child in values {
-                    reject_refs(child, depth + 1)?;
-                }
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-
-    reject_refs(schema, 0)?;
-    if !object.contains_key("type")
-        && !object.contains_key("properties")
-        && !object.contains_key("enum")
-        && !object.contains_key("const")
-    {
-        return Err(
-            "Data Exchange schema must declare type, properties, enum, or const".to_string(),
-        );
-    }
-    Ok(())
-}
-
-pub fn is_safe_path_component(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= MAX_TAPP_ID_LEN
-        && value != "."
-        && value != ".."
-        && !value.starts_with('.')
-        && value
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
-}
-
-pub fn validate_tapp_id(tapp_id: &str) -> Result<(), String> {
-    if tapp_id.len() > MAX_TAPP_ID_LEN
-        || !tapp_id
-            .chars()
-            .next()
-            .is_some_and(|ch| ch.is_ascii_alphanumeric())
-        || !is_safe_path_component(tapp_id)
-    {
-        return Err(
-            "Invalid Tapp id: use 1-128 ASCII letters, numbers, dots, underscores, or hyphens"
-                .to_string(),
-        );
-    }
-    Ok(())
-}
-
-pub fn validate_resource_path(path: &str) -> Result<(), String> {
-    if path.is_empty()
-        || path.len() > MAX_RESOURCE_PATH_LEN
-        || path.contains('\\')
-        || FsPath::new(path).is_absolute()
-    {
-        return Err(format!("Invalid Tapp resource path: {path}"));
-    }
-
-    let mut saw_component = false;
-    for component in FsPath::new(path).components() {
-        match component {
-            Component::Normal(value) => {
-                let value = value
-                    .to_str()
-                    .ok_or_else(|| format!("Invalid Tapp resource path: {path}"))?;
-                if !is_safe_path_component(value) {
-                    return Err(format!("Invalid Tapp resource path: {path}"));
-                }
-                saw_component = true;
-            }
-            _ => return Err(format!("Invalid Tapp resource path: {path}")),
-        }
-    }
-
-    if !saw_component {
-        return Err(format!("Invalid Tapp resource path: {path}"));
-    }
-    Ok(())
-}
-
-pub fn is_valid_widget_size(size: &str) -> bool {
-    matches!(
-        size,
-        "1x1" | "1x2" | "2x1" | "2x2" | "2x3" | "3x2" | "4x1" | "4x2" | "2x4" | "3x3" | "4x4"
-    )
-}
-
-pub fn tapp_setting_value_is_valid(setting: &TappSettingDef, value: &serde_json::Value) -> bool {
-    match setting.setting_type.as_str() {
-        "toggle" => value.is_boolean(),
-        "input" | "color" => value.is_string(),
-        "select" => value.as_str().is_some_and(|value| {
-            setting
-                .options
-                .as_ref()
-                .is_some_and(|options| options.iter().any(|option| option.value == value))
-        }),
-        "number" => value.as_f64().is_some_and(|value| {
-            value.is_finite()
-                && setting.min.is_none_or(|min| value >= min)
-                && setting.max.is_none_or(|max| value <= max)
-        }),
-        _ => false,
-    }
-}
+pub use myriad_tapp_contract::paths::{
+    is_safe_path_component, is_valid_widget_size, parse_system_version,
+    tapp_setting_value_is_valid, valid_data_exchange_id, validate_asset_path,
+    validate_inline_data_schema, validate_resource_extension, validate_resource_path,
+    validate_tapp_id, validate_widget_refresh_policy,
+};
 
 pub fn validate_tapp_settings(settings: &[TappSettingDef], scope: &str) -> Result<(), String> {
     if settings.len() > 64 {
@@ -261,32 +125,6 @@ pub fn validate_tapp_settings(settings: &[TappSettingDef], scope: &str) -> Resul
         }
     }
     Ok(())
-}
-
-pub fn validate_widget_refresh_policy(
-    policy: &TappWidgetRefreshPolicy,
-    widget_id: &str,
-) -> Result<(), String> {
-    match policy.mode {
-        TappWidgetRefreshMode::Event if policy.interval_seconds.is_some() => Err(format!(
-            "Event-driven Widget {widget_id} cannot declare intervalSeconds"
-        )),
-        TappWidgetRefreshMode::Event => Ok(()),
-        TappWidgetRefreshMode::Interval
-            if !matches!(policy.interval_seconds, Some(15..=86_400)) =>
-        {
-            Err(format!(
-                "Interval Widget {widget_id} requires intervalSeconds between 15 and 86400"
-            ))
-        }
-        TappWidgetRefreshMode::Interval => Ok(()),
-    }
-}
-
-pub fn parse_system_version(value: &str) -> Result<semver::Version, String> {
-    let normalized = value.strip_prefix('v').unwrap_or(value);
-    semver::Version::parse(normalized)
-        .map_err(|_| format!("Invalid minSystemVersion: {value}; expected semantic version"))
 }
 
 pub fn validate_http_url(value: &str, field: &str) -> Result<(), String> {
@@ -394,30 +232,6 @@ fn validate_open_urls(manifest: &TappManifest) -> Result<(), String> {
             return Err(format!("Tapp {field}.url must not include a #fragment"));
         }
         let _ = entry.match_mode; // exhaustively known via serde enum
-    }
-    Ok(())
-}
-
-pub fn validate_resource_extension(path: &str, extension: &str, field: &str) -> Result<(), String> {
-    if !path.ends_with(extension) {
-        return Err(format!("Tapp {field} must reference a {extension} file"));
-    }
-    Ok(())
-}
-
-pub fn validate_asset_path(path: &str) -> Result<(), String> {
-    validate_resource_path(path)?;
-    if !path.starts_with("assets/") || path == "assets" || path.ends_with('/') {
-        return Err(format!(
-            "Tapp asset path must be a file under assets/: {path}"
-        ));
-    }
-    // Reject nested path escape already handled by validate_resource_path.
-    // Disallow treating runtime entrypoints as assets.
-    if path.ends_with(".js") || path.ends_with(".html") {
-        return Err(format!(
-            "Tapp asset path must not be a script or HTML entry: {path}"
-        ));
     }
     Ok(())
 }

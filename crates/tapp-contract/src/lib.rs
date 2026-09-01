@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 
 pub mod contract_rules;
 pub mod manifest;
+pub mod paths;
 pub mod permission;
 pub mod storage;
 
