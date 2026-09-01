@@ -3,56 +3,21 @@
 //! HTTP handlers keep visibility/auth and filesystem IO. This module owns how
 //! a stored manifest JSON maps to relative paths the reader should attempt.
 
-use myriad_tapp_contract::manifest::TappManifest;
-
 /// 宿主预编译 Tailwind 产物的固定路径（契约：与作者层样式并行）。
 pub use myriad_tapp_contract::contract_rules::{HOST_PAGE_CSS, HOST_WIDGET_CSS};
 pub use myriad_tapp_rules::{
-    filter_widget_paths, installed_core_entry, installed_layer_entries, installed_page_entry,
-    installed_text_resource_plan, installed_widget_ids, installed_widget_layer_paths,
-    installed_widget_template_paths, manifest_declares_core, manifest_declares_page,
+    asset_bytes_within_limit, filter_widget_paths, installed_core_entry, installed_layer_entries,
+    installed_manifest_declares_asset, installed_page_entry, installed_text_resource_plan,
+    installed_widget_ids, installed_widget_layer_paths, installed_widget_template_paths,
+    manifest_declares_asset, manifest_declares_core, manifest_declares_page,
     manifest_declares_widgets, require_known_widget_id, InstalledTextResourcePlan,
     InstalledWidgetTemplatePath, UnknownWidgetId,
 };
 
-/// Whether `path` is declared in a typed manifest's `assets` list.
-///
-/// For payloads already validated against the current contract. Serving
-/// installed packages must use [`installed_manifest_declares_asset`], which
-/// reads by key and cannot fail on a manifest from another contract version.
-#[allow(dead_code)] // 仅测试调用：本仓无生产调用点（编译器已核）。
-pub fn manifest_declares_asset(manifest: &TappManifest, path: &str) -> bool {
-    manifest
-        .assets
-        .as_ref()
-        .is_some_and(|declared| declared.iter().any(|entry| entry == path))
-}
-
-/// Whether `path` is declared in a stored manifest JSON's `assets` list.
-///
-/// Reads by key like the rest of the serve path, so a manifest shaped for a
-/// different contract version degrades to "not declared" instead of failing
-/// deserialization and surfacing as a 500.
-pub fn installed_manifest_declares_asset(manifest: &serde_json::Value, path: &str) -> bool {
-    manifest
-        .get("assets")
-        .and_then(serde_json::Value::as_array)
-        .is_some_and(|declared| {
-            declared
-                .iter()
-                .filter_map(serde_json::Value::as_str)
-                .any(|entry| entry == path)
-        })
-}
-
-/// Whether an asset byte length is within the single-file install limit.
-pub fn asset_bytes_within_limit(size: u64, max_bytes: u64) -> bool {
-    size <= max_bytes
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use myriad_tapp_contract::manifest::TappManifest;
     use serde_json::json;
 
     #[test]

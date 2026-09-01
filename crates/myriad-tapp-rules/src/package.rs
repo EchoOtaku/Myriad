@@ -1,5 +1,4 @@
-//! Installed-package resource plans from stored manifest JSON.
-//! Asset declaration helpers land in a later slice.
+//! Installed-package resource plans and asset declaration helpers.
 
 /// Relative text paths to attempt when serving `GET …/resources`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -195,6 +194,44 @@ pub fn manifest_declares_widgets(manifest: &serde_json::Value) -> bool {
         .is_some_and(|widgets| !widgets.is_empty())
 }
 
+/// Whether `path` is declared in a typed manifest's `assets` list.
+///
+/// For payloads already validated against the current contract. Serving
+/// installed packages must use [`installed_manifest_declares_asset`], which
+/// reads by key and cannot fail on a manifest from another contract version.
+#[allow(dead_code)] // 仅测试调用：本仓无生产调用点（编译器已核）。
+pub fn manifest_declares_asset(
+    manifest: &myriad_tapp_contract::manifest::TappManifest,
+    path: &str,
+) -> bool {
+    manifest
+        .assets
+        .as_ref()
+        .is_some_and(|declared| declared.iter().any(|entry| entry == path))
+}
+
+/// Whether `path` is declared in a stored manifest JSON's `assets` list.
+///
+/// Reads by key like the rest of the serve path, so a manifest shaped for a
+/// different contract version degrades to "not declared" instead of failing
+/// deserialization and surfacing as a 500.
+pub fn installed_manifest_declares_asset(manifest: &serde_json::Value, path: &str) -> bool {
+    manifest
+        .get("assets")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|declared| {
+            declared
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .any(|entry| entry == path)
+        })
+}
+
+/// Whether an asset byte length is within the single-file install limit.
+pub fn asset_bytes_within_limit(size: u64, max_bytes: u64) -> bool {
+    size <= max_bytes
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -313,5 +350,61 @@ mod tests {
         assert!(manifest_declares_core(&declared));
         assert!(manifest_declares_widgets(&declared));
         assert!(!manifest_declares_widgets(&json!({ "widgets": [] })));
+    }
+
+    #[test]
+    fn asset_declaration_and_size_gate() {
+        use myriad_tapp_contract::manifest::TappManifest;
+        let manifest: TappManifest = serde_json::from_value(json!({
+            "id": "com.example.app",
+            "name": "App",
+            "version": "1.0.0",
+            "core": { "entry": "core.js" },
+            "category": "utility",
+            "permissions": [],
+            "assets": ["assets/icon.png", "assets/felt/table.png"]
+        }))
+        .unwrap();
+        assert!(manifest_declares_asset(&manifest, "assets/icon.png"));
+        assert!(!manifest_declares_asset(&manifest, "assets/missing.png"));
+        assert!(!manifest_declares_asset(
+            &serde_json::from_value(json!({
+                "id": "com.example.app",
+                "name": "App",
+                "version": "1.0.0",
+                "core": { "entry": "core.js" },
+                "category": "utility",
+                "permissions": []
+            }))
+            .unwrap(),
+            "assets/icon.png"
+        ));
+        assert!(asset_bytes_within_limit(10, 100));
+        assert!(!asset_bytes_within_limit(101, 100));
+    }
+
+    #[test]
+    fn installed_asset_declaration_degrades_instead_of_failing() {
+        let manifest = json!({ "assets": ["assets/icon.png"] });
+        assert!(installed_manifest_declares_asset(
+            &manifest,
+            "assets/icon.png"
+        ));
+        assert!(!installed_manifest_declares_asset(
+            &manifest,
+            "assets/missing.png"
+        ));
+
+        for shape in [
+            json!({}),
+            json!({ "assets": "not-an-array" }),
+            json!({ "assets": [42] }),
+            json!({ "core": { "entry": "core.js" } }),
+        ] {
+            assert!(!installed_manifest_declares_asset(
+                &shape,
+                "assets/icon.png"
+            ));
+        }
     }
 }
