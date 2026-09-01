@@ -7,4 +7,9 @@ description = "Pure Tapp evaluators (HMAC, transform, package plan, feed merge).
 authors = ["Myriad Contributors"]
 
 [dependencies]
+base64 = "0.23"
+hex = "0.4"
+hmac = "0.13"
 myriad-tapp-contract = { path = "../tapp-contract" }
+sha2 = "0.11"
+subtle = "2.6"

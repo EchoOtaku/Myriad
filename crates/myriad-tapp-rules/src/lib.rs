@@ -2,3 +2,7 @@
 //!
 //! HMAC and transform evaluation live here, not in the contract crate.
 //! Backend services re-export moved symbols so existing imports compile.
+
+pub mod hmac;
+
+pub use hmac::{encode_hmac, hmac_matches, hmac_sha256};

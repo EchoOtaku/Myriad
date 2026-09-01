@@ -2503,6 +2503,7 @@ dependencies = [
  "myriad-psn-auth",
  "myriad-tapp-contract",
  "myriad-tapp-registry",
+ "myriad-tapp-rules",
  "oauth2",
  "oauth2-reqwest",
  "once_cell",
@@ -2671,7 +2672,12 @@ dependencies = [
 name = "myriad-tapp-rules"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.0",
+ "hex",
+ "hmac 0.13.0",
  "myriad-tapp-contract",
+ "sha2 0.11.0",
+ "subtle",
 ]
 
 [[package]]
