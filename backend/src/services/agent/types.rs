@@ -663,25 +663,7 @@ pub struct UserAnswer {
     pub skipped: bool,
 }
 
-/// 任务状态枚举
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum TaskStatus {
-    /// 等待执行
-    Pending,
-    /// 执行中
-    Running,
-    /// 等待用户输入
-    WaitingForInput,
-    /// 已暂停
-    Paused,
-    /// 已完成
-    Completed,
-    /// 失败
-    Failed,
-    /// 已取消
-    Cancelled,
-}
+pub use myriad_agent_rules::TaskStatus;
 
 /// 步骤执行结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
