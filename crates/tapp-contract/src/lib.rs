@@ -10,6 +10,7 @@ pub mod manifest;
 pub mod paths;
 pub mod permission;
 pub mod storage;
+pub mod urls;
 
 #[cfg(feature = "tapp-contract-schema")]
 fn string_map<'a>(values: &'a [(&'a str, &'a str)]) -> BTreeMap<&'a str, &'a str> {

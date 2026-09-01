@@ -43,56 +43,7 @@ pub use myriad_tapp_contract::paths::{
     validate_inline_data_schema, validate_resource_extension, validate_resource_path,
     validate_tapp_id, validate_tapp_settings, validate_widget_refresh_policy,
 };
-
-pub fn validate_http_url(value: &str, field: &str) -> Result<(), String> {
-    if value.len() > 2_048 {
-        return Err(format!("Tapp {field} is too long"));
-    }
-    let parsed = reqwest::Url::parse(value).map_err(|_| format!("Invalid Tapp {field}"))?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return Err(format!("Tapp {field} must be an HTTP(S) URL"));
-    }
-    Ok(())
-}
-
-/// Stricter URL rules for host-mediated navigation targets (`openUrls`).
-/// HTTPS only, except http on loopback hosts for local development.
-pub fn validate_open_url_target(value: &str, field: &str) -> Result<reqwest::Url, String> {
-    if value.len() > 2_048 {
-        return Err(format!("Tapp {field} is too long"));
-    }
-    if value
-        .chars()
-        .any(|ch| ch.is_control() || ch.is_whitespace())
-    {
-        return Err(format!(
-            "Tapp {field} must not contain whitespace or control characters"
-        ));
-    }
-    let parsed = reqwest::Url::parse(value).map_err(|_| format!("Invalid Tapp {field}"))?;
-    if !parsed.username().is_empty() || parsed.password().is_some() {
-        return Err(format!("Tapp {field} must not include URL credentials"));
-    }
-    let host = parsed
-        .host_str()
-        .ok_or_else(|| format!("Tapp {field} must include a hostname"))?;
-    let is_loopback =
-        host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1" || host == "::1";
-    match parsed.scheme() {
-        "https" => {}
-        "http" if is_loopback => {}
-        "http" => {
-            return Err(format!(
-                "Tapp {field} must use HTTPS (http is only allowed for localhost)"
-            ));
-        }
-        _ => return Err(format!("Tapp {field} must be an HTTPS URL")),
-    }
-    if parsed.cannot_be_a_base() {
-        return Err(format!("Tapp {field} must be an absolute hierarchical URL"));
-    }
-    Ok(parsed)
-}
+pub use myriad_tapp_contract::urls::{validate_http_url, validate_open_url_target};
 
 fn validate_open_urls(manifest: &TappManifest) -> Result<(), String> {
     let has_permission = manifest
