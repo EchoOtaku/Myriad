@@ -16,13 +16,11 @@ use myriad_tapp_contract::manifest::{
     valid_agent_name, valid_event_topic, valid_inbound_route_path, valid_inbound_verify_header,
     TappAiContextSource, TappAiOperation, TappAiOutputFormat, TappApiAccess, TappCredentialIn,
     TappCredentialSignAlg, TappHttpBodyMode, TappManifest, TappOpenUrlMatch, TappRouteVerifyOver,
-    TappSettingDef,
 };
 use reqwest::header::HeaderName;
 use std::str::FromStr;
 
 use crate::services::permission_service::{tapp_permission_replacement_hint, TappPermission};
-use crate::services::tapp_storage::validate_storage_key;
 
 // Single source of truth shared with the offline CLI contract exporter.
 pub use myriad_tapp_contract::contract_rules::{
@@ -43,89 +41,8 @@ pub use myriad_tapp_contract::paths::{
     is_safe_path_component, is_valid_widget_size, parse_system_version,
     tapp_setting_value_is_valid, valid_data_exchange_id, validate_asset_path,
     validate_inline_data_schema, validate_resource_extension, validate_resource_path,
-    validate_tapp_id, validate_widget_refresh_policy,
+    validate_tapp_id, validate_tapp_settings, validate_widget_refresh_policy,
 };
-
-pub fn validate_tapp_settings(settings: &[TappSettingDef], scope: &str) -> Result<(), String> {
-    if settings.len() > 64 {
-        return Err(format!("{scope} accepts at most 64 settings"));
-    }
-    let mut keys = std::collections::HashSet::new();
-    for setting in settings {
-        if validate_storage_key(&setting.key).is_err()
-            || !keys.insert(setting.key.as_str())
-            || setting.label.is_empty()
-            || setting.label.len() > 255
-            || !matches!(
-                setting.setting_type.as_str(),
-                "toggle" | "select" | "input" | "number" | "color"
-            )
-        {
-            return Err(format!(
-                "Invalid or duplicate {scope} setting: {}",
-                setting.key
-            ));
-        }
-        if setting.setting_type == "select"
-            && setting
-                .options
-                .as_ref()
-                .is_none_or(|options| options.is_empty() || options.len() > 100)
-        {
-            return Err(format!(
-                "Select {scope} setting {} requires 1-100 options",
-                setting.key
-            ));
-        }
-        if let Some(options) = &setting.options {
-            let mut values = std::collections::HashSet::new();
-            if setting.setting_type != "select"
-                || options.iter().any(|option| {
-                    option.value.is_empty()
-                        || option.value.len() > 255
-                        || option.label.is_empty()
-                        || option.label.len() > 255
-                        || !values.insert(option.value.as_str())
-                })
-            {
-                return Err(format!(
-                    "Invalid options for {scope} setting: {}",
-                    setting.key
-                ));
-            }
-        }
-        let has_numeric_constraints =
-            setting.min.is_some() || setting.max.is_some() || setting.step.is_some();
-        if (has_numeric_constraints && setting.setting_type != "number")
-            || (setting.placeholder.is_some() && setting.setting_type != "input")
-        {
-            return Err(format!(
-                "Incompatible fields for {scope} setting: {}",
-                setting.key
-            ));
-        }
-        if setting
-            .min
-            .zip(setting.max)
-            .is_some_and(|(min, max)| min > max)
-            || setting.step.is_some_and(|step| step <= 0.0)
-        {
-            return Err(format!(
-                "Invalid numeric range for {scope} setting: {}",
-                setting.key
-            ));
-        }
-        if let Some(default) = &setting.default_value {
-            if !tapp_setting_value_is_valid(setting, default) {
-                return Err(format!(
-                    "Invalid defaultValue for {scope} setting: {}",
-                    setting.key
-                ));
-            }
-        }
-    }
-    Ok(())
-}
 
 pub fn validate_http_url(value: &str, field: &str) -> Result<(), String> {
     if value.len() > 2_048 {

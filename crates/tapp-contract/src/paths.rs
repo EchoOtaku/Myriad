@@ -5,10 +5,12 @@ use std::path::{Component, Path as FsPath};
 use crate::contract_rules::{
     ASSET_DIRECTORY, ASSET_FORBIDDEN_EXTENSIONS, INLINE_SCHEMA_ROOT_KEYS, MAX_DATA_EXCHANGE_ID_LEN,
     MAX_DATA_EXCHANGE_SCHEMA_BYTES, MAX_INLINE_SCHEMA_DEPTH, MAX_RESOURCE_PATH_LEN,
-    MAX_TAPP_ID_LEN, MAX_WIDGET_REFRESH_INTERVAL_SECONDS, MIN_WIDGET_REFRESH_INTERVAL_SECONDS,
-    SEMVER_PREFIXES, WIDGET_SIZES,
+    MAX_SETTING_LABEL_LEN, MAX_SETTING_OPTIONS, MAX_SETTING_OPTION_VALUE_LEN, MAX_TAPP_ID_LEN,
+    MAX_TAPP_SETTINGS, MAX_WIDGET_REFRESH_INTERVAL_SECONDS, MIN_WIDGET_REFRESH_INTERVAL_SECONDS,
+    SEMVER_PREFIXES, SETTING_TYPES, WIDGET_SIZES,
 };
 use crate::manifest::{TappSettingDef, TappWidgetRefreshMode, TappWidgetRefreshPolicy};
+use crate::storage::validate_storage_key;
 
 pub fn valid_data_exchange_id(value: &str) -> bool {
     !value.is_empty()
@@ -144,6 +146,86 @@ pub fn tapp_setting_value_is_valid(setting: &TappSettingDef, value: &serde_json:
         }),
         _ => false,
     }
+}
+
+pub fn validate_tapp_settings(settings: &[TappSettingDef], scope: &str) -> Result<(), String> {
+    if settings.len() > MAX_TAPP_SETTINGS {
+        return Err(format!(
+            "{scope} accepts at most {MAX_TAPP_SETTINGS} settings"
+        ));
+    }
+    let mut keys = std::collections::HashSet::new();
+    for setting in settings {
+        if validate_storage_key(&setting.key).is_err()
+            || !keys.insert(setting.key.as_str())
+            || setting.label.is_empty()
+            || setting.label.len() > MAX_SETTING_LABEL_LEN
+            || !SETTING_TYPES.contains(&setting.setting_type.as_str())
+        {
+            return Err(format!(
+                "Invalid or duplicate {scope} setting: {}",
+                setting.key
+            ));
+        }
+        if setting.setting_type == "select"
+            && setting
+                .options
+                .as_ref()
+                .is_none_or(|options| options.is_empty() || options.len() > MAX_SETTING_OPTIONS)
+        {
+            return Err(format!(
+                "Select {scope} setting {} requires 1-{MAX_SETTING_OPTIONS} options",
+                setting.key
+            ));
+        }
+        if let Some(options) = &setting.options {
+            let mut values = std::collections::HashSet::new();
+            if setting.setting_type != "select"
+                || options.iter().any(|option| {
+                    option.value.is_empty()
+                        || option.value.len() > MAX_SETTING_OPTION_VALUE_LEN
+                        || option.label.is_empty()
+                        || option.label.len() > MAX_SETTING_LABEL_LEN
+                        || !values.insert(option.value.as_str())
+                })
+            {
+                return Err(format!(
+                    "Invalid options for {scope} setting: {}",
+                    setting.key
+                ));
+            }
+        }
+        let has_numeric_constraints =
+            setting.min.is_some() || setting.max.is_some() || setting.step.is_some();
+        if (has_numeric_constraints && setting.setting_type != "number")
+            || (setting.placeholder.is_some() && setting.setting_type != "input")
+        {
+            return Err(format!(
+                "Incompatible fields for {scope} setting: {}",
+                setting.key
+            ));
+        }
+        if setting
+            .min
+            .zip(setting.max)
+            .is_some_and(|(min, max)| min > max)
+            || setting.step.is_some_and(|step| step <= 0.0)
+        {
+            return Err(format!(
+                "Invalid numeric range for {scope} setting: {}",
+                setting.key
+            ));
+        }
+        if let Some(default) = &setting.default_value {
+            if !tapp_setting_value_is_valid(setting, default) {
+                return Err(format!(
+                    "Invalid defaultValue for {scope} setting: {}",
+                    setting.key
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 pub fn validate_widget_refresh_policy(
@@ -343,5 +425,45 @@ mod tests {
     fn resource_extension_and_js_file() {
         assert!(validate_resource_extension("core.js", ".js", "core.entry").is_ok());
         assert!(validate_resource_extension("core.css", ".js", "core.entry").is_err());
+    }
+
+    fn toggle(key: &str) -> TappSettingDef {
+        TappSettingDef {
+            key: key.into(),
+            label: "On".into(),
+            setting_type: "toggle".into(),
+            description: None,
+            default_value: Some(json!(true)),
+            options: None,
+            min: None,
+            max: None,
+            step: None,
+            placeholder: None,
+        }
+    }
+
+    #[test]
+    fn tapp_settings_table_uses_storage_key_and_setting_types() {
+        assert!(validate_tapp_settings(&[toggle("theme")], "Tapp").is_ok());
+        assert!(validate_tapp_settings(&[toggle(".hidden")], "Tapp").is_err());
+        assert!(validate_tapp_settings(&[toggle("a"), toggle("a")], "Tapp").is_err());
+        let mut unknown = toggle("ok");
+        unknown.setting_type = "secret".into();
+        assert!(validate_tapp_settings(&[unknown], "Tapp").is_err());
+        let select = TappSettingDef {
+            key: "mode".into(),
+            label: "Mode".into(),
+            setting_type: "select".into(),
+            description: None,
+            default_value: None,
+            options: None,
+            min: None,
+            max: None,
+            step: None,
+            placeholder: None,
+        };
+        assert!(validate_tapp_settings(&[select], "Tapp")
+            .unwrap_err()
+            .contains("1-100 options"));
     }
 }
