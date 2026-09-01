@@ -1,0 +1,10 @@
+[package]
+name = "myriad-tapp-rules"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Pure Tapp evaluators (HMAC, transform, package plan, feed merge)."
+authors = ["Myriad Contributors"]
+
+[dependencies]
+myriad-tapp-contract = { path = "../tapp-contract" }
