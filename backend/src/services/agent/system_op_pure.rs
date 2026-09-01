@@ -8,101 +8,10 @@
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-/// Supported scheduler schedule types (matches DB enum names).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AgentScheduleType {
-    Cron,
-    Interval,
-    Once,
-    Daily,
-}
-
-impl AgentScheduleType {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Cron => "cron",
-            Self::Interval => "interval",
-            Self::Once => "once",
-            Self::Daily => "daily",
-        }
-    }
-}
-
-/// Parse scheduleType (cron / interval / once / daily).
-pub fn parse_schedule_type(schedule_type_name: Option<&str>) -> Result<AgentScheduleType, String> {
-    let name = schedule_type_name.ok_or_else(|| "Missing scheduleType parameter".to_string())?;
-    match name.to_ascii_lowercase().as_str() {
-        "cron" => Ok(AgentScheduleType::Cron),
-        "interval" => Ok(AgentScheduleType::Interval),
-        "once" => Ok(AgentScheduleType::Once),
-        "daily" => Ok(AgentScheduleType::Daily),
-        _ => Err(format!("Invalid scheduleType: {name}")),
-    }
-}
-
-/// Execution target for scheduled tasks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AgentExecutionTarget {
-    Backend,
-    Frontend,
-    Both,
-}
-
-impl AgentExecutionTarget {
-    pub fn requires_backend_actions(self) -> bool {
-        matches!(self, Self::Backend | Self::Both)
-    }
-}
-
-/// Parse executionTarget, defaulting by whether backend actions are present.
-pub fn parse_execution_target(
-    name: Option<&str>,
-    has_backend_actions: bool,
-) -> Result<AgentExecutionTarget, String> {
-    let default = if has_backend_actions {
-        "backend"
-    } else {
-        "frontend"
-    };
-    let name = name.unwrap_or(default);
-    match name.to_ascii_lowercase().as_str() {
-        "backend" => Ok(AgentExecutionTarget::Backend),
-        "frontend" => Ok(AgentExecutionTarget::Frontend),
-        "both" => Ok(AgentExecutionTarget::Both),
-        _ => Err(format!("Invalid executionTarget: {name}")),
-    }
-}
-
-/// Build schedule config object from params + typed schedule kind.
-#[allow(dead_code)] // 仅测试调用：本仓无生产调用点（编译器已核）。
-pub fn build_schedule_config(
-    schedule_type: AgentScheduleType,
-    schedule_obj: Option<&Value>,
-    legacy_cron: Option<&str>,
-    interval: Option<i64>,
-    at: Option<i64>,
-    daily_time: Option<&str>,
-) -> Result<Value, String> {
-    if let Some(value) = schedule_obj {
-        if value.is_object() {
-            return Ok(value.clone());
-        }
-    }
-    match schedule_type {
-        AgentScheduleType::Cron => Ok(json!({
-            "cron": legacy_cron.ok_or("Missing cron schedule")?
-        })),
-        AgentScheduleType::Interval => Ok(json!({
-            "interval": interval.ok_or("Missing interval schedule")?
-        })),
-        AgentScheduleType::Once => Ok(json!({
-            "at": at.ok_or("Missing at schedule")?
-        })),
-        AgentScheduleType::Daily => Ok(json!({
-            "time": daily_time.ok_or("Missing daily time schedule")?
-        })),
-    }
-}
+pub use myriad_agent_rules::{
+    build_schedule_config, parse_execution_target, parse_schedule_type, AgentExecutionTarget,
+    AgentScheduleType,
+};
 
 /// Extract optional task id from heartbeat params (`id` / `taskId` / `task_id`).
 pub fn heartbeat_task_id(params: &HashMap<String, Value>) -> Option<&str> {
