@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 
 pub mod contract_rules;
 pub mod manifest;
+pub mod permission;
 
 #[cfg(feature = "tapp-contract-schema")]
 fn string_map<'a>(values: &'a [(&'a str, &'a str)]) -> BTreeMap<&'a str, &'a str> {
