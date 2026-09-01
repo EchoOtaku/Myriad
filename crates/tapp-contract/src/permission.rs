@@ -5,8 +5,43 @@
 //! (`TappPermissionService::check`) stays in the backend.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 pub const UNKNOWN_TAPP_PERMISSION_CODE: &str = "UNKNOWN_TAPP_PERMISSION";
+
+/// Retired names that still emit a replacement hint and never decode.
+pub const RETIRED_TAPP_PERMISSIONS: &[&str] = &["storage", "federation:write", "brew:comment"];
+
+/// Catalog name → level string, in sorted name order.
+pub fn permission_levels() -> BTreeMap<&'static str, &'static str> {
+    TappPermission::ALL
+        .iter()
+        .map(|permission| (permission.as_str(), permission.level().as_str()))
+        .collect()
+}
+
+/// Retired name → replacement hint. Fail-closed: unknown names stay out.
+pub fn replacement_hints() -> BTreeMap<&'static str, &'static str> {
+    RETIRED_TAPP_PERMISSIONS
+        .iter()
+        .map(|name| {
+            (
+                *name,
+                tapp_permission_replacement_hint(name)
+                    .expect("retired permission names must have a replacement hint"),
+            )
+        })
+        .collect()
+}
+
+/// Catalog names whose HTTP boundary requires a durable logged-in user.
+pub fn requires_authenticated_subject_names() -> Vec<&'static str> {
+    TappPermission::ALL
+        .iter()
+        .filter(|permission| permission.requires_authenticated_subject())
+        .map(|permission| permission.as_str())
+        .collect()
+}
 
 /// 已移除权限名的替代建议（仅用于错误提示，不构成兼容映射；
 /// 未知名仍 fail-closed，绝不解码成新权限）。
@@ -681,5 +716,47 @@ mod tests {
             .message(),
             "Unknown Tapp permission 'legacy:unknown'"
         );
+    }
+
+    #[test]
+    fn export_maps_call_shipped_catalog_functions() {
+        let levels = permission_levels();
+        assert_eq!(levels.len(), TappPermission::ALL.len());
+        assert_eq!(levels.get("storage:read"), Some(&"basic"));
+        assert_eq!(levels.get("storage:write"), Some(&"elevated"));
+        assert_eq!(levels.get("3d:generate"), Some(&"elevated"));
+        assert_eq!(levels.get("widget:register"), Some(&"privileged"));
+        assert!(!levels.contains_key("storage"));
+
+        for permission in TappPermission::ALL {
+            assert_eq!(
+                levels.get(permission.as_str()).copied(),
+                Some(permission.level().as_str())
+            );
+        }
+
+        let hints = replacement_hints();
+        assert_eq!(
+            hints.get("storage").copied(),
+            tapp_permission_replacement_hint("storage")
+        );
+        assert_eq!(
+            hints.get("federation:write").copied(),
+            tapp_permission_replacement_hint("federation:write")
+        );
+        assert_eq!(
+            hints.get("brew:comment").copied(),
+            tapp_permission_replacement_hint("brew:comment")
+        );
+
+        let authenticated = requires_authenticated_subject_names();
+        assert!(authenticated.contains(&"brew:write"));
+        assert!(authenticated.contains(&"speech:tts"));
+        assert!(!authenticated.contains(&"storage:read"));
+        assert!(!authenticated.contains(&"platform:read"));
+        for name in &authenticated {
+            let permission = TappPermission::from_str(name).expect(name);
+            assert!(permission.requires_authenticated_subject());
+        }
     }
 }
