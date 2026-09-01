@@ -1262,7 +1262,6 @@ button.agent-panel-tag:disabled {
   position: relative;
   overflow: visible;
   user-select: none;
-  -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
 

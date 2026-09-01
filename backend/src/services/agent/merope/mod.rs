@@ -27,7 +27,7 @@ pub use store::{
     get_or_create_state, get_persona, get_persona_on, insert_diary, insert_proactive, latest_diary,
     list_diary_from_sources, list_remembered, normalize_persona_fields,
     portrait_generation_is_pending, recent_proactive, release_portrait_generation,
-    save_departure_mood, save_mood, set_activity, set_dnd_schedule, set_do_not_disturb,
+    save_affect, set_activity, set_dnd_schedule, set_do_not_disturb,
     upsert_persona_on, JsonDocumentUpdate, PersonaContractUpdate, PortraitUpdate,
 };
 
@@ -125,28 +125,15 @@ pub async fn note_user_turn(
         return None;
     }
     let state = get_or_create_state(db, user_id).await.ok()?;
-    let previous = state.mood;
-    let gap_hours = state
-        .last_user_message_at
-        .map(|at| (chrono::Utc::now() - at.with_timezone(&chrono::Utc)).num_minutes() as f64 / 60.0)
-        .unwrap_or(24.0);
-    let first_today = state.last_user_message_at.is_none_or(|at| {
-        at.with_timezone(&chrono::Utc).date_naive() != chrono::Utc::now().date_naive()
-    });
+    let previous = store::affect_from_state(&state);
+    let mut affect = previous;
     let (praised, scolded) = detect_mood_cue(text);
-    let next = apply_user_utterance(
-        state.mood,
-        utterance_index,
-        praised,
-        scolded,
-        first_today,
-        gap_hours,
-    );
-    let saved = save_mood(db, user_id, next, true).await.ok()?;
+    apply_user_utterance(&mut affect, utterance_index, praised, scolded);
+    let saved = save_affect(db, user_id, affect, true).await.ok()?;
     if !praised && !scolded && text.chars().count() >= CHAT_DIARY_MIN_CHARS {
         spawn_mood_hint(user_id, text);
     }
-    if !is_extremely_low(state.mood) && is_extremely_low(next) {
+    if !is_extremely_low(previous.mood) && is_extremely_low(affect.mood) {
         spawn_ingest(
             user_id,
             "agent.merope.mood_floor",
@@ -157,25 +144,18 @@ pub async fn note_user_turn(
         "user_scold"
     } else if praised {
         "user_praise"
-    } else if first_today {
-        "first_turn_today"
-    } else if gap_hours >= 12.0 {
-        "return_after_gap"
     } else {
         "user_turn"
     };
-    Some(MoodTransition {
-        before: previous,
-        after: saved.mood,
-        band_before: mood_band(previous).to_string(),
-        band_after: mood_band(saved.mood).to_string(),
-        delta: saved.mood - previous,
-        cause: cause.to_string(),
-        revision: saved
+    Some(MoodTransition::from_affect(
+        &previous,
+        &store::affect_from_state(&saved),
+        cause,
+        saved
             .updated_at
             .with_timezone(&chrono::Utc)
             .timestamp_millis(),
-    })
+    ))
 }
 
 /// After planning, so this turn is not already sitting in the diary the model just read.
@@ -187,32 +167,6 @@ pub async fn note_chat_diary(db: &sea_orm::DatabaseConnection, user_id: i32, tex
         return;
     }
     maybe_write_chat_diary(db, user_id, text).await;
-}
-
-pub async fn maybe_apply_departure(db: &sea_orm::DatabaseConnection, user_id: i32) {
-    if !is_logged_in_addressee(user_id) {
-        return;
-    }
-    if !is_enabled().await {
-        return;
-    }
-    let Ok(state) = get_or_create_state(db, user_id).await else {
-        return;
-    };
-    let Some(last) = state.last_user_message_at else {
-        return;
-    };
-    let now = chrono::Utc::now();
-    let last = last.with_timezone(&chrono::Utc);
-    let silent = (now - last).num_seconds();
-    let since_departure = state
-        .last_departure_at
-        .map(|at| (at.with_timezone(&chrono::Utc) - last).num_seconds());
-    if !should_apply_departure(Some(silent), since_departure) {
-        return;
-    }
-    let next = apply_departure(state.mood);
-    let _ = save_departure_mood(db, user_id, next).await;
 }
 
 fn spawn_mood_hint(user_id: i32, text: impl Into<String>) {
@@ -231,7 +185,7 @@ fn spawn_mood_hint(user_id: i32, text: impl Into<String>) {
             "merope",
             "mood_hint",
             analyzer.analyze_with_system(
-                "只输出一个 -2 到 2 的整数，表示这句话对心情的微调。不要解释，不要输出别的字。",
+                "只输出两个 -2 到 2 的整数，空格分隔：效价 唤醒。不要解释，不要输出别的字。",
                 &text,
             ),
         )
@@ -239,10 +193,10 @@ fn spawn_mood_hint(user_id: i32, text: impl Into<String>) {
         else {
             return;
         };
-        let Some(hint) = parse_mood_hint(&raw) else {
+        let Some((valence, arousal)) = parse_appraisal_hint(&raw) else {
             return;
         };
-        if hint == 0.0 {
+        if valence == 0 && arousal == 0 {
             return;
         }
         let Ok(db) = crate::services::tapp_registry::database().await else {
@@ -251,8 +205,9 @@ fn spawn_mood_hint(user_id: i32, text: impl Into<String>) {
         let Ok(state) = get_or_create_state(&db, user_id).await else {
             return;
         };
-        let next = apply_mood_hint(state.mood, hint);
-        let _ = save_mood(&db, user_id, next, false).await;
+        let mut affect = store::affect_from_state(&state);
+        apply_mood_hint(&mut affect, valence, arousal);
+        let _ = save_affect(&db, user_id, affect, false).await;
     });
 }
 
@@ -407,7 +362,7 @@ async fn speaking_prompt_from_db(
     if let Some(block) = format_activity_section(current_activity(&state)) {
         sections.push(block);
     }
-    sections.push(format_mood_section(state.mood));
+    sections.push(format_mood_section(state.mood, state.arousal));
     sections
 }
 
@@ -421,9 +376,9 @@ pub fn has_custom_persona(persona: &agent_persona::Model) -> bool {
 
 pub use gates::{decide_ingest, is_chatting, is_valuable_event, IngestDecision};
 pub use state::{
-    apply_departure, apply_mood_hint, apply_task_outcome, apply_user_utterance, clamp_mood,
-    detect_mood_cue, effective_activity, is_extremely_low, mood_band, parse_mood_hint,
-    should_apply_departure, MoodTransition, ACTIVITY_STALE_SECS, MOOD_FLOOR,
+    apply_mood_hint, apply_task_outcome, apply_user_utterance, clamp_mood, detect_mood_cue,
+    effective_activity, is_extremely_low, mood_band, parse_appraisal_hint, Affect, AffectBaseline,
+    MoodTransition, ACTIVITY_STALE_SECS, DEFAULT_AROUSAL, DEFAULT_MOOD, MOOD_FLOOR, ORIGIN,
 };
 
 /// The activity to act on, with a stale one read as idle.
@@ -565,10 +520,12 @@ mod tests {
         assert!(super::refuse_new_task_message(Some(10.1)).is_none());
         assert!(super::refuse_new_task_message(None).is_none());
         assert!(super::speaking_prompts::PERSONA_SPEAKING_CONTRACT.contains("不要念心情"));
-        assert!(super::mood_tone_instruction(8.0).contains("极低"));
-        assert!(super::mood_tone_instruction(30.0).contains("偏低"));
-        assert!(super::mood_tone_instruction(90.0).contains("轻松"));
-        let section = super::format_mood_section(72.4);
+        assert!(super::mood_tone_instruction(8.0, 48.0).contains("极低"));
+        assert!(super::mood_tone_instruction(30.0, 40.0).contains("偏低"));
+        assert!(super::mood_tone_instruction(30.0, 70.0).contains("烦躁"));
+        assert!(super::mood_tone_instruction(90.0, 48.0).contains("平常语气"));
+        assert!(super::mood_tone_instruction(90.0, 70.0).contains("轻松"));
+        let section = super::format_mood_section(72.4, 48.0);
         assert!(!section.contains("72/100"));
         assert!(!section.contains("72.4"));
     }
@@ -615,12 +572,12 @@ mod tests {
         assert_eq!(
             super::speaking_prompt_plain(&[
                 super::addressee_speaking_section("瞳"),
-                super::format_mood_section(70.0)
+                super::format_mood_section(70.0, 48.0)
             ]),
             format!(
                 "{}\n\n{}",
                 super::addressee_speaking_section("瞳"),
-                super::format_mood_section(70.0)
+                super::format_mood_section(70.0, 48.0)
             )
         );
     }

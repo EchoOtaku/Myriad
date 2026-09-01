@@ -1,8 +1,8 @@
+import type { PerceptionSnapshot } from './registry'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { setAgentContextConsent } from '../../../components/agent-panel/agentContextConsent'
-import type { PerceptionSnapshot } from './registry'
 import {
   reportPresence,
   resetPresenceInboundForTest,

@@ -103,6 +103,8 @@ pub async fn direct_motion(context: MotionContext) -> Option<PerformanceDirectiv
             "phase": phase,
             "mood": {
                 "value": context.mood.after,
+                "arousal": context.mood.arousal_after,
+                "arousalDelta": context.mood.arousal_after - context.mood.arousal_before,
                 "band": context.mood.band_after,
                 "previousBand": context.mood.band_before,
                 "delta": context.mood.delta,
@@ -259,14 +261,24 @@ pub fn local_directive(context: &MotionContext) -> Option<PerformanceDirective> 
 
 /// One persona read per Chat/Work round. Client style is only used when the
 /// site persona cannot be loaded.
-pub async fn resolve_round_motion_style(client: Option<&RigStateSummary>, mood: i32) -> String {
+pub async fn resolve_round_motion_style(
+    client: Option<&RigStateSummary>,
+    mood: i32,
+    arousal: i32,
+) -> String {
     let client_style = client.map(|summary| summary.motion_style.as_str());
     if let Ok(db) = crate::services::tapp_registry::database().await {
         if let Ok(Some(persona)) = get_persona(&db).await {
-            return round_motion_style(client_style, persona.persona_json.as_ref(), true, mood);
+            return round_motion_style(
+                client_style,
+                persona.persona_json.as_ref(),
+                true,
+                mood,
+                arousal,
+            );
         }
     }
-    round_motion_style(client_style, None, false, mood)
+    round_motion_style(client_style, None, false, mood, arousal)
 }
 
 fn apply_round_motion_style(
@@ -530,7 +542,7 @@ const CUE_INDEX: &[(&str, &str, &str)] = &[
     (
         "maniac",
         "失控的兴奋或夸张狂气。爱闹的人设在高潮时可用",
-        "maniac-mouth",
+        "maniac-mouth + head-body",
     ),
     (
         "silly",
@@ -952,8 +964,10 @@ mod tests {
             &MoodTransition {
                 before: 50.0,
                 after: 50.0,
-                band_before: "normal".to_string(),
-                band_after: "normal".to_string(),
+                arousal_before: 48.0,
+                arousal_after: 48.0,
+                band_before: "calm".to_string(),
+                band_after: "calm".to_string(),
                 delta: 0.0,
                 cause: "test".to_string(),
                 revision: 1,

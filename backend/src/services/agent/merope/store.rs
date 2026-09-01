@@ -10,6 +10,10 @@ use crate::models::entities::{
     agent_addressee_state, agent_diary, agent_persona, agent_proactive_messages, agent_sessions,
 };
 
+use super::state::{
+    settle, Affect, AffectBaseline, clamp, persona_affect_baseline,
+};
+
 pub const PERSONA_ROW_ID: &str = "site";
 
 pub async fn get_persona(
@@ -331,20 +335,67 @@ fn is_unique_conflict(err: &impl std::fmt::Display) -> bool {
     lower.contains("23505") || lower.contains("duplicate key")
 }
 
+pub async fn load_affect_baseline(db: &DatabaseConnection) -> AffectBaseline {
+    match get_persona(db).await {
+        Ok(Some(persona)) => {
+            persona_affect_baseline(persona.persona_json.as_ref(), &persona.personality)
+        }
+        _ => AffectBaseline::default(),
+    }
+}
+
+pub fn affect_from_state(state: &agent_addressee_state::Model) -> Affect {
+    Affect {
+        mood: state.mood,
+        arousal: state.arousal,
+        emotion: state.emotion,
+        emotion_arousal: state.emotion_arousal,
+    }
+}
+
+fn hours_since(at: chrono::DateTime<chrono::FixedOffset>) -> f64 {
+    let secs = (Utc::now() - at.with_timezone(&Utc)).num_seconds();
+    (secs.max(0) as f64) / 3600.0
+}
+
+/// Overlay regression in memory. Writing on read would refresh `updated_at` and
+/// keep a stale `working` activity alive.
+fn overlay_settled(
+    mut state: agent_addressee_state::Model,
+    base: AffectBaseline,
+) -> agent_addressee_state::Model {
+    let settled = settle(
+        affect_from_state(&state),
+        base,
+        hours_since(state.mood_settled_at),
+        hours_since(state.emotion_settled_at),
+    );
+    state.mood = settled.mood;
+    state.arousal = settled.arousal;
+    state.emotion = settled.emotion;
+    state.emotion_arousal = settled.emotion_arousal;
+    state
+}
+
 pub async fn get_or_create_state(
     db: &DatabaseConnection,
     user_id: i32,
 ) -> Result<agent_addressee_state::Model, anyhow::Error> {
+    let base = load_affect_baseline(db).await;
     if let Some(existing) = agent_addressee_state::Entity::find_by_id(user_id)
         .one(db)
         .await?
     {
-        return Ok(existing);
+        return Ok(overlay_settled(existing, base));
     }
+    let rest = Affect::at_rest(base);
     let now = Utc::now().into();
     let active = agent_addressee_state::ActiveModel {
         user_id: Set(user_id),
-        mood: Set(70.0),
+        mood: Set(rest.mood),
+        arousal: Set(rest.arousal),
+        emotion: Set(rest.emotion),
+        emotion_arousal: Set(rest.emotion_arousal),
         activity: Set("idle".to_string()),
         do_not_disturb: Set(false),
         dnd_start_minute: Set(None),
@@ -352,49 +403,42 @@ pub async fn get_or_create_state(
         last_user_message_at: Set(None),
         last_proactive_at: Set(None),
         last_departure_at: Set(None),
+        mood_settled_at: Set(now),
+        emotion_settled_at: Set(now),
         updated_at: Set(now),
     };
     match active.insert(db).await {
         Ok(model) => Ok(model),
-        Err(err) if is_unique_conflict(&err) => agent_addressee_state::Entity::find_by_id(user_id)
-            .one(db)
-            .await?
-            .ok_or_else(|| err.into()),
+        Err(err) if is_unique_conflict(&err) => {
+            let existing = agent_addressee_state::Entity::find_by_id(user_id)
+                .one(db)
+                .await?
+                .ok_or_else(|| anyhow::Error::from(err))?;
+            Ok(overlay_settled(existing, base))
+        }
         Err(err) => Err(err.into()),
     }
 }
 
-pub async fn save_mood(
+pub async fn save_affect(
     db: &DatabaseConnection,
     user_id: i32,
-    mood: f64,
+    affect: Affect,
     touch_user_message: bool,
-) -> Result<agent_addressee_state::Model, anyhow::Error> {
-    let mut state = get_or_create_state(db, user_id).await?;
-    let now = Utc::now().into();
-    let mut active: agent_addressee_state::ActiveModel = state.clone().into();
-    active.mood = Set(super::clamp_mood(mood));
-    active.updated_at = Set(now);
-    if touch_user_message {
-        active.last_user_message_at = Set(Some(now));
-    }
-    state = active.update(db).await?;
-    Ok(state)
-}
-
-/// Departure decay. Stamps `last_departure_at` so the same silence window is not
-/// charged twice — `updated_at` cannot carry that, every activity write touches it.
-pub async fn save_departure_mood(
-    db: &DatabaseConnection,
-    user_id: i32,
-    mood: f64,
 ) -> Result<agent_addressee_state::Model, anyhow::Error> {
     let state = get_or_create_state(db, user_id).await?;
     let now = Utc::now().into();
     let mut active: agent_addressee_state::ActiveModel = state.into();
-    active.mood = Set(super::clamp_mood(mood));
-    active.last_departure_at = Set(Some(now));
+    active.mood = Set(clamp(affect.mood));
+    active.arousal = Set(clamp(affect.arousal));
+    active.emotion = Set(clamp(affect.emotion));
+    active.emotion_arousal = Set(clamp(affect.emotion_arousal));
+    active.mood_settled_at = Set(now);
+    active.emotion_settled_at = Set(now);
     active.updated_at = Set(now);
+    if touch_user_message {
+        active.last_user_message_at = Set(Some(now));
+    }
     Ok(active.update(db).await?)
 }
 

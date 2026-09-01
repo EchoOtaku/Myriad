@@ -56,12 +56,12 @@ import {
   setLiveBody,
 } from '../../features/merope/faceSpeechArbitration'
 import { livePresenceFacts } from '../../features/merope/livePresence'
+import { setLiveMotionGeneration } from '../../features/merope/motion/liveGeneration'
+import { captureProductionRigStateSummary } from '../../features/merope/motion/runtimeHost'
 import {
   notePresenceRoute,
   startPresenceInbound,
 } from '../../features/merope/perception/inbound'
-import { setLiveMotionGeneration } from '../../features/merope/motion/liveGeneration'
-import { captureProductionRigStateSummary } from '../../features/merope/motion/runtimeHost'
 import { getSpeechPipeline } from '../../features/merope/speech/speechPipelineHost'
 import { SpeechSegmenter } from '../../features/merope/speech/speechSegmenter'
 import {

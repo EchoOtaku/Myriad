@@ -71,6 +71,9 @@ CREATE TABLE IF NOT EXISTS agent_persona (
 CREATE TABLE IF NOT EXISTS agent_addressee_state (
     user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     mood DOUBLE PRECISION NOT NULL DEFAULT 70,
+    arousal DOUBLE PRECISION NOT NULL DEFAULT 50,
+    emotion DOUBLE PRECISION NOT NULL DEFAULT 50,
+    emotion_arousal DOUBLE PRECISION NOT NULL DEFAULT 50,
     activity VARCHAR(16) NOT NULL DEFAULT 'idle',
     do_not_disturb BOOLEAN NOT NULL DEFAULT false,
     dnd_start_minute INTEGER,
@@ -78,6 +81,8 @@ CREATE TABLE IF NOT EXISTS agent_addressee_state (
     last_user_message_at TIMESTAMPTZ,
     last_proactive_at TIMESTAMPTZ,
     last_departure_at TIMESTAMPTZ,
+    mood_settled_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    emotion_settled_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL
 );
 

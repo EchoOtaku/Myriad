@@ -75,10 +75,15 @@ function structuredFromSnapshot(
 
 interface Props {
   mood: number
+  arousal?: number
   activity: string
 }
 
-export default function SiteMotionWorkbench({ mood, activity }: Props) {
+export default function SiteMotionWorkbench({
+  mood,
+  arousal,
+  activity,
+}: Props) {
   const { t } = useI18n()
   const [rigManifest, setRigManifest] = useState<MeropeRigManifest | null>(null)
   const [portraitUrl, setPortraitUrl] = useState<string | null>(null)
@@ -477,7 +482,7 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
     {
       key: 'mood',
       label: t.merope.overviewMood,
-      value: o.mood[moodBand(mood)],
+      value: o.mood[moodBand(mood, arousal)],
     },
     {
       key: 'activity',

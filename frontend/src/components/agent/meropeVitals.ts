@@ -2,16 +2,27 @@
 
 export const ADDRESSEE_UPDATED_EVENT = 'arael-addressee-updated'
 
-export type MoodBand = 'floor' | 'low' | 'normal' | 'high'
+export type MoodBand = 'floor' | 'sad' | 'tense' | 'calm' | 'excited'
 export type ActivityKey = 'idle' | 'working' | 'thinking' | 'talking'
 
-/** Same bands as `mood_tone_instruction` — UI shows the band, not the number. */
-export function moodBand(mood: number | undefined): MoodBand {
-  const n = typeof mood === 'number' && Number.isFinite(mood) ? mood : 70
-  if (n <= 10) return 'floor'
-  if (n < 40) return 'low'
-  if (n >= 85) return 'high'
-  return 'normal'
+const DEFAULT_MOOD = 70
+const DEFAULT_AROUSAL = 48
+
+/** Same circumplex as `mood_tone_instruction` — UI shows the band, not the number. */
+export function moodBand(
+  mood: number | undefined,
+  arousal: number | undefined = DEFAULT_AROUSAL,
+): MoodBand {
+  const v = typeof mood === 'number' && Number.isFinite(mood) ? mood : DEFAULT_MOOD
+  const a =
+    typeof arousal === 'number' && Number.isFinite(arousal)
+      ? arousal
+      : DEFAULT_AROUSAL
+  if (v <= 10) return 'floor'
+  if (v < 55 && a < 55) return 'sad'
+  if (v < 55) return 'tense'
+  if (a < 55) return 'calm'
+  return 'excited'
 }
 
 export function activityKey(raw: string | undefined): ActivityKey {

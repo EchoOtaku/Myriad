@@ -2624,9 +2624,10 @@ export const zhCN: TranslationKeys = {
       openPage: '打开设定引导',
       mood: {
         floor: '很低',
-        low: '偏低',
-        normal: '平常',
-        high: '轻松',
+        sad: '偏低',
+        tense: '烦躁',
+        calm: '平常',
+        excited: '轻松',
       },
       moodLine: '心情{band}',
       activity: {

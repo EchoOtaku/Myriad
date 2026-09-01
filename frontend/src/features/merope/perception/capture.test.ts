@@ -1,7 +1,7 @@
+import type { Song } from '../../../utils/musicPlayer'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
-import type { Song } from '../../../utils/musicPlayer'
 import {
   applyPublishedMusicState,
   getCurrentSong,
@@ -11,7 +11,7 @@ import {
   replaceMusicTrackSource,
   replaceSurfaceSource,
 } from './consentedSources'
-import { KINDS, perceptionRegistry } from './registry'
+import { KINDS, MAX_PERCEPTION_ITEMS, perceptionRegistry } from './registry'
 import { setForegroundSurface } from './surface'
 
 const TRACK_TTL_MS = 2_000
@@ -137,6 +137,57 @@ test('client and server perception kinds stay aligned', () => {
   assert.deepEqual([...KINDS], clientKinds)
   assert.equal(clientKinds[2], 'surface')
   assert.equal(clientKinds[1], 'pointer')
+})
+
+test('live perception sources stay below the reader cap with slack', () => {
+  const capture = readFileSync(new URL('./capture.ts', import.meta.url), 'utf8')
+  const consented = readFileSync(
+    new URL('./consentedSources.ts', import.meta.url),
+    'utf8',
+  )
+  const inbound = readFileSync(new URL('./inbound.ts', import.meta.url), 'utf8')
+  const view = readFileSync(
+    new URL(
+      '../../../../../backend/src/services/agent/perception_view.rs',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+  const presence = readFileSync(
+    new URL(
+      '../../../../../backend/src/services/agent/consciousness/presence.rs',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+  const chatPrompt = readFileSync(
+    new URL(
+      '../../../../../backend/src/services/agent/chat_prompt.rs',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+  const sourceIds = [
+    ...new Set(
+      [
+        ...capture.matchAll(/sourceId:\s*'([a-z_]+)'/g),
+        ...consented.matchAll(/sourceId:\s*'([a-z_]+)'/g),
+      ].map((match) => match[1]),
+    ),
+  ]
+  assert.equal(MAX_PERCEPTION_ITEMS, 12)
+  assert.match(view, /MAX_PERCEPTION_ITEMS:\s*usize\s*=\s*12/)
+  assert.match(
+    presence,
+    /take\(crate::services::agent::perception_view::MAX_PERCEPTION_ITEMS\)/,
+  )
+  assert.match(chatPrompt, /MAX_PERCEPTION_ITEMS/)
+  assert.match(capture, /slice\(0, MAX_PERCEPTION_ITEMS\)/)
+  assert.match(inbound, /slice\(0, MAX_PERCEPTION_ITEMS\)/)
+  assert.ok(
+    sourceIds.length <= MAX_PERCEPTION_ITEMS - 2,
+    `${sourceIds.join(',')} (${sourceIds.length}) leaves no slack under cap ${MAX_PERCEPTION_ITEMS}`,
+  )
 })
 
 function quotedStringsIn(

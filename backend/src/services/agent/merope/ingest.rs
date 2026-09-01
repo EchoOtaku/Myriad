@@ -24,7 +24,8 @@ use crate::services::ai::create_ai_analyzer_for_tier;
 use super::gates::{decide_ingest, is_chatting, is_valuable_event};
 use super::store::{
     get_or_create_state, get_persona, insert_diary, insert_proactive, latest_open_session,
-    list_remembered, recent_proactive, recently_spoke_event, save_mood, set_activity,
+    affect_from_state, list_remembered, recent_proactive, recently_spoke_event, save_affect,
+    set_activity,
     touch_proactive, DIARY_SOURCE_EVENT,
 };
 use super::{
@@ -131,7 +132,6 @@ pub fn spawn_presence(user_id: i32) {
         let Ok(db) = crate::services::tapp_registry::database().await else {
             return;
         };
-        crate::services::agent::merope::maybe_apply_departure(&db, user_id).await;
         let Ok(state) = get_or_create_state(&db, user_id).await else {
             return;
         };
@@ -192,7 +192,6 @@ pub async fn ingest(
     if !is_enabled().await {
         return Ok(());
     }
-    super::maybe_apply_departure(db, user_id).await;
     let summary = compact_summary(summary);
     if summary.is_empty() {
         return Ok(());
@@ -213,7 +212,7 @@ pub async fn ingest(
     // the addressee happens to be chatting right now is a different question,
     // and gating on it meant a real Work task that finished inside the chat
     // window never counted — success or failure — for good.
-    apply_task_mood(db, user_id, event_key, state.mood).await;
+    apply_task_mood(db, user_id, event_key, &state).await;
 
     if !decision.allow_model {
         let _ = insert_diary(db, user_id, &summary, DIARY_SOURCE_EVENT).await;
@@ -362,18 +361,19 @@ async fn redeem_speak_intent(
     let (performance, motion_mood) = if shown {
         match get_or_create_state(db, intent.user_id).await {
             Ok(current) => {
-                let band = super::mood_band(current.mood).to_string();
-                let mood = super::MoodTransition {
-                    before: current.mood,
-                    after: current.mood,
-                    band_before: band.clone(),
-                    band_after: band,
-                    delta: 0.0,
-                    cause: intent.topic.clone(),
-                    revision: current.updated_at.with_timezone(&Utc).timestamp_millis(),
-                };
-                let motion_style =
-                    super::resolve_round_motion_style(None, current.mood.round() as i32).await;
+                let affect = affect_from_state(&current);
+                let mood = super::MoodTransition::from_affect(
+                    &affect,
+                    &affect,
+                    &intent.topic,
+                    current.updated_at.with_timezone(&Utc).timestamp_millis(),
+                );
+                let motion_style = super::resolve_round_motion_style(
+                    None,
+                    current.mood.round() as i32,
+                    current.arousal.round() as i32,
+                )
+                .await;
                 let performance = super::direct_motion(super::MotionContext {
                     user_id: intent.user_id,
                     phase: super::MotionPhase::Proactive,
@@ -554,13 +554,20 @@ fn task_mood_outcome(event_key: &str) -> Option<bool> {
     }
 }
 
-async fn apply_task_mood(db: &DatabaseConnection, user_id: i32, event_key: &str, mood: f64) {
+async fn apply_task_mood(
+    db: &DatabaseConnection,
+    user_id: i32,
+    event_key: &str,
+    state: &crate::models::entities::agent_addressee_state::Model,
+) {
     let Some(succeeded) = task_mood_outcome(event_key) else {
         return;
     };
-    let next = apply_task_outcome(mood, succeeded);
-    let _ = save_mood(db, user_id, next, false).await;
-    if !is_extremely_low(mood) && is_extremely_low(next) {
+    let mut affect = affect_from_state(state);
+    let previous = affect.mood;
+    apply_task_outcome(&mut affect, succeeded);
+    let _ = save_affect(db, user_id, affect, false).await;
+    if !is_extremely_low(previous) && is_extremely_low(affect.mood) {
         spawn(
             user_id,
             "agent.merope.mood_floor",
@@ -579,7 +586,7 @@ async fn compose_line(db: &DatabaseConnection, user_id: i32, summary: &str) -> S
         .unwrap_or_else(|| "你是 Agent。".to_string());
     let addressee = super::resolve_addressee_label(db, user_id).await;
     let mood_block = match get_or_create_state(db, user_id).await {
-        Ok(state) => format!("\n\n{}", format_mood_section(state.mood)),
+        Ok(state) => format!("\n\n{}", format_mood_section(state.mood, state.arousal)),
         Err(_) => String::new(),
     };
     let recent = recent_proactive(db, user_id, 6)

@@ -104,7 +104,7 @@ pub fn format_perception_block(value: Option<&Value>) -> String {
         return String::new();
     };
     let mut lines = Vec::new();
-    for item in items.iter().take(8) {
+    for item in items {
         let Some(obj) = item.as_object() else {
             continue;
         };
@@ -128,6 +128,9 @@ pub fn format_perception_block(value: Option<&Value>) -> String {
             .collect();
         let revision = obj.get("revision").and_then(Value::as_u64).unwrap_or(0);
         lines.push(format!("- {kind}/{source}#{revision}: {summary}"));
+        if lines.len() >= crate::services::agent::perception_view::MAX_PERCEPTION_ITEMS {
+            break;
+        }
     }
     lines.join("\n")
 }
@@ -363,5 +366,29 @@ mod tests {
         assert!(block.contains("surface/surface#4"));
         assert!(block.contains("surface=control_panel"));
         assert!(!block.contains("正在看控制中心"));
+    }
+
+    #[test]
+    fn perception_block_keeps_slack_above_eight_live_sources() {
+        assert!(crate::services::agent::perception_view::MAX_PERCEPTION_ITEMS >= 12);
+        let items: Vec<Value> = (0..9)
+            .map(|i| {
+                json!({
+                    "sourceId": format!("src{i}"),
+                    "kind": "presence",
+                    "revision": i,
+                    "ttlMs": 1000,
+                    "privacy": "consented",
+                    "summary": format!("item-{i}"),
+                })
+            })
+            .collect();
+        let block = format_perception_block(Some(&Value::Array(items)));
+        for i in 0..9 {
+            assert!(
+                block.contains(&format!("item-{i}")),
+                "source {i} dropped under cap; block={block}"
+            );
+        }
     }
 }

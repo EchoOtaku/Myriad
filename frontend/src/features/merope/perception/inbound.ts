@@ -1,15 +1,16 @@
+import type { PageContent } from '../../../contexts/PageContentContext'
+import type { PerceptionSnapshot } from './registry'
 import { getAgentContextConsent, subscribeAgentContextConsent } from '../../../components/agent-panel/agentContextConsent'
 import { subscribeScreenConsent } from '../../../components/agent-panel/screenConsent'
-import type { PageContent } from '../../../contexts/PageContentContext'
 import { getCurrentPageContent } from '../../../contexts/currentPage'
 import { bindPublishedMusicState, subscribeCurrentSong } from '../../../contexts/currentSong'
 import { getVoicePresence, subscribeVoicePresence } from '../speech/voicePresence'
-import type { PerceptionSnapshot } from './registry'
+import { MAX_PERCEPTION_ITEMS } from './registry'
 import { subscribeForegroundSurface } from './surface'
 
 const MIN_INTERVAL_MS = 2000
 
-type CaptureInput = {
+interface CaptureInput {
   route: string
   page: PageContent | null
   pageConsent: boolean
@@ -97,7 +98,9 @@ export async function reportPresence(reason: string): Promise<void> {
     page: pageConsent ? getCurrentPageContent() : null,
     pageConsent,
   }
-  const snapshots = captureFn ? captureFn(input) : await defaultCapture(input)
+  const snapshots = (
+    captureFn ? captureFn(input) : await defaultCapture(input)
+  ).slice(0, MAX_PERCEPTION_ITEMS)
   const key = revisionKey(snapshots)
   if (key && key === lastRevisionKey) {
     return

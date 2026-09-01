@@ -2760,9 +2760,10 @@ export const jaJP: TranslationKeys = {
       openPage: '設定ガイドを開く',
       mood: {
         floor: 'とても低い',
-        low: '低め',
-        normal: '普段どおり',
-        high: '軽い',
+        sad: '低め',
+        tense: 'いらだち',
+        calm: '普段どおり',
+        excited: '軽い',
       },
       moodLine: '気持ちは{band}',
       activity: {

@@ -33,6 +33,8 @@ export const KINDS: readonly PerceptionKind[] = [
 const KIND_ORDER: readonly PerceptionKind[] = KINDS
 const MAX_SUMMARY = 400
 const MAX_FACTS = 12
+/** Must match `perception_view::MAX_PERCEPTION_ITEMS`. */
+export const MAX_PERCEPTION_ITEMS = 12
 
 export class PerceptionRegistry {
   private readonly items = new Map<string, PerceptionSnapshot>()

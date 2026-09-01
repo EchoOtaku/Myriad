@@ -31,6 +31,7 @@ async fn round_motion_style(
     crate::services::agent::merope::resolve_round_motion_style(
         request_rig_state(request).as_ref(),
         mood.after.round() as i32,
+        mood.arousal_after.round() as i32,
     )
     .await
 }

@@ -682,6 +682,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
   const [savedPersonaName, setSavedPersonaName] = useState('')
   const [hasSavedPersona, setHasSavedPersona] = useState(false)
   const [mood, setMood] = useState(70)
+  const [arousal, setArousal] = useState(48)
   const [activity, setActivity] = useState('idle')
   const [personality, setPersonality] = useState('')
   const [portraitUrl, setPortraitUrl] = useState<string | null>(null)
@@ -711,6 +712,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       setSavedPersonaName('')
       setHasSavedPersona(false)
       setMood(70)
+      setArousal(48)
       setActivity('idle')
       setPersonality('')
       setPortraitUrl(null)
@@ -732,6 +734,9 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               Boolean(persona.personality?.trim()),
           )
           setMood(typeof persona.mood === 'number' ? persona.mood : 70)
+          setArousal(
+            typeof persona.arousal === 'number' ? persona.arousal : 48,
+          )
           setActivity(persona.activity ?? 'idle')
           setPersonality(persona.personality?.trim() ?? '')
           setPortraitUrl(
@@ -778,10 +783,19 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     const summary = parseFlattenedPersona(personality).summary.replace(/\s+/g, ' ').trim()
     return {
       summary,
-      mood: vitalsReady ? o.mood[moodBand(mood)] : '—',
+      mood: vitalsReady ? o.mood[moodBand(mood, arousal)] : '—',
       activity: vitalsReady ? o.activity[activityKey(activity)] : '—',
     }
-  }, [activity, hasSavedPersona, meropeOn, mood, o, personality, vitalsReady])
+  }, [
+    activity,
+    arousal,
+    hasSavedPersona,
+    meropeOn,
+    mood,
+    o,
+    personality,
+    vitalsReady,
+  ])
 
   return (
     <SettingSection
@@ -868,7 +882,11 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               gateLead={personaGateLead}
             />
           ) : meropePage ? (
-            <SiteMotionWorkbench mood={mood} activity={activity} />
+            <SiteMotionWorkbench
+              mood={mood}
+              arousal={arousal}
+              activity={activity}
+            />
           ) : (
             <>
       <SettingGroup

@@ -87,7 +87,7 @@ fn apply_whitelisted_presence(live: &mut SelfLivePresence, data: &Value) {
             .map(crate::services::agent::perception_view::perception_reader_text)
             .filter(|text| !text.is_empty())
             .map(|text| text.chars().take(160).collect())
-            .take(8)
+            .take(crate::services::agent::perception_view::MAX_PERCEPTION_ITEMS)
             .collect();
     }
 }
@@ -227,6 +227,32 @@ mod tests {
     }
 
     #[test]
+    fn live_presence_keeps_more_than_eight_perception_rows() {
+        let rows: Vec<_> = (0..9)
+            .map(|i| {
+                serde_json::json!({
+                    "kind": "presence",
+                    "privacy": "consented",
+                    "summary": format!("src-{i}"),
+                })
+            })
+            .collect();
+        let request = UserRequest {
+            raw_input: "hi".into(),
+            timestamp: chrono::Utc::now(),
+            user_id: 95,
+            context: Some(RequestContext {
+                interaction_mode: AgentInteractionMode::Chat,
+                custom_data: Some(serde_json::json!({ "perception": rows })),
+                ..Default::default()
+            }),
+        };
+        let live = live_presence_from_request(&request);
+        assert_eq!(live.perception.len(), 9);
+        assert_eq!(live.perception[8], "src-8");
+    }
+
+    #[test]
     fn last_live_presence_treats_missing_timestamp_as_expired() {
         remember_live_presence(
             92,
@@ -265,9 +291,10 @@ mod tests {
 
     #[test]
     fn custom_data_whitelist_truncates_perception_count_and_length() {
+        let cap = crate::services::agent::perception_view::MAX_PERCEPTION_ITEMS;
         let long: String = "s".repeat(161);
         let mut items = Vec::new();
-        for i in 0..9 {
+        for i in 0..15 {
             items.push(serde_json::json!({
                 "summary": format!("{long}-{i}"),
                 "privacy": "consented"
@@ -276,7 +303,7 @@ mod tests {
         let live = live_presence_from_custom_data(&serde_json::json!({
             "perception": items
         }));
-        assert_eq!(live.perception.len(), 8);
+        assert_eq!(live.perception.len(), cap);
         assert!(live.perception.iter().all(|row| row.chars().count() == 160));
     }
 

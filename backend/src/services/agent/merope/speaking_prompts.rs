@@ -28,20 +28,21 @@ pub fn compose_proactive_user(summary: &str) -> String {
     format!("刚才发生的事：\n{summary}")
 }
 
-pub fn mood_tone_instruction(mood: f64) -> &'static str {
-    if crate::services::agent::merope::state::is_extremely_low(mood) {
-        "心情极低：话短、不催办事、不打鸡血。低落是收敛，不是换个人。"
-    } else if mood < 40.0 {
-        "心情偏低：收一点，话少，仍然接话。"
-    } else if mood >= 85.0 {
-        "心情不错：轻松一点，把话说到头。"
-    } else {
-        "心情平稳：按这份性格的平常语气。"
+pub fn mood_tone_instruction(mood: f64, arousal: f64) -> &'static str {
+    match crate::services::agent::merope::state::mood_band(mood, arousal) {
+        "floor" => "心情极低：话短、不催办事、不打鸡血。低落是收敛，不是换个人。",
+        "sad" => "心情偏低：收一点，话少，仍然接话。",
+        "tense" => "心情烦躁：话短、别贫、先把事说清。",
+        "excited" => "心情不错：轻松一点，把话说到头。",
+        _ => "心情平稳：按这份性格的平常语气。",
     }
 }
 
-pub fn format_mood_section(mood: f64) -> String {
-    format!("## 对这个人的心情\n{}", mood_tone_instruction(mood))
+pub fn format_mood_section(mood: f64, arousal: f64) -> String {
+    format!(
+        "## 对这个人的心情\n{}",
+        mood_tone_instruction(mood, arousal)
+    )
 }
 
 pub fn format_activity_section(activity: &str) -> Option<String> {
@@ -249,10 +250,10 @@ mod tests {
             );
         }
         for private in ["开火", "审他"] {
-            for mood in [8.0, 30.0, 50.0, 90.0] {
+            for (mood, arousal) in [(8.0, 48.0), (30.0, 40.0), (30.0, 70.0), (90.0, 48.0)] {
                 assert!(
-                    !mood_tone_instruction(mood).contains(private),
-                    "{private} at mood {mood} assumes one persona's relationship"
+                    !mood_tone_instruction(mood, arousal).contains(private),
+                    "{private} at {mood}/{arousal} assumes one persona's relationship"
                 );
             }
         }
@@ -260,17 +261,20 @@ mod tests {
 
     #[test]
     fn mood_section_does_not_leak_the_score() {
-        let section = format_mood_section(72.4);
+        let section = format_mood_section(72.4, 48.0);
         assert!(!section.contains("72"));
         assert!(!section.contains("/100"));
         assert!(PERSONA_SPEAKING_CONTRACT.contains("不要念心情"));
-        assert!(mood_tone_instruction(8.0).contains("极低"));
-        assert!(mood_tone_instruction(8.0).contains("不是换个人"));
-        assert!(mood_tone_instruction(30.0).contains("偏低"));
-        assert!(mood_tone_instruction(90.0).contains("轻松"));
-        assert!(mood_tone_instruction(90.0).contains("把话说到头"));
-        assert!(!mood_tone_instruction(90.0).contains("已经信了"));
-        assert!(mood_tone_instruction(70.0).contains("平常语气"));
+        assert!(mood_tone_instruction(8.0, 48.0).contains("极低"));
+        assert!(mood_tone_instruction(8.0, 48.0).contains("不是换个人"));
+        assert!(mood_tone_instruction(30.0, 40.0).contains("偏低"));
+        assert!(mood_tone_instruction(30.0, 70.0).contains("烦躁"));
+        assert!(mood_tone_instruction(90.0, 48.0).contains("平常语气"));
+        assert!(!mood_tone_instruction(90.0, 48.0).contains("轻松"));
+        assert!(mood_tone_instruction(90.0, 70.0).contains("轻松"));
+        assert!(mood_tone_instruction(90.0, 70.0).contains("把话说到头"));
+        assert!(!mood_tone_instruction(90.0, 70.0).contains("已经信了"));
+        assert!(mood_tone_instruction(70.0, 48.0).contains("平常语气"));
     }
 
     #[test]

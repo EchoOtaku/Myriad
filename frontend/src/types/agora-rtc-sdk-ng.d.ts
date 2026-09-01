@@ -1,5 +1,5 @@
 declare module 'agora-rtc-sdk-ng' {
-  export type IAgoraRTCClient = {
+  export interface IAgoraRTCClient {
     join: (
       appId: string,
       channel: string,
@@ -14,11 +14,11 @@ declare module 'agora-rtc-sdk-ng' {
       listener: (user: IAgoraRTCRemoteUser, mediaType?: 'audio' | 'video') => void,
     ) => void
   }
-  export type IAgoraRTCRemoteUser = {
+  export interface IAgoraRTCRemoteUser {
     uid: number | string
     audioTrack?: ILocalAudioTrack
   }
-  export type ILocalAudioTrack = {
+  export interface ILocalAudioTrack {
     play: () => void
     stop: () => void
     close: () => void

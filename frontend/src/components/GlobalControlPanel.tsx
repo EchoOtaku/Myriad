@@ -17,7 +17,6 @@ import React, {
 } from 'react'
 
 import { useNavigate } from 'react-router-dom'
-import { getAgentPanelVisible } from './agent-panel/agentPanelVisible'
 import { useAnimationPreference } from '../contexts/AnimationPreferenceContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
@@ -27,6 +26,7 @@ import {
   faceSpeechGate,
   notificationCarriesMeropeSpeech,
 } from '../features/merope/faceSpeechArbitration'
+import { setForegroundSurface } from '../features/merope/perception/surface'
 import { batchRead, batchWrite, observeResize } from '../hooks/animation'
 import {
   isReducedAnimation,
@@ -37,7 +37,6 @@ import { useNotificationCenter } from '../hooks/useNotificationCenter'
 import { useNotificationPreferences } from '../hooks/useNotificationPreferences'
 import { usePerformanceProfile } from '../hooks/usePerformanceProfile'
 import { useWallpaper } from '../hooks/useWallpaper'
-import { setForegroundSurface } from '../features/merope/perception/surface'
 import { getDynamicContentProvider } from '../services/DynamicContentProvider'
 import {
   notificationSourceFor,
@@ -64,6 +63,7 @@ import {
 import { loadResource } from '../utils/resourceLoader'
 import { useThemeMode } from '../utils/themeSubscriber'
 import { showToast } from '../utils/toastManager'
+import { getAgentPanelVisible } from './agent-panel/agentPanelVisible'
 import {
   initialPanelState,
   isPanelMorphing,

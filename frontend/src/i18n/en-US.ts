@@ -2788,9 +2788,10 @@ export const enUS: TranslationKeys = {
       openPage: 'Open persona setup',
       mood: {
         floor: 'very low',
-        low: 'low',
-        normal: 'steady',
-        high: 'light',
+        sad: 'low',
+        tense: 'tense',
+        calm: 'steady',
+        excited: 'light',
       },
       moodLine: 'Mood {band}',
       activity: {

@@ -56,8 +56,8 @@ fn local_baseline(
 fn baseline_expression(band: &str, delta: f64) -> &'static str {
     let rung = match band {
         "floor" => 0i32,
-        "low" => 1,
-        "high" => 3,
+        "sad" | "tense" | "low" => 1,
+        "excited" | "high" => 3,
         _ => 2,
     };
     let step = if delta >= MOOD_NUDGE {
@@ -77,7 +77,7 @@ fn baseline_posture(motion_style: &str, band: &str) -> &'static str {
     match motion_style {
         "restrained" => "closed",
         "open" => "open",
-        _ if band == "high" => "open",
+        _ if band == "excited" || band == "high" => "open",
         _ => "neutral",
     }
 }
@@ -90,8 +90,9 @@ fn baseline_energy(motion_style: &str, band: &str) -> f32 {
     };
     let band_scale: f32 = match band {
         "floor" => 0.85,
-        "low" => 0.92,
-        "high" => 1.12,
+        "sad" | "low" => 0.92,
+        "tense" => 1.05,
+        "excited" | "high" => 1.12,
         _ => 1.0,
     };
     (style * band_scale).clamp(0.2, 1.4)
@@ -173,7 +174,9 @@ mod tests {
         MoodTransition {
             before: 50.0,
             after: 50.0 + delta,
-            band_before: "normal".to_string(),
+            arousal_before: 48.0,
+            arousal_after: 48.0,
+            band_before: "calm".to_string(),
             band_after: band.to_string(),
             delta,
             cause: "test".to_string(),
@@ -190,7 +193,7 @@ mod tests {
             MotionPhase::Proactive,
         ] {
             for style in ["restrained", "even", "open"] {
-                for band in ["floor", "low", "normal", "high"] {
+                for band in ["floor", "sad", "tense", "calm", "excited"] {
                     let plan =
                         local_performance_plan(phase, &mood(band, 0.0), Some(true), None, style);
                     assert!(!plan_is_empty(&plan), "{phase:?}/{style}/{band} was empty");
@@ -203,7 +206,7 @@ mod tests {
     #[test]
     fn a_mood_shift_moves_the_baseline_without_playing_a_beat() {
         let plan =
-            local_performance_plan(MotionPhase::Mood, &mood("high", 12.0), None, None, "even");
+            local_performance_plan(MotionPhase::Mood, &mood("excited", 12.0), None, None, "even");
         assert!(plan.cues.is_empty());
         assert_eq!(plan.baseline.unwrap().expression, "warm");
     }
@@ -219,7 +222,7 @@ mod tests {
             MotionPhase::Mood,
         ] {
             for style in ["restrained", "even", "open", "nonsense"] {
-                for band in ["floor", "low", "normal", "high", "nonsense"] {
+                for band in ["floor", "sad", "tense", "calm", "excited", "low", "high", "nonsense"] {
                     for delta in [-20.0, 0.0, 20.0] {
                         let plan = local_performance_plan(
                             phase,
@@ -281,7 +284,7 @@ mod tests {
     fn a_failed_task_does_not_celebrate() {
         let failed = local_performance_plan(
             MotionPhase::Outcome,
-            &mood("low", -12.0),
+            &mood("sad", -12.0),
             Some(false),
             None,
             "even",
@@ -290,7 +293,7 @@ mod tests {
         assert_eq!(failed.baseline.unwrap().expression, "withdrawn");
         let done = local_performance_plan(
             MotionPhase::Outcome,
-            &mood("high", 12.0),
+            &mood("excited", 12.0),
             Some(true),
             None,
             "even",
@@ -302,7 +305,7 @@ mod tests {
     fn a_restrained_persona_stays_restrained_when_the_mood_is_high() {
         let plan = local_performance_plan(
             MotionPhase::Delivery,
-            &mood("high", 0.0),
+            &mood("excited", 0.0),
             None,
             None,
             "restrained",

@@ -18,8 +18,8 @@ import React, {
 import { useI18n } from '../../contexts/I18nContext'
 import { agentService } from '../../services/agent'
 import { AgentMarkdown } from './AgentMarkdown'
-import { AgentPanelThinking } from './AgentPanelThinking'
 import { useAgentPanelMode } from './agentPanelMode'
+import { AgentPanelThinking } from './AgentPanelThinking'
 import {
   BUBBLE_GROW_TAU,
   BUBBLE_SHRINK_TAU,

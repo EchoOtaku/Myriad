@@ -53,7 +53,6 @@ import {
 import { setAgentStatusRecording, useAgentStatus } from './agentStatusStore'
 import { attachOrbDriftSpeed, startAttachOrbDrift } from './attachOrbDrift'
 import { composerActionKind } from './composerAction'
-import { LONG_PRESS_DURATION } from './useLongPress'
 import {
   forgetComposerFavorite,
   loadComposerFavorites,
@@ -62,6 +61,7 @@ import {
 import { useAddresseeMoodBand } from './useAddresseeMood'
 import { useAgentPanelContext } from './useAgentPanelContext'
 import { AgentPresence, AgentPresenceList, AgentSwap } from './useAgentPresence'
+import { LONG_PRESS_DURATION } from './useLongPress'
 import { useTagStripScroll } from './useTagStripScroll'
 import { useVoiceRecording } from './useVoiceRecording'
 

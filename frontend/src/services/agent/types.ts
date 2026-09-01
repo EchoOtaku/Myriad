@@ -228,11 +228,15 @@ export interface PerformanceDirective {
   }
 }
 
+export type MoodBandName = 'floor' | 'sad' | 'tense' | 'calm' | 'excited'
+
 export interface MoodTransition {
   before: number
   after: number
-  bandBefore: 'floor' | 'low' | 'normal' | 'high'
-  bandAfter: 'floor' | 'low' | 'normal' | 'high'
+  arousalBefore?: number
+  arousalAfter?: number
+  bandBefore: MoodBandName
+  bandAfter: MoodBandName
   delta: number
   cause: string
   revision: number

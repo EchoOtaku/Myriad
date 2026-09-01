@@ -2412,9 +2412,10 @@ export interface TranslationKeys {
       openPage: string
       mood: {
         floor: string
-        low: string
-        normal: string
-        high: string
+        sad: string
+        tense: string
+        calm: string
+        excited: string
       }
       moodLine: string
       activity: {

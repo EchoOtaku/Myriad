@@ -225,9 +225,21 @@ test('occupancy stays busy after end until the auto-speech tail finishes', () =>
 })
 
 test('bounds local duration estimates for short and very long replies', () => {
-  assert.equal(estimateAutoSpeechDurationMs('好'), 600)
+  assert.equal(estimateAutoSpeechDurationMs('好'), 650)
   assert.ok(estimateAutoSpeechDurationMs('This is a short answer.') >= 1_500)
   assert.equal(estimateAutoSpeechDurationMs('长'.repeat(2_000)), 12_000)
+})
+
+test('uses punctuation and locale to estimate natural visual speech phrasing', () => {
+  const plain = estimateAutoSpeechDurationMs('你好世界再见', 'zh-CN')
+  const phrased = estimateAutoSpeechDurationMs('你好，世界。再见', 'zh-CN')
+  assert.ok(phrased >= plain + 450)
+
+  const han = '今天天气很好我们出去走走'
+  assert.ok(
+    estimateAutoSpeechDurationMs(han, 'zh-CN') >
+      estimateAutoSpeechDurationMs(han, 'ja-JP'),
+  )
 })
 
 test('ignores speech from an older generation without cancelling the live one', async () => {

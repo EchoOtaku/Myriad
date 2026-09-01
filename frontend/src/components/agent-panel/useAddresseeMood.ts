@@ -23,8 +23,11 @@ export function useAddresseeMoodBand(): MoodBand | null {
       return undefined
     }
     let active = true
-    const apply = (value: number | undefined) => {
-      if (active) setBand(moodBand(value))
+    const apply = (
+      value: number | undefined,
+      arousal: number | undefined,
+    ) => {
+      if (active) setBand(moodBand(value, arousal))
     }
     const load = () => {
       void agentService
@@ -35,7 +38,10 @@ export function useAddresseeMoodBand(): MoodBand | null {
             setBand(null)
             return
           }
-          apply(typeof persona.mood === 'number' ? persona.mood : 70)
+          apply(
+            typeof persona.mood === 'number' ? persona.mood : 70,
+            typeof persona.arousal === 'number' ? persona.arousal : 48,
+          )
         })
         .catch(() => {
           if (active) setBand(null)
@@ -46,7 +52,7 @@ export function useAddresseeMoodBand(): MoodBand | null {
       const detail = meropeStateEventDetail(
         (event as CustomEvent<unknown>).detail,
       )
-      if (detail) apply(detail.mood.after)
+      if (detail) apply(detail.mood.after, detail.mood.arousalAfter)
     }
     window.addEventListener(MEROPE_STATE_EVENT, onState)
     window.addEventListener(PERSONA_UPDATED_EVENT, load)

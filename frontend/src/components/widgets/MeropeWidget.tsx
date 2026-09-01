@@ -27,13 +27,15 @@ import './MeropeWidget.css'
 
 const DEFAULT_AGENT_NAME = 'Arael'
 const DEFAULT_MOOD = 70
+const DEFAULT_AROUSAL = 48
 
-/** 电平格数 = 心情档位，四格对四档 */
+/** 四格：很低 1，偏低/烦躁 2，平常 3，轻松 4 */
 const MOOD_LEVEL: Record<MoodBand, number> = {
   floor: 1,
-  low: 2,
-  normal: 3,
-  high: 4,
+  sad: 2,
+  tense: 2,
+  calm: 3,
+  excited: 4,
 }
 
 const LEVEL_SLOTS = [0, 1, 2, 3]
@@ -114,6 +116,7 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
   const [portraitUrl, setPortraitUrl] = useState<string | null>(null)
   const [agentName, setAgentName] = useState(DEFAULT_AGENT_NAME)
   const [mood, setMood] = useState(DEFAULT_MOOD)
+  const [arousal, setArousal] = useState(DEFAULT_AROUSAL)
   const [activity, setActivity] = useState<MeropeActivity>('idle')
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
@@ -160,6 +163,11 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
       )
       if (!detail) return
       setMood(detail.mood.after)
+      setArousal(
+        typeof detail.mood.arousalAfter === 'number'
+          ? detail.mood.arousalAfter
+          : DEFAULT_AROUSAL,
+      )
       setActivity(toMeropeActivity(detail.activity))
     }
     window.addEventListener(MEROPE_STATE_EVENT, onState)
@@ -181,6 +189,11 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
           setMood(
             typeof persona.mood === 'number' ? persona.mood : DEFAULT_MOOD,
           )
+          setArousal(
+            typeof persona.arousal === 'number'
+              ? persona.arousal
+              : DEFAULT_AROUSAL,
+          )
           setActivity(toMeropeActivity(persona.activity))
           setVitalsReady(true)
         })
@@ -201,7 +214,7 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
   const playableRig = hasPlayableRig(manifest)
   const showCharacter = playableRig || Boolean(portraitUrl)
   const stateClass = `merope-widget__rig merope-widget__rig--${activity}`
-  const band = vitalsReady ? moodBand(mood) : null
+  const band = vitalsReady ? moodBand(mood, arousal) : null
   const surfaceStyle = useMemo(
     () => portraitFrameStyle(manifest?.anime25dPlayback?.pixelCanvas),
     [manifest],

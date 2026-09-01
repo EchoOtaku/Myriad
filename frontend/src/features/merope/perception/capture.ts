@@ -5,7 +5,7 @@ import { captureProductionRigStateSummary } from '../motion/runtimeHost'
 import { getVoicePresence } from '../speech/voicePresence'
 import { replaceMusicTrackSource, replaceSurfaceSource } from './consentedSources'
 import { pagePerceptionCopy } from './pageCopy'
-import { perceptionRegistry } from './registry'
+import { MAX_PERCEPTION_ITEMS, perceptionRegistry } from './registry'
 
 const PAGE_TTL_MS = 8_000
 const POINTER_TTL_MS = 3_000
@@ -132,5 +132,5 @@ export function capturePerceptionSnapshots(input: {
     perceptionRegistry.forget('screen')
   }
 
-  return perceptionRegistry.active(now)
+  return perceptionRegistry.active(now).slice(0, MAX_PERCEPTION_ITEMS)
 }

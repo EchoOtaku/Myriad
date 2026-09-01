@@ -214,21 +214,22 @@ pub async fn get_persona(
         .await
         .map_err(|error| persona_store_http("load persona", error))?;
 
-    let (mood, activity, do_not_disturb, dnd_start, dnd_end, dnd_active) =
+    let (mood, arousal, activity, do_not_disturb, dnd_start, dnd_end, dnd_active) =
         if merope::is_logged_in_addressee(user_id) {
             match merope::get_or_create_state(&db, user_id).await {
                 Ok(state) => (
                     state.mood,
+                    state.arousal,
                     merope::current_activity(&state).to_string(),
                     state.do_not_disturb,
                     state.dnd_start_minute.and_then(merope::format_clock_minute),
                     state.dnd_end_minute.and_then(merope::format_clock_minute),
                     merope::effective_do_not_disturb(&state),
                 ),
-                Err(_) => (70.0, "idle".to_string(), false, None, None, false),
+                Err(_) => (70.0, 48.0, "idle".to_string(), false, None, None, false),
             }
         } else {
-            (70.0, "idle".to_string(), false, None, None, false)
+            (70.0, 48.0, "idle".to_string(), false, None, None, false)
         };
 
     let report_count = report_platform_count(&db, user_id).await.unwrap_or(0);
@@ -239,6 +240,7 @@ pub async fn get_persona(
             "portraitAssetId": null,
             "hasCustomPersona": false,
             "mood": mood,
+            "arousal": arousal,
             "activity": activity,
             "doNotDisturb": do_not_disturb,
             "doNotDisturbActive": dnd_active,
@@ -263,6 +265,7 @@ pub async fn get_persona(
         "portraitAssetId": persona.portrait_asset_id,
         "hasCustomPersona": merope::has_custom_persona(&persona),
         "mood": mood,
+        "arousal": arousal,
         "activity": activity,
         "doNotDisturb": do_not_disturb,
         "doNotDisturbActive": dnd_active,
@@ -493,6 +496,7 @@ pub async fn put_addressee(
     }
     Ok(Json(json!({
         "mood": state.mood,
+        "arousal": state.arousal,
         "activity": merope::current_activity(&state),
         "doNotDisturb": state.do_not_disturb,
         "doNotDisturbActive": merope::effective_do_not_disturb(&state),
@@ -1082,6 +1086,19 @@ fn visual_profile_error() -> HttpError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn get_persona_returns_arousal_on_both_bodies() {
+        let get = include_str!("persona.rs")
+            .split("/// PUT /api/agent/persona")
+            .next()
+            .expect("GET persona");
+        assert_eq!(
+            get.matches("\"arousal\": arousal").count(),
+            2,
+            "empty fallback and saved persona GET must both return arousal"
+        );
+    }
 
     #[test]
     fn visual_design_requires_an_explicit_valid_gender() {

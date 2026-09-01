@@ -464,6 +464,24 @@ pub(crate) fn tables() -> Vec<TableDef> {
                     default_value: Some("70".into()),
                 },
                 ColumnDef {
+                    name: "arousal".into(),
+                    data_type: "double precision".into(),
+                    is_nullable: false,
+                    default_value: Some("50".into()),
+                },
+                ColumnDef {
+                    name: "emotion".into(),
+                    data_type: "double precision".into(),
+                    is_nullable: false,
+                    default_value: Some("50".into()),
+                },
+                ColumnDef {
+                    name: "emotion_arousal".into(),
+                    data_type: "double precision".into(),
+                    is_nullable: false,
+                    default_value: Some("50".into()),
+                },
+                ColumnDef {
                     name: "activity".into(),
                     data_type: "character varying".into(),
                     is_nullable: false,
@@ -504,6 +522,18 @@ pub(crate) fn tables() -> Vec<TableDef> {
                     data_type: "timestamp with time zone".into(),
                     is_nullable: true,
                     default_value: None,
+                },
+                ColumnDef {
+                    name: "mood_settled_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+                ColumnDef {
+                    name: "emotion_settled_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
                 },
                 ColumnDef {
                     name: "updated_at".into(),

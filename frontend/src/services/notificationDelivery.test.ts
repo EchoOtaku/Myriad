@@ -5,12 +5,12 @@
 import type { AppNotification } from './notificationApi.ts'
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { DEFAULT_NOTIFICATION_PREFERENCES } from './notificationPreferencesApi.ts'
 import {
   notificationSourceFor,
   shouldDeliverNotification,
   shouldEmitNotificationToast,
 } from './notificationDelivery.ts'
+import { DEFAULT_NOTIFICATION_PREFERENCES } from './notificationPreferencesApi.ts'
 
 function note(
   partial: Partial<AppNotification> &

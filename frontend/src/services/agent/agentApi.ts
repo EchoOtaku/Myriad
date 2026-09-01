@@ -116,6 +116,7 @@ export interface AgentPersona {
   visualProfile?: Record<string, unknown> | null
   portraitGeneration?: Record<string, unknown> | null
   mood?: number
+  arousal?: number
   activity?: string
   doNotDisturb?: boolean
   doNotDisturbActive?: boolean
@@ -1051,6 +1052,7 @@ class AgentService {
     dndEnd?: string | null
   }): Promise<{
     mood: number
+    arousal?: number
     activity: string
     doNotDisturb: boolean
     doNotDisturbActive?: boolean
