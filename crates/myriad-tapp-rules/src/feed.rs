@@ -1,9 +1,53 @@
-//! Federation feed merge. Row projection lands in a later slice.
+//! Federation feed merge and row projection.
 
-use serde_json::Value;
+use serde_json::{json, Value};
 
 /// Max items returned by the Tapp federation feed endpoint.
 pub const FEDERATION_FEED_LIMIT: usize = 100;
+
+/// Flat activity row fields required to project a feed item (DB-loader agnostic).
+#[derive(Debug, Clone)]
+pub struct FederationFeedRowView<'a> {
+    pub activity_id: &'a str,
+    pub activity_type: &'a str,
+    pub object_type: Option<&'a str>,
+    pub content_preview: Option<&'a str>,
+    pub content_json: Option<&'a Value>,
+    pub object_id: Option<&'a str>,
+    pub received_at_rfc3339: &'a str,
+    pub scope: &'a str,
+    pub actor_url: Option<&'a str>,
+    pub username: Option<&'a str>,
+    pub domain: Option<&'a str>,
+    pub display_name: Option<&'a str>,
+    pub avatar_url: Option<&'a str>,
+    pub is_local: bool,
+}
+
+/// Project one activity row into the federation feed JSON contract.
+pub fn federation_feed_item(row: FederationFeedRowView<'_>) -> Value {
+    let timestamp = row.received_at_rfc3339;
+    json!({
+        "activity_id": row.activity_id,
+        "activity_type": row.activity_type,
+        "object_type": row.object_type,
+        "content_preview": row.content_preview,
+        "content_json": row.content_json,
+        "object_id": row.object_id,
+        "is_read": false,
+        "created_at": timestamp,
+        "received_at": timestamp,
+        "scope": row.scope,
+        "actor": {
+            "actor_url": row.actor_url,
+            "username": row.username,
+            "domain": row.domain,
+            "display_name": row.display_name,
+            "avatar_url": row.avatar_url,
+            "is_local": row.is_local,
+        },
+    })
+}
 
 /// Merge personal + public feed items: personal first, dedupe by `activity_id`,
 /// newest `received_at` first, truncate to [`FEDERATION_FEED_LIMIT`].
@@ -169,5 +213,32 @@ mod tests {
             json!({"activity_id": "b", "activity_type": "Create", "object_id": ""}),
         ]);
         assert_eq!(deduped.len(), 2);
+    }
+
+    #[test]
+    fn feed_item_projection() {
+        let row = FederationFeedRowView {
+            activity_id: "act-1",
+            activity_type: "Create",
+            object_type: Some("Note"),
+            content_preview: Some("hello"),
+            content_json: None,
+            object_id: Some("obj-1"),
+            received_at_rfc3339: "2026-01-01T00:00:00+00:00",
+            scope: "public",
+            actor_url: Some("https://ex/@ada"),
+            username: Some("ada"),
+            domain: Some("ex"),
+            display_name: Some("Ada"),
+            avatar_url: None,
+            is_local: true,
+        };
+        let v = federation_feed_item(row);
+        assert_eq!(v["activity_id"], "act-1");
+        assert_eq!(v["object_id"], "obj-1");
+        assert_eq!(v["is_read"], false);
+        assert_eq!(v["actor"]["username"], "ada");
+        assert_eq!(v["actor"]["is_local"], true);
+        assert_eq!(v["created_at"], v["received_at"]);
     }
 }

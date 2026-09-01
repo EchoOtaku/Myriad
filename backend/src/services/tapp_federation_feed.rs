@@ -6,55 +6,10 @@
 use serde_json::{json, Value};
 
 pub use myriad_tapp_rules::{
-    dedupe_federation_feed, federation_feed_includes_personal, merge_federation_feed,
-    merge_federation_feed_with_limit, FEDERATION_FEED_LIMIT,
+    dedupe_federation_feed, federation_feed_includes_personal, federation_feed_item,
+    merge_federation_feed, merge_federation_feed_with_limit, FederationFeedRowView,
+    FEDERATION_FEED_LIMIT,
 };
-
-/// Flat activity row fields required to project a feed item (DB-loader agnostic).
-#[derive(Debug, Clone)]
-pub struct FederationFeedRowView<'a> {
-    pub activity_id: &'a str,
-    pub activity_type: &'a str,
-    pub object_type: Option<&'a str>,
-    pub content_preview: Option<&'a str>,
-    pub content_json: Option<&'a Value>,
-    pub object_id: Option<&'a str>,
-    pub received_at_rfc3339: &'a str,
-    pub scope: &'a str,
-    pub actor_url: Option<&'a str>,
-    pub username: Option<&'a str>,
-    pub domain: Option<&'a str>,
-    pub display_name: Option<&'a str>,
-    pub avatar_url: Option<&'a str>,
-    pub is_local: bool,
-}
-
-/// Project one activity row into the federation feed JSON contract.
-pub fn federation_feed_item(row: FederationFeedRowView<'_>) -> Value {
-    let timestamp = row.received_at_rfc3339;
-    json!({
-        "activity_id": row.activity_id,
-        "activity_type": row.activity_type,
-        "object_type": row.object_type,
-        "content_preview": row.content_preview,
-        "content_json": row.content_json,
-        "object_id": row.object_id,
-        "is_read": false,
-        "created_at": timestamp,
-        "received_at": timestamp,
-        "scope": row.scope,
-        "actor": {
-            "actor_url": row.actor_url,
-            "username": row.username,
-            "domain": row.domain,
-            "display_name": row.display_name,
-            "avatar_url": row.avatar_url,
-            "is_local": row.is_local,
-        },
-    })
-}
-
-
 
 #[cfg(test)]
 mod tests {

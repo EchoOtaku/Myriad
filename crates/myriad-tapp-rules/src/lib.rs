@@ -9,8 +9,9 @@ pub mod package;
 pub mod transform;
 
 pub use feed::{
-    dedupe_federation_feed, federation_feed_includes_personal, merge_federation_feed,
-    merge_federation_feed_with_limit, FEDERATION_FEED_LIMIT,
+    dedupe_federation_feed, federation_feed_includes_personal, federation_feed_item,
+    merge_federation_feed, merge_federation_feed_with_limit, FederationFeedRowView,
+    FEDERATION_FEED_LIMIT,
 };
 pub use hmac::{encode_hmac, hmac_matches, hmac_sha256};
 pub use package::{
