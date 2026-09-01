@@ -131,7 +131,11 @@ test('Chat mid-utterance continues while a background Work completion is recorde
   )
 
   assert.deepEqual(
-    sink.speechEvents.map((event) => [event.phase, event.messageId, 'text' in event ? event.text : '']),
+    sink.speechEvents.map((event) => [
+      event.phase,
+      event.messageId,
+      'text' in event ? event.text : '',
+    ]),
     [
       ['start', 'chat-msg', ''],
       ['chunk', 'chat-msg', '我正在说'],
@@ -162,7 +166,12 @@ test('notification-center Work completion is recorded, not spoken, while Chat is
   const notice = deliverWorkNotificationFace(channel, gate, {
     id: 'notif-work-1',
     body: '任务完成了',
-    performance: { phase: 'delivery', moodRevision: 3, plan: { cues: [] } },
+    performance: {
+      phase: 'delivery',
+      moodRevision: 3,
+      motionStyle: 'even',
+      plan: { cues: [] },
+    },
     meropeState: { mood: 'calm', activity: 'idle' },
   })
 
@@ -225,10 +234,7 @@ test('notification center and engine cancel go through the gated Work/Chat helpe
   // The engine cancels through the facade and never names the channel itself.
   assert.match(engine, /stopTurnSpeech\(/)
   assert.doesNotMatch(engine, /agentFace\./)
-  const face = readFileSync(
-    new URL('./engineFace.ts', import.meta.url),
-    'utf8',
-  )
+  const face = readFileSync(new URL('./engineFace.ts', import.meta.url), 'utf8')
   assert.match(face, /cancelGatedSpeech\(/)
   assert.doesNotMatch(face, /agentFace\.cancel\(/)
   const arbitration = readFileSync(
@@ -300,7 +306,20 @@ test('a live body is the app-layer outlet for a finished line', () => {
     const result = deliverGatedLine(channel, gate, 'chat', {
       messageId: 'chat-msg',
       text: '想跟你说一声',
-      performance: { phase: 'delivery', moodRevision: 1, plan: { cues: [] } },
+      performance: {
+        phase: 'delivery',
+        moodRevision: 1,
+        motionStyle: 'even',
+        plan: {
+          baseline: {
+            expression: 'warm',
+            posture: 'neutral',
+            motionEnergy: 0.8,
+            attention: 0.9,
+          },
+          cues: [],
+        },
+      },
     })
     assert.equal(result.surface, 'speech')
     assert.equal(intended.length, 1)
@@ -322,7 +341,12 @@ test('a live body is the app-layer outlet for a finished line', () => {
     const blocked = deliverGatedLine(channel, gate, 'work', {
       messageId: 'work-msg',
       text: '报告已经写好了',
-      performance: { phase: 'delivery', moodRevision: 2, plan: { cues: [] } },
+      performance: {
+        phase: 'delivery',
+        moodRevision: 2,
+        motionStyle: 'even',
+        plan: { cues: [] },
+      },
     })
     assert.equal(blocked.surface, 'record')
     assert.equal(intended.length, 0)

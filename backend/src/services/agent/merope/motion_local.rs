@@ -15,6 +15,7 @@
 use myriad_merope::{ChatPerformanceBaseline, ChatPerformanceCue, ChatPerformancePlan};
 
 use super::state::MoodTransition;
+use super::motion::text_mentions_any;
 use super::MotionPhase;
 
 /// Mood moves smaller than this are noise, not a change of bearing.
@@ -28,11 +29,19 @@ pub fn local_performance_plan(
     task_success: Option<bool>,
     response_text: Option<&str>,
     motion_style: &str,
+    user_text: Option<&str>,
 ) -> ChatPerformancePlan {
     let baseline = local_baseline(phase, mood, motion_style);
-    let cues = local_cue(phase, task_success, response_text, &baseline)
-        .into_iter()
-        .collect();
+    let cues = local_cue(
+        phase,
+        mood,
+        task_success,
+        response_text,
+        user_text,
+        &baseline,
+    )
+    .into_iter()
+    .collect();
     ChatPerformancePlan {
         baseline: Some(baseline),
         cues,
@@ -53,10 +62,20 @@ fn local_baseline(
 }
 
 /// Band sets the rung; a decisive swing this round moves it one step.
+///
+/// `tense` answers before the ladder because it is not on it. `mood_band`
+/// splits `sad` from `tense` on arousal, and putting both on rung 1 threw that
+/// split away: a wound-up round wore the same face as a flat one and differed
+/// only in motion energy. The ladder cannot fix that — it is a valence axis,
+/// and every step down it also closes the eyes, which reads as giving up
+/// rather than being on edge.
 fn baseline_expression(band: &str, delta: f64) -> &'static str {
+    if band == "tense" {
+        return "tense";
+    }
     let rung = match band {
         "floor" => 0i32,
-        "sad" | "tense" | "low" => 1,
+        "sad" | "low" => 1,
         "excited" | "high" => 3,
         _ => 2,
     };
@@ -113,18 +132,30 @@ fn phase_attention(phase: MotionPhase) -> f32 {
 /// moves the baseline and plays nothing.
 fn local_cue(
     phase: MotionPhase,
+    mood: &MoodTransition,
     task_success: Option<bool>,
     response_text: Option<&str>,
+    user_text: Option<&str>,
     baseline: &ChatPerformanceBaseline,
 ) -> Option<ChatPerformanceCue> {
     let intent = match phase {
         // Text submission is already a completed turn. A small acknowledgement
         // is honest; "listen" falsely claims an ongoing listener state that
         // this path cannot observe.
+        MotionPhase::Reaction if mood.cause == "user_praise" || mood.delta >= MOOD_NUDGE => {
+            "delight"
+        }
+        MotionPhase::Reaction if mood.cause == "user_scold" => "speechless",
+        MotionPhase::Reaction if text_is_greeting(user_text) => "greet",
+        MotionPhase::Reaction if reply_is_playful(user_text) => "delight",
         MotionPhase::Reaction => "respond",
         MotionPhase::Delivery => {
             if reply_asks_back(response_text) {
                 "question"
+            } else if reply_is_playful(response_text) {
+                "delight"
+            } else if reply_is_emphatic(response_text) {
+                "emphasize"
             } else {
                 "respond"
             }
@@ -138,10 +169,12 @@ fn local_cue(
     };
     let energy = baseline.motion_energy;
     let (fade_in_ms, fade_out_ms) = match intent {
-        "question" => (140, 320),
-        "delight" => (120, 420),
-        "notify" => (110, 300),
-        _ => (160, 340),
+        "question" => (125, 380),
+        "delight" => (105, 460),
+        "notify" | "emphasize" => (110, 380),
+        "speechless" => (115, 500),
+        _ if phase == MotionPhase::Reaction => (105, 420),
+        _ => (135, 400),
     };
     Some(ChatPerformanceCue {
         intent: intent.to_string(),
@@ -161,6 +194,42 @@ fn reply_asks_back(response_text: Option<&str>) -> bool {
         .and_then(|text| text.chars().next_back())
         .is_some_and(|last| last == '?' || last == '？')
 }
+
+fn reply_is_playful(response_text: Option<&str>) -> bool {
+    let Some(text) = response_text.map(str::trim).filter(|text| !text.is_empty()) else {
+        return false;
+    };
+    text_mentions_any(text, &["哈哈", "嘿嘿", "嘻嘻", "笑死", "hhh", "lol", "ww", "😂", "🤣"])
+}
+
+fn reply_is_emphatic(response_text: Option<&str>) -> bool {
+    response_text
+        .map(str::trim_end)
+        .and_then(|text| text.chars().next_back())
+        .is_some_and(|last| last == '!' || last == '！')
+}
+
+fn text_is_greeting(text: Option<&str>) -> bool {
+    let Some(text) = text.map(str::trim).filter(|text| !text.is_empty()) else {
+        return false;
+    };
+    text_mentions_any(
+        text,
+        &[
+            "你好",
+            "早上好",
+            "下午好",
+            "晚上好",
+            "hello",
+            "hi",
+            "hey",
+            "おはよう",
+            "こんにちは",
+            "こんばんは",
+        ],
+    )
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -184,6 +253,69 @@ mod tests {
         }
     }
 
+    /// The floor now carries every round, so a marker that fires on ordinary
+    /// prose is not a rough edge — it is the character greeting most English
+    /// sentences and laughing at every link.
+    #[test]
+    fn latin_markers_do_not_fire_inside_ordinary_words() {
+        for text in [
+            "Can you check this?",
+            "They said it works",
+            "which one do you want",
+            "the machine is fine",
+            "a short history of it",
+        ] {
+            let plan = local_performance_plan(
+                MotionPhase::Reaction,
+                &mood("normal", 0.0),
+                None,
+                None,
+                "even",
+                Some(text),
+            );
+            assert_eq!(plan.cues[0].intent, "respond", "{text:?}");
+        }
+
+        for text in ["see www.foo.com", "the lollipop broke", "a swww"] {
+            let plan = local_performance_plan(
+                MotionPhase::Delivery,
+                &mood("normal", 0.0),
+                None,
+                Some(text),
+                "even",
+                None,
+            );
+            assert_eq!(plan.cues[0].intent, "respond", "{text:?}");
+        }
+    }
+
+    #[test]
+    fn latin_markers_still_fire_when_they_stand_alone() {
+        for text in ["hi", "Hi there", "hey!", "hello, are you up?", "hi 你在吗"] {
+            let plan = local_performance_plan(
+                MotionPhase::Reaction,
+                &mood("normal", 0.0),
+                None,
+                None,
+                "even",
+                Some(text),
+            );
+            assert_eq!(plan.cues[0].intent, "greet", "{text:?}");
+        }
+
+        for text in ["that is great www", "lol", "hhh", "そうですねwwww"] {
+            let plan = local_performance_plan(
+                MotionPhase::Delivery,
+                &mood("normal", 0.0),
+                None,
+                Some(text),
+                "even",
+                None,
+            );
+            assert_eq!(plan.cues[0].intent, "delight", "{text:?}");
+        }
+    }
+
     #[test]
     fn every_phase_but_mood_renders_a_playable_plan() {
         for phase in [
@@ -194,8 +326,14 @@ mod tests {
         ] {
             for style in ["restrained", "even", "open"] {
                 for band in ["floor", "sad", "tense", "calm", "excited"] {
-                    let plan =
-                        local_performance_plan(phase, &mood(band, 0.0), Some(true), None, style);
+                    let plan = local_performance_plan(
+                        phase,
+                        &mood(band, 0.0),
+                        Some(true),
+                        None,
+                        style,
+                        None,
+                    );
                     assert!(!plan_is_empty(&plan), "{phase:?}/{style}/{band} was empty");
                     assert_eq!(plan.cues.len(), 1);
                 }
@@ -203,10 +341,57 @@ mod tests {
         }
     }
 
+    /// `mood_band` splits low mood on arousal; the floor has to keep the split.
+    #[test]
+    fn irritation_does_not_wear_the_same_face_as_flatness() {
+        let flat = local_performance_plan(
+            MotionPhase::Reaction,
+            &mood("sad", 0.0),
+            None,
+            None,
+            "even",
+            None,
+        );
+        let irritated = local_performance_plan(
+            MotionPhase::Reaction,
+            &mood("tense", 0.0),
+            None,
+            None,
+            "even",
+            None,
+        );
+        let flat = flat.baseline.expect("baseline");
+        let irritated = irritated.baseline.expect("baseline");
+        assert_eq!(flat.expression, "subdued");
+        assert_eq!(irritated.expression, "tense");
+        // The body already carried the arousal; the face used not to.
+        assert!(irritated.motion_energy > flat.motion_energy);
+
+        // Irritation is a corner of the circumplex, not a rung: a swing inside
+        // the band does not walk it up or down the valence ladder.
+        for delta in [-20.0, 0.0, 20.0] {
+            let plan = local_performance_plan(
+                MotionPhase::Reaction,
+                &mood("tense", delta),
+                None,
+                None,
+                "even",
+                None,
+            );
+            assert_eq!(plan.baseline.unwrap().expression, "tense", "{delta}");
+        }
+    }
+
     #[test]
     fn a_mood_shift_moves_the_baseline_without_playing_a_beat() {
-        let plan =
-            local_performance_plan(MotionPhase::Mood, &mood("excited", 12.0), None, None, "even");
+        let plan = local_performance_plan(
+            MotionPhase::Mood,
+            &mood("excited", 12.0),
+            None,
+            None,
+            "even",
+            None,
+        );
         assert!(plan.cues.is_empty());
         assert_eq!(plan.baseline.unwrap().expression, "warm");
     }
@@ -222,7 +407,9 @@ mod tests {
             MotionPhase::Mood,
         ] {
             for style in ["restrained", "even", "open", "nonsense"] {
-                for band in ["floor", "sad", "tense", "calm", "excited", "low", "high", "nonsense"] {
+                for band in [
+                    "floor", "sad", "tense", "calm", "excited", "low", "high", "nonsense",
+                ] {
                     for delta in [-20.0, 0.0, 20.0] {
                         let plan = local_performance_plan(
                             phase,
@@ -230,6 +417,7 @@ mod tests {
                             Some(false),
                             Some("好的？"),
                             style,
+                            None,
                         );
                         let baseline = plan.baseline.expect("floor always sets a baseline");
                         assert!(PERFORMANCE_BASELINE_EXPRESSIONS
@@ -256,6 +444,7 @@ mod tests {
             None,
             Some("你想先看哪一份？"),
             "even",
+            None,
         );
         assert_eq!(asking.cues[0].intent, "question");
         let telling = local_performance_plan(
@@ -264,6 +453,7 @@ mod tests {
             None,
             Some("已经改好了。"),
             "even",
+            None,
         );
         assert_eq!(telling.cues[0].intent, "respond");
     }
@@ -276,8 +466,56 @@ mod tests {
             None,
             None,
             "even",
+            None,
         );
         assert_eq!(plan.cues[0].intent, "respond");
+
+        let greeting = local_performance_plan(
+            MotionPhase::Reaction,
+            &mood("normal", 0.0),
+            None,
+            None,
+            "even",
+            Some("你好呀"),
+        );
+        assert_eq!(greeting.cues[0].intent, "greet");
+    }
+
+    #[test]
+    fn immediate_floor_uses_known_affect_without_waiting_for_lite() {
+        let mut praised = mood("excited", 10.0);
+        praised.cause = "user_praise".to_string();
+        let delighted =
+            local_performance_plan(MotionPhase::Reaction, &praised, None, None, "open", None);
+        assert_eq!(delighted.cues[0].intent, "delight");
+
+        let mut scolded = mood("tense", -10.0);
+        scolded.cause = "user_scold".to_string();
+        let speechless =
+            local_performance_plan(MotionPhase::Reaction, &scolded, None, None, "even", None);
+        assert_eq!(speechless.cues[0].intent, "speechless");
+    }
+
+    #[test]
+    fn delivery_floor_reads_the_finished_line() {
+        let playful = local_performance_plan(
+            MotionPhase::Delivery,
+            &mood("excited", 0.0),
+            None,
+            Some("哈哈，这也太可爱了。"),
+            "open",
+            None,
+        );
+        assert_eq!(playful.cues[0].intent, "delight");
+        let emphatic = local_performance_plan(
+            MotionPhase::Delivery,
+            &mood("calm", 0.0),
+            None,
+            Some("交给我吧！"),
+            "even",
+            None,
+        );
+        assert_eq!(emphatic.cues[0].intent, "emphasize");
     }
 
     #[test]
@@ -288,6 +526,7 @@ mod tests {
             Some(false),
             None,
             "even",
+            None,
         );
         assert_eq!(failed.cues[0].intent, "respond");
         assert_eq!(failed.baseline.unwrap().expression, "withdrawn");
@@ -297,6 +536,7 @@ mod tests {
             Some(true),
             None,
             "even",
+            None,
         );
         assert_eq!(done.cues[0].intent, "delight");
     }
@@ -309,6 +549,7 @@ mod tests {
             None,
             None,
             "restrained",
+            None,
         );
         let baseline = plan.baseline.unwrap();
         assert_eq!(baseline.posture, "closed");

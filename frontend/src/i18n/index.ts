@@ -182,6 +182,7 @@ export interface TranslationKeys {
     anime25dInspectEyesValue: string
     anime25dInspectMouthValue: string
     anime25dInspectCanvasValue: string
+    anime25dInspectEnvelopeValue: string
     anime25dInspectPerformanceValue: string
     anime25dInspectWorkloadValue: string
     clusterHead: string
@@ -247,6 +248,12 @@ export interface TranslationKeys {
     anime25dPresetManiac: string
     anime25dPresetSilly: string
     anime25dPresetLovestruck: string
+    anime25dProbeTurnLeft: string
+    anime25dProbeTurnRight: string
+    anime25dProbePitchUp: string
+    anime25dProbePitchDown: string
+    anime25dProbeFullLeft: string
+    anime25dProbeFullRight: string
     anime25dBlinkNow: string
     anime25dResetPose: string
     anime25dInspect: string
@@ -255,6 +262,7 @@ export interface TranslationKeys {
     anime25dInspectEyes: string
     anime25dInspectMouth: string
     anime25dInspectCanvas: string
+    anime25dInspectEnvelope: string
     anime25dInspectPerformance: string
     anime25dInspectWorkload: string
     anime25dInspectEmpty: string

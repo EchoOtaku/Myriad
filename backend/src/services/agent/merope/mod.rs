@@ -18,16 +18,16 @@ pub use ingest::{
     tick_speak_intents,
 };
 pub use motion::{
-    direct_motion, local_directive, resolve_round_motion_style, MotionContext, MotionPhase,
-    PerformanceDirective,
+    direct_motion, local_directive, refine_motion, resolve_round_motion_style, MotionContext,
+    MotionPhase, PerformanceDirective,
 };
 pub use myriad_merope::RigStateSummary;
 pub use store::{
     acquire_portrait_generation, clear_persona_on, complete_portrait_generation,
-    get_or_create_state, get_persona, get_persona_on, insert_diary, insert_proactive, latest_diary,
-    list_diary_from_sources, list_remembered, normalize_persona_fields,
-    portrait_generation_is_pending, recent_proactive, release_portrait_generation,
-    save_affect, set_activity, set_dnd_schedule, set_do_not_disturb,
+    generation_inputs_changed, get_or_create_state, get_persona, get_persona_on, insert_diary,
+    insert_proactive, latest_diary, list_diary_from_sources, list_remembered,
+    normalize_persona_fields, portrait_generation_is_pending, recent_proactive,
+    release_portrait_generation, save_affect, set_activity, set_dnd_schedule, set_do_not_disturb,
     upsert_persona_on, JsonDocumentUpdate, PersonaContractUpdate, PortraitUpdate,
 };
 

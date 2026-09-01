@@ -10,9 +10,7 @@ use crate::models::entities::{
     agent_addressee_state, agent_diary, agent_persona, agent_proactive_messages, agent_sessions,
 };
 
-use super::state::{
-    settle, Affect, AffectBaseline, clamp, persona_affect_baseline,
-};
+use super::state::{clamp, persona_affect_baseline, settle, Affect, AffectBaseline};
 
 pub const PERSONA_ROW_ID: &str = "site";
 
@@ -89,6 +87,16 @@ fn visual_generation_inputs_changed(current: Option<&Value>, update: &JsonDocume
     }
 }
 
+/// Name or visual appearance changed: old portrait and Rig must both go.
+pub fn generation_inputs_changed(
+    existing_name: &str,
+    existing_visual: Option<&Value>,
+    next_name: &str,
+    visual_update: &JsonDocumentUpdate,
+) -> bool {
+    existing_name != next_name || visual_generation_inputs_changed(existing_visual, visual_update)
+}
+
 fn apply_persona_update(
     existing: agent_persona::Model,
     name: String,
@@ -97,16 +105,17 @@ fn apply_persona_update(
     contract: &PersonaContractUpdate,
     updated_by: i32,
 ) -> agent_persona::ActiveModel {
-    let generation_inputs_changed = existing.name != name
-        || visual_generation_inputs_changed(
-            existing.visual_profile.as_ref(),
-            &contract.visual_profile,
-        );
+    let inputs_changed = generation_inputs_changed(
+        &existing.name,
+        existing.visual_profile.as_ref(),
+        &name,
+        &contract.visual_profile,
+    );
     let mut active: agent_persona::ActiveModel = existing.into();
     active.name = Set(name);
     active.personality = Set(personality);
     match portrait {
-        PortraitUpdate::Keep if generation_inputs_changed => active.portrait_asset_id = Set(None),
+        PortraitUpdate::Keep if inputs_changed => active.portrait_asset_id = Set(None),
         PortraitUpdate::Keep => {}
         PortraitUpdate::Clear => active.portrait_asset_id = Set(None),
         PortraitUpdate::Set(value) => active.portrait_asset_id = Set(Some(value.clone())),
@@ -117,7 +126,7 @@ fn apply_persona_update(
         &mut active.portrait_generation,
         &contract.portrait_generation,
     );
-    if (!matches!(portrait, PortraitUpdate::Keep) || generation_inputs_changed)
+    if (!matches!(portrait, PortraitUpdate::Keep) || inputs_changed)
         && matches!(contract.portrait_generation, JsonDocumentUpdate::Keep)
     {
         active.portrait_generation = Set(None);
@@ -698,6 +707,40 @@ mod tests {
         );
         assert_eq!(active.portrait_generation, Set(None));
         assert_eq!(active.portrait_asset_id, Set(None));
+    }
+
+    #[test]
+    fn generation_inputs_changed_without_a_portrait() {
+        let mut next = json!({
+            "gender": "female",
+            "visualIdentity": {
+                "faceDesign": "女性化读取，紧凑圆润鹅蛋脸",
+                "eyeDesign": "中等偏大的紫色宝石眼，视线坚定",
+                "hairShape": "银灰齐颌短发与偏分刘海",
+                "hairLayerPlan": "后发、刘海和左右侧发形成独立轮廓",
+                "upperBodySilhouette": "紧凑肩线、清楚领口与胸前焦点",
+                "outfitConstruction": "敞开领口内搭叠短外套并止于高腰",
+                "sleeveArmDesign": "左右袖片携局部前臂进入画面",
+                "materialPlan": "哑光布料",
+                "heroAccessory": "左胸星轨扣饰",
+                "paletteHint": "雾蓝为主、银白为辅、金色点缀",
+                "motif": "单一星轨弧线集中在胸前"
+            }
+        });
+        let existing = next.clone();
+        next["visualIdentity"]["hairShape"] = json!("银灰高马尾与偏分刘海");
+        assert!(generation_inputs_changed(
+            "Arael",
+            Some(&existing),
+            "Arael",
+            &JsonDocumentUpdate::Set(next),
+        ));
+        assert!(!generation_inputs_changed(
+            "Arael",
+            Some(&existing),
+            "Arael",
+            &JsonDocumentUpdate::Keep,
+        ));
     }
 
     #[test]

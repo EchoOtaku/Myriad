@@ -14,6 +14,7 @@ import type {
 } from './types'
 import { useCallback } from 'react'
 import { API_URL } from '../../../config'
+import { notifyPersonaUpdated } from '../../../features/merope/events'
 import {
   reloadSystemConfig,
   updateConfig,
@@ -56,6 +57,7 @@ import {
 import {
   clearDedupCache,
   clearLibraryDataCache,
+  invalidatePublicConfigCache,
 } from '../../../utils/requestDedup'
 import { userFacingError } from '../../../utils/userFacingError'
 import {
@@ -76,6 +78,7 @@ import {
   configChangesNeedFooterReload,
   configChangesNeedHardReload,
   configChangesNeedMetadataReload,
+  configChangesNeedPersonaPublicNameRefresh,
   configChangesNeedPlatformsCacheInvalidation,
   configChangesNeedPwaReload,
   configChangesNeedRuntimeReload,
@@ -472,6 +475,14 @@ export function useConfigSave(args: {
           initialConfig!,
           deepEqual,
         )
+      const needPersonaPublicNameRefresh =
+        Boolean(initialConfig) &&
+        configChangesNeedPersonaPublicNameRefresh(config, initialConfig!)
+      const refreshPersonaPublicName = () => {
+        if (!needPersonaPublicNameRefresh) return
+        invalidatePublicConfigCache()
+        notifyPersonaUpdated()
+      }
 
       // Soft side-effects (no full-page reload): wallpaper, library cache, etc.
       if (needWallpaperReload) {
@@ -524,12 +535,14 @@ export function useConfigSave(args: {
         } catch {
           // Config is already persisted; outbound clients may lag until next restart.
         }
+        refreshPersonaPublicName()
         showMessage(t.config.savedSuccessRuntimeReload, 'success', 4000)
         return
       }
 
       if (!needHardReload) {
         // AI / platforms / auto_fetch / pure UI bags: toast only (side-effects above).
+        refreshPersonaPublicName()
         showMessage(t.config.savedSuccess, 'success', 3000)
         return
       }

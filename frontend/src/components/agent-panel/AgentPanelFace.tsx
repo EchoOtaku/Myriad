@@ -25,13 +25,19 @@ import {
   MEROPE_STATE_EVENT,
   meropeStateEventDetail,
 } from '../../features/merope/performanceEvents'
+import {
+  loadPublicPersonaName,
+  PERSONA_DEFAULT_NAME,
+  PERSONA_OFF_NAME,
+  publicPersonaName,
+} from '../../features/merope/publicName'
 import RigCharacter from '../../features/merope/rig/RigCharacter'
 import { agentService } from '../../services/agent'
 import { ADDRESSEE_UPDATED_EVENT } from '../agent/meropeVitals'
 import { useAgentLaneLoading, useAgentStatus } from './agentStatusStore'
 
-const DEFAULT_AGENT_NAME = 'Arael'
 const DEFAULT_MOOD = 70
+const DEFAULT_AROUSAL = 48
 
 function toMeropeActivity(raw: string | undefined): MeropeActivity {
   if (raw === 'talking' || raw === 'thinking') return raw
@@ -73,8 +79,9 @@ export function AgentPanelFace() {
   const { hasChecked, isAuthenticated } = useAuth()
   const [manifest, setManifest] = useState<MeropeRigManifest | null>(null)
   const [portraitUrl, setPortraitUrl] = useState<string | null>(null)
-  const [agentName, setAgentName] = useState(DEFAULT_AGENT_NAME)
+  const [agentName, setAgentName] = useState(PERSONA_DEFAULT_NAME)
   const [mood, setMood] = useState(DEFAULT_MOOD)
+  const [arousal, setArousal] = useState(DEFAULT_AROUSAL)
   const [activity, setActivity] = useState<MeropeActivity>('idle')
   const { status } = useAgentStatus()
   const chatLoading = useAgentLaneLoading('chat')
@@ -88,7 +95,15 @@ export function AgentPanelFace() {
   const faceRequestRef = useRef(0)
   const rigRef = useRef<RigCharacterHandle>(null)
   const capabilities = useMemo(() => semanticRigCapabilities(manifest), [manifest])
-  useRigMotionLifecycle(rigRef, { mood, activity, capabilities })
+  const playableRig = hasPlayableRig(manifest)
+  const showCharacter = playableRig || Boolean(portraitUrl)
+  useRigMotionLifecycle(rigRef, {
+    mood,
+    arousal,
+    activity,
+    capabilities,
+    ready: showCharacter,
+  })
 
   const loadFace = useCallback(() => {
     const request = ++faceRequestRef.current
@@ -127,6 +142,11 @@ export function AgentPanelFace() {
       )
       if (!detail) return
       setMood(detail.mood.after)
+      setArousal((current) =>
+        typeof detail.mood.arousalAfter === 'number'
+          ? detail.mood.arousalAfter
+          : current,
+      )
       setActivity(
         activityWhileChatIdle(
           statusRef.current,
@@ -147,11 +167,22 @@ export function AgentPanelFace() {
   }, [chatLoading, status])
 
   useEffect(() => {
-    if (!hasChecked || !isAuthenticated) {
-      setPersonaOn(true)
-      return undefined
-    }
+    if (!hasChecked) return undefined
     let active = true
+    const applyPublicName = () => {
+      void loadPublicPersonaName().then((name) => {
+        if (active) setAgentName(name)
+      })
+      setPersonaOn(true)
+    }
+    if (!isAuthenticated) {
+      applyPublicName()
+      window.addEventListener(PERSONA_UPDATED_EVENT, applyPublicName)
+      return () => {
+        active = false
+        window.removeEventListener(PERSONA_UPDATED_EVENT, applyPublicName)
+      }
+    }
     const loadPersona = () => {
       void agentService
         .getPersona()
@@ -159,12 +190,18 @@ export function AgentPanelFace() {
           if (!active) return
           if (!persona) {
             setPersonaOn(false)
+            setAgentName(PERSONA_OFF_NAME)
             return
           }
           setPersonaOn(true)
-          setAgentName(persona.name.trim() || DEFAULT_AGENT_NAME)
+          setAgentName(publicPersonaName(true, persona.name))
           setMood(
             typeof persona.mood === 'number' ? persona.mood : DEFAULT_MOOD,
+          )
+          setArousal(
+            typeof persona.arousal === 'number'
+              ? persona.arousal
+              : DEFAULT_AROUSAL,
           )
           setActivity(
             activityWhileChatIdle(
@@ -188,8 +225,6 @@ export function AgentPanelFace() {
     }
   }, [hasChecked, isAuthenticated])
 
-  const playableRig = hasPlayableRig(manifest)
-  const showCharacter = playableRig || Boolean(portraitUrl)
   const emptyMessage = failed
     ? t.merope.loadFailed
     : !personaOn

@@ -24,12 +24,16 @@ test('Work interrupt cannot abort Chat SSE, and session ids stay per mode', () =
   assert.match(engine, /isCurrentChatGeneration/)
   // Both generations now advance in one facade call; assert it there.
   assert.match(engine, /setTurnGeneration\(/)
+  assert.match(engine, /openTurnSpeech\(/)
+  assert.doesNotMatch(engine, /SpeechSegmenter/)
+  assert.doesNotMatch(engine, /turnSpeechPipeline/)
   const face = readFileSync(
     new URL('../../features/merope/engineFace.ts', import.meta.url),
     'utf8',
   )
   assert.match(face, /setLiveMotionGeneration/)
   assert.match(face, /agentFace\.setGeneration/)
+  assert.match(face, /function openTurnSpeech/)
   assert.match(engine, /cancelChatTurn/)
   assert.match(engine, /turnSpeechAlreadyFed\(/)
   assert.match(face, /alreadyFed/)

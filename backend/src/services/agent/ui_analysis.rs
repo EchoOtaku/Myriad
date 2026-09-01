@@ -42,16 +42,13 @@ static RE_I18N_KEY: Lazy<Regex> = Lazy::new(|| Regex::new(r#"t\(['\"]([^'\"]+)['
 static RE_FUNC_NAME: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(\w+)\s*\("#).unwrap());
 
 /// Allowed SPA route prefixes for `router.navigate`.
+///
+/// Keep in lockstep with `frontend/src/App.tsx` `<Route path>`. Dead prefixes
+/// (`/home`, `/platform`, `/report`, `/settings`) used to pass validation and
+/// then 404 to `/`, or reject the live `/library` `/reports` `/config` paths
+/// the planner is told to emit.
 pub const VALID_ROUTER_PREFIXES: &[&str] = &[
-    "/",
-    "/home",
-    "/brew",
-    "/platform",
-    "/tapp",
-    "/report",
-    "/settings",
-    "/profile",
-    "/agent",
+    "/", "/library", "/brew", "/reports", "/config", "/tapp", "/setup",
 ];
 
 /// Allowed `page.interact` action names.
@@ -99,6 +96,31 @@ pub fn build_navigate_full_path(path: &str, query_params: &Value) -> String {
 /// Whether a page.interact action is allowed.
 pub fn is_valid_page_interact_action(action: &str) -> bool {
     VALID_PAGE_INTERACT_ACTIONS.contains(&action)
+}
+
+/// Planner schema for `page.understand` says `userIntent` / `pageSnapshot`;
+/// the handler historically read `query` / `context`. Accept both so compact
+/// index `p` and injected page snapshots both land.
+pub fn page_understand_query(params: &HashMap<String, Value>) -> String {
+    ["userIntent", "query"]
+        .iter()
+        .find_map(|key| {
+            params
+                .get(*key)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        })
+        .unwrap_or_default()
+}
+
+pub fn page_understand_context(params: &HashMap<String, Value>) -> Value {
+    params
+        .get("context")
+        .or_else(|| params.get("pageSnapshot"))
+        .cloned()
+        .unwrap_or(json!({}))
 }
 
 /// Resolve close-window target (windowId → tappId → position).
@@ -513,6 +535,8 @@ pub fn detect_page_type(path: &str) -> &'static str {
 
     if path_lower == "/" || path_lower == "/home" {
         "home"
+    } else if path_lower.starts_with("/library") {
+        "library"
     } else if path_lower.starts_with("/platform")
         || path_lower.starts_with("/bilibili")
         || path_lower.starts_with("/steam")
@@ -541,6 +565,7 @@ pub fn get_page_name(path: &str, page_type: &str) -> String {
 
     match page_type {
         "home" => "首页".to_string(),
+        "library" => "资料库".to_string(),
         "platform" => {
             if let Some(platform) = segments.get(1).or(segments.first()) {
                 match platform.to_lowercase().as_str() {
@@ -694,7 +719,7 @@ pub fn normalize_music_control(
             value: None,
             message: "切换到下一首",
         }),
-        "previous" => Ok(MusicFrontendAction {
+        "previous" | "prev" => Ok(MusicFrontendAction {
             action: "previous".into(),
             value: None,
             message: "切换到上一首",
@@ -776,13 +801,22 @@ mod tests {
 
     #[test]
     fn router_path_and_full_path() {
+        assert!(is_valid_router_path("/"));
         assert!(is_valid_router_path("/tapp"));
-        assert!(is_valid_router_path("/home"));
+        assert!(is_valid_router_path("/tapp/run/com.example"));
+        assert!(is_valid_router_path("/library"));
+        assert!(is_valid_router_path("/brew/item/1"));
+        assert!(is_valid_router_path("/reports"));
+        assert!(is_valid_router_path("/config"));
+        assert!(!is_valid_router_path("/home"));
+        assert!(!is_valid_router_path("/platform/steam"));
+        assert!(!is_valid_router_path("/report"));
+        assert!(!is_valid_router_path("/settings"));
         assert!(!is_valid_router_path("/admin/secret"));
         let full = build_navigate_full_path("/tapp", &json!({"id": "x", "tab": "1"}));
         assert!(full.starts_with("/tapp?"));
         assert!(full.contains("id=x"));
-        assert_eq!(build_navigate_full_path("/home", &json!({})), "/home");
+        assert_eq!(build_navigate_full_path("/library", &json!({})), "/library");
     }
 
     #[test]
@@ -869,7 +903,10 @@ mod tests {
     #[test]
     fn page_type_breadcrumb_and_music() {
         assert_eq!(detect_page_type("/platform/steam/123"), "platform");
+        assert_eq!(detect_page_type("/library"), "library");
         assert_eq!(detect_page_type("/home"), "home");
+        let prev = normalize_music_control("prev", None, None).unwrap();
+        assert_eq!(prev.action, "previous");
         assert_eq!(get_page_name("/platform/steam", "platform"), "Steam 游戏");
         let crumbs = build_breadcrumb("/platform/steam");
         assert!(crumbs.contains(&"首页".to_string()));
@@ -888,6 +925,16 @@ mod tests {
 
         let play = normalize_music_control("play", None, None).unwrap();
         assert_eq!(play.action, "play");
+        let mut understand = HashMap::new();
+        understand.insert("userIntent".into(), json!("  打开设置  "));
+        understand.insert("pageSnapshot".into(), json!({ "title": "首页" }));
+        assert_eq!(page_understand_query(&understand), "打开设置");
+        assert_eq!(page_understand_context(&understand)["title"], "首页");
+        let mut query_alias = HashMap::new();
+        query_alias.insert("query".into(), json!("summarize"));
+        query_alias.insert("context".into(), json!({ "html": "<p>x</p>" }));
+        assert_eq!(page_understand_query(&query_alias), "summarize");
+        assert_eq!(page_understand_context(&query_alias)["html"], "<p>x</p>");
         let vol = normalize_music_control("volume", Some(80.0), None).unwrap();
         assert_eq!(vol.value, Some(json!(0.8)));
         assert!(normalize_music_control("explode", None, None).is_err());

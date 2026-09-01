@@ -11,9 +11,9 @@ use crate::services::agent::ui_analysis::{
     build_breadcrumb, build_navigate_full_path, detect_page_type, extract_json_from_response,
     extract_route_context, generate_suggested_actions, get_page_name, is_safe_agent_tapp_id,
     is_valid_page_interact_action, is_valid_router_path, join_layer_analysis_sources,
-    normalize_music_control, parse_html_elements, parse_html_structure, parse_i18n,
-    parse_js_events, parse_js_functions, parse_playlist_id_param, resolve_window_close_target,
-    resolve_window_focus_target, router_can_go_back,
+    normalize_music_control, page_understand_context, page_understand_query, parse_html_elements,
+    parse_html_structure, parse_i18n, parse_js_events, parse_js_functions, parse_playlist_id_param,
+    resolve_window_close_target, resolve_window_focus_target, router_can_go_back,
 };
 use crate::services::data_paths::paths;
 use crate::services::tapp_package_read::{
@@ -54,7 +54,7 @@ pub async fn execute(
         "tapp.windows" => execute_tapp_windows_query(params, ctx).await,
         "tapp.window.open" => execute_tapp_window_open(params, ctx).await,
         "tapp.window.close" => execute_tapp_window_close(params, ctx).await,
-        "tapp.window.focus" => execute_tapp_window_focus(params).await,
+        "tapp.window.focus" => execute_tapp_window_focus(params, ctx).await,
         "router.navigate" => execute_router_navigate(params).await,
         "router.state" => execute_router_state(params).await,
         "page.interact" => execute_page_interact(params).await,
@@ -959,13 +959,37 @@ async fn execute_tapp_window_close(
 }
 
 /// 聚焦窗口
-async fn execute_tapp_window_focus(params: &HashMap<String, Value>) -> Result<Value, String> {
+async fn execute_tapp_window_focus(
+    params: &HashMap<String, Value>,
+    ctx: &HandlerContext<'_>,
+) -> Result<Value, String> {
     let window_id = params.get("windowId").and_then(|v| v.as_str());
-    let tapp_id = params.get("tappId").and_then(|v| v.as_str());
+    let mut tapp_id = params
+        .get("tappId")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
     let tapp_name = params.get("tappName").and_then(|v| v.as_str());
     let position = params.get("position").and_then(|v| v.as_str());
 
-    let focus_target = resolve_window_focus_target(window_id, tapp_id, tapp_name, position)?;
+    // Frontend `resolveWindowTarget` only matches windowId / tappId / position.
+    // Schema advertises tappName — resolve it here the same way open does.
+    if tapp_id.is_none() {
+        if let Some(name) = tapp_name {
+            let tapp = tapps::Entity::find()
+                .filter(tapps::Column::UserId.eq(ctx.user_id))
+                .filter(tapps::Column::Name.contains(name))
+                .one(ctx.db)
+                .await
+                .map_err(|e| {
+                    tracing::error!(error = %e, "Agent ui_control database error");
+                    "Database error".to_string()
+                })?
+                .ok_or("Tapp not found")?;
+            tapp_id = Some(tapp.tapp_id);
+        }
+    }
+
+    let focus_target = resolve_window_focus_target(window_id, tapp_id.as_deref(), None, position)?;
 
     Ok(json!({
         "success": true,
@@ -1041,8 +1065,8 @@ async fn execute_page_understand(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
-    let page_context = params.get("context").cloned().unwrap_or(json!({}));
-    let query = params.get("query").and_then(|v| v.as_str()).unwrap_or("");
+    let page_context = page_understand_context(params);
+    let query = page_understand_query(params);
 
     if let Some(analyzer) = ctx.ai_analyzer {
         let context_str = serde_json::to_string_pretty(&page_context).unwrap_or_default();
@@ -1293,6 +1317,7 @@ async fn execute_page_content(
             super::data_read::execute("platform.read", &platform_params, ctx).await
         }
         "report" => super::data_read::execute("report.list", params, ctx).await,
+        "library" => super::data_read::execute("stats.overview", params, ctx).await,
         _ => Err(format!("Unable to read page content")),
     }
 }

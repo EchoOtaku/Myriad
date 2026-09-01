@@ -160,12 +160,7 @@ pub fn regress(value: f64, base: f64, dt_hours: f64, tau_hours: f64) -> f64 {
     clamp(base + (value - base) * (-dt_hours / tau_hours).exp())
 }
 
-pub fn settle(
-    affect: Affect,
-    base: AffectBaseline,
-    mood_hours: f64,
-    emotion_hours: f64,
-) -> Affect {
+pub fn settle(affect: Affect, base: AffectBaseline, mood_hours: f64, emotion_hours: f64) -> Affect {
     Affect {
         mood: regress(affect.mood, base.mood, mood_hours, TAU_MOOD_H),
         arousal: regress(affect.arousal, base.arousal, mood_hours, TAU_AROUSAL_H),
@@ -201,9 +196,8 @@ pub fn pull_push(affect: &mut Affect) {
     affect.mood = clamp(affect.mood + dm);
     affect.arousal = clamp(affect.arousal + da);
     affect.emotion = clamp(affect.emotion + PUSH * (affect.mood - affect.emotion));
-    affect.emotion_arousal = clamp(
-        affect.emotion_arousal + PUSH * (affect.arousal - affect.emotion_arousal),
-    );
+    affect.emotion_arousal =
+        clamp(affect.emotion_arousal + PUSH * (affect.arousal - affect.emotion_arousal));
 }
 
 pub fn apply_appraisal(affect: &mut Affect, appraisal: Appraisal, scale: f64) {
@@ -408,16 +402,7 @@ fn negated_before(haystack: &str, index: usize) -> bool {
     }
     let window = haystack[start..index].to_lowercase();
     [
-        "不是",
-        "并非",
-        "不要",
-        "don't",
-        "dont",
-        "never",
-        "不",
-        "没",
-        "别",
-        "not",
+        "不是", "并非", "不要", "don't", "dont", "never", "不", "没", "别", "not",
     ]
     .iter()
     .any(|needle| window.contains(needle))
@@ -578,16 +563,11 @@ mod tests {
 
     #[test]
     fn persona_set_point_follows_temperament() {
-        let quiet = persona_affect_baseline(
-            Some(&serde_json::json!({"socialStyle": "内向"})),
-            "",
-        );
+        let quiet = persona_affect_baseline(Some(&serde_json::json!({"socialStyle": "内向"})), "");
         assert!((quiet.arousal - 42.0).abs() < f64::EPSILON);
         assert!((quiet.mood - DEFAULT_MOOD).abs() < f64::EPSILON);
-        let bright = persona_affect_baseline(
-            Some(&serde_json::json!({"temperament": ["活泼"]})),
-            "",
-        );
+        let bright =
+            persona_affect_baseline(Some(&serde_json::json!({"temperament": ["活泼"]})), "");
         assert!((bright.arousal - 56.0).abs() < f64::EPSILON);
         assert_eq!(persona_affect_baseline(None, "").arousal, DEFAULT_AROUSAL);
     }

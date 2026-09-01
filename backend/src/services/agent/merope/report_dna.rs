@@ -2,7 +2,7 @@
 //!
 //! The tag-distillation rules live here, not in `myriad-merope`: a copy once
 //! did, gained no consumer, and silently drifted apart on six behaviors before
-//! it was deleted. Only the shared onboarding caps come from the crate.
+//! it was deleted. The shared onboarding sanitizer comes from the crate.
 //!
 //! Latest report per platform; evidence is summary / insights / notes /
 //! structured labels. Pro writes spoken temperament tags via
@@ -15,6 +15,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, 
 use serde::Serialize;
 use serde_json::{json, Value};
 
+pub use myriad_merope::sanitize_onboarding_tags;
 use myriad_merope::{MAX_ONBOARDING_TAGS, MAX_ONBOARDING_TAG_CHARS};
 
 use crate::config::ModelTier;
@@ -639,27 +640,6 @@ pub(crate) fn tag_matches_ui_language(label: &str, language: &str) -> bool {
         "ja-JP" => has_han || has_kana,
         _ => has_han && !has_latin && !has_kana,
     }
-}
-
-pub fn sanitize_onboarding_tags(tags: &[String]) -> Vec<String> {
-    let mut sanitized = Vec::new();
-    for tag in tags {
-        let candidate = tag.trim();
-        if candidate.is_empty()
-            || candidate.chars().count() > MAX_ONBOARDING_TAG_CHARS
-            || candidate.chars().any(char::is_control)
-            || sanitized
-                .iter()
-                .any(|existing: &String| existing.eq_ignore_ascii_case(candidate))
-        {
-            continue;
-        }
-        sanitized.push(candidate.to_string());
-        if sanitized.len() == MAX_ONBOARDING_TAGS {
-            break;
-        }
-    }
-    sanitized
 }
 
 fn build_report_dna_bundle(sources: &[ReportDnaSource]) -> ReportDnaBundle {

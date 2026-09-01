@@ -18,6 +18,12 @@ import {
   MEROPE_STATE_EVENT,
   meropeStateEventDetail,
 } from '../../features/merope/performanceEvents'
+import {
+  loadPublicPersonaName,
+  PERSONA_DEFAULT_NAME,
+  PERSONA_OFF_NAME,
+  publicPersonaName,
+} from '../../features/merope/publicName'
 import RigCharacter from '../../features/merope/rig/RigCharacter'
 import { agentService } from '../../services/agent'
 import { ADDRESSEE_UPDATED_EVENT, moodBand } from '../agent/meropeVitals'
@@ -25,7 +31,6 @@ import { WidgetShell } from './shared/WidgetShell'
 import { WidgetSkeletonCover } from './shared/WidgetSkeleton'
 import './MeropeWidget.css'
 
-const DEFAULT_AGENT_NAME = 'Arael'
 const DEFAULT_MOOD = 70
 const DEFAULT_AROUSAL = 48
 
@@ -102,7 +107,7 @@ function MeropeWidgetPreview({ compact }: { compact?: boolean }) {
       className={`merope-widget${compact ? ' merope-widget--compact' : ''}`}
     >
       <div className="merope-widget__surface">
-        <Nameplate name={DEFAULT_AGENT_NAME} band={null} compact={compact} />
+        <Nameplate name={PERSONA_DEFAULT_NAME} band={null} compact={compact} />
       </div>
     </WidgetShell>
   )
@@ -114,7 +119,7 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
   const [manifest, setManifest] =
     useState<Awaited<ReturnType<typeof getSiteFace>>['manifest']>(null)
   const [portraitUrl, setPortraitUrl] = useState<string | null>(null)
-  const [agentName, setAgentName] = useState(DEFAULT_AGENT_NAME)
+  const [agentName, setAgentName] = useState(PERSONA_DEFAULT_NAME)
   const [mood, setMood] = useState(DEFAULT_MOOD)
   const [arousal, setArousal] = useState(DEFAULT_AROUSAL)
   const [activity, setActivity] = useState<MeropeActivity>('idle')
@@ -124,7 +129,15 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
   const faceRequestRef = useRef(0)
   const rigRef = useRef<RigCharacterHandle>(null)
   const capabilities = useMemo(() => semanticRigCapabilities(manifest), [manifest])
-  useRigMotionLifecycle(rigRef, { mood, activity, capabilities })
+  const playableRig = hasPlayableRig(manifest)
+  const showCharacter = playableRig || Boolean(portraitUrl)
+  useRigMotionLifecycle(rigRef, {
+    mood,
+    arousal,
+    activity,
+    capabilities,
+    ready: showCharacter,
+  })
 
   const loadFace = useCallback(() => {
     const request = ++faceRequestRef.current
@@ -163,10 +176,10 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
       )
       if (!detail) return
       setMood(detail.mood.after)
-      setArousal(
+      setArousal((current) =>
         typeof detail.mood.arousalAfter === 'number'
           ? detail.mood.arousalAfter
-          : DEFAULT_AROUSAL,
+          : current,
       )
       setActivity(toMeropeActivity(detail.activity))
     }
@@ -175,17 +188,33 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
   }, [])
 
   useEffect(() => {
-    if (!hasChecked || !isAuthenticated) {
-      setVitalsReady(false)
-      return undefined
-    }
+    if (!hasChecked) return undefined
     let active = true
+    const applyPublicName = () => {
+      void loadPublicPersonaName().then((name) => {
+        if (active) setAgentName(name)
+      })
+      setVitalsReady(false)
+    }
+    if (!isAuthenticated) {
+      applyPublicName()
+      window.addEventListener(PERSONA_UPDATED_EVENT, applyPublicName)
+      return () => {
+        active = false
+        window.removeEventListener(PERSONA_UPDATED_EVENT, applyPublicName)
+      }
+    }
     const loadPersona = () => {
       void agentService
         .getPersona()
         .then((persona) => {
-          if (!active || !persona) return
-          setAgentName(persona.name.trim() || DEFAULT_AGENT_NAME)
+          if (!active) return
+          if (!persona) {
+            setAgentName(PERSONA_OFF_NAME)
+            setVitalsReady(false)
+            return
+          }
+          setAgentName(publicPersonaName(true, persona.name))
           setMood(
             typeof persona.mood === 'number' ? persona.mood : DEFAULT_MOOD,
           )
@@ -211,8 +240,6 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
     }
   }, [hasChecked, isAuthenticated])
 
-  const playableRig = hasPlayableRig(manifest)
-  const showCharacter = playableRig || Boolean(portraitUrl)
   const stateClass = `merope-widget__rig merope-widget__rig--${activity}`
   const band = vitalsReady ? moodBand(mood, arousal) : null
   const surfaceStyle = useMemo(

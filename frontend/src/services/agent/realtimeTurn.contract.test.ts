@@ -97,9 +97,20 @@ test('replace and cancel stay idempotent and do not look like faults', () => {
   assert.match(lease, /release/)
 })
 
-test('hidden face and motion timeout leave ambient motion, not a blocking text path', () => {
-  const motion = source('../../../../backend/src/services/agent/merope/motion.rs')
+test('hidden face and motion timeout leave a local floor without blocking text', () => {
+  const motion = source(
+    '../../../../backend/src/services/agent/merope/motion.rs',
+  )
   assert.match(motion, /fn face_is_hidden/)
   assert.match(motion, /MOTION_TOTAL_TIMEOUT/)
-  assert.match(motion, /Streamed text completion must not wait on delivery motion/)
+  assert.match(motion, /pub async fn refine_motion/)
+  const process = source(
+    '../../../../backend/src/services/agent/process_and_recipe.rs',
+  )
+  assert.match(process, /struct MotionRefinementGuard/)
+  assert.match(process, /self\.0\.abort\(\)/)
+  const stream = source(
+    '../../../../backend/src/services/agent/confirmation_and_tasks.rs',
+  )
+  assert.match(stream, /StreamDelta::Text\(_\)/)
 })

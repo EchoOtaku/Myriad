@@ -2,8 +2,9 @@ import type { RefObject } from 'react'
 import type { RigMotionPort } from '../rig/motionPort'
 import type { MeropeActivity } from '../types'
 import type { MotionRuntime } from './runtime'
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { setLiveFaceVisible } from '../faceVisible'
+import { markTurnTrace, noteTurnTraceDrop } from '../turnTrace'
 import { useRigSingingLifecycle } from '../useRigSingingLifecycle'
 import { applyMotionFrame, createMotionApplyState } from './applyFrame'
 import { createPreviewMotionRuntime } from './runtime'
@@ -11,8 +12,15 @@ import { getProductionMotionRuntime } from './runtimeHost'
 
 export interface RigMotionLifecycleOptions {
   mood?: number
+  arousal?: number
   activity?: MeropeActivity
   capabilities?: readonly string[]
+  /**
+   * False until the character handle exists. Subscribe-on-mount would apply
+   * the standing bearing into a null ref and never replay it on a live
+   * runtime that only emits when mood, speech, or music changes.
+   */
+  ready?: boolean
 }
 
 function useMotionRuntimeConsumer(
@@ -22,8 +30,10 @@ function useMotionRuntimeConsumer(
   liveFace = false,
 ): void {
   const mood = options.mood ?? 70
+  const arousal = options.arousal ?? 48
   const activity = options.activity ?? 'idle'
   const capabilityKey = options.capabilities?.join(',') ?? ''
+  const ready = options.ready ?? true
 
   useEffect(() => {
     const release = runtime.retain()
@@ -39,19 +49,29 @@ function useMotionRuntimeConsumer(
   }, [runtime, liveFace])
 
   useEffect(() => {
-    runtime.mood.set(mood, activity)
-  }, [runtime, mood, activity])
+    runtime.mood.set(mood, activity, arousal)
+  }, [runtime, mood, activity, arousal])
 
   useEffect(() => {
     runtime.setCapabilities(capabilityKey ? capabilityKey.split(',') : [])
   }, [runtime, capabilityKey])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!ready) return undefined
     const state = createMotionApplyState()
     return runtime.subscribe((frame) => {
       const rig = rigRef.current
       if (!rig) return
       applyMotionFrame(rig, frame, state, (feedback) => {
+        if (liveFace && feedback.behaviorId.includes(':cue-')) {
+          if (feedback.result === 'accepted') {
+            markTurnTrace('performance_applied', {
+              behavior: feedback.behaviorId,
+            })
+          } else {
+            noteTurnTraceDrop('behavior_rejected')
+          }
+        }
         runtime.reportBehaviorRealizer(
           feedback.planId,
           feedback.behaviorId,
@@ -61,7 +81,7 @@ function useMotionRuntimeConsumer(
         )
       })
     })
-  }, [runtime, rigRef])
+  }, [runtime, rigRef, liveFace, ready])
 }
 
 /**

@@ -3,6 +3,7 @@
  * @vitest-environment node
  */
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import {
   ADVANCED_RESET_KEYS,
@@ -11,11 +12,13 @@ import {
   bagFieldValue,
   configChangesNeedHardReload,
   configChangesNeedMetadataReload,
+  configChangesNeedPersonaPublicNameRefresh,
   configChangesNeedPlatformsCacheInvalidation,
   configChangesNeedPwaReload,
   configChangesNeedRuntimeReload,
   configChangesNeedSpeechPipelineReload,
   configChangesNeedWallpaperReload,
+  PERSONA_PUBLIC_NAME_UI_BAG_KEYS,
   RUNTIME_RELOAD_UI_BAG_KEYS,
 } from './uiBagOwnership'
 
@@ -200,6 +203,46 @@ describe('uiBagOwnership', () => {
         `RUNTIME_RELOAD_UI_BAG_KEYS should include ${key}`,
       )
     }
+  })
+
+  it('refreshes the public persona name only when merope_enabled changes', () => {
+    assert.deepEqual([...PERSONA_PUBLIC_NAME_UI_BAG_KEYS], ['merope_enabled'])
+    assert.equal(
+      configChangesNeedPersonaPublicNameRefresh(
+        cfg([{ key: 'merope_enabled', value: 'false' }]),
+        cfg([{ key: 'merope_enabled', value: 'true' }]),
+      ),
+      true,
+    )
+    assert.equal(
+      configChangesNeedPersonaPublicNameRefresh(
+        cfg([{ key: 'merope_speech_enabled', value: 'false' }]),
+        cfg([{ key: 'merope_speech_enabled', value: 'true' }]),
+      ),
+      false,
+    )
+    assert.equal(
+      configChangesNeedPersonaPublicNameRefresh(
+        cfg([{ key: 'merope_enabled', value: 'true' }]),
+        cfg([{ key: 'merope_enabled', value: 'true' }]),
+      ),
+      false,
+    )
+  })
+
+  it('save path refreshes public name after a merope_enabled runtime reload', () => {
+    const source = readFileSync(new URL('./form/useConfigSave.ts', import.meta.url), 'utf8')
+    assert.match(source, /configChangesNeedPersonaPublicNameRefresh/)
+    assert.match(source, /invalidatePublicConfigCache/)
+    assert.match(source, /notifyPersonaUpdated/)
+    const runtime = source
+      .split('if (needRuntimeReload && !needHardReload)')
+      .at(1)
+    assert.ok(runtime, 'runtime reload branch')
+    assert.match(
+      runtime.split('if (!needHardReload)')[0] ?? '',
+      /refreshPersonaPublicName/,
+    )
   })
 
   it('bagFieldValue reads by key', () => {

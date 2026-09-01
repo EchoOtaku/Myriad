@@ -23,6 +23,7 @@ pub mod notifications;
 pub mod orchestrator;
 pub mod perception_view;
 pub mod planner;
+pub(crate) mod presence_window;
 pub mod queue;
 pub mod recipe;
 pub mod resource_create_pure;

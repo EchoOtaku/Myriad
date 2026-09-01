@@ -138,6 +138,11 @@ impl Executor {
             "_task_id".to_string(),
             Value::String(task_state.task_id.clone()),
         );
+        if let Some(route) = recipe.metadata.get("current_route").cloned() {
+            context
+                .variables
+                .insert("_current_route".to_string(), route);
+        }
 
         // 记录对话上下文信息
         if let Some(ref history) = context.conversation_context {

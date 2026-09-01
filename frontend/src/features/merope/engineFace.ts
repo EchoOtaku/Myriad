@@ -6,6 +6,7 @@
  * engine's call sites, so a turn state machine never names a body part.
  */
 import type { AgentPanelMode } from '../../components/agent-panel/agentPanelMode'
+import type { Locale } from '../../i18n'
 import type { MoodTransition, RigStateSummary } from '../../services/agent/types'
 import type { PerceptionAdapter } from './body/types'
 import type { FaceDelivery, FaceSpeechLine } from './faceSpeechArbitration'
@@ -23,10 +24,38 @@ import { setLiveMotionGeneration } from './motion/liveGeneration'
 import { captureProductionRigStateSummary } from './motion/runtimeHost'
 import { notePresenceRoute, startPresenceInbound } from './perception/inbound'
 import { getSpeechPipeline } from './speech/speechPipelineHost'
+import { SpeechSegmenter } from './speech/speechSegmenter'
 
-export { getSpeechPipeline as turnSpeechPipeline } from './speech/speechPipelineHost'
-export { SpeechSegmenter } from './speech/speechSegmenter'
 export { notePresenceRoute, startPresenceInbound }
+
+/** Token-to-speech feed for one turn. The engine never names the splitter. */
+export function openTurnSpeech(
+  messageId: string,
+  generation = 0,
+  locale?: Locale,
+) {
+  const pipeline = getSpeechPipeline()
+  void pipeline.probe()
+  const segmenter = new SpeechSegmenter(messageId, generation, locale)
+  return {
+    cancel() {
+      pipeline.cancel(messageId)
+    },
+    /** `null` = pipeline is off, caller should fall back to the live utterance. */
+    push(token: string): number | null {
+      if (!pipeline.available) return null
+      const segments = segmenter.push(token)
+      pipeline.feed(segments)
+      return segments.length
+    },
+    end(): number {
+      if (!pipeline.available) return 0
+      const tail = segmenter.end()
+      pipeline.feed(tail)
+      return tail.length
+    },
+  }
+}
 
 /** Mount the live body for as long as the engine is mounted. */
 export function attachLiveBody(): () => void {

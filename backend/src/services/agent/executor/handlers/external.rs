@@ -6,8 +6,8 @@
 use super::HandlerContext;
 use crate::services::agent::external_pure::{
     classify_outbound_fetch, compress_and_truncate_text, hitokoto_type, http_body_size_error,
-    http_fetch_method, mcp_arguments, optional_string_param, parse_http_body_value,
-    parse_mcp_capability_id, scrape_max_length, scrape_selector, scrape_should_skip_tag,
+    http_fetch_method, match_mcp_capability_id, mcp_arguments, optional_string_param,
+    parse_http_body_value, scrape_max_length, scrape_selector, scrape_should_skip_tag,
 };
 use crate::services::fetcher::PlatformFetcher;
 use crate::services::outbound_security;
@@ -712,14 +712,20 @@ async fn execute_mcp_tool(
     capability_id: &str,
     params: &HashMap<String, Value>,
 ) -> Result<Value, String> {
-    // capability_id 格式: "mcp.{server_id}.{tool_name}"
-    let (server_id, tool_name) = parse_mcp_capability_id(capability_id)?;
-
+    // capability_id 格式: "mcp.{server_id}.{tool_name}"。server_id 可以带 `.`，
+    // 必须对着已广告的 (server, tool) 对精确匹配，不能 split_once。
     let manager =
         crate::services::agent::mcp::get_mcp_manager().ok_or("MCP manager not initialized")?;
+    let advertised: Vec<(String, String)> = manager
+        .list_tools()
+        .await
+        .into_iter()
+        .map(|(server_id, tool)| (server_id, tool.name))
+        .collect();
+    let (server_id, tool_name) = match_mcp_capability_id(capability_id, &advertised)?;
 
     // Executor-only context keys must never cross the MCP trust boundary or
     // violate tools that declare `additionalProperties: false`.
     let args = mcp_arguments(params);
-    manager.call_tool(server_id, tool_name, args).await
+    manager.call_tool(&server_id, &tool_name, args).await
 }

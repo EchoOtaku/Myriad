@@ -130,7 +130,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
                 "pageName": { "type": "string", "description": "页面名称" },
                 "pageType": { 
                     "type": "string", 
-                    "enum": ["home", "platform", "brew", "tapp", "report", "settings", "profile", "other"],
+                    "enum": ["home", "library", "platform", "brew", "tapp", "report", "settings", "profile", "other"],
                     "description": "页面类型"
                 },
                 "context": {
@@ -305,15 +305,23 @@ pub fn register(registry: &mut CapabilityRegistry) {
             "properties": {
                 "userIntent": {
                     "type": "string",
-                    "description": "用户想要执行的操作描述"
+                    "description": "用户想要执行的操作描述（也可用 query）"
+                },
+                "query": {
+                    "type": "string",
+                    "description": "userIntent 的别名"
                 },
                 "currentPath": {
                     "type": "string",
                     "description": "当前页面路径"
                 },
+                "context": {
+                    "type": "object",
+                    "description": "页面快照（请求级 page_context 会自动注入；也可用 pageSnapshot）"
+                },
                 "pageSnapshot": {
                     "type": "object",
-                    "description": "页面快照信息（由前端提供）",
+                    "description": "页面快照信息（由前端提供；handler 读 context / pageSnapshot）",
                     "properties": {
                         "visibleElements": { "type": "array" },
                         "activeElement": { "type": "object" },

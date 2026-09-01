@@ -184,6 +184,26 @@ export function configChangesNeedRuntimeReload(
   )
 }
 
+/** 人设总开关变更 → 清公开配置缓存并通知现场名牌。开口朗读不改对外名。 */
+export const PERSONA_PUBLIC_NAME_UI_BAG_KEYS: readonly string[] = Object.freeze([
+  'merope_enabled',
+])
+
+export function configChangesNeedPersonaPublicNameRefresh(
+  next: {
+    ui_config?: { config_fields?: Array<{ key: string; value: string }> }
+  },
+  prev: {
+    ui_config?: { config_fields?: Array<{ key: string; value: string }> }
+  },
+): boolean {
+  return bagKeysChanged(
+    next.ui_config?.config_fields,
+    prev.ui_config?.config_fields,
+    PERSONA_PUBLIC_NAME_UI_BAG_KEYS,
+  )
+}
+
 /** Agent 人设 / 开口朗读 bag 变更 → 丢掉语音状态缓存并重新探测。 */
 export function configChangesNeedSpeechPipelineReload(
   next: {

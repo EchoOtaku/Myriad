@@ -28,6 +28,8 @@ test('每一种前端操作都表过态，没有漏网的', () => {
     'music_get_status',
     'music_load_playlist',
     'reading_list',
+    'show_notification',
+    'copy_clipboard',
   ]
   for (const type of declared) {
     assert.ok(ACTION_REVERSIBILITY[type], `${type} 没有分类`)

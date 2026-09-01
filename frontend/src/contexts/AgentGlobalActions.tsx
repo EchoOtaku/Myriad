@@ -409,7 +409,15 @@ export function AgentGlobalActions() {
 
       switch (action) {
         case 'play':
+          if (!musicPlayer.isPlaying) {
+            window.dispatchEvent(new CustomEvent('toggle-play-pause'))
+          }
+          break
         case 'pause':
+          if (musicPlayer.isPlaying) {
+            window.dispatchEvent(new CustomEvent('toggle-play-pause'))
+          }
+          break
         case 'toggle':
         case 'toggle-play-pause':
           window.dispatchEvent(new CustomEvent('toggle-play-pause'))
@@ -460,7 +468,7 @@ export function AgentGlobalActions() {
 
       return true
     },
-    [],
+    [musicPlayer.isPlaying],
   )
 
   // 音乐歌单加载处理
@@ -645,6 +653,50 @@ export function AgentGlobalActions() {
     [location.pathname, navigate],
   )
 
+  const handleShowNotification = useCallback(
+    async (action: FrontendAction): Promise<boolean> => {
+      if (action.type !== 'show_notification') return false
+      const params = action.params as
+        | { title?: string; message?: string; content?: string }
+        | undefined
+      const title = typeof params?.title === 'string' ? params.title : undefined
+      const message =
+        (typeof params?.message === 'string' && params.message) ||
+        (typeof params?.content === 'string' && params.content) ||
+        (typeof action.value === 'string' && action.value) ||
+        title
+      if (!message) return false
+      const { showToast } = await import('../utils/toastManager')
+      showToast({
+        title: title && title !== message ? title : undefined,
+        message,
+        type: 'success',
+      })
+      return true
+    },
+    [],
+  )
+
+  const handleCopyClipboard = useCallback(
+    async (action: FrontendAction): Promise<boolean> => {
+      if (action.type !== 'copy_clipboard') return false
+      const text =
+        (typeof action.value === 'string' && action.value) ||
+        (typeof action.params?.content === 'string'
+          ? String(action.params.content)
+          : '')
+      if (!text) return false
+      try {
+        await navigator.clipboard.writeText(text)
+      } catch (error) {
+        console.warn('[AgentGlobalActions] clipboard write failed:', error)
+        return false
+      }
+      return true
+    },
+    [],
+  )
+
   // 注册处理器
   useEffect(() => {
     console.log('[AgentGlobalActions] Registering global action handlers')
@@ -656,6 +708,8 @@ export function AgentGlobalActions() {
     registerActionHandler('music_get_status', handleMusicGetStatus)
     registerActionHandler('music_load_playlist', handleMusicLoadPlaylist)
     registerActionHandler('reading_list', handleReadingList)
+    registerActionHandler('show_notification', handleShowNotification)
+    registerActionHandler('copy_clipboard', handleCopyClipboard)
 
     return () => {
       console.log('[AgentGlobalActions] Unregistering global action handlers')
@@ -666,6 +720,8 @@ export function AgentGlobalActions() {
       unregisterActionHandler('music_get_status')
       unregisterActionHandler('music_load_playlist')
       unregisterActionHandler('reading_list')
+      unregisterActionHandler('show_notification')
+      unregisterActionHandler('copy_clipboard')
     }
   }, [
     handleNavigate,
@@ -675,6 +731,8 @@ export function AgentGlobalActions() {
     handleMusicGetStatus,
     handleMusicLoadPlaylist,
     handleReadingList,
+    handleShowNotification,
+    handleCopyClipboard,
   ])
 
   // 这个组件不渲染任何 UI

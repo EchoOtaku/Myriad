@@ -229,16 +229,7 @@ pub async fn get_compact_index() -> Value {
             total += mcp_tools.len();
             let mcp_entries: Vec<Value> = mcp_tools
                 .iter()
-                .map(|(server_id, tool)| {
-                    json!({
-                        "id": format!("mcp.{}.{}", server_id, tool.name),
-                        "h": if tool.description.is_empty() {
-                            format!("MCP tool from {}", server_id)
-                        } else {
-                            tool.description.chars().take(80).collect::<String>()
-                        }
-                    })
-                })
+                .map(|(server_id, tool)| mcp_compact_entry(server_id, tool))
                 .collect();
             by_category
                 .entry("MCP 工具".to_string())
@@ -322,6 +313,29 @@ fn mcp_tool_risk(
         return (RiskLevel::Medium, true);
     }
     (RiskLevel::High, true)
+}
+
+/// Compact-index row for an MCP tool. Planner rules key off `p` (required
+/// params); omitting it is how MCP calls used to ship with empty arguments.
+fn mcp_compact_entry(server_id: &str, tool: &super::mcp::protocol::McpToolDef) -> Value {
+    let mut entry = json!({
+        "id": format!("mcp.{}.{}", server_id, tool.name),
+        "h": if tool.description.is_empty() {
+            format!("MCP tool from {}", server_id)
+        } else {
+            tool.description.chars().take(80).collect::<String>()
+        }
+    });
+    if let Some(required) = tool.input_schema.get("required").and_then(|v| v.as_array()) {
+        let param_names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
+        if !param_names.is_empty() {
+            entry
+                .as_object_mut()
+                .unwrap()
+                .insert("p".to_string(), json!(param_names));
+        }
+    }
+    entry
 }
 
 fn mcp_capability(
@@ -499,6 +513,23 @@ mod tests {
             read_only_hint: Some(true),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn mcp_compact_index_exposes_required_params() {
+        let tool = McpToolDef {
+            name: "lookup".to_string(),
+            description: "Look up external data".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": { "query": { "type": "string" } },
+                "required": ["query"]
+            }),
+            annotations: None,
+        };
+        let entry = mcp_compact_entry("docs", &tool);
+        assert_eq!(entry["id"], "mcp.docs.lookup");
+        assert_eq!(entry["p"], json!(["query"]));
     }
 
     #[test]

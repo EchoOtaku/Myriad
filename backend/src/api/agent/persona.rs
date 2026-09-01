@@ -352,6 +352,15 @@ pub async fn put_persona(
         visual_profile,
         ..merope::PersonaContractUpdate::default()
     };
+    let (normalized_name, _) = merope::normalize_persona_fields(&body.name, &body.personality);
+    let generation_changed = previous.as_ref().is_some_and(|prev| {
+        merope::generation_inputs_changed(
+            &prev.name,
+            prev.visual_profile.as_ref(),
+            &normalized_name,
+            &contract.visual_profile,
+        )
+    });
     let saved = merope::upsert_persona_on(
         &transaction,
         body.name,
@@ -363,7 +372,7 @@ pub async fn put_persona(
     .await
     .map_err(|error| persona_store_http("save persona", error))?;
     let portrait_changed = previous_portrait != saved.portrait_asset_id;
-    let cleared_asset = if portrait_changed {
+    let cleared_asset = if generation_changed || portrait_changed {
         Some(
             merope_rig::persist_active_asset(&transaction, None)
                 .await
@@ -1086,6 +1095,27 @@ fn visual_profile_error() -> HttpError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn put_persona_clears_rig_when_generation_inputs_change() {
+        let source = include_str!("persona.rs");
+        let put = source
+            .split("/// PUT /api/agent/persona")
+            .nth(1)
+            .expect("PUT persona")
+            .split("/// DELETE /api/agent/persona")
+            .next()
+            .expect("PUT body");
+        assert!(
+            put.contains("generation_inputs_changed"),
+            "PUT must use the same generation-input check as the persona store"
+        );
+        assert!(
+            put.contains("generation_changed || portrait_changed"),
+            "PUT must clear Rig when name or visual inputs change, not only when portrait id changes"
+        );
+        assert!(put.contains("persist_active_asset"));
+    }
 
     #[test]
     fn get_persona_returns_arousal_on_both_bodies() {

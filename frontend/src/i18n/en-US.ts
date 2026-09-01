@@ -250,6 +250,12 @@ export const enUS: TranslationKeys = {
     anime25dPresetManiac: 'Maniacal laugh',
     anime25dPresetSilly: 'Vacant stare',
     anime25dPresetLovestruck: 'Lovestruck',
+    anime25dProbeTurnLeft: 'Max turn left',
+    anime25dProbeTurnRight: 'Max turn right',
+    anime25dProbePitchUp: 'Max look up',
+    anime25dProbePitchDown: 'Max look down',
+    anime25dProbeFullLeft: 'Full-range left',
+    anime25dProbeFullRight: 'Full-range right',
     anime25dBlinkNow: 'Blink',
     anime25dResetPose: 'Reset pose',
     anime25dInspect: 'Playback inspect',
@@ -263,6 +269,9 @@ export const enUS: TranslationKeys = {
     anime25dInspectMouthValue: '{open} open · {close} closed',
     anime25dInspectCanvas: 'Canvas size',
     anime25dInspectCanvasValue: '{width}×{height} px',
+    anime25dInspectEnvelope: 'Asset motion envelope',
+    anime25dInspectEnvelopeValue:
+      'Pitch {pitch}% · torso {torso}% · rigid sleeve {arm}% · current transfer {transfer}%',
     anime25dInspectPerformance: 'In-frame CPU',
     anime25dInspectPerformanceValue:
       '{frame} ms total · {deform} ms deformation · {upload} ms upload submission',

@@ -165,7 +165,6 @@ impl Agent {
                 &request,
                 mood_transition.clone(),
                 &round_motion_style,
-                None,
             )
             .await;
         }
@@ -216,7 +215,6 @@ impl Agent {
                     &request,
                     mood_transition.clone(),
                     &round_motion_style,
-                    None,
                 )
                 .await;
             }
@@ -250,7 +248,6 @@ impl Agent {
                     &request,
                     mood_transition.clone(),
                     &round_motion_style,
-                    None,
                 )
                 .await;
             }
@@ -284,7 +281,6 @@ impl Agent {
                     &request,
                     mood_transition.clone(),
                     &round_motion_style,
-                    None,
                 )
                 .await;
             }
@@ -302,7 +298,6 @@ impl Agent {
                         &request,
                         mood_transition.clone(),
                         &round_motion_style,
-                        None,
                     )
                     .await;
                 }
@@ -356,7 +351,6 @@ impl Agent {
                         &request,
                         mood_transition.clone(),
                         &round_motion_style,
-                        None,
                     )
                     .await;
                 }
@@ -384,7 +378,6 @@ impl Agent {
                         &request,
                         mood_transition.clone(),
                         &round_motion_style,
-                        None,
                     )
                     .await;
                 }
@@ -403,7 +396,6 @@ impl Agent {
                     &request,
                     mood_transition.clone(),
                     &round_motion_style,
-                    None,
                 )
                 .await;
             }
@@ -495,14 +487,7 @@ impl Agent {
             frontend_action,
             performance: None,
         };
-        attach_motion_to_result(
-            Ok(response),
-            &request,
-            mood_transition,
-            &round_motion_style,
-            None,
-        )
-        .await
+        attach_motion_to_result(Ok(response), &request, mood_transition, &round_motion_style).await
     }
 
     /// 处理用户请求（带实时进度回调）
@@ -558,6 +543,9 @@ impl Agent {
         .await;
         let mood_before = mood_transition.as_ref().map(|transition| transition.before);
         let round_motion_style = round_motion_style(&request, mood_transition.as_ref()).await;
+        // Refinements are scoped to this turn. Dropping the guards aborts any
+        // Lite call that has outlived the meaning of its reaction.
+        let mut motion_refinements = Vec::new();
 
         if let Some(mood) = mood_transition.clone() {
             let _ = progress_tx
@@ -585,31 +573,32 @@ impl Agent {
             crate::services::agent::merope::note_chat_diary(&self.db, user_id, &request.raw_input)
                 .await;
 
-            // Chat has no planner beat to react during, so the reaction comes
-            // from the deterministic floor and ships before the first token.
-            // Lite is not called here: the reply stream must not wait on it.
+            // The floor ships immediately. Lite is armed now but only starts
+            // after the reply model emits its first visible token, so it cannot
+            // compete with reasoning or time-to-first-token.
+            let mut motion_start_tx = None;
             if let Some(mood) = mood_transition.clone() {
-                if let Some(reaction) =
-                    crate::services::agent::merope::local_directive(&motion_context(
-                        &request,
-                        user_id,
-                        crate::services::agent::merope::MotionPhase::Reaction,
-                        mood,
-                        round_motion_style.clone(),
-                        None,
-                        None,
-                    ))
-                {
-                    let _ = progress_tx
-                        .send(AgentProgressEvent::PerformancePlan {
-                            performance: reaction,
-                        })
-                        .await;
-                }
+                let reaction_context = motion_context(
+                    &request,
+                    user_id,
+                    crate::services::agent::merope::MotionPhase::Reaction,
+                    mood,
+                    round_motion_style.clone(),
+                    None,
+                    None,
+                );
+                publish_local_motion(&reaction_context, &progress_tx).await;
+                let (start_tx, start_rx) = tokio::sync::mpsc::channel(1);
+                motion_start_tx = Some(start_tx);
+                motion_refinements.push(spawn_motion_refinement(
+                    reaction_context,
+                    progress_tx.clone(),
+                    Some(start_rx),
+                ));
             }
 
             let reply = match self
-                .stream_strict_lite_chat_response(&request, &progress_tx)
+                .stream_strict_lite_chat_response(&request, &progress_tx, motion_start_tx)
                 .await
             {
                 Ok(reply) => reply,
@@ -619,8 +608,9 @@ impl Agent {
                 }
             };
 
-            // Streamed text completion must not wait on delivery motion.
-            // The spawned plan publishes performance_plan on the same run hub.
+            // A reaction that did not land while the reply was being formed is
+            // stale. Cancel it before the delivery beat can be superseded.
+            motion_refinements.clear();
             if let Some(mood) = mood_transition.clone() {
                 let delivery_context = motion_context(
                     &request,
@@ -631,8 +621,11 @@ impl Agent {
                     Some(reply.clone()),
                     None,
                 );
-                spawn_motion_directive_with_floor(delivery_context, Some(progress_tx.clone()));
+                publish_local_motion(&delivery_context, &progress_tx).await;
             }
+            // Close the text stream only after the delivery beat is visible to
+            // the client. This aligns it with TTS enqueue without delaying text.
+            response_agent::finish_stream(&progress_tx).await;
             crate::services::agent::merope::spawn_chat_remember(
                 user_id,
                 request.raw_input.clone(),
@@ -673,7 +666,12 @@ impl Agent {
                 None,
                 None,
             );
-            spawn_motion_directive_with_floor(reaction_context, Some(progress_tx.clone()));
+            publish_local_motion(&reaction_context, &progress_tx).await;
+            motion_refinements.push(spawn_motion_refinement(
+                reaction_context,
+                progress_tx.clone(),
+                None,
+            ));
         }
 
         // 1. Planner 规划（Pro AI 单次调用）
@@ -786,6 +784,9 @@ impl Agent {
         // 2. 根据状态分流
         match planner_output.status {
             PlannerStatus::Chat => {
+                // Planner time was the useful window for the reaction. Never
+                // let an unfinished reaction cross into the spoken reply.
+                motion_refinements.clear();
                 let planner_reply = planner_output
                     .chat_reply
                     .unwrap_or_else(response_agent::greeting);
@@ -804,8 +805,9 @@ impl Agent {
                         Some(reply.clone()),
                         None,
                     );
-                    spawn_motion_directive_with_floor(delivery_context, Some(progress_tx.clone()));
+                    publish_local_motion(&delivery_context, &progress_tx).await;
                 }
+                response_agent::finish_stream(&progress_tx).await;
                 let performance = None;
                 crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
 
@@ -862,7 +864,6 @@ impl Agent {
                     &request,
                     mood_transition.clone(),
                     &round_motion_style,
-                    Some(progress_tx.clone()),
                 )
                 .await;
             }
@@ -896,7 +897,6 @@ impl Agent {
                     &request,
                     mood_transition.clone(),
                     &round_motion_style,
-                    Some(progress_tx.clone()),
                 )
                 .await;
             }
@@ -914,7 +914,6 @@ impl Agent {
                         &request,
                         mood_transition.clone(),
                         &round_motion_style,
-                        Some(progress_tx.clone()),
                     )
                     .await;
                 }
@@ -954,7 +953,6 @@ impl Agent {
                         &request,
                         mood_transition.clone(),
                         &round_motion_style,
-                        Some(progress_tx.clone()),
                     )
                     .await;
                 }
@@ -1046,7 +1044,6 @@ impl Agent {
                         &request,
                         mood_transition.clone(),
                         &round_motion_style,
-                        Some(progress_tx.clone()),
                     )
                     .await;
                 }
@@ -1074,7 +1071,6 @@ impl Agent {
                         &request,
                         mood_transition.clone(),
                         &round_motion_style,
-                        Some(progress_tx.clone()),
                     )
                     .await;
                 }
@@ -1098,7 +1094,6 @@ impl Agent {
                     &request,
                     mood_transition.clone(),
                     &round_motion_style,
-                    Some(progress_tx.clone()),
                 )
                 .await;
             }
@@ -1133,7 +1128,6 @@ impl Agent {
                 &request,
                 mood_transition.clone(),
                 &round_motion_style,
-                Some(progress_tx.clone()),
             )
             .await;
         }
@@ -1236,14 +1230,7 @@ impl Agent {
             .await;
         }
 
-        attach_motion_to_result(
-            result,
-            &request,
-            mood_transition,
-            &round_motion_style,
-            Some(progress_tx),
-        )
-        .await
+        attach_motion_to_result(result, &request, mood_transition, &round_motion_style).await
     }
 
     /// 执行配方（带进度回调和升级）— 使用 Planner
@@ -2044,47 +2031,43 @@ fn turn_task_id(request: &UserRequest) -> String {
         .unwrap_or_else(|| format!("turn_{}", request.timestamp.timestamp_millis()))
 }
 
-fn spawn_motion_directive(
-    context: crate::services::agent::merope::MotionContext,
-    progress_tx: Option<tokio::sync::mpsc::Sender<AgentProgressEvent>>,
-) -> tokio::task::JoinHandle<Option<crate::services::agent::merope::PerformanceDirective>> {
-    tokio::spawn(async move {
-        let performance = crate::services::agent::merope::direct_motion(context).await;
-        if let (Some(tx), Some(performance)) = (progress_tx, performance.as_ref()) {
-            let _ = tx
-                .send(AgentProgressEvent::PerformancePlan {
-                    performance: performance.clone(),
-                })
-                .await;
-        }
-        performance
-    })
+struct MotionRefinementGuard(tokio::task::JoinHandle<()>);
+
+impl Drop for MotionRefinementGuard {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
 }
 
-/** Publishes the zero-network floor, then refines it, without blocking text. */
-fn spawn_motion_directive_with_floor(
+async fn publish_local_motion(
+    context: &crate::services::agent::merope::MotionContext,
+    progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
+) {
+    if let Some(performance) = crate::services::agent::merope::local_directive(context) {
+        let _ = progress_tx
+            .send(AgentProgressEvent::PerformancePlan { performance })
+            .await;
+    }
+}
+
+/** Refines an already-published floor, optionally after the first text delta. */
+fn spawn_motion_refinement(
     context: crate::services::agent::merope::MotionContext,
-    progress_tx: Option<tokio::sync::mpsc::Sender<AgentProgressEvent>>,
-) -> tokio::task::JoinHandle<Option<crate::services::agent::merope::PerformanceDirective>> {
-    tokio::spawn(async move {
-        if let (Some(tx), Some(performance)) = (
-            progress_tx.as_ref(),
-            crate::services::agent::merope::local_directive(&context),
-        ) {
-            let _ = tx
+    progress_tx: tokio::sync::mpsc::Sender<AgentProgressEvent>,
+    mut start_rx: Option<tokio::sync::mpsc::Receiver<()>>,
+) -> MotionRefinementGuard {
+    MotionRefinementGuard(tokio::spawn(async move {
+        if let Some(start_rx) = start_rx.as_mut() {
+            if start_rx.recv().await.is_none() {
+                return;
+            }
+        }
+        if let Some(performance) = crate::services::agent::merope::refine_motion(context).await {
+            let _ = progress_tx
                 .send(AgentProgressEvent::PerformancePlan { performance })
                 .await;
         }
-        let performance = crate::services::agent::merope::direct_motion(context).await;
-        if let (Some(tx), Some(performance)) = (progress_tx, performance.as_ref()) {
-            let _ = tx
-                .send(AgentProgressEvent::PerformancePlan {
-                    performance: performance.clone(),
-                })
-                .await;
-        }
-        performance
-    })
+    }))
 }
 
 async fn attach_motion_to_result(
@@ -2092,7 +2075,6 @@ async fn attach_motion_to_result(
     request: &UserRequest,
     mood: Option<crate::services::agent::merope::MoodTransition>,
     motion_style: &str,
-    progress_tx: Option<tokio::sync::mpsc::Sender<AgentProgressEvent>>,
 ) -> Result<AgentResponse, String> {
     let mut response = result?;
     let Some(mood) = mood else {
@@ -2120,6 +2102,5 @@ async fn attach_motion_to_result(
     // The body carries the floor so a non-streaming client still gets acting;
     // awaiting Lite here used to put its whole timeout in front of the reply.
     response.performance = crate::services::agent::merope::local_directive(&context);
-    spawn_motion_directive(context, progress_tx);
     Ok(response)
 }

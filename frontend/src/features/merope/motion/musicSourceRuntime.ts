@@ -35,7 +35,3 @@ export function getMusicMotionSource(): MusicMotionSource {
   }
   return runtime.current
 }
-
-export function resetMusicMotionSource(): void {
-  runtime.current = null
-}

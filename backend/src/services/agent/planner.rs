@@ -463,7 +463,7 @@ impl Planner {
             if let Some(custom_data) = &context.custom_data {
                 let has_page = custom_data.get("pageContent").is_some();
                 if has_page {
-                    prompt.push_str("\n页面上下文可用：true（可在 params 中用 \"inputFrom\": \"__page_context__\" 引用）");
+                    prompt.push_str("\n页面上下文可用：true。总结/分析用 \"contentFrom\": \"__page_context__\"；page.content / page.understand 用 \"contextFrom\": \"__page_context__\"（不要写成 inputFrom）");
                 }
 
                 if let Some(attachments) = custom_data.get("attachments").and_then(|v| v.as_array())
@@ -799,6 +799,8 @@ fn describe_route(route: &str) -> &'static str {
     match route.trim_matches('/') {
         "brew" => "Brew 订阅页面",
         "tapp" | "tapps" => "Tapp 应用页面",
+        "library" => "资料库页面",
+        "config" | "settings" => "设置页面",
         route if route.starts_with("platform/bilibili") => "B站数据页面",
         route if route.starts_with("platform/steam") => "Steam 游戏页面",
         route if route.starts_with("platform/github") => "GitHub 页面",
@@ -838,7 +840,7 @@ const PLANNER_RULES: &str = r#"## 规则
 4. `params` 根据能力描述和 `"p"` 参数列表推断合理值
 5. **❗ xxxFrom 必须配合 depends_on**：使用 `"xxxFrom": "step_id"` 引用其他步骤输出时，**必须同时在 `depends_on` 中声明该步骤**。例如 `"dataFrom": "search"` → `"depends_on": ["search"]`。缺少 depends_on 会导致步骤并行执行、引用为 null
 5.1 **优先引用具体字段**：`"xxxFrom"` 支持 `"step_id.字段名"`，字段名取自能力索引的 `o` 列表。例如 `ai.webSearch` 的 `o` 含 `results`，就写 `"dataFrom": "search.results"`。引用整个步骤（`"search"`）只在需要完整输出对象时使用
-6. 如果页面上下文可用，可用 `"inputFrom": "__page_context__"` 引用当前页面内容
+6. 如果页面上下文可用：总结/分析用 `"contentFrom": "__page_context__"`；`page.content` / `page.understand` 用 `"contextFrom": "__page_context__"`（不要写成 `inputFrom`，这两个能力读的是 `context`）
 7. `on_failure` 策略：
    - 数据获取步骤用 `"abort"`（后续步骤依赖数据，获取失败则无法继续）
    - AI 处理步骤可用 `"skip"`（非关键性分析/总结可跳过）

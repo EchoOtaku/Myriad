@@ -25,6 +25,22 @@ pub(crate) async fn emit_stream_delta(
     let _ = tx.send(event).await;
 }
 
+/// Seal both model streams after the caller has published its delivery beat.
+pub(crate) async fn finish_stream(tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>) {
+    let _ = tx
+        .send(AgentProgressEvent::ThinkingToken {
+            token: String::new(),
+            done: true,
+        })
+        .await;
+    let _ = tx
+        .send(AgentProgressEvent::SummaryToken {
+            token: String::new(),
+            done: true,
+        })
+        .await;
+}
+
 // ─────────────────────────────────────────────
 // 1. AI 驱动的最终回复生成（异步，支持流式）
 // ─────────────────────────────────────────────

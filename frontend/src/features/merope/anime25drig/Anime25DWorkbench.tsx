@@ -6,6 +6,7 @@ import type {
 } from '../assets/pipeline'
 import type { RigCharacterHandle } from '../rig/RigCharacter'
 import type { Anime25DDriver } from './driver'
+import type { Anime25DMotionEnvelopeProbeId } from './motionEnvelope'
 import type { Anime25DDebugSnapshot } from './player'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { generationFailureMessage } from '../../../components/agent/onboarding/generationError'
@@ -33,6 +34,7 @@ import {
   SQUEEZE_EXPRESSION_PRESET,
   THINKING_EXPRESSION_PRESET,
 } from './expressionPresets'
+import { ANIME25D_MOTION_ENVELOPE_PROBES } from './motionEnvelope'
 
 interface Props {
   characterRef: RefObject<RigCharacterHandle | null>
@@ -1090,6 +1092,21 @@ export default function Anime25DWorkbench({
             }
             id="merope-motion-pose"
           >
+            <div className="merope-motion-home__chips">
+              <div>
+                {ANIME25D_MOTION_ENVELOPE_PROBES.map((probe) => (
+                  <SettingsButton
+                    key={probe.id}
+                    type="button"
+                    size="sm"
+                    disabled={!motionEnabled}
+                    onClick={() => applyPreset(probe.driver)}
+                  >
+                    {envelopeProbeLabel(labels, probe.id)}
+                  </SettingsButton>
+                ))}
+              </div>
+            </div>
             {sliderCluster(labels.clusterHead, ['angleX', 'angleY', 'angleZ'])}
             {sliderCluster(labels.clusterEyes, [
               'eyeOpenL',
@@ -1208,6 +1225,28 @@ export default function Anime25DWorkbench({
                           width: Math.round(snapshot.canvas.width),
                           height: Math.round(snapshot.canvas.height),
                         }),
+                        copyable: false,
+                      },
+                      {
+                        key: 'motion-envelope',
+                        label: labels.anime25dInspectEnvelope,
+                        value: fillInspect(
+                          labels.anime25dInspectEnvelopeValue,
+                          {
+                            pitch: Math.round(
+                              snapshot.motionEnvelope.pitchLimit * 100,
+                            ),
+                            torso: Math.round(
+                              snapshot.motionEnvelope.torsoLimit * 100,
+                            ),
+                            arm: Math.round(
+                              snapshot.motionEnvelope.armLimit * 100,
+                            ),
+                            transfer: Math.round(
+                              snapshot.motionEnvelope.transferredEnergy * 100,
+                            ),
+                          },
+                        ),
                         copyable: false,
                       },
                       {
@@ -1410,4 +1449,16 @@ function presetLabel(labels: TranslationKeys['merope'], id: string): string {
   if (id === 'winkL') return labels.anime25dPresetWinkLeft
   if (id === 'winkR') return labels.anime25dPresetWinkRight
   return id
+}
+
+function envelopeProbeLabel(
+  labels: TranslationKeys['merope'],
+  id: Anime25DMotionEnvelopeProbeId,
+): string {
+  if (id === 'turn-left') return labels.anime25dProbeTurnLeft
+  if (id === 'turn-right') return labels.anime25dProbeTurnRight
+  if (id === 'pitch-up') return labels.anime25dProbePitchUp
+  if (id === 'pitch-down') return labels.anime25dProbePitchDown
+  if (id === 'full-left') return labels.anime25dProbeFullLeft
+  return labels.anime25dProbeFullRight
 }

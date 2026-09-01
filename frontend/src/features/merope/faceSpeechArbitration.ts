@@ -1,10 +1,10 @@
 import type { AgentPanelMode } from '../../components/agent-panel/agentPanelMode'
-import type { PerformanceDirective } from '../../services/agent/types'
 import type { AgentFaceChannel, ReplyUtterance } from './agentFaceChannel'
 import type { BodyAdapter } from './body/types'
 import { getAgentPanelMode } from '../../components/agent-panel/agentPanelMode'
 import { liveFaceVisible } from './faceVisible'
 import { liveMotionGeneration } from './motion/liveGeneration'
+import { sanitizePerformanceDirective } from './performanceEvents'
 import { getSpeechPipeline } from './speech/speechPipelineHost'
 import { noteTurnTraceDrop } from './turnTrace'
 
@@ -67,7 +67,9 @@ export class FaceSpeechGate {
   chatUtteranceActive = false
   private chatMessageId: string | null = null
 
-  constructor(private readonly visibleMode: () => AgentPanelMode = getAgentPanelMode) {}
+  constructor(
+    private readonly visibleMode: () => AgentPanelMode = getAgentPanelMode,
+  ) {}
 
   decide(incomingMode: AgentPanelMode): FaceSpeechVerdict {
     const chatBusy =
@@ -81,7 +83,10 @@ export class FaceSpeechGate {
     })
   }
 
-  beginIncoming(incomingMode: AgentPanelMode, messageId?: string): FaceSpeechVerdict {
+  beginIncoming(
+    incomingMode: AgentPanelMode,
+    messageId?: string,
+  ): FaceSpeechVerdict {
     const verdict = this.decide(incomingMode)
     if (verdict === 'speak' && incomingMode === 'chat') {
       this.chatUtteranceActive = true
@@ -228,9 +233,8 @@ export function deliverGatedLine(
     noteTurnTraceDrop('hidden_face')
     return { surface: 'record', messageId: line.messageId, text }
   }
-  const performance = isPerformanceDirective(line.performance)
-    ? line.performance
-    : undefined
+  const performance =
+    sanitizePerformanceDirective(line.performance) ?? undefined
   if (liveBody) {
     liveBody.intend({
       messageId: line.messageId,
@@ -268,10 +272,4 @@ function speakUnmountedLine(messageId: string, text: string): boolean {
     generation: liveMotionGeneration(),
     interrupt: 'queue',
   })
-}
-
-function isPerformanceDirective(value: unknown): value is PerformanceDirective {
-  return Boolean(
-    value && typeof value === 'object' && 'plan' in (value as object),
-  )
 }

@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 
-const CHAT_ACTIVE_SECS: i64 = 90;
+use crate::services::agent::presence_window::PRESENCE_WINDOW_SECS;
 
 pub fn is_chatting(
     last_active_at: Option<DateTime<Utc>>,
@@ -10,7 +10,7 @@ pub fn is_chatting(
     if has_open_run {
         return true;
     }
-    last_active_at.is_some_and(|at| (now - at).num_seconds() < CHAT_ACTIVE_SECS)
+    last_active_at.is_some_and(|at| (now - at).num_seconds() < PRESENCE_WINDOW_SECS)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -148,22 +148,5 @@ mod tests {
         let blocked = decide_ingest("brew.source_error", false, false, true);
         assert!(!blocked.allow_model);
         assert_eq!(blocked.reason, "working");
-    }
-
-    /// `presence::PRESENCE_TTL_SECS` claims alignment with this window in a
-    /// comment. A comment cannot fail, so read the other file and make it fail.
-    #[test]
-    fn presence_ttl_still_matches_the_chat_active_window() {
-        let presence = include_str!("../consciousness/presence.rs");
-        let declared = presence
-            .split("const PRESENCE_TTL_SECS: i64 = ")
-            .nth(1)
-            .and_then(|rest| rest.split(';').next())
-            .and_then(|value| value.trim().parse::<i64>().ok())
-            .expect("presence.rs no longer declares PRESENCE_TTL_SECS as a literal");
-        assert_eq!(
-            declared, CHAT_ACTIVE_SECS,
-            "a live face must expire exactly when the chat window closes"
-        );
     }
 }

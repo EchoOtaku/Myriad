@@ -505,7 +505,7 @@ Manifest 示例：
 
 生成、绑定、重定向走宿主代调 Tripo；密钥不出沙箱。已持久化的 GLB 仍是公开
 content-addressed 资源，`Tapp.model3d.getUrl` / `getMetadata` 不需要本权限（沙箱
-CSP 不能直接 `fetch` `/api/merope/3d/assets/...`，由宿主读回后在 iframe 内
+CSP 不能直接 `fetch` `/api/model3d/assets/...`，由宿主读回后在 iframe 内
 做成 blob）。
 
 只在 **Page** 注册生成 handlers；Widget 上的 `Tapp.model3d` 是拒绝桩。

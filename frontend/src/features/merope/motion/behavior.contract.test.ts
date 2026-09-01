@@ -1,12 +1,17 @@
+import type { ScheduledBehavior } from './behavior'
 import type { MotionFrame } from './intents'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { arbitrateFaceSpeech } from '../faceSpeechArbitration'
+import { PERFORMANCE_CUE_INTENTS } from '../performanceContract'
 import { applyMotionFrame, createMotionApplyState } from './applyFrame'
 import { applySingingWrite } from './applySnapshot'
 import { RigMotionCoordinator } from './coordinator'
+import { compilePerformanceBehaviorPlan } from './performanceBehaviorPlan'
+import { BEHAVIOR_FUNCTIONS, BEHAVIOR_SOURCES } from './rigStateSummary'
 import { resolveSingingApply } from './singingApply'
+import { compileSpeechBehaviorPlan } from './speechBehaviorPlan'
 
 function source(relative: string): string {
   return readFileSync(new URL(relative, import.meta.url), 'utf8')
@@ -201,3 +206,82 @@ test('idle self-motion does not masquerade as a semantic directed plan', () => {
   assert.doesNotMatch(source('./applyFrame.ts'), /autonomy/)
   assert.doesNotMatch(source('./runtimeHost.ts'), /new MotionRuntime/)
 })
+
+test('the behavior vocabulary is exactly what a producer can emit', () => {
+  // The director reads `activeBehaviors` and is told not to repeat a function
+  // already in flight. A name with no producer therefore promises the model a
+  // signal that can never arrive — which is how six of them accumulated.
+  const functions = new Set<string>()
+  const sources = new Set<string>()
+  const record = (plan: { behaviors: readonly ScheduledBehavior[] }): void => {
+    for (const behavior of plan.behaviors) {
+      functions.add(behavior.function)
+      sources.add(behavior.source)
+    }
+  }
+  for (const intent of PERFORMANCE_CUE_INTENTS) {
+    record(
+      compilePerformanceBehaviorPlan(
+        {
+          phase: 'delivery',
+          moodRevision: 1,
+          motionStyle: 'even',
+          plan: {
+            cues: [
+              {
+                intent,
+                atMs: 0,
+                intensity: 1,
+                tempo: 1,
+                fadeInMs: 120,
+                fadeOutMs: 200,
+                interrupt: 'replace',
+              },
+            ],
+          },
+        },
+        0,
+        'performance',
+      ),
+    )
+  }
+  record(
+    compileSpeechBehaviorPlan({
+      utteranceId: 'utt-1',
+      startedAtMs: 0,
+      durationMs: 800,
+      accents: [{ offsetMs: 300, intensity: 0.8 }],
+    }),
+  )
+  // Music publishes from a live audio subscription; reading its one behavior
+  // from source keeps this test free of an audio graph.
+  for (const [, name] of source('./musicSource.ts').matchAll(
+    /\bfunction: '([A-Za-z]+)'/g,
+  )) {
+    functions.add(name!)
+  }
+  for (const [, name] of source('./musicSource.ts').matchAll(
+    /\bsource: '([A-Za-z]+)'/g,
+  )) {
+    sources.add(name!)
+  }
+
+  assert.deepEqual([...functions].sort(), [...BEHAVIOR_FUNCTIONS].sort())
+  assert.deepEqual([...sources].sort(), [...BEHAVIOR_SOURCES].sort())
+
+  const contract = source('../../../../../crates/myriad-merope/src/rig_state.rs')
+  assert.deepEqual(rustList(contract, 'RIG_STATE_BEHAVIOR_FUNCTIONS').sort(), [
+    ...functions,
+  ].sort())
+  assert.deepEqual(rustList(contract, 'RIG_STATE_BEHAVIOR_SOURCES').sort(), [
+    ...sources,
+  ].sort())
+})
+
+function rustList(contract: string, name: string): string[] {
+  const block = new RegExp(`${name}: &\\[&str\\] = &\\[([^\\]]*)\\]`).exec(
+    contract,
+  )?.[1]
+  assert.ok(block, `${name} missing from the director contract`)
+  return [...block.matchAll(/"([a-z.]+)"/gi)].map((match) => match[1]!)
+}

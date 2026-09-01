@@ -12,6 +12,9 @@ export const TURN_TRACE_SPANS = [
   // refinement replaces it whenever it arrives at all. One span could not tell
   // the two apart, so every plan looked like a reaction.
   'performance_refined',
+  // Backend receipt is not proof of animation. This is stamped only after the
+  // renderer accepts a semantic cue from the unified behavior plan.
+  'performance_applied',
   'llm_first_token',
   'first_sentence',
   'tts_queued',
@@ -35,6 +38,7 @@ export type TurnTraceDropReason =
   | 'cancelled'
   | 'lease_conflict'
   | 'foreign_speech_frame'
+  | 'behavior_rejected'
 
 export type TurnTraceExtra = Record<string, string | number | boolean>
 

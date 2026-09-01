@@ -245,6 +245,12 @@ export const zhCN: TranslationKeys = {
     anime25dPresetManiac: '狂笑',
     anime25dPresetSilly: '发呆',
     anime25dPresetLovestruck: '心动过载',
+    anime25dProbeTurnLeft: '最大左转',
+    anime25dProbeTurnRight: '最大右转',
+    anime25dProbePitchUp: '最大抬头',
+    anime25dProbePitchDown: '最大低头',
+    anime25dProbeFullLeft: '左侧全幅',
+    anime25dProbeFullRight: '右侧全幅',
     anime25dBlinkNow: '眨眼',
     anime25dResetPose: '复位',
     anime25dInspect: '播放检查',
@@ -258,6 +264,9 @@ export const zhCN: TranslationKeys = {
     anime25dInspectMouthValue: '开口 {open} 层 · 闭口 {close} 层',
     anime25dInspectCanvas: '画布尺寸',
     anime25dInspectCanvasValue: '{width}×{height} 像素',
+    anime25dInspectEnvelope: '资产动作范围',
+    anime25dInspectEnvelopeValue:
+      '俯仰 {pitch}% · 躯干 {torso}% · 刚性袖片 {arm}% · 当前转移 {transfer}%',
     anime25dInspectPerformance: '帧内 CPU',
     anime25dInspectPerformanceValue:
       '总计 {frame} ms · 形变 {deform} ms · 上传提交 {upload} ms',

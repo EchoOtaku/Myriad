@@ -15,8 +15,8 @@ pub use myriad_tapp_rules::{
     recovery_discard_artifact_name, recovery_plan_mutates_live, resource_relative_path,
     sandbox_path_matches_relative, should_log_filesystem_permission_context,
     should_preserve_orphan_path, sort_recovery_artifact_paths, tapp_id_from_dir_entry_class,
-    tapp_installation_marker_names, LIFECYCLE_ARTIFACT_KINDS, MANIFEST_JSON, RecoveryPlan,
-    TAPP_INSTALL_STATE_FILE, TappDirEntryClass,
+    tapp_installation_marker_names, RecoveryPlan, TappDirEntryClass, LIFECYCLE_ARTIFACT_KINDS,
+    MANIFEST_JSON, TAPP_INSTALL_STATE_FILE,
 };
 
 #[cfg(test)]

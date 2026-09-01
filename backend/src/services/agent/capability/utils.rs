@@ -645,8 +645,8 @@ pub fn get_quick_reference() -> Value {
             "ai.summarize": {"content": "文章内容或 contentFrom 引用", "maxLength": 300},
             "ai.analyze": {"content": "待分析文本", "analysisType": "sentiment|trends|custom", "customPrompt": "自定义分析角度"},
             "brew.items": {"limit": 10, "source_id": "可选源ID", "unread_only": true},
-            "router.navigate": {"path": "/library, /brew, /config, /tapp, /reports"},
-            "music.control": {"action": "play|pause|next|prev|mute|unmute|volume", "volume": 50},
+            "router.navigate": {"path": "/, /library, /brew, /reports, /config, /tapp"},
+            "music.control": {"action": "play|pause|toggle|next|previous|mute|unmute|volume", "volume": 50},
             "scheduler.create": {"tappId": "已安装TappID", "name": "任务名", "scheduleType": "cron", "schedule": {"cron": "*/30 * * * *"}},
             "heartbeat.create": {"name": "Brew早间总结", "schedule": "0 9 * * *", "action": "总结 brew 订阅", "enabled": true}
         }

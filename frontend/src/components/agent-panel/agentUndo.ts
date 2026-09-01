@@ -49,6 +49,10 @@ export const ACTION_REVERSIBILITY: Record<
   page_interact: 'irreversible',
   // Tapp 内部发生了什么，外面不知道
   agent_interaction: 'irreversible',
+  // 只弹了一条 toast
+  show_notification: 'readonly',
+  // 剪贴板写出去之后没有对应的「取消复制」
+  copy_clipboard: 'irreversible',
 }
 
 /** 上面那张表里标着 `undoable` 的那些。文案与它一一对应。 */

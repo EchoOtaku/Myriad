@@ -205,6 +205,7 @@ test('a delivered line stages the performance before the words', () => {
   const performance = {
     phase: 'delivery' as const,
     moodRevision: 7,
+    motionStyle: 'even' as const,
     plan: { cues: [] },
   }
   new AgentFaceChannel(sink).deliver({
@@ -244,6 +245,7 @@ test('a line without words still stages, and words without a plan still speak', 
   const performance = {
     phase: 'reaction' as const,
     moodRevision: 1,
+    motionStyle: 'even' as const,
     plan: { cues: [] },
   }
 

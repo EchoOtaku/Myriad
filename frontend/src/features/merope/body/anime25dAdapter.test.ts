@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { realizeAnime25DBehaviorPlan } from '../anime25drig/behaviorRealizer'
 import { setLiveFaceVisible } from '../faceVisible'
 import { RigMotionCoordinator } from '../motion/coordinator'
 import { MotionRuntime } from '../motion/runtime'
@@ -76,6 +77,7 @@ test('hidden face does not pretend a body intent was played', () => {
     performance: {
       phase: 'delivery',
       moodRevision: 1,
+      motionStyle: 'even',
       plan: { cues: [] },
     },
   })
@@ -86,6 +88,7 @@ test('hidden face does not pretend a body intent was played', () => {
     performance: {
       phase: 'delivery',
       moodRevision: 1,
+      motionStyle: 'even',
       plan: {
         cues: [
           {
@@ -102,5 +105,61 @@ test('hidden face does not pretend a body intent was played', () => {
     },
   })
   assert.equal(runtime.frame().performance?.directive?.plan.cues[0]?.intent, 'listen')
+  release()
+})
+
+test('a production body intent reaches the Anime2.5D realizer and reports acceptance', () => {
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const release = runtime.retain()
+  const body = new Anime25DBodyAdapter(runtime)
+  setLiveFaceVisible(true)
+
+  body.intend({
+    performance: {
+      phase: 'reaction',
+      moodRevision: 4,
+      motionStyle: 'open',
+      plan: {
+        cues: [
+          {
+            intent: 'respond',
+            atMs: 0,
+            intensity: 1.15,
+            tempo: 1,
+            fadeInMs: 105,
+            fadeOutMs: 420,
+            interrupt: 'if-lower',
+          },
+        ],
+      },
+    },
+  })
+
+  const frame = runtime.frame()
+  assert.equal(frame.performance?.directive?.plan.cues[0]?.intent, 'respond')
+  assert.ok(frame.behaviorPlan)
+  const realized = realizeAnime25DBehaviorPlan(
+    frame.behaviorPlan,
+    performance.now(),
+  )
+  assert.equal(realized.units[0]?.family, 'performance')
+  assert.equal(realized.units[0]?.form, 'respond')
+  assert.ok(realized.reports.length > 0)
+  assert.ok(realized.reports.every((report) => report.result === 'accepted'))
+  for (const report of realized.reports) {
+    runtime.reportBehaviorRealizer(
+      frame.behaviorPlan.id,
+      report.behaviorId,
+      report.result,
+      report.atMs,
+      report.reason,
+    )
+  }
+  assert.ok(
+    runtime
+      .frame()
+      .performance?.behaviors?.every((behavior) => behavior.phase !== 'rejected'),
+  )
+
   release()
 })

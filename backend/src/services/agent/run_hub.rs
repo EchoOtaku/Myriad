@@ -375,6 +375,16 @@ WHERE namespace = $1 AND runtime_id = $2
         let mut notify = false;
         let (envelope, task_id, status, progress, message, success) = {
             let mut state = self.state.lock().await;
+            // A terminal envelope is the run's hard boundary. SSE consumers
+            // close on it, so accepting anything later only creates durable
+            // events no live rig can ever observe and can even revive status.
+            if state.completed {
+                tracing::warn!(
+                    run_id = %self.run_id,
+                    "[Agent Run] post-terminal event dropped"
+                );
+                return;
+            }
             let success = match &event {
                 AgentProgressEvent::RunStarted { .. } => {
                     notify = true;
@@ -675,6 +685,36 @@ mod tests {
         assert!(matches!(
             envelope.event,
             AgentProgressEvent::Progress { progress: 10, .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn terminal_event_is_the_last_event_in_a_run() {
+        let run = AgentRun::new("run_terminal".to_string(), 1, None);
+        run.publish(AgentProgressEvent::TaskCompleted {
+            task_id: "task_terminal".to_string(),
+            success: true,
+            response: Box::new(serde_json::json!({
+                "success": true,
+                "message": "done"
+            })),
+        })
+        .await;
+        run.publish(AgentProgressEvent::Progress {
+            progress: 5,
+            completed_steps: 0,
+            total_steps: 1,
+            message: "too late".to_string(),
+        })
+        .await;
+
+        let (history, sequence, completed) = run.snapshot().await;
+        assert_eq!(history.len(), 1);
+        assert_eq!(sequence, 1);
+        assert!(completed);
+        assert!(matches!(
+            history.last().map(|event| &event.event),
+            Some(AgentProgressEvent::TaskCompleted { .. })
         ));
     }
 }

@@ -7,14 +7,10 @@ use chrono::{Duration, Utc};
 use once_cell::sync::Lazy;
 use serde_json::Value;
 
+use crate::services::agent::presence_window::PRESENCE_WINDOW_SECS;
 use crate::services::agent::types::UserRequest;
 
 use super::SelfLivePresence;
-
-/// Aligned with `merope::gates::CHAT_ACTIVE_SECS`. A live-face older than this
-/// is no longer "now". Not a platform config — a config field would also need
-/// a DB-read parse branch.
-const PRESENCE_TTL_SECS: i64 = 90;
 
 static LIVE: Lazy<RwLock<HashMap<i32, SelfLivePresence>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
@@ -40,7 +36,7 @@ fn presence_is_fresh(live: &SelfLivePresence) -> bool {
     let Some(captured_at) = live.captured_at else {
         return false;
     };
-    Utc::now().signed_duration_since(captured_at) <= Duration::seconds(PRESENCE_TTL_SECS)
+    Utc::now().signed_duration_since(captured_at) <= Duration::seconds(PRESENCE_WINDOW_SECS)
 }
 
 /// Whitelist for inbound presence JSON. Unknown keys are ignored; perception

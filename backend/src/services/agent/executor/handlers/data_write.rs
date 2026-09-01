@@ -678,7 +678,8 @@ async fn execute_content_write(
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
     let content_type = params
-        .get("type")
+        .get("contentType")
+        .or_else(|| params.get("type"))
         .and_then(|v| v.as_str())
         .unwrap_or("text");
     // 支持从上游步骤通过 inputFrom 解析后注入的内容
@@ -688,6 +689,26 @@ async fn execute_content_write(
         .or_else(|| params.get("data"))
         .cloned()
         .unwrap_or(json!(null));
+    if params
+        .get("target")
+        .and_then(|target| target.get("type"))
+        .and_then(Value::as_str)
+        == Some("clipboard")
+    {
+        let text = match &content {
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        return Ok(json!({
+            "success": true,
+            "target": "clipboard",
+            "frontendAction": {
+                "type": "copy_clipboard",
+                "value": text,
+                "timestamp": Utc::now().timestamp_millis()
+            }
+        }));
+    }
     let title = params
         .get("title")
         .and_then(|v| v.as_str())

@@ -128,8 +128,14 @@ function TappRunPageStandard({
 
   // Agent ui.open / open_window: multi-window registers via TappWindowManager;
   // single-window must still handle open_window (navigate to /tapp/run/:id).
-  const windowsRef = useRef<Array<{ windowId: string; tappId: string }>>([])
-  const activeWindowIdRef = useRef<string | null>(null)
+  // windowsRef used to stay empty, so close/focus/query_windows always missed.
+  const runWindowId = `run:${tappId}`
+  const windowsRef = useRef<Array<{ windowId: string; tappId: string }>>([
+    { windowId: runWindowId, tappId },
+  ])
+  const activeWindowIdRef = useRef<string | null>(runWindowId)
+  windowsRef.current = [{ windowId: runWindowId, tappId }]
+  activeWindowIdRef.current = runWindowId
   const openTappWindow = useCallback(
     async (id: string) => {
       navigate(tappRunPath(id))

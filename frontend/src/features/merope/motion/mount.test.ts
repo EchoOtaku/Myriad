@@ -30,8 +30,10 @@ test('live faces share one motion owner; workbench preview stays isolated', () =
 
   assert.doesNotMatch(panel, /useRigSingingLifecycle/)
   assert.doesNotMatch(panel, /useRigPreviewMotionLifecycle/)
+  assert.match(panel, /ready:\s*showCharacter/)
   assert.doesNotMatch(widget, /speechOccupancyRef/)
   assert.doesNotMatch(widget, /useRigPreviewMotionLifecycle/)
+  assert.match(widget, /ready:\s*showCharacter/)
   assert.doesNotMatch(studio, /useRigSingingLifecycle/)
   assert.doesNotMatch(studio, /getProductionMotionRuntime/)
   assert.doesNotMatch(workbench, /useRigMotionLifecycle/)

@@ -52,13 +52,12 @@ import {
   deliverTurnLine,
   notePresenceRoute,
   openTurnReply,
+  openTurnSpeech,
   setFaceMood,
   setTurnGeneration,
-  SpeechSegmenter,
   startPresenceInbound,
   stopTurnSpeech,
   turnSpeechAlreadyFed,
-  turnSpeechPipeline,
 } from '../../features/merope/engineFace'
 import {
   beginTurnTrace,
@@ -745,10 +744,9 @@ export const AgentEngine: React.FC = () => {
     ) => {
       let streamedSummary = ''
       let streamedThinking = ''
+      let performancePlanCount = 0
       let notedStaleGeneration = false
-      const pipeline = turnSpeechPipeline()
-      void pipeline.probe()
-      const segmenter = new SpeechSegmenter(assistantMessageId, generation)
+      const speech = openTurnSpeech(assistantMessageId, generation, locale)
       const utterance = openTurnReply(
         mode,
         assistantMessageId,
@@ -940,7 +938,7 @@ export const AgentEngine: React.FC = () => {
 
           case 'error':
             utterance.cancel()
-            pipeline.cancel(assistantMessageId)
+            speech.cancel()
             updateMessageExecution(assistantMessageId, { status: 'error' })
             updateMessage(assistantMessageId, { content: event.message })
             break
@@ -969,11 +967,7 @@ export const AgentEngine: React.FC = () => {
                 })
                 updateMessage(assistantMessageId, { content: body })
               }
-              if (pipeline.available) {
-                const tail = segmenter.end()
-                if (tail.length) markTurnTraceOnce('first_sentence')
-                pipeline.feed(tail)
-              }
+              if (speech.end()) markTurnTraceOnce('first_sentence')
               utterance.end()
             } else {
               if (tokenEvent.token) markTurnTraceOnce('llm_first_token')
@@ -986,13 +980,9 @@ export const AgentEngine: React.FC = () => {
                 peelThoughtFromContent(split.content, streamedThinking),
               )
               if (body) {
-                if (pipeline.available) {
-                  const segments = segmenter.push(tokenEvent.token)
-                  if (segments.length) markTurnTraceOnce('first_sentence')
-                  pipeline.feed(segments)
-                } else {
-                  utterance.chunk(tokenEvent.token)
-                }
+                const sealed = speech.push(tokenEvent.token)
+                if (sealed == null) utterance.chunk(tokenEvent.token)
+                else if (sealed > 0) markTurnTraceOnce('first_sentence')
                 updateMessage(assistantMessageId, { content: body })
               }
             }
@@ -1007,14 +997,14 @@ export const AgentEngine: React.FC = () => {
 
           case 'performance_plan': {
             const performanceEvent = event as PerformancePlanEvent
-            // Chat's floor arrives as `reaction`; whatever the director sends
-            // afterwards is the refinement. Marking both as reaction_ready made
-            // a 4s Lite delivery indistinguishable from an instant one.
             const performancePhase = performanceEvent.performance.phase
-            markTurnTraceOnce('reaction_ready', { phase: performancePhase })
-            if (performancePhase !== 'reaction') {
+            performancePlanCount += 1
+            if (performancePlanCount === 1) {
+              markTurnTraceOnce('reaction_ready', { phase: performancePhase })
+            } else {
               markTurnTraceOnce('performance_refined', {
                 phase: performancePhase,
+                plan: performancePlanCount,
               })
             }
             deliverTurnLine(mode, {

@@ -109,6 +109,7 @@ export default function SiteMotionWorkbench({
   const rigCharacterRef = useRef<RigCharacterHandle>(null)
   useRigPreviewMotionLifecycle(rigCharacterRef, {
     mood,
+    arousal,
     activity: toMeropeActivity(activity),
   })
   const o = t.agentPersona.onboarding

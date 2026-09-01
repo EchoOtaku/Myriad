@@ -150,6 +150,12 @@ impl Executor {
             &mut resolved_params,
             &context.step_outputs,
         );
+        inject_request_context_params(
+            &step.capability_id,
+            &mut resolved_params,
+            context.variables.get("_current_route"),
+            context.page_context.as_ref(),
+        );
 
         // 根据能力类别和预估时长确定超时（秒），预估时长取3倍作为缓冲
         // 优先使用 RecipeStep 指定的 timeout_ms，否则用能力声明推断
@@ -1093,6 +1099,41 @@ impl Executor {
     // 动态步骤生成系统
 }
 
+/// Fill `currentPath` / `context` from the turn request when the planner omitted
+/// them. `router.state` declares an empty input schema, so without this it
+/// always reports `/`.
+fn inject_request_context_params(
+    capability_id: &str,
+    params: &mut HashMap<String, Value>,
+    current_route: Option<&Value>,
+    page_context: Option<&Value>,
+) {
+    let needs_path = matches!(
+        capability_id,
+        "router.state" | "page.content" | "page.understand" | "page.interact"
+    );
+    if needs_path {
+        let missing = params
+            .get("currentPath")
+            .is_none_or(|v| v.as_str().map(str::trim).unwrap_or("").is_empty());
+        if missing {
+            if let Some(route) = current_route
+                .cloned()
+                .filter(|v| v.as_str().map(str::trim).is_some_and(|s| !s.is_empty()))
+            {
+                params.insert("currentPath".to_string(), route);
+            }
+        }
+    }
+    if matches!(capability_id, "page.content" | "page.understand")
+        && !params.contains_key("context")
+    {
+        if let Some(page) = page_context.cloned() {
+            params.insert("context".to_string(), page);
+        }
+    }
+}
+
 #[cfg(test)]
 mod output_contract_tests {
     use super::*;
@@ -1159,6 +1200,44 @@ mod output_contract_tests {
             &step("mcp.docs.lookup"),
             &capability("mcp.docs.lookup", json!({ "type": "string" })),
             &json!({ "content": [{ "type": "text" }] }),
+        );
+    }
+
+    #[test]
+    fn request_route_fills_router_state_current_path() {
+        let mut params = HashMap::new();
+        inject_request_context_params("router.state", &mut params, Some(&json!("/library")), None);
+        assert_eq!(
+            params.get("currentPath").and_then(Value::as_str),
+            Some("/library")
+        );
+    }
+
+    #[test]
+    fn page_snapshot_fills_page_content_context() {
+        let mut params = HashMap::new();
+        let snapshot = json!({ "content": "正文", "title": "标题" });
+        inject_request_context_params(
+            "page.content",
+            &mut params,
+            Some(&json!("/brew")),
+            Some(&snapshot),
+        );
+        assert_eq!(
+            params.get("currentPath").and_then(Value::as_str),
+            Some("/brew")
+        );
+        assert_eq!(params.get("context"), Some(&snapshot));
+    }
+
+    #[test]
+    fn explicit_current_path_is_not_overwritten() {
+        let mut params = HashMap::new();
+        params.insert("currentPath".to_string(), json!("/tapp"));
+        inject_request_context_params("router.state", &mut params, Some(&json!("/library")), None);
+        assert_eq!(
+            params.get("currentPath").and_then(Value::as_str),
+            Some("/tapp")
         );
     }
 

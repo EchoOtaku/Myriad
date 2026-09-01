@@ -7,10 +7,11 @@
 use std::time::{Duration, Instant};
 
 use myriad_merope::{
-    cue_is_playable, parse_performance_plan, plan_is_empty, refine_performance_plan,
-    round_motion_style, ChatPerformanceBaseline, ChatPerformanceCue, ChatPerformancePlan,
-    RigStateSummary, PERFORMANCE_BASELINE_EXPRESSIONS, PERFORMANCE_CUE_INTENTS,
-    PERFORMANCE_INTERRUPT_MODES, PERFORMANCE_POSTURES, RIG_STATE_MOTION_STYLES,
+    cue_is_playable, cue_survives_state, parse_performance_plan, plan_is_empty,
+    refine_performance_plan, round_motion_style, ChatPerformanceBaseline, ChatPerformanceCue,
+    ChatPerformancePlan, RigStateSummary, PERFORMANCE_BASELINE_EXPRESSIONS,
+    PERFORMANCE_CUE_INTENTS, PERFORMANCE_INTERRUPT_MODES, PERFORMANCE_POSTURES,
+    RIG_STATE_MOTION_STYLES,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -78,12 +79,26 @@ enum MotionDecision {
 pub struct PerformanceDirective {
     pub phase: MotionPhase,
     pub mood_revision: i64,
+    pub motion_style: String,
     pub plan: ChatPerformancePlan,
 }
 
-/// Runs exactly one Lite-tier call. Unavailable, slow or invalid Lite output
-/// yields no director plan unless the user named an expression the face can play.
+/// Runs exactly one Lite-tier call, falling back to the deterministic plan for
+/// callers (such as proactive speech) that have no live floor publisher.
 pub async fn direct_motion(context: MotionContext) -> Option<PerformanceDirective> {
+    direct_motion_inner(context, true).await
+}
+
+/// Refines a floor that has already been published. A timeout, invalid answer
+/// or `continue` produces nothing so the same local beat is never replayed.
+pub async fn refine_motion(context: MotionContext) -> Option<PerformanceDirective> {
+    direct_motion_inner(context, false).await
+}
+
+async fn direct_motion_inner(
+    context: MotionContext,
+    fallback_to_local: bool,
+) -> Option<PerformanceDirective> {
     let started = Instant::now();
     let phase = context.phase.as_str();
     let rig_state = apply_round_motion_style(context.rig_state.clone(), &context.motion_style);
@@ -120,8 +135,12 @@ pub async fn direct_motion(context: MotionContext) -> Option<PerformanceDirectiv
         })
         .to_string();
 
-        let schema = motion_schema();
-        let system_prompt = motion_system_prompt();
+        // Offer only what this face can actually play. Constrained decoding
+        // then cannot spend the round's one cue on something the filter below
+        // would delete.
+        let offered = offered_cue_intents(rig_state.as_ref());
+        let schema = motion_schema(&offered);
+        let system_prompt = motion_system_prompt(&offered);
         let call = analyzer.analyze_json(&system_prompt, &input, MOTION_SCHEMA_NAME, Some(&schema));
         Some(
             tokio::time::timeout(
@@ -179,17 +198,20 @@ pub async fn direct_motion(context: MotionContext) -> Option<PerformanceDirectiv
         }
     };
     let refined_by_lite = lite_plan.is_some();
-    // Lite is a refinement. When it declines, times out or returns nothing the
-    // round still acts, from state the backend already holds.
-    let mut plan = lite_plan.unwrap_or_else(|| {
+    let mut plan = if let Some(plan) = lite_plan {
+        plan
+    } else if fallback_to_local {
         local_performance_plan(
             context.phase,
             &context.mood,
             context.task_success,
             context.response_text.as_deref(),
             &context.motion_style,
+            Some(&context.user_text),
         )
-    });
+    } else {
+        return None;
+    };
     if let Some(state) = rig_state.as_ref() {
         plan = refine_performance_plan(plan, state);
     }
@@ -224,6 +246,7 @@ pub async fn direct_motion(context: MotionContext) -> Option<PerformanceDirectiv
     Some(PerformanceDirective {
         phase: context.phase,
         mood_revision: context.mood.revision,
+        motion_style: context.motion_style,
         plan,
     })
 }
@@ -245,16 +268,25 @@ pub fn local_directive(context: &MotionContext) -> Option<PerformanceDirective> 
         context.task_success,
         context.response_text.as_deref(),
         &context.motion_style,
+        Some(&context.user_text),
     );
     if let Some(state) = rig_state.as_ref() {
         plan = refine_performance_plan(plan, state);
     }
+    plan = apply_user_requested_cue(
+        plan,
+        context.phase,
+        &context.user_text,
+        context.response_text.as_deref(),
+        rig_state.as_ref(),
+    );
     if plan_is_empty(&plan) {
         return None;
     }
     Some(PerformanceDirective {
         phase: context.phase,
         mood_revision: context.mood.revision,
+        motion_style: context.motion_style.clone(),
         plan,
     })
 }
@@ -381,7 +413,10 @@ fn user_requested_cue(text: &str) -> Option<&'static str> {
 
 fn alias_request_pos(text: &str, folded: &str, alias: &str) -> Option<usize> {
     let alias_folded = alias.to_lowercase();
-    let pos = text.find(alias).or_else(|| folded.find(&alias_folded))?;
+    // A Latin alias must stand on its own here too: `cry` sits inside
+    // `cryptic`, and `think` in `thinking about it` is not a request for the
+    // think face — the marker below is what turns a mention into an ask.
+    let pos = text_mention_pos(text, folded, alias)?;
     if alias.contains("一下") || alias.contains("一个") {
         return Some(pos);
     }
@@ -405,6 +440,48 @@ fn alias_request_pos(text: &str, folded: &str, alias: &str) -> Option<usize> {
         .iter()
         .any(|phrase| text.contains(phrase) || folded.contains(&phrase.to_lowercase()))
         .then_some(pos)
+}
+
+pub fn text_mentions_any(text: &str, markers: &[&str]) -> bool {
+    let folded = text.to_lowercase();
+    markers
+        .iter()
+        .any(|marker| text_mention_pos(text, &folded, marker).is_some())
+}
+
+/// A Latin marker has to stand as its own word.
+///
+/// `hi` sits inside `this` and `which`, `hey` inside `they`, and `ww` inside
+/// `www.` — with a plain substring test the floor greeted on most English
+/// sentences and read any link as a joke. Chinese and Japanese have no word
+/// boundary to test, so those markers stay substrings.
+///
+/// A repeated-letter marker may still be extended by more of the same letter,
+/// because that is how `hhh` and `ww` are actually written; a following `.`
+/// still rules the match out, which is what separates `www` from a hostname.
+fn text_mention_pos(text: &str, folded: &str, marker: &str) -> Option<usize> {
+    if !marker.is_ascii() {
+        return text.find(marker).or_else(|| folded.find(marker));
+    }
+    let lowered = marker.to_lowercase();
+    let repeated = lowered
+        .chars()
+        .next()
+        .filter(|first| lowered.len() > 1 && lowered.chars().all(|letter| letter == *first));
+    let blocks = |letter: Option<char>| letter.is_some_and(|letter| letter.is_ascii_alphanumeric());
+    folded.match_indices(&lowered).find_map(|(index, found)| {
+        // Widen to the whole run first: `www.` is a hostname however much of
+        // it a two-letter marker happens to land on.
+        let (head, tail) = (&folded[..index], &folded[index + found.len()..]);
+        let (head, tail) = match repeated {
+            Some(letter) => (head.trim_end_matches(letter), tail.trim_start_matches(letter)),
+            None => (head, tail),
+        };
+        let standalone = !blocks(head.chars().next_back())
+            && !blocks(tail.chars().next())
+            && !tail.starts_with('.');
+        standalone.then_some(index)
+    })
 }
 
 fn requested_cue(intent: &str) -> ChatPerformanceCue {
@@ -506,6 +583,10 @@ const BASELINE_INDEX: &[(&str, &str)] = &[
     ("subdued", "压着但仍在场。克制、认真、不想热闹。"),
     ("steady", "平常脸。中性底，仍要配 cue，不能当成没表情。"),
     ("warm", "放松、亲近、带笑意。外向或软的人设常用。"),
+    (
+        "tense",
+        "烦躁、绷着、被磨得没耐心。心情低但精神绷紧时的底——不是难过，是坐不住；眉压着而眼睛更睁着。",
+    ),
 ];
 
 const POSTURE_INDEX: &[(&str, &str)] = &[
@@ -556,7 +637,20 @@ const CUE_INDEX: &[(&str, &str, &str)] = &[
     ),
 ];
 
-fn motion_expression_index() -> String {
+/// The cues this face can play, in contract order. No rig state means an old
+/// client, which keeps the full vocabulary exactly as before.
+fn offered_cue_intents(state: Option<&RigStateSummary>) -> Vec<&'static str> {
+    let Some(state) = state else {
+        return PERFORMANCE_CUE_INTENTS.to_vec();
+    };
+    PERFORMANCE_CUE_INTENTS
+        .iter()
+        .copied()
+        .filter(|intent| cue_survives_state(state, intent))
+        .collect()
+}
+
+fn motion_expression_index(offered: &[&str]) -> String {
     let mut lines = Vec::new();
     lines.push("表情底 baseline.expression（每回合必选一个）：".to_string());
     for (name, meaning) in BASELINE_INDEX {
@@ -571,6 +665,9 @@ fn motion_expression_index() -> String {
             .to_string(),
     );
     for (name, meaning, capability) in CUE_INDEX {
+        if !offered.contains(name) {
+            continue;
+        }
         if capability.is_empty() {
             lines.push(format!("- {name}：{meaning}"));
         } else {
@@ -580,7 +677,7 @@ fn motion_expression_index() -> String {
     lines.join("\n")
 }
 
-fn motion_system_prompt() -> String {
+fn motion_system_prompt(offered: &[&str]) -> String {
     format!(
         r#"你是这个人设的动作导演。只选语义表演。读 persona 和这一轮 userText/responseText 的意思，按这个人会怎么露脸。不要等「呆呆」「狂笑」「做一下」这类字。mood 是事实，不要改。
 
@@ -592,10 +689,10 @@ fn motion_system_prompt() -> String {
 restrained 的 motionEnergy 0.55–0.9、cue 0.75–1.05；even 0.75–1.15 / 0.9–1.25；open 1.0–1.4 / 1.05–1.4。
 像人一样安排反应：起势快、落势慢；一个明确反应完成或进入落势前，不要再叠同功能动作。rig.activeBehaviors 是同时在进行或准备中的语义行为，lifecycle 是 planned/preparing/committed/holding/recovering，resources 是它正在使用的脸、视线、头、躯干或肢体。已有同功能时不重复；资源冲突时删掉低意义 cue，确实要接续才用 queue 并把 atMs 放到 remainingMs 之后。音乐的 entrain 是持续的人体节律，不是特殊动画：唱歌占头身时只叠不冲突的脸/视线反应。
 reaction 回应用户已经说完的内容，不要假装仍在聆听；delivery 配合即将说的话（讲糗事、自嘲出糗用 silly）；outcome 配合任务结果；proactive 配合自己找上门的那句。atMs/fade 只给宽松的先后和风格，不要试图逐帧导演；现场调度器会按真实语音重音、节拍证据、资源占用和中断状态重定时，并保证 preparation→stroke→hold→recovery。"#,
-        motion_expression_index(),
+        motion_expression_index(offered),
         PERFORMANCE_BASELINE_EXPRESSIONS.join("/"),
         PERFORMANCE_POSTURES.join("/"),
-        PERFORMANCE_CUE_INTENTS.join("/")
+        offered.join("/")
     )
 }
 
@@ -655,7 +752,7 @@ fn json_text_list(
         .unwrap_or_default()
 }
 
-fn motion_schema() -> serde_json::Value {
+fn motion_schema(offered: &[&str]) -> serde_json::Value {
     serde_json::json!({
         "type": "object",
         "properties": {
@@ -675,7 +772,7 @@ fn motion_schema() -> serde_json::Value {
                 "items": {
                     "type": "object",
                     "properties": {
-                        "intent": { "type": "string", "enum": PERFORMANCE_CUE_INTENTS },
+                        "intent": { "type": "string", "enum": offered },
                         "atMs": { "type": "integer", "minimum": 0, "maximum": 5000 },
                         "intensity": { "type": "number", "minimum": 0.2, "maximum": 1.4 },
                         "tempo": { "type": "number", "minimum": 0.5, "maximum": 1.6 },
@@ -714,6 +811,7 @@ mod tests {
         let value = serde_json::to_value(PerformanceDirective {
             phase: MotionPhase::Reaction,
             mood_revision: 42,
+            motion_style: "open".to_string(),
             plan: ChatPerformancePlan {
                 baseline: None,
                 cues: vec![myriad_merope::ChatPerformanceCue {
@@ -730,13 +828,14 @@ mod tests {
         .unwrap();
         assert_eq!(value["phase"], "reaction");
         assert_eq!(value["moodRevision"], 42);
+        assert_eq!(value["motionStyle"], "open");
         assert!(value.pointer("/plan/cues/0/atMs").is_some());
         assert!(value.get("driver").is_none());
     }
 
     #[test]
     fn motion_schema_exposes_new_expressions_only_as_semantic_cues() {
-        let schema = motion_schema();
+        let schema = motion_schema(PERFORMANCE_CUE_INTENTS);
         let intents = schema
             .pointer("/properties/cues/items/properties/intent/enum")
             .and_then(serde_json::Value::as_array)
@@ -749,7 +848,7 @@ mod tests {
         assert!(intents.iter().any(|value| value == "maniac"));
         assert!(intents.iter().any(|value| value == "silly"));
         assert!(intents.iter().any(|value| value == "lovestruck"));
-        let prompt = motion_system_prompt();
+        let prompt = motion_system_prompt(PERFORMANCE_CUE_INTENTS);
         assert!(prompt.contains("按这个人会怎么露脸"));
         assert!(prompt.contains("按性格取表情"));
         assert!(!prompt.contains("只有文本明确表现"));
@@ -775,6 +874,82 @@ mod tests {
         assert!(schema.get("required").is_none());
     }
 
+    fn rig(capabilities: &[&str], speaking: bool) -> RigStateSummary {
+        myriad_merope::sanitize_rig_state(&serde_json::json!({
+            "expression": "steady",
+            "posture": "neutral",
+            "owners": { "mouth": "idle", "expression": "idle", "gaze": "idle", "headBody": "idle" },
+            "speaking": speaking,
+            "capabilities": capabilities,
+        }))
+        .expect("summary")
+    }
+
+    /// The offered set and the enforced set are one predicate.
+    ///
+    /// They used to be two: the schema enum listed all fifteen intents while
+    /// `refine_performance_plan` deleted the ones this face cannot play. A
+    /// round that spent its only cue on a sticker the rig has no layer for
+    /// came back empty, and an empty plan drops the whole refinement.
+    #[test]
+    fn the_director_is_only_offered_cues_that_survive_the_filter() {
+        for (capabilities, speaking) in [
+            (&["head-body", "mouth-shapes"][..], false),
+            (&["head-body", "cry-eye", "silly-eye"][..], false),
+            (&["head-body", "maniac-mouth", "silly-mouth"][..], true),
+            (&[][..], false),
+        ] {
+            let state = rig(capabilities, speaking);
+            let offered = offered_cue_intents(Some(&state));
+            assert!(!offered.is_empty(), "{capabilities:?}");
+
+            let plan = ChatPerformancePlan {
+                baseline: None,
+                cues: PERFORMANCE_CUE_INTENTS
+                    .iter()
+                    .map(|intent| ChatPerformanceCue {
+                        intent: (*intent).to_string(),
+                        at_ms: 0,
+                        intensity: 1.0,
+                        tempo: 1.0,
+                        fade_in_ms: 120,
+                        fade_out_ms: 200,
+                        interrupt: "replace".to_string(),
+                    })
+                    .collect(),
+            };
+            let survived: Vec<String> = refine_performance_plan(plan, &state)
+                .cues
+                .into_iter()
+                .map(|cue| cue.intent)
+                .collect();
+            assert_eq!(survived, offered, "{capabilities:?} speaking={speaking}");
+
+            let schema = motion_schema(&offered);
+            let enumerated = schema
+                .pointer("/properties/cues/items/properties/intent/enum")
+                .and_then(|value| value.as_array())
+                .expect("intent enum");
+            assert_eq!(enumerated.len(), offered.len(), "{capabilities:?}");
+
+            // The prompt must not describe a cue the schema forbids.
+            let prompt = motion_system_prompt(&offered);
+            for intent in PERFORMANCE_CUE_INTENTS {
+                assert_eq!(
+                    prompt.contains(&format!("- {intent}：")),
+                    offered.contains(intent),
+                    "{intent} for {capabilities:?}"
+                );
+            }
+        }
+    }
+
+    /// A client that sends no rig state keeps the whole vocabulary.
+    #[test]
+    fn a_missing_summary_still_offers_every_cue() {
+        assert_eq!(offered_cue_intents(None), PERFORMANCE_CUE_INTENTS.to_vec());
+    }
+
     #[test]
     fn motion_prompt_indexes_every_contract_expression() {
         assert_eq!(
@@ -798,7 +973,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             PERFORMANCE_CUE_INTENTS.to_vec()
         );
-        let prompt = motion_system_prompt();
+        let prompt = motion_system_prompt(PERFORMANCE_CUE_INTENTS);
         for name in PERFORMANCE_BASELINE_EXPRESSIONS {
             assert!(prompt.contains(&format!("- {name}：")), "{name}");
         }
@@ -901,46 +1076,47 @@ mod tests {
         );
     }
 
-    /// Chat may react instantly, but only from the local floor. A second Lite
-    /// call beside the reply stream would put the director's timeout back in
-    /// front of the first token.
+    /// Chat reacts from the floor before streaming. Refinement is allowed only
+    /// after the reply model has emitted visible text, so it cannot hurt TTFT.
     #[test]
-    fn streaming_chat_reacts_locally_and_never_joins_lite_before_text_completes() {
+    fn streaming_chat_arms_refinement_without_competing_for_first_token() {
         let src = include_str!("../process_and_recipe.rs");
-        assert!(src.contains("Streamed text completion must not wait on delivery motion"));
         assert!(src.contains("let performance = None;"));
         let chat = src
             .find("stream_strict_lite_chat_response")
             .expect("chat lite call");
-        let local_reaction = src
-            .find("local_directive")
-            .expect("chat reacts from the local floor");
+        let local_reaction = src.find("publish_local_motion").expect("local reaction");
         assert!(
             local_reaction < chat,
             "Chat must react before the reply stream starts"
         );
-        let spawned = src
-            .find("spawn_motion_directive")
-            .expect("director spawn site");
+        let streaming = include_str!("../confirmation_and_tasks.rs");
+        assert!(streaming.contains("StreamDelta::Text(_)"));
+        let signalled = streaming
+            .find("stream_started.try_send(())")
+            .expect("first-delta signal");
+        let emitted = streaming[signalled..]
+            .find("emit_stream_delta")
+            .expect("delta emission");
         assert!(
-            chat < spawned,
-            "Chat must not spawn a Lite director beside the reply stream"
+            emitted > 0,
+            "the signal must be sent as the first model delta is observed"
         );
     }
 
     #[test]
-    fn work_publishes_the_local_reaction_before_spawning_the_lite_director() {
+    fn floor_precedes_refinement_and_delivery_precedes_stream_close() {
         let src = include_str!("../process_and_recipe.rs");
-        assert!(src.contains("spawn_motion_directive_with_floor(reaction_context"));
-        let helper = src
-            .find("fn spawn_motion_directive_with_floor")
-            .expect("predictive motion helper");
-        let body = &src[helper..];
-        let floor = body.find("local_directive(&context)").expect("local floor");
-        let refinement = body
-            .find("direct_motion(context).await")
-            .expect("Lite refinement");
+        let floor = src.find("publish_local_motion(&reaction_context").unwrap();
+        let refinement = src.find("spawn_motion_refinement(").unwrap();
         assert!(floor < refinement);
+        let delivery = src.find("publish_local_motion(&delivery_context").unwrap();
+        let finish = src
+            .find("response_agent::finish_stream(&progress_tx)")
+            .unwrap();
+        assert!(delivery < finish);
+        assert!(src.contains("motion_refinements.clear();"));
+        assert!(src.contains("self.0.abort();"));
     }
 
     /// Production dropped 196 of 217 calls sitting exactly on the old 4s wall;
@@ -975,6 +1151,7 @@ mod tests {
             None,
             Some("已经好了。"),
             "even",
+            None,
         );
         assert!(!plan_is_empty(&plan));
     }
@@ -992,6 +1169,11 @@ mod tests {
         assert_eq!(user_requested_cue("做点好玩的表情"), None);
         assert_eq!(user_requested_cue("你能告诉我昨天狂笑的事吗"), None);
         assert_eq!(user_requested_cue("说说你犯蠢的事吧"), None);
+        // A Latin alias inside a longer word is not an ask, even next to a
+        // request marker: `cry` lives in `cryptic`, `think` in `thinking`.
+        assert_eq!(user_requested_cue("make a cryptic joke"), None);
+        assert_eq!(user_requested_cue("make a plan, thinking it through"), None);
+        assert_eq!(user_requested_cue("make a think face"), Some("think"));
     }
 
     #[test]

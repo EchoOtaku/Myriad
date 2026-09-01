@@ -13,20 +13,14 @@ export type RigBehaviorFunction =
   | 'orient'
   | 'attend'
   | 'acknowledge'
-  | 'understand'
-  | 'agree'
-  | 'disagree'
   | 'uncertain'
   | 'prepareSpeech'
-  | 'yieldTurn'
   | 'emphasize'
   | 'surprise'
   | 'celebrate'
   | 'relief'
-  | 'settle'
   | 'entrain'
   | 'express'
-  | 'idleShift'
 export type RigBehaviorPhase =
   | 'planned'
   | 'preparing'
@@ -188,7 +182,7 @@ export type PerformancePhase =
   'reaction' | 'delivery' | 'outcome' | 'proactive' | 'mood'
 
 export interface PerformanceBaseline {
-  expression: 'withdrawn' | 'subdued' | 'steady' | 'warm'
+  expression: 'withdrawn' | 'subdued' | 'steady' | 'warm' | 'tense'
   posture: 'closed' | 'neutral' | 'open'
   motionEnergy: number
   attention: number
@@ -227,6 +221,8 @@ export interface PerformanceCue {
 export interface PerformanceDirective {
   phase: PerformancePhase
   moodRevision: number
+  /** Persona-resolved movement quality for this whole round. */
+  motionStyle: RigMotionStyle
   plan: {
     baseline?: PerformanceBaseline
     cues: PerformanceCue[]
@@ -552,13 +548,15 @@ export type FrontendActionType =
   | 'music_get_status'
   | 'music_load_playlist'
   | 'reading_list'
+  | 'show_notification'
+  | 'copy_clipboard'
 
 /** 窗口目标 */
 export interface WindowTarget {
   windowId?: string
   tappId?: string
   tappName?: string
-  position?: 'active' | 'left' | 'right' | 'next' | 'previous'
+  position?: 'active' | 'left' | 'right' | 'next' | 'previous' | 'all'
 }
 
 /** 页面元素目标 */

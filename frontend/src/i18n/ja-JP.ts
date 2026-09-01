@@ -250,6 +250,12 @@ export const jaJP: TranslationKeys = {
     anime25dPresetManiac: '狂笑',
     anime25dPresetSilly: 'ぼけっと',
     anime25dPresetLovestruck: 'ときめき過ぎ',
+    anime25dProbeTurnLeft: '左向き最大',
+    anime25dProbeTurnRight: '右向き最大',
+    anime25dProbePitchUp: '見上げ最大',
+    anime25dProbePitchDown: '見下ろし最大',
+    anime25dProbeFullLeft: '左全域',
+    anime25dProbeFullRight: '右全域',
     anime25dBlinkNow: 'まばたき',
     anime25dResetPose: 'リセット',
     anime25dInspect: '再生検査',
@@ -263,6 +269,9 @@ export const jaJP: TranslationKeys = {
     anime25dInspectMouthValue: '開き {open} 層 · 閉じ {close} 層',
     anime25dInspectCanvas: 'キャンバスサイズ',
     anime25dInspectCanvasValue: '{width}×{height} px',
+    anime25dInspectEnvelope: 'アセット動作範囲',
+    anime25dInspectEnvelopeValue:
+      '俯仰 {pitch}% · 胴体 {torso}% · 固定袖 {arm}% · 現在の移し替え {transfer}%',
     anime25dInspectPerformance: 'フレーム内 CPU',
     anime25dInspectPerformanceValue:
       '合計 {frame} ms · 変形 {deform} ms · 転送発行 {upload} ms',
