@@ -7,6 +7,7 @@ pub mod feed;
 pub mod hmac;
 pub mod package;
 pub mod package_fs;
+pub mod prepared;
 pub mod transform;
 
 pub use feed::{
@@ -28,6 +29,11 @@ pub use package_fs::{
     should_preserve_orphan_path, sort_recovery_artifact_paths, tapp_id_from_dir_entry_class,
     tapp_installation_marker_names, LIFECYCLE_ARTIFACT_KINDS, MANIFEST_JSON, RecoveryPlan,
     TAPP_INSTALL_STATE_FILE, TappDirEntryClass,
+};
+pub use prepared::{
+    check_manifest_byte_size, nonempty_content, parse_manifest_json, resolved_style_content,
+    validate_widget_template_contents, widget_template_path, PackageLoadError, PackageValidateError,
+    PreparedTappPackage, PreparedTappResources, WidgetTemplateContents,
 };
 pub use package::{
     asset_bytes_within_limit, filter_widget_paths, installed_core_entry, installed_layer_entries,

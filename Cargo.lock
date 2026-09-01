@@ -2676,10 +2676,12 @@ dependencies = [
  "hex",
  "hmac 0.13.0",
  "myriad-tapp-contract",
+ "semver",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "subtle",
+ "tracing",
 ]
 
 [[package]]
