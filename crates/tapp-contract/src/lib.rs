@@ -246,5 +246,14 @@ mod export_catalog_tests {
             .map(|value| value.as_str().expect("name"))
             .collect::<Vec<_>>();
         assert_eq!(authenticated, requires_authenticated_subject_names());
+
+        assert_eq!(
+            exported["rules"]["hostWidgetCss"].as_str(),
+            Some(crate::contract_rules::HOST_WIDGET_CSS)
+        );
+        assert_eq!(
+            exported["rules"]["hostPageCss"].as_str(),
+            Some(crate::contract_rules::HOST_PAGE_CSS)
+        );
     }
 }

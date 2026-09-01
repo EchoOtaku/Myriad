@@ -277,3 +277,17 @@ pub const SETTING_DEFAULT_KINDS: &[(&str, &str)] = &[
     ("number", "number"),
 ];
 pub const WIDGET_REFRESH_MODES: &[(&str, &str)] = &[("event", "event"), ("interval", "interval")];
+
+#[cfg(test)]
+mod tests {
+    use super::{HOST_PAGE_CSS, HOST_WIDGET_CSS};
+
+    #[test]
+    fn host_css_paths_are_fixed_parallel_channels() {
+        assert_eq!(HOST_WIDGET_CSS, "host/widget.css");
+        assert_eq!(HOST_PAGE_CSS, "host/page.css");
+        assert!(!HOST_WIDGET_CSS.contains(".."));
+        assert!(!HOST_PAGE_CSS.contains(".."));
+        assert_ne!(HOST_WIDGET_CSS, HOST_PAGE_CSS);
+    }
+}
