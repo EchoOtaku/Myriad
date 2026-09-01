@@ -9,6 +9,7 @@ import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
+import { PERMISSION_COPY } from '../constants/permissionCopy.ts'
 import { PERMISSION_LEVELS } from './permissionConfig.ts'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -45,6 +46,13 @@ describe('permission catalog lock to tapp-contract export', () => {
   it('PERMISSION_LEVELS matches export permissionLevels', () => {
     assert.ok(exportedLevels && Object.keys(exportedLevels).length > 30)
     assert.deepEqual(PERMISSION_LEVELS, exportedLevels)
+  })
+
+  it('PERMISSION_COPY covers the export catalog', () => {
+    assert.deepEqual(
+      Object.keys(PERMISSION_COPY).sort(),
+      Object.keys(exportedLevels).sort(),
+    )
   })
 
   it('TappPermission union members match the export catalog', () => {
