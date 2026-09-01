@@ -86,8 +86,8 @@ pub(super) fn package_from_archive(
 
 /// Extension methods that stay HTTP-bound (StatusCode mapping + staging IO).
 pub(super) trait PreparedTappPackageHttp {
-    fn validate_http(&self, expected_tapp_id: Option<&str>) -> Result<(), PackageError>;
-    fn stage_into_http(
+    fn validate_for_http(&self, expected_tapp_id: Option<&str>) -> Result<(), PackageError>;
+    fn stage_into(
         &self,
         tapp_dir: &Path,
         generation: DateTime<FixedOffset>,
@@ -96,7 +96,7 @@ pub(super) trait PreparedTappPackageHttp {
 }
 
 impl PreparedTappPackageHttp for PreparedTappPackage {
-    fn validate_http(&self, expected_tapp_id: Option<&str>) -> Result<(), PackageError> {
+    fn validate_for_http(&self, expected_tapp_id: Option<&str>) -> Result<(), PackageError> {
         self.validate(
             expected_tapp_id,
             &crate::services::tapp_prepared_package::current_system_version(),
@@ -104,7 +104,7 @@ impl PreparedTappPackageHttp for PreparedTappPackage {
         .map_err(map_validate_error)
     }
 
-    async fn stage_into_http(
+    async fn stage_into(
         &self,
         tapp_dir: &Path,
         generation: DateTime<FixedOffset>,
@@ -142,32 +142,6 @@ impl PreparedTappPackageHttp for PreparedTappPackage {
         })?;
         validate_installed_resources(&self.manifest, tapp_dir)
             .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))
-    }
-}
-
-// Convenience wrappers preserving call-site method names used by installation.
-impl PreparedTappPackage {
-    /// Path-stable: archive load with HTTP error mapping.
-    pub(super) fn from_archive(file_data: Vec<u8>) -> Result<Self, PackageError> {
-        package_from_archive(file_data)
-    }
-
-    /// Path-stable: domain validate mapped to HTTP errors.
-    pub(super) fn validate_for_http(
-        &self,
-        expected_tapp_id: Option<&str>,
-    ) -> Result<(), PackageError> {
-        self.validate_http(expected_tapp_id)
-    }
-
-    /// Path-stable: stage to disk with HTTP errors.
-    pub(super) async fn stage_into(
-        &self,
-        tapp_dir: &Path,
-        generation: DateTime<FixedOffset>,
-        context: PackageStageContext,
-    ) -> Result<(), PackageError> {
-        self.stage_into_http(tapp_dir, generation, context).await
     }
 }
 
@@ -758,7 +732,7 @@ mod tests {
         writer.start_file("src/main.js", options).unwrap();
         writer.write_all(b"export const archive = true;").unwrap();
         let bytes = writer.finish().unwrap().into_inner();
-        let package = PreparedTappPackage::from_archive(bytes).unwrap();
+        let package = package_from_archive(bytes).unwrap();
 
         package
             .stage_into(
