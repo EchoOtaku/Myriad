@@ -9,62 +9,13 @@
 
 use serde_json::Value;
 use std::cmp::Reverse;
-use std::net::IpAddr;
 
 pub use myriad_agent_rules::{
-    clamp_update_interval_minutes, platform_write_cap_error, platform_write_items_over_cap,
-    sanitize_feed_name, MAX_FEED_NAME_LEN, MAX_FEED_URLS, MAX_PLATFORM_WRITE_ITEMS,
+    clamp_update_interval_minutes, is_disallowed_subscribe_host, is_disallowed_subscribe_ip,
+    platform_write_cap_error, platform_write_items_over_cap, sanitize_feed_name,
+    validate_subscribe_url_policy, MAX_FEED_NAME_LEN, MAX_FEED_URLS, MAX_PLATFORM_WRITE_ITEMS,
     MAX_UPDATE_INTERVAL, MIN_UPDATE_INTERVAL,
 };
-
-/// Disallowed hostname forms for subscribe URLs (before DNS).
-pub fn is_disallowed_subscribe_host(host: &str) -> bool {
-    host == "localhost" || host.ends_with(".local") || host.ends_with(".internal")
-}
-
-/// Whether a resolved IP must never be used as a subscribe target.
-pub fn is_disallowed_subscribe_ip(ip: IpAddr) -> bool {
-    if ip.is_loopback() || ip.is_unspecified() {
-        return true;
-    }
-    match ip {
-        IpAddr::V4(v4) => v4.is_private() || v4.is_link_local() || v4.octets()[0] == 169,
-        IpAddr::V6(v6) => {
-            // 阻止 IPv6 回环和链路本地
-            v6.is_loopback() || (v6.segments()[0] & 0xffc0) == 0xfe80
-        }
-    }
-}
-
-/// Parse and apply pure URL policy for brew.subscribe (scheme + host string + IP literals).
-///
-/// Hostname DNS resolution remains in the handler (IO). When the host is an IP
-/// literal it is checked here; hostname-only URLs pass if the host string is allowed.
-pub fn validate_subscribe_url_policy(url: &str) -> Result<(), String> {
-    let parsed = url::Url::parse(url).map_err(|_| "Invalid URL".to_string())?;
-
-    match parsed.scheme() {
-        "http" | "https" => {}
-        _ => return Err("This address is not allowed".to_string()),
-    }
-
-    let host = parsed
-        .host_str()
-        .ok_or_else(|| "This URL is missing a host".to_string())?;
-
-    if is_disallowed_subscribe_host(host) {
-        return Err("This address is not allowed".to_string());
-    }
-
-    // If host is already an IP literal, reject private ranges without DNS.
-    if let Ok(ip) = host.parse::<IpAddr>() {
-        if is_disallowed_subscribe_ip(ip) {
-            return Err("This address is not allowed".to_string());
-        }
-    }
-
-    Ok(())
-}
 
 /// Score a candidate feed URL for brew.subscribe multi-source attempts.
 ///
@@ -147,7 +98,7 @@ pub fn take_feed_urls_to_try(urls: Vec<(String, Option<String>)>) -> Vec<(String
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::net::{Ipv4Addr, Ipv6Addr};
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
     #[test]
     fn sanitize_feed_name_trims_and_limits() {

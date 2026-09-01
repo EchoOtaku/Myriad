@@ -2458,6 +2458,7 @@ name = "myriad-agent-rules"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "url",
 ]
 
 [[package]]
