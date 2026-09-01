@@ -9,28 +9,9 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 pub use myriad_agent_rules::{
-    build_schedule_config, parse_execution_target, parse_schedule_type, AgentExecutionTarget,
-    AgentScheduleType,
+    build_schedule_config, heartbeat_task_id, heartbeat_update_has_fields, parse_execution_target,
+    parse_schedule_type, AgentExecutionTarget, AgentScheduleType,
 };
-
-/// Extract optional task id from heartbeat params (`id` / `taskId` / `task_id`).
-pub fn heartbeat_task_id(params: &HashMap<String, Value>) -> Option<&str> {
-    params
-        .get("id")
-        .or_else(|| params.get("taskId"))
-        .or_else(|| params.get("task_id"))
-        .and_then(Value::as_str)
-}
-
-/// Whether at least one heartbeat update field is present.
-pub fn heartbeat_update_has_fields(
-    name: Option<&str>,
-    schedule: Option<&str>,
-    action: Option<&str>,
-    enabled: Option<bool>,
-) -> bool {
-    name.is_some() || schedule.is_some() || action.is_some() || enabled.is_some()
-}
 
 /// brew.schedule actions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
