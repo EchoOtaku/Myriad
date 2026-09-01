@@ -13,35 +13,14 @@ use std::collections::HashMap;
 
 pub use myriad_agent_rules::{
     http_body_exceeds_limit, http_body_size_error, http_content_length_error, http_fetch_method,
-    optional_string_param, parse_http_body_value, HTTP_FETCH_MAX_BODY_BYTES,
+    mcp_arguments, optional_string_param, parse_http_body_value, parse_mcp_capability_id,
+    HTTP_FETCH_MAX_BODY_BYTES,
 };
 
 /// Max HTML size for web.scrape (bytes).
 pub const WEB_SCRAPE_MAX_HTML_BYTES: usize = 5 * 1024 * 1024;
 /// Default max extracted text length for web.scrape.
 pub const WEB_SCRAPE_DEFAULT_MAX_LENGTH: usize = USER_TEXT_MAX_CHARS;
-
-// ── MCP ─────────────────────────────────────────────────────────────────────
-
-/// Parse `mcp.{server_id}.{tool_name}` capability id.
-pub fn parse_mcp_capability_id(capability_id: &str) -> Result<(&str, &str), String> {
-    let rest = capability_id
-        .strip_prefix("mcp.")
-        .ok_or_else(|| "Invalid MCP capability ID".to_string())?;
-    rest.split_once('.')
-        .ok_or_else(|| "MCP capability ID must include server and tool names".to_string())
-}
-
-/// Strip executor-only `__*` keys before crossing the MCP trust boundary.
-pub fn mcp_arguments(params: &HashMap<String, Value>) -> Value {
-    Value::Object(
-        params
-            .iter()
-            .filter(|(key, _)| !key.starts_with("__"))
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect(),
-    )
-}
 
 // ── Web scrape ──────────────────────────────────────────────────────────────
 
