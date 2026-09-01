@@ -584,8 +584,8 @@ async fn persist_model_url(
     persist_once(&directory.join(format!("{asset_id}.json")), &metadata).await?;
 
     Ok(PersistedTripoAsset {
-        model_url: format!("/api/merope/3d/assets/{asset_id}"),
-        metadata_url: format!("/api/merope/3d/assets/{asset_id}/metadata"),
+        model_url: format!("/api/model3d/assets/{asset_id}"),
+        metadata_url: format!("/api/model3d/assets/{asset_id}/metadata"),
         asset_id,
         output_index,
         metrics,

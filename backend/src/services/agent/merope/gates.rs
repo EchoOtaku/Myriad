@@ -28,6 +28,7 @@ const VALUABLE: &[&str] = &[
     "brew.source_error",
     "platform.sync.failed",
     "agent.merope.platform_activity",
+    "agent.merope.report_ready",
 ];
 
 pub fn is_valuable_event(event_key: &str) -> bool {
@@ -122,6 +123,14 @@ mod tests {
     }
 
     #[test]
+    fn report_ready_is_valuable() {
+        assert!(is_valuable_event("agent.merope.report_ready"));
+        let decision = decide_ingest("agent.merope.report_ready", false, false, false);
+        assert!(decision.allow_model);
+        assert!(decision.notify);
+    }
+
+    #[test]
     fn dnd_blocks_speech_and_notify() {
         let decision = decide_ingest("agent.task_failed", true, false, false);
         assert!(!decision.allow_model);
@@ -139,5 +148,22 @@ mod tests {
         let blocked = decide_ingest("brew.source_error", false, false, true);
         assert!(!blocked.allow_model);
         assert_eq!(blocked.reason, "working");
+    }
+
+    /// `presence::PRESENCE_TTL_SECS` claims alignment with this window in a
+    /// comment. A comment cannot fail, so read the other file and make it fail.
+    #[test]
+    fn presence_ttl_still_matches_the_chat_active_window() {
+        let presence = include_str!("../consciousness/presence.rs");
+        let declared = presence
+            .split("const PRESENCE_TTL_SECS: i64 = ")
+            .nth(1)
+            .and_then(|rest| rest.split(';').next())
+            .and_then(|value| value.trim().parse::<i64>().ok())
+            .expect("presence.rs no longer declares PRESENCE_TTL_SECS as a literal");
+        assert_eq!(
+            declared, CHAT_ACTIVE_SECS,
+            "a live face must expire exactly when the chat window closes"
+        );
     }
 }

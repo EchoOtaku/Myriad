@@ -147,3 +147,17 @@ export function withListening(
   }
   return state
 }
+
+/**
+ * 岛是全站一份；当前档没在跑时，思考/执行不该画在这一档上。
+ * 等回话、完成、出错仍跟岛走 —— 那些不是「这一档还在跑」。
+ */
+export function agentStatusForLane(
+  status: AgentStatus,
+  laneLoading: boolean,
+): AgentStatus {
+  if ((status === 'thinking' || status === 'working') && !laneLoading) {
+    return 'idle'
+  }
+  return status
+}

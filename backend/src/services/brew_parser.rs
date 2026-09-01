@@ -1538,6 +1538,7 @@ mod tests {
 
     #[tokio::test]
     async fn validate_public_url_rejects_loopback_literal() {
+        let _guard = crate::services::outbound_security::tests_lab_env_lock().await;
         let err = FeedParser::validate_public_url("http://127.0.0.1/feed.xml")
             .await
             .expect_err("loopback must be rejected");
@@ -1549,6 +1550,7 @@ mod tests {
 
     #[tokio::test]
     async fn validate_public_url_rejects_metadata_ip() {
+        let _guard = crate::services::outbound_security::tests_lab_env_lock().await;
         let err = FeedParser::validate_public_url("http://169.254.169.254/latest/meta-data/")
             .await
             .expect_err("link-local metadata must be rejected");
@@ -1557,6 +1559,7 @@ mod tests {
 
     #[tokio::test]
     async fn fetch_and_parse_rejects_private_target() {
+        let _guard = crate::services::outbound_security::tests_lab_env_lock().await;
         let parser = FeedParser::new();
         let err = parser
             .fetch_and_parse("http://10.0.0.1/rss.xml")

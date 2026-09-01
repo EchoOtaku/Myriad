@@ -402,7 +402,6 @@ pub async fn get_or_create_state(
         dnd_end_minute: Set(None),
         last_user_message_at: Set(None),
         last_proactive_at: Set(None),
-        last_departure_at: Set(None),
         mood_settled_at: Set(now),
         emotion_settled_at: Set(now),
         updated_at: Set(now),

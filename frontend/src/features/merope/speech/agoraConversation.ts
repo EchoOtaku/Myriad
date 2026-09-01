@@ -3,8 +3,12 @@ import {
   startConvoSession,
   stopConvoSession,
 } from '../../../services/speechApi'
+import { liveMotionGeneration } from '../motion/liveGeneration'
 import { dispatchMeropeSpeech } from '../speechEvents'
-import { patchVoicePresence } from './voicePresence'
+import { getVoicePresence, patchVoicePresence } from './voicePresence'
+
+const BARGE_OPEN = 0.14
+const BARGE_START_FRAMES = 4
 
 interface LiveSession {
   agentId: string
@@ -13,6 +17,8 @@ interface LiveSession {
   analyser: AnalyserNode | null
   audioContext: AudioContext | null
   energyTimer: number | null
+  bargeContext: AudioContext | null
+  bargeTimer: number | null
 }
 
 let live: LiveSession | null = null
@@ -44,6 +50,8 @@ export async function startAgoraConversation(language: string): Promise<boolean>
       analyser: null,
       audioContext: null,
       energyTimer: null,
+      bargeContext: null,
+      bargeTimer: null,
     }
     live = handle
 
@@ -58,6 +66,7 @@ export async function startAgoraConversation(language: string): Promise<boolean>
     })
 
     await client.publish([mic])
+    attachLocalBargeIn(handle, mic.getMediaStreamTrack())
     patchVoicePresence({ listening: true, ttsPlaying: false, userSpeaking: false })
     return true
   } catch (error) {
@@ -76,6 +85,7 @@ export async function stopAgoraConversation(): Promise<void> {
   live = null
   if (!session) return
   if (session.energyTimer != null) window.clearInterval(session.energyTimer)
+  if (session.bargeTimer != null) window.clearInterval(session.bargeTimer)
   try {
     session.mic.stop()
     session.mic.close()
@@ -89,6 +99,11 @@ export async function stopAgoraConversation(): Promise<void> {
   }
   try {
     await session.audioContext?.close()
+  } catch {
+    // already closed
+  }
+  try {
+    await session.bargeContext?.close()
   } catch {
     // already closed
   }
@@ -130,17 +145,54 @@ function attachEnergyTap(
         messageId: `convo-${agentId}`,
         source: 'reply',
         utteranceId: `convo-${agentId}`,
+        generation: liveMotionGeneration(),
         energy,
       })
     }
   }, 50)
 }
 
-export async function interruptAgoraConversation(): Promise<void> {
+async function interruptAgoraConversation(): Promise<void> {
   if (!live) return
   try {
     await interruptConvoSession(live.agentId)
   } catch (error) {
     console.error('[agoraConversation] interrupt failed:', error)
   }
+}
+
+function attachLocalBargeIn(session: LiveSession, track: MediaStreamTrack): void {
+  const audioContext = new AudioContext()
+  const source = audioContext.createMediaStreamSource(new MediaStream([track]))
+  const analyser = audioContext.createAnalyser()
+  analyser.fftSize = 256
+  source.connect(analyser)
+  session.bargeContext = audioContext
+  const bins = new Uint8Array(analyser.frequencyBinCount)
+  let openFrames = 0
+  let sent = false
+  session.bargeTimer = window.setInterval(() => {
+    if (!live || live.agentId !== session.agentId) return
+    analyser.getByteTimeDomainData(bins)
+    let sum = 0
+    for (const value of bins) {
+      const centered = (value - 128) / 128
+      sum += centered * centered
+    }
+    const energy = Math.sqrt(sum / bins.length)
+    if (energy >= BARGE_OPEN) {
+      openFrames += 1
+      if (
+        openFrames >= BARGE_START_FRAMES &&
+        !sent &&
+        getVoicePresence().ttsPlaying
+      ) {
+        sent = true
+        void interruptAgoraConversation()
+      }
+    } else {
+      openFrames = 0
+      sent = false
+    }
+  }, 50)
 }

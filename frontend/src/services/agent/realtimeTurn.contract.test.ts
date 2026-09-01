@@ -21,7 +21,14 @@ test('old Chat generation cannot keep applying after a newer Chat send', () => {
   assert.equal(isCurrentChatGeneration(first, second), false)
   const engine = source('../../components/agent-panel/AgentEngine.tsx')
   assert.match(engine, /isCurrentChatGeneration\(generation/)
-  assert.match(engine, /setLiveMotionGeneration\(chatGeneration\)/)
+  assert.match(engine, /setTurnGeneration\(chatGeneration\)/)
+  // Motion and face must advance together; the facade is the only place that
+  // can let them disagree, so assert the pairing there rather than in the engine.
+  const facade = source('../../features/merope/engineFace.ts')
+  assert.match(
+    facade,
+    /setTurnGeneration[^}]*setLiveMotionGeneration\(generation\)[^}]*agentFace\.setGeneration\(generation\)/,
+  )
   const lifecycle = source('../../features/merope/performanceLifecycle.ts')
   assert.match(lifecycle, /acceptLiveMotionGeneration\(event\.generation\)/)
 })

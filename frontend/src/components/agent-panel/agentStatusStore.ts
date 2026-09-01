@@ -11,6 +11,7 @@
 
 import type { ProgressEvent } from '../../services/agent'
 import type { AgentPendingAction } from './agentAction'
+import type { AgentPanelMode } from './agentPanelMode'
 import type { AgentStatusState } from './agentStatus'
 import type { AgentUndoOffer } from './agentUndo'
 import { useSyncExternalStore } from 'react'
@@ -31,6 +32,17 @@ let recording = false
 
 /** 对外那一份，`withListening` 之后的结果。引用稳定，供 useSyncExternalStore 用。 */
 let published: AgentStatusState = IDLE_AGENT_STATUS
+
+const IDLE_LANES: Record<AgentPanelMode, boolean> = {
+  work: false,
+  chat: false,
+}
+
+/**
+ * 当前档有没有占用输入行。岛状态是全站一份；终止按钮必须看「我正看着的那一档」
+ * 还在不在跑，不然办事没停完时聊天档的终止会按了没反应。
+ */
+let laneLoading: Record<AgentPanelMode, boolean> = IDLE_LANES
 
 /**
  * 正在等确认的那个操作。它是状态的一部分，不是另一份状态 —— 只在助手停下来
@@ -228,4 +240,38 @@ export function useAgentStatus(): AgentStatusState {
     getAgentStatusSnapshot,
     getServerAgentStatusSnapshot,
   )
+}
+
+/** 这一档开始或结束占用输入行。岛状态没变也要叫醒订阅者。 */
+export function setAgentLaneLoading(
+  mode: AgentPanelMode,
+  loading: boolean,
+): void {
+  if (laneLoading[mode] === loading) return
+  laneLoading = { ...laneLoading, [mode]: loading }
+  notify()
+}
+
+export function getAgentLaneLoading(mode: AgentPanelMode): boolean {
+  return laneLoading[mode]
+}
+
+export function getAgentLaneLoadingSnapshot(): Record<AgentPanelMode, boolean> {
+  return laneLoading
+}
+
+export function getServerAgentLaneLoadingSnapshot(): Record<
+  AgentPanelMode,
+  boolean
+> {
+  return IDLE_LANES
+}
+
+export function useAgentLaneLoading(mode: AgentPanelMode): boolean {
+  const lanes = useSyncExternalStore(
+    subscribeAgentStatus,
+    getAgentLaneLoadingSnapshot,
+    getServerAgentLaneLoadingSnapshot,
+  )
+  return lanes[mode]
 }

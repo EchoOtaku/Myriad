@@ -551,6 +551,13 @@ pub async fn process_stream(
                 biased;
                 result = agent.process_with_progress(user_request, tx.clone()) => result,
                 _ = cancelled => {
+                    // Dropping process_with_progress skips its idle mark.
+                    crate::services::agent::merope::mark_activity(
+                        &db_clone,
+                        user_id,
+                        "idle",
+                    )
+                    .await;
                     let _ = tx
                         .send(crate::services::agent::turn::superseded_turn_event())
                         .await;

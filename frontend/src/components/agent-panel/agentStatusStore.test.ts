@@ -5,10 +5,12 @@ import { buildAgentPendingAction } from './agentAction'
 import { DONE_LINGER_MS, ERROR_LINGER_MS } from './agentStatus'
 import {
   clearAgentPendingAction,
+  getAgentLaneLoading,
   getAgentPendingActionSnapshot,
   getAgentStatusSnapshot,
   pushAgentStatusEvent,
   resetAgentStatus,
+  setAgentLaneLoading,
   setAgentPendingAction,
   setAgentStatusAwaitingConfirmation,
   setAgentStatusRecording,
@@ -30,6 +32,8 @@ const stepStarted: ProgressEvent = {
 afterEach(() => {
   mock.timers.reset()
   setAgentStatusRecording(false)
+  setAgentLaneLoading('work', false)
+  setAgentLaneLoading('chat', false)
   resetAgentStatus()
 })
 
@@ -178,6 +182,24 @@ test('按 id 收卡片，收错的那张不动', () => {
   assert.equal(getAgentPendingActionSnapshot()?.id, 'c1')
   clearAgentPendingAction('c1')
   assert.equal(getAgentPendingActionSnapshot(), null)
+})
+
+test('车道占用变了就算岛状态没变也要叫醒订阅者', () => {
+  setAgentStatusThinking()
+  let notifications = 0
+  const unsubscribe = subscribeAgentStatus(() => {
+    notifications += 1
+  })
+  setAgentLaneLoading('chat', true)
+  assert.equal(getAgentLaneLoading('chat'), true)
+  assert.equal(getAgentLaneLoading('work'), false)
+  assert.equal(notifications, 1)
+  setAgentLaneLoading('chat', true)
+  assert.equal(notifications, 1)
+  setAgentLaneLoading('chat', false)
+  assert.equal(getAgentLaneLoading('chat'), false)
+  assert.equal(notifications, 2)
+  unsubscribe()
 })
 
 test('中断时卡片一起收走', () => {

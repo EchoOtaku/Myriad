@@ -216,6 +216,11 @@ export interface PerformanceCue {
   tempo: number
   fadeInMs: number
   fadeOutMs: number
+  /**
+   * Scheduler-resolved `strokeEnd -> relax` span. Absent on a cue that came
+   * straight from the model; the player then falls back to its tempo heuristic.
+   */
+  holdMs?: number
   interrupt: 'replace' | 'queue' | 'if-lower'
 }
 

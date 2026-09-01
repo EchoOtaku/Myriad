@@ -52,7 +52,7 @@ function useMotionRuntimeConsumer(
       const rig = rigRef.current
       if (!rig) return
       applyMotionFrame(rig, frame, state, (feedback) => {
-        runtime.reportPerformanceRealizer(
+        runtime.reportBehaviorRealizer(
           feedback.planId,
           feedback.behaviorId,
           feedback.result,

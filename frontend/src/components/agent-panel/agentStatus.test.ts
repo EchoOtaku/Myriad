@@ -3,6 +3,7 @@ import type { AgentStatusState } from './agentStatus'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  agentStatusForLane,
   agentStatusIsActive,
   awaitingConfirmation,
   beginAgentRun,
@@ -186,6 +187,18 @@ test('录音只在没事干的时候顶到最前', () => {
   })
 
   assert.deepEqual(withListening(working, false), working)
+})
+
+test('当前档没在跑时，思考和执行收成空闲，别的岛状态不动', () => {
+  assert.equal(agentStatusForLane('thinking', false), 'idle')
+  assert.equal(agentStatusForLane('working', false), 'idle')
+  assert.equal(agentStatusForLane('thinking', true), 'thinking')
+  assert.equal(agentStatusForLane('working', true), 'working')
+  assert.equal(agentStatusForLane('needsInput', false), 'needsInput')
+  assert.equal(agentStatusForLane('done', false), 'done')
+  assert.equal(agentStatusForLane('error', false), 'error')
+  assert.equal(agentStatusForLane('listening', false), 'listening')
+  assert.equal(agentStatusForLane('idle', true), 'idle')
 })
 
 test('除空闲外都要岛留在场上 —— 移动端顶替导航岛就看这个', () => {

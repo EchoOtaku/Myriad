@@ -34,6 +34,7 @@ export type TurnTraceDropReason =
   | 'queue_replaced'
   | 'cancelled'
   | 'lease_conflict'
+  | 'foreign_speech_frame'
 
 export type TurnTraceExtra = Record<string, string | number | boolean>
 

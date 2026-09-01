@@ -46,24 +46,20 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { usePageContentOptional } from '../../contexts/PageContentContext'
-import { agentFace } from '../../features/merope/agentFaceChannel'
-import { getLocalPerception, getProductionBody } from '../../features/merope/body/host'
 import {
-  cancelGatedSpeech,
-  deliverGatedLine,
-  faceSpeechGate,
-  openGatedReply,
-  setLiveBody,
-} from '../../features/merope/faceSpeechArbitration'
-import { livePresenceFacts } from '../../features/merope/livePresence'
-import { setLiveMotionGeneration } from '../../features/merope/motion/liveGeneration'
-import { captureProductionRigStateSummary } from '../../features/merope/motion/runtimeHost'
-import {
+  attachLiveBody,
+  captureTurnBody,
+  deliverTurnLine,
   notePresenceRoute,
+  openTurnReply,
+  setFaceMood,
+  setTurnGeneration,
+  SpeechSegmenter,
   startPresenceInbound,
-} from '../../features/merope/perception/inbound'
-import { getSpeechPipeline } from '../../features/merope/speech/speechPipelineHost'
-import { SpeechSegmenter } from '../../features/merope/speech/speechSegmenter'
+  stopTurnSpeech,
+  turnSpeechAlreadyFed,
+  turnSpeechPipeline,
+} from '../../features/merope/engineFace'
 import {
   beginTurnTrace,
   markTurnTraceOnce,
@@ -108,6 +104,7 @@ import {
   clearAgentPendingAction,
   pushAgentStatusEvent,
   resetAgentStatus,
+  setAgentLaneLoading,
   setAgentPendingAction,
   setAgentStatusAwaitingConfirmation,
   setAgentStatusThinking,
@@ -131,11 +128,6 @@ import { useMessageState } from './useMessageState'
 
 function currentPath(): string {
   return `${window.location.pathname}${window.location.search}`
-}
-
-function stopTurnSpeech(messageId: string): void {
-  cancelGatedSpeech(agentFace, faceSpeechGate, messageId)
-  getSpeechPipeline().cancel(messageId)
 }
 
 function finishTurnTrace(): void {
@@ -221,6 +213,7 @@ export const AgentEngine: React.FC = () => {
     work: null,
     chat: null,
   })
+  const discardedResponseIdsRef = useRef(new Set<string>())
 
   const handleSendRef =
     useRef<
@@ -283,12 +276,19 @@ export const AgentEngine: React.FC = () => {
     const current = getAgentPanelMode()
     const loadingId = loadingMessageIdByModeRef.current[current]
     if (loadingId) {
+      discardedResponseIdsRef.current.add(loadingId)
       stopTurnSpeech(loadingId)
     }
     loadingByModeRef.current[current] = false
     loadingMessageIdByModeRef.current[current] = null
+    setAgentLaneLoading(current, false)
     setIsLoading(loadingByModeRef.current.work || loadingByModeRef.current.chat)
-    if (current === 'work') resetAgentStatus()
+    const otherRunning =
+      current === 'chat'
+        ? loadingByModeRef.current.work
+        : loadingByModeRef.current.chat
+    resetAgentStatus()
+    if (otherRunning) setAgentStatusThinking()
     sessionIdsByModeRef.current[current] = null
     setSessionId(null, current)
     setMessages([], current)
@@ -369,6 +369,7 @@ export const AgentEngine: React.FC = () => {
 
           loadingMessageIdByModeRef.current.work = candidate.messageId
           loadingByModeRef.current.work = true
+          setAgentLaneLoading('work', true)
           setIsLoading(true)
           setAgentStatusThinking()
           const onProgress = createProgressHandlerRef.current?.(
@@ -385,11 +386,12 @@ export const AgentEngine: React.FC = () => {
               console.warn('[AgentEngine] reattach stream ended:', error)
             })
             .finally(() => {
-              loadingByModeRef.current.work = false
               if (
                 loadingMessageIdByModeRef.current.work === candidate.messageId
               ) {
+                loadingByModeRef.current.work = false
                 loadingMessageIdByModeRef.current.work = null
+                setAgentLaneLoading('work', false)
               }
               setIsLoading(
                 loadingByModeRef.current.work || loadingByModeRef.current.chat,
@@ -629,8 +631,7 @@ export const AgentEngine: React.FC = () => {
   }, [])
 
   useEffect(() => {
-    setLiveBody(getProductionBody())
-    return () => setLiveBody(null)
+    return attachLiveBody()
   }, [])
 
   // 新 UI 的历史列表挑了一条。取消息、重连进行中的任务都还是这边的活。
@@ -669,7 +670,12 @@ export const AgentEngine: React.FC = () => {
     if (current === 'chat') {
       const sessionId = sessionIdsByModeRef.current.chat
       void agentService.cancelChatTurn(sessionId || '')
+      const generation = chatTurnClockRef.current.next()
+      setTurnGeneration(generation)
     }
+
+    const discardedId = loadingMessageIdByModeRef.current[current]
+    if (discardedId) discardedResponseIdsRef.current.add(discardedId)
 
     const processingMsgs = messagesRef.current[current].filter(
       (m) =>
@@ -678,42 +684,44 @@ export const AgentEngine: React.FC = () => {
         m.taskExecution?.status === 'cancelling',
     )
     for (const msg of processingMsgs) {
+      discardedResponseIdsRef.current.add(msg.id)
       stopTurnSpeech(msg.id)
+    }
+
+    // Drop occupancy before awaiting cancel, otherwise a late token writes
+    // thinking back. Always idle the island; if the other lane is still in
+    // flight, put thinking back so that lane's stop button still has a home.
+    loadingByModeRef.current[current] = false
+    loadingMessageIdByModeRef.current[current] = null
+    setAgentLaneLoading(current, false)
+    setIsLoading(loadingByModeRef.current.work || loadingByModeRef.current.chat)
+    const otherRunning =
+      current === 'chat'
+        ? loadingByModeRef.current.work
+        : loadingByModeRef.current.chat
+    resetAgentStatus()
+    if (otherRunning) setAgentStatusThinking()
+
+    for (const msg of processingMsgs) {
       const taskId = msg.taskExecution?.taskId
-      // 先进入 cancelling，避免乐观地显示 error 而后端仍在跑
-      updateMessageExecution(msg.id, { status: 'cancelling' })
+      updateMessage(msg.id, {
+        taskExecution: msg.taskExecution
+          ? { ...msg.taskExecution, status: 'error' }
+          : undefined,
+        content: msg.content || t.agentPanel.interrupted,
+      })
       if (taskId && !taskId.startsWith('confirmation:')) {
         try {
           await agentService.cancelTask(taskId)
-          updateMessage(msg.id, {
-            taskExecution: msg.taskExecution
-              ? { ...msg.taskExecution, status: 'error' }
-              : undefined,
-            content: msg.content || t.agentPanel.interrupted,
-          })
         } catch {
           updateMessage(msg.id, {
-            taskExecution: msg.taskExecution
-              ? { ...msg.taskExecution, status: 'error' }
-              : undefined,
             content:
               msg.content ||
               `${t.agentPanel.interrupted} (${t.agentPanel.cancelFailed})`,
           })
         }
-      } else {
-        updateMessage(msg.id, {
-          taskExecution: msg.taskExecution
-            ? { ...msg.taskExecution, status: 'error' }
-            : undefined,
-          content: msg.content || t.agentPanel.interrupted,
-        })
       }
     }
-    loadingByModeRef.current[current] = false
-    loadingMessageIdByModeRef.current[current] = null
-    setIsLoading(loadingByModeRef.current.work || loadingByModeRef.current.chat)
-    if (current === 'work') resetAgentStatus()
   }, [messagesRef, updateMessage, updateMessageExecution, t])
   // 界面上按的「开新对话」「停下」。真正的动作在这边，界面只递一个意思。
   useEffect(() => {
@@ -738,12 +746,10 @@ export const AgentEngine: React.FC = () => {
       let streamedSummary = ''
       let streamedThinking = ''
       let notedStaleGeneration = false
-      const pipeline = getSpeechPipeline()
+      const pipeline = turnSpeechPipeline()
       void pipeline.probe()
       const segmenter = new SpeechSegmenter(assistantMessageId, generation)
-      const utterance = openGatedReply(
-        agentFace,
-        faceSpeechGate,
+      const utterance = openTurnReply(
         mode,
         assistantMessageId,
         locale,
@@ -763,6 +769,9 @@ export const AgentEngine: React.FC = () => {
             notedStaleGeneration = true
             noteTurnTraceDrop('stale_generation')
           }
+          return
+        }
+        if (loadingMessageIdByModeRef.current[mode] !== assistantMessageId) {
           return
         }
         // 岛与面板读同一份状态：这里是唯一的入口，别处不再解读 SSE
@@ -992,10 +1001,7 @@ export const AgentEngine: React.FC = () => {
 
           case 'merope_state_changed': {
             const stateEvent = event as MeropeStateChangedEvent
-            agentFace.updateState({
-              mood: stateEvent.mood,
-              activity: stateEvent.activity,
-            })
+            setFaceMood(stateEvent.mood, stateEvent.activity)
             break
           }
 
@@ -1011,7 +1017,7 @@ export const AgentEngine: React.FC = () => {
                 phase: performancePhase,
               })
             }
-            deliverGatedLine(agentFace, faceSpeechGate, mode, {
+            deliverTurnLine(mode, {
               messageId: assistantMessageId,
               performance: performanceEvent.performance,
             })
@@ -1041,7 +1047,12 @@ export const AgentEngine: React.FC = () => {
                 loadingMessageIdByModeRef.current[mode] === assistantMessageId
               ) {
                 loadingMessageIdByModeRef.current[mode] = null
-                setIsLoading(false)
+                loadingByModeRef.current[mode] = false
+                setAgentLaneLoading(mode, false)
+                setIsLoading(
+                  loadingByModeRef.current.work ||
+                    loadingByModeRef.current.chat,
+                )
               }
             }
             break
@@ -1305,8 +1316,7 @@ export const AgentEngine: React.FC = () => {
       markTurnTraceOnce('input_started')
       markTurnTraceOnce('input_final')
       if (mode === 'chat') {
-        setLiveMotionGeneration(chatGeneration)
-        agentFace.setGeneration(chatGeneration)
+        setTurnGeneration(chatGeneration)
         const previousChatId = loadingMessageIdByModeRef.current.chat
         if (previousChatId) {
           stopTurnSpeech(previousChatId)
@@ -1316,6 +1326,7 @@ export const AgentEngine: React.FC = () => {
       setMessages((prev) => [...prev, userMessage, assistantMessage], mode)
       loadingMessageIdByModeRef.current[mode] = assistantMsgId
       loadingByModeRef.current[mode] = true
+      setAgentLaneLoading(mode, true)
       setIsLoading(true)
       setAgentStatusThinking()
 
@@ -1330,8 +1341,6 @@ export const AgentEngine: React.FC = () => {
         }
         context.mode = mode
         if (intentionId) context.intentionId = intentionId
-        context.rigState = captureProductionRigStateSummary()
-
         // 页面内容
         const customData: Record<string, unknown> = {}
         const pageConsent = getAgentContextConsent()
@@ -1342,12 +1351,14 @@ export const AgentEngine: React.FC = () => {
             customData.pageContent = contentForAgent
           }
         }
-        customData.perception = getLocalPerception().capture({
+        const body = captureTurnBody({
           route: location.pathname,
           page: pageConsent ? (pageContentContext?.pageContent ?? null) : null,
           pageConsent,
         })
-        customData.presence = livePresenceFacts()
+        context.rigState = body.rigState
+        customData.perception = body.perception
+        customData.presence = body.presence
         if (attachments.length) {
           customData.attachments = attachmentsForRequest(attachments)
         }
@@ -1438,6 +1449,7 @@ export const AgentEngine: React.FC = () => {
         if (loadingMessageIdByModeRef.current[mode] === assistantMsgId) {
           loadingByModeRef.current[mode] = false
           loadingMessageIdByModeRef.current[mode] = null
+          setAgentLaneLoading(mode, false)
         }
         setIsLoading(
           loadingByModeRef.current.work || loadingByModeRef.current.chat,
@@ -1471,6 +1483,7 @@ export const AgentEngine: React.FC = () => {
       mode: AgentPanelMode = 'work',
       generation = 0,
     ) => {
+      if (discardedResponseIdsRef.current.delete(messageId)) return
       const taskData = response.task as Record<string, unknown> | undefined
       let pendingQuestion = taskData?.pendingQuestion as
         PendingQuestion | undefined
@@ -1539,7 +1552,7 @@ export const AgentEngine: React.FC = () => {
               : ''),
           progress: 100,
         })
-        deliverGatedLine(agentFace, faceSpeechGate, mode, {
+        deliverTurnLine(mode, {
           messageId,
           text: pendingQuestion.question,
           locale,
@@ -1684,9 +1697,9 @@ export const AgentEngine: React.FC = () => {
           chatTurnClockRef.current.current(),
         )
       if (isSuccess && !staleChat) {
-        deliverGatedLine(agentFace, faceSpeechGate, mode, {
+        deliverTurnLine(mode, {
           messageId,
-          text: getSpeechPipeline().alreadyFed(messageId)
+          text: turnSpeechAlreadyFed(messageId)
             ? undefined
             : spokenReply,
           locale,
@@ -1887,6 +1900,7 @@ export const AgentEngine: React.FC = () => {
       })
       loadingMessageIdByModeRef.current.work = messageId
       loadingByModeRef.current.work = true
+      setAgentLaneLoading('work', true)
       setIsLoading(true)
       setAgentStatusThinking()
 
@@ -1910,15 +1924,20 @@ export const AgentEngine: React.FC = () => {
       } catch (error) {
         stopTurnSpeech(messageId)
         finishTurnTrace()
+        if (isUserInterruptError(error) || isStreamSupersededError(error)) {
+          updateMessageExecution(messageId, { status: 'error' })
+          return
+        }
         const errorMsg = userFacingError(error, t.errors.agentConfirmFailed)
         updateMessage(messageId, {
           content: format(t.agentPanel.answerFailed, { error: errorMsg }),
         })
         updateMessageExecution(messageId, { status: 'error' })
       } finally {
-        loadingByModeRef.current.work = false
         if (loadingMessageIdByModeRef.current.work === messageId) {
+          loadingByModeRef.current.work = false
           loadingMessageIdByModeRef.current.work = null
+          setAgentLaneLoading('work', false)
         }
         setIsLoading(
           loadingByModeRef.current.work || loadingByModeRef.current.chat,

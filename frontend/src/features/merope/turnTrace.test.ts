@@ -109,5 +109,7 @@ test('trace sources stay off the run hub and never persist visemes', () => {
     'utf8',
   )
   assert.match(engine, /beginTurnTrace\(/)
-  assert.match(engine, /livePresenceFacts\(/)
+  assert.match(engine, /captureTurnBody\(/)
+  const face = readFileSync(new URL('./engineFace.ts', import.meta.url), 'utf8')
+  assert.match(face, /livePresenceFacts\(/)
 })

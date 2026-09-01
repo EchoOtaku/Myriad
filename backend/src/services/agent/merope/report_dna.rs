@@ -1,5 +1,9 @@
 //! Distill personality tags from platform reports.
 //!
+//! The tag-distillation rules live here, not in `myriad-merope`: a copy once
+//! did, gained no consumer, and silently drifted apart on six behaviors before
+//! it was deleted. Only the shared onboarding caps come from the crate.
+//!
 //! Latest report per platform; evidence is summary / insights / notes /
 //! structured labels. Pro writes spoken temperament tags via
 //! `onboarding_prompts::TAGS_SYSTEM_PROMPT`. Visual assets stay out.
@@ -10,6 +14,8 @@ use std::time::Duration;
 use sea_orm::{ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder};
 use serde::Serialize;
 use serde_json::{json, Value};
+
+use myriad_merope::{MAX_ONBOARDING_TAGS, MAX_ONBOARDING_TAG_CHARS};
 
 use crate::config::ModelTier;
 use crate::models::entities::platform_reports;
@@ -22,8 +28,6 @@ const MAX_REPORT_DNA_REPORTS: usize = 12;
 const MAX_REPORT_SUMMARY_CHARS: usize = 800;
 const MAX_REPORT_INSIGHT_CHARS: usize = 1_600;
 const MAX_REPORT_NOTE_CHARS: usize = 800;
-const MAX_ONBOARDING_TAGS: usize = 28;
-const MAX_ONBOARDING_TAG_CHARS: usize = 24;
 /// Keep in sync with `PERSONA_GENERATION_TIMEOUT_MS` / `MEROPE_PROXY_TIMEOUT_MS`.
 const REPORT_DNA_AI_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 

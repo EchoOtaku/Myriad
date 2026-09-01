@@ -1345,7 +1345,7 @@ const GlobalControlPanel: React.FC = () => {
     [handleClosePanel],
   )
 
-  const handleOpenAraelManage = useCallback(
+  const handleOpenAgentManage = useCallback(
     (tab?: 'heartbeat' | 'skills' | 'memory') => {
       handleClosePanel()
       window.dispatchEvent(
@@ -2101,7 +2101,7 @@ const GlobalControlPanel: React.FC = () => {
                       fill
                       onOpenSession={handleOpenNotifSession}
                       onNavigate={handleNavigateFromPanel}
-                      onOpenAraelManage={handleOpenAraelManage}
+                      onOpenAgentManage={handleOpenAgentManage}
                       browserNotificationsEnabled={
                         notificationPreferences.delivery.browser
                       }

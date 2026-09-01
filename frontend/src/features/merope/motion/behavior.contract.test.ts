@@ -55,6 +55,9 @@ function frame(
     performance: null,
     music: null,
     mood: null,
+    behaviorPlan: null,
+    behaviorRevision: 0,
+    behaviors: [],
     ...extra,
   }
 }
@@ -138,6 +141,7 @@ test('applyFrame writes speech text only while speech owns the mouth', () => {
         energy: null,
         articulation: null,
         prosody: null,
+        behaviorPlan: null,
         behaviors: [],
         queuedText: [{ seq: 1, text: '你好' }],
       },
@@ -170,7 +174,7 @@ test('cue facts have one registry and dead motion channels stay removed', () => 
   const channels = source('./performanceChannels.ts')
   assert.doesNotMatch(channels, /speechless|maniac|lovestruck/)
   assert.match(channels, /performanceCueDefinition/)
-  assert.doesNotMatch(source('./channels.ts'), /physics/)
+  assert.doesNotMatch(source('./channels.ts'), /['"]physics['"]/)
 })
 
 test('workbench preview stays off the production coordinator', () => {

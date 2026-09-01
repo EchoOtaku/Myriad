@@ -3,14 +3,14 @@ import type {
   PerformanceDirective,
 } from '../../../services/agent/types'
 import type { MotionChannel } from './channels'
-import { performanceCueDefinition } from '../anime25drig/performanceCueDefinitions'
+import { performanceCueChannels } from '../anime25drig/performanceCueDefinitions'
 
 export function cueOccupiesHeadBody(cue: PerformanceCue): boolean {
-  return performanceCueDefinition(cue.intent).channels.includes('headBody')
+  return performanceCueChannels(cue.intent).includes('headBody')
 }
 
 export function cueOccupiesGaze(cue: PerformanceCue): boolean {
-  return performanceCueDefinition(cue.intent).channels.includes('gaze')
+  return performanceCueChannels(cue.intent).includes('gaze')
 }
 
 /**
@@ -25,7 +25,7 @@ export function performanceOccupiedChannels(
   const baseline = directive.plan.baseline
   if (baseline && baseline.posture !== 'neutral') channels.add('headBody')
   for (const cue of directive.plan.cues) {
-    for (const channel of performanceCueDefinition(cue.intent).channels) {
+    for (const channel of performanceCueChannels(cue.intent)) {
       channels.add(channel)
     }
   }

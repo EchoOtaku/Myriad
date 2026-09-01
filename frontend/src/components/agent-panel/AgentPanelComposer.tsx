@@ -50,7 +50,12 @@ import {
   cycleAgentPanelMode,
   useAgentPanelMode,
 } from './agentPanelMode'
-import { setAgentStatusRecording, useAgentStatus } from './agentStatusStore'
+import { agentStatusForLane } from './agentStatus'
+import {
+  setAgentStatusRecording,
+  useAgentLaneLoading,
+  useAgentStatus,
+} from './agentStatusStore'
 import { attachOrbDriftSpeed, startAttachOrbDrift } from './attachOrbDrift'
 import { composerActionKind } from './composerAction'
 import {
@@ -95,7 +100,10 @@ function ComposerAttach({
   errorLabel: string | null
 }) {
   const { t } = useI18n()
-  const { status } = useAgentStatus()
+  const mode = useAgentPanelMode()
+  const { status: island } = useAgentStatus()
+  const laneLoading = useAgentLaneLoading(mode)
+  const status = agentStatusForLane(island, laneLoading)
   const orbRef = useRef<HTMLSpanElement>(null)
   const orbSpeedRef = useRef(attachOrbDriftSpeed(status))
   orbSpeedRef.current = attachOrbDriftSpeed(status)
@@ -157,8 +165,11 @@ function ComposerAction({
   enterConversation: () => void
 }) {
   const { t } = useI18n()
+  const mode = useAgentPanelMode()
   const { status } = useAgentStatus()
-  const busy = status === 'thinking' || status === 'working'
+  const laneLoading = useAgentLaneLoading(mode)
+  const display = agentStatusForLane(status, laneLoading)
+  const busy = display === 'thinking' || display === 'working'
   const holdTimerRef = useRef<number | null>(null)
   const holdOriginRef = useRef<{ x: number; y: number } | null>(null)
   const holdFiredRef = useRef(false)

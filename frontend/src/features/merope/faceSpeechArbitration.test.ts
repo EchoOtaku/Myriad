@@ -222,8 +222,15 @@ test('notification center and engine cancel go through the gated Work/Chat helpe
   assert.match(panel, /notificationCarriesMeropeSpeech/)
   assert.doesNotMatch(panel, /n\.metadata\?\.event_key/)
   assert.doesNotMatch(panel, /agentFace\.deliver\(/)
-  assert.match(engine, /cancelGatedSpeech\(/)
-  assert.doesNotMatch(engine, /agentFace\.cancel\(/)
+  // The engine cancels through the facade and never names the channel itself.
+  assert.match(engine, /stopTurnSpeech\(/)
+  assert.doesNotMatch(engine, /agentFace\./)
+  const face = readFileSync(
+    new URL('./engineFace.ts', import.meta.url),
+    'utf8',
+  )
+  assert.match(face, /cancelGatedSpeech\(/)
+  assert.doesNotMatch(face, /agentFace\.cancel\(/)
   const arbitration = readFileSync(
     new URL('./faceSpeechArbitration.ts', import.meta.url),
     'utf8',

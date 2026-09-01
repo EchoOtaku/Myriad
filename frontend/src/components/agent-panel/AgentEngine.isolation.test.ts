@@ -22,10 +22,45 @@ test('Work interrupt cannot abort Chat SSE, and session ids stay per mode', () =
   assert.match(engine, /isStreamSupersededError/)
   assert.match(engine, /isUserInterruptError/)
   assert.match(engine, /isCurrentChatGeneration/)
-  assert.match(engine, /setLiveMotionGeneration/)
-  assert.match(engine, /agentFace.setGeneration/)
+  // Both generations now advance in one facade call; assert it there.
+  assert.match(engine, /setTurnGeneration\(/)
+  const face = readFileSync(
+    new URL('../../features/merope/engineFace.ts', import.meta.url),
+    'utf8',
+  )
+  assert.match(face, /setLiveMotionGeneration/)
+  assert.match(face, /agentFace\.setGeneration/)
   assert.match(engine, /cancelChatTurn/)
-  assert.match(engine, /alreadyFed/)
+  assert.match(engine, /turnSpeechAlreadyFed\(/)
+  assert.match(face, /alreadyFed/)
+  assert.doesNotMatch(engine, /if \(current === 'work'\) resetAgentStatus/)
+  assert.doesNotMatch(engine, /if \(!otherRunning\) resetAgentStatus/)
+  assert.match(engine, /resetAgentStatus\(\)/)
+  assert.match(engine, /if \(otherRunning\) setAgentStatusThinking/)
+  assert.match(engine, /setAgentLaneLoading/)
+  assert.match(engine, /discardedResponseIdsRef/)
+  assert.match(
+    engine,
+    /loadingMessageIdByModeRef\.current\[mode\] !== assistantMessageId/,
+  )
+  const composer = readFileSync(
+    new URL('./AgentPanelComposer.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(composer, /agentStatusForLane\(status, laneLoading\)/)
+  assert.match(composer, /agentStatusForLane\(island, laneLoading\)/)
+  const panelFace = readFileSync(
+    new URL('./AgentPanelFace.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(
+    panelFace,
+    /current === 'thinking' \|\| current === 'talking'/,
+  )
+  assert.match(panelFace, /activityWhileChatIdle/)
+  assert.match(panelFace, /useAgentLaneLoading\('chat'\)/)
+  const panel = readFileSync(new URL('./AgentPanel.tsx', import.meta.url), 'utf8')
+  assert.match(panel, /agentStatusForLane\(island\.status, laneLoading\)/)
   assert.doesNotMatch(engine, /if \(mode === 'chat'\) return/)
   assert.match(engine, /mode !== 'chat'/)
   assert.match(engine, /case 'thinking_token'/)

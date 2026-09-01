@@ -28,6 +28,7 @@ import {
 import RigCharacter from '../../features/merope/rig/RigCharacter'
 import { agentService } from '../../services/agent'
 import { ADDRESSEE_UPDATED_EVENT } from '../agent/meropeVitals'
+import { useAgentLaneLoading, useAgentStatus } from './agentStatusStore'
 
 const DEFAULT_AGENT_NAME = 'Arael'
 const DEFAULT_MOOD = 70
@@ -35,6 +36,19 @@ const DEFAULT_MOOD = 70
 function toMeropeActivity(raw: string | undefined): MeropeActivity {
   if (raw === 'talking' || raw === 'thinking') return raw
   return 'idle'
+}
+
+function activityWhileChatIdle(
+  island: string,
+  chatLoading: boolean,
+  raw: string | undefined,
+): MeropeActivity {
+  const next = toMeropeActivity(raw)
+  if (next !== 'thinking' && next !== 'talking') return next
+  if (!chatLoading || island === 'idle' || island === 'listening') {
+    return 'idle'
+  }
+  return next
 }
 
 function hasPlayableRig(manifest: MeropeRigManifest | null): boolean {
@@ -62,6 +76,12 @@ export function AgentPanelFace() {
   const [agentName, setAgentName] = useState(DEFAULT_AGENT_NAME)
   const [mood, setMood] = useState(DEFAULT_MOOD)
   const [activity, setActivity] = useState<MeropeActivity>('idle')
+  const { status } = useAgentStatus()
+  const chatLoading = useAgentLaneLoading('chat')
+  const statusRef = useRef(status)
+  const chatLoadingRef = useRef(chatLoading)
+  statusRef.current = status
+  chatLoadingRef.current = chatLoading
   const [personaOn, setPersonaOn] = useState(true)
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
@@ -107,11 +127,24 @@ export function AgentPanelFace() {
       )
       if (!detail) return
       setMood(detail.mood.after)
-      setActivity(toMeropeActivity(detail.activity))
+      setActivity(
+        activityWhileChatIdle(
+          statusRef.current,
+          chatLoadingRef.current,
+          detail.activity,
+        ),
+      )
     }
     window.addEventListener(MEROPE_STATE_EVENT, onState)
     return () => window.removeEventListener(MEROPE_STATE_EVENT, onState)
   }, [])
+
+  useEffect(() => {
+    if (chatLoading && status !== 'idle' && status !== 'listening') return
+    setActivity((current) =>
+      current === 'thinking' || current === 'talking' ? 'idle' : current,
+    )
+  }, [chatLoading, status])
 
   useEffect(() => {
     if (!hasChecked || !isAuthenticated) {
@@ -133,7 +166,13 @@ export function AgentPanelFace() {
           setMood(
             typeof persona.mood === 'number' ? persona.mood : DEFAULT_MOOD,
           )
-          setActivity(toMeropeActivity(persona.activity))
+          setActivity(
+            activityWhileChatIdle(
+              statusRef.current,
+              chatLoadingRef.current,
+              persona.activity,
+            ),
+          )
         })
         .catch(() => {
           if (active) setFailed(true)

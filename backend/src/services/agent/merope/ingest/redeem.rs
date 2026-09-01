@@ -23,7 +23,10 @@ use crate::services::agent::notifications::{
 };
 use crate::services::ai::create_ai_analyzer_for_tier;
 
-const MEROPE_OWNED_NOTIFY: &[&str] = &["agent.merope.platform_activity"];
+const MEROPE_OWNED_NOTIFY: &[&str] = &[
+    "agent.merope.platform_activity",
+    "agent.merope.report_ready",
+];
 
 /// Re-check chatting / dnd / working at redeem time. Produce-time gates
 /// are stale after the 15s autonomy loop.
@@ -258,7 +261,7 @@ async fn emit_speech_notification(
         .map(|(id, _)| id);
     let mut metadata = serde_json::json!({
         "event_key": event_key,
-        "action": "open_arael",
+        "action": "open_agent",
         "session_id": session_id,
     });
     if let Some(object) = metadata.as_object_mut() {
@@ -369,6 +372,7 @@ mod tests {
     #[test]
     fn only_merope_owned_speech_is_worth_a_model_call() {
         assert!(speech_is_shown("agent.merope.platform_activity", true));
+        assert!(speech_is_shown("agent.merope.report_ready", true));
         // These already have a producer sending the notification.
         assert!(!speech_is_shown("agent.task_failed", true));
         assert!(!speech_is_shown("brew.source_error", true));

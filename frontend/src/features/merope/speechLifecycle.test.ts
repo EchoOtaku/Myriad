@@ -5,6 +5,7 @@ import type {
   SpeechLifecycleTarget,
 } from './speechLifecycle'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
   estimateAutoSpeechDurationMs,
@@ -264,4 +265,57 @@ test('ignores speech from an older generation without cancelling the live one', 
   })
   assert.deepEqual(rig.active, [true])
   setLiveMotionGeneration(0)
+})
+
+test('a live-conversation energy frame cannot evict a reply that is speaking', () => {
+  const scheduler = new FakeScheduler()
+  const rig = fakeTarget()
+  const controller = new SpeechLifecycleController(rig.target, scheduler)
+  controller.handle({
+    phase: 'start',
+    messageId: 'reply-1',
+    utteranceId: 'u-1',
+    source: 'reply',
+  })
+  controller.handle({
+    phase: 'chunk',
+    messageId: 'reply-1',
+    utteranceId: 'u-1',
+    source: 'reply',
+    text: '在的',
+  })
+  // Agora samples the remote track at 20Hz under its own conversation id.
+  controller.handle({
+    phase: 'energy',
+    messageId: 'convo-agent-7',
+    utteranceId: 'convo-agent-7',
+    source: 'reply',
+    energy: 0.4,
+  })
+  assert.deepEqual(rig.active, [true])
+  assert.deepEqual(rig.energy, [])
+  assert.deepEqual(rig.text, [{ text: '在的' }])
+})
+
+test('a live-conversation energy frame still opens an idle mouth', () => {
+  const scheduler = new FakeScheduler()
+  const rig = fakeTarget()
+  const controller = new SpeechLifecycleController(rig.target, scheduler)
+  controller.handle({
+    phase: 'energy',
+    messageId: 'convo-agent-7',
+    utteranceId: 'convo-agent-7',
+    source: 'reply',
+    energy: 0.4,
+  })
+  assert.deepEqual(rig.active, [true])
+  assert.deepEqual(rig.energy, [0.4])
+})
+
+test('live-conversation frames carry the live generation', () => {
+  const source = readFileSync(
+    new URL('./speech/agoraConversation.ts', import.meta.url),
+    'utf8',
+  )
+  assert.match(source, /generation: liveMotionGeneration\(\)/)
 })

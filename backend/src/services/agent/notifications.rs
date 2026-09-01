@@ -563,7 +563,7 @@ impl NotificationManager {
         // Flag off must look exactly like before: no landing hint of its own,
         // the panel keeps resolving these by notification type and session id.
         if merope_on {
-            metadata["action"] = serde_json::json!("open_arael");
+            metadata["action"] = serde_json::json!("open_agent");
         }
         let mut notification = Notification::new(user_id, notification_type, priority, title, body)
             .with_metadata(metadata);

@@ -351,10 +351,16 @@ pub async fn read_limited_body(
     Ok(body)
 }
 
-/// Serialize lab-env mutations across tests (async-aware).
+/// Serialize every test that touches the lab env flag (async-aware).
 ///
-/// Always available (not `cfg(test)`) so other crates' unit tests can share the
-/// lock when mutating `MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND`.
+/// `MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND` is process-global while cargo runs
+/// tests in parallel threads, so **readers must hold this too, not only
+/// writers**: a test asserting that a private target is refused will otherwise
+/// observe another test's open window and see the connect attempt succeed.
+///
+/// Not `cfg(test)` because a dependency's test-only items are invisible to
+/// dependent crates. The lock is per test binary, which is the scope that
+/// shares the environment.
 pub async fn tests_lab_env_lock() -> tokio::sync::MutexGuard<'static, ()> {
     static LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
     LOCK.get_or_init(|| tokio::sync::Mutex::new(()))

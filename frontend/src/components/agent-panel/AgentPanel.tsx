@@ -54,8 +54,10 @@ import {
 } from './agentPanelStage'
 import { setAgentPanelVisible } from './agentPanelVisible'
 import { clearAgentSelection, watchAgentSelection } from './agentSelection'
+import { agentStatusForLane } from './agentStatus'
 import {
   clearAgentUndoOffer,
+  useAgentLaneLoading,
   useAgentPendingAction,
   useAgentStatus,
   useAgentUndoOffer,
@@ -69,7 +71,10 @@ const AgentPanelAurora: React.FC<{
   phase: AgentPanelPhase
   stage: AgentPanelStage
 }> = ({ phase, stage }) => {
-  const { status } = useAgentStatus()
+  const mode = useAgentPanelMode()
+  const island = useAgentStatus()
+  const laneLoading = useAgentLaneLoading(mode)
+  const status = agentStatusForLane(island.status, laneLoading)
   const auroraRef = useRef<HTMLDivElement>(null)
   const prismARef = useRef<HTMLSpanElement>(null)
   const prismBRef = useRef<HTMLSpanElement>(null)
