@@ -85,7 +85,7 @@
     "namedValue": "^[A-Za-z0-9._-]+$",
     "safeComponent": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
     "semver": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$",
-    "storageKey": "^[A-Za-z0-9_.:-]+$",
+    "storageKey": "^(?:[A-Za-z0-9_:-]+\\.)*[A-Za-z0-9_:-]+$",
     "themeColor": "^#[0-9A-Fa-f]{6}$"
   },
   "permissionLevels": {

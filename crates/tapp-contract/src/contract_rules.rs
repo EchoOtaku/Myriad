@@ -255,7 +255,8 @@ pub const LOCALE_TAG_PATTERN: &str = r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{1,8})*$";
 pub const SEMVER_PATTERN: &str =
     r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$";
 pub const NAMED_VALUE_PATTERN: &str = r"^[A-Za-z0-9._-]+$";
-pub const STORAGE_KEY_PATTERN: &str = r"^[A-Za-z0-9_.:-]+$";
+/// Charset plus no leading/trailing `.` and no consecutive `..`.
+pub const STORAGE_KEY_PATTERN: &str = r"^(?:[A-Za-z0-9_:-]+\.)*[A-Za-z0-9_:-]+$";
 pub const THEME_COLOR_PATTERN: &str = r"^#[0-9A-Fa-f]{6}$";
 pub const SEMVER_PREFIXES: &[&str] = &["v"];
 pub const SETTING_FIELD_TYPES: &[(&str, &str)] = &[
