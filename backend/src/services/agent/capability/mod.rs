@@ -165,21 +165,6 @@ pub async fn get_capability_summary_filtered(granted: Option<&HashSet<String>>) 
     })
 }
 
-/// 获取能力紧凑索引（用于 AI 提示的渐进式披露）
-///
-/// 返回仅包含 ID + 一句话 hint 的轻量列表，大幅减少 prompt token 用量。
-/// AI 根据此索引选出 `suggested_capabilities`，后续再按需加载完整 schema。
-///
-/// 每个条目的字段：`id` / `h` 用途 / `p` 必需入参 / `o` 声明的输出字段。
-/// `o` 让 Planner 能写出 `"dataFrom": "search.results"` 这类精确引用，
-/// 而不是只引用整个步骤输出再由执行层猜哪个字段有用。
-///
-/// Note: AI 能力（含 ai.webSearch）始终保持注册与可规划；缺失 API Key 时由执行层
-/// 返回非重试错误，而不是在索引中降级/隐藏能力。
-pub async fn get_compact_index() -> Value {
-    get_compact_index_for_grants(None).await
-}
-
 /// Whether every `required_permissions` entry is in the grant set.
 /// Empty required list is callable. `granted = None` means unfiltered (tests / admin index).
 pub fn capability_covered_by_grants(cap: &Capability, granted: Option<&HashSet<String>>) -> bool {
@@ -195,6 +180,13 @@ pub fn capability_covered_by_grants(cap: &Capability, granted: Option<&HashSet<S
 ///
 /// Planner used to see the full 117 plus MCP, then fail at execute for
 /// non-admin. Filtering here is the grant layer, not declared/approved.
+///
+/// 每个条目的字段：`id` / `h` 用途 / `p` 必需入参 / `o` 声明的输出字段。
+/// `o` 让 Planner 能写出 `"dataFrom": "search.results"` 这类精确引用，
+/// 而不是只引用整个步骤输出再由执行层猜哪个字段有用。
+///
+/// Note: AI 能力（含 ai.webSearch）始终保持注册与可规划；缺失 API Key 时由执行层
+/// 返回非重试错误，而不是在索引中降级/隐藏能力。
 pub async fn get_compact_index_for_grants(granted: Option<&HashSet<String>>) -> Value {
     let registry = get_registry().await;
 
@@ -446,7 +438,7 @@ mod tests {
 
     #[tokio::test]
     async fn compact_index_exposes_declared_output_fields() {
-        let index = get_compact_index().await;
+        let index = get_compact_index_for_grants(None).await;
         let caps = index
             .get("caps")
             .and_then(Value::as_object)
@@ -477,7 +469,7 @@ mod tests {
         // An entry with an empty `h` reaches the planner as a bare ID, which
         // makes the capability effectively unselectable. 20 capabilities were in
         // that state before `resolve_capability_hint` fell back to description.
-        let index = get_compact_index().await;
+        let index = get_compact_index_for_grants(None).await;
         let blank: Vec<String> = index
             .get("caps")
             .and_then(Value::as_object)
@@ -551,7 +543,7 @@ mod tests {
     async fn compact_index_omits_o_when_nothing_is_declared() {
         // `Capability::default()` leaves output_schema empty; such entries must
         // not emit an empty `o` list that the planner would read as "no output".
-        let index = get_compact_index().await;
+        let index = get_compact_index_for_grants(None).await;
         let entries: Vec<&Value> = index
             .get("caps")
             .and_then(Value::as_object)
