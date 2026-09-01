@@ -2457,6 +2457,8 @@ dependencies = [
 name = "myriad-agent-rules"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "chrono-tz",
  "serde_json",
  "url",
 ]
