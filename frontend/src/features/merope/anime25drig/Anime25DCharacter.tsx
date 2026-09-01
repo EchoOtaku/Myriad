@@ -1,5 +1,5 @@
 import type { RigBearing } from '../motion/bearing'
-import type { BehaviorPlan, BehaviorRealizerReport } from '../motion/behavior'
+import type { BehaviorPlan } from '../motion/behavior'
 import type { MotionChannelPolicy } from '../motion/policy'
 import type { RigMotionPort } from '../rig/motionPort'
 import type { MeropeRigManifest } from '../rig/types'
@@ -15,7 +15,6 @@ import {
   useRef,
   useState,
 } from 'react'
-import { reconcilePlayedBehaviorCues } from './behaviorPlayback'
 import { realizeAnime25DBehaviorPlan } from './behaviorRealizer'
 import { activityExpressionDriverPatch } from './expressionPresets'
 import { idleSpeechDriverPatch } from './performanceMotion'
@@ -74,7 +73,6 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
     const manualRef = useRef(manualControl)
     const bearingRef = useRef<RigBearing | null>(null)
     const behaviorPlanRef = useRef<BehaviorPlan | null>(null)
-    const playedBehaviorIdsRef = useRef(new Set<string>())
     manualRef.current = manualControl || manualRef.current
 
     const applyDriver = (player: Anime25DPlayer) => {
@@ -162,49 +160,16 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       playBehaviorPlan(plan) {
         const now = performance.now()
         const realization = realizeAnime25DBehaviorPlan(plan, now)
-        let reports = realization.reports
+        // Restating the whole live set is the entire protocol. The player
+        // reconciles it, so nothing here tracks what has already played.
         playerRef.current?.setBehaviorMotionUnits(realization.units, now)
-        if (
-          reconcilePlayedBehaviorCues(
-            playedBehaviorIdsRef.current,
-            realization.cueBehaviorIds,
-          )
-        ) {
-          playerRef.current?.stopPerformance()
-        }
-        const pendingCues = realization.cues.flatMap((cue, index) => {
-          const behaviorId = realization.cueBehaviorIds[index]
-          return behaviorId && !playedBehaviorIdsRef.current.has(behaviorId)
-            ? [{ cue, behaviorId }]
-            : []
-        })
-        const cues = pendingCues.map((pending) => pending.cue)
-        if (playerRef.current && cues.length > 0) {
-          const accepted = playerRef.current.playBehaviorCues(
-            cues,
-            Math.max(0, Math.min(now, plan.originMs)) / 1_000,
-          )
-          if (!accepted) {
-            reports = supersededCueReports(
-              reports,
-              new Set(pendingCues.map((pending) => pending.behaviorId)),
-              now,
-            )
-          } else {
-            for (const pending of pendingCues) {
-              playedBehaviorIdsRef.current.add(pending.behaviorId)
-            }
-          }
-        }
         behaviorPlanRef.current = plan
-        return reports
+        return realization.reports
       },
       stopBehaviorPlan(planId) {
         if (planId && behaviorPlanRef.current?.id !== planId) return
-        playerRef.current?.stopPerformance()
         playerRef.current?.clearBehaviorMotionUnits()
         behaviorPlanRef.current = null
-        playedBehaviorIdsRef.current.clear()
       },
       setDriver(partial) {
         enterManualControl()
@@ -268,16 +233,12 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       pendingSpeechTextRef.current = []
       player.setBearing(bearingRef.current)
       if (behaviorPlanRef.current) {
-        const plan = behaviorPlanRef.current
         const now = performance.now()
-        const realization = realizeAnime25DBehaviorPlan(plan, now)
+        const realization = realizeAnime25DBehaviorPlan(
+          behaviorPlanRef.current,
+          now,
+        )
         player.setBehaviorMotionUnits(realization.units, now)
-        if (realization.cues.length > 0) {
-          player.playBehaviorCues(realization.cues, plan.originMs / 1_000)
-          for (const id of realization.cueBehaviorIds) {
-            playedBehaviorIdsRef.current.add(id)
-          }
-        }
       }
       applyDriver(player)
       let frame = 0
@@ -386,22 +347,5 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
     )
   },
 )
-
-function supersededCueReports(
-  reports: readonly BehaviorRealizerReport[],
-  behaviorIds: ReadonlySet<string>,
-  atMs: number,
-): BehaviorRealizerReport[] {
-  return reports.map((report) =>
-    report.result === 'accepted' && behaviorIds.has(report.behaviorId)
-      ? {
-          ...report,
-          result: 'rejected',
-          atMs,
-          reason: 'superseded',
-        }
-      : report,
-  )
-}
 
 export default Anime25DCharacter
