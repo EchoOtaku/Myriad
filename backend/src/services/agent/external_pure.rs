@@ -11,52 +11,15 @@ use crate::services::agent::ai_process_pure::USER_TEXT_MAX_CHARS;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-/// Max response body accepted by http.fetch (bytes).
-pub const HTTP_FETCH_MAX_BODY_BYTES: u64 = 10 * 1024 * 1024;
+pub use myriad_agent_rules::{
+    http_body_exceeds_limit, http_body_size_error, http_content_length_error, http_fetch_method,
+    optional_string_param, parse_http_body_value, HTTP_FETCH_MAX_BODY_BYTES,
+};
+
 /// Max HTML size for web.scrape (bytes).
 pub const WEB_SCRAPE_MAX_HTML_BYTES: usize = 5 * 1024 * 1024;
 /// Default max extracted text length for web.scrape.
 pub const WEB_SCRAPE_DEFAULT_MAX_LENGTH: usize = USER_TEXT_MAX_CHARS;
-
-/// Non-empty trimmed string from params.
-pub fn optional_string_param(params: &HashMap<String, Value>, key: &str) -> Option<String> {
-    params
-        .get(key)
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-}
-
-/// HTTP method for http.fetch (default GET; only POST is special-cased).
-pub fn http_fetch_method(params: &HashMap<String, Value>) -> &str {
-    params
-        .get("method")
-        .and_then(|v| v.as_str())
-        .unwrap_or("GET")
-}
-
-/// Whether Content-Length / body exceeds http.fetch limit.
-#[allow(dead_code)] // 仅测试调用：生产在各自调用点内联同等判定。
-pub fn http_body_exceeds_limit(len: u64) -> bool {
-    len > HTTP_FETCH_MAX_BODY_BYTES
-}
-
-/// User-facing error when body is too large (Content-Length path).
-#[allow(dead_code)] // 仅测试调用：生产在各自调用点内联同等判定。
-pub fn http_content_length_error(content_length: u64) -> String {
-    format!("Response Content-Length ({content_length} bytes) exceeds 10MB limit")
-}
-
-/// User-facing error when body is too large (after read).
-pub fn http_body_size_error() -> String {
-    "Response body exceeds 10MB limit".to_string()
-}
-
-/// Parse response body as JSON or wrap as string Value.
-pub fn parse_http_body_value(body: &str) -> Value {
-    serde_json::from_str(body).unwrap_or_else(|_| json!(body))
-}
 
 // ── MCP ─────────────────────────────────────────────────────────────────────
 
