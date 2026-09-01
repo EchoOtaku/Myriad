@@ -8,128 +8,19 @@
 //! - image dimension / prompt pure mapping
 
 #[cfg(test)]
-use serde_json::json;
-use serde_json::Value;
+use serde_json::{json, Value};
+#[cfg(test)]
 use std::collections::HashMap;
 
-
-/// Extract semantic text from step output JSON (avoid dumping raw arrays to the model).
-pub fn extract_semantic_text(value: &Value) -> String {
-    if let Some(s) = value.as_str() {
-        return s.to_string();
-    }
-
-    if let Some(obj) = value.as_object() {
-        let text_keys = [
-            "aiSummary",
-            "analysis",
-            "reply",
-            "summary",
-            "description",
-            "message",
-            "content",
-        ];
-        let mut parts: Vec<String> = Vec::new();
-
-        for key in &text_keys {
-            if let Some(text) = obj.get(*key).and_then(|v| v.as_str()) {
-                if !text.is_empty() {
-                    parts.push(text.to_string());
-                }
-            }
-        }
-
-        if let Some(results) = obj.get("results").and_then(|v| v.as_array()) {
-            for item in results.iter().take(10) {
-                let mut item_parts: Vec<String> = Vec::new();
-                for key in &["name", "title"] {
-                    if let Some(v) = item
-                        .get(key)
-                        .and_then(|v| v.as_str())
-                        .filter(|s| !s.is_empty())
-                    {
-                        item_parts.push(v.to_string());
-                    }
-                }
-                for key in &[
-                    "description",
-                    "snippet",
-                    "status",
-                    "reason",
-                    "source",
-                    "expectation",
-                ] {
-                    if let Some(v) = item
-                        .get(key)
-                        .and_then(|v| v.as_str())
-                        .filter(|s| !s.is_empty())
-                    {
-                        item_parts.push(v.to_string());
-                    }
-                }
-                for arr_key in &["rankings", "hot_topics", "anticipated_characters"] {
-                    if let Some(arr) = item.get(arr_key).and_then(|v| v.as_array()) {
-                        for entry in arr.iter().take(10) {
-                            let name = entry
-                                .get("name")
-                                .or_else(|| entry.get("character"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("");
-                            let desc = entry
-                                .get("status")
-                                .or_else(|| entry.get("reason"))
-                                .or_else(|| entry.get("expectation"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("");
-                            let src = entry.get("source").and_then(|v| v.as_str()).unwrap_or("");
-                            if !name.is_empty() {
-                                if !src.is_empty() {
-                                    item_parts.push(format!("{} ({}): {}", name, src, desc));
-                                } else {
-                                    item_parts.push(format!("{}: {}", name, desc));
-                                }
-                            }
-                        }
-                    }
-                }
-                if !item_parts.is_empty() {
-                    parts.push(item_parts.join(" | "));
-                }
-            }
-        }
-
-        if !parts.is_empty() {
-            return parts.join("\n\n");
-        }
-    }
-
-    serde_json::to_string_pretty(value).unwrap_or_default()
-}
-
 pub use myriad_agent_rules::{
-    append_instruction, append_memory_to_system_prompt, clamp_image_dim, inject_directive_to_params,
+    append_instruction, append_memory_to_system_prompt, capability_needs_conversation_context,
+    capability_needs_memory, clamp_image_dim, extract_semantic_text, inject_directive_to_params,
     inject_steering_to_params, merge_system_prompt, parse_image_dim, resolve_image_dimensions,
     resolve_image_prompt, resolve_negative_prompt, sanitize_prompt_input,
     take_recent_conversation_messages, with_system_guidance, DEFAULT_IMAGE_HEIGHT,
     DEFAULT_IMAGE_WIDTH, IMAGE_DIM_MAX, IMAGE_DIM_MIN, IMAGE_PROMPT_MAX_CHARS,
     SANITIZE_PROMPT_MAX_CHARS, USER_TEXT_MAX_CHARS,
 };
-
-/// Whether a capability should receive memory context injection.
-pub fn capability_needs_memory(capability_id: &str) -> bool {
-    matches!(
-        capability_id,
-        "ai.chat" | "ai.analyze" | "ai.recommend" | "compare.content" | "prompt.generate"
-    )
-}
-
-/// Whether a capability should receive conversation history as `context`.
-pub fn capability_needs_conversation_context(capability_id: &str) -> bool {
-    matches!(
-        capability_id,
-        "ai.chat" | "ai.analyze" | "ai.recommend" | "compare.content"
-    )
-}
 
 #[cfg(test)]
 mod tests {
