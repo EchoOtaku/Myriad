@@ -5,15 +5,8 @@
 
 use myriad_tapp_contract::manifest::TappManifest;
 
-/// 宿主预编译 Tailwind 产物的固定路径。
-///
-/// 这是与作者样式并行的第二条通道：作者样式由 manifest 的层声明，预编译产物
-/// 由平台按固定名写入，两者不能收成同一套字段，否则安装期生成的 CSS 会被
-/// 当成作者声明去校验。
-/// 放在独立目录下，避免与作者声明的层样式撞名——作者完全可以把
-/// `page.styles` 命名为 `page.css`。
-pub const HOST_WIDGET_CSS: &str = "host/widget.css";
-pub const HOST_PAGE_CSS: &str = "host/page.css";
+/// 宿主预编译 Tailwind 产物的固定路径（契约：与作者层样式并行）。
+pub use myriad_tapp_contract::contract_rules::{HOST_PAGE_CSS, HOST_WIDGET_CSS};
 
 /// Relative text paths to attempt when serving `GET …/resources`.
 #[derive(Debug, Clone, PartialEq, Eq)]

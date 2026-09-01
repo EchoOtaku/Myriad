@@ -145,6 +145,8 @@ pub fn export_tapp_contract() -> Value {
             "assetDirectory": contract_rules::ASSET_DIRECTORY,
             "pageLayerDirectory": contract_rules::PAGE_LAYER_DIRECTORY,
             "widgetLayerDirectory": contract_rules::WIDGET_LAYER_DIRECTORY,
+            "hostWidgetCss": contract_rules::HOST_WIDGET_CSS,
+            "hostPageCss": contract_rules::HOST_PAGE_CSS,
             "manifestResourceFields": string_map(contract_rules::MANIFEST_RESOURCE_FIELDS),
             "agentSchemaFields": contract_rules::AGENT_SCHEMA_FIELDS,
             "urlFields": contract_rules::URL_FIELDS,

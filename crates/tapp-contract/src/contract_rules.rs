@@ -145,6 +145,9 @@ pub const ASSET_DIRECTORY: &str = "assets";
 /// 闭包决定；入口和依赖可以位于任意安全包内路径。
 pub const PAGE_LAYER_DIRECTORY: &str = "page";
 pub const WIDGET_LAYER_DIRECTORY: &str = "widget";
+/// Host-precompiled CSS, a channel parallel to author layer styles.
+pub const HOST_WIDGET_CSS: &str = "host/widget.css";
+pub const HOST_PAGE_CSS: &str = "host/page.css";
 /// 层内声明的资源路径：字段路径 → 扩展名规则键。
 /// 每层自带入口与资源，不再有一组平铺的顶层路径字段。
 pub const MANIFEST_RESOURCE_FIELDS: &[(&str, &str)] = &[

@@ -276,6 +276,8 @@
       "te",
       "trailer"
     ],
+    "hostPageCss": "host/page.css",
+    "hostWidgetCss": "host/widget.css",
     "httpApiPermission": "network:fetch",
     "httpApiType": "http",
     "httpBodyMethods": [
