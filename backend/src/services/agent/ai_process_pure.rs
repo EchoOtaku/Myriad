@@ -12,125 +12,6 @@ use serde_json::json;
 use serde_json::Value;
 use std::collections::HashMap;
 
-/// Append a steering instruction onto an existing string param.
-pub fn append_instruction(params: &mut HashMap<String, Value>, key: &str, instruction: &str) {
-    let existing = params.get(key).and_then(Value::as_str).unwrap_or_default();
-    let combined = if existing.is_empty() {
-        instruction.to_string()
-    } else {
-        format!(
-            "{}\n\n用户最新转向指令（优先遵循）：{}",
-            existing, instruction
-        )
-    };
-    params.insert(key.to_string(), Value::String(combined));
-}
-
-/// Prepend systemPrompt (role/memory/steer fallback) to a freeform model prompt.
-///
-/// Handlers that already consume systemPrompt as a first-class channel (e.g. ai.chat)
-/// should not call this to avoid double-application.
-pub fn with_system_guidance(params: &HashMap<String, Value>, prompt: String) -> String {
-    match params
-        .get("systemPrompt")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        Some(sys) => format!("【补充指令 / 上下文（优先遵循）】\n{}\n\n{}", sys, prompt),
-        None => prompt,
-    }
-}
-
-/// Steering is newer than the Planner output, so it must augment existing
-/// parameters rather than only filling empty fields.
-///
-/// Prefer the field each handler already reads. Always also leave a trail on
-/// `systemPrompt` so handlers that only build freeform prompts still honor
-/// steer via [`with_system_guidance`].
-pub fn inject_steering_to_params(
-    capability_id: &str,
-    instruction: &str,
-    params: &mut HashMap<String, Value>,
-) {
-    // Shared channel: consumed by ai.chat natively and by with_system_guidance.
-    append_instruction(params, "systemPrompt", instruction);
-
-    match capability_id {
-        "ai.summarize" => append_instruction(params, "focus", instruction),
-        "ai.analyze" | "compare.content" => append_instruction(params, "instruction", instruction),
-        "ai.chat" => append_instruction(params, "message", instruction),
-        "ai.webSearch" | "ai.groundingSearch" => append_instruction(params, "query", instruction),
-        "prompt.generate" => append_instruction(params, "description", instruction),
-        "ai.image" => append_instruction(params, "prompt", instruction),
-        "translate.text" | "code.explain" | "ai.recommend" | "smart.filter"
-        | "brewlia.annotate" | "brewlia.podcast" => {
-            // systemPrompt trail + with_system_guidance in the handler is enough.
-        }
-        _ => {}
-    }
-}
-
-/// Inject Planner directive into capability-specific params (fill empty fields only).
-pub fn inject_directive_to_params(
-    capability_id: &str,
-    directive: &str,
-    user_request: Option<&str>,
-    params: &mut HashMap<String, Value>,
-) {
-    if directive.is_empty() {
-        return;
-    }
-
-    match capability_id {
-        "ai.analyze" | "compare.content" => {
-            if !params.contains_key("instruction") {
-                let full_instruction = if let Some(req) = user_request {
-                    format!("用户请求：{}\n具体任务：{}", req, directive)
-                } else {
-                    directive.to_string()
-                };
-                params.insert("instruction".to_string(), Value::String(full_instruction));
-            }
-        }
-        "ai.chat" => {
-            if !params.contains_key("message") {
-                let msg = if let Some(req) = user_request {
-                    format!("{}（用户原始请求：{}）", directive, req)
-                } else {
-                    directive.to_string()
-                };
-                params.insert("message".to_string(), Value::String(msg));
-            }
-        }
-        "ai.summarize" => {
-            if !params.contains_key("focus") {
-                params.insert("focus".to_string(), Value::String(directive.to_string()));
-            }
-        }
-        "prompt.generate" => {
-            let has_content = params
-                .get("title")
-                .and_then(|v| v.as_str())
-                .is_some_and(|s| !s.is_empty())
-                || params
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|s| !s.is_empty())
-                || params
-                    .get("summary")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|s| !s.is_empty());
-            if !has_content {
-                params.insert(
-                    "description".to_string(),
-                    Value::String(directive.to_string()),
-                );
-            }
-        }
-        _ => {}
-    }
-}
 
 /// Extract semantic text from step output JSON (avoid dumping raw arrays to the model).
 pub fn extract_semantic_text(value: &Value) -> String {
@@ -226,11 +107,12 @@ pub fn extract_semantic_text(value: &Value) -> String {
 }
 
 pub use myriad_agent_rules::{
-    append_memory_to_system_prompt, clamp_image_dim, merge_system_prompt, parse_image_dim,
-    resolve_image_dimensions, resolve_image_prompt, resolve_negative_prompt, sanitize_prompt_input,
-    take_recent_conversation_messages, DEFAULT_IMAGE_HEIGHT, DEFAULT_IMAGE_WIDTH,
-    IMAGE_DIM_MAX, IMAGE_DIM_MIN, IMAGE_PROMPT_MAX_CHARS, SANITIZE_PROMPT_MAX_CHARS,
-    USER_TEXT_MAX_CHARS,
+    append_instruction, append_memory_to_system_prompt, clamp_image_dim, inject_directive_to_params,
+    inject_steering_to_params, merge_system_prompt, parse_image_dim, resolve_image_dimensions,
+    resolve_image_prompt, resolve_negative_prompt, sanitize_prompt_input,
+    take_recent_conversation_messages, with_system_guidance, DEFAULT_IMAGE_HEIGHT,
+    DEFAULT_IMAGE_WIDTH, IMAGE_DIM_MAX, IMAGE_DIM_MIN, IMAGE_PROMPT_MAX_CHARS,
+    SANITIZE_PROMPT_MAX_CHARS, USER_TEXT_MAX_CHARS,
 };
 
 /// Whether a capability should receive memory context injection.
