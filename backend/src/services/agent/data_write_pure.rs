@@ -7,92 +7,13 @@
 //! - platform write item cap
 //! - multi-feed prioritization for brew.subscribe
 
-use serde_json::Value;
-use std::cmp::Reverse;
-
 pub use myriad_agent_rules::{
-    clamp_update_interval_minutes, is_disallowed_subscribe_host, is_disallowed_subscribe_ip,
+    clamp_update_interval_minutes, collect_subscribe_url_candidates, extract_and_prioritize_feeds,
+    feed_priority_score, is_disallowed_subscribe_host, is_disallowed_subscribe_ip,
     platform_write_cap_error, platform_write_items_over_cap, sanitize_feed_name,
-    validate_subscribe_url_policy, MAX_FEED_NAME_LEN, MAX_FEED_URLS, MAX_PLATFORM_WRITE_ITEMS,
-    MAX_UPDATE_INTERVAL, MIN_UPDATE_INTERVAL,
+    take_feed_urls_to_try, validate_subscribe_url_policy, MAX_FEED_NAME_LEN, MAX_FEED_URLS,
+    MAX_PLATFORM_WRITE_ITEMS, MAX_UPDATE_INTERVAL, MIN_UPDATE_INTERVAL,
 };
-
-/// Score a candidate feed URL for brew.subscribe multi-source attempts.
-///
-/// Higher score is tried first: verified > official > HTTPS > known hosts; RSSHub demoted.
-pub fn feed_priority_score(url: &str, verified: bool, source: &str) -> i32 {
-    let mut score = 0;
-    if verified {
-        score += 100;
-    }
-    if source.contains("official") || url.contains("zhihu.com") {
-        score += 50;
-    }
-    if url.starts_with("https://") {
-        score += 20;
-    }
-    if url.contains("feedx.net") || url.contains("feedburner") {
-        score += 30;
-    }
-    if url.contains("rsshub") {
-        score -= 10;
-    }
-    score
-}
-
-/// Extract and prioritize feed URLs from a `feeds` JSON array.
-///
-/// Returns `(url, optional_name)` ordered by priority descending.
-pub fn extract_and_prioritize_feeds(feeds: &Value) -> Vec<(String, Option<String>)> {
-    let Some(feeds_arr) = feeds.as_array() else {
-        return vec![];
-    };
-
-    let mut result: Vec<(String, Option<String>, i32)> = feeds_arr
-        .iter()
-        .filter_map(|f| {
-            let url = f.get("url")?.as_str()?.to_string();
-            let name = f
-                .get("name")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let verified = f.get("verified").and_then(|v| v.as_bool()).unwrap_or(false);
-            let source = f.get("source").and_then(|v| v.as_str()).unwrap_or("");
-            let score = feed_priority_score(&url, verified, source);
-            Some((url, name, score))
-        })
-        .collect();
-
-    result.sort_by_key(|b| Reverse(b.2));
-    result
-        .into_iter()
-        .map(|(url, name, _)| (url, name))
-        .collect()
-}
-
-/// Collect subscribe candidate URLs from `feeds` or single `url` param.
-pub fn collect_subscribe_url_candidates(
-    feeds: Option<&Value>,
-    single_url: Option<&str>,
-) -> Result<Vec<(String, Option<String>)>, String> {
-    let urls_to_try: Vec<(String, Option<String>)> = if let Some(feeds) = feeds {
-        extract_and_prioritize_feeds(feeds)
-    } else if let Some(url) = single_url {
-        vec![(url.to_string(), None)]
-    } else {
-        return Err("Missing url or feeds".to_string());
-    };
-
-    if urls_to_try.is_empty() {
-        return Err("No feed URL to try".to_string());
-    }
-    Ok(urls_to_try)
-}
-
-/// Cap the number of URLs actually attempted.
-pub fn take_feed_urls_to_try(urls: Vec<(String, Option<String>)>) -> Vec<(String, Option<String>)> {
-    urls.into_iter().take(MAX_FEED_URLS).collect()
-}
 
 #[cfg(test)]
 mod tests {
