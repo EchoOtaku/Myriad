@@ -25,13 +25,17 @@ pub fn parse_presence_body(bytes: &[u8]) -> Result<Value, HttpError> {
 }
 
 /// Authenticated presence inbound. Body is JSON; only the live-presence
-/// whitelist is kept. 204 on success.
+/// whitelist is kept. 204 on success. When Merope is off the write is a
+/// no-op: auth still runs, the body is not parsed, nothing is remembered.
 pub async fn post_live_presence(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     body: Bytes,
 ) -> Result<StatusCode, HttpError> {
     let user_id = parse_user_id_with_agent_access(&claims, &db).await?;
+    if !crate::services::agent::merope::is_enabled().await {
+        return Ok(StatusCode::NO_CONTENT);
+    }
     let data = parse_presence_body(&body)?;
     let live = live_presence_from_custom_data(&data);
     remember_live_presence(user_id, live);
@@ -54,5 +58,30 @@ mod tests {
         assert_eq!(json, r#"{"error":"Invalid payload"}"#);
         let response = HttpError(err.0).into_response();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn disabled_merope_returns_before_parse_or_remember() {
+        let src = include_str!("presence.rs");
+        let handler = src
+            .split("pub async fn post_live_presence")
+            .nth(1)
+            .and_then(|rest| rest.split("#[cfg(test)]").next())
+            .expect("handler");
+        let enabled_at = handler.find("is_enabled").expect("gate on merope switch");
+        let parse_at = handler
+            .find("parse_presence_body")
+            .expect("parse after the gate");
+        let remember_at = handler
+            .find("remember_live_presence")
+            .expect("write after the gate");
+        assert!(
+            enabled_at < parse_at,
+            "disabled inbound must not parse the body"
+        );
+        assert!(
+            enabled_at < remember_at,
+            "disabled inbound must not remember live presence"
+        );
     }
 }

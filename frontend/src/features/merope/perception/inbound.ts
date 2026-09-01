@@ -18,15 +18,19 @@ interface CaptureInput {
 type CaptureFn = (input: CaptureInput) => PerceptionSnapshot[]
 type PresencePost = (body: unknown) => Promise<void>
 type PresenceFacts = () => unknown
+type PresenceEnabled = () => boolean | Promise<boolean>
 
 let lastRevisionKey = ''
 let lastSentAt = 0
 let lastRoute = ''
 let lastTtsPlaying: boolean | null = null
 let started = false
+let inboundArmed = false
 let captureFn: CaptureFn | null = null
 let factsFn: PresenceFacts | null = null
+let enabledFn: PresenceEnabled | null = null
 let postPresence: PresencePost = defaultPostPresence
+let arming: Promise<void> = Promise.resolve()
 
 async function defaultPostPresence(body: unknown): Promise<void> {
   const { apiService } = await import('../../../services/api')
@@ -55,15 +59,41 @@ export function setPresenceFactsForTest(facts: PresenceFacts): void {
   factsFn = facts
 }
 
+export function setPresenceEnabledForTest(enabled: PresenceEnabled): void {
+  enabledFn = enabled
+}
+
+export function setPresenceArmedForTest(armed: boolean): void {
+  inboundArmed = armed
+}
+
+export function presenceInboundArmingForTest(): Promise<void> {
+  return arming
+}
+
 export function resetPresenceInboundForTest(): void {
   lastRevisionKey = ''
   lastSentAt = 0
   lastRoute = ''
   lastTtsPlaying = null
   started = false
+  inboundArmed = false
   captureFn = null
   factsFn = null
+  enabledFn = null
   postPresence = defaultPostPresence
+  arming = Promise.resolve()
+}
+
+async function meropeIsEnabled(): Promise<boolean> {
+  if (enabledFn) return enabledFn()
+  try {
+    const { getPublicConfigDeduped } = await import('../../../utils/requestDedup')
+    const config = await getPublicConfigDeduped()
+    return config?.meropeEnabled === true
+  } catch {
+    return false
+  }
 }
 
 function revisionKey(snapshots: PerceptionSnapshot[]): string {
@@ -89,6 +119,9 @@ function currentRoute(): string {
  * except the hide transition itself.
  */
 export async function reportPresence(reason: string): Promise<void> {
+  if (!inboundArmed) {
+    return
+  }
   if (documentIsHidden() && reason !== 'visibility') {
     return
   }
@@ -129,43 +162,60 @@ export function startPresenceInbound(): () => void {
     return () => {}
   }
   started = true
-  bindPublishedMusicState()
-  if (typeof location !== 'undefined') {
-    lastRoute = location.pathname
-  }
-  const onVisibility = () => {
-    void reportPresence('visibility')
-  }
-  if (typeof document !== 'undefined') {
-    document.addEventListener('visibilitychange', onVisibility)
-  }
-  const stopConsent = subscribeAgentContextConsent(() => {
-    void reportPresence('page-consent')
-  })
-  const stopScreen = subscribeScreenConsent(() => {
-    void reportPresence('screen-consent')
-  })
-  const stopVoice = subscribeVoicePresence(() => {
-    const playing = getVoicePresence().ttsPlaying
-    if (lastTtsPlaying === playing) return
-    lastTtsPlaying = playing
-    void reportPresence('tts')
-  })
-  const stopSong = subscribeCurrentSong(() => {
-    void reportPresence('track')
-  })
-  const stopSurface = subscribeForegroundSurface(() => {
-    void reportPresence('surface')
-  })
-  return () => {
-    started = false
-    if (typeof document !== 'undefined') {
-      document.removeEventListener('visibilitychange', onVisibility)
+  let cancelled = false
+  let unbind = () => {}
+  arming = (async () => {
+    const enabled = await meropeIsEnabled()
+    if (cancelled || !enabled) return
+    bindPublishedMusicState()
+    if (typeof location !== 'undefined' && !lastRoute) {
+      lastRoute = location.pathname
     }
-    stopConsent()
-    stopScreen()
-    stopVoice()
-    stopSong()
-    stopSurface()
+    const onVisibility = () => {
+      void reportPresence('visibility')
+    }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibility)
+    }
+    const stopConsent = subscribeAgentContextConsent(() => {
+      void reportPresence('page-consent')
+    })
+    const stopScreen = subscribeScreenConsent(() => {
+      void reportPresence('screen-consent')
+    })
+    const stopVoice = subscribeVoicePresence(() => {
+      const playing = getVoicePresence().ttsPlaying
+      if (lastTtsPlaying === playing) return
+      lastTtsPlaying = playing
+      void reportPresence('tts')
+    })
+    const stopSong = subscribeCurrentSong(() => {
+      void reportPresence('track')
+    })
+    const stopSurface = subscribeForegroundSurface(() => {
+      void reportPresence('surface')
+    })
+    unbind = () => {
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibility)
+      }
+      stopConsent()
+      stopScreen()
+      stopVoice()
+      stopSong()
+      stopSurface()
+    }
+    if (cancelled) {
+      unbind()
+      return
+    }
+    inboundArmed = true
+    void reportPresence('start')
+  })()
+  return () => {
+    cancelled = true
+    inboundArmed = false
+    started = false
+    unbind()
   }
 }

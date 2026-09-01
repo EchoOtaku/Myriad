@@ -305,6 +305,9 @@ pub fn may_redeem_speech(event_key: &str, dnd: bool, chatting: bool, working: bo
 }
 
 pub async fn tick_speak_intents(db: DatabaseConnection) {
+    if !is_enabled().await {
+        return;
+    }
     let now = Utc::now();
     for intent in drain_speak_intents(now) {
         if let Err(error) = redeem_speak_intent(&db, intent).await {
@@ -812,6 +815,19 @@ mod tests {
         assert!(!produce.contains("insert_proactive"));
         assert!(!produce.contains("emit_speech_notification"));
         assert!(!produce.contains("direct_motion"));
+        let tick = src
+            .split("pub async fn tick_speak_intents")
+            .nth(1)
+            .and_then(|rest| rest.split("async fn redeem_speak_intent").next())
+            .expect("tick path");
+        let enabled_at = tick.find("is_enabled").expect("tick gates on merope switch");
+        let drain_at = tick
+            .find("drain_speak_intents")
+            .expect("tick drains after the gate");
+        assert!(
+            enabled_at < drain_at,
+            "disabled tick must not drain speak intents"
+        );
     }
 
     #[test]
