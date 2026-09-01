@@ -433,9 +433,16 @@ async fn run_server() -> anyhow::Result<()> {
                         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                         loop {
                             interval.tick().await;
-                            api::agent::tick_autonomy_work(autonomy_db.clone()).await;
-                            crate::services::agent::merope::tick_speak_intents(autonomy_db.clone())
-                                .await;
+                            // Share the 15s wake, not a call stack: a slow or
+                            // panicking autonomy tick must not hold the next opening.
+                            let work_db = autonomy_db.clone();
+                            tokio::spawn(async move {
+                                api::agent::tick_autonomy_work(work_db).await;
+                            });
+                            let speak_db = autonomy_db.clone();
+                            tokio::spawn(async move {
+                                crate::services::agent::merope::tick_speak_intents(speak_db).await;
+                            });
                         }
                     });
                 }
