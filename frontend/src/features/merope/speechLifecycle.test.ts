@@ -84,7 +84,9 @@ test('keeps fallback prosody alive for a complete non-streamed reply', () => {
   assert.deepEqual(rig.active, [true])
   scheduler.advance(500)
   assert.deepEqual(rig.auto, [true])
-  scheduler.advance(3_000)
+  // Advance past the estimate rather than a fixed number: the tail is sized to
+  // outlast the slowest realized cadence, and that budget is allowed to change.
+  scheduler.advance(estimateAutoSpeechDurationMs('你好，这是一段回答。') + 500)
   assert.deepEqual(rig.auto, [true, false])
   assert.deepEqual(rig.active, [true, false])
 })
@@ -221,7 +223,7 @@ test('occupancy stays busy after end until the auto-speech tail finishes', () =>
   controller.handle({ ...base, phase: 'chunk', text: '你好，这是一段回答。' })
   controller.handle({ ...base, phase: 'end' })
   assert.equal(occupancy.current, true)
-  scheduler.advance(3_000)
+  scheduler.advance(estimateAutoSpeechDurationMs('你好，这是一段回答。') + 500)
   assert.equal(occupancy.current, false)
 })
 
