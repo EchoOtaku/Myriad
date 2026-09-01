@@ -73,6 +73,9 @@ flowchart LR
 | 调度入口   | `backend/src/api/tapp_scheduler.rs`                        | HTTP/WS 协议、身份/所有权/权限检查                 |
 | 调度引擎   | `backend/src/services/tapp_scheduler.rs`                   | 任务持久化、触发、重试、前端回执、后端动作         |
 | Manifest 契约 | `crates/tapp-contract/src/manifest.rs`                  | 可安装 `TappManifest`（`deny_unknown_fields`）、声明能力、Widget/设置/API 数据结构 |
+| 权限/路径契约 | `crates/tapp-contract/`                                 | 权限目录、存储键与路径校验、Manifest 校验、宿主 CSS 固定路径；不含授予、HMAC、transform 求值 |
+| Tapp 纯规则 | `crates/myriad-tapp-rules/`                             | HMAC、transform pipeline、已安装资源计划、federation feed、package fs/prepared；backend 对应模块 `pub use` |
+| Agent 纯规则 | `crates/myriad-agent-rules/`                            | 文本上限、brew/MCP/scrape 策略、retry/task 投影；backend `*_pure.rs` `pub use` |
 | Tapp 目录查询 | `backend/src/api/tapp_store/catalog.rs`                  | 角色权限过滤、private-first 列表与详情查询          |
 | Manifest 校验 | `backend/src/api/tapp_store/validation.rs`              | 路径、权限、资源配额及声明能力的纯校验边界          |
 | 包文件生命周期 | `backend/src/api/tapp_store/package_files.rs`           | staging/activate/recovery、资源读写与归档安全边界   |
@@ -343,7 +346,8 @@ Headless 使用第三种显式能力配置：保留 storage、scheduler、event�
 | privileged | 仅管理员，例如 `widget:register`、`platform:write`、`platform:register`、`component:agent` |
 
 权限目录（名字、等级、替代提示、需登录主体的集合）在 `myriad-tapp-contract`，由
-`export_tapp_contract()` 导出。SDK action 映射仍以 `docs/development/tapp/fixtures/` 下 JSON
+`export_tapp_contract()` 导出。HMAC 与 transform 求值在 `myriad-tapp-rules`，不进契约。
+SDK action 映射仍以 `docs/development/tapp/fixtures/` 下 JSON
 为 source of truth，由测试强制与 `PERMISSION_MAP`、`host_attribution` 对齐；前端
 `PERMISSION_LEVELS` 与 `TappPermission` union 锁到这份导出。授予/下放仍在后端
 `TappPermissionService`。后端永远是授权判定的最终边界。
