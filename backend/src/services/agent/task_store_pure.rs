@@ -10,6 +10,10 @@
 use crate::services::agent::types::TaskStatus;
 use chrono::{DateTime, Utc};
 
+pub use myriad_agent_rules::{
+    lane_id_from_user_session, session_id_from_lane_id, session_id_from_lane_key,
+};
+
 /// Completed/failed/cancelled tasks older than this (hours) are removed.
 pub const TERMINAL_RETENTION_HOURS: i64 = 24;
 /// WaitingForInput tasks older than this (hours) become failed terminal.
@@ -56,31 +60,6 @@ pub fn task_status_to_db_str(status: &TaskStatus) -> &'static str {
         TaskStatus::Failed => "failed",
         TaskStatus::Cancelled => "cancelled",
     }
-}
-
-/// Session id embedded in `user:{id}:session:{session_id}` lane keys.
-///
-/// Accepts `Option` for stored `lane_id` columns and bare lane key strings
-/// via [`session_id_from_lane_key`].
-pub fn session_id_from_lane_id(lane_id: Option<&str>) -> Option<String> {
-    lane_id.and_then(session_id_from_lane_key)
-}
-
-/// Extract session id from a lane key of the form `user:{id}:session:{session_id}`.
-pub fn session_id_from_lane_key(lane_key: &str) -> Option<String> {
-    lane_key
-        .split_once(":session:")
-        .map(|(_, session_id)| session_id.to_string())
-        .filter(|s| !s.is_empty())
-}
-
-/// Reconstruct lane id from user + session (legacy rows without `lane_id`).
-pub fn lane_id_from_user_session(user_id: i32, session_id: &str) -> Option<String> {
-    let sid = session_id.trim();
-    if sid.is_empty() {
-        return None;
-    }
-    Some(format!("user:{user_id}:session:{sid}"))
 }
 
 /// Whether a terminal task's `completed_at` is past retention and should be purged.
