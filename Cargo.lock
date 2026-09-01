@@ -2482,6 +2482,7 @@ dependencies = [
  "lazy_static",
  "md5",
  "migration",
+ "myriad-agent-rules",
  "myriad-data-key",
  "myriad-error",
  "myriad-image-proxy",

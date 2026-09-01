@@ -225,11 +225,9 @@ pub fn extract_semantic_text(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_default()
 }
 
-/// Shared Unicode-scalar cap for user-authored model text (chat, generate, analyze).
-pub const USER_TEXT_MAX_CHARS: usize = 32680;
-
-/// Cap for user text injected into model prompts (analyze instruction, chat, search).
-pub const SANITIZE_PROMPT_MAX_CHARS: usize = USER_TEXT_MAX_CHARS;
+pub use myriad_agent_rules::{
+    IMAGE_PROMPT_MAX_CHARS, SANITIZE_PROMPT_MAX_CHARS, USER_TEXT_MAX_CHARS,
+};
 
 /// Sanitize user text for model prompts (drop control chars except newline, cap length).
 pub fn sanitize_prompt_input(input: &str) -> String {
@@ -273,9 +271,6 @@ pub const DEFAULT_IMAGE_WIDTH: u32 = 1024;
 pub const DEFAULT_IMAGE_HEIGHT: u32 = 1024;
 pub const IMAGE_DIM_MIN: u32 = 256;
 pub const IMAGE_DIM_MAX: u32 = 2048;
-/// Unicode scalar cap. Must stay <= `image_generation::MAX_PROMPT_CHARS` (32680).
-/// Counted with `chars()`, not bytes — CJK prompts are 3 bytes per character.
-pub const IMAGE_PROMPT_MAX_CHARS: usize = USER_TEXT_MAX_CHARS;
 
 /// Clamp a parsed image dimension into the supported range.
 pub fn clamp_image_dim(dim: u32) -> u32 {
