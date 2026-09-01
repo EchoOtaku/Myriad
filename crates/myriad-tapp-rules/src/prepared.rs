@@ -411,18 +411,26 @@ mod tests {
             },
         );
         assert_eq!(
-            package.validate(Some("com.example.other"), &current_system()).unwrap_err(),
+            package
+                .validate(Some("com.example.other"), &current_system())
+                .unwrap_err(),
             PackageValidateError::IdMismatch
         );
-        assert!(package.validate(Some("com.example.prepared"), &current_system()).is_ok());
+        assert!(package
+            .validate(Some("com.example.prepared"), &current_system())
+            .is_ok());
     }
 
     #[test]
     fn archive_payload_shares_bytes_via_arc_without_full_clone() {
         // MYR-025: package clone / extract should share one zip buffer.
         let bytes = vec![1u8, 2, 3, 4, 5];
-        let package =
-            PreparedTappPackage::from_archive_parts(base_manifest(), bytes.clone(), &current_system()).unwrap();
+        let package = PreparedTappPackage::from_archive_parts(
+            base_manifest(),
+            bytes.clone(),
+            &current_system(),
+        )
+        .unwrap();
         let a = package.archive_arc().expect("archive");
         let b = package.archive_arc().expect("archive");
         assert_eq!(a.as_slice(), bytes.as_slice());
@@ -565,7 +573,10 @@ mod tests {
                 ..PreparedTappResources::default()
             },
         );
-        let msg = package.validate(None, &current_system()).unwrap_err().message();
+        let msg = package
+            .validate(None, &current_system())
+            .unwrap_err()
+            .message();
         assert!(msg.contains("page.styles"));
         assert!(msg.contains("styles/page.css"));
     }
@@ -599,7 +610,10 @@ mod tests {
                 ..PreparedTappResources::default()
             },
         );
-        let msg = package.validate(None, &current_system()).unwrap_err().message();
+        let msg = package
+            .validate(None, &current_system())
+            .unwrap_err()
+            .message();
         assert!(msg.contains("widgets[].styles"));
         assert!(msg.contains("widget-card.css"));
     }
