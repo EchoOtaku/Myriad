@@ -226,19 +226,10 @@ pub fn extract_semantic_text(value: &Value) -> String {
 }
 
 pub use myriad_agent_rules::{
-    IMAGE_PROMPT_MAX_CHARS, SANITIZE_PROMPT_MAX_CHARS, USER_TEXT_MAX_CHARS,
+    append_memory_to_system_prompt, merge_system_prompt, sanitize_prompt_input,
+    take_recent_conversation_messages, IMAGE_PROMPT_MAX_CHARS, SANITIZE_PROMPT_MAX_CHARS,
+    USER_TEXT_MAX_CHARS,
 };
-
-/// Sanitize user text for model prompts (drop control chars except newline, cap length).
-pub fn sanitize_prompt_input(input: &str) -> String {
-    input
-        .chars()
-        .filter(|c| !c.is_control() || *c == '\n')
-        .take(SANITIZE_PROMPT_MAX_CHARS)
-        .collect::<String>()
-        .trim()
-        .to_string()
-}
 
 /// Parse image width/height: integers, whole floats, or numeric strings (`"768"` / `"768px"`).
 pub fn parse_image_dim(value: &Value) -> Option<u32> {
@@ -342,39 +333,6 @@ pub fn capability_needs_conversation_context(capability_id: &str) -> bool {
         capability_id,
         "ai.chat" | "ai.analyze" | "ai.recommend" | "compare.content"
     )
-}
-
-/// Merge role identity text into systemPrompt (pure string combine).
-pub fn merge_system_prompt(existing: &str, addition: &str) -> String {
-    if existing.is_empty() {
-        addition.to_string()
-    } else if addition.is_empty() {
-        existing.to_string()
-    } else {
-        format!("{}\n\n{}", addition, existing)
-    }
-}
-
-/// Append memory reference block onto systemPrompt.
-pub fn append_memory_to_system_prompt(existing: &str, memory: &str) -> String {
-    if existing.is_empty() {
-        format!("参考记忆（仅供参考，不要照搬）：\n{memory}")
-    } else {
-        format!("{existing}\n\n参考记忆（仅供参考，不要照搬）：\n{memory}")
-    }
-}
-
-/// Take the last N conversation messages (oldest-first order preserved).
-pub fn take_recent_conversation_messages<T: Clone>(history: &[T], max: usize) -> Vec<T> {
-    history
-        .iter()
-        .rev()
-        .take(max)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .cloned()
-        .collect()
 }
 
 #[cfg(test)]
