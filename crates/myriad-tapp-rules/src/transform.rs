@@ -1,7 +1,8 @@
-//! Transform pipeline types and caps. Evaluation lands in later slices.
+//! Transform pipeline types and evaluation. Input adapters land in a later slice.
 
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
+use std::collections::HashMap;
 
 pub const MAX_PIPELINE_STEPS: usize = 20;
 pub const MAX_MAP_OPERATIONS: usize = 50;
@@ -122,6 +123,305 @@ pub enum MapOp {
     Coalesce { fields: Vec<String>, to: String },
 }
 
+/// Run a full pipeline with the historical step/map caps.
+pub fn apply_pipeline(
+    mut items: Vec<Value>,
+    pipeline: Vec<ProcessStep>,
+) -> Result<Vec<Value>, DataTransformError> {
+    if pipeline.len() > MAX_PIPELINE_STEPS {
+        return Err(DataTransformError::TooManySteps);
+    }
+    for step in pipeline {
+        items = apply_process_step(items, step)?;
+    }
+    Ok(items)
+}
+
+pub fn apply_process_step(
+    mut items: Vec<Value>,
+    step: ProcessStep,
+) -> Result<Vec<Value>, DataTransformError> {
+    match step {
+        ProcessStep::Filter {
+            field,
+            operator,
+            value,
+        } => {
+            items.retain(|item| {
+                let item_value = item.get(&field);
+                match operator.as_str() {
+                    "eq" => item_value == Some(&value),
+                    "ne" => item_value != Some(&value),
+                    "gt" => matches!((item_value.and_then(|v| v.as_f64()), value.as_f64()), (Some(a), Some(b)) if a > b),
+                    "gte" => matches!((item_value.and_then(|v| v.as_f64()), value.as_f64()), (Some(a), Some(b)) if a >= b),
+                    "lt" => matches!((item_value.and_then(|v| v.as_f64()), value.as_f64()), (Some(a), Some(b)) if a < b),
+                    "lte" => matches!((item_value.and_then(|v| v.as_f64()), value.as_f64()), (Some(a), Some(b)) if a <= b),
+                    "contains" => matches!((item_value.and_then(|v| v.as_str()), value.as_str()), (Some(a), Some(b)) if a.contains(b)),
+                    "in" => value
+                        .as_array()
+                        .map(|arr| item_value.map(|v| arr.contains(v)).unwrap_or(false))
+                        .unwrap_or(false),
+                    "exists" => item_value.is_some() && !item_value.unwrap().is_null(),
+                    _ => true,
+                }
+            });
+        }
+        ProcessStep::Sort { field, order } => {
+            let desc = order.as_deref() == Some("desc");
+            items.sort_by(|a, b| {
+                let va = a.get(&field);
+                let vb = b.get(&field);
+                let cmp = match (va, vb) {
+                    (Some(Value::Number(a)), Some(Value::Number(b))) => a
+                        .as_f64()
+                        .partial_cmp(&b.as_f64())
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                    (Some(Value::String(a)), Some(Value::String(b))) => a.cmp(b),
+                    _ => std::cmp::Ordering::Equal,
+                };
+                if desc {
+                    cmp.reverse()
+                } else {
+                    cmp
+                }
+            });
+        }
+        ProcessStep::Limit { count } => {
+            items.truncate(count);
+        }
+        ProcessStep::Offset { count } => {
+            items = items.into_iter().skip(count).collect();
+        }
+        ProcessStep::Select { fields } => {
+            items = items
+                .into_iter()
+                .map(|item| {
+                    let mut new_item = json!({});
+                    if let Some(obj) = item.as_object() {
+                        for field in &fields {
+                            if let Some(value) = obj.get(field) {
+                                new_item[field] = value.clone();
+                            }
+                        }
+                    }
+                    new_item
+                })
+                .collect();
+        }
+        ProcessStep::Group { by } => {
+            let mut groups: HashMap<String, Vec<Value>> = HashMap::new();
+            for item in items {
+                let key = item
+                    .get(&by)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("_unknown")
+                    .to_string();
+                groups.entry(key).or_default().push(item);
+            }
+            items = groups
+                .into_iter()
+                .map(|(key, values)| json!({ "key": key, "items": values, "count": values.len() }))
+                .collect();
+        }
+        ProcessStep::Aggregate { operation, field } => {
+            let result = match operation.as_str() {
+                "count" => json!({ "count": items.len() }),
+                "sum" => {
+                    let sum: f64 = items
+                        .iter()
+                        .filter_map(|i| {
+                            field
+                                .as_ref()
+                                .and_then(|f| i.get(f))
+                                .and_then(|v| v.as_f64())
+                        })
+                        .sum();
+                    json!({ "sum": sum })
+                }
+                "avg" => {
+                    let values: Vec<f64> = items
+                        .iter()
+                        .filter_map(|i| {
+                            field
+                                .as_ref()
+                                .and_then(|f| i.get(f))
+                                .and_then(|v| v.as_f64())
+                        })
+                        .collect();
+                    let avg = if values.is_empty() {
+                        0.0
+                    } else {
+                        values.iter().sum::<f64>() / values.len() as f64
+                    };
+                    json!({ "avg": avg })
+                }
+                "min" => {
+                    let min = items
+                        .iter()
+                        .filter_map(|i| {
+                            field
+                                .as_ref()
+                                .and_then(|f| i.get(f))
+                                .and_then(|v| v.as_f64())
+                        })
+                        .fold(f64::INFINITY, f64::min);
+                    json!({ "min": if min.is_infinite() { Value::Null } else { json!(min) } })
+                }
+                "max" => {
+                    let max = items
+                        .iter()
+                        .filter_map(|i| {
+                            field
+                                .as_ref()
+                                .and_then(|f| i.get(f))
+                                .and_then(|v| v.as_f64())
+                        })
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    json!({ "max": if max.is_infinite() { Value::Null } else { json!(max) } })
+                }
+                _ => json!({ "error": "Unknown aggregation" }),
+            };
+            items = vec![result];
+        }
+        ProcessStep::Dedupe { key } => {
+            let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+            items.retain(|item| {
+                let k = item.get(&key).map(|v| v.to_string()).unwrap_or_default();
+                seen.insert(k)
+            });
+        }
+        ProcessStep::Map { operations } => {
+            if operations.len() > MAX_MAP_OPERATIONS {
+                return Err(DataTransformError::TooManyMapOps);
+            }
+            items = items
+                .into_iter()
+                .map(|mut item| {
+                    for op in &operations {
+                        apply_map_op(&mut item, op);
+                    }
+                    item
+                })
+                .collect();
+        }
+    }
+    Ok(items)
+}
+
+/// 对单个 item 执行一个声明式映射操作
+pub fn apply_map_op(item: &mut Value, op: &MapOp) {
+    let obj = match item.as_object_mut() {
+        Some(o) => o,
+        None => return,
+    };
+
+    match op {
+        MapOp::Rename { from, to } => {
+            if let Some(val) = obj.remove(from.as_str()) {
+                obj.insert(to.clone(), val);
+            }
+        }
+        MapOp::Remove { field } => {
+            obj.remove(field.as_str());
+        }
+        MapOp::Set { field, value } => {
+            obj.insert(field.clone(), value.clone());
+        }
+        MapOp::Copy { from, to } => {
+            if let Some(val) = obj.get(from.as_str()).cloned() {
+                obj.insert(to.clone(), val);
+            }
+        }
+        MapOp::Template { field, template } => {
+            // 安全模板：仅支持 {fieldName} 占位符，不做嵌套/递归
+            let mut result = template.clone();
+            for (k, v) in obj.iter() {
+                let placeholder = format!("{{{}}}", k);
+                if result.contains(&placeholder) {
+                    let replacement = match v {
+                        Value::String(s) => s.clone(),
+                        Value::Null => String::new(),
+                        other => other.to_string(),
+                    };
+                    result = result.replace(&placeholder, &replacement);
+                }
+            }
+            obj.insert(field.clone(), json!(result));
+        }
+        MapOp::Lower { field } => {
+            if let Some(Value::String(s)) = obj.get(field.as_str()) {
+                let lowered = s.to_lowercase();
+                obj.insert(field.clone(), json!(lowered));
+            }
+        }
+        MapOp::Upper { field } => {
+            if let Some(Value::String(s)) = obj.get(field.as_str()) {
+                let uppered = s.to_uppercase();
+                obj.insert(field.clone(), json!(uppered));
+            }
+        }
+        MapOp::ToString { field } => {
+            if let Some(val) = obj.get(field.as_str()) {
+                let s = match val {
+                    Value::String(_) => return, // 已经是字符串
+                    Value::Null => "".to_string(),
+                    other => other.to_string(),
+                };
+                obj.insert(field.clone(), json!(s));
+            }
+        }
+        MapOp::ToNumber { field } => {
+            if let Some(Value::String(s)) = obj.get(field.as_str()) {
+                if let Ok(n) = s.parse::<f64>() {
+                    obj.insert(field.clone(), json!(n));
+                }
+            }
+        }
+        MapOp::Default { field, value } => {
+            let needs_default = match obj.get(field.as_str()) {
+                None | Some(Value::Null) => true,
+                Some(Value::String(s)) if s.is_empty() => true,
+                _ => false,
+            };
+            if needs_default {
+                obj.insert(field.clone(), value.clone());
+            }
+        }
+        MapOp::Concat {
+            fields,
+            separator,
+            to,
+        } => {
+            let sep = separator.as_deref().unwrap_or("");
+            let parts: Vec<String> = fields
+                .iter()
+                .filter_map(|f| {
+                    obj.get(f.as_str()).and_then(|v| match v {
+                        Value::String(s) => Some(s.clone()),
+                        Value::Null => None,
+                        other => Some(other.to_string()),
+                    })
+                })
+                .collect();
+            if !parts.is_empty() {
+                obj.insert(to.clone(), json!(parts.join(sep)));
+            }
+        }
+        MapOp::Coalesce { fields, to } => {
+            for f in fields {
+                match obj.get(f.as_str()) {
+                    Some(Value::Null) | None => continue,
+                    Some(Value::String(s)) if s.is_empty() => continue,
+                    Some(val) => {
+                        obj.insert(to.clone(), val.clone());
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,5 +477,94 @@ mod tests {
             }
             _ => panic!("expected rename"),
         }
+    }
+
+    #[test]
+    fn filter_eq_and_limit() {
+        let items = vec![
+            json!({ "name": "a", "score": 1 }),
+            json!({ "name": "b", "score": 2 }),
+            json!({ "name": "c", "score": 2 }),
+        ];
+        let out = apply_pipeline(
+            items,
+            vec![
+                ProcessStep::Filter {
+                    field: "score".into(),
+                    operator: "eq".into(),
+                    value: json!(2),
+                },
+                ProcessStep::Limit { count: 1 },
+            ],
+        )
+        .unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0]["name"], "b");
+    }
+
+    #[test]
+    fn map_rename_template_and_coalesce() {
+        let mut item = json!({ "title": "Song", "artist": "A", "name_cn": "", "name_en": "EN" });
+        apply_map_op(
+            &mut item,
+            &MapOp::Rename {
+                from: "title".into(),
+                to: "name".into(),
+            },
+        );
+        apply_map_op(
+            &mut item,
+            &MapOp::Template {
+                field: "label".into(),
+                template: "{name} - {artist}".into(),
+            },
+        );
+        apply_map_op(
+            &mut item,
+            &MapOp::Coalesce {
+                fields: vec!["name_cn".into(), "name_en".into()],
+                to: "display".into(),
+            },
+        );
+        assert_eq!(item["name"], "Song");
+        assert_eq!(item["label"], "Song - A");
+        assert_eq!(item["display"], "EN");
+    }
+
+    #[test]
+    fn pipeline_step_cap() {
+        let steps = (0..=MAX_PIPELINE_STEPS)
+            .map(|_| ProcessStep::Limit { count: 10 })
+            .collect::<Vec<_>>();
+        let err = apply_pipeline(vec![json!({})], steps).unwrap_err();
+        assert_eq!(err, DataTransformError::TooManySteps);
+        assert_eq!(err.message(), "Too many pipeline steps (max 20)");
+    }
+
+    #[test]
+    fn map_op_cap() {
+        let ops = (0..51)
+            .map(|i| MapOp::Set {
+                field: format!("f{i}"),
+                value: json!(i),
+            })
+            .collect();
+        let err = apply_pipeline(vec![json!({})], vec![ProcessStep::Map { operations: ops }])
+            .unwrap_err();
+        assert_eq!(err, DataTransformError::TooManyMapOps);
+    }
+
+    #[test]
+    fn aggregate_count_and_sum() {
+        let items = vec![json!({ "n": 1 }), json!({ "n": 3 })];
+        let out = apply_pipeline(
+            items,
+            vec![ProcessStep::Aggregate {
+                operation: "sum".into(),
+                field: Some("n".into()),
+            }],
+        )
+        .unwrap();
+        assert_eq!(out[0]["sum"], 4.0);
     }
 }

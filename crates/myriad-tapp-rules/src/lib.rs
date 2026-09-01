@@ -8,5 +8,6 @@ pub mod transform;
 
 pub use hmac::{encode_hmac, hmac_matches, hmac_sha256};
 pub use transform::{
-    DataTransformError, MapOp, ProcessStep, MAX_MAP_OPERATIONS, MAX_PIPELINE_STEPS,
+    apply_map_op, apply_pipeline, apply_process_step, DataTransformError, MapOp, ProcessStep,
+    MAX_MAP_OPERATIONS, MAX_PIPELINE_STEPS,
 };
