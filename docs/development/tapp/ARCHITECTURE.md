@@ -316,7 +316,7 @@ runtime ID 和最终权限；停止、更新、卸载或 Bridge 销毁会撤销�
 `docs/development/tapp/fixtures/host_route_permissions.json` 与
 `action_permissions.json`。**先改 fixture，再改** `host_attribution` 消费端与前端
 `PERMISSION_MAP`；Rust 单测与 `permissionMapConsistency.test.ts` 会在漂移时失败。权限字符串
-还必须能通过后端 `TappPermission::from_str` 与前端 `PERMISSION_LEVELS`。
+还必须能通过 `myriad-tapp-contract` 的 `TappPermission::from_str`；前端 `PERMISSION_LEVELS` 由测试锁到同一份导出。
 
 ### Page 与 Widget 的 handler 不对称
 
@@ -342,10 +342,11 @@ Headless 使用第三种显式能力配置：保留 storage、scheduler、event�
 | elevated   | 管理员可配置向普通用户/游客下放                                                            |
 | privileged | 仅管理员，例如 `widget:register`、`platform:write`、`platform:register`、`component:agent` |
 
-权限等级、SDK action 映射和后端枚举目前分别存在于 TypeScript 与 Rust 中。宿主代理域
-（speech / brew / federation）以 `docs/development/tapp/fixtures/` 下 JSON 为 source of
-truth，由测试强制与 `PERMISSION_MAP`、`host_attribution`、`TappPermission` 对齐；其他域修改时
-仍须人工同步并运行权限/类型检查。后端永远是授权判定的最终边界。
+权限目录（名字、等级、替代提示、需登录主体的集合）在 `myriad-tapp-contract`，由
+`export_tapp_contract()` 导出。SDK action 映射仍以 `docs/development/tapp/fixtures/` 下 JSON
+为 source of truth，由测试强制与 `PERMISSION_MAP`、`host_attribution` 对齐；前端
+`PERMISSION_LEVELS` 与 `TappPermission` union 锁到这份导出。授予/下放仍在后端
+`TappPermissionService`。后端永远是授权判定的最终边界。
 
 `Tapp.user.getAllowedPermissionLevels()` 查询后端当前动态下放配置，回答角色在系统层面
 能否使用某个等级；`Tapp.permissions` 才是当前安装实例实际获得的权限集合。两者不能
@@ -448,8 +449,8 @@ sequenceDiagram
   不能让已删除源的迟到响应重新写回内存。
 - TappRuntime 列表缓存 TTL 为 30 秒；启动同步使用批量详情接口，Widget 也按集合读取。
   `waitForSync` 直接等待首次同步并明确抛出失败/超时，不得把失败标记成成功空状态。
-- 前端权限等级以 `permissionConfig.ts` 为单一注册表；Manifest 校验复用该表，不再维护第二份
-  描述/等级副本。
+- 前端权限等级锁到 `export_tapp_contract()` 的 `permissionLevels`；`permissionConfig.ts` 的
+  `PERMISSION_LEVELS` 是这份目录的前端副本，不是另一份注册表。`PERMISSION_MAP` 仍对 fixture。
 - `QuotaManager` 只保存平台读写与声明 API 的短期滑动窗口，未跟踪 action 不创建记录，
   失败调用不计数。AI calls、tokens 与 cooldown 由 PostgreSQL 服务端账本统一执行，前端只展示
   usage snapshot，不再维护另一套计费事实。
