@@ -7,66 +7,16 @@
 //! - scrape length clamp and text compression
 //! - simple HTML title extraction
 
-use crate::services::agent::ai_process_pure::USER_TEXT_MAX_CHARS;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
 pub use myriad_agent_rules::{
-    http_body_exceeds_limit, http_body_size_error, http_content_length_error, http_fetch_method,
-    mcp_arguments, optional_string_param, parse_http_body_value, parse_mcp_capability_id,
-    HTTP_FETCH_MAX_BODY_BYTES,
+    compress_and_truncate_text, hitokoto_type, http_body_exceeds_limit, http_body_size_error,
+    http_content_length_error, http_fetch_method, mcp_arguments, optional_string_param,
+    parse_http_body_value, parse_mcp_capability_id, scrape_html_too_large, scrape_max_length,
+    scrape_selector, scrape_should_skip_tag, HTTP_FETCH_MAX_BODY_BYTES, SCRAPE_SKIP_TAGS,
+    WEB_SCRAPE_DEFAULT_MAX_LENGTH, WEB_SCRAPE_MAX_HTML_BYTES,
 };
-
-/// Max HTML size for web.scrape (bytes).
-pub const WEB_SCRAPE_MAX_HTML_BYTES: usize = 5 * 1024 * 1024;
-/// Default max extracted text length for web.scrape.
-pub const WEB_SCRAPE_DEFAULT_MAX_LENGTH: usize = USER_TEXT_MAX_CHARS;
-
-// ── Web scrape ──────────────────────────────────────────────────────────────
-
-/// CSS selector for scrape (default body).
-pub fn scrape_selector(params: &HashMap<String, Value>) -> &str {
-    params
-        .get("selector")
-        .and_then(|v| v.as_str())
-        .unwrap_or("body")
-}
-
-/// Max text length for scrape (default 5000).
-pub fn scrape_max_length(params: &HashMap<String, Value>) -> usize {
-    params
-        .get("max_length")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(WEB_SCRAPE_DEFAULT_MAX_LENGTH as u64) as usize
-}
-
-/// Whether raw HTML exceeds scrape size gate.
-#[allow(dead_code)] // 仅测试调用：生产在各自调用点内联同等判定。
-pub fn scrape_html_too_large(html_len: usize) -> bool {
-    html_len > WEB_SCRAPE_MAX_HTML_BYTES
-}
-
-/// Collapse whitespace and truncate to max_length; returns (text, truncated).
-pub fn compress_and_truncate_text(text: &str, max_length: usize) -> (String, bool) {
-    let text: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    let truncated = text.chars().count() > max_length;
-    let text: String = text.chars().take(max_length).collect();
-    (text, truncated)
-}
-
-/// Tags whose text nodes should be skipped during scrape.
-pub const SCRAPE_SKIP_TAGS: &[&str] = &["script", "style", "noscript", "svg", "iframe"];
-
-pub fn scrape_should_skip_tag(tag: &str) -> bool {
-    SCRAPE_SKIP_TAGS.contains(&tag)
-}
-
-// ── Shared tiny helpers ─────────────────────────────────────────────────────
-
-/// Hitokoto type param (optional).
-pub fn hitokoto_type(params: &HashMap<String, Value>) -> Option<&str> {
-    params.get("type").and_then(|v| v.as_str())
-}
 
 /// Keep timeout / HTTP status / a short API phrase; drop reqwest and serde dumps.
 pub fn classify_outbound_fetch(label: &str, detail: &str) -> String {
