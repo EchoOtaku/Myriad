@@ -3500,9 +3500,21 @@ async fn execute_netease_playlist(params: &HashMap<String, Value>) -> Result<Val
                 _ => json!([]),
             };
 
+            let playlists = if query_type == "playlists" {
+                result.clone()
+            } else {
+                json!([])
+            };
+            let songs = if query_type == "playlists" {
+                json!([])
+            } else {
+                result.clone()
+            };
             return Ok(json!({
                 "type": query_type,
-                "data": result
+                "data": result,
+                "playlists": playlists,
+                "songs": songs
             }));
         }
     }
@@ -3922,12 +3934,7 @@ async fn ai_understand_music_intent(
 // 追加的数据读取能力
 
 /// 获取 B 站追番列表
-async fn execute_bilibili_bangumi(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let bangumi_type = params
-        .get("type")
-        .and_then(|v| v.as_str())
-        .unwrap_or("anime");
-
+async fn execute_bilibili_bangumi(_params: &HashMap<String, Value>) -> Result<Value, String> {
     let cache_file = "cache/platforms/bilibili_filtered.json";
     if let Ok(content) = tokio::fs::read_to_string(cache_file).await {
         if let Ok(data) = serde_json::from_str::<Value>(&content) {
@@ -3938,8 +3945,9 @@ async fn execute_bilibili_bangumi(params: &HashMap<String, Value>) -> Result<Val
                 .unwrap_or(json!([]));
 
             return Ok(json!({
-                "type": bangumi_type,
+                "source": "local_cache",
                 "bangumis": bangumis,
+                "items": bangumis,
                 "total": bangumis.as_array().map(|a| a.len()).unwrap_or(0)
             }));
         }
@@ -3960,7 +3968,9 @@ async fn execute_steam_wishlist(params: &HashMap<String, Value>) -> Result<Value
                 .unwrap_or(json!([]));
 
             return Ok(json!({
+                "source": "local_cache",
                 "wishlist": wishlist,
+                "items": wishlist,
                 "total": wishlist.as_array().map(|a| a.len()).unwrap_or(0)
             }));
         }
@@ -4653,10 +4663,23 @@ async fn execute_rsshub_instances(
 }
 
 /// 上下文引用能力
-async fn execute_context_reference(_params: &HashMap<String, Value>) -> Result<Value, String> {
-    // context.reference 不应被直接调用——步骤间数据传递通过 executor 的
-    // resolve_params() 自动处理 xxxFrom 引用。如果走到这里说明 recipe 配置有误。
-    Err("This step cannot be called directly".to_string())
+async fn execute_context_reference(params: &HashMap<String, Value>) -> Result<Value, String> {
+    let value = params
+        .get("value")
+        .cloned()
+        .ok_or_else(|| "Referenced step output not found".to_string())?;
+    let type_name = match &value {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    };
+    Ok(json!({
+        "value": value,
+        "type": type_name
+    }))
 }
 
 // 补充能力

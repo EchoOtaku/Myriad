@@ -7,8 +7,8 @@
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { describe, it } from 'node:test'
 import { dirname, join } from 'node:path'
+import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../../..')
@@ -48,7 +48,10 @@ describe('router.navigate allow-list', () => {
     for (const route of live) {
       assert.ok(
         appRoutes.some(
-          (path) => path === route || path.startsWith(`${route}/`) || path === `${route}/*`,
+          (path) =>
+            path === route ||
+            path.startsWith(`${route}/`) ||
+            path === `${route}/*`,
         ),
         `${route} must exist in App.tsx (got ${appRoutes.join(', ')})`,
       )
@@ -65,7 +68,14 @@ describe('router.navigate allow-list', () => {
   })
 
   it('does not allow dead prefixes that 404 to home', () => {
-    for (const dead of ['/home', '/platform', '/report', '/settings', '/profile', '/agent']) {
+    for (const dead of [
+      '/home',
+      '/platform',
+      '/report',
+      '/settings',
+      '/profile',
+      '/agent',
+    ]) {
       assert.ok(
         !prefixes.includes(dead),
         `${dead} is not an App.tsx route and must not be in the allow-list`,

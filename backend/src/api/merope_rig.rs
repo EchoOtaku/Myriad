@@ -994,8 +994,12 @@ pub async fn upload_portrait(
         .as_ref()
         .map(|row| row.personality.clone())
         .unwrap_or_default();
-    merope::upsert_persona_on(
-        &db,
+    // 换主图就是换血统源头，旧 Rig 当场作废——和 generate_portrait 一样放进同
+    // 一个事务。读路径的 manifest_matches_master 也拦得住，但那是每次请求重读
+    // 一遍旧包再丢掉，而 `/active` 是公开路由，首页挂件每次加载都会走到。
+    let transaction = db.begin().await.map_err(internal_error)?;
+    if let Err(error) = merope::upsert_persona_on(
+        &transaction,
         name,
         personality,
         merope::PortraitUpdate::Set(stored.url.clone()),
@@ -1006,7 +1010,19 @@ pub async fn upload_portrait(
         user_id,
     )
     .await
-    .map_err(internal_error)?;
+    {
+        let _ = transaction.rollback().await;
+        return Err(internal_error(error));
+    }
+    let cleared_asset = match merope_rig::persist_active_asset(&transaction, None).await {
+        Ok(asset_id) => asset_id,
+        Err(error) => {
+            let _ = transaction.rollback().await;
+            return Err(internal_error(error));
+        }
+    };
+    transaction.commit().await.map_err(internal_error)?;
+    merope_rig::mirror_active_asset(cleared_asset).await;
     Ok(Json(json!({
         "portraitUrl": stored.url,
         "portraitAssetId": stored.url,
@@ -1275,6 +1291,64 @@ pub async fn generate_portrait(
         "characterAssetContractVersion": CHARACTER_ASSET_CONTRACT_VERSION,
         "generationFingerprint": contract_fingerprint,
     })))
+}
+
+#[cfg(test)]
+mod rig_invalidation_tests {
+    /// 取一个 handler 的函数体：从 `fn <name>(` 到下一个顶层 `\npub ` 之前。
+    fn body_of<'a>(source: &'a str, name: &str) -> &'a str {
+        let at = source
+            .find(&format!("fn {name}("))
+            .unwrap_or_else(|| panic!("{name} not found"));
+        let rest = &source[at..];
+        let end = rest.find("\npub ").unwrap_or(rest.len());
+        &rest[..end]
+    }
+
+    /// 写 `portrait_asset_id` 的入口，必须在同一次写入里作废旧 Rig。
+    ///
+    /// Rig 的血统锚在主图上。换了主图不清 `agent_rig_asset_id`，读路径的
+    /// `manifest_matches_master` 虽然拦得住，但那是每个请求重读一遍旧包再丢
+    /// 掉，而 `/active` 是公开路由。`upload_portrait` 就是这么漏的——另外三处
+    /// 都清了，只有它没有。
+    #[test]
+    fn every_portrait_writer_clears_the_active_rig() {
+        let rig = include_str!("merope_rig.rs");
+        let persona = include_str!("agent/persona.rs");
+        for (file, source, name) in [
+            ("merope_rig.rs", rig, "generate_portrait"),
+            ("merope_rig.rs", rig, "upload_portrait"),
+            ("agent/persona.rs", persona, "put_persona"),
+            ("agent/persona.rs", persona, "delete_persona"),
+        ] {
+            assert!(
+                body_of(source, name).contains("persist_active_asset"),
+                "{file}::{name} 改了主图却没作废旧 Rig"
+            );
+        }
+    }
+
+    /// 作废必须落在事务里，并且提交后镜像出去。
+    ///
+    /// 分成两步写（先 upsert 后清 asset）而不用事务的话，中间失败会留下
+    /// 「新主图 + 旧 Rig」这种谁也修不回来的状态。
+    #[test]
+    fn upload_portrait_clears_the_rig_transactionally() {
+        let body = body_of(include_str!("merope_rig.rs"), "upload_portrait");
+        assert!(body.contains("db.begin()"), "upload_portrait 必须开事务");
+        assert!(
+            body.contains("persist_active_asset(&transaction, None)"),
+            "作废必须和人设写入同一个事务"
+        );
+        assert!(
+            body.contains("transaction.rollback()"),
+            "失败路径必须回滚，不能留下新主图配旧 Rig"
+        );
+        assert!(
+            body.contains("mirror_active_asset(cleared_asset)"),
+            "提交后要把清空后的 asset 镜像出去，和 generate_portrait 一致"
+        );
+    }
 }
 
 #[cfg(test)]

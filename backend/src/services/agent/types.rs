@@ -1447,6 +1447,9 @@ pub enum AgentProgressEvent {
         /// 图片生成结果 URL（ai.image 能力输出）
         #[serde(rename = "imageUrl", skip_serializing_if = "Option::is_none")]
         image_url: Option<String>,
+        /// 本步要立刻执行的前端动作（不要等整份 recipe 结束）
+        #[serde(rename = "frontendActions", skip_serializing_if = "Vec::is_empty")]
+        frontend_actions: Vec<Value>,
     },
     /// 进度更新
     Progress {

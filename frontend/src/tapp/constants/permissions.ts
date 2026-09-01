@@ -13,7 +13,6 @@
 
 import type { ComponentType } from 'react'
 import type { TappPermission } from '../types'
-import { PERMISSION_COPY } from './permissionCopy'
 import {
   FaBell,
   FaBrain,
@@ -54,6 +53,7 @@ import {
   FaVolumeUp,
   LuKeyboard,
 } from '@lib/icons'
+import { PERMISSION_COPY } from './permissionCopy'
 
 /** 权限图标组件（Fa / Lu 均可） */
 export type PermissionIcon = ComponentType<{

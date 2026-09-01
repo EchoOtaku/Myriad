@@ -9,9 +9,9 @@ use super::super::store::{
     recent_proactive, recently_spoke_event, set_activity, touch_proactive,
 };
 use super::super::{
-    addressee_speaking_section, current_activity, direct_motion, effective_do_not_disturb,
-    format_mood_section, public_persona_name, resolve_addressee_label, resolve_round_motion_style,
-    MoodTransition, MotionContext, MotionPhase, PerformanceDirective,
+    activity_is_busy, addressee_speaking_section, current_activity, direct_motion,
+    effective_do_not_disturb, format_mood_section, public_persona_name, resolve_addressee_label,
+    resolve_round_motion_style, MoodTransition, MotionContext, MotionPhase, PerformanceDirective,
 };
 use super::{
     addressee_is_chatting, compact_summary, is_enabled, is_trivial_line, SAME_EVENT_MINUTES,
@@ -55,7 +55,7 @@ async fn redeem_speak_intent(
     }
     let state = get_or_create_state(db, intent.user_id).await?;
     let chatting = addressee_is_chatting(db, intent.user_id).await;
-    let working = current_activity(&state) == "working";
+    let working = activity_is_busy(current_activity(&state));
     let dnd = effective_do_not_disturb(&state);
     if !may_redeem_speech(&intent.topic, dnd, chatting, working) {
         return Ok(());

@@ -9,10 +9,10 @@
 import type { CSSProperties } from 'react'
 import type { RigCharacterHandle } from '../../features/merope/rig/RigCharacter'
 import type { MeropeRigManifest } from '../../features/merope/rig/types'
-import type { MeropeActivity } from '../../features/merope/types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
+import { agentStatusActivity } from '../../features/merope/activity'
 import { isAnime25DPlayback } from '../../features/merope/anime25drig/types'
 import { getSiteFace } from '../../features/merope/api'
 import {
@@ -34,28 +34,10 @@ import {
 import RigCharacter from '../../features/merope/rig/RigCharacter'
 import { agentService } from '../../services/agent'
 import { ADDRESSEE_UPDATED_EVENT } from '../agent/meropeVitals'
-import { useAgentLaneLoading, useAgentStatus } from './agentStatusStore'
+import { useAgentStatus } from './agentStatusStore'
 
 const DEFAULT_MOOD = 70
 const DEFAULT_AROUSAL = 48
-
-function toMeropeActivity(raw: string | undefined): MeropeActivity {
-  if (raw === 'talking' || raw === 'thinking') return raw
-  return 'idle'
-}
-
-function activityWhileChatIdle(
-  island: string,
-  chatLoading: boolean,
-  raw: string | undefined,
-): MeropeActivity {
-  const next = toMeropeActivity(raw)
-  if (next !== 'thinking' && next !== 'talking') return next
-  if (!chatLoading || island === 'idle' || island === 'listening') {
-    return 'idle'
-  }
-  return next
-}
 
 function hasPlayableRig(manifest: MeropeRigManifest | null): boolean {
   return Boolean(
@@ -82,33 +64,37 @@ export function AgentPanelFace() {
   const [agentName, setAgentName] = useState(PERSONA_DEFAULT_NAME)
   const [mood, setMood] = useState(DEFAULT_MOOD)
   const [arousal, setArousal] = useState(DEFAULT_AROUSAL)
-  const [activity, setActivity] = useState<MeropeActivity>('idle')
   const { status } = useAgentStatus()
-  const chatLoading = useAgentLaneLoading('chat')
-  const statusRef = useRef(status)
-  const chatLoadingRef = useRef(chatLoading)
-  statusRef.current = status
-  chatLoadingRef.current = chatLoading
+  const activity = agentStatusActivity(status)
   const [personaOn, setPersonaOn] = useState(true)
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
+  const [rigFailed, setRigFailed] = useState(false)
   const faceRequestRef = useRef(0)
   const rigRef = useRef<RigCharacterHandle>(null)
-  const capabilities = useMemo(() => semanticRigCapabilities(manifest), [manifest])
+  const capabilities = useMemo(
+    () => semanticRigCapabilities(manifest),
+    [manifest],
+  )
   const playableRig = hasPlayableRig(manifest)
-  const showCharacter = playableRig || Boolean(portraitUrl)
+  const motionReady = playableRig && !rigFailed
+  const liveCapabilities = motionReady ? capabilities : []
+  const showCharacter = motionReady || Boolean(portraitUrl)
+  const handleRigPlaybackError = useCallback(() => setRigFailed(true), [])
   useRigMotionLifecycle(rigRef, {
     mood,
     arousal,
     activity,
-    capabilities,
-    ready: showCharacter,
+    capabilities: liveCapabilities,
+    ready: motionReady,
+    priority: 2,
   })
 
   const loadFace = useCallback(() => {
     const request = ++faceRequestRef.current
     setLoading(true)
     setFailed(false)
+    setRigFailed(false)
     void getSiteFace()
       .then((face) => {
         if (request !== faceRequestRef.current) return
@@ -147,24 +133,10 @@ export function AgentPanelFace() {
           ? detail.mood.arousalAfter
           : current,
       )
-      setActivity(
-        activityWhileChatIdle(
-          statusRef.current,
-          chatLoadingRef.current,
-          detail.activity,
-        ),
-      )
     }
     window.addEventListener(MEROPE_STATE_EVENT, onState)
     return () => window.removeEventListener(MEROPE_STATE_EVENT, onState)
   }, [])
-
-  useEffect(() => {
-    if (chatLoading && status !== 'idle' && status !== 'listening') return
-    setActivity((current) =>
-      current === 'thinking' || current === 'talking' ? 'idle' : current,
-    )
-  }, [chatLoading, status])
 
   useEffect(() => {
     if (!hasChecked) return undefined
@@ -203,13 +175,6 @@ export function AgentPanelFace() {
               ? persona.arousal
               : DEFAULT_AROUSAL,
           )
-          setActivity(
-            activityWhileChatIdle(
-              statusRef.current,
-              chatLoadingRef.current,
-              persona.activity,
-            ),
-          )
         })
         .catch(() => {
           if (active) setFailed(true)
@@ -225,11 +190,12 @@ export function AgentPanelFace() {
     }
   }, [hasChecked, isAuthenticated])
 
-  const emptyMessage = failed
-    ? t.merope.loadFailed
-    : !personaOn
-      ? t.agentPanel.agentPersonaOff
-      : t.merope.assetEmpty
+  const emptyMessage =
+    failed || rigFailed
+      ? t.merope.loadFailed
+      : !personaOn
+        ? t.agentPanel.agentPersonaOff
+        : t.merope.assetEmpty
   const surfaceStyle = useMemo(
     () => portraitStyle(manifest?.anime25dPlayback?.pixelCanvas),
     [manifest],
@@ -248,9 +214,10 @@ export function AgentPanelFace() {
           <RigCharacter
             ref={rigRef}
             activity={activity}
-            fallbackUrl={playableRig ? undefined : portraitUrl}
+            fallbackUrl={portraitUrl}
             manifest={manifest}
             mood={mood}
+            onPlaybackError={handleRigPlaybackError}
           />
         </div>
       ) : !loading ? (

@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS agent_addressee_state (
     emotion DOUBLE PRECISION NOT NULL DEFAULT 50,
     emotion_arousal DOUBLE PRECISION NOT NULL DEFAULT 50,
     activity VARCHAR(16) NOT NULL DEFAULT 'idle',
+    activity_updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     do_not_disturb BOOLEAN NOT NULL DEFAULT false,
     dnd_start_minute INTEGER,
     dnd_end_minute INTEGER,

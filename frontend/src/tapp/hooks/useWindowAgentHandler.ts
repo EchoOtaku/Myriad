@@ -6,17 +6,14 @@
  */
 
 import type { FrontendAction, WindowTarget } from '../../services/agent'
-import { useEffect } from 'react'
+import type { WindowRef } from './windowAgentTarget'
 
+import { useEffect } from 'react'
 import {
   registerActionHandler,
   unregisterActionHandler,
 } from '../../services/agent'
-import {
-  resolveCloseWindowIds,
-  resolveWindowTarget,
-  type WindowRef,
-} from './windowAgentTarget'
+import { resolveCloseWindowIds, resolveWindowTarget } from './windowAgentTarget'
 
 export type { WindowRef }
 
@@ -106,6 +103,7 @@ export function useWindowAgentHandler({
     }
 
     const queryWindows = async (): Promise<unknown> => ({
+      available: true,
       windows: windowsRef.current ?? [],
       activeWindowId: activeWindowIdRef.current,
       windowCount: windowsRef.current?.length ?? 0,

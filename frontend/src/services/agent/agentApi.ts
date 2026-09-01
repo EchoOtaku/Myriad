@@ -473,6 +473,26 @@ class AgentService {
     }>(`${this.baseUrl}/tasks/${taskId}/cancel`)
   }
 
+  /** Live music/window snapshot after a query frontendAction ran. */
+  async submitFrontendAck(
+    taskId: string,
+    stepId: string,
+    payload: {
+      musicStatus?: unknown
+      windowState?: unknown
+    },
+  ): Promise<void> {
+    try {
+      await apiService.post(`${this.baseUrl}/tasks/${taskId}/frontend-ack`, {
+        stepId,
+        musicStatus: payload.musicStatus ?? null,
+        windowState: payload.windowState ?? null,
+      })
+    } catch {
+      // Executor timed out the oneshot; the recipe continues on the request snapshot.
+    }
+  }
+
   /**
    * 回答任务中的问题
    */

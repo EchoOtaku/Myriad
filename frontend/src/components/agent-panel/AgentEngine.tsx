@@ -65,7 +65,12 @@ import {
   noteTurnTraceDrop,
 } from '../../features/merope/turnTrace'
 import { sampleTurnTraceLeaks } from '../../features/merope/turnTraceSample'
-import { agentService, executeFrontendAction } from '../../services/agent'
+import {
+  agentService,
+  executeFrontendAction,
+  frontendActionDedupeKey,
+  hasActionHandler,
+} from '../../services/agent'
 import {
   collectReattachCandidates,
   isNonTerminalTaskStatus,
@@ -243,6 +248,60 @@ export const AgentEngine: React.FC = () => {
   const createProgressHandlerRef = useRef<
     ((assistantMessageId: string) => (event: ProgressEvent) => void) | null
   >(null)
+  const dispatchedFrontendKeysRef = useRef(new Map<string, Set<string>>())
+  const frontendActionChainRef = useRef(new Map<string, Promise<void>>())
+
+  const enqueueFrontendActions = useCallback(
+    async (
+      messageId: string,
+      actions: Array<FrontendAction | null | undefined>,
+    ): Promise<unknown[]> => {
+      const visible: unknown[] = []
+      const keys =
+        dispatchedFrontendKeysRef.current.get(messageId) ?? new Set<string>()
+      dispatchedFrontendKeysRef.current.set(messageId, keys)
+      const run = async () => {
+        for (const action of actions) {
+          if (!action || typeof action !== 'object' || !('type' in action)) {
+            continue
+          }
+          const key = frontendActionDedupeKey(action)
+          if (keys.has(key)) continue
+          keys.add(key)
+          try {
+            const result = await runFrontendAction(action)
+            if (
+              result &&
+              typeof result === 'object' &&
+              [
+                'query_windows',
+                'music_get_status',
+                'show_data',
+                'show_report',
+              ].includes(action.type)
+            ) {
+              visible.push(result)
+            }
+          } catch (error) {
+            console.error('[AgentEngine] Frontend action failed:', error)
+          }
+        }
+      }
+      const prev =
+        frontendActionChainRef.current.get(messageId) ?? Promise.resolve()
+      const next = prev.then(run, run)
+      frontendActionChainRef.current.set(
+        messageId,
+        next.then(
+          () => undefined,
+          () => undefined,
+        ),
+      )
+      await next
+      return visible
+    },
+    [],
+  )
   const answerQuestionRef =
     useRef<(messageId: string, answer: string) => void>(null)
   const sessionTitleSetByModeRef = useRef<Record<AgentPanelMode, boolean>>({
@@ -377,9 +436,9 @@ export const AgentEngine: React.FC = () => {
           if (!onProgress) continue
           void agentService
             .subscribeRun(runId, onProgress)
-            .then((response) => {
-              handleAgentResponseRef.current?.(candidate.messageId, response)
-            })
+            .then((response) =>
+              handleAgentResponseRef.current?.(candidate.messageId, response),
+            )
             .catch((error) => {
               stopTurnSpeech(candidate.messageId)
               console.warn('[AgentEngine] reattach stream ended:', error)
@@ -746,6 +805,7 @@ export const AgentEngine: React.FC = () => {
       let streamedThinking = ''
       let performancePlanCount = 0
       let notedStaleGeneration = false
+      let liveTaskId = ''
       const speech = openTurnSpeech(assistantMessageId, generation, locale)
       const utterance = openTurnReply(
         mode,
@@ -805,6 +865,7 @@ export const AgentEngine: React.FC = () => {
 
           case 'task_created': {
             const tcEvent = event as TaskCreatedEvent
+            liveTaskId = tcEvent.taskId
             const execUpdates: Partial<TaskExecution> = {
               taskId: tcEvent.taskId,
               progress: 5,
@@ -886,6 +947,57 @@ export const AgentEngine: React.FC = () => {
                   ),
                 mode,
               )
+            }
+            if (stepEvent.frontendActions && stepEvent.frontendActions.length > 0) {
+              void (async () => {
+                const results = await enqueueFrontendActions(
+                  assistantMessageId,
+                  stepEvent.frontendActions,
+                )
+                const needsAck = stepEvent.frontendActions.some(
+                  (action) =>
+                    action &&
+                    ['query_windows', 'music_get_status'].includes(action.type),
+                )
+                if (!needsAck || !liveTaskId) return
+                let musicStatus: unknown
+                let windowState: unknown
+                for (const result of results) {
+                  if (!result || typeof result !== 'object') continue
+                  const row = result as Record<string, unknown>
+                  if ('isPlaying' in row || 'isEnabled' in row) {
+                    musicStatus = result
+                  }
+                  if ('windows' in row || 'available' in row) {
+                    windowState = result
+                  }
+                }
+                const published = (
+                  window as unknown as {
+                    __musicPlayerState?: {
+                      isPlaying?: boolean
+                      isEnabled?: boolean
+                      currentSong?: unknown
+                      currentSongIndex?: number
+                      playlistLength?: number
+                    }
+                  }
+                ).__musicPlayerState
+                if (!musicStatus && published) {
+                  musicStatus = {
+                    isPlaying: !!published.isPlaying,
+                    isEnabled: !!published.isEnabled,
+                    currentSong: published.currentSong ?? null,
+                    currentSongIndex: published.currentSongIndex ?? 0,
+                    playlistLength: published.playlistLength ?? 0,
+                  }
+                }
+                await agentService.submitFrontendAck(
+                  liveTaskId,
+                  stepEvent.stepId,
+                  { musicStatus, windowState },
+                )
+              })()
             }
             break
           }
@@ -1158,6 +1270,7 @@ export const AgentEngine: React.FC = () => {
       locale,
       setSessionId,
       setMessages,
+      enqueueFrontendActions,
     ],
   )
 
@@ -1340,6 +1453,51 @@ export const AgentEngine: React.FC = () => {
           if (contentForAgent) {
             customData.pageContent = contentForAgent
           }
+        } else if (pageConsent && typeof document !== 'undefined') {
+          const main =
+            document.querySelector('main') ?? document.body
+          const text = (main?.innerText ?? '').replace(/\s+/g, ' ').trim()
+          if (text) {
+            customData.pageContent = {
+              type: 'custom',
+              title: document.title,
+              content: text.slice(0, 8000),
+              currentPath: location.pathname,
+            }
+          }
+        }
+        const published = (
+          window as unknown as {
+            __musicPlayerState?: {
+              isPlaying?: boolean
+              isEnabled?: boolean
+              currentSong?: unknown
+              currentSongIndex?: number
+              playlistLength?: number
+            }
+          }
+        ).__musicPlayerState
+        if (published) {
+          customData.musicStatus = {
+            isPlaying: !!published.isPlaying,
+            isEnabled: !!published.isEnabled,
+            currentSong: published.currentSong ?? null,
+            currentSongIndex: published.currentSongIndex ?? 0,
+            playlistLength: published.playlistLength ?? 0,
+          }
+        }
+        if (hasActionHandler('query_windows')) {
+          try {
+            const windowState = await executeFrontendAction({
+              type: 'query_windows',
+              timestamp: Date.now(),
+            })
+            if (windowState && typeof windowState === 'object') {
+              customData.windowState = windowState
+            }
+          } catch {
+            // typed handler missing mid-unmount
+          }
         }
         const body = captureTurnBody({
           route: location.pathname,
@@ -1364,7 +1522,7 @@ export const AgentEngine: React.FC = () => {
         )
 
         if (handleAgentResponseRef.current) {
-          handleAgentResponseRef.current(
+          await handleAgentResponseRef.current(
             assistantMsgId,
             response,
             mode,
@@ -1760,7 +1918,7 @@ export const AgentEngine: React.FC = () => {
           : {}),
       })
 
-      // 执行前端动作
+      // 执行前端动作。流式路径已在 step_completed 跑过同 timestamp 的动作，这里只补漏。
       const frontendActions = responseData?.frontendActions as
         (typeof response.frontendAction)[] | undefined
       let frontendAction =
@@ -1788,64 +1946,36 @@ export const AgentEngine: React.FC = () => {
         }
       }
 
-      if (
+      const pendingActions =
         frontendActions &&
         Array.isArray(frontendActions) &&
         frontendActions.length > 0
-      ) {
-        const visibleResults: unknown[] = []
-        for (const action of frontendActions) {
-          if (!action) continue
-          try {
-            const result = await runFrontendAction(action)
-            if (
-              result &&
-              typeof result === 'object' &&
-              ['query_windows', 'music_get_status'].includes(action.type)
-            ) {
-              visibleResults.push(result)
-            }
-          } catch (error) {
-            console.error('[AgentEngine] Frontend action failed:', error)
-          }
-        }
-        if (visibleResults.length > 0) {
-          const serialized = JSON.stringify(visibleResults, null, 2).slice(
-            0,
-            4000,
-          )
-          updateMessage(messageId, {
-            content: `${displayMessage || response.message}\n\n\`\`\`json\n${serialized}\n\`\`\``,
-            data: {
-              ...(responseData ?? {}),
-              frontendActionResults: visibleResults,
-            },
-          })
-        }
-      } else if (frontendAction) {
-        try {
-          const result = await runFrontendAction(frontendAction)
-          if (
-            result &&
-            typeof result === 'object' &&
-            ['query_windows', 'music_get_status'].includes(frontendAction.type)
-          ) {
-            const serialized = JSON.stringify(result, null, 2).slice(0, 4000)
-            updateMessage(messageId, {
-              content: `${displayMessage || response.message}\n\n\`\`\`json\n${serialized}\n\`\`\``,
-              data: {
-                ...(responseData ?? {}),
-                frontendActionResult: result,
-              },
-            })
-          }
-        } catch (error) {
-          console.error('[AgentEngine] Frontend action failed:', error)
-        }
+          ? frontendActions
+          : frontendAction
+            ? [frontendAction]
+            : []
+      const visibleResults = await enqueueFrontendActions(
+        messageId,
+        pendingActions,
+      )
+      if (visibleResults.length > 0) {
+        const serialized = JSON.stringify(visibleResults, null, 2).slice(
+          0,
+          4000,
+        )
+        updateMessage(messageId, {
+          content: `${displayMessage || response.message}\n\n\`\`\`json\n${serialized}\n\`\`\``,
+          data: {
+            ...(responseData ?? {}),
+            frontendActionResults: visibleResults,
+          },
+        })
       }
+      dispatchedFrontendKeysRef.current.delete(messageId)
+      frontendActionChainRef.current.delete(messageId)
       finishTurnTrace()
     },
-    [locale, updateMessage, updateMessageExecution],
+    [locale, updateMessage, updateMessageExecution, enqueueFrontendActions],
   )
 
   useEffect(() => {
@@ -1910,7 +2040,7 @@ export const AgentEngine: React.FC = () => {
               answer,
               createProgressHandler(messageId, 'work'),
             )
-        handleAgentResponseRef.current?.(messageId, response, 'work')
+        await handleAgentResponseRef.current?.(messageId, response, 'work')
       } catch (error) {
         stopTurnSpeech(messageId)
         finishTurnTrace()

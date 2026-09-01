@@ -161,7 +161,13 @@ async fn execute_ai_summarize(
     params: &HashMap<String, Value>,
     analyzer: &crate::services::analyzer::AiAnalyzer,
 ) -> Result<Value, String> {
-    let input = params.get("content").cloned().unwrap_or(json!(null));
+    let input = params
+        .get("content")
+        .or_else(|| params.get("items"))
+        .or_else(|| params.get("input"))
+        .or_else(|| params.get("data"))
+        .cloned()
+        .unwrap_or(json!(null));
     let style = params
         .get("style")
         .and_then(|v| v.as_str())
@@ -836,6 +842,14 @@ async fn execute_speech_tts(params: &HashMap<String, Value>) -> Result<Value, St
         "duration": estimated_duration_sec,
         "voice": voice_type,
         "textLength": text.chars().count(),
+        "frontendAction": {
+            "type": "play_audio",
+            "params": {
+                "audioBase64": audio,
+                "codec": codec_out
+            },
+            "timestamp": chrono::Utc::now().timestamp_millis()
+        }
     }))
 }
 

@@ -48,9 +48,14 @@ mod agent_header;
 mod confirmation_and_tasks;
 mod process_and_recipe;
 
+pub(crate) use confirmation_and_tasks::collect_step_frontend_actions;
+
 pub use agent_footer::{
     apply_pre_param_answer_to_recipe, cleanup_expired_confirmations, ensure_agent_usage_allowed,
     get_capabilities_summary_for_user, get_user_permissions, init_task_store,
     parse_pre_param_question_id, user_is_current_admin,
+};
+pub(crate) use agent_footer::{
+    granted_covers_tapp_permission, scheduler_create_actions_within_grants,
 };
 pub use agent_header::{Agent, LANE_QUEUE, SYSTEM_USER_ID};

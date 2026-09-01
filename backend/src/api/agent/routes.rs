@@ -214,6 +214,13 @@ pub fn create_agent_routes(app_state: crate::state::AppState) -> Router<crate::s
                 middleware::auth::auth_middleware,
             )),
         )
+        .route(
+            "/tasks/{task_id}/frontend-ack",
+            post(frontend_step_ack).route_layer(from_fn_with_state(
+                app_state.clone(),
+                middleware::auth::auth_middleware,
+            )),
+        )
         // 回答任务问题（需要认证）
         .route(
             "/tasks/{task_id}/answer",

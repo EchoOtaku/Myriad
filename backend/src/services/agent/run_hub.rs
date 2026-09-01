@@ -577,13 +577,24 @@ pub async fn create_run(user_id: i32, session_id: Option<String>) -> Arc<AgentRu
 /// Run still doing work. `waiting_for_input` is excluded: that run is waiting on
 /// the person, not occupying them. Heartbeat uses SYSTEM_USER_ID.
 pub async fn user_has_executing_run(user_id: i32) -> bool {
-    let runs = AGENT_RUNS.read().await;
-    for run in runs.values() {
-        if run.user_id == user_id && run.is_executing().await {
-            return true;
+    user_executing_run_count(user_id).await > 0
+}
+
+pub async fn user_executing_run_count(user_id: i32) -> usize {
+    let candidates = AGENT_RUNS
+        .read()
+        .await
+        .values()
+        .filter(|run| run.user_id == user_id)
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut count = 0;
+    for run in candidates {
+        if run.is_executing().await {
+            count += 1;
         }
     }
-    false
+    count
 }
 
 pub async fn get_run_for_user(run_id: &str, user_id: i32) -> Option<Arc<AgentRun>> {

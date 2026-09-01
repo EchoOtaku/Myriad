@@ -13,6 +13,7 @@ pub struct Model {
     pub emotion: f64,
     pub emotion_arousal: f64,
     pub activity: String,
+    pub activity_updated_at: DateTimeWithTimeZone,
     pub do_not_disturb: bool,
     #[sea_orm(nullable)]
     pub dnd_start_minute: Option<i32>,

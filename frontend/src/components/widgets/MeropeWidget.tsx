@@ -1,11 +1,11 @@
 import type { CSSProperties } from 'react'
 import type { RigCharacterHandle } from '../../features/merope/rig/RigCharacter'
-import type { MeropeActivity } from '../../features/merope/types'
 import type { MoodBand } from '../agent/meropeVitals'
 import type { WidgetComponentProps } from '../WidgetGrid'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
+import { agentStatusActivity } from '../../features/merope/activity'
 import { isAnime25DPlayback } from '../../features/merope/anime25drig/types'
 import { getSiteFace } from '../../features/merope/api'
 import {
@@ -26,6 +26,7 @@ import {
 } from '../../features/merope/publicName'
 import RigCharacter from '../../features/merope/rig/RigCharacter'
 import { agentService } from '../../services/agent'
+import { useAgentStatus } from '../agent-panel/agentStatusStore'
 import { ADDRESSEE_UPDATED_EVENT, moodBand } from '../agent/meropeVitals'
 import { WidgetShell } from './shared/WidgetShell'
 import { WidgetSkeletonCover } from './shared/WidgetSkeleton'
@@ -70,11 +71,6 @@ function Nameplate({
       ) : null}
     </div>
   )
-}
-
-function toMeropeActivity(raw: string | undefined): MeropeActivity {
-  if (raw === 'talking' || raw === 'thinking') return raw
-  return 'idle'
 }
 
 function hasPlayableRig(
@@ -122,27 +118,37 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
   const [agentName, setAgentName] = useState(PERSONA_DEFAULT_NAME)
   const [mood, setMood] = useState(DEFAULT_MOOD)
   const [arousal, setArousal] = useState(DEFAULT_AROUSAL)
-  const [activity, setActivity] = useState<MeropeActivity>('idle')
+  const { status } = useAgentStatus()
+  const activity = agentStatusActivity(status)
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
+  const [rigFailed, setRigFailed] = useState(false)
   const [vitalsReady, setVitalsReady] = useState(false)
   const faceRequestRef = useRef(0)
   const rigRef = useRef<RigCharacterHandle>(null)
-  const capabilities = useMemo(() => semanticRigCapabilities(manifest), [manifest])
+  const capabilities = useMemo(
+    () => semanticRigCapabilities(manifest),
+    [manifest],
+  )
   const playableRig = hasPlayableRig(manifest)
-  const showCharacter = playableRig || Boolean(portraitUrl)
+  const motionReady = playableRig && !rigFailed
+  const liveCapabilities = motionReady ? capabilities : []
+  const showCharacter = motionReady || Boolean(portraitUrl)
+  const handleRigPlaybackError = useCallback(() => setRigFailed(true), [])
   useRigMotionLifecycle(rigRef, {
     mood,
     arousal,
     activity,
-    capabilities,
-    ready: showCharacter,
+    capabilities: liveCapabilities,
+    ready: motionReady,
+    priority: 1,
   })
 
   const loadFace = useCallback(() => {
     const request = ++faceRequestRef.current
     setLoading(true)
     setFailed(false)
+    setRigFailed(false)
     void getSiteFace()
       .then((face) => {
         if (request !== faceRequestRef.current) return
@@ -181,7 +187,6 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
           ? detail.mood.arousalAfter
           : current,
       )
-      setActivity(toMeropeActivity(detail.activity))
     }
     window.addEventListener(MEROPE_STATE_EVENT, onState)
     return () => window.removeEventListener(MEROPE_STATE_EVENT, onState)
@@ -223,7 +228,6 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
               ? persona.arousal
               : DEFAULT_AROUSAL,
           )
-          setActivity(toMeropeActivity(persona.activity))
           setVitalsReady(true)
         })
         .catch(() => {
@@ -263,16 +267,17 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
               <RigCharacter
                 ref={rigRef}
                 activity={activity}
-                fallbackUrl={playableRig ? undefined : portraitUrl}
+                fallbackUrl={portraitUrl}
                 manifest={manifest}
                 mood={mood}
+                onPlaybackError={handleRigPlaybackError}
               />
             </div>
             <Nameplate name={agentName} band={band} compact={compact} />
           </>
         ) : !loading ? (
           <p className="merope-widget__empty" role="status">
-            {failed ? t.merope.loadFailed : t.merope.assetEmpty}
+            {failed || rigFailed ? t.merope.loadFailed : t.merope.assetEmpty}
           </p>
         ) : null}
 

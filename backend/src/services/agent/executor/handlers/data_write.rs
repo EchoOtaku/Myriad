@@ -12,6 +12,7 @@ use crate::services::agent::data_write_pure::{
 };
 use crate::services::agent::executor::utils::validate_platform_name;
 use crate::services::agent::executor::utils::VALID_PLATFORMS;
+use crate::services::agent::external_pure::first_i64_param;
 use crate::services::brew_parser::FeedParser;
 use crate::services::tapp_storage::{
     read_storage_value, sandbox_storage_entries, validate_sandbox_storage_key,
@@ -539,10 +540,7 @@ async fn execute_brew_mark(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
-    let item_id = params
-        .get("itemId")
-        .and_then(|v| v.as_i64())
-        .ok_or("Missing itemId")? as i32;
+    let item_id = first_i64_param(params, &["itemId", "item_id"]).ok_or("Missing itemId")? as i32;
     let action = params
         .get("action")
         .and_then(|v| v.as_str())
@@ -689,16 +687,16 @@ async fn execute_content_write(
         .or_else(|| params.get("data"))
         .cloned()
         .unwrap_or(json!(null));
-    if params
-        .get("target")
+    let target = params.get("target");
+    let target_type = target
         .and_then(|target| target.get("type"))
         .and_then(Value::as_str)
-        == Some("clipboard")
-    {
-        let text = match &content {
-            Value::String(s) => s.clone(),
-            other => other.to_string(),
-        };
+        .unwrap_or("storage");
+    let text = match &content {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    };
+    if target_type == "clipboard" {
         return Ok(json!({
             "success": true,
             "target": "clipboard",
@@ -713,46 +711,114 @@ async fn execute_content_write(
         .get("title")
         .and_then(|v| v.as_str())
         .unwrap_or("未命名内容");
+    if target_type == "file" {
+        let filename = target
+            .and_then(|t| t.get("name"))
+            .and_then(Value::as_str)
+            .filter(|s| !s.trim().is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("{title}.{}", content_type_extension(content_type)));
+        return Ok(json!({
+            "success": true,
+            "target": "file",
+            "filename": filename,
+            "frontendAction": {
+                "type": "download_file",
+                "params": {
+                    "filename": filename,
+                    "format": content_type,
+                    "content": text
+                },
+                "timestamp": Utc::now().timestamp_millis()
+            }
+        }));
+    }
 
-    let content_id = format!("content_{}", Utc::now().timestamp_millis());
-    let now = Utc::now();
-
-    let content_data = json!({
-        "id": content_id,
-        "type": content_type,
-        "title": title,
-        "content": content,
-        "createdAt": now.to_rfc3339()
-    });
-
-    // 持久化到 tapp_storage
-    let new_record = tapp_storage::ActiveModel {
-        tapp_id: Set("agent_content".to_string()),
-        user_id: Set(ctx.user_id),
-        key: Set(content_id.clone()),
-        value: Set(content_data),
-        created_at: Set(now.into()),
-        updated_at: Set(now.into()),
-        ..Default::default()
+    let tapp_id = match target_type {
+        "tapp" => target
+            .and_then(|t| t.get("id"))
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .ok_or("Missing target.id for tapp")?,
+        "storage" => target
+            .and_then(|t| t.get("id"))
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("agent_storage"),
+        other => {
+            return Err(format!("Unknown content target: {other}"));
+        }
     };
-    new_record
-        .insert(ctx.db)
-        .await
-        .map_err(|error| write_store_failed("save content", error))?;
+    if target_type == "tapp" {
+        crate::services::tapp_ownership::verify_tapp_ownership(ctx.db, ctx.user_id, tapp_id)
+            .await
+            .map_err(|err| err.to_string())?;
+    }
 
+    let key = target
+        .and_then(|t| t.get("name"))
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("content_{}", Utc::now().timestamp_millis()));
+    validate_sandbox_storage_key(&key).map_err(str::to_string)?;
+    let mut value = content.clone();
+    if params
+        .get("append")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        if let Ok(existing) = read_storage_value(ctx.db, ctx.user_id, tapp_id, &key).await {
+            if !existing.is_null() {
+                value = append_storage_value(existing, content);
+            }
+        }
+    }
+    validate_storage_value_size(&value).map_err(|error| error.to_string())?;
+    write_storage_value(ctx.db, ctx.user_id, tapp_id, &key, value.clone())
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let now = Utc::now();
     Ok(json!({
         "success": true,
-        "contentId": content_id,
+        "target": target_type,
+        "targetId": tapp_id,
+        "contentId": key,
         "type": content_type,
         "title": title,
-        "content": content,
+        "content": value,
         "frontendAction": {
             "type": "show_notification",
             "params": {
                 "title": crate::services::agent::response_agent::content_saved(title),
-                "contentId": content_id
+                "contentId": key
             },
             "timestamp": now.timestamp_millis()
         }
     }))
+}
+
+fn content_type_extension(content_type: &str) -> &'static str {
+    match content_type {
+        "markdown" => "md",
+        "html" => "html",
+        "json" => "json",
+        _ => "txt",
+    }
+}
+
+fn append_storage_value(existing: Value, incoming: Value) -> Value {
+    match (existing, incoming) {
+        (Value::String(left), Value::String(right)) => Value::String(format!("{left}{right}")),
+        (Value::Array(mut left), Value::Array(right)) => {
+            left.extend(right);
+            Value::Array(left)
+        }
+        (Value::Array(mut left), right) => {
+            left.push(right);
+            Value::Array(left)
+        }
+        (left, right) => json!([left, right]),
+    }
 }

@@ -488,6 +488,12 @@ pub(crate) fn tables() -> Vec<TableDef> {
                     default_value: Some("'idle'::character varying".into()),
                 },
                 ColumnDef {
+                    name: "activity_updated_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+                ColumnDef {
                     name: "do_not_disturb".into(),
                     data_type: "boolean".into(),
                     is_nullable: false,

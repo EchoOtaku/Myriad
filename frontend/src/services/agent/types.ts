@@ -331,6 +331,8 @@ export interface StepCompletedEvent {
   degraded?: boolean
   /** 图片生成结果 URL */
   imageUrl?: string
+  /** 本步立刻执行的前端动作（不要等整份 recipe 结束） */
+  frontendActions?: FrontendAction[]
 }
 
 /** 步骤重试事件（智能重试：分析错误后修改参数） */
@@ -550,6 +552,10 @@ export type FrontendActionType =
   | 'reading_list'
   | 'show_notification'
   | 'copy_clipboard'
+  | 'play_audio'
+  | 'show_data'
+  | 'download_file'
+  | 'show_report'
 
 /** 窗口目标 */
 export interface WindowTarget {

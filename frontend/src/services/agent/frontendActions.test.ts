@@ -5,12 +5,13 @@
  * either have a typed handler, or be listed here as a known gap.
  */
 
+import type { FrontendActionType } from './types.ts'
+import { frontendActionDedupeKey } from './frontendActions.ts'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { describe, it } from 'node:test'
 import { dirname, join } from 'node:path'
+import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import type { FrontendActionType } from './types.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../../..')
 
@@ -34,6 +35,7 @@ const BACKEND_EMITTED: string[] = [
   'reading_list',
   'show_notification',
   'copy_clipboard',
+  'play_audio',
   'show_data',
   'download_file',
   'show_report',
@@ -54,14 +56,14 @@ const TYPED: FrontendActionType[] = [
   'reading_list',
   'show_notification',
   'copy_clipboard',
-]
-
-/** Emitted by the backend, but no typed `registerActionHandler` exists. */
-const KNOWN_ORPHANS = [
+  'play_audio',
   'show_data',
   'download_file',
   'show_report',
-] as const
+]
+
+/** Emitted by the backend, but no typed `registerActionHandler` exists. */
+const KNOWN_ORPHANS = [] as const
 
 describe('frontendAction chain', () => {
   it('every backend-emitted type is either typed or a known orphan', () => {
@@ -80,19 +82,30 @@ describe('frontendAction chain', () => {
     const registered = new Set<string>()
     const pattern = /registerActionHandler\(\s*'([^']+)'/g
     for (const text of [global, windows]) {
-      let match: RegExpExecArray | null
-      while ((match = pattern.exec(text))) {
+      let match = pattern.exec(text)
+      while (match) {
         registered.add(match[1])
+        match = pattern.exec(text)
       }
     }
     assert.match(app, /action\.type !== 'open_window'/)
     assert.match(app, /action\.type !== 'agent_interaction'/)
+    assert.match(app, /action\.type === 'close_window'/)
 
     const missing = TYPED.filter((type) => !registered.has(type))
     assert.deepEqual(
       missing,
       [],
       `typed FrontendActionType without registerActionHandler: ${missing.join(', ')}`,
+    )
+  })
+
+  it('dedupes the same action from step_completed and the final response', () => {
+    const action = { type: 'navigate' as const, path: '/brew', timestamp: 42 }
+    assert.equal(frontendActionDedupeKey(action), 'navigate:42')
+    assert.equal(
+      frontendActionDedupeKey(action),
+      frontendActionDedupeKey({ ...action }),
     )
   })
 })

@@ -2,6 +2,7 @@ use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
     DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Statement,
+    TransactionTrait,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -344,8 +345,11 @@ fn is_unique_conflict(err: &impl std::fmt::Display) -> bool {
     lower.contains("23505") || lower.contains("duplicate key")
 }
 
-pub async fn load_affect_baseline(db: &DatabaseConnection) -> AffectBaseline {
-    match get_persona(db).await {
+pub async fn load_affect_baseline<C>(db: &C) -> AffectBaseline
+where
+    C: ConnectionTrait,
+{
+    match get_persona_on(db).await {
         Ok(Some(persona)) => {
             persona_affect_baseline(persona.persona_json.as_ref(), &persona.personality)
         }
@@ -386,10 +390,13 @@ fn overlay_settled(
     state
 }
 
-pub async fn get_or_create_state(
-    db: &DatabaseConnection,
+pub async fn get_or_create_state<C>(
+    db: &C,
     user_id: i32,
-) -> Result<agent_addressee_state::Model, anyhow::Error> {
+) -> Result<agent_addressee_state::Model, anyhow::Error>
+where
+    C: ConnectionTrait,
+{
     let base = load_affect_baseline(db).await;
     if let Some(existing) = agent_addressee_state::Entity::find_by_id(user_id)
         .one(db)
@@ -406,6 +413,7 @@ pub async fn get_or_create_state(
         emotion: Set(rest.emotion),
         emotion_arousal: Set(rest.emotion_arousal),
         activity: Set("idle".to_string()),
+        activity_updated_at: Set(now),
         do_not_disturb: Set(false),
         dnd_start_minute: Set(None),
         dnd_end_minute: Set(None),
@@ -428,12 +436,15 @@ pub async fn get_or_create_state(
     }
 }
 
-pub async fn save_affect(
-    db: &DatabaseConnection,
+async fn save_affect_on<C>(
+    db: &C,
     user_id: i32,
     affect: Affect,
     touch_user_message: bool,
-) -> Result<agent_addressee_state::Model, anyhow::Error> {
+) -> Result<agent_addressee_state::Model, anyhow::Error>
+where
+    C: ConnectionTrait,
+{
     let state = get_or_create_state(db, user_id).await?;
     let now = Utc::now().into();
     let mut active: agent_addressee_state::ActiveModel = state.into();
@@ -448,6 +459,43 @@ pub async fn save_affect(
         active.last_user_message_at = Set(Some(now));
     }
     Ok(active.update(db).await?)
+}
+
+/// Apply one affect delta to the latest row under a per-addressee database
+/// lock. Chat turns, async appraisal and task outcomes can arrive from
+/// different sessions or backend replicas; serializing the read-modify-write
+/// keeps every delta instead of letting the last absolute write erase one.
+pub async fn update_affect<F>(
+    db: &DatabaseConnection,
+    user_id: i32,
+    touch_user_message: bool,
+    update: F,
+) -> Result<(Affect, agent_addressee_state::Model), anyhow::Error>
+where
+    F: FnOnce(&mut Affect) + Send,
+{
+    let transaction = db.begin().await?;
+    lock_addressee(&transaction, user_id).await?;
+    let state = get_or_create_state(&transaction, user_id).await?;
+    let before = affect_from_state(&state);
+    let mut after = before;
+    update(&mut after);
+    let saved = save_affect_on(&transaction, user_id, after, touch_user_message).await?;
+    transaction.commit().await?;
+    Ok((before, saved))
+}
+
+async fn lock_addressee<C>(db: &C, user_id: i32) -> Result<(), anyhow::Error>
+where
+    C: ConnectionTrait,
+{
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT pg_advisory_xact_lock($1, $2)",
+        vec![1296388165_i32.into(), user_id.into()],
+    ))
+    .await?;
+    Ok(())
 }
 
 /// One table, three sources.
@@ -625,14 +673,54 @@ pub async fn set_activity(
     user_id: i32,
     activity: &str,
 ) -> Result<agent_addressee_state::Model, anyhow::Error> {
-    let state = get_or_create_state(db, user_id).await?;
+    let transaction = db.begin().await?;
+    lock_addressee(&transaction, user_id).await?;
+    let state = get_or_create_state(&transaction, user_id).await?;
     if state.activity == activity {
+        transaction.commit().await?;
         return Ok(state);
     }
     let mut active: agent_addressee_state::ActiveModel = state.into();
+    let now = Utc::now().into();
     active.activity = Set(activity.to_string());
-    active.updated_at = Set(Utc::now().into());
-    Ok(active.update(db).await?)
+    active.activity_updated_at = Set(now);
+    active.updated_at = Set(now);
+    let saved = active.update(&transaction).await?;
+    transaction.commit().await?;
+    Ok(saved)
+}
+
+/// Keep the most active phase while more than one run is live. A second run
+/// starting its talking phase must not downgrade another run already working.
+pub async fn promote_activity(
+    db: &DatabaseConnection,
+    user_id: i32,
+    activity: &str,
+) -> Result<agent_addressee_state::Model, anyhow::Error> {
+    let transaction = db.begin().await?;
+    lock_addressee(&transaction, user_id).await?;
+    let state = get_or_create_state(&transaction, user_id).await?;
+    if activity_rank(activity) <= activity_rank(&state.activity) {
+        transaction.commit().await?;
+        return Ok(state);
+    }
+    let mut active: agent_addressee_state::ActiveModel = state.into();
+    let now = Utc::now().into();
+    active.activity = Set(activity.to_string());
+    active.activity_updated_at = Set(now);
+    active.updated_at = Set(now);
+    let saved = active.update(&transaction).await?;
+    transaction.commit().await?;
+    Ok(saved)
+}
+
+fn activity_rank(activity: &str) -> u8 {
+    match activity {
+        "working" => 3,
+        "thinking" => 2,
+        "talking" => 1,
+        _ => 0,
+    }
 }
 
 pub async fn touch_proactive(
@@ -643,7 +731,6 @@ pub async fn touch_proactive(
     let now = Utc::now().into();
     let mut active: agent_addressee_state::ActiveModel = state.into();
     active.last_proactive_at = Set(Some(now));
-    active.activity = Set("idle".to_string());
     active.updated_at = Set(now);
     Ok(active.update(db).await?)
 }
@@ -661,6 +748,13 @@ mod tests {
         ));
         assert!(!is_unique_conflict(&"connection reset"));
         assert!(!is_unique_conflict(&"null value in column unique_id"));
+    }
+
+    #[test]
+    fn concurrent_activity_only_moves_toward_the_busier_phase() {
+        assert!(activity_rank("working") > activity_rank("thinking"));
+        assert!(activity_rank("thinking") > activity_rank("talking"));
+        assert!(activity_rank("talking") > activity_rank("idle"));
     }
 
     #[test]

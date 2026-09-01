@@ -49,7 +49,7 @@ fn motion_context(
         user_id,
         phase,
         mood,
-        activity: "talking".to_string(),
+        activity: phase.activity().to_string(),
         user_text: request.raw_input.clone(),
         response_text,
         task_success,
@@ -121,7 +121,7 @@ impl Agent {
             user_id,
             crate::services::agent::consciousness::live_presence_from_request(&request),
         );
-        crate::services::agent::merope::mark_activity(&self.db, user_id, "talking").await;
+        crate::services::agent::merope::mark_activity(&self.db, user_id, "thinking").await;
         let mood_transition = crate::services::agent::merope::note_user_turn(
             &self.db,
             user_id,
@@ -169,8 +169,9 @@ impl Agent {
             .await;
         }
 
-        // 1. Planner 规划
-        let planner_output = match self.planner.plan(&request).await {
+        // 1. Planner 规划（索引按授予权限过滤，避免规划到执行层必拒的能力）
+        let granted = crate::services::agent::get_user_permissions(&self.db, user_id).await;
+        let planner_output = match self.planner.plan_for(&request, &granted).await {
             Ok(output) => output,
             Err(error) => {
                 crate::services::agent::merope::note_chat_diary(
@@ -533,7 +534,7 @@ impl Agent {
             user_id,
             crate::services::agent::consciousness::live_presence_from_request(&request),
         );
-        crate::services::agent::merope::mark_activity(&self.db, user_id, "talking").await;
+        crate::services::agent::merope::mark_activity(&self.db, user_id, "thinking").await;
         let mood_transition = crate::services::agent::merope::note_user_turn(
             &self.db,
             user_id,
@@ -551,7 +552,7 @@ impl Agent {
             let _ = progress_tx
                 .send(AgentProgressEvent::MeropeStateChanged {
                     mood: mood.clone(),
-                    activity: "talking".to_string(),
+                    activity: "thinking".to_string(),
                 })
                 .await;
         }
@@ -684,9 +685,10 @@ impl Agent {
             })
             .await;
 
+        let granted = crate::services::agent::get_user_permissions(&self.db, user_id).await;
         let planner_output = match self
             .planner
-            .plan_with_progress(&request, &progress_tx)
+            .plan_with_progress_for(&request, &progress_tx, &granted)
             .await
         {
             Ok(output) => output,
@@ -1309,10 +1311,10 @@ impl Agent {
                 })
                 .await;
 
-            // 使用 Planner.replan
+            let granted = crate::services::agent::get_user_permissions(&self.db, user_id).await;
             match self
                 .planner
-                .replan_with_progress(original_request, &hint, &progress_tx)
+                .replan_with_progress_for(original_request, &hint, &progress_tx, &granted)
                 .await
             {
                 Ok(replan_output)
@@ -1671,6 +1673,15 @@ impl Agent {
         );
 
         Self::validate_saved_recipe(&recipe)?;
+        let granted = crate::services::agent::get_user_permissions(&self.db, user_id).await;
+        for step in &recipe.steps {
+            crate::services::agent::planner::capability_allowed_for_grants(
+                &step.capability_id,
+                &step.params,
+                &granted,
+            )
+            .await?;
+        }
 
         if let Some(response) = self
             .mood_refuse_response(

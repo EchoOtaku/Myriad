@@ -6,12 +6,12 @@ use std::collections::BTreeMap;
 
 use super::super::gates::{decide_ingest, is_valuable_event};
 use super::super::store::{
-    affect_from_state, get_or_create_state, insert_diary, recently_spoke_event, save_affect,
+    affect_from_state, get_or_create_state, insert_diary, recently_spoke_event, update_affect,
     DIARY_SOURCE_EVENT,
 };
 use super::super::{
-    apply_task_outcome, current_activity, effective_do_not_disturb, is_extremely_low,
-    is_logged_in_addressee,
+    activity_is_busy, apply_task_outcome, current_activity, effective_do_not_disturb,
+    is_extremely_low, is_logged_in_addressee,
 };
 use super::{
     addressee_is_chatting, compact_summary, is_enabled, is_trivial_line, persist_persona_remember,
@@ -151,7 +151,7 @@ pub async fn ingest(
 
     let state = get_or_create_state(db, user_id).await?;
     let chatting = addressee_is_chatting(db, user_id).await;
-    let working = current_activity(&state) == "working";
+    let working = activity_is_busy(current_activity(&state));
     let decision = decide_ingest(
         event_key,
         effective_do_not_disturb(&state),
@@ -164,7 +164,7 @@ pub async fn ingest(
     // the addressee happens to be chatting right now is a different question,
     // and gating on it meant a real Work task that finished inside the chat
     // window never counted — success or failure — for good.
-    apply_task_mood(db, user_id, event_key, &state).await;
+    apply_task_mood(db, user_id, event_key).await;
 
     if !decision.allow_model {
         let _ = insert_diary(db, user_id, &summary, DIARY_SOURCE_EVENT).await;
@@ -262,20 +262,19 @@ fn task_mood_outcome(event_key: &str) -> Option<bool> {
     }
 }
 
-async fn apply_task_mood(
-    db: &DatabaseConnection,
-    user_id: i32,
-    event_key: &str,
-    state: &crate::models::entities::agent_addressee_state::Model,
-) {
+async fn apply_task_mood(db: &DatabaseConnection, user_id: i32, event_key: &str) {
     let Some(succeeded) = task_mood_outcome(event_key) else {
         return;
     };
-    let mut affect = affect_from_state(state);
-    let previous = affect.mood;
-    apply_task_outcome(&mut affect, succeeded);
-    let _ = save_affect(db, user_id, affect, false).await;
-    if !is_extremely_low(previous) && is_extremely_low(affect.mood) {
+    let Ok((previous, saved)) = update_affect(db, user_id, false, |affect| {
+        apply_task_outcome(affect, succeeded);
+    })
+    .await
+    else {
+        return;
+    };
+    let after = affect_from_state(&saved);
+    if !is_extremely_low(previous.mood) && is_extremely_low(after.mood) {
         spawn(
             user_id,
             "agent.merope.mood_floor",

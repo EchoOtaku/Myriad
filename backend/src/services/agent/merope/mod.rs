@@ -26,8 +26,8 @@ pub use store::{
     acquire_portrait_generation, clear_persona_on, complete_portrait_generation,
     generation_inputs_changed, get_or_create_state, get_persona, get_persona_on, insert_diary,
     insert_proactive, latest_diary, list_diary_from_sources, list_remembered,
-    normalize_persona_fields, portrait_generation_is_pending, recent_proactive,
-    release_portrait_generation, save_affect, set_activity, set_dnd_schedule, set_do_not_disturb,
+    normalize_persona_fields, portrait_generation_is_pending, promote_activity, recent_proactive,
+    release_portrait_generation, set_activity, set_dnd_schedule, set_do_not_disturb, update_affect,
     upsert_persona_on, JsonDocumentUpdate, PersonaContractUpdate, PortraitUpdate,
 };
 
@@ -43,7 +43,15 @@ pub async fn mark_activity(db: &sea_orm::DatabaseConnection, user_id: i32, activ
     if !is_enabled().await {
         return;
     }
-    let _ = set_activity(db, user_id, activity).await;
+    let executing = crate::services::agent::run_hub::user_executing_run_count(user_id).await;
+    if activity == "idle" && executing > 1 {
+        return;
+    }
+    if executing > 1 {
+        let _ = promote_activity(db, user_id, activity).await;
+    } else {
+        let _ = set_activity(db, user_id, activity).await;
+    }
 }
 
 use crate::models::entities::agent_persona;
@@ -124,16 +132,17 @@ pub async fn note_user_turn(
     {
         return None;
     }
-    let state = get_or_create_state(db, user_id).await.ok()?;
-    let previous = store::affect_from_state(&state);
-    let mut affect = previous;
     let (praised, scolded) = detect_mood_cue(text);
-    apply_user_utterance(&mut affect, utterance_index, praised, scolded);
-    let saved = save_affect(db, user_id, affect, true).await.ok()?;
+    let (previous, saved) = update_affect(db, user_id, true, |affect| {
+        apply_user_utterance(affect, utterance_index, praised, scolded);
+    })
+    .await
+    .ok()?;
+    let after = store::affect_from_state(&saved);
     if !praised && !scolded && text.chars().count() >= CHAT_DIARY_MIN_CHARS {
         spawn_mood_hint(user_id, text);
     }
-    if !is_extremely_low(previous.mood) && is_extremely_low(affect.mood) {
+    if !is_extremely_low(previous.mood) && is_extremely_low(after.mood) {
         spawn_ingest(
             user_id,
             "agent.merope.mood_floor",
@@ -202,12 +211,10 @@ fn spawn_mood_hint(user_id: i32, text: impl Into<String>) {
         let Ok(db) = crate::services::tapp_registry::database().await else {
             return;
         };
-        let Ok(state) = get_or_create_state(&db, user_id).await else {
-            return;
-        };
-        let mut affect = store::affect_from_state(&state);
-        apply_mood_hint(&mut affect, valence, arousal);
-        let _ = save_affect(&db, user_id, affect, false).await;
+        let _ = update_affect(&db, user_id, false, |affect| {
+            apply_mood_hint(affect, valence, arousal);
+        })
+        .await;
     });
 }
 
@@ -383,8 +390,13 @@ pub use state::{
 
 /// The activity to act on, with a stale one read as idle.
 pub fn current_activity(state: &crate::models::entities::agent_addressee_state::Model) -> &str {
-    let age = (chrono::Utc::now() - state.updated_at.with_timezone(&chrono::Utc)).num_seconds();
+    let age =
+        (chrono::Utc::now() - state.activity_updated_at.with_timezone(&chrono::Utc)).num_seconds();
     effective_activity(&state.activity, age)
+}
+
+pub fn activity_is_busy(activity: &str) -> bool {
+    matches!(activity, "thinking" | "talking" | "working")
 }
 
 pub fn parse_clock_minute(raw: &str) -> Option<i32> {
@@ -436,7 +448,15 @@ pub fn effective_do_not_disturb(
 
 #[cfg(test)]
 mod tests {
-    use super::{minute_in_window, parse_clock_minute, should_write_chat_diary};
+    use super::{activity_is_busy, minute_in_window, parse_clock_minute, should_write_chat_diary};
+
+    #[test]
+    fn every_live_agent_activity_blocks_proactive_speech() {
+        assert!(activity_is_busy("thinking"));
+        assert!(activity_is_busy("talking"));
+        assert!(activity_is_busy("working"));
+        assert!(!activity_is_busy("idle"));
+    }
 
     #[test]
     fn chat_diary_skips_short_and_recent_turns() {

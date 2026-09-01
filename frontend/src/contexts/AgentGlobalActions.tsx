@@ -34,8 +34,12 @@ function findElement(target: PageElementTarget): HTMLElement | null {
   // 2. 使用 CSS 选择器
   if (target.selector) {
     try {
-      const el = document.querySelector(target.selector)
-      if (el) return el as HTMLElement
+      const els = document.querySelectorAll(target.selector)
+      if (els.length > 0) {
+        const index = typeof target.index === 'number' ? target.index : 0
+        const el = els[index]
+        if (el) return el as HTMLElement
+      }
     } catch {
       return null
     }
@@ -73,7 +77,7 @@ function findElement(target: PageElementTarget): HTMLElement | null {
   if (target.text && !target.role) {
     // 尝试查找按钮、链接等可交互元素
     const interactiveElements = document.querySelectorAll(
-      'button, a, [role="button"], [role="link"], [role="tab"], [role="menuitem"]',
+      'button, a, input, textarea, [contenteditable="true"], [role="button"], [role="link"], [role="tab"], [role="menuitem"]',
     )
     for (const el of interactiveElements) {
       if (el.textContent?.includes(target.text)) {
@@ -143,6 +147,16 @@ async function executeInteraction(
               top: element.scrollHeight,
               behavior: scrollBehavior,
             })
+          } else if (options.direction === 'left') {
+            element.scrollBy({
+              left: -(options.offset ?? 200),
+              behavior: scrollBehavior,
+            })
+          } else if (options.direction === 'right') {
+            element.scrollBy({
+              left: options.offset ?? 200,
+              behavior: scrollBehavior,
+            })
           } else if (options.offset !== undefined) {
             element.scrollBy({ top: options.offset, behavior: scrollBehavior })
           }
@@ -196,6 +210,27 @@ async function executeInteraction(
           element.click()
         }
         break
+
+      case 'type':
+      case 'input': {
+        const text = value === undefined ? '' : String(value)
+        if (
+          element instanceof HTMLInputElement ||
+          element instanceof HTMLTextAreaElement
+        ) {
+          element.focus()
+          element.value = text
+          element.dispatchEvent(new Event('input', { bubbles: true }))
+          element.dispatchEvent(new Event('change', { bubbles: true }))
+        } else if (element.isContentEditable) {
+          element.focus()
+          element.textContent = text
+          element.dispatchEvent(new Event('input', { bubbles: true }))
+        } else {
+          return false
+        }
+        break
+      }
 
       default:
         console.warn(
@@ -608,7 +643,10 @@ export function AgentGlobalActions() {
         // 让 Brew 组件挂载后自行检查执行，避免事件丢失
         const pendingAction = {
           readingList: readingListData,
-          articleId: payload.items[0]?.id.toString(),
+          articleId:
+            payload.items[0]?.id != null
+              ? String(payload.items[0].id)
+              : undefined,
           webSearchArticle: firstItemData, // 如果是网络搜索文章，传递完整数据
           timestamp: Date.now(),
         }
@@ -697,6 +735,126 @@ export function AgentGlobalActions() {
     [],
   )
 
+  const handlePlayAudio = useCallback(
+    async (action: FrontendAction): Promise<boolean> => {
+      if (action.type !== 'play_audio') return false
+      const params = action.params as
+        | { audioBase64?: string; codec?: string }
+        | undefined
+      const audioBase64 =
+        (typeof params?.audioBase64 === 'string' && params.audioBase64) ||
+        (typeof action.value === 'string' && action.value) ||
+        ''
+      if (!audioBase64) return false
+      const codec = typeof params?.codec === 'string' ? params.codec : 'mp3'
+      const mime =
+        codec === 'wav' || codec === 'pcm' ? 'audio/wav' : 'audio/mpeg'
+      const { base64ToAudioUrl } = await import('../services/speechApi')
+      const url = base64ToAudioUrl(audioBase64, mime)
+      const audio = new Audio(url)
+      const release = () => URL.revokeObjectURL(url)
+      audio.addEventListener('ended', release)
+      audio.addEventListener('error', release)
+      try {
+        await audio.play()
+      } catch (error) {
+        release()
+        console.warn('[AgentGlobalActions] play_audio failed:', error)
+        return false
+      }
+      return true
+    },
+    [],
+  )
+
+  const handleShowData = useCallback(
+    async (action: FrontendAction): Promise<unknown> => {
+      if (action.type !== 'show_data') return false
+      const params = action.params as
+        | {
+            count?: number
+            title?: string
+            message?: string
+            preview?: unknown
+          }
+        | undefined
+      const count = typeof params?.count === 'number' ? params.count : undefined
+      if (
+        count === undefined &&
+        params?.preview === undefined &&
+        typeof params?.message !== 'string' &&
+        typeof params?.title !== 'string'
+      ) {
+        return false
+      }
+      return {
+        title: typeof params?.title === 'string' ? params.title : undefined,
+        count,
+        message: typeof params?.message === 'string' ? params.message : undefined,
+        preview: params?.preview,
+      }
+    },
+    [],
+  )
+
+  const handleDownloadFile = useCallback(
+    async (action: FrontendAction): Promise<boolean> => {
+      if (action.type !== 'download_file') return false
+      const params = action.params as
+        | { content?: string; filename?: string; format?: string }
+        | undefined
+      const content = typeof params?.content === 'string' ? params.content : ''
+      if (!content) return false
+      const filename =
+        (typeof params?.filename === 'string' && params.filename) || 'download'
+      const format = typeof params?.format === 'string' ? params.format : 'json'
+      const mime =
+        format === 'csv'
+          ? 'text/csv'
+          : format === 'markdown' || format === 'md'
+            ? 'text/markdown'
+            : 'application/json'
+      const blob = new Blob([content], { type: mime })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      link.click()
+      URL.revokeObjectURL(url)
+      return true
+    },
+    [],
+  )
+
+  const handleShowReport = useCallback(
+    async (action: FrontendAction): Promise<unknown> => {
+      if (action.type !== 'show_report') return false
+      const params = action.params as
+        | {
+            title?: string
+            reportId?: string
+            format?: string
+            content?: string
+          }
+        | undefined
+      const title =
+        (typeof params?.title === 'string' && params.title) || 'Report'
+      const content =
+        typeof params?.content === 'string' ? params.content : undefined
+      if (!content && typeof params?.reportId !== 'string') {
+        return false
+      }
+      return {
+        title,
+        reportId:
+          typeof params?.reportId === 'string' ? params.reportId : undefined,
+        format: typeof params?.format === 'string' ? params.format : undefined,
+        content,
+      }
+    },
+    [],
+  )
+
   // 注册处理器
   useEffect(() => {
     console.log('[AgentGlobalActions] Registering global action handlers')
@@ -710,6 +868,10 @@ export function AgentGlobalActions() {
     registerActionHandler('reading_list', handleReadingList)
     registerActionHandler('show_notification', handleShowNotification)
     registerActionHandler('copy_clipboard', handleCopyClipboard)
+    registerActionHandler('play_audio', handlePlayAudio)
+    registerActionHandler('show_data', handleShowData)
+    registerActionHandler('download_file', handleDownloadFile)
+    registerActionHandler('show_report', handleShowReport)
 
     return () => {
       console.log('[AgentGlobalActions] Unregistering global action handlers')
@@ -722,6 +884,10 @@ export function AgentGlobalActions() {
       unregisterActionHandler('reading_list')
       unregisterActionHandler('show_notification')
       unregisterActionHandler('copy_clipboard')
+      unregisterActionHandler('play_audio')
+      unregisterActionHandler('show_data')
+      unregisterActionHandler('download_file')
+      unregisterActionHandler('show_report')
     }
   }, [
     handleNavigate,
@@ -733,6 +899,10 @@ export function AgentGlobalActions() {
     handleReadingList,
     handleShowNotification,
     handleCopyClipboard,
+    handlePlayAudio,
+    handleShowData,
+    handleDownloadFile,
+    handleShowReport,
   ])
 
   // 这个组件不渲染任何 UI

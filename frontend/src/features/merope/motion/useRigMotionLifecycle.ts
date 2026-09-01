@@ -1,7 +1,7 @@
 import type { RefObject } from 'react'
 import type { RigMotionPort } from '../rig/motionPort'
 import type { MeropeActivity } from '../types'
-import type { MotionRuntime } from './runtime'
+import type { LiveFaceConsumer, MotionRuntime } from './runtime'
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { setLiveFaceVisible } from '../faceVisible'
 import { markTurnTrace, noteTurnTraceDrop } from '../turnTrace'
@@ -21,6 +21,8 @@ export interface RigMotionLifecycleOptions {
    * runtime that only emits when mood, speech, or music changes.
    */
   ready?: boolean
+  /** Higher wins only when two visible production faces disagree. */
+  priority?: number
 }
 
 function useMotionRuntimeConsumer(
@@ -34,11 +36,36 @@ function useMotionRuntimeConsumer(
   const activity = options.activity ?? 'idle'
   const capabilityKey = options.capabilities?.join(',') ?? ''
   const ready = options.ready ?? true
+  const priority = options.priority ?? 0
+  const liveConsumerRef = useRef<LiveFaceConsumer | null>(null)
+  const liveStateRef = useRef({
+    mood,
+    arousal,
+    activity,
+    capabilities: capabilityKey ? capabilityKey.split(',') : [],
+    ready,
+    priority,
+  })
+  liveStateRef.current = {
+    mood,
+    arousal,
+    activity,
+    capabilities: capabilityKey ? capabilityKey.split(',') : [],
+    ready,
+    priority,
+  }
 
   useEffect(() => {
     const release = runtime.retain()
-    if (liveFace) setLiveFaceVisible(true)
+    if (liveFace) {
+      liveConsumerRef.current = runtime.attachLiveFaceConsumer(
+        liveStateRef.current,
+      )
+      setLiveFaceVisible(runtime.summaryFacts().faceVisible)
+    }
     return () => {
+      liveConsumerRef.current?.release()
+      liveConsumerRef.current = null
       release()
       if (liveFace) {
         setLiveFaceVisible(
@@ -49,12 +76,23 @@ function useMotionRuntimeConsumer(
   }, [runtime, liveFace])
 
   useEffect(() => {
+    if (liveFace) {
+      liveConsumerRef.current?.update(liveStateRef.current)
+      setLiveFaceVisible(runtime.summaryFacts().faceVisible)
+      return
+    }
     runtime.mood.set(mood, activity, arousal)
-  }, [runtime, mood, activity, arousal])
-
-  useEffect(() => {
     runtime.setCapabilities(capabilityKey ? capabilityKey.split(',') : [])
-  }, [runtime, capabilityKey])
+  }, [
+    runtime,
+    liveFace,
+    mood,
+    activity,
+    arousal,
+    capabilityKey,
+    ready,
+    priority,
+  ])
 
   useLayoutEffect(() => {
     if (!ready) return undefined

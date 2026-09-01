@@ -21,9 +21,44 @@ test('Anime2.5D adapter exposes semantic capabilities and state, not drivers', (
 })
 
 test('adapter source never mentions Live2D or VRM placeholders', () => {
-  const source = readFileSync(new URL('./anime25dAdapter.ts', import.meta.url), 'utf8')
+  const source = readFileSync(
+    new URL('./anime25dAdapter.ts', import.meta.url),
+    'utf8',
+  )
   assert.doesNotMatch(source, /Live2D|VRM/)
   assert.doesNotMatch(source, /mouthOpen|angleX/)
+})
+
+test('both live faces keep the portrait available after a runtime failure', () => {
+  const widget = readFileSync(
+    new URL('../../../components/widgets/MeropeWidget.tsx', import.meta.url),
+    'utf8',
+  )
+  const panel = readFileSync(
+    new URL(
+      '../../../components/agent-panel/AgentPanelFace.tsx',
+      import.meta.url,
+    ),
+    'utf8',
+  )
+  for (const source of [widget, panel]) {
+    assert.match(source, /fallbackUrl=\{portraitUrl\}/)
+    assert.match(source, /onPlaybackError=\{handleRigPlaybackError\}/)
+    assert.match(source, /const motionReady = playableRig && !rigFailed/)
+    assert.match(source, /ready: motionReady/)
+    assert.match(source, /motionReady \? capabilities : \[\]/)
+  }
+})
+
+test('static fallback cannot accumulate or report Anime2.5D motion', () => {
+  const source = readFileSync(
+    new URL('../rig/RigCharacter.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(source, /else if \(useAnimeRuntime\)/)
+  assert.match(source, /slice\(-MAX_PENDING_SPEECH_CHUNKS\)/)
+  assert.match(source, /if \(!useAnimeRuntime\)/)
+  assert.match(source, /result: 'rejected'/)
 })
 
 test('production chat and perception go through the body adapters', () => {
@@ -56,7 +91,10 @@ test('production chat and perception go through the body adapters', () => {
     /speakLine/,
   )
   assert.match(arbitration, /speakUnmountedLine/)
-  const adapter = readFileSync(new URL('./anime25dAdapter.ts', import.meta.url), 'utf8')
+  const adapter = readFileSync(
+    new URL('./anime25dAdapter.ts', import.meta.url),
+    'utf8',
+  )
   assert.doesNotMatch(adapter, /capturePerceptionSnapshots/)
   const perception = readFileSync(
     new URL('./perceptionAdapter.ts', import.meta.url),
@@ -104,7 +142,10 @@ test('hidden face does not pretend a body intent was played', () => {
       },
     },
   })
-  assert.equal(runtime.frame().performance?.directive?.plan.cues[0]?.intent, 'listen')
+  assert.equal(
+    runtime.frame().performance?.directive?.plan.cues[0]?.intent,
+    'listen',
+  )
   release()
 })
 
@@ -158,8 +199,57 @@ test('a production body intent reaches the Anime2.5D realizer and reports accept
   assert.ok(
     runtime
       .frame()
-      .performance?.behaviors?.every((behavior) => behavior.phase !== 'rejected'),
+      .performance?.behaviors?.every(
+        (behavior) => behavior.phase !== 'rejected',
+      ),
   )
 
+  release()
+})
+
+test('a cancelled reply clears its transient performance and bearing', () => {
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const release = runtime.retain()
+  const body = new Anime25DBodyAdapter(runtime)
+  setLiveFaceVisible(true)
+
+  body.intend({
+    messageId: 'message-cancel',
+    performance: {
+      phase: 'delivery',
+      moodRevision: 4,
+      motionStyle: 'open',
+      plan: {
+        baseline: {
+          expression: 'warm',
+          posture: 'open',
+          motionEnergy: 1,
+          attention: 0.9,
+        },
+        cues: [
+          {
+            intent: 'respond',
+            atMs: 0,
+            intensity: 1.1,
+            tempo: 1,
+            fadeInMs: 100,
+            fadeOutMs: 360,
+            interrupt: 'if-lower',
+          },
+        ],
+      },
+    },
+  })
+  assert.ok(runtime.frame().performance)
+  assert.equal(runtime.frame().bearing?.expression, 'warm')
+
+  runtime.performance.handleSpeech({
+    phase: 'cancel',
+    source: 'reply',
+    messageId: 'message-cancel',
+  })
+
+  assert.equal(runtime.frame().performance, null)
+  assert.equal(runtime.frame().bearing?.expression, 'steady')
   release()
 })

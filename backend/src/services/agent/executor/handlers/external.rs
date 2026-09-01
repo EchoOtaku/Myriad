@@ -5,9 +5,10 @@
 
 use super::HandlerContext;
 use crate::services::agent::external_pure::{
-    classify_outbound_fetch, compress_and_truncate_text, hitokoto_type, http_body_size_error,
-    http_fetch_method, match_mcp_capability_id, mcp_arguments, optional_string_param,
-    parse_http_body_value, scrape_max_length, scrape_selector, scrape_should_skip_tag,
+    classify_outbound_fetch, compress_and_truncate_text, first_i64_param, first_string_param,
+    hitokoto_type, http_body_size_error, http_fetch_method, match_mcp_capability_id, mcp_arguments,
+    optional_string_param, parse_http_body_value, sanitize_http_headers, scrape_max_length,
+    scrape_selector, scrape_should_skip_tag,
 };
 use crate::services::fetcher::PlatformFetcher;
 use crate::services::outbound_security;
@@ -123,23 +124,29 @@ async fn execute_http_fetch(params: &HashMap<String, Value>) -> Result<Value, St
 
     let (target_url, client) =
         public_client(url, Duration::from_secs(30), FETCH_USER_AGENT).await?;
+    let extra_headers = sanitize_http_headers(params.get("headers"));
     let response = match method {
         "POST" => {
             let body = params.get("body").cloned().unwrap_or(json!({}));
-            client
-                .post(target_url)
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| {
-                    tracing::warn!(error = %e, "HTTP request failed");
-                    "HTTP request failed".to_string()
-                })?
+            let mut request = client.post(target_url).json(&body);
+            for (name, value) in &extra_headers {
+                request = request.header(name.as_str(), value.as_str());
+            }
+            request.send().await.map_err(|e| {
+                tracing::warn!(error = %e, "HTTP request failed");
+                "HTTP request failed".to_string()
+            })?
         }
-        _ => client.get(target_url).send().await.map_err(|e| {
-            tracing::warn!(error = %e, "HTTP request failed");
-            "HTTP request failed".to_string()
-        })?,
+        _ => {
+            let mut request = client.get(target_url);
+            for (name, value) in &extra_headers {
+                request = request.header(name.as_str(), value.as_str());
+            }
+            request.send().await.map_err(|e| {
+                tracing::warn!(error = %e, "HTTP request failed");
+                "HTTP request failed".to_string()
+            })?
+        }
     };
 
     let status = response.status().as_u16();
@@ -200,10 +207,8 @@ async fn execute_notion_query(params: &HashMap<String, Value>) -> Result<Value, 
     let api_key =
         std::env::var("NOTION_API_KEY").map_err(|_| "Notion is not configured".to_string())?;
 
-    let database_id = params
-        .get("database_id")
-        .and_then(|v| v.as_str())
-        .ok_or("Missing database_id parameter")?;
+    let database_id = first_string_param(params, &["databaseId", "database_id"])
+        .ok_or("Missing databaseId parameter")?;
     let filter = params.get("filter").cloned().unwrap_or(json!({}));
 
     let client = fixed_host_client()?;
@@ -249,10 +254,7 @@ async fn execute_notion_query(params: &HashMap<String, Value>) -> Result<Value, 
 // Bilibili
 
 async fn execute_bilibili_user(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let uid = params
-        .get("uid")
-        .and_then(|v| v.as_str())
-        .ok_or("Missing uid parameter")?;
+    let uid = first_string_param(params, &["uid"]).ok_or("Missing uid parameter")?;
 
     let url = format!("https://api.bilibili.com/x/space/acc/info?mid={}", uid);
     let client = fixed_host_client()?;
@@ -270,6 +272,7 @@ async fn execute_bilibili_user(params: &HashMap<String, Value>) -> Result<Value,
         let user_data = data.get("data").cloned().unwrap_or(json!({}));
         Ok(json!({
             "uid": uid,
+            "userInfo": user_data,
             "name": user_data.get("name"),
             "face": user_data.get("face"),
             "sign": user_data.get("sign"),
@@ -288,8 +291,8 @@ async fn execute_bilibili_user(params: &HashMap<String, Value>) -> Result<Value,
 }
 
 async fn execute_bilibili_video(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let bvid = params.get("bvid").and_then(|v| v.as_str());
-    let aid = params.get("aid").and_then(|v| v.as_i64());
+    let bvid = first_string_param(params, &["bvid"]);
+    let aid = first_i64_param(params, &["aid"]);
 
     let url = if let Some(bvid) = bvid {
         format!(
@@ -377,28 +380,18 @@ async fn execute_bangumi_collections(params: &HashMap<String, Value>) -> Result<
 
 // Steam
 
-async fn execute_steam_user(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let steam_id = params
-        .get("steam_id")
-        .and_then(|v| v.as_str())
-        .ok_or("Missing steam_id parameter")?;
-
-    // 尝试从缓存获取
+async fn execute_steam_user(_params: &HashMap<String, Value>) -> Result<Value, String> {
     if let Ok(content) = tokio::fs::read_to_string("cache/platforms/steam_filtered.json").await {
         if let Ok(data) = serde_json::from_str::<Value>(&content) {
             return Ok(json!({
-                "steam_id": steam_id,
+                "userInfo": data,
                 "cached_data": data,
-                "source": "cache"
+                "source": "local_cache"
             }));
         }
     }
 
-    Ok(json!({
-        "steam_id": steam_id,
-        "message": "Steam user query requires API key configuration",
-        "hint": "Configure STEAM_API_KEY in environment"
-    }))
+    Err("No local Steam cache. Sync Steam on the platform page first.".to_string())
 }
 
 // 图片代理
@@ -420,6 +413,7 @@ async fn execute_proxy_image(params: &HashMap<String, Value>) -> Result<Value, S
         "originalUrl": url,
         "proxyUrl": proxy_url,
         "platform": platform,
+        "cached": false,
         "message": "Use proxyUrl for display (proxied only when host needs it)"
     }))
 }
@@ -427,12 +421,10 @@ async fn execute_proxy_image(params: &HashMap<String, Value>) -> Result<Value, S
 // 天气
 
 async fn execute_weather_get(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let city = params
-        .get("city")
-        .and_then(|v| v.as_str())
-        .unwrap_or("北京");
+    let city =
+        first_string_param(params, &["city", "location", "q"]).ok_or("Missing city parameter")?;
 
-    let url = format!("https://wttr.in/{}?format=j1", urlencoding::encode(city));
+    let url = format!("https://wttr.in/{}?format=j1", urlencoding::encode(&city));
     let client = fixed_host_client()?;
 
     let response = client
@@ -468,10 +460,7 @@ async fn execute_weather_get(params: &HashMap<String, Value>) -> Result<Value, S
 // 网易云音乐
 
 async fn execute_netease_song(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let song_id = params
-        .get("songId")
-        .and_then(|v| v.as_i64())
-        .ok_or("Missing songId")?;
+    let song_id = first_i64_param(params, &["songId", "song_id"]).ok_or("Missing songId")?;
     let include_lyrics = params
         .get("includeLyrics")
         .and_then(|v| v.as_bool())
@@ -519,10 +508,8 @@ async fn execute_netease_song(params: &HashMap<String, Value>) -> Result<Value, 
 }
 
 async fn execute_netease_playlist_detail(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let playlist_id = params
-        .get("playlistId")
-        .and_then(|v| v.as_i64())
-        .ok_or("Missing playlistId")?;
+    let playlist_id =
+        first_i64_param(params, &["playlistId", "playlist_id"]).ok_or("Missing playlistId")?;
 
     let url = format!(
         "https://music.163.com/api/playlist/detail?id={}",
@@ -558,10 +545,7 @@ async fn execute_netease_playlist_detail(params: &HashMap<String, Value>) -> Res
 
 /// Steam 游戏详情查询
 async fn execute_steam_game(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let app_id = params
-        .get("appId")
-        .and_then(|v| v.as_i64())
-        .ok_or("Missing appId")?;
+    let app_id = first_i64_param(params, &["appId", "app_id"]).ok_or("Missing appId")?;
 
     let url = format!(
         "https://store.steampowered.com/api/appdetails?appids={}",

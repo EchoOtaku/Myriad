@@ -9,10 +9,10 @@ use std::collections::HashMap;
 use super::executor_footer::*;
 use super::Executor;
 use super::{
-    claim_task_for_resume, clear_cancellation, extract_image_url, is_cancelled, persist_task_async,
-    summarize_output, truncate_str, TASK_STORE,
+    claim_task_for_resume, clear_cancellation, is_cancelled, persist_task_async, truncate_str,
+    TASK_STORE,
 };
-use super::{dag, events, retry, task_store};
+use super::{dag, events, frontend_ack, retry, task_store};
 
 impl Executor {
     /// 用户回答后恢复执行
@@ -411,20 +411,18 @@ impl Executor {
             let duration_ms = outcome.duration_ms;
 
             if outcome.success {
-                let output = outcome.output.clone().unwrap_or_default();
-
-                // 发送步骤完成事件（Skill 编排步骤不发送）
-                if !is_skill_planning {
-                    emitter
-                        .step_succeeded(
-                            &step.id,
-                            step_display_index,
-                            duration_ms,
-                            summarize_output(&output),
-                            extract_image_url(&output),
-                        )
-                        .await;
-                }
+                let output = frontend_ack::publish_and_await_snapshots(
+                    &emitter,
+                    &task_state.task_id,
+                    &step.id,
+                    &step.capability_id,
+                    step_display_index,
+                    duration_ms,
+                    outcome.output.clone().unwrap_or_default(),
+                    &mut context,
+                    !is_skill_planning,
+                )
+                .await;
                 emitter
                     .debug_complete(
                         &step.id,
@@ -437,9 +435,9 @@ impl Executor {
                     )
                     .await;
 
-                task_state
-                    .step_results
-                    .insert(step.id.clone(), outcome.to_step_result(&step.id));
+                let mut result = outcome.to_step_result(&step.id);
+                result.output = Some(output.clone());
+                task_state.step_results.insert(step.id.clone(), result);
                 if let Some(ref mut dag) = dag_scheduler {
                     dag.mark_completed(&step.id);
                 }

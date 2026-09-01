@@ -12,7 +12,7 @@ pub use utils::*;
 use super::types::*;
 use once_cell::sync::Lazy;
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -94,7 +94,7 @@ pub async fn capability_requires_confirmation_async(
         .map(|(msg, risk)| (msg.to_string(), *risk))
 }
 
-pub async fn get_capability_summary_filtered(include_admin: bool) -> Value {
+pub async fn get_capability_summary_filtered(granted: Option<&HashSet<String>>) -> Value {
     let registry = get_registry().await;
     let all = registry.get_all();
 
@@ -103,7 +103,7 @@ pub async fn get_capability_summary_filtered(include_admin: bool) -> Value {
     let mut capabilities: Vec<Value> = Vec::with_capacity(all.len());
 
     for cap in all {
-        if !include_admin && cap.required_permissions.iter().any(|p| p == "system:admin") {
+        if !capability_covered_by_grants(cap, granted) {
             continue;
         }
         let usage_hint = resolve_capability_hint(cap);
@@ -177,12 +177,34 @@ pub async fn get_capability_summary_filtered(include_admin: bool) -> Value {
 /// Note: AI 能力（含 ai.webSearch）始终保持注册与可规划；缺失 API Key 时由执行层
 /// 返回非重试错误，而不是在索引中降级/隐藏能力。
 pub async fn get_compact_index() -> Value {
+    get_compact_index_for_grants(None).await
+}
+
+/// Whether every `required_permissions` entry is in the grant set.
+/// Empty required list is callable. `granted = None` means unfiltered (tests / admin index).
+pub fn capability_covered_by_grants(cap: &Capability, granted: Option<&HashSet<String>>) -> bool {
+    let Some(granted) = granted else {
+        return true;
+    };
+    cap.required_permissions
+        .iter()
+        .all(|permission| granted.contains(permission))
+}
+
+/// Compact index limited to capabilities the user is actually granted.
+///
+/// Planner used to see the full 117 plus MCP, then fail at execute for
+/// non-admin. Filtering here is the grant layer, not declared/approved.
+pub async fn get_compact_index_for_grants(granted: Option<&HashSet<String>>) -> Value {
     let registry = get_registry().await;
 
     let mut by_category: std::collections::HashMap<String, Vec<Value>> =
         std::collections::HashMap::new();
 
     for cap in registry.get_all() {
+        if !capability_covered_by_grants(cap, granted) {
+            continue;
+        }
         let hint = resolve_capability_hint(cap);
         let category = get_capability_category_name(&cap.category);
 
@@ -208,33 +230,54 @@ pub async fn get_compact_index() -> Value {
 
         by_category.entry(category).or_default().push(entry);
     }
+    drop(registry);
 
-    // 合并动态 Skills 到索引
-    let mut total = registry.get_all().len();
+    // 合并动态 Skills 到索引（gating 能力必须已被授予，否则规划会选到执行必拒的技能）
+    let mut total: usize = by_category.values().map(Vec::len).sum();
     if let Some(skill_registry) = super::skill::get_skill_registry() {
         let skill_index = skill_registry.get_compact_index().await;
-        if !skill_index.is_empty() {
-            total += skill_index.len();
+        let mut kept = Vec::with_capacity(skill_index.len());
+        for entry in skill_index {
+            let allowed = match entry
+                .get("id")
+                .and_then(Value::as_str)
+                .and_then(|id| id.strip_prefix("skill:"))
+            {
+                Some(skill_id) => match skill_registry.get(skill_id).await {
+                    Some(skill) => super::skill::skill_covered_by_grants(&skill, granted).await,
+                    None => false,
+                },
+                None => false,
+            };
+            if allowed {
+                kept.push(entry);
+            }
+        }
+        if !kept.is_empty() {
+            total += kept.len();
             by_category
                 .entry("动态技能".to_string())
                 .or_default()
-                .extend(skill_index);
+                .extend(kept);
         }
     }
 
     // 合并 MCP 工具到索引
-    if let Some(mcp_manager) = super::mcp::get_mcp_manager() {
-        let mcp_tools = mcp_manager.list_tools().await;
-        if !mcp_tools.is_empty() {
-            total += mcp_tools.len();
-            let mcp_entries: Vec<Value> = mcp_tools
-                .iter()
-                .map(|(server_id, tool)| mcp_compact_entry(server_id, tool))
-                .collect();
-            by_category
-                .entry("MCP 工具".to_string())
-                .or_default()
-                .extend(mcp_entries);
+    let mcp_allowed = granted.is_none_or(|set| set.contains("mcp:execute"));
+    if mcp_allowed {
+        if let Some(mcp_manager) = super::mcp::get_mcp_manager() {
+            let mcp_tools = mcp_manager.list_tools().await;
+            if !mcp_tools.is_empty() {
+                total += mcp_tools.len();
+                let mcp_entries: Vec<Value> = mcp_tools
+                    .iter()
+                    .map(|(server_id, tool)| mcp_compact_entry(server_id, tool))
+                    .collect();
+                by_category
+                    .entry("MCP 工具".to_string())
+                    .or_default()
+                    .extend(mcp_entries);
+            }
         }
     }
 
@@ -380,6 +423,7 @@ fn get_capability_category_name(category: &CapabilityCategory) -> String {
 mod tests {
     use super::super::mcp::protocol::{McpToolAnnotations, McpToolDef};
     use super::*;
+    use std::collections::HashSet;
 
     #[test]
     fn test_registry_initialization() {
@@ -472,6 +516,34 @@ mod tests {
         assert_eq!(
             resolve_capability_hint(cap),
             get_capability_usage_hint("ai.summarize")
+        );
+    }
+
+    #[tokio::test]
+    async fn compact_index_hides_ungranted_capabilities() {
+        let granted = HashSet::from(["ai:chat".to_string(), "brew:read".to_string()]);
+        let index = get_compact_index_for_grants(Some(&granted)).await;
+        let ids: Vec<&str> = index
+            .get("caps")
+            .and_then(Value::as_object)
+            .expect("caps")
+            .values()
+            .filter_map(Value::as_array)
+            .flatten()
+            .filter_map(|entry| entry.get("id").and_then(Value::as_str))
+            .collect();
+        assert!(ids.contains(&"ai.chat"), "{ids:?}");
+        assert!(
+            ids.contains(&"brew.read") || ids.iter().any(|id| id.starts_with("brew.")),
+            "{ids:?}"
+        );
+        assert!(
+            !ids.contains(&"speech.tts"),
+            "speech.tts requires speech:tts: {ids:?}"
+        );
+        assert!(
+            !ids.iter().any(|id| id.starts_with("mcp.")),
+            "mcp tools require mcp:execute: {ids:?}"
         );
     }
 

@@ -53,6 +53,13 @@ export const ACTION_REVERSIBILITY: Record<
   show_notification: 'readonly',
   // 剪贴板写出去之后没有对应的「取消复制」
   copy_clipboard: 'irreversible',
+  // 只是播了一段音频
+  play_audio: 'readonly',
+  // 把结果摊在对话里 / toast，没有改持久状态
+  show_data: 'readonly',
+  show_report: 'readonly',
+  // 文件已经落到用户磁盘
+  download_file: 'irreversible',
 }
 
 /** 上面那张表里标着 `undoable` 的那些。文案与它一一对应。 */

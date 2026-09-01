@@ -324,13 +324,13 @@ runtime ID 和最终权限；停止、更新、卸载或 Bridge 销毁会撤销�
 ### Page 与 Widget 的 handler 不对称
 
 Page 注册完整 handler 集合。Widget 为减少能力面和启动成本，只注册生命周期、UI、用户
-角色、存储、文件、AI Task、平台/报告读取、上下文/声明 API、媒体、语音、动画、事件、
+角色、存储、文件、AI Task、平台/报告读取、上下文/人设名片/声明 API、媒体、语音、动画、事件、
 一次性数据交换、Agent Interaction、后台需求和调度等必要集合；平台与报告写 handler
 不会进入 Widget。新增 SDK 方法时必须同时核对：SDK 生成器、权限映射、目标沙箱的
 handler、后端路由/服务和文档。
 
-Headless 使用第三种显式能力配置：保留 storage、scheduler、event、federation、AI、报告读取等
-后台能力，但不生成或注册可见 UI、Widget/Tapp 列表管理、组件/快捷键、动态内容、DOM 与文件下载
+Headless 使用第三种显式能力配置：保留 storage、scheduler、event、federation、AI、报告读取、
+人设名片等后台能力，但不生成或注册可见 UI、Widget/Tapp 列表管理、组件/快捷键、动态内容、DOM 与文件下载
 控制面。能力配置同时作用于 SDK 生成结果和 Bridge handler，避免仅“隐藏方法”而后端 action 仍可达。
 
 ## 权限模型

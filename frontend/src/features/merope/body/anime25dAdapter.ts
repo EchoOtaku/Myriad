@@ -1,7 +1,15 @@
 import type { MotionRuntime } from '../motion/runtime'
-import type { BodyAdapter, BodyCapabilities, BodyIntent, BodyState } from './types'
+import type {
+  BodyAdapter,
+  BodyCapabilities,
+  BodyIntent,
+  BodyState,
+} from './types'
 import { liveFaceVisible } from '../faceVisible'
-import { liveMotionGeneration } from '../motion/liveGeneration'
+import {
+  liveMotionGeneration,
+  newMotionIntentId,
+} from '../motion/liveGeneration'
 import { captureRigStateSummary } from '../motion/rigStateSummary'
 import { getSpeechPipeline } from '../speech/speechPipelineHost'
 
@@ -39,7 +47,15 @@ export class Anime25DBodyAdapter implements BodyAdapter {
       })
     }
     if (intent.performance?.plan) {
-      this.runtime.performance.apply(intent.performance)
+      const generation = liveMotionGeneration()
+      this.runtime.performance.handle({
+        text: intent.speechText ?? '',
+        source: 'reply',
+        ...(intent.messageId ? { messageId: intent.messageId } : {}),
+        ...(generation ? { generation } : {}),
+        motionIntentId: newMotionIntentId(),
+        performance: intent.performance,
+      })
     }
   }
 }

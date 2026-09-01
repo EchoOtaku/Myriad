@@ -53,7 +53,7 @@ pub const VALID_ROUTER_PREFIXES: &[&str] = &[
 
 /// Allowed `page.interact` action names.
 pub const VALID_PAGE_INTERACT_ACTIONS: &[&str] = &[
-    "click", "hover", "focus", "scroll", "select", "toggle", "expand", "collapse",
+    "click", "hover", "focus", "scroll", "select", "toggle", "expand", "collapse", "type", "input",
 ];
 
 /// Reject path-traversal / separator tricks in agent-supplied tappId params.
@@ -96,6 +96,71 @@ pub fn build_navigate_full_path(path: &str, query_params: &Value) -> String {
 /// Whether a page.interact action is allowed.
 pub fn is_valid_page_interact_action(action: &str) -> bool {
     VALID_PAGE_INTERACT_ACTIONS.contains(&action)
+}
+
+/// Turn `page.understand` plan.actions into executable frontendActions.
+///
+/// `autoExecute` default is false; when true, click/input/scroll become
+/// `page_interact` and navigate becomes `navigate`.
+pub fn page_understand_frontend_actions(
+    plan: &Value,
+    auto_execute: bool,
+    allow_interact: bool,
+) -> Vec<Value> {
+    if !auto_execute {
+        return Vec::new();
+    }
+    let Some(actions) = plan
+        .get("actions")
+        .or_else(|| plan.get("steps"))
+        .and_then(Value::as_array)
+    else {
+        return Vec::new();
+    };
+    let timestamp = chrono::Utc::now().timestamp_millis();
+    actions
+        .iter()
+        .filter_map(|step| {
+            let kind = step
+                .get("type")
+                .or_else(|| step.get("action"))
+                .and_then(Value::as_str)
+                .unwrap_or("click");
+            if kind == "navigate" {
+                let path = step
+                    .get("path")
+                    .or_else(|| step.get("value"))
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())?;
+                if !is_valid_router_path(path) {
+                    return None;
+                }
+                return Some(json!({
+                    "type": "navigate",
+                    "path": path,
+                    "timestamp": timestamp
+                }));
+            }
+            if !allow_interact || !is_valid_page_interact_action(kind) {
+                return None;
+            }
+            let target = match step.get("target") {
+                Some(Value::Object(_)) => step.get("target").cloned().unwrap(),
+                Some(Value::String(text)) if !text.trim().is_empty() => json!({ "text": text }),
+                _ => return None,
+            };
+            let mut action = json!({
+                "type": "page_interact",
+                "action": kind,
+                "target": target,
+                "timestamp": timestamp
+            });
+            if let Some(value) = step.get("value") {
+                action["value"] = value.clone();
+            }
+            Some(action)
+        })
+        .collect()
 }
 
 /// Planner schema for `page.understand` says `userIntent` / `pageSnapshot`;
@@ -938,6 +1003,37 @@ mod tests {
         let vol = normalize_music_control("volume", Some(80.0), None).unwrap();
         assert_eq!(vol.value, Some(json!(0.8)));
         assert!(normalize_music_control("explode", None, None).is_err());
+        assert!(is_valid_page_interact_action("input"));
+        assert!(is_valid_page_interact_action("type"));
+        assert!(!is_valid_page_interact_action("explode"));
+        assert!(page_understand_frontend_actions(&json!({"actions":[]}), false, true).is_empty());
+        let auto = page_understand_frontend_actions(
+            &json!({
+                "actions": [
+                    {"type": "click", "target": "保存"},
+                    {"type": "navigate", "path": "/library"},
+                    {"type": "input", "target": {"selector": "#q"}, "value": "hi"}
+                ]
+            }),
+            true,
+            true,
+        );
+        assert_eq!(auto.len(), 3);
+        assert_eq!(auto[0]["type"], "page_interact");
+        assert_eq!(auto[1]["type"], "navigate");
+        assert_eq!(auto[2]["action"], "input");
+        let navigate_only = page_understand_frontend_actions(
+            &json!({
+                "actions": [
+                    {"type": "click", "target": "保存"},
+                    {"type": "navigate", "path": "/library"}
+                ]
+            }),
+            true,
+            false,
+        );
+        assert_eq!(navigate_only.len(), 1);
+        assert_eq!(navigate_only[0]["type"], "navigate");
 
         assert_eq!(
             parse_playlist_id_param(&json!("12345")).as_deref(),

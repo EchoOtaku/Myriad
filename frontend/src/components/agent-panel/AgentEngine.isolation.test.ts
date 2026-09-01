@@ -3,11 +3,17 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 test('Work interrupt cannot abort Chat SSE, and session ids stay per mode', () => {
-  const engine = readFileSync(new URL('./AgentEngine.tsx', import.meta.url), 'utf8')
+  const engine = readFileSync(
+    new URL('./AgentEngine.tsx', import.meta.url),
+    'utf8',
+  )
   assert.match(engine, /abortCurrentRequest\(current\)/)
   assert.match(engine, /findMessageWhere/)
   assert.match(engine, /setSessionId\(event\.sessionId, mode\)/)
-  assert.match(engine, /loadingByModeRef\.current\.work \|\| loadingByModeRef\.current\.chat/)
+  assert.match(
+    engine,
+    /loadingByModeRef\.current\.work \|\| loadingByModeRef\.current\.chat/,
+  )
   assert.match(engine, /restorePendingActionFromMessages/)
   assert.match(engine, /pendingQuestionFromMetadata/)
 
@@ -57,13 +63,13 @@ test('Work interrupt cannot abort Chat SSE, and session ids stay per mode', () =
     new URL('./AgentPanelFace.tsx', import.meta.url),
     'utf8',
   )
-  assert.match(
-    panelFace,
-    /current === 'thinking' \|\| current === 'talking'/,
+  assert.match(panelFace, /agentStatusActivity\(status\)/)
+  assert.doesNotMatch(panelFace, /activityWhileChatIdle/)
+  assert.doesNotMatch(panelFace, /useAgentLaneLoading/)
+  const panel = readFileSync(
+    new URL('./AgentPanel.tsx', import.meta.url),
+    'utf8',
   )
-  assert.match(panelFace, /activityWhileChatIdle/)
-  assert.match(panelFace, /useAgentLaneLoading\('chat'\)/)
-  const panel = readFileSync(new URL('./AgentPanel.tsx', import.meta.url), 'utf8')
   assert.match(panel, /agentStatusForLane\(island\.status, laneLoading\)/)
   assert.doesNotMatch(engine, /if \(mode === 'chat'\) return/)
   assert.match(engine, /mode !== 'chat'/)

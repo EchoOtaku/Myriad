@@ -151,8 +151,8 @@ _Avoid_: 共享 storage、全局 storage、站点仓库、Tapp.data（那是数�
 _Avoid_: Arael Agent、Arael 智能体、把 Arael 当产品名
 
 **办事（Work）**：
-面板里计划、执行、确认的那条路径。保留现有 Agent / Pro 能力。
-_Avoid_: 任务模式、Agent 模式、把 PlannerStatus 的 Chat 当成产品聊天档
+面板里计划、执行、确认的那条路径。保留现有 Agent / Pro 能力。开放给所有能用 Agent 的登录用户，能做到哪一步由授予权限逐条决定，不按身份分档。
+_Avoid_: 任务模式、Agent 模式、把 PlannerStatus 的 Chat 当成产品聊天档、把办事整条按管理员开关
 
 **聊天（Chat）**：
 面板里只用人设说话的那条路径，固定走 Lite。不能直接拿工具，也不能回落到 Standard / Pro。
@@ -178,6 +178,10 @@ _Avoid_: Agent 生命、Agent life、Digital Life、数字生命、数字伙伴�
 **设定（persona）**：
 全站一份的名字、性格和立绘，只有站长能写。人设关掉时对外叫 Agent。人设开着但没写名字时对外叫 Arael——那是人设默认名，不是产品名。对谁说话都是这同一个人。
 _Avoid_: 档案、人设文件、SOUL
+
+**名片（persona card）**：
+TAPP 只读投影：公开名字、人设是否开启、心情带、正在做什么、同源主立绘路径。不是性格正文，不是心情数字，也不是现场 Rig。
+_Avoid_: 感知、表演、开口、把立绘字节塞进桥、给 TAPP 写人设
 
 **视觉设定（visual profile）**：
 从已确认 persona 派生并由站长确认的外观契约，只描述上半身的脸、眼睛、头发、服装、材质、配色、饰品和袖/局部手臂。它决定立绘生成，但不进入说话人格；改变它会让旧立绘与 Rig 失效。

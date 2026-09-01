@@ -595,6 +595,18 @@ impl Agent {
         {
             metadata.insert("current_route".to_string(), json!(route));
         }
+        if let Some(custom) = request
+            .context
+            .as_ref()
+            .and_then(|c| c.custom_data.as_ref())
+        {
+            if let Some(music) = custom.get("musicStatus").cloned() {
+                metadata.insert("music_status".to_string(), music);
+            }
+            if let Some(windows) = custom.get("windowState").cloned() {
+                metadata.insert("window_state".to_string(), windows);
+            }
+        }
 
         Recipe {
             id: format!("recipe_{}", uuid::Uuid::new_v4()),
@@ -1409,6 +1421,14 @@ where
 {
     let mut actions = Vec::new();
     for output in outputs {
+        if let Some(list) = output.get("frontendActions").and_then(Value::as_array) {
+            for item in list {
+                if let Some(action) = typed_frontend_action(item) {
+                    actions.push(action);
+                }
+            }
+            continue;
+        }
         if let Some(action) = output.get("frontendAction").and_then(typed_frontend_action) {
             actions.push(action);
         } else if let Some(action) = output.get("action").and_then(typed_frontend_action) {
@@ -1512,5 +1532,19 @@ mod extract_frontend_action_tests {
         assert_eq!(collected.len(), 2);
         assert_eq!(collected[0]["type"], "music_control");
         assert_eq!(collected[1]["type"], "reading_list");
+    }
+
+    #[test]
+    fn collect_prefers_frontend_actions_array() {
+        let plan = json!({
+            "frontendActions": [
+                { "type": "page_interact", "action": "click" },
+                { "type": "navigate", "path": "/library" }
+            ],
+            "frontendAction": { "type": "page_interact", "action": "click" }
+        });
+        let collected = collect_step_frontend_actions([&plan]);
+        assert_eq!(collected.len(), 2);
+        assert_eq!(collected[1]["type"], "navigate");
     }
 }

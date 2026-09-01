@@ -20,6 +20,7 @@ export type { FrontendActionHandler } from './frontendActions'
 export {
   clearAllHandlers,
   executeFrontendAction,
+  frontendActionDedupeKey,
   getRegisteredActionTypes,
   hasActionHandler,
   registerActionHandler,

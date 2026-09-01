@@ -35,6 +35,7 @@ export {
 } from './contentHandlers'
 
 export { registerModel3dHandlers } from './model3dHandlers'
+export { registerPersonaHandlers } from './personaHandlers'
 
 export {
   registerAnalyticsHandlers,

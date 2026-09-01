@@ -24,19 +24,32 @@ import {
 } from '../anime25drig/runtimePolicy'
 import { isAnime25DPlayback } from '../anime25drig/types'
 
+const MAX_PENDING_SPEECH_CHUNKS = 32
+
 interface Props {
   activity: MeropeActivity
   fallbackUrl?: string | null
   manifest: MeropeRigManifest | null
   mood: number
   manualControl?: boolean
+  onPlaybackError?: (error: unknown) => void
 }
 
 export interface RigCharacterHandle
   extends RigMotionPort, Anime25DWorkbenchPort {}
 
 const RigCharacter = forwardRef<RigCharacterHandle, Props>(
-  ({ activity, fallbackUrl, manifest, mood, manualControl = false }, ref) => {
+  (
+    {
+      activity,
+      fallbackUrl,
+      manifest,
+      mood,
+      manualControl = false,
+      onPlaybackError,
+    },
+    ref,
+  ) => {
     const animeRef = useRef<Anime25DCharacterHandle>(null)
     const speechActiveRef = useRef(false)
     const speechProsodyRef = useRef<SpeechProsodyPlan | null>(null)
@@ -70,9 +83,26 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
     const [failedRuntimeKey, setFailedRuntimeKey] = useState<string | null>(
       null,
     )
-    const handlePlaybackError = useCallback(() => {
-      setFailedRuntimeKey(runtimeKey)
-    }, [runtimeKey])
+    const useAnimeRuntime = shouldUseAnime25DRuntime({
+      hasManifest: Boolean(manifest),
+      hasPlayback: Boolean(playback),
+      atlasUrl,
+      runtimeKey,
+      failedRuntimeKey,
+    })
+    const handlePlaybackError = useCallback(
+      (error: unknown) => {
+        setFailedRuntimeKey(runtimeKey)
+        onPlaybackError?.(error)
+      },
+      [onPlaybackError, runtimeKey],
+    )
+
+    useEffect(() => {
+      if (useAnimeRuntime) return
+      pendingSpeechTextRef.current = []
+      latestBehaviorPlanRef.current = null
+    }, [useAnimeRuntime])
 
     useEffect(() => {
       animeRef.current?.setSpeechActive(speechActiveRef.current)
@@ -142,11 +172,22 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
       enqueueSpeechText: (text, locale) => {
         if (animeRef.current) {
           animeRef.current.enqueueSpeechText(text, locale)
-        } else {
-          pendingSpeechTextRef.current.push({ text, locale })
+        } else if (useAnimeRuntime) {
+          pendingSpeechTextRef.current = [
+            ...pendingSpeechTextRef.current,
+            { text, locale },
+          ].slice(-MAX_PENDING_SPEECH_CHUNKS)
         }
       },
       playBehaviorPlan: (plan) => {
+        if (!useAnimeRuntime) {
+          return plan.behaviors.map((behavior) => ({
+            behaviorId: behavior.id,
+            result: 'rejected' as const,
+            atMs: currentNow(),
+            reason: 'unsupported-form' as const,
+          }))
+        }
         latestBehaviorPlanRef.current = plan
         return animeRef.current?.playBehaviorPlan(plan) ?? []
       },
@@ -170,17 +211,7 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
       },
     }))
 
-    if (
-      shouldUseAnime25DRuntime({
-        hasManifest: Boolean(manifest),
-        hasPlayback: Boolean(playback),
-        atlasUrl,
-        runtimeKey,
-        failedRuntimeKey,
-      }) &&
-      manifest &&
-      playback
-    ) {
+    if (useAnimeRuntime && manifest && playback) {
       return (
         <Anime25DCharacter
           ref={animeRef}
@@ -204,5 +235,9 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
     )
   },
 )
+
+function currentNow(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now()
+}
 
 export default RigCharacter

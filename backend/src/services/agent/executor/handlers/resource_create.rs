@@ -382,7 +382,8 @@ async fn execute_report_create(
             "params": {
                 "reportId": report_id,
                 "title": title,
-                "format": format
+                "format": format,
+                "content": content
             },
             "timestamp": now.timestamp_millis()
         }

@@ -14,8 +14,8 @@
 
 use myriad_merope::{ChatPerformanceBaseline, ChatPerformanceCue, ChatPerformancePlan};
 
-use super::state::MoodTransition;
 use super::motion::text_mentions_any;
+use super::state::MoodTransition;
 use super::MotionPhase;
 
 /// Mood moves smaller than this are noise, not a change of bearing.
@@ -199,7 +199,12 @@ fn reply_is_playful(response_text: Option<&str>) -> bool {
     let Some(text) = response_text.map(str::trim).filter(|text| !text.is_empty()) else {
         return false;
     };
-    text_mentions_any(text, &["哈哈", "嘿嘿", "嘻嘻", "笑死", "hhh", "lol", "ww", "😂", "🤣"])
+    text_mentions_any(
+        text,
+        &[
+            "哈哈", "嘿嘿", "嘻嘻", "笑死", "hhh", "lol", "ww", "😂", "🤣",
+        ],
+    )
 }
 
 fn reply_is_emphatic(response_text: Option<&str>) -> bool {
@@ -229,7 +234,6 @@ fn text_is_greeting(text: Option<&str>) -> bool {
         ],
     )
 }
-
 
 #[cfg(test)]
 mod tests {

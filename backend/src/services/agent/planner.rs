@@ -3,10 +3,12 @@
 //! 合并意图分析 + 方案生成为单次 Pro AI 调用。
 //! 直接输出可执行的 Recipe 步骤。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::config::ModelTier;
-use crate::services::agent::capability::{get_capabilities_by_ids, get_compact_index};
+use crate::services::agent::capability::{
+    capability_covered_by_grants, get_capabilities_by_ids, get_compact_index_for_grants,
+};
 use crate::services::agent::identity;
 use crate::services::agent::intent::keywords::LanguageDetector;
 use crate::services::agent::memory;
@@ -39,27 +41,65 @@ impl Planner {
     }
 
     /// 主入口：用户请求 → PlannerOutput
+    #[allow(dead_code)]
     pub async fn plan(&self, request: &UserRequest) -> Result<PlannerOutput, String> {
-        self.plan_internal(request, None, None).await
+        self.plan_internal(request, None, None, None).await
+    }
+
+    pub async fn plan_for(
+        &self,
+        request: &UserRequest,
+        granted: &HashSet<String>,
+    ) -> Result<PlannerOutput, String> {
+        self.plan_internal(request, None, None, Some(granted)).await
     }
 
     /// Live SSE path: reasoning deltas go out while the planner JSON is still forming.
+    #[allow(dead_code)]
     pub async fn plan_with_progress(
         &self,
         request: &UserRequest,
         progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
     ) -> Result<PlannerOutput, String> {
-        self.plan_internal(request, None, Some(progress_tx)).await
+        self.plan_internal(request, None, Some(progress_tx), None)
+            .await
     }
 
+    pub async fn plan_with_progress_for(
+        &self,
+        request: &UserRequest,
+        progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
+        granted: &HashSet<String>,
+    ) -> Result<PlannerOutput, String> {
+        self.plan_internal(request, None, Some(progress_tx), Some(granted))
+            .await
+    }
+
+    #[allow(dead_code)]
     pub async fn replan_with_progress(
         &self,
         request: &UserRequest,
         escalation_hint: &str,
         progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
     ) -> Result<PlannerOutput, String> {
-        self.plan_internal(request, Some(escalation_hint), Some(progress_tx))
+        self.plan_internal(request, Some(escalation_hint), Some(progress_tx), None)
             .await
+    }
+
+    pub async fn replan_with_progress_for(
+        &self,
+        request: &UserRequest,
+        escalation_hint: &str,
+        progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
+        granted: &HashSet<String>,
+    ) -> Result<PlannerOutput, String> {
+        self.plan_internal(
+            request,
+            Some(escalation_hint),
+            Some(progress_tx),
+            Some(granted),
+        )
+        .await
     }
 
     /// 内部规划逻辑
@@ -68,6 +108,7 @@ impl Planner {
         request: &UserRequest,
         escalation_hint: Option<&str>,
         progress_tx: Option<&tokio::sync::mpsc::Sender<AgentProgressEvent>>,
+        granted: Option<&HashSet<String>>,
     ) -> Result<PlannerOutput, String> {
         // 尝试获取 AI（支持热加载配置）
         let runtime_analyzer;
@@ -88,7 +129,7 @@ impl Planner {
 
         // 构建 prompt
         let system_prompt = self
-            .build_system_prompt(request, language, escalation_hint)
+            .build_system_prompt(request, language, escalation_hint, granted)
             .await;
         let user_prompt = self.build_user_prompt(request, escalation_hint);
 
@@ -160,7 +201,10 @@ impl Planner {
                 .context
                 .as_ref()
                 .and_then(|context| context.autonomy_permission_cap.as_deref());
-            if let Err(e) = self.validate_steps(&mut output, autonomy_cap).await {
+            if let Err(e) = self
+                .validate_steps(&mut output, autonomy_cap, granted)
+                .await
+            {
                 tracing::warn!(error = %e, "[Planner] Step validation failed, trying to recover");
                 // 验证失败时降级为 chat
                 output.status = PlannerStatus::Chat;
@@ -195,6 +239,7 @@ impl Planner {
         request: &UserRequest,
         language: super::intent::keywords::Language,
         escalation_hint: Option<&str>,
+        granted: Option<&HashSet<String>>,
     ) -> String {
         let mut stable: Vec<String> = Vec::new();
         let mut volatile: Vec<String> = Vec::new();
@@ -342,7 +387,7 @@ impl Planner {
         }
 
         // 3. 能力索引（含相关 Skill）
-        let compact_index = get_compact_index().await;
+        let compact_index = get_compact_index_for_grants(granted).await;
         stable.push(format!(
             "## 可用能力（紧凑索引）\n\
              条目字段：`id` 能力 ID、`h` 用途、`p` 必需参数、`o` 该能力的输出字段。\n\
@@ -361,8 +406,14 @@ impl Planner {
         // 5. 相关 Skill 预过滤（语义匹配 top-5，随用户输入变化）
         if let Some(registry) = super::skill::get_skill_registry() {
             let relevant = registry.get_relevant_skills(&request.raw_input, 5).await;
-            if !relevant.is_empty() {
-                let skill_lines: Vec<String> = relevant
+            let mut filtered = Vec::new();
+            for sm in relevant {
+                if super::skill::skill_covered_by_grants(&sm.skill, granted).await {
+                    filtered.push(sm);
+                }
+            }
+            if !filtered.is_empty() {
+                let skill_lines: Vec<String> = filtered
                     .iter()
                     .map(|sm| {
                         let params_hint = if sm.skill.parameters.is_empty() {
@@ -572,12 +623,60 @@ impl Planner {
             }
         }
     }
+}
 
+/// Whether a recipe/planner step is covered by the current grant set.
+pub(crate) async fn capability_allowed_for_grants(
+    capability_id: &str,
+    params: &HashMap<String, serde_json::Value>,
+    granted: &HashSet<String>,
+) -> Result<(), String> {
+    if let Some(skill_id) = capability_id.strip_prefix("skill:") {
+        let allowed = match super::skill::get_skill_registry() {
+            Some(registry) => match registry.get(skill_id).await {
+                Some(skill) => super::skill::skill_covered_by_grants(&skill, Some(granted)).await,
+                None => false,
+            },
+            None => false,
+        };
+        if !allowed {
+            return Err(format!("capability '{capability_id}' is not available"));
+        }
+        return Ok(());
+    }
+    if capability_id.starts_with("mcp.") {
+        if !granted.contains("mcp:execute") {
+            return Err(format!("capability '{capability_id}' is not available"));
+        }
+        return Ok(());
+    }
+    match get_capabilities_by_ids(&[capability_id.to_string()])
+        .await
+        .into_iter()
+        .next()
+    {
+        Some(cap) => {
+            if !capability_covered_by_grants(&cap, Some(granted)) {
+                return Err(format!("capability '{capability_id}' is not available"));
+            }
+        }
+        None => {
+            return Err(format!("capability '{capability_id}' is not available"));
+        }
+    }
+    if capability_id == "scheduler.create" {
+        crate::services::agent::scheduler_create_actions_within_grants(params, granted)?;
+    }
+    Ok(())
+}
+
+impl Planner {
     /// 校验步骤（加载完整 capability schema 验证）
     async fn validate_steps(
         &self,
         output: &mut PlannerOutput,
         autonomy_cap: Option<&[String]>,
+        granted: Option<&HashSet<String>>,
     ) -> Result<(), String> {
         let cap_ids: Vec<String> = output
             .steps
@@ -590,6 +689,12 @@ impl Planner {
         let test_steps = output.steps.clone();
         let reasoning = output.reasoning.clone();
         validate_and_convert_steps(test_steps, reasoning, &cap_schemas)?;
+
+        if let Some(granted) = granted {
+            for step in &output.steps {
+                capability_allowed_for_grants(&step.capability_id, &step.params, granted).await?;
+            }
+        }
 
         if autonomy_cap.is_some() {
             for capability in &cap_schemas {
@@ -1167,12 +1272,14 @@ mod tests {
                 &request("帮我看看最新的订阅文章"),
                 crate::services::agent::intent::keywords::Language::Chinese,
                 None,
+                None,
             )
             .await;
         let english = planner
             .build_system_prompt(
                 &request("summarize my newest feed items"),
                 crate::services::agent::intent::keywords::Language::English,
+                None,
                 None,
             )
             .await;
@@ -1201,6 +1308,7 @@ mod tests {
                 &request("换一个说法"),
                 crate::services::agent::intent::keywords::Language::Chinese,
                 Some("上次没有找到数据"),
+                None,
             )
             .await;
 
@@ -1225,6 +1333,7 @@ mod tests {
             .build_system_prompt(
                 &request("你好"),
                 crate::services::agent::intent::keywords::Language::Chinese,
+                None,
                 None,
             )
             .await;
@@ -1297,5 +1406,26 @@ mod tests {
         );
         let parsed = planner.parse_response(&raw).expect("parse");
         assert_eq!(parsed.status, PlannerStatus::Plan);
+    }
+
+    #[tokio::test]
+    async fn capability_allowed_for_grants_hides_ungranted_tools() {
+        let mut granted = HashSet::new();
+        granted.insert("ai:chat".to_string());
+        assert!(
+            capability_allowed_for_grants("ai.chat", &HashMap::new(), &granted)
+                .await
+                .is_ok()
+        );
+        assert!(
+            capability_allowed_for_grants("speech.tts", &HashMap::new(), &granted)
+                .await
+                .is_err()
+        );
+        assert!(
+            capability_allowed_for_grants("not.a.tool", &HashMap::new(), &granted)
+                .await
+                .is_err()
+        );
     }
 }

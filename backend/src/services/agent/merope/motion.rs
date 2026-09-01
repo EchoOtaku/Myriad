@@ -52,6 +52,14 @@ impl MotionPhase {
             Self::Mood => "mood",
         }
     }
+
+    pub fn activity(self) -> &'static str {
+        match self {
+            Self::Reaction => "thinking",
+            Self::Delivery | Self::Outcome | Self::Proactive => "talking",
+            Self::Mood => "idle",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -474,7 +482,10 @@ fn text_mention_pos(text: &str, folded: &str, marker: &str) -> Option<usize> {
         // it a two-letter marker happens to land on.
         let (head, tail) = (&folded[..index], &folded[index + found.len()..]);
         let (head, tail) = match repeated {
-            Some(letter) => (head.trim_end_matches(letter), tail.trim_start_matches(letter)),
+            Some(letter) => (
+                head.trim_end_matches(letter),
+                tail.trim_start_matches(letter),
+            ),
             None => (head, tail),
         };
         let standalone = !blocks(head.chars().next_back())
@@ -800,6 +811,9 @@ mod tests {
     #[test]
     fn phases_have_stable_wire_names() {
         assert_eq!(MotionPhase::Reaction.as_str(), "reaction");
+        assert_eq!(MotionPhase::Reaction.activity(), "thinking");
+        assert_eq!(MotionPhase::Delivery.activity(), "talking");
+        assert_eq!(MotionPhase::Mood.activity(), "idle");
         assert_eq!(
             serde_json::to_string(&MotionPhase::Delivery).unwrap(),
             "\"delivery\""

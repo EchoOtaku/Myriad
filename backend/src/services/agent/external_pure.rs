@@ -7,12 +7,12 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 pub use myriad_agent_rules::{
-    classify_outbound_fetch, compress_and_truncate_text, hitokoto_type, http_body_exceeds_limit,
-    http_body_size_error, http_content_length_error, http_fetch_method, match_mcp_capability_id,
-    mcp_arguments, optional_string_param, parse_http_body_value, parse_mcp_capability_id,
-    scrape_html_too_large, scrape_max_length, scrape_selector, scrape_should_skip_tag,
-    HTTP_FETCH_MAX_BODY_BYTES, SCRAPE_SKIP_TAGS, WEB_SCRAPE_DEFAULT_MAX_LENGTH,
-    WEB_SCRAPE_MAX_HTML_BYTES,
+    classify_outbound_fetch, compress_and_truncate_text, first_i64_param, first_string_param,
+    hitokoto_type, http_body_exceeds_limit, http_body_size_error, http_content_length_error,
+    http_fetch_method, match_mcp_capability_id, mcp_arguments, optional_string_param,
+    parse_http_body_value, parse_mcp_capability_id, sanitize_http_headers, scrape_html_too_large,
+    scrape_max_length, scrape_selector, scrape_should_skip_tag, HTTP_FETCH_MAX_BODY_BYTES,
+    SCRAPE_SKIP_TAGS, WEB_SCRAPE_DEFAULT_MAX_LENGTH, WEB_SCRAPE_MAX_HTML_BYTES,
 };
 
 #[cfg(test)]
@@ -29,6 +29,13 @@ mod tests {
             Some("ada")
         );
         assert!(optional_string_param(&params, "empty").is_none());
+        params.insert("steamId".into(), json!("765"));
+        params.insert("uid".into(), json!(42));
+        assert_eq!(
+            first_string_param(&params, &["steamId", "steam_id"]).as_deref(),
+            Some("765")
+        );
+        assert_eq!(first_i64_param(&params, &["uid"]), Some(42));
 
         params.insert("method".into(), json!("POST"));
         assert_eq!(http_fetch_method(&params), "POST");

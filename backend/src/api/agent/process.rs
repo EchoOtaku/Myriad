@@ -972,8 +972,8 @@ pub async fn list_capabilities(
     Extension(claims): Extension<Claims>,
 ) -> Result<Json<Value>, HttpError> {
     let user_id = parse_user_id(&claims)?;
-    let is_admin = crate::services::agent::user_is_current_admin(&db, user_id).await;
-    let capabilities = crate::services::agent::get_capabilities_summary_for_user(is_admin).await;
+    let capabilities =
+        crate::services::agent::get_capabilities_summary_for_user(&db, user_id).await;
 
     Ok(Json(json!({
         "success": true,
@@ -1036,6 +1036,45 @@ pub struct AnswerQuestionRequest {
     pub question_id: String,
     /// 用户答案
     pub answer: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrontendAckRequest {
+    pub step_id: String,
+    #[serde(default)]
+    pub music_status: Option<Value>,
+    #[serde(default)]
+    pub window_state: Option<Value>,
+}
+
+/// Live snapshot from the browser after query_windows / music_get_status ran.
+/// POST /api/agent/tasks/{task_id}/frontend-ack
+pub async fn frontend_step_ack(
+    State(_db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Path(task_id): Path<String>,
+    Json(req): Json<FrontendAckRequest>,
+) -> Result<Json<Value>, HttpError> {
+    let user_id = parse_user_id_with_agent_access(&claims, &_db).await?;
+    if crate::services::agent::executor::get_task_for_user(&task_id, user_id)
+        .await
+        .is_none()
+    {
+        return Err(HttpError::from((
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Task not found" })),
+        )));
+    }
+    let accepted = crate::services::agent::executor::submit_frontend_ack(
+        &task_id,
+        &req.step_id,
+        json!({
+            "musicStatus": req.music_status,
+            "windowState": req.window_state,
+        }),
+    );
+    Ok(Json(json!({ "success": true, "accepted": accepted })))
 }
 
 /// 回答任务中的问题

@@ -35,7 +35,7 @@ import { AppLayout } from './layouts/AppLayout'
 import { recordNavigation } from './router/navigationHistory'
 import { TappDataExchangeConsentHost } from './tapp/components/TappDataExchangeConsentHost'
 import { resolvePageRouteAnimation } from './tapp/routing/tappRouteMeta'
-import { tappRunPath } from './tapp/utils/tappPaths'
+import { TAPP_LIST_PATH, tappRunPath } from './tapp/utils/tappPaths'
 import { preloadCriticalRoutes } from './utils/codeSplitting'
 import {
   canAccessModuleVisibility,
@@ -180,6 +180,7 @@ function ModuleVisibilityGuard({
  */
 function GlobalAgentWindowHandler() {
   const navigate = useNavigate()
+  const location = useLocation()
   useEffect(() => {
     let cancelled = false
     let unregister: (() => void) | undefined
@@ -191,6 +192,48 @@ function GlobalAgentWindowHandler() {
           tappId?: string
           data?: Record<string, unknown>
         }) => {
+          if (action.type === 'query_windows') {
+            return {
+              available: false,
+              windows: [],
+              activeWindowId: null,
+              windowCount: 0,
+            }
+          }
+          if (action.type === 'close_window') {
+            const target = (
+              action as {
+                target?: { tappId?: string }
+              }
+            ).target
+            const data = (action as { data?: Record<string, unknown> }).data
+            const id =
+              (action as { tappId?: string }).tappId ||
+              target?.tappId ||
+              (typeof data?.tappId === 'string' ? data.tappId : undefined)
+            if (id || location.pathname.startsWith('/tapp/run')) {
+              navigate(TAPP_LIST_PATH)
+              return true
+            }
+            return false
+          }
+          if (action.type === 'focus_window') {
+            const target = (
+              action as {
+                target?: { tappId?: string }
+                tappId?: string
+                data?: Record<string, unknown>
+              }
+            ).target
+            const data = (action as { data?: Record<string, unknown> }).data
+            const id =
+              (action as { tappId?: string }).tappId ||
+              target?.tappId ||
+              (typeof data?.tappId === 'string' ? data.tappId : undefined)
+            if (!id) return false
+            navigate(tappRunPath(id))
+            return true
+          }
           if (
             action.type !== 'open_window' &&
             action.type !== 'agent_interaction'
@@ -214,7 +257,7 @@ function GlobalAgentWindowHandler() {
       cancelled = true
       unregister?.()
     }
-  }, [navigate])
+  }, [navigate, location.pathname])
   return null
 }
 

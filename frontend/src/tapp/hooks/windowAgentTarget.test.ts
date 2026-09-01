@@ -1,3 +1,4 @@
+import type { WindowRef } from './windowAgentTarget.ts'
 /**
  *   pnpm exec tsx --test src/tapp/hooks/windowAgentTarget.test.ts
  */
@@ -6,7 +7,6 @@ import { describe, it } from 'node:test'
 import {
   resolveCloseWindowIds,
   resolveWindowTarget,
-  type WindowRef,
 } from './windowAgentTarget.ts'
 
 const windows: WindowRef[] = [
@@ -16,29 +16,17 @@ const windows: WindowRef[] = [
 
 describe('resolveWindowTarget', () => {
   it('matches windowId and tappId', () => {
-    assert.equal(
-      resolveWindowTarget({ windowId: 'w2' }, windows, 'w1'),
-      'w2',
-    )
-    assert.equal(
-      resolveWindowTarget({ tappId: 'alpha' }, windows, 'w1'),
-      'w1',
-    )
+    assert.equal(resolveWindowTarget({ windowId: 'w2' }, windows, 'w1'), 'w2')
+    assert.equal(resolveWindowTarget({ tappId: 'alpha' }, windows, 'w1'), 'w1')
   })
 
   it('resolves left/right/next/previous/active', () => {
-    assert.equal(
-      resolveWindowTarget({ position: 'left' }, windows, 'w2'),
-      'w1',
-    )
+    assert.equal(resolveWindowTarget({ position: 'left' }, windows, 'w2'), 'w1')
     assert.equal(
       resolveWindowTarget({ position: 'right' }, windows, 'w1'),
       'w2',
     )
-    assert.equal(
-      resolveWindowTarget({ position: 'next' }, windows, 'w1'),
-      'w2',
-    )
+    assert.equal(resolveWindowTarget({ position: 'next' }, windows, 'w1'), 'w2')
     assert.equal(
       resolveWindowTarget({ position: 'previous' }, windows, 'w1'),
       'w2',
@@ -50,9 +38,9 @@ describe('resolveWindowTarget', () => {
   })
 
   it('close all returns every window id', () => {
-    assert.deepEqual(resolveCloseWindowIds({ position: 'all' }, windows, 'w1'), [
-      'w1',
-      'w2',
-    ])
+    assert.deepEqual(
+      resolveCloseWindowIds({ position: 'all' }, windows, 'w1'),
+      ['w1', 'w2'],
+    )
   })
 })
