@@ -3,10 +3,15 @@
 //! HMAC and transform evaluation live here, not in the contract crate.
 //! Backend services re-export moved symbols so existing imports compile.
 
+pub mod feed;
 pub mod hmac;
 pub mod package;
 pub mod transform;
 
+pub use feed::{
+    dedupe_federation_feed, federation_feed_includes_personal, merge_federation_feed,
+    merge_federation_feed_with_limit, FEDERATION_FEED_LIMIT,
+};
 pub use hmac::{encode_hmac, hmac_matches, hmac_sha256};
 pub use package::{
     asset_bytes_within_limit, filter_widget_paths, installed_core_entry, installed_layer_entries,

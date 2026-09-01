@@ -5,8 +5,10 @@
 
 use serde_json::{json, Value};
 
-/// Max items returned by the Tapp federation feed endpoint.
-pub const FEDERATION_FEED_LIMIT: usize = 100;
+pub use myriad_tapp_rules::{
+    dedupe_federation_feed, federation_feed_includes_personal, merge_federation_feed,
+    merge_federation_feed_with_limit, FEDERATION_FEED_LIMIT,
+};
 
 /// Flat activity row fields required to project a feed item (DB-loader agnostic).
 #[derive(Debug, Clone)]
@@ -52,86 +54,7 @@ pub fn federation_feed_item(row: FederationFeedRowView<'_>) -> Value {
     })
 }
 
-/// Merge personal + public feed items: personal first, dedupe by `activity_id`,
-/// newest `received_at` first, truncate to [`FEDERATION_FEED_LIMIT`].
-pub fn merge_federation_feed(personal: Vec<Value>, public: Vec<Value>) -> Vec<Value> {
-    merge_federation_feed_with_limit(personal, public, FEDERATION_FEED_LIMIT)
-}
 
-/// Same as [`merge_federation_feed`] with an explicit limit (testable).
-pub fn merge_federation_feed_with_limit(
-    mut personal: Vec<Value>,
-    public: Vec<Value>,
-    limit: usize,
-) -> Vec<Value> {
-    use std::collections::HashSet;
-
-    let mut seen = HashSet::new();
-    personal.retain(|item| {
-        item.get("activity_id")
-            .and_then(Value::as_str)
-            .is_some_and(|id| seen.insert(id.to_string()))
-    });
-    for item in public {
-        let Some(id) = item.get("activity_id").and_then(Value::as_str) else {
-            continue;
-        };
-        if seen.insert(id.to_string()) {
-            personal.push(item);
-        }
-    }
-    personal.sort_by(|left, right| {
-        let left_time = left
-            .get("received_at")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let right_time = right
-            .get("received_at")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        right_time.cmp(left_time)
-    });
-    personal.truncate(limit);
-    personal
-}
-
-/// Drop repeats of the same underlying object, keeping the first (newest) item.
-///
-/// `DISTINCT ON (activity_id)` in SQL only collapses one activity's duplicate
-/// rows. The rooms feed can hold two *different* activity ids describing one
-/// post — the author's instance re-delivers a Create under a fresh id, or the
-/// same note reaches us both directly and via a peer that mirrored it. Callers
-/// must pass an already-sorted list; order is preserved.
-///
-/// Items without an `object_id` are kept as-is: no id, nothing to compare.
-pub fn dedupe_federation_feed(items: Vec<Value>) -> Vec<Value> {
-    use std::collections::HashSet;
-
-    let mut seen: HashSet<String> = HashSet::new();
-    items
-        .into_iter()
-        .filter(|item| {
-            let Some(object_id) = item
-                .get("object_id")
-                .and_then(Value::as_str)
-                .filter(|id| !id.is_empty())
-            else {
-                return true;
-            };
-            // Announce and Create of one object are different posts — key on both.
-            let activity_type = item
-                .get("activity_type")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
-            seen.insert(format!("{activity_type}\u{1f}{object_id}"))
-        })
-        .collect()
-}
-
-/// Guests only see public activities; authenticated subjects merge personal+public.
-pub fn federation_feed_includes_personal(subject_id: i32) -> bool {
-    subject_id >= 0
-}
 
 #[cfg(test)]
 mod tests {
