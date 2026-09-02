@@ -38,6 +38,11 @@ pub struct PutPersonaRequest {
     pub visual_profile: Option<Option<Value>>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MusicListeningRequest {
+    pub listened_seconds: u32,
+}
 
 fn present_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
 where
@@ -512,6 +517,58 @@ pub async fn put_addressee(
         "doNotDisturbActive": merope::effective_do_not_disturb(&state),
         "dndStart": state.dnd_start_minute.and_then(merope::format_clock_minute),
         "dndEnd": state.dnd_end_minute.and_then(merope::format_clock_minute),
+    })))
+}
+
+/// POST /api/agent/addressee/music-listening — credit a meaningful block of
+/// actual playback. The client reports time, never a mood delta; the backend
+/// owns the effect, ceiling and cross-process cooldown.
+pub async fn post_music_listening(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Json(body): Json<MusicListeningRequest>,
+) -> Result<Json<Value>, HttpError> {
+    require_merope_enabled().await?;
+    let user_id = parse_user_id_with_agent_access(&claims, &db).await?;
+    if !merope::is_logged_in_addressee(user_id) {
+        return Err(HttpError::from((
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "Guests cannot change addressee mood",
+                "code": "login_required"
+            })),
+        )));
+    }
+    if body.listened_seconds < merope::MUSIC_LISTENING_MIN_SECS {
+        return Err(HttpError::from((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Listening block is too short",
+                "code": "music_listening_too_short",
+                "minimumSeconds": merope::MUSIC_LISTENING_MIN_SECS,
+            })),
+        )));
+    }
+
+    let credit = merope::credit_music_listening(&db, user_id, body.listened_seconds)
+        .await
+        .map_err(|error| persona_store_http("credit music listening", error))?;
+    let after = merope::store::affect_from_state(&credit.state);
+    let mood = merope::MoodTransition::from_affect(
+        &credit.before,
+        &after,
+        "music_listening",
+        credit
+            .state
+            .updated_at
+            .with_timezone(&chrono::Utc)
+            .timestamp_millis(),
+    );
+    Ok(Json(json!({
+        "credited": credit.credited,
+        "nextCreditInSeconds": credit.next_credit_in_seconds,
+        "mood": mood,
+        "activity": merope::current_activity(&credit.state),
     })))
 }
 

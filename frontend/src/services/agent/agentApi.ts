@@ -12,6 +12,7 @@ import type {
   ExecutionTrace,
   HeartbeatTask,
   MemoryEntry,
+  MoodTransition,
   ProcessContext,
   ProcessRequest,
   ProgressCallback,
@@ -1090,6 +1091,16 @@ class AgentService {
     return apiService.put(`${this.baseUrl}/addressee`, body)
   }
 
+  async creditMusicListening(listenedSeconds: number): Promise<{
+    credited: boolean
+    nextCreditInSeconds: number
+    mood: MoodTransition
+    activity: string
+  }> {
+    return apiService.post(`${this.baseUrl}/addressee/music-listening`, {
+      listenedSeconds: Math.max(0, Math.floor(listenedSeconds)),
+    })
+  }
 
   // 会话管理
 
