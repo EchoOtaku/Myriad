@@ -165,8 +165,25 @@ export interface TranslationKeys {
     portraitGroupDescription: string
     visualSourceTitle: string
     visualSourceEmpty: string
+    wardrobeTitle: string
+    wardrobeHint: string
+    wardrobeGroupDescription: string
+    visualOutfitTitle: string
+    visualFixedTitle: string
+    wardrobeEmpty: string
+    wardrobeNeedCharacter: string
+    wardrobeNew: string
+    wardrobeGenerate: string
+    wardrobeWearing: string
+    wardrobeFull: string
+    wardrobeRequirements: string
+    wardrobeRequirementsHint: string
+    wardrobeRequirementsPlaceholder: string
+    wardrobeApplyFailed: string
+    wardrobeDeleteFailed: string
     assetGroup: string
     assetEmpty: string
+    widgetFaceSlotTaken: string
     assetNeedsPortrait: string
     rigGroup: string
     rigGroupDescription: string

@@ -1186,9 +1186,38 @@ fn sanitize_visual_profile(value: &Value) -> Result<Value, HttpError> {
         let tags = merope::report_dna::sanitize_onboarding_tags(&tags);
         profile.insert("sourceTags".into(), json!(tags));
     }
+    if let Some(wardrobe) = source.get("wardrobe") {
+        if wardrobe.is_null() {
+            profile.insert("wardrobe".into(), json!([]));
+        } else {
+            let items =
+                myriad_merope::sanitize_wardrobe(wardrobe).ok_or_else(visual_profile_error)?;
+            profile.insert("wardrobe".into(), json!(items));
+        }
+    }
+    if let Some(active) = source.get("activeOutfitId") {
+        if active.is_null() {
+            profile.insert("activeOutfitId".into(), Value::Null);
+        } else {
+            let id = active.as_str().map(str::trim).filter(|value| !value.is_empty());
+            let id = id.filter(|value| {
+                value.chars().count() <= myriad_merope::MAX_WARDROBE_ID_CHARS
+                    && !value.chars().any(char::is_control)
+            });
+            let Some(id) = id else {
+                return Err(visual_profile_error());
+            };
+            profile.insert("activeOutfitId".into(), json!(id));
+        }
+    }
     if let Some(identity) = source.get("visualIdentity") {
         if identity.is_null() {
             profile.insert("visualIdentity".into(), Value::Null);
+            profile.entry("wardrobe".to_string()).or_insert(json!([]));
+            profile
+                .entry("activeOutfitId".to_string())
+                .or_insert(Value::Null);
+            drop_stale_active_outfit(&mut profile);
             return Ok(Value::Object(profile));
         }
         let mut sanitized = myriad_merope::sanitize_upper_body_visual_identity(identity)
@@ -1206,7 +1235,25 @@ fn sanitize_visual_profile(value: &Value) -> Result<Value, HttpError> {
             .ok_or_else(visual_profile_error)?;
         profile.insert("visualIdentity".into(), sanitized);
     }
+    drop_stale_active_outfit(&mut profile);
     Ok(Value::Object(profile))
+}
+
+fn drop_stale_active_outfit(profile: &mut Map<String, Value>) {
+    let Some(id) = profile.get("activeOutfitId").and_then(Value::as_str) else {
+        return;
+    };
+    let known = profile
+        .get("wardrobe")
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            items
+                .iter()
+                .any(|item| item.get("id").and_then(Value::as_str) == Some(id))
+        });
+    if !known {
+        profile.insert("activeOutfitId".into(), Value::Null);
+    }
 }
 
 fn merge_visual_profile(incoming: Value, previous: Option<&Value>) -> Value {
@@ -1220,13 +1267,19 @@ fn merge_visual_profile(incoming: Value, previous: Option<&Value>) -> Value {
     let identity_context_changed = ["gender", "clothingStyle"]
         .iter()
         .any(|key| merged.get(*key).is_some() && merged.get(*key) != previous.get(*key));
+    let identity_cleared = merged.get("visualIdentity").is_some_and(Value::is_null);
     for key in [
         "visualIdentity",
         "sourceTags",
         "personaExtraRequirements",
         "clothingStyle",
+        "wardrobe",
+        "activeOutfitId",
     ] {
         if key == "visualIdentity" && identity_context_changed {
+            continue;
+        }
+        if (key == "wardrobe" || key == "activeOutfitId") && identity_cleared {
             continue;
         }
         if merged.get(key).is_none() {
@@ -1273,7 +1326,9 @@ mod tests {
             "clothingStyle": "uniform",
             "visualIdentity": {"character": {"faceDesign": "生成出来的脸"}},
             "sourceTags": ["生成链选的词条"],
-            "personaExtraRequirements": "生成链填的补充"
+            "personaExtraRequirements": "生成链填的补充",
+            "wardrobe": [{ "id": "w-old", "clothingStyle": "uniform" }],
+            "activeOutfitId": "w-old"
         });
         // 导入页真正发出去的载荷，键名与 OnboardingWizard 的提交一致。
         let incoming = json!({
@@ -1293,8 +1348,54 @@ mod tests {
         assert_eq!(merged["clothingStyle"], Value::Null);
         assert_eq!(merged["sourceTags"], json!([]));
         assert_eq!(merged["personaExtraRequirements"], json!(""));
+        assert_eq!(merged["wardrobe"], json!([]));
+        assert_eq!(merged["activeOutfitId"], Value::Null);
         // 身份留着：性别是导入页自己填的，不是继承来的。
         assert_eq!(merged["gender"], json!("female"));
+    }
+
+    fn test_outfit() -> Value {
+        json!({
+            "upperBodySilhouette": "窄肩与清晰领口，胸像轮廓紧凑，左右袖片伸入画面",
+            "outfitConstruction": "水手领内搭叠短外套，领巾形成胸前主形，结构止于高腰",
+            "sleeveArmDesign": "宽松袖口包住局部前臂，左右形状不完全对称，手可以不出现",
+            "materialPlan": "哑光布料为主，丝带带柔和光泽，金属与宝石只用于小面积焦点",
+            "heroAccessory": "左侧星形发夹与胸前星形扣形成一次呼应",
+            "paletteHint": "粉色头发，淡紫与白为主体，深紫压边，少量金色点缀",
+            "motif": "星轨与小型鸟笼，集中在发饰和胸前，不铺满服装"
+        })
+    }
+
+    #[test]
+    fn wardrobe_is_kept_on_partial_visual_saves_and_cleared_with_identity() {
+        let item = json!({
+            "id": "w-urban",
+            "clothingStyle": "urban",
+            "outfit": test_outfit()
+        });
+        let previous = json!({
+            "gender": "female",
+            "clothingStyle": "urban",
+            "wardrobe": [item],
+            "activeOutfitId": "w-urban"
+        });
+        let kept = merge_visual_profile(
+            sanitize_visual_profile(&json!({ "gender": "female" })).unwrap(),
+            Some(&previous),
+        );
+        assert_eq!(kept["wardrobe"][0]["id"], "w-urban");
+        assert_eq!(kept["activeOutfitId"], "w-urban");
+
+        let cleared = merge_visual_profile(
+            sanitize_visual_profile(&json!({
+                "gender": "female",
+                "visualIdentity": null
+            }))
+            .unwrap(),
+            Some(&previous),
+        );
+        assert_eq!(cleared["wardrobe"], json!([]));
+        assert_eq!(cleared["activeOutfitId"], Value::Null);
     }
 
     /// 显式 `null` 才是清除。少了这一条，前端根本没有办法清掉这个字段。

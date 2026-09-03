@@ -17,6 +17,7 @@ import {
 import { generationFailureMessage } from '../../components/agent/onboarding/generationError'
 import {
   flattenPersona,
+  genderFromProfile,
   parseFlattenedPersona,
   personaFromApi,
   visualIdentityFromProfile,
@@ -40,6 +41,14 @@ import {
 } from './api'
 import { commitRigPsdAsset, preflightRigPsdAsset } from './assets/pipeline'
 import { notifyFaceUpdated } from './events'
+import OutfitWardrobe from './OutfitWardrobe'
+import {
+  applyOutfit,
+  hydrateWardrobe,
+  persistWardrobeState,
+  syncActiveOutfit,
+} from './wardrobe'
+import type { WardrobeItem } from './wardrobe'
 import { useRigPreviewMotionLifecycle } from './motion/useRigMotionLifecycle'
 import RigCharacter from './rig/RigCharacter'
 import './merope.css'
@@ -84,7 +93,9 @@ export default function SiteMotionWorkbench({
   arousal,
   activity,
 }: Props) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
+  const [wardrobeItems, setWardrobeItems] = useState<WardrobeItem[]>([])
+  const [activeOutfitId, setActiveOutfitId] = useState<string | null>(null)
   const [rigManifest, setRigManifest] = useState<MeropeRigManifest | null>(null)
   const [portraitUrl, setPortraitUrl] = useState<string | null>(null)
   const [generationFingerprint, setGenerationFingerprint] = useState<
@@ -158,7 +169,11 @@ export default function SiteMotionWorkbench({
         if (!cancelled) {
           setPersonaSnapshot(persona)
           setStructuredPersona(structuredFromSnapshot(persona))
-          setVisualIdentity(visualIdentityFromProfile(persona?.visualProfile))
+          const identity = visualIdentityFromProfile(persona?.visualProfile)
+          setVisualIdentity(identity)
+          const hydrated = hydrateWardrobe(persona?.visualProfile, identity)
+          setWardrobeItems(hydrated.items)
+          setActiveOutfitId(hydrated.activeId)
           setDoNotDisturb(persona?.doNotDisturb === true)
           setDndStart(persona?.dndStart?.trim() || '')
           setDndEnd(persona?.dndEnd?.trim() || '')
@@ -169,6 +184,8 @@ export default function SiteMotionWorkbench({
           setPersonaSnapshot(null)
           setStructuredPersona(null)
           setVisualIdentity(null)
+          setWardrobeItems([])
+          setActiveOutfitId(null)
           setDoNotDisturb(false)
           setDndStart('')
           setDndEnd('')
@@ -196,26 +213,57 @@ export default function SiteMotionWorkbench({
     }
   }, [t.merope.seeThroughStatusFailed])
 
+  const saveVisualProfile = useCallback(
+    async (patch: {
+      identity: UpperBodyVisualIdentity
+      clothingStyle?: string | null
+      items: WardrobeItem[]
+      activeId: string | null
+    }) => {
+      if (!personaSnapshot) return
+      const persisted = persistWardrobeState(patch.items, patch.activeId)
+      const saved = await agentService.putPersona({
+        name: personaSnapshot.name,
+        personality: personaSnapshot.personality ?? '',
+        persona: personaSnapshot.persona,
+        visualProfile: {
+          ...(personaSnapshot.visualProfile ?? {}),
+          visualIdentity: patch.identity,
+          ...(patch.clothingStyle !== undefined
+            ? { clothingStyle: patch.clothingStyle }
+            : {}),
+          wardrobe: persisted.items,
+          activeOutfitId: persisted.activeId,
+        },
+      })
+      setPersonaSnapshot(saved)
+      setVisualIdentity(patch.identity)
+      setWardrobeItems(persisted.items)
+      setActiveOutfitId(persisted.activeId)
+      await loadFace()
+    },
+    [loadFace, personaSnapshot],
+  )
+
   const saveVisualIdentity = useCallback(
     async (next: UpperBodyVisualIdentity) => {
       setVisualIdentity(next)
-      if (!personaSnapshot) return
       try {
-        const saved = await agentService.putPersona({
-          name: personaSnapshot.name,
-          personality: personaSnapshot.personality ?? '',
-          persona: personaSnapshot.persona,
-          visualProfile: {
-            ...(personaSnapshot.visualProfile ?? {}),
-            visualIdentity: next,
-          },
+        await saveVisualProfile({
+          identity: next,
+          items: syncActiveOutfit(wardrobeItems, activeOutfitId, next),
+          activeId: activeOutfitId,
         })
-        setPersonaSnapshot(saved)
       } catch (reason) {
         setError(userFacingError(reason, o.visualDesignSaveFailed))
       }
     },
-    [o.visualDesignSaveFailed, personaSnapshot],
+    [
+      activeOutfitId,
+      o.visualDesignSaveFailed,
+      saveVisualProfile,
+      wardrobeItems,
+    ],
   )
 
   const saveStructuredPersona = useCallback(
@@ -226,6 +274,9 @@ export default function SiteMotionWorkbench({
         ? {
             ...(personaSnapshot?.visualProfile ?? {}),
             visualIdentity: null,
+            clothingStyle: null,
+            wardrobe: [],
+            activeOutfitId: null,
           }
         : personaSnapshot?.visualProfile
       try {
@@ -239,7 +290,11 @@ export default function SiteMotionWorkbench({
           },
           visualProfile,
         })
-        if (options?.resetVisual) setVisualIdentity(null)
+        if (options?.resetVisual) {
+          setVisualIdentity(null)
+          setWardrobeItems([])
+          setActiveOutfitId(null)
+        }
         setPersonaSnapshot(saved)
         window.dispatchEvent(new CustomEvent('arael-persona-updated'))
       } catch (reason) {
@@ -451,28 +506,34 @@ export default function SiteMotionWorkbench({
     </div>
   )
 
-  const visualSource = (
-    <section aria-label={t.merope.visualSourceTitle}>
-      <h3 className="merope-motion-visual__heading">
-        {t.merope.visualSourceTitle}
-      </h3>
-      {visualIdentity ? (
-        <VisualIdentityView
-          identity={visualIdentity}
-          labels={visualLabels}
-          characterTitle={o.visualGroupCharacter}
-          outfitTitle={o.visualGroupOutfit}
-          editLabel={o.editVisual}
-          cancelLabel={o.cancelEdit}
-          saveLabel={o.doneEditing}
-          busy={generating}
-          onIdentity={(next) => void saveVisualIdentity(next)}
-        />
-      ) : (
-        <p className="merope-motion-home__help">{t.merope.visualSourceEmpty}</p>
-      )}
-    </section>
-  )
+  const visualSource = visualIdentity ? (
+    <div className="merope-wardrobe__visual">
+      <VisualIdentityView
+        identity={visualIdentity}
+        labels={visualLabels}
+        characterTitle={t.merope.visualFixedTitle}
+        outfitTitle={t.merope.visualOutfitTitle}
+        show="outfit"
+        editLabel={o.editVisual}
+        cancelLabel={o.cancelEdit}
+        saveLabel={o.doneEditing}
+        busy={generating}
+        onIdentity={(next) => void saveVisualIdentity(next)}
+      />
+      <VisualIdentityView
+        identity={visualIdentity}
+        labels={visualLabels}
+        characterTitle={t.merope.visualFixedTitle}
+        outfitTitle={t.merope.visualOutfitTitle}
+        show="character"
+        editLabel={o.editVisual}
+        cancelLabel={o.cancelEdit}
+        saveLabel={o.doneEditing}
+        busy={generating}
+        onIdentity={(next) => void saveVisualIdentity(next)}
+      />
+    </div>
+  ) : null
 
   const overviewRows: Array<{ key: string; label: string; value: string }> = [
     {
@@ -622,6 +683,47 @@ export default function SiteMotionWorkbench({
 
   const portraitCard = (
     <div className="merope-motion-asset__make">
+      <OutfitWardrobe
+        identity={visualIdentity}
+        gender={genderFromProfile(personaSnapshot?.visualProfile)}
+        language={
+          typeof personaSnapshot?.visualProfile?.language === 'string'
+            ? (personaSnapshot.visualProfile.language as string)
+            : locale
+        }
+        items={wardrobeItems}
+        activeId={activeOutfitId}
+        busy={generating}
+        onApply={async (item, nextIdentity) => {
+          await saveVisualProfile({
+            identity: nextIdentity,
+            clothingStyle: item.clothingStyle,
+            items: wardrobeItems,
+            activeId: item.id,
+          })
+        }}
+        onDelete={async (id) => {
+          const remaining = wardrobeItems.filter((item) => item.id !== id)
+          if (remaining.length === 0 || !visualIdentity) return
+          const nextItem = id === activeOutfitId ? remaining[0] : null
+          await saveVisualProfile({
+            identity: nextItem
+              ? applyOutfit(visualIdentity, nextItem)
+              : visualIdentity,
+            clothingStyle: nextItem?.clothingStyle,
+            items: remaining,
+            activeId: nextItem?.id ?? activeOutfitId,
+          })
+        }}
+        onCreated={async (item, nextIdentity) => {
+          await saveVisualProfile({
+            identity: nextIdentity,
+            clothingStyle: item.clothingStyle,
+            items: [...wardrobeItems, item],
+            activeId: item.id,
+          })
+        }}
+      />
       <div className="merope-motion-asset__actions">
         <SettingsButton
           type="button"
@@ -698,7 +800,7 @@ export default function SiteMotionWorkbench({
         <Anime25DWorkbench
           overviewLead={overviewCard}
           personaLead={personaCard}
-          essentialsLead={portraitCard}
+          wardrobeLead={portraitCard}
           characterRef={rigCharacterRef}
           sourceMasterAssetId={portraitUrl || ''}
           sourceGenerationFingerprint={generationFingerprint || undefined}

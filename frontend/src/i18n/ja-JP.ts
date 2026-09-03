@@ -168,11 +168,31 @@ export const jaJP: TranslationKeys = {
     personaEmpty: '人格がまだありません。',
     portraitGroup: '立ち絵',
     portraitGroupDescription:
-      'メイン立ち絵を生成して確認します。光と構図はここで微調整。髪型と衣装はビジュアル契約のままです。',
+      'メイン立ち絵を生成して確認します。衣装箪笥で着替え、光と構図はここで微調整できます。',
     visualSourceTitle: 'キャラクター外観',
     visualSourceEmpty: '確定済みの上半身ビジュアルがまだありません。',
+    wardrobeTitle: '衣装箪笥',
+    wardrobeHint:
+      '服だけ替えます。顔と髪型はそのまま。新しい衣装を絵に出すにはメイン立ち絵を再生成してください。',
+    wardrobeGroupDescription:
+      '衣装セットごとに着替えます。顔と髪型は固定。立ち絵とリグは今着ているものに従います。',
+    visualOutfitTitle: 'この衣装',
+    visualFixedTitle: '顔と髪型',
+    wardrobeEmpty: '保存した衣装はまだありません。',
+    wardrobeNeedCharacter: '新しい衣装を作る前に、外観デザインを確定してください。',
+    wardrobeNew: '新しい衣装を作る',
+    wardrobeGenerate: 'この衣装を生成',
+    wardrobeWearing: '着用中',
+    wardrobeFull: '箪笥がいっぱいです',
+    wardrobeRequirements: '衣装の指定',
+    wardrobeRequirementsHint: 'この衣装の色、重ね、または飾りだけ書いてください。',
+    wardrobeRequirementsPlaceholder: '例：深紅の短いジャケット、金色のボタン',
+    wardrobeApplyFailed: 'その衣装に着替えられませんでした',
+    wardrobeDeleteFailed: 'その衣装を外せませんでした',
     assetGroup: '立ち絵とリグ',
     assetEmpty: 'メイン立ち絵がまだありません。先に生成してください。',
+    widgetFaceSlotTaken:
+      'ライブのビジュアルは、同時に1つのウィジェットだけで再生されます。',
     assetNeedsPortrait:
       'レイヤー PSD の分解や取り込みの前に、メイン立ち絵が必要です。',
     rigGroup: 'レイヤーリグ',

@@ -25,6 +25,7 @@ import {
   publicPersonaName,
 } from '../../features/merope/publicName'
 import RigCharacter from '../../features/merope/rig/RigCharacter'
+import { useMeropeWidgetFaceSlot } from '../../features/merope/widgetFaceSlot'
 import { agentService } from '../../services/agent'
 import { useAgentStatus } from '../agent-panel/agentStatusStore'
 import { ADDRESSEE_UPDATED_EVENT, moodBand } from '../agent/meropeVitals'
@@ -34,6 +35,9 @@ import './MeropeWidget.css'
 
 const DEFAULT_MOOD = 70
 const DEFAULT_AROUSAL = 48
+/** 立绘生成时附上的技法参考图；小组件库预览用同一张。 */
+const STYLE_REFERENCE_PREVIEW = '/merope/style-reference.png'
+const PREVIEW_MOOD_BAND: MoodBand = 'calm'
 
 /** 四格：很低 1，偏低/烦躁 2，平常 3，轻松 4 */
 const MOOD_LEVEL: Record<MoodBand, number> = {
@@ -60,8 +64,11 @@ function Nameplate({
     <div className="merope-widget__identity glass-surface">
       <strong>{name}</strong>
       {!compact && band ? (
-        <div className="merope-widget__mood">
-          <span>{o.moodLine.replace('{band}', o.mood[band])}</span>
+        <div
+          className="merope-widget__mood"
+          aria-label={o.moodLine.replace('{band}', o.mood[band])}
+        >
+          <span className="merope-widget__mood-text">{o.mood[band]}</span>
           <span className="merope-widget__mood-level" aria-hidden>
             {LEVEL_SLOTS.map((slot) => (
               <i key={slot} data-on={slot < MOOD_LEVEL[band] || undefined} />
@@ -103,7 +110,16 @@ function MeropeWidgetPreview({ compact }: { compact?: boolean }) {
       className={`merope-widget${compact ? ' merope-widget--compact' : ''}`}
     >
       <div className="merope-widget__surface">
-        <Nameplate name={PERSONA_DEFAULT_NAME} band={null} compact={compact} />
+        <div className="merope-widget__rig merope-widget__rig--idle">
+          <span className="merope-rig is-ready" data-rig-quality="static">
+            <img src={STYLE_REFERENCE_PREVIEW} alt="" draggable={false} />
+          </span>
+        </div>
+        <Nameplate
+          name={PERSONA_DEFAULT_NAME}
+          band={compact ? null : PREVIEW_MOOD_BAND}
+          compact={compact}
+        />
       </div>
     </WidgetShell>
   )
@@ -292,13 +308,28 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
   )
 }
 
+function MeropeWidgetDuplicate({ compact }: { compact: boolean }) {
+  const { t } = useI18n()
+  return (
+    <WidgetShell
+      padding={0}
+      className={`merope-widget${compact ? ' merope-widget--compact' : ''}`}
+    >
+      <div className="merope-widget__surface">
+        <p className="merope-widget__empty" role="status">
+          {t.merope.widgetFaceSlotTaken}
+        </p>
+      </div>
+    </WidgetShell>
+  )
+}
+
 export const MeropeWidget = memo(
   ({ isPreview = false, config }: WidgetComponentProps) => {
     const compact = config.size === '2x2'
-    return isPreview ? (
-      <MeropeWidgetPreview compact={compact} />
-    ) : (
-      <LiveMeropeWidget compact={compact} />
-    )
+    const holdsFace = useMeropeWidgetFaceSlot(config.id, !isPreview)
+    if (isPreview) return <MeropeWidgetPreview compact={compact} />
+    if (!holdsFace) return <MeropeWidgetDuplicate compact={compact} />
+    return <LiveMeropeWidget compact={compact} />
   },
 )

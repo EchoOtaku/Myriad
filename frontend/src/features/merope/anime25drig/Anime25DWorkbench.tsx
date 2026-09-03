@@ -51,7 +51,7 @@ interface Props {
     preflight: RigAssetPreflight,
     onStage: (event: RigAssetCompileEvent) => void,
   ) => Promise<{ partCount: number; score: number }>
-  essentialsLead?: ReactNode
+  wardrobeLead?: ReactNode
   personaLead?: ReactNode
   overviewLead?: ReactNode
   motionEnabled?: boolean
@@ -201,22 +201,21 @@ export default function Anime25DWorkbench({
   onDecomposeRigPsd,
   onPreflightRigPsd,
   onCommitRigPsd,
-  essentialsLead = null,
+  wardrobeLead = null,
   personaLead = null,
   overviewLead = null,
   motionEnabled = false,
 }: Props) {
   const { t } = useI18n()
   const labels = t.merope
-  type FacePanel = 'overview' | 'persona' | 'portrait' | 'rig' | 'motion'
+  type FacePanel = 'overview' | 'persona' | 'wardrobe' | 'motion'
   type RigPath = 'upload' | 'seeThrough'
   const [panel, setPanel] = useState<FacePanel>('overview')
   const [rigPath, setRigPath] = useState<RigPath>('upload')
   const panels: Array<{ value: FacePanel; label: string }> = [
     { value: 'overview', label: labels.overviewGroup },
     { value: 'persona', label: labels.personaGroup },
-    { value: 'portrait', label: labels.portraitGroup },
-    { value: 'rig', label: labels.rigGroup },
+    { value: 'wardrobe', label: labels.wardrobeTitle },
     { value: 'motion', label: labels.anime25dDebug },
   ]
   const rigPaths: Array<{ value: RigPath; label: string }> = [
@@ -758,16 +757,16 @@ export default function Anime25DWorkbench({
           {personaLead}
         </SettingGroup>
       ) : null}
-      {panel === 'portrait' ? (
+      {panel === 'wardrobe' ? (
         <SettingGroup
-          title={labels.portraitGroup}
-          description={labels.portraitGroupDescription}
-          id="merope-motion-portrait"
+          title={labels.wardrobeTitle}
+          description={labels.wardrobeGroupDescription}
+          id="merope-motion-wardrobe"
         >
-          {essentialsLead}
+          {wardrobeLead}
         </SettingGroup>
       ) : null}
-      {panel === 'rig' ? (
+      {panel === 'wardrobe' ? (
         <SettingGroup
           title={labels.rigGroup}
           description={labels.rigGroupDescription}
