@@ -686,7 +686,6 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
   const [activity, setActivity] = useState('idle')
   const [personality, setPersonality] = useState('')
   const [portraitUrl, setPortraitUrl] = useState<string | null>(null)
-  const [reportCount, setReportCount] = useState(0)
   const [vitalsReady, setVitalsReady] = useState(false)
   const [personaBusy, setPersonaBusy] = useState(false)
   const [personaError, setPersonaError] = useState<string | null>(null)
@@ -716,7 +715,6 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       setActivity('idle')
       setPersonality('')
       setPortraitUrl(null)
-      setReportCount(0)
       setVitalsReady(false)
       return
     }
@@ -745,9 +743,6 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               ? persona.portraitAssetId
               : null,
           )
-          setReportCount(
-            typeof persona.reportCount === 'number' ? persona.reportCount : 0,
-          )
           setVitalsReady(true)
         })
         .catch(() => {
@@ -756,7 +751,6 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
             setHasSavedPersona(false)
             setPersonality('')
             setPortraitUrl(null)
-            setReportCount(0)
             setVitalsReady(false)
           }
         })
@@ -1067,16 +1061,14 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
                       confirm: t.config.agentPersonaDeleteConfirm,
                     },
                   ]
-                : reportCount >= 3
-                  ? [
-                      {
-                        key: 'setup',
-                        label: o.openPage,
-                        onClick: () => openAiSubpage('merope-setup'),
-                        disabled: personaBusy,
-                      },
-                    ]
-                  : undefined
+                : [
+                    {
+                      key: 'setup',
+                      label: o.openPage,
+                      onClick: () => openAiSubpage('merope-setup'),
+                      disabled: personaBusy,
+                    },
+                  ]
             }
             footer={personaError}
           >
@@ -1095,11 +1087,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               </>
             ) : (
               <p className="info-action-card-lede">
-                {reportCount < 3
-                  ? t.config.agentPersonaNeedsReports
-                      .replace('{count}', String(reportCount))
-                      .replace('{need}', '3')
-                  : t.config.agentPersonaEmptyLead}
+                {t.config.agentPersonaEmptyLead}
               </p>
             )}
           </InfoActionCard>

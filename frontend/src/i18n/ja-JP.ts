@@ -2893,7 +2893,8 @@ export const jaJP: TranslationKeys = {
       importLead: 'ペルソナも立ち絵も手元にあるなら、名前だけで完了します。',
       importPersonaReady: 'ペルソナを取り込みました。',
       importPortraitHint:
-        '出来上がった立ち絵をアップロードします。生成しないので、先にビジュアル設定を決める必要はありません。',
+        '出来上がった立ち絵をアップロードします。完了時にこの絵から視覚特徴を読み取ります。',
+      importVisualFailed: '立ち絵から視覚特徴を読めませんでした。再試行してください。',
       importFinish: '次へ：動かす',
       personaFieldGenerating: '生成中',
       editPersona: '編集',

@@ -15,6 +15,7 @@ const HOST_GENERATION_CODES = new Set([
   'visual_language_required',
   'visual_design_required',
   'visual_identity_invalid',
+  'portrait_required',
   'persona_contract_invalid',
   'portrait_generation_in_progress',
   'character_visual_inputs_changed',

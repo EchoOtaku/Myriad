@@ -121,6 +121,12 @@ pub fn create_agent_routes(app_state: crate::state::AppState) -> Router<crate::s
             ),
         )
         .route(
+            "/persona/visual-from-portrait",
+            axum::routing::post(super::persona::observe_visual_from_portrait).route_layer(
+                from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware),
+            ),
+        )
+        .route(
             "/addressee",
             put(super::persona::put_addressee).route_layer(from_fn_with_state(
                 app_state.clone(),

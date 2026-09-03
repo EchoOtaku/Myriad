@@ -5,12 +5,18 @@ use serde_json::{json, Map, Value};
 use std::time::Duration;
 
 use crate::config::ModelTier;
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::services::ai::create_ai_analyzer_for_tier_with_timeout;
-use crate::services::analyzer::OutputBudget;
+use crate::services::ai_config::get_ai_config_for_tier;
+use crate::services::ai_cost_ledger::record_ai_call_from_attribution;
+use crate::services::analyzer::{openai_chat_completions_url, AiProvider, OutputBudget};
+use crate::services::gemini_media;
+use crate::services::http_client::get_long_running_client;
+use crate::services::image_generation::ImageReference;
 
 use super::onboarding_prompts::{
-    visual_design_system_prompt, IMPORT_PERSONA_SYSTEM_PROMPT, NAME_SYSTEM_PROMPT,
-    PERSONA_SYSTEM_PROMPT,
+    observe_portrait_visual_prompt, visual_design_system_prompt, IMPORT_PERSONA_SYSTEM_PROMPT,
+    NAME_SYSTEM_PROMPT, PERSONA_SYSTEM_PROMPT,
 };
 use super::report_dna::sanitize_onboarding_tags_for_language;
 
@@ -452,6 +458,179 @@ async fn suggest_visual_design_once(
         return Err(OnboardingAiError::LanguageMismatch);
     }
     Ok(identity)
+}
+
+pub struct ObservedPortraitVisual {
+    pub clothing_style: &'static str,
+    pub visual_identity: Value,
+}
+
+/// Read the uploaded master portrait into the visual-identity contract.
+pub async fn observe_visual_from_portrait(
+    language: &str,
+    gender: &str,
+    image: &ImageReference,
+) -> Result<ObservedPortraitVisual, OnboardingAiError> {
+    retry_unusable(
+        VISUAL_DESIGN_ATTEMPTS,
+        "portrait observation was unusable",
+        || observe_visual_from_portrait_once(language, gender, image),
+    )
+    .await
+}
+
+async fn observe_visual_from_portrait_once(
+    language: &str,
+    gender: &str,
+    image: &ImageReference,
+) -> Result<ObservedPortraitVisual, OnboardingAiError> {
+    let prompt = observe_portrait_visual_prompt(language, normalize_gender(gender));
+    let raw = run_vision_call(&prompt, image).await?;
+    parse_observed_visual(&raw, language)
+}
+
+fn parse_observed_visual(
+    raw: &str,
+    language: &str,
+) -> Result<ObservedPortraitVisual, OnboardingAiError> {
+    let parsed = parse_json_object(raw).ok_or(OnboardingAiError::UnusableResponse(
+        "portrait observation was not valid JSON",
+    ))?;
+    let clothing_style = parsed
+        .get("clothingStyle")
+        .and_then(Value::as_str)
+        .and_then(myriad_merope::normalize_clothing_style)
+        .unwrap_or("everyday");
+    let mut identity = myriad_merope::sanitize_upper_body_visual_identity(&parsed).ok_or(
+        OnboardingAiError::UnusableResponse("portrait observation failed field sanitize"),
+    )?;
+    myriad_merope::stamp_clothing_style(&mut identity, clothing_style);
+    if myriad_merope::visual_identity_has_literary_sludge(&identity) {
+        return Err(OnboardingAiError::UnusableResponse(
+            "portrait observation used literary sludge",
+        ));
+    }
+    if !visual_design_matches_ui_language(&identity, language) {
+        return Err(OnboardingAiError::LanguageMismatch);
+    }
+    Ok(ObservedPortraitVisual {
+        clothing_style,
+        visual_identity: identity,
+    })
+}
+
+async fn run_vision_call(prompt: &str, image: &ImageReference) -> Result<String, OnboardingAiError> {
+    let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+    if !config.pro_enabled {
+        return Err(OnboardingAiError::AnalyzerUnavailable);
+    }
+    drop(config);
+    let Ok(config) = get_ai_config_for_tier(ModelTier::Pro).await else {
+        return Err(OnboardingAiError::AnalyzerUnavailable);
+    };
+    let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &image.bytes);
+    let client = get_long_running_client().await;
+    let request = match config.provider {
+        AiProvider::Gemini => client
+            .post(gemini_media::generate_content_url(
+                config.base_url.as_deref().unwrap_or_default(),
+                &config.model,
+            ))
+            .header("x-goog-api-key", &config.api_key)
+            .json(&json!({
+                "contents": [{ "parts": [
+                    { "inlineData": { "mimeType": image.media_type, "data": encoded } },
+                    { "text": prompt }
+                ]}],
+                "generationConfig": { "responseMimeType": "application/json" }
+            })),
+        AiProvider::OpenAI => {
+            let data_url = format!("data:{};base64,{encoded}", image.media_type);
+            client
+                .post(openai_chat_completions_url(config.base_url.as_deref()))
+                .bearer_auth(&config.api_key)
+                .json(&json!({
+                    "model": config.model,
+                    "messages": [{
+                        "role": "user",
+                        "content": [
+                            { "type": "text", "text": prompt },
+                            { "type": "image_url", "image_url": { "url": data_url } }
+                        ]
+                    }],
+                    "response_format": { "type": "json_object" }
+                }))
+        }
+    };
+    let response = match tokio::time::timeout(ONBOARDING_AI_TIMEOUT, request.send()).await {
+        Ok(Ok(response)) => response,
+        Ok(Err(error)) => {
+            tracing::error!(%error, "portrait observation provider failed");
+            return Err(OnboardingAiError::ProviderFailed(error.to_string()));
+        }
+        Err(_) => {
+            return Err(OnboardingAiError::ProviderFailed(
+                "portrait observation timed out".into(),
+            ))
+        }
+    };
+    let status = response.status();
+    let bytes = response.bytes().await.map_err(|error| {
+        OnboardingAiError::ProviderFailed(error.to_string())
+    })?;
+    let preview = String::from_utf8_lossy(&bytes);
+    record_ai_call_from_attribution(
+        config.provider.as_str(),
+        &config.model,
+        prompt.len(),
+        preview.len(),
+        if status.is_success() {
+            "completed"
+        } else {
+            "failed"
+        },
+        (!status.is_success()).then_some("AI_PROVIDER_ERROR"),
+    )
+    .await;
+    if !status.is_success() {
+        tracing::error!(%status, body = %preview.chars().take(400).collect::<String>(), "portrait observation HTTP error");
+        return Err(OnboardingAiError::ProviderFailed(format!(
+            "vision provider returned HTTP {status}"
+        )));
+    }
+    let value: Value = serde_json::from_slice(&bytes).map_err(|_| {
+        OnboardingAiError::UnusableResponse("portrait observation was not valid JSON")
+    })?;
+    let text = match config.provider {
+        AiProvider::Gemini => value
+            .pointer("/candidates/0/content/parts")
+            .and_then(Value::as_array)
+            .and_then(|parts| {
+                parts
+                    .iter()
+                    .find_map(|part| part.get("text").and_then(Value::as_str))
+            })
+            .map(str::to_string),
+        AiProvider::OpenAI => {
+            let content = value.pointer("/choices/0/message/content");
+            content
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .or_else(|| {
+                    content.and_then(Value::as_array).and_then(|parts| {
+                        parts.iter().find_map(|part| {
+                            part.get("text")
+                                .and_then(Value::as_str)
+                                .or_else(|| part.pointer("/text/value").and_then(Value::as_str))
+                                .map(str::to_string)
+                        })
+                    })
+                })
+        }
+    };
+    text.filter(|value| !value.trim().is_empty()).ok_or(
+        OnboardingAiError::UnusableResponse("portrait observation contained no text"),
+    )
 }
 
 /// `{"name":..., "meaning":...}` —— 和 `NAME_SYSTEM_PROMPT` 里那句同一个契约，
@@ -1006,6 +1185,36 @@ fn bounded_text(value: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn observed_portrait_visual_keeps_clothing_style_and_fields() {
+        let raw = r#"{
+            "clothingStyle": "urban",
+            "visualIdentity": {
+                "character": {
+                    "faceDesign": "柔和的鹅蛋脸，鼻唇简洁，面部比例成熟而非幼态",
+                    "eyeDesign": "紫蓝宝石感大眼，深色上睫与多层虹膜高光",
+                    "hairShape": "粉色齐颌短发，空气刘海，侧发包住脸颊",
+                    "hairLayerPlan": "后发形成完整轮廓，前刘海、左右侧发和顶部呆毛可分层"
+                },
+                "outfit": {
+                    "upperBodySilhouette": "窄肩与清晰领口，胸像轮廓紧凑，左右袖片伸入画面",
+                    "outfitConstruction": "水手领内搭叠短外套，领巾形成胸前主形，结构止于高腰",
+                    "sleeveArmDesign": "宽松袖口包住局部前臂，左右形状不完全对称，手可以不出现",
+                    "materialPlan": "哑光布料为主，丝带带柔和光泽，金属与宝石只用于小面积焦点",
+                    "heroAccessory": "左侧星形发夹与胸前星形扣形成一次呼应",
+                    "paletteHint": "粉色头发，淡紫与白为主体，深紫压边，少量金色点缀",
+                    "motif": "星轨与小型鸟笼，集中在发饰和胸前，不铺满服装"
+                }
+            }
+        }"#;
+        let observed = parse_observed_visual(raw, "zh-CN").expect("usable observation");
+        assert_eq!(observed.clothing_style, "urban");
+        assert_eq!(
+            observed.visual_identity["outfit"]["clothingStyle"],
+            "urban"
+        );
+    }
 
     #[test]
     fn sanitize_display_name_follows_name_style() {

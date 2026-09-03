@@ -17,6 +17,7 @@ import {
   flattenPersona,
   genderFromProfile,
   GUIDED_FIRST_STEP,
+  GUIDED_MIN_REPORTS,
   IMPORT_STEP,
   onboardingSeedsFromProfile,
   personaFromApi,
@@ -37,6 +38,7 @@ interface Props {
   step: OnboardingStep
   onStepChange: (step: OnboardingStep) => void
   onBusyChange: (busy: boolean) => void
+  reportCount?: number
   onHeaderChange: (chrome: OnboardingHeaderChrome) => void
   onFinished: () => void
 }
@@ -48,6 +50,7 @@ export default function OnboardingWizard({
   step,
   onStepChange,
   onBusyChange,
+  reportCount = 0,
   onHeaderChange,
   onFinished,
 }: Props) {
@@ -241,8 +244,12 @@ export default function OnboardingWizard({
           >
             {step === CHOICE_STEP && (
               <ChoiceStep
+                reportCount={reportCount}
                 onHeaderChange={onHeaderChange}
-                onGuided={() => enterLane(GUIDED_FIRST_STEP)}
+                onGuided={() => {
+                  if (reportCount < GUIDED_MIN_REPORTS) return
+                  enterLane(GUIDED_FIRST_STEP)
+                }}
                 onImport={() => enterLane(IMPORT_STEP)}
               />
             )}
@@ -272,6 +279,14 @@ export default function OnboardingWizard({
                   run(async () => {
                     // 主立绘在选中文件时就已经落库了（upload_portrait），这里只
                     // 补人设本身。不传 portraitAssetId，后端按 Keep 处理。
+                    // 视觉设定不能留空：按刚上传的主图读出特征，避免 merge
+                    // 把上一次生成链的 visualIdentity 补回来。
+                    const observed = importedPortraitUrl
+                      ? await agentService.observeVisualFromPortrait({
+                          gender: gender ?? 'unspecified',
+                          language: locale,
+                        })
+                      : null
                     await agentService.putPersona({
                       name: displayName.trim(),
                       personality: flattenPersona(persona),
@@ -279,15 +294,11 @@ export default function OnboardingWizard({
                         displayName: displayName.trim(),
                         ...persona,
                       },
-                      // 显式写空，和生成链一致：后端 `merge_visual_profile`
-                      // 会把「缺席」的键从旧值补上，于是上一次生成留下的视觉
-                      // 设定、词条、补充要求会全部跟到导入的人设身上——那份
-                      // 视觉设定描述的是另一个角色。
                       visualProfile: {
                         gender: gender ?? 'unspecified',
                         language: locale,
-                        visualIdentity: null,
-                        clothingStyle: null,
+                        visualIdentity: observed?.visualIdentity ?? null,
+                        clothingStyle: observed?.clothingStyle ?? null,
                         sourceTags: [],
                         personaExtraRequirements: '',
                       },

@@ -238,6 +238,26 @@ pub fn visual_design_system_prompt() -> String {
     )
 }
 
+/// Read an already-drawn master portrait into the same visual-identity contract.
+pub fn observe_portrait_visual_prompt(language: &str, gender: &str) -> String {
+    let styles = myriad_merope::CLOTHING_STYLES.join(", ");
+    format!(
+        r#"# Observe an imported master portrait
+
+Describe the person and costume already drawn in the attached image. Do not invent a new design. Do not "improve", stylize, or complete missing garments. If a detail is not visible, write the closest drawable fact that is still true of the image.
+
+Write every field in `{language}` (`zh-CN`, `ja-JP`, or `en-US`). Treat `genderPresentation` `{gender}` as the owner's chosen read; describe the image accordingly without contradicting visible anatomy.
+
+Pick exactly one `clothingStyle` from: {styles}. Choose the closest family for what is worn, not a wish.
+
+Return only this JSON object, all strings present:
+{{"clothingStyle":"everyday","visualIdentity":{{"character":{{"faceDesign":"...","eyeDesign":"...","hairShape":"...","hairLayerPlan":"..."}},"outfit":{{"upperBodySilhouette":"...","outfitConstruction":"...","sleeveArmDesign":"...","materialPlan":"...","heroAccessory":"...","paletteHint":"...","motif":"..."}}}}}}
+
+Use one or two short drawable sentences per field. No biography, metaphor, camera command, or output instruction.
+"#
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,6 +288,13 @@ mod tests {
         assert!(PERSONA_SYSTEM_PROMPT.contains("Step 3"));
         assert!(PERSONA_SYSTEM_PROMPT.contains("extraRequirements"));
         assert!(PERSONA_SYSTEM_PROMPT.contains("No visualIdentity"));
+        let observe = observe_portrait_visual_prompt("zh-CN", "female");
+        assert!(observe.contains("Do not invent a new design"));
+        assert!(observe.contains("everyday"));
+        assert!(observe.contains("zh-CN"));
+        assert!(observe.contains("female"));
+        assert!(observe.contains("clothingStyle"));
+        assert!(observe.contains("visualIdentity"));
         assert!(PERSONA_SYSTEM_PROMPT.contains("Fill all six fields"));
         assert!(!PERSONA_SYSTEM_PROMPT.contains("Fill all six fields richly"));
         assert!(!PERSONA_SYSTEM_PROMPT.contains("each a small scene"));

@@ -2919,7 +2919,8 @@ export const enUS: TranslationKeys = {
         'Bring your own persona and portrait. Give it a name and you are done.',
       importPersonaReady: 'Persona is in place.',
       importPortraitHint:
-        'Upload a finished portrait. Nothing is generated, so no visual design is needed first.',
+        'Upload a finished portrait. Visual features will be read from this image.',
+      importVisualFailed: 'Could not read visual features from the portrait. Try again.',
       importFinish: 'Next: make her move',
       personaFieldGenerating: 'Generating',
       editPersona: 'Edit',

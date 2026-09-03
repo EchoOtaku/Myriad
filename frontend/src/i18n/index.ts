@@ -2539,6 +2539,7 @@ export interface TranslationKeys {
       importLead: string
       importPersonaReady: string
       importPortraitHint: string
+      importVisualFailed: string
       importFinish: string
       personaFieldGenerating: string
       editPersona: string

@@ -869,6 +869,107 @@ pub async fn suggest_visual_design(
     })))
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservePortraitVisualRequest {
+    #[serde(default)]
+    pub gender: String,
+    #[serde(default)]
+    pub language: String,
+}
+
+/// POST /api/agent/persona/visual-from-portrait
+/// Pro reads the stored master portrait into visualIdentity + clothingStyle.
+/// Suggestion is returned for the import finish write; nothing is persisted here.
+pub async fn observe_visual_from_portrait(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Json(body): Json<ObservePortraitVisualRequest>,
+) -> Result<Json<Value>, HttpError> {
+    require_merope_enabled().await?;
+    let _user_id = require_site_owner(&claims, &db).await?;
+    let language = required_visual_language(&body.language).ok_or_else(|| {
+        HttpError::from((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Choose a supported interface language before reading the portrait",
+                "code": "visual_language_required"
+            })),
+        ))
+    })?;
+    let gender = required_visual_gender(&body.gender).ok_or_else(|| {
+        HttpError::from((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Choose a valid gender presentation before reading the portrait",
+                "code": "gender_required"
+            })),
+        ))
+    })?;
+    let persona = merope::get_persona(&db)
+        .await
+        .map_err(|error| persona_store_http("load persona", error))?
+        .ok_or_else(|| {
+            HttpError::from((
+                StatusCode::CONFLICT,
+                Json(json!({
+                    "error": "Upload a master portrait before reading visual features",
+                    "code": "portrait_required"
+                })),
+            ))
+        })?;
+    let portrait_url = persona.portrait_asset_id.as_deref().ok_or_else(|| {
+        HttpError::from((
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": "Upload a master portrait before reading visual features",
+                "code": "portrait_required"
+            })),
+        ))
+    })?;
+    let (bytes, mime) = crate::services::image_cache::ImageCacheService::new()
+        .read_local_public_url(portrait_url)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "imported portrait bytes missing");
+            HttpError::from((
+                StatusCode::CONFLICT,
+                Json(json!({
+                    "error": "Uploaded master portrait is missing from storage",
+                    "code": "portrait_required"
+                })),
+            ))
+        })?;
+    let image = crate::services::image_generation::ImageReference::new(bytes, mime).map_err(
+        |error| {
+            tracing::error!(%error, "imported portrait is not a usable image");
+            HttpError::from((
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "Uploaded master portrait is not a usable image",
+                    "code": "portrait_required"
+                })),
+            ))
+        },
+    )?;
+    let observed = match merope::onboarding_ai::observe_visual_from_portrait(language, gender, &image)
+        .await
+    {
+        Ok(value) => value,
+        Err(error) => {
+            return Err(onboarding_generation_error(
+                "visual",
+                "Failed to read visual features from the portrait",
+                error,
+            ))
+        }
+    };
+    Ok(Json(json!({
+        "visualIdentity": observed.visual_identity,
+        "clothingStyle": observed.clothing_style,
+    })))
+}
+
 fn onboarding_error_body(error: &str, code: &str, message: Option<&str>) -> serde_json::Value {
     let mut body = json!({ "error": error, "code": code });
     if let Some(message) = message.map(str::trim).filter(|value| !value.is_empty()) {

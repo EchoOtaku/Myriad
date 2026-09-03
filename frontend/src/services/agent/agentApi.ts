@@ -1050,6 +1050,20 @@ class AgentService {
     )
   }
 
+  async observeVisualFromPortrait(body: {
+    gender: string
+    language: string
+  }): Promise<{
+    visualIdentity: Record<string, unknown>
+    clothingStyle: string
+  }> {
+    // 不走 sharePersonaGeneration：主图换了，性别没变，不能把上一张的观察结果
+    // 当成这一张。
+    return apiService.post(`${this.baseUrl}/persona/visual-from-portrait`, body, {
+      timeout: PERSONA_GENERATION_TIMEOUT_MS,
+    })
+  }
+
   async getPersona(): Promise<AgentPersona | null> {
     try {
       return await apiService.get(`${this.baseUrl}/persona`)
