@@ -367,6 +367,8 @@ async fn suggest_visual_design_once(
     } else {
         Value::Null
     };
+    let requirements = visual_requirements.chars().take(500).collect::<String>();
+    let requirements_named = !requirements.trim().is_empty();
     let input = json!({
         "pipeline": "onboarding/upper-body-visual-design",
         "task": "design_upper_body_visual_identity",
@@ -376,10 +378,11 @@ async fn suggest_visual_design_once(
         "genderPresentation": normalize_gender(gender),
         "clothingStyle": clothing_style,
         "clothingStyleGrammar": clothing_grammar,
+        "clothingStyleGrammarRole": "gap-fill only",
         "keepCharacter": kept_character.is_some(),
         "existingCharacter": kept_character.clone().unwrap_or(Value::Null),
         "persona": persona_input,
-        "visualRequirements": visual_requirements.chars().take(500).collect::<String>(),
+        "visualRequirements": requirements,
         "paletteFromPersona": {
             "from": ["likes", "temperament", "drives"],
             "onlyWhenVisualRequirementsDoNotSetPalette": true,
@@ -391,11 +394,19 @@ async fn suggest_visual_design_once(
             "forbidMonochromeFamily": true,
             "accessories": "hero plus two or three supporting",
         },
-        "variety": {
-            "clothingStyleIsFamilyNotKit": true,
-            "appliesToEveryStyle": true,
-            "changeConstructionNotJustColors": true,
-            "forbidInterchangeableDefaultKit": true,
+        "variety": if requirements_named {
+            json!({
+                "keepNamedVisualRequirements": true,
+                "clothingStyleIsFamilyNotKit": true,
+                "fillSilenceFromGrammar": true,
+            })
+        } else {
+            json!({
+                "clothingStyleIsFamilyNotKit": true,
+                "appliesToEveryStyle": true,
+                "changeConstructionNotJustColors": true,
+                "forbidInterchangeableDefaultKit": true,
+            })
         },
         "regenerate": regenerate,
         "previousVisualIdentityForDifferenceOnly": comparison_identity,
