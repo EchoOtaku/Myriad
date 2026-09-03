@@ -178,7 +178,7 @@ Apply every fact once in this order:
 3. `genderPresentation`: visible gender read across face, eyes, silhouette, and garment cut.
 4. `visualRequirements`: HARD for requested colors, garments, layers, accessories, hair, eyes, and motif. Lose only to items 1–3 and the neck lock. Named garments stay; polish them, never swap.
 5. `clothingStyle`: garment family only. Open neckline stays mandatory.
-6. `existingCharacter` when `keepCharacter` is true: preserve all four character fields exactly.
+6. `existingCharacter` when `keepCharacter` is true: preserve the four character fields; remap existingOutfitPalette only on regenerate.
 7. `clothingStyleGrammar`: fill only where visualRequirements is silent.
 8. `persona`: fill only remaining unset palette or motif.
 
@@ -190,7 +190,7 @@ UI language is not a costume signal. `rollId` or `regenerate` must change the si
 The neck from jaw to collarbone must stay fully visible. Forbid turtlenecks, standing or high collars, cowl necks, and any cloth that covers the neck. Use an open neckline. Jewelry may sit on the neck; fabric may not.
 
 ## Costume common sense
-Locked families (idol, gothic, east-asian, japanese, royal, mystic, sci-fi, uniform) keep their grammar palette unless visualRequirements names garments, colors, or layers. Open families (everyday, urban, lounge, sport, travel, vintage, rain) may take any readable palette from visualRequirements or persona. Idol is stage candy, not 国风 mineral red-gold-jade. Gothic is black, bone, and one jewel.
+Locked families (idol, gothic, east-asian, japanese, royal, mystic, sci-fi, uniform) keep their grammar palette unless visualRequirements names colors or layers, or existingOutfitPalette is present. Open families may take any readable palette from visualRequirements or persona. Idol is stage candy, not 国风 mineral red-gold-jade. Gothic is black, bone, and one jewel.
 
 ## Gender lock
 Use the exact `genderPresentation`:
@@ -219,11 +219,11 @@ Return only this JSON object, with all eleven strings present and written in `la
 - `sleeveArmDesign`: specify both sleeve constructions, cuffs, and short visible arm fragments. Asymmetry may come from costume layers while the anatomical shoulders remain level.
 - `materialPlan`: choose a small coherent set of physical materials appropriate to the garment family and name their surface classes.
 - `heroAccessory`: build one dimensional hero assembly anchored to a seam, closure, open neckline, hair group, or shoulder structure, plus two or three smaller supporting pieces with placements. Use physical depth through a clasp, frame, hinge, chain, bow, tassel, sculpted metal, enamel inset, or gem setting; a flat logo, card, or badge alone is incomplete.
-- `paletteHint`: map at least three distinct contrasting hues as main, secondary, and accent onto named garment, trim, lining, and accessory parts. Prefer visualRequirements colors; otherwise use the grammar default or an open palette. Hair color remains in hairShape.
+- `paletteHint`: map at least three distinct contrasting hues as main, secondary, and accent onto named garment, trim, lining, and accessory parts. Prefer visualRequirements colors; else existingOutfitPalette when present; else grammar or persona. Hair color remains in hairShape.
 - `motif`: define one concise shape vocabulary and a restrained repetition rule across already named zones and accessories. Prefer any motif named in visualRequirements.
 
 ## Portrait scope
-Design for a vertical 3:4 upper-body portrait from the complete crown and hair silhouette through lower chest or high waist. The head is large, both sleeve edges enter the frame, and side air is about one-sixteenth of the width. Use a strict centered eye-level zero-yaw front reference: level eyes and anatomical shoulders, square face and torso, and equal perspective scale. Decorative hair, costume, accessories, and left/right lid acting may remain asymmetric.
+Design for a vertical 3:4 upper-body portrait from the complete crown and hair silhouette through lower chest, with the shoulder line in the lower third. The head is large, both sleeve edges enter the frame, and side air is about one-sixteenth of the width. Use a strict centered eye-level zero-yaw front reference: level eyes and anatomical shoulders, square face and torso, and equal perspective scale. Decorative hair, costume, accessories, and left/right lid acting may remain asymmetric.
 
 ## Acceptance check
 Before returning JSON, verify: gender and language match the request; face and eyes remain inside the locked house envelope; neck and shoulder anatomy remain balanced; the neck is uncovered; hair has a silhouette-bearing identity device; the hero ornament is dimensional and physically anchored; the view is strictly frontal; every field is drawable and contains no biography, metaphor, camera command, alternate style, scenery, full-body part, or output instruction.
@@ -252,6 +252,8 @@ Pick exactly one `clothingStyle` from: {styles}. Choose the closest family for w
 
 Return only this JSON object, all strings present:
 {{"clothingStyle":"everyday","visualIdentity":{{"character":{{"faceDesign":"...","eyeDesign":"...","hairShape":"...","hairLayerPlan":"..."}},"outfit":{{"upperBodySilhouette":"...","outfitConstruction":"...","sleeveArmDesign":"...","materialPlan":"...","heroAccessory":"...","paletteHint":"...","motif":"..."}}}}}}
+
+`character` is face, eyes, and hair only. Do not put garments, fabric, or accessories there; those belong in `outfit`.
 
 Use one or two short drawable sentences per field. No biography, metaphor, camera command, or output instruction.
 "#
@@ -295,6 +297,8 @@ mod tests {
         assert!(observe.contains("female"));
         assert!(observe.contains("clothingStyle"));
         assert!(observe.contains("visualIdentity"));
+        assert!(observe.contains("face, eyes, and hair only"));
+        assert!(observe.contains("those belong in `outfit`"));
         assert!(PERSONA_SYSTEM_PROMPT.contains("Fill all six fields"));
         assert!(!PERSONA_SYSTEM_PROMPT.contains("Fill all six fields richly"));
         assert!(!PERSONA_SYSTEM_PROMPT.contains("each a small scene"));
@@ -318,7 +322,9 @@ mod tests {
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("`visualRequirements`: HARD"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("Named garments stay"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("never swap"));
-        assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("fill only where visualRequirements is silent"));
+        assert!(
+            VISUAL_DESIGN_SYSTEM_PROMPT.contains("fill only where visualRequirements is silent")
+        );
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("realize named garments when present"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("UI language is not a costume signal"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("Open families"));
@@ -335,6 +341,12 @@ mod tests {
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("must explicitly state that requested read"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("all eleven strings present"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("keepCharacter"));
+        assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("existingOutfitPalette"));
+        assert!(
+            VISUAL_DESIGN_SYSTEM_PROMPT.contains("remap existingOutfitPalette only on regenerate")
+        );
+        assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("existingOutfitPalette when present"));
+        assert!(!VISUAL_DESIGN_SYSTEM_PROMPT.contains("existingOutfitPalette when keepCharacter"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("## Character fields"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("compact soft-tapered oval"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("house medium-to-large eye opening"));
@@ -355,6 +367,7 @@ mod tests {
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("strict centered eye-level zero-yaw front"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("level eyes and anatomical shoulders"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("side air is about one-sixteenth"));
+        assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("shoulder line in the lower third"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("## Acceptance check"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("every field is drawable"));
         assert!(

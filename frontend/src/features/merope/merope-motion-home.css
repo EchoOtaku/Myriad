@@ -595,6 +595,40 @@ html.dark .merope-motion-page {
   }
 }
 
+.merope-wardrobe-page {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  margin: 0 0 22px;
+}
+
+.merope-wardrobe-page__head {
+  display: flex;
+  align-items: center;
+  margin: 0;
+}
+
+.merope-wardrobe-page__portrait {
+  overflow: hidden;
+  width: min(100%, 240px);
+  aspect-ratio: 3 / 4.15;
+  border: 1px solid var(--ob-liq-border, var(--merope-line, #d8dbe6));
+  border-radius: 18px;
+  background: color-mix(
+    in srgb,
+    rgb(var(--merope-surface-rgb, 255 255 255) / 70%),
+    transparent
+  );
+}
+
+.merope-wardrobe-page__portrait img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 12%;
+}
+
 .merope-wardrobe {
   --ob-liq-sheen: linear-gradient(
     180deg,
@@ -622,138 +656,82 @@ html.dark .merope-wardrobe {
 .merope-wardrobe__case {
   position: relative;
   overflow: hidden;
-  padding: 16px 14px 18px;
+  padding: 12px 10px 10px;
   border: 1px solid var(--ob-liq-border, var(--merope-line));
-  border-radius: 22px;
+  border-radius: 18px;
   background:
     var(--ob-liq-sheen),
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, rgb(var(--merope-surface-rgb) / 28%), transparent) 0%,
-      color-mix(in srgb, rgb(var(--merope-surface-rgb) / 55%), transparent) 42%,
-      color-mix(in srgb, rgb(var(--merope-surface-rgb) / 70%), transparent) 100%
-    );
-  box-shadow:
-    var(--ob-liq-inset),
-    inset 0 36px 48px -36px rgb(0 0 0 / 14%),
-    0 16px 36px -28px rgb(31 38 135 / 16%);
-}
-
-html.dark .merope-wardrobe__case {
-  box-shadow:
-    var(--ob-liq-inset),
-    inset 0 36px 48px -36px rgb(0 0 0 / 42%),
-    0 16px 36px -28px rgb(0 0 0 / 36%);
-}
-
-.merope-wardrobe__rail {
-  height: 3px;
-  margin: 0 18px 2px;
-  border-radius: 99px;
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--merope-muted) 12%, transparent),
-    color-mix(in srgb, var(--merope-ink) 38%, white 28%) 18%,
-    color-mix(in srgb, var(--merope-ink) 22%, white 40%) 50%,
-    color-mix(in srgb, var(--merope-ink) 38%, white 28%) 82%,
-    color-mix(in srgb, var(--merope-muted) 12%, transparent)
-  );
-  box-shadow:
-    0 1px 0 rgb(255 255 255 / 55%),
-    0 4px 10px rgb(0 0 0 / 12%);
+    color-mix(in srgb, rgb(var(--merope-surface-rgb) / 48%), transparent);
+  box-shadow: var(--ob-liq-inset);
 }
 
 .merope-wardrobe__rack {
   display: flex;
   align-items: flex-start;
-  gap: 0;
-  min-height: 214px;
+  gap: 10px;
   margin: 0;
-  padding: 0 8px 4px;
+  padding: 0;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scrollbar-width: thin;
 }
 
 .merope-wardrobe__caption {
-  margin: 10px 10px 0;
+  margin: 0;
   color: var(--merope-muted);
   font-size: 12.5px;
   line-height: 1.45;
 }
 
-.merope-wardrobe__hang.is-ghost {
-  pointer-events: none;
-  opacity: 0.34;
+.merope-wardrobe__caption-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+  margin: 0;
 }
 
-.merope-wardrobe__garment--ghost {
-  min-height: 146px;
-  background: color-mix(
-    in srgb,
-    rgb(var(--merope-surface-rgb) / 28%),
-    transparent
-  );
-  border-style: dashed;
+.merope-wardrobe__caption-row .merope-wardrobe__caption {
+  margin: 0;
 }
 
-.merope-wardrobe__hang {
-  position: relative;
-  flex: 0 0 122px;
+.merope-wardrobe__fill {
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--merope-accent);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.merope-wardrobe__fill:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.merope-wardrobe__garment--fold {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  min-height: 96px;
+  padding: 12px 10px;
+  background: color-mix(in srgb, rgb(var(--merope-surface-rgb) / 70%), transparent);
+}
+
+.merope-wardrobe__fold {
+  color: var(--merope-ink);
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.merope-wardrobe__set {
+  flex: 0 0 108px;
   display: grid;
   justify-items: center;
-  margin-left: -18px;
-  padding-top: 10px;
-  color: color-mix(in srgb, var(--merope-ink) 55%, var(--merope-muted));
-  transform-origin: 50% 0;
-  transition:
-    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 240ms ease,
-    z-index 0ms 80ms;
-  z-index: 1;
-}
-
-.merope-wardrobe__hang:first-child {
-  margin-left: 0;
-}
-
-.merope-wardrobe__hang::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 1.5px;
-  height: 12px;
-  background: currentColor;
-  opacity: 0.38;
-  transform: translateX(-50%);
-}
-
-.merope-wardrobe__hang.is-tilt-l {
-  transform: rotate(-1.6deg);
-}
-
-.merope-wardrobe__hang.is-tilt-r {
-  transform: rotate(1.4deg);
-}
-
-.merope-wardrobe__hang:hover {
-  z-index: 4;
-  filter: drop-shadow(0 10px 16px rgb(19 27 48 / 16%));
-  transform: translateY(8px) rotate(-0.4deg);
-}
-
-.merope-wardrobe__hang.is-on {
-  z-index: 5;
-  color: var(--merope-ink);
-  filter: drop-shadow(0 14px 22px rgb(19 27 48 / 18%));
-  transform: translateY(12px) scale(1.05) rotate(0deg);
-}
-
-.merope-wardrobe__hanger {
-  width: 72px;
-  height: 22px;
-  margin-bottom: -7px;
 }
 
 .merope-wardrobe__garment {
@@ -764,11 +742,9 @@ html.dark .merope-wardrobe__case {
   padding: 0;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--ob-liq-border, var(--merope-line)) 80%, transparent);
-  border-radius: 6px 6px 22px 22px;
-  background: color-mix(in srgb, #efe8dc 72%, white);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 35%),
-    0 10px 18px -14px rgb(19 27 48 / 28%);
+  border-radius: 14px;
+  background: color-mix(in srgb, rgb(var(--merope-surface-rgb) / 70%), transparent);
+  box-shadow: var(--ob-liq-inset);
   cursor: pointer;
 }
 
@@ -813,6 +789,10 @@ html.dark .merope-wardrobe__case {
   font-weight: 400;
 }
 
+.merope-wardrobe__set.is-on .merope-wardrobe__garment {
+  border-color: color-mix(in srgb, var(--merope-accent) 50%, transparent);
+}
+
 .merope-wardrobe__tag {
   display: flex;
   flex-wrap: wrap;
@@ -850,8 +830,8 @@ html.dark .merope-wardrobe__case {
   transition: opacity 160ms ease;
 }
 
-.merope-wardrobe__hang:hover .merope-wardrobe__remove,
-.merope-wardrobe__hang:focus-within .merope-wardrobe__remove {
+.merope-wardrobe__set:hover .merope-wardrobe__remove,
+.merope-wardrobe__set:focus-within .merope-wardrobe__remove {
   opacity: 1;
 }
 
@@ -932,15 +912,4 @@ html.dark .merope-wardrobe__case {
 .merope-wardrobe__visual {
   display: grid;
   gap: 18px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .merope-wardrobe__hang,
-  .merope-wardrobe__hang.is-tilt-l,
-  .merope-wardrobe__hang.is-tilt-r,
-  .merope-wardrobe__hang:hover,
-  .merope-wardrobe__hang.is-on {
-    transform: none;
-    transition: none;
-  }
 }

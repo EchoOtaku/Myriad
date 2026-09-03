@@ -52,6 +52,8 @@ interface Props {
     onStage: (event: RigAssetCompileEvent) => void,
   ) => Promise<{ partCount: number; score: number }>
   wardrobeLead?: ReactNode
+  outfitLead?: ReactNode
+  outfitRig?: boolean
   personaLead?: ReactNode
   overviewLead?: ReactNode
   motionEnabled?: boolean
@@ -202,6 +204,8 @@ export default function Anime25DWorkbench({
   onPreflightRigPsd,
   onCommitRigPsd,
   wardrobeLead = null,
+  outfitLead = null,
+  outfitRig = true,
   personaLead = null,
   overviewLead = null,
   motionEnabled = false,
@@ -733,12 +737,14 @@ export default function Anime25DWorkbench({
 
   return (
     <>
-      <FaceTabs
-        ariaLabel={labels.assetGroup}
-        value={panel}
-        options={panels}
-        onChange={setPanel}
-      />
+      {panel === 'wardrobe' && outfitLead ? null : (
+        <FaceTabs
+          ariaLabel={labels.assetGroup}
+          value={panel}
+          options={panels}
+          onChange={setPanel}
+        />
+      )}
       {panel === 'overview' ? (
         <SettingGroup
           title={labels.overviewGroup}
@@ -757,7 +763,7 @@ export default function Anime25DWorkbench({
           {personaLead}
         </SettingGroup>
       ) : null}
-      {panel === 'wardrobe' ? (
+      {panel === 'wardrobe' && !outfitLead ? (
         <SettingGroup
           title={labels.wardrobeTitle}
           description={labels.wardrobeGroupDescription}
@@ -766,7 +772,8 @@ export default function Anime25DWorkbench({
           {wardrobeLead}
         </SettingGroup>
       ) : null}
-      {panel === 'wardrobe' ? (
+      {panel === 'wardrobe' && outfitLead ? outfitLead : null}
+      {panel === 'wardrobe' && outfitLead && outfitRig ? (
         <SettingGroup
           title={labels.rigGroup}
           description={labels.rigGroupDescription}

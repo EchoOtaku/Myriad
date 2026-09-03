@@ -32,6 +32,7 @@ test('live faces share one motion owner; workbench preview stays isolated', () =
   assert.doesNotMatch(panel, /useRigPreviewMotionLifecycle/)
   assert.match(panel, /showCharacter\s*=\s*motionReady\s*\|\|/)
   assert.match(panel, /ready:\s*motionReady/)
+  assert.match(panel, /manifest=\{playsLive \? manifest : null\}/)
   assert.doesNotMatch(widget, /speechOccupancyRef/)
   assert.doesNotMatch(widget, /useRigPreviewMotionLifecycle/)
   assert.match(widget, /showCharacter\s*=\s*motionReady\s*\|\|/)

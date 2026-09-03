@@ -303,6 +303,7 @@ test('说明性的短句都是贴：操作、附件、收藏、脚注不再另�
   assert.match(composer, /agent-panel-saved-open/)
   assert.match(composer, /agent-panel-mode/)
   assert.match(composer, /AgentPanelFace/)
+  assert.match(composer, /playbackEnabled=\{chatting\}/)
   assert.match(composer, /agent-panel-face-slot/)
   assert.match(composer, /agent-panel-field-stage/)
   assert.match(composer, /agent-panel-work-chrome/)

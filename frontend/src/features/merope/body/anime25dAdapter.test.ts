@@ -29,7 +29,7 @@ test('adapter source never mentions Live2D or VRM placeholders', () => {
   assert.doesNotMatch(source, /mouthOpen|angleX/)
 })
 
-test('both live faces keep the portrait available after a runtime failure', () => {
+test('live faces only show the master portrait when there is no playable rig', () => {
   const widget = readFileSync(
     new URL('../../../components/widgets/MeropeWidget.tsx', import.meta.url),
     'utf8',
@@ -42,9 +42,12 @@ test('both live faces keep the portrait available after a runtime failure', () =
     'utf8',
   )
   for (const source of [widget, panel]) {
-    assert.match(source, /fallbackUrl=\{portraitUrl\}/)
+    assert.match(source, /fallbackUrl=\{playableRig \? null : portraitUrl\}/)
     assert.match(source, /onPlaybackError=\{handleRigPlaybackError\}/)
-    assert.match(source, /const motionReady = playableRig && !rigFailed/)
+    assert.match(
+      source,
+      /const motionReady = (?:playsLive && )?playableRig && !rigFailed/,
+    )
     assert.match(source, /ready: motionReady/)
     assert.match(source, /motionReady \? capabilities : \[\]/)
   }
@@ -59,6 +62,7 @@ test('static fallback cannot accumulate or report Anime2.5D motion', () => {
   assert.match(source, /slice\(-MAX_PENDING_SPEECH_CHUNKS\)/)
   assert.match(source, /if \(!useAnimeRuntime\)/)
   assert.match(source, /result: 'rejected'/)
+  assert.doesNotMatch(source, /fallbackUrl=\{fallbackUrl\}/)
 })
 
 test('production chat and perception go through the body adapters', () => {

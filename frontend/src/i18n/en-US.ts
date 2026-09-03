@@ -175,15 +175,23 @@ export const enUS: TranslationKeys = {
     wardrobeHint:
       'Change clothes. Face and hair stay. Regenerate the master portrait to draw the new outfit.',
     wardrobeGroupDescription:
-      'Change outfits by set. Face and hair stay. Portrait and layered rig follow what she is wearing.',
+      'Open a set to manage its portrait. Wear it from the outfit page. Face and hair stay.',
     visualOutfitTitle: 'This outfit',
     visualFixedTitle: 'Face and hair',
     wardrobeEmpty: 'No saved outfits yet.',
     wardrobeNeedCharacter: 'Confirm a visual design before making a new outfit.',
+    wardrobeReading: 'Reading visual features from the master portrait…',
+    wardrobeFillFromPortrait: 'Fill visual from portrait',
+    wardrobeFillFailed: 'Could not read visual features from the portrait',
     wardrobeNew: 'Make another outfit',
     wardrobeGenerate: 'Generate this outfit',
     wardrobeWearing: 'Wearing',
+    wardrobeWear: 'Wear this',
+    wardrobeDefault: 'Default outfit',
     wardrobeFull: 'Wardrobe is full',
+    wardrobeName: 'Name',
+    wardrobeNamePlaceholder: 'For example: winter coat',
+    wardrobeRenameFailed: 'Could not rename this outfit',
     wardrobeRequirements: 'Outfit notes',
     wardrobeRequirementsHint: 'Only colors, layers, or accessories for this outfit.',
     wardrobeRequirementsPlaceholder: 'For example: deep red cropped jacket, gold buttons',
@@ -191,7 +199,7 @@ export const enUS: TranslationKeys = {
     wardrobeDeleteFailed: 'Could not remove that outfit',
     assetGroup: 'Portrait and rig',
     assetEmpty: 'No master portrait yet. Generate one first.',
-    widgetFaceSlotTaken: 'The live face only plays in one widget at a time.',
+    widgetFaceSlotTaken: 'The live face only plays in one place at a time.',
     assetNeedsPortrait:
       'Generate the master portrait before splitting or uploading a layered PSD.',
     rigGroup: 'Layered rig',
@@ -2990,6 +2998,10 @@ export const enUS: TranslationKeys = {
         'The design came back in the wrong language. Generate again.',
       visualDesignRequired:
         'Confirm the upper-body visual design before generating the portrait.',
+      visualGenderMismatch:
+        'The upper-body visual design does not match the chosen gender presentation, so the portrait cannot be generated.',
+      visualIdentityUnusableForPortrait:
+        'The upper-body visual design cannot be used for portrait generation because a field was stripped by the style lock.',
       visualDesignSaveFailed: 'Could not save the character visual design',
       portraitTalkLead: 'Say what to change',
       portraitLoading: 'Loading the existing portrait',

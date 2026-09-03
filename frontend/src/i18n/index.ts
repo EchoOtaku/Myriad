@@ -172,10 +172,18 @@ export interface TranslationKeys {
     visualFixedTitle: string
     wardrobeEmpty: string
     wardrobeNeedCharacter: string
+    wardrobeReading: string
+    wardrobeFillFromPortrait: string
+    wardrobeFillFailed: string
     wardrobeNew: string
     wardrobeGenerate: string
     wardrobeWearing: string
+    wardrobeWear: string
+    wardrobeDefault: string
     wardrobeFull: string
+    wardrobeName: string
+    wardrobeNamePlaceholder: string
+    wardrobeRenameFailed: string
     wardrobeRequirements: string
     wardrobeRequirementsHint: string
     wardrobeRequirementsPlaceholder: string
@@ -2599,6 +2607,8 @@ export interface TranslationKeys {
       visualDesignFailed: string
       visualDesignLanguageFailed: string
       visualDesignRequired: string
+      visualGenderMismatch: string
+      visualIdentityUnusableForPortrait: string
       visualDesignSaveFailed: string
       portraitTalkLead: string
       portraitLoading: string

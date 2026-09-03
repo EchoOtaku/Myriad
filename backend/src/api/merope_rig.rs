@@ -28,7 +28,7 @@ use myriad_merope::{
     PORTRAIT_CANVAS_HEIGHT, PORTRAIT_CANVAS_WIDTH, PORTRAIT_GENERATION_HEIGHT,
     PORTRAIT_GENERATION_WIDTH, RIG_SCHEMA_VERSION,
 };
-use sea_orm::{DatabaseConnection, TransactionTrait};
+use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionTrait};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -287,12 +287,17 @@ async fn current_master(db: &DatabaseConnection) -> ApiResult<Option<MasterProve
     };
     Ok(Some(MasterProvenance {
         asset_id,
-        generation_fingerprint: portrait_generation_fingerprint(
-            persona.name.trim(),
-            persona.visual_profile.as_ref().unwrap_or(&Value::Null),
-            persona.portrait_generation.as_ref(),
+        generation_fingerprint: myriad_merope::active_outfit_generation_fingerprint(
+            persona.visual_profile.as_ref(),
         )
-        .unwrap_or(None),
+        .or_else(|| {
+            portrait_generation_fingerprint(
+                persona.name.trim(),
+                persona.visual_profile.as_ref().unwrap_or(&Value::Null),
+                persona.portrait_generation.as_ref(),
+            )
+            .unwrap_or(None)
+        }),
         gender,
     }))
 }
@@ -374,10 +379,72 @@ async fn package_identity_matches(asset_id: &str, manifest: &RigManifest) -> Api
     Ok(matches)
 }
 
-async fn activate_asset(db: &DatabaseConnection, asset_id: &str) -> ApiResult<()> {
-    merope_rig::set_active_asset(db, Some(asset_id))
+async fn bind_and_activate_outfit_rig(
+    db: &DatabaseConnection,
+    user_id: i32,
+    asset_id: &str,
+) -> ApiResult<()> {
+    let transaction = db.begin().await.map_err(internal_error)?;
+    let persona = merope::get_persona_on(&transaction)
         .await
-        .map_err(internal_error)
+        .map_err(internal_error)?;
+    if let Some(row) = persona {
+        let mut profile = row.visual_profile.clone().unwrap_or_else(|| json!({}));
+        myriad_merope::bind_active_outfit_rig(&mut profile, asset_id);
+        if let Err(error) = merope::upsert_persona_on(
+            &transaction,
+            row.name,
+            row.personality,
+            merope::PortraitUpdate::Keep,
+            merope::PersonaContractUpdate {
+                visual_profile: merope::JsonDocumentUpdate::Set(profile),
+                ..Default::default()
+            },
+            user_id,
+        )
+        .await
+        {
+            let _ = transaction.rollback().await;
+            return Err(internal_error(error));
+        }
+    }
+    let persisted = match merope_rig::persist_active_asset(&transaction, Some(asset_id)).await {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = transaction.rollback().await;
+            return Err(internal_error(error));
+        }
+    };
+    transaction.commit().await.map_err(internal_error)?;
+    merope_rig::mirror_active_asset(persisted).await;
+    Ok(())
+}
+
+async fn detach_worn_outfit_rig<C>(db: &C, user_id: i32) -> ApiResult<()>
+where
+    C: sea_orm::ConnectionTrait,
+{
+    let Some(row) = merope::get_persona_on(db).await.map_err(internal_error)? else {
+        return Ok(());
+    };
+    let Some(mut profile) = row.visual_profile.clone() else {
+        return Ok(());
+    };
+    myriad_merope::detach_active_outfit_rig(&mut profile);
+    merope::upsert_persona_on(
+        db,
+        row.name,
+        row.personality,
+        merope::PortraitUpdate::Keep,
+        merope::PersonaContractUpdate {
+            visual_profile: merope::JsonDocumentUpdate::Set(profile),
+            ..Default::default()
+        },
+        user_id,
+    )
+    .await
+    .map_err(internal_error)?;
+    Ok(())
 }
 
 async fn compile_imported_rig(
@@ -904,7 +971,7 @@ pub async fn import_site_rig(
         source_generation_fingerprint.as_deref(),
     )
     .await?;
-    activate_asset(&db, &asset_id).await?;
+    bind_and_activate_outfit_rig(&db, user_id, &asset_id).await?;
     Ok(Json(json!({ "manifest": manifest, "assetId": asset_id })))
 }
 
@@ -1014,6 +1081,10 @@ pub async fn upload_portrait(
         let _ = transaction.rollback().await;
         return Err(internal_error(error));
     }
+    if let Err(error) = detach_worn_outfit_rig(&transaction, user_id).await {
+        let _ = transaction.rollback().await;
+        return Err(error);
+    }
     let cleared_asset = match merope_rig::persist_active_asset(&transaction, None).await {
         Ok(asset_id) => asset_id,
         Err(error) => {
@@ -1070,15 +1141,39 @@ pub async fn generate_portrait(
         .filter(|name| !name.is_empty())
         .unwrap_or("Arael");
     let additional_requirements = sanitize_portrait_adjustment(request.prompt.as_deref())?;
-    let visual_profile = persona
-        .as_ref()
-        .and_then(|row| row.visual_profile.clone())
-        .unwrap_or_else(|| {
-            json!({
-                "gender": "unspecified",
-                "language": "zh-CN"
-            })
-        });
+    let visual_profile = {
+        let mut profile = persona
+            .as_ref()
+            .and_then(|row| row.visual_profile.clone())
+            .unwrap_or_else(|| {
+                json!({
+                    "gender": "unspecified",
+                    "language": "zh-CN"
+                })
+            });
+        let gender = profile
+            .get("gender")
+            .and_then(Value::as_str)
+            .unwrap_or("unspecified")
+            .to_string();
+        let language = profile
+            .get("language")
+            .and_then(Value::as_str)
+            .unwrap_or("zh-CN")
+            .to_string();
+        if let Some(identity) = profile.get("visualIdentity").cloned() {
+            if !identity.is_null() {
+                if let Some(fixed) = myriad_merope::ensure_visual_identity_states_gender(
+                    &identity, &gender, &language,
+                ) {
+                    if let Some(root) = profile.as_object_mut() {
+                        root.insert("visualIdentity".into(), fixed);
+                    }
+                }
+            }
+        }
+        profile
+    };
     let gender = visual_profile.get("gender").and_then(Value::as_str);
     if !matches!(
         gender,
@@ -1093,18 +1188,33 @@ pub async fn generate_portrait(
         ));
     }
     let visual_identity = visual_profile.get("visualIdentity").unwrap_or(&Value::Null);
-    if !myriad_merope::upper_body_visual_identity_is_complete(visual_identity)
-        || myriad_merope::normalize_visual_identity_for_prompt(visual_identity).is_none()
-        || !myriad_merope::visual_identity_matches_gender_presentation(
-            visual_identity,
-            gender.unwrap_or("unspecified"),
-        )
-    {
+    if !myriad_merope::upper_body_visual_identity_is_complete(visual_identity) {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({
                 "error": "Confirm an upper-body visual design before generating the portrait",
                 "code": "visual_design_required"
+            })),
+        ));
+    }
+    if myriad_merope::normalize_visual_identity_for_prompt(visual_identity).is_none() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "The upper-body visual design cannot be used for portrait generation",
+                "code": "visual_identity_unusable"
+            })),
+        ));
+    }
+    if !myriad_merope::visual_identity_matches_gender_presentation(
+        visual_identity,
+        gender.unwrap_or("unspecified"),
+    ) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "The upper-body visual design does not match the chosen gender presentation",
+                "code": "visual_gender_mismatch"
             })),
         ));
     }
@@ -1269,6 +1379,12 @@ pub async fn generate_portrait(
                 "code": "character_visual_inputs_changed"
             })),
         ));
+    }
+    if let Err(error) = detach_worn_outfit_rig(&transaction, user_id).await {
+        let _ = transaction.rollback().await;
+        release_portrait_generation_lease(&db, &generation_token).await;
+        cleanup_uncommitted_portrait(&db, &persisted).await;
+        return Err(error);
     }
     let cleared_asset = match merope_rig::persist_active_asset(&transaction, None).await {
         Ok(asset_id) => asset_id,

@@ -1,8 +1,9 @@
-//! Site-wide Anime2.5D rig store.
+//! Anime2.5D rig store.
 //!
-//! One site face, one compiled atlas + manifest. Pixels are not decoded here —
-//! only the PNG header is read so a selfie or truncated upload cannot be
-//! adopted. Compilation stays in `myriad-merope`.
+//! Packages live on disk by content id and can coexist. The live pointer is
+//! the worn outfit's package. Pixels are not decoded here — only the PNG
+//! header is read so a selfie or truncated upload cannot be adopted.
+//! Compilation stays in `myriad-merope`.
 
 use std::{
     io::Read,

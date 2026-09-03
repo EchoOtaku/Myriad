@@ -91,7 +91,17 @@ function meropeError(
   )
 }
 
+let siteFaceInflight: Promise<SiteFace> | null = null
+
 export async function getSiteFace(): Promise<SiteFace> {
+  if (siteFaceInflight) return siteFaceInflight
+  siteFaceInflight = loadSiteFace().finally(() => {
+    siteFaceInflight = null
+  })
+  return siteFaceInflight
+}
+
+async function loadSiteFace(): Promise<SiteFace> {
   const response = await api.get<{
     manifest?: unknown
     portraitUrl?: unknown
@@ -348,9 +358,13 @@ export async function generateSitePortrait(
   options?: { edit?: boolean },
 ): Promise<{
   portraitUrl: string | null
+  generationFingerprint: string | null
 }> {
   try {
-    const response = await api.post<{ portraitUrl?: unknown }>(
+    const response = await api.post<{
+      portraitUrl?: unknown
+      generationFingerprint?: unknown
+    }>(
       `${PREFIX}/portrait`,
       { prompt, edit: options?.edit === true },
       { timeout: PORTRAIT_GENERATION_TIMEOUT_MS },
@@ -360,7 +374,15 @@ export async function generateSitePortrait(
       response.data,
       currentCopy().merope.visualFailed,
     )
-    return { portraitUrl: readPortraitUrl(response.data) }
+    const fingerprint =
+      typeof response.data.generationFingerprint === 'string' &&
+      /^[0-9a-f]{64}$/iu.test(response.data.generationFingerprint)
+        ? response.data.generationFingerprint.toLowerCase()
+        : null
+    return {
+      portraitUrl: readPortraitUrl(response.data),
+      generationFingerprint: fingerprint,
+    }
   } catch (reason) {
     if (reason instanceof MeropeApiError) throw reason
     throw meropeError(reason, currentCopy().merope.visualFailed)

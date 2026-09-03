@@ -19,7 +19,10 @@ import { realizeAnime25DBehaviorPlan } from './behaviorRealizer'
 import { activityExpressionDriverPatch } from './expressionPresets'
 import { idleSpeechDriverPatch } from './performanceMotion'
 import { Anime25DPlayer } from './player'
-import { shouldAnimateAnime25D } from './runtimePolicy'
+import {
+  intersectionKeepsAnime25DVisible,
+  shouldAnimateAnime25D,
+} from './runtimePolicy'
 import {
   speechArticulationDriverPatch,
   speechEnergyDriverPatch,
@@ -35,6 +38,8 @@ interface Props {
   manualControl?: boolean
   onPlaybackError?: (error: unknown) => void
 }
+
+const GPU_RECOVERIES = 2
 
 export interface Anime25DCharacterHandle
   extends RigMotionPort, Anime25DWorkbenchPort {}
@@ -55,7 +60,9 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const playerRef = useRef<Anime25DPlayer | null>(null)
     const readyRef = useRef(false)
+    const recoveriesRef = useRef(0)
     const [ready, setReady] = useState(false)
+    const [gpuEpoch, setGpuEpoch] = useState(0)
     const wrapperRef = useRef<HTMLSpanElement>(null)
     const activityRef = useRef(activity)
     const moodRef = useRef(mood)
@@ -188,6 +195,12 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
     }))
 
     useEffect(() => {
+      const recoverGpu = () => {
+        if (recoveriesRef.current >= GPU_RECOVERIES) return false
+        recoveriesRef.current += 1
+        setGpuEpoch((epoch) => epoch + 1)
+        return true
+      }
       const canvas = canvasRef.current
       const wrapper = wrapperRef.current
       if (!canvas || !wrapper) return undefined
@@ -197,7 +210,7 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       } catch (error) {
         readyRef.current = false
         setReady(false)
-        onPlaybackError?.(error)
+        if (!recoverGpu()) onPlaybackError?.(error)
         return undefined
       }
       playerRef.current = player
@@ -246,6 +259,11 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         const rect = wrapper.getBoundingClientRect()
         player.resize(rect.width, rect.height, window.devicePixelRatio || 1)
       }
+      const presentLive = (next: boolean) => {
+        if (cancelled || readyRef.current === next) return
+        readyRef.current = next
+        setReady(next)
+      }
       const tick = (now: number) => {
         frame = 0
         if (cancelled || !atlasReady || !pageVisible || !inViewport) return
@@ -265,6 +283,10 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
           frame = 0
           return
         }
+        if (!readyRef.current) {
+          player.tick(1 / 60)
+          presentLive(true)
+        }
         if (frame !== 0) return
         last = performance.now()
         frame = window.requestAnimationFrame(tick)
@@ -279,10 +301,18 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         typeof IntersectionObserver === 'undefined'
           ? null
           : new IntersectionObserver((entries) => {
-              inViewport = entries.some((entry) => entry.isIntersecting)
+              inViewport = entries.some((entry) =>
+                intersectionKeepsAnime25DVisible(entry),
+              )
               syncAnimation()
             })
       viewportObserver?.observe(wrapper)
+      const onContextLost = (event: Event) => {
+        event.preventDefault()
+        if (cancelled) return
+        if (!recoverGpu()) onPlaybackError?.(event)
+      }
+      canvas.addEventListener('webglcontextlost', onContextLost)
       document.addEventListener('visibilitychange', onVisibilityChange)
       resize()
       void player
@@ -290,16 +320,15 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         .then(() => {
           if (cancelled) return
           atlasReady = true
-          readyRef.current = true
-          setReady(true)
+          recoveriesRef.current = 0
           syncAnimation()
         })
         .catch((error: unknown) => {
           if (cancelled) return
+          if (error instanceof Error && error.name === 'AbortError') return
           atlasReady = false
-          readyRef.current = false
-          setReady(false)
-          onPlaybackError?.(error)
+          presentLive(false)
+          if (!recoverGpu()) onPlaybackError?.(error)
         })
       return () => {
         cancelled = true
@@ -307,6 +336,7 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         observer.disconnect()
         viewportObserver?.disconnect()
         document.removeEventListener('visibilitychange', onVisibilityChange)
+        canvas.removeEventListener('webglcontextlost', onContextLost)
         canvas.removeEventListener('pointermove', onPointerMove)
         canvas.removeEventListener('pointerleave', onPointerLeave)
         player.dispose()
@@ -314,7 +344,7 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         readyRef.current = false
         setReady(false)
       }
-    }, [atlasUrl, manifest, onPlaybackError, playback])
+    }, [atlasUrl, gpuEpoch, manifest, onPlaybackError, playback])
 
     return (
       <span
@@ -323,7 +353,7 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         data-rig-quality="layered-2d"
         data-runtime="Anime2.5DRig"
       >
-        <canvas ref={canvasRef} aria-hidden />
+        <canvas key={gpuEpoch} ref={canvasRef} aria-hidden />
       </span>
     )
   },

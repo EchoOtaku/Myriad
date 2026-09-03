@@ -797,7 +797,7 @@ export const AgentPanelComposer: React.FC<AgentPanelComposerProps> = ({
           aria-hidden={!chatting}
           inert={!chatting}
         >
-          <AgentPanelFace />
+          <AgentPanelFace playbackEnabled={chatting} />
         </div>
         <div className="agent-panel-field-stage">
           <div

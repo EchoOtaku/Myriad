@@ -10,8 +10,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { agentService } from '../../../services/agent'
 import { invalidatePublicConfigCache } from '../../../utils/requestDedup'
+import { seedWardrobeFromIdentity } from '../../../features/merope/wardrobe'
 import {
   CHOICE_STEP,
+  CLOTHING_STYLE_OPTIONS,
   clothingStyleFromProfile,
   emptyPersona,
   flattenPersona,
@@ -20,6 +22,7 @@ import {
   GUIDED_MIN_REPORTS,
   IMPORT_STEP,
   onboardingSeedsFromProfile,
+  parseUpperBodyVisualIdentity,
   personaFromApi,
   visualIdentityFromProfile,
 } from './onboardingTypes'
@@ -287,6 +290,25 @@ export default function OnboardingWizard({
                           language: locale,
                         })
                       : null
+                    const observedIdentity = observed
+                      ? parseUpperBodyVisualIdentity(observed.visualIdentity)
+                      : null
+                    const observedStyle =
+                      observed &&
+                      typeof observed.clothingStyle === 'string' &&
+                      (CLOTHING_STYLE_OPTIONS as string[]).includes(
+                        observed.clothingStyle,
+                      )
+                        ? (observed.clothingStyle as ClothingStyle)
+                        : null
+                    const seeded =
+                      observedIdentity && observedStyle
+                        ? seedWardrobeFromIdentity(
+                            observedIdentity,
+                            observedStyle,
+                            importedPortraitUrl,
+                          )
+                        : { items: [], activeId: null }
                     await agentService.putPersona({
                       name: displayName.trim(),
                       personality: flattenPersona(persona),
@@ -297,8 +319,10 @@ export default function OnboardingWizard({
                       visualProfile: {
                         gender: gender ?? 'unspecified',
                         language: locale,
-                        visualIdentity: observed?.visualIdentity ?? null,
-                        clothingStyle: observed?.clothingStyle ?? null,
+                        visualIdentity: observedIdentity,
+                        clothingStyle: observedStyle,
+                        wardrobe: seeded.items,
+                        activeOutfitId: seeded.activeId,
                         sourceTags: [],
                         personaExtraRequirements: '',
                       },

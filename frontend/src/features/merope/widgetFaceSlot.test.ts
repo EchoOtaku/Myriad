@@ -50,9 +50,26 @@ test('the live widget is the only one that mounts the rig player', () => {
     new URL('../../components/widgets/MeropeWidget.tsx', import.meta.url),
     'utf8',
   )
+  const slot = readFileSync(new URL('./widgetFaceSlot.ts', import.meta.url), 'utf8')
   assert.match(widget, /useMeropeWidgetFaceSlot\(config\.id, !isPreview\)/)
   assert.match(widget, /if \(!holdsFace\) return/)
   assert.match(widget, /t\.merope\.widgetFaceSlotTaken/)
-  assert.match(widget, /<LiveMeropeWidget compact=\{compact\} \/>/)
+  assert.match(widget, /showTaken/)
+  assert.match(widget, /<LiveMeropeWidget/)
+  assert.match(widget, /playbackId=\{`widget:\$\{config\.id\}`\}/)
   assert.match(widget, /<RigCharacter/)
+  assert.match(widget, /loadPublicPersonaName\(\)\.then/)
+  assert.match(slot, /return claimMeropeWidgetFaceSlot\(id\)/)
+})
+
+test('panel persona fetch failure does not hide the live face', () => {
+  const panel = readFileSync(
+    new URL('../../components/agent-panel/AgentPanelFace.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(panel, /loadPublicPersonaName\(\)\.then/)
+  assert.doesNotMatch(
+    panel,
+    /\.catch\(\(\) => \{\s*if \(active\) setFailed\(true\)/,
+  )
 })

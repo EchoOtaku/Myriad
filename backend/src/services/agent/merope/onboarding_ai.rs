@@ -5,7 +5,6 @@ use serde_json::{json, Map, Value};
 use std::time::Duration;
 
 use crate::config::ModelTier;
-use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::services::ai::create_ai_analyzer_for_tier_with_timeout;
 use crate::services::ai_config::get_ai_config_for_tier;
 use crate::services::ai_cost_ledger::record_ai_call_from_attribution;
@@ -13,6 +12,7 @@ use crate::services::analyzer::{openai_chat_completions_url, AiProvider, OutputB
 use crate::services::gemini_media;
 use crate::services::http_client::get_long_running_client;
 use crate::services::image_generation::ImageReference;
+use crate::GLOBAL_DYNAMIC_CONFIG;
 
 use super::onboarding_prompts::{
     observe_portrait_visual_prompt, visual_design_system_prompt, IMPORT_PERSONA_SYSTEM_PROMPT,
@@ -341,6 +341,58 @@ pub async fn suggest_visual_design(
     .await
 }
 
+fn existing_outfit_palette_hint(identity: Option<&Value>) -> Value {
+    let Some(root) = identity else {
+        return Value::Null;
+    };
+    let palette = root
+        .get("outfit")
+        .and_then(|outfit| outfit.get("paletteHint"))
+        .or_else(|| root.get("paletteHint"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty());
+    match palette {
+        Some(text) => json!(text.chars().take(340).collect::<String>()),
+        None => Value::Null,
+    }
+}
+
+fn visual_design_variety(
+    requirements_named: bool,
+    keep_character: bool,
+    remap_existing_palette: bool,
+) -> Value {
+    if requirements_named {
+        json!({
+            "keepNamedVisualRequirements": true,
+            "clothingStyleIsFamilyNotKit": true,
+            "fillSilenceFromGrammar": true,
+        })
+    } else if remap_existing_palette {
+        json!({
+            "clothingStyleIsFamilyNotKit": true,
+            "keepExistingOutfitPalette": true,
+            "remapExistingHuesOntoNewGarments": true,
+            "changeConstructionNotJustColors": true,
+            "forbidInterchangeableDefaultKit": true,
+        })
+    } else if keep_character {
+        json!({
+            "clothingStyleIsFamilyNotKit": true,
+            "changeConstructionNotJustColors": true,
+            "forbidInterchangeableDefaultKit": true,
+        })
+    } else {
+        json!({
+            "clothingStyleIsFamilyNotKit": true,
+            "appliesToEveryStyle": true,
+            "changeConstructionNotJustColors": true,
+            "forbidInterchangeableDefaultKit": true,
+        })
+    }
+}
+
 async fn suggest_visual_design_once(
     name: &str,
     language: &str,
@@ -369,6 +421,12 @@ async fn suggest_visual_design_once(
     };
     let requirements = visual_requirements.chars().take(500).collect::<String>();
     let requirements_named = !requirements.trim().is_empty();
+    let existing_outfit_palette = if kept_character.is_some() && regenerate && !requirements_named {
+        existing_outfit_palette_hint(existing_visual_identity)
+    } else {
+        Value::Null
+    };
+    let remap_existing_palette = !existing_outfit_palette.is_null();
     let input = json!({
         "pipeline": "onboarding/upper-body-visual-design",
         "task": "design_upper_body_visual_identity",
@@ -381,11 +439,13 @@ async fn suggest_visual_design_once(
         "clothingStyleGrammarRole": "gap-fill only",
         "keepCharacter": kept_character.is_some(),
         "existingCharacter": kept_character.clone().unwrap_or(Value::Null),
+        "existingOutfitPalette": existing_outfit_palette,
         "persona": persona_input,
         "visualRequirements": requirements,
         "paletteFromPersona": {
             "from": ["likes", "temperament", "drives"],
             "onlyWhenVisualRequirementsDoNotSetPalette": true,
+            "onlyWhenExistingOutfitPaletteAbsent": true,
             "citeSourcesInPaletteHint": false,
             "paletteNamedColorsOnPartsOnly": true,
             "sameSourcesForCostumeAndAccessory": true,
@@ -394,20 +454,11 @@ async fn suggest_visual_design_once(
             "forbidMonochromeFamily": true,
             "accessories": "hero plus two or three supporting",
         },
-        "variety": if requirements_named {
-            json!({
-                "keepNamedVisualRequirements": true,
-                "clothingStyleIsFamilyNotKit": true,
-                "fillSilenceFromGrammar": true,
-            })
-        } else {
-            json!({
-                "clothingStyleIsFamilyNotKit": true,
-                "appliesToEveryStyle": true,
-                "changeConstructionNotJustColors": true,
-                "forbidInterchangeableDefaultKit": true,
-            })
-        },
+        "variety": visual_design_variety(
+            requirements_named,
+            kept_character.is_some(),
+            remap_existing_palette,
+        ),
         "regenerate": regenerate,
         "previousVisualIdentityForDifferenceOnly": comparison_identity,
     })
@@ -497,12 +548,13 @@ async fn observe_visual_from_portrait_once(
 ) -> Result<ObservedPortraitVisual, OnboardingAiError> {
     let prompt = observe_portrait_visual_prompt(language, normalize_gender(gender));
     let raw = run_vision_call(&prompt, image).await?;
-    parse_observed_visual(&raw, language)
+    parse_observed_visual(&raw, language, gender)
 }
 
 fn parse_observed_visual(
     raw: &str,
     language: &str,
+    gender: &str,
 ) -> Result<ObservedPortraitVisual, OnboardingAiError> {
     let parsed = parse_json_object(raw).ok_or(OnboardingAiError::UnusableResponse(
         "portrait observation was not valid JSON",
@@ -516,6 +568,13 @@ fn parse_observed_visual(
         OnboardingAiError::UnusableResponse("portrait observation failed field sanitize"),
     )?;
     myriad_merope::stamp_clothing_style(&mut identity, clothing_style);
+    if let Some(fixed) = myriad_merope::ensure_visual_identity_states_gender(
+        &identity,
+        normalize_gender(gender),
+        language,
+    ) {
+        identity = fixed;
+    }
     if myriad_merope::visual_identity_has_literary_sludge(&identity) {
         return Err(OnboardingAiError::UnusableResponse(
             "portrait observation used literary sludge",
@@ -530,7 +589,10 @@ fn parse_observed_visual(
     })
 }
 
-async fn run_vision_call(prompt: &str, image: &ImageReference) -> Result<String, OnboardingAiError> {
+async fn run_vision_call(
+    prompt: &str,
+    image: &ImageReference,
+) -> Result<String, OnboardingAiError> {
     let config = GLOBAL_DYNAMIC_CONFIG.read().await;
     if !config.pro_enabled {
         return Err(OnboardingAiError::AnalyzerUnavailable);
@@ -586,9 +648,10 @@ async fn run_vision_call(prompt: &str, image: &ImageReference) -> Result<String,
         }
     };
     let status = response.status();
-    let bytes = response.bytes().await.map_err(|error| {
-        OnboardingAiError::ProviderFailed(error.to_string())
-    })?;
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|error| OnboardingAiError::ProviderFailed(error.to_string()))?;
     let preview = String::from_utf8_lossy(&bytes);
     record_ai_call_from_attribution(
         config.provider.as_str(),
@@ -639,9 +702,10 @@ async fn run_vision_call(prompt: &str, image: &ImageReference) -> Result<String,
                 })
         }
     };
-    text.filter(|value| !value.trim().is_empty()).ok_or(
-        OnboardingAiError::UnusableResponse("portrait observation contained no text"),
-    )
+    text.filter(|value| !value.trim().is_empty())
+        .ok_or(OnboardingAiError::UnusableResponse(
+            "portrait observation contained no text",
+        ))
 }
 
 /// `{"name":..., "meaning":...}` —— 和 `NAME_SYSTEM_PROMPT` 里那句同一个契约，
@@ -1219,12 +1283,49 @@ mod tests {
                 }
             }
         }"#;
-        let observed = parse_observed_visual(raw, "zh-CN").expect("usable observation");
+        let observed = parse_observed_visual(raw, "zh-CN", "female").expect("usable observation");
         assert_eq!(observed.clothing_style, "urban");
+        assert!(observed.visual_identity["character"]["faceDesign"]
+            .as_str()
+            .unwrap_or("")
+            .starts_with("女性化。"));
+        assert_eq!(observed.visual_identity["outfit"]["clothingStyle"], "urban");
+    }
+
+    #[test]
+    fn keep_character_without_requirements_reuses_existing_outfit_palette() {
+        let identity = json!({
+            "character": {
+                "faceDesign": "女性化鹅蛋脸",
+                "eyeDesign": "紫色眼睛",
+                "hairShape": "银灰短发",
+                "hairLayerPlan": "后发、刘海、侧发"
+            },
+            "outfit": {
+                "paletteHint": "淡紫与白为主体，深紫压边"
+            }
+        });
         assert_eq!(
-            observed.visual_identity["outfit"]["clothingStyle"],
-            "urban"
+            existing_outfit_palette_hint(Some(&identity)),
+            json!("淡紫与白为主体，深紫压边")
         );
+        assert_eq!(existing_outfit_palette_hint(None), Value::Null);
+        assert_eq!(
+            existing_outfit_palette_hint(Some(&json!({ "paletteHint": " mist blue " }))),
+            json!("mist blue")
+        );
+    }
+
+    #[test]
+    fn new_outfit_does_not_keep_the_worn_palette() {
+        let fresh = visual_design_variety(false, true, false);
+        assert!(fresh.get("keepExistingOutfitPalette").is_none());
+        assert!(fresh.get("remapExistingHuesOntoNewGarments").is_none());
+        let remapped = visual_design_variety(false, true, true);
+        assert_eq!(remapped["keepExistingOutfitPalette"], true);
+        assert_eq!(remapped["remapExistingHuesOntoNewGarments"], true);
+        let named = visual_design_variety(true, true, true);
+        assert!(named.get("keepExistingOutfitPalette").is_none());
     }
 
     #[test]

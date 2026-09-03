@@ -43,7 +43,7 @@
     filter 180ms ease;
 }
 
-.merope-rig.is-ready img {
+.merope-rig.is-ready:has(canvas) img {
   opacity: 0;
 }
 

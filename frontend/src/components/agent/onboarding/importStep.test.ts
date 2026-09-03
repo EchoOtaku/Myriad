@@ -287,8 +287,12 @@ test('the import lane does not inherit the guided run visual profile', () => {
   // 有主图时按图读出视觉特征；没有主图才写 null。词条和补充要求仍要显式清空，
   // 不然 merge_visual_profile 会把上一次生成链的值补回来。
   assert.match(importPane, /observeVisualFromPortrait/)
-  assert.match(importPane, /visualIdentity: observed\?\.visualIdentity \?\? null/)
-  assert.match(importPane, /clothingStyle: observed\?\.clothingStyle \?\? null/)
+  assert.match(importPane, /parseUpperBodyVisualIdentity/)
+  assert.match(importPane, /seedWardrobeFromIdentity/)
+  assert.match(importPane, /importedPortraitUrl/)
+  assert.match(importPane, /visualIdentity: observedIdentity/)
+  assert.match(importPane, /clothingStyle: observedStyle/)
+  assert.match(importPane, /wardrobe: seeded\.items/)
   assert.match(importPane, /sourceTags: \[\]/)
   assert.match(importPane, /personaExtraRequirements: ''/)
 })

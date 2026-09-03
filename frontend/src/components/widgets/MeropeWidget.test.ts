@@ -14,7 +14,7 @@ test('library preview uses the generation style-reference as the portrait', () =
 
 test('4x4 mood label is secondary to the name and the level ticks', () => {
   assert.match(widget, /className="merope-widget__mood-text"/)
-  assert.match(widget, /\{o\.mood\[band\]\}/)
+  assert.match(widget, /format\(o\.moodLine, \{ band: word \}\)/)
   assert.match(css, /\.merope-widget__mood\s*\{[^}]*--text-muted/)
   assert.match(
     css,

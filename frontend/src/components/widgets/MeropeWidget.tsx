@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { RigCharacterHandle } from '../../features/merope/rig/RigCharacter'
 import type { MoodBand } from '../agent/meropeVitals'
 import type { WidgetComponentProps } from '../WidgetGrid'
@@ -12,6 +12,10 @@ import {
   FACE_UPDATED_EVENT,
   PERSONA_UPDATED_EVENT,
 } from '../../features/merope/events'
+import {
+  LIVE_FACE_PLAYBACK_PRIORITY,
+  useLiveFacePlayback,
+} from '../../features/merope/liveFacePlayback'
 import { semanticRigCapabilities } from '../../features/merope/motion/rigStateSummary'
 import { useRigMotionLifecycle } from '../../features/merope/motion/useRigMotionLifecycle'
 import {
@@ -25,6 +29,7 @@ import {
   publicPersonaName,
 } from '../../features/merope/publicName'
 import RigCharacter from '../../features/merope/rig/RigCharacter'
+import { sameLiveFaceRuntime } from '../../features/merope/rig/types'
 import { useMeropeWidgetFaceSlot } from '../../features/merope/widgetFaceSlot'
 import { agentService } from '../../services/agent'
 import { useAgentStatus } from '../agent-panel/agentStatusStore'
@@ -59,16 +64,18 @@ function Nameplate({
   band: MoodBand | null
   compact?: boolean
 }) {
-  const o = useI18n().t.agentPersona.onboarding
+  const { t, format } = useI18n()
+  const o = t.agentPersona.onboarding
+  const word = band ? o.mood[band] : ''
   return (
     <div className="merope-widget__identity glass-surface">
       <strong>{name}</strong>
       {!compact && band ? (
         <div
           className="merope-widget__mood"
-          aria-label={o.moodLine.replace('{band}', o.mood[band])}
+          aria-label={format(o.moodLine, { band: word })}
         >
-          <span className="merope-widget__mood-text">{o.mood[band]}</span>
+          <span className="merope-widget__mood-text">{word}</span>
           <span className="merope-widget__mood-level" aria-hidden>
             {LEVEL_SLOTS.map((slot) => (
               <i key={slot} data-on={slot < MOOD_LEVEL[band] || undefined} />
@@ -77,6 +84,34 @@ function Nameplate({
         </div>
       ) : null}
     </div>
+  )
+}
+
+function MeropeWidgetChrome({
+  compact,
+  surfaceStyle,
+  label,
+  children,
+}: {
+  compact?: boolean
+  surfaceStyle?: CSSProperties
+  label?: string
+  children: ReactNode
+}) {
+  return (
+    <WidgetShell
+      padding={0}
+      className={`merope-widget${compact ? ' merope-widget--compact' : ''}`}
+    >
+      <div
+        className="merope-widget__surface"
+        style={surfaceStyle}
+        role={label ? 'group' : undefined}
+        aria-label={label}
+      >
+        {children}
+      </div>
+    </WidgetShell>
   )
 }
 
@@ -105,33 +140,34 @@ function portraitFrameStyle(
 
 function MeropeWidgetPreview({ compact }: { compact?: boolean }) {
   return (
-    <WidgetShell
-      padding={0}
-      className={`merope-widget${compact ? ' merope-widget--compact' : ''}`}
-    >
-      <div className="merope-widget__surface">
-        <div className="merope-widget__rig merope-widget__rig--idle">
-          <span className="merope-rig is-ready" data-rig-quality="static">
-            <img src={STYLE_REFERENCE_PREVIEW} alt="" draggable={false} />
-          </span>
-        </div>
-        <Nameplate
-          name={PERSONA_DEFAULT_NAME}
-          band={compact ? null : PREVIEW_MOOD_BAND}
-          compact={compact}
-        />
+    <MeropeWidgetChrome compact={compact}>
+      <div className="merope-widget__rig merope-widget__rig--idle">
+        <span className="merope-rig is-ready" data-rig-quality="static">
+          <img src={STYLE_REFERENCE_PREVIEW} alt="" draggable={false} />
+        </span>
       </div>
-    </WidgetShell>
+      <Nameplate
+        name={PERSONA_DEFAULT_NAME}
+        band={compact ? null : PREVIEW_MOOD_BAND}
+        compact={compact}
+      />
+    </MeropeWidgetChrome>
   )
 }
 
-function LiveMeropeWidget({ compact }: { compact: boolean }) {
+function LiveMeropeWidget({
+  compact,
+  playbackId,
+}: {
+  compact: boolean
+  playbackId: string
+}) {
   const { t } = useI18n()
   const { hasChecked, isAuthenticated } = useAuth()
   const [manifest, setManifest] =
     useState<Awaited<ReturnType<typeof getSiteFace>>['manifest']>(null)
   const [portraitUrl, setPortraitUrl] = useState<string | null>(null)
-  const [agentName, setAgentName] = useState(PERSONA_DEFAULT_NAME)
+  const [agentName, setAgentName] = useState<string | null>(null)
   const [mood, setMood] = useState(DEFAULT_MOOD)
   const [arousal, setArousal] = useState(DEFAULT_AROUSAL)
   const { status } = useAgentStatus()
@@ -142,14 +178,23 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
   const [vitalsReady, setVitalsReady] = useState(false)
   const faceRequestRef = useRef(0)
   const rigRef = useRef<RigCharacterHandle>(null)
+  const manifestRef = useRef(manifest)
+  manifestRef.current = manifest
   const capabilities = useMemo(
     () => semanticRigCapabilities(manifest),
     [manifest],
   )
+  const playsLive = useLiveFacePlayback(
+    playbackId,
+    true,
+    LIVE_FACE_PLAYBACK_PRIORITY.widget,
+  )
   const playableRig = hasPlayableRig(manifest)
-  const motionReady = playableRig && !rigFailed
+  const motionReady = playsLive && playableRig && !rigFailed
   const liveCapabilities = motionReady ? capabilities : []
-  const showCharacter = motionReady || Boolean(portraitUrl)
+  const showTaken = playableRig && !playsLive
+  const showCharacter =
+    motionReady || (!playableRig && Boolean(portraitUrl))
   const handleRigPlaybackError = useCallback(() => setRigFailed(true), [])
   useRigMotionLifecycle(rigRef, {
     mood,
@@ -162,14 +207,18 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
 
   const loadFace = useCallback(() => {
     const request = ++faceRequestRef.current
-    setLoading(true)
     setFailed(false)
-    setRigFailed(false)
     void getSiteFace()
       .then((face) => {
         if (request !== faceRequestRef.current) return
-        setManifest(face.manifest)
+        setManifest((current) => {
+          if (sameLiveFaceRuntime(current, face.manifest)) return current
+          return face.manifest
+        })
         setPortraitUrl(face.portraitUrl)
+        if (!sameLiveFaceRuntime(manifestRef.current, face.manifest)) {
+          setRigFailed(false)
+        }
       })
       .catch(() => {
         if (request !== faceRequestRef.current) return
@@ -247,7 +296,11 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
           setVitalsReady(true)
         })
         .catch(() => {
-          if (active) setVitalsReady(false)
+          if (!active) return
+          setVitalsReady(false)
+          void loadPublicPersonaName().then((name) => {
+            if (active) setAgentName(name)
+          })
         })
     }
     loadPersona()
@@ -268,59 +321,55 @@ function LiveMeropeWidget({ compact }: { compact: boolean }) {
   )
 
   return (
-    <WidgetShell
-      padding={0}
-      className={`merope-widget${compact ? ' merope-widget--compact' : ''}`}
+    <MeropeWidgetChrome
+      compact={compact}
+      surfaceStyle={surfaceStyle}
+      label={`${t.widgets.agentPersona}: ${agentName ?? t.merope.title}`}
     >
-      <div
-        className="merope-widget__surface"
-        style={surfaceStyle}
-        aria-label={`${t.widgets.agentPersona}: ${agentName}`}
-      >
-        {showCharacter ? (
-          <>
-            <div className={stateClass}>
-              <RigCharacter
-                ref={rigRef}
-                activity={activity}
-                fallbackUrl={portraitUrl}
-                manifest={manifest}
-                mood={mood}
-                onPlaybackError={handleRigPlaybackError}
-              />
-            </div>
+      {showCharacter ? (
+        <>
+          <div className={stateClass}>
+            <RigCharacter
+              ref={rigRef}
+              activity={activity}
+              fallbackUrl={playableRig ? null : portraitUrl}
+              manifest={playsLive ? manifest : null}
+              mood={mood}
+              onPlaybackError={handleRigPlaybackError}
+            />
+          </div>
+          {agentName ? (
             <Nameplate name={agentName} band={band} compact={compact} />
-          </>
-        ) : !loading ? (
-          <p className="merope-widget__empty" role="status">
-            {failed || rigFailed ? t.merope.loadFailed : t.merope.assetEmpty}
-          </p>
-        ) : null}
+          ) : null}
+        </>
+      ) : !loading ? (
+        <p className="merope-widget__empty" role="status">
+          {showTaken
+            ? t.merope.widgetFaceSlotTaken
+            : failed || rigFailed
+              ? t.merope.loadFailed
+              : t.merope.assetEmpty}
+        </p>
+      ) : null}
 
-        <WidgetSkeletonCover
-          active={loading}
-          preset="hero"
-          label={t.common.loading}
-          accent="var(--color-primary)"
-        />
-      </div>
-    </WidgetShell>
+      <WidgetSkeletonCover
+        active={loading}
+        preset="hero"
+        label={t.common.loading}
+        accent="var(--color-primary)"
+      />
+    </MeropeWidgetChrome>
   )
 }
 
 function MeropeWidgetDuplicate({ compact }: { compact: boolean }) {
   const { t } = useI18n()
   return (
-    <WidgetShell
-      padding={0}
-      className={`merope-widget${compact ? ' merope-widget--compact' : ''}`}
-    >
-      <div className="merope-widget__surface">
-        <p className="merope-widget__empty" role="status">
-          {t.merope.widgetFaceSlotTaken}
-        </p>
-      </div>
-    </WidgetShell>
+    <MeropeWidgetChrome compact={compact} label={t.widgets.agentPersona}>
+      <p className="merope-widget__empty" role="status">
+        {t.merope.widgetFaceSlotTaken}
+      </p>
+    </MeropeWidgetChrome>
   )
 }
 
@@ -330,6 +379,11 @@ export const MeropeWidget = memo(
     const holdsFace = useMeropeWidgetFaceSlot(config.id, !isPreview)
     if (isPreview) return <MeropeWidgetPreview compact={compact} />
     if (!holdsFace) return <MeropeWidgetDuplicate compact={compact} />
-    return <LiveMeropeWidget compact={compact} />
+    return (
+      <LiveMeropeWidget
+        compact={compact}
+        playbackId={`widget:${config.id}`}
+      />
+    )
   },
 )
