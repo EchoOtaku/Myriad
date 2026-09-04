@@ -227,7 +227,7 @@ html.dark .setup-flow-step.is-done .setup-flow-step-card {
   font-size: 0.68rem;
   font-weight: 700;
   line-height: 1;
-  color: var(--cfg-accent);
+  color: var(--cfg-text-1);
   background: color-mix(in srgb, var(--cfg-accent) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--cfg-accent) 28%, transparent);
 }
@@ -235,6 +235,10 @@ html.dark .setup-flow-step.is-done .setup-flow-step-card {
 .setup-flow-step-index svg {
   width: 0.7rem;
   height: 0.7rem;
+}
+
+html.dark .setup-flow-step-index {
+  color: #fff;
 }
 
 .setup-flow-step.is-done .setup-flow-step-index {

@@ -159,8 +159,9 @@ describe('widgetLibrarySearch', () => {
     )
   })
 
-  it('classifies builtin / report / tapp category', () => {
-    assert.equal(classifyWidgetLibraryKind({ id: 'weather' }), 'builtin')
+  it('classifies host widgets onto topic rows with Tapp', () => {
+    assert.equal(classifyWidgetLibraryKind({ id: 'weather' }), 'tapp:utility')
+    assert.equal(classifyWidgetLibraryKind({ id: 'music-player' }), 'tapp:media')
     assert.equal(classifyWidgetLibraryKind({ id: 'report-github' }), 'report')
     assert.equal(
       classifyWidgetLibraryKind({
@@ -179,10 +180,11 @@ describe('widgetLibrarySearch', () => {
     )
   })
 
-  it('keeps all / builtin / report, then only Tapp categories that have widgets', () => {
+  it('lists only kinds that currently have a widget', () => {
     assert.deepEqual(
       presentWidgetLibraryKindFilters([
         { id: 'weather' },
+        { id: 'music-player' },
         { id: 'report-github' },
         {
           id: 'com.example.clock',
@@ -195,21 +197,23 @@ describe('widgetLibrarySearch', () => {
           category: 'productivity',
         },
       ]),
-      ['all', 'builtin', 'report', 'tapp:media', 'tapp:productivity'],
+      ['all', 'report', 'tapp:media', 'tapp:productivity', 'tapp:utility'],
     )
   })
 
-  it('always keeps host chips even when a kind is empty', () => {
+  it('omits empty report / builtin rows', () => {
     assert.deepEqual(presentWidgetLibraryKindFilters([{ id: 'weather' }]), [
       'all',
-      'builtin',
-      'report',
+      'tapp:utility',
     ])
   })
 
   it('matches kind filter', () => {
     assert.equal(widgetMatchesLibraryKind('all', { id: 'weather' }), true)
-    assert.equal(widgetMatchesLibraryKind('builtin', { id: 'weather' }), true)
+    assert.equal(
+      widgetMatchesLibraryKind('tapp:utility', { id: 'weather' }),
+      true,
+    )
     assert.equal(
       widgetMatchesLibraryKind('report', { id: 'report-github' }),
       true,
@@ -220,6 +224,10 @@ describe('widgetLibrarySearch', () => {
         isTappWidget: true,
         category: 'media',
       }),
+      true,
+    )
+    assert.equal(
+      widgetMatchesLibraryKind('tapp:media', { id: 'music-player' }),
       true,
     )
     assert.equal(
@@ -242,9 +250,9 @@ describe('widgetLibrarySearch', () => {
       ]),
       [
         'all',
-        'builtin',
         'report',
         'tapp:media',
+        'tapp:utility',
         'size:2x2',
         'size:4x2',
       ],
@@ -258,7 +266,7 @@ describe('widgetLibrarySearch', () => {
       supportedSizes: ['2x2', '4x2'],
     }
     assert.equal(widgetMatchesLibraryFilter('all', weather), true)
-    assert.equal(widgetMatchesLibraryFilter('builtin', weather), true)
+    assert.equal(widgetMatchesLibraryFilter('tapp:utility', weather), true)
     assert.equal(widgetMatchesLibraryFilter('report', weather), false)
     assert.equal(widgetMatchesLibraryFilter('size:4x2', weather), true)
     assert.equal(widgetMatchesLibraryFilter('size:1x1', weather), false)

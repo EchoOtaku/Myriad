@@ -156,10 +156,7 @@ impl Agent {
                 Ok(AgentResponse {
                     response_type: AgentResponseType::Answer,
                     message: reply.clone(),
-                    data: Some(crate::services::agent::chat_prompt::chat_reply_data(
-                        &reply,
-                        &request.raw_input,
-                    )),
+                    data: Some(chat_reply_with_overlay(&request, &reply)),
                     data_display: None,
                     suggestions: vec![],
                     task: None,
@@ -579,10 +576,10 @@ impl Agent {
             crate::services::agent::merope::note_chat_diary(&self.db, user_id, &request.raw_input)
                 .await;
 
-            // The floor ships immediately. Lite is armed now but only starts
-            // after the reply model emits its first visible token, so it cannot
-            // compete with reasoning or time-to-first-token.
-            let mut motion_start_tx = None;
+            // The reaction ships immediately. Short replies stay entirely on
+            // the local path. Longer replies offer actual spoken text to Lite;
+            // it refines delivery, not a reaction to input that is now over.
+            let mut motion_preview_tx = None;
             if let Some(mood) = mood_transition.clone() {
                 let reaction_context = motion_context(
                     &request,
@@ -594,28 +591,23 @@ impl Agent {
                     None,
                 );
                 publish_local_motion(&reaction_context, &progress_tx).await;
-                let (start_tx, start_rx) = tokio::sync::mpsc::channel(1);
-                motion_start_tx = Some(start_tx);
+                let (preview_tx, preview_rx) = tokio::sync::mpsc::channel(1);
+                motion_preview_tx = Some(preview_tx);
                 motion_refinements.push(spawn_motion_refinement(
                     reaction_context,
                     progress_tx.clone(),
-                    Some(start_rx),
+                    Some(preview_rx),
                 ));
             }
 
             let reply = match self
-                .stream_strict_lite_chat_response(&request, &progress_tx, motion_start_tx)
+                .stream_strict_lite_chat_response(&request, &progress_tx, motion_preview_tx)
                 .await
             {
                 Ok(reply) => {
-                    publish_model_outfit_overlay(
-                        &self.db,
-                        &request,
-                        &reply,
-                        Some(&progress_tx),
-                    )
-                    .await
-                    .0
+                    publish_model_outfit_overlay(&self.db, &request, &reply, Some(&progress_tx))
+                        .await
+                        .0
                 }
                 Err(error) => {
                     crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
@@ -623,10 +615,15 @@ impl Agent {
                 }
             };
 
-            // A reaction that did not land while the reply was being formed is
-            // stale. Cancel it before the delivery beat can be superseded.
-            motion_refinements.clear();
-            if let Some(mood) = mood_transition.clone() {
+            // A refinement that has not arrived by the end of generation is
+            // stale. Never retain its sender beyond the run's terminal event.
+            let mut delivery_refined = false;
+            for guard in motion_refinements.drain(..) {
+                delivery_refined |= guard.stop().await;
+            }
+            // Do not overwrite a richer, already-visible baseline with the
+            // generic landing floor (or replay its body beat).
+            if let Some(mood) = mood_transition.clone().filter(|_| !delivery_refined) {
                 let delivery_context = motion_context(
                     &request,
                     user_id,
@@ -661,10 +658,7 @@ impl Agent {
             return Ok(AgentResponse {
                 response_type: AgentResponseType::Answer,
                 message: reply.clone(),
-                data: Some(crate::services::agent::chat_prompt::chat_reply_data(
-                    &reply,
-                    &request.raw_input,
-                )),
+                data: Some(chat_reply_with_overlay(&request, &reply)),
                 data_display: None,
                 suggestions: vec![],
                 task: None,
@@ -2059,11 +2053,25 @@ fn turn_task_id(request: &UserRequest) -> String {
         .unwrap_or_else(|| format!("turn_{}", request.timestamp.timestamp_millis()))
 }
 
-struct MotionRefinementGuard(tokio::task::JoinHandle<()>);
+struct MotionRefinementGuard {
+    task: tokio::task::JoinHandle<()>,
+    published: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl MotionRefinementGuard {
+    async fn stop(mut self) -> bool {
+        self.task.abort();
+        // Abort is a request, not a completion barrier. A concurrent send can
+        // still finish before cancellation is observed; inspect publication
+        // only after the task has stopped, before choosing the landing floor.
+        let _ = (&mut self.task).await;
+        self.published.load(std::sync::atomic::Ordering::Acquire)
+    }
+}
 
 impl Drop for MotionRefinementGuard {
     fn drop(&mut self) {
-        self.0.abort();
+        self.task.abort();
     }
 }
 
@@ -2077,6 +2085,25 @@ fn chat_music_frontend_action(
     })
 }
 
+fn chat_reply_with_overlay(request: &UserRequest, reply: &str) -> Value {
+    let mut data = crate::services::agent::chat_prompt::chat_reply_data(reply, &request.raw_input);
+    let session_id = request
+        .context
+        .as_ref()
+        .and_then(|context| context.session_id.as_deref())
+        .unwrap_or("");
+    if let Some(object) = data.as_object_mut() {
+        object.insert(
+            "outfitId".into(),
+            match crate::services::agent::merope::overlay_outfit_id(request.user_id, session_id) {
+                Some(id) => Value::String(id),
+                None => Value::Null,
+            },
+        );
+    }
+    data
+}
+
 async fn publish_model_outfit_overlay(
     db: &sea_orm::DatabaseConnection,
     request: &UserRequest,
@@ -2088,7 +2115,9 @@ async fn publish_model_outfit_overlay(
 ) {
     let (spoken, directive, music) =
         crate::services::agent::chat_music::peel_chat_live_reply(reply);
-    let Some(directive) = directive else {
+    let Some(directive) =
+        myriad_merope::wear_directive_after_reply(&request.raw_input, &spoken, directive)
+    else {
         return (spoken, music);
     };
     let Some(session_id) = request
@@ -2127,24 +2156,57 @@ async fn publish_local_motion(
     }
 }
 
-/** Refines an already-published floor, optionally after the first text delta. */
+/** Refines a floor, optionally after a bounded preview of a longer reply. */
 fn spawn_motion_refinement(
     context: crate::services::agent::merope::MotionContext,
     progress_tx: tokio::sync::mpsc::Sender<AgentProgressEvent>,
-    mut start_rx: Option<tokio::sync::mpsc::Receiver<()>>,
+    preview_rx: Option<tokio::sync::mpsc::Receiver<String>>,
 ) -> MotionRefinementGuard {
-    MotionRefinementGuard(tokio::spawn(async move {
-        if let Some(start_rx) = start_rx.as_mut() {
-            if start_rx.recv().await.is_none() {
+    spawn_motion_refinement_with(
+        context,
+        progress_tx,
+        preview_rx,
+        crate::services::agent::merope::refine_motion,
+    )
+}
+
+fn spawn_motion_refinement_with<F, Fut>(
+    mut context: crate::services::agent::merope::MotionContext,
+    progress_tx: tokio::sync::mpsc::Sender<AgentProgressEvent>,
+    mut preview_rx: Option<tokio::sync::mpsc::Receiver<String>>,
+    refine: F,
+) -> MotionRefinementGuard
+where
+    F: FnOnce(crate::services::agent::merope::MotionContext) -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = Option<crate::services::agent::merope::PerformanceDirective>>
+        + Send
+        + 'static,
+{
+    let published = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let did_publish = published.clone();
+    let task = tokio::spawn(async move {
+        if let Some(preview_rx) = preview_rx.as_mut() {
+            let Some(preview) = preview_rx.recv().await else {
                 return;
+            };
+            // A provider may emit a whole answer in one delta. Give the caller
+            // one short cancellation window before opening another request.
+            tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+            context.phase = crate::services::agent::merope::MotionPhase::Delivery;
+            context.activity = context.phase.activity().to_string();
+            context.response_text = Some(preview);
+        }
+        if let Some(performance) = refine(context).await {
+            if progress_tx
+                .send(AgentProgressEvent::PerformancePlan { performance })
+                .await
+                .is_ok()
+            {
+                did_publish.store(true, std::sync::atomic::Ordering::Release);
             }
         }
-        if let Some(performance) = crate::services::agent::merope::refine_motion(context).await {
-            let _ = progress_tx
-                .send(AgentProgressEvent::PerformancePlan { performance })
-                .await;
-        }
-    }))
+    });
+    MotionRefinementGuard { task, published }
 }
 
 async fn attach_motion_to_result(
@@ -2180,4 +2242,130 @@ async fn attach_motion_to_result(
     // awaiting Lite here used to put its whole timeout in front of the reply.
     response.performance = crate::services::agent::merope::local_directive(&context);
     Ok(response)
+}
+
+#[cfg(test)]
+mod motion_refinement_tests {
+    use super::*;
+    use crate::services::agent::merope::{MoodTransition, MotionContext, MotionPhase};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    use std::time::Duration;
+
+    fn context() -> MotionContext {
+        MotionContext {
+            user_id: 1,
+            phase: MotionPhase::Reaction,
+            mood: MoodTransition {
+                before: 70.0,
+                after: 70.0,
+                arousal_before: 48.0,
+                arousal_after: 48.0,
+                band_before: "calm".into(),
+                band_after: "calm".into(),
+                delta: 0.0,
+                cause: "test".into(),
+                revision: 1,
+            },
+            activity: "thinking".into(),
+            user_text: "tell me about that".into(),
+            response_text: None,
+            task_success: None,
+            rig_state: None,
+            motion_style: "even".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn short_or_single_chunk_turn_never_starts_lite() {
+        for emit_preview in [false, true] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let observed = calls.clone();
+            let (tx, mut events) = tokio::sync::mpsc::channel(4);
+            let (preview_tx, preview_rx) = tokio::sync::mpsc::channel(1);
+            let guard = spawn_motion_refinement_with(
+                context(),
+                tx,
+                Some(preview_rx),
+                move |_| async move {
+                    observed.fetch_add(1, Ordering::Relaxed);
+                    None
+                },
+            );
+            if emit_preview {
+                preview_tx
+                    .send("a whole buffered answer".into())
+                    .await
+                    .unwrap();
+            }
+            tokio::task::yield_now().await;
+            assert!(!guard.stop().await);
+            assert!(tokio::time::timeout(Duration::from_secs(1), events.recv())
+                .await
+                .unwrap()
+                .is_none());
+            assert_eq!(calls.load(Ordering::Relaxed), 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn long_reply_refines_delivery_using_spoken_context_and_marks_publication() {
+        let (tx, mut events) = tokio::sync::mpsc::channel(4);
+        let (preview_tx, preview_rx) = tokio::sync::mpsc::channel(1);
+        let guard =
+            spawn_motion_refinement_with(context(), tx, Some(preview_rx), |context| async move {
+                assert_eq!(context.phase, MotionPhase::Delivery);
+                assert_eq!(context.activity, "talking");
+                assert_eq!(
+                    context.response_text.as_deref(),
+                    Some("the actual spoken preview")
+                );
+                crate::services::agent::merope::local_directive(&context)
+            });
+        preview_tx
+            .send("the actual spoken preview".into())
+            .await
+            .unwrap();
+        let event = tokio::time::timeout(Duration::from_secs(2), events.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(event, AgentProgressEvent::PerformancePlan { .. }));
+        assert!(guard.stop().await);
+    }
+
+    #[tokio::test]
+    async fn cancelled_refinement_cannot_publish_after_its_turn() {
+        let (tx, mut events) = tokio::sync::mpsc::channel(4);
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let signal = entered.clone();
+        let guard = spawn_motion_refinement_with(context(), tx, None, move |_| async move {
+            signal.notify_one();
+            std::future::pending().await
+        });
+        tokio::time::timeout(Duration::from_secs(1), entered.notified())
+            .await
+            .unwrap();
+        assert!(!guard.stop().await);
+        assert!(tokio::time::timeout(Duration::from_secs(1), events.recv())
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stopping_at_publication_boundary_reports_exactly_what_was_sent() {
+        for _ in 0..128 {
+            let (tx, mut events) = tokio::sync::mpsc::channel(1);
+            let guard = spawn_motion_refinement_with(context(), tx, None, |context| async move {
+                crate::services::agent::merope::local_directive(&context)
+            });
+            tokio::task::yield_now().await;
+            let published = guard.stop().await;
+            assert_eq!(published, events.recv().await.is_some());
+            assert!(events.recv().await.is_none());
+        }
+    }
 }

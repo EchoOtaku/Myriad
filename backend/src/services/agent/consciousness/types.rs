@@ -65,6 +65,12 @@ pub struct SelfLivePresence {
     pub speech_intent: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub perception: Vec<String>,
+    /// Sanitized source-shaped observations for another trusted Chat ingress.
+    /// The decision snapshot uses the compact reader text above.
+    #[serde(skip)]
+    pub perception_payload: Vec<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub music_status: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rig_state: Option<myriad_merope::RigStateSummary>,
     /// When this observation was written. `None` is treated as expired.

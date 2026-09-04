@@ -12,8 +12,10 @@ trustPolicy: no-downgrade
 #                 paulmillr stopped attaching provenance after 4.0.1)
 #   - ua-parser-js@0.7  (agora-rtc-sdk-ng still declares ^0.7; 0.7.41 has no
 #                 provenance, while 1.x published it first)
-# Both only use APIs present in the newer major. Prefer overrides over
-# trustPolicyExclude so install stays strict and the tree stays current.
+# 2.x is required here: 1.0.41 has no provenance, so no-downgrade refuses it
+# once 2.x exists. Agora's `import x from 'ua-parser-js'` is kept off the Vite
+# prebundle (astro.config optimizeDeps.exclude) so 2.x cannot freeze the
+# crawler. Prefer overrides over trustPolicyExclude so install stays strict.
 overrides:
   brace-expansion: '>=5.0.9'
   chokidar: '>=5.0.0'

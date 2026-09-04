@@ -557,7 +557,7 @@
 .agent-panel-tag-rail .agent-panel-tag,
 .agent-panel-composer-tags .agent-panel-tag {
   background: var(--surface-bg, rgb(var(--surface-rgb) / var(--surface-alpha)));
-  backdrop-filter: var(--surface-filter);
+  backdrop-filter: none;
   box-shadow: var(--surface-shadow);
 }
 
@@ -1156,8 +1156,42 @@ button.agent-panel-tag:disabled {
 }
 
 .agent-panel-work-chrome > .agent-panel-work-tags {
-  width: max-content;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  max-width: 100%;
   flex-wrap: nowrap;
+}
+
+/* 上下文贴吃剩余宽度，长文在贴内横滑；解释 / 翻译仍是 shrink-0。 */
+.agent-panel-work-tags > .agent-panel-swap {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  max-width: 100%;
+  justify-items: stretch;
+}
+
+.agent-panel-work-chrome .agent-panel-swap .agent-panel-tag {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.agent-panel-work-chrome .agent-panel-swap .agent-panel-tag-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-overflow: unset;
+  white-space: nowrap;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+}
+
+.agent-panel-work-chrome .agent-panel-swap .agent-panel-tag-text::-webkit-scrollbar {
+  display: none;
 }
 
 .agent-panel-work-chrome > .agent-panel-presence[data-kind='chip'],
@@ -1950,7 +1984,7 @@ button.agent-panel-tag:disabled {
   width: 100%;
   margin: 0;
   background: var(--surface-bg, rgb(var(--surface-rgb) / var(--surface-alpha)));
-  backdrop-filter: var(--surface-filter);
+  backdrop-filter: none;
   box-shadow: var(--surface-shadow);
 }
 
@@ -2031,20 +2065,25 @@ html[data-perf-mode='exlight'] .agent-panel-message-body {
   min-width: 0;
 }
 
-/* 气泡和历史卡贴在壁纸上。backdrop-filter 会把立绘采进胶囊里糊成雾；
-   底、边、阴影仍走 .glass 令牌。去掉磨砂后默认 74% 会透穿，略抬不透明。
-   输入行那两块玻璃还要磨砂，不动。solid 已经不透明，不要往回减。 */
+/* 整块 Agent 面板不磨砂（含 tag / 输入行 / 气泡）。去掉后抬到 92%。
+   solid 已经不透明，不要往回减。发送键自己叠主色。 */
+html .agent-panel-overlay-anchor {
+  --surface-filter: none;
+}
+
+html:not([data-surface='solid']):not([data-surface='liquid'])
+  .agent-panel-overlay-anchor {
+  --surface-alpha: 92%;
+  --surface-bg:
+    var(--surface-sheen), rgb(var(--surface-rgb) / var(--surface-alpha));
+}
+
+html .agent-panel-overlay.glass,
+html .agent-panel-field-shell.glass,
+html .agent-panel-control.glass,
 html .agent-panel-message-body.glass,
 html .agent-panel-session.glass {
   backdrop-filter: none;
-}
-
-html:not([data-surface='solid']) .agent-panel-message-body.glass,
-html:not([data-surface='solid']) .agent-panel-session.glass {
-  --surface-alpha: 84%;
-
-  background:
-    var(--surface-sheen), rgb(var(--surface-rgb) / var(--surface-alpha));
 }
 
 .agent-panel-message[data-role='system'] .agent-panel-message-body {
@@ -2729,7 +2768,7 @@ html[data-perf-mode='exlight'] .agent-panel-thinking-sweep {
 
 .agent-panel-message-footer .agent-panel-tag {
   background: var(--surface-bg, rgb(var(--surface-rgb) / var(--surface-alpha)));
-  backdrop-filter: var(--surface-filter);
+  backdrop-filter: none;
   box-shadow: var(--surface-shadow);
 }
 

@@ -9,7 +9,14 @@
 import type { CSSProperties } from 'react'
 import type { RigCharacterHandle } from '../../features/merope/rig/RigCharacter'
 import type { MeropeRigManifest } from '../../features/merope/rig/types'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { agentStatusActivity } from '../../features/merope/activity'
@@ -111,6 +118,9 @@ export function AgentPanelFace({
   const wantLive = Boolean(packageKey)
   const ready = readyKey === packageKey && packageKey !== ''
   const handleRigPlaybackError = useCallback(() => setRigFailed(true), [])
+  useLayoutEffect(() => {
+    if (!motionReady) setReadyKey('')
+  }, [motionReady])
   useRigMotionLifecycle(rigRef, {
     mood,
     arousal,

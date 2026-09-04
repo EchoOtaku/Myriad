@@ -2,6 +2,7 @@
 pub mod activity_event_service;
 pub mod agent;
 pub mod agent_interaction; // Agent ↔ Tapp interaction create surface
+pub mod agora_chat; // Realtime transport bindings to shared Agent Chat runs
 pub mod agora_convo; // Shengwang Conversational AI join/leave
 pub mod agora_rtc_token; // Agora AccessToken2
 pub mod ai;

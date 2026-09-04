@@ -47,12 +47,15 @@ export function FacePresence({
     return () => media.removeEventListener('change', sync)
   }, [])
 
+  const readyRef = useRef(false)
+
   useLayoutEffect(() => {
     const wasPresent = presentRef.current
     const previousKey = packageRef.current
     presentRef.current = present
     packageRef.current = packageKey
     if (!present) {
+      readyRef.current = false
       if (wasPresent) {
         setHold(copySurfaceFrame(rootRef.current))
         dispatch({ type: 'hide' })
@@ -60,18 +63,22 @@ export function FacePresence({
       return
     }
     if (!wasPresent) {
+      readyRef.current = false
       setHold(null)
       dispatch({ type: 'show', packageKey })
       return
     }
     if (previousKey && previousKey !== packageKey) {
+      readyRef.current = false
       setHold(copySurfaceFrame(rootRef.current))
       dispatch({ type: 'swap', packageKey })
     }
   }, [packageKey, present])
 
   useEffect(() => {
-    if (!present || !ready) return
+    const wasReady = readyRef.current
+    readyRef.current = ready
+    if (!present || !ready || wasReady) return
     dispatch({ type: 'ready' })
   }, [present, ready, packageKey])
 

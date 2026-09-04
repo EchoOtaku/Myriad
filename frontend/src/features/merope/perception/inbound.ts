@@ -4,16 +4,26 @@
  */
 import type { PageContent } from '../../../contexts/PageContentContext'
 import type { PerceptionSnapshot } from './registry'
-import { getAgentContextConsent, subscribeAgentContextConsent } from '../../../components/agent-panel/agentContextConsent'
-import { subscribeScreenConsent } from '../../../components/agent-panel/screenConsent'
+import {
+  getAgentContextConsent,
+  subscribeAgentContextConsent,
+} from '../../../components/agent-panel/agentContextConsent'
+import { subscribeAgentPanelVisible } from '../../../components/agent-panel/agentPanelVisible'
 import {
   subscribeAgentSelection,
   turnSelectionText,
 } from '../../../components/agent-panel/agentSelection'
-import { subscribeAgentPanelVisible } from '../../../components/agent-panel/agentPanelVisible'
+import { subscribeScreenConsent } from '../../../components/agent-panel/screenConsent'
 import { getCurrentPageContent } from '../../../contexts/currentPage'
-import { bindPublishedMusicState, subscribeCurrentSong } from '../../../contexts/currentSong'
-import { getVoicePresence, subscribeVoicePresence } from '../speech/voicePresence'
+import {
+  bindPublishedMusicState,
+  currentAgentMusicStatus,
+  subscribeCurrentSong,
+} from '../../../contexts/currentSong'
+import {
+  getVoicePresence,
+  subscribeVoicePresence,
+} from '../speech/voicePresence'
 import { MAX_PERCEPTION_ITEMS } from './registry'
 import { subscribeForegroundSurface } from './surface'
 
@@ -50,7 +60,9 @@ async function defaultPostPresence(body: unknown): Promise<void> {
   await apiService.post('/agent/presence', body)
 }
 
-async function defaultCapture(input: CaptureInput): Promise<PerceptionSnapshot[]> {
+async function defaultCapture(
+  input: CaptureInput,
+): Promise<PerceptionSnapshot[]> {
   const { capturePerceptionSnapshots } = await import('./capture')
   return capturePerceptionSnapshots(input)
 }
@@ -117,7 +129,8 @@ function startPresenceLease(): void {
 async function meropeIsEnabled(): Promise<boolean> {
   if (enabledFn) return enabledFn()
   try {
-    const { getPublicConfigDeduped } = await import('../../../utils/requestDedup')
+    const { getPublicConfigDeduped } =
+      await import('../../../utils/requestDedup')
     const config = await getPublicConfigDeduped()
     return config?.meropeEnabled === true
   } catch {
@@ -177,9 +190,11 @@ export async function reportPresence(reason: string): Promise<void> {
   lastRevisionKey = key
   lastSentAt = now
   const presence = factsFn ? factsFn() : await defaultFacts()
+  const musicStatus = currentAgentMusicStatus()
   await postPresence({
     presence,
     perception: snapshots,
+    ...(musicStatus ? { musicStatus } : {}),
   })
 }
 

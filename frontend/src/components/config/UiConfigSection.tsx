@@ -22,7 +22,6 @@ import { getCSRFToken } from '../../utils/csrf'
 import {
   emptyFooterCustomItem,
   FOOTER_CUSTOM_MAX,
-
   parseFooterCustomSlots,
   serializeFooterCustom,
 } from '../../utils/footerCustomLogic'
@@ -125,6 +124,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
         site_favicon: t.config.fieldSiteFavicon,
         site_keywords: t.config.fieldSiteKeywords,
         site_og_image: t.config.fieldSiteOgImage,
+        google_site_verification: t.config.fieldGoogleSiteVerification,
         site_noindex: t.config.fieldSiteNoindex,
         site_visibility_policy: t.config.fieldSiteVisibilityPolicy,
         site_ai_intro: t.config.fieldSiteAiIntro,
@@ -143,6 +143,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
         site_favicon: t.config.placeholderSiteFavicon,
         site_keywords: t.config.placeholderSiteKeywords,
         site_og_image: t.config.placeholderSiteOgImage,
+        google_site_verification: t.config.placeholderGoogleSiteVerification,
       }
       return placeholders[fieldKey] || originalPlaceholder
     },
@@ -626,6 +627,15 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           <p className="setting-hint" style={{ marginTop: '0.5rem' }}>
             {visibilityPolicyHint}
           </p>
+          {visibilityPolicy !== 'private' && !baseUrlValue.trim() ? (
+            <p
+              className="setting-error"
+              style={{ marginTop: '0.5rem' }}
+              role="status"
+            >
+              {t.config.seoOriginMissingHint}
+            </p>
+          ) : null}
         </SettingItemWrapper>
 
         <InputItem
@@ -670,6 +680,19 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           inputType="url"
           hint={t.config.fieldSiteOgImageHint}
           {...bindGuide('ui.siteOgImage', g.ui.siteOgImage)}
+          layout="vertical"
+        />
+        <InputItem
+          itemKey="google_site_verification"
+          label={t.config.fieldGoogleSiteVerification}
+          value={getFieldValue('google_site_verification')}
+          onChange={(v) => updateValue('google_site_verification', v)}
+          placeholder={t.config.placeholderGoogleSiteVerification}
+          hint={t.config.fieldGoogleSiteVerificationHint}
+          {...bindGuide(
+            'ui.googleSiteVerification',
+            g.ui.googleSiteVerification,
+          )}
           layout="vertical"
         />
       </SettingGroup>
@@ -943,7 +966,10 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           formatValue={(v) => `${Math.round(v)}%`}
           recommendedValue={85}
           recommendedLabel={t.config.sliderRecommended}
-          {...bindGuide('ui.evocativeRippleQuality', g.ui.evocativeRippleQuality)}
+          {...bindGuide(
+            'ui.evocativeRippleQuality',
+            g.ui.evocativeRippleQuality,
+          )}
           layout="vertical"
         />
       </SettingGroup>

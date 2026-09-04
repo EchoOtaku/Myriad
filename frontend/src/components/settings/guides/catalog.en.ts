@@ -77,6 +77,15 @@ export const en: SettingGuidesCatalog = {
       notes:
         'Landscape ≥1200×630 works best. Uploaded data URLs rarely work for crawlers — use a public image URL in production.',
     },
+    googleSiteVerification: {
+      what: 'HTML-tag ownership check for Google Search Console.',
+      chain:
+        '1) Add the property in Search Console → choose HTML tag.\n2) Paste the content value or the whole meta tag here → save at the bottom.\n3) Google fetches the homepage, checks the meta, then you can submit /sitemap.xml.',
+      frontend:
+        '<meta name="google-site-verification"> on crawler HTML shells and the SPA head. Google’s verification fetch uses the crawler shell.',
+      notes:
+        'Do not use HTML-file verification (this app is an SPA and will not serve google*.html at the site root). DNS TXT verification does not use this field.',
+    },
     siteNoindex: {
       what: 'Whether search engines may index this site (single switch).',
       chain:

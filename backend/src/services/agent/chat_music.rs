@@ -158,17 +158,13 @@ mod tests {
 
     #[test]
     fn music_marker_is_stripped_and_parsed() {
-        let (spoken, action) =
-            split_chat_music_directive("行，我唱给你听。\n[[music:play]]");
+        let (spoken, action) = split_chat_music_directive("行，我唱给你听。\n[[music:play]]");
         assert_eq!(spoken, "行，我唱给你听。");
         assert_eq!(action, Some(ChatMusicAction::Play));
         let (spoken, action) = split_chat_music_directive("下一首\n[[music:next]]");
         assert_eq!(spoken, "下一首");
         assert_eq!(action, Some(ChatMusicAction::Next));
-        assert_eq!(
-            split_chat_music_directive("你好").1,
-            None
-        );
+        assert_eq!(split_chat_music_directive("你好").1, None);
     }
 
     #[test]

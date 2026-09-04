@@ -56,6 +56,7 @@ test('panel chat can overlay a saved set without wearing it', () => {
   assert.match(panel, /getSiteFace\(\)/)
   assert.match(engine, /case 'outfit_overlay'/)
   assert.match(engine, /setChatOutfitOverlay\(overlayEvent\.outfitId\)/)
+  assert.match(engine, /responseData\.outfitId/)
   assert.match(engine, /stripChatWearMarker/)
   assert.match(engine, /case 'music_control'/)
   assert.match(engine, /if \(current === 'chat'\) clearChatOutfitOverlay\(\)/)

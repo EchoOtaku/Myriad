@@ -274,6 +274,43 @@ pub(crate) fn sanitize_site_favicon_url(raw: &str) -> Option<String> {
     sanitize_http_url_allow_private(s)
 }
 
+/// Google Search Console HTML-tag token. Empty clears. Accepts a bare token or a
+/// pasted `<meta name="google-site-verification" content="...">`. Only
+/// `[A-Za-z0-9_-]`, max 128 chars.
+pub(crate) fn sanitize_google_site_verification(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    if s.is_empty() {
+        return Some(String::new());
+    }
+    let token = extract_google_site_verification_token(s);
+    if token.is_empty() || token.len() > 128 {
+        return None;
+    }
+    if !token
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    {
+        return None;
+    }
+    Some(token)
+}
+
+fn extract_google_site_verification_token(s: &str) -> String {
+    let lower = s.to_ascii_lowercase();
+    let Some(idx) = lower.find("content=") else {
+        return s.to_string();
+    };
+    let after = s[idx + "content=".len()..].trim_start();
+    let Some(quote) = after.chars().next().filter(|c| *c == '"' || *c == '\'') else {
+        return s.to_string();
+    };
+    let inner = &after[quote.len_utf8()..];
+    match inner.find(quote) {
+        Some(end) => inner[..end].trim().to_string(),
+        None => s.to_string(),
+    }
+}
+
 /// OG / share image: empty, path, http(s). No data: (crawlers need fetchable URLs).
 pub(crate) fn sanitize_site_og_image_url(raw: &str) -> Option<String> {
     let s = raw.trim();
@@ -2043,6 +2080,20 @@ pub(crate) async fn build_config(
                     required: false,
                 },
                 ConfigField {
+                    key: "google_site_verification".to_string(),
+                    label: "Google Search Console 验证".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_or_env_clearable(
+                        db_config
+                            .as_ref()
+                            .and_then(|c| c.google_site_verification.clone()),
+                        "GOOGLE_SITE_VERIFICATION",
+                        "",
+                    ),
+                    placeholder: "粘贴验证码或整段 meta 标签".to_string(),
+                    required: false,
+                },
+                ConfigField {
                     key: "site_noindex".to_string(),
                     label: "禁止搜索引擎收录".to_string(),
                     field_type: "checkbox".to_string(),
@@ -2563,6 +2614,7 @@ pub(crate) const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "site_gongan",
     "site_icp",
     "site_ai_intro",
+    "google_site_verification",
     "site_keywords",
     "site_noindex",
     "site_og_image",
@@ -3601,6 +3653,7 @@ mod settings_backup_tests {
             ui_field("site_favicon", ""),
             ui_field("site_keywords", ""),
             ui_field("site_og_image", ""),
+            ui_field("google_site_verification", ""),
             ui_field("site_noindex", "false"),
             ui_field("site_visibility_policy", "ai_full"),
             ui_field("site_ai_intro", ""),
@@ -3618,6 +3671,7 @@ mod settings_backup_tests {
         assert_eq!(updates.get("site_favicon"), Some(&json!("")));
         assert_eq!(updates.get("site_keywords"), Some(&json!("")));
         assert_eq!(updates.get("site_og_image"), Some(&json!("")));
+        assert_eq!(updates.get("google_site_verification"), Some(&json!("")));
         assert_eq!(updates.get("site_noindex"), Some(&json!(false)));
         // Both fields present: policy is authoritative; raw noindex alone must not
         // rewrite policy away from the explicit site_visibility_policy value.
@@ -3744,6 +3798,19 @@ mod settings_backup_tests {
         );
         assert_eq!(sanitize_site_og_image_url("data:image/png;base64,x"), None);
 
+        assert_eq!(
+            sanitize_google_site_verification("AbC-_123"),
+            Some("AbC-_123".to_string())
+        );
+        assert_eq!(
+            sanitize_google_site_verification(
+                r#"<meta name="google-site-verification" content="Tok_en-1" />"#
+            ),
+            Some("Tok_en-1".to_string())
+        );
+        assert_eq!(sanitize_google_site_verification(""), Some(String::new()));
+        assert_eq!(sanitize_google_site_verification("<script>"), None);
+
         // Umami + API base: http(s), private OK
         assert_eq!(
             sanitize_umami_script_url("http://10.0.0.2:3000/script.js"),
@@ -3794,6 +3861,27 @@ mod settings_backup_tests {
             updates.get("umami_script_url"),
             Some(&json!("https://cloud.umami.is/script.js"))
         );
+    }
+
+    #[test]
+    fn google_site_verification_persists_extracted_token() {
+        let mut config = empty_config();
+        config.ui_config.config_fields = vec![ui_field(
+            "google_site_verification",
+            r#"<meta name="google-site-verification" content="Tok_en-1" />"#,
+        )];
+        let updates = collect_database_updates(&config);
+        assert_eq!(
+            updates.get("google_site_verification"),
+            Some(&json!("Tok_en-1"))
+        );
+
+        config.ui_config.config_fields = vec![ui_field(
+            "google_site_verification",
+            "<script>alert(1)</script>",
+        )];
+        let updates = collect_database_updates(&config);
+        assert!(!updates.contains_key("google_site_verification"));
     }
 
     #[test]
@@ -4629,6 +4717,15 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                 );
                 continue;
             }
+            "google_site_verification" => {
+                insert_sanitized_clearable_url(
+                    &mut updates,
+                    "google_site_verification",
+                    &field.value,
+                    sanitize_google_site_verification,
+                );
+                continue;
+            }
             "umami_script_url" => {
                 insert_sanitized_clearable_url(
                     &mut updates,
@@ -5079,6 +5176,13 @@ pub async fn get_site_metadata(
         "site_og_image": db_or_env_clearable(
             db_config.as_ref().and_then(|c| c.site_og_image.clone()),
             "SITE_OG_IMAGE",
+            ""
+        ),
+        "google_site_verification": db_or_env_clearable(
+            db_config
+                .as_ref()
+                .and_then(|c| c.google_site_verification.clone()),
+            "GOOGLE_SITE_VERIFICATION",
             ""
         ),
         "site_noindex": site_noindex,

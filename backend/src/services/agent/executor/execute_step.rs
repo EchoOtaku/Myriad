@@ -161,22 +161,23 @@ impl Executor {
 
         // 根据能力类别和预估时长确定超时（秒），预估时长取3倍作为缓冲
         // 优先使用 RecipeStep 指定的 timeout_ms，否则用能力声明推断
+        // 上限 15 分钟，对齐生图 HTTP 客户端；AI 保底 5 分钟在下面再抬。
         let timeout_secs = step
             .timeout_ms
-            .map(|ms| (ms / 1000).clamp(10, 300))
+            .map(|ms| (ms / 1000).clamp(10, 900))
             .unwrap_or_else(|| {
                 capability
                     .estimated_duration_ms
-                    .map(|ms| (ms * 3 / 1000).clamp(10, 300))
+                    .map(|ms| (ms * 3 / 1000).clamp(10, 900))
                     .unwrap_or_else(|| match &capability.category {
-                        CapabilityCategory::AiProcess | CapabilityCategory::ResourceCreate => 120,
+                        CapabilityCategory::AiProcess | CapabilityCategory::ResourceCreate => 300,
                         CapabilityCategory::ExternalIntegration => 30,
                         _ => 30,
                     })
             });
-        // AI 类能力最少给 60 秒（Pro 模型处理复杂输入+长文生成经常需要 40-50s）
-        let timeout_secs = if capability.requires_ai && timeout_secs < 60 {
-            60
+        // AI 类能力最少 5 分钟（生图 / Pro 长文经常超过 60s）
+        let timeout_secs = if capability.requires_ai && timeout_secs < 300 {
+            300
         } else {
             timeout_secs
         };

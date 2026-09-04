@@ -762,7 +762,7 @@ impl Planner {
                 depends_on: vec![],
                 on_failure: "abort".to_string(),
                 retry: None,
-                timeout_ms: Some(30000),
+                timeout_ms: Some(300_000),
             }],
             clarification: None,
             unsupported_reason: None,
@@ -994,7 +994,7 @@ const PLANNER_RULES: &str = r#"## 规则
    - 数据获取步骤用 `"abort"`（后续步骤依赖数据，获取失败则无法继续）
    - AI 处理步骤可用 `"skip"`（非关键性分析/总结可跳过）
    - 如果步骤是其他步骤的 `depends_on` 数据源，必须 `"abort"`
-8. `timeout_ms`: 数据获取 15000，AI 处理 30000，图片生成 60000
+8. `timeout_ms`: 数据获取 15000，AI 处理 300000，图片生成 900000
 9. 可选字段：`"retry": {"max_attempts": 2, "delay_ms": 1000, "exponential_backoff": true}` — 对网络请求类步骤建议添加
 10. 可选字段：`"model_tier": "pro"` — 需要高质量分析/创作时指定 pro，普通任务省略即可
 
@@ -1120,7 +1120,7 @@ search(ai.webSearch) → analyze(ai.analyze, dataFrom:"search") → gen_prompt(p
       "params": { "dataFrom": "search", "instruction": "根据搜索结果介绍该角色..." },
       "depends_on": ["search"],
       "on_failure": "skip",
-      "timeout_ms": 30000
+      "timeout_ms": 300000
     },
     {
       "id": "gen_prompt",
@@ -1136,7 +1136,7 @@ search(ai.webSearch) → analyze(ai.analyze, dataFrom:"search") → gen_prompt(p
       "action": "生成角色图片",
       "params": { "promptFrom": "gen_prompt", "width": 768, "height": 1024 },
       "depends_on": ["gen_prompt"],
-      "timeout_ms": 60000
+      "timeout_ms": 900000
     }
   ],
 

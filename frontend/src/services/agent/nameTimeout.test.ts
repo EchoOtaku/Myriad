@@ -20,7 +20,7 @@ function rustSeconds(rust: string, name: string): number {
     .reduce((left, right) => left * right, 1)
 }
 
-/** `const X = 150 * 1000` → 150000 */
+/** `const X = 6 * 60 * 1000` → 360000 */
 function tsMs(ts: string, name: string): number {
   const match = ts.match(new RegExp(`const ${name} = ([\\d\\s*]+)`))
   assert.ok(match, `${name} not found`)
@@ -102,4 +102,20 @@ test('dev proxy long-timeouts cover model3d downloads, agent process, and SSE', 
   assert.match(timeoutPick, /isModel3dLongPath/)
   assert.match(timeoutPick, /isAgentSsePath/)
   assert.match(timeoutPick, /isAgentProcessPath/)
+  assert.match(timeoutPick, /isAiLongRequestPath/)
+  assert.match(astro, /function isAiLongRequestPath/)
+  const processProxyMs = tsMs(astro, 'AGENT_PROCESS_PROXY_TIMEOUT_MS')
+  assert.ok(
+    processProxyMs >= 5 * 60 * 1000,
+    `agent/speech/tapp-ai proxy ${processProxyMs}ms 低于 5 分钟保底`,
+  )
+})
+
+test('TapSDK AI host round-trip is at least 5 minutes', () => {
+  const sdk = source('../../tapp/runtime/sandbox/sdkGenerator.ts')
+  const aiMs = tsMs(sdk, 'SDK_AI_REQUEST_TIMEOUT_MS')
+  assert.ok(
+    aiMs >= 5 * 60 * 1000,
+    `Tapp.ai sendRequest ${aiMs}ms 低于 5 分钟保底`,
+  )
 })

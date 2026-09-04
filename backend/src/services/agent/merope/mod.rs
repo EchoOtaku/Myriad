@@ -5,6 +5,7 @@ pub mod gates;
 pub mod ingest;
 pub mod motion;
 pub mod motion_local;
+pub mod motion_preview;
 pub mod onboarding_ai;
 pub mod onboarding_prompts;
 pub mod outfit_overlay;
@@ -23,7 +24,7 @@ pub use motion::{
     MotionPhase, PerformanceDirective,
 };
 pub use myriad_merope::RigStateSummary;
-pub use outfit_overlay::{apply_model_wear_directive, chat_wardrobe_section};
+pub use outfit_overlay::{apply_model_wear_directive, chat_wardrobe_section, overlay_outfit_id};
 pub use store::{
     acquire_portrait_generation, clear_persona_on, complete_portrait_generation,
     credit_music_listening, generation_inputs_changed, get_or_create_state, get_persona,
@@ -326,7 +327,6 @@ pub async fn speaking_prompt_with_query(user_id: i32, query: Option<&str>) -> Ve
 }
 
 const REMEMBERED_PROMPT_LIMIT: usize = 8;
-const REMEMBERED_CANDIDATE_LIMIT: u64 = 32;
 const RECENT_LEDGER_LIMIT: u64 = 4;
 /// Chat diary only. Event diary reaches speaking via Remember, not this ledger.
 const RECENT_SPEAKING_DIARY_SOURCES: &[&str] = &[store::DIARY_SOURCE_CHAT];
@@ -341,13 +341,8 @@ async fn speaking_prompt_from_db(
     let Ok(state) = get_or_create_state(db, user_id).await else {
         return sections;
     };
-    if let Ok(notes) = list_remembered(db, user_id, REMEMBERED_CANDIDATE_LIMIT).await {
-        let facts: Vec<String> = notes
-            .into_iter()
-            .map(|note| ingest::compact_summary(&note.content))
-            .filter(|content| !content.is_empty())
-            .collect();
-        let ranked = rank_remembered(&facts, query, REMEMBERED_PROMPT_LIMIT);
+    if let Ok(ranked) = store::recall_remembered(db, user_id, query, REMEMBERED_PROMPT_LIMIT).await
+    {
         if let Some(block) = format_remembered_section(&ranked) {
             sections.push(block);
         }

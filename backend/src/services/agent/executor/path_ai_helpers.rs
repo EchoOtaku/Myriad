@@ -191,7 +191,7 @@ impl Executor {
                                 depends_on: vec![parent_step.id.clone()],
                                 on_failure: FailureStrategy::Skip,
                                 retry: None,
-                                timeout_ms: Some(30_000),
+                                timeout_ms: Some(300_000),
                                 model_tier: None,
                                 generator: None,
                             })

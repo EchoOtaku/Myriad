@@ -38,6 +38,7 @@ pub mod setup;
 pub mod setup_bootstrap;
 pub mod site_domain; // BASE_URL / FRONTEND_URL / CORS — not federation Move
 pub mod speech; // TTS/ASR (Tencent / OpenAI / OpenRouter)
+pub mod speech_conversation;
 pub mod steam;
 pub mod system;
 pub mod tapp_playground; // Pro AI temporary Tapp workspace

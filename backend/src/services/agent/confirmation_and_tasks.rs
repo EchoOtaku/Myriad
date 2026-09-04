@@ -19,12 +19,24 @@ enum ConfirmationOutcome {
     Execute(Box<PendingRecipeConfirmation>),
 }
 
-#[derive(Default)]
 struct WearStreamFilter {
+    user_input: String,
     raw: String,
     emitted: usize,
     fired_wear: bool,
     fired_music: bool,
+}
+
+impl WearStreamFilter {
+    fn new(user_input: String) -> Self {
+        Self {
+            user_input,
+            raw: String::new(),
+            emitted: 0,
+            fired_wear: false,
+            fired_music: false,
+        }
+    }
 }
 
 impl WearStreamFilter {
@@ -47,7 +59,18 @@ impl WearStreamFilter {
         Option<myriad_merope::WearDirective>,
         Option<crate::services::agent::chat_music::ChatMusicAction>,
     ) {
-        self.emit_held(false)
+        let (spoken, wear, music) = self.emit_held(false);
+        let wear = if wear.is_some() {
+            wear
+        } else {
+            let visible = crate::services::agent::chat_music::peel_chat_live_reply(&self.raw).0;
+            self.take_wear(myriad_merope::wear_directive_after_reply(
+                &self.user_input,
+                &visible,
+                None,
+            ))
+        };
+        (spoken, wear, music)
     }
 
     fn emit_held(
@@ -1236,12 +1259,12 @@ impl Agent {
         &self,
         request: &UserRequest,
         progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
-        stream_started: Option<tokio::sync::mpsc::Sender<()>>,
+        motion_preview_tx: Option<tokio::sync::mpsc::Sender<String>>,
     ) -> Result<String, String> {
         let analyzer = crate::services::ai::create_strict_lite_ai_analyzer_with_timeout(None)
             .await
             .ok_or_else(|| "Lite model is not configured for Chat mode".to_string())?;
-        self.stream_chat_response_with_analyzer(request, progress_tx, analyzer, stream_started)
+        self.stream_chat_response_with_analyzer(request, progress_tx, analyzer, motion_preview_tx)
             .await
     }
 
@@ -1339,12 +1362,17 @@ impl Agent {
         request: &UserRequest,
         progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
         analyzer: crate::services::analyzer::AiAnalyzer,
-        stream_started: Option<tokio::sync::mpsc::Sender<()>>,
+        motion_preview_tx: Option<tokio::sync::mpsc::Sender<String>>,
     ) -> Result<String, String> {
         let prompt = self.chat_response_prompt(request).await;
+        let motion_preview = std::sync::Arc::new(std::sync::Mutex::new(
+            crate::services::agent::merope::motion_preview::MotionPreview::default(),
+        ));
 
         let tx = progress_tx.clone();
-        let wear = std::sync::Arc::new(std::sync::Mutex::new(WearStreamFilter::default()));
+        let wear = std::sync::Arc::new(std::sync::Mutex::new(WearStreamFilter::new(
+            request.raw_input.clone(),
+        )));
         let db = self.db.clone();
         let user_id = request.user_id;
         let session_id = request
@@ -1354,7 +1382,8 @@ impl Agent {
         match analyzer
             .analyze_stream_parts(&prompt, |delta| {
                 let tx = tx.clone();
-                let stream_started = stream_started.clone();
+                let motion_preview_tx = motion_preview_tx.clone();
+                let motion_preview = motion_preview.clone();
                 let wear = wear.clone();
                 let db = db.clone();
                 let session_id = session_id.clone();
@@ -1384,12 +1413,21 @@ impl Agent {
                         }
                         other => other,
                     };
-                    if matches!(&delta, crate::services::analyzer::StreamDelta::Text(_)) {
-                        if let Some(stream_started) = stream_started {
-                            let _ = stream_started.try_send(());
-                        }
-                    }
+                    let preview = if let crate::services::analyzer::StreamDelta::Text(text) = &delta
+                    {
+                        motion_preview_tx.as_ref().and_then(|_| {
+                            motion_preview
+                                .lock()
+                                .unwrap_or_else(|p| p.into_inner())
+                                .push(text)
+                        })
+                    } else {
+                        None
+                    };
                     response_agent::emit_stream_delta(&tx, delta).await;
+                    if let (Some(tx), Some(preview)) = (motion_preview_tx, preview) {
+                        let _ = tx.try_send(preview);
+                    }
                     true
                 }
             })

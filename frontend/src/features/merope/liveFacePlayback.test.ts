@@ -106,10 +106,12 @@ test('widget and panel share one WebGL player', () => {
   assert.match(widget, /useLiveFacePlayback\(/)
   assert.match(widget, /notifyLiveFaceUnmounted\(playbackId\)/)
   assert.match(widget, /manifest=\{playsLive \|\| mounted \? manifest : null\}/)
+  assert.match(widget, /if \(!motionReady\) setReadyKey\(''\)/)
   assert.match(panel, /useLiveFacePlayback\(/)
   assert.match(panel, /LIVE_FACE_PLAYBACK_PRIORITY\.panel/)
   assert.match(panel, /notifyLiveFaceUnmounted\('agent-panel-face'\)/)
   assert.match(panel, /manifest=\{playsLive \|\| mounted \? manifest : null\}/)
+  assert.match(panel, /if \(!motionReady\) setReadyKey\(''\)/)
   assert.match(lifecycle, /useRigSingingLifecycle\(options\.ready \?\? true\)/)
 })
 

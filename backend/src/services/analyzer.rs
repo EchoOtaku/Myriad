@@ -793,7 +793,8 @@ impl AiAnalyzer {
         model: String,
         base_url: Option<String>,
     ) -> Self {
-        Self::new_with_timeout(provider, api_key, model, base_url, Duration::from_secs(120)).await
+        Self::new_with_timeout(provider, api_key, model, base_url, Duration::from_secs(5 * 60))
+            .await
     }
 
     /// 与 [`AiAnalyzer::new`] 相同，但允许长任务（如 Tapp Playground 生成）

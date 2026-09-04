@@ -288,8 +288,12 @@ export function useWindowSize(): { width: number; height: number } {
  * 使用共享监听器，减少重复注册
  *
  * @param delay 防抖延迟（毫秒）
+ * @param enabled 为 false 时不订阅 resize（控制面板固定列数不需要）
  */
-export function useDebouncedWindowSize(delay = 150): {
+export function useDebouncedWindowSize(
+  delay = 150,
+  enabled = true,
+): {
   width: number
   height: number
 } {
@@ -312,10 +316,8 @@ export function useDebouncedWindowSize(delay = 150): {
     }, delay)
   }, [delay])
 
-  // 使用共享的 resize 监听器
-  useSharedResize(debouncedHandler)
+  useSharedResize(debouncedHandler, { enabled })
 
-  // 清理定时器
   useEffect(() => {
     return () => {
       if (timeoutRef.current) {

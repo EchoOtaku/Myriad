@@ -285,9 +285,9 @@ pub async fn get_long_running_client() -> Client {
 }
 
 /// Gemini Grounding outbound client: same proxy / fail-closed policy as
-/// [`crate::services::analyzer::AiAnalyzer`], 60s request timeout, no redirects.
+/// [`crate::services::analyzer::AiAnalyzer`], 5 min request timeout, no redirects.
 pub async fn get_gemini_grounding_client() -> Client {
-    let request_timeout = Duration::from_secs(60);
+    let request_timeout = Duration::from_secs(5 * 60);
     let proxy_config = ProxyConfig::from_dynamic_config().await;
     let builder = Client::builder()
         .timeout(request_timeout)

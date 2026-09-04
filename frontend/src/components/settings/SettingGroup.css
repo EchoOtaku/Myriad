@@ -275,7 +275,7 @@ html.dark .setting-group-header-toggle:hover {
     color-mix(in srgb, var(--cfg-accent, #3b82f6) 15%, transparent),
     color-mix(in srgb, var(--cfg-accent, #3b82f6) 6%, transparent)
   );
-  color: var(--cfg-accent, #3b82f6);
+  color: var(--cfg-text-1);
   font-size: 0.875rem;
   flex-shrink: 0;
   position: relative;
@@ -315,7 +315,7 @@ html.dark .setting-group-icon {
     color-mix(in srgb, var(--cfg-accent, #60a5fa) 22%, transparent),
     color-mix(in srgb, var(--cfg-accent, #60a5fa) 8%, transparent)
   );
-  color: var(--cfg-accent, #60a5fa);
+  color: #fff;
 }
 
 html.dark .setting-group-title {

@@ -1680,7 +1680,7 @@ mod tests {
         );
         assert_eq!(
             profile["visualIdentity"]["character"]["faceDesign"],
-            "成熟的鹅蛋脸与自然眉形"
+            "中性。成熟的鹅蛋脸与自然眉形"
         );
         assert!(myriad_merope::upper_body_visual_identity_is_complete(
             &profile["visualIdentity"]
@@ -1793,7 +1793,7 @@ mod tests {
         );
         assert_eq!(
             myriad_merope::character_module(&profile["visualIdentity"]).unwrap()["faceDesign"],
-            "成熟的鹅蛋脸与自然眉形"
+            "女性化。成熟的鹅蛋脸与自然眉形"
         );
     }
 

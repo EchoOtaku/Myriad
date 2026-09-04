@@ -401,7 +401,7 @@ impl TencentSpeechService {
     /// 创建HTTP客户端（含 proxy + NoProxy bypass，与全局 HTTP 客户端一致）
     pub(crate) fn create_client(proxy_config: &ProxyConfig) -> Result<Client, TencentSpeechError> {
         let builder = Client::builder()
-            .timeout(Duration::from_secs(60))
+            .timeout(Duration::from_secs(5 * 60))
             .connect_timeout(Duration::from_secs(30))
             .user_agent("Myriad/1.0");
 

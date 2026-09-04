@@ -12,6 +12,15 @@ test('library preview uses the generation style-reference as the portrait', () =
   assert.match(widget, /band=\{compact \? null : PREVIEW_MOOD_BAND\}/)
 })
 
+test('live canvas stays hidden until this mount has presented a frame', () => {
+  assert.match(css, /\.merope-widget__rig \.merope-rig canvas \{[^}]*opacity:\s*0/)
+  assert.match(
+    css,
+    /\.merope-widget__rig \.merope-rig\.is-ready canvas \{[^}]*opacity:\s*1/,
+  )
+  assert.match(widget, /if \(!motionReady\) setReadyKey\(''\)/)
+})
+
 test('nameplate follows face presence instead of popping with the live lease', () => {
   assert.match(widget, /\{agentName \? \(/)
   assert.doesNotMatch(widget, /agentName && wantLive/)

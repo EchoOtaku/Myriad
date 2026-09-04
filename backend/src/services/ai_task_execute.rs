@@ -40,7 +40,8 @@ use crate::services::permission_service::UserRole;
 use crate::services::tapp_registry as shared_registry;
 use myriad_tapp_contract::manifest::{TappAiManifest, TappAiOperation, TappAiOutputFormat};
 
-pub const TASK_TIMEOUT: Duration = Duration::from_secs(125);
+/// Must cover image generation (`get_long_running_client` is 15 min). Floor 5 min.
+pub const TASK_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
 /// A provider can produce many deltas before the database-backed mailbox is
 /// able to consume them. Keep this queue deliberately generous for legitimate

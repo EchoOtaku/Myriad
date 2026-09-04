@@ -45,7 +45,9 @@ export function subscribeCurrentSong(listener: () => void): () => void {
  * Partial events without `currentSong` leave the track alone, but still
  * update playing / current lyric.
  */
-export function applyPublishedMusicState(detail: Record<string, unknown>): void {
+export function applyPublishedMusicState(
+  detail: Record<string, unknown>,
+): void {
   const patch = pickMusicContextState(detail)
   let changed = false
 
@@ -116,10 +118,7 @@ export function agentMusicStatus(
         duration: Number(song.duration) || 0,
       }
     : null
-  const currentLyric = lyricLine(
-    published.lyrics,
-    published.currentLyricIndex,
-  )
+  const currentLyric = lyricLine(published.lyrics, published.currentLyricIndex)
   return {
     isPlaying: !!published.isPlaying,
     isEnabled: !!published.isEnabled,
@@ -128,6 +127,18 @@ export function agentMusicStatus(
     playlistLength: Number(published.playlistLength) || 0,
     ...(currentLyric ? { currentLyric } : {}),
   }
+}
+
+/** Current player projection for Agent requests and live-presence renewals. */
+export function currentAgentMusicStatus(): Record<string, unknown> | null {
+  if (typeof window === 'undefined') return null
+  return agentMusicStatus(
+    (
+      window as unknown as {
+        __musicPlayerState?: Record<string, unknown>
+      }
+    ).__musicPlayerState,
+  )
 }
 
 function onPublishedMusicState(event: Event): void {

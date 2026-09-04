@@ -1,18 +1,26 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type { RigCharacterHandle } from '../../features/merope/rig/RigCharacter'
 import type { MoodBand } from '../agent/meropeVitals'
-import type { WidgetComponentProps } from '../WidgetGrid'
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { WidgetComponentProps } from '../widgetGridTypes'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { agentStatusActivity } from '../../features/merope/activity'
 import { isAnime25DPlayback } from '../../features/merope/anime25drig/types'
 import { getSiteFace } from '../../features/merope/api'
-import { FacePresence } from '../../features/merope/FacePresence'
 import {
   FACE_UPDATED_EVENT,
   PERSONA_UPDATED_EVENT,
 } from '../../features/merope/events'
+import { FacePresence } from '../../features/merope/FacePresence'
 import {
   LIVE_FACE_PLAYBACK_PRIORITY,
   notifyLiveFaceUnmounted,
@@ -208,6 +216,9 @@ function LiveMeropeWidget({
   const wantLive = Boolean(packageKey)
   const ready = readyKey === packageKey && packageKey !== ''
   const handleRigPlaybackError = useCallback(() => setRigFailed(true), [])
+  useLayoutEffect(() => {
+    if (!motionReady) setReadyKey('')
+  }, [motionReady])
   useRigMotionLifecycle(rigRef, {
     mood,
     arousal,

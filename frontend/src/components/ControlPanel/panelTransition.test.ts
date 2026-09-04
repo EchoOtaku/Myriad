@@ -21,7 +21,6 @@ import {
   settleTimeoutMs,
   showsDynamicContent,
   showsOverlay,
-  showsOverlayBlur,
   showsPanelContent,
   showsProgressUi,
 } from './panelTransition.ts'
@@ -283,7 +282,7 @@ describe('动效档位', () => {
     assert.equal(standard.blurDuringMorph, true)
   })
 
-  it('移动端标准档不在 morph 热路径上做全屏模糊', () => {
+  it('移动端标准档不在 morph 热路径上做岛上模糊', () => {
     const mobile = resolvePanelMotion({
       level: 'standard',
       reduceMotion: false,
@@ -321,20 +320,6 @@ describe('动效档位', () => {
     })
     assert.equal(exlight.spatial, false)
     assert.equal(exlight.blurDuringMorph, false)
-  })
-
-  it('遮罩模糊在非标准档推迟到稳定展开态', () => {
-    const opening = panelReducer(initialPanelState, { type: 'open' })
-    const expanded = settle(opening)
-    const mobile = resolvePanelMotion({
-      level: 'standard',
-      reduceMotion: false,
-      isMobile: true,
-    })
-    assert.equal(showsOverlayBlur(opening, mobile), false)
-    assert.equal(showsOverlayBlur(expanded, mobile), true)
-    // 桌面标准档与既有观感一致：随遮罩一起出现
-    assert.equal(showsOverlayBlur(opening, standard), true)
   })
 
   it('兜底超时始终晚于 morph 本身', () => {

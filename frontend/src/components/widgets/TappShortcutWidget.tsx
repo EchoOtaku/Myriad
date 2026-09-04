@@ -15,7 +15,7 @@ import type {
   TappListItem,
 } from '../../tapp/services/TappLifecycleApi'
 import type { TappManifestLocales } from '../../tapp/types'
-import type { WidgetComponentProps } from '../WidgetGrid'
+import type { WidgetComponentProps } from '../widgetGridTypes'
 import { FaTh, FaTimes } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
 import {

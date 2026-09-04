@@ -99,7 +99,13 @@ fn apply_whitelisted_presence(live: &mut SelfLivePresence, data: &Value) {
             .or(live.speech_intent.clone());
     }
     if let Some(items) = data.get("perception").and_then(Value::as_array) {
-        live.perception = items
+        live.perception_payload = items
+            .iter()
+            .filter_map(sanitize_perception)
+            .take(crate::services::agent::perception_view::MAX_PERCEPTION_ITEMS)
+            .collect();
+        live.perception = live
+            .perception_payload
             .iter()
             .filter_map(Value::as_object)
             .map(crate::services::agent::perception_view::perception_reader_text)
@@ -108,6 +114,94 @@ fn apply_whitelisted_presence(live: &mut SelfLivePresence, data: &Value) {
             .take(crate::services::agent::perception_view::MAX_PERCEPTION_ITEMS)
             .collect();
     }
+    if let Some(music) = data.get("musicStatus") {
+        live.music_status = sanitize_music_status(music);
+    }
+}
+
+fn sanitize_perception(value: &Value) -> Option<Value> {
+    let obj = value.as_object()?;
+    let source = obj
+        .get("sourceId")?
+        .as_str()?
+        .chars()
+        .take(80)
+        .collect::<String>();
+    let kind = obj.get("kind")?.as_str()?;
+    if source.is_empty()
+        || !matches!(
+            kind,
+            "page" | "pointer" | "surface" | "music" | "voice" | "presence" | "screen"
+        )
+    {
+        return None;
+    }
+    let privacy = obj
+        .get("privacy")
+        .and_then(Value::as_str)
+        .unwrap_or("local");
+    if !matches!(privacy, "local" | "consented" | "system") {
+        return None;
+    }
+    let ttl = obj
+        .get("ttlMs")
+        .and_then(Value::as_i64)
+        .unwrap_or(0)
+        .clamp(0, 90_000);
+    if ttl == 0 {
+        return None;
+    }
+    let mut facts = serde_json::Map::new();
+    if let Some(input) = obj.get("safeFacts").and_then(Value::as_object) {
+        for (key, value) in input.iter().take(12) {
+            let value = match value {
+                Value::String(text) => Value::String(text.chars().take(120).collect()),
+                Value::Bool(_) | Value::Number(_) => value.clone(),
+                _ => continue,
+            };
+            facts.insert(key.chars().take(40).collect(), value);
+        }
+    }
+    Some(serde_json::json!({
+        "sourceId": source,
+        "kind": kind,
+        "ttlMs": ttl,
+        "summary": if privacy == "local" { String::new() } else {
+            obj.get("summary").and_then(Value::as_str).unwrap_or("").chars().take(400).collect()
+        },
+        "safeFacts": facts,
+        "privacy": privacy,
+    }))
+}
+
+fn sanitize_music_status(value: &Value) -> Option<Value> {
+    let obj = value.as_object()?;
+    let song = obj
+        .get("currentSong")
+        .and_then(Value::as_object)
+        .map(|song| {
+            let text = |key: &str, max: usize| {
+                song.get(key)
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .chars()
+                    .take(max)
+                    .collect::<String>()
+            };
+            serde_json::json!({
+                "name": text("name", 80), "artist": text("artist", 80),
+                "album": text("album", 80), "source": text("source", 40),
+                "duration": song.get("duration").and_then(Value::as_u64).unwrap_or(0).min(86_400),
+            })
+        });
+    Some(serde_json::json!({
+        "isPlaying": obj.get("isPlaying").and_then(Value::as_bool).unwrap_or(false),
+        "isEnabled": obj.get("isEnabled").and_then(Value::as_bool).unwrap_or(false),
+        "currentSong": song,
+        "currentSongIndex": obj.get("currentSongIndex").and_then(Value::as_u64).unwrap_or(0).min(10_000),
+        "playlistLength": obj.get("playlistLength").and_then(Value::as_u64).unwrap_or(0).min(10_000),
+        "currentLyric": obj.get("currentLyric").and_then(Value::as_str).unwrap_or("").chars().take(120).collect::<String>(),
+    }))
 }
 
 pub fn live_presence_from_request(request: &UserRequest) -> SelfLivePresence {
@@ -157,7 +251,10 @@ mod tests {
                         "visibleMode": "chat",
                         "speechIntent": "tts"
                     },
-                    "perception": [{ "summary": "music idle" }]
+                    "perception": [{
+                        "sourceId": "music", "kind": "music", "ttlMs": 2000,
+                        "privacy": "system", "summary": "music idle"
+                    }]
                 })),
                 ..Default::default()
             }),
@@ -201,7 +298,9 @@ mod tests {
                 interaction_mode: AgentInteractionMode::Chat,
                 custom_data: Some(serde_json::json!({
                     "perception": [{
+                        "sourceId": "pointer",
                         "kind": "pointer",
+                        "ttlMs": 2000,
                         "privacy": "local",
                         "summary": "SECRET_PAGE_BODY",
                         "safeFacts": { "route": "/inbox" }
@@ -231,7 +330,9 @@ mod tests {
                 interaction_mode: AgentInteractionMode::Chat,
                 custom_data: Some(serde_json::json!({
                     "perception": [{
+                        "sourceId": "page",
                         "kind": "page",
+                        "ttlMs": 8000,
                         "privacy": "consented",
                         "summary": "Hello article",
                         "safeFacts": { "title": "Hello" }
@@ -249,7 +350,9 @@ mod tests {
         let rows: Vec<_> = (0..9)
             .map(|i| {
                 serde_json::json!({
+                    "sourceId": format!("presence-{i}"),
                     "kind": "presence",
+                    "ttlMs": 4000,
                     "privacy": "consented",
                     "summary": format!("src-{i}"),
                 })
@@ -294,7 +397,10 @@ mod tests {
                 "panelVisible": true,
                 "__admin": true
             },
-            "perception": [{ "summary": "x", "raw": "<pixels>" }],
+            "perception": [{
+                "sourceId": "presence", "kind": "presence", "ttlMs": 4000,
+                "privacy": "system", "summary": "x", "raw": "<pixels>"
+            }],
             "secret": "nope"
         }));
         assert!(live.speaking);
@@ -318,6 +424,9 @@ mod tests {
         let mut items = Vec::new();
         for i in 0..15 {
             items.push(serde_json::json!({
+                "sourceId": format!("presence-{i}"),
+                "kind": "presence",
+                "ttlMs": 4000,
                 "summary": format!("{long}-{i}"),
                 "privacy": "consented"
             }));

@@ -76,7 +76,6 @@ import {
   settleTimeoutMs,
   showsDynamicContent,
   showsOverlay,
-  showsOverlayBlur,
   showsPanelContent,
   showsProgressUi,
 } from './ControlPanel/panelTransition'
@@ -193,7 +192,7 @@ const GlobalControlPanel: React.FC = () => {
     user?.id,
   )
   // 展开/收起的唯一状态所有者（issue #320）。
-  // 遮罩、收缩内容、展开内容、进度 UI、动画类名全部从 phase 派生，
+  // 收缩内容、展开内容、进度 UI、动画类名全部从 phase 派生，
   // 不再由若干独立 boolean + 固定 setTimeout 各自维护。
   const [panel, dispatchPanel] = useReducer(panelReducer, initialPanelState)
   const isExpanded = isPanelOpen(panel)
@@ -1195,7 +1194,7 @@ const GlobalControlPanel: React.FC = () => {
   }, [themePreference])
 
   // 相位推进：由外壳真实的过渡结束事件驱动，定时器只作兜底。
-  // 收缩内容淡出 → 外壳 morph → 展开内容淡入 → 遮罩，共用同一条时间线，
+  // 收缩内容淡出 → 外壳 morph → 展开内容淡入，共用同一条时间线，
   // 不再有「先出空壳、400ms 后内容突然加入」的固定猜测。
   useEffect(() => {
     if (!isPanelMorphing(panel)) return
@@ -1572,7 +1571,7 @@ const GlobalControlPanel: React.FC = () => {
 
   // 检测文本是否超出2行，需要垂直滚动 - 使用统一动画调度器优化性能
   useEffect(() => {
-    if (!textRef.current || !currentContent) {
+    if (!textRef.current || !currentContent || isExpanded) {
       setNeedsScroll(false)
       return
     }
@@ -1656,6 +1655,7 @@ const GlobalControlPanel: React.FC = () => {
       unobserve()
     }
   }, [
+    isExpanded,
     currentContent?.text,
     currentContent?.type,
     currentContent?.lyricDuration,
@@ -1804,23 +1804,27 @@ const GlobalControlPanel: React.FC = () => {
                   aria-label={t.common.close}
                 >
                   <svg
-                    className="w-5 h-5"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
+                    aria-hidden
                   >
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
+                      strokeWidth={2.25}
+                      d="M5 15l7-7 7 7"
                     />
                   </svg>
                 </button>
               </div>
 
               {/* Tab 切换：控制面板 / 通知 */}
-              <div className="notif-tab-bar" role="tablist">
+              <div
+                className="notif-tab-bar"
+                role="tablist"
+                data-tab={panelTab}
+              >
                 <button
                   type="button"
                   role="tab"
@@ -2143,19 +2147,14 @@ const GlobalControlPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* 遮罩层 - 始终存在，通过 CSS 控制显示。
-          defer-blur 档位（移动端 / 低性能 / reduced-motion）把全屏 backdrop-filter
-          移出 morph 热路径，稳定展开后再淡入模糊；桌面标准档观感不变 */}
+      {/* 透明点击层：无视觉遮罩，点空白收起 */}
       <div
         className={[
           'control-panel-overlay',
           showOverlay ? 'visible' : '',
-          activeMotion.blurDuringMorph ? '' : 'defer-blur',
-          showsOverlayBlur(panel, activeMotion) ? 'blurred' : '',
         ]
           .filter(Boolean)
           .join(' ')}
-        style={motionVars}
         onClick={handleClosePanel}
       />
     </React.Fragment>

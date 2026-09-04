@@ -81,6 +81,7 @@ describe('uiBagOwnership', () => {
     assert.equal(configChangesNeedHardReload(next, prev, deepEqual), false)
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('site_keywords'))
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('site_og_image'))
+    assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('google_site_verification'))
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('site_noindex'))
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('ga_measurement_id'))
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('umami_website_id'))

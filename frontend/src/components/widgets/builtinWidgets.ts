@@ -5,7 +5,7 @@
 
 import type { ComponentType } from 'react'
 import type { TranslationKeys } from '../../i18n'
-import type { WidgetComponentProps, WidgetSize, WidgetType } from '../WidgetGrid'
+import type { WidgetComponentProps, WidgetSize, WidgetType } from '../widgetGridTypes'
 import { lazy } from 'react'
 import {
   preloadReportCardsForTypes,

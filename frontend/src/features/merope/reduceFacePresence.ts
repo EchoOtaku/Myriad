@@ -150,13 +150,13 @@ export function copySurfaceFrame(
   if (!root) return null
   const live = root.querySelector('.face-presence__live')
   const scope: ParentNode = live ?? root
-  const canvas = scope.querySelector('canvas')
-  if (
-    canvas instanceof HTMLCanvasElement &&
-    canvas.width > 0 &&
-    canvas.height > 0
-  ) {
-    return copyCanvas(canvas)
+  const canvases = scope.querySelectorAll('canvas')
+  for (const canvas of canvases) {
+    if (!(canvas instanceof HTMLCanvasElement)) continue
+    if (canvas.classList.contains('face-presence__hold')) continue
+    if (canvas.width <= 0 || canvas.height <= 0) continue
+    const copy = copyCanvas(canvas)
+    if (copy) return copy
   }
   const image = scope.querySelector('img')
   if (

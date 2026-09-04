@@ -90,8 +90,8 @@ const FEDERATION_TRANSFER_PROXY_TIMEOUT_MS = 10 * 60 * 1000
 // visual design). Backend Pro and image-generation sockets stay idle until the
 // model returns. Default 30s proxy timeout surfaces as "Backend proxy timeout".
 const MEROPE_PROXY_TIMEOUT_MS = 15 * 60 * 1000
-// Non-stream /api/agent/process: client waits 120s. Proxy must not die at 30s.
-const AGENT_PROCESS_PROXY_TIMEOUT_MS = 3 * 60 * 1000
+// Non-stream AI HTTP (agent process, speech, TapSDK AI). Floor 5 min.
+const AGENT_PROCESS_PROXY_TIMEOUT_MS = 5 * 60 * 1000
 
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
@@ -143,6 +143,18 @@ function isModel3dLongPath(urlPath) {
 
 function isAgentProcessPath(urlPath) {
   return requestPathname(urlPath) === '/api/agent/process'
+}
+
+/** Speech / TapSDK AI / report+prompt generation: default 30s proxy surfaces as timeout. */
+function isAiLongRequestPath(urlPath) {
+  const path = requestPathname(urlPath)
+  return (
+    path.startsWith('/api/speech') ||
+    path.startsWith('/api/tapp/ai/') ||
+    path.startsWith('/api/reports/generate') ||
+    path === '/api/prompt/generate' ||
+    path.startsWith('/api/ai/')
+  )
 }
 
 /**
@@ -372,10 +384,41 @@ function isSeoCrawlerUserAgent(ua) {
     'claudebot',
     'storebot-google',
     'google-inspectiontool',
+    'google-site-verification',
     'preview',
+    'qq-url-preview',
+    'dingtalkbot',
   ]
   if (markers.some((m) => s.includes(m))) return true
   return s.includes('bot/') || s.includes('spider') || s.includes('crawler')
+}
+
+/** WeChat / Weibo / WeCom in-app browsers that also fetch share previews. */
+function isInappShareUserAgent(ua) {
+  const s = String(ua || '').toLowerCase()
+  return (
+    s.includes('micromessenger') ||
+    s.includes('windowswechat') ||
+    s.includes('wxwork') ||
+    s.includes('weibo')
+  )
+}
+
+function hasSpaBypass(urlPath) {
+  const raw = String(urlPath || '')
+  try {
+    const url =
+      raw.startsWith('http://') || raw.startsWith('https://')
+        ? new URL(raw)
+        : new URL(raw, 'http://dev.invalid')
+    return url.searchParams.get('_spa') === '1'
+  } catch {
+    return /(?:^|[?&])_spa=1(?:&|$)/.test(raw)
+  }
+}
+
+function wantsSeoHtmlShell(userAgent) {
+  return isSeoCrawlerUserAgent(userAgent) || isInappShareUserAgent(userAgent)
 }
 
 /**
@@ -388,15 +431,20 @@ function isBackendDevProxyPath(urlPath, userAgent) {
     path.startsWith('/api/') ||
     path === '/health' ||
     path === '/sitemap.xml' ||
-    path === '/robots.txt'
+    path === '/robots.txt' ||
+    path === '/llms.txt'
   ) {
     return true
   }
   // Crawler HTML shells (humans stay on SPA)
-  if (path.startsWith('/tapp/run/') && isSeoCrawlerUserAgent(userAgent)) {
-    return true
-  }
-  if (path.startsWith('/brew/item/') && isSeoCrawlerUserAgent(userAgent)) {
+  const seoShellExact = new Set(['/', '/tapp', '/brew', '/library', '/reports'])
+  if (
+    (seoShellExact.has(path) ||
+      path.startsWith('/tapp/run/') ||
+      path.startsWith('/brew/item/')) &&
+    wantsSeoHtmlShell(userAgent) &&
+    !hasSpaBypass(urlPath)
+  ) {
     return true
   }
   return (
@@ -471,7 +519,7 @@ function backendDevProxyPlugin() {
                 ? MEROPE_PROXY_TIMEOUT_MS
                 : isAgentSsePath(originalUrl)
                   ? PLAYGROUND_PROXY_TIMEOUT_MS
-                  : isAgentProcessPath(originalUrl)
+                  : isAgentProcessPath(originalUrl) || isAiLongRequestPath(originalUrl)
                     ? AGENT_PROCESS_PROXY_TIMEOUT_MS
                     : 30000
           // SSE and large transfer downloads must be piped. Buffering a multi-MB
@@ -821,6 +869,10 @@ export default defineConfig({
       __APP_VERSION__: JSON.stringify(APP_VERSION),
     },
     optimizeDeps: {
+      // Don't block first-paint on the full crawl. Default true waits for every
+      // discovered dep; Agora's ua-parser-js 2.x default-import then held
+      // react.js forever and the PageLoader never dismissed.
+      holdUntilCrawlEnd: false,
       // Pre-bundle deps used by lazy routes (Tapp detail / playground).
       // Discovering them mid-session triggers "504 Outdated Optimize Dep" and
       // breaks React.lazy chunks like TappDetailView until a full hard reload.
@@ -832,12 +884,32 @@ export default defineConfig({
         'react-dom',
         'react-dom/client',
         'react-router-dom',
+        // The default SDK entries are self-contained UMD, not browser ESM.
+        // Prebundle them to expose exports; excluding them yields undefined
+        // createClient / RTM in the browser. Do not use the optional ESM tree.
+        'agora-rtc-sdk-ng',
+        'agora-rtm',
       ],
-      // UMD bundle; Vite prebundle rewrites break createClient.
-      exclude: ['agora-rtc-sdk-ng'],
+      // Agora's optional ESM tree must not enter the Vite prebundle.
+      // Rolldown rewriting `import x from 'ua-parser-js'` fails on 2.x, and a
+      // failed crawl holds every optimized dep — the PageLoader never dismisses.
+      exclude: [
+        '@agora-js/shared',
+        '@agora-js/media',
+        '@agora-js/report',
+        '@agora-js/protocol',
+        'ua-parser-js',
+      ],
     },
     ssr: {
-      external: ['agora-rtc-sdk-ng'],
+      external: [
+        'agora-rtc-sdk-ng',
+        'agora-rtm',
+        '@agora-js/shared',
+        '@agora-js/media',
+        '@agora-js/report',
+        '@agora-js/protocol',
+      ],
     },
     plugins: [
       tailwindcss(), // Tailwind CSS v4 Vite plugin

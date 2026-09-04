@@ -75,6 +75,15 @@ export const zh: SettingGuidesCatalog = {
       notes:
         '建议横图、≥1200×630。上传的 data URL 对多数爬虫无效，生产环境更推荐可公开访问的图片地址。',
     },
+    googleSiteVerification: {
+      what: 'Google Search Console 用 HTML 标签确认「你拥有这个网站」。',
+      chain:
+        '① Search Console 添加资源 → 选 HTML 标签。\n② 把 content 或整段 meta 贴到这里 → 底部保存。\n③ Google 抓首页核对 meta 后即可验证；通过后提交 /sitemap.xml。',
+      frontend:
+        '爬虫 HTML 壳和 SPA 的 <meta name="google-site-verification">。Google 验证抓取走爬虫壳。',
+      notes:
+        '不要用 HTML 文件验证（本站是 SPA，不会在根目录放 google*.html）。DNS TXT 验证不用填这项。',
+    },
     siteNoindex: {
       what: '是否允许搜索引擎收录本站（单个开关）。',
       chain:

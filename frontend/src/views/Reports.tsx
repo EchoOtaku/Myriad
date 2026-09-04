@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { ToastType } from '../components/Toast'
-import type { WidgetConfig } from '../components/WidgetGrid'
+import type { WidgetConfig } from '../components/widgetGridTypes'
 import {
   FaGithub,
   FaSteam,

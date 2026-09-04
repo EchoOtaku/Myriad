@@ -818,6 +818,9 @@ impl ConfigService {
         if let Some(v) = map.get("site_og_image") {
             config.site_og_image = v.as_str().map(|s| s.to_string());
         }
+        if let Some(v) = map.get("google_site_verification") {
+            config.google_site_verification = v.as_str().map(|s| s.to_string());
+        }
         if let Some(v) = map.get("site_noindex") {
             if let Some(b) = v.as_bool() {
                 config.site_noindex = b;

@@ -33,7 +33,7 @@
 .setting-title-help-trigger:hover,
 .setting-title-help:focus-within .setting-title-help-trigger,
 .setting-title-help-trigger[aria-expanded='true'] {
-  color: var(--cfg-accent);
+  color: var(--cfg-text-1);
   background: color-mix(in srgb, var(--cfg-accent) 12%, transparent);
 }
 
@@ -56,7 +56,7 @@ html.dark .setting-title-help-trigger {
 html.dark .setting-title-help-trigger:hover,
 html.dark .setting-title-help:focus-within .setting-title-help-trigger,
 html.dark .setting-title-help-trigger[aria-expanded='true'] {
-  color: var(--cfg-accent);
+  color: #fff;
   background: color-mix(in srgb, var(--cfg-accent) 16%, transparent);
 }
 

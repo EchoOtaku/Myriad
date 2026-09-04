@@ -1,6 +1,6 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, ConnectionTrait, DatabaseBackend,
     DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Statement,
     TransactionTrait,
 };
@@ -622,6 +622,69 @@ pub async fn list_remembered(
     list_diary_from_sources(db, user_id, &[DIARY_SOURCE_REMEMBER], limit).await
 }
 
+fn remembered_page_query(
+    user_id: i32,
+    before: Option<&(chrono::DateTime<chrono::FixedOffset>, String)>,
+) -> sea_orm::Select<agent_diary::Entity> {
+    let query = agent_diary::Entity::find()
+        .filter(agent_diary::Column::UserId.eq(user_id))
+        .filter(agent_diary::Column::Source.eq(DIARY_SOURCE_REMEMBER));
+    let query = if let Some((created_at, id)) = before {
+        query.filter(
+            Condition::any()
+                .add(agent_diary::Column::CreatedAt.lt(*created_at))
+                .add(
+                    Condition::all()
+                        .add(agent_diary::Column::CreatedAt.eq(*created_at))
+                        .add(agent_diary::Column::Id.lt(id.clone())),
+                ),
+        )
+    } else {
+        query
+    };
+    query
+        .order_by_desc(agent_diary::Column::CreatedAt)
+        .order_by_desc(agent_diary::Column::Id)
+        .limit(128)
+}
+
+pub async fn recall_remembered(
+    db: &DatabaseConnection,
+    user_id: i32,
+    query: Option<&str>,
+    limit: usize,
+) -> Result<Vec<String>, anyhow::Error> {
+    if limit == 0 || user_id <= 0 {
+        return Ok(Vec::new());
+    }
+    if query.is_none_or(|query| query.trim().is_empty()) {
+        let notes = list_remembered(db, user_id, limit as u64).await?;
+        let facts = notes
+            .into_iter()
+            .map(|note| super::ingest::compact_summary(&note.content))
+            .collect::<Vec<_>>();
+        return Ok(super::speaking_prompts::rank_remembered(
+            &facts, None, limit,
+        ));
+    }
+    let mut ranker = super::speaking_prompts::RememberedRanker::new(query, limit);
+    let mut before = None;
+    loop {
+        let notes = remembered_page_query(user_id, before.as_ref())
+            .all(db)
+            .await?;
+        let count = notes.len();
+        before = notes.last().map(|note| (note.created_at, note.id.clone()));
+        for note in notes {
+            ranker.push(&super::ingest::compact_summary(&note.content));
+        }
+        if count < 128 {
+            break;
+        }
+    }
+    Ok(ranker.finish())
+}
+
 pub async fn insert_proactive(
     db: &DatabaseConnection,
     user_id: i32,
@@ -793,6 +856,25 @@ pub async fn touch_proactive(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn recall_pages_stay_in_one_addressee_and_source_with_a_stable_cursor() {
+        use sea_orm::QueryTrait;
+        let cursor = (chrono::Utc::now().fixed_offset(), "last-id".to_owned());
+        let statement = super::remembered_page_query(42, Some(&cursor))
+            .build(sea_orm::DatabaseBackend::Postgres);
+        let sql = statement.to_string();
+        assert!(sql.contains("\"user_id\" = 42"), "{sql}");
+        assert!(sql.contains("\"source\" = 'remember'"), "{sql}");
+        assert!(sql.contains("\"id\" < 'last-id'"), "{sql}");
+        assert!(
+            sql.contains(
+                "ORDER BY \"agent_diary\".\"created_at\" DESC, \"agent_diary\".\"id\" DESC"
+            ),
+            "{sql}"
+        );
+        assert!(sql.contains("LIMIT 128"), "{sql}");
+        assert!(!sql.contains("OFFSET"), "{sql}");
+    }
     use super::*;
     use sea_orm::{Database, TransactionTrait};
     use serde_json::json;

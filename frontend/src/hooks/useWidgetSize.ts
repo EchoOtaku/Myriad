@@ -7,7 +7,7 @@
  *   跨 1078 时 isCompact 反向跳变
  */
 
-import type { WidgetSize } from '../components/WidgetGrid'
+import type { WidgetSize } from '../components/widgetGridTypes'
 import type { ViewportBand } from '../utils/viewportBands'
 import type { WidgetSizeKey } from '../utils/widgetSizeScale'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -19,7 +19,6 @@ import {
   STANDARD_CELL_SIZE as STANDARD_CELL_SIZE_CONST,
   WIDGET_COMPACT_SCALE,
   WIDGET_MINI_SCALE,
-
 } from '../utils/widgetSizeScale'
 import { getCachedSize } from './animation'
 import { useHomeResizeObserver } from './animation/pages/home'
@@ -30,6 +29,7 @@ export const STANDARD_CELL_SIZE = STANDARD_CELL_SIZE_CONST
 export { STANDARD_CELL_BY_BAND, WIDGET_COMPACT_SCALE, WIDGET_MINI_SCALE }
 export {
   getStandardWidgetDimensionsForBand,
+  libraryDockPreviewDisplayScale,
   resolveWidgetContentScale,
   standardCellSizeForBand,
   WIDGET_SCALE_MAX,
@@ -42,12 +42,6 @@ export function getStandardWidgetDimensions(widgetSize: WidgetSize): {
 } {
   return getStandardWidgetDimensionsPure(widgetSize as WidgetSizeKey)
 }
-
-/**
- * Library strip only: shrink the already-standard-sized preview so many
- * widgets fit. Content still renders at STANDARD_CELL_SIZE (forceScale=1).
- */
-export const LIBRARY_PREVIEW_DISPLAY_SCALE = 0.65
 
 export interface WidgetSizeInfo {
   /** 缩放比例（相对当前 viewport 档设计尺寸） */

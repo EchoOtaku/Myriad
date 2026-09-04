@@ -314,10 +314,10 @@ test('a live-conversation energy frame still opens an idle mouth', () => {
   assert.deepEqual(rig.energy, [0.4])
 })
 
-test('live-conversation frames carry the live generation', () => {
+test('live-conversation frames carry their adopted run generation', () => {
   const source = readFileSync(
     new URL('./speech/agoraConversation.ts', import.meta.url),
     'utf8',
   )
-  assert.match(source, /generation: liveMotionGeneration\(\)/)
+  assert.match(source, /generation: identity\.generation/)
 })

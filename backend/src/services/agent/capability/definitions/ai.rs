@@ -139,7 +139,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         }),
         required_permissions: vec!["ai:image".to_string()],
         requires_ai: true,
-        estimated_duration_ms: Some(90000),
+        estimated_duration_ms: Some(300_000),
         ..Default::default()
     });
 

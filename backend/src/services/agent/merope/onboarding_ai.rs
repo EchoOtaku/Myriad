@@ -33,7 +33,7 @@ const ONBOARDING_AI_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// 没有状态码的传输错误。所以最坏情况是一次慢调用，不是三次叠加。
 ///
 /// Keep in sync with `NAME_SUGGEST_TIMEOUT_MS`（前端必须比这个大）。
-const NAME_CALL_TIMEOUT: Duration = Duration::from_secs(2 * 60);
+const NAME_CALL_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 /// 失控保险，不是调优旋钮。
 ///
 /// 名字加含义大概四十个 token。这里给到四千，是因为多数网关把思考 token 也

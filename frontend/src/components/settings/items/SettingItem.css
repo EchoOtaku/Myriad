@@ -359,7 +359,7 @@ button.field-input.field-input--static:disabled {
   font-size: 0.72rem;
   font-weight: 650;
   line-height: 1;
-  color: var(--cfg-accent, #3b82f6);
+  color: var(--cfg-text-1);
   background: color-mix(in srgb, var(--cfg-accent, #3b82f6) 12%, transparent);
   border: 1px solid
     color-mix(in srgb, var(--cfg-accent, #3b82f6) 22%, transparent);
@@ -378,7 +378,7 @@ button.field-input.field-input--static:hover:not(:disabled)
 }
 
 html.dark .field-input-static-action {
-  color: var(--cfg-accent, #93c5fd);
+  color: #fff;
   background: color-mix(in srgb, var(--cfg-accent, #60a5fa) 18%, transparent);
   border-color: color-mix(in srgb, var(--cfg-accent, #60a5fa) 30%, transparent);
 }
@@ -2420,4 +2420,60 @@ html.dark .toggle-switch.disabled .toggle-slider {
   background: color-mix(in srgb, var(--cfg-text-3) 22%, transparent);
   border-color: color-mix(in srgb, var(--cfg-text-3) 30%, transparent);
   box-shadow: none;
+}
+
+/* 悬停预告：关着时轨道/滑块先演一遍开启；开着时只加强光晕 */
+.toggle-switch.is-previewing:not(.disabled, :has(input:checked))
+  .toggle-slider {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--cfg-accent) 58%, transparent),
+    color-mix(in srgb, var(--color-secondary) 48%, transparent)
+  );
+  border-color: color-mix(in srgb, var(--cfg-accent) 42%, transparent);
+  box-shadow:
+    0 2px 10px -2px color-mix(in srgb, var(--cfg-accent) 38%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--cfg-accent) 20%, transparent);
+}
+
+.toggle-switch.is-previewing:not(.disabled, :has(input:checked))
+  .toggle-slider::before {
+  transform: translateX(7px);
+}
+
+.toggle-switch.is-previewing:not(.disabled):has(input:checked) .toggle-slider {
+  box-shadow:
+    0 2px 14px -2px color-mix(in srgb, var(--cfg-accent) 65%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--cfg-accent) 32%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toggle-switch.is-previewing:not(.disabled, :has(input:checked))
+    .toggle-slider::before {
+    transform: none;
+  }
+}
+
+.toggle-preview-tip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.22rem;
+}
+
+.toggle-preview-kicker {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.05em 0.45em;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cfg-accent) 16%, transparent);
+  color: var(--cfg-accent);
+  font-size: 0.625rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+}
+
+.toggle-preview-body {
+  color: var(--cfg-text-1);
 }

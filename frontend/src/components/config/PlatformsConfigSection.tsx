@@ -597,9 +597,6 @@ const PlatformsConfigSection: React.FC<PlatformsConfigSectionProps> = ({
           <div className="platforms-grid">
             {platforms.map((platform, index) => {
               const platformConfigured = isPlatformConfigured(platform)
-              const toggleTitle = !platformConfigured
-                ? t.config.notConfigured
-                : undefined
               const platformDesc = getPlatformDescription(platform)
               const isDragging = dragIndex === index
               const isDragOver =
@@ -825,7 +822,17 @@ const PlatformsConfigSection: React.FC<PlatformsConfigSectionProps> = ({
                           '{name}',
                           platform.name,
                         )}
-                        title={toggleTitle}
+                        preview={{
+                          on: t.config.platformEnablePreviewOn.replace(
+                            '{name}',
+                            platform.name,
+                          ),
+                          off: t.config.platformEnablePreviewOff.replace(
+                            '{name}',
+                            platform.name,
+                          ),
+                          disabled: t.config.platformEnablePreviewNeedConfig,
+                        }}
                       />
                     </div>
                   </div>

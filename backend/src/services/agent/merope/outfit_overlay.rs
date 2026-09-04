@@ -65,12 +65,22 @@ pub async fn apply_model_wear_directive(
     let worn = worn_outfit_id(profile).unwrap_or(DEFAULT_WARDROBE_ID);
     let current = live_overlay(user_id, session_id, &looks);
     match resolve_wear_directive(directive, &looks, worn, current.as_deref()) {
-        OverlayDecision::Unchanged => None,
+        OverlayDecision::Unchanged => {
+            tracing::debug!(user_id, session_id, "chat outfit overlay unchanged");
+            None
+        }
         OverlayDecision::Clear => {
+            tracing::info!(user_id, session_id, "chat outfit overlay cleared");
             clear_overlay(user_id, session_id);
             Some(None)
         }
         OverlayDecision::Wear(id) => {
+            tracing::info!(
+                user_id,
+                session_id,
+                outfit_id = %id,
+                "chat outfit overlay wear"
+            );
             set_overlay(user_id, session_id, id);
             Some(Some(id.to_string()))
         }
@@ -128,14 +138,19 @@ mod tests {
     fn chat_turns_apply_lite_wear_after_it_speaks() {
         let process = include_str!("../process_and_recipe.rs");
         assert!(process.contains("peel_chat_live_reply"));
+        assert!(process.contains("wear_directive_after_reply"));
         assert!(process.contains("apply_model_wear_directive"));
         let chat = process
             .split("AgentInteractionMode::Chat")
             .nth(2)
             .expect("streaming chat branch");
-        let chat = chat.split("return Ok(AgentResponse").next().unwrap();
+        let chat = chat
+            .split("\n        if let Some(mood) = mood_transition.clone() {")
+            .next()
+            .unwrap();
         assert!(chat.contains("stream_strict_lite_chat_response"));
         assert!(chat.contains("publish_model_outfit_overlay"));
+        assert!(chat.contains("chat_reply_with_overlay"));
         assert!(!chat.contains("upsert_persona"));
         assert!(!chat.contains("persist_active_asset"));
         let prompt = include_str!("../confirmation_and_tasks.rs");

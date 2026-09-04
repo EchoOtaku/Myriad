@@ -1090,10 +1090,10 @@ mod tests {
         );
     }
 
-    /// Chat reacts from the floor before streaming. Refinement is allowed only
-    /// after the reply model has emitted visible text, so it cannot hurt TTFT.
+    /// Chat reacts immediately and only refines delivery once it has actual
+    /// spoken context. Short replies do not trigger a second director call.
     #[test]
-    fn streaming_chat_arms_refinement_without_competing_for_first_token() {
+    fn streaming_chat_refines_actual_delivery_without_delaying_text() {
         let src = include_str!("../process_and_recipe.rs");
         assert!(src.contains("let performance = None;"));
         let chat = src
@@ -1104,33 +1104,32 @@ mod tests {
             local_reaction < chat,
             "Chat must react before the reply stream starts"
         );
+        let end = src[chat..]
+            .find("return Ok(AgentResponse")
+            .map(|offset| chat + offset)
+            .unwrap();
+        let chat = &src[chat..end];
+        assert!(chat.contains("motion_refinements.drain(..)"));
+        assert!(chat.contains("delivery_refined |= guard.stop().await"));
+        assert!(!src.contains("motion_start_tx"));
+        assert!(src.contains("context.response_text = Some(preview)"));
         let streaming = include_str!("../confirmation_and_tasks.rs");
-        assert!(streaming.contains("StreamDelta::Text(_)"));
-        let signalled = streaming
-            .find("stream_started.try_send(())")
-            .expect("first-delta signal");
-        let emitted = streaming[signalled..]
-            .find("emit_stream_delta")
-            .expect("delta emission");
-        assert!(
-            emitted > 0,
-            "the signal must be sent as the first model delta is observed"
-        );
+        let preview_send = streaming.find("tx.try_send(preview)").unwrap();
+        assert!(streaming[..preview_send].contains("emit_stream_delta(&tx, delta).await"));
     }
 
     #[test]
-    fn floor_precedes_refinement_and_delivery_precedes_stream_close() {
+    fn immediate_reaction_and_delivery_precede_stream_close() {
         let src = include_str!("../process_and_recipe.rs");
         let floor = src.find("publish_local_motion(&reaction_context").unwrap();
-        let refinement = src.find("spawn_motion_refinement(").unwrap();
-        assert!(floor < refinement);
         let delivery = src.find("publish_local_motion(&delivery_context").unwrap();
+        assert!(floor < delivery);
         let finish = src
             .find("response_agent::finish_stream(&progress_tx)")
             .unwrap();
         assert!(delivery < finish);
-        assert!(src.contains("motion_refinements.clear();"));
-        assert!(src.contains("self.0.abort();"));
+        assert!(src.contains("self.task.abort();"));
+        assert!(src.contains("mood_transition.clone().filter(|_| !delivery_refined)"));
     }
 
     /// Production dropped 196 of 217 calls sitting exactly on the old 4s wall;

@@ -168,9 +168,13 @@
 }
 
 .ai-vendor-card-status-missing {
-  color: var(--cfg-accent) !important;
+  color: var(--cfg-text-1) !important;
   border-color: color-mix(in srgb, var(--cfg-accent) 28%, transparent) !important;
   background: color-mix(in srgb, var(--cfg-accent) 12%, transparent) !important;
+}
+
+html.dark .ai-vendor-card-status-missing {
+  color: #fff !important;
 }
 
 .ai-vendor-card-control {

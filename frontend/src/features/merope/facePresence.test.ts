@@ -151,6 +151,7 @@ test('panel and widget share face presence, not a second WebGL', () => {
   assert.match(panel, /FacePresence/)
   assert.match(widget, /FacePresence/)
   assert.match(ui, /onLiveUnmounted/)
+  assert.match(ui, /if \(!present \|\| !ready \|\| wasReady\) return/)
   assert.match(panel, /onLiveUnmounted=/)
   assert.match(widget, /onLiveUnmounted=/)
   assert.doesNotMatch(ui, /getContext\('webgl/)

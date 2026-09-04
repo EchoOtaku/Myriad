@@ -613,6 +613,8 @@ export const zhCN: TranslationKeys = {
       visitorDesc:
         '第一方埋点（批处理 / 空闲上报）。管理员与站长登录后不计入；访客 ID 在本机，服务端只存哈希；经 proxy 取真实 IP。',
       enableAria: '启用访客统计',
+      enablePreviewOn: '会开始记录新访问；管理员和站长登录不计入',
+      enablePreviewOff: '不再记录新访问，历史还可以看',
       disabledBanner: '采集已关闭：不再记录新访问，历史数据仍可查看',
       pagesTitle: '页面访问分析',
       pagesDesc: '选定范围内各页面的浏览量、去重访客与平均停留',
@@ -1483,12 +1485,17 @@ export const zhCN: TranslationKeys = {
     fieldSiteOgImage: '分享预览图',
     fieldSiteOgImageHint:
       '公开可访问的 https 图片 URL（爬虫无法使用 data: 或本地上传）。建议 ≥1200×630，PNG/JPEG/WebP',
+    fieldGoogleSiteVerification: 'Google Search Console 验证',
+    fieldGoogleSiteVerificationHint:
+      '在 Search Console 用「HTML 标签」验证时，把 content 值或整段 meta 贴到这里。保存后写入页面 google-site-verification。网站地址配好后可到 /sitemap.xml 提交站点地图。',
     fieldSiteNoindex: '搜索引擎收录',
     fieldSiteNoindexHint:
       '开启时允许搜索引擎收录；关闭后页面带上 noindex, nofollow，适合内网或未准备公开的实例',
     fieldSiteVisibilityPolicy: '搜索与 AI 可见性',
     fieldSiteVisibilityPolicyHint:
       '决定搜索引擎与 AI（ChatGPT、Perplexity 等）能否发现并引用本站。推荐公开站点选择「允许 AI 引用」。',
+    seoOriginMissingHint:
+      '当前未设置网站地址。sitemap 会是空的，分享卡片也没有绝对链接。请先在上方填写网站地址。',
     visibilityPrivate: '不公开',
     visibilityPrivateHint: '写入 noindex，不进 sitemap，不提供 /llms.txt',
     visibilityPrivateHintBefore: '写入 ',
@@ -1748,6 +1755,7 @@ export const zhCN: TranslationKeys = {
     placeholderSiteTitle: 'Myriad - A myriad of lights, in one place.',
     placeholderSiteDescription: 'A myriad of lights, in one place.',
     placeholderSiteKeywords: '个人主页, 博客, 数字生活',
+    placeholderGoogleSiteVerification: '粘贴验证码或整段 meta 标签',
     placeholderSiteOgImage: 'https://example.com/og.png',
     placeholderGaMeasurementId: 'G-XXXXXXXXXX',
     placeholderUmamiWebsiteId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
@@ -1853,9 +1861,11 @@ export const zhCN: TranslationKeys = {
     aiVendorSetupAgoraPortalTitle: '打开声网 / Agora 控制台',
     aiVendorSetupAgoraPortalDesc: '进入项目与 Conversational AI。',
     aiVendorSetupAgoraCreateTitle: '复制凭证',
-    aiVendorSetupAgoraCreateDesc: '复制 App ID、证书，以及 REST 的 Customer ID / Secret。',
+    aiVendorSetupAgoraCreateDesc:
+      '复制 App ID、证书，以及 REST 的 Customer ID / Secret。',
     aiVendorSetupAgoraFillTitle: '回到本页填写',
-    aiVendorSetupAgoraFillDesc: '填 App ID、证书、Customer ID 和 Secret。朗读走已配置的 MiniMax。',
+    aiVendorSetupAgoraFillDesc:
+      '填 App ID、证书、Customer ID 和 Secret。朗读走已配置的 MiniMax。',
     // 图片生成模型配置
     aiImageTitle: '图片生成模型',
     aiImageDesc: '生成图片；分辨率由请求参数指定',
@@ -2267,8 +2277,14 @@ export const zhCN: TranslationKeys = {
     aiCooldownSeconds: '调用冷却时间',
     aiCooldownSecondsHint: '两次 AI 调用之间的最小间隔（秒）',
     unitSeconds: '秒',
+    switchPreviewOnKicker: '开启后',
+    switchPreviewOffKicker: '关闭后',
     platformHelpAria: '{name} 说明',
     platformEnableAria: '在报告页显示 {name} 卡片',
+    platformEnablePreviewOn:
+      '会在报告页显示「{name}」卡片，顺序跟现在的拖拽一致',
+    platformEnablePreviewOff: '报告页不再显示这张卡片，已经同步的数据还在',
+    platformEnablePreviewNeedConfig: '先点开卡片填好凭证，才能打开这个开关',
     platformOpenDetailAria: '打开 {name} 配置',
     // 站点备案和云赞助商
     siteFooterTitle: '站点底部信息',
@@ -2399,6 +2415,10 @@ export const zhCN: TranslationKeys = {
   // 首页
   home: {
     defaultBio: '欢迎访问我的个人仪表盘',
+    switchToFreeLayout: '切换到自由布局',
+    switchToStandardLayout: '切换到标准布局',
+    freeLayout: '自由布局',
+    standardLayout: '标准布局',
   },
 
   // 资料库
@@ -2581,7 +2601,8 @@ export const zhCN: TranslationKeys = {
       turnTraceTitle: '这一轮',
       turnTraceIdle: '还没有开口',
       turnTraceExport: '导出这一轮',
-      turnTraceTiming: '听清 {asr} · 开口 {llm} · 合成 {tts} · 出声 {audio} · 端到端 {e2e}',
+      turnTraceTiming:
+        '听清 {asr} · 开口 {llm} · 合成 {tts} · 出声 {audio} · 端到端 {e2e}',
       lastRun: '上次运行：{time}',
       neverRun: '还没运行过',
       remove: '删除',
@@ -3337,6 +3358,7 @@ export const zhCN: TranslationKeys = {
   // 小组件网格
   widgetGrid: {
     widgetLibrary: '小组件库',
+    restoreWidgetLibrary: '返回小组件库',
     searchWidgets: '搜索小组件…',
     clearSearch: '清除搜索',
     filterWidgets: '筛选小组件',
@@ -4959,7 +4981,7 @@ export const zhCN: TranslationKeys = {
     empty: '暂无通知',
     loadFailed: '通知没能加载。',
     clearAll: '清空',
-    clearConfirm: '确认清空？',
+    clearConfirm: '确认清除',
     enableSystemNotif: '开启系统通知',
     justNow: '刚刚',
     minutesAgo: '{n} 分钟前',

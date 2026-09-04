@@ -8,7 +8,7 @@
  * Xbox / PSN 已升级为独立的数据报告卡（report-xbox / report-psn），不再挤在这里。
  */
 
-import type { WidgetComponentProps } from '../WidgetGrid'
+import type { WidgetComponentProps } from '../widgetGridTypes'
 import { FaTimes } from '@lib/icons'
 import {
   AnimatePresenceShim as AnimatePresence,

@@ -1,4 +1,4 @@
-import type { WidgetConfig } from './WidgetGrid'
+import type { WidgetConfig } from './widgetGridTypes'
 import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,

@@ -26,6 +26,7 @@ export interface SettingGuidesCatalog {
     siteSeo: SettingGuideEntry
     siteKeywords: SettingGuideEntry
     siteOgImage: SettingGuideEntry
+    googleSiteVerification: SettingGuideEntry
     siteNoindex: SettingGuideEntry
     siteVisibilityPolicy: SettingGuideEntry
     siteAiIntro: SettingGuideEntry

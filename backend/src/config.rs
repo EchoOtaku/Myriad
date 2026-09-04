@@ -404,6 +404,9 @@ pub struct DynamicConfig {
     pub site_keywords: Option<String>,
     /// 社交分享预览图（Open Graph / Twitter Card）
     pub site_og_image: Option<String>,
+    /// Google Search Console HTML 标签验证码（写入 `google-site-verification` meta）
+    #[serde(default)]
+    pub google_site_verification: Option<String>,
     /// 禁止搜索引擎收录（true → robots: noindex, nofollow）
     /// 与 site_visibility_policy 联动：private 时为 true。
     pub site_noindex: bool,
@@ -751,6 +754,7 @@ impl Default for DynamicConfig {
             site_favicon: None,
             site_keywords: None,
             site_og_image: None,
+            google_site_verification: None,
             site_noindex: false,
             site_visibility_policy: String::new(),
             site_ai_intro: None,

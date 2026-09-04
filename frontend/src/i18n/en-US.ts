@@ -139,8 +139,10 @@ export const enUS: TranslationKeys = {
 
     visualConfirm:
       'The image model may incur charges. Generate the master portrait now? Regenerating clears the imported rig.',
-    anime25dSeeThroughCredit: 'Splits the portrait into layers: hair, face, clothes.',
-    anime25dRuntimeCredit: 'Drives blink, speech, and head-turn on those layers.',
+    anime25dSeeThroughCredit:
+      'Splits the portrait into layers: hair, face, clothes.',
+    anime25dRuntimeCredit:
+      'Drives blink, speech, and head-turn on those layers.',
     anime25dProjectThanks: 'The persona builds on these projects. Thanks to',
     anime25dDebug: 'Motion',
     overviewGroup: 'Overview',
@@ -180,7 +182,8 @@ export const enUS: TranslationKeys = {
     visualOutfitTitle: 'This outfit',
     visualFixedTitle: 'Face and hair',
     wardrobeEmpty: 'No saved outfits yet.',
-    wardrobeNeedCharacter: 'Confirm a visual design before making a new outfit.',
+    wardrobeNeedCharacter:
+      'Confirm a visual design before making a new outfit.',
     wardrobeReading: 'Reading visual features from the master portrait…',
     wardrobeFillFromPortrait: 'Fill visual from portrait',
     wardrobeFillFailed: 'Could not read visual features from the portrait',
@@ -194,8 +197,10 @@ export const enUS: TranslationKeys = {
     wardrobeNamePlaceholder: 'For example: winter coat',
     wardrobeRenameFailed: 'Could not rename this outfit',
     wardrobeRequirements: 'Outfit notes',
-    wardrobeRequirementsHint: 'Only colors, layers, or accessories for this outfit.',
-    wardrobeRequirementsPlaceholder: 'For example: deep red cropped jacket, gold buttons',
+    wardrobeRequirementsHint:
+      'Only colors, layers, or accessories for this outfit.',
+    wardrobeRequirementsPlaceholder:
+      'For example: deep red cropped jacket, gold buttons',
     wardrobeApplyFailed: 'Could not put on that outfit',
     wardrobeDeleteFailed: 'Could not remove that outfit',
     assetGroup: 'Portrait and rig',
@@ -653,6 +658,10 @@ export const enUS: TranslationKeys = {
       visitorDesc:
         'First-party, batched, idle beacons. Admin and site-owner sessions are excluded. Visitor id stays in the browser; the server stores hashes and uses proxy-trusted client IPs.',
       enableAria: 'Enable visitor stats',
+      enablePreviewOn:
+        'New visits will be recorded. Signed-in admins and the site owner are not counted.',
+      enablePreviewOff:
+        'New visits will not be recorded. Existing history stays.',
       disabledBanner:
         'Collection is off: new visits are not recorded; historical data remains available',
       pagesTitle: 'Page analytics',
@@ -1583,6 +1592,9 @@ export const enUS: TranslationKeys = {
     fieldSiteOgImage: 'Share Preview Image',
     fieldSiteOgImageHint:
       'Public https URL for Open Graph / crawlers (data: and local uploads are not used). Prefer ≥1200×630, PNG/JPEG/WebP',
+    fieldGoogleSiteVerification: 'Google Search Console verification',
+    fieldGoogleSiteVerificationHint:
+      'When verifying with an HTML tag in Search Console, paste the content value or the whole meta tag. Saved as google-site-verification on the page. After the site URL is set, submit /sitemap.xml.',
     fieldSiteNoindex: 'Search engine indexing',
     fieldSiteNoindexHint:
       'On: allow search engines to index. Off: pages emit noindex, nofollow — useful for private or not-yet-public instances',
@@ -1590,6 +1602,8 @@ export const enUS: TranslationKeys = {
     fieldSiteVisibilityPolicy: 'Search & AI visibility',
     fieldSiteVisibilityPolicyHint:
       'Controls whether search engines and AI (ChatGPT, Perplexity, etc.) can discover and cite this site. Recommended: Allow AI citations for public sites.',
+    seoOriginMissingHint:
+      'Site URL is not set. sitemap.xml will be empty and share links will not be absolute. Set the site URL above first.',
     visibilityPrivate: 'Private',
     visibilityPrivateHint: 'Sets noindex, empty sitemap, no /llms.txt',
     visibilityPrivateHintBefore: 'Sets ',
@@ -1864,6 +1878,7 @@ export const enUS: TranslationKeys = {
     placeholderSiteTitle: 'Myriad - A myriad of lights, in one place.',
     placeholderSiteDescription: 'A myriad of lights, in one place.',
     placeholderSiteKeywords: 'personal site, blog, digital life',
+    placeholderGoogleSiteVerification: 'Paste the token or the full meta tag',
     placeholderSiteOgImage: 'https://example.com/og.png',
     placeholderGaMeasurementId: 'G-XXXXXXXXXX',
     placeholderUmamiWebsiteId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
@@ -2419,8 +2434,16 @@ export const enUS: TranslationKeys = {
     aiCooldownSeconds: 'Cooldown Time',
     aiCooldownSecondsHint: 'Minimum interval between AI calls (seconds)',
     unitSeconds: 's',
+    switchPreviewOnKicker: 'Turning on',
+    switchPreviewOffKicker: 'Turning off',
     platformHelpAria: '{name} details',
     platformEnableAria: 'Show {name} card on reports page',
+    platformEnablePreviewOn:
+      'The {name} card will appear on the reports page, in the current drag order',
+    platformEnablePreviewOff:
+      'The reports page will hide this card. Already synced data stays.',
+    platformEnablePreviewNeedConfig:
+      'Open the card and add credentials before you can turn this on',
     platformOpenDetailAria: 'Open {name} settings',
     // Site footer and cloud sponsors
     siteFooterTitle: 'Site Footer',
@@ -2552,6 +2575,10 @@ export const enUS: TranslationKeys = {
   // Home
   home: {
     defaultBio: 'Welcome to my personal dashboard',
+    switchToFreeLayout: 'Switch to free layout',
+    switchToStandardLayout: 'Switch to standard layout',
+    freeLayout: 'Free layout',
+    standardLayout: 'Standard layout',
   },
 
   // Library
@@ -2742,7 +2769,8 @@ export const enUS: TranslationKeys = {
       turnTraceTitle: 'This turn',
       turnTraceIdle: 'Nothing spoken yet',
       turnTraceExport: 'Save this turn',
-      turnTraceTiming: 'heard {asr} · first word {llm} · synth {tts} · first sound {audio} · end-to-end {e2e}',
+      turnTraceTiming:
+        'heard {asr} · first word {llm} · synth {tts} · first sound {audio} · end-to-end {e2e}',
       lastRun: 'Last run: {time}',
       neverRun: 'Not run yet',
       remove: 'Delete',
@@ -2952,7 +2980,8 @@ export const enUS: TranslationKeys = {
       importPersonaReady: 'Persona is in place.',
       importPortraitHint:
         'Upload a finished portrait. Visual features will be read from this image.',
-      importVisualFailed: 'Could not read visual features from the portrait. Try again.',
+      importVisualFailed:
+        'Could not read visual features from the portrait. Try again.',
       importFinish: 'Next: make her move',
       personaFieldGenerating: 'Generating',
       editPersona: 'Edit',
@@ -3549,6 +3578,7 @@ export const enUS: TranslationKeys = {
   // Widget Grid
   widgetGrid: {
     widgetLibrary: 'Widget Library',
+    restoreWidgetLibrary: 'Back to widget library',
     searchWidgets: 'Search widgets…',
     clearSearch: 'Clear search',
     filterWidgets: 'Filter widgets',
@@ -5219,7 +5249,7 @@ export const enUS: TranslationKeys = {
     empty: 'No notifications',
     loadFailed: 'Could not load notifications.',
     clearAll: 'Clear all',
-    clearConfirm: 'Confirm clear?',
+    clearConfirm: 'Confirm clear',
     enableSystemNotif: 'Enable system notifications',
     justNow: 'just now',
     minutesAgo: '{n}m ago',

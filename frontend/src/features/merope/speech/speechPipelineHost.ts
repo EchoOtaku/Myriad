@@ -40,10 +40,11 @@ export class SpeechPipelineHost {
   private statusEpoch = 0
   private cancelledAt: number | null = null
   private readonly fedMessageIds = new Set<string>()
+  private readonly cancelledMessageIds = new Set<string>()
 
   constructor() {
     this.pipeline = new TtsPipeline({
-      synthesize: (segment) => this.synthesize(segment),
+      synthesize: (segment, signal) => this.synthesize(segment, signal),
       play: (audio, segment, onEnded) => this.play(audio, segment, onEnded),
       onCancel: (messageId) => this.emitCancel(messageId),
     })
@@ -69,7 +70,9 @@ export class SpeechPipelineHost {
     const flags = personaSpeechFlags(status)
     this.wantsSpeech = flags.speechEnabled
     this.ttsReady = flags.ttsReady
+    const wasEnabled = this.enabled
     this.enabled = flags.speechEnabled && flags.ttsReady
+    if (wasEnabled && !this.enabled) this.cancel()
   }
 
   async probe(): Promise<boolean> {
@@ -90,14 +93,22 @@ export class SpeechPipelineHost {
   }
 
   feed(segments: readonly SpeechSegment[]): void {
-    if (!this.enabled || segments.length === 0) return
-    for (const segment of segments) this.fedMessageIds.add(segment.messageId)
-    const mode = segments[0]!.interrupt
-    this.pipeline.enqueue(segments, mode)
+    if (!this.enabled) return
+    const accepted = segments.filter(
+      (segment) => !this.cancelledMessageIds.has(segment.messageId),
+    )
+    if (accepted.length === 0) return
+    for (const segment of accepted)
+      rememberMessage(this.fedMessageIds, segment.messageId)
+    const mode = accepted[0]!.interrupt
+    this.pipeline.enqueue(accepted, mode)
   }
 
   alreadyFed(messageId: string): boolean {
-    return this.fedMessageIds.has(messageId)
+    return (
+      this.fedMessageIds.has(messageId) ||
+      this.cancelledMessageIds.has(messageId)
+    )
   }
 
   isBusyWith(messageId: string): boolean {
@@ -114,6 +125,9 @@ export class SpeechPipelineHost {
     generation?: number
     interrupt?: SpeechInterruptMode
   }): boolean {
+    // A late completed response must not resurrect an interrupted stream, nor
+    // ask its caller to replay the same line through the text-mouth fallback.
+    if (this.cancelledMessageIds.has(input.messageId)) return true
     if (!this.enabled) return false
     const text = speakableText(input.text)
     if (!text) return false
@@ -129,24 +143,39 @@ export class SpeechPipelineHost {
   }
 
   cancel(messageId?: string): void {
-    if (messageId) this.fedMessageIds.delete(messageId)
-    else this.fedMessageIds.clear()
-    const stopped = this.pipeline.cancel(messageId)
-    if (!stopped) return
+    if (messageId) {
+      rememberMessage(this.cancelledMessageIds, messageId)
+      this.fedMessageIds.delete(messageId)
+    } else {
+      for (const id of this.fedMessageIds)
+        rememberMessage(this.cancelledMessageIds, id)
+      this.fedMessageIds.clear()
+    }
     this.cancelledAt = nowMs()
-    patchVoicePresence({ ttsPlaying: false })
+    const stopped = this.pipeline.cancel(messageId)
+    if (!stopped) {
+      this.cancelledAt = null
+      return
+    }
+    // stop() publishes silence before the pipeline advances. A targeted cancel
+    // may already have started the next message; do not overwrite its presence.
     this.noteSilence()
   }
 
   private async synthesize(
     segment: SpeechSegment,
+    signal: AbortSignal,
   ): Promise<ArrayBuffer | null> {
     try {
-      const result = await textToSpeech({
-        text: segment.text.slice(0, 150),
-        codec: 'mp3',
-        sample_rate: 16000,
-      })
+      const result = await textToSpeech(
+        {
+          text: segment.text.slice(0, 150),
+          codec: 'mp3',
+          sample_rate: 16000,
+        },
+        undefined,
+        signal,
+      )
       if (!result.success || !result.audio) return null
       return audioFromBase64(result.audio)
     } catch {
@@ -204,8 +233,8 @@ export class SpeechPipelineHost {
         })
       },
       onEnded: () => {
-        onEnded()
-        if (this.pipeline.playing || this.pipeline.queueLength > 0) return
+        // End THIS segment before advancing. Otherwise a synthesis gap leaves
+        // its mouth and co-speech plan alive until the next segment arrives.
         dispatchMeropeSpeech({
           phase: 'end',
           messageId: segment.messageId,
@@ -214,7 +243,9 @@ export class SpeechPipelineHost {
           ...(generation ? { generation } : {}),
         })
         patchVoicePresence({ ttsPlaying: false })
-        markTurnTraceOnce('speech_ended')
+        onEnded()
+        if (!this.pipeline.playing && this.pipeline.queueLength === 0)
+          markTurnTraceOnce('speech_ended')
       },
     })
     return {
@@ -251,4 +282,10 @@ export function getSpeechPipeline(): SpeechPipelineHost {
 
 function nowMs(): number {
   return typeof performance === 'undefined' ? Date.now() : performance.now()
+}
+
+/** Late SSE/final-response dedupe is bounded and never persisted. */
+function rememberMessage(ids: Set<string>, id: string): void {
+  ids.add(id)
+  if (ids.size > 256) ids.delete(ids.values().next().value!)
 }

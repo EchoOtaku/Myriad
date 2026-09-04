@@ -17,7 +17,7 @@
     var(--cfg-accent, #3b82f6) 10%,
     transparent
   );
-  color: var(--cfg-accent, #3b82f6);
+  color: var(--cfg-text-1);
   font-size: 0.6875rem;
   font-weight: 600;
   line-height: 1.25;
@@ -178,7 +178,7 @@ html.dark .setting-title-tag {
     var(--cfg-accent, #60a5fa) 14%,
     transparent
   );
-  color: var(--cfg-accent, #60a5fa);
+  color: #fff;
 }
 
 html.dark button.setting-title-tag:hover:not(:disabled) {

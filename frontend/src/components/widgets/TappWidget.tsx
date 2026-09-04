@@ -20,7 +20,7 @@ import type {
   TappCodeStructure,
   TappInstance,
 } from '../../tapp/types'
-import type { WidgetComponentProps } from '../WidgetGrid'
+import type { WidgetComponentProps } from '../widgetGridTypes'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useNavigate } from 'react-router-dom'

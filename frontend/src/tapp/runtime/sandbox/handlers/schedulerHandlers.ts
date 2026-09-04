@@ -67,7 +67,7 @@ export function registerSchedulerHandlers(
               pendingExecutions.delete(event.executionId)
               reject(new Error('Sandbox scheduler callback timed out'))
             },
-            4 * 60 * 1000,
+            5 * 60 * 1000,
           )
           pendingExecutions.set(event.executionId, { resolve, reject, timeout })
           bridge.emit('schedulerTask', { taskId, payload, event })

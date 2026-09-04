@@ -71,7 +71,7 @@ html.dark .setting-guide-block-text {
     var(--cfg-accent, #6c8cff) 16%,
     transparent
   );
-  color: var(--cfg-accent, #4f6ef7);
+  color: var(--cfg-text-1);
   font-size: 0.6875rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -84,11 +84,7 @@ html.dark .setting-guide-step-num {
     var(--cfg-accent, #8ba3ff) 22%,
     transparent
   );
-  color: color-mix(
-    in srgb,
-    var(--color-light, var(--cfg-accent, #a5b8ff)) 70%,
-    white
-  );
+  color: #fff;
 }
 
 .setting-guide-step-text {

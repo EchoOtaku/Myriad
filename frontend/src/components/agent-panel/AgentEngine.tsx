@@ -46,8 +46,8 @@ import {
 } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
-import { useI18n } from '../../contexts/I18nContext'
 import { agentMusicStatus } from '../../contexts/currentSong'
+import { useI18n } from '../../contexts/I18nContext'
 import { usePageContentOptional } from '../../contexts/PageContentContext'
 import {
   clearChatOutfitOverlay,
@@ -67,6 +67,8 @@ import {
   stopTurnSpeech,
   turnSpeechAlreadyFed,
 } from '../../features/merope/engineFace'
+import { interruptAgoraConversation, stopAgoraConversation } from '../../features/merope/speech/agoraConversation'
+import { bindRealtimeChat } from '../../features/merope/speech/realtimeChat'
 import {
   beginTurnTrace,
   markTurnTraceOnce,
@@ -88,6 +90,7 @@ import {
   isCurrentChatGeneration,
   isStreamSupersededError,
   isUserInterruptError,
+  nextAgentMessageId,
 } from '../../services/agent/turnIdentity'
 import { userFacingError } from '../../utils/userFacingError'
 import {
@@ -97,7 +100,6 @@ import {
 import { buildAgentPendingAction } from './agentAction'
 import { attachmentsForRequest } from './agentAttachments'
 import { getAgentContextConsent } from './agentContextConsent'
-import { turnSelectionText } from './agentSelection'
 import { setAgentSessionId } from './agentMessages'
 import {
   AGENT_PANEL_ACTION_EVENT,
@@ -113,6 +115,7 @@ import {
   dispatchAgentPanelOpen,
 } from './agentPanelEvents'
 import { getAgentPanelMode, useAgentPanelMode } from './agentPanelMode'
+import { turnSelectionText } from './agentSelection'
 import {
   clearAgentPendingAction,
   pushAgentStatusEvent,
@@ -353,6 +356,7 @@ export const AgentEngine: React.FC = () => {
   const startNewSession = useCallback(async () => {
     // 新建会话只切换前端视图。旧任务由后端 run 持续执行，并通过通知中心报告状态。
     const current = getAgentPanelMode()
+    if (current === 'chat') void stopAgoraConversation()
     const loadingId = loadingMessageIdByModeRef.current[current]
     if (loadingId) {
       discardedResponseIdsRef.current.add(loadingId)
@@ -493,6 +497,9 @@ export const AgentEngine: React.FC = () => {
       reattachHints?: { runId?: string; taskId?: string },
       requestedMode: AgentPanelMode = session.mode ?? getAgentPanelMode(),
     ) => {
+      if (requestedMode === 'chat' && sessionIdsByModeRef.current.chat !== session.id) {
+        void stopAgoraConversation()
+      }
       sessionIdsByModeRef.current[requestedMode] = session.id
       setSessionId(session.id, requestedMode)
       sessionTitleSetByModeRef.current[requestedMode] = !!session.title
@@ -748,6 +755,7 @@ export const AgentEngine: React.FC = () => {
     // Only abort this mode's SSE. Work and Chat can be in flight together.
     agentService.abortCurrentRequest(current)
     if (current === 'chat') {
+      void interruptAgoraConversation()
       const sessionId = sessionIdsByModeRef.current.chat
       void agentService.cancelChatTurn(sessionId || '')
       const generation = chatTurnClockRef.current.next()
@@ -822,17 +830,19 @@ export const AgentEngine: React.FC = () => {
       assistantMessageId: string,
       mode: AgentPanelMode = 'work',
       generation = 0,
+      speechOutput: 'local' | 'external' = 'local',
     ) => {
       let streamedSummary = ''
       let streamedThinking = ''
       let performancePlanCount = 0
       let notedStaleGeneration = false
       let liveTaskId = ''
-      const speech = openTurnSpeech(assistantMessageId, generation, locale)
+      const speech = openTurnSpeech(assistantMessageId, generation, locale, speechOutput)
       const utterance = openTurnReply(
         mode,
         assistantMessageId,
         locale,
+        speechOutput,
       )
 
       const publishThinking = (text: string) => {
@@ -970,13 +980,14 @@ export const AgentEngine: React.FC = () => {
                 mode,
               )
             }
-            if (stepEvent.frontendActions && stepEvent.frontendActions.length > 0) {
+            const frontendActions = stepEvent.frontendActions
+            if (frontendActions && frontendActions.length > 0) {
               void (async () => {
                 const results = await enqueueFrontendActions(
                   assistantMessageId,
-                  stepEvent.frontendActions,
+                  frontendActions,
                 )
-                const needsAck = stepEvent.frontendActions.some(
+                const needsAck = frontendActions.some(
                   (action) =>
                     action &&
                     ['query_windows', 'music_get_status'].includes(action.type),
@@ -1392,7 +1403,7 @@ export const AgentEngine: React.FC = () => {
         if (!activeTaskMessage?.taskExecution?.taskId) return
 
         const userMessage: ChatMessage = {
-          id: `msg_user_steer_${Date.now()}`,
+          id: nextAgentMessageId('user'),
           sessionId: modeSessionId || '',
           role: 'user',
           content: messageText,
@@ -1417,7 +1428,7 @@ export const AgentEngine: React.FC = () => {
             (prev) => [
               ...prev,
               {
-                id: `msg_assistant_steer_error_${Date.now()}`,
+                id: nextAgentMessageId('assistant'),
                 sessionId: modeSessionId || '',
                 role: 'assistant',
                 content: format(t.agentPanel.errorWithDetail, {
@@ -1435,7 +1446,7 @@ export const AgentEngine: React.FC = () => {
       // 切回对话视图
 
       // 1. 创建 user 消息
-      const userMsgId = `msg_user_${Date.now()}`
+      const userMsgId = nextAgentMessageId('user')
       const userMessage: ChatMessage = {
         id: userMsgId,
         sessionId: modeSessionId || '',
@@ -1446,7 +1457,7 @@ export const AgentEngine: React.FC = () => {
       }
 
       // 2. 创建 placeholder assistant 消息
-      const assistantMsgId = `msg_assistant_${Date.now()}`
+      const assistantMsgId = nextAgentMessageId('assistant')
       const assistantMessage: ChatMessage = {
         id: assistantMsgId,
         sessionId: modeSessionId || '',
@@ -1467,6 +1478,7 @@ export const AgentEngine: React.FC = () => {
       markTurnTraceOnce('input_started')
       markTurnTraceOnce('input_final')
       if (mode === 'chat') {
+        void interruptAgoraConversation()
         setTurnGeneration(chatGeneration)
         const previousChatId = loadingMessageIdByModeRef.current.chat
         if (previousChatId) {
@@ -1513,6 +1525,8 @@ export const AgentEngine: React.FC = () => {
           } else {
             const main =
               document.querySelector('main') ?? document.body
+            // Hidden controls are not part of what the user is currently reading.
+            // eslint-disable-next-line unicorn/prefer-dom-node-text-content
             const text = (main?.innerText ?? '').replace(/\s+/g, ' ').trim()
             if (text) {
               customData.pageContent = {
@@ -1686,6 +1700,7 @@ export const AgentEngine: React.FC = () => {
       response: AgentResponse,
       mode: AgentPanelMode = 'work',
       generation = 0,
+      speechOutput: 'local' | 'external' = 'local',
     ) => {
       if (discardedResponseIdsRef.current.delete(messageId)) return
       const taskData = response.task as Record<string, unknown> | undefined
@@ -1772,6 +1787,12 @@ export const AgentEngine: React.FC = () => {
           response.responseType === 'task_completed')
 
       const responseData = response.data as Record<string, unknown> | undefined
+      if (mode === 'chat' && responseData && 'outfitId' in responseData) {
+        const overlayId = responseData.outfitId
+        setChatOutfitOverlay(
+          typeof overlayId === 'string' ? overlayId : null,
+        )
+      }
 
       const stepHistory = taskData?.stepHistory as
         | Array<{
@@ -1903,7 +1924,7 @@ export const AgentEngine: React.FC = () => {
       if (isSuccess && !staleChat) {
         deliverTurnLine(mode, {
           messageId,
-          text: turnSpeechAlreadyFed(messageId)
+          text: speechOutput === 'external' || turnSpeechAlreadyFed(messageId)
             ? undefined
             : spokenReply,
           locale,
@@ -2037,6 +2058,55 @@ export const AgentEngine: React.FC = () => {
   useEffect(() => {
     handleAgentResponseRef.current = handleAgentResponse
   }, [handleAgentResponse])
+
+  useEffect(() => bindRealtimeChat({
+    sessionId: () => sessionIdsByModeRef.current.chat,
+    adopt: (notice) => {
+      const messageId = `msg_rtc_${notice.runId}`
+      const generation = chatTurnClockRef.current.next()
+      const previous = loadingMessageIdByModeRef.current.chat
+      if (previous) {
+        stopTurnSpeech(previous)
+        updateMessageExecution(previous, { status: 'error' })
+      }
+      agentService.abortCurrentRequest('chat')
+      setTurnGeneration(generation)
+      beginTurnTrace(messageId)
+      markTurnTraceOnce('input_final')
+      setSessionId(notice.sessionId, 'chat')
+      setMessages((rows) => [...rows, {
+        id: nextAgentMessageId('user'), sessionId: notice.sessionId, role: 'user',
+        content: notice.input, createdAt: new Date(),
+      }, {
+        id: messageId, sessionId: notice.sessionId, role: 'assistant', content: '', createdAt: new Date(),
+        taskExecution: { taskId: '', runId: notice.runId, status: 'processing', progress: 0, steps: [] },
+      }], 'chat')
+      loadingMessageIdByModeRef.current.chat = messageId
+      loadingByModeRef.current.chat = true
+      setAgentLaneLoading('chat', true)
+      setIsLoading(true)
+      setAgentStatusThinking()
+      // Same progress and final-response reducers. Only the audio outlet is
+      // external: cloud audio must not be synthesized or text-lip-synced twice.
+      void agentService.subscribeRun(notice.runId, createProgressHandler(messageId, 'chat', generation, 'external'), 'chat')
+        .then((response) => handleAgentResponse(messageId, response, 'chat', generation, 'external'))
+        .catch((error) => {
+          if (!isCurrentChatGeneration(generation, chatTurnClockRef.current.current())) return
+          updateMessageExecution(messageId, { status: 'error' })
+          if (!isUserInterruptError(error) && !isStreamSupersededError(error)) {
+            updateMessage(messageId, { content: userFacingError(error, t.agentPanel.streamError) })
+          }
+        })
+        .finally(() => {
+          if (loadingMessageIdByModeRef.current.chat !== messageId) return
+          loadingMessageIdByModeRef.current.chat = null
+          loadingByModeRef.current.chat = false
+          setAgentLaneLoading('chat', false)
+          setIsLoading(loadingByModeRef.current.work)
+        })
+      return { messageId, generation }
+    },
+  }), [createProgressHandler, handleAgentResponse, setMessages, setSessionId, t, updateMessage, updateMessageExecution])
 
   // 回答问题
 

@@ -54,7 +54,7 @@
 /* 默认「选项指南」hover：轻量强调色 */
 .setting-title-guide-trigger:hover,
 .setting-title-guide-trigger:focus-visible {
-  color: var(--cfg-accent, #4f6ef7);
+  color: var(--cfg-text-1);
   background: color-mix(
     in srgb,
     var(--cfg-accent, #6c8cff) 10%,
@@ -74,7 +74,7 @@
 
 /* 展开中（收起指南）：自适应强调色 */
 .setting-title-guide-trigger.is-active {
-  color: var(--cfg-accent, #4f6ef7);
+  color: var(--cfg-text-1);
   border-color: color-mix(
     in srgb,
     var(--cfg-accent, #6c8cff) 42%,
@@ -89,7 +89,7 @@
 
 .setting-title-guide-trigger.is-active:hover,
 .setting-title-guide-trigger.is-active:focus-visible {
-  color: var(--cfg-accent, #4f6ef7);
+  color: var(--cfg-text-1);
   border-color: color-mix(
     in srgb,
     var(--cfg-accent, #6c8cff) 55%,
@@ -110,11 +110,7 @@ html.dark .setting-title-guide-trigger {
 
 html.dark .setting-title-guide-trigger:hover,
 html.dark .setting-title-guide-trigger:focus-visible {
-  color: color-mix(
-    in srgb,
-    var(--color-light, var(--cfg-accent, #a5b8ff)) 55%,
-    white
-  );
+  color: #fff;
   background: color-mix(
     in srgb,
     var(--cfg-accent, #8ba3ff) 12%,
@@ -128,11 +124,7 @@ html.dark .setting-title-guide-trigger:focus-visible {
 }
 
 html.dark .setting-title-guide-trigger.is-active {
-  color: color-mix(
-    in srgb,
-    var(--color-light, var(--cfg-accent, #a5b8ff)) 55%,
-    white
-  );
+  color: #fff;
   border-color: color-mix(
     in srgb,
     var(--cfg-accent, #8ba3ff) 45%,
@@ -147,11 +139,7 @@ html.dark .setting-title-guide-trigger.is-active {
 
 html.dark .setting-title-guide-trigger.is-active:hover,
 html.dark .setting-title-guide-trigger.is-active:focus-visible {
-  color: color-mix(
-    in srgb,
-    var(--color-light, var(--cfg-accent, #a5b8ff)) 65%,
-    white
-  );
+  color: #fff;
   border-color: color-mix(
     in srgb,
     var(--cfg-accent, #8ba3ff) 58%,
@@ -626,7 +614,11 @@ html.dark .setting-title-guide-close:focus-visible {
 }
 
 .setting-title-guide-trigger.is-pinned {
-  color: var(--cfg-accent, #4f6ef7);
+  color: var(--cfg-text-1);
+}
+
+html.dark .setting-title-guide-trigger.is-pinned {
+  color: #fff;
 }
 
 .setting-title-guide-body {

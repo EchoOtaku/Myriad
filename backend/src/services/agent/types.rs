@@ -1536,9 +1536,7 @@ pub enum AgentProgressEvent {
         outfit_id: Option<String>,
     },
     /// Chat Lite may nudge the current player. Search and playlists stay in Work.
-    MusicControl {
-        action: String,
-    },
+    MusicControl { action: String },
     /// 错误
     Error {
         #[serde(rename = "taskId", skip_serializing_if = "Option::is_none")]

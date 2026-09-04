@@ -569,6 +569,10 @@ export interface TranslationKeys {
       visitorTitle: string
       visitorDesc: string
       enableAria: string
+      /** 访客统计开关悬停：开启以后 */
+      enablePreviewOn: string
+      /** 访客统计开关悬停：关闭以后 */
+      enablePreviewOff: string
       disabledBanner: string
       pagesTitle: string
       pagesDesc: string
@@ -1347,10 +1351,14 @@ export interface TranslationKeys {
     fieldSiteKeywordsHint: string
     fieldSiteOgImage: string
     fieldSiteOgImageHint: string
+    fieldGoogleSiteVerification: string
+    fieldGoogleSiteVerificationHint: string
+    placeholderGoogleSiteVerification: string
     fieldSiteNoindex: string
     fieldSiteNoindexHint: string
     fieldSiteVisibilityPolicy: string
     fieldSiteVisibilityPolicyHint: string
+    seoOriginMissingHint: string
     visibilityPrivate: string
     visibilityPrivateHint: string
     visibilityPrivateHintBefore: string
@@ -2039,8 +2047,18 @@ export interface TranslationKeys {
     aiCooldownSeconds: string
     aiCooldownSecondsHint: string
     unitSeconds: string
+    /** 开关悬停预告短标签：开启后 */
+    switchPreviewOnKicker: string
+    /** 开关悬停预告短标签：关闭后 */
+    switchPreviewOffKicker: string
     platformHelpAria: string
     platformEnableAria: string
+    /** 平台开关悬停：开启以后 */
+    platformEnablePreviewOn: string
+    /** 平台开关悬停：关闭以后 */
+    platformEnablePreviewOff: string
+    /** 平台开关悬停：未配置所以点不了 */
+    platformEnablePreviewNeedConfig: string
     platformOpenDetailAria: string
     siteFooterTitle: string
     siteFooterDesc: string
@@ -2167,6 +2185,10 @@ export interface TranslationKeys {
   // 首页
   home: {
     defaultBio: string
+    switchToFreeLayout: string
+    switchToStandardLayout: string
+    freeLayout: string
+    standardLayout: string
   }
 
   // 资料库
@@ -3116,6 +3138,7 @@ export interface TranslationKeys {
   // 小组件网格
   widgetGrid: {
     widgetLibrary: string
+    restoreWidgetLibrary: string
     searchWidgets: string
     clearSearch: string
     filterWidgets: string

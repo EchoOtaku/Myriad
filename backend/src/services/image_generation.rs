@@ -492,7 +492,7 @@ async fn load_generated_bytes(
 
     let (url, client) = crate::services::outbound_security::build_public_http_client(
         &generated.source,
-        Duration::from_secs(120),
+        Duration::from_secs(5 * 60),
         Some("Myriad-ImageGeneration/1.0"),
     )
     .await

@@ -181,7 +181,8 @@ export const jaJP: TranslationKeys = {
     visualOutfitTitle: 'この衣装',
     visualFixedTitle: '顔と髪型',
     wardrobeEmpty: '保存した衣装はまだありません。',
-    wardrobeNeedCharacter: '新しい衣装を作る前に、外観デザインを確定してください。',
+    wardrobeNeedCharacter:
+      '新しい衣装を作る前に、外観デザインを確定してください。',
     wardrobeReading: 'メイン立ち絵から視覚特徴を読み取っています…',
     wardrobeFillFromPortrait: '立ち絵から視覚を補う',
     wardrobeFillFailed: '立ち絵から視覚特徴を読み取れませんでした',
@@ -195,7 +196,8 @@ export const jaJP: TranslationKeys = {
     wardrobeNamePlaceholder: '例：冬のコート',
     wardrobeRenameFailed: 'この衣装の名前を変えられませんでした',
     wardrobeRequirements: '衣装の指定',
-    wardrobeRequirementsHint: 'この衣装の色、重ね、または飾りだけ書いてください。',
+    wardrobeRequirementsHint:
+      'この衣装の色、重ね、または飾りだけ書いてください。',
     wardrobeRequirementsPlaceholder: '例：深紅の短いジャケット、金色のボタン',
     wardrobeApplyFailed: 'その衣装に着替えられませんでした',
     wardrobeDeleteFailed: 'その衣装を外せませんでした',
@@ -650,6 +652,10 @@ export const jaJP: TranslationKeys = {
     analytics: {
       visitorTitle: '訪問統計',
       enableAria: '訪問統計を有効にする',
+      enablePreviewOn:
+        '新しいアクセスの記録を始めます。管理者とオーナーのログインは数えません',
+      enablePreviewOff:
+        '新しいアクセスは記録しません。過去のデータはそのまま残ります',
       disabledBanner:
         '収集は停止中です。新規アクセスは記録されません。過去データは引き続き閲覧できます',
       visitorDesc:
@@ -1570,12 +1576,17 @@ export const jaJP: TranslationKeys = {
     fieldSiteOgImage: 'シェア用プレビュー画像',
     fieldSiteOgImageHint:
       'クローラー向けの公開 https 画像 URL（data: やローカルアップロードは使えません）。推奨 ≥1200×630、PNG/JPEG/WebP',
+    fieldGoogleSiteVerification: 'Google Search Console 認証',
+    fieldGoogleSiteVerificationHint:
+      'Search Console の「HTML タグ」認証で、content の値または meta タグ全体を貼ります。保存後に google-site-verification として出力されます。サイト URL 設定後は /sitemap.xml を送信できます。',
     fieldSiteNoindex: '検索エンジンのインデックス',
     fieldSiteNoindexHint:
       'オン：検索エンジンにインデックスを許可。オフ：noindex, nofollow を出力（非公開・準備中向け）',
     fieldSiteVisibilityPolicy: '検索と AI の可視性',
     fieldSiteVisibilityPolicyHint:
       '検索エンジンと AI（ChatGPT、Perplexity など）がこのサイトを発見・引用できるかを決めます。公開サイトは「AI 引用を許可」を推奨。',
+    seoOriginMissingHint:
+      'サイト URL が未設定です。sitemap.xml は空になり、シェア用の絶対 URL も出ません。先に上のサイト URL を設定してください。',
     visibilityPrivate: '非公開',
     visibilityPrivateHint: 'noindex を付与、sitemap 空、/llms.txt なし',
     visibilityPrivateHintBefore: '',
@@ -1847,6 +1858,7 @@ export const jaJP: TranslationKeys = {
     placeholderSiteTitle: 'Myriad - A myriad of lights, in one place.',
     placeholderSiteDescription: 'A myriad of lights, in one place.',
     placeholderSiteKeywords: '個人サイト, ブログ, デジタルライフ',
+    placeholderGoogleSiteVerification: '認証コードまたは meta タグを貼り付け',
     placeholderSiteOgImage: 'https://example.com/og.png',
     placeholderGaMeasurementId: 'G-XXXXXXXXXX',
     placeholderUmamiWebsiteId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
@@ -1958,7 +1970,8 @@ export const jaJP: TranslationKeys = {
     aiVendorSetupTencentFillTitle: 'このページに貼る',
     aiVendorSetupTencentFillDesc: '下の2欄に貼り、リージョンを選びます。',
     aiVendorSetupAgoraPortalTitle: '声網 / Agora コンソールを開く',
-    aiVendorSetupAgoraPortalDesc: 'プロジェクトと Conversational AI へ進みます。',
+    aiVendorSetupAgoraPortalDesc:
+      'プロジェクトと Conversational AI へ進みます。',
     aiVendorSetupAgoraCreateTitle: '資格情報をコピー',
     aiVendorSetupAgoraCreateDesc:
       'App ID、証明書、REST の Customer ID / Secret をコピーします。',
@@ -2392,8 +2405,16 @@ export const jaJP: TranslationKeys = {
     aiCooldownSeconds: 'クールダウン時間',
     aiCooldownSecondsHint: 'AI呼び出し間の最小間隔（秒）',
     unitSeconds: '秒',
+    switchPreviewOnKicker: 'オンにすると',
+    switchPreviewOffKicker: 'オフにすると',
     platformHelpAria: '{name} の説明',
     platformEnableAria: 'レポートページで {name} カードを表示',
+    platformEnablePreviewOn:
+      'レポートページに「{name}」カードが表示されます。並びは今のドラッグ順です',
+    platformEnablePreviewOff:
+      'レポートページからこのカードが消えます。同期済みのデータは残ります',
+    platformEnablePreviewNeedConfig:
+      'カードを開いて認証情報を入れてから、このスイッチをオンにできます',
     platformOpenDetailAria: '{name} の設定を開く',
     // サイトフッターとクラウドスポンサー
     siteFooterTitle: 'サイトフッター',
@@ -2525,6 +2546,10 @@ export const jaJP: TranslationKeys = {
   // ホーム
   home: {
     defaultBio: '私のパーソナルダッシュボードへようこそ',
+    switchToFreeLayout: 'フリーレイアウトに切り替え',
+    switchToStandardLayout: '標準レイアウトに切り替え',
+    freeLayout: 'フリーレイアウト',
+    standardLayout: '標準レイアウト',
   },
 
   // ライブラリ
@@ -2716,7 +2741,8 @@ export const jaJP: TranslationKeys = {
       turnTraceTitle: 'この発話',
       turnTraceIdle: 'まだ話していません',
       turnTraceExport: 'この発話を保存',
-      turnTraceTiming: '聞き取り {asr} · 最初の語 {llm} · 合成 {tts} · 最初の音 {audio} · 端から端まで {e2e}',
+      turnTraceTiming:
+        '聞き取り {asr} · 最初の語 {llm} · 合成 {tts} · 最初の音 {audio} · 端から端まで {e2e}',
       lastRun: '前回の実行：{time}',
       neverRun: 'まだ実行していません',
       remove: '削除',
@@ -2928,7 +2954,8 @@ export const jaJP: TranslationKeys = {
       importPersonaReady: 'ペルソナを取り込みました。',
       importPortraitHint:
         '出来上がった立ち絵をアップロードします。完了時にこの絵から視覚特徴を読み取ります。',
-      importVisualFailed: '立ち絵から視覚特徴を読めませんでした。再試行してください。',
+      importVisualFailed:
+        '立ち絵から視覚特徴を読めませんでした。再試行してください。',
       importFinish: '次へ：動かす',
       personaFieldGenerating: '生成中',
       editPersona: '編集',
@@ -3543,6 +3570,7 @@ export const jaJP: TranslationKeys = {
   // ウィジェットグリッド
   widgetGrid: {
     widgetLibrary: 'ウィジェットライブラリ',
+    restoreWidgetLibrary: 'ウィジェットライブラリに戻る',
     searchWidgets: 'ウィジェットを検索…',
     clearSearch: '検索をクリア',
     filterWidgets: 'ウィジェットを絞り込み',
@@ -5228,7 +5256,7 @@ export const jaJP: TranslationKeys = {
     empty: '通知はありません',
     loadFailed: '通知を読み込めませんでした。',
     clearAll: 'すべて削除',
-    clearConfirm: '削除しますか？',
+    clearConfirm: '削除する',
     enableSystemNotif: 'システム通知を有効化',
     justNow: 'たった今',
     minutesAgo: '{n}分前',

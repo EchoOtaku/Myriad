@@ -46,6 +46,23 @@ const STORAGE_KEY_VALIDATOR_CODE = `
   };
 `
 
+/** Default host round-trip (storage / lifecycle / list). */
+const SDK_DEFAULT_REQUEST_TIMEOUT_MS = 30_000
+/** Floor for Tapp.ai.* (create may wait on image-reference fetch). */
+const SDK_AI_REQUEST_TIMEOUT_MS = 5 * 60 * 1000
+/** model3d.awaitTask waits on the provider; match MEROPE_PROXY / default Tripo. */
+const SDK_MODEL3D_AWAIT_TIMEOUT_MS = 15 * 60 * 1000
+
+function sdkRequestTimeoutHelper(): string {
+  return `
+  var requestTimeoutMs = function(api, method) {
+    if (api === 'ai') return ${SDK_AI_REQUEST_TIMEOUT_MS};
+    if (api === 'model3d' && method === 'awaitTask') return ${SDK_MODEL3D_AWAIT_TIMEOUT_MS};
+    return ${SDK_DEFAULT_REQUEST_TIMEOUT_MS};
+  };
+`
+}
+
 /** Page 与 Widget 共用的安全 DOM helper，避免两套 SDK 能力漂移。 */
 const DOM_HELPERS_CODE = `{
       escapeHtml: function(text) {
@@ -227,6 +244,7 @@ export function generateFullSDK(
   const generateId = () => \`tapp-\${++messageIdCounter}-\${Date.now()}\`;
 
   ${generateStorageKeyValidator()}
+  ${sdkRequestTimeoutHelper()}
 
   const sendRequest = (api, method, args = []) => {
     return new Promise((resolve, reject) => {
@@ -234,7 +252,7 @@ export function generateFullSDK(
       const timeout = setTimeout(() => {
         pendingRequests.delete(id);
         reject(new Error('Request timeout'));
-      }, 30000);
+      }, requestTimeoutMs(api, method));
 
       pendingRequests.set(id, { resolve, reject, timeout });
 
@@ -1526,12 +1544,13 @@ function buildWidgetSdkBody(
   var generateId = function() { return 'widget-' + (++messageIdCounter) + '-' + Date.now(); };
 
   ${generateStorageKeyValidator()}
+  ${sdkRequestTimeoutHelper()}
 
   var sendRequest = function(api, method, args) {
     args = args || [];
     return new Promise(function(resolve, reject) {
       var id = generateId();
-      var timeout = setTimeout(function() { pendingRequests.delete(id); reject(new Error('Request timeout')); }, 30000);
+      var timeout = setTimeout(function() { pendingRequests.delete(id); reject(new Error('Request timeout')); }, requestTimeoutMs(api, method));
       pendingRequests.set(id, { resolve: resolve, reject: reject, timeout: timeout });
       try {
         _HOST_WINDOW.postMessage({

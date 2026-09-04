@@ -139,6 +139,21 @@ export function presentWidgetLibrarySizes(
   return [...known, ...extra]
 }
 
+/** Host widgets join the same topic rows as Tapp categories. */
+const BUILTIN_TOPIC_BY_ID: Record<
+  string,
+  Exclude<WidgetLibraryKindFilter, 'all'>
+> = {
+  'agent-persona': 'tapp:ai',
+  'music-player': 'tapp:media',
+  'social-network': 'tapp:social',
+  'friend-links': 'tapp:social',
+  'game-presence': 'tapp:game',
+  'quick-stats': 'tapp:data',
+  'recent-activity': 'tapp:data',
+  'visitor-stats': 'tapp:data',
+}
+
 export function classifyWidgetLibraryKind(
   widget: WidgetLibraryKindSource,
 ): Exclude<WidgetLibraryKindFilter, 'all'> {
@@ -146,7 +161,8 @@ export function classifyWidgetLibraryKind(
     return `tapp:${normalizeTappCategory(widget.category)}`
   }
   if (widget.id.startsWith('report-')) return 'report'
-  return 'builtin'
+  if (widget.id.startsWith('platform-')) return 'tapp:social'
+  return BUILTIN_TOPIC_BY_ID[widget.id] ?? 'tapp:utility'
 }
 
 export function widgetMatchesLibraryKind(
@@ -158,25 +174,25 @@ export function widgetMatchesLibraryKind(
 }
 
 /**
- * 全部 / 内置 / 报告 always, then each Tapp category that has a widget.
- * Empty Tapp categories stay hidden so the row does not flatten the whole catalog.
+ * 全部, then only kinds that currently have a widget.
+ * Host builtins share Tapp topic rows (媒体 / 社交 / …) instead of a dump bucket.
  */
 export function presentWidgetLibraryKindFilters(
   widgets: WidgetLibraryKindSource[],
 ): WidgetLibraryKindFilter[] {
-  const tappSeen = new Set<string>()
+  const seen = new Set<Exclude<WidgetLibraryKindFilter, 'all'>>()
   for (const widget of widgets) {
-    const kind = classifyWidgetLibraryKind(widget)
-    if (kind.startsWith('tapp:')) tappSeen.add(kind.slice('tapp:'.length))
+    seen.add(classifyWidgetLibraryKind(widget))
   }
-  const chips: WidgetLibraryKindFilter[] = ['all', 'builtin', 'report']
+  const chips: WidgetLibraryKindFilter[] = ['all']
+  if (seen.has('report')) chips.push('report')
+  if (seen.has('builtin')) chips.push('builtin')
   for (const category of TAPP_CATEGORIES) {
-    if (tappSeen.has(category)) chips.push(`tapp:${category}`)
+    const kind = `tapp:${category}` as const
+    if (seen.has(kind)) chips.push(kind)
   }
-  for (const category of [...tappSeen].sort()) {
-    if (!(TAPP_CATEGORIES as readonly string[]).includes(category)) {
-      chips.push(`tapp:${category}`)
-    }
+  for (const kind of [...seen].sort()) {
+    if (kind.startsWith('tapp:') && !chips.includes(kind)) chips.push(kind)
   }
   return chips
 }
@@ -205,7 +221,7 @@ export function widgetMatchesLibraryFilter(
   return classifyWidgetLibraryKind(widget) === filter
 }
 
-/** 全部 + 内置 + 报告 + 有小组件的 Tapp 分类 + 尺寸（尺寸多于一种才列入）. */
+/** 全部 + 当前有小组件的主题分类 + 尺寸（尺寸多于一种才列入）. */
 export function presentWidgetLibraryFilters(
   widgets: Array<WidgetLibraryKindSource & WidgetLibrarySizeSource>,
 ): WidgetLibraryFilter[] {

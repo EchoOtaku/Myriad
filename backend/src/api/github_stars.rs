@@ -64,7 +64,11 @@ fn cache() -> &'static Mutex<HashMap<String, CacheEntry>> {
 }
 
 fn cache_key(owner: &str, repo: &str) -> String {
-    format!("{}/{}", owner.to_ascii_lowercase(), repo.to_ascii_lowercase())
+    format!(
+        "{}/{}",
+        owner.to_ascii_lowercase(),
+        repo.to_ascii_lowercase()
+    )
 }
 
 /// GitHub owner / repo 段：字母数字开头结尾，中间可有 `.` `_` `-`。
@@ -116,7 +120,9 @@ pub async fn get_repo(Query(query): Query<RepoQuery>) -> Result<Json<RepoRespons
     let owner = query.owner.trim();
     let repo = query.repo.trim().trim_end_matches(".git");
     if !valid_repo_segment(owner) || !valid_repo_segment(repo) {
-        return Err(HttpError(AppError::bad_request("Invalid GitHub repository")));
+        return Err(HttpError(AppError::bad_request(
+            "Invalid GitHub repository",
+        )));
     }
 
     let key = cache_key(owner, repo);

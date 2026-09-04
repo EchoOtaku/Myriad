@@ -89,45 +89,55 @@ fn bullet_facts(contents: &[String]) -> Vec<String> {
 /// Pick remembered facts for a turn. With a query, overlapping facts come first;
 /// if nothing overlaps, keep recency. `facts` is newest-first.
 pub fn rank_remembered(facts: &[String], query: Option<&str>, limit: usize) -> Vec<String> {
-    let cleaned: Vec<String> = facts
-        .iter()
-        .map(|fact| fact.trim().to_string())
-        .filter(|fact| !fact.is_empty())
-        .collect();
-    if cleaned.is_empty() || limit == 0 {
-        return Vec::new();
+    let mut ranker = RememberedRanker::new(query, limit);
+    for fact in facts {
+        ranker.push(fact);
     }
-    let Some(query) = query.map(str::trim).filter(|query| !query.is_empty()) else {
-        return cleaned.into_iter().take(limit).collect();
-    };
-    let mut scored: Vec<(u32, usize, String)> = cleaned
-        .into_iter()
-        .enumerate()
-        .map(|(index, fact)| (overlap_score(query, &fact), index, fact))
-        .collect();
-    scored.sort_by(|left, right| right.0.cmp(&left.0).then(left.1.cmp(&right.1)));
-    if scored.iter().all(|item| item.0 == 0) {
-        scored.sort_by_key(|item| item.1);
-        return scored.into_iter().map(|item| item.2).take(limit).collect();
-    }
-    scored
-        .into_iter()
-        .filter(|item| item.0 > 0)
-        .map(|item| item.2)
-        .take(limit)
-        .collect()
+    ranker.finish()
 }
 
-fn overlap_score(query: &str, fact: &str) -> u32 {
-    let query_tokens = tokens(query);
-    if query_tokens.is_empty() {
-        return 0;
+/// Bounded top-k over newest-first pages. Old facts participate without loading
+/// the entire diary into memory or silently limiting retrieval to recent rows.
+pub struct RememberedRanker {
+    query: Vec<String>,
+    limit: usize,
+    best: Vec<(u32, String)>,
+}
+
+impl RememberedRanker {
+    pub fn new(query: Option<&str>, limit: usize) -> Self {
+        Self {
+            query: tokens(query.unwrap_or("")),
+            limit,
+            best: Vec::new(),
+        }
     }
-    let fact_tokens = tokens(fact);
-    query_tokens
-        .iter()
-        .filter(|token| fact_tokens.contains(token))
-        .count() as u32
+
+    pub fn push(&mut self, fact: &str) {
+        let fact = fact.trim();
+        if fact.is_empty() || self.limit == 0 || self.best.iter().any(|(_, text)| text == fact) {
+            return;
+        }
+        let fact_tokens = tokens(fact);
+        let score = self
+            .query
+            .iter()
+            .filter(|token| fact_tokens.contains(token))
+            .count() as u32;
+        // Stable sort keeps recency for equal relevance, including across pages.
+        self.best.push((score, fact.to_owned()));
+        self.best.sort_by(|left, right| right.0.cmp(&left.0));
+        self.best.truncate(self.limit);
+    }
+
+    pub fn finish(self) -> Vec<String> {
+        let has_match = self.best.iter().any(|(score, _)| *score > 0);
+        self.best
+            .into_iter()
+            .filter(|(score, _)| !has_match || *score > 0)
+            .map(|(_, text)| text)
+            .collect()
+    }
 }
 
 fn tokens(value: &str) -> Vec<String> {
@@ -316,5 +326,30 @@ mod tests {
             rank_remembered(&facts, Some("完全无关的天气"), 2),
             vec!["晚上想打独立游戏".to_string(), "早上喝美式".to_string()]
         );
+    }
+
+    #[test]
+    fn old_relevant_facts_survive_many_pages_with_bounded_memory() {
+        let mut ranker = RememberedRanker::new(Some("saffron tea"), 8);
+        for index in 0..300 {
+            ranker.push(&format!("unrelated recent fact {index}"));
+            assert!(ranker.best.len() <= 8);
+        }
+        ranker.push("prefers saffron tea in winter");
+        assert_eq!(ranker.finish(), vec!["prefers saffron tea in winter"]);
+    }
+
+    #[test]
+    fn duplicates_do_not_consume_the_recall_budget_and_ties_keep_recency() {
+        let facts = vec![
+            "tea with milk".into(),
+            "tea with milk".into(),
+            "tea without sugar".into(),
+        ];
+        assert_eq!(
+            rank_remembered(&facts, Some("tea"), 2),
+            vec!["tea with milk", "tea without sugar"]
+        );
+        assert!(rank_remembered(&facts, Some("tea"), 0).is_empty());
     }
 }

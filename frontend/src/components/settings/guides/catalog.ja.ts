@@ -76,6 +76,15 @@ export const ja: SettingGuidesCatalog = {
       notes:
         '横長 ≥1200×630 が無難。アップロードの data URL は多くのクローラで効きません。本番は公開画像 URL を推奨。',
     },
+    googleSiteVerification: {
+      what: 'Google Search Console の HTML タグで「このサイトの所有者」を確認します。',
+      chain:
+        '① Search Console でプロパティ追加 → HTML タグを選ぶ。\n② content または meta 全体をここに貼って下で保存。\n③ Google がトップページの meta を確認したあと、/sitemap.xml を送信できます。',
+      frontend:
+        'クローラー向け HTML と SPA の <meta name="google-site-verification">。Google の確認クロールはクローラー向けシェルを見ます。',
+      notes:
+        'HTML ファイル認証は使わないでください（SPA のためルートに google*.html を置きません）。DNS TXT 認証はこの欄を使いません。',
+    },
     siteNoindex: {
       what: '検索エンジンに本サイトをインデックスさせてよいか（単一スイッチ）。',
       chain:

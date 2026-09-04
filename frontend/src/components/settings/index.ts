@@ -72,6 +72,8 @@ export { SliderItem } from './items/SliderItem'
 // 具体设置项组件
 export { SwitchItem } from './items/SwitchItem'
 export { ToggleSwitch } from './items/ToggleSwitch'
+export type { ToggleSwitchProps } from './items/ToggleSwitch'
+export type { ToggleSwitchPreview } from './items/toggleSwitchPreview'
 export { ManagedList } from './ManagedList'
 export type {
   ManagedListAction,

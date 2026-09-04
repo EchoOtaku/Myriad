@@ -695,6 +695,10 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
                 checked: collectionEnabled,
                 onChange: onEnabledChange,
                 ariaLabel: a.enableAria,
+                preview: {
+                  on: a.enablePreviewOn,
+                  off: a.enablePreviewOff,
+                },
               }
             : undefined
         }

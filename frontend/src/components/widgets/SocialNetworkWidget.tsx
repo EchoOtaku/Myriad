@@ -11,7 +11,7 @@
  * - 动画级别自适应
  */
 
-import type { WidgetComponentProps } from '../WidgetGrid'
+import type { WidgetComponentProps } from '../widgetGridTypes'
 import {
   FaGithub,
   FaSteam,
