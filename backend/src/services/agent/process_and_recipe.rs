@@ -135,7 +135,6 @@ impl Agent {
         if request.context.as_ref().is_some_and(|context| {
             context.interaction_mode == crate::services::agent::AgentInteractionMode::Chat
         }) {
-            publish_chat_outfit_overlay(&self.db, &request, None).await;
             crate::services::agent::merope::note_chat_diary(&self.db, user_id, &request.raw_input)
                 .await;
             let reply = match self.strict_lite_chat_response(&request).await {
@@ -146,6 +145,8 @@ impl Agent {
                 }
             };
             crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
+            let (reply, music) =
+                publish_model_outfit_overlay(&self.db, &request, &reply, None).await;
             crate::services::agent::merope::spawn_chat_remember(
                 user_id,
                 request.raw_input.clone(),
@@ -163,7 +164,7 @@ impl Agent {
                     suggestions: vec![],
                     task: None,
                     confirmation: None,
-                    frontend_action: None,
+                    frontend_action: music.map(chat_music_frontend_action),
                     performance: None,
                 }),
                 &request,
@@ -566,7 +567,6 @@ impl Agent {
         if request.context.as_ref().is_some_and(|context| {
             context.interaction_mode == crate::services::agent::AgentInteractionMode::Chat
         }) {
-            publish_chat_outfit_overlay(&self.db, &request, Some(&progress_tx)).await;
             let _ = progress_tx
                 .send(AgentProgressEvent::Progress {
                     progress: 5,
@@ -607,7 +607,16 @@ impl Agent {
                 .stream_strict_lite_chat_response(&request, &progress_tx, motion_start_tx)
                 .await
             {
-                Ok(reply) => reply,
+                Ok(reply) => {
+                    publish_model_outfit_overlay(
+                        &self.db,
+                        &request,
+                        &reply,
+                        Some(&progress_tx),
+                    )
+                    .await
+                    .0
+                }
                 Err(error) => {
                     crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                     return Err(error);
@@ -2058,34 +2067,53 @@ impl Drop for MotionRefinementGuard {
     }
 }
 
-async fn publish_chat_outfit_overlay(
+fn chat_music_frontend_action(
+    action: crate::services::agent::chat_music::ChatMusicAction,
+) -> Value {
+    json!({
+        "type": "music_control",
+        "action": action.as_str(),
+        "timestamp": chrono::Utc::now().timestamp_millis(),
+    })
+}
+
+async fn publish_model_outfit_overlay(
     db: &sea_orm::DatabaseConnection,
     request: &UserRequest,
+    reply: &str,
     progress_tx: Option<&tokio::sync::mpsc::Sender<AgentProgressEvent>>,
+) -> (
+    String,
+    Option<crate::services::agent::chat_music::ChatMusicAction>,
 ) {
+    let (spoken, directive, music) =
+        crate::services::agent::chat_music::peel_chat_live_reply(reply);
+    let Some(directive) = directive else {
+        return (spoken, music);
+    };
     let Some(session_id) = request
         .context
         .as_ref()
         .and_then(|context| context.session_id.as_deref())
     else {
-        return;
+        return (spoken, music);
     };
-    let Some(outfit_id) = crate::services::agent::merope::apply_chat_outfit_overlay(
+    let Some(outfit_id) = crate::services::agent::merope::apply_model_wear_directive(
         db,
         request.user_id,
         session_id,
-        &request.raw_input,
+        &directive,
     )
     .await
     else {
-        return;
+        return (spoken, music);
     };
-    let Some(progress_tx) = progress_tx else {
-        return;
-    };
-    let _ = progress_tx
-        .send(AgentProgressEvent::OutfitOverlay { outfit_id })
-        .await;
+    if let Some(progress_tx) = progress_tx {
+        let _ = progress_tx
+            .send(AgentProgressEvent::OutfitOverlay { outfit_id })
+            .await;
+    }
+    (spoken, music)
 }
 
 async fn publish_local_motion(

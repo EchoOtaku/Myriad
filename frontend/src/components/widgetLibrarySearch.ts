@@ -6,6 +6,11 @@
  * (category, tappId, description…). No preset allowlist.
  */
 
+import {
+  TAPP_CATEGORIES,
+  normalizeTappCategory,
+} from '../tapp/utils/tappCategories'
+
 export interface WidgetLibrarySearchable {
   id: string
   name: string
@@ -60,4 +65,151 @@ export function widgetTypeMatchesLibrarySearch(
     query,
     collectWidgetLibrarySearchText(widget),
   )
+}
+
+export const WIDGET_LIBRARY_SIZE_ORDER = [
+  '1x1',
+  '2x1',
+  '1x2',
+  '2x2',
+  '2x3',
+  '3x2',
+  '3x3',
+  '2x4',
+  '4x1',
+  '4x2',
+  '4x4',
+] as const
+
+export type WidgetLibrarySize = (typeof WIDGET_LIBRARY_SIZE_ORDER)[number]
+export type WidgetLibraryKindFilter =
+  | 'all'
+  | 'builtin'
+  | 'report'
+  | `tapp:${string}`
+export type WidgetLibraryFilter = WidgetLibraryKindFilter | `size:${string}`
+
+export interface WidgetLibraryKindSource {
+  id: string
+  isTappWidget?: boolean
+  category?: string
+}
+
+export interface WidgetLibrarySizeSource {
+  defaultSize: string
+  supportedSizes?: string[]
+}
+
+export function widgetLibrarySizes(
+  widget: WidgetLibrarySizeSource,
+): string[] {
+  const sizes = widget.supportedSizes?.filter(Boolean)
+  if (sizes && sizes.length > 0) return [...new Set(sizes)]
+  return widget.defaultSize ? [widget.defaultSize] : []
+}
+
+export function formatWidgetLibrarySize(size: string): string {
+  return size.replace(/x/gi, '×')
+}
+
+export function widgetMatchesLibrarySize(
+  filter: 'all' | string,
+  widget: WidgetLibrarySizeSource,
+): boolean {
+  if (filter === 'all') return true
+  return widgetLibrarySizes(widget).includes(filter)
+}
+
+/** Size options for the compact control; empty when only one size exists. */
+export function presentWidgetLibrarySizes(
+  widgets: WidgetLibrarySizeSource[],
+): string[] {
+  const seen = new Set<string>()
+  for (const widget of widgets) {
+    for (const size of widgetLibrarySizes(widget)) seen.add(size)
+  }
+  if (seen.size <= 1) return []
+  const known = WIDGET_LIBRARY_SIZE_ORDER.filter((size) => seen.has(size))
+  const extra = [...seen]
+    .filter(
+      (size) =>
+        !(WIDGET_LIBRARY_SIZE_ORDER as readonly string[]).includes(size),
+    )
+    .sort()
+  return [...known, ...extra]
+}
+
+export function classifyWidgetLibraryKind(
+  widget: WidgetLibraryKindSource,
+): Exclude<WidgetLibraryKindFilter, 'all'> {
+  if (widget.isTappWidget) {
+    return `tapp:${normalizeTappCategory(widget.category)}`
+  }
+  if (widget.id.startsWith('report-')) return 'report'
+  return 'builtin'
+}
+
+export function widgetMatchesLibraryKind(
+  filter: WidgetLibraryKindFilter,
+  widget: WidgetLibraryKindSource,
+): boolean {
+  if (filter === 'all') return true
+  return classifyWidgetLibraryKind(widget) === filter
+}
+
+/**
+ * 全部 / 内置 / 报告 always, then each Tapp category that has a widget.
+ * Empty Tapp categories stay hidden so the row does not flatten the whole catalog.
+ */
+export function presentWidgetLibraryKindFilters(
+  widgets: WidgetLibraryKindSource[],
+): WidgetLibraryKindFilter[] {
+  const tappSeen = new Set<string>()
+  for (const widget of widgets) {
+    const kind = classifyWidgetLibraryKind(widget)
+    if (kind.startsWith('tapp:')) tappSeen.add(kind.slice('tapp:'.length))
+  }
+  const chips: WidgetLibraryKindFilter[] = ['all', 'builtin', 'report']
+  for (const category of TAPP_CATEGORIES) {
+    if (tappSeen.has(category)) chips.push(`tapp:${category}`)
+  }
+  for (const category of [...tappSeen].sort()) {
+    if (!(TAPP_CATEGORIES as readonly string[]).includes(category)) {
+      chips.push(`tapp:${category}`)
+    }
+  }
+  return chips
+}
+
+export function tappCategoryFromKindFilter(
+  filter: WidgetLibraryKindFilter | WidgetLibraryFilter,
+): string | null {
+  if (!filter.startsWith('tapp:')) return null
+  return filter.slice('tapp:'.length) || null
+}
+
+export function sizeFromLibraryFilter(
+  filter: WidgetLibraryFilter,
+): string | null {
+  if (!filter.startsWith('size:')) return null
+  return filter.slice('size:'.length) || null
+}
+
+export function widgetMatchesLibraryFilter(
+  filter: WidgetLibraryFilter,
+  widget: WidgetLibraryKindSource & WidgetLibrarySizeSource,
+): boolean {
+  if (filter === 'all') return true
+  const size = sizeFromLibraryFilter(filter)
+  if (size) return widgetLibrarySizes(widget).includes(size)
+  return classifyWidgetLibraryKind(widget) === filter
+}
+
+/** 全部 + 内置 + 报告 + 有小组件的 Tapp 分类 + 尺寸（尺寸多于一种才列入）. */
+export function presentWidgetLibraryFilters(
+  widgets: Array<WidgetLibraryKindSource & WidgetLibrarySizeSource>,
+): WidgetLibraryFilter[] {
+  const kinds = presentWidgetLibraryKindFilters(widgets)
+  const sizes = presentWidgetLibrarySizes(widgets)
+  return [...kinds, ...sizes.map((size) => `size:${size}` as const)]
 }

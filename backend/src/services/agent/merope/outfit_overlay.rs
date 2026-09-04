@@ -11,8 +11,8 @@ use sea_orm::DatabaseConnection;
 
 use super::store::get_persona;
 use myriad_merope::{
-    looks_from_visual_profile, resolve_chat_outfit_overlay, wardrobe_look, worn_outfit_id,
-    OverlayDecision, DEFAULT_WARDROBE_ID,
+    looks_from_visual_profile, resolve_wear_directive, wardrobe_look, worn_outfit_id,
+    OverlayDecision, WearDirective, DEFAULT_WARDROBE_ID,
 };
 
 static OVERLAYS: Lazy<Mutex<HashMap<(i32, String), String>>> =
@@ -40,13 +40,13 @@ fn set_overlay(user_id: i32, session_id: &str, outfit_id: &str) {
         .insert((user_id, session_id.to_string()), outfit_id.to_string());
 }
 
-/// Apply a chat-line wardrobe request. `Some` means the showing outfit changed;
+/// Apply Lite's wardrobe choice. `Some` means the showing outfit changed;
 /// `outfit_id` is `None` when the overlay was cleared back to the worn set.
-pub async fn apply_chat_outfit_overlay(
+pub async fn apply_model_wear_directive(
     db: &DatabaseConnection,
     user_id: i32,
     session_id: &str,
-    input: &str,
+    directive: &WearDirective,
 ) -> Option<Option<String>> {
     if session_id.is_empty() {
         return None;
@@ -64,7 +64,7 @@ pub async fn apply_chat_outfit_overlay(
     }
     let worn = worn_outfit_id(profile).unwrap_or(DEFAULT_WARDROBE_ID);
     let current = live_overlay(user_id, session_id, &looks);
-    match resolve_chat_outfit_overlay(input, &looks, worn, current.as_deref()) {
+    match resolve_wear_directive(directive, &looks, worn, current.as_deref()) {
         OverlayDecision::Unchanged => None,
         OverlayDecision::Clear => {
             clear_overlay(user_id, session_id);
@@ -115,7 +115,8 @@ mod tests {
     fn overlay_memory_does_not_write_persona_or_the_live_pointer() {
         let source = include_str!("outfit_overlay.rs");
         let prod = source.split("#[cfg(test)]").next().unwrap();
-        assert!(prod.contains("resolve_chat_outfit_overlay"));
+        assert!(prod.contains("resolve_wear_directive"));
+        assert!(prod.contains("apply_model_wear_directive"));
         assert!(!prod.contains("upsert_persona"));
         assert!(!prod.contains("persist_active_asset"));
         assert!(!prod.contains("activeOutfitId"));
@@ -124,16 +125,17 @@ mod tests {
     }
 
     #[test]
-    fn chat_turns_apply_the_overlay_before_lite_speaks() {
+    fn chat_turns_apply_lite_wear_after_it_speaks() {
         let process = include_str!("../process_and_recipe.rs");
-        assert!(process.contains("publish_chat_outfit_overlay"));
+        assert!(process.contains("peel_chat_live_reply"));
+        assert!(process.contains("apply_model_wear_directive"));
         let chat = process
             .split("AgentInteractionMode::Chat")
             .nth(2)
             .expect("streaming chat branch");
         let chat = chat.split("return Ok(AgentResponse").next().unwrap();
-        assert!(chat.contains("publish_chat_outfit_overlay"));
         assert!(chat.contains("stream_strict_lite_chat_response"));
+        assert!(chat.contains("publish_model_outfit_overlay"));
         assert!(!chat.contains("upsert_persona"));
         assert!(!chat.contains("persist_active_asset"));
         let prompt = include_str!("../confirmation_and_tasks.rs");
@@ -145,5 +147,9 @@ mod tests {
         assert!(prompt_fn.contains("chat_wardrobe_section"));
         assert!(prompt_fn.contains("AgentInteractionMode::Chat"));
         assert!(!prompt_fn.contains("upsert_persona"));
+        assert!(prompt.contains("spawn_model_outfit_overlay"));
+        assert!(prompt.contains("spawn_chat_music_control"));
+        assert!(prompt.contains("WearStreamFilter"));
+        assert!(prompt_fn.contains("format_chat_player_section"));
     }
 }

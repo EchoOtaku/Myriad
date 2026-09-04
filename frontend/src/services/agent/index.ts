@@ -57,6 +57,7 @@ export type {
   // 记忆
   MemoryEntry,
   MeropeStateChangedEvent,
+  MusicControlEvent,
   OutfitOverlayEvent,
   PageElementTarget,
   PerformanceDirective,

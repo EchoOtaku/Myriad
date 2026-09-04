@@ -23,7 +23,7 @@ pub use motion::{
     MotionPhase, PerformanceDirective,
 };
 pub use myriad_merope::RigStateSummary;
-pub use outfit_overlay::{apply_chat_outfit_overlay, chat_wardrobe_section};
+pub use outfit_overlay::{apply_model_wear_directive, chat_wardrobe_section};
 pub use store::{
     acquire_portrait_generation, clear_persona_on, complete_portrait_generation,
     credit_music_listening, generation_inputs_changed, get_or_create_state, get_persona,

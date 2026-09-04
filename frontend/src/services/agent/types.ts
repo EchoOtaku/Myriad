@@ -414,6 +414,11 @@ export interface OutfitOverlayEvent {
   outfitId: string | null
 }
 
+export interface MusicControlEvent {
+  type: 'music_control'
+  action: string
+}
+
 /** 任务分配事件（多 Agent 协作时发送） */
 export interface TaskAssignedEvent {
   type: 'task_assigned'
@@ -509,6 +514,7 @@ export type ProgressEvent =
   | PerformancePlanEvent
   | MeropeStateChangedEvent
   | OutfitOverlayEvent
+  | MusicControlEvent
   | PlannerDecisionEvent
   | StepDebugEvent
 

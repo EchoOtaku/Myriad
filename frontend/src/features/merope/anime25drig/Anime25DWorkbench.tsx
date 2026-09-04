@@ -670,6 +670,13 @@ export default function Anime25DWorkbench({
         value: driver.body,
       },
       {
+        key: 'bodyYaw',
+        label: labels.anime25dBodyYaw,
+        min: 0,
+        max: 1,
+        value: driver.bodyYaw,
+      },
+      {
         key: 'armY',
         label: labels.anime25dArmY,
         min: -1,
@@ -1191,6 +1198,7 @@ export default function Anime25DWorkbench({
             ])}
             {sliderCluster(labels.clusterBody, [
               'body',
+              'bodyYaw',
               'armY',
               'armPos',
               'bust',

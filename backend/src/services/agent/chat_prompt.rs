@@ -37,7 +37,9 @@ pub fn reconstruct_conversation_message(
 /// Drop Work task metadata / confirmation / frontend-action injections that
 /// may already be sitting on an assistant line.
 pub fn chat_safe_content(content: &str) -> String {
-    content
+    let spoken = myriad_merope::split_chat_wear_directive(content).0;
+    let spoken = super::chat_music::split_chat_music_directive(&spoken).0;
+    spoken
         .lines()
         .filter(|line| {
             let trimmed = line.trim_start();
@@ -55,7 +57,8 @@ pub fn chat_safe_content(content: &str) -> String {
 /// into a short, warm assistant.
 const CHAT_REPLY_INSTRUCTION: &str = "\
 请以你的角色回复。用对方的语言。说话风格必须由设定里的性格决定，并被心情调节。\
-接住这一句。禁止输出 AI 味的文本，也不要改成攻击。只输出纯文本，不要 JSON 或格式标记。\
+接住这一句。禁止输出 AI 味的文本，也不要改成攻击。只输出纯文本，不要 JSON。\
+若衣服段或播放器段要求写 [[wear:…]] / [[music:…]]，写在全文最后，不要念出来。\
 对方要你查资料、生成、订阅、改设置或处理整页正文时，不要假装已经做完。";
 
 pub fn build_chat_lite_prompt_with_perception(
@@ -452,6 +455,8 @@ mod tests {
         assert!(work.content.contains("[展示类型: table]"));
         assert!(work.content.contains("[前端动作: navigate]"));
         assert!(work.content.contains("[确认: cnf_1]"));
+        assert_eq!(chat_safe_content("行啊。\n[[wear:舞台装]]"), "行啊。");
+        assert_eq!(chat_safe_content("唱。\n[[music:play]]"), "唱。");
     }
 
     #[test]
@@ -499,6 +504,8 @@ mod tests {
         assert!(CHAT_REPLY_INSTRUCTION.contains("接住这一句"));
         assert!(CHAT_REPLY_INSTRUCTION.contains("不要改成攻击"));
         assert!(CHAT_REPLY_INSTRUCTION.contains("不要假装已经做完"));
+        assert!(CHAT_REPLY_INSTRUCTION.contains("[[wear:"));
+        assert!(CHAT_REPLY_INSTRUCTION.contains("[[music:"));
         assert!(!prompt.contains("温暖"));
     }
 

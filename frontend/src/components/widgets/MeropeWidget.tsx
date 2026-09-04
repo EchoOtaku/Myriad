@@ -15,7 +15,6 @@ import {
 } from '../../features/merope/events'
 import {
   LIVE_FACE_PLAYBACK_PRIORITY,
-  liveFacePlaybackVacating,
   notifyLiveFaceUnmounted,
   useLiveFacePlayback,
 } from '../../features/merope/liveFacePlayback'
@@ -201,8 +200,6 @@ function LiveMeropeWidget({
   const playableRig = hasPlayableRig(manifest)
   const motionReady = playsLive && playableRig && !rigFailed
   const liveCapabilities = motionReady ? capabilities : []
-  const showTaken =
-    playableRig && !playsLive && !liveFacePlaybackVacating()
   const packageKey = motionReady
     ? 'live'
     : !playableRig && portraitUrl
@@ -349,13 +346,11 @@ function LiveMeropeWidget({
           ready={ready}
           onLiveUnmounted={() => notifyLiveFaceUnmounted(playbackId)}
           vacant={
-            !loading && (showTaken || failed || rigFailed || !playableRig) ? (
+            !loading && (failed || rigFailed || !playableRig) ? (
               <p className="merope-widget__empty" role="status">
-                {showTaken
-                  ? t.merope.widgetFaceSlotTaken
-                  : failed || rigFailed
-                    ? t.merope.loadFailed
-                    : t.merope.assetEmpty}
+                {failed || rigFailed
+                  ? t.merope.loadFailed
+                  : t.merope.assetEmpty}
               </p>
             ) : null
           }

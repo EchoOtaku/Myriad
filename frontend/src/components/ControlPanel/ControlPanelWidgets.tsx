@@ -603,7 +603,7 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
                     customGridColumns={12} // 3页宽度 (4 * 3)
                     customGridRows={gridRows}
                     autoHeight={true}
-                    libraryContainerClassName="fixed top-20 right-112.5 w-80 rounded-xl border border-gray-200/50 dark:border-white/5 z-10000 glass-surface glass-80 shadow-2xl overflow-hidden"
+                    libraryContainerClassName="fixed top-20 right-112.5 w-96 rounded-xl border border-gray-200/50 dark:border-white/5 z-10000 glass-surface glass-80 shadow-2xl overflow-hidden"
                     // 优化：改为 flex-col 避免重叠
                     libraryContentClassName="flex flex-col items-center gap-6 p-6 overflow-y-auto max-h-[60vh] scrollbar-hide w-full"
                     libraryAnimation={{

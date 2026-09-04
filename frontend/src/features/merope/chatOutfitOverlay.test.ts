@@ -6,6 +6,7 @@ import {
   getChatOutfitOverlay,
   resetChatOutfitOverlayForTests,
   setChatOutfitOverlay,
+  stripChatWearMarker,
 } from './chatOutfitOverlay'
 
 describe('chat outfit overlay', { concurrency: false }, () => {
@@ -16,6 +17,18 @@ describe('chat outfit overlay', { concurrency: false }, () => {
     setChatOutfitOverlay('w-coat')
     clearChatOutfitOverlay()
     assert.equal(getChatOutfitOverlay(), null)
+  })
+
+  test('strips the live wear marker from spoken text', () => {
+    assert.equal(
+      stripChatWearMarker('行啊，等着。我去换。\n[[wear:舞台装]]'),
+      '行啊，等着。我去换。',
+    )
+    assert.equal(stripChatWearMarker('你好'), '你好')
+    assert.equal(
+      stripChatWearMarker('唱给你听。\n[[music:play]]'),
+      '唱给你听。',
+    )
   })
 })
 
@@ -43,6 +56,8 @@ test('panel chat can overlay a saved set without wearing it', () => {
   assert.match(panel, /getSiteFace\(\)/)
   assert.match(engine, /case 'outfit_overlay'/)
   assert.match(engine, /setChatOutfitOverlay\(overlayEvent\.outfitId\)/)
+  assert.match(engine, /stripChatWearMarker/)
+  assert.match(engine, /case 'music_control'/)
   assert.match(engine, /if \(current === 'chat'\) clearChatOutfitOverlay\(\)/)
   assert.match(api, /\/api\/agent\/wardrobe\/\$\{encodeURIComponent\(id\)\}\/face/)
   assert.doesNotMatch(composer, /wardrobeWear/)

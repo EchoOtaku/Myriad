@@ -14,6 +14,7 @@ import type {
   AgentResponse,
   FrontendAction,
   MeropeStateChangedEvent,
+  MusicControlEvent,
   OutfitOverlayEvent,
   PerformancePlanEvent,
   PlannerDecisionEvent,
@@ -51,6 +52,7 @@ import { usePageContentOptional } from '../../contexts/PageContentContext'
 import {
   clearChatOutfitOverlay,
   setChatOutfitOverlay,
+  stripChatWearMarker,
 } from '../../features/merope/chatOutfitOverlay'
 import {
   attachLiveBody,
@@ -1087,7 +1089,9 @@ export const AgentEngine: React.FC = () => {
                 publishThinking(split.thought)
               }
               const body = nonemptyContent(
-                peelThoughtFromContent(split.content, streamedThinking),
+                stripChatWearMarker(
+                  peelThoughtFromContent(split.content, streamedThinking),
+                ),
               )
               if (body) {
                 updateMessageExecution(assistantMessageId, {
@@ -1105,7 +1109,9 @@ export const AgentEngine: React.FC = () => {
                 publishThinking(split.thought)
               }
               const body = nonemptyContent(
-                peelThoughtFromContent(split.content, streamedThinking),
+                stripChatWearMarker(
+                  peelThoughtFromContent(split.content, streamedThinking),
+                ),
               )
               if (body) {
                 const sealed = speech.push(tokenEvent.token)
@@ -1126,6 +1132,26 @@ export const AgentEngine: React.FC = () => {
           case 'outfit_overlay': {
             const overlayEvent = event as OutfitOverlayEvent
             setChatOutfitOverlay(overlayEvent.outfitId)
+            break
+          }
+
+          case 'music_control': {
+            const musicEvent = event as MusicControlEvent
+            const action =
+              musicEvent.action === 'prev' ? 'previous' : musicEvent.action
+            if (
+              action === 'play' ||
+              action === 'pause' ||
+              action === 'toggle' ||
+              action === 'next' ||
+              action === 'previous'
+            ) {
+              void executeFrontendAction({
+                type: 'music_control',
+                action,
+                timestamp: Date.now(),
+              })
+            }
             break
           }
 

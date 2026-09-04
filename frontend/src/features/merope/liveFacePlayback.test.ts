@@ -133,9 +133,9 @@ test('a playable rig never uses the master portrait as a stand-in', () => {
   for (const source of [widget, panel]) {
     assert.match(source, /fallbackUrl=\{playableRig \? null : portraitUrl\}/)
   }
-  assert.match(widget, /showTaken =/)
   assert.match(widget, /widgetFaceSlotTaken/)
-  assert.match(widget, /liveFacePlaybackVacating\(\)/)
+  assert.match(widget, /function MeropeWidgetDuplicate/)
+  assert.doesNotMatch(widget, /showTaken/)
   assert.doesNotMatch(panel, /widgetFaceSlotTaken/)
   assert.match(panel, /!loading && playbackEnabled/)
   assert.match(widget, /src=\{STYLE_REFERENCE_PREVIEW\}/)
@@ -144,7 +144,7 @@ test('a playable rig never uses the master portrait as a stand-in', () => {
   assert.match(character, /presentLive\(true\)/)
   assert.match(character, /if \(!recoverGpu\(\)\) onPlaybackError/)
   assert.match(character, /key=\{gpuEpoch\}/)
-  assert.match(player, /loadImage\(url, atlasAbort\.signal\)/)
+  assert.match(player, /loadImage\(atlasUrl, atlasAbort\.signal\)/)
   assert.match(
     player,
     /if \(this\.disposed \|\| atlasAbort\.signal\.aborted\) return/,

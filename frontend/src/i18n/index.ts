@@ -241,6 +241,7 @@ export interface TranslationKeys {
     anime25dBust: string
     anime25dBustY: string
     anime25dLean: string
+    anime25dBodyYaw: string
     anime25dBrow: string
     anime25dBrowAngSym: string
     anime25dBrowL: string
@@ -3117,6 +3118,12 @@ export interface TranslationKeys {
     widgetLibrary: string
     searchWidgets: string
     clearSearch: string
+    filterWidgets: string
+    filterAll: string
+    filterBuiltin: string
+    filterReports: string
+    filterSize: string
+    filterGroupCategory: string
     noSearchResults: string
     deleteWidget: string
     positionConflict: string

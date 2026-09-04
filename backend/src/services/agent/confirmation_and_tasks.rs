@@ -19,6 +19,139 @@ enum ConfirmationOutcome {
     Execute(Box<PendingRecipeConfirmation>),
 }
 
+#[derive(Default)]
+struct WearStreamFilter {
+    raw: String,
+    emitted: usize,
+    fired_wear: bool,
+    fired_music: bool,
+}
+
+impl WearStreamFilter {
+    fn push(
+        &mut self,
+        token: &str,
+    ) -> (
+        String,
+        Option<myriad_merope::WearDirective>,
+        Option<crate::services::agent::chat_music::ChatMusicAction>,
+    ) {
+        self.raw.push_str(token);
+        self.emit_held(true)
+    }
+
+    fn flush(
+        &mut self,
+    ) -> (
+        String,
+        Option<myriad_merope::WearDirective>,
+        Option<crate::services::agent::chat_music::ChatMusicAction>,
+    ) {
+        self.emit_held(false)
+    }
+
+    fn emit_held(
+        &mut self,
+        hold: bool,
+    ) -> (
+        String,
+        Option<myriad_merope::WearDirective>,
+        Option<crate::services::agent::chat_music::ChatMusicAction>,
+    ) {
+        let (after_wear, wear) = myriad_merope::split_chat_wear_directive(&self.raw);
+        let (spoken, music) =
+            crate::services::agent::chat_music::split_chat_music_directive(&after_wear);
+        let visible = if hold {
+            crate::services::agent::chat_music::hold_incomplete_live_marker(&spoken)
+        } else {
+            spoken.as_str()
+        };
+        (
+            self.delta(visible),
+            self.take_wear(wear),
+            self.take_music(music),
+        )
+    }
+
+    fn take_wear(
+        &mut self,
+        directive: Option<myriad_merope::WearDirective>,
+    ) -> Option<myriad_merope::WearDirective> {
+        let directive = directive?;
+        if self.fired_wear {
+            return None;
+        }
+        self.fired_wear = true;
+        Some(directive)
+    }
+
+    fn take_music(
+        &mut self,
+        action: Option<crate::services::agent::chat_music::ChatMusicAction>,
+    ) -> Option<crate::services::agent::chat_music::ChatMusicAction> {
+        let action = action?;
+        if self.fired_music {
+            return None;
+        }
+        self.fired_music = true;
+        Some(action)
+    }
+
+    fn delta(&mut self, spoken: &str) -> String {
+        if spoken.len() < self.emitted {
+            self.emitted = spoken.len();
+            return String::new();
+        }
+        if !spoken.is_char_boundary(self.emitted) {
+            self.emitted = spoken.len();
+            return String::new();
+        }
+        let out = spoken[self.emitted..].to_string();
+        self.emitted = spoken.len();
+        out
+    }
+}
+
+fn spawn_chat_music_control(
+    action: crate::services::agent::chat_music::ChatMusicAction,
+    tx: tokio::sync::mpsc::Sender<AgentProgressEvent>,
+) {
+    tokio::spawn(async move {
+        let _ = tx
+            .send(AgentProgressEvent::MusicControl {
+                action: action.as_str().to_string(),
+            })
+            .await;
+    });
+}
+
+fn spawn_model_outfit_overlay(
+    db: sea_orm::DatabaseConnection,
+    user_id: i32,
+    session_id: Option<String>,
+    directive: myriad_merope::WearDirective,
+    tx: tokio::sync::mpsc::Sender<AgentProgressEvent>,
+) {
+    let Some(session_id) = session_id.filter(|id| !id.is_empty()) else {
+        return;
+    };
+    tokio::spawn(async move {
+        let Some(outfit_id) = crate::services::agent::merope::apply_model_wear_directive(
+            &db,
+            user_id,
+            &session_id,
+            &directive,
+        )
+        .await
+        else {
+            return;
+        };
+        let _ = tx
+            .send(AgentProgressEvent::OutfitOverlay { outfit_id })
+            .await;
+    });
+}
+
 impl Agent {
     /// 处理用户确认
     ///
@@ -1165,6 +1298,17 @@ impl Agent {
                     merope_block = format!("{merope_block}\n\n{wardrobe}");
                 }
             }
+            let music = request
+                .context
+                .as_ref()
+                .and_then(|context| context.custom_data.as_ref())
+                .and_then(|data| data.get("musicStatus"));
+            let player = crate::services::agent::chat_music::format_chat_player_section(music);
+            if merope_block.is_empty() {
+                merope_block = player;
+            } else {
+                merope_block = format!("{merope_block}\n\n{player}");
+            }
         }
         let history = request
             .context
@@ -1200,11 +1344,46 @@ impl Agent {
         let prompt = self.chat_response_prompt(request).await;
 
         let tx = progress_tx.clone();
+        let wear = std::sync::Arc::new(std::sync::Mutex::new(WearStreamFilter::default()));
+        let db = self.db.clone();
+        let user_id = request.user_id;
+        let session_id = request
+            .context
+            .as_ref()
+            .and_then(|context| context.session_id.clone());
         match analyzer
             .analyze_stream_parts(&prompt, |delta| {
                 let tx = tx.clone();
                 let stream_started = stream_started.clone();
+                let wear = wear.clone();
+                let db = db.clone();
+                let session_id = session_id.clone();
                 async move {
+                    let delta = match delta {
+                        crate::services::analyzer::StreamDelta::Text(token) => {
+                            let (spoken, directive, music) = wear
+                                .lock()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                                .push(&token);
+                            if let Some(directive) = directive {
+                                spawn_model_outfit_overlay(
+                                    db.clone(),
+                                    user_id,
+                                    session_id.clone(),
+                                    directive,
+                                    tx.clone(),
+                                );
+                            }
+                            if let Some(music) = music {
+                                spawn_chat_music_control(music, tx.clone());
+                            }
+                            if spoken.is_empty() {
+                                return true;
+                            }
+                            crate::services::analyzer::StreamDelta::Text(spoken)
+                        }
+                        other => other,
+                    };
                     if matches!(&delta, crate::services::analyzer::StreamDelta::Text(_)) {
                         if let Some(stream_started) = stream_started {
                             let _ = stream_started.try_send(());
@@ -1216,7 +1395,32 @@ impl Agent {
             })
             .await
         {
-            Ok(full_text) if !full_text.trim().is_empty() => Ok(full_text.trim().to_string()),
+            Ok(full_text) if !full_text.trim().is_empty() => {
+                let (leftover, directive, music) = wear
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .flush();
+                if let Some(directive) = directive {
+                    spawn_model_outfit_overlay(
+                        self.db.clone(),
+                        user_id,
+                        session_id,
+                        directive,
+                        progress_tx.clone(),
+                    );
+                }
+                if let Some(music) = music {
+                    spawn_chat_music_control(music, progress_tx.clone());
+                }
+                if !leftover.is_empty() {
+                    response_agent::emit_stream_delta(
+                        progress_tx,
+                        crate::services::analyzer::StreamDelta::Text(leftover),
+                    )
+                    .await;
+                }
+                Ok(full_text.trim().to_string())
+            }
             Ok(_) => Err("Chat model returned an empty response".to_string()),
             Err(error) => Err(error.to_string()),
         }

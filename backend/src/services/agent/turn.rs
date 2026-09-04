@@ -41,6 +41,7 @@ pub fn event_plane(event: &AgentProgressEvent) -> EventPlane {
         | AgentProgressEvent::PerformancePlan { .. }
         | AgentProgressEvent::MeropeStateChanged { .. }
         | AgentProgressEvent::OutfitOverlay { .. }
+        | AgentProgressEvent::MusicControl { .. }
         | AgentProgressEvent::Error { .. }
         | AgentProgressEvent::PlannerDecision { .. }
         | AgentProgressEvent::StepDebug { .. } => EventPlane::Control,

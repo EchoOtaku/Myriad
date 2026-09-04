@@ -14,6 +14,19 @@ function emit(): void {
   for (const listener of listeners) listener()
 }
 
+const WEAR_MARK = /\[\[wear:[^\]]*\]\]/g
+const WEAR_MARK_UNI = /⟦wear:[^⟧]*⟧/g
+const MUSIC_MARK = /\[\[music:[^\]]*\]\]/g
+
+export function stripChatWearMarker(text: string): string {
+  return text
+    .replace(WEAR_MARK, '')
+    .replace(WEAR_MARK_UNI, '')
+    .replace(MUSIC_MARK, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 export function getChatOutfitOverlay(): string | null {
   return overlayId
 }

@@ -3,7 +3,7 @@
  * 16x4 网格布局，支持拖拽编辑
  */
 
-import type { TappSettingItem } from '../tapp/types'
+import type { TappCategory, TappSettingItem } from '../tapp/types'
 
 import { FaChevronRight, FaCog, FaSearch, FaTimes } from '@lib/icons'
 import {
@@ -33,8 +33,18 @@ import {
   getStandardWidgetDimensions,
   LIBRARY_PREVIEW_DISPLAY_SCALE,
 } from '../hooks/useWidgetSize'
+import { TAPP_CATEGORY_I18N_KEYS } from '../tapp/utils/tappCategories'
 import { resolveHomeGridColumns } from '../utils/viewportBands'
-import { widgetTypeMatchesLibrarySearch } from './widgetLibrarySearch'
+import type { WidgetLibraryFilter } from './widgetLibrarySearch'
+import {
+  formatWidgetLibrarySize,
+  presentWidgetLibraryFilters,
+  sizeFromLibraryFilter,
+  tappCategoryFromKindFilter,
+  widgetMatchesLibraryFilter,
+  widgetTypeMatchesLibrarySearch,
+} from './widgetLibrarySearch'
+import { FieldSelect } from './settings/items/FieldSelect'
 import { preloadBuiltinWidgets } from './widgets/builtinWidgets'
 import './WidgetGrid.css'
 
@@ -511,7 +521,7 @@ const LibraryPreviewSlot = React.memo(
     return (
       <div
         ref={slotRef}
-        className="absolute top-0 left-0 origin-top-left pointer-events-none shadow-sm rounded-xl overflow-hidden ring-1 ring-black/5 dark:ring-white/5 widget-library-preview"
+        className="widget-library-preview absolute top-0 left-0 origin-top-left pointer-events-none"
         style={{
           width: renderWidth,
           height: renderHeight,
@@ -577,30 +587,24 @@ const LibraryScrollHint = React.memo(
 
     return (
       <div
-        className={`pointer-events-none absolute inset-y-0 right-0 flex items-center justify-end pr-3 transition-opacity duration-300 ${
-          visible ? 'opacity-100' : 'opacity-0'
-        }`}
+        className={`widget-library-hint ${visible ? 'opacity-100' : 'opacity-0'}`}
       >
         <motion.div
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-white/95 dark:bg-neutral-900/90 shadow-lg ring-1 ring-black/5 dark:ring-white/10"
+          className="widget-library-hint-dot"
           animate={
-            // 不可见时停止循环动画，避免编辑期间一直空跑 rAF
-            visible ? { x: [0, 5, 0], scale: [1, 1.08, 1] } : { x: 0, scale: 1 }
+            visible ? { x: [0, 4, 0] } : { x: 0 }
           }
           transition={
             visible
               ? {
-                  duration: 1.3,
+                  duration: 1.4,
                   repeat: Number.POSITIVE_INFINITY,
                   ease: 'easeInOut',
                 }
               : { duration: 0.2 }
           }
         >
-          <FaChevronRight
-            className="text-gray-500 dark:text-white/70"
-            size={16}
-          />
+          <FaChevronRight size={13} />
         </motion.div>
       </div>
     )
@@ -645,6 +649,38 @@ function getWidgetSearchExtras(
     description?: string
   }
   return [extra.category, extra.tappId, extra.description]
+}
+
+function getWidgetLibraryKindSource(widgetType: WidgetType): {
+  id: string
+  isTappWidget?: boolean
+  category?: string
+} {
+  const extra = widgetType as WidgetType & {
+    isTappWidget?: boolean
+    category?: string
+  }
+  return {
+    id: widgetType.id,
+    isTappWidget: extra.isTappWidget,
+    category: extra.category,
+  }
+}
+
+function libraryFilterLabel(
+  id: WidgetLibraryFilter,
+  t: ReturnType<typeof useI18n>['t'],
+): string {
+  if (id === 'all') return t.widgetGrid.filterAll
+  if (id === 'builtin') return t.widgetGrid.filterBuiltin
+  if (id === 'report') return t.widgetGrid.filterReports
+  const size = sizeFromLibraryFilter(id)
+  if (size) return formatWidgetLibrarySize(size)
+  const tappCategory = tappCategoryFromKindFilter(id)
+  if (tappCategory && tappCategory in TAPP_CATEGORY_I18N_KEYS) {
+    return t.tapp[TAPP_CATEGORY_I18N_KEYS[tappCategory as TappCategory]]
+  }
+  return tappCategory || id
 }
 
 interface WidgetGridProps {
@@ -985,10 +1021,15 @@ export default function WidgetGrid({
   // 避免每次滚动都重渲染整个小组件库（含所有预览小组件）导致卡顿
   const libraryScrollRef = useRef<HTMLDivElement>(null)
   const [librarySearchQuery, setLibrarySearchQuery] = useState('')
+  const [libraryFilter, setLibraryFilter] =
+    useState<WidgetLibraryFilter>('all')
 
-  // 离开编辑模式时清空搜索，避免下次进入带着旧筛选
+  // 离开编辑模式时清空搜索/筛选，避免下次进入带着旧条件
   useEffect(() => {
-    if (!isEditMode) setLibrarySearchQuery('')
+    if (!isEditMode) {
+      setLibrarySearchQuery('')
+      setLibraryFilter('all')
+    }
   }, [isEditMode])
 
   // 进入编辑模式：预热目录内全部类型（含报告壳 + 全 report-* 对应 face）
@@ -1010,26 +1051,87 @@ export default function WidgetGrid({
     return map
   }, [availableWidgets])
 
+  const libraryFilterOptions = useMemo(
+    () =>
+      presentWidgetLibraryFilters(
+        availableWidgets.map((widgetType) => ({
+          ...getWidgetLibraryKindSource(widgetType),
+          defaultSize: widgetType.defaultSize,
+          supportedSizes: widgetType.supportedSizes,
+        })),
+      ),
+    [availableWidgets],
+  )
+  const activeLibraryFilter: WidgetLibraryFilter =
+    libraryFilterOptions.includes(libraryFilter) ? libraryFilter : 'all'
+  const librarySelectOptions = useMemo(() => {
+    const kinds = libraryFilterOptions.filter(
+      (id) =>
+        id === 'builtin' || id === 'report' || id.startsWith('tapp:'),
+    )
+    const sizes = libraryFilterOptions.filter((id) => id.startsWith('size:'))
+    const options: Array<{
+      value: string
+      label: string
+      disabled?: boolean
+    }> = [{ value: 'all', label: libraryFilterLabel('all', t) }]
+    if (kinds.length > 0) {
+      options.push({
+        value: '__group:category',
+        label: t.widgetGrid.filterGroupCategory,
+        disabled: true,
+      })
+      for (const id of kinds) {
+        options.push({ value: id, label: libraryFilterLabel(id, t) })
+      }
+    }
+    if (sizes.length > 0) {
+      options.push({
+        value: '__group:size',
+        label: t.widgetGrid.filterSize,
+        disabled: true,
+      })
+      for (const id of sizes) {
+        options.push({ value: id, label: libraryFilterLabel(id, t) })
+      }
+    }
+    return options
+  }, [libraryFilterOptions, t])
+
   // 按运行时元数据过滤（内置 + 第三方 Tapp 同一路径，不依赖预置名单）
   const libraryWidgets = useMemo(() => {
     const widgetsI18n = t.widgets as Record<string, unknown>
-    return availableWidgets.filter((widgetType) =>
-      widgetTypeMatchesLibrarySearch(librarySearchQuery, {
+    return availableWidgets.filter((widgetType) => {
+      if (
+        !widgetMatchesLibraryFilter(activeLibraryFilter, {
+          ...getWidgetLibraryKindSource(widgetType),
+          defaultSize: widgetType.defaultSize,
+          supportedSizes: widgetType.supportedSizes,
+        })
+      ) {
+        return false
+      }
+      return widgetTypeMatchesLibrarySearch(librarySearchQuery, {
         id: widgetType.id,
         name: widgetType.name,
         label: getWidgetDisplayLabel(widgetType, widgetsI18n),
         extras: getWidgetSearchExtras(widgetType),
-      }),
-    )
-  }, [availableWidgets, librarySearchQuery, t.widgets])
+      })
+    })
+  }, [
+    activeLibraryFilter,
+    availableWidgets,
+    librarySearchQuery,
+    t.widgets,
+  ])
 
-  // 搜索结果变化时滚回列表起点，避免停在空区域
+  // 搜索/筛选结果变化时滚回列表起点，避免停在空区域
   useEffect(() => {
     const el = libraryScrollRef.current
     if (!el) return
     el.scrollLeft = 0
     el.scrollTop = 0
-  }, [librarySearchQuery])
+  }, [librarySearchQuery, activeLibraryFilter])
 
   // RAF ref for drag handling
   const rafRef = useRef<number | null>(null)
@@ -1746,31 +1848,26 @@ export default function WidgetGrid({
       }
       style={libraryStyle}
     >
-      <div className="w-full max-w-480 mx-auto">
-        {/* 控制栏：标题 → 搜索 */}
-        <div className="flex flex-wrap items-center gap-3 px-4 sm:px-6 py-3 border-b border-gray-200/30 dark:border-white/5">
-          <div className="flex items-center gap-2 text-gray-800 dark:text-gray-100 shrink-0">
+      <div className="widget-library w-full max-w-480 mx-auto">
+        {/* 控制栏：标题 → 搜索 → 快速筛选 */}
+        <div className="widget-library-toolbar">
+          <div className="widget-library-title">
             <img
               src="/icons/widgets/library.webp"
               alt=""
               aria-hidden="true"
-              className="h-5 w-5 object-contain"
               draggable={false}
               decoding="async"
             />
-            <span className="font-bold">{t.widgetGrid.widgetLibrary}</span>
+            <span>{t.widgetGrid.widgetLibrary}</span>
           </div>
 
           <div
-            className="relative w-44 sm:w-52 min-w-0"
+            className="widget-library-search"
             onMouseDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
           >
-            <FaSearch
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-white/40"
-              size={12}
-              aria-hidden
-            />
+            <FaSearch className="widget-library-search-icon" size={12} aria-hidden />
             <input
               type="search"
               value={librarySearchQuery}
@@ -1778,19 +1875,35 @@ export default function WidgetGrid({
               placeholder={t.widgetGrid.searchWidgets}
               aria-label={t.widgetGrid.searchWidgets}
               autoComplete="off"
-              className="widget-library-search-input w-full rounded-lg border border-gray-200/70 dark:border-white/10 bg-white/70 dark:bg-white/5 py-1.5 pl-8 pr-8 text-sm text-gray-800 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-white/35 outline-none focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20 transition-[border-color,box-shadow]"
+              className="widget-library-search-input"
             />
             {librarySearchQuery ? (
               <button
                 type="button"
                 onClick={() => setLibrarySearchQuery('')}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-gray-400 hover:text-gray-700 dark:hover:text-white/80 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                className="widget-library-search-clear"
                 title={t.widgetGrid.clearSearch}
                 aria-label={t.widgetGrid.clearSearch}
               >
                 <FaTimes size={10} />
               </button>
             ) : null}
+          </div>
+
+          <div
+            className="widget-library-filter shrink-0"
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+          >
+            <FieldSelect
+              size="sm"
+              value={activeLibraryFilter}
+              options={librarySelectOptions}
+              onChange={(next) =>
+                setLibraryFilter(next as WidgetLibraryFilter)
+              }
+              aria-label={t.widgetGrid.filterWidgets}
+            />
           </div>
         </div>
 
@@ -1800,7 +1913,7 @@ export default function WidgetGrid({
             ref={libraryScrollRef}
             className={
               libraryContentClassName ||
-              'flex items-center gap-6 p-6 overflow-x-auto scrollbar-hide min-h-40'
+              'widget-library-strip--row scrollbar-hide'
             }
             onWheel={(e) => {
               if (libraryContentClassName) return
@@ -1819,7 +1932,7 @@ export default function WidgetGrid({
             }}
           >
             {libraryWidgets.length === 0 ? (
-              <div className="flex w-full min-h-28 items-center justify-center px-4 text-sm text-gray-500 dark:text-white/50">
+              <div className="widget-library-empty">
                 {t.widgetGrid.noSearchResults}
               </div>
             ) : (
@@ -1853,20 +1966,15 @@ export default function WidgetGrid({
                 widgetType,
                 t.widgets as Record<string, unknown>,
               )
-              const isLibrary1x1 = widgetType.defaultSize === '1x1'
 
               return (
                 <motion.div
                   key={widgetType.id}
-                  className={`relative group cursor-move shrink-0${isLibrary1x1 ? ' flex flex-col items-center' : ''}`}
-                  style={
-                    isLibrary1x1
-                      ? { width: wrapperWidth }
-                      : {
-                          width: wrapperWidth,
-                          height: wrapperHeight,
-                        }
-                  }
+                  className="widget-library-item"
+                  style={{
+                    width: wrapperWidth,
+                    height: wrapperHeight,
+                  }}
                   draggable
                   onMouseDown={(e: React.MouseEvent) =>
                     handleNewWidgetDragStart(e, widgetType.id)
@@ -1874,65 +1982,23 @@ export default function WidgetGrid({
                   onTouchStart={(e: React.TouchEvent) =>
                     handleNewWidgetDragStart(e, widgetType.id)
                   }
-                  whileHover={{ scale: 1.05, zIndex: 10 }}
-                  whileTap={{ scale: 0.95 }}
                 >
-                  {isLibrary1x1 ? (
-                    <>
-                      {/* 1x1：预览框固定尺寸；名称放框外下方，避免内叠 tip 溢出 */}
-                      <div
-                        className="relative"
-                        style={{
-                          width: wrapperWidth,
-                          height: wrapperHeight,
-                        }}
-                      >
-                        <LibraryPreviewSlot
-                          scrollRef={libraryScrollRef}
-                          renderWidth={renderWidth}
-                          renderHeight={renderHeight}
-                          displayScale={displayScale}
-                        >
-                          <WidgetComponent
-                            config={previewConfig}
-                            isEditMode={true}
-                            isPreview={true}
-                          />
-                        </LibraryPreviewSlot>
-                        <div className="absolute inset-0 z-20 rounded-xl ring-1 ring-black/5 dark:ring-white/10 group-hover:ring-2 group-hover:ring-blue-500 transition-all bg-transparent" />
-                      </div>
-                      <div
-                        className="mt-5 w-full px-0.5 text-center text-[10px] font-bold leading-tight text-gray-600 dark:text-gray-300 line-clamp-2 break-words pointer-events-none"
-                        title={libraryLabel}
-                      >
-                        {libraryLabel}
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      {/* 缩放容器（按需挂载，见 LibraryPreviewSlot） */}
-                      <LibraryPreviewSlot
-                        scrollRef={libraryScrollRef}
-                        renderWidth={renderWidth}
-                        renderHeight={renderHeight}
-                        displayScale={displayScale}
-                      >
-                        <WidgetComponent
-                          config={previewConfig}
-                          isEditMode={true}
-                          isPreview={true}
-                        />
-                      </LibraryPreviewSlot>
-
-                      {/* 遮罩层 - 用于拖拽交互和高亮 */}
-                      <div className="absolute inset-0 z-20 rounded-xl ring-1 ring-black/5 dark:ring-white/10 group-hover:ring-2 group-hover:ring-blue-500 transition-all bg-transparent" />
-
-                      {/* 悬浮提示（非 1x1 维持原样） */}
-                      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-bold text-gray-600 dark:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none glass-surface glass-90 px-3 py-1 rounded-full shadow-sm border border-gray-200/50 dark:border-neutral-700/50">
-                        {libraryLabel}
-                      </div>
-                    </>
-                  )}
+                  <LibraryPreviewSlot
+                    scrollRef={libraryScrollRef}
+                    renderWidth={renderWidth}
+                    renderHeight={renderHeight}
+                    displayScale={displayScale}
+                  >
+                    <WidgetComponent
+                      config={previewConfig}
+                      isEditMode={true}
+                      isPreview={true}
+                    />
+                  </LibraryPreviewSlot>
+                  <div className="widget-library-item-frame" />
+                  <div className="widget-library-caption" title={libraryLabel}>
+                    {libraryLabel}
+                  </div>
                 </motion.div>
               )
             })
