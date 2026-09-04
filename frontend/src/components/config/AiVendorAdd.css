@@ -156,6 +156,12 @@
   padding-bottom: 0;
 }
 
+.ai-vendor-card-tags .github-project-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+}
+
 .ai-vendor-card-tags .setting-title-tag-icon,
 .ai-vendor-card-tags .setting-title-tag-label {
   line-height: 1;

@@ -1,7 +1,10 @@
 //! Site persona — one personality, owner-writable.
 
 use super::*;
-use axum::{extract::State, Extension, Json};
+use axum::{
+    extract::{Path, State},
+    Extension, Json,
+};
 use sea_orm::{DatabaseConnection, TransactionTrait};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
@@ -287,6 +290,22 @@ pub async fn get_persona(
         body["portraitGeneration"] = persona.portrait_generation.unwrap_or(Value::Null);
     }
     Ok(Json(body))
+}
+
+/// GET /api/agent/wardrobe/{outfit_id}/face
+///
+/// Chat overlay playback. Any Agent user may read a saved set's public face.
+/// This does not change the worn outfit.
+pub async fn get_wardrobe_face(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Path(outfit_id): Path<String>,
+) -> Result<Json<Value>, HttpError> {
+    require_merope_enabled().await?;
+    let _user_id = parse_user_id_with_agent_access(&claims, &db).await?;
+    crate::api::merope_rig::wardrobe_outfit_face(&db, &outfit_id)
+        .await
+        .map_err(HttpError::from)
 }
 
 /// PUT /api/agent/persona
@@ -1498,6 +1517,26 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn wardrobe_face_is_readable_by_agent_users_and_does_not_wear() {
+        let source = include_str!("persona.rs");
+        let getter = source
+            .split("/// GET /api/agent/wardrobe/{outfit_id}/face")
+            .nth(1)
+            .expect("wardrobe face")
+            .split("/// PUT /api/agent/persona")
+            .next()
+            .expect("getter body");
+        assert!(getter.contains("parse_user_id_with_agent_access"));
+        assert!(getter.contains("wardrobe_outfit_face"));
+        assert!(!getter.contains("require_site_owner"));
+        assert!(!getter.contains("upsert_persona"));
+        assert!(!getter.contains("persist_active_asset"));
+        let routes = include_str!("routes.rs");
+        assert!(routes.contains("/wardrobe/{outfit_id}/face"));
+        assert!(routes.contains("get_wardrobe_face"));
+    }
 
     #[test]
     fn put_persona_points_the_live_rig_at_the_worn_outfit() {

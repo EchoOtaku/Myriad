@@ -8,12 +8,15 @@ import { useI18n } from '../../contexts/I18nContext'
 import { agentStatusActivity } from '../../features/merope/activity'
 import { isAnime25DPlayback } from '../../features/merope/anime25drig/types'
 import { getSiteFace } from '../../features/merope/api'
+import { FacePresence } from '../../features/merope/FacePresence'
 import {
   FACE_UPDATED_EVENT,
   PERSONA_UPDATED_EVENT,
 } from '../../features/merope/events'
 import {
   LIVE_FACE_PLAYBACK_PRIORITY,
+  liveFacePlaybackVacating,
+  notifyLiveFaceUnmounted,
   useLiveFacePlayback,
 } from '../../features/merope/liveFacePlayback'
 import { semanticRigCapabilities } from '../../features/merope/motion/rigStateSummary'
@@ -59,16 +62,21 @@ function Nameplate({
   name,
   band,
   compact,
+  hidden,
 }: {
   name: string
   band: MoodBand | null
   compact?: boolean
+  hidden?: boolean
 }) {
   const { t, format } = useI18n()
   const o = t.agentPersona.onboarding
   const word = band ? o.mood[band] : ''
   return (
-    <div className="merope-widget__identity glass-surface">
+    <div
+      className="merope-widget__identity glass-surface"
+      aria-hidden={hidden || undefined}
+    >
       <strong>{name}</strong>
       {!compact && band ? (
         <div
@@ -175,6 +183,7 @@ function LiveMeropeWidget({
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
   const [rigFailed, setRigFailed] = useState(false)
+  const [readyKey, setReadyKey] = useState('')
   const [vitalsReady, setVitalsReady] = useState(false)
   const faceRequestRef = useRef(0)
   const rigRef = useRef<RigCharacterHandle>(null)
@@ -192,9 +201,15 @@ function LiveMeropeWidget({
   const playableRig = hasPlayableRig(manifest)
   const motionReady = playsLive && playableRig && !rigFailed
   const liveCapabilities = motionReady ? capabilities : []
-  const showTaken = playableRig && !playsLive
-  const showCharacter =
-    motionReady || (!playableRig && Boolean(portraitUrl))
+  const showTaken =
+    playableRig && !playsLive && !liveFacePlaybackVacating()
+  const packageKey = motionReady
+    ? 'live'
+    : !playableRig && portraitUrl
+      ? portraitUrl
+      : ''
+  const wantLive = Boolean(packageKey)
+  const ready = readyKey === packageKey && packageKey !== ''
   const handleRigPlaybackError = useCallback(() => setRigFailed(true), [])
   useRigMotionLifecycle(rigRef, {
     mood,
@@ -222,6 +237,7 @@ function LiveMeropeWidget({
       })
       .catch(() => {
         if (request !== faceRequestRef.current) return
+        if (manifestRef.current) return
         setManifest(null)
         setPortraitUrl(null)
         setFailed(true)
@@ -326,30 +342,46 @@ function LiveMeropeWidget({
       surfaceStyle={surfaceStyle}
       label={`${t.widgets.agentPersona}: ${agentName ?? t.merope.title}`}
     >
-      {showCharacter ? (
-        <>
-          <div className={stateClass}>
-            <RigCharacter
-              ref={rigRef}
-              activity={activity}
-              fallbackUrl={playableRig ? null : portraitUrl}
-              manifest={playsLive ? manifest : null}
-              mood={mood}
-              onPlaybackError={handleRigPlaybackError}
-            />
-          </div>
-          {agentName ? (
-            <Nameplate name={agentName} band={band} compact={compact} />
-          ) : null}
-        </>
-      ) : !loading ? (
-        <p className="merope-widget__empty" role="status">
-          {showTaken
-            ? t.merope.widgetFaceSlotTaken
-            : failed || rigFailed
-              ? t.merope.loadFailed
-              : t.merope.assetEmpty}
-        </p>
+      <div className={stateClass}>
+        <FacePresence
+          present={wantLive}
+          packageKey={packageKey}
+          ready={ready}
+          onLiveUnmounted={() => notifyLiveFaceUnmounted(playbackId)}
+          vacant={
+            !loading && (showTaken || failed || rigFailed || !playableRig) ? (
+              <p className="merope-widget__empty" role="status">
+                {showTaken
+                  ? t.merope.widgetFaceSlotTaken
+                  : failed || rigFailed
+                    ? t.merope.loadFailed
+                    : t.merope.assetEmpty}
+              </p>
+            ) : null
+          }
+        >
+          {(mounted) =>
+            mounted ? (
+              <RigCharacter
+                ref={rigRef}
+                activity={activity}
+                fallbackUrl={playableRig ? null : portraitUrl}
+                manifest={playsLive || mounted ? manifest : null}
+                mood={mood}
+                onPlaybackError={handleRigPlaybackError}
+                onPlaybackReady={() => setReadyKey(packageKey)}
+              />
+            ) : null
+          }
+        </FacePresence>
+      </div>
+      {agentName ? (
+        <Nameplate
+          name={agentName}
+          band={band}
+          compact={compact}
+          hidden={!wantLive}
+        />
       ) : null}
 
       <WidgetSkeletonCover

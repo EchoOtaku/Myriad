@@ -1,18 +1,26 @@
 //! Named-event speech.
 //!
-//! Produce turns an event into a speak intent and a diary line. Redeem turns a
-//! speak intent into a sentence, maybe a notice. Shared text and gates live
-//! here so neither side owns the other.
+//! Chain (observation never decides):
+//! 1. Page inbound writes live presence (`POST /agent/presence`). A revival
+//!    onto the page may spawn the greeting *event*.
+//! 2. Named events call `spawn` → `ingest` (produce): diary + speak intent.
+//! 3. `tick_speak_intents` (redeem) turns an intent into a sentence.
+//! 4. Delivery is two independent channels: `live_speech` (face) when on the
+//!    page; notification when not looking at the panel.
+//!
+//! Produce does not write a sentence. Redeem does not call `consider_event`.
 
 mod produce;
 mod redeem;
 
-use chrono::Utc;
 use sea_orm::DatabaseConnection;
 
-use super::gates::is_chatting;
+use super::gates::IngestSight;
 use super::is_logged_in_addressee;
 use super::store::{insert_diary, latest_open_session, list_remembered};
+use super::{activity_is_busy, current_activity, effective_do_not_disturb};
+use crate::models::entities::agent_addressee_state;
+use crate::services::agent::consciousness::last_live_presence;
 use crate::services::agent::run_hub;
 
 pub use produce::{
@@ -29,7 +37,6 @@ pub async fn is_enabled() -> bool {
         .merope_enabled_resolved()
 }
 
-/// Existing producers keep notifying unless Merope is on and the addressee is mid-conversation.
 pub async fn latest_session_id_for(user_id: i32) -> Option<String> {
     let db = crate::services::tapp_registry::database().await.ok()?;
     latest_open_session(&db, user_id)
@@ -46,14 +53,29 @@ pub async fn allow_existing_notify(user_id: i32) -> bool {
     if !is_enabled().await {
         return true;
     }
-    let Ok(db) = crate::services::tapp_registry::database().await else {
-        return true;
-    };
-    // Only the live chat window suppresses these — the addressee is already
-    // watching the panel. Do-not-disturb means "don't speak up on your own",
-    // not "swallow the failures of work this person asked for", so it is
-    // deliberately not consulted here; it gates speech in `decide_ingest`.
-    !addressee_is_chatting(&db, user_id).await
+    // Looking at the Agent panel: existing producers skip every Agent
+    // notification, including progress. Speech still goes through ingest → face.
+    // On the page with the panel closed still notifies. Do-not-disturb gates
+    // speech in `decide_ingest`, not here.
+    !crate::services::agent::consciousness::live_presence_panel_open(user_id)
+}
+
+pub(crate) async fn current_sight(
+    user_id: i32,
+    state: &agent_addressee_state::Model,
+) -> IngestSight {
+    let live = last_live_presence(user_id);
+    IngestSight {
+        on_page: live.page_visible,
+        panel_open: live.panel_visible,
+        executing: run_hub::user_has_executing_run(user_id).await,
+        working: activity_is_busy(current_activity(state)),
+        do_not_disturb: effective_do_not_disturb(state),
+    }
+}
+
+pub(crate) fn log_skip(user_id: i32, event_key: &str, reason: &'static str) {
+    tracing::info!(user_id, event_key, reason, "[Merope] ingest skipped");
 }
 
 pub fn is_trivial_line(text: &str) -> bool {
@@ -157,19 +179,6 @@ fn redact_token(token: &str) -> Option<String> {
     Some(stripped)
 }
 
-async fn addressee_is_chatting(db: &DatabaseConnection, user_id: i32) -> bool {
-    let last_active = latest_open_session(db, user_id)
-        .await
-        .ok()
-        .flatten()
-        .map(|(_, at)| at);
-    // A run parked on `waiting_for_input` is the addressee *not* talking: counting
-    // it as chatting would suppress the very clarification notice that asks them
-    // to come back, so only actively executing runs hold the floor.
-    let executing_run = run_hub::user_has_executing_run(user_id).await;
-    is_chatting(last_active, executing_run, Utc::now())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -252,6 +261,7 @@ mod tests {
         assert!(!produce.contains("direct_motion"));
         assert!(redeem.contains("insert_proactive"));
         assert!(redeem.contains("emit_speech_notification"));
+        assert!(redeem.contains("emit_live_speech"));
         assert!(redeem.contains("direct_motion"));
         assert!(!redeem.contains("enqueue_speak_intent"));
         assert!(!redeem.contains("consider_event"));

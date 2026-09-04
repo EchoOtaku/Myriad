@@ -25,6 +25,13 @@ pub(super) fn build_authenticated_router(
         // Note: /api/config routes are now registered above with wrappers, not here
         // Note: /api/profile/user-info, metadata now registered above with wrappers
         .route("/api/platforms", get(api::platforms::list_platforms))
+        .route(
+            "/api/github/repo",
+            get(api::github_stars::get_repo).route_layer(from_fn_with_state(
+                app_state.clone(),
+                middleware::auth::auth_middleware,
+            )),
+        )
         // Prompt generation -  REQUIRE AUTHENTICATION
         .route(
             "/api/prompt/generate",

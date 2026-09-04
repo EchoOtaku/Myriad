@@ -12,6 +12,21 @@ test('library preview uses the generation style-reference as the portrait', () =
   assert.match(widget, /band=\{compact \? null : PREVIEW_MOOD_BAND\}/)
 })
 
+test('nameplate follows face presence instead of popping with the live lease', () => {
+  assert.match(widget, /\{agentName \? \(/)
+  assert.doesNotMatch(widget, /agentName && wantLive/)
+  assert.match(widget, /notifyLiveFaceUnmounted\(playbackId\)/)
+  assert.match(css, /\.merope-widget:has\(\.face-presence\) \.merope-widget__identity/)
+  assert.match(
+    css,
+    /\.merope-widget:has\(\.face-presence\[data-phase='enter'\]\) \.merope-widget__identity/,
+  )
+  assert.match(
+    css,
+    /\.merope-widget:has\(\.face-presence\[data-phase='exit'\]\) \.merope-widget__identity/,
+  )
+})
+
 test('4x4 mood label is secondary to the name and the level ticks', () => {
   assert.match(widget, /className="merope-widget__mood-text"/)
   assert.match(widget, /format\(o\.moodLine, \{ band: word \}\)/)

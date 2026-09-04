@@ -3,6 +3,9 @@
  *
  * 外层标题由 AiConfigSection 的 Agent 分组承担，这里只做和大语言模型
  * 档位同一套的内层标题（.ai-llm-tier）。
+ *
+ * 三条列表不能无限平铺。短的跟着内容长；超过窗口就进滚动，
+ * 首批条数对齐统计排行（先挂 30，其余「显示更多」）。
  */
 
 import type { ReactNode } from 'react'
@@ -38,6 +41,7 @@ import {
   SettingsButton,
   ToggleSwitch,
 } from '../settings'
+import { agentOptionsListWindow } from './agentOptionsList'
 
 export function AgentNestedSection({
   title,
@@ -694,7 +698,7 @@ export const AgentOptionsPanel: React.FC = () => {
         <ManagedList
           stats={heartbeatStats}
           loading={loading}
-          maxHeight={null}
+          {...agentOptionsListWindow(filteredTasks.length)}
           emptyText={
             tasks.length === 0 ? m.emptyHeartbeat : m.noneMatch
           }
@@ -759,7 +763,7 @@ export const AgentOptionsPanel: React.FC = () => {
       >
         <ManagedList
           loading={loading}
-          maxHeight={null}
+          {...agentOptionsListWindow(filteredSkills.length)}
           emptyText={skills.length === 0 ? m.emptySkills : m.noneMatch}
           stats={skillStats}
           toolbar={[refreshAction]}
@@ -816,7 +820,7 @@ export const AgentOptionsPanel: React.FC = () => {
       >
         <ManagedList
           loading={loading}
-          maxHeight={null}
+          {...agentOptionsListWindow(filteredMemories.length)}
           emptyText={memories.length === 0 ? m.emptyMemory : m.noneMatch}
           stats={memoryStats}
           toolbar={[refreshAction]}

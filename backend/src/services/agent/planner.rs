@@ -512,9 +512,17 @@ impl Planner {
 
             // 页面上下文
             if let Some(custom_data) = &context.custom_data {
-                let has_page = custom_data.get("pageContent").is_some();
-                if has_page {
+                if let Some(page) = custom_data.get("pageContent") {
+                    if let Some(title) = page.get("title").and_then(|v| v.as_str()) {
+                        let title: String = title.chars().take(120).collect();
+                        if !title.trim().is_empty() {
+                            prompt.push_str(&format!("\n正在看：{}", title.trim()));
+                        }
+                    }
                     prompt.push_str("\n页面上下文可用：true。总结/分析用 \"contentFrom\": \"__page_context__\"；page.content / page.understand 用 \"contextFrom\": \"__page_context__\"（不要写成 inputFrom）");
+                }
+                if let Some(now_playing) = now_playing_line(custom_data.get("musicStatus")) {
+                    prompt.push_str(&format!("\n{now_playing}"));
                 }
 
                 if let Some(attachments) = custom_data.get("attachments").and_then(|v| v.as_array())
@@ -896,6 +904,42 @@ fn planner_output_schema() -> serde_json::Value {
             "chat_reply": { "type": "string" }
         },
         "required": ["status", "confidence"]
+    })
+}
+
+fn now_playing_line(music: Option<&serde_json::Value>) -> Option<String> {
+    let music = music?;
+    let song = music.get("currentSong")?;
+    if song.is_null() {
+        return None;
+    }
+    let name: String = song
+        .get("name")
+        .or_else(|| song.get("title"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .chars()
+        .take(80)
+        .collect();
+    let artist: String = song
+        .get("artist")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .chars()
+        .take(80)
+        .collect();
+    if name.trim().is_empty() {
+        return None;
+    }
+    let playing = music
+        .get("isPlaying")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let label = if playing { "正在播放" } else { "已暂停" };
+    Some(if artist.trim().is_empty() {
+        format!("{label}：{}", name.trim())
+    } else {
+        format!("{label}：{} — {}", name.trim(), artist.trim())
     })
 }
 
@@ -1377,6 +1421,42 @@ mod tests {
         assert!(prompt.contains("hello"));
         assert!(prompt.contains("a.png"));
         assert!(prompt.contains("图片像素未随请求发送"));
+    }
+
+    #[test]
+    fn user_prompt_names_page_title_and_now_playing() {
+        let prompt = test_planner().build_user_prompt(
+            &UserRequest {
+                raw_input: "这首和歌呢".to_string(),
+                timestamp: chrono::Utc::now(),
+                user_id: 1,
+                context: Some(RequestContext {
+                    custom_data: Some(serde_json::json!({
+                        "pageContent": {
+                            "type": "brew_article",
+                            "title": "Harbour Notes",
+                            "content": "long body",
+                            "sourceUrl": "https://example.test/secret"
+                        },
+                        "musicStatus": {
+                            "isPlaying": true,
+                            "currentSong": {
+                                "name": "Night",
+                                "artist": "Lantern",
+                                "url": "https://example.test/secret.mp3"
+                            }
+                        }
+                    })),
+                    ..Default::default()
+                }),
+            },
+            None,
+        );
+        assert!(prompt.contains("正在看：Harbour Notes"));
+        assert!(prompt.contains("页面上下文可用：true"));
+        assert!(prompt.contains("正在播放：Night — Lantern"));
+        assert!(!prompt.contains("example.test"));
+        assert!(!prompt.contains("long body"));
     }
 
     #[test]

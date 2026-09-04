@@ -169,6 +169,16 @@ export type {
   SettingTitleTagProps,
   SettingTitleTagVariant,
 } from './SettingTitleTag'
+export { GitHubProjectBadge } from './GitHubProjectBadge'
+export type { GitHubProjectBadgeProps } from './GitHubProjectBadge'
+export {
+  fetchGithubStarCount,
+  formatStarCount,
+  githubRepoUrl,
+  isGithubRepoUrl,
+  parseGithubRepoUrl,
+} from './githubProject'
+export type { GithubRepoRef } from './githubProject'
 export { SetupFlow } from './SetupFlow'
 
 export type { SetupFlowProps, SetupFlowStep } from './SetupFlow'

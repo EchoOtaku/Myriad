@@ -17,7 +17,7 @@ import { proxyImageUrlOr } from './proxyImageUrl'
 import { isTrustedIframeHost } from './rssContentProcessor'
 
 // 缓存系统
-// 简单的内存缓存，避免重复请求相同资源（尤其是 GitHub API 有速率限制）
+// 简单的内存缓存，避免同一篇文章里重复打卡片接口
 const CACHE_TTL = 5 * 60 * 1000 // 5分钟缓存
 
 interface CacheEntry<T> {
@@ -695,10 +695,41 @@ async function loadSteamGameData(container: HTMLElement): Promise<void> {
   )
 }
 
+interface GithubRepoCardData {
+  stars: number | null
+  forks: number | null
+  description: string | null
+  language: string | null
+}
+
+function readGithubRepoCard(body: {
+  stars?: unknown
+  forks?: unknown
+  description?: unknown
+  language?: unknown
+}): GithubRepoCardData {
+  const asCount = (value: unknown): number | null =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0
+      ? Math.round(value)
+      : null
+  return {
+    stars: asCount(body.stars),
+    forks: asCount(body.forks),
+    description:
+      typeof body.description === 'string' && body.description.trim()
+        ? body.description.trim()
+        : null,
+    language:
+      typeof body.language === 'string' && body.language.trim()
+        ? body.language.trim()
+        : null,
+  }
+}
+
 /**
  * 加载 GitHub 仓库卡片数据
- * 使用 GitHub API 获取仓库信息（star、fork、描述、语言）
- * 使用并行加载 + 缓存提升性能（GitHub API 有 60次/小时 的速率限制）
+ * 走站点 `/api/github/repo`（数据平台同一条出站：代理 / token / 基址），
+ * 不再让浏览器直打 api.github.com。
  */
 async function loadGithubRepoData(container: HTMLElement): Promise<void> {
   const cards = Array.from(
@@ -725,21 +756,27 @@ async function loadGithubRepoData(container: HTMLElement): Promise<void> {
       card.setAttribute('data-loaded', 'loading')
 
       try {
-        // 检查缓存（GitHub API 有速率限制，缓存很重要）
         const cacheKey = `github:${owner}/${repo}`
-        let repoData = getCached<any>(cacheKey)
+        let repoData = getCached<GithubRepoCardData>(cacheKey)
 
         if (!repoData) {
-          // 使用 GitHub API（无需认证的公开接口，有速率限制）
-          const response = await fetch(
-            `https://api.github.com/repos/${owner}/${repo}`,
-          )
+          const params = new URLSearchParams({ owner, repo })
+          const response = await fetch(`/api/github/repo?${params.toString()}`, {
+            credentials: 'include',
+          })
           if (!response.ok) {
             card.setAttribute('data-loaded', 'true')
             return
           }
 
-          repoData = await response.json()
+          repoData = readGithubRepoCard(
+            (await response.json()) as {
+              stars?: unknown
+              forks?: unknown
+              description?: unknown
+              language?: unknown
+            },
+          )
           setCache(cacheKey, repoData)
         }
 
@@ -752,16 +789,14 @@ async function loadGithubRepoData(container: HTMLElement): Promise<void> {
 
         // 更新 Star 数
         const starsEl = card.querySelector('.brew-embed-stars span')
-        if (starsEl) {
-          const stars = repoData.stargazers_count || 0
-          starsEl.textContent = formatCount(stars)
+        if (starsEl && repoData.stars != null) {
+          starsEl.textContent = formatCount(repoData.stars)
         }
 
         // 更新 Fork 数
         const forksEl = card.querySelector('.brew-embed-forks span')
-        if (forksEl) {
-          const forks = repoData.forks_count || 0
-          forksEl.textContent = formatCount(forks)
+        if (forksEl && repoData.forks != null) {
+          forksEl.textContent = formatCount(repoData.forks)
         }
 
         // 更新语言

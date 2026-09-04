@@ -1,5 +1,6 @@
 import type {
   AppNotification,
+  LiveSpeechEvent,
   NotificationStreamEvent,
 } from '../services/notificationApi'
 /**
@@ -25,6 +26,8 @@ export interface UseNotificationCenterOptions {
   userId?: number
   /** 新通知到达回调（用于轮播展示 / 系统通知 / toast） */
   onNew?: (notification: AppNotification) => void
+  /** On-page persona speech. Must not enter the notification list. */
+  onLiveSpeech?: (speech: LiveSpeechEvent) => void
   /** 通知面板过滤器；实时与历史使用同一份显示位置策略。 */
   includeInPanel?: (notification: AppNotification) => boolean
 }
@@ -33,12 +36,15 @@ export function useNotificationCenter({
   enabled,
   userId,
   onNew,
+  onLiveSpeech,
   includeInPanel,
 }: UseNotificationCenterOptions) {
   const [items, setItems] = useState<AppNotification[]>([])
   const [loaded, setLoaded] = useState(false)
   const onNewRef = useRef(onNew)
   onNewRef.current = onNew
+  const onLiveSpeechRef = useRef(onLiveSpeech)
+  onLiveSpeechRef.current = onLiveSpeech
   const includeInPanelRef = useRef(includeInPanel)
   includeInPanelRef.current = includeInPanel
   // enabled 镜像：丢弃登出后才到达的历史响应，避免污染下一个用户的状态
@@ -99,6 +105,9 @@ export function useNotificationCenter({
         } else if (event.event === 'notifications_cleared') {
           if (event.user_id !== userIdRef.current) return
           setItems([])
+        } else if (event.event === 'live_speech') {
+          if (event.user_id !== userIdRef.current) return
+          onLiveSpeechRef.current?.(event.speech)
         } else if (event.event === 'resync') {
           // broadcast 丢事件后后端发 resync；补拉历史避免漏通知
           void loadHistoryRef.current()

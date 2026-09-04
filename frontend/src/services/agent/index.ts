@@ -57,6 +57,7 @@ export type {
   // 记忆
   MemoryEntry,
   MeropeStateChangedEvent,
+  OutfitOverlayEvent,
   PageElementTarget,
   PerformanceDirective,
   PerformancePhase,

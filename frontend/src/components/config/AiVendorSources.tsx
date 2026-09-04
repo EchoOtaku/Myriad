@@ -14,7 +14,9 @@ import { useI18n } from '../../contexts/I18nContext'
 import {
   CheckboxCard,
   CollapseRegion,
+  GitHubProjectBadge,
   InputItem,
+  isGithubRepoUrl,
   SelectItem,
   SettingsButton,
   SettingTitleGuideEntry,
@@ -421,16 +423,27 @@ function VendorCard({
             ) : null}
             {preset?.docs_url ? (
               <span className="ai-vendor-card-control">
-                <SettingTitleTag
-                  variant="muted"
-                  icon={<LuBookOpen />}
-                  title={t.config.aiVendorDocs}
-                  onClick={() =>
-                    window.open(preset.docs_url, '_blank', 'noopener,noreferrer')
-                  }
-                >
-                  {t.config.aiVendorDocs}
-                </SettingTitleTag>
+                {isGithubRepoUrl(preset.docs_url) ? (
+                  <GitHubProjectBadge
+                    url={preset.docs_url}
+                    name={preset.display_name}
+                  />
+                ) : (
+                  <SettingTitleTag
+                    variant="muted"
+                    icon={<LuBookOpen />}
+                    title={t.config.aiVendorDocs}
+                    onClick={() =>
+                      window.open(
+                        preset.docs_url,
+                        '_blank',
+                        'noopener,noreferrer',
+                      )
+                    }
+                  >
+                    {t.config.aiVendorDocs}
+                  </SettingTitleTag>
+                )}
               </span>
             ) : null}
             <SettingTitleTag variant="muted">

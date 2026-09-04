@@ -87,6 +87,13 @@ pub fn create_agent_routes(app_state: crate::state::AppState) -> Router<crate::s
                 )),
         )
         .route(
+            "/wardrobe/{outfit_id}/face",
+            get(super::persona::get_wardrobe_face).route_layer(from_fn_with_state(
+                app_state.clone(),
+                middleware::auth::auth_middleware,
+            )),
+        )
+        .route(
             "/persona/signals",
             axum::routing::post(super::persona::report_signals).route_layer(from_fn_with_state(
                 app_state.clone(),

@@ -3,8 +3,10 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
+  agentMusicStatus,
   applyPublishedMusicState,
   getCurrentSong,
+  getNowPlaying,
   setCurrentSongSnapshot,
 } from '../../../contexts/currentSong'
 import {
@@ -62,7 +64,9 @@ test.describe('perception capture', { concurrency: false }, () => {
     assert.equal(first.summary, 'Night — Lantern')
     assert.equal(first.safeFacts.title, 'Night')
     assert.equal(first.safeFacts.artist, 'Lantern')
+    assert.equal(first.safeFacts.album, 'Demo')
     assert.equal(first.safeFacts.source, 'netease')
+    assert.equal(first.safeFacts.playing, true)
     assert.equal('url' in first.safeFacts, false)
     assert.equal('cover' in first.safeFacts, false)
     assert.equal('id' in first.safeFacts, false)
@@ -84,6 +88,30 @@ test.describe('perception capture', { concurrency: false }, () => {
     applyPublishedMusicState({ currentSong: sampleSong('Night', 'Lantern') })
     applyPublishedMusicState({ isPlaying: false })
     assert.equal(getCurrentSong()?.name, 'Night')
+    assert.equal(getNowPlaying().playing, false)
+    captureConsented(true)
+    const paused = bySource('music_track')
+    assert.ok(paused)
+    assert.equal(paused.summary, '已暂停 Night — Lantern')
+    assert.equal(paused.safeFacts.playing, false)
+  })
+
+  test('current lyric line is a fact, full lyrics are not', () => {
+    applyPublishedMusicState({
+      currentSong: sampleSong('Night', 'Lantern'),
+      isPlaying: true,
+      lyrics: [
+        { time: 0, text: 'first line' },
+        { time: 12, text: 'harbour light' },
+      ],
+      currentLyricIndex: 1,
+    })
+    captureConsented(true)
+    const row = bySource('music_track')
+    assert.ok(row)
+    assert.equal(row.safeFacts.lyric, 'harbour light')
+    assert.ok(String(row.summary).includes('harbour light'))
+    assert.equal('lyrics' in row.safeFacts, false)
   })
 
   test('closed overlay reports surface none', () => {
@@ -120,6 +148,39 @@ test('capture wires consented sources', () => {
   assert.match(source, /replaceMusicTrackSource\(/)
   assert.match(source, /replaceSurfaceSource\(/)
   assert.match(source, /pageConsent: input\.pageConsent/)
+})
+
+test('agent music status omits url and cover', () => {
+  const status = agentMusicStatus({
+    isPlaying: true,
+    isEnabled: true,
+    currentSong: sampleSong('Night', 'Lantern'),
+    currentSongIndex: 2,
+    playlistLength: 9,
+    lyrics: [{ time: 0, text: 'harbour light' }],
+    currentLyricIndex: 0,
+  })
+  assert.ok(status)
+  const song = status.currentSong as Record<string, unknown>
+  assert.equal(song.name, 'Night')
+  assert.equal(song.album, 'Demo')
+  assert.equal('url' in song, false)
+  assert.equal('cover' in song, false)
+  assert.equal('id' in song, false)
+  assert.equal(status.currentLyric, 'harbour light')
+})
+
+test('turn capture passes a fresh selection', () => {
+  const engine = readFileSync(
+    new URL('../../../components/agent-panel/AgentEngine.tsx', import.meta.url),
+    'utf8',
+  )
+  const inbound = readFileSync(new URL('./inbound.ts', import.meta.url), 'utf8')
+  assert.match(engine, /turnSelectionText\(/)
+  assert.match(engine, /captureTurnBody\(/)
+  assert.match(engine, /agentMusicStatus\(/)
+  assert.match(inbound, /turnSelectionText\(/)
+  assert.match(inbound, /subscribeAgentSelection\(/)
 })
 
 test('client and server perception kinds stay aligned', () => {

@@ -140,8 +140,10 @@ export const jaJP: TranslationKeys = {
     motionPsdUploading: 'PSD を読み込み中…',
     visualConfirm:
       '画像モデルの料金が発生する場合があります。生成を開始しますか？再生成すると取り込み済みのリグは消えます。',
-    anime25dRuntimeCredit:
-      'See-through のあと、モーション実行系は Anime2.5DRig（MIT）を復刻しています。',
+    anime25dSeeThroughCredit: '立ち絵を髪・顔・服などのレイヤーに分ける。',
+    anime25dRuntimeCredit: 'まばたき、会話、首振りを動かす。',
+    anime25dProjectThanks:
+      'キャラクター機能はこれらのプロジェクトを基に整えています。感謝',
     anime25dDebug: 'モーション',
     overviewGroup: '概要',
     overviewGroupDescription: '名前、気分、今の状態、立ち絵とリグの準備状況。',
@@ -309,10 +311,7 @@ export const jaJP: TranslationKeys = {
     anime25dInspectEmpty:
       'リグデータがまだありません。レイヤーリグを完成させると、再生との対応を確認できます。',
     rigPathUpload: 'PSD を取り込む',
-    rigPathUploadHint: '自分で分けたレイヤー PSD からリグを作ります。',
     rigPathSeeThrough: 'See-through 分解',
-    rigPathSeeThroughHint:
-      '今のメイン立ち絵をリモートで分解し、ローカル事前検証へ進みます。',
     rigTokenReady: 'Token を保存済み',
     rigPreflightTitle: '事前検証の結果',
     rigPreflightSummary: '可動パーツ {parts} 個 · 品質スコア {score}/100',
@@ -2634,6 +2633,12 @@ export const jaJP: TranslationKeys = {
       continue: '続ける',
       dismiss: '今はしない',
       failed: '処理できませんでした。もう一度お試しください。',
+    },
+    workOffer: {
+      kicker: '仕事',
+      hint: 'ツールが必要です',
+      accept: '任せる',
+      sent: '進めています',
     },
     mood: {
       kicker: '気持ち',

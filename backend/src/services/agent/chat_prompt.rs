@@ -55,7 +55,8 @@ pub fn chat_safe_content(content: &str) -> String {
 /// into a short, warm assistant.
 const CHAT_REPLY_INSTRUCTION: &str = "\
 请以你的角色回复。用对方的语言。说话风格必须由设定里的性格决定，并被心情调节。\
-接住这一句。禁止输出 AI 味的文本，也不要改成攻击。只输出纯文本，不要 JSON 或格式标记。";
+接住这一句。禁止输出 AI 味的文本，也不要改成攻击。只输出纯文本，不要 JSON 或格式标记。\
+对方要你查资料、生成、订阅、改设置或处理整页正文时，不要假装已经做完。";
 
 pub fn build_chat_lite_prompt_with_perception(
     soul: &str,
@@ -97,6 +98,231 @@ pub fn build_chat_lite_prompt_with_perception(
 const PERCEPTION_KINDS: &[&str] = &[
     "page", "pointer", "surface", "music", "voice", "presence", "screen",
 ];
+
+const PAGE_EXCERPT_CHARS: usize = 400;
+
+/// Chat Lite scene: pointed-at, playing, reading. Idle sensors stay out.
+pub fn format_chat_scene(perception: Option<&Value>, page: Option<&Value>, input: &str) -> String {
+    let mut selected = String::new();
+    let mut listening = String::new();
+    let mut watching = String::new();
+    let mut overlay = String::new();
+
+    if let Some(Value::Array(items)) = perception {
+        for item in items {
+            let Some(obj) = item.as_object() else {
+                continue;
+            };
+            if obj.get("ttlMs").and_then(Value::as_i64) == Some(0) {
+                continue;
+            }
+            let source = obj.get("sourceId").and_then(Value::as_str).unwrap_or("");
+            let text = crate::services::agent::perception_view::perception_reader_text(obj);
+            if text.is_empty() {
+                continue;
+            }
+            match source {
+                "music_track" => listening = clip(&text, 200),
+                "page" => {
+                    let title = fact_str(obj, "title");
+                    watching = if title.is_empty() {
+                        clip(&text, 160)
+                    } else {
+                        title
+                    };
+                }
+                "pointer" if fact_flag(obj, "selected") => selected = clip(&text, 200),
+                "surface" if !surface_is_none(obj, &text) => overlay = clip(&text, 80),
+                _ => {}
+            }
+        }
+    }
+
+    if watching.is_empty() {
+        watching = string_field(page.and_then(|value| value.get("title")), 120);
+    }
+
+    let excerpt = if page_excerpt_needed(input) {
+        format_page_excerpt(page)
+    } else {
+        String::new()
+    };
+
+    let mut lines = Vec::new();
+    if !selected.is_empty() {
+        lines.push(format!("选中：{selected}"));
+    }
+    if !listening.is_empty() {
+        lines.push(format!("在听：{listening}"));
+    }
+    if excerpt.is_empty() {
+        if !watching.is_empty() {
+            lines.push(format!("在看：{watching}"));
+        }
+    } else {
+        lines.push(excerpt);
+    }
+    if !overlay.is_empty() {
+        lines.push(format!("浮层：{overlay}"));
+    }
+    lines.join("\n")
+}
+
+fn page_excerpt_needed(input: &str) -> bool {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    let lower = trimmed.to_lowercase();
+    const MARKERS: &[&str] = &[
+        "这篇",
+        "文章",
+        "全文",
+        "摘录",
+        "在说什么",
+        "讲什么",
+        "读完",
+        "看完",
+        "总结这",
+        "翻译这",
+        "article",
+        "summar",
+        "translat",
+        "this page",
+        "what's this about",
+        "what is this about",
+    ];
+    MARKERS
+        .iter()
+        .any(|marker| trimmed.contains(marker) || lower.contains(marker))
+}
+
+fn fact_str(obj: &serde_json::Map<String, Value>, key: &str) -> String {
+    obj.get("safeFacts")
+        .and_then(Value::as_object)
+        .and_then(|facts| facts.get(key))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .chars()
+        .take(120)
+        .collect()
+}
+
+fn fact_flag(obj: &serde_json::Map<String, Value>, key: &str) -> bool {
+    obj.get("safeFacts")
+        .and_then(Value::as_object)
+        .and_then(|facts| facts.get(key))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+fn surface_is_none(obj: &serde_json::Map<String, Value>, text: &str) -> bool {
+    let surface = obj
+        .get("safeFacts")
+        .and_then(Value::as_object)
+        .and_then(|facts| facts.get("surface"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    surface == "none" || text.contains("surface=none")
+}
+
+fn clip(value: &str, max_chars: usize) -> String {
+    value.chars().take(max_chars).collect()
+}
+
+/// Work-shaped chat turns keep a spoken reply, and the UI may offer 做事.
+pub fn chat_work_offer(input: &str) -> Option<String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let lower = trimmed.to_lowercase();
+    const MARKERS: &[&str] = &[
+        "正在看的这页",
+        "总结这页",
+        "翻译这页",
+        "帮我搜",
+        "帮我找",
+        "帮我查",
+        "帮我订",
+        "帮我生成",
+        "帮我画",
+        "帮我写一份",
+        "帮我做一份",
+        "生成一张",
+        "画一张",
+        "写成报告",
+        "做成报告",
+        "出一份报告",
+        "写一份报告",
+        "summarize this page",
+        "translate this page",
+        "search for",
+        "generate an image",
+        "subscribe to",
+        "write a report",
+    ];
+    if MARKERS
+        .iter()
+        .any(|marker| trimmed.contains(marker) || lower.contains(marker))
+    {
+        Some(trimmed.to_string())
+    } else {
+        None
+    }
+}
+
+pub fn chat_reply_data(reply: &str, input: &str) -> Value {
+    let mut data = serde_json::Map::new();
+    data.insert("reply".to_string(), Value::String(reply.to_string()));
+    data.insert("type".to_string(), Value::String("chat".to_string()));
+    data.insert("mode".to_string(), Value::String("chat".to_string()));
+    if let Some(offer) = chat_work_offer(input) {
+        data.insert(
+            "workOffer".to_string(),
+            serde_json::json!({ "input": offer }),
+        );
+    }
+    Value::Object(data)
+}
+
+/// Bounded page excerpt for Chat Lite. Full body stays on `__page_context__`.
+pub fn format_page_excerpt(value: Option<&Value>) -> String {
+    let Some(Value::Object(page)) = value else {
+        return String::new();
+    };
+    let title = string_field(page.get("title"), 120);
+    let author = string_field(page.get("author"), 80);
+    let body = string_field(page.get("content"), PAGE_EXCERPT_CHARS);
+    let fallback = string_field(page.get("summary"), PAGE_EXCERPT_CHARS);
+    let excerpt = if body.is_empty() { fallback } else { body };
+    if title.is_empty() && excerpt.is_empty() {
+        return String::new();
+    }
+    let mut lines = Vec::new();
+    match (title.is_empty(), author.is_empty()) {
+        (false, false) => lines.push(format!("{title} / {author}")),
+        (false, true) => lines.push(title),
+        (true, false) => lines.push(author),
+        (true, true) => {}
+    }
+    if !excerpt.is_empty() {
+        lines.push(excerpt);
+    }
+    lines.join("\n")
+}
+
+fn string_field(value: Option<&Value>, max_chars: usize) -> String {
+    value
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .chars()
+        .take(max_chars)
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
 
 /// Bounded, expired-dropped summaries. Never treated as system instructions.
 pub fn format_perception_block(value: Option<&Value>) -> String {
@@ -272,6 +498,7 @@ mod tests {
         assert!(CHAT_REPLY_INSTRUCTION.contains("性格决定"));
         assert!(CHAT_REPLY_INSTRUCTION.contains("接住这一句"));
         assert!(CHAT_REPLY_INSTRUCTION.contains("不要改成攻击"));
+        assert!(CHAT_REPLY_INSTRUCTION.contains("不要假装已经做完"));
         assert!(!prompt.contains("温暖"));
     }
 
@@ -299,6 +526,7 @@ mod tests {
         assert!(!chat_prompt_prod.contains("recall_with_params"));
         assert!(chat_call_src.contains("fn chat_response_prompt"));
         assert!(chat_call_src.contains("speaking_prompt_with_query"));
+        assert!(chat_call_src.contains("chat_wardrobe_section"));
         let chat_fn = chat_call_src
             .split("async fn chat_response_prompt")
             .nth(1)
@@ -306,6 +534,8 @@ mod tests {
             .unwrap();
         assert!(!chat_fn.contains("recall_with_params"));
         assert!(!chat_fn.contains("get_memory"));
+        assert!(chat_fn.contains("format_chat_scene"));
+        assert!(!chat_fn.contains("format_perception_block"));
     }
 
     #[test]
@@ -390,5 +620,150 @@ mod tests {
                 "source {i} dropped under cap; block={block}"
             );
         }
+    }
+
+    #[test]
+    fn page_excerpt_keeps_title_author_and_body_without_url() {
+        let excerpt = format_page_excerpt(Some(&json!({
+            "type": "brew_article",
+            "title": "Night Watch",
+            "author": "Lantern",
+            "content": "The harbour was quiet.",
+            "sourceUrl": "https://example.test/secret",
+            "url": "https://example.test/secret.mp3"
+        })));
+        assert!(excerpt.contains("Night Watch / Lantern"));
+        assert!(excerpt.contains("The harbour was quiet."));
+        assert!(!excerpt.contains("example.test"));
+        assert!(!excerpt.contains("brew_article"));
+        let prompt = build_chat_lite_prompt_with_perception(
+            "你是 Agent。",
+            "",
+            &[],
+            "这篇在说什么",
+            &excerpt,
+        );
+        assert!(prompt.contains("untrusted_perception"));
+        assert!(prompt.contains("Night Watch"));
+    }
+
+    #[test]
+    fn page_excerpt_drops_empty_and_truncates() {
+        assert_eq!(format_page_excerpt(Some(&json!({}))), "");
+        let long = "字".repeat(2_000);
+        let excerpt = format_page_excerpt(Some(&json!({
+            "title": "T",
+            "content": long
+        })));
+        let body = excerpt.lines().last().unwrap();
+        assert_eq!(body.chars().count(), 400);
+    }
+
+    #[test]
+    fn chat_scene_keeps_pointed_and_playing_drops_idle() {
+        let scene = format_chat_scene(
+            Some(&json!([
+                {
+                    "sourceId": "music",
+                    "kind": "music",
+                    "ttlMs": 2000,
+                    "privacy": "system",
+                    "summary": "music idle"
+                },
+                {
+                    "sourceId": "music_track",
+                    "kind": "music",
+                    "ttlMs": 2000,
+                    "privacy": "consented",
+                    "summary": "Night — Lantern · harbour light"
+                },
+                {
+                    "sourceId": "pointer",
+                    "kind": "pointer",
+                    "ttlMs": 3000,
+                    "privacy": "consented",
+                    "summary": "这一段话",
+                    "safeFacts": { "selected": true }
+                },
+                {
+                    "sourceId": "voice",
+                    "kind": "voice",
+                    "ttlMs": 2000,
+                    "privacy": "local",
+                    "summary": "must not use this",
+                    "safeFacts": { "listening": false, "ttsPlaying": false }
+                },
+                {
+                    "sourceId": "presence",
+                    "kind": "presence",
+                    "ttlMs": 4000,
+                    "privacy": "system",
+                    "summary": "page visible"
+                },
+                {
+                    "sourceId": "surface",
+                    "kind": "surface",
+                    "ttlMs": 4000,
+                    "privacy": "local",
+                    "summary": "没有打开浮层",
+                    "safeFacts": { "surface": "none" }
+                }
+            ])),
+            None,
+            "这首呢",
+        );
+        assert!(scene.contains("选中：这一段话"));
+        assert!(scene.contains("在听：Night — Lantern · harbour light"));
+        assert!(!scene.contains("music idle"));
+        assert!(!scene.contains("page visible"));
+        assert!(!scene.contains("voice"));
+        assert!(!scene.contains("浮层"));
+        assert!(!scene.contains("kind/"));
+    }
+
+    #[test]
+    fn chat_scene_excerpt_only_when_the_turn_asks_about_the_page() {
+        let page = json!({
+            "title": "Harbour Notes",
+            "author": "Lantern",
+            "content": "The harbour was quiet after midnight."
+        });
+        let perception = json!([{
+            "sourceId": "page",
+            "kind": "page",
+            "ttlMs": 8000,
+            "privacy": "consented",
+            "summary": "The harbour was quiet after midnight and must not be the watching line.",
+            "safeFacts": { "title": "Harbour Notes", "hasBody": true }
+        }]);
+        let hi = format_chat_scene(Some(&perception), Some(&page), "你好");
+        assert!(hi.contains("在看：Harbour Notes"));
+        assert!(!hi.contains("must not be the watching line"));
+        assert!(!hi.contains("quiet after midnight"));
+        let asked = format_chat_scene(Some(&perception), Some(&page), "这篇在说什么");
+        assert!(!asked.contains("在看："));
+        assert!(asked.contains("Harbour Notes / Lantern"));
+        assert!(asked.contains("The harbour was quiet after midnight."));
+    }
+
+    #[test]
+    fn chat_work_offer_is_for_jobs_not_smalltalk() {
+        assert_eq!(chat_work_offer("你好"), None);
+        assert_eq!(chat_work_offer("这首歌怎么样"), None);
+        assert_eq!(chat_work_offer("这篇在说什么"), None);
+        assert_eq!(
+            chat_work_offer("总结一下我正在看的这页内容").as_deref(),
+            Some("总结一下我正在看的这页内容")
+        );
+        assert_eq!(
+            chat_work_offer("帮我搜一下网易云热歌").as_deref(),
+            Some("帮我搜一下网易云热歌")
+        );
+        assert!(chat_work_offer("summarize this page").is_some());
+        let data = chat_reply_data("好。", "帮我搜一下网易云热歌");
+        assert_eq!(data["mode"], "chat");
+        assert_eq!(data["workOffer"]["input"], "帮我搜一下网易云热歌");
+        let hi = chat_reply_data("嗨。", "你好");
+        assert!(hi.get("workOffer").is_none());
     }
 }

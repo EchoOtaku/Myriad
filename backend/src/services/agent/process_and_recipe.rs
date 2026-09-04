@@ -135,6 +135,7 @@ impl Agent {
         if request.context.as_ref().is_some_and(|context| {
             context.interaction_mode == crate::services::agent::AgentInteractionMode::Chat
         }) {
+            publish_chat_outfit_overlay(&self.db, &request, None).await;
             crate::services::agent::merope::note_chat_diary(&self.db, user_id, &request.raw_input)
                 .await;
             let reply = match self.strict_lite_chat_response(&request).await {
@@ -154,7 +155,10 @@ impl Agent {
                 Ok(AgentResponse {
                     response_type: AgentResponseType::Answer,
                     message: reply.clone(),
-                    data: Some(json!({ "reply": reply, "type": "chat", "mode": "chat" })),
+                    data: Some(crate::services::agent::chat_prompt::chat_reply_data(
+                        &reply,
+                        &request.raw_input,
+                    )),
                     data_display: None,
                     suggestions: vec![],
                     task: None,
@@ -562,6 +566,7 @@ impl Agent {
         if request.context.as_ref().is_some_and(|context| {
             context.interaction_mode == crate::services::agent::AgentInteractionMode::Chat
         }) {
+            publish_chat_outfit_overlay(&self.db, &request, Some(&progress_tx)).await;
             let _ = progress_tx
                 .send(AgentProgressEvent::Progress {
                     progress: 5,
@@ -647,7 +652,10 @@ impl Agent {
             return Ok(AgentResponse {
                 response_type: AgentResponseType::Answer,
                 message: reply.clone(),
-                data: Some(json!({ "reply": reply, "type": "chat", "mode": "chat" })),
+                data: Some(crate::services::agent::chat_prompt::chat_reply_data(
+                    &reply,
+                    &request.raw_input,
+                )),
                 data_display: None,
                 suggestions: vec![],
                 task: None,
@@ -2048,6 +2056,36 @@ impl Drop for MotionRefinementGuard {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+async fn publish_chat_outfit_overlay(
+    db: &sea_orm::DatabaseConnection,
+    request: &UserRequest,
+    progress_tx: Option<&tokio::sync::mpsc::Sender<AgentProgressEvent>>,
+) {
+    let Some(session_id) = request
+        .context
+        .as_ref()
+        .and_then(|context| context.session_id.as_deref())
+    else {
+        return;
+    };
+    let Some(outfit_id) = crate::services::agent::merope::apply_chat_outfit_overlay(
+        db,
+        request.user_id,
+        session_id,
+        &request.raw_input,
+    )
+    .await
+    else {
+        return;
+    };
+    let Some(progress_tx) = progress_tx else {
+        return;
+    };
+    let _ = progress_tx
+        .send(AgentProgressEvent::OutfitOverlay { outfit_id })
+        .await;
 }
 
 async fn publish_local_motion(

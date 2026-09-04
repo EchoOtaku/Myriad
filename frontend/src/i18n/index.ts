@@ -136,7 +136,9 @@ export interface TranslationKeys {
     motionPsdUpload: string
     motionPsdUploading: string
     visualConfirm: string
+    anime25dSeeThroughCredit: string
     anime25dRuntimeCredit: string
+    anime25dProjectThanks: string
     anime25dDebug: string
     overviewGroup: string
     overviewGroupDescription: string
@@ -292,9 +294,7 @@ export interface TranslationKeys {
     anime25dInspectWorkload: string
     anime25dInspectEmpty: string
     rigPathUpload: string
-    rigPathUploadHint: string
     rigPathSeeThrough: string
-    rigPathSeeThroughHint: string
     rigTokenReady: string
     rigPreflightTitle: string
     rigPreflightSummary: string
@@ -2278,6 +2278,13 @@ export interface TranslationKeys {
       continue: string
       dismiss: string
       failed: string
+    }
+    /** Chat asked for a job; this chip sends it to Work. */
+    workOffer: {
+      kicker: string
+      hint: string
+      accept: string
+      sent: string
     }
     /** 聊天档右边那枚心情贴。档位词复用设定页的 mood */
     mood: {

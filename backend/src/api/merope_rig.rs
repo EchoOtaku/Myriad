@@ -725,6 +725,77 @@ pub async fn get_active_rig(crate::extract::Db(db): crate::extract::Db) -> ApiRe
     Err(not_found("No site face is configured"))
 }
 
+pub(crate) async fn wardrobe_outfit_face(
+    db: &DatabaseConnection,
+    outfit_id: &str,
+) -> ApiResult<Json<Value>> {
+    let outfit_id = outfit_id.trim();
+    if outfit_id.is_empty() || outfit_id.chars().count() > myriad_merope::MAX_WARDROBE_ID_CHARS {
+        return Err(bad_request("Invalid outfit id"));
+    }
+    let persona = merope::get_persona(db)
+        .await
+        .map_err(internal_error)?
+        .ok_or_else(|| not_found("No site face is configured"))?;
+    let profile = persona
+        .visual_profile
+        .as_ref()
+        .ok_or_else(|| not_found("Outfit is not in the wardrobe"))?;
+    let looks = myriad_merope::looks_from_visual_profile(profile);
+    let look = myriad_merope::wardrobe_look(&looks, outfit_id)
+        .cloned()
+        .ok_or_else(|| not_found("Outfit is not in the wardrobe"))?;
+    if !look.playable() {
+        return Err(not_found("Outfit has no portrait or rig"));
+    }
+    let gender = profile
+        .get("gender")
+        .and_then(Value::as_str)
+        .filter(|value| matches!(*value, "female" | "male" | "nonbinary" | "unspecified"))
+        .unwrap_or("unspecified");
+    if let Some(rig_id) = look.rig_asset_id.as_deref() {
+        if let Ok(mut manifest) = load_stored_manifest(rig_id).await {
+            let matches_item = match look.portrait_asset_id.as_deref() {
+                Some(portrait) => manifest_matches_master(
+                    &manifest,
+                    &MasterProvenance {
+                        asset_id: portrait.to_string(),
+                        generation_fingerprint: look.generation_fingerprint.clone(),
+                        gender: gender.to_string(),
+                    },
+                ),
+                None => manifest.validate().is_ok(),
+            };
+            if matches_item && matches!(package_identity_matches(rig_id, &manifest).await, Ok(true))
+            {
+                if gender == "male" {
+                    if let Some(playback) = manifest.anime25d_playback.as_mut() {
+                        rig_chest_analysis::apply_male_policy(playback);
+                    }
+                }
+                let manifest = rewrite_texture_urls(manifest, rig_id);
+                return Ok(Json(json!({
+                    "manifest": manifest,
+                    "portraitUrl": look.portrait_asset_id,
+                    "generationFingerprint": look.generation_fingerprint,
+                    "assetId": rig_id,
+                    "outfitId": look.id,
+                })));
+            }
+        }
+    }
+    if look.portrait_asset_id.is_some() {
+        return Ok(Json(json!({
+            "manifest": Value::Null,
+            "portraitUrl": look.portrait_asset_id,
+            "generationFingerprint": look.generation_fingerprint,
+            "assetId": Value::Null,
+            "outfitId": look.id,
+        })));
+    }
+    Err(not_found("Outfit face is unavailable"))
+}
+
 pub async fn get_atlas(Path(asset_id): Path<String>) -> ApiResult<Response> {
     let asset_id = merope_rig::normalize_asset_id(&asset_id)
         .ok_or_else(|| bad_request("Invalid rig asset id"))?;

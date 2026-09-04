@@ -11,6 +11,7 @@ import type { Anime25DDebugSnapshot } from './player'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { generationFailureMessage } from '../../../components/agent/onboarding/generationError'
 import {
+  GitHubProjectBadge,
   InfoActionCard,
   InputItem,
   SettingGroup,
@@ -22,6 +23,15 @@ import {
 import { useI18n } from '../../../contexts/I18nContext'
 import { userFacingError } from '../../../utils/userFacingError'
 import { PreviewMotionScope } from '../motion/previewScope'
+import {
+  SEE_THROUGH_PROJECT_NAME,
+  SEE_THROUGH_PROJECT_URL,
+} from '../seeThroughProject'
+import {
+  ANIME25D_PROJECT_NAME,
+  ANIME25D_PROJECT_URL,
+  PERSONA_UPSTREAM_THANKS,
+} from './credit'
 import { WORKBENCH_DRIVER } from './driver'
 import {
   ANGRY_EXPRESSION_PRESET,
@@ -792,11 +802,37 @@ export default function Anime25DWorkbench({
                 options={rigPaths}
                 onChange={setRigPath}
               />
+              <div className="merope-character-home__credit">
+                <p className="merope-character-home__credit-line">
+                  <GitHubProjectBadge
+                    url={SEE_THROUGH_PROJECT_URL}
+                    name={SEE_THROUGH_PROJECT_NAME}
+                  />
+                  {labels.anime25dSeeThroughCredit}
+                </p>
+                <p className="merope-character-home__credit-line">
+                  <GitHubProjectBadge
+                    url={ANIME25D_PROJECT_URL}
+                    name={ANIME25D_PROJECT_NAME}
+                  />
+                  {labels.anime25dRuntimeCredit}
+                </p>
+                <p className="merope-character-home__thanks">
+                  {labels.anime25dProjectThanks}
+                  {PERSONA_UPSTREAM_THANKS.map((person) => (
+                    <a
+                      key={person.handle}
+                      href={person.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      @{person.handle}
+                    </a>
+                  ))}
+                </p>
+              </div>
               {rigPath === 'upload' ? (
                 <section className="merope-motion-rig__path">
-                  <p className="merope-motion-rig__hint">
-                    {labels.rigPathUploadHint}
-                  </p>
                   <SettingsButton
                     type="button"
                     size="sm"
@@ -811,9 +847,6 @@ export default function Anime25DWorkbench({
                 </section>
               ) : (
                 <section className="merope-motion-rig__path">
-                  <p className="merope-motion-rig__hint">
-                    {labels.rigPathSeeThroughHint}
-                  </p>
                   {seeThroughTokenConfigured ? (
                     <p className="merope-motion-rig__token-ready">
                       {labels.rigTokenReady}
@@ -999,16 +1032,6 @@ export default function Anime25DWorkbench({
               ) : null}
             </div>
           )}
-          <p className="merope-character-home__credit">
-            {labels.anime25dRuntimeCredit}{' '}
-            <a
-              href="https://github.com/852wa/Anime2.5DRig"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Anime2.5DRig
-            </a>
-          </p>
         </SettingGroup>
       ) : null}
       {panel === 'motion' ? (

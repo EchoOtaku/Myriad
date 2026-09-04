@@ -40,6 +40,7 @@ pub fn event_plane(event: &AgentProgressEvent) -> EventPlane {
         | AgentProgressEvent::ThinkingToken { .. }
         | AgentProgressEvent::PerformancePlan { .. }
         | AgentProgressEvent::MeropeStateChanged { .. }
+        | AgentProgressEvent::OutfitOverlay { .. }
         | AgentProgressEvent::Error { .. }
         | AgentProgressEvent::PlannerDecision { .. }
         | AgentProgressEvent::StepDebug { .. } => EventPlane::Control,

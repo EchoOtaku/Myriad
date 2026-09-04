@@ -191,6 +191,7 @@
     translate var(--agent-move, 480ms) var(--agent-ease),
     scale var(--agent-move, 480ms) var(--agent-ease),
     margin var(--agent-move, 480ms) var(--agent-ease),
+    width var(--agent-move, 480ms) var(--agent-ease),
     grid-template-columns var(--agent-move, 480ms) var(--agent-ease);
 }
 
@@ -251,6 +252,28 @@
 .agent-panel-presence[data-kind='chip'] > * {
   min-width: 0;
   overflow: visible;
+}
+
+/* 没配语音时右侧那枚会整颗进出：槽位宽度要跟输入框对挤，不能先占 96px
+   再在空位里从 0.72 放大。胶囊跟着槽一起变宽，间距一起收。 */
+.agent-panel-composer-row > .agent-panel-presence[data-kind='chip'] {
+  flex: 0 0 auto;
+  width: 96px;
+  overflow: hidden;
+  transform-origin: 100% 50%;
+  transition-duration: var(--agent-swap, 320ms);
+}
+
+.agent-panel-composer-row
+  > .agent-panel-presence[data-kind='chip'][data-presence='in'] {
+  overflow: visible;
+}
+
+.agent-panel-composer-row
+  > .agent-panel-presence[data-kind='chip']
+  .agent-panel-control {
+  width: 100%;
+  min-width: 0;
 }
 
 /* 入场用 @starting-style，不再用 JS 的 enter。
@@ -330,6 +353,15 @@
     margin-left: -6px;
   }
 
+  .agent-panel-composer-row > .agent-panel-presence[data-kind='chip'] {
+    width: 0;
+    margin-left: -12px;
+    overflow: hidden;
+    opacity: 0;
+    scale: 1;
+    translate: 0 0;
+  }
+
   .agent-panel-presence[data-appear='skip'] {
     opacity: 1;
     translate: 0 0;
@@ -393,6 +425,16 @@
 .agent-panel-tag-actions
   > .agent-panel-presence[data-kind='chip'][data-presence='out'] {
   margin-left: -6px;
+}
+
+.agent-panel-composer-row
+  > .agent-panel-presence[data-kind='chip'][data-presence='out'] {
+  width: 0;
+  margin-left: -12px;
+  overflow: hidden;
+  opacity: 0;
+  scale: 1;
+  translate: 0 0;
 }
 
 .agent-panel-swap {
@@ -478,6 +520,16 @@
 .agent-panel-overlay-anchor[data-phase='closing']
   .agent-panel-tag-actions
   > .agent-panel-presence[data-kind='chip'] {
+  margin-left: 0;
+}
+
+.agent-panel-overlay-anchor[data-phase='opening']
+  .agent-panel-composer-row
+  > .agent-panel-presence[data-kind='chip'],
+.agent-panel-overlay-anchor[data-phase='closing']
+  .agent-panel-composer-row
+  > .agent-panel-presence[data-kind='chip'] {
+  width: 96px;
   margin-left: 0;
 }
 
@@ -773,7 +825,6 @@ button.agent-panel-tag:disabled {
   --agent-face-width: calc(128px * 2.5);
   --agent-face-visible-height: calc(var(--agent-face-width) * 4 / 3 * 4 / 5);
   --agent-face-fade: 40px;
-  --agent-face-lift: 10px;
   --agent-mode-lag: 40ms;
 
   /* 人头伸出贴行的那截。人仍绝对定位贴着输入框，对话靠这段 padding 让位。 */
@@ -880,6 +931,73 @@ button.agent-panel-tag:disabled {
   color: white;
 }
 
+.agent-panel-work-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 12px;
+}
+
+.agent-panel-message-answer > .agent-panel-work-offer:not(:first-child) {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--surface-border, rgb(0 0 0 / 8%));
+}
+
+.agent-panel-work-offer-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.agent-panel-work-offer-copy > span {
+  color: var(--color-primary, #10b981);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.agent-panel-work-offer-copy > small {
+  color: var(--text-secondary, #6b7280);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.agent-panel-work-offer-accept {
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-primary, #10b981);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.agent-panel-work-offer-accept:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.agent-panel-work-offer-accept:not(:disabled):hover {
+  filter: brightness(1.06);
+}
+
+.agent-panel-work-offer-accept:not(:disabled):active {
+  scale: 0.98;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-panel-work-offer-accept:not(:disabled):active {
+    scale: 1;
+  }
+}
+
 @media (width <= 520px) {
   .agent-panel-intention {
     grid-template-columns: 1fr;
@@ -974,19 +1092,15 @@ button.agent-panel-tag:disabled {
   overflow: hidden;
   opacity: 0;
   pointer-events: none;
-  translate: -50% var(--agent-face-lift);
-  transition:
-    opacity var(--agent-move) var(--agent-ease-exit),
-    translate var(--agent-move) var(--agent-ease-exit);
+  translate: -50% 0;
+  transition: opacity var(--agent-move) var(--agent-ease-exit);
 }
 
 .agent-panel-composer[data-mode='chat'] .agent-panel-face-slot {
   opacity: 1;
   pointer-events: auto;
   translate: -50% 0;
-  transition:
-    opacity var(--agent-move) var(--agent-ease) var(--agent-mode-lag),
-    translate var(--agent-move) var(--agent-ease) var(--agent-mode-lag);
+  transition: opacity var(--agent-move) var(--agent-ease) var(--agent-mode-lag);
 }
 
 /* 中间列吃掉弹性空位。办事贴只淡，占位不撤，左右贴才不会在淡出结束时被拽动。
@@ -1754,6 +1868,11 @@ button.agent-panel-tag:disabled {
       translate: 0 0;
       scale: 1;
     }
+
+    .agent-panel-composer-row > .agent-panel-presence[data-kind='chip'] {
+      width: 96px;
+      margin-left: 0;
+    }
   }
 
   .agent-panel-control:hover,
@@ -1945,7 +2064,8 @@ html:not([data-surface='solid']) .agent-panel-session.glass {
   > :last-child:not(
     .agent-panel-question,
     .agent-panel-question-options,
-    .agent-panel-message-images
+    .agent-panel-message-images,
+    .agent-panel-work-offer
   )::after {
   content: '';
   display: inline-block;
@@ -2783,7 +2903,8 @@ html[data-perf-mode='exlight'] .agent-panel-thinking-sweep {
     > :last-child:not(
       .agent-panel-question,
       .agent-panel-question-options,
-      .agent-panel-message-images
+      .agent-panel-message-images,
+      .agent-panel-work-offer
     )::after {
     animation: none;
   }

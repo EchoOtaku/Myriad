@@ -22,9 +22,8 @@ import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { agentFace } from '../features/merope/agentFaceChannel'
 import {
-  deliverWorkNotificationFace,
+  deliverProactiveFace,
   faceSpeechGate,
-  notificationCarriesMeropeSpeech,
 } from '../features/merope/faceSpeechArbitration'
 import { setForegroundSurface } from '../features/merope/perception/surface'
 import { batchRead, batchWrite, observeResize } from '../hooks/animation'
@@ -41,8 +40,8 @@ import { getDynamicContentProvider } from '../services/DynamicContentProvider'
 import {
   notificationSourceFor,
   notificationToastType,
-  shouldDeliverNotification,
   shouldEmitNotificationToast,
+  shouldSurfaceNotification,
 } from '../services/notificationDelivery'
 import {
   getGreeting,
@@ -63,7 +62,10 @@ import {
 import { loadResource } from '../utils/resourceLoader'
 import { useThemeMode } from '../utils/themeSubscriber'
 import { showToast } from '../utils/toastManager'
-import { getAgentPanelVisible } from './agent-panel/agentPanelVisible'
+import {
+  isLookingAtAgentPanel,
+  subscribeLookingAtAgentPanel,
+} from './agent-panel/agentPanelVisible'
 import {
   initialPanelState,
   isPanelMorphing,
@@ -179,6 +181,11 @@ const GlobalControlPanel: React.FC = () => {
     getNavLayoutSnapshot,
     getServerNavLayoutSnapshot,
   )
+  const lookingAtAgent = useSyncExternalStore(
+    subscribeLookingAtAgentPanel,
+    isLookingAtAgentPanel,
+    () => false,
+  )
   // Mobile / touch-tablet: skip control-panel widget grid (weather/quote etc.)
   // to save vertical space and memory; music player + settings remain.
   const showControlPanelWidgets = navLayout === 'desktop'
@@ -278,20 +285,6 @@ const GlobalControlPanel: React.FC = () => {
   /** 新通知到达：按统一投递策略分发到面板之外的展示位置。 */
   const handleNewNotification = useCallback(
     (n: AppNotification) => {
-      const metadata = n.metadata
-      if (
-        notificationCarriesMeropeSpeech(metadata) &&
-        (shouldDeliverNotification(notificationPreferences, n, 'island') ||
-          shouldDeliverNotification(notificationPreferences, n, 'toast') ||
-          shouldDeliverNotification(notificationPreferences, n, 'panel'))
-      ) {
-        deliverWorkNotificationFace(agentFace, faceSpeechGate, {
-          id: n.id,
-          body: n.body,
-          performance: metadata.performance,
-          meropeState: metadata.merope_state,
-        })
-      }
       const source = notificationSourceFor(n)
       const icon = (
         <NotificationSourceIcon source={source} className="h-4 w-4" />
@@ -301,7 +294,14 @@ const GlobalControlPanel: React.FC = () => {
       const snippet = body.length > 60 ? `${body.slice(0, 60)}…` : body
 
       // 1. 接入智能岛轮播（置顶展示，20 秒后自动撤下）
-      if (shouldDeliverNotification(notificationPreferences, n, 'island')) {
+      if (
+        shouldSurfaceNotification(
+          notificationPreferences,
+          n,
+          'island',
+          lookingAtAgent,
+        )
+      ) {
         safeSetDynamicContents((prev) => [
           {
             type: 'notification',
@@ -329,13 +329,14 @@ const GlobalControlPanel: React.FC = () => {
         shouldEmitNotificationToast(
           notificationPreferences,
           n,
-          getAgentPanelVisible(),
+          lookingAtAgent,
         )
       ) {
-        const showInPanel = shouldDeliverNotification(
+        const showInPanel = shouldSurfaceNotification(
           notificationPreferences,
           n,
           'panel',
+          lookingAtAgent,
         )
         showToast({
           title,
@@ -360,7 +361,12 @@ const GlobalControlPanel: React.FC = () => {
       // 3. 页面在后台时推浏览器系统通知
       if (
         document.hidden &&
-        shouldDeliverNotification(notificationPreferences, n, 'browser') &&
+        shouldSurfaceNotification(
+          notificationPreferences,
+          n,
+          'browser',
+          lookingAtAgent,
+        ) &&
         typeof Notification !== 'undefined' &&
         Notification.permission === 'granted'
       ) {
@@ -376,19 +382,42 @@ const GlobalControlPanel: React.FC = () => {
         }
       }
     },
-    [notificationPreferences, safeSetDynamicContents],
+    [lookingAtAgent, notificationPreferences, safeSetDynamicContents],
   )
 
   const includeNotificationInPanel = useCallback(
     (notification: AppNotification) =>
-      shouldDeliverNotification(notificationPreferences, notification, 'panel'),
-    [notificationPreferences],
+      shouldSurfaceNotification(
+        notificationPreferences,
+        notification,
+        'panel',
+        lookingAtAgent,
+      ),
+    [lookingAtAgent, notificationPreferences],
+  )
+
+  const handleLiveSpeech = useCallback(
+    (speech: {
+      id: string
+      body: string
+      performance?: unknown
+      merope_state?: unknown
+    }) => {
+      deliverProactiveFace(agentFace, faceSpeechGate, {
+        id: speech.id,
+        body: speech.body,
+        performance: speech.performance,
+        meropeState: speech.merope_state,
+      })
+    },
+    [],
   )
 
   const notifCenter = useNotificationCenter({
     enabled: !!user,
     userId: user?.id,
     onNew: handleNewNotification,
+    onLiveSpeech: handleLiveSpeech,
     includeInPanel: includeNotificationInPanel,
   })
   const { loaded: notifLoaded, loadHistory: loadNotifHistory } = notifCenter

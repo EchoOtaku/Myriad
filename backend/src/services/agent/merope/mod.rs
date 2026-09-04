@@ -7,6 +7,7 @@ pub mod motion;
 pub mod motion_local;
 pub mod onboarding_ai;
 pub mod onboarding_prompts;
+pub mod outfit_overlay;
 pub mod report_dna;
 pub mod speaking_prompts;
 pub mod state;
@@ -22,6 +23,7 @@ pub use motion::{
     MotionPhase, PerformanceDirective,
 };
 pub use myriad_merope::RigStateSummary;
+pub use outfit_overlay::{apply_chat_outfit_overlay, chat_wardrobe_section};
 pub use store::{
     acquire_portrait_generation, clear_persona_on, complete_portrait_generation,
     credit_music_listening, generation_inputs_changed, get_or_create_state, get_persona,
@@ -382,7 +384,7 @@ pub fn has_custom_persona(persona: &agent_persona::Model) -> bool {
     format_persona(persona).is_some()
 }
 
-pub use gates::{decide_ingest, is_chatting, is_valuable_event, IngestDecision};
+pub use gates::{decide_ingest, is_chatting, is_valuable_event, IngestDecision, IngestSight};
 pub use state::{
     apply_mood_hint, apply_task_outcome, apply_user_utterance, clamp_mood, detect_mood_cue,
     effective_activity, is_extremely_low, mood_band, parse_appraisal_hint, Affect, AffectBaseline,

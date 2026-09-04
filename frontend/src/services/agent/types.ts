@@ -409,6 +409,11 @@ export interface MeropeStateChangedEvent {
   activity: string
 }
 
+export interface OutfitOverlayEvent {
+  type: 'outfit_overlay'
+  outfitId: string | null
+}
+
 /** 任务分配事件（多 Agent 协作时发送） */
 export interface TaskAssignedEvent {
   type: 'task_assigned'
@@ -503,6 +508,7 @@ export type ProgressEvent =
   | ThinkingTokenEvent
   | PerformancePlanEvent
   | MeropeStateChangedEvent
+  | OutfitOverlayEvent
   | PlannerDecisionEvent
   | StepDebugEvent
 

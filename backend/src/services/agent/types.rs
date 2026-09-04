@@ -1530,6 +1530,11 @@ pub enum AgentProgressEvent {
         mood: super::merope::MoodTransition,
         activity: String,
     },
+    /// Chat-only temporary wardrobe overlay. `null` returns to the worn set.
+    OutfitOverlay {
+        #[serde(rename = "outfitId")]
+        outfit_id: Option<String>,
+    },
     /// 错误
     Error {
         #[serde(rename = "taskId", skip_serializing_if = "Option::is_none")]

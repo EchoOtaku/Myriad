@@ -1,0 +1,149 @@
+//! Per-chat-session memory of a temporary wardrobe overlay.
+//!
+//! Chat can point the live face at another saved set. It does not write
+//! persona, the worn outfit, or the live rig pointer.
+
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+use once_cell::sync::Lazy;
+use sea_orm::DatabaseConnection;
+
+use super::store::get_persona;
+use myriad_merope::{
+    looks_from_visual_profile, resolve_chat_outfit_overlay, wardrobe_look, worn_outfit_id,
+    OverlayDecision, DEFAULT_WARDROBE_ID,
+};
+
+static OVERLAYS: Lazy<Mutex<HashMap<(i32, String), String>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+pub fn overlay_outfit_id(user_id: i32, session_id: &str) -> Option<String> {
+    OVERLAYS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(&(user_id, session_id.to_string()))
+        .cloned()
+}
+
+pub fn clear_overlay(user_id: i32, session_id: &str) {
+    OVERLAYS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(&(user_id, session_id.to_string()));
+}
+
+fn set_overlay(user_id: i32, session_id: &str, outfit_id: &str) {
+    OVERLAYS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert((user_id, session_id.to_string()), outfit_id.to_string());
+}
+
+/// Apply a chat-line wardrobe request. `Some` means the showing outfit changed;
+/// `outfit_id` is `None` when the overlay was cleared back to the worn set.
+pub async fn apply_chat_outfit_overlay(
+    db: &DatabaseConnection,
+    user_id: i32,
+    session_id: &str,
+    input: &str,
+) -> Option<Option<String>> {
+    if session_id.is_empty() {
+        return None;
+    }
+    if !super::is_enabled().await {
+        return None;
+    }
+    let Ok(Some(persona)) = get_persona(db).await else {
+        return None;
+    };
+    let profile = persona.visual_profile.as_ref()?;
+    let looks = looks_from_visual_profile(profile);
+    if looks.is_empty() {
+        return None;
+    }
+    let worn = worn_outfit_id(profile).unwrap_or(DEFAULT_WARDROBE_ID);
+    let current = live_overlay(user_id, session_id, &looks);
+    match resolve_chat_outfit_overlay(input, &looks, worn, current.as_deref()) {
+        OverlayDecision::Unchanged => None,
+        OverlayDecision::Clear => {
+            clear_overlay(user_id, session_id);
+            Some(None)
+        }
+        OverlayDecision::Wear(id) => {
+            set_overlay(user_id, session_id, id);
+            Some(Some(id.to_string()))
+        }
+    }
+}
+
+pub async fn chat_wardrobe_section(
+    db: &DatabaseConnection,
+    user_id: i32,
+    session_id: &str,
+) -> Option<String> {
+    if !super::is_enabled().await {
+        return None;
+    }
+    let Ok(Some(persona)) = get_persona(db).await else {
+        return None;
+    };
+    let profile = persona.visual_profile.as_ref()?;
+    let looks = looks_from_visual_profile(profile);
+    let worn = worn_outfit_id(profile).unwrap_or(DEFAULT_WARDROBE_ID);
+    let overlay = live_overlay(user_id, session_id, &looks);
+    myriad_merope::format_chat_wardrobe_section(&looks, worn, overlay.as_deref())
+}
+
+fn live_overlay(
+    user_id: i32,
+    session_id: &str,
+    looks: &[myriad_merope::WardrobeLook],
+) -> Option<String> {
+    let current = overlay_outfit_id(user_id, session_id)?;
+    if wardrobe_look(looks, &current).is_some_and(|look| look.playable()) {
+        Some(current)
+    } else {
+        clear_overlay(user_id, session_id);
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn overlay_memory_does_not_write_persona_or_the_live_pointer() {
+        let source = include_str!("outfit_overlay.rs");
+        let prod = source.split("#[cfg(test)]").next().unwrap();
+        assert!(prod.contains("resolve_chat_outfit_overlay"));
+        assert!(!prod.contains("upsert_persona"));
+        assert!(!prod.contains("persist_active_asset"));
+        assert!(!prod.contains("activeOutfitId"));
+        assert!(!prod.contains("PortraitUpdate"));
+        assert!(!prod.contains("put_persona"));
+    }
+
+    #[test]
+    fn chat_turns_apply_the_overlay_before_lite_speaks() {
+        let process = include_str!("../process_and_recipe.rs");
+        assert!(process.contains("publish_chat_outfit_overlay"));
+        let chat = process
+            .split("AgentInteractionMode::Chat")
+            .nth(2)
+            .expect("streaming chat branch");
+        let chat = chat.split("return Ok(AgentResponse").next().unwrap();
+        assert!(chat.contains("publish_chat_outfit_overlay"));
+        assert!(chat.contains("stream_strict_lite_chat_response"));
+        assert!(!chat.contains("upsert_persona"));
+        assert!(!chat.contains("persist_active_asset"));
+        let prompt = include_str!("../confirmation_and_tasks.rs");
+        let prompt_fn = prompt
+            .split("async fn chat_response_prompt")
+            .nth(1)
+            .and_then(|rest| rest.split("async fn ").next())
+            .unwrap();
+        assert!(prompt_fn.contains("chat_wardrobe_section"));
+        assert!(prompt_fn.contains("AgentInteractionMode::Chat"));
+        assert!(!prompt_fn.contains("upsert_persona"));
+    }
+}

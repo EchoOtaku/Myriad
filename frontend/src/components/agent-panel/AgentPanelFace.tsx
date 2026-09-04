@@ -14,13 +14,16 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { agentStatusActivity } from '../../features/merope/activity'
 import { isAnime25DPlayback } from '../../features/merope/anime25drig/types'
-import { getSiteFace } from '../../features/merope/api'
+import { getSiteFace, getWardrobeFace } from '../../features/merope/api'
+import { useChatOutfitOverlay } from '../../features/merope/chatOutfitOverlay'
+import { FacePresence } from '../../features/merope/FacePresence'
 import {
   FACE_UPDATED_EVENT,
   PERSONA_UPDATED_EVENT,
 } from '../../features/merope/events'
 import {
   LIVE_FACE_PLAYBACK_PRIORITY,
+  notifyLiveFaceUnmounted,
   useLiveFacePlayback,
 } from '../../features/merope/liveFacePlayback'
 import { semanticRigCapabilities } from '../../features/merope/motion/rigStateSummary'
@@ -39,6 +42,7 @@ import RigCharacter from '../../features/merope/rig/RigCharacter'
 import { sameLiveFaceRuntime } from '../../features/merope/rig/types'
 import { agentService } from '../../services/agent'
 import { ADDRESSEE_UPDATED_EVENT } from '../agent/meropeVitals'
+import { useAgentPanelMode } from './agentPanelMode'
 import { useAgentStatus } from './agentStatusStore'
 
 const DEFAULT_MOOD = 70
@@ -68,6 +72,9 @@ export function AgentPanelFace({
 }) {
   const { t } = useI18n()
   const { hasChecked, isAuthenticated } = useAuth()
+  const panelMode = useAgentPanelMode()
+  const overlayOutfitId = useChatOutfitOverlay()
+  const liveOverlayId = panelMode === 'chat' ? overlayOutfitId : null
   const [manifest, setManifest] = useState<MeropeRigManifest | null>(null)
   const [portraitUrl, setPortraitUrl] = useState<string | null>(null)
   const [agentName, setAgentName] = useState(PERSONA_DEFAULT_NAME)
@@ -79,6 +86,7 @@ export function AgentPanelFace({
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
   const [rigFailed, setRigFailed] = useState(false)
+  const [readyKey, setReadyKey] = useState('')
   const faceRequestRef = useRef(0)
   const rigRef = useRef<RigCharacterHandle>(null)
   const manifestRef = useRef(manifest)
@@ -95,9 +103,13 @@ export function AgentPanelFace({
   const playableRig = hasPlayableRig(manifest)
   const motionReady = playsLive && playableRig && !rigFailed
   const liveCapabilities = motionReady ? capabilities : []
-  const showTaken = playableRig && !playsLive
-  const showCharacter =
-    motionReady || (!playableRig && Boolean(portraitUrl))
+  const packageKey = motionReady
+    ? 'live'
+    : !playableRig && portraitUrl
+      ? portraitUrl
+      : ''
+  const wantLive = Boolean(packageKey)
+  const ready = readyKey === packageKey && packageKey !== ''
   const handleRigPlaybackError = useCallback(() => setRigFailed(true), [])
   useRigMotionLifecycle(rigRef, {
     mood,
@@ -111,7 +123,18 @@ export function AgentPanelFace({
   const loadFace = useCallback(() => {
     const request = ++faceRequestRef.current
     setFailed(false)
-    void getSiteFace()
+    const overlayId = liveOverlayId
+    void (overlayId ? getWardrobeFace(overlayId) : getSiteFace())
+      .then((face) => {
+        if (
+          overlayId &&
+          !face.manifest &&
+          !face.portraitUrl
+        ) {
+          return getSiteFace()
+        }
+        return face
+      })
       .then((face) => {
         if (request !== faceRequestRef.current) return
         setManifest((current) => {
@@ -125,6 +148,7 @@ export function AgentPanelFace({
       })
       .catch(() => {
         if (request !== faceRequestRef.current) return
+        if (manifestRef.current) return
         setManifest(null)
         setPortraitUrl(null)
         setFailed(true)
@@ -132,7 +156,7 @@ export function AgentPanelFace({
       .finally(() => {
         if (request === faceRequestRef.current) setLoading(false)
       })
-  }, [])
+  }, [liveOverlayId])
 
   useEffect(() => {
     loadFace()
@@ -215,9 +239,8 @@ export function AgentPanelFace({
     }
   }, [hasChecked, isAuthenticated])
 
-  const emptyMessage = showTaken
-    ? t.merope.widgetFaceSlotTaken
-    : failed || rigFailed
+  const emptyMessage =
+    failed || rigFailed
       ? t.merope.loadFailed
       : !personaOn
         ? t.agentPanel.agentPersonaOff
@@ -235,22 +258,35 @@ export function AgentPanelFace({
       aria-label={`${t.merope.title}: ${agentName}`}
       aria-busy={loading || undefined}
     >
-      {showCharacter ? (
-        <div className="agent-panel-face-rig">
-          <RigCharacter
-            ref={rigRef}
-            activity={activity}
-            fallbackUrl={playableRig ? null : portraitUrl}
-            manifest={playsLive ? manifest : null}
-            mood={mood}
-            onPlaybackError={handleRigPlaybackError}
-          />
-        </div>
-      ) : !loading ? (
-        <span className="agent-panel-tag" data-block="true" role="status">
-          <span className="agent-panel-tag-text">{emptyMessage}</span>
-        </span>
-      ) : null}
+      <div className="agent-panel-face-rig">
+        <FacePresence
+          present={wantLive}
+          packageKey={packageKey}
+          ready={ready}
+          onLiveUnmounted={() => notifyLiveFaceUnmounted('agent-panel-face')}
+          vacant={
+            !loading && playbackEnabled ? (
+              <span className="agent-panel-tag" data-block="true" role="status">
+                <span className="agent-panel-tag-text">{emptyMessage}</span>
+              </span>
+            ) : null
+          }
+        >
+          {(mounted) =>
+            mounted ? (
+              <RigCharacter
+                ref={rigRef}
+                activity={activity}
+                fallbackUrl={playableRig ? null : portraitUrl}
+                manifest={playsLive || mounted ? manifest : null}
+                mood={mood}
+                onPlaybackError={handleRigPlaybackError}
+                onPlaybackReady={() => setReadyKey(packageKey)}
+              />
+            ) : null
+          }
+        </FacePresence>
+      </div>
     </div>
   )
 }

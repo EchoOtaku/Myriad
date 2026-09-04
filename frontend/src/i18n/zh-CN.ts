@@ -137,8 +137,9 @@ export const zhCN: TranslationKeys = {
 
     visualConfirm:
       '图片模型可能产生费用。确认开始生成主立绘吗？重新生成会清掉已导入的骨骼。',
-    anime25dRuntimeCredit:
-      'See-through 拆层之后，动作运行时复刻 Anime2.5DRig（MIT）。',
+    anime25dSeeThroughCredit: '把立绘拆成头发、五官、衣服等图层。',
+    anime25dRuntimeCredit: '驱动这些图层眨眼、说话、转头。',
+    anime25dProjectThanks: '人设功能基于上述项目改进完善，感谢',
     anime25dDebug: '动作调整',
     overviewGroup: '概览',
     overviewGroupDescription: '名字、心情、当前状态，以及立绘和骨骼是否就绪。',
@@ -303,9 +304,7 @@ export const zhCN: TranslationKeys = {
     anime25dInspectEmpty:
       '还没有骨骼数据。先完成分层骨骼，才能检查图层是否对上播放器。',
     rigPathUpload: '上传 PSD',
-    rigPathUploadHint: '用自己分层好的 PSD 做骨骼。',
     rigPathSeeThrough: 'See-through 拆层',
-    rigPathSeeThroughHint: '从当前主立绘远端拆层，再走本地预检。',
     rigTokenReady: 'Token 已保存',
     rigPreflightTitle: '预检结果',
     rigPreflightSummary: '已识别 {parts} 个可动部件 · 质量评分 {score}/100',
@@ -2504,6 +2503,12 @@ export const zhCN: TranslationKeys = {
       continue: '继续处理',
       dismiss: '不用',
       failed: '刚才没有处理成功，请再试一次。',
+    },
+    workOffer: {
+      kicker: '做事',
+      hint: '这件事要动工具',
+      accept: '去办',
+      sent: '在办',
     },
     mood: {
       kicker: '心情',

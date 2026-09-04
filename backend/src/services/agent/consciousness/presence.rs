@@ -15,13 +15,17 @@ use super::SelfLivePresence;
 static LIVE: Lazy<RwLock<HashMap<i32, SelfLivePresence>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
 
-pub fn remember_live_presence(user_id: i32, live: SelfLivePresence) {
+/// Returns true when the addressee moved from absent/expired to on-page.
+pub fn remember_live_presence(user_id: i32, live: SelfLivePresence) -> bool {
     if user_id <= 0 {
-        return;
+        return false;
     }
+    let was_present = live_presence_is_on_page(user_id);
+    let now_present = live.page_visible;
     if let Ok(mut map) = LIVE.write() {
         map.insert(user_id, live);
     }
+    !was_present && now_present
 }
 
 pub fn last_live_presence(user_id: i32) -> SelfLivePresence {
@@ -30,6 +34,16 @@ pub fn last_live_presence(user_id: i32) -> SelfLivePresence {
         .and_then(|map| map.get(&user_id).cloned())
         .filter(presence_is_fresh)
         .unwrap_or_default()
+}
+
+pub fn live_presence_is_on_page(user_id: i32) -> bool {
+    last_live_presence(user_id).page_visible
+}
+
+/// Looking at her: on the page and the Agent panel is open.
+pub fn live_presence_panel_open(user_id: i32) -> bool {
+    let live = last_live_presence(user_id);
+    live.page_visible && live.panel_visible
 }
 
 fn presence_is_fresh(live: &SelfLivePresence) -> bool {
@@ -58,6 +72,14 @@ fn apply_whitelisted_presence(live: &mut SelfLivePresence, data: &Value) {
             .get("faceVisible")
             .and_then(Value::as_bool)
             .unwrap_or(live.face_visible);
+        live.page_visible = presence
+            .get("pageVisible")
+            .and_then(Value::as_bool)
+            .unwrap_or(live.page_visible);
+        live.panel_visible = presence
+            .get("panelVisible")
+            .and_then(Value::as_bool)
+            .unwrap_or(live.panel_visible);
         live.speech_interruptible = presence
             .get("speechInterruptible")
             .and_then(Value::as_bool)
@@ -268,12 +290,16 @@ mod tests {
         let live = live_presence_from_custom_data(&serde_json::json!({
             "presence": {
                 "speaking": true,
+                "pageVisible": true,
+                "panelVisible": true,
                 "__admin": true
             },
             "perception": [{ "summary": "x", "raw": "<pixels>" }],
             "secret": "nope"
         }));
         assert!(live.speaking);
+        assert!(live.page_visible);
+        assert!(live.panel_visible);
         let encoded = serde_json::to_value(&live).unwrap();
         assert!(encoded.get("__admin").is_none());
         assert_eq!(
@@ -313,5 +339,32 @@ mod tests {
         assert!(stored.speaking);
         let captured = stored.captured_at.expect("fresh timestamp");
         assert!(Utc::now().signed_duration_since(captured) < Duration::seconds(2));
+    }
+
+    #[test]
+    fn remember_reports_revival_onto_the_page() {
+        let live = live_presence_from_custom_data(&serde_json::json!({
+            "presence": { "pageVisible": true }
+        }));
+        assert!(remember_live_presence(96, live.clone()));
+        assert!(live_presence_is_on_page(96));
+        assert!(!live_presence_panel_open(96));
+        assert!(!remember_live_presence(96, live));
+    }
+
+    #[test]
+    fn panel_open_requires_the_page_and_the_panel() {
+        let on_page = live_presence_from_custom_data(&serde_json::json!({
+            "presence": { "pageVisible": true, "panelVisible": true }
+        }));
+        remember_live_presence(97, on_page);
+        assert!(live_presence_is_on_page(97));
+        assert!(live_presence_panel_open(97));
+        let page_only = live_presence_from_custom_data(&serde_json::json!({
+            "presence": { "pageVisible": true, "panelVisible": false }
+        }));
+        remember_live_presence(97, page_only);
+        assert!(live_presence_is_on_page(97));
+        assert!(!live_presence_panel_open(97));
     }
 }

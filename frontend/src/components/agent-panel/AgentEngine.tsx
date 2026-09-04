@@ -14,6 +14,7 @@ import type {
   AgentResponse,
   FrontendAction,
   MeropeStateChangedEvent,
+  OutfitOverlayEvent,
   PerformancePlanEvent,
   PlannerDecisionEvent,
   ProgressEvent,
@@ -45,7 +46,12 @@ import {
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
+import { agentMusicStatus } from '../../contexts/currentSong'
 import { usePageContentOptional } from '../../contexts/PageContentContext'
+import {
+  clearChatOutfitOverlay,
+  setChatOutfitOverlay,
+} from '../../features/merope/chatOutfitOverlay'
 import {
   attachLiveBody,
   captureTurnBody,
@@ -89,6 +95,7 @@ import {
 import { buildAgentPendingAction } from './agentAction'
 import { attachmentsForRequest } from './agentAttachments'
 import { getAgentContextConsent } from './agentContextConsent'
+import { turnSelectionText } from './agentSelection'
 import { setAgentSessionId } from './agentMessages'
 import {
   AGENT_PANEL_ACTION_EVENT,
@@ -156,6 +163,18 @@ async function runFrontendAction(action: FrontendAction): Promise<unknown> {
   })
   if (offer) setAgentUndoOffer(offer)
   return result
+}
+
+function chatPagePayload(
+  page: Record<string, unknown>,
+): Record<string, unknown> {
+  const content = typeof page.content === 'string' ? page.content.slice(0, 400) : null
+  return {
+    type: page.type,
+    title: page.title,
+    author: page.author,
+    content,
+  }
 }
 
 export const AgentEngine: React.FC = () => {
@@ -351,6 +370,7 @@ export const AgentEngine: React.FC = () => {
     setSessionId(null, current)
     setMessages([], current)
     sessionTitleSetByModeRef.current[current] = false
+    if (current === 'chat') clearChatOutfitOverlay()
   }, [setSessionId, setMessages])
 
   /**
@@ -984,13 +1004,9 @@ export const AgentEngine: React.FC = () => {
                   }
                 ).__musicPlayerState
                 if (!musicStatus && published) {
-                  musicStatus = {
-                    isPlaying: !!published.isPlaying,
-                    isEnabled: !!published.isEnabled,
-                    currentSong: published.currentSong ?? null,
-                    currentSongIndex: published.currentSongIndex ?? 0,
-                    playlistLength: published.playlistLength ?? 0,
-                  }
+                  musicStatus = agentMusicStatus(
+                    published as Record<string, unknown>,
+                  )
                 }
                 await agentService.submitFrontendAck(
                   liveTaskId,
@@ -1104,6 +1120,12 @@ export const AgentEngine: React.FC = () => {
           case 'merope_state_changed': {
             const stateEvent = event as MeropeStateChangedEvent
             setFaceMood(stateEvent.mood, stateEvent.activity)
+            break
+          }
+
+          case 'outfit_overlay': {
+            const overlayEvent = event as OutfitOverlayEvent
+            setChatOutfitOverlay(overlayEvent.outfitId)
             break
           }
 
@@ -1451,18 +1473,28 @@ export const AgentEngine: React.FC = () => {
         if (pageConsent && pageContentContext?.hasContent) {
           const contentForAgent = pageContentContext.getContentForAgent()
           if (contentForAgent) {
-            customData.pageContent = contentForAgent
+            customData.pageContent =
+              mode === 'chat'
+                ? chatPagePayload(contentForAgent)
+                : contentForAgent
           }
         } else if (pageConsent && typeof document !== 'undefined') {
-          const main =
-            document.querySelector('main') ?? document.body
-          const text = (main?.innerText ?? '').replace(/\s+/g, ' ').trim()
-          if (text) {
-            customData.pageContent = {
-              type: 'custom',
-              title: document.title,
-              content: text.slice(0, 8000),
-              currentPath: location.pathname,
+          if (mode === 'chat') {
+            const title = document.title.trim()
+            if (title) {
+              customData.pageContent = { type: 'custom', title }
+            }
+          } else {
+            const main =
+              document.querySelector('main') ?? document.body
+            const text = (main?.innerText ?? '').replace(/\s+/g, ' ').trim()
+            if (text) {
+              customData.pageContent = {
+                type: 'custom',
+                title: document.title,
+                content: text.slice(0, 8000),
+                currentPath: location.pathname,
+              }
             }
           }
         }
@@ -1478,15 +1510,12 @@ export const AgentEngine: React.FC = () => {
           }
         ).__musicPlayerState
         if (published) {
-          customData.musicStatus = {
-            isPlaying: !!published.isPlaying,
-            isEnabled: !!published.isEnabled,
-            currentSong: published.currentSong ?? null,
-            currentSongIndex: published.currentSongIndex ?? 0,
-            playlistLength: published.playlistLength ?? 0,
-          }
+          const musicStatus = agentMusicStatus(
+            published as Record<string, unknown>,
+          )
+          if (musicStatus) customData.musicStatus = musicStatus
         }
-        if (hasActionHandler('query_windows')) {
+        if (mode !== 'chat' && hasActionHandler('query_windows')) {
           try {
             const windowState = await executeFrontendAction({
               type: 'query_windows',
@@ -1503,6 +1532,7 @@ export const AgentEngine: React.FC = () => {
           route: location.pathname,
           page: pageConsent ? (pageContentContext?.pageContent ?? null) : null,
           pageConsent,
+          selection: turnSelectionText(),
         })
         context.rigState = body.rigState
         customData.perception = body.perception

@@ -35,6 +35,7 @@ export function capturePerceptionSnapshots(input: {
         title: copy.title,
         type: input.page.type,
         hasBody: copy.hasBody,
+        ...(copy.author ? { author: copy.author } : {}),
       },
       privacy: 'consented',
     })

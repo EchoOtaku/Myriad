@@ -100,6 +100,22 @@ test.describe('presence inbound', { concurrency: false }, () => {
     stop()
   })
 
+  test('lease renews even when the revision set is unchanged', async () => {
+    resetPresenceInboundForTest()
+    setPresenceArmedForTest(true)
+    const posts: unknown[] = []
+    setPresenceFactsForTest(() => ({ speaking: false, pageVisible: true }))
+    setPresenceCaptureForTest(() => [
+      snapshot('presence', 1, 'page visible'),
+    ])
+    setPresencePostForTest(async (body) => {
+      posts.push(body)
+    })
+    await reportPresence('route')
+    await reportPresence('lease')
+    assert.equal(posts.length, 2)
+  })
+
   test('page consent off omits page summary from the payload', async () => {
     resetPresenceInboundForTest()
     setPresenceArmedForTest(true)
@@ -124,11 +140,16 @@ test.describe('presence inbound', { concurrency: false }, () => {
   })
 })
 
-test('inbound reports changes without a timer', () => {
+test('inbound reports changes and renews an observation lease while visible', () => {
   const source = readFileSync(new URL('./inbound.ts', import.meta.url), 'utf8')
-  assert.doesNotMatch(source, /setInterval/)
+  assert.match(source, /setInterval/)
+  assert.match(source, /reason !== 'lease'/)
+  assert.match(source, /subscribeAgentPanelVisible/)
   assert.match(source, /reportPresence\(/)
   assert.match(source, /visibilitychange/)
   assert.match(source, /meropeEnabled/)
   assert.match(source, /inboundArmed/)
+  assert.match(source, /subscribeAgentSelection/)
+  assert.match(source, /turnSelectionText/)
+  assert.match(source, /must not/)
 })

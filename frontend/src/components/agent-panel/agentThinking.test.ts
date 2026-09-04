@@ -333,9 +333,17 @@ test('说明性的短句都是贴：操作、附件、收藏、脚注不再另�
   )
   assert.match(intention, /data-tone="danger"/)
   assert.match(intention, /dispatchAgentPanelSubmit|onAccept/)
+  assert.match(composer, /prompts.summarize, undefined, 'work'/)
+  assert.match(composer, /prompts.translate, undefined, 'work'/)
+  assert.match(message, /onWorkOffer/)
+  assert.match(message, /workOffer.accept/)
+  assert.match(message, /agent-panel-work-offer/)
+  assert.match(css, /\.agent-panel-work-offer \{/)
+  assert.match(css, /\.agent-panel-work-offer-accept \{/)
+  assert.match(composer, /chatting \? 'primary'/)
+  assert.match(panel, /onWorkOffer=\{\(input\) => submit\(input, undefined, 'work'\)\}/)
   assert.match(css, /\.agent-panel-face-slot \{[\s\S]*?position:\s*absolute/)
   assert.match(css, /--agent-face-reserve/)
-  assert.match(css, /--agent-face-lift/)
   assert.match(css, /--agent-mode-lag/)
   assert.match(
     css,

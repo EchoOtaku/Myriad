@@ -241,7 +241,7 @@ html.dark .merope-motion-page {
 }
 
 .merope-motion-rig__tabs {
-  margin: 0 0 12px;
+  margin: 0;
 }
 
 .merope-motion-rig__path,
@@ -470,16 +470,41 @@ html.dark .merope-motion-page {
 }
 
 .merope-character-home__credit {
-  margin: 0.35rem 0 0;
+  display: grid;
+  gap: 0.7rem;
+  margin: 0;
   color: var(--merope-muted, #667085);
-  font-size: 0.78rem;
-  line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
-.merope-character-home__credit a {
+.merope-character-home__credit-line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.45rem 0.6rem;
+  margin: 0;
+}
+
+.merope-character-home__thanks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.45rem;
+  margin: 0.15rem 0 0;
+}
+
+.merope-character-home__thanks a,
+.merope-character-home__thanks a:link,
+.merope-character-home__thanks a:visited {
   color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  font-weight: 620;
+  text-decoration: none;
+}
+
+.merope-character-home__thanks a:hover,
+.merope-character-home__thanks a:focus-visible {
+  color: var(--merope-ink, inherit);
 }
 
 .merope-motion-home--settings {

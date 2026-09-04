@@ -139,8 +139,9 @@ export const enUS: TranslationKeys = {
 
     visualConfirm:
       'The image model may incur charges. Generate the master portrait now? Regenerating clears the imported rig.',
-    anime25dRuntimeCredit:
-      'After See-through, motion is replicated from Anime2.5DRig (MIT).',
+    anime25dSeeThroughCredit: 'Splits the portrait into layers: hair, face, clothes.',
+    anime25dRuntimeCredit: 'Drives blink, speech, and head-turn on those layers.',
+    anime25dProjectThanks: 'The persona builds on these projects. Thanks to',
     anime25dDebug: 'Motion',
     overviewGroup: 'Overview',
     overviewGroupDescription:
@@ -308,10 +309,7 @@ export const enUS: TranslationKeys = {
     anime25dInspectEmpty:
       'No rig data yet. Finish the layered rig to check that layers match the player.',
     rigPathUpload: 'Upload PSD',
-    rigPathUploadHint: 'Build the rig from your own layered PSD.',
     rigPathSeeThrough: 'See-through split',
-    rigPathSeeThroughHint:
-      'Split the current master portrait remotely, then run local preflight.',
     rigTokenReady: 'Token saved',
     rigPreflightTitle: 'Preflight result',
     rigPreflightSummary:
@@ -2661,6 +2659,12 @@ export const enUS: TranslationKeys = {
       continue: 'Continue',
       dismiss: 'Not now',
       failed: 'That did not go through. Please try again.',
+    },
+    workOffer: {
+      kicker: 'Help',
+      hint: 'This needs tools',
+      accept: 'Do this',
+      sent: 'On it',
     },
     mood: {
       kicker: 'Mood',

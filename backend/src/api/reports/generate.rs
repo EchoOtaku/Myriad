@@ -554,6 +554,15 @@ pub(crate) async fn generate_platform_reports_internal(
                     card_visuals = json!({});
                 }
 
+                if let Some(obj) = card_visuals.as_object_mut() {
+                    if let Some(tags) = obj
+                        .get_mut("mood_keywords")
+                        .and_then(|v| v.as_array_mut())
+                    {
+                        tags.truncate(6);
+                    }
+                }
+
                 // 添加library_items
                 if let Ok(library_items) = extract_netease_library_items(&metadata).await {
                     if let Some(obj) = card_visuals.as_object_mut() {

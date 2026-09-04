@@ -213,6 +213,33 @@ export function deliverWorkNotificationFace(
   })
 }
 
+/** On-page opening. Speaks on the visible face unless Chat currently holds the mouth. */
+export function deliverProactiveFace(
+  channel: AgentFaceChannel,
+  gate: FaceSpeechGate,
+  notification: {
+    id: string
+    body?: string
+    performance?: unknown
+    meropeState?: unknown
+  },
+): FaceDelivery {
+  if (notification.meropeState != null) {
+    channel.updateState(notification.meropeState)
+  }
+  const text = notification.body?.trim() ? notification.body : undefined
+  if (gate.chatUtteranceActive) {
+    noteTurnTraceDrop('gated_record')
+    return { surface: 'record', messageId: notification.id, text }
+  }
+  return deliverGatedLine(channel, gate, getAgentPanelMode(), {
+    messageId: notification.id,
+    text: notification.body,
+    source: 'proactive',
+    performance: notification.performance,
+  })
+}
+
 /**
  * Deliver a finished line. Speech goes through AgentFaceChannel; a blocked
  * Work completion is returned as `record` so the caller still keeps the

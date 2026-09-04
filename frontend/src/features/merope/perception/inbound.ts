@@ -1,7 +1,16 @@
+/**
+ * Observation only: page/panel/perception → POST /agent/presence.
+ * Speech is decided on named events; this file never asks the model.
+ */
 import type { PageContent } from '../../../contexts/PageContentContext'
 import type { PerceptionSnapshot } from './registry'
 import { getAgentContextConsent, subscribeAgentContextConsent } from '../../../components/agent-panel/agentContextConsent'
 import { subscribeScreenConsent } from '../../../components/agent-panel/screenConsent'
+import {
+  subscribeAgentSelection,
+  turnSelectionText,
+} from '../../../components/agent-panel/agentSelection'
+import { subscribeAgentPanelVisible } from '../../../components/agent-panel/agentPanelVisible'
 import { getCurrentPageContent } from '../../../contexts/currentPage'
 import { bindPublishedMusicState, subscribeCurrentSong } from '../../../contexts/currentSong'
 import { getVoicePresence, subscribeVoicePresence } from '../speech/voicePresence'
@@ -9,11 +18,14 @@ import { MAX_PERCEPTION_ITEMS } from './registry'
 import { subscribeForegroundSurface } from './surface'
 
 const MIN_INTERVAL_MS = 2000
+/** Observation lease, shorter than backend PRESENCE_WINDOW_SECS (90). Not a think tick. */
+const PRESENCE_LEASE_MS = 45_000
 
 interface CaptureInput {
   route: string
   page: PageContent | null
   pageConsent: boolean
+  selection?: string
 }
 type CaptureFn = (input: CaptureInput) => PerceptionSnapshot[]
 type PresencePost = (body: unknown) => Promise<void>
@@ -31,6 +43,7 @@ let factsFn: PresenceFacts | null = null
 let enabledFn: PresenceEnabled | null = null
 let postPresence: PresencePost = defaultPostPresence
 let arming: Promise<void> = Promise.resolve()
+let leaseTimer: ReturnType<typeof setInterval> | null = null
 
 async function defaultPostPresence(body: unknown): Promise<void> {
   const { apiService } = await import('../../../services/api')
@@ -83,6 +96,22 @@ export function resetPresenceInboundForTest(): void {
   enabledFn = null
   postPresence = defaultPostPresence
   arming = Promise.resolve()
+  stopPresenceLease()
+}
+
+function stopPresenceLease(): void {
+  if (leaseTimer != null) {
+    clearInterval(leaseTimer)
+    leaseTimer = null
+  }
+}
+
+function startPresenceLease(): void {
+  stopPresenceLease()
+  if (typeof document === 'undefined' || document.hidden) return
+  leaseTimer = setInterval(() => {
+    void reportPresence('lease')
+  }, PRESENCE_LEASE_MS)
 }
 
 async function meropeIsEnabled(): Promise<boolean> {
@@ -114,9 +143,9 @@ function currentRoute(): string {
 }
 
 /**
- * Report live presence when a discrete fact changes. Not a heartbeat:
- * no polling timer, and no reports while the page is already hidden
- * except the hide transition itself.
+ * Report live presence when a discrete fact changes, or renew the observation
+ * lease while the page is visible. Lease is not a decision heartbeat: the
+ * backend still must not start a consciousness decision on this path.
  */
 export async function reportPresence(reason: string): Promise<void> {
   if (!inboundArmed) {
@@ -130,17 +159,20 @@ export async function reportPresence(reason: string): Promise<void> {
     route: currentRoute(),
     page: pageConsent ? getCurrentPageContent() : null,
     pageConsent,
+    selection: turnSelectionText(),
   }
   const snapshots = (
     captureFn ? captureFn(input) : await defaultCapture(input)
   ).slice(0, MAX_PERCEPTION_ITEMS)
   const key = revisionKey(snapshots)
-  if (key && key === lastRevisionKey) {
-    return
-  }
   const now = Date.now()
-  if (lastSentAt > 0 && now - lastSentAt < MIN_INTERVAL_MS) {
-    return
+  if (reason !== 'lease' && reason !== 'panel' && reason !== 'visibility') {
+    if (key && key === lastRevisionKey) {
+      return
+    }
+    if (lastSentAt > 0 && now - lastSentAt < MIN_INTERVAL_MS) {
+      return
+    }
   }
   lastRevisionKey = key
   lastSentAt = now
@@ -173,6 +205,8 @@ export function startPresenceInbound(): () => void {
     }
     const onVisibility = () => {
       void reportPresence('visibility')
+      if (documentIsHidden()) stopPresenceLease()
+      else startPresenceLease()
     }
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', onVisibility)
@@ -192,8 +226,14 @@ export function startPresenceInbound(): () => void {
     const stopSong = subscribeCurrentSong(() => {
       void reportPresence('track')
     })
+    const stopSelection = subscribeAgentSelection(() => {
+      void reportPresence('selection')
+    })
     const stopSurface = subscribeForegroundSurface(() => {
       void reportPresence('surface')
+    })
+    const stopPanel = subscribeAgentPanelVisible(() => {
+      void reportPresence('panel')
     })
     unbind = () => {
       if (typeof document !== 'undefined') {
@@ -203,13 +243,17 @@ export function startPresenceInbound(): () => void {
       stopScreen()
       stopVoice()
       stopSong()
+      stopSelection()
       stopSurface()
+      stopPanel()
+      stopPresenceLease()
     }
     if (cancelled) {
       unbind()
       return
     }
     inboundArmed = true
+    startPresenceLease()
     void reportPresence('start')
   })()
   return () => {
@@ -217,5 +261,6 @@ export function startPresenceInbound(): () => void {
     inboundArmed = false
     started = false
     unbind()
+    stopPresenceLease()
   }
 }

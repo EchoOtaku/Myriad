@@ -1137,25 +1137,49 @@ impl Agent {
             .await
             .unwrap_or_default();
         let soul: String = soul.chars().take(2000).collect();
-        let merope_block = crate::services::agent::merope::speaking_prompt_plain(
+        let mut merope_block = crate::services::agent::merope::speaking_prompt_plain(
             &crate::services::agent::merope::speaking_prompt_with_query(
                 request.user_id,
                 Some(request.raw_input.as_str()),
             )
             .await,
         );
+        if request.context.as_ref().is_some_and(|context| {
+            context.interaction_mode == crate::services::agent::AgentInteractionMode::Chat
+        }) {
+            let session_id = request
+                .context
+                .as_ref()
+                .and_then(|context| context.session_id.as_deref())
+                .unwrap_or("");
+            if let Some(wardrobe) = crate::services::agent::merope::chat_wardrobe_section(
+                &self.db,
+                request.user_id,
+                session_id,
+            )
+            .await
+            {
+                if merope_block.is_empty() {
+                    merope_block = wardrobe;
+                } else {
+                    merope_block = format!("{merope_block}\n\n{wardrobe}");
+                }
+            }
+        }
         let history = request
             .context
             .as_ref()
             .and_then(|context| context.conversation_history.as_deref())
             .unwrap_or(&[]);
 
-        let perception = crate::services::agent::chat_prompt::format_perception_block(
-            request
-                .context
-                .as_ref()
-                .and_then(|context| context.custom_data.as_ref())
-                .and_then(|data| data.get("perception")),
+        let custom = request
+            .context
+            .as_ref()
+            .and_then(|context| context.custom_data.as_ref());
+        let perception = crate::services::agent::chat_prompt::format_chat_scene(
+            custom.and_then(|data| data.get("perception")),
+            custom.and_then(|data| data.get("pageContent")),
+            &request.raw_input,
         );
         crate::services::agent::chat_prompt::build_chat_lite_prompt_with_perception(
             &soul,

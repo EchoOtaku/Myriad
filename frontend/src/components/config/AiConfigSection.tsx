@@ -53,7 +53,6 @@ import AgentOptionsPanel, {
   AgentNestedSection,
 } from './AgentOptionsPanel'
 import {
-  defaultModelsForSource,
   parseVendorSources,
   resolveUsedVendorSlug,
   speechProviderKindFromSource,
@@ -76,17 +75,8 @@ interface ConfigField {
   required: boolean
 }
 
-// OpenAI 兼容服务的 Base URL / 默认模型预设
 const OPENAI_BASE_URL = 'https://api.openai.com/v1'
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
-// OpenAI 官方 GPT-5.6 三档：Luna（快/省）· Terra（均衡）· Sol（旗舰）
-const OPENAI_MODEL_LITE = 'gpt-5.6-luna'
-const OPENAI_MODEL_STANDARD = 'gpt-5.6-terra'
-const OPENAI_MODEL_PRO = 'gpt-5.6-sol'
-// OpenRouter 默认模型：三个文本模型层级共用同一种 Provider 配置协议。
-const OPENROUTER_MODEL_LITE = 'openai/gpt-oss-20b:free'
-const OPENROUTER_MODEL_STANDARD = 'minimax/minimax-m3'
-const OPENROUTER_MODEL_PRO = 'anthropic/claude-opus-5'
 
 /**
  * 推断展示用的 Provider。
@@ -392,35 +382,25 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
   }, [getFieldValue])
 
   /**
-   * 切换 Provider。OpenRouter 落到 provider=openai，并把对应的 base_url 与默认模型
-   * 在 OpenAI 官方与 OpenRouter 之间切换（用户手填的自定义地址不覆盖）。
+   * 切换 Provider。OpenRouter 落到 provider=openai，并切 base_url。
+   * 用户手填的自定义地址不覆盖。模型名不代填。
    */
   const handleProviderChange = useCallback(
-    (
-      providerKey: string,
-      baseUrlKey: string,
-      modelKey: string,
-      openrouterModel: string,
-      openaiModel: string,
-      next: string,
-    ) => {
+    (providerKey: string, baseUrlKey: string, next: string) => {
       if (next === 'openrouter') {
         updateValue(providerKey, 'openai')
         updateValue(baseUrlKey, OPENROUTER_BASE_URL)
-        updateValue(modelKey, openrouterModel)
         return
       }
       if (next === 'openai') {
         updateValue(providerKey, 'openai')
         const base = getFieldValue(baseUrlKey).trim().toLowerCase()
-        // OpenRouter / 空地址 → 官方；自定义兼容端点保留 base（仍切换高亮与 provider）
-        if (!base || base.includes('openrouter.ai')) {
+        // OpenRouter → 官方；空地址和自定义兼容端点都不代填
+        if (base.includes('openrouter.ai')) {
           updateValue(baseUrlKey, OPENAI_BASE_URL)
-          updateValue(modelKey, openaiModel)
         }
         return
       }
-      // gemini 等：只改 provider；展示侧靠 resolveProvider
       updateValue(providerKey, next)
     },
     [getFieldValue, updateValue],
@@ -431,30 +411,16 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       sourceKey: string,
       providerKey: string,
       baseUrlKey: string,
-      modelKey: string,
-      openrouterModel: string,
-      openaiModel: string,
       slug: string,
     ) => {
       updateValue(sourceKey, slug)
       const source = vendorSources.find((item) => item.slug === slug)
       if (!source) {
-        handleProviderChange(
-          providerKey,
-          baseUrlKey,
-          modelKey,
-          openrouterModel,
-          openaiModel,
-          slug,
-        )
+        handleProviderChange(providerKey, baseUrlKey, slug)
         return
       }
       if (source.kind === 'gemini') {
         updateValue(providerKey, 'gemini')
-        const fallback = defaultModelsForSource(source, 'text').text
-        if (fallback && !getFieldValue(modelKey)) {
-          updateValue(modelKey, fallback)
-        }
         return
       }
       updateValue(providerKey, 'openai')
@@ -462,14 +428,10 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         source.kind === 'openrouter' ||
         (source.base_url || '').includes('openrouter.ai')
           ? OPENROUTER_BASE_URL
-          : source.base_url || OPENAI_BASE_URL
-      updateValue(baseUrlKey, base)
-      if (!getFieldValue(modelKey)) {
-        const fallback = defaultModelsForSource(source, 'text').text
-        if (fallback) updateValue(modelKey, fallback)
-      }
+          : (source.base_url || '').trim()
+      if (base) updateValue(baseUrlKey, base)
     },
-    [getFieldValue, handleProviderChange, updateValue, vendorSources],
+    [handleProviderChange, updateValue, vendorSources],
   )
 
   const standardSourceValue =
@@ -558,14 +520,13 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
 
   const handleSpeechProviderChange = useCallback(
     (slug: string) => {
+      // 只改源。转写/播报/音色不代填。
       updateValue('speech_source', slug)
       const source = vendorSources.find((item) => item.slug === slug)
-      const mapped = speechProviderKindFromSource(source, slug)
-      updateValue('speech_provider', mapped)
-      const models = defaultModelsForSource(source ?? { kind: slug }, 'speech')
-      if (models.stt) updateValue('speech_stt_model', models.stt)
-      if (models.tts !== undefined) updateValue('speech_tts_model', models.tts)
-      if (models.voice) updateValue('speech_tts_voice', models.voice)
+      updateValue(
+        'speech_provider',
+        speechProviderKindFromSource(source, slug),
+      )
     },
     [updateValue, vendorSources],
   )
@@ -638,8 +599,6 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               ? 'gemini'
               : 'openai'
       updateValue('ai_image_provider', mapped)
-      const models = defaultModelsForSource(source ?? { kind }, 'image')
-      updateValue('ai_image_model', models.image ?? '')
     },
     [updateValue, vendorSources],
   )
@@ -920,9 +879,6 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               'ai_source',
               'provider',
               'openai_base_url',
-              'openai_model',
-              OPENROUTER_MODEL_STANDARD,
-              OPENAI_MODEL_STANDARD,
               provider,
             )
           }
@@ -954,9 +910,6 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               'lite_ai_source',
               'lite_provider',
               'lite_openai_base_url',
-              'lite_openai_model',
-              OPENROUTER_MODEL_LITE,
-              OPENAI_MODEL_LITE,
               provider,
             )
           }
@@ -988,9 +941,6 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               'pro_ai_source',
               'pro_provider',
               'pro_openai_base_url',
-              'pro_openai_model',
-              OPENROUTER_MODEL_PRO,
-              OPENAI_MODEL_PRO,
               provider,
             )
           }
@@ -1135,7 +1085,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         <InputItem
           itemKey="ai_image_model"
           label={t.config.openaiModelLabel}
-          value={getFieldValue('ai_image_model', 'openai/gpt-image-2')}
+          value={getFieldValue('ai_image_model')}
           onChange={(v) => updateValue('ai_image_model', v)}
           placeholder={
             currentImageProvider === 'openai'
@@ -1213,7 +1163,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
                 <InputItem
                   itemKey="speech_tts_voice"
                   label={t.config.speechTtsVoice}
-                  value={getFieldValue('speech_tts_voice', 'female-shaonv')}
+                  value={getFieldValue('speech_tts_voice')}
                   onChange={(v) => updateValue('speech_tts_voice', v)}
                   placeholder="female-shaonv"
                   inputType="text"
@@ -1264,7 +1214,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
                 <InputItem
                   itemKey="speech_tts_voice"
                   label={t.config.speechTtsVoice}
-                  value={getFieldValue('speech_tts_voice', 'marin')}
+                  value={getFieldValue('speech_tts_voice')}
                   onChange={(v) => updateValue('speech_tts_voice', v)}
                   placeholder={
                     currentSpeechProvider === 'gemini' ? 'Kore' : 'marin'

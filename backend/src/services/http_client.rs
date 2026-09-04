@@ -396,6 +396,24 @@ impl GitHubApiUrl {
             page
         )
     }
+
+    /// `/repos/{owner}/{repo}` 路径（已编码）。
+    pub fn repo_api_path(owner: &str, repo: &str) -> String {
+        format!(
+            "/repos/{}/{}",
+            urlencoding::encode(owner),
+            urlencoding::encode(repo)
+        )
+    }
+
+    /// 构建单个仓库 API URL（star 数等）。
+    pub async fn repo_url(owner: &str, repo: &str) -> String {
+        format!(
+            "{}{}",
+            Self::get_api_base().await,
+            Self::repo_api_path(owner, repo)
+        )
+    }
 }
 
 /// Gemini API 相关的 URL 构建器
@@ -454,6 +472,18 @@ mod tests {
         assert!(config.should_bypass("http://127.0.0.1:8080"));
         assert!(!config.should_bypass("https://api.github.com"));
         assert!(!config.should_bypass("https://api.openai.com"));
+    }
+
+    #[test]
+    fn github_repo_api_path_encodes_owner_and_repo() {
+        assert_eq!(
+            GitHubApiUrl::repo_api_path("852wa", "Anime2.5DRig"),
+            "/repos/852wa/Anime2.5DRig"
+        );
+        assert_eq!(
+            GitHubApiUrl::repo_api_path("ollama", "ollama"),
+            "/repos/ollama/ollama"
+        );
     }
 
     #[test]

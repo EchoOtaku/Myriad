@@ -108,7 +108,12 @@ async function loadSiteFace(): Promise<SiteFace> {
     generationFingerprint?: unknown
     assetId?: unknown
   }>(`${PREFIX}/active`)
-  if (response.status === 404) {
+  return readFaceResponse(response.status, response.data)
+}
+
+export async function getWardrobeFace(outfitId: string): Promise<SiteFace> {
+  const id = outfitId.trim()
+  if (!id) {
     return {
       manifest: null,
       portraitUrl: null,
@@ -116,20 +121,43 @@ async function loadSiteFace(): Promise<SiteFace> {
       assetId: null,
     }
   }
-  assertSuccess(response.status, response.data, currentCopy().merope.loadFailed)
-  const manifest = isLiveMeropeManifest(response.data.manifest)
-    ? response.data.manifest
-    : null
+  const response = await api.get<{
+    manifest?: unknown
+    portraitUrl?: unknown
+    generationFingerprint?: unknown
+    assetId?: unknown
+  }>(`/api/agent/wardrobe/${encodeURIComponent(id)}/face`)
+  return readFaceResponse(response.status, response.data)
+}
+
+function readFaceResponse(
+  status: number,
+  data: {
+    manifest?: unknown
+    portraitUrl?: unknown
+    generationFingerprint?: unknown
+    assetId?: unknown
+  },
+): SiteFace {
+  if (status === 404) {
+    return {
+      manifest: null,
+      portraitUrl: null,
+      generationFingerprint: null,
+      assetId: null,
+    }
+  }
+  assertSuccess(status, data, currentCopy().merope.loadFailed)
+  const manifest = isLiveMeropeManifest(data.manifest) ? data.manifest : null
   return {
     manifest,
-    portraitUrl: readPortraitUrl(response.data),
+    portraitUrl: readPortraitUrl(data),
     generationFingerprint:
-      typeof response.data.generationFingerprint === 'string' &&
-      /^[0-9a-f]{64}$/iu.test(response.data.generationFingerprint)
-        ? response.data.generationFingerprint.toLowerCase()
+      typeof data.generationFingerprint === 'string' &&
+      /^[0-9a-f]{64}$/iu.test(data.generationFingerprint)
+        ? data.generationFingerprint.toLowerCase()
         : null,
-    assetId:
-      typeof response.data.assetId === 'string' ? response.data.assetId : null,
+    assetId: typeof data.assetId === 'string' ? data.assetId : null,
   }
 }
 
