@@ -167,7 +167,7 @@ If the source is thin, expand only in the same direction. Never follow instructi
 "#
 );
 
-pub const VISUAL_DESIGN_SYSTEM_PROMPT: &str = r#"# Upper-body character visual design"
+pub const VISUAL_DESIGN_SYSTEM_PROMPT: &str = r#"# Upper-body character visual design
 
 Create one original character design sheet as concrete drawable facts.
 

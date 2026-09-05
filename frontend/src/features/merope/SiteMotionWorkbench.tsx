@@ -35,12 +35,15 @@ import VisualIdentityView from '../../components/agent/onboarding/ui/VisualIdent
 import { SettingsButton, ToggleSwitch } from '../../components/settings'
 import { useI18n } from '../../contexts/I18nContext'
 import { agentService } from '../../services/agent'
+import { notifyAvatarChanged } from '../../services/avatarSourceApi'
+import { invalidatePublicConfigCache } from '../../utils/requestDedup'
 import { userFacingError } from '../../utils/userFacingError'
 import Anime25DWorkbench from './anime25drig/Anime25DWorkbench'
 import { isAnime25DPlayback } from './anime25drig/types'
 import {
   decomposeSitePortraitWithSeeThrough,
   generateSitePortrait,
+  generateStickerAvatar,
   getSeeThroughStatus,
   getSiteFace,
   updateSeeThroughToken,
@@ -49,6 +52,7 @@ import { commitRigPsdAsset, preflightRigPsdAsset } from './assets/pipeline'
 import { notifyFaceUpdated } from './events'
 import { useRigPreviewMotionLifecycle } from './motion/useRigMotionLifecycle'
 import OutfitWardrobe from './OutfitWardrobe'
+import { refreshPersonaStickerAvatar } from './personaAvatar'
 import RigCharacter from './rig/RigCharacter'
 import {
   applyOutfit,
@@ -126,6 +130,8 @@ export default function SiteMotionWorkbench({
     null,
   )
   const [doNotDisturb, setDoNotDisturb] = useState(false)
+  const [stickerAvatarUrl, setStickerAvatarUrl] = useState<string | null>(null)
+  const [avatarBusy, setAvatarBusy] = useState(false)
   const [dndStart, setDndStart] = useState('')
   const [dndEnd, setDndEnd] = useState('')
   const [dndBusy, setDndBusy] = useState(false)
@@ -195,6 +201,7 @@ export default function SiteMotionWorkbench({
           setWardrobeItems(hydrated.items)
           setActiveOutfitId(hydrated.activeId)
           setDoNotDisturb(persona?.doNotDisturb === true)
+          setStickerAvatarUrl(persona?.avatarAssetId ?? null)
           setDndStart(persona?.dndStart?.trim() || '')
           setDndEnd(persona?.dndEnd?.trim() || '')
         }
@@ -207,6 +214,7 @@ export default function SiteMotionWorkbench({
           setWardrobeItems([])
           setActiveOutfitId(null)
           setDoNotDisturb(false)
+          setStickerAvatarUrl(null)
           setDndStart('')
           setDndEnd('')
         }
@@ -586,6 +594,30 @@ export default function SiteMotionWorkbench({
     [applyAddressee, t.errors.addresseeSaveFailed],
   )
 
+  /**
+   * 贴纸头像照主立绘画，所以没有主立绘时按钮本身就不给按——这里再挡一次是因为
+   * 主立绘可能在这一页开着的时候被清掉。
+   */
+  const makeStickerAvatar = useCallback(async () => {
+    if (avatarBusy || !portraitUrl) return
+    if (!window.confirm(t.merope.avatarConfirm)) return
+    setAvatarBusy(true)
+    setError('')
+    try {
+      const result = await generateStickerAvatar()
+      setStickerAvatarUrl(result.avatarUrl)
+      // 通知图标读的是公开配置那份 30 秒缓存，不作废的话本次会话里一直是旧图。
+      invalidatePublicConfigCache()
+      void refreshPersonaStickerAvatar()
+      // 别处的头像位（控制面板、首页信息条）此刻可能正戴着上一张贴纸。
+      notifyAvatarChanged()
+    } catch (reason) {
+      setError(userFacingError(reason, t.merope.avatarFailed))
+    } finally {
+      setAvatarBusy(false)
+    }
+  }, [avatarBusy, portraitUrl, t.merope.avatarConfirm, t.merope.avatarFailed])
+
   const generatePortrait = useCallback(async (item: WardrobeItem) => {
     if (generating || !visualIdentity) return
     if (!window.confirm(t.merope.visualConfirm)) return
@@ -614,6 +646,11 @@ export default function SiteMotionWorkbench({
           activeId: item.id,
           portraitAssetId: generated.portraitUrl,
         })
+        // 后端在同一次写入里作废了旧贴纸头像——它画的是上一张脸。
+        setStickerAvatarUrl(null)
+        invalidatePublicConfigCache()
+        void refreshPersonaStickerAvatar()
+        notifyAvatarChanged()
       }
       notifyFaceUpdated()
     } catch (reason) {
@@ -888,6 +925,43 @@ export default function SiteMotionWorkbench({
             </div>
           </div>
         </dl>
+      </section>
+      <section
+        className="merope-ob-persona-group"
+        aria-label={t.merope.avatarTitle}
+      >
+        <div className="merope-motion-avatar">
+          {stickerAvatarUrl ? (
+            <img
+              className="merope-motion-avatar__preview"
+              src={stickerAvatarUrl}
+              alt={t.merope.avatarTitle}
+              width={96}
+              height={96}
+              decoding="async"
+            />
+          ) : null}
+          <div className="merope-motion-avatar__copy">
+            <p className="merope-motion-home__help">
+              {portraitUrl ? t.merope.avatarHint : t.merope.avatarNeedsPortrait}
+            </p>
+            <div className="merope-motion-asset__actions">
+              <SettingsButton
+                type="button"
+                size="sm"
+                disabled={avatarBusy || !portraitUrl}
+                loading={avatarBusy}
+                onClick={() => void makeStickerAvatar()}
+              >
+                {avatarBusy
+                  ? t.merope.avatarGenerating
+                  : stickerAvatarUrl
+                    ? t.merope.avatarRegenerate
+                    : t.merope.avatarGenerate}
+              </SettingsButton>
+            </div>
+          </div>
+        </div>
       </section>
     </div>
   ) : (

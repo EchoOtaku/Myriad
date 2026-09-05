@@ -2477,30 +2477,6 @@ fn rewrite_with_mirror(image_ref: &str, mirror: &str) -> String {
     }
 }
 
-/// Helper used by the maintenance/state-machine layer to update maintenance.json.
-#[allow(dead_code)]
-pub(crate) fn set_phase(
-    state: &StateDir,
-    job_id: &str,
-    from: Option<&DeployTag>,
-    to: Option<&DeployTag>,
-    phase: Phase,
-    message_key: &str,
-) -> Result<()> {
-    let m = MaintenanceFile {
-        schema_version: 1,
-        active: phase.takes_site_offline(),
-        phase,
-        from_version: from.cloned(),
-        to_version: to.cloned(),
-        started_at: Some(Utc::now()),
-        updated_at: Utc::now(),
-        job_id: Some(job_id.to_string()),
-        message_key: message_key.to_string(),
-    };
-    state.write_maintenance(&m)
-}
-
 #[cfg(test)]
 mod image_repo_tests {
     use super::*;

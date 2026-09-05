@@ -86,6 +86,10 @@ import {
   isNonTerminalTaskStatus,
 } from '../../services/agent/reattach'
 import {
+  imageUrlsFromAgentPayload,
+  messageFromStepOutput,
+} from '../../services/agent/taskEnvelope'
+import {
   ChatTurnClock,
   isCurrentChatGeneration,
   isStreamSupersededError,
@@ -512,24 +516,11 @@ export const AgentEngine: React.FC = () => {
         )
         const loaded: ChatMessage[] = sessionMessages.map((m, idx) => {
           const meta = m.metadata as Record<string, unknown> | undefined
-          const data = meta?.data as Record<string, unknown> | undefined
-          const imageUrls: string[] = []
-          if (data && typeof data.imageUrl === 'string') {
-            imageUrls.push(data.imageUrl)
-          }
+          const data = meta?.data
           const stepHistory = (
             meta?.task as Record<string, unknown> | undefined
           )?.stepHistory as Array<Record<string, unknown>> | undefined
-          if (stepHistory) {
-            for (const s of stepHistory) {
-              if (
-                typeof s.imageUrl === 'string' &&
-                !imageUrls.includes(s.imageUrl)
-              ) {
-                imageUrls.push(s.imageUrl)
-              }
-            }
-          }
+          const imageUrls = imageUrlsFromAgentPayload(data, stepHistory)
 
           const metaTaskId =
             (typeof meta?.taskId === 'string' && meta.taskId) ||
@@ -1802,6 +1793,7 @@ export const AgentEngine: React.FC = () => {
             capabilityName?: string
             durationMs?: number
             error?: string
+            imageUrl?: string
           }>
         | undefined
 
@@ -1818,25 +1810,8 @@ export const AgentEngine: React.FC = () => {
         displayMessage = response.message
       } else {
         // 单步骤：从 data 提取 AI 文本
-        const aiText = responseData
-          ? ((typeof responseData.reply === 'string'
-              ? responseData.reply
-              : undefined) ??
-            (typeof responseData.aiSummary === 'string'
-              ? responseData.aiSummary
-              : undefined) ??
-            (typeof responseData.analysis === 'string'
-              ? responseData.analysis
-              : undefined) ??
-            (typeof responseData.summary === 'string'
-              ? responseData.summary
-              : undefined))
-          : undefined
-        const dataMessage =
-          typeof responseData?.message === 'string'
-            ? responseData.message
-            : undefined
-        displayMessage = aiText || response.message || dataMessage
+        displayMessage =
+          messageFromStepOutput(response.data) || response.message
       }
 
       // 失败步骤信息追加
@@ -1876,18 +1851,10 @@ export const AgentEngine: React.FC = () => {
 
       // 从 response.data 和 stepHistory 中兜底提取 imageUrls（SSE 丢失时恢复）
       // 与已通过 SSE 实时收集的 imageUrls 合并（不覆盖）
-      const fallbackImageUrls: string[] = []
-      if (typeof responseData?.imageUrl === 'string') {
-        fallbackImageUrls.push(responseData.imageUrl as string)
-      }
-      if (stepHistory) {
-        for (const s of stepHistory) {
-          const url = (s as Record<string, unknown>).imageUrl
-          if (typeof url === 'string' && !fallbackImageUrls.includes(url)) {
-            fallbackImageUrls.push(url)
-          }
-        }
-      }
+      const fallbackImageUrls = imageUrlsFromAgentPayload(
+        response.data,
+        stepHistory,
+      )
 
       // 合并：SSE 实时收集的 + fallback，去重
       const existingImageUrls: string[] = ((): string[] => {

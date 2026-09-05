@@ -31,6 +31,7 @@ import { useRigMotionLifecycle } from '../../features/merope/motion/useRigMotion
 import {
   MEROPE_STATE_EVENT,
   meropeStateEventDetail,
+  resolveLoadedMeropeAffect,
 } from '../../features/merope/performanceEvents'
 import {
   loadPublicPersonaName,
@@ -178,7 +179,7 @@ function LiveMeropeWidget({
   playbackId: string
 }) {
   const { t } = useI18n()
-  const { hasChecked, isAuthenticated } = useAuth()
+  const { hasChecked, isAuthenticated, user } = useAuth()
   const [manifest, setManifest] =
     useState<Awaited<ReturnType<typeof getSiteFace>>['manifest']>(null)
   const [portraitUrl, setPortraitUrl] = useState<string | null>(null)
@@ -284,6 +285,8 @@ function LiveMeropeWidget({
   useEffect(() => {
     if (!hasChecked) return undefined
     let active = true
+    setMood(DEFAULT_MOOD)
+    setArousal(DEFAULT_AROUSAL)
     const applyPublicName = () => {
       void loadPublicPersonaName().then((name) => {
         if (active) setAgentName(name)
@@ -309,14 +312,9 @@ function LiveMeropeWidget({
             return
           }
           setAgentName(publicPersonaName(true, persona.name))
-          setMood(
-            typeof persona.mood === 'number' ? persona.mood : DEFAULT_MOOD,
-          )
-          setArousal(
-            typeof persona.arousal === 'number'
-              ? persona.arousal
-              : DEFAULT_AROUSAL,
-          )
+          const affect = resolveLoadedMeropeAffect(persona)
+          setMood(affect.mood)
+          setArousal(affect.arousal)
           setVitalsReady(true)
         })
         .catch(() => {
@@ -335,7 +333,7 @@ function LiveMeropeWidget({
       window.removeEventListener(PERSONA_UPDATED_EVENT, loadPersona)
       window.removeEventListener(ADDRESSEE_UPDATED_EVENT, loadPersona)
     }
-  }, [hasChecked, isAuthenticated])
+  }, [hasChecked, isAuthenticated, user?.id])
 
   const stateClass = `merope-widget__rig merope-widget__rig--${activity}`
   const band = vitalsReady ? moodBand(mood, arousal) : null

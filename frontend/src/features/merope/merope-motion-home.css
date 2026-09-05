@@ -938,3 +938,26 @@ html.dark .merope-wardrobe {
   display: grid;
   gap: 18px;
 }
+
+/* 贴纸头像：小方图 + 说明与按钮并排，窄屏落成一列。 */
+.merope-motion-avatar {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.merope-motion-avatar__preview {
+  width: 96px;
+  height: 96px;
+  flex: none;
+  border-radius: 16px;
+  object-fit: contain;
+  /* 贴纸是透明底，衬一层浅色才看得清白色刀模边。 */
+  background: var(--color-surface-2, rgba(127, 127, 127, 0.12));
+}
+
+.merope-motion-avatar__copy {
+  flex: 1 1 220px;
+  min-width: 0;
+}

@@ -39,9 +39,6 @@
   padding: var(--home-stage-pad);
 }
 
-.home-shell[data-home-layout='free'] .home-shell__stage {
-  max-width: none;
-}
 
 .home-layout-rail {
   position: fixed;
@@ -162,4 +159,42 @@ html.dark .home-layout-rail__island {
   .home-layout-rail__btn:active {
     transform: none;
   }
+}
+
+.home-sticker-pick-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 4.75rem;
+  z-index: 56;
+  transform: translateX(-50%);
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--chrome-stroke, rgb(255 255 255 / 50%));
+  background:
+    var(--chrome-sheen, linear-gradient(180deg, rgb(255 255 255 / 6%), transparent 40%)),
+    var(--chrome-fill, rgb(255 255 255 / 78%));
+  box-shadow:
+    var(--chrome-shine, inset 0 1px 0 rgb(255 255 255 / 52%)),
+    var(--chrome-hairline, inset 0 -1px 0 rgb(0 0 0 / 5%)),
+    var(--chrome-chip-shadow, 0 1px 2px rgb(0 0 0 / 3%));
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+html.dark .home-sticker-pick-hint {
+  color: #f5f5f7;
+}
+
+.home-layout-rail {
+  --cfg-frost-border: var(--chrome-stroke, rgb(255 255 255 / 50%));
+  --cfg-frost-elevated-bg: var(--chrome-elevated, rgb(255 255 255 / 96%));
+  --cfg-frost-filter: blur(20px) saturate(180%);
+  --cfg-text-1: var(--text-primary, #1d1d1f);
+  --cfg-text-2: var(--text-secondary, rgb(60 60 67 / 72%));
+  --cfg-text-3: var(--text-secondary, rgb(60 60 67 / 48%));
+  --cfg-accent: var(--color-primary, #8b5cf6);
+  --cfg-subtle-bg: var(--chrome-inner, rgb(255 255 255 / 42%));
 }

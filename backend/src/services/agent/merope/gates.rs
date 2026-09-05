@@ -1,18 +1,3 @@
-use chrono::{DateTime, Utc};
-
-use crate::services::agent::presence_window::PRESENCE_WINDOW_SECS;
-
-pub fn is_chatting(
-    last_active_at: Option<DateTime<Utc>>,
-    has_open_run: bool,
-    now: DateTime<Utc>,
-) -> bool {
-    if has_open_run {
-        return true;
-    }
-    last_active_at.is_some_and(|at| (now - at).num_seconds() < PRESENCE_WINDOW_SECS)
-}
-
 /// Where the addressee is, right now. Axes are independent.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct IngestSight {
@@ -120,15 +105,6 @@ pub fn decide_ingest(event_key: &str, sight: &IngestSight) -> IngestDecision {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Duration;
-
-    #[test]
-    fn chatting_is_recent_activity_or_open_run() {
-        let now = Utc::now();
-        assert!(is_chatting(None, true, now));
-        assert!(is_chatting(Some(now - Duration::seconds(10)), false, now));
-        assert!(!is_chatting(Some(now - Duration::seconds(120)), false, now));
-    }
 
     fn looking() -> IngestSight {
         IngestSight {

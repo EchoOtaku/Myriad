@@ -136,6 +136,15 @@ export const jaJP: TranslationKeys = {
     visualGenerating: '生成中です。他の設定は続けられます。',
     visualDownload: '立ち絵をダウンロード',
     visualFailed: 'メイン立ち絵を生成できませんでした',
+    avatarTitle: 'ステッカーアバター',
+    avatarHint:
+      'メイン立ち絵からデフォルメのステッカーを作ります。「アバターの取得元」で自分のアバターに選べて、Agent の通知にも使われます。メイン立ち絵を変えると消えます。',
+    avatarGenerate: 'ステッカーを作る',
+    avatarRegenerate: '作り直す',
+    avatarGenerating: '生成中…',
+    avatarNeedsPortrait: '先にメイン立ち絵を作ってください。ステッカーはそれを元に描きます。',
+    avatarConfirm: '画像モデルは費用が発生する場合があります。ステッカーアバターを生成しますか？',
+    avatarFailed: 'ステッカーアバターを生成できませんでした',
     motionPsdUpload: 'レイヤー PSD をアップロード',
     motionPsdUploading: 'PSD を読み込み中…',
     visualConfirm:
@@ -658,6 +667,11 @@ export const jaJP: TranslationKeys = {
         '新しいアクセスは記録しません。過去のデータはそのまま残ります',
       disabledBanner:
         '収集は停止中です。新規アクセスは記録されません。過去データは引き続き閲覧できます',
+      optOutLabel: 'この端末では収集しない',
+      optOutDesc:
+        'このブラウザだけに効きます。上のサイト全体スイッチは変わりません。オフにすると送信も訪問者 ID の発行もしません。',
+      optOutPreviewOn: 'このブラウザは訪問統計に入りません',
+      optOutPreviewOff: 'サイト全体の収集スイッチに従います',
       visitorDesc:
         'ファーストパーティ・バッチ・アイドル送信。管理者／オーナーのログインは除外。訪問者 ID は端末に、サーバーはハッシュのみ。proxy のクライアント IP を使用。',
       pagesTitle: 'ページ分析',
@@ -1910,6 +1924,13 @@ export const jaJP: TranslationKeys = {
     aiVendorsTitle: 'サービス設定',
     aiVendorsDesc:
       'ログイン方式と同じく追加できます。同じ会社を複数登録可能。モデルと音声はここから選びます。',
+    webSearchTitle: 'ウェブ検索',
+    webSearchDesc:
+      '仕事モードのウェブ検索で使います。TinyFish のキーがあればそれを使い、なければ Gemini に戻します。訪問者は入力しません。',
+    tinyfishApiKey: 'TinyFish API Key',
+    tinyfishApiKeyHint:
+      '検索自体は無料ですがキーは必要です。agent.tinyfish.ai で登録。カードは不要です。空にして保存すると削除、マスクのまま保存すると維持します。',
+    tinyfishApiKeyPlaceholder: 'agent.tinyfish.ai/api-keys で作成',
     aiVendorAdd: 'サービスを追加',
     aiVendorAddDesc: 'プリセットから',
     aiVendorEmpty: 'まだありません',
@@ -2309,6 +2330,9 @@ export const jaJP: TranslationKeys = {
     permEventPublishHint: 'Tappに他のTappへのイベント発行を許可',
     permAiImage: 'AI画像生成',
     permAiImageHint: 'TappにAIでの画像生成を許可',
+    permAiSearch: 'AI ウェブ検索',
+    permAiSearchHint:
+      'Tappにウェブ検索を許可（TinyFish、未設定時は Gemini grounding）',
     perm3dGenerate: '3Dモデル生成',
     perm3dGenerateHint: 'TappにTripoでの3Dモデル生成・リグ・リターゲットを許可',
     permSchedulerRegister: 'スケジュールタスク登録',
@@ -2550,6 +2574,34 @@ export const jaJP: TranslationKeys = {
     switchToStandardLayout: '標準レイアウトに切り替え',
     freeLayout: 'フリーレイアウト',
     standardLayout: '標準レイアウト',
+    createSticker: 'ステッカーを作成',
+    stickerPromptPlaceholder: 'ステッカーの説明。例：サングラスの猫',
+    stickerSizeHint: 'サイズ {size}',
+    stickerGenerating: '生成中…',
+    stickerFailed: 'ステッカーを生成できませんでした',
+    stickerNoSpace: 'ステッカーを置く空きがありません',
+    stickerPickHint: '空きセルを自由にドラッグ。生成は近い比率、はみ出しはトリミング',
+    stickerGenerateCropHint: '{aspect} で構図。被写体は中央、トリミングでも残る',
+    stickerAddReference: '参考画像を追加',
+    stickerReferenceLimit: '最大 4 枚',
+    stickerModeGenerate: '生成',
+    stickerModeUpload: 'アップロード',
+    stickerUploadImage: '画像を選ぶ',
+    stickerUploading: 'アップロード中…',
+    stickerUploadFailed: 'ステッカーをアップロードできませんでした',
+    stickerCropHint: 'ドラッグまたはスクロールで表示範囲を調整',
+    stickerLongPressEdit: '長押しで表示範囲を調整',
+    stickerSettings: 'ステッカー',
+    stickerFloat: 'ふわふわ',
+    stickerFloatLoop: 'ずっと浮かぶ',
+    stickerFloatHover: 'ホバーで浮かぶ',
+    stickerFloatOff: '浮かばない',
+    stickerFloatLoopHint: 'ゆっくり揺れ続ける',
+    stickerFloatHoverHint: 'ポインターを乗せたときだけ',
+    stickerFloatOffHint: '静止したまま',
+    stickerDownload: '画像をダウンロード',
+    stickerDownloadHint: '生成またはアップロードした原画像を保存',
+    stickerFile: '画像',
   },
 
   // ライブラリ
@@ -3556,6 +3608,7 @@ export const jaJP: TranslationKeys = {
     profileSourceAutoDesc:
       'プラットフォームのプロフィールを優先し、なければアカウントのアバターを使用',
     profileSourceAccount: 'アカウントのアバター',
+    profileSourcePersona: 'ペルソナのステッカーアバター',
     profileTextSourceTitle: '表示名と自己紹介の取得元',
     profileTextSourceHint:
       '表示名と自己紹介のみに影響し、アバターの取得元とは独立しています。',
@@ -3575,10 +3628,7 @@ export const jaJP: TranslationKeys = {
     clearSearch: '検索をクリア',
     filterWidgets: 'ウィジェットを絞り込み',
     filterAll: 'すべて',
-    filterBuiltin: '内蔵',
     filterReports: 'レポート',
-    filterSize: 'サイズ',
-    filterGroupCategory: '分類',
     noSearchResults: '一致するウィジェットがありません',
     deleteWidget: 'ウィジェットを削除',
     positionConflict: '✖ 位置競合',
@@ -3586,6 +3636,8 @@ export const jaJP: TranslationKeys = {
     prevPage: '前のページ',
     nextPage: '次のページ',
     widgetSettings: 'ウィジェット設定',
+    longPressToEdit: 'ウィジェットを長押しして設定',
+    createSticker: 'ステッカーを作成',
   },
 
   // ソーシャルネットワークウィジェット
@@ -4117,6 +4169,7 @@ export const jaJP: TranslationKeys = {
     permPublishEvent: 'イベント発行',
     permSubscribeEvent: 'イベント購読',
     permAiImage: 'AI 画像生成',
+    permAiSearch: 'AI ウェブ検索',
     perm3dGenerate: '3Dモデル生成',
     permSchedulerRegister: 'スケジューラ登録',
     permSpeechTts: 'テキスト読み上げ',
@@ -4174,6 +4227,8 @@ export const jaJP: TranslationKeys = {
     permPublishEventDesc: 'システムイベントの発行を許可',
     permSubscribeEventDesc: 'システムイベントの購読を許可',
     permAiImageDesc: 'AI による画像生成を許可',
+    permAiSearchDesc:
+      'TinyFish（未設定時は Gemini grounding）によるウェブ検索を許可',
     perm3dGenerateDesc: 'Tripo による3Dモデル生成・リグ・リターゲットを許可',
     permSchedulerRegisterDesc: 'スケジュールタスクの登録と管理を許可',
     permSpeechTtsDesc: 'テキスト読み上げサービスの使用を許可',

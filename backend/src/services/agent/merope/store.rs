@@ -143,6 +143,12 @@ fn apply_persona_update(
     {
         active.portrait_generation = Set(None);
     }
+    // 贴纸头像的血统锚是主立绘。主立绘动了，那张 Q 版画的就不是这个人了——
+    // 和作废 Rig 同一条理由，必须落在同一次写入里。
+    if !matches!(portrait, PortraitUpdate::Keep) || inputs_changed {
+        active.avatar_asset_id = Set(None);
+        active.avatar_generation = Set(None);
+    }
     active.updated_by = Set(Some(updated_by));
     active.updated_at = Set(Utc::now().into());
     active
@@ -161,7 +167,7 @@ where
 {
     let (name, personality) = normalize_persona_fields(&name, &personality);
     if let Some(existing) = get_persona_on(db).await? {
-        return Ok(apply_persona_update(
+        let saved = apply_persona_update(
             existing,
             name,
             personality,
@@ -170,7 +176,9 @@ where
             updated_by,
         )
         .update(db)
-        .await?);
+        .await?;
+        resync_persona_avatar_snapshots(db, saved.avatar_asset_id.as_deref()).await?;
+        return Ok(saved);
     }
     let active = agent_persona::ActiveModel {
         id: Set(PERSONA_ROW_ID.to_string()),
@@ -189,6 +197,8 @@ where
             JsonDocumentUpdate::Set(value) => Some(value.clone()),
             JsonDocumentUpdate::Keep | JsonDocumentUpdate::Clear => None,
         }),
+        avatar_asset_id: Set(None),
+        avatar_generation: Set(None),
         updated_by: Set(Some(updated_by)),
         updated_at: Set(Utc::now().into()),
     };
@@ -305,6 +315,8 @@ where
 UPDATE agent_persona
 SET portrait_asset_id = $1,
     portrait_generation = $2::jsonb,
+    avatar_asset_id = NULL,
+    avatar_generation = NULL,
     updated_by = $3,
     updated_at = CURRENT_TIMESTAMP
 WHERE id = $4
@@ -323,7 +335,168 @@ WHERE id = $4
             ],
         ))
         .await?;
+    let committed = result.rows_affected() == 1;
+    if committed {
+        // 新主立绘把旧贴纸头像一起作废了，选它的人不能停在旧脸上。
+        resync_persona_avatar_snapshots(db, None).await?;
+    }
+    Ok(committed)
+}
+
+/// 贴纸头像的单次生成租约。和主立绘那把锁同一套形状，只是锚点多一个
+/// `portrait_asset_id`——头像的血统在主立绘上，主立绘在生成途中被换掉，
+/// 这批像素就已经作废了。崩溃的请求十五分钟后可被顶替。
+pub async fn acquire_avatar_generation<C>(
+    db: &C,
+    expected_name: &str,
+    expected_visual_profile: &Value,
+    expected_portrait_asset_id: &str,
+    pending: &Value,
+) -> Result<bool, anyhow::Error>
+where
+    C: ConnectionTrait,
+{
+    let result = db
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+UPDATE agent_persona
+SET avatar_generation = jsonb_set(
+        COALESCE(avatar_generation, '{}'::jsonb),
+        '{pending}',
+        $1::jsonb,
+        true
+    ),
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = $2
+  AND name = $3
+  AND visual_profile = $4::jsonb
+  AND portrait_asset_id = $5
+  AND (
+      avatar_generation IS NULL
+      OR NOT (avatar_generation ? 'pending')
+      OR updated_at < CURRENT_TIMESTAMP - INTERVAL '15 minutes'
+  )
+"#,
+            vec![
+                pending.clone().into(),
+                PERSONA_ROW_ID.into(),
+                expected_name.into(),
+                expected_visual_profile.clone().into(),
+                expected_portrait_asset_id.into(),
+            ],
+        ))
+        .await?;
     Ok(result.rows_affected() == 1)
+}
+
+/// 只摘掉本次请求的锁，保住上一份已确认的头像契约。旧请求的错误路径永远
+/// 解不开新请求的锁。
+pub async fn release_avatar_generation<C>(db: &C, token: &str) -> Result<(), anyhow::Error>
+where
+    C: ConnectionTrait,
+{
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+UPDATE agent_persona
+SET avatar_generation = CASE
+        WHEN (avatar_generation - 'pending') = '{}'::jsonb THEN NULL
+        ELSE avatar_generation - 'pending'
+    END,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = $1
+  AND avatar_generation #>> '{pending,token}' = $2
+"#,
+        vec![PERSONA_ROW_ID.into(), token.into()],
+    ))
+    .await?;
+    Ok(())
+}
+
+/// 只在本次请求仍持锁、且名字、外观与主立绘都没变时落盘。
+pub async fn complete_avatar_generation<C>(
+    db: &C,
+    expected_name: &str,
+    expected_visual_profile: &Value,
+    expected_portrait_asset_id: &str,
+    token: &str,
+    avatar_asset_id: &str,
+    avatar_generation: &Value,
+    updated_by: i32,
+) -> Result<bool, anyhow::Error>
+where
+    C: ConnectionTrait,
+{
+    let result = db
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+UPDATE agent_persona
+SET avatar_asset_id = $1,
+    avatar_generation = $2::jsonb,
+    updated_by = $3,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = $4
+  AND name = $5
+  AND visual_profile = $6::jsonb
+  AND portrait_asset_id = $7
+  AND avatar_generation #>> '{pending,token}' = $8
+"#,
+            vec![
+                avatar_asset_id.into(),
+                avatar_generation.clone().into(),
+                updated_by.into(),
+                PERSONA_ROW_ID.into(),
+                expected_name.into(),
+                expected_visual_profile.clone().into(),
+                expected_portrait_asset_id.into(),
+                token.into(),
+            ],
+        ))
+        .await?;
+    let committed = result.rows_affected() == 1;
+    if committed {
+        resync_persona_avatar_snapshots(db, Some(avatar_asset_id)).await?;
+    }
+    Ok(committed)
+}
+
+pub fn avatar_generation_is_pending(value: Option<&Value>) -> bool {
+    value
+        .and_then(|document| document.get("pending"))
+        .and_then(|pending| pending.get("token"))
+        .and_then(Value::as_str)
+        .is_some_and(|token| !token.is_empty())
+}
+
+/// 站点贴纸头像的公开读法。任何能看到人设这张脸的地方共用这一份，
+/// 免得各处各写一遍 SELECT 再各自决定空串算不算有图。
+pub async fn sticker_avatar_asset_id<C>(db: &C) -> Option<String>
+where
+    C: ConnectionTrait,
+{
+    get_persona_on(db)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|persona| persona.avatar_asset_id)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+/// 贴纸头像动了就得把选它当画像源的人一起带上。列属于
+/// [`crate::services::avatar`]，写入时机只有这里知道，所以由这里去调。
+async fn resync_persona_avatar_snapshots<C>(
+    db: &C,
+    avatar: Option<&str>,
+) -> Result<(), anyhow::Error>
+where
+    C: ConnectionTrait,
+{
+    crate::services::avatar::resync_persona_avatar_snapshots(db, avatar)
+        .await
+        .map_err(|message| anyhow::anyhow!(message))
 }
 
 pub fn portrait_generation_is_pending(value: Option<&Value>) -> bool {
@@ -348,6 +521,7 @@ where
     agent_persona::Entity::delete_by_id(PERSONA_ROW_ID)
         .exec(db)
         .await?;
+    resync_persona_avatar_snapshots(db, None).await?;
     Ok(())
 }
 
@@ -459,7 +633,17 @@ where
     C: ConnectionTrait,
 {
     let state = get_or_create_state(db, user_id).await?;
-    let now = Utc::now().into();
+    // Revisions travel as milliseconds. Consecutive writes must remain ordered
+    // even within one clock tick (and across replicas under the same DB lock).
+    let now = Utc::now()
+        .max(
+            state
+                .updated_at
+                .max(state.mood_settled_at)
+                .with_timezone(&Utc)
+                + chrono::Duration::milliseconds(1),
+        )
+        .into();
     let mut active: agent_addressee_state::ActiveModel = state.into();
     active.mood = Set(clamp(affect.mood));
     active.arousal = Set(clamp(affect.arousal));
@@ -499,6 +683,47 @@ where
     let saved = save_affect_on(&transaction, user_id, after, touch_user_message, false).await?;
     transaction.commit().await?;
     Ok((before, saved))
+}
+
+/// A delayed interpretation belongs to one persisted input, not whichever
+/// input happens to be current when the model finishes. The check and write
+/// share the ordinary affect lock; an activity write is not a new input.
+pub async fn update_utterance_appraisal<F>(
+    db: &DatabaseConnection,
+    user_id: i32,
+    input_at: chrono::DateTime<chrono::FixedOffset>,
+    update: F,
+) -> Result<Option<(Affect, agent_addressee_state::Model)>, anyhow::Error>
+where
+    F: FnOnce(&mut Affect) + Send,
+{
+    let transaction = db.begin().await?;
+    lock_addressee(&transaction, user_id).await?;
+    let Some(state) = agent_addressee_state::Entity::find_by_id(user_id)
+        .one(&transaction)
+        .await?
+    else {
+        return Ok(None);
+    };
+    if !appraisal_is_current(state.last_user_message_at, input_at, Utc::now()) {
+        return Ok(None);
+    }
+    let base = load_affect_baseline(&transaction).await;
+    let before = affect_from_state(&overlay_settled(state, base));
+    let mut after = before;
+    update(&mut after);
+    let saved = save_affect_on(&transaction, user_id, after, false, false).await?;
+    transaction.commit().await?;
+    Ok(Some((before, saved)))
+}
+
+pub(super) fn appraisal_is_current(
+    latest_input: Option<chrono::DateTime<chrono::FixedOffset>>,
+    expected_input: chrono::DateTime<chrono::FixedOffset>,
+    now: chrono::DateTime<Utc>,
+) -> bool {
+    latest_input == Some(expected_input)
+        && now.signed_duration_since(expected_input).num_milliseconds() <= 12_000
 }
 
 /// Credit one qualified listening block under the same per-addressee database
@@ -857,6 +1082,107 @@ pub async fn touch_proactive(
 #[cfg(test)]
 mod tests {
     #[test]
+    fn delayed_appraisal_requires_the_same_unexpired_persisted_input() {
+        let input = chrono::Utc::now();
+        let next = input + chrono::Duration::milliseconds(1);
+        assert!(super::appraisal_is_current(
+            Some(input.into()),
+            input.into(),
+            next
+        ));
+        assert!(!super::appraisal_is_current(
+            Some(next.into()),
+            input.into(),
+            next
+        ));
+        assert!(!super::appraisal_is_current(None, input.into(), next));
+        assert!(!super::appraisal_is_current(
+            Some(input.into()),
+            input.into(),
+            input + chrono::Duration::seconds(13)
+        ));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a disposable MEROPE_APPRAISAL_TEST_DATABASE_URL"]
+    async fn appraisal_commit_rechecks_input_after_waiting_for_the_database_lock() {
+        use sea_orm::{ConnectionTrait, Database, Schema, TransactionTrait};
+        let url = std::env::var("MEROPE_APPRAISAL_TEST_DATABASE_URL").expect("disposable DB URL");
+        let db = Database::connect(url).await.unwrap();
+        let name = db
+            .query_one_raw(sea_orm::Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT current_database() AS name",
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get::<String>("", "name")
+            .unwrap();
+        assert_eq!(
+            name, "merope_appraisal_test",
+            "refuse to create test tables in any other database"
+        );
+        let schema = Schema::new(sea_orm::DatabaseBackend::Postgres);
+        for mut statement in [
+            schema.create_table_from_entity(super::agent_persona::Entity),
+            schema.create_table_from_entity(super::agent_addressee_state::Entity),
+        ] {
+            statement.if_not_exists();
+            db.execute(&statement).await.unwrap();
+        }
+        let (_, first) = super::update_affect(&db, 7001, true, |_| {}).await.unwrap();
+        let input_at = first.last_user_message_at.unwrap();
+        super::set_activity(&db, 7001, "talking").await.unwrap();
+        let (_, applied) =
+            super::update_utterance_appraisal(&db, 7001, input_at, |affect| affect.mood += 1.0)
+                .await
+                .unwrap()
+                .expect("activity is not a new input");
+        assert!(applied.updated_at.timestamp_millis() > first.updated_at.timestamp_millis());
+        assert_eq!(applied.last_user_message_at, Some(input_at));
+
+        let transaction = db.begin().await.unwrap();
+        super::lock_addressee(&transaction, 7001).await.unwrap();
+        let mut late = Box::pin(super::update_utterance_appraisal(
+            &db,
+            7001,
+            input_at,
+            |affect| affect.mood = 0.0,
+        ));
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(30), &mut late)
+                .await
+                .is_err()
+        );
+        let second = super::save_affect_on(
+            &transaction,
+            7001,
+            super::affect_from_state(&applied),
+            true,
+            false,
+        )
+        .await
+        .unwrap();
+        transaction.commit().await.unwrap();
+        assert!(
+            late.await.unwrap().is_none(),
+            "the old result must be checked after acquiring the lock"
+        );
+        let current = super::get_or_create_state(&db, 7001).await.unwrap();
+        assert!(current.mood > 60.0);
+        assert_eq!(current.last_user_message_at, second.last_user_message_at);
+
+        let mut previous = second;
+        for _ in 0..16 {
+            let (_, current) = super::update_affect(&db, 7001, true, |_| {}).await.unwrap();
+            assert!(current.updated_at.timestamp_millis() > previous.updated_at.timestamp_millis());
+            assert!(current.last_user_message_at > previous.last_user_message_at);
+            previous = current;
+        }
+    }
+
+    #[test]
     fn recall_pages_stay_in_one_addressee_and_source_with_a_stable_cursor() {
         use sea_orm::QueryTrait;
         let cursor = (chrono::Utc::now().fixed_offset(), "last-id".to_owned());
@@ -923,6 +1249,8 @@ mod tests {
             visual_profile: Some(existing_visual_profile),
             portrait_asset_id: Some("/master.png".to_string()),
             portrait_generation: Some(json!({ "fingerprint": "a".repeat(64) })),
+            avatar_asset_id: None,
+            avatar_generation: None,
             updated_by: Some(1),
             updated_at: Utc::now().into(),
         };
@@ -985,6 +1313,8 @@ mod tests {
             visual_profile: Some(json!({ "gender": "unspecified" })),
             portrait_asset_id: Some("/master.png".to_string()),
             portrait_generation: Some(json!({ "fingerprint": "a".repeat(64) })),
+            avatar_asset_id: None,
+            avatar_generation: None,
             updated_by: Some(1),
             updated_at: Utc::now().into(),
         };
@@ -1011,6 +1341,138 @@ mod tests {
         ));
     }
 
+    /// 一份完整到能通过 `appearance_visual_profile` 归一化的外观。
+    /// 字段不全时归一化会整块丢掉 `visualIdentity`，改它就等于没改，
+    /// 「改外观」这条断言会假绿。
+    fn complete_visual_profile() -> Value {
+        json!({
+            "gender": "female",
+            "visualIdentity": {
+                "faceDesign": "女性化读取，紧凑圆润鹅蛋脸",
+                "eyeDesign": "中等偏大的紫色宝石眼，视线坚定",
+                "hairShape": "银灰齐颌短发与偏分刘海",
+                "hairLayerPlan": "后发、刘海和左右侧发形成独立轮廓",
+                "upperBodySilhouette": "紧凑肩线、清楚领口与胸前焦点",
+                "outfitConstruction": "敞开领口内搭叠短外套并止于高腰",
+                "sleeveArmDesign": "左右袖片携局部前臂进入画面",
+                "materialPlan": "哑光布料",
+                "heroAccessory": "左胸星轨扣饰",
+                "paletteHint": "雾蓝为主、银白为辅、金色点缀",
+                "motif": "单一星轨弧线集中在胸前"
+            }
+        })
+    }
+
+    fn persona_with_avatar() -> agent_persona::Model {
+        agent_persona::Model {
+            id: PERSONA_ROW_ID.to_string(),
+            name: "Arael".to_string(),
+            personality: "quiet".to_string(),
+            persona_json: Some(json!({ "summary": "quiet" })),
+            visual_profile: Some(complete_visual_profile()),
+            portrait_asset_id: Some("/master.png".to_string()),
+            portrait_generation: Some(json!({ "fingerprint": "a".repeat(64) })),
+            avatar_asset_id: Some("/sticker.png".to_string()),
+            avatar_generation: Some(json!({ "fingerprint": "b".repeat(64) })),
+            updated_by: Some(1),
+            updated_at: Utc::now().into(),
+        }
+    }
+
+    /// 贴纸头像画的是主立绘上那个人。换主立绘还留着旧头像，站点上就会同时挂着
+    /// 两张脸——和留着旧 Rig 是同一类错，必须在同一次写入里清掉。
+    #[test]
+    fn replacing_the_portrait_drops_the_sticker_avatar() {
+        let active = apply_persona_update(
+            persona_with_avatar(),
+            "Arael".to_string(),
+            "quiet".to_string(),
+            &PortraitUpdate::Set("/uploaded.png".to_string()),
+            &PersonaContractUpdate::default(),
+            1,
+        );
+        assert_eq!(active.avatar_asset_id, Set(None));
+        assert_eq!(active.avatar_generation, Set(None));
+    }
+
+    #[test]
+    fn clearing_the_portrait_drops_the_sticker_avatar() {
+        let active = apply_persona_update(
+            persona_with_avatar(),
+            "Arael".to_string(),
+            "quiet".to_string(),
+            &PortraitUpdate::Clear,
+            &PersonaContractUpdate::default(),
+            1,
+        );
+        assert_eq!(active.avatar_asset_id, Set(None));
+        assert_eq!(active.avatar_generation, Set(None));
+    }
+
+    /// 外观变了主立绘会被作废，头像是从主立绘派生的，一起走。
+    #[test]
+    fn changing_the_appearance_drops_the_sticker_avatar() {
+        let active = apply_persona_update(
+            persona_with_avatar(),
+            "Arael".to_string(),
+            "quiet".to_string(),
+            &PortraitUpdate::Keep,
+            &PersonaContractUpdate {
+                visual_profile: JsonDocumentUpdate::Set({
+                    let mut next = complete_visual_profile();
+                    next["visualIdentity"]["hairShape"] = json!("银灰高马尾与偏分刘海");
+                    next
+                }),
+                ..PersonaContractUpdate::default()
+            },
+            1,
+        );
+        assert_eq!(active.portrait_asset_id, Set(None));
+        assert_eq!(active.avatar_asset_id, Set(None));
+    }
+
+    /// 只改说话人格不动脸。头像跟着一起清掉的话，每次改性格都要重新烧一次图。
+    #[test]
+    fn changing_the_spoken_persona_keeps_the_sticker_avatar() {
+        let active = apply_persona_update(
+            persona_with_avatar(),
+            "Arael".to_string(),
+            "more curious".to_string(),
+            &PortraitUpdate::Keep,
+            &PersonaContractUpdate {
+                persona: JsonDocumentUpdate::Set(json!({ "summary": "more curious" })),
+                ..PersonaContractUpdate::default()
+            },
+            1,
+        );
+        assert_eq!(
+            active.avatar_asset_id,
+            sea_orm::ActiveValue::Unchanged(Some("/sticker.png".to_string()))
+        );
+    }
+
+    /// 主立绘落盘的那条 SQL 也得清。它绕开 `apply_persona_update` 直接写库，
+    /// 上面那几条断言管不到它。
+    #[test]
+    fn completing_a_portrait_generation_drops_the_sticker_avatar_in_the_same_write() {
+        let source = include_str!("store.rs");
+        let at = source
+            .find("pub async fn complete_portrait_generation")
+            .expect("complete_portrait_generation exists");
+        let rest = &source[at..];
+        // 切到下一个顶层函数为止，别按字节数硬截——中文注释会把切点落在字符中间。
+        let end = rest[1..]
+            .find("\npub ")
+            .map(|offset| offset + 1)
+            .unwrap_or(rest.len());
+        let body = &rest[..end];
+        assert!(
+            body.contains("avatar_asset_id = NULL"),
+            "落新主立绘却留着旧贴纸头像"
+        );
+        assert!(body.contains("avatar_generation = NULL"));
+    }
+
     #[test]
     fn onboarding_seeds_do_not_invalidate_portrait() {
         let existing = agent_persona::Model {
@@ -1024,6 +1486,8 @@ mod tests {
             })),
             portrait_asset_id: Some("/master.png".to_string()),
             portrait_generation: Some(json!({ "fingerprint": "a".repeat(64) })),
+            avatar_asset_id: None,
+            avatar_generation: None,
             updated_by: Some(1),
             updated_at: Utc::now().into(),
         };
@@ -1077,6 +1541,8 @@ mod tests {
             visual_profile: Set(Some(profile.clone())),
             portrait_asset_id: Set(None),
             portrait_generation: Set(None),
+            avatar_asset_id: Set(None),
+            avatar_generation: Set(None),
             updated_by: Set(None),
             updated_at: Set(Utc::now().into()),
         }

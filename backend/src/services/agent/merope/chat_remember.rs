@@ -148,6 +148,11 @@ fn strip_json_fence(raw: &str) -> &str {
 }
 
 #[cfg(test)]
+pub(super) fn live_probe_contract(existing: &[String]) -> (String, serde_json::Value) {
+    (extract_system_prompt(existing), extract_schema())
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

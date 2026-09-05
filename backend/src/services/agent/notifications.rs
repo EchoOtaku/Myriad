@@ -219,6 +219,12 @@ pub enum NotificationEvent {
     Resync { lagged_by: u64 },
     /// On-page persona speech. Not history, not a toast.
     LiveSpeech { user_id: i32, speech: LiveSpeech },
+    /// Ephemeral addressee state. No notification history, toast or speech.
+    MeropeStateChanged {
+        user_id: i32,
+        mood: super::merope::MoodTransition,
+        activity: String,
+    },
 }
 
 /// Face-only proactive line. Never persisted in the notification center.
@@ -243,7 +249,8 @@ pub fn event_is_for_user(event: &NotificationEvent, user_id: i32) -> bool {
         NotificationEvent::NotificationRead { user_id: owner, .. }
         | NotificationEvent::NotificationDeleted { user_id: owner, .. }
         | NotificationEvent::NotificationsCleared { user_id: owner }
-        | NotificationEvent::LiveSpeech { user_id: owner, .. } => *owner == user_id,
+        | NotificationEvent::LiveSpeech { user_id: owner, .. }
+        | NotificationEvent::MeropeStateChanged { user_id: owner, .. } => *owner == user_id,
         // resync 对所有订阅者广播；由 SSE 转发层无条件下发
         NotificationEvent::Resync { .. } => true,
     }
@@ -422,6 +429,19 @@ impl NotificationManager {
         let _ = self
             .tx
             .send(NotificationEvent::LiveSpeech { user_id, speech });
+    }
+
+    pub fn emit_merope_state(
+        &self,
+        user_id: i32,
+        mood: super::merope::MoodTransition,
+        activity: String,
+    ) {
+        let _ = self.tx.send(NotificationEvent::MeropeStateChanged {
+            user_id,
+            mood,
+            activity,
+        });
     }
 
     /// 创建或更新一条通知。
@@ -1062,6 +1082,29 @@ mod tests {
         };
         assert!(event_is_for_user(&live, 2));
         assert!(!event_is_for_user(&live, 1));
+    }
+
+    #[tokio::test]
+    async fn mood_updates_are_owner_only_ephemeral_state_not_speech_or_history() {
+        let manager = test_manager();
+        let mut stream = manager.subscribe();
+        let before = super::super::merope::Affect::at_rest(Default::default());
+        let mood = super::super::merope::MoodTransition::from_affect(
+            &before,
+            &before,
+            "user_appraisal",
+            12,
+        );
+        manager.emit_merope_state(2, mood, "idle".into());
+        let event = stream.recv().await.unwrap();
+        assert!(event_is_for_user(&event, 2));
+        assert!(!event_is_for_user(&event, 1));
+        let json = serde_json::to_value(event).unwrap();
+        assert_eq!(json["event"], "merope_state_changed");
+        assert_eq!(json["mood"]["revision"], 12);
+        assert!(json.get("speech").is_none());
+        assert!(json.get("notification").is_none());
+        assert!(manager.get_history_for_user(2, 10).await.is_empty());
     }
 
     #[tokio::test]

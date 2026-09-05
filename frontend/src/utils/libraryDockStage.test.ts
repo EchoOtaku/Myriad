@@ -235,6 +235,7 @@ describe('library dock chrome contract', () => {
   it('treats home chrome as a data attr and nav/control as platform classes', () => {
     assert.equal(LIBRARY_DOCK_CHROME_ATTR, 'data-library-dock-chrome')
     assert.match(LIBRARY_DOCK_POINTER_CHROME, /\[data-library-dock-chrome\]/)
+    assert.match(LIBRARY_DOCK_POINTER_CHROME, /\[data-sticker-pick\]/)
     assert.match(LIBRARY_DOCK_POINTER_CHROME, /\.nav-container/)
     assert.match(LIBRARY_DOCK_POINTER_CHROME, /\.global-control-bar/)
     assert.equal(LIBRARY_DOCK_POINTER_CHROME.includes('home-layout-rail'), false)
@@ -260,8 +261,10 @@ describe('library dock chrome contract', () => {
     assert.equal(css.includes('calc(64rem * 5 / 6)'), false)
     assert.equal(css.includes('calc(70vh * 5 / 6)'), false)
     assert.equal(css.includes('perspective: 1800px'), false)
-    assert.ok(css.includes('widget-library-island--dock'))
+    assert.ok(css.includes('.widget-library-island {'))
+    assert.equal(css.includes('widget-library-island--dock'), false)
     assert.equal(css.includes('widget-library-island--panel'), false)
+    assert.equal(css.includes('settings-motion.css'), false)
     assert.match(css, /z-index:\s*10000/)
     assert.match(
       css,

@@ -94,6 +94,8 @@ export function useLibraryDockStage(input: {
   windowWidth: number
   windowHeight: number
   reducedMotion: boolean
+  /** Sticker cell-pick: keep the dock parked and ignore grid clicks. */
+  pausePointer?: boolean
 }) {
   const {
     parkable,
@@ -102,6 +104,7 @@ export function useLibraryDockStage(input: {
     windowWidth,
     windowHeight,
     reducedMotion,
+    pausePointer = false,
   } = input
 
   const keepParkedRef = useRef(parkable)
@@ -271,9 +274,15 @@ export function useLibraryDockStage(input: {
   }, [parkable, visible, widgetDragActive])
 
   useEffect(() => {
+    if (!pausePointer || !parkable || !visible) return
+    park()
+  }, [pausePointer, park, parkable, visible])
+
+  useEffect(() => {
     if (!parkable || !visible) return
 
     const onPointerDown = (event: PointerEvent) => {
+      if (pausePointer) return
       if (event.pointerType === 'mouse' && event.button !== 0) return
       const target = event.target
       if (!(target instanceof Element)) return
@@ -304,7 +313,7 @@ export function useLibraryDockStage(input: {
       window.removeEventListener('pointerup', onPointerUp, true)
       window.removeEventListener('pointercancel', onPointerUp, true)
     }
-  }, [park, parkable, restore, staged, visible])
+  }, [park, parkable, pausePointer, restore, staged, visible])
 
   return {
     parked,

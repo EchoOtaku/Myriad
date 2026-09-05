@@ -32,6 +32,7 @@ export const PERMISSION_LEVELS: Record<TappPermission, TappPermissionLevel> = {
   'ai:analyze': 'elevated',
   'ai:chat': 'elevated',
   'ai:image': 'elevated',
+  'ai:search': 'elevated',
   '3d:generate': 'elevated',
   'report:read': 'basic',
   'report:write': 'privileged',

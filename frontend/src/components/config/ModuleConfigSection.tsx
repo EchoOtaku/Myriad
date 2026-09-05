@@ -65,9 +65,6 @@ export {
   DEFAULT_LIBRARY_SOURCE_PREFERENCES,
   normalizeLibraryPreferences,
 } from '../../utils/librarySourcePreferences'
-/** @deprecated 从 uiBagOwnership 导入；此处 re-export 保持兼容 */
-export { MODULE_UI_RESET_KEYS } from './uiBagOwnership'
-
 interface LibraryResponse {
   success: boolean
   total: number

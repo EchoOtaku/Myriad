@@ -12,7 +12,7 @@ use std::{
 
 use anyhow::{anyhow, Context};
 use myriad_merope::RigManifest;
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -258,17 +258,6 @@ pub async fn read_atlas_bytes(asset_id: &str) -> anyhow::Result<Vec<u8>> {
 
 pub fn public_atlas_url(asset_id: &str) -> String {
     format!("/api/merope/rig/assets/{asset_id}")
-}
-
-/// Keeps the persisted setting and the in-process config mirror in sync.
-/// All portrait and rig mutation paths use this single activation boundary.
-pub async fn set_active_asset(
-    db: &DatabaseConnection,
-    asset_id: Option<&str>,
-) -> anyhow::Result<()> {
-    let normalized = persist_active_asset(db, asset_id).await?;
-    mirror_active_asset(normalized).await;
-    Ok(())
 }
 
 /// Persist the active pointer through any SeaORM connection, including an

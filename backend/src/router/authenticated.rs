@@ -40,6 +40,25 @@ pub(super) fn build_authenticated_router(
                 middleware::auth::auth_middleware,
             )),
         )
+        // Home free-layout stickers — admin AI generation + local upload
+        .route(
+            "/api/home/stickers/generate",
+            post(api::home_stickers::generate_home_sticker)
+                .layer(axum::extract::DefaultBodyLimit::max(14 * 1024 * 1024))
+                .route_layer(from_fn_with_state(
+                    app_state.clone(),
+                    middleware::auth::admin_middleware,
+                )),
+        )
+        .route(
+            "/api/home/stickers/upload",
+            post(api::home_stickers::upload_home_sticker)
+                .layer(axum::extract::DefaultBodyLimit::max(14 * 1024 * 1024))
+                .route_layer(from_fn_with_state(
+                    app_state.clone(),
+                    middleware::auth::admin_middleware,
+                )),
+        )
         // SEO / GEO AI copy assist — admin only (site branding)
         .route(
             "/api/seo/generate-copy",

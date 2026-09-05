@@ -26,6 +26,7 @@ import {
   faceSpeechGate,
 } from '../features/merope/faceSpeechArbitration'
 import { setForegroundSurface } from '../features/merope/perception/surface'
+import { resetMeropeState } from '../features/merope/performanceEvents'
 import { batchRead, batchWrite, observeResize } from '../hooks/animation'
 import {
   isReducedAnimation,
@@ -66,6 +67,7 @@ import {
   isLookingAtAgentPanel,
   subscribeLookingAtAgentPanel,
 } from './agent-panel/agentPanelVisible'
+import { ADDRESSEE_UPDATED_EVENT } from './agent/meropeVitals'
 import {
   initialPanelState,
   isPanelMorphing,
@@ -174,6 +176,7 @@ interface DynamicContent {
 const GlobalControlPanel: React.FC = () => {
   const navigate = useNavigate()
   const { user } = useAuth()
+  useLayoutEffect(() => { resetMeropeState() }, [user?.id])
   const { locale, setLocale, t } = useI18n()
   const navLayout = useSyncExternalStore(
     subscribeNavLayout,
@@ -417,6 +420,8 @@ const GlobalControlPanel: React.FC = () => {
     userId: user?.id,
     onNew: handleNewNotification,
     onLiveSpeech: handleLiveSpeech,
+    onMeropeState: (state) => agentFace.updateState(state),
+    onMeropeResync: () => window.dispatchEvent(new Event(ADDRESSEE_UPDATED_EVENT)),
     includeInPanel: includeNotificationInPanel,
   })
   const { loaded: notifLoaded, loadHistory: loadNotifHistory } = notifCenter

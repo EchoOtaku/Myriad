@@ -119,12 +119,15 @@ export interface McpConfigSnapshot {
 export interface AgentPersona {
   name: string
   portraitAssetId: string | null
+  /** Q 版贴纸头像。没生成过就是 null；换主立绘会被清掉。 */
+  avatarAssetId: string | null
   hasCustomPersona: boolean
   personality?: string
   persona?: Record<string, unknown> | null
   visualProfile?: Record<string, unknown> | null
   portraitGeneration?: Record<string, unknown> | null
   mood?: number
+  moodRevision?: number
   arousal?: number
   activity?: string
   doNotDisturb?: boolean
@@ -457,6 +460,7 @@ class AgentService {
       completedAt: response.completedAt,
       results: response.results,
       pendingQuestion: response.task.pendingQuestion,
+      stepHistory: response.task.stepHistory,
     }
   }
 

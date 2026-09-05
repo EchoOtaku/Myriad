@@ -5,17 +5,17 @@
 
 use crate::middleware::auth::Claims;
 use axum::{
-    Json, Router,
     extract::{Extension, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post},
+    Json, Router,
 };
 use sea_orm::DatabaseConnection;
 
 use crate::middleware::auth::verify_current_admin_from_headers;
 use crate::services::data_paths::paths;
-use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tokio::fs;
@@ -88,7 +88,7 @@ pub fn create_speech_routes(app_state: crate::state::AppState) -> Router<crate::
 
 // Standalone TTS DTO + synthesis live in services so agent does not depend on this API module.
 pub use crate::services::standalone_tts::{
-    TtsApiRequest, TtsApiResponse, synthesize_standalone_tts,
+    synthesize_standalone_tts, TtsApiRequest, TtsApiResponse,
 };
 
 /// 批量 TTS 请求体（用于播客）

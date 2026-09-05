@@ -11,6 +11,7 @@ import {
 
 } from '../features/merope/speech/realtimeChat'
 import { currentCopy } from '../i18n/localeCopy'
+import { withAiTimeoutSignal } from '../utils/aiRequestTimeout.mjs'
 import { clearCSRFToken, getCSRFToken } from '../utils/csrf'
 import { notifyHttpRateLimit } from '../utils/httpRateLimitToast'
 import { userFacingError } from '../utils/userFacingError'
@@ -220,11 +221,14 @@ async function request<T>(
   options.signal?.throwIfAborted()
   console.log(`[SpeechAPI] ${options.method || 'GET'} ${url}`)
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-    credentials: 'include',
-  })
+  const response = await fetch(
+    url,
+    withAiTimeoutSignal(url, {
+      ...options,
+      headers,
+      credentials: 'include',
+    }),
+  )
 
   console.log(`[SpeechAPI] Response status: ${response.status}`)
 

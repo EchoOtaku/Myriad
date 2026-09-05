@@ -129,6 +129,18 @@ export interface TaskPendingQuestion {
   defaultValue?: string
 }
 
+/** GET /tasks 和终态 TaskInfo 上的步骤记录 */
+export interface TaskStepHistoryItem {
+  stepId: string
+  capabilityName: string
+  status: string
+  durationMs?: number
+  outputSummary?: string
+  error?: string
+  imageUrl?: string
+  isDynamic?: boolean
+}
+
 /** 任务信息 */
 export interface TaskInfo {
   taskId: string
@@ -136,6 +148,7 @@ export interface TaskInfo {
   progress: number
   error?: string
   pendingQuestion?: TaskPendingQuestion
+  stepHistory?: TaskStepHistoryItem[]
 }
 
 /** 任务详情 */
@@ -149,6 +162,7 @@ export interface TaskDetail {
   results?: Record<string, unknown>
   pendingQuestion?: TaskPendingQuestion
   runId?: string
+  stepHistory?: TaskStepHistoryItem[]
 }
 
 // 澄清相关

@@ -251,28 +251,6 @@ export function throttle<T extends (...args: any[]) => any>(
   return throttled
 }
 
-/**
- * 防抖函数 - 延迟执行函数
- * @param func 要防抖的函数
- * @param wait 等待时间（毫秒）
- */
-export function debounce<T extends (...args: any[]) => any>(
-  func: T,
-  wait: number,
-): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout | null = null
-
-  return function (this: any, ...args: Parameters<T>) {
-    if (timeout) {
-      clearTimeout(timeout)
-    }
-
-    timeout = setTimeout(() => {
-      func.apply(this, args)
-    }, wait)
-  }
-}
-
 export type MusicSource = 'netease' | 'qq'
 
 export interface Song {

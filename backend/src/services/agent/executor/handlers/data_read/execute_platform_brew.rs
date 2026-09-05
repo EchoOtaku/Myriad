@@ -5,6 +5,7 @@ use crate::models::entities::{
 use crate::services::agent::executor::utils::{
     truncate_str, validate_platform_name, VALID_PLATFORMS,
 };
+use crate::services::data_paths::platform_filtered_file;
 use crate::services::netease_utils::{get_random_china_ip, get_random_user_agent};
 use once_cell::sync::Lazy;
 use sea_orm::{
@@ -105,7 +106,7 @@ async fn execute_platform_read(params: &HashMap<String, Value>) -> Result<Value,
     let platform_lower = platform_raw.to_lowercase();
     let platform = validate_platform_name(&platform_lower)?;
 
-    let cache_file = format!("cache/platforms/{}_filtered.json", platform);
+    let cache_file = platform_filtered_file(platform);
     let content = tokio::fs::read_to_string(&cache_file)
         .await
         .map_err(|error| platform_cache_read_failed(platform, error))?;
@@ -152,7 +153,7 @@ async fn execute_platform_stats(params: &HashMap<String, Value>) -> Result<Value
     let platform_lower = platform_raw.to_lowercase();
     let platform = validate_platform_name(&platform_lower)?;
 
-    let cache_file = format!("cache/platforms/{}_filtered.json", platform);
+    let cache_file = platform_filtered_file(platform);
     let content = tokio::fs::read_to_string(&cache_file)
         .await
         .map_err(|error| platform_cache_read_failed(platform, error))?;
@@ -482,6 +483,25 @@ fn parse_allow_web_search(params: &HashMap<String, Value>) -> bool {
         }
     }
     false
+}
+
+/// Granted-layer gate for the generateReadingList web path.
+///
+/// Opt-in (`allowWebSearch`) is not enough: outbound Search/Fetch is the same
+/// work as `ai.webSearch`, so it requires granted `ai:search`. Local ranking
+/// stays `brew:read` only. Autonomy caps, when present, must also include it.
+fn outbound_web_search_allowed(
+    opt_in: bool,
+    granted_has_ai_search: bool,
+    autonomy_cap: Option<&[String]>,
+) -> bool {
+    if !opt_in || !granted_has_ai_search {
+        return false;
+    }
+    match autonomy_cap {
+        None => true,
+        Some(cap) => cap.iter().any(|permission| permission == "ai:search"),
+    }
 }
 
 /// Parse a JSON value as optional i32 (integer, unsigned, or numeric string).
@@ -1503,7 +1523,14 @@ async fn execute_brew_generate_reading_list(
     let days_back = params.get("daysBack").and_then(|v| v.as_i64()).unwrap_or(7);
     // Opt-in only: do not force ai.webSearch when local keyword miss.
     // Cascade escalation for other capabilities is owned by myriad-149.
-    let allow_web_search = parse_allow_web_search(params);
+    // Outbound still needs granted `ai:search` (same layer as `ai.webSearch`).
+    let web_search_opt_in = parse_allow_web_search(params);
+    let granted = crate::services::agent::get_user_permissions(ctx.db, ctx.user_id).await;
+    let allow_web_search = outbound_web_search_allowed(
+        web_search_opt_in,
+        granted.iter().any(|permission| permission == "ai:search"),
+        ctx.autonomy_permission_cap.as_deref(),
+    );
 
     // 获取关键词过滤条件（支持多种参数名）
     let keyword = params
@@ -1529,6 +1556,7 @@ async fn execute_brew_generate_reading_list(
         keyword = %keyword,
         criteria = %criteria,
         allow_web_search = allow_web_search,
+        web_search_opt_in = web_search_opt_in,
         "[brew.generateReadingList] Parameters parsed"
     );
 
@@ -1663,7 +1691,14 @@ async fn execute_brew_generate_reading_list(
                 format!("{} 相关文章", criteria)
             };
 
-            match trigger_ai_web_search_for_reading_list(&search_query, max_items, ctx).await {
+            let recency_minutes = u32::try_from(days_back.saturating_mul(24 * 60)).ok();
+            match crate::services::agent::web_search::execute_reading_list(
+                &search_query,
+                max_items,
+                recency_minutes,
+            )
+            .await
+            {
                 Ok(web_results) if !web_results.is_empty() => {
                     tracing::info!(
                         results = web_results.len(),
@@ -1700,7 +1735,7 @@ async fn execute_brew_generate_reading_list(
                 "尝试更换关键词".to_string(),
                 "放宽 daysBack 或去掉 sourceName 限制".to_string(),
                 "订阅更多相关的 RSS 源".to_string(),
-                "检查 Gemini API Key 是否已配置".to_string(),
+                "检查是否已配置 TinyFish 或 Gemini API Key".to_string(),
             ];
             if !available_sources.is_empty() {
                 suggestions.insert(0, format!("本地已有订阅：{}", available_sources.join("、")));
@@ -1766,8 +1801,10 @@ async fn execute_brew_generate_reading_list(
                     format!("可浏览的本地订阅：{}", available_sources.join("、")),
                 );
             }
-            if !allow_web_search {
+            if !web_search_opt_in {
                 suggestions.push("如需联网补充，请显式传 allowWebSearch=true".to_string());
+            } else if !allow_web_search {
+                suggestions.push("联网补充需要授予权限 ai:search".to_string());
             }
 
             return Ok(json!({
@@ -2354,52 +2391,6 @@ fn extract_json_from_response(response: &str) -> Option<String> {
     }
 
     None
-}
-
-/// 解析 RSS/Atom 内容 (legacy cache helper; DB path preferred for brew.*)
-#[allow(dead_code)]
-fn parse_brew_content(content: &str) -> Vec<Value> {
-    let mut items = Vec::new();
-
-    // 简单的正则提取
-    let item_pattern = regex::Regex::new(r"(?s)<(?:item|entry)>(.*?)</(?:item|entry)>").ok();
-    let title_re = regex::Regex::new(r"<title[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>").ok();
-    let link_re = regex::Regex::new(r#"<link[^>]*(?:href="([^"]+)"[^>]*)?>([^<]*)</link>"#).ok();
-    let date_re = regex::Regex::new(r"<(?:pubDate|published|updated)>([^<]+)</").ok();
-
-    if let Some(pattern) = item_pattern {
-        for cap in pattern.captures_iter(content) {
-            if let Some(item_content) = cap.get(1) {
-                let item_str = item_content.as_str();
-
-                let title = title_re
-                    .as_ref()
-                    .and_then(|r| r.captures(item_str))
-                    .and_then(|c| c.get(1))
-                    .map(|m| m.as_str().to_string());
-
-                let link = link_re
-                    .as_ref()
-                    .and_then(|r| r.captures(item_str))
-                    .and_then(|c| c.get(1).or(c.get(2)))
-                    .map(|m| m.as_str().to_string());
-
-                let date = date_re
-                    .as_ref()
-                    .and_then(|r| r.captures(item_str))
-                    .and_then(|c| c.get(1))
-                    .map(|m| m.as_str().to_string());
-
-                items.push(json!({
-                    "title": title,
-                    "link": link,
-                    "pubDate": date
-                }));
-            }
-        }
-    }
-
-    items
 }
 
 /// 从 HTML 中提取纯文本
@@ -3478,7 +3469,7 @@ async fn execute_netease_playlist(params: &HashMap<String, Value>) -> Result<Val
         .and_then(|v| v.as_str())
         .unwrap_or("playlists");
 
-    let cache_file = "cache/platforms/netease_filtered.json";
+    let cache_file = platform_filtered_file("netease");
     if let Ok(content) = tokio::fs::read_to_string(cache_file).await {
         if let Ok(data) = serde_json::from_str::<Value>(&content) {
             let result = match query_type {
@@ -3699,7 +3690,7 @@ async fn execute_github_repos(params: &HashMap<String, Value>) -> Result<Value, 
         .and_then(|v| v.as_str())
         .unwrap_or("repos");
 
-    let cache_file = "cache/platforms/github_filtered.json";
+    let cache_file = platform_filtered_file("github");
     if let Ok(content) = tokio::fs::read_to_string(cache_file).await {
         if let Ok(data) = serde_json::from_str::<Value>(&content) {
             let result = match query_type {
@@ -3935,7 +3926,7 @@ async fn ai_understand_music_intent(
 
 /// 获取 B 站追番列表
 async fn execute_bilibili_bangumi(_params: &HashMap<String, Value>) -> Result<Value, String> {
-    let cache_file = "cache/platforms/bilibili_filtered.json";
+    let cache_file = platform_filtered_file("bilibili");
     if let Ok(content) = tokio::fs::read_to_string(cache_file).await {
         if let Ok(data) = serde_json::from_str::<Value>(&content) {
             let bangumis = data
@@ -3958,7 +3949,7 @@ async fn execute_bilibili_bangumi(_params: &HashMap<String, Value>) -> Result<Va
 /// 获取 Steam 愿望单
 async fn execute_steam_wishlist(params: &HashMap<String, Value>) -> Result<Value, String> {
     let _ = params; // 未使用参数
-    let cache_file = "cache/platforms/steam_filtered.json";
+    let cache_file = platform_filtered_file("steam");
     if let Ok(content) = tokio::fs::read_to_string(cache_file).await {
         if let Ok(data) = serde_json::from_str::<Value>(&content) {
             let wishlist = data
@@ -4130,7 +4121,7 @@ async fn execute_stats_overview(params: &HashMap<String, Value>) -> Result<Value
     });
 
     // Steam 统计
-    if let Ok(content) = tokio::fs::read_to_string("cache/platforms/steam_filtered.json").await {
+    if let Ok(content) = tokio::fs::read_to_string(platform_filtered_file("steam")).await {
         if let Ok(data) = serde_json::from_str::<Value>(&content) {
             if let Some(games) = data
                 .get("content_analysis")
@@ -4148,7 +4139,7 @@ async fn execute_stats_overview(params: &HashMap<String, Value>) -> Result<Value
     }
 
     // Bilibili 统计
-    if let Ok(content) = tokio::fs::read_to_string("cache/platforms/bilibili_filtered.json").await {
+    if let Ok(content) = tokio::fs::read_to_string(platform_filtered_file("bilibili")).await {
         if let Ok(data) = serde_json::from_str::<Value>(&content) {
             if let Some(anime) = data
                 .get("content_analysis")
@@ -4161,7 +4152,7 @@ async fn execute_stats_overview(params: &HashMap<String, Value>) -> Result<Value
     }
 
     // Bangumi 统计
-    if let Ok(content) = tokio::fs::read_to_string("cache/platforms/bangumi_filtered.json").await {
+    if let Ok(content) = tokio::fs::read_to_string(platform_filtered_file("bangumi")).await {
         if let Ok(data) = serde_json::from_str::<Value>(&content) {
             let items = extract_platform_items("bangumi", &data);
             stats["totalBangumiCollections"] = json!(items.len());
@@ -4169,7 +4160,7 @@ async fn execute_stats_overview(params: &HashMap<String, Value>) -> Result<Value
     }
 
     // GitHub 统计
-    if let Ok(content) = tokio::fs::read_to_string("cache/platforms/github_filtered.json").await {
+    if let Ok(content) = tokio::fs::read_to_string(platform_filtered_file("github")).await {
         if let Ok(data) = serde_json::from_str::<Value>(&content) {
             if let Some(repos) = data
                 .get("content_analysis")
@@ -4182,7 +4173,7 @@ async fn execute_stats_overview(params: &HashMap<String, Value>) -> Result<Value
     }
 
     // Netease 统计
-    if let Ok(content) = tokio::fs::read_to_string("cache/platforms/netease_filtered.json").await {
+    if let Ok(content) = tokio::fs::read_to_string(platform_filtered_file("netease")).await {
         if let Ok(data) = serde_json::from_str::<Value>(&content) {
             if let Some(songs) = data
                 .get("content_analysis")
@@ -4209,7 +4200,7 @@ async fn execute_profile_summary(params: &HashMap<String, Value>) -> Result<Valu
     let mut platform_stats = json!({});
 
     for platform in &platforms {
-        let cache_file = format!("cache/platforms/{}_filtered.json", platform);
+        let cache_file = platform_filtered_file(platform);
         if let Ok(content) = tokio::fs::read_to_string(&cache_file).await {
             if let Ok(data) = serde_json::from_str::<Value>(&content) {
                 // 提取用户名
@@ -4278,7 +4269,7 @@ async fn execute_search_global(params: &HashMap<String, Value>) -> Result<Value,
     let query_lower = query.to_lowercase();
 
     for platform in &platforms {
-        let cache_file = format!("cache/platforms/{}_filtered.json", platform);
+        let cache_file = platform_filtered_file(platform);
         if let Ok(content) = tokio::fs::read_to_string(&cache_file).await {
             if let Ok(data) = serde_json::from_str::<Value>(&content) {
                 let items = extract_platform_items(platform, &data);
@@ -4409,7 +4400,7 @@ async fn execute_metadata_history(params: &HashMap<String, Value>) -> Result<Val
 
     // 读取缓存的历史数据
     let mut history = Vec::new();
-    let cache_file = format!("cache/platforms/{}_filtered.json", platform);
+    let cache_file = platform_filtered_file(platform);
 
     if let Ok(metadata) = tokio::fs::metadata(&cache_file).await {
         if let Ok(modified) = metadata.modified() {
@@ -4761,10 +4752,11 @@ async fn execute_random_content(params: &HashMap<String, Value>) -> Result<Value
         .unwrap_or("steam");
     let count = params.get("count").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
 
-    let cache_file = format!("cache/platforms/{}_filtered.json", platform);
+    let cache_file = platform_filtered_file(platform);
     if let Ok(content) = tokio::fs::read_to_string(&cache_file).await {
         if let Ok(data) = serde_json::from_str::<Value>(&content) {
-            let items = extract_platform_items_for_random(platform, &data);
+            let items =
+                crate::services::platform_items::extract_platform_items_for_random(platform, &data);
 
             // 随机选取
             use rand::seq::IndexedRandom;
@@ -4783,86 +4775,6 @@ async fn execute_random_content(params: &HashMap<String, Value>) -> Result<Value
     }
 
     Err(format!("No data available for platform: {}", platform))
-}
-
-/// 提取平台项目用于随机选择
-fn extract_platform_items_for_random(platform: &str, data: &Value) -> Vec<Value> {
-    match platform {
-        "steam" => data
-            .get("games")
-            .or(data.get("items"))
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default(),
-        "bilibili" => data
-            .get("videos")
-            .or(data.get("items"))
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default(),
-        "github" => data
-            .get("repos")
-            .or(data.get("items"))
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default(),
-        "youtube" => {
-            // Prefer raw fetch `videos`; fall back to filtered recent_videos
-            let from_raw = data
-                .get("videos")
-                .or(data.get("items"))
-                .and_then(|v| v.as_array())
-                .cloned()
-                .unwrap_or_default();
-            if !from_raw.is_empty() {
-                from_raw
-            } else {
-                extract_platform_items("youtube", data)
-            }
-        }
-        "netease" => data
-            .get("songs")
-            .or(data.get("items"))
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default(),
-        "bangumi" => data
-            .get("collections")
-            .or(data.get("items"))
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default(),
-        "mal" => {
-            let mut items = Vec::new();
-            for key in ["anime_list", "manga_list", "items"] {
-                if let Some(arr) = data.get(key).and_then(|v| v.as_array()) {
-                    items.extend(arr.clone());
-                }
-            }
-            if items.is_empty() {
-                // filtered cache 走 content_analysis
-                return extract_platform_items("mal", data);
-            }
-            items
-        }
-        "x" => data
-            .get("tweets")
-            .or(data.get("items"))
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default(),
-        "discord" => data
-            .get("guilds")
-            .or(data.get("items"))
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default(),
-        _ => data
-            .get("items")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default(),
-    }
 }
 
 /// 报告列表：平台报告走 `platform_reports`；Agent `report.create` 走 `tapp_storage`。
@@ -4947,477 +4859,6 @@ async fn execute_report_list(
         "reports": reports,
         "total": reports.len()
     }))
-}
-
-// AI 联网搜索辅助函数
-
-/// 为阅读列表触发 AI 联网搜索
-/// 当数据库中找不到相关内容时，使用 Gemini Grounding Search 搜索网络
-async fn trigger_ai_web_search_for_reading_list(
-    query: &str,
-    max_items: usize,
-    _ctx: &HandlerContext<'_>,
-) -> Result<Vec<Value>, String> {
-    use crate::GLOBAL_DYNAMIC_CONFIG;
-
-    let config = GLOBAL_DYNAMIC_CONFIG.read().await;
-    tracing::info!(
-        has_key = config.shared_gemini_api_key().is_some(),
-        "[AI Web Search] Checking Gemini API configuration"
-    );
-    let (api_key, model) = config.resolve_gemini_grounding().ok_or_else(|| {
-        tracing::error!("[AI Web Search] Gemini API Key is not configured");
-        crate::services::agent::response_agent::api_key_not_configured("Gemini")
-            + "，请在设置中配置 API Key"
-    })?;
-    drop(config);
-
-    // 构建搜索提示词 - 优化：更明确的指令，强调 JSON 格式和详细摘要
-    let search_prompt = format!(
-        r#"你是一个智能阅读助手。用户想要阅读关于「{query}」的文章。
-
-任务：使用 Google Search 搜索相关的新闻、文章或资讯，然后整理成阅读列表。
-
-输出要求：
-1. 返回 {max_items} 篇最相关的文章
-2. 必须是纯 JSON 数组格式，不要任何其他文字、解释或 markdown 标记
-3. 每篇文章必须包含以下字段：
-   - "id": 从 1 开始的数字
-   - "title": 文章完整标题（string，不要截断）
-   - "link": 文章的原始 URL（⚠️ 重要：必须是文章页面的真实 URL，不能是 Google 搜索结果页面或重定向链接，必须以 https:// 或 http:// 开头）
-   - "summary": 文章内容摘要（string，⚠️ 重要：150-300 字，详细描述文章的主要内容、核心观点和关键信息，让读者无需点开就能了解文章大意）
-   - "sourceName": 来源网站名称（string）
-   - "author": 作者（string，如不确定填 ""）
-   - "publishedAt": ISO 8601 日期时间格式（string，如 "2026-01-10T12:00:00Z"）
-   - "relevanceReason": 推荐理由（string，一句话说明为什么这篇文章值得阅读）
-
-筛选标准：
-- 优先选择权威媒体和专业网站的内容
-- 内容必须与「{query}」高度相关
-- 优先最新发布的内容
-- 排除付费墙、需要登录的内容
-- 排除聚合页面、搜索结果页，只要实际文章页
-
-⚠️ 关于 link 字段的特别说明：
-- 必须是可以直接访问的文章页面 URL
-- 不要使用 Google AMP 链接（google.com/amp/...）
-- 不要使用搜索结果链接（google.com/url?...）
-- 如果原始 URL 包含追踪参数，保留主要路径即可
-
-示例输出格式：
-[{{"id":1,"title":"完整的文章标题","link":"https://www.example.com/news/article-123","summary":"这篇文章详细介绍了...（150-300字的详细摘要）","sourceName":"Example新闻","author":"张三","publishedAt":"2026-01-10T12:00:00Z","relevanceReason":"推荐理由"}}]
-
-现在请搜索并返回 JSON 数组："#,
-        query = query,
-        max_items = max_items
-    );
-
-    // 构建 Gemini API 请求（带 Google Search grounding）
-    let request_body = json!({
-        "contents": [{
-            "parts": [{
-                "text": search_prompt
-            }]
-        }],
-        "tools": [{
-            "google_search": {}
-        }],
-        "generationConfig": {
-            "temperature": 0.2,
-            "maxOutputTokens": 8192,
-            "responseMimeType": "application/json"
-        }
-    });
-
-    let url = crate::services::http_client::GeminiApiUrl::generate_content_url(&model).await;
-
-    let client = crate::services::http_client::get_gemini_grounding_client().await;
-
-    tracing::info!(query = %query, "[AI Web Search] Searching for reading list content");
-
-    let response = client
-        .post(&url)
-        .header("Content-Type", "application/json")
-        .header("x-goog-api-key", &api_key)
-        .json(&request_body)
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "Gemini API request failed");
-            "AI generation failed".to_string()
-        })?;
-
-    const GEMINI_MAX_BODY: usize = 2 * 1024 * 1024;
-    if !response.status().is_success() {
-        let status = response.status();
-        let error_bytes =
-            crate::services::outbound_security::read_limited_body(response, 64 * 1024)
-                .await
-                .unwrap_or_default();
-        let error_text = String::from_utf8_lossy(&error_bytes);
-        tracing::error!(status = %status, body = %error_text, "Gemini API error");
-        return Err("AI generation failed".to_string());
-    }
-
-    let body_bytes =
-        crate::services::outbound_security::read_limited_body(response, GEMINI_MAX_BODY)
-            .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "Failed to read Gemini response");
-                "AI generation failed".to_string()
-            })?;
-    let response_json: Value = serde_json::from_slice(&body_bytes).map_err(|e| {
-        tracing::error!(error = %e, "Failed to parse Gemini response");
-        "AI generation failed".to_string()
-    })?;
-
-    // 提取 AI 回复内容
-    let ai_text = response_json
-        .get("candidates")
-        .and_then(|c| c.get(0))
-        .and_then(|c| c.get("content"))
-        .and_then(|c| c.get("parts"))
-        .and_then(|p| p.get(0))
-        .and_then(|p| p.get("text"))
-        .and_then(|t| t.as_str())
-        .unwrap_or("");
-
-    // 尝试从 AI 回复中提取 JSON 数组
-    let mut results = extract_json_array_from_ai_response(ai_text);
-
-    // 如果从文本中提取失败，尝试从 grounding metadata 提取
-    if results.is_empty() {
-        tracing::info!("[AI Web Search] Trying to extract from grounding metadata");
-
-        // 先收集 grounding supports 中的内容片段（用于生成摘要）
-        let mut content_snippets: std::collections::HashMap<String, Vec<String>> =
-            std::collections::HashMap::new();
-
-        if let Some(grounding_supports) = response_json
-            .get("candidates")
-            .and_then(|c| c.get(0))
-            .and_then(|c| c.get("groundingMetadata"))
-            .and_then(|m| m.get("groundingSupports"))
-            .and_then(|s| s.as_array())
-        {
-            for support in grounding_supports {
-                if let (Some(segment), Some(chunk_indices)) = (
-                    support
-                        .get("segment")
-                        .and_then(|s| s.get("text"))
-                        .and_then(|t| t.as_str()),
-                    support
-                        .get("groundingChunkIndices")
-                        .and_then(|i| i.as_array()),
-                ) {
-                    for idx in chunk_indices {
-                        if let Some(idx_num) = idx.as_u64() {
-                            content_snippets
-                                .entry(idx_num.to_string())
-                                .or_default()
-                                .push(segment.to_string());
-                        }
-                    }
-                }
-            }
-        }
-
-        if let Some(grounding_metadata) = response_json
-            .get("candidates")
-            .and_then(|c| c.get(0))
-            .and_then(|c| c.get("groundingMetadata"))
-        {
-            if let Some(chunks) = grounding_metadata
-                .get("groundingChunks")
-                .and_then(|c| c.as_array())
-            {
-                for (idx, chunk) in chunks.iter().enumerate().take(max_items) {
-                    if let Some(web) = chunk.get("web") {
-                        let uri = web.get("uri").and_then(|u| u.as_str()).unwrap_or("");
-                        let title = web
-                            .get("title")
-                            .and_then(|t| t.as_str())
-                            .unwrap_or("未知标题");
-
-                        // 跳过 Google 搜索结果页和 AMP 链接
-                        if uri.is_empty()
-                            || uri.contains("google.com/url")
-                            || uri.contains("google.com/amp")
-                            || uri.contains("webcache.googleusercontent.com")
-                        {
-                            continue;
-                        }
-
-                        // 从 content_snippets 生成摘要
-                        let summary = content_snippets
-                            .get(&idx.to_string())
-                            .map(|snippets| snippets.join(" "))
-                            .filter(|s| s.len() > 20)
-                            .unwrap_or_else(|| {
-                                format!("来自 {} 的文章: {}", extract_domain_from_url(uri), title)
-                            });
-
-                        results.push(json!({
-                            "id": results.len() + 1,
-                            "title": title,
-                            "link": uri,
-                            "summary": summary,
-                            "sourceName": extract_domain_from_url(uri),
-                            "publishedAt": chrono::Utc::now().to_rfc3339(),
-                            "relevanceReason": "AI 联网搜索结果",
-                            "fromWebSearch": true
-                        }));
-                    }
-                }
-            }
-        }
-
-        tracing::info!(
-            results = results.len(),
-            "[AI Web Search] Extracted from grounding metadata"
-        );
-    }
-
-    // 确保每个结果都有必要的字段，并转换为正确格式
-    let results: Vec<Value> = results
-        .into_iter()
-        .enumerate()
-        .filter_map(|(idx, mut item)| {
-            // 确保有 id（转为数字）
-            let id = item
-                .get("id")
-                .and_then(|v| v.as_i64())
-                .unwrap_or((idx + 1) as i64);
-            item["id"] = json!(id);
-
-            // 确保 title 存在
-            if item
-                .get("title")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .is_empty()
-            {
-                item["title"] = json!("未知标题");
-            }
-
-            // 验证并清理 link
-            let link = item.get("link").and_then(|v| v.as_str()).unwrap_or("");
-            if link.is_empty() {
-                return None;
-            }
-
-            // 清理链接：移除 Google 重定向和 AMP 链接
-            let cleaned_link = clean_search_result_url(link);
-            if cleaned_link.is_empty() || !cleaned_link.starts_with("http") {
-                tracing::warn!(original_link = %link, "[AI Web Search] Invalid link, skipping");
-                return None;
-            }
-            item["link"] = json!(cleaned_link);
-
-            // 确保 sourceName 存在
-            if item
-                .get("sourceName")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .is_empty()
-            {
-                item["sourceName"] = json!(extract_domain_from_url(&cleaned_link));
-            }
-
-            // 确保 summary 存在且有足够长度
-            let summary = item.get("summary").and_then(|v| v.as_str()).unwrap_or("");
-            if summary.is_empty() || summary.len() < 30 {
-                let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("");
-                let source = item
-                    .get("sourceName")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                item["summary"] = json!(
-                    crate::services::agent::response_agent::article_summary_placeholder(
-                        source, title
-                    )
-                );
-            }
-
-            // 确保 publishedAt 存在
-            if item
-                .get("publishedAt")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .is_empty()
-            {
-                item["publishedAt"] = json!(chrono::Utc::now().to_rfc3339());
-            }
-
-            // 确保 author 存在
-            if item.get("author").is_none() {
-                item["author"] = json!("");
-            }
-
-            // 确保 relevanceReason 存在
-            if item
-                .get("relevanceReason")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .is_empty()
-            {
-                item["relevanceReason"] = json!("AI 联网搜索推荐");
-            }
-
-            // 标记来源
-            item["fromWebSearch"] = json!(true);
-
-            Some(item)
-        })
-        .take(max_items)
-        .collect();
-
-    tracing::info!(results = results.len(), "[AI Web Search] Search completed");
-
-    Ok(results)
-}
-
-/// 清理搜索结果 URL，移除 Google 重定向和追踪参数
-fn clean_search_result_url(url: &str) -> String {
-    let url = url.trim();
-
-    // 跳过 Google 搜索结果页面的重定向链接
-    if url.contains("google.com/url?") {
-        // 尝试从 Google 重定向链接中提取真实 URL
-        if let Some(start) = url.find("url=").or_else(|| url.find("q=")) {
-            let param_start = start
-                + if url[start..].starts_with("url=") {
-                    4
-                } else {
-                    2
-                };
-            let param_value = &url[param_start..];
-            let end = param_value.find('&').unwrap_or(param_value.len());
-            let decoded = urlencoding::decode(&param_value[..end]).unwrap_or_default();
-            if decoded.starts_with("http") {
-                return decoded.to_string();
-            }
-        }
-        return String::new();
-    }
-
-    // 跳过 Google AMP 链接
-    if url.contains("google.com/amp/") || url.contains("/amp/s/") {
-        // 尝试提取原始 URL
-        if let Some(amp_pos) = url.find("/amp/s/").or_else(|| url.find("google.com/amp/")) {
-            let clean_start = if url[amp_pos..].starts_with("/amp/s/") {
-                amp_pos + 7
-            } else if let Some(pos) = url[amp_pos..].find("/amp/") {
-                amp_pos + pos + 5
-            } else {
-                return String::new();
-            };
-            let cleaned = &url[clean_start..];
-            // 添加 https:// 如果没有
-            if cleaned.starts_with("http") {
-                return cleaned.to_string();
-            } else {
-                return format!("https://{}", cleaned);
-            }
-        }
-        return String::new();
-    }
-
-    // 跳过 Google 缓存
-    if url.contains("webcache.googleusercontent.com") {
-        return String::new();
-    }
-
-    // 移除常见的追踪参数
-    if let Some(query_start) = url.find('?') {
-        let base_url = &url[..query_start];
-        let query = &url[query_start + 1..];
-
-        // 保留必要的参数，移除追踪参数
-        let tracking_params = [
-            "utm_source",
-            "utm_medium",
-            "utm_campaign",
-            "utm_content",
-            "utm_term",
-            "fbclid",
-            "gclid",
-            "ref",
-            "source",
-            "mc_cid",
-            "mc_eid",
-        ];
-
-        let clean_params: Vec<&str> = query
-            .split('&')
-            .filter(|param| {
-                let key = param.split('=').next().unwrap_or("");
-                !tracking_params.contains(&key)
-            })
-            .collect();
-
-        if clean_params.is_empty() {
-            return base_url.to_string();
-        } else {
-            return format!("{}?{}", base_url, clean_params.join("&"));
-        }
-    }
-
-    url.to_string()
-}
-
-/// 从 AI 响应中提取 JSON 数组
-fn extract_json_array_from_ai_response(text: &str) -> Vec<Value> {
-    // 尝试找到 JSON 数组
-    let json_start = text.find('[');
-    let json_end = text.rfind(']');
-
-    if let (Some(start), Some(end)) = (json_start, json_end) {
-        if end > start {
-            let json_str = &text[start..=end];
-            if let Ok(arr) = serde_json::from_str::<Vec<Value>>(json_str) {
-                return arr;
-            }
-        }
-    }
-
-    // 尝试解析 markdown 代码块中的 JSON
-    if text.contains("```json") {
-        let parts: Vec<&str> = text.split("```json").collect();
-        if parts.len() > 1 {
-            if let Some(json_part) = parts[1].split("```").next() {
-                if let Ok(arr) = serde_json::from_str::<Vec<Value>>(json_part.trim()) {
-                    return arr;
-                }
-            }
-        }
-    }
-
-    // 尝试普通代码块
-    if text.contains("```") {
-        let parts: Vec<&str> = text.split("```").collect();
-        for part in parts {
-            let trimmed = part.trim();
-            if trimmed.starts_with('[') {
-                if let Ok(arr) = serde_json::from_str::<Vec<Value>>(trimmed) {
-                    return arr;
-                }
-            }
-        }
-    }
-
-    vec![]
-}
-
-/// 从 URL 中提取域名
-fn extract_domain_from_url(url: &str) -> String {
-    url.trim_start_matches("https://")
-        .trim_start_matches("http://")
-        .trim_start_matches("www.")
-        .split('/')
-        .next()
-        .unwrap_or("未知来源")
-        .to_string()
 }
 
 #[cfg(test)]
@@ -5579,6 +5020,22 @@ mod brew_db_helpers_tests {
         let mut params = HashMap::new();
         params.insert("webSearch".into(), json!("no"));
         assert!(!parse_allow_web_search(&params));
+    }
+
+    #[test]
+    fn outbound_web_search_requires_granted_ai_search() {
+        assert!(!outbound_web_search_allowed(false, true, None));
+        assert!(!outbound_web_search_allowed(true, false, None));
+        assert!(outbound_web_search_allowed(true, true, None));
+        assert!(
+            !outbound_web_search_allowed(true, true, Some(&["brew:read".to_string()])),
+            "autonomy cap without ai:search must not outbound"
+        );
+        assert!(outbound_web_search_allowed(
+            true,
+            true,
+            Some(&["brew:read".to_string(), "ai:search".to_string()])
+        ));
     }
 
     #[test]

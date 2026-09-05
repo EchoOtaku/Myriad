@@ -697,7 +697,8 @@ export const TappWidgetSandbox = memo(
           hasExact('ai:generate') ||
           hasExact('ai:analyze') ||
           hasExact('ai:chat') ||
-          hasExact('ai:image')
+          hasExact('ai:image') ||
+          hasExact('ai:search')
         const hasMedia =
           hasExact('media:read') ||
           hasExact('media:control') ||

@@ -20,13 +20,15 @@ use axum::{
 };
 use myriad_merope::{
     build_character_asset_contract, build_character_visual_edit_prompt,
-    build_character_visual_prompt, character_asset_contract_fingerprint, compile_layered_rig,
-    migrate_rig_manifest, validate_character_asset_source, RigBone, RigCompileSource,
-    RigLayerSource, RigManifest, RigMotionProfile, RigOutfitProfile, RigPart, RigPoint, RigQuality,
-    RigSemanticAnchor, RigSemantics, RigSize, RigSpatialProfile, RigTexture, RigVertex,
-    CHARACTER_ASSET_CONTRACT_VERSION, MEROPE_STYLE_REFERENCE_SHA256, MEROPE_VISUAL_SCHOOL_VERSION,
-    PORTRAIT_CANVAS_HEIGHT, PORTRAIT_CANVAS_WIDTH, PORTRAIT_GENERATION_HEIGHT,
-    PORTRAIT_GENERATION_WIDTH, RIG_SCHEMA_VERSION,
+    build_character_visual_prompt, build_sticker_avatar_contract, build_sticker_avatar_prompt,
+    character_asset_contract_fingerprint, compile_layered_rig, migrate_rig_manifest,
+    validate_character_asset_source, RigBone, RigCompileSource, RigLayerSource, RigManifest,
+    RigMotionProfile, RigOutfitProfile, RigPart, RigPoint, RigQuality, RigSemanticAnchor,
+    RigSemantics, RigSize, RigSpatialProfile, RigTexture, RigVertex,
+    CHARACTER_ASSET_CONTRACT_VERSION, MEROPE_STICKER_STYLE_REFERENCE_SHA256,
+    MEROPE_STYLE_REFERENCE_SHA256, MEROPE_VISUAL_SCHOOL_VERSION, PORTRAIT_CANVAS_HEIGHT,
+    PORTRAIT_CANVAS_WIDTH, PORTRAIT_GENERATION_HEIGHT, PORTRAIT_GENERATION_WIDTH,
+    RIG_SCHEMA_VERSION, STICKER_AVATAR_CONTRACT_VERSION, STICKER_AVATAR_SIZE,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionTrait};
 use serde::Deserialize;
@@ -50,16 +52,28 @@ const MAX_RIG_IMPORT_ATLAS_BYTES: usize = 20 * 1024 * 1024;
 const MAX_RIG_ANALYSIS_REFERENCE_BYTES: usize = 10 * 1024 * 1024;
 const MEROPE_STYLE_REFERENCE_BYTES: &[u8] =
     include_bytes!("../../assets/merope/style-reference.png");
+/// 项目 logo 那张贴纸。Q 版头像的造型语言就是照它来的。
+const MEROPE_STICKER_STYLE_REFERENCE_BYTES: &[u8] =
+    include_bytes!("../../assets/merope/sticker-style-reference.webp");
 
 fn merope_style_reference(
 ) -> Result<image_generation::ImageReference, image_generation::ImageGenerationError> {
     image_generation::ImageReference::new(MEROPE_STYLE_REFERENCE_BYTES.to_vec(), "image/png")
 }
 
+fn merope_sticker_style_reference(
+) -> Result<image_generation::ImageReference, image_generation::ImageGenerationError> {
+    image_generation::ImageReference::new(
+        MEROPE_STICKER_STYLE_REFERENCE_BYTES.to_vec(),
+        "image/webp",
+    )
+}
+
 pub fn create_routes(app_state: AppState) -> Router<AppState> {
     let owner = Router::new()
         .route("/", get(get_site_rig))
         .route("/portrait", post(generate_portrait))
+        .route("/avatar", post(generate_sticker_avatar))
         .route(
             "/portrait/upload",
             post(upload_portrait).layer(DefaultBodyLimit::max(12 * 1024 * 1024)),
@@ -1111,7 +1125,7 @@ pub async fn upload_portrait(
                 image_bytes = Some(reference);
             }
             Some("image") => {
-                return Err(bad_request("Portrait upload fields must not be duplicated"))
+                return Err(bad_request("Portrait upload fields must not be duplicated"));
             }
             _ => return Err(bad_request("Portrait upload contains an unsupported field")),
         }
@@ -1478,6 +1492,218 @@ pub async fn generate_portrait(
         "characterAssetContractVersion": CHARACTER_ASSET_CONTRACT_VERSION,
         "generationFingerprint": contract_fingerprint,
     })))
+}
+
+fn sticker_avatar_provider_error(error: image_generation::ImageGenerationError) -> ApiError {
+    let code = image_generation::image_generation_failure_code(&error);
+    tracing::error!(%error, code, "sticker avatar generation failed");
+    (
+        StatusCode::BAD_GATEWAY,
+        Json(json!({ "error": error.to_string(), "code": code })),
+    )
+}
+
+async fn release_avatar_generation_lease(db: &DatabaseConnection, token: &str) {
+    if let Err(error) = merope::release_avatar_generation(db, token).await {
+        tracing::error!(%error, "failed to release sticker avatar generation lease");
+    }
+}
+
+async fn cleanup_uncommitted_avatar(
+    db: &DatabaseConnection,
+    persisted: &image_generation::PersistedGeneratedImage,
+) {
+    if !persisted.created {
+        return;
+    }
+    let is_current = merope::get_persona(db)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|persona| persona.avatar_asset_id)
+        .is_some_and(|asset_id| asset_id == persisted.url);
+    if is_current {
+        return;
+    }
+    if let Err(error) = image_generation::remove_persisted_generated(persisted).await {
+        tracing::warn!(%error, url = %persisted.url, "failed to remove uncommitted sticker avatar");
+    }
+}
+
+/// POST /api/merope/rig/avatar
+///
+/// 从已确认的主立绘派生一张 Q 版贴纸头像。主立绘是身份锚，项目 logo 是造型
+/// 参考——两张都作为参考图上传，文字只负责把最容易漂的颜色钉住。
+pub async fn generate_sticker_avatar(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+) -> ApiResult<Json<Value>> {
+    require_merope_enabled().await?;
+    let user_id = require_owner(&claims, &db).await?;
+    let persona = merope::get_persona(&db)
+        .await
+        .map_err(internal_error)?
+        .ok_or_else(portrait_required_for_avatar)?;
+    let portrait_asset_id = persona
+        .portrait_asset_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+        .ok_or_else(portrait_required_for_avatar)?
+        .to_string();
+    let name = persona.name.trim();
+    let visual_profile = persona.visual_profile.clone().unwrap_or(Value::Null);
+
+    let anchor = image_generation::load_local_reference(&portrait_asset_id)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "stored master portrait is unusable as an avatar anchor");
+            (
+                StatusCode::CONFLICT,
+                Json(json!({
+                    "error": "The stored master portrait is missing from site storage",
+                    "code": "portrait_required"
+                })),
+            )
+        })?;
+    let style = merope_sticker_style_reference().map_err(portrait_generation_config_error)?;
+
+    let contract = build_sticker_avatar_contract(name, &visual_profile, &portrait_asset_id);
+    let contract_fingerprint = character_asset_contract_fingerprint(&contract);
+    let prompt = build_sticker_avatar_prompt(name, &visual_profile);
+    let dynamic = crate::GLOBAL_DYNAMIC_CONFIG.read().await.clone();
+    let config = image_generation::config_from_dynamic(&dynamic)
+        .map_err(portrait_generation_config_error)?;
+    tracing::info!(
+        provider = %config.provider,
+        model = %config.model,
+        size = STICKER_AVATAR_SIZE,
+        prompt_chars = prompt.chars().count(),
+        sticker_contract_version = STICKER_AVATAR_CONTRACT_VERSION,
+        style_reference_sha256 = MEROPE_STICKER_STYLE_REFERENCE_SHA256,
+        "sticker avatar generation started"
+    );
+
+    let generation_token = Uuid::new_v4().to_string();
+    let pending = json!({
+        "token": generation_token,
+        "inputFingerprint": contract_fingerprint,
+        "startedAt": chrono::Utc::now().to_rfc3339(),
+    });
+    // 名字与外观按人设行原样比对：这里不做归一化，锁要和落盘那一步锁同一组值。
+    let stored_visual_profile = persona.visual_profile.clone().unwrap_or(Value::Null);
+    let acquired = merope::acquire_avatar_generation(
+        &db,
+        &persona.name,
+        &stored_visual_profile,
+        &portrait_asset_id,
+        &pending,
+    )
+    .await
+    .map_err(internal_error)?;
+    if !acquired {
+        let current = merope::get_persona(&db).await.map_err(internal_error)?;
+        let (message, code) = if current.as_ref().is_some_and(|persona| {
+            merope::avatar_generation_is_pending(persona.avatar_generation.as_ref())
+        }) {
+            (
+                "An avatar generation is already in progress",
+                "avatar_generation_in_progress",
+            )
+        } else {
+            (
+                "Character visual inputs changed before generation started",
+                "character_visual_inputs_changed",
+            )
+        };
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({ "error": message, "code": code })),
+        ));
+    }
+
+    let generated = match crate::services::ai_cost_ledger::with_site_ai_ledger(
+        user_id,
+        "merope",
+        "sticker-avatar",
+        image_generation::generate_image_with_references(
+            &config,
+            &prompt,
+            STICKER_AVATAR_SIZE,
+            STICKER_AVATAR_SIZE,
+            &[anchor, style],
+            Some(image_generation::ImageBackground::Transparent),
+        ),
+    )
+    .await
+    {
+        Ok(generated) => generated,
+        Err(error) => {
+            release_avatar_generation_lease(&db, &generation_token).await;
+            return Err(sticker_avatar_provider_error(error));
+        }
+    };
+    let persisted = match image_generation::persist_generated_with_status(&generated).await {
+        Ok(persisted) => persisted,
+        Err(error) => {
+            release_avatar_generation_lease(&db, &generation_token).await;
+            return Err(bad_request(&error.to_string()));
+        }
+    };
+    let url = persisted.url.clone();
+    let avatar_generation = json!({
+        "fingerprint": contract_fingerprint,
+        "contract": contract,
+        "provider": config.provider,
+        "model": config.model,
+        "sourcePortraitAssetId": portrait_asset_id,
+    });
+    let completed = match merope::complete_avatar_generation(
+        &db,
+        &persona.name,
+        &stored_visual_profile,
+        &portrait_asset_id,
+        &generation_token,
+        &url,
+        &avatar_generation,
+        user_id,
+    )
+    .await
+    {
+        Ok(completed) => completed,
+        Err(error) => {
+            release_avatar_generation_lease(&db, &generation_token).await;
+            cleanup_uncommitted_avatar(&db, &persisted).await;
+            return Err(internal_error(error));
+        }
+    };
+    if !completed {
+        release_avatar_generation_lease(&db, &generation_token).await;
+        cleanup_uncommitted_avatar(&db, &persisted).await;
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": "The master portrait changed while the avatar was generating",
+                "code": "character_visual_inputs_changed"
+            })),
+        ));
+    }
+    Ok(Json(json!({
+        "avatarUrl": url,
+        "avatarAssetId": url,
+        "stickerAvatarContractVersion": STICKER_AVATAR_CONTRACT_VERSION,
+        "generationFingerprint": contract_fingerprint,
+    })))
+}
+
+fn portrait_required_for_avatar() -> ApiError {
+    (
+        StatusCode::CONFLICT,
+        Json(json!({
+            "error": "Generate or upload a master portrait before making an avatar",
+            "code": "portrait_required"
+        })),
+    )
 }
 
 #[cfg(test)]

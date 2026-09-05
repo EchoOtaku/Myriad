@@ -773,25 +773,29 @@ export function TappDetailPage() {
     }
 
     if (setting.type === 'color') {
+      const hex = String(settingsValues[setting.key] ?? '#6366f1')
       return (
-        <SettingItemWrapper
+        <InputItem
           key={setting.key}
           itemKey={setting.key}
           label={setting.label}
           description={setting.description}
+          value={hex}
+          onChange={(v) => void saveSetting(setting.key, v)}
+          placeholder="#6366f1"
           disabled={disabled}
+          loading={busy}
           layout="horizontal"
-        >
-          <input
-            type="color"
-            className="tapp-detail-color-input"
-            value={String(settingsValues[setting.key] ?? '#6366f1')}
-            onChange={(e) => void saveSetting(setting.key, e.target.value)}
-            disabled={disabled}
-            aria-label={setting.label}
-            title={setting.label}
-          />
-        </SettingItemWrapper>
+          labelAccessory={
+            <span
+              className="tapp-detail-color-swatch"
+              style={{
+                background: /^#[0-9a-f]{3,8}$/i.test(hex) ? hex : 'transparent',
+              }}
+              aria-hidden
+            />
+          }
+        />
       )
     }
 

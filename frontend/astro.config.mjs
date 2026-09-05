@@ -6,6 +6,11 @@ import { fileURLToPath } from 'node:url'
 import react from '@astrojs/react'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig, fontProviders } from 'astro/config'
+import {
+  AI_IMAGE_REQUEST_TIMEOUT_MS,
+  AI_REQUEST_TIMEOUT_FLOOR_MS,
+  aiRequestTimeoutMs,
+} from './src/utils/aiRequestTimeout.mjs'
 // rollup-plugin-visualizer 与 Vite 7 (Rolldown) 不兼容，仅在构建时按需加载
 // import { visualizer } from 'rollup-plugin-visualizer'
 
@@ -86,12 +91,9 @@ const BACKEND_TARGET = 'http://127.0.0.1:1103'
 const PLAYGROUND_PROXY_TIMEOUT_MS = 30 * 60 * 1000
 // Federation file-meta downloads / chunk uploads can exceed the default 30s.
 const FEDERATION_TRANSFER_PROXY_TIMEOUT_MS = 10 * 60 * 1000
-// Merope portrait + Agent persona onboarding (Pro distill / name / draft /
-// visual design). Backend Pro and image-generation sockets stay idle until the
-// model returns. Default 30s proxy timeout surfaces as "Backend proxy timeout".
-const MEROPE_PROXY_TIMEOUT_MS = 15 * 60 * 1000
-// Non-stream AI HTTP (agent process, speech, TapSDK AI). Floor 5 min.
-const AGENT_PROCESS_PROXY_TIMEOUT_MS = 5 * 60 * 1000
+// Keep names for tests; values live in aiRequestTimeout.mjs.
+const MEROPE_PROXY_TIMEOUT_MS = AI_IMAGE_REQUEST_TIMEOUT_MS
+const AGENT_PROCESS_PROXY_TIMEOUT_MS = AI_REQUEST_TIMEOUT_FLOOR_MS
 
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
@@ -124,37 +126,6 @@ function requestPathname(urlPath) {
 function isFederationTransferContentPath(urlPath) {
   const path = requestPathname(urlPath)
   return /^\/api\/federation\/transfers\/[^/]+\/content$/.test(path)
-}
-
-function isMeropeApiPath(urlPath) {
-  return requestPathname(urlPath).startsWith('/api/merope/')
-}
-
-function isAgentPersonaGenerationPath(urlPath) {
-  // Subpaths are Pro distill jobs (signals / draft / import / name / visual-design).
-  // `/api/agent/persona` itself is GET/PUT/DELETE of the saved record — keep 30s.
-  return requestPathname(urlPath).startsWith('/api/agent/persona/')
-}
-
-function isModel3dLongPath(urlPath) {
-  // Successful task GET also downloads and validates the provider GLB.
-  return requestPathname(urlPath).startsWith('/api/model3d/tasks')
-}
-
-function isAgentProcessPath(urlPath) {
-  return requestPathname(urlPath) === '/api/agent/process'
-}
-
-/** Speech / TapSDK AI / report+prompt generation: default 30s proxy surfaces as timeout. */
-function isAiLongRequestPath(urlPath) {
-  const path = requestPathname(urlPath)
-  return (
-    path.startsWith('/api/speech') ||
-    path.startsWith('/api/tapp/ai/') ||
-    path.startsWith('/api/reports/generate') ||
-    path === '/api/prompt/generate' ||
-    path.startsWith('/api/ai/')
-  )
 }
 
 /**
@@ -508,20 +479,15 @@ function backendDevProxyPlugin() {
           const body = hasBody ? await readRequestBody(req) : undefined
           const retryable = method === 'GET' || method === 'HEAD'
           const requestPath = requestPathname(originalUrl)
+          const aiTimeoutMs = aiRequestTimeoutMs(requestPath)
           const timeoutMs = requestPath.startsWith('/api/tapp-playground/')
             ? PLAYGROUND_PROXY_TIMEOUT_MS
             : isFederationTransferApiPath(originalUrl) ||
                 isFederationTransferContentPath(originalUrl)
               ? FEDERATION_TRANSFER_PROXY_TIMEOUT_MS
-              : isMeropeApiPath(originalUrl) ||
-                  isAgentPersonaGenerationPath(originalUrl) ||
-                  isModel3dLongPath(originalUrl)
-                ? MEROPE_PROXY_TIMEOUT_MS
-                : isAgentSsePath(originalUrl)
-                  ? PLAYGROUND_PROXY_TIMEOUT_MS
-                  : isAgentProcessPath(originalUrl) || isAiLongRequestPath(originalUrl)
-                    ? AGENT_PROCESS_PROXY_TIMEOUT_MS
-                    : 30000
+              : isAgentSsePath(originalUrl)
+                ? PLAYGROUND_PROXY_TIMEOUT_MS
+                : aiTimeoutMs ?? 30000
           // SSE and large transfer downloads must be piped. Buffering a multi-MB
           // GET /transfers/{id}/content (or a long-lived EventSource) hits the
           // ordinary timeout / memory path and turns a healthy stream into 502.
@@ -873,17 +839,30 @@ export default defineConfig({
       // discovered dep; Agora's ua-parser-js 2.x default-import then held
       // react.js forever and the PageLoader never dismissed.
       holdUntilCrawlEnd: false,
-      // Pre-bundle deps used by lazy routes (Tapp detail / playground).
-      // Discovering them mid-session triggers "504 Outdated Optimize Dep" and
-      // breaks React.lazy chunks like TappDetailView until a full hard reload.
+      // Mid-session discovery rewrites the dep browserHash. Vite then 504s
+      // the old hash, and Astro's island retry of App.tsx dies with
+      // "Outdated Optimize Dep" instead of a clean full reload.
+      noDiscovery: true,
       include: [
+        'axios',
+        'isomorphic-dompurify',
         'jszip',
+        'lucide-react',
         'prismjs',
         'prismjs/components/prism-json',
         'react',
         'react-dom',
         'react-dom/client',
+        'react-icons/bs',
+        'react-icons/fa',
+        'react-icons/fa6',
+        'react-icons/lu',
+        'react-icons/si',
         'react-router-dom',
+        // Dynamic imports that are not on the first-paint graph.
+        'ag-psd',
+        'motion/react',
+        'pinyin-pro',
         // The default SDK entries are self-contained UMD, not browser ESM.
         // Prebundle them to expose exports; excluding them yields undefined
         // createClient / RTM in the browser. Do not use the optional ESM tree.

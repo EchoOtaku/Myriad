@@ -25,8 +25,6 @@ pub struct DataPaths {
     /// 缓存目录（默认: "cache"）
     pub cache: PathBuf,
     /// 平台数据缓存目录（默认: "cache/platforms"）
-    /// 规范路径；部分历史调用仍写相对字面量 `cache/platforms`
-    #[allow(dead_code)]
     pub cache_platforms: PathBuf,
     /// 原始数据缓存目录（默认: "cache/raw"；可用 `CACHE_DIR` 覆盖根）
     pub cache_raw: PathBuf,
@@ -64,6 +62,37 @@ impl DataPaths {
     pub fn rsshub_routes_cache(&self) -> PathBuf {
         self.cache.join("rsshub_routes.json")
     }
+
+    /// Filtered JSON for one platform (`{slug}_filtered.json`).
+    pub fn platform_filtered_file(&self, platform: &str) -> PathBuf {
+        self.cache_platforms
+            .join(format!("{platform}_filtered.json"))
+    }
+
+    /// Raw fetch JSON for one platform (`{slug}.json` under cache_raw).
+    pub fn platform_raw_file(&self, platform: &str) -> PathBuf {
+        self.cache_raw.join(format!("{platform}.json"))
+    }
+}
+
+/// Process-wide platform cache directory (`CACHE_DIR/platforms`).
+pub fn platforms_cache_dir() -> &'static Path {
+    paths().cache_platforms.as_path()
+}
+
+/// Filtered JSON path for one platform slug.
+pub fn platform_filtered_file(platform: impl AsRef<str>) -> PathBuf {
+    paths().platform_filtered_file(platform.as_ref())
+}
+
+/// Process-wide raw platform cache directory (`CACHE_DIR/raw`).
+pub fn raw_cache_dir() -> &'static Path {
+    paths().cache_raw.as_path()
+}
+
+/// Raw fetch JSON path for one platform slug.
+pub fn platform_raw_file(platform: impl AsRef<str>) -> PathBuf {
+    paths().platform_raw_file(platform.as_ref())
 }
 
 impl Default for DataPaths {

@@ -1,13 +1,15 @@
 /**
  * Home dashboard layout: standard (centered 16×4) vs free (same cell size, fill stage).
  *
- * Cell size is derived from the standard stage (max-width + stage pad inside page padding),
- * not from the free canvas — otherwise filling the screen would enlarge widgets.
+ * Cell size is derived from the standard stage (max-width + stage pad inside page padding).
+ * Free uses the same centered 16-col width; row count is a fixed taller canvas,
+ * not the standard 4 rows and not viewport-grown.
  * Visual gutters live as `--home-*` on `.home-shell` (Home.css); the rem steps here
  * are the same numbers.
  */
 
 import type { WidgetConfig } from '../components/widgetGridTypes'
+import type { StickerCrop } from './homeStickerCrop'
 import { widgetSizeSpan } from './widgetSizeScale'
 
 export type HomeLayoutMode = 'standard' | 'free'
@@ -37,6 +39,11 @@ export const HOME_STANDARD_STAGE_PAD_REM = 0.5
 export const HOME_FREE_PAGE_PAD_Y_REM = 1.5
 export const HOME_STANDARD_COLS = 16
 export const HOME_STANDARD_ROWS = 4
+/** Free canvas rows: fixed, taller than standard, independent of viewport. */
+export const HOME_FREE_ROWS = 8
+/** Free layout: max occupied cells across all widgets (16×8 canvas is 128). */
+export const HOME_FREE_MAX_CELLS = 96
+export const HOME_STICKER_TYPE = 'sticker'
 export const HOME_LAYOUT_MODE_KEY = 'myriad.home-layout-mode'
 
 export function homePagePadXRem(viewportWidth: number): number {
@@ -89,10 +96,9 @@ export function estimateFreeHomeHostSize(
   viewportHeight: number,
   rootFontSize = 16,
 ): { width: number; height: number } {
-  const padX = homePagePaddingX(viewportWidth, rootFontSize)
   const stage = homeStagePadPx(rootFontSize)
   return {
-    width: Math.max(0, viewportWidth - padX * 2 - stage),
+    width: standardHomeGridWidth(viewportWidth, rootFontSize),
     height: Math.max(
       0,
       viewportHeight - homeFreePagePadYPx(rootFontSize) - stage,
@@ -109,16 +115,13 @@ export function resolveFreeHomeGrid(input: {
   if (input.availableWidth <= 0 || input.availableHeight <= 0) {
     return {
       cols: HOME_STANDARD_COLS,
-      rows: HOME_STANDARD_ROWS,
+      rows: HOME_FREE_ROWS,
       cell,
     }
   }
   return {
-    cols: Math.max(HOME_STANDARD_COLS, Math.floor(input.availableWidth / cell)),
-    rows: Math.max(
-      HOME_STANDARD_ROWS,
-      Math.floor(input.availableHeight / cell),
-    ),
+    cols: HOME_STANDARD_COLS,
+    rows: HOME_FREE_ROWS,
     cell,
   }
 }
@@ -135,6 +138,92 @@ export function cloneHomeWidgets(widgets: WidgetConfig[]): WidgetConfig[] {
     ...widget,
     position: { ...widget.position },
   }))
+}
+
+export function isHomeStickerItem(item: { kind?: string }): boolean {
+  return item.kind === 'sticker'
+}
+
+export function isHomeWidgetItem(item: { kind?: string }): boolean {
+  return !isHomeStickerItem(item)
+}
+
+export { stickerPixelSize } from './homeStickerSize'
+
+export function findEmptyHomeSlot(
+  widgets: WidgetConfig[],
+  size: string,
+  columns: number,
+  rows: number,
+): { x: number; y: number } | null {
+  const dim = widgetSizeSpan(size)
+  const w = Math.min(dim.w, Math.max(1, columns))
+  const h = Math.min(dim.h, Math.max(1, rows))
+  for (let y = 0; y <= rows - h; y += 1) {
+    for (let x = 0; x <= columns - w; x += 1) {
+      let hit = false
+      for (const other of widgets) {
+        const od = widgetSizeSpan(other.size)
+        if (
+          x < other.position.x + od.w &&
+          x + w > other.position.x &&
+          y < other.position.y + od.h &&
+          y + h > other.position.y
+        ) {
+          hit = true
+          break
+        }
+      }
+      if (!hit) return { x, y }
+    }
+  }
+  return null
+}
+
+export function createHomeStickerItem(input: {
+  size: WidgetConfig['size']
+  position: { x: number; y: number }
+  imageUrl: string
+  prompt: string
+  crop?: StickerCrop
+}): WidgetConfig {
+  return {
+    id: `sticker_${Date.now()}`,
+    type: HOME_STICKER_TYPE,
+    kind: 'sticker',
+    size: input.size,
+    position: { ...input.position },
+    config: {
+      imageUrl: input.imageUrl,
+      prompt: input.prompt,
+      ...(input.crop ? { crop: input.crop } : {}),
+    },
+  }
+}
+
+export function homeWidgetCellCount(size: string): number {
+  const span = widgetSizeSpan(size)
+  return span.w * span.h
+}
+
+export function homeWidgetsOccupiedCells(
+  widgets: Array<{ id?: string; size: string; kind?: string }>,
+  omitId?: string,
+): number {
+  let cells = 0
+  for (const widget of widgets) {
+    if (omitId && widget.id === omitId) continue
+    if (!isHomeWidgetItem(widget)) continue
+    cells += homeWidgetCellCount(widget.size)
+  }
+  return cells
+}
+
+export function freeLayoutFitsCellBudget(
+  occupied: number,
+  extra: number,
+): boolean {
+  return occupied + extra <= HOME_FREE_MAX_CELLS
 }
 
 function compareWidgetAreaDesc(a: WidgetConfig, b: WidgetConfig): number {
@@ -233,13 +322,14 @@ export function packWidgetsIntoColumns(
   columns: number,
 ): { widgets: WidgetConfig[]; height: number } {
   const cols = Math.max(1, columns)
-  if (widgets.length === 0) {
+  const source = widgets.filter(isHomeWidgetItem)
+  if (source.length === 0) {
     return { widgets: [], height: HOME_STANDARD_ROWS }
   }
 
   const packed: WidgetConfig[] = []
   let destY = 0
-  for (const band of clusterWidgetsIntoBands(widgets)) {
+  for (const band of clusterWidgetsIntoBands(source)) {
     const shelf = packShelf(band, cols)
     for (const widget of shelf.widgets) {
       packed.push({
@@ -298,14 +388,26 @@ export function serializeDashboardLayout(
   })
 }
 
+export function parseHomeLayoutMode(raw: unknown): HomeLayoutMode {
+  return raw === 'free' ? 'free' : 'standard'
+}
+
 export function readHomeLayoutMode(
   storage?: Pick<Storage, 'getItem'> | null,
 ): HomeLayoutMode {
+  return peekStoredHomeLayoutMode(storage) ?? 'standard'
+}
+
+/** `null` when the site mode has never been cached locally. */
+export function peekStoredHomeLayoutMode(
+  storage?: Pick<Storage, 'getItem'> | null,
+): HomeLayoutMode | null {
   try {
     const raw = storage?.getItem(HOME_LAYOUT_MODE_KEY)
-    return raw === 'free' ? 'free' : 'standard'
+    if (raw == null) return null
+    return parseHomeLayoutMode(raw)
   } catch {
-    return 'standard'
+    return null
   }
 }
 

@@ -1758,7 +1758,6 @@ async fn get_platform_data(
     use once_cell::sync::Lazy;
     use std::collections::HashMap;
     use std::fs;
-    use std::path::PathBuf;
     use std::sync::Arc;
     use tokio::sync::Mutex;
 
@@ -1814,7 +1813,7 @@ async fn get_platform_data(
     }
 
     // 5. FALLBACK: 从平台特定的raw文件读取数据
-    let raw_cache_path = PathBuf::from(format!("./cache/raw/{}.json", platform));
+    let raw_cache_path = crate::services::data_paths::platform_raw_file(platform);
     if !raw_cache_path.exists() {
         return Err("Raw data file not found".to_string());
     }

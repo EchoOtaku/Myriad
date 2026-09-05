@@ -354,7 +354,7 @@ export const en: SettingGuidesCatalog = {
       chain:
         '1) Title-row switch controls collection (on by default; when off the server rejects new beacons).\n2) The client beacons on page open (batched / idle).\n3) The server aggregates PV/UV by server-local calendar day; egress IP may resolve top countries.\n4) Switch 7/14/30 days for trends shared by all sections below.\n5) Nested sections each have their own option guide: pages, events, referrers.',
       frontend: 'Data & stats → Visitor stats subcategory (KPIs including countries, chart, nested lists).',
-      notes: 'Historical data remains readable when collection is off. Admin and site-owner sessions are excluded. Same visitor counts once per day for UV (hashed; no raw IP). Country tiles can be empty when geo lookup fails.',
+      notes: 'Historical data remains readable when collection is off. Admin and site-owner sessions are excluded. Use “Opt out on this device” in this group to stop beacons from this browser only. Same visitor counts once per day for UV (hashed; no raw IP). Country tiles can be empty when geo lookup fails.',
     },
     pageAnalytics: {
       what: 'Traffic by route in the selected range.',
@@ -616,6 +616,14 @@ export const en: SettingGuidesCatalog = {
         '1) Use “Add provider” in the page header to pick a preset. You can add more than one of the same kind.\n2) Each source has its own name, ID, and key.\n3) Text, image, and speech pick from these sources.',
       frontend: 'Settings → AI → “Add provider” in the section header.',
       notes: 'You do not re-enter a key when switching models. New keys here win over older per-feature fields.',
+    },
+    webSearch: {
+      what: 'TinyFish key for Work-mode web search. Search is free; a key is still required.',
+      chain:
+        '1) Sign up at agent.tinyfish.ai, paste the key here, and save.\n2) Work-mode ai.webSearch and reading-list web fallback use TinyFish Search first (reading lists also Fetch page text).\n3) If this key is empty, search falls back to configured Gemini Google Search.\n4) The key is a host secret: outbound only, never returned to apps.',
+      frontend: 'Settings → AI → Web search. After saving, ask a Work-mode question that needs the live web.',
+      notes:
+        'Visitors do not fill this in. Chat mode does not use web search. Clear the field and save to delete the stored key; saving the mask leaves it unchanged.',
     },
     provider: {
       what: 'Which smart-service company to use.',

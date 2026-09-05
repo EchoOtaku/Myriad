@@ -3,16 +3,10 @@ import { describe, it } from 'node:test'
 import {
   classifyWidgetLibraryKind,
   collectWidgetLibrarySearchText,
-  formatWidgetLibrarySize,
   normalizeWidgetLibraryQuery,
-  presentWidgetLibraryFilters,
   presentWidgetLibraryKindFilters,
-  presentWidgetLibrarySizes,
-  widgetLibrarySizes,
-  widgetMatchesLibraryFilter,
   widgetMatchesLibraryKind,
   widgetMatchesLibrarySearch,
-  widgetMatchesLibrarySize,
   widgetTypeMatchesLibrarySearch,
 } from './widgetLibrarySearch'
 
@@ -109,56 +103,6 @@ describe('widgetLibrarySearch', () => {
     assert.equal(widgetMatchesLibrarySearch('x', [null, 'axb']), true)
   })
 
-  it('uses supported sizes when present, else default', () => {
-    assert.deepEqual(widgetLibrarySizes({ defaultSize: '2x2' }), ['2x2'])
-    assert.deepEqual(
-      widgetLibrarySizes({
-        defaultSize: '2x2',
-        supportedSizes: ['2x2', '4x2', '4x1'],
-      }),
-      ['2x2', '4x2', '4x1'],
-    )
-  })
-
-  it('matches size filter against default or supported sizes', () => {
-    assert.equal(widgetMatchesLibrarySize('all', { defaultSize: '4x2' }), true)
-    assert.equal(widgetMatchesLibrarySize('4x2', { defaultSize: '4x2' }), true)
-    assert.equal(widgetMatchesLibrarySize('1x1', { defaultSize: '4x2' }), false)
-    assert.equal(
-      widgetMatchesLibrarySize('4x2', {
-        defaultSize: '2x2',
-        supportedSizes: ['2x2', '4x2'],
-      }),
-      true,
-    )
-  })
-
-  it('formats size labels with a multiplication sign', () => {
-    assert.equal(formatWidgetLibrarySize('4x2'), '4×2')
-    assert.equal(formatWidgetLibrarySize('1x1'), '1×1')
-  })
-
-  it('omits the size control when only one size is present', () => {
-    assert.deepEqual(
-      presentWidgetLibrarySizes([
-        { defaultSize: '4x2' },
-        { defaultSize: '4x2', supportedSizes: ['4x2'] },
-      ]),
-      [],
-    )
-  })
-
-  it('lists present sizes in catalog order without flattening an All chip', () => {
-    assert.deepEqual(
-      presentWidgetLibrarySizes([
-        { defaultSize: '4x2' },
-        { defaultSize: '1x1', supportedSizes: ['1x1', '2x1', '2x2'] },
-        { defaultSize: '2x2', supportedSizes: ['2x2', '4x2'] },
-      ]),
-      ['1x1', '2x1', '2x2', '4x2'],
-    )
-  })
-
   it('classifies host widgets onto topic rows with Tapp', () => {
     assert.equal(classifyWidgetLibraryKind({ id: 'weather' }), 'tapp:utility')
     assert.equal(classifyWidgetLibraryKind({ id: 'music-player' }), 'tapp:media')
@@ -201,7 +145,7 @@ describe('widgetLibrarySearch', () => {
     )
   })
 
-  it('omits empty report / builtin rows', () => {
+  it('omits empty report rows', () => {
     assert.deepEqual(presentWidgetLibraryKindFilters([{ id: 'weather' }]), [
       'all',
       'tapp:utility',
@@ -234,41 +178,5 @@ describe('widgetLibrarySearch', () => {
       widgetMatchesLibraryKind('tapp:media', { id: 'weather' }),
       false,
     )
-  })
-
-  it('unifies kind and size into one filter list', () => {
-    assert.deepEqual(
-      presentWidgetLibraryFilters([
-        { id: 'weather', defaultSize: '2x2', supportedSizes: ['2x2', '4x2'] },
-        { id: 'report-github', defaultSize: '4x2' },
-        {
-          id: 'com.example.clock',
-          isTappWidget: true,
-          category: 'media',
-          defaultSize: '2x2',
-        },
-      ]),
-      [
-        'all',
-        'report',
-        'tapp:media',
-        'tapp:utility',
-        'size:2x2',
-        'size:4x2',
-      ],
-    )
-  })
-
-  it('matches the unified filter against kind or size', () => {
-    const weather = {
-      id: 'weather',
-      defaultSize: '2x2',
-      supportedSizes: ['2x2', '4x2'],
-    }
-    assert.equal(widgetMatchesLibraryFilter('all', weather), true)
-    assert.equal(widgetMatchesLibraryFilter('tapp:utility', weather), true)
-    assert.equal(widgetMatchesLibraryFilter('report', weather), false)
-    assert.equal(widgetMatchesLibraryFilter('size:4x2', weather), true)
-    assert.equal(widgetMatchesLibraryFilter('size:1x1', weather), false)
   })
 })

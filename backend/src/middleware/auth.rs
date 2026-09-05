@@ -198,7 +198,7 @@ fn auth_cache_get(user_id: i32) -> Option<Option<AuthSnapshot>> {
     Some(entry.snapshot)
 }
 
-#[allow(dead_code)] // 仅测试调用：本仓无生产调用点（编译器已核）。
+#[cfg(test)]
 fn auth_cache_put(user_id: i32, snapshot: Option<AuthSnapshot>) {
     let mut guard = match auth_cache().lock() {
         Ok(guard) => guard,

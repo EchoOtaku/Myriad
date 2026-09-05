@@ -18,6 +18,17 @@ export type WidgetSizeKey =
   | '4x2'
   | '4x4'
 
+/** Extra home-sticker tiles (not catalog widget sizes). */
+export type StickerExtraSizeKey =
+  | '4x3'
+  | '8x6'
+  | '3x4'
+  | '6x8'
+  | '7x4'
+  | '9x5'
+  | '14x8'
+  | '4x7'
+
 /** Desktop 16-col design cell (library previews). */
 export const STANDARD_CELL_SIZE = 80
 
@@ -62,9 +73,32 @@ const SIZE_SPANS: Record<WidgetSizeKey, { cols: number; rows: number }> = {
 
 export const WIDGET_SIZE_KEYS = Object.keys(SIZE_SPANS) as WidgetSizeKey[]
 
+const STICKER_EXTRA_SPANS: Record<StickerExtraSizeKey, { cols: number; rows: number }> =
+  {
+    '4x3': { cols: 4, rows: 3 },
+    '8x6': { cols: 8, rows: 6 },
+    '3x4': { cols: 3, rows: 4 },
+    '6x8': { cols: 6, rows: 8 },
+    '7x4': { cols: 7, rows: 4 },
+    '9x5': { cols: 9, rows: 5 },
+    '14x8': { cols: 14, rows: 8 },
+    '4x7': { cols: 4, rows: 7 },
+  }
+
+export const STICKER_EXTRA_SIZE_KEYS = Object.keys(
+  STICKER_EXTRA_SPANS,
+) as StickerExtraSizeKey[]
+
 export function widgetSizeSpan(size: string): { w: number; h: number } {
-  const span = SIZE_SPANS[size as WidgetSizeKey]
-  return span ? { w: span.cols, h: span.rows } : { w: 2, h: 2 }
+  const span =
+    SIZE_SPANS[size as WidgetSizeKey] ??
+    STICKER_EXTRA_SPANS[size as StickerExtraSizeKey]
+  if (span) return { w: span.cols, h: span.rows }
+  const match = /^([1-9]\d*)x([1-9]\d*)$/.exec(size)
+  if (match) {
+    return { w: Number(match[1]), h: Number(match[2]) }
+  }
+  return { w: 2, h: 2 }
 }
 
 export const WIDGET_SCALE_MIN = 0.78

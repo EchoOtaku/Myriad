@@ -535,7 +535,7 @@ const gltf = await new GLTFLoader().loadAsync(url);
 
 ## AI API
 
-**权限**: `ai:generate`, `ai:analyze`, `ai:chat`, `ai:image`
+**权限**: `ai:generate`, `ai:analyze`, `ai:chat`, `ai:image`, `ai:search`
 
 AI 只提供服务端治理的 Task API。Manifest 必须通过 `ai` 声明 operation、model tier、context
 source 与 output format，并同时申请 operation 对应的 `ai:*` 权限。
@@ -568,7 +568,8 @@ stop();
 | --------- | ------- | ---- |
 | `generate` | 非空字符串，或 `{ prompt }` | 文本生成 |
 | `analyze` | `{ data, instruction? }` | `data` 必填 |
-| `chat` | `{ message }` 或等价消息字段 | 对话 |
+| `chat` | `{ messages: [{ role, content }] }` | `role` 为 `system` \| `user` \| `assistant`；1–100 条 |
+| `search` | 非空字符串，或 `{ query, searchType?, maxResults?, searchPrompt? }` | 联网搜索；需 `ai:search` |
 | `image` | 非空字符串，或 `{ prompt, width?, height?, referenceImages? }` | 图片生成；见下表 |
 
 #### `operation: "image"`

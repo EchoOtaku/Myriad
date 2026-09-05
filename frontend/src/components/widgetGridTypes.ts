@@ -1,8 +1,14 @@
 import type { ComponentType } from 'react'
 import type { TappSettingItem } from '../tapp/types'
-import type { WidgetSizeKey } from '../utils/widgetSizeScale'
+import type {
+  StickerExtraSizeKey,
+  WidgetSizeKey,
+} from '../utils/widgetSizeScale'
 
-export type WidgetSize = WidgetSizeKey
+export type WidgetSize = WidgetSizeKey | StickerExtraSizeKey
+
+/** Layout tile kind. Absent / `widget` counts toward the free-mode cell budget. */
+export type HomeLayoutItemKind = 'widget' | 'sticker'
 
 export interface WidgetConfig {
   id: string
@@ -10,6 +16,7 @@ export interface WidgetConfig {
   size: WidgetSize
   position: { x: number; y: number }
   config?: any
+  kind?: HomeLayoutItemKind
 }
 
 export interface WidgetComponentProps {

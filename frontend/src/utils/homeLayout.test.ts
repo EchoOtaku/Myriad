@@ -3,28 +3,40 @@ import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import {
   cloneHomeWidgets,
+  createHomeStickerItem,
   effectiveHomeLayoutMode,
   estimateFreeHomeHostSize,
+  findEmptyHomeSlot,
   HOME_FREE_PAGE_PAD_Y_REM,
   HOME_LAYOUT_MODE_KEY,
+  HOME_STICKER_TYPE,
   HOME_PAGE_PAD_X_STEPS,
   HOME_STANDARD_COLS,
   HOME_STANDARD_MAX_WIDTH_REM,
+  HOME_FREE_MAX_CELLS,
+  HOME_FREE_ROWS,
   HOME_STANDARD_ROWS,
   HOME_STANDARD_STAGE_PAD_REM,
   homeFreePagePadYPx,
   homePagePaddingX,
   homePagePadXRem,
   homeStagePadPx,
+  freeLayoutFitsCellBudget,
+  homeWidgetCellCount,
+  homeWidgetsOccupiedCells,
+  isHomeStickerItem,
   packWidgetsIntoColumns,
   parseDashboardLayout,
   parseDashboardLayoutJson,
+  parseHomeLayoutMode,
+  peekStoredHomeLayoutMode,
   persistHomeLayoutMode,
   readHomeLayoutMode,
   resolveFreeHomeGrid,
   serializeDashboardLayout,
   standardHomeCellSize,
   standardHomeGridWidth,
+  stickerPixelSize,
 } from './homeLayout'
 
 const sample = [
@@ -78,10 +90,7 @@ describe('standardHomeCellSize', () => {
 describe('estimateFreeHomeHostSize', () => {
   it('subtracts page pad-x, stage pad, and free pad-y', () => {
     const size = estimateFreeHomeHostSize(1920, 1080)
-    assert.equal(
-      size.width,
-      1920 - homePagePaddingX(1920) * 2 - homeStagePadPx(),
-    )
+    assert.equal(size.width, standardHomeGridWidth(1920))
     assert.equal(
       size.height,
       1080 - homeFreePagePadYPx() - homeStagePadPx(),
@@ -92,21 +101,20 @@ describe('estimateFreeHomeHostSize', () => {
 })
 
 describe('resolveFreeHomeGrid', () => {
-  it('keeps at least the standard 16×4 and grows by whole cells', () => {
+  it('keeps 16 columns and a fixed free row count', () => {
     const cell = 79
     const grid = resolveFreeHomeGrid({
-      availableWidth: 1840,
+      availableWidth: 4000,
       availableHeight: 900,
       cellSize: cell,
     })
     assert.equal(grid.cell, cell)
-    assert.equal(grid.cols, Math.floor(1840 / cell))
-    assert.equal(grid.rows, Math.floor(900 / cell))
-    assert.ok(grid.cols >= HOME_STANDARD_COLS)
-    assert.ok(grid.rows >= HOME_STANDARD_ROWS)
+    assert.equal(grid.cols, HOME_STANDARD_COLS)
+    assert.equal(grid.rows, HOME_FREE_ROWS)
+    assert.notEqual(HOME_FREE_ROWS, HOME_STANDARD_ROWS)
   })
 
-  it('falls back to 16×4 when the host has not been measured', () => {
+  it('falls back to the fixed free grid when the host has not been measured', () => {
     const grid = resolveFreeHomeGrid({
       availableWidth: 0,
       availableHeight: 0,
@@ -114,9 +122,60 @@ describe('resolveFreeHomeGrid', () => {
     })
     assert.deepEqual(grid, {
       cols: HOME_STANDARD_COLS,
-      rows: HOME_STANDARD_ROWS,
+      rows: HOME_FREE_ROWS,
       cell: 80,
     })
+  })
+})
+
+describe('free layout cell budget', () => {
+  it('counts size spans and omits a widget when resizing', () => {
+    assert.equal(homeWidgetCellCount('4x4'), 16)
+    assert.equal(homeWidgetCellCount('2x2'), 4)
+    const widgets = [
+      { id: 'a', size: '4x4' },
+      { id: 'b', size: '4x2' },
+    ]
+    assert.equal(homeWidgetsOccupiedCells(widgets), 24)
+    assert.equal(homeWidgetsOccupiedCells(widgets, 'a'), 8)
+  })
+
+  it('caps free layout at 96 cells', () => {
+    assert.equal(HOME_FREE_MAX_CELLS, 96)
+    assert.equal(freeLayoutFitsCellBudget(96, 0), true)
+    assert.equal(freeLayoutFitsCellBudget(92, 4), true)
+    assert.equal(freeLayoutFitsCellBudget(93, 4), false)
+  })
+
+  it('only counts widget tiles toward the budget', () => {
+    const items = [
+      { id: 'w', size: '4x4' },
+      { id: 'other', size: '4x4', kind: 'sticker' },
+    ]
+    assert.equal(homeWidgetsOccupiedCells(items), 16)
+  })
+
+  it('finds an empty sticker slot and skips occupied cells', () => {
+    const widgets = [
+      {
+        id: 'w1',
+        type: 'welcome',
+        size: '2x2' as const,
+        position: { x: 0, y: 0 },
+      },
+    ]
+    const slot = findEmptyHomeSlot(widgets, '2x2', 4, 4)
+    assert.deepEqual(slot, { x: 2, y: 0 })
+    const sticker = createHomeStickerItem({
+      size: '2x2',
+      position: { x: 2, y: 0 },
+      imageUrl: '/api/brew/image-cache/aa/abcd.png',
+      prompt: 'cat',
+    })
+    assert.equal(sticker.kind, 'sticker')
+    assert.equal(sticker.type, HOME_STICKER_TYPE)
+    assert.equal(isHomeStickerItem(sticker), true)
+    assert.equal(stickerPixelSize('2x2').width, 1024)
   })
 })
 
@@ -252,6 +311,13 @@ describe('packWidgetsIntoColumns', () => {
 })
 
 describe('home layout mode storage', () => {
+  it('parses only free as free', () => {
+    assert.equal(parseHomeLayoutMode('free'), 'free')
+    assert.equal(parseHomeLayoutMode('standard'), 'standard')
+    assert.equal(parseHomeLayoutMode('custom'), 'standard')
+    assert.equal(parseHomeLayoutMode(null), 'standard')
+  })
+
   it('defaults to standard and only accepts free', () => {
     const store = new Map<string, string>()
     const storage = {
@@ -260,6 +326,7 @@ describe('home layout mode storage', () => {
         store.set(key, value)
       },
     }
+    assert.equal(peekStoredHomeLayoutMode(storage), null)
     assert.equal(readHomeLayoutMode(storage), 'standard')
     persistHomeLayoutMode('free', storage)
     assert.equal(store.get(HOME_LAYOUT_MODE_KEY), 'free')

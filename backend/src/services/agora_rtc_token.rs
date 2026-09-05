@@ -3,8 +3,8 @@
 //! Layout matches AgoraIO/Tools `AccessToken2.py`: little-endian packers,
 //! HMAC-SHA256 signing key, zlib then base64.
 
-use flate2::Compression;
 use flate2::write::ZlibEncoder;
+use flate2::Compression;
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use std::io::Write;

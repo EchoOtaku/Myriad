@@ -3,7 +3,6 @@
  * 标准布局 16×4（窄屏紧凑重排）；自由布局同格大小、列行铺满舞台
  */
 
-import type { TappSettingItem } from '../tapp/types'
 import type { HomeLayoutMode } from '../utils/homeLayout'
 import type {
   WidgetConfig,
@@ -11,7 +10,7 @@ import type {
   WidgetSize,
   WidgetType,
 } from './widgetGridTypes'
-import { FaCog, FaTimes } from '@lib/icons'
+import { FaTimes, LuSparkles } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
 
 import React, {
@@ -37,16 +36,40 @@ import { getPerformanceProfileSync } from '../hooks/usePerformanceProfile'
 import { useDebouncedWindowSize } from '../hooks/useSharedEventListener'
 import {
   estimateFreeHomeHostSize,
+  freeLayoutFitsCellBudget,
   HOME_STANDARD_COLS,
   HOME_STANDARD_ROWS,
+  homeWidgetCellCount,
+  homeWidgetsOccupiedCells,
+  isHomeStickerItem,
+  isHomeWidgetItem,
+  findEmptyHomeSlot,
   packWidgetsIntoColumns,
   resolveFreeHomeGrid,
   standardHomeCellSize,
 } from '../utils/homeLayout'
+import { HomeStickerCrop } from './home/HomeStickerCrop'
+import { HomeStickerCropTip } from './home/HomeStickerCropTip'
+import {
+  defaultStickerCrop,
+  parseStickerCrop,
+  stickerSlotAspect,
+  type StickerCrop,
+} from '../utils/homeStickerCrop'
+import {
+  placeHomeStickerSelection,
+  stickerSizesSharingAspect,
+} from '../utils/homeStickerSize'
+import { WidgetInstanceSettings } from './widgets/shared/WidgetInstanceSettings'
+import { WidgetLongPressHint } from './widgets/shared/WidgetLongPressHint'
 import { resolveHomeGridColumns } from '../utils/viewportBands'
 import { setWidgetDragCursor, useWidgetDragCursor } from '../utils/widgetDragCursor'
 import { WIDGET_SIZE_KEYS, widgetSizeSpan } from '../utils/widgetSizeScale'
-import { widgetHostConfig } from './widgetLibraryModel'
+import { widgetDisplayLabel, widgetHostConfig } from './widgetLibraryModel'
+import StickerWidget, {
+  stickerFloatMode,
+  stickerFloatPatch,
+} from './widgets/StickerWidget'
 import './WidgetGrid.css'
 
 export function startGridLibraryDrag(
@@ -92,135 +115,6 @@ function readInitialHomeGridColumns(custom?: number): number {
   if (custom) return custom
   if (typeof window === 'undefined') return GRID_WIDTH
   return resolveHomeGridColumns(window.innerWidth, 0)
-}
-
-function WidgetSettingsDialog({
-  title,
-  settings,
-  value,
-  onSave,
-  onClose,
-}: {
-  title: string
-  settings: TappSettingItem[]
-  value: Record<string, unknown>
-  onSave: (value: Record<string, unknown>) => void
-  onClose: () => void
-}) {
-  const { t } = useI18n()
-  const [draft, setDraft] = useState<Record<string, unknown>>(() => ({
-    ...Object.fromEntries(
-      settings
-        .filter((setting) => setting.defaultValue !== undefined)
-        .map((setting) => [setting.key, setting.defaultValue]),
-    ),
-    ...value,
-  }))
-
-  const update = (key: string, next: unknown) =>
-    setDraft((current) => ({ ...current, [key]: next }))
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/35 p-4 backdrop-blur-sm"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose()
-      }}
-    >
-      <div
-        className="w-full max-w-md rounded-2xl border border-black/10 bg-white p-5 shadow-2xl dark:border-white/10 dark:bg-neutral-900"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="mb-4 text-base font-semibold text-neutral-900 dark:text-white">
-          {title}
-        </div>
-        <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
-          {settings.map((setting) => {
-            const current = draft[setting.key] ?? setting.defaultValue
-            return (
-              <label key={setting.key} className="block space-y-1.5">
-                <span className="block text-sm font-medium text-neutral-800 dark:text-neutral-200">
-                  {setting.label}
-                </span>
-                {setting.description && (
-                  <span className="block text-xs text-neutral-500 dark:text-neutral-400">
-                    {setting.description}
-                  </span>
-                )}
-                {setting.type === 'toggle' ? (
-                  <input
-                    type="checkbox"
-                    checked={current === true}
-                    onChange={(event) =>
-                      update(setting.key, event.target.checked)
-                    }
-                    className="h-5 w-5 accent-[var(--color-primary)]"
-                  />
-                ) : setting.type === 'select' ? (
-                  <select
-                    value={String(current ?? '')}
-                    onChange={(event) =>
-                      update(setting.key, event.target.value)
-                    }
-                    className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm dark:border-white/10 dark:bg-neutral-800"
-                  >
-                    {setting.options?.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type={
-                      setting.type === 'number'
-                        ? 'number'
-                        : setting.type === 'color'
-                          ? 'color'
-                          : 'text'
-                    }
-                    value={String(current ?? '')}
-                    min={setting.min}
-                    max={setting.max}
-                    step={setting.step}
-                    placeholder={setting.placeholder}
-                    onChange={(event) =>
-                      update(
-                        setting.key,
-                        setting.type === 'number'
-                          ? event.target.value === ''
-                            ? null
-                            : Number(event.target.value)
-                          : event.target.value,
-                      )
-                    }
-                    className={`${setting.type === 'color' ? 'h-10' : 'px-3 py-2'} w-full rounded-lg border border-black/10 bg-white text-sm dark:border-white/10 dark:bg-neutral-800`}
-                  />
-                )}
-              </label>
-            )
-          })}
-        </div>
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg px-3 py-2 text-sm text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/10"
-          >
-            {t.common.cancel}
-          </button>
-          <button
-            type="button"
-            onClick={() => onSave(draft)}
-            className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white"
-          >
-            {t.common.save}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  )
 }
 
 /** Position/grid 变时外壳要重绘，内部实现（iframe / 数据）不必跟着重挂。 */
@@ -273,6 +167,8 @@ const WidgetGridItem = React.memo(
     onConfigChange,
     index = 0,
     layoutMotion = true,
+    onRequestSticker,
+    allowSticker = false,
   }: {
     widget: WidgetConfig
     widgetType: WidgetType
@@ -294,11 +190,48 @@ const WidgetGridItem = React.memo(
     index?: number
     /** Geometry (left/top/w/h) CSS transition for band reflow */
     layoutMotion?: boolean
+    onRequestSticker?: (widget: WidgetConfig) => void
+    allowSticker?: boolean
   }) => {
     const anim = useAnimationLevel()
     const { t } = useI18n()
     const [showSettings, setShowSettings] = useState(false)
+    const [settingsAnchor, setSettingsAnchor] = useState<DOMRect | null>(null)
+    const [stickerCropOpen, setStickerCropOpen] = useState(false)
+    const [stickerCropDraft, setStickerCropDraft] = useState<StickerCrop>(
+      defaultStickerCrop,
+    )
+    const stickerPressRef = useRef<{
+      timer: number
+      move: (event: MouseEvent) => void
+      touchMove: (event: TouchEvent) => void
+      up: () => void
+    } | null>(null)
+    const stickerItemRef = useRef<HTMLDivElement>(null)
+    const [stickerTipAnchor, setStickerTipAnchor] = useState<DOMRect | null>(
+      null,
+    )
     const instanceSettings = widgetType.settings || []
+    const stickerSrc =
+      typeof widget.config?.imageUrl === 'string'
+        ? widget.config.imageUrl.trim()
+        : ''
+
+    const closeStickerCrop = useCallback(
+      (save: boolean) => {
+        if (save && onConfigChange) {
+          onConfigChange({
+            ...(widget.config && typeof widget.config === 'object'
+              ? widget.config
+              : {}),
+            crop: stickerCropDraft,
+          })
+        }
+        setStickerCropOpen(false)
+        setStickerTipAnchor(null)
+      },
+      [onConfigChange, stickerCropDraft, widget.config],
+    )
 
     // 使用统一动画协调系统；exlight 模式直接显示且不进入调度队列。
     // Entrance timing intentionally eased after feedback that 80ms / stiff-300 felt too fast.
@@ -323,15 +256,44 @@ const WidgetGridItem = React.memo(
       top: `${(widget.position.y / gh) * 100}%`,
       width: `${(dim.w / gw) * 100}%`,
       height: `${(dim.h / gh) * 100}%`,
-      zIndex: isHovered ? 20 : 10,
+      zIndex: stickerCropOpen || isHovered ? 40 : 10,
       // 只提示 transform：left/top 是布局属性，will-change 对它们没有
       // 加速作用，写上去只是让编辑模式下每个小组件白白多提升一层合成层。
       willChange: isEditMode && isHovered ? 'transform' : 'auto',
     }
 
-    // 检查是否支持调整大小
-    const canResize =
-      !widgetType.supportedSizes || widgetType.supportedSizes.length > 1
+    useLayoutEffect(() => {
+      if (!stickerCropOpen) return
+      const sync = () => {
+        setStickerTipAnchor(
+          stickerItemRef.current?.getBoundingClientRect() ?? null,
+        )
+      }
+      sync()
+      window.addEventListener('resize', sync)
+      window.addEventListener('scroll', sync, true)
+      return () => {
+        window.removeEventListener('resize', sync)
+        window.removeEventListener('scroll', sync, true)
+      }
+    }, [stickerCropOpen])
+
+    useEffect(() => {
+      return () => {
+        const press = stickerPressRef.current
+        if (!press) return
+        window.clearTimeout(press.timer)
+        window.removeEventListener('mousemove', press.move)
+        window.removeEventListener('mouseup', press.up)
+        window.removeEventListener('touchmove', press.touchMove)
+        window.removeEventListener('touchend', press.up)
+        window.removeEventListener('touchcancel', press.up)
+      }
+    }, [])
+
+    const canResize = isHomeStickerItem(widget)
+      ? stickerSizesSharingAspect(widget.size).length > 1
+      : !widgetType.supportedSizes || widgetType.supportedSizes.length > 1
 
     // 低性能模式 / 低端设备：禁用 spring，改用轻量 tween
     const useLiteTransition = !anim.spring || !isStandardAnimation(anim)
@@ -339,6 +301,8 @@ const WidgetGridItem = React.memo(
     return (
       <motion.div
         className={`widget-grid-item absolute ${
+          isHomeStickerItem(widget) ? 'widget-grid-item--sticker' : ''
+        } ${
           layoutMotion && animationsEnabled
             ? 'widget-grid-item--layout-motion'
             : ''
@@ -364,14 +328,158 @@ const WidgetGridItem = React.memo(
                 }
         }
       >
-        <div className="relative h-full w-full p-1 group">
+        <div
+          className={`relative h-full w-full group ${
+            isHomeStickerItem(widget) ? 'p-0' : 'p-1'
+          }`}
+        >
           <div
-            className={`relative h-full w-full rounded-xl overflow-hidden transition-shadow ${
-              isEditMode
+            ref={stickerItemRef}
+            className={`relative h-full w-full rounded-xl transition-shadow ${
+              isHomeStickerItem(widget) ? 'overflow-visible' : 'overflow-hidden'
+            } ${
+              isEditMode && !isHomeStickerItem(widget)
                 ? 'cursor-move ring-1 ring-transparent hover:ring-blue-400/50'
-                : ''
-            } ${isHovered && isEditMode ? 'ring-blue-400/50 shadow-lg' : ''}`}
-            onMouseDown={(e) => onDragStart(e, widget.id)}
+                : isEditMode
+                  ? 'cursor-move'
+                  : ''
+            } ${isHovered && isEditMode && !isHomeStickerItem(widget) ? 'ring-blue-400/50 shadow-lg' : ''}`}
+            onMouseDown={(event) => {
+              if (stickerCropOpen || showSettings) {
+                event.stopPropagation()
+                return
+              }
+              const holdSticker =
+                isEditMode && isHomeStickerItem(widget) && Boolean(stickerSrc)
+              const holdSettings =
+                isEditMode &&
+                instanceSettings.length > 0 &&
+                Boolean(onConfigChange)
+              if (!holdSticker && !holdSettings) {
+                onDragStart(event, widget.id)
+                return
+              }
+              event.stopPropagation()
+              const startX = event.clientX
+              const startY = event.clientY
+              const clearPress = () => {
+                const press = stickerPressRef.current
+                if (!press) return
+                window.clearTimeout(press.timer)
+                window.removeEventListener('mousemove', press.move)
+                window.removeEventListener('mouseup', press.up)
+                window.removeEventListener('touchmove', press.touchMove)
+                window.removeEventListener('touchend', press.up)
+                window.removeEventListener('touchcancel', press.up)
+                stickerPressRef.current = null
+              }
+              const moved = (x: number, y: number) => {
+                if (Math.hypot(x - startX, y - startY) < 8) return
+                clearPress()
+                onDragStart(
+                  {
+                    clientX: x,
+                    clientY: y,
+                    stopPropagation() {},
+                    preventDefault() {},
+                  } as React.MouseEvent,
+                  widget.id,
+                )
+              }
+              const move = (moveEvent: MouseEvent) =>
+                moved(moveEvent.clientX, moveEvent.clientY)
+              const touchMove = (touchEvent: TouchEvent) => {
+                const touch = touchEvent.touches[0]
+                if (touch) moved(touch.clientX, touch.clientY)
+              }
+              const up = () => clearPress()
+              const timer = window.setTimeout(() => {
+                clearPress()
+                if (holdSticker) {
+                  setStickerCropDraft(
+                    parseStickerCrop(widget.config?.crop) ??
+                      defaultStickerCrop(),
+                  )
+                  setStickerCropOpen(true)
+                  return
+                }
+                setSettingsAnchor(
+                  stickerItemRef.current?.getBoundingClientRect() ?? null,
+                )
+                setShowSettings(true)
+              }, 500)
+              stickerPressRef.current = { timer, move, touchMove, up }
+              window.addEventListener('mousemove', move)
+              window.addEventListener('mouseup', up)
+              window.addEventListener('touchmove', touchMove, { passive: true })
+              window.addEventListener('touchend', up)
+              window.addEventListener('touchcancel', up)
+            }}
+            onTouchStart={(event) => {
+              if (!isEditMode || stickerCropOpen || showSettings) return
+              const holdSticker =
+                isHomeStickerItem(widget) && Boolean(stickerSrc)
+              const holdSettings =
+                instanceSettings.length > 0 && Boolean(onConfigChange)
+              if (!holdSticker && !holdSettings) return
+              const touch = event.touches[0]
+              if (!touch) return
+              event.stopPropagation()
+              const startX = touch.clientX
+              const startY = touch.clientY
+              const clearPress = () => {
+                const press = stickerPressRef.current
+                if (!press) return
+                window.clearTimeout(press.timer)
+                window.removeEventListener('mousemove', press.move)
+                window.removeEventListener('mouseup', press.up)
+                window.removeEventListener('touchmove', press.touchMove)
+                window.removeEventListener('touchend', press.up)
+                window.removeEventListener('touchcancel', press.up)
+                stickerPressRef.current = null
+              }
+              const moved = (x: number, y: number) => {
+                if (Math.hypot(x - startX, y - startY) < 8) return
+                clearPress()
+                onDragStart(
+                  {
+                    clientX: x,
+                    clientY: y,
+                    stopPropagation() {},
+                    preventDefault() {},
+                  } as React.MouseEvent,
+                  widget.id,
+                )
+              }
+              const move = (moveEvent: MouseEvent) =>
+                moved(moveEvent.clientX, moveEvent.clientY)
+              const touchMove = (touchEvent: TouchEvent) => {
+                const next = touchEvent.touches[0]
+                if (next) moved(next.clientX, next.clientY)
+              }
+              const up = () => clearPress()
+              const timer = window.setTimeout(() => {
+                clearPress()
+                if (holdSticker) {
+                  setStickerCropDraft(
+                    parseStickerCrop(widget.config?.crop) ??
+                      defaultStickerCrop(),
+                  )
+                  setStickerCropOpen(true)
+                  return
+                }
+                setSettingsAnchor(
+                  stickerItemRef.current?.getBoundingClientRect() ?? null,
+                )
+                setShowSettings(true)
+              }, 500)
+              stickerPressRef.current = { timer, move, touchMove, up }
+              window.addEventListener('mousemove', move)
+              window.addEventListener('mouseup', up)
+              window.addEventListener('touchmove', touchMove, { passive: true })
+              window.addEventListener('touchend', up)
+              window.addEventListener('touchcancel', up)
+            }}
             onMouseEnter={() => isEditMode && onMouseEnter(widget.id)}
             onMouseLeave={onMouseLeave}
           >
@@ -381,10 +489,65 @@ const WidgetGridItem = React.memo(
               isEditMode={isEditMode}
               onConfigChange={onConfigChange}
             />
+            {isEditMode && isHomeStickerItem(widget) && stickerSrc ? (
+              <WidgetLongPressHint
+                title={t.home.stickerLongPressEdit}
+                visible={!stickerCropOpen}
+                onClick={() => {
+                  setStickerCropDraft(
+                    parseStickerCrop(widget.config?.crop) ?? defaultStickerCrop(),
+                  )
+                  setStickerCropOpen(true)
+                }}
+              />
+            ) : isEditMode && instanceSettings.length > 0 ? (
+              <WidgetLongPressHint
+                title={t.widgetGrid.longPressToEdit}
+                visible={!showSettings}
+                onClick={() => {
+                  setSettingsAnchor(
+                    stickerItemRef.current?.getBoundingClientRect() ?? null,
+                  )
+                  setShowSettings(true)
+                }}
+              />
+            ) : null}
+            {stickerCropOpen && stickerSrc ? (
+              <div
+                className="home-sticker-crop-overlay"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <HomeStickerCrop
+                  src={stickerSrc}
+                  aspect={stickerSlotAspect(widget.size)}
+                  crop={stickerCropDraft}
+                  fill
+                  onChange={setStickerCropDraft}
+                />
+              </div>
+            ) : null}
+            <HomeStickerCropTip
+              open={stickerCropOpen && Boolean(stickerSrc)}
+              anchor={stickerTipAnchor}
+              src={stickerSrc}
+              mode={stickerFloatMode(widget.config)}
+              ignoreRef={stickerItemRef}
+              onMode={(mode) => {
+                const current =
+                  widget.config && typeof widget.config === 'object'
+                    ? widget.config
+                    : {}
+                onConfigChange?.({
+                  ...current,
+                  ...stickerFloatPatch(mode),
+                })
+              }}
+              onClose={() => closeStickerCrop(true)}
+            />
           </div>
 
           {/* 删除按钮（编辑模式） */}
-          {isEditMode && (
+          {isEditMode && !stickerCropOpen && (
             <>
               <button
                 onClick={(e) => {
@@ -398,21 +561,21 @@ const WidgetGridItem = React.memo(
                 <FaTimes size={10} />
               </button>
 
-              {instanceSettings.length > 0 && onConfigChange && (
+              {allowSticker && onRequestSticker && isHomeWidgetItem(widget) ? (
                 <button
                   type="button"
                   onMouseDown={(event) => event.stopPropagation()}
                   onClick={(event) => {
                     event.stopPropagation()
-                    setShowSettings(true)
+                    onRequestSticker(widget)
                   }}
                   className="absolute top-1.5 right-8 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-700/85 text-white opacity-0 shadow-md transition-all hover:scale-110 hover:bg-neutral-800 group-hover:opacity-100 z-30"
-                  title={t.widgetGrid.widgetSettings}
-                  aria-label={t.widgetGrid.widgetSettings}
+                  title={t.widgetGrid.createSticker}
+                  aria-label={t.widgetGrid.createSticker}
                 >
-                  <FaCog size={10} />
+                  <LuSparkles size={10} />
                 </button>
-              )}
+              ) : null}
 
               {/* 调整大小手柄 - 明显的倒L型设计，触控时区域更大 */}
               {canResize && (
@@ -438,18 +601,24 @@ const WidgetGridItem = React.memo(
             </>
           )}
         </div>
-        {showSettings && instanceSettings.length > 0 && onConfigChange && (
-          <WidgetSettingsDialog
-            title={`${widgetType.name} · ${t.widgetGrid.widgetSettings}`}
+        {instanceSettings.length > 0 && onConfigChange ? (
+          <WidgetInstanceSettings
+            open={showSettings}
+            title={widgetDisplayLabel(
+              widgetType,
+              t.widgets as unknown as Record<string, unknown>,
+            )}
             settings={instanceSettings}
             value={(widget.config || {}) as Record<string, unknown>}
+            anchor={settingsAnchor}
+            ignoreRef={stickerItemRef}
             onClose={() => setShowSettings(false)}
             onSave={(next) => {
               onConfigChange(next)
               setShowSettings(false)
             }}
           />
-        )}
+        ) : null}
       </motion.div>
     )
   },
@@ -462,7 +631,9 @@ const WidgetGridItem = React.memo(
       prev.gridWidth === next.gridWidth &&
       prev.gridHeight === next.gridHeight &&
       prev.layoutMotion === next.layoutMotion &&
-      prev.index === next.index
+      prev.index === next.index &&
+      prev.onRequestSticker === next.onRequestSticker &&
+      prev.allowSticker === next.allowSticker
     )
   },
 )
@@ -478,6 +649,28 @@ interface WidgetGridProps {
   autoHeight?: boolean
   /** Home only: free layout fills the stage with standard cell size. */
   layoutMode?: HomeLayoutMode
+  stickerPickActive?: boolean
+  onPickStickerSlot?: (slot: {
+    x: number
+    y: number
+    size: WidgetSize
+    anchor: {
+      top: number
+      left: number
+      width: number
+      height: number
+      right: number
+      bottom: number
+    }
+  }) => void
+  stickerHighlight?: { x: number; y: number; size: WidgetSize } | null
+}
+
+const STICKER_WIDGET_TYPE: WidgetType = {
+  id: 'sticker',
+  name: 'Sticker',
+  defaultSize: '2x2',
+  component: StickerWidget,
 }
 
 /**
@@ -596,11 +789,22 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
       customGridRows,
       autoHeight,
       layoutMode = 'standard',
+      stickerPickActive = false,
+      onPickStickerSlot,
+      stickerHighlight = null,
     },
     ref,
   ) => {
   const { t } = useI18n()
   const isFreeLayout = layoutMode === 'free'
+  const [stickerDrag, setStickerDrag] = useState<{
+    start: { x: number; y: number }
+    end: { x: number; y: number }
+  } | null>(null)
+  const [stickerHover, setStickerHover] = useState<{
+    x: number
+    y: number
+  } | null>(null)
   const [gridColumns, setGridColumns] = useState(() =>
     readInitialHomeGridColumns(customGridColumns),
   )
@@ -631,11 +835,10 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
   const layoutModeRef = useRef(layoutMode)
   const layoutModeSwitched = layoutModeRef.current !== layoutMode
   layoutModeRef.current = layoutMode
-  /** 自由布局列行与标准 16×4 不同，插值 left/top 会带动每个小组件重排。 */
+  /** 标准↔自由切模式不插值几何；同模式内拖拽/改尺寸与标准一样缓动。 */
   const geometryMotion =
     !isExlight(anim) &&
     bandSwitch === null &&
-    !isFreeLayout &&
     !layoutModeSwitched
 
   // 计算内容高度 (用于 autoHeight)
@@ -796,6 +999,42 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
         ? Math.max(customGridRows || 0, contentHeight)
         : customGridRows || GRID_HEIGHT
 
+  const stickerDragRect = stickerDrag
+    ? {
+        x: Math.min(stickerDrag.start.x, stickerDrag.end.x),
+        y: Math.min(stickerDrag.start.y, stickerDrag.end.y),
+        w: Math.abs(stickerDrag.end.x - stickerDrag.start.x) + 1,
+        h: Math.abs(stickerDrag.end.y - stickerDrag.start.y) + 1,
+      }
+    : null
+  const stickerDragPlacement = stickerDragRect
+    ? placeHomeStickerSelection(
+        stickerDragRect.x,
+        stickerDragRect.y,
+        stickerDragRect.w,
+        stickerDragRect.h,
+      )
+    : null
+  const stickerDragCollision = Boolean(
+    stickerDragPlacement &&
+      checkCollision(
+        {
+          id: '__sticker-pick__',
+          type: 'sticker',
+          kind: 'sticker',
+          size: stickerDragPlacement.size,
+          position: {
+            x: stickerDragPlacement.x,
+            y: stickerDragPlacement.y,
+          },
+        },
+        widgets,
+        currentGridWidth,
+        currentGridHeight,
+      ),
+  )
+
+
   // Explicit height from cols/rows. Cross-band: snap (no height transition).
   // Free layout sizes the plate to N×cell instead of stretching with the host.
   const gridPixelHeight =
@@ -850,6 +1089,7 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     const map = new Map<string, WidgetType>()
     for (const widgetType of availableWidgets)
       map.set(widgetType.id, widgetType)
+    map.set(STICKER_WIDGET_TYPE.id, STICKER_WIDGET_TYPE)
     return map
   }, [availableWidgets])
 
@@ -872,12 +1112,16 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     onWidgetsChange,
     widgetHistory,
     historyIndex,
+    isFreeLayout,
+    widgetTypeById,
   })
   latestRef.current = {
     widgets,
     onWidgetsChange,
     widgetHistory,
     historyIndex,
+    isFreeLayout,
+    widgetTypeById,
   }
 
   // 保存到历史记录
@@ -905,6 +1149,19 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     ref,
     () => ({
       startNewWidgetDrag(widgetTypeId, point) {
+        const latest = latestRef.current
+        if (latest.isFreeLayout) {
+          const widgetType = latest.widgetTypeById.get(widgetTypeId)
+          const extra = homeWidgetCellCount(widgetType?.defaultSize ?? '2x2')
+          if (
+            !freeLayoutFitsCellBudget(
+              homeWidgetsOccupiedCells(latest.widgets),
+              extra,
+            )
+          ) {
+            return
+          }
+        }
         updateGridRectCache()
         setWidgetDragCursor(point)
         setDraggedWidget({
@@ -979,6 +1236,99 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     })
   }, [isFreeLayout])
 
+  useEffect(() => {
+    if (!stickerDrag) return
+    const onMove = (event: MouseEvent) => {
+      const rect = gridRectRef.current
+      if (!rect || rect.width <= 0 || rect.height <= 0) return
+      const x = Math.max(
+        0,
+        Math.min(
+          currentGridWidth - 1,
+          Math.floor(((event.clientX - rect.left) / rect.width) * currentGridWidth),
+        ),
+      )
+      const y = Math.max(
+        0,
+        Math.min(
+          currentGridHeight - 1,
+          Math.floor(((event.clientY - rect.top) / rect.height) * currentGridHeight),
+        ),
+      )
+      setStickerDrag((prev) =>
+        prev && (prev.end.x !== x || prev.end.y !== y)
+          ? { ...prev, end: { x, y } }
+          : prev,
+      )
+    }
+    const onUp = () => {
+      setStickerDrag((prev) => {
+        if (!prev) return null
+        const x = Math.min(prev.start.x, prev.end.x)
+        const y = Math.min(prev.start.y, prev.end.y)
+        const w = Math.abs(prev.end.x - prev.start.x) + 1
+        const h = Math.abs(prev.end.y - prev.start.y) + 1
+        const placed = placeHomeStickerSelection(x, y, w, h)
+        const candidate = {
+          id: '__sticker-pick__',
+          type: 'sticker',
+          kind: 'sticker' as const,
+          size: placed.size,
+          position: { x: placed.x, y: placed.y },
+        }
+        if (
+          onPickStickerSlot &&
+          !checkCollision(candidate, widgets, currentGridWidth, currentGridHeight)
+        ) {
+          const grid = gridRectRef.current
+          const dim = widgetSizeSpan(placed.size)
+          const anchor = grid
+            ? {
+                left:
+                  grid.left + (placed.x / currentGridWidth) * grid.width,
+                top:
+                  grid.top + (placed.y / currentGridHeight) * grid.height,
+                width: (dim.w / currentGridWidth) * grid.width,
+                height: (dim.h / currentGridHeight) * grid.height,
+                right:
+                  grid.left +
+                  ((placed.x + dim.w) / currentGridWidth) * grid.width,
+                bottom:
+                  grid.top +
+                  ((placed.y + dim.h) / currentGridHeight) * grid.height,
+              }
+            : {
+                left: 0,
+                top: 0,
+                width: 0,
+                height: 0,
+                right: 0,
+                bottom: 0,
+              }
+          onPickStickerSlot({
+            x: placed.x,
+            y: placed.y,
+            size: placed.size,
+            anchor,
+          })
+        }
+        return null
+      })
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [
+    stickerDrag,
+    currentGridWidth,
+    currentGridHeight,
+    widgets,
+    onPickStickerSlot,
+  ])
+
   // 清理 ResizeObserver
   useEffect(() => {
     return () => {
@@ -994,7 +1344,7 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
   // 开始拖拽现有小组件
   const handleWidgetDragStart = useCallback(
     (e: React.MouseEvent, widgetId: string) => {
-      if (!isEditMode) return
+      if (!isEditMode || stickerPickActive) return
       e.stopPropagation()
       e.preventDefault()
 
@@ -1012,7 +1362,7 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
         widgetId,
       })
     },
-    [isEditMode, updateGridRectCache],
+    [isEditMode, stickerPickActive, updateGridRectCache],
   )
 
   // 开始调整大小
@@ -1022,7 +1372,7 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
       widgetId: string,
       direction: 'se' | 's' = 'se',
     ) => {
-      if (!isEditMode) return
+      if (!isEditMode || stickerPickActive) return
       e.stopPropagation()
       e.preventDefault()
 
@@ -1044,7 +1394,7 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
         direction,
       })
     },
-    [isEditMode, updateGridRectCache],
+    [isEditMode, stickerPickActive, updateGridRectCache],
   )
 
   // 调整大小移动
@@ -1094,22 +1444,24 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
         let bestSize = widget.size
         let minDistance = Infinity
 
-        // 获取该组件类型支持的尺寸列表
+        const sticker = isHomeStickerItem(widget)
         const widgetType = widgetTypeById.get(widget.type)
-
-        // 如果找不到组件类型定义，或者没有定义 supportedSizes，则不允许调整大小（锁定当前尺寸）
-        // 这是一个安全措施，防止意外拉伸到不支持的尺寸
-        if (!widgetType) {
+        if (!sticker && !widgetType) {
           rafRef.current = null
           return
         }
 
-        const supportedSizes =
-          widgetType.supportedSizes || WIDGET_SIZE_KEYS
+        const supportedSizes = sticker
+          ? stickerSizesSharingAspect(resizingWidget.startSize)
+          : widgetType?.supportedSizes || WIDGET_SIZE_KEYS
 
-        const validSizes = supportedSizes.filter((size) =>
-          WIDGET_SIZE_KEYS.includes(size as (typeof WIDGET_SIZE_KEYS)[number]),
-        )
+        const validSizes = sticker
+          ? supportedSizes
+          : supportedSizes.filter((size) =>
+              WIDGET_SIZE_KEYS.includes(
+                size as (typeof WIDGET_SIZE_KEYS)[number],
+              ),
+            )
 
         for (const size of validSizes) {
           const dim = widgetSizeSpan(size)
@@ -1133,7 +1485,15 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
 
         if (bestSize !== resizingWidget.draftSize) {
           const newWidget = { ...widget, size: bestSize }
+          const fitsBudget =
+            !isFreeLayout ||
+            !isHomeWidgetItem(widget) ||
+            freeLayoutFitsCellBudget(
+              homeWidgetsOccupiedCells(widgets, widget.id),
+              homeWidgetCellCount(bestSize),
+            )
           if (
+            fitsBudget &&
             !checkCollision(
               newWidget,
               widgets,
@@ -1157,6 +1517,7 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
       currentGridWidth,
       currentGridHeight,
       widgetTypeById,
+      isFreeLayout,
     ],
   )
 
@@ -1322,8 +1683,14 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
         config: widgetHostConfig(widgetType.id) ?? settingsConfig,
       }
 
-      // 检查碰撞
+      const fitsBudget =
+        !isFreeLayout ||
+        freeLayoutFitsCellBudget(
+          homeWidgetsOccupiedCells(widgets),
+          homeWidgetCellCount(newWidget.size),
+        )
       if (
+        fitsBudget &&
         !checkCollision(newWidget, widgets, currentGridWidth, currentGridHeight)
       ) {
         const newWidgets = [...widgets, newWidget]
@@ -1344,6 +1711,7 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     saveToHistory,
     currentGridWidth,
     currentGridHeight,
+    isFreeLayout,
   ])
 
   // 移除小组件（引用恒定，见 latestRef 注释）
@@ -1560,7 +1928,9 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
   const gridBackground = useMemo(
     () => (
       <div
-        className="widget-grid-background absolute inset-0 pointer-events-none z-0"
+        className={`widget-grid-background absolute inset-0 pointer-events-none z-0${
+          stickerPickActive ? ' is-sticker-pick' : ''
+        }`}
         style={
           {
             '--widget-grid-cell-w': `${100 / currentGridWidth}%`,
@@ -1569,7 +1939,7 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
         }
       />
     ),
-    [currentGridWidth, currentGridHeight],
+    [currentGridWidth, currentGridHeight, stickerPickActive],
   )
 
   return (
@@ -1668,15 +2038,130 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
               </motion.div>
             )}
 
+
+            {stickerPickActive && isFreeLayout && isEditMode && !isCompact ? (
+              <div
+                data-sticker-pick=""
+                className="absolute inset-0 z-30 cursor-crosshair bg-transparent"
+                onMouseMove={(event) => {
+                  if (stickerDrag) return
+                  const node = containerRef.current
+                  if (!node) return
+                  const rect = node.getBoundingClientRect()
+                  if (rect.width <= 0 || rect.height <= 0) return
+                  const x = Math.max(
+                    0,
+                    Math.min(
+                      currentGridWidth - 1,
+                      Math.floor(
+                        ((event.clientX - rect.left) / rect.width) *
+                          currentGridWidth,
+                      ),
+                    ),
+                  )
+                  const y = Math.max(
+                    0,
+                    Math.min(
+                      currentGridHeight - 1,
+                      Math.floor(
+                        ((event.clientY - rect.top) / rect.height) *
+                          currentGridHeight,
+                      ),
+                    ),
+                  )
+                  setStickerHover((prev) =>
+                    prev && prev.x === x && prev.y === y ? prev : { x, y },
+                  )
+                }}
+                onMouseLeave={() => setStickerHover(null)}
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  const node = containerRef.current
+                  if (!node) return
+                  const rect = node.getBoundingClientRect()
+                  gridRectRef.current = rect
+                  if (rect.width <= 0 || rect.height <= 0) return
+                  const x = Math.max(
+                    0,
+                    Math.min(
+                      currentGridWidth - 1,
+                      Math.floor(
+                        ((event.clientX - rect.left) / rect.width) *
+                          currentGridWidth,
+                      ),
+                    ),
+                  )
+                  const y = Math.max(
+                    0,
+                    Math.min(
+                      currentGridHeight - 1,
+                      Math.floor(
+                        ((event.clientY - rect.top) / rect.height) *
+                          currentGridHeight,
+                      ),
+                    ),
+                  )
+                  setStickerDrag({ start: { x, y }, end: { x, y } })
+                }}
+              />
+            ) : null}
+            {stickerPickActive &&
+            stickerHover &&
+            !stickerDrag &&
+            currentGridWidth > 0 ? (
+              <div
+                className="absolute z-20 pointer-events-none rounded-lg bg-[color-mix(in_srgb,var(--color-primary,#8b5cf6)_22%,transparent)] ring-2 ring-[color-mix(in_srgb,var(--color-primary,#8b5cf6)_70%,white)]"
+                style={{
+                  left: `${(stickerHover.x / currentGridWidth) * 100}%`,
+                  top: `${(stickerHover.y / currentGridHeight) * 100}%`,
+                  width: `${(1 / currentGridWidth) * 100}%`,
+                  height: `${(1 / currentGridHeight) * 100}%`,
+                }}
+              />
+            ) : null}
+            {stickerHighlight && currentGridWidth > 0 ? (
+              <div
+                className="absolute z-20 pointer-events-none rounded-xl bg-[color-mix(in_srgb,var(--color-primary,#8b5cf6)_18%,transparent)] ring-2 ring-[color-mix(in_srgb,var(--color-primary,#8b5cf6)_70%,white)]"
+                style={{
+                  left: `${(stickerHighlight.x / currentGridWidth) * 100}%`,
+                  top: `${(stickerHighlight.y / currentGridHeight) * 100}%`,
+                  width: `${(widgetSizeSpan(stickerHighlight.size).w / currentGridWidth) * 100}%`,
+                  height: `${(widgetSizeSpan(stickerHighlight.size).h / currentGridHeight) * 100}%`,
+                }}
+              />
+            ) : null}
+            {stickerDrag && stickerDragRect && currentGridWidth > 0 ? (
+              <div
+                className={`absolute z-20 pointer-events-none rounded-xl ${
+                  stickerDragCollision
+                    ? 'bg-red-500/10 ring-2 ring-red-500/50'
+                    : 'bg-[color-mix(in_srgb,var(--color-primary,#8b5cf6)_18%,transparent)] ring-2 ring-[color-mix(in_srgb,var(--color-primary,#8b5cf6)_70%,white)]'
+                }`}
+                style={{
+                  left: `${(stickerDragRect.x / currentGridWidth) * 100}%`,
+                  top: `${(stickerDragRect.y / currentGridHeight) * 100}%`,
+                  width: `${(stickerDragRect.w / currentGridWidth) * 100}%`,
+                  height: `${(stickerDragRect.h / currentGridHeight) * 100}%`,
+                }}
+              />
+            ) : null}
+
             {/* 小组件 */}
-            <div className="absolute inset-0 z-10">
+            <div
+              className={`absolute inset-0 z-10${
+                stickerPickActive ? ' pointer-events-none' : ''
+              }`}
+            >
               {currentWidgets.map((rawWidget, index) => {
                 const widget =
                   resizingWidget?.widgetId === rawWidget.id &&
                   resizingWidget.draftSize !== rawWidget.size
                     ? { ...rawWidget, size: resizingWidget.draftSize }
                     : rawWidget
-                const widgetType = widgetTypeById.get(widget.type)
+                const widgetType = isHomeStickerItem(widget)
+                  ? STICKER_WIDGET_TYPE
+                  : widgetTypeById.get(widget.type)
                 if (!widgetType) {
                   // 未知/未注册组件：渲染轻量占位而非静默跳过（issue #72）。
                   // 此前 return null 导致 Tapp widget 在注册表尚未同步/同步
@@ -1732,6 +2217,50 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
                     onConfigChange={handleConfigChange}
                     index={index}
                     layoutMotion={geometryMotion}
+                    onRequestSticker={(widget) => {
+                      const slot = findEmptyHomeSlot(
+                        widgets,
+                        widget.size,
+                        currentGridWidth,
+                        currentGridHeight,
+                      )
+                      if (slot) {
+                        const grid = gridRectRef.current
+                        const dim = widgetSizeSpan(widget.size)
+                        const gw = currentGridWidth
+                        const gh = currentGridHeight
+                        const anchor = grid
+                          ? {
+                              left: grid.left + (slot.x / gw) * grid.width,
+                              top: grid.top + (slot.y / gh) * grid.height,
+                              width: (dim.w / gw) * grid.width,
+                              height: (dim.h / gh) * grid.height,
+                              right:
+                                grid.left + ((slot.x + dim.w) / gw) * grid.width,
+                              bottom:
+                                grid.top + ((slot.y + dim.h) / gh) * grid.height,
+                            }
+                          : {
+                              left: 0,
+                              top: 0,
+                              width: 0,
+                              height: 0,
+                              right: 0,
+                              bottom: 0,
+                            }
+                        onPickStickerSlot?.({
+                          ...slot,
+                          size: widget.size,
+                          anchor,
+                        })
+                      }
+                    }}
+                    allowSticker={Boolean(
+                      isFreeLayout &&
+                        isEditMode &&
+                        stickerPickActive &&
+                        onPickStickerSlot,
+                    )}
                   />
                 )
               })}

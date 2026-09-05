@@ -9,6 +9,10 @@ use std::time::Duration;
 
 use crate::services::http_client::{GeminiApiUrl, ProxyConfig};
 
+#[cfg(test)]
+pub(crate) mod probe;
+mod transport;
+
 // Gemini API Structures
 #[derive(Debug, Serialize)]
 struct GeminiRequest {
@@ -128,14 +132,6 @@ impl ChatMessage {
     pub fn assistant(content: impl Into<String>) -> Self {
         Self {
             role: "assistant".to_string(),
-            content: content.into(),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn system(content: impl Into<String>) -> Self {
-        Self {
-            role: "system".to_string(),
             content: content.into(),
         }
     }
@@ -793,8 +789,14 @@ impl AiAnalyzer {
         model: String,
         base_url: Option<String>,
     ) -> Self {
-        Self::new_with_timeout(provider, api_key, model, base_url, Duration::from_secs(5 * 60))
-            .await
+        Self::new_with_timeout(
+            provider,
+            api_key,
+            model,
+            base_url,
+            Duration::from_secs(5 * 60),
+        )
+        .await
     }
 
     /// 与 [`AiAnalyzer::new`] 相同，但允许长任务（如 Tapp Playground 生成）
@@ -808,15 +810,8 @@ impl AiAnalyzer {
     ) -> Self {
         let proxy_config = ProxyConfig::from_dynamic_config().await;
 
-        let builder = Client::builder()
-            .timeout(request_timeout)
-            .connect_timeout(Duration::from_secs(30))
-            .user_agent("Myriad/1.0");
-
         // MYR-019: if proxy is required and build fails, do not silently direct-connect.
-        let client = match crate::services::http_client::apply_proxy(builder, &proxy_config)
-            .and_then(|b| b.build())
-        {
+        let client = match transport::pooled_client(&proxy_config, request_timeout) {
             Ok(client) => client,
             Err(e) if crate::services::http_client::proxy_is_required(&proxy_config) => {
                 tracing::error!(
@@ -1149,18 +1144,18 @@ impl AiAnalyzer {
     ) -> Result<String> {
         let input_chars = system.len() + prompt.len();
 
+        let mode = if self.refused(RequestShape::StructuredOutput) {
+            JsonMode::PromptOnly(schema)
+        } else {
+            JsonMode::Structured(schema)
+        };
         let mut result = self
-            .analyze_json_inner(
-                system,
-                prompt,
-                schema_name,
-                JsonMode::Structured(schema),
-                None,
-            )
+            .analyze_json_inner(system, prompt, schema_name, mode, None)
             .await;
 
         if let Err(ref failure) = result {
-            if failure.rejected_request() {
+            if matches!(mode, JsonMode::Structured(_)) && failure.rejected_request() {
+                self.remember_refusal(RequestShape::StructuredOutput);
                 tracing::warn!(
                     provider = self.provider.as_str(),
                     model = %self.model,

@@ -1,3 +1,4 @@
+import type { MeropeStateEventDetail } from '../features/merope/performanceEvents'
 /**
  * 通知中心 API
  *
@@ -72,6 +73,8 @@ export type NotificationStreamEvent =
   | { event: 'resync'; lagged_by: number }
   /** On-page persona speech. Not a notification-center item. */
   | { event: 'live_speech'; user_id: number; speech: LiveSpeechEvent }
+  /** Persisted state update, never a notification-center item or a spoken line. */
+  | ({ event: 'merope_state_changed'; user_id: number } & MeropeStateEventDetail)
 
 const BASE = '/agent/notifications'
 

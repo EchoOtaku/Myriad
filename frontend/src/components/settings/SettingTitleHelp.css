@@ -22,7 +22,7 @@
   border: none;
   border-radius: 999px;
   background: transparent;
-  color: var(--cfg-text-3);
+  color: var(--cfg-text-3, var(--text-secondary, rgb(60 60 67 / 48%)));
   cursor: help;
   line-height: 0;
   transition:
@@ -80,10 +80,10 @@ html.dark .setting-title-help--warning .setting-title-help-trigger {
   overflow: hidden auto;
   padding: 0.5rem 0.65rem;
   border-radius: 0.5rem;
-  border: 1px solid var(--cfg-frost-border);
-  background: var(--cfg-frost-elevated-bg);
-  backdrop-filter: var(--cfg-frost-filter);
-  color: var(--cfg-text-2);
+  border: 1px solid var(--cfg-frost-border, var(--chrome-stroke, rgb(255 255 255 / 50%)));
+  background: var(--cfg-frost-elevated-bg, var(--chrome-elevated, rgb(255 255 255 / 96%)));
+  backdrop-filter: var(--cfg-frost-filter, blur(20px) saturate(180%));
+  color: var(--cfg-text-2, var(--text-secondary, rgb(60 60 67 / 72%)));
   font-size: 0.6875rem;
   font-weight: 500;
   line-height: 1.45;

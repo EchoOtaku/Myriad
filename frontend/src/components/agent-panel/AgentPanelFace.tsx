@@ -23,11 +23,11 @@ import { agentStatusActivity } from '../../features/merope/activity'
 import { isAnime25DPlayback } from '../../features/merope/anime25drig/types'
 import { getSiteFace, getWardrobeFace } from '../../features/merope/api'
 import { useChatOutfitOverlay } from '../../features/merope/chatOutfitOverlay'
-import { FacePresence } from '../../features/merope/FacePresence'
 import {
   FACE_UPDATED_EVENT,
   PERSONA_UPDATED_EVENT,
 } from '../../features/merope/events'
+import { FacePresence } from '../../features/merope/FacePresence'
 import {
   LIVE_FACE_PLAYBACK_PRIORITY,
   notifyLiveFaceUnmounted,
@@ -38,6 +38,7 @@ import { useRigMotionLifecycle } from '../../features/merope/motion/useRigMotion
 import {
   MEROPE_STATE_EVENT,
   meropeStateEventDetail,
+  resolveLoadedMeropeAffect,
 } from '../../features/merope/performanceEvents'
 import {
   loadPublicPersonaName,
@@ -78,7 +79,7 @@ export function AgentPanelFace({
   playbackEnabled?: boolean
 }) {
   const { t } = useI18n()
-  const { hasChecked, isAuthenticated } = useAuth()
+  const { hasChecked, isAuthenticated, user } = useAuth()
   const panelMode = useAgentPanelMode()
   const overlayOutfitId = useChatOutfitOverlay()
   const liveOverlayId = panelMode === 'chat' ? overlayOutfitId : null
@@ -197,6 +198,8 @@ export function AgentPanelFace({
   useEffect(() => {
     if (!hasChecked) return undefined
     let active = true
+    setMood(DEFAULT_MOOD)
+    setArousal(DEFAULT_AROUSAL)
     const applyPublicName = () => {
       void loadPublicPersonaName().then((name) => {
         if (active) setAgentName(name)
@@ -223,14 +226,9 @@ export function AgentPanelFace({
           }
           setPersonaOn(true)
           setAgentName(publicPersonaName(true, persona.name))
-          setMood(
-            typeof persona.mood === 'number' ? persona.mood : DEFAULT_MOOD,
-          )
-          setArousal(
-            typeof persona.arousal === 'number'
-              ? persona.arousal
-              : DEFAULT_AROUSAL,
-          )
+          const affect = resolveLoadedMeropeAffect(persona)
+          setMood(affect.mood)
+          setArousal(affect.arousal)
         })
         .catch(() => {
           if (!active) return
@@ -247,7 +245,7 @@ export function AgentPanelFace({
       window.removeEventListener(PERSONA_UPDATED_EVENT, loadPersona)
       window.removeEventListener(ADDRESSEE_UPDATED_EVENT, loadPersona)
     }
-  }, [hasChecked, isAuthenticated])
+  }, [hasChecked, isAuthenticated, user?.id])
 
   const emptyMessage =
     failed || rigFailed

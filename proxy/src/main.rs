@@ -455,6 +455,7 @@ fn is_seo_document_shell_path(path: &str) -> bool {
         || path.starts_with("/brew/item/")
 }
 
+#[cfg(test)]
 fn is_backend_path(path: &str, user_agent: &str) -> bool {
     is_backend_path_for(path, user_agent, "")
 }

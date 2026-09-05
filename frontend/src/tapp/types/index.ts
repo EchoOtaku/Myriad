@@ -215,7 +215,7 @@ export interface TappOpenUrlDef {
   match?: 'exact' | 'prefix' | 'origin'
 }
 
-export type TappAIOperation = 'generate' | 'analyze' | 'chat' | 'image'
+export type TappAIOperation = 'generate' | 'analyze' | 'chat' | 'image' | 'search'
 export type TappAIContextSource = 'platform' | 'report' | 'profile' | 'custom'
 export type TappAIOutputFormat = 'text' | 'json' | 'image'
 
@@ -458,6 +458,7 @@ export type TappPermission =
   | 'ai:analyze'
   | 'ai:chat'
   | 'ai:image'
+  | 'ai:search'
   | '3d:generate'
   // 报告权限
   | 'report:read'
@@ -778,6 +779,31 @@ export interface AIImageInput {
   referenceImages?: string[]
 }
 
+export interface AISearchInput {
+  query: string
+  searchType?: 'rss_source' | 'api_docs' | 'general'
+  maxResults?: number
+  searchPrompt?: string
+}
+
+export interface AIGenerateInput {
+  prompt: string
+}
+
+export interface AIAnalyzeInput {
+  data: unknown
+  instruction?: string
+}
+
+export interface AIChatMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
+export interface AIChatInput {
+  messages: AIChatMessage[]
+}
+
 interface AITaskRequestOptions {
   version: 2
   context?: AIContextRef[]
@@ -791,7 +817,10 @@ interface AITaskRequestOptions {
 
 export type AITaskRequest = AITaskRequestOptions & (
   | { operation: 'image'; input: string | AIImageInput }
-  | { operation: Exclude<TappAIOperation, 'image'>; input: unknown }
+  | { operation: 'search'; input: string | AISearchInput }
+  | { operation: 'generate'; input: string | AIGenerateInput }
+  | { operation: 'analyze'; input: AIAnalyzeInput }
+  | { operation: 'chat'; input: AIChatInput }
 )
 
 export type AITaskStatus =

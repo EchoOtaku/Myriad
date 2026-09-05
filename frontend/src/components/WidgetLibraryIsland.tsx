@@ -6,10 +6,7 @@
 import type { TappCategory } from '../tapp/types'
 import type { HomeLayoutMode } from '../utils/homeLayout'
 import type { WidgetType } from './widgetGridTypes'
-import type {
-  WidgetLibraryFilter,
-  WidgetLibraryKindFilter,
-} from './widgetLibrarySearch'
+import type { WidgetLibraryKindFilter } from './widgetLibrarySearch'
 import { FaSearch, FaTimes } from '@lib/icons'
 import {
   AnimatePresenceShim as AnimatePresence,
@@ -27,10 +24,6 @@ import { useI18n } from '../contexts/I18nContext'
 import { isExlight, useAnimationLevel } from '../hooks/useAnimationLevel'
 import { useLibraryDockStage } from '../hooks/useLibraryDockStage'
 import { useDebouncedWindowSize } from '../hooks/useSharedEventListener'
-import {
-  getStandardWidgetDimensions,
-  libraryDockPreviewDisplayScale,
-} from '../hooks/useWidgetSize'
 import { TAPP_CATEGORY_I18N_KEYS } from '../tapp/utils/tappCategories'
 import { standardHomeCellSize } from '../utils/homeLayout'
 import {
@@ -45,15 +38,17 @@ import {
 } from '../utils/libraryDockStage'
 import { useWidgetDragActive } from '../utils/widgetDragCursor'
 import {
+  getStandardWidgetDimensions,
+  libraryDockPreviewDisplayScale,
+} from '../utils/widgetSizeScale'
+import {
   widgetDisplayLabel,
   widgetLibraryKindSource,
   widgetPreviewConfig,
   widgetSearchExtras,
 } from './widgetLibraryModel'
 import {
-  formatWidgetLibrarySize,
   presentWidgetLibraryKindFilters,
-  sizeFromLibraryFilter,
   tappCategoryFromKindFilter,
   widgetMatchesLibraryKind,
   widgetTypeMatchesLibrarySearch,
@@ -61,18 +56,12 @@ import {
 import { preloadBuiltinWidgets } from './widgets/builtinWidgets'
 import './WidgetLibraryIsland.css'
 
-const LIBRARY_DOCK_ISLAND_CLASS =
-  'widget-library-island widget-library-island--dock'
-
 function libraryFilterLabel(
-  id: WidgetLibraryFilter,
+  id: WidgetLibraryKindFilter,
   t: ReturnType<typeof useI18n>['t'],
 ): string {
   if (id === 'all') return t.widgetGrid.filterAll
-  if (id === 'builtin') return t.widgetGrid.filterBuiltin
   if (id === 'report') return t.widgetGrid.filterReports
-  const size = sizeFromLibraryFilter(id)
-  if (size) return formatWidgetLibrarySize(size)
   const tappCategory = tappCategoryFromKindFilter(id)
   if (tappCategory && tappCategory in TAPP_CATEGORY_I18N_KEYS) {
     return t.tapp[TAPP_CATEGORY_I18N_KEYS[tappCategory as TappCategory]]
@@ -80,20 +69,20 @@ function libraryFilterLabel(
   return tappCategory || id
 }
 
+const PREVIEW_LAZY_ROOT_MARGIN = '280px 0px'
+
 const LibraryPreviewSlot = React.memo(
   ({
     scrollRef,
     renderWidth,
     renderHeight,
     displayScale,
-    rootMargin = '280px 0px',
     children,
   }: {
     scrollRef: React.RefObject<HTMLDivElement | null>
     renderWidth: number
     renderHeight: number
     displayScale: number
-    rootMargin?: string
     children: React.ReactNode
   }) => {
     const [mounted, setMounted] = useState(false)
@@ -114,16 +103,16 @@ const LibraryPreviewSlot = React.memo(
             observer.disconnect()
           }
         },
-        { root: scrollRef.current ?? null, rootMargin },
+        { root: scrollRef.current ?? null, rootMargin: PREVIEW_LAZY_ROOT_MARGIN },
       )
       observer.observe(node)
       return () => observer.disconnect()
-    }, [mounted, rootMargin, scrollRef])
+    }, [mounted, scrollRef])
 
     return (
       <div
         ref={slotRef}
-        className="widget-library-preview absolute top-0 left-0 origin-top-left pointer-events-none"
+        className="widget-library-preview"
         style={{
           width: renderWidth,
           height: renderHeight,
@@ -170,16 +159,10 @@ const WidgetLibraryTile = React.memo(
       onTouchStart: (e: React.TouchEvent) => onDragStart(e, widgetType.id),
     }
     return (
-      <div className="widget-library-tile" draggable {...startDrag}>
+      <div className="widget-library-tile" draggable={false} {...startDrag}>
         <div
           className="widget-library-tile-stage"
-          style={
-            {
-              width: wrapperWidth,
-              height: wrapperHeight,
-              '--widget-library-preview-scale': displayScale,
-            } as React.CSSProperties
-          }
+          style={{ width: wrapperWidth, height: wrapperHeight }}
         >
           <LibraryPreviewSlot
             scrollRef={scrollRef}
@@ -189,11 +172,11 @@ const WidgetLibraryTile = React.memo(
           >
             <WidgetComponent
               config={previewConfig}
-              isEditMode={true}
+              isEditMode={false}
               isPreview={true}
             />
           </LibraryPreviewSlot>
-          <div className="widget-library-item-frame" />
+          <div className="widget-library-tile-frame" />
         </div>
         <div className="widget-library-tile-name" title={libraryLabel}>
           {libraryLabel}
@@ -256,6 +239,8 @@ export interface WidgetLibraryIslandProps {
    * stays a full window (`parkable={false}`).
    */
   parkable?: boolean
+  /** Home sticker pick: do not restore/park from grid clicks. */
+  pausePointer?: boolean
 }
 
 export default function WidgetLibraryIsland({
@@ -264,6 +249,7 @@ export default function WidgetLibraryIsland({
   onNewWidgetDragStart,
   layoutMode,
   parkable = true,
+  pausePointer = false,
 }: WidgetLibraryIslandProps) {
   const { t } = useI18n()
   const anim = useAnimationLevel()
@@ -276,6 +262,7 @@ export default function WidgetLibraryIsland({
     windowWidth,
     windowHeight,
     reducedMotion: isExlight(anim),
+    pausePointer,
   })
   const {
     parked: libraryParked,
@@ -352,27 +339,18 @@ export default function WidgetLibraryIsland({
         label: widgetDisplayLabel(widgetType, widgetsI18n),
         extras: widgetSearchExtras(widgetType),
       })
-    const inKind = libraryCatalog.filter(
-      (entry) =>
-        widgetMatchesLibraryKind(activeLibraryKind, entry.source) &&
-        matchesSearch(entry.widgetType),
-    )
-    if (
-      inKind.length > 0 ||
-      !librarySearchQuery.trim() ||
-      activeLibraryKind === 'all'
-    ) {
-      return inKind.map((entry) => entry.widgetType)
-    }
     return libraryCatalog
-      .filter((entry) => matchesSearch(entry.widgetType))
+      .filter(
+        (entry) =>
+          widgetMatchesLibraryKind(activeLibraryKind, entry.source) &&
+          matchesSearch(entry.widgetType),
+      )
       .map((entry) => entry.widgetType)
   }, [activeLibraryKind, libraryCatalog, librarySearchQuery, t.widgets])
 
   useEffect(() => {
     const el = libraryScrollRef.current
     if (!el) return
-    el.scrollLeft = 0
     el.scrollTop = 0
   }, [librarySearchQuery, activeLibraryKind])
 
@@ -397,18 +375,9 @@ export default function WidgetLibraryIsland({
     [libraryDockScale, libraryWidgets, onNewWidgetDragStart, t.widgets],
   )
 
-  const libraryIslandClassName = `${LIBRARY_DOCK_ISLAND_CLASS}${
-    widgetDragActive ? ' is-concealed' : ''
-  }${libraryParked ? ' is-staged' : ''}`
-
-  const searchField = (
-    <LibrarySearchField
-      query={librarySearchQuery}
-      onQueryChange={setLibrarySearchQuery}
-      searchLabel={t.widgetGrid.searchWidgets}
-      clearLabel={t.widgetGrid.clearSearch}
-    />
-  )
+  const libraryIslandClassName = `widget-library-island${
+    libraryParked ? ' is-staged' : ''
+  }`
 
   const parkedMotion = {
     x: dockStageMotion.x,
@@ -425,8 +394,8 @@ export default function WidgetLibraryIsland({
         <motion.div
           key="widget-library-island"
           className={`widget-library-stage-root${
-            libraryParked ? ' is-staged' : ''
-          }${widgetDragActive ? ' is-concealed' : ''}`}
+            widgetDragActive ? ' is-concealed' : ''
+          }`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{
@@ -436,9 +405,7 @@ export default function WidgetLibraryIsland({
           transition={{ duration: 0.26, ease: [0.25, 0.1, 0.25, 1] }}
         >
           <div
-            className={`widget-library-stage-scene${
-              libraryParked ? ' is-staged' : ''
-            }`}
+            className="widget-library-stage-scene"
             style={
               parkable
                 ? { perspective: LIBRARY_DOCK_STAGE_PERSPECTIVE }
@@ -446,7 +413,7 @@ export default function WidgetLibraryIsland({
             }
           >
             <motion.div
-              key="widget-library-dock-island"
+              key="widget-library-window"
               {...{ [LIBRARY_DOCK_CHROME_ATTR]: '' }}
               initial={
                 libraryParked
@@ -520,56 +487,53 @@ export default function WidgetLibraryIsland({
                 originY: LIBRARY_DOCK_STAGE_ORIGIN_Y,
               }}
             >
-              <div className="widget-library w-full widget-library--gallery">
-                <div className="widget-library-toolbar">
-                  <div className="widget-library-title-row">
-                    <div className="widget-library-title">
-                      <img
-                        src="/icons/widgets/library.webp"
-                        alt=""
-                        aria-hidden="true"
-                        draggable={false}
-                        decoding="async"
-                      />
-                      <span>{t.widgetGrid.widgetLibrary}</span>
+              <div className="widget-library-title">
+                <img
+                  src="/icons/widgets/library.webp"
+                  alt=""
+                  aria-hidden="true"
+                  draggable={false}
+                  decoding="async"
+                />
+                <span>{t.widgetGrid.widgetLibrary}</span>
+              </div>
+              <div className="widget-library-gallery">
+                <aside className="widget-library-sidebar">
+                  <LibrarySearchField
+                    query={librarySearchQuery}
+                    onQueryChange={setLibrarySearchQuery}
+                    searchLabel={t.widgetGrid.searchWidgets}
+                    clearLabel={t.widgetGrid.clearSearch}
+                  />
+                  <nav
+                    className="widget-library-nav"
+                    aria-label={t.widgetGrid.filterWidgets}
+                  >
+                    {librarySidebarKinds.map((id) => (
+                      <button
+                        key={id}
+                        type="button"
+                        className={`widget-library-nav-item${
+                          activeLibraryKind === id ? ' is-active' : ''
+                        }`}
+                        onClick={() => setLibraryKindFilter(id)}
+                      >
+                        {libraryFilterLabel(id, t)}
+                      </button>
+                    ))}
+                  </nav>
+                </aside>
+                <div
+                  ref={libraryScrollRef}
+                  className="widget-library-body scrollbar-hide"
+                >
+                  {libraryWidgets.length === 0 ? (
+                    <div className="widget-library-empty">
+                      {t.widgetGrid.noSearchResults}
                     </div>
-                  </div>
-                </div>
-                <div className="widget-library-gallery">
-                  <aside className="widget-library-sidebar">
-                    {searchField}
-                    <nav
-                      className="widget-library-nav"
-                      aria-label={t.widgetGrid.filterWidgets}
-                    >
-                      {librarySidebarKinds.map((id) => (
-                        <button
-                          key={id}
-                          type="button"
-                          className={`widget-library-nav-item${
-                            activeLibraryKind === id ? ' is-active' : ''
-                          }`}
-                          onClick={() => setLibraryKindFilter(id)}
-                        >
-                          {libraryFilterLabel(id, t)}
-                        </button>
-                      ))}
-                    </nav>
-                  </aside>
-                  <div className="widget-library-canvas">
-                    <div
-                      ref={libraryScrollRef}
-                      className="widget-library-dock-body scrollbar-hide"
-                    >
-                      {libraryWidgets.length === 0 ? (
-                        <div className="widget-library-empty">
-                          {t.widgetGrid.noSearchResults}
-                        </div>
-                      ) : (
-                        libraryTiles
-                      )}
-                    </div>
-                  </div>
+                  ) : (
+                    libraryTiles
+                  )}
                 </div>
               </div>
             </motion.div>

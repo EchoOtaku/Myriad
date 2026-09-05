@@ -510,7 +510,7 @@ export const SteamStatsWidget = memo(({ data, isPreview }: any) => {
   const showNowPlaying = Boolean(nowPlaying) && slotIndex === 1
 
   useEffect(() => {
-    // 库条带预览用的是假数据，不该去打真接口
+    // 小组件库预览用的是假数据，不该去打真接口
     if (isPreview) return
     let cancelled = false
 

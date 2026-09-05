@@ -32,6 +32,7 @@ pub mod response_agent;
 pub mod retry_pure;
 pub mod routing;
 pub mod run_hub;
+pub mod search_output;
 pub mod skill;
 pub mod skill_evolution;
 pub mod system_op_pure;
@@ -40,6 +41,7 @@ pub mod tier_router;
 pub mod turn;
 pub mod types;
 pub mod ui_analysis;
+pub mod web_search;
 
 // 重新导出核心类型
 pub use types::*;

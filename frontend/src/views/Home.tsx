@@ -6,11 +6,13 @@
 import type {
   WidgetConfig,
   WidgetGridHandle,
+  WidgetSize,
   WidgetType,
 } from '../components/widgetGridTypes'
+import type { StickerCrop } from '../utils/homeStickerCrop'
 import type { HomeDashboardLayouts, HomeLayoutMode } from '../utils/homeLayout'
 
-import { FaCog, FaCompress, FaEdit, FaExpand } from '@lib/icons'
+import { FaCog, FaCompress, FaEdit, FaExpand, LuSparkles } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
 import {
   startTransition,
@@ -24,6 +26,9 @@ import { useNavigate } from 'react-router-dom'
 import AnimatedView from '../components/AnimatedView'
 import { Avatar } from '../components/Avatar'
 import { TitleFontSelector } from '../components/TitleFontSelector'
+import { HomeStickerDialog } from '../components/home/HomeStickerDialog'
+import '../components/home/HomeStickerDialog.css'
+import { generateHomeSticker, uploadHomeSticker } from '../utils/homeStickers'
 import WidgetGrid, { startGridLibraryDrag } from '../components/WidgetGrid'
 import WidgetLibraryIsland from '../components/WidgetLibraryIsland'
 import {
@@ -37,19 +42,30 @@ import { useImmersiveChrome } from '../contexts/NavigationContext'
 import { useHomeScheduler, usePageReady } from '../hooks/animation'
 import { useEditModeEscape } from '../hooks/useEditModeEscape'
 import { usePageSeo } from '../hooks/usePageSeo'
-import { useBreakpoints } from '../hooks/useSharedEventListener'
+import {
+  useBreakpoints,
+  useDesktopLayoutBand,
+} from '../hooks/useSharedEventListener'
 import { useSiteOwnerProfile } from '../hooks/useSiteOwnerProfile'
 import { useTappWidgets } from '../hooks/useTappWidgets'
 import { useResolvedTitleColor, useTitleFont } from '../hooks/useTitleFont'
 import { ensureMotionReady } from '../lib/lazyMotion'
 import {
   cloneHomeWidgets,
+  createHomeStickerItem,
   effectiveHomeLayoutMode,
+  isHomeStickerItem,
+  isHomeWidgetItem,
   parseDashboardLayoutJson,
+  parseHomeLayoutMode,
+  peekStoredHomeLayoutMode,
   persistHomeLayoutMode,
-  readHomeLayoutMode,
   serializeDashboardLayout,
+  stickerPixelSize,
 } from '../utils/homeLayout'
+import { stickerAspectKey } from '../utils/homeStickerSize'
+import { widgetSizeSpan } from '../utils/widgetSizeScale'
+import { stickerCropForSlot } from '../utils/homeStickerCrop'
 import { buildHomePageSeo } from '../utils/modulePageSeo'
 import { getUIConfigDeduped } from '../utils/requestDedup'
 import { hasSessionHint } from '../utils/sessionDetection'
@@ -66,7 +82,8 @@ export default function Home() {
   const navigate = useNavigate()
   const isPageReady = usePageReady()
   // 与 WidgetGrid 列档同一套 viewportBands（phone≤767 / tablet / desktop≥1078）
-  const { isMobile: isPhoneBand, isDesktop: isDesktopBand } = useBreakpoints()
+  const { isMobile: isPhoneBand } = useBreakpoints()
+  const isDesktopBand = useDesktopLayoutBand()
   const isNotPhoneBand = !isPhoneBand
 
   // 站级 title/description；固定 canonical 为 /
@@ -75,16 +92,29 @@ export default function Home() {
     standard: [],
     free: [],
   })
-  const [layoutMode, setLayoutMode] = useState<HomeLayoutMode>(() =>
+  const layoutsRef = useRef(layouts)
+  layoutsRef.current = layouts
+  const [layoutMode, setLayoutMode] = useState<HomeLayoutMode | null>(() =>
     typeof window === 'undefined'
-      ? 'standard'
-      : readHomeLayoutMode(window.localStorage),
+      ? null
+      : peekStoredHomeLayoutMode(window.localStorage),
   )
   const [isEditMode, setIsEditMode] = useState(false)
+  const [stickerPicking, setStickerPicking] = useState(false)
   const layoutSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const gridRef = useRef<WidgetGridHandle>(null)
   useImmersiveChrome('home-edit-mode', isEditMode)
   useEditModeEscape(isEditMode, () => setIsEditMode(false))
+  useEffect(() => {
+    if (!stickerPicking) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setStickerPicking(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [stickerPicking])
   const onLibraryDragStart = useCallback(
     (
       event: Parameters<typeof startGridLibraryDrag>[1],
@@ -148,15 +178,35 @@ export default function Home() {
     return [...AVAILABLE_WIDGETS, ...tappWidgets]
   }, [AVAILABLE_WIDGETS, tappWidgets])
 
-  const effectiveMode = effectiveHomeLayoutMode(layoutMode, isDesktopBand)
+  const resolvedLayoutMode: HomeLayoutMode = layoutMode ?? 'standard'
+  const effectiveMode = effectiveHomeLayoutMode(
+    resolvedLayoutMode,
+    isDesktopBand,
+  )
   const isFreeLayout = effectiveMode === 'free'
   const widgets = useMemo(() => {
-    if (layoutMode === 'free' && !isDesktopBand) {
-      return layouts.free.length > 0 ? layouts.free : layouts.standard
+    if (resolvedLayoutMode === 'free' && !isDesktopBand) {
+      const source =
+        layouts.free.length > 0 ? layouts.free : layouts.standard
+      return source.filter(isHomeWidgetItem)
     }
     return layouts[effectiveMode]
-  }, [layoutMode, isDesktopBand, layouts, effectiveMode])
+  }, [resolvedLayoutMode, isDesktopBand, layouts, effectiveMode])
   const heroTitle = dashboardTitle.trim() || userInfo?.name || ''
+  const [stickerDraft, setStickerDraft] = useState<{
+    size: WidgetSize
+    position: { x: number; y: number }
+    anchor: {
+      top: number
+      left: number
+      width: number
+      height: number
+      right: number
+      bottom: number
+    }
+  } | null>(null)
+  const [stickerBusy, setStickerBusy] = useState(false)
+  const [stickerError, setStickerError] = useState('')
   const showHomeAdminActions = Boolean(isAdmin && isDesktopBand)
 
   // 智能检测：如果有登录迹象（会话提示标志），主动检查认证状态
@@ -213,10 +263,14 @@ export default function Home() {
       source: HomeDashboardLayouts,
       registered: Set<string>,
     ): HomeDashboardLayouts {
-      const keep = (list: WidgetConfig[]) =>
-        list.filter((widget) => registered.has(widget.type))
-      const standard = keep(source.standard)
-      const free = keep(source.free)
+      const keep = (list: WidgetConfig[], allowStickers: boolean) =>
+        list.filter(
+          (widget) =>
+            (allowStickers && isHomeStickerItem(widget)) ||
+            registered.has(widget.type),
+        )
+      const standard = keep(source.standard, false)
+      const free = keep(source.free, true)
       return {
         standard: standard.length > 0 ? standard : DEFAULT_WIDGETS,
         free,
@@ -239,6 +293,13 @@ export default function Home() {
     async function loadDashboardConfig() {
       try {
         const data = await getUIConfigDeduped()
+        const mode = parseHomeLayoutMode(data.dashboard_layout_mode)
+        persistHomeLayoutMode(
+          mode,
+          typeof window === 'undefined' ? null : window.localStorage,
+        )
+        setLayoutMode(mode)
+        setDashboardTitle(data.dashboard_title || 'Dashboard')
 
         if (data.dashboard_layout) {
           try {
@@ -255,10 +316,13 @@ export default function Home() {
         } else {
           await applyLayouts(fallbackLayouts())
         }
-
-        setDashboardTitle(data.dashboard_title || 'Dashboard')
       } catch (err) {
         console.error('加载配置失败:', err)
+        persistHomeLayoutMode(
+          'standard',
+          typeof window === 'undefined' ? null : window.localStorage,
+        )
+        setLayoutMode('standard')
         await applyLayouts(fallbackLayouts())
         setDashboardTitle('Dashboard')
       }
@@ -275,8 +339,9 @@ export default function Home() {
       standard: rawLayouts.standard.filter((widget) =>
         registeredWidgetIds.has(widget.type),
       ),
-      free: rawLayouts.free.filter((widget) =>
-        registeredWidgetIds.has(widget.type),
+      free: rawLayouts.free.filter(
+        (widget) =>
+          isHomeStickerItem(widget) || registeredWidgetIds.has(widget.type),
       ),
     }
 
@@ -302,7 +367,8 @@ export default function Home() {
   }, [isTappWidgetsLoading, tappWidgets, rawLayouts, ALL_AVAILABLE_WIDGETS])
 
   const handleLayoutModeToggle = () => {
-    const next: HomeLayoutMode = layoutMode === 'free' ? 'standard' : 'free'
+    const next: HomeLayoutMode =
+      resolvedLayoutMode === 'free' ? 'standard' : 'free'
     persistHomeLayoutMode(
       next,
       typeof window === 'undefined' ? null : window.localStorage,
@@ -310,17 +376,49 @@ export default function Home() {
     startTransition(() => {
       setLayoutMode(next)
     })
+    if (!isAdmin) return
+    void (async () => {
+      try {
+        const { getCSRFToken } = await import('../utils/csrf')
+        const token = (await getCSRFToken(true)) || csrfToken
+        if (!token) {
+          showError(t.errors.csrfUnavailable)
+          return
+        }
+        if (token !== csrfToken) setCsrfToken(token)
+        const res = await fetch(`${API_URL}/api/config/dashboard`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': token,
+          },
+          credentials: 'include',
+          body: JSON.stringify({ layout_mode: next }),
+        })
+        if (!res.ok) {
+          throw new Error(`Failed to save dashboard layout mode: HTTP ${res.status}`)
+        }
+      } catch (err) {
+        console.error('保存首页布局模式失败:', err)
+        showError(userFacingError(err, t.errors.dashboardLayoutSaveFailed))
+      }
+    })()
   }
 
   // 保存小组件配置到后端（防抖 500ms，与控制面板一致；UI 立即更新）
   const handleWidgetsChange = (newWidgets: WidgetConfig[]) => {
     const registeredWidgetIds = new Set(ALL_AVAILABLE_WIDGETS.map((w) => w.id))
-    const validWidgets = isTappWidgetsLoading
+    let validWidgets = isTappWidgetsLoading
       ? newWidgets
-      : newWidgets.filter((w) => registeredWidgetIds.has(w.type))
+      : newWidgets.filter(
+          (w) => isHomeStickerItem(w) || registeredWidgetIds.has(w.type),
+        )
+    if (effectiveMode === 'standard') {
+      validWidgets = validWidgets.filter((w) => !isHomeStickerItem(w))
+    }
 
     const nextLayouts: HomeDashboardLayouts = {
-      ...layouts,
+      ...layoutsRef.current,
       [effectiveMode]: validWidgets,
     }
     setLayouts(nextLayouts)
@@ -362,6 +460,93 @@ export default function Home() {
         }
       })()
     }, 500)
+  }
+
+  const startStickerPick = () => {
+    setStickerError('')
+    setStickerDraft(null)
+    setStickerPicking((on) => !on)
+  }
+
+  const handleGenerateSticker = async (
+    prompt: string,
+    referenceImages: string[] = [],
+  ) => {
+    if (!stickerDraft || stickerBusy) return
+    setStickerBusy(true)
+    setStickerError('')
+    try {
+      const { getCSRFToken } = await import('../utils/csrf')
+      const token = (await getCSRFToken(true)) || csrfToken
+      if (!token) {
+        showError(t.errors.csrfUnavailable)
+        return
+      }
+      const pixels = stickerPixelSize(stickerDraft.size)
+      const slot = widgetSizeSpan(stickerDraft.size)
+      const generated = await generateHomeSticker({
+        prompt,
+        width: pixels.width,
+        height: pixels.height,
+        csrfToken: token,
+        referenceImages,
+        aspect: stickerAspectKey(stickerDraft.size),
+        slotCols: slot.w,
+        slotRows: slot.h,
+      })
+      handleWidgetsChange([
+        ...layoutsRef.current.free,
+        createHomeStickerItem({
+          size: stickerDraft.size,
+          position: stickerDraft.position,
+          imageUrl: generated.imageUrl,
+          prompt,
+          crop: stickerCropForSlot(
+            generated.width || pixels.width,
+            generated.height || pixels.height,
+            stickerDraft.size,
+          ),
+        }),
+      ])
+      setStickerDraft(null)
+    } catch (err) {
+      setStickerError(userFacingError(err, t.home.stickerFailed))
+    } finally {
+      setStickerBusy(false)
+    }
+  }
+
+  const handleUploadSticker = async (image: string, crop: StickerCrop) => {
+    if (!stickerDraft || stickerBusy) return
+    setStickerBusy(true)
+    setStickerError('')
+    try {
+      const { getCSRFToken } = await import('../utils/csrf')
+      const token = (await getCSRFToken(true)) || csrfToken
+      if (!token) {
+        showError(t.errors.csrfUnavailable)
+        return
+      }
+      const uploaded = await uploadHomeSticker({
+        image,
+        csrfToken: token,
+      })
+      handleWidgetsChange([
+        ...layoutsRef.current.free,
+        createHomeStickerItem({
+          size: stickerDraft.size,
+          position: stickerDraft.position,
+          imageUrl: uploaded.imageUrl,
+          prompt: '',
+          crop,
+        }),
+      ])
+      setStickerDraft(null)
+    } catch (err) {
+      setStickerError(userFacingError(err, t.home.stickerUploadFailed))
+    } finally {
+      setStickerBusy(false)
+    }
   }
 
   // 保存标题
@@ -461,7 +646,7 @@ export default function Home() {
       data-home-band={
         isDesktopBand ? 'desktop' : isPhoneBand ? 'phone' : 'tablet'
       }
-      data-home-layout={effectiveMode}
+      data-home-layout={layoutMode == null ? undefined : effectiveMode}
     >
       <div className="home-shell__inner h-full flex flex-col">
         <div className="home-shell__stage flex-1 mx-auto w-full flex flex-col gap-4 relative min-h-0">
@@ -471,6 +656,7 @@ export default function Home() {
             availableWidgets={ALL_AVAILABLE_WIDGETS}
             layoutMode={effectiveMode}
             onNewWidgetDragStart={onLibraryDragStart}
+            pausePointer={stickerPicking || Boolean(stickerDraft)}
           />
           <WidgetGrid
             ref={gridRef}
@@ -479,6 +665,25 @@ export default function Home() {
             onWidgetsChange={handleWidgetsChange}
             isEditMode={isEditMode}
             layoutMode={effectiveMode}
+            stickerPickActive={stickerPicking}
+            stickerHighlight={
+              stickerDraft
+                ? {
+                    x: stickerDraft.position.x,
+                    y: stickerDraft.position.y,
+                    size: stickerDraft.size,
+                  }
+                : null
+            }
+            onPickStickerSlot={(slot) => {
+              setStickerPicking(false)
+              setStickerError('')
+              setStickerDraft({
+                size: slot.size,
+                position: { x: slot.x, y: slot.y },
+                anchor: slot.anchor,
+              })
+            }}
           >
             <h1 className="sr-only">{heroTitle}</h1>
             {isFreeLayout ? null : (
@@ -622,6 +827,9 @@ export default function Home() {
           </WidgetGrid>
         </div>
       </div>
+      {stickerPicking ? (
+        <div className="home-sticker-pick-hint">{t.home.stickerPickHint}</div>
+      ) : null}
       {isDesktopBand &&
       (isEditMode || (isFreeLayout && showHomeAdminActions)) ? (
         <div className="home-layout-rail" data-library-dock-chrome="">
@@ -658,6 +866,20 @@ export default function Home() {
                   )}
                   {isFreeLayout ? t.home.standardLayout : t.home.freeLayout}
                 </button>
+                {isFreeLayout && showHomeAdminActions ? (
+                  <button
+                    type="button"
+                    className={`home-layout-rail__btn ${
+                      stickerPicking ? 'is-active' : ''
+                    }`}
+                    onClick={startStickerPick}
+                    aria-label={t.home.createSticker}
+                    aria-pressed={stickerPicking}
+                  >
+                    <LuSparkles size={13} />
+                    {t.home.createSticker}
+                  </button>
+                ) : null}
               </div>
             ) : null}
             {isEditMode && isFreeLayout && showHomeAdminActions ? (
@@ -699,6 +921,22 @@ export default function Home() {
             ) : null}
           </motion.div>
         </div>
+      ) : null}
+      {stickerDraft ? (
+        <HomeStickerDialog
+          size={stickerDraft.size}
+          busy={stickerBusy}
+          error={stickerError}
+          anchor={stickerDraft.anchor}
+          onCancel={() => {
+            if (!stickerBusy) {
+              setStickerDraft(null)
+              setStickerError('')
+            }
+          }}
+          onGenerate={handleGenerateSticker}
+          onUpload={handleUploadSticker}
+        />
       ) : null}
     </AnimatedView>
   )

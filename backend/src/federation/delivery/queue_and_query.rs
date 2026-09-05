@@ -680,19 +680,7 @@ fn lease_update_applied(
     }
 }
 
-/// 投递队列处理器 — 由后台任务驱动
-///
-/// 每次调用处理一批待投递的 Activity（最多 batch_size 个）
-#[allow(dead_code)]
-pub async fn process_delivery_queue(
-    db: &DatabaseConnection,
-    batch_size: u32,
-) -> Result<u32, String> {
-    let stats = process_delivery_queue_detailed(db, batch_size).await?;
-    Ok(stats.delivered)
-}
-
-/// Same as process_delivery_queue but returns full batch counters.
+/// Process a batch of pending deliveries and return full batch counters.
 pub async fn process_delivery_queue_detailed(
     db: &DatabaseConnection,
     batch_size: u32,

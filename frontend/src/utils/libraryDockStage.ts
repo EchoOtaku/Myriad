@@ -44,7 +44,7 @@ export const LIBRARY_DOCK_STAGE_ORIGIN_Y = 0.5
  * Home-owned chrome uses the data attr; nav / control bar are platform chrome.
  */
 export const LIBRARY_DOCK_CHROME_ATTR = 'data-library-dock-chrome'
-export const LIBRARY_DOCK_POINTER_CHROME = `[${LIBRARY_DOCK_CHROME_ATTR}], .nav-container, .global-control-bar`
+export const LIBRARY_DOCK_POINTER_CHROME = `[${LIBRARY_DOCK_CHROME_ATTR}], [data-sticker-pick], .nav-container, .global-control-bar`
 export const LIBRARY_DOCK_RESTORE_BLOCK =
   '.widget-grid-item, button, input, select, textarea, a, [role="button"]'
 
@@ -181,7 +181,7 @@ export function libraryBesidePanelBox(input: {
   }
 }
 
-/** Inline box for `.widget-library-island--dock` — CSS does not repeat these numbers. */
+/** Inline box for `.widget-library-island` — CSS does not repeat these numbers. */
 export function libraryDockIslandBoxStyle(
   island: { width: number; height: number },
   rootFontSize = 16,

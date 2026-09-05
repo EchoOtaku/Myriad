@@ -29,11 +29,6 @@ fn merope_owns_notify(event_key: &str) -> bool {
     event_key.starts_with("agent.merope.")
 }
 
-/// Re-check sight at redeem time. Produce-time gates are stale after the 15s tick.
-pub fn may_redeem_speech(event_key: &str, sight: &IngestSight) -> bool {
-    decide_ingest(event_key, sight).allow_model
-}
-
 pub async fn tick_speak_intents(db: DatabaseConnection) {
     if !is_enabled().await {
         return;
@@ -421,36 +416,42 @@ mod tests {
             panel_open: true,
             ..Default::default()
         };
-        assert!(!may_redeem_speech(
-            "agent.merope.platform_activity",
-            &IngestSight {
-                executing: true,
-                ..looking.clone()
-            }
-        ));
-        assert!(may_redeem_speech(
-            "agent.merope.platform_activity",
-            &looking
-        ));
+        assert!(
+            !decide_ingest(
+                "agent.merope.platform_activity",
+                &IngestSight {
+                    executing: true,
+                    ..looking.clone()
+                }
+            )
+            .allow_model
+        );
+        assert!(decide_ingest("agent.merope.platform_activity", &looking).allow_model);
     }
 
     #[test]
     fn greeting_is_worth_composing_on_the_page() {
-        assert!(may_redeem_speech(
-            "agent.merope.greeting",
-            &IngestSight {
-                on_page: true,
-                panel_open: true,
-                ..Default::default()
-            }
-        ));
-        assert!(may_redeem_speech(
-            "agent.merope.greeting",
-            &IngestSight {
-                on_page: true,
-                ..Default::default()
-            }
-        ));
+        assert!(
+            decide_ingest(
+                "agent.merope.greeting",
+                &IngestSight {
+                    on_page: true,
+                    panel_open: true,
+                    ..Default::default()
+                }
+            )
+            .allow_model
+        );
+        assert!(
+            decide_ingest(
+                "agent.merope.greeting",
+                &IngestSight {
+                    on_page: true,
+                    ..Default::default()
+                }
+            )
+            .allow_model
+        );
     }
 
     #[test]

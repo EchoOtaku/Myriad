@@ -13,6 +13,7 @@ import {
   LuNotebookPen,
   LuPalette,
   LuRefreshCw,
+  LuSearch,
   LuSparkles,
   LuStore,
   SiGooglegemini,
@@ -945,6 +946,27 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
             )
           }
           updateValue={updateValue}
+        />
+      </SettingGroup>
+
+      <SettingGroup
+        title={t.config.webSearchTitle}
+        icon={<LuSearch />}
+        description={t.config.webSearchDesc}
+        {...bindGuide('ai.webSearch', g.ai.webSearch)}
+      >
+        <InputItem
+          itemKey="provider_tinyfish_api_key"
+          label={t.config.tinyfishApiKey}
+          required={false}
+          value={getFieldValue('provider_tinyfish_api_key')}
+          onChange={(value) => updateValue('provider_tinyfish_api_key', value)}
+          placeholder={t.config.tinyfishApiKeyPlaceholder}
+          hint={t.config.tinyfishApiKeyHint}
+          inputType="password"
+          autoSelectOnMask
+          layout="vertical"
+          {...fieldGuideFor('provider_tinyfish_api_key')}
         />
       </SettingGroup>
 

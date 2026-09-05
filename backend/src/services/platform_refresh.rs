@@ -10,7 +10,6 @@ use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
-use std::path::PathBuf;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PlatformDataCache {
@@ -23,7 +22,7 @@ pub const PLATFORM_CACHE_HOURS: i64 = 12; // 数据缓存12小时
 /// 从磁盘加载平台数据缓存
 pub fn load_platform_data_cache() -> Option<PlatformDataCache> {
     // 优先从分平台数据目录加载
-    let raw_dir = PathBuf::from("./cache/raw");
+    let raw_dir = crate::services::data_paths::raw_cache_dir();
     if raw_dir.exists() {
         let mut all_data = serde_json::Map::new();
         let mut latest_time = std::time::SystemTime::UNIX_EPOCH;
@@ -92,7 +91,7 @@ pub fn save_platform_data_cache(data: &Value) -> Result<(), Box<dyn std::error::
 /// 保存分平台的原始数据（避免读取大文件）
 /// 优化：添加错误容错和大文件分块写入
 pub fn save_split_raw_data(all_data: &Value) -> Result<(), Box<dyn std::error::Error>> {
-    let raw_dir = PathBuf::from("./cache/raw");
+    let raw_dir = crate::services::data_paths::raw_cache_dir();
     if !raw_dir.exists() {
         fs::create_dir_all(&raw_dir)?;
     }

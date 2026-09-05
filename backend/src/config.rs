@@ -356,6 +356,9 @@ pub struct DynamicConfig {
     pub provider_openai_base_url: String,
     pub provider_openrouter_api_key: Option<String>,
     pub provider_gemini_api_key: Option<String>,
+    /// TinyFish Search / Fetch host secret. Search is free; the key is still required.
+    #[serde(default)]
+    pub provider_tinyfish_api_key: Option<String>,
     pub provider_volcengine_api_key: Option<String>,
     pub provider_volcengine_base_url: String,
     /// 可添加的服务商源列表（OAuth providers 同款：可多家、可同 kind 多源）
@@ -489,6 +492,8 @@ pub struct DynamicConfig {
 
     // 仪表盘配置
     pub dashboard_layout: Option<String>,
+    /// Site-wide home layout mode: `standard` or `free`.
+    pub dashboard_layout_mode: Option<String>,
     pub dashboard_title: Option<String>,
     pub custom_platforms: Option<String>, // 自定义社交平台数据 (JSON)
     pub widget_theme: Option<String>,     // 小组件外观主题 (JSON: surface/glow)
@@ -506,12 +511,12 @@ pub struct DynamicConfig {
     pub tapp_window_schemes: Option<String>, // 窗口方案数据 (JSON)
 
     // Tapp 权限下放配置
-    // 基于 Tapp 系统的 elevated 级别权限（18 项可配置下放）
+    // 基于 Tapp 系统的 elevated 级别权限（可配置下放）
     // 这些权限默认只有管理员可用，可以配置下放给普通用户或游客
     // 注意：basic 级别权限默认可授予所有用户
     // 注意：privileged 级别权限始终只限管理员
 
-    // 普通用户可使用的 elevated 权限（18 项）
+    // 普通用户可使用的 elevated 权限
     /// ai:generate - AI 生成内容
     pub user_perm_ai_generate: bool,
     /// ai:analyze - AI 分析数据
@@ -520,6 +525,8 @@ pub struct DynamicConfig {
     pub user_perm_ai_chat: bool,
     /// ai:image - AI 图片生成
     pub user_perm_ai_image: bool,
+    /// ai:search - 联网搜索（TinyFish / Gemini grounding）
+    pub user_perm_ai_search: bool,
     /// 3d:generate - Tripo 3D 模型生成
     pub user_perm_3d_generate: bool,
     /// report:write - 写入/生成报告
@@ -551,7 +558,7 @@ pub struct DynamicConfig {
     /// brew:commentWrite - 写 Brew 评论（需登录主体）
     pub user_perm_brew_comment_write: bool,
 
-    // 游客可使用的 elevated 权限（18 项）
+    // 游客可使用的 elevated 权限
     /// ai:generate - AI 生成内容（游客）
     pub guest_perm_ai_generate: bool,
     /// ai:analyze - AI 分析数据（游客）
@@ -560,6 +567,8 @@ pub struct DynamicConfig {
     pub guest_perm_ai_chat: bool,
     /// ai:image - AI 图片生成（游客）
     pub guest_perm_ai_image: bool,
+    /// ai:search - 联网搜索（游客）
+    pub guest_perm_ai_search: bool,
     /// 3d:generate - Tripo 3D 模型生成（游客）
     pub guest_perm_3d_generate: bool,
     /// report:write - 写入/生成报告（游客）
@@ -718,6 +727,7 @@ impl Default for DynamicConfig {
             provider_openai_base_url: "https://api.openai.com/v1".to_string(),
             provider_openrouter_api_key: None,
             provider_gemini_api_key: None,
+            provider_tinyfish_api_key: None,
             provider_volcengine_api_key: None,
             provider_volcengine_base_url: "https://ark.cn-beijing.volces.com/api/v3".to_string(),
             ai_vendor_sources: Vec::new(),
@@ -803,6 +813,7 @@ impl Default for DynamicConfig {
             base_url: None,
 
             dashboard_layout: None,
+            dashboard_layout_mode: None,
             dashboard_title: None,
             custom_platforms: None,
             widget_theme: None,
@@ -822,6 +833,7 @@ impl Default for DynamicConfig {
             user_perm_ai_analyze: false,
             user_perm_ai_chat: false,
             user_perm_ai_image: false,
+            user_perm_ai_search: false,
             user_perm_3d_generate: false,
             user_perm_report_write: false,
             user_perm_network_fetch: false,
@@ -844,6 +856,7 @@ impl Default for DynamicConfig {
             guest_perm_ai_analyze: false,
             guest_perm_ai_chat: false,
             guest_perm_ai_image: false,
+            guest_perm_ai_search: false,
             guest_perm_3d_generate: false,
             guest_perm_report_write: false,
             guest_perm_network_fetch: false,
@@ -1002,6 +1015,10 @@ impl DynamicConfig {
             self.lite_gemini_api_key.clone(),
             self.pro_gemini_api_key.clone(),
         ])
+    }
+
+    pub fn shared_tinyfish_api_key(&self) -> Option<String> {
+        Self::first_nonempty_key([self.provider_tinyfish_api_key.clone()])
     }
 
     /// Standard 档解析后是否有可用文本 key（含 vendor / 共享库）。
@@ -1609,5 +1626,15 @@ mod tests {
         assert_eq!(key, "vault-gm");
         assert_eq!(model, "gemini-lite");
         assert!(!config.text_ai_available());
+    }
+
+    #[test]
+    fn tinyfish_key_is_independent_of_gemini() {
+        let config = DynamicConfig {
+            provider_tinyfish_api_key: Some(" tf-key ".to_string()),
+            ..DynamicConfig::default()
+        };
+        assert_eq!(config.shared_tinyfish_api_key().as_deref(), Some("tf-key"));
+        assert!(config.resolve_gemini_grounding().is_none());
     }
 }

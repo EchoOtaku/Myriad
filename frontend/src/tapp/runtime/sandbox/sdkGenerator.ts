@@ -1160,7 +1160,8 @@ export function resolveWidgetSdkCaps(
       has('ai:generate') ||
       has('ai:analyze') ||
       has('ai:chat') ||
-      has('ai:image'),
+      has('ai:image') ||
+      has('ai:search'),
     platform: has('platform:read'),
     analytics: has('analytics:read'),
     report: has('report:read'),
@@ -1243,11 +1244,11 @@ function buildWidgetSdkBody(
     : `
     ai: {
       tasks: {
-        create: _denied('ai:generate'),
-        get: _denied('ai:generate'),
-        cancel: _denied('ai:generate'),
-        usage: _denied('ai:generate'),
-        subscribe: _denied('ai:generate')
+        create: _denied('ai:generate, ai:analyze, ai:chat, ai:image, ai:search'),
+        get: _denied('ai:generate, ai:analyze, ai:chat, ai:image, ai:search'),
+        cancel: _denied('ai:generate, ai:analyze, ai:chat, ai:image, ai:search'),
+        usage: _denied('ai:generate, ai:analyze, ai:chat, ai:image, ai:search'),
+        subscribe: _denied('ai:generate, ai:analyze, ai:chat, ai:image, ai:search')
       }
     },`
 

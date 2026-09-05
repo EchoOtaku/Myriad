@@ -64,6 +64,14 @@ describe('generateWidgetSDK permission trim', () => {
     assert.match(sdk, /\banalytics:\s*\{/)
     assert.match(sdk, /_denied\(/)
     assert.match(sdk, /Missing permission/)
+    assert.match(
+      sdk,
+      /ai:generate, ai:analyze, ai:chat, ai:image, ai:search/,
+    )
+    assert.doesNotMatch(
+      sdk,
+      /create: _denied\('ai:generate'\)/,
+    )
     // Full AI subscribe / media sendRequest plumbing should not be present without perms
     assert.doesNotMatch(sdk, /sendRequest\('ai'/)
     assert.doesNotMatch(sdk, /sendRequest\('media'/)

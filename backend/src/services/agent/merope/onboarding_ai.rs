@@ -644,7 +644,7 @@ async fn run_vision_call(
         Err(_) => {
             return Err(OnboardingAiError::ProviderFailed(
                 "portrait observation timed out".into(),
-            ))
+            ));
         }
     };
     let status = response.status();
@@ -1067,7 +1067,7 @@ fn is_katakana_letter(ch: char) -> bool {
     matches!(ch, '\u{30A1}'..='\u{30FA}' | '\u{30FC}')
 }
 
-#[allow(dead_code)] // 仅测试调用：本仓无生产调用点（编译器已核）。
+#[cfg(test)]
 fn japanese_name_length_hint(roll_id: &str) -> (&'static str, u8) {
     let seed = roll_id.bytes().fold(0u32, |acc, byte| {
         acc.wrapping_mul(33).wrapping_add(byte as u32)

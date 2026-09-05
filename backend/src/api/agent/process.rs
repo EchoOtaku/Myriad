@@ -248,6 +248,7 @@ pub async fn process(
         "dataDisplay": &api_response.data_display,
         "frontendAction": &api_response.frontend_action,
         "data": &api_response.data,
+        "task": &api_response.task,
     });
     if let Err(error) = persist_assistant_message(
         &db,
@@ -738,6 +739,7 @@ pub(crate) async fn start_process_run(
                                 "data": &api_response.data,
                                 "runId": run_id_for_meta,
                                 "taskId": if task_id.is_empty() { Value::Null } else { json!(task_id) },
+                                "task": &api_response.task,
                             })
                         };
                         if let Err(e) = persist_assistant_message(

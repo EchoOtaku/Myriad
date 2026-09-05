@@ -715,7 +715,7 @@ impl Agent {
     }
 
     // NOTE: Old execute_recipe / execute_with_escalation / build_response_from_result
-    // removed — escalation is now handled by Planner.replan_with_progress() in execute_recipe_with_progress_v2
+    // removed — escalation is now handled by Planner.replan_with_progress_for() in execute_recipe_with_progress_v2
 
     /// 从步骤构建 Recipe
     pub(crate) fn build_recipe_from_steps(
@@ -953,15 +953,9 @@ impl Agent {
                 }
             }
             Value::Object(obj) => {
-                if obj.contains_key("aiSummary")
-                    || obj.contains_key("analysis")
-                    || obj.contains_key("summary")
-                {
-                    return Some(DataDisplayHint::Markdown);
-                }
-                if obj.contains_key("source") && obj.contains_key("results") {
+                if crate::services::agent::search_output::is_web_search_output(data) {
                     if let Some(Value::Array(results)) = obj.get("results") {
-                        if !results.is_empty() && results.len() > 1 {
+                        if results.len() > 1 {
                             return Some(DataDisplayHint::CardList {
                                 title_field: "name".to_string(),
                                 description_field: Some("description".to_string()),
@@ -969,6 +963,19 @@ impl Agent {
                             });
                         }
                     }
+                    return Some(DataDisplayHint::Markdown);
+                }
+                let inner = crate::services::agent::ai_process_pure::task_inner_value(data);
+                if inner.as_str().is_some()
+                    || inner.get("aiSummary").is_some()
+                    || inner.get("analysis").is_some()
+                    || inner.get("summary").is_some()
+                    || inner.get("reply").is_some()
+                    || obj.contains_key("aiSummary")
+                    || obj.contains_key("analysis")
+                    || obj.contains_key("summary")
+                {
+                    return Some(DataDisplayHint::Markdown);
                 }
                 // 内嵌数组
                 for (key, value) in obj.iter() {
@@ -1576,52 +1583,50 @@ impl Agent {
         // 如果最后一步是分析/总结，检查是否有实际内容
         if let Some(last) = last_result {
             // 检查是否是 AI 分析结果
-            if let Some(analysis) = last.get("analysis").and_then(|a| a.as_str()) {
-                if !analysis.is_empty() {
-                    // 合并搜索结果和分析结果
-                    let mut combined = json!({
-                        "analysis": analysis,
-                        "type": last.get("type").and_then(|t| t.as_str()).unwrap_or("general")
-                    });
+            if let Some((analysis, analysis_type)) = analysis_from_step_output(last) {
+                // 合并搜索结果和分析结果
+                let mut combined = json!({
+                    "analysis": analysis,
+                    "type": analysis_type
+                });
 
-                    // 收集所有搜索步骤的来源信息
-                    let mut sources = Vec::new();
-                    for result in &results {
-                        if let Some(output) = &result.output {
-                            // 检查是否是联网搜索结果
-                            if output.get("source").is_some() {
-                                if let Some(query) = output.get("query").and_then(|q| q.as_str()) {
-                                    sources.push(json!({
-                                        "query": query,
-                                        "source": output.get("source")
-                                    }));
-                                }
+                // 收集所有搜索步骤的来源信息
+                let mut sources = Vec::new();
+                for result in &results {
+                    if let Some(output) = &result.output {
+                        // 检查是否是联网搜索结果
+                        if crate::services::agent::search_output::is_web_search_output(output) {
+                            if let Some(query) = output.get("query").and_then(|q| q.as_str()) {
+                                sources.push(json!({
+                                    "query": query,
+                                    "source": crate::services::agent::search_output::web_search_source_label(output)
+                                }));
                             }
-                            // 检查是否有 aiSummary
-                            if let Some(summary) = output.get("aiSummary").and_then(|s| s.as_str())
-                            {
-                                if !summary.is_empty() && combined.get("searchSummary").is_none() {
-                                    combined["searchSummary"] = json!(summary);
-                                }
+                        }
+                        // 检查是否有 aiSummary
+                        if let Some(summary) = output.get("aiSummary").and_then(|s| s.as_str()) {
+                            if !summary.is_empty() && combined.get("searchSummary").is_none() {
+                                combined["searchSummary"] = json!(summary);
                             }
                         }
                     }
-
-                    if !sources.is_empty() {
-                        combined["sources"] = json!(sources);
-                    }
-
-                    // 添加所有收集到的 frontendActions
-                    if !all_frontend_actions.is_empty() {
-                        combined["frontendActions"] = json!(all_frontend_actions);
-                    }
-
-                    return combined;
                 }
+
+                if !sources.is_empty() {
+                    combined["sources"] = json!(sources);
+                }
+
+                // 添加所有收集到的 frontendActions
+                if !all_frontend_actions.is_empty() {
+                    combined["frontendActions"] = json!(all_frontend_actions);
+                }
+
+                return combined;
             }
 
             // 检查是否是 AI 总结结果
-            if let Some(summary) = last.get("summary").and_then(|s| s.as_str()) {
+            let inner = crate::services::agent::ai_process_pure::task_inner_value(last);
+            if let Some(summary) = inner.get("summary").and_then(|s| s.as_str()) {
                 if !summary.is_empty() {
                     let mut result = last.clone();
                     // 添加所有收集到的 frontendActions
@@ -1664,6 +1669,19 @@ impl Agent {
     pub(crate) fn extract_frontend_action(&self, result: &Value) -> Option<Value> {
         extract_frontend_action_from_result(result)
     }
+}
+
+fn analysis_from_step_output(last: &Value) -> Option<(&str, &str)> {
+    let inner = crate::services::agent::ai_process_pure::task_inner_value(last);
+    let analysis = inner
+        .get("analysis")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())?;
+    let ty = inner
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("general");
+    Some((analysis, ty))
 }
 
 fn typed_frontend_action(value: &Value) -> Option<Value> {
@@ -1745,7 +1763,10 @@ pub(crate) fn extract_frontend_action_from_result(result: &Value) -> Option<Valu
 
 #[cfg(test)]
 mod extract_frontend_action_tests {
-    use super::{collect_step_frontend_actions, extract_frontend_action_from_result};
+    use super::{
+        analysis_from_step_output, collect_step_frontend_actions,
+        extract_frontend_action_from_result,
+    };
     use serde_json::json;
 
     #[test]
@@ -1812,5 +1833,33 @@ mod extract_frontend_action_tests {
         let collected = collect_step_frontend_actions([&plan]);
         assert_eq!(collected.len(), 2);
         assert_eq!(collected[1]["type"], "navigate");
+    }
+
+    #[test]
+    fn analysis_from_step_output_unwraps_envelope() {
+        let envelope = json!({
+            "format": "json",
+            "value": { "analysis": "分析正文", "type": "custom" },
+            "contextProvenance": []
+        });
+        assert_eq!(
+            analysis_from_step_output(&envelope),
+            Some(("分析正文", "custom"))
+        );
+        assert_eq!(
+            analysis_from_step_output(&json!({
+                "analysis": "旧格式",
+                "type": "general"
+            })),
+            Some(("旧格式", "general"))
+        );
+        assert_eq!(
+            analysis_from_step_output(&json!({
+                "format": "json",
+                "value": { "summary": "摘要正文", "style": "brief" },
+                "contextProvenance": []
+            })),
+            None
+        );
     }
 }

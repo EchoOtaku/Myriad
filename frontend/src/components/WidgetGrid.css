@@ -69,6 +69,12 @@
   contain: layout paint style;
 }
 
+/* Die-cut stickers must paint outside the cell; contain:paint would clip them. */
+.widget-grid-item--sticker {
+  overflow: visible;
+  contain: layout style;
+}
+
 /* Body portal: above dock stage-root (10000) and outside the GCP stacking context. */
 .widget-grid-drag-ghost {
   position: fixed;
@@ -142,4 +148,12 @@ html.dark {
   .widget-grid-container:not(.edit-mode) {
     touch-action: pan-y;
   }
+}
+
+.widget-grid-background.is-sticker-pick {
+  --widget-grid-line: color-mix(in srgb, var(--color-primary, #8b5cf6) 45%, transparent);
+}
+
+html.dark .widget-grid-background.is-sticker-pick {
+  --widget-grid-line: color-mix(in srgb, var(--color-primary, #8b5cf6) 40%, transparent);
 }

@@ -45,9 +45,6 @@ import { getPlatformSetupGuide } from './platformSetupGuides'
 import SiteAnalyticsSection from './SiteAnalyticsSection'
 import './PlatformCardSnapshot.css'
 
-/** @deprecated 从 uiBagOwnership 导入；此处 re-export 保持兼容 */
-export { PLATFORMS_UI_RESET_KEYS } from './uiBagOwnership'
-
 export interface PlatformConfigField {
   key: string
   label: string

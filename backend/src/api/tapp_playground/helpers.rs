@@ -337,18 +337,6 @@ pub(super) const PREVIEW_PERMISSIONS: &[&str] = &[
     "ui:openUrl",
 ];
 
-/// Intersect manifest declarations with temporary preview grants.
-///
-/// Deny-by-default: undeclared allowlist entries are not auto-granted.
-#[allow(dead_code)] // 仅测试调用：本仓无生产调用点（编译器已核）。
-pub(super) fn select_preview_granted_permissions(declared: &[String]) -> Vec<String> {
-    declared
-        .iter()
-        .filter(|permission| PREVIEW_PERMISSIONS.contains(&permission.as_str()))
-        .cloned()
-        .collect()
-}
-
 pub(super) fn preview_warnings(permissions: &[String]) -> Vec<String> {
     let unavailable: Vec<&str> = permissions
         .iter()
@@ -854,7 +842,7 @@ mod tests {
     #[test]
     fn preview_grants_are_allowlist_intersection_not_full_manifest() {
         // MYR-024: declared ≠ granted for real host capabilities in preview.
-        let declared = vec![
+        let declared: Vec<String> = vec![
             "storage:read".into(),
             "storage:write".into(),
             "storage".into(),
@@ -863,21 +851,27 @@ mod tests {
             "ui:theme".into(),
             "platform:read".into(),
         ];
+        let granted: Vec<String> = declared
+            .iter()
+            .filter(|permission| PREVIEW_PERMISSIONS.contains(&permission.as_str()))
+            .cloned()
+            .collect();
         assert_eq!(
-            select_preview_granted_permissions(&declared),
+            granted,
             vec![
                 "storage:read".to_string(),
                 "storage:write".to_string(),
                 "ui:theme".to_string()
             ]
         );
-        assert!(select_preview_granted_permissions(&[]).is_empty());
         // Deny-by-default: allowlist entries not declared stay ungranted.
-        assert_eq!(
-            select_preview_granted_permissions(&["ui:confirm".into()]),
-            vec!["ui:confirm".to_string()]
+        assert!(
+            !PREVIEW_PERMISSIONS.contains(&"media:read")
+                && PREVIEW_PERMISSIONS.contains(&"ui:confirm")
         );
-        assert!(select_preview_granted_permissions(&["media:read".into()]).is_empty());
+        assert!(preview_warnings(&["media:read".into()])
+            .join(" ")
+            .contains("media:read"));
     }
 
     #[test]

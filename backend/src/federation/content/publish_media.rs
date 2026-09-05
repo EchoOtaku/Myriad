@@ -1208,7 +1208,7 @@ async fn build_ap_object(
 /// follows never see posts.
 ///
 /// Actual HTTP delivery for remote followers is performed by
-/// `delivery::process_delivery_queue`, started via
+/// `delivery::process_delivery_queue_detailed`, started via
 /// `delivery::spawn_delivery_worker` from main on full-mode boot.
 pub(crate) async fn fan_out_to_followers(
     db: &DatabaseConnection,

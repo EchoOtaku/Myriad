@@ -349,7 +349,7 @@ export const zh: SettingGuidesCatalog = {
       chain:
         '① 标题行开关控制是否采集（默认开启；关闭后服务端拒绝新上报）。\n② 打开页面后空闲时批处理上报（同源 /api，走 proxy）。\n③ 本机访客 ID 优先；服务端只存哈希；IP 取自 proxy 的 X-Real-IP，并可汇总访问国家。\n④ 按服务器本地日历日聚合；区间 UV 为真实去重。\n⑤ 下方分区各自有选项指南：页面访问、事件埋点、来源站点。',
       frontend: '数据及统计 →「访客统计」子分类（KPI 含访问国家、趋势图、下方分区列表）。',
-      notes: '关闭采集后历史数据仍可查看。管理员与站长登录后不计入。localStorage myriad_analytics_optout=1 可个人退出。生产建议设 ANALYTICS_SALT。国家数据依赖出口 IP 解析，可能为空。',
+      notes: '关闭采集后历史数据仍可查看。管理员与站长登录后不计入。本机可在本分组「本机退出采集」开关退出（只影响这台浏览器）。生产建议设 ANALYTICS_SALT。国家数据依赖出口 IP 解析，可能为空。',
     },
     pageAnalytics: {
       what: '各路由在选定时间范围内的访问分布。',
@@ -609,6 +609,14 @@ export const zh: SettingGuidesCatalog = {
         '① 点本页右上角「添加服务商」选预设，可重复添加同一家。\n② 显示名可以改；标识跟预设走。每条源自己填密钥（和地址）。\n③ 下面的文字模型、图片、语音从这些源里选。',
       frontend: '设置 → AI → 标题栏「添加服务商」。',
       notes: '关掉的源不会出现在下面的切换里。',
+    },
+    webSearch: {
+      what: '办事档联网搜索用的 TinyFish 密钥。搜索免费，但仍要一把 key。',
+      chain:
+        '① 到 agent.tinyfish.ai 注册，把 key 填在这里并保存。\n② 办事档的 ai.webSearch / 阅读列表联网补充优先走 TinyFish Search（阅读列表还会 Fetch 正文）。\n③ 没填这把 key 时，仍回退已配置的 Gemini Google Search。\n④ 密钥只在后端出站使用，不会进沙箱或返回给应用。',
+      frontend: '设置 → AI → 联网搜索。填好后在办事档问一个需要上网的问题。',
+      notes:
+        '访客不用填。聊天档不会走这条搜索。清空输入框再保存会删掉已存的 key；看到掩码直接保存则保持原值。',
     },
     provider: {
       what: '选哪一家智能服务。',

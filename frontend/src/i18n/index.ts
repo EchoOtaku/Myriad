@@ -133,6 +133,14 @@ export interface TranslationKeys {
     visualGenerating: string
     visualDownload: string
     visualFailed: string
+    avatarTitle: string
+    avatarHint: string
+    avatarGenerate: string
+    avatarRegenerate: string
+    avatarGenerating: string
+    avatarNeedsPortrait: string
+    avatarConfirm: string
+    avatarFailed: string
     motionPsdUpload: string
     motionPsdUploading: string
     visualConfirm: string
@@ -574,6 +582,11 @@ export interface TranslationKeys {
       /** 访客统计开关悬停：关闭以后 */
       enablePreviewOff: string
       disabledBanner: string
+      /** 本机退出采集（不影响全站开关） */
+      optOutLabel: string
+      optOutDesc: string
+      optOutPreviewOn: string
+      optOutPreviewOff: string
       pagesTitle: string
       pagesDesc: string
       eventsTitle: string
@@ -1638,6 +1651,11 @@ export interface TranslationKeys {
     providerVolcengine: string
     aiVendorsTitle: string
     aiVendorsDesc: string
+    webSearchTitle: string
+    webSearchDesc: string
+    tinyfishApiKey: string
+    tinyfishApiKeyHint: string
+    tinyfishApiKeyPlaceholder: string
     aiVendorAdd: string
     aiVendorAddDesc: string
     aiVendorEmpty: string
@@ -1965,6 +1983,8 @@ export interface TranslationKeys {
     permEventPublishHint: string
     permAiImage: string
     permAiImageHint: string
+    permAiSearch: string
+    permAiSearchHint: string
     perm3dGenerate: string
     perm3dGenerateHint: string
     permSchedulerRegister: string
@@ -2189,6 +2209,34 @@ export interface TranslationKeys {
     switchToStandardLayout: string
     freeLayout: string
     standardLayout: string
+    createSticker: string
+    stickerPromptPlaceholder: string
+    stickerSizeHint: string
+    stickerGenerating: string
+    stickerFailed: string
+    stickerNoSpace: string
+    stickerPickHint: string
+    stickerGenerateCropHint: string
+    stickerAddReference: string
+    stickerReferenceLimit: string
+    stickerModeGenerate: string
+    stickerModeUpload: string
+    stickerUploadImage: string
+    stickerUploading: string
+    stickerUploadFailed: string
+    stickerCropHint: string
+    stickerLongPressEdit: string
+    stickerSettings: string
+    stickerFloat: string
+    stickerFloatLoop: string
+    stickerFloatHover: string
+    stickerFloatOff: string
+    stickerFloatLoopHint: string
+    stickerFloatHoverHint: string
+    stickerFloatOffHint: string
+    stickerDownload: string
+    stickerDownloadHint: string
+    stickerFile: string
   }
 
   // 资料库
@@ -3126,6 +3174,7 @@ export interface TranslationKeys {
     profileSourceAuto: string
     profileSourceAutoDesc: string
     profileSourceAccount: string
+    profileSourcePersona: string
     profileTextSourceTitle: string
     profileTextSourceHint: string
     profileTextSourceEmpty: string
@@ -3143,10 +3192,7 @@ export interface TranslationKeys {
     clearSearch: string
     filterWidgets: string
     filterAll: string
-    filterBuiltin: string
     filterReports: string
-    filterSize: string
-    filterGroupCategory: string
     noSearchResults: string
     deleteWidget: string
     positionConflict: string
@@ -3154,6 +3200,8 @@ export interface TranslationKeys {
     prevPage: string
     nextPage: string
     widgetSettings: string
+    longPressToEdit: string
+    createSticker: string
   }
 
   // 社交网络小组件
@@ -3682,6 +3730,7 @@ export interface TranslationKeys {
     permPublishEvent: string
     permSubscribeEvent: string
     permAiImage: string
+    permAiSearch: string
     perm3dGenerate: string
     permSchedulerRegister: string
     permSpeechTts: string
@@ -3731,6 +3780,7 @@ export interface TranslationKeys {
     permPublishEventDesc: string
     permSubscribeEventDesc: string
     permAiImageDesc: string
+    permAiSearchDesc: string
     perm3dGenerateDesc: string
     permSchedulerRegisterDesc: string
     permSpeechTtsDesc: string

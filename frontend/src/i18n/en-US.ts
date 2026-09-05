@@ -134,6 +134,15 @@ export const enUS: TranslationKeys = {
     visualGenerating: 'Generating. You can keep using settings.',
     visualDownload: 'Download portrait',
     visualFailed: 'Could not generate the master portrait',
+    avatarTitle: 'Sticker avatar',
+    avatarHint:
+      'A chibi sticker drawn from the master portrait. Pick it under Avatar source to wear it yourself, and Agent notifications use it too. Replacing the master portrait clears it.',
+    avatarGenerate: 'Make sticker avatar',
+    avatarRegenerate: 'Make it again',
+    avatarGenerating: 'Drawing…',
+    avatarNeedsPortrait: 'Make a master portrait first — the sticker is drawn from it.',
+    avatarConfirm: 'The image model may cost money. Start generating the sticker avatar?',
+    avatarFailed: 'Could not generate the sticker avatar',
     motionPsdUpload: 'Upload layered PSD',
     motionPsdUploading: 'Reading PSD…',
 
@@ -664,6 +673,11 @@ export const enUS: TranslationKeys = {
         'New visits will not be recorded. Existing history stays.',
       disabledBanner:
         'Collection is off: new visits are not recorded; historical data remains available',
+      optOutLabel: 'Opt out on this device',
+      optOutDesc:
+        'Applies only to this browser. It does not change the site-wide switch above. While opted out, this browser will not send beacons or mint a visitor id.',
+      optOutPreviewOn: 'This browser will not be counted',
+      optOutPreviewOff: 'This browser follows the site-wide collection switch',
       pagesTitle: 'Page analytics',
       pagesDesc:
         'Views, true distinct visitors, and average engagement per page in the selected range',
@@ -1931,6 +1945,13 @@ export const enUS: TranslationKeys = {
     aiVendorsTitle: 'Providers',
     aiVendorsDesc:
       'Add sources like login methods. The same vendor can have more than one. Models and speech pick from this list.',
+    webSearchTitle: 'Web search',
+    webSearchDesc:
+      'Used by Work-mode web search. TinyFish is preferred when this key is set; otherwise Gemini grounding is used. Visitors never fill this in.',
+    tinyfishApiKey: 'TinyFish API Key',
+    tinyfishApiKeyHint:
+      'Search is free, but a key is still required. Sign up at agent.tinyfish.ai; no credit card. Clear the field and save to delete; a mask left as-is keeps the stored key.',
+    tinyfishApiKeyPlaceholder: 'Create a key at agent.tinyfish.ai/api-keys',
     aiVendorAdd: 'Add provider',
     aiVendorAddDesc: 'Pick a preset',
     aiVendorEmpty: 'No providers yet',
@@ -2331,6 +2352,9 @@ export const enUS: TranslationKeys = {
     permEventPublishHint: 'Allow Tapp to publish events to other Tapps',
     permAiImage: 'AI Image Generation',
     permAiImageHint: 'Allow Tapp to generate images with AI',
+    permAiSearch: 'AI Web Search',
+    permAiSearchHint:
+      'Allow Tapp to search the web (TinyFish, Gemini grounding fallback)',
     perm3dGenerate: '3D Model Generation',
     perm3dGenerateHint:
       'Allow Tapp to generate, rig, or retarget 3D models with Tripo',
@@ -2579,6 +2603,35 @@ export const enUS: TranslationKeys = {
     switchToStandardLayout: 'Switch to standard layout',
     freeLayout: 'Free layout',
     standardLayout: 'Standard layout',
+    createSticker: 'Create sticker',
+    stickerPromptPlaceholder: 'Describe the sticker, e.g. a cat with sunglasses',
+    stickerSizeHint: 'Size {size}',
+    stickerGenerating: 'Generating…',
+    stickerFailed: 'Could not generate sticker',
+    stickerNoSpace: 'No empty space for a sticker',
+    stickerPickHint: 'Drag any cells; generate uses the closest ratio and crops the rest',
+    stickerGenerateCropHint:
+      'Composed for {aspect}, subject centered so a crop keeps it in frame',
+    stickerAddReference: 'Add reference image',
+    stickerReferenceLimit: 'Up to 4 images',
+    stickerModeGenerate: 'Generate',
+    stickerModeUpload: 'Upload',
+    stickerUploadImage: 'Choose image',
+    stickerUploading: 'Uploading…',
+    stickerUploadFailed: 'Could not upload sticker',
+    stickerCropHint: 'Drag or scroll to crop the visible area',
+    stickerLongPressEdit: 'Long-press to adjust the visible area',
+    stickerSettings: 'Sticker',
+    stickerFloat: 'Float',
+    stickerFloatLoop: 'Always float',
+    stickerFloatHover: 'Float on hover',
+    stickerFloatOff: 'Stay still',
+    stickerFloatLoopHint: 'Keeps drifting gently',
+    stickerFloatHoverHint: 'Only when the pointer is over it',
+    stickerFloatOffHint: 'No motion',
+    stickerDownload: 'Download image',
+    stickerDownloadHint: 'Save the original generated or uploaded file',
+    stickerFile: 'Image',
   },
 
   // Library
@@ -3564,6 +3617,7 @@ export const enUS: TranslationKeys = {
     profileSourceAutoDesc:
       'Prefer a platform profile, fall back to the account avatar',
     profileSourceAccount: 'Account avatar',
+    profileSourcePersona: 'Persona sticker avatar',
     profileTextSourceTitle: 'Name & bio source',
     profileTextSourceHint:
       'Affects the name and bio only, independent of the avatar source.',
@@ -3583,10 +3637,7 @@ export const enUS: TranslationKeys = {
     clearSearch: 'Clear search',
     filterWidgets: 'Filter widgets',
     filterAll: 'All',
-    filterBuiltin: 'Built-in',
     filterReports: 'Reports',
-    filterSize: 'Size',
-    filterGroupCategory: 'Category',
     noSearchResults: 'No matching widgets',
     deleteWidget: 'Delete widget',
     positionConflict: '✖ Position conflict',
@@ -3594,6 +3645,8 @@ export const enUS: TranslationKeys = {
     prevPage: 'Previous page',
     nextPage: 'Next page',
     widgetSettings: 'Widget settings',
+    longPressToEdit: 'Long press widget to configure',
+    createSticker: 'Create sticker',
   },
 
   // Social Network Widget
@@ -4122,6 +4175,7 @@ export const enUS: TranslationKeys = {
     permPublishEvent: 'Publish Event',
     permSubscribeEvent: 'Subscribe Event',
     permAiImage: 'AI Image Generation',
+    permAiSearch: 'AI Web Search',
     perm3dGenerate: '3D Model Generation',
     permSchedulerRegister: 'Register Scheduler',
     permSpeechTts: 'Text-to-Speech',
@@ -4178,6 +4232,8 @@ export const enUS: TranslationKeys = {
     permPublishEventDesc: 'Allow publishing system events',
     permSubscribeEventDesc: 'Allow subscribing to system events',
     permAiImageDesc: 'Allow calling AI to generate images',
+    permAiSearchDesc:
+      'Allow web search via TinyFish (Gemini grounding fallback)',
     perm3dGenerateDesc:
       'Allow calling Tripo to generate, rig, or retarget 3D models',
     permSchedulerRegisterDesc: 'Allow registering and managing scheduled tasks',

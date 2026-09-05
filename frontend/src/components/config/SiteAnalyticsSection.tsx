@@ -37,6 +37,10 @@ import { API_URL } from '../../config'
 import { useI18n } from '../../contexts/I18nContext'
 import { fetchJson } from '../../utils/apiHelper'
 import { getCSRFHeaderName, getCSRFToken } from '../../utils/csrf'
+import {
+  isAnalyticsOptedOut,
+  setAnalyticsOptOut,
+} from '../../utils/siteAnalytics'
 import { userFacingError } from '../../utils/userFacingError'
 import {
   guideDomProps,
@@ -45,6 +49,7 @@ import {
   SettingTitleHelp,
   SettingTitleSelect,
   SettingTitleTag,
+  SwitchItem,
   useSettingGuide,
   useSettingsHelp,
 } from '../settings'
@@ -300,6 +305,7 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
   const [ioBusy, setIoBusy] = useState(false)
   /** 事件埋点列表筛选（空 = 全部） */
   const [eventFilter, setEventFilter] = useState('')
+  const [optedOut, setOptedOut] = useState(() => isAnalyticsOptedOut())
   const importInputRef = useRef<HTMLInputElement>(null)
   const collectionEnabled = enabled !== false
 
@@ -704,6 +710,20 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
         }
         {...bindGuide('platforms.visitorStats', g.platforms.visitorStats)}
       >
+        <SwitchItem
+          itemKey="analytics_opt_out"
+          label={a.optOutLabel}
+          description={a.optOutDesc}
+          value={optedOut}
+          onChange={(next) => {
+            setAnalyticsOptOut(next)
+            setOptedOut(next)
+          }}
+          preview={{
+            on: a.optOutPreviewOn,
+            off: a.optOutPreviewOff,
+          }}
+        />
         {!collectionEnabled ? (
           <p className="site-analytics-disabled-banner" role="status">
             {a.disabledBanner}

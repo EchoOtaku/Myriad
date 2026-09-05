@@ -33,9 +33,9 @@ pub(crate) fn form_secret_if_plaintext(value: Option<&str>) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-/// Persist a platform credential field into DB updates.
+/// Persist a credential field into DB updates.
 ///
-/// Semantics (data platforms only — not AI/OAuth omit-empty-keep):
+/// Semantics:
 /// - masked (`••••` / `****…`) → skip (keep existing DB value)
 /// - empty / whitespace → `null` (未配置). Do not persist `""`:
 ///   `Option::as_deref()` treats `Some("")` as a credential and GitHub
@@ -54,13 +54,6 @@ fn insert_platform_field(
         return;
     }
     updates.insert(db_key.to_string(), Value::String(value.to_string()));
-}
-
-/// Whether a platform field should be written to `.env`.
-/// Mask keeps the existing env value; empty clears it.
-#[allow(dead_code)] // 仅测试调用：配置构建的分支判定，生产走整表写入。
-fn should_write_platform_env_field(value: &str) -> bool {
-    !is_masked_secret_value(value)
 }
 
 /// Extract a numeric playlist id from a bare id or a NetEase / QQ Music URL.
@@ -1637,6 +1630,19 @@ pub(crate) async fn build_config(
                     required: false,
                 },
                 ConfigField {
+                    key: "provider_tinyfish_api_key".to_string(),
+                    label: "TinyFish API Key".to_string(),
+                    field_type: "password".to_string(),
+                    value: mask_sensitive(
+                        db_config
+                            .as_ref()
+                            .and_then(|c| c.shared_tinyfish_api_key())
+                            .unwrap_or_default(),
+                    ),
+                    placeholder: "Get from https://agent.tinyfish.ai/api-keys".to_string(),
+                    required: false,
+                },
+                ConfigField {
                     key: "provider_volcengine_api_key".to_string(),
                     label: "Volcengine Ark API Key".to_string(),
                     field_type: "password".to_string(),
@@ -2528,6 +2534,7 @@ pub(crate) const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "control_panel_rows",
     "custom_platforms",
     "dashboard_layout",
+    "dashboard_layout_mode",
     "dashboard_title",
     "discord_access_token",
     "discord_enabled",
@@ -2551,6 +2558,7 @@ pub(crate) const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "guest_perm_ai_chat",
     "guest_perm_ai_generate",
     "guest_perm_ai_image",
+    "guest_perm_ai_search",
     "guest_perm_3d_generate",
     "guest_perm_component_theme",
     "guest_perm_event_publish",
@@ -2590,6 +2598,7 @@ pub(crate) const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "provider_openai_api_key",
     "provider_openai_base_url",
     "provider_openrouter_api_key",
+    "provider_tinyfish_api_key",
     "provider_volcengine_api_key",
     "provider_volcengine_base_url",
     "pro_ai_provider",
@@ -2668,6 +2677,7 @@ pub(crate) const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "user_perm_ai_chat",
     "user_perm_ai_generate",
     "user_perm_ai_image",
+    "user_perm_ai_search",
     "user_perm_3d_generate",
     "user_perm_component_theme",
     "user_perm_event_publish",
@@ -3941,12 +3951,12 @@ mod settings_backup_tests {
 
     #[test]
     fn platform_env_fields_write_empty_but_skip_masks() {
-        assert!(!should_write_platform_env_field("••••••••"));
-        assert!(!should_write_platform_env_field("********"));
+        assert!(is_masked_secret_value("••••••••"));
+        assert!(is_masked_secret_value("********"));
         // Empty platform secrets/usernames must clear .env (not keep).
-        assert!(should_write_platform_env_field(""));
-        assert!(should_write_platform_env_field("ghp_real_token"));
-        assert!(should_write_platform_env_field("octocat"));
+        assert!(!is_masked_secret_value(""));
+        assert!(!is_masked_secret_value("ghp_real_token"));
+        assert!(!is_masked_secret_value("octocat"));
     }
 
     #[test]
@@ -3989,6 +3999,22 @@ mod settings_backup_tests {
         let cleared = collect_database_updates(&config);
         assert_eq!(cleared.get("github_username"), Some(&json!(null)));
         assert_eq!(cleared.get("github_token"), Some(&json!(null)));
+    }
+
+    #[test]
+    fn ai_secret_empty_clears_and_mask_keeps() {
+        let mut config = empty_config();
+        config.ai_config.config_fields = vec![
+            ui_field("provider_tinyfish_api_key", "tf-new"),
+            ui_field("provider_gemini_api_key", "••••••••"),
+        ];
+        let set = collect_database_updates(&config);
+        assert_eq!(set.get("provider_tinyfish_api_key"), Some(&json!("tf-new")));
+        assert!(!set.contains_key("provider_gemini_api_key"));
+
+        config.ai_config.config_fields = vec![ui_field("provider_tinyfish_api_key", "")];
+        let cleared = collect_database_updates(&config);
+        assert_eq!(cleared.get("provider_tinyfish_api_key"), Some(&json!(null)));
     }
 
     #[test]
@@ -4065,14 +4091,19 @@ mod settings_backup_tests {
     #[test]
     fn update_env_var_clears_platform_secret_line() {
         let content = "GITHUB_TOKEN=ghp_old\nGITHUB_USERNAME=octocat\n";
-        let next = update_env_var(content, "GITHUB_TOKEN", "");
+        let next = update_env_var(content, "GITHUB_TOKEN", "").expect("empty secret is valid");
         assert!(
             next.lines().any(|l| l == "# GITHUB_TOKEN="),
             "empty secret should comment out env key, got:\n{next}"
         );
         assert!(next.contains("GITHUB_USERNAME=octocat"));
-        let next = update_env_var(&next, "GITHUB_USERNAME", "");
+        let next = update_env_var(&next, "GITHUB_USERNAME", "").expect("empty username is valid");
         assert!(next.lines().any(|l| l == "# GITHUB_USERNAME="));
+        assert!(
+            update_env_var(content, "BASE_URL", "https://x.example\nJWT_SECRET=pwned").is_err(),
+            "CR/LF in a value must not become extra .env entries"
+        );
+        assert!(update_env_var(content, "BASE_URL", "https://x.example\0").is_err());
     }
 
     #[test]
@@ -4132,7 +4163,7 @@ pub async fn update_config(
                     "success": false,
                     "error": "Failed to save configuration",
                     "code": "config_save_failed",
-                    "message": "Failed to save configuration"
+                    "message": format!("Failed to save configuration: {e}")
                 })),
             )));
         }
@@ -4527,6 +4558,10 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                 "provider_gemini_api_key",
                 JsonValue::String(field.value.clone()),
             ),
+            "provider_tinyfish_api_key" => (
+                "provider_tinyfish_api_key",
+                JsonValue::String(field.value.clone()),
+            ),
             "provider_volcengine_api_key" => (
                 "provider_volcengine_api_key",
                 JsonValue::String(field.value.clone()),
@@ -4566,8 +4601,8 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
             }
             _ => continue,
         };
-        // 忽略屏蔽值（前端返回的掩码）- 保持数据库原值不变
-        let allow_empty_speech = matches!(
+        // 掩码：保持库里原值。空密钥：写成 null 清除（与平台凭证同一套）。
+        let allow_empty = matches!(
             field.key.as_str(),
             "speech_provider"
                 | "speech_stt_model"
@@ -4586,9 +4621,18 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                 | "agora_customer_id"
                 | "agora_api_base"
         );
-        if (allow_empty_speech || !field.value.is_empty()) && !is_masked(&field.value) {
-            updates.insert(key.to_string(), json_value);
+        if is_masked(&field.value) {
+            continue;
         }
+        if field.value.trim().is_empty() {
+            if is_secret_config_field_key(&field.key) {
+                updates.insert(key.to_string(), JsonValue::Null);
+            } else if allow_empty {
+                updates.insert(key.to_string(), json_value);
+            }
+            continue;
+        }
+        updates.insert(key.to_string(), json_value);
     }
 
     if updates.contains_key("ai_vendor_sources") {
@@ -4624,11 +4668,17 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                     JsonValue::Bool(value == "true" || value == "1"),
                 );
             }
-            "tripo_api_key" if !value.is_empty() && !is_masked(value) => {
-                updates.insert(
-                    "tripo_api_key".to_string(),
-                    JsonValue::String(value.to_string()),
-                );
+            "tripo_api_key" => {
+                if is_masked(value) {
+                    // keep existing
+                } else if value.is_empty() {
+                    updates.insert("tripo_api_key".to_string(), JsonValue::Null);
+                } else {
+                    updates.insert(
+                        "tripo_api_key".to_string(),
+                        JsonValue::String(value.to_string()),
+                    );
+                }
             }
             "tripo_base_url" | "tripo_model" if !value.is_empty() => {
                 updates.insert(field.key.clone(), JsonValue::String(value.to_string()));
@@ -4994,7 +5044,7 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             }
             _ => field.value.clone(),
         };
-        env_content = update_env_var(&env_content, key, &env_value);
+        env_content = update_env_var(&env_content, key, &env_value)?;
         // Commented `# KEY=` lines do not unset process env after dotenv reload.
         if env_value.trim().is_empty() {
             env_keys_to_clear.push(key);
@@ -5063,19 +5113,19 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
 ///
 /// `pub(crate)` so site-domain migration can rewrite BASE_URL / FRONTEND_URL /
 /// CORS_ORIGINS with the same quoting rules as the general config save path.
-pub fn update_env_var(content: &str, key: &str, value: &str) -> String {
+///
+/// Rejects CR/LF/NUL so a value cannot inject extra `.env` entries. Callers
+/// must treat `Err` as fail-closed — do not quote or space-replace the break.
+pub fn update_env_var(content: &str, key: &str, value: &str) -> Result<String, String> {
+    crate::api::setup_bootstrap::validate_env_value(key, value)?;
+
     let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
     let key_prefix = format!("{}=", key);
 
     // 处理值：如果包含空格、特殊字符或中文，用引号包裹
     let sanitized_value = if value.is_empty() {
         String::new()
-    } else if value.contains(' ')
-        || value.contains('#')
-        || value.contains('\n')
-        || value.chars().any(|c| c > '\u{007F}')
-    // 包含非 ASCII 字符
-    {
+    } else if value.contains(' ') || value.contains('#') || value.chars().any(|c| c > '\u{007F}') {
         // 转义内部的引号和反斜杠
         let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
         format!("\"{}\"", escaped)
@@ -5104,7 +5154,7 @@ pub fn update_env_var(content: &str, key: &str, value: &str) -> String {
         lines.push(new_line);
     }
 
-    lines.join("\n") + "\n"
+    Ok(lines.join("\n") + "\n")
 }
 
 // merged from public_ui.rs
@@ -5515,15 +5565,22 @@ pub async fn get_public_config(
         .as_ref()
         .map(|config| config.merope_enabled_resolved())
         .unwrap_or_else(|| crate::config::DynamicConfig::default().merope_enabled_resolved());
-    let stored_name = if is_enabled {
+    let stored_persona = if is_enabled {
         crate::services::agent::merope::get_persona(&db)
             .await
             .ok()
             .flatten()
-            .map(|persona| persona.name)
     } else {
         None
     };
+    let stored_name = stored_persona.as_ref().map(|persona| persona.name.clone());
+    // 通知图标和头像来源都要在没有 Agent 权限的页面上认出这张脸，所以它和
+    // 对外名字同进同出。人设关掉时两边都不给。
+    let sticker_avatar = stored_persona
+        .as_ref()
+        .and_then(|persona| persona.avatar_asset_id.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     let response = json!({
         "platforms": public_platforms,
         "meropeEnabled": is_enabled,
@@ -5531,6 +5588,7 @@ pub async fn get_public_config(
             is_enabled,
             stored_name.as_deref(),
         ),
+        "agentPersonaAvatarUrl": sticker_avatar,
     });
 
     (StatusCode::OK, Json(response))
@@ -5596,6 +5654,7 @@ pub async fn get_public_ui_config(
             "MUSIC_PLAYLIST_ID"
         ),
         "dashboard_layout": db_config.as_ref().and_then(|c| c.dashboard_layout.clone()),
+        "dashboard_layout_mode": db_config.as_ref().and_then(|c| c.dashboard_layout_mode.clone()),
         "dashboard_title": db_config.as_ref().and_then(|c| c.dashboard_title.clone()),
         "custom_platforms": db_config.as_ref().and_then(|c| c.custom_platforms.clone()),
         "widget_theme": db_config.as_ref().and_then(|c| c.widget_theme.clone()),
@@ -5623,6 +5682,7 @@ pub async fn get_public_ui_config(
 #[derive(Debug, Deserialize)]
 pub struct DashboardConfigPayload {
     pub layout: Option<String>,
+    pub layout_mode: Option<String>,
     pub title: Option<String>,
     pub custom_platforms: Option<String>,
     pub title_font: Option<String>,
@@ -5640,6 +5700,15 @@ pub async fn update_dashboard_config(
 
     if let Some(layout) = payload.layout {
         updates.insert("dashboard_layout".to_string(), json!(layout));
+    }
+
+    if let Some(layout_mode) = payload.layout_mode {
+        let mode = if layout_mode.trim() == "free" {
+            "free"
+        } else {
+            "standard"
+        };
+        updates.insert("dashboard_layout_mode".to_string(), json!(mode));
     }
 
     if let Some(title) = payload.title {
@@ -5865,24 +5934,6 @@ impl ModuleVisibilityPreferences {
         self.agent_usage = self.agent_usage.normalized();
         self
     }
-
-    /// Agent 模块页面可见级别
-    #[allow(dead_code)] // 仅测试调用：配置构建的分支判定，生产走整表写入。
-    pub fn agent_visibility(&self) -> &str {
-        self.modules
-            .get("agent")
-            .map(String::as_str)
-            .unwrap_or("all")
-    }
-}
-
-/// 供 HTTP/config 层读取模块可见性。
-/// Agent 服务请用 `services::module_visibility::agent_module_visibility`。
-#[allow(dead_code)] // 仅测试调用：配置构建的分支判定，生产走整表写入。
-pub async fn load_module_visibility_preferences_for_agent(
-    db: &DatabaseConnection,
-) -> ModuleVisibilityPreferences {
-    load_module_visibility_preferences(db).await
 }
 
 async fn load_module_visibility_preferences(
@@ -5983,9 +6034,16 @@ pub const HITOKOTO_SOURCE_IDS: [&str; 5] = [
 
 /// Builtin quote API hosts (no port) matching FE `BUILTIN_HITOKOTO_SOURCES` URLs.
 /// Proxy SSRF policy is still `outbound_security`; this list is catalog alignment.
-#[allow(dead_code)] // 仅测试调用：配置构建的分支判定，生产走整表写入。
 pub const HITOKOTO_BUILTIN_HOSTS: [&str; 3] =
     ["v1.hitokoto.cn", "api.quotable.io", "meigen.doodlenote.net"];
+
+/// Default literary-category URL on the first builtin host (FE `hitokoto-cn`).
+pub fn default_hitokoto_url() -> String {
+    format!(
+        "https://{}/?c=d&c=i&c=k&encode=json",
+        HITOKOTO_BUILTIN_HOSTS[0]
+    )
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -6223,7 +6281,7 @@ pub async fn update_report_settings(
 
 #[cfg(test)]
 mod hitokoto_catalog_tests {
-    use super::{HITOKOTO_BUILTIN_HOSTS, HITOKOTO_SOURCE_IDS};
+    use super::{default_hitokoto_url, HITOKOTO_BUILTIN_HOSTS, HITOKOTO_SOURCE_IDS};
 
     /// Must stay aligned with frontend `BUILTIN_HITOKOTO_SOURCES` + `custom`
     /// (`frontend/src/utils/quote.ts`).
@@ -6251,5 +6309,14 @@ mod hitokoto_catalog_tests {
             assert!(!host.is_empty());
             assert!(!host.contains('/'));
         }
+        let default_url = default_hitokoto_url();
+        assert!(
+            default_url.starts_with(&format!("https://{}/", HITOKOTO_BUILTIN_HOSTS[0])),
+            "{default_url}"
+        );
+        assert_eq!(
+            default_url,
+            "https://v1.hitokoto.cn/?c=d&c=i&c=k&encode=json"
+        );
     }
 }

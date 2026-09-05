@@ -38,6 +38,33 @@ describe('widget library / grid boundary', () => {
     assert.equal(panel.includes('libraryVariant'), false)
     assert.match(panel, /parkable=\{false\}/)
     assert.equal(home.includes('parkable={false}'), false)
+    const island = readFileSync(
+      new URL('./WidgetLibraryIsland.tsx', import.meta.url),
+      'utf8',
+    )
+    const islandCss = readFileSync(
+      new URL('./WidgetLibraryIsland.css', import.meta.url),
+      'utf8',
+    )
+    assert.equal(island.includes('widget-library-island--dock'), false)
+    assert.equal(island.includes('widget-library-island--panel'), false)
+    assert.equal(island.includes('widget-library--gallery'), false)
+    assert.equal(islandCss.includes('widget-library-island--dock'), false)
+    assert.equal(islandCss.includes('widget-library-island--panel'), false)
+    assert.equal(islandCss.includes('widget-library-sidebar-label'), false)
+    assert.equal(islandCss.includes('widget-library-title-row'), false)
+    assert.equal(islandCss.includes('widget-library-toolbar'), false)
+    assert.equal(islandCss.includes('widget-library-canvas'), false)
+    assert.equal(islandCss.includes('widget-library-dock-body'), false)
+    assert.equal(islandCss.includes('widget-library-item-frame'), false)
+    assert.equal(islandCss.includes('settings-motion.css'), false)
+    assert.equal(island.includes('widget-library-title-row'), false)
+    assert.equal(island.includes('widget-library-toolbar'), false)
+    assert.equal(island.includes('widget-library-canvas'), false)
+    assert.equal(island.includes('widget-library-dock-body'), false)
+    assert.equal(island.includes('--widget-library-preview-scale'), false)
+    assert.equal(island.includes('isEditMode={true}'), false)
+    assert.match(island, /isEditMode=\{false\}/)
   })
 
   it('does not dim the page while editing control-panel widgets', () => {

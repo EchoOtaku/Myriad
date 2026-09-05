@@ -120,6 +120,7 @@ export interface SettingGuidesCatalog {
     image: SettingGuideEntry
     speech: SettingGuideEntry
     vendors: SettingGuideEntry
+    webSearch: SettingGuideEntry
     provider: SettingGuideEntry
     apiKey: SettingGuideEntry
     baseUrl: SettingGuideEntry

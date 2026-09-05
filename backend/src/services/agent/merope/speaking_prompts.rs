@@ -219,6 +219,8 @@ mod tests {
             visual_profile: None,
             portrait_asset_id: None,
             portrait_generation: None,
+            avatar_asset_id: None,
+            avatar_generation: None,
             updated_by: None,
             updated_at: chrono::Utc::now().into(),
         };

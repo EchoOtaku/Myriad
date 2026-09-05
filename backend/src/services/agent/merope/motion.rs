@@ -800,6 +800,51 @@ fn motion_schema(offered: &[&str]) -> serde_json::Value {
 }
 
 #[cfg(test)]
+pub(super) mod live_probe {
+    use super::*;
+
+    pub fn contract(
+        persona: &agent_persona::Model,
+        rig: &RigStateSummary,
+    ) -> (String, Value, Value) {
+        let offered = offered_cue_intents(Some(rig));
+        (
+            motion_system_prompt(&offered),
+            motion_schema(&offered),
+            motion_persona_payload(Some(persona), "even"),
+        )
+    }
+
+    pub fn valid(raw: &str, rig: &RigStateSummary) -> bool {
+        let Ok(unfiltered) = serde_json::from_str::<ChatPerformancePlan>(raw) else {
+            return false;
+        };
+        let Some(MotionDecision::Perform(plan)) = parse_motion_decision(raw) else {
+            return false;
+        };
+        // A smoke test must not pass merely because production's safe parser
+        // removed an invalid cue or clamped an out-of-range value.
+        plan == unfiltered
+            && plan.cues.len() <= 2
+            && plan.baseline.is_some()
+            && plan
+                .cues
+                .iter()
+                .all(|cue| cue_survives_state(rig, &cue.intent))
+    }
+
+    #[test]
+    fn smoke_rejects_cues_discarded_by_the_production_sanitizer() {
+        let rig = myriad_merope::sanitize_rig_state(&serde_json::json!({})).unwrap();
+        let valid = serde_json::json!({"baseline":{"expression":"steady","posture":"neutral","motionEnergy":1.0,"attention":0.5},"cues":[]});
+        assert!(self::valid(&valid.to_string(), &rig));
+        let mut invalid = valid;
+        invalid["cues"] = serde_json::json!([{"intent":"not_a_cue","atMs":0,"intensity":1.0,"tempo":1.0,"fadeInMs":100,"fadeOutMs":200,"interrupt":"blend"}]);
+        assert!(!self::valid(&invalid.to_string(), &rig));
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -1014,6 +1059,8 @@ mod tests {
             visual_profile: None,
             portrait_asset_id: None,
             portrait_generation: None,
+            avatar_asset_id: None,
+            avatar_generation: None,
             updated_by: None,
             updated_at: chrono::Utc::now().into(),
         };
@@ -1110,7 +1157,7 @@ mod tests {
             .unwrap();
         let chat = &src[chat..end];
         assert!(chat.contains("motion_refinements.drain(..)"));
-        assert!(chat.contains("delivery_refined |= guard.stop().await"));
+        assert!(chat.contains("delivery_publication.max(guard.stop().await)"));
         assert!(!src.contains("motion_start_tx"));
         assert!(src.contains("context.response_text = Some(preview)"));
         let streaming = include_str!("../confirmation_and_tasks.rs");
@@ -1122,14 +1169,28 @@ mod tests {
     fn immediate_reaction_and_delivery_precede_stream_close() {
         let src = include_str!("../process_and_recipe.rs");
         let floor = src.find("publish_local_motion(&reaction_context").unwrap();
-        let delivery = src.find("publish_local_motion(&delivery_context").unwrap();
+        let delivery = src
+            .find("landing_motion(&delivery_context, delivery_publication)")
+            .unwrap();
         assert!(floor < delivery);
+        let diary = src[floor..].find("note_chat_diary").unwrap() + floor;
+        let chat = src[floor..]
+            .find("stream_strict_lite_chat_response")
+            .unwrap()
+            + floor;
+        let stopped = src[floor..].find("guard.stop().await").unwrap() + floor;
+        assert!(floor < diary && diary < chat);
+        assert!(chat < stopped && stopped < delivery);
         let finish = src
             .find("response_agent::finish_stream(&progress_tx)")
             .unwrap();
         assert!(delivery < finish);
         assert!(src.contains("self.task.abort();"));
-        assert!(src.contains("mood_transition.clone().filter(|_| !delivery_refined)"));
+        let landing = src.split("fn landing_motion(").nth(1).unwrap();
+        let landing = landing.split("fn spawn_motion_refinement(").next().unwrap();
+        assert!(landing.contains("publication == MotionPublication::Refined"));
+        assert!(landing.contains("publication == MotionPublication::Local"));
+        assert!(landing.contains("performance.plan.cues.clear()"));
     }
 
     /// Production dropped 196 of 217 calls sitting exactly on the old 4s wall;

@@ -589,6 +589,9 @@ impl ConfigService {
         if let Some(v) = map.get("provider_gemini_api_key") {
             config.provider_gemini_api_key = v.as_str().map(|s| s.to_string());
         }
+        if let Some(v) = map.get("provider_tinyfish_api_key") {
+            config.provider_tinyfish_api_key = v.as_str().map(|s| s.to_string());
+        }
         if let Some(v) = map.get("provider_volcengine_api_key") {
             config.provider_volcengine_api_key = v.as_str().map(|s| s.to_string());
         }
@@ -740,6 +743,15 @@ impl ConfigService {
                 config.dashboard_layout = Some(s.to_string());
             } else {
                 config.dashboard_layout = Some(v.to_string());
+            }
+        }
+        if let Some(v) = map.get("dashboard_layout_mode") {
+            if let Some(s) = v.as_str() {
+                config.dashboard_layout_mode = Some(if s.trim() == "free" {
+                    "free".to_string()
+                } else {
+                    "standard".to_string()
+                });
             }
         }
         if let Some(v) = map.get("dashboard_title") {
@@ -903,6 +915,11 @@ impl ConfigService {
                 config.user_perm_ai_chat = b;
             }
         }
+        if let Some(v) = map.get("user_perm_ai_search") {
+            if let Some(b) = v.as_bool() {
+                config.user_perm_ai_search = b;
+            }
+        }
         if let Some(v) = map.get("user_perm_ai_image") {
             if let Some(b) = v.as_bool() {
                 config.user_perm_ai_image = b;
@@ -998,6 +1015,11 @@ impl ConfigService {
         if let Some(v) = map.get("guest_perm_ai_chat") {
             if let Some(b) = v.as_bool() {
                 config.guest_perm_ai_chat = b;
+            }
+        }
+        if let Some(v) = map.get("guest_perm_ai_search") {
+            if let Some(b) = v.as_bool() {
+                config.guest_perm_ai_search = b;
             }
         }
         if let Some(v) = map.get("guest_perm_ai_image") {
@@ -1379,6 +1401,30 @@ mod tests {
     }
 
     #[test]
+    fn parses_tinyfish_api_key_from_database_config() {
+        let configured = ConfigService::parse_config(HashMap::from([(
+            "provider_tinyfish_api_key".into(),
+            json!("tf-test-key"),
+        )]));
+        assert_eq!(
+            configured.shared_tinyfish_api_key().as_deref(),
+            Some("tf-test-key")
+        );
+
+        let empty = ConfigService::parse_config(HashMap::from([(
+            "provider_tinyfish_api_key".into(),
+            json!(""),
+        )]));
+        assert_eq!(empty.shared_tinyfish_api_key(), None);
+
+        let cleared = ConfigService::parse_config(HashMap::from([(
+            "provider_tinyfish_api_key".into(),
+            json!(null),
+        )]));
+        assert_eq!(cleared.shared_tinyfish_api_key(), None);
+    }
+
+    #[test]
     fn merope_stays_off_without_required_models() {
         // Pro is required for onboarding. Lite is optional: without it,
         // Merope still runs, but Lite jobs must not fall back to Standard.
@@ -1452,6 +1498,24 @@ mod tests {
             ..DynamicConfig::default()
         };
         assert!(!no_pro.merope_speech_enabled_resolved());
+    }
+
+    #[test]
+    fn parses_dashboard_layout_mode_from_database_config() {
+        let free = ConfigService::parse_config(HashMap::from([(
+            "dashboard_layout_mode".into(),
+            json!("free"),
+        )]));
+        assert_eq!(free.dashboard_layout_mode.as_deref(), Some("free"));
+
+        let other = ConfigService::parse_config(HashMap::from([(
+            "dashboard_layout_mode".into(),
+            json!("  custom  "),
+        )]));
+        assert_eq!(other.dashboard_layout_mode.as_deref(), Some("standard"));
+
+        let missing = ConfigService::parse_config(HashMap::new());
+        assert_eq!(missing.dashboard_layout_mode, None);
     }
 
     #[test]

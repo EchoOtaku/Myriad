@@ -72,9 +72,6 @@ interface ConfigField {
   required: boolean
 }
 
-/** @deprecated 从 uiBagOwnership 导入；此处 re-export 保持兼容 */
-export { UI_RESET_KEYS } from './uiBagOwnership'
-
 interface UiConfigSectionProps {
   /** UI 配置字段数组 */
   configFields: ConfigField[]
