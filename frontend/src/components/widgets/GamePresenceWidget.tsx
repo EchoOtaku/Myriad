@@ -345,7 +345,6 @@ const GamePresenceSettingsModal = memo(() => {
         </p>
       </WidgetSettingsSection>
       <WidgetSettingsSection label={tw.customFont}>
-        <p className="widget-settings-tip__subtitle">{tw.customFontHint}</p>
         <input
           ref={fontInputRef}
           type="file"
@@ -353,38 +352,29 @@ const GamePresenceSettingsModal = memo(() => {
           hidden
           onChange={(e) => void handlePickFont(e.target.files?.[0])}
         />
-        <button
-          type="button"
-          className="widget-settings-tip__action"
-          style={{ marginTop: '0.45rem' }}
-          disabled={fontBusy}
-          onClick={() => fontInputRef.current?.click()}
-        >
-          {fontBusy ? tw.customFontUploading : tw.customFontChoose}
-        </button>
-        {draftFontUrl ? (
-          <>
-            <p className="widget-settings-tip__subtitle" style={{ marginTop: '0.35rem' }}>
-              {tw.customFontInUse}
-            </p>
-            <button
-              type="button"
-              className="widget-settings-tip__action"
-              style={{ marginTop: '0.35rem' }}
-              disabled={fontBusy}
-              onClick={() => {
-                setDraftFontUrl('')
-                setFontError(null)
-              }}
-            >
-              {tw.customFontClear}
-            </button>
-          </>
-        ) : null}
+        <WidgetSettingsChoices label={tw.customFont}>
+          <WidgetSettingsChoice
+            selected={!draftFontUrl}
+            label={tw.customFontClear}
+            onClick={() => {
+              if (fontBusy) return
+              setDraftFontUrl('')
+              setFontError(null)
+            }}
+          />
+          <WidgetSettingsChoice
+            selected={Boolean(draftFontUrl)}
+            label={fontBusy ? tw.customFontUploading : tw.customFontChoose}
+            hint={draftFontUrl && !fontBusy ? tw.customFontInUse : undefined}
+            onClick={() => {
+              if (fontBusy) return
+              fontInputRef.current?.click()
+            }}
+          />
+        </WidgetSettingsChoices>
+        <p className="widget-settings-tip__subtitle">{tw.customFontHint}</p>
         {fontError ? (
-          <p className="widget-settings-tip__subtitle" style={{ marginTop: '0.35rem' }}>
-            {fontError}
-          </p>
+          <p className="widget-settings-tip__subtitle">{fontError}</p>
         ) : null}
         <button
           type="button"

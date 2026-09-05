@@ -182,20 +182,24 @@ describe('agent panel motion contract', () => {
   })
 
   it('keeps the composer until the last card has somewhere to return', () => {
-    const closingComposer = block(
+    const fullClosing = block(
       css,
-      ".agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']\n  .agent-panel-composer {",
+      ".agent-panel-overlay-anchor[data-stage='full'][data-phase='closing'] {",
       ".agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']\n  .agent-panel-presence[data-kind='row'],",
     )
+    assert.match(fullClosing, /opacity:\s*0/)
+    assert.match(fullClosing, /translate:\s*-50%\s+22px/)
+    assert.match(fullClosing, /scale:\s*1/)
+    assert.match(fullClosing, /transition-duration:\s*var\(--agent-row-exit\)/)
     assert.match(
-      closingComposer,
-      /transition-duration:\s*var\(--agent-row-exit\)/,
-    )
-    assert.match(
-      closingComposer,
+      fullClosing,
       /transition-delay:\s*calc\(\s*\(var\(--agent-stagger-wave\) \+ 1\)/,
     )
-    assert.doesNotMatch(closingComposer, /3 \* var\(--agent-stagger-step\)/)
+    assert.doesNotMatch(fullClosing, /3 \* var\(--agent-stagger-step\)/)
+    assert.doesNotMatch(
+      css,
+      /\[data-stage='full'\]\[data-phase='closing'\]\s+\.agent-panel-composer \{/,
+    )
     assert.match(css, /--agent-exit-stagger, var\(--agent-stagger, 0\)/)
   })
 

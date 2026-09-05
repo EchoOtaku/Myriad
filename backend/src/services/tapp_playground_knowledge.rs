@@ -129,12 +129,13 @@ pub fn catalog_for_prompt() -> String {
 /// classes the sandbox on-demand Tailwind compile ignores.
 const GENERATION_SEARCH_SKIP: &[&str] = &["PLAYGROUND_GENERATION_CONTEXT", "PAGE"];
 
-pub fn search(query: &str, limit: usize) -> Vec<KnowledgeExcerpt> {
+#[cfg(test)]
+fn search(query: &str, limit: usize) -> Vec<KnowledgeExcerpt> {
     search_filtered(query, limit, &[])
 }
 
-/// Playground generation retrieval: same scoring as [`search`], minus docs that
-/// are always injected or that contradict the sandbox styling contract.
+/// Playground generation retrieval: same scoring as the unfiltered test search,
+/// minus docs that are always injected or that contradict the sandbox styling contract.
 pub fn search_for_generation(query: &str, limit: usize) -> Vec<KnowledgeExcerpt> {
     search_filtered(query, limit, GENERATION_SEARCH_SKIP)
 }

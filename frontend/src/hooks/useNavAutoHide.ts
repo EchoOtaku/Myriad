@@ -7,10 +7,19 @@
  *
  * 底栏↔侧轨切换时由 NavigationIsland 做 crossfade（data-nav-switch）；
  * 此期间不写 inline transform/opacity，避免与淡出/淡入抢控制权。
+ *
+ * 边缘唤回只认进入沿（离开后再进来，或推到热边）。岛本身就在邻近带里，
+ * 带内的 mousemove 不能刷新无操作计时，否则空闲隐藏永远不会发生。
  */
 
 import type { NavLayout } from '../utils/navLayout'
 import { useEffect } from 'react'
+import {
+  edgeRevealShouldShow,
+  isNearNavEdge,
+  NAV_HOT_EDGE_THRESHOLD,
+  navScrollDecision,
+} from '../utils/navAutoHide'
 import {
   getNavLayoutSnapshot,
   NAV_CHROME_SETTLED_EVENT,
@@ -19,9 +28,6 @@ import {
 } from '../utils/navLayout'
 
 const INACTIVITY_DELAY = 5000
-const SCROLL_THRESHOLD = 50
-const PAGE_TOP_THRESHOLD = 100
-const EDGE_THRESHOLD = 100
 
 const TRANSFORM_SHOW_DESKTOP = 'translateY(-50%)'
 const TRANSFORM_SHOW_MOBILE = 'translateX(-50%)'
@@ -43,14 +49,22 @@ export function useNavAutoHide(selector = '.nav-container') {
     if (!navContainer) return
 
     // 状态
-    let lastScrollY = window.scrollY
+    const readScrollY = () =>
+      document.scrollingElement?.scrollTop ?? window.scrollY ?? 0
+
+    let lastScrollY = readScrollY()
     let rafId = 0
+    let hoverSyncRaf = 0
     let inactivityTimeoutId = 0
     let isHovering = false
     let isNavVisible = true
     let hiddenByScroll = false
+    let insideEdge = false
+    let insideHotEdge = false
+    let edgePrimed = false
     let cachedLayout: NavLayout = getNavLayoutSnapshot()
     let cachedWindowHeight = window.innerHeight
+    const hoverCapable = window.matchMedia('(hover: hover)').matches
 
     navContainer.style.transition = TRANSITION_VISIBILITY
 
@@ -93,16 +107,22 @@ export function useNavAutoHide(selector = '.nav-container') {
       applyVisibility(true)
     }
 
-    const hideNav = () => {
-      if (!isNavVisible || isHovering) return
-      isNavVisible = false
-      applyVisibility(false)
+    const syncHoverFromDom = () => {
+      // Touch :hover sticks after tap; only fine pointers pause idle hide.
+      isHovering = hoverCapable && navContainer.matches(':hover')
     }
 
-    const hideNavByScroll = () => {
-      if (!isNavVisible || isHovering) return
+    const isPointerOverNav = () =>
+      isHovering && navContainer.matches(':hover')
+
+    const hideNav = (byScroll = false) => {
+      if (!isNavVisible) return
+      // Touch can fire pointerenter without a matching leave; don't let a
+      // sticky flag block idle hide if the pointer is not actually over us.
+      if (isPointerOverNav()) return
+      isHovering = false
       isNavVisible = false
-      hiddenByScroll = true
+      hiddenByScroll = byScroll
       applyVisibility(false)
     }
 
@@ -127,18 +147,12 @@ export function useNavAutoHide(selector = '.nav-container') {
         rafId = 0
         return
       }
-      const currentScrollY = window.scrollY
-      const delta = currentScrollY - lastScrollY
-      const isDown = delta > 0
-
-      if (
-        isDown &&
-        delta > SCROLL_THRESHOLD &&
-        currentScrollY > PAGE_TOP_THRESHOLD
-      ) {
+      const currentScrollY = readScrollY()
+      const decision = navScrollDecision(currentScrollY, lastScrollY)
+      if (decision === 'hide') {
         clearInactivityTimer()
-        hideNavByScroll()
-      } else if (!isDown || currentScrollY < PAGE_TOP_THRESHOLD) {
+        hideNav(true)
+      } else if (decision === 'show') {
         showNav()
         startInactivityTimer()
       }
@@ -164,13 +178,31 @@ export function useNavAutoHide(selector = '.nav-container') {
       mouseRafId = 0
       if (isChromeSwitching(navContainer)) return
 
-      // 侧轨：靠左缘唤回；底栏：靠底缘唤回
-      const isNearEdge =
-        cachedLayout === 'desktop'
-          ? e.clientX < EDGE_THRESHOLD
-          : e.clientY > cachedWindowHeight - EDGE_THRESHOLD
-
-      if (isNearEdge) {
+      const reveal = edgeRevealShouldShow({
+        visible: isNavVisible,
+        primed: edgePrimed,
+        wasInsideProximity: insideEdge,
+        isInsideProximity: isNearNavEdge(
+          cachedLayout,
+          e.clientX,
+          e.clientY,
+          cachedWindowHeight,
+        ),
+        wasInsideHot: insideHotEdge,
+        isInsideHot: isNearNavEdge(
+          cachedLayout,
+          e.clientX,
+          e.clientY,
+          cachedWindowHeight,
+          NAV_HOT_EDGE_THRESHOLD,
+        ),
+      })
+      edgePrimed = reveal.primed
+      insideEdge = reveal.insideProximity
+      insideHotEdge = reveal.insideHot
+      // Proximity must not refresh the idle timer while the island is already
+      // visible — the rail sits inside that band.
+      if (reveal.show) {
         showNav()
         startInactivityTimer()
       }
@@ -186,21 +218,25 @@ export function useNavAutoHide(selector = '.nav-container') {
     // 交互处理
     const handleInteraction = () => {
       if (isChromeSwitching(navContainer)) return
-      if (!hiddenByScroll) {
-        showNav()
-        startInactivityTimer()
-      }
+      if (hiddenByScroll) return
+      showNav()
+      if (!isHovering) startInactivityTimer()
     }
 
-    // 导航岛悬停
-    const handleNavEnter = () => {
-      if (isChromeSwitching(navContainer)) return
+    // Pause idle hide only for real hover. Touch synthesizes enter without
+    // leave, which used to pin isHovering and disable auto-hide entirely.
+    const isHoverPointer = (e: PointerEvent) =>
+      e.pointerType === 'mouse' || e.pointerType === 'pen'
+
+    const handleNavEnter = (e: PointerEvent) => {
+      if (!isHoverPointer(e) || isChromeSwitching(navContainer)) return
       isHovering = true
       clearInactivityTimer()
       showNav()
     }
 
-    const handleNavLeave = () => {
+    const handleNavLeave = (e: PointerEvent) => {
+      if (!isHoverPointer(e)) return
       isHovering = false
       startInactivityTimer()
     }
@@ -221,7 +257,13 @@ export function useNavAutoHide(selector = '.nav-container') {
       navContainer.style.removeProperty('transform')
       navContainer.style.removeProperty('pointer-events')
       snapVisibilityForLayout(true)
-      startInactivityTimer()
+      // pointer-events just came back; :hover / pointerenter may lag one frame.
+      if (hoverSyncRaf) cancelAnimationFrame(hoverSyncRaf)
+      hoverSyncRaf = requestAnimationFrame(() => {
+        hoverSyncRaf = 0
+        syncHoverFromDom()
+        if (!isHovering) startInactivityTimer()
+      })
     }
 
     const handleResize = () => {
@@ -236,25 +278,32 @@ export function useNavAutoHide(selector = '.nav-container') {
     const passive = { passive: true, signal }
 
     window.addEventListener('scroll', handleScroll, passive)
+    document.scrollingElement?.addEventListener('scroll', handleScroll, {
+      passive: true,
+      signal,
+    })
     window.addEventListener('mousemove', handleMouseMove, passive)
     window.addEventListener('keydown', handleInteraction, passive)
     window.addEventListener('click', handleInteraction, passive)
     window.addEventListener('touchstart', handleInteraction, passive)
     window.addEventListener('resize', handleResize, passive)
-    navContainer.addEventListener('mouseenter', handleNavEnter, { signal })
-    navContainer.addEventListener('mouseleave', handleNavLeave, { signal })
+    navContainer.addEventListener('pointerenter', handleNavEnter, { signal })
+    navContainer.addEventListener('pointerleave', handleNavLeave, { signal })
     navContainer.addEventListener(NAV_CHROME_SETTLED_EVENT, handleChromeSettled, {
       signal,
     })
 
     const unsubscribeLayout = subscribeNavLayout(handleLayoutDesire)
-    startInactivityTimer()
+    // pointerenter does not fire if the pointer is already over the island.
+    syncHoverFromDom()
+    if (!isHovering) startInactivityTimer()
 
     return () => {
       controller.abort()
       unsubscribeLayout()
       if (rafId) cancelAnimationFrame(rafId)
       if (mouseRafId) cancelAnimationFrame(mouseRafId)
+      if (hoverSyncRaf) cancelAnimationFrame(hoverSyncRaf)
       clearInactivityTimer()
     }
   }, [selector])

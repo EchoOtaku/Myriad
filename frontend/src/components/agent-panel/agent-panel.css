@@ -46,7 +46,8 @@
   /* 卡片在上，那一行独立控件在下 —— 它们并排，不是包含。
      外壳不裁切：阴影要完整，玻璃还要采到壁纸。每行整张进整张出。
      进出同一条贝塞尔：出场是入场的镜像。
-     空输入态开合动外壳；对话/历史每张卡自己从输入行来回。 */
+     空输入态开合动外壳；对话/历史入场仍按张从输入行叠上，
+     退场卡片先收回去，再让外壳只沉、只淡，不整块缩放。 */
   --agent-ease: cubic-bezier(0.32, 0.72, 0, 1);
   --agent-ease-exit: cubic-bezier(1, 0, 0.68, 0.28);
   --agent-move: 480ms;
@@ -110,22 +111,21 @@
   transition-delay: 0ms;
 }
 
-/* 对话 / 历史展开：外壳不再整块位移，每张卡自己从输入行来回。 */
-.agent-panel-overlay-anchor[data-stage='full'][data-phase='opening'],
-.agent-panel-overlay-anchor[data-stage='full'][data-phase='closing'] {
+/* 对话 / 历史入场：外壳不整块位移，每张卡从输入行叠上来。 */
+.agent-panel-overlay-anchor[data-stage='full'][data-phase='opening'] {
   opacity: 1;
   translate: -50% 0;
   scale: 1;
 }
 
-.agent-panel-overlay-anchor[data-stage='full'][data-phase='closing']
-  .agent-panel-composer {
+/* 退场回一点外壳运动：卡片先收回输入行，再整块只沉、只淡。
+   不缩 —— 高列再 scale 会像往输入行里挤。输入行跟着锚点走，不再自己先走一步。 */
+.agent-panel-overlay-anchor[data-stage='full'][data-phase='closing'] {
   opacity: 0;
-  translate: 0 16px;
-  scale: 0.96;
+  translate: -50% 22px;
+  scale: 1;
+  will-change: opacity, translate;
   transition-duration: var(--agent-row-exit);
-
-  /* 输入行比画面里最远那张再晚一步，卡片还有地方可回。 */
   transition-delay: calc(
     (var(--agent-stagger-wave) + 1) * var(--agent-stagger-step)
   );
