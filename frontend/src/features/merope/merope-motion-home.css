@@ -793,15 +793,11 @@ html.dark .merope-wardrobe {
   gap: 6px;
   min-height: 146px;
   color: var(--merope-muted);
-  background:
-    repeating-linear-gradient(
-      -18deg,
-      transparent,
-      transparent 7px,
-      rgb(255 255 255 / 18%) 7px,
-      rgb(255 255 255 / 18%) 8px
-    ),
-    color-mix(in srgb, rgb(var(--merope-surface-rgb) / 35%), transparent);
+  background: color-mix(
+    in srgb,
+    var(--border-color, #d8dbe6) 22%,
+    rgb(var(--merope-surface-rgb))
+  );
   border-style: dashed;
   font: inherit;
   font-size: 12px;

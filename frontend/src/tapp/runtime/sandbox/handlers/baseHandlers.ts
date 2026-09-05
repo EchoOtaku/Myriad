@@ -25,7 +25,9 @@ import {
 import {
   FILE_DOWNLOAD_BLOB_MAX_BYTES,
   decodeDownloadBase64,
+  defaultDownloadFilename,
   isSafeDownloadFilename,
+  normalizeFileDownloadOptions,
   parseHostDownloadUrl,
   triggerBrowserDownload,
 } from '../fileDownload'
@@ -840,16 +842,11 @@ export function registerAssetHandlers(
  */
 export function registerFileHandlers(bridge: TappBridge): void {
   bridge.registerHandler('file.download', async (message) => {
-    const [options] = (message.payload as { args: unknown[] }).args || []
+    const [rawOptions] = (message.payload as { args: unknown[] }).args || []
+    const options = normalizeFileDownloadOptions(rawOptions)
     if (!options) return { success: false, error: 'Options required' }
 
-    const { content, url, base64, filename, mimeType } = options as {
-      content?: string
-      url?: string
-      base64?: string
-      filename?: string
-      mimeType?: string
-    }
+    const { content, url, base64, filename, mimeType } = options
 
     const hasContent = typeof content === 'string' && content.length > 0
     const hasUrl = typeof url === 'string' && url.length > 0
@@ -875,7 +872,10 @@ export function registerFileHandlers(bridge: TappBridge): void {
         if (!isSafeDownloadFilename(downloadName)) {
           return { success: false, error: 'Invalid filename' }
         }
-        const response = await fetch(asset.path)
+        const response = await fetch(asset.path, {
+          redirect: 'error',
+          credentials: 'same-origin',
+        })
         if (!response.ok) {
           return {
             success: false,
@@ -900,22 +900,26 @@ export function registerFileHandlers(bridge: TappBridge): void {
         return { success: true, data: { filename: downloadName } }
       }
 
-      if (!filename || !isSafeDownloadFilename(filename)) {
-        return { success: false, error: 'Invalid filename' }
-      }
-
       if (hasBase64) {
         const decoded = decodeDownloadBase64(base64 as string)
         if (!decoded) {
           return { success: false, error: 'Invalid or oversized base64 payload' }
         }
+        const downloadName =
+          filename && isSafeDownloadFilename(filename)
+            ? filename
+            : defaultDownloadFilename(mimeType || decoded.mimeType)
         triggerBrowserDownload(
           new Blob([decoded.bytes], {
             type: mimeType || decoded.mimeType || 'application/octet-stream',
           }),
-          filename,
+          downloadName,
         )
-        return { success: true, data: { filename } }
+        return { success: true, data: { filename: downloadName } }
+      }
+
+      if (!filename || !isSafeDownloadFilename(filename)) {
+        return { success: false, error: 'Invalid filename' }
       }
 
       const blob = new Blob([content as string], {

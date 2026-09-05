@@ -710,21 +710,6 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
         }
         {...bindGuide('platforms.visitorStats', g.platforms.visitorStats)}
       >
-        <SwitchItem
-          itemKey="analytics_opt_out"
-          label={a.optOutLabel}
-          description={a.optOutDesc}
-          {...bindGuide('platforms.analyticsOptOut', g.platforms.analyticsOptOut)}
-          value={optedOut}
-          onChange={(next) => {
-            setAnalyticsOptOut(next)
-            setOptedOut(next)
-          }}
-          preview={{
-            on: a.optOutPreviewOn,
-            off: a.optOutPreviewOff,
-          }}
-        />
         {!collectionEnabled ? (
           <p className="site-analytics-disabled-banner" role="status">
             {a.disabledBanner}
@@ -1056,6 +1041,22 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
             />
           </AnalyticsTextBlock>
         </div>
+
+        <SwitchItem
+          itemKey="analytics_opt_out"
+          label={a.optOutLabel}
+          description={a.optOutDesc}
+          {...bindGuide('platforms.analyticsOptOut', g.platforms.analyticsOptOut)}
+          value={optedOut}
+          onChange={(next) => {
+            setAnalyticsOptOut(next)
+            setOptedOut(next)
+          }}
+          preview={{
+            on: a.optOutPreviewOn,
+            off: a.optOutPreviewOff,
+          }}
+        />
       </SettingGroup>
     </div>
   )

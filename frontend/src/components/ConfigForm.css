@@ -2674,21 +2674,21 @@ html.dark .info-text a {
   box-shadow: 0 2px 8px -2px rgb(0 0 0 / 5%);
 }
 
-html.dark .provider-option {
+html.dark .provider-option:not(.active) {
   background: var(--cfg-subtle-bg);
   border-color: var(--cfg-subtle-border);
   color: var(--cfg-text-1);
   box-shadow: 0 2px 8px -2px rgb(0 0 0 / 30%);
 }
 
-.provider-option:hover {
+.provider-option:hover:not(.active) {
   background: var(--cfg-subtle-bg-hover);
   border-color: color-mix(in srgb, var(--cfg-accent) 40%, transparent);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px -2px rgb(0 0 0 / 10%);
 }
 
-html.dark .provider-option:hover {
+html.dark .provider-option:hover:not(.active) {
   background: var(--cfg-subtle-bg-hover);
   border-color: color-mix(in srgb, var(--cfg-accent) 50%, transparent);
   box-shadow: 0 4px 12px -2px rgb(0 0 0 / 40%);
@@ -2705,6 +2705,13 @@ html.dark .provider-option:hover {
   box-shadow: 0 4px 12px -2px
     color-mix(in srgb, var(--cfg-accent) 25%, transparent);
   transform: translateY(var(--sm-lift));
+}
+
+html.dark .provider-option.active {
+  background: color-mix(in srgb, var(--cfg-accent) 40%, black);
+  border-color: color-mix(in srgb, var(--cfg-accent) 56%, black);
+  color: var(--cfg-accent-ink);
+  box-shadow: 0 4px 12px -2px rgb(0 0 0 / 50%);
 }
 
 .provider-icon {

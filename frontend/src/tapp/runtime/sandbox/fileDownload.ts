@@ -91,6 +91,67 @@ export function isSafeDownloadFilename(filename: string): boolean {
   )
 }
 
+export function defaultDownloadFilename(
+  mimeType?: string,
+  path?: string,
+): string {
+  if (typeof path === 'string' && path.length > 0) {
+    const base = path.split('/').pop()
+    if (base && isSafeDownloadFilename(base)) return base
+  }
+  const mime = (mimeType || '').toLowerCase()
+  if (mime === 'audio/mpeg' || mime === 'audio/mp3') return 'audio.mp3'
+  if (mime === 'audio/wav' || mime === 'audio/x-wav' || mime === 'audio/wave') {
+    return 'audio.wav'
+  }
+  if (mime === 'image/png') return 'image.png'
+  if (mime === 'image/jpeg') return 'image.jpg'
+  if (mime === 'image/webp') return 'image.webp'
+  if (mime === 'image/gif') return 'image.gif'
+  if (mime === 'model/gltf-binary' || mime.startsWith('model/')) return 'model.glb'
+  if (mime === 'application/pdf') return 'document.pdf'
+  return 'download.bin'
+}
+
+export type FileDownloadOptions = {
+  content?: string
+  url?: string
+  base64?: string
+  filename?: string
+  mimeType?: string
+}
+
+function nestedGeneratedUrl(raw: Record<string, unknown>): string | undefined {
+  const value = raw.value as Record<string, unknown> | undefined
+  if (typeof value?.url === 'string') return value.url
+  const result = raw.result as Record<string, unknown> | undefined
+  const resultValue = result?.value as Record<string, unknown> | undefined
+  if (typeof resultValue?.url === 'string') return resultValue.url
+  return undefined
+}
+
+/** Flatten TTS / AI task / model3d getUrl result objects into one source. */
+export function normalizeFileDownloadOptions(
+  raw: unknown,
+): FileDownloadOptions | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const record = raw as Record<string, unknown>
+  const content = typeof record.content === 'string' ? record.content : undefined
+  let url = typeof record.url === 'string' ? record.url : undefined
+  let base64 = typeof record.base64 === 'string' ? record.base64 : undefined
+  if (!base64 && typeof record.audio === 'string') base64 = record.audio
+  if (url && url.startsWith('blob:')) url = undefined
+  if (!url && typeof record.assetId === 'string' && /^[0-9a-f]{64}$/i.test(record.assetId)) {
+    url = `/api/model3d/assets/${record.assetId.toLowerCase()}`
+  }
+  if (!url) url = nestedGeneratedUrl(record)
+  const filename =
+    typeof record.filename === 'string' ? record.filename : undefined
+  const mimeType =
+    typeof record.mimeType === 'string' ? record.mimeType : undefined
+  return { content, url, base64, filename, mimeType }
+}
+
 export function decodeDownloadBase64(
   value: string,
 ): { bytes: Uint8Array; mimeType?: string } | null {
@@ -126,39 +187,40 @@ export function validateFileDownloadOptions(options: unknown): {
     valid: false as const,
     error: `Invalid or oversized file payload (max ${FILE_DOWNLOAD_CONTENT_MAX_BYTES} bytes)`,
   }
-  if (!options || typeof options !== 'object' || Array.isArray(options)) {
-    return invalid
-  }
-  const record = options as Record<string, unknown>
+  const record = normalizeFileDownloadOptions(options)
+  if (!record) return invalid
   const hasContent = typeof record.content === 'string'
   const hasUrl = typeof record.url === 'string'
   const hasBase64 = typeof record.base64 === 'string'
   const sources = Number(hasContent) + Number(hasUrl) + Number(hasBase64)
   if (sources !== 1) return invalid
-  if (
-    record.mimeType !== undefined &&
-    (typeof record.mimeType !== 'string' || record.mimeType.length > 256)
-  ) {
+  if (record.mimeType !== undefined && record.mimeType.length > 256) {
     return invalid
   }
   if (hasUrl) {
     if (!parseHostDownloadUrl(record.url as string)) return invalid
     if (
       record.filename !== undefined &&
-      !isSafeDownloadFilename(String(record.filename))
+      !isSafeDownloadFilename(record.filename)
     ) {
       return invalid
     }
     return { valid: true }
   }
-  if (!isSafeDownloadFilename(String(record.filename ?? ''))) return invalid
   if (hasBase64) {
     const raw = record.base64 as string
     if (raw.length === 0 || raw.length > FILE_DOWNLOAD_CONTENT_MAX_BYTES) {
       return invalid
     }
+    if (
+      record.filename !== undefined &&
+      !isSafeDownloadFilename(record.filename)
+    ) {
+      return invalid
+    }
     return { valid: true }
   }
+  if (!isSafeDownloadFilename(record.filename ?? '')) return invalid
   if (new Blob([record.content as string]).size > FILE_DOWNLOAD_CONTENT_MAX_BYTES) {
     return invalid
   }

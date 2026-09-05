@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 
 import {
   decodeDownloadBase64,
+  defaultDownloadFilename,
   parseHostDownloadUrl,
   parseLocalImageCacheUrl,
   validateFileDownloadOptions,
@@ -79,6 +80,7 @@ describe('validateFileDownloadOptions', () => {
       }).valid,
       true,
     )
+    assert.equal(validateFileDownloadOptions({ base64: btoa('hi') }).valid, true)
     assert.equal(
       validateFileDownloadOptions({
         content: 'hello',
@@ -91,5 +93,37 @@ describe('validateFileDownloadOptions', () => {
       validateFileDownloadOptions({ url: 'https://evil.example/a.png' }).valid,
       false,
     )
+    assert.equal(
+      validateFileDownloadOptions({ audio: btoa('hi-there-audio-bytes') }).valid,
+      true,
+    )
+    assert.equal(
+      validateFileDownloadOptions({ value: { url: IMAGE_PATH } }).valid,
+      true,
+    )
+    assert.equal(
+      validateFileDownloadOptions({
+        result: { value: { url: IMAGE_PATH } },
+      }).valid,
+      true,
+    )
+    assert.equal(
+      validateFileDownloadOptions({
+        url: 'blob:https://example.com/abc',
+        assetId: MODEL_ID,
+      }).valid,
+      true,
+    )
+  })
+})
+
+describe('defaultDownloadFilename', () => {
+  it('uses path basename or mime', () => {
+    assert.equal(defaultDownloadFilename('audio/mpeg'), 'audio.mp3')
+    assert.equal(
+      defaultDownloadFilename('image/png', 'assets/cat.png'),
+      'cat.png',
+    )
+    assert.equal(defaultDownloadFilename(), 'download.bin')
   })
 })

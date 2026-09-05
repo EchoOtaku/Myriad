@@ -181,7 +181,7 @@ Agent 不会声称把所有文档永久放进模型上下文。
 | 标题、确认、全屏 | **仅 Page 预览**（Widget SDK 没有这些方法） | 按授予权限；仍仅 Page |
 | `Tapp.assets` | 工作区 `code.assets` 内存；与安装后同一 `list` / `get` / `getUrlMap` | 安装包资源 |
 | Tailwind 工具类 | 预览按 HTML/JS 按需编译，与安装后同一套宿主编译 | 安装时写入 page/widget CSS |
-| `Tapp.context` / `Tapp.user` / `file.download` | 预览桩 / 本地下载 | 正式上下文与下载 |
+| `Tapp.context` / `Tapp.user` / `file.download` | 预览桩 / 与正式相同的宿主下载（public） | 正式上下文与下载 |
 | `Tapp.persona.get` | 固定样例名片，不打真实 API | 站点公开名片 |
 | 平台、网络、AI、宿主媒体、事件 Broker | 禁用；未注册的宿主 API 返回 `PREVIEW_UNAVAILABLE`（不是安装后的结果） | 按声明权限、角色与授予权限 |
 | **Federation**（Feed、Note/媒体、Channel/Room/Ring 等） | **不可用**（无 Grant、无 FederationBridge） | 按 `federation:*` + Runtime Grant |

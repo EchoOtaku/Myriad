@@ -509,7 +509,7 @@ Manifest 必须同时声明 `ai:image` **和** `manifest.ai`（`protocolVersion:
 1. 上传前按类型检查 `file.size`（图片 ≤10 MiB，视频 ≤50 MiB）。
 2. 压缩图片或降低视频码率后再 `uploadMedia`。
 3. 不要对非 media action 塞大 base64（会撞默认 1 MiB）。
-4. `file.download` 内容上限 10 MiB，与 storage 单值 1 MiB 不同。
+4. `file.download` 文本 / base64 / 宿主代取生图·3D 上限 32 MiB，与 storage 单值 1 MiB 不同。
 
 ### ❌ 附件 URL 被拒绝 / `Attachment URL must look like /media/federation/...`
 

@@ -98,7 +98,56 @@ export const FILE_DOWNLOAD_METHOD_CODE = `download: function(contentOrOptions, f
         var send = function(options) {
           return sendRequest('file', 'download', [options]);
         };
+        var fetchBlob = function(blobUrl, name, type) {
+          return fetch(blobUrl).then(function(res) {
+            if (!res.ok) throw new Error('Could not read blob for download');
+            return res.arrayBuffer().then(function(buf) {
+              var bytes = new Uint8Array(buf);
+              var binary = '';
+              var chunk = 0x8000;
+              for (var i = 0; i < bytes.length; i += chunk) {
+                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+              }
+              return send({
+                base64: btoa(binary),
+                filename: name,
+                mimeType: type || res.type || undefined
+              });
+            });
+          });
+        };
+        var looksLikeBase64 = function(value) {
+          var compact = String(value).replace(/\\s/g, '');
+          return compact.length >= 32 && compact.length % 4 === 0 && /^[A-Za-z0-9+/]+=*$/.test(compact);
+        };
+        var looksBinaryDownload = function(name, type) {
+          var n = String(name || '').toLowerCase();
+          var t = String(type || '').toLowerCase();
+          return /\\.(mp3|wav|ogg|png|jpe?g|gif|webp|glb|gltf|wasm|pdf|bin)$/.test(n)
+            || /^(audio|image|model)\\//.test(t)
+            || t === 'application/octet-stream'
+            || t === 'application/pdf'
+            || t === 'model/gltf-binary';
+        };
         if (contentOrOptions && typeof contentOrOptions === 'object') {
+          var assetId = contentOrOptions.assetId;
+          var nestedUrl = contentOrOptions.url;
+          var hasTextSource = typeof contentOrOptions.content === 'string' || typeof contentOrOptions.base64 === 'string';
+          if (!hasTextSource && typeof assetId === 'string' && /^[0-9a-f]{64}$/i.test(assetId)) {
+            return send({
+              url: '/api/model3d/assets/' + assetId,
+              filename: filename || contentOrOptions.filename,
+              mimeType: mimeType || contentOrOptions.mimeType
+            });
+          }
+          if (typeof nestedUrl === 'string' && nestedUrl.indexOf('blob:') === 0) {
+            var blobName = filename || contentOrOptions.filename;
+            if (!blobName && typeof contentOrOptions.path === 'string') {
+              var pathParts = String(contentOrOptions.path).split('/');
+              blobName = pathParts[pathParts.length - 1] || undefined;
+            }
+            return fetchBlob(nestedUrl, blobName, mimeType || contentOrOptions.mimeType);
+          }
           return send(contentOrOptions);
         }
         if (typeof contentOrOptions !== 'string') {
@@ -111,22 +160,10 @@ export const FILE_DOWNLOAD_METHOD_CODE = `download: function(contentOrOptions, f
           return send({ base64: contentOrOptions, filename: filename, mimeType: mimeType });
         }
         if (contentOrOptions.indexOf('blob:') === 0) {
-          return fetch(contentOrOptions).then(function(res) {
-            if (!res.ok) throw new Error('Could not read blob for download');
-            return res.arrayBuffer().then(function(buf) {
-              var bytes = new Uint8Array(buf);
-              var binary = '';
-              var chunk = 0x8000;
-              for (var i = 0; i < bytes.length; i += chunk) {
-                binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-              }
-              return send({
-                base64: btoa(binary),
-                filename: filename,
-                mimeType: mimeType || res.type || undefined
-              });
-            });
-          });
+          return fetchBlob(contentOrOptions, filename, mimeType);
+        }
+        if (looksBinaryDownload(filename, mimeType) && looksLikeBase64(contentOrOptions)) {
+          return send({ base64: contentOrOptions, filename: filename, mimeType: mimeType });
         }
         return send({ content: contentOrOptions, filename: filename, mimeType: mimeType });
       }`

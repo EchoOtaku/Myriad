@@ -215,8 +215,8 @@ Tapp.widgets['my-widget'] = {
 
   完成态读 `task.result`：`{ format, value, contextProvenance }`。业务数据在 `value`
   （生图是 `{ url, width, height }`，`url` 是 `/api/brew/image-cache/...`，可直接作
-  `<img src>`；下载用 `Tapp.file.download(url, 'out.png')`，由宿主读缓存，不要 `fetch`。
-  3D 用 `/api/model3d/assets/{id}` 或 `getUrl` 的 blob；TTS 用 `{ base64: audio, filename }`。
+  `<img src>`；下载把 `url`、整份 `task` 或 `task.result` 交给 `Tapp.file.download`，由宿主读缓存，不要 `fetch`。
+  3D 用 `/api/model3d/assets/{id}` 或 `getUrl` 的返回对象；TTS 用 `{ audio }` 或 `{ base64: audio }`。
   搜索是 JSON 结果对象）。`subscribe` 的 `result` / 终态 `snapshot`
   事件的 `data` 是整份任务快照，信封在 `data.result`。
 
@@ -288,8 +288,8 @@ Tapp.widgets['my-widget'] = {
   - ✅ direct：`{ source: "direct", manifest, code, … }`（须有 manifest + code）
   Playground **工作区「安装到本机」**走宿主 direct 包安装，不是商店 `source=store` 路径。
 
-Bridge 默认 payload 约 **1 MiB**；正式运行特例：`file.download` 内容 **10 MiB**，
-`federation.uploadMedia` 对齐图片 10 MiB / 视频 50 MiB 的 base64 预算（见
+Bridge 默认 payload 约 **1 MiB**；正式运行特例：`file.download` 文本 / base64 / 宿主代取
+生图·3D **32 MiB**，`federation.uploadMedia` 对齐图片 10 MiB / 视频 50 MiB 的 base64 预算（见
 [SANDBOX](./SANDBOX.md#payload-大小)）；带 `input.referenceImages` 数组的生图任务 JSON payload
 上限为 **14 MiB**，后端另检查图片数量、解码后总大小与文本大小。预览侧勿假设可上传大媒体。
 

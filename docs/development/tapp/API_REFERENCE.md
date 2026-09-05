@@ -1748,17 +1748,17 @@ await Tapp.file.download(task.result.value.url, "cat.png");
 await Tapp.file.download(`/api/model3d/assets/${assetId}`, "model.glb");
 ```
 
-沙箱里已有的二进制（TTS base64、`getUrl` 得到的 `blob:`、data URL）：
+沙箱里已有的二进制（TTS `{ audio }`、`getUrl` 返回对象 / `blob:`、data URL）：
 
 ```javascript
-await Tapp.file.download({ base64: audio, filename: "speech.mp3", mimeType: "audio/mpeg" });
-const { url } = await Tapp.model3d.getUrl(assetId);
-await Tapp.file.download(url, "model.glb"); // blob: 由 SDK 读成 base64 再交给宿主
+await Tapp.file.download(await Tapp.speech.tts({ text: "你好" }));
+await Tapp.file.download(await Tapp.model3d.getUrl(assetId));
+await Tapp.file.download(task); // 生图完成态，读 result.value.url
 ```
 
 - 文本 `content`、`base64`、宿主代取的 `url` 落盘上限 **32 MiB**（bridge 不走默认 ~1 MiB postMessage 上限）。
 - `url` **只**接受本站 `/api/brew/image-cache/{subdir}/{sha256}.{jpg|jpeg|png|gif|webp}` 或 `/api/model3d/assets/{sha256}`；任意 http(s) 一律拒绝。
-- `filename` 不能含路径分隔或 `..`；`url` 模式可省略（图默认 `image.{ext}`，模型默认 `model.glb`）。`base64` 必须带文件名。可选 `mimeType`。
+- `filename` 不能含路径分隔或 `..`。`url` / `base64` 可省略文件名（图 `image.{ext}`，模型 `model.glb`，音频按 MIME，否则 `download.bin`）。可选 `mimeType`。
 
 语音能力需要对应权限：
 

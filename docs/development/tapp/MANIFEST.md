@@ -122,7 +122,8 @@ await Tapp.ui.openUrl({ id: "docs", path: "../evil" }); // reject
 Manifest 采用严格字段校验：未声明字段、拼写错误以及已经移除的字段都会让安装失败，
 不会再被静默忽略。需要授权的运行能力都必须直接写入 `permissions`；宿主只会在真正调用时
 按权限和运行时策略决定是否授权。无需权限的公开 SDK（`Tapp.context`、`Tapp.user`、
-`Tapp.persona`）不要写进 `permissions`，也不存在 `persona:read`。
+`Tapp.persona`、`Tapp.file.download`）不要写进 `permissions`，也不存在 `persona:read`。
+`file.download` 不是 `storage:read`：后者只覆盖私有 KV。
 
 ### 多语言名称与描述（locales）
 
@@ -978,7 +979,7 @@ Tapp 私有 storage、报告和内部状态不会因为知道另一个 `tappId` 
 
 | 权限                 | 说明             |
 | -------------------- | ---------------- |
-| `storage:read`       | 读取本地数据存储 |
+| `storage:read`       | 读取本地数据存储（不含 `Tapp.file.download`，那是 public） |
 | `ui:notification`    | 显示通知         |
 | `ui:theme`           | 读取主题信息     |
 | `ui:confirm`         | 显示确认对话框   |
