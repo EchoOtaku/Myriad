@@ -30,6 +30,8 @@ pub struct DataPaths {
     pub cache_raw: PathBuf,
     /// 图片缓存目录（默认: "cache/images"）
     pub cache_images: PathBuf,
+    /// Optional widget custom fonts (default: "data/site/widget-fonts")
+    pub widget_fonts: PathBuf,
 }
 
 impl DataPaths {
@@ -47,6 +49,7 @@ impl DataPaths {
             cache_platforms: cache_root.join("platforms"),
             cache_raw: cache_root.join("raw"),
             cache_images: cache_root.join("images"),
+            widget_fonts: root.join("site/widget-fonts"),
             root,
             cache: cache_root,
         }
@@ -150,6 +153,7 @@ fn verify_storage_layout_writable(data_paths: &DataPaths) -> io::Result<()> {
     verify_directory_writable(&data_paths.root)?;
     verify_directory_writable(&data_paths.cache)?;
     verify_directory_writable(&data_paths.tapps)?;
+    verify_directory_writable(&data_paths.widget_fonts)?;
 
     let entries = fs::read_dir(&data_paths.tapps)
         .map_err(|error| storage_error("list Tapp owner directories", &data_paths.tapps, error))?;
@@ -205,6 +209,10 @@ mod tests {
         assert_eq!(paths.cache_platforms, PathBuf::from("cache/platforms"));
         assert_eq!(paths.cache_raw, PathBuf::from("cache/raw"));
         assert_eq!(paths.cache_images, PathBuf::from("cache/images"));
+        assert_eq!(
+            paths.widget_fonts,
+            PathBuf::from("data/site/widget-fonts")
+        );
     }
 
     #[test]
@@ -239,6 +247,7 @@ mod tests {
             cache_platforms: base.join("cache/platforms"),
             cache_raw: base.join("cache/raw"),
             cache_images: base.join("cache/images"),
+            widget_fonts: base.join("data/site/widget-fonts"),
         };
         fs::create_dir_all(data_paths.tapps.join("1")).unwrap();
         fs::create_dir_all(data_paths.tapps.join("not-an-owner")).unwrap();
@@ -279,6 +288,7 @@ mod tests {
             cache_platforms: base.join("cache/platforms"),
             cache_raw: base.join("cache/raw"),
             cache_images: base.join("cache/images"),
+            widget_fonts: data_file.join("site/widget-fonts"),
         };
 
         let error = verify_storage_layout_writable(&data_paths).unwrap_err();
@@ -310,6 +320,7 @@ mod tests {
             cache_platforms: base.join("cache/platforms"),
             cache_raw: base.join("cache/raw"),
             cache_images: base.join("cache/images"),
+            widget_fonts: base.join("data/site/widget-fonts"),
         };
         fs::create_dir_all(&data_paths.tapps).unwrap();
         fs::create_dir_all(&outside).unwrap();

@@ -1087,7 +1087,7 @@ mod cache_control_tests {
         assert_eq!(static_asset_cache_control("/logo.webp"), expected);
         assert_eq!(static_asset_cache_control("/favicon.webp"), expected);
         assert_eq!(
-            static_asset_cache_control("/fonts/hoyo/GenshinUI-subset.woff2"),
+            static_asset_cache_control("/fonts/title.woff2"),
             expected
         );
     }

@@ -4074,6 +4074,13 @@ export const enUS: TranslationKeys = {
     notConfigured: 'Not configured',
     fetchFailed: 'Failed to load',
     showcaseEmpty: 'Showcase empty or private',
+    customFont: 'Custom font',
+    customFontHint: 'Use a font you have the right to embed on the web. Optional.',
+    customFontChoose: 'Choose font',
+    customFontClear: 'Use system font',
+    customFontUploading: 'Uploading…',
+    customFontFailed: 'Could not upload font',
+    customFontInUse: 'Custom font in use',
   },
 
   // Tapp shortcut widget

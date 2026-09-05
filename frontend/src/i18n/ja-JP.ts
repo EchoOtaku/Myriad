@@ -4068,6 +4068,13 @@ export const jaJP: TranslationKeys = {
     notConfigured: '未設定',
     fetchFailed: '取得に失敗',
     showcaseEmpty: 'ショーケースが非公開または空です',
+    customFont: 'カスタムフォント',
+    customFontHint: 'ウェブに埋め込める権利のあるフォントを使ってください。任意です。',
+    customFontChoose: 'フォントを選ぶ',
+    customFontClear: 'システムフォントを使う',
+    customFontUploading: 'アップロード中…',
+    customFontFailed: 'フォントをアップロードできませんでした',
+    customFontInUse: 'カスタムフォントを使用中',
   },
 
   // Tapp ショートカットウィジェット

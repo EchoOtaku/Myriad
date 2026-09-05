@@ -6,15 +6,21 @@
 
 ### あなたという物語を、ひとつに
 
-*A myriad of lights, in one place.*
+<em>A myriad of lights, in one place.</em>
 
-[English](README.md) · [中文](README.zh-CN.md) · **日本語**
+<p>
+<a href="README.md">English</a>
+&nbsp;·&nbsp;
+<a href="README.zh-CN.md">中文</a>
+&nbsp;·&nbsp;
+<strong>日本語</strong>
+</p>
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/myriad-you/Myriad)](https://github.com/myriad-you/Myriad/releases)
-[![Built with Rust](https://img.shields.io/badge/built%20with-Rust-orange.svg)](backend/Cargo.toml)
-[![Astro](https://img.shields.io/badge/Astro-7-blueviolet.svg)](frontend/package.json)
-[![React 19](https://img.shields.io/badge/React-19-61dafb.svg)](frontend/package.json)
+[![Built with Rust](https://img.shields.io/badge/built%20with-Rust-orange.svg)](https://github.com/rust-lang/rust)
+[![Astro](https://img.shields.io/badge/Astro-7-blueviolet.svg)](https://github.com/withastro/astro)
+[![React 19](https://img.shields.io/badge/React-19-61dafb.svg)](https://github.com/facebook/react)
 
 [クイックスタート](docs/QUICKSTART.md) · [ドキュメント](docs/INDEX.md) · [フィードバック](https://github.com/myriad-you/Myriad/issues)
 
@@ -26,78 +32,153 @@
 
 **Myriad はセルフホストのホームページ兼創作工房です。** プラットフォームを集め、ライブラリを見せ、サイト全体でひとつのペルソナ、2.5D ビジュアル、所有する Tapp を動かします。
 
-シングルテナント。公開または非公開。データは PostgreSQL。UI：日本語・中国語・英語。
+シングルテナント。公開または非公開。PostgreSQL。UI：日本語 · 中国語 · 英語。
 
-画面：**ホーム**、**ライブラリ**、**Brew**、**レポート**、**Tapp**、**Agent**（パネル）。`/config` は管理者のみ。
+```mermaid
+flowchart LR
+  subgraph homepage ["ホームページ"]
+    direction TB
+    W[ウィジェット]
+    L[ライブラリ]
+    P[プラットフォーム]
+  end
+  subgraph studio ["工房"]
+    direction TB
+    A[ペルソナ]
+    F["2.5D ビジュアル"]
+    T[Tapp]
+  end
+  homepage -.-> studio
+```
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### ホームページ
+`/`
+
+- 標準 16×4 · 自由 16×8
+- 音楽、天気、Report Card、ペルソナウィジェット
+- 自由レイアウトのステッカーはウィジェット枠を占有しない
+
+</td>
+<td width="50%" valign="top">
+
+### ライブラリ
+`/library`
+
+- ゲーム、アニメ、映像、書籍、音楽
+- 接続済みプラットフォームから同期
+- リストまたは無限キャンバス
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### ペルソナ · 2.5D
+サイト全体でひとつ
+
+- レポートから生成、または文案 + 立ち絵を取り込む
+- レイヤーライブ：呼吸、まばたき、口パク
+- メイン立ち絵からステッカーアバター
+
+</td>
+<td width="50%" valign="top">
+
+### Tapp
+`/tapp`
+
+- Page、ホームページ Widget、または両方
+- ストア · Playground · CLI
+- サンドボックス。秘密はホスト側
+
+</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+**Agent**  
+Chat / Work · パネル
+
+</td>
+<td width="33%" valign="top">
+
+**Brew** `/brew`  
+RSS · Notion · RSSHub
+
+</td>
+<td width="33%" valign="top">
+
+**連合**  
+ActivityPub · MFP
+
+</td>
+</tr>
+</table>
+
+`/config` は管理者のみ。ライブラリ、Brew、レポート、Tapp、Agent：全員 / ログイン済み / 管理者。
 
 ---
 
 ## 目次
 
-- [一覧](#一覧)
-- [ホームページ](#ホームページ)
-- [プラットフォーム](#プラットフォーム)
-- [ライブラリとレポート](#ライブラリとレポート)
-- [ペルソナと 2.5D ビジュアル](#ペルソナと-25d-ビジュアル)
-- [Tapp](#tapp)
-- [Agent](#agent)
-- [Brew](#brew)
-- [連合](#連合)
-- [アカウントと公開範囲](#アカウントと公開範囲)
-- [運用](#運用)
-- [要件](#要件)
-- [デプロイ](#デプロイ)
-- [ローカル開発](#ローカル開発)
-- [アーキテクチャ](#アーキテクチャ)
-- [リポジトリ](#リポジトリ)
-- [技術構成](#技術構成)
-- [ドキュメント](#ドキュメント)
-- [貢献](#貢献)
-- [License](#license)
+**製品** — [ホームページ](#ホームページ) · [プラットフォーム](#プラットフォーム) · [ライブラリ](#ライブラリとレポート) · [ペルソナ](#ペルソナと-25d-ビジュアル) · [Tapp](#tapp) · [Agent](#agent) · [Brew](#brew) · [連合](#連合) · [アカウント](#アカウントと公開範囲)
 
----
+**実行** — [要件](#要件) · [デプロイ](#デプロイ) · [開発](#ローカル開発) · [運用](#運用)
 
-## 一覧
-
-| パス | 役割 |
-| --- | --- |
-| **ホーム** `/` | ウィジェット、レイアウト、ペルソナ、音楽、Tapp ショートカット |
-| **ライブラリ** `/library` | 接続済みプラットフォームのゲーム、アニメ、映像、書籍、音楽 |
-| **Brew** `/brew` | RSS / Notion / RSSHub。既定は全員が閲覧可。ログインユーザーは既読と保存 |
-| **レポート** `/reports` | 各プラットフォームの肖像。案内つきペルソナ作成の入力 |
-| **Tapp** `/tapp` | インストール済み。ストア：`/tapp/store`。Playground（管理者、デスクトップ）：`/tapp/playground` |
-| **Agent** | **Chat** / **Work**。ペルソナオン時、Chat はそのペルソナとして話す |
-| **設定** `/config` | 管理者：プラットフォーム、AI、ユーザー、OAuth、公開範囲、アップデーター、診断 |
-
-ライブラリ、Brew、レポート、Tapp、Agent の公開範囲：全員 / ログイン済み / 管理者。
+**参照** — [アーキテクチャ](#アーキテクチャ) · [リポジトリ](#リポジトリ) · [技術構成](#技術構成) · [ドキュメント](#ドキュメント) · [License](#license)
 
 ---
 
 ## ホームページ
 
-ウィジェットは **標準グリッド**（中央寄せ、デスクトップ 16×4、狭幅では詰め直し）または **自由レイアウト**（同セル、キャンバス 16×8）。座標はレイアウトごとに保存。自由レイアウトには装飾ステッカーを置ける。ステッカーはウィジェットではなく、ウィジェット枠を占有しない。
+**標準** 16×4（中央寄せ、狭幅では詰め直し）または **自由** 16×8（同セル）。座標はレイアウトごとに保存。自由レイアウトのステッカーはウィジェットではなく、ウィジェット枠を占有しない。
 
-組み込み：歓迎；Agent ペルソナ（ライブ 2.5D、同時再生は一箇所）；概要、最近の活動、訪問統計；天気；一言；音楽プレーヤー；相互リンク（Brew）；ソーシャル；Tapp ショートカット；miHoYo ゲーム Presence；プラットフォーム別 Report Card。
+<details>
+<summary>組み込みウィジェット</summary>
+
+| | |
+| --- | --- |
+| 歓迎 | Agent ペルソナ（ライブ 2.5D。同時再生は一箇所） |
+| 概要 · 最近の活動 · 訪問 | 天気 · 一言 · 音楽 |
+| 相互リンク（Brew）· ソーシャル · Tapp ショートカット | miHoYo ゲーム Presence · プラットフォーム別 Report Card |
 
 インストール済み Tapp はホームページ用ウィジェットを登録できる。
+
+</details>
 
 ---
 
 ## プラットフォーム
 
-| プラットフォーム | 同期内容 |
-| --- | --- |
-| GitHub | リポジトリ、Star、コントリビューション |
-| Bilibili | お気に入り、アニメ、視聴履歴 |
-| Steam | ライブラリ、ウィッシュリスト、プレイ統計 |
-| 網易雲 | 好きな曲と傾向 |
-| YouTube | 公開チャンネルと最近の投稿 |
-| Bangumi | コレクション、評価、視聴状態 |
-| Discord | プロフィール、サーバー、連携アカウント |
-| X | プロフィールと投稿 |
-| MyAnimeList | アニメ / マンガのリストと点数 |
-| Xbox | 実績、Gamerscore、最近のゲーム |
-| PlayStation | トロフィー、レベル、最近のゲーム |
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**GitHub** — リポジトリ、Star、コントリビューション  
+**Steam** — ライブラリ、ウィッシュリスト、プレイ統計  
+**YouTube** — 公開チャンネル、最近の投稿  
+**Discord** — プロフィール、サーバー、連携アカウント  
+**MyAnimeList** — アニメ / マンガのリストと点数  
+**PlayStation** — トロフィー、レベル、最近のゲーム
+
+</td>
+<td width="50%" valign="top">
+
+**Bilibili** — お気に入り、アニメ、視聴履歴  
+**網易雲** — 好きな曲と傾向  
+**Bangumi** — コレクション、評価、視聴状態  
+**X** — プロフィールと投稿  
+**Xbox** — 実績、Gamerscore、最近のゲーム
+
+</td>
+</tr>
+</table>
 
 PostgreSQL に保存。Report Card、ライブラリ、レポートは同一データを読む。
 
@@ -115,11 +196,16 @@ PostgreSQL に保存。Report Card、ライブラリ、レポートは同一デ�
 
 サイト全体でひとつの話し手と上半身 2.5D ビジュアル（**Agent ペルソナ**）。オン：Agent はそのペルソナとして話す。オフ：Chat と Work は残る。
 
-オーナー：レポートから生成（タグ → ペルソナ → 視覚設定 → メイン立ち絵）、または文案を貼って立ち絵を上げる。視覚設定は人物と衣装を分離。メイン立ち絵は 3:4、上半身。レイヤー PSD で呼吸、まばたき、口パク。
+```text
+レポート → ペルソナ → 視覚設定 → メイン立ち絵 → レイヤー PSD
+           または文案 + 立ち絵を取り込む
+```
+
+視覚設定は人物と衣装を分離。メイン立ち絵は 3:4、上半身。レイヤー PSD で呼吸、まばたき、口パク。
 
 頭と胴は発話と歌唱に追随。着替えはライブプレーヤーを破棄しない。メイン立ち絵から **ステッカーアバター**（頭のみ）を派生でき、アバター枠と Agent 通知に使う。メイン立ち絵を替えると無効。
 
-ライブの顔は同時に一箇所。ブラウザ内レイヤー 2.5D（Anime2.5DRig）。その再生で Myriad サーバーは GPU 推論しない。
+ライブの顔は同時に一箇所。ブラウザ内レイヤー 2.5D（[Anime2.5DRig](https://github.com/852wa/Anime2.5DRig)）。その再生で Myriad サーバーは GPU 推論しない。
 
 ---
 
@@ -127,20 +213,58 @@ PostgreSQL に保存。Report Card、ライブラリ、レポートは同一デ�
 
 **Page**、ホームページ **Widget**、または両方。サンドボックス。インストール時に権限を承認。ホスト秘密とアプリ認証情報はサンドボックスに入らず、エラー文にも出ない。
 
-- **ストア** — [Myriad-You/tapp-store](https://github.com/Myriad-You/tapp-store)、`/tapp/store`
-- **Playground** — デスクトップ管理者、`/tapp/playground`。自然言語で Page、Widget のみ、または両方。本番サンドボックスでプレビュー。インストールまたは `.tapp` 書き出し。モバイル非表示
-- **CLI** — [`@myriad-you/tapp-cli`](tools/tapp-cli/README.md)（`myriad-tapp init / check / pack`）
+<table>
+<tr>
+<td width="33%" valign="top">
 
-Page：Canvas / WebGL、パッケージ内アセット、音声、任意のホスト注入 Three.js。Widget は重い 3D 向けではない。[Tapp 開発](docs/development/TAPP_DEVELOPMENT.md)。
+**ストア**  
+[tapp-store](https://github.com/Myriad-You/tapp-store)  
+`/tapp/store`
+
+</td>
+<td width="33%" valign="top">
+
+**Playground**  
+デスクトップ管理者  
+`/tapp/playground`
+
+自然言語で Page、Widget のみ、または両方。本番サンドボックスでプレビュー。インストールまたは `.tapp` 書き出し。モバイル非表示。
+
+</td>
+<td width="33%" valign="top">
+
+**CLI**  
+[`tapp-cli`](tools/tapp-cli/README.md)  
+`myriad-tapp init / check / pack`
+
+</td>
+</tr>
+</table>
+
+Page：Canvas / WebGL、パッケージ内アセット、音声、任意のホスト注入 [Three.js](https://github.com/mrdoob/three.js)。Widget は重い 3D 向けではない。[Tapp 開発](docs/development/TAPP_DEVELOPMENT.md)。
 
 ---
 
 ## Agent
 
-| モード | 挙動 |
-| --- | --- |
-| **Chat** | ペルソナオン時はそのペルソナとしてのみ話す。検索、予約、生成、計画なし。着替えと、現在のプレーヤーの再生 / 停止 / スキップは可。 |
-| **Work** | 計画、確認、実行。記憶、スキル、定期実行、MCP。範囲は付与された権限。 |
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**Chat**
+
+ペルソナオン時はそのペルソナとしてのみ話す。検索、予約、生成、計画なし。着替えと、現在のプレーヤーの再生 / 停止 / スキップは可。
+
+</td>
+<td width="50%" valign="top">
+
+**Work**
+
+計画、確認、実行。記憶、スキル、定期実行、MCP。範囲は付与された権限。
+
+</td>
+</tr>
+</table>
 
 気づいた事項を Work に渡す提案ができる。提案の受理は自律許可ではない。任意の TTS、聞き取り。音声 / リアルタイム会話を設定すれば長押しで連続会話。
 
@@ -271,6 +395,20 @@ docker compose exec -T postgres pg_dump -U myriad -d myriad > "backups/backup_$(
 
 ## アーキテクチャ
 
+```mermaid
+flowchart LR
+  Browser --> Proxy["proxy :HTTP_PORT"]
+  Proxy --> FE["frontend :1102"]
+  Proxy --> BE["backend :1103"]
+  BE --> PG[("postgres :5432")]
+  BE --> GW[updater-gateway]
+  GW --> UP[updater]
+  UP --> Guard[docker-guard]
+```
+
+<details>
+<summary>開発 / 本番トポロジ</summary>
+
 **開発**
 
 ```text
@@ -289,6 +427,8 @@ host HTTP_PORT
        │                                 └─► docker-guard → Docker sock
        └─ (rescue) updater when PROXY_ALLOW_DIRECT_UPDATER=true
 ```
+
+</details>
 
 クローラ / アプリ内シェア UA はホーム、ライブラリ、Brew、レポート、Tapp の SEO HTML シェルを受け取り、ブラウザは SPA を受け取る。[アーキテクチャ](docs/development/ARCHITECTURE.md)。
 
@@ -318,14 +458,43 @@ Myriad/
 
 ## 技術構成
 
-| | |
-| --- | --- |
-| **フロントエンド** | Astro 7 · React 19 · Tailwind 4 · TypeScript · 日 / 中 / 英 |
-| **バックエンド** | Rust · Axum 0.8 · SeaORM · Tokio |
-| **エッジ** | proxy · updater |
-| **データ** | PostgreSQL 18 |
-| **拡張** | Agent · Tapp サンドボックス · MCP · ActivityPub / MFP |
-| **デプロイ** | Docker Compose · linux/amd64 + arm64 |
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**フロントエンド**  
+[Astro](https://github.com/withastro/astro) 7 · [React](https://github.com/facebook/react) 19 · [React Router](https://github.com/remix-run/react-router) 7  
+[Tailwind](https://github.com/tailwindlabs/tailwindcss) 4 · [Vite](https://github.com/vitejs/vite) 8 · [TypeScript](https://github.com/microsoft/TypeScript) 6 · [Motion](https://github.com/motiondivision/motion) · [pnpm](https://github.com/pnpm/pnpm)  
+日 / 中 / 英
+
+**ライブ顔**  
+[Anime2.5DRig](https://github.com/852wa/Anime2.5DRig) · WebGL2
+
+**音声**  
+Agora RTC / RTM（任意）
+
+</td>
+<td width="50%" valign="top">
+
+**バックエンド**  
+[Rust](https://github.com/rust-lang/rust) 1.94 · [Axum](https://github.com/tokio-rs/axum) 0.8 · [Tokio](https://github.com/tokio-rs/tokio)  
+[SeaORM](https://github.com/SeaQL/sea-orm) 2 / [SQLx](https://github.com/launchbadge/sqlx) · [reqwest](https://github.com/seanmonstar/reqwest) 0.13
+
+**データ**  
+[PostgreSQL](https://github.com/postgres/postgres) 18
+
+**エッジ**  
+proxy · updater
+
+**拡張**  
+Tapp サンドボックス · [MCP](https://github.com/modelcontextprotocol/modelcontextprotocol) · ActivityPub / MFP
+
+**デプロイ**  
+[Docker Compose](https://github.com/docker/compose) · linux/amd64 + arm64
+
+</td>
+</tr>
+</table>
 
 ---
 
@@ -333,22 +502,39 @@ Myriad/
 
 現在は中国語。[入口](docs/INDEX.md)。
 
-| | |
-| --- | --- |
-| [クイックスタート](docs/QUICKSTART.md) | デプロイとローカル開発 |
-| [アーキテクチャ](docs/development/ARCHITECTURE.md) | コンポーネントとトポロジ |
-| [ビルド](docs/development/BUILD.md) | ソースからのビルド |
-| [API](docs/API.md) | HTTP API |
-| [Tapp 開発](docs/development/TAPP_DEVELOPMENT.md) | Page / Widget / Playground / サンドボックス |
-| [ライブラリ](docs/features/LIBRARY.md) | Library |
-| [OAuth / ログイン](docs/development/OAUTH.md) | ローカルアカウントと OIDC |
-| [連合](docs/development/FEDERATION.md) | ActivityPub / MFP |
-| [Docker デプロイ](docs/deployment/DOCKER_DEPLOYMENT.md) | 本番オーケストレーション |
-| [ポート](docs/deployment/PORTS.md) | ポートと公開面 |
-| [Updater](docs/deployment/UPDATER_QUICKSTART.md) | 更新、ロールバック、救援 |
-| [外部 PostgreSQL](docs/deployment/EXTERNAL_POSTGRES.md) | 外部 PG |
-| [Docker なしデプロイ](docs/deployment/NATIVE_DEPLOYMENT.md) | PostgreSQL + バイナリ |
-| [Setup インストール暗号](docs/deployment/SETUP_BOOTSTRAP.md) | オーケストレーション時の暗号 |
+<table>
+<tr>
+<td width="33%" valign="top">
+
+**始める**  
+[クイックスタート](docs/QUICKSTART.md)  
+[アーキテクチャ](docs/development/ARCHITECTURE.md)  
+[ビルド](docs/development/BUILD.md)  
+[API](docs/API.md)
+
+</td>
+<td width="33%" valign="top">
+
+**製品**  
+[Tapp](docs/development/TAPP_DEVELOPMENT.md)  
+[ライブラリ](docs/features/LIBRARY.md)  
+[OAuth](docs/development/OAUTH.md)  
+[連合](docs/development/FEDERATION.md)
+
+</td>
+<td width="33%" valign="top">
+
+**デプロイ**  
+[Docker](docs/deployment/DOCKER_DEPLOYMENT.md)  
+[ポート](docs/deployment/PORTS.md)  
+[Updater](docs/deployment/UPDATER_QUICKSTART.md)  
+[外部 PG](docs/deployment/EXTERNAL_POSTGRES.md)  
+[Docker なし](docs/deployment/NATIVE_DEPLOYMENT.md)  
+[Setup インストール暗号](docs/deployment/SETUP_BOOTSTRAP.md)
+
+</td>
+</tr>
+</table>
 
 ---
 
@@ -368,6 +554,8 @@ Tapp の契約とツール（`crates/tapp-contract`、`tools/tapp-cli`、`tools/
 
 <div align="center">
 <sub><i>あなたという物語を、ひとつに</i> · <i>A myriad of lights, in one place.</i></sub>
+<br/>
+<sub><a href="README.md">English</a> · <a href="README.zh-CN.md">中文</a> · <strong>日本語</strong></sub>
 <br/>
 <sub>Maintained by <a href="https://github.com/myriad-you">@myriad-you</a></sub>
 </div>

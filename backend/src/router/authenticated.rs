@@ -59,6 +59,15 @@ pub(super) fn build_authenticated_router(
                     middleware::auth::admin_middleware,
                 )),
         )
+        .route(
+            "/api/home/widget-fonts",
+            post(api::widget_fonts::upload_widget_font)
+                .layer(axum::extract::DefaultBodyLimit::max(4 * 1024 * 1024))
+                .route_layer(from_fn_with_state(
+                    app_state.clone(),
+                    middleware::auth::admin_middleware,
+                )),
+        )
         // SEO / GEO AI copy assist — admin only (site branding)
         .route(
             "/api/seo/generate-copy",

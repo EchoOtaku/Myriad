@@ -3846,6 +3846,13 @@ export const zhCN: TranslationKeys = {
     notConfigured: '未配置',
     fetchFailed: '获取失败',
     showcaseEmpty: '展柜未公开或为空',
+    customFont: '自定义字体',
+    customFontHint: '请使用你有权在网页中嵌入的字体。可不填。',
+    customFontChoose: '选择字体',
+    customFontClear: '使用系统字体',
+    customFontUploading: '上传中…',
+    customFontFailed: '字体上传失败',
+    customFontInUse: '正在使用自定义字体',
   },
 
   // Tapp 快捷方式小组件

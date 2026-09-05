@@ -3625,6 +3625,13 @@ export interface TranslationKeys {
     notConfigured: string
     fetchFailed: string
     showcaseEmpty: string
+    customFont: string
+    customFontHint: string
+    customFontChoose: string
+    customFontClear: string
+    customFontUploading: string
+    customFontFailed: string
+    customFontInUse: string
   }
 
   // Tapp 快捷方式小组件

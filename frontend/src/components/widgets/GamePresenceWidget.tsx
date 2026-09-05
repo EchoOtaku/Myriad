@@ -13,6 +13,7 @@ import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
+import type { CSSProperties } from 'react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { API_URL } from '../../config'
 import { useI18n } from '../../contexts/I18nContext'
@@ -21,6 +22,12 @@ import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
 import { useThemeMode } from '../../utils/themeSubscriber'
 import { userFacingError } from '../../utils/userFacingError'
+import {
+  sanitizeWidgetFontUrl,
+  uploadWidgetFont,
+  widgetFontFaceUrl,
+  widgetFontFamilyName,
+} from '../../utils/widgetFonts'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetLongPressHint } from './shared/WidgetLongPressHint'
 import {
@@ -43,6 +50,8 @@ export interface GamePresenceWidgetConfig {
   platformId?: GamePlatformId
   accountId?: string
   game?: HoyoGame
+  /** Host-stored font URL from POST /api/home/widget-fonts; empty = system font */
+  fontUrl?: string
 }
 
 interface GameIdentity {
@@ -118,7 +127,7 @@ const HOYO_GAMES: { id: HoyoGame, labelKey: 'genshin' | 'hsr' | 'zzz' }[] = [
   { id: 'zzz', labelKey: 'zzz' },
 ]
 
-/** 每个游戏的品牌资产：App 图标（前景）+ wordmark（低透明度背景装饰）+ 游戏字体 */
+/** 每个游戏的品牌资产：App 图标（前景）+ wordmark（低透明度背景装饰）+ 系统字体气质 */
 const GAME_META: Record<
   HoyoGame,
   {
@@ -192,14 +201,20 @@ interface SettingsState {
   isOpen: boolean
   accountId: string
   game: HoyoGame
+  fontUrl: string
   anchorRect?: DOMRect
-  onSave?: (cfg: Required<Pick<GamePresenceWidgetConfig, 'platformId' | 'accountId' | 'game'>>) => void
+  onSave?: (
+    cfg: Required<
+      Pick<GamePresenceWidgetConfig, 'platformId' | 'accountId' | 'game'>
+    > & { fontUrl: string },
+  ) => void
 }
 
 let globalSettings: SettingsState = {
   isOpen: false,
   accountId: '',
   game: 'genshin',
+  fontUrl: '',
 }
 
 const settingsListeners = new Set<() => void>()
@@ -207,6 +222,7 @@ const settingsListeners = new Set<() => void>()
 function openGamePresenceSettings(
   accountId: string,
   game: HoyoGame,
+  fontUrl: string,
   anchorRect: DOMRect,
   onSave: SettingsState['onSave'],
 ) {
@@ -214,6 +230,7 @@ function openGamePresenceSettings(
     isOpen: true,
     accountId,
     game,
+    fontUrl,
     anchorRect,
     onSave,
   }
@@ -237,18 +254,40 @@ const GamePresenceSettingsModal = memo(() => {
   const [, forceUpdate] = useState({})
   const [draftAccountId, setDraftAccountId] = useState('')
   const [draftGame, setDraftGame] = useState<HoyoGame>('genshin')
+  const [draftFontUrl, setDraftFontUrl] = useState('')
+  const [fontBusy, setFontBusy] = useState(false)
+  const [fontError, setFontError] = useState<string | null>(null)
+  const fontInputRef = useRef<HTMLInputElement | null>(null)
   useEffect(() => subscribeSettings(() => forceUpdate({})), [])
 
   const { isOpen, anchorRect, onSave } = globalSettings
+  const tw = t.gamePresenceWidget
 
   // Sync draft when opening
   useEffect(() => {
     if (isOpen) {
       setDraftAccountId(globalSettings.accountId)
       setDraftGame(globalSettings.game)
+      setDraftFontUrl(globalSettings.fontUrl)
+      setFontBusy(false)
+      setFontError(null)
     }
   }, [isOpen])
 
+  const handlePickFont = useCallback(async (file: File | undefined) => {
+    if (!file) return
+    setFontBusy(true)
+    setFontError(null)
+    try {
+      const url = await uploadWidgetFont(file)
+      setDraftFontUrl(url)
+    } catch (error) {
+      setFontError(userFacingError(error, tw.customFontFailed))
+    } finally {
+      setFontBusy(false)
+      if (fontInputRef.current) fontInputRef.current.value = ''
+    }
+  }, [tw.customFontFailed])
 
   const handleSave = useCallback(() => {
     const id = draftAccountId.trim()
@@ -257,11 +296,10 @@ const GamePresenceSettingsModal = memo(() => {
       platformId: 'hoyolab',
       accountId: id,
       game: draftGame,
+      fontUrl: draftFontUrl,
     })
     closeGamePresenceSettings()
-  }, [draftAccountId, draftGame, onSave])
-
-  const tw = t.gamePresenceWidget
+  }, [draftAccountId, draftFontUrl, draftGame, onSave])
 
   return (
     <WidgetSettingsTip
@@ -269,7 +307,7 @@ const GamePresenceSettingsModal = memo(() => {
       anchor={anchorRect ?? null}
       title={t.widgets.gamePresence}
       width={300}
-      height={380}
+      height={440}
       onClose={closeGamePresenceSettings}
     >
       <WidgetSettingsSection label={tw.selectGame}>
@@ -305,11 +343,54 @@ const GamePresenceSettingsModal = memo(() => {
         <p className="widget-settings-tip__subtitle" style={{ marginTop: '0.35rem' }}>
           {tw.publicOnlyHint}
         </p>
+      </WidgetSettingsSection>
+      <WidgetSettingsSection label={tw.customFont}>
+        <p className="widget-settings-tip__subtitle">{tw.customFontHint}</p>
+        <input
+          ref={fontInputRef}
+          type="file"
+          accept=".woff2,.woff,.ttf,.otf"
+          hidden
+          onChange={(e) => void handlePickFont(e.target.files?.[0])}
+        />
+        <button
+          type="button"
+          className="widget-settings-tip__action"
+          style={{ marginTop: '0.45rem' }}
+          disabled={fontBusy}
+          onClick={() => fontInputRef.current?.click()}
+        >
+          {fontBusy ? tw.customFontUploading : tw.customFontChoose}
+        </button>
+        {draftFontUrl ? (
+          <>
+            <p className="widget-settings-tip__subtitle" style={{ marginTop: '0.35rem' }}>
+              {tw.customFontInUse}
+            </p>
+            <button
+              type="button"
+              className="widget-settings-tip__action"
+              style={{ marginTop: '0.35rem' }}
+              disabled={fontBusy}
+              onClick={() => {
+                setDraftFontUrl('')
+                setFontError(null)
+              }}
+            >
+              {tw.customFontClear}
+            </button>
+          </>
+        ) : null}
+        {fontError ? (
+          <p className="widget-settings-tip__subtitle" style={{ marginTop: '0.35rem' }}>
+            {fontError}
+          </p>
+        ) : null}
         <button
           type="button"
           className="widget-settings-tip__save"
           onClick={handleSave}
-          disabled={!draftAccountId.trim()}
+          disabled={!draftAccountId.trim() || fontBusy}
         >
           {tw.save}
         </button>
@@ -390,6 +471,7 @@ function resolveConfig(config: WidgetComponentProps['config']): {
   platformId: GamePlatformId
   accountId: string
   game: HoyoGame
+  fontUrl: string
 } {
   const c = (config.config || {}) as GamePresenceWidgetConfig
   const game = (['genshin', 'hsr', 'zzz'] as const).includes(c.game as HoyoGame)
@@ -401,6 +483,7 @@ function resolveConfig(config: WidgetComponentProps['config']): {
     platformId: 'hoyolab',
     accountId: (c.accountId || '').trim(),
     game,
+    fontUrl: sanitizeWidgetFontUrl(c.fontUrl),
   }
 }
 
@@ -427,6 +510,8 @@ const GamePresenceWidget = memo(
     const resolved = resolveConfig(config)
     const [accountId, setAccountId] = useState(resolved.accountId)
     const [game, setGame] = useState(resolved.game)
+    const [fontUrl, setFontUrl] = useState(resolved.fontUrl)
+    const [customFamily, setCustomFamily] = useState<string | null>(null)
 
     const [data, setData] = useState<GamePresenceData | null>(null)
     const [loading, setLoading] = useState(false)
@@ -440,7 +525,31 @@ const GamePresenceWidget = memo(
       const next = resolveConfig(config)
       setAccountId(next.accountId)
       setGame(next.game)
-    }, [config.config?.accountId, config.config?.game])
+      setFontUrl(next.fontUrl)
+    }, [config.config?.accountId, config.config?.fontUrl, config.config?.game])
+
+    useEffect(() => {
+      if (!fontUrl) {
+        setCustomFamily(null)
+        return
+      }
+      const family = widgetFontFamilyName(fontUrl)
+      const face = new FontFace(family, `url(${widgetFontFaceUrl(fontUrl)})`)
+      let cancelled = false
+      void face
+        .load()
+        .then((loaded) => {
+          if (cancelled) return
+          document.fonts.add(loaded)
+          setCustomFamily(family)
+        })
+        .catch(() => {
+          if (!cancelled) setCustomFamily(null)
+        })
+      return () => {
+        cancelled = true
+      }
+    }, [fontUrl])
 
     // Fetch (initial load + 6h 低频轮询 —— 展柜数据变化以天计，长驻页面兜底刷新用)
     useEffect(() => {
@@ -546,14 +655,17 @@ const GamePresenceWidget = memo(
         platformId: GamePlatformId
         accountId: string
         game: HoyoGame
+        fontUrl: string
       }) => {
         setAccountId(next.accountId)
         setGame(next.game)
+        setFontUrl(next.fontUrl)
         const payload = {
           ...config.config,
           platformId: next.platformId,
           accountId: next.accountId,
           game: next.game,
+          fontUrl: next.fontUrl,
         }
         if (typeof onConfigChange === 'function') {
           onConfigChange(payload)
@@ -573,10 +685,11 @@ const GamePresenceWidget = memo(
       openGamePresenceSettings(
         accountId,
         game,
+        fontUrl,
         localRef.current.getBoundingClientRect(),
         persist,
       )
-    }, [accountId, game, persist])
+    }, [accountId, fontUrl, game, persist])
 
     const handlePressStart = useCallback(() => {
       if (!isEditMode) return
@@ -916,7 +1029,14 @@ const GamePresenceWidget = memo(
           />
         }
         contentClassName={`flex flex-col ${!isEditMode && hasAccount ? 'cursor-pointer' : ''}`}
-        className="select-none"
+        className={`select-none ${meta.fontClass}`}
+        style={
+          customFamily
+            ? ({
+                '--gp-font': `'${customFamily}', system-ui, sans-serif`,
+              } as CSSProperties)
+            : undefined
+        }
       >
         <div
           className="h-full w-full"

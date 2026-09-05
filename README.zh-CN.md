@@ -6,15 +6,21 @@
 
 ### 让每一个你，被看见
 
-*A myriad of lights, in one place.*
+<em>A myriad of lights, in one place.</em>
 
-[English](README.md) · **中文** · [日本語](README.ja.md)
+<p>
+<a href="README.md">English</a>
+&nbsp;·&nbsp;
+<strong>中文</strong>
+&nbsp;·&nbsp;
+<a href="README.ja.md">日本語</a>
+</p>
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/myriad-you/Myriad)](https://github.com/myriad-you/Myriad/releases)
-[![Built with Rust](https://img.shields.io/badge/built%20with-Rust-orange.svg)](backend/Cargo.toml)
-[![Astro](https://img.shields.io/badge/Astro-7-blueviolet.svg)](frontend/package.json)
-[![React 19](https://img.shields.io/badge/React-19-61dafb.svg)](frontend/package.json)
+[![Built with Rust](https://img.shields.io/badge/built%20with-Rust-orange.svg)](https://github.com/rust-lang/rust)
+[![Astro](https://img.shields.io/badge/Astro-7-blueviolet.svg)](https://github.com/withastro/astro)
+[![React 19](https://img.shields.io/badge/React-19-61dafb.svg)](https://github.com/facebook/react)
 
 [快速开始](docs/QUICKSTART.md) · [文档](docs/INDEX.md) · [反馈](https://github.com/myriad-you/Myriad/issues)
 
@@ -26,78 +32,153 @@
 
 **Myriad 是自托管的个人主页与创作工坊。** 聚合各平台、展示资料库，并运行全站一份人设、2.5D 形象，以及你拥有的 Tapp 应用。
 
-单租户。可公开或私有。数据在 PostgreSQL。界面：中 / 英 / 日。
+单租户。可公开或私有。PostgreSQL。界面：中 · 英 · 日。
 
-页面：**首页**、**资料库**、**Brew**、**平台报告**、**Tapp**、**Agent**（面板）。`/config` 仅管理员。
+```mermaid
+flowchart LR
+  subgraph homepage ["首页"]
+    direction TB
+    W[小组件]
+    L[资料库]
+    P[平台]
+  end
+  subgraph studio ["工坊"]
+    direction TB
+    A[人设]
+    F["2.5D 形象"]
+    T[Tapp]
+  end
+  homepage -.-> studio
+```
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 首页
+`/`
+
+- 标准 16×4 · 自由 16×8
+- 音乐、天气、Report Card、人设小组件
+- 自由布局贴纸不占小组件格
+
+</td>
+<td width="50%" valign="top">
+
+### 资料库
+`/library`
+
+- 游戏、番剧、影视、书籍、音乐
+- 从已连接平台同步
+- 列表或无限画布
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### 人设 · 2.5D
+全站一份
+
+- 从报告生成，或导入文案 + 立绘
+- 分层现场：呼吸、眨眼、口型
+- 主立绘派生贴纸头像
+
+</td>
+<td width="50%" valign="top">
+
+### Tapp
+`/tapp`
+
+- Page、首页 Widget，或两者
+- 商店 · Playground · CLI
+- 沙箱；密钥不进沙箱
+
+</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+**Agent**  
+Chat / Work · 面板
+
+</td>
+<td width="33%" valign="top">
+
+**Brew** `/brew`  
+RSS · Notion · RSSHub
+
+</td>
+<td width="33%" valign="top">
+
+**联邦**  
+ActivityPub · MFP
+
+</td>
+</tr>
+</table>
+
+`/config` 仅管理员。资料库、Brew、报告、Tapp、Agent：所有人 / 登录用户 / 管理员。
 
 ---
 
 ## 目录
 
-- [概览](#概览)
-- [首页](#首页)
-- [平台](#平台)
-- [资料库与报告](#资料库与报告)
-- [人设与 2.5D 形象](#人设与-25d-形象)
-- [Tapp](#tapp)
-- [Agent](#agent)
-- [Brew](#brew)
-- [联邦](#联邦)
-- [账号与可见性](#账号与可见性)
-- [运维](#运维)
-- [运行要求](#运行要求)
-- [部署](#部署)
-- [本地开发](#本地开发)
-- [架构](#架构)
-- [仓库](#仓库)
-- [技术构成](#技术构成)
-- [文档](#文档)
-- [贡献](#贡献)
-- [License](#license)
+**产品** — [首页](#首页) · [平台](#平台) · [资料库](#资料库与报告) · [人设](#人设与-25d-形象) · [Tapp](#tapp) · [Agent](#agent) · [Brew](#brew) · [联邦](#联邦) · [账号](#账号与可见性)
 
----
+**运行** — [运行要求](#运行要求) · [部署](#部署) · [开发](#本地开发) · [运维](#运维)
 
-## 概览
-
-| 路径 | 作用 |
-| --- | --- |
-| **首页** `/` | 小组件、布局、人设、音乐、Tapp 快捷方式 |
-| **资料库** `/library` | 已连接平台的游戏、番剧、影视、书籍、音乐 |
-| **Brew** `/brew` | RSS / Notion / RSSHub。默认所有人可读；登录用户可标记、收藏 |
-| **平台报告** `/reports` | 各平台画像；引导式人设的输入 |
-| **Tapp** `/tapp` | 已装应用。商店：`/tapp/store`。Playground（管理员、桌面）：`/tapp/playground` |
-| **Agent** | **Chat** / **Work**。人设开着时 Chat 用人设说话 |
-| **配置** `/config` | 管理员：平台、AI、用户、OAuth、可见性、更新器、诊断 |
-
-资料库、Brew、报告、Tapp、Agent 的可见性：所有人 / 登录用户 / 管理员。
+**参考** — [架构](#架构) · [仓库](#仓库) · [技术构成](#技术构成) · [文档](#文档) · [License](#license)
 
 ---
 
 ## 首页
 
-小组件落在 **标准布局**（居中，桌面 16×4，窄屏紧凑重排）或 **自由布局**（同格尺寸，画布 16×8）。两套布局分别存坐标。自由布局可放装饰贴纸；贴纸不是小组件，不占小组件格。
+**标准** 16×4（居中，窄屏紧凑重排）或 **自由** 16×8（同格尺寸）。坐标分布局存储。自由布局贴纸不是小组件，不占小组件格。
 
-内置：欢迎语；Agent 人设（现场 2.5D，同时只播一份）；内容概览、最近活动、访客统计；天气；一言；音乐播放器；友情链接（Brew）；社交网络；Tapp 快捷方式；米哈游游戏 Presence；各平台 Report Card。
+<details>
+<summary>内置小组件</summary>
+
+| | |
+| --- | --- |
+| 欢迎语 | Agent 人设（现场 2.5D；同时只播一份） |
+| 内容概览 · 最近活动 · 访客 | 天气 · 一言 · 音乐 |
+| 友情链接（Brew）· 社交 · Tapp 快捷方式 | 米哈游游戏 Presence · 各平台 Report Card |
 
 已安装的 Tapp 可注册首页小组件。
+
+</details>
 
 ---
 
 ## 平台
 
-| 平台 | 同步内容 |
-| --- | --- |
-| GitHub | 仓库、Star、贡献 |
-| Bilibili | 收藏、追番、观看历史 |
-| Steam | 游戏库、愿望单、游玩统计 |
-| 网易云 | 喜欢的歌与品味 |
-| YouTube | 公开频道数据与最近上传 |
-| Bangumi | 收藏、评分、追看状态 |
-| Discord | 画像、服务器、绑定账号 |
-| X | 资料与帖子 |
-| MyAnimeList | 动画 / 漫画列表与评分 |
-| Xbox | 成就、Gamerscore、最近游戏 |
-| PlayStation | 奖杯、奖杯等级、最近游戏 |
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**GitHub** — 仓库、Star、贡献  
+**Steam** — 游戏库、愿望单、游玩统计  
+**YouTube** — 公开频道数据、最近上传  
+**Discord** — 画像、服务器、绑定账号  
+**MyAnimeList** — 动画 / 漫画列表与评分  
+**PlayStation** — 奖杯、奖杯等级、最近游戏
+
+</td>
+<td width="50%" valign="top">
+
+**Bilibili** — 收藏、追番、观看历史  
+**网易云** — 喜欢的歌与品味  
+**Bangumi** — 收藏、评分、追看状态  
+**X** — 资料与帖子  
+**Xbox** — 成就、Gamerscore、最近游戏
+
+</td>
+</tr>
+</table>
 
 写入 PostgreSQL。Report Card、资料库、平台报告读同一份数据。
 
@@ -115,11 +196,16 @@
 
 全站一份说话人格与上半身 2.5D 形象（**Agent 人设**）。开：Agent 用人设说话。关：仍提供 Chat 与 Work。
 
-站长：从报告生成（词条 → 人设 → 视觉设定 → 主立绘），或贴文案并上传立绘。视觉设定分人模块与衣服模块。主立绘 3:4、上半身。分层 PSD 用于呼吸、眨眼、口型。
+```text
+报告 → 人设 → 视觉设定 → 主立绘 → 分层 PSD
+       或导入文案 + 立绘
+```
+
+视觉设定分人模块与衣服模块。主立绘 3:4、上半身。分层 PSD 用于呼吸、眨眼、口型。
 
 头身跟随说话与唱歌。换装不卸载现场播放器。主立绘可派生 **贴纸头像**（仅头），用于头像位与 Agent 通知；更换主立绘后失效。
 
-现场形象同时只播一份。浏览器分层 2.5D（Anime2.5DRig）。该播放不在 Myriad 服务器上做 GPU 推理。
+现场形象同时只播一份。浏览器分层 2.5D（[Anime2.5DRig](https://github.com/852wa/Anime2.5DRig)）。该播放不在 Myriad 服务器上做 GPU 推理。
 
 ---
 
@@ -127,20 +213,58 @@
 
 **Page**、首页 **Widget**，或两者。沙箱运行。安装时批准权限。宿主密钥与应用凭据不进入沙箱，错误载荷中也不出现。
 
-- **商店** — [Myriad-You/tapp-store](https://github.com/Myriad-You/tapp-store)，`/tapp/store`
-- **Playground** — 桌面管理员，`/tapp/playground`。自然语言生成 Page、仅 Widget 或两者；生产沙箱预览；安装或导出 `.tapp`。移动端不展示
-- **CLI** — [`@myriad-you/tapp-cli`](tools/tapp-cli/README.md)（`myriad-tapp init / check / pack`）
+<table>
+<tr>
+<td width="33%" valign="top">
 
-Page：Canvas / WebGL、包内资源、音频、可选宿主注入的 Three.js。Widget 不承担重 3D。[Tapp 开发](docs/development/TAPP_DEVELOPMENT.md)。
+**商店**  
+[tapp-store](https://github.com/Myriad-You/tapp-store)  
+`/tapp/store`
+
+</td>
+<td width="33%" valign="top">
+
+**Playground**  
+桌面管理员  
+`/tapp/playground`
+
+自然语言 Page、仅 Widget 或两者。生产沙箱预览；安装或导出 `.tapp`。移动端不展示。
+
+</td>
+<td width="33%" valign="top">
+
+**CLI**  
+[`tapp-cli`](tools/tapp-cli/README.md)  
+`myriad-tapp init / check / pack`
+
+</td>
+</tr>
+</table>
+
+Page：Canvas / WebGL、包内资源、音频、可选宿主注入的 [Three.js](https://github.com/mrdoob/three.js)。Widget 不承担重 3D。[Tapp 开发](docs/development/TAPP_DEVELOPMENT.md)。
 
 ---
 
 ## Agent
 
-| 模式 | 行为 |
-| --- | --- |
-| **Chat** | 人设开着时只用人设说话。无搜索、预订、生成、计划。允许换装，以及当前播放器的播 / 停 / 切歌。 |
-| **Work** | 计划、确认、执行。记忆、技能、定时任务、MCP。范围由授予权限决定。 |
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**Chat**
+
+人设开着时只用人设说话。无搜索、预订、生成、计划。允许换装，以及当前播放器的播 / 停 / 切歌。
+
+</td>
+<td width="50%" valign="top">
+
+**Work**
+
+计划、确认、执行。记忆、技能、定时任务、MCP。范围由授予权限决定。
+
+</td>
+</tr>
+</table>
 
 可对注意到的事项提出交给 Work 的提案；接受提案不是自治授权。可选 TTS、听写；配置语音 / 实时对话后可长按连续对话。
 
@@ -271,6 +395,20 @@ docker compose exec -T postgres pg_dump -U myriad -d myriad > "backups/backup_$(
 
 ## 架构
 
+```mermaid
+flowchart LR
+  Browser --> Proxy["proxy :HTTP_PORT"]
+  Proxy --> FE["frontend :1102"]
+  Proxy --> BE["backend :1103"]
+  BE --> PG[("postgres :5432")]
+  BE --> GW[updater-gateway]
+  GW --> UP[updater]
+  UP --> Guard[docker-guard]
+```
+
+<details>
+<summary>开发 / 生产拓扑</summary>
+
 **开发**
 
 ```text
@@ -289,6 +427,8 @@ host HTTP_PORT
        │                                 └─► docker-guard → Docker sock
        └─ (rescue) updater when PROXY_ALLOW_DIRECT_UPDATER=true
 ```
+
+</details>
 
 爬虫 / 应用内分享 UA 获得首页、资料库、Brew、报告、Tapp 的 SEO HTML 壳；浏览器获得 SPA。[架构](docs/development/ARCHITECTURE.md)。
 
@@ -318,14 +458,43 @@ Myriad/
 
 ## 技术构成
 
-| | |
-| --- | --- |
-| **前端** | Astro 7 · React 19 · Tailwind 4 · TypeScript · 中 / 英 / 日 |
-| **后端** | Rust · Axum 0.8 · SeaORM · Tokio |
-| **边缘** | proxy · updater |
-| **数据** | PostgreSQL 18 |
-| **扩展** | Agent · Tapp 沙箱 · MCP · ActivityPub / MFP |
-| **部署** | Docker Compose · linux/amd64 + arm64 |
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**前端**  
+[Astro](https://github.com/withastro/astro) 7 · [React](https://github.com/facebook/react) 19 · [React Router](https://github.com/remix-run/react-router) 7  
+[Tailwind](https://github.com/tailwindlabs/tailwindcss) 4 · [Vite](https://github.com/vitejs/vite) 8 · [TypeScript](https://github.com/microsoft/TypeScript) 6 · [Motion](https://github.com/motiondivision/motion) · [pnpm](https://github.com/pnpm/pnpm)  
+中 / 英 / 日
+
+**现场形象**  
+[Anime2.5DRig](https://github.com/852wa/Anime2.5DRig) · WebGL2
+
+**语音**  
+Agora RTC / RTM（可选）
+
+</td>
+<td width="50%" valign="top">
+
+**后端**  
+[Rust](https://github.com/rust-lang/rust) 1.94 · [Axum](https://github.com/tokio-rs/axum) 0.8 · [Tokio](https://github.com/tokio-rs/tokio)  
+[SeaORM](https://github.com/SeaQL/sea-orm) 2 / [SQLx](https://github.com/launchbadge/sqlx) · [reqwest](https://github.com/seanmonstar/reqwest) 0.13
+
+**数据**  
+[PostgreSQL](https://github.com/postgres/postgres) 18
+
+**边缘**  
+proxy · updater
+
+**扩展**  
+Tapp 沙箱 · [MCP](https://github.com/modelcontextprotocol/modelcontextprotocol) · ActivityPub / MFP
+
+**部署**  
+[Docker Compose](https://github.com/docker/compose) · linux/amd64 + arm64
+
+</td>
+</tr>
+</table>
 
 ---
 
@@ -333,22 +502,39 @@ Myriad/
 
 目前为中文。[门户](docs/INDEX.md)。
 
-| | |
-| --- | --- |
-| [快速开始](docs/QUICKSTART.md) | 部署与本地开发 |
-| [架构](docs/development/ARCHITECTURE.md) | 组件与拓扑 |
-| [构建](docs/development/BUILD.md) | 从源码构建 |
-| [API](docs/API.md) | HTTP API |
-| [Tapp 开发](docs/development/TAPP_DEVELOPMENT.md) | Page / Widget / Playground / 沙箱 |
-| [资料库](docs/features/LIBRARY.md) | Library |
-| [OAuth / 登录](docs/development/OAUTH.md) | 本地账号与 OIDC |
-| [联邦](docs/development/FEDERATION.md) | ActivityPub / MFP |
-| [Docker 部署](docs/deployment/DOCKER_DEPLOYMENT.md) | 生产编排 |
-| [端口](docs/deployment/PORTS.md) | 端口与暴露面 |
-| [Updater](docs/deployment/UPDATER_QUICKSTART.md) | 更新、回滚、救援 |
-| [外部 PostgreSQL](docs/deployment/EXTERNAL_POSTGRES.md) | 外部 PG |
-| [无 Docker 部署](docs/deployment/NATIVE_DEPLOYMENT.md) | PostgreSQL + 二进制 |
-| [Setup 安装暗号](docs/deployment/SETUP_BOOTSTRAP.md) | 编排安装暗号 |
+<table>
+<tr>
+<td width="33%" valign="top">
+
+**起步**  
+[快速开始](docs/QUICKSTART.md)  
+[架构](docs/development/ARCHITECTURE.md)  
+[构建](docs/development/BUILD.md)  
+[API](docs/API.md)
+
+</td>
+<td width="33%" valign="top">
+
+**产品**  
+[Tapp](docs/development/TAPP_DEVELOPMENT.md)  
+[资料库](docs/features/LIBRARY.md)  
+[OAuth](docs/development/OAUTH.md)  
+[联邦](docs/development/FEDERATION.md)
+
+</td>
+<td width="33%" valign="top">
+
+**部署**  
+[Docker](docs/deployment/DOCKER_DEPLOYMENT.md)  
+[端口](docs/deployment/PORTS.md)  
+[Updater](docs/deployment/UPDATER_QUICKSTART.md)  
+[外部 PG](docs/deployment/EXTERNAL_POSTGRES.md)  
+[无 Docker](docs/deployment/NATIVE_DEPLOYMENT.md)  
+[Setup 安装暗号](docs/deployment/SETUP_BOOTSTRAP.md)
+
+</td>
+</tr>
+</table>
 
 ---
 
@@ -368,6 +554,8 @@ Tapp 契约与工具（`crates/tapp-contract`、`tools/tapp-cli`、`tools/tapp-c
 
 <div align="center">
 <sub><i>让每一个你，被看见</i> · <i>A myriad of lights, in one place.</i></sub>
+<br/>
+<sub><a href="README.md">English</a> · <strong>中文</strong> · <a href="README.ja.md">日本語</a></sub>
 <br/>
 <sub>Maintained by <a href="https://github.com/myriad-you">@myriad-you</a></sub>
 </div>

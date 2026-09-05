@@ -4,15 +4,21 @@
 
 # Myriad
 
-### A myriad of lights, in one place.
+<em>A myriad of lights, in one place.</em>
 
-**English** · [中文](README.zh-CN.md) · [日本語](README.ja.md)
+<p>
+<strong>English</strong>
+&nbsp;·&nbsp;
+<a href="README.zh-CN.md">中文</a>
+&nbsp;·&nbsp;
+<a href="README.ja.md">日本語</a>
+</p>
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/myriad-you/Myriad)](https://github.com/myriad-you/Myriad/releases)
-[![Built with Rust](https://img.shields.io/badge/built%20with-Rust-orange.svg)](backend/Cargo.toml)
-[![Astro](https://img.shields.io/badge/Astro-7-blueviolet.svg)](frontend/package.json)
-[![React 19](https://img.shields.io/badge/React-19-61dafb.svg)](frontend/package.json)
+[![Built with Rust](https://img.shields.io/badge/built%20with-Rust-orange.svg)](https://github.com/rust-lang/rust)
+[![Astro](https://img.shields.io/badge/Astro-7-blueviolet.svg)](https://github.com/withastro/astro)
+[![React 19](https://img.shields.io/badge/React-19-61dafb.svg)](https://github.com/facebook/react)
 
 [Quick start](docs/QUICKSTART.md) · [Docs](docs/INDEX.md) · [Issues](https://github.com/myriad-you/Myriad/issues)
 
@@ -24,78 +30,153 @@
 
 **Myriad is a self-hosted homepage and creative studio.** Aggregate your platforms, show a library, and run a site-wide persona, a 2.5D face, and Tapp apps you own.
 
-Single-tenant. Public or private. Data in PostgreSQL. UI: English, Chinese, Japanese.
+Single-tenant. Public or private. PostgreSQL. UI: English · Chinese · Japanese.
 
-Surfaces: **Home**, **Library**, **Brew**, **Reports**, **Tapp**, **Agent** (panel). `/config` is admin-only.
+```mermaid
+flowchart LR
+  subgraph homepage ["Homepage"]
+    direction TB
+    W[Widgets]
+    L[Library]
+    P[Platforms]
+  end
+  subgraph studio ["Studio"]
+    direction TB
+    A[Persona]
+    F["2.5D face"]
+    T[Tapp]
+  end
+  homepage -.-> studio
+```
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### Homepage
+`/`
+
+- Standard 16×4 · free 16×8
+- Music, weather, report cards, persona widget
+- Stickers on free layout — not widget cells
+
+</td>
+<td width="50%" valign="top">
+
+### Library
+`/library`
+
+- Games, anime, shows, books, music
+- Synced from connected platforms
+- List or infinite canvas
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### Persona · 2.5D
+site-wide
+
+- From reports, or import a write-up + portrait
+- Layered live face: breath, blink, lip-sync
+- Sticker avatar from the master portrait
+
+</td>
+<td width="50%" valign="top">
+
+### Tapp
+`/tapp`
+
+- Page, homepage Widget, or both
+- Store · Playground · CLI
+- Sandbox; host secrets never enter
+
+</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+**Agent**  
+Chat / Work · panel
+
+</td>
+<td width="33%" valign="top">
+
+**Brew** `/brew`  
+RSS · Notion · RSSHub
+
+</td>
+<td width="33%" valign="top">
+
+**Federation**  
+ActivityPub · MFP
+
+</td>
+</tr>
+</table>
+
+`/config` is admin-only. Library, Brew, Reports, Tapp, Agent: everyone / signed-in / admins.
 
 ---
 
 ## Contents
 
-- [At a glance](#at-a-glance)
-- [Homepage](#homepage)
-- [Platforms](#platforms)
-- [Library and reports](#library-and-reports)
-- [Persona and 2.5D face](#persona-and-25d-face)
-- [Tapp](#tapp)
-- [Agent](#agent)
-- [Brew](#brew)
-- [Federation](#federation)
-- [Accounts and visibility](#accounts-and-visibility)
-- [Operations](#operations)
-- [Requirements](#requirements)
-- [Deploy](#deploy)
-- [Local development](#local-development)
-- [Architecture](#architecture)
-- [Repository](#repository)
-- [Stack](#stack)
-- [Docs](#docs)
-- [Contributing](#contributing)
-- [License](#license)
+**Product** — [Homepage](#homepage) · [Platforms](#platforms) · [Library](#library-and-reports) · [Persona](#persona-and-25d-face) · [Tapp](#tapp) · [Agent](#agent) · [Brew](#brew) · [Federation](#federation) · [Accounts](#accounts-and-visibility)
 
----
+**Run** — [Requirements](#requirements) · [Deploy](#deploy) · [Dev](#local-development) · [Operations](#operations)
 
-## At a glance
-
-| Path | Role |
-| --- | --- |
-| **Home** `/` | Widgets, layouts, persona, music, Tapp shortcuts |
-| **Library** `/library` | Games, anime, shows, books, music from connected platforms |
-| **Brew** `/brew` | RSS / Notion / RSSHub. Default: everyone can read; signed-in users mark and save |
-| **Reports** `/reports` | Per-platform portraits; input to guided persona setup |
-| **Tapp** `/tapp` | Installed apps. Store: `/tapp/store`. Playground (admin, desktop): `/tapp/playground` |
-| **Agent** | **Chat** / **Work**. Persona on: Chat speaks as that persona |
-| **Config** `/config` | Admin: platforms, AI, users, OAuth, visibility, updater, diagnostics |
-
-Library, Brew, Reports, Tapp, and Agent visibility: everyone / signed-in / admins.
+**Reference** — [Architecture](#architecture) · [Repository](#repository) · [Stack](#stack) · [Docs](#docs) · [License](#license)
 
 ---
 
 ## Homepage
 
-Widgets sit on a **standard grid** (centered, 16×4 on desktop, compact on narrow screens) or a **free layout** (same cell size, 16×8 canvas). Coordinates are stored per layout. Free layout also supports decorative stickers; they are not widgets and do not occupy widget cells.
+**Standard** 16×4 (centered, compact on narrow screens) or **free** 16×8 (same cell size). Coordinates stored per layout. Free layout stickers are not widgets and do not occupy widget cells.
 
-Built-in widgets: welcome; Agent persona (live 2.5D face; one playback at a time); quick stats, recent activity, visitor stats; weather; daily quote; music player; friend links (Brew); social network; Tapp shortcuts; miHoYo game presence; per-platform report cards.
+<details>
+<summary>Built-in widgets</summary>
+
+| | |
+| --- | --- |
+| Welcome | Agent persona (live 2.5D; one playback at a time) |
+| Quick stats · recent activity · visitors | Weather · daily quote · music |
+| Friend links (Brew) · social · Tapp shortcuts | miHoYo game presence · per-platform report cards |
 
 Installed Tapps may register homepage widgets.
+
+</details>
 
 ---
 
 ## Platforms
 
-| Platform | Synced data |
-| --- | --- |
-| GitHub | Repos, stars, contributions |
-| Bilibili | Favorites, anime, viewing history |
-| Steam | Library, wishlist, play stats |
-| NetEase Cloud Music | Liked songs and taste |
-| YouTube | Public channel stats and recent uploads |
-| Bangumi | Collections, ratings, watching status |
-| Discord | Profile, servers, linked accounts |
-| X | Profile and posts |
-| MyAnimeList | Anime / manga lists and scores |
-| Xbox | Achievements, Gamerscore, recent games |
-| PlayStation | Trophies, trophy level, recent games |
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**GitHub** — repos, stars, contributions  
+**Steam** — library, wishlist, play stats  
+**YouTube** — public channel stats, recent uploads  
+**Discord** — profile, servers, linked accounts  
+**MyAnimeList** — anime / manga lists and scores  
+**PlayStation** — trophies, trophy level, recent games
+
+</td>
+<td width="50%" valign="top">
+
+**Bilibili** — favorites, anime, viewing history  
+**NetEase Cloud Music** — liked songs and taste  
+**Bangumi** — collections, ratings, watching status  
+**X** — profile and posts  
+**Xbox** — achievements, Gamerscore, recent games
+
+</td>
+</tr>
+</table>
 
 Stored in PostgreSQL. Report cards, Library, and Reports read the same data.
 
@@ -113,11 +194,16 @@ Stored in PostgreSQL. Report cards, Library, and Reports read the same data.
 
 One site-wide speaking personality and one upper-body 2.5D face (**Agent persona**). On: Agent speaks as that persona. Off: Agent still provides Chat and Work.
 
-Owner setup: generate from reports (tags → persona → visual profile → master portrait), or paste a write-up and upload a portrait. Visual profile stores person and outfit separately. Master portrait is 3:4, upper body. A layered PSD enables live breath, blink, and lip-sync.
+```text
+reports → persona → visual profile → master portrait → layered PSD
+          or import write-up + portrait
+```
+
+Visual profile stores person and outfit separately. Master portrait is 3:4, upper body. A layered PSD enables live breath, blink, and lip-sync.
 
 Head and torso follow speech and song. Outfit changes keep the live player. A **sticker avatar** (head only) can be derived for profile slots and Agent notifications; replacing the master portrait invalidates it.
 
-One live face at a time. Browser 2.5D (Anime2.5DRig). The Myriad server does not GPU-infer that playback.
+One live face at a time. Browser 2.5D ([Anime2.5DRig](https://github.com/852wa/Anime2.5DRig)). The Myriad server does not GPU-infer that playback.
 
 ---
 
@@ -125,20 +211,58 @@ One live face at a time. Browser 2.5D (Anime2.5DRig). The Myriad server does not
 
 **Page**, homepage **Widget**, or both. Sandboxed. Permissions approved at install. Host secrets and app credentials never enter the sandbox, including error payloads.
 
-- **Store** — [Myriad-You/tapp-store](https://github.com/Myriad-You/tapp-store), `/tapp/store`
-- **Playground** — desktop admin, `/tapp/playground`. Natural-language Page, Widget-only, or both; preview in the production sandbox; install or export `.tapp`. Hidden on mobile
-- **CLI** — [`@myriad-you/tapp-cli`](tools/tapp-cli/README.md) (`myriad-tapp init / check / pack`)
+<table>
+<tr>
+<td width="33%" valign="top">
 
-Page: Canvas / WebGL, pack-local assets, audio, optional host-injected Three.js. Widgets are not for heavy 3D. [Tapp development](docs/development/TAPP_DEVELOPMENT.md).
+**Store**  
+[tapp-store](https://github.com/Myriad-You/tapp-store)  
+`/tapp/store`
+
+</td>
+<td width="33%" valign="top">
+
+**Playground**  
+desktop admin  
+`/tapp/playground`
+
+Natural-language Page, Widget-only, or both. Preview in the production sandbox; install or export `.tapp`. Hidden on mobile.
+
+</td>
+<td width="33%" valign="top">
+
+**CLI**  
+[`tapp-cli`](tools/tapp-cli/README.md)  
+`myriad-tapp init / check / pack`
+
+</td>
+</tr>
+</table>
+
+Page: Canvas / WebGL, pack-local assets, audio, optional host-injected [Three.js](https://github.com/mrdoob/three.js). Widgets are not for heavy 3D. [Tapp development](docs/development/TAPP_DEVELOPMENT.md).
 
 ---
 
 ## Agent
 
-| Mode | Behavior |
-| --- | --- |
-| **Chat** | Persona on: speaks only as that persona. No search, booking, generation, or planning. Outfit changes and current-player play / pause / skip are allowed. |
-| **Work** | Plan, confirm, execute. Memory, skills, scheduled jobs, MCP. Scope is granted permissions. |
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**Chat**
+
+Persona on: speaks only as that persona. No search, booking, generation, or planning. Outfit change and current-player play / pause / skip are allowed.
+
+</td>
+<td width="50%" valign="top">
+
+**Work**
+
+Plan, confirm, execute. Memory, skills, scheduled jobs, MCP. Scope is granted permissions.
+
+</td>
+</tr>
+</table>
 
 May propose handing a noticed item to Work; accepting is not autonomy. Optional TTS, listening, and long-press live conversation when speech / realtime talk is configured.
 
@@ -269,6 +393,20 @@ Update management in the dev UI: `./scripts/dev.sh start all-updater`. Image rep
 
 ## Architecture
 
+```mermaid
+flowchart LR
+  Browser --> Proxy["proxy :HTTP_PORT"]
+  Proxy --> FE["frontend :1102"]
+  Proxy --> BE["backend :1103"]
+  BE --> PG[("postgres :5432")]
+  BE --> GW[updater-gateway]
+  GW --> UP[updater]
+  UP --> Guard[docker-guard]
+```
+
+<details>
+<summary>Development / production topology</summary>
+
 **Development**
 
 ```text
@@ -287,6 +425,8 @@ host HTTP_PORT
        │                                 └─► docker-guard → Docker sock
        └─ (rescue) updater when PROXY_ALLOW_DIRECT_UPDATER=true
 ```
+
+</details>
 
 Crawler / in-app-share user-agents receive an SEO HTML shell for Home, Library, Brew, Reports, and Tapp; browsers receive the SPA. [Architecture](docs/development/ARCHITECTURE.md).
 
@@ -316,14 +456,43 @@ Myriad/
 
 ## Stack
 
-| | |
-| --- | --- |
-| **Frontend** | Astro 7 · React 19 · Tailwind 4 · TypeScript · en / zh / ja |
-| **Backend** | Rust · Axum 0.8 · SeaORM · Tokio |
-| **Edge** | proxy · updater |
-| **Data** | PostgreSQL 18 |
-| **Extensions** | Agent · Tapp sandbox · MCP · ActivityPub / MFP |
-| **Deploy** | Docker Compose · linux/amd64 + arm64 |
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**Frontend**  
+[Astro](https://github.com/withastro/astro) 7 · [React](https://github.com/facebook/react) 19 · [React Router](https://github.com/remix-run/react-router) 7  
+[Tailwind](https://github.com/tailwindlabs/tailwindcss) 4 · [Vite](https://github.com/vitejs/vite) 8 · [TypeScript](https://github.com/microsoft/TypeScript) 6 · [Motion](https://github.com/motiondivision/motion) · [pnpm](https://github.com/pnpm/pnpm)  
+en / zh / ja
+
+**Live face**  
+[Anime2.5DRig](https://github.com/852wa/Anime2.5DRig) · WebGL2
+
+**Voice**  
+Agora RTC / RTM (optional)
+
+</td>
+<td width="50%" valign="top">
+
+**Backend**  
+[Rust](https://github.com/rust-lang/rust) 1.94 · [Axum](https://github.com/tokio-rs/axum) 0.8 · [Tokio](https://github.com/tokio-rs/tokio)  
+[SeaORM](https://github.com/SeaQL/sea-orm) 2 / [SQLx](https://github.com/launchbadge/sqlx) · [reqwest](https://github.com/seanmonstar/reqwest) 0.13
+
+**Data**  
+[PostgreSQL](https://github.com/postgres/postgres) 18
+
+**Edge**  
+proxy · updater
+
+**Apps**  
+Tapp sandbox · [MCP](https://github.com/modelcontextprotocol/modelcontextprotocol) · ActivityPub / MFP
+
+**Deploy**  
+[Docker Compose](https://github.com/docker/compose) · linux/amd64 + arm64
+
+</td>
+</tr>
+</table>
 
 ---
 
@@ -331,22 +500,39 @@ Myriad/
 
 Currently Chinese. [Index](docs/INDEX.md).
 
-| | |
-| --- | --- |
-| [Quick start](docs/QUICKSTART.md) | Deploy and local development |
-| [Architecture](docs/development/ARCHITECTURE.md) | Components and topology |
-| [Build](docs/development/BUILD.md) | From-source build |
-| [API](docs/API.md) | HTTP API |
-| [Tapp development](docs/development/TAPP_DEVELOPMENT.md) | Page / Widget / Playground / sandbox |
-| [Library](docs/features/LIBRARY.md) | Library |
-| [OAuth / login](docs/development/OAUTH.md) | Local accounts and OIDC |
-| [Federation](docs/development/FEDERATION.md) | ActivityPub / MFP |
-| [Docker deploy](docs/deployment/DOCKER_DEPLOYMENT.md) | Production compose |
-| [Ports](docs/deployment/PORTS.md) | Ports and exposure |
-| [Updater](docs/deployment/UPDATER_QUICKSTART.md) | Update, rollback, rescue |
-| [External PostgreSQL](docs/deployment/EXTERNAL_POSTGRES.md) | External PG |
-| [Native deploy](docs/deployment/NATIVE_DEPLOYMENT.md) | PostgreSQL + binaries |
-| [Setup secret](docs/deployment/SETUP_BOOTSTRAP.md) | Orchestrated-setup secret |
+<table>
+<tr>
+<td width="33%" valign="top">
+
+**Start**  
+[Quick start](docs/QUICKSTART.md)  
+[Architecture](docs/development/ARCHITECTURE.md)  
+[Build](docs/development/BUILD.md)  
+[API](docs/API.md)
+
+</td>
+<td width="33%" valign="top">
+
+**Product**  
+[Tapp](docs/development/TAPP_DEVELOPMENT.md)  
+[Library](docs/features/LIBRARY.md)  
+[OAuth](docs/development/OAUTH.md)  
+[Federation](docs/development/FEDERATION.md)
+
+</td>
+<td width="33%" valign="top">
+
+**Deploy**  
+[Docker](docs/deployment/DOCKER_DEPLOYMENT.md)  
+[Ports](docs/deployment/PORTS.md)  
+[Updater](docs/deployment/UPDATER_QUICKSTART.md)  
+[External PG](docs/deployment/EXTERNAL_POSTGRES.md)  
+[Native](docs/deployment/NATIVE_DEPLOYMENT.md)  
+[Setup secret](docs/deployment/SETUP_BOOTSTRAP.md)
+
+</td>
+</tr>
+</table>
 
 ---
 
@@ -366,6 +552,8 @@ The Tapp contract and tooling (`crates/tapp-contract`, `tools/tapp-cli`, `tools/
 
 <div align="center">
 <sub><i>A myriad of lights, in one place.</i></sub>
+<br/>
+<sub><strong>English</strong> · <a href="README.zh-CN.md">中文</a> · <a href="README.ja.md">日本語</a></sub>
 <br/>
 <sub>Maintained by <a href="https://github.com/myriad-you">@myriad-you</a></sub>
 </div>

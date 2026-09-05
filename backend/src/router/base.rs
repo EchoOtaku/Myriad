@@ -491,6 +491,10 @@ pub(super) fn build_base_api_router(
             "/users/{username}/avatar",
             get(federation::actor::get_avatar),
         )
+        .route(
+            "/api/home/widget-fonts/{file}",
+            get(api::widget_fonts::get_widget_font),
+        )
         .nest_service(
             "/api/federation/avatar-cache",
             tower::ServiceBuilder::new()
