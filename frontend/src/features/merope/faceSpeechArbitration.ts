@@ -280,7 +280,7 @@ export function deliverGatedLine(
     }
     return { surface: 'speech', messageId: line.messageId }
   }
-  if (text && speakUnmountedLine(line.messageId, text)) {
+  if (text && speakUnmountedLine(line.messageId, text, line.source)) {
     if (line.performance) {
       channel.deliver({ ...line, text: undefined })
     }
@@ -295,11 +295,16 @@ export function deliverGatedLine(
  * only app-layer speakLine outside Anime25DBodyAdapter.intend. Do not add
  * another caller; mount a body or stay silent.
  */
-function speakUnmountedLine(messageId: string, text: string): boolean {
+function speakUnmountedLine(
+  messageId: string,
+  text: string,
+  source: FaceSpeechLine['source'] = 'reply',
+): boolean {
   return getSpeechPipeline().speakLine({
     messageId,
     text,
-    generation: liveMotionGeneration(),
+    generation: source === 'reply' ? liveMotionGeneration() : 0,
+    source,
     interrupt: 'queue',
   })
 }

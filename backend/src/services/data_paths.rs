@@ -209,10 +209,7 @@ mod tests {
         assert_eq!(paths.cache_platforms, PathBuf::from("cache/platforms"));
         assert_eq!(paths.cache_raw, PathBuf::from("cache/raw"));
         assert_eq!(paths.cache_images, PathBuf::from("cache/images"));
-        assert_eq!(
-            paths.widget_fonts,
-            PathBuf::from("data/site/widget-fonts")
-        );
+        assert_eq!(paths.widget_fonts, PathBuf::from("data/site/widget-fonts"));
     }
 
     #[test]

@@ -87,8 +87,6 @@ pub struct ImportPersonaRequest {
 #[serde(rename_all = "camelCase")]
 pub struct SuggestNameRequest {
     #[serde(default)]
-    pub selected_tags: Vec<String>,
-    #[serde(default)]
     pub gender: String,
     #[serde(default)]
     pub avoid_name: Option<String>,
@@ -633,7 +631,7 @@ fn distill_error(error: merope::report_dna::DistillReportDnaError) -> HttpError 
 }
 
 /// POST /api/agent/persona/name
-/// Lite (or Standard if Lite is off) rolls one given name in the selected style.
+/// Strict Lite rolls one given name in the selected style. Tags stay out.
 pub async fn suggest_name(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -643,10 +641,7 @@ pub async fn suggest_name(
     let user_id = require_site_owner(&claims, &db).await?;
     require_persona_reports(&db, user_id).await?;
     let language = normalize_signals_language(&body.language);
-    let tags =
-        merope::report_dna::sanitize_onboarding_tags_for_language(&body.selected_tags, language);
     match merope::onboarding_ai::suggest_display_name(
-        &tags,
         &body.gender,
         body.avoid_name.as_deref(),
         language,
@@ -997,12 +992,12 @@ fn onboarding_generation_error(
             StatusCode::SERVICE_UNAVAILABLE,
             Json(onboarding_error_body(
                 if kind == "name" {
-                    "Standard model is unavailable"
+                    "Lite model is unavailable"
                 } else {
                     "Pro model is unavailable"
                 },
                 if kind == "name" {
-                    "standard_unavailable"
+                    "lite_unavailable"
                 } else {
                     "pro_unavailable"
                 },

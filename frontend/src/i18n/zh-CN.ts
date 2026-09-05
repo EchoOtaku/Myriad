@@ -1615,7 +1615,7 @@ export const zhCN: TranslationKeys = {
     agentPersonaHint:
       '打开后 Agent 会用设定说话，记住跟每个人的心情和日记，并在有名单上的事时自己开口。关上则只聊天办事。',
     agentPersonaNeedsLite:
-      '没开 Lite：聊天开口会退回标准模型；主动开口仍是短句，心情微调不跑。',
+      '没开 Lite：聊天开口和随机起名都不会跑。主动开口仍是短句，心情微调不跑。',
     agentPersonaNeedsPro: '写设定需要先启用上面的 Pro 模型。',
     agentPersonaEmpty: '还没有形象',
     agentPersonaEmptyLead:
@@ -2791,7 +2791,8 @@ export const zhCN: TranslationKeys = {
       saveFirst: '先保存设置。',
       nameLabel: '称呼',
       nameHint:
-        '留空则对外仍叫 Arael。先选名字风格，再点随机；用 Standard 模型生成。',
+        '留空则对外仍叫 Arael。选风格后点随机。只走 Lite，不会改用标准模型。',
+      importNameHint: '留空则对外仍叫 Arael。导入请自己填写称呼。',
       namePlaceholder: '输入名称',
       randomName: '随机',
       randomNameBusy: '生成中',
@@ -2886,6 +2887,8 @@ export const zhCN: TranslationKeys = {
       personaIncompleteHint: '还缺 {fields}。补全后再继续，或点换一批。',
       proUnavailable: 'Pro 模型不可用，请先在配置里启用。',
       standardUnavailable: 'Standard 模型不可用，请先在配置里检查。',
+      liteUnavailable:
+        'Lite 模型不可用。起名只走 Lite：请启用它，并填上 Lite 自己的模型，不要留空。',
       visualRequirements: '视觉补充要求',
       visualRequirementsHint:
         '这里写的颜色、衣装、饰品和母题会优先进设计。画风、性别、露脖子和服装大类仍不能改。',

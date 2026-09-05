@@ -2577,6 +2577,7 @@ export interface TranslationKeys {
       saveFirst: string
       nameLabel: string
       nameHint: string
+      importNameHint: string
       namePlaceholder: string
       randomName: string
       randomNameBusy: string
@@ -2672,6 +2673,7 @@ export interface TranslationKeys {
       personaIncompleteHint: string
       proUnavailable: string
       standardUnavailable: string
+      liteUnavailable: string
       visualRequirements: string
       visualRequirementsHint: string
       visualRequirementsPlaceholder: string

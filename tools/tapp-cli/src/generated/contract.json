@@ -1909,7 +1909,7 @@
       "dynamicContent.set": "ui:notification",
       "dynamicContent.update": "ui:notification",
       "dynamicContent.remove": "ui:notification",
-      "file.download": "storage:read",
+      "file.download": "public",
       "assets.get": "public",
       "assets.list": "public",
       "scheduler.register": "scheduler:register",

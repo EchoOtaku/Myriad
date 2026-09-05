@@ -1731,17 +1731,34 @@ const declaredApis = await Tapp.api.list();
 
 ## 文件与语音 API
 
-**权限**: `storage:read`（`file.download`）
+**权限**: public（`file.download`）
 
-文件下载由宿主创建 Blob 并触发下载，不依赖 iframe 的 download sandbox 权限：
+文件下载由宿主创建 Blob 并触发下载，不依赖 iframe 的 download sandbox 权限，也不申请 `storage:read`（那是私有 KV，不是把已有内容存到本机）。
+
+字符串内容（沙箱里已经有的文本）：
 
 ```javascript
 await Tapp.file.download("hello\n", "hello.txt", "text/plain;charset=utf-8");
 ```
 
-- 内容为字符串；编码后 Blob 大小上限 **10 MiB**（bridge 对 `file.download` 单独校验，
-  不走默认 ~1 MiB postMessage 上限）。
-- `filename` 不能含路径分隔或 `..`；可选 `mimeType` 字符串。
+本站生成资源（宿主读取，沙箱不能 `fetch` 这些路径）：
+
+```javascript
+await Tapp.file.download(task.result.value.url, "cat.png");
+await Tapp.file.download(`/api/model3d/assets/${assetId}`, "model.glb");
+```
+
+沙箱里已有的二进制（TTS base64、`getUrl` 得到的 `blob:`、data URL）：
+
+```javascript
+await Tapp.file.download({ base64: audio, filename: "speech.mp3", mimeType: "audio/mpeg" });
+const { url } = await Tapp.model3d.getUrl(assetId);
+await Tapp.file.download(url, "model.glb"); // blob: 由 SDK 读成 base64 再交给宿主
+```
+
+- 文本 `content`、`base64`、宿主代取的 `url` 落盘上限 **32 MiB**（bridge 不走默认 ~1 MiB postMessage 上限）。
+- `url` **只**接受本站 `/api/brew/image-cache/{subdir}/{sha256}.{jpg|jpeg|png|gif|webp}` 或 `/api/model3d/assets/{sha256}`；任意 http(s) 一律拒绝。
+- `filename` 不能含路径分隔或 `..`；`url` 模式可省略（图默认 `image.{ext}`，模型默认 `model.glb`）。`base64` 必须带文件名。可选 `mimeType`。
 
 语音能力需要对应权限：
 
@@ -1813,7 +1830,7 @@ Page 完整面当前包含以下命名空间（`analytics` / `agent` 也挂在 `
 | `event`, `background`, `scheduler`         | 在线 Event Broker、常驻需求和持久化任务             | `event:*`（含 background.require/release→`event:subscribe`）、`scheduler:register` |
 | `agent`                                    | schema 约束的 Agent Interaction                     | Manifest + Runtime Grant           |
 | `api`                                      | Manifest 声明的 HTTP/builtin 能力                   | HTTP 需 `network:fetch`；`access` 仅控制调用者范围 |
-| `file`, `speech`                           | 文件下载、TTS 和 ASR                                | `storage:read`, `speech:*`         |
+| `file`, `speech`                           | 文件下载、TTS 和 ASR                                | public（`file.download`）, `speech:*` |
 | `assets`                                   | 包内静态资源 list/get/blob URL                      | public（限 manifest.assets）       |
 | `tappList`                                 | Tapp 查询、安装、启停、卸载与导出                   | `tappList:*`                       |
 | `brewList`                                 | Brew 列表、源、用户分类 create/delete、评论和 OPML  | `brew:*`                           |

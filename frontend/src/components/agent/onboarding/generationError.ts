@@ -5,6 +5,7 @@ const HOST_GENERATION_CODES = new Set([
   'report_dna_failed',
   'pro_unavailable',
   'standard_unavailable',
+  'lite_unavailable',
   'name_suggest_failed',
   'name_unusable',
   'persona_draft_failed',

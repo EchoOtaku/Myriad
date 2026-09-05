@@ -183,7 +183,7 @@ test('turn capture passes a fresh selection', () => {
   assert.match(inbound, /subscribeAgentSelection\(/)
 })
 
-test('client and server perception kinds stay aligned', () => {
+test('Chat scene sources exist in capture; registry kinds remain a client ordering vocabulary', () => {
   const client = readFileSync(new URL('./registry.ts', import.meta.url), 'utf8')
   const server = readFileSync(
     new URL(
@@ -192,12 +192,31 @@ test('client and server perception kinds stay aligned', () => {
     ),
     'utf8',
   )
-  const clientKinds = quotedStringsIn(client, 'export const KINDS', 'KIND_ORDER')
-  const serverKinds = quotedStringsIn(server, 'PERCEPTION_KINDS', ';')
-  assert.deepEqual(clientKinds, serverKinds)
+  const clientKinds = quotedStringsIn(
+    client,
+    'export const KINDS',
+    'KIND_ORDER',
+  )
   assert.deepEqual([...KINDS], clientKinds)
   assert.equal(clientKinds[2], 'surface')
   assert.equal(clientKinds[1], 'pointer')
+  // Chat deliberately selects pointed-at/playing/reading sources, rather
+  // than forwarding every idle sensor or maintaining a second kind enum.
+  const producers = ['capture.ts', 'consentedSources.ts']
+    .map((file) => readFileSync(new URL(file, import.meta.url), 'utf8'))
+    .join('\n')
+  const sourceIds = new Set(
+    [...producers.matchAll(/sourceId:\s*'([a-z_]+)'/g)].map(
+      (match) => match[1],
+    ),
+  )
+  const scene = server.split('match source {')[1]!.split('\n            }')[0]!
+  const selected = [...scene.matchAll(/"([a-z_]+)"(?: if [^\n]+)? =>/g)].map(
+    (match) => match[1],
+  )
+  assert.deepEqual(selected, ['music_track', 'page', 'pointer', 'surface'])
+  assert.ok(selected.every((source) => sourceIds.has(source)))
+  assert.match(server, /perception_view::perception_reader_text\(obj\)/)
 })
 
 test('live perception sources stay below the reader cap with slack', () => {
@@ -242,7 +261,10 @@ test('live perception sources stay below the reader cap with slack', () => {
     presence,
     /take\(crate::services::agent::perception_view::MAX_PERCEPTION_ITEMS\)/,
   )
-  assert.match(chatPrompt, /MAX_PERCEPTION_ITEMS/)
+  assert.match(
+    chatPrompt,
+    /take\(super::perception_view::MAX_PERCEPTION_ITEMS\)/,
+  )
   assert.match(capture, /slice\(0, MAX_PERCEPTION_ITEMS\)/)
   assert.match(inbound, /slice\(0, MAX_PERCEPTION_ITEMS\)/)
   assert.ok(

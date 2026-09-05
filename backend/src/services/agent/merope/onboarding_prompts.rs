@@ -1,4 +1,5 @@
-//! System prompts for Pro onboarding calls: tags → name → persona → visual design.
+//! System prompts for onboarding calls: tags → name → persona → visual design.
+//! Name is a short Lite prompt; the others are Pro drafts.
 //!
 //! Instruction language is English. Every user-visible string the model writes
 //! must follow request `language` (host UI locale). Post-filters enforce script.
@@ -93,18 +94,27 @@ When regenerate is true: a new set from the same evidence (new angles), not a re
 "#
 );
 
-/// Short style roll. The name must carry a meaning; host keeps only `name`.
-pub const NAME_SYSTEM_PROMPT: &str = r#"Return ONLY {"name":"...","meaning":"..."}.
-
-Invent one original given name in request `nameStyle`. Meaning first: the token itself must say something.
-`meaning` is required — one short clause in request `language` stating what the name says. If you cannot write that clause, pick another name. Host keeps only `name`.
-- chinese: 2–4 Simplified Han. A callable personal name whose characters are the meaning.
-- japanese: 2–5 kanji and/or kana. A callable personal name whose token is the meaning. No Latin.
-- european: one ASCII given name, 3–16 letters, with a sayable gloss.
-- mythic: one ASCII given name in a classical-myth register, 3–16 letters, with a sayable gloss.
-genderPresentation tints the name. Differ from avoidName. Not a famous person or existing game/anime character.
-A new `rollId` means a different name, not the same token respelled — the host only retries when the last one was unusable.
-"#;
+/// Short style roll. Only the requested style's rule is sent — listing all four
+/// every time made Lite mix scripts, which then failed the host gate and retried.
+pub fn name_system_prompt(name_style: &str) -> String {
+    let style = match name_style {
+        "japanese" => {
+            "japanese: 2–5 kanji and/or kana. The token is the meaning. No Latin."
+        }
+        "european" => "european: one ASCII given name, 3–16 letters, with a sayable gloss.",
+        "mythic" => {
+            "mythic: one ASCII given name in a classical-myth register, 3–16 letters, with a sayable gloss."
+        }
+        _ => "chinese: 2–4 Simplified Han. The characters are the meaning. No Latin.",
+    };
+    format!(
+        "Return ONLY {{\"name\":\"...\",\"meaning\":\"...\"}}.\n\
+         `meaning` is one short clause in request `language` stating what the name says.\n\
+         {style}\n\
+         genderPresentation tints the name. Differ from avoidName. Not a famous person or existing game/anime character.\n\
+         A new `rollId` means a different name, not the same token respelled.\n"
+    )
+}
 
 pub const PERSONA_SYSTEM_PROMPT: &str = onboarding_prompt!(
     r#"
@@ -274,19 +284,34 @@ mod tests {
             assert!(prompt.contains("Never emit"));
         }
         assert!(TAGS_SYSTEM_PROMPT.contains("Step 1"));
-        assert!(NAME_SYSTEM_PROMPT.contains("nameStyle"));
-        // 宿主会在名字不合规则时自己再抽；不说清楚 rollId 的作用，重试会
-        // 拿回同一个过不了闸的名字。
-        assert!(NAME_SYSTEM_PROMPT.contains("rollId"));
-        assert!(NAME_SYSTEM_PROMPT.contains("chinese:"));
-        assert!(NAME_SYSTEM_PROMPT.contains("japanese:"));
-        assert!(NAME_SYSTEM_PROMPT.contains("european:"));
-        assert!(NAME_SYSTEM_PROMPT.contains("mythic:"));
-        assert!(!NAME_SYSTEM_PROMPT.contains("Liyue"));
-        assert!(!NAME_SYSTEM_PROMPT.contains("Inazuma"));
-        assert!(!NAME_SYSTEM_PROMPT.contains("playable personality kernel"));
-        assert!(NAME_SYSTEM_PROMPT.contains("`meaning` is required"));
-        assert!(NAME_SYSTEM_PROMPT.contains("Meaning first"));
+        // 每次只下发当前风格。四套一起给，Lite 会串字形，过不了闸再重试，更慢。
+        let chinese = name_system_prompt("chinese");
+        let japanese = name_system_prompt("japanese");
+        let european = name_system_prompt("european");
+        let mythic = name_system_prompt("mythic");
+        for prompt in [&chinese, &japanese, &european, &mythic] {
+            assert!(prompt.contains("rollId"));
+            assert!(prompt.contains("`meaning`"));
+            assert!(!prompt.contains("Liyue"));
+            assert!(!prompt.contains("Inazuma"));
+            assert!(!prompt.contains("playable personality kernel"));
+            assert!(!prompt.contains("selectedTags"));
+            assert!(!prompt.contains("Meaning first"));
+        }
+        assert!(chinese.contains("chinese:"));
+        assert!(chinese.contains("2–4"));
+        assert!(!chinese.contains("japanese:"));
+        assert!(!chinese.contains("european:"));
+        assert!(!chinese.contains("mythic:"));
+        assert!(japanese.contains("japanese:"));
+        assert!(japanese.contains("2–5"));
+        assert!(!japanese.contains("chinese:"));
+        assert!(european.contains("european:"));
+        assert!(european.contains("ASCII"));
+        assert!(!european.contains("chinese:"));
+        assert!(mythic.contains("mythic:"));
+        assert!(mythic.contains("classical-myth"));
+        assert!(!mythic.contains("chinese:"));
         assert!(PERSONA_SYSTEM_PROMPT.contains("Step 3"));
         assert!(PERSONA_SYSTEM_PROMPT.contains("extraRequirements"));
         assert!(PERSONA_SYSTEM_PROMPT.contains("No visualIdentity"));
@@ -312,7 +337,8 @@ mod tests {
         assert!(IMPORT_PERSONA_SYSTEM_PROMPT.contains("`source` is an existing character write-up"));
         assert!(TAGS_SYSTEM_PROMPT.contains("Literary sludge"));
         assert!(PERSONA_SYSTEM_PROMPT.contains("not recite a poem"));
-        assert!(!NAME_SYSTEM_PROMPT.contains("晚衡"));
+        assert!(!name_system_prompt("chinese").contains("晚衡"));
+        assert!(!name_system_prompt("european").contains("晚衡"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("## Authority map"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("Apply every fact once"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("previousVisualIdentityForDifferenceOnly"));

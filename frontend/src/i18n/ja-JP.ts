@@ -1705,7 +1705,7 @@ export const jaJP: TranslationKeys = {
     agentPersonaHint:
       'オンにすると Agent はサイトの設定で話し、相手ごとの気持ちと日記を残し、名簿上の出来事で自分から口を開きます。オフなら会話と用事だけです。',
     agentPersonaNeedsLite:
-      'Lite がオフです。会話の口は標準モデルに戻ります。自分から話す文は短く、気持ちの微調整は走りません。',
+      'Lite がオフです。会話の口も名前のランダムも動きません。自分から話す文は短く、気持ちの微調整は走りません。',
     agentPersonaNeedsPro:
       '先に上の Pro モデルを有効にしてください。設定案内には Pro が必要です。',
     agentPersonaEmpty: '姿はまだありません',
@@ -2935,7 +2935,9 @@ export const jaJP: TranslationKeys = {
       saveFirst: '先に設定を保存してください。',
       nameLabel: '呼び名',
       nameHint:
-        '空なら対外は Arael のまま。名前の風格を選んでからランダム。Standard モデルを使います。',
+        '空なら対外は Arael のまま。風格を選んでからランダム。Lite のみで、標準モデルには戻りません。',
+      importNameHint:
+        '空なら対外は Arael のまま。取り込みでは自分で名前を書いてください。',
       namePlaceholder: '名前を入力',
       randomName: 'ランダム',
       randomNameBusy: '生成中',
@@ -3038,6 +3040,8 @@ export const jaJP: TranslationKeys = {
       proUnavailable: 'Pro モデルが使えません。先に設定で有効にしてください。',
       standardUnavailable:
         'Standard モデルが使えません。先に設定を確認してください。',
+      liteUnavailable:
+        'Lite モデルが使えません。名前のランダムは Lite のみです。有効にして、Lite 自身のモデル名を入れてください。空欄のまま標準モデルには戻りません。',
       visualRequirements: '外観の追加要件',
       visualRequirementsHint:
         'ここに書いた色、衣装、装飾、モチーフが優先されます。画風、性別、首の露出、衣装の大分類は変わりません。',

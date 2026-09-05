@@ -73,7 +73,7 @@ export default function ImportStep({
               onChange={(event) => onDisplayName(event.target.value)}
               aria-label={o.nameLabel}
             />
-            <small className="merope-ob-field__hint">{o.nameHint}</small>
+            <small className="merope-ob-field__hint">{o.importNameHint}</small>
           </FieldGroup>
 
           <FieldGroup label={o.genderLabel}>

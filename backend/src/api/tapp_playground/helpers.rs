@@ -278,7 +278,6 @@ pub(super) fn validate_permission_usage(
                 "Tapp.storage.usage",
                 "Tapp.settings.get",
                 "Tapp.settings.getAll",
-                "Tapp.file.download",
             ][..],
             "storage:read",
         ),
@@ -1276,6 +1275,20 @@ mod tests {
             retired.contains("storage:read") || retired.contains("storage:write"),
             "{retired}"
         );
+    }
+
+    #[test]
+    fn file_download_does_not_require_storage_read() {
+        let mut project = sample_project("Export");
+        project.manifest.permissions = vec![];
+        assert!(validate_permission_usage(
+            &project.manifest,
+            &[(
+                "page",
+                "Tapp.file.download('hello', 'hello.txt', 'text/plain')"
+            )]
+        )
+        .is_ok());
     }
 
     fn image_create_source() -> &'static str {

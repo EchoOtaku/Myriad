@@ -108,7 +108,10 @@ pub fn format_chat_scene(perception: Option<&Value>, page: Option<&Value>, input
     let mut overlay = String::new();
 
     if let Some(Value::Array(items)) = perception {
-        for item in items {
+        for item in items
+            .iter()
+            .take(super::perception_view::MAX_PERCEPTION_ITEMS)
+        {
             let Some(obj) = item.as_object() else {
                 continue;
             };
@@ -488,7 +491,7 @@ mod tests {
             .split("#[cfg(test)]")
             .next()
             .unwrap();
-        let chat_call_src = include_str!("confirmation_and_tasks.rs");
+        let chat_call_src = include_str!("confirmation_and_tasks/chat_stream.rs");
         assert!(!chat_prompt_prod.contains("recall_with_params"));
         assert!(chat_call_src.contains("fn chat_response_prompt"));
         assert!(chat_call_src.contains("speaking_prompt_with_query"));
@@ -535,6 +538,23 @@ mod tests {
         );
         assert!(scene.contains("浮层：surface=control_panel"));
         assert!(!scene.contains("正在看控制中心"));
+    }
+
+    #[test]
+    fn chat_scene_bounds_input_before_a_late_source_can_replace_the_visible_one() {
+        let mut items = vec![json!({
+            "sourceId": "page", "ttlMs": 4000, "privacy": "consented", "summary": "visible page"
+        })];
+        items.resize(
+            super::super::perception_view::MAX_PERCEPTION_ITEMS,
+            json!(null),
+        );
+        items.push(json!({
+            "sourceId": "page", "ttlMs": 4000, "privacy": "consented", "summary": "outside reader budget"
+        }));
+        let scene = format_chat_scene(Some(&Value::Array(items)), None, "你好");
+        assert!(scene.contains("visible page"));
+        assert!(!scene.contains("outside reader budget"));
     }
 
     #[test]

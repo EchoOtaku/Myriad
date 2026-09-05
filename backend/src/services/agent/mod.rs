@@ -49,7 +49,10 @@ pub use types::*;
 mod agent_footer;
 mod agent_header;
 mod confirmation_and_tasks;
+mod motion_overlay;
 mod process_and_recipe;
+mod process_chat;
+mod process_work;
 
 pub(crate) use confirmation_and_tasks::collect_step_frontend_actions;
 

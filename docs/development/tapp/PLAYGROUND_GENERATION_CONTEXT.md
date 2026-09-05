@@ -215,7 +215,9 @@ Tapp.widgets['my-widget'] = {
 
   完成态读 `task.result`：`{ format, value, contextProvenance }`。业务数据在 `value`
   （生图是 `{ url, width, height }`，`url` 是 `/api/brew/image-cache/...`，可直接作
-  `<img src>`；搜索是 JSON 结果对象）。`subscribe` 的 `result` / 终态 `snapshot`
+  `<img src>`；下载用 `Tapp.file.download(url, 'out.png')`，由宿主读缓存，不要 `fetch`。
+  3D 用 `/api/model3d/assets/{id}` 或 `getUrl` 的 blob；TTS 用 `{ base64: audio, filename }`。
+  搜索是 JSON 结果对象）。`subscribe` 的 `result` / 终态 `snapshot`
   事件的 `data` 是整份任务快照，信封在 `data.result`。
 
   生图最小 Manifest（权限 + `ai` 缺一不可）：
@@ -308,7 +310,8 @@ Bridge 默认 payload 约 **1 MiB**；正式运行特例：`file.download` 内�
 - 页面在窄屏和宽屏都必须可用，并支持浅色/深色背景。
 - Manifest 只声明代码真实调用的权限；读取主题和语言不需要额外权限。读取
   `Tapp.storage` / `Tapp.settings` / `Tapp.shared` 需要 `storage:read`，写入、删除与清空需要
-  `storage:write`。不要再声明已移除的 `storage`。确认和全屏分别需要
+  `storage:write`。`Tapp.file.download` 是 public，不要为了把生成文件存到本机去申请
+  `storage:read`。不要再声明已移除的 `storage`。确认和全屏分别需要
   `ui:confirm` 与 `ui:fullscreen`。
 - 应用分类和 Widget 分类不是同一枚举；Widget 分类仅允许 `stats`、`activity`、
   `visualization`、`utility`、`custom`。声明 `widgets` 时安装校验要求声明权限含

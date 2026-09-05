@@ -9,9 +9,9 @@ import type { RigCharacterHandle } from './rig/RigCharacter'
 import type { MeropeRigManifest } from './rig/types'
 import type { MeropeActivity } from './types'
 import type { WardrobeItem } from './wardrobe'
+import { LuRefreshCw, LuSparkles } from '@lib/icons'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { LuRefreshCw, LuSparkles } from '@lib/icons'
 import { LuChevronLeft } from 'react-icons/lu'
 import {
   activityKey,
@@ -84,7 +84,7 @@ function fillTemplate(
   vars: Record<string, string | number>,
 ): string {
   return template.replace(/\{(\w+)\}/g, (_, key: string) =>
-    Object.prototype.hasOwnProperty.call(vars, key) ? String(vars[key]) : '',
+    Object.hasOwn(vars, key) ? String(vars[key]) : '',
   )
 }
 

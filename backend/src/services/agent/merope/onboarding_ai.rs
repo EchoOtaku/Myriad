@@ -1,11 +1,13 @@
-//! Pro onboarding helpers: name roll, structured persona draft, visual design.
+//! Onboarding helpers: strict-Lite name roll; Pro persona draft and visual design.
 //! Prompts live in `onboarding_prompts`.
 
 use serde_json::{json, Map, Value};
 use std::time::Duration;
 
 use crate::config::ModelTier;
-use crate::services::ai::create_ai_analyzer_for_tier_with_timeout;
+use crate::services::ai::{
+    create_ai_analyzer_for_tier_with_timeout, create_strict_lite_ai_analyzer_with_timeout,
+};
 use crate::services::ai_config::get_ai_config_for_tier;
 use crate::services::ai_cost_ledger::record_ai_call_from_attribution;
 use crate::services::analyzer::{openai_chat_completions_url, AiProvider, OutputBudget};
@@ -15,8 +17,8 @@ use crate::services::image_generation::ImageReference;
 use crate::GLOBAL_DYNAMIC_CONFIG;
 
 use super::onboarding_prompts::{
-    observe_portrait_visual_prompt, visual_design_system_prompt, IMPORT_PERSONA_SYSTEM_PROMPT,
-    NAME_SYSTEM_PROMPT, PERSONA_SYSTEM_PROMPT,
+    name_system_prompt, observe_portrait_visual_prompt, visual_design_system_prompt,
+    IMPORT_PERSONA_SYSTEM_PROMPT, PERSONA_SYSTEM_PROMPT,
 };
 use super::report_dna::sanitize_onboarding_tags_for_language;
 
@@ -52,9 +54,9 @@ const NAME_OUTPUT_BUDGET: OutputBudget = OutputBudget { max_tokens: 4096 };
 /// 同样五道，视觉设定六道——模型在一次正常生成里踩中一道是常态。不重试就等于
 /// 把重试写成给人看的提示，用户看到的是「不可用，请再试一次」。
 ///
-/// 名字走 Lite、几十个 token，抽三次也很快；这三条是 Pro 的长文生成，一次几十
-/// 秒，两次够把「这一把没写好」和「配置真有问题」分开，再多就是拿站长的时间
-/// 换概率。
+/// 名字走严格 Lite、几十个 token，抽三次也很快；这三条是 Pro 的长文生成，一次
+/// 几十秒，两次够把「这一把没写好」和「配置真有问题」分开，再多就是拿站长的
+/// 时间换概率。
 const VISUAL_DESIGN_ATTEMPTS: u8 = 2;
 const PERSONA_ATTEMPTS: u8 = 2;
 /// 名字的字形闸口很严：中文名要 2–4 个全汉字、不以 阿/小 开头、不在屏蔽名单
@@ -102,13 +104,11 @@ impl std::fmt::Display for OnboardingAiError {
 }
 
 pub async fn suggest_display_name(
-    selected_tags: &[String],
     gender: &str,
     avoid_name: Option<&str>,
     language: &str,
     name_style: &str,
 ) -> Result<String, OnboardingAiError> {
-    let seeds = sanitize_onboarding_tags_for_language(selected_tags, language);
     let style = normalize_name_style(name_style, language);
     let avoid = avoid_name
         .map(str::trim)
@@ -116,18 +116,17 @@ pub async fn suggest_display_name(
         .map(|value| value.chars().take(40).collect::<String>());
     let mut last_reason = "name had no usable meaning or script";
     for attempt in 0..NAME_ATTEMPTS {
-        let input = json!({
-            "task": "name",
+        // 风格写进系统提示，这里只剩语言、性别、避开上次、换一次 roll。
+        // 标签是人设草稿的材料，不进起名。
+        let mut input = json!({
             "language": language,
-            "nameStyle": style,
             "genderPresentation": normalize_gender(gender),
-            "avoidName": avoid.clone().unwrap_or_default(),
-            "selectedTags": seeds,
-            // 每次换一个，否则重试只会拿回同一个过不了闸的名字。
             "rollId": format!("n{}", uuid::Uuid::new_v4().simple()),
-        })
-        .to_string();
-        let raw = run_name_call(NAME_SYSTEM_PROMPT, &input).await?;
+        });
+        if let Some(avoid) = avoid.clone() {
+            input["avoidName"] = json!(avoid);
+        }
+        let raw = run_name_call(&name_system_prompt(style), &input.to_string()).await?;
         match parse_display_name_suggestion(&raw, avoid.as_deref(), style) {
             Ok(name) => return Ok(name),
             Err(reason) => {
@@ -708,7 +707,7 @@ async fn run_vision_call(
         ))
 }
 
-/// `{"name":..., "meaning":...}` —— 和 `NAME_SYSTEM_PROMPT` 里那句同一个契约，
+/// `{"name":..., "meaning":...}` —— 和 `name_system_prompt` 里那句同一个契约，
 /// 只是这一份是发给供应商的，由 API 强制，而不是求模型自觉。
 fn name_response_schema() -> Value {
     json!({
@@ -721,28 +720,13 @@ fn name_response_schema() -> Value {
     })
 }
 
-async fn run_name_call(system: &str, input: &str) -> Result<String, OnboardingAiError> {
-    if crate::GLOBAL_DYNAMIC_CONFIG.read().await.lite_enabled {
-        match run_name_call_on_tier(ModelTier::Lite, system, input).await {
-            Ok(raw) => return Ok(raw),
-            Err(OnboardingAiError::AnalyzerUnavailable) => {}
-            Err(error) => return Err(error),
-        }
-    }
-    run_name_call_on_tier(ModelTier::Standard, system, input).await
-}
-
-/// 起名走短结构化调用：限输出、关思考、JSON 由 API 保证。
+/// 起名只走严格 Lite：限输出、短 JSON，绝不借 Standard / Pro 的模型。
 ///
 /// 和 `run_onboarding_call_on_tier` 分开是因为那条是给人设起草和视觉设定用的
-/// ——那两个确实要写长文，给它们套预算会截断。
-async fn run_name_call_on_tier(
-    tier: ModelTier,
-    system: &str,
-    input: &str,
-) -> Result<String, OnboardingAiError> {
-    let Some(analyzer) =
-        create_ai_analyzer_for_tier_with_timeout(tier, Some(NAME_CALL_TIMEOUT)).await
+/// ——那两个确实要写长文，给它们套预算会截断。Lite 没配好就直接不可用，
+/// 不能静默落到 Standard，否则「换一个」会按思考模型的延迟转圈。
+async fn run_name_call(system: &str, input: &str) -> Result<String, OnboardingAiError> {
+    let Some(analyzer) = create_strict_lite_ai_analyzer_with_timeout(Some(NAME_CALL_TIMEOUT)).await
     else {
         return Err(OnboardingAiError::AnalyzerUnavailable);
     };
@@ -764,13 +748,13 @@ async fn run_name_call_on_tier(
     {
         Ok(raw) if !raw.trim().is_empty() => Ok(raw),
         Ok(_) => {
-            tracing::warn!(?tier, "name model returned empty text");
+            tracing::warn!("name model returned empty text");
             Err(OnboardingAiError::ProviderFailed(
                 "name model returned empty text".into(),
             ))
         }
         Err(error) => {
-            tracing::error!(%error, ?tier, "name model call failed");
+            tracing::error!(%error, "name model call failed");
             Err(OnboardingAiError::ProviderFailed(error.to_string()))
         }
     }
@@ -1480,13 +1464,38 @@ mod tests {
         // 每次要换 rollId，否则重试拿回同一个过不了闸的名字。
         assert!(body.contains("\"rollId\""));
         // 供应商真的失败（没配模型、网关挂了）不该被重试掩盖成「不合规则」。
-        assert!(body.contains("run_name_call(NAME_SYSTEM_PROMPT, &input).await?"));
+        assert!(body.contains("run_name_call(&name_system_prompt(style)"));
+        assert!(body.contains(".await?"));
+        // 标签是人设草稿的材料。塞进起名只会拖慢 Lite、还可能把字形带偏。
+        assert!(!body.contains("selectedTags"));
+        assert!(!body.contains("selected_tags"));
+        // 风格已经写进系统提示，用户载荷里再带一份是重复。
+        assert!(!body.contains("\"nameStyle\""));
 
         // 提示词得说清楚新的 rollId 意味着换一个名字，否则模型会忽略它。
-        assert!(
-            crate::services::agent::merope::onboarding_prompts::NAME_SYSTEM_PROMPT
-                .contains("rollId")
-        );
+        assert!(super::name_system_prompt("chinese").contains("rollId"));
+    }
+
+    /// 起名必须是严格 Lite，不能借 Standard 的模型或思考延迟。
+    ///
+    /// `create_ai_analyzer_for_tier(Lite)` 在 Lite 模型留空时会静默落到
+    /// Standard 的模型——账单和转圈都按 Standard 走，日志却写 Lite。
+    /// 开关关着再回落到 Standard 调用，是同一件事的第二条路。
+    #[test]
+    fn name_roll_is_strict_lite_with_a_small_payload() {
+        let source = include_str!("onboarding_ai.rs");
+        let body = source
+            .split("async fn run_name_call(")
+            .nth(1)
+            .and_then(|rest| rest.split("\nasync fn ").next())
+            .expect("run_name_call body");
+
+        assert!(body.contains("create_strict_lite_ai_analyzer_with_timeout"));
+        assert!(!body.contains("create_ai_analyzer_for_tier"));
+        assert!(!body.contains("ModelTier::Standard"));
+        assert!(!body.contains("ModelTier::Lite"));
+        assert!(!body.contains("lite_enabled"));
+        assert!(body.contains("analyze_json_short"));
     }
 
     /// 每一条带校验闸的生成都得自己重试，不能只有名字和视觉设定有。

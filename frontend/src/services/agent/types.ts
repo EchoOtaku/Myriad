@@ -233,6 +233,7 @@ export interface PerformanceCue {
 }
 
 export interface PerformanceDirective {
+  phrases?: SpeechPhrase[]
   phase: PerformancePhase
   moodRevision: number
   /** Persona-resolved movement quality for this whole round. */
@@ -241,6 +242,13 @@ export interface PerformanceDirective {
     baseline?: PerformanceBaseline
     cues: PerformanceCue[]
   }
+}
+
+export interface SpeechPhrase {
+  /** Exact, uniquely occurring response fragment; never a model timestamp. */
+  text: string
+  intent:
+    'ask' | 'hesitate' | 'tease' | 'explain' | 'check-in' | 'laugh' | 'none'
 }
 
 export type MoodBandName = 'floor' | 'sad' | 'tense' | 'calm' | 'excited'

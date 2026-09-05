@@ -1024,14 +1024,13 @@ class AgentService {
   }
 
   async suggestPersonaName(body: {
-    selectedTags: string[]
     gender?: string
     avoidName?: string
     nameStyle?: string
     language: string
   }): Promise<{ name: string }> {
     return sharePersonaGeneration(
-      `name:${body.language || ''}:${body.nameStyle || ''}:${body.gender || ''}:${body.avoidName || ''}:${body.selectedTags.join(',')}`,
+      `name:${body.language || ''}:${body.nameStyle || ''}:${body.gender || ''}:${body.avoidName || ''}`,
       () =>
         apiService.post(`${this.baseUrl}/persona/name`, body, {
           timeout: NAME_SUGGEST_TIMEOUT_MS,

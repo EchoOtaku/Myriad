@@ -346,7 +346,6 @@ export default function OnboardingWizard({
                 displayName={displayName}
                 gender={gender}
                 extraRequirements={extraRequirements}
-                selectedTags={selectedTags}
                 busy={busy}
                 onDisplayName={updateDisplayName}
                 onGender={updateGender}

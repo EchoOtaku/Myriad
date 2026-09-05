@@ -1726,7 +1726,7 @@ export const enUS: TranslationKeys = {
     agentPersonaHint:
       'When on, Agent speaks with the site persona, keeps per-person mood and diary, and may speak after named events. When off, it only chats and does tasks.',
     agentPersonaNeedsLite:
-      'Lite is off: chat replies fall back to Standard. Proactive lines stay short and mood hints stay off.',
+      'Lite is off: chat and name shuffle will not run. Proactive lines stay short and mood hints stay off.',
     agentPersonaNeedsPro:
       'Enable the Pro tier above first — persona setup requires Pro.',
     agentPersonaEmpty: 'No persona yet',
@@ -2963,7 +2963,9 @@ export const enUS: TranslationKeys = {
       saveFirst: 'Save settings first.',
       nameLabel: 'Name',
       nameHint:
-        'Leave blank to stay Arael. Pick a name style, then shuffle. Uses the Standard model.',
+        'Leave blank to stay Arael. Pick a style, then shuffle. Lite only — it does not fall back to Standard.',
+      importNameHint:
+        'Leave blank to stay Arael. On import, type the name yourself.',
       namePlaceholder: 'Enter a name',
       randomName: 'Shuffle',
       randomNameBusy: 'Generating',
@@ -3066,6 +3068,8 @@ export const enUS: TranslationKeys = {
         'The Pro model is unavailable. Enable it in settings first.',
       standardUnavailable:
         'The Standard model is unavailable. Check it in settings first.',
+      liteUnavailable:
+        'Lite is unavailable. Name shuffle uses Lite only — enable it and fill in the Lite model name; leaving that field blank will not fall back to Standard.',
       visualRequirements: 'Visual requirements',
       visualRequirementsHint:
         'Colors, garments, accessories, and motifs written here take priority. Art school, gender, an uncovered neck, and the clothing family stay locked.',

@@ -1,7 +1,7 @@
 import type { SpeechStatus } from '../../../services/speechApi'
+import type { MeropeSpeechSource } from '../speechEvents'
 import type { SpeechInterruptMode, SpeechSegment } from './speechSegmenter'
 import { getSpeechStatus, textToSpeech } from '../../../services/speechApi'
-import { liveMotionGeneration } from '../motion/liveGeneration'
 import { dispatchMeropeSpeech } from '../speechEvents'
 import { markTurnTraceOnce, noteTurnTraceCancelToSilence } from '../turnTrace'
 import { speakableText } from './speakableText'
@@ -46,7 +46,6 @@ export class SpeechPipelineHost {
     this.pipeline = new TtsPipeline({
       synthesize: (segment, signal) => this.synthesize(segment, signal),
       play: (audio, segment, onEnded) => this.play(audio, segment, onEnded),
-      onCancel: (messageId) => this.emitCancel(messageId),
     })
     void this.probe()
   }
@@ -123,6 +122,7 @@ export class SpeechPipelineHost {
     messageId: string
     text: string
     generation?: number
+    source?: MeropeSpeechSource
     interrupt?: SpeechInterruptMode
   }): boolean {
     // A late completed response must not resurrect an interrupted stream, nor
@@ -132,7 +132,12 @@ export class SpeechPipelineHost {
     const text = speakableText(input.text)
     if (!text) return false
     const interrupt = input.interrupt ?? 'queue'
-    const splitter = new SpeechSegmenter(input.messageId, input.generation ?? 0)
+    const splitter = new SpeechSegmenter(
+      input.messageId,
+      input.generation ?? 0,
+      undefined,
+      input.source,
+    )
     const segments = [
       ...splitter.push(text, interrupt),
       ...splitter.end(interrupt),
@@ -188,12 +193,15 @@ export class SpeechPipelineHost {
     segment: SpeechSegment,
     onEnded: () => void,
   ): { stop: () => void } {
-    const generation = liveMotionGeneration()
+    // Preserve the producing turn, not whichever Chat happens to be live
+    // when asynchronous synthesis finishes (proactive speech is unscoped).
+    const generation = segment.generation
+    const source = segment.source ?? 'reply'
     const utteranceId = `tts-${segment.segmentId}`
     dispatchMeropeSpeech({
       phase: 'start',
       messageId: segment.messageId,
-      source: 'reply',
+      source,
       utteranceId,
       ...(generation ? { generation } : {}),
     })
@@ -203,8 +211,9 @@ export class SpeechPipelineHost {
       onProsody: (timeline, timing) => {
         dispatchMeropeSpeech({
           phase: 'prosody',
+          text: segment.text,
           messageId: segment.messageId,
-          source: 'reply',
+          source,
           utteranceId,
           prosody: {
             ...timeline,
@@ -218,7 +227,7 @@ export class SpeechPipelineHost {
         dispatchMeropeSpeech({
           phase: 'energy',
           messageId: segment.messageId,
-          source: 'reply',
+          source,
           utteranceId,
           energy,
           ...(generation ? { generation } : {}),
@@ -226,7 +235,7 @@ export class SpeechPipelineHost {
         dispatchMeropeSpeech({
           phase: 'articulation',
           messageId: segment.messageId,
-          source: 'reply',
+          source,
           utteranceId,
           articulation,
           ...(generation ? { generation } : {}),
@@ -238,7 +247,7 @@ export class SpeechPipelineHost {
         dispatchMeropeSpeech({
           phase: 'end',
           messageId: segment.messageId,
-          source: 'reply',
+          source,
           utteranceId,
           ...(generation ? { generation } : {}),
         })
@@ -251,6 +260,13 @@ export class SpeechPipelineHost {
     return {
       stop: () => {
         handle.stop()
+        dispatchMeropeSpeech({
+          phase: 'cancel',
+          messageId: segment.messageId,
+          source,
+          generation,
+          utteranceId,
+        })
         patchVoicePresence({ ttsPlaying: false })
         this.noteSilence()
       },
@@ -262,14 +278,6 @@ export class SpeechPipelineHost {
     noteTurnTraceCancelToSilence(nowMs() - this.cancelledAt)
     this.cancelledAt = null
     markTurnTraceOnce('speech_ended')
-  }
-
-  private emitCancel(messageId: string): void {
-    dispatchMeropeSpeech({
-      phase: 'cancel',
-      messageId,
-      source: 'reply',
-    })
   }
 }
 

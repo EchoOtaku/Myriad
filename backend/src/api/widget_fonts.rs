@@ -177,10 +177,7 @@ pub async fn get_widget_font(Path(file): Path<String>) -> Result<Response, HttpE
     })?;
     let mut response = bytes.into_response();
     let headers = response.headers_mut();
-    headers.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static(kind.mime),
-    );
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(kind.mime));
     headers.insert(
         header::CACHE_CONTROL,
         HeaderValue::from_static("public, max-age=604800, immutable"),
@@ -194,7 +191,10 @@ mod tests {
     use super::*;
 
     fn data_url(bytes: &[u8]) -> String {
-        format!("data:application/octet-stream;base64,{}", BASE64.encode(bytes))
+        format!(
+            "data:application/octet-stream;base64,{}",
+            BASE64.encode(bytes)
+        )
     }
 
     #[test]

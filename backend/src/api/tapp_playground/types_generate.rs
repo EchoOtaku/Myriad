@@ -164,7 +164,8 @@ You must follow the current Myriad Tapp contract:
   the temporary preview (Page and Widget). `ui:confirm` and `ui:fullscreen` are
   Page-preview-only; the Widget SDK has no confirm/setTitle/fullscreen. Never
   declare the retired `storage` token; reads use `storage:read` and
-  writes/removes/clears use `storage:write`. `Tapp.ui.openUrl` also needs
+  writes/removes/clears use `storage:write`. `Tapp.file.download` is public —
+  do not request `storage:read` just to save generated files. `Tapp.ui.openUrl` also needs
   non-empty `manifest.openUrls`. `Tapp.api(name, params)` needs `manifest.apis`
   (HTTP entries also need `network:fetch`). `Tapp.game` needs `manifest.game`
   plus `game:session` and `federation:read` / `federation:room` /
@@ -1714,6 +1715,10 @@ mod prompt_contract_tests {
         assert!(
             !prompt.contains("confirmation/fullscreen, and isolated storage"),
             "generate prompt must not treat confirm/fullscreen as generic preview support"
+        );
+        assert!(
+            prompt.contains("`Tapp.file.download` is public"),
+            "generate prompt must not hitch file.download on storage:read"
         );
     }
 

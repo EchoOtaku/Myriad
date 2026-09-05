@@ -2,7 +2,9 @@
 //! Keep exact request parameters and usage visible without exposing prompts,
 //! credentials, provider error bodies, or reasoning text in reports.
 
-use super::*;
+use super::{schema::JsonMode, *};
+use anyhow::Result;
+use serde::Serialize;
 use serde_json::{json, Value};
 
 #[derive(Clone, Copy, Debug, Serialize)]

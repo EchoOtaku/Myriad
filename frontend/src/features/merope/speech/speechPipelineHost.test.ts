@@ -1,5 +1,11 @@
+import type { MeropeSpeechEventDetail } from '../speechEvents'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import {
+  liveMotionGeneration,
+  setLiveMotionGeneration,
+} from '../motion/liveGeneration'
+import { MEROPE_SPEECH_EVENT } from '../speechEvents'
 import { personaSpeechFlags, SpeechPipelineHost } from './speechPipelineHost'
 import { SpeechSegmenter } from './speechSegmenter'
 import { getVoicePresence, patchVoicePresence } from './voicePresence'
@@ -25,6 +31,51 @@ test('persona speech is off unless the status flag is on', () => {
     }),
     { speechEnabled: true, ttsReady: true },
   )
+})
+
+test('queued speech keeps its original source and generation through playback and cancellation', () => {
+  const savedWindow = globalThis.window
+  const savedGeneration = liveMotionGeneration()
+  const events: MeropeSpeechEventDetail[] = []
+  const target = new EventTarget()
+  target.addEventListener(MEROPE_SPEECH_EVENT, (event) =>
+    events.push((event as CustomEvent<MeropeSpeechEventDetail>).detail),
+  )
+  globalThis.window = target as unknown as Window & typeof globalThis
+  try {
+    const host = new SpeechPipelineHost()
+    setLiveMotionGeneration(9)
+    for (const [source, generation] of [
+      ['reply', 7],
+      ['proactive', 0],
+    ] as const) {
+      const segment = new SpeechSegmenter(
+        `message-${source}`,
+        generation,
+        'zh-CN',
+        source,
+      ).push('你真的这么想吗？')[0]!
+      // Test the real outlet without widening its production visibility.
+      // eslint-disable-next-line dot-notation
+      const handle = host['play'](new ArrayBuffer(0), segment, () => {})
+      handle.stop()
+      const scoped = events.filter(
+        (event) => event.messageId === segment.messageId,
+      )
+      assert.ok(scoped.some((event) => event.phase === 'start'))
+      assert.ok(scoped.some((event) => event.phase === 'cancel'))
+      assert.ok(
+        scoped.every(
+          (event) =>
+            event.source === source && (event.generation ?? 0) === generation,
+        ),
+      )
+    }
+  } finally {
+    globalThis.window = savedWindow
+    setLiveMotionGeneration(savedGeneration)
+    patchVoicePresence({ ttsPlaying: false })
+  }
 })
 
 test('TTS is not ready without a provider even when speaking is on', () => {

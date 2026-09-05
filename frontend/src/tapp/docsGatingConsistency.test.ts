@@ -422,12 +422,9 @@ describe('tapp docs gating consistency', () => {
 
   it('API_REFERENCE capability table includes every frozen full-SDK namespace', () => {
     const gen = read(
-      join(REPO, 'frontend/src/tapp/runtime/sandbox/sdkGenerator.ts'),
+      join(REPO, 'frontend/src/tapp/runtime/sandbox/sdkFull.ts'),
     )
-    const fullFn = gen.slice(
-      gen.indexOf('export function generateFullSDK'),
-      gen.indexOf('export function resolveWidgetSdkCaps'),
-    )
+    const fullFn = gen.slice(gen.indexOf('export function generateFullSDK'))
     const frozen = [
       ...fullFn.matchAll(/Object\.freeze\(Tapp\.([A-Za-z0-9_]+)/g),
     ].map((m) => m[1])

@@ -136,24 +136,25 @@ mod tests {
 
     #[test]
     fn chat_turns_apply_lite_wear_after_it_speaks() {
-        let process = include_str!("../process_and_recipe.rs");
+        let process = include_str!("../process_chat.rs");
         assert!(process.contains("peel_chat_live_reply"));
         assert!(process.contains("wear_directive_after_reply"));
         assert!(process.contains("apply_model_wear_directive"));
         let chat = process
-            .split("AgentInteractionMode::Chat")
-            .nth(2)
+            .split("pub(super) async fn process_chat_with_progress(")
+            .nth(1)
             .expect("streaming chat branch");
-        let chat = chat
-            .split("\n        if let Some(mood) = mood_transition.clone() {")
-            .next()
-            .unwrap();
+        let chat = chat.split("\nfn ").next().unwrap();
         assert!(chat.contains("stream_strict_lite_chat_response"));
         assert!(chat.contains("publish_model_outfit_overlay"));
         assert!(chat.contains("chat_reply_with_overlay"));
+        assert!(
+            chat.find("stream_strict_lite_chat_response").unwrap()
+                < chat.find("publish_model_outfit_overlay").unwrap()
+        );
         assert!(!chat.contains("upsert_persona"));
         assert!(!chat.contains("persist_active_asset"));
-        let prompt = include_str!("../confirmation_and_tasks.rs");
+        let prompt = include_str!("../confirmation_and_tasks/chat_stream.rs");
         let prompt_fn = prompt
             .split("async fn chat_response_prompt")
             .nth(1)

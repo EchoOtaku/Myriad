@@ -45,6 +45,7 @@ export class Anime25DBodyAdapter implements BodyAdapter {
         messageId: intent.messageId,
         text: intent.speechText,
         generation,
+        source,
         interrupt: 'queue',
       })
     }

@@ -198,7 +198,7 @@ mod tests {
 
     #[test]
     fn chat_does_not_wait_on_extract_and_starts_motion_first() {
-        let src = include_str!("../process_and_recipe.rs");
+        let src = include_str!("../process_chat.rs");
         let chat = src
             .find("stream_strict_lite_chat_response")
             .expect("streaming chat");
