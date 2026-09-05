@@ -242,6 +242,11 @@ export interface ProviderSettingConfig<
   value: T
   onChange: (value: T) => void
   options: SettingOption<T>[]
+  /**
+   * 再点一次已选项可取消（值为空字符串）。
+   * 默认 true：不强制必须选中某一项。
+   */
+  allowDeselect?: boolean
 }
 
 /** 按钮设置项配置 */

@@ -469,7 +469,10 @@ HTTP 声明式 API 都需要，不只是 `protected`）：
 
 `Tapp.ai.tasks.create` 使用 `operation: "image"`，参考图放在 `input.referenceImages`，
 例如 `{ prompt: "保留第一张图的人物，采用第二张图的画风", referenceImages: [subjectDataUrl, styleDataUrl] }`。
-Manifest 必须声明 `ai:image`、AI `image` operation 和 `image` output；实际调用由授予权限决定。
+Manifest 必须同时声明 `ai:image` **和** `manifest.ai`（`protocolVersion: 2`、`operations`
+含 `"image"`、`outputFormats` 含 `"image"`）；缺 `ai` 块会返回 `AI_V2_NOT_DECLARED`。
+`create()` 返回 `queued`，要 `get` / `subscribe` 等到 `completed` 再读
+`task.result.value.url`。实际调用由授予权限决定。Playground 临时预览不执行 AI。
 
 | 症状 / 错误码 | 检查与处理 |
 | ------------- | ---------- |

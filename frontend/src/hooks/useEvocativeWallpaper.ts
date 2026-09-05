@@ -1245,11 +1245,16 @@ export function useEvocativeWallpaper(
         s.reqHandler = null
       }
 
-      if (s.rippleCanvas && s.rippleCanvas.parentNode) {
-        s.rippleCanvas.parentNode.removeChild(s.rippleCanvas)
+      if (s.rippleCanvas) {
+        s.rippleCanvas.width = 0
+        s.rippleCanvas.height = 0
+        s.rippleCanvas.parentNode?.removeChild(s.rippleCanvas)
         s.rippleCanvas = null
         s.rippleCtx = null
       }
+      s.sourceImageData = null
+      s.destImageData = null
+      s.activeRipples = []
 
       // 资料库画布激活时：各端 soft-lock 缓入 identity；离场时不会弹回旧 parallax 位移。
       if (isLibraryCanvasHoldingWallpaper()) {

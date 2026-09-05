@@ -33,6 +33,7 @@ import {
   SettingGroup,
   SETTINGS_DURATION_MS,
   SettingSection,
+  SettingTitleGuideEntry,
   SettingTitleHelp,
   SetupFlow,
   ToggleSwitch,
@@ -718,6 +719,15 @@ const PlatformsConfigSection: React.FC<PlatformsConfigSectionProps> = ({
                             <span className="platform-name-text">
                               {platform.name}
                             </span>
+                            <SettingTitleGuideEntry
+                              title={platform.name}
+                              guide={
+                                bindGuide(
+                                  'platforms.platformCard',
+                                  settingGuides.platforms.platformCard,
+                                ).guide
+                              }
+                            />
                             {platformDesc ? (
                               <SettingTitleHelp
                                 ariaLabel={t.config.platformHelpAria.replace(

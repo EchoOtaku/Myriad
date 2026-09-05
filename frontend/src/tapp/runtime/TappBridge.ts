@@ -22,6 +22,10 @@ import type {
 } from '../types'
 import { userFacingError } from '../../utils/userFacingError'
 import { getQuotaManager } from '../services/QuotaManager'
+import {
+  PREVIEW_UNAVAILABLE_CODE,
+  previewUnavailableMessage,
+} from '../utils/previewGrants'
 import { TAPP_PACKAGE_PAYLOAD_BYTES } from '../utils/tappPackageLimits'
 import {
   federationLiveLimits,
@@ -1007,6 +1011,14 @@ export class TappBridge {
     // 查找处理器
     const handler = this.messageHandlers.get(action)
     if (!handler) {
+      if (this.tappInstance?.previewMode) {
+        this.sendResponse(id, {
+          success: false,
+          error: previewUnavailableMessage(action),
+          code: PREVIEW_UNAVAILABLE_CODE,
+        })
+        return
+      }
       this.sendResponse(id, {
         success: false,
         error: `Unknown action: ${action}`,

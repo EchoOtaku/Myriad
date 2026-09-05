@@ -28,12 +28,14 @@ import {
 import { httpStatusMessage, userFacingError } from '../../utils/userFacingError'
 import {
   CheckboxGroupItem,
+  guideDomProps,
   InputItem,
   SegmentedControl,
   SettingAnchoredPanel,
   SettingGroup,
   SettingsButton,
   SettingSection,
+  SettingTitleGuideEntry,
   SliderItem,
   SwitchItem,
   useSettingGuide,
@@ -338,19 +340,28 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           ariaLabel={t.config.siteAiGenerateDialogTitle}
           className="seo-ai-gen-tag-anchor"
           trigger={({ toggle }) => (
-            <SettingTitleTag
-              variant="muted"
-              icon={<FaMagic />}
-              disabled={anyBusy}
-              onClick={toggle}
-              title={
-                busy
-                  ? t.config.siteAiGenerating
-                  : t.config.siteAiGenerateTagHint
-              }
+            <span
+              className="has-guide-anchor"
+              {...guideDomProps('ui.siteAiGenerate')}
             >
-              {busy ? t.config.siteAiGenerating : t.config.siteAiGenerateTag}
-            </SettingTitleTag>
+              <SettingTitleGuideEntry
+                title={t.config.siteAiGenerateTag}
+                guide={bindGuide('ui.siteAiGenerate', g.ui.siteAiGenerate).guide}
+              />
+              <SettingTitleTag
+                variant="muted"
+                icon={<FaMagic />}
+                disabled={anyBusy}
+                onClick={toggle}
+                title={
+                  busy
+                    ? t.config.siteAiGenerating
+                    : t.config.siteAiGenerateTagHint
+                }
+              >
+                {busy ? t.config.siteAiGenerating : t.config.siteAiGenerateTag}
+              </SettingTitleTag>
+            </span>
           )}
         >
           <div className="setting-anchored-panel-title">

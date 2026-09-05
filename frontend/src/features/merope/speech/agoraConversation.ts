@@ -183,6 +183,13 @@ async function openConversation(
         .then(() => {
           const track = user.audioTrack
           if (!track || !current() || live !== owned) return
+          if (owned.remoteTrack && owned.remoteTrack !== track) {
+            try {
+              owned.remoteTrack.stop()
+            } catch {
+              // already stopped
+            }
+          }
           owned.remoteTrack = track
           if (!owned.muted) track.play()
           attachEnergyTap(owned, track.getMediaStreamTrack())
@@ -191,6 +198,28 @@ async function openConversation(
           if (current())
             console.error('[agoraConversation] subscribe failed:', error)
         })
+    })
+
+    rtc.on('user-unpublished', (user, mediaType) => {
+      if (
+        mediaType !== 'audio' ||
+        String(user.uid) !== String(session.agent_uid) ||
+        live !== owned
+      ) {
+        return
+      }
+      try {
+        owned.remoteTrack?.stop()
+      } catch {
+        // already stopped
+      }
+      owned.remoteTrack = null
+      if (owned.energyTimer != null) window.clearInterval(owned.energyTimer)
+      owned.energyTimer = null
+      void owned.audioContext?.close().catch(() => {})
+      owned.audioContext = null
+      owned.analyser = null
+      if (owned.speechActive) endRemoteSpeech(owned, true)
     })
 
     const onRtmMessage = (event: unknown) => {

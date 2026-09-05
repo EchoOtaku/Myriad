@@ -1212,7 +1212,6 @@ export default function Anime25DWorkbench({
           >
             <InfoActionCard
               copyable={false}
-              title={labels.anime25dInspect}
               fields={
                 snapshot
                   ? [

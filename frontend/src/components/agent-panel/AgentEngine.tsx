@@ -71,6 +71,7 @@ import { interruptAgoraConversation, stopAgoraConversation } from '../../feature
 import { bindRealtimeChat } from '../../features/merope/speech/realtimeChat'
 import {
   beginTurnTrace,
+  markTurnTrace,
   markTurnTraceOnce,
   noteTurnTraceDrop,
 } from '../../features/merope/turnTrace'
@@ -274,10 +275,20 @@ export const AgentEngine: React.FC = () => {
       ) => Promise<void>
     >(null)
   const createProgressHandlerRef = useRef<
-    ((assistantMessageId: string) => (event: ProgressEvent) => void) | null
+    ((assistantMessageId: string, mode?: AgentPanelMode, generation?: number,
+      speechOutput?: 'local' | 'external', runId?: string) => (event: ProgressEvent) => void) | null
   >(null)
   const dispatchedFrontendKeysRef = useRef(new Map<string, Set<string>>())
   const frontendActionChainRef = useRef(new Map<string, Promise<void>>())
+  const MAX_RESPONSE_GUARD_KEYS = 200
+
+  const capSet = (set: Set<string>) => {
+    while (set.size > MAX_RESPONSE_GUARD_KEYS) {
+      const oldest = set.values().next().value
+      if (oldest === undefined) break
+      set.delete(oldest)
+    }
+  }
 
   const enqueueFrontendActions = useCallback(
     async (
@@ -288,6 +299,12 @@ export const AgentEngine: React.FC = () => {
       const keys =
         dispatchedFrontendKeysRef.current.get(messageId) ?? new Set<string>()
       dispatchedFrontendKeysRef.current.set(messageId, keys)
+      while (dispatchedFrontendKeysRef.current.size > MAX_RESPONSE_GUARD_KEYS) {
+        const oldest = dispatchedFrontendKeysRef.current.keys().next().value
+        if (oldest === undefined || oldest === messageId) break
+        dispatchedFrontendKeysRef.current.delete(oldest)
+        frontendActionChainRef.current.delete(oldest)
+      }
       const run = async () => {
         for (const action of actions) {
           if (!action || typeof action !== 'object' || !('type' in action)) {
@@ -364,6 +381,7 @@ export const AgentEngine: React.FC = () => {
     const loadingId = loadingMessageIdByModeRef.current[current]
     if (loadingId) {
       discardedResponseIdsRef.current.add(loadingId)
+      capSet(discardedResponseIdsRef.current)
       stopTurnSpeech(loadingId)
     }
     loadingByModeRef.current[current] = false
@@ -462,6 +480,7 @@ export const AgentEngine: React.FC = () => {
           setAgentStatusThinking()
           const onProgress = createProgressHandlerRef.current?.(
             candidate.messageId,
+            'work', 0, 'local', runId,
           )
           if (!onProgress) continue
           void agentService
@@ -766,6 +785,7 @@ export const AgentEngine: React.FC = () => {
       discardedResponseIdsRef.current.add(msg.id)
       stopTurnSpeech(msg.id)
     }
+    capSet(discardedResponseIdsRef.current)
 
     // Drop occupancy before awaiting cancel, otherwise a late token writes
     // thinking back. Always idle the island; if the other lane is still in
@@ -822,10 +842,12 @@ export const AgentEngine: React.FC = () => {
       mode: AgentPanelMode = 'work',
       generation = 0,
       speechOutput: 'local' | 'external' = 'local',
+      initialRunId?: string,
     ) => {
       let streamedSummary = ''
       let streamedThinking = ''
       let performancePlanCount = 0
+      let performanceRunId = initialRunId
       let notedStaleGeneration = false
       let liveTaskId = ''
       const speech = openTurnSpeech(assistantMessageId, generation, locale, speechOutput)
@@ -865,6 +887,7 @@ export const AgentEngine: React.FC = () => {
               setSessionId(event.sessionId, mode)
             }
             if (event.runId) {
+              performanceRunId = event.runId
               updateMessageExecution(assistantMessageId, {
                 runId: event.runId,
               })
@@ -1161,16 +1184,21 @@ export const AgentEngine: React.FC = () => {
             const performanceEvent = event as PerformancePlanEvent
             const performancePhase = performanceEvent.performance.phase
             performancePlanCount += 1
-            if (performancePlanCount === 1) {
+            markTurnTrace('performance_received', {
+              phase: performancePhase, plan: performancePlanCount,
+              ...(performanceRunId ? { runId: performanceRunId } : {}),
+            })
+            if (performancePhase === 'reaction') {
               markTurnTraceOnce('reaction_ready', { phase: performancePhase })
-            } else {
-              markTurnTraceOnce('performance_refined', {
+            } else if (performancePhase === 'delivery') {
+              markTurnTraceOnce('delivery_ready', {
                 phase: performancePhase,
                 plan: performancePlanCount,
               })
             }
             deliverTurnLine(mode, {
               messageId: assistantMessageId,
+              runId: performanceRunId,
               performance: performanceEvent.performance,
             })
             break
@@ -1743,6 +1771,7 @@ export const AgentEngine: React.FC = () => {
       if (responseKey) {
         if (handledResponseKeysRef.current.has(responseKey)) return
         handledResponseKeysRef.current.add(responseKey)
+        capSet(handledResponseKeysRef.current)
       }
 
       if (pendingQuestion && pendingQuestion.question) {
@@ -2055,7 +2084,7 @@ export const AgentEngine: React.FC = () => {
       setAgentStatusThinking()
       // Same progress and final-response reducers. Only the audio outlet is
       // external: cloud audio must not be synthesized or text-lip-synced twice.
-      void agentService.subscribeRun(notice.runId, createProgressHandler(messageId, 'chat', generation, 'external'), 'chat')
+      void agentService.subscribeRun(notice.runId, createProgressHandler(messageId, 'chat', generation, 'external', notice.runId), 'chat')
         .then((response) => handleAgentResponse(messageId, response, 'chat', generation, 'external'))
         .catch((error) => {
           if (!isCurrentChatGeneration(generation, chatTurnClockRef.current.current())) return

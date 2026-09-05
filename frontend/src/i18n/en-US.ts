@@ -155,8 +155,8 @@ export const enUS: TranslationKeys = {
     anime25dProjectThanks: 'The persona builds on these projects. Thanks to',
     anime25dDebug: 'Motion',
     overviewGroup: 'Overview',
-    overviewGroupDescription:
-      'Name, mood, current state, and whether the portrait and rig are ready.',
+    overviewGroupDescription: 'Each outfit’s portrait and rig, and do-not-disturb.',
+    statusGroup: 'Status',
     overviewName: 'Name',
     overviewMood: 'Mood',
     overviewActivity: 'Current state',
@@ -173,6 +173,17 @@ export const enUS: TranslationKeys = {
     overviewRig: 'Layered rig',
     overviewRigReady: 'Active',
     overviewRigEmpty: 'Not yet',
+    overviewOutfitPortrait: 'Portrait',
+    overviewOutfitRig: 'Rig',
+    overviewWardrobeWearing: 'Wearing {name}',
+    overviewWardrobeCount: 'There are {n} outfits',
+    overviewWardrobeNoneReady: 'No portraits or rigs yet',
+    overviewWardrobeAllPortraits: 'Every outfit has a portrait; no rigs yet',
+    overviewWardrobeAllRigs: 'Every outfit has a rig; no portraits yet',
+    overviewWardrobeMixed:
+      'Portraits are ready on {portrait} of them, rigs on {rig}',
+    overviewWardrobeOnePortrait: 'Has a portrait, no rig yet',
+    overviewWardrobeOneRig: 'Has a rig, no portrait yet',
     overviewSummary: 'Personality summary',
     overviewEmpty: 'No character overview yet.',
     personaGroup: 'Persona',
@@ -1702,7 +1713,7 @@ export const enUS: TranslationKeys = {
     memorySaverHint:
       'A second notch below the bounded default: smaller chunk inflight, process caches, DB pool, password-hash concurrency, and video/audio peaks. Everyday messages still fit; large media should use chunked transfer, and lossless audio may reject sooner. Env MYRIAD_MEMORY_PROFILE can override. DB pool fully applies after backend restart.',
     agentOptions: 'Agent',
-    agentOptionsDesc: 'Persona, scheduled tasks, skills, and memories.',
+    agentOptionsDesc: 'Persona, speaking, scheduled tasks, skills, and memories.',
     agentHeartbeatTitle: 'Scheduled tasks',
     agentHeartbeatDesc: 'Have it do something on its own when the time comes.',
     agentSkillsTitle: 'Skills',
@@ -1728,8 +1739,7 @@ export const enUS: TranslationKeys = {
       'Delete the current persona? Mood and diary will be cleared too.',
     agentPersonaDeleteFailed: 'Could not delete the persona',
     agentPersonaSpeech: 'Speak',
-    agentPersonaSpeechHint:
-      'When on, chat replies are spoken aloud. Off: the face still mouths the line, with no voice. Off by default.',
+    agentPersonaSpeechHint: 'Speak chat replies aloud. Off: mouth movement only.',
     enableProxy: 'Enable Network Proxy',
     enableProxyHint:
       'External API requests will be sent through the proxy when enabled',

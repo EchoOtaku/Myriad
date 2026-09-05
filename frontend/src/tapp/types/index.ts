@@ -565,6 +565,13 @@ export interface TappInstance {
   /** 是否为临时安装（普通用户安装的 Tapp，退出登录后移除） */
   isTemporary?: boolean
 
+  /**
+   * Playground 临时预览实例。无 Runtime Grant；未注册的宿主 API 以
+   * `PREVIEW_UNAVAILABLE` 失败，不等于安装后的授予权限。
+   * 与 `isTemporary`（普通用户登录期内的临时安装）不是同一层。
+   */
+  previewMode?: boolean
+
   /** 是否为管理员的 Tapp（对所有用户可见） */
   isAdminTapp?: boolean
 

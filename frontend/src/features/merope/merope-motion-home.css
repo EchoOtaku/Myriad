@@ -939,25 +939,54 @@ html.dark .merope-wardrobe {
   gap: 18px;
 }
 
-/* 贴纸头像：小方图 + 说明与按钮并排，窄屏落成一列。 */
+/* 贴纸头像与状态并排，各有标题。 */
 .merope-motion-avatar {
   display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  flex-wrap: wrap;
+  gap: 18px;
+  align-items: start;
+  min-width: 0;
 }
 
-.merope-motion-avatar__preview {
+.merope-motion-avatar__pane {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  justify-items: start;
+}
+
+.merope-motion-avatar__pane:last-child {
+  flex: 1 1 auto;
+  gap: 12px;
+}
+
+.merope-motion-avatar__field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.merope-motion-avatar__frame {
   width: 96px;
   height: 96px;
-  flex: none;
+  overflow: hidden;
   border-radius: 16px;
-  object-fit: contain;
   /* 贴纸是透明底，衬一层浅色才看得清白色刀模边。 */
   background: var(--color-surface-2, rgba(127, 127, 127, 0.12));
 }
 
-.merope-motion-avatar__copy {
-  flex: 1 1 220px;
-  min-width: 0;
+.merope-motion-avatar__preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.merope-motion-avatar__value {
+  margin: 0;
+  padding: 0 4px;
+  color: var(--merope-ink, inherit);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }

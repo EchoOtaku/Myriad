@@ -20,4 +20,6 @@ test('realtime talk starts an Agora session then tears it down', () => {
   assert.match(source, /phase: articulation \? 'articulation' : 'energy'/)
   assert.match(source, /createMicrophoneAudioTrack/)
   assert.match(source, /attachLocalBargeIn\(/)
+  assert.match(source, /user-unpublished/)
+  assert.match(source, /owned\.remoteTrack && owned\.remoteTrack !== track/)
 })

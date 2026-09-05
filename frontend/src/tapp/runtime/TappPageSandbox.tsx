@@ -113,6 +113,12 @@ export interface TappPageSandboxProps {
    * but never issues a backend Runtime Grant or registers host-mutating APIs.
    */
   previewMode?: boolean
+  /** Shared Playground tab stores so Page and Widget preview see the same KV. */
+  previewStores?: {
+    storage: Map<string, unknown>
+    settings: Map<string, unknown>
+    shared: Map<string, unknown>
+  }
   /**
    * When true, host has hidden this surface (e.g. multi-window minimize).
    * Composed with document visibility into a single lifecycle:pause/resume
@@ -413,6 +419,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   headless = false,
   previewMode = false,
   paused = false,
+  previewStores,
 }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const bridgeRef = useRef<TappBridge | null>(null)
@@ -681,7 +688,10 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
           headless ? 'headless' : 'page',
         )
 
-    bridge.initialize(iframe, currentTappInstance, sessionToken, runtimeGrant)
+    const instanceForBridge = previewMode
+      ? { ...currentTappInstance, previewMode: true }
+      : currentTappInstance
+    bridge.initialize(iframe, instanceForBridge, sessionToken, runtimeGrant)
     // Apply current minimize/paused state (effect may have run before bridge existed).
     bridge.setSurfaceActive(!pausedRef.current)
 
@@ -716,8 +726,10 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       registerPlaygroundPreviewHandlers(
         bridge,
         currentTappInstance,
-        previewStorageRef.current,
-        previewSettingsRef.current,
+        previewStores?.storage ?? previewStorageRef.current,
+        previewStores?.settings ?? previewSettingsRef.current,
+        currentCode.assets || {},
+        previewStores?.shared,
       )
     } else {
       // Always mount the hot path; gate heavy optional capabilities by
@@ -935,6 +947,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     handleReady,
     headless,
     previewMode,
+    previewStores,
     subjectEpoch,
     t.tapp.cannotLoadApp,
   ])

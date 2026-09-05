@@ -1266,7 +1266,11 @@ impl Agent {
         &self,
         request: &UserRequest,
         progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
-        motion_preview_tx: Option<tokio::sync::mpsc::Sender<String>>,
+        motion_preview_tx: Option<
+            tokio::sync::mpsc::Sender<
+                crate::services::agent::merope::motion_preview::MotionPreviewUpdate,
+            >,
+        >,
     ) -> Result<String, String> {
         let analyzer = crate::services::ai::create_strict_lite_ai_analyzer_with_timeout(None)
             .await
@@ -1369,7 +1373,11 @@ impl Agent {
         request: &UserRequest,
         progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
         analyzer: crate::services::analyzer::AiAnalyzer,
-        motion_preview_tx: Option<tokio::sync::mpsc::Sender<String>>,
+        motion_preview_tx: Option<
+            tokio::sync::mpsc::Sender<
+                crate::services::agent::merope::motion_preview::MotionPreviewUpdate,
+            >,
+        >,
     ) -> Result<String, String> {
         let prompt = self.chat_response_prompt(request).await;
         let motion_preview = std::sync::Arc::new(std::sync::Mutex::new(

@@ -762,6 +762,7 @@ export function NavigationIsland() {
     }
 
     // 两帧后读取尺寸并启动进入动画
+    let sizeWidthRaf = 0
     const cancelSizeRaf = doubleRaf(() => {
       const currentContent = navContentRef.current
       const currentIsland = currentContent?.closest(
@@ -788,7 +789,8 @@ export function NavigationIsland() {
         if (naturalWidth > 0 && naturalWidth !== fromWidth) {
           // 恢复起始值，下一帧设目标值，触发 CSS 过渡
           currentIsland.style.width = `${fromWidth}px`
-          requestAnimationFrame(() => {
+          sizeWidthRaf = requestAnimationFrame(() => {
+            sizeWidthRaf = 0
             currentIsland.style.width = `${naturalWidth}px`
             updateModeMetrics(currentMode, { width: naturalWidth })
           })
@@ -845,6 +847,7 @@ export function NavigationIsland() {
 
     return () => {
       cancelSizeRaf()
+      if (sizeWidthRaf) cancelAnimationFrame(sizeWidthRaf)
       cancelEnterRaf()
       cancelAnimationFrame(enterRafId)
       if (enterCleanupTimer) clearTimeout(enterCleanupTimer)

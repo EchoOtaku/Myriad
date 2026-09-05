@@ -12,6 +12,7 @@ import { noteTurnTraceDrop } from './turnTrace'
 export type FaceSpeechVerdict = 'speak' | 'record-without-speech'
 
 export interface FaceSpeechLine {
+  runId?: string
   messageId: string
   text?: string
   source?: 'reply' | 'proactive' | 'interaction' | 'preview'
@@ -265,6 +266,8 @@ export function deliverGatedLine(
   if (liveBody) {
     liveBody.intend({
       messageId: line.messageId,
+      ...(line.runId ? { runId: line.runId } : {}),
+      ...(line.source ? { source: line.source } : {}),
       speechText: text,
       ...(performance ? { performance } : {}),
     })

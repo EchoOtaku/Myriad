@@ -586,7 +586,9 @@ impl Agent {
                     None,
                 );
                 publish_local_motion(&reaction_context, &progress_tx).await;
-                let (preview_tx, preview_rx) = tokio::sync::mpsc::channel(1);
+                // At most two updates: first stable sentence, then one bounded
+                // long-reply refinement. Neither can be lost to a full slot.
+                let (preview_tx, preview_rx) = tokio::sync::mpsc::channel(2);
                 motion_preview_tx = Some(preview_tx);
                 motion_refinements.push(spawn_motion_refinement(
                     reaction_context,
@@ -2194,7 +2196,11 @@ fn landing_motion(
 fn spawn_motion_refinement(
     context: crate::services::agent::merope::MotionContext,
     progress_tx: tokio::sync::mpsc::Sender<AgentProgressEvent>,
-    preview_rx: Option<tokio::sync::mpsc::Receiver<String>>,
+    preview_rx: Option<
+        tokio::sync::mpsc::Receiver<
+            crate::services::agent::merope::motion_preview::MotionPreviewUpdate,
+        >,
+    >,
 ) -> MotionRefinementGuard {
     spawn_motion_refinement_with(
         context,
@@ -2207,7 +2213,11 @@ fn spawn_motion_refinement(
 fn spawn_motion_refinement_with<F, Fut>(
     mut context: crate::services::agent::merope::MotionContext,
     progress_tx: tokio::sync::mpsc::Sender<AgentProgressEvent>,
-    mut preview_rx: Option<tokio::sync::mpsc::Receiver<String>>,
+    mut preview_rx: Option<
+        tokio::sync::mpsc::Receiver<
+            crate::services::agent::merope::motion_preview::MotionPreviewUpdate,
+        >,
+    >,
     refine: F,
 ) -> MotionRefinementGuard
 where
@@ -2222,8 +2232,27 @@ where
     let did_publish = published.clone();
     let task = tokio::spawn(async move {
         if let Some(preview_rx) = preview_rx.as_mut() {
-            let Some(preview) = preview_rx.recv().await else {
-                return;
+            let preview = loop {
+                let Some(update) = preview_rx.recv().await else {
+                    return;
+                };
+                if let Some(spoken) = update.local {
+                    context.phase = crate::services::agent::merope::MotionPhase::Delivery;
+                    context.activity = context.phase.activity().to_string();
+                    context.response_text = Some(spoken);
+                    if publish_local_motion(&context, &progress_tx).await {
+                        did_publish.store(
+                            MotionPublication::Local as u8,
+                            std::sync::atomic::Ordering::Release,
+                        );
+                    }
+                    if progress_tx.is_closed() {
+                        return;
+                    }
+                }
+                if let Some(preview) = update.refinement {
+                    break preview;
+                }
             };
             // A provider may emit a whole answer in one delta. Give the caller
             // one short cancellation window before opening another request.
@@ -2231,15 +2260,6 @@ where
             context.phase = crate::services::agent::merope::MotionPhase::Delivery;
             context.activity = context.phase.activity().to_string();
             context.response_text = Some(preview);
-            // Actual speech must not wait for the optional model director.
-            // Record only successful sends, so cancellation/backpressure can
-            // still choose the correct landing without losing or replaying it.
-            if publish_local_motion(&context, &progress_tx).await {
-                did_publish.store(
-                    MotionPublication::Local as u8,
-                    std::sync::atomic::Ordering::Release,
-                );
-            }
             if progress_tx.is_closed() {
                 return;
             }
@@ -2298,12 +2318,20 @@ async fn attach_motion_to_result(
 #[cfg(test)]
 mod motion_refinement_tests {
     use super::*;
+    use crate::services::agent::merope::motion_preview::MotionPreviewUpdate;
     use crate::services::agent::merope::{MoodTransition, MotionContext, MotionPhase};
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     };
     use std::time::Duration;
+
+    fn preview(text: &str) -> MotionPreviewUpdate {
+        MotionPreviewUpdate {
+            local: Some(text.into()),
+            refinement: Some(text.into()),
+        }
+    }
 
     fn context() -> MotionContext {
         MotionContext {
@@ -2347,16 +2375,18 @@ mod motion_refinement_tests {
             );
             if emit_preview {
                 preview_tx
-                    .send("a whole buffered answer".into())
+                    .send(preview("a whole buffered answer"))
                     .await
                     .unwrap();
             }
             tokio::task::yield_now().await;
-            assert_eq!(guard.stop().await, MotionPublication::None);
-            assert!(tokio::time::timeout(Duration::from_secs(1), events.recv())
-                .await
-                .unwrap()
-                .is_none());
+            let publication = guard.stop().await;
+            assert_ne!(publication, MotionPublication::Refined);
+            assert_eq!(
+                publication == MotionPublication::Local,
+                events.recv().await.is_some()
+            );
+            assert!(events.recv().await.is_none());
             assert_eq!(calls.load(Ordering::Relaxed), 0);
         }
     }
@@ -2376,7 +2406,7 @@ mod motion_refinement_tests {
                 crate::services::agent::merope::local_directive(&context)
             });
         preview_tx
-            .send("the actual spoken preview".into())
+            .send(preview("the actual spoken preview"))
             .await
             .unwrap();
         // The deterministic delivery precedes its optional refinement.
@@ -2438,7 +2468,7 @@ mod motion_refinement_tests {
                 std::future::pending().await
             });
         preview_tx
-            .send("the actual spoken preview".into())
+            .send(preview("the actual spoken preview"))
             .await
             .unwrap();
         tokio::time::timeout(Duration::from_secs(2), entered.notified())
@@ -2472,7 +2502,7 @@ mod motion_refinement_tests {
             },
         );
         preview_tx
-            .send("the actual spoken preview".into())
+            .send(preview("the actual spoken preview"))
             .await
             .unwrap();
         tokio::time::timeout(Duration::from_secs(2), entered.notified())
@@ -2496,7 +2526,7 @@ mod motion_refinement_tests {
                 None
             });
         preview_tx
-            .send("the actual spoken preview".into())
+            .send(preview("the actual spoken preview"))
             .await
             .unwrap();
         tokio::time::timeout(Duration::from_secs(2), preview_tx.closed())
@@ -2517,5 +2547,33 @@ mod motion_refinement_tests {
         assert_eq!(landing.plan.baseline, initial.plan.baseline);
         assert!(landing.plan.cues.is_empty());
         assert!(landing_motion(&context, MotionPublication::Refined).is_none());
+    }
+
+    #[tokio::test]
+    async fn first_sentence_plays_without_waiting_for_long_preview_or_director() {
+        let (tx, mut events) = tokio::sync::mpsc::channel(2);
+        let (preview_tx, preview_rx) = tokio::sync::mpsc::channel(2);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let observed = calls.clone();
+        let guard =
+            spawn_motion_refinement_with(context(), tx, Some(preview_rx), move |_| async move {
+                observed.fetch_add(1, Ordering::Relaxed);
+                None
+            });
+        preview_tx
+            .send(MotionPreviewUpdate {
+                local: Some("你好，很高兴见到你！".into()),
+                refinement: None,
+            })
+            .await
+            .unwrap();
+        let event = tokio::time::timeout(Duration::from_secs(1), events.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(event, AgentProgressEvent::PerformancePlan { .. }));
+        assert_eq!(calls.load(Ordering::Relaxed), 0);
+        assert_eq!(guard.stop().await, MotionPublication::Local);
+        assert!(events.recv().await.is_none());
     }
 }

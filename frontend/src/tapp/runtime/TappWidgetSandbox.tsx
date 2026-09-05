@@ -93,6 +93,12 @@ export interface TappWidgetSandboxProps {
    * declarations as real installed host grants.
    */
   previewMode?: boolean
+  /** Shared Playground tab stores so Page and Widget preview see the same KV. */
+  previewStores?: {
+    storage: Map<string, unknown>
+    settings: Map<string, unknown>
+    shared: Map<string, unknown>
+  }
   /** 错误回调 */
   onError?: (error: Error) => void
   /** 就绪回调 */
@@ -299,6 +305,7 @@ export const TappWidgetSandbox = memo(
     widgetId,
     widgetProps,
     previewMode = false,
+    previewStores,
     onReady,
     onInstanceSettingsChange,
     onInvalidate,
@@ -581,7 +588,12 @@ export const TappWidgetSandbox = memo(
       // Playground preview: no Runtime Grant (uninstalled id + no real host grants).
       // Installed widgets: share host Runtime Grant (refcount) across same-Tapp iframes.
       if (previewMode) {
-        bridge.initialize(iframe, currentTappInstance, sessionToken, undefined)
+        bridge.initialize(
+          iframe,
+          { ...currentTappInstance, previewMode: true },
+          sessionToken,
+          undefined,
+        )
       } else {
         const shared = TappRuntimeGrant.acquireSharedWidget(
           currentTappInstance.id,
@@ -672,6 +684,10 @@ export const TappWidgetSandbox = memo(
 
       if (previewMode) {
         // MYR-024: ephemeral handlers only — no real storage/API/host surfaces.
+        // user/file match Page preview: Widget SDK exposes them, and they do
+        // not need a Runtime Grant.
+        registerUserHandlers(bridge, currentTappInstance)
+        registerFileHandlers(bridge)
         const defaults = currentTappInstance.manifest.settings || []
         for (const setting of defaults) {
           if (
@@ -684,8 +700,10 @@ export const TappWidgetSandbox = memo(
         registerPlaygroundPreviewHandlers(
           bridge,
           currentTappInstance,
-          previewStorageRef.current,
-          previewSettingsRef.current,
+          previewStores?.storage ?? previewStorageRef.current,
+          previewStores?.settings ?? previewSettingsRef.current,
+          currentCode.assets || {},
+          previewStores?.shared,
         )
       } else {
         // 注册处理器：始终挂载 Widget 热路径；按 grantedPermissions 惰性挂载重型能力。
@@ -817,6 +835,7 @@ export const TappWidgetSandbox = memo(
       codeFingerprint,
       handleReady,
       stableWidgetProps,
+      previewStores,
       subjectEpoch,
       previewMode,
       t.tapp.widgetNotFound,

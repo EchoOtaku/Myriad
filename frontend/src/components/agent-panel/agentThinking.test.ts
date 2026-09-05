@@ -368,6 +368,14 @@ test('说明性的短句都是贴：操作、附件、收藏、脚注不再另�
   )
   assert.match(
     css,
+    /\.agent-panel-work-tags > \.agent-panel-swap \{[\s\S]*?flex:\s*0 1 auto/,
+  )
+  assert.match(
+    css,
+    /\.agent-panel-work-chrome \.agent-panel-swap \.agent-panel-tag \{[\s\S]*?width:\s*max-content/,
+  )
+  assert.match(
+    css,
     /\[data-mode='chat'\] \.agent-panel-work-chrome \{[^}]*opacity:\s*0/,
   )
   assert.doesNotMatch(

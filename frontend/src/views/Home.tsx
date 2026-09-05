@@ -849,19 +849,20 @@ export default function Home() {
                           {isEditMode ? t.common.done : t.common.edit}
                         </button>
 
-                        {/* 配置入口 - 与编辑同条件：管理员 + desktop 档 */}
-                        <button
-                          type="button"
-                          onClick={handleLayoutModeToggle}
-                          className="flex px-4 py-1.5 rounded-lg text-xs font-bold items-center gap-2 transition-all bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10"
-                          style={{ color: 'var(--color-primary)' }}
-                          aria-pressed={false}
-                          aria-label={t.home.switchToFreeLayout}
-                          title={t.home.switchToFreeLayout}
-                        >
-                          <FaExpand size={12} />
-                          {t.home.freeLayout}
-                        </button>
+                        {isEditMode && (
+                          <button
+                            type="button"
+                            onClick={handleLayoutModeToggle}
+                            className="flex px-4 py-1.5 rounded-lg text-xs font-bold items-center gap-2 transition-all bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10"
+                            style={{ color: 'var(--color-primary)' }}
+                            aria-pressed={false}
+                            aria-label={t.home.switchToFreeLayout}
+                            title={t.home.switchToFreeLayout}
+                          >
+                            <FaExpand size={12} />
+                            {t.home.freeLayout}
+                          </button>
+                        )}
 
                         <button
                           type="button"

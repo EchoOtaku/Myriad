@@ -4,6 +4,7 @@ import type { SpeechSegment } from './speechSegmenter'
 import type { VisemeSpan } from './visemeTimeline'
 import { compileTextVisemes } from '../anime25drig/textVisemes'
 import { speechProsodyTimeline } from './prosody'
+import { alignTextProsody } from './textProsody'
 import {
   alignVisemeTimeline,
   VISEME_SILENCE_ENERGY,
@@ -105,13 +106,37 @@ export function playTtsBuffer(
       )
       const startedAt = ctx.currentTime
       const startedAtMs = wallNow()
+      const prosodyInput = {
+        utteranceId: `tts-${segment.segmentId}`,
+        text: segment.text,
+        locale: segment.locale,
+        startedAtMs,
+      }
+      // Phrase preparation does not wait for a cold phoneme module either.
+      hooks.onProsody?.(
+        alignTextProsody(prosodyInput, {
+          durationMs: Math.round(decoded.duration * 1_000),
+          accents: [],
+        }),
+        { startedAtMs },
+      )
       // Viseme compilation is useful but not on the audible critical path.
       // If a language module is cold, energy-only articulation starts now and
       // the aligned shapes/prosody join as soon as compilation finishes.
       void compiled.then((cues) => {
         if (stopped) return
         spans = alignVisemeTimeline(cues, decoded.duration)
-        hooks.onProsody?.(speechProsodyTimeline(spans, decoded.duration), {
+        const audioProsody = speechProsodyTimeline(spans, decoded.duration)
+        const elapsedMs = Math.max(0, wallNow() - startedAtMs)
+        const timeline = alignTextProsody(prosodyInput, {
+          ...audioProsody,
+          // Late evidence can add future preparation, not insert a stroke
+          // at full strength after its preparation has already passed.
+          accents: audioProsody.accents.filter(
+            (accent) => accent.offsetMs >= elapsedMs + 140,
+          ),
+        })
+        hooks.onProsody?.(timeline, {
           startedAtMs,
         })
       })

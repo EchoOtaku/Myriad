@@ -254,6 +254,7 @@ function CustomScrollbarInner() {
 
     let updateDelay: ReturnType<typeof setTimeout> | null = null
     let transitionTimer: ReturnType<typeof setTimeout> | null = null
+    let thumbRaf = 0
 
     // 记录路由切换时间
     routeTransitionTimeRef.current = Date.now()
@@ -275,7 +276,8 @@ function CustomScrollbarInner() {
         isRouteTransitioningRef.current = false
         // 路由变化时重置高度缓存
         cachedDocumentHeightRef.current = 0
-        requestAnimationFrame(() => {
+        thumbRaf = requestAnimationFrame(() => {
+          thumbRaf = 0
           updateThumb()
         })
       }, 150) // 再延迟 150ms 确保过渡已经设置好
@@ -292,6 +294,7 @@ function CustomScrollbarInner() {
       clearTimeout(initialDelay)
       if (updateDelay !== null) clearTimeout(updateDelay)
       if (transitionTimer !== null) clearTimeout(transitionTimer)
+      if (thumbRaf) cancelAnimationFrame(thumbRaf)
       // 清理时也要恢复标志
       isRouteTransitioningRef.current = false
     }

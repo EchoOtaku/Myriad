@@ -1,4 +1,5 @@
 import type { TextVisemeCue } from '../anime25drig/textVisemes'
+import type { SpeechProsodyTimeline } from './prosody'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { playTtsBuffer, sampleDecodedMouth, sampleMouth } from './ttsPlayer'
@@ -260,5 +261,33 @@ test('late prosody retains the actual audio origin for predictive scheduling', a
   await settle()
   finishCompilation([])
   await settle()
-  assert.deepEqual(timings, [1_234])
+  assert.deepEqual(timings, [1_234, 1_234])
+})
+
+test('text beats reach playback before cold visemes and survive their later refinement', async () => {
+  let resolve: (cues: TextVisemeCue[]) => void = () => {}
+  const compilation = new Promise<TextVisemeCue[]>((done) => {
+    resolve = done
+  })
+  const timelines: SpeechProsodyTimeline[] = []
+  const { context, sources } = fakeContext(Promise.resolve({ duration: 4 }))
+  const handle = playTtsBuffer(
+    new ArrayBuffer(8),
+    { ...segment, text: '不过我们可以试试。你觉得呢？' },
+    {
+      onEnergy: () => {},
+      onEnded: () => {},
+      onProsody: (timeline) => timelines.push(timeline),
+    },
+    context,
+    { compileVisemes: () => compilation, now: () => 1_000 },
+  )
+  await settle()
+  assert.equal(sources[0]?.started, 1)
+  assert.equal(timelines.length, 1)
+  assert.ok(timelines[0]!.accents.length >= 2)
+  resolve([])
+  await settle()
+  assert.deepEqual(timelines[1], timelines[0])
+  handle.stop()
 })

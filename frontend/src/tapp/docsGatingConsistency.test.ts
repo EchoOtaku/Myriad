@@ -588,4 +588,53 @@ describe('tapp docs gating consistency', () => {
       'WIDGET must not lump Page/headless as one Full SDK',
     )
   })
+
+  it('PLAYGROUND_GENERATION_CONTEXT teaches the current AI task envelope', () => {
+    const playgroundCtx = read(
+      join(DOCS_TAPP, 'PLAYGROUND_GENERATION_CONTEXT.md'),
+    )
+    const playground = read(join(DOCS_TAPP, 'PLAYGROUND.md'))
+
+    assert.match(playgroundCtx, /Tapp\.ai\.tasks\.create/)
+    assert.match(playgroundCtx, /ai:search/)
+    assert.match(
+      playgroundCtx,
+      /generate[\s\S]{0,80}analyze[\s\S]{0,80}chat[\s\S]{0,80}image[\s\S]{0,80}search/,
+    )
+    assert.match(playgroundCtx, /contextProvenance/)
+    assert.match(playgroundCtx, /task\.result/)
+    assert.match(playgroundCtx, /queued/)
+    assert.match(playgroundCtx, /Tapp\.ai\.tasks\.get/)
+    assert.match(playgroundCtx, /protocolVersion/)
+    assert.match(playgroundCtx, /AI_V2_NOT_DECLARED/)
+    assert.match(playgroundCtx, /Tapp\.settings/)
+    assert.match(playgroundCtx, /Tapp\.shared/)
+    assert.match(playgroundCtx, /openUrls/)
+    assert.match(playgroundCtx, /manifest\.game/)
+    assert.match(playgroundCtx, /--tapp-primary/)
+    assert.match(playground, /code\.assets/)
+    assert.match(playgroundCtx, /Tapp\.widgets/)
+    assert.match(playgroundCtx, /render\(container, props\)/)
+    assert.match(playgroundCtx, /#tapp-content/)
+    assert.match(playgroundCtx, /仅 Page 预览/)
+    assert.match(playground, /仅 Page 预览/)
+    assert.ok(
+      !/Tapp\.ai\.generate\s*\(/.test(playgroundCtx),
+      'generation context must not invent Tapp.ai.generate()',
+    )
+    assert.match(playgroundCtx, /无条件注入/)
+    assert.match(playground, /PLAYGROUND_GENERATION_CONTEXT\.md/)
+    assert.match(playground, /无条件注入/)
+    assert.match(playground, /contextProvenance/)
+
+    const apiReference = read(join(DOCS_TAPP, 'API_REFERENCE.md'))
+    assert.match(
+      apiReference,
+      /version, locale, theme, features/,
+    )
+    assert.ok(
+      !apiReference.includes('{ version, name, environment }'),
+      'API_REFERENCE getApp must match host { version, locale, theme, features }',
+    )
+  })
 })

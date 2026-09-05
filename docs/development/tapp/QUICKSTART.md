@@ -118,18 +118,18 @@ Tapp.widgets['my-widget'] = {
 };
 ```
 
-`page/index.js` 只挂载 Page：
+`page/index.js` 在已有 `page.html` 时绑定内容层（宿主不会调用 `Tapp.pages.render`）：
 
 ```javascript
 var core = require('../core.js');
 
 Tapp.lifecycle.onReady(async function() {
-  var container = document.getElementById('tapp-root');
+  var container = document.getElementById('tapp-content');
   var colors = core.getThemeColors(
     document.documentElement.classList.contains('dark')
   );
   container.style.color = colors.text;
-  container.textContent = 'Page Content';
+  // 更新模板节点，不要把 #tapp-root 整层 textContent 清掉
 });
 ```
 
@@ -504,7 +504,7 @@ Tapp.lifecycle.onReady(async function () {
 - [Tapp 商店](./STORE.md) - 远程目录、安装与发布
 - [API 参考](./API_REFERENCE.md) - 所有可用 API 的详细文档
 - [小组件开发](./WIDGET.md) - Widget 样式与[数据加载与更新](WIDGET.md#数据加载与更新)
-- [页面样式规范](./PAGE.md) - 页面布局和深色模式样式
+- [页面样式规范](./PAGE.md) - 宿主 React chrome 对照（沙箱样式用 STYLING / DESIGN_SPEC）
 - [样式规范](./STYLING.md) - Glass Morphism 设计规范
 - [安全沙箱](./SANDBOX.md) - 沙箱限制和安全机制
 - [故障排除](./TROUBLESHOOTING.md) - 安装与运行时问题

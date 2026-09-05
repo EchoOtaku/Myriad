@@ -150,6 +150,7 @@ export interface TranslationKeys {
     anime25dDebug: string
     overviewGroup: string
     overviewGroupDescription: string
+    statusGroup: string
     overviewName: string
     overviewMood: string
     overviewActivity: string
@@ -166,6 +167,16 @@ export interface TranslationKeys {
     overviewRig: string
     overviewRigReady: string
     overviewRigEmpty: string
+    overviewOutfitPortrait: string
+    overviewOutfitRig: string
+    overviewWardrobeWearing: string
+    overviewWardrobeCount: string
+    overviewWardrobeNoneReady: string
+    overviewWardrobeAllPortraits: string
+    overviewWardrobeAllRigs: string
+    overviewWardrobeMixed: string
+    overviewWardrobeOnePortrait: string
+    overviewWardrobeOneRig: string
     overviewSummary: string
     overviewEmpty: string
     personaGroup: string

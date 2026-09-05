@@ -463,12 +463,20 @@ export const PermissionsConfigSection: React.FC<
           <SettingGroup
             title={t.config.agentUsageUser}
             description={t.config.agentPresetUserHint}
+            {...bindGuide(
+              'permissions.agentPresetUser',
+              g.permissions.agentPresetUser,
+            )}
           >
             {renderPresetButtons('user', userPreset)}
           </SettingGroup>
           <SettingGroup
             title={t.config.agentUsageGuest}
             description={t.config.agentPresetGuestHint}
+            {...bindGuide(
+              'permissions.agentPresetGuest',
+              g.permissions.agentPresetGuest,
+            )}
           >
             {renderPresetButtons('guest', guestPreset)}
           </SettingGroup>

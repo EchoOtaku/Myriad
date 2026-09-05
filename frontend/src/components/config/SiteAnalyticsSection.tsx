@@ -714,6 +714,7 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
           itemKey="analytics_opt_out"
           label={a.optOutLabel}
           description={a.optOutDesc}
+          {...bindGuide('platforms.analyticsOptOut', g.platforms.analyticsOptOut)}
           value={optedOut}
           onChange={(next) => {
             setAnalyticsOptOut(next)

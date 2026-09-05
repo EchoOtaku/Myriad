@@ -11,10 +11,9 @@ export const TURN_TRACE_SPANS = [
   'input_final',
   'request_sent',
   'reaction_ready',
-  // A turn can act twice: the deterministic floor lands first, and the Lite
-  // refinement replaces it whenever it arrives at all. One span could not tell
-  // the two apart, so every plan looked like a reaction.
-  'performance_refined',
+  // Delivery readiness is a phase, not proof that a model director returned.
+  // Local sentence delivery can precede the optional model revision.
+  'delivery_ready',
   // Backend receipt is not proof of animation. This is stamped only after the
   // renderer accepts a semantic cue from the unified behavior plan.
   'performance_applied',

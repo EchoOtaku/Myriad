@@ -145,7 +145,7 @@ Manifest 采用严格字段校验：未声明字段、拼写错误以及已经�
 - 解析回退链：精确匹配（忽略大小写）→ 语言前缀匹配（`zh-CN` ↔ `zh`）→ 顶层
   `name` / `description`。顶层字段是所有语言未命中时的兜底。
 - `locales` 只覆盖清单展示文案。应用内 UI 仍走 `i18n/{lang}.json` 与 `Tapp.i18n`
-  （见 [PAGE.md](PAGE.md)）。
+  （见 [API_REFERENCE · 国际化](API_REFERENCE.md)）。
 - 商店详情长介绍与静态预览**不要**写进 Manifest `locales`（安装会拒绝未知字段）。
   那些字段属于 `catalog.json` / `index.json`，见 [STORE](STORE.md)。
 
@@ -454,24 +454,21 @@ scheduler/headless core，而不是依赖 Widget 的可见计时器。
 
 ### 代码结构要求
 
-声明 `page` 层后，在 `page.entry` 指向的文件里定义页面渲染逻辑：
+声明 `page` 层后：有 `page.template`（Playground 固定为 `page.html`）时宿主已经把
+模板画进 `#tapp-content`，**不会**再调 `Tapp.pages[id].render`。页面 JS 从
+`Tapp.lifecycle.onReady` 里查询 `#tapp-content` 或模板里的 id 绑定即可。
+
+只有**没有** HTML 模板的纯 JS 页面，宿主才会在加载后调用 `Tapp.pages` 上第一个
+`render(container)`（`container` 是 `#tapp-content`）。不要把这条路径当成
+Playground 的默认写法。
 
 ```javascript
-// page/index.js
-Tapp.pages["my-page"] = {
-  render: function (container, locale, isDark, primaryColor) {
-    var bgLayer = document.getElementById("tapp-background");
-    var contentLayer = document.getElementById("tapp-content");
-    // 渲染页面...
-  },
-};
-
+// page/index.js — 有 page.html 时（Playground / 混合模式）
 Tapp.lifecycle.onReady(async function () {
   var locale = await Tapp.ui.getLocale();
   var theme = await Tapp.ui.getTheme();
-  var primaryColor = await Tapp.ui.getPrimaryColor();
-
-  Tapp.pages["my-page"].render(null, locale, theme === "dark", primaryColor);
+  var content = document.getElementById("tapp-content");
+  // 绑定模板里的按钮；不要 content.parentElement.textContent = ...（会拆掉 #tapp-root）
 });
 ```
 

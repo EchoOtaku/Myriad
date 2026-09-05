@@ -17,7 +17,6 @@ export interface SettingGuideEntry {
 export interface SettingGuidesCatalog {
   ui: {
     siteUrl: SettingGuideEntry
-    siteMetadata: SettingGuideEntry
     /** 基础设置：网站名片 + PWA（合并组） */
     siteIdentity: SettingGuideEntry
     siteTitle: SettingGuideEntry
@@ -27,7 +26,6 @@ export interface SettingGuidesCatalog {
     siteKeywords: SettingGuideEntry
     siteOgImage: SettingGuideEntry
     googleSiteVerification: SettingGuideEntry
-    siteNoindex: SettingGuideEntry
     siteVisibilityPolicy: SettingGuideEntry
     siteAiIntro: SettingGuideEntry
     siteAiGenerate: SettingGuideEntry
@@ -70,6 +68,8 @@ export interface SettingGuidesCatalog {
     list: SettingGuideEntry
     /** 数据及统计：访客统计子分类 */
     visitorStats: SettingGuideEntry
+    /** 本机退出采集（只影响这台浏览器） */
+    analyticsOptOut: SettingGuideEntry
     /** 数据及统计：页面访问分析（访客统计组内分区） */
     pageAnalytics: SettingGuideEntry
     /** 数据及统计：事件埋点（访客统计组内分区） */
@@ -125,6 +125,20 @@ export interface SettingGuidesCatalog {
     apiKey: SettingGuideEntry
     baseUrl: SettingGuideEntry
     model: SettingGuideEntry
+    /** Agent 定时任务 */
+    heartbeat: SettingGuideEntry
+    /** Agent 技能列表 */
+    skills: SettingGuideEntry
+    /** Agent 记忆列表 */
+    memory: SettingGuideEntry
+    /** 图片生成模型名 */
+    imageModel: SettingGuideEntry
+    /** 语音识别模型 */
+    speechStt: SettingGuideEntry
+    /** 语音合成模型 */
+    speechTts: SettingGuideEntry
+    /** 语音合成音色 */
+    speechVoice: SettingGuideEntry
   }
   /**
    * 3D / Tripo（独立于 AI 图片服务；密钥仅存后端）
@@ -148,12 +162,19 @@ export interface SettingGuidesCatalog {
   }
   oauth: {
     section: SettingGuideEntry
-    /** @deprecated 语义已纠正为第三方；本地公开注册见 users.allowLocalRegister */
-    allowRegister: SettingGuideEntry
     provider: SettingGuideEntry
+    /** 登录回调地址 */
+    callback: SettingGuideEntry
+    clientId: SettingGuideEntry
+    clientSecret: SettingGuideEntry
+    discovery: SettingGuideEntry
+    /** 标识 / 显示名 / 范围 / 图标 */
+    advanced: SettingGuideEntry
   }
   permissions: {
     agentPreset: SettingGuideEntry
+    agentPresetUser: SettingGuideEntry
+    agentPresetGuest: SettingGuideEntry
     fineTune: SettingGuideEntry
     userElevated: SettingGuideEntry
     guestElevated: SettingGuideEntry
@@ -167,6 +188,8 @@ export interface SettingGuidesCatalog {
     list: SettingGuideEntry
     /** 公开本地用户名密码注册（/register） */
     allowLocalRegister: SettingGuideEntry
+    /** 普通用户个人（临时）Tapp 安装清理 */
+    privateTappInstall: SettingGuideEntry
   }
   advanced: {
     memorySaver: SettingGuideEntry
@@ -188,6 +211,14 @@ export interface SettingGuidesCatalog {
     runtimeDiagnostics: SettingGuideEntry
     /** MCP 工具服务器状态与热重载 */
     mcp: SettingGuideEntry
+    mcpId: SettingGuideEntry
+    mcpCommand: SettingGuideEntry
+    mcpArgs: SettingGuideEntry
+    mcpEnv: SettingGuideEntry
+    mcpMaxRestart: SettingGuideEntry
+    mcpEnabled: SettingGuideEntry
+    mcpAutoRestart: SettingGuideEntry
+    mcpTrustAnnotations: SettingGuideEntry
   }
   federation: {
     keys: SettingGuideEntry

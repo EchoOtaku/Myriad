@@ -39,14 +39,15 @@ import { parseFlattenedPersona } from '../agent/onboarding/onboardingTypes'
 import PersonaOnboardingPage from '../agent/onboarding/PersonaOnboardingPage'
 import {
   AutoHeight,
+  guideDomProps,
   InfoActionCard,
   InputItem,
   ProviderItem,
   SettingGroup,
   SettingsButton,
   SettingSection,
+  SettingTitleGuideEntry,
   SettingTitleTag,
-  SwitchItem,
   ToggleSwitch,
   useSettingGuide,
 } from '../settings'
@@ -137,6 +138,10 @@ const ModelTierGroup: React.FC<
     fieldGuideFor?: (
       fieldKey: string,
     ) => { guide?: React.ReactNode; guidePath?: string } | undefined
+    guide?: React.ReactNode
+    guidePath?: string
+    enableGuide?: React.ReactNode
+    enableGuidePath?: string
   }
 > = ({
   title,
@@ -154,19 +159,38 @@ const ModelTierGroup: React.FC<
   toggle,
   onProviderChange,
   updateValue,
+  guide,
+  guidePath,
+  enableGuide,
+  enableGuidePath,
 }) => {
   const { t } = useI18n()
   return (
-  <div className="ai-llm-tier">
+  <div
+    className={`ai-llm-tier${guidePath ? ' has-guide-anchor' : ''}`}
+    {...guideDomProps(guidePath)}
+  >
     <div className="ai-llm-tier-head">
       <div className="ai-llm-tier-copy">
-        <h3 className="ai-llm-tier-title">{title}</h3>
+        <h3 className="ai-llm-tier-title">
+          {title}
+          <SettingTitleGuideEntry title={title} guide={guide} />
+        </h3>
         {description ? (
           <p className="ai-llm-tier-desc">{description}</p>
         ) : null}
       </div>
       {toggle ? (
-        <div className="ai-llm-tier-switch">
+        <div
+          className={`ai-llm-tier-switch${enableGuidePath ? ' has-guide-anchor' : ''}`}
+          {...guideDomProps(enableGuidePath)}
+        >
+          {enableGuide ? (
+            <SettingTitleGuideEntry
+              title={toggle.ariaLabel}
+              guide={enableGuide}
+            />
+          ) : null}
           <ToggleSwitch
             checked={toggle.checked}
             onChange={toggle.onChange}
@@ -414,6 +438,14 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       baseUrlKey: string,
       slug: string,
     ) => {
+      if (!slug) {
+        updateValue(sourceKey, '')
+        const hasVendorText = vendorSources.some(
+          (item) => item.enabled && vendorSupports(item, 'text'),
+        )
+        if (!hasVendorText) updateValue(providerKey, '')
+        return
+      }
       updateValue(sourceKey, slug)
       const source = vendorSources.find((item) => item.slug === slug)
       if (!source) {
@@ -435,11 +467,21 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     [handleProviderChange, updateValue, vendorSources],
   )
 
-  const standardSourceValue =
-    getFieldValue('ai_source') || currentProvider
-  const liteSourceValue =
-    getFieldValue('lite_ai_source') || currentLiteProvider
-  const proSourceValue = getFieldValue('pro_ai_source') || currentProProvider
+  const standardSourceValue = textSourceOptions
+    ? getFieldValue('ai_source')
+    : getFieldValue('provider')
+      ? currentProvider
+      : ''
+  const liteSourceValue = textSourceOptions
+    ? getFieldValue('lite_ai_source')
+    : getFieldValue('lite_provider')
+      ? currentLiteProvider
+      : ''
+  const proSourceValue = textSourceOptions
+    ? getFieldValue('pro_ai_source')
+    : getFieldValue('pro_provider')
+      ? currentProProvider
+      : ''
 
   // 当前图片生成 Provider
   const currentImageProvider = useMemo(
@@ -521,6 +563,14 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
 
   const handleSpeechProviderChange = useCallback(
     (slug: string) => {
+      if (!slug) {
+        updateValue('speech_source', '')
+        const hasVendorSpeech = vendorSources.some(
+          (item) => item.enabled && vendorSupports(item, 'speech'),
+        )
+        if (!hasVendorSpeech) updateValue('speech_provider', '')
+        return
+      }
       // 只改源。转写/播报/音色不代填。
       updateValue('speech_source', slug)
       const source = vendorSources.find((item) => item.slug === slug)
@@ -588,6 +638,14 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
 
   const handleImageProviderChange = useCallback(
     (slug: string) => {
+      if (!slug) {
+        updateValue('ai_image_source', '')
+        const hasVendorImage = vendorSources.some(
+          (item) => item.enabled && vendorSupports(item, 'image'),
+        )
+        if (!hasVendorImage) updateValue('ai_image_provider', '')
+        return
+      }
       updateValue('ai_image_source', slug)
       const source = vendorSources.find((item) => item.slug === slug)
       const kind = source?.kind || slug
@@ -866,12 +924,13 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         <ModelTierGroup
           title={t.config.aiStandardModelTitle}
           description={t.config.aiStandardModelDesc}
+          {...bindGuide('ai.standard', g.ai.standard)}
           providerGuide={providerGuideBinding.guide}
           providerGuidePath={providerGuideBinding.guidePath}
           fieldGuideFor={fieldGuideFor}
           providerItemKey="ai_provider"
           providerLabel={t.config.aiProvider}
-          provider={textSourceOptions ? standardSourceValue : currentProvider}
+          provider={standardSourceValue}
           providerOptions={textSourceOptions ?? aiProviderOptions}
           providerHint={t.config.aiProviderHint}
           fields={providerFields}
@@ -889,12 +948,15 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         <ModelTierGroup
           title={t.config.aiLiteModelTitle}
           description={t.config.aiLiteModelDesc}
+          {...bindGuide('ai.lite', g.ai.lite)}
+          enableGuide={bindGuide('ai.liteEnable', g.ai.liteEnable).guide}
+          enableGuidePath="ai.liteEnable"
           providerGuide={providerGuideBinding.guide}
           providerGuidePath={providerGuideBinding.guidePath}
           fieldGuideFor={fieldGuideFor}
           providerItemKey="lite_ai_provider"
           providerLabel={t.config.aiProvider}
-          provider={textSourceOptions ? liteSourceValue : currentLiteProvider}
+          provider={liteSourceValue}
           providerOptions={textSourceOptions ?? aiProviderOptions}
           providerHint={t.config.aiLiteProviderHint}
           fields={liteProviderFields}
@@ -920,12 +982,15 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         <ModelTierGroup
           title={t.config.aiProModelTitle}
           description={t.config.aiProModelDesc}
+          {...bindGuide('ai.pro', g.ai.pro)}
+          enableGuide={bindGuide('ai.proEnable', g.ai.proEnable).guide}
+          enableGuidePath="ai.proEnable"
           providerGuide={providerGuideBinding.guide}
           providerGuidePath={providerGuideBinding.guidePath}
           fieldGuideFor={fieldGuideFor}
           providerItemKey="pro_ai_provider"
           providerLabel={t.config.aiProvider}
-          provider={textSourceOptions ? proSourceValue : currentProProvider}
+          provider={proSourceValue}
           providerOptions={textSourceOptions ?? aiProviderOptions}
           providerHint={t.config.aiProProviderHint}
           fields={proProviderFields}
@@ -979,6 +1044,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         <AgentNestedSection
           title={t.config.agentPersona}
           description={personaGateLead}
+          {...personaGuide}
           badge={
             <SettingTitleTag variant="beta">
               {t.config.agentPersonaBeta}
@@ -994,7 +1060,6 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
           }}
         >
         {meropeOn ? (
-          <>
           <InfoActionCard
             copyable={false}
             tone={!liteEnabled ? 'info' : 'default'}
@@ -1063,23 +1128,24 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               </p>
             )}
           </InfoActionCard>
-          <SwitchItem
-            itemKey="merope_speech_enabled"
-            label={t.config.agentPersonaSpeech}
-            description={t.config.agentPersonaSpeechHint}
-            {...bindGuide('ai.agentPersonaSpeech', g.ai.agentPersonaSpeech)}
-            value={agentPersonaSpeechEnabled}
-            onChange={(value) =>
+        ) : null}
+        </AgentNestedSection>
+        <AgentNestedSection
+          title={t.config.agentPersonaSpeech}
+          description={t.config.agentPersonaSpeechHint}
+          {...bindGuide('ai.agentPersonaSpeech', g.ai.agentPersonaSpeech)}
+          toggle={{
+            checked: agentPersonaSpeechEnabled,
+            onChange: (value) =>
               updateUiFieldValue(
                 'merope_speech_enabled',
                 value ? 'true' : 'false',
-              )
-            }
-            layout="horizontal"
-          />
-          </>
-        ) : null}
-        </AgentNestedSection>
+              ),
+            disabled: !meropeOn,
+            ariaLabel: t.config.agentPersonaSpeech,
+            title: t.config.agentPersonaSpeechHint,
+          }}
+        />
         <AgentOptionsPanel />
       </SettingGroup>
 
@@ -1096,8 +1162,8 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
           {...bindGuide('ai.provider', g.ai.provider)}
           value={
             imageSourceOptions
-              ? getFieldValue('ai_image_source') || currentImageProvider
-              : currentImageProvider
+              ? getFieldValue('ai_image_source')
+              : getFieldValue('ai_image_provider')
           }
           onChange={handleImageProviderChange}
           options={imageSourceOptions ?? imageProviderOptions}
@@ -1107,6 +1173,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         <InputItem
           itemKey="ai_image_model"
           label={t.config.openaiModelLabel}
+          {...bindGuide('ai.imageModel', g.ai.imageModel)}
           value={getFieldValue('ai_image_model')}
           onChange={(v) => updateValue('ai_image_model', v)}
           placeholder={
@@ -1150,10 +1217,11 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         <ProviderItem
           itemKey="speech_provider"
           label={t.config.speechProvider}
+          {...bindGuide('ai.provider', g.ai.provider)}
           value={
             speechSourceOptions
-              ? getFieldValue('speech_source') || currentSpeechProvider
-              : currentSpeechProvider
+              ? getFieldValue('speech_source')
+              : getFieldValue('speech_provider')
           }
           onChange={handleSpeechProviderChange}
           options={speechSourceOptions ?? speechProviderOptions}
@@ -1161,14 +1229,16 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         />
 
         {(() => {
+          const speechSelectorValue = speechSourceOptions
+            ? getFieldValue('speech_source')
+            : getFieldValue('speech_provider')
+          if (!speechSelectorValue) return null
           const selectedSource = vendorSources.find(
-            (item) =>
-              item.slug ===
-              (getFieldValue('speech_source') || currentSpeechProvider),
+            (item) => item.slug === speechSelectorValue,
           )
           const selected = speechProviderKindFromSource(
             selectedSource,
-            selectedSource?.kind || currentSpeechProvider,
+            selectedSource?.kind || speechSelectorValue,
           )
           if (selected === 'minimax') {
             return (
@@ -1176,6 +1246,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
                 <InputItem
                   itemKey="speech_tts_model"
                   label={t.config.speechTtsModel}
+                  {...bindGuide('ai.speechTts', g.ai.speechTts)}
                   value={getFieldValue('speech_tts_model')}
                   onChange={(v) => updateValue('speech_tts_model', v)}
                   placeholder="speech-2.8-turbo"
@@ -1185,6 +1256,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
                 <InputItem
                   itemKey="speech_tts_voice"
                   label={t.config.speechTtsVoice}
+                  {...bindGuide('ai.speechVoice', g.ai.speechVoice)}
                   value={getFieldValue('speech_tts_voice')}
                   onChange={(v) => updateValue('speech_tts_voice', v)}
                   placeholder="female-shaonv"
@@ -1206,6 +1278,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
                 <InputItem
                   itemKey="speech_stt_model"
                   label={t.config.speechSttModel}
+                  {...bindGuide('ai.speechStt', g.ai.speechStt)}
                   value={getFieldValue('speech_stt_model')}
                   onChange={(v) => updateValue('speech_stt_model', v)}
                   placeholder={
@@ -1221,6 +1294,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
                 <InputItem
                   itemKey="speech_tts_model"
                   label={t.config.speechTtsModel}
+                  {...bindGuide('ai.speechTts', g.ai.speechTts)}
                   value={getFieldValue('speech_tts_model')}
                   onChange={(v) => updateValue('speech_tts_model', v)}
                   placeholder={
@@ -1236,6 +1310,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
                 <InputItem
                   itemKey="speech_tts_voice"
                   label={t.config.speechTtsVoice}
+                  {...bindGuide('ai.speechVoice', g.ai.speechVoice)}
                   value={getFieldValue('speech_tts_voice')}
                   onChange={(v) => updateValue('speech_tts_voice', v)}
                   placeholder={

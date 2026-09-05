@@ -34,12 +34,15 @@ import {
   SCHEDULE_PRESETS,
 } from '../agent-panel/agentSchedule'
 import {
+  guideDomProps,
   InputItem,
   ManagedList,
   SegmentedControl,
   SettingFieldErrorTag,
   SettingsButton,
+  SettingTitleGuideEntry,
   ToggleSwitch,
+  useSettingGuide,
 } from '../settings'
 import { agentOptionsListWindow } from './agentOptionsList'
 
@@ -49,6 +52,8 @@ export function AgentNestedSection({
   badge,
   error,
   toggle,
+  guide,
+  guidePath,
   children,
 }: {
   title: string
@@ -62,15 +67,21 @@ export function AgentNestedSection({
     ariaLabel?: string
     title?: string
   }
+  guide?: ReactNode
+  guidePath?: string
   children?: ReactNode
 }) {
   return (
-    <div className="ai-llm-tier">
+    <div
+      className={`ai-llm-tier${guidePath ? ' has-guide-anchor' : ''}`}
+      {...guideDomProps(guidePath)}
+    >
       <div className="ai-llm-tier-head">
         <div className="ai-llm-tier-copy">
           <h3 className="ai-llm-tier-title">
             {title}
             {badge}
+            <SettingTitleGuideEntry title={title} guide={guide} />
           </h3>
           {description ? (
             <p className="ai-llm-tier-desc">{description}</p>
@@ -153,6 +164,7 @@ function skillOriginBadge(
 export const AgentOptionsPanel: React.FC = () => {
   const { t, format, locale } = useI18n()
   const { isAuthenticated } = useAuth()
+  const { catalog: g, bindGuide } = useSettingGuide()
   const m = t.agentPanel.manage
   const [tasks, setTasks] = useState<HeartbeatTask[]>([])
   const [skills, setSkills] = useState<SkillInfo[]>([])
@@ -694,6 +706,7 @@ export const AgentOptionsPanel: React.FC = () => {
         title={t.config.agentHeartbeatTitle}
         description={t.config.agentHeartbeatDesc}
         error={errorFor('heartbeat')}
+        {...bindGuide('ai.heartbeat', g.ai.heartbeat)}
       >
         <ManagedList
           stats={heartbeatStats}
@@ -760,6 +773,7 @@ export const AgentOptionsPanel: React.FC = () => {
         title={t.config.agentSkillsTitle}
         description={t.config.agentSkillsDesc}
         error={errorFor('skills')}
+        {...bindGuide('ai.skills', g.ai.skills)}
       >
         <ManagedList
           loading={loading}
@@ -817,6 +831,7 @@ export const AgentOptionsPanel: React.FC = () => {
         title={t.config.agentMemoryTitle}
         description={t.config.agentMemoryDesc}
         error={errorFor('memory')}
+        {...bindGuide('ai.memory', g.ai.memory)}
       >
         <ManagedList
           loading={loading}

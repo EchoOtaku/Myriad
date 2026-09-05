@@ -11,6 +11,7 @@ import type { MeropeActivity } from './types'
 import type { WardrobeItem } from './wardrobe'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { LuRefreshCw, LuSparkles } from '@lib/icons'
 import { LuChevronLeft } from 'react-icons/lu'
 import {
   activityKey,
@@ -64,6 +65,7 @@ import {
   parseWardrobeName,
   persistWardrobeState,
   seedWardrobeFromIdentity,
+  sortWardrobe,
   stampPortrait,
   wardrobeItemLabel,
   withCharacter,
@@ -75,6 +77,24 @@ import './merope-motion-home.css'
 function toMeropeActivity(raw: string): MeropeActivity {
   if (raw === 'talking' || raw === 'thinking') return raw
   return 'idle'
+}
+
+function fillTemplate(
+  template: string,
+  vars: Record<string, string | number>,
+): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) =>
+    Object.prototype.hasOwnProperty.call(vars, key) ? String(vars[key]) : '',
+  )
+}
+
+function joinOverviewSentences(locale: string, parts: string[]): string {
+  const cleaned = parts
+    .map((part) => part.replace(/[。．.]+$/u, '').trim())
+    .filter(Boolean)
+  if (cleaned.length === 0) return ''
+  if (locale.startsWith('en')) return `${cleaned.join('. ')}.`
+  return `${cleaned.join('。')}。`
 }
 
 function structuredFromSnapshot(
@@ -600,7 +620,6 @@ export default function SiteMotionWorkbench({
    */
   const makeStickerAvatar = useCallback(async () => {
     if (avatarBusy || !portraitUrl) return
-    if (!window.confirm(t.merope.avatarConfirm)) return
     setAvatarBusy(true)
     setError('')
     try {
@@ -616,7 +635,7 @@ export default function SiteMotionWorkbench({
     } finally {
       setAvatarBusy(false)
     }
-  }, [avatarBusy, portraitUrl, t.merope.avatarConfirm, t.merope.avatarFailed])
+  }, [avatarBusy, portraitUrl, t.merope.avatarFailed])
 
   const generatePortrait = useCallback(async (item: WardrobeItem) => {
     if (generating || !visualIdentity) return
@@ -818,35 +837,65 @@ export default function SiteMotionWorkbench({
       />
     ) : null
 
+  const statusName = personaSnapshot?.name.trim() || '—'
+  const statusMood = o.mood[moodBand(mood, arousal)]
+  const statusActivity = o.activity[activityKey(activity)]
+  const styleNames = o.clothingStyle
+  const rack = sortWardrobe(wardrobeItems)
+  const wardrobeCount = rack.length
+  const wearingItem = rack.find((item) => item.id === activeOutfitId)
+  const wearingName = wearingItem
+    ? wardrobeItemLabel(wearingItem, styleNames, t.merope.wardrobeDefault)
+    : null
+  const wardrobeSentences: string[] = []
+  if (wearingName) {
+    wardrobeSentences.push(
+      fillTemplate(t.merope.overviewWardrobeWearing, { name: wearingName }),
+    )
+  }
+  if (wardrobeCount > 1) {
+    wardrobeSentences.push(
+      fillTemplate(t.merope.overviewWardrobeCount, { n: wardrobeCount }),
+    )
+  }
+  if (wardrobeCount > 0) {
+    const portraitReady = rack.filter((item) => item.portraitAssetId).length
+    const rigReady = rack.filter((item) => item.rigAssetId).length
+    const allReady =
+      portraitReady === wardrobeCount && rigReady === wardrobeCount
+    if (!allReady) {
+      if (wardrobeCount === 1) {
+        if (portraitReady) {
+          wardrobeSentences.push(t.merope.overviewWardrobeOnePortrait)
+        } else if (rigReady) {
+          wardrobeSentences.push(t.merope.overviewWardrobeOneRig)
+        } else {
+          wardrobeSentences.push(t.merope.overviewWardrobeNoneReady)
+        }
+      } else if (portraitReady === 0 && rigReady === 0) {
+        wardrobeSentences.push(t.merope.overviewWardrobeNoneReady)
+      } else if (portraitReady === wardrobeCount && rigReady === 0) {
+        wardrobeSentences.push(t.merope.overviewWardrobeAllPortraits)
+      } else if (rigReady === wardrobeCount && portraitReady === 0) {
+        wardrobeSentences.push(t.merope.overviewWardrobeAllRigs)
+      } else {
+        wardrobeSentences.push(
+          fillTemplate(t.merope.overviewWardrobeMixed, {
+            portrait: portraitReady,
+            rig: rigReady,
+          }),
+        )
+      }
+    }
+  }
   const overviewRows: Array<{ key: string; label: string; value: string }> = [
     {
-      key: 'name',
-      label: t.merope.overviewName,
-      value: personaSnapshot?.name.trim() || '—',
-    },
-    {
-      key: 'mood',
-      label: t.merope.overviewMood,
-      value: o.mood[moodBand(mood, arousal)],
-    },
-    {
-      key: 'activity',
-      label: t.merope.overviewActivity,
-      value: o.activity[activityKey(activity)],
-    },
-    {
-      key: 'portrait',
-      label: t.merope.overviewPortrait,
-      value: portraitUrl
-        ? t.merope.overviewPortraitReady
-        : t.merope.overviewPortraitEmpty,
-    },
-    {
-      key: 'rig',
-      label: t.merope.overviewRig,
-      value: motionEnabled
-        ? t.merope.overviewRigReady
-        : t.merope.overviewRigEmpty,
+      key: 'wardrobe',
+      label: t.merope.wardrobeTitle,
+      value:
+        wardrobeCount === 0
+          ? t.merope.wardrobeEmpty
+          : joinOverviewSentences(locale, wardrobeSentences),
     },
     ...(structuredPersona?.summary.trim()
       ? [
@@ -867,10 +916,71 @@ export default function SiteMotionWorkbench({
 
   const overviewCard = personaSnapshot ? (
     <div className="merope-ob-persona-groups">
+      <div className="merope-motion-avatar">
+        <section
+          className="merope-motion-avatar__pane"
+          aria-label={t.merope.avatarTitle}
+        >
+          <div className="merope-motion-avatar__frame">
+            {stickerAvatarUrl ? (
+              <img
+                className="merope-motion-avatar__preview"
+                src={stickerAvatarUrl}
+                alt={t.merope.avatarTitle}
+                width={96}
+                height={96}
+                decoding="async"
+              />
+            ) : (
+              <span className="merope-motion-avatar__preview is-empty" aria-hidden />
+            )}
+          </div>
+          <div className="merope-motion-asset__actions">
+            <SettingsButton
+              type="button"
+              size="sm"
+              icon={stickerAvatarUrl ? <LuRefreshCw /> : <LuSparkles />}
+              disabled={avatarBusy || !portraitUrl}
+              loading={avatarBusy}
+              confirm={t.merope.avatarConfirm}
+              title={portraitUrl ? undefined : t.merope.avatarNeedsPortrait}
+              onClick={() => void makeStickerAvatar()}
+            >
+              {avatarBusy
+                ? t.merope.avatarGenerating
+                : stickerAvatarUrl
+                  ? t.merope.avatarRegenerate
+                  : t.merope.avatarGenerate}
+            </SettingsButton>
+          </div>
+        </section>
+        <section
+          className="merope-motion-avatar__pane"
+          aria-label={t.merope.statusGroup}
+        >
+          <div className="merope-motion-avatar__field">
+            <h2 className="merope-ob-persona-group__title">
+              {t.merope.overviewName}
+            </h2>
+            <p className="merope-motion-avatar__value">{statusName}</p>
+          </div>
+          <div className="merope-motion-avatar__field">
+            <h2 className="merope-ob-persona-group__title">
+              {t.merope.statusGroup}
+            </h2>
+            <p className="merope-motion-avatar__value">
+              {statusMood}
+              <span aria-hidden> · </span>
+              {statusActivity}
+            </p>
+          </div>
+        </section>
+      </div>
       <section
         className="merope-ob-persona-group"
         aria-label={t.merope.overviewGroup}
       >
+        <h2 className="merope-ob-persona-group__title">{t.merope.overviewGroup}</h2>
         <dl className="merope-ob-persona-view">
           {overviewRows.map((row) => (
             <div key={row.key} className="merope-ob-persona-view__row">
@@ -925,43 +1035,6 @@ export default function SiteMotionWorkbench({
             </div>
           </div>
         </dl>
-      </section>
-      <section
-        className="merope-ob-persona-group"
-        aria-label={t.merope.avatarTitle}
-      >
-        <div className="merope-motion-avatar">
-          {stickerAvatarUrl ? (
-            <img
-              className="merope-motion-avatar__preview"
-              src={stickerAvatarUrl}
-              alt={t.merope.avatarTitle}
-              width={96}
-              height={96}
-              decoding="async"
-            />
-          ) : null}
-          <div className="merope-motion-avatar__copy">
-            <p className="merope-motion-home__help">
-              {portraitUrl ? t.merope.avatarHint : t.merope.avatarNeedsPortrait}
-            </p>
-            <div className="merope-motion-asset__actions">
-              <SettingsButton
-                type="button"
-                size="sm"
-                disabled={avatarBusy || !portraitUrl}
-                loading={avatarBusy}
-                onClick={() => void makeStickerAvatar()}
-              >
-                {avatarBusy
-                  ? t.merope.avatarGenerating
-                  : stickerAvatarUrl
-                    ? t.merope.avatarRegenerate
-                    : t.merope.avatarGenerate}
-              </SettingsButton>
-            </div>
-          </div>
-        </div>
       </section>
     </div>
   ) : (

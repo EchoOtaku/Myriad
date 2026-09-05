@@ -4,8 +4,53 @@ import test from 'node:test'
 import { realizeAnime25DBehaviorPlan } from '../anime25drig/behaviorRealizer'
 import { setLiveFaceVisible } from '../faceVisible'
 import { RigMotionCoordinator } from '../motion/coordinator'
+import { setLiveMotionGeneration } from '../motion/liveGeneration'
 import { MotionRuntime } from '../motion/runtime'
 import { Anime25DBodyAdapter } from './anime25dAdapter'
+
+test('production adapter keeps run identity and does not label proactive performance as Chat', () => {
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const release = runtime.retain()
+  const body = new Anime25DBodyAdapter(runtime)
+  setLiveFaceVisible(true)
+  setLiveMotionGeneration(12)
+  try {
+    body.intend({
+      messageId: 'notice',
+      runId: 'notice-run',
+      source: 'proactive',
+      performance: {
+        phase: 'proactive',
+        moodRevision: 1,
+        motionStyle: 'even',
+        plan: {
+          cues: [
+            {
+              intent: 'notify',
+              atMs: 0,
+              intensity: 1,
+              tempo: 1,
+              fadeInMs: 80,
+              fadeOutMs: 200,
+              interrupt: 'replace',
+            },
+          ],
+        },
+      },
+    })
+    const performance = runtime.frame().performance!
+    const parameters = performance.behaviorPlan!.behaviors[0]!.form.parameters!
+    assert.equal(
+      parameters.performanceScope,
+      JSON.stringify(['proactive', 0, 'notice-run']),
+    )
+    assert.equal(parameters.generation, 0)
+    assert.equal(performance.generation, undefined)
+  } finally {
+    release()
+    setLiveMotionGeneration(0)
+  }
+})
 
 test('Anime2.5D adapter exposes semantic capabilities and state, not drivers', () => {
   const runtime = new MotionRuntime(new RigMotionCoordinator())

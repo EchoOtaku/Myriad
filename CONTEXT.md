@@ -1,6 +1,6 @@
 # Myriad
 
-Myriad 是个人数字生活平台。本文件是全仓库的术语表：只定义本项目特有的概念，不记录实现细节，也不作为规格文档。
+Myriad 是个人数字生活平台，落到产品上是自托管的个人主页与创作工坊。前者是品类，对外主句用后者。本文件是全仓库的术语表：只定义本项目特有的概念，不记录实现细节，也不作为规格文档。
 
 ## Language
 
@@ -179,7 +179,7 @@ _Avoid_: 第三个面板模式、Heartbeat、SYSTEM_USER_ID
 
 ### Merope
 
-内部项目名是 Merope。用户界面叫 **Agent 人设**（en: Agent persona，ja: Agent ペルソナ）。站点一份的说话人格与上半身形象。这和 Myriad 作为「个人数字生活平台」的定位不是一回事。
+内部项目名是 Merope。用户界面叫 **Agent 人设**（en: Agent persona，ja: Agent ペルソナ）。站点一份的说话人格与上半身形象。这和 Myriad 作为「个人主页与创作工坊」的定位不是一回事。
 _Avoid_: Agent 生命、Agent life、Digital Life、数字生命、数字伙伴、companion（产品名）、人設（日语职衔，不是 人设）
 
 **设定（persona）**：

@@ -551,9 +551,11 @@ let task = await Tapp.ai.tasks.create({
   delivery: "stream",
   idempotencyKey: "summary-42-v1",
 });
+// create 返回 queued 快照，result 仍为空。完成态在 get / subscribe 之后。
 
 const stop = await Tapp.ai.tasks.subscribe(task.taskId, ({ event, data }) => {
   if (event === "delta") renderDelta(data.text);
+  // result / 终态 snapshot 的 data 是任务快照；信封在 data.result
   if (event === "result") renderResult(data.result);
 });
 
@@ -994,25 +996,30 @@ await Tapp.media.setSkipVip(true);
 **无需权限** - 获取应用上下文信息
 
 ```javascript
-// 获取应用信息
+// 获取应用信息（宿主版本与能力，不是 Tapp 包名）
 const app = await Tapp.context.getApp();
-// 返回: { version, name, environment }
+// 返回: { version, locale, theme, features: { aiEnabled, platforms } }
 
 // 获取用户信息
 const user = await Tapp.context.getUser();
-// 返回: { id, username, avatar, preferences }
+// 返回: { id, username, display_name, avatar, avatar_url, isAdmin, role,
+//         authenticated, connectedPlatforms, preferences: { language, timezone } }
 
-// 获取播放器信息
+// 获取播放器信息（无实时曲目时为 idle 零值；正式运行也可走宿主播放器事件）
 const player = await Tapp.context.getPlayer();
-// 返回: { isPlaying, currentTrack, volume }
+// 返回: { isPlaying, isPaused, currentTrack, progress, playlist, mode, volume, muted }
 
 // 获取导航信息
 const nav = await Tapp.context.getNavigation();
-// 返回: { currentPath, params }
+// 返回: { currentPath, previousPath, history, availableRoutes, tappPages }
 
 // 获取系统信息
 const system = await Tapp.context.getSystem();
-// 返回: { theme, language, timezone }
+// 返回: { online, serverConnected, version, backgroundTasks, lastFetch }
+
+// 地理位置（公开上下文；Playground 预览固定返回 null）
+const geo = await Tapp.context.getGeo();
+// 安装后: { lat, lon, city, region, country } 或服务不可用时的失败
 ```
 
 ---
@@ -1834,5 +1841,6 @@ Widget 不会自动拥有完整面的写入/管理能力。调用前必须核对
 headless、方法是否在上表里、以及是否已有授予权限。新增能力时再核对权限映射、三种沙箱是否
 都该接、后端路由是否复核身份和 owner。
 
-`Tapp.context.getGeo()` 也是公开上下文方法；返回结果由后端地理信息服务决定。专业能力
-的请求/响应结构以对应前端服务类型和后端路由结构为准，不能从方法名猜测参数。
+`Tapp.context.getGeo()` 也是公开上下文方法；安装后返回 `{ lat, lon, city, region, country }`
+（由后端地理信息服务决定）。Playground 预览固定返回 `null`。专业能力的请求/响应结构以对应
+前端服务类型和后端路由结构为准，不能从方法名猜测参数。

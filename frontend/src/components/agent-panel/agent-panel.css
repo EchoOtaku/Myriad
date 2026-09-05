@@ -1163,17 +1163,16 @@ button.agent-panel-tag:disabled {
   flex-wrap: nowrap;
 }
 
-/* 上下文贴吃剩余宽度，长文在贴内横滑；解释 / 翻译仍是 shrink-0。 */
+/* 上下文贴按字宽收。长文才收到剩余宽度、贴内横滑；解释 / 翻译仍是 shrink-0。 */
 .agent-panel-work-tags > .agent-panel-swap {
-  flex: 1 1 0;
+  flex: 0 1 auto;
   min-width: 0;
-  width: auto;
-  max-width: 100%;
+  width: max-content;
   justify-items: stretch;
 }
 
 .agent-panel-work-chrome .agent-panel-swap .agent-panel-tag {
-  width: 100%;
+  width: max-content;
   min-width: 0;
   max-width: 100%;
 }
