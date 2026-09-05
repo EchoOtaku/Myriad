@@ -211,3 +211,10 @@ npm publish
 
 Publishing requires an authenticated npm account with access to the `@myriad-you`
 scope. The package declares public scoped access in `publishConfig`.
+
+## License
+
+Apache-2.0. The Tapp contract this CLI ships is the same Apache-2.0 crate the
+host uses to validate installs. The Myriad host itself is AGPL-3.0; a Tapp that
+only uses the documented Bridge does not have to be AGPL. See the repository
+root `LICENSE`.

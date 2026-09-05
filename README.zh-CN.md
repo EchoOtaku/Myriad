@@ -10,7 +10,7 @@
 
 [English](README.md) · **中文** · [日本語](README.ja.md)
 
-[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/myriad-you/Myriad)](https://github.com/myriad-you/Myriad/releases)
 [![Built with Rust](https://img.shields.io/badge/built%20with-Rust-orange.svg)](backend/Cargo.toml)
 [![Astro](https://img.shields.io/badge/Astro-7-blueviolet.svg)](frontend/package.json)
@@ -24,19 +24,17 @@
 
 ## 它是什么
 
-我们在 GitHub 写代码、在 Bilibili 看视频、在 Steam 游玩、在网易云听歌——每一处都留下了一点自己，但它们彼此不相往来。
+**Myriad 是自托管的个人主页与创作工坊。** 聚合各平台、展示资料库，并运行全站一份人设、2.5D 形象，以及你拥有的 Tapp 应用。
 
-**Myriad 是自托管的个人主页与创作工坊。** 数字生活是它收进来的东西，不是一句空品类：把各平台汇到一处，给人看你的首页，给自己留资料库，再在同一站点上运行一份人设、2.5D 形象，以及你拥有的 Tapp 应用。
+单租户。可公开或私有。数据在 PostgreSQL。界面：中 / 英 / 日。
 
-这是你自己跑的 **单租户** 箱子。可以公开做门户，也可以只给自己用。数据落入你的 PostgreSQL。界面有中 / 英 / 日。
-
-装好之后，导航里就是这些房间：**首页**、**资料库**、**Brew**、**平台报告**、**Tapp**，再加上随时可开的 **Agent**。`/config` 仅管理员。
+页面：**首页**、**资料库**、**Brew**、**平台报告**、**Tapp**、**Agent**（面板）。`/config` 仅管理员。
 
 ---
 
 ## 目录
 
-- [一眼看完](#一眼看完)
+- [概览](#概览)
 - [首页](#首页)
 - [平台](#平台)
 - [资料库与报告](#资料库与报告)
@@ -45,10 +43,10 @@
 - [Agent](#agent)
 - [Brew](#brew)
 - [联邦](#联邦)
-- [站点、用户、可见性](#站点用户可见性)
+- [账号与可见性](#账号与可见性)
 - [运维](#运维)
 - [运行要求](#运行要求)
-- [跑起来](#跑起来)
+- [部署](#部署)
 - [本地开发](#本地开发)
 - [架构](#架构)
 - [仓库](#仓库)
@@ -59,49 +57,35 @@
 
 ---
 
-## 一眼看完
+## 概览
 
-| 打开 | 是什么 |
+| 路径 | 作用 |
 | --- | --- |
-| **首页** `/` | 站点对外的脸。小组件、布局、人设、音乐、Tapp 快捷方式。 |
-| **资料库** `/library` | 游戏、番剧、影视、书籍、音乐，从已连接平台同步。 |
-| **Brew** `/brew` | RSS / Notion / RSSHub 阅读器。访客可读；登录用户可标记、收藏。 |
-| **平台报告** `/reports` | 各平台画像。也是生成人设的原料。 |
-| **Tapp** `/tapp` | 已装应用。商店在 `/tapp/store`。Playground（管理员、桌面）在 `/tapp/playground`。 |
-| **Agent** | 站点助手。「聊天」用人设说话；「做事」计划、跑工具、记忆、对接 MCP。 |
-| **配置** `/config` | 管理员：平台、AI、用户、OAuth、可见性、更新器、诊断。 |
+| **首页** `/` | 小组件、布局、人设、音乐、Tapp 快捷方式 |
+| **资料库** `/library` | 已连接平台的游戏、番剧、影视、书籍、音乐 |
+| **Brew** `/brew` | RSS / Notion / RSSHub。默认所有人可读；登录用户可标记、收藏 |
+| **平台报告** `/reports` | 各平台画像；引导式人设的输入 |
+| **Tapp** `/tapp` | 已装应用。商店：`/tapp/store`。Playground（管理员、桌面）：`/tapp/playground` |
+| **Agent** | **Chat** / **Work**。人设开着时 Chat 用人设说话 |
+| **配置** `/config` | 管理员：平台、AI、用户、OAuth、可见性、更新器、诊断 |
 
-资料库、Brew、报告、Tapp、Agent 各自能设谁看得见：所有人、登录用户、或仅管理员。
+资料库、Brew、报告、Tapp、Agent 的可见性：所有人 / 登录用户 / 管理员。
 
 ---
 
 ## 首页
 
-别人真正打开的是首页。接上平台，再把小组件摆上 **标准布局**（居中，桌面 16×4，窄屏紧凑重排）或 **自由布局**（格子一样大，画布 16×8）。两套布局各自记坐标。自由布局还可以贴装饰贴纸——那不是小组件，不占小组件格数。
+小组件落在 **标准布局**（居中，桌面 16×4，窄屏紧凑重排）或 **自由布局**（同格尺寸，画布 16×8）。两套布局分别存坐标。自由布局可放装饰贴纸；贴纸不是小组件，不占小组件格。
 
-内置小组件：
+内置：欢迎语；Agent 人设（现场 2.5D，同时只播一份）；内容概览、最近活动、访客统计；天气；一言；音乐播放器；友情链接（Brew）；社交网络；Tapp 快捷方式；米哈游游戏 Presence；各平台 Report Card。
 
-- 欢迎语
-- Agent 人设（现场 2.5D 形象；一次只在一处播放）
-- 内容概览、最近活动、访客统计
-- 天气、一言
-- 音乐播放器
-- 友情链接（来自 Brew）
-- 社交网络、Tapp 快捷方式
-- 米哈游游戏 Presence
-- 各已连接平台的 Report Card
-
-已安装的 Tapp 也可以往首页注册自己的小组件。
-
-别人看见的是你的主页。平台数据留在你自己的库里，不交给另一家托管。
+已安装的 Tapp 可注册首页小组件。
 
 ---
 
 ## 平台
 
-可按需连接：
-
-| 平台 | Myriad 拉取什么 |
+| 平台 | 同步内容 |
 | --- | --- |
 | GitHub | 仓库、Star、贡献 |
 | Bilibili | 收藏、追番、观看历史 |
@@ -115,122 +99,112 @@
 | Xbox | 成就、Gamerscore、最近游戏 |
 | PlayStation | 奖杯、奖杯等级、最近游戏 |
 
-数据写入你的 PostgreSQL。首页 Report Card、资料库、平台报告都读同一份。
+写入 PostgreSQL。Report Card、资料库、平台报告读同一份数据。
 
 ---
 
 ## 资料库与报告
 
-**资料库**把游戏、番剧、影视、书籍、音乐收成瀑布流，按类型筛选，从已连接平台同步。布局是普通列表或无限画布（低端设备会退回列表）。每类展示哪些平台来源可以自选。
+**资料库**按类型筛选已连接平台的游戏、番剧、影视、书籍、音乐。布局：列表或无限画布；低端设备回退列表。每类来源可配置。
 
-**平台报告**是各平台的画像。生成人设需要若干份——站上那一份性格来自你在各处留下的痕迹，不是空白提示词。
+**平台报告**为各平台画像。引导式人设会读取。另一条路径是贴文案并上传立绘。
 
 ---
 
 ## 人设与 2.5D 形象
 
-全站一份说话人格，配上半身 2.5D 形象。界面叫 **Agent 人设**，不是第二个产品。关掉之后，站点助手仍叫 Agent，只聊天、做事。
+全站一份说话人格与上半身 2.5D 形象（**Agent 人设**）。开：Agent 用人设说话。关：仍提供 Chat 与 Work。
 
-站长侧流程：
+站长：从报告生成（词条 → 人设 → 视觉设定 → 主立绘），或贴文案并上传立绘。视觉设定分人模块与衣服模块。主立绘 3:4、上半身。分层 PSD 用于呼吸、眨眼、口型。
 
-1. 从平台报告抽出词条
-2. 写好人设（名字、气质、说话方式）
-3. 确认视觉设定（人模块与衣服模块分开）
-4. 生成主立绘（3:4，上半身）
-5. 导入分层 PSD；现场形象会呼吸、眨眼、对口型
+头身跟随说话与唱歌。换装不卸载现场播放器。主立绘可派生 **贴纸头像**（仅头），用于头像位与 Agent 通知；更换主立绘后失效。
 
-说话和唱歌时头身跟着动。换装不必卸掉播放器。主立绘还可以派生一张 **贴纸头像**（只有头），用在头像位和 Agent 通知。换主立绘后这张贴纸要重做。
-
-形象一次只在一处播放——首页小组件或 Agent 面板，不能两处同时。播放是浏览器里的分层 2.5D（Anime2.5DRig）。Myriad 主后端不为形象加载第三方模型，也不跑 GPU 推理。
+现场形象同时只播一份。浏览器分层 2.5D（Anime2.5DRig）。该播放不在 Myriad 服务器上做 GPU 推理。
 
 ---
 
 ## Tapp
 
-Tapp 是挂在 Myriad 上的小应用：一整页的 **Page**、嵌进首页的 **Widget**，或两者都有。跑在沙箱里。安装时由你批准权限。宿主密钥和应用凭据不会进入沙箱，错误信息里也不会。
+**Page**、首页 **Widget**，或两者。沙箱运行。安装时批准权限。宿主密钥与应用凭据不进入沙箱，错误载荷中也不出现。
 
-三种来源：
-
-- **商店** — [Myriad-You/tapp-store](https://github.com/Myriad-You/tapp-store)，从 `/tapp/store` 安装
-- **Playground** — 仅桌面管理员，`/tapp/playground`。用自然语言描述 Page、仅 Widget、或两者；在正式沙箱里预览；再安装或导出 `.tapp`。移动端不展示
+- **商店** — [Myriad-You/tapp-store](https://github.com/Myriad-You/tapp-store)，`/tapp/store`
+- **Playground** — 桌面管理员，`/tapp/playground`。自然语言生成 Page、仅 Widget 或两者；生产沙箱预览；安装或导出 `.tapp`。移动端不展示
 - **CLI** — [`@myriad-you/tapp-cli`](tools/tapp-cli/README.md)（`myriad-tapp init / check / pack`）
 
-Page 可以使用 Canvas / WebGL、包内资源、音频，以及（声明后）由宿主注入的 Three.js。Widget 不跑重 3D。详见 [Tapp 开发](docs/development/TAPP_DEVELOPMENT.md)。
+Page：Canvas / WebGL、包内资源、音频、可选宿主注入的 Three.js。Widget 不承担重 3D。[Tapp 开发](docs/development/TAPP_DEVELOPMENT.md)。
 
 ---
 
 ## Agent
 
-站点助手。内部项目名不对外；界面就叫 **Agent**。
-
-| 档 | 做什么 |
+| 模式 | 行为 |
 | --- | --- |
-| **聊天** | 只用人设说话。没有搜索、预订、生成、计划工具。换装和当前播放器的播 / 停 / 切歌可以当场做。 |
-| **做事** | 计划、确认、执行。记忆、技能、定时任务、MCP。能做到哪一步由授予权限逐条决定，不按身份分档。 |
+| **Chat** | 人设开着时只用人设说话。无搜索、预订、生成、计划。允许换装，以及当前播放器的播 / 停 / 切歌。 |
+| **Work** | 计划、确认、执行。记忆、技能、定时任务、MCP。范围由授予权限决定。 |
 
-它可以注意到一件事，**提案**交给「做事」；接受提案不等于允许它自己行动。可选语音：朗读回复、听你说；配置好后可长按进入连续对话。
+可对注意到的事项提出交给 Work 的提案；接受提案不是自治授权。可选 TTS、听写；配置语音 / 实时对话后可长按连续对话。
 
-MCP 服务器在管理员 AI 设置里配置，保存后热重载。
+MCP：管理员 AI 设置，保存后热重载。
 
 ---
 
 ## Brew
 
-RSS、Notion、RSSHub 的阅读器。访客可读；登录用户可标记已读、收藏；管理员管源。Brew 里的友情链接可以挂到首页。
+RSS、Notion、RSSHub。默认任何人可读。登录用户标记已读与收藏。管理员管理源。友情链接可出现在首页。
 
-自有文章在 `/brew/item/...`，可被分享（爬虫拿 HTML 壳，浏览器进应用）。
+自有文章：`/brew/item/...`。爬虫获得 HTML 壳，浏览器进入应用。
 
 ---
 
 ## 联邦
 
-ActivityPub + **MFP**。把 `BASE_URL` 设成公网源站——发现地址用它。
+ActivityPub + **MFP**。发现地址使用 `BASE_URL`。
 
-别人可以用 Actor URL（`https://你的域名/users/<名>`）或 `@名@你的域名` 关注、建频道、加入环网。WebFinger、NodeInfo、inbox、联邦媒体都走 **proxy → backend**，不进 SPA。
+关注：Actor URL（`https://域名/users/<名>`）或 `@名@域名`。支持频道与环网。WebFinger、NodeInfo、inbox、联邦媒体走 **proxy → backend**，不进 SPA。
 
-行为说明见 [联邦](docs/development/FEDERATION.md)。联邦域名迁移和普通换域名不是同一套手续，见文档门户。
+说明：[联邦](docs/development/FEDERATION.md)。联邦域名迁移 ≠ 普通换域名。
 
 ---
 
-## 站点、用户、可见性
+## 账号与可见性
 
-- **本地账号**：所有者建好之后。可开可关注册。OAuth 够用后可以关掉密码登录。
-- **OAuth：** 内置 GitHub，再加任意多个 OIDC（Authentik、Keycloak、Google、Microsoft、GitLab、Discord……）。身份是显式绑定的；两个 issuer 上同一邮箱不会静默合并。
-- **页面可见性：** 资料库、Brew、报告、Tapp、Agent — 所有人 / 登录用户 / 仅管理员。
-- **搜索与 AI 可见性：** 私有（noindex、空 sitemap、无 `/llms.txt`）、只给搜索引擎、允许 AI 引用、或完全开放。
-- **站点身份：** 名称、简介、图标、可选 PWA、壁纸与主题、第一方访客统计，以及可选的 Google Analytics / Umami。
+- **本地账号**：所有者创建之后。注册可开可关。绑定 OAuth 后可关闭该用户的密码登录。
+- **OAuth：** 内置 GitHub，以及任意 OIDC（Authentik、Keycloak、Google、Microsoft、GitLab、Discord……）。身份显式绑定；两个 issuer 上同一邮箱不合并。
+- **页面可见性：** 资料库、Brew、报告、Tapp、Agent — 所有人 / 登录用户 / 管理员。
+- **搜索与 AI：** 私有（noindex、空 sitemap、无 `/llms.txt`）、仅搜索引擎、允许 AI 引用、完全开放。
+- **站点身份：** 名称、简介、图标、可选 PWA、壁纸与主题、第一方访客统计、可选 Google Analytics / Umami。
 
 ---
 
 ## 运维
 
-生产环境是 **proxy + updater**。只有 **proxy** 对外暴露宿主端口。backend、frontend、Postgres、updater、docker-guard 都在内网。
+生产：**proxy + updater**。仅 **proxy** 暴露宿主端口。backend、frontend、Postgres、updater、docker-guard 在内网。
 
-版本切换和回滚走管理员「更新管理」（`/config` → 关于）。浏览器碰不到 `UPDATE_TOKEN`。不要手改 `:latest`。
+换版与回滚：`/config` → 关于 → 更新管理。浏览器不获得 `UPDATE_TOKEN`。不要覆盖 `:latest`。
 
-自带 Postgres：updater 会快照 `./pgdata`，回滚能恢复数据目录 + 镜像 tag。外部 Postgres：设 `MYRIAD_DB_MODE=external`，回滚只恢复镜像 tag。见 [外部 PostgreSQL](docs/deployment/EXTERNAL_POSTGRES.md)。
+自带 Postgres：updater 快照 `./pgdata`；回滚恢复数据目录与镜像 tag。外部 Postgres：`MYRIAD_DB_MODE=external`；回滚只恢复镜像 tag。[外部 PostgreSQL](docs/deployment/EXTERNAL_POSTGRES.md)。
 
-小内存主机（约 1 GB）有内存节约档。`/config` 里的诊断会跑真实检查（数据库、存储、版本、出口）并生成不含凭据的报告。
+约 1 GiB 主机可用内存节约档。`/config` 诊断执行实检查（数据库、存储、版本、出口），报告不含凭据。
 
 ---
 
 ## 运行要求
 
-**生产（Docker，推荐）**
+**生产（Docker）**
 
 - Docker + Compose
-- 一个宿主端口（`HTTP_PORT`，默认 80）
-- linux/amd64 或 linux/arm64（官方镜像）
+- 宿主端口（`HTTP_PORT`，默认 80）
+- linux/amd64 或 linux/arm64
 
 **从源码**
 
 - Rust 1.94+
 - Node.js 24 LTS
-- PostgreSQL 18（Compose 默认；兼容下限见 release 的 `min_pg_version`）
+- PostgreSQL 18（Compose 默认；下限见 release `min_pg_version`）
 
 ---
 
-## 跑起来
+## 部署
 
 ### Docker
 
@@ -239,24 +213,22 @@ git clone https://github.com/myriad-you/Myriad.git
 cd Myriad
 
 cp .env.production.example .env
-# 至少设置：POSTGRES_PASSWORD / JWT_SECRET / CORS_ORIGINS
-# BASE_URL / FRONTEND_URL 填你的公网域名（联邦发现依赖 BASE_URL）
-# UPDATE_TOKEN / UPDATER_GATEWAY_SECRET 留空时由 deploy 脚本生成
+# 必填：POSTGRES_PASSWORD / JWT_SECRET / CORS_ORIGINS
+# BASE_URL / FRONTEND_URL = 公网源站（联邦发现使用 BASE_URL）
+# UPDATE_TOKEN / UPDATER_GATEWAY_SECRET 留空则由 deploy.sh 生成
 
 bash scripts/extra/deploy.sh up
 ```
 
-打开 `http://localhost`（或 `.env` 中的 `HTTP_PORT`），按向导完成：数据库、所有者账户、站点名。
+打开 `http://localhost`（或 `HTTP_PORT`），完成向导：数据库、所有者、站点名。
 
-未设置 `MYRIAD_SETUP_SECRET` 时，官方 compose 会拒绝启动（向导自己填库除外）。`deploy.sh up` 会生成。详见 [Setup 安装暗号](docs/deployment/SETUP_BOOTSTRAP.md)。
+官方 Compose 已写入 `DATABASE_URL`，启动需要 `MYRIAD_SETUP_SECRET`（`deploy.sh up` 生成）。向导自行填写数据库时不使用该暗号。[Setup 安装暗号](docs/deployment/SETUP_BOOTSTRAP.md)。
 
 ```text
 host HTTP_PORT → proxy → frontend:1102
                       → backend:1103 → postgres:5432
-                      → updater（仅内网；经 updater-gateway）
+                      → updater（内网；经 updater-gateway）
 ```
-
-常用：
 
 ```bash
 bash scripts/extra/deploy.sh status
@@ -265,35 +237,35 @@ bash scripts/extra/deploy.sh restart
 bash scripts/extra/deploy.sh down
 ```
 
-日常更新：`/config` → 关于 → 更新管理。手动改镜像：在 `.env` 里改 `MYRIAD_TAG` / `PROXY_TAG`，再 `bash scripts/extra/deploy.sh upgrade`。
+更新：`/config` → 关于 → 更新管理。手动改 tag：`.env` 中 `MYRIAD_TAG` / `PROXY_TAG`，然后 `bash scripts/extra/deploy.sh upgrade`。
 
-备份（自带 Postgres）：
+自带 Postgres 备份：
 
 ```bash
 mkdir -p backups
 docker compose exec -T postgres pg_dump -U myriad -d myriad > "backups/backup_$(date +%Y%m%d_%H%M%S).sql"
 ```
 
-更完整的部署、端口、无 Docker、排错：[快速开始](docs/QUICKSTART.md)、[Docker](docs/deployment/DOCKER_DEPLOYMENT.md)、[端口](docs/deployment/PORTS.md)、[无 Docker](docs/deployment/NATIVE_DEPLOYMENT.md)。
+[快速开始](docs/QUICKSTART.md) · [Docker](docs/deployment/DOCKER_DEPLOYMENT.md) · [端口](docs/deployment/PORTS.md) · [无 Docker](docs/deployment/NATIVE_DEPLOYMENT.md)
 
 ---
 
 ## 本地开发
 
 ```bash
-./scripts/dev.sh                   # 实时 TUI：启动菜单 + 进程 / 数据库 / 日志
-./scripts/dev.sh start             # 本机 PostgreSQL，日志打在当前终端
-./scripts/dev.sh start --docker    # Docker postgres + 新开终端
+./scripts/dev.sh                   # TUI：菜单、进程、数据库、日志
+./scripts/dev.sh start             # 本机 PostgreSQL；日志在当前终端
+./scripts/dev.sh start --docker    # Docker postgres + 新终端
 ./scripts/dev.sh doctor            # 工具链、端口、数据库
-./scripts/dev.sh status            # 一次性快照
+./scripts/dev.sh status            # 快照
 .\scripts\dev.ps1 start            # Windows
 ```
 
-后端 `:1103`，前端 `:1102`。没有本机库时先 `./scripts/dev.sh db-setup`。
+后端 `:1103`，前端 `:1102`。无本机数据库时：`./scripts/dev.sh db-setup`。
 
-前端 dev server 会把 `/api/*`、`/health` 以及联邦公开路径代理到后端。
+前端 dev server 将 `/api/*`、`/health` 与联邦公开路径代理到后端。
 
-要在开发 UI 里测「更新管理」：`./scripts/dev.sh start all-updater`。真实换镜像、维护模式、`pgdata` 快照仍应走生产栈（`scripts/extra/deploy.sh`）。
+开发 UI 中的更新管理：`./scripts/dev.sh start all-updater`。换镜像、维护模式、`pgdata` 快照走生产栈（`scripts/extra/deploy.sh`）。
 
 ---
 
@@ -318,7 +290,7 @@ host HTTP_PORT
        └─ (rescue) updater when PROXY_ALLOW_DIRECT_UPDATER=true
 ```
 
-爬虫 / 应用内分享 UA 会拿到首页、资料库、Brew、报告、Tapp 的 SEO HTML 壳；普通浏览器进 SPA。详见 [架构](docs/development/ARCHITECTURE.md)。
+爬虫 / 应用内分享 UA 获得首页、资料库、Brew、报告、Tapp 的 SEO HTML 壳；浏览器获得 SPA。[架构](docs/development/ARCHITECTURE.md)。
 
 ---
 
@@ -328,19 +300,19 @@ host HTTP_PORT
 Myriad/
 ├── backend/          Rust API、SeaORM、migrations
 ├── frontend/         Astro + React UI、Tapp 运行时、i18n（中/英/日）
-├── proxy/            生产入口反向代理（独立 Cargo 树，AGPL-3.0）
-├── updater/          自更新守护进程（独立 Cargo 树，AGPL-3.0）
-├── crates/           工作区共享库
+├── proxy/            生产反向代理（独立 Cargo 树）
+├── updater/          自更新守护进程（独立 Cargo 树）
+├── crates/           工作区库
 ├── shared/           跨组件静态配置
 ├── docker/           backend / frontend Dockerfile
-├── docs/             开发、部署与功能文档（目前以中文为主）
-├── scripts/          dev.sh / dev.ps1；extra/ 部署与手工回归
-├── release/          release.json 契约与覆盖
-├── tools/            tapp-cli 与契约导出
+├── docs/             开发、部署、功能（中文）
+├── scripts/          dev.sh / dev.ps1；extra/ 部署
+├── release/          release.json 契约
+├── tools/            tapp-cli、契约导出
 └── docker-compose*.yml
 ```
 
-`proxy` 与 `updater` 是独立 Cargo 树，部署生命周期可以分开。
+`proxy` 与 `updater` 为独立 Cargo 树。
 
 ---
 
@@ -350,22 +322,22 @@ Myriad/
 | --- | --- |
 | **前端** | Astro 7 · React 19 · Tailwind 4 · TypeScript · 中 / 英 / 日 |
 | **后端** | Rust · Axum 0.8 · SeaORM · Tokio |
-| **边缘** | proxy（反向代理 / 维护页）· updater（自更新 / 快照） |
-| **数据** | PostgreSQL 18（Compose 默认镜像） |
+| **边缘** | proxy · updater |
+| **数据** | PostgreSQL 18 |
 | **扩展** | Agent · Tapp 沙箱 · MCP · ActivityPub / MFP |
-| **部署** | Docker Compose · linux/amd64 + arm64 镜像 |
+| **部署** | Docker Compose · linux/amd64 + arm64 |
 
 ---
 
 ## 文档
 
-目前以中文为主，从 [文档门户](docs/INDEX.md) 进。
+目前为中文。[门户](docs/INDEX.md)。
 
 | | |
 | --- | --- |
 | [快速开始](docs/QUICKSTART.md) | 部署与本地开发 |
 | [架构](docs/development/ARCHITECTURE.md) | 组件与拓扑 |
-| [构建](docs/development/BUILD.md) | 工具链与从源码构建 |
+| [构建](docs/development/BUILD.md) | 从源码构建 |
 | [API](docs/API.md) | HTTP API |
 | [Tapp 开发](docs/development/TAPP_DEVELOPMENT.md) | Page / Widget / Playground / 沙箱 |
 | [资料库](docs/features/LIBRARY.md) | Library |
@@ -374,21 +346,23 @@ Myriad/
 | [Docker 部署](docs/deployment/DOCKER_DEPLOYMENT.md) | 生产编排 |
 | [端口](docs/deployment/PORTS.md) | 端口与暴露面 |
 | [Updater](docs/deployment/UPDATER_QUICKSTART.md) | 更新、回滚、救援 |
-| [外部 PostgreSQL](docs/deployment/EXTERNAL_POSTGRES.md) | 自带库以外的 PG |
-| [无 Docker 部署](docs/deployment/NATIVE_DEPLOYMENT.md) | 本机 PostgreSQL + 二进制 |
-| [Setup 安装暗号](docs/deployment/SETUP_BOOTSTRAP.md) | 编排安装时的安装暗号 |
+| [外部 PostgreSQL](docs/deployment/EXTERNAL_POSTGRES.md) | 外部 PG |
+| [无 Docker 部署](docs/deployment/NATIVE_DEPLOYMENT.md) | PostgreSQL + 二进制 |
+| [Setup 安装暗号](docs/deployment/SETUP_BOOTSTRAP.md) | 编排安装暗号 |
 
 ---
 
 ## 贡献
 
-Issue 与 PR 都欢迎。UI 文案请同步改 `zh-CN` / `en-US` / `ja-JP`。
+欢迎 Issue 与 PR。UI 文案：`zh-CN` / `en-US` / `ja-JP`。
 
 ## License
 
-根仓库与主应用为 [GPL-3.0](LICENSE)。`proxy` / `updater` 另行声明为 AGPL-3.0。
+主应用（`backend` / `frontend` 及工作区 crate）与 `proxy` / `updater` 均为 [AGPL-3.0](LICENSE)。只通过文档化 Bridge 通信的 Tapp 是独立作品，许可由作者自选（见 `LICENSE` 中 AGPL 第 7 条附加许可）。
 
-2.5D 播放使用 [Anime2.5DRig](https://github.com/852wa/Anime2.5DRig)（MIT）。
+Tapp 契约与工具（`crates/tapp-contract`、`tools/tapp-cli`、`tools/tapp-contract-export`）为 [Apache-2.0](LICENSES/Apache-2.0.txt)。
+
+2.5D 播放：[Anime2.5DRig](https://github.com/852wa/Anime2.5DRig)（MIT）。
 
 <br/>
 

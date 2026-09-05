@@ -31,6 +31,8 @@
 
 新手从 [快速入门](tapp/QUICKSTART.md) 开始；Widget 看 [WIDGET.md](tapp/WIDGET.md)；契约与宿主边界看 [架构](tapp/ARCHITECTURE.md) 和 [运行时契约](tapp/RUNTIME_CONTRACT_DESIGN.md)。CLI 见 `tools/tapp-cli/README.md`。
 
+宿主是 AGPL-3.0。只通过文档化 Bridge 与宿主通信、且不复制宿主源码（Apache-2.0 的契约 / CLI 除外）的 Tapp 是独立作品，许可由作者自选。契约 crate 与 `tapp-cli` 是 Apache-2.0。见仓库根目录 `LICENSE` 中 AGPL 第 7 条附加许可。
+
 ## 文档维护原则
 
 - 架构结论以当前运行路径为准，不把旧更新日志当作契约。

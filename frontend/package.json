@@ -3,6 +3,7 @@
   "type": "module",
   "version": "0.4.3",
   "description": "Frontend for Myriad — a myriad of lights, in one place.",
+  "license": "AGPL-3.0-only",
   "engines": {
     "node": ">=24 <25"
   },

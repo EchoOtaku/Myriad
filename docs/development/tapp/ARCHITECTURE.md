@@ -24,6 +24,8 @@ Tapp 不是把第三方脚本直接加载到 Myriad 页面中，而是：
 4. Tapp 只能通过 `postMessage` Bridge 调用宿主 SDK；
 5. Bridge 做前端权限预检，后端再次做身份、所有权、权限、速率、输入和出站安全校验。
 
+只通过这条 Bridge 说话的 Tapp 是独立作品，许可由作者自选；见根目录 `LICENSE` 的 AGPL 第 7 条附加许可。契约与 CLI 为 Apache-2.0。
+
 宿主写入 `srcdoc` 的 Manifest 元数据、Widget props、i18n 和启动参数必须使用 inline-script
 序列化器；Tapp JavaScript 源码必须转义 HTML 的 `</script` 终止序列。直接把字符串插入
 `<script>` 会让合法名称、设置值或代码静默截断整个沙箱。

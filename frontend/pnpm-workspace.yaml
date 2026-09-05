@@ -10,12 +10,13 @@ trustPolicy: no-downgrade
 #                 because 7.x published provenance first)
 #   - chokidar@4  (@astrojs/check still declares ^4; 4.0.3 false-positives because
 #                 paulmillr stopped attaching provenance after 4.0.1)
-#   - ua-parser-js@0.7  (agora-rtc-sdk-ng still declares ^0.7; 0.7.41 has no
-#                 provenance, while 1.x published it first)
-# 2.x is required here: 1.0.41 has no provenance, so no-downgrade refuses it
-# once 2.x exists. Agora's `import x from 'ua-parser-js'` is kept off the Vite
-# prebundle (astro.config optimizeDeps.exclude) so 2.x cannot freeze the
-# crawler. Prefer overrides over trustPolicyExclude so install stays strict.
+# ua-parser-js is excluded from no-downgrade on purpose: Agora still declares
+# ^0.7 (MIT). 0.7.41 has no provenance, and 2.x (which does) is AGPL-3.0-or-later.
+# Pin the last 0.7 MIT release; do not float — 0.7.29–0.7.33 had protestware.
+# Agora's optional ESM tree stays off the Vite prebundle (astro.config
+# optimizeDeps.exclude) so install policy cannot freeze the crawler.
+trustPolicyExclude:
+  - ua-parser-js
 overrides:
   brace-expansion: '>=5.0.9'
   chokidar: '>=5.0.0'
@@ -24,7 +25,7 @@ overrides:
   postcss: '>=8.5.23'
   semver: '>=7.8.5'
   svgo: '>=4.0.2'
-  ua-parser-js: '>=1.0.41'
+  ua-parser-js: 0.7.41
 onlyBuiltDependencies:
   - esbuild
   - sharp

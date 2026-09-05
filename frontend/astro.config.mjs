@@ -836,7 +836,7 @@ export default defineConfig({
     },
     optimizeDeps: {
       // Don't block first-paint on the full crawl. Default true waits for every
-      // discovered dep; Agora's ua-parser-js 2.x default-import then held
+      // discovered dep; Agora ESM's ua-parser-js default-import then held
       // react.js forever and the PageLoader never dismissed.
       holdUntilCrawlEnd: false,
       // Mid-session discovery rewrites the dep browserHash. Vite then 504s
@@ -870,8 +870,8 @@ export default defineConfig({
         'agora-rtm',
       ],
       // Agora's optional ESM tree must not enter the Vite prebundle.
-      // Rolldown rewriting `import x from 'ua-parser-js'` fails on 2.x, and a
-      // failed crawl holds every optimized dep — the PageLoader never dismisses.
+      // Stay on the self-contained UMD entries; a failed ESM crawl holds every
+      // optimized dep — the PageLoader never dismisses.
       exclude: [
         '@agora-js/shared',
         '@agora-js/media',

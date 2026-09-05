@@ -1410,7 +1410,8 @@ Tapp.lifecycle.onReady(function () {
         assert!(error.contains("md:"), "{error}");
         assert!(error.contains("breakpoint"), "{error}");
 
-        value["project"]["code"]["pageHtml"] = json!(r#"<div class="p-4 text-sm rounded-md">Hi</div>"#);
+        value["project"]["code"]["pageHtml"] =
+            json!(r#"<div class="p-4 text-sm rounded-md">Hi</div>"#);
         parse_and_validate_model_output(&value.to_string())
             .expect("text-sm and rounded-md are not breakpoint prefixes");
     }

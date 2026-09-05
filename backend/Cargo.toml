@@ -5,6 +5,7 @@ edition = "2021"
 rust-version = "1.94"
 authors = ["Myriad Contributors"]
 description = "Backend service for Myriad — a myriad of lights, in one place."
+license = "AGPL-3.0-only"
 
 [[bin]]
 name = "myriad-backend"
