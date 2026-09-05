@@ -15,7 +15,6 @@ import type { HomeDashboardLayouts, HomeLayoutMode } from '../utils/homeLayout'
 import { FaCog, FaCompress, FaEdit, FaExpand, LuSparkles } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
 import {
-  startTransition,
   useCallback,
   useEffect,
   useMemo,
@@ -100,6 +99,18 @@ export default function Home() {
       : peekStoredHomeLayoutMode(window.localStorage),
   )
   const [isEditMode, setIsEditMode] = useState(false)
+  const [layoutFade, setLayoutFade] = useState<'out' | 'in' | null>(null)
+  const layoutFadeTimersRef = useRef<{ out?: number; in?: number }>({})
+  useEffect(() => {
+    return () => {
+      if (layoutFadeTimersRef.current.out) {
+        window.clearTimeout(layoutFadeTimersRef.current.out)
+      }
+      if (layoutFadeTimersRef.current.in) {
+        window.clearTimeout(layoutFadeTimersRef.current.in)
+      }
+    }
+  }, [])
   const [stickerPicking, setStickerPicking] = useState(false)
   const layoutSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const gridRef = useRef<WidgetGridHandle>(null)
@@ -366,16 +377,12 @@ export default function Home() {
     })
   }, [isTappWidgetsLoading, tappWidgets, rawLayouts, ALL_AVAILABLE_WIDGETS])
 
-  const handleLayoutModeToggle = () => {
-    const next: HomeLayoutMode =
-      resolvedLayoutMode === 'free' ? 'standard' : 'free'
+  const commitLayoutMode = (next: HomeLayoutMode) => {
     persistHomeLayoutMode(
       next,
       typeof window === 'undefined' ? null : window.localStorage,
     )
-    startTransition(() => {
-      setLayoutMode(next)
-    })
+    setLayoutMode(next)
     if (!isAdmin) return
     void (async () => {
       try {
@@ -403,6 +410,37 @@ export default function Home() {
         showError(userFacingError(err, t.errors.dashboardLayoutSaveFailed))
       }
     })()
+  }
+
+  const handleLayoutModeToggle = () => {
+    if (layoutFade) return
+    const next: HomeLayoutMode =
+      resolvedLayoutMode === 'free' ? 'standard' : 'free'
+    const reduce =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reduce) {
+      commitLayoutMode(next)
+      return
+    }
+    if (layoutFadeTimersRef.current.out) {
+      window.clearTimeout(layoutFadeTimersRef.current.out)
+    }
+    if (layoutFadeTimersRef.current.in) {
+      window.clearTimeout(layoutFadeTimersRef.current.in)
+    }
+    setLayoutFade('out')
+    layoutFadeTimersRef.current.out = window.setTimeout(() => {
+      commitLayoutMode(next)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setLayoutFade('in'))
+      })
+      layoutFadeTimersRef.current.in = window.setTimeout(() => {
+        setLayoutFade(null)
+        layoutFadeTimersRef.current.in = undefined
+      }, 240)
+      layoutFadeTimersRef.current.out = undefined
+    }, 180)
   }
 
   // 保存小组件配置到后端（防抖 500ms，与控制面板一致；UI 立即更新）
@@ -641,12 +679,17 @@ export default function Home() {
   return (
     <AnimatedView
       className={`home-shell min-h-screen ${
-        isDesktopBand ? 'h-screen overflow-hidden' : ''
+        isDesktopBand
+          ? isFreeLayout
+            ? 'h-screen overflow-x-hidden overflow-y-auto'
+            : 'h-screen overflow-hidden'
+          : ''
       }`}
       data-home-band={
         isDesktopBand ? 'desktop' : isPhoneBand ? 'phone' : 'tablet'
       }
       data-home-layout={layoutMode == null ? undefined : effectiveMode}
+      data-layout-fade={layoutFade ?? undefined}
     >
       <div className="home-shell__inner h-full flex flex-col">
         <div className="home-shell__stage flex-1 mx-auto w-full flex flex-col gap-4 relative min-h-0">
@@ -809,6 +852,19 @@ export default function Home() {
                         {/* 配置入口 - 与编辑同条件：管理员 + desktop 档 */}
                         <button
                           type="button"
+                          onClick={handleLayoutModeToggle}
+                          className="flex px-4 py-1.5 rounded-lg text-xs font-bold items-center gap-2 transition-all bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10"
+                          style={{ color: 'var(--color-primary)' }}
+                          aria-pressed={false}
+                          aria-label={t.home.switchToFreeLayout}
+                          title={t.home.switchToFreeLayout}
+                        >
+                          <FaExpand size={12} />
+                          {t.home.freeLayout}
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() => navigate('/config')}
                           className="flex px-4 py-1.5 rounded-lg text-xs font-bold items-center gap-2 transition-all bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10"
                           style={{ color: 'var(--color-primary)' }}
@@ -830,8 +886,7 @@ export default function Home() {
       {stickerPicking ? (
         <div className="home-sticker-pick-hint">{t.home.stickerPickHint}</div>
       ) : null}
-      {isDesktopBand &&
-      (isEditMode || (isFreeLayout && showHomeAdminActions)) ? (
+      {isDesktopBand && isFreeLayout && showHomeAdminActions ? (
         <div className="home-layout-rail" data-library-dock-chrome="">
           <motion.div
             className="home-layout-rail__island"

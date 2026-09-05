@@ -791,9 +791,9 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       if (hasReport) {
         registerReportHandlers(bridge, currentTappInstance)
       }
-      if (hasMedia) {
-        registerMediaHandlers(bridge, currentTappInstance)
-      }
+      const closeMedia = hasMedia
+        ? registerMediaHandlers(bridge, currentTappInstance)
+        : () => {}
       if (hasSpeech) {
         registerSpeechHandlers(bridge, currentTappInstance)
       }
@@ -830,6 +830,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
         closeAdvanced,
         closeFederationSockets,
         closeScheduler,
+        closeMedia,
         closeDataExchange,
         closeAITaskStreams,
         closeEventStream,

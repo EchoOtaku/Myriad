@@ -1150,6 +1150,10 @@ export function useEvocativeWallpaper(
     }
 
     // 陀螺仪设置
+    let gyroProbeCancelled = false
+    let gyroProbeTimer: number | null = null
+    let testGyro: ((e: DeviceOrientationEvent) => void) | null = null
+
     if (
       enableParallax &&
       enableGyroscope &&
@@ -1182,11 +1186,15 @@ export function useEvocativeWallpaper(
         document.addEventListener('touchend', requestPermission)
       } else {
         let received = false
-        const testGyro = (e: DeviceOrientationEvent) => {
+        testGyro = (e: DeviceOrientationEvent) => {
+          if (gyroProbeCancelled) return
           if (e.beta != null && e.gamma != null) {
             received = true
             s.gyroEnabled = true
-            window.removeEventListener('deviceorientation', testGyro)
+            if (testGyro) {
+              window.removeEventListener('deviceorientation', testGyro)
+              testGyro = null
+            }
             window.addEventListener('deviceorientation', onGyro, {
               passive: true,
             })
@@ -1195,9 +1203,12 @@ export function useEvocativeWallpaper(
         window.addEventListener('deviceorientation', testGyro, {
           passive: true,
         })
-        setTimeout(() => {
-          if (!received)
+        gyroProbeTimer = window.setTimeout(() => {
+          gyroProbeTimer = null
+          if (!received && testGyro) {
             window.removeEventListener('deviceorientation', testGyro)
+            testGyro = null
+          }
         }, 3000)
       }
     }
@@ -1205,6 +1216,15 @@ export function useEvocativeWallpaper(
     // 清理
     return () => {
       s.active = false
+      gyroProbeCancelled = true
+      if (gyroProbeTimer != null) {
+        window.clearTimeout(gyroProbeTimer)
+        gyroProbeTimer = null
+      }
+      if (testGyro) {
+        window.removeEventListener('deviceorientation', testGyro)
+        testGyro = null
+      }
       if (s.raf) cancelAnimationFrame(s.raf)
       if (s.rippleRaf) cancelAnimationFrame(s.rippleRaf)
       if (s.rippleFadeoutTimer) clearTimeout(s.rippleFadeoutTimer)

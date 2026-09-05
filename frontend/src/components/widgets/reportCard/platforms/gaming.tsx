@@ -89,6 +89,21 @@ interface XboxPresence {
 
 const xboxPresenceCache = new Map<string, { data: XboxPresence; at: number }>()
 const xboxPresenceInflight = new Map<string, Promise<XboxPresence | null>>()
+const MAX_PRESENCE_CACHE = 20
+
+function setPresenceCache<T>(
+  cache: Map<string, { data: T; at: number }>,
+  key: string,
+  data: T,
+): void {
+  cache.delete(key)
+  cache.set(key, { data, at: Date.now() })
+  while (cache.size > MAX_PRESENCE_CACHE) {
+    const oldest = cache.keys().next().value
+    if (oldest === undefined) break
+    cache.delete(oldest)
+  }
+}
 
 async function fetchXboxPresence(
   gamertag: string,
@@ -151,7 +166,7 @@ async function fetchXboxPresence(
           ? String(d.degrade_reason)
           : null,
       }
-      xboxPresenceCache.set(key, { data: presence, at: Date.now() })
+      setPresenceCache(xboxPresenceCache, key, presence)
       return presence
     } catch {
       xboxPresenceCache.delete(key)
@@ -1463,7 +1478,7 @@ async function fetchPsnPresence(
           ? String(d.degrade_reason)
           : null,
       }
-      psnPresenceCache.set(key, { data: presence, at: Date.now() })
+      setPresenceCache(psnPresenceCache, key, presence)
       return presence
     } catch {
       psnPresenceCache.delete(key)

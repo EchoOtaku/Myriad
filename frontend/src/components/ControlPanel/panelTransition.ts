@@ -165,8 +165,6 @@ export interface PanelMotionProfile {
   tabMs: number
   /** 是否做空间 morph；false = 仅 opacity 直切（reduced-motion / 最低档）。 */
   spatial: boolean
-  /** morph 期间是否保留背景模糊（智能岛自身）。 */
-  blurDuringMorph: boolean
 }
 
 /** 标准档 morph 时长；与 CSS 中的历史取值保持一致，勿随意改动观感。 */
@@ -178,21 +176,18 @@ export const PANEL_SETTLE_SLACK_MS = 150
 export function resolvePanelMotion(input: {
   level: PanelAnimationLevel
   reduceMotion: boolean
-  isMobile: boolean
 }): PanelMotionProfile {
   // reduced-motion / 最低档：不做空间 morph，只留一次短促的 opacity 交接
   if (input.reduceMotion || input.level === 'exlight') {
-    return { morphMs: 120, tabMs: 80, spatial: false, blurDuringMorph: false }
+    return { morphMs: 120, tabMs: 80, spatial: false }
   }
   if (input.level === 'light') {
-    return { morphMs: 420, tabMs: 140, spatial: true, blurDuringMorph: false }
+    return { morphMs: 420, tabMs: 140, spatial: true }
   }
   return {
     morphMs: PANEL_MORPH_BASE_MS,
     tabMs: 180,
     spatial: true,
-    // 桌面标准档保持既有观感；移动端 morph 期间冻结岛上模糊
-    blurDuringMorph: !input.isMobile,
   }
 }
 

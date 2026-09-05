@@ -544,13 +544,6 @@ function CustomScrollbarInner() {
                     ? '12%'
                     : '8%'
             }, transparent)`,
-            backdropFilter:
-              typeof document !== 'undefined' &&
-              document.documentElement.dataset.perfMode === 'exlight'
-                ? 'none'
-                : isDragging || isScrolling
-                  ? 'blur(10px)'
-                  : 'blur(6px)',
             boxShadow: isDragging
               ? `inset 0 0 24px color-mix(in srgb, var(--color-primary) 15%, transparent)`
               : isScrolling
@@ -579,11 +572,6 @@ function CustomScrollbarInner() {
             boxShadow: `0 0 14px color-mix(in srgb, var(--color-primary) 65%, transparent),
                        0 3px 10px color-mix(in srgb, var(--color-primary) 45%, transparent)`,
             transition: 'none',
-            backdropFilter:
-              typeof document !== 'undefined' &&
-              document.documentElement.dataset.perfMode === 'exlight'
-                ? 'none'
-                : 'blur(4px)',
             willChange: isDragging ? 'top' : 'auto',
           }}
         />

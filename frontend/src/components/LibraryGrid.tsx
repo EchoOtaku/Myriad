@@ -87,6 +87,7 @@ const LIBRARY_LIVE_MS = {
  * first-reveal enter. Prevents virtualization remounts from replaying motion.
  */
 const canvasCardRevealedIds = new Set<string>()
+const MAX_CANVAS_CARD_REVEALED = 500
 
 /**
  * Claim first-reveal for a canvas card id.
@@ -100,6 +101,11 @@ function claimCanvasCardEnter(
 ): number | null {
   if (canvasCardRevealedIds.has(itemId)) return null
   canvasCardRevealedIds.add(itemId)
+  while (canvasCardRevealedIds.size > MAX_CANVAS_CARD_REVEALED) {
+    const oldest = canvasCardRevealedIds.values().next().value
+    if (oldest === undefined) break
+    canvasCardRevealedIds.delete(oldest)
+  }
   if (surfaceDragging) return null
   return Math.min((itemIndex % 12) * 0.055, 0.6)
 }
@@ -400,8 +406,8 @@ if (typeof document !== 'undefined') {
                 var(--lib-plat-brand) 18%
             );
             /* 单 blur，无 saturate/brightness —— 采样更省 */
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
             border: 1px solid var(--lib-plat-border);
             box-shadow:
                 inset 0 1px 0 rgb(255 255 255 / 45%),
@@ -709,8 +715,8 @@ if (typeof document !== 'undefined') {
                 rgb(var(--lib-caption-rgb) / var(--lib-caption-alpha)),
                 var(--platform-color, var(--color-primary, #3b82f6)) 4%
             );
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
             border: 1px solid var(--lib-caption-border);
             box-shadow:
                 inset 0 1px 0 rgb(255 255 255 / 40%),

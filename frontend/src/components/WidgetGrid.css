@@ -21,6 +21,10 @@
   aspect-ratio: 4 / 1;
 }
 
+.widget-grid-root[data-layout-mode='free'] .widget-grid-container {
+  aspect-ratio: 16 / 8;
+}
+
 /*
  * 同档内（仅窗口微调）才缓动高度。
  * 跨 4/8/16 档由 data-band-switch 淡入淡出 + 硬切，勿 height 插值。

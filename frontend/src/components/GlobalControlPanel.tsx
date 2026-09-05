@@ -488,9 +488,8 @@ const GlobalControlPanel: React.FC = () => {
       resolvePanelMotion({
         level: anim.level,
         reduceMotion: perf.reduceMotion,
-        isMobile: perf.isMobile,
       }),
-    [anim.level, perf.reduceMotion, perf.isMobile],
+    [anim.level, perf.reduceMotion],
   )
   /**
    * morph 一旦开始就用开始时的档位跑完 —— JS 与 CSS 两条线都要冻结。
@@ -1726,11 +1725,10 @@ const GlobalControlPanel: React.FC = () => {
             className={[
               'control-bar-trigger',
               isExpanded ? 'expanded' : '',
-              // morph 进行中：冻结 hover/active 变换，按档位决定是否停背景模糊
+              // morph 进行中：冻结 hover/active 变换
               isPanelMorphing(panel) ? 'gcp-animating' : '',
               panel.phase === 'closing' ? 'gcp-closing' : '',
               activeMotion.spatial ? '' : 'gcp-no-morph',
-              activeMotion.blurDuringMorph ? '' : 'gcp-freeze-blur',
             ]
               .filter(Boolean)
               .join(' ')}

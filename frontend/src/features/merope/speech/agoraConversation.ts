@@ -34,6 +34,7 @@ interface LiveSession {
   bargeContext: AudioContext | null
   bargeTimer: number | null
   closeEvents: (() => void) | null
+  rtmMessage: ((event: unknown) => void) | null
   identity: VoiceRunIdentity | null
   remoteTrack: import('agora-rtc-sdk-ng').IRemoteAudioTrack | null
   muted: boolean
@@ -137,6 +138,7 @@ async function openConversation(
       bargeContext: null,
       bargeTimer: null,
       closeEvents: null,
+      rtmMessage: null,
       identity: null,
       remoteTrack: null,
       muted: true,
@@ -191,12 +193,17 @@ async function openConversation(
         })
     })
 
-    rtmClient.addEventListener('message', (event) => {
+    const onRtmMessage = (event: unknown) => {
       if (!current() || live !== owned) return
       void owned.alignment.update(event).catch((error: unknown) => {
         console.error('[agoraConversation] transcript alignment failed:', error)
       })
-    })
+    }
+    owned.rtmMessage = onRtmMessage
+    rtmClient.addEventListener(
+      'message',
+      onRtmMessage as import('agora-rtm').RTMEvents.RTMClientEventMap['message'],
+    )
     await rtmClient.subscribe(session.channel)
     checkCurrent()
     await rtc.join(session.app_id, session.channel, session.token, session.uid)
@@ -256,6 +263,17 @@ export async function stopAgoraConversation(): Promise<void> {
 async function releaseMedia(session: LiveSession): Promise<void> {
   session.closeEvents?.()
   session.closeEvents = null
+  if (session.rtmMessage) {
+    try {
+      session.rtm.removeEventListener(
+        'message',
+        session.rtmMessage as import('agora-rtm').RTMEvents.RTMClientEventMap['message'],
+      )
+    } catch {
+      // already detached
+    }
+    session.rtmMessage = null
+  }
   session.remoteTrack?.stop()
   if (session.energyTimer != null) window.clearInterval(session.energyTimer)
   if (session.bargeTimer != null) window.clearInterval(session.bargeTimer)

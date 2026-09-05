@@ -688,7 +688,6 @@ html.dark .as-store__search-shell:focus-within {
   z-index: 3;
   background: color-mix(in srgb, var(--as-bg) 84%, transparent);
   border-bottom: 0.5px solid var(--as-sep);
-  backdrop-filter: saturate(180%) blur(18px);
 }
 
 html[data-perf-mode='exlight'] .as-store__chrome {
@@ -2209,7 +2208,6 @@ html.dark .as-detail__perm-card--privileged.checkbox-group-card {
     z-index: 12;
     background: color-mix(in srgb, var(--as-bg) 88%, transparent);
     border-bottom: 0.5px solid var(--as-sep);
-    backdrop-filter: saturate(180%) blur(20px);
   }
 
   html[data-perf-mode='exlight'] .as-store__chrome {

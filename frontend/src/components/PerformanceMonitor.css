@@ -13,7 +13,6 @@
   background: rgb(0 0 0 / 90%);
   border-radius: 0.5rem;
   box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
-  backdrop-filter: blur(8px);
   contain: layout style;
   user-select: none;
 }

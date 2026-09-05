@@ -1073,15 +1073,11 @@ export function PlaygroundComposer({
                       <motion.p
                         key={`busy-step-${liveStepText}`}
                         initial={
-                          animationsEnabled
-                            ? { opacity: 0, y: 8, filter: 'blur(2px)' }
-                            : false
+                          animationsEnabled ? { opacity: 0, y: 8 } : false
                         }
-                        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                        animate={{ opacity: 1, y: 0 }}
                         exit={
-                          animationsEnabled
-                            ? { opacity: 0, y: -6, filter: 'blur(2px)' }
-                            : undefined
+                          animationsEnabled ? { opacity: 0, y: -6 } : undefined
                         }
                         transition={{
                           duration: 0.32,

@@ -1,6 +1,6 @@
 /**
  * 可视化编辑的网格小组件系统
- * 标准布局 16×4（窄屏紧凑重排）；自由布局同格大小、列行铺满舞台
+ * 标准布局 16×4（窄屏紧凑重排）；自由布局同格、同宽、固定 16×8
  */
 
 import type { HomeLayoutMode } from '../utils/homeLayout'
@@ -35,8 +35,8 @@ import {
 import { getPerformanceProfileSync } from '../hooks/usePerformanceProfile'
 import { useDebouncedWindowSize } from '../hooks/useSharedEventListener'
 import {
-  estimateFreeHomeHostSize,
   freeLayoutFitsCellBudget,
+  HOME_FREE_ROWS,
   HOME_STANDARD_COLS,
   HOME_STANDARD_ROWS,
   homeWidgetCellCount,
@@ -45,8 +45,6 @@ import {
   isHomeWidgetItem,
   findEmptyHomeSlot,
   packWidgetsIntoColumns,
-  resolveFreeHomeGrid,
-  standardHomeCellSize,
 } from '../utils/homeLayout'
 import { HomeStickerCrop } from './home/HomeStickerCrop'
 import { HomeStickerCropTip } from './home/HomeStickerCropTip'
@@ -808,11 +806,9 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
   const [gridColumns, setGridColumns] = useState(() =>
     readInitialHomeGridColumns(customGridColumns),
   )
-  const [hostSize, setHostSize] = useState({ width: 0, height: 0 })
   const isCompact =
     !isFreeLayout && !customGridColumns && gridColumns < GRID_WIDTH
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const gridHostNodeRef = useRef<HTMLDivElement | null>(null)
   // 缓存 gridRect 避免频繁调用 getBoundingClientRect
   const gridRectRef = useRef<DOMRect | null>(null)
   /** Container width for height = width * rows/cols (not for item geometry). */
@@ -822,7 +818,7 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
   const bandSwitchingRef = useRef(false)
   /** After first successful apply; only then allow tablet↔desktop fade. */
   const bandSettledOnceRef = useRef(false)
-  const bandTimersRef = useRef<{ out?: number; in?: number }>({})
+  const bandTimersRef = useRef<{ out?: number; in?: number; raf?: number }>({})
   /**
    * null = settled; 'out' | 'in' = cross-band fade (no geometry lerp).
    */
@@ -832,14 +828,12 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
    * Same-band only: drag/resize polish. Cross-band uses opacity crossfade —
    * never interpolate compact packing ↔ desktop saved coords.
    */
-  const layoutModeRef = useRef(layoutMode)
-  const layoutModeSwitched = layoutModeRef.current !== layoutMode
-  layoutModeRef.current = layoutMode
-  /** 标准↔自由切模式不插值几何；同模式内拖拽/改尺寸与标准一样缓动。 */
+  const [motionMode, setMotionMode] = useState(layoutMode)
+  /** 切模式后两帧内关掉几何缓动，避免标准 16×4 与自由 16×8 互插。 */
   const geometryMotion =
     !isExlight(anim) &&
     bandSwitch === null &&
-    !layoutModeSwitched
+    motionMode === layoutMode
 
   // 计算内容高度 (用于 autoHeight)
   const contentHeight = useMemo(() => {
@@ -854,11 +848,23 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
 
   // 响应式列档：防抖宽度 + 迟滞；tablet↔desktop 可淡入淡出；含 phone 则硬切
   // 控制面板固定 12 列，不必为窗口 resize 重绘整棵网格。
-  const { width: windowWidth, height: windowHeight } = useDebouncedWindowSize(
+  const { width: windowWidth } = useDebouncedWindowSize(
     150,
-    isFreeLayout || !customGridColumns,
+    !isFreeLayout && !customGridColumns,
   )
   const animHardCut = isExlight(anim)
+
+  useLayoutEffect(() => {
+    if (motionMode === layoutMode) return
+    let second = 0
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => setMotionMode(layoutMode))
+    })
+    return () => {
+      cancelAnimationFrame(first)
+      cancelAnimationFrame(second)
+    }
+  }, [layoutMode, motionMode])
 
   useEffect(() => {
     const clearBandTimers = () => {
@@ -869,6 +875,10 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
       if (bandTimersRef.current.in) {
         clearTimeout(bandTimersRef.current.in)
         bandTimersRef.current.in = undefined
+      }
+      if (bandTimersRef.current.raf) {
+        cancelAnimationFrame(bandTimersRef.current.raf)
+        bandTimersRef.current.raf = undefined
       }
     }
 
@@ -936,12 +946,16 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
           setBandSwitch(null)
           bandSwitchingRef.current = false
           bandSettledOnceRef.current = true
-          requestAnimationFrame(() => tryBandMorph())
+          bandTimersRef.current.raf = requestAnimationFrame(() => {
+            bandTimersRef.current.raf = undefined
+            tryBandMorph()
+          })
         }, GRID_BAND_IN_MS)
       }, GRID_BAND_OUT_MS)
     }
 
     tryBandMorph()
+    return clearBandTimers
   }, [windowWidth, customGridColumns, animHardCut, isFreeLayout])
 
   // Unmount only: drop pending band morph timers
@@ -949,6 +963,9 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     return () => {
       if (bandTimersRef.current.out) clearTimeout(bandTimersRef.current.out)
       if (bandTimersRef.current.in) clearTimeout(bandTimersRef.current.in)
+      if (bandTimersRef.current.raf) {
+        cancelAnimationFrame(bandTimersRef.current.raf)
+      }
       bandSwitchingRef.current = false
     }
   }, [])
@@ -959,34 +976,9 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     return packWidgetsIntoColumns(widgets, gridColumns)
   }, [widgets, isCompact, gridColumns])
 
-  const freeGrid = useMemo(() => {
-    if (!isFreeLayout) return null
-    const rootFontSize =
-      typeof document !== 'undefined'
-        ? Number.parseFloat(
-            getComputedStyle(document.documentElement).fontSize,
-          ) || 16
-        : 16
-    const viewportWidth =
-      typeof window !== 'undefined' ? window.innerWidth : windowWidth
-    const viewportHeight =
-      typeof window !== 'undefined' ? window.innerHeight : windowHeight
-    const measured = hostSize.width > 0 && hostSize.height > 0
-    const host = measured
-      ? hostSize
-      : estimateFreeHomeHostSize(viewportWidth, viewportHeight, rootFontSize)
-    return resolveFreeHomeGrid({
-      availableWidth: host.width,
-      availableHeight: host.height,
-      cellSize: standardHomeCellSize(viewportWidth, rootFontSize),
-    })
-  }, [
-    isFreeLayout,
-    hostSize.width,
-    hostSize.height,
-    windowWidth,
-    windowHeight,
-  ])
+  const freeGrid = isFreeLayout
+    ? { cols: HOME_STANDARD_COLS, rows: HOME_FREE_ROWS }
+    : null
 
   const currentWidgets =
     isCompact && compactLayout ? compactLayout.widgets : widgets
@@ -1197,44 +1189,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     [observeHomeResize, unobserveHomeResize],
   )
 
-  const gridHostRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      if (gridHostNodeRef.current) {
-        unobserveHomeResize(gridHostNodeRef.current)
-      }
-      gridHostNodeRef.current = node
-      if (!node || !isFreeLayout) return
-      observeHomeResize(node, (entry) => {
-        const { width, height } = entry.contentRect
-        setHostSize((prev) => {
-          if (
-            Math.abs(prev.width - width) < 1 &&
-            Math.abs(prev.height - height) < 1
-          ) {
-            return prev
-          }
-          return { width, height }
-        })
-      })
-    },
-    [isFreeLayout, observeHomeResize, unobserveHomeResize],
-  )
-
-  useLayoutEffect(() => {
-    if (!isFreeLayout) return
-    const node = gridHostNodeRef.current
-    if (!node) return
-    const rect = node.getBoundingClientRect()
-    setHostSize((prev) => {
-      if (
-        Math.abs(prev.width - rect.width) < 1 &&
-        Math.abs(prev.height - rect.height) < 1
-      ) {
-        return prev
-      }
-      return { width: rect.width, height: rect.height }
-    })
-  }, [isFreeLayout])
 
   useEffect(() => {
     if (!stickerDrag) return
@@ -1334,9 +1288,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     return () => {
       if (containerRef.current) {
         unobserveHomeResize(containerRef.current)
-      }
-      if (gridHostNodeRef.current) {
-        unobserveHomeResize(gridHostNodeRef.current)
       }
     }
   }, [unobserveHomeResize])
@@ -1966,7 +1917,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
         {children}
 
         <div
-          ref={gridHostRef}
           className={
             isFreeLayout
               ? 'widget-grid-host widget-grid-host--free'
@@ -1975,19 +1925,16 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
         >
           <div
             ref={gridRef}
-            className={`widget-grid-container relative rounded-xl ${
-              isFreeLayout ? '' : 'w-full'
-            } ${
+            className={`widget-grid-container relative rounded-xl w-full ${
               geometryMotion && rowCountMorphing && !isFreeLayout
                 ? 'widget-grid-container--layout-motion'
                 : ''
             } ${isEditMode ? 'edit-mode' : ''}`}
             data-band-switch={bandSwitch ?? undefined}
             style={
-              freeGrid
+              isFreeLayout
                 ? {
-                    width: freeGrid.cols * freeGrid.cell,
-                    height: freeGrid.rows * freeGrid.cell,
+                    aspectRatio: `${HOME_STANDARD_COLS} / ${HOME_FREE_ROWS}`,
                   }
                 : gridPixelHeight
                   ? { height: gridPixelHeight }

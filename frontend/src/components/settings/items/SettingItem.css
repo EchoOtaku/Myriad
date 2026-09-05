@@ -972,8 +972,6 @@ html.dark .slider-tick.is-passed {
   background: var(--slider-value-bg);
   border: 1px solid var(--slider-value-border);
   box-shadow: var(--slider-value-shadow);
-  backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
   transition:
     transform var(--sm-dur-fast) var(--sm-ease-spring),
     background var(--sm-dur-fast) var(--sm-ease-standard),

@@ -329,6 +329,7 @@ const platformInfoCache = new Map<
   { info: PlatformInfo; timestamp: number }
 >()
 const PLATFORM_INFO_CACHE_TTL = 60 * 1000 // 1分钟缓存
+const MAX_PLATFORM_INFO_CACHE = 50
 
 // 自定义平台存储管理
 let customPlatformsData: CustomPlatformData[] = []
@@ -452,6 +453,7 @@ function customPlatformToPlatformInfo(
   if (cached && now - cached.timestamp < PLATFORM_INFO_CACHE_TTL) {
     return cached.info
   }
+  if (cached) platformInfoCache.delete(custom.id)
 
   // 创建图标元素 - 支持 react-icons 名称映射和 URL
   let icon: React.ReactNode
@@ -504,7 +506,13 @@ function customPlatformToPlatformInfo(
   }
 
   // 存入缓存
+  platformInfoCache.delete(custom.id)
   platformInfoCache.set(custom.id, { info, timestamp: now })
+  while (platformInfoCache.size > MAX_PLATFORM_INFO_CACHE) {
+    const oldest = platformInfoCache.keys().next().value
+    if (oldest === undefined) break
+    platformInfoCache.delete(oldest)
+  }
 
   return info
 }

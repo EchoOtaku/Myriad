@@ -38,7 +38,6 @@
 
   /* Glass Morphism 效果 - 更高不透明度 */
   background: rgb(255 255 255 / 95%);
-  backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid rgb(200 200 200 / 50%);
   box-shadow:
     0 8px 32px -8px rgb(0 0 0 / 20%),

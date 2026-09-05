@@ -285,9 +285,9 @@ export default function ReportsStatusBar({
           <motion.span
             key={tip.hero}
             className="inline-block"
-            initial={{ opacity: 0, y: 10, filter: 'blur(6px)' }}
-            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-            exit={{ opacity: 0, y: -8, filter: 'blur(6px)' }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.35, ease: 'easeOut' }}
           >
             {tip.hero}
@@ -326,9 +326,9 @@ export default function ReportsStatusBar({
                   key={tip.id}
                   className="rsb-slide"
                   layout="position"
-                  initial={{ opacity: 0, y: 8, filter: 'blur(5px)' }}
-                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-                  exit={{ opacity: 0, y: -8, filter: 'blur(5px)' }}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
                   transition={{ duration: 0.34, ease: SLIDE_EASE }}
                 >
                   <div

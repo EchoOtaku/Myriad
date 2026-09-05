@@ -1,5 +1,5 @@
 /**
- * Home dashboard layout: standard (centered 16×4) vs free (same cell size, fill stage).
+ * Home dashboard layout: standard (centered 16×4) vs free (same cell size, fixed 16×8).
  *
  * Cell size is derived from the standard stage (max-width + stage pad inside page padding).
  * Free uses the same centered 16-col width; row count is a fixed taller canvas,

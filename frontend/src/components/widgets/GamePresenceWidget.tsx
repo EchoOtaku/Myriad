@@ -325,7 +325,18 @@ GamePresenceSettingsModal.displayName = 'GamePresenceSettingsModal'
 const dataCache = new Map<string, { data: GamePresenceData, at: number }>()
 /** 展柜数据变化以天计，6 小时刷新一次足够 */
 const DATA_TTL = 6 * 3600 * 1000
+const MAX_DATA_CACHE = 20
 const inflight = new Map<string, Promise<GamePresenceData | null>>()
+
+function setDataCache(key: string, data: GamePresenceData): void {
+  dataCache.delete(key)
+  dataCache.set(key, { data, at: Date.now() })
+  while (dataCache.size > MAX_DATA_CACHE) {
+    const oldest = dataCache.keys().next().value
+    if (oldest === undefined) break
+    dataCache.delete(oldest)
+  }
+}
 
 async function fetchGamePresence(
   platformId: GamePlatformId,
@@ -355,7 +366,7 @@ async function fetchGamePresence(
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const body = await res.json()
       if (body?.success && body?.data) {
-        dataCache.set(key, { data: body.data, at: Date.now() })
+        setDataCache(key, body.data as GamePresenceData)
         return body.data as GamePresenceData
       }
       return null

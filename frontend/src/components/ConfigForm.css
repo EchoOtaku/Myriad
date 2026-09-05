@@ -251,7 +251,6 @@ html.dark {
   font-weight: 600;
   cursor: pointer;
   transition: all var(--sm-dur-slow) var(--sm-ease-standard);
-  backdrop-filter: blur(8px);
   position: relative;
   overflow: hidden;
   white-space: nowrap;
@@ -2570,7 +2569,6 @@ html.dark .config-form {
 /* 信息卡片 - 使用主题色 */
 .info-card {
   background: color-mix(in srgb, var(--cfg-accent) 8%, transparent);
-  backdrop-filter: blur(12px);
   border: 1px solid color-mix(in srgb, var(--cfg-accent) 20%, transparent);
   border-radius: 0.75rem;
   padding: 0.75rem;
@@ -3263,7 +3261,6 @@ html.dark .oidc-preset-icon-placeholder {
   width: 100%;
   height: 100%;
   background: rgb(0 0 0 / 60%);
-  backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;

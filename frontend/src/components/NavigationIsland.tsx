@@ -40,6 +40,7 @@ import {
 
   subscribeNavLayout,
 } from '../utils/navLayout'
+import { navigateAfterStageLeave } from './stageLeaveGate'
 
 /** Bottom ↔ rail crossfade timings (ms). Position only swaps while opacity≈0. */
 const NAV_CHROME_OUT_MS = 200
@@ -333,14 +334,6 @@ const NavIslandTooltip = memo(
       padding: '6px 10px',
       borderRadius: '8px',
       background: 'var(--bg-secondary)',
-      // exlight 下由 performance.css 全局关 backdrop；此处不写 blur，避免无意义合成
-      ...(typeof document !== 'undefined' &&
-      document.documentElement.dataset.perfMode === 'exlight'
-        ? {}
-        : {
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
-          }),
       color: 'var(--text-primary)',
       border: '1px solid var(--border-color)',
       boxShadow: '0 2px 8px var(--shadow-color)',
@@ -724,17 +717,19 @@ export function NavigationIsland() {
           }
         }
       } else {
-        // 导航到目标页面
-        navigate(path)
-        // 等待路由更新后展开
-        setTimeout(() => {
-          if (window.location.pathname === path) {
-            // 通过事件通知页面展开二级导航
-            window.dispatchEvent(
-              new CustomEvent('nav-expand-secondary', { detail: { path } }),
-            )
-          }
-        }, 150)
+        const go = () => {
+          navigate(path)
+          // 等待路由更新后展开
+          setTimeout(() => {
+            if (window.location.pathname === path) {
+              // 通过事件通知页面展开二级导航
+              window.dispatchEvent(
+                new CustomEvent('nav-expand-secondary', { detail: { path } }),
+              )
+            }
+          }, 150)
+        }
+        if (!navigateAfterStageLeave(go)) go()
       }
     },
     [location.pathname, secondaryNav, handleExpand, navigate, handlePrefetchPath],
@@ -1275,7 +1270,8 @@ export function NavigationIsland() {
                         onClick={(e) => {
                           e.preventDefault()
                           handlePrefetchPath(item.path)
-                          navigate(item.path)
+                          const go = () => navigate(item.path)
+                          if (!navigateAfterStageLeave(go)) go()
                         }}
                       >
                         {item.icon}

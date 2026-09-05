@@ -83,26 +83,20 @@ html.gcp-panel-open [data-tapp-run-shell] {
     border-color 0.25s ease,
     box-shadow 0.35s ease;
 
-  /* 固定为独立合成层，缓解移动端 Chrome 上 backdrop-filter 元素
-   * 在尺寸动画期间因合成层重建导致的闪烁；
+  /* 固定为独立合成层，避免尺寸 morph 时整岛重绘；
    * 注意 width/height/padding 等布局属性不适用 will-change（非合成属性，纯开销） */
   transform: translateZ(0);
 }
 
-
-/* 移动端 Chrome：backdrop-filter 元素在尺寸动画期间会因合成层重建闪烁。
-   展开/收起动画期间（JS 通过 gcp-animation-start/end 事件挂 gcp-animating 类）
-   临时冻结模糊；背景本身已较实，冻结期间观感差异可忽略。
-   仅触屏设备生效，桌面端模糊保持常开 */
-@media (hover: none) and (pointer: coarse) {
-  .control-bar-trigger.gcp-animating {
-    backdrop-filter: none;
-  }
-}
-
-/* 低性能 / reduced-motion 档位（JS 挂 gcp-freeze-blur）：桌面端同样把
-   模糊移出 morph 热路径。桌面标准档不挂该类，观感与既有实现一致 */
-.control-bar-trigger.gcp-animating.gcp-freeze-blur {
+/*
+ * 岛上模糊按档位常开/常关，不在 morph 期间临时开关。
+ * light：关掉本岛硬编码 blur（performance.css 的 light 只清 Tailwind 工具类）。
+ * exlight：performance.css 已全局 backdrop-filter:none，这里写明以免只看本文件漏掉。
+ */
+html[data-perf-mode='light'] .control-bar-trigger,
+html[data-perf-mode='exlight'] .control-bar-trigger {
+  /* stylelint-disable-next-line property-no-vendor-prefix -- Safari < 16.4 */
+  -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
 

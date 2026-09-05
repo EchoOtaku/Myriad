@@ -159,6 +159,13 @@ html.dark .dynamic-island {
   border-color: color-mix(in srgb, var(--color-primary) 20%, transparent);
 }
 
+html[data-perf-mode='light'] .dynamic-island,
+html[data-perf-mode='exlight'] .dynamic-island {
+  /* stylelint-disable-next-line property-no-vendor-prefix -- Safari < 16.4 */
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
 /* 流动渐变边框（自 astro 页面级样式迁移，原双份声明已删） */
 .dynamic-island::before {
   content: '';

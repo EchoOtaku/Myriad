@@ -668,6 +668,7 @@ export const TappWidgetSandbox = memo(
       let closeEventStream: () => void = () => {}
       let closeAgentInteractions: () => void = () => {}
       let closeScheduler: () => void = () => {}
+      let closeMedia: () => void = () => {}
 
       if (previewMode) {
         // MYR-024: ephemeral handlers only — no real storage/API/host surfaces.
@@ -747,9 +748,9 @@ export const TappWidgetSandbox = memo(
         closeAgentInteractions = hasAgent
           ? registerAgentInteractionHandlers(bridge, currentTappInstance)
           : () => {}
-        if (hasMedia) {
-          registerMediaHandlers(bridge, currentTappInstance)
-        }
+        closeMedia = hasMedia
+          ? registerMediaHandlers(bridge, currentTappInstance)
+          : () => {}
         if (hasSpeech) {
           registerSpeechHandlers(bridge, currentTappInstance)
         }
@@ -790,6 +791,7 @@ export const TappWidgetSandbox = memo(
       return () => {
         unsubscribeReady()
         closeScheduler()
+        closeMedia()
         closeDataExchange()
         closeAITaskStreams()
         closeEventStream()

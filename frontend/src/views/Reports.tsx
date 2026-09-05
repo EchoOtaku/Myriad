@@ -30,6 +30,7 @@ import {
 } from 'react'
 import AnimatedView from '../components/AnimatedView'
 import { Spinner } from '../components/Spinner'
+import { setStageLeaveHandler } from '../components/stageLeaveGate'
 import StageMode from '../components/StageMode'
 import Toast from '../components/Toast'
 import { preloadPlatformFaces } from '../components/widgets/reportCard/platformFaceLoaders'
@@ -41,6 +42,7 @@ import {
   usePageReady,
   useReportsScheduler,
 } from '../hooks/animation'
+import { isExlight } from '../hooks/useAnimationLevel'
 import { useHorizontalStripScroll } from '../hooks/useHorizontalStripScroll'
 import { usePageSeo } from '../hooks/usePageSeo'
 import {
@@ -480,6 +482,19 @@ export default function Reports() {
   const handleUserCloseStage = useCallback(() => {
     closeStageMode()
   }, [closeStageMode])
+
+  // 切页：先播完舞台内容退场，再让导航岛真正换路由。光幕 1s，内容 0.5s。
+  useEffect(() => {
+    if (!isStageMode) {
+      setStageLeaveHandler(null)
+      return
+    }
+    setStageLeaveHandler((proceed) => {
+      closeStageMode()
+      window.setTimeout(proceed, isExlight() ? 0 : 520)
+    })
+    return () => setStageLeaveHandler(null)
+  }, [isStageMode, closeStageMode])
 
   useEffect(() => {
     if (!platformVisibilityReady) {
