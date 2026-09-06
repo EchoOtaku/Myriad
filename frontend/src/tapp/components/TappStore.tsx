@@ -1113,6 +1113,7 @@ export function TappStore({
         <aside
           className="as-store__sidebar glass glass-chrome-free"
           aria-label={t.tapp.storeBrowse}
+          data-tour="tapp-store-nav"
         >
           <div className="as-store__sidebar-search as-store__search-shell">
             <FaSearch className="as-store__search-icon" />
@@ -1212,9 +1213,9 @@ export function TappStore({
           </div>
         </aside>
 
-        <main className="as-store__main">
+        <main className="as-store__main" data-tour="tapp-store-catalog">
           {/* 窄屏专用工具栏；桌面由左侧栏承担导航。外层页面顶栏不变。 */}
-          <div className="as-store__chrome">
+          <div className="as-store__chrome" data-tour="tapp-store-nav">
             <AnimatePresence mode="wait" initial={false}>
               {detailApp || showStoreConfiguration || showAllAppsPage ? (
                 <motion.div

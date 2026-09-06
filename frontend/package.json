@@ -51,6 +51,7 @@
     "react-dom": "^19.2.8",
     "react-icons": "^5.7.0",
     "react-router-dom": "^7.18.2",
+    "shiki": "^4.4.1",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3"
   },

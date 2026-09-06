@@ -378,6 +378,57 @@ export function parseDashboardLayoutJson(text: string): HomeDashboardLayouts {
   }
 }
 
+export function homeLayoutsHaveTiles(layouts: HomeDashboardLayouts): boolean {
+  return layouts.standard.length > 0 || layouts.free.length > 0
+}
+
+/**
+ * First paint of a saved dashboard must keep every tile, including Tapp
+ * types that are not in the widget catalog yet.
+ *
+ * Filtering against a cold registry (Home's first render has no Tapp types)
+ * drops third-party tiles. `applyLayouts` then awaits chunk preload; if the
+ * restore effect already put those tiles back, the late `setLayouts` from
+ * that first apply overwrites them. HTTP cache makes the race likely —
+ * Disable cache in DevTools slows the preload enough that restore wins.
+ */
+export function layoutsForFirstPaint(
+  source: HomeDashboardLayouts,
+): HomeDashboardLayouts {
+  return {
+    standard: [...source.standard],
+    free: [...source.free],
+  }
+}
+
+/**
+ * After the Tapp registry has loaded, drop tiles whose types are still
+ * unknown (uninstalled Tapps). Stickers stay on the free canvas.
+ */
+export function layoutsAfterWidgetRegistry(
+  source: HomeDashboardLayouts,
+  registeredIds: ReadonlySet<string>,
+): HomeDashboardLayouts {
+  const keep = (list: WidgetConfig[], allowStickers: boolean) =>
+    list.filter(
+      (widget) =>
+        (allowStickers && isHomeStickerItem(widget)) ||
+        registeredIds.has(widget.type),
+    )
+  return {
+    standard: keep(source.standard, false),
+    free: keep(source.free, true),
+  }
+}
+
+/** In-flight first-paint apply must not replace a newer restore. */
+export function shouldAcceptHomeLayoutApply(
+  applyGeneration: number,
+  currentGeneration: number,
+): boolean {
+  return applyGeneration === currentGeneration
+}
+
 export function serializeDashboardLayout(
   layouts: HomeDashboardLayouts,
 ): string {

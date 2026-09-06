@@ -266,6 +266,7 @@ export default function ReportsStatusBar({
   return (
     <div
       className={`rsb mb-2${held ? ' is-held' : ''}`}
+      data-tour="reports-status"
       onMouseEnter={() => setHeld(true)}
       onMouseLeave={() => setHeld(false)}
     >

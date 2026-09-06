@@ -15,7 +15,15 @@ import {
   TOUR_HOLE_PAD,
   unionBoxes,
 } from './tourLogic'
-import { HOME_TOURS } from './tourRegistry'
+import {
+  CONFIG_TOURS,
+  HOME_TOURS,
+  LIBRARY_TOURS,
+  REPORTS_TOURS,
+  TAPP_STORE_TOURS,
+  TAPP_TOURS,
+  TOURS,
+} from './tourRegistry'
 
 describe('inflateRect', () => {
   it('pads every edge', () => {
@@ -113,6 +121,36 @@ describe('HOME_TOURS', () => {
   it('keeps owner and visitor as separate definitions', () => {
     const ids = HOME_TOURS.map((tour: TourDefinition) => tour.id)
     assert.deepEqual(ids, ['home-visitor', 'home-owner'])
+  })
+})
+
+describe('page tours', () => {
+  it('registers library, reports, tapp, store, and owner-only config', () => {
+    assert.equal(pickTour(LIBRARY_TOURS, '/library', false)?.id, 'library-visitor')
+    assert.equal(pickTour(REPORTS_TOURS, '/reports', true)?.id, 'reports-owner')
+    assert.equal(pickTour(TAPP_TOURS, '/tapp', false)?.id, 'tapp-visitor')
+    assert.equal(
+      pickTour(TAPP_STORE_TOURS, '/tapp/store', true)?.id,
+      'tapp-store-owner',
+    )
+    assert.equal(pickTour(CONFIG_TOURS, '/config', true)?.id, 'config-owner')
+    assert.equal(pickTour(CONFIG_TOURS, '/config', false), null)
+  })
+
+  it('does not register brew reading routes', () => {
+    assert.equal(pickTour(TOURS, '/brew', true), null)
+    assert.equal(pickTour(TOURS, '/brew/item/1', true), null)
+  })
+
+  it('keeps owner chrome last on module pages', () => {
+    assert.equal(
+      pickTour(LIBRARY_TOURS, '/library', true)?.steps.at(-1)?.anchor,
+      'control-island',
+    )
+    assert.deepEqual(
+      pickTour(TAPP_TOURS, '/tapp', false)?.steps.map((step) => step.anchor),
+      ['nav', 'tapp-toolbar', 'tapp-grid'],
+    )
   })
 })
 

@@ -461,6 +461,42 @@ export const zhCN: TranslationKeys = {
         title: '控制岛',
         body: '外观、语言、壁纸和登录都在右上角。站长还可以进系统配置。',
       },
+      'library-grid': {
+        title: '收藏',
+        body: '游戏、影视、音乐、追番和书都排在这里。点导航里的资料库可以按类型筛选。',
+      },
+      'reports-status': {
+        title: '状态条',
+        body: '这里会轮播这一页的状态。有报告时可以从这里一键播放。',
+      },
+      'reports-cards': {
+        title: '平台卡',
+        body: '每个平台一张卡。有报告就点开看，站长还可以在这里生成。',
+      },
+      'tapp-toolbar': {
+        title: '工具条',
+        body: '去商店、切换我的/站点应用、安装都在这条上。',
+      },
+      'tapp-grid': {
+        title: '已装应用',
+        body: '点卡片打开应用。站长可以改排列和大小。',
+      },
+      'tapp-store-nav': {
+        title: '分类',
+        body: '按发现、已装和分类浏览商店。',
+      },
+      'tapp-store-catalog': {
+        title: '目录',
+        body: '应用都列在这里，点进去看详情和安装。',
+      },
+      'config-sidebar': {
+        title: '目录',
+        body: '按分组找设置，也可以搜索。',
+      },
+      'config-content': {
+        title: '设置',
+        body: '改完记得保存。这里只给站长用。',
+      },
     },
   },
 

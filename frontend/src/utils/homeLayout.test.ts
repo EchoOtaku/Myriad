@@ -18,9 +18,13 @@ import {
   HOME_STANDARD_ROWS,
   HOME_STANDARD_STAGE_PAD_REM,
   homeFreePagePadYPx,
+  homeLayoutsHaveTiles,
   homePagePaddingX,
   homePagePadXRem,
   homeStagePadPx,
+  layoutsAfterWidgetRegistry,
+  layoutsForFirstPaint,
+  shouldAcceptHomeLayoutApply,
   freeLayoutFitsCellBudget,
   homeWidgetCellCount,
   homeWidgetsOccupiedCells,
@@ -341,6 +345,51 @@ describe('home layout mode storage', () => {
   })
 })
 
+describe('home dashboard first-paint vs registry', () => {
+  const tappTile = {
+    id: 't1',
+    type: 'tapp.com.example.clock',
+    size: '2x2' as const,
+    position: { x: 0, y: 0 },
+  }
+  const welcome = {
+    id: 'w1',
+    type: 'welcome',
+    size: '4x2' as const,
+    position: { x: 2, y: 0 },
+  }
+  const sticker = createHomeStickerItem({
+    size: '2x2',
+    position: { x: 4, y: 0 },
+    imageUrl: 'https://example.com/s.png',
+    prompt: 'sticker',
+  })
+
+  it('first paint keeps unregistered Tapp tiles', () => {
+    const source = { standard: [tappTile, welcome], free: [sticker] }
+    const first = layoutsForFirstPaint(source)
+    assert.equal(first.standard.length, 2)
+    assert.equal(first.standard.some((widget) => widget.type === tappTile.type), true)
+    assert.equal(homeLayoutsHaveTiles(first), true)
+  })
+
+  it('registry filter drops unknown types but keeps stickers', () => {
+    const source = { standard: [tappTile, welcome], free: [sticker, tappTile] }
+    const filtered = layoutsAfterWidgetRegistry(source, new Set(['welcome']))
+    assert.deepEqual(
+      filtered.standard.map((widget) => widget.type),
+      ['welcome'],
+    )
+    assert.equal(filtered.free.length, 1)
+    assert.equal(isHomeStickerItem(filtered.free[0]!), true)
+  })
+
+  it('rejects a stale first-paint apply after restore advanced the generation', () => {
+    assert.equal(shouldAcceptHomeLayoutApply(1, 1), true)
+    assert.equal(shouldAcceptHomeLayoutApply(1, 2), false)
+  })
+})
+
 describe('home shell CSS contract', () => {
   it('keeps Home.css --home-* in lockstep with the rem steps', () => {
     const css = readFileSync(new URL('../views/Home.css', import.meta.url), 'utf8')
@@ -372,5 +421,8 @@ describe('home shell CSS contract', () => {
     assert.equal(home.includes('px-3 xs:px-4 sm:px-6'), false)
     assert.equal(home.includes('max-w-7xl'), false)
     assert.equal(/py-6/.test(home), false)
+    assert.equal(home.includes('filterLayouts'), false)
+    assert.equal(home.includes('layoutsForFirstPaint'), true)
+    assert.equal(home.includes('shouldAcceptHomeLayoutApply'), true)
   })
 })

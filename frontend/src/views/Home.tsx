@@ -53,13 +53,17 @@ import {
   cloneHomeWidgets,
   createHomeStickerItem,
   effectiveHomeLayoutMode,
+  homeLayoutsHaveTiles,
   isHomeStickerItem,
   isHomeWidgetItem,
+  layoutsAfterWidgetRegistry,
+  layoutsForFirstPaint,
   parseDashboardLayoutJson,
   parseHomeLayoutMode,
   peekStoredHomeLayoutMode,
   persistHomeLayoutMode,
   serializeDashboardLayout,
+  shouldAcceptHomeLayoutApply,
   stickerPixelSize,
 } from '../utils/homeLayout'
 import { stickerAspectKey } from '../utils/homeStickerSize'
@@ -253,6 +257,9 @@ export default function Home() {
   const [rawLayouts, setRawLayouts] = useState<HomeDashboardLayouts | null>(
     null,
   )
+  // 首屏 applyLayouts 会 await 预热；Tapp 注册表就绪后的恢复必须能作废
+  // 那次迟到的 setLayouts，否则缓存命中时第三方格子会被滤空结果盖掉。
+  const layoutApplyGenerationRef = useRef(0)
 
   // motion 与配置请求并行；网格入场依赖真 motion，避免 shim 攒帧闪现
   useEffect(() => {
@@ -270,25 +277,8 @@ export default function Home() {
       free: cloneHomeWidgets(DEFAULT_WIDGETS),
     })
 
-    function filterLayouts(
-      source: HomeDashboardLayouts,
-      registered: Set<string>,
-    ): HomeDashboardLayouts {
-      const keep = (list: WidgetConfig[], allowStickers: boolean) =>
-        list.filter(
-          (widget) =>
-            (allowStickers && isHomeStickerItem(widget)) ||
-            registered.has(widget.type),
-        )
-      const standard = keep(source.standard, false)
-      const free = keep(source.free, true)
-      return {
-        standard: standard.length > 0 ? standard : DEFAULT_WIDGETS,
-        free,
-      }
-    }
-
     async function applyLayouts(next: HomeDashboardLayouts) {
+      const generation = ++layoutApplyGenerationRef.current
       await Promise.race([
         Promise.all([
           preloadBuiltinWidgets(
@@ -298,6 +288,14 @@ export default function Home() {
         ]),
         new Promise((resolve) => setTimeout(resolve, 3000)),
       ])
+      if (
+        !shouldAcceptHomeLayoutApply(
+          generation,
+          layoutApplyGenerationRef.current,
+        )
+      ) {
+        return
+      }
       setLayouts(next)
     }
 
@@ -316,10 +314,13 @@ export default function Home() {
           try {
             const parsed = parseDashboardLayoutJson(data.dashboard_layout)
             setRawLayouts(parsed)
-            const registeredWidgetIds = new Set(
-              ALL_AVAILABLE_WIDGETS.map((w) => w.id),
+            // 首屏不按注册表过滤：此时 Tapp 类型几乎总是还没进 catalog。
+            // WidgetGrid 对未知类型已有占位；控制面板同样先原样落布局。
+            await applyLayouts(
+              homeLayoutsHaveTiles(parsed)
+                ? layoutsForFirstPaint(parsed)
+                : fallbackLayouts(),
             )
-            await applyLayouts(filterLayouts(parsed, registeredWidgetIds))
           } catch (e) {
             console.error('解析仪表盘布局失败:', e)
             await applyLayouts(fallbackLayouts())
@@ -345,35 +346,30 @@ export default function Home() {
   useEffect(() => {
     if (isTappWidgetsLoading || !rawLayouts || tappWidgets.length === 0) return
 
-    const registeredWidgetIds = new Set(ALL_AVAILABLE_WIDGETS.map((w) => w.id))
-    const next = {
-      standard: rawLayouts.standard.filter((widget) =>
-        registeredWidgetIds.has(widget.type),
-      ),
-      free: rawLayouts.free.filter(
-        (widget) =>
-          isHomeStickerItem(widget) || registeredWidgetIds.has(widget.type),
-      ),
+    const next = layoutsAfterWidgetRegistry(
+      rawLayouts,
+      new Set(ALL_AVAILABLE_WIDGETS.map((w) => w.id)),
+    )
+
+    if (!homeLayoutsHaveTiles(next)) return
+
+    const sameSide = (a: WidgetConfig[], b: WidgetConfig[]) =>
+      a.length === b.length &&
+      a.every(
+        (widget, i) => widget.id === b[i].id && widget.type === b[i].type,
+      )
+    const prev = layoutsRef.current
+    if (
+      sameSide(prev.standard, next.standard) &&
+      sameSide(prev.free, next.free)
+    ) {
+      return
     }
 
-    if (next.standard.length === 0 && next.free.length === 0) return
-
-    setLayouts((prev) => {
-      const sameSide = (a: WidgetConfig[], b: WidgetConfig[]) =>
-        a.length === b.length &&
-        a.every(
-          (widget, i) => widget.id === b[i].id && widget.type === b[i].type,
-        )
-      if (
-        sameSide(prev.standard, next.standard) &&
-        sameSide(prev.free, next.free)
-      ) {
-        return prev
-      }
-      return {
-        standard: next.standard.length > 0 ? next.standard : prev.standard,
-        free: next.free,
-      }
+    layoutApplyGenerationRef.current += 1
+    setLayouts({
+      standard: next.standard.length > 0 ? next.standard : prev.standard,
+      free: next.free,
     })
   }, [isTappWidgetsLoading, tappWidgets, rawLayouts, ALL_AVAILABLE_WIDGETS])
 

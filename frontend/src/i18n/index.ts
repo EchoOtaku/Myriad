@@ -419,6 +419,15 @@ export interface TranslationKeys {
       'home-grid': { title: string; body: string }
       'home-edit': { title: string; body: string }
       'control-island': { title: string; body: string }
+      'library-grid': { title: string; body: string }
+      'reports-status': { title: string; body: string }
+      'reports-cards': { title: string; body: string }
+      'tapp-toolbar': { title: string; body: string }
+      'tapp-grid': { title: string; body: string }
+      'tapp-store-nav': { title: string; body: string }
+      'tapp-store-catalog': { title: string; body: string }
+      'config-sidebar': { title: string; body: string }
+      'config-content': { title: string; body: string }
     }
   }
 

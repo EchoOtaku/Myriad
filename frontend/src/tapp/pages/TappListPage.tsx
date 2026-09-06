@@ -757,7 +757,10 @@ export function TappListPage() {
 
             <div className="h-full flex items-center justify-between">
               {/* 宸︿晶淇℃伅鍗＄墖 */}
-              <div className="h-full glass rounded-xl px-4 py-1 flex items-center gap-3 shadow-sm relative z-10">
+              <div
+                className="h-full glass rounded-xl px-4 py-1 flex items-center gap-3 shadow-sm relative z-10"
+                data-tour="tapp-toolbar"
+              >
                 <TappIcon
                   icon={TAPP_ICON_TOKENS.store}
                   name={t.tapp.storeTitle}
@@ -913,7 +916,11 @@ export function TappListPage() {
           </div>
 
           {/* Content — hold cards while public site layout hydrates (no order flash) */}
-          {!listDisplayPending && orderedTapps.length === 0 && showEmpty ? (
+          <div
+            data-tour="tapp-grid"
+            data-tour-fit=".tapp-app-card, .tapp-app-empty"
+          >
+            {!listDisplayPending && orderedTapps.length === 0 && showEmpty ? (
             <div className="tapp-app-empty glass glass-chrome-free">
               <GlowBackground
                 color="var(--color-primary, #6366f1)"
@@ -1015,7 +1022,8 @@ export function TappListPage() {
                   ))}
               </AnimatePresence>
             </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 

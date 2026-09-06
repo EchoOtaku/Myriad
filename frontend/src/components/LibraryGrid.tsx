@@ -812,7 +812,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
       {error || showEmpty ? (
         <div className="flex flex-col items-start py-8">
-          <div className="rounded-2xl glass-surface glass-90 border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10 flex items-center gap-3 px-5 py-3">
+          <div className="library-empty rounded-2xl glass-surface glass-90 border border-gray-200/50 dark:border-neutral-700/50 shadow-lg shadow-black/10 flex items-center gap-3 px-5 py-3">
             <div className="w-9 h-9 rounded-xl bg-gray-100/80 dark:bg-white/5 flex items-center justify-center text-gray-400 dark:text-gray-500 shrink-0">
               {emptyIcon}
             </div>

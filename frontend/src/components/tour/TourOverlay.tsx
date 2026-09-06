@@ -10,6 +10,7 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { useLocation } from 'react-router-dom'
 import { useI18n } from '../../contexts/I18nContext'
 import {
   getTourSnapshot,
@@ -57,7 +58,10 @@ export function TourOverlay() {
     getTourSnapshot,
   )
   const { t } = useI18n()
+  const location = useLocation()
   const titleId = useId()
+  const activeRef = useRef(false)
+  activeRef.current = state.active
   const cardRef = useRef<HTMLDivElement>(null)
   const primaryRef = useRef<HTMLButtonElement>(null)
   const [hole, setHole] = useState({
@@ -105,6 +109,11 @@ export function TourOverlay() {
     setCardPos(computeTourCardPosition(inflated, width, height, vw, vh))
     setReady(true)
   }, [state.active, state.step])
+
+  useEffect(() => {
+    if (!activeRef.current) return
+    stopTour('abort')
+  }, [location.pathname])
 
   useLayoutEffect(() => {
     if (!state.active) {

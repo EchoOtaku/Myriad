@@ -260,7 +260,11 @@ export default function Library() {
 
   return (
     <AnimatedView className="min-h-screen px-3 xs:px-4 sm:px-6 pt-20 pb-28 sm:pb-24 md:pb-12">
-      <div className="max-w-7xl mx-auto w-full">
+      <div
+        className="max-w-7xl mx-auto w-full"
+        data-tour="library-grid"
+        data-tour-fit=".library-card-container, .library-empty"
+      >
         <LibraryGrid filter={activeId as FilterType} />
       </div>
     </AnimatedView>

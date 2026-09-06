@@ -478,6 +478,42 @@ export const enUS: TranslationKeys = {
         title: 'Control island',
         body: 'Appearance, language, wallpaper, and sign-in live up here. Owners can also open system config.',
       },
+      'library-grid': {
+        title: 'Collection',
+        body: 'Games, videos, music, anime, and books live here. Expand Library in the nav to filter by type.',
+      },
+      'reports-status': {
+        title: 'Status bar',
+        body: 'This bar cycles through the page state. When reports exist, you can play them from here.',
+      },
+      'reports-cards': {
+        title: 'Platform cards',
+        body: 'One card per platform. Open a report to view it; the owner can also generate one here.',
+      },
+      'tapp-toolbar': {
+        title: 'Toolbar',
+        body: 'Store, mine/site scope, and install all live on this bar.',
+      },
+      'tapp-grid': {
+        title: 'Installed apps',
+        body: 'Open an app from its card. The owner can reorder and resize them.',
+      },
+      'tapp-store-nav': {
+        title: 'Categories',
+        body: 'Browse by Discover, installed, or category.',
+      },
+      'tapp-store-catalog': {
+        title: 'Catalog',
+        body: 'Apps are listed here. Open one for details and install.',
+      },
+      'config-sidebar': {
+        title: 'Index',
+        body: 'Find settings by group, or search.',
+      },
+      'config-content': {
+        title: 'Settings',
+        body: 'Save after you change something. This page is for the owner only.',
+      },
     },
   },
 

@@ -854,6 +854,11 @@ export default defineConfig({
   ],
   // SPA 模式：所有路由都重定向到 index.html
   trailingSlash: 'never',
+  // 本仓库的代码高亮在 React 侧走 Prism，不走 Astro Markdown / Shiki。
+  // 关掉默认 highlighter，避免 dev overlay 以外的路径再去动态 import('shiki/wasm')。
+  markdown: {
+    syntaxHighlight: false,
+  },
   vite: {
     define: {
       __APP_VERSION__: JSON.stringify(APP_VERSION),
@@ -910,6 +915,10 @@ export default defineConfig({
         '@agora-js/report',
         '@agora-js/protocol',
         'ua-parser-js',
+        // Shiki's bundle-full does import('shiki/wasm'). Prebundling it lets
+        // Vite's module-runner rewrite that specifier to a file path that Node
+        // then cannot load under pnpm's isolated layout.
+        'shiki',
       ],
     },
     ssr: {
@@ -920,6 +929,9 @@ export default defineConfig({
         '@agora-js/media',
         '@agora-js/report',
         '@agora-js/protocol',
+        // Keep the highlighter on Node's native ESM so import('shiki/wasm')
+        // resolves from inside the shiki package, not the project root.
+        'shiki',
       ],
     },
     plugins: [

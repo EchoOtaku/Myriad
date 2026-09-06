@@ -619,6 +619,7 @@ const ModernConfigForm: React.FC = () => {
           <motion.aside
             className="config-sidebar"
             aria-label={t.config.title}
+            data-tour="config-sidebar"
             initial={SETTINGS_SIDEBAR_MOTION.initial}
             animate={SETTINGS_SIDEBAR_MOTION.animate}
             transition={SETTINGS_SIDEBAR_MOTION.transition}
@@ -751,7 +752,7 @@ const ModernConfigForm: React.FC = () => {
         ) : null}
 
         {!(isMobileLayout && mobilePane === 'nav') ? (
-          <div className="config-content">
+          <div className="config-content" data-tour="config-content">
             <SettingsPageActionsProvider
               value={{
                 resetCurrentPage: handleResetCurrentPage,
