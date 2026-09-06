@@ -266,7 +266,6 @@ export default function ReportsStatusBar({
   return (
     <div
       className={`rsb mb-2${held ? ' is-held' : ''}`}
-      data-tour="reports-status"
       onMouseEnter={() => setHeld(true)}
       onMouseLeave={() => setHeld(false)}
     >
@@ -313,6 +312,7 @@ export default function ReportsStatusBar({
         <motion.div
           className="rsb-bar glass"
           layout
+          data-tour="reports-status"
           transition={{ duration: 0.42, ease: SLIDE_EASE }}
         >
           <div

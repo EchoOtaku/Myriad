@@ -87,8 +87,94 @@ export function readTourSurface(
     pathname ??
       (typeof window === 'undefined' ? '/' : window.location.pathname),
   )
+  if (path === '/library') {
+    return getLibraryTourSurfaceSnapshot() === 'canvas' ? 'canvas' : 'browse'
+  }
   if (path !== '/config') return 'browse'
   return configTourSurface
+}
+
+/** 真在渲染无限画布（空状态只有偏好、没有 surface）。 */
+export function isLibraryCanvasTourSurface(): boolean {
+  return getLibraryTourSurfaceSnapshot() === 'canvas'
+}
+
+export type LibraryTourSurface = 'list' | 'canvas' | 'empty' | 'pending'
+
+export function libraryTourSurfaceFromFlags(flags: {
+  preference: boolean
+  surface: boolean
+  empty: boolean
+}): LibraryTourSurface {
+  if (flags.surface) return 'canvas'
+  if (flags.preference) return flags.empty ? 'empty' : 'pending'
+  return 'list'
+}
+
+function readLibraryCanvasTourFlags(): {
+  preference: boolean
+  surface: boolean
+  empty: boolean
+} {
+  if (typeof document === 'undefined') {
+    return { preference: false, surface: false, empty: false }
+  }
+  const root = document.documentElement
+  return {
+    preference: root.dataset.libraryCanvas === 'active',
+    surface: root.dataset.libraryCanvasSurface === '1',
+    empty: root.dataset.libraryEmpty === '1',
+  }
+}
+
+/**
+ * list：列表。canvas：画布已挂上。pending：偏好是画布但还在转圈。
+ * 只读 <html> dataset，不扫 DOM。
+ */
+export function getLibraryTourSurfaceSnapshot(): LibraryTourSurface {
+  return libraryTourSurfaceFromFlags(readLibraryCanvasTourFlags())
+}
+
+/** 资料库收藏步：列表外包会 0.4s 长高，画布 surface 是整视口。都不跟 RO。 */
+const TOUR_STATIC_HOST_ANCHORS = new Set(['library-grid'])
+
+export function tourMeasureWatchesHost(anchor: string): boolean {
+  return !TOUR_STATIC_HOST_ANCHORS.has(anchor)
+}
+
+/** 画布教程只活在真挂上的画布上；pending / empty 会落到列表外包。 */
+export function shouldAbortLibraryTour(
+  tourId: string,
+  librarySurface: LibraryTourSurface,
+): boolean {
+  if (tourId === 'library-visitor' || tourId === 'library-owner') {
+    return librarySurface === 'canvas'
+  }
+  if (
+    tourId === 'library-canvas-visitor' ||
+    tourId === 'library-canvas-owner'
+  ) {
+    return librarySurface !== 'canvas'
+  }
+  return false
+}
+
+/** 教程覆层挡住指针，画布不会滚；capture scroll 只浪费量盒。 */
+export function tourMeasureWatchesScroll(
+  canvasSurface = typeof document !== 'undefined' &&
+    document.documentElement.dataset.libraryCanvasSurface === '1',
+): boolean {
+  return !canvasSurface
+}
+
+export function subscribeLibraryCanvasTourSurface(
+  onStoreChange: () => void,
+): () => void {
+  if (typeof window === 'undefined') return () => {}
+  window.addEventListener('libraryCanvasModeChanged', onStoreChange)
+  return () => {
+    window.removeEventListener('libraryCanvasModeChanged', onStoreChange)
+  }
 }
 
 export function pageNameForPath(
@@ -362,12 +448,29 @@ export function isDegenerateBox(box: Box, min = 24): boolean {
   return box.width < min || box.height < min
 }
 
+export function fitTourUnion(boxes: readonly Box[], host: Box): Box | null {
+  // display:contents 等无盒锚点 getBoundingClientRect 为 0；再按 host 裁切会
+  // 把子项并集丢掉，量高亮失败，覆层 ready 不起、整页点不动。
+  if (isDegenerateBox(host, 1)) {
+    const union = unionBoxes(boxes)
+    return union && !isDegenerateBox(union) ? union : null
+  }
+  const pieces: Box[] = []
+  for (const box of boxes) {
+    const clipped = intersectBoxes(box, host)
+    if (clipped) pieces.push(clipped)
+  }
+  const union = unionBoxes(pieces)
+  if (union && !isDegenerateBox(union)) return union
+  return null
+}
+
 export function readTourBox(node: HTMLElement): Box {
   const r = node.getBoundingClientRect()
   const host = { top: r.top, left: r.left, width: r.width, height: r.height }
   const fit = node.getAttribute('data-tour-fit')
   if (fit) {
-    const union = unionBoxes(
+    const fitted = fitTourUnion(
       Array.from(node.querySelectorAll(fit), (el) => {
         const box = el.getBoundingClientRect()
         return {
@@ -377,10 +480,9 @@ export function readTourBox(node: HTMLElement): Box {
           height: box.height,
         }
       }),
+      host,
     )
-    if (union && !isDegenerateBox(union)) {
-      return intersectBoxes(union, host) ?? host
-    }
+    if (fitted) return fitted
   }
   return host
 }
@@ -476,6 +578,15 @@ export function pickLargestVisible<T>(
   return best
 }
 
+/** 沉浸导航 / 收起槽 / 隐藏节点挂着锚也不能量。 */
+export function isTourAnchorEligible(node: HTMLElement): boolean {
+  if (node.closest('.nav-container.immersive')) return false
+  if (node.closest('[inert]')) return false
+  if (node.closest('[hidden]')) return false
+  const hiddenRoot = node.closest('[aria-hidden]')
+  return hiddenRoot?.getAttribute('aria-hidden') !== 'true'
+}
+
 export function queryTourAnchor(anchor: string): HTMLElement | null {
   if (typeof document === 'undefined') return null
   const escaped =
@@ -484,7 +595,7 @@ export function queryTourAnchor(anchor: string): HTMLElement | null {
       : anchor
   const nodes = [
     ...document.querySelectorAll<HTMLElement>(`[data-tour="${escaped}"]`),
-  ].filter((node) => !node.closest('.nav-container.immersive'))
+  ].filter(isTourAnchorEligible)
   if (nodes.length <= 1) return nodes[0] ?? null
   return (
     pickLargestVisible(
@@ -503,6 +614,51 @@ export function hasTourAnchor(anchor: string): boolean {
   return queryTourAnchor(anchor) != null
 }
 
+/** 锚点在，但量出来是空盒（display:contents / 未布局）时不能开步。 */
+export function isTourAnchorMeasurable(anchor: string): boolean {
+  const node = queryTourAnchor(anchor)
+  if (!node) return false
+  return !isDegenerateBox(readTourBox(resolveTourMeasureNode(anchor, node)))
+}
+
+export const LIBRARY_FILTER_EXPAND_WAIT_MS = 900
+export const TOUR_ANCHOR_POLL_MS = 50
+
+/** 资料库分类要等导航岛切完二级模式才能量到。 */
+export function waitForTourAnchor(
+  anchor: string,
+  timeoutMs: number,
+  now: () => number = () =>
+    typeof performance !== 'undefined' ? performance.now() : Date.now(),
+  enqueue: (cb: () => void) => void = (cb) => {
+    setTimeout(cb, TOUR_ANCHOR_POLL_MS)
+  },
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const deadline = now() + timeoutMs
+    const tick = () => {
+      if (isTourAnchorMeasurable(anchor)) {
+        resolve(true)
+        return
+      }
+      if (now() >= deadline) {
+        resolve(false)
+        return
+      }
+      enqueue(tick)
+    }
+    tick()
+  })
+}
+
+export function boxRight(box: Box): number {
+  return box.left + box.width
+}
+
+export function boxBottom(box: Box): number {
+  return box.top + box.height
+}
+
 /** 锚点完全在视口外时，开场/换步需要先滚过去。 */
 export function tourAnchorNeedsReveal(
   box: Box,
@@ -511,11 +667,34 @@ export function tourAnchorNeedsReveal(
   pad = TOUR_VIEWPORT_PAD,
 ): boolean {
   return (
-    box.bottom < pad ||
+    boxBottom(box) < pad ||
     box.top > viewportH - pad ||
-    box.right < pad ||
+    boxRight(box) < pad ||
     box.left > viewportW - pad
   )
+}
+
+/** 固定层 + overflow hidden / 画布 transform：scrollIntoView 只会卷走后面的文档。 */
+export function tourAnchorScrollIsTrapped(node: HTMLElement): boolean {
+  if (node.closest('[data-library-canvas-surface="true"]')) return true
+  let cur: HTMLElement | null = node.parentElement
+  while (cur) {
+    const style = getComputedStyle(cur)
+    const clipped =
+      style.overflow === 'hidden' ||
+      style.overflow === 'clip' ||
+      style.overflowX === 'hidden' ||
+      style.overflowX === 'clip' ||
+      style.overflowY === 'hidden' ||
+      style.overflowY === 'clip'
+    const layered =
+      style.position === 'fixed' ||
+      style.position === 'sticky' ||
+      (style.transform !== 'none' && style.transform !== '')
+    if (clipped && layered) return true
+    cur = cur.parentElement
+  }
+  return false
 }
 
 export function revealTourAnchor(anchor: string, stepId?: string): boolean {
@@ -523,6 +702,7 @@ export function revealTourAnchor(anchor: string, stepId?: string): boolean {
   if (isPredictedTourAnchor(anchor, stepId)) return false
   const node = queryTourAnchor(anchor)
   if (!node) return false
+  if (tourAnchorScrollIsTrapped(node)) return true
   expandCollapsibleAncestors(node)
   const rect = node.getBoundingClientRect()
   const box = {
@@ -599,7 +779,7 @@ export function isLargeHole(
   return (hole.width * hole.height) / viewport >= TOUR_LARGE_HOLE
 }
 
-function dockCard(
+export function dockTourCard(
   cardW: number,
   cardH: number,
   viewportW: number,
@@ -670,7 +850,7 @@ export function computeTourCardPosition(
   }
 
   if (!best) {
-    return dockCard(cardW, cardH, viewportW, viewportH, pad)
+    return dockTourCard(cardW, cardH, viewportW, viewportH, pad)
   }
 
   let top = 0

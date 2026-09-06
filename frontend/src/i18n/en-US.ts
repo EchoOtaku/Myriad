@@ -517,6 +517,10 @@ export const enUS: TranslationKeys = {
         title: 'Collection',
         body: 'Synced items. Scroll down to load more.',
       },
+      'library-grid-canvas': {
+        title: 'Collection',
+        body: 'Synced items spread out from the center. Drag to pan the canvas.',
+      },
       'library-card': {
         title: 'Card',
         body: 'Open a card to go to the source site. NetEase plays on this site. Corners show the source and rating.',

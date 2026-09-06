@@ -1,6 +1,7 @@
 import type {
   TourDefinition,
   TourStepDef,
+  TourSurface,
   TourSurfacePick,
 } from './tourTypes'
 import { pickTour } from './tourLogic'
@@ -9,18 +10,21 @@ function pair(
   page: string,
   route: string,
   steps: readonly TourStepDef[],
+  surface?: TourSurface,
 ): readonly TourDefinition[] {
   return [
     {
       id: `${page}-visitor`,
       route,
       audience: 'visitor',
+      ...(surface ? { surface } : {}),
       steps: [...steps],
     },
     {
       id: `${page}-owner`,
       route,
       audience: 'owner',
+      ...(surface ? { surface } : {}),
       steps: [...steps],
     },
   ]
@@ -64,12 +68,24 @@ export const HOME_TOURS: readonly TourDefinition[] = [
   },
 ]
 
-export const LIBRARY_TOURS: readonly TourDefinition[] = pair('library', '/library', [
-  { id: 'library-filters', anchor: 'library-filters' },
-  { id: 'library-grid', anchor: 'library-grid' },
-  { id: 'library-card', anchor: 'library-card' },
-  { id: 'library-canvas', anchor: 'library-canvas' },
-])
+export const LIBRARY_TOURS: readonly TourDefinition[] = [
+  ...pair('library', '/library', [
+    { id: 'library-filters', anchor: 'library-filters' },
+    { id: 'library-grid', anchor: 'library-grid' },
+    { id: 'library-card', anchor: 'library-card' },
+  ]),
+  ...pair(
+    'library-canvas',
+    '/library',
+    [
+      { id: 'library-filters', anchor: 'library-filters' },
+      { id: 'library-grid-canvas', anchor: 'library-grid' },
+      { id: 'library-card', anchor: 'library-card' },
+      { id: 'library-canvas', anchor: 'library-canvas' },
+    ],
+    'canvas',
+  ),
+]
 
 export const REPORTS_TOURS: readonly TourDefinition[] = [
   {

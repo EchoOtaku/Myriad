@@ -518,6 +518,10 @@ export const jaJP: TranslationKeys = {
         title: 'コレクション',
         body: '同期済みの項目。下へスクロールすると続きを読み込みます。',
       },
+      'library-grid-canvas': {
+        title: 'コレクション',
+        body: '同期済みの項目が中央から広がります。ドラッグしてキャンバスを移動します。',
+      },
       'library-card': {
         title: 'カード',
         body: 'カードを開くと出典サイトへ移動します。网易雲音楽はこのサイトで再生します。角に出典と評価を表示します。',

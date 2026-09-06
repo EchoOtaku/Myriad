@@ -1192,6 +1192,16 @@ export function NavigationIsland() {
               key="secondary-mode"
               role="toolbar"
               aria-label={secondaryNav.expandHint || t.nav.mainNavigation}
+              data-tour={
+                secondaryNav.routePath === '/library'
+                  ? 'library-filters'
+                  : undefined
+              }
+              data-tour-fit={
+                secondaryNav.routePath === '/library'
+                  ? '.nav-group:not([data-group="back"]):not([data-group="divider"]) .nav-item'
+                  : undefined
+              }
             >
               {/* 返回按钮 - Escape 也可收起 */}
               <div className="nav-group" data-group="back">
@@ -1210,16 +1220,8 @@ export function NavigationIsland() {
                 <div className="nav-island-divider bg-gray-300/50 dark:bg-neutral-700/50"></div>
               </div>
 
-              {/* 二级导航项。资料库教程只圈分类，不圈整座导航岛。 */}
-              <div
-                className="contents"
-                data-tour={
-                  secondaryNav.routePath === '/library'
-                    ? 'library-filters'
-                    : undefined
-                }
-                data-tour-fit=".nav-item"
-              >
+              {/* 二级导航项。教程锚在上级 content，只 fit 分类钮，不圈返回。 */}
+              <div className="contents">
                 {secondaryNav.items.map((item) => (
                   <div
                     key={item.id}

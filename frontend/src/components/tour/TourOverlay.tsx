@@ -22,6 +22,7 @@ import {
 } from './tourEngine'
 import {
   computeTourCardPosition,
+  dockTourCard,
   holePadForTourAnchor,
   holeRadiusFor,
   inflateRect,
@@ -39,7 +40,10 @@ import {
   rootFontSizePx,
   sameTourCardPos,
   sameTourHole,
+  TOUR_VIEWPORT_PAD,
   tourHoleSync,
+  tourMeasureWatchesHost,
+  tourMeasureWatchesScroll,
 } from './tourLogic'
 import './TourOverlay.css'
 
@@ -141,6 +145,18 @@ export function TourOverlay() {
             : null
     if (!box || isDegenerateBox(box)) {
       if (!predicted) recoverTourStep()
+      const measured = cardRef.current
+      commitView({
+        hole: EMPTY_HOLE,
+        cardPos: dockTourCard(
+          measured?.offsetWidth || CARD_FALLBACK.w,
+          measured?.offsetHeight || CARD_FALLBACK.h,
+          vw,
+          vh,
+          TOUR_VIEWPORT_PAD,
+        ),
+        ready: true,
+      })
       return
     }
     const pad = holePadForTourAnchor(step.anchor, box)
@@ -204,11 +220,13 @@ export function TourOverlay() {
     // 预计算步不观察 DOM：外壳 morph、内容高度过渡都会每帧触发 RO。
     if (step && !predicted) {
       if (cardRef.current) hosts.push(cardRef.current)
-      const anchor = queryTourAnchor(step.anchor)
-      if (anchor) {
-        hosts.push(anchor)
-        const nav = anchor.closest<HTMLElement>('.nav-container')
-        if (nav && nav !== anchor) hosts.push(nav)
+      if (tourMeasureWatchesHost(step.anchor)) {
+        const anchor = queryTourAnchor(step.anchor)
+        if (anchor) {
+          hosts.push(anchor)
+          const nav = anchor.closest<HTMLElement>('.nav-container')
+          if (nav && nav !== anchor) hosts.push(nav)
+        }
       }
     }
     const observer =
@@ -271,7 +289,7 @@ export function TourOverlay() {
     }
     window.addEventListener('keydown', onKey, true)
     window.addEventListener('resize', scheduleMeasure)
-    if (!predicted) {
+    if (!predicted && tourMeasureWatchesScroll()) {
       window.addEventListener('scroll', scheduleMeasure, true)
     }
     if (state.step?.anchor === 'control-panel') {

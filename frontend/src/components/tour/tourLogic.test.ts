@@ -4,7 +4,9 @@ import { describe, it } from 'node:test'
 import {
   computeTourCardPosition,
   fillTourHint,
+  getLibraryTourSurfaceSnapshot,
   homeBrowseTourPanelPose,
+  libraryTourSurfaceFromFlags,
   homeEditTourDockPose,
   personaTourPanel,
   isPredictedTourAnchor,
@@ -14,6 +16,7 @@ import {
   sameTourHole,
   tourHoleSync,
   filterVisibleSteps,
+  fitTourUnion,
   firstVisibleIndex,
   holePadForBox,
   holePadForTourAnchor,
@@ -26,6 +29,10 @@ import {
   readTourSurface,
   pickTour,
   tourAnchorNeedsReveal,
+  shouldAbortLibraryTour,
+  tourMeasureWatchesHost,
+  tourMeasureWatchesScroll,
+  waitForTourAnchor,
   previousVisibleIndex,
   TOUR_HOLE_PAD,
   unionBoxes,
@@ -179,6 +186,18 @@ describe('HOME_TOURS', () => {
   })
 })
 
+describe('LIBRARY_TOURS', () => {
+  it('keeps list and canvas as separate definitions', () => {
+    const ids = LIBRARY_TOURS.map((tour: TourDefinition) => tour.id)
+    assert.deepEqual(ids, [
+      'library-visitor',
+      'library-owner',
+      'library-canvas-visitor',
+      'library-canvas-owner',
+    ])
+  })
+})
+
 describe('tour hint copy', () => {
   const nav = {
     home: '首页',
@@ -198,6 +217,70 @@ describe('tour hint copy', () => {
     assert.equal(readTourSurface(true, '/'), 'edit')
     assert.equal(readTourSurface(false, '/library'), 'browse')
     assert.equal(readTourSurface(false, '/tapp'), 'browse')
+    assert.equal(getLibraryTourSurfaceSnapshot(), 'list')
+    assert.equal(
+      libraryTourSurfaceFromFlags({
+        preference: false,
+        surface: false,
+        empty: false,
+      }),
+      'list',
+    )
+    assert.equal(
+      libraryTourSurfaceFromFlags({
+        preference: true,
+        surface: false,
+        empty: false,
+      }),
+      'pending',
+    )
+    assert.equal(
+      libraryTourSurfaceFromFlags({
+        preference: true,
+        surface: false,
+        empty: true,
+      }),
+      'empty',
+    )
+    assert.equal(
+      libraryTourSurfaceFromFlags({
+        preference: true,
+        surface: true,
+        empty: false,
+      }),
+      'canvas',
+    )
+  })
+
+  it('skips live measure on the library collection hole only', () => {
+    assert.equal(tourMeasureWatchesHost('library-grid'), false)
+    assert.equal(tourMeasureWatchesHost('home-grid'), true)
+    assert.equal(tourMeasureWatchesHost('tapp-grid'), true)
+    assert.equal(tourMeasureWatchesHost('reports-cards'), true)
+    assert.equal(tourMeasureWatchesHost('library-card'), true)
+    assert.equal(tourMeasureWatchesScroll(true), false)
+    assert.equal(tourMeasureWatchesScroll(false), true)
+  })
+
+  it('aborts a canvas tour once the live canvas is gone', () => {
+    assert.equal(shouldAbortLibraryTour('library-owner', 'canvas'), true)
+    assert.equal(shouldAbortLibraryTour('library-visitor', 'pending'), false)
+    assert.equal(shouldAbortLibraryTour('library-canvas-owner', 'canvas'), false)
+    assert.equal(shouldAbortLibraryTour('library-canvas-owner', 'pending'), true)
+    assert.equal(shouldAbortLibraryTour('library-canvas-visitor', 'empty'), true)
+    assert.equal(shouldAbortLibraryTour('library-canvas-visitor', 'list'), true)
+  })
+
+  it('selects a separate library tour on the canvas surface', () => {
+    assert.equal(
+      pickTour(LIBRARY_TOURS, '/library', false, 'canvas')?.id,
+      'library-canvas-visitor',
+    )
+    assert.equal(
+      pickTour(LIBRARY_TOURS, '/library', true, 'canvas')?.id,
+      'library-canvas-owner',
+    )
+    assert.equal(pickTour(LIBRARY_TOURS, '/library', true)?.id, 'library-owner')
   })
 
   it('fills {page} and drops empty values so the hint can fall back', () => {
@@ -393,7 +476,18 @@ describe('page tours', () => {
     )
     assert.deepEqual(
       pickTour(LIBRARY_TOURS, '/library', true)?.steps.map((step) => step.anchor),
-      ['library-filters', 'library-grid', 'library-card', 'library-canvas'],
+      ['library-filters', 'library-grid', 'library-card'],
+    )
+    assert.deepEqual(
+      pickTour(LIBRARY_TOURS, '/library', true, 'canvas')?.steps.map(
+        (step) => step.id,
+      ),
+      [
+        'library-filters',
+        'library-grid-canvas',
+        'library-card',
+        'library-canvas',
+      ],
     )
     assert.equal(
       pickTour(LIBRARY_TOURS, '/library', true)?.steps.some(
@@ -446,6 +540,42 @@ describe('intersectBoxes', () => {
       ),
       null,
     )
+  })
+})
+
+describe('fitTourUnion', () => {
+  it('keeps the child union when the host has no box', () => {
+    const fitted = fitTourUnion(
+      [
+        { top: 80, left: 40, width: 48, height: 48 },
+        { top: 80, left: 100, width: 48, height: 48 },
+      ],
+      { top: 0, left: 0, width: 0, height: 0 },
+    )
+    assert.deepEqual(fitted, {
+      top: 80,
+      left: 40,
+      width: 108,
+      height: 48,
+    })
+  })
+
+  it('drops off-canvas cards so the hole hugs the visible cluster', () => {
+    const host = { top: 0, left: 0, width: 1280, height: 800 }
+    const fitted = fitTourUnion(
+      [
+        { top: 220, left: 480, width: 200, height: 280 },
+        { top: 240, left: 700, width: 160, height: 220 },
+        { top: 180, left: 2200, width: 200, height: 280 },
+      ],
+      host,
+    )
+    assert.deepEqual(fitted, {
+      top: 220,
+      left: 480,
+      width: 380,
+      height: 280,
+    })
   })
 })
 
@@ -523,6 +653,43 @@ describe('tourAnchorNeedsReveal', () => {
       ),
       true,
     )
+  })
+
+  it('asks to jump when the row sits above or left of the viewport', () => {
+    assert.equal(
+      tourAnchorNeedsReveal(
+        { top: -80, left: 80, width: 280, height: 48 },
+        1280,
+        800,
+      ),
+      true,
+    )
+    assert.equal(
+      tourAnchorNeedsReveal(
+        { top: 120, left: -200, width: 160, height: 48 },
+        1280,
+        800,
+      ),
+      true,
+    )
+  })
+})
+
+describe('waitForTourAnchor', () => {
+  it('times out when the anchor never appears', async () => {
+    let t = 0
+    const queue: Array<() => void> = []
+    const pending = waitForTourAnchor(
+      'missing',
+      50,
+      () => t,
+      (cb) => {
+        queue.push(cb)
+      },
+    )
+    t = 50
+    for (const cb of queue) cb()
+    assert.equal(await pending, false)
   })
 })
 

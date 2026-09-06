@@ -500,6 +500,10 @@ export const zhCN: TranslationKeys = {
         title: '收藏',
         body: '已同步的条目。向下滚动加载更多。',
       },
+      'library-grid-canvas': {
+        title: '收藏',
+        body: '已同步的条目从中心向外铺开。拖拽平移画布。',
+      },
       'library-card': {
         title: '卡片',
         body: '打开卡片进入来源平台。网易云在站内播放。角标显示来源与评分。',

@@ -433,6 +433,7 @@ export interface TranslationKeys {
       'control-panel-owner': { title: string; body: string }
       'library-filters': { title: string; body: string }
       'library-grid': { title: string; body: string }
+      'library-grid-canvas': { title: string; body: string }
       'library-card': { title: string; body: string }
       'library-canvas': { title: string; body: string }
       'reports-status': { title: string; body: string }

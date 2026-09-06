@@ -1,9 +1,10 @@
 export type TourAudience = 'visitor' | 'owner'
 /**
  * 同路径上再切一层。缺省按浏览。
- * persona：人物设定工作台；ai-persona：AI 设置里的人设卡片。
+ * edit：首页编辑；canvas：资料库无限画布；persona：人物设定工作台；
+ * ai-persona：AI 设置里的人设卡片。
  */
-export type TourSurface = 'browse' | 'edit' | 'persona' | 'ai-persona'
+export type TourSurface = 'browse' | 'edit' | 'canvas' | 'persona' | 'ai-persona'
 /** 人设生成向导等：有路径但本页不注册教程。 */
 export type TourSurfacePick = TourSurface | 'none'
 

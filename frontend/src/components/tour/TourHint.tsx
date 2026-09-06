@@ -29,14 +29,19 @@ import {
 import {
   fillTourHint,
   getConfigTourSurface,
-  hasTourAnchor,
+  getLibraryTourSurfaceSnapshot,
+  isTourAnchorMeasurable,
+  LIBRARY_FILTER_EXPAND_WAIT_MS,
+  waitForTourAnchor,
   isHomeEditSurface,
   pageNameForPath,
   readTourSurface,
   refreshConfigTourSurface,
   revealTourAnchor,
+  shouldAbortLibraryTour,
   subscribeConfigTourSurface,
   subscribeHomeEditSurface,
+  subscribeLibraryCanvasTourSurface,
 } from './tourLogic'
 import {
   shouldAutoHideTourHint,
@@ -71,6 +76,11 @@ export function TourHint() {
     subscribeConfigTourSurface,
     getConfigTourSurface,
     getConfigTourSurface,
+  )
+  const librarySurface = useSyncExternalStore(
+    subscribeLibraryCanvasTourSurface,
+    getLibraryTourSurfaceSnapshot,
+    getLibraryTourSurfaceSnapshot,
   )
   const surface = readTourSurface(editingHome, location.pathname)
   const pageName =
@@ -163,10 +173,15 @@ export function TourHint() {
     }
     if (snapshot.tourId === 'config-persona-owner' && surface !== 'persona') {
       stopTour('abort')
+      return
     }
-  }, [surface])
+    if (shouldAbortLibraryTour(snapshot.tourId, librarySurface)) {
+      stopTour('abort')
+    }
+  }, [librarySurface, surface])
 
   if (!hasChecked || tourActive) return null
+  if (librarySurface === 'pending') return null
   if (!def) return null
   if (isTourDone(def.id)) return null
   if (snoozedId === def.id && !leaving) return null
@@ -220,10 +235,22 @@ export function TourHint() {
                   }),
                 )
               }
-              const first = def.steps.find((step) => hasTourAnchor(step.anchor))
+              const first = def.steps.find((step) =>
+                isTourAnchorMeasurable(step.anchor),
+              )
               if (first) revealTourAnchor(first.anchor, first.id)
               finishLeave('start', () => {
-                if (!startTour(def)) setLeaving(null)
+                const begin = () => {
+                  if (!startTour(def)) setLeaving(null)
+                }
+                if (def.route !== '/library') {
+                  begin()
+                  return
+                }
+                void waitForTourAnchor(
+                  'library-filters',
+                  LIBRARY_FILTER_EXPAND_WAIT_MS,
+                ).then(begin)
               })
             }}
           >
