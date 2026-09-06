@@ -468,11 +468,18 @@ export default function SiteMotionWorkbench({
           activeId: activeOutfitId,
         })
       } catch (reason) {
-        setError(userFacingError(reason, o.visualDesignSaveFailed))
+        setError(
+          generationFailureMessage(
+            reason,
+            o.visualDesignSaveFailed,
+            o.generationTimeout,
+          ),
+        )
       }
     },
     [
       activeOutfitId,
+      o.generationTimeout,
       o.visualDesignSaveFailed,
       saveVisualProfile,
       visualIdentity,
@@ -496,11 +503,18 @@ export default function SiteMotionWorkbench({
           activeId: activeOutfitId,
         })
       } catch (reason) {
-        setError(userFacingError(reason, o.visualDesignSaveFailed))
+        setError(
+          generationFailureMessage(
+            reason,
+            o.visualDesignSaveFailed,
+            o.generationTimeout,
+          ),
+        )
       }
     },
     [
       activeOutfitId,
+      o.generationTimeout,
       o.visualDesignSaveFailed,
       saveVisualProfile,
       visualIdentity,
@@ -741,7 +755,7 @@ export default function SiteMotionWorkbench({
     return decomposeSitePortraitWithSeeThrough({
       sourceMasterAssetId: portraitUrl,
       sourceGenerationFingerprint: generationFingerprint || undefined,
-      resolution: 768,
+      resolution: 1280,
       seed: 42,
       splitArmsAndLegs: true,
     })

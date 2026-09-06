@@ -61,12 +61,12 @@ export function ReaderArticleBody({
 
   return (
           <div
-            className={`w-full ${currentLayout.width} px-6 py-16 transition-all duration-300`}
+            className={`w-full ${currentLayout.width} px-6 pt-32 pb-16 transition-all duration-300`}
           >
             {/* 标题 */}
             <h1
-              className={`text-3xl font-bold ${currentTheme.text} leading-tight mb-6`}
-              style={{ fontFamily: currentFont.family }}
+              className={`font-bold ${currentTheme.text} leading-tight mb-6`}
+              style={{ fontFamily: currentFont.family, fontSize: 40 }}
             >
               {item.title}
             </h1>

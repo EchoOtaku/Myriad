@@ -11,7 +11,7 @@ import {
   visualField,
   withVisualField,
 } from '../onboardingTypes'
-import { TextArea } from './Field'
+import { CharMeter, TextArea } from './Field'
 import '../../PersonaOnboarding.css'
 
 interface Props {
@@ -123,6 +123,10 @@ export default function VisualIdentityView({
                         }}
                       />
                       <div className="merope-ob-persona-view__actions">
+                        <CharMeter
+                          value={draft}
+                          max={UPPER_BODY_VISUAL_IDENTITY_LIMITS[key]}
+                        />
                         <button
                           type="button"
                           className="merope-ob-persona-view__action is-cancel"

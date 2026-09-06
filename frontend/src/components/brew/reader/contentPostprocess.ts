@@ -34,7 +34,7 @@ export function useContentPostprocess({
       const images = contentRef.current.querySelectorAll('img')
       images.forEach((img) => {
         // 跳过嵌入卡片内的图片（它们有自己的样式）
-        if (img.closest('.brew-embed-card')) {
+        if (img.closest('.brew-embed-card, .brew-embed-exempt')) {
           return
         }
 

@@ -20,7 +20,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const pkg = JSON.parse(
   readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'),
 )
-const APP_VERSION = pkg.version || '0.4.4'
+const APP_VERSION = pkg.version || '0.4.5'
 
 /**
  * 自定义 Vite 插件：SPA 路由回退
@@ -30,6 +30,30 @@ const APP_VERSION = pkg.version || '0.4.4'
 /** Align with proxy/backend: document-level geolocation for weather. */
 const DOCUMENT_PERMISSIONS_POLICY =
   'geolocation=(self), microphone=(self), camera=()'
+
+/**
+ * Dev source maps double every module (original source as base64). On a
+ * 1200-file SPA plus icon barrels that is tens of MB of V8 script source,
+ * and HMR keeps the old copies. Production builds still emit maps as usual.
+ */
+function stripDevSourcemapsPlugin() {
+  return {
+    name: 'strip-dev-sourcemaps',
+    apply: 'serve',
+    enforce: 'post',
+    transform(code, id) {
+      const path = id.split('?')[0]
+      if (
+        path.endsWith('.css') ||
+        path.endsWith('.scss') ||
+        path.endsWith('.less')
+      ) {
+        return null
+      }
+      return { code, map: null }
+    },
+  }
+}
 
 function spaFallbackPlugin() {
   return {
@@ -834,6 +858,10 @@ export default defineConfig({
     define: {
       __APP_VERSION__: JSON.stringify(APP_VERSION),
     },
+    css: {
+      // Inline CSS maps are not needed for dest HMR and inflate the transform cache.
+      devSourcemap: false,
+    },
     optimizeDeps: {
       // Don't block first-paint on the full crawl. Default true waits for every
       // discovered dep; Agora ESM's ua-parser-js default-import then held
@@ -847,17 +875,11 @@ export default defineConfig({
         'axios',
         'isomorphic-dompurify',
         'jszip',
-        'lucide-react',
         'prismjs',
         'prismjs/components/prism-json',
         'react',
         'react-dom',
         'react-dom/client',
-        'react-icons/bs',
-        'react-icons/fa',
-        'react-icons/fa6',
-        'react-icons/lu',
-        'react-icons/si',
         'react-router-dom',
         // Dynamic imports that are not on the first-paint graph.
         'ag-psd',
@@ -869,10 +891,20 @@ export default defineConfig({
         'agora-rtc-sdk-ng',
         'agora-rtm',
       ],
+      // Icon barrels are one file per pack (si ≈ 5MB). Prebundling them plus
+      // an inline source map was a 13MB script on every page that imports
+      // `@lib/icons`. Dest ESM + noDiscovery keeps them out of the shared
+      // prebundle hash (no mid-session 504).
       // Agora's optional ESM tree must not enter the Vite prebundle.
       // Stay on the self-contained UMD entries; a failed ESM crawl holds every
       // optimized dep — the PageLoader never dismisses.
       exclude: [
+        'lucide-react',
+        'react-icons/bs',
+        'react-icons/fa',
+        'react-icons/fa6',
+        'react-icons/lu',
+        'react-icons/si',
         '@agora-js/shared',
         '@agora-js/media',
         '@agora-js/report',
@@ -894,6 +926,7 @@ export default defineConfig({
       tailwindcss(), // Tailwind CSS v4 Vite plugin
       backendDevProxyPlugin(), // 开发环境 API 转发，绕开 Vite http-proxy 的 socket 500
       spaFallbackPlugin(), // 自定义 SPA 路由回退
+      stripDevSourcemapsPlugin(),
     ],
     resolve: {
       alias: {

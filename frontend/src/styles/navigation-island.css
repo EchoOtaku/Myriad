@@ -586,3 +586,24 @@ html[data-nav-layout='desktop'] .dynamic-island::before {
   pointer-events: none !important;
   transition: opacity 0.3s ease !important;
 }
+
+/*
+ * Opacity:0 still composites backdrop-filter. Idle-hide / immersive would
+ * keep sampling #wallpaper and freeze its mouse-follow blur + parallax.
+ */
+.nav-container[data-nav-idle='hidden'] .dynamic-island,
+.nav-container.immersive .dynamic-island {
+  /* stylelint-disable-next-line property-no-vendor-prefix -- Safari < 16.4 */
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+html[data-tour-active] .nav-container.immersive .dynamic-island {
+  /* stylelint-disable-next-line property-no-vendor-prefix -- Safari < 16.4 */
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+}
+
+html[data-tour-active] .nav-container.immersive {
+  opacity: 1 !important;
+}

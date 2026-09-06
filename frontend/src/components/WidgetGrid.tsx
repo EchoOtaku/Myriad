@@ -662,6 +662,9 @@ interface WidgetGridProps {
     }
   }) => void
   stickerHighlight?: { x: number; y: number; size: WidgetSize } | null
+  /** Home tour only. Control-panel grids must not set this. */
+  tourAnchor?: string
+  tourFit?: string
 }
 
 const STICKER_WIDGET_TYPE: WidgetType = {
@@ -790,6 +793,8 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
       stickerPickActive = false,
       onPickStickerSlot,
       stickerHighlight = null,
+      tourAnchor,
+      tourFit,
     },
     ref,
   ) => {
@@ -1930,6 +1935,8 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
                 ? 'widget-grid-container--layout-motion'
                 : ''
             } ${isEditMode ? 'edit-mode' : ''}`}
+            data-tour={tourAnchor}
+            data-tour-fit={tourFit}
             data-band-switch={bandSwitch ?? undefined}
             style={
               isFreeLayout

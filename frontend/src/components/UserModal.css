@@ -61,7 +61,7 @@ html.dark .user-info-button:hover {
     0 25px 80px rgb(0 0 0 / 15%),
     0 10px 30px rgb(0 0 0 / 8%),
     inset 0 1px 0 rgb(255 255 255 / 50%);
-  z-index: 10001;
+  z-index: 10051;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -993,7 +993,7 @@ html.dark .user-modal-recent-empty {
   position: fixed;
   inset: 0;
   background: rgb(0 0 0 / 30%);
-  z-index: 10000;
+  z-index: 10050;
 
   /* 初始隐藏状态 */
   opacity: 0;
@@ -1036,7 +1036,7 @@ html.dark .user-modal-overlay {
   width: 90%;
   max-width: 400px;
   border-radius: 1.75rem;
-  z-index: 10001;
+  z-index: 10051;
 
   /* 比共用 1rem 宽一圈，表单别贴边；关闭钮跟着 inset 走，仍和标题同一行 */
   --user-modal-chrome-inset: 1.8rem;

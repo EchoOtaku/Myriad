@@ -434,6 +434,14 @@ pub struct DynamicConfig {
     pub music_source: Option<String>,
     pub music_playlist_id: Option<String>,
 
+    /// 智能岛收缩态是否轮播问候 / 天气 / 一言 / 音乐 / Tapp。缺省全开。
+    /// 通知进岛走通知偏好，不走这组开关。
+    pub island_show_greeting: bool,
+    pub island_show_weather: bool,
+    pub island_show_quote: bool,
+    pub island_show_music: bool,
+    pub island_show_tapp: bool,
+
     // AI 图片生成配置（统一服务：OpenAI 兼容 / OpenRouter / Volcengine）
     // 分辨率由调用方（agent / tapp）在请求参数中决定，不设全局配置
     pub ai_image_provider: String,
@@ -779,6 +787,12 @@ impl Default for DynamicConfig {
             music_enabled: None,
             music_source: None,
             music_playlist_id: None,
+
+            island_show_greeting: true,
+            island_show_weather: true,
+            island_show_quote: true,
+            island_show_music: true,
+            island_show_tapp: true,
 
             // AI 图片生成配置
             ai_image_provider: "openrouter".to_string(),

@@ -179,7 +179,7 @@ export async function getSeeThroughStatus(): Promise<SeeThroughStatus> {
     defaultResolution:
       typeof response.data.defaultResolution === 'number'
         ? response.data.defaultResolution
-        : 768,
+        : 1280,
     splitArmsAndLegs: response.data.splitArmsAndLegs !== false,
   }
 }
@@ -202,7 +202,7 @@ export async function updateSeeThroughToken(
         ? response.data.provider
         : '24yearsold/see-through-demo',
     tokenConfigured: response.data.tokenConfigured === true,
-    defaultResolution: 768,
+    defaultResolution: 1280,
     splitArmsAndLegs: true,
   }
 }

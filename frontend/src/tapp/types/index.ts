@@ -441,6 +441,9 @@ export interface TappSettingItem {
   step?: number
   /** input 类型的 placeholder */
   placeholder?: string
+  /** input 多行（仓库列表等） */
+  multiline?: boolean
+  rows?: number
 }
 
 /** 权限类型 */

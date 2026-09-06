@@ -14,7 +14,7 @@
   top: 1.5rem;
   left: 50%;
   transform: translate(-50%, 0);
-  z-index: 9999;
+  z-index: 10050;
   pointer-events: auto;
   animation: toastSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -362,7 +362,7 @@ html.dark .toast-close-btn:hover {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 9999;
+  z-index: 10050;
   pointer-events: none;
   display: flex;
   flex-direction: column;

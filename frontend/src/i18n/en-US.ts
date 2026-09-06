@@ -447,6 +447,40 @@ export const enUS: TranslationKeys = {
     languageSwitch: 'Language Switch',
   },
 
+  tour: {
+    start: 'Tour',
+    startHint: 'Walk through this page',
+    next: 'Next',
+    back: 'Back',
+    done: 'Done',
+    skip: 'Skip',
+    hint: 'Take a tour',
+    hintBody: 'A minute to see what you can tap on this page.',
+    hintTitle: 'Take a look at {page}',
+    hintWelcome: 'Welcome to {site}',
+    begin: 'Start',
+    noTourOnThisPage: 'This page does not have a tour yet',
+    couldNotStart: 'Could not find the controls this page tour points to',
+    steps: {
+      nav: {
+        title: 'Navigation',
+        body: 'Switch between Home, Library, Brew, Reports, and Tapp here.',
+      },
+      'home-grid': {
+        title: 'Widget grid',
+        body: 'This is the homepage board — the widgets visitors see first.',
+      },
+      'home-edit': {
+        title: 'Edit',
+        body: 'Change the layout and add or remove widgets. Only the site owner can edit.',
+      },
+      'control-island': {
+        title: 'Control island',
+        body: 'Appearance, language, wallpaper, and sign-in live up here. Owners can also open system config.',
+      },
+    },
+  },
+
   // Authentication
   auth: {
     username: 'Username',
@@ -1567,6 +1601,15 @@ export const enUS: TranslationKeys = {
     musicPlatform: 'Music Platform',
     playlistId: 'Playlist ID',
     clearMusicCache: 'Clear Music Cache',
+    islandContentTitle: 'Control island',
+    islandContentDesc:
+      'Choose what the top-right control island cycles through. Notifications stay under Notification settings.',
+    islandContentLocations: 'Shown content',
+    islandGreeting: 'Greeting',
+    islandWeather: 'Weather',
+    islandQuote: 'Quote',
+    islandMusic: 'Music',
+    islandTapp: 'Tapp',
     siteMetadata: 'Site Metadata',
     siteMetadataDesc: 'Site title, description, and favicon',
     siteIdentity: 'Site identity & app',
@@ -2537,6 +2580,9 @@ export const enUS: TranslationKeys = {
     tappShortcut: 'Tapp Shortcut',
     gamePresence: 'HoYoverse Game Card',
     visitorStats: 'Visitor Stats',
+    githubRepos: 'GitHub Repos',
+    githubReposField: 'Repository',
+    githubReposFieldHint: 'GitHub URL or owner/repo',
     library: 'Library',
     dataReport: 'Platform Reports',
     multiPlatformAggregation: 'Multi-platform Content Aggregation',
@@ -3940,6 +3986,16 @@ export const enUS: TranslationKeys = {
     defaultQuote: 'Life is bright, everything is lovely.',
     anonymous: 'Anonymous',
     unavailable: 'Quote unavailable',
+  },
+
+  githubReposWidget: {
+    empty: 'No repositories yet',
+    emptyHint: 'Edit the widget and enter owner/repo',
+    loadFailed: 'Could not load repositories',
+    sampleRepo: 'hello-world',
+    sampleRepoAlt: 'toolkit',
+    sampleDesc: 'Sample repository summary',
+    sampleDescAlt: 'Another sample summary',
   },
 
   // Music Player Widget

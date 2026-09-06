@@ -29,3 +29,8 @@ overrides:
 onlyBuiltDependencies:
   - esbuild
   - sharp
+# React 19: motion.div 把 [MeasureLayout, html] 无 key 塞进 Context，开发态会报
+# "Each child in a list should have a unique key" / <Context> ← ForwardRef(motion.div)。
+# 上游未修。升级 motion 后若 patch 对不上，重打这一处即可。
+patchedDependencies:
+  framer-motion@12.43.0: patches/framer-motion@12.43.0.patch

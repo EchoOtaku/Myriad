@@ -80,6 +80,16 @@ function softLockWallpaperTransform(el: HTMLElement): void {
   el.style.transform = IDENTITY_TF
 }
 
+/** True when the pointer actually left the viewport, not a chrome hit-test drop. */
+export function isWallpaperMouseLeaveFromViewport(
+  relatedTarget: EventTarget | null,
+): boolean {
+  if (relatedTarget == null) return true
+  if (typeof document === 'undefined' || typeof Node === 'undefined') return true
+  if (!(relatedTarget instanceof Node)) return true
+  return !document.contains(relatedTarget)
+}
+
 /**
  * Capture the live parallax matrix and ease #wallpaper to identity.
  * Called from LibraryGrid's layout effect so the from-frame is cached before
@@ -1051,8 +1061,11 @@ export function useEvocativeWallpaper(
       wake()
     }
 
-    const onMouseLeave = () => {
+    const onMouseLeave = (e: MouseEvent) => {
       if (!interactionReady) return
+      // Fixed chrome (nav idle-hide) toggling pointer-events can synthesize
+      // mouseleave while the cursor is still in the viewport.
+      if (!isWallpaperMouseLeaveFromViewport(e.relatedTarget)) return
       s.returning = true
 
       if (enableParallax && !s.gyroEnabled) {
@@ -1142,7 +1155,7 @@ export function useEvocativeWallpaper(
 
     if (!isMobileOnly) {
       window.addEventListener('mousemove', onMouseMove, { passive: true })
-      document.addEventListener('mouseleave', onMouseLeave)
+      document.documentElement.addEventListener('mouseleave', onMouseLeave)
 
       if (enableRipple) {
         window.addEventListener('click', onClick, { passive: true })
@@ -1154,9 +1167,14 @@ export function useEvocativeWallpaper(
     let gyroProbeTimer: number | null = null
     let testGyro: ((e: DeviceOrientationEvent) => void) | null = null
 
+    // Hover devices must keep mouse parallax/blur. A Mac that emits
+    // deviceorientation would otherwise set gyroEnabled and drop mousemove.
+    const preferMouse = window.matchMedia('(hover: hover)').matches
+
     if (
       enableParallax &&
       enableGyroscope &&
+      !preferMouse &&
       'DeviceOrientationEvent' in window
     ) {
       const DOE = DeviceOrientationEvent as {
@@ -1235,7 +1253,7 @@ export function useEvocativeWallpaper(
       unsubscribeVisibility()
 
       window.removeEventListener('mousemove', onMouseMove)
-      document.removeEventListener('mouseleave', onMouseLeave)
+      document.documentElement.removeEventListener('mouseleave', onMouseLeave)
       window.removeEventListener('click', onClick)
       window.removeEventListener('deviceorientation', onGyro)
 

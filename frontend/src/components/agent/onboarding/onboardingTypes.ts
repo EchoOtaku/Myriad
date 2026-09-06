@@ -188,6 +188,7 @@ export interface UpperBodyVisualIdentity {
   outfit: OutfitVisual
 }
 
+/** Keep in sync with myriad-merope `CHARACTER_VISUAL_FIELDS` / `OUTFIT_VISUAL_FIELDS`. */
 export const UPPER_BODY_VISUAL_IDENTITY_LIMITS: Record<
   UpperBodyVisualIdentityKey,
   number
@@ -204,6 +205,9 @@ export const UPPER_BODY_VISUAL_IDENTITY_LIMITS: Record<
   paletteHint: 500,
   motif: 500,
 }
+
+/** Keep in sync with myriad-merope `MAX_VISUAL_NOTES_CHARS`. */
+export const VISUAL_NOTES_LIMIT = 1_000
 
 function parseFieldGroup<K extends string>(
   source: Record<string, unknown>,

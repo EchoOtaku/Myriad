@@ -448,6 +448,40 @@ export const jaJP: TranslationKeys = {
     languageSwitch: '言語切替',
   },
 
+  tour: {
+    start: 'チュートリアル',
+    startHint: 'このページを案内',
+    next: '次へ',
+    back: '戻る',
+    done: '完了',
+    skip: 'スキップ',
+    hint: 'ガイド',
+    hintBody: 'このページで触れる場所を短く案内します。',
+    hintTitle: '{page}を見てみる',
+    hintWelcome: '{site}へようこそ',
+    begin: '始める',
+    noTourOnThisPage: 'このページにはまだチュートリアルがありません',
+    couldNotStart: 'このページの案内対象が見つかりませんでした',
+    steps: {
+      nav: {
+        title: 'ナビゲーション',
+        body: 'ホーム、ライブラリ、Brew、レポート、Tapp はここから切り替えます。',
+      },
+      'home-grid': {
+        title: 'ウィジェット',
+        body: '訪問者が最初に見るホームのボードです。',
+      },
+      'home-edit': {
+        title: '編集',
+        body: 'レイアウトの変更やウィジェットの追加・削除はここから。サイト管理者だけが編集できます。',
+      },
+      'control-island': {
+        title: 'コントロール',
+        body: '外観、言語、壁紙、ログインは右上にあります。管理者はシステム設定にも入れます。',
+      },
+    },
+  },
+
   // ログイン
   auth: {
     username: 'ユーザー名',
@@ -1554,6 +1588,15 @@ export const jaJP: TranslationKeys = {
     musicPlatform: '音楽プラットフォーム',
     playlistId: 'プレイリストID',
     clearMusicCache: '音楽キャッシュをクリア',
+    islandContentTitle: 'コントロールアイランド',
+    islandContentDesc:
+      '右上のコントロールアイランドに出す内容を選びます。通知は通知設定で別途制御します。',
+    islandContentLocations: '表示する内容',
+    islandGreeting: 'あいさつ',
+    islandWeather: '天気',
+    islandQuote: '一言',
+    islandMusic: '音楽',
+    islandTapp: 'Tapp',
     siteMetadata: 'サイトメタデータ',
     siteMetadataDesc: 'サイトタイトル、説明、ファビコン',
     siteIdentity: 'サイト名刺とアプリ',
@@ -2508,6 +2551,9 @@ export const jaJP: TranslationKeys = {
     tappShortcut: 'Tapp ショートカット',
     gamePresence: 'miHoYoゲームカード',
     visitorStats: 'アクセス解析',
+    githubRepos: 'GitHub リポジトリ',
+    githubReposField: 'リポジトリ',
+    githubReposFieldHint: 'GitHub URL または owner/repo',
     library: 'ライブラリ',
     dataReport: 'プラットフォームレポート',
     multiPlatformAggregation: 'マルチプラットフォームコンテンツ集約',
@@ -3934,6 +3980,16 @@ export const jaJP: TranslationKeys = {
     defaultQuote: '人生は明るく、すべてが愛らしい。',
     anonymous: '作者不明',
     unavailable: '一言は利用できません',
+  },
+
+  githubReposWidget: {
+    empty: 'リポジトリはまだありません',
+    emptyHint: 'ウィジェットを編集し、owner/repo を入力',
+    loadFailed: 'リポジトリを読み込めませんでした',
+    sampleRepo: 'hello-world',
+    sampleRepoAlt: 'toolkit',
+    sampleDesc: 'サンプルリポジトリの説明',
+    sampleDescAlt: '別のサンプル説明',
   },
 
   // 音楽プレイヤーウィジェット

@@ -39,6 +39,12 @@ import { usePerformanceProfile } from '../hooks/usePerformanceProfile'
 import { useWallpaper } from '../hooks/useWallpaper'
 import { getDynamicContentProvider } from '../services/DynamicContentProvider'
 import {
+  allowsIslandType,
+  DEFAULT_ISLAND_CONTENT,
+  ISLAND_CONTENT_CHANGED_EVENT,
+  islandContentFromPublicUi,
+} from '../utils/islandContent'
+import {
   notificationSourceFor,
   notificationToastType,
   shouldEmitNotificationToast,
@@ -60,6 +66,7 @@ import {
   notificationFacingBody,
   notificationFacingTitle,
 } from '../utils/notificationFacing'
+import { getUIConfigDeduped } from '../utils/requestDedup'
 import { loadResource } from '../utils/resourceLoader'
 import { useThemeMode } from '../utils/themeSubscriber'
 import { showToast } from '../utils/toastManager'
@@ -232,6 +239,7 @@ const GlobalControlPanel: React.FC = () => {
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null)
   const [quoteData, setQuoteData] = useState<QuoteData | null>(null)
+  const [islandContent, setIslandContent] = useState(DEFAULT_ISLAND_CONTENT)
 
   // 安全的动态内容更新函数 - 页面隐藏时暂存更新
   const safeSetDynamicContents = useCallback(
@@ -445,9 +453,10 @@ const GlobalControlPanel: React.FC = () => {
       if (!c.icon || !c.text) return false
       // 文本不能是空字符串或只有空白
       if (typeof c.text === 'string' && c.text.trim().length === 0) return false
+      if (!allowsIslandType(islandContent, String(c.type))) return false
       return true
     })
-  }, [dynamicContents])
+  }, [dynamicContents, islandContent])
 
   // 文本引用，用于检测是否需要滚动
   const textRef = useRef<HTMLSpanElement>(null)
@@ -566,6 +575,26 @@ const GlobalControlPanel: React.FC = () => {
   useEffect(() => {
     dynamicContentProvider.setLocale(locale)
   }, [locale, dynamicContentProvider])
+
+  const loadIslandContent = useCallback(async () => {
+    try {
+      const cfg = (await getUIConfigDeduped()) as Record<string, unknown>
+      setIslandContent(islandContentFromPublicUi(cfg))
+    } catch {
+      setIslandContent(DEFAULT_ISLAND_CONTENT)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadIslandContent()
+    const onChanged = () => {
+      void loadIslandContent()
+    }
+    window.addEventListener(ISLAND_CONTENT_CHANGED_EVENT, onChanged)
+    return () => {
+      window.removeEventListener(ISLAND_CONTENT_CHANGED_EVENT, onChanged)
+    }
+  }, [loadIslandContent])
 
   // 订阅 Tapp 动态内容更新
   useEffect(() => {
@@ -1722,6 +1751,7 @@ const GlobalControlPanel: React.FC = () => {
         <div className="control-bar-content">
           <div
             ref={triggerRef}
+            data-tour="control-island"
             className={[
               'control-bar-trigger',
               isExpanded ? 'expanded' : '',

@@ -318,6 +318,7 @@ export default function BrewReader({
     contentRef,
     itemId: item.id,
     readProgress: item.read_progress,
+    contentReady,
     isAuthenticated,
     onClose,
     adjustFontSize,
@@ -477,26 +478,6 @@ export default function BrewReader({
     }
   }, [enableAnimations, readerTransition])
 
-  // 遮罩渐变背景样式 - useMemo 缓存避免每次渲染重新创建对象
-  const maskGradientStyles = useMemo(() => {
-    const bgColor =
-      theme === 'light'
-        ? '#f8f5ec'
-        : theme === 'sepia'
-          ? '#f4ecd8'
-          : theme === 'dark'
-            ? '#1a1a1a'
-            : '#0d1117'
-    return {
-      top: {
-        background: `linear-gradient(to bottom, ${bgColor} 0%, ${bgColor}00 100%)`,
-      },
-      bottom: {
-        background: `linear-gradient(to top, ${bgColor} 0%, ${bgColor}00 100%)`,
-      },
-    }
-  }, [theme])
-
   return (
     <motion.div
       {...readerAnimProps}
@@ -513,24 +494,16 @@ export default function BrewReader({
         />
       </div>
 
-      {/* 顶部淡出遮罩 */}
-      <div
-        className="absolute top-0 left-0 right-0 h-24 pointer-events-none z-5"
-        style={maskGradientStyles.top}
-      />
-
-      {/* 底部淡入遮罩 */}
-      <div
-        className="absolute bottom-0 left-0 right-0 h-24 pointer-events-none z-5"
-        style={maskGradientStyles.bottom}
-      />
-
       {/* 主内容区 - 三栏布局 */}
       {/* transform: translateZ(0) 将滚动容器提升为独立合成层，避免 sticky 子元素回流影响主线程 */}
       <article
         ref={articleRef}
         className="h-full overflow-y-auto overflow-x-hidden"
-        style={{ ...STYLE_SCROLL_SMOOTH, transform: 'translateZ(0)' }}
+        style={{
+          ...STYLE_SCROLL_SMOOTH,
+          transform: 'translateZ(0)',
+          overflowAnchor: 'none',
+        }}
       >
         <div className="flex justify-center">
           {/* 左侧控制栏 - 导航与进度 */}

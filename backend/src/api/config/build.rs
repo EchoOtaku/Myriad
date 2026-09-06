@@ -1690,6 +1690,61 @@ pub(crate) async fn build_config(
                     placeholder: "Playlist ID from music platform".to_string(),
                     required: false,
                 },
+                ConfigField {
+                    key: "island_show_greeting".to_string(),
+                    label: "Island greeting".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.island_show_greeting.to_string())
+                        .unwrap_or_else(|| "true".to_string()),
+                    placeholder: "true".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "island_show_weather".to_string(),
+                    label: "Island weather".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.island_show_weather.to_string())
+                        .unwrap_or_else(|| "true".to_string()),
+                    placeholder: "true".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "island_show_quote".to_string(),
+                    label: "Island quote".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.island_show_quote.to_string())
+                        .unwrap_or_else(|| "true".to_string()),
+                    placeholder: "true".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "island_show_music".to_string(),
+                    label: "Island music".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.island_show_music.to_string())
+                        .unwrap_or_else(|| "true".to_string()),
+                    placeholder: "true".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "island_show_tapp".to_string(),
+                    label: "Island Tapp content".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.island_show_tapp.to_string())
+                        .unwrap_or_else(|| "true".to_string()),
+                    placeholder: "true".to_string(),
+                    required: false,
+                },
                 // 内存节约（高级设置）
                 ConfigField {
                     key: "memory_saver_enabled".to_string(),

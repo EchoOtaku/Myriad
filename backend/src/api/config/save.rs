@@ -808,6 +808,26 @@ pub(crate) fn collect_database_updates(
                 let enabled = field.value == "true";
                 ("music_enabled", JsonValue::Bool(enabled))
             }
+            "island_show_greeting" => {
+                let enabled = field.value != "false" && field.value != "0";
+                ("island_show_greeting", JsonValue::Bool(enabled))
+            }
+            "island_show_weather" => {
+                let enabled = field.value != "false" && field.value != "0";
+                ("island_show_weather", JsonValue::Bool(enabled))
+            }
+            "island_show_quote" => {
+                let enabled = field.value != "false" && field.value != "0";
+                ("island_show_quote", JsonValue::Bool(enabled))
+            }
+            "island_show_music" => {
+                let enabled = field.value != "false" && field.value != "0";
+                ("island_show_music", JsonValue::Bool(enabled))
+            }
+            "island_show_tapp" => {
+                let enabled = field.value != "false" && field.value != "0";
+                ("island_show_tapp", JsonValue::Bool(enabled))
+            }
             "proxy_enabled" => {
                 let enabled = field.value == "true";
                 ("proxy_enabled", JsonValue::Bool(enabled))

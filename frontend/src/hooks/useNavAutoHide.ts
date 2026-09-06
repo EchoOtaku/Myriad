@@ -15,6 +15,10 @@
 import type { NavLayout } from '../utils/navLayout'
 import { useEffect } from 'react'
 import {
+  isTourDomActive,
+  TOUR_ACTIVE_EVENT,
+} from '../components/tour/tourLogic'
+import {
   edgeRevealShouldShow,
   isNearNavEdge,
   NAV_HOT_EDGE_THRESHOLD,
@@ -81,6 +85,10 @@ export function useNavAutoHide(selector = '.nav-container') {
           ? TRANSFORM_HIDE_DESKTOP
           : TRANSFORM_HIDE_MOBILE
 
+      // Idle-hide used to leave an opacity:0 island with backdrop-filter on.
+      // That backdrop root samples #wallpaper (filter + parallax transform) and
+      // can freeze those updates. Drop the glass before the fade/slide.
+      navContainer.dataset.navIdle = visible ? 'shown' : 'hidden'
       navContainer.style.opacity = visible ? '1' : '0'
       navContainer.style.transform = transform
       navContainer.style.pointerEvents = visible ? 'auto' : 'none'
@@ -116,6 +124,7 @@ export function useNavAutoHide(selector = '.nav-container') {
       isHovering && navContainer.matches(':hover')
 
     const hideNav = (byScroll = false) => {
+      if (isTourDomActive()) return
       if (!isNavVisible) return
       // Touch can fire pointerenter without a matching leave; don't let a
       // sticky flag block idle hide if the pointer is not actually over us.
@@ -136,6 +145,7 @@ export function useNavAutoHide(selector = '.nav-container') {
 
     const startInactivityTimer = () => {
       clearInactivityTimer()
+      if (isTourDomActive()) return
       if (isNavVisible && !isChromeSwitching(navContainer)) {
         inactivityTimeoutId = window.setTimeout(hideNav, INACTIVITY_DELAY)
       }
@@ -256,6 +266,7 @@ export function useNavAutoHide(selector = '.nav-container') {
       navContainer.style.removeProperty('opacity')
       navContainer.style.removeProperty('transform')
       navContainer.style.removeProperty('pointer-events')
+      navContainer.removeAttribute('data-nav-idle')
       snapVisibilityForLayout(true)
       // pointer-events just came back; :hover / pointerenter may lag one frame.
       if (hoverSyncRaf) cancelAnimationFrame(hoverSyncRaf)
@@ -268,6 +279,26 @@ export function useNavAutoHide(selector = '.nav-container') {
 
     const handleResize = () => {
       cachedWindowHeight = window.innerHeight
+    }
+
+    const handleTourActive = () => {
+      if (isTourDomActive()) {
+        // Snap to the shown pose. A 300ms transform transition would leave
+        // getBoundingClientRect mid-slide, and the tour hole/card would lock
+        // onto the idle-hide offset (translateX(-20px) on desktop).
+        isNavVisible = true
+        hiddenByScroll = false
+        clearInactivityTimer()
+        if (!isChromeSwitching(navContainer)) {
+          navContainer.style.transition = 'none'
+          applyVisibility(true)
+        }
+        return
+      }
+      if (!isChromeSwitching(navContainer)) {
+        navContainer.style.transition = TRANSITION_VISIBILITY
+      }
+      if (!isHovering) startInactivityTimer()
     }
 
     // 初始化 & 事件注册
@@ -287,6 +318,7 @@ export function useNavAutoHide(selector = '.nav-container') {
     window.addEventListener('click', handleInteraction, passive)
     window.addEventListener('touchstart', handleInteraction, passive)
     window.addEventListener('resize', handleResize, passive)
+    window.addEventListener(TOUR_ACTIVE_EVENT, handleTourActive, { signal })
     navContainer.addEventListener('pointerenter', handleNavEnter, { signal })
     navContainer.addEventListener('pointerleave', handleNavLeave, { signal })
     navContainer.addEventListener(NAV_CHROME_SETTLED_EVENT, handleChromeSettled, {

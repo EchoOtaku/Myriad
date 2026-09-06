@@ -430,6 +430,40 @@ export const zhCN: TranslationKeys = {
     languageSwitch: '语言切换',
   },
 
+  tour: {
+    start: '教程',
+    startHint: '讲解这一页',
+    next: '下一步',
+    back: '上一步',
+    done: '完成',
+    skip: '跳过',
+    hint: '了解一下',
+    hintBody: '用一两分钟看清这一页上能点的地方。',
+    hintTitle: '了解一下 {page}',
+    hintWelcome: '欢迎访问 {site}',
+    begin: '开始',
+    noTourOnThisPage: '这一页还没有教程',
+    couldNotStart: '没找到这一页要讲解的位置',
+    steps: {
+      nav: {
+        title: '导航',
+        body: '从这里切换首页、资料库、Brew、报告和 Tapp。',
+      },
+      'home-grid': {
+        title: '宫格',
+        body: '小组件都排在这里，打开站点时最先看到的就是这块看板。',
+      },
+      'home-edit': {
+        title: '编辑',
+        body: '点这里可以改布局、加减小组件。只有站长能改。',
+      },
+      'control-island': {
+        title: '控制岛',
+        body: '外观、语言、壁纸和登录都在右上角。站长还可以进系统配置。',
+      },
+    },
+  },
+
   // 登录
   auth: {
     username: '用户名',
@@ -1466,6 +1500,14 @@ export const zhCN: TranslationKeys = {
     musicPlatform: '音乐平台',
     playlistId: '歌单ID',
     clearMusicCache: '清空音乐缓存',
+    islandContentTitle: '智能岛显示',
+    islandContentDesc: '选择右上角控制岛轮播哪些内容。通知仍由通知设置单独控制。',
+    islandContentLocations: '显示内容',
+    islandGreeting: '问候',
+    islandWeather: '天气',
+    islandQuote: '一言',
+    islandMusic: '音乐',
+    islandTapp: 'Tapp',
     siteMetadata: '网站元数据',
     siteMetadataDesc: '站点标题、简介与图标（favicon）',
     siteIdentity: '站点名片与应用',
@@ -2376,6 +2418,9 @@ export const zhCN: TranslationKeys = {
     tappShortcut: 'Tapp 快捷方式',
     gamePresence: '米哈游游戏卡片',
     visitorStats: '访客统计',
+    githubRepos: 'GitHub 仓库',
+    githubReposField: '仓库',
+    githubReposFieldHint: 'GitHub 地址或 owner/repo',
     library: '资料库',
     dataReport: '平台报告',
     multiPlatformAggregation: '多平台内容聚合',
@@ -3714,6 +3759,16 @@ export const zhCN: TranslationKeys = {
     defaultQuote: '生活明朗，万物可爱。',
     anonymous: '佚名',
     unavailable: '一言不可用',
+  },
+
+  githubReposWidget: {
+    empty: '还没有仓库',
+    emptyHint: '编辑小组件，填入 owner/repo',
+    loadFailed: '仓库信息暂时不可用',
+    sampleRepo: 'hello-world',
+    sampleRepoAlt: 'toolkit',
+    sampleDesc: '示例仓库简介',
+    sampleDescAlt: '另一份示例简介',
   },
 
   // 音乐播放器小组件

@@ -7,7 +7,7 @@ import { useLayoutEffect, useState } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
 import { agentService } from '../../../../services/agent'
 import { generationFailureMessage } from '../generationError'
-import { defaultNameStyle } from '../onboardingTypes'
+import { defaultNameStyle, VISUAL_NOTES_LIMIT } from '../onboardingTypes'
 import { ActionBar, PrimaryButton, StepBody } from '../ui/Chrome'
 import { ErrorNote } from '../ui/Feedback'
 import { Field, FieldGroup, TextArea, TextInput } from '../ui/Field'
@@ -129,10 +129,16 @@ export default function BasicsStep({
           />
         </FieldGroup>
 
-        <Field label={o.extraLabel} optional optionalLabel={o.optional}>
+        <Field
+          label={o.extraLabel}
+          optional
+          optionalLabel={o.optional}
+          value={extraRequirements}
+          max={VISUAL_NOTES_LIMIT}
+        >
           <TextArea
             value={extraRequirements}
-            maxLength={500}
+            maxLength={VISUAL_NOTES_LIMIT}
             rows={3}
             placeholder={o.extraPlaceholder}
             onChange={(event) => onExtra(event.target.value)}

@@ -499,6 +499,11 @@ pub async fn get_public_ui_config(
             db_config.as_ref().and_then(|c| c.music_playlist_id.clone()),
             "MUSIC_PLAYLIST_ID"
         ),
+        "island_show_greeting": db_config.as_ref().map(|c| c.island_show_greeting).unwrap_or(true),
+        "island_show_weather": db_config.as_ref().map(|c| c.island_show_weather).unwrap_or(true),
+        "island_show_quote": db_config.as_ref().map(|c| c.island_show_quote).unwrap_or(true),
+        "island_show_music": db_config.as_ref().map(|c| c.island_show_music).unwrap_or(true),
+        "island_show_tapp": db_config.as_ref().map(|c| c.island_show_tapp).unwrap_or(true),
         "dashboard_layout": db_config.as_ref().and_then(|c| c.dashboard_layout.clone()),
         "dashboard_layout_mode": db_config.as_ref().and_then(|c| c.dashboard_layout_mode.clone()),
         "dashboard_title": db_config.as_ref().and_then(|c| c.dashboard_title.clone()),

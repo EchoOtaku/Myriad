@@ -708,6 +708,8 @@ export default function Home() {
             onWidgetsChange={handleWidgetsChange}
             isEditMode={isEditMode}
             layoutMode={effectiveMode}
+            tourAnchor="home-grid"
+            tourFit=".widget-grid-item"
             stickerPickActive={stickerPicking}
             stickerHighlight={
               stickerDraft
@@ -829,6 +831,7 @@ export default function Home() {
 
                         <button
                           type="button"
+                          data-tour="home-edit"
                           onClick={() => setIsEditMode(!isEditMode)}
                           className={`
                           flex px-4 py-1.5 rounded-lg text-xs font-bold items-center gap-2 transition-all
@@ -952,6 +955,7 @@ export default function Home() {
                 ) : null}
                 <button
                   type="button"
+                  data-tour="home-edit"
                   className={`home-layout-rail__btn ${
                     isEditMode ? 'is-active' : ''
                   }`}

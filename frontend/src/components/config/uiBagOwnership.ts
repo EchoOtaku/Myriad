@@ -64,11 +64,16 @@ export const PLATFORMS_UI_RESET_KEYS: readonly string[] = Object.freeze([
   'umami_script_url',
 ])
 
-/** 模块页：音乐播放器（库/报告/一言走独立 draft） */
+/** 模块页：音乐播放器 + 智能岛显示（库/报告/一言走独立 draft） */
 export const MODULE_UI_RESET_KEYS: readonly string[] = Object.freeze([
   'music_enabled',
   'music_source',
   'music_playlist_id',
+  'island_show_greeting',
+  'island_show_weather',
+  'island_show_quote',
+  'island_show_music',
+  'island_show_tapp',
 ])
 
 /** 高级页：内存节约 + 网络代理 + API 镜像 */
@@ -246,6 +251,30 @@ export function configChangesNeedWallpaperReload(
     next.ui_config?.config_fields,
     prev.ui_config?.config_fields,
     WALLPAPER_SOFT_RELOAD_UI_BAG_KEYS,
+  )
+}
+
+/** 智能岛显示内容 bag：保存后清 `/api/config/ui` 并通知右上岛重载 */
+export const ISLAND_SOFT_RELOAD_UI_BAG_KEYS: readonly string[] = Object.freeze([
+  'island_show_greeting',
+  'island_show_weather',
+  'island_show_quote',
+  'island_show_music',
+  'island_show_tapp',
+])
+
+export function configChangesNeedIslandReload(
+  next: {
+    ui_config?: { config_fields?: Array<{ key: string; value: string }> }
+  },
+  prev: {
+    ui_config?: { config_fields?: Array<{ key: string; value: string }> }
+  },
+): boolean {
+  return bagKeysChanged(
+    next.ui_config?.config_fields,
+    prev.ui_config?.config_fields,
+    ISLAND_SOFT_RELOAD_UI_BAG_KEYS,
   )
 }
 

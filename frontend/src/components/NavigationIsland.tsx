@@ -1176,7 +1176,7 @@ export function NavigationIsland() {
       {...(immersiveMode && { 'aria-hidden': 'true' })}
       {...(chromeSwitch ? { 'aria-busy': 'true' } : {})}
     >
-      <div className="dynamic-island">
+      <div className="dynamic-island" data-tour="nav">
         {/*
           nav-island-scroll：移动端横向滚动放在内层，外层 dynamic-island 只做
           毛玻璃 + overflow:hidden。若把 overflow-x:auto 直接加在带

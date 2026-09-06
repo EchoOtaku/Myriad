@@ -322,6 +322,20 @@ export const en: SettingGuidesCatalog = {
       frontend: 'The attribution line.',
       notes: 'If the other side has no author field, leave empty.',
     },
+    island: {
+      what: 'What the collapsed top-right control island cycles through.',
+      chain:
+        '1) Tick greeting, weather, quote, music, Tapp → save at the bottom.\n2) After save, the island updates without a full reload.\n3) Notifications on the island stay under Notification settings, not this group.\n4) If the music player is off, ticking music here still has nothing to show.',
+      frontend: 'The capsule control island at the top-right of every page.',
+      notes: 'If nothing is ticked the island stays, empty, and still opens the control panel.',
+    },
+    islandContent: {
+      what: 'Each item in this group: show it on the island carousel or not.',
+      chain:
+        '1) Greeting, weather, quote, music, and Tapp are independent.\n2) Weather still needs a location; quote still needs a working source; music still needs the player on with a track.\n3) Tapp still has to write dynamic content itself.\n4) Notifications are not in this group.',
+      frontend: 'The lines currently cycling on the control island.',
+      notes: 'This is one site-wide owner setting; visitors see the same island.',
+    },
   },
 
   platforms: {

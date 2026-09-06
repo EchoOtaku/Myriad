@@ -800,7 +800,11 @@ pub async fn suggest_visual_design(
         ))
     })?;
     let requirements = myriad_merope::normalize_visual_requirements_for_design_with_gender(
-        &sanitize_visual_text(&body.visual_requirements, 500)?,
+        &sanitize_visual_text(
+            &body.visual_requirements,
+            myriad_merope::MAX_VISUAL_NOTES_CHARS,
+            "visualRequirements",
+        )?,
         gender,
     );
     let clothing_style =
@@ -826,8 +830,8 @@ pub async fn suggest_visual_design(
                     ))
                 })?;
             Some(
-                myriad_merope::normalize_visual_identity_for_prompt(&sanitized)
-                    .ok_or_else(visual_profile_error)?,
+                myriad_merope::normalize_visual_identity_for_prompt_checked(&sanitized)
+                    .map_err(|issue| visual_profile_issue(issue.prefixed("visualIdentity")))?,
             )
         }
         None => None,
@@ -1122,24 +1126,20 @@ fn required_visual_language(value: &str) -> Option<&'static str> {
 
 fn sanitize_visual_profile(value: &Value) -> Result<Value, HttpError> {
     let source = value.as_object().ok_or_else(|| {
-        HttpError::from((
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": "Visual profile must be an object",
-                "code": "visual_profile_invalid"
-            })),
+        visual_profile_issue(myriad_merope::VisualProfileIssue::new(
+            "visualProfile",
+            myriad_merope::VisualProfileReason::NotObject,
         ))
     })?;
     let mut profile = Map::new();
     if let Some(gender) = source.get("gender").and_then(Value::as_str) {
         if !matches!(gender, "female" | "male" | "nonbinary" | "unspecified") {
-            return Err(HttpError::from((
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": "Visual profile gender is invalid",
-                    "code": "visual_profile_invalid"
-                })),
-            )));
+            return Err(visual_profile_issue(
+                myriad_merope::VisualProfileIssue::new(
+                    "gender",
+                    myriad_merope::VisualProfileReason::Invalid,
+                ),
+            ));
         }
         profile.insert("gender".into(), json!(gender));
     }
@@ -1151,12 +1151,9 @@ fn sanitize_visual_profile(value: &Value) -> Result<Value, HttpError> {
     } else if let Some(clothing_style) = source.get("clothingStyle").and_then(Value::as_str) {
         let clothing_style =
             myriad_merope::normalize_clothing_style(clothing_style).ok_or_else(|| {
-                HttpError::from((
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({
-                        "error": "Visual profile clothing style is invalid",
-                        "code": "visual_profile_invalid"
-                    })),
+                visual_profile_issue(myriad_merope::VisualProfileIssue::new(
+                    "clothingStyle",
+                    myriad_merope::VisualProfileReason::UnknownStyle,
                 ))
             })?;
         profile.insert("clothingStyle".into(), json!(clothing_style));
@@ -1168,11 +1165,14 @@ fn sanitize_visual_profile(value: &Value) -> Result<Value, HttpError> {
         );
     }
     for (key, max_chars) in [
-        ("extraRequirements", 500),
-        ("personaExtraRequirements", 500),
+        ("extraRequirements", myriad_merope::MAX_VISUAL_NOTES_CHARS),
+        (
+            "personaExtraRequirements",
+            myriad_merope::MAX_VISUAL_NOTES_CHARS,
+        ),
     ] {
         if let Some(text) = source.get(key).and_then(Value::as_str) {
-            let text = sanitize_visual_text(text, max_chars)?;
+            let text = sanitize_visual_text(text, max_chars, key)?;
             profile.insert(key.into(), json!(text));
         }
     }
@@ -1189,8 +1189,8 @@ fn sanitize_visual_profile(value: &Value) -> Result<Value, HttpError> {
         if wardrobe.is_null() {
             profile.insert("wardrobe".into(), json!([]));
         } else {
-            let items =
-                myriad_merope::sanitize_wardrobe(wardrobe).ok_or_else(visual_profile_error)?;
+            let items = myriad_merope::sanitize_wardrobe_checked(wardrobe)
+                .map_err(|issue| visual_profile_issue(issue.prefixed("wardrobe")))?;
             profile.insert("wardrobe".into(), json!(items));
         }
     }
@@ -1198,16 +1198,42 @@ fn sanitize_visual_profile(value: &Value) -> Result<Value, HttpError> {
         if active.is_null() {
             profile.insert("activeOutfitId".into(), Value::Null);
         } else {
-            let id = active
-                .as_str()
-                .map(str::trim)
-                .filter(|value| !value.is_empty());
-            let id = id.filter(|value| {
-                value.chars().count() <= myriad_merope::MAX_WARDROBE_ID_CHARS
-                    && !value.chars().any(char::is_control)
-            });
-            let Some(id) = id else {
-                return Err(visual_profile_error());
+            let id = match active.as_str().map(str::trim) {
+                None => {
+                    return Err(visual_profile_issue(
+                        myriad_merope::VisualProfileIssue::new(
+                            "activeOutfitId",
+                            myriad_merope::VisualProfileReason::Invalid,
+                        ),
+                    ));
+                }
+                Some("") => {
+                    return Err(visual_profile_issue(
+                        myriad_merope::VisualProfileIssue::new(
+                            "activeOutfitId",
+                            myriad_merope::VisualProfileReason::Empty,
+                        ),
+                    ));
+                }
+                Some(id) if id.chars().count() > myriad_merope::MAX_WARDROBE_ID_CHARS => {
+                    return Err(visual_profile_issue(
+                        myriad_merope::VisualProfileIssue::new(
+                            "activeOutfitId",
+                            myriad_merope::VisualProfileReason::TooLong {
+                                max_chars: myriad_merope::MAX_WARDROBE_ID_CHARS,
+                            },
+                        ),
+                    ));
+                }
+                Some(id) if id.chars().any(char::is_control) => {
+                    return Err(visual_profile_issue(
+                        myriad_merope::VisualProfileIssue::new(
+                            "activeOutfitId",
+                            myriad_merope::VisualProfileReason::ControlChar,
+                        ),
+                    ));
+                }
+                Some(id) => id,
             };
             profile.insert("activeOutfitId".into(), json!(id));
         }
@@ -1222,8 +1248,8 @@ fn sanitize_visual_profile(value: &Value) -> Result<Value, HttpError> {
             drop_stale_active_outfit(&mut profile);
             return Ok(Value::Object(profile));
         }
-        let mut sanitized = myriad_merope::sanitize_upper_body_visual_identity(identity)
-            .ok_or_else(visual_profile_error)?;
+        let mut sanitized = myriad_merope::sanitize_upper_body_visual_identity_checked(identity)
+            .map_err(|issue| visual_profile_issue(issue.prefixed("visualIdentity")))?;
         if let Some(style) = profile
             .get("clothingStyle")
             .and_then(Value::as_str)
@@ -1233,8 +1259,8 @@ fn sanitize_visual_profile(value: &Value) -> Result<Value, HttpError> {
             profile.insert("clothingStyle".into(), json!(style));
             myriad_merope::stamp_clothing_style(&mut sanitized, style);
         }
-        let mut sanitized = myriad_merope::normalize_visual_identity_for_prompt(&sanitized)
-            .ok_or_else(visual_profile_error)?;
+        let mut sanitized = myriad_merope::normalize_visual_identity_for_prompt_checked(&sanitized)
+            .map_err(|issue| visual_profile_issue(issue.prefixed("visualIdentity")))?;
         if let Some(gender) = profile.get("gender").and_then(Value::as_str) {
             let language = profile
                 .get("language")
@@ -1313,20 +1339,39 @@ fn merge_visual_profile(incoming: Value, previous: Option<&Value>) -> Value {
     finish_wardrobe(Value::Object(merged), Some(previous))
 }
 
-fn sanitize_visual_text(value: &str, max_chars: usize) -> Result<String, HttpError> {
+fn sanitize_visual_text(value: &str, max_chars: usize, field: &str) -> Result<String, HttpError> {
     let value = value.trim();
-    if value.chars().count() > max_chars || value.chars().any(char::is_control) {
-        return Err(visual_profile_error());
+    if value.chars().count() > max_chars {
+        return Err(visual_profile_issue(
+            myriad_merope::VisualProfileIssue::new(
+                field,
+                myriad_merope::VisualProfileReason::TooLong { max_chars },
+            ),
+        ));
+    }
+    if value.chars().any(char::is_control) {
+        return Err(visual_profile_issue(
+            myriad_merope::VisualProfileIssue::new(
+                field,
+                myriad_merope::VisualProfileReason::ControlChar,
+            ),
+        ));
     }
     Ok(value.to_string())
 }
 
-fn visual_profile_error() -> HttpError {
+fn visual_profile_issue(issue: myriad_merope::VisualProfileIssue) -> HttpError {
+    tracing::warn!(
+        field = %issue.field,
+        reason = issue.reason.as_str(),
+        "visual profile rejected"
+    );
     HttpError::from((
         StatusCode::BAD_REQUEST,
         Json(json!({
             "error": "Visual profile is invalid",
-            "code": "visual_profile_invalid"
+            "code": "visual_profile_invalid",
+            "message": issue.message(),
         })),
     ))
 }
@@ -1516,6 +1561,63 @@ mod tests {
 
         // 乱填仍然是 400，不会被 null 分支放过去。
         assert!(sanitize_visual_profile(&json!({ "clothingStyle": "not-a-style" })).is_err());
+    }
+
+    fn visual_profile_error_body(value: &Value) -> Value {
+        sanitize_visual_profile(value)
+            .expect_err("invalid visual profile")
+            .0
+            .to_json()
+    }
+
+    #[test]
+    fn visual_profile_error_names_the_failing_field() {
+        let clothing = visual_profile_error_body(&json!({ "clothingStyle": "not-a-style" }));
+        assert_eq!(clothing["code"], "visual_profile_invalid");
+        assert_eq!(clothing["error"], "Visual profile is invalid");
+        assert_eq!(
+            clothing["message"],
+            "clothingStyle is not a known clothing style"
+        );
+
+        let gender = visual_profile_error_body(&json!({ "gender": "unknown" }));
+        assert_eq!(gender["message"], "gender is invalid");
+
+        let mut identity = json!({
+            "faceDesign": "成熟的鹅蛋脸与自然眉形",
+            "eyeDesign": "金色多层虹膜与克制高光",
+            "hairShape": "银灰齐颌短发与偏分刘海",
+            "hairLayerPlan": "后发、刘海和左右侧发形成独立轮廓",
+            "upperBodySilhouette": "紧凑肩线、清楚领口与胸前焦点",
+            "outfitConstruction": "高领内搭叠短外套并止于高腰",
+            "sleeveArmDesign": "左右袖片携局部前臂进入画面",
+            "materialPlan": "哑光布料、银色金属与小面积宝石",
+            "heroAccessory": "左胸星轨扣饰",
+            "paletteHint": "雾蓝为主、银白为辅、金色点缀",
+            "motif": "单一星轨弧线集中在胸前"
+        });
+        identity
+            .as_object_mut()
+            .expect("identity")
+            .remove("eyeDesign");
+        let missing = visual_profile_error_body(&json!({ "visualIdentity": identity }));
+        assert_eq!(missing["message"], "visualIdentity.eyeDesign is empty");
+
+        let extra = visual_profile_error_body(&json!({
+            "extraRequirements": "a".repeat(myriad_merope::MAX_VISUAL_NOTES_CHARS + 1)
+        }));
+        assert_eq!(
+            extra["message"],
+            format!(
+                "extraRequirements exceeds {} characters",
+                myriad_merope::MAX_VISUAL_NOTES_CHARS
+            )
+        );
+
+        let wardrobe = visual_profile_error_body(&json!({
+            "wardrobe": [{ "id": "w-a" }]
+        }));
+        assert_eq!(wardrobe["message"], "wardrobe.0.clothingStyle is empty");
     }
 
     use super::*;

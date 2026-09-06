@@ -64,7 +64,12 @@ export function WidgetInstanceSettings({
       anchor={anchor}
       title={title}
       width={300}
-      height={Math.min(420, 132 + settings.length * 64)}
+      height={Math.min(
+        420,
+        132 +
+          settings.length * 64 +
+          (settings.some((setting) => setting.multiline) ? 88 : 0),
+      )}
       onClose={onClose}
       ignoreRef={ignoreRef}
     >
@@ -136,6 +141,8 @@ export function WidgetInstanceSettings({
                     ? setting.placeholder || '#8b5cf6'
                     : setting.placeholder
                 }
+                multiline={setting.multiline}
+                rows={setting.rows}
                 size="sm"
                 layout="vertical"
                 labelAccessory={

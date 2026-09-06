@@ -399,6 +399,29 @@ export interface TranslationKeys {
     languageSwitch: string
   }
 
+  // 教程覆层（现场高亮，不是人设引导 / 安装向导）
+  tour: {
+    start: string
+    startHint: string
+    next: string
+    back: string
+    done: string
+    skip: string
+    hint: string
+    hintBody: string
+    hintTitle: string
+    hintWelcome: string
+    begin: string
+    noTourOnThisPage: string
+    couldNotStart: string
+    steps: {
+      nav: { title: string; body: string }
+      'home-grid': { title: string; body: string }
+      'home-edit': { title: string; body: string }
+      'control-island': { title: string; body: string }
+    }
+  }
+
   // 登录
   auth: {
     username: string
@@ -1336,6 +1359,14 @@ export interface TranslationKeys {
     musicPlatform: string
     playlistId: string
     clearMusicCache: string
+    islandContentTitle: string
+    islandContentDesc: string
+    islandContentLocations: string
+    islandGreeting: string
+    islandWeather: string
+    islandQuote: string
+    islandMusic: string
+    islandTapp: string
     siteMetadata: string
     siteMetadataDesc: string
     /** 基础设置：网站名片 + PWA（原「网站元数据」与 PWA 合并） */
@@ -2144,6 +2175,9 @@ export interface TranslationKeys {
     tappShortcut: string
     gamePresence: string
     visitorStats: string
+    githubRepos: string
+    githubReposField: string
+    githubReposFieldHint: string
     library: string
     dataReport: string
     multiPlatformAggregation: string
@@ -3494,7 +3528,17 @@ export interface TranslationKeys {
     defaultQuote: string
     anonymous: string
     unavailable: string
-  }
+  },
+
+  githubReposWidget: {
+    empty: string
+    emptyHint: string
+    loadFailed: string
+    sampleRepo: string
+    sampleRepoAlt: string
+    sampleDesc: string
+    sampleDescAlt: string
+  },
 
   // 音乐播放器小组件
   musicPlayer: {

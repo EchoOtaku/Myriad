@@ -88,6 +88,7 @@ const BUILTIN_TOPIC_BY_ID: Record<
   'quick-stats': 'tapp:data',
   'recent-activity': 'tapp:data',
   'visitor-stats': 'tapp:data',
+  'github-repos': 'tapp:social',
 }
 
 export function classifyWidgetLibraryKind(

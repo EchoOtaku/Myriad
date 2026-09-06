@@ -14,6 +14,8 @@ import { escapeHtml } from '../../../utils/inputSanitizer'
 import { proxyImageUrl } from '../../../utils/proxyImageUrl'
 import { processRssContent } from '../../../utils/rssContentProcessor'
 import { restoreEmbedElements, saveEmbedElements } from './embedRestore'
+import '../../settings/GitHubProjectBadge.css'
+import '../../github/githubRepoCard.css'
 
 const API_URL = CONFIG_API_URL
 

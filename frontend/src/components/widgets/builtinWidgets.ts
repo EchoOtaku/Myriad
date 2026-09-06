@@ -71,6 +71,10 @@ const WelcomeWidget = lazyWidget(
   () => import('./WelcomeWidget'),
   'WelcomeWidget',
 )
+const GithubReposWidget = lazyWidget(
+  () => import('./GithubReposWidget'),
+  'GithubReposWidget',
+)
 
 type WidgetsI18n = TranslationKeys['widgets']
 
@@ -192,6 +196,11 @@ export const BUILTIN_WIDGET_BASE_CONFIG = {
     component: VisitorStatsWidget,
     supportedSizes: ['2x2', '4x2'] as WidgetSize[],
   },
+  'github-repos': {
+    defaultSize: '2x2' as WidgetSize,
+    component: GithubReposWidget,
+    supportedSizes: ['2x1', '2x2', '4x2'] as WidgetSize[],
+  },
 } as const
 
 export type BuiltinWidgetId = keyof typeof BUILTIN_WIDGET_BASE_CONFIG
@@ -221,6 +230,7 @@ const BUILTIN_WIDGET_ORDER: BuiltinWidgetId[] = [
   'tapp-shortcut',
   'game-presence',
   'visitor-stats',
+  'github-repos',
 ]
 
 /** Map widget id → t.widgets key */
@@ -248,6 +258,7 @@ const WIDGET_NAME_KEY: Record<BuiltinWidgetId, keyof WidgetsI18n> = {
   'tapp-shortcut': 'tappShortcut',
   'game-presence': 'gamePresence',
   'visitor-stats': 'visitorStats',
+  'github-repos': 'githubRepos',
 }
 
 /**
@@ -307,6 +318,19 @@ export function getBuiltinWidgets(
       defaultSize: base.defaultSize,
       component: base.component,
       supportedSizes: [...base.supportedSizes],
+      settings:
+        id === 'github-repos'
+          ? [
+              {
+                key: 'repo',
+                type: 'input',
+                label: widgetsI18n.githubReposField,
+                description: widgetsI18n.githubReposFieldHint,
+                placeholder: 'owner/repo',
+                defaultValue: '',
+              },
+            ]
+          : undefined,
     }
   })
 }

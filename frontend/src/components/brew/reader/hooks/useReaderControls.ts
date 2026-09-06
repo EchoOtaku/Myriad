@@ -11,6 +11,7 @@ export interface UseReaderControlsOptions {
   contentRef: React.RefObject<HTMLDivElement | null>
   itemId: number
   readProgress: number | null | undefined
+  contentReady: boolean
   isAuthenticated: boolean
   onClose: () => void
   adjustFontSize: (delta: number) => void
@@ -36,6 +37,7 @@ export function useReaderControls({
   contentRef,
   itemId,
   readProgress,
+  contentReady,
   isAuthenticated,
   onClose,
   adjustFontSize,
@@ -58,7 +60,9 @@ export function useReaderControls({
   )
   const isLongPressRef = useRef(false)
 
-  // 切换文章：恢复服务端进度或回到顶部
+  // 切换文章：恢复服务端进度或回到顶部。
+  // 正文是动画后再灌进 DOM 的，只在 itemId 时滚一次会停在占位高度上；
+  // contentReady 后再钉一次。behavior:auto 避开容器上的 smooth。
   useEffect(() => {
     lastSyncedProgressRef.current = -1
     if (progressSyncTimerRef.current) {
@@ -70,18 +74,18 @@ export function useReaderControls({
         ? Math.min(100, Math.round(readProgress))
         : 0
     setReadingProgress(saved)
-    // Apply scroll after layout
-    requestAnimationFrame(() => {
+    const pin = () => {
       const el = articleRef.current
       if (!el) return
       if (saved > 0 && saved < 100) {
         const max = el.scrollHeight - el.clientHeight
         if (max > 0) el.scrollTop = (saved / 100) * max
       } else {
-        el.scrollTo({ top: 0 })
+        el.scrollTo({ top: 0, behavior: 'auto' })
       }
-    })
-  }, [itemId])
+    }
+    requestAnimationFrame(pin)
+  }, [itemId, contentReady])
 
   // 计算阅读进度（本地 UI + 登录用户 debounce 同步到服务端）
   const updateReadingProgress = useCallback(() => {

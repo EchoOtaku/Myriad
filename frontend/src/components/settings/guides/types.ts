@@ -63,6 +63,8 @@ export interface SettingGuidesCatalog {
     hitokotoCustomUrl: SettingGuideEntry
     hitokotoTextField: SettingGuideEntry
     hitokotoAuthorField: SettingGuideEntry
+    island: SettingGuideEntry
+    islandContent: SettingGuideEntry
   }
   platforms: {
     list: SettingGuideEntry

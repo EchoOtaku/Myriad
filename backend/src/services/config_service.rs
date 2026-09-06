@@ -898,6 +898,42 @@ impl ConfigService {
             config.music_playlist_id = v.as_str().map(|s| s.to_string());
         }
 
+        if let Some(v) = map.get("island_show_greeting") {
+            if let Some(b) = v.as_bool() {
+                config.island_show_greeting = b;
+            } else if let Some(s) = v.as_str() {
+                config.island_show_greeting = s != "false" && s != "0";
+            }
+        }
+        if let Some(v) = map.get("island_show_weather") {
+            if let Some(b) = v.as_bool() {
+                config.island_show_weather = b;
+            } else if let Some(s) = v.as_str() {
+                config.island_show_weather = s != "false" && s != "0";
+            }
+        }
+        if let Some(v) = map.get("island_show_quote") {
+            if let Some(b) = v.as_bool() {
+                config.island_show_quote = b;
+            } else if let Some(s) = v.as_str() {
+                config.island_show_quote = s != "false" && s != "0";
+            }
+        }
+        if let Some(v) = map.get("island_show_music") {
+            if let Some(b) = v.as_bool() {
+                config.island_show_music = b;
+            } else if let Some(s) = v.as_str() {
+                config.island_show_music = s != "false" && s != "0";
+            }
+        }
+        if let Some(v) = map.get("island_show_tapp") {
+            if let Some(b) = v.as_bool() {
+                config.island_show_tapp = b;
+            } else if let Some(s) = v.as_str() {
+                config.island_show_tapp = s != "false" && s != "0";
+            }
+        }
+
         // Tapp 权限下放配置
         // 普通用户可下放的 elevated 权限
         if let Some(v) = map.get("user_perm_ai_generate") {
@@ -1310,6 +1346,29 @@ mod tests {
 
         let missing = ConfigService::parse_config(HashMap::new());
         assert!(!missing.merope_speech_enabled);
+    }
+
+    #[test]
+    fn parses_island_content_flags_from_database_config() {
+        let missing = ConfigService::parse_config(HashMap::new());
+        assert!(missing.island_show_greeting);
+        assert!(missing.island_show_weather);
+        assert!(missing.island_show_quote);
+        assert!(missing.island_show_music);
+        assert!(missing.island_show_tapp);
+
+        let mixed = ConfigService::parse_config(HashMap::from([
+            ("island_show_greeting".into(), json!(false)),
+            ("island_show_weather".into(), json!("false")),
+            ("island_show_quote".into(), json!(true)),
+            ("island_show_music".into(), json!("0")),
+            ("island_show_tapp".into(), json!("true")),
+        ]));
+        assert!(!mixed.island_show_greeting);
+        assert!(!mixed.island_show_weather);
+        assert!(mixed.island_show_quote);
+        assert!(!mixed.island_show_music);
+        assert!(mixed.island_show_tapp);
     }
 
     #[test]
