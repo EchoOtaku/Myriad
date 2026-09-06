@@ -74,15 +74,15 @@ html.dark .tour-hint {
   background:
     var(--ob-liq-sheen),
     var(--ob-liq-streak),
-    rgb(var(--merope-surface-rgb) / 18%);
+    rgb(var(--merope-surface-rgb) / 48%);
   box-shadow:
     var(--ob-liq-inset),
     0 2px 6px -2px rgb(31 38 135 / 12%),
     0 18px 48px -16px rgb(24 28 60 / 16%),
     0 16px 40px -18px color-mix(in srgb, var(--merope-accent) 28%, transparent);
   /* stylelint-disable-next-line property-no-vendor-prefix -- Safari < 16.4 */
-  -webkit-backdrop-filter: blur(26px) saturate(1.4);
-  backdrop-filter: blur(26px) saturate(1.4);
+  -webkit-backdrop-filter: blur(8px) saturate(1.15);
+  backdrop-filter: blur(8px) saturate(1.15);
   transition:
     box-shadow var(--sm-dur-slow) var(--sm-ease-standard),
     border-color var(--sm-dur-base) var(--sm-ease-standard);

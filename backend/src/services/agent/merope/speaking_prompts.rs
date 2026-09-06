@@ -88,7 +88,8 @@ fn bullet_facts(contents: &[String]) -> Vec<String> {
 
 /// Pick remembered facts for a turn. With a query, overlapping facts come first;
 /// if nothing overlaps, keep recency. `facts` is newest-first.
-pub fn rank_remembered(facts: &[String], query: Option<&str>, limit: usize) -> Vec<String> {
+#[cfg(test)]
+fn rank_remembered(facts: &[String], query: Option<&str>, limit: usize) -> Vec<String> {
     let mut ranker = RememberedRanker::new(query, limit);
     for fact in facts {
         ranker.push(fact);
