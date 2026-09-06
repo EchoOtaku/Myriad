@@ -12,6 +12,7 @@ import {
   predictExpandedControlPanelBox,
   predictRestoredLibraryDockBox,
 } from '../../utils/libraryDockStage'
+import { expandCollapsibleAncestors } from '../settings/guides/guideAnchor'
 import { clamp } from '../settings/settingTitleGuideLogic'
 
 export const TOUR_HOLE_PAD = 8
@@ -500,6 +501,41 @@ export function queryTourAnchor(anchor: string): HTMLElement | null {
 
 export function hasTourAnchor(anchor: string): boolean {
   return queryTourAnchor(anchor) != null
+}
+
+/** 锚点完全在视口外时，开场/换步需要先滚过去。 */
+export function tourAnchorNeedsReveal(
+  box: Box,
+  viewportW: number,
+  viewportH: number,
+  pad = TOUR_VIEWPORT_PAD,
+): boolean {
+  return (
+    box.bottom < pad ||
+    box.top > viewportH - pad ||
+    box.right < pad ||
+    box.left > viewportW - pad
+  )
+}
+
+export function revealTourAnchor(anchor: string, stepId?: string): boolean {
+  if (typeof document === 'undefined') return false
+  if (isPredictedTourAnchor(anchor, stepId)) return false
+  const node = queryTourAnchor(anchor)
+  if (!node) return false
+  expandCollapsibleAncestors(node)
+  const rect = node.getBoundingClientRect()
+  const box = {
+    top: rect.top,
+    left: rect.left,
+    width: rect.width,
+    height: rect.height,
+  }
+  if (!tourAnchorNeedsReveal(box, window.innerWidth, window.innerHeight)) {
+    return true
+  }
+  node.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' })
+  return true
 }
 
 export function isTourDomActive(): boolean {

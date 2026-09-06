@@ -5,6 +5,7 @@ import {
   firstVisibleIndex,
   hasTourAnchor,
   previousVisibleIndex,
+  revealTourAnchor,
   setTourDomActive,
 } from './tourLogic'
 import { pickRegisteredTour } from './tourRegistry'
@@ -46,6 +47,7 @@ function showIndex(index: number): void {
     stopInternal()
     return
   }
+  revealTourAnchor(step.anchor, step.id)
   emit({
     active: true,
     tourId: snapshot.tourId,
@@ -71,6 +73,8 @@ export type StartTourResult = 'started' | 'no-tour' | 'no-targets'
 export function startTour(def: TourDefinition): boolean {
   const steps = def.steps.filter((step) => hasTourAnchor(step.anchor))
   if (steps.length === 0) return false
+  const first = steps[0]!
+  revealTourAnchor(first.anchor, first.id)
   visible = steps
   setTourDomActive(true)
   emit({
@@ -78,7 +82,7 @@ export function startTour(def: TourDefinition): boolean {
     tourId: def.id,
     index: 0,
     total: steps.length,
-    step: steps[0]!,
+    step: first,
   })
   return true
 }

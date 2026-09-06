@@ -29,13 +29,19 @@ import {
 import {
   fillTourHint,
   getConfigTourSurface,
+  hasTourAnchor,
   isHomeEditSurface,
   pageNameForPath,
   readTourSurface,
   refreshConfigTourSurface,
+  revealTourAnchor,
   subscribeConfigTourSurface,
   subscribeHomeEditSurface,
 } from './tourLogic'
+import {
+  shouldAutoHideTourHint,
+  TOUR_HINT_AUTO_HIDE_MS,
+} from './tourHintLogic'
 import { pickRegisteredTour } from './tourRegistry'
 import './TourHint.css'
 
@@ -83,10 +89,37 @@ export function TourHint() {
   )
   useSyncExternalStore(subscribeTourDone, getTourDoneSnapshot, getTourDoneSnapshot)
   const [leaving, setLeaving] = useState<'dismiss' | 'start' | null>(null)
+  const [snoozedId, setSnoozedId] = useState<string | null>(null)
   const leaveTimer = useRef(0)
+  const autoHideTimer = useRef(0)
   const leaveAction = useRef<(() => void) | null>(null)
+  const leavingRef = useRef(leaving)
+  leavingRef.current = leaving
 
   const def = pickRegisteredTour(location.pathname, isAdmin, surface)
+
+  const finishLeaveAction = () => {
+    const action = leaveAction.current
+    leaveAction.current = null
+    window.clearTimeout(leaveTimer.current)
+    action?.()
+  }
+
+  const finishLeave = (kind: 'dismiss' | 'start', action: () => void) => {
+    if (leavingRef.current) return
+    window.clearTimeout(autoHideTimer.current)
+    if (skipTourHintMotion()) {
+      action()
+      return
+    }
+    leaveAction.current = action
+    setLeaving(kind)
+    window.clearTimeout(leaveTimer.current)
+    leaveTimer.current = window.setTimeout(
+      finishLeaveAction,
+      SETTINGS_DURATION_MS.slow + 80,
+    )
+  }
 
   useEffect(() => {
     refreshConfigTourSurface()
@@ -94,9 +127,24 @@ export function TourHint() {
 
   useEffect(() => {
     setLeaving(null)
+    setSnoozedId(null)
     leaveAction.current = null
-    return () => window.clearTimeout(leaveTimer.current)
+    return () => {
+      window.clearTimeout(leaveTimer.current)
+      window.clearTimeout(autoHideTimer.current)
+    }
   }, [def?.id])
+
+  useEffect(() => {
+    window.clearTimeout(autoHideTimer.current)
+    if (!shouldAutoHideTourHint()) return
+    if (!def?.id || !hasChecked || tourActive || leaving) return
+    if (isTourDone(def.id) || snoozedId === def.id) return
+    autoHideTimer.current = window.setTimeout(() => {
+      finishLeave('dismiss', () => setSnoozedId(def.id))
+    }, TOUR_HINT_AUTO_HIDE_MS)
+    return () => window.clearTimeout(autoHideTimer.current)
+  }, [def?.id, hasChecked, tourActive, snoozedId, leaving])
 
   useEffect(() => {
     const snapshot = getTourSnapshot()
@@ -121,28 +169,7 @@ export function TourHint() {
   if (!hasChecked || tourActive) return null
   if (!def) return null
   if (isTourDone(def.id)) return null
-
-  const finishLeaveAction = () => {
-    const action = leaveAction.current
-    leaveAction.current = null
-    window.clearTimeout(leaveTimer.current)
-    action?.()
-  }
-
-  const finishLeave = (kind: 'dismiss' | 'start', action: () => void) => {
-    if (leaving) return
-    if (skipTourHintMotion()) {
-      action()
-      return
-    }
-    leaveAction.current = action
-    setLeaving(kind)
-    window.clearTimeout(leaveTimer.current)
-    leaveTimer.current = window.setTimeout(
-      finishLeaveAction,
-      SETTINGS_DURATION_MS.slow + 80,
-    )
-  }
+  if (snoozedId === def.id && !leaving) return null
 
   const handleLeaveEnd = (event: AnimationEvent<HTMLElement>) => {
     if (event.target !== event.currentTarget) return
@@ -193,7 +220,11 @@ export function TourHint() {
                   }),
                 )
               }
-              finishLeave('start', () => startTour(def))
+              const first = def.steps.find((step) => hasTourAnchor(step.anchor))
+              if (first) revealTourAnchor(first.anchor, first.id)
+              finishLeave('start', () => {
+                if (!startTour(def)) setLeaving(null)
+              })
             }}
           >
             <span>{t.tour.begin || t.common.go}</span>

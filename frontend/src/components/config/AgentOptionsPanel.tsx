@@ -81,7 +81,7 @@ export function AgentNestedSection({
       data-tour={tourAnchor}
       {...guideDomProps(guidePath)}
     >
-      <div className="ai-llm-tier-head">
+      <div className="ai-llm-tier-head" data-tour={toggleTourAnchor}>
         <div className="ai-llm-tier-copy">
           <h3 className="ai-llm-tier-title">
             {title}
@@ -94,7 +94,7 @@ export function AgentNestedSection({
           {error}
         </div>
         {toggle ? (
-          <div className="ai-llm-tier-switch" data-tour={toggleTourAnchor}>
+          <div className="ai-llm-tier-switch">
             <ToggleSwitch
               checked={toggle.checked}
               onChange={toggle.onChange}

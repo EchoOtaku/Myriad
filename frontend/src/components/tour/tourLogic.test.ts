@@ -25,6 +25,7 @@ import {
   pickLargestVisible,
   readTourSurface,
   pickTour,
+  tourAnchorNeedsReveal,
   previousVisibleIndex,
   TOUR_HOLE_PAD,
   unionBoxes,
@@ -489,6 +490,37 @@ describe('isDegenerateBox', () => {
   it('rejects a sliver', () => {
     assert.equal(
       isDegenerateBox({ top: 0, left: 1200, width: 8, height: 400 }),
+      true,
+    )
+  })
+
+  it('rejects the 40×22 toggle used on AI persona rows', () => {
+    assert.equal(
+      isDegenerateBox({ top: 80, left: 400, width: 40, height: 22 }),
+      true,
+    )
+  })
+})
+
+describe('tourAnchorNeedsReveal', () => {
+  it('leaves an on-screen control alone', () => {
+    assert.equal(
+      tourAnchorNeedsReveal(
+        { top: 120, left: 80, width: 280, height: 48 },
+        1280,
+        800,
+      ),
+      false,
+    )
+  })
+
+  it('asks to jump when the persona row is below the fold', () => {
+    assert.equal(
+      tourAnchorNeedsReveal(
+        { top: 1400, left: 80, width: 280, height: 48 },
+        1280,
+        800,
+      ),
       true,
     )
   })
