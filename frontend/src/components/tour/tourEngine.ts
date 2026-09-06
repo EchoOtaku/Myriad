@@ -1,5 +1,6 @@
 import type { TourDefinition, TourStepDef } from './tourTypes'
 import { markTourDone } from './tourDone'
+import type { TourSurfacePick } from './tourTypes'
 import {
   firstVisibleIndex,
   hasTourAnchor,
@@ -85,8 +86,9 @@ export function startTour(def: TourDefinition): boolean {
 export function startTourForRoute(
   pathname: string,
   isOwner: boolean,
+  surface: TourSurfacePick = 'browse',
 ): StartTourResult {
-  const def = pickRegisteredTour(pathname, isOwner)
+  const def = pickRegisteredTour(pathname, isOwner, surface)
   if (!def) return 'no-tour'
   return startTour(def) ? 'started' : 'no-targets'
 }

@@ -1,4 +1,11 @@
 export type TourAudience = 'visitor' | 'owner'
+/**
+ * 同路径上再切一层。缺省按浏览。
+ * persona：人物设定工作台；ai-persona：AI 设置里的人设卡片。
+ */
+export type TourSurface = 'browse' | 'edit' | 'persona' | 'ai-persona'
+/** 人设生成向导等：有路径但本页不注册教程。 */
+export type TourSurfacePick = TourSurface | 'none'
 
 export interface TourStepDef {
   id: string
@@ -7,8 +14,14 @@ export interface TourStepDef {
 
 export interface TourDefinition {
   id: string
-  /** Exact pathname after trailing-slash normalize (`/` stays `/`). */
+  /** Pathname after trailing-slash normalize (`/` stays `/`). */
   route: string
+  /**
+   * When true, also match `/route/:id` after an exact miss.
+   * Exact routes always win first.
+   */
+  matchPrefix?: boolean
   audience: TourAudience
+  surface?: TourSurface
   steps: TourStepDef[]
 }

@@ -16,6 +16,7 @@ impl Agent {
         request: UserRequest,
         mood_transition: Option<crate::services::agent::merope::MoodTransition>,
         round_motion_style: String,
+        memory_input_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     ) -> Result<AgentResponse, String> {
         let user_id = request.user_id;
         crate::services::agent::merope::note_chat_diary(&self.db, user_id, &request.raw_input)
@@ -33,6 +34,7 @@ impl Agent {
             user_id,
             request.raw_input.clone(),
             reply.clone(),
+            memory_input_at,
         );
         return attach_motion_to_result(
             Ok(AgentResponse {
@@ -59,6 +61,7 @@ impl Agent {
         progress_tx: tokio::sync::mpsc::Sender<AgentProgressEvent>,
         mood_transition: Option<crate::services::agent::merope::MoodTransition>,
         round_motion_style: String,
+        memory_input_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     ) -> Result<AgentResponse, String> {
         let user_id = request.user_id;
 
@@ -152,6 +155,7 @@ impl Agent {
             user_id,
             request.raw_input.clone(),
             reply.clone(),
+            memory_input_at,
         );
         let performance = None;
 

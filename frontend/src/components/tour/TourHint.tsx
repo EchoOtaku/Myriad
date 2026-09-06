@@ -23,23 +23,21 @@ import {
 import {
   getTourSnapshot,
   startTour,
+  stopTour,
   subscribeTour,
 } from './tourEngine'
+import {
+  fillTourHint,
+  getConfigTourSurface,
+  isHomeEditSurface,
+  pageNameForPath,
+  readTourSurface,
+  refreshConfigTourSurface,
+  subscribeConfigTourSurface,
+  subscribeHomeEditSurface,
+} from './tourLogic'
 import { pickRegisteredTour } from './tourRegistry'
 import './TourHint.css'
-
-function pageNameForPath(
-  pathname: string,
-  nav: { home: string; library: string; brew: string; reports: string; tapp: string; config: string },
-): string {
-  const path = pathname.replace(/\/+$/, '') || '/'
-  if (path === '/library' || path.startsWith('/library')) return nav.library
-  if (path === '/brew' || path.startsWith('/brew')) return nav.brew
-  if (path === '/reports' || path.startsWith('/reports')) return nav.reports
-  if (path === '/tapp' || path.startsWith('/tapp')) return nav.tapp
-  if (path === '/config' || path.startsWith('/config')) return nav.config
-  return nav.home
-}
 
 function skipTourHintMotion(): boolean {
   if (prefersReducedMotion()) return true
@@ -47,25 +45,52 @@ function skipTourHintMotion(): boolean {
   return document.documentElement.dataset.perfMode === 'exlight'
 }
 
+function getTourActive(): boolean {
+  return getTourSnapshot().active
+}
+
 export function TourHint() {
-  const { t, format } = useI18n()
+  const { t } = useI18n()
   const location = useLocation()
   const { isAdmin, hasChecked } = useAuth()
   const meta = getCurrentMetadata()
   const siteName = meta.site_title.trim() || 'Myriad'
   const siteLogo = meta.site_favicon.trim() || '/favicon.webp'
-  const pageName = pageNameForPath(location.pathname, t.nav)
-  const tour = useSyncExternalStore(
+  const editingHome = useSyncExternalStore(
+    subscribeHomeEditSurface,
+    isHomeEditSurface,
+    isHomeEditSurface,
+  )
+  useSyncExternalStore(
+    subscribeConfigTourSurface,
+    getConfigTourSurface,
+    getConfigTourSurface,
+  )
+  const surface = readTourSurface(editingHome, location.pathname)
+  const pageName =
+    surface === 'persona' || surface === 'ai-persona'
+      ? t.widgets.agentPersona
+      : pageNameForPath(
+          location.pathname,
+          t.nav,
+          t.common.editMode,
+          editingHome,
+        )
+  const tourActive = useSyncExternalStore(
     subscribeTour,
-    getTourSnapshot,
-    getTourSnapshot,
+    getTourActive,
+    getTourActive,
   )
   useSyncExternalStore(subscribeTourDone, getTourDoneSnapshot, getTourDoneSnapshot)
   const [leaving, setLeaving] = useState<'dismiss' | 'start' | null>(null)
   const leaveTimer = useRef(0)
   const leaveAction = useRef<(() => void) | null>(null)
 
-  const def = pickRegisteredTour(location.pathname, isAdmin)
+  const def = pickRegisteredTour(location.pathname, isAdmin, surface)
+
+  useEffect(() => {
+    refreshConfigTourSurface()
+  }, [location.pathname, location.search])
 
   useEffect(() => {
     setLeaving(null)
@@ -73,7 +98,27 @@ export function TourHint() {
     return () => window.clearTimeout(leaveTimer.current)
   }, [def?.id])
 
-  if (!hasChecked || tour.active) return null
+  useEffect(() => {
+    const snapshot = getTourSnapshot()
+    if (!snapshot.active || !snapshot.tourId) return
+    if (surface === 'none') {
+      stopTour('abort')
+      return
+    }
+    if (snapshot.tourId === 'config-owner' && surface !== 'browse') {
+      stopTour('abort')
+      return
+    }
+    if (snapshot.tourId === 'config-ai-persona-owner' && surface !== 'ai-persona') {
+      stopTour('abort')
+      return
+    }
+    if (snapshot.tourId === 'config-persona-owner' && surface !== 'persona') {
+      stopTour('abort')
+    }
+  }, [surface])
+
+  if (!hasChecked || tourActive) return null
   if (!def) return null
   if (isTourDone(def.id)) return null
 
@@ -131,16 +176,25 @@ export function TourHint() {
         <div className="tour-hint__main">
           <div className="tour-hint__copy">
             <h2 className="tour-hint__title">
-              {format(t.tour.hintWelcome, { site: siteName })}
+              {fillTourHint(t.tour.hintWelcome, 'site', siteName)}
             </h2>
             <p className="tour-hint__body">
-              {format(t.tour.hintTitle, { page: pageName })}
+              {fillTourHint(t.tour.hintTitle, 'page', pageName) || t.tour.hintBody}
             </p>
           </div>
           <button
             type="button"
             className="tour-hint__go"
-            onClick={() => finishLeave('start', () => startTour(def))}
+            onClick={() => {
+              if (def.route === '/library') {
+                window.dispatchEvent(
+                  new CustomEvent('nav-expand-secondary', {
+                    detail: { path: '/library' },
+                  }),
+                )
+              }
+              finishLeave('start', () => startTour(def))
+            }}
           >
             <span>{t.tour.begin || t.common.go}</span>
             <LuArrowRight aria-hidden />

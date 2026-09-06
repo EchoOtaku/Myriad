@@ -3,24 +3,41 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   computeTourCardPosition,
+  fillTourHint,
+  homeBrowseTourPanelPose,
+  homeEditTourDockPose,
+  personaTourPanel,
+  isPredictedTourAnchor,
+  predictedControlIslandTourBox,
+  predictedControlPanelTourBox,
+  predictedLibraryDockTourBox,
+  sameTourHole,
+  tourHoleSync,
   filterVisibleSteps,
   firstVisibleIndex,
   holePadForBox,
+  holePadForTourAnchor,
   inflateRect,
+  intersectBoxes,
   isDegenerateBox,
   normalizeTourPath,
+  pageNameForPath,
   pickLargestVisible,
+  readTourSurface,
   pickTour,
   previousVisibleIndex,
   TOUR_HOLE_PAD,
   unionBoxes,
 } from './tourLogic'
 import {
+  CONFIG_AI_PERSONA_TOURS,
+  CONFIG_PERSONA_TOURS,
   CONFIG_TOURS,
   HOME_TOURS,
   LIBRARY_TOURS,
   REPORTS_TOURS,
-  TAPP_STORE_TOURS,
+  TAPP_DETAIL_TOURS,
+  TAPP_PLAYGROUND_TOURS,
   TAPP_TOURS,
   TOURS,
 } from './tourRegistry'
@@ -102,39 +119,234 @@ describe('pickTour', () => {
     assert.equal(tour?.id, 'home-visitor')
     assert.deepEqual(
       tour?.steps.map((step) => step.anchor),
-      ['nav', 'home-grid'],
+      ['nav', 'home-grid', 'control-island', 'control-panel'],
     )
   })
 
   it('selects owner home tour', () => {
     const tour = pickTour(HOME_TOURS, '/', true)
     assert.equal(tour?.id, 'home-owner')
-    assert.equal(tour?.steps.at(-1)?.anchor, 'control-island')
+    assert.equal(tour?.steps.at(-1)?.anchor, 'control-panel')
+  })
+
+  it('selects a separate owner tour on the edit surface', () => {
+    const tour = pickTour(HOME_TOURS, '/', true, 'edit')
+    assert.equal(tour?.id, 'home-edit-owner')
+    assert.deepEqual(
+      tour?.steps.map((step) => step.anchor),
+      ['home-grid', 'home-widget-library', 'home-free-layout', 'home-sticker'],
+    )
+    assert.equal(pickTour(HOME_TOURS, '/', false, 'edit'), null)
+    assert.equal(
+      tour?.steps.some(
+        (step) => step.anchor === 'nav' || step.anchor === 'control-island',
+      ),
+      false,
+    )
   })
 
   it('returns null when the page has no tour', () => {
     assert.equal(pickTour(HOME_TOURS, '/library', true), null)
   })
+
+  it('prefers exact route over a prefix match', () => {
+    const tours = [
+      {
+        id: 'list',
+        route: '/tapp',
+        audience: 'visitor' as const,
+        steps: [{ id: 'a', anchor: 'a' }],
+      },
+      {
+        id: 'detail',
+        route: '/tapp/detail',
+        matchPrefix: true,
+        audience: 'visitor' as const,
+        steps: [{ id: 'b', anchor: 'b' }],
+      },
+    ]
+    assert.equal(pickTour(tours, '/tapp', false)?.id, 'list')
+    assert.equal(pickTour(tours, '/tapp/detail/x', false)?.id, 'detail')
+    assert.equal(pickTour(tours, '/tapp/store', false), null)
+  })
 })
 
 describe('HOME_TOURS', () => {
-  it('keeps owner and visitor as separate definitions', () => {
+  it('keeps owner browse, owner edit, and visitor as separate definitions', () => {
     const ids = HOME_TOURS.map((tour: TourDefinition) => tour.id)
-    assert.deepEqual(ids, ['home-visitor', 'home-owner'])
+    assert.deepEqual(ids, ['home-visitor', 'home-owner', 'home-edit-owner'])
+  })
+})
+
+describe('tour hint copy', () => {
+  const nav = {
+    home: '首页',
+    library: '资料库',
+    brew: 'Brew',
+    reports: '报告',
+    tapp: 'Tapp',
+    config: '配置',
+  }
+
+  it('names the home edit surface', () => {
+    assert.equal(pageNameForPath('/', nav, '编辑模式', true), '编辑模式')
+    assert.equal(pageNameForPath('/', nav, '编辑模式', false), '首页')
+  })
+
+  it('keeps config persona surfaces on /config only', () => {
+    assert.equal(readTourSurface(true, '/'), 'edit')
+    assert.equal(readTourSurface(false, '/library'), 'browse')
+    assert.equal(readTourSurface(false, '/tapp'), 'browse')
+  })
+
+  it('fills {page} and drops empty values so the hint can fall back', () => {
+    assert.equal(
+      fillTourHint('了解一下 {page}', 'page', '编辑模式'),
+      '了解一下 编辑模式',
+    )
+    assert.equal(fillTourHint('了解一下 {page}', 'page', ''), '')
+    assert.equal(fillTourHint('了解一下 {page}', 'page', undefined), '')
+  })
+
+  it('opens the widget library dock only on that edit-tour step', () => {
+    assert.equal(homeEditTourDockPose(null, 'home-widget-library'), undefined)
+    assert.equal(
+      homeEditTourDockPose('home-edit-owner', 'home-edit-grid'),
+      'parked',
+    )
+    assert.equal(
+      homeEditTourDockPose('home-edit-owner', 'home-widget-library'),
+      'restored',
+    )
+    assert.equal(
+      homeEditTourDockPose('home-edit-owner', 'home-free-layout'),
+      'parked',
+    )
+  })
+
+  it('expands the control panel only on that browse-tour step', () => {
+    assert.equal(homeBrowseTourPanelPose(null, 'control-panel'), undefined)
+    assert.equal(homeBrowseTourPanelPose('home-visitor', 'nav'), 'collapsed')
+    assert.equal(
+      homeBrowseTourPanelPose('home-visitor', 'control-panel'),
+      'expanded',
+    )
+    assert.equal(
+      homeBrowseTourPanelPose('home-owner', 'control-island'),
+      'collapsed',
+    )
+    assert.equal(
+      homeBrowseTourPanelPose('home-owner', 'control-panel-owner'),
+      'expanded',
+    )
+    assert.equal(
+      homeBrowseTourPanelPose('home-edit-owner', 'home-edit-grid'),
+      undefined,
+    )
+  })
+
+  it('switches the persona workbench tab with the tour step', () => {
+    assert.equal(personaTourPanel(null, 'config-persona-identity'), undefined)
+    assert.equal(
+      personaTourPanel('config-persona-owner', 'config-persona-tabs'),
+      'overview',
+    )
+    assert.equal(
+      personaTourPanel('config-persona-owner', 'config-persona-overview'),
+      'overview',
+    )
+    assert.equal(
+      personaTourPanel('config-persona-owner', 'config-persona-identity'),
+      'persona',
+    )
+    assert.equal(
+      personaTourPanel('config-persona-owner', 'config-persona-wardrobe'),
+      'wardrobe',
+    )
+    assert.equal(
+      personaTourPanel('config-persona-owner', 'config-persona-motion'),
+      'motion',
+    )
+    assert.equal(
+      personaTourPanel('config-owner', 'config-persona-identity'),
+      undefined,
+    )
+  })
+
+  it('predicts the restored library box without reading transforms', () => {
+    const box = predictedLibraryDockTourBox(1920, 1080, 16)
+    assert.equal(box.width, 64 * 16 * (5 / 6))
+    assert.equal(box.height, 40 * 16 * (5 / 6))
+    assert.equal(box.left, 1920 / 2 - box.width / 2)
+    assert.equal(box.top, 1080 - 5.25 * 16 - box.height)
+  })
+
+  it('predicts the expanded control-panel shell without reading morph', () => {
+    const box = predictedControlPanelTourBox(1920, 480, 16)
+    assert.equal(box.width, 400)
+    assert.equal(box.left, 1920 - 16 - 400)
+    assert.equal(box.top, 16)
+    assert.equal(box.height, Math.ceil(480 * 1.08))
+  })
+
+  it('predicts the collapsed control-island shell without reading morph', () => {
+    const box = predictedControlIslandTourBox(1920, 16)
+    assert.equal(box.width, 160)
+    assert.equal(box.height, 48)
+    assert.equal(box.left, 1920 - 16 - 160)
+    assert.equal(box.top, 16)
+  })
+
+  it('treats library and control chrome as predicted hole sources', () => {
+    assert.equal(isPredictedTourAnchor('control-panel'), true)
+    assert.equal(isPredictedTourAnchor('control-island'), true)
+    assert.equal(isPredictedTourAnchor('home-widget-library'), true)
+    assert.equal(isPredictedTourAnchor('home-grid', 'home-widget-library'), true)
+    assert.equal(isPredictedTourAnchor('nav'), false)
+    assert.equal(tourHoleSync({ id: 'home-widget-library', anchor: 'home-widget-library' }), 'dock')
+    assert.equal(
+      tourHoleSync({ id: 'control-panel', anchor: 'control-panel' }),
+      'panel',
+    )
+    assert.equal(
+      tourHoleSync({ id: 'control-island', anchor: 'control-island' }),
+      undefined,
+    )
+    assert.equal(tourHoleSync({ id: 'nav', anchor: 'nav' }), undefined)
+  })
+
+  it('skips hole writes that only differ by subpixels', () => {
+    const hole = { top: 16, left: 1504, width: 400, height: 551, radius: 24 }
+    assert.equal(
+      sameTourHole(hole, { ...hole, left: 1504.2, height: 551.4 }),
+      true,
+    )
+    assert.equal(sameTourHole(hole, { ...hole, width: 180 }), false)
   })
 })
 
 describe('page tours', () => {
-  it('registers library, reports, tapp, store, and owner-only config', () => {
+  it('registers library, reports, tapp, and owner-only config', () => {
     assert.equal(pickTour(LIBRARY_TOURS, '/library', false)?.id, 'library-visitor')
     assert.equal(pickTour(REPORTS_TOURS, '/reports', true)?.id, 'reports-owner')
     assert.equal(pickTour(TAPP_TOURS, '/tapp', false)?.id, 'tapp-visitor')
-    assert.equal(
-      pickTour(TAPP_STORE_TOURS, '/tapp/store', true)?.id,
-      'tapp-store-owner',
-    )
+    assert.equal(pickTour(TOURS, '/tapp/store', true), null)
+    assert.equal(pickTour(TOURS, '/tapp/store', false), null)
     assert.equal(pickTour(CONFIG_TOURS, '/config', true)?.id, 'config-owner')
     assert.equal(pickTour(CONFIG_TOURS, '/config', false), null)
+    assert.equal(
+      pickTour(CONFIG_AI_PERSONA_TOURS, '/config', true, 'ai-persona')?.id,
+      'config-ai-persona-owner',
+    )
+    assert.equal(
+      pickTour(CONFIG_PERSONA_TOURS, '/config', true, 'persona')?.id,
+      'config-persona-owner',
+    )
+    assert.equal(pickTour(TOURS, '/config', true, 'none'), null)
+    assert.equal(pickTour(TOURS, '/config', false, 'persona'), null)
+    assert.equal(pickTour(TOURS, '/config', true, 'ai-persona')?.id, 'config-ai-persona-owner')
+    assert.equal(pickTour(TOURS, '/config', true, 'persona')?.id, 'config-persona-owner')
+    assert.equal(pickTour(TOURS, '/config', true)?.id, 'config-owner')
   })
 
   it('does not register brew reading routes', () => {
@@ -142,14 +354,96 @@ describe('page tours', () => {
     assert.equal(pickTour(TOURS, '/brew/item/1', true), null)
   })
 
-  it('keeps owner chrome last on module pages', () => {
+  it('matches tapp detail by prefix and playground for owner only', () => {
     assert.equal(
-      pickTour(LIBRARY_TOURS, '/library', true)?.steps.at(-1)?.anchor,
-      'control-island',
+      pickTour(TAPP_DETAIL_TOURS, '/tapp/detail/abc', false)?.id,
+      'tapp-detail-visitor',
+    )
+    assert.equal(pickTour(TAPP_TOURS, '/tapp/detail/abc', false), null)
+    assert.equal(
+      pickTour(TAPP_PLAYGROUND_TOURS, '/tapp/playground', true)?.id,
+      'tapp-playground-owner',
+    )
+    assert.equal(pickTour(TAPP_PLAYGROUND_TOURS, '/tapp/playground', false), null)
+    assert.deepEqual(
+      pickTour(TAPP_PLAYGROUND_TOURS, '/tapp/playground', true)?.steps.map(
+        (step) => step.id,
+      ),
+      [
+        'tapp-playground-toolbar',
+        'tapp-playground-preview',
+        'tapp-playground-widget',
+        'tapp-playground-code',
+        'tapp-playground-prompt',
+        'tapp-playground-generate',
+        'tapp-playground-history',
+        'tapp-playground-revisions',
+        'tapp-playground-clear',
+        'tapp-playground-export',
+        'tapp-playground-install',
+      ],
+    )
+  })
+
+  it('keeps nav and control island on home only', () => {
+    assert.deepEqual(
+      pickTour(HOME_TOURS, '/', true)?.steps.map((step) => step.anchor),
+      ['nav', 'home-grid', 'home-edit', 'control-island', 'control-panel'],
+    )
+    assert.deepEqual(
+      pickTour(LIBRARY_TOURS, '/library', true)?.steps.map((step) => step.anchor),
+      ['library-filters', 'library-grid', 'library-card', 'library-canvas'],
+    )
+    assert.equal(
+      pickTour(LIBRARY_TOURS, '/library', true)?.steps.some(
+        (step) => step.anchor === 'nav' || step.anchor === 'control-island',
+      ),
+      false,
     )
     assert.deepEqual(
       pickTour(TAPP_TOURS, '/tapp', false)?.steps.map((step) => step.anchor),
-      ['nav', 'tapp-toolbar', 'tapp-grid'],
+      ['tapp-store-entry', 'tapp-scope', 'tapp-grid'],
+    )
+    assert.deepEqual(
+      pickTour(TAPP_TOURS, '/tapp', true)?.steps.map((step) => step.id),
+      [
+        'tapp-store-entry',
+        'tapp-open-playground',
+        'tapp-install',
+        'tapp-grid-owner',
+      ],
+    )
+    assert.equal(
+      pickTour(REPORTS_TOURS, '/reports', false)?.steps.at(-1)?.id,
+      'reports-cards',
+    )
+    assert.equal(
+      pickTour(REPORTS_TOURS, '/reports', true)?.steps.at(-1)?.id,
+      'reports-cards-owner',
+    )
+    assert.equal(
+      pickTour(CONFIG_TOURS, '/config', true)?.steps.some(
+        (step) => step.anchor === 'nav' || step.anchor === 'control-island',
+      ),
+      false,
+    )
+  })
+})
+
+describe('intersectBoxes', () => {
+  it('clips an overflowing child back to the host', () => {
+    const host = { top: 224, left: 328, width: 1264, height: 632 }
+    const union = { top: 224, left: 328, width: 1264, height: 869 }
+    assert.deepEqual(intersectBoxes(union, host), host)
+  })
+
+  it('returns null when boxes do not overlap', () => {
+    assert.equal(
+      intersectBoxes(
+        { top: 0, left: 0, width: 10, height: 10 },
+        { top: 40, left: 40, width: 10, height: 10 },
+      ),
+      null,
     )
   })
 })
@@ -214,6 +508,22 @@ describe('holePadForBox', () => {
       10,
     )
   })
+
+  it('hugs the expanded control panel shell', () => {
+    assert.equal(
+      holePadForTourAnchor('control-panel', {
+        top: 80,
+        left: 1500,
+        width: 400,
+        height: 640,
+      }),
+      0,
+    )
+    assert.equal(
+      holePadForTourAnchor('nav', { top: 0, left: 0, width: 900, height: 400 }),
+      6,
+    )
+  })
 })
 
 describe('computeTourCardPosition', () => {
@@ -264,6 +574,22 @@ describe('computeTourCardPosition', () => {
     assert.ok(pos.top >= 16)
   })
 
+  it('sits below a free-layout canvas when the top and bottom have room', () => {
+    const hole = {
+      top: 224,
+      left: 328,
+      width: 1264,
+      height: 632,
+      right: 1592,
+      bottom: 856,
+    }
+    const pos = computeTourCardPosition(hole, 320, 122, 1920, 1080)
+    assert.equal(pos.placement, 'bottom')
+    assert.equal(pos.top, 856 + 14)
+    assert.ok(pos.left >= 328)
+    assert.ok(pos.left + 320 <= 1592)
+  })
+
   it('docks a near-full grid card to the bottom of the viewport', () => {
     const hole = {
       top: 80,
@@ -279,7 +605,7 @@ describe('computeTourCardPosition', () => {
     assert.ok(Math.abs(pos.left + 150 - 640) < 1)
   })
 
-  it('aims the caret at the hole center on a side placement', () => {
+  it('sits a tall rail hole on the right without overlapping it', () => {
     const hole = {
       top: 200,
       left: 16,
@@ -290,7 +616,8 @@ describe('computeTourCardPosition', () => {
     }
     const pos = computeTourCardPosition(hole, 300, 160, 1280, 800)
     assert.equal(pos.placement, 'right')
-    const holeCy = 400
-    assert.ok(Math.abs(pos.top + pos.caret - holeCy) < 1)
+    assert.ok(pos.left >= 72)
+    assert.ok(pos.top >= 16)
+    assert.ok(pos.top + 160 <= 800 - 16)
   })
 })

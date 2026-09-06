@@ -1210,34 +1210,44 @@ export function NavigationIsland() {
                 <div className="nav-island-divider bg-gray-300/50 dark:bg-neutral-700/50"></div>
               </div>
 
-              {/* 二级导航项 */}
-              {secondaryNav.items.map((item) => (
-                <div
-                  key={item.id}
-                  className="nav-group nav-group-spaced"
-                  data-group={item.id}
-                >
-                  <button
-                    onClick={() => {
-                      secondaryNav.onChange(item.id)
-                      // 在子路由（如 /brew/item/xxx）点击导航项时，返回基础路由
-                      if (
-                        location.pathname !== secondaryNav.routePath &&
-                        location.pathname.startsWith(
-                          `${secondaryNav.routePath}/`,
-                        )
-                      ) {
-                        navigate(secondaryNav.routePath)
-                      }
-                    }}
-                    className={`nav-item ${secondaryNav.activeId === item.id ? 'active-secondary' : ''}`}
-                    data-tooltip={item.title || item.label}
-                    aria-label={item.ariaLabel || item.label}
+              {/* 二级导航项。资料库教程只圈分类，不圈整座导航岛。 */}
+              <div
+                className="contents"
+                data-tour={
+                  secondaryNav.routePath === '/library'
+                    ? 'library-filters'
+                    : undefined
+                }
+                data-tour-fit=".nav-item"
+              >
+                {secondaryNav.items.map((item) => (
+                  <div
+                    key={item.id}
+                    className="nav-group nav-group-spaced"
+                    data-group={item.id}
                   >
-                    {item.icon}
-                  </button>
-                </div>
-              ))}
+                    <button
+                      onClick={() => {
+                        secondaryNav.onChange(item.id)
+                        // 在子路由（如 /brew/item/xxx）点击导航项时，返回基础路由
+                        if (
+                          location.pathname !== secondaryNav.routePath &&
+                          location.pathname.startsWith(
+                            `${secondaryNav.routePath}/`,
+                          )
+                        ) {
+                          navigate(secondaryNav.routePath)
+                        }
+                      }}
+                      className={`nav-item ${secondaryNav.activeId === item.id ? 'active-secondary' : ''}`}
+                      data-tooltip={item.title || item.label}
+                      aria-label={item.ariaLabel || item.label}
+                    >
+                      {item.icon}
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : (
             /* 一级导航模式 */

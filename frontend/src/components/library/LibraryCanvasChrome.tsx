@@ -212,6 +212,7 @@ export function LibraryCanvasChrome({
         </div>
       )}
       <div
+        data-tour="library-canvas"
         className={
           isMobile
             ? 'fixed z-40 flex flex-col items-center gap-0.5 rounded-xl border border-white/35 glass p-1 shadow-xl dark:border-white/10'

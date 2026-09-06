@@ -1009,6 +1009,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                     <div
                       key={item.id}
                       className={`absolute group library-card-container${hoverLocked ? ' is-hover-locked' : ''}`}
+                      data-tour="library-card"
                       data-canvas-card={
                         layoutMode === 'canvas' ? '' : undefined
                       }
