@@ -6,6 +6,9 @@
 
 use std::time::Duration;
 
+#[path = "chat_remember_request.rs"]
+mod request;
+
 use serde::Deserialize;
 use serde_json::json;
 
@@ -116,7 +119,15 @@ pub fn spawn_chat_remember(
         return;
     }
     tokio::spawn(async move {
-        extract_and_store(user_id, &user_text, &reply, input_at).await;
+        if tokio::time::timeout(
+            Duration::from_secs(12),
+            extract_and_store(user_id, &user_text, &reply, input_at),
+        )
+        .await
+        .is_err()
+        {
+            tracing::warn!(user_id, outcome = "deadline", "[Merope] memory extraction");
+        }
     });
 }
 
@@ -173,11 +184,23 @@ async fn extract_and_store(
         return;
     }
     let Ok(db) = crate::services::tapp_registry::database().await else {
+        tracing::warn!(
+            user_id,
+            outcome = "database_unavailable",
+            "[Merope] memory extraction"
+        );
         return;
     };
     let existing = match recall_remembered(&db, user_id, Some(&user_text), 8).await {
         Ok(facts) => facts,
-        Err(_) => return,
+        Err(_) => {
+            tracing::warn!(
+                user_id,
+                outcome = "recall_failed",
+                "[Merope] memory extraction"
+            );
+            return;
+        }
     };
     if !should_extract_chat_remember_against(&user_text, &existing) {
         return;
@@ -186,6 +209,11 @@ async fn extract_and_store(
         crate::services::ai::create_strict_lite_ai_analyzer_with_timeout(Some(EXTRACT_TIMEOUT))
             .await
     else {
+        tracing::warn!(
+            user_id,
+            outcome = "model_unavailable",
+            "[Merope] memory extraction"
+        );
         return;
     };
     let input = json!({
@@ -195,28 +223,73 @@ async fn extract_and_store(
     .to_string();
     let schema = extract_schema();
     let system_prompt = extract_system_prompt(&existing);
-    let call = analyzer.analyze_json(&system_prompt, &input, EXTRACT_SCHEMA_NAME, Some(&schema));
-    let raw = match tokio::time::timeout(
-        EXTRACT_TOTAL_TIMEOUT,
-        crate::services::ai_cost_ledger::with_site_ai_ledger(
-            user_id,
-            "merope",
-            "chat_remember",
-            call,
-        ),
+    let raw = match request::request(
+        || async {
+            let call =
+                analyzer.analyze_json(&system_prompt, &input, EXTRACT_SCHEMA_NAME, Some(&schema));
+            match tokio::time::timeout(
+                EXTRACT_TOTAL_TIMEOUT,
+                crate::services::ai_cost_ledger::with_site_ai_ledger(
+                    user_id,
+                    "merope",
+                    "chat_remember",
+                    call,
+                ),
+            )
+            .await
+            {
+                Ok(Ok(raw)) => Ok(raw),
+                Ok(Err(error)) => Err(request::classify(&error)),
+                Err(_) => Err(request::Failure::Transient),
+            }
+        },
+        || async {
+            super::is_enabled().await
+                && super::store::chat_memory_input_is_current(&db, user_id, input_at)
+                    .await
+                    .unwrap_or(false)
+        },
+        Duration::from_millis(300),
     )
     .await
     {
-        Ok(Ok(raw)) => raw,
-        _ => return,
+        Ok(raw) => raw,
+        Err(error) => {
+            tracing::warn!(user_id, outcome = ?error, "[Merope] memory extraction stopped");
+            return;
+        }
     };
     let Some(update) = parse_chat_memory_update(&raw, &user_text, &existing) else {
+        tracing::warn!(
+            user_id,
+            outcome = "invalid_output",
+            "[Merope] memory extraction"
+        );
         return;
     };
-    if let Err(error) =
-        super::store::apply_chat_memory_update(&db, user_id, input_at, &update).await
-    {
-        tracing::debug!(%error, user_id, "[Merope] memory update skipped");
+    if !super::is_enabled().await {
+        tracing::info!(user_id, outcome = "disabled", "[Merope] memory extraction");
+        return;
+    }
+    if update.fact.is_none() && update.supersedes.is_empty() {
+        tracing::info!(user_id, outcome = "no_change", "[Merope] memory extraction");
+        return;
+    }
+    match super::store::apply_chat_memory_update(&db, user_id, input_at, &update).await {
+        Ok(applied) => tracing::info!(
+            user_id,
+            outcome = if applied {
+                "applied"
+            } else {
+                "stale_or_duplicate"
+            },
+            "[Merope] memory extraction"
+        ),
+        Err(_) => tracing::warn!(
+            user_id,
+            outcome = "write_failed",
+            "[Merope] memory extraction"
+        ),
     }
 }
 
@@ -231,7 +304,7 @@ fn strip_json_fence(raw: &str) -> &str {
 }
 
 #[cfg(test)]
-pub(super) fn live_probe_contract(existing: &[String]) -> (String, serde_json::Value) {
+pub(crate) fn live_probe_contract(existing: &[String]) -> (String, serde_json::Value) {
     (extract_system_prompt(existing), extract_schema())
 }
 

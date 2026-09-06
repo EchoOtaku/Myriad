@@ -115,7 +115,11 @@ pub fn format_chat_scene(perception: Option<&Value>, page: Option<&Value>, input
             let Some(obj) = item.as_object() else {
                 continue;
             };
-            if obj.get("ttlMs").and_then(Value::as_i64) == Some(0) {
+            if obj
+                .get("ttlMs")
+                .and_then(Value::as_i64)
+                .is_none_or(|ttl| ttl <= 0)
+            {
                 continue;
             }
             let source = obj.get("sourceId").and_then(Value::as_str).unwrap_or("");

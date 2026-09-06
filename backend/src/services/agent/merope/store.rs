@@ -908,10 +908,7 @@ pub(crate) async fn apply_chat_memory_update(
     // Always acquire in this order. Event-memory writers only take the second.
     lock_addressee(&transaction, user_id).await?;
     lock_persona_memory(&transaction, user_id).await?;
-    let current = agent_addressee_state::Entity::find_by_id(user_id)
-        .one(&transaction)
-        .await?;
-    if current.and_then(|state| state.last_user_message_at) != Some(input_at) {
+    if !chat_memory_input_is_current(&transaction, user_id, input_at).await? {
         transaction.commit().await?;
         return Ok(false);
     }
@@ -961,6 +958,21 @@ pub(crate) async fn apply_chat_memory_update(
     }
     transaction.commit().await?;
     Ok(!targets.is_empty() || insert.is_some())
+}
+
+pub(crate) async fn chat_memory_input_is_current<C: ConnectionTrait>(
+    db: &C,
+    user_id: i32,
+    input_at: chrono::DateTime<chrono::FixedOffset>,
+) -> Result<bool, sea_orm::DbErr> {
+    if user_id <= 0 {
+        return Ok(false);
+    }
+    Ok(agent_addressee_state::Entity::find_by_id(user_id)
+        .one(db)
+        .await?
+        .and_then(|state| state.last_user_message_at)
+        == Some(input_at))
 }
 
 fn remembered_page_query(
