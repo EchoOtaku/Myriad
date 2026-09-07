@@ -2440,6 +2440,7 @@ dependencies = [
 name = "migration"
 version = "0.4.8"
 dependencies = [
+ "myriad-tapp-contract",
  "sea-orm",
  "sea-orm-migration",
  "serde_json",
