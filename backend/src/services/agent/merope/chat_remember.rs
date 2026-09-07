@@ -432,17 +432,21 @@ mod tests {
             .find("stream_strict_lite_chat_response")
             .expect("streaming chat");
         let after = &src[chat..];
-        let delivery = after
-            .find("MotionPhase::Delivery")
-            .expect("chat delivery motion");
+        let reaction = src
+            .find("local_directive(&reaction_context)")
+            .expect("immediate reaction");
+        let director = src
+            .find("spawn_chat_motion_refinement(reaction_context")
+            .expect("parallel delivery observer");
         let extract = after
             .find("spawn_chat_remember")
             .expect("chat remember extract");
         let ret = after.find("return Ok(AgentResponse").expect("chat return");
         assert!(
-            delivery < extract,
-            "delivery motion must start before chat remember extract"
+            reaction < director && director < chat,
+            "immediate reaction and delivery observer must start before Chat, not after memory extraction"
         );
+        assert!(after.find("response_agent::finish_stream").unwrap() < extract);
         assert!(extract < ret, "extract must not delay the Chat response");
         assert!(!src.contains("extract_and_store("));
     }

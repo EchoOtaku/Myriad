@@ -4,6 +4,100 @@ use serde_json::{json, Value};
 
 use super::{chat_prompt, consciousness};
 
+#[tokio::test]
+async fn parallel_director_reaches_wire_without_metadata_in_prose_or_global_pose_changes() {
+    use super::merope::{MoodTransition, MotionContext, MotionPhase};
+    use super::types::AgentProgressEvent;
+    let context = MotionContext {
+        user_id: 1,
+        phase: MotionPhase::Delivery,
+        mood: MoodTransition {
+            before: 70.0,
+            after: 70.0,
+            arousal_before: 48.0,
+            arousal_after: 48.0,
+            band_before: "calm".into(),
+            band_after: "calm".into(),
+            delta: 0.0,
+            cause: "test".into(),
+            revision: 1,
+        },
+        activity: "talking".into(),
+        user_text: "我们怎么办？".into(),
+        response_text: None,
+        task_success: None,
+        rig_state: None,
+        motion_style: "even".into(),
+    };
+    let (tx, mut rx) = tokio::sync::mpsc::channel(32);
+    let (mut delivery, guard) = super::motion_overlay::spawn_chat_motion_refinement_with(
+        context,
+        tx.clone(),
+        |context| async move {
+            let phrases = myriad_merope::grounded_speech_phrases(
+                &json!([
+                    {"text":"也许可以试试。", "intent":"hesitate"},
+                    {"text":"不过先把原因说清楚。", "intent":"explain"},
+                    {"text":"你觉得呢？", "intent":"check-in"},
+                    {"text":"你真的这么想吗？", "intent":"tease"},
+                ]),
+                context.response_text.as_deref(),
+            );
+            Some(super::merope::PerformanceDirective {
+                phase: context.phase,
+                mood_revision: context.mood.revision,
+                motion_style: context.motion_style,
+                plan: Default::default(),
+                phrases,
+            })
+        },
+    );
+    let mut text = String::new();
+    let mut events = Vec::new();
+    for sentence in [
+        "也许可以试试。",
+        "不过先把原因说清楚。",
+        "你觉得呢？",
+        "你真的这么想吗？",
+    ] {
+        text.push_str(sentence);
+        delivery.observe(sentence, &tx);
+        loop {
+            let event = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            let AgentProgressEvent::PerformancePlan { performance } = &event else {
+                panic!("not a performance event")
+            };
+            if performance.phrases.is_empty() {
+                continue;
+            } // Immediate local floor.
+            assert!(performance.plan.baseline.is_none());
+            assert!(performance.plan.cues.is_empty());
+            assert!(performance
+                .phrases
+                .iter()
+                .all(|phrase| text.contains(&phrase.text)));
+            events.push(serde_json::to_value(event).unwrap());
+            break;
+        }
+    }
+    guard.stop().await;
+    assert_eq!(events.len(), 4);
+    assert_eq!(chat_prompt::chat_safe_content(&text), text);
+    assert_eq!(super::chat_music::peel_chat_live_reply(&text).0, text);
+    assert!(!text.contains("[[delivery:"));
+    if let Ok(path) = std::env::var("MEROPE_BEHAVIOR_WIRE_PATH") {
+        let path = std::path::Path::new(&path).with_file_name("delivery.json");
+        std::fs::write(
+            path,
+            serde_json::to_vec(&json!({ "text": text, "events": events })).unwrap(),
+        )
+        .unwrap();
+    }
+}
+
 #[test]
 #[ignore = "run with node scripts/test-merope-behavior.mjs to generate frontend wire data"]
 fn frontend_observations_reach_chat_and_event_context_without_stale_sources() {
