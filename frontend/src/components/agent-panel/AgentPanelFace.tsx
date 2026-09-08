@@ -284,6 +284,7 @@ export function AgentPanelFace({
             mounted ? (
               <RigCharacter
                 ref={rigRef}
+                touchEnabled={motionReady && ready && personaOn}
                 activity={activity}
                 fallbackUrl={playableRig ? null : portraitUrl}
                 manifest={playsLive || mounted ? manifest : null}

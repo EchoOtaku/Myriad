@@ -7,15 +7,14 @@
  */
 
 import type { WidgetConfig, WidgetSize } from '../components/widgetGridTypes'
+import type { HomeDashboardLayouts, HomeLayoutMode } from './homeLayout'
 import {
+  cloneHomeWidgets,
   HOME_FREE_ROWS,
   HOME_STANDARD_COLS,
   HOME_STANDARD_ROWS,
   HOME_STICKER_TYPE,
-  cloneHomeWidgets,
   parseHomeLayoutMode,
-  type HomeDashboardLayouts,
-  type HomeLayoutMode,
 } from './homeLayout'
 import {
   STICKER_EXTRA_SIZE_KEYS,
@@ -461,7 +460,9 @@ function sanitizeTile(
   if (config) {
     if (sticker && typeof config.imageUrl === 'string') {
       const url = config.imageUrl.trim()
-      if (url.startsWith('data:')) delete config.imageUrl
+      if (url.startsWith('data:')) {
+        delete config.imageUrl
+      }
       else {
         const canonical = canonicalStickerImageUrl(url)
         if (canonical) config.imageUrl = canonical
@@ -518,16 +519,16 @@ export function sniffStickerImage(bytes: Uint8Array): HomeLayoutAssetMime | null
     bytes.length >= 8 &&
     bytes[0] === 0x89 &&
     bytes[1] === 0x50 &&
-    bytes[2] === 0x4e &&
+    bytes[2] === 0x4E &&
     bytes[3] === 0x47
   ) {
     return 'image/png'
   }
   if (
     bytes.length >= 3 &&
-    bytes[0] === 0xff &&
-    bytes[1] === 0xd8 &&
-    bytes[2] === 0xff
+    bytes[0] === 0xFF &&
+    bytes[1] === 0xD8 &&
+    bytes[2] === 0xFF
   ) {
     return 'image/jpeg'
   }
@@ -549,24 +550,18 @@ export function sniffStickerImage(bytes: Uint8Array): HomeLayoutAssetMime | null
 
 export function decodeBase64(data: string): Uint8Array | null {
   try {
-    if (typeof atob === 'function') {
-      const binary = atob(data)
-      const out = new Uint8Array(binary.length)
-      for (let i = 0; i < binary.length; i += 1) {
-        out[i] = binary.charCodeAt(i)
-      }
-      return out
+    const binary = atob(data)
+    const out = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i += 1) {
+      out[i] = binary.charCodeAt(i)
     }
-    return new Uint8Array(Buffer.from(data, 'base64'))
+    return out
   } catch {
     return null
   }
 }
 
 export function encodeBase64(bytes: Uint8Array): string {
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(bytes).toString('base64')
-  }
   let binary = ''
   for (let i = 0; i < bytes.length; i += 8192) {
     binary += String.fromCharCode(...bytes.subarray(i, i + 8192))

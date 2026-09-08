@@ -9,6 +9,7 @@ export default antfu(
     // 要能跟上游 diff，就不能让 lint 改它。
     ignores: [
       'public/tapp-runtime/**',
+      'src/utils/liquidGlass/vendor/**',
       'src/features/merope/anime25drig/vendor/**',
     ],
   },

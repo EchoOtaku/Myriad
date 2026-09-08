@@ -1,3 +1,4 @@
+import type { TappInstance } from './types'
 /**
  * Gating consistency between Tapp developer docs and shipped code.
  *
@@ -9,14 +10,14 @@ import assert from 'node:assert/strict'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { describe, it } from 'node:test'
-import { fileURLToPath } from 'node:url'
 
+import { fileURLToPath } from 'node:url'
+import { classifyWidgetLibraryKind } from '../components/widgetLibrarySearch.ts'
 import { PERMISSION_LEVELS } from './runtime/permissionConfig.ts'
 import {
   generateFullSDK,
   generateWidgetSDK,
 } from './runtime/sandbox/sdkGenerator.ts'
-import type { TappInstance } from './types'
 import {
   storeAssetStorePath,
   storePackageRoot,
@@ -24,6 +25,7 @@ import {
 import {
   normalizeTappCategory,
   TAPP_CATEGORIES,
+  TAPP_WIDGET_CATEGORIES,
 } from './utils/tappCategories.ts'
 import {
   isLargeTappInstall,
@@ -128,6 +130,79 @@ describe('tapp docs gating consistency', () => {
     assert.equal(normalizeTappCategory('tools'), 'utility')
     assert.equal(normalizeTappCategory('music'), 'media')
     assert.equal(normalizeTappCategory('development'), 'developer')
+  })
+
+  it('widget categories match system Tapp IDs one-to-one', () => {
+    assert.deepEqual(
+      [...TAPP_WIDGET_CATEGORIES],
+      [...TAPP_CATEGORIES],
+      'Widget categories must be the same stable IDs as app categories',
+    )
+    const manifest = read(join(DOCS_TAPP, 'MANIFEST.md'))
+    const section =
+      manifest.split('### Widget 分类')[1]?.split('### templates')[0] ?? ''
+    const ids = [...section.matchAll(/^\|\s*`([a-z-]+)`\s*\|/gm)].map(
+      (m) => m[1],
+    )
+    assert.deepEqual(
+      [...ids].sort(),
+      [...TAPP_CATEGORIES].sort(),
+      'MANIFEST Widget 分类 table must match TAPP_CATEGORIES',
+    )
+    assert.match(section, /同一套/)
+    assert.match(section, /\*\*限制\*\*/)
+    assert.match(section, /只能写上表八个/)
+    for (const category of TAPP_CATEGORIES) {
+      assert.match(section, new RegExp(`\`tapp:${category}\``))
+      assert.equal(
+        classifyWidgetLibraryKind({
+          id: `com.example.${category}`,
+          isTappWidget: true,
+          category,
+        }),
+        `tapp:${category}`,
+      )
+    }
+    assert.equal(
+      classifyWidgetLibraryKind({
+        id: 'com.example.omitted',
+        isTappWidget: true,
+      }),
+      'tapp:utility',
+    )
+
+    const widgetDoc = read(join(DOCS_TAPP, 'WIDGET.md'))
+    assert.match(widgetDoc, /同一套/)
+    assert.match(widgetDoc, /MANIFEST\.md#widget-分类/)
+    assert.match(widgetDoc, /\*\*限制\*\*/)
+
+    const apiSection =
+      read(join(DOCS_TAPP, 'API_REFERENCE.md'))
+        .split('## 小组件 API')[1]
+        ?.split('## ')[0] ?? ''
+    assert.match(apiSection, /Widget 分类/)
+    assert.match(apiSection, /MANIFEST\.md#widget-分类/)
+    assert.match(
+      apiSection,
+      /ai.*data.*developer.*game.*media.*productivity.*social.*utility/,
+    )
+    assert.match(apiSection, /只能写这八个规范 ID/)
+
+    const playground = read(join(DOCS_TAPP, 'PLAYGROUND_GENERATION_CONTEXT.md'))
+    assert.match(playground, /同一套稳定 ID/)
+    assert.match(playground, /只能写这些规范值/)
+
+    const generatePrompt = read(
+      join(REPO, 'backend/src/api/tapp_playground/types_generate.rs'),
+    )
+    const promptStart = generatePrompt.indexOf('const PLAYGROUND_SYSTEM_PROMPT')
+    const promptEnd = generatePrompt.indexOf('"##;', promptStart)
+    const systemPrompt = generatePrompt.slice(promptStart, promptEnd)
+    assert.ok(systemPrompt.length > 80, 'PLAYGROUND_SYSTEM_PROMPT must exist')
+    assert.match(
+      systemPrompt,
+      /ai, data, developer, game, media,\s*productivity, social, utility/,
+    )
   })
 
   it('store package path helpers match documented examples', () => {
@@ -408,7 +483,7 @@ describe('tapp docs gating consistency', () => {
     const manifest = read(join(DOCS_TAPP, 'MANIFEST.md'))
     const section = manifest.split('## 权限列表')[1] ?? ''
     const tokens = [
-      ...section.matchAll(/^\|\s*`([a-zA-Z0-9:]+)`\s*\|/gm),
+      ...section.matchAll(/^\|\s*`([a-z0-9:]+)`\s*\|/gim),
     ].map((m) => m[1])
     assert.deepEqual(
       [...tokens].sort(),
@@ -426,7 +501,7 @@ describe('tapp docs gating consistency', () => {
     )
     const fullFn = gen.slice(gen.indexOf('export function generateFullSDK'))
     const frozen = [
-      ...fullFn.matchAll(/Object\.freeze\(Tapp\.([A-Za-z0-9_]+)/g),
+      ...fullFn.matchAll(/Object\.freeze\(Tapp\.(\w+)/g),
     ].map((m) => m[1])
     const frozenNs = [...new Set(frozen)]
     assert.ok(frozenNs.includes('game'), 'generateFullSDK must freeze Tapp.game')
@@ -459,7 +534,7 @@ describe('tapp docs gating consistency', () => {
     const cap = apiRef.split('## 能力边界与完整命名空间')[1] ?? ''
     const capUntilNext = cap.split(/^## /m)[0] ?? cap
     const missing = frozenNs.filter(
-      (ns) => !new RegExp('`' + ns + '`').test(capUntilNext),
+      (ns) => !new RegExp(`\`${ns}\``).test(capUntilNext),
     )
     assert.deepEqual(
       missing,
@@ -500,7 +575,7 @@ describe('tapp docs gating consistency', () => {
           const start = Math.max(0, (m.index ?? 0) - 40)
           const ctx = text.slice(start, (m.index ?? 0) + m[0].length + 40)
           if (
-            /拒绝|已移除|不要再声明|退役|instead|历史文档|旧 \`|upgrade|升级说明|不会被解码|明确拒绝/i.test(
+            /拒绝|已移除|不要再声明|退役|instead|历史文档|旧 `|upgrade|升级说明|不会被解码|明确拒绝/i.test(
               ctx,
             )
           ) {

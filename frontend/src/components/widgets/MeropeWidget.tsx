@@ -180,9 +180,11 @@ function MeropeWidgetPreview({ compact }: { compact?: boolean }) {
 function LiveMeropeWidget({
   compact,
   playbackId,
+  isEditMode,
 }: {
   compact: boolean
   playbackId: string
+  isEditMode: boolean
 }) {
   const { t } = useI18n()
   const { hasChecked, isAuthenticated, user } = useAuth()
@@ -380,6 +382,7 @@ function LiveMeropeWidget({
             mounted ? (
               <RigCharacter
                 ref={rigRef}
+                touchEnabled={motionReady && ready && !isEditMode}
                 activity={activity}
                 fallbackUrl={playableRig ? null : portraitUrl}
                 manifest={playsLive || mounted ? manifest : null}
@@ -422,7 +425,7 @@ function MeropeWidgetDuplicate({ compact }: { compact: boolean }) {
 }
 
 export const MeropeWidget = memo(
-  ({ isPreview = false, config }: WidgetComponentProps) => {
+  ({ isPreview = false, config, isEditMode }: WidgetComponentProps) => {
     const compact = config.size === '2x2'
     const holdsFace = useMeropeWidgetFaceSlot(config.id, !isPreview)
     if (isPreview) return <MeropeWidgetPreview compact={compact} />
@@ -430,6 +433,7 @@ export const MeropeWidget = memo(
     return (
       <LiveMeropeWidget
         compact={compact}
+        isEditMode={isEditMode}
         playbackId={`widget:${config.id}`}
       />
     )

@@ -41,6 +41,7 @@ import type {
   Anime25DTorsoShellRotation,
   Anime25DTorsoYawState,
 } from './torsoDeformation'
+import type { TouchAtlas, TouchPaintLayer, VisibleTouchHit } from './touchVisibility'
 import type { Anime25DPlayback, Anime25DShellProfile } from './types'
 import { currentCopy } from '../../../i18n/localeCopy'
 import { allowsPointerGaze, IDLE_MOTION_POLICY } from '../motion/policy'
@@ -66,6 +67,7 @@ import {
   stepChestSpring,
   topwearMotionAtChest,
 } from './chestPhysics'
+import { ClosedEyePresentation } from './closedEyePresentation'
 import {
   BODY_HEAD_FOLLOW,
   deformCollarClipMesh,
@@ -102,6 +104,7 @@ import {
 } from './frameClock'
 import { stepAnime25DHairLayerSprings } from './hairPhysics'
 import { idleBreathOffset } from './idleBreath'
+import { Anime25DIrisRebound } from './irisRebound'
 import {
   createJawMotionState,
   jawMotionTarget,
@@ -174,6 +177,8 @@ import {
   resolveAnime25DTorsoChestShape,
   stepAnime25DTorsoShellRotation,
 } from './torsoDeformation'
+import { touchPointInView } from './touchHitTest'
+import { hitTestVisibleTouch, readTouchAtlas } from './touchVisibility'
 import { compileProgram, createAtlasTexture, loadImage } from './webglRuntime'
 
 /**
@@ -266,6 +271,8 @@ export class Anime25DPlayer {
 
   private layers: Anime25DGpuLayer[] = []
   private atlasTexture: WebGLTexture | null = null
+  private touchAtlas: TouchAtlas | null = null
+  private touchLayers: TouchPaintLayer[] = []
   private readonly performanceTelemetry = new Anime25DPerformanceTelemetry()
   private readonly current: Anime25DDriver = { ...IDENTITY_DRIVER }
   private readonly target: Anime25DDriver = { ...IDENTITY_DRIVER }
@@ -333,6 +340,8 @@ export class Anime25DPlayer {
   private sillyMouthShare = 1
 
   private time = 0
+  private readonly irisRebound = new Anime25DIrisRebound()
+  private readonly closedEyes = new ClosedEyePresentation()
   private readonly blinkState: Anime25DBlinkState = {
     activeSeconds: -1,
     nextAtSeconds: 1.8,
@@ -458,8 +467,14 @@ export class Anime25DPlayer {
       image,
     )
     const nextTexture = createAtlasTexture(this.gl, image)
+    const touchAtlas = readTouchAtlas(image)
     if (this.disposed || atlasAbort.signal.aborted) {
-      releaseCompiledGpu(this.gl, compiled.layers, compiled.collarClip, nextTexture)
+      releaseCompiledGpu(
+        this.gl,
+        compiled.layers,
+        compiled.collarClip,
+        nextTexture,
+      )
       return
     }
     this.applyPackage(playback, rigManifest)
@@ -467,10 +482,35 @@ export class Anime25DPlayer {
     this.atlasTexture = nextTexture
     this.layers = compiled.layers
     this.collarClip = compiled.collarClip
+    this.touchAtlas = touchAtlas
+    this.touchLayers = this.layers.map((layer) => {
+      const mesh = layer.renderKind === 'neck' && this.collarClip
+        ? this.collarClip : layer
+      return {
+        paint: layer,
+        mesh: {
+          positions: mesh.deformed,
+          atlasUvs: mesh.atlasUvs,
+          indices: mesh.indices,
+          layerTransform: layer.layerTransform,
+        },
+      }
+    })
   }
 
   async loadAtlas(url: string): Promise<void> {
     await this.replaceLivePackage(this.playback, this.rigManifest, url)
+  }
+
+  /** Read-only contact query against the latest submitted pose and paint order. */
+  hitTestTouch(clientX: number, clientY: number): VisibleTouchHit | null {
+    const canvas = this.gl.canvas
+    if (this.disposed || !this.touchAtlas || !(canvas instanceof HTMLCanvasElement)) return null
+    const point = touchPointInView(clientX, clientY, canvas.getBoundingClientRect(), {
+      width: this.renderFrame.viewWidth,
+      height: this.renderFrame.viewHeight,
+    })
+    return point ? hitTestVisibleTouch(point.x, point.y, this.touchLayers, this.touchAtlas, this.renderFrame) : null
   }
 
   private applyPackage(
@@ -482,6 +522,7 @@ export class Anime25DPlayer {
       layers: playback.layers.map(resolveAnime25DLayerSemantics),
     }
     this.playback = playback
+    this.closedEyes.bind(playback.layers)
     this.rigManifest = rigManifest
     this.shellProfile = playback.shellProfile
     this.motionEnvelopeProfile = deriveAnime25DMotionEnvelopeProfile(
@@ -851,6 +892,8 @@ export class Anime25DPlayer {
     this.layers = []
     this.collarClip = null
     this.atlasTexture = null
+    this.touchAtlas = null
+    this.touchLayers = []
     this.gl.deleteProgram(this.program)
     // Chrome keeps a detached canvas's drawing buffer until loseContext.
     // A canvas still in the document must keep the context: getContext('webgl2')
@@ -1050,6 +1093,7 @@ export class Anime25DPlayer {
       this.motionEnvelopeProfile,
       this.motionEnvelopeResult,
     )
+    this.closedEyes.step(tgt, dt)
     stepAnime25DBlink(
       tgt,
       this.blinkState,
@@ -1085,6 +1129,26 @@ export class Anime25DPlayer {
       this.poseResponse,
       dt,
       this.responseScale,
+    )
+    this.irisRebound.step(
+      this.time,
+      this.blinkState.activeSeconds,
+      !this.target.blink ||
+        Math.max(
+          stylizedTargets.maniac,
+          stylizedTargets.silly,
+          stylizedTargets.lovestruck,
+          this.current.maniac,
+          this.current.silly,
+          this.current.lovestruck,
+          tgt.eyeCry,
+          tgt.eyeDizzy,
+          tgt.eyeSqueeze,
+          this.current.eyeCry,
+          this.current.eyeDizzy,
+          this.current.eyeSqueeze,
+        ) > 0.03,
+      Math.max(this.current.eyeOpenL, this.current.eyeOpenR),
     )
     // Physics follows the actual continuous pose, not a separately filtered
     // copy of the desired pose that can disagree during a handoff.
@@ -1250,9 +1314,12 @@ export class Anime25DPlayer {
       jawDrop,
       jawOpen,
       this.stylizedMotion,
+      this.irisRebound,
     )
     for (const layer of this.layers) {
-      layer.frameOpacity = fadeOpacityFromFrame(layer.source, this.opacityFrame)
+      layer.frameOpacity =
+        fadeOpacityFromFrame(layer.source, this.opacityFrame) *
+        this.closedEyes.opacity(layer.source)
     }
     const collarMotion = this.collarMotion
     collarMotion.angleX = e.angleX
@@ -1316,6 +1383,13 @@ export class Anime25DPlayer {
           layer.layerTransform,
         )
       }
+      // A high collar replaces the ordinary neck mesh with collarClip. Its
+      // layer still supplies paint uniforms, but owns no position buffer.
+      // Do not deform/mark it dirty and later upload into a null binding.
+      if (!layer.vertexBuffer) {
+        layer.geometryDirty = false
+        continue
+      }
       if (!layer.localDynamic) {
         if (work) {
           work.shaderOnlyLayers += 1
@@ -1354,7 +1428,11 @@ export class Anime25DPlayer {
         if (upstreamFeature) {
           deformationPoint.x = x
           deformationPoint.y = y
-          deformAnime25DUpstreamFeaturePoint(deformationPoint, upstreamFeature)
+          deformAnime25DUpstreamFeaturePoint(
+            deformationPoint,
+            upstreamFeature,
+            this.irisRebound,
+          )
           x = deformationPoint.x
           y = deformationPoint.y
         }

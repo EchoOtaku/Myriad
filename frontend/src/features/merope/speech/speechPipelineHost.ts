@@ -3,6 +3,7 @@ import type { MeropeSpeechSource } from '../speechEvents'
 import type { SpeechInterruptMode, SpeechSegment } from './speechSegmenter'
 import { getSpeechStatus, textToSpeech } from '../../../services/speechApi'
 import { dispatchMeropeSpeech } from '../speechEvents'
+import { estimateAutoSpeechDurationMs } from '../speechLifecycle'
 import { markTurnTraceOnce, noteTurnTraceCancelToSilence } from '../turnTrace'
 import { speakableText } from './speakableText'
 import { SpeechSegmenter } from './speechSegmenter'
@@ -46,6 +47,7 @@ export class SpeechPipelineHost {
     this.pipeline = new TtsPipeline({
       synthesize: (segment, signal) => this.synthesize(segment, signal),
       play: (audio, segment, onEnded) => this.play(audio, segment, onEnded),
+      fallback: (segment, onEnded) => this.playText(segment, onEnded),
     })
     void this.probe()
   }
@@ -269,6 +271,32 @@ export class SpeechPipelineHost {
         })
         patchVoicePresence({ ttsPlaying: false })
         this.noteSilence()
+      },
+    }
+  }
+
+  /** Failed synthesis retains its place in the queue and uses the existing mouth clock. */
+  private playText(
+    segment: SpeechSegment,
+    onEnded: () => void,
+  ): { stop: () => void } {
+    const base = {
+      messageId: segment.messageId,
+      source: segment.source ?? 'reply',
+      generation: segment.generation,
+      utteranceId: `text-${segment.segmentId}`,
+    }
+    dispatchMeropeSpeech({ ...base, phase: 'start' })
+    dispatchMeropeSpeech({ ...base, phase: 'chunk', text: segment.text })
+    dispatchMeropeSpeech({ ...base, phase: 'end' })
+    const timer = setTimeout(
+      onEnded,
+      Math.max(180, estimateAutoSpeechDurationMs(segment.text, segment.locale)),
+    )
+    return {
+      stop: () => {
+        clearTimeout(timer)
+        dispatchMeropeSpeech({ ...base, phase: 'cancel' })
       },
     }
   }

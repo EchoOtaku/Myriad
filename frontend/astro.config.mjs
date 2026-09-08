@@ -20,7 +20,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const pkg = JSON.parse(
   readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'),
 )
-const APP_VERSION = pkg.version || '0.4.8'
+const APP_VERSION = pkg.version || '0.4.9'
 
 /**
  * 自定义 Vite 插件：SPA 路由回退
@@ -116,8 +116,10 @@ const PLAYGROUND_PROXY_TIMEOUT_MS = 30 * 60 * 1000
 // Federation file-meta downloads / chunk uploads can exceed the default 30s.
 const FEDERATION_TRANSFER_PROXY_TIMEOUT_MS = 10 * 60 * 1000
 // Keep names for tests; values live in aiRequestTimeout.mjs.
+/* eslint-disable no-unused-vars, unused-imports/no-unused-vars -- contract aliases */
 const MEROPE_PROXY_TIMEOUT_MS = AI_IMAGE_REQUEST_TIMEOUT_MS
 const AGENT_PROCESS_PROXY_TIMEOUT_MS = AI_REQUEST_TIMEOUT_FLOOR_MS
+/* eslint-enable no-unused-vars, unused-imports/no-unused-vars */
 
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',

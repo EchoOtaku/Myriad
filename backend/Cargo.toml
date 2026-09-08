@@ -1,6 +1,6 @@
 [package]
 name = "myriad-backend"
-version = "0.4.8"
+version = "0.4.9"
 edition = "2021"
 rust-version = "1.94"
 authors = ["Myriad Contributors"]
@@ -55,6 +55,7 @@ myriad-platform-utils = { path = "../crates/myriad-platform-utils" }
 myriad-tapp-registry = { path = "../crates/myriad-tapp-registry" }
 myriad-prompt-security = { path = "../crates/myriad-prompt-security" }
 myriad-agent-rules = { path = "../crates/myriad-agent-rules" }
+myriad-brew-notes = { path = "../crates/myriad-brew-notes" }
 myriad-tapp-rules = { path = "../crates/myriad-tapp-rules" }
 myriad-module-visibility = { path = "../crates/myriad-module-visibility" }
 myriad-process-info = { path = "../crates/myriad-process-info" }

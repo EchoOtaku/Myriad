@@ -21,6 +21,7 @@ export interface TtsPipelineHost {
     onEnded: () => void,
   ) => TtsAudioHandle
   onCancel?: (messageId: string) => void
+  fallback?: (segment: SpeechSegment, onEnded: () => void) => TtsAudioHandle
 }
 
 const MAX_SYNTH = 2
@@ -245,7 +246,7 @@ export class TtsPipeline {
     if (!slot) return
     this.ready.delete(this.nextPlay)
     this.nextPlay += 1
-    if (!slot.audio) {
+    if (!slot.audio && !this.host.fallback) {
       this.tryPlay()
       return
     }
@@ -254,14 +255,17 @@ export class TtsPipeline {
     let ended = false
     markTurnTraceOnce('playback_started')
     this.handle = { stop: () => undefined }
-    const handle = this.host.play(slot.audio, slot.segment, () => {
+    const onEnded = () => {
       if (playSeq !== this.playSeq) return
       ended = true
       this.handle = null
       this.playingMessageId = null
       this.noteQueue()
       this.tryPlay()
-    })
+    }
+    const handle = slot.audio
+      ? this.host.play(slot.audio, slot.segment, onEnded)
+      : this.host.fallback!(slot.segment, onEnded)
     if (!ended && playSeq === this.playSeq) this.handle = handle
   }
 

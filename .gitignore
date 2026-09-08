@@ -119,5 +119,21 @@ docker/volumes/
 /tapp-store
 backend/data/.bootstrap-claimed
 /backend/data
+.brew-shots/
 /frontend/public/merope-demo
-/frontend/tests
+/frontend/tests/*
+!/frontend/tests/browser/
+/frontend/tests/browser/*
+!/frontend/tests/browser/rigImport.spec.ts
+!/frontend/tests/browser/fixture/
+/frontend/tests/browser/fixture/*
+!/frontend/tests/browser/fixture/rigImport.html
+!/frontend/tests/browser/fixture/rigImport.ts
+
+# Liquid glass browser integration regressions
+!/frontend/tests/browser/liquidGlass.spec.ts
+!/frontend/tests/browser/fixture/liquidGlass.html
+!/frontend/tests/browser/fixture/liquidGlass.ts
+
+# 本地截图（不提交）
+.local-shots/
