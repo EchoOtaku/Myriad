@@ -119,6 +119,7 @@ docker/volumes/
 /tapp-store
 backend/data/.bootstrap-claimed
 /backend/data
+.brew-shots/
 /frontend/public/merope-demo
 /frontend/tests/*
 !/frontend/tests/browser/
@@ -133,3 +134,6 @@ backend/data/.bootstrap-claimed
 !/frontend/tests/browser/liquidGlass.spec.ts
 !/frontend/tests/browser/fixture/liquidGlass.html
 !/frontend/tests/browser/fixture/liquidGlass.ts
+
+# 本地截图（不提交）
+.local-shots/
