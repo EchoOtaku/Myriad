@@ -25,6 +25,7 @@ pub mod content_databases; // Preset anime/game/artist databases
 pub mod data_key; // Config-key / federation private-key envelope
 pub mod data_paths;
 pub mod enka_assets; // Enka character metadata for Hoyoverse cards
+pub mod federation_gate; // Egress-location decision: may this server federate?
 pub mod fetcher;
 pub mod gemini_media; // Gemini generateContent image + speech
 pub mod governed_text; // Governed AI text sink (scheduler + declared-API builtins)

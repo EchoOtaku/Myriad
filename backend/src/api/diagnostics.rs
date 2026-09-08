@@ -283,6 +283,9 @@ pub async fn runtime_diagnostics(
             "checks": checks,
             "memory": memory,
             "server_location": server_location,
+            // Why federation is or is not live in this process. Re-derived every
+            // boot from the egress-location probe — never a stored setting.
+            "federation_gate": crate::services::federation_gate::status(),
             "tasks": {
                 "counts": {
                     "total": total,

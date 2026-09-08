@@ -1046,6 +1046,19 @@ async fn mark_delivery_dead(user_id: i32, activity_type: &str, target_domain: &s
 /// 启动投递队列后台循环
 pub fn spawn_delivery_worker(db: DatabaseConnection) {
     tokio::spawn(async move {
+        // Outbound delivery is the surface that actually reaches other
+        // instances, so unlike the rest of the component it will not run on a
+        // merely-unresolved gate: wait for the egress-location probe to settle
+        // before the first drain. Queued rows are left in place — a blocked
+        // server stops sending, it does not discard what a later boot elsewhere
+        // could deliver.
+        if !crate::services::federation_gate::wait_until_resolved(Duration::from_secs(30)).await {
+            tracing::warn!(
+                "📪 Federation delivery worker not started: egress-location gate is closed"
+            );
+            return;
+        }
+
         // Lab dual-instance: `MYRIAD_FEDERATION_DELIVERY_INTERVAL_SECS` (e.g. 2)
         // speeds full-chain harness without changing production default (15s).
         let secs = std::env::var("MYRIAD_FEDERATION_DELIVERY_INTERVAL_SECS")

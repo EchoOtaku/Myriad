@@ -86,6 +86,13 @@ impl TappPermissionService {
 
     /// 检查用户是否拥有特定 Tapp 权限
     pub fn check(config: &DynamicConfig, role: UserRole, permission: TappPermission) -> bool {
+        // 出口地理位置闸门关闭时，联邦能力对**任何角色**都不授予——管理员也不例外，
+        // 所以这一条必须排在下面的管理员短路之前。这只过滤授予权限：manifest 里的
+        // 声明权限和安装时落库的批准权限都不动，闸门重新打开就自然恢复。
+        if permission.is_federation() && !crate::services::federation_gate::federation_enabled() {
+            return false;
+        }
+
         // 管理员拥有所有权限
         if role == UserRole::Admin {
             return true;

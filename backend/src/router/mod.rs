@@ -115,6 +115,12 @@ pub(crate) async fn start_unified_server(config: AppConfig) -> anyhow::Result<()
     // Apply middleware and layers
     let api_router = api_router
         .layer(from_fn(config_mode_middleware))
+        // Availability gate, sibling to config-mode: when the startup
+        // egress-location probe says this server may not federate, the whole
+        // federation path space answers 404 — public AP endpoints included.
+        .layer(from_fn(
+            middleware::federation_gate::federation_gate_middleware,
+        ))
         .layer(from_fn(middleware::csrf::csrf_middleware)) // CSRF 防护
         .layer(from_fn(middleware::rate_limit::rate_limit_middleware)) // Rate limiting
         // Apply security headers after the complete route graph is assembled.

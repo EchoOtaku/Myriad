@@ -132,6 +132,13 @@ async fn main() -> anyhow::Result<()> {
     // Production compose de-roots backend (USER myriad). Warn once if still root.
     warn_if_running_as_root();
 
+    // Decide whether this server may federate, from its own public IP. Spawned
+    // rather than awaited so a slow third-party lookup cannot delay boot; the
+    // gate reads as enabled until the probe lands, and outbound delivery waits
+    // for a settled answer. Runs before the database branch because the answer
+    // is a property of this host, not of the installation.
+    services::federation_gate::spawn_startup_probe();
+
     // Initialise the updater proxy client. None if env not set; routes still register
     // and return a clean 503.
     let updater_client = services::updater_client::UpdaterClient::from_env();
@@ -751,8 +758,10 @@ async fn run_server() -> anyhow::Result<()> {
                 // Initialize Federation delivery worker (MFP Activity delivery queue).
                 // Required for createNote/publish fan-out: rows enqueued in
                 // fan_out_to_followers are drained here every ~15s.
+                // The worker itself waits for the egress-location gate and logs
+                // its own outcome, so this only reports that it was scheduled.
                 federation::delivery::spawn_delivery_worker(db.clone());
-                tracing::info!("✅ Federation delivery worker started");
+                tracing::info!("✅ Federation delivery worker scheduled");
 
                 // 密钥迁移：把存量明文配置与 v0 联邦私钥升级到数据密钥信封。
                 //
