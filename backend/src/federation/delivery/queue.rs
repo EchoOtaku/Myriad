@@ -1069,6 +1069,18 @@ pub fn spawn_delivery_worker(db: DatabaseConnection) {
         let mut interval = tokio::time::interval(Duration::from_secs(secs));
         loop {
             interval.tick().await;
+
+            // The wait above returns the pending value on timeout, so a probe
+            // that lands late — and closes the gate — would otherwise find the
+            // worker already running and never be consulted again. Re-read it
+            // every tick. The gate only ever settles once, so a closed reading
+            // is final and the worker can stop for good.
+            if !crate::services::federation_gate::federation_enabled() {
+                tracing::warn!(
+                    "📪 Federation delivery worker stopping: egress-location gate is closed"
+                );
+                return;
+            }
             match process_delivery_queue_detailed(&db, 20).await {
                 Ok(s)
                     if s.delivered > 0

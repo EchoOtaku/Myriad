@@ -182,6 +182,44 @@ mod tests {
         }
     }
 
+    /// This middleware matches the raw request path, so it is only sound if the
+    /// router does not reach a federation handler through some other spelling of
+    /// the same path. If axum matched a percent-decoded path, `/%61pi/...` would
+    /// run the handler while `is_federation_path` saw the unmatched raw form —
+    /// a silent bypass of the whole gate. Pin the behaviour it depends on.
+    #[tokio::test]
+    async fn percent_encoded_paths_do_not_reach_federation_routes() {
+        use axum::{body::Body, http::Request, routing::get, Router};
+        use tower::ServiceExt;
+
+        let app = Router::new().route(
+            "/api/federation/timeline",
+            get(|| async { "reached the handler" }),
+        );
+
+        for spelling in [
+            "/%61pi/federation/timeline",
+            "/api/%66ederation/timeline",
+            "/api/federation/../federation/timeline",
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(spelling)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                axum::http::StatusCode::NOT_FOUND,
+                "{spelling} reached a federation route the gate would not have matched"
+            );
+        }
+    }
+
     /// `/users` is federation-only, but the bare collection path is not a route.
     #[test]
     fn bare_prefix_without_remainder_is_not_matched() {
