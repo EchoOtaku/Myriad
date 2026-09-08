@@ -128,3 +128,8 @@ backend/data/.bootstrap-claimed
 /frontend/tests/browser/fixture/*
 !/frontend/tests/browser/fixture/rigImport.html
 !/frontend/tests/browser/fixture/rigImport.ts
+
+# Liquid glass browser integration regressions
+!/frontend/tests/browser/liquidGlass.spec.ts
+!/frontend/tests/browser/fixture/liquidGlass.html
+!/frontend/tests/browser/fixture/liquidGlass.ts

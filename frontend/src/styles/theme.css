@@ -422,7 +422,6 @@ html.dark {
     inset 0 1px 0 rgb(255 255 255 / 6%),
     inset 0 -1px 0 rgb(0 0 0 / 18%),
     0 8px 28px 0 rgb(0 0 0 / 45%);
-
   --chrome-shine: inset 0 1px 0 rgb(255 255 255 / 10%);
   --chrome-hairline: inset 0 -1px 0 rgb(0 0 0 / 28%);
   --chrome-fill: rgb(16 16 16 / 70%);
@@ -470,38 +469,17 @@ html.dark {
   --surface-bg: rgb(var(--surface-rgb) / var(--surface-alpha));
 }
 
-/* 流体玻璃（Liquid Glass 风格）：低模糊高透底（透出壁纸细节）吸附壁纸主色 +
-   噪点微纹理（磨砂质感，兼消渐变色带）+ 顶部浸润高光 + 对角镜面流光 +
-   底部环境反光 + 镜面高光边 + 内发光（光陷玻璃感）+
-   底部暗色发丝线（玻璃厚度）+ 双层投影（贴地短影 + 环境长影）+
-   边缘色散弯光环（见下方 liquid 环规则）。
-   性能约定：强化全部走静态绘制层（渐变/inset 阴影，一次绘制可缓存），
-   blur 半径与 backdrop 采样次数保持不变 —— 那才是这个表面的真实开销 */
+/* 流体玻璃：以轮廓折射和透底为主，保留顶部发丝高光与一层环境投影。
+   不叠噪点、镜面流光、环境反光和多层大范围辉光。 */
 
 /* .glass-liquid 是局部强制入口：用于即使全局选择其他表面，也必须保持
    完整 Liquid 光学与交互的少量浮动 chrome。 */
 :root[data-surface='liquid'],
 .glass-liquid {
-  /* 背景分层令牌，--surface-bg 只组合一次；明暗/chrome 各自只覆盖需要的一层：
-     noise 磨砂纹理（明暗通用）· sheen 顶部浸润高光 · streak 对角镜面流光 ·
-     bounce 底部环境反光 · tint 吸色玻璃底 */
-  --surface-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.03 0'/%3E%3C/filter%3E%3Crect width='128' height='128' filter='url(%23n)'/%3E%3C/svg%3E");
   --surface-sheen: linear-gradient(
     180deg,
     rgb(255 255 255 / 18%),
     rgb(255 255 255 / 0%) 48%
-  );
-  --surface-streak: linear-gradient(
-    115deg,
-    rgb(255 255 255 / 0%) 30%,
-    rgb(255 255 255 / 12%) 42%,
-    rgb(255 255 255 / 4%) 50%,
-    rgb(255 255 255 / 0%) 60%
-  );
-  --surface-bounce: radial-gradient(
-    120% 50% at 50% 108%,
-    rgb(255 255 255 / 12%),
-    rgb(255 255 255 / 0%) 62%
   );
 
   /* 菲涅尔效应：正视的中心最透，掠射角的边缘反射增强、更不透 */
@@ -512,27 +490,17 @@ html.dark {
     color-mix(in srgb, rgb(var(--surface-rgb) / 42%), var(--color-primary) 7%)
       100%
   );
-  --surface-bg:
-    var(--surface-noise) repeat, var(--surface-sheen), var(--surface-streak),
-    var(--surface-bounce), var(--surface-tint);
+  --surface-bg: var(--surface-sheen), var(--surface-tint);
   --surface-filter: blur(3px) saturate(200%) brightness(1.06);
   --surface-border: rgb(255 255 255 / 60%);
 
-  /* 阴影栈：镜面顶线 · 底部发丝线 · 底缘内接触影（玻璃厚度遮光）·
-     内发光 · 贴地短影 · 环境长影 · 着色长影（半透有色材质的投影
-     会被染上材质色 —— 光穿过玻璃的物理痕迹） */
+  /* 顶/底发丝线勾轮廓，单层环境影表达浮起高度。 */
   --surface-shadow:
     inset 0 1px 0 rgb(255 255 255 / 50%), inset 0 -1px 0 rgb(0 0 0 / 7%),
-    inset 0 -8px 16px -10px rgb(0 0 0 / 14%),
-    inset 0 0 24px -6px rgb(255 255 255 / 16%),
-    0 2px 6px -2px rgb(31 38 135 / 14%), 0 20px 56px -18px rgb(31 38 135 / 20%),
-    0 24px 64px -24px color-mix(in srgb, var(--color-primary) 40%, transparent);
+    0 8px 24px -8px rgb(31 38 135 / 20%);
 }
 
-/* 暗色流体 = 烟熏玻璃：压暗背景（brightness<1）而非提亮——
-   暗卡提亮背景会发灰泛白；只覆盖 sheen/streak/bounce/tint
-   （--surface-bg 惰性求值自动取暗值）。底部反光改吸壁纸主色：
-   暗景里玻璃拾取的环境光来自壁纸而非白光 */
+/* 暗色流体沿用烟熏底与单层环境影，压暗由透镜的色调曲线负责。 */
 html.dark[data-surface='liquid'],
 html.dark .glass-liquid {
   /* 暗色流体基色压到近黑（微偏蓝的烟熏），#1a1a1a 在高透下会发灰泛亮 */
@@ -541,18 +509,6 @@ html.dark .glass-liquid {
     180deg,
     rgb(255 255 255 / 9%),
     rgb(255 255 255 / 0%) 48%
-  );
-  --surface-streak: linear-gradient(
-    115deg,
-    rgb(255 255 255 / 0%) 30%,
-    rgb(255 255 255 / 5%) 42%,
-    rgb(255 255 255 / 2%) 50%,
-    rgb(255 255 255 / 0%) 60%
-  );
-  --surface-bounce: radial-gradient(
-    120% 50% at 50% 108%,
-    color-mix(in srgb, var(--color-primary) 12%, transparent),
-    transparent 62%
   );
   --surface-tint: radial-gradient(
     120% 120% at 50% 50%,
@@ -565,38 +521,19 @@ html.dark .glass-liquid {
   --surface-border: rgb(255 255 255 / 16%);
   --surface-shadow:
     inset 0 1px 0 rgb(255 255 255 / 12%), inset 0 -1px 0 rgb(0 0 0 / 32%),
-    inset 0 -8px 16px -10px rgb(0 0 0 / 30%),
-    inset 0 0 24px -6px rgb(255 255 255 / 5%),
-    0 2px 6px -2px rgb(0 0 0 / 40%), 0 20px 56px -18px rgb(0 0 0 / 55%),
-    0 24px 64px -24px color-mix(in srgb, var(--color-primary) 30%, transparent);
+    0 8px 24px -8px rgb(0 0 0 / 45%);
 }
 
-/* 真·边缘折射（Liquid Glass 的灵魂）：#liquid-lens 复刻苹果材质的
-   解剖学 —— 内部磨砂、边缘一圈光学透亮的弯折带（背后内容向卡片中心
-   挤压采样，即「内容滑过边缘会扭曲」）。这是单元素单条滤镜链（模糊、
-   位移、环形合成全部在滤镜内部同一次 backdrop 采样上完成），与下方
-   弯光环注释里「嵌套 backdrop 不可行」不矛盾；模糊在链内（≈10px），
-   总模糊成本与普通玻璃持平，位移与合成的增量远小于 blur 卷积本身。
-   #liquid-lens 由 SurfaceThemeApplier 常驻注入（悬空 url() 引用会让
-   Chromium 丢弃整条链）；html.surface-lens 由 applier 按引擎能力打标
-   —— Safari/Firefox 的 backdrop-filter 不认 url() 且 @supports 测不出
-   （语法合法），未打标浏览器保持上方纯绘制层观感。
-   折射模式下透底进一步低于回退档，让边缘弯折带清晰可见。
-   静态画上去的高光同时退场（streak/bounce → none，sheen 收到一丝）：
-   镜面高光改由滤镜链从背后内容实时提取，随内容与光源变化——
-   每张卡不再顶着一模一样的假反光。
-   注意暗色 lens 块必须把这组层全部重声明：本块 (0,2,1) 在源码序上
-   晚于暗色基础块 (0,2,1)，平局后会反过来盖掉暗色值 */
+/* 几何折射由 surfaceLenses 按元素尺寸生成。根令牌始终保留纯 CSS 回退，
+   --hyalite 只在绑定元素上消费，避免继承父卡尺寸的滤镜。
+   高透底仅用于启用光学的桌面档；移动端/低性能档仍走原有回退。 */
 html.surface-lens[data-surface='liquid'],
 html.surface-lens .glass-liquid {
-  --surface-filter: url('#liquid-lens') saturate(200%) brightness(1.06);
   --surface-sheen: linear-gradient(
     180deg,
     rgb(255 255 255 / 8%),
     rgb(255 255 255 / 0%) 48%
   );
-  --surface-streak: none;
-  --surface-bounce: none;
   --surface-tint: radial-gradient(
     120% 120% at 50% 50%,
     color-mix(in srgb, rgb(var(--surface-rgb) / 18%), var(--color-primary) 7%)
@@ -606,23 +543,14 @@ html.surface-lens .glass-liquid {
   );
 }
 
-/* 暗色 lens = 深烟熏玻璃：暗的来源是「吸收透射光」（brightness 0.62）
-   而非不透明底 —— 底色近黑但只有 ~22%，玻璃保持高透，背后内容的
-   结构与色相仍可辨，只是整体被玻璃吸暗。这是暗色下透明与暗度
-   兼得的唯一路径：加 tint 不透明度会同时杀死透明感。
-   镜面提取用 #liquid-lens-dark（增益略高于亮色，维持暗景高光可见） */
+/* 暗色透镜在引擎中压肩吸光，CSS 只提供烟熏底和饱和度。 */
 html.dark.surface-lens[data-surface='liquid'],
 html.dark.surface-lens .glass-liquid {
-  /* 暗度由滤镜内压肩曲线提供（白背景→~50%，中间调→~30%），
-     此处不再叠 brightness 免得双重压暗 */
-  --surface-filter: url('#liquid-lens-dark') saturate(140%);
   --surface-sheen: linear-gradient(
     180deg,
     rgb(255 255 255 / 3%),
     rgb(255 255 255 / 0%) 48%
   );
-  --surface-streak: none;
-  --surface-bounce: none;
   --surface-tint: radial-gradient(
     120% 120% at 50% 50%,
     color-mix(in srgb, rgb(var(--surface-rgb) / 16%), var(--color-primary) 8%)
@@ -702,28 +630,6 @@ html[data-perf-mode='exlight']
   opacity: 0.45;
 }
 
-/* 文字 vibrancy 试点：暗色流体玻璃上的次要文字以 plus-lighter 与
-   玻璃相加发光 —— 苹果玻璃上「文字是发光蚀刻」的质感。仅限次要
-   灰阶（主文字保持实色保证可读性）；不支持 plus-lighter 的引擎
-   （如 Firefox）会整条忽略，自动退回普通实色 */
-html.dark[data-surface='liquid']
-  :is(.glass, .glass-surface)
-  :is(.text-gray-400, .text-gray-500) {
-  mix-blend-mode: plus-lighter;
-}
-
-/* 高不透明 chrome（84% tint，见下方覆盖）底下折射几乎不可见，
-   纯付位移/合成成本 —— 退回普通磨砂链 */
-html.surface-lens[data-surface='liquid'] .control-bar-trigger,
-html.surface-lens[data-surface='liquid'] .surface-dialog {
-  --surface-filter: blur(10px) saturate(200%) brightness(1.06);
-}
-
-html.dark.surface-lens[data-surface='liquid'] .control-bar-trigger,
-html.dark.surface-lens[data-surface='liquid'] .surface-dialog {
-  --surface-filter: blur(10px) saturate(150%) brightness(0.88);
-}
-
 /* ============================================
    表面底（基色 + 透明度 + 滤镜）—— 唯一声明处，三类消费者：
    1. .glass          完整玻璃卡（另带边框/阴影/过渡，见下）
@@ -779,7 +685,7 @@ html.dark .glass:where(:not(.glass-elev-free)) {
 
 /* 内容密集的 chrome（控制面板信息岛 / Agent 面板 / 对话框）原生为 90%+ 不透明底，
    —— Agent 面板要在里面读长回复，这一档尤其不能透穿。
-   流体的高透底会压穿其可读性——升回 90% 不透明，噪点/高光/滤镜自动保留。
+   流体的高透底会压穿其可读性——升回 90% 不透明，高光与滤镜自动保留。
    ⚠️ 必须连 --surface-bg 一起在元素上重新声明：自定义属性里的 var()
    在「声明处」（根）即被替换烘焙后才继承，元素级只改 --surface-tint
    动不了已烘焙的 --surface-bg（此前仅覆盖 tint 的写法即因此失效） */
@@ -790,9 +696,7 @@ html.dark .glass:where(:not(.glass-elev-free)) {
     rgb(var(--surface-rgb) / 80%),
     var(--color-primary) 4%
   );
-  --surface-bg:
-    var(--surface-noise) repeat, var(--surface-sheen), var(--surface-streak),
-    var(--surface-bounce), var(--surface-tint);
+  --surface-bg: var(--surface-sheen), var(--surface-tint);
 }
 
 :root[data-surface='liquid'] .agent-panel-overlay-anchor {
@@ -802,9 +706,7 @@ html.dark .glass:where(:not(.glass-elev-free)) {
     rgb(var(--surface-rgb) / 94%),
     var(--color-primary) 4%
   );
-  --surface-bg:
-    var(--surface-noise) repeat, var(--surface-sheen), var(--surface-streak),
-    var(--surface-bounce), var(--surface-tint);
+  --surface-bg: var(--surface-sheen), var(--surface-tint);
 }
 
 /* 控制面板 / 对话框不跟随暗色流体的近黑基色（用户要求它与整体隔离调校），
@@ -865,8 +767,7 @@ html.dark[data-surface='liquid'] .control-bar-trigger:not(.expanded):hover {
   /* 环内掺极低透明度的冷蓝/暖橙/紫，模拟玻璃边缘色散。
      刻意不做任何「按卡片定位」的高光热点（如顶部居中眩光）——
      相邻卡片各自顶着同位置的静态高光会立刻穿帮；环保持均匀细线，
-     读作玻璃边缘几何，真正的高光交给 lens 滤镜从背景实时提取
-     （它天然随环境变化、全局一致） */
+     读作玻璃边缘几何，真正的折射和方向高光交给按元素生成的 lens 滤镜 */
   :root[data-surface='liquid']
     :is(.glass, .glass-surface, .control-bar-trigger):not(
       .fixed,
@@ -913,6 +814,41 @@ html.dark[data-surface='liquid'] .control-bar-trigger:not(.expanded):hover {
       rgb(215 200 255 / 11%) 318deg,
       rgb(255 255 255 / 20%) 360deg
     );
+  }
+}
+
+/* 每个元素消费自己的透镜；不要将此表达式放在根 --surface-filter 上。
+   明确以性能/视口门控，切档当帧就回退，不等待 JS 的下一帧清理。 */
+@media (width >= 768px) and (prefers-reduced-motion: no-preference) {
+  html.surface-lens:not([data-perf-mode='light'], [data-perf-mode='exlight'])
+    [data-liquid-lens] {
+    backdrop-filter: var(--hyalite, blur(2px)) saturate(180%) brightness(1.03);
+  }
+
+  html.dark.surface-lens:not([data-perf-mode='light'], [data-perf-mode='exlight'])
+    [data-liquid-lens] {
+    backdrop-filter: var(--hyalite, blur(2px)) saturate(140%);
+  }
+
+  /* 内容区保持足够底色，边缘让出光路；滤镜负责折射，不再叠假彩边。 */
+  html.surface-lens
+    :is(.control-bar-trigger, .surface-dialog)[data-liquid-lens='chrome'] {
+    --surface-tint: radial-gradient(
+      ellipse at center,
+      rgb(var(--surface-rgb) / 74%) 45%,
+      rgb(var(--surface-rgb) / 32%) 100%
+    );
+    --surface-bg: var(--surface-sheen), var(--surface-tint);
+  }
+
+  html.surface-lens .control-bar-trigger[data-liquid-lens]:not(.expanded) {
+    --surface-tint: rgb(var(--surface-rgb) / 24%);
+    --surface-bg: var(--surface-sheen), var(--surface-tint);
+  }
+
+  html.surface-lens
+    :is(.glass, .glass-surface, .glass-liquid, .control-bar-trigger)[data-liquid-lens]::before {
+    opacity: 0;
   }
 }
 
@@ -1167,11 +1103,7 @@ html.dark ::placeholder {
     --surface-shadow: 0 4px 16px 0 rgb(0 0 0 / 40%);
   }
 
-  /* liquid 是最重的表面（大 blur 三连），移动端强制降回轻滤镜，
-     折射滤镜一并卸下（lens 链内含 10px 模糊 + 位移 + 多次合成，
-     移动端换成单次 8px 轻模糊）。
-     选择器列表逐档压过明暗 × surface-lens 门控的全部特异性组合——
-     裸 :root 版本 (0,2,0) 压不过 html.dark[...] (0,2,1) */
+  /* 移动端使用单次 4px 模糊；JS 同步解绑，停止生成透镜贴图。 */
   :root[data-surface='liquid'],
   html.surface-lens[data-surface='liquid'],
   .glass-liquid,
@@ -1221,10 +1153,7 @@ html.surface-lens[data-perf-mode='exlight'] .glass-liquid,
 html.dark.surface-lens[data-perf-mode='exlight'] .glass-liquid {
   --surface-filter: none !important;
   --surface-alpha: 96%;
-  --surface-noise: none;
   --surface-sheen: none;
-  --surface-streak: none;
-  --surface-bounce: none;
   --surface-tint: none;
   --surface-bg: rgb(var(--surface-rgb) / 96%);
 }
