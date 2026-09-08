@@ -8,6 +8,7 @@ Myriad modifications:
 - Stretch private filter regions/images during resize; rebuild after settling
   without temporarily replacing the lens with blur.
 - Target the rim alpha node explicitly during materialization.
+- Geometry refreshes reuse settled filters without rewriting unchanged URLs.
 - Cancel/remove transient filters on refresh, detach and disposal; clear caches
   and SVG host on disposal.
 

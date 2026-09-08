@@ -67,6 +67,55 @@ function fakeTarget() {
   return { target, active, auto, energy, articulation, prosody, text }
 }
 
+test('cancelled chunks and audio cannot resurrect speech; explicit restart remains possible', () => {
+  const rig = fakeTarget()
+  const scheduler = new FakeScheduler()
+  const controller = new SpeechLifecycleController(rig.target, scheduler)
+  const base = {
+    messageId: 'cancelled',
+    utteranceId: 'first',
+    source: 'reply' as const,
+  }
+  controller.handle({ ...base, phase: 'start' })
+  controller.handle({ ...base, phase: 'cancel' })
+  assert.equal(
+    controller.handle({ ...base, phase: 'chunk', text: 'late' }),
+    'ignored',
+  )
+  assert.equal(
+    controller.handle({ ...base, phase: 'energy', energy: 1 }),
+    'ignored',
+  )
+  assert.equal(scheduler.activeTimerCount, 0)
+  assert.deepEqual(rig.text, [])
+  const successor = { ...base, utteranceId: 'second' }
+  controller.handle({ ...successor, phase: 'start' })
+  controller.handle({ ...base, phase: 'cancel' })
+  assert.equal(
+    controller.handle({ ...successor, phase: 'chunk', text: 'new' }),
+    'active',
+  )
+  controller.handle({
+    messageId: base.messageId,
+    source: 'reply',
+    phase: 'cancel',
+  })
+  assert.equal(
+    controller.handle({ ...successor, phase: 'chunk', text: 'late-new' }),
+    'ignored',
+  )
+  controller.handle({ ...successor, phase: 'start' })
+  assert.equal(
+    controller.handle({ ...successor, phase: 'chunk', text: 'replay' }),
+    'active',
+  )
+  assert.deepEqual(
+    rig.text.map((entry) => entry.text),
+    ['new', 'replay'],
+  )
+  controller.dispose()
+})
+
 test('keeps fallback prosody alive for a complete non-streamed reply', () => {
   const scheduler = new FakeScheduler()
   const rig = fakeTarget()

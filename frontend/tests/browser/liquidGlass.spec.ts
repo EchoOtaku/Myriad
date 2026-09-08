@@ -202,3 +202,19 @@ test('idle navigation releases its lens and resumes with unchanged geometry', as
   await page.evaluate(() => { document.querySelector<HTMLElement>('.nav-container')!.dataset.navIdle = 'visible' })
   await expect(page.locator('#card')).toHaveAttribute('data-liquid-lens')
 })
+
+test('non-geometric changes leave a settled lens untouched', async ({ page }) => {
+  const mutations = await page.locator('#card').evaluate(async (el) => {
+    let writes = 0
+    const observer = new MutationObserver(records => { writes += records.length })
+    observer.observe(el, { attributes: true, attributeFilter: ['style'] })
+    el.classList.add('unrelated-state')
+    el.dispatchEvent(new TransitionEvent('transitionend', { bubbles: true, propertyName: 'background-color' }))
+    el.dispatchEvent(new TransitionEvent('transitionend', { bubbles: true, propertyName: 'box-shadow' }))
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    observer.disconnect()
+    return writes
+  })
+  expect(mutations).toBe(0)
+  expect((await lens(page, 'card')).exists).toBe(true)
+})

@@ -414,6 +414,9 @@ export function createHyalite() {
     const radii = radiiOf(el, W, H);
     const o = st.opts;
     const key = `${W}x${H}|${radii.join(',')}|${o.bevel}|${o.thickness}|${o.blur}|${o.rim}|${o.dispersion}|${o.light}|${o.smooth}|${o.self ? 'self' : 'back'}|${!!o.dark}|${!!o.chrome}`;
+    // Class/theme notifications often leave geometry unchanged. Do not rewrite
+    // the filter URL or disturb a settled surface in that case.
+    if (key === st.key && !st.transient && !ramp) return;
     st.w = W; st.h = H;
     let rec;
     if (key === st.key) rec = filters.get(key);       // same geometry (e.g. back from a settle): just re-point
@@ -521,15 +524,12 @@ export function createHyalite() {
     el.style.removeProperty(VAR);
     bound.delete(el);
   }
-  /* Force a rebuild (e.g. after a border-radius change that did not change the size) */
+  /* Re-read geometry after radius/class changes; unchanged geometry is a no-op. */
   function refresh(el) {
     const st = bound.get(el);
     if (!st) return;
     clearTimeout(st.timer); st.timer = 0; st.settling = false;
-    const old = st.key;
-    st.key = ''; st.w = st.h = 0;
     apply(el, 0);
-    if (old) release(old);
     if (!st.key) setFallback(el, st);
   }
 

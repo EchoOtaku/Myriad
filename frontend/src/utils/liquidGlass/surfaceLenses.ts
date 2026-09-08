@@ -132,6 +132,11 @@ export function mountSurfaceLenses(engine: HyaliteAPI = createHyalite()): () => 
   })
   const rootObserver = new MutationObserver(invalidateAll)
   const geometryEnded = (event: Event) => {
+    // Color, opacity, shadow and transform transitions do not change lens geometry.
+    if (event instanceof TransitionEvent
+      && !/^(width|height|min-width|max-width|min-height|max-height|padding(?:-.+)?|border(?:-.+)?|font-size|line-height|flex-basis|gap|row-gap|column-gap)$/.test(event.propertyName)) { return
+}
+    if (event instanceof TransitionEvent && /(?:color|style)$/.test(event.propertyName)) return
     const el = event.target
     if (el instanceof HTMLElement && attached.has(el)) {
       dirty.add(el)

@@ -3,6 +3,11 @@ allowBuilds:
 auditConfig:
   ignoreGhsas:
     - GHSA-qwww-vcr4-c8h2
+# TUI / --detach start redirects stdin to /dev/null. pnpm 11's
+# verifyDepsBeforeRun=install then aborts with
+# ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY when it needs to
+# recreate node_modules after a lockfile change.
+confirmModulesPurge: false
 shellEmulator: true
 trustPolicy: no-downgrade
 # Force current majors so transitive deps never land on:

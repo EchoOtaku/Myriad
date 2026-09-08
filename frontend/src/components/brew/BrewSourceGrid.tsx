@@ -80,8 +80,8 @@ export default function BrewSourceGrid({
   isAdmin = false, // 默认非管理员（用于管理功能）
 }: BrewSourceGridProps) {
   const { t } = useI18n()
-  // 磁贴墙开关。一次读定：中途切 flag 需要刷新，避免两套布局在同一会话里混用。
-  const [tileGrid] = useState(isBrewTileGridEnabled)
+  // 默认开。显式 brew_tile_grid=0 才回旧网格；不冻进 state，避免热更新后仍停在旧墙。
+  const tileGrid = isBrewTileGridEnabled()
   // 智能模式插几张主题卡 —— 与「前 N 张走 4x4」是同一个 N
   const SMART_TOPIC_CARDS = TOPIC_LARGE_COUNT_SMART
   const viewerRole = roleFromAuth(isAuthenticated, isAdmin)
@@ -979,8 +979,8 @@ export default function BrewSourceGrid({
         </div>
       )}
 
-      {/* 磁贴墙（flag 开）：虚拟坐标 + 横向分页。
-          flag 关时下面的旧 CSS Grid 保持像素级不变，观察两周后在 PR 9 一起清退。 */}
+      {/* 磁贴墙（默认开）：虚拟坐标 + 横向分页。
+          显式 brew_tile_grid=0 时下面的旧 CSS Grid 保持像素级不变，确认不回退后清退。 */}
       {tileGrid && sortedSources.length > 0 && (
         <BrewTileWall
           sources={sortedSources}
