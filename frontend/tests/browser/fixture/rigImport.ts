@@ -7,6 +7,7 @@ import {
   speechArticulationDriverPatch,
   speechEnergyDriverPatch,
 } from '../../../src/features/merope/anime25drig/speechDriver'
+import { bindCharacterTouch } from '../../../src/features/merope/interaction/bindTouch'
 import {
   applyMotionFrame,
   createMotionApplyState,
@@ -188,8 +189,110 @@ Object.assign(window, {
     eyePixels,
     bodyReplay,
     directorReplay,
+    touchPicking,
+    touchSurface,
   },
 })
+
+async function touchSurface() {
+  const psd = fixture('ordinary')
+  psd.height = 300
+  const prepared = await prepareRigPsdImport(new File([writePsd(psd)], 'touch-live.psd'), '/unused.png')
+  const canvas = document.createElement('canvas')
+  canvas.id = 'touch-character'
+  canvas.style.touchAction = 'none'
+  document.body.append(canvas)
+  const player = new Anime25DPlayer(canvas, prepared.source.anime25dPlayback!)
+  const url = URL.createObjectURL(prepared.atlas)
+  await player.loadAtlas(url)
+  player.resize(256, 300, 1)
+  player.setTarget({ idle: false, blink: false })
+  player.tick(1 / 60)
+  const runtime = new MotionRuntime(new RigMotionCoordinator())
+  const events: string[] = []
+  const unbind = bindCharacterTouch(canvas, (x, y) => player.hitTestTouch(x, y), (touch, now) => {
+    events.push(`${touch.phase}:${touch.gesture}`)
+    runtime.touch.update('test-surface', touch, now)
+  })
+  let raf = 0
+  let revision = -1
+  const tick = () => {
+    const now = performance.now()
+    const frame = runtime.frame(now)
+    if (frame.behaviorRevision !== revision) {
+      revision = frame.behaviorRevision
+      if (frame.behaviorPlan) player.setBehaviorMotionUnits(realizeAnime25DBehaviorPlan(frame.behaviorPlan, now).units, now)
+      else player.setBehaviorMotionUnits([], now)
+    }
+    player.tick(1 / 60)
+    raf = requestAnimationFrame(tick)
+  }
+  raf = requestAnimationFrame(tick)
+  const bounds = canvas.getBoundingClientRect()
+  let point: { x: number; y: number } | null = null
+  for (let y = bounds.top + 20; y < bounds.bottom - 20 && !point; y += 10) {
+    for (let x = bounds.left + 20; x < bounds.right - 20; x += 10) {
+      if (player.hitTestTouch(x, y)?.region === 'face') { point = { x, y }; break }
+    }
+  }
+  Object.assign(window, { touchSurfaceState: {
+    events,
+    current: () => ({ active: runtime.touch.current() !== null, pose: player.getCurrent() }),
+    dispose: () => {
+      unbind(); runtime.touch.release(); cancelAnimationFrame(raf)
+      player.dispose(); canvas.remove(); URL.revokeObjectURL(url)
+    },
+  } })
+  return point
+}
+
+async function touchPicking(kind: string) {
+  const psd = fixture(kind)
+  psd.height = 300
+  const prepared = await prepareRigPsdImport(
+    new File([writePsd(psd)], 'touch.psd'), '/unused-master.png',
+  )
+  const canvas = document.createElement('canvas')
+  document.body.append(canvas)
+  const player = new Anime25DPlayer(canvas, prepared.source.anime25dPlayback!)
+  const url = URL.createObjectURL(prepared.atlas)
+  const gl = canvas.getContext('webgl2')!
+  let hits = 0
+  let falseHits = 0
+  let misses = 0
+  const regions = new Set<string>()
+  try {
+    await player.loadAtlas(url)
+    player.resize(256, 300, 1)
+    for (const direction of [-0.7, 0, 0.7]) {
+      player.setTarget({ angleX: direction, angleY: direction * 0.4, idle: false, blink: false })
+      for (let i = 0; i < 45; i++) player.tick(1 / 60)
+      const rect = canvas.getBoundingClientRect()
+      const pixels = new Uint8Array(canvas.width * canvas.height * 4)
+      gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
+      for (let y = 5; y < canvas.height; y += 9) {
+        for (let x = 5; x < canvas.width; x += 9) {
+          const hit = player.hitTestTouch(
+            rect.left + (x + 0.5) / canvas.width * rect.width,
+            rect.top + (y + 0.5) / canvas.height * rect.height,
+          )
+          const alpha = pixels[((canvas.height - 1 - y) * canvas.width + x) * 4 + 3]
+          if (hit) {
+            hits++
+            if (hit.region) regions.add(hit.region)
+            if (alpha < 10) falseHits++
+          } else if (alpha > 240) { misses++
+}
+        }
+      }
+    }
+    return { hits, falseHits, misses, regions: [...regions], glError: gl.getError() }
+  } finally {
+    player.dispose()
+    canvas.remove()
+    URL.revokeObjectURL(url)
+  }
+}
 
 async function directorReplay(parallel = false, race = false) {
   const psd = fixture('ordinary')

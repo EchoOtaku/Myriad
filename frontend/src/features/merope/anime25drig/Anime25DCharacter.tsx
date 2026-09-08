@@ -15,6 +15,8 @@ import {
   useRef,
   useState,
 } from 'react'
+import { bindCharacterTouch } from '../interaction/bindTouch'
+import { getProductionMotionRuntime } from '../motion/runtimeHost'
 import { realizeAnime25DBehaviorPlan } from './behaviorRealizer'
 import { activityExpressionDriverPatch } from './expressionPresets'
 import { idleSpeechDriverPatch } from './performanceMotion'
@@ -36,6 +38,7 @@ interface Props {
   mood: number
   /** Settings page: sliders own the base pose; live acting stays additive. */
   manualControl?: boolean
+  touchEnabled?: boolean
   onPlaybackError?: (error: unknown) => void
   onPlaybackReady?: () => void
 }
@@ -54,6 +57,7 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       atlasUrl,
       mood,
       manualControl = false,
+      touchEnabled = false,
       onPlaybackError,
       onPlaybackReady,
     },
@@ -66,6 +70,17 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
     const [ready, setReady] = useState(false)
     const [gpuEpoch, setGpuEpoch] = useState(0)
     const wrapperRef = useRef<HTMLSpanElement>(null)
+    useEffect(() => {
+      const canvas = canvasRef.current
+      const player = playerRef.current
+      if (!touchEnabled || manualControl || !ready || !canvas || !player) return
+      const owner = crypto.randomUUID()
+      const source = getProductionMotionRuntime().touch
+      const unbind = bindCharacterTouch(canvas,
+        (x, y) => player.hitTestTouch(x, y),
+        (touch, now) => source.update(owner, touch, now))
+      return () => { unbind(); source.release(owner) }
+    }, [touchEnabled, manualControl, ready, atlasUrl, playback, gpuEpoch])
     const activityRef = useRef(activity)
     const moodRef = useRef(mood)
     const speechActiveRef = useRef(false)
@@ -392,7 +407,12 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         data-rig-quality="layered-2d"
         data-runtime="Anime2.5DRig"
       >
-        <canvas key={gpuEpoch} ref={canvasRef} aria-hidden />
+        <canvas
+          key={gpuEpoch}
+          ref={canvasRef}
+          aria-hidden
+          style={{ touchAction: touchEnabled ? 'none' : undefined }}
+        />
       </span>
     )
   },

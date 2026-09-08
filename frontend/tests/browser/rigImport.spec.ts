@@ -1,5 +1,49 @@
 import { expect, test } from '@playwright/test'
 
+test('real pointer contact reaches the shared director and releases on blur', async ({ page }) => {
+  const point = await page.evaluate(() => (window as any).rigImportTest.touchSurface())
+  expect(point).not.toBeNull()
+  const before = await page.evaluate(() => (window as any).touchSurfaceState.current().pose.angleY)
+  await page.mouse.move(point.x, point.y)
+  await page.mouse.down()
+  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().active)).toBe(true)
+  await expect(page.locator('#touch-character')).toHaveAttribute('data-merope-touch-active', 'true')
+  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.events.includes('update:hold'))).toBe(true)
+  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().pose.angleY)).toBeGreaterThan(before + 0.01)
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')))
+  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().active)).toBe(false)
+  await expect(page.locator('#touch-character')).not.toHaveAttribute('data-merope-touch-active', 'true')
+  await page.mouse.up()
+  expect(await page.evaluate(() => (window as any).touchSurfaceState.events.includes('end:tap'))).toBe(false)
+  await page.evaluate(() => (window as any).touchSurfaceState.dispose())
+})
+
+test('covering the captured character cancels contact rather than touching through the overlay', async ({ page }) => {
+  const point = await page.evaluate(() => (window as any).rigImportTest.touchSurface())
+  await page.mouse.move(point.x, point.y)
+  await page.mouse.down()
+  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().active)).toBe(true)
+  await page.evaluate(() => {
+    const cover = document.createElement('div')
+    cover.style.cssText = 'position:fixed;inset:0;z-index:99999;background:white'
+    document.body.append(cover)
+  })
+  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().active)).toBe(false)
+  await page.mouse.up()
+  await page.evaluate(() => (window as any).touchSurfaceState.dispose())
+})
+
+for (const kind of ['ordinary', 'collar', 'necklace']) {
+  test(`touch picking matches real rendered alpha for ${kind} while turning`, async ({ page }) => {
+    const result = await page.evaluate((kind) => (window as any).rigImportTest.touchPicking(kind), kind)
+    expect(result.hits).toBeGreaterThan(50)
+    expect(result.falseHits).toBe(0)
+    expect(result.misses).toBe(0)
+    expect(result.glError).toBe(0)
+    if (kind === 'necklace') expect(result.regions).toContain('accessory')
+  })
+}
+
 test('stream replacement rejects stale events and cancellation preserves music', async ({
   page,
 }) => {
