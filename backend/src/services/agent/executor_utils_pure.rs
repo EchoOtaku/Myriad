@@ -82,7 +82,7 @@ pub fn is_valid_platform(platform: &str) -> bool {
 }
 
 /// 简单的 Levenshtein 相似度检查（用于模糊匹配）
-/// 如果两个字符串的编辑距离小于较短字符串长度的一半，认为相似
+/// 编辑距离 ≤ max(较短串长度/2, 2) 则认为相似
 pub fn levenshtein_similar(a: &str, b: &str) -> bool {
     if a.is_empty() || b.is_empty() {
         return false;
@@ -507,11 +507,11 @@ mod tests {
         );
         assert_eq!(
             summarize_output(&json!({"total": 10})),
-            Some("获取了 10 条结果".to_string())
+            Some("Got 10 results".to_string())
         );
         assert_eq!(
             summarize_output(&json!([1, 2, 3])),
-            Some("获取了 3 条记录".to_string())
+            Some("Got 3 records".to_string())
         );
     }
 }

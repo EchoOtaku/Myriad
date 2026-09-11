@@ -93,6 +93,7 @@ pub async fn get_latest_report(
         return Ok(Json(json!({
             "success": false,
             "message": "No valid report found",
+            "code": "no_valid_report",
         })));
     }
 

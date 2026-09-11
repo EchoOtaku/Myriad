@@ -28,8 +28,7 @@ pub(crate) use crate::services::tapp_store_package::{
     store_package_root, validate_store_manifest_category,
 };
 
-/// Append a unique query param so CDN/proxy layers cannot reuse a previous
-/// package file (GitHub raw `max-age=300` is a common culprit).
+/// Append a unique `_myriad_cb` query param on the request URL.
 fn with_store_cache_bust(url: &str) -> String {
     let token = format!(
         "{}{}",
@@ -48,9 +47,7 @@ async fn fetch_public_store_url(url: &str) -> Result<reqwest::Response, String> 
         Some("Myriad-Tapp-Store/1.0"),
     )
     .await?;
-    // Bypass intermediate HTTP caches (GitHub raw max-age=300). Production
-    // reinstall/update must not mix a fresh index with stale page.css/html.
-    // Server-side requests may set Cache-Control (no browser CORS preflight).
+    // Request Cache-Control/Pragma no-store. CDN reuse is not in platform control.
     client
         .get(target_url)
         .header("Cache-Control", "no-cache, no-store, must-revalidate")
@@ -177,7 +174,7 @@ pub(super) async fn fetch_from_store(
             api_http_error(StatusCode::BAD_GATEWAY, "Upstream fetch failed")
         })?;
 
-    // 下载可选资源
+    // Optional styles/widget_styles (fail-open); page styles/template if declared (fail-closed).
     let mut styles_content: Option<String> = None;
     let mut widget_styles_content: Option<String> = None;
     let mut page_styles_content: Option<String> = None;
@@ -201,7 +198,7 @@ pub(super) async fn fetch_from_store(
         }
     }
 
-    // 下载 Page 专用 CSS（分离模式）
+    // Page CSS if `manifest.page.styles` is declared.
     if let Some(page_styles_path) = require_download_page_styles_if_declared(download, &manifest)
         .map_err(|error| api_http_error(StatusCode::BAD_GATEWAY, error))?
     {
@@ -251,7 +248,7 @@ pub(super) async fn fetch_from_store(
         })?);
     }
 
-    // Widget templates / i18n / page modules — domain flattens nested index maps.
+    // Widget templates then i18n (flat key→path maps).
     for entry in widget_template_downloads(download) {
         let template_url = join_store_file_url(&base_url, &entry.path);
         if let Ok(resp) = fetch_public_store_url(&template_url).await {
@@ -356,7 +353,7 @@ pub(super) async fn fetch_from_store(
 ///
 /// Returns `None` when the app declares no assets. Fails if a declared asset
 /// is missing or invalid so texture packs cannot install half-empty.
-/// Domain builds the plan + size budget; this layer only performs HTTP + base64.
+/// Domain builds the download plan and count cap; this layer HTTP + base64 and the byte size budget.
 async fn download_store_package_assets(
     base_url: &str,
     package_root: &str,

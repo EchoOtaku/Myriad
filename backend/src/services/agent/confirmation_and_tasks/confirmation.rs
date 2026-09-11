@@ -555,7 +555,7 @@ impl Agent {
             .collect::<Vec<_>>()
             .join("\n");
 
-        response_agent::confirmation_dialog(prefix, &step_names.join("、"), &impact_text)
+        response_agent::confirmation_dialog(prefix, &step_names.join(", "), &impact_text)
     }
 
     /// 从步骤构建 Recipe

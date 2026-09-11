@@ -69,9 +69,10 @@ fn transform_http_error(err: DataTransformError) -> (StatusCode, Json<Value>) {
 fn storage_http_error(err: TappStorageError) -> (StatusCode, Json<Value>) {
     // Map `TappStorageError` onto the JSON `error` strings handlers already return.
     match err {
-        TappStorageError::InvalidKey(reason) => {
-            (StatusCode::BAD_REQUEST, Json(json!({ "error": reason })))
-        }
+        TappStorageError::InvalidKey(reason) => (
+            StatusCode::BAD_REQUEST,
+            Json(AppError::bad_request(reason).to_json()),
+        ),
         TappStorageError::TooLarge => (
             StatusCode::PAYLOAD_TOO_LARGE,
             Json(AppError::public_json("Storage value too large")),
@@ -89,9 +90,10 @@ fn storage_write_http_error(err: TappStorageError) -> (StatusCode, Json<Value>) 
             StatusCode::PAYLOAD_TOO_LARGE,
             Json(AppError::public_json("Storage value too large")),
         ),
-        TappStorageError::InvalidKey(reason) => {
-            (StatusCode::BAD_REQUEST, Json(json!({ "error": reason })))
-        }
+        TappStorageError::InvalidKey(reason) => (
+            StatusCode::BAD_REQUEST,
+            Json(AppError::bad_request(reason).to_json()),
+        ),
         TappStorageError::Database => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": "Failed to save storage", "code": "storage_save_failed" })),

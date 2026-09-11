@@ -63,7 +63,7 @@ fn federation_user_error(context: &'static str, error: impl std::fmt::Display) -
 fn federation_store_response(context: &'static str, error: impl std::fmt::Display) -> Response {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({ "error": federation_user_error(context, error) })),
+        Json(AppError::public_json(federation_user_error(context, error))),
     )
         .into_response()
 }
@@ -143,7 +143,7 @@ pub fn json_rejection_response(
         }
         return (status, Json(body)).into_response();
     }
-    (status, Json(json!({"error": rejection.body_text()}))).into_response()
+    (status, Json(AppError::public_json("Invalid JSON body"))).into_response()
 }
 
 // Federation Wrappers

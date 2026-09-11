@@ -1201,6 +1201,7 @@
   "discordConnect": "Discord で認可",
   "discordOAuthSuccess": "Discord データ認可に成功しました。トークンを保存しプラットフォームを有効化しました。",
   "discordOAuthFailed": "Discord データ認可に失敗しました",
+  "discordOAuthAppMissing": "先に「OAuth ログイン」で Discord アプリを追加して有効にしてください。データ認可は同じ Application を使います。",
   "discordDataCallbackUrl": "データ連携コールバック URL（一括認可）",
   "bangumiCredentialMissing": "Bangumi を有効化して保存する前にユーザー名またはアクセストークンを入力してください。",
   "bangumiUsernameLabel": "Bangumi ユーザー名",

@@ -77,7 +77,7 @@ pub struct McpToolDef {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct McpToolAnnotations {
-    /// 人类可读标题（仅展示用）
+    /// 人类可读标题（仅 round-trip；展示用 tool.name / description）
     #[serde(default)]
     pub title: Option<String>,
     /// 不修改任何环境状态。规范默认 false
@@ -86,10 +86,10 @@ pub struct McpToolAnnotations {
     /// 可能执行破坏性更新。**规范默认 true**，仅在 `read_only_hint` 为假时有意义
     #[serde(default)]
     pub destructive_hint: Option<bool>,
-    /// 相同参数重复调用没有额外副作用。规范默认 false
+    /// 规范 idempotentHint。本进程不读此字段做风险判定。
     #[serde(default)]
     pub idempotent_hint: Option<bool>,
-    /// 与外部实体交互。规范默认 true
+    /// 规范 openWorldHint。本进程不读此字段做风险判定。
     #[serde(default)]
     pub open_world_hint: Option<bool>,
 }

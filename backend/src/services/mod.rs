@@ -17,7 +17,7 @@ pub mod ai_task_provider; // Text/image provider execution for AI Tasks
 pub mod ai_task_registry; // Cross-replica register/persist
 pub mod ai_task_runtime; // Process-local AI_TASKS map + state transitions
 pub mod analyzer;
-pub mod avatar; // 头像来源枚举/解析 + 出口统一代理（单一解析处）
+pub mod avatar; // 头像来源枚举/解析（单一解析处；HTTP JSON 走代理，联邦 Actor 不经代理 URL）
 pub mod background_processor;
 pub mod bilibili_utils;
 pub mod config_service;
@@ -34,7 +34,7 @@ pub mod image_generation; // OpenAI / OpenRouter / Volcengine / Gemini image pro
 pub mod image_proxy_urls; // Shared image proxy URL rewrite (profile/export/library)
 pub mod json_schema_subset;
 pub mod kugou_service; // Kugou lyrics (KRC) supplement
-pub mod library_items; // Library item pure builders (Bangumi/MAL/preferences)
+pub mod library_items; // Library item models, paging, Bangumi/MAL builders, preferences, assembly cache
 pub mod memory_profile; // default vs memory-saver process budgets
 pub mod merope_rig; // Anime2.5D rig store (live pointer is worn outfit)
 pub mod metadata_service;

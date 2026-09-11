@@ -1,6 +1,6 @@
 //! Admin 用户管理 API（设置页「用户管理」模块）。
 //!
-//! 所有路由要求管理员：main.rs 挂 `admin_middleware`，handler 内再复核一次
+//! 所有路由要求管理员：router/base.rs 挂 `admin_middleware`，handler 内再复核一次
 //! `ensure_current_admin_on`（与 auth_local.rs 既有做法一致，防止 wrapper 绕过）。
 //!
 //! - GET    /api/admin/users                              用户列表（含 OAuth identities、tapp 数、在线状态）
@@ -375,7 +375,6 @@ pub async fn update_user(
         if let Some(msg) = cannot_demote_owner_error(target_is_owner, req.is_admin) {
             return Err((StatusCode::BAD_REQUEST, Json(AppError::public_json(msg))));
         }
-        // Owner：不能撤销自己的管理员（owner always stays admin)
         if req.is_admin == Some(false) && target_is_admin && user_id == self_id {
             return Err((
                 StatusCode::BAD_REQUEST,
@@ -504,7 +503,7 @@ pub async fn update_user(
         req
     );
 
-    // 返回更新后的完整行，前端直接原位替换；promote/demote 附带 re-login 提示
+    // 返回更新后的完整行；promote 附带 re-login 提示，demote 附带立即生效提示
     let Json(mut body) = get_user(crate::extract::Db(db), Path(user_id), headers).await?;
     if req.is_admin == Some(true) && !target_is_admin {
         body["notice"] = json!(PROMOTE_RELOGIN_NOTICE);
@@ -665,7 +664,7 @@ async fn cleanup_user_related_data(
 ///
 /// 安全规则：
 /// - 不能删除自己（JWT sub == target id）→ 400
-/// - 不能删除站点 owner → 400/403
+/// - 不能删除站点 owner → 400
 /// - 非 owner 不得删除管理员 → 403
 /// - 不能删除最后一位管理员 → 400
 pub async fn delete_user(
@@ -869,7 +868,6 @@ mod tests {
 
     #[test]
     fn is_owner_gates_are_boolean_not_id() {
-        // Gates key off `users.is_owner`, not `actor_id == 1`.
         assert!(non_owner_is_admin_change_error(false).is_some());
         assert!(non_owner_is_admin_change_error(true).is_none());
     }

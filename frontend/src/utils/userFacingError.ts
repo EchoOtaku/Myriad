@@ -229,6 +229,159 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (code === 'setup_completed' || /setup already completed/i.test(raw)) {
     return joinParts(t.setupCompleted, usefulExtra(hint, t.setupCompleted))
   }
+  if (code === 'username_required' || /^username is required$/i.test(raw)) {
+    return joinParts(t.usernameRequired, usefulExtra(hint, t.usernameRequired))
+  }
+  if (code === 'uid_required' || /^uid is required$/i.test(raw)) {
+    return joinParts(t.uidRequired, usefulExtra(hint, t.uidRequired))
+  }
+  if (code === 'invalid_uid' || /^invalid uid format$/i.test(raw)) {
+    return joinParts(t.invalidUid, usefulExtra(hint, t.invalidUid))
+  }
+  if (code === 'steam_credentials_required') {
+    return joinParts(t.steamNotConfigured, usefulExtra(hint, t.steamNotConfigured))
+  }
+  if (code === 'youtube_credentials_required') {
+    return joinParts(
+      t.youtubeCredentialsRequired,
+      usefulExtra(hint, t.youtubeCredentialsRequired),
+    )
+  }
+  if (code === 'youtube_api_key_required') {
+    return joinParts(
+      t.youtubeApiKeyRequired,
+      usefulExtra(hint, t.youtubeApiKeyRequired),
+    )
+  }
+  if (code === 'user_id_required' || /^user id is required$/i.test(raw)) {
+    return joinParts(t.userIdRequired, usefulExtra(hint, t.userIdRequired))
+  }
+  if (code === 'invalid_user_id' || /^invalid user id format$/i.test(raw)) {
+    return joinParts(t.invalidUserId, usefulExtra(hint, t.invalidUserId))
+  }
+  if (
+    code === 'bangumi_credentials_required' ||
+    /username 或 access_token 至少需要提供一个/.test(raw)
+  ) {
+    return joinParts(
+      t.bangumiCredentialsRequired,
+      usefulExtra(hint, t.bangumiCredentialsRequired),
+    )
+  }
+  if (code === 'discord_token_required') {
+    return joinParts(
+      t.discordTokenRequired,
+      usefulExtra(hint, t.discordTokenRequired),
+    )
+  }
+  if (code === 'bearer_token_required') {
+    return joinParts(
+      t.bearerTokenRequired,
+      usefulExtra(hint, t.bearerTokenRequired),
+    )
+  }
+  if (code === 'gamertag_required' || /^gamertag is required$/i.test(raw)) {
+    return joinParts(t.gamertagRequired, usefulExtra(hint, t.gamertagRequired))
+  }
+  if (code === 'xbox_api_key_required') {
+    return joinParts(t.xboxApiKeyRequired, usefulExtra(hint, t.xboxApiKeyRequired))
+  }
+  if (code === 'online_id_required' || /^online id is required$/i.test(raw)) {
+    return joinParts(t.onlineIdRequired, usefulExtra(hint, t.onlineIdRequired))
+  }
+  if (code === 'npsso_required') {
+    return joinParts(t.npssoRequired, usefulExtra(hint, t.npssoRequired))
+  }
+  if (code === 'platform_test_unimplemented') {
+    return joinParts(
+      t.platformTestUnimplemented,
+      usefulExtra(hint, t.platformTestUnimplemented),
+    )
+  }
+  if (
+    code === 'site_owner_missing' ||
+    /^site owner is not configured$/i.test(raw)
+  ) {
+    return joinParts(t.siteOwnerMissing, usefulExtra(hint, t.siteOwnerMissing))
+  }
+  if (
+    code === 'x_bearer_not_configured' ||
+    code === 'bearer_token_required'
+  ) {
+    return joinParts(
+      t.bearerTokenRequired,
+      usefulExtra(hint, t.bearerTokenRequired),
+    )
+  }
+  if (code === 'x_username_required') {
+    return joinParts(t.usernameRequired, usefulExtra(hint, t.usernameRequired))
+  }
+  if (code === 'discord_token_not_configured') {
+    return joinParts(
+      t.discordTokenRequired,
+      usefulExtra(hint, t.discordTokenRequired),
+    )
+  }
+  if (
+    code === 'discord_app_not_configured' ||
+    /请先在「OAuth 登录」中添加并启用 Discord/.test(raw)
+  ) {
+    return joinParts(
+      currentCopy().config.discordOAuthAppMissing,
+      usefulExtra(hint, currentCopy().config.discordOAuthAppMissing),
+    )
+  }
+  if (
+    code === 'bearer_token_not_allowed' ||
+    code === 'access_token_not_allowed'
+  ) {
+    return joinParts(
+      t.queryTokenNotAllowed,
+      usefulExtra(hint, t.queryTokenNotAllowed),
+    )
+  }
+  if (code === 'share_text_empty' || /分享内容为空/.test(raw)) {
+    return joinParts(t.shareTextEmpty, usefulExtra(hint, t.shareTextEmpty))
+  }
+  if (
+    code === 'module_visibility_save_failed' ||
+    /^failed to save module visibility/i.test(raw)
+  ) {
+    return joinParts(
+      t.moduleVisibilitySaveFailed,
+      usefulExtra(hint, t.moduleVisibilitySaveFailed),
+    )
+  }
+  if (code === 'invalid_platform') {
+    return classified(t.invalidPlatform, raw, hint)
+  }
+  if (code === 'hitokoto_save_failed' || /^failed to save hitokoto config$/i.test(raw)) {
+    return joinParts(
+      currentCopy().config.hitokotoSaveFailed,
+      usefulExtra(hint, currentCopy().config.hitokotoSaveFailed),
+    )
+  }
+  if (
+    code === 'report_settings_save_failed' ||
+    /^failed to save report settings$/i.test(raw)
+  ) {
+    return joinParts(
+      currentCopy().config.reportSettingsSaveFailed,
+      usefulExtra(hint, currentCopy().config.reportSettingsSaveFailed),
+    )
+  }
+  if (
+    code === 'no_permission_settings' ||
+    /^no permission settings provided$/i.test(raw)
+  ) {
+    return joinParts(
+      t.noPermissionSettings,
+      usefulExtra(hint, t.noPermissionSettings),
+    )
+  }
+  if (code === 'no_valid_report' || /^no valid report found$/i.test(raw)) {
+    return joinParts(t.noValidReport, usefulExtra(hint, t.noValidReport))
+  }
   if (code === 'file_too_large' || /^file size must be between/i.test(raw)) {
     return classified(t.fileTooLarge, raw, hint)
   }
@@ -896,11 +1049,10 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.rateLimited
   }
   if (code === 'youtube_upstream_failed' || /^youtube upstream failed$/i.test(raw)) {
-    const label = t.platformNamedFetchFailed.replace('{name}', 'YouTube')
     return joinParts(
-      label,
+      t.youtubeUpstreamFailed,
       status ? `HTTP ${status}` : '',
-      usefulExtra(hint, label),
+      usefulExtra(hint, t.youtubeUpstreamFailed),
     )
   }
   if (
@@ -1024,9 +1176,16 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.asrInvalidAudio
   }
   if (
+    code === 'speech_not_configured' ||
     /speech service is not configured|语音服务未配置|TTS 服务未配置/i.test(raw)
   ) {
     return t.speechNotConfigured
+  }
+  if (
+    code === 'realtime_session_unavailable' ||
+    /^realtime session is unavailable$/i.test(raw)
+  ) {
+    return t.realtimeSessionUnavailable
   }
   if (
     /official speech requires openai|speech tts openai|转写已配置|官方播报请选 OpenAI|OpenRouter 目前没有官方/i.test(
@@ -1056,6 +1215,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.speechBatchTooMany
   }
   if (
+    code === 'speech_upstream_failed' ||
     /speech service is unreachable|speech service request failed|invalid transcription json/i.test(
       raw,
     )
@@ -1166,6 +1326,18 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return t.platformDisabled
   }
+  if (code === 'API_NOT_FOUND' || code === 'api_not_found') {
+    return joinParts(t.notFound, usefulExtra(hint, t.notFound))
+  }
+  if (code === 'INVALID_USER' || code === 'invalid_user') {
+    return joinParts(t.unauthorized, usefulExtra(hint, t.unauthorized))
+  }
+  if (
+    code === 'fetch_failed' &&
+    /failed to fetch report/i.test(raw)
+  ) {
+    return joinParts(t.reportLoadFailed, usefulExtra(hint, t.reportLoadFailed))
+  }
   if (
     code === 'fetch_failed' ||
     /failed to fetch data|获取失败|获取 .+失败|验证失败|解析响应失败|请求失败/i.test(
@@ -1252,11 +1424,263 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.agentConfirmMissing
   }
   if (
-    /^the task was cancelled$|任务已被取消|任务已被用户取消|操作已取消/i.test(
+    code === 'task_cancelled' ||
+    /^the task was cancelled$|^任务已取消$|任务已被取消|任务已被用户取消|操作已取消|用户取消了任务/i.test(
       raw,
     )
   ) {
     return t.agentTaskCancelled
+  }
+  if (
+    code === 'wait_channel_closed' ||
+    /任务等待通道已断开|^the wait channel closed$/i.test(raw)
+  ) {
+    return t.waitChannelClosed
+  }
+  if (
+    code === 'wait_input_timeout' ||
+    /等待用户输入已超时|^waiting for input timed out|^用户回答已过期|^The answer expired|^回答超时$|^The answer timed out$/i.test(
+      raw,
+    )
+  ) {
+    return t.waitInputTimeout
+  }
+  if (
+    /^恢复执行超出步骤上限$|^Resume exceeded the step cap$/i.test(raw)
+  ) {
+    return t.agentResumeOverCap
+  }
+  if (
+    code === 'task_unavailable' ||
+    /任务状态已不可用|^the task is no longer available$/i.test(raw)
+  ) {
+    return t.taskUnavailable
+  }
+  if (code === 'analytics_unavailable') {
+    return t.analyticsUnavailable
+  }
+  const queued = raw.match(
+    /排队中（前方约\s*(\d+)\s*个任务）|Queued \(about (\d+) ahead\)/i,
+  )
+  if (queued) {
+    return t.agentQueued.replace('{n}', queued[1] || queued[2] || '0')
+  }
+  const queueWait = raw.match(
+    /系统繁忙，排队超过\s*(\d+)\s*秒|Waited more than (\d+) seconds/i,
+  )
+  if (queueWait) {
+    return t.agentQueueTimeout.replace(
+      '{sec}',
+      queueWait[1] || queueWait[2] || '0',
+    )
+  }
+  if (/^现在没在放歌|^Nothing is playing/i.test(raw)) {
+    return currentCopy().music.noPlaying
+  }
+  if (
+    /^任务已提交，等待执行$|^Task submitted, waiting to run$/i.test(raw)
+  ) {
+    return t.agentSubmitted
+  }
+  const planFailed = raw.match(
+    /^I understood the request, but planning failed:\s*(.+?)\.\s*Please describe what you want more specifically\.?$/i,
+  )
+  if (planFailed) {
+    const detail = (planFailed[1] || '').trim()
+    return detail
+      ? t.agentPlanningFailed.replace('{detail}', detail)
+      : t.agentPlanningFailedBare
+  }
+  if (/^我理解了你的请求，但生成执行计划时出现问题/.test(raw)) {
+    const detail = raw
+      .replace(/^我理解了你的请求，但生成执行计划时出现问题[：:.\s]*/, '')
+      .replace(/请更具体地描述你想要什么。?$/, '')
+      .replace(/[。．.]+$/, '')
+      .trim()
+    return detail
+      ? t.agentPlanningFailed.replace('{detail}', detail)
+      : t.agentPlanningFailedBare
+  }
+  const music = currentCopy().music
+  if (/^正在播放音乐$|^Playing music$/i.test(raw)) return music.playingNow
+  if (/^已暂停播放$|^Paused$/i.test(raw)) return music.pausedPlayback
+  if (/^切换播放状态$|^Toggled playback$/i.test(raw)) return music.toggledPlayback
+  if (/^切换到下一首$|^Skipped to next track$/i.test(raw)) return music.skippedNext
+  if (/^切换到上一首$|^Skipped to previous track$/i.test(raw)) {
+    return music.skippedPrevious
+  }
+  if (/^已调节音量$|^Volume adjusted$/i.test(raw)) return music.volumeAdjusted
+  if (/^已静音$|^Muted$/i.test(raw)) return music.muted
+  if (/^已取消静音$|^Unmuted$/i.test(raw)) return music.unmuted
+  if (/^已跳转播放位置$|^Seeked$/i.test(raw)) return music.seeked
+  if (/^获取 B 站数据$|^Loading Bilibili data$/i.test(raw)) {
+    return t.loadingNamedData.replace('{name}', 'Bilibili')
+  }
+  if (/^获取 Steam 数据$|^Loading Steam data$/i.test(raw)) {
+    return t.loadingNamedData.replace('{name}', 'Steam')
+  }
+  if (/^获取 GitHub 数据$|^Loading GitHub data$/i.test(raw)) {
+    return t.loadingNamedData.replace('{name}', 'GitHub')
+  }
+  if (/^获取网易云数据$|^Loading NetEase data$/i.test(raw)) {
+    return t.loadingNamedData.replace('{name}', 'NetEase')
+  }
+  if (/^获取 Bangumi 数据$|^Loading Bangumi data$/i.test(raw)) {
+    return t.loadingNamedData.replace('{name}', 'Bangumi')
+  }
+  if (/^获取 X 数据$|^Loading X data$/i.test(raw)) {
+    return t.loadingNamedData.replace('{name}', 'X')
+  }
+  if (/^获取 Discord 数据$|^Loading Discord data$/i.test(raw)) {
+    return t.loadingNamedData.replace('{name}', 'Discord')
+  }
+  if (/^获取 MyAnimeList 数据$|^Loading MyAnimeList data$/i.test(raw)) {
+    return t.loadingNamedData.replace('{name}', 'MyAnimeList')
+  }
+  if (/^AI 总结$|^Summarizing$/i.test(raw)) return t.agentSummarizing
+  if (/^AI 分析$|^Analyzing$/i.test(raw)) return t.agentAnalyzing
+  if (/^网络搜索$|^Searching the web$/i.test(raw)) return t.agentWebSearch
+  if (/^发现 RSS 源$|^Discovering feeds$/i.test(raw)) return t.agentDiscoverFeeds
+  if (/^订阅 RSS 源$|^Subscribing to a feed$/i.test(raw)) {
+    return t.agentSubscribeFeed
+  }
+  if (/^获取平台数据$|^Loading platform data$/i.test(raw)) {
+    return t.loadingNamedData.replace('{name}', 'platform')
+  }
+  if (/^AI 对话$|^Chatting$/i.test(raw)) return t.agentChat
+  if (/^生成图片$|^Generating an image$/i.test(raw)) return t.agentGenerateImage
+  if (/^生成提示词$|^Generating a prompt$/i.test(raw)) return t.agentGeneratePrompt
+  if (/^内容对比$|^Comparing content$/i.test(raw)) return t.agentCompareContent
+  if (/^文字转语音$|^Reading aloud$/i.test(raw)) return t.agentReadingAloud
+  if (/^全局搜索$|^Searching$/i.test(raw)) return t.agentSearching
+  if (/^生成报告$|^Generating a report$/i.test(raw)) return t.agentGenerateReport
+  if (/^清除缓存$|^Clearing cache$/i.test(raw)) return t.agentClearCache
+  if (/^获取 Tapp 列表$|^Listing apps$/i.test(raw)) return t.agentListingApps
+  if (/^打开 Tapp$|^Opening an app$/i.test(raw)) return t.agentOpeningApp
+  if (/^获取文章列表$|^Loading articles$/i.test(raw)) return t.agentLoadingArticles
+  if (/^获取文章内容$|^Loading article$/i.test(raw)) return t.agentLoadingArticle
+  if (/^获取订阅源$|^Loading feeds$/i.test(raw)) return t.agentLoadingFeeds
+  if (/^获取订阅内容$|^Loading feed content$/i.test(raw)) {
+    return t.agentLoadingFeedContent
+  }
+  if (/^阅读统计$|^Reading stats$/i.test(raw)) return t.agentReadingStats
+  if (/^执行技能$|^Running skill$/i.test(raw)) return t.agentRunningSkill
+  if (/^调用外部工具$|^Calling a tool$/i.test(raw)) return t.agentCallingTool
+  if (/^Tapp 应用$|^Tapp apps$/i.test(raw)) return currentCopy().tapp.apps
+  if (/^组件列表$/.test(raw)) return t.tappWidgets
+  if (/^存储数据$/.test(raw)) return t.tappStorage
+  if (/^定时任务$|^Scheduled tasks$/i.test(raw)) return t.tappScheduledTasks
+  if (/^执行记录$/.test(raw)) return t.tappExecutions
+  if (/^未知应用$|^Unknown app$/i.test(raw)) return t.unknownApp
+  if (
+    /^即将添加新的 RSS|^This will add a new RSS/i.test(raw)
+  ) {
+    return t.confirmAddFeed
+  }
+  if (
+    /^即将控制 Brew|^This will start, stop, or refresh the Brew scheduler/i.test(
+      raw,
+    )
+  ) {
+    return t.confirmBrewSchedule
+  }
+  if (
+    /^即将向外部 URL|^This will send an HTTP request to an external URL/i.test(
+      raw,
+    )
+  ) {
+    return t.confirmHttpFetch
+  }
+  if (
+    /^即将创建 Tapp 定时任务|^This will create a scheduled Tapp task/i.test(
+      raw,
+    )
+  ) {
+    return t.confirmCreateTappTask
+  }
+  if (
+    /^即将立即触发 Tapp 定时任务|^This will run a scheduled Tapp task now/i.test(
+      raw,
+    )
+  ) {
+    return t.confirmTriggerTappTask
+  }
+  if (
+    /^即将提交后台平台数据处理任务|^This will submit a background platform data job/i.test(
+      raw,
+    )
+  ) {
+    return t.confirmPlatformJob
+  }
+  if (
+    /^AI 将分析 Tapp UI|^AI will analyze the Tapp UI/i.test(raw)
+  ) {
+    return t.confirmAnalyzeTappUi
+  }
+  if (
+    /^即将向 Tapp 发起声明式交互|^This will send a declared interaction to the Tapp/i.test(
+      raw,
+    )
+  ) {
+    return t.confirmTappInteract
+  }
+  if (
+    /^即将与页面元素交互|^This will interact with a page element/i.test(raw)
+  ) {
+    return t.confirmPageInteract
+  }
+  if (
+    /^AI 将分析页面|^AI will analyze the page and may run actions/i.test(raw)
+  ) {
+    return t.confirmAnalyzePage
+  }
+  if (
+    /^即将写入内容到目标|^This will write content to the target/i.test(raw)
+  ) {
+    return t.confirmWriteTarget
+  }
+  const playlistLoad = raw.match(
+    /^正在加载(网易云|QQ音乐)歌单|^Loading (NetEase|QQ Music) playlist/i,
+  )
+  if (playlistLoad) {
+    const name =
+      playlistLoad[1] === '网易云' || playlistLoad[2] === 'NetEase'
+        ? 'NetEase'
+        : 'QQ Music'
+    return t.loadingNamedPlaylist.replace('{name}', name)
+  }
+  if (/^好了，都处理完|^All done\.?$/i.test(raw)) return t.agentAllDone
+  if (/^你好！有什么我可以帮你的吗？$|^Hi! How can I help\?$/i.test(raw)) {
+    return t.agentGreeting
+  }
+  if (/^正在理解你的请求|^Understanding your request/i.test(raw)) {
+    return t.agentUnderstanding
+  }
+  if (/^正在规划执行步骤|^Planning steps/i.test(raw)) return t.agentPlanning
+  if (
+    /^需要你补充一些信息|^我需要更多信息来理解你的请求$|^I need more information to understand that\.?$/i.test(
+      raw,
+    )
+  ) {
+    return t.agentNeedClarification
+  }
+  const willRun = raw.match(/^This will run (.+)$|^此操作将执行\s*(.+)$/)
+  if (willRun) {
+    return t.willExecute.replace('{name}', willRun[1] || willRun[2] || '')
+  }
+  if (/^此操作将/.test(raw)) return t.stepNeedsConfirm
+  if (/^数据读取$|^Data$/.test(raw)) return t.capCategoryData
+  if (/^数据写入$|^Write$/.test(raw)) return t.capCategoryWrite
+  if (/^AI处理$|^AI$/.test(raw)) return t.capCategoryAi
+  if (/^资源创建$|^Create$/.test(raw)) return t.capCategoryCreate
+  if (/^系统操作$|^System$/.test(raw)) return t.capCategorySystem
+  if (/^外部集成$|^External$/.test(raw)) return t.capCategoryExternal
+  if (/^界面控制$|^Interface$/.test(raw)) return t.capCategoryInterface
+  if (/^需要更多信息$|^More information is needed\.?$/i.test(raw)) {
+    return t.agentNeedMoreInfo
+  }
+  if (/^任务已进入更新队列$|^Update queued$/i.test(raw)) {
+    return t.noticeUpdaterSubmitted
   }
   if (
     /^the task was interrupted$|任务因服务重启/i.test(raw)
@@ -1666,6 +2090,21 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   }
   if (code === 'config_mode_required' || /只能在配置模式下修改/.test(raw)) {
     return setup.configModeRequired
+  }
+  if (
+    code === 'setup_window_closed' ||
+    /^setup window closed$/i.test(raw) ||
+    /安装向导已关闭/.test(raw)
+  ) {
+    return setup.claimedRepairDesc
+  }
+  if (
+    code === 'setup_secret_mismatch' ||
+    /^setup secret required$/i.test(raw) ||
+    /setup passphrase does not match/i.test(raw) ||
+    /安装暗号不对/.test(raw)
+  ) {
+    return setup.secretMismatch
   }
   if (
     code === 'schedule_invalid' ||

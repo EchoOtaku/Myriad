@@ -20,7 +20,7 @@ use crate::federation::types::*;
 /// 2. 转换为 AP Note/Article 对象
 /// 3. 创建 Create Activity
 /// 4. 存入 federation_published_content
-/// 5. 推送给所有 followers
+/// 5. 按 visibility fan-out（Direct/mentioned 不投 followers；Public 另投群邻）
 /// 6. Note：立即写入作者时间线
 pub async fn publish_content(
     user_id: i32,
@@ -362,7 +362,7 @@ pub async fn unpublish_content(
                 .map_err(db_err)?
             }
         } else {
-            // content_id only — unique match for this user
+            // content_id only — `LIMIT 2` then `query_one_raw`（多行仍取一行，不拒绝）
             db.query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "SELECT id, activity_id, content_type, content_id FROM federation_published_content WHERE user_id = $1 AND (content_id = $2 OR content_id = $3) LIMIT 2",

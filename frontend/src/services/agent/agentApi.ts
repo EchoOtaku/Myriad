@@ -21,6 +21,7 @@ import type {
 } from './types'
 
 import { currentCopy } from '../../i18n/localeCopy'
+import { userFacingError } from '../../utils/userFacingError'
 import { ApiError, apiService } from '../api'
 import { abortSseSubscriptions, executeSSERequest } from './sseTransport'
 
@@ -493,12 +494,17 @@ class AgentService {
       }
     }>(`${this.baseUrl}/capabilities`)
     const body = response.capabilities
+    const capNames = currentCopy().agentCaps as Record<string, string>
+    const capName = (id: string, fallback: string) =>
+      capNames[id] || (fallback ? userFacingError(fallback) : '')
+    const capDesc = (id: string, fallback: string) =>
+      capNames[`${id}.desc`] || fallback || ''
     if (Array.isArray(body?.capabilities)) {
       return body.capabilities.map((cap) => ({
         id: cap.id,
-        name: cap.name,
-        description: cap.description || '',
-        category: cap.category || '',
+        name: capName(cap.id, cap.name),
+        description: capDesc(cap.id, cap.description || ''),
+        category: cap.category ? userFacingError(cap.category) : '',
         actions: normalizeCapabilityActions(cap.actions),
         requiresAi: Boolean(cap.requiresAi ?? cap.requires_ai),
       }))
@@ -508,9 +514,9 @@ class AgentService {
       return Object.entries(byCat).flatMap(([category, items]) =>
         (items || []).map((item) => ({
           id: item.id,
-          name: item.name,
-          description: item.hint || '',
-          category,
+          name: capName(item.id, item.name),
+          description: capDesc(item.id, item.hint || ''),
+          category: category ? userFacingError(category) : '',
           actions: [],
           requiresAi: Boolean(item.ai),
         })),

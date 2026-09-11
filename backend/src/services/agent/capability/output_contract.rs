@@ -10,11 +10,9 @@
 //! 只打日志，不失败步骤。CI sample-output table asserts covered capabilities
 //! produce no Breach.
 //!
-//! The two severities therefore describe *confidence*, not runtime behaviour:
-//!
 //! - [`ContractViolation::Breach`] — a declared field is present with the wrong
 //!   JSON type, a `required` field is missing, or an enum/range bound is
-//!   exceeded. Unambiguous: one side is definitely wrong, so CI rejects it.
+//!   exceeded. Unambiguous: one side is definitely wrong; runtime fails the step and CI rejects it.
 //! - [`ContractViolation::Drift`] — the handler returned an object sharing no
 //!   key at all with the declared properties. Logged only, not a step failure:
 //!   remaining mismatches belong in the registry, not as a runtime abort.
@@ -39,8 +37,7 @@ pub enum ContractViolation {
 impl ContractViolation {
     /// Whether the mismatch is unambiguous enough to gate on.
     ///
-    /// Only selects the log message at runtime (see the module docs); the CI
-    /// sample table is what actually rejects a `Breach`.
+    /// Runtime fails the step on Breach; Drift only warns. CI also rejects sampled Breach.
     pub fn is_fatal(&self) -> bool {
         matches!(self, ContractViolation::Breach(_))
     }
@@ -213,7 +210,7 @@ mod tests {
 
     #[test]
     fn extra_undeclared_fields_are_tolerated() {
-        // Handlers routinely add envelope fields; only declared ones are checked.
+        // Handlers routinely add extra undeclared fields; only declared ones are checked.
         let output = json!({ "summary": "x", "tookMs": 12, "source": "cache" });
         assert!(check_output_contract(&summarize_schema(), &output).is_none());
     }
@@ -248,7 +245,7 @@ mod tests {
 
     #[test]
     fn hollow_output_is_reported_as_non_fatal_drift() {
-        // The exact shape `steam.user` returns on its degraded path today.
+        // Hollow object with no declared summarize fields (Drift fixture).
         let output = json!({ "message": "未连接", "hint": "先绑定账号" });
         let violation = check_output_contract(&summarize_schema(), &output)
             .expect("zero declared fields must be reported");
@@ -308,7 +305,7 @@ mod tests {
 
     /// Sample outputs mirroring what each handler actually returns on success.
     ///
-    /// Runtime now fails on Breach. This table keeps sampled handlers honest in CI.
+    /// This table keeps sampled handlers honest in CI (no Breach, no Drift).
     ///
     /// Add a row when you add a capability. Two rows for a handler that returns
     /// different shapes on different branches.
@@ -507,8 +504,7 @@ mod tests {
     #[tokio::test]
     async fn sampled_capabilities_declare_the_fields_the_planner_will_reference() {
         // `declared_output_fields` feeds the planner's `o` index. A declared field
-        // the handler never emits sends the planner after data that cannot exist —
-        // which is how `ai.analyze` came to advertise `insights` and `confidence`.
+        // the handler never emits sends the planner after data that cannot exist.
         let registry = crate::services::agent::capability::get_registry().await;
         let mut phantom = Vec::new();
 

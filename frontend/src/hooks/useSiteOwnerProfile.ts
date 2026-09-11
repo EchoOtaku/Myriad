@@ -34,6 +34,16 @@ export function __resetSiteOwnerProfileInflightForTests(): void {
   forceInflight = null
 }
 
+const PLACEHOLDER_BIOS = new Set([
+  'No bio available',
+  '这家伙很懒，没有介绍呢',
+])
+
+function normalizeOwnerBio(bio: string): string {
+  const trimmed = bio.trim()
+  return !trimmed || PLACEHOLDER_BIOS.has(trimmed) ? '' : trimmed
+}
+
 function parseProfilePayload(data: unknown): SiteOwnerProfile | null {
   if (!data || typeof data !== 'object') return null
   const root = data as { success?: unknown; user_info?: unknown }
@@ -46,7 +56,7 @@ function parseProfilePayload(data: unknown): SiteOwnerProfile | null {
 
     // 后端已代理；这里兜底旧响应里的直链。
     avatar: proxyImageUrl(info.avatar as string | null | undefined) ?? null,
-    bio: typeof info.bio === 'string' ? info.bio : '',
+    bio: normalizeOwnerBio(typeof info.bio === 'string' ? info.bio : ''),
     platform: typeof info.platform === 'string' ? info.platform : null,
   }
 }

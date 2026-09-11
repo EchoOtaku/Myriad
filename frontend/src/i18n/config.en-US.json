@@ -1201,6 +1201,7 @@
   "discordConnect": "Connect with Discord",
   "discordOAuthSuccess": "Discord data authorization succeeded. Tokens saved and platform enabled.",
   "discordOAuthFailed": "Discord data authorization failed",
+  "discordOAuthAppMissing": "Add and enable a Discord app under OAuth login first. Data authorization reuses that application.",
   "discordDataCallbackUrl": "Data platform callback URL (Connect Discord)",
   "bangumiCredentialMissing": "Enter a Bangumi Username or Access Token before enabling and saving Bangumi.",
   "bangumiUsernameLabel": "Bangumi Username",

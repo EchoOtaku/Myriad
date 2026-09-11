@@ -45,8 +45,7 @@ pub fn normalize_persona_fields(name: &str, personality: &str) -> (String, Strin
     (name.trim().to_string(), personality.trim().to_string())
 }
 
-/// What a persona write does to the portrait. An absent field must not wipe it —
-/// the manage drawer only ever sends name and personality.
+/// What a persona write does to the portrait. Absent `portrait_asset_id` is Keep.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PortraitUpdate {
     Keep,
@@ -99,7 +98,7 @@ fn visual_generation_inputs_changed(current: Option<&Value>, update: &JsonDocume
     }
 }
 
-/// Name or visual appearance changed: old portrait and Rig must both go.
+/// Name or visual appearance changed: this write clears portrait and sticker avatar.
 pub fn generation_inputs_changed(
     existing_name: &str,
     existing_visual: Option<&Value>,
@@ -469,8 +468,7 @@ pub fn avatar_generation_is_pending(value: Option<&Value>) -> bool {
         .is_some_and(|token| !token.is_empty())
 }
 
-/// 站点贴纸头像的公开读法。任何能看到人设这张脸的地方共用这一份，
-/// 免得各处各写一遍 SELECT 再各自决定空串算不算有图。
+/// 人设贴纸头像：`avatar_asset_id` trim 后空串视为无图。
 pub async fn sticker_avatar_asset_id<C>(db: &C) -> Option<String>
 where
     C: ConnectionTrait,
@@ -555,8 +553,7 @@ fn hours_since(at: chrono::DateTime<chrono::FixedOffset>) -> f64 {
     (secs.max(0) as f64) / 3600.0
 }
 
-/// Overlay regression in memory. Writing on read would refresh `updated_at` and
-/// keep a stale `working` activity alive.
+/// Overlay mood/emotion regression in memory. Does not write; activity staleness uses `activity_updated_at`.
 fn overlay_settled(
     mut state: agent_addressee_state::Model,
     base: AffectBaseline,
@@ -840,9 +837,7 @@ pub async fn list_diary_from_sources(
         .await?)
 }
 
-/// All persona-memory producers share this write boundary. Check the complete
-/// addressee-scoped history under a transaction lock, including compacted legacy
-/// rows. A late Chat extraction and an event decision cannot insert duplicates.
+/// Event persona-memory insert. Dedup against addressee-scoped diary under the memory lock, including compacted rows.
 pub(crate) async fn insert_remembered_if_new(
     db: &DatabaseConnection,
     user_id: i32,

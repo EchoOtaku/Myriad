@@ -44,8 +44,7 @@ const PENDING: u8 = 0;
 const ENABLED: u8 = 1;
 const DISABLED: u8 = 2;
 
-/// How long a consumer that requires a settled answer will wait for the probe.
-/// The probe itself caps out around 5s (two 5s lookups run concurrently).
+/// Sleep between `is_resolved` polls inside `wait_until_resolved`.
 const RESOLVE_WAIT_POLL: Duration = Duration::from_millis(100);
 
 static STATE: AtomicU8 = AtomicU8::new(PENDING);

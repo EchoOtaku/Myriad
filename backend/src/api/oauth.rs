@@ -44,12 +44,7 @@ async fn build_redirect_uri(slug: &str) -> String {
 }
 
 fn err_500(msg: impl Into<String>) -> HttpError {
-    let msg = msg.into();
-    let mut body = json!({"error": msg.clone()});
-    if let Some(code) = myriad_error::AppError::inferred_code(&msg) {
-        body["code"] = json!(code);
-    }
-    HttpError::from((StatusCode::INTERNAL_SERVER_ERROR, Json(body)))
+    HttpError(AppError::internal(msg))
 }
 
 fn oauth_start_failed(error: impl std::fmt::Display) -> HttpError {
@@ -608,9 +603,7 @@ async fn handle_link_replay(
         return Ok(no_store_redirect(&url));
     }
 
-    // Also check whether this provider identity is bound to a *different* user
-    // for any row of this provider — we lack provider_user_id on pure replay,
-    // so we can only fail closed if this user has no binding yet.
+    // 无 provider_user_id，无法判断是否绑到别人；本用户尚无该 provider 绑定时 fail closed。
     tracing::warn!(
         provider = %slug,
         user_id = link_user_id,
@@ -1121,7 +1114,7 @@ pub async fn provider_unlink(
         err_500("Database error")
     })?;
 
-    // 解绑 GitHub 时清掉 users.linked_github_id（若仍持有该 id）
+    // 解绑 GitHub 时清空 users.linked_github_id。
     if slug == "github" {
         let _ = db
             .execute_raw(Statement::from_sql_and_values(
@@ -1253,10 +1246,9 @@ pub async fn set_primary_identity(
     )
     .await
     .map_err(|message| {
-        HttpError::from((
-            StatusCode::BAD_REQUEST,
-            Json(json!({"success": false, "message": message})),
-        ))
+        let mut body = AppError::fail_json(&message);
+        body["message"] = json!(message);
+        HttpError::from((StatusCode::BAD_REQUEST, Json(body)))
     })?;
 
     Ok(Json(json!({

@@ -93,11 +93,11 @@ pub(crate) async fn update_heartbeat(
         Ok(task) => Ok(Json(json!({ "task": task }))),
         Err(e) if e.contains("not found") => Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "error": e })),
+            Json(AppError::public_json(e)),
         ))),
         Err(e) => Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": e })),
+            Json(AppError::public_json(e)),
         ))),
     }
 }
@@ -137,11 +137,11 @@ pub(crate) async fn create_heartbeat(
         Ok(task) => Ok(Json(json!({ "task": task }))),
         Err(e) if e.contains("already exists") => Err(HttpError::from((
             StatusCode::CONFLICT,
-            Json(json!({ "error": e })),
+            Json(AppError::public_json(e)),
         ))),
         Err(e) => Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": e })),
+            Json(AppError::public_json(e)),
         ))),
     }
 }
@@ -164,11 +164,11 @@ pub(crate) async fn delete_heartbeat(
         Ok(()) => Ok(Json(json!({ "deleted": true, "task_id": task_id }))),
         Err(e) if e.contains("not found") => Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "error": e })),
+            Json(AppError::public_json(e)),
         ))),
         Err(e) => Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": e })),
+            Json(AppError::public_json(e)),
         ))),
     }
 }
@@ -190,7 +190,7 @@ pub(crate) async fn reload_mcp(
         }
         Err(e) => Err(HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": e })),
+            Json(AppError::public_json(e)),
         ))),
     }
 }
@@ -465,7 +465,7 @@ pub(crate) async fn delete_skill(
 
     evo.delete_skill(&skill_id)
         .await
-        .map_err(|e| HttpError::from((StatusCode::BAD_REQUEST, Json(json!({ "error": e })))))?;
+        .map_err(|e| HttpError::from((StatusCode::BAD_REQUEST, Json(AppError::public_json(e)))))?;
 
     Ok(Json(json!({ "success": true })))
 }
@@ -519,7 +519,8 @@ pub(crate) async fn interrupt_session(
                 let _ = waiting.done_tx.send(json!({
                     "success": false,
                     "responseType": "error",
-                    "message": "任务已取消",
+                    "message": "The task was cancelled",
+                    "code": "task_cancelled",
                     "streamTerminal": true,
                     "task": {
                         "taskId": task.task_id,
@@ -540,7 +541,10 @@ pub(crate) async fn interrupt_session(
         )
         .await
         .map_err(|e| {
-            HttpError::from((StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e }))))
+            HttpError::from((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(AppError::public_json(e)),
+            ))
         })?;
 
     let request = crate::services::agent::UserRequest {
@@ -564,7 +568,7 @@ pub(crate) async fn interrupt_session(
         }
         Err(e) => Err(HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": e })),
+            Json(AppError::public_json(e)),
         ))),
     }
 }

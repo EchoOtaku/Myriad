@@ -112,6 +112,7 @@ pub async fn generate_platform_reports(
         return Ok(Json(json!({
             "success": false,
             "message": message,
+            "code": "no_platform_reports",
             "reports": [],
             "skipped": skipped_json,
             "token_estimate": 0

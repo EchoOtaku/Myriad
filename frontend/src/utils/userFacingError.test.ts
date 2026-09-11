@@ -53,6 +53,77 @@ describe('userFacingError', () => {
     assert.equal(/Database error/i.test(text), false)
   })
 
+  it('maps platform test field-required codes', () => {
+    const text = userFacingError(
+      new ApiError('Username is required', 400, 'username_required'),
+    )
+    assert.equal(/Username is required/i.test(text), false)
+    const uid = userFacingError(new ApiError('UID is required', 400, 'uid_required'))
+    assert.equal(/UID is required/i.test(uid), false)
+  })
+
+  it('maps leftover Chinese agent wait-loop messages', () => {
+    assert.equal(
+      /任务已取消/.test(userFacingError('任务已取消')),
+      false,
+    )
+    assert.equal(
+      /任务等待通道已断开/.test(userFacingError('任务等待通道已断开')),
+      false,
+    )
+    assert.equal(
+      /等待用户输入已超时/.test(
+        userFacingError('等待用户输入已超时（服务重启后发现已过期）'),
+      ),
+      false,
+    )
+    assert.equal(
+      userFacingError('用户取消了任务'),
+      currentCopy().errors.agentTaskCancelled,
+    )
+    assert.equal(
+      userFacingError('Resume exceeded the step cap'),
+      currentCopy().errors.agentResumeOverCap,
+    )
+    assert.equal(
+      userFacingError('恢复执行超出步骤上限').includes('恢复执行超出'),
+      false,
+    )
+  })
+
+  it('maps leftover Chinese agent progress chrome', () => {
+    const queued = userFacingError('排队中（前方约 3 个任务）…')
+    assert.equal(/排队中（前方约 3 个任务）/.test(queued), false)
+    assert.match(queued, /3/)
+    const bili = userFacingError('获取 B 站数据')
+    assert.equal(/获取 B 站数据/.test(bili), false)
+    assert.match(bili, /Bilibili/)
+  })
+
+  it('maps realtime session and missing-report codes', () => {
+    const voice = userFacingError(
+      new ApiError('Realtime session is unavailable', 404, 'realtime_session_unavailable'),
+    )
+    assert.equal(/Realtime session is unavailable/i.test(voice), false)
+    const report = userFacingError(
+      new ApiError('No valid report found', 200, 'no_valid_report'),
+    )
+    assert.equal(/No valid report found/i.test(report), false)
+  })
+
+  it('maps leftover Chinese share-empty and query-token codes', () => {
+    const share = userFacingError('分享内容为空：请提供 text，或 title/summary')
+    assert.equal(/分享内容为空/.test(share), false)
+    const token = userFacingError(
+      new ApiError(
+        'Do not pass X bearer tokens in the query string',
+        400,
+        'bearer_token_not_allowed',
+      ),
+    )
+    assert.equal(/query string/i.test(token), false)
+  })
+
   it('maps configuration_mode away from the English label', () => {
     const err = new ApiError(
       'Service in configuration mode',
@@ -73,6 +144,22 @@ describe('userFacingError', () => {
     const text = userFacingError(err)
     assert.match(text, /安装|complete|完了/i)
     assert.equal(/Setup already completed/i.test(text), false)
+  })
+
+  it('maps report fetch_failed away from platform fetch copy', () => {
+    const text = userFacingError(
+      new ApiError('Failed to fetch report', 500, 'fetch_failed'),
+    )
+    assert.equal(/Failed to fetch report/i.test(text), false)
+    assert.equal(/platform/i.test(text), false)
+  })
+
+  it('maps API_NOT_FOUND to not-found copy', () => {
+    const text = userFacingError(
+      new ApiError("API 'demo' not defined in manifest", 404, 'API_NOT_FOUND'),
+    )
+    assert.match(text, /找不到|not found|見つかり/i)
+    assert.equal(/not defined in manifest/i.test(text), false)
   })
 
   it('maps file and payload size limits without the English template', () => {
@@ -1425,6 +1512,111 @@ describe('userFacingError', () => {
     assert.match(cloud, /502/)
     assert.equal(/Failed to save to cloud/i.test(cloud), false)
     assert.notEqual(usage, currentCopy().errors.operationFailed)
+  })
+
+  it('maps setup window closed and secret mismatch without English labels', () => {
+    const closed = userFacingError(
+      new ApiError('Setup window closed', 401, 'setup_window_closed'),
+    )
+    assert.equal(/Setup window closed/i.test(closed), false)
+    assert.equal(closed.includes('安装向导已关闭'), false)
+    const leftoverClosed = userFacingError(
+      '安装向导已关闭。认领之后请先修库，不要再用 setup 改宿主配置。',
+    )
+    assert.equal(leftoverClosed.includes('安装向导已关闭'), false)
+    const mismatch = userFacingError(
+      new ApiError('Setup secret required', 401, 'setup_secret_mismatch'),
+    )
+    assert.equal(/Setup secret required/i.test(mismatch), false)
+    assert.equal(mismatch.includes('安装暗号不对'), false)
+    const leftoverSecret = userFacingError(
+      '安装暗号不对。请从服务器 .env 的 MYRIAD_SETUP_SECRET 复制后再试。',
+    )
+    assert.equal(leftoverSecret.includes('安装暗号不对'), false)
+    assert.notEqual(closed, mismatch)
+  })
+
+  it('maps leftover Chinese bangumi credentials and agent submitted copy', () => {
+    const bangumi = userFacingError('username 或 access_token 至少需要提供一个')
+    assert.equal(bangumi.includes('至少需要提供'), false)
+    const submitted = userFacingError('任务已提交，等待执行')
+    assert.equal(submitted.includes('任务已提交'), false)
+    const submittedEn = userFacingError('Task submitted, waiting to run')
+    assert.equal(submittedEn, currentCopy().errors.agentSubmitted)
+    const planFailed = userFacingError(
+      'I understood the request, but planning failed: timeout. Please describe what you want more specifically.',
+    )
+    assert.equal(
+      planFailed,
+      currentCopy().errors.agentPlanningFailed.replace('{detail}', 'timeout'),
+    )
+    const leftoverPlan = userFacingError(
+      '我理解了你的请求，但生成执行计划时出现问题：timeout。请更具体地描述你想要什么。',
+    )
+    assert.equal(leftoverPlan.includes('我理解了你的请求'), false)
+    assert.match(leftoverPlan, /timeout/)
+  })
+
+  it('maps Discord app-missing and leftover music-control chrome', () => {
+    const discord = userFacingError(
+      new ApiError(
+        'Add and enable a Discord app in OAuth login first',
+        400,
+        'discord_app_not_configured',
+      ),
+    )
+    assert.equal(discord, currentCopy().config.discordOAuthAppMissing)
+    const leftoverDiscord = userFacingError(
+      '请先在「OAuth 登录」中添加并启用 Discord 应用（client_id / client_secret）。数据授权会复用同一 Application。',
+    )
+    assert.equal(leftoverDiscord.includes('OAuth 登录'), false)
+    const next = userFacingError('切换到下一首')
+    assert.equal(next.includes('切换到下一首'), false)
+    assert.equal(userFacingError('Playing music'), currentCopy().music.playingNow)
+    assert.equal(userFacingError('Muted'), currentCopy().music.muted)
+    assert.equal(
+      userFacingError('现在没在放歌。'),
+      currentCopy().music.noPlaying,
+    )
+    assert.equal(
+      /系统繁忙/.test(
+        userFacingError('系统繁忙，排队超过 30 秒仍未获得执行许可，请稍后重试'),
+      ),
+      false,
+    )
+  })
+
+  it('maps leftover Chinese agent step chrome and English capability labels', () => {
+    assert.equal(userFacingError('AI 对话'), currentCopy().errors.agentChat)
+    assert.equal(userFacingError('Chatting'), currentCopy().errors.agentChat)
+    assert.equal(userFacingError('好了，都处理完啦~'), currentCopy().errors.agentAllDone)
+    assert.equal(
+      userFacingError('此操作将执行 打开窗口'),
+      currentCopy().errors.willExecute.replace('{name}', '打开窗口'),
+    )
+    assert.equal(userFacingError('数据读取'), currentCopy().errors.capCategoryData)
+    assert.equal(userFacingError('Discovering feeds'), currentCopy().errors.agentDiscoverFeeds)
+    assert.equal(
+      userFacingError('获取 B 站数据').includes('B 站'),
+      false,
+    )
+    assert.equal(
+      userFacingError('即将添加新的 RSS/Atom 订阅源'),
+      currentCopy().errors.confirmAddFeed,
+    )
+    assert.equal(
+      userFacingError('正在加载网易云歌单...'),
+      currentCopy().errors.loadingNamedPlaylist.replace('{name}', 'NetEase'),
+    )
+    assert.equal(userFacingError('组件列表'), currentCopy().errors.tappWidgets)
+    assert.equal(
+      userFacingError('即将向外部 URL 发起 HTTP 请求'),
+      currentCopy().errors.confirmHttpFetch,
+    )
+    assert.equal(
+      userFacingError('This will interact with a page element'),
+      currentCopy().errors.confirmPageInteract,
+    )
   })
 
   it('maps leftover public config and comment reply leftovers without unifying them', () => {

@@ -555,21 +555,21 @@ pub(crate) fn extract_capability_name(step_id: &str) -> String {
     if let Some(cap_part) = step_id.split('_').next_back() {
         // 最后一段对表；对不上则把 `.`/`_` 换成空格
         match cap_part {
-            "bilibili" | "platform.bilibili" => "获取 B 站数据".to_string(),
-            "steam" | "platform.steam" => "获取 Steam 数据".to_string(),
-            "github" | "platform.github" => "获取 GitHub 数据".to_string(),
-            "netease" | "platform.netease" => "获取网易云数据".to_string(),
-            "bangumi" | "platform.bangumi" => "获取 Bangumi 数据".to_string(),
-            "x" | "platform.x" => "获取 X 数据".to_string(),
-            "discord" | "platform.discord" => "获取 Discord 数据".to_string(),
+            "bilibili" | "platform.bilibili" => "Loading Bilibili data".to_string(),
+            "steam" | "platform.steam" => "Loading Steam data".to_string(),
+            "github" | "platform.github" => "Loading GitHub data".to_string(),
+            "netease" | "platform.netease" => "Loading NetEase data".to_string(),
+            "bangumi" | "platform.bangumi" => "Loading Bangumi data".to_string(),
+            "x" | "platform.x" => "Loading X data".to_string(),
+            "discord" | "platform.discord" => "Loading Discord data".to_string(),
             "mal" | "platform.mal" | "myanimelist" | "platform.myanimelist" => {
-                "获取 MyAnimeList 数据".to_string()
+                "Loading MyAnimeList data".to_string()
             }
-            "summarize" | "ai.summarize" => "AI 总结".to_string(),
-            "analyze" | "ai.analyze" => "AI 分析".to_string(),
-            "webSearch" | "ai.webSearch" => "网络搜索".to_string(),
-            "discover" | "brew.discover" => "发现 RSS 源".to_string(),
-            "subscribe" | "brew.subscribe" => "订阅 RSS 源".to_string(),
+            "summarize" | "ai.summarize" => "Summarizing".to_string(),
+            "analyze" | "ai.analyze" => "Analyzing".to_string(),
+            "webSearch" | "ai.webSearch" => "Searching the web".to_string(),
+            "discover" | "brew.discover" => "Discovering feeds".to_string(),
+            "subscribe" | "brew.subscribe" => "Subscribing to a feed".to_string(),
             _ => cap_part.replace(['.', '_'], " "),
         }
     } else {
@@ -688,10 +688,10 @@ mod api_contract_tests {
             "contextProvenance": []
         }))
         .expect("image summary");
-        assert!(image.contains("图片"), "{image}");
+        assert!(image.contains("Image"), "{image}");
         assert_eq!(
             summarize_output(&json!({ "count": 5 })).as_deref(),
-            Some("处理了 5 条记录")
+            Some("Processed 5 records")
         );
     }
 

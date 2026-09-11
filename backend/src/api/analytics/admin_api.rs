@@ -680,7 +680,7 @@ FROM analytics_page_daily WHERE path <> $1
 
 /// GET `/api/analytics/visitor?vid=…` — **public** visitor card.
 ///
-/// Deliberately narrower than the admin summary: site-wide totals, a 7-day
+/// Deliberately narrower than the admin summary: site-wide totals, a 5-day
 /// trend, and the caller's own arrival ordinal. Per-page, per-referrer,
 /// per-country and engagement breakdowns stay admin-only.
 ///
@@ -738,7 +738,7 @@ pub async fn get_visitor_card(
             .await
             .unwrap_or(None)
     } else {
-        // Production without ANALYTICS_SALT: no shared default hash for ordinal lookup.
+        // Production with neither ANALYTICS_SALT nor JWT_SECRET: no hash for ordinal lookup.
         None
     };
 
@@ -1244,10 +1244,7 @@ pub async fn import_analytics(
         body.country_daily.len(),
         body.country_visitor.len(),
     ) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": e })),
-        );
+        return (StatusCode::BAD_REQUEST, Json(AppError::fail_json(e)));
     }
 
     let Some(integrity) = body.integrity.as_ref() else {
@@ -1325,10 +1322,7 @@ pub async fn import_analytics(
     ) {
         Ok(n) => n,
         Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({ "success": false, "error": e })),
-            );
+            return (StatusCode::BAD_REQUEST, Json(AppError::fail_json(e)));
         }
     };
     if pre_skipped > 0 {

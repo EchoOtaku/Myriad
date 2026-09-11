@@ -3,7 +3,6 @@
 //! HTTP handlers keep Claims, DB, filesystem, and role-config permission
 //! filtering. Domain owns:
 //! - install/update source mode parsing (`direct` | `store`)
-//! - direct-mode CSS channel routing (declared styles vs generated sidecars)
 //! - approved-permission selection (manifest ∩ request / previous)
 //! - install/update DB column snapshots (paths, permissions JSON, default status)
 //! - multipart `.tapp` upload field classification + archive size gate
@@ -14,7 +13,7 @@
 /// Package provenance for install and update endpoints.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstallSource {
-    /// Client-supplied manifest + resources (or multipart archive path).
+    /// Client-supplied manifest + resources.
     Direct,
     /// Backend fetches from a configured store catalog.
     Store,
@@ -45,8 +44,7 @@ pub fn parse_install_source(source: &str) -> Result<InstallSource, InvalidInstal
 
 /// Select approved permissions for a **new** install.
 ///
-/// Product contract (matches API comment「可选，默认全部批准」and file-install
-/// callers that omit `permissions`):
+/// Product contract (`InstallTappRequest.permissions`: 可选；缺省则批准全部声明权限; file-install omits the field → empty vec):
 ///
 /// - Empty / omitted `requested` → **all** `manifest_permissions` (default full approval).
 /// - Non-empty → intersection of manifest declarations with the request
@@ -256,7 +254,7 @@ pub fn build_update_install_persist(
 
 // ── Multipart .tapp upload ──────────────────────────────────────────────────
 
-/// Recognized multipart field names on `POST /tapp/install/file`.
+/// Recognized multipart field names on POST /api/tapps/install-file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstallMultipartField {
     File,

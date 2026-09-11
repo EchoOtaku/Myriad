@@ -265,10 +265,10 @@ fn speech_is_shown(event_key: &str, notify: bool) -> bool {
 
 pub fn fallback_line(summary: &str) -> String {
     match compact_summary(summary).as_str() {
-        "这个人今天第一次来了" => "今天又见到你了。".to_string(),
-        "这个人隔了很久又来了" => "好久不见。".to_string(),
-        "跟这个人的心情掉到了极低" => "我在。".to_string(),
-        _ => "刚才有件事，想跟你说一声。".to_string(),
+        "这个人今天第一次来了" => "There you are.".to_string(),
+        "这个人隔了很久又来了" => "It's been a while.".to_string(),
+        "跟这个人的心情掉到了极低" => "I'm here.".to_string(),
+        _ => "Something came up. I wanted to tell you.".to_string(),
     }
 }
 
@@ -279,7 +279,7 @@ async fn compose_line(db: &DatabaseConnection, user_id: i32, summary: &str) -> S
     };
     let soul = crate::services::agent::identity::get_speaking_soul()
         .await
-        .unwrap_or_else(|| "你是 Agent。".to_string());
+        .unwrap_or_else(|| "You are Agent.".to_string());
     let addressee = resolve_addressee_label(db, user_id).await;
     let mood_block = match get_or_create_state(db, user_id).await {
         Ok(state) => format!("\n\n{}", format_mood_section(state.mood, state.arousal)),
@@ -293,7 +293,7 @@ async fn compose_line(db: &DatabaseConnection, user_id: i32, summary: &str) -> S
         .collect::<Vec<_>>()
         .join("\n");
     let recent_block = if recent.is_empty() {
-        "（还没有对这个人说过话）".to_string()
+        "(no prior lines to this person)".to_string()
     } else {
         recent
     };
@@ -588,10 +588,10 @@ mod tests {
     fn fallback_keeps_human_summary() {
         assert_eq!(
             fallback_line("  Steam  解锁了成就  "),
-            "刚才有件事，想跟你说一声。"
+            "Something came up. I wanted to tell you."
         );
-        assert_eq!(fallback_line("这个人今天第一次来了"), "今天又见到你了。");
-        assert_eq!(fallback_line("这个人隔了很久又来了"), "好久不见。");
+        assert_eq!(fallback_line("这个人今天第一次来了"), "There you are.");
+        assert_eq!(fallback_line("这个人隔了很久又来了"), "It's been a while.");
     }
 
     #[test]

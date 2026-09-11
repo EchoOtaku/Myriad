@@ -52,6 +52,7 @@ pub(crate) fn reject_query_access_token(access_token: &Option<String>) -> Result
             Json(json!({
                 "success": false,
                 "error": "access_token_not_allowed",
+                "code": "access_token_not_allowed",
                 "message": "Do not pass Discord access tokens in the query string; connect Discord via OAuth so the server stores discord_access_token"
             })),
         )));
@@ -71,6 +72,7 @@ async fn server_discord_access_token() -> Result<String, HttpError> {
                 Json(json!({
                     "success": false,
                     "error": "discord_token_not_configured",
+                    "code": "discord_token_not_configured",
                     "message": "Discord platform token not configured. Use Connect Discord (OAuth) in settings."
                 })),
             ))
@@ -129,7 +131,7 @@ fn resolve_discord_oauth_app(config: &DynamicConfig) -> Result<(String, String),
         }
     }
     Err(
-        "请先在「OAuth 登录」中添加并启用 Discord 应用（client_id / client_secret）。数据授权会复用同一 Application。"
+        "Add and enable a Discord app in OAuth login first. Data authorization reuses that application."
             .to_string(),
     )
 }
@@ -338,6 +340,7 @@ pub async fn oauth_start(
             StatusCode::BAD_REQUEST,
             Json(json!({
                 "error": "discord_app_not_configured",
+                "code": "discord_app_not_configured",
                 "message": msg,
             })),
         )

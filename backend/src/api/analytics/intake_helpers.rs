@@ -83,8 +83,7 @@ static RATE_LIMIT: once_cell::sync::Lazy<Arc<Mutex<HashMap<String, (Instant, u32
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 static VIEW_DEDUPE: once_cell::sync::Lazy<Arc<Mutex<HashMap<String, Instant>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
-/// Admin summary cache: days → (stored_at, body). Invalidated on write.
-/// Cache key is `days:N` or `from..to` (YYYY-MM-DD).
+/// Admin summary cache: `{from}..{to}` (YYYY-MM-DD) → (stored_at, body). Invalidated on write.
 pub(crate) static SUMMARY_CACHE: once_cell::sync::Lazy<
     Arc<Mutex<HashMap<String, (Instant, Value)>>>,
 > = once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
@@ -103,7 +102,7 @@ pub(crate) struct CountryInfo {
     pub(crate) name: String,
 }
 
-/// Production is missing a configured `ANALYTICS_SALT` — collection must not proceed.
+/// Production has neither `ANALYTICS_SALT` nor `JWT_SECRET` — collection must not proceed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct AnalyticsSaltUnavailable;
 
@@ -207,7 +206,7 @@ pub(crate) fn resolve_analytics_window(
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-/// Same production gate as router CORS / security headers: `ENVIRONMENT=production`.
+/// Same production gate as router CORS: trimmed `ENVIRONMENT=production`.
 pub(crate) fn is_production_environment() -> bool {
     std::env::var("ENVIRONMENT")
         .map(|s| s.trim() == "production")
@@ -246,7 +245,7 @@ pub(crate) fn resolve_analytics_salt(
     Ok(DEFAULT_ANALYTICS_SALT.to_string())
 }
 
-/// Resolve salt from process env. Logs once on missing salt (warn in dev, error in prod).
+/// Resolve salt from process env. Logs once if `ANALYTICS_SALT` is unset (warn when a salt is still derived; error only if production resolution fails).
 pub(crate) fn try_analytics_salt() -> Result<String, AnalyticsSaltUnavailable> {
     static WARNED_DEV: std::sync::Once = std::sync::Once::new();
     static ERR_PROD: std::sync::Once = std::sync::Once::new();
@@ -305,13 +304,14 @@ pub(crate) fn try_analytics_salt() -> Result<String, AnalyticsSaltUnavailable> {
     result
 }
 
-/// HTTP response when production has no analytics salt (fail closed).
+/// HTTP 503 when production salt resolution fails closed.
 pub(crate) fn salt_unavailable_response() -> (StatusCode, Json<Value>) {
     (
         StatusCode::SERVICE_UNAVAILABLE,
         Json(json!({
             "success": false,
             "error": "analytics_unavailable",
+            "code": "analytics_unavailable",
         })),
     )
 }
@@ -326,7 +326,7 @@ pub(crate) fn analytics_today() -> NaiveDate {
     Local::now().date_naive()
 }
 
-/// Display label for the process local zone (env `TZ` name, or numeric UTC offset).
+/// Display label: `TZ` if set; else `local` at UTC+0, else `UTC±N`.
 pub(crate) fn analytics_tz_label() -> String {
     std::env::var("TZ")
         .ok()
@@ -429,8 +429,7 @@ pub(crate) fn sha16(material: &str) -> String {
     hex::encode(&digest[..16])
 }
 
-/// Hash visitor identity. Returns `None` when salt is unavailable (production
-/// without `ANALYTICS_SALT`) so callers can fail closed without using a shared default.
+/// Hash visitor identity. Returns `None` when `try_analytics_salt` fails (production with neither `ANALYTICS_SALT` nor `JWT_SECRET`) so callers fail closed without the shared default.
 pub fn resolve_visitor_hash(
     vid: Option<&str>,
     ip: Option<std::net::IpAddr>,
@@ -577,9 +576,8 @@ fn is_private_or_local_ip(ip: std::net::IpAddr) -> bool {
 
 /// Prefer edge CDN country headers (no network); codes are ISO 3166-1 alpha-2.
 ///
-/// Same trust rules as client IP: only honor CDN country headers when
-/// `TRUST_PROXY_HEADERS` is on and the peer is trusted (`TRUST_PROXY_PEERS`
-/// allowlist, or private/loopback when that list is empty). Otherwise return
+/// Same trust gate as client IP: `TRUST_PROXY_HEADERS` plus peer in `TRUST_PROXY_PEERS`
+/// (empty list → narrow default loopback+docker0, not all RFC1918). Otherwise return
 /// `None` so callers fall through to IP geo lookup / none. Spoofed
 /// `cf-ipcountry` / `x-country-code` from untrusted clients must not pollute
 /// country analytics.
@@ -826,9 +824,8 @@ ON CONFLICT (day, path) DO UPDATE SET
 
 /// Stored arrival ordinal for a visitor on `day` ("you are today's Nth visitor").
 ///
-/// `0` means unknown — rows written before the column existed, or non-site paths
-/// which never get an ordinal. Callers treat unknown as "no number to show"
-/// rather than "visitor #0".
+/// `0`/absent means unknown (no number to show). Non-`SITE_PATH` rows never store an ordinal.
+/// Callers treat unknown as "no number to show" rather than "visitor #0".
 pub(crate) async fn read_visitor_ordinal(
     db: &DatabaseConnection,
     day: NaiveDate,

@@ -88,7 +88,8 @@ fn wait_loop_channel_dropped_response(task_id: &str) -> Value {
     json!({
         "success": false,
         "responseType": "error",
-        "message": "任务等待通道已断开",
+        "message": "The wait channel closed",
+        "code": "wait_channel_closed",
         "streamTerminal": true,
         "task": {
             "taskId": task_id,

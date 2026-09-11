@@ -1,13 +1,11 @@
 //! Agent API — sessions
 use super::*;
 use crate::error::HttpError;
+use myriad_error::AppError;
 
 fn session_store_http(context: &'static str, error: impl std::fmt::Display) -> HttpError {
     tracing::error!(%error, context, "agent session store failed");
-    HttpError::from((
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({ "error": format!("Failed to {context}") })),
-    ))
+    HttpError(AppError::internal(format!("Failed to {context}")))
 }
 
 fn session_store_failed(context: &'static str, error: impl std::fmt::Display) -> String {
@@ -525,4 +523,3 @@ mod mode_tests {
         assert_eq!(session_mode(Some(&context)), AgentInteractionMode::Chat);
     }
 }
-use myriad_error::AppError;

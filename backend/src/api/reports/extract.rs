@@ -907,7 +907,7 @@ pub(crate) async fn extract_bilibili_library_items(
                                     .and_then(|v| v.as_str())
                                     .map(|s| s.trim().to_string())
                                     .filter(|s| !s.is_empty());
-                                // Some scrapers use new_ep / total_count style fields
+                                // Some scrapers put progress in `new_ep.title` / `new_ep.index_show`
                                 let progress = progress.or_else(|| {
                                     let ep = item
                                         .get("new_ep")
@@ -1072,7 +1072,7 @@ pub(crate) async fn extract_bilibili_library_items(
                 })
                 .unwrap_or_else(|| {
                     println!("    ✗ No cover found in video_map");
-                    // 尝试模糊匹配
+                    // 未命中：打印最多 3 个 map key 后返回空串（不做模糊匹配）
                     for (map_title, _) in video_map.iter().take(3) {
                         println!("      Available: '{}'", map_title);
                     }

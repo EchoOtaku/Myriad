@@ -22,10 +22,8 @@ use serde_json::{json, Value};
 
 use crate::services::avatar::{
     identity_provider_platform_key, owner_platform_profiles, platform_display_label,
-    PlatformProfile, PLATFORM_ORDER,
+    PlatformProfile, LAZY_BIO, PLATFORM_ORDER,
 };
-
-const LAZY_BIO: &str = "这家伙很懒，没有介绍呢";
 
 /// 文案来源类型。与画像源同形，但语义独立，切勿混用列。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

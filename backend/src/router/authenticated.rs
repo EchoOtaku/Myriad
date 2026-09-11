@@ -6,7 +6,7 @@ pub(super) fn build_authenticated_router(
 ) -> Router<crate::state::AppState> {
     use axum::middleware::from_fn_with_state;
     Router::<crate::state::AppState>::new()
-        // 单平台 Insights 生成 -  REQUIRE AUTHENTICATION
+        // 单平台报告生成 — admin_middleware
         .route(
             "/api/reports/platform",
             post(api::reports::generate_platform_reports).route_layer(from_fn_with_state(
@@ -186,7 +186,7 @@ pub(super) fn build_authenticated_router(
                 middleware::auth::admin_middleware,
             )),
         )
-        // Library data route (公开访问 - 单用户系统)
+        // Library — 公开读站长资料库
         .route("/api/library", get(api::profile::get_library_data))
         .route(
             "/api/library/preferences",
@@ -198,9 +198,9 @@ pub(super) fn build_authenticated_router(
                 from_fn_with_state(app_state.clone(), middleware::auth::admin_middleware),
             ),
         )
-        // Recent activities route (公开访问 - 单用户系统)
+        // Recent activities — 公开读站长动态
         .route("/api/activities", get(api::profile::get_recent_activities))
-        // Reports routes (读取端点公开访问，支持未认证用户)
+        // GET /api/reports/latest 公开；GET /api/reports/list 须登录
         .route("/api/reports/latest", get(api::reports::get_latest_report))
         .route(
             "/api/reports/list",
@@ -210,7 +210,7 @@ pub(super) fn build_authenticated_router(
             )),
         )
         // Tapp 应用管理 API
-        // 部分公开访问（游客可查看管理员的 Tapp），部分需要认证（在路由内部处理）
+        // 公开目录/资源 optional_current_auth；安装/启停/写路径须登录（create_tapp_routes）
         .nest(
             "/api/tapps",
             api::tapp_store::create_tapp_routes(app_state.clone()),
@@ -221,7 +221,6 @@ pub(super) fn build_authenticated_router(
             api::tapp_playground::create_playground_routes(app_state.clone()),
         )
         // Agent AI 任务编排 API
-        // 自然语言任务分解、执行和监控
         .nest(
             "/api/agent",
             api::agent::create_agent_routes(app_state.clone()),
@@ -250,7 +249,7 @@ pub(super) fn build_authenticated_router(
             api::brewlia::create_brewlia_routes(app_state.clone()),
         )
         // 语音服务 API
-        // 腾讯云 TTS 文本转语音、ASR 语音转文本
+        // TTS/ASR/convo；单条 TTS 走 configured_provider，batch 播客固定腾讯
         .nest(
             "/api/speech",
             api::speech::create_speech_routes(app_state.clone()),
@@ -339,7 +338,7 @@ pub(super) fn build_authenticated_router(
                 middleware::auth::optional_auth_middleware,
             )),
         )
-        // TAPP Tripo 3D — Runtime Grant `3d:generate`; admin Merope routes stay admin-only.
+        // TAPP Tripo 3D — optional_auth + 授予 3d:generate
         .route(
             "/api/tapp/3d/status",
             get(api::tapp_runtime::model3d_status).route_layer(from_fn_with_state(
@@ -425,7 +424,7 @@ pub(super) fn build_authenticated_router(
                 middleware::auth::optional_auth_middleware,
             )),
         )
-        // Context API — optional_auth（公开信息；此处无下放）
+        // Context API — optional_auth；不校验授予
         .route(
             "/api/tapp/context/app",
             get(api::tapp_runtime::get_context_app).route_layer(from_fn_with_state(
@@ -477,8 +476,7 @@ pub(super) fn build_authenticated_router(
                 middleware::auth::optional_auth_middleware,
             )),
         )
-        // Tapp 扩展 API
-        // Report CRUD — REQUIRE AUTHENTICATION
+        // Tapp 报告 catalog + CRUD — 须登录
         .route(
             "/api/tapp/reports",
             post(api::tapp_runtime::create_report).route_layer(from_fn_with_state(
@@ -728,7 +726,7 @@ pub(super) fn build_authenticated_router(
             )),
         )
         // Tapp API 声明系统
-        // API Execute - 支持 public 和 protected 两级权限
+        // 声明 API 执行 — optional_auth；audience public/protected/manager；http 另需授予 network:fetch
         .route(
             "/api/tapp/{tapp_id}/api/{api_name}",
             post(api::tapp_runtime::execute_tapp_api).route_layer(from_fn_with_state(
@@ -796,12 +794,11 @@ pub(super) fn build_authenticated_router(
         )
         // Guest-playable: playlist/lyrics/song stay public; audio + play-url
         // stay public too so brew embeds / music player work without login.
-        // Abuse control: rate_limit compute-intensive / default buckets.
         .route(
             "/api/proxy/music/netease/audio/{id}",
             get(api::proxy::proxy_netease_audio),
         )
-        // 仅解析 HTTPS CDN 播放链（302），音频字节仍直连网易
+        // 解析播放链（默认 302，可 json），音频字节不经本机
         .route(
             "/api/proxy/music/netease/play-url/{id}",
             get(api::proxy::proxy_netease_play_url),
@@ -814,7 +811,7 @@ pub(super) fn build_authenticated_router(
             "/api/proxy/music/qq/audio/{id}",
             get(api::proxy::proxy_qq_audio),
         )
-        // 仅解析临时播放链（302），音频字节仍直连 QQ CDN
+        // 解析临时播放链（默认 302，可 json），音频字节直连 QQ CDN
         .route(
             "/api/proxy/music/qq/play-url/{id}",
             get(api::proxy::proxy_qq_play_url),
@@ -893,7 +890,6 @@ pub(super) fn build_authenticated_router(
             )),
         )
         // YouTube Data API v3 — admin diagnostic (key smoke-test / curl).
-        // Site UI uses config key + reports fetchers; no FE caller yet (kept on purpose).
         .route(
             "/api/youtube/channel",
             get(api::youtube::get_youtube_channel).route_layer(from_fn_with_state(
@@ -962,7 +958,7 @@ pub(super) fn build_authenticated_router(
             "/api/steam/game/{app_id}",
             get(api::steam::get_steam_game_details),
         )
-        // X (Twitter) — 直连调试接口会带 bearer query，必须登录；正式同步走配置 + profile fetch
+        // X 调试读 — 须登录；bearer 仅服务端配置，query 拒绝
         .route(
             "/api/x/user",
             get(api::x::get_x_user).route_layer(from_fn_with_state(
@@ -992,7 +988,7 @@ pub(super) fn build_authenticated_router(
                 middleware::auth::auth_middleware,
             )),
         )
-        // Discord — 调试接口带 access_token query，必须登录；正式同步走配置 + profile fetch
+        // Discord 调试读 — 须登录；token 仅服务端 OAuth 落库，query 拒绝
         .route(
             "/api/discord/status",
             get(api::discord::discord_status).route_layer(from_fn_with_state(
@@ -1014,7 +1010,7 @@ pub(super) fn build_authenticated_router(
                 middleware::auth::auth_middleware,
             )),
         )
-        // Discord 数据平台一键授权（start 需 admin cookie；callback 公开 + state CSRF）
+        // Discord 数据平台 OAuth：start 须登录，handler 再验管理员；callback 公开 + state CSRF
         .route(
             "/api/platforms/discord/oauth/start",
             get(api::discord::oauth_start).route_layer(from_fn_with_state(
@@ -1354,7 +1350,7 @@ mod security_route_wiring_tests {
             route_has_middleware(src, "/api/admin/updater/prefs", "admin_middleware"),
             "prefs must be registered under admin_middleware"
         );
-        // Do not re-register the broken /defaults alias as the prefs endpoint.
+        // 不得把 prefs 再注册成 /api/admin/updater/defaults
         assert!(
             !src.contains("\"/api/admin/updater/defaults\""),
             "defaults must not be the public prefs route name"

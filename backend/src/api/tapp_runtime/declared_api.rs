@@ -30,7 +30,7 @@ fn declared_http_error(err: DeclaredApiError) -> (StatusCode, Json<Value>) {
         StatusCode::from_u16(err.status_hint()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     match &err {
         DeclaredApiError::Access(access) => {
-            // Preserve ownership adapter body shape used by resolve_accessible_tapp.
+            // AccessDenied/Database/NoAdmin codes differ from tapp_access_http_error; PermissionNotGranted shares the adapter shape.
             match access {
                 TappAccessError::PermissionNotGranted { .. } => (
                     status,
@@ -45,22 +45,28 @@ fn declared_http_error(err: DeclaredApiError) -> (StatusCode, Json<Value>) {
                     Json(json!({
                         "error": access.error_code(),
                         "message": access.message(),
+                        "code": err.code(),
                     })),
                 ),
-                TappAccessError::Database | TappAccessError::NoAdmin => {
-                    (status, Json(json!({ "error": access.error_code() })))
-                }
+                TappAccessError::Database | TappAccessError::NoAdmin => (
+                    status,
+                    Json(json!({
+                        "error": access.error_code(),
+                        "code": err.code(),
+                    })),
+                ),
             }
         }
-        DeclaredApiError::GrantScopeChanged | DeclaredApiError::UnknownPermission { .. } => (
+        DeclaredApiError::GrantScopeChanged
+        | DeclaredApiError::UnknownPermission { .. }
+        | DeclaredApiError::ApiNotFound { .. }
+        | DeclaredApiError::InvalidUser => (
             status,
             Json(json!({
                 "error": err.message(),
                 "code": err.code(),
             })),
         ),
-        DeclaredApiError::ApiNotFound { .. } => (status, Json(json!({ "error": err.message() }))),
-        DeclaredApiError::InvalidUser => (status, Json(json!({ "error": err.message() }))),
     }
 }
 
@@ -242,7 +248,9 @@ pub async fn execute_tapp_api(
     } else {
         Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": result.error })),
+            Json(AppError::fail_json(
+                result.error.unwrap_or_else(|| "request failed".into()),
+            )),
         )))
     }
 }

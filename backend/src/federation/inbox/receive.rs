@@ -234,7 +234,7 @@ pub async fn post_inbox(
         )
     })?;
     validate_inbox_json_budget(&body)
-        .map_err(|error| (StatusCode::BAD_REQUEST, Json(json!({"error": error}))))?;
+        .map_err(|error| (StatusCode::BAD_REQUEST, Json(AppError::public_json(error))))?;
 
     // 解析 Activity JSON
     let activity: serde_json::Value = serde_json::from_slice(&body).map_err(|_| {
@@ -459,7 +459,7 @@ pub async fn post_shared_inbox(
         )
     })?;
     validate_inbox_json_budget(&body)
-        .map_err(|error| (StatusCode::BAD_REQUEST, Json(json!({"error": error}))))?;
+        .map_err(|error| (StatusCode::BAD_REQUEST, Json(AppError::public_json(error))))?;
 
     let activity: serde_json::Value = serde_json::from_slice(&body).map_err(|_| {
         (

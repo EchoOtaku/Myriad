@@ -1201,6 +1201,7 @@
   "discordConnect": "使用 Discord 授权",
   "discordOAuthSuccess": "Discord 数据授权成功，已保存令牌并启用平台",
   "discordOAuthFailed": "Discord 数据授权失败",
+  "discordOAuthAppMissing": "请先在「OAuth 登录」中添加并启用 Discord 应用。数据授权会复用同一 Application。",
   "discordDataCallbackUrl": "数据平台回调 URL（一键授权）",
   "bangumiCredentialMissing": "请为 Bangumi 填写用户名或访问令牌后再启用保存。",
   "bangumiUsernameLabel": "Bangumi 用户名",

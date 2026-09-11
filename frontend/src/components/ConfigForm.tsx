@@ -254,7 +254,9 @@ const ModernConfigForm: React.FC = () => {
     } else if (oauth === 'error' || (oauth && oauth !== 'ok')) {
       const reason = params.get('reason') || 'unknown'
       showMessage(
-        `${t.config.discordOAuthFailed}${reason !== 'unknown' ? ` (${reason})` : ''}`,
+        reason === 'app_not_configured'
+          ? t.config.discordOAuthAppMissing
+          : t.config.discordOAuthFailed,
         'error',
       )
     }
@@ -271,6 +273,7 @@ const ModernConfigForm: React.FC = () => {
     setMobilePane,
     setPlatformFocus,
     showMessage,
+    t.config.discordOAuthAppMissing,
     t.config.discordOAuthFailed,
     t.config.discordOAuthSuccess,
   ])

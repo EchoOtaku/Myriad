@@ -92,9 +92,8 @@ pub fn trusted_proxy_peer_allowlist() -> &'static [ipnet::IpNet] {
 
 /// RFC1918 / loopback / link-local (and IPv6 ULA / link-local).
 ///
-/// Used for weather/geo private-IP heuristics and the pure-function path when
-/// callers pass an empty allowlist explicitly. Production env wiring uses
-/// [`trusted_proxy_peer_allowlist`] (narrow default, not full RFC1918).
+/// Used for weather/geo private-IP heuristics. Empty `TRUST_PROXY_PEERS` uses
+/// [`default_trust_proxy_peer_nets`] (loopback+docker0), not this helper.
 pub fn is_private_or_local(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => v4.is_private() || v4.is_loopback() || v4.is_link_local(),

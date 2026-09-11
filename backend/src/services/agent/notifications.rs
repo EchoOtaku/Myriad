@@ -44,13 +44,13 @@ pub enum NotificationType {
     BrewNewItems,
     /// Brew 订阅源连续抓取失败
     BrewSourceError,
-    /// Tapp 定时任务排队的用户通知
+    /// Tapp 用户通知（`source_key` = `tapp_notification`）
     TappNotification,
     /// 系统更新/回滚任务状态
     UpdaterStatus,
-    /// 系统提示（如能力更新、记忆归档）
+    /// 系统提示（未知字符串也落到这里）
     SystemInfo,
-    /// 升级/澄清请求
+    /// `waiting_for_input` 澄清
     AgentClarification,
     /// 联邦私信 / 群聊新消息
     FederationMessage,

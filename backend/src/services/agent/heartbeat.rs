@@ -532,7 +532,7 @@ impl HeartbeatManager {
         }
     }
 
-    /// 将认领标记为终态。
+    /// 将认领标为 done（不可再认领）或 failed（可立即重认领）。
     ///
     /// - `done`：成功完成，同分钟桶不可再认领
     /// - `failed`：超时/失败，允许后续重认领（见 try_claim）
@@ -590,7 +590,7 @@ impl HeartbeatManager {
 
 // ID / slug
 
-/// 从字符串生成 URL-safe id（小写、非字母数字替换为 `-`）
+/// ASCII 字母数字转小写；其余作分隔符压缩为内部 `-`，首尾 `-` 去掉。
 fn slugify_id(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     let mut prev_dash = false;
@@ -609,7 +609,7 @@ fn slugify_id(raw: &str) -> String {
     out
 }
 
-/// 从任务名生成唯一 id；纯非 ASCII 名称回退到 `task` 前缀
+/// 从任务名 slug 生成唯一 id；slug 为空时用 `task`，冲突则 `{base}-N`。
 fn unique_slug_from_name(name: &str, existing: &[HeartbeatTask]) -> String {
     let base = {
         let s = slugify_id(name);

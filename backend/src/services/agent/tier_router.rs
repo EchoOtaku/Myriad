@@ -1,7 +1,7 @@
 //! ModelTier 智能路由
 //!
-//! 根据能力 ID 决定使用 Standard 还是 Pro 模型。
-//! Pro 模型用于复杂推理、规划和创造性任务；Standard 模型用于数据获取和常规操作。
+//! 根据能力 ID 推断复杂度：Simple 不走 LLM；Medium → Standard；Complex/Critical → Pro。
+//! Pro 用于 Complex/Critical；Standard 用于 Medium。Simple（数据读取等）不调用模型。
 
 use crate::config::ModelTier;
 use std::sync::atomic::{AtomicU32, AtomicU64, AtomicU8, Ordering};
@@ -10,13 +10,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// 任务复杂度等级
 #[derive(Debug, Clone, PartialEq)]
 pub enum TaskComplexity {
-    /// 数据读取、格式化、简单查询 → Standard
+    /// 数据读取、格式化、简单查询 → 不使用 LLM
     Simple,
     /// 内容总结、模式匹配、条件判断 → Standard
     Medium,
     /// 多步推理、创意生成、复杂分析 → Pro
     Complex,
-    /// 规划、决策、评估、纠错 → 强制 Pro
+    /// 规划、决策、评估、纠错 → Pro（与 Complex 相同；熔断可降 Standard）
     Critical,
 }
 
@@ -53,7 +53,7 @@ impl TierRouter {
     /// 会走 `suggest_tier`，落到兜底分支就会被无声地当成消耗 LLM。
     fn complexity_rule(capability_id: &str) -> Option<TaskComplexity> {
         let complexity = match capability_id {
-            // Critical：强制 Pro
+            // Critical：Pro
             // 复杂分析和对比类
             "ai.analyze" | "compare.content" | "ai.recommend" => TaskComplexity::Critical,
 
@@ -73,12 +73,12 @@ impl TierRouter {
             // 图标推荐
             "icon.recommend" => TaskComplexity::Medium,
 
-            // brew：要跑 AI 的两条必须排在 `brew.` 前缀规则之前
+            // `brew.discover` / `brew.generateReadingList` 必须排在 `brew.` 通配之前（后者才 requires_ai）。
             "brew.discover" | "brew.generateReadingList" => TaskComplexity::Medium,
             id if id.starts_with("brew.") => TaskComplexity::Simple,
             // 所有 platform 数据读取与写入
             id if id.starts_with("platform.") => TaskComplexity::Simple,
-            // tapp 交互和理解需要 AI（排在其余 tapp 规则之前）
+            // 精确 ID 须排在其余 tapp 规则之前（仅 `tapp.understand` 跑 AI；ui/interact 不跑 LLM）。
             "tapp.ui" | "tapp.understand" | "tapp.interact" => TaskComplexity::Medium,
             // tapp 查询 / 安装 / 存储 / 窗口操作都不消耗 LLM
             "tapp.list" | "tapp.page" | "tapp.widget" | "tapp.windows" | "tapp.pageContent"
@@ -121,7 +121,7 @@ impl TierRouter {
             "notion.query" => TaskComplexity::Simple,
             // 数据写入
             "storage.set" | "content.write" => TaskComplexity::Simple,
-            // 资源创建（需要一定 AI 能力）
+            // 资源创建（能力表 requires_ai = false）
             "report.create" | "note.create" | "bookmark.save" | "reminder.create" => {
                 TaskComplexity::Medium
             }
@@ -206,8 +206,6 @@ pub enum CircuitState {
 }
 
 /// 简易熔断器
-///
-/// 三个 ModelTier 各一个熔断器。Pro 熔断 → Standard；Standard/Lite 熔断 → None。
 pub struct CircuitBreaker {
     /// 连续失败次数
     failure_count: AtomicU32,

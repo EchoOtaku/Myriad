@@ -43,6 +43,7 @@ pub(crate) fn reject_query_bearer_token(bearer_token: &Option<String>) -> Result
             Json(json!({
                 "success": false,
                 "error": "bearer_token_not_allowed",
+                "code": "bearer_token_not_allowed",
                 "message": "Do not pass X bearer tokens in the query string; configure x_bearer_token server-side"
             })),
         )));
@@ -66,6 +67,7 @@ async fn server_x_credentials(
                 Json(json!({
                     "success": false,
                     "error": "x_bearer_not_configured",
+                    "code": "x_bearer_not_configured",
                     "message": "X bearer token not configured. Set x_bearer_token in platform settings."
                 })),
             ))
@@ -86,6 +88,7 @@ async fn server_x_credentials(
                 Json(json!({
                     "success": false,
                     "error": "x_username_required",
+                    "code": "x_username_required",
                     "message": "username required (query or server x_username config)"
                 })),
             ))
@@ -239,7 +242,8 @@ pub async fn share_to_x(Json(req): Json<ShareToXRequest>) -> (StatusCode, Json<V
             StatusCode::BAD_REQUEST,
             Json(json!({
                 "success": false,
-                "message": "分享内容为空：请提供 text，或 title/summary",
+                "message": "Share text is empty. Provide text, or a title/summary.",
+                "code": "share_text_empty",
             })),
         );
     }
@@ -255,7 +259,7 @@ pub async fn share_to_x(Json(req): Json<ShareToXRequest>) -> (StatusCode, Json<V
             "char_count": composed.chars().count(),
             "max_length": max_len,
             "intent_url": intent_url,
-            "message": "已生成 X 分享链接，请在浏览器打开 intent_url 完成发布",
+            "message": "ok",
         })),
     )
 }

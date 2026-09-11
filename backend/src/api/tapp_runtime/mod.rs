@@ -1,7 +1,7 @@
 //! Tapp API - 第三方应用集成接口
 //!
 //! 模块结构：
-//! - common:      共享基础（缓存、安全、权限、指标）
+//! - common:      共享基础（速率限制 HTTP 适配、安装解析/批准权限校验）
 //! - platform:    平台数据读写 API
 //! - ai_tasks:    服务端治理的 AI 任务 API
 //! - reports:     报告 CRUD API
@@ -10,7 +10,7 @@
 //! - media:       媒体控制 API
 //! - components:  组件注册 API
 //! - shortcuts:   快捷键注册 API
-//! - events:      事件声明与当前 Bridge 通知 API
+//! - events:      清单范围内 SSE 事件流
 //! - metrics:     性能指标 API
 //! - declared_api: Tapp API 声明系统
 
@@ -40,7 +40,7 @@ pub(crate) mod shared_registry;
 mod shortcuts;
 mod ws_ticket;
 
-// 公开 re-export（保持 api::tapp::* 路径兼容）
+// 公开 re-export（`api::tapp_runtime::*` 路径稳定）
 
 // Platform API
 pub use platform::{
@@ -104,7 +104,7 @@ pub use context::{
 // Media API
 pub use media::{media_control, media_status};
 
-// Tripo 3D (TAPP Runtime Grant; admin Merope routes stay separate)
+// Tripo 3D (TAPP Runtime Grant `3d:generate`; admin provider routes are `/api/model3d`)
 pub use model3d::{
     await_task as await_model3d_task, create_task as create_model3d_task,
     get_task as get_model3d_task, status as model3d_status, upload as upload_model3d_file,

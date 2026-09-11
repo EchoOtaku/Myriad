@@ -43,8 +43,8 @@ pub(crate) fn tapp_interaction_wait_question(output: &Value) -> Option<UserQuest
 /// Run a capability with wall-clock timeout and cooperative mid-step cancel.
 ///
 /// Cancel is polled every 500ms while the handler future is in flight so a user
-/// interrupt does not wait for the full step timeout (handlers themselves are
-/// still non-preemptive until they complete or hit their own HTTP timeouts).
+/// interrupt does not wait for the full step timeout. Dropping the pinned future
+/// aborts at the next `.await`.
 pub(crate) async fn execute_capability_with_timeout_and_cancel(
     capability_id: &str,
     action: &str,

@@ -59,7 +59,8 @@ pub async fn submit_task(
                 "error": format!(
                     "Invalid platform. Supported: {}",
                     TASK_SUPPORTED_PLATFORMS.join(", ")
-                )
+                ),
+                "code": "invalid_platform",
             })),
         );
     }
@@ -90,7 +91,8 @@ pub async fn submit_task(
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
                 "success": false,
-                "error": err
+                "error": err,
+                "code": "task_submit_failed",
             })),
         ),
     }

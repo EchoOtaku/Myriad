@@ -44,7 +44,7 @@ pub async fn update_config(
             tracing::info!("✅ Deploy env synced; app credentials stay DB-only");
             json!({
                 "success": true,
-                "message": "Configuration saved successfully! Changes will be applied automatically within a few seconds."
+                "message": "ok"
             })
         }
         Err(e) => {

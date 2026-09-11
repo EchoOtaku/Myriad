@@ -77,7 +77,7 @@ pub async fn update_dashboard_config(
         StatusCode::OK,
         Json(json!({
             "success": true,
-            "message": "Dashboard configuration updated successfully"
+            "message": "ok"
         })),
     )
 }
@@ -120,7 +120,7 @@ pub async fn update_control_panel_config(
         StatusCode::OK,
         Json(json!({
             "success": true,
-            "message": "Control panel configuration updated successfully"
+            "message": "ok"
         })),
     )
 }
@@ -158,7 +158,7 @@ pub async fn update_tapp_window_schemes(
         StatusCode::OK,
         Json(json!({
             "success": true,
-            "message": "Tapp window schemes updated successfully"
+            "message": "ok"
         })),
     )
 }
@@ -300,7 +300,8 @@ pub async fn update_hitokoto_config(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({
                     "success": false,
-                    "message": "Failed to save hitokoto config"
+                    "message": "Failed to save hitokoto config",
+                    "code": "hitokoto_save_failed",
                 })),
             )
         }
@@ -416,7 +417,8 @@ pub async fn update_report_settings(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({
                     "success": false,
-                    "message": "Failed to save report settings"
+                    "message": "Failed to save report settings",
+                    "code": "report_settings_save_failed",
                 })),
             )
         }

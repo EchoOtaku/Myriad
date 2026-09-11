@@ -77,7 +77,7 @@ pub(super) fn build_base_api_router(
                 .route_layer(from_fn(require_installation_capability)),
         )
         // System management routes
-        // /api/system/status 保持公开（监控探活）。reload-config 走 admin_middleware。
+        // /api/system/status 保持公开（监控探活）。reload-config 须管理员。
         .route("/api/system/status", get(api::system::system_status))
         .route(
             "/api/system/reload-config",
@@ -100,7 +100,7 @@ pub(super) fn build_base_api_router(
             "/api/analytics/pageview",
             post(api::analytics::record_pageview),
         )
-        // 公开访客卡片：只有站点总量 + 7 日趋势 + 调用者自己的到达序号，
+        // 公开访客卡片：站点总量 + 5 日趋势 + 调用者自己的到达序号，
         // 页面 / 来源 / 国家 / 停留等细分仍然只走下面的 admin summary
         .route(
             "/api/analytics/visitor",
@@ -142,15 +142,14 @@ pub(super) fn build_base_api_router(
                 middleware::auth::admin_middleware,
             )),
         )
-        // Authentication routes (use wrapper for dynamic DB access)
+        // Authentication routes
         .route("/api/auth/login", post(api::auth_local::local_login))
         .route("/api/auth/me", get(api::auth::get_current_user))
         .route(
             "/api/auth/logout",
             post(api::auth::logout), // 不需要认证中间件
         )
-        // OAuth routes stay registered even if DB is temporarily unavailable,
-        // keeping login/setup surfaces on 503 responses instead of 404s.
+        // OAuth list/login stay registered (no extract::Db) so a missing path is not 404.
         .route("/api/auth/oauth/providers", get(api::oauth::list_providers))
         .route(
             "/api/auth/oauth/{slug}/login",
@@ -317,7 +316,7 @@ pub(super) fn build_base_api_router(
                 from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware),
             ),
         )
-        // Configuration routes (use wrapper for dynamic DB access)
+        // Configuration routes
         .route(
             "/api/config",
             get(api::config::get_config).route_layer(from_fn_with_state(
@@ -456,7 +455,7 @@ pub(super) fn build_base_api_router(
             "/api/ai/recommend-icon",
             post(api::ai_recommend::recommend_icon),
         )
-        // Profile routes (use wrapper for dynamic DB access) - ALWAYS REGISTERED
+        // Profile routes — always registered
         .route("/api/profile/user-info", get(api::profile::get_user_info))
         .route("/api/profile/batch", get(api::profile::get_batch_user_info)); // 批量 API
 
@@ -511,7 +510,7 @@ pub(super) fn build_base_api_router(
         )
         // Public federation media (Note attachments Image/Video) — URLs embedded in AP.
         // Intentionally unauthenticated GET so remote instances can fetch media during
-        // federation. Must stay outside session/auth middleware (see delivery.rs docs).
+        // federation. Must stay outside session/auth middleware.
         .nest_service(
             "/media/federation",
             tower::ServiceBuilder::new()

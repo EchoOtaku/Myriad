@@ -312,7 +312,6 @@ export function useConfigSave(args: {
         if (result?.success === false) {
           throw new Error(result.message || t.config.configSaveFailed)
         }
-        resultMessage = result.message || t.config.configSaved
         const snapshot = JSON.parse(JSON.stringify(config)) as Config
         pendingClean.push(() => setInitialConfig(snapshot))
       }

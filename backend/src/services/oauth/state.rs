@@ -183,7 +183,7 @@ pub fn oauth_tx_cookie_matches(cookie_header: Option<&str>, expected: &str) -> b
     a.len() == b.len() && bool::from(a.ct_eq(b))
 }
 
-/// `verify_state` 失败：never-seen vs TTL-elapsed。`Replay` 是 handler `as_str` 码。
+/// `verify_state` 只返回 `Missing`（畸形/坏签/坏载荷）或 `Expired`（过 `exp`）。未出现过的 nonce 仍成功。`Replay` 变体仅供 handler `as_str`。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConsumeStateError {
     /// Token missing/malformed/bad signature.
@@ -192,8 +192,7 @@ pub enum ConsumeStateError {
     Expired,
     /// Valid signature but nonce already used — used as a redirect/error code
     /// when soft-recover cannot confirm the first attempt succeeded.
-    /// `consume_state` itself returns [`ConsumeOutcome::Replay`] with payload
-    /// instead of this error when the token is fully parseable.
+    /// Not returned by [`verify_state`]. Handlers use `as_str` (`replay`) when [`ConsumeOutcome::Replay`] cannot soft-recover.
     Replay,
 }
 
@@ -275,7 +274,6 @@ impl UsedNonceStore {
 }
 
 /// Used nonces for optional anti-replay within this process.
-/// Value = Instant when the entry may be dropped (exp + small grace).
 static USED_NONCES: Lazy<Arc<RwLock<UsedNonceStore>>> = Lazy::new(|| {
     let store: Arc<RwLock<UsedNonceStore>> = Arc::new(RwLock::new(UsedNonceStore::new()));
     let store_clone = store.clone();
@@ -468,10 +466,10 @@ pub struct VerifiedState {
     stored: StoredState,
     browser_tx: String,
     code_verifier: String,
-    /// Grace TTL for the used-nonce table entry once marked.
+    /// Keep used-nonce until remaining `exp` plus 60s grace.
     remaining_ttl: Duration,
     /// Snapshot of "nonce already in used map" at verify time (hint only).
-    #[allow(dead_code)] // 仅测试调用：这些访问器锁的是 state 单次消费的不变量。
+    #[allow(dead_code)]
     already_used: bool,
 }
 

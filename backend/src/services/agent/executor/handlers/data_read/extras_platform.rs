@@ -422,12 +422,12 @@ async fn ai_understand_music_intent(
     user_input: &str,
 ) -> Result<String, String> {
     let prompt = format!(
-        r#"用户想听的音乐描述是："{}"
+        r#"The user wants music described as: "{}"
 
-请分析用户的音乐需求，然后返回一个最匹配的网易云音乐分类标签。
-可选分类：流行、轻音乐、电子、摇滚、民谣、说唱、古风、古典、爵士、蓝调、ACG、华语、欧美、日语、韩语
+Pick the single best NetEase Cloud Music category tag.
+Valid tags (return one of these exact strings): 流行、轻音乐、电子、摇滚、民谣、说唱、古风、古典、爵士、蓝调、ACG、华语、欧美、日语、韩语
 
-只返回分类名称，不要任何解释。"#,
+Return the tag only, no explanation."#,
         user_input
     );
 

@@ -63,7 +63,7 @@ impl MetadataService {
 
                 tracing::info!("   Detected {} field changes", changed_fields.len());
 
-                // 更新现有记录（使用截断后的数据）
+                // 更新现有记录（完整 `raw_data` 克隆）
                 let mut active_model: platform_metadata::ActiveModel = old_metadata.clone().into();
                 active_model.raw_data = Set(data_to_save.clone());
                 active_model.fetched_at = Set(now);
@@ -87,7 +87,7 @@ impl MetadataService {
                 Ok(metadata_id)
             }
             None => {
-                // 创建新记录（使用截断后的数据）
+                // 创建新记录（完整 `raw_data` 克隆）
                 let new_metadata = platform_metadata::ActiveModel {
                     user_id: Set(user_id),
                     platform_name: Set(platform_name.to_string()),
@@ -124,7 +124,7 @@ impl MetadataService {
 
     /// 检测两个JSON对象之间的变化
     /// 对于大型数据结构，使用迭代而非递归以避免栈溢出
-    /// 优化：对超大数组（如歌曲列表）只检测数量变化，避免逐项比较导致OOM
+    /// 超大数组（len>200）不展开字段路径；等长时仍做整数组相等比较。
     fn detect_changes(&self, old_data: &Value, new_data: &Value) -> Vec<String> {
         let mut changed_fields = Vec::new();
 
@@ -257,13 +257,7 @@ impl MetadataService {
         changed_fields
     }
 
-    /// 记录元数据变化历史
-    /// 彻底优化：历史记录只保存变化字段列表和摘要，不保存完整数据
-    ///
-    /// 设计理念：
-    /// - metadata_history 用于记录"什么字段变化了"，而不是"完整的数据是什么"
-    /// - 完整数据已经保存在 platform_metadata 表中，通过 metadata_id 关联
-    /// - 超大数据集只保存统计摘要，避免 OOM 和数据库膨胀
+    /// 记录元数据变化历史。`< 50KB` 存完整 JSON；`>= 50KB` 只存变化摘要。完整库仍在 `platform_metadata`。
     async fn record_metadata_change(
         &self,
         metadata_id: i32,
@@ -273,8 +267,8 @@ impl MetadataService {
         old_data: Option<Value>,
         new_data: Value,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // 默认不保存完整数据，只保存变化摘要
-        const MAX_SUMMARY_SIZE: usize = 50_000; // 50KB 摘要上限
+        // 输入体积开关：>= 此值只存摘要
+        const MAX_SUMMARY_SIZE: usize = 50_000;
 
         let now = Utc::now().naive_utc();
         let activity = build_activity_payload(

@@ -33,6 +33,11 @@ import {
 } from '@lib/motionShim'
 import { memo, useMemo, useRef } from 'react'
 
+import {
+  isFemaleVoice,
+  isMaleVoice,
+  localizedVoiceDescription,
+} from '../../../services/speechApi'
 import { Spinner } from '../../Spinner'
 import { annotationChrome } from './annotationChrome'
 import {
@@ -157,23 +162,22 @@ export default memo(
         }
       })
 
-      const isMale = (v: (typeof voiceList)[0]) =>
-        v.gender === '男' || v.gender === '男童'
-      const isFemale = (v: (typeof voiceList)[0]) =>
-        v.gender === '女' || v.gender === '女童'
-
       return {
         ultra,
         llm,
         premium,
-        ultraMale: ultra.filter(isMale),
-        ultraFemale: ultra.filter(isFemale),
-        llmMale: llm.filter(isMale),
-        llmFemale: llm.filter(isFemale),
-        premiumMale: premium.filter((v) => v.gender === '男'),
-        premiumFemale: premium.filter((v) => v.gender === '女'),
+        ultraMale: ultra.filter((v) => isMaleVoice(v.gender)),
+        ultraFemale: ultra.filter((v) => isFemaleVoice(v.gender)),
+        llmMale: llm.filter((v) => isMaleVoice(v.gender)),
+        llmFemale: llm.filter((v) => isFemaleVoice(v.gender)),
+        premiumMale: premium.filter((v) => isMaleVoice(v.gender)),
+        premiumFemale: premium.filter((v) => isFemaleVoice(v.gender)),
       }
     }, [voiceList])
+
+    const brewCopy = t.brew as unknown as Record<string, string>
+    const voiceTip = (voice: { id: number; description: string }) =>
+      localizedVoiceDescription(brewCopy, voice)
 
     return (
       // 常驻 DOM，避免切换时重挂 backdrop-blur。用 animate + pointerEvents，不卸载。
@@ -809,7 +813,7 @@ export default memo(
                                           ? 'bg-emerald-500/20 text-emerald-500'
                                           : `${currentTheme.secondary} ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`
                                       }`}
-                                      title={`${voice.description}${t.brew.voiceSuperNaturalSuffix}`}
+                                      title={`${voiceTip(voice)}${t.brew.voiceSuperNaturalSuffix}`}
                                     >
                                       {voice.name}
                                       <span className="ml-1 opacity-70">
@@ -828,7 +832,7 @@ export default memo(
                                           ? 'bg-emerald-500/20 text-emerald-500'
                                           : `${currentTheme.secondary} ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`
                                       }`}
-                                      title={`${voice.description}${voice.emotion_support ? t.brew.voiceEmotionalSuffix : ''}`}
+                                      title={`${voiceTip(voice)}${voice.emotion_support ? t.brew.voiceEmotionalSuffix : ''}`}
                                     >
                                       {voice.name}
                                       {voice.emotion_support && (
@@ -849,7 +853,7 @@ export default memo(
                                           ? 'bg-emerald-500/20 text-emerald-500'
                                           : `${currentTheme.secondary} ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`
                                       }`}
-                                      title={voice.description}
+                                      title={voiceTip(voice)}
                                     >
                                       {voice.name}
                                     </button>
@@ -896,7 +900,7 @@ export default memo(
                                           ? 'bg-emerald-500/20 text-emerald-500'
                                           : `${currentTheme.secondary} ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`
                                       }`}
-                                      title={`${voice.description}${t.brew.voiceSuperNaturalSuffix}`}
+                                      title={`${voiceTip(voice)}${t.brew.voiceSuperNaturalSuffix}`}
                                     >
                                       {voice.name}
                                       <span className="ml-1 opacity-70">
@@ -915,7 +919,7 @@ export default memo(
                                           ? 'bg-emerald-500/20 text-emerald-500'
                                           : `${currentTheme.secondary} ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`
                                       }`}
-                                      title={`${voice.description}${voice.emotion_support ? t.brew.voiceEmotionalSuffix : ''}`}
+                                      title={`${voiceTip(voice)}${voice.emotion_support ? t.brew.voiceEmotionalSuffix : ''}`}
                                     >
                                       {voice.name}
                                       {voice.emotion_support && (
@@ -936,7 +940,7 @@ export default memo(
                                           ? 'bg-emerald-500/20 text-emerald-500'
                                           : `${currentTheme.secondary} ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'}`
                                       }`}
-                                      title={voice.description}
+                                      title={voiceTip(voice)}
                                     >
                                       {voice.name}
                                     </button>

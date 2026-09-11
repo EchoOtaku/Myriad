@@ -44,9 +44,8 @@ fn pre_layer_install_resolves_no_entry_candidate() {
     assert!(installed_layer_entries(&legacy).is_empty());
 }
 
-/// 包结构不符合当前契约不是宿主故障，也不能用 404 表达：前端把资源接口的 404
-/// 当作「再试别的资源路径」的信号，用 404 会让不受支持的包换条路继续进沙箱。
-/// `unsupported_package_structure` 是 CONFLICT，不是 404。
+/// 包结构不符合当前契约不是宿主故障。`unsupported_package_structure` 是 CONFLICT，不是 404。
+/// 前端 getTappResources 对任何 !ok 都抛错，没有旧 `/code` 回退。
 #[test]
 fn unsupported_package_structure_is_conflict_not_404_or_5xx() {
     let error: myriad_error::AppError =
@@ -1763,8 +1762,7 @@ fn validates_declared_api_shape_and_inject_aliases() {
         let result = validate_tapp_manifest(&with_method);
         assert_eq!(result.is_ok(), expected_ok, "method {method}");
         if let Err(message) = result {
-            // The rejection lists the allowed methods so LLM repair loops can
-            // fix the manifest without guessing.
+            // Rejection names an allowed method (`HTTP_METHODS` includes GET).
             assert!(
                 message.contains("GET"),
                 "message must list methods: {message}"

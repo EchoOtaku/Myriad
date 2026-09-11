@@ -49,7 +49,7 @@ const NAME_OUTPUT_BUDGET: OutputBudget = OutputBudget { max_tokens: 4096 };
 /// 带严格校验闸的生成都该自己重试；次数按这一条有多贵来定。
 ///
 /// 起草人设有五道闸（不是 JSON / 丰满度 / 语言 / 文艺腔 / 清洗完整性），导入
-/// 同样五道，视觉设定六道——模型在一次正常生成里踩中一道是常态。不重试就等于
+/// 同样五道；视觉设定常开五道质量闸，新脸再加两道。模型在一次正常生成里踩中一道是常态。不重试就等于
 /// 把重试写成给人看的提示，用户看到的是「不可用，请再试一次」。
 ///
 /// 名字走严格 Lite、几十个 token，抽三次也很快；这三条是 Pro 的长文生成，一次
@@ -1472,9 +1472,7 @@ mod tests {
 
     /// 起名必须是严格 Lite，不能借 Standard 的模型或思考延迟。
     ///
-    /// `create_ai_analyzer_for_tier(Lite)` 在 Lite 模型留空时会静默落到
-    /// Standard 的模型——账单和转圈都按 Standard 走，日志却写 Lite。
-    /// 开关关着再回落到 Standard 调用，是同一件事的第二条路。
+    /// 走 `create_strict_lite_ai_analyzer_with_timeout`。Lite 开关关着工厂返回 `None`，不回落到 Standard。
     #[test]
     fn name_roll_is_strict_lite_with_a_small_payload() {
         let source = include_str!("onboarding_ai.rs");
@@ -1494,7 +1492,7 @@ mod tests {
 
     /// 每一条带校验闸的生成都得自己重试，不能只有名字和视觉设定有。
     ///
-    /// 起草人设五道闸、导入五道、视觉设定六道。少了重试，模型踩中任何一道
+    /// 起草人设五道闸、导入五道；视觉设定常开五道，新脸再加两道。少了重试，模型踩中任何一道
     /// 都会变成界面上的一句「不可用」——那是把系统该做的事写给人看。
     #[test]
     fn every_gated_draft_retries_itself() {
@@ -1520,7 +1518,7 @@ mod tests {
         }
 
         // 重试壳只吃「这一把没写好」。供应商不可用 / 调用失败要立刻上抛，
-        // 否则一个没配好的模型会被重试拖成三倍等待。
+        // 否则一个没配好的模型会被重试拖成两倍等待。
         let shell = source
             .split("async fn retry_unusable")
             .nth(1)
@@ -1546,7 +1544,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("{entry} body"));
             assert!(body.contains("\"rollId\""), "{entry} 重试时不会变");
         }
-        // 视觉设定用 regenerate 而不是 rollId，提示词里两者都认。
+        // 视觉设定每次也换 `rollId`；提示词里 rollId 与 regenerate 都认。
         assert!(visual_design_system_prompt().contains("rollId"));
     }
 

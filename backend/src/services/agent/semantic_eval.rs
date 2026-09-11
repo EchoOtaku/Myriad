@@ -910,7 +910,7 @@ fn motion_semantics_require_grounded_output_and_real_review() {
     assert!(exported["system"]
         .as_str()
         .unwrap()
-        .contains("省略 baseline"));
+        .contains("omit baseline"));
     assert_eq!(input["rig"]["activeBehaviors"][0]["function"], "uncertain");
 }
 

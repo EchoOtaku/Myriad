@@ -151,13 +151,10 @@ pub fn generate_single_step_response(result: &Value) -> Option<String> {
             .map(|a| a.len())
             .unwrap_or(0);
         if results == 0 {
-            return Some("搜索了一圈，没有找到相关结果呢。".to_string());
+            return Some("No matching results.".to_string());
         }
         let query = result.get("query").and_then(|v| v.as_str()).unwrap_or("");
-        return Some(format!(
-            "找到了 {} 条关于「{}」的信息，来看看吧~",
-            results, query
-        ));
+        return Some(format!("Found {results} results for \"{query}\"."));
     }
 
     // 图片生成（信封内层 `url` 或 `imageUrl`）
@@ -170,9 +167,9 @@ pub fn generate_single_step_response(result: &Value) -> Option<String> {
     {
         let prompt = result.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
         if !prompt.is_empty() {
-            return Some(format!("图片生成好了~ 画的是「{}」，希望你喜欢！", prompt));
+            return Some(format!("Image ready: \"{prompt}\"."));
         }
-        return Some("图片已经生成好了，快看看效果吧~".to_string());
+        return Some("The image is ready.".to_string());
     }
 
     None // 调用方再走 `partial_completion` / `completion_message`
@@ -202,14 +199,14 @@ pub async fn announce_plan(
 /// 模板 fallback（AI 不可用时）
 fn plan_announcement_fallback(step_descriptions: &[String]) -> String {
     if step_descriptions.is_empty() {
-        return "让我看看……".to_string();
+        return "Let me take a look…".to_string();
     }
     if step_descriptions.len() == 1 {
-        return format!("我先{}，稍等一下", step_descriptions[0]);
+        return format!("I'll start with {} — one moment.", step_descriptions[0]);
     }
     // 直接用箭头串联步骤，一目了然
     let flow: String = step_descriptions.join(" → ");
-    format!("我的计划：{}\n这就开始", flow)
+    format!("Plan: {flow}\nStarting now.")
 }
 
 /// AI 生成计划说明（流式推送）
@@ -245,7 +242,7 @@ async fn ai_announce_plan(
         "{soul}\n\n{merope}\
          User: \"{user_input}\"\n\n\
          Your plan:\n{steps_list}\n\n\
-         用一两句告诉对方你具体要做什么。按人设说话，用对方的语言。点出具体事项，不要客服开场，不要列表。",
+         In one or two sentences, tell them what you are about to do. Speak in character, in the addressee's language. Name the actual items. No customer-service opening, no list.",
         soul = soul,
         merope = merope_prefix,
         user_input = user_input,
@@ -304,7 +301,7 @@ pub fn describe_parallel_step_start(step_description: &str) -> String {
 
 /// 任务完成
 pub fn completion_message() -> String {
-    "好了，都处理完啦~".to_string()
+    "All done.".to_string()
 }
 
 /// 任务失败
@@ -320,25 +317,22 @@ pub fn execution_error(_err: &str) -> String {
 /// 部分完成
 pub fn partial_completion(success: usize, total: usize, errors: &[String]) -> String {
     let _ = errors;
-    format!(
-        "完成了大部分工作（{}/{}），不过有些步骤没能顺利执行",
-        success, total
-    )
+    format!("Finished most of the work ({success}/{total}), but some steps did not complete.")
 }
 
 /// 需要更多信息
 pub fn need_more_info() -> String {
-    "需要你补充一些信息~".to_string()
+    "More information is needed.".to_string()
 }
 
 /// 正在执行
 pub fn in_progress(name: &str) -> String {
-    format!("正在处理「{}」...", name)
+    format!("Working on {name}…")
 }
 
 /// saved recipe 完成
 pub fn recipe_completed(name: &str) -> String {
-    format!("「{}」执行完成~", name)
+    format!("{name} finished.")
 }
 
 /// saved recipe 失败
@@ -360,9 +354,9 @@ pub fn summarize_step_output(output: &Value) -> Option<String> {
         {
             let prompt = obj.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
             if !prompt.is_empty() {
-                return Some(format!("生成图片: {}", prompt));
+                return Some(format!("Generating an image: {prompt}"));
             }
-            return Some("图片生成完成".to_string());
+            return Some("Image generated".to_string());
         }
         if let Some(text) = inner.as_str().filter(|s| !s.is_empty()) {
             let chars: Vec<char> = text.chars().collect();
@@ -399,13 +393,13 @@ pub fn summarize_step_output(output: &Value) -> Option<String> {
         }
         // 数量统计
         if let Some(count) = obj.get("total").and_then(|v| v.as_i64()) {
-            return Some(format!("获取了 {} 条结果", count));
+            return Some(format!("Got {count} results"));
         }
         if let Some(arr) = obj.get("feeds").and_then(|v| v.as_array()) {
-            return Some(format!("找到 {} 个订阅源", arr.len()));
+            return Some(format!("Found {} feeds", arr.len()));
         }
         if let Some(arr) = obj.get("items").and_then(|v| v.as_array()) {
-            return Some(format!("获取了 {} 条数据", arr.len()));
+            return Some(format!("Got {} items", arr.len()));
         }
         // AI 摘要
         if let Some(summary) = obj.get("aiSummary").and_then(|v| v.as_str()) {
@@ -419,9 +413,12 @@ pub fn summarize_step_output(output: &Value) -> Option<String> {
         if let Some(results) = obj.get("results").and_then(|v| v.as_array()) {
             let query = obj.get("query").and_then(|v| v.as_str()).unwrap_or("");
             if !query.is_empty() {
-                return Some(format!("搜索「{}」得到 {} 条结果", query, results.len()));
+                return Some(format!(
+                    "Search \"{query}\" returned {} results",
+                    results.len()
+                ));
             }
-            return Some(format!("搜索得到 {} 条结果", results.len()));
+            return Some(format!("Search returned {} results", results.len()));
         }
         // 通用：显示有意义的字段名
         let meaningful_keys: Vec<&str> = obj
@@ -431,12 +428,12 @@ pub fn summarize_step_output(output: &Value) -> Option<String> {
             .take(3)
             .collect();
         if !meaningful_keys.is_empty() {
-            return Some(format!("已获取数据 ({})", meaningful_keys.join(", ")));
+            return Some(format!("Loaded data ({})", meaningful_keys.join(", ")));
         }
-        return Some("处理完成".to_string());
+        return Some("Done.".to_string());
     }
     if let Some(arr) = output.as_array() {
-        return Some(format!("获取了 {} 条记录", arr.len()));
+        return Some(format!("Got {} records", arr.len()));
     }
     if let Some(s) = output.as_str() {
         let chars: Vec<char> = s.chars().collect();
@@ -447,9 +444,9 @@ pub fn summarize_step_output(output: &Value) -> Option<String> {
     }
     if let Some(b) = output.as_bool() {
         return Some(if b {
-            "操作成功".to_string()
+            "Succeeded".to_string()
         } else {
-            "操作未成功".to_string()
+            "Failed".to_string()
         });
     }
     None
@@ -490,7 +487,7 @@ fn extract_step_text(output: &Value) -> String {
         .filter(|s| !s.is_empty())
     {
         parts.push(format!(
-            "生成了图像提示词: {}",
+            "Generated image prompt: {}",
             prompt.chars().take(200).collect::<String>()
         ));
     }
@@ -502,7 +499,7 @@ fn extract_step_text(output: &Value) -> String {
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
     {
-        parts.push(format!("已生成图片: {}", url));
+        parts.push(format!("Generated image: {url}"));
     }
 
     // 搜索结果：只取数量和查询词
@@ -510,9 +507,12 @@ fn extract_step_text(output: &Value) -> String {
         if let Some(results) = output.get("results").and_then(|v| v.as_array()) {
             let query = output.get("query").and_then(|v| v.as_str()).unwrap_or("");
             if !query.is_empty() {
-                parts.push(format!("搜索「{}」得到 {} 条结果", query, results.len()));
+                parts.push(format!(
+                    "Search \"{query}\" returned {} results",
+                    results.len()
+                ));
             } else {
-                parts.push(format!("获取了 {} 条记录", results.len()));
+                parts.push(format!("Got {} records", results.len()));
             }
         }
     }
@@ -568,16 +568,16 @@ async fn ai_summarize(
 
     let prompt = format!(
         "{soul}\n\n{merope}\
-         用户的请求：「{user_request}」\n\n\
-         你为了回答这个请求，执行了多个步骤，以下是各步骤产出的原始素材：\n\
+         The user's request: \"{user_request}\"\n\n\
+         You ran several steps to answer it. Raw material from those steps:\n\
          {steps_text}\n\n\
-         现在请基于这些素材，直接回复用户。按人设说话，禁止输出 AI 味。要求：\n\
-         - 直接回答请求，不要「以下是…」「根据…」这类前缀\n\
-         - 素材只作参考，写成这个人会说的话，不要照搬原文\n\
-         - 长度跟内容走：简单结果一两句，丰富内容可以几段\n\
-         - 点出具体名字、数字、事实\n\
-         - 用对方的语言；不要提步骤编号、JSON 或技术细节\n\
-         - 如果生成了图片，在末尾自然提一下",
+         Reply to the user from this material. Speak in character. No AI flavor.\n\
+         - Answer the request. No prefixes like \"here is…\" or \"based on…\"\n\
+         - Use the material as reference. Write what this person would say; do not copy it verbatim\n\
+         - Length follows the content: a simple result is one or two sentences; richer results can be a few paragraphs\n\
+         - Name specific people, numbers, and facts\n\
+         - Use the addressee's language. Do not mention step numbers, JSON, or technical details\n\
+         - If an image was generated, mention it naturally at the end",
         soul = soul,
         merope = merope_prefix,
         user_request = user_request,
@@ -724,10 +724,7 @@ fn smart_fallback(step_outputs: &[StepOutput<'_>]) -> String {
         })
         .count();
     if image_count > 0 {
-        parts.push(format!(
-            "已为你生成 {} 张图片，点击可查看大图~",
-            image_count
-        ));
+        parts.push(format!("Generated {} image(s). Tap to view.", image_count));
     }
 
     if parts.is_empty() {
@@ -743,22 +740,22 @@ fn smart_fallback(step_outputs: &[StepOutput<'_>]) -> String {
 
 /// 默认问候
 pub fn greeting() -> String {
-    "你好！有什么我可以帮你的吗？".to_string()
+    "Hi! How can I help?".to_string()
 }
 
 /// 正在理解请求
 pub fn understanding_request() -> String {
-    "正在理解你的请求...".to_string()
+    "Understanding your request…".to_string()
 }
 
 /// 正在规划步骤
 pub fn planning_steps() -> String {
-    "正在规划执行步骤...".to_string()
+    "Planning steps…".to_string()
 }
 
 /// 进度完成
 pub fn done_status() -> String {
-    "完成".to_string()
+    "Done.".to_string()
 }
 
 /// 不支持的操作
@@ -768,40 +765,40 @@ pub fn unsupported_operation() -> String {
 
 /// 需要更多信息（详细版，用于 Clarify 分流）
 pub fn need_clarification() -> String {
-    "我需要更多信息来理解你的请求".to_string()
+    "I need more information to understand that.".to_string()
 }
 
 /// 未能成功执行
 pub fn not_executed() -> String {
-    "未能成功执行".to_string()
+    "Could not finish that.".to_string()
 }
 
 /// 默认建议
 pub fn default_suggestions() -> Vec<String> {
     vec![
-        "搜索最新的科技新闻".to_string(),
-        "查看我的 Steam 游戏".to_string(),
+        "Search the latest tech news".to_string(),
+        "Look at my Steam games".to_string(),
     ]
 }
 
 /// 升级策略进度
 pub fn escalation_status(hint: &str) -> String {
-    format!("正在升级策略：{}", hint)
+    format!("Trying another approach: {hint}")
 }
 
 /// 升级重试
 pub fn escalation_retry() -> String {
-    "升级重试".to_string()
+    "Retrying with another approach".to_string()
 }
 
 /// 单参数提问
 pub fn ask_single_param(desc: &str) -> String {
-    format!("请告诉我{}", desc)
+    format!("Please tell me {desc}")
 }
 
 /// 正在执行预设任务
 pub fn executing_preset(name: &str) -> String {
-    format!("正在执行预设任务：{}", name)
+    format!("Running preset: {name}")
 }
 
 // ─────────────────────────────────────────────
@@ -825,36 +822,36 @@ pub fn confirmation_not_found() -> String {
 
 /// 取消后建议
 pub fn cancel_suggestions() -> Vec<String> {
-    vec!["查看其他操作".to_string()]
+    vec!["See other actions".to_string()]
 }
 
 /// 重新执行建议
 pub fn retry_suggestions() -> Vec<String> {
-    vec!["重新执行".to_string()]
+    vec!["Try again".to_string()]
 }
 
 /// 重新发起操作建议
 pub fn retry_operation_suggestions() -> Vec<String> {
-    vec!["重新发起操作".to_string()]
+    vec!["Start over".to_string()]
 }
 
 /// 确认对话框建议按钮
 pub fn confirmation_suggestions() -> Vec<String> {
     vec![
-        "确认执行".to_string(),
-        "取消操作".to_string(),
-        "查看详情".to_string(),
+        "Confirm".to_string(),
+        "Cancel".to_string(),
+        "Details".to_string(),
     ]
 }
 
 /// 风险等级前缀
 pub fn risk_prefix(level: &str) -> &'static str {
     match level {
-        "critical" => "⚠️ 危险操作",
-        "high" => "🔴 高风险操作",
-        "medium" => "🟡 敏感操作",
-        "low" => "🟢 需确认操作",
-        _ => "操作确认",
+        "critical" => "⚠️ Dangerous action",
+        "high" => "🔴 High-risk action",
+        "medium" => "🟡 Sensitive action",
+        "low" => "🟢 Needs confirmation",
+        _ => "Confirm action",
     }
 }
 
@@ -862,50 +859,50 @@ pub fn risk_prefix(level: &str) -> &'static str {
 pub fn risk_impact(level: &str) -> Vec<String> {
     match level {
         "critical" => vec![
-            "⚠️ 此操作为系统级敏感操作".to_string(),
-            "⚠️ 操作不可逆，请谨慎确认".to_string(),
+            "⚠️ This is a system-level sensitive action.".to_string(),
+            "⚠️ This cannot be undone. Confirm carefully.".to_string(),
         ],
         "high" => vec![
-            "🔴 此操作可能导致数据丢失".to_string(),
-            "🔴 操作完成后无法撤销".to_string(),
+            "🔴 This may delete data.".to_string(),
+            "🔴 This cannot be undone.".to_string(),
         ],
-        "medium" => vec!["🟡 此操作将修改数据或系统配置".to_string()],
-        "low" => vec!["🟢 此操作影响较小，可以恢复".to_string()],
+        "medium" => vec!["🟡 This will change data or site configuration.".to_string()],
+        "low" => vec!["🟢 This has a small impact and can be reversed.".to_string()],
         _ => vec![],
     }
 }
 
 /// 目标平台描述
 pub fn target_platform(platform: &str) -> String {
-    format!("目标平台: {}", platform)
+    format!("Target platform: {platform}")
 }
 
 /// 目标 URL 描述
 pub fn target_url(url: &str) -> String {
-    format!("目标 URL: {}", url)
+    format!("Target URL: {url}")
 }
 
 /// 确认对话框完整消息
 pub fn confirmation_dialog(prefix: &str, step_names: &str, impact_text: &str) -> String {
     format!(
-        "{}: 即将执行 {}。\n\n{}\n\n请确认是否继续执行？",
+        "{}: about to run {}.\n\n{}\n\nContinue?",
         prefix, step_names, impact_text
     )
 }
 
 /// 确认选项 — 是
 pub fn yes_label() -> String {
-    "是".to_string()
+    "Yes".to_string()
 }
 
 /// 确认选项 — 否
 pub fn no_label() -> String {
-    "否".to_string()
+    "No".to_string()
 }
 
 /// 确认消息默认格式
 pub fn will_execute(name: &str) -> String {
-    format!("此操作将执行 {}", name)
+    format!("This will run {name}")
 }
 
 // ─────────────────────────────────────────────
@@ -948,17 +945,17 @@ pub fn step_error_title() -> String {
 
 /// 订阅成功
 pub fn subscribe_success(name: &str, count: usize) -> String {
-    format!("成功订阅「{}」，已获取 {} 篇文章", name, count)
+    format!("Subscribed to {name} and loaded {count} articles")
 }
 
 /// 内容已保存
 pub fn content_saved(title: &str) -> String {
-    format!("内容已保存: {}", title)
+    format!("Saved: {title}")
 }
 
 /// 刷新任务已提交
 pub fn refresh_submitted(platform: &str) -> String {
-    format!("刷新任务已提交: {}", platform)
+    format!("Refresh queued: {platform}")
 }
 
 /// 刷新提交失败
@@ -968,32 +965,32 @@ pub fn refresh_submit_failed(_err: &str) -> String {
 
 /// 刷新提交汇总
 pub fn refresh_submitted_summary(submitted: usize, total: usize) -> String {
-    format!("已提交 {}/{} 个平台的刷新任务", submitted, total)
+    format!("Queued refresh for {submitted}/{total} platforms")
 }
 
 /// 提醒已创建
 pub fn reminder_created(title: &str) -> String {
-    format!("提醒已创建: {}", title)
+    format!("Reminder created: {title}")
 }
 
 /// 提醒时间
 pub fn reminder_time(datetime: &str) -> String {
-    format!("将在 {} 提醒你", datetime)
+    format!("Will remind you at {datetime}")
 }
 
 /// 笔记已保存
 pub fn note_saved(title: &str) -> String {
-    format!("笔记已保存: {}", title)
+    format!("Note saved: {title}")
 }
 
 /// 书签已保存
 pub fn bookmark_saved(title: &str) -> String {
-    format!("书签已保存: {}", title)
+    format!("Bookmark saved: {title}")
 }
 
 /// 定时任务已创建
 pub fn scheduled_task_created(name: &str) -> String {
-    format!("定时任务已创建: {}", name)
+    format!("Scheduled task created: {name}")
 }
 
 /// 网络搜索回退结果
@@ -1023,7 +1020,7 @@ pub fn playlist_not_found() -> String {
 
 /// 找到歌单
 pub fn playlist_found(count: usize, keyword: &str) -> String {
-    format!("找到 {} 个「{}」相关歌单", count, keyword)
+    format!("Found {count} playlists for \"{keyword}\"")
 }
 
 /// 未找到订阅源或作者
@@ -1033,17 +1030,17 @@ pub fn feed_ambiguous(_name: &str) -> String {
 
 /// 订阅源建议
 pub fn feed_hint(suggestions: &str) -> String {
-    format!("你是不是想找: {}?", suggestions)
+    format!("Did you mean: {suggestions}?")
 }
 
 /// 搜索结果
 pub fn search_results_found(count: usize, query: &str) -> String {
-    format!("找到 {} 条与 '{}' 相关的结果", count, query)
+    format!("Found {count} results for '{query}'")
 }
 
 /// 活跃平台
 pub fn active_platforms(count: usize) -> String {
-    format!("活跃在 {} 个平台", count)
+    format!("Active on {count} platforms")
 }
 
 /// API Key 未配置
@@ -1073,30 +1070,29 @@ pub fn subscribe_all_failed(_tried: usize, _last_error: &str) -> String {
 
 /// 搜索空提示
 pub fn search_empty_hint() -> String {
-    "请提供搜索关键词。系统支持搜索的内容包括：Steam 游戏、Bilibili 追番、Bangumi 收藏、MyAnimeList 列表、GitHub 仓库、网易云音乐播放记录。".to_string()
+    "Enter a search term. Search covers Steam games, Bilibili following, Bangumi collections, MyAnimeList lists, GitHub repositories, and NetEase listening history.".to_string()
 }
 
 /// 搜索无结果
 pub fn search_no_results(query: &str) -> String {
     format!(
-        "在你的数据中没有找到与 '{}' 相关的内容。\n\n系统目前只能搜索你已同步的平台数据：\n- Steam 游戏库\n- Bilibili 追番\n- Bangumi 收藏\n- MyAnimeList 动画/漫画列表\n- GitHub 仓库\n- 网易云音乐\n\n如果你想搜索网络新闻或其他外部内容，这个功能暂不支持。",
-        query
+        "Nothing matching '{query}' was found in your synced data.\n\nSearch only covers:\n- Steam library\n- Bilibili following\n- Bangumi collections\n- MyAnimeList anime/manga\n- GitHub repositories\n- NetEase Music\n\nWeb news and other external search are not supported here."
     )
 }
 
 /// 数据返回摘要
 pub fn data_returned(count: usize) -> String {
-    format!("返回 {} 条数据", count)
+    format!("Returned {count} items")
 }
 
 /// 处理记录摘要
 pub fn records_processed(count: u64) -> String {
-    format!("处理了 {} 条记录", count)
+    format!("Processed {count} records")
 }
 
 /// 字段返回摘要
 pub fn fields_returned(count: usize) -> String {
-    format!("返回 {} 个字段", count)
+    format!("Returned {count} fields")
 }
 
 /// 操作成功/失败（布尔结果）
@@ -1136,7 +1132,7 @@ mod tests {
             "totalResults": 0
         }))
         .expect("empty copy");
-        assert!(empty.contains("没有找到"));
+        assert!(empty.contains("No matching"));
     }
 
     #[test]
@@ -1177,7 +1173,7 @@ mod tests {
             "contextProvenance": []
         }))
         .expect("image copy");
-        assert!(text.contains("图片"));
+        assert!(text.to_ascii_lowercase().contains("image"));
     }
 
     #[test]
@@ -1219,7 +1215,7 @@ mod tests {
         ];
         let text = smart_fallback(&steps);
         assert!(text.contains("分析正文"));
-        assert!(text.contains("1 张图片"));
+        assert!(text.contains("1 image"));
     }
 
     #[test]

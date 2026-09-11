@@ -533,7 +533,7 @@ pub fn generate_suggested_actions(elements: &Value, _functions: &[Value]) -> Vec
                     "action": format!("click_{}", action),
                     "target": id,
                     "description": format!(
-                        "点击 {} 按钮",
+                        "Click the {} button",
                         if !title.is_empty() { title } else { id }
                     ),
                     "command": format!("document.getElementById('{}').click()", id)
@@ -554,7 +554,7 @@ pub fn generate_suggested_actions(elements: &Value, _functions: &[Value]) -> Vec
                 actions.push(json!({
                     "action": format!("input_{}", purpose),
                     "target": id,
-                    "description": format!("在 {} 中输入内容", id),
+                    "description": format!("Type into {}", id),
                     "command": format!("document.getElementById('{}').value = '{{text}}'", id)
                 }));
             }
@@ -607,39 +607,39 @@ pub fn get_page_name(path: &str, page_type: &str) -> String {
     let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
 
     match page_type {
-        "home" => "首页".to_string(),
-        "library" => "资料库".to_string(),
+        "home" => "Home".to_string(),
+        "library" => "Library".to_string(),
         "platform" => {
             if let Some(platform) = segments.get(1).or(segments.first()) {
                 match platform.to_lowercase().as_str() {
-                    "bilibili" | "bili" => "哔哩哔哩".to_string(),
-                    "steam" => "Steam 游戏".to_string(),
-                    "github" => "GitHub 活动".to_string(),
-                    "netease" => "网易云音乐".to_string(),
-                    _ => format!("{} 数据", platform),
+                    "bilibili" | "bili" => "Bilibili".to_string(),
+                    "steam" => "Steam games".to_string(),
+                    "github" => "GitHub activity".to_string(),
+                    "netease" => "NetEase Music".to_string(),
+                    _ => format!("{} data", platform),
                 }
             } else {
-                "平台数据".to_string()
+                "Platform data".to_string()
             }
         }
         "brew" => {
             if segments.len() > 1 {
-                "订阅详情".to_string()
+                "Feed detail".to_string()
             } else {
-                "信息聚合".to_string()
+                "Brew".to_string()
             }
         }
         "tapp" => {
             if segments.len() > 1 {
-                "Tapp 详情".to_string()
+                "Tapp detail".to_string()
             } else {
-                "Tapp 工坊".to_string()
+                "Tapp apps".to_string()
             }
         }
-        "report" => "数据报告".to_string(),
-        "settings" => "系统设置".to_string(),
-        "profile" => "个人中心".to_string(),
-        _ => "页面".to_string(),
+        "report" => "Reports".to_string(),
+        "settings" => "Settings".to_string(),
+        "profile" => "Profile".to_string(),
+        _ => "Page".to_string(),
     }
 }
 
@@ -696,32 +696,32 @@ pub fn extract_route_context(path: &str, params: &HashMap<String, Value>) -> Val
 
 /// Build breadcrumb labels for a path.
 pub fn build_breadcrumb(path: &str) -> Vec<String> {
-    let mut breadcrumb = vec!["首页".to_string()];
+    let mut breadcrumb = vec!["Home".to_string()];
     let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
 
     for (i, segment) in segments.iter().enumerate() {
         let name = match segment.to_lowercase().as_str() {
-            "platform" | "platforms" => "平台数据".to_string(),
-            "bilibili" | "bili" => "哔哩哔哩".to_string(),
+            "platform" | "platforms" => "Platform data".to_string(),
+            "bilibili" | "bili" => "Bilibili".to_string(),
             "steam" => "Steam".to_string(),
             "github" => "GitHub".to_string(),
-            "netease" => "网易云音乐".to_string(),
-            "brew" => "信息聚合".to_string(),
-            "tapp" | "tapps" => "Tapp 工坊".to_string(),
-            "report" | "reports" => "数据报告".to_string(),
-            "settings" => "设置".to_string(),
-            "profile" => "个人中心".to_string(),
-            "detail" | "details" => "详情".to_string(),
+            "netease" => "NetEase Music".to_string(),
+            "brew" => "Brew".to_string(),
+            "tapp" | "tapps" => "Tapp apps".to_string(),
+            "report" | "reports" => "Reports".to_string(),
+            "settings" => "Settings".to_string(),
+            "profile" => "Profile".to_string(),
+            "detail" | "details" => "Detail".to_string(),
             _ => {
                 if i == segments.len() - 1 && segment.len() > 8 {
-                    "详情".to_string()
+                    "Detail".to_string()
                 } else {
                     segment.to_string()
                 }
             }
         };
 
-        if name != "首页" {
+        if name != "Home" {
             breadcrumb.push(name);
         }
     }
@@ -752,40 +752,40 @@ pub fn normalize_music_control(
             },
             value: None,
             message: match action {
-                "play" => "正在播放音乐",
-                "pause" => "已暂停播放",
-                _ => "切换播放状态",
+                "play" => "Playing music",
+                "pause" => "Paused",
+                _ => "Toggled playback",
             },
         }),
         "next" => Ok(MusicFrontendAction {
             action: "next".into(),
             value: None,
-            message: "切换到下一首",
+            message: "Skipped to next track",
         }),
         "previous" | "prev" => Ok(MusicFrontendAction {
             action: "previous".into(),
             value: None,
-            message: "切换到上一首",
+            message: "Skipped to previous track",
         }),
         "volume" => Ok(MusicFrontendAction {
             action: "volume".into(),
             value: Some(json!(volume.unwrap_or(50.0) / 100.0)),
-            message: "已调节音量",
+            message: "Volume adjusted",
         }),
         "mute" => Ok(MusicFrontendAction {
             action: "mute".into(),
             value: Some(json!(true)),
-            message: "已静音",
+            message: "Muted",
         }),
         "unmute" => Ok(MusicFrontendAction {
             action: "mute".into(),
             value: Some(json!(false)),
-            message: "已取消静音",
+            message: "Unmuted",
         }),
         "seek" => Ok(MusicFrontendAction {
             action: "seek".into(),
             value: Some(json!(position.unwrap_or(0.0))),
-            message: "已跳转播放位置",
+            message: "Seeked",
         }),
         _ => Err(format!("Unknown music control action: {}", action)),
     }
@@ -950,9 +950,9 @@ mod tests {
         assert_eq!(detect_page_type("/home"), "home");
         let prev = normalize_music_control("prev", None, None).unwrap();
         assert_eq!(prev.action, "previous");
-        assert_eq!(get_page_name("/platform/steam", "platform"), "Steam 游戏");
+        assert_eq!(get_page_name("/platform/steam", "platform"), "Steam games");
         let crumbs = build_breadcrumb("/platform/steam");
-        assert!(crumbs.contains(&"首页".to_string()));
+        assert!(crumbs.contains(&"Home".to_string()));
         assert!(crumbs.contains(&"Steam".to_string()));
 
         let ctx = extract_route_context(

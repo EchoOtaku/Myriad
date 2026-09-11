@@ -20,7 +20,7 @@ pub(super) fn validate_playground_project(project: &PlaygroundProject) -> Result
     if manifest.version != "1.0.0" {
         return Err("Playground project version must remain 1.0.0".to_string());
     }
-    // Playground 本轮只落固定三文件；作者要拆更多文件走 CLI 或手写包。
+    // Playground 固定五条入口路径；作者要拆更多文件走 CLI 或手写包。
     let core = manifest
         .core
         .as_ref()
@@ -769,9 +769,8 @@ pub(super) fn validate_sdk_namespaces(fields: &[(&str, &str)]) -> Result<(), Str
 
 /// Host capabilities available in temporary Playground preview only.
 ///
-/// Manifest `permissions` are install-time declarations. Preview must never
-/// treat the full list as granted host capabilities — only this allowlist may
-/// be exercised, and only when also declared. Keep in sync with frontend
+/// Manifest `permissions` are declared names. Preview only warns on names
+/// outside this allowlist; it does not grant. Keep in sync with frontend
 /// `PREVIEW_PERMISSIONS` in `frontend/src/tapp/utils/previewGrants.ts`.
 pub(super) const PREVIEW_PERMISSIONS: &[&str] = &[
     "storage:read",
@@ -809,7 +808,7 @@ pub(super) fn truncate_utf8(value: &str, max_bytes: usize) -> &str {
     &value[..end]
 }
 
-// api_error lives in types_generate (sibling submodule)
+// api_error lives in types_generate (parent module via #[path])
 
 #[cfg(test)]
 mod tests {

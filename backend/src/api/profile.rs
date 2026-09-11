@@ -363,7 +363,11 @@ async fn build_user_info(db: &DatabaseConnection) -> (StatusCode, Value) {
             tracing::warn!(%error, "Site owner lookup failed");
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
-                json!({ "success": false, "message": "Site owner is not configured" }),
+                json!({
+                    "success": false,
+                    "message": "Site owner is not configured",
+                    "code": "site_owner_missing",
+                }),
             );
         }
     };
@@ -375,7 +379,11 @@ async fn build_user_info(db: &DatabaseConnection) -> (StatusCode, Value) {
             tracing::warn!(%error, user_id, "Profile text resolve failed");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                json!({ "success": false, "message": "Failed to resolve profile text" }),
+                json!({
+                    "success": false,
+                    "message": "Failed to resolve profile text",
+                    "code": "profile_text_load_failed",
+                }),
             );
         }
     };
@@ -607,7 +615,11 @@ async fn library_page_response(
         Err(message) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(json!({ "success": false, "message": message })),
+                Json(json!({
+                    "success": false,
+                    "message": message,
+                    "code": "bad_request",
+                })),
             )
         }
     };
@@ -838,7 +850,7 @@ pub async fn get_library_data(
                             }
                             // 确保有al字段（专辑信息）
                             if !obj.contains_key("al") && !obj.contains_key("album") {
-                                obj.insert("al".to_string(), json!({"name": "未知专辑"}));
+                                obj.insert("al".to_string(), json!({"name": ""}));
                             }
                             // 确保有dt字段（时长毫秒）
                             if !obj.contains_key("dt") && !obj.contains_key("duration") {
@@ -1040,7 +1052,7 @@ pub async fn get_library_data(
                             }
                             // 确保有al字段（专辑信息）
                             if !obj.contains_key("al") && !obj.contains_key("album") {
-                                obj.insert("al".to_string(), json!({"name": "未知专辑"}));
+                                obj.insert("al".to_string(), json!({"name": ""}));
                             }
                             // 确保有dt字段（时长毫秒）
                             if !obj.contains_key("dt") && !obj.contains_key("duration") {

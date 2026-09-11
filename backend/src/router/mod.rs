@@ -96,8 +96,8 @@ pub(crate) async fn start_unified_server(config: AppConfig) -> anyhow::Result<()
     }
 
     // Build the unified API router. When a DB is available, wire `AppState` once
-    // so `extract::Db` resolves from state. Config-mode (no DB) keeps a
-    // state-less setup surface only.
+    // so `extract::Db` resolves from state. Config-mode (no DB) is setup + health
+    // + system status + local login/me/logout + OAuth bootstrap.
     let api_router = if let Some(db) = db_opt {
         let app_state = crate::state::AppState::from_shared(
             db,
@@ -108,7 +108,7 @@ pub(crate) async fn start_unified_server(config: AppConfig) -> anyhow::Result<()
             .merge(authenticated::build_authenticated_router(app_state.clone()))
             .with_state(app_state)
     } else {
-        // Setup / health only — no extract::Db routes (they require AppState).
+        // Config-mode router — no extract::Db routes (they require AppState).
         base::build_config_mode_router()
     };
 
@@ -125,24 +125,20 @@ pub(crate) async fn start_unified_server(config: AppConfig) -> anyhow::Result<()
         .layer(from_fn(middleware::rate_limit::rate_limit_middleware)) // Rate limiting
         // Apply security headers after the complete route graph is assembled.
         .layer(from_fn(middleware::security::security_headers_middleware))
-        // Global 50 MiB default for most routes. Nested federation routers set
-        // their own DefaultBodyLimit from `federation::limits` (inbox 8 MiB,
-        // authenticated 24 MiB) which may use a different budget than this outer layer —
-        // see `federation::limits` tests. Do not assume 50 MiB caps public inbox.
+        // Global 50 MiB default for most routes. Nested federation uses from_fn
+        // live_inbox_body_limit / live_authenticated_body_limit, not DefaultBodyLimit.
         .layer(axum::extract::DefaultBodyLimit::max(50 * 1024 * 1024))
         .layer(cors)
         .layer(TraceLayer::new_for_http());
 
-    // Convert to Router<()> by applying route matching
+    // SPA fallback vs API-only depending on frontend_dist_path.
     let app: Router = if std::path::Path::new(&config.frontend_dist_path).exists() {
         tracing::info!("Serving frontend from: {}", config.frontend_dist_path);
         // SPA fallback: 未匹配的浏览器路由 → index.html（React Router）。
         // 重要：ServeDir 对任何非 GET/HEAD 请求直接返回 405，所以 /api/* 绝不能落到
         // 静态文件服务——未注册的 POST 应是可读的 JSON 404，不是 405。
         let index_html = std::path::Path::new(&config.frontend_dist_path).join("index.html");
-        // CompressionLayer 包住 ServeDir。默认谓词：DefaultPredicate = SizeAbove ∧ 非 gRPC ∧ 非图片 ∧ 非 SSE，
-        // 所以 text/event-stream（agent 流式）和已压缩的图片/字体不会被二次处理；
-        // 压缩响应还会自动补 `Vary: accept-encoding`，与下面的 Cache-Control 分层共存。
+        // CompressionLayer 包住 ServeDir。默认谓词跳过图片（除 SVG）和 SSE；agent SSE 在 API 路由，不进这层。
         let serve_dir = tower::Layer::layer(
             &CompressionLayer::new(),
             ServeDir::new(&config.frontend_dist_path).not_found_service(ServeFile::new(index_html)),

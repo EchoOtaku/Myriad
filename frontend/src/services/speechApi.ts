@@ -44,6 +44,32 @@ export interface VoiceInfo {
   emotion_support: boolean
 }
 
+/** Accepts current machine values and leftover Chinese labels. */
+export function isMaleVoice(gender: string): boolean {
+  return (
+    gender === 'male' ||
+    gender === 'boy' ||
+    gender === '男' ||
+    gender === '男童'
+  )
+}
+
+export function isFemaleVoice(gender: string): boolean {
+  return (
+    gender === 'female' ||
+    gender === 'girl' ||
+    gender === '女' ||
+    gender === '女童'
+  )
+}
+
+export function localizedVoiceDescription(
+  catalog: Record<string, string>,
+  voice: Pick<VoiceInfo, 'id' | 'description'>,
+): string {
+  return catalog[`voiceDesc.${voice.id}`] || voice.description
+}
+
 export interface TTSRequest {
   text: string
   voice_type?: number

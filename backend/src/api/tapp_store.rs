@@ -125,7 +125,7 @@ pub fn create_tapp_routes(app_state: crate::state::AppState) -> Router<crate::st
         .route("/{tapp_id}/widgets/{widget_id}", delete(unregister_widget))
         // Settings write stays authenticated; GET is optional-auth (public install read).
         .route("/{tapp_id}/settings/{key}", post(set_tapp_setting))
-        // Shared install-level data: owner/admin write, public-install visitors read.
+        // Shared install-level data: owner/admin write.
         .route("/{tapp_id}/shared", delete(clear_shared))
         .route("/{tapp_id}/shared/{key}", post(set_shared))
         .route("/{tapp_id}/shared/{key}", delete(delete_shared))
@@ -163,7 +163,7 @@ pub fn create_tapp_routes(app_state: crate::state::AppState) -> Router<crate::st
         .route("/store/sources", post(add_store_source))
         .route("/store/sources/{source_id}", post(update_store_source))
         .route("/store/sources/{source_id}", delete(delete_store_source))
-        // Browser store-install fallback reports here; backend signs edge HMAC.
+        // Browser store-install fallback reports here; backend posts unsigned JSON with instance_hash.
         .route("/store/stats-report", post(report_store_stats))
         .route_layer(from_fn_with_state(app_state.clone(), auth_middleware));
 

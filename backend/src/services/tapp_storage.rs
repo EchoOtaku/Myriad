@@ -276,7 +276,7 @@ pub async fn storage_bytes(
 ///
 /// Only Manifest-declared keys are returned. Stored values win; otherwise the
 /// declared `defaultValue` is used. Missing keys are omitted so templates stay
-/// unresolved instead of inventing empty secrets.
+/// unresolved. This loader does not read `_credentials.` secrets.
 pub async fn load_declared_setting_values(
     db: &DatabaseConnection,
     owner_id: i32,
@@ -587,7 +587,7 @@ VALUES
 
         // Tapp.storage → private_storage_namespace (subject).
         // Tapp.private / shared / settings → installation_namespace (owner).
-        // A visitor of a public install must not share the owner's Tapp.private rows.
+        // Visitor Tapp.storage namespace ≠ owner installation namespace.
         assert_ne!(
             viewer_of_admin.private_storage_namespace(),
             viewer_of_admin.installation_namespace()

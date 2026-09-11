@@ -238,7 +238,7 @@ impl AgentMemory {
 
         // 构建上下文摘要
         let mut context_parts = Vec::new();
-        context_parts.push(format!("用户请求: {}", user_input));
+        context_parts.push(format!("User request: {}", user_input));
 
         if let Some(history) = conversation_history {
             let recent: Vec<String> = history
@@ -260,7 +260,7 @@ impl AgentMemory {
                 })
                 .collect();
             if !recent.is_empty() {
-                context_parts.push(format!("对话历史:\n{}", recent.join("\n")));
+                context_parts.push(format!("Conversation:\n{}", recent.join("\n")));
             }
         }
 
@@ -272,13 +272,16 @@ impl AgentMemory {
         }
         if !results_summary.is_empty() {
             context_parts.push(format!(
-                "执行结果 ({}):\n{}",
-                if success { "成功" } else { "失败" },
+                "Run result ({}):\n{}",
+                if success { "ok" } else { "failed" },
                 results_summary.join("\n")
             ));
         }
 
-        context_parts.push(format!("使用的能力: {}", capabilities_used.join(", ")));
+        context_parts.push(format!(
+            "Capabilities used: {}",
+            capabilities_used.join(", ")
+        ));
 
         let context = context_parts.join("\n\n");
 
@@ -295,23 +298,23 @@ impl AgentMemory {
         // 3. AI 提取深层记忆
         let existing_memories = self.get_existing_summary(user_id).await;
         let prompt = format!(
-            r#"你是记忆提取引擎。从以下对话和执行记录中提取**值得长期记住**的信息。
+            r#"You extract long-term memory from the conversation and run log below.
 
-## 已有记忆（避免重复）
+## Known memory (do not repeat)
 {existing}
 
-## 本次交互
+## This turn
 {ctx}
 
-## 提取规则
-1. **用户偏好** (preference): 用户表达的喜好/习惯/风格偏好（"喜欢ACG风格"、"常用日语"、"经常画初音未来"）
-2. **实体知识** (entity_knowledge): 角色/作品/人物的关联知识纠错（"芙芙=芙宁娜/原神水神"、"昔涟=星穹铁道角色"）
-3. **执行教训** (execution_lesson): 什么参数有效/无效、什么策略成功/失败（"生成角色图时详细描述外观效果更好"）
-4. **有效模式** (effective_pattern): 可复用的参数组合或执行策略（"动漫角色图片 category=anime 效果好"）
+## What to extract
+1. **preference**: likes / habits / style ("喜欢ACG风格", "常用日语", "经常画初音未来")
+2. **entity_knowledge**: corrections about characters / works / people ("芙芙=芙宁娜/原神水神", "昔涟=星穹铁道角色")
+3. **execution_lesson**: which params or strategies worked or failed ("生成角色图时详细描述外观效果更好")
+4. **effective_pattern**: reusable param sets or strategies ("动漫角色图片 category=anime 效果好")
 
-只输出有价值的新信息，不重复已有记忆。如果没有值得记住的，返回空数组。
+Only output valuable new facts. If nothing is worth keeping, return an empty array.
 
-输出 JSON：{{"memories": [{{"content": "...", "memory_type": "preference|entity_knowledge|execution_lesson|effective_pattern", "importance": 0.0-1.0, "entities": ["相关实体"], "capabilities": ["相关能力ID"]}}]}}"#,
+JSON: {{"memories": [{{"content": "...", "memory_type": "preference|entity_knowledge|execution_lesson|effective_pattern", "importance": 0.0-1.0, "entities": ["related entities"], "capabilities": ["capability ids"]}}]}}"#,
             existing = existing_memories,
             ctx = context,
         );
@@ -404,12 +407,12 @@ impl AgentMemory {
                 })
                 .collect();
             format!(
-                "用户纠正: {} (上下文: {})",
+                "User correction: {} (context: {})",
                 user_input,
                 recent_context.join(" → ")
             )
         } else {
-            format!("用户纠正: {}", user_input)
+            format!("User correction: {}", user_input)
         };
 
         self.remember_full(

@@ -263,7 +263,7 @@ pub fn manifest_declares_local_widget_id(manifest: &serde_json::Value, local_id:
 
 // ── Recent activity list ────────────────────────────────────────────────────
 
-/// Recent-use list item for `/api/tapp/recent`.
+/// Recent-use list item for `GET /api/tapps/recent`.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RecentTappItem {

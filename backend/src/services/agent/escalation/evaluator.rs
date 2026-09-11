@@ -4,7 +4,7 @@
 //!
 //! 1. **失败模式检测**：识别"未找到"、"无结果"等语义失败
 //! 2. **数据源验证**：检查数据获取步骤是否返回了有效数据
-//! 3. **升级门控**：本地数据域 / stub 空实现不得建议 ai.webSearch
+//! 3. **升级门控**：stub 永不建议 ai.webSearch；本地域默认禁止，仅 allow_web_search 才建议
 
 use serde_json::Value;
 
@@ -33,7 +33,7 @@ pub struct Evaluation {
     pub suggests_expand_scope: bool,
     /// 建议优先使用本地能力（brew.page / search.fuzzy 等）
     pub suggests_local_alternatives: bool,
-    /// 本地 notFound 返回的可重试实体建议（源名/作者等），replan 应优先用这些值重试 brew
+    /// 从 choices/suggestions 抽出的可重试实体名（源名/作者等）
     pub suggested_retry_values: Vec<String>,
     /// 建议的改进方向
     pub improvement_hints: Vec<String>,
@@ -88,8 +88,6 @@ impl ResultEvaluator {
         Self { min_data_count: 1 }
     }
 
-    /// 评估结果（仅检测失败模式和数据充足性）
-    ///
     /// 生产路径优先 `evaluate_with_context`；本方法供无能力上下文的简化调用与单测。
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn evaluate_result(&self, result: &Value) -> Evaluation {
@@ -117,8 +115,8 @@ impl ResultEvaluator {
             eval.satisfaction_score = 0.1;
             eval.failure_patterns.push(FailurePattern::ZeroCount);
             eval.reason = Some(format!(
-                "数据不足：找到 {} 条有效数据，需要至少 {} 条",
-                data_count, self.min_data_count
+                "Not enough data: found {data_count} items, need at least {}",
+                self.min_data_count
             ));
             self.apply_escalation_policy(&mut eval, result, ctx);
             return eval;
@@ -139,7 +137,7 @@ impl ResultEvaluator {
         result: &Value,
         ctx: &EvaluationContext,
     ) {
-        // 提取 notFound 建议值（无论是否本地域，供 replan 使用）
+        // 提取可重试实体建议（无论是否本地域，供 replan 使用）
         eval.suggested_retry_values = self.extract_suggested_retry_values(result);
 
         let is_stub = eval
@@ -155,7 +153,7 @@ impl ResultEvaluator {
             eval.suggests_web_search = false;
             eval.suggests_local_alternatives = true;
             eval.improvement_hints.push(
-                "检测到数据路径未接通（stub/空实现），请修复数据源或改用已实现的本地能力，不要升级到 ai.webSearch"
+                "Data path is a stub or empty implementation. Fix the source or use a real local capability. Do not escalate to ai.webSearch."
                     .to_string(),
             );
             eval.improvement_hints
@@ -163,7 +161,7 @@ impl ResultEvaluator {
             return;
         }
 
-        // notFound + 实体建议：优先用建议值重试 brew，绝不 webSearch
+        // 已有实体建议：优先用建议值重试 brew，绝不 webSearch
         if !eval.suggested_retry_values.is_empty()
             && (is_local
                 || ctx.capability_ids.iter().any(|id| id.starts_with("brew."))
@@ -186,7 +184,7 @@ impl ResultEvaluator {
             eval.suggests_expand_scope = true;
             if is_reading_list_empty {
                 eval.improvement_hints.push(
-                    "brew.generateReadingList 本地无匹配：请放宽 keyword/daysBack、改用 brew.items / search.fuzzy，或引导订阅更多源；禁止空结果级联到 ai.webSearch（除非参数 allowWebSearch=true）"
+                    "brew.generateReadingList had no local match. Widen keyword/daysBack, use brew.items / search.fuzzy, or subscribe to more feeds. Do not cascade an empty result to ai.webSearch unless allowWebSearch=true."
                         .to_string(),
                 );
             }
@@ -198,7 +196,7 @@ impl ResultEvaluator {
         // 非本地域，或显式允许联网
         eval.suggests_web_search = true;
         eval.improvement_hints
-            .push("本地数据不足，尝试联网搜索".to_string());
+            .push("Not enough local data. Try a web search.".to_string());
     }
 
     /// generateReadingList 空阅读列表（含无能力上下文但结构匹配）
@@ -228,7 +226,7 @@ impl ResultEvaluator {
         false
     }
 
-    /// 从 notFound / ambiguous 结果提取可重试的实体建议（源名、作者等）
+    /// 从 choices/suggestions 提取可重试实体名（源名、作者等）
     pub fn extract_suggested_retry_values(&self, result: &Value) -> Vec<String> {
         let Some(obj) = result.as_object() else {
             return Vec::new();
@@ -303,7 +301,7 @@ impl ResultEvaluator {
             .map(|s| s.as_str())
             .unwrap_or("brew.items");
         format!(
-            "前次 {cap} 返回 notFound 且已有相近建议；请用同一 brew 能力重试，参数 sourceName/name/query/author 设为建议值之一：{joined}。禁止改用 ai.webSearch / ai.groundingSearch"
+            "Previous {cap} returned notFound and already has close suggestions. Retry the same brew capability with sourceName/name/query/author set to one of: {joined}. Do not switch to ai.webSearch / ai.groundingSearch."
         )
     }
 
@@ -342,11 +340,11 @@ impl ResultEvaluator {
 
         if has_brew {
             hints.push(
-                "优先改用 brew.page / brew.items（放宽 limit、去掉过严 filter）或 search.fuzzy 做本地检索，禁止使用 ai.webSearch / ai.groundingSearch"
+                "Prefer brew.page / brew.items (widen limit, drop strict filters) or search.fuzzy for local lookup. Do not use ai.webSearch / ai.groundingSearch."
                     .to_string(),
             );
             hints.push(
-                "若订阅源或文章为空，请向用户澄清、列出相近建议，或引导 brew.discover / 订阅，而不是联网搜索公开网页"
+                "If feeds or articles are empty, ask the user, list close matches, or use brew.discover / subscribe. Do not search the public web."
                     .to_string(),
             );
         }
@@ -356,13 +354,16 @@ impl ResultEvaluator {
             .any(|c| c == "search.fuzzy" || c.starts_with("platform."))
         {
             hints.push(
-                "本地缓存/模糊搜索无结果时，请放宽关键词、列出相近建议或向用户澄清，不要改用联网搜索"
+                "Local cache or fuzzy search returned nothing. Widen the keyword, list close matches, or ask the user. Do not switch to a web search."
                     .to_string(),
             );
         }
 
         if hints.is_empty() {
-            hints.push("数据不足，请向用户澄清需求或调整查询参数，不要盲目联网搜索".to_string());
+            hints.push(
+                "Not enough data. Ask the user or adjust the query. Do not web-search blindly."
+                    .to_string(),
+            );
         }
         hints
     }
@@ -668,17 +669,17 @@ impl ResultEvaluator {
         let descriptions: Vec<&str> = patterns
             .iter()
             .map(|p| match p {
-                FailurePattern::EmptyDataSource => "数据源返回空结果",
-                FailurePattern::NotFoundSemantic => "检测到「未找到」标记",
-                FailurePattern::NoMatchSemantic => "检测到「无匹配」标记",
-                FailurePattern::IrrelevantResult => "结果与查询不相关",
-                FailurePattern::SummarizedNothing => "AI 总结显示没有有效数据",
-                FailurePattern::ZeroCount => "结果数量为 0",
-                FailurePattern::StubOrHollowSuccess => "检测到 stub/空实现（数据路径未接通）",
+                FailurePattern::EmptyDataSource => "data source returned empty",
+                FailurePattern::NotFoundSemantic => "detected a not-found marker",
+                FailurePattern::NoMatchSemantic => "detected a no-match marker",
+                FailurePattern::IrrelevantResult => "result is not relevant to the query",
+                FailurePattern::SummarizedNothing => "AI summary shows no usable data",
+                FailurePattern::ZeroCount => "result count is 0",
+                FailurePattern::StubOrHollowSuccess => "detected a stub or empty implementation",
             })
             .collect();
 
-        descriptions.join("；")
+        descriptions.join("; ")
     }
 
     /// 通用目标评估
@@ -688,7 +689,7 @@ impl ResultEvaluator {
         if data_count == 0 {
             eval.is_satisfied = false;
             eval.satisfaction_score = 0.0;
-            eval.reason = Some("没有返回有效数据".to_string());
+            eval.reason = Some("No usable data was returned".to_string());
         }
     }
 
@@ -893,7 +894,7 @@ mod tests {
     #[test]
     fn test_stub_brew_sources_does_not_suggest_web_search() {
         let evaluator = ResultEvaluator::new();
-        // 与 data_read::execute_brew_sources 当前 stub 返回一致
+        // stub 标记夹具（has_stub_markers 认 "requires database integration"）
         let result = json!({
             "sources": [],
             "total": 0,
@@ -970,7 +971,7 @@ mod tests {
             "replan 应优先本地 brew/search: {:?}",
             eval.improvement_hints
         );
-        assert!(!joined.contains("ai.webSearch") || joined.contains("禁止使用 ai.webSearch"));
+        assert!(!joined.contains("ai.webSearch") || joined.contains("Do not use ai.webSearch"));
     }
 
     #[test]
@@ -1143,7 +1144,7 @@ mod tests {
             eval.improvement_hints
         );
         assert!(
-            joined.contains("禁止") && joined.contains("webSearch"),
+            joined.contains("Do not") && joined.contains("webSearch"),
             "必须明确禁止 webSearch: {:?}",
             eval.improvement_hints
         );
@@ -1151,7 +1152,7 @@ mod tests {
 
     #[test]
     fn test_not_found_suggestions_override_allow_web_when_entity_present() {
-        // 即便 allow_web_search=true，本地 notFound+实体建议仍优先 brew 重试（不烧 key）
+        // 即便 allow_web_search=true，有实体建议时仍优先 brew 重试
         let evaluator = ResultEvaluator::new();
         let result = json!({
             "items": [],

@@ -88,6 +88,7 @@ pub async fn get_runtime_report(
             ReportCatalogError::Database => {
                 let (status, Json(mut body)) = catalog_http_error(err);
                 body["error"] = json!("Failed to fetch report");
+                body["code"] = json!("fetch_failed");
                 (status, Json(body))
             }
             other => catalog_http_error(other),
@@ -110,6 +111,7 @@ pub async fn get_runtime_platform_report(
             ReportCatalogError::Database => {
                 let (status, Json(mut body)) = catalog_http_error(err);
                 body["error"] = json!("Failed to fetch report");
+                body["code"] = json!("fetch_failed");
                 (status, Json(body))
             }
             other => catalog_http_error(other),

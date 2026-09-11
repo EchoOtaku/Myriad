@@ -290,7 +290,7 @@ impl NeteaseService {
                                                 if batch_data.get("code").and_then(|c| c.as_i64()) == Some(200) {
                                                     if let Some(songs) = batch_data.get("songs").and_then(|s| s.as_array()) {
                                                         for song in songs {
-                                                            // 只提取必要字段，减少内存
+                                                            // `fee` → `isVip`；整首 `clone` 进列表
                                                             let fee = song.get("fee").and_then(|f| f.as_i64()).unwrap_or(0);
                                                             let is_vip = fee == 1 || fee == 4;
                                                             if is_vip {

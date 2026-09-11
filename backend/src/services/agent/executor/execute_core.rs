@@ -480,7 +480,7 @@ impl Executor {
                                 "[Executor] DAG streaming cancelled by user"
                             );
                             task_state.status = TaskStatus::Failed;
-                            task_state.error = Some("用户取消了任务".to_string());
+                            task_state.error = Some("The task was cancelled".to_string());
                             // 中断流式循环，外层循环的取消检查会处理状态保存
                             break;
                         }
@@ -881,7 +881,7 @@ impl Executor {
                     // 流式 DAG 后处理：暂停等待用户输入
                     // 如果已取消，跳过 WaitingForInput 和重试
                     let dag_cancelled = task_state.status == TaskStatus::Failed
-                        && task_state.error.as_deref() == Some("用户取消了任务");
+                        && task_state.error.as_deref() == Some("The task was cancelled");
                     if !dag_cancelled && !pending_questions_from_dag.is_empty() {
                         let question = pending_questions_from_dag.remove(0);
                         // 将剩余问题存入 context，resume 后继续提问

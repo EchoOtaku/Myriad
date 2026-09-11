@@ -1537,9 +1537,8 @@ fn normalize_known_generator_aliases(value: &mut Value) -> usize {
             .sum()
     }
 
-    /// Drop paths that are not package-static assets under `assets/` (entrypoints,
-    /// Widget templates, styles). Production `validate_asset_path` rejects these;
-    /// Playground strips them so a candidate with correct `widgetHtml` still passes.
+    /// Playground strips non-`assets/` paths and `.html`/`.js`/`.css`. Production
+    /// `validate_asset_path` only forbids `.js`/`.html` under `assets/` — not `.css`.
     fn is_invalid_generated_asset_path(path: &str) -> bool {
         !path.starts_with("assets/")
             || path.ends_with(".html")
@@ -1624,10 +1623,7 @@ use helpers::*;
 mod prompt_contract_tests {
     use super::*;
 
-    /// 提示词是纯字符串，契约改了它不会编译失败——这条测试就是那个编译失败。
-    ///
-    /// 层入口契约切换时它整轮没人动，模型照示例输出的 manifest 会被
-    /// `deny_unknown_fields` 拒掉，而 Playground 生成路径没有任何别的地方会报警。
+    /// 提示词是纯字符串，契约改了它不会编译失败——这条测试就是那个检查。
     #[test]
     fn generate_prompt_teaches_the_current_layer_contract() {
         let prompt = assemble_generation_system_prompt("(retrieved excerpts)");

@@ -153,7 +153,7 @@ impl LaneQueue {
             Some(dur) => match tokio::time::timeout(dur, acquire_fut).await {
                 Ok(result) => result,
                 Err(_) => Err(format!(
-                    "系统繁忙，排队超过 {} 秒仍未获得执行许可，请稍后重试",
+                    "The system is busy. Waited more than {} seconds without a slot. Try again later.",
                     dur.as_secs().max(1)
                 )),
             },
@@ -265,7 +265,7 @@ mod tests {
             Ok(_) => panic!("should time out while slot held"),
         };
         assert!(
-            err.contains("繁忙") || err.contains("排队"),
+            err.contains("busy") || err.contains("Waited more than"),
             "user-visible queue message, got: {err}"
         );
         drop(held);

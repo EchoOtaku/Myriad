@@ -950,7 +950,7 @@ async fn get_podcast_script(
             };
             let estimated_duration = estimated_duration.max(60); // 最少 60 秒
 
-            let podcast_title = format!("深度解读：{}", title);
+            let podcast_title = format!("Deep dive: {}", title);
 
             // 保存到数据库
             let podcast_model = brew_podcasts::ActiveModel {
@@ -1344,7 +1344,7 @@ async fn generate_style_tags(
             .unwrap_or_default();
 
         articles_summary.push_str(&format!(
-            "{}. 标题：{}\n   摘要：{}\n\n",
+            "{}. Title: {}\n   Summary: {}\n\n",
             i + 1,
             item.title,
             content
@@ -1447,25 +1447,26 @@ async fn generate_style_tags(
 /// 构建风格标签提示词
 fn build_style_tags_prompt(source_name: &str, articles_summary: &str) -> String {
     format!(
-        r#"你是一个有创意的内容分析师。请仔细阅读以下订阅源的真实文章内容，为该订阅源生成 2 个简短且有特色的标签。
+        r#"You are a creative content analyst. Read the real articles below and produce 2 short, distinctive tags for this feed.
 
-## 订阅源名称
+## Feed name
 {source_name}
 
-## 最近的文章内容（请认真分析）
+## Recent articles (read them)
 {articles_summary}
 
-## 要求
-1. **必须根据文章的实际内容来判断**，不要只看订阅源名称
-2. 标签应该简短精炼，每个标签 2-4 个字
-3. 标签可以是：内容主题、写作风格、作者特点、情感基调、阅读体验等任何角度
-4. **鼓励创意**：可以用有趣、形象、独特的词汇，比如"码农日常"、"深夜食堂"、"硬核科普"、"佛系更新"等
-5. **避免过于宽泛无特色的标签**如"技术"、"生活"、"博客"、"分享"
-6. 两个标签应该从不同角度描述，让读者能快速了解这个订阅源的独特之处
+## Rules
+1. Judge from the actual article content, not just the feed name
+2. Keep tags short: 2–4 characters for CJK, or 1–3 words for Latin scripts
+3. Tags may cover topic, writing style, author voice, mood, reading experience, or any other angle
+4. Be inventive: vivid, specific words are good, e.g. "码农日常", "深夜食堂", "硬核科普", "佛系更新", "late-night kitchen"
+5. Avoid generic tags like "技术", "生活", "博客", "分享", "tech", "life", "blog"
+6. The two tags should describe different angles so a reader sees what is distinctive
+7. Write tags in the same language as the articles
 
-## 输出格式
-只输出 JSON 数组格式，不要任何解释：
-["标签1", "标签2"]
+## Output
+JSON array only, no explanation:
+["tag1", "tag2"]
 "#,
         source_name = source_name,
         articles_summary = articles_summary

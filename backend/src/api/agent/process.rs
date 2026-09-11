@@ -195,7 +195,10 @@ pub async fn process(
         .await
         .map_err(|e| {
             tracing::warn!(error = %e, "[Agent API] Queue acquisition failed");
-            HttpError::from((StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e }))))
+            HttpError::from((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(AppError::public_json(e)),
+            ))
         })?;
 
     begin_intention_work(
@@ -538,7 +541,7 @@ pub(crate) async fn start_process_run(
                         progress: 0,
                         completed_steps: 0,
                         total_steps: 0,
-                        message: format!("排队中（前方约 {} 个任务）…", ahead),
+                        message: format!("Queued (about {ahead} ahead)…"),
                     })
                     .await;
             }
@@ -1076,7 +1079,8 @@ pub async fn cancel_task(
             let _ = waiting.done_tx.send(json!({
                 "success": false,
                 "responseType": "error",
-                "message": "任务已取消",
+                "message": "The task was cancelled",
+                "code": "task_cancelled",
                 "task": {
                     "taskId": task_id,
                     "status": "cancelled",

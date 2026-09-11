@@ -370,7 +370,7 @@ impl ConfigService {
             });
         }
 
-        // 平台展示顺序（JSON 数组，或历史上误存为 JSON 字符串）
+        // 平台展示顺序：JSON 数组，或 JSON 编码的字符串数组
         if let Some(v) = map.get("platform_order") {
             let order = if let Some(arr) = v.as_array() {
                 Some(
@@ -935,7 +935,7 @@ impl ConfigService {
         }
 
         // Tapp 权限下放配置
-        // 普通用户可下放的 elevated 权限
+        // 普通用户授予路径读取的配置字段
         if let Some(v) = map.get("user_perm_ai_generate") {
             if let Some(b) = v.as_bool() {
                 config.user_perm_ai_generate = b;
@@ -1037,7 +1037,7 @@ impl ConfigService {
             }
         }
 
-        // 游客可下放的 elevated 权限
+        // 游客授予路径读取的配置字段（若干恒 false，见各字段）
         if let Some(v) = map.get("guest_perm_ai_generate") {
             if let Some(b) = v.as_bool() {
                 config.guest_perm_ai_generate = b;
@@ -1228,8 +1228,7 @@ impl ConfigService {
     ///
     /// 敏感 key 由 [`crate::services::data_key::is_sensitive_config_key`] 判定
     /// （密钥类 token/secret/api_key/password/npsso；排除 `*_tokens` 配额与
-    /// `*_expires_at` 元数据）。在这里加密后落库，调用方始终传明文。
-    /// 这是配置写入的唯一漏斗，加密放在这一层就不会有绕过的写路径。
+    /// `*_expires_at` 元数据）。本路径 `seal_config_value` 后 UPSERT；调用方传明文。
     pub async fn update_config(&self, key: &str, value: JsonValue) -> Result<()> {
         let value = crate::services::data_key::seal_config_value(key, value);
 

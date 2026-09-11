@@ -56,7 +56,7 @@ use super::{
 };
 
 // Domain types (HTTP request/response surfaces).
-// AiContextRef is internal to services::ai_task_execute; not re-exported here.
+// AiContextRef lives in services::ai_task_context; not re-exported here.
 pub use crate::services::ai_task_execute::{AiTaskOutputRequest, CreateAiTaskRequest};
 pub use crate::services::ai_task_registry::{AiTaskDelivery, AiTaskSnapshot};
 
@@ -105,7 +105,7 @@ fn context_api_error(err: AiContextError) -> ApiError {
     api_error(status, &err.code, err.message)
 }
 
-// Process-local AI_TASKS shell: re-export cancel helpers for runtime_grant.
+// Cancel helpers for runtime_grant (local + durable shared registry).
 pub(super) use crate::services::ai_task_runtime::{
     cancel_all_tapp_ai_tasks, cancel_runtime_ai_tasks, cancel_tapp_ai_tasks,
 };

@@ -256,7 +256,13 @@ fn youtube_profile(yt_user: &Value) -> Option<PlatformProfile> {
     })
 }
 
-const LAZY_BIO: &str = "这家伙很懒，没有介绍呢";
+pub(crate) const LAZY_BIO: &str = "No bio available";
+const LAZY_BIO_LEFTOVER: &str = "这家伙很懒，没有介绍呢";
+
+pub(crate) fn is_placeholder_bio(bio: &str) -> bool {
+    let bio = bio.trim();
+    bio.is_empty() || bio == LAZY_BIO || bio == LAZY_BIO_LEFTOVER
+}
 
 /// 从单个平台的原始载荷提取公开画像。
 pub fn platform_profile(platform: &str, data: &Value) -> Option<PlatformProfile> {

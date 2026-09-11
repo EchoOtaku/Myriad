@@ -155,7 +155,7 @@ fn grant_write_error(error: AutonomyGrantWriteError) -> HttpError {
         AutonomyGrantWriteError::HeartbeatIdentity => StatusCode::FORBIDDEN,
         AutonomyGrantWriteError::EmptyAfterFilter => StatusCode::BAD_REQUEST,
     };
-    HttpError::from((status, Json(json!({ "error": error.as_str() }))))
+    HttpError::from((status, Json(AppError::public_json(error.as_str()))))
 }
 
 /// GET /api/agent/autonomy

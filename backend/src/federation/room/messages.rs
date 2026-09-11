@@ -669,7 +669,7 @@ pub async fn list_room_files(
             });
         }
         orphans.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-        // Prepend orphans (newest first merge)
+        // Append orphans, then sort newest-first
         if !orphans.is_empty() {
             files.extend(orphans);
             files.sort_by(|a, b| b.created_at.cmp(&a.created_at));

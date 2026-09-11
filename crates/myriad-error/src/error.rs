@@ -45,7 +45,8 @@ impl AppError {
             "Database error" | "Database query failed" | "Database not connected" => {
                 Some("database_error")
             }
-            "Failed to fetch data" => Some("fetch_failed"),
+            "Failed to fetch data" | "Failed to fetch report" => Some("fetch_failed"),
+            "Invalid user" => Some("unauthorized"),
             "Failed to process password" | "Failed to verify password" => Some("password_failed"),
             "Failed to create account" => Some("account_create_failed"),
             "Failed to create session token" | "Failed to refresh session token" => {
@@ -60,6 +61,8 @@ impl AppError {
             "Service unavailable" | "Server busy" => Some("service_unavailable"),
             "Service in configuration mode" => Some("configuration_mode"),
             "Setup already completed" => Some("setup_completed"),
+            "Setup window closed" => Some("setup_window_closed"),
+            "Setup secret required" => Some("setup_secret_mismatch"),
             "Activity not ready" => Some("activity_not_ready"),
             "Access denied" => Some("forbidden"),
             "Target is closed" => Some("gone"),
@@ -86,7 +89,9 @@ impl AppError {
             | "domain required"
             | "content_id required"
             | "URL is required"
-            | "Actor reference is required" => Some("bad_request"),
+            | "Actor reference is required"
+            | "Input is empty"
+            | "Input is too long" => Some("bad_request"),
             "serialization failed" => Some("internal_error"),
             "Already delivered"
             | "Room is full"
@@ -340,6 +345,14 @@ mod tests {
         assert_eq!(
             AppError::forbidden("Setup already completed").to_json()["code"],
             "setup_completed"
+        );
+        assert_eq!(
+            AppError::unauthorized("Setup window closed").to_json()["code"],
+            "setup_window_closed"
+        );
+        assert_eq!(
+            AppError::unauthorized("Setup secret required").to_json()["code"],
+            "setup_secret_mismatch"
         );
         assert_eq!(
             AppError::service_unavailable("Activity not ready").to_json()["code"],

@@ -1,7 +1,5 @@
-//! 统一的 HTTP 客户端工厂
-//!
-//! 为所有需要访问外部 API 的服务提供统一的 HTTP 客户端，
-//! 支持代理配置，方便中国大陆服务器访问外部服务。
+//! HTTP 客户端工厂：全局/长任务/媒体/Tapp 静态客户端，以及带动态代理的出站构建。
+//! 不是每条出站路径都走这里（declared-API 有独立客户端；部分音乐服务自建 Client）。
 
 use once_cell::sync::Lazy;
 use reqwest::{Client, Proxy};
@@ -10,7 +8,7 @@ use std::time::Duration;
 
 /// Shared Tapp outbound HTTP client (pooled, fixed timeouts, no dynamic proxy).
 ///
-/// Used by declared-API / geo helpers and AI image fetch paths. Lives in services
+/// Used by declared-API geo helpers and store stats beacon. Lives in services
 /// so `tapp_api_service` does not import `crate::api::tapp_runtime`.
 pub static TAPP_HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
     Client::builder()
@@ -23,7 +21,7 @@ pub static TAPP_HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
         .expect("Failed to create Tapp HTTP client")
 });
 
-/// Shared client for music CDN / audio streaming (NetEase, QQ, KuGou, etc.).
+/// Shared client for music CDN / audio streaming (NetEase, QQ). KuGou builds its own Client.
 ///
 /// Browser-like UA for CDN referer policies. Prefer this over per-request
 /// `Client::builder()` to reuse connection pools (memory + latency).

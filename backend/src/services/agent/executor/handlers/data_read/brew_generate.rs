@@ -73,7 +73,6 @@ pub(super) async fn execute_brew_generate_reading_list(
     let source_name_filter = params.get("sourceName").and_then(|v| v.as_str());
     let days_back = params.get("daysBack").and_then(|v| v.as_i64()).unwrap_or(7);
     // Opt-in only: do not force ai.webSearch when local keyword miss.
-    // Cascade escalation for other capabilities is owned by myriad-149.
     // Outbound still needs granted `ai:search` (same layer as `ai.webSearch`).
     let web_search_opt_in = parse_allow_web_search(params);
     let granted = crate::services::agent::get_user_permissions(ctx.db, ctx.user_id).await;
@@ -114,7 +113,7 @@ pub(super) async fn execute_brew_generate_reading_list(
     // 计算时间范围
     let cutoff_time = chrono::Utc::now() - chrono::Duration::days(days_back);
 
-    // 从数据库获取文章
+    // 加载 brew_sources
     let sources = brew_sources::Entity::find()
         .all(ctx.db)
         .await
@@ -320,8 +319,7 @@ pub(super) async fn execute_brew_generate_reading_list(
             }));
         }
 
-        // No explicit web/external request — if we still have a few local hits,
-        // continue to AI local ranking; otherwise honest empty.
+        // 未走 web search：本地还有命中则继续本地排序，否则诚实空列表。
         if !items.is_empty() {
             tracing::info!(
                 keyword = %keyword,
@@ -445,35 +443,37 @@ pub(super) async fn execute_brew_generate_reading_list(
 
     // 构建关键词提示（如果有）
     let keyword_hint = if !keyword.is_empty() {
-        format!("\n关键词筛选条件：{}\n注意：候选文章已按关键词预筛选，请进一步判断与主题的真正相关性，排除标题党或仅表面相关的文章。", keyword)
+        format!("\nKeyword filter: {}\nCandidates are prefiltered by keyword. Judge real topical fit; drop clickbait or only surface matches.", keyword)
     } else {
         String::new()
     };
 
     let prompt = format!(
-        r#"你是一个智能阅读助手。请根据用户的需求从以下文章中筛选最符合条件的文章。
+        r#"You are a reading assistant. Pick the articles that best match the request.
 
-用户需求：{}{}
+Request: {}{}
 
-可选文章（JSON数组）：
+Candidate articles (JSON array):
 {}
 
-请返回一个JSON对象，格式如下：
+Return a JSON object:
 {{
-  "selectedIds": [文章ID数组，按推荐度排序，最多{}篇],
-  "listName": "为这个阅读列表起一个简短的名字（与用户需求相关）",
+  "selectedIds": [article ids, best first, at most {}],
+  "listName": "a short name for this list (tied to the request)",
   "reasons": {{
-    "文章ID": "为什么推荐这篇文章（一句话）"
+    "articleId": "one sentence on why"
   }}
 }}
 
-筛选标准：
-1. 与用户需求的相关性（最重要）
-2. 内容质量和价值
-3. 时效性
-4. 如果没有真正符合条件的文章，selectedIds 可以为空数组
+Write listName and reasons in the same language as the request.
 
-只返回JSON，不要其他内容。"#,
+Criteria:
+1. Relevance to the request (most important)
+2. Quality and value
+3. Recency
+4. selectedIds may be empty if nothing truly fits
+
+JSON only."#,
         criteria,
         keyword_hint,
         serde_json::to_string_pretty(&articles_for_ai).unwrap_or_default(),
@@ -529,7 +529,7 @@ pub(super) async fn execute_brew_generate_reading_list(
                     "publishedAt": item.published_at.to_rfc3339(),
                     "summary": item.content.as_ref()
                         .map(|c| {
-                            // 简单提取摘要：去除HTML标签，取前200字符
+                            // 摘要：丢掉 `<`/`>`，取前 200 字符（不是完整去标签）
                             let text: String = c.chars()
                                 .filter(|&ch| ch != '<' && ch != '>')
                                 .take(200)

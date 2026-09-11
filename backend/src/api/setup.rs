@@ -195,9 +195,8 @@ pub async fn init_database(
 ) -> Result<Json<Value>, HttpError> {
     crate::api::setup_bootstrap::require_setup_secret(&headers, body_setup_secret(&body))
         .map_err(HttpError)?;
-    // Setup switches out of CONFIG_MODE as soon as the database can be reached.
-    // Keep the recovery migration available until the installation is claimed,
-    // then lock it permanently once an administrator exists.
+    // Lock this endpoint once an administrator exists. CONFIG_MODE is not
+    // flipped here; a live setup-only process needs schedule_setup_restart.
     let admin_exists = check_admin_user_exists(&db).await;
 
     if admin_exists {

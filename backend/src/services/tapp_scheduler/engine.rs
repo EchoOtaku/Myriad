@@ -224,7 +224,7 @@ impl TappSchedulerEngine {
         Ok(Some(current))
     }
 
-    /// Size the crash-recovery lease from the validated retry/action envelope.
+    /// Size the crash-recovery lease from retry_config and backend_actions (retries/delay/action count clamped; plus compensation and the 5-minute frontend timeout).
     /// `max_retries` / `retry_delay` are clamped to `MAX_SCHEDULER_RETRIES` /
     /// `MAX_SCHEDULER_RETRY_DELAY_MS`.
     fn recovery_lease_duration(task: &tapp_scheduled_tasks::Model, now: DateTime<Utc>) -> Duration {
@@ -513,7 +513,7 @@ impl TappSchedulerEngine {
                     ("tapp-per-user".to_string(), Some(vec![task.user_id]))
                 }
                 TaskScope::Global => {
-                    // target_users=None；入队时仅 is_admin
+                    // target_users=None；入队时 can_receive_frontend_task 过滤
                     ("global".to_string(), None)
                 }
             };

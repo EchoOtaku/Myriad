@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 
 #[derive(Debug, Deserialize)]
 pub struct HitokotoQuery {
-    /// 自定义一言 API 地址（可选），为空时使用默认的 hitokoto.cn
+    /// 自定义一言 API 地址（可选），为空时用 `default_hitokoto_url()`（`v1.hitokoto.cn`）。
     pub url: Option<String>,
 }
 
@@ -24,7 +24,7 @@ pub struct HitokotoQuery {
 /// `outbound_security::build_public_http_client` (public-routable only, DNS pin,
 /// no redirects). This is **not** the image-proxy `shared/image_proxy_hosts.json`
 /// list (that file is for media CDN rewrite only).
-/// 2. **Per-IP quota** — `PUBLIC_HITOKOTO_IP_HITS` / compute-intensive rate limit.
+/// 2. **Per-IP quota** — `COMPUTE_MAX` (45 / 60s) compute-intensive rate limit.
 /// Prefer tightening quota / outbound policy over mandatory JWT.
 ///
 /// Catalog alignment (do not drift):
@@ -208,7 +208,7 @@ pub async fn fetch_web_content(Query(params): Query<FetchWebContentQuery>) -> Re
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("text/html");
 
-            // 只处理 HTML 内容
+            // 只接受 `text/html` 或 `text/plain`
             if !content_type.contains("text/html") && !content_type.contains("text/plain") {
                 return (
                     StatusCode::BAD_REQUEST,

@@ -37,13 +37,13 @@ impl MigrationTrait for Migration {
                             .text()
                             .not_null(),
                     )
-                    // AES-256-GCM 加密的私钥密文
+                    // 私钥密文（text）
                     .col(
                         ColumnDef::new(FederationKeys::PrivateKeyEncrypted)
                             .text()
                             .not_null(),
                     )
-                    // Key ID URL: https://domain/users/username#main-key
+                    // Key ID（unique text）
                     .col(
                         ColumnDef::new(FederationKeys::KeyId)
                             .text()
@@ -167,7 +167,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(FederationInstances::MfpVersion).string_len(20))
                     .col(ColumnDef::new(FederationInstances::NodeinfoUrl).text())
                     .col(ColumnDef::new(FederationInstances::SharedInboxUrl).text())
-                    // 信任层级：0=unknown, 1=discovered, 2=followed, 3=trusted, 4=federated
+                    // trust_level：smallint NOT NULL default 0（无 CHECK）
                     .col(
                         ColumnDef::new(FederationInstances::TrustLevel)
                             .small_integer()
@@ -196,7 +196,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0),
                     )
-                    // failing_since；已存在的表由 schema_check 通用 ADD 补列。
+                    // failing_since
                     .col(
                         ColumnDef::new(FederationInstances::FailingSince)
                             .timestamp_with_time_zone(),
@@ -387,7 +387,7 @@ impl MigrationTrait for Migration {
             .await?;
 
         // ==================== 6. FEDERATION_DELIVERY_QUEUE 表 ====================
-        // 持久化投递队列（指数退避重试）
+        // 持久化投递队列（attempts / max_attempts / next_retry_at）
         manager
             .create_table(
                 Table::create()

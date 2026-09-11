@@ -269,7 +269,9 @@ pub async fn get_context_geo(
     } else {
         Err(HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "success": false, "error": result.error })),
+            Json(AppError::fail_json(
+                result.error.unwrap_or_else(|| "request failed".into()),
+            )),
         )))
     }
 }

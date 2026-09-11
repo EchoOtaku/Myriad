@@ -113,6 +113,15 @@ export function notificationFacingTitle(notification: AppNotification): string {
   if (/^任务已取消$|^The task was cancelled$/.test(raw)) {
     return t.agentTaskCancelled
   }
+  if (/任务等待通道已断开|^The wait channel closed$/.test(raw)) {
+    return t.waitChannelClosed
+  }
+  if (/等待用户输入已超时|^Waiting for input timed out/.test(raw)) {
+    return t.waitInputTimeout
+  }
+  if (/任务状态已不可用|^The task is no longer available$/.test(raw)) {
+    return t.taskUnavailable
+  }
   if (/任务等待你的回答|The task needs your reply/.test(raw)) {
     return t.noticeAgentTaskWaiting
   }

@@ -777,7 +777,7 @@ mod tests {
 
     #[test]
     fn in_flight_chunk_budget_admits_then_rejects_when_full() {
-        // Drain any leftover from parallel tests in this binary (best-effort).
+        // `try_acquire(0)` is a no-op（不占/不释放 in-flight 预算）。
         let _ = InFlightChunkGuard::try_acquire(0);
         let half = MAX_IN_FLIGHT_CHUNK_BYTES / 2;
         let g1 = InFlightChunkGuard::try_acquire(half).expect("first half");
@@ -896,7 +896,7 @@ mod tests {
             .expect("rebuild");
         assert!(is_strictly_under(&root, &p));
 
-        // Mixed-separator style path under root's parent
+        // Lexical `..` parent escape via `PathBuf::join`
         let escape = root
             .join("..")
             .join("agent")

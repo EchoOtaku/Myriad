@@ -191,7 +191,6 @@ const ENV_ALLOWLIST: &[&str] = &[
     "https_proxy",
     "no_proxy",
     // TLS / 企业自签 CA：路径指向证书束，不是密钥。
-    // 缺了这些时 Node/Python/curl 在企业代理环境会 TLS handshake 失败。
     "SSL_CERT_FILE",
     "SSL_CERT_DIR",
     "REQUESTS_CA_BUNDLE",
@@ -487,7 +486,7 @@ impl StdioTransport {
 
     /// 优雅关闭
     pub async fn shutdown(&mut self) {
-        // 尝试发送 shutdown 通知
+        // 尝试发送 notifications/cancelled
         let _ = self
             .send_notification("notifications/cancelled", None)
             .await;
@@ -547,7 +546,7 @@ mod tests {
 
     /// MCP server 是第三方代码。这条断言锁住"宿主凭据不进子进程环境"。
     ///
-    /// 修复前 `Command` 默认继承整个父环境，这些变量全都泄给了每个 MCP server。
+    /// 断言这些名不在 ENV_ALLOWLIST。config.env 仍会在 allowlist 之后原样写入。
     #[test]
     fn env_allowlist_excludes_host_credentials() {
         for leaked in [

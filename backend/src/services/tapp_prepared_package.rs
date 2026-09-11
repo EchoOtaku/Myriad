@@ -103,7 +103,7 @@ mod tests {
         );
     }
 
-    /// 旧格式包不再能安装。对外只说是格式问题，字段名和文档路径留在日志里。
+    /// 旧格式包不再能安装。对外只说是格式问题；匹配到的预层字段名写进日志。
     #[test]
     fn legacy_manifest_error_points_at_the_layer_contract() {
         let error = parse_manifest_json(

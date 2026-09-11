@@ -428,18 +428,18 @@ impl SkillEvolution {
             .ok_or("AI analyzer not available")?;
 
         let prompt = format!(
-            "你是一个 Skill 模板抽象专家。从以下成功执行中提取可复用的抽象 Skill 模板。\n\n\
-            用户原始请求：{}\n\n\
-            实际执行步骤：\n{}\n\n\
-            使用到的能力：{}\n\n\
-            请输出以下 JSON（不要多余解释）：\n\
+            "You extract reusable Skill templates from a successful run.\n\n\
+            Original request: {}\n\n\
+            Steps that ran:\n{}\n\n\
+            Capabilities used: {}\n\n\
+            Output this JSON only (no extra prose):\n\
             {{\n\
-              \"name\": \"简洁的 Skill 名称（不要包含具体人名/番名/平台名，要抽象化）\",\n\
-              \"description\": \"一句话描述这个 Skill 能做什么（抽象化）\",\n\
-              \"category\": \"分类（如 media, social, game, data, creative）\",\n\
-              \"triggers\": [\"3-6个抽象化的触发关键词，包含中英文\"],\n\
-              \"parameters\": [\"从具体值中提取的参数槽位名\"],\n\
-              \"instructions\": \"参数化的执行指令，用 ${{param}} 表示可变部分\"\n\
+              \"name\": \"short Skill name (abstract; no person/show/platform names)\",\n\
+              \"description\": \"one sentence on what this Skill does (abstract)\",\n\
+              \"category\": \"category (media, social, game, data, creative)\",\n\
+              \"triggers\": [\"3-6 abstract trigger phrases, include Chinese and English\"],\n\
+              \"parameters\": [\"parameter slot names extracted from concrete values\"],\n\
+              \"instructions\": \"parameterized instructions; use ${{param}} for variable parts\"\n\
             }}\n",
             user_input,
             step_descriptions,
@@ -567,17 +567,17 @@ impl SkillEvolution {
             .ok_or("AI analyzer not available")?;
 
         let reason_ctx = failure_reason
-            .map(|r| format!("\n最近失败原因：{}", r))
+            .map(|r| format!("\nRecent failure reason: {}", r))
             .unwrap_or_default();
 
         let prompt = format!(
-            "你是一个 Skill 优化专家。以下是一个执行 Skill 的指令，它最近频繁失败。\n\n\
-            当前指令：\n{}\n{}\n\n\
-            请改写这段指令，使其更健壮、更准确。改进要求：\n\
-            1. 保持原有功能意图不变\n\
-            2. 添加错误处理和边界条件检查\n\
-            3. 使参数匹配更精确\n\
-            4. 只输出改进后的指令文本，不要解释\n",
+            "You improve Skill instructions. The Skill below has been failing often.\n\n\
+            Current instructions:\n{}\n{}\n\n\
+            Rewrite them to be more robust and precise:\n\
+            1. Keep the original intent\n\
+            2. Add error handling and edge-case checks\n\
+            3. Make parameter matching more exact\n\
+            4. Output the improved instruction text only, no explanation\n",
             old_instructions, reason_ctx
         );
 

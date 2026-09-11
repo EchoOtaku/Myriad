@@ -483,7 +483,7 @@ mod tests {
             ..blank.clone()
         };
         let named_text = super::format_persona(&named).unwrap();
-        assert!(named_text.starts_with("你是瞳。"));
+        assert!(named_text.starts_with("You are 瞳."));
         assert!(named_text.contains(super::speaking_prompts::PERSONA_SPEAKING_CONTRACT));
         assert!(super::has_custom_persona(&named));
     }
@@ -504,12 +504,12 @@ mod tests {
         assert!(super::refuse_new_task_message(Some(10.0)).is_some());
         assert!(super::refuse_new_task_message(Some(10.1)).is_none());
         assert!(super::refuse_new_task_message(None).is_none());
-        assert!(super::speaking_prompts::PERSONA_SPEAKING_CONTRACT.contains("不要念心情"));
-        assert!(super::mood_tone_instruction(8.0, 48.0).contains("极低"));
-        assert!(super::mood_tone_instruction(30.0, 40.0).contains("偏低"));
-        assert!(super::mood_tone_instruction(30.0, 70.0).contains("烦躁"));
-        assert!(super::mood_tone_instruction(90.0, 48.0).contains("平常语气"));
-        assert!(super::mood_tone_instruction(90.0, 70.0).contains("轻松"));
+        assert!(super::speaking_prompts::PERSONA_SPEAKING_CONTRACT.contains("Do not name the mood"));
+        assert!(super::mood_tone_instruction(8.0, 48.0).contains("Very low"));
+        assert!(super::mood_tone_instruction(30.0, 40.0).contains("A bit low"));
+        assert!(super::mood_tone_instruction(30.0, 70.0).contains("Irritable"));
+        assert!(super::mood_tone_instruction(90.0, 48.0).contains("ordinary tone"));
+        assert!(super::mood_tone_instruction(90.0, 70.0).contains("lighter"));
         let section = super::format_mood_section(72.4, 48.0);
         assert!(!section.contains("72/100"));
         assert!(!section.contains("72.4"));
@@ -519,12 +519,12 @@ mod tests {
     fn diary_section_skips_empty_and_compacts() {
         assert!(super::format_recent_section(&[]).is_none());
         let block = super::format_remembered_section(&["今天晚上想打独立游戏".into()]).unwrap();
-        assert!(block.contains("## 关于这个人"));
-        assert!(block.contains("你留下的事实"));
+        assert!(block.contains("## About this person"));
+        assert!(block.contains("facts you kept"));
         assert!(block.contains("- 今天晚上想打独立游戏"));
         assert!(super::format_recent_section(&["Steam 解锁了成就".into()])
             .unwrap()
-            .contains("## 最近"));
+            .contains("## Recently"));
     }
 
     #[test]
@@ -537,7 +537,7 @@ mod tests {
         let remembered = super::format_remembered_section(&["晚上想打独立游戏".into()]).unwrap();
         let event_line = "正在收尾一篇文章，还差最后一段";
         let prompt = super::speaking_prompt_plain(&[remembered]);
-        assert!(prompt.contains("## 关于这个人"));
+        assert!(prompt.contains("## About this person"));
         assert!(prompt.contains("晚上想打独立游戏"));
         assert!(!prompt.contains(event_line));
         let recent_src = include_str!("mod.rs")
@@ -580,8 +580,8 @@ mod tests {
 
     #[test]
     fn guest_and_addressee_sections_name_the_other_person() {
-        assert!(super::guest_speaking_section().contains("游客"));
-        assert!(super::addressee_speaking_section("瞳").contains("对瞳说话"));
+        assert!(super::guest_speaking_section().contains("guest"));
+        assert!(super::addressee_speaking_section("瞳").contains("speaking to 瞳"));
         assert_eq!(
             super::speaking_prompt_plain(&[
                 super::addressee_speaking_section("瞳"),

@@ -17,9 +17,9 @@ pub(crate) const MERGE_SIMILARITY_THRESHOLD: f32 = 0.70;
 /// 记忆条目
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryEntry {
-    /// 唯一 ID（内容 hash）
+    /// 唯一 ID（写入路径 hash `{user_id}:{content}`；memory.md 导入只 hash 内容）
     pub id: String,
-    /// 所属用户（None = 遗留/全局，仅系统可读；新写入必须带 user_id）
+    /// 所属用户（None = memory.md 遗留导入，仅系统 user_id=0 可见；新写入为 Some(user_id)）
     #[serde(default)]
     pub user_id: Option<i32>,
     /// 记忆类型
@@ -93,9 +93,9 @@ pub enum MemoryType {
 #[serde(rename_all = "snake_case")]
 #[allow(clippy::enum_variant_names)]
 pub enum MemoryTier {
-    /// 当前对话上下文（ephemeral）
+    /// 短期记忆（无写入路径；cleanup_short_term 删除创建超过 2 小时的条目）
     ShortTerm,
-    /// 会话摘要、近期模式（天级留存）
+    /// 中期记忆（会话洞察等；access_count>=3 可晋升 LongTerm，无按天 TTL）
     MediumTerm,
     /// 永久事实、偏好、决策
     LongTerm,
@@ -131,8 +131,7 @@ pub struct MemoryExtractionResult {
 /// 对中英文混合文本做 token 化，支持 CJK bigram + 拉丁单词分词。
 /// 设计目标：百级文档集上的毫秒级搜索，零外部依赖。
 ///
-/// IDF 采用惰性重建策略：add/remove 仅标记脏位，实际重建推迟到搜索时执行，
-/// 避免批量写入时 O(n) × k 的重复计算。
+/// IDF 惰性重建：add/remove 只标脏位，写入方在释放写锁前 ensure_idf_fresh；search 只读。
 pub struct TfIdfIndex {
     /// doc_id → { term → tf }
     pub(crate) tf: HashMap<String, HashMap<String, f32>>,
@@ -248,7 +247,7 @@ impl TfIdfIndex {
         }
     }
 
-    /// 重建 IDF（在批量 add/remove 之后调用，或搜索前惰性触发）
+    /// 重建 IDF（批量 add/remove 之后，或写入路径 ensure_idf_fresh）
     pub(crate) fn rebuild_idf(&mut self) {
         let n = self.doc_count.max(1) as f32;
         let mut df: HashMap<String, u32> = HashMap::new();
@@ -367,9 +366,9 @@ pub struct RecallQuery {
     pub tier_filter: Option<Vec<MemoryTier>>,
     /// 仅搜索指定类型（None = 全部）
     pub type_filter: Option<Vec<MemoryType>>,
-    /// 仅召回该用户的记忆（必填于多租户路径）
+    /// 仅召回该用户的记忆（None 则扫全部分片且不做用户隔离）
     pub user_id: Option<i32>,
-    /// 语义相似度权重
+    /// TF-IDF 余弦相似度权重
     pub similarity_weight: f32,
     /// 时间衰减权重
     pub recency_weight: f32,

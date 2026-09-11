@@ -1,4 +1,11 @@
 import type { ProgressEvent } from '../../services/agent'
+import { userFacingError } from '../../utils/userFacingError'
+
+function facingDetail(raw: string | undefined): string | undefined {
+  const text = raw?.trim()
+  if (!text) return undefined
+  return userFacingError(text)
+}
 
 export type AgentStatus =
   | 'idle'
@@ -42,19 +49,19 @@ export function reduceAgentStatus(
       return { status: 'thinking', detail: state.detail }
 
     case 'task_created':
-      return { status: 'thinking', detail: event.message || undefined }
+      return { status: 'thinking', detail: facingDetail(event.message) }
 
     case 'step_started':
       return {
         status: 'working',
-        detail: event.description || undefined,
+        detail: facingDetail(event.description),
         progress: state.progress,
       }
 
     case 'step_retrying':
       return {
         status: 'working',
-        detail: event.reason || undefined,
+        detail: facingDetail(event.reason),
         progress: state.progress,
       }
 
@@ -71,10 +78,10 @@ export function reduceAgentStatus(
       return { ...state, status: 'working' }
 
     case 'waiting_for_input':
-      return { status: 'needsInput', detail: event.question || undefined }
+      return { status: 'needsInput', detail: facingDetail(event.question) }
 
     case 'error':
-      return { status: 'error', detail: event.message || undefined }
+      return { status: 'error', detail: facingDetail(event.message) }
 
     case 'task_completed':
       return event.success
@@ -87,7 +94,7 @@ export function reduceAgentStatus(
 }
 
 export function awaitingConfirmation(prompt: string): AgentStatusState {
-  return { status: 'needsInput', detail: prompt || undefined }
+  return { status: 'needsInput', detail: facingDetail(prompt) }
 }
 
 /** Occupy thinking before `run_started` so the mic does not flash back. */

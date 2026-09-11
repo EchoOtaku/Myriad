@@ -248,7 +248,7 @@ pub async fn update_room(
         .unwrap_or(false);
 
     if let Err(msg) = validate_public_transition(currently_public, req.is_public) {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({ "error": msg }))));
+        return Err((StatusCode::BAD_REQUEST, Json(AppError::public_json(msg))));
     }
 
     // 构建动态 SET 子句

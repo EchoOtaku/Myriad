@@ -54,6 +54,7 @@ fn youtube_api_key(config: &DynamicConfig) -> Result<String, HttpError> {
                 Json(json!({
                     "success": false,
                     "error": "YouTube API key not configured",
+                    "code": "youtube_api_key_required",
                     "message": "Set youtube_api_key in site config or YOUTUBE_API_KEY"
                 })),
             ))

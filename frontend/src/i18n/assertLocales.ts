@@ -1,4 +1,6 @@
 import type { TranslationKeys } from './index'
+import agentCapsJa from './agentCaps.ja-JP.json'
+import agentCapsZh from './agentCaps.zh-CN.json'
 import { assembleLocale } from './assembleLocale'
 import brewJa from './brew.ja-JP.json'
 import brewZh from './brew.zh-CN.json'
@@ -19,6 +21,7 @@ const _zh: TranslationKeys = assembleLocale(zh, {
   brew: brewZh,
   merope: meropeZh,
   errors: errorsZh,
+  agentCaps: agentCapsZh,
 })
 const _ja: TranslationKeys = assembleLocale(ja, {
   config: configJa,
@@ -26,6 +29,7 @@ const _ja: TranslationKeys = assembleLocale(ja, {
   brew: brewJa,
   merope: meropeJa,
   errors: errorsJa,
+  agentCaps: agentCapsJa,
 })
 
 void _zh

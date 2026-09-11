@@ -1,4 +1,5 @@
 import type { Locale, TranslationKeys } from './index'
+import agentCaps from './agentCaps.en-US.json'
 import { assembleLocale } from './assembleLocale'
 import brew from './brew.en-US.json'
 import config from './config.en-US.json'
@@ -15,6 +16,7 @@ const enUS: TranslationKeys = assembleLocale(core, {
   brew,
   merope,
   errors,
+  agentCaps,
 })
 
 function asLocale(value: string): Locale {

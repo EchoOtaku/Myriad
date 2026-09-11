@@ -120,7 +120,7 @@ impl AgentRouter {
                 capability_prefixes: vec![], // Orchestrator 不直接执行能力
                 default_tier: ModelTier::Pro,
                 max_concurrency: 1,
-                description: "规划、决策、汇总".to_string(),
+                description: "Planning, decisions, and summaries".to_string(),
             },
         );
 
@@ -155,7 +155,7 @@ impl AgentRouter {
                 capability_prefixes: data_prefixes,
                 default_tier: ModelTier::Standard,
                 max_concurrency: 4,
-                description: "平台数据获取、API 调用、数据转换".to_string(),
+                description: "Platform data, API calls, and transforms".to_string(),
             },
         );
 
@@ -185,7 +185,7 @@ impl AgentRouter {
                 capability_prefixes: content_prefixes,
                 default_tier: ModelTier::Standard,
                 max_concurrency: 3,
-                description: "内容总结、分析、过滤、搜索".to_string(),
+                description: "Summarize, analyze, filter, and search".to_string(),
             },
         );
 
@@ -210,7 +210,7 @@ impl AgentRouter {
                 capability_prefixes: creative_prefixes,
                 default_tier: ModelTier::Pro,
                 max_concurrency: 2,
-                description: "创意生成、自由对话、代码、图片".to_string(),
+                description: "Creative generation, chat, code, and images".to_string(),
             },
         );
 
@@ -263,7 +263,7 @@ impl AgentRouter {
                 capability_prefixes: system_prefixes,
                 default_tier: ModelTier::Standard,
                 max_concurrency: 4,
-                description: "路由导航、UI 控制、系统操作".to_string(),
+                description: "Routing, UI control, and system operations".to_string(),
             },
         );
 

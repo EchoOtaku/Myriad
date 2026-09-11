@@ -15,6 +15,8 @@ import {
   getSpeechStatus,
   getTTSSettings,
   getVoiceList,
+  isFemaleVoice,
+  isMaleVoice,
   saveTTSSettings,
 } from '../../../../services/speechApi'
 import { userFacingError } from '../../../../utils/userFacingError'
@@ -203,19 +205,16 @@ export function usePodcast({
       }
     })
 
-    const isMale = (v: VoiceInfo) => v.gender === '男' || v.gender === '男童'
-    const isFemale = (v: VoiceInfo) => v.gender === '女' || v.gender === '女童'
-
     return {
       ultra,
       llm,
       premium,
-      ultraMale: ultra.filter(isMale),
-      ultraFemale: ultra.filter(isFemale),
-      llmMale: llm.filter(isMale),
-      llmFemale: llm.filter(isFemale),
-      premiumMale: premium.filter((v) => v.gender === '男'),
-      premiumFemale: premium.filter((v) => v.gender === '女'),
+      ultraMale: ultra.filter((v) => isMaleVoice(v.gender)),
+      ultraFemale: ultra.filter((v) => isFemaleVoice(v.gender)),
+      llmMale: llm.filter((v) => isMaleVoice(v.gender)),
+      llmFemale: llm.filter((v) => isFemaleVoice(v.gender)),
+      premiumMale: premium.filter((v) => isMaleVoice(v.gender)),
+      premiumFemale: premium.filter((v) => isFemaleVoice(v.gender)),
     }
   }, [voiceList])
 

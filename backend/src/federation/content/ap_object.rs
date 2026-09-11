@@ -403,7 +403,7 @@ pub(crate) async fn fan_out_to_followers(
 ) -> u32 {
     let base_url = get_base_url().await;
 
-    // 查询所有 incoming followers 的远程 inbox
+    // 查询 accepted incoming followers 的 inbox（含同实例，随后走本地捷径）
     let followers = match db
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -656,8 +656,8 @@ fn local_username_from_inbox_url(base_url: &str, inbox_url: &str) -> Option<Stri
     local_username_from_actor_url(base_url, actor)
 }
 
-/// Insert Create into a same-instance follower's timeline.
-/// Returns Ok(true) when inserted (or already present), Ok(false) if user missing.
+/// Deliver a non-Move activity into a same-instance follower's timeline.
+/// Like returns Ok(true) without insert. Ok(false) if the user is missing.
 async fn deliver_create_to_local_follower(
     db: &DatabaseConnection,
     follower_username: &str,
@@ -704,7 +704,7 @@ async fn deliver_create_to_local_follower(
     let object = &activity_json["object"];
     let object_type = object["type"].as_str().map(|s| s.to_string());
     let preview = preview_from_ap_object(object);
-    // For Announce with a bare object id string, store as-is; Create stores the Note.
+    // Store `object` as-is (string id or embedded object).
     let content_json = object.clone();
 
     db.execute_raw(Statement::from_sql_and_values(

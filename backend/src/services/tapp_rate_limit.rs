@@ -92,7 +92,7 @@ pub fn get_rate_limit_config(operation: &str) -> (u32, u64) {
         "brew.commentWrite" => (90, 60),
         "brew.manage" => (30, 60),
         // Host-proxied federation mutations.
-        // post/interact 是高频社交操作（沿用原 federation.write 额度）；
+        // post/interact: 90/min social class;
         // channel/room/ring 治理操作低频，与 files 同档。
         "federation.post" => (90, 60),
         "federation.interact" => (90, 60),
@@ -105,7 +105,7 @@ pub fn get_rate_limit_config(operation: &str) -> (u32, u64) {
         // Host-proxied speech write paths (TTS/ASR POST).
         "speech.tts" => (45, 60),
         "speech.asr" => (45, 60),
-        // event.publish default was 200 — keep default high for pub/sub noise.
+        // Default (event.publish): 240/min for pub/sub noise.
         _ => (240, 60),
     }
 }

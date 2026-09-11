@@ -1,12 +1,11 @@
 //! 通用 OIDC Provider 实现
 //!
 //! 设计：
-//! - **Discovery**: 启动时从 `discovery_url` 拉 `.well-known/openid-configuration`，
-//! 缓存 24h（lazy 刷新）。
+//! - **Discovery**: 首次 `discovery()` 时拉 `.well-known/openid-configuration`，缓存 24h（lazy 刷新）。
 //! - **Token 交换**: 标准 OAuth2 `authorization_code` flow，POST 到 `token_endpoint`。
 //! - **PKCE S256 + nonce**: `code_challenge` / `code_verifier` and OIDC
 //!   `nonce` are carried in signed OAuth state (multi-instance safe).
-//! - **Profile**: 优先解析 `id_token` 的 claims；缺失字段再去 `userinfo_endpoint` 拉。
+//! - **Profile**: 优先解析 `id_token` 的 claims；缺 `email` 键再去 `userinfo_endpoint`。
 //! - **id_token 验证**: 通过 discovery 的 `jwks_uri` 拉取 JWKS，校验签名、
 //! `iss`、`aud`、`exp`、`sub`、`azp` 和 `nonce`。
 //!
@@ -48,8 +47,7 @@ const OIDC_MAX_BODY: usize = 512 * 1024;
 /// [`build_public_http_client`] 会解析域名、逐个校验解析出的地址公网可路由、
 /// 把 DNS 结果 pin 住并禁用重定向，堵死 DNS 重绑定与重定向两条路。
 ///
-/// **行为变化**：禁用重定向。OIDC 端点通常不重定向；若某个 provider 依赖
-/// 重定向，需要逐跳校验后为每跳单独建客户端，而不是放开这里。
+/// 禁用重定向（`redirect(Policy::none())`）。若某个 provider 依赖重定向，需要逐跳校验后为每跳单独建客户端。
 async fn oidc_client(url: &str) -> Result<(url::Url, reqwest::Client), String> {
     crate::services::outbound_security::build_public_http_client(
         url,
@@ -387,7 +385,7 @@ impl OAuthProvider for OidcProvider {
             .verify_id_token(id_token, tokens.expected_nonce.as_deref())
             .await?;
 
-        // 如果 id_token 没给齐档案，再去 userinfo
+        // 如果 id_token 没有 email 键，再去 userinfo
         let userinfo: serde_json::Value = match id_claims.get("email") {
             Some(_) => id_claims.clone(),
             _ => {
@@ -444,7 +442,7 @@ impl OAuthProvider for OidcProvider {
             .or_else(|| id_claims.get("email").and_then(|v| v.as_str()))
             .map(|s| s.to_string());
 
-        // email_verified: 优先 userinfo 显式声明，缺省 false（保守 — 不会触发自动 merge）
+        // email_verified: 优先 userinfo 显式声明，否则 id_token，再缺省 false。登录不做按邮箱静默 merge。
         let email_verified = userinfo
             .get("email_verified")
             .and_then(|v| v.as_bool())

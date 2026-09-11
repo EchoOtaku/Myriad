@@ -1,6 +1,6 @@
 //! 能力注册表模块
 //!
-//! 管理系统所有可用能力的注册、查询和匹配
+//! 注册内置能力并按 id 查询。不匹配意图；Skill/MCP 不在此注册表。
 
 pub mod definitions;
 mod output_contract;
@@ -76,7 +76,7 @@ pub async fn get_registry() -> tokio::sync::RwLockReadGuard<'static, CapabilityR
     CAPABILITY_REGISTRY.read().await
 }
 
-/// 异步版本：检查能力是否需要确认（从注册表读取）
+/// 检查能力是否需要确认（注册表 + get_sensitive_capabilities 兜底）
 pub async fn capability_requires_confirmation_async(
     capability_id: &str,
 ) -> Option<(String, RiskLevel)> {
@@ -179,7 +179,7 @@ pub fn capability_covered_by_grants(cap: &Capability, granted: Option<&HashSet<S
 /// Compact index limited to capabilities the user is actually granted.
 /// Filtering here is the grant layer, not declared/approved.
 ///
-/// 每个条目的字段：`id` / `h` 用途 / `p` 必需入参 / `o` 声明的输出字段。
+/// 能力条目字段：`id` / `h` / `p` / `o`。Skill 行用 `params` 而非 `p`；MCP 行无 `o`。
 /// `o` 让 Planner 能写出 `"dataFrom": "search.results"` 这类精确引用，
 /// 而不是只引用整个步骤输出再由执行层猜哪个字段有用。
 ///
@@ -277,7 +277,7 @@ pub async fn get_compact_index_for_grants(granted: Option<&HashSet<String>>) -> 
     })
 }
 
-/// 根据 ID 列表获取完整能力定义（渐进式披露第二阶段）
+/// 根据 ID 列表获取完整能力定义（供 validate_and_convert_steps）
 pub async fn get_capabilities_by_ids(ids: &[String]) -> Vec<Capability> {
     let mut capabilities = Vec::with_capacity(ids.len());
     for id in ids {
@@ -389,13 +389,13 @@ fn mcp_capability(
 /// 获取能力类别的友好名称
 fn get_capability_category_name(category: &CapabilityCategory) -> String {
     match category {
-        CapabilityCategory::DataRead => "数据读取".to_string(),
-        CapabilityCategory::DataWrite => "数据写入".to_string(),
-        CapabilityCategory::AiProcess => "AI处理".to_string(),
-        CapabilityCategory::ResourceCreate => "资源创建".to_string(),
-        CapabilityCategory::SystemOp => "系统操作".to_string(),
-        CapabilityCategory::ExternalIntegration => "外部集成".to_string(),
-        CapabilityCategory::UiControl => "界面控制".to_string(),
+        CapabilityCategory::DataRead => "Data".to_string(),
+        CapabilityCategory::DataWrite => "Write".to_string(),
+        CapabilityCategory::AiProcess => "AI".to_string(),
+        CapabilityCategory::ResourceCreate => "Create".to_string(),
+        CapabilityCategory::SystemOp => "System".to_string(),
+        CapabilityCategory::ExternalIntegration => "External".to_string(),
+        CapabilityCategory::UiControl => "Interface".to_string(),
     }
 }
 

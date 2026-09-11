@@ -136,15 +136,17 @@ pub(crate) fn validate_input(input: &str) -> Result<(), HttpError> {
     if input.chars().count() > MAX_INPUT_LEN {
         return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": crate::services::agent::response_agent::input_too_long(MAX_INPUT_LEN)
-            })),
+            Json(AppError::public_json(
+                crate::services::agent::response_agent::input_too_long(MAX_INPUT_LEN),
+            )),
         )));
     }
     if input.trim().is_empty() {
         return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": crate::services::agent::response_agent::input_empty() })),
+            Json(AppError::public_json(
+                crate::services::agent::response_agent::input_empty(),
+            )),
         )));
     }
     Ok(())

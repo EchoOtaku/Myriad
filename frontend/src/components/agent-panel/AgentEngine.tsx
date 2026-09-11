@@ -904,7 +904,7 @@ export const AgentEngine: React.FC = () => {
             const stepEvent = event as StepStartedEvent
             addExecutionStep(assistantMessageId, {
               id: stepEvent.stepId,
-              name: stepEvent.description,
+              name: userFacingError(stepEvent.description),
               status: 'running',
               stepIndex: stepEvent.stepIndex,
               totalSteps: stepEvent.totalSteps,

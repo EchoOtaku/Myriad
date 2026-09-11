@@ -1,4 +1,4 @@
-//! Per-user delivery queue observability APIs.
+//! Per-user delivery queue stats, list, retry, cancel, dismiss, and purge.
 
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, Statement};
 use serde_json::json;
@@ -61,7 +61,7 @@ pub async fn list_delivery_for_user_filtered(
     });
 
     let rows = if let Some(st) = status {
-        // "dead" UI tab also includes soft-failed rows
+        // "dead" UI tab also includes status='failed' rows (no writer currently sets failed)
         if st == "dead" {
             db.query_all_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
@@ -151,7 +151,7 @@ pub async fn list_delivery_for_user_filtered(
                 .ok().flatten().map(|t| t.to_rfc3339()),
             "next_retry_at": r.try_get::<Option<chrono::DateTime<chrono::FixedOffset>>>("", "next_retry_at")
                 .ok().flatten().map(|t| t.to_rfc3339()),
-            // UI helpers (host + Aro) — avoid re-implementing cancel prefix rules
+            // Host UI reads these; cancel prefix rules are still duplicated in frontend federationDeliveryUi.ts.
             "intentional_cancel": intentional_cancel,
             "retryable": retryable,
             "is_teardown_activity": is_resource_teardown_activity_type(&activity_type),
@@ -174,7 +174,7 @@ pub(crate) fn classify_retry_status(status: &str) -> RetryStatusDecision {
         "dead" | "pending" => RetryStatusDecision::Allow,
         "delivered" => RetryStatusDecision::AlreadyDelivered,
         "delivering" => RetryStatusDecision::InProgress,
-        // Unknown / cancelled variants: allow re-queue only if previously dead-like
+        // failed/cancelled Allow; any other unknown status also Allow.
         other if other == "failed" || other == "cancelled" => RetryStatusDecision::Allow,
         _ => RetryStatusDecision::Allow,
     }

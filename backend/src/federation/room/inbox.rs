@@ -319,7 +319,7 @@ pub async fn handle_room_message(
         .and_then(|v| v.as_str())
         .ok_or("Missing room")?;
 
-    // Prefer signed activity actor; fall back to object.from
+    // Use object.from when present, else the signed actor; they must match.
     let sender_actor = object
         .get("from")
         .and_then(|v| v.as_str())
@@ -805,7 +805,7 @@ pub async fn handle_room_join(
 }
 
 /// Replay the roster in both directions when a member becomes active, from the
-/// room's home instance.
+/// owner's local instance.
 ///
 /// A `RoomInvite` carries the roster as it stood when the invite was written,
 /// and every later announcement is fanned out to *active* members only — so a
@@ -813,12 +813,11 @@ pub async fn handle_room_join(
 /// their accept. Two peers invited before either accepted therefore end up
 /// invisible to whichever of them accepted second: the missing peer's
 /// `RoomMessage` is refused as `not_member`, and their `KeyExchange` never
-/// arrived, so anything they encrypt is undecryptable. The home instance is the
-/// only party holding the full roster, so it is the one that repairs the gap.
+/// arrived, so anything they encrypt is undecryptable. The owner's local
+/// instance is the one that repairs the gap.
 ///
-/// Best-effort: the join itself is already committed, and a peer we cannot
-/// reach right now is repaired by the next join or roster poll rather than by
-/// failing (and retrying) an otherwise-good membership write.
+/// Best-effort: errors here do not fail the membership write. A peer we cannot
+/// reach right now does not fail this write (no roster retry here).
 pub(crate) async fn backfill_roster_for_new_member(
     db: &impl ConnectionTrait,
     room_id: &str,
@@ -1180,7 +1179,7 @@ pub(crate) fn require_remote_inbox(
     }
 }
 
-/// Notify local users (inviter preferred, else owner) that someone joined/accepted.
+/// Notify local users (inviter preferred, else owner/admin cap 5) that someone joined/accepted.
 pub(crate) async fn notify_local_members_of_join(
     db: &impl ConnectionTrait,
     room_id: &str,
