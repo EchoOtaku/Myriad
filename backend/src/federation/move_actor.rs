@@ -168,8 +168,7 @@ pub fn url_is_under_base(url: &str, base: &str) -> bool {
     if url.is_empty() || base.is_empty() {
         return false;
     }
-    // Case-insensitive scheme+host via normalize_actor_url for actor-like URLs;
-    // for general paths keep byte-prefix after lowercasing host via Url parse.
+    // Prefix compare after `normalize_actor_url` (host lowercased; path kept; query/fragment dropped).
     let url_norm = normalize_actor_url(url);
     let base_norm = normalize_actor_url(base);
     if url_norm == base_norm {
@@ -352,7 +351,7 @@ pub fn build_move_activity(
     })
 }
 
-/// Best-effort followers collection URL from an actor id (`…/users/u` → `…/followers`).
+/// Best-effort `{actor_id}/followers`.
 fn followers_collection_hint(actor: &str) -> String {
     let trimmed = actor.trim().trim_end_matches('/');
     format!("{}/followers", trimmed)
@@ -396,7 +395,7 @@ pub fn parse_also_known_as(actor_json: &serde_json::Value) -> Vec<String> {
         .collect()
 }
 
-/// Fail-closed structural + document checks for Move (no HTTP Signature here).
+/// Fail-closed structural checks on the Move activity (no HTTP Signature, no actor documents).
 ///
 /// Returns `Ok((old_actor, new_actor))` or a permanent error string.
 pub fn verify_move_structure(
@@ -502,7 +501,7 @@ pub async fn fetch_actor_document(
         return local_actor_document(db, &base_url, &local_username).await;
     }
 
-    // Host may match an old-base alias on this instance
+    // URL may match a recorded old or new base on this instance.
     let aliases = load_domain_aliases(db).await;
     for a in &aliases {
         if let Some(uname) = local_username_from_actor_url(&a.old_base_url, actor_url_str) {
@@ -674,7 +673,7 @@ pub async fn migrate_follows_old_to_new(
     old_actor_url: &str,
     new_actor_url: &str,
 ) -> Result<u32, String> {
-    // Ensure both are in remote_actors cache (new may need fetch)
+    // Old must already be in `federation_remote_actors`; fetch (and cache) new.
     let old_remote = match db
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -816,7 +815,6 @@ pub async fn migrate_follows_old_to_new(
         }
     }
 
-    // Optionally note moved_to on old remote_actors row for debugging (no schema change)
     tracing::info!(
         old = %old_actor_url,
         new = %new_actor_url,
@@ -1011,8 +1009,8 @@ async fn rewrite_prefix_column(
 
 /// **E** — Rewrite this instance’s stored absolute federation URLs `old_base` → `new_base`.
 ///
-/// Whitelist only. Never rewrites third-party domains (prefix match on old_base).
-/// `federation_remote_actors.domain` is updated only when `actor_url` was under old_base.
+/// Whitelist columns; `LIKE` prefix on `old_base` (substring hosts can match).
+/// `federation_remote_actors.domain` set to new host when `domain` is old and `actor_url` LIKE old_base% or new_base%.
 pub async fn rewrite_local_federation_urls(
     db: &DatabaseConnection,
     old_base: &str,
@@ -1208,7 +1206,7 @@ async fn user_has_shared_key(db: &DatabaseConnection, user_id: i32) -> Result<bo
 
 /// Admin domain-move job: **B + G + C + E** (or dry_run counts).
 ///
-/// Order: validate → counts → alias (B) → shared keys (G) → Move enqueue (C) → local rewrite (E).
+/// Order: validate → alias (B, skipped if dry_run) → shared keys (G) → Move enqueue (C) → local rewrite (E).
 pub async fn domain_move_all_users(
     db: &DatabaseConnection,
     req: &DomainMoveRequest,
@@ -1251,7 +1249,6 @@ pub async fn domain_move_all_users(
 
     let dry = req.dry_run;
 
-    // 2–4. dry_run: G + E counts without writes; live: apply G after B.
     // 3. B — actor document fields (alias)
     let alias_stored = if dry {
         false
@@ -1593,7 +1590,6 @@ mod tests {
                 promote_new_to_accepted: false
             }
         );
-        // Idempotent second pass: already only on new → Update path not used;
         // Drop with no promote when old was pending
         assert_eq!(
             plan_follow_repoint("pending", Some("accepted")),
