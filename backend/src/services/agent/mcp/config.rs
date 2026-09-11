@@ -1,6 +1,7 @@
 //! MCP 服务器配置
 //!
-//! 从 `data/agent/mcp_servers.json` 加载 / 保存 MCP 服务器定义。
+//! Load/save MCP server definitions from a caller-supplied path
+//! (boot injects `{DATA_DIR}/agent/mcp_servers.json`).
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -28,7 +29,7 @@ pub struct McpServerConfig {
     pub env: HashMap<String, String>,
     #[serde(default = "default_true")]
     pub enabled: bool,
-    /// 崩溃后自动重启
+    /// Retry when not Ready or child dead (`call_tool` / maintenance).
     #[serde(default = "default_true")]
     pub auto_restart: bool,
     /// 最大重启次数

@@ -149,8 +149,8 @@ async fn handle_file_chunk(
     if !is_valid_transfer_id(transfer_id) {
         return Err("Invalid transferId: must be 1-128 chars of [A-Za-z0-9_-] only".into());
     }
-    // Inbox dispatch supplies the enclosing receipt transaction, so this lock
-    // covers the filesystem mutation until the receipt/database commit.
+    // Advisory lock on the transfer session. Inbound `myriad:FileChunk` currently
+    // 503s in mfp and does not reach this handler.
     lock_transfer_session(db, transfer_id)
         .await
         .map_err(|error| error.to_string())?;

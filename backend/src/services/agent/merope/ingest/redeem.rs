@@ -93,8 +93,8 @@ async fn redeem_speak_intent(
     let Some(decision) = current_delivery(db, &intent, input_at, false).await else {
         return Ok(());
     };
-    // Direct motion only after the line has passed every suppression check. This
-    // keeps the Lite budget tied to speech the addressee will actually receive.
+    // `direct_motion` is the non-live `shown` branch. Compose may already spend
+    // Lite; a later `current_delivery` re-read can still drop the line.
     let mut pending_motion = None;
     let (performance, motion_mood) = if shown {
         match get_or_create_state(db, intent.user_id).await {
@@ -256,9 +256,8 @@ fn delivery_decision(
     decision.allow_model.then_some(decision)
 }
 
-/// Whether the composed line reaches the addressee at all. Valuable events whose
-/// notification an existing producer already owns are excluded: sending our own
-/// would mean two notifications for one thing.
+/// Merope toast gate: `notify && merope_owns_notify`. Live speech can still
+/// reach the face when this is false.
 fn speech_is_shown(event_key: &str, notify: bool) -> bool {
     notify && merope_owns_notify(event_key)
 }
@@ -690,9 +689,10 @@ mod tests {
         assert!(speech_is_shown("agent.merope.platform_activity", true));
         assert!(speech_is_shown("agent.merope.report_ready", true));
         assert!(speech_is_shown("agent.merope.greeting", true));
-        // These already have a producer sending the notification.
+        // Other producers own these toasts.
         assert!(!speech_is_shown("agent.task_failed", true));
         assert!(!speech_is_shown("brew.source_error", true));
+        // Merope-owned but `notify` is false.
         assert!(!speech_is_shown("agent.merope.greeting", false));
     }
 }

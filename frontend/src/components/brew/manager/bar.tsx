@@ -1,3 +1,4 @@
+import type { ChangeEvent, RefObject } from 'react'
 import type { BrewSource } from '../../../types/brew'
 import type {
   ControlMode,
@@ -6,9 +7,6 @@ import type {
   StarredModeConfig,
   TopicFeedModeConfig,
 } from './modes/types'
-import { refreshableSourceCount } from '../logic/board'
-import { buildBrewSortOptions } from './modes/sortOptions'
-
 import {
   LuArrowUpDown as ArrowUpDown,
   LuCheck as Check,
@@ -29,11 +27,12 @@ import {
   LuUpload as Upload,
   LuX as X,
 } from '@lib/icons'
-import type { ChangeEvent, RefObject } from 'react'
 import { useEffect, useRef, useState } from 'react'
 
 import { useI18n } from '../../../contexts/I18nContext'
 import { Spinner } from '../../Spinner'
+
+import { refreshableSourceCount } from '../logic/board'
 import {
   BrewBarMenu,
   BrewBarMenuItem,
@@ -45,8 +44,10 @@ import {
   BrewMark,
   BrewTag,
 } from '../ui/Bar'
+import { useManagementDisplay } from '../ui/BrewManagement'
 import { BrewChip } from '../ui/Chip'
 import { cx } from '../ui/cx'
+import { buildBrewSortOptions } from './modes/sortOptions'
 
 export function BrewBarDefault({
   sortMode,
@@ -77,6 +78,7 @@ export function BrewBarDefault({
   const menuRef = useRef<HTMLDivElement>(null)
   const options = buildBrewSortOptions()
   const current = options.find((option) => option.value === sortMode) ?? options[0]
+  const displayControl = useManagementDisplay()
   let tagAt = tagFrom
 
   useEffect(() => {
@@ -94,6 +96,11 @@ export function BrewBarDefault({
 
   return (
     <>
+      {displayControl ? (
+        <BrewChip key="d:spread" id="d:spread" index={tagAt++}>
+          {displayControl}
+        </BrewChip>
+      ) : null}
       <BrewChip key="d:sort" id="d:sort" index={tagAt++}>
         <BrewBarWrap wrapRef={menuRef}>
           <BrewTag
@@ -149,14 +156,6 @@ export function BrewBarDefault({
           </BrewTag>
         </BrewChip>
       ) : null}
-      <BrewChip key="d:search" id="d:search" index={tagAt++}>
-        <BrewTag title={brew.search} onClick={() => onModeChange('search')}>
-          <BrewMark>
-            <Search />
-          </BrewMark>
-          <BrewLabel>{brew.search}</BrewLabel>
-        </BrewTag>
-      </BrewChip>
       {isAdmin ? (
         <BrewChip key="d:edit" id="d:edit" index={tagAt++} conceal={!canEdit}>
           <BrewTag
@@ -661,7 +660,7 @@ export function BrewBarTags({
   sourcesCount: number
 }) {
   const { t } = useI18n()
-  const tagFrom = embedded ? 1 : 0
+  const tagFrom = 0
 
   if (mode === 'search') {
     return (

@@ -1,8 +1,9 @@
 //! Agent Interaction domain surface for Executor handlers.
 //!
 //! Public create API lives in services so agent handlers do not import
-//! `crate::api::tapp_runtime`. The concrete registry/mailbox implementation is
-//! installed by the HTTP Agent Interaction module (same TTL / presence path).
+//! `crate::api::tapp_runtime`. Registry/mailbox/TTL live in
+//! `services::tapp_agent_interaction` (create falls through there unless a
+//! test executor is installed).
 
 use futures::future::BoxFuture;
 use once_cell::sync::OnceCell;

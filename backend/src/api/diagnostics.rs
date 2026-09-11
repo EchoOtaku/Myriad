@@ -23,7 +23,7 @@ fn limited_detail(detail: impl AsRef<str>) -> String {
 /// 1. Earliest `seaql_migrations.applied_at` (first schema apply ≈ first deploy)
 /// 2. Postgres data-dir `PG_VERSION` mtime for the current database
 ///
-/// Returns RFC3339 UTC when known.
+/// Returns `DateTime<Utc>` when known; JSON later emits RFC3339.
 async fn probe_database_established_at(db: &impl ConnectionTrait) -> Option<DateTime<Utc>> {
     // sea-orm: applied_at is typically a Unix epoch (bigint); some setups use timestamptz.
     if let Ok(Some(row)) = db

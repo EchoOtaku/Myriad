@@ -2,7 +2,7 @@
 //!
 //! 管理单个 MCP 服务器子进程的完整生命周期：
 //! spawn → initialize handshake → tools/list → ready
-//! 含健康检查和自动重启。
+//! 含健康检查和重启方法（`try_restart` / `force_restart`）；何时重启由 manager 的 `auto_restart` 决定。
 
 use std::sync::Arc;
 use tokio::sync::Mutex;

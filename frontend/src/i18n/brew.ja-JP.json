@@ -3,6 +3,7 @@
   "source": "購読元",
   "articles": "記事",
   "article": "記事",
+  "latestArticles": "最新の記事",
   "loadSourcesFailed": "購読元の読み込みに失敗しました",
   "loadArticlesFailed": "記事の読み込みに失敗しました",
   "starFailed": "スターを更新できませんでした。",

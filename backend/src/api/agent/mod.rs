@@ -36,7 +36,7 @@ use crate::services::agent::{
 };
 
 /// 等待用户回答的任务上下文
-/// process_stream 注册后等待 oneshot 信号；answer_task_question_stream 完成后通过此信号回传结果
+/// `spawn_restored_wait_loop` 注册后等待 oneshot；answer / cancel / interrupt 都可 send `done_tx`
 struct WaitingTaskCtx {
     /// 任务所有者；take 时必须匹配，防止跨用户抢 oneshot
     user_id: i32,

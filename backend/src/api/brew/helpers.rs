@@ -198,7 +198,7 @@ pub(crate) fn parse_feed_type_label(label: &str) -> brew_sources::FeedType {
 }
 
 /// 请求里的 `rss` 是添加表单默认值，不能盖掉解析结果。
-/// 只有明确的 atom / json_feed / rsshub / notion 才覆盖。
+/// 只有明确的 atom / json / json_feed / rsshub / notion 才覆盖。
 pub(crate) fn overlay_requested_feed_type(
     parsed: brew_sources::FeedType,
     requested: Option<&str>,

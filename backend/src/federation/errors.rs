@@ -165,7 +165,7 @@ mod tests {
 
     #[test]
     fn room_not_yet_present_not_confused_with_not_found() {
-        // Must stay transient even though message contains the room id token
+        // Transient via `not yet present` / `retry after RoomInvite` (not because of a room-id token).
         let msg = "Room rm_deadbeef not yet present; retry after RoomInvite";
         assert!(!is_permanent_federation_error(msg));
         assert!(!msg.to_lowercase().contains("not found") || !is_permanent_federation_error(msg));

@@ -3,6 +3,7 @@
   "source": "Source",
   "articles": "Articles",
   "article": "Article",
+  "latestArticles": "Latest articles",
   "loadSourcesFailed": "Failed to load sources",
   "loadArticlesFailed": "Failed to load articles",
   "starFailed": "Could not update that star.",

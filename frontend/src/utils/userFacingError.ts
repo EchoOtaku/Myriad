@@ -1631,6 +1631,9 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (/^未命名内容$/.test(raw)) return t.untitledContent
   if (/^未知用户$/.test(raw)) return currentCopy().userModal.unknownUser
   if (/^未分类$/.test(raw)) return currentCopy().brew.uncategorized
+  if (/^最新文章$|^Latest articles$/i.test(raw)) {
+    return currentCopy().brew.latestArticles
+  }
   if (/^标题不能为空$|^A title is required$/i.test(raw)) {
     return currentCopy().brew.noteTitleRequired
   }

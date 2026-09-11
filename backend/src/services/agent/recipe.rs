@@ -121,7 +121,7 @@ pub fn validate_and_convert_steps(
             }
         }
 
-        // 参数验证（包括 required 字段检查）
+        // Schema param check: missing required / extra keys warn only (`skill:` / `mcp.` skip).
         if let Some(cap) = cap_schemas.iter().find(|c| c.id == ai_step.capability_id) {
             // 检查 required params 是否存在
             if let Some(required) = cap.input_schema.get("required").and_then(|v| v.as_array()) {

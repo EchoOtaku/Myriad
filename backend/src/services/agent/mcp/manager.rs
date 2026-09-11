@@ -30,7 +30,7 @@ pub struct McpManager {
 }
 
 impl McpManager {
-    /// 从配置文件初始化所有 MCP 服务器
+    /// Start enabled servers from the config file (disabled rows stay on disk).
     pub async fn init(config_path: &Path) -> Arc<Self> {
         let mtime = file_mtime(config_path).await;
         let config = load_config(config_path).await;
@@ -165,7 +165,7 @@ impl McpManager {
         load_config(&self.config_path).await
     }
 
-    /// Path of `mcp_servers.json` (for UI hints).
+    /// Path of the injected config file (returned as `configPath` on GET/PUT).
     pub fn config_path_display(&self) -> String {
         self.config_path.display().to_string()
     }

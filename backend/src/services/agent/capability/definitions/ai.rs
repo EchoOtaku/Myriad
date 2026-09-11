@@ -220,7 +220,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         ..Default::default()
     });
 
-    // AI Grounding 搜索（ai.webSearch 的别名，用于强调事实性搜索）
+    // AI Grounding 搜索（独立 registry id，不是 `ai.webSearch` 别名；无 Compare）
     registry.register(Capability {
         id: "ai.groundingSearch".to_string(),
         name: "Grounded search".to_string(),

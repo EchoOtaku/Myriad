@@ -15,9 +15,8 @@ use super::inbox_err;
 use super::mfp::handle_mfp_activity;
 use super::receive::get_local_user;
 
-/// Delivery side effects that must be emitted as part of the receipt
-/// transaction.  Same-instance recursive delivery is intentionally excluded:
-/// it would open a second receipt transaction while the first is still open.
+/// Receipt HTTP path uses `QueueOnly`. `InProcess` is the trusted local helper
+/// (no nested receipt txn).
 #[derive(Clone, Copy)]
 pub(crate) enum DeliveryMode<'a> {
     QueueOnly,
@@ -38,7 +37,7 @@ pub(crate) async fn enqueue_delivery(
     activity: &Activity,
     target_inbox: &str,
 ) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
-    // 序列化完整 Activity（含 @context/type/id/actor/object），供 delivery.rs 直接发送
+    // Full Activity JSON for `delivery/dispatch.rs` (`deliver_activity`).
     let activity_json = serde_json::to_value(activity).unwrap_or_default();
     let domain = extract_domain(target_inbox).unwrap_or_default();
     let base_url = get_base_url().await;

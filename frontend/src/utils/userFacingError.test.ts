@@ -1675,6 +1675,10 @@ describe('userFacingError', () => {
     assert.equal(userFacingError('动态技能'), currentCopy().errors.capDynamicSkills)
     assert.equal(userFacingError('未分类'), currentCopy().brew.uncategorized)
     assert.equal(
+      userFacingError('最新文章'),
+      currentCopy().brew.latestArticles,
+    )
+    assert.equal(
       userFacingError('任务等待用户输入超时（2小时），已自动取消'),
       currentCopy().errors.waitInputTimeoutHours.replace('{hours}', '2'),
     )
