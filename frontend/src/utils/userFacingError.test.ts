@@ -1610,6 +1610,64 @@ describe('userFacingError', () => {
     )
     assert.equal(userFacingError('组件列表'), currentCopy().errors.tappWidgets)
     assert.equal(
+      userFacingError('未命名报告'),
+      currentCopy().errors.unnamedReport,
+    )
+    assert.equal(userFacingError('未知标题'), currentCopy().errors.unknownTitle)
+    assert.equal(
+      userFacingError('未知艺术家'),
+      currentCopy().library.unknownArtist,
+    )
+    assert.equal(
+      userFacingError('自动刷新 steam 数据'),
+      currentCopy().errors.autoRefreshNamed.replace('{name}', 'steam'),
+    )
+    assert.equal(
+      userFacingError('定时任务: 备份'),
+      currentCopy().errors.noticeHeartbeatTask.replace('{name}', '备份'),
+    )
+    assert.equal(
+      userFacingError('未命名内容'),
+      currentCopy().errors.untitledContent,
+    )
+    assert.equal(
+      userFacingError('智能阅读列表'),
+      currentCopy().brew.smartReadingList,
+    )
+    assert.equal(userFacingError('订阅源'), currentCopy().brew.boardFeeds)
+    assert.equal(userFacingError('已收藏'), currentCopy().errors.brewMarkStarred)
+    assert.equal(
+      userFacingError('网络搜索 - 科技'),
+      currentCopy().errors.webSearchNamed.replace('{name}', '科技'),
+    )
+    assert.equal(
+      userFacingError("将调用外部 MCP 服务 'files' 的工具 'read'"),
+      currentCopy()
+        .errors.confirmMcpTool.replace('{server}', 'files')
+        .replace('{tool}', 'read'),
+    )
+    assert.equal(
+      userFacingError('已加载 3 个工具'),
+      currentCopy().errors.noticeMcpToolsLoaded.replace('{n}', '3'),
+    )
+    assert.equal(
+      userFacingError('状态监控超时，请在系统更新面板确认任务结果'),
+      currentCopy().errors.noticeUpdaterWatchTimeout,
+    )
+    assert.equal(
+      userFacingError('未知用户'),
+      currentCopy().userModal.unknownUser,
+    )
+    assert.equal(userFacingError('游客'), currentCopy().errors.guestLabel)
+    assert.equal(
+      userFacingError('用户#7'),
+      currentCopy().errors.userNumber.replace('{id}', '7'),
+    )
+    assert.equal(
+      userFacingError('网易云音乐用户'),
+      currentCopy().errors.neteaseMusicUser,
+    )
+    assert.equal(
       userFacingError('即将向外部 URL 发起 HTTP 请求'),
       currentCopy().errors.confirmHttpFetch,
     )

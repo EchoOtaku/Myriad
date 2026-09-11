@@ -412,7 +412,6 @@ pub async fn resolve_actor_reference(
 /// HTTPS 优先。本地联邦 lab（`MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND=1`）下实例
 /// 通常只监听明文 HTTP，因此再回退一次 `http://`——否则 handle 输入会在 TLS
 /// 握手阶段失败并被映射成 502，而同一 Actor 的 profile URL（自带 scheme）却能用。
-/// 与 [`room::members::fetch_remote_public_room`] 的 scheme 回退保持一致。
 async fn resolve_acct_to_url(acct: &str) -> Result<String, (StatusCode, Json<serde_json::Value>)> {
     let candidates = build_webfinger_url_candidates(acct)?;
     let mut last_err: Option<(StatusCode, Json<serde_json::Value>)> = None;

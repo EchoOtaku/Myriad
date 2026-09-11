@@ -36,7 +36,7 @@ pub enum Visibility {
     Public,
     /// 只寻址粉丝集合 —— 投递给粉丝，但不进入公开 Outbox。
     Followers,
-    /// 只寻址明确列出的收件人 —— 不做粉丝 fan-out。
+    /// 作者自寻址 —— 不做粉丝 fan-out（`PublishRequest` 无收件人列表）。
     Direct,
 }
 
@@ -65,13 +65,13 @@ pub fn parse_visibility(raw: &str) -> Result<Visibility, String> {
 pub enum FanOutScope {
     /// 投递给全部已接受的粉丝。
     AllFollowers,
-    /// 不做粉丝 fan-out —— 只投递给显式收件人。
+    /// 不做粉丝 fan-out（发布路径排队 0 条投递）。
     ExplicitRecipientsOnly,
 }
 
 /// visibility → fan-out 范围。
 ///
-/// `Direct` 必须落在 `ExplicitRecipientsOnly`：这正是 C4 的修复点。
+/// `Direct` 必须落在 `ExplicitRecipientsOnly`。
 pub fn fan_out_scope(visibility: Visibility) -> FanOutScope {
     match visibility {
         Visibility::Public | Visibility::Followers => FanOutScope::AllFollowers,
@@ -257,7 +257,7 @@ pub fn verify_object_ownership(actor_url: &str, object: &Value) -> Result<(), Ow
     Ok(())
 }
 
-/// 校验 `Delete`/`Undo` 的目标与签名 Actor 同源。
+/// 校验 `Delete` 的目标与签名 Actor 同源。
 ///
 /// 删除类活动的对象通常已经被压缩成裸 IRI 或 Tombstone，没有 `attributedTo`
 /// 可依赖，所以只做同源判断；真正的所有权由调用方在 SQL 里用

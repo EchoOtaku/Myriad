@@ -121,7 +121,7 @@ fn spawn_updater_job_tracker(updater: UpdaterClient, user_id: i32, job_id: Strin
                     &job_id,
                     &kind,
                     "unknown",
-                    "状态监控超时，请在系统更新面板确认任务结果",
+                    "Status watch timed out. Check the result in System Update.",
                 )
                 .await;
         }

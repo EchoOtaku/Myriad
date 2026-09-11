@@ -303,7 +303,7 @@ fn extract_article_content(html: &str, url: &str) -> ExtractedArticle {
     let title = extract_meta_content(html, "og:title")
         .or_else(|| extract_meta_content(html, "twitter:title"))
         .or_else(|| extract_tag_content(html, "title"))
-        .unwrap_or_else(|| "未知标题".to_string());
+        .unwrap_or_else(|| "Untitled".to_string());
 
     // 提取作者
     let author = extract_meta_content(html, "author")

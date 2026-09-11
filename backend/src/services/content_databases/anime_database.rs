@@ -251,19 +251,19 @@ impl AnimeDatabase {
 
             // 生成摘要
             let category_name = match category {
-                ContentCategory::Anime => "番剧",
-                ContentCategory::TvSeries => "电视剧",
-                ContentCategory::Movie => "电影",
+                ContentCategory::Anime => "anime",
+                ContentCategory::TvSeries => "TV series",
+                ContentCategory::Movie => "movies",
             };
 
             let summary = if top_genres.is_empty() {
-                format!("观看了 {} 部{}", count, category_name)
+                format!("Watched {count} {category_name}")
             } else {
                 format!(
-                    "观看了 {} 部{}，基于这些内容，推测可能对{}类型感兴趣",
+                    "Watched {} {}, likely interested in {}",
                     count,
                     category_name,
-                    top_genres.join("、")
+                    top_genres.join(", ")
                 )
             };
 

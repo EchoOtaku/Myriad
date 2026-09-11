@@ -93,7 +93,7 @@ impl McpManager {
                             .notify_mcp_server_status(
                                 &server_id,
                                 true,
-                                &format!("已加载 {} 个工具", srv.tools().len()),
+                                &format!("Loaded {} tools", srv.tools().len()),
                             )
                             .await;
                     }

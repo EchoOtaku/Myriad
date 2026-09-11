@@ -17,7 +17,7 @@ use tokio::sync::{Mutex, OwnedMutexGuard, OwnedSemaphorePermit, RwLock, Semaphor
 ///
 /// 使用方式：
 /// ```ignore
-/// let guard = queue.acquire("user:1").await?;
+/// let guard = queue.acquire_timeout("user:1", timeout).await?;
 /// let result = agent.process(request).await;
 /// drop(guard); // 释放锁，下一个请求可以执行
 /// ```
@@ -119,7 +119,7 @@ impl LaneQueue {
         self.waiting.fetch_add(1, Ordering::Relaxed);
 
         let acquire_fut = async {
-            // 先获取 lane 串行锁（同用户排队）
+            // 先获取 lane 串行锁（按 `lane_key`，会话不同则不共享）
             let lane_lock = lane_mutex.lock_owned().await;
 
             tracing::debug!(

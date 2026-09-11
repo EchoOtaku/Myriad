@@ -1234,7 +1234,7 @@ impl NotionService {
             "file" => {
                 if let Some(url) = self.get_file_url(&block["file"]) {
                     let caption = self.rich_text_to_html(&block["file"]["caption"]);
-                    let name = block["file"]["name"].as_str().unwrap_or("附件");
+                    let name = block["file"]["name"].as_str().unwrap_or("Attachment");
                     let display_name = if caption.is_empty() { name } else { &caption };
                     format!(
                         "<a href=\"{}\" class=\"notion-file\" target=\"_blank\" download><span class=\"notion-file-icon\">📎</span><span class=\"notion-file-name\">{}</span></a>",
@@ -1309,7 +1309,7 @@ impl NotionService {
                     String::new()
                 }
             }
-            "table_of_contents" => "<nav class=\"notion-toc\"><p>📋 目录</p></nav>".to_string(),
+            "table_of_contents" => "<nav class=\"notion-toc\"><p>📋 Contents</p></nav>".to_string(),
             "breadcrumb" => String::new(),
             "column_list" => "<div class=\"notion-columns\">".to_string(),
             "column" => "<div class=\"notion-column\">".to_string(),
@@ -1319,7 +1319,7 @@ impl NotionService {
                 let page_id = block["link_to_page"]["page_id"].as_str().unwrap_or("");
                 if !page_id.is_empty() {
                     format!(
-                        "<a href=\"https://notion.so/{}\" class=\"notion-page-link\" target=\"_blank\">📄 链接的页面</a>",
+                        "<a href=\"https://notion.so/{}\" class=\"notion-page-link\" target=\"_blank\">📄 Linked page</a>",
                         page_id.replace('-', "")
                     )
                 } else {
@@ -1328,7 +1328,7 @@ impl NotionService {
             }
             "child_page" => {
                 // 子页面块
-                let title = block["child_page"]["title"].as_str().unwrap_or("子页面");
+                let title = block["child_page"]["title"].as_str().unwrap_or("Subpage");
                 let block_id = block["id"].as_str().unwrap_or("");
                 format!(
                     "<a href=\"https://notion.so/{}\" class=\"notion-child-page\" target=\"_blank\"><span class=\"notion-page-icon\">📄</span><span class=\"notion-page-title\">{}</span></a>",
@@ -1340,7 +1340,7 @@ impl NotionService {
                 // 子数据库块
                 let title = block["child_database"]["title"]
                     .as_str()
-                    .unwrap_or("数据库");
+                    .unwrap_or("Database");
                 let block_id = block["id"].as_str().unwrap_or("");
                 format!(
                     "<a href=\"https://notion.so/{}\" class=\"notion-child-database\" target=\"_blank\"><span class=\"notion-database-icon\">📊</span><span class=\"notion-database-title\">{}</span></a>",

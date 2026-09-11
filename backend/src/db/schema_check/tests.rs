@@ -494,9 +494,7 @@ VALUES
         "tapp_storage must reject encrypted payloads outside _credentials.*"
     );
 
-    // A review deployment may already have recorded the short-lived first
-    // 012 migration while retaining its scope-less table. 012/013 names are
-    // purged from seaql_migrations before up; schema_check rebuilds that shape.
+    // Scope-less `federation_inbox_receipts` shape; `ensure_schema` must heal it.
     db.execute_unprepared(
         r#"
 DROP TABLE federation_inbox_receipts;
@@ -553,8 +551,7 @@ CREATE TABLE federation_inbox_receipts (
         "healer must remove every column unique to the scope-less receipt shape"
     );
 
-    // Permanent handler rejection must preserve the claimed receipt while
-    // removing every DB effect performed after the handler savepoint.
+    // `ROLLBACK TO SAVEPOINT` must drop post-savepoint writes in this txn.
     let txn = db.begin().await.expect("begin receipt savepoint probe");
     txn.execute_unprepared(
         "CREATE TEMP TABLE receipt_savepoint_probe (value INTEGER) ON COMMIT DROP",

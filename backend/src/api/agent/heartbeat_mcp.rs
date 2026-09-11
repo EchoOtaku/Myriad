@@ -653,7 +653,7 @@ pub(crate) async fn steer_session(
     // Keep an audit/session trace after the instruction is accepted for execution.
     if let Some(mem) = crate::services::agent::memory::get_memory() {
         mem.remember(
-            &format!("用户中途转向指令: {}", instruction),
+            &format!("Mid-task steering instruction: {}", instruction),
             crate::services::agent::memory::MemoryType::SessionInsight,
             user_id,
         )

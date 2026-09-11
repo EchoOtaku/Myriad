@@ -76,7 +76,7 @@ pub fn get_capability_friendly_name(capability_id: &str) -> String {
 }
 
 /// 获取步骤的详细描述（带上下文参数）
-/// 返回类似 "搜索知乎日报"、"订阅知乎日报" 的描述
+/// 返回类似 `Search {target}` / `Subscribe {target}` 的描述
 pub fn get_step_description(step: &RecipeStep) -> String {
     // Skill 和 MCP 步骤：使用 planner 提供的 action 描述（已是人类可读的）
     if step.capability_id.starts_with("skill:") || step.capability_id.starts_with("mcp.") {
@@ -289,7 +289,7 @@ pub fn truncate_str(s: &str, max_len: usize) -> String {
 pub fn get_sensitive_capabilities() -> HashMap<&'static str, (&'static str, RiskLevel)> {
     let mut map = HashMap::new();
 
-    // 高风险 - 不可逆操作
+    // 风险映射（High / Medium / Low 见各条）
     map.insert(
         "cache.clear",
         (
@@ -334,7 +334,7 @@ pub fn get_sensitive_capabilities() -> HashMap<&'static str, (&'static str, Risk
         ("This will permanently delete stored data.", RiskLevel::High),
     );
 
-    // 中风险 - 可能影响数据
+    // 后续条目各自带 RiskLevel
     map.insert(
         "platform.write",
         ("This will change platform data.", RiskLevel::Medium),

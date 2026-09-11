@@ -230,10 +230,9 @@ pub async fn ingest(
         .and_then(|value| match value.decision.action {
             ConsciousnessAction::Speak => value.decision.speech.clone(),
             ConsciousnessAction::Ask => value.decision.question.clone(),
-            ConsciousnessAction::ProposeWork => value
-                .intent
-                .as_ref()
-                .map(|intent| format!("我注意到{}。要不要交给我处理？", intent.proposal.title)),
+            ConsciousnessAction::ProposeWork => value.intent.as_ref().map(|intent| {
+                format!("I noticed {}. Want me to handle it?", intent.proposal.title)
+            }),
             ConsciousnessAction::Ignore | ConsciousnessAction::Remember => None,
         })
         .filter(|text| !is_trivial_line(text));

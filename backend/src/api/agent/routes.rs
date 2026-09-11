@@ -200,7 +200,7 @@ pub fn create_agent_routes(app_state: crate::state::AppState) -> Router<crate::s
                 middleware::auth::auth_middleware,
             )),
         )
-        // 提供澄清（需要认证）
+        // 表演方向读写（需要认证）
         .route(
             "/runs/{run_id}/performance",
             get(super::playback_direction::read)

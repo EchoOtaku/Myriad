@@ -29,6 +29,29 @@ export function notificationFacingTitle(notification: AppNotification): string {
   switch (eventKey) {
     case 'brew.source_error':
       return fill(t.noticeBrewSourceFailed, { name: name || 'RSS' })
+    case 'brew.new_items':
+      return fill(t.noticeBrewNewItems, {
+        name:
+          name ||
+          notification.title.replace(/\s*·\s*\d+.*$/, '').trim() ||
+          'RSS',
+        n: String(
+          typeof notification.metadata?.new_count === 'number'
+            ? notification.metadata.new_count
+            : 0,
+        ),
+      })
+    case 'heartbeat.succeeded':
+    case 'heartbeat.failed':
+      return fill(t.noticeHeartbeatTask, {
+        name:
+          metaString(notification, 'task_name') ||
+          notification.title
+            .replace(/^定时任务:\s*/, '')
+            .replace(/^Scheduled task:\s*/i, '')
+            .trim() ||
+          'task',
+      })
     case 'platform.sync.failed':
       return fill(t.noticePlatformSyncFailed, { name: name || 'Steam' })
     case 'mcp.disconnected':
@@ -94,6 +117,17 @@ export function notificationFacingTitle(notification: AppNotification): string {
   }
 
   const raw = notification.title || ''
+  const leftoverBrewNew = raw.match(/^(.+) · (\d+) 篇新内容$/)
+  if (leftoverBrewNew) {
+    return fill(t.noticeBrewNewItems, {
+      name: leftoverBrewNew[1],
+      n: leftoverBrewNew[2],
+    })
+  }
+  const leftoverHeartbeat = raw.match(/^定时任务:\s*(.+)$/)
+  if (leftoverHeartbeat) {
+    return fill(t.noticeHeartbeatTask, { name: leftoverHeartbeat[1] })
+  }
   if (/连续抓取失败/.test(raw)) {
     return fill(t.noticeBrewSourceFailed, { name: name || raw.replace(/连续抓取失败/, '').trim() || 'RSS' })
   }
@@ -214,6 +248,17 @@ export function notificationFacingBody(notification: AppNotification): string {
       name: metaString(notification, 'target_domain') || 'remote',
     })
   }
+  if (
+    eventKey === 'brew.new_items' &&
+    (!notification.body ||
+      /^发现 \d+ 篇新内容$/.test(notification.body) ||
+      /^\d+ new items found$/i.test(notification.body))
+  ) {
+    const n = notification.metadata?.new_count
+    return fill(t.noticeBrewNewItemsBody, {
+      n: typeof n === 'number' ? String(n) : '0',
+    })
+  }
   const messageType = metaString(notification, 'message_type')
   if (messageType === 'image' || /^📷 图片$|^Photo$/.test(notification.body)) {
     return t.noticePreviewPhoto
@@ -235,6 +280,10 @@ export function notificationFacingBody(notification: AppNotification): string {
   }
   if (/^新消息$|^New message$/.test(notification.body)) {
     return t.noticePreviewNew
+  }
+  const leftoverBrewBody = notification.body.match(/^发现 (\d+) 篇新内容$/)
+  if (leftoverBrewBody) {
+    return fill(t.noticeBrewNewItemsBody, { n: leftoverBrewBody[1] })
   }
   return userFacingError(notification.body, notification.body)
 }

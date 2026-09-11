@@ -267,7 +267,7 @@ pub(crate) async fn update_item_state(
                         crate::services::agent::merope::spawn_ingest(
                             user_id,
                             "brew.starred",
-                            format!("把《{}》标了星", item.title),
+                            format!("Starred \"{}\"", item.title),
                         );
                     }
                     Ok(Json(
@@ -314,7 +314,7 @@ pub(crate) async fn update_item_state(
                         crate::services::agent::merope::spawn_ingest(
                             user_id,
                             "brew.starred",
-                            format!("把《{}》标了星", item.title),
+                            format!("Starred \"{}\"", item.title),
                         );
                     }
                     Ok(Json(

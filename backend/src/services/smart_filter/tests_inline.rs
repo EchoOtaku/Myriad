@@ -211,7 +211,7 @@ fn filter_youtube_channel_and_videos() {
                 .as_deref()
                 .unwrap_or("")
                 .contains("GoogleDevelopers"));
-            assert!(analysis.video_summary.contains("订阅"));
+            assert!(analysis.video_summary.contains("subscribers"));
         }
         other => panic!("expected YouTube analysis, got {:?}", other),
     }
@@ -254,7 +254,8 @@ fn filter_youtube_empty_channel_is_valid() {
             assert_eq!(a.video_count, 0);
             assert!(a.recent_videos.is_empty());
             assert!(
-                a.video_summary.contains("暂无上传") || a.video_summary.contains("空频道"),
+                a.video_summary.contains("no uploaded videos")
+                    || a.video_summary.contains("empty channel"),
                 "summary should say empty is ok: {}",
                 a.video_summary
             );

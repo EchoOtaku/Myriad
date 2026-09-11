@@ -138,7 +138,7 @@ pub(super) async fn build_ap_object(
             let name = title
                 .clone()
                 .filter(|t| !t.is_empty())
-                .unwrap_or_else(|| format!("{} 平台报告", platform));
+                .unwrap_or_else(|| format!("{} report", platform));
 
             // Align with Aro chat snapshot fields: report_id, summary, platform, content_preview
             // so remote instances can render without a user-scoped catalog lookup.
@@ -962,7 +962,7 @@ fn extract_report_summary_plain(report_json: &serde_json::Value) -> String {
 fn extract_report_summary(report_json: &serde_json::Value) -> String {
     let plain = extract_report_summary_plain(report_json);
     if plain.is_empty() {
-        return "<p>数据分析报告</p>".to_string();
+        return "<p>Data report</p>".to_string();
     }
     format!("<p>{}</p>", escape_html(&plain))
 }
@@ -1012,7 +1012,7 @@ mod tests {
     fn extract_report_summary_html_escapes_and_falls_back() {
         let xss = json!({"summary": "a<b>&c"});
         assert_eq!(extract_report_summary(&xss), "<p>a&lt;b&gt;&amp;c</p>");
-        assert_eq!(extract_report_summary(&json!({})), "<p>数据分析报告</p>");
+        assert_eq!(extract_report_summary(&json!({})), "<p>Data report</p>");
     }
 
     /// Contract: Aro chat + federation report shares use these field names for the viewable snapshot.

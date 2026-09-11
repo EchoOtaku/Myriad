@@ -2,6 +2,10 @@
 use crate::services::smart_filter::SmartFilteredData;
 use serde_json::{json, Value};
 
+fn is_unknown_artist(name: &str) -> bool {
+    name == "未知艺术家" || name.eq_ignore_ascii_case("unknown artist")
+}
+
 pub(crate) async fn extract_steam_library_items(
     metadata: &SmartFilteredData,
 ) -> Result<Vec<Value>, String> {
@@ -179,7 +183,7 @@ pub(crate) async fn extract_netease_library_items(
                                             .and_then(|a| a.get("name"))
                                             .and_then(|n| n.as_str())
                                     })
-                                    .unwrap_or("未知艺术家"),
+                                    .unwrap_or("Unknown artist"),
                             ) {
                                 let (fee, is_vip) = netease_song_fee_flags(item);
                                 song_map.insert(
@@ -270,8 +274,8 @@ pub(crate) async fn extract_netease_library_items(
                     continue;
                 }
 
-                // 跳过未知艺术家
-                if song_artist == "未知艺术家" {
+                // Skip unknown-artist leftovers (current English + stored Chinese).
+                if is_unknown_artist(song_artist) {
                     continue;
                 }
 
@@ -343,8 +347,7 @@ pub(crate) async fn extract_netease_library_items(
                     break;
                 }
 
-                // 跳过未知艺术家
-                if artist == "未知艺术家" {
+                if is_unknown_artist(artist) {
                     continue;
                 }
 

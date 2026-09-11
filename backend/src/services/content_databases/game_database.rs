@@ -189,12 +189,12 @@ impl GameDatabase {
             .collect();
 
         let summary = if top_genres.is_empty() {
-            format!("拥有 {} 款游戏", total_games)
+            format!("Owns {total_games} games")
         } else {
             format!(
-                "拥有 {} 款游戏，主要喜欢{}类型",
+                "Owns {} games, mostly likes {}",
                 total_games,
-                top_genres.join("、")
+                top_genres.join(", ")
             )
         };
 

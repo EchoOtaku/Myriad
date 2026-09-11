@@ -639,7 +639,7 @@ async fn execute_brew_mark(
         crate::services::agent::merope::spawn_ingest(
             user_id,
             "brew.starred",
-            format!("把《{}》标了星", item.title),
+            format!("Starred \"{}\"", item.title),
         );
     }
 
@@ -659,12 +659,12 @@ async fn execute_brew_mark(
     }
 
     let status = match action {
-        "read" => "已读",
-        "unread" => "未读",
-        "star" => "已收藏",
-        "unstar" => "取消收藏",
-        "later" => "稍后阅读",
-        _ => "未知",
+        "read" => "Read",
+        "unread" => "Unread",
+        "star" => "Starred",
+        "unstar" => "Unstarred",
+        "later" => "Read later",
+        _ => "Unknown",
     };
 
     Ok(json!({
@@ -717,7 +717,7 @@ async fn execute_content_write(
     let title = params
         .get("title")
         .and_then(|v| v.as_str())
-        .unwrap_or("未命名内容");
+        .unwrap_or("Untitled content");
     if target_type == "file" {
         let filename = target
             .and_then(|t| t.get("name"))

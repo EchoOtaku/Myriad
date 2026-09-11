@@ -1392,7 +1392,7 @@ mod tests {
             "wardrobe": [{ "id": "w-old", "clothingStyle": "uniform" }],
             "activeOutfitId": "w-old"
         });
-        // 导入页真正发出去的载荷，键名与 OnboardingWizard 的提交一致。
+        // 本测试的 merge 输入（不是完整 OnboardingWizard 提交）。
         let incoming = json!({
             "gender": "female",
             "language": "zh-CN",

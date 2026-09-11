@@ -1248,11 +1248,11 @@ impl Agent {
                 || err_lower.contains("not configured")
             {
                 return format!(
-                    "前次执行因配置缺失失败：{}。请勿重试同一能力或改用 ai.webSearch；改为本地能力或提示用户配置密钥。",
+                    "Previous run failed because configuration is missing: {}. Do not retry the same capability or switch to ai.webSearch; use a local capability or ask the user to configure a key.",
                     err
                 );
             }
-            return format!("前次执行失败：{}。请尝试替代方案。", err);
+            return format!("Previous run failed: {}. Try an alternative.", err);
         }
 
         let evaluator = escalation::ResultEvaluator::new();
@@ -1261,9 +1261,9 @@ impl Agent {
 
         let mut hints = Vec::new();
         if let Some(reason) = &eval.reason {
-            hints.push(format!("失败原因：{}", reason));
+            hints.push(format!("Failure reason: {reason}"));
         }
-        // notFound 建议值：replan 最高优先 — 用建议值重试 brew，禁止 webSearch
+        // notFound suggestions: replan first — retry brew with a suggested value, never webSearch
         if !eval.suggested_retry_values.is_empty() {
             let joined = eval.suggested_retry_values.join(" / ");
             let brew_cap = ctx
@@ -1273,36 +1273,39 @@ impl Agent {
                 .map(|s| s.as_str())
                 .unwrap_or("brew.items");
             hints.push(format!(
-                "【最高优先】用 {} 重试，将 sourceName/name/query/author 设为建议值之一：{}。不要使用 ai.webSearch",
-                brew_cap, joined
+                "[Highest priority] Retry with {brew_cap}, setting sourceName/name/query/author to one of: {joined}. Do not use ai.webSearch"
             ));
         }
         for hint in &eval.improvement_hints {
             hints.push(hint.clone());
         }
         if eval.suggests_web_search {
-            hints.push("请尝试联网搜索能力（ai.webSearch 或 ai.groundingSearch）".to_string());
+            hints.push(
+                "Try a web search capability (ai.webSearch or ai.groundingSearch)".to_string(),
+            );
         } else if eval.suggests_local_alternatives {
-            // 本地 brew miss：强制 replan 走 brew.page / search.fuzzy / brew.items
+            // Local brew miss: force replan onto brew.page / search.fuzzy / brew.items
             let already_forbids = eval.improvement_hints.iter().any(|h| {
-                h.contains("禁止使用 ai.webSearch") || h.contains("禁止改用 ai.webSearch")
+                h.contains("禁止使用 ai.webSearch")
+                    || h.contains("禁止改用 ai.webSearch")
+                    || h.contains("Do not use ai.webSearch")
             });
             if !already_forbids {
                 hints.push(
-                    "禁止使用 ai.webSearch / ai.groundingSearch；优先 brew.page、search.fuzzy 或 brew.items（放宽参数）"
+                    "Do not use ai.webSearch / ai.groundingSearch; prefer brew.page, search.fuzzy, or brew.items (relax parameters)"
                         .to_string(),
                 );
             }
         }
         if hints.is_empty() {
             if eval.suggests_local_alternatives {
-                "前次本地数据结果为空，请用 brew.page / search.fuzzy / brew.items 放宽查询或向用户澄清，不要联网搜索。"
+                "Previous local data result was empty. Use brew.page / search.fuzzy / brew.items with a broader query, or ask the user. Do not search the web."
                     .to_string()
             } else {
-                "前次执行结果为空或不满足目标，请尝试其他能力或联网搜索。".to_string()
+                "Previous result was empty or did not meet the goal. Try another capability or a web search.".to_string()
             }
         } else {
-            hints.join("。")
+            hints.join(". ")
         }
     }
 

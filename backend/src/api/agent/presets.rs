@@ -135,7 +135,7 @@ pub async fn create_preset(
         if req.intent_summary.is_some() {
             active_model.intent_summary = Set(req.intent_summary);
         }
-        // 更新对话数据
+        // 更新 title（conversation_data 在下一分支）
         if req.title.is_some() {
             active_model.title = Set(req.title);
         }
@@ -185,7 +185,7 @@ pub async fn create_preset(
 
 /// 清理超过 20 条的历史记录
 ///
-/// 只查询超出部分的 ID（加 LIMIT+OFFSET），避免拉取全量数据到内存
+/// 超出 20 条时 OFFSET/LIMIT 拉模型再取 id 删除
 pub(crate) async fn cleanup_old_history(db: &DatabaseConnection, user_id: i32) {
     use sea_orm::{PaginatorTrait, QuerySelect};
 
@@ -201,7 +201,7 @@ pub(crate) async fn cleanup_old_history(db: &DatabaseConnection, user_id: i32) {
         return;
     }
 
-    // 只查询第 21 条起的 ID，在 DB 层做 LIMIT/OFFSET
+    // 第 21 条起 OFFSET/LIMIT 拉行再取 id
     let to_delete_ids: Vec<i32> = agent_task_presets::Entity::find()
         .filter(agent_task_presets::Column::UserId.eq(user_id))
         .filter(agent_task_presets::Column::PresetType.eq("history"))
@@ -379,9 +379,7 @@ pub async fn execute_preset(
             ))
         })?;
 
-    // 重要：清除保存的 page_context，让步骤重新执行获取最新数据
-    // 这确保 "获取最新文章 → AI总结" 这样的流程会获取当时的最新内容
-    // 而不是使用保存时的旧数据
+    // 清除保存的 page_context，跳过 `__page_context__` 注入
     recipe.page_context = None;
 
     tracing::info!(

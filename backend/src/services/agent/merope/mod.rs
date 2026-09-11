@@ -231,14 +231,14 @@ pub fn format_addressee_label(
     username: Option<&str>,
 ) -> String {
     if !is_logged_in_addressee(user_id) {
-        return "游客".to_string();
+        return "Guest".to_string();
     }
     display_name
         .map(str::trim)
         .filter(|name| !name.is_empty())
         .or_else(|| username.map(str::trim).filter(|name| !name.is_empty()))
         .map(str::to_string)
-        .unwrap_or_else(|| format!("用户#{user_id}"))
+        .unwrap_or_else(|| format!("User#{user_id}"))
 }
 
 pub async fn resolve_addressee_label(db: &sea_orm::DatabaseConnection, user_id: i32) -> String {
@@ -439,8 +439,11 @@ mod tests {
             super::format_addressee_label(7, Some("   "), Some("hitomi")),
             "hitomi"
         );
-        assert_eq!(super::format_addressee_label(7, None, None), "用户#7");
-        assert_eq!(super::format_addressee_label(-12, Some("瞳"), None), "游客");
+        assert_eq!(super::format_addressee_label(7, None, None), "User#7");
+        assert_eq!(
+            super::format_addressee_label(-12, Some("瞳"), None),
+            "Guest"
+        );
         assert_eq!(super::public_persona_name(false, Some("瞳")), "Agent");
         assert_eq!(super::public_persona_name(true, Some("  瞳  ")), "瞳");
         assert_eq!(super::public_persona_name(true, Some("   ")), "Arael");

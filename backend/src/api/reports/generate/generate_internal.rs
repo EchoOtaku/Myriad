@@ -1011,11 +1011,11 @@ pub(crate) async fn generate_platform_reports_internal(
             .iter()
             .map(|report| report.platform.as_str())
             .collect::<Vec<_>>()
-            .join("、");
+            .join(", ");
         crate::services::agent::merope::spawn_ingest(
             user_id,
             "agent.merope.report_ready",
-            format!("这个人的报告算完了：{names}"),
+            format!("This person's reports are ready: {names}"),
         );
     }
     (platform_reports, skipped)

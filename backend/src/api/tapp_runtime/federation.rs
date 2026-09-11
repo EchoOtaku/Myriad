@@ -416,9 +416,8 @@ async fn load_rooms_feed(db: &DatabaseConnection) -> Result<Vec<Value>, HttpErro
 /// Every public post from every user of every instance represented in a group
 /// chat this instance has joined, local users included, deduplicated.
 ///
-/// Separate from [`get_federation_feed`] on purpose: that one answers "what did
-/// the people I subscribed to say", this one answers "what is my neighbourhood
-/// saying". Aro shows them as Home and Subscribed respectively.
+/// Separate from [`get_federation_feed`] on purpose: that one is public (plus
+/// personal when the subject is signed in); this one is neighbourhood public posts.
 pub async fn get_federation_rooms_feed(
     State(db): State<DatabaseConnection>,
     runtime_grant: RuntimeGrantContext,

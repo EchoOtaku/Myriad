@@ -1572,6 +1572,76 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (/^定时任务$|^Scheduled tasks$/i.test(raw)) return t.tappScheduledTasks
   if (/^执行记录$/.test(raw)) return t.tappExecutions
   if (/^未知应用$|^Unknown app$/i.test(raw)) return t.unknownApp
+  if (/^未命名报告$|^Untitled report$/i.test(raw)) return t.unnamedReport
+  if (/^未知标题$/.test(raw)) return t.unknownTitle
+  if (/^未命名内容$/.test(raw)) return t.untitledContent
+  if (/^未知用户$/.test(raw)) return currentCopy().userModal.unknownUser
+  if (/^游客$/.test(raw)) return t.guestLabel
+  const userNumber = raw.match(/^用户#(\d+)$/)
+  if (userNumber) return t.userNumber.replace('{id}', userNumber[1])
+  if (/^Xbox 玩家$/.test(raw)) return currentCopy().reportCardWidget.xboxGamerDefault
+  if (/^PSN 玩家$/.test(raw)) return t.psnPlayer
+  if (/^网易云音乐用户$/.test(raw)) return t.neteaseMusicUser
+  if (/^Bangumi 用户$/.test(raw)) return t.bangumiUser
+  if (/^MyAnimeList 用户$/.test(raw)) return t.malUser
+  if (/^智能阅读列表$/.test(raw)) return currentCopy().brew.smartReadingList
+  if (/^订阅源$/.test(raw)) return currentCopy().brew.boardFeeds
+  if (/^已读$/.test(raw)) return t.brewMarkRead
+  if (/^未读$/.test(raw)) return t.brewMarkUnread
+  if (/^已收藏$/.test(raw)) return t.brewMarkStarred
+  if (/^取消收藏$/.test(raw)) return t.brewMarkUnstarred
+  if (/^稍后阅读$/.test(raw)) return t.brewMarkLater
+  if (/^请提供更多信息$|^Please provide more information\.?$/i.test(raw)) {
+    return t.agentNeedMoreInfo
+  }
+  const webSearchNamed = raw.match(/^网络搜索\s*[—\-]\s*(.+)$/)
+  if (webSearchNamed) {
+    return t.webSearchNamed.replace('{name}', webSearchNamed[1])
+  }
+  const readingListNamed = raw.match(/^阅读列表\s*[—\-]\s*(.+)$/)
+  if (readingListNamed) {
+    return t.readingListNamed.replace('{name}', readingListNamed[1])
+  }
+  const mcpTool = raw.match(
+    /^将调用外部 MCP 服务 '(.+)' 的工具 '(.+)'$|^This will call tool '(.+)' on MCP server '(.+)'$/i,
+  )
+  if (mcpTool) {
+    const server = mcpTool[1] || mcpTool[4] || ''
+    const tool = mcpTool[2] || mcpTool[3] || ''
+    return t.confirmMcpTool.replace('{server}', server).replace('{tool}', tool)
+  }
+  const mcpToolsLoaded = raw.match(/^已加载 (\d+) 个工具$|^Loaded (\d+) tools$/i)
+  if (mcpToolsLoaded) {
+    return t.noticeMcpToolsLoaded.replace(
+      '{n}',
+      mcpToolsLoaded[1] || mcpToolsLoaded[2] || '',
+    )
+  }
+  if (
+    /状态监控超时/.test(raw) ||
+    /Status watch timed out/i.test(raw)
+  ) {
+    return t.noticeUpdaterWatchTimeout
+  }
+  if (/^未知艺术家$/.test(raw)) return currentCopy().library.unknownArtist
+  const autoRefreshNamed = raw.match(
+    /^自动刷新 (.+) 数据$|^Auto-refresh (.+) data$/i,
+  )
+  if (autoRefreshNamed) {
+    return t.autoRefreshNamed.replace(
+      '{name}',
+      autoRefreshNamed[1] || autoRefreshNamed[2] || '',
+    )
+  }
+  const leftoverHeartbeatTask = raw.match(
+    /^定时任务:\s*(.+)$|^Scheduled task:\s*(.+)$/i,
+  )
+  if (leftoverHeartbeatTask) {
+    return t.noticeHeartbeatTask.replace(
+      '{name}',
+      leftoverHeartbeatTask[1] || leftoverHeartbeatTask[2] || '',
+    )
+  }
   if (
     /^即将添加新的 RSS|^This will add a new RSS/i.test(raw)
   ) {

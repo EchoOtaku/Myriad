@@ -1082,7 +1082,7 @@ JSON only."#;
                         let question_text = parsed
                             .get("question")
                             .and_then(|q| q.as_str())
-                            .unwrap_or("请提供更多信息");
+                            .unwrap_or("Please provide more information");
                         let ctx = parsed.get("context").and_then(|c| c.as_str()).unwrap_or("");
                         let required = parsed
                             .get("required")
@@ -1136,8 +1136,8 @@ JSON only."#;
 
                         context.record_decision(
                             DecisionType::AskUser,
-                            &format!("AI 判断需要用户介入: {}", question_text),
-                            &format!("步骤 {} 的输出需要用户澄清", step.id),
+                            &format!("AI asked the user to step in: {question_text}"),
+                            &format!("Step {} output needs clarification", step.id),
                             Some(&step.id),
                         );
 

@@ -86,7 +86,7 @@ fn parse_brew_read_filters(params: &HashMap<String, Value>) -> BrewReadFilters {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct BrewArticleLookup {
     item_id: Option<i32>,
-    /// Raw articleId when not purely numeric (guid / link fallback)
+    /// articleId / itemId 字符串形式（数字字符串也可作 guid 回退）
     article_key: Option<String>,
     url: Option<String>,
     source_id: Option<i32>,
@@ -571,7 +571,7 @@ pub(super) async fn execute_brew_items(
         filter_target
     };
 
-    // 从数据库读取所有订阅源和文章
+    // 读取全部订阅源；文章按 PublishedAt 降序最多 500 条
     let mut all_items: Vec<Value> = Vec::new();
     let mut available_sources: Vec<String> = Vec::new();
     let mut all_authors: Vec<String> = Vec::new();

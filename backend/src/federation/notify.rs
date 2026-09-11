@@ -185,7 +185,7 @@ pub async fn notify_channel_message(
     crate::services::agent::merope::spawn_ingest(
         user_id,
         "federation.channel_message",
-        format!("{sender_label} 发来私信：{preview}"),
+        format!("{sender_label} sent a DM: {preview}"),
     );
 }
 
@@ -230,7 +230,7 @@ pub async fn notify_room_message(
     crate::services::agent::merope::spawn_ingest(
         user_id,
         "federation.room_message",
-        format!("{sender_label} 在群里说话：{preview}"),
+        format!("{sender_label} spoke in a room: {preview}"),
     );
 }
 
@@ -260,7 +260,7 @@ pub async fn notify_new_follower(user_id: i32, actor_url: &str, actor_label: &st
     crate::services::agent::merope::spawn_ingest(
         user_id,
         "federation.new_follower",
-        format!("{actor_label} 关注了这个人"),
+        format!("{actor_label} followed this person"),
     );
 }
 

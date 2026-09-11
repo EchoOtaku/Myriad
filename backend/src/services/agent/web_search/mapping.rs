@@ -242,7 +242,7 @@ pub fn hits_to_web_search_results(hits: &[SearchHit], max: usize) -> Vec<Value> 
                 "name": hit.title,
                 "url": hit.url,
                 "description": if hit.snippet.is_empty() {
-                    format!("来源: {}", hit.site_name)
+                    format!("Source: {}", hit.site_name)
                 } else {
                     hit.snippet.clone()
                 },

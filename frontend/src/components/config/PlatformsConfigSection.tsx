@@ -183,7 +183,24 @@ interface CardPreviewsResponse {
   previews: Record<string, CardPreview>
 }
 
-const UNKNOWN_USERNAMES = new Set(['未知用户', 'unknown', 'unknown user', ''])
+const UNKNOWN_USERNAMES = new Set([
+  '',
+  'unknown',
+  'unknown user',
+  '未知用户',
+  'xbox 玩家',
+  'xbox gamer',
+  'xbox player',
+  'psn 玩家',
+  'psn player',
+  'psn hunter',
+  'myanimelist 用户',
+  'myanimelist user',
+  'bangumi 用户',
+  'bangumi user',
+  '网易云音乐用户',
+  'netease music user',
+])
 
 function formatCardNumber(n: number, locale: string): string {
   if (!Number.isFinite(n)) return '—'

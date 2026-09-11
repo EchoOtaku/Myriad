@@ -962,7 +962,7 @@ origin: agent_generated
             description: user_request.to_string(),
             missing_capability: missing_description.to_string(),
             workaround,
-            suggestion: format!("建议添加新的 handler 以支持: {}", missing_description),
+            suggestion: format!("Suggest adding a new handler for: {missing_description}"),
             confidence: 0.3,
             first_seen: Utc::now().to_rfc3339(),
             report_count: 1,

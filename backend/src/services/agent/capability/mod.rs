@@ -380,8 +380,12 @@ fn mcp_capability(
         requires_ai: false,
         estimated_duration_ms: Some(30_000),
         requires_confirmation,
-        confirmation_message: requires_confirmation
-            .then(|| format!("将调用外部 MCP 服务 '{}' 的工具 '{}'", server_id, tool.name)),
+        confirmation_message: requires_confirmation.then(|| {
+            format!(
+                "This will call tool '{}' on MCP server '{}'",
+                tool.name, server_id
+            )
+        }),
         risk_level,
     }
 }

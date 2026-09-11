@@ -1368,7 +1368,7 @@ pub async fn clarify(
     );
 
     // 将澄清合并到原始请求
-    let combined_input = format!("{}\n补充说明：{}", req.original_input, req.answer);
+    let combined_input = format!("{}\nAdditional context: {}", req.original_input, req.answer);
 
     let user_request = UserRequest {
         raw_input: combined_input,

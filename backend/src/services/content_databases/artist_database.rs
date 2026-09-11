@@ -264,16 +264,16 @@ impl ArtistDatabase {
 
         let summary = if favorite_artists.is_empty() {
             if preference_str.is_empty() {
-                format!("收藏了 {} 首歌曲", total_songs)
+                format!("Collected {total_songs} songs")
             } else {
-                format!("收藏了 {} 首歌曲，偏好{}音乐", total_songs, preference_str)
+                format!("Collected {total_songs} songs, prefers {preference_str} music")
             }
         } else {
             format!(
-                "收藏了 {} 首歌曲，偏好{}音乐，常听{}",
+                "Collected {} songs, prefers {} music, often listens to {}",
                 total_songs,
                 if preference_str.is_empty() {
-                    "多元化"
+                    "diverse"
                 } else {
                     &preference_str
                 },
@@ -282,7 +282,7 @@ impl ArtistDatabase {
                     .take(3)
                     .cloned()
                     .collect::<Vec<_>>()
-                    .join("、")
+                    .join(", ")
             )
         };
 

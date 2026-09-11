@@ -51,7 +51,7 @@ impl Agent {
         &self,
         confirmation: UserConfirmation,
     ) -> Result<ConfirmationOutcome, String> {
-        // PostgreSQL provides atomic, owner-scoped consumption across replicas.
+        // PostgreSQL provides atomic, subject-scoped consumption across replicas.
         // The local map is only a hot cache and is cleared after the shared take.
         let pending =
             crate::services::tapp_registry::take_for_subject::<PendingRecipeConfirmation>(
@@ -174,7 +174,7 @@ impl Agent {
         let result = self.extract_final_result(&task_state);
         let frontend_action = self.extract_frontend_action(&result);
 
-        // v3 记忆记录（确认后的敏感操作也需要记录）
+        // 确认后的敏感操作也写入执行记忆
         {
             let ok = task_state.status == TaskStatus::Completed;
             record_execution_memory(MemoryRecordParams {
@@ -304,7 +304,7 @@ impl Agent {
                 .await;
         }
 
-        // 构建响应 — task 就是 TaskState，前端通过 SSE 得到 WaitingForInput
+        // 构建响应 — `TaskCompleted` 带着 `WaitingForInput` 的 TaskState
         Ok(Some(AgentResponse {
             response_type: AgentResponseType::TaskCompleted,
             message: String::new(),
@@ -318,8 +318,7 @@ impl Agent {
         }))
     }
 
-    /// 检查配方中的敏感步骤
-    /// 系统任务对敏感步骤的自动确认门控
+    /// 系统任务对敏感步骤的自动确认门控（不遍历 recipe）
     ///
     /// 无人值守场景（Heartbeat 定时任务）等待人工确认只会让任务静默空跑，因此：
     /// - High / Critical：拒绝自动执行，返回说明性响应

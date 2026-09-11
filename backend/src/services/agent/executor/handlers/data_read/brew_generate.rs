@@ -257,7 +257,7 @@ pub(super) async fn execute_brew_generate_reading_list(
                     return Ok(json!({
                         "readingList": web_results,
                         "totalMatched": web_results.len(),
-                        "listName": format!("网络搜索 - {}", list_name),
+                        "listName": format!("Web search — {list_name}"),
                         "criteria": criteria,
                         "fromWebSearch": true,
                         "allowWebSearch": true,
@@ -266,7 +266,7 @@ pub(super) async fn execute_brew_generate_reading_list(
                             "type": "reading_list",
                             "payload": {
                                 "items": web_results,
-                                "name": format!("网络搜索 - {}", list_name),
+                                "name": format!("Web search — {list_name}"),
                                 "fromWebSearch": true
                             }
                         }
@@ -282,13 +282,19 @@ pub(super) async fn execute_brew_generate_reading_list(
 
             // Opt-in web search attempted but empty/failed
             let mut suggestions = vec![
-                "尝试更换关键词".to_string(),
-                "放宽 daysBack 或去掉 sourceName 限制".to_string(),
-                "订阅更多相关的 RSS 源".to_string(),
-                "检查是否已配置 TinyFish 或 Gemini API Key".to_string(),
+                "Try a different keyword".to_string(),
+                "Widen daysBack or drop the sourceName filter".to_string(),
+                "Subscribe to more related RSS feeds".to_string(),
+                "Check that TinyFish or a Gemini API key is configured".to_string(),
             ];
             if !available_sources.is_empty() {
-                suggestions.insert(0, format!("本地已有订阅：{}", available_sources.join("、")));
+                suggestions.insert(
+                    0,
+                    format!(
+                        "Local feeds already available: {}",
+                        available_sources.join(", ")
+                    ),
+                );
             }
 
             return Ok(json!({
@@ -302,9 +308,9 @@ pub(super) async fn execute_brew_generate_reading_list(
                 "allowWebSearch": true,
                 "message": crate::services::agent::response_agent::no_articles_found(
                     if keyword.is_empty() && criteria.is_empty() {
-                        "请提供搜索关键词"
+                        "keyword"
                     } else {
-                        "本地与联网搜索均未返回结果"
+                        criteria
                     }
                 ),
                 "suggestions": suggestions,
@@ -339,21 +345,24 @@ pub(super) async fn execute_brew_generate_reading_list(
                 criteria
             };
             let mut suggestions = vec![
-                "尝试更换或放宽关键词".to_string(),
-                "增大 daysBack 查看更早文章".to_string(),
-                "用 brew.items / brew.read 浏览本地订阅".to_string(),
-                "订阅更多相关 RSS 源后再生成列表".to_string(),
+                "Try a broader keyword".to_string(),
+                "Increase daysBack to include older articles".to_string(),
+                "Browse local feeds with brew.items / brew.read".to_string(),
+                "Subscribe to more related RSS feeds, then generate the list again".to_string(),
             ];
             if !available_sources.is_empty() {
                 suggestions.insert(
                     0,
-                    format!("可浏览的本地订阅：{}", available_sources.join("、")),
+                    format!(
+                        "Local feeds you can browse: {}",
+                        available_sources.join(", ")
+                    ),
                 );
             }
             if !web_search_opt_in {
-                suggestions.push("如需联网补充，请显式传 allowWebSearch=true".to_string());
+                suggestions.push("Pass allowWebSearch=true to also search the web".to_string());
             } else if !allow_web_search {
-                suggestions.push("联网补充需要授予权限 ai:search".to_string());
+                suggestions.push("Web search needs the granted permission ai:search".to_string());
             }
 
             return Ok(json!({
@@ -367,7 +376,7 @@ pub(super) async fn execute_brew_generate_reading_list(
                 "allowWebSearch": false,
                 "searchedFor": searched,
                 "message": crate::services::agent::response_agent::no_articles_found(
-                    &format!("本地订阅中无「{}」相关文章", searched)
+                    searched
                 ),
                 "suggestions": suggestions,
                 "availableSources": available_sources,
@@ -491,7 +500,7 @@ JSON only."#,
         .unwrap_or_else(|| {
             json!({
                 "selectedIds": items.iter().take(max_items).map(|i| i.id).collect::<Vec<_>>(),
-                "listName": format!("阅读列表 - {}", criteria),
+                "listName": format!("Reading list — {criteria}"),
                 "reasons": {}
             })
         });
@@ -505,7 +514,7 @@ JSON only."#,
     let list_name = ai_result
         .get("listName")
         .and_then(|v| v.as_str())
-        .unwrap_or("智能阅读列表")
+        .unwrap_or("Smart reading list")
         .to_string();
 
     let reasons = ai_result.get("reasons").cloned().unwrap_or(json!({}));

@@ -62,6 +62,30 @@ describe('notificationFacing', () => {
     assert.equal(text.includes('新的关注者'), false)
   })
 
+  it('maps leftover brew new-item and heartbeat Chinese titles', () => {
+    const brew = notificationFacingTitle(
+      notice('科技新闻 · 3 篇新内容', '发现 3 篇新内容', 'brew.new_items', {
+        source_name: '科技新闻',
+        new_count: 3,
+      }),
+    )
+    assert.equal(brew.includes('篇新内容'), false)
+    assert.match(brew, /科技新闻/)
+    const brewBody = notificationFacingBody(
+      notice('科技新闻 · 3 篇新内容', '发现 3 篇新内容', 'brew.new_items', {
+        new_count: 3,
+      }),
+    )
+    assert.equal(brewBody.includes('篇新内容'), false)
+    const heartbeat = notificationFacingTitle(
+      notice('定时任务: 备份', 'ok', 'heartbeat.succeeded', {
+        task_name: '备份',
+      }),
+    )
+    assert.equal(heartbeat.includes('定时任务'), false)
+    assert.match(heartbeat, /备份/)
+  })
+
   it('maps leftover English brew and schedule titles', () => {
     const brew = notificationFacingTitle(
       notice('Tech News feed failed repeatedly', 'timeout', undefined, {

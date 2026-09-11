@@ -217,8 +217,8 @@ pub(crate) async fn verify_request_signature(
                 if !fresh_kid.is_empty() && !same_key_id(fresh_kid, &parsed.key_id) {
                     // Last chance: request keyId may still be a valid id for the
                     // same actor path even if publicKey.id differs slightly —
-                    // only accept when the request keyId is clearly under this
-                    // actor URL (same origin + /users/{name}).
+                    // only accept when the request keyId is under this actor URL
+                    // (`{actor}`, `{actor}#…`, `{actor}/…`).
                     let actor_ok = key_id_belongs_to_actor(&parsed.key_id, actor_url_str);
                     if !actor_ok {
                         tracing::warn!(

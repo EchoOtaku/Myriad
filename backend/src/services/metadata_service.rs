@@ -614,7 +614,7 @@ impl MetadataService {
 fn platform_activity_summary(platform: &str, activity: &ActivityPayload) -> String {
     let label = platform_label(platform);
     if activity.event_type == "imported" {
-        return format!("{label} 完成了首次导入");
+        return format!("{label} finished the first import");
     }
     let heads: Vec<&str> = activity
         .changes
@@ -623,8 +623,8 @@ fn platform_activity_summary(platform: &str, activity: &ActivityPayload) -> Stri
         .take(3)
         .collect();
     if heads.is_empty() {
-        format!("{label}：{}", activity.title)
+        format!("{label}: {}", activity.title)
     } else {
-        format!("{label}：{}", heads.join("、"))
+        format!("{label}: {}", heads.join(", "))
     }
 }

@@ -1,6 +1,6 @@
-//! Pure UI analysis and frontend-action planning for agent ui_control handlers.
+//! UI analysis and frontend-action planning for agent ui_control handlers.
 //!
-//! Handlers keep DB access, AI calls, and timestamps. This module owns:
+//! Handlers keep DB access and AI calls. This module owns:
 //! - tappId path-safety checks
 //! - HTML/JS structure parsing and action inference
 //! - router path validation / full-path build
@@ -97,8 +97,8 @@ pub fn is_valid_page_interact_action(action: &str) -> bool {
 
 /// Turn `page.understand` plan.actions into executable frontendActions.
 ///
-/// `autoExecute` default is false; when true, click/input/scroll become
-/// `page_interact` and navigate becomes `navigate`.
+/// When `auto_execute` and `allow_interact` are both true, allowed interact
+/// kinds become `page_interact` and navigate becomes `navigate`.
 pub fn page_understand_frontend_actions(
     plan: &Value,
     auto_execute: bool,
@@ -161,7 +161,7 @@ pub fn page_understand_frontend_actions(
 }
 
 /// Planner schema for `page.understand` says `userIntent` / `pageSnapshot`;
-/// also accept `query` / `context` so compact index `p` and injected snapshots land.
+/// also accept `query` / `context` so injected snapshots land.
 pub fn page_understand_query(params: &HashMap<String, Value>) -> String {
     ["userIntent", "query"]
         .iter()
@@ -602,7 +602,7 @@ pub fn detect_page_type(path: &str) -> &'static str {
     }
 }
 
-/// Localized page name for a path + page type.
+/// English page name for a path + page type.
 pub fn get_page_name(path: &str, page_type: &str) -> String {
     let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
 

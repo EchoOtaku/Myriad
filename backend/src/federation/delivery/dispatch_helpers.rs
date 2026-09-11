@@ -344,7 +344,7 @@ fn classify_retry_delivering_is_in_progress() {
 /// dead + cancelled:% must NOT fail waiters; other dead messages must.
 #[test]
 fn wait_delivery_fail_filter_mirrors_suite_cancelled_exclusion() {
-    // Suite SQL: status=dead AND error_message NOT ILIKE 'cancelled:%'
+    // Suite SQL: status=dead AND COALESCE(error_message,'') NOT ILIKE 'cancelled:%'
     // → fail wait only when is_user_cancelled is false (and there is a dead row).
     let suite_would_fail = |err: Option<&str>| !is_user_cancelled_delivery_error(err);
     assert!(!suite_would_fail(Some("cancelled: by user")));
