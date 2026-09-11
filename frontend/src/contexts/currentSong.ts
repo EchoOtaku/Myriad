@@ -40,11 +40,7 @@ export function subscribeCurrentSong(listener: () => void): () => void {
   }
 }
 
-/**
- * Ingest a published `music-player-state-change` detail (or `__musicPlayerState`).
- * Partial events without `currentSong` leave the track alone, but still
- * update playing / current lyric.
- */
+/** Partial events without currentSong leave the track; still update playing / lyric. */
 export function applyPublishedMusicState(
   detail: Record<string, unknown>,
 ): void {
@@ -90,7 +86,7 @@ export function applyPublishedMusicState(
   if (changed) notify()
 }
 
-/** Bind once to the player publish event. No-op without `window`. */
+/** Bind once to the player publish event. No-op without window. */
 export function bindPublishedMusicState(): void {
   if (bound || typeof window === 'undefined') return
   bound = true
@@ -101,7 +97,7 @@ export function bindPublishedMusicState(): void {
   window.addEventListener('music-player-state-change', onPublishedMusicState)
 }
 
-/** Strip play-url / cover before the object is sent to the Agent. */
+/** Strip play-url / cover before sending to the Agent. */
 export function agentMusicStatus(
   published: Record<string, unknown> | null | undefined,
 ): Record<string, unknown> | null {
@@ -129,7 +125,7 @@ export function agentMusicStatus(
   }
 }
 
-/** Current player projection for Agent requests and live-presence renewals. */
+/** Agent / live-presence projection. */
 export function currentAgentMusicStatus(): Record<string, unknown> | null {
   if (typeof window === 'undefined') return null
   return agentMusicStatus(

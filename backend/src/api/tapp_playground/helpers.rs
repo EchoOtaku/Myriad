@@ -290,6 +290,9 @@ pub(super) fn validate_permission_usage(
                 "Tapp.shared.set",
                 "Tapp.shared.remove",
                 "Tapp.shared.clear",
+                "Tapp.private.set",
+                "Tapp.private.remove",
+                "Tapp.private.clear",
             ][..],
             "storage:write",
         ),
@@ -299,6 +302,10 @@ pub(super) fn validate_permission_usage(
                 "Tapp.shared.keys",
                 "Tapp.shared.getAll",
                 "Tapp.shared.usage",
+                "Tapp.private.get",
+                "Tapp.private.keys",
+                "Tapp.private.getAll",
+                "Tapp.private.usage",
             ][..],
             "storage:read",
         ),
@@ -760,7 +767,7 @@ pub(super) fn validate_sdk_namespaces(fields: &[(&str, &str)]) -> Result<(), Str
     Ok(())
 }
 
-/// Host capabilities available in temporary Playground preview only (MYR-024).
+/// Host capabilities available in temporary Playground preview only.
 ///
 /// Manifest `permissions` are install-time declarations. Preview must never
 /// treat the full list as granted host capabilities — only this allowlist may
@@ -1431,7 +1438,7 @@ Tapp.lifecycle.onReady(function () {
 
     #[test]
     fn preview_grants_are_allowlist_intersection_not_full_manifest() {
-        // MYR-024: declared ≠ granted for real host capabilities in preview.
+        // declared ≠ granted for real host capabilities in preview.
         let declared: Vec<String> = vec![
             "storage:read".into(),
             "storage:write".into(),

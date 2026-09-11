@@ -20,6 +20,51 @@ pub(crate) async fn ensure_brew_item_topic_index(db: &DatabaseConnection) -> Res
     Ok(())
 }
 
+/// 阅读状态版本触发器。列走通用 ADD；触发器不进 TableDef。
+pub(crate) async fn ensure_brew_state_revision(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+            CREATE OR REPLACE FUNCTION brew_advance_state_revision() RETURNS trigger AS $$
+            BEGIN
+                NEW.revision := OLD.revision + 1;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql
+        "#,
+    )
+    .await?;
+    db.execute_unprepared("DROP TRIGGER IF EXISTS brew_state_revision ON brew_user_states")
+        .await?;
+    db.execute_unprepared("CREATE TRIGGER brew_state_revision BEFORE UPDATE ON brew_user_states FOR EACH ROW EXECUTE FUNCTION brew_advance_state_revision()")
+        .await?;
+    Ok(())
+}
+
+/// 正文版本触发器。列走通用 ADD；触发器不进 TableDef。
+pub(crate) async fn ensure_brew_content_revision(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+            CREATE OR REPLACE FUNCTION brew_advance_content_revision() RETURNS trigger AS $$
+            BEGIN
+                IF NEW.content IS DISTINCT FROM OLD.content
+                    OR NEW.content_md IS DISTINCT FROM OLD.content_md THEN
+                    NEW.content_revision := OLD.content_revision + 1;
+                ELSE
+                    NEW.content_revision := OLD.content_revision;
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql
+        "#,
+    )
+    .await?;
+    db.execute_unprepared("DROP TRIGGER IF EXISTS brew_content_revision ON brew_items")
+        .await?;
+    db.execute_unprepared("CREATE TRIGGER brew_content_revision BEFORE UPDATE ON brew_items FOR EACH ROW EXECUTE FUNCTION brew_advance_content_revision()")
+        .await?;
+    Ok(())
+}
+
 /// 近月功能表兜底（`migrations/005` 已 CREATE）。
 pub(crate) async fn ensure_federation_content_filters_table(
     db: &DatabaseConnection,
@@ -375,21 +420,8 @@ $heal$;
 }
 
 /// 投递队列去重：`(activity_id, target_inbox)` 唯一索引。
-///
-/// # 为什么需要
-///
-/// 25 个入队点（room/channel/ring/follow/content/inbox/file_transfer/interactions）
-/// 原本都是裸 `INSERT`，没有任何约束阻止同一条活动向同一个 inbox 重复排队。
-/// `interactions.rs` 曾用 `WHERE NOT EXISTS` 自己去重 —— 那是先查后插，两个
-/// 并发请求可以同时通过检查再双双插入。
-///
-/// 重复投递的后果是远端收到两次同一条活动（重复通知、重复计数）。
-///
-/// # 为什么是 heal 而不是纯 migration
-///
-/// 已有部署的表里可能**已经**存在重复行，直接 `CREATE UNIQUE INDEX` 会失败。
-/// 所以先按 `(activity_id, target_inbox)` 保留 id 最小的一行、删掉其余，再建索引。
-/// 幂等：没有重复行时 DELETE 影响 0 行，索引已存在时 IF NOT EXISTS 跳过。
+/// 同一条活动向同一个 inbox 只留一行。已有部署可能已有重复行，先 DELETE 再建
+/// UNIQUE INDEX。幂等：没有重复行时 DELETE 影响 0 行，索引已存在时 IF NOT EXISTS 跳过。
 pub(crate) async fn ensure_delivery_queue_unique(db: &DatabaseConnection) -> Result<(), DbErr> {
     // 1) 清理历史重复（保留最早入队的那条 —— 它的 attempts/status 最有参考价值）
     let removed = db
@@ -410,7 +442,7 @@ WHERE a.activity_id = b.activity_id
         );
     }
 
-    // 2) 建唯一索引 —— 之后 25 个入队点的 ON CONFLICT DO NOTHING 才真正生效
+    // 2) 建唯一索引 —— 之后入队处的 ON CONFLICT (activity_id, target_inbox) DO NOTHING 才真正生效
     db.execute_unprepared(
         r#"
 CREATE UNIQUE INDEX IF NOT EXISTS idx_delivery_queue_activity_target
@@ -748,16 +780,8 @@ LIMIT 1
     Ok(())
 }
 
-/// 时间线去重：`(user_id, activity_id)` 唯一索引。
-///
-/// 6 个写入点原先各自用 `WHERE NOT EXISTS` 去重 —— 先查后插，同一条活动
-/// 并发送达（例如远端重投 + 扇出同时发生）时两个请求可以同时通过检查，
-/// 用户首页出现重复条目。
-///
-/// 语义与原 `NOT EXISTS` 完全一致（同一用户同一 activity_id 只留一条），
-/// 只是把检查从应用层挪到数据库、变成原子操作。
-///
-/// 同样先去重再建索引：已有部署可能已经积累了重复行。
+/// 时间线去重：`(user_id, activity_id)` 唯一索引。同一用户同一 activity_id 只留一条。
+/// 先去重再建索引：已有部署可能已经积累了重复行。
 pub(crate) async fn ensure_timeline_unique(db: &DatabaseConnection) -> Result<(), DbErr> {
     let removed = db
         .execute_unprepared(

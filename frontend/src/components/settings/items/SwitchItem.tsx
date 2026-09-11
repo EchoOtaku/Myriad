@@ -1,6 +1,3 @@
-/**
- * 开关设置项组件
- */
 
 import type { SwitchSettingConfig } from '../types'
 import React, { useCallback } from 'react'

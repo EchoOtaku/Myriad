@@ -1,6 +1,3 @@
-/**
- * 设置组件统一导出
- */
 
 export { AutoHeight } from './AutoHeight'
 export type { AutoHeightProps } from './AutoHeight'
@@ -29,6 +26,7 @@ export {
   guideAnchorId,
   guideDomProps,
   loadSettingGuidesCatalog,
+  loadTappPermissionGuides,
   scheduleScrollToSettingGuide,
   scrollToSettingGuide,
   SettingGuideBody,
@@ -80,7 +78,6 @@ export type {
   SettingsButtonVariant,
 } from './items/SettingsButton'
 export { SliderItem } from './items/SliderItem'
-// 具体设置项组件
 export { SwitchItem } from './items/SwitchItem'
 export { ToggleSwitch } from './items/ToggleSwitch'
 export type { ToggleSwitchProps } from './items/ToggleSwitch'
@@ -100,7 +97,6 @@ export type {
   ManagedListStatSwitch,
   ManagedListTone,
 } from './ManagedList'
-// 动效系统（CSS 令牌在 settings-motion.css，JS 取值在 motion.ts）
 export {
   prefersReducedMotion,
   SETTINGS_DURATION,
@@ -109,7 +105,6 @@ export {
   SETTINGS_PAGE_MOTION,
   SETTINGS_SIDEBAR_MOTION,
 } from './motion'
-// 预设组合组件
 export { PermissionGroup, QuotaGroup } from './presets'
 export { SectionSwitch } from './SectionSwitch'
 export type {
@@ -142,7 +137,6 @@ export type {
   SettingGroupGridProps,
   SettingGroupGridVariant,
 } from './SettingGroupGrid'
-// 核心组件
 export { SettingItem } from './SettingItem'
 export { SettingSection } from './SettingSection'
 export {
@@ -185,7 +179,6 @@ export type {
 export { SetupFlow } from './SetupFlow'
 
 export type { SetupFlowProps, SetupFlowStep } from './SetupFlow'
-// 类型导出
 export type {
   BaseSettingItemConfig,
   ButtonSettingConfig,

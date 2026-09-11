@@ -40,9 +40,7 @@ impl IntoResponse for HttpError {
     }
 }
 
-/// Bridge legacy `(StatusCode, Json<Value>)` handler errors into [`HttpError`].
-///
-/// Used while routes migrate onto `AppError` one path at a time.
+/// Bridge `(StatusCode, Json<Value>)` handler errors into [`HttpError`].
 pub fn status_json_to_http(err: (StatusCode, axum::Json<serde_json::Value>)) -> HttpError {
     let (status, axum::Json(v)) = err;
     let label = v

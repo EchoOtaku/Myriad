@@ -76,7 +76,6 @@ pub const APPRAISAL_PRAISE: Appraisal = Appraisal {
     arousal: 58.0,
 };
 /// Below `MOOD_FLOOR` so repeated scolding can actually reach 极低.
-/// 22 sat above the floor and made `is_extremely_low` a dead branch.
 pub const APPRAISAL_SCOLD: Appraisal = Appraisal {
     emotion: 8.0,
     arousal: 70.0,

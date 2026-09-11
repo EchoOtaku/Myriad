@@ -14,7 +14,6 @@ function metaString(
   return typeof value === 'string' && value.trim() ? value.trim() : ''
 }
 
-/** Localized title for the notification tray / toast / island. */
 export function notificationFacingTitle(notification: AppNotification): string {
   const t = currentCopy().errors
   const eventKey =
@@ -161,7 +160,6 @@ export function notificationFacingTitle(notification: AppNotification): string {
   return mapped === raw ? raw : mapped
 }
 
-/** Localized, diagnosable body — strips leftover dumps. */
 export function notificationFacingBody(notification: AppNotification): string {
   const t = currentCopy().errors
   const eventKey =

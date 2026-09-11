@@ -1,7 +1,3 @@
-/**
- * 思考流光抽签：同一种子可复现；同时在场的数量和底边范围锁死。
- */
-
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {

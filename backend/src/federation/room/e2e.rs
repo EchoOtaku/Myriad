@@ -153,10 +153,7 @@ pub async fn initiate_e2e_key_exchange(
 
     // 1) 读取成员行；已有本地密钥则复用，避免每次打开会话轮换公钥导致解密失败。
     //
-    // 成员行和房间行都在一个事务里加锁，且加锁顺序固定为「先房间后成员」，
-    // 与 handle_key_exchange 一致。两条路径过去各自「读 → 改 → 整体写回」，
-    // 互相覆盖时会出现 published_keys 里是 K1、成员行私钥却是 K2 的错配：
-    // 对端按 K1 加密，本端只有 K2 —— 房间历史就此永久解不开。
+    // 成员行和房间行都在一个事务里加锁，顺序固定为「先房间后成员」，与 handle_key_exchange 一致。
     let txn = db.begin().await.map_err(db_err)?;
     let room_row = txn
         .query_one_raw(Statement::from_sql_and_values(

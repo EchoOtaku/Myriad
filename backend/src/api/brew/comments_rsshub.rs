@@ -154,14 +154,20 @@ pub(crate) async fn create_comment(
 
     // 验证文章是否存在且对当前用户可见（admin_only 源需管理员）
     let (_, is_admin) = get_user_and_admin_status(&headers, &db).await;
-    let item_visible = match brew_items::Entity::find_by_id(item_id).one(&db).await {
-        Ok(Some(item)) => match brew_sources::Entity::find_by_id(item.source_id)
-            .one(&db)
-            .await
-        {
-            Ok(Some(source)) => !source.admin_only || is_admin,
-            _ => false,
-        },
+    let item = match brew_items::Entity::find_by_id(item_id).one(&db).await {
+        Ok(Some(item)) => item,
+        _ => {
+            return Err(HttpError::from((
+                StatusCode::NOT_FOUND,
+                Json(json!({ "success": false, "error": "Article not found" })),
+            )));
+        }
+    };
+    let item_visible = match brew_sources::Entity::find_by_id(item.source_id)
+        .one(&db)
+        .await
+    {
+        Ok(Some(source)) => !source.admin_only || is_admin,
         _ => false,
     };
 
@@ -237,6 +243,7 @@ pub(crate) async fn create_comment(
         // Explicit body wins; replies inherit parent visibility when omitted.
         is_public: Set(req.is_public.or(inherited_is_public).unwrap_or(false)),
         parent_id: Set(req.parent_id),
+        content_revision: Set(Some(item.content_revision)),
         created_at: Set(now.into()),
         updated_at: Set(now.into()),
         ..Default::default()

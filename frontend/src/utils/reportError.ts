@@ -11,7 +11,6 @@ function rawText(reason: unknown): string {
   return ''
 }
 
-/** Map report generate/skip dumps to a reason the user can act on. */
 export function reportUserFacingError(
   reason: unknown,
   fallback: string,

@@ -285,7 +285,7 @@ pub async fn get_room_messages(
         let is_encrypted: bool = r.try_get("", "is_encrypted").unwrap_or(false);
         let mut payload: serde_json::Value = r.try_get("", "payload").unwrap_or(json!(null));
         // After successful decrypt, mark is_encrypted=false so clients treat the
-        // payload as display plaintext (WS/GET race used to re-flash ciphertext).
+        // payload as display plaintext.
         let mut display_encrypted = is_encrypted;
         if is_encrypted {
             if let Some((pk, sk)) = my_keys.as_ref() {
@@ -727,7 +727,7 @@ pub async fn pin_room_message(
     });
     crate::federation::ws_gateway::broadcast_to_room(room_id, &ws_msg).await;
 
-    // Fan-out pin state to remote members (was local-only)
+    // 向远程成员投递 RoomPin
     let activity_id = generate_activity_id(&base_url);
     let pin_activity = json!({
         "@context": build_context(),
@@ -792,9 +792,7 @@ pub async fn handle_room_pin(
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
 
-    // Pin/unpin is owner/admin only. This used to warn and apply anyway, so any
-    // signed actor that knew a room_id could pin or unpin messages it had no
-    // rights to — including unpinning an admin's pinned message.
+    // Pin/unpin is owner/admin only.
     let role = get_member_role(db, room_id, actor_url_str)
         .await
         .map_err(|e| e.to_string())?;

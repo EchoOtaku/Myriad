@@ -165,8 +165,7 @@ impl ArtistDatabase {
         } else if has_simplified {
             "华语".to_string()
         } else if has_hanzi {
-            // 只有汉字但没有假名和简体字，对于该用户群体，大概率是日文歌（如纯汉字标题）
-            // 或者是繁体中文，但考虑到用户画像，倾向于日本
+            // 只有汉字、无假名无简体：按用户画像归日本（纯汉字标题或繁体）。
             "日本".to_string()
         } else {
             "欧美".to_string()

@@ -414,7 +414,6 @@ pub(crate) async fn persist_assistant_message(
     if let Ok(Some(session)) = agent_sessions::Entity::find_by_id(session_id).one(db).await {
         let mut active: agent_sessions::ActiveModel = session.into();
         active.last_active_at = Set(now);
-        // message_count 用 raw SQL 更新可能更好，但这里简单处理
         if let Ok(count) = agent_messages::Entity::find()
             .filter(agent_messages::Column::SessionId.eq(session_id))
             .count(db)

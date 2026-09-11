@@ -128,7 +128,8 @@ pub async fn get_current_user(
                   {avatar} AS avatar_url,
                   u.github_id, u.linked_github_id, u.bio, u.display_name,
                   u.password_hash IS NOT NULL AS has_password,
-                  u.last_login_at
+                  u.last_login_at,
+                  u.locale
            FROM users u
            WHERE u.id = $1"#,
         avatar = crate::services::avatar::avatar_snapshot_expr("u"),
@@ -217,6 +218,12 @@ pub async fn get_current_user(
         .ok()
         .flatten()
         .map(|t| t.to_rfc3339());
+    let locale = user_row
+        .try_get::<Option<String>>("", "locale")
+        .ok()
+        .flatten()
+        .as_deref()
+        .and_then(crate::api::reports::locale::parse_stored_ui_locale);
 
     Ok(Json(json!({
         "authenticated": true,
@@ -232,9 +239,77 @@ pub async fn get_current_user(
         "bio": bio,
         "has_password": has_password,
         "last_login_at": last_login_at,
+        "locale": locale,
         "identities": identities,
     }))
     .into_response())
+}
+
+/// `PUT /api/auth/me/locale` — durable users only; guests stay on localStorage.
+pub async fn set_current_user_locale(
+    crate::extract::Db(db): crate::extract::Db,
+    headers: HeaderMap,
+    Json(payload): Json<Value>,
+) -> Result<impl IntoResponse, HttpError> {
+    let claims = crate::middleware::auth::authenticate_request(&headers, &db)
+        .await
+        .map_err(|_| {
+            HttpError::from((
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Unauthorized"})),
+            ))
+        })?;
+
+    let Some(user_id) =
+        crate::services::tapp_ownership::parse_authenticated_subject_id(&claims.sub)
+    else {
+        return Err(HttpError::from((
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "Forbidden",
+                "code": "GUEST_LOCALE_READONLY",
+            })),
+        )));
+    };
+
+    let raw = payload
+        .get("locale")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    let Some(locale) = crate::api::reports::locale::parse_stored_ui_locale(raw) else {
+        return Err(HttpError::from((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Bad request",
+                "code": "bad_request",
+                "message": "locale must be zh-CN, en-US, or ja-JP",
+            })),
+        )));
+    };
+
+    let updated = db
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE users SET locale = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+            vec![locale.to_string().into(), user_id.into()],
+        ))
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "failed to save user locale");
+            HttpError::from((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to update user"})),
+            ))
+        })?;
+
+    if updated.rows_affected() == 0 {
+        return Err(HttpError::from((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Not found"})),
+        )));
+    }
+
+    Ok(Json(json!({ "ok": true, "locale": locale })))
 }
 
 /// `POST /api/auth/logout`

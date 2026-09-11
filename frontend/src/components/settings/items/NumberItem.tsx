@@ -1,6 +1,3 @@
-/**
- * 数字输入设置项组件
- */
 
 import type { NumberSettingConfig } from '../types'
 import React, { useCallback } from 'react'

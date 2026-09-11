@@ -84,7 +84,7 @@ Requirements:
     }))
 }
 
-/// 使用规则生成提示词（可以替换为真实的 AI API 调用）
+/// 规则引擎生成提示词（AI 不可用时的降级路径）
 fn generate_prompt_with_rules(title: &str, summary: &str) -> String {
     let content = format!("{} {}", title, summary).to_lowercase();
 

@@ -1,15 +1,107 @@
 import { expect, test } from '@playwright/test'
 
+for (const event of ['blur', 'auth-state-changed']) {
+test(`${event} cancels a completed tap tail immediately and the next press starts fresh`, async ({ page }) => {
+  const point = await page.evaluate(() => (window as any).rigImportTest.touchSurface('face'))
+  for (let i = 0; i < 3; i++) await page.mouse.click(point.x, point.y, { delay: 40 })
+  const cancelled = await page.evaluate(event => {
+    const state = (window as any).touchSurfaceState
+    const before = state.current()
+    window.dispatchEvent(new Event(event))
+    return { before: before.form, active: state.current().active }
+  }, event)
+  expect(cancelled.before).toBe('withdraw')
+  expect(cancelled.active).toBe(false)
+  await page.mouse.move(point.x, point.y)
+  await page.mouse.down()
+  expect(await page.evaluate(() => (window as any).touchSurfaceState.current().form)).toBe('notice')
+  await page.mouse.up()
+  await page.evaluate(() => (window as any).touchSurfaceState.dispose())
+})
+}
+
+test('identity change releases a held pointer and ignores its later pointer-up', async ({ page }) => {
+  const point = await page.evaluate(() => (window as any).rigImportTest.touchSurface('hair'))
+  await page.mouse.move(point.x, point.y)
+  await page.mouse.down()
+  await expect(page.locator('#touch-character')).toHaveAttribute('data-merope-touch-active', 'true')
+  const cancelled = await page.evaluate(() => {
+    window.dispatchEvent(new Event('auth-state-changed'))
+    return (window as any).touchSurfaceState.current().active
+  })
+  expect(cancelled).toBe(false)
+  await expect(page.locator('#touch-character')).not.toHaveAttribute('data-merope-touch-active', 'true')
+  await page.mouse.up()
+  expect(await page.evaluate(() => (window as any).touchSurfaceState.events.includes('end:tap'))).toBe(false)
+  await page.mouse.click(point.x, point.y)
+  expect(await page.evaluate(() => (window as any).touchSurfaceState.current().form)).toBe('accept')
+  await page.evaluate(() => (window as any).touchSurfaceState.dispose())
+})
+
+test('repeated hair clicks never reopen the settled happy eyes between presses', async ({ page }) => {
+  const point = await page.evaluate(() => (window as any).rigImportTest.touchSurface('hair'))
+  await page.mouse.click(point.x, point.y)
+  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().pose.eyeOpenL)).toBeLessThan(0.65)
+  await page.evaluate(() => {
+    const state = (window as any).touchSurfaceState
+    state.eyeSamples = []
+    state.monitor = setInterval(() => state.eyeSamples.push(state.current().pose.eyeOpenL), 8)
+  })
+  for (let i = 0; i < 8; i++) await page.mouse.click(point.x, point.y, { delay: 90 })
+  const samples = await page.evaluate(() => {
+    const state = (window as any).touchSurfaceState
+    clearInterval(state.monitor)
+    return state.eyeSamples as number[]
+  })
+  expect(samples.length).toBeGreaterThan(20)
+  const diagnostics = await page.evaluate(() => ({ events: (window as any).touchSurfaceState.events, current: (window as any).touchSurfaceState.current() }))
+  expect(Math.max(...samples), JSON.stringify(diagnostics)).toBeLessThan(0.68)
+  expect(Math.max(...samples) - Math.min(...samples)).toBeLessThan(0.15)
+  await page.evaluate(() => (window as any).touchSurfaceState.dispose())
+})
+
+for (const region of ['hair', 'face']) {
+  test(`completed ${region} click produces a held facial expression, not just head motion`, async ({ page }) => {
+    const point = await page.evaluate(region => (window as any).rigImportTest.touchSurface(region), region)
+    expect(point).not.toBeNull()
+    await page.mouse.click(point.x, point.y)
+    await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().form)).toBe(region === 'hair' ? 'accept' : 'hesitate')
+    await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().pose.eyeOpenL)).toBeLessThan(region === 'hair' ? 0.7 : 0.85)
+    expect(await page.evaluate(() => (window as any).touchSurfaceState.current().pose.eyeSqueeze)).toBe(0)
+    await expect.poll(() => page.evaluate(() => Math.abs((window as any).touchSurfaceState.current().pose.browAngSym))).toBeGreaterThan(region === 'hair' ? 0.15 : 0.35)
+    await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().active), { timeout: 3000 }).toBe(false)
+    await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().pose.eyeOpenL), { timeout: 3000 }).toBeGreaterThan(0.95)
+    await page.evaluate(() => (window as any).touchSurfaceState.dispose())
+  })
+}
+
+test('three completed face clicks change hesitation into a visible frown', async ({ page }) => {
+  const point = await page.evaluate(() => (window as any).rigImportTest.touchSurface('face'))
+  for (let i = 0; i < 3; i++) await page.mouse.click(point.x, point.y, { delay: 40 })
+  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().form)).toBe('withdraw')
+  await page.mouse.move(point.x, point.y)
+  await page.mouse.down()
+  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().form)).toBe('withdraw')
+  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.events.includes('update:hold'))).toBe(true)
+  expect(await page.evaluate(() => (window as any).touchSurfaceState.current().form)).toBe('withdraw')
+  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().pose.browAngSym)).toBeGreaterThan(0.45)
+  await page.mouse.up()
+  await page.evaluate(() => (window as any).touchSurfaceState.dispose())
+})
+
 test('real pointer contact reaches the shared director and releases on blur', async ({ page }) => {
   const point = await page.evaluate(() => (window as any).rigImportTest.touchSurface())
   expect(point).not.toBeNull()
-  const before = await page.evaluate(() => (window as any).touchSurfaceState.current().pose.angleY)
   await page.mouse.move(point.x, point.y)
   await page.mouse.down()
   await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().active)).toBe(true)
   await expect(page.locator('#touch-character')).toHaveAttribute('data-merope-touch-active', 'true')
   await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.events.includes('update:hold'))).toBe(true)
-  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().pose.angleY)).toBeGreaterThan(before + 0.01)
+  // Face contact expresses hesitation; its head answer is transient, not a
+  // permanently positive nod. Assert the sustained rendered reaction instead.
+  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().form)).toBe('hesitate')
+  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().pose.browAngSym)).toBeLessThan(-0.35)
+  await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().pose.body)).toBeLessThan(-0.02)
   await page.evaluate(() => window.dispatchEvent(new Event('blur')))
   await expect.poll(() => page.evaluate(() => (window as any).touchSurfaceState.current().active)).toBe(false)
   await expect(page.locator('#touch-character')).not.toHaveAttribute('data-merope-touch-active', 'true')
@@ -32,6 +124,75 @@ test('covering the captured character cancels contact rather than touching throu
   await page.mouse.up()
   await page.evaluate(() => (window as any).touchSurfaceState.dispose())
 })
+
+for (const expression of ['tense', 'withdrawn']) {
+  test(`petting preserves ${expression} bearing while the real player speaks over music`, async ({ page }) => {
+    test.setTimeout(60_000)
+    const result = await page.evaluate(expression => (window as any).rigImportTest.directorReplay(true, false, 'accept', 60, expression), expression)
+    const control = await page.evaluate(expression => (window as any).rigImportTest.directorReplay(true, false, 'control', 60, expression), expression)
+    const held = result.frames.filter((f: any) => f.at > 0.7 && f.at < 1.25)
+    expect(held.every((f: any) => f.owners.mouth === 'speech')).toBe(true)
+    expect(Math.max(...held.map((f: any) => f.mouthOpen))).toBeGreaterThan(0.05)
+    for (const f of held) {
+      const original = control.frames[Math.round(f.at * 60)].browAngSym
+      expect(Math.sign(original) * f.browAngSym).toBeGreaterThan(Math.abs(original) * 0.7)
+    }
+    expect(Math.max(...held.map((f: any) => Math.abs(f.eyeX - control.frames[Math.round(f.at * 60)].eyeX)))).toBeGreaterThan(0.02)
+    expect(result.glError).toBe(0)
+    expect(result.rejected).toBe(0)
+  })
+}
+
+for (const [fps, decision] of [[30, 'withdraw'], [60, 'withdraw'], [120, 'withdraw'], [60, 'accept'], [60, 'late'], [60, 'changed'], [60, 'fail']] as const) {
+  test(`touch handoff through full player at ${fps} fps with ${decision} appraisal`, async ({ page }) => {
+    test.setTimeout(60_000)
+    const result = await page.evaluate(({ fps, decision }) =>
+      (window as any).rigImportTest.directorReplay(true, false, decision, fps), { fps, decision })
+    const control = await page.evaluate(fps =>
+      (window as any).rigImportTest.directorReplay(true, false, 'control', fps), fps)
+    const frames = result.frames as Array<{
+      at: number; angleX: number; angleY: number; angleZ: number; body: number; eyeX: number
+      mouthOpen: number; touchForm: string | null; presentedTouch: string | null; touchApplied: number
+      owners: { mouth: string; headBody: string }; active: string[]
+    }>
+    expect(result.rejected).toBe(0)
+    expect(result.duplicateWrites).toBe(0)
+    expect(result.glError).toBe(0)
+    expect(result.touchWriteMutation).toBe(false)
+    expect(result.touchRequests).toBe(1)
+    expect(result.touchApplied).toBe(['late', 'changed', 'fail'].includes(decision) ? 0 : 1)
+    if (decision === 'withdraw') expect(frames.some(f => f.touchForm === 'withdraw')).toBe(true)
+    if (decision === 'withdraw') expect(frames.some(f => f.presentedTouch === 'withdraw')).toBe(true)
+    expect(frames.filter(f => f.at > 3).every(f => f.presentedTouch === null)).toBe(true)
+    expect(frames.filter(f => f.at < 2).every(f => f.owners.mouth === 'speech')).toBe(true)
+    expect(Math.max(...frames.filter(f => f.at > 0.6 && f.at < 1.6).map(f => f.mouthOpen))).toBeGreaterThan(0.05)
+    expect(frames.filter(f => f.at > 3 && f.at < 4).every(f => f.owners.headBody === 'music')).toBe(true)
+    expect(frames.filter(f => f.at > 2.4).every(f => f.touchForm === null)).toBe(true)
+    expect(frames.at(-1)!.active.some(f => ['accept:', 'withdraw:', 'hesitate:', 'notice:'].some(prefix => f.startsWith(prefix)))).toBe(false)
+    const metrics: Record<string, { speed: number; acceleration: number; peakAt: number }> = {}
+    for (const key of ['angleX', 'angleY', 'angleZ', 'body', 'eyeX'] as const) {
+      let lastVelocity = 0
+      metrics[key] = { speed: 0, acceleration: 0, peakAt: 0 }
+      for (let i = 2; i < frames.length; i++) {
+        // Touch handoffs end before 3.2s. The independently phased music
+        // shutdown at 4s is covered by the music replay, not this differential.
+        if (frames[i].at > 3.2) break
+        const delta = (index: number) => frames[index][key] - control.frames[index][key]
+        const velocity = (delta(i) - delta(i - 1)) * fps
+        if (i > 2 && Math.abs(velocity - lastVelocity) * fps > metrics[key].acceleration) {
+          metrics[key].acceleration = Math.abs(velocity - lastVelocity) * fps
+          metrics[key].peakAt = frames[i].at
+        }
+        metrics[key].speed = Math.max(metrics[key].speed, Math.abs(velocity))
+        lastVelocity = velocity
+      }
+      expect(metrics[key].speed, `${key}: ${JSON.stringify(metrics)}`).toBeLessThan(6)
+      // Normalized driver units/s²: gaze uses the existing 16Hz response,
+      // head/body 7–9.5Hz. These are regression budgets, not human-motion claims.
+      expect(metrics[key].acceleration, `${key}: ${JSON.stringify(metrics)}`).toBeLessThan(key === 'eyeX' ? 180 : 100)
+    }
+  })
+}
 
 for (const kind of ['ordinary', 'collar', 'necklace']) {
   test(`touch picking matches real rendered alpha for ${kind} while turning`, async ({ page }) => {

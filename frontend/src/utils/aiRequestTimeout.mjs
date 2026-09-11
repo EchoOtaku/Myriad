@@ -1,6 +1,5 @@
-/** Floor for waiting on a model. Do not use the generic 30s HTTP timeout. */
+/** Do not use the generic 30s HTTP timeout. */
 export const AI_REQUEST_TIMEOUT_FLOOR_MS = 5 * 60 * 1000
-/** Image / 3D / portrait sockets can stay idle until the provider returns. */
 export const AI_IMAGE_REQUEST_TIMEOUT_MS = 15 * 60 * 1000
 
 const IMAGE_AI_PREFIXES = [
@@ -43,10 +42,6 @@ function matchesPrefix(path, prefix) {
   return path === prefix || path.startsWith(prefix)
 }
 
-/**
- * @param {string} url
- * @returns {number | undefined} Timeout in milliseconds for long AI routes.
- */
 export function aiRequestTimeoutMs(url) {
   const path = requestPathname(url)
   if (IMAGE_AI_PREFIXES.some((prefix) => matchesPrefix(path, prefix))) {
@@ -61,7 +56,6 @@ export function aiRequestTimeoutMs(url) {
   return undefined
 }
 
-/** Attach a floor timeout unless the caller already passed a signal. */
 export function withAiTimeoutSignal(url, init = {}) {
   if (init.signal) return init
   const ms = aiRequestTimeoutMs(url)

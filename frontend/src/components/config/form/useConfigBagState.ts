@@ -52,10 +52,9 @@ export function useConfigBagState(
       const sectionKey = `${section}_config` as
         'ai_config' | 'tripo_config' | 'ui_config'
       const sanitized = sanitizeMaskedFieldValue(value)
-      // 用 ref 在同步 updater 内标记是否真正改到字段（避免闭包依赖 config）
+      // mark in the updater via ref; don't close over config
       let applied = false
 
-      // 函数式更新：连续改多个字段（切换 Provider 时写 provider+base+model）不会互相覆盖
       setConfig((prev) => {
         if (!prev) return prev
         const sectionConfig = prev[sectionKey]
@@ -101,7 +100,6 @@ export function useConfigBagState(
           return { ...prev, [sectionKey]: nextPrevSection }
         })
       } else if (applied) {
-        // React 18 同步执行 updater，applied 此处可读
         notifyDirtyState(true)
       }
     },

@@ -145,6 +145,28 @@ export interface TappSdk {
     onChanged(callback: (event: { key?: string; operation?: string }) => void): () => void
   }
 
+  shared: {
+    get(key: string): Promise<unknown>
+    set(key: string, value: unknown): Promise<unknown>
+    remove(key: string): Promise<unknown>
+    keys(): Promise<string[]>
+    getAll(): Promise<Record<string, unknown>>
+    clear(): Promise<unknown>
+    usage(): Promise<unknown>
+    onChanged(callback: (event: { key?: string; operation?: string }) => void): () => void
+  }
+
+  private: {
+    get(key: string): Promise<unknown>
+    set(key: string, value: unknown): Promise<unknown>
+    remove(key: string): Promise<unknown>
+    keys(): Promise<string[]>
+    getAll(): Promise<Record<string, unknown>>
+    clear(): Promise<unknown>
+    usage(): Promise<unknown>
+    onChanged(callback: (event: { key?: string; operation?: string }) => void): () => void
+  }
+
   settings: {
     get(key: string): Promise<unknown>
     set(key: string, value: unknown): Promise<unknown>
@@ -502,15 +524,6 @@ export interface TappSdk {
     list(...args: unknown[]): Promise<unknown> // permission: report:read
     listReports(...args: unknown[]): Promise<unknown> // permission: report:read
     update(...args: unknown[]): Promise<unknown> // permission: report:write
-  }
-  shared: {
-    clear(...args: unknown[]): Promise<unknown> // permission: storage:write
-    get(...args: unknown[]): Promise<unknown> // permission: storage:read
-    getAll(...args: unknown[]): Promise<unknown> // permission: storage:read
-    keys(...args: unknown[]): Promise<unknown> // permission: storage:read
-    remove(...args: unknown[]): Promise<unknown> // permission: storage:write
-    set(...args: unknown[]): Promise<unknown> // permission: storage:write
-    usage(...args: unknown[]): Promise<unknown> // permission: storage:read
   }
   shortcut: {
     list(...args: unknown[]): Promise<unknown>

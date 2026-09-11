@@ -245,7 +245,6 @@ test('timeline: model result after text completion revises an upcoming real spee
       utteranceId: 'line',
       generation: 1,
     }
-    // No global generation is changed: use an unversioned isolated runtime.
     const local = { ...event, generation: undefined }
     let resolve!: (value: PlaybackDirectionSnapshot) => void
     let received = 0
@@ -275,7 +274,7 @@ test('timeline: model result after text completion revises an upcoming real spee
       runtime.frame(now)
       const before = runtime.speech.current().prosody!
       client.start(scope)
-      now += 100 // Model text is complete; speech has not finished.
+      now += 100
       t.mock.timers.tick(100)
       runtime.speech.handleForTest({ ...local, phase: 'end' })
       client.textEnded(scope.messageId)

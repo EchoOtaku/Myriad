@@ -1,13 +1,10 @@
 //! 结果评估器
 //!
-//! 评估任务执行结果是否**真正满足**用户的原始目标
-//!
-//! ## 验证层次
+//! 评估结果是否命中失败模式或有效数据不足。
 //!
 //! 1. **失败模式检测**：识别"未找到"、"无结果"等语义失败
 //! 2. **数据源验证**：检查数据获取步骤是否返回了有效数据
-//! 3. **目标匹配验证**：确保结果真正回答了用户的问题
-//! 4. **升级门控**：本地数据域 / stub 空实现不得建议 ai.webSearch
+//! 3. **升级门控**：本地数据域 / stub 空实现不得建议 ai.webSearch
 
 use serde_json::Value;
 
@@ -16,8 +13,7 @@ use serde_json::Value;
 pub struct EvaluationContext {
     /// 本次执行涉及的能力 ID 列表
     pub capability_ids: Vec<String>,
-    /// 显式允许联网搜索升级（如 generateReadingList + allowWebSearch 标志，
-    /// 或明确的外部调研意图）
+    /// 显式允许联网搜索升级
     pub allow_web_search: bool,
 }
 
@@ -136,7 +132,7 @@ impl ResultEvaluator {
         eval
     }
 
-    /// 根据 stub / 本地数据域 / 白名单 决定是否建议联网搜索
+    /// 按 stub / 本地域 / allow_web_search 决定是否建议联网搜索
     fn apply_escalation_policy(
         &self,
         eval: &mut Evaluation,
@@ -573,7 +569,7 @@ impl ResultEvaluator {
                 "无法找到",
             ];
 
-            // 如果总结中有多个负面指标，认为是在总结"没有数据"
+            // 负面指标命中 ≥1 则视为总结了空数据
             let negative_count = negative_indicators
                 .iter()
                 .filter(|p| summary_lower.contains(*p))

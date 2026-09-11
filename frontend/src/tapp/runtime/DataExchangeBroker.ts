@@ -188,8 +188,6 @@ class DataExchangeBroker {
           return candidate
         }
       } catch {
-        // A runtime may disappear while a prepared request is being matched.
-        // Continue to any other online instance of the same installation.
       }
     }
     return undefined
@@ -335,8 +333,6 @@ class DataExchangeBroker {
 
     const providerRuntimeGrant = await provider.bridge.getRuntimeGrant()
     if (!response.ok) {
-      // Consume with a deliberately invalid response so provider failures also
-      // exhaust the one-shot token. The original provider error is preserved.
       await consumeDataExchange(
         invocation.access.token,
         null,
@@ -373,7 +369,6 @@ export function registerDataExchangeHandlers(
   return broker.register(bridge, instance)
 }
 
-/** Trusted host adapter used by an authorized Agent Interaction intent. */
 export function requestDataExchangeFromHost(
   bridge: TappBridge,
   request: DataExchangeRequest,

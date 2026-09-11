@@ -30,7 +30,7 @@ use myriad_merope::{
     PORTRAIT_CANVAS_WIDTH, PORTRAIT_GENERATION_HEIGHT, PORTRAIT_GENERATION_WIDTH,
     RIG_SCHEMA_VERSION, STICKER_AVATAR_CONTRACT_VERSION, STICKER_AVATAR_SIZE,
 };
-use sea_orm::{ConnectionTrait, DatabaseConnection, TransactionTrait};
+use sea_orm::{ConnectionTrait, DatabaseConnection, EntityTrait, QuerySelect, TransactionTrait};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -234,6 +234,7 @@ struct MasterProvenance {
     asset_id: String,
     generation_fingerprint: Option<String>,
     gender: String,
+    outfit_id: Option<String>,
 }
 
 fn valid_generation_fingerprint(value: &str) -> bool {
@@ -288,6 +289,12 @@ async fn current_master(db: &DatabaseConnection) -> ApiResult<Option<MasterProve
     let Some(persona) = persona else {
         return Ok(None);
     };
+    Ok(master_from_persona(&persona))
+}
+
+fn master_from_persona(
+    persona: &crate::models::entities::agent_persona::Model,
+) -> Option<MasterProvenance> {
     let gender = persona
         .visual_profile
         .as_ref()
@@ -296,10 +303,8 @@ async fn current_master(db: &DatabaseConnection) -> ApiResult<Option<MasterProve
         .filter(|value| matches!(*value, "female" | "male" | "nonbinary" | "unspecified"))
         .unwrap_or("unspecified")
         .to_string();
-    let Some(asset_id) = persona.portrait_asset_id else {
-        return Ok(None);
-    };
-    Ok(Some(MasterProvenance {
+    let asset_id = persona.portrait_asset_id.clone()?;
+    Some(MasterProvenance {
         asset_id,
         generation_fingerprint: myriad_merope::active_outfit_generation_fingerprint(
             persona.visual_profile.as_ref(),
@@ -313,7 +318,13 @@ async fn current_master(db: &DatabaseConnection) -> ApiResult<Option<MasterProve
             .unwrap_or(None)
         }),
         gender,
-    }))
+        outfit_id: persona
+            .visual_profile
+            .as_ref()
+            .and_then(|profile| profile.get("activeOutfitId"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    })
 }
 
 async fn require_master_match(
@@ -397,14 +408,31 @@ async fn bind_and_activate_outfit_rig(
     db: &DatabaseConnection,
     user_id: i32,
     asset_id: &str,
+    expected: &MasterProvenance,
 ) -> ApiResult<()> {
     let transaction = db.begin().await.map_err(internal_error)?;
-    let persona = merope::get_persona_on(&transaction)
-        .await
-        .map_err(internal_error)?;
-    if let Some(row) = persona {
+    // The row lock spans provenance validation, outfit binding and activation.
+    // A concurrent portrait/outfit UPDATE cannot slip between those operations.
+    let row =
+        crate::models::entities::agent_persona::Entity::find_by_id(merope::store::PERSONA_ROW_ID)
+            .lock_exclusive()
+            .one(&transaction)
+            .await
+            .map_err(internal_error)?;
+    if row.as_ref().and_then(master_from_persona).as_ref() != Some(expected) {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": "Character master or worn outfit changed before rig activation",
+                "code": "character_asset_provenance_changed"
+            })),
+        ));
+    }
+    if let Some(row) = row {
         let mut profile = row.visual_profile.clone().unwrap_or_else(|| json!({}));
-        myriad_merope::bind_active_outfit_rig(&mut profile, asset_id);
+        if !myriad_merope::bind_active_outfit_rig(&mut profile, asset_id) {
+            return Err(bad_request("The worn outfit is missing"));
+        }
         if let Err(error) = merope::upsert_persona_on(
             &transaction,
             row.name,
@@ -776,6 +804,7 @@ pub(crate) async fn wardrobe_outfit_face(
                         asset_id: portrait.to_string(),
                         generation_fingerprint: look.generation_fingerprint.clone(),
                         gender: gender.to_string(),
+                        outfit_id: Some(outfit_id.to_string()),
                     },
                 ),
                 None => manifest.validate().is_ok(),
@@ -1048,15 +1077,7 @@ pub async fn import_site_rig(
     merope_rig::persist_package(&asset_id, &atlas_bytes, &json)
         .await
         .map_err(internal_error)?;
-    // Portrait/persona writes can race a long compile. Never activate a rig
-    // whose provenance stopped being current while the package was built.
-    require_master_match(
-        &db,
-        &source_master_asset_id,
-        source_generation_fingerprint.as_deref(),
-    )
-    .await?;
-    bind_and_activate_outfit_rig(&db, user_id, &asset_id).await?;
+    bind_and_activate_outfit_rig(&db, user_id, &asset_id, &master).await?;
     Ok(Json(json!({ "manifest": manifest, "assetId": asset_id })))
 }
 
@@ -1770,6 +1791,33 @@ mod portrait_contract_tests {
     use sha2::Digest;
 
     #[test]
+    fn activation_anchor_tracks_outfit_even_when_portrait_is_shared() {
+        let mut persona = crate::models::entities::agent_persona::Model {
+            id: "site".into(),
+            name: "Merope".into(),
+            personality: String::new(),
+            persona_json: None,
+            visual_profile: Some(json!({"activeOutfitId": "a", "gender": "female"})),
+            portrait_asset_id: Some("master-a".into()),
+            portrait_generation: None,
+            avatar_asset_id: None,
+            avatar_generation: None,
+            updated_by: None,
+            updated_at: chrono::Utc::now().fixed_offset(),
+        };
+        let original = master_from_persona(&persona).unwrap();
+        persona.name = "Renamed".into();
+        assert_eq!(master_from_persona(&persona).as_ref(), Some(&original));
+        persona.visual_profile.as_mut().unwrap()["activeOutfitId"] = json!("b");
+        assert_ne!(master_from_persona(&persona).as_ref(), Some(&original));
+        persona.visual_profile.as_mut().unwrap()["activeOutfitId"] = json!("a");
+        persona.portrait_asset_id = Some("master-b".into());
+        assert_ne!(master_from_persona(&persona).as_ref(), Some(&original));
+        persona.portrait_asset_id = None;
+        assert!(master_from_persona(&persona).is_none());
+    }
+
+    #[test]
     fn portrait_adjustments_are_bounded_to_rendering_changes() {
         assert_eq!(
             sanitize_portrait_adjustment(Some(" 柔和正面光，目光更坚定，脸部在画面中再大一点 "))
@@ -1870,6 +1918,7 @@ mod portrait_contract_tests {
             asset_id: "/master.png".to_string(),
             generation_fingerprint: Some(fingerprint.clone()),
             gender: "female".to_string(),
+            outfit_id: Some("default".into()),
         };
         let mut manifest = layered_stub_manifest("/master.png", Some(fingerprint.clone()));
         assert!(manifest_matches_master(&manifest, &master));

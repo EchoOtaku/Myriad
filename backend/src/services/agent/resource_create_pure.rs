@@ -121,7 +121,7 @@ fn ensure_layer_entry(
 
 /// `require` 字面量：从 `from_module` 所在目录指向 `to_module`。
 ///
-/// 与安装期 `resolve_require_target` 同构，只生成相对路径，不猜测默认文件名。
+/// 与安装期 `resolve_require_target` 同构，只生成相对路径，不回退默认文件名。
 pub fn relative_require_request(from_module: &str, to_module: &str) -> Result<String, String> {
     validate_resource_path(from_module)?;
     validate_resource_path(to_module)?;

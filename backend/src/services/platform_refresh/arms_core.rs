@@ -81,8 +81,7 @@ pub(super) async fn fetch_bilibili(ctx: &mut FetchCtx<'_>) {
         if let Ok(uid) = uid_str.parse::<i64>() {
             match ctx.fetcher.fetch_bilibili_user(uid).await {
                 Ok(user_data) => {
-                    // 与 Steam/GitHub 一致用 `user`；smart_filter / get_user_info 都读这个键
-                    // （旧版曾写成 user_info，导致过滤与资料页读不到用户信息）
+                    // 与 Steam/GitHub 一致用 `user`；smart_filter / get_user_info 都读这个键。
                     ctx.all_data["bilibili"]["user"] = json!(user_data);
                     tracing::info!(
                         "✓ Bilibili user data fetched: {} (mid={}, lv{}, {} followers)",
@@ -209,7 +208,7 @@ pub(super) async fn fetch_netease(ctx: &mut FetchCtx<'_>) {
                         ctx.all_data["netease"]["profile"] = profile.clone();
                         tracing::info!("✓ Netease user data fetched");
                     } else {
-                        // 如果没有 profile 字段，使用整个响应（兼容旧版本）
+                        // 没有 profile 字段时用整个响应
                         ctx.all_data["netease"]["profile"] = user_data;
                         tracing::warn!(
                             "⚠️ Netease API response missing 'profile' field, using full response"

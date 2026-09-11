@@ -6,7 +6,7 @@
 //! GET    /api/auth/oauth/providers              列出 enabled providers
 //! GET    /api/auth/oauth/:slug/login            重定向到授权页
 //! GET    /api/auth/oauth/:slug/callback         交换 code + 登录/创建用户
-//! GET    /api/auth/oauth/:slug/link             绑定 (需 JWT + is_admin)
+//! GET    /api/auth/oauth/:slug/link             绑定 (需 JWT，非游客)
 //! DELETE /api/auth/oauth/:slug/unlink/:id       解绑
 //! GET    /api/auth/identities                   当前用户所有 identities
 //! POST   /api/auth/identities/:id/primary       设为画像源（is_primary + 同步头像等）
@@ -106,7 +106,7 @@ fn append_set_cookie(response: &mut Response, cookie: &str) {
     }
 }
 
-/// Login/link redirect with `oauth_tx` browser-binding cookie (MYR-003).
+/// Login/link redirect with `oauth_tx` browser-binding cookie.
 async fn redirect_with_oauth_tx(auth_url: &str, browser_tx: &str) -> Response {
     let is_production = SiteConfig::is_production().await;
     let mut response = no_store_redirect(auth_url);
@@ -242,7 +242,7 @@ pub async fn provider_login(Path(slug): Path<String>) -> Result<Response, HttpEr
         .await
         .map_err(oauth_start_failed)?;
 
-    // Bind signed state to this browser via oauth_tx (MYR-003).
+    // Bind signed state to this browser via oauth_tx.
     Ok(redirect_with_oauth_tx(&auth_url, &issued.browser_tx).await)
 }
 
@@ -348,7 +348,7 @@ pub async fn provider_callback(
     };
 
     // 1. Verify signed state WITHOUT burning the nonce yet.
-    // Cookie binding (MYR-003) must succeed first so a session-swap attempt
+    // Cookie binding must succeed first so a session-swap attempt
     // cannot one-shot invalidate a legitimate browser's pending state.
     let verified = match verify_state(&state_param).await {
         Ok(v) => v,
@@ -361,7 +361,7 @@ pub async fn provider_callback(
         }
     };
 
-    // MYR-003: require oauth_tx cookie == payload nonce (fail closed) BEFORE mark_used.
+    // require oauth_tx cookie == payload nonce (fail closed) BEFORE mark_used.
     let cookie_header = headers.get(header::COOKIE).and_then(|v| v.to_str().ok());
     if !oauth_tx_cookie_matches(cookie_header, verified.browser_tx()) {
         return Ok(reject_oauth_tx_mismatch(&frontend_base).await);
@@ -512,7 +512,7 @@ pub async fn provider_callback(
 /// Soft-recover a second callback hit with the same (already-consumed) state.
 ///
 /// **Must only run after** `oauth_tx` cookie matched the state nonce — never skip
-/// that check for soft-success (MYR-003 / session-swap defense).
+/// that check for soft-success (session-swap defense).
 /// We never re-exchange the authorization code (provider codes are one-time).
 ///
 /// Tradeoff for Login: without `provider_user_id` on pure replay we cannot prove
@@ -827,7 +827,7 @@ async fn find_or_create_user(
         return Ok(uid);
     }
 
-    // 2. MYR-012 — no silent cross-issuer auto-link by email.
+    // 2. no silent cross-issuer auto-link by email.
     //
     // Login only when (provider, provider_user_id) is already linked (step 1).
     // If the provider email is already on another account, refuse account creation
@@ -893,7 +893,7 @@ async fn find_or_create_user(
                     .map(|s| SeaValue::String(Some(s)))
                     .unwrap_or(SeaValue::String(None)),
                 SeaValue::String(Some(provider_label.to_string())),
-                // 兼容层：GitHub 时写 github_id 镜像
+                // GitHub 时同时写 users.github_id
                 if slug == "github" {
                     profile
                         .provider_user_id
@@ -1003,7 +1003,7 @@ async fn upsert_identity(
 
 /// 防止 username 冲突：若已存在，追加 `_<n>` 后缀
 ///
-/// MYR-036: one range scan for `base` / `base_*` instead of up to 100 point probes.
+/// 一次扫描 `base` / `base_*`（`LIMIT 200`）。
 async fn ensure_unique_username(db: &DatabaseConnection, base: &str) -> Result<String, HttpError> {
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
@@ -1120,7 +1120,7 @@ pub async fn provider_unlink(
         err_500("Database error")
     })?;
 
-    // 兼容层：解绑 GitHub 时清掉 users.linked_github_id（若仍持有该 id）
+    // 解绑 GitHub 时清掉 users.linked_github_id（若仍持有该 id）
     if slug == "github" {
         let _ = db
             .execute_raw(Statement::from_sql_and_values(
@@ -1189,13 +1189,12 @@ pub async fn list_my_identities(
 
 // POST /api/auth/identities/{identity_id}/primary
 //
-// 兼容别名：等价于 PUT /api/users/me/avatar-source {kind:"identity", ref:<id>}。
+// 等价于 PUT /api/users/me/avatar-source {kind:"identity", ref:<id>}。
 // 画像源的唯一写入处是 services::avatar::set_avatar_source（它一并维护
 // is_primary 与 avatar_resolved_url 快照），这里只做 GitHub 账号联结的补写。
 //
-// 已移除的旧副作用：**不再覆盖 users.display_name**。改画像源是选头像，
-// 顺手改掉展示名属于两件事绑一起，用户切个头像却发现名字变了。
-// 同样不再覆盖 users.avatar_url —— 那是"账号"这一来源本身，覆盖后就切不回来了。
+// 不覆盖 users.display_name。改画像源只选头像。
+// 同样不覆盖 users.avatar_url —— 那是「账号」这一来源本身，覆盖后就切不回来了。
 
 pub async fn set_primary_identity(
     Path(identity_id): Path<i32>,

@@ -69,6 +69,28 @@ it('types AI task inputs and snapshots and rejects malformed inputs', async () =
   }
 })
 
+it('curates storage, shared, private, and settings including onChanged', async () => {
+  const shipped = await readFile(new URL('../src/generated/tapp-sdk.d.ts', import.meta.url), 'utf8')
+  const block = (name) => {
+    const start = shipped.indexOf(`\n  ${name}: {`)
+    assert.notEqual(start, -1, `missing ${name} namespace`)
+    const from = shipped.slice(start + 1)
+    const next = from.search(/\n  [a-zA-Z]+: \{/)
+    return next === -1 ? from : from.slice(0, next)
+  }
+  for (const ns of ['storage', 'shared', 'private']) {
+    const body = block(ns)
+    assert.match(body, /onChanged\(callback:/)
+    assert.match(body, /usage\(\): Promise/)
+    assert.match(body, /getAll\(\): Promise<Record<string, unknown>>/)
+  }
+  const settings = block('settings')
+  assert.match(settings, /onChanged\(callback:/)
+  assert.match(settings, /getAll\(\): Promise<Record<string, unknown>>/)
+  assert.doesNotMatch(settings, /\busage\(/)
+  assert.doesNotMatch(settings, /\bremove\(/)
+})
+
 it('exposes global Tapp to referenced JavaScript without importing the SDK module', async () => {
   const shipped = await readFile(new URL('../src/generated/tapp-sdk.d.ts', import.meta.url), 'utf8')
   const directory = await mkdtemp(join(tmpdir(), 'tapp-global-'))
@@ -79,6 +101,11 @@ it('exposes global Tapp to referenced JavaScript without importing the SDK modul
       `/// <reference path="./tapp-sdk.d.ts" />
 Tapp.lifecycle.onReady(async () => {
   await Tapp.storage.get('ready')
+  await Tapp.shared.get('posts')
+  Tapp.private.onChanged(({ key, operation }) => {
+    key
+    operation
+  })
 })
 `,
     )

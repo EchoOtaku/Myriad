@@ -21,7 +21,7 @@ pub enum ProviderKind {
     Oidc,
 }
 
-/// Per-login secrets for OIDC PKCE + `nonce` (MYR-011).
+/// Per-login secrets for OIDC PKCE + `nonce`.
 ///
 /// Generated at state issuance and embedded in the signed OAuth `state` so any
 /// instance can complete the callback. GitHub and other non-OIDC providers

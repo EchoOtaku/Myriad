@@ -1,7 +1,3 @@
-/**
- * 下拉选择设置项组件
- * 使用 FieldSelect 自定义列表，避免原生 option 深色不可控。
- */
 
 import type { SelectSettingConfig } from '../types'
 import React, { useCallback } from 'react'

@@ -1,11 +1,3 @@
-/**
- * Widget library search — matches against each widget's runtime metadata.
- *
- * Built-in and third-party (Tapp) widgets both go through the same path:
- * id / name / optional display label / any extra strings the registry provides
- * (category, tappId, description…). No preset allowlist.
- */
-
 import {
   parseTappWidgetCategory,
   TAPP_CATEGORIES,
@@ -14,9 +6,7 @@ import {
 export interface WidgetLibrarySearchable {
   id: string
   name: string
-  /** UI-resolved label when available (i18n or host-provided). */
   label?: string | null
-  /** Free-form extras: category, tappId, description, aliases… */
   extras?: Array<string | null | undefined>
 }
 
@@ -24,7 +14,6 @@ export function normalizeWidgetLibraryQuery(query: string): string {
   return query.trim().toLowerCase()
 }
 
-/** Expand id separators so "music player" can hit `music-player`. */
 function idSearchVariants(id: string): string[] {
   const trimmed = id.trim()
   if (!trimmed) return []
@@ -32,7 +21,6 @@ function idSearchVariants(id: string): string[] {
   return spaced && spaced !== trimmed ? [trimmed, spaced] : [trimmed]
 }
 
-/** Collect searchable strings for one widget entry. */
 export function collectWidgetLibrarySearchText(
   widget: WidgetLibrarySearchable,
 ): Array<string | null | undefined> {
@@ -56,7 +44,6 @@ export function widgetMatchesLibrarySearch(
   })
 }
 
-/** Convenience: match one library entry by its runtime fields. */
 export function widgetTypeMatchesLibrarySearch(
   query: string,
   widget: WidgetLibrarySearchable,
@@ -75,7 +62,6 @@ export interface WidgetLibraryKindSource {
   category?: string
 }
 
-/** Host widgets join the same topic rows as Tapp categories. */
 const BUILTIN_TOPIC_BY_ID: Record<
   string,
   Exclude<WidgetLibraryKindFilter, 'all'>
@@ -110,10 +96,6 @@ export function widgetMatchesLibraryKind(
   return classifyWidgetLibraryKind(widget) === filter
 }
 
-/**
- * 全部, then only kinds that currently have a widget.
- * Host builtins share Tapp topic rows (媒体 / 社交 / …) instead of a dump bucket.
- */
 export function presentWidgetLibraryKindFilters(
   widgets: WidgetLibraryKindSource[],
 ): WidgetLibraryKindFilter[] {

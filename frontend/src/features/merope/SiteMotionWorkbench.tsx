@@ -457,7 +457,6 @@ export default function SiteMotionWorkbench({
     try {
       await applyVisualFromPortrait()
     } catch {
-      // Error is already shown.
     }
   }, [applyVisualFromPortrait, visualIdentity])
 
@@ -640,10 +639,7 @@ export default function SiteMotionWorkbench({
     [applyAddressee, t.errors.addresseeSaveFailed],
   )
 
-  /**
-   * 贴纸头像照主立绘画，所以没有主立绘时按钮本身就不给按——这里再挡一次是因为
-   * 主立绘可能在这一页开着的时候被清掉。
-   */
+  /** 主立绘可能在本页打开后被清掉。 */
   const makeStickerAvatar = useCallback(async () => {
     if (avatarBusy || !portraitUrl) return
     setAvatarBusy(true)
@@ -651,10 +647,10 @@ export default function SiteMotionWorkbench({
     try {
       const result = await generateStickerAvatar()
       setStickerAvatarUrl(result.avatarUrl)
-      // 通知图标读的是公开配置那份 30 秒缓存，不作废的话本次会话里一直是旧图。
+      // 公开配置缓存 30s，必须作废才能换通知图标。
       invalidatePublicConfigCache()
       void refreshPersonaStickerAvatar()
-      // 别处的头像位（控制面板、首页信息条）此刻可能正戴着上一张贴纸。
+      // 其它头像位可能仍戴上一张贴纸。
       notifyAvatarChanged()
     } catch (reason) {
       setError(userFacingError(reason, t.merope.avatarFailed))
@@ -691,7 +687,7 @@ export default function SiteMotionWorkbench({
           activeId: item.id,
           portraitAssetId: generated.portraitUrl,
         })
-        // 后端在同一次写入里作废了旧贴纸头像——它画的是上一张脸。
+        // 同一次写入已作废旧贴纸。
         setStickerAvatarUrl(null)
         invalidatePublicConfigCache()
         void refreshPersonaStickerAvatar()

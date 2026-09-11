@@ -6,9 +6,6 @@ export function formatCompactNumber(n: number | undefined | null): string {
   return String(num)
 }
 
-/**
- * YouTube Data API `contentDetails.duration` (ISO-8601), e.g. PT1H2M3S → 1:02:03.
- */
 export function formatYoutubeDuration(
   iso?: string | null,
 ): string | null {

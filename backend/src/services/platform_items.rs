@@ -46,7 +46,7 @@ pub fn extract_platform_items(data: &Value, platform: &str) -> Vec<Value> {
         }
     }
 
-    // Older filtered caches dropped covers/appids — fill from cache/raw/{platform}.json.
+    // 从 `cache/raw/{platform}.json` 补封面 / appid。
     enrich_items_from_raw_cache(platform, &mut items);
     items
 }
@@ -890,7 +890,7 @@ fn normalize_platform_item(item: &Value, platform: &str, index: usize) -> Value 
                 .and_then(|m| first_string(m, &["image", "cover", "display_image", "thumbnail"]))
         })
         .or_else(|| {
-            // Steam: derive CDN art from appid when cover was stripped by older filters.
+            // Steam：封面缺失时用 appid 拼 CDN header。
             let appid = obj
                 .and_then(|o| first_string(o, &["appid"]))
                 .or_else(|| {

@@ -22,8 +22,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
                 "maxLength": { "type": "integer" }
             }
         }),
-        // `execute_ai_summarize` 只返回摘要正文和回显的 style；声明过的 `keyPoints`
-        // 从未被产出，留在这里只会让 Planner 去引用一个取不到的字段。
+        // `execute_ai_summarize` 只返回摘要正文和回显的 style。
         output_schema: json!({
             "type": "object",
             "properties": {

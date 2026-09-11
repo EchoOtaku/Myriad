@@ -65,7 +65,7 @@ pub(super) async fn fetch_from_store(
     store_source: &str,
     tapp_id: &str,
 ) -> Result<PreparedTappPackage, HttpError> {
-    // Reject install-mode placeholders mistaken for catalog refs (Aro legacy bug).
+    // Reject install-mode placeholders (`store` / `direct` / empty) mistaken for catalog refs.
     let trimmed = store_source.trim();
     if is_invalid_store_source_ref(trimmed) {
         return Err(api_http_error(

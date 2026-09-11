@@ -385,7 +385,7 @@ pub async fn oauth_start(
         redirect_uri
     );
 
-    // MYR-003: bind state to this browser via oauth_tx cookie.
+    // bind state to this browser via oauth_tx cookie.
     let is_production = SiteConfig::is_production().await;
     let mut response = no_store_redirect(url.as_str());
     if let Ok(value) = HeaderValue::from_str(&oauth_tx_set_cookie_value(
@@ -457,7 +457,7 @@ pub async fn oauth_callback(
         }
     };
 
-    // Verify state without burning nonce; cookie must match first (MYR-003).
+    // Verify state without burning nonce; cookie must match first.
     let verified = match verify_state(&state_param).await {
         Ok(v) => v,
         Err(err) => {
@@ -470,7 +470,7 @@ pub async fn oauth_callback(
         }
     };
 
-    // MYR-003: require oauth_tx cookie match (fail closed) BEFORE mark_used.
+    // require oauth_tx cookie match (fail closed) BEFORE mark_used.
     let cookie_header = headers.get(header::COOKIE).and_then(|v| v.to_str().ok());
     if !oauth_tx_cookie_matches(cookie_header, verified.browser_tx()) {
         tracing::warn!("Discord platform OAuth: missing/mismatched oauth_tx cookie");

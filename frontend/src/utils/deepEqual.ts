@@ -1,7 +1,3 @@
-/**
- * Structural deep equality for plain JSON-like values.
- * Key order independent on objects; array order matters.
- */
 export function deepEqual(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true
   if (typeof a !== typeof b) return false

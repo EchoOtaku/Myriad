@@ -1,8 +1,3 @@
-/**
- * 音乐播放器状态管理 Hook
- * 从 GlobalControlPanel 分离出来的音乐播放器核心逻辑
- */
-
 import type { MusicSource, Song } from '../utils/musicPlayer'
 import type {
   MusicColors,
@@ -572,7 +567,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
 
       broadcastStateChange()
     } catch {
-      // 静默处理
+
     }
   }, [loadPlaylist, broadcastStateChange, resetPreloadBackoff])
 
@@ -728,7 +723,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       try {
         preloadAudioRef.current.volume = clampedVolume
       } catch {
-        // 静默处理
+
       }
     }
   }, [])

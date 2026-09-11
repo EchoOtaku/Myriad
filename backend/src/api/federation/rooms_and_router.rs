@@ -39,7 +39,7 @@ async fn federation_list_transfers(
 }
 
 /// 路由已声明该路径参数并挂了 auth_middleware；
-/// body 上限由路由的 `FEDERATION_SMALL_BODY_LIMIT` 层提供（原为内联 64 KiB）。
+/// body 上限由路由的 `live_small_control_body_limit`（`SMALL_CONTROL_BODY_LIMIT` 256 KiB）。
 async fn federation_initiate_room_transfer(
     extract::AuthedClaims(claims): extract::AuthedClaims,
     extract::Db(db): extract::Db,

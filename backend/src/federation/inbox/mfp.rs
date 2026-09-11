@@ -58,7 +58,7 @@ pub(crate) async fn handle_mfp_activity(
                 .map_err(|e| inbox_err("ChannelClose handling failed", e))?;
             Ok(StatusCode::ACCEPTED)
         }
-        // Phase 4: Room
+        // Room
         "myriad:RoomInvite" => {
             crate::federation::room::handle_room_invite(db, actor_url_str, activity)
                 .await
@@ -83,7 +83,7 @@ pub(crate) async fn handle_mfp_activity(
                 .map_err(|e| inbox_err("RoomDissolve handling failed", e))?;
             Ok(StatusCode::ACCEPTED)
         }
-        // Phase 5: Ring
+        // Ring
         "myriad:RingJoin" => {
             crate::federation::ring::handle_ring_join(db, actor_url_str, activity)
                 .await

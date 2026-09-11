@@ -145,7 +145,7 @@ mod tests {
         .expect("serialize")
     }
 
-    /// 没有预算的调用，报文必须和加这个功能之前一模一样。
+    /// 无预算时 body 只有 `messages` 和 `model`。
     #[test]
     fn an_unbudgeted_call_sends_no_new_fields() {
         let body = openai_body(JsonMode::PromptOnly(None), None);

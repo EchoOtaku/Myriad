@@ -1,7 +1,3 @@
-/**
- *   pnpm exec tsx --test src/hooks/useSiteOwnerProfile.test.ts
- */
-
 import assert from 'node:assert/strict'
 import { afterEach, describe, it, mock } from 'node:test'
 
@@ -150,7 +146,8 @@ describe('fetchSiteOwnerProfile', () => {
     )
     const coldResult = await cold
     assert.equal(coldResult?.name, 'Stale')
-    // force 与 cold 各发一次，互不合并
+
+    // force 与 cold 各发一次，互不合并。
     assert.equal(call, 2)
   })
 

@@ -1,10 +1,3 @@
-/**
- * The whole Merope surface the agent engine is allowed to touch.
- *
- * The engine runs a turn: it does not own a mouth, a gate or a rig. Binding
- * `agentFace` and `faceSpeechGate` here keeps the two singletons out of the
- * engine's call sites, so a turn state machine never names a body part.
- */
 import type { AgentPanelMode } from '../../components/agent-panel/agentPanelMode'
 import type { Locale } from '../../i18n'
 import type {
@@ -32,7 +25,7 @@ import { SpeechSegmenter } from './speech/speechSegmenter'
 
 export { notePresenceRoute, startPresenceInbound }
 
-/** Token-to-speech feed for one turn. The engine never names the splitter. */
+/** The engine never names the splitter. */
 export function openTurnSpeech(
   messageId: string,
   generation = 0,
@@ -69,7 +62,6 @@ export function openTurnSpeech(
   }
 }
 
-/** Mount the live body for as long as the engine is mounted. */
 export function attachLiveBody(): () => void {
   setLiveBody(getProductionBody())
   return () => setLiveBody(null)
@@ -119,7 +111,6 @@ export interface TurnBodyContext {
   presence: ReturnType<typeof livePresenceFacts>
 }
 
-/** What the body can tell the model about right now. */
 export function captureTurnBody(input: PerceptionInput): TurnBodyContext {
   return {
     rigState: captureProductionRigStateSummary(),

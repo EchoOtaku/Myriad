@@ -1,10 +1,8 @@
-//! Audience 与对象归属规则（Layer 2 安全不变量）
+//! Audience 与对象归属规则
 //!
-//! 这里集中三件在审计中被发现分散/缺失的判断：
+//! 这里集中三件判断：
 //!
 //! 1. **本地发布的 visibility** —— 只有明确建模过的 visibility 才允许发布。
-//! 历史实现里 `resolve_audience` 对未知值返回空 `to`/`cc`，但调用方仍然
-//! 无条件 fan-out，于是 `direct` 变成"没有收件人却发给所有粉丝"。
 //! 2. **入站 sharedInbox 的定向** —— 只有寻址到 Public 或该 Actor 自己的
 //! followers collection 的活动才可以进入粉丝的首页时间线。
 //! 3. **对象归属** —— 签名只证明"某个 key 签了这个请求"，还需要证明
@@ -53,8 +51,6 @@ impl Visibility {
 }
 
 /// 解析客户端传入的 visibility；未知值返回 `Err(原值)` 交由调用方拒绝。
-///
-/// 这是修复的关键点：过去未知值被静默当成"空收件人 + 照常 fan-out"。
 pub fn parse_visibility(raw: &str) -> Result<Visibility, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "public" => Ok(Visibility::Public),
@@ -144,9 +140,9 @@ fn push_iris(value: &Value, out: &mut Vec<String>) {
 /// （`{actor_url}/followers` 等）。只寻址给具体个人的活动不进粉丝时间线 ——
 /// 这是 C3 的修复点。
 ///
-/// 不依赖数据库里缓存的 followers URL（当前 schema 没有这一列），改用
+/// 不依赖数据库里缓存的 followers URL（当前 schema 没有这一列）。
 /// 「与 Actor 同源且在 Actor 路径之下」的前缀判断；Mastodon/Pleroma/Misskey
-/// 的 followers collection 都是 `{actor}/followers`，覆盖真实流量。
+/// 的 followers collection 都是 `{actor}/followers`。
 pub fn may_distribute_to_followers(activity: &Value, actor_url: &str) -> bool {
     let recipients = collect_recipients(activity);
     if recipients.is_empty() {

@@ -1,6 +1,6 @@
 /// <reference path="../.astro/types.d.ts" />
 
-// 全局常量（由 Vite define 注入）
+/** Vite define */
 declare const __APP_VERSION__: string
 
 interface ImportMetaEnv {

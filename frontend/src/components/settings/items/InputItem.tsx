@@ -1,9 +1,3 @@
-/**
- * 文本输入设置项
- * - default：常规输入
- * - clickToEdit：只读展示 → 点击编辑 → 框内保存（复用 .field-input 壳）
- * - imageUpload：URL 输入 + 本地上传（data URL）+ 左侧预览
- */
 
 import type { ReactNode } from 'react'
 import type { InputSettingConfig } from '../types'
@@ -26,7 +20,6 @@ import { SettingsButton } from './SettingsButton'
 import './SettingItem.css'
 
 export interface InputItemProps extends Omit<InputSettingConfig, 'type'> {
-  /** 标题旁附属控件（如 AI 生成 tag） */
   labelAccessory?: ReactNode
 }
 
@@ -130,7 +123,6 @@ export const InputItem = React.memo<InputItemProps>(
         }
         if (isClickToEdit && editing) {
           setDraft(newValue)
-          // 通知父级（可清 error）；不代表已提交
           onChange(newValue)
           return
         }
@@ -179,7 +171,6 @@ export const InputItem = React.memo<InputItemProps>(
         await onCommit(draft.trim())
         setEditing(false)
       } catch {
-        // 保持编辑态，由父级通过 error / 外部反馈说明
       } finally {
         setCommitting(false)
       }
@@ -202,7 +193,6 @@ export const InputItem = React.memo<InputItemProps>(
     const handleFileChange = useCallback(
       (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
-        // 允许重复选择同一文件
         e.target.value = ''
         if (!file || disabled || busy) return
 

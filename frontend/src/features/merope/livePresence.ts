@@ -3,6 +3,7 @@ import { getAgentPanelVisible } from '../../components/agent-panel/agentPanelVis
 import { liveFaceVisible } from './faceVisible'
 import { captureProductionRigStateSummary } from './motion/runtimeHost'
 import { getVoicePresence } from './speech/voicePresence'
+import type { RigStateSummary } from '../../services/agent/types'
 
 export function livePresenceFacts(): {
   speaking: boolean
@@ -13,6 +14,7 @@ export function livePresenceFacts(): {
   speechInterruptible: boolean
   motionIntent: string | null
   speechIntent: string
+  rigState: RigStateSummary
 } {
   const rig = captureProductionRigStateSummary()
   const voice = getVoicePresence()
@@ -26,5 +28,6 @@ export function livePresenceFacts(): {
     speechInterruptible: voice.ttsPlaying || rig.speaking,
     motionIntent: rig.acting.intent,
     speechIntent: speaking ? (voice.ttsPlaying ? 'tts' : 'speech') : 'idle',
+    rigState: { ...rig, speaking, faceVisible: liveFaceVisible() && rig.faceVisible },
   }
 }

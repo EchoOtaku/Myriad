@@ -1,8 +1,3 @@
-/**
- * GitHub 仓库卡共用：解析输入、打站点 /api/github/repo、语言色。
- * 阅读器嵌入卡和首页小组件走同一条出站链。
- */
-
 import type { GithubRepoRef } from '../components/settings/githubProject'
 import { parseGithubRepoUrl } from '../components/settings/githubProject'
 

@@ -1,16 +1,10 @@
-/**
- * 思考态流光的现场抽签。
- *
- * 不用平移色带。多团独立色块，但同时在场的数量和底边范围是锁死的：
- * 五团铺满左右，高度贴空闲色带（约 88px），不会顶满整段光罩。
- */
-
 export type AuroraRand = () => number
 
 export const AURORA_BLOB_COUNT = 5
 export const AURORA_HUE_COUNT = { min: 4, max: 5 } as const
-/** 对齐空闲色带：`::after` 高 88px、bottom -28px。 */
+/** Blob height px (idle CSS band is `--agent-aurora-band-height` 88px). */
 export const AURORA_BLOB_HEIGHT = { min: 76, max: 92 } as const
+/** Blob bottom px (idle CSS band is `--agent-aurora-band-bottom` -28px). */
 export const AURORA_BLOB_BOTTOM = { min: -28, max: -18 } as const
 
 export const BLOB_PATHS = [

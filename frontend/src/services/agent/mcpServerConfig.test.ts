@@ -1,7 +1,3 @@
-/**
- *   pnpm exec tsx --test src/services/agent/mcpServerConfig.test.ts
- */
-
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { parseMcpServerConfig } from './agentApi.ts'
@@ -18,9 +14,7 @@ const base = {
 
 describe('parseMcpServerConfig', () => {
   it('round-trips trust_annotations: true', () => {
-    // The settings panel rebuilds each server field by field, so a dropped
-    // field here would show the switch off after a reload and write `false`
-    // back on the next save, revoking the operator's opt-in.
+    // Must parse; dropping the field writes false on next save.
     const parsed = parseMcpServerConfig({ ...base, trust_annotations: true })
     assert.equal(parsed?.trust_annotations, true)
   })

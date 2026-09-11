@@ -6,9 +6,7 @@
 //! target — keep the allow rather than trusting `cargo fix --all-targets`.
 #![allow(unused_imports)]
 #![allow(private_interfaces)]
-// Style fallout from the large modularization split (doc formatting, signature
-// shape, structural locals). Behavior is covered by unit/black-box tests;
-// tightening these lints is a follow-up hygiene pass, not a security gate.
+// Clippy style allows（doc / signature / locals）；不是安全闸。
 #![allow(clippy::needless_update)]
 #![allow(clippy::doc_lazy_continuation)]
 #![allow(clippy::type_complexity)]
@@ -17,8 +15,7 @@
 #![allow(clippy::empty_line_after_doc_comments)]
 #![allow(clippy::unnecessary_sort_by)]
 #![allow(clippy::redundant_guards)]
-// rustc 1.94 clippy gained several pedantic-style lints. Same deal: the
-// split left hundreds of nits; they are not this PR's security gate.
+// rustc 1.94 clippy pedantic-style lints: style nits, not a security gate.
 #![allow(clippy::needless_borrow)]
 #![allow(clippy::needless_borrows_for_generic_args)]
 #![allow(clippy::field_reassign_with_default)]
@@ -59,6 +56,8 @@ use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod api;
+#[cfg(test)]
+mod authored_comments;
 mod config;
 mod db;
 mod error;
@@ -75,7 +74,7 @@ mod state;
 use config::{AppConfig, DynamicConfig};
 use sea_orm::ConnectionTrait;
 use services::config_service::ConfigService;
-use std::sync::atomic::{AtomicBool, Ordering}; // P1: 用于数据库健康检查
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // Global flag to indicate if server is running in configuration mode
 pub static CONFIG_MODE: AtomicBool = AtomicBool::new(false);
@@ -160,8 +159,8 @@ async fn main() -> anyhow::Result<()> {
     // is a property of this host, not of the installation.
     services::federation_gate::spawn_startup_probe();
 
-    // Initialise the updater proxy client. None if env not set; routes still register
-    // and return a clean 503.
+    // Initialise the updater proxy client. Unset env 在 production/容器内仍默认
+    // `http://updater-gateway:1104`；`None` 时路由仍注册、调用返回 503。
     let updater_client = services::updater_client::UpdaterClient::from_env();
     if let Some(c) = &updater_client {
         tracing::info!(
@@ -297,7 +296,7 @@ async fn run_server() -> anyhow::Result<()> {
                 tracing::info!(db_target = %db_target, "✅ Database connection established");
 
                 // Run database migrations automatically on startup (idempotent).
-                // Folded 007–015 names are deleted from `seaql_migrations` first
+                // Folded 007–019 names are deleted from `seaql_migrations` first
                 // so SeaORM does not require no-op files for them; leftover
                 // `digital_life_*` experiment tables are dropped in the same
                 // step. Any remaining migration failure is fatal to full mode.
@@ -368,14 +367,13 @@ async fn run_server() -> anyhow::Result<()> {
                     }
                 }
 
-                // Validate GitHub OAuth configuration (after database config is loaded)
-                // This is informational only - OAuth will work if configured in database
+                // 日志 `base_url` 与已启用 oauth_providers 数量；始终 Ok（不拦启动）
                 use oauth_url_builder::OAuthUrlBuilder;
                 if let Err(e) = OAuthUrlBuilder::validate_github_oauth_config().await {
                     tracing::debug!("ℹ️  GitHub OAuth status: {}", e);
                 }
 
-                // Load OAuth provider registry (GitHub + future OIDC providers)
+                // Load OAuth provider registry（GitHub + OIDC）
                 services::oauth::registry::init().await;
                 tracing::info!(
                     "✅ OAuth providers loaded: {}",
@@ -421,7 +419,7 @@ async fn run_server() -> anyhow::Result<()> {
                 tracing::info!("✅ Brew scheduler engine initialized");
 
                 // Initialize Agent identity system (SOUL.md / USER.md)
-                // MYR-044: single path authority via DataPaths (DATA_DIR-aware).
+                // Agent 数据目录走 DataPaths（DATA_DIR-aware）。
                 let agent_data_dir = services::data_paths::paths().agent.clone();
                 services::agent::identity::init_identity(agent_data_dir.clone()).await;
                 tracing::info!("✅ Agent identity system initialized");
@@ -711,7 +709,7 @@ async fn run_server() -> anyhow::Result<()> {
                     let mut interval = tokio::time::interval(std::time::Duration::from_secs(86400));
                     loop {
                         interval.tick().await;
-                        // 清理过期 Skill
+                        // prune_skills：失败率 > 0.70 或连续失败 >= 5
                         if let Some(evolution) =
                             services::agent::skill_evolution::get_skill_evolution()
                         {
@@ -796,13 +794,6 @@ async fn run_server() -> anyhow::Result<()> {
                     Ok(_) => {}
                     Err(e) => tracing::error!("Configuration encryption migration failed: {e}"),
                 }
-                match services::retired_configuration::purge_retired_configuration_keys(&db).await {
-                    Ok(n) if n > 0 => {
-                        tracing::info!("✅ Retired configuration purge: {n} row(s)")
-                    }
-                    Ok(_) => {}
-                    Err(e) => tracing::error!("Retired configuration purge failed: {e}"),
-                }
                 let legacy_jwt_secret = {
                     let cfg = GLOBAL_CONFIG.read().await;
                     cfg.jwt_secret.clone()
@@ -867,8 +858,8 @@ async fn config_mode_middleware(req: Request, next: Next) -> Response {
         "/api/auth/me",              // Allow user info endpoint (for login state check)
         "/api/auth/logout",          // Allow logout endpoint
         "/api/auth/change-password", // Allow change password endpoint
-        "/api/auth/register",        // PR #4: 公开注册（自身有 allow_local_registration 检查）
-        "/api/auth/oauth/providers", // PR #2: 公开列出 OAuth providers
+        "/api/auth/register",        // 公开注册（自身有 allow_local_registration 检查）
+        "/api/auth/oauth/providers", // 公开列出 OAuth providers
     ];
 
     // If in config mode and path is not whitelisted, return 503
@@ -1137,8 +1128,7 @@ mod cache_control_tests {
         assert_eq!(static_asset_cache_control("/tapp/run/abc"), "no-cache");
     }
 
-    /// 前端产物必须是压缩后下发的。此前 Cargo.toml 开着 compression-gzip/br 却
-    /// 从未接过 CompressionLayer，3.2MB 的 JS/CSS 一直裸传；这里守住接线本身。
+    /// 前端产物必须经 CompressionLayer 下发。
     mod static_compression {
         use axum::http::{header, Request, StatusCode};
         use std::io::Write;
@@ -1161,7 +1151,7 @@ mod cache_control_tests {
         #[tokio::test]
         async fn assets_are_brotli_encoded_and_vary() {
             let dir = make_dist("br");
-            // 与 main.rs 里 fallback 的接线完全一致
+            // 仅测 CompressionLayer + ServeDir；SPA fallback 在 router/mod.rs
             let svc = tower::Layer::layer(&CompressionLayer::new(), ServeDir::new(&dir));
             let req = Request::builder()
                 .uri("/assets/app-deadbeef.js")

@@ -1,5 +1,5 @@
 import type { Locale, TranslationKeys } from './index'
-import { enUS } from './en-US'
+import enUS from './en-US.json'
 import { getDefaultLocale } from './index'
 import { getCachedLocale, loadLocale } from './loadLocale'
 
@@ -8,14 +8,7 @@ function asLocale(value: string): Locale {
   return 'en-US'
 }
 
-/**
- * Copy for an explicitly selected UI language.
- *
- * ja / zh stay out of the static graph. The first call kicks off `loadLocale`;
- * until that chunk arrives, English is the sync fallback so service-layer
- * errors never throw. After I18nProvider (or a test) awaits the same locale,
- * later calls hit the cache.
- */
+/** ja/zh stay out of the static graph; English is the sync fallback until loadLocale resolves. */
 export function copyForLocale(locale: string): TranslationKeys {
   const key = asLocale(locale)
   const cached = getCachedLocale(key)
@@ -24,7 +17,7 @@ export function copyForLocale(locale: string): TranslationKeys {
   return getCachedLocale(key) ?? getCachedLocale('en-US') ?? enUS
 }
 
-/** Current UI language copy for service-layer errors (outside React). */
+/** Non-React service-layer copy. */
 export function currentCopy(): TranslationKeys {
   return copyForLocale(getDefaultLocale())
 }

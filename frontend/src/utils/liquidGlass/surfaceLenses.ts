@@ -2,8 +2,6 @@ import type { HyaliteAPI, HyaliteOptions } from './vendor/hyalite'
 
 import { createHyalite } from './vendor/hyalite'
 
-// Includes portalled chrome and the store sidebar, which consume surface tokens
-// without a .glass class. The Agent reading surface deliberately has no lens.
 const SURFACES = [
   '.glass', '.glass-surface', '.glass-liquid', '.dynamic-island',
   '.secondary-island', '.control-bar-trigger', '.site-footer-content',
@@ -11,7 +9,6 @@ const SURFACES = [
 ].join(',')
 const CHROME = '.control-bar-trigger, .surface-dialog'
 
-/** Owns host-document decoration only; never enters or changes TAPP iframes. */
 export function mountSurfaceLenses(engine: HyaliteAPI = createHyalite()): () => void {
   const root = document.documentElement
   const desktop = matchMedia('(min-width: 768px)')
@@ -66,11 +63,9 @@ export function mountSurfaceLenses(engine: HyaliteAPI = createHyalite()): () => 
           el.setAttribute('data-liquid-lens', chrome ? 'chrome' : 'surface')
           attached.set(el, key)
         } else if (!el.classList.contains('gcp-animating')) {
-          // Class changes can change radii without triggering ResizeObserver.
           engine.refresh(el)
         }
       }
-      // Map generation is synchronous. Spread multiple new surfaces over frames.
       if (performance.now() - start >= 8) break
     }
     if (dirty.size) schedule()
@@ -107,7 +102,6 @@ export function mountSurfaceLenses(engine: HyaliteAPI = createHyalite()): () => 
       if (mutation.type === 'attributes') {
         const target = mutation.target as HTMLElement
         if (candidates.has(target)) dirty.add(target)
-        // An ancestor class can enable/disable local liquid or the store sidebar.
         discover(target)
         candidates.forEach((el) => {
           if (target.contains(el)) dirty.add(el)
@@ -118,7 +112,6 @@ export function mountSurfaceLenses(engine: HyaliteAPI = createHyalite()): () => 
         })
       }
     }
-    // DOM moves keep ownership; actual removals release observers and filters.
     for (const el of candidates) {
       if (!el.isConnected || !el.matches(SURFACES)) {
         detach(el)
@@ -132,7 +125,6 @@ export function mountSurfaceLenses(engine: HyaliteAPI = createHyalite()): () => 
   })
   const rootObserver = new MutationObserver(invalidateAll)
   const geometryEnded = (event: Event) => {
-    // Color, opacity, shadow and transform transitions do not change lens geometry.
     if (event instanceof TransitionEvent
       && !/^(width|height|min-width|max-width|min-height|max-height|padding(?:-.+)?|border(?:-.+)?|font-size|line-height|flex-basis|gap|row-gap|column-gap)$/.test(event.propertyName)) { return
 }

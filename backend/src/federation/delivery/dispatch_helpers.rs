@@ -106,7 +106,7 @@ fn move_signing_uses_old_actor_base() {
 
 #[test]
 fn missing_keys_error_is_detected() {
-    // Exact production log text from SELECT returning no row.
+    // SELECT 无行时的错误原文。
     assert!(is_missing_federation_keys_error(
         "No federation keys found for user"
     ));
@@ -190,7 +190,7 @@ fn retry_status_allows_dead_and_pending_only() {
         classify_retry_status("delivering"),
         RetryStatusDecision::InProgress
     );
-    // Legacy / soft statuses: allow requeue (single-id path).
+    // `failed` / `cancelled` still requeue (single-id path).
     assert_eq!(classify_retry_status("failed"), RetryStatusDecision::Allow);
     assert_eq!(
         classify_retry_status("cancelled"),
@@ -261,7 +261,7 @@ fn user_cancelled_error_classifier() {
 
 #[test]
 fn retry_status_allows_failed_and_cancelled_status_strings() {
-    // Historical / alternate status spellings still requeue.
+    // `failed` / `cancelled` still requeue.
     assert_eq!(classify_retry_status("failed"), RetryStatusDecision::Allow);
     assert_eq!(
         classify_retry_status("cancelled"),

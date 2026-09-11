@@ -1,6 +1,3 @@
-/**
- * Install-specific-version target picker (releases / commits / docker builds).
- */
 
 import type {
   CompareResult,
@@ -86,9 +83,6 @@ export function TargetPicker({
         return
       }
 
-      // Dev / commit mode: show formal releases + commit builds.
-      // Prefer Docker Hub common builds (includes vX.Y.Z + dev-sha); fall back to
-      // GitHub commits + releases when builds are empty.
       try {
         const builds = await api.builds({ limit: 25 })
         const buildItems = builds.items ?? []
@@ -116,7 +110,6 @@ export function TargetPicker({
           return
         }
       } catch {
-        // fall through to GitHub
       }
 
       const next: PickerItem[] = []
@@ -133,7 +126,6 @@ export function TargetPicker({
           })
         }
       } catch {
-        /* optional */
       }
       try {
         const response = await api.commits({
@@ -152,10 +144,7 @@ export function TargetPicker({
           })
         }
       } catch {
-        /* optional */
       }
-      // Sort by date when both sides have dates. Never bury formal releases below
-      // commits solely because release list items lack published_at.
       next.sort((a, b) => {
         const da = a.date ? Date.parse(a.date) : Number.NaN
         const db = b.date ? Date.parse(b.date) : Number.NaN
@@ -186,7 +175,6 @@ export function TargetPicker({
     }
   }, [api, option, isCommit, u.updaterDockerHubBuild])
 
-  // 输入/选中目标后，防抖对比新旧关系。
   useEffect(() => {
     if (compareTimerRef.current) {
       window.clearTimeout(compareTimerRef.current)
@@ -329,7 +317,7 @@ export function TargetPicker({
             if (!target) return
             const isDowngrade = compare?.is_downgrade === true
             const isUpgrade = compare?.is_upgrade === true
-            // Clear upgrades (including time-based / unknown ancestry) skip risk dialog.
+            // clear upgrades skip the risk dialog
             const needsRisk =
               !compare ||
               compare.relation === 'diverged' ||

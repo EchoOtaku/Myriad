@@ -34,7 +34,7 @@ pub async fn handle_file_transfer(
         .get("transferId")
         .and_then(|v| v.as_str())
         .ok_or("Missing transferId")?;
-    // MYR-001: remote transferId must pass strict validation before any path use
+    // remote transferId must pass strict validation before any path use
     if !is_valid_transfer_id(transfer_id) {
         return Err("Invalid transferId: must be 1-128 chars of [A-Za-z0-9_-] only".into());
     }
@@ -64,7 +64,7 @@ pub async fn handle_file_transfer(
         return Err("Invalid chunksTotal".to_string());
     }
 
-    // MYR-008: global concurrent transfer admission for inbound FileMeta
+    // global concurrent transfer admission for inbound FileMeta
     admit_new_transfer_str(db, file_size).await?;
 
     if let Some(cid) = channel_id {
@@ -145,7 +145,7 @@ async fn handle_file_chunk(
         .get("transferId")
         .and_then(|v| v.as_str())
         .ok_or("Missing transferId")?;
-    // MYR-001: reject path-traversal transferIds before FS write
+    // reject path-traversal transferIds before FS write
     if !is_valid_transfer_id(transfer_id) {
         return Err("Invalid transferId: must be 1-128 chars of [A-Za-z0-9_-] only".into());
     }
@@ -173,7 +173,7 @@ async fn handle_file_chunk(
             DEFAULT_CHUNK_SIZE
         ));
     }
-    // MYR-008: reserve decoded chunk budget for inbound FileChunk
+    // reserve decoded chunk budget for inbound FileChunk
     let _chunk_budget = admit_chunk_bytes_str(chunk_size)?;
 
     let row = db

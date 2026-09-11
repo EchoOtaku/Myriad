@@ -8,10 +8,10 @@ import { sanitizePerformanceDirective } from './performanceEvents'
 import { getSpeechPipeline } from './speech/speechPipelineHost'
 import { noteTurnTraceDrop } from './turnTrace'
 
-/** Visible panel mode owns the mouth; the other mode may only leave a record. */
 export type FaceSpeechVerdict = 'speak' | 'record-without-speech'
 
 export interface FaceSpeechLine {
+  touchContinuation?: boolean
   runId?: string
   messageId: string
   text?: string
@@ -26,13 +26,7 @@ export interface FaceDelivery {
   text?: string
 }
 
-/**
- * Decide whether an incoming line may use the face right now.
- *
- * Only the currently visible mode speaks immediately. Background Work must
- * not cancel or talk over an in-progress Chat utterance; its result still
- * exists as a non-speech record (message / notification).
- */
+/** Only the currently visible mode speaks immediately. */
 export function arbitrateFaceSpeech(input: {
   visibleMode: AgentPanelMode
   incomingMode: AgentPanelMode
@@ -59,11 +53,7 @@ export function silentReplyUtterance(): Pick<
   }
 }
 
-/**
- * Panel→face gate. Tracks whether Chat currently owns an open utterance so
- * a finishing Work turn cannot barge in. AgentFaceChannel's start/chunk/end
- * protocol is unchanged; this only chooses whether to call it.
- */
+/** Tracks whether Chat currently owns an open utterance so a finishing Work turn cannot barge in. */
 export class FaceSpeechGate {
   chatUtteranceActive = false
   private chatMessageId: string | null = null
@@ -72,15 +62,19 @@ export class FaceSpeechGate {
     private readonly visibleMode: () => AgentPanelMode = getAgentPanelMode,
   ) {}
 
-  decide(incomingMode: AgentPanelMode): FaceSpeechVerdict {
-    const chatBusy =
+  get chatBusy(): boolean {
+    return (
       this.chatUtteranceActive ||
       (this.chatMessageId != null &&
         getSpeechPipeline().isBusyWith(this.chatMessageId))
+    )
+  }
+
+  decide(incomingMode: AgentPanelMode): FaceSpeechVerdict {
     return arbitrateFaceSpeech({
       visibleMode: this.visibleMode(),
       incomingMode,
-      chatUtteranceActive: chatBusy,
+      chatUtteranceActive: this.chatBusy,
     })
   }
 
@@ -108,7 +102,6 @@ export class FaceSpeechGate {
     this.releaseChat(messageId)
   }
 
-  /** Drop Chat occupancy when the engine cancels the owning message. */
   releaseChat(messageId?: string): void {
     if (messageId && this.chatMessageId && messageId !== this.chatMessageId) {
       return
@@ -127,10 +120,6 @@ export const faceSpeechGate = new FaceSpeechGate()
 
 let liveBody: BodyAdapter | null = null
 
-/**
- * Production mounts the Anime2.5D body here. Null means AgentEngine is
- * unmounted; finished lines then use speakUnmountedLine, not a second runtime.
- */
 export function setLiveBody(body: BodyAdapter | null): void {
   liveBody = body
 }
@@ -161,7 +150,6 @@ export function openGatedReply(
   }
 }
 
-/** Engine-level cancel: stop the channel utterance and release Chat occupancy. */
 export function cancelGatedSpeech(
   channel: AgentFaceChannel,
   gate: FaceSpeechGate,
@@ -170,7 +158,6 @@ export function cancelGatedSpeech(
   gate.cancelSpeech(channel, messageId)
 }
 
-/** Producer toasts with a generic event_key are not persona speech. */
 export function notificationCarriesMeropeSpeech(
   metadata: Record<string, unknown> | null | undefined,
 ): metadata is Record<string, unknown> {
@@ -188,11 +175,6 @@ export function notificationCarriesMeropeSpeech(
   )
 }
 
-/**
- * Notification-center Work completion (notify_task_status → merope ingest).
- * Incoming mode is always Work. The island/toast still records the notice
- * even when speech is gated off.
- */
 export function deliverWorkNotificationFace(
   channel: AgentFaceChannel,
   gate: FaceSpeechGate,
@@ -214,26 +196,33 @@ export function deliverWorkNotificationFace(
   })
 }
 
-/** On-page opening. Speaks on the visible face unless Chat currently holds the mouth. */
 export function deliverProactiveFace(
   channel: AgentFaceChannel,
   gate: FaceSpeechGate,
   notification: {
     id: string
+    eventKey?: string
     body?: string
     performance?: unknown
     meropeState?: unknown
   },
 ): FaceDelivery {
-  if (notification.meropeState != null) {
-    channel.updateState(notification.meropeState)
-  }
   const text = notification.body?.trim() ? notification.body : undefined
-  if (gate.chatUtteranceActive) {
+  if (
+    gate.chatBusy ||
+    (notification.eventKey === 'agent.merope.touch' &&
+      (liveBody?.state().speaking ||
+        !liveFaceVisible() ||
+        (typeof document !== 'undefined' && document.hidden)))
+  ) {
     noteTurnTraceDrop('gated_record')
     return { surface: 'record', messageId: notification.id, text }
   }
+  if (notification.meropeState != null) {
+    channel.updateState(notification.meropeState)
+  }
   return deliverGatedLine(channel, gate, getAgentPanelMode(), {
+    touchContinuation: notification.eventKey === 'agent.merope.touch',
     messageId: notification.id,
     text: notification.body,
     source: 'proactive',
@@ -241,11 +230,29 @@ export function deliverProactiveFace(
   })
 }
 
-/**
- * Deliver a finished line. Speech goes through AgentFaceChannel; a blocked
- * Work completion is returned as `record` so the caller still keeps the
- * message / notification surface.
- */
+/** Motion-only update */
+export function refineProactiveFace(
+  gate: FaceSpeechGate,
+  id: string,
+  raw: unknown,
+): void {
+  if (
+    gate.chatBusy ||
+    !liveBody ||
+    !liveFaceVisible() ||
+    (typeof document !== 'undefined' && document.hidden)
+  )
+    return
+  const performance = sanitizePerformanceDirective(raw)
+  if (!performance) return
+  liveBody.intend({
+    messageId: id,
+    source: 'proactive',
+    performance,
+    speechRefinement: true,
+  })
+}
+
 export function deliverGatedLine(
   channel: AgentFaceChannel,
   gate: FaceSpeechGate,
@@ -269,6 +276,7 @@ export function deliverGatedLine(
       ...(line.runId ? { runId: line.runId } : {}),
       ...(line.source ? { source: line.source } : {}),
       speechText: text,
+      ...(line.touchContinuation ? { touchContinuation: true } : {}),
       ...(performance ? { performance } : {}),
     })
     if (text && getSpeechPipeline().available) {
@@ -290,11 +298,7 @@ export function deliverGatedLine(
   return { surface: 'speech', messageId: line.messageId, text }
 }
 
-/**
- * AgentEngine is not mounted, so there is no production body. This is the
- * only app-layer speakLine outside Anime25DBodyAdapter.intend. Do not add
- * another caller; mount a body or stay silent.
- */
+/** This is the only app-layer speakLine outside Anime25DBodyAdapter.intend. */
 function speakUnmountedLine(
   messageId: string,
   text: string,

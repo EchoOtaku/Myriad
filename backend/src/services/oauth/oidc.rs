@@ -4,7 +4,7 @@
 //! - **Discovery**: 启动时从 `discovery_url` 拉 `.well-known/openid-configuration`，
 //! 缓存 24h（lazy 刷新）。
 //! - **Token 交换**: 标准 OAuth2 `authorization_code` flow，POST 到 `token_endpoint`。
-//! - **PKCE S256 + nonce** (MYR-011): `code_challenge` / `code_verifier` and OIDC
+//! - **PKCE S256 + nonce**: `code_challenge` / `code_verifier` and OIDC
 //!   `nonce` are carried in signed OAuth state (multi-instance safe).
 //! - **Profile**: 优先解析 `id_token` 的 claims；缺失字段再去 `userinfo_endpoint` 拉。
 //! - **id_token 验证**: 通过 discovery 的 `jwks_uri` 拉取 JWKS，校验签名、
@@ -185,7 +185,7 @@ impl OidcProvider {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            // Cap error body the same way as success (MYR-011 / outbound limited body).
+            // Cap error body the same way as success (outbound limited body).
             let body = read_error_body_limited(resp).await;
             tracing::error!(%status, %body, "OIDC JWKS endpoint failed");
             return Err("OIDC JWKS endpoint failed".to_string());
@@ -304,7 +304,7 @@ impl OAuthProvider for OidcProvider {
                 .append_pair("redirect_uri", redirect_uri)
                 .append_pair("scope", &scope)
                 .append_pair("state", state);
-            // MYR-011: OIDC nonce + PKCE S256 (secrets live in signed state).
+            // OIDC nonce + PKCE S256 (secrets live in signed state).
             if !secrets.oidc_nonce.is_empty() {
                 pairs.append_pair("nonce", &secrets.oidc_nonce);
             }
@@ -563,7 +563,7 @@ fn validate_authorized_party(claims: &serde_json::Value, client_id: &str) -> Res
     Ok(())
 }
 
-/// Require `nonce` claim to match the value we sent at authorization (MYR-011).
+/// Require `nonce` claim to match the value we sent at authorization.
 fn validate_id_token_nonce(claims: &serde_json::Value, expected: &str) -> Result<(), String> {
     let got = claims
         .get("nonce")
@@ -593,7 +593,7 @@ mod oidc_security_tests {
             );
         }
 
-        // Copilot #294: reject every HMAC alg, including HS384 (not only HS256/HS512).
+        // Reject HMAC algs: HS256, HS384, HS512.
         const HMAC_REJECT: &[(Algorithm, &str)] = &[
             (Algorithm::HS256, "HS256"),
             (Algorithm::HS384, "HS384"),
@@ -610,7 +610,7 @@ mod oidc_security_tests {
         }
     }
 
-    /// Dedicated regression lock for Copilot #294 — HS384 must not be omitted.
+    /// HS384 must be rejected (not omitted from the HMAC set).
     #[test]
     fn ensure_asymmetric_id_token_alg_rejects_hs384_explicitly() {
         let err =

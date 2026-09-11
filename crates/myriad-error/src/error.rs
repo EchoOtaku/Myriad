@@ -46,6 +46,11 @@ impl AppError {
             "Failed to create session token" | "Failed to refresh session token" => {
                 Some("session_failed")
             }
+            "Unauthorized" => Some("unauthorized"),
+            "Forbidden" => Some("forbidden"),
+            "Not found" | "Not Found" => Some("not_found"),
+            "Bad request" | "Bad Request" => Some("bad_request"),
+            "Conflict" => Some("conflict"),
             _ => None,
         }
     }
@@ -231,6 +236,25 @@ mod tests {
         let v = AppError::internal("Database error").to_json();
         assert_eq!(v["error"], "Database error");
         assert_eq!(v["code"], "database_error");
+    }
+
+    #[test]
+    fn generic_http_labels_get_stable_codes() {
+        assert_eq!(
+            AppError::unauthorized("Unauthorized").to_json()["code"],
+            "unauthorized"
+        );
+        assert_eq!(
+            AppError::forbidden("Forbidden").to_json()["code"],
+            "forbidden"
+        );
+        assert_eq!(AppError::not_found("Not found").to_json()["code"], "not_found");
+        assert_eq!(
+            AppError::bad_request("Bad request").to_json()["code"],
+            "bad_request"
+        );
+        assert_eq!(AppError::conflict("Conflict").to_json()["code"], "conflict");
+        assert!(AppError::not_found("missing").to_json().get("code").is_none());
     }
 
     #[test]

@@ -81,9 +81,8 @@ impl PlatformFetcher {
 
     /// 获取 Bilibili 用户基本信息。
     ///
-    /// 优先 `x/web-interface/card`（含粉丝/关注，且比 space/acc/info 更稳）；
+    /// 优先 `x/web-interface/card`（含粉丝/关注）；
     /// 失败时回退 `space/acc/info` + `relation/stat`。
-    /// 旧版 `space/acc/info` 在无 WBI / 风控下常返回 -401 / -799，导致整段 user 丢失。
     pub async fn fetch_bilibili_user(&self, uid: i64) -> Result<BilibiliUserInfo> {
         match self.fetch_bilibili_user_via_card(uid).await {
             Ok(info) if !info.name.is_empty() || info.mid != 0 => {
@@ -855,20 +854,13 @@ impl PlatformFetcher {
         Ok(contributions)
     }
 
-    // Netease Cloud Music API
-    // 已重构：使用统一的 NeteaseService 服务层
-    // - 自动享受防封技术（IP伪装、随机User-Agent）
-    // - 支持大歌单（1000+首歌曲）
-    // - VIP歌曲检测
-    // - 缓存和限流保护
-
-    /// 获取网易云音乐用户的喜欢列表（我喜欢的音乐）- 使用统一服务层
+    /// 网易云喜欢列表。`NeteaseService::fetch_user_liked_songs`。
     pub async fn fetch_netease_liked_songs(&self, user_id: i64) -> Result<Vec<serde_json::Value>> {
         let netease_service = crate::services::netease_service::NeteaseService::new();
         netease_service.fetch_user_liked_songs(user_id).await
     }
 
-    /// 获取网易云音乐用户基本信息（用于验证）- 使用统一服务层
+    /// 网易云用户信息。`NeteaseService::fetch_user_info`。
     pub async fn fetch_netease_user(&self, user_id: i64) -> Result<serde_json::Value> {
         let netease_service = crate::services::netease_service::NeteaseService::new();
         netease_service.fetch_user_info(user_id).await

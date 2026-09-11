@@ -314,7 +314,7 @@ pub(crate) const REPORT_SETTINGS_KEY: &str = "report_settings";
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ReportSettings {
-    /// 是否启用报告过期（关闭时报告永不过期，保持历史行为）
+    /// 是否启用报告过期（关闭时报告永不过期）
     #[serde(default)]
     pub expiry_enabled: bool,
     /// 过期后读取时自动后台重新生成（只消耗 AI 调用，不重新抓平台数据）

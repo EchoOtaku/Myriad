@@ -69,7 +69,6 @@ impl Executor {
             // 校验 answer.question_id 是否匹配当前待回答的问题
             if answer.question_id != question.question_id {
                 // 宽容模式：如果只有唯一一个待回答问题，接受不匹配的 answer
-                // （前端可能缓存了旧的 question_id 格式）
                 if context.pending_questions.is_empty() {
                     tracing::warn!(
                         task_id = %task_id,
@@ -143,7 +142,7 @@ impl Executor {
             false
         };
 
-        // 持久化写回参数后的 recipe，供后续 resume / 执行使用
+        // 写回 task_state.recipe，供后续 resume / 执行使用
         task_state.recipe = Some(recipe.clone());
 
         // 用户选择 retry：仅在确实存在错误步骤时触发重试逻辑
@@ -157,7 +156,6 @@ impl Executor {
                 task_state.step_results.remove(&step_id);
                 // 同时清除该步骤的输出，避免旧错误输出影响后续依赖
                 context.step_outputs.remove(&step_id);
-                // 在 DAG 中重置该步骤状态（如果有 DAG）
                 tracing::info!(
                     task_id = %task_id,
                     step_id = %step_id,
@@ -808,7 +806,7 @@ impl Executor {
                             "Continue without this step",
                             None,
                         );
-                        // 不跳过后续所有步骤，只跳过当前出错的
+                        // 不跳过后续步骤
                         return false;
                     }
                     "retry" => {
@@ -818,7 +816,7 @@ impl Executor {
                             "Retry the failed step",
                             None,
                         );
-                        // 实际的重试逻辑由 resume_with_answer 处理（清除步骤结果、重置 DAG 状态）
+                        // 实际的重试逻辑由 resume_with_answer 处理（清除步骤结果与输出）
                         return false;
                     }
                     _ => {
@@ -917,9 +915,7 @@ impl Executor {
             return None;
         }
 
-        // AI 处理类步骤（ai.analyze、ai.chat、ai.summarize 等）的输出已经是
-        // AI 经过推理后的结果，不需要另一个 AI 来二次审查是否有歧义。
-        // 仅对数据获取类步骤（搜索、平台读取）做动态分析。
+        // 跳过 ai.* / compare.* / prompt.generate / translate.text / code.explain。
         if step.capability_id.starts_with("ai.")
             || step.capability_id.starts_with("compare.")
             || step.capability_id == "prompt.generate"
@@ -969,7 +965,7 @@ impl Executor {
             }
         }
 
-        // 获取 AI 分析器（使用 Standard 层级，节省 token 开销）
+        // 获取 AI 分析器（ModelTier::Standard）
         let analyzer = self.get_analyzer_for_tier(ModelTier::Standard);
         let Some(analyzer) = analyzer else {
             tracing::debug!("[Executor] No AI analyzer available, skipping step analysis");

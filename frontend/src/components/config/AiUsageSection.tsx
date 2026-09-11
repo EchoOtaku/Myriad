@@ -1,9 +1,3 @@
-/**
- * 数据及统计 · AI 使用统计
- *
- * 复用访客统计的 TrendChart / RankList / EmptyCard / site-analytics CSS。
- * 数据源：GET /api/analytics/ai-usage（tapp_ai_cost_ledger 按日/用户/模型/来源聚合；含文字、图像、语音）。
- */
 
 import type { SettingOption } from '../settings/types'
 import type { ToastType } from '../Toast'
@@ -232,7 +226,6 @@ const AiUsageSection: React.FC<AiUsageSectionProps> = () => {
       anonymousLabel: a.aiUsageAnonymous,
       callsLabel,
     })
-    // Annotate admin/owner in meta (staff are included in site-wide stats).
     const byKey = new Map(users.map((u) => [String(u.subject_id), u]))
     return base.map((row) => {
       const raw = byKey.get(row.key)
@@ -318,7 +311,6 @@ const AiUsageSection: React.FC<AiUsageSectionProps> = () => {
         label: aiUserDisplayName(u, a.aiUsageAnonymous),
       })),
     ]
-    // Keep current selection visible if filter list shrank after reload
     if (subjectId && !opts.some((o) => o.value === subjectId)) {
       opts.push({ value: subjectId, label: `#${subjectId}` })
     }

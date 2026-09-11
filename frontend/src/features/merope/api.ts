@@ -321,8 +321,6 @@ async function submitMeropeRigImport(
   let response
   try {
     response = await api.post<{ manifest: unknown }>(`${PREFIX}${path}`, body, {
-      // The shared Axios instance defaults to application/json. Clearing it is
-      // required so the browser can generate the multipart boundary.
       headers: { 'Content-Type': undefined },
       timeout: RIG_MUTATION_TIMEOUT_MS,
     })
@@ -381,10 +379,6 @@ export async function uploadSitePortrait(image: Blob): Promise<{
   }
 }
 
-/**
- * 生成人设的 Q 版贴纸头像。身份锚是已确认的主立绘，所以没有主立绘时后端会
- * 直接拒（`portrait_required`）；换主立绘会把旧头像清掉，需要重新生成。
- */
 export async function generateStickerAvatar(): Promise<{
   avatarUrl: string | null
 }> {

@@ -854,7 +854,7 @@ pub async fn store_domain_alias(
 ///
 /// **Never** generates a new RSA keypair. PEM material is left untouched.
 /// Choice: `keyId` becomes `{new_base}/users/{username}#main-key` (new domain host)
-/// with the **same** `public_key_pem` as before (Mastodon-style continuity).
+/// with the same stored `public_key_pem` (Mastodon-style continuity).
 pub async fn retarget_shared_keys(
     db: &DatabaseConnection,
     old_base: &str,

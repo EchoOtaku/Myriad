@@ -1,12 +1,3 @@
-/**
- * Widget load performance marks for multi-widget Dashboard measurement.
- *
- * Uses the User Timing API (`performance.mark` / `measure`) so LCP/TTI-adjacent
- * work can be inspected in DevTools or via `window.__MYRIAD_TAPP_WIDGET_PERF__`.
- *
- * This does not change security boundaries; marks are host-side only.
- */
-
 export type WidgetPerfPhase =
   | 'host-load-start'
   | 'resources-ready'
@@ -52,7 +43,6 @@ function safeMark(name: string): void {
       performance.mark(name)
     }
   } catch {
-    // User Timing can throw if the name collides in some engines; ignore.
   }
 }
 
@@ -115,7 +105,6 @@ export function widgetPerfMark(
   record.marks[phase] = t
   safeMark(markName(instanceKey, phase))
 
-  // Progressive measures as soon as endpoints exist
   const m = record.measures
   const marks = record.marks
   if (
@@ -211,11 +200,9 @@ export function clearWidgetPerf(): void {
       }
     }
   } catch {
-    // ignore
   }
 }
 
-/** DevTools helper — available after first import of widget runtime. */
 export function installWidgetPerfGlobal(): void {
   if (typeof window === 'undefined') return
   const target = window as Window & {
@@ -234,6 +221,4 @@ export function installWidgetPerfGlobal(): void {
   }
 }
 
-// Install eagerly in browser so Dashboard multi-widget sessions can measure
-// without importing this module from the console.
 installWidgetPerfGlobal()

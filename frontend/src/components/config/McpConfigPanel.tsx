@@ -1,9 +1,3 @@
-/**
- * MCP (Model Context Protocol) admin panel for Advanced settings.
- *
- * Edit `mcp_servers.json` in the UI: list / add / edit / delete / enable,
- * then save (writes disk + hot-reloads children). Uses ManagedList + form items.
- */
 
 import type { McpServerConfig } from '../../services/agent/agentApi'
 import type {
@@ -46,13 +40,10 @@ type RuntimeMap = Record<
 >
 
 interface DraftServer {
-  /** Original id when editing; empty when adding. */
   originalId: string
   id: string
   command: string
-  /** Space-separated args for editing. */
   argsText: string
-  /** KEY=value lines. */
   envText: string
   enabled: boolean
   auto_restart: boolean
@@ -92,7 +83,6 @@ function configToDraft(s: McpServerConfig): DraftServer {
 }
 
 function parseArgsText(text: string): string[] {
-  // Simple whitespace split; quote-aware enough for common `npx -y pkg` cases.
   const out: string[] = []
   const re = /"([^"]*)"|'([^']*)'|(\S+)/g
   let m: RegExpExecArray | null
@@ -137,9 +127,6 @@ export interface McpConfigPanelProps {
   onMessage?: Msg
 }
 
-/**
- * Advanced → MCP: full config editor + live status (admin only).
- */
 export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
   const { t } = useI18n()
   const { isAdmin } = useAuth()
@@ -289,7 +276,6 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
       const next = servers.map((s) =>
         s.id === id ? { ...s, enabled } : s,
       )
-      // Optimistic
       setServers(next)
       const ok = await persist(next, c.mcpSaveUpdated)
       if (!ok) void load()
@@ -383,7 +369,6 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
               tone: s.auto_restart ? 'default' : 'muted',
             },
           ],
-          // 行操作与联邦内容过滤一致：动词 label + variant（无 chrome 双行描述）
           actions: [
             {
               key: 'toggle',
@@ -491,7 +476,6 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
     ],
   )
 
-  // 校验错误贴在对应字段标题旁（SettingFieldErrorTag），非更新器 toast 区
   const idFieldError =
     formError === c.mcpValidateIdRequired ||
     formError === c.mcpValidateIdCharset ||
@@ -607,7 +591,6 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
         layout="horizontal"
         disabled={saving}
       />
-      {/* 与联邦「添加过滤规则」一致：表单底部 primary 提交，收起由 formCollapse 负责 */}
       <div className="managed-list-form-actions">
         <SettingsButton
           variant="primary"
@@ -638,7 +621,6 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
     >
       <ManagedList
         stats={stats}
-        // 工具栏：与联邦投递队列相同 — label + description + icon
         toolbar={[
           {
             key: 'refresh',
@@ -651,7 +633,6 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
             variant: 'secondary',
           },
         ]}
-        // 查询栏 chrome：与联邦已知实例 / 内容过滤共用文案
         queryToggleLabel={c.federationListQueryToggle}
         queryToggleDescription={c.federationListQueryToggleDesc}
         queryToggleIcon={<FaSearch aria-hidden />}
@@ -692,7 +673,6 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
             },
           ],
         }}
-        // 添加/编辑表单 chrome：对齐联邦「添加规则」
         formTitle={
           draft.originalId ? c.mcpFormEditTitle : c.mcpAddServer
         }

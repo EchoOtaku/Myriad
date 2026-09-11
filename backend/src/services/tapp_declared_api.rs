@@ -196,7 +196,7 @@ pub async fn resolve_declared_api_tapp(
     Ok(tapp)
 }
 
-/// Filter installed permissions through the caller's current role + dynamic config.
+/// Filter approved permissions to the granted set for this role + config.
 pub async fn filter_granted_permissions(
     installed_permissions: Vec<String>,
     role: UserRole,

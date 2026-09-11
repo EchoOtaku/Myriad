@@ -14,7 +14,6 @@ export interface PerceptionSnapshot {
   revision: number
   capturedAt: number
   expiresAt: number
-  /** Remaining life at list time. Server expiry uses this, not expiresAt. */
   ttlMs: number
   summary: string
   safeFacts: Record<string, string | number | boolean>

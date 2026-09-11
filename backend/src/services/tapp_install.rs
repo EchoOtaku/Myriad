@@ -45,10 +45,10 @@ pub fn parse_install_source(source: &str) -> Result<InstallSource, InvalidInstal
 
 /// Select approved permissions for a **new** install.
 ///
-/// Product contract (matches API comment「可选，默认全部授权」and file-install
+/// Product contract (matches API comment「可选，默认全部批准」and file-install
 /// callers that omit `permissions`):
 ///
-/// - Empty / omitted `requested` → **all** `manifest_permissions` (default full grant).
+/// - Empty / omitted `requested` → **all** `manifest_permissions` (default full approval).
 /// - Non-empty → intersection of manifest declarations with the request
 /// (unknown / undeclared names are dropped).
 pub fn select_install_approved_permissions(
@@ -70,7 +70,7 @@ pub fn select_install_approved_permissions(
 ///
 /// - `requested == None` → keep previous approvals that still exist in the new
 /// manifest (drop permissions the new version no longer declares).
-/// - `requested == Some([])` → **all** new manifest permissions (default full grant,
+/// - `requested == Some([])` → **all** new manifest permissions (default full approval,
 /// same empty-list product semantics as install).
 /// - `requested == Some(list)` → intersection with the new manifest.
 pub fn select_update_approved_permissions(
@@ -283,7 +283,7 @@ pub fn archive_upload_too_large_message(max_bytes: usize) -> String {
     format!(".tapp file exceeds {max_bytes} bytes")
 }
 
-// ── Concurrent install capacity (MYR-025) ───────────────────────────────────
+// ── Concurrent install capacity ───────────────────────────────────
 
 /// Max concurrent Tapp install handlers (archive extract / stage / DB).
 ///
@@ -332,7 +332,7 @@ mod tests {
 
     #[test]
     fn install_concurrency_limits_are_generous_but_finite() {
-        // MYR-025: a few concurrent installs, not unbounded; fail fast when full.
+        // a few concurrent installs, not unbounded; fail fast when full.
         const {
             assert!(MAX_CONCURRENT_INSTALLS >= 2);
             assert!(MAX_CONCURRENT_INSTALLS <= 8);
@@ -368,7 +368,7 @@ mod tests {
             select_update_approved_permissions(&manifest, None, &previous),
             vec!["storage:read".to_string(), "network".to_string()]
         );
-        // Empty list: default full grant of new manifest (same as install).
+        // Empty list: default full approval of new manifest (same as install).
         assert_eq!(
             select_update_approved_permissions(&manifest, Some(&[]), &previous),
             manifest

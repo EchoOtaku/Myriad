@@ -304,7 +304,7 @@ pub(crate) fn validate_counts_object(
     country_visitor: usize,
 ) -> Result<(), &'static str> {
     let Some(counts) = counts else {
-        return Ok(()); // older hand-built payloads without counts
+        return Ok(()); // `counts` 省略则跳过这项校验
     };
     if !counts.is_object() {
         return Err("invalid_counts");

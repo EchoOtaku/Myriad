@@ -51,11 +51,9 @@ import './MeropeWidget.css'
 
 const DEFAULT_MOOD = 70
 const DEFAULT_AROUSAL = 48
-/** 立绘生成时附上的技法参考图；小组件库预览用同一张。 */
 const STYLE_REFERENCE_PREVIEW = '/merope/style-reference.png'
 const PREVIEW_MOOD_BAND: MoodBand = 'calm'
 
-/** 四格：很低 1，偏低/烦躁 2，平常 3，轻松 4 */
 const MOOD_LEVEL: Record<MoodBand, number> = {
   floor: 1,
   sad: 2,
@@ -144,10 +142,6 @@ function hasPlayableRig(
   )
 }
 
-/**
- * 取景框与人物画布同比 → 播放器的等比缩放由宽度决定，人物横向铺满卡片，
- * 纵向溢出的身体被卡片裁掉。没有 rig 时交给 CSS 回落到 master portrait 的 3:4。
- */
 function portraitFrameStyle(
   canvas: { width: number; height: number } | undefined,
 ): CSSProperties | undefined {

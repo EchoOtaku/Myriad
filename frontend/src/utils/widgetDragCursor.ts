@@ -1,8 +1,4 @@
-/**
- * Widget drag session: 60fps ghost coordinates plus a boolean "active"
- * that only flips on start/end. Catalog islands subscribe to active, not
- * the cursor — otherwise every pointer frame would reconcile the library.
- */
+/** Subscribe to active, not cursor (avoids 60fps reconcile). */
 
 import { useSyncExternalStore } from 'react'
 

@@ -68,7 +68,7 @@ pub fn append_store_cache_bust(url: &str, token: &str) -> String {
     }
 }
 
-/// Reject install-mode placeholders mistaken for catalog refs (Aro legacy bug).
+/// Reject install-mode placeholders (`store` / `direct` / empty) mistaken for catalog refs.
 pub fn is_invalid_store_source_ref(store_source: &str) -> bool {
     let trimmed = store_source.trim();
     trimmed.is_empty()
@@ -480,7 +480,7 @@ pub struct StoreSourceRowRef<'a> {
 
 /// Resolve `storeSource` against known rows.
 ///
-/// Preference order (matches historical install behavior):
+/// Preference order:
 /// 1. exact URL equality
 /// 2. numeric source id
 /// 3. normalized catalog base (`…/index.json` vs bare path)
@@ -515,7 +515,7 @@ pub fn store_index_url(base_url: &str) -> String {
 
 /// Validate a resolved catalog base before outbound fetch.
 ///
-/// Unparseable URLs are accepted (legacy: validation was skipped when parse failed).
+/// Unparseable URLs are accepted.
 /// Parsed URLs must be HTTP(S) and not point at internal hosts.
 pub fn validate_store_fetch_base_url(base_url: &str) -> Result<(), String> {
     let Ok(parsed) = reqwest::Url::parse(base_url.trim()) else {

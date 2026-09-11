@@ -1,7 +1,3 @@
-/**
- *   pnpm exec tsx --test src/utils/csrf.test.ts
- */
-
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
@@ -98,7 +94,6 @@ describe('isCsrfCacheFresh', () => {
 
   it('prefers absolute expiresAt over storedAt+ttl', () => {
     const now = 1_700_000_000_000
-    // storedAt looks fresh, but expiresAt already passed
     assert.equal(
       isCsrfCacheFresh(now - 1000, now, CSRF_CLIENT_TTL_MS, now - 1),
       false,

@@ -1,12 +1,3 @@
-/**
- * 共享事件监听器 Hook
- *
- * 多个组件监听同一事件时，合并为一个监听器，减少浏览器开销
- *
- * @module useSharedEventListener
- * @version 1.2
- */
-
 import {
   useCallback,
   useEffect,
@@ -28,21 +19,14 @@ interface ListenerEntry {
   priority: number
 }
 
-/** 事件监听器管理器 */
 class SharedEventManager {
   private listeners = new Map<string, Set<ListenerEntry>>()
   private nativeListeners = new Map<string, EventCallback>()
   private throttledCallbacks = new Map<string, EventCallback>()
-  // 缓存排序后的监听器数组，避免每次事件触发时都排序
+
   private sortedListenersCache = new Map<string, ListenerEntry[]>()
   private listenersDirty = new Map<string, boolean>()
 
-  /**
-   * 添加监听器
-   * @param eventType 事件类型
-   * @param callback 回调函数
-   * @param options 选项
-   */
   add(
     eventType: string,
     callback: EventCallback,
@@ -57,15 +41,14 @@ class SharedEventManager {
 
     const entry: ListenerEntry = { callback, priority }
     this.listeners.get(eventType)!.add(entry)
-    // 标记缓存为脏，下次事件触发时重新排序
+
     this.listenersDirty.set(eventType, true)
 
-    // 返回移除函数
     return () => {
       const set = this.listeners.get(eventType)
       if (set) {
         set.delete(entry)
-        // 标记缓存为脏
+
         this.listenersDirty.set(eventType, true)
         if (set.size === 0) {
           this.removeNativeListener(eventType)
@@ -82,7 +65,6 @@ class SharedEventManager {
       const entries = this.listeners.get(eventType)
       if (!entries || entries.size === 0) return
 
-      // 使用缓存的排序结果，只有在监听器变化时才重新排序
       let sorted = this.sortedListenersCache.get(eventType)
       if (!sorted || this.listenersDirty.get(eventType)) {
         sorted = Array.from(entries).sort((a, b) => b.priority - a.priority)
@@ -118,7 +100,6 @@ class SharedEventManager {
     }
   }
 
-  /** 获取当前监听状态（调试用） */
   getStats() {
     const stats: Record<string, number> = {}
     for (const [type, set] of this.listeners) {
@@ -127,7 +108,6 @@ class SharedEventManager {
     return stats
   }
 
-  /** 清理所有监听器 */
   clear() {
     for (const eventType of this.listeners.keys()) {
       this.removeNativeListener(eventType)
@@ -136,24 +116,8 @@ class SharedEventManager {
   }
 }
 
-/** 全局共享事件管理器 */
 export const sharedEventManager = new SharedEventManager()
 
-/**
- * 使用共享的窗口事件监听
- *
- * @param eventType 事件类型（如 'resize', 'scroll'）
- * @param callback 回调函数
- * @param options 选项
- *
- * @example
- * ```tsx
- * // 多个组件都可以这样使用，内部只会有一个 resize 监听器
- * useSharedEventListener('resize', () => {
- *   setWidth(window.innerWidth);
- * }, { throttle: true });
- * ```
- */
 export function useSharedEventListener(
   eventType: string,
   callback: EventCallback,
@@ -180,13 +144,6 @@ export function useSharedEventListener(
   }, [eventType, stableCallback, priority, throttle, enabled])
 }
 
-/**
- * 共享的 resize 事件 Hook
- * 使用 RAF 节流，多个组件共享一个监听器
- *
- * @param callback 回调函数
- * @param options 选项（支持防抖延迟）
- */
 export function useSharedResize(
   callback: () => void,
   options: { priority?: number; enabled?: boolean; debounce?: number } = {},
@@ -209,7 +166,6 @@ export function useSharedResize(
     }
   }, [debounceMs])
 
-  // 清理防抖定时器
   useEffect(() => {
     return () => {
       if (timeoutRef.current) {
@@ -224,10 +180,6 @@ export function useSharedResize(
   })
 }
 
-/**
- * 共享的 scroll 事件 Hook
- * 使用 RAF 节流，多个组件共享一个监听器
- */
 export function useSharedScroll(
   callback: (event: Event) => void,
   options: { priority?: number; enabled?: boolean; throttleMs?: number } = {},
@@ -259,14 +211,7 @@ export function useSharedScroll(
   })
 }
 
-/**
- * 防抖的窗口尺寸 Hook
- * 适用于需要在 resize 结束后才执行操作的场景
- * 使用共享监听器，减少重复注册
- *
- * @param delay 防抖延迟（毫秒）
- * @param enabled 为 false 时不订阅 resize（控制面板固定列数不需要）
- */
+/** enabled 为 false 时不订阅 resize。 */
 export function useDebouncedWindowSize(
   delay = 150,
   enabled = true,
@@ -306,14 +251,7 @@ export function useDebouncedWindowSize(
   return size
 }
 
-/**
- * 每个 query 字符串全局只建一个 MediaQueryList + 一个原生 change 监听。
- *
- * 此前每个调用点各自 `matchMedia()` 并挂监听：首页十几个小组件
- * （useWidgetSize → useViewportBand 两条 + useAnimationLevel 一条）
- * 会堆出几十个 MQL 对象。distinct query 只有个位数，注册表常驻即可，
- * 不做引用计数摘除——摘了就得在重订阅时补一次读值与通知，反而易错。
- */
+/** 每个 query 全局只建一个 MediaQueryList；常驻，不做引用计数摘除。 */
 interface SharedMediaQueryEntry {
   mql: MediaQueryList
   matches: boolean
@@ -345,25 +283,11 @@ function getSharedMediaQuery(query: string): SharedMediaQueryEntry | null {
   return entry
 }
 
-/** SSR 快照必须是稳定引用，否则 useSyncExternalStore 会警告 */
+/** SSR 快照必须是稳定引用，否则 useSyncExternalStore 会警告。 */
 function mediaQueryServerSnapshot(): boolean {
   return false
 }
 
-/**
- * 媒体查询 Hook - 响应式断点检测
- *
- * 同一 query 的所有调用点共享一个 MediaQueryList（见 {@link getSharedMediaQuery}）。
- *
- * @param query 媒体查询字符串
- * @returns 是否匹配
- *
- * @example
- * ```tsx
- * const isMobile = useMediaQuery('(max-width: 767px)');
- * const prefersDark = useMediaQuery('(prefers-color-scheme: dark)');
- * ```
- */
 export function useMediaQuery(query: string): boolean {
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
@@ -385,10 +309,6 @@ export function useMediaQuery(query: string): boolean {
   return useSyncExternalStore(subscribe, getSnapshot, mediaQueryServerSnapshot)
 }
 
-/**
- * 预定义的响应式断点 Hook
- * 阈值与 utils/viewportBands 一致（phone≤767 / tablet … / desktop≥1078）
- */
 export function useBreakpoints() {
   const isMobile = useMediaQuery(VIEWPORT_MQ.phone)
   const isTablet = useMediaQuery(VIEWPORT_MQ.tablet)
@@ -401,7 +321,6 @@ export function useBreakpoints() {
       isTablet,
       isDesktop,
       isLargeDesktop,
-      // 便捷属性
       isTouchDevice: isMobile || isTablet,
     }),
     [isMobile, isTablet, isDesktop, isLargeDesktop],
@@ -413,11 +332,7 @@ function readDesktopLayoutBand(): boolean {
   return window.innerWidth >= VIEWPORT_DESKTOP_MIN
 }
 
-/**
- * Desktop band for home free/standard layout.
- * First paint reads innerWidth so it does not start as `false`
- * (useSyncExternalStore server snapshot) and flash standard layout.
- */
+/** 首屏读 innerWidth，避免 server snapshot 的 false 闪成 standard 布局。 */
 export function useDesktopLayoutBand(): boolean {
   const [isDesktop, setIsDesktop] = useState(readDesktopLayoutBand)
   useLayoutEffect(() => {
@@ -430,12 +345,7 @@ export function useDesktopLayoutBand(): boolean {
   return isDesktop
 }
 
-/**
- * 页面可见性 Hook
- * 用于在页面不可见时暂停动画或网络请求
- *
- * 🔧 使用统一的 coordinator 可见性管理，避免重复的事件监听器
- */
+/** 走 coordinator 统一可见性，避免再挂一份 visibilitychange。 */
 export function usePageVisibility(): boolean {
   const [isVisible, setIsVisible] = useState(() => isPageVisible())
 

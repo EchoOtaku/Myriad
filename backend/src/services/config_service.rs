@@ -857,7 +857,7 @@ impl ConfigService {
                 config.site_noindex = false;
             }
         } else if config.site_noindex {
-            // Legacy: only noindex known → treat as private for consumers that read policy.
+            // Policy empty + noindex → private, for consumers that read policy.
             config.site_visibility_policy = "private".to_string();
         }
         if let Some(v) = map.get("ga_measurement_id") {

@@ -1,14 +1,6 @@
-/**
- * 动态内容岛工具
- * 提供天气、问候语、一言等动态内容
- *
- * 注意：天气和一言功能已拆分到独立文件
- */
-
 import { currentCopy } from '../i18n/localeCopy'
 
 export * from './quote'
-// 重新导出类型和函数，保持向后兼容
 export * from './weather'
 
 export type GreetingIconName =
@@ -30,12 +22,6 @@ export interface GreetingTranslations {
   night: string
 }
 
-/**
- * 获取时间段问候语
- * @param username 用户名（可选）
- * @param translations 翻译对象（可选，用于国际化）
- * @param locale 语言代码（可选，用于时间格式化）
- */
 export function getGreeting(
   username?: string,
   translations?: GreetingTranslations,
@@ -61,8 +47,6 @@ export function getGreeting(
     night: g.night,
   }
 
-  // 细分时间段：图标跟随太阳实际状态
-  // 日出仅清晨显示，临近正午用太阳；日落仅傍晚显示，入夜后用月亮
   if (hour >= 5 && hour < 8) {
     icon = 'sunrise'
     text = t.morning

@@ -127,7 +127,6 @@ export default function TagBubblesStep({
     return () => {
       cancelled = true
     }
-    // selected/onChange 只在换一批后修剪，不跟进当前勾选。
   }, [
     cacheKey,
     locale,

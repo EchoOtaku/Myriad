@@ -28,7 +28,7 @@ pub async fn recommend_icon(
 ) -> Result<Json<IconRecommendResponse>, HttpError> {
     let platform_name = payload.platform_name.to_lowercase();
 
-    // 简单的规则匹配 - 可以替换为真正的AI调用
+    // 规则匹配（`match_platform_icon`）
     let recommendation = match_platform_icon(&platform_name);
 
     Ok(Json(recommendation))

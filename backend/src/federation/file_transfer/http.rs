@@ -73,7 +73,7 @@ pub async fn initiate_transfer(
         ));
     }
 
-    // MYR-008: concurrent transfer admission (count + reserved bytes)
+    // concurrent transfer admission (count + reserved bytes)
     admit_new_transfer(db, req.file_size, Some(user_id)).await?;
 
     let remote_actor_url: String = ch_row.try_get("", "actor_url").unwrap_or_default();
@@ -222,7 +222,7 @@ pub async fn initiate_room_transfer(
         ));
     }
 
-    // MYR-008: concurrent transfer admission (count + reserved bytes)
+    // concurrent transfer admission (count + reserved bytes)
     admit_new_transfer(db, req.file_size, Some(user_id)).await?;
 
     let chunks_total =
@@ -309,7 +309,7 @@ pub async fn upload_chunk(
     db: &DatabaseConnection,
     req: &UploadChunkRequest,
 ) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
-    // MYR-001: reject unsafe transferId before any path construction / DB-driven FS write
+    // reject unsafe transferId before any path construction / DB-driven FS write
     if !is_valid_transfer_id(transfer_id) {
         return Err(bad_request(
             "Invalid transferId: must be 1-128 chars of [A-Za-z0-9_-] only",
@@ -406,7 +406,7 @@ pub async fn upload_chunk(
         )));
     }
 
-    // MYR-008: reserve decoded chunk budget before base64 decode / disk write
+    // reserve decoded chunk budget before base64 decode / disk write
     let _chunk_budget = admit_chunk_bytes(req.chunk_size)?;
 
     let decoded = BASE64
@@ -688,7 +688,7 @@ pub async fn open_transfer_file(
     username: &str,
     db: &DatabaseConnection,
 ) -> Result<TransferFileContent, (StatusCode, Json<serde_json::Value>)> {
-    // MYR-001: never open a path derived from an unvalidated transferId / DB local_path
+    // never open a path derived from an unvalidated transferId / DB local_path
     if !is_valid_transfer_id(transfer_id) {
         return Err(bad_request(
             "Invalid transferId: must be 1-128 chars of [A-Za-z0-9_-] only",

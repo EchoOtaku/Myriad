@@ -1,6 +1,3 @@
-/**
- * 复选框设置项组件
- */
 
 import type { CheckboxSettingConfig } from '../types'
 import React, { useCallback } from 'react'

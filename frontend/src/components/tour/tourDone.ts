@@ -1,7 +1,6 @@
 const STORAGE_KEY = 'myriad_tour_done_v1'
 
 const listeners = new Set<() => void>()
-/** Dev only: close hides the hint for this session; refresh restores it. */
 let sessionDone: string[] = []
 
 function persistDone(): boolean {
@@ -38,7 +37,6 @@ function writeRaw(ids: string[]): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(ids))
   } catch {
-    /* quota / private mode */
   }
 }
 

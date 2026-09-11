@@ -148,6 +148,20 @@ pub fn create_agent_routes(app_state: crate::state::AppState) -> Router<crate::s
             )),
         )
         .route(
+            "/addressee/touch",
+            post(super::touch::appraise).route_layer(from_fn_with_state(
+                app_state.clone(),
+                middleware::auth::auth_middleware,
+            )),
+        )
+        .route(
+            "/addressee/touch/complete",
+            post(super::touch::complete).route_layer(from_fn_with_state(
+                app_state.clone(),
+                middleware::auth::auth_middleware,
+            )),
+        )
+        .route(
             "/presence",
             post(super::post_live_presence).route_layer(from_fn_with_state(
                 app_state.clone(),

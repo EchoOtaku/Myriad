@@ -1,7 +1,3 @@
-/**
- * Brew 订阅包（.brewpack）清单：导出字段与导入写回同源。
- * Notion token / RSSHub access_key 不进包。
- */
 import type {
   AddSourceRequest,
   BrewCategory,

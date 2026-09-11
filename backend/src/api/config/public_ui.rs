@@ -15,7 +15,7 @@ pub async fn get_site_metadata(
     let config_service = crate::services::config_service::ConfigService::new(db.clone());
     let db_config = config_service.load_config().await.ok();
 
-    // Branding fields: empty DB still falls through to env/default (legacy UX).
+    // Branding fields: empty DB still falls through to env/default.
     let get_branding = |db_val: Option<String>, env_key: &str, default: &str| -> String {
         db_val
             .filter(|v| !v.is_empty())

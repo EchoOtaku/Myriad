@@ -14,12 +14,11 @@ use super::PlatformReport;
 
 /// 内部函数：生成平台报告逻辑（有界并行 + 逐平台原子落库）
 ///
-/// 返回 (成功生成的报告, 被跳过的平台及原因)。跳过原因用于回传给前端，
-/// 避免像以前那样只在日志里 warn、用户完全看不到失败在哪一步。
+/// 返回 (成功生成的报告, 被跳过的平台及原因)。跳过原因回传给前端。
 ///
-/// - MYR-020: each platform is persisted in a DELETE+INSERT transaction; insert
+/// - each platform is persisted in a DELETE+INSERT transaction; insert
 ///   failure rolls back and keeps the previous report.
-/// - MYR-021: platform/AI fan-out is bounded by [`MAX_CONCURRENT_PLATFORM_REPORTS`].
+/// - platform/AI fan-out is bounded by [`MAX_CONCURRENT_PLATFORM_REPORTS`].
 /// - Partial cancel: reports are persisted as each platform finishes. If the
 ///   overall future is dropped (client disconnect / task cancel), already-saved
 ///   platforms remain and remaining work is abandoned.
@@ -972,7 +971,7 @@ pub(crate) async fn generate_platform_reports_internal(
                 locale: locale.clone(),
             };
 
-            // Persist as soon as this platform finishes (MYR-020 atomic txn).
+            // Persist as soon as this platform finishes (atomic txn).
             // Partial cancel: if the parent future is dropped later, this row stays.
             if let Err(e) =
                 persist_platform_report_atomic(&db_for_task, user_id, &report, &report_settings)
@@ -1065,8 +1064,7 @@ async fn get_platform_data(
         return Ok(cached_data);
     }
 
-    // 4. 从统一元数据服务读取。新数据直接是完整 JSONB，该方法也会
-    // 合并旧版 BatchSaver 留下的 `*_chunk_N` 记录。
+    // 从统一元数据服务读取（完整 JSONB；`*_chunk_N` 行会并进主记录）。
     let metadata_service = crate::services::metadata_service::MetadataService::new(db.clone());
     if let Ok(all_metadata) = metadata_service.get_all_latest_metadata(user_id).await {
         if let Some(platform_data) = all_metadata.get(platform) {
@@ -1187,10 +1185,15 @@ async fn last_stored_report_locale(
         .await
         .ok()
         .flatten();
-    row.and_then(|r| {
+    if let Some(tag) = row.and_then(|r| {
         crate::api::reports::locale::locale_from_stored_report(&r.report).map(str::to_string)
-    })
-    .unwrap_or_else(|| crate::api::reports::locale::DEFAULT_AUTO_REGEN_LOCALE.to_string())
+    }) {
+        return tag;
+    }
+    if let Some(tag) = crate::api::reports::locale::locale_from_user(db, user_id).await {
+        return tag.to_string();
+    }
+    crate::api::reports::locale::DEFAULT_AUTO_REGEN_LOCALE.to_string()
 }
 
 /// Bangumi/MAL `status_counts`: always emit five keys (0 when absent).
@@ -1220,7 +1223,7 @@ pub(crate) fn normalize_steam_player_type(raw: &str) -> &'static str {
     if lower == "balanced" || t.contains("均衡") || lower.contains("balanced") {
         return "balanced";
     }
-    // Unknown free-text from older AI: default balanced (not casual)
+    // 空串 casual；无法识别的非空文案 balanced。
     if t.is_empty() {
         "casual"
     } else {
@@ -1256,7 +1259,7 @@ fn psn_hunter_type_fallback(locale: &str, platinum: i64, avg: f64) -> &'static s
 
 /// GitHub contribution tier for `card_visuals.contribution_level`.
 /// Stable English enum keys only — FE maps to locale labels / badge colors.
-/// Thresholds match the historical Chinese tiering (star as independent path).
+/// Stars are an independent path (`>=1000` legendary, `>=200` veteran, `>=50` rising).
 pub(crate) fn github_contribution_level(
     total_contributions: i64,
     repos_count: usize,

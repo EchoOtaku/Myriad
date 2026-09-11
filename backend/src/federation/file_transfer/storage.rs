@@ -1,4 +1,4 @@
-//! Path confinement (MYR-001), concurrent admission (MYR-008), and chunk I/O.
+//! Path confinement, concurrent admission, and chunk I/O.
 
 use axum::{http::StatusCode, Json};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait};
@@ -24,7 +24,7 @@ use crate::federation::limits::{
     MAX_CONCURRENT_TRANSFER_BYTES, MAX_IN_FLIGHT_CHUNK_BYTES,
 };
 
-// ── MYR-008: in-flight chunk byte budget ────────────────────────────────────
+// ── in-flight chunk byte budget ────────────────────────────────────
 //
 // Caps concurrent decoded chunk payloads across upload + inbound handlers so a
 // burst of clients cannot pin unbounded memory while each transfer still obeys
@@ -145,7 +145,7 @@ async fn open_transfer_load_for_user(
     })
 }
 
-/// MYR-008: admit a new transfer if concurrent count/bytes stay within budgets.
+/// admit a new transfer if concurrent count/bytes stay within budgets.
 ///
 /// `user_id`: when `Some`, also enforce the per-user concurrent count.
 /// Inbound remote FileMeta passes `None` (only global budgets apply).
@@ -243,7 +243,7 @@ pub(super) fn admit_chunk_bytes_str(chunk_size: i64) -> Result<InFlightChunkGuar
 
 // 存储辅助
 //
-// MYR-001: transferId is a path component under the federation transfers root.
+// transferId is a path component under the federation transfers root.
 // Never join unvalidated remote/DB strings into filesystem paths.
 
 /// Max length for transfer IDs used as storage directory names.
@@ -253,7 +253,7 @@ pub(super) fn storage_root() -> PathBuf {
     paths().root.join("federation").join("transfers")
 }
 
-/// Strict transferId validation before any filesystem use (MYR-001).
+/// Strict transferId validation before any filesystem use.
 ///
 /// Allowlist: ASCII alphanumeric, `_`, `-` only (covers local `ft_{uuid}`).
 /// Rejects empty, oversize, absolute paths, `..`, separators, null bytes, Unicode.
@@ -328,7 +328,7 @@ pub(super) fn final_file_path(transfer_id: &str, filename: &str) -> Result<PathB
 
 /// Resolve a path for open/write: prefer DB `local_path` only if confined under storage root.
 ///
-/// Never trust stored paths blindly — re-validate confinement before any FS use (MYR-001).
+/// Never trust stored paths blindly — re-validate confinement before any FS use.
 pub(super) fn resolve_transfer_path(
     transfer_id: &str,
     filename: &str,
@@ -756,7 +756,7 @@ pub(super) async fn finalize_uploaded_transfer(
     Ok(true)
 }
 
-// ── MYR-001 path safety + MYR-008 admission tests ───────────────────────────
+// ── path safety + admission tests ───────────────────────────
 
 #[cfg(test)]
 mod tests {

@@ -143,11 +143,10 @@ impl NotionService {
         Self { client }
     }
 
-    /// 解析 Notion URL
-    /// 支持格式：
-    /// - notion://database/{database_id}?token={token}
-    /// - notion://page/{page_id}?token={token}
-    /// - https://www.notion.so/{workspace}/{database_id}?v={view_id} (需要额外提供 token)
+    /// 解析 Notion URL。token 不在 URL 里（`split('?')` 丢掉 query），来自 `extra_config`。
+    /// - `notion://database/{database_id}`
+    /// - `notion://page/{page_id}`
+    /// - `https://www.notion.so/{workspace}/{database_id}?v={view_id}`
     pub fn parse_notion_url(url: &str) -> Result<(NotionResourceType, String), NotionError> {
         // notion:// 协议格式
         if url.starts_with("notion://") {
@@ -172,8 +171,7 @@ impl NotionService {
             }
         }
 
-        // Notion 网页 URL 格式。新版客户端复制出的链接使用
-        // https://app.notion.com/p/{id}，旧链接使用 notion.so/notion.site。
+        // Notion 网页 URL：`app.notion.com`、`notion.so`、`notion.site`。
         let is_notion_web_url = Url::parse(url)
             .ok()
             .and_then(|parsed| parsed.host_str().map(str::to_ascii_lowercase))
@@ -186,9 +184,9 @@ impl NotionService {
             });
 
         if is_notion_web_url {
-            // 提取最后一个路径段中的 ID（32字符的 hex）
+            // 从后往前找 32 hex 路径段（见 extract_notion_id_from_url）
             if let Some(id) = extract_notion_id_from_url(url) {
-                // 默认假设是数据库，可以后续通过 API 验证
+                // 先当 database；`fetch` 若 API 报 page 再切 page
                 return Ok((NotionResourceType::Database, id));
             }
         }
@@ -221,7 +219,7 @@ impl NotionService {
             }]);
         }
 
-        // 限制返回数量
+        // `page_size` = 50
         body["page_size"] = serde_json::json!(50);
 
         let response = self
@@ -370,7 +368,7 @@ impl NotionService {
         // 尝试获取作者
         let author = self.extract_text_property(properties, &["Author", "作者", "Created by"]);
 
-        // 尝试获取封面图（优先级：cover > 属性中的图片 > 页面图标）
+        // 尝试获取封面图（优先级：cover > 属性中的图片 > 正文第一张图 > URL 属性）
         let mut image = self.extract_page_cover(page);
 
         // 如果没有封面，尝试从属性中获取图片（扩展属性名列表）
@@ -437,7 +435,7 @@ impl NotionService {
             .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
             .map(|dt| dt.with_timezone(&Utc));
 
-        // 获取页面内容（可选，需要额外 API 调用）- 支持递归获取子块
+        // 拉 blocks 子树（失败则 content=None）；起始 depth=2
         let content = self.fetch_page_content_recursive(id, config, 2).await.ok();
 
         // 尝试获取摘要/描述（优先级：属性 > 内容截取）
@@ -798,7 +796,7 @@ impl NotionService {
                 if let Some(url_end) = after_img[url_start..].find(quote_char) {
                     let url = &after_img[url_start..url_start + url_end];
 
-                    // 验证是有效的图片 URL（排除数据 URI、太小的图片等）
+                    // 走 is_valid_cover_image（http(s)/协议相对、过短 URL、占位路径）
                     if self.is_valid_cover_image(url) {
                         return Some(url.to_string());
                     }
@@ -929,7 +927,7 @@ impl NotionService {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, NotionError>> + Send + 'a>>
     {
         Box::pin(async move {
-            // 限制递归深度，避免无限循环
+            // 递归深度 `depth > 3` 则停
             if depth > 3 {
                 return Ok(String::new());
             }
@@ -1082,7 +1080,7 @@ impl NotionService {
         })
     }
 
-    /// 将单个 block 转换为 HTML（不含闭合标签）
+    /// paragraph 与非 toggle heading 自带开合；toggle heading 只开 `<details>`（调用方不补闭合）；toggle/column/table 由调用方闭合。
     fn block_to_html(&self, block: &Value) -> String {
         let block_type = block["type"].as_str().unwrap_or("");
 
@@ -1766,8 +1764,7 @@ impl NotionService {
         })
     }
 
-    /// 根据配置获取内容
-    /// 如果资源类型未知（从网页 URL 解析），会自动尝试检测
+    /// 根据配置获取内容。Database 路径若 API 报 page 再切 `fetch_page`。
     pub async fn fetch(&self, config: &NotionConfig) -> Result<ParsedFeed, NotionError> {
         match config.resource_type {
             NotionResourceType::Database => {
@@ -1814,7 +1811,7 @@ struct DatabaseInfo {
 
 /// 从 Notion URL 中提取 ID
 fn extract_notion_id_from_url(url: &str) -> Option<String> {
-    // Notion ID 是 32 字符的 hex（有时带短横线）
+    // 路径段最后一个 `-` 之后须为 32 hex；命中后再格式化成 8-4-4-4-12
     let clean_url = url.split('?').next().unwrap_or(url);
     let parts: Vec<&str> = clean_url.split('/').collect();
 

@@ -1,8 +1,4 @@
-/**
- * Manifest permission validation. Runtime authorization lives in TappBridge
- * and the backend Runtime Grant; this module intentionally keeps no usage or
- * role-derived authorization state.
- */
+/** 只做 Manifest 权限校验。运行时授权在 TappBridge 与后端 Runtime Grant。 */
 
 import type { TappManifest } from '../types'
 import { currentCopy } from '../../i18n/localeCopy'

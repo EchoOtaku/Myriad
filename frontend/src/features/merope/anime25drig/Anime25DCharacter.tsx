@@ -16,6 +16,7 @@ import {
   useState,
 } from 'react'
 import { bindCharacterTouch } from '../interaction/bindTouch'
+import { createTouchAppraisal } from '../interaction/touchAppraisalHost'
 import { getProductionMotionRuntime } from '../motion/runtimeHost'
 import { realizeAnime25DBehaviorPlan } from './behaviorRealizer'
 import { activityExpressionDriverPatch } from './expressionPresets'
@@ -36,7 +37,6 @@ interface Props {
   playback: Anime25DPlayback
   atlasUrl: string
   mood: number
-  /** Settings page: sliders own the base pose; live acting stays additive. */
   manualControl?: boolean
   touchEnabled?: boolean
   onPlaybackError?: (error: unknown) => void
@@ -76,10 +76,20 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       if (!touchEnabled || manualControl || !ready || !canvas || !player) return
       const owner = crypto.randomUUID()
       const source = getProductionMotionRuntime().touch
+      const appraisal = createTouchAppraisal(owner, source)
+      const cancelReaction = () => { appraisal.cancel(); source.release(owner) }
       const unbind = bindCharacterTouch(canvas,
         (x, y) => player.hitTestTouch(x, y),
-        (touch, now) => source.update(owner, touch, now))
-      return () => { unbind(); source.release(owner) }
+        (touch, now) => {
+          source.notePresented(owner, player.getPresentedTouch(), now)
+          source.update(owner, touch, now)
+          if (source.current() || touch.phase === 'end' || touch.phase === 'cancel') {
+            appraisal.observe(touch, source.version())
+          }
+        }, cancelReaction)
+      return () => {
+        appraisal.dispose(); unbind(); source.release(owner)
+      }
     }, [touchEnabled, manualControl, ready, atlasUrl, playback, gpuEpoch])
     const activityRef = useRef(activity)
     const moodRef = useRef(mood)
@@ -185,8 +195,6 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       playBehaviorPlan(plan) {
         const now = performance.now()
         const realization = realizeAnime25DBehaviorPlan(plan, now)
-        // Restating the whole live set is the entire protocol. The player
-        // reconciles it, so nothing here tracks what has already played.
         playerRef.current?.setBehaviorMotionUnits(realization.units, now)
         behaviorPlanRef.current = plan
         return realization.reports

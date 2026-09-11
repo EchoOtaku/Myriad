@@ -41,10 +41,7 @@ interface Synthesis {
   controller: AbortController
 }
 
-/**
- * Synthesize up to two segments at once; play in enqueue order.
- * Segment.sequence is per-utterance and must not be the play cursor.
- */
+/** Segment.sequence is per-utterance and must not be the play cursor. */
 export class TtsPipeline {
   private nextPlayId = 0
   private nextPlay = 1
@@ -84,7 +81,7 @@ export class TtsPipeline {
     )
   }
 
-  /** Ordered future segments only; the speech source owns the playing cursor. */
+  /** Ordered future segments only */
   upcomingText(messageId: string, generation: number): string {
     return [
       ...this.pending,
@@ -222,8 +219,6 @@ export class TtsPipeline {
       void result
         .catch(() => null)
         .then((audio) => {
-          // A cancelled task may settle after IDs have been reused. Check
-          // identity before touching any state belonging to the new reply.
           if (this.synthesis.get(item.playId) !== task) return
           this.synthesis.delete(item.playId)
           if (audio) {

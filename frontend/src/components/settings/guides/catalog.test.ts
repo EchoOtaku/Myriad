@@ -1,7 +1,3 @@
-/**
- * Run from frontend/:
- *   pnpm test:unit -- src/components/settings/guides/catalog.test.ts
- */
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -14,8 +10,8 @@ import {
 describe('setting guide catalog', () => {
   it('does not statically import ja or zh catalogs', () => {
     const src = readFileSync(new URL('./catalog.ts', import.meta.url), 'utf8')
-    assert.equal(src.includes("from './catalog.ja'"), false)
-    assert.equal(src.includes("from './catalog.zh'"), false)
+    assert.equal(src.includes("from './catalog.ja.json'"), false)
+    assert.equal(src.includes("from './catalog.zh.json'"), false)
   })
 
   it('serves English synchronously', () => {

@@ -2,13 +2,44 @@
 //!
 //! Interactive generate follows `X-Myriad-Locale` / `Accept-Language`.
 //! Missing headers (auto-regen / header-less generate-all) reuse the last
-//! stored report locale, else zh-CN.
+//! stored report locale, else the account locale, else en-US.
 
 use axum::http::{header, HeaderMap};
+use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde_json::Value;
 
-/// Historical reports and header-less auto-regen.
-pub const DEFAULT_AUTO_REGEN_LOCALE: &str = "zh-CN";
+/// Header-less auto-regen / generate-all default (matches host UI fallback).
+pub const DEFAULT_AUTO_REGEN_LOCALE: &str = "en-US";
+
+/// Exact host UI tags stored on `users.locale`. Other values are treated as unset.
+pub fn parse_stored_ui_locale(raw: &str) -> Option<&'static str> {
+    match raw.trim() {
+        "zh-CN" => Some("zh-CN"),
+        "en-US" => Some("en-US"),
+        "ja-JP" => Some("ja-JP"),
+        _ => None,
+    }
+}
+
+pub async fn locale_from_user(
+    db: &impl ConnectionTrait,
+    user_id: i32,
+) -> Option<&'static str> {
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT locale FROM users WHERE id = $1",
+            vec![user_id.into()],
+        ))
+        .await
+        .ok()
+        .flatten()?;
+    row.try_get::<Option<String>>("", "locale")
+        .ok()
+        .flatten()
+        .as_deref()
+        .and_then(parse_stored_ui_locale)
+}
 
 pub fn normalize_report_locale(raw: &str) -> &'static str {
     let tag = raw
@@ -150,8 +181,16 @@ mod tests {
         assert_eq!(normalize_report_locale("zh"), "zh-CN");
         assert_eq!(normalize_report_locale("ja-JP,ja;q=0.9"), "ja-JP");
         assert_eq!(normalize_report_locale("en-GB"), "en-US");
-        assert_eq!(normalize_report_locale(""), "zh-CN");
+        assert_eq!(normalize_report_locale(""), "en-US");
         assert_eq!(normalize_report_locale("fr-FR"), "en-US");
+    }
+
+    #[test]
+    fn stored_ui_locale_is_exact() {
+        assert_eq!(parse_stored_ui_locale("ja-JP"), Some("ja-JP"));
+        assert_eq!(parse_stored_ui_locale(" zh-CN "), Some("zh-CN"));
+        assert_eq!(parse_stored_ui_locale("zh"), None);
+        assert_eq!(parse_stored_ui_locale(""), None);
     }
 
     #[test]

@@ -1,10 +1,3 @@
-/**
- *   pnpm exec tsx --test src/services/agent/routerNavigate.contract.test.ts
- *
- * `router.navigate` must allow the live SPA routes in App.tsx, not the
- * historical /home /platform /report /settings prefixes.
- */
-
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'

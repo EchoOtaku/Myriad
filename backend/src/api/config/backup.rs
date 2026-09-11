@@ -53,6 +53,26 @@ pub struct SettingsBackupEntry {
 pub struct SettingsBackupUserPreferences {
     pub notification_preferences:
         crate::services::agent::notification_preferences::NotificationPreferences,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
+}
+
+async fn load_user_locale(db: &DatabaseConnection, user_id: i32) -> Option<String> {
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT locale FROM users WHERE id = $1",
+            vec![user_id.into()],
+        ))
+        .await
+        .ok()
+        .flatten()?;
+    row.try_get::<Option<String>>("", "locale")
+        .ok()
+        .flatten()
+        .as_deref()
+        .and_then(crate::api::reports::locale::parse_stored_ui_locale)
+        .map(str::to_string)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -377,6 +397,7 @@ pub async fn export_settings(
 
     let notification_preferences =
         crate::services::agent::notification_preferences::load(Some(&db), user_id).await;
+    let locale = load_user_locale(&db, user_id).await;
     let backup = SettingsBackup {
         format: SETTINGS_BACKUP_FORMAT.to_string(),
         version: SETTINGS_BACKUP_VERSION,
@@ -386,6 +407,7 @@ pub async fn export_settings(
         effective_config,
         user_preferences: SettingsBackupUserPreferences {
             notification_preferences,
+            locale,
         },
     };
 
@@ -504,8 +526,18 @@ pub async fn restore_settings(
         let update_result = transaction
             .execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                "UPDATE users SET notification_preferences = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
-                vec![notification_value.into(), user_id.into()],
+                "UPDATE users SET notification_preferences = $1, locale = COALESCE($3, locale), updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+                vec![
+                    notification_value.into(),
+                    user_id.into(),
+                    backup
+                        .user_preferences
+                        .locale
+                        .as_deref()
+                        .and_then(crate::api::reports::locale::parse_stored_ui_locale)
+                        .map(|value| value.to_string())
+                        .into(),
+                ],
             ))
             .await?;
         if update_result.rows_affected() == 0 {
@@ -602,6 +634,7 @@ mod settings_backup_tests {
             effective_config: empty_config(),
             user_preferences: SettingsBackupUserPreferences {
                 notification_preferences: Default::default(),
+                locale: None,
             },
         }
     }

@@ -4,8 +4,8 @@
 //! 私钥使用 AES-256-GCM 加密后存储到数据库。
 //!
 //! 加密密钥来自 [`crate::services::data_key`]，**不再**从 `JWT_SECRET` 派生。
-//! 旧格式（v0，JWT_SECRET 派生）仍可解密，并在启动时由
-//! [`rewrap_legacy_private_keys`] 重新封装成 v1 —— 之后轮换 `JWT_SECRET`
+//! v0（JWT_SECRET 派生）仍可解密，启动时由
+//! [`rewrap_legacy_private_keys`] 重新封装成 v1；之后轮换 `JWT_SECRET`
 //! 就不会再让实例丢掉 ActivityPub 身份。
 
 use anyhow::{Context, Result};

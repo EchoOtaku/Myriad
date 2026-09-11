@@ -15,7 +15,7 @@ use super::local_deliver::{enqueue_delivery, enqueue_delivery_queue, DeliveryMod
 /// Handle ActivityPub Move (domain / account migration).
 ///
 /// Fail-closed unless **all** pass:
-/// 1. HTTP Signature already verified (caller)
+/// 1. 调用方应已验签；`local_deliver` 无 HTTP Signature，inbox 对 Move 现为 503
 /// 2. `actor` == signed actor == `object` (old id); `target` present and distinct
 /// 3. Fresh fetch of old actor has `movedTo` == target
 /// 4. Fresh fetch of new actor has `alsoKnownAs` containing old id
@@ -104,12 +104,7 @@ pub(crate) async fn handle_follow(
     follow_remote: Option<&RemoteActorInfo>,
     delivery_mode: DeliveryMode<'_>,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
-    // Follow.object 必须就是本次要记录的本地 Actor。
-    //
-    // 过去只用投递路径（/users/{name}/inbox 或 sharedInbox 的收件人解析）决定
-    // local_user_id，从不看 activity.object，于是向 bob 的 inbox POST 一条
-    // `Follow{object: ".../users/alice"}` 会给 **bob** 记上一个粉丝，随后
-    // 发出的 Accept 里 object 还被重写成 bob 的 Actor。
+    // Follow.object 必须就是本次要记录的本地 Actor，不能只靠投递路径上的 local_user_id。
     let base_url = get_base_url().await;
     let local_username = get_username_by_id(db, local_user_id).await?;
     let local_actor_url = actor_url(&base_url, &local_username);
@@ -153,10 +148,7 @@ pub(crate) async fn handle_follow(
 
     let activity_id = activity["id"].as_str().unwrap_or("").to_string();
 
-    // Record incoming follow. On Postgres, ON CONFLICT DO UPDATE always reports
-    // rows_affected >= 1 even when the row was already accepted — so the old
-    // `rows_affected == 0` idempotency check never fired and re-enqueued Accept.
-    // Pattern: conditional UPDATE + RETURNING; empty result means already accepted.
+    // Record incoming follow. Conditional UPDATE + RETURNING; empty result means already accepted.
     let upserted = db
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -337,7 +329,7 @@ fn extract_accept_object_type(activity: &serde_json::Value) -> String {
 ///
 /// 授权绑定：状态变更仅在 Accept 的签名 actor 正是该 Channel/Follow 的
 /// 远程对端时生效，防止第三方实例伪造他人的 Accept。
-/// Actor 比对走 `same_actor_url`（host 大小写 / trailing slash），不依赖 SQL 字节级相等。
+/// Channel 走 `same_actor_or_user`；Follow 再加 unique id + `same_host_username_compatible`。
 pub(crate) async fn handle_accept(
     db: &impl ConnectionTrait,
     local_user_id: i32,
@@ -354,7 +346,7 @@ pub(crate) async fn handle_accept(
         // 远程方接受了我们的 Channel 开启请求
         let channel_id = follow_id.as_str(); // object.id 就是 channel_id
         if !channel_id.is_empty() {
-            // 先取 pending channel 的远程对端 URL，再在 Rust 侧用 same_actor_url 授权
+            // 先取 pending channel 的远程对端 URL，再 `same_actor_or_user`
             let pending = db
                 .query_one_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
@@ -370,7 +362,7 @@ pub(crate) async fn handle_accept(
             let authorized = pending
                 .as_ref()
                 .and_then(|row| row.try_get::<String>("", "actor_url").ok())
-                // Align with Follow Accept: host+username case / path form drift.
+                // `same_actor_or_user`：`same_actor_url` 或同 host 的 `/users/{name}`
                 .map(|remote_url| same_actor_or_user(&accept_actor, &remote_url))
                 .unwrap_or(false);
 
@@ -419,8 +411,7 @@ pub(crate) async fn handle_accept(
             }
         }
     } else {
-        // Standard Follow Accept — match Follow object.id, then fallback to a single
-        // pending outgoing toward Accept.actor (same_actor_url). Idempotent notify.
+        // Follow Accept：见 `resolve_follow_accept_target` 三步匹配。
         handle_follow_accept(db, local_user_id, &accept_actor, &follow_id, activity).await?;
     }
 
@@ -525,9 +516,7 @@ pub fn resolve_follow_accept_target(
                 return Some((aid.clone(), remote.clone(), status == "accepted"));
             }
         }
-        // Unique id match with same host **and** username-compatible path drift.
-        // Host-only was insufficient: multi-user instances share a host, and
-        // activity ids can leak; a different /users/{name} must not Accept.
+        // Unique id + 同 host 且 username-compatible（不能跨用户）。
         let id_hits: Vec<_> = candidates
             .iter()
             .filter(|(aid, remote, _)| {
@@ -848,9 +837,8 @@ pub(crate) async fn handle_content_activity(
     // 签名只证明"请求由 activity.actor 的公钥签出"。要动对象，还得证明这个
     // Actor 有权动它 —— 否则任意联邦实例都能伪造他人内容或删除他人条目。
     //
-    // Create/Update：attributedTo 必须是签名 Actor，对象 id 必须同源。
-    // Delete：对象通常已压缩成裸 IRI，只能做同源判断，真正的所有权在下面的
-    // SQL 里用 remote_actor_id 再收一次。
+    // Create/Update：`verify_object_ownership`（attributedTo/id 缺省都放行）。
+    // Delete：`verify_object_same_origin`；时间线硬 DELETE 再按 `remote_actor_id` 收口。
     // Announce/Like：对象本来就是别人的，不适用。
     let ownership = match activity_type {
         "Create" | "Update" => Some(crate::federation::audience::verify_object_ownership(
@@ -904,7 +892,7 @@ pub(crate) async fn handle_content_activity(
     .await
     .map_err(db_err)?;
 
-    // Delete: soft-remove prior Create of the same object from this user's timeline
+    // Delete：硬删本用户时间线里该 object（不限 activity_type=Create）
     if activity_type == "Delete" {
         let object_id = activity["object"]["id"]
             .as_str()
@@ -996,10 +984,6 @@ fn timeline_preview_from_object(object: &serde_json::Value) -> Option<String> {
 }
 
 /// 留存群邻实例的公开帖，即使本地没有任何人关注作者。
-///
-/// 共享收件箱此前只做粉丝分发：没有本地粉丝的公开帖验签通过后就被丢弃，连
-/// `federation_activities` 都不落。群邻语义要的正是这批 —— 同群不同实例、
-/// 互相没关注的用户，他们的帖子必须留存，Aro 首页才有东西可查。
 ///
 /// 闸门层层收紧：签名与信任策略在 `post_shared_inbox` 已过；
 /// `may_distribute_to_followers` 挡掉定向给个人的活动；本函数再加两道 ——
@@ -1094,8 +1078,7 @@ pub(crate) async fn distribute_to_followers(
            SELECT f.user_id, $1, $2, $3, $4, $5, $6, NOW()
            FROM federation_follows f
            WHERE f.remote_actor_id = $2 AND f.direction = 'outgoing' AND f.status = 'accepted'
-           -- 去重由 (user_id, activity_id) 唯一索引保证。原先的 NOT EXISTS
-           -- 是先查后插：同一条活动并发送达时，两次扇出可以同时通过检查。
+           -- 去重由 (user_id, activity_id) 唯一索引保证。
            ON CONFLICT (user_id, activity_id) DO NOTHING"#,
         [
             activity_id_str.into(),

@@ -1,4 +1,4 @@
-//! WebSocket 网关（Phase 3 — Layer 3）
+//! WebSocket 网关
 //!
 //! 为 Channel 提供实时双向通信能力。
 //! 每个 Channel 可以有多个 WebSocket 连接（同一用户多设备）。
@@ -443,12 +443,8 @@ async fn handle_room_socket(
     let base_url = get_base_url().await;
     let local_actor = crate::federation::types::actor_url(&base_url, &username);
 
-    // 验证用户是该 Room 的**活跃**成员。
-    //
-    // 这里过去只看行是否存在，于是一个还没接受邀请（membership_status =
-    // 'pending'）的用户也能连上房间 socket，拿到此后所有消息、typing 与系统事件
-    // —— 而 REST 侧的 get_room_messages 走 require_active_member_role，明确不给
-    // pending 看历史。两条路必须同一个门槛。
+    // 验证用户是该 Room 的**活跃**成员（`membership_status = 'active'`）。
+    // 与 REST `get_room_messages` 的 `require_active_member_role` 同一门槛；pending 不能连 socket。
     use sea_orm::{ConnectionTrait as _, DatabaseBackend, Statement};
     let is_member = db
         .query_one_raw(Statement::from_sql_and_values(

@@ -1,17 +1,11 @@
-/* ============================================
-   主题变量和全局样式
-   从 index.astro 提取
-   ============================================ */
-
-/* 注册为 <color> 后，JS 改 --music-* 时浏览器才能插值渐变（非硬切）。
- *
- * ⚠️ 只注册 --music-*，壁纸色 --color-* 一律不要注册。注册会带来两个副作用：
- * 1. getComputedStyle 读到的不再是写入的 `#rrggbb`，而是 `rgb(r, g, b)`；
- *    readableColor / tapp sandbox / 各 widget 都按 hex 解析，会解析失败退兜底色。
- * 2. transition 真的生效后，样式写入当帧读到的仍是旧色，colorSubscriber
- *    的 rAF 采样会永久滞后一次壁纸切换。
- * --music-* 没有这两个问题：它只在 CSS 里消费（唯一的 JS 读取点见
- * useMusicPlayer 呼吸阴影）。详见 790ae92d 引入的回归。
+/*
+ * Registering as <color> lets JS-driven --music-* interpolate instead of snapping.
+ * Register only --music-*, never wallpaper --color-*:
+ * 1. getComputedStyle would return `rgb(r, g, b)` instead of written `#rrggbb`;
+ *    readableColor / tapp sandbox / widgets parse hex and would fall back.
+ * 2. Once the transition actually runs, a same-frame read still sees the old
+ *    color, so colorSubscriber's rAF sample lags one wallpaper switch forever.
+ * --music-* is CSS-consumed; JS only writes it from useCoverColors.
  */
 @property --music-primary {
   syntax: '<color>';
@@ -50,14 +44,13 @@
   --color-light: #cbd5e1;
   --color-dark: #475569;
 
-  /* 音乐封面主题色（由 useMusicPlayer 写入） */
+  /* Written by useCoverColors. */
   --music-primary: #6b7280;
   --music-secondary: #9ca3af;
   --music-accent: #4b5563;
   --music-light: #d1d5db;
   --music-dark: #374151;
 
-  /* 浅色模式背景色 - 纯色透明 */
   --bg-primary: #f5f5f5;
   --bg-secondary: #fff;
   --bg-tertiary: #fafafa;
@@ -73,11 +66,11 @@
   --input-bg: rgb(255 255 255 / 80%);
   --input-border: rgb(0 0 0 / 15%);
 
-  /* 音乐色（--music-*，已注册）走真插值；
-   * 壁纸色（--color-*，未注册）这几行是惰性的——自定义属性未注册即不可过渡，
-   * 壁纸换色为瞬时生效，JS 读到的即是刚写入的 hex。保留声明是为了让上面
-   * @supports 的降级查询仍有意义，切勿为了「让它动起来」去注册 --color-*。
-   * :root 特异性 (0,1,0) 高于下方 html 规则，本声明是 html 元素的实际生效值 */
+  /* Registered --music-* interpolates. Unregistered --color-* cannot transition,
+   * so wallpaper swaps are instant and JS reads the hex just written. Keep the
+   * declaration so the @supports fallback query still matches; do not register
+   * --color-* to "make it move". :root (0,1,0) beats html below, so this is
+   * the value that actually applies on html. */
   transition:
     --color-primary 0.6s ease-in-out,
     --color-secondary 0.6s ease-in-out,
@@ -91,7 +84,7 @@
     --music-dark 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* 不支持自定义属性过渡的浏览器：退化为通配过渡（自 astro 迁移） */
+/* Browsers without custom-property transitions: fall back to a wildcard transition. */
 @supports not (transition: --color-primary 0.6s) {
   * {
     transition:
@@ -108,7 +101,6 @@
   }
 }
 
-/* 深色模式变量 */
 html.dark {
   --bg-primary: #0a0a0a;
   --bg-secondary: #1a1a1a;
@@ -126,7 +118,6 @@ html.dark {
   --input-border: rgb(255 255 255 / 15%);
 }
 
-/* 全局过渡 */
 html {
   transition:
     background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1),
@@ -151,17 +142,17 @@ body {
   transition: background 0.5s ease-out;
 
   /*
-   * 隔离绘制/布局，但不做 size containment。
-   * contain:strict 含 size，在 iOS Safari 上 fixed + inset:0 偶发高度算短，
-   * 地址栏伸缩时上下露出 body 底色。
+   * Isolate paint/layout, not size. contain:strict includes size; on iOS Safari
+   * fixed + inset:0 sometimes computes short, exposing body color when the
+   * address bar resizes.
    */
   contain: layout paint style;
 
   /*
-   * 全屏壁纸层：必须盖住「最大可视区」，与主内容（min-h-screen / dvh）同级或更大。
-   * 仅靠 fixed inset-0 在 iOS 动态工具栏下会短一截；显式 height + min-height
-   * 用 lvh 兜底（背景语义用 large viewport，不是 dynamic）。
-   * 声明顺序：旧引擎 → 动态 → 大视口。
+   * Full-bleed wallpaper must cover the largest visual viewport, at least as
+   * tall as main (min-h-screen / dvh). fixed inset-0 is short under iOS dynamic
+   * toolbars; explicit height + min-height end on lvh (large viewport, not
+   * dynamic). Declaration order: legacy → dynamic → large.
    */
   position: fixed;
   inset: 0;
@@ -170,14 +161,14 @@ body {
   min-width: 100vw;
   min-width: 100dvw;
 
-  /* height 显式链：避免 height:100% 在部分 WebKit 上解析偏短 */
+  /* Explicit height chain: height:100% parses short on some WebKit. */
   height: 100%;
   height: 100vh;
   height: -webkit-fill-available;
   height: 100dvh;
   height: 100lvh;
 
-  /* 自旧到新；最后 100lvh = 地址栏收起后的最大高度，背景永不短于可视区 */
+  /* Oldest to newest; 100lvh last = max height with the address bar collapsed. */
   min-height: 100%;
   min-height: 100vh;
   min-height: -webkit-fill-available;
@@ -189,15 +180,15 @@ body {
 }
 
 /*
- * 层叠约定（与 AppLayout / useEvocativeWallpaper 对齐）：
- *   #wallpaper-awaiting-fx (z-0, 仅 awaiting)
- *   #wallpaper            (无 z-index — 切勿加 z-index，否则盖住涟漪与遮罩)
- *   #wallpaper-ripple-canvas (JS insert，z-1)
- *   #bg-gradient          (z-2 底部渐变遮罩)
+ * Stack (AppLayout / useEvocativeWallpaper):
+ *   #wallpaper-awaiting-fx (z-0, awaiting only)
+ *   #wallpaper            (no z-index — adding one would cover ripple and mask)
+ *   #wallpaper-ripple-canvas (JS insert, z-1)
+ *   #bg-gradient          (z-2)
  *   grid                  (z-3)
  */
 
-/* 首次壁纸加载：呼吸占位（真实 DOM 层，不占用 ::before/::after） */
+/* First-load placeholder: real DOM layer so ::before/::after stay free. */
 #wallpaper-awaiting-fx {
   opacity: 0;
   visibility: hidden;
@@ -231,11 +222,10 @@ body {
   opacity: 0.55;
 }
 
-/* 壁纸视差效果样式 */
 #wallpaper {
   /*
-   * 铺满 #bg-container；略向四周外扩，避免 filter:blur 在边缘透出 body 底色
-   *（parallax scale(1.02) 亦依赖溢出被父级 overflow:hidden 裁切）。
+   * Fill #bg-container; inset slightly negative so filter:blur does not show
+   * body color at the edges (parallax scale(1.02) also relies on overflow:hidden).
    */
   position: absolute;
   inset: -4%;
@@ -245,20 +235,19 @@ body {
   background-position: center;
   background-repeat: no-repeat;
 
-  /* 确保放大后的壁纸不会露出边缘 */
   transform-origin: center center;
 
-  /* GPU 加速：transform 给视差；opacity 仅用于首次/切换渐显
-     不要对 filter 做 CSS transition —— 动态模糊由 JS 每帧写入 */
+  /* transform for parallax; opacity for first/switch fade. Do not CSS-transition
+     filter — JS writes the dynamic blur every frame. */
   will-change: transform, opacity;
   backface-visibility: hidden;
   opacity: 0;
 
-  /* 由 JS 切换 .wallpaper-visible 做渐显，避免突兀出现 */
+  /* JS toggles .wallpaper-visible for the fade-in. */
   transition: opacity 0.95s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-/* 呼吸占位与涟漪 canvas 始终贴满容器（不外扩，避免合成层偏位） */
+/* Placeholder and ripple canvas fill the container (no negative inset — compositing would shift). */
 #wallpaper-awaiting-fx,
 #wallpaper-ripple-canvas,
 #bg-gradient {
@@ -277,12 +266,10 @@ body {
   transition: opacity 0.28s ease-out;
 }
 
-/* 涟漪 canvas：夹在壁纸与底部遮罩之间 */
 #wallpaper-ripple-canvas {
   z-index: 1;
 }
 
-/* 底部渐变遮罩始终盖在壁纸/涟漪之上 */
 #bg-gradient {
   z-index: 2;
 }
@@ -310,7 +297,6 @@ body {
   }
 }
 
-/* 低端设备禁用视差动画 */
 @media (prefers-reduced-motion: reduce) {
   #wallpaper {
     transform: scale(1.02) !important;
@@ -352,24 +338,18 @@ html.dark #bg-container.wallpaper-awaiting #wallpaper-awaiting-fx::after {
   background-size: 200% 100%;
 }
 
-/* ============================================
-   表面令牌（surface tokens）
-   .glass 消费这组令牌；表面主题通过 html[data-surface] 切换令牌值，
-   全站所有 .glass 组件（小组件 / 控制岛 / 弹窗 / 页面卡）自动跟随。
-   默认 = 玻璃态，与历史观感一致（零回归）。见 useWidgetTheme。
-   ============================================ */
+/* Surface tokens consumed by .glass; html[data-surface] switches values. Default is glass. See useWidgetTheme. */
 :root {
-  /* 基色（随明暗切换）；--surface-alpha 是透明度的抽象点，各组件可覆盖以保留自身配置 */
+  /* Base follows light/dark. --surface-alpha is the opacity hook; components may override. */
   --surface-rgb: 255 255 255;
 
-  /* 默认底略提高透明度（更透一点点）；档位类 glass-60/70/90/95 仍可覆盖 */
+  /* Default fill is slightly more open; glass-60/70/90/95 still override. */
   --surface-alpha: 74%;
 
-  /* 边框：浅色提高透明度（更透、更淡）；仍是单层 1px solid（暗色见 html.dark） */
   --surface-border: rgb(255 255 255 / 10%);
   --surface-filter: blur(16px) saturate(180%);
 
-  /* 顶部浸润高光：流体 sheen 的淡版（约 1/3 强度），solid/flat/outline 会清掉 --surface-bg */
+  /* Top sheen: ~1/3 of liquid strength. solid/flat/outline clear --surface-bg. */
   --surface-sheen: linear-gradient(
     180deg,
     rgb(255 255 255 / 6%),
@@ -378,18 +358,14 @@ html.dark #bg-container.wallpaper-awaiting #wallpaper-awaiting-fx::after {
   --surface-bg:
     var(--surface-sheen), rgb(var(--surface-rgb) / var(--surface-alpha));
 
-  /* 阴影栈（流体边处理的极简子集，纯绘制可缓存）：
-     1) inset 顶 1px 弱高光
-     2) inset 底 1px 弱发丝线
-     3) 单层环境外影（历史玻璃观感）
-     已拿掉：底缘内接触影 / 内发光 / 双层外影 / 主题色长影 —— 那些流体味更重 */
+  /* Shadow stack (paint-cacheable): inset top highlight, inset bottom hairline, one outer drop. */
   --surface-shadow:
     inset 0 1px 0 rgb(255 255 255 / 28%),
     inset 0 -1px 0 rgb(0 0 0 / 4%),
     0 8px 28px 0 rgb(31 38 135 / 10%);
 
-  /* Chrome 流体令牌（导航岛 / 控制面板）：默认玻璃也吃。
-     透明度 / 投影对齐设置页 frost + subtle，不加 blur / 噪点 / 滤镜。 */
+  /* Chrome tokens (nav island / control panel); default glass uses them too.
+     Opacity / shadow match settings frost + subtle — no blur, noise, or filter. */
   --chrome-sheen: var(--surface-sheen);
   --chrome-shine: inset 0 1px 0 rgb(255 255 255 / 52%);
   --chrome-hairline: inset 0 -1px 0 rgb(0 0 0 / 5%);
@@ -411,7 +387,7 @@ html.dark #bg-container.wallpaper-awaiting #wallpaper-awaiting-fx::after {
 html.dark {
   --surface-rgb: 26 26 26;
 
-  /* 暗色：低白度细边，靠底发丝 + 外影勾轮廓，避免发白 */
+  /* Dark: low-white hairline; bottom hairline + outer shadow for edge, not a white rim. */
   --surface-border: rgb(255 255 255 / 12%);
   --surface-sheen: linear-gradient(
     180deg,
@@ -439,10 +415,9 @@ html.dark {
   --chrome-chip-shadow: 0 1px 2px rgb(0 0 0 / 18%);
 }
 
-/* 表面模式只调「透明度 + 滤镜（+ 边框/阴影）」，基色与各组件 alpha 保持解耦 */
+/* Surface modes only change opacity + filter (+ border/shadow); base color stays decoupled from component alpha. */
 
-/* 纯色：不透明卡片底，无 backdrop-filter（低端设备更快）
-   清掉默认玻璃的 sheen 层，回落到基色+透明度 */
+/* Opaque fill, no backdrop-filter. Drops default-glass sheen to base+alpha. */
 :root[data-surface='solid'] {
   --surface-alpha: 100%;
   --surface-border: var(--border-color);
@@ -451,7 +426,7 @@ html.dark {
   --surface-bg: rgb(var(--surface-rgb) / var(--surface-alpha));
 }
 
-/* 轻盈：半透明纯色，无模糊，壁纸隐约可见 */
+/* Translucent fill, no blur; wallpaper shows through. */
 :root[data-surface='flat'] {
   --surface-alpha: 65%;
   --surface-border: var(--border-color);
@@ -460,7 +435,7 @@ html.dark {
   --surface-bg: rgb(var(--surface-rgb) / var(--surface-alpha));
 }
 
-/* 描边：极淡背景（保证内容可读，非纯透明）+ 克制的细边框 */
+/* Very light fill (readable, not fully transparent) + a thin border. */
 :root[data-surface='outline'] {
   --surface-alpha: 20%;
   --surface-border: var(--border-color);
@@ -469,11 +444,10 @@ html.dark {
   --surface-bg: rgb(var(--surface-rgb) / var(--surface-alpha));
 }
 
-/* 流体玻璃：以轮廓折射和透底为主，保留顶部发丝高光与一层环境投影。
-   不叠噪点、镜面流光、环境反光和多层大范围辉光。 */
+/* Liquid: contour refraction and see-through, plus top hairline and one drop shadow.
+   No noise, specular sweep, environment reflection, or stacked bloom. */
 
-/* .glass-liquid 是局部强制入口：用于即使全局选择其他表面，也必须保持
-   完整 Liquid 光学与交互的少量浮动 chrome。 */
+/* .glass-liquid forces full liquid optics on a few floating chrome pieces even when the global surface is not liquid. */
 :root[data-surface='liquid'],
 .glass-liquid {
   --surface-sheen: linear-gradient(
@@ -482,7 +456,7 @@ html.dark {
     rgb(255 255 255 / 0%) 48%
   );
 
-  /* 菲涅尔效应：正视的中心最透，掠射角的边缘反射增强、更不透 */
+  /* Fresnel: center more transmissive; grazing edges more reflective. */
   --surface-tint: radial-gradient(
     120% 120% at 50% 50%,
     color-mix(in srgb, rgb(var(--surface-rgb) / 26%), var(--color-primary) 7%)
@@ -494,16 +468,16 @@ html.dark {
   --surface-filter: blur(3px) saturate(200%) brightness(1.06);
   --surface-border: rgb(255 255 255 / 60%);
 
-  /* 顶/底发丝线勾轮廓，单层环境影表达浮起高度。 */
+  /* Top/bottom hairlines; one drop shadow for lift. */
   --surface-shadow:
     inset 0 1px 0 rgb(255 255 255 / 50%), inset 0 -1px 0 rgb(0 0 0 / 7%),
     0 8px 24px -8px rgb(31 38 135 / 20%);
 }
 
-/* 暗色流体沿用烟熏底与单层环境影，压暗由透镜的色调曲线负责。 */
+/* Dark liquid keeps a smoked fill and one drop; the lens tone curve handles darkening. */
 html.dark[data-surface='liquid'],
 html.dark .glass-liquid {
-  /* 暗色流体基色压到近黑（微偏蓝的烟熏），#1a1a1a 在高透下会发灰泛亮 */
+  /* Near-black smoked base (slightly blue). #1a1a1a reads grey and bright at high transparency. */
   --surface-rgb: 4 4 8;
   --surface-sheen: linear-gradient(
     180deg,
@@ -524,9 +498,9 @@ html.dark .glass-liquid {
     0 8px 24px -8px rgb(0 0 0 / 45%);
 }
 
-/* 几何折射由 surfaceLenses 按元素尺寸生成。根令牌始终保留纯 CSS 回退，
-   --hyalite 只在绑定元素上消费，避免继承父卡尺寸的滤镜。
-   高透底仅用于启用光学的桌面档；移动端/低性能档仍走原有回退。 */
+/* Geometry refraction is per-element (surfaceLenses). Root tokens stay pure-CSS fallbacks;
+   --hyalite is consumed only on the bound element so parent-card filter sizes do not inherit.
+   High-transparency fill is desktop optics only; mobile / low-perf keep the fallback. */
 html.surface-lens[data-surface='liquid'],
 html.surface-lens .glass-liquid {
   --surface-sheen: linear-gradient(
@@ -543,7 +517,7 @@ html.surface-lens .glass-liquid {
   );
 }
 
-/* 暗色透镜在引擎中压肩吸光，CSS 只提供烟熏底和饱和度。 */
+/* Dark lens shoulders absorb in the engine; CSS only supplies smoked fill and saturation. */
 html.dark.surface-lens[data-surface='liquid'],
 html.dark.surface-lens .glass-liquid {
   --surface-sheen: linear-gradient(
@@ -560,17 +534,16 @@ html.dark.surface-lens .glass-liquid {
   );
 }
 
-/* 凝胶交互手感（Liquid Glass 的另一半辨识度）：仅可交互玻璃生效——
-   悬停微浮起、按压如捏凝胶般缩沉并提亮。transform/filter 都走合成层，
-   只在交互瞬间有成本；过冲贝塞尔给出果冻回弹。
-   framer-motion 接管 transform 的卡片（内联样式优先）自动豁免不冲突 */
+/* Gel press: interactive glass only. transform/filter stay on the compositor
+   (cost only while interacting); overshoot easing is the rebound.
+   Cards whose transform is owned by motion (inline style wins) are exempt. */
 @media (hover: hover) {
   :root[data-surface='liquid']
       :is(.glass, .glass-surface):is(a, button, [role='button'], .cursor-pointer):hover,
   .glass-liquid:is(a, button, [role='button'], .cursor-pointer):hover {
     transform: translateY(-1px) scale(1.012);
 
-    /* !important：压过上方 .glass 令牌夺回，保留流体悬停加亮边 */
+    /* !important beats .glass token reclaim so the liquid hover edge stays brighter. */
     border-color: rgb(255 255 255 / 70%) !important;
   }
 
@@ -600,8 +573,8 @@ html.dark.surface-lens .glass-liquid {
   transition-duration: 0.3s, 0.3s, 0.3s, 0.09s, 0.09s;
 }
 
-/* exlight：流体/描边在 blur 关掉后仍是高透 tint，读作未完成的毛玻璃。
-   退回实底；凝胶悬停/按压一并关掉。 */
+/* exlight: liquid/outline tint stays high-transparency after blur is off and still
+   reads as unfinished frost. Disable gel hover/press. */
 html[data-perf-mode='exlight']
   :is(.glass, .glass-surface, .glass-liquid):is(
     a,
@@ -620,38 +593,35 @@ html[data-perf-mode='exlight']
   filter: none !important;
 }
 
-/* 玻璃需要背后有光 —— 这是流体玻璃可见性的第一前提。
-   #bg-gradient 默认把页面下部（恰是小组件区）压到 90-95% 的纯色场，
-   玻璃背后没有任何明暗/色彩结构，折射和高光的输入是一片平坦，
-   输出必然也是一片平坦 —— 滤镜再完善也渲染不出「玻璃感」。
-   流体模式下把遮罩整体减淡（元素已带 opacity 过渡，切换平滑），
-   壁纸的光与色得以到达玻璃背后；卡内可读性由玻璃自身 tint 保障 */
+/* Liquid glass needs structure behind it. Default #bg-gradient crushes the
+   lower page (the widget zone) to a 90–95% flat field, so refraction has
+   nothing to sample. Lower the mask in liquid (the element already transitions
+   opacity); card readability comes from the glass tint. */
 :root[data-surface='liquid'] #bg-gradient {
   opacity: 0.45;
 }
 
-/* ============================================
-   表面底（基色 + 透明度 + 滤镜）—— 唯一声明处，三类消费者：
-   1. .glass          完整玻璃卡（另带边框/阴影/过渡，见下）
-   2. .glass-surface  手写玻璃卡的统一底（Tapp/Brew 卡片、控制岛等）：
-                      替代内联 `bg-white/X dark:bg-Y backdrop-blur-Z`，
-                      边框/阴影/圆角仍由使用处的工具类保留
-   3. 浮动 chrome     （导航岛/控制面板/页脚/AI 面板）各自硬编码了调校过的
-                      玻璃质感，默认态保留原样，仅切非玻璃表面时收敛跟随
-   ============================================ */
+/*
+ * Surface fill (base + alpha + filter) — sole declaration, three consumers:
+ * 1. .glass — full glass card (border/shadow/transition below)
+ * 2. .glass-surface — shared fill for hand-written glass (Tapp/Brew cards,
+ *    control island); replaces inline bg-white/X + backdrop-blur-Z; chrome
+ *    utilities at the call site stay
+ * 3. Floating chrome: nav islands, control-bar trigger, footer.
+ *    Agent overlay is .glass (consumer 1). Non-glass surfaces converge onto tokens.
+ */
 .glass,
 .glass-surface,
 :root[data-surface] .dynamic-island,
 :root[data-surface] .secondary-island,
 :root[data-surface] .control-bar-trigger,
 :root[data-surface] .site-footer-content {
-  /* --surface-bg 是逃逸令牌：表面模式可用它声明任意背景表达式
-     （如 liquid 的 color-mix 吸色），未声明时回落到基色+透明度 */
+  /* --surface-bg is an escape hatch for arbitrary fills (e.g. liquid color-mix);
+     unset falls back to base+alpha. */
   background: var(--surface-bg, rgb(var(--surface-rgb) / var(--surface-alpha)));
   backdrop-filter: var(--surface-filter);
 }
 
-/* 完整玻璃卡的装饰（边框/阴影/过渡） */
 .glass {
   border: 1px solid var(--surface-border);
   box-shadow: var(--surface-shadow);
@@ -661,14 +631,14 @@ html[data-perf-mode='exlight']
     box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* 令牌夺回 —— 同元素上的 Tailwind 工具类常把边框/阴影盖掉：
-   · border-white/20 · dark:border-white/10（dark: 变体特异性 (0,2,0)）
-   · shadow-lg / shadow-xl（整段替换 box-shadow，inset 高光栈全丢）
-   · overrides.css 里 .border-gray-200/50 的 !important
-   用 html(.dark) .glass + !important 压过上述。
-   排除条件包在 :where() 里（零特异性），避免堆 :not 抬特异性压死流体 hover。
-   语义状态色边框按 class 名放行；逃生口：.glass-chrome-free / .glass-elev-free。
-   .glass-surface 仍按设计保留使用处工具类，不在此夺回。 */
+/* Reclaim tokens from same-element Tailwind that would clobber border/shadow:
+   border-white/20, dark:border-white/10 (dark: is (0,2,0)),
+   shadow-lg / shadow-xl (replaces the whole box-shadow, inset stack gone),
+   overrides.css .border-gray-200/50 !important.
+   html(.dark) .glass + !important beats those. Put exclusions in :where()
+   (zero specificity) so stacked :not does not kill liquid hover.
+   Semantic status borders pass by class name; escape: .glass-chrome-free /
+   .glass-elev-free. .glass-surface keeps call-site utilities. */
 html
   .glass:where(
     :not([class*='border-red'], [class*='border-rose'], [class*='border-amber'], [class*='border-orange'], [class*='border-yellow'], [class*='border-green'], [class*='border-emerald'], .glass-chrome-free)),
@@ -683,12 +653,10 @@ html.dark .glass:where(:not(.glass-elev-free)) {
   box-shadow: var(--surface-shadow) !important;
 }
 
-/* 内容密集的 chrome（控制面板信息岛 / Agent 面板 / 对话框）原生为 90%+ 不透明底，
-   —— Agent 面板要在里面读长回复，这一档尤其不能透穿。
-   流体的高透底会压穿其可读性——升回 90% 不透明，高光与滤镜自动保留。
-   ⚠️ 必须连 --surface-bg 一起在元素上重新声明：自定义属性里的 var()
-   在「声明处」（根）即被替换烘焙后才继承，元素级只改 --surface-tint
-   动不了已烘焙的 --surface-bg（此前仅覆盖 tint 的写法即因此失效） */
+/* Dense chrome: control-bar/dialog 80%; agent overlay 94%. Redeclare
+   --surface-bg on the element: var() in a custom property is baked at the
+   declaration site (the root), so changing only --surface-tint cannot move
+   an already-baked --surface-bg. */
 :root[data-surface='liquid'] .control-bar-trigger,
 :root[data-surface='liquid'] .surface-dialog {
   --surface-tint: color-mix(
@@ -709,16 +677,16 @@ html.dark .glass:where(:not(.glass-elev-free)) {
   --surface-bg: var(--surface-sheen), var(--surface-tint);
 }
 
-/* 控制面板 / 对话框不跟随暗色流体的近黑基色（用户要求它与整体隔离调校），
-   钉回原烟熏基色。对话框另见：全屏黑 scrim 上叠 near-black glass 会双倍压暗 */
+/* Control panel / dialogs do not follow dark-liquid near-black; pin the smoked
+   base. A near-black glass on a full-screen black scrim would double-crush. */
 html.dark[data-surface='liquid'] .control-bar-trigger,
 html.dark[data-surface='liquid'] .surface-dialog,
 html.dark[data-surface='liquid'] .agent-panel-overlay-anchor {
   --surface-rgb: 26 26 26;
 }
 
-/* 流体下对话框遮罩略减黑：让玻璃 backdrop 能拾一点壁纸色，而不是纯黑 slab。
-   仅限 .surface-dialog-backdrop，不改全局 overlay */
+/* Liquid dialog scrim is less black so glass backdrop can pick up wallpaper, not a black slab.
+   .surface-dialog-backdrop only; do not change the global overlay. */
 :root[data-surface='liquid'] .surface-dialog-backdrop {
   background-color: rgb(0 0 0 / 18%);
 }
@@ -727,11 +695,10 @@ html.dark[data-surface='liquid'] .surface-dialog-backdrop {
   background-color: rgb(0 0 0 / 20%);
 }
 
-/* 控制面板信息岛的流体边框适配：组件自带的中性边框/阴影换成表面令牌
-   （镜面高光边 + 玻璃发丝线 + 环境投影）；展开态保留其自身更深的
-   浮层投影（大面板需要更强的高度层级）。hover 覆盖列表逐档压过
-   组件自身 html.dark …:hover (0,4,1) 的特异性；!important 压过
-   组件 CSS 与 ISLAND_GLASS 工具类边框/阴影 */
+/* Control-bar island: swap the component's neutral border/shadow for surface
+   tokens. Expanded state keeps its own deeper overlay shadow. Hover list
+   beats the component's html.dark …:hover (0,4,1); !important beats component
+   CSS and ISLAND_GLASS utilities. */
 :root[data-surface='liquid'] .control-bar-trigger {
   border-color: var(--surface-border) !important;
 }
@@ -747,8 +714,8 @@ html.dark[data-surface='liquid'] .control-bar-trigger:not(.expanded):hover {
   box-shadow: var(--surface-shadow) !important;
 }
 
-/* 保留原流体卡片的定位上下文，内部绝对定位控件依赖它。
-   旧渐变彩边与双层蒙版已删除，轮廓由边框和透镜光照表达。 */
+/* Keep a positioning context: inner absolutely positioned controls depend on it.
+   Outline comes from border and lens lighting. */
 @supports (mask-composite: exclude) {
   :root[data-surface='liquid']
       :is(.glass, .glass-surface, .control-bar-trigger):not(.fixed, .absolute),
@@ -757,8 +724,8 @@ html.dark[data-surface='liquid'] .control-bar-trigger:not(.expanded):hover {
   }
 }
 
-/* 每个元素消费自己的透镜；不要将此表达式放在根 --surface-filter 上。
-   明确以性能/视口门控，切档当帧就回退，不等待 JS 的下一帧清理。 */
+/* Each element consumes its own lens; do not put this on root --surface-filter.
+   Gate on perf/viewport so fallback is same-frame, not waiting for JS cleanup. */
 @media (width >= 768px) and (prefers-reduced-motion: no-preference) {
   html.surface-lens:not([data-perf-mode='light'], [data-perf-mode='exlight'])
     [data-liquid-lens] {
@@ -770,7 +737,7 @@ html.dark[data-surface='liquid'] .control-bar-trigger:not(.expanded):hover {
     backdrop-filter: var(--hyalite, blur(2px)) saturate(140%);
   }
 
-  /* 内容区保持足够底色，边缘让出光路；滤镜负责折射，不再叠假彩边。 */
+  /* Keep enough fill in the content area; edges leave a light path. Filter does refraction. */
   html.surface-lens
     :is(.control-bar-trigger, .surface-dialog)[data-liquid-lens='chrome'] {
     --surface-tint: radial-gradient(
@@ -787,11 +754,10 @@ html.dark[data-surface='liquid'] .control-bar-trigger:not(.expanded):hover {
   }
 }
 
-/* .glass-surface 的透明度档位：仅玻璃默认态生效，
-   切非玻璃主题时让位给全局收敛。
-   必须连 --surface-bg 一起在元素上重声明，否则根上已烘焙的
-   rgb(… / 74%) 不会跟着 --surface-alpha 变（见上方 liquid chrome 注释）。
-   面板用 .glass / .glass-surface + 档位，不要写 bg-white/X + backdrop-blur。 */
+/* .glass-surface opacity tiers: default glass only; non-glass themes yield to
+   global convergence. Redeclare --surface-bg on the element or the root-baked
+   rgb(… / 74%) will not follow --surface-alpha (see liquid chrome above).
+   Panels use .glass / .glass-surface + a tier, not bg-white/X + backdrop-blur. */
 :root:not([data-surface]) .glass-30 {
   --surface-alpha: 30%;
 }
@@ -839,8 +805,8 @@ html.dark[data-surface='liquid'] .control-bar-trigger:not(.expanded):hover {
     var(--surface-sheen), rgb(var(--surface-rgb) / var(--surface-alpha));
 }
 
-/* Brew 阅读器：纸色写入 --surface-rgb，并重声明 --surface-bg，
-   避免子级仍继承根上已烘焙的站点白/黑。 */
+/* Brew reader: paper color into --surface-rgb and redeclare --surface-bg so
+   descendants do not keep the root-baked site white/black. */
 [data-brew-reader][data-brew-theme='light'] {
   --surface-rgb: 255 249 240;
 }
@@ -857,14 +823,14 @@ html.dark[data-surface='liquid'] .control-bar-trigger:not(.expanded):hover {
   --surface-rgb: 22 27 34;
 }
 
-/* 只在默认玻璃态重声明底；liquid/solid/flat/outline 继续吃全局表面栈。 */
+/* Redeclare fill only on default glass; liquid/solid/flat/outline keep the global stack. */
 :root:not([data-surface]) [data-brew-reader] {
   --surface-bg:
     var(--surface-sheen), rgb(var(--surface-rgb) / var(--surface-alpha));
 }
 
-/* 主题选择器里的表面预览色块：静态呈现四种质感，
-   不读全局令牌（否则会跟随当前 data-surface 而非展示各自样式） */
+/* Theme-picker swatches: static samples of each surface. Do not read global
+   tokens or they would follow the current data-surface instead of their own look. */
 .surface-swatch--glass {
   background:
     linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 0%) 40%),
@@ -940,7 +906,6 @@ html.dark .surface-swatch--liquid {
     inset 0 1px 0 rgb(255 255 255 / 18%);
 }
 
-/* 背景网格 */
 .bg-grid-pattern {
   background-image:
     linear-gradient(rgb(255 255 255 / 5%) 1px, transparent 1px),
@@ -953,8 +918,6 @@ html.dark .bg-grid-pattern {
     linear-gradient(rgb(255 255 255 / 2%) 1px, transparent 1px),
     linear-gradient(90deg, rgb(255 255 255 / 2%) 1px, transparent 1px);
 }
-
-/* dark #bg-container base is defined with wallpaper-awaiting styles above */
 
 html.dark #bg-gradient {
   background: linear-gradient(
@@ -970,7 +933,6 @@ html.dark #bg-gradient {
   transition: opacity 0.5s ease-out;
 }
 
-/* 彻底隐藏滚动条 */
 html,
 body,
 * {
@@ -985,7 +947,6 @@ body::-webkit-scrollbar,
   height: 0 !important;
 }
 
-/* 文本选择 */
 ::selection {
   background: color-mix(in srgb, var(--color-primary) 30%, transparent);
   color: var(--text-primary);
@@ -996,7 +957,6 @@ html.dark ::selection {
   color: #fff;
 }
 
-/* 占位符 */
 ::placeholder {
   color: var(--text-muted);
   opacity: 0.7;
@@ -1006,7 +966,6 @@ html.dark ::placeholder {
   opacity: 0.5;
 }
 
-/* 移动端基础字号（自 astro 页面级样式迁移） */
 @media (width <= 640px) {
   body {
     font-size: 15px;
@@ -1019,7 +978,6 @@ html.dark ::placeholder {
   }
 }
 
-/* 移动端优化 */
 @media (width <= 767px) {
   html,
   body {
@@ -1028,7 +986,7 @@ html.dark ::placeholder {
     touch-action: pan-y pinch-zoom;
   }
 
-  /* 移动端降级：仅影响玻璃默认态的令牌（非玻璃表面各自的令牌特异性更高，不受影响） */
+  /* Mobile downgrade: default-glass tokens only (non-glass surfaces out-specify this). */
   :root {
     --surface-filter: blur(8px) saturate(180%);
     --surface-shadow: 0 4px 16px 0 rgb(31 38 135 / 8%);
@@ -1038,7 +996,7 @@ html.dark ::placeholder {
     --surface-shadow: 0 4px 16px 0 rgb(0 0 0 / 40%);
   }
 
-  /* 移动端使用单次 4px 模糊；JS 同步解绑，停止生成透镜贴图。 */
+  /* Mobile: single 4px blur. JS unbinds the same frame and stops generating lens maps. */
   :root[data-surface='liquid'],
   html.surface-lens[data-surface='liquid'],
   .glass-liquid,
@@ -1054,13 +1012,6 @@ html.dark ::placeholder {
   }
 }
 
-/*
- * 移动端底栏留白：勿对全局 section 加 padding-bottom。
- * 各页内容壳已有 pb-*；内部 section（选项指南分节、SetupFlow 等）会被误伤。
- * 见 layouts/AppLayout.css 同题注释。
- */
-
-/* 减少动画 (用户偏好) */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -1072,9 +1023,9 @@ html.dark ::placeholder {
 }
 
 /*
- * exlight + 流体/描边：blur 已由 performance.css 清掉，但 tint 仍是 18–42%。
- * 半透明叠壁纸 = 毛玻璃观感还在。压过明暗 × surface-lens 的全部组合。
- * flat（本就无 blur 的轻盈半透）不改。
+ * exlight + liquid/outline: performance.css already cleared blur, but tint is
+ * still 18–42%. Translucent-over-wallpaper still reads as frost. Beat every
+ * light/dark × surface-lens combo. flat (already unblurred) is unchanged.
  */
 html[data-perf-mode='exlight'][data-surface='liquid'],
 html[data-perf-mode='exlight'][data-surface='outline'],

@@ -100,8 +100,7 @@ impl AnimeDatabase {
                                         aliases: json_entry.aliases.clone(),
                                     };
                                     entries.insert(json_entry.title.clone(), entry.clone());
-                                    // Index aliases too? Maybe not in the main map to avoid duplicates in iteration,
-                                    // but find() should handle it.
+                                    // 主 map 只按 title 插入；别名由 find() 扫描 aliases。
                                 } else {
                                     error!("Invalid category for entry: {}", json_entry.title);
                                 }

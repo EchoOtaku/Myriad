@@ -1,33 +1,22 @@
-/**
- * Shared pure package-file map for Playground .tapp export and direct install.
- *
- * Both `exportPlaygroundTapp` (ZIP) and `buildDirectTappRequest` (install JSON)
- * must derive file paths and layer layout from this builder so export →
- * install-file and install-from-code stay consistent.
- */
+/** ZIP 导出与 direct 安装共用同一份包文件图。 */
 
 import type { TappPlaygroundCode } from '../services/TappPlaygroundService'
 import type { TappCodeStructure, TappManifest } from '../types'
 import { generateOnDemandTailwindCSS } from '../runtime/sandbox/styles'
 
-/** Package entry content: text files as string; binary assets as Uint8Array. */
 export type PackageFileContent = string | Uint8Array
 
 export interface PlaygroundPackageFiles {
-  /** Manifest with default paths filled so every entry has a declared path. */
   manifest: TappManifest
-  /** Relative package-root path → content (layout of a .tapp ZIP). */
   files: Record<string, PackageFileContent>
 }
 
-/** Playground 固定的包内布局。多文件拆分属于另一个议题，不在这里放开。 */
 export const PLAYGROUND_CORE_ENTRY = 'core.js'
 export const PLAYGROUND_STYLES = 'styles.css'
 export const PLAYGROUND_PAGE_ENTRY = 'page/index.js'
 export const PLAYGROUND_PAGE_TEMPLATE = 'page.html'
 export const PLAYGROUND_WIDGET_ENTRY = 'widget/index.js'
 
-/** 包内 `.js` 文件表：相对路径 → 源码。 */
 export function buildPlaygroundModules(
   code: TappPlaygroundCode,
 ): Record<string, string> {
@@ -39,17 +28,11 @@ export function buildPlaygroundModules(
   return modules
 }
 
-/**
- * 把编辑态代码投影成运行时模块表，供 Playground 预览与示例应用直接进沙箱。
- *
- * 走的是与打包完全相同的布局，预览里跑的东西和装出来的包才是同一份。
- */
 export function playgroundCodeToRuntime(
   manifest: Pick<TappManifest, 'widgets'>,
   code: TappPlaygroundCode,
 ): TappCodeStructure {
   const modules = buildPlaygroundModules(code)
-  // 按真实 widget id 建表：沙箱按 id 取自己那层的入口，编造的 key 会让预览取不到。
   const widgetEntries =
     PLAYGROUND_WIDGET_ENTRY in modules
       ? Object.fromEntries(
@@ -94,10 +77,6 @@ export function playgroundCodeToRuntime(
   }
 }
 
-/**
- * Fill default resource paths on the manifest so package entries and install
- * staging write to the same locations.
- */
 export function normalizeManifestForPackage(
   manifest: TappManifest,
   code: TappPlaygroundCode,
@@ -109,7 +88,6 @@ export function normalizeManifestForPackage(
     ...(code.styles ? { styles: PLAYGROUND_STYLES } : {}),
   }
 
-  // 页面存在与否由内容决定：有 page 代码或模板才声明 page 层。
   const hasUsablePageHtml = !!(code.pageHtml && code.pageHtml.trim())
   const hasPageCode = !!(code.page && code.page.trim())
   if (hasUsablePageHtml || hasPageCode) {
@@ -157,10 +135,6 @@ function assetPackagePath(path: string): string {
     : `assets/${path.replace(/^\/+/, '')}`
 }
 
-/**
- * Decode data-URL / raw base64 asset payloads for ZIP binary entries.
- * Non-base64 strings are returned as-is (e.g. JSON asset text).
- */
 export function decodeAssetPayload(value: string): PackageFileContent {
   const dataUrlMatch = value.match(/^data:[^;]+;base64,(.+)$/s)
   if (dataUrlMatch) {
@@ -188,17 +162,7 @@ function base64ToBytes(base64: string): Uint8Array {
   return bytes
 }
 
-/**
- * Pure builder: package paths and contents shared by ZIP export and direct install.
- *
- * Layout keys (when present in code/manifest):
- * - manifest.json
- * - core.js / page/index.js / widget/index.js（层入口）
- * - styles.css / page.html
- * - widget template paths from manifest.widgets[].templates
- * - i18n/{lang}.json
- * - assets/...
- */
+/** 固定三文件层入口：core.js / page/index.js / widget/index.js。 */
 export function buildPlaygroundPackageFiles(
   manifest: TappManifest,
   code: TappPlaygroundCode,
@@ -215,7 +179,6 @@ export function buildPlaygroundPackageFiles(
     files[PLAYGROUND_STYLES] = code.styles
   }
 
-  // Omit page.html for widget-only packages (no usable pageHtml).
   if (code.pageHtml && code.pageHtml.trim()) {
     files[PLAYGROUND_PAGE_TEMPLATE] = code.pageHtml
   }
@@ -244,10 +207,6 @@ export function buildPlaygroundPackageFiles(
   return { manifest: normalized, files }
 }
 
-/**
- * Map package files into direct-install API fields (source=direct JSON body).
- * Does not include permissions or generated widgetCss/pageCss — callers add those.
- */
 export function packageFilesToDirectInstallBody(
   pkg: PlaygroundPackageFiles,
   originalAssets?: Record<string, string>,
@@ -269,7 +228,7 @@ export function packageFilesToDirectInstallBody(
     return typeof raw === 'string' ? raw : new TextDecoder().decode(raw)
   }
 
-  // 层入口及其依赖：包里的 `.js` 一并送上去，安装时按 manifest 层声明校验。
+  // 层入口及其依赖：包里的 .js 一并送上，安装时按 Manifest 层声明校验。
   const modules: Record<string, string> = {}
   for (const [path, content] of Object.entries(files)) {
     if (!path.endsWith('.js')) continue
@@ -313,11 +272,9 @@ export function packageFilesToDirectInstallBody(
       i18n = i18n || {}
       i18n[match[1]] = JSON.parse(text) as unknown
     } catch {
-      // Skip invalid i18n JSON; install validation will surface issues.
     }
   }
 
-  // Prefer original base64/data-URL asset map for the install API shape.
   const assets =
     originalAssets && Object.keys(originalAssets).length > 0
       ? originalAssets

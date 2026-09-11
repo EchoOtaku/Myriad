@@ -33,7 +33,7 @@ pub(crate) const VISITOR_RETENTION_DAYS: i64 = 90;
 pub(crate) const DAILY_RETENTION_DAYS: i64 = 365;
 /// Collect/pageview posts per client IP per minute (handler-level).
 /// Keep at or above middleware `ANALYTICS_WRITE_MAX` so the shared middleware
-/// bucket is the primary gate; 36 was below SPA engage+nav bursts.
+/// bucket is the primary gate.
 const RATE_LIMIT_PER_MINUTE: u32 = 90;
 const VIEW_DEDUPE_WINDOW: StdDuration = StdDuration::from_secs(3);
 const DEFAULT_ANALYTICS_SALT: &str = "myriad-analytics-v1";

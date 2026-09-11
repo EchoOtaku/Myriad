@@ -8,6 +8,8 @@ import {
   speechEnergyDriverPatch,
 } from '../../../src/features/merope/anime25drig/speechDriver'
 import { bindCharacterTouch } from '../../../src/features/merope/interaction/bindTouch'
+import { TouchAppraisal } from '../../../src/features/merope/interaction/touchAppraisal'
+import { TouchGestureTracker } from '../../../src/features/merope/interaction/touchGesture'
 import {
   applyMotionFrame,
   createMotionApplyState,
@@ -194,7 +196,7 @@ Object.assign(window, {
   },
 })
 
-async function touchSurface() {
+async function touchSurface(region = 'face') {
   const psd = fixture('ordinary')
   psd.height = 300
   const prepared = await prepareRigPsdImport(new File([writePsd(psd)], 'touch-live.psd'), '/unused.png')
@@ -206,19 +208,22 @@ async function touchSurface() {
   const url = URL.createObjectURL(prepared.atlas)
   await player.loadAtlas(url)
   player.resize(256, 300, 1)
-  player.setTarget({ idle: false, blink: false })
+  // This fixture isolates touch. Speech/music overlap has its own full replay;
+  // the driver's default talk=true otherwise adds unrequested talking motion.
+  player.setTarget({ idle: false, blink: false, rand: false, talk: false })
   player.tick(1 / 60)
   const runtime = new MotionRuntime(new RigMotionCoordinator())
   const events: string[] = []
   const unbind = bindCharacterTouch(canvas, (x, y) => player.hitTestTouch(x, y), (touch, now) => {
     events.push(`${touch.phase}:${touch.gesture}`)
     runtime.touch.update('test-surface', touch, now)
-  })
+  }, () => runtime.touch.release('test-surface'))
   let raf = 0
   let revision = -1
   const tick = () => {
     const now = performance.now()
     const frame = runtime.frame(now)
+    player.setMotionPolicy(frame.snapshot.owners)
     if (frame.behaviorRevision !== revision) {
       revision = frame.behaviorRevision
       if (frame.behaviorPlan) player.setBehaviorMotionUnits(realizeAnime25DBehaviorPlan(frame.behaviorPlan, now).units, now)
@@ -232,12 +237,12 @@ async function touchSurface() {
   let point: { x: number; y: number } | null = null
   for (let y = bounds.top + 20; y < bounds.bottom - 20 && !point; y += 10) {
     for (let x = bounds.left + 20; x < bounds.right - 20; x += 10) {
-      if (player.hitTestTouch(x, y)?.region === 'face') { point = { x, y }; break }
+      if (player.hitTestTouch(x, y)?.region === region) { point = { x, y }; break }
     }
   }
   Object.assign(window, { touchSurfaceState: {
     events,
-    current: () => ({ active: runtime.touch.current() !== null, pose: player.getCurrent() }),
+    current: () => ({ active: runtime.touch.current() !== null, form: runtime.touch.current()?.behaviors[0].form.id, pose: player.getCurrent() }),
     dispose: () => {
       unbind(); runtime.touch.release(); cancelAnimationFrame(raf)
       player.dispose(); canvas.remove(); URL.revokeObjectURL(url)
@@ -294,7 +299,7 @@ async function touchPicking(kind: string) {
   }
 }
 
-async function directorReplay(parallel = false, race = false) {
+async function directorReplay(parallel = false, race = false, touchCase = '', fps = 60, standingExpression?: 'tense' | 'withdrawn') {
   const psd = fixture('ordinary')
   psd.height = 300
   const prepared = await prepareRigPsdImport(
@@ -302,6 +307,13 @@ async function directorReplay(parallel = false, race = false) {
     '/unused-master.png',
   )
   const canvas = document.createElement('canvas')
+  const random = Math.random
+  let seed = 713
+  if (touchCase) { Math.random = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+    return seed / 4294967296
+  }
+}
   const player = new Anime25DPlayer(canvas, prepared.source.anime25dPlayback!)
   const url = URL.createObjectURL(prepared.atlas)
   let now = 1000
@@ -333,6 +345,25 @@ async function directorReplay(parallel = false, race = false) {
     { isPageVisible: () => true, onVisibility: () => () => {} },
   )
   const runtime = new MotionRuntime(coordinator, music)
+  const tracker = new TouchGestureTracker()
+  let resolveTouch: ((value: unknown) => void) | undefined
+  let rejectTouch: ((reason: unknown) => void) | undefined
+  let touchRequests = 0
+  let touchApplied = 0
+  let touchWriteMutation = false
+  const appraisal = new TouchAppraisal({
+    now: () => now,
+    request: () => {
+      touchRequests++
+      return new Promise((resolve, reject) => { resolveTouch = resolve; rejectTouch = reject })
+    },
+    apply: (revision, reaction) => {
+      const before = JSON.stringify(player.getCurrent())
+      touchApplied++
+      runtime.touch.refine('replay', revision, reaction, now)
+      touchWriteMutation ||= before !== JSON.stringify(player.getCurrent())
+    },
+  })
   const applyState = createMotionApplyState()
   let release: (() => void) | null = null
   let planId: string | null = null
@@ -383,7 +414,8 @@ async function directorReplay(parallel = false, race = false) {
   // frame writer, realization and player are production implementations.
   const port: Parameters<typeof applyMotionFrame>[0] = {
     setMotionPolicy: (v) => player.setMotionPolicy(v),
-    setBearing: (v) => player.setBearing(v),
+    setBearing: (v) => player.setBearing(standingExpression
+      ? { expression: standingExpression, posture: 'neutral', motionEnergy: 1, attention: 1 } : v),
     setMood: () => {
       throw new Error('Mood is outside this replay')
     },
@@ -503,14 +535,36 @@ async function directorReplay(parallel = false, race = false) {
       speak(41, 'start')
       speak(41, 'chunk', '第一句。')
       direct(41, 'respond')
-    } else {
+    } else if (!touchCase) {
       publish('respond', 'reaction')
     }
     const frames = []
     let replacementMutation = false
     let duplicateWrites = 0
-    for (let i = 0; i < 300; i++) {
-      now += 1000 / 60
+    for (let step = 0; step < 5 * fps; step++) {
+      const i = step * 60 / fps
+      now += 1000 / fps
+      if (touchCase && touchCase !== 'control') {
+        const before = JSON.stringify(player.getCurrent())
+        const sample = { pointerId: 1, x: i < 78 ? (i - 6) * 0.002 : -0.2,
+          y: 0, atMs: now, region: i < 78 ? 'hair' as const : 'face' as const }
+        const observation = i === 6 || i === 112 ? tracker.begin(sample)
+          : i === 100 || i === 140 ? tracker.end(sample) : tracker.update(sample)
+        if (observation) {
+          const touch = { ...observation, position: { x: i < 78 ? 0.8 : -0.8, y: -0.3 } }
+          runtime.touch.notePresented('replay', player.getPresentedTouch(), now)
+          runtime.touch.update('replay', touch, now)
+          appraisal.observe(touch, runtime.touch.version())
+        }
+        if (i === (touchCase === 'late' ? 116 : touchCase === 'changed' ? 90 : 60)) {
+          if (touchCase === 'fail') rejectTouch?.(new Error('injected provider failure'))
+          else resolveTouch?.({ reaction: touchCase === 'accept' ? 'accept' : 'withdraw' })
+        }
+        // Flush the actual request controller's promise chain without waiting
+        // on real time or opening a provider connection.
+        for (let flush = 0; flush < 5; flush++) await Promise.resolve()
+        touchWriteMutation ||= before !== JSON.stringify(player.getCurrent())
+      }
       if (parallel) {
         audio.currentTime = (now - 1000) / 1000
         musicTick?.(now)
@@ -558,7 +612,7 @@ async function directorReplay(parallel = false, race = false) {
             runtime.performance.current().behaviorPlan === null
         }
       }
-      if (i === 12 && !race) {
+      if (i === 12 && !race && !touchCase) {
         const before = JSON.stringify(player.getCurrent())
         publish('maniac', 'delivery')
         apply()
@@ -568,7 +622,7 @@ async function directorReplay(parallel = false, race = false) {
       const writes = planWrites
       applyMotionFrame(port, frame, applyState)
       duplicateWrites += planWrites - writes
-      player.tick(1 / 60)
+      player.tick(1 / fps)
       const pose = player.getCurrent()
       const gl = canvas.getContext('webgl2')!
       const pixels = new Uint8Array(canvas.width * canvas.height * 4)
@@ -582,11 +636,20 @@ async function directorReplay(parallel = false, race = false) {
         pixels,
       )
       frames.push({
+        at: i / 60,
+        touchForm: runtime.touch.current()?.behaviors[0].form.id ?? null,
+        presentedTouch: player.getPresentedTouch()?.reaction ?? null,
+        touchApplied,
+        body: pose.body,
+        eyeX: pose.eyeX,
         angleX: pose.angleX,
         angleY: pose.angleY,
         angleZ: pose.angleZ,
         maniac: pose.maniac,
         mouthOpen: pose.mouthOpen,
+        mouthForm: pose.mouthForm,
+        browAngSym: pose.browAngSym,
+        eyeOpenL: pose.eyeOpenL,
         owners: frame.snapshot.owners,
         active: frame.behaviors.map((b) => `${b.form.id}:${b.phase}`),
         musicBehaviors: frame.behaviors.filter((b) => b.source === 'music')
@@ -602,9 +665,15 @@ async function directorReplay(parallel = false, race = false) {
       duplicateWrites,
       raceChecks,
       deliveredText,
+      touchRequests,
+      touchApplied,
+      touchWriteMutation,
       glError: canvas.getContext('webgl2')!.getError(),
     }
   } finally {
+    Math.random = random
+    appraisal.dispose()
+    runtime.touch.release()
     release?.()
     setLiveMotionGeneration(previousGeneration)
     if (clockDescriptor)

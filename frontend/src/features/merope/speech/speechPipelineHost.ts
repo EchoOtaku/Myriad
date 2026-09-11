@@ -11,7 +11,6 @@ import { TtsPipeline } from './ttsPipeline'
 import { playTtsBuffer } from './ttsPlayer'
 import { patchVoicePresence } from './voicePresence'
 
-/** Map /api/speech/status onto the persona pipeline. Missing flag = off. */
 export function personaSpeechFlags(status: {
   available: boolean
   tts_enabled: boolean
@@ -30,9 +29,6 @@ function audioFromBase64(base64: string): ArrayBuffer {
   return bytes.buffer
 }
 
-/**
- * One live-face TTS outlet. Synthesis may run ahead; playback stays ordered.
- */
 export class SpeechPipelineHost {
   readonly pipeline: TtsPipeline
   private enabled = false
@@ -56,7 +52,6 @@ export class SpeechPipelineHost {
     return this.wantsSpeech && this.ttsReady
   }
 
-  /** Owner opted the persona into speaking. Independent of TTS being ready. */
   get speechEnabled(): boolean {
     return this.wantsSpeech
   }
@@ -116,10 +111,6 @@ export class SpeechPipelineHost {
     return this.pipeline.isBusyWith(messageId)
   }
 
-  /**
-   * One finished line through the same TTS queue as streamed Chat.
-   * Returns false when TTS is off so callers may fall back to text visemes.
-   */
   speakLine(input: {
     messageId: string
     text: string
@@ -127,8 +118,6 @@ export class SpeechPipelineHost {
     source?: MeropeSpeechSource
     interrupt?: SpeechInterruptMode
   }): boolean {
-    // A late completed response must not resurrect an interrupted stream, nor
-    // ask its caller to replay the same line through the text-mouth fallback.
     if (this.cancelledMessageIds.has(input.messageId)) return true
     if (!this.enabled) return false
     const text = speakableText(input.text)
@@ -164,8 +153,6 @@ export class SpeechPipelineHost {
       this.cancelledAt = null
       return
     }
-    // stop() publishes silence before the pipeline advances. A targeted cancel
-    // may already have started the next message; do not overwrite its presence.
     this.noteSilence()
   }
 
@@ -195,8 +182,6 @@ export class SpeechPipelineHost {
     segment: SpeechSegment,
     onEnded: () => void,
   ): { stop: () => void } {
-    // Preserve the producing turn, not whichever Chat happens to be live
-    // when asynchronous synthesis finishes (proactive speech is unscoped).
     const generation = segment.generation
     const source = segment.source ?? 'reply'
     const utteranceId = `tts-${segment.segmentId}`
@@ -244,8 +229,6 @@ export class SpeechPipelineHost {
         })
       },
       onEnded: () => {
-        // End THIS segment before advancing. Otherwise a synthesis gap leaves
-        // its mouth and co-speech plan alive until the next segment arrives.
         dispatchMeropeSpeech({
           phase: 'end',
           messageId: segment.messageId,
@@ -275,7 +258,6 @@ export class SpeechPipelineHost {
     }
   }
 
-  /** Failed synthesis retains its place in the queue and uses the existing mouth clock. */
   private playText(
     segment: SpeechSegment,
     onEnded: () => void,

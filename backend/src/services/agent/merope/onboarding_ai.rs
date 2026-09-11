@@ -27,7 +27,7 @@ const ONBOARDING_AI_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// 起名不是长任务：答案是一个两字段的小对象。用长任务的 15 分钟，网关卡住时
 /// 「换一个」的转圈会转一刻钟。
 ///
-/// 两分钟而不是更短：这条路径要容忍冷启动的模型、排队中的共享网关，以及
+/// 五分钟而不是更短：这条路径要容忍冷启动的模型、排队中的共享网关，以及
 /// 被拒一次后重试的那一跳。宁可偶尔等久一点，也不要把一次本来会成功的
 /// 生成判成超时——那对用户来说和「坏了」没区别。
 ///
@@ -38,11 +38,9 @@ const ONBOARDING_AI_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const NAME_CALL_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 /// 失控保险，不是调优旋钮。
 ///
-/// 名字加含义大概四十个 token。这里给到四千，是因为多数网关把思考 token 也
-/// 算进这个额度，而额度卡在答案前面的后果是静默的：JSON 没吐完，
-/// `extract_openai_completion_text` 在 content 为空时又会回落去读
-/// `reasoning_content`，解析拿到的是一段思考文本——曾经设成 512，每次都判成
-/// 「字形不对」，实际是被截断。
+/// 名字加含义约四十 token。额度 4096：网关把思考 token 也算进这个额度；
+/// 额度卡在答案前会静默截断，`extract_openai_completion_text` 在 content 为空时
+/// 回落 `reasoning_content`。
 ///
 /// 所以这个数字的职责只有一个：挡住无上限地写下去。**不要**拿它去省 token
 /// 或者压思考，压思考是各家自己的参数，`OutputBudget` 的文档里写了为什么这
@@ -843,11 +841,7 @@ fn parse_json_object(raw: &str) -> Option<Value> {
     serde_json::from_str(&raw[start..=end]).ok()
 }
 
-/// 四种失败各自有名字。
-///
-/// 它们原本共用一句「name had no usable meaning or script」，而这句话会经
-/// `public_detail` 直接给到站长——于是「模型被截断了」和「模型给了个拉丁名
-/// 但要求是中文名」在界面上长得一模一样，谁也没法判断该重试还是该改配置。
+/// 四种失败各自有名字，经 `public_detail` 给到站长。
 fn parse_display_name_suggestion(
     raw: &str,
     avoid: Option<&str>,
@@ -1556,13 +1550,7 @@ mod tests {
         assert!(visual_design_system_prompt().contains("rollId"));
     }
 
-    /// 四种失败必须各自可辨。
-    ///
-    /// 它们原本共用一句「name had no usable meaning or script」，而这句会经
-    /// `public_detail` 直接给到站长——「模型被 max_tokens 截断了」和「模型给
-    /// 了个拉丁名但要的是中文名」在界面上长得一模一样，谁也判断不了该重试
-    /// 还是该改配置。这条真实发生过：把上限设成 512，推理模型把额度花在思考
-    /// 上，回来的是一段思考文本，报的却是「script」不对。
+    /// 四种失败必须各自可辨（JSON / meaning / name / script）。
     #[test]
     fn each_name_failure_says_which_stage_failed() {
         let reasons = [

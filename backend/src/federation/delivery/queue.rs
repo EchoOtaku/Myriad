@@ -104,9 +104,8 @@ const DELIVERY_LEASE_HEARTBEAT_SECS: u64 = 60;
 
 /// Unreachable delivery attempts required before a domain is considered gone.
 ///
-/// A count alone is a poor signal: the worker drains 20 rows per 15s tick, so a
-/// fan-out to one peer can burn an arbitrary count during a single restart. The
-/// count is therefore only half the gate — see the streak window below.
+/// 次数阈值 20：单行打不满（`max_attempts` 默认 12）；另一半见下方 streak。
+/// worker 每 tick `LIMIT 1` 认领（默认 15s）。
 const DELIVERY_FAILURE_REVOCATION_THRESHOLD: i32 = 20;
 
 /// The failure streak must also have lasted this long, unbroken.
@@ -363,7 +362,7 @@ pub(crate) async fn settle_remote_delivery_success(
 /// (sustained count *and* elapsed streak). When it fires, active relationship
 /// rows to the domain are removed (channels are closed to preserve messages) and
 /// its **unfinished** deliveries are cancelled in the same transaction. Rows that
-/// already reached a terminal state keep their original error — historical
+/// already reached a terminal state keep their original error — those
 /// dead-letters are not rewritten or made unretryable by a later outage.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn settle_remote_delivery_failure(
@@ -726,7 +725,7 @@ pub async fn process_delivery_queue_detailed(
             continue;
         }
 
-        // 投递前：目标实例信任策略检查（黑名单等）
+        // 投递前：`enforce_outbound`（空域名 / `federation_instances.is_blocked`）
         if let Err(reason) = crate::federation::trust::enforce_outbound(db, &target_domain).await {
             let mark = db
                 .execute_raw(Statement::from_sql_and_values(
@@ -861,7 +860,7 @@ pub async fn process_delivery_queue_detailed(
 
                         let e = delivery_error.message;
                         // Permanent: 4xx from peer, OR 5xx body that is really
-                        // not_found / not_member (legacy peers still return 500).
+                        // not_found / not_member (`is_permanent_delivery_error`).
                         let permanent = crate::federation::errors::is_permanent_delivery_error(&e);
                         // A permanent rejection proves the peer answered, so it
                         // is not evidence of an unreachable domain.
@@ -1001,7 +1000,7 @@ pub async fn process_delivery_queue_detailed(
                     mark_delivery_dead(user_id, &activity_type, &target_domain, &err_msg).await;
                     stats.dead += 1;
                 } else {
-                    // 密钥问题几乎不会自愈；按普通失败计数退避，避免 15s 热循环刷日志
+                    // 非永久密钥错误：按 `retry_backoff_secs` 挂起，不重新生成。
                     let backoff_secs = retry_backoff_secs(new_attempts);
                     let mark = db
                         .execute_raw(Statement::from_sql_and_values(
@@ -1046,12 +1045,7 @@ async fn mark_delivery_dead(user_id: i32, activity_type: &str, target_domain: &s
 /// 启动投递队列后台循环
 pub fn spawn_delivery_worker(db: DatabaseConnection) {
     tokio::spawn(async move {
-        // Outbound delivery is the surface that actually reaches other
-        // instances, so unlike the rest of the component it will not run on a
-        // merely-unresolved gate: wait for the egress-location probe to settle
-        // before the first drain. Queued rows are left in place — a blocked
-        // server stops sending, it does not discard what a later boot elsewhere
-        // could deliver.
+        // 先 `wait_until_resolved(30s)`；超时 fail-open。关闸则停，队列行不动。
         if !crate::services::federation_gate::wait_until_resolved(Duration::from_secs(30)).await {
             tracing::warn!(
                 "📪 Federation delivery worker not started: egress-location gate is closed"

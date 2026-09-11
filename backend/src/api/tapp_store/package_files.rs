@@ -321,7 +321,7 @@ pub(crate) fn directory_generation_matches(
                 install_generation_matches_micros(&value, expected_updated_at.timestamp_micros())
             });
     }
-    // Compatibility for installations created before generation markers.
+    // 无 generation marker 时回退 `directory_manifest_matches`
     directory_manifest_matches(directory, expected_manifest)
 }
 
@@ -374,11 +374,10 @@ pub(crate) fn reinstall_orphan_paths(final_path: &FsPath) -> Result<Vec<PathBuf>
 /// Best-effort remove leftover live dir and lifecycle artifacts before install
 /// staging/activate. Caller must ensure there is no conflicting DB install row.
 ///
-/// Cleanup is deliberately non-fatal. Older deployments may have created Tapp
-/// contents as another UID, making recursive deletion fail even though the
-/// owner directory still permits an atomic rename. `TappDirStage::activate`
-/// can quarantine that live path by renaming it, so refusing to stage here
-/// would turn recoverable ownership drift into a permanent install failure.
+/// Cleanup is deliberately non-fatal. Recursive delete can fail when the live
+/// tree is another UID, even if the owner directory still allows rename.
+/// `TappDirStage::activate` quarantines that path by renaming it; refusing to
+/// stage here would turn recoverable ownership drift into a permanent failure.
 pub(crate) fn cleanup_reinstall_orphans(
     final_path: &FsPath,
     tapp_id: &str,

@@ -23,6 +23,7 @@ use serde_json::{json, Value};
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
+pub(crate) mod touch;
 use tokio_stream::StreamExt;
 
 use crate::middleware::auth::Claims;
@@ -121,7 +122,7 @@ pub(crate) fn session_metadata_with_run_identity(
     if let Some(obj) = meta.as_object_mut() {
         obj.insert("runId".to_string(), json!(run_id));
         obj.insert("taskId".to_string(), json!(task_id));
-        // snake_case aliases for notification / legacy readers
+        // snake_case aliases `run_id` / `task_id`
         obj.insert("run_id".to_string(), json!(run_id));
         obj.insert("task_id".to_string(), json!(task_id));
         if !obj.contains_key("task") {

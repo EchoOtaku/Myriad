@@ -1,13 +1,3 @@
-/**
- * 执行引擎 —— 助手真正干活的地方，一个像素都不画。
- *
- * 会话持久化、SSE 流式进度、断线重连、敏感操作确认、错误兜底都在这里；结果全部
- * 写进 store，由 `AgentPanel` 那一层去画。**分开是因为这两件事的变更节奏完全不同**：
- * 界面会一改再改，而这套状态机是跑通过的，不该被布局调整牵连。
- *
- * 它挂在 App 根上，跟面板开没开无关 —— 面板收起来的时候任务照样跑完。
- */
-
 import type React from 'react'
 
 import type {
@@ -157,12 +147,7 @@ function finishTurnTrace(): void {
   markTurnTraceOnce('turn_completed')
 }
 
-/**
- * 执行一条 Agent 给的前端操作，顺带记下它能不能退回去。
- *
- * 用真实发生的路由变化来判断，不看指令声明的目标 —— 指令可能被处理器改写，也
- * 可能压根没跳成，给一个不管用的撤销比不给更糟。
- */
+/** Inverse from the actual path change, not the declared target. */
 async function runFrontendAction(action: FrontendAction): Promise<unknown> {
   const beforePath = currentPath()
   const result = await executeFrontendAction(action)
@@ -194,7 +179,6 @@ export const AgentEngine: React.FC = () => {
   const { isAuthenticated } = useAuth()
   const navigate = useNavigate()
 
-  // 页面内容上下文
   const pageContentContext = usePageContentOptional()
 
   useEffect(() => startPresenceInbound(), [])
@@ -263,13 +247,10 @@ export const AgentEngine: React.FC = () => {
       ) => Promise<void>
     >(null)
 
-  // 把对话同步给新 UI 的 Full 层。只送「谁说的、说了什么、说完没有」，执行追踪
-  // 那一堆留在这边 —— 新 UI 不该认识旧面板的消息模型。
   useLayoutEffect(() => {
     syncProjectedMessages(messages)
   }, [messages])
 
-  // Refs
   const handleAgentResponseRef =
     useRef<
       (
@@ -361,9 +342,7 @@ export const AgentEngine: React.FC = () => {
   const handledResponseKeysRef = useRef(new Set<string>())
   const chatTurnClockRef = useRef(new ChatTurnClock())
 
-  // 检测是否有待回答的问题（用于将主输入框路由到回答逻辑）
   const pendingAnswerMsg = useMemo(() => {
-    // 从后往前找第一个有 pendingQuestion 且未回答的消息
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i]
       if (
@@ -377,10 +356,8 @@ export const AgentEngine: React.FC = () => {
     return null
   }, [messages])
 
-  // 会话管理
 
   const startNewSession = useCallback(async () => {
-    // 新建会话只切换前端视图。旧任务由后端 run 持续执行，并通过通知中心报告状态。
     const current = getAgentPanelMode()
     if (current === 'chat') void stopAgoraConversation()
     const loadingId = loadingMessageIdByModeRef.current[current]
@@ -406,11 +383,7 @@ export const AgentEngine: React.FC = () => {
     if (current === 'chat') clearChatOutfitOverlay()
   }, [setSessionId, setMessages])
 
-  /**
-   * 将已加载会话中的非终态任务重新挂到 UI，并订阅 run 进度流。
-   * 不重新 POST process；仅 GET run stream / task 状态。
-   * Candidate 合并逻辑见 `collectReattachCandidates`（跨消息补 runId、runId-only 通知）。
-   */
+  /** GET run stream / task; do not POST process. */
   const reattachLiveWork = useCallback(
     async (
       messagesToScan: ChatMessage[],
@@ -464,7 +437,6 @@ export const AgentEngine: React.FC = () => {
             continue
           }
 
-          // runId-only：没有 task 时也挂 processing，靠 SSE 回放补全
           updateMessage(candidate.messageId, {
             pendingQuestion: pendingQ,
             taskExecution: {
@@ -509,7 +481,6 @@ export const AgentEngine: React.FC = () => {
                 loadingByModeRef.current.work || loadingByModeRef.current.chat,
               )
             })
-          // 同一时刻只恢复一条 live stream
           break
         } catch (error) {
           console.warn('[AgentEngine] reattach task probe failed:', error)
@@ -579,7 +550,6 @@ export const AgentEngine: React.FC = () => {
             }
           }
 
-          // 从持久化 metadata 恢复等待中的问题（reattach 会再与后端对齐）
           const pendingQuestion = pendingQuestionFromMetadata(
             meta,
             new Date(m.createdAt).getTime(),
@@ -610,7 +580,6 @@ export const AgentEngine: React.FC = () => {
             if (followUp) setAgentStatusAwaitingConfirmation(followUp)
           }
         }
-        // 刷新 / 通知打开：探测非终态任务并 re-subscribe
         void reattachLiveWork(loaded, reattachHints)
       } catch (error) {
         console.error('[AgentEngine] 加载会话消息失败:', error)
@@ -619,7 +588,6 @@ export const AgentEngine: React.FC = () => {
     [reattachLiveWork],
   )
 
-  // 外部打开指定会话（通知中心点击任务通知跳转，可带 runId/taskId）
   useEffect(() => {
     const handleOpenSession = (e: Event) => {
       const detail = (e as CustomEvent).detail as {
@@ -628,7 +596,6 @@ export const AgentEngine: React.FC = () => {
         taskId?: string
       } | null
       const sid = detail?.sessionId
-      // 通知中心还在发这条旧事件：改成把新面板叫出来，会话仍然由这边去取
       dispatchAgentPanelOpen('messages')
       if (typeof sid !== 'string' || !sid) return
       void import('../../utils/analyticsEvents').then(
@@ -670,21 +637,16 @@ export const AgentEngine: React.FC = () => {
           })
         },
       )
-      // 具体看哪一面由 AgentPanel 那边的 requestedView 决定
     }
     window.addEventListener('arael-open-manage', handleOpenManage)
     return () =>
       window.removeEventListener('arael-open-manage', handleOpenManage)
   }, [])
 
-  // Quick Overlay 只负责把话递过来，执行仍然在这边：打开自己，照常发送。
-  // 等 Full 层重做完，接住这条事件的换成新面板，overlay 那边不用改。
   useEffect(() => {
     const handleSubmit = (event: Event) => {
       const detail = agentPanelSubmitDetail(event)
       if (!detail) return
-      // 不再把自己显示出来 —— 新 UI 的 Full 层已经在画这段对话了，
-      // 两个面板同时开着只会让人不知道该看哪个。这边只管跑。
       void handleSendRef.current?.(
         detail.text,
         detail.attachments,
@@ -697,8 +659,6 @@ export const AgentEngine: React.FC = () => {
       window.removeEventListener(AGENT_PANEL_SUBMIT_EVENT, handleSubmit)
   }, [])
 
-  // 操作卡片上按的那一下。卡片只递决定，真正调 /agent/confirm/stream 的仍然是这里，
-  // 过期校验、进度流、失败兜底都在原来那条路上。
   useEffect(() => {
     const handleDecision = (event: Event) => {
       const detail = agentPanelActionDetail(event)
@@ -720,7 +680,6 @@ export const AgentEngine: React.FC = () => {
       window.removeEventListener(AGENT_PANEL_ACTION_EVENT, handleDecision)
   }, [findMessageWhere])
 
-  // 界面上点的那个选项。走的是和打字回答同一条路。
   useEffect(() => {
     const handleAnswer = (event: Event) => {
       const detail = agentPanelAnswerDetail(event)
@@ -736,7 +695,6 @@ export const AgentEngine: React.FC = () => {
     return attachLiveBody()
   }, [])
 
-  // 新 UI 的历史列表挑了一条。取消息、重连进行中的任务都还是这边的活。
   useEffect(() => {
     const handleOpenSession = (event: Event) => {
       const id = agentPanelOpenSessionId(event)
@@ -758,16 +716,14 @@ export const AgentEngine: React.FC = () => {
       )
   }, [loadSession])
 
-  // 当前是哪一条会话，历史列表要靠它标出「就是这条」
   useEffect(() => {
     setAgentSessionId(sessionId)
   }, [sessionId])
 
-  // 中断
 
   const interruptCurrentTask = useCallback(async () => {
     const current = getAgentPanelMode()
-    // Only abort this mode's SSE. Work and Chat can be in flight together.
+    // Work and Chat can be in flight together
     agentService.abortCurrentRequest(current)
     if (current === 'chat') {
       void interruptAgoraConversation()
@@ -792,9 +748,7 @@ export const AgentEngine: React.FC = () => {
     }
     capSet(discardedResponseIdsRef.current)
 
-    // Drop occupancy before awaiting cancel, otherwise a late token writes
-    // thinking back. Always idle the island; if the other lane is still in
-    // flight, put thinking back so that lane's stop button still has a home.
+    // drop occupancy before awaiting cancel, else a late token writes thinking
     loadingByModeRef.current[current] = false
     loadingMessageIdByModeRef.current[current] = null
     setAgentLaneLoading(current, false)
@@ -827,7 +781,6 @@ export const AgentEngine: React.FC = () => {
       }
     }
   }, [messagesRef, updateMessage, updateMessageExecution, t])
-  // 界面上按的「开新对话」「停下」。真正的动作在这边，界面只递一个意思。
   useEffect(() => {
     const handleCommand = (event: Event) => {
       const command = agentPanelCommand(event)
@@ -838,8 +791,6 @@ export const AgentEngine: React.FC = () => {
     return () =>
       window.removeEventListener(AGENT_PANEL_COMMAND_EVENT, handleCommand)
   }, [startNewSession, interruptCurrentTask])
-
-  // SSE 进度处理
 
   const createProgressHandler = useCallback(
     (
@@ -882,9 +833,7 @@ export const AgentEngine: React.FC = () => {
         if (loadingMessageIdByModeRef.current[mode] !== assistantMessageId) {
           return
         }
-        // 岛与面板读同一份状态：这里是唯一的入口，别处不再解读 SSE
         pushAgentStatusEvent(event)
-        // 记录关键 SSE 事件到调试日志
         switch (event.type) {
           case 'run_started': {
             if (event.sessionId) {
@@ -908,7 +857,6 @@ export const AgentEngine: React.FC = () => {
           }
 
           case 'session_title_updated': {
-            // 后端并行 AI 生成的标题通过 SSE 推送
             if (event.title) {
               sessionTitleSetByModeRef.current[mode] = true
             }
@@ -930,7 +878,6 @@ export const AgentEngine: React.FC = () => {
               execUpdates.queuePosition = tcEvent.queuePosition
             }
 
-            // 存储计划步骤描述（用于前端显示执行计划概览）
             if (
               tcEvent.stepDescriptions &&
               tcEvent.stepDescriptions.length > 0
@@ -939,7 +886,6 @@ export const AgentEngine: React.FC = () => {
             }
 
             updateMessageExecution(assistantMessageId, execUpdates)
-            // content 留空 — 进度信息由 live steps 展示，避免与步骤进度重复
             break
           }
 
@@ -954,7 +900,7 @@ export const AgentEngine: React.FC = () => {
 
           case 'step_started': {
             utterance.end()
-            streamedSummary = '' // ai_summarize 从零开始，替换 announce_plan
+            streamedSummary = ''
             const stepEvent = event as StepStartedEvent
             addExecutionStep(assistantMessageId, {
               id: stepEvent.stepId,
@@ -1054,7 +1000,6 @@ export const AgentEngine: React.FC = () => {
           case 'step_retrying': {
             const retryEvent =
               event as import('../../services/agent/types').StepRetryingEvent
-            // 更新步骤状态为重试中
             updateExecutionStep(assistantMessageId, retryEvent.stepId, {
               status: 'running',
               message: `${retryEvent.reason} (${retryEvent.retryCount}/${retryEvent.maxRetries})`,
@@ -1215,7 +1160,6 @@ export const AgentEngine: React.FC = () => {
           case 'task_completed': {
             utterance.end()
             if (mode === 'chat') playbackDirection.textEnded(assistantMessageId)
-            // 检查任务是否真正完成（多轮问答时可能仍在等待用户输入）
             const completedEvent =
               event as import('../../services/agent/types').TaskCompletedEvent
             const taskInfo = completedEvent.response?.task as
@@ -1223,7 +1167,6 @@ export const AgentEngine: React.FC = () => {
             const isStillWaiting = taskInfo?.status === 'waiting_for_input'
 
             if (!isStillWaiting) {
-              // 任务真正完成：清除 pendingQuestion、更新状态、确保 isLoading 归位
               updateMessage(assistantMessageId, {
                 pendingQuestion: undefined,
                 selectedAnswer: undefined,
@@ -1363,7 +1306,6 @@ export const AgentEngine: React.FC = () => {
 
   createProgressHandlerRef.current = createProgressHandler
 
-  // 发送消息
 
   const handleSend = useCallback(
     async (
@@ -1390,8 +1332,7 @@ export const AgentEngine: React.FC = () => {
         },
       )
 
-      // 游客可开面板（guest visible / guest_perm_ai_chat），但 BE Agent 全线要 JWT。
-      // 发消息前引导登录，避免必 401。
+      // guest can open the panel; Agent still requires JWT
       if (!isAuthenticated) {
         const loginHint = t.agentPanel.loginRequiredHint
         setMessages(
@@ -1413,7 +1354,6 @@ export const AgentEngine: React.FC = () => {
         return
       }
 
-      // 如果有待回答的问题，将输入路由到 answerQuestion（即使 isLoading 也允许）
       if (mode === 'work' && pendingAnswerMsg && answerQuestionRef.current) {
         answerQuestionRef.current(pendingAnswerMsg.id, requestText)
         return
@@ -1471,9 +1411,6 @@ export const AgentEngine: React.FC = () => {
         return
       }
 
-      // 切回对话视图
-
-      // 1. 创建 user 消息
       const userMsgId = nextAgentMessageId('user')
       const userMessage: ChatMessage = {
         id: userMsgId,
@@ -1484,7 +1421,6 @@ export const AgentEngine: React.FC = () => {
         ...(attachments.length ? { attachments: [...attachments] } : {}),
       }
 
-      // 2. 创建 placeholder assistant 消息
       const assistantMsgId = nextAgentMessageId('assistant')
       const assistantMessage: ChatMessage = {
         id: assistantMsgId,
@@ -1522,7 +1458,6 @@ export const AgentEngine: React.FC = () => {
       setAgentStatusThinking()
 
       try {
-        // 构建上下文
         const context: Record<string, unknown> = {
           currentRoute: location.pathname,
         }
@@ -1532,10 +1467,8 @@ export const AgentEngine: React.FC = () => {
         }
         context.mode = mode
         if (intentionId) context.intentionId = intentionId
-        // 页面内容
         const customData: Record<string, unknown> = {}
         const pageConsent = getAgentContextConsent()
-        // 用户关掉「读当前页」之后就真的不读 —— 界面上说了不看，请求里也不能捎上
         if (pageConsent && pageContentContext?.hasContent) {
           const contentForAgent = pageContentContext.getContentForAgent()
           if (contentForAgent) {
@@ -1553,7 +1486,7 @@ export const AgentEngine: React.FC = () => {
           } else {
             const main =
               document.querySelector('main') ?? document.body
-            // Hidden controls are not part of what the user is currently reading.
+            // Hidden controls are not what the user is reading.
             // eslint-disable-next-line unicorn/prefer-dom-node-text-content
             const text = (main?.innerText ?? '').replace(/\s+/g, ' ').trim()
             if (text) {
@@ -1593,7 +1526,7 @@ export const AgentEngine: React.FC = () => {
               customData.windowState = windowState
             }
           } catch {
-            // typed handler missing mid-unmount
+            /* typed handler missing mid-unmount */
           }
         }
         const body = captureTurnBody({
@@ -1640,9 +1573,7 @@ export const AgentEngine: React.FC = () => {
           updateMessageExecution(assistantMsgId, { status: 'error' })
           return
         }
-        // A budget rejection arrives on the same channel as a real failure and
-        // reads as "出错了" without this: the stream is already HTTP 200 by then,
-        // so the quota code on the error event is the only signal.
+        // quota arrives as HTTP 200; the error-event code is the only signal
         const errorMsg = generationFailureMessage(
           error,
           t.agentPanel.executionFailed,
@@ -1661,14 +1592,12 @@ export const AgentEngine: React.FC = () => {
             NETWORK_ERROR: t.agentPanel.streamError,
           },
         )
-        // 传输层直接抛出时后端来不及发 error 事件，补一条给状态岛
         pushAgentStatusEvent({
           type: 'error',
           message: errorMsg,
           code: errorCode(error) ?? 'agent_processing_failed',
         })
 
-        // 保留已收集的 debugTrace 和步骤信息，只更新状态
         setMessages(
           (prev) =>
             prev.map((m) => {
@@ -1720,8 +1649,6 @@ export const AgentEngine: React.FC = () => {
     handleSendRef.current = handleSend
   }, [handleSend])
 
-  // 处理 Agent 响应
-
   const handleAgentResponse = useCallback(
     async (
       messageId: string,
@@ -1761,7 +1688,6 @@ export const AgentEngine: React.FC = () => {
           expiresInSeconds: confirmation.expiresInSeconds,
           receivedAtMs: Date.now(),
         }
-        // 新 UI 的操作卡片从这里拿料；它按风险决定摊开多少
         setAgentPendingAction(
           buildAgentPendingAction({
             confirmation,
@@ -1837,22 +1763,16 @@ export const AgentEngine: React.FC = () => {
 
       const isMultiStep = stepHistory && stepHistory.length > 1
 
-      // 构建显示内容
-      // 多步骤：response.message 已由后端 ai_summarize 生成人格化汇总，直接使用
-      // 单步骤：优先使用 data 中的 AI 文本（reply/aiSummary/analysis/summary）
-      // 注：announce_plan 已通过 SSE 实时写入正文，此处 response.message（= ai_summarize）会覆盖它
+      // ai_summarize overwrites announce_plan already streamed into content
       let displayMessage: string | undefined
 
       if (isMultiStep) {
-        // 多步骤：后端 response.message 是人格化汇总
         displayMessage = response.message
       } else {
-        // 单步骤：从 data 提取 AI 文本
         displayMessage =
           messageFromStepOutput(response.data) || response.message
       }
 
-      // 失败步骤信息追加
       if (stepHistory && stepHistory.length > 0) {
         const failedSteps = stepHistory.filter((s) => s.status === 'failed')
         if (failedSteps.length > 0 && failedSteps.length < stepHistory.length) {
@@ -1887,14 +1807,11 @@ export const AgentEngine: React.FC = () => {
         displayMessage,
       })
 
-      // 从 response.data 和 stepHistory 中兜底提取 imageUrls（SSE 丢失时恢复）
-      // 与已通过 SSE 实时收集的 imageUrls 合并（不覆盖）
       const fallbackImageUrls = imageUrlsFromAgentPayload(
         response.data,
         stepHistory,
       )
 
-      // 合并：SSE 实时收集的 + fallback，去重
       const existingImageUrls: string[] = ((): string[] => {
         const msg = findMessage(messageId)
         return msg?.imageUrls ?? []
@@ -1940,7 +1857,6 @@ export const AgentEngine: React.FC = () => {
       const hasFailedSteps =
         stepHistory?.some((s) => s.status === 'failed') ?? false
 
-      // 从 TaskInfo 中解析 executionTrace
       const rawTrace = taskData?.executionTrace as
         | {
             trace_id?: string
@@ -2000,7 +1916,7 @@ export const AgentEngine: React.FC = () => {
           : {}),
       })
 
-      // 执行前端动作。流式路径已在 step_completed 跑过同 timestamp 的动作，这里只补漏。
+      // stream already ran same-timestamp actions; fill gaps only
       const frontendActions = responseData?.frontendActions as
         (typeof response.frontendAction)[] | undefined
       let frontendAction =
@@ -2091,8 +2007,7 @@ export const AgentEngine: React.FC = () => {
       setAgentLaneLoading('chat', true)
       setIsLoading(true)
       setAgentStatusThinking()
-      // Same progress and final-response reducers. Only the audio outlet is
-      // external: cloud audio must not be synthesized or text-lip-synced twice.
+      // external audio must not be synthesized or lip-synced twice
       void agentService.subscribeRun(notice.runId, createProgressHandler(messageId, 'chat', generation, 'external', notice.runId), 'chat')
         .then((response) => handleAgentResponse(messageId, response, 'chat', generation, 'external'))
         .catch((error) => {
@@ -2113,14 +2028,11 @@ export const AgentEngine: React.FC = () => {
     },
   }), [createProgressHandler, handleAgentResponse, setMessages, setSessionId, t, updateMessage, updateMessageExecution])
 
-  // 回答问题
-
   const answerQuestion = useCallback(
     async (messageId: string, answer: string) => {
       const msg = findMessage(messageId)
       if (!msg?.taskExecution?.taskId || !msg.pendingQuestion) return
 
-      // 敏感确认过期后禁止 Confirm（Cancel 仍可关卡）
       const pq = msg.pendingQuestion
       if (
         answer === 'confirm' &&
@@ -2141,7 +2053,6 @@ export const AgentEngine: React.FC = () => {
         }
       }
 
-      // 保留 pendingQuestion 以显示选中状态，同时用 selectedAnswer 锁定
       updateMessage(messageId, {
         selectedAnswer: answer,
       })
@@ -2211,8 +2122,6 @@ export const AgentEngine: React.FC = () => {
     answerQuestionRef.current = answerQuestion
   }, [answerQuestion])
 
-  // 这个组件不画任何东西。它是执行引擎：SSE、会话、重连、确认、错误处理都在
-  // 这里跑，结果通过 store 交给新 UI 去画。
   return null
 }
 

@@ -93,7 +93,7 @@ pub async fn handle_channel_open(
         _ => Vec::new(),
     };
 
-    // 防 DB 放大：请求体上限 50MB，to 数组可被塞入海量条目，只看前几个
+    // 防 DB 放大：`to` 数组可被塞入海量条目，只看前 `MAX_TO_LOOKUPS` 个。
     const MAX_TO_LOOKUPS: usize = 16;
     let mut target_user_id: Option<i32> = None;
     for entry in to_entries.iter().take(MAX_TO_LOOKUPS) {
@@ -267,11 +267,6 @@ pub async fn handle_channel_message(
         .and_then(|v| v.as_str())
         .unwrap_or(&fallback_msg_id);
     // object.from 必须与签名 actor 一致，并且落库一律存签名 actor。
-    //
-    // 这里过去直接采信 object.from（缺失时存字符串 "unknown"）。Aro 的
-    // isLocalActor 在 1:1 channel 里判定「不等于 remote_actor_url 的一律算本地」，
-    // 所以对端只要把 from 写成别的串，它的消息就会渲染成你自己发的气泡 ——
-    // 右对齐、没有头像、没有昵称。Room 路径一直有这个校验，channel 漏了。
     if let Some(claimed) = object.get("from").and_then(|v| v.as_str()) {
         if !same_actor_url(claimed, actor_url_str) {
             return Err(format!(

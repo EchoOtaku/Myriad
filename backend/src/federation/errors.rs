@@ -127,7 +127,7 @@ pub fn map_inbox_handler_error(e: String) -> (StatusCode, axum::Json<Value>) {
 ///
 /// Covers:
 /// - `PERMANENT HTTP 4xx …` (correct remote)
-/// - `HTTP 500: …not_found…` (legacy remotes that mis-map permanent errors)
+/// - `HTTP 500: …not_found…` (peer mapped a permanent error onto 500)
 pub fn is_permanent_delivery_error(err: &str) -> bool {
     if err.starts_with("PERMANENT ") {
         return true;

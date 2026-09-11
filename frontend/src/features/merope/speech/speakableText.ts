@@ -1,7 +1,3 @@
-/**
- * Turns model output into something a TTS engine should read.
- * Markdown, code, and URLs stay on screen; they are not spoken.
- */
 
 const FENCE = /```[\s\S]*?```/g
 const INLINE_CODE = /`[^`]+`/g

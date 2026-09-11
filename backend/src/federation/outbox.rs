@@ -1,4 +1,4 @@
-//! Outbox 端点（Layer 2）
+//! Outbox 端点
 //!
 //! 用户的 Outbox — AP 兼容的活动历史
 //! `GET /users/{username}/outbox` 返回 OrderedCollection 摘要
@@ -22,10 +22,8 @@ const OUTBOX_PAGE_SIZE: i64 = 20;
 ///
 /// `federation_activities` 是**通用**联邦活动表：Follow/Accept、房间邀请、
 /// 频道消息、密钥交换、Ring 同步、文件分块都写在这里，且 `is_local = true`。
-/// 过去 Outbox 直接按 `user_id + is_local` 全表返回 `object_json`，等于把整个
-/// 内部控制面匿名公开。
 ///
-/// 现在改成 fail-closed 投影：只有**同时**满足以下两条的活动才会出现 ——
+/// fail-closed 投影：只有**同时**满足以下两条的活动才会出现 ——
 /// 1. activity 类型在下面的白名单里；
 /// 2. 在 `federation_published_content` 里有一条 `visibility = 'public'` 记录。
 ///
@@ -83,16 +81,8 @@ fn encode_cursor(published_us: i64, id: i32) -> String {
 /// - `?cursor=…`：keyset 分页，`next` 链接都是这种形态
 /// - `?page=N`：传统页码，仍然接受（远端可能缓存过），但我们不再生成
 ///
-/// # 为什么不再用 `COUNT(*) + OFFSET`
-///
-/// 旧实现每次取页都跑一遍全表 `COUNT(*)`，并用 `OFFSET` 跳过前面的行：
-///
-/// - 代价随历史增长线性上升，翻到第 N 页要扫过前 N×20 行；
-/// - **翻页不稳定** —— 爬取过程中有新内容发布，后续页的 OFFSET 会整体位移，
-/// 远端要么漏掉条目、要么重复收到。
-///
-/// keyset 用 `(published_at, id)` 作游标：每页代价恒定，且新内容只会出现在
-/// 游标之前，不会挪动已经翻过的窗口。
+/// keyset 用 `(published_at, id)` 作游标；`?page=N` 仍接受但不再生成。
+/// `COUNT(*)` 只在无分页参数的摘要文档跑一次。
 pub async fn get_outbox(
     State(db): State<DatabaseConnection>,
     Path(username): Path<String>,
@@ -453,9 +443,7 @@ fn public_object_matches(
     object.get("id").and_then(|value| value.as_str()) == Some(object_id)
         && object.get("type").and_then(|value| value.as_str())
             == Some(kind.activity_object_type())
-        // Older public rows may not carry the MFP hint, but when it is
-        // present it must agree with the published-content type.  This keeps
-        // a stale/cross-type row from being served from a different URL.
+        // `mfp:contentType` 缺省视为匹配；有值则必须等于 published-content type。
         && object
             .get("mfp:contentType")
             .and_then(|value| value.as_str())

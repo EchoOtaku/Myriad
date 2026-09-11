@@ -67,7 +67,7 @@ pub async fn invite_member(
             ));
         }
         "member-invite" => {} // 任何成员可邀请
-        "open" => {}          // 无限制
+        "open" => {}          // 与 member-invite 相同：active 成员即可邀请
         _ if !is_admin_role(&my_role) => {
             return Err((
                 StatusCode::FORBIDDEN,
@@ -347,7 +347,7 @@ pub async fn invite_member(
             ));
         }
 
-        // Tell remote members about this same-instance join (3+ federated roster)
+        // 向远程成员 fan-out RoomJoin。
         let join_activity_id = generate_activity_id(&base_url);
         let join_activity = json!({
             "@context": build_context(),
@@ -635,8 +635,7 @@ pub(crate) fn validate_remote_public_room_doc(
     Ok((home, invite_policy, max_members))
 }
 
-/// Whether an existing local private room may be upgraded public from a remote
-/// document (homes must match; local authority never upgraded via remote join).
+/// existing_home 空则允许，否则须与 document home 匹配。不判断本机是否为 home。
 pub(crate) fn may_promote_private_room_to_public(existing_home: &str, document_home: &str) -> bool {
     if existing_home.trim().is_empty() {
         return true;
@@ -1315,9 +1314,8 @@ pub async fn reject_room_invite(
     }))
 }
 
-/// Set a member's role (`admin` | `member`). Owner only for promote/demote of admins;
-/// owner or admin may demote? Spec: **owner only** can grant/revoke admin.
-/// Cannot change owner role here (use transfer ownership).
+/// Set a member's role (`admin` | `member`). Owner only; cannot change owner
+/// (use transfer ownership). Admins cannot mint more admins.
 pub async fn set_member_role(
     user_id: i32,
     username: &str,
@@ -1398,7 +1396,7 @@ pub async fn set_member_role(
     });
     crate::federation::ws_gateway::broadcast_to_room(room_id, &system_msg).await;
 
-    // Fan-out so remote homes mirror role (governance admin-only).
+    // fan-out RoomGovernance.set_member_role（仅 owner 可发）。
     let activity_id = generate_activity_id(&base_url);
     let gov_activity = json!({
         "@context": build_context(),
@@ -1483,7 +1481,7 @@ pub async fn remove_member(
         ));
     }
 
-    let _ = user_id; // validated via my_role check
+    let _ = user_id; // fan-out 投递用 user_id；角色校验不读它
 
     // Fan-out kick before local delete so remotes still have membership for delivery targets
     // (fanout uses remaining remote members; kicked target is still in the list here —

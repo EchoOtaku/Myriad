@@ -342,7 +342,7 @@ pub async fn update_permissions(
     )
 }
 
-// PR #6: OAuth Providers + 本地注册开关 — 专用端点
+// OAuth Providers + 本地注册开关 — 专用端点
 // 详见 docs/development/OAUTH.md
 //
 // GitHub 走 kind="github" 的 provider entry，和 OIDC 一起放在 oauth_providers。
@@ -393,7 +393,7 @@ pub async fn get_oauth_providers(
 pub struct UpdateOAuthProvidersPayload {
     pub providers: Vec<crate::config::OAuthProviderEntry>,
     pub allow_local_registration: bool,
-    /// Optional so older clients still work; omitted fields leave existing config unchanged.
+    /// 省略则保持现有配置。
     #[serde(default)]
     pub tapp_private_install_cleanup: Option<String>,
     #[serde(default)]

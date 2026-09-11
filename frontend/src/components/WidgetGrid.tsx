@@ -1,8 +1,3 @@
-/**
- * 可视化编辑的网格小组件系统
- * 标准布局 16×4（窄屏紧凑重排）；自由布局同格、同宽、固定 16×8
- */
-
 import type { HomeLayoutMode } from '../utils/homeLayout'
 import type { StickerCrop } from '../utils/homeStickerCrop'
 import type {
@@ -110,20 +105,14 @@ export function startGridLibraryDrag(
   })
 }
 
-// ⚗ 移动端检测 - 使用统一的性能检测系统
 function getIsMobile(): boolean {
   return getPerformanceProfileSync().isMobile
 }
 
-// 网格尺寸常量（列数阈值见 utils/viewportBands.ts，与主页壳 / Tailwind lg 统一）
 const GRID_WIDTH = HOME_STANDARD_COLS
 const GRID_HEIGHT = HOME_STANDARD_ROWS
 
-/**
- * Cross-band (tablet↔desktop) layout morph: never lerp left/top between compact
- * packing and desktop saved coords — fade out → hard swap → fade in.
- * Phone band always hard-cuts (DevTools mobile preview must not flash 16-col).
- */
+// 跨档 morph：勿在紧凑坐标与桌面坐标之间 lerp left/top，淡出→硬切→淡入。phone 档硬切，避免 DevTools 闪 16 列。
 const GRID_BAND_OUT_MS = 160
 const GRID_BAND_IN_MS = 220
 
@@ -133,7 +122,7 @@ function readInitialHomeGridColumns(custom?: number): number {
   return resolveHomeGridColumns(window.innerWidth, 0)
 }
 
-/** Position/grid 变时外壳要重绘，内部实现（iframe / 数据）不必跟着重挂。 */
+// 位置/网格变时只重绘外壳，iframe/数据不要跟着重挂。
 const WidgetGridItemBody = React.memo(
   ({
     widget,
@@ -170,7 +159,6 @@ const WidgetGridItemBody = React.memo(
     prev.widgetType === next.widgetType,
 )
 
-// Memoized Widget Item Component
 const WidgetGridItem = React.memo(
   ({
     widget,
@@ -212,9 +200,7 @@ const WidgetGridItem = React.memo(
     gridWidth?: number
     gridHeight?: number
     onConfigChange?: (newConfig: any) => void
-    /** 组件索引，用于计算递增延迟 */
     index?: number
-    /** Geometry (left/top/w/h) CSS transition for band reflow */
     layoutMotion?: boolean
     onRequestSticker?: (widget: WidgetConfig) => void
     allowSticker?: boolean
@@ -259,9 +245,6 @@ const WidgetGridItem = React.memo(
       [onConfigChange, stickerCropDraft, widget.config],
     )
 
-    // 使用统一动画协调系统；exlight 模式直接显示且不进入调度队列。
-    // Entrance timing intentionally eased after feedback that 80ms / stiff-300 felt too fast.
-    // Edit mode skips stagger: a tile dropped from the library must paint now.
     const animationsEnabled = !isExlight(anim)
     const skipEntrance = shouldSkipWidgetEntrance(isEditMode)
     const { canAnimate, onComplete } = useStaggerAnimation({
@@ -273,20 +256,17 @@ const WidgetGridItem = React.memo(
 
     const dim = widgetSizeSpan(widget.size)
 
-    // 使用传入的网格尺寸或默认值
     const gw = gridWidth || GRID_WIDTH
     const gh = gridHeight || GRID_HEIGHT
 
-    // Always % geometry: tablet compact reflow and desktop 16-col share one unit
-    // system so left/top/width/height can interpolate across band changes.
+    // 几何用 %，与列数无关；跨档不插值 left/top。
     const style: React.CSSProperties = {
       left: `${(widget.position.x / gw) * 100}%`,
       top: `${(widget.position.y / gh) * 100}%`,
       width: `${(dim.w / gw) * 100}%`,
       height: `${(dim.h / gh) * 100}%`,
       zIndex: stickerCropOpen || (isHovered && !isCovered) ? 40 : 10,
-      // 只提示 transform：left/top 是布局属性，will-change 对它们没有
-      // 加速作用，写上去只是让编辑模式下每个小组件白白多提升一层合成层。
+      // will-change 只写 transform；left/top 是布局属性，写上只会多一层合成层。
       willChange: isEditMode && isHovered && !isCovered ? 'transform' : 'auto',
     }
 
@@ -323,7 +303,6 @@ const WidgetGridItem = React.memo(
       ? stickerSizesSharingAspect(widget.size).length > 1
       : !widgetType.supportedSizes || widgetType.supportedSizes.length > 1
 
-    // 低性能模式 / 低端设备：禁用 spring，改用轻量 tween
     const useLiteTransition = !anim.spring || !isStandardAnimation(anim)
 
     return (
@@ -626,7 +605,6 @@ const WidgetGridItem = React.memo(
               onMouseDown={(e) => onResizeStart(e, widget.id, 'se')}
               onTouchStart={(e) => onResizeStart(e, widget.id, 'se')}
             >
-              {/* L 型条 - 适配主题色，1x1组件更小 */}
               <div
                 className={`border-b-8 border-r-8 rounded-br-xl drop-shadow-[0_4px_4px_color-mix(in_srgb,var(--color-primary),transparent_70%)] opacity-60 group-hover/resize:opacity-100 transition-all duration-200 border-[color-mix(in_srgb,var(--color-primary),white_60%)] group-hover/resize:border-[color-mix(in_srgb,var(--color-primary),white_30%)] dark:border-[color-mix(in_srgb,var(--color-primary),black_60%)] dark:group-hover/resize:border-[color-mix(in_srgb,var(--color-primary),black_30%)] ${
                   widget.size === '1x1'
@@ -683,10 +661,9 @@ interface WidgetGridProps {
   onWidgetsChange?: (widgets: WidgetConfig[]) => void
   isEditMode: boolean
   children?: React.ReactNode
-  customGridColumns?: number // Optional prop to override responsive grid columns
-  customGridRows?: number // Optional prop to override default grid rows
+  customGridColumns?: number
+  customGridRows?: number
   autoHeight?: boolean
-  /** Home only: free layout fills the stage with standard cell size. */
   layoutMode?: HomeLayoutMode
   stickerPickActive?: boolean
   onPickStickerSlot?: (slot: {
@@ -703,7 +680,7 @@ interface WidgetGridProps {
     }
   }) => void
   stickerHighlight?: { x: number; y: number; size: WidgetSize } | null
-  /** Home tour only. Control-panel grids must not set this. */
+  // 仅首页教程；控制面板网格不得设。
   tourAnchor?: string
   tourFit?: string
 }
@@ -715,9 +692,6 @@ const STICKER_WIDGET_TYPE: WidgetType = {
   component: StickerWidget,
 }
 
-/**
- * 检查小组件位置是否与其他小组件冲突
- */
 function checkCollision(
   widget: WidgetConfig,
   allWidgets: WidgetConfig[],
@@ -728,19 +702,16 @@ function checkCollision(
   const dim = widgetSizeSpan(widget.size)
   const { x, y } = widget.position
 
-  // 检查是否超出边界
   if (x < 0 || y < 0 || x + dim.w > gridWidth || y + dim.h > gridHeight) {
     return true
   }
 
-  // 检查与其他小组件的重叠
   for (const other of allWidgets) {
     if (other.id === excludeId || other.id === widget.id) continue
 
     const otherDim = widgetSizeSpan(other.size)
     const { x: ox, y: oy } = other.position
 
-    // AABB 碰撞检测
     if (
       x < ox + otherDim.w &&
       x + dim.w > ox &&
@@ -899,33 +870,25 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
   const isCompact =
     !isFreeLayout && !customGridColumns && gridColumns < GRID_WIDTH
   const containerRef = useRef<HTMLDivElement | null>(null)
-  // 缓存 gridRect 避免频繁调用 getBoundingClientRect
   const gridRectRef = useRef<DOMRect | null>(null)
-  /** Container width for height = width * rows/cols (not for item geometry). */
+  // containerWidth 只用来算高度，不算格子几何。
   const [containerWidth, setContainerWidth] = useState(0)
-  /** Track applied column band for hysteresis + morph. */
   const prevColumnsRef = useRef(gridColumns)
   const bandSwitchingRef = useRef(false)
-  /** After first successful apply; only then allow tablet↔desktop fade. */
+  // 首次成功 apply 之后才允许平板↔桌面淡入。
   const bandSettledOnceRef = useRef(false)
   const bandTimersRef = useRef<{ out?: number; in?: number; raf?: number }>({})
-  /**
-   * null = settled; 'out' | 'in' = cross-band fade (no geometry lerp).
-   */
+  // null=已稳；out|in=跨档淡入，不做几何 lerp。
   const [bandSwitch, setBandSwitch] = useState<'out' | 'in' | null>(null)
   const anim = useAnimationLevel()
-  /**
-   * Same-band only: drag/resize polish. Cross-band uses opacity crossfade —
-   * never interpolate compact packing ↔ desktop saved coords.
-   */
+  // 几何缓动只用于同档拖拽/缩放；跨档用透明度交叉淡入，勿插值紧凑坐标↔桌面坐标。
   const [motionMode, setMotionMode] = useState(layoutMode)
-  /** 切模式后两帧内关掉几何缓动，避免标准 16×4 与自由 16×8 互插。 */
+  // 切模式后两帧内关掉几何缓动，避免 16×4 与 16×8 互插。
   const geometryMotion =
     !isExlight(anim) &&
     bandSwitch === null &&
     motionMode === layoutMode
 
-  // 计算内容高度 (用于 autoHeight)
   const contentHeight = useMemo(() => {
     if (!autoHeight) return 0
     let maxY = 0
@@ -936,8 +899,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     return maxY
   }, [widgets, autoHeight])
 
-  // 响应式列档：防抖宽度 + 迟滞；tablet↔desktop 可淡入淡出；含 phone 则硬切
-  // 控制面板固定 12 列，不必为窗口 resize 重绘整棵网格。
   const { width: windowWidth } = useDebouncedWindowSize(
     150,
     !isFreeLayout && !customGridColumns,
@@ -1008,8 +969,7 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
       if (bandSwitchingRef.current) return
 
       const from = prevColumnsRef.current
-      // Snap without fade: first paint, exlight, or any transition involving phone
-      // (DevTools mobile width must never sit on a half-faded 16-col layout).
+      // 首次绘制、exlight、或涉及 phone 的切换都硬切；DevTools 窄宽不得停在半透明 16 列。
       const mustHardCut =
         animHardCut ||
         !bandSettledOnceRef.current ||
@@ -1021,7 +981,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
         return
       }
 
-      // tablet (8) ↔ desktop (16) only: short opacity crossfade
       bandSwitchingRef.current = true
       setBandSwitch('out')
       clearBandTimers()
@@ -1048,7 +1007,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     return clearBandTimers
   }, [windowWidth, customGridColumns, animHardCut, isFreeLayout])
 
-  // Unmount only: drop pending band morph timers
   useEffect(() => {
     return () => {
       if (bandTimersRef.current.out) clearTimeout(bandTimersRef.current.out)
@@ -1060,7 +1018,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     }
   }, [])
 
-  // 紧凑模式布局计算 (自动重排)
   const compactLayout = useMemo(() => {
     if (!isCompact) return null
     return packWidgetsIntoColumns(widgets, gridColumns)
@@ -1116,21 +1073,12 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
       ),
   )
 
-  // Explicit height from cols/rows. Cross-band: snap (no height transition).
-  // Free layout sizes the plate to N×cell instead of stretching with the host.
   const gridPixelHeight =
     freeGrid || containerWidth <= 0
       ? undefined
       : (containerWidth * currentGridHeight) / currentGridWidth
 
-  /*
-   * 高度过渡只表达「行数变了」，不表达「窗口宽度变了」。
-   *
-   * 高度是从 containerWidth 算出来的内联 px，缩放窗口时它每帧都在变；
-   * 过渡它意味着 450ms 内每帧重排全部小组件，进而反复唤醒各 widget 的
-   * ResizeObserver（useWidgetSize 重渲染 + FitText 整轮强制重排重测）。
-   * 行数变化是离散事件，才值得缓动。
-   */
+  // 高度过渡只跟行数，不跟窗口宽。高度是 containerWidth 算出的 px，过渡会每帧重排并反复叫醒 ResizeObserver。
   const [rowCountMorphing, setRowCountMorphing] = useState(false)
   const prevRowCountRef = useRef(currentGridHeight)
   useEffect(() => {
@@ -1163,11 +1111,7 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
   const [historyIndex, setHistoryIndex] = useState(-1)
   const [hoveredWidgetId, setHoveredWidgetId] = useState<string | null>(null)
 
-  /*
-   * id → WidgetType 索引。
-   * 此前每处都 `availableWidgets.find(...)`：渲染循环里每个格子一次，
-   * 拖拽/缩放的 rAF 回调里每帧一次，而 availableWidgets 含全部 Tapp 小组件。
-   */
+  // id→类型索引；勿在渲染/rAF 里对 availableWidgets 做 find。
   const widgetTypeById = useMemo(() => {
     const map = new Map<string, WidgetType>()
     for (const widgetType of availableWidgets)
@@ -1176,20 +1120,9 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     return map
   }, [availableWidgets])
 
-  // RAF ref for drag handling
   const rafRef = useRef<number | null>(null)
 
-  /*
-   * 最新状态镜像。
-   *
-   * WidgetGridItem 的 memo 比较函数刻意不比回调（比了就等于不 memo），
-   * 于是被拦下的格子会一直握着**首次通过比较那一帧**的回调闭包。
-   * 若回调直接闭包 widgets，就会读到过期数组——改配置或删除某个格子时，
-   * 会把此后新增的小组件一并抹掉。
-   *
-   * 因此下面所有传给 item 的回调都必须：引用恒定 + 从这里读最新值。
-   * （文件里 handleDragMoveRef 等已是同一约定。）
-   */
+  // item memo 不比回调，格子会握着旧闭包。回调必须引用恒定，从 latestRef 读；直接闭包 widgets 会在改配置时抹掉后来的格子。
   const latestRef = useRef({
     widgets,
     onWidgetsChange,
@@ -1211,12 +1144,10 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     currentGridHeight,
   }
 
-  // 保存到历史记录
   const saveToHistory = useCallback((newWidgets: WidgetConfig[]) => {
     const { widgetHistory: history, historyIndex: index } = latestRef.current
     const newHistory = history.slice(0, index + 1)
     newHistory.push(newWidgets)
-    // 限制历史记录数量为20
     if (newHistory.length > 20) {
       newHistory.shift()
     } else {
@@ -1225,7 +1156,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     setWidgetHistory(newHistory)
   }, [])
 
-  // 更新 gridRect 缓存（在拖拽开始时调用）
   const updateGridRectCache = useCallback(() => {
     if (containerRef.current) {
       gridRectRef.current = containerRef.current.getBoundingClientRect()
@@ -1275,13 +1205,10 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     [updateGridRectCache],
   )
 
-  // 🆕 使用首页原子化 ResizeObserver
   const { observeHomeResize, unobserveHomeResize } = useHomeResizeObserver()
 
-  // 监听网格容器尺寸（拖拽 hit-test 用）；布局不再依赖像素 cell 宽高
   const gridRef = useCallback(
     (node: HTMLDivElement | null) => {
-      // 清理旧的 observer
       if (containerRef.current) {
         unobserveHomeResize(containerRef.current)
       }
@@ -1292,7 +1219,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
           setContainerWidth(entry.contentRect.width)
           gridRectRef.current = node.getBoundingClientRect()
         })
-        // Seed width immediately so first paint has height
         setContainerWidth(node.getBoundingClientRect().width)
       }
     },
@@ -1392,7 +1318,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     onPickStickerSlot,
   ])
 
-  // 清理 ResizeObserver
   useEffect(() => {
     return () => {
       if (containerRef.current) {
@@ -1401,7 +1326,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     }
   }, [unobserveHomeResize])
 
-  // 开始拖拽现有小组件
   const handleWidgetDragStart = useCallback(
     (e: React.MouseEvent, widgetId: string) => {
       if (!isEditMode || stickerPickActive) return
@@ -1411,7 +1335,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
       const widget = latestRef.current.widgets.find((w) => w.id === widgetId)
       if (!widget) return
 
-      // 拖拽开始时更新 gridRect 缓存
       updateGridRectCache()
 
       setDragSettling(false)
@@ -1440,7 +1363,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     [isEditMode, stickerPickActive, updateGridRectCache],
   )
 
-  // 开始调整大小
   const handleResizeStart = useCallback(
     (
       e: React.MouseEvent | React.TouchEvent,
@@ -1454,10 +1376,8 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
       const widget = latestRef.current.widgets.find((w) => w.id === widgetId)
       if (!widget) return
 
-      // 调整大小开始时更新 gridRect 缓存
       updateGridRectCache()
 
-      // 获取初始位置（支持鼠标和触控）
       const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
       const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
 
@@ -1472,7 +1392,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     [isEditMode, stickerPickActive, updateGridRectCache],
   )
 
-  // 调整大小移动
   const handleResizeMove = useCallback(
     (e: MouseEvent | TouchEvent) => {
       if (!resizingWidget) return
@@ -1480,7 +1399,7 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
       if (rafRef.current) return
 
       rafRef.current = requestAnimationFrame(() => {
-        // 使用缓存的 gridRect，避免在 RAF 回调中调用 getBoundingClientRect
+        // RAF 里用缓存的 gridRect，勿 getBoundingClientRect。
         const gridRect = gridRectRef.current
         if (!gridRect) {
           rafRef.current = null
@@ -1499,23 +1418,19 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
           return
         }
 
-        // Calculate new dimensions based on mouse position relative to widget top-left
         const widgetLeft = widget.position.x * cellWidth + gridRect.left
         const widgetTop = widget.position.y * cellHeight + gridRect.top
 
         const newWidthPx = clientX - widgetLeft
         const newHeightPx = clientY - widgetTop
 
-        // Convert to grid units (float)
         let rawW = newWidthPx / cellWidth
         const rawH = newHeightPx / cellHeight
 
-        // 如果是底部调整，锁定宽度
         if (resizingWidget.direction === 's') {
           rawW = widgetSizeSpan(resizingWidget.startSize).w
         }
 
-        // Find closest valid size
         let bestSize = widget.size
         let minDistance = Infinity
 
@@ -1541,7 +1456,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
         for (const size of validSizes) {
           const dim = widgetSizeSpan(size)
 
-          // 如果是底部调整，只考虑宽度相同的尺寸
           if (
             resizingWidget.direction === 's' &&
             dim.w !== widgetSizeSpan(resizingWidget.startSize).w
@@ -1549,7 +1463,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
             continue
           }
 
-          // Calculate Euclidean distance in grid units
           const dist = (dim.w - rawW) ** 2 + (dim.h - rawH) ** 2
 
           if (dist < minDistance) {
@@ -1596,7 +1509,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     ],
   )
 
-  // 结束调整大小
   const handleResizeEnd = useCallback(() => {
     if (resizingWidget) {
       const committed = widgets.find((w) => w.id === resizingWidget.widgetId)
@@ -1617,19 +1529,16 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     }
   }, [resizingWidget, widgets, onWidgetsChange, saveToHistory])
 
-  // 拖拽移动
   const handleDragMove = useCallback(
     (e: MouseEvent | TouchEvent) => {
       if (!draggedWidget) return
 
-      // Use requestAnimationFrame to throttle updates
       if (rafRef.current) {
         return
       }
 
       rafRef.current = requestAnimationFrame(() => {
-        // 使用缓存的 gridRect，避免在 RAF 回调中调用 getBoundingClientRect
-        // 注意：如果容器在滚动过程中位置变化，需要在滚动事件中更新缓存
+        // RAF 里用缓存的 gridRect，勿 getBoundingClientRect。
         const gridRect = gridRectRef.current
 
         if (!gridRect) {
@@ -1637,11 +1546,9 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
           return
         }
 
-        // 获取鼠标/触摸位置
         const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
         const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
 
-        // 更新光标位置（用于渲染跟随光标的预览）
         setWidgetDragCursor({ x: clientX, y: clientY })
 
         let size: WidgetSize = '1x1'
@@ -1678,7 +1585,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     ],
   )
 
-  // 结束拖拽
   const handleDragEnd = useCallback(() => {
     if (dragSettling) return
     if (rafRef.current) {
@@ -1697,7 +1603,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     }
 
     if (draggedWidget.type === 'existing' && draggedWidget.widgetId) {
-      // 移动现有小组件
       const widget = widgets.find((w) => w.id === draggedWidget.widgetId)
       if (!widget) return
 
@@ -1706,11 +1611,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
         position: hoveredCell,
       }
 
-      // 检查碰撞
-      // 注意：在移动端模式下，我们可能需要禁用拖拽或者使用不同的碰撞检测逻辑
-      // 这里暂时保持原样，但使用 currentWidgets 进行检测可能不准确，因为 currentWidgets 是计算出来的
-      // 如果在移动端拖拽，我们应该更新原始 widgets 的顺序？这比较复杂。
-      // 建议：移动端禁用编辑模式
       if (
         !checkCollision(
           newWidget,
@@ -1736,7 +1636,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
         return
       }
     } else if (draggedWidget.type === 'new' && draggedWidget.widgetTypeId) {
-      // 添加新小组件
       const widgetType = widgetTypeById.get(draggedWidget.widgetTypeId)
       if (!widgetType) return
 
@@ -1800,19 +1699,16 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     isFreeLayout,
   ])
 
-  // 移除小组件（引用恒定，见 latestRef 注释）
   const handleRemoveWidget = useCallback(
     (widgetId: string) => {
       const { widgets: current, onWidgetsChange: notify } = latestRef.current
       const newWidgets = current.filter((w) => w.id !== widgetId)
       notify?.(newWidgets)
-      // 添加到历史记录
       saveToHistory(newWidgets)
     },
     [saveToHistory],
   )
 
-  // 单个小组件的配置变更（引用恒定，见 latestRef 注释）
   const handleWidgetConfigChange = useCallback(
     (widgetId: string, newConfig: any) => {
       const { widgets: current, onWidgetsChange: notify } = latestRef.current
@@ -1827,7 +1723,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
 
   const handleWidgetMouseLeave = useCallback(() => setHoveredWidgetId(null), [])
 
-  // 撤销功能
   const handleUndo = useCallback(() => {
     if (historyIndex > 0) {
       const prevWidgets = widgetHistory[historyIndex - 1]
@@ -1836,7 +1731,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     }
   }, [historyIndex, widgetHistory, onWidgetsChange])
 
-  // 重做功能
   const handleRedo = useCallback(() => {
     if (historyIndex < widgetHistory.length - 1) {
       const nextWidgets = widgetHistory[historyIndex + 1]
@@ -1845,7 +1739,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     }
   }, [historyIndex, widgetHistory, onWidgetsChange])
 
-  // 使用 ref 存储事件处理函数，避免每次状态变化时重新添加/移除事件监听器
   const handleDragMoveRef = useRef(handleDragMove)
   const handleDragEndRef = useRef(handleDragEnd)
   const handleResizeMoveRef = useRef(handleResizeMove)
@@ -1855,8 +1748,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
   handleResizeMoveRef.current = handleResizeMove
   handleResizeEndRef.current = handleResizeEnd
 
-  // 注册拖拽事件（鼠标和触屏）- 使用 ref 避免频繁重建监听器
-  // 关键优化: 移动端禁用编辑模式,避免 passive: false 破坏滚动性能
   useEffect(() => {
     if (draggedWidget && !dragSettling) {
       const isMobile = getIsMobile()
@@ -1867,8 +1758,7 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
       window.addEventListener('mousemove', moveHandler)
       window.addEventListener('mouseup', endHandler)
 
-      // 移动端使用 passive: true 避免阻塞滚动
-      // 这意味着在移动端拖拽时无法调用 preventDefault,但保证了滚动流畅性
+      // 移动端 passive:true，拖拽时不能 preventDefault。
       if (isMobile) {
         window.addEventListener('touchmove', moveHandler, { passive: true })
       } else {
@@ -1932,8 +1822,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     }
   }, [anim, dragSettling, handoffCommitted, handoffId])
 
-  // 注册调整大小事件 - 使用 ref 避免频繁重建监听器
-  // 关键优化: 移动端使用 passive 监听避免阻塞滚动
   useEffect(() => {
     if (resizingWidget) {
       const isMobile = getIsMobile()
@@ -1944,7 +1832,7 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
       window.addEventListener('mousemove', moveHandler)
       window.addEventListener('mouseup', endHandler)
 
-      // 移动端使用 passive: true 避免阻塞滚动
+      // 移动端 passive:true，拖拽时不能 preventDefault。
       if (isMobile) {
         window.addEventListener('touchmove', moveHandler, { passive: true })
       } else {
@@ -1965,19 +1853,16 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
         }
       }
     }
-  }, [resizingWidget]) // 只依赖 resizingWidget 是否存在
+  }, [resizingWidget])
 
-  // 键盘快捷键支持（编辑模式）
   useEffect(() => {
     if (!isEditMode) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl/Cmd + Z: 撤销
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault()
         handleUndo()
       }
-      // Ctrl/Cmd + Shift + Z 或 Ctrl/Cmd + Y: 重做
       if (
         (e.ctrlKey || e.metaKey) &&
         ((e.shiftKey && e.key === 'z') || e.key === 'y')
@@ -1991,7 +1876,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleRedo, handleUndo, isEditMode])
 
-  // 预览拖拽位置和组件信息
   const dragPreview = useMemo(() => {
     if (!draggedWidget) return null
     const ghost = resolveDragGhostWidget({
@@ -2037,7 +1921,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
     currentGridHeight,
   ])
 
-  // 网格背景线：单个盒子 + repeating gradient（细节见 WidgetGrid.css）
   const gridBackground = useMemo(
     () => (
       <div
@@ -2065,7 +1948,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
       data-layout-mode={layoutMode}
       data-band-switch={bandSwitch ?? undefined}
     >
-      {/* 网格区域 */}
       <div
         className={`relative w-full flex flex-col min-h-0 ${
           isCompact
@@ -2075,7 +1957,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
               : 'flex-1 justify-end'
         }`}
       >
-        {/* 插入 children (InfoBar) */}
         {children}
 
         <div
@@ -2107,10 +1988,8 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
                     }
             }
           >
-            {/* 背景网格线（编辑模式） */}
             {isEditMode && !isCompact && gridBackground}
 
-            {/* 拖拽位置指示器 - 网格中的目标位置预览 */}
             {dragPreview?.position && !isCompact && (
               <div
                 className={`widget-grid-drop-slot${
@@ -2239,7 +2118,6 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
               />
             ) : null}
 
-            {/* 小组件 */}
             <div
               className={`absolute inset-0 z-10${
                 stickerPickActive ? ' pointer-events-none' : ''
@@ -2255,10 +2133,7 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
                   ? STICKER_WIDGET_TYPE
                   : widgetTypeById.get(widget.type)
                 if (!widgetType) {
-                  // 未知/未注册组件：渲染轻量占位而非静默跳过（issue #72）。
-                  // 此前 return null 导致 Tapp widget 在注册表尚未同步/同步
-                  // 失败时整卡空白且无任何提示，用户无法区分"加载中/失败/被
-                  // 过滤"；占位至少暴露该格子的 widget 类型，便于诊断。
+                  // 未注册类型画占位，勿 return null（issue #72）。
                   const dim =
                     widgetSizeSpan(widget.size)
                   const gw = currentGridWidth
@@ -2286,9 +2161,7 @@ const WidgetGrid = forwardRef<WidgetGridHandle, WidgetGridProps>(
                   )
                 }
 
-                // 只闭包 widget.id（对某个格子恒定），实际读写走
-                // handleWidgetConfigChange 的 latestRef，因此即便这个箭头
-                // 被 memo 冻在旧的一帧，也不会写回过期的 widgets 数组。
+                // 只闭包 widget.id；读写走 latestRef，避免 memo 冻住旧 widgets 数组。
                 const handleConfigChange = (newConfig: any) =>
                   handleWidgetConfigChange(widget.id, newConfig)
 

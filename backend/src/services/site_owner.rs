@@ -1,6 +1,6 @@
 //! Site owner resolution for public/dashboard surfaces.
 //!
-//! Prefer durable `users.is_owner`; fall back to lowest admin id for pre-is_owner DBs.
+//! Prefer durable `users.is_owner`; fall back to lowest admin id.
 //! Lives in services so reports/config/scheduler do not reach through HTTP profile handlers.
 
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
@@ -42,7 +42,7 @@ pub async fn site_owner_user_id(db: &DatabaseConnection) -> Result<i32, String> 
         }
     }
 
-    // 2) Legacy: first admin (pre-is_owner installs / column missing)
+    // 2) First admin (`is_admin` 最低 id)
     let row = db
         .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,

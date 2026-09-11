@@ -1,12 +1,7 @@
-/**
- * Store merchandising preview geometry + "is this snapshot worth showing".
- */
-
 import type { StorePreviewDescriptor } from './storePreview'
 
 export const STORE_PREVIEW_WIDTH = 1280
 export const STORE_PREVIEW_HEIGHT = 720
-/** Hard fail only when layout is wildly wider than the canvas. */
 export const STORE_PREVIEW_OVERFLOW_TOLERANCE = 0.2
 
 export type PreviewRenderState = 'checking' | 'ready' | 'fallback'
@@ -58,13 +53,6 @@ function isTransparentColor(color: string): boolean {
   return false
 }
 
-/**
- * Decide whether a sanitized srcDoc iframe is usable as store merchandising.
- *
- * Intentionally lenient: sanitization strips scripts, external images, and many
- * paints. CSS shells / typography-only layouts must still pass; only total
- * emptiness or extreme horizontal overflow should fail.
- */
 export function isRenderedPreviewAdapted(
   frame: HTMLIFrameElement,
   canvas: PreviewCanvas,
@@ -141,9 +129,7 @@ export function isRenderedPreviewAdapted(
     if (hasDirectText || hasRenderedMedia || hasPaint) return true
   }
 
-  // Layout-only shell after sanitization still counts (e.g. nested flex chrome).
   return laidOut >= 2
 }
 
-/** If iframe never fires load, promote checking → ready (show content) not fallback. */
 export const PREVIEW_LOAD_TIMEOUT_MS = 2800

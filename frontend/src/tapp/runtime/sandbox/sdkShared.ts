@@ -1,12 +1,3 @@
-/**
- * Shared fragments for page/headless and widget sandbox SDK generation.
- */
-
-// 预缓存的静态代码片段
-
-/**
- * 存储 key 验证器代码（预生成，避免重复计算）
- */
 const STORAGE_KEY_VALIDATOR_CODE = `
   const validateStorageKey = (key) => {
     if (!key || typeof key !== 'string') {
@@ -28,11 +19,8 @@ const STORAGE_KEY_VALIDATOR_CODE = `
   };
 `
 
-/** Default host round-trip (storage / lifecycle / list). */
 const SDK_DEFAULT_REQUEST_TIMEOUT_MS = 30_000
-/** Floor for Tapp.ai.* (create may wait on image-reference fetch). */
 const SDK_AI_REQUEST_TIMEOUT_MS = 5 * 60 * 1000
-/** model3d.awaitTask waits on the provider; match MEROPE_PROXY / default Tripo. */
 const SDK_MODEL3D_AWAIT_TIMEOUT_MS = 15 * 60 * 1000
 
 export function sdkRequestTimeoutHelper(): string {
@@ -45,7 +33,6 @@ export function sdkRequestTimeoutHelper(): string {
 `
 }
 
-/** Page 与 Widget 共用的安全 DOM helper，避免两套 SDK 能力漂移。 */
 export const DOM_HELPERS_CODE = `{
       escapeHtml: function(text) {
         if (text == null) return '';
@@ -90,10 +77,6 @@ export const DOM_HELPERS_CODE = `{
       }
     }`
 
-/**
- * Page / Widget 共用的 file.download 包装：文本、本站生成资源 URL、
- * data URL / base64，以及沙箱 blob:（先读成 base64 再交给宿主）。
- */
 export const FILE_DOWNLOAD_METHOD_CODE = `download: function(contentOrOptions, filename, mimeType) {
         var send = function(options) {
           return sendRequest('file', 'download', [options]);
@@ -168,9 +151,111 @@ export const FILE_DOWNLOAD_METHOD_CODE = `download: function(contentOrOptions, f
         return send({ content: contentOrOptions, filename: filename, mimeType: mimeType });
       }`
 
-/**
- * 生成存储 key 验证代码（使用缓存）
- */
 export function generateStorageKeyValidator(): string {
   return STORAGE_KEY_VALIDATOR_CODE
 }
+
+type SdkFnStyle = 'arrow' | 'fn'
+
+function kvMethod(
+  style: SdkFnStyle,
+  signature: string,
+  body: string,
+): string {
+  if (style === 'arrow') {
+    return `${signature} => { ${body} }`
+  }
+  return `function${signature} { ${body} }`
+}
+
+/** storage / shared / private 同一套方法面；权限位相同，REST 闸不同。 */
+export function generateKvNamespaceCode(
+  api: 'storage' | 'shared' | 'private',
+  style: SdkFnStyle,
+): string {
+  const event = `${api}Changed`
+  const call = (method: string, args: string) =>
+    `return sendRequest('${api}', '${method}', [${args}]);`
+  return `
+    ${api}: {
+      get: ${kvMethod(style, '(k)', `validateStorageKey(k); ${call('get', 'k')}`)},
+      set: ${kvMethod(style, '(k, v)', `validateStorageKey(k); ${call('set', 'k, v')}`)},
+      remove: ${kvMethod(style, '(k)', `validateStorageKey(k); ${call('remove', 'k')}`)},
+      keys: ${kvMethod(style, '()', call('keys', ''))},
+      getAll: ${kvMethod(style, '()', call('getAll', ''))},
+      clear: ${kvMethod(style, '()', call('clear', ''))},
+      usage: ${kvMethod(style, '()', call('usage', ''))},
+      onChanged: ${kvMethod(style, '(cb)', `return addEventListener('${event}', cb);`)}
+    },`
+}
+
+export function generateSettingsNamespaceCode(style: SdkFnStyle): string {
+  return `
+    settings: {
+      get: ${kvMethod(style, '(k)', "validateStorageKey(k); return sendRequest('settings', 'get', [k]);")},
+      set: ${kvMethod(style, '(k, v)', "validateStorageKey(k); return sendRequest('settings', 'set', [k, v]);")},
+      getAll: ${kvMethod(style, '()', "return sendRequest('settings', 'getAll', []);")},
+      onChanged: ${kvMethod(style, '(cb)', "return addEventListener('settingsChanged', cb);")}
+    },`
+}
+
+/** Page / Widget 共用：宿主主题推送时写 CSS 变量。依赖同作用域的 forceRepaint。 */
+export const SDK_HOST_CHROME_CODE = `
+  var forceRepaint = function () {
+    void document.body.offsetHeight;
+    if (window._TAPP_DISABLE_TRANSFORM_REPAINT) return;
+    try {
+      requestAnimationFrame(function () {
+        document.body.style.transform = 'translateZ(0)';
+        requestAnimationFrame(function () {
+          document.body.style.transform = '';
+        });
+      });
+    } catch (e) {}
+  };
+  var applyTappTheme = function(payload) {
+    var isDark = payload === 'dark';
+    document.body.classList.toggle('dark', isDark);
+    document.body.classList.toggle('light', !isDark);
+    var root = document.documentElement;
+    root.style.setProperty('--tapp-text', isDark ? '#f3f4f6' : '#1f2937');
+    root.style.setProperty('--tapp-subtext', isDark ? '#9ca3af' : '#6b7280');
+    root.style.setProperty('--tapp-bg', isDark ? '#0a0a0a' : '#f8fafc');
+    root.style.setProperty('--tapp-card-bg', isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.7)');
+    root.style.setProperty('--tapp-border', isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)');
+    root.style.setProperty('--tapp-input-bg', isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.9)');
+    root.style.setProperty('--tapp-shadow', isDark ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.08)');
+    root.style.setProperty('--text-primary', isDark ? 'rgba(255,255,255,.92)' : '#1a1a1a');
+    root.style.setProperty('--text-secondary', isDark ? 'rgba(255,255,255,.5)' : '#999');
+    root.style.setProperty('--bg-primary', isDark ? '#0a0a0a' : '#fff');
+    document.body.style.background = isDark ? '#0a0a0a' : '#fff';
+    document.body.style.color = isDark ? 'rgba(255,255,255,.92)' : '#1a1a1a';
+    forceRepaint();
+  };
+  var applyTappPrimaryColor = function(payload) {
+    if (!payload) return;
+    document.documentElement.style.setProperty('--tapp-primary', payload);
+    forceRepaint();
+  };
+`
+
+/** widgets/pages 必须能注册 render，不能冻。其余命名空间一律冻上。 */
+export const SDK_FREEZE_TAPP_CODE = `
+  (function(tapp) {
+    var skip = { widgets: 1, pages: 1 };
+    Object.keys(tapp).forEach(function(key) {
+      if (skip[key]) return;
+      var value = tapp[key];
+      if (!value || (typeof value !== 'object' && typeof value !== 'function')) return;
+      if (Array.isArray(value)) return;
+      Object.freeze(value);
+      if (value && typeof value === 'object') {
+        if (value.fullscreen) Object.freeze(value.fullscreen);
+        if (value.tasks) Object.freeze(value.tasks);
+        if (value.platform) Object.freeze(value.platform);
+      }
+    });
+    Object.freeze(tapp);
+    try { Object.freeze(Object.getPrototypeOf(tapp)); } catch (e) {}
+  })(window.Tapp);
+`

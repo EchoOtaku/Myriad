@@ -244,7 +244,6 @@ export function TourOverlay() {
         isHomeAgentActionStep(step)
       : false
     const hosts: HTMLElement[] = []
-    // 预计算步不观察 DOM：外壳 morph、内容高度过渡都会每帧触发 RO。
     if (step && !predicted) {
       if (cardRef.current) hosts.push(cardRef.current)
       if (tourMeasureWatchesHost(step.anchor)) {

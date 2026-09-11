@@ -1,13 +1,3 @@
-/**
- * Agent 全局动作处理器
- *
- * 功能：
- * - 处理 Agent 发起的路由导航 (navigate)
- * - 处理 Agent 发起的页面元素交互 (page_interact)
- *
- * 这个组件必须放在 BrowserRouter 内部，以便使用 useNavigate hook
- */
-
 import type { FrontendAction, PageElementTarget } from '../services/agent'
 import { useCallback, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -16,14 +6,10 @@ import {
   registerActionHandler,
   unregisterActionHandler,
 } from '../services/agent'
+import { brewSubject } from '../utils/brewSubject'
 import { useMusicPlayerControl } from './MusicPlayerContext'
 
-/**
- * 查找页面元素
- * 支持多种选择器方式
- */
 function findElement(target: PageElementTarget): HTMLElement | null {
-  // 1. 使用 data-testid
   if (target.testId) {
     const el = document.querySelector(
       `[data-testid="${CSS.escape(target.testId)}"]`,
@@ -31,7 +17,6 @@ function findElement(target: PageElementTarget): HTMLElement | null {
     if (el) return el as HTMLElement
   }
 
-  // 2. 使用 CSS 选择器
   if (target.selector) {
     try {
       const els = document.querySelectorAll(target.selector)
@@ -45,7 +30,6 @@ function findElement(target: PageElementTarget): HTMLElement | null {
     }
   }
 
-  // 3. 使用 aria-label
   if (target.ariaLabel) {
     const el = document.querySelector(
       `[aria-label="${CSS.escape(target.ariaLabel)}"]`,
@@ -53,29 +37,24 @@ function findElement(target: PageElementTarget): HTMLElement | null {
     if (el) return el as HTMLElement
   }
 
-  // 4. 使用 role + 可选的 text
   if (target.role) {
     const elements = document.querySelectorAll(
       `[role="${CSS.escape(target.role)}"]`,
     )
     if (target.text) {
-      // 按文本内容过滤
       for (const el of elements) {
         if (el.textContent?.includes(target.text)) {
           return el as HTMLElement
         }
       }
     } else if (typeof target.index === 'number') {
-      // 按索引选择
       return elements[target.index] as HTMLElement
     } else if (elements.length > 0) {
       return elements[0] as HTMLElement
     }
   }
 
-  // 5. 仅使用文本内容查找
   if (target.text && !target.role) {
-    // 尝试查找按钮、链接等可交互元素
     const interactiveElements = document.querySelectorAll(
       'button, a, input, textarea, [contenteditable="true"], [role="button"], [role="link"], [role="tab"], [role="menuitem"]',
     )
@@ -89,9 +68,6 @@ function findElement(target: PageElementTarget): HTMLElement | null {
   return null
 }
 
-/**
- * 等待元素出现
- */
 async function waitForElement(
   target: PageElementTarget,
   timeout = 5000,
@@ -102,16 +78,12 @@ async function waitForElement(
     const el = findElement(target)
     if (el) return el
 
-    // 等待 100ms 后重试
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
 
   return null
 }
 
-/**
- * 执行元素交互
- */
 async function executeInteraction(
   element: HTMLElement,
   action: string,
@@ -161,7 +133,6 @@ async function executeInteraction(
             element.scrollBy({ top: options.offset, behavior: scrollBehavior })
           }
         } else {
-          // 默认滚动到元素
           element.scrollIntoView({ behavior: 'smooth', block: 'center' })
         }
         break
@@ -171,7 +142,6 @@ async function executeInteraction(
         break
 
       case 'select':
-        // 适用于 checkbox、radio、select 等
         if (element instanceof HTMLInputElement) {
           if (element.type === 'checkbox' || element.type === 'radio') {
             element.checked =
@@ -185,27 +155,23 @@ async function executeInteraction(
         break
 
       case 'toggle':
-        // 切换状态
         if (element instanceof HTMLInputElement) {
           if (element.type === 'checkbox') {
             element.checked = !element.checked
             element.dispatchEvent(new Event('change', { bubbles: true }))
           }
         } else {
-          // 对于其他元素，尝试点击
           element.click()
         }
         break
 
       case 'expand':
-        // 展开折叠元素
         if (element.getAttribute('aria-expanded') === 'false') {
           element.click()
         }
         break
 
       case 'collapse':
-        // 收起折叠元素
         if (element.getAttribute('aria-expanded') === 'true') {
           element.click()
         }
@@ -246,10 +212,7 @@ async function executeInteraction(
   }
 }
 
-/**
- * Agent 全局动作处理组件
- * 必须在 BrowserRouter 内部使用
- */
+/** Must live inside BrowserRouter (useNavigate). */
 export function AgentGlobalActions() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -269,12 +232,10 @@ export function AgentGlobalActions() {
     URL.revokeObjectURL(current.url)
   }, [])
 
-  // 路由导航处理器
   const handleNavigate = useCallback(
     async (action: FrontendAction): Promise<boolean> => {
       if (action.type !== 'navigate') return false
 
-      // 防止重复导航
       if (isNavigatingRef.current) {
         console.warn('[AgentGlobalActions] Navigation already in progress')
         return false
@@ -283,7 +244,6 @@ export function AgentGlobalActions() {
       try {
         isNavigatingRef.current = true
 
-        // 优先使用 fullPath
         let targetPath = action.fullPath || action.path
 
         if (!targetPath) {
@@ -291,7 +251,6 @@ export function AgentGlobalActions() {
           return false
         }
 
-        // 如果有 query 参数，构建查询字符串
         if (
           action.query &&
           Object.keys(action.query).length > 0 &&
@@ -309,7 +268,6 @@ export function AgentGlobalActions() {
           }
         }
 
-        // 检查是否是同一路径
         if (
           location.pathname === targetPath ||
           `${location.pathname}${location.search}` === targetPath
@@ -327,7 +285,6 @@ export function AgentGlobalActions() {
           action.replace ? '(replace)' : '',
         )
 
-        // 执行导航
         if (action.replace) {
           navigate(targetPath, { replace: true, state: action.params })
         } else {
@@ -336,7 +293,7 @@ export function AgentGlobalActions() {
 
         return true
       } finally {
-        // 延迟重置，允许导航完成
+        // Unlock after navigation can finish.
         setTimeout(() => {
           isNavigatingRef.current = false
         }, 100)
@@ -345,7 +302,6 @@ export function AgentGlobalActions() {
     [navigate, location],
   )
 
-  // 页面元素交互处理器
   const handlePageInteract = useCallback(
     async (action: FrontendAction): Promise<boolean> => {
       if (action.type !== 'page_interact') return false
@@ -356,7 +312,6 @@ export function AgentGlobalActions() {
         return false
       }
 
-      // 等待元素出现
       const waitTimeout = action.waitFor?.timeout || 5000
       const element = await waitForElement(target, waitTimeout)
 
@@ -365,7 +320,6 @@ export function AgentGlobalActions() {
         return false
       }
 
-      // 如果需要等待元素可见
       if (action.waitFor?.visible) {
         const isVisible = element.offsetWidth > 0 && element.offsetHeight > 0
         if (!isVisible) {
@@ -374,7 +328,6 @@ export function AgentGlobalActions() {
         }
       }
 
-      // 执行交互动作
       const interactionAction = action.action || 'click'
       return executeInteraction(
         element,
@@ -386,7 +339,6 @@ export function AgentGlobalActions() {
     [],
   )
 
-  // Brew 文章打开处理器
   const handleBrewOpenArticle = useCallback(
     async (action: FrontendAction): Promise<boolean> => {
       if (action.type !== 'brew_open_article') return false
@@ -402,19 +354,18 @@ export function AgentGlobalActions() {
 
       console.log('[AgentGlobalActions] Opening brew article:', params)
 
-      // 检查当前是否在 Brew 页面
       const isOnBrewPage =
         location.pathname === '/brew' || location.pathname.startsWith('/brew/')
 
       if (!isOnBrewPage) {
-        // 不在 Brew 页面，先导航过去
         console.log(
           '[AgentGlobalActions] Not on Brew page, navigating first...',
         )
 
-        // 将待执行的操作存储到 sessionStorage，让 Brew 组件挂载后自行检查执行
-        // 这样可以避免事件在组件挂载前发送导致丢失的竞态条件
+        // Park in sessionStorage so Brew can run it after mount (avoids a pre-mount race).
         const pendingAction = {
+          subjectKey: brewSubject.capture().key,
+          subjectGeneration: brewSubject.capture().generation,
           articleId: params?.articleId,
           articleLink: params?.articleLink,
           openLatest: params?.openLatest ?? true,
@@ -431,7 +382,6 @@ export function AgentGlobalActions() {
 
         navigate('/brew')
       } else {
-        // 已在 Brew 页面，直接发送事件
         const event = new CustomEvent('agent:open-brew-article', {
           detail: {
             articleId: params?.articleId,
@@ -447,7 +397,6 @@ export function AgentGlobalActions() {
     [location.pathname, navigate],
   )
 
-  // 音乐播放器控制处理
   const handleMusicControl = useCallback(
     async (frontendAction: FrontendAction): Promise<boolean> => {
       console.log('[AgentGlobalActions] handleMusicControl:', frontendAction)
@@ -482,7 +431,7 @@ export function AgentGlobalActions() {
 
         case 'volume':
           if (value !== undefined) {
-            // value 应该是 0-1 范围（后端已转换）
+            // Volume is 0–1 (backend already converted).
             window.dispatchEvent(
               new CustomEvent('music-player-volume', {
                 detail: { volume: value },
@@ -519,7 +468,6 @@ export function AgentGlobalActions() {
     [musicPlayer.isPlaying],
   )
 
-  // 音乐歌单加载处理
   const handleMusicLoadPlaylist = useCallback(
     async (frontendAction: FrontendAction): Promise<boolean> => {
       console.log(
@@ -527,9 +475,7 @@ export function AgentGlobalActions() {
         frontendAction,
       )
 
-      // 从 frontendAction 中提取歌单信息
-      // 后端返回的数据结构：{ type: 'music_load_playlist', playlistId, source, autoPlay }
-      // 字段可能在顶层或 data 中
+      // playlistId/source/autoPlay may be top-level or under data.
       const playlistId =
         frontendAction.playlistId ||
         (frontendAction.data?.playlistId as string) ||
@@ -554,7 +500,6 @@ export function AgentGlobalActions() {
         `[AgentGlobalActions] Loading playlist: ${playlistId} from ${source}, autoPlay: ${autoPlay}`,
       )
 
-      // 发送事件给音乐播放器组件
       window.dispatchEvent(
         new CustomEvent('music-player-load-playlist', {
           detail: {
@@ -589,7 +534,6 @@ export function AgentGlobalActions() {
     musicPlayer.currentLyricIndex,
   ])
 
-  // 阅读列表处理
   const handleReadingList = useCallback(
     async (frontendAction: FrontendAction): Promise<boolean> => {
       console.log('[AgentGlobalActions] handleReadingList:', frontendAction)
@@ -621,7 +565,6 @@ export function AgentGlobalActions() {
         `[AgentGlobalActions] Setting reading list: ${payload.name} with ${payload.items.length} items`,
       )
 
-      // 检查是否包含网络搜索结果
       const hasWebSearchItems = payload.items.some((item) => item.fromWebSearch)
       if (hasWebSearchItems) {
         console.log(
@@ -629,7 +572,6 @@ export function AgentGlobalActions() {
         )
       }
 
-      // 准备阅读列表数据
       const readingListData = {
         id: `reading_list_${Date.now()}`,
         name: payload.name || currentCopy().brew.smartReadingList,
@@ -638,7 +580,6 @@ export function AgentGlobalActions() {
         createdAt: new Date().toISOString(),
       }
 
-      // 获取第一篇文章的信息
       const firstItem = payload.items[0]
       const firstItemData = firstItem?.fromWebSearch
         ? {
@@ -647,20 +588,20 @@ export function AgentGlobalActions() {
           }
         : null
 
-      // 检查当前是否在 Brew 页面
       const isOnBrewPage =
         location.pathname === '/brew' || location.pathname.startsWith('/brew/')
 
       if (!isOnBrewPage) {
-        // 不在 Brew 页面，将阅读列表和待打开文章存储到 sessionStorage
-        // 让 Brew 组件挂载后自行检查执行，避免事件丢失
+        // Park in sessionStorage so Brew can run it after mount (avoids a pre-mount race).
         const pendingAction = {
+          subjectKey: brewSubject.capture().key,
+          subjectGeneration: brewSubject.capture().generation,
           readingList: readingListData,
           articleId:
             payload.items[0]?.id != null
               ? String(payload.items[0].id)
               : undefined,
-          webSearchArticle: firstItemData, // 如果是网络搜索文章，传递完整数据
+          webSearchArticle: firstItemData, // Pass full payload for web-search items.
           timestamp: Date.now(),
         }
         sessionStorage.setItem(
@@ -674,23 +615,21 @@ export function AgentGlobalActions() {
 
         navigate('/brew')
       } else {
-        // 已在 Brew 页面，直接发送事件
         window.dispatchEvent(
           new CustomEvent('agent:set-reading-list', {
             detail: readingListData,
           }),
         )
 
-        // 打开阅读列表中的第一篇文章
         if (firstItem) {
-          // 延迟发送，确保阅读列表已设置
+          // Wait until the reading list is applied.
           setTimeout(() => {
             window.dispatchEvent(
               new CustomEvent('agent:open-brew-article', {
                 detail: {
                   articleId: firstItem.id.toString(),
                   openLatest: false,
-                  // 如果是网络搜索文章，传递完整数据
+                  // Pass full payload for web-search items.
                   webSearchArticle: firstItemData,
                 },
               }),
@@ -873,7 +812,6 @@ export function AgentGlobalActions() {
     [],
   )
 
-  // 注册处理器
   useEffect(() => {
     console.log('[AgentGlobalActions] Registering global action handlers')
 
@@ -925,7 +863,6 @@ export function AgentGlobalActions() {
     releasePlayAudio,
   ])
 
-  // 这个组件不渲染任何 UI
   return null
 }
 

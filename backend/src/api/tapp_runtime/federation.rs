@@ -108,10 +108,7 @@ async fn enrich_feed_items(db: &DatabaseConnection, user_id: i32, items: &mut [V
 }
 
 /// SQL expression: resolved local-user avatar URL when present. Used only for the
-/// post author, never the viewer.
-///
-/// 曾在此另抄一份阶梯；现在统一走 services::avatar，作者头像才会跟随用户
-/// 在用户中心选定的画像源（此前联邦这边一直停在旧的隐式优先级上）。
+/// post author, never the viewer. Authors follow `services::avatar`.
 fn local_user_avatar_expr(alias: &str) -> String {
     crate::services::avatar::avatar_snapshot_expr(alias)
 }

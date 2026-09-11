@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 /// 1. 异步处理平台数据，避免阻塞前台请求
 /// 2. 任务队列管理，防止重复处理
 /// 3. 进度跟踪和状态管理
-/// 4. 错误恢复和重试机制
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
@@ -157,7 +156,7 @@ impl BackgroundProcessor {
             .await;
     }
 
-    /// 清理旧任务（保留最近的50个已完成任务）
+    /// 总数 > 100 时，在已有 `completed_at` 的任务里只留最近 50 个。
     pub async fn cleanup_old_tasks(&self) {
         let mut tasks = self.tasks.write().await;
 

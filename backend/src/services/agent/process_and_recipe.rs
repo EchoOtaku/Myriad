@@ -451,7 +451,7 @@ impl Agent {
             .map(|pending| ConfirmationResumeContext {
                 lane_key: pending.recipe.lane_key.clone(),
                 session_id: pending.session_id.clone().or_else(|| {
-                    // Older confirmations may only have session embedded in lane_key.
+                    // `session_id` 为空时从 `lane_key` 解析。
                     pending
                         .recipe
                         .lane_key

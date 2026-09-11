@@ -29,7 +29,7 @@ use super::{
     runtime_grant::RuntimeGrantContext,
 };
 
-// Preserve historical public type paths used by docs / clients (binary crate).
+// Re-export `EventScope` / `EventSource` / `TappEventEnvelope`.
 #[allow(unused_imports)]
 pub use crate::services::tapp_events::{EventScope, EventSource, TappEventEnvelope};
 

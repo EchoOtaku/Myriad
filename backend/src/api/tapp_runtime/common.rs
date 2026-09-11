@@ -1,14 +1,9 @@
 //! Tapp 共享基础模块
 //!
 //! 提供：
-//! - 通用 TTL 缓存
-//! - 全局 HTTP Client
-//! - 平台数据缓存
-//! - AI 配置缓存
-//! - 速率限制器
-//! - 安全验证
-//! - 权限检查
-//! - 性能指标
+//! - `platform_cache` 再导出
+//! - 速率限制 HTTP 适配
+//! - 安装解析 / 批准权限校验 HTTP 适配
 
 use axum::{http::StatusCode, Json};
 use sea_orm::DatabaseConnection;
@@ -223,10 +218,10 @@ pub async fn resolve_accessible_tapp(
         .map_err(tapp_access_http_error)
 }
 
-/// 验证当前可访问的 Tapp 安装记录确实获得了指定权限。
+/// 验证当前可访问安装的批准权限包含指定项。
 ///
-/// 角色级权限下放只能说明调用者角色可以使用该能力；这里再检查安装时授权，
-/// 防止客户端伪造 tapp_id 绕过 manifest/approved_permissions。
+/// 角色级授予只能说明调用者角色可以使用该能力；这里再检查安装的批准权限，
+/// 防止客户端伪造 tapp_id 绕过 `approved_permissions`。
 pub async fn verify_tapp_approved_permissions(
     db: &DatabaseConnection,
     user_id: i32,
@@ -244,7 +239,7 @@ pub use tapp_ownership::tapp_owner_priority;
 
 /// 完整授权一个带 `tapp_id` 的运行时能力调用。
 ///
-/// 同时验证角色级权限下放、当前用户可访问该 Tapp，以及安装记录确实获授此权限。
+/// 同时验证角色级授予、当前用户可访问该 Tapp，以及安装的批准权限包含此项。
 /// 返回解析后的用户 ID，避免各端点重复且容易漏掉其中一层检查。
 pub async fn authorize_tapp_permission(
     db: &DatabaseConnection,

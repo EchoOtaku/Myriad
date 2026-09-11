@@ -1380,11 +1380,8 @@ fn visual_profile_issue(issue: myriad_merope::VisualProfileIssue) -> HttpError {
 mod tests {
     /// 导入的人设不该继承上一次生成留下的视觉痕迹。
     ///
-    /// `merge_visual_profile` 会把「缺席」的键从旧值补上，所以导入必须把这
-    /// 四个键显式写空。曾经它只发 `{gender, language}`，结果上一次生成的
-    /// visualIdentity / clothingStyle / sourceTags / personaExtraRequirements
-    /// 整套跟到导入的人设身上——那份视觉设定描述的是另一个角色，而且会让
-    /// 恢复直接跳到主立绘那一步，跳过从没做过的视觉设定。
+    /// `merge_visual_profile` 会把缺席键从旧值补上，导入必须把这四个键显式写空：
+    /// visualIdentity / clothingStyle / sourceTags / personaExtraRequirements。
     #[test]
     fn an_imported_persona_inherits_nothing_from_a_generated_one() {
         let previous = json!({

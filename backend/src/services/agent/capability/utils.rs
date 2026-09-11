@@ -394,10 +394,8 @@ pub fn get_sensitive_capabilities() -> HashMap<&'static str, (&'static str, Risk
 /// 优先用 [`get_capability_usage_hint`] 里人工编写的提示（它带「什么时候该选这个」
 /// 的触发语），缺失时回退到能力自己的 `description`。
 ///
-/// 回退是必需的：hint 表的兜底分支返回空串，而 `description` 从不进入 Planner 的
-/// prompt，两者叠加会让漏登记的能力以 `"h": ""` 进入索引——模型只看得到一个能力 ID，
-/// 于是永远不会选它。此前有 20 个能力处于这个状态（`translate.text`、`code.explain`、
-/// `web.scrape`、`steam.game` 等），表现为「功能做了却调不起来」。
+/// 回退是必需的：hint 表的兜底分支返回空串，漏登记的能力会以 `"h": ""` 进入索引——
+/// 模型只看得到一个能力 ID。
 pub fn resolve_capability_hint(capability: &Capability) -> &str {
     let hint = get_capability_usage_hint(&capability.id);
     if hint.is_empty() {

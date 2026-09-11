@@ -127,7 +127,7 @@ impl PreparedTappPackageHttp for PreparedTappPackage {
                     })?;
             }
             None => {
-                // MYR-025: share Arc into extract; do not clone the full zip.
+                // share Arc into extract; do not clone the full zip.
                 let file_data = self.archive_arc().expect("archive package has bytes");
                 extract_archive(self, tapp_dir, file_data, context).await?;
             }
@@ -338,7 +338,7 @@ async fn extract_archive(
 ) -> Result<(), PackageError> {
     let tapp_dir = tapp_dir.to_path_buf();
     let extraction_dir = tapp_dir.clone();
-    // MYR-025: move Arc into blocking task — refcount share, not full zip clone.
+    // move Arc into blocking task — refcount share, not full zip clone.
     let result = tokio::task::spawn_blocking(move || -> Result<(), std::io::Error> {
         use std::io::Read;
 

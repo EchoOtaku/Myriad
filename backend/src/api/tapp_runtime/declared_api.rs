@@ -146,7 +146,7 @@ pub async fn execute_tapp_api(
         }
     }
 
-    // 3. 读取安装时授权；下面还会按调用者当前角色动态过滤。
+    // 3. 读取安装批准权限；再按当前角色过滤为授予权限。
     let installed_permissions = tapp_declared_api::installed_permissions_from_tapp(&tapp);
 
     // 4. 获取客户端 IP

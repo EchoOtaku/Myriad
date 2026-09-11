@@ -1,6 +1,3 @@
-/**
- * Compact 环比 inline after a KPI tile value (same row; overflow scrolls).
- */
 
 import type { CompareKind, CompareLabels, MetricDelta } from './compareDeltaLogic'
 import React from 'react'
@@ -19,7 +16,6 @@ export interface CompareDeltaProps {
   delta?: MetricDelta | null
   labels: CompareLabels
   locale: string
-  /** Hide while first skeleton load */
   hidden?: boolean
   formatPrevious?: (n: number) => string
 }

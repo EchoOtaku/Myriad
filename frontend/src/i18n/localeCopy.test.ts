@@ -7,8 +7,8 @@ import { copyForLocale, currentCopy } from './localeCopy.ts'
 describe('currentCopy', () => {
   it('does not statically import ja or zh locale modules', () => {
     const src = readFileSync(new URL('./localeCopy.ts', import.meta.url), 'utf8')
-    assert.equal(src.includes("from './ja-JP'"), false)
-    assert.equal(src.includes("from './zh-CN'"), false)
+    assert.equal(src.includes('ja-JP.json'), false)
+    assert.equal(src.includes('zh-CN.json'), false)
   })
 
   it('returns localized wallpaper and store errors', () => {

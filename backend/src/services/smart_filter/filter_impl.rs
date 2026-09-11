@@ -896,7 +896,7 @@ impl SmartFilter {
                     total_retweets_received: total_retweets,
                     total_replies_received: total_replies,
                     total_impressions,
-                    // 已放弃用户 OAuth，不再抓 likes；字段保留兼容旧报告结构
+                    // `liked_posts_count` 恒 0；字段保留给报告结构
                     liked_posts_count: 0,
                 },
                 recent_posts,

@@ -1,9 +1,9 @@
-//! 联邦信任策略模块（Phase 5 补全 — Layer 2 安全增强）
+//! 联邦信任策略（`enforce_inbound`）。
 //!
 //! 实际入站 enforcement（`enforce_inbound`）执行：
 //! 1. 域名黑名单（`federation_instances.is_blocked`）
-//! 2. 速率限制（进程内窗口计数 + DB `received_at` 统计）
-//! 3. allowlist / min_trust（`federation_policy_settings`，空 allowlist = 不限制）
+//! 2. allowlist / min_trust（`federation_policy_settings`，空 allowlist = 不限制）
+//! 3. 速率限制（进程内窗口计数 + DB `received_at` 统计）
 //! 4. 内容过滤（`federation_content_filters`）
 
 use axum::http::StatusCode;
@@ -16,8 +16,6 @@ use std::time::{Duration, Instant};
 
 use crate::federation::types::TrustLevel;
 
-// 类型定义
-
 /// 实例策略（allowlist / min_trust / auto_discover + 入站限流）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstancePolicy {
@@ -25,7 +23,7 @@ pub struct InstancePolicy {
     pub min_trust_level: TrustLevel,
     /// 允许的域名列表（空 = 允许所有未被封禁的）
     pub allowed_domains: Vec<String>,
-    /// 封禁的域名列表（优先级最高）
+    /// 入站封禁以 `federation_instances.is_blocked` 为准；此字段加载路径保持空。
     pub blocked_domains: Vec<String>,
     /// 是否自动登记新发现的实例（设为 Discovered）
     pub auto_discover: bool,
@@ -99,10 +97,8 @@ pub struct PolicyCheckResult {
 
 /// 检查实例是否被允许与本实例联邦
 ///
-/// 优先级：blocked_domains > allowed_domains > min_trust_level
-///
-/// `enforce_inbound` 会在 DB 黑名单与速率限制之后调用本函数
-/// （blocked_domains 字段通常为空，DB `is_blocked` 已先检查）。
+/// 本函数做 allowlist / min_trust（以及结构上的 `blocked_domains` 字段，加载路径保持空）。
+/// `enforce_inbound` 在 DB `is_blocked` 之后、速率限制之前调用本函数。
 pub async fn check_instance_policy(
     db: &DatabaseConnection,
     domain: &str,
@@ -264,10 +260,7 @@ fn check_and_record_memory_rate(domain: &str, max_requests: i64, window_seconds:
         Ok(g) => g,
         Err(poisoned) => poisoned.into_inner(),
     };
-    // Entries are keyed by peer-controlled domain and used to be kept forever:
-    // a host with wildcard DNS could grow this map without bound just by signing
-    // from a fresh subdomain each time. Windows that already rolled over carry no
-    // information, so drop them.
+    // Entries keyed by peer-controlled domain; prune windows that already rolled over.
     prune_expired_windows(&mut map, now, window_seconds);
     let prev = map.get(domain);
     let (next, exceeded) = record_window_hit(prev, now, window_seconds, max_requests);
@@ -375,9 +368,7 @@ pub fn apply_content_filters(
 ) -> FilterVerdict {
     let activity_type = activity.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
-    // 关键词匹配需要活动的扁平化小写文本。以前每条 block_keyword 规则都重新
-    // `to_string().to_lowercase()` 一遍整个活动 —— INBOX_BODY_LIMIT 的入站活动配上 N 条
-    // 规则就是 N×2 次全量分配。这里改成惰性求值 + 全程只算一次。
+    // 关键词匹配用活动的扁平化小写文本；惰性求值，全程只算一次。
     let mut lowered_activity: Option<String> = None;
 
     for rule in rules {

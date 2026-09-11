@@ -5,11 +5,7 @@ interface TranscriptionTask<T> {
   result?: { value: T } | { error: unknown }
 }
 
-/**
- * Two requests can overlap without submitting the second sentence first.
- * Reset detaches every task before aborting, including providers that ignore
- * cancellation. No network response owns the current UI listening session.
- */
+/** Two requests can overlap without submitting the second sentence first. */
 export class TranscriptionQueue<T> {
   private tasks: TranscriptionTask<T>[] = []
   private running = 0
@@ -51,7 +47,6 @@ export class TranscriptionQueue<T> {
   }
 
   private async execute(task: TranscriptionTask<T>): Promise<void> {
-    // Bound both provider waits and the amount of time a later result is held.
     let timer: ReturnType<typeof setTimeout> | undefined
     const signal = task.controller.signal
     let onAbort = () => {}

@@ -73,7 +73,7 @@ pub struct ApiExecutionContext {
     pub is_admin: bool,
     /// 客户端 IP
     pub client_ip: Option<String>,
-    /// Tapp 已授权的权限
+    /// 当前调用的授予权限（决定行为；不是安装批准列）
     pub granted_permissions: Vec<String>,
     /// Manifest AI model tier used by governed builtin adapters.
     pub ai_model_tier: Option<crate::config::ModelTier>,
@@ -547,12 +547,7 @@ impl TappApiService {
         GeoInfo::default()
     }
 
-    /// Declared-API egress: honor the admin/env proxy that `http_client`
-    /// documents for China, instead of always pinning local DNS.
-    ///
-    /// `build_public_http_client` replaced the shared Tapp client and started
-    /// failing closed when any resolved address was non-public. That dropped
-    /// the working proxy path and broke `hub.docker.com` on polluted DNS.
+    /// Declared-API egress：走管理员/环境代理（`http_client`），不始终钉本地 DNS。
     async fn declared_api_http_client(
         url: &str,
     ) -> Result<(reqwest::Url, reqwest::Client), String> {
@@ -1645,6 +1640,104 @@ mod tests {
             Some(value) => std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", value),
             None => std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND"),
         }
+    }
+
+    #[tokio::test]
+    async fn credential_is_redacted_from_http_error_bodies() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let _guard = crate::services::outbound_security::tests_lab_env_lock().await;
+        let previous_environment = std::env::var("ENVIRONMENT").ok();
+        let previous_lab_flag = std::env::var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND").ok();
+        std::env::remove_var("ENVIRONMENT");
+        std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1");
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 4096];
+            loop {
+                let read = stream.read(&mut chunk).await.unwrap();
+                assert!(read > 0);
+                request.extend_from_slice(&chunk[..read]);
+                if request.windows(4).any(|part| part == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            stream
+                .write_all(
+                    b"HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: 21\r\nConnection: close\r\n\r\n{\"echo\":\"top-secret\"}",
+                )
+                .await
+                .unwrap();
+            String::from_utf8_lossy(&request).into_owned()
+        });
+
+        let mut api = api_def();
+        api.endpoint = Some(format!("http://{address}/credential"));
+        api.credential = Some(myriad_tapp_contract::manifest::TappApiCredentialBinding {
+            key: "wegame".into(),
+            in_placement: None,
+            field: None,
+            header: Some("Authorization".into()),
+            prefix: Some("Bearer ".into()),
+            encoding: None,
+            sign: None,
+        });
+        let credential =
+            crate::services::tapp_credentials::ResolvedApiCredential::for_test("top-secret");
+
+        let error = TappApiService::execute_http_api_with_credential(
+            &api,
+            &HashMap::new(),
+            Some(&credential),
+        )
+        .await
+        .unwrap_err();
+        let request = server.await.unwrap();
+
+        assert!(request
+            .to_ascii_lowercase()
+            .contains("authorization: bearer top-secret"));
+        assert!(error.starts_with("HTTP 401"));
+        assert!(error.contains("[REDACTED]"));
+        assert!(!error.contains("top-secret"));
+
+        match previous_environment {
+            Some(value) => std::env::set_var("ENVIRONMENT", value),
+            None => std::env::remove_var("ENVIRONMENT"),
+        }
+        match previous_lab_flag {
+            Some(value) => std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", value),
+            None => std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND"),
+        }
+    }
+
+    #[tokio::test]
+    async fn host_secret_templates_are_rejected_before_outbound() {
+        let mut api = api_def();
+        api.endpoint = Some("https://invalid.invalid/?k={{secrets.OPENWEATHER_KEY}}".into());
+        let mut execution_context = context(1, "203.0.113.1");
+        execution_context
+            .granted_permissions
+            .push("network:fetch".into());
+
+        let result = TappApiService::execute(
+            "com.example.app",
+            "weather",
+            &api,
+            None,
+            &execution_context,
+        )
+        .await;
+
+        assert!(!result.success);
+        assert_eq!(
+            result.error.as_deref(),
+            Some("Host secret templates are not available to Tapps")
+        );
     }
 
     #[tokio::test]

@@ -109,7 +109,7 @@ pub async fn find_admin_user_id(db: &DatabaseConnection) -> Result<Option<i32>, 
         }
     }
 
-    // Prefer durable site owner; fall back to first admin (legacy / pre-is_owner).
+    // Prefer durable site owner; fall back to first admin.
     // Same resolution as `site_owner_user_id`, but optional for pre-setup surfaces.
     let mut result = db
         .query_one_raw(Statement::from_string(
@@ -244,7 +244,7 @@ pub async fn resolve_accessible_tapp(
     Ok(tapp)
 }
 
-/// Verify the resolved install was granted each listed permission.
+/// Verify the resolved install’s approved permissions contain each listed name.
 pub async fn verify_tapp_approved_permissions(
     db: &DatabaseConnection,
     user_id: i32,

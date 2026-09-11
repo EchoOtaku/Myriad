@@ -89,7 +89,7 @@ impl FromRef<AppState> for Arc<TokioRwLock<DynamicConfig>> {
 /// Process-shared dynamic config Arc (same handle as [`AppState::dynamic_config`]
 /// after [`AppState::from_shared`]).
 ///
-/// **HTTP handlers (full mode):** use `State<Arc<RwLock<DynamicConfig>>>` /
+/// **HTTP handlers (full mode):** use `State<Arc<tokio::sync::RwLock<DynamicConfig>>>` /
 /// `AppState` and write with `*dynamic_config.write().await = …`. Do not call
 /// these helpers from request paths.
 ///
@@ -137,8 +137,9 @@ mod tests {
     #[test]
     fn extract_db_and_process_slot_documented_as_same_handle() {
         let state_src = include_str!("state.rs");
-        assert!(state_src.contains("Same Arc as process registry"));
+        assert!(state_src.contains("pub db_slot:"));
+        assert!(state_src.contains("tapp_registry::shared_database_slot()"));
         let reg = include_str!("services/tapp_registry.rs");
-        assert!(reg.contains("no dual-pool fork") || reg.contains("shared_database_slot"));
+        assert!(reg.contains("pub fn shared_database_slot()"));
     }
 }

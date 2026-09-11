@@ -116,7 +116,7 @@ impl ProxyConfig {
 /// Gemini Grounding, TinyFish Search/Fetch, and Tencent speech so bypass list
 /// behavior stays consistent.
 ///
-/// **MYR-019 fail-closed:** when `should_use_proxy()` is true and the proxy URL
+/// **fail-closed:** when `should_use_proxy()` is true and the proxy URL
 /// cannot be built, returns `Err` — callers must not fall back to a silent
 /// direct-connect client. When proxy is not configured/enabled, direct is OK.
 pub fn apply_proxy(
@@ -137,7 +137,7 @@ pub fn apply_proxy(
                 error
             })?;
 
-            // Wire NO_PROXY-style bypass into reqwest (was log-only before).
+            // Wire NO_PROXY-style bypass into reqwest (`proxy.no_proxy`).
             if !proxy_config.bypass_list.is_empty() {
                 let bypass_str = proxy_config
                     .bypass_list
@@ -191,7 +191,7 @@ pub fn create_client_no_proxy() -> Result<Client, reqwest::Error> {
 /// Resolve a client after a build attempt: direct only when proxy was not required.
 ///
 /// When proxy **was** required, logs and panics rather than returning a direct
-/// client (MYR-019). Misconfiguration must not look like a working egress path.
+/// client. Misconfiguration must not look like a working egress path.
 pub fn resolve_client_or_fail_closed(
     result: Result<Client, reqwest::Error>,
     proxy_config: &ProxyConfig,
@@ -263,7 +263,7 @@ pub async fn get_global_client() -> Client {
 /// Used by [`crate::services::image_generation`] for provider round-trips.
 /// Keep in sync with `MEROPE_PROXY_TIMEOUT_MS` and the portrait client timeout.
 ///
-/// **MYR-019:** if a proxy is configured and cannot be applied, this panics
+/// If a proxy is configured and cannot be applied, this panics
 /// instead of silently building a direct client.
 pub async fn get_long_running_client() -> Client {
     // gpt-image / Gemini image at portrait resolution can exceed 6 minutes.
@@ -384,7 +384,7 @@ pub async fn get_gemini_grounding_client() -> Client {
 /// 重新加载全局 HTTP 客户端（配置更新时调用）
 ///
 /// On failure with a **required** proxy, keeps the previous client (if any) and
-/// does **not** install a silent direct-connect replacement (MYR-019).
+/// does **not** install a silent direct-connect replacement.
 pub async fn reload_global_client() {
     let proxy_config = ProxyConfig::from_dynamic_config().await;
 
@@ -595,7 +595,7 @@ mod tests {
 
     #[test]
     fn invalid_required_proxy_does_not_yield_direct_client() {
-        // MYR-019: when proxy is required, create paths must error — never
+        // when proxy is required, create paths must error — never
         // silently hand back a working direct client.
         let bad = ProxyConfig {
             enabled: true,

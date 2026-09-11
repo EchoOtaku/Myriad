@@ -1,11 +1,9 @@
-/**
- * Hard-reload / runtime-reload toast copy must stay explicit (full page vs hot reload).
- */
+/** hard vs hot reload copy must stay distinct */
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { enUS } from '../../i18n/en-US'
-import { jaJP } from '../../i18n/ja-JP'
-import { zhCN } from '../../i18n/zh-CN'
+import enUS from '../../i18n/en-US.json'
+import jaJP from '../../i18n/ja-JP.json'
+import zhCN from '../../i18n/zh-CN.json'
 
 const locales = [
   { name: 'zh-CN', c: zhCN.config },
@@ -24,10 +22,9 @@ describe('hard / runtime reload save messages', () => {
         c.hardReloadPreparing.length > 0,
         `${name}.hardReloadPreparing`,
       )
-      // Must not collapse to the generic soft-save string
+      // must not collapse to the generic soft-save string
       assert.notEqual(c.savedSuccessHardReload, c.savedSuccess)
       assert.notEqual(c.hardReloadPreparing, c.savedSuccess)
-      // Distinct stages
       assert.notEqual(c.hardReloadPreparing, c.savedSuccessHardReload)
     }
   })
@@ -44,7 +41,6 @@ describe('hard / runtime reload save messages', () => {
   })
 
   it('import / force-cache success copy still signals upcoming full reload', () => {
-    // Locale-specific cues that the page will reload (not soft toast only)
     assert.match(zhCN.config.importConfigSuccess, /整页刷新|刷新/)
     assert.match(zhCN.config.forceRefreshFrontendCacheSuccess, /整页刷新|刷新/)
     assert.match(enUS.config.importConfigSuccess, /reload|refresh/i)
@@ -54,7 +50,6 @@ describe('hard / runtime reload save messages', () => {
       jaJP.config.forceRefreshFrontendCacheSuccess,
       /再読み込み|更新/,
     )
-    // Confirm dialog mentions reload for zh/en
     assert.match(zhCN.config.importConfirmMessage, /整页刷新/)
     assert.match(enUS.config.importConfirmMessage, /reload/i)
   })

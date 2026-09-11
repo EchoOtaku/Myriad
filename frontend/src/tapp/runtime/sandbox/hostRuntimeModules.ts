@@ -1,5 +1,3 @@
-/** Pinned host runtime libraries injected into the Page sandbox with a nonce. */
-
 import { currentCopy } from '../../../i18n/localeCopy'
 
 export const THREE_RUNTIME_ID = 'three'

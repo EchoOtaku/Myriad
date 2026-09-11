@@ -1,9 +1,3 @@
-/**
- * TAPP persona card projection.
- *
- *   pnpm exec tsx --test src/tapp/runtime/sandbox/personaCard.test.ts
- */
-
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'

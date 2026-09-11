@@ -1,7 +1,6 @@
 //! 响应生成副 Agent
 //!
-//! 专门负责所有面向用户的文本生成，统一 Agent 的 "说话方式"。
-//! 所有用户可见的回复文本都通过此模块生成，确保风格一致且有人情味。
+//! Work 完成/确认/进度等面向用户的文案。Chat 正文走 `process_chat` 流式路径，不经过这里。
 //!
 //! 两种模式：
 //! - **AI 模式**：调用 AI 模型生成个性化回复（用于最终回复、多步骤汇总）
@@ -64,12 +63,12 @@ pub struct StepOutput<'a> {
 
 /// AI 驱动的最终回复生成
 ///
-/// 1. 过滤掉 planning 占位输出
-/// 2. 构建结构化 JSON 上下文
-/// 3. 调用 AI（带人格 SOUL.md）流式生成回复
-/// 4. AI 失败时使用智能 fallback
+/// 1. 丢掉 `status=planned` 占位
+/// 2. `extract_step_text` 截断后编成 `[step_id] …`
+/// 3. `create_speaking_analyzer` + `get_speaking_soul`（有 `progress_tx` 则流式）
+/// 4. 失败走 `smart_fallback`
 pub async fn generate_final_response(ctx: ResponseContext<'_>) -> String {
-    // 过滤掉 skill planning 占位输出，提取有语义的文本内容（不带原始 JSON）
+    // 丢掉 planned 占位；`extract_step_text` 取文本字段（含 aiSummary）
     let step_data: Vec<String> = ctx
         .step_outputs
         .iter()
@@ -107,7 +106,7 @@ pub fn generate_single_step_response(result: &Value) -> Option<String> {
     if let Some(v) = result.as_str().filter(|s| !s.is_empty()) {
         return Some(v.to_string());
     }
-    // 优先展示 AI 生成的内容（这些本身就是有人格的）
+    // 字段顺序：as_str → aiSummary → reply → analysis → summary → message
     if let Some(v) = result
         .get("aiSummary")
         .and_then(|v| v.as_str())
@@ -144,7 +143,7 @@ pub fn generate_single_step_response(result: &Value) -> Option<String> {
         return Some(v.to_string());
     }
 
-    // 搜索结果。TinyFish 顶层没有 source，认 searchType / totalResults。
+    // 走 `is_web_search_output`（searchType / totalResults / source）
     if crate::services::agent::search_output::is_web_search_output(result) {
         let results = result
             .get("results")
@@ -161,7 +160,7 @@ pub fn generate_single_step_response(result: &Value) -> Option<String> {
         ));
     }
 
-    // 图片生成（信封内层是 `url`；旧输出仍可能是 `imageUrl`）
+    // 图片生成（信封内层 `url` 或 `imageUrl`）
     if result
         .get("url")
         .or_else(|| result.get("imageUrl"))
@@ -176,7 +175,7 @@ pub fn generate_single_step_response(result: &Value) -> Option<String> {
         return Some("图片已经生成好了，快看看效果吧~".to_string());
     }
 
-    None // 调用方应使用 completion_message()
+    None // 调用方再走 `partial_completion` / `completion_message`
 }
 
 // ─────────────────────────────────────────────
@@ -185,8 +184,7 @@ pub fn generate_single_step_response(result: &Value) -> Option<String> {
 
 /// 计划生成后，向用户说明即将要做什么
 ///
-/// 通过 AI 生成温暖的计划说明，通过 SummaryToken 流式推送。
-/// AI 失败时返回模板 fallback。
+/// `ai_announce_plan`：`Text` → SummaryToken，`Reasoning` → ThinkingToken。失败走模板。
 pub async fn announce_plan(
     user_input: &str,
     step_descriptions: &[String],
@@ -290,7 +288,7 @@ async fn ai_announce_plan(
 
 /// 单步骤开始时的描述文本
 ///
-/// 返回简洁描述，不加"正在"前缀（前端负责展示格式如"第X步 描述"）
+/// 原样返回 `step_description`
 pub fn describe_step_start(step_description: &str) -> String {
     step_description.to_string()
 }
@@ -463,8 +461,7 @@ pub fn summarize_step_output(output: &Value) -> Option<String> {
 
 /// 从步骤输出中提取有语义的文本（喂给 AI summarizer 的原料）
 ///
-/// 注意：这个函数的输出是给 AI 看的，不是直接展示给用户。
-/// 所以即使是 Gemini 的 raw JSON 格式 aiSummary 也可以保留 — AI 能理解并提炼。
+/// 喂给 AI summarizer 的原料，不是直接展示给用户。
 fn extract_step_text(output: &Value) -> String {
     let output = crate::services::agent::ai_process_pure::task_inner_value(output);
     let mut parts: Vec<String> = Vec::new();
@@ -481,7 +478,7 @@ fn extract_step_text(output: &Value) -> String {
             .filter(|s| !s.is_empty())
         {
             parts.push(text.to_string());
-            // analysis / aiSummary / reply 通常已覆盖所有语义，取到就够了
+            // 数组顺序 analysis → aiSummary → reply → summary → message；取到就 break
             break;
         }
     }
@@ -637,11 +634,10 @@ async fn ai_summarize(
 /// 在多步骤链（如 webSearch → ai.analyze → prompt.generate → ai.image）中，
 /// 后续步骤已经消化了前面步骤的输出。因此只取最有语义的一段文本避免冗余拼接。
 fn smart_fallback(step_outputs: &[StepOutput<'_>]) -> String {
-    // 1. 优先查找 ai.analyze / ai.chat 等 AI 处理步骤的输出（这些是最终语义内容）
-    // 跳过搜索原始数据和中间产物。
+    // 1. 按字段优先：`analysis` → 字符串/`reply` → `summary` → `aiSummary`
+    // 不按 capability_id 过滤。
     //
-    // 注意：step_outputs 按 step_id 字母序排列，不是执行顺序，
-    // 所以不能依赖 .rev() 来获取"最后一步"。改用语义优先级筛选。
+    // step_outputs 按 step_id 字母序排列，不是执行顺序；按语义优先级筛选，不要 `.rev()`。
     fn payload(output: &Value) -> &Value {
         crate::services::agent::ai_process_pure::task_inner_value(output)
     }
@@ -661,7 +657,7 @@ fn smart_fallback(step_outputs: &[StepOutput<'_>]) -> String {
             break;
         }
     }
-    // 第二轮：找 chat 信封字符串 / 旧 reply 字段
+    // 第二轮：找 chat 信封字符串 / `reply` 字段
     if best_text.is_none() {
         for s in step_outputs.iter() {
             let inner = payload(s.output);
@@ -686,8 +682,7 @@ fn smart_fallback(step_outputs: &[StepOutput<'_>]) -> String {
     }
     // 最后：aiSummary（搜索引擎的 AI 摘要，仅在没有更好内容时使用）
     if best_text.is_none() {
-        // 检查是否有 AI 处理步骤（analysis/reply/summary 的产出方）
-        // 如果有，说明搜索步骤的数据已被消化，其 aiSummary 是冗余的
+        // 走到这里 as_str/analysis/reply/summary 已未命中；仍尝试 aiSummary
         let has_ai_processed = step_outputs.iter().any(|s| {
             let inner = payload(s.output);
             inner.as_str().is_some_and(|s| !s.is_empty())
@@ -697,7 +692,7 @@ fn smart_fallback(step_outputs: &[StepOutput<'_>]) -> String {
         });
         for s in step_outputs.iter() {
             let o = payload(s.output);
-            // 如果已有 AI 处理输出，跳过搜索步骤的 aiSummary（避免展示 raw JSON）
+            // 前几轮已未命中时 `has_ai_processed` 恒 false。
             if has_ai_processed && o.get("results").and_then(|v| v.as_array()).is_some() {
                 continue;
             }

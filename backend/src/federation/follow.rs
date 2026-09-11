@@ -1,4 +1,4 @@
-//! 联邦关注管理（Layer 2）
+//! 联邦关注管理
 //!
 //! 本地用户发起关注远程 Actor、取消关注等操作
 
@@ -505,9 +505,7 @@ async fn webfinger_lookup_once(
 
     let status = resp.status();
     if !status.is_success() {
-        // 404/410 是「那个实例上没有这个账号」，不是网关故障。以前一律 502，
-        // 用户看到的是含糊的 Bad Gateway，而真正该说的是「handle 拼错了 / 对方
-        // 实例不认这个账号」。其余非 2xx 仍然算上游异常。
+        // 404/410：对端没有这个账号 → 本端 404。其余非 2xx 仍是上游异常 → 502。
         let mapped = if matches!(status, StatusCode::NOT_FOUND | StatusCode::GONE) {
             StatusCode::NOT_FOUND
         } else {

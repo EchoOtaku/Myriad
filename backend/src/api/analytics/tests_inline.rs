@@ -145,7 +145,7 @@ fn bots_detected() {
     ));
 }
 
-/// Empty allowlist uses MYR-026 narrow default (loopback + docker0), not full
+/// Empty allowlist uses narrow default (loopback + docker0), not full
 /// RFC1918. Public peers and arbitrary private nets still cannot forge.
 #[test]
 fn country_headers_empty_allowlist_private_vs_public_peer() {

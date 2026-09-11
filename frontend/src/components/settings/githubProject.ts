@@ -1,15 +1,6 @@
-/**
- * 设置里第三方 GitHub 仓库：识别 URL、star 缓存、数字缩写。
- *
- * GitHub 产品页（settings / login / 光组织页）不是仓库。
- * 仓库摘要走站点数据平台同一条出站链（GitHubApiUrl / 代理 / token），
- * 浏览器只打 `/api/github/repo`；star 数字在本机再缓存 7 天。
- */
-
 export const GITHUB_STAR_TTL_MS = 7 * 24 * 60 * 60 * 1000
 export const GITHUB_STAR_CACHE_PREFIX = 'myriad:github-stars:v1:'
 
-/** GitHub.com 上不是「用户/仓库」的第一段。 */
 const GITHUB_SYSTEM_ROOTS = new Set([
   'about',
   'account',
@@ -91,7 +82,6 @@ export function githubRepoUrl(ref: GithubRepoRef): string {
   return `https://github.com/${ref.owner}/${ref.repo}`
 }
 
-/** GitHub 主站同款缩写：1.2k / 10.5k / 1.2m。 */
 export function formatStarCount(count: number): string {
   if (!Number.isFinite(count) || count < 0) return '0'
   const n = Math.round(count)
@@ -167,7 +157,6 @@ export function writeStarCache(
   try {
     store.setItem(key, JSON.stringify(entry))
   } catch {
-    // quota / private mode
   }
 }
 

@@ -438,8 +438,7 @@ fn netease_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
 fn x_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
     let mut changes = Vec::new();
     let avatar = account_image("x", new).or_else(|| account_image("x", old));
-    // Deliberately ignore metrics of accounts the user follows. Those values
-    // caused the old widget to be dominated by unrelated follower-count noise.
+    // Own public_metrics only; do not include metrics of followed accounts.
     for (metric, pointer, importance) in [
         ("followers", "/user/public_metrics/followers_count", 90),
         (

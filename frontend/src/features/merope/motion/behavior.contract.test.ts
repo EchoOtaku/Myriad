@@ -209,9 +209,6 @@ test('idle self-motion does not masquerade as a semantic directed plan', () => {
 })
 
 test('the behavior vocabulary is exactly what a producer can emit', () => {
-  // The director reads `activeBehaviors` and is told not to repeat a function
-  // already in flight. A name with no producer therefore promises the model a
-  // signal that can never arrive — which is how six of them accumulated.
   const functions = new Set<string>()
   const sources = new Set<string>()
   const record = (plan: { behaviors: readonly ScheduledBehavior[] }): void => {
@@ -254,8 +251,6 @@ test('the behavior vocabulary is exactly what a producer can emit', () => {
       accents: [{ offsetMs: 300, intensity: 0.8 }],
     }),
   )
-  // Music publishes from a live audio subscription; reading its one behavior
-  // from source keeps this test free of an audio graph.
   for (const [, name] of source('./musicSource.ts').matchAll(
     /\bfunction: '([A-Za-z]+)'/g,
   )) {

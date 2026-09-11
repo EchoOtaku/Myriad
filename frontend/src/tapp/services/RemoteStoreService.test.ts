@@ -1,7 +1,3 @@
-/**
- * cd frontend && node --experimental-strip-types --test src/tapp/services/RemoteStoreService.test.ts
- */
-
 import type {
   RemoteApp,
   RemoteStoreIndex,

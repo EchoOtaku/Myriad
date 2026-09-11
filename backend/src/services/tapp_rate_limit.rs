@@ -75,7 +75,7 @@ impl std::error::Error for RateLimitError {}
 /// stricter caps for manage/trust and speech synthesis.
 pub fn get_rate_limit_config(operation: &str) -> (u32, u64) {
     match operation {
-        // AI still cost-bounded; slightly above old 20 so retry/UI double-submit is tolerable.
+        // AI still cost-bounded; 30/min leaves room for retry/UI double-submit.
         "ai.task" => (30, 60),
         "ai.anonymous" => (15, 60),
         operation if operation.starts_with("network.fetch:") => (90, 60),
@@ -343,7 +343,7 @@ ON CONFLICT (namespace, record_id) DO UPDATE SET
 }
 
 /// Increment a named limit and return the new count. `Exceeded` means the
-/// window is already full (used to trip inbound auto-blocks).
+/// window is already full.
 pub async fn increment_named_limit(
     db: &DatabaseConnection,
     key: String,

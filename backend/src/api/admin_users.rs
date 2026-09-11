@@ -10,7 +10,7 @@
 //! - DELETE /api/admin/users/{id}/identities/{identity_id} 解绑某用户的 OAuth identity
 //! - DELETE /api/admin/users/{id}/tapps/{tapp_id}         卸载某用户的已安装 Tapp
 //!
-//! Privilege model: durable `users.is_owner` (previously heuristic `id = 1`).
+//! Privilege model: durable `users.is_owner`.
 
 use axum::{extract::Path, http::StatusCode, Json};
 use chrono::{DateTime, Utc};
@@ -862,7 +862,7 @@ mod tests {
 
     #[test]
     fn is_owner_gates_are_boolean_not_id() {
-        // Regression: gates no longer key off actor_id == 1
+        // Gates key off `users.is_owner`, not `actor_id == 1`.
         assert!(non_owner_is_admin_change_error(false).is_some());
         assert!(non_owner_is_admin_change_error(true).is_none());
     }

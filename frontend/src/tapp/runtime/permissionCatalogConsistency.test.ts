@@ -1,8 +1,4 @@
-/**
- * Frontend permission catalog must lock to export_tapp_contract().
- *
- * PERMISSION_MAP still locks to host fixtures (permissionMapConsistency.test.ts).
- */
+/** 前端权限目录须锁定 export_tapp_contract()。 */
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'

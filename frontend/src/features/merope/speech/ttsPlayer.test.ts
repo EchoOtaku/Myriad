@@ -25,8 +25,7 @@ function loud(): Uint8Array {
   return bins
 }
 
-// Loudness is not a shape. On the old energy table this frame was 'wide'; a
-// shut-lip consonant that happens to be loud must still read as shut.
+// Loudness is not a shape.
 test('the phoneme timeline decides the shape and the audio decides the amount', () => {
   const spans = [
     { viseme: 'closed' as const, endsAt: 0.3, emphasis: false },
@@ -40,7 +39,6 @@ test('the phoneme timeline decides the shape and the audio decides the amount', 
   assert.equal(stressed.viseme, 'narrow')
   assert.ok(stressed.amount >= shut.amount)
 
-  // Same audio, no timeline: the loudness shape still stands in.
   assert.equal(sampleMouth(loud()).viseme, 'wide')
 })
 
@@ -141,7 +139,6 @@ function hooks(): { ended: number; onEnergy: () => void; onEnded: () => void } {
   return state
 }
 
-/** Lets the decode promise and its continuations run. */
 function settle(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve))
 }
@@ -160,8 +157,7 @@ test('a stale onended after cancel does not report the segment finished', async 
   handle.stop()
   assert.equal(sources[0]!.stopped, 1)
 
-  // WebAudio dispatches onended asynchronously, so it still arrives after the
-  // cancel that stopped the source. It must not count as the segment ending.
+  // It must not count as the segment ending.
   sources[0]!.onended?.()
   assert.equal(state.ended, 0)
 })
@@ -200,7 +196,6 @@ test('a decode failure reports the segment finished so the queue moves on', asyn
 
 test('cancelling without an audio device suppresses the deferred completion', async () => {
   const savedContext = globalThis.AudioContext
-  // This branch is also used during rendering outside an audio-capable browser.
   Reflect.deleteProperty(globalThis, 'AudioContext')
   try {
     const state = hooks()

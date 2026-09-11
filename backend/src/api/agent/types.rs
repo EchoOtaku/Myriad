@@ -17,7 +17,7 @@ pub struct ProcessRequest {
 #[derive(Debug, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessContext {
-    /// 面板模式：work 走完整 Agent，chat 只走严格 Lite 人设对话。
+    /// 缺省 Work。`chat` 走严格 Lite 人设对话，不进 Planner / Executor。
     pub mode: Option<crate::services::agent::AgentInteractionMode>,
     /// 当前页面路由
     pub current_route: Option<String>,
@@ -25,7 +25,7 @@ pub struct ProcessContext {
     pub active_platforms: Option<Vec<String>>,
     /// 会话 ID（用于多轮对话）
     pub session_id: Option<String>,
-    /// 对话历史（用于继续对话模式）
+    /// 对话历史。有 session 时服务端以 DB 为准，丢弃客户端这份。
     pub conversation_history: Option<Vec<ConversationMessageApi>>,
     /// 自定义数据
     pub custom_data: Option<Value>,
@@ -48,7 +48,7 @@ pub struct ConversationMessageApi {
     pub created_at: Option<String>,
 }
 
-/// API 响应（增强版）
+/// API 响应
 #[derive(Debug, Clone, Serialize)]
 pub struct ApiResponse {
     /// 是否成功
@@ -161,14 +161,14 @@ pub struct PendingStepInfo {
     pub impact: Vec<String>,
 }
 
-/// 任务信息（增强版）
+/// 任务信息
 #[derive(Debug, Clone, Serialize)]
 pub struct TaskInfo {
     /// 任务 ID
     #[serde(rename = "taskId")]
     pub task_id: String,
     pub status: String,
-    /// 进度 (0-100)
+    /// 进度百分比（来自 `TaskState.progress`）
     pub progress: u8,
     /// 错误信息
     pub error: Option<String>,
@@ -477,7 +477,7 @@ impl From<&TaskState> for TaskInfo {
             status: task_status_name(&state.status).to_string(),
             progress: state.progress,
             error: state.error.clone(),
-            current_step: None, // 由执行器在运行时设置
+            current_step: None,
             completed_steps,
             total_steps: total_steps.max(completed_steps),
             dynamic_steps_added,
@@ -551,9 +551,9 @@ pub(crate) fn summarize_output(output: &Value) -> Option<String> {
 
 /// 从步骤 ID 提取能力名称
 pub(crate) fn extract_capability_name(step_id: &str) -> String {
-    // 步骤 ID 格式通常为 "step_1_platform.bilibili"
+    // 取 `step_id` 最后一个 `_` 分段，再映射友好名
     if let Some(cap_part) = step_id.split('_').next_back() {
-        // 将 capability id 转换为友好名称
+        // 最后一段对表；对不上则把 `.`/`_` 换成空格
         match cap_part {
             "bilibili" | "platform.bilibili" => "获取 B 站数据".to_string(),
             "steam" | "platform.steam" => "获取 Steam 数据".to_string(),

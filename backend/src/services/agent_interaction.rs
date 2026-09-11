@@ -117,7 +117,7 @@ pub async fn create_agent_interaction(
         .map_err(|error| error.agent_message())
 }
 
-/// Back-compat wrapper matching the previous free-function signature.
+/// 自由函数签名包装，转给 [`create_agent_interaction`]。
 pub async fn create_agent_interaction_internal(
     db: &DatabaseConnection,
     subject_id: i32,

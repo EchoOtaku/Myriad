@@ -30,9 +30,7 @@ pub async fn publish_content(
 ) -> Result<PublishResponse, (StatusCode, Json<serde_json::Value>)> {
     let base_url = get_base_url().await;
 
-    // visibility 必须是明确建模过的取值。过去未知取值（含前端已声明的
-    // `direct`）会走到 `resolve_audience` 的 `_ =>` 分支拿到空 to/cc，然后
-    // **照样 fan-out 给全部粉丝** —— 收件人为空反而让接收端无从补救。
+    // visibility 必须是明确建模过的取值；未知值由 `parse_visibility` 拒绝。
     let visibility_raw = req.visibility.as_deref().unwrap_or("public");
     let visibility_kind =
         crate::federation::audience::parse_visibility(visibility_raw).map_err(|bad| {

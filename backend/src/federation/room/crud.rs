@@ -480,9 +480,8 @@ pub async fn delete_room(
     .await
     .map_err(db_err)?;
 
-    // Do NOT cancel again after fan-out — that previously dead-lettered RoomDissolve
-    // itself (object.id = room_id matches LIKE %room_id%). Exclusion + pre-cancel
-    // above keep dissolve pending until the delivery worker finishes.
+    // Do NOT cancel again after fan-out — object.id = room_id matches LIKE %room_id%.
+    // Exclusion + pre-cancel above keep dissolve pending until the delivery worker finishes.
 
     tracing::info!("[Room] Deleted room {} by {}", room_id, username);
 

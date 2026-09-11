@@ -177,9 +177,7 @@ pub fn capability_covered_by_grants(cap: &Capability, granted: Option<&HashSet<S
 }
 
 /// Compact index limited to capabilities the user is actually granted.
-///
-/// Planner used to see the full 117 plus MCP, then fail at execute for
-/// non-admin. Filtering here is the grant layer, not declared/approved.
+/// Filtering here is the grant layer, not declared/approved.
 ///
 /// 每个条目的字段：`id` / `h` 用途 / `p` 必需入参 / `o` 声明的输出字段。
 /// `o` 让 Planner 能写出 `"dataFrom": "search.results"` 这类精确引用，
@@ -315,18 +313,9 @@ pub async fn get_capability_by_id(id: &str) -> Option<Capability> {
 
 /// Risk classification for an MCP tool.
 ///
-/// Every tool used to be `High` + always-confirm. That is safe in isolation but
-/// corrosive in aggregate: a read-only lookup and a destructive write raise the
-/// same dialog, so users learn to dismiss it and the confirmation stops carrying
-/// information by the time a genuinely dangerous call arrives.
-///
-/// A tool's own `annotations` can tell the two apart, but only for a server the
-/// operator has marked `trust_annotations` — the MCP spec is explicit that these
-/// are hints and that clients must not base security decisions on annotations
-/// from untrusted servers. Without that opt-in, nothing changes.
-///
-/// Spec defaults are load-bearing here: `destructiveHint` defaults to *true*, so
-/// silence means "assume destructive", never "assume safe".
+/// Without `trust_annotations`, risk is `High` + always-confirm.
+/// Annotations apply only when the operator marked that server trusted.
+/// `destructiveHint` defaults true: silence means assume destructive.
 fn mcp_tool_risk(
     annotations: Option<&super::mcp::protocol::McpToolAnnotations>,
     trusted: bool,
@@ -350,8 +339,7 @@ fn mcp_tool_risk(
     (RiskLevel::High, true)
 }
 
-/// Compact-index row for an MCP tool. Planner rules key off `p` (required
-/// params); omitting it is how MCP calls used to ship with empty arguments.
+/// Compact-index row for an MCP tool. Planner rules key off `p` (required params).
 fn mcp_compact_entry(server_id: &str, tool: &super::mcp::protocol::McpToolDef) -> Value {
     let mut entry = json!({
         "id": format!("mcp.{}.{}", server_id, tool.name),
@@ -457,9 +445,7 @@ mod tests {
             .iter()
             .filter_map(Value::as_str)
             .collect();
-        // Both fields `execute_ai_summarize` actually returns. It used to declare
-        // `keyPoints`, which the handler never produced — the planner would have
-        // been pointed at data that cannot exist.
+        // Both fields `execute_ai_summarize` actually returns.
         assert!(outputs.contains(&"summary"), "got {outputs:?}");
         assert!(outputs.contains(&"style"), "got {outputs:?}");
     }
@@ -467,8 +453,7 @@ mod tests {
     #[tokio::test]
     async fn no_capability_is_indexed_without_a_description() {
         // An entry with an empty `h` reaches the planner as a bare ID, which
-        // makes the capability effectively unselectable. 20 capabilities were in
-        // that state before `resolve_capability_hint` fell back to description.
+        // makes the capability effectively unselectable.
         let index = get_compact_index_for_grants(None).await;
         let blank: Vec<String> = index
             .get("caps")

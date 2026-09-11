@@ -833,8 +833,7 @@ async fn ensure_remote_actor_stub(
 
 /// 解析观众列表。
 ///
-/// 每个 [`Visibility`] 分支都必须产出**非空**的 `to` —— 空收件人集合是过去
-/// 隐私缺陷的根源：接收端拿不到任何寻址信息，只能按投递通道去猜。
+/// 每个 [`Visibility`] 分支都必须产出**非空**的 `to`。
 ///
 /// `Direct` 目前没有可表达的收件人字段（`PublishRequest` 不带 recipients），
 /// 所以自寻址给作者本人：语义上等于"仅自己可见"，且绝不 fan-out。
@@ -1055,8 +1054,7 @@ mod tests {
         let (to2, cc2) = resolve_audience(Visibility::Followers, base, "alice");
         assert!(to2.iter().any(|u| u.ends_with("/users/alice/followers")));
         assert!(cc2.is_empty());
-        // Direct 自寻址给作者本人，绝不留空 to —— 空收件人集合曾让接收端
-        // 只能按投递通道猜测意图。
+        // Direct 自寻址给作者本人，绝不留空 to。
         let (to3, cc3) = resolve_audience(Visibility::Direct, base, "alice");
         assert_eq!(to3, vec!["https://myriad.example/users/alice".to_string()]);
         assert!(cc3.is_empty());

@@ -1,11 +1,4 @@
 import type { TappInstance } from './types'
-/**
- * Gating consistency between Tapp developer docs and shipped code.
- *
- * Drives real modules (categories, install progress, store paths, permission
- * fixtures) and asserts key doc claim classes still match. Failures mean the
- * docs under docs/development/tapp drifted from code authority.
- */
 import assert from 'node:assert/strict'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -34,13 +27,11 @@ import {
 import { resolveTappListInstallRequest } from './utils/tappListInstallRequest.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-/** frontend/src/tapp → repo root */
 const REPO = resolve(HERE, '../../..')
 const DOCS_TAPP = join(REPO, 'docs/development/tapp')
 const DOCS_INDEX = join(REPO, 'docs/development/TAPP_DEVELOPMENT.md')
 const FIXTURES = join(DOCS_TAPP, 'fixtures')
 const TAPP_STORE_RS = join(REPO, 'backend/src/api/tapp_store.rs')
-/** Router assembly (routes moved out of main.rs into router/*). */
 const ROUTER_DIR = join(REPO, 'backend/src/router')
 const CONTRACT_RULES = join(REPO, 'crates/tapp-contract/src/contract_rules.rs')
 
@@ -264,6 +255,29 @@ describe('tapp docs gating consistency', () => {
     )
   })
 
+  it('keeps every /private route on authenticated_routes, never optional_auth', () => {
+    const storeRs = read(TAPP_STORE_RS)
+    const auth =
+      storeRs.split('let authenticated_routes')[1]?.split('let public_routes')[0] ??
+      ''
+    const optional = storeRs.split('let optional_subject_routes')[1] ?? ''
+    assert.match(auth, /auth_middleware/)
+    assert.match(optional, /optional_auth_middleware/)
+    for (const handler of [
+      'list_private_keys',
+      'clear_private',
+      'list_private_entries',
+      'get_private_usage',
+      'get_private',
+      'set_private',
+      'delete_private',
+    ]) {
+      assert.match(auth, new RegExp(`\\b${handler}\\b`))
+      assert.doesNotMatch(optional, new RegExp(`\\b${handler}\\b`))
+    }
+    assert.doesNotMatch(optional, /\/private/)
+  })
+
   it('rEST_API documented /api/tapp method+path pairs exist in backend router modules', () => {
     const rest = read(join(DOCS_TAPP, 'REST_API.md'))
     // Routes live under backend/src/router/* (not main.rs).
@@ -427,9 +441,9 @@ describe('tapp docs gating consistency', () => {
     const apiRef = read(join(DOCS_TAPP, 'API_REFERENCE.md'))
     const listSection =
       apiRef.split('## Tapp 列表 API')[1]?.split('## ')[0] ?? ''
-    // Must document canonical store shape with storeSource
+    // 必须用 storeSource 写规范商店形态。
     assert.match(listSection, /storeSource:\s*"1"/)
-    // Must not claim bare source:"1" is a valid equivalent without marking invalid
+    // 不得把裸 source:"1" 写成合法等价。
     assert.ok(
       !/等价[^\n]*source:\s*"1"/.test(listSection) &&
         !/await Tapp\.tappList\.install\(\{\s*source:\s*"1"/.test(listSection),
@@ -497,14 +511,13 @@ describe('tapp docs gating consistency', () => {
 
   it('API_REFERENCE capability table includes every frozen full-SDK namespace', () => {
     const gen = read(
-      join(REPO, 'frontend/src/tapp/runtime/sandbox/sdkFull.ts'),
+      join(REPO, 'frontend/src/tapp/runtime/sandbox/sdkBody.ts'),
     )
-    const fullFn = gen.slice(gen.indexOf('export function generateFullSDK'))
-    const frozen = [
-      ...fullFn.matchAll(/Object\.freeze\(Tapp\.(\w+)/g),
-    ].map((m) => m[1])
-    const frozenNs = [...new Set(frozen)]
-    assert.ok(frozenNs.includes('game'), 'generateFullSDK must freeze Tapp.game')
+    const shared = read(
+      join(REPO, 'frontend/src/tapp/runtime/sandbox/sdkShared.ts'),
+    )
+    assert.match(shared, /skip = \{ widgets: 1, pages: 1 \}/)
+    assert.match(gen, /SDK_FREEZE_TAPP_CODE/)
 
     const perms = Object.keys(PERMISSION_LEVELS) as never[]
     const instance: TappInstance = {
@@ -529,6 +542,57 @@ describe('tapp docs gating consistency', () => {
     assert.match(pageSdk, /api:\s*Object\.assign\(/)
     assert.match(widgetSdk, /api:\s*Object\.assign\(/)
     assert.equal(/\n\s+game:\s*\{/.test(widgetSdk), false)
+
+    const sandboxWindow: Record<string, any> = {
+      addEventListener: () => undefined,
+      parent: { postMessage: () => undefined },
+      _TAPP_I18N: {},
+      _TAPP_LOCALE: 'en-US',
+    }
+    const sandboxDocument = {
+      addEventListener: () => undefined,
+      createElement: () => ({ style: {}, appendChild: () => undefined }),
+      body: {
+        style: {},
+        classList: { toggle: () => undefined },
+        offsetHeight: 0,
+      },
+      documentElement: { style: { setProperty: () => undefined } },
+    }
+    const run = new Function(
+      'window',
+      'document',
+      'crypto',
+      'setTimeout',
+      'URL',
+      'Blob',
+      'atob',
+      pageSdk,
+    )
+    run(
+      sandboxWindow,
+      sandboxDocument,
+      globalThis.crypto,
+      () => 0,
+      URL,
+      Blob,
+      globalThis.atob,
+    )
+    const tapp = sandboxWindow.Tapp as Record<string, unknown>
+    const frozenNs = Object.keys(tapp).filter((key) => {
+      if (key === 'widgets' || key === 'pages') return false
+      const value = tapp[key]
+      if (value == null) return false
+      if (Array.isArray(value)) return false
+      if (typeof value === 'function') {
+        const extra = Object.keys(value as object).filter(
+          (k) => k !== 'length' && k !== 'name' && k !== 'prototype',
+        )
+        return extra.length > 0
+      }
+      return typeof value === 'object'
+    })
+    assert.ok(frozenNs.includes('game'), 'generateFullSDK must freeze Tapp.game')
 
     const apiRef = read(join(DOCS_TAPP, 'API_REFERENCE.md'))
     const cap = apiRef.split('## 能力边界与完整命名空间')[1] ?? ''
@@ -565,7 +629,7 @@ describe('tapp docs gating consistency', () => {
       const text = read(file)
       for (const token of retired) {
         const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        // Only permission arrays / permission-table cells, not namespace names.
+        // 只对权限数组 / 权限表单元格，不是命名空间名。
         const re = new RegExp(
           `permissions[\\s\\S]{0,200}[\`'"]${escaped}[\`'"]`,
           'g',

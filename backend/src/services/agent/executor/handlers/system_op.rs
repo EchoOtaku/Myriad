@@ -756,7 +756,7 @@ async fn execute_export_data(params: &HashMap<String, Value>) -> Result<Value, S
         .get("format")
         .and_then(|v| v.as_str())
         .unwrap_or("json");
-    // Schema required `platform`; the handler used to read only `type` and dump everything.
+    // Schema required `platform`; read `platform` then `type`.
     let data_type =
         first_string_param(params, &["platform", "type"]).unwrap_or_else(|| "all".into());
 

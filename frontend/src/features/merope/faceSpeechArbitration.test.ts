@@ -204,7 +204,6 @@ test('Chat start then engine cancel releases occupancy so visible Work may speak
   const gate = new FaceSpeechGate(() => visible)
   const chat = openGatedReply(channel, gate, 'chat', 'chat-msg')
   chat.chunk('说到一半')
-  // Engine cancel path — not the ReplyUtterance wrapper's cancel().
   cancelGatedSpeech(channel, gate, 'chat-msg')
   visible = 'work'
 
@@ -369,6 +368,27 @@ test('proactive face records while Chat currently holds the mouth', () => {
   })
   assert.equal(result.surface, 'record')
   assert.equal(sink.utterances.length, 0)
+})
+
+test('late touch speech cannot overwrite a speaking body or its state', () => {
+  setLiveFaceVisible(true)
+  const sink = new RecordingSink()
+  const channel = new AgentFaceChannel(sink)
+  const gate = new FaceSpeechGate(() => 'chat')
+  setLiveBody({
+    capabilities: () => ({ semantic: [] }),
+    state: () => ({ expression: 'neutral', posture: 'idle', acting: null,
+      speaking: true, faceVisible: true, capabilities: [] }),
+    intend: () => assert.fail('busy body must not receive touch speech'),
+  })
+  try {
+    assert.equal(deliverProactiveFace(channel, gate, {
+      id: 'late-touch', eventKey: 'agent.merope.touch', body: '嗯？',
+      meropeState: { activity: 'talking' },
+    }).surface, 'record')
+    assert.deepEqual(sink.states, [])
+    assert.deepEqual(sink.utterances, [])
+  } finally { setLiveBody(null) }
 })
 
 test('Work completion still speaks when Chat is not talking and Work is visible', () => {

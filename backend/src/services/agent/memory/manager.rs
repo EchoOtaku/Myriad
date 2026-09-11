@@ -52,8 +52,6 @@ impl AgentMemory {
     }
 
     /// 进索引的文本：内容 + 实体 + 关联能力，提升语义召回率。
-    ///
-    /// 此前四个写入路径各自手写一遍同样的拼接，改一处就得改四处。
     fn index_text_for(entry: &MemoryEntry) -> String {
         Self::index_text(&entry.content, &entry.entities, &entry.related_capabilities)
     }
@@ -229,7 +227,7 @@ impl AgentMemory {
         capabilities_used: &[String],
         user_id: i32,
     ) {
-        // Short-circuit: 极简交互不需要触发 AI 提取
+        // 极简交互直接 return：规则纠错 / 失败课 / AI 提取都不跑
         let input_chars: usize = user_input.chars().count();
         if input_chars < 6
             && success
@@ -525,11 +523,10 @@ impl AgentMemory {
 
     /// 检查是否应该去重或合并（返回 true 表示跳过写入）
     ///
-    /// 合并策略：同类型且相似度 > 0.70 时，**用新内容覆盖旧内容**并提升重要性，
+    /// 合并策略：同类型且相似度 > `MERGE_SIMILARITY_THRESHOLD`（0.70）时，用新内容覆盖并提升重要性，
     /// 同时并入新记忆的实体/能力关联，保证纠错/更新信息能正确替换过时记忆。
     ///
-    /// 候选只在写入者自己的分片里取。此前是在全局索引上取 top-3 再按用户过滤，
-    /// 跨用户条目占满这 3 个槽位时去重就整个落空，同一用户的重复记忆会无限累积。
+    /// 候选只在写入者自己的分片里取。
     async fn should_dedup_or_merge(
         &self,
         new_content: &str,
@@ -592,7 +589,7 @@ impl AgentMemory {
                                 (entry.importance + 0.1).max(new_importance).min(1.0);
                             entry.access_count += 1;
                             entry.last_accessed_at = Some(Utc::now().to_rfc3339());
-                            // 并入新记忆的实体/能力关联（旧逻辑直接丢弃新关联）
+                            // 并入新记忆的实体/能力关联
                             for ent in new_entities {
                                 if !entry.entities.contains(ent) {
                                     entry.entities.push(ent.clone());
@@ -648,8 +645,7 @@ impl AgentMemory {
 
     /// 强制该用户的容量上限，淘汰其低价值记忆
     ///
-    /// 只在 `user_id` 自己的桶里结算。此前是在全体条目上打分排序，配额跨用户共享，
-    /// 活跃用户的写入会把别人的记忆挤掉。
+    /// 只在 `user_id` 自己的桶里结算。
     ///
     /// 锁顺序：先 indexes.write()，再 entries.write()（与其他所有路径一致，避免死锁）
     async fn enforce_capacity_limit(&self, user_id: i32) {
@@ -750,7 +746,7 @@ impl AgentMemory {
 
                 let mut match_score: f32 = 0.0;
                 for token in &tokens {
-                    // 实体名精确匹配（高权重）
+                    // 实体名双向 contains（高权重）
                     if entity_names
                         .iter()
                         .any(|ent| ent.contains(token) || token.contains(ent.as_str()))
@@ -985,9 +981,7 @@ impl AgentMemory {
         }
     }
 
-    /// 归档会话洞察到 LongTerm 记忆
-    ///
-    /// 在会话结束或切换时调用，用 AI 从会话历史中提炼关键信息。
+    /// 把传入的 `summary` 写入 MediumTerm `SessionInsight`。
     pub async fn consolidate_session(&self, summary: &str, user_id: i32) {
         if summary.trim().is_empty() {
             return;
@@ -1077,7 +1071,7 @@ impl AgentMemory {
         true
     }
 
-    /// 更新指定 ID 的记忆内容（仅所有者）
+    /// 更新指定 ID 的记忆内容（`entry_visible_to`：所有者或系统用户）
     ///
     /// 锁顺序：index 先，entries 后（与其他所有路径一致，避免死锁）
     pub async fn update_memory(&self, memory_id: &str, new_content: &str, user_id: i32) -> bool {
@@ -1131,11 +1125,8 @@ impl AgentMemory {
             return Vec::new();
         }
 
-        // TF-IDF 搜索 — 只在调用者可见的分片里取候选，拿多一些做后续过滤。
-        //
-        // 分片之前是全局取 top-N 再按用户过滤，别人的高分文档会把本用户的候选挤出
-        // 候选池；现在候选池本身就只含可见条目，`limit * 3` 的余量全部留给层级和
-        // 类型过滤。读锁：IDF 已由写入方在写锁内重建。
+        // TF-IDF 搜索 — 只在调用者可见的分片里取候选，`limit * 3` 余量留给层级和类型过滤。
+        // 读锁：IDF 已由写入方在写锁内重建。
         let tfidf_results = {
             let indexes = self.indexes.read().await;
             let shards = match params.user_id {
@@ -1222,8 +1213,8 @@ impl AgentMemory {
                         })
                         .unwrap_or(365.0);
 
-                    // 访问越多衰减越慢：半衰期 = 90 天 * ln(access_count + 1)
-                    // access_count=0: 90天(floor), =5: 161天, =10: 215天
+                    // 半衰期 = 90 * ln_1p(access_count)，再 `.max(90)`
+                    // access_count=0 → 90；=5 → ≈161；=10 → ≈215
                     let half_life = 90.0 * (entry.access_count as f32).ln_1p();
                     let half_life = half_life.max(90.0); // 最低 90 天
                     let decay = (0.3_f32).max((-0.693 * days_since / half_life).exp());
@@ -1239,7 +1230,7 @@ impl AgentMemory {
         scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
         scored.truncate(params.limit);
 
-        // 更新 access_count (不阻塞返回)
+        // 召回结果先拷出；access_count 在返回前写锁递增，persist 才延后
         let hit_ids: Vec<String> = scored.iter().map(|(_, id)| id.clone()).collect();
         drop(entries);
 
@@ -1263,8 +1254,8 @@ impl AgentMemory {
                     }
                 }
             }
-            // 只是访问计数变更，不在召回热路径上全量重写两份持久化文件
-            // （每次规划会触发 2 次召回）；标记脏位，由后台维护任务批量落盘
+            // 只是访问计数变更，不在召回热路径上全量重写两份持久化文件；
+            // 标记脏位，由后台维护任务批量落盘
             self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
         }
 
@@ -1481,7 +1472,7 @@ impl AgentMemory {
         Ok(())
     }
 
-    /// 解析旧版 memory.md 格式（迁移用）
+    /// 解析 memory.md（无 `memory_index.json` 时的迁移路径）
     fn parse_memory_md(content: &str) -> Vec<MemoryEntry> {
         content
             .lines()
@@ -1514,7 +1505,7 @@ impl AgentMemory {
 
                 Some(MemoryEntry {
                     id,
-                    user_id: None, // 遗留 markdown 导入，不归属具体用户
+                    user_id: None, // memory.md 导入，不归属具体用户
                     memory_type,
                     tier: MemoryTier::LongTerm,
                     content,
@@ -1857,11 +1848,7 @@ mod tests {
 
     #[tokio::test]
     async fn recall_candidate_pool_is_per_user_not_global() {
-        // Recall takes `limit * 3` candidates before applying tier/type filters.
-        // That pool used to be global and filtered by owner afterwards, so its
-        // useful size shrank as other users wrote more: a user could end up with
-        // fewer results than they had matching memories. The pool is now drawn
-        // from the caller's shard, so a neighbour's volume cannot affect it.
+        // Recall takes `limit * 3` candidates from the caller's shard before tier/type filters.
         let (memory, _dir) = scratch_memory().await;
         seed(&memory, 1, 5, "订阅源").await;
         seed(&memory, 2, 400, "订阅源").await;
@@ -1939,8 +1926,7 @@ mod tests {
 
     #[tokio::test]
     async fn dedup_sees_the_writers_own_shard_regardless_of_neighbours() {
-        // Dedup used to read the global top-3; neighbours filling those slots
-        // meant a user's duplicates accumulated unchecked.
+        // Dedup reads the writer's own shard; neighbours must not fill the candidate slots.
         let (memory, _dir) = scratch_memory().await;
         seed(&memory, 2, 30, "订阅记录").await;
         memory
@@ -2002,7 +1988,7 @@ mod tests {
 
     #[tokio::test]
     async fn writes_leave_the_shard_searchable_under_a_read_lock() {
-        // Recall now takes only a read lock, which is sound only if every write
+        // Recall takes only a read lock, which is sound only if every write
         // path refreshes IDF before releasing its write lock.
         let (memory, _dir) = scratch_memory().await;
         memory

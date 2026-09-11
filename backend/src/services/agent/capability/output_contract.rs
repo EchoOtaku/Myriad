@@ -1,22 +1,13 @@
 //! Capability output contract.
 //!
-//! `Capability::output_schema` used to be declared on every capability and read
-//! by nothing. Two consequences:
+//! `Capability::output_schema` is load-bearing:
 //!
-//! - The planner could not see what a step produces, so cross-step references
-//!   (`"dataFrom": "search"`) were untyped guesses resolved by per-capability
-//!   fallbacks at execution time.
-//! - A handler returning the wrong shape ("hollow success") flowed straight into
-//!   downstream steps, and only surfaced later as an escalation heuristic.
-//!
-//! This module makes the declaration load-bearing:
-//!
-//! - [`declared_output_fields`] feeds the compact capability index, so the
-//!   planner can reference a concrete field (`"dataFrom": "search.results"`).
+//! - [`declared_output_fields`] feeds the compact capability index
+//!   (`"dataFrom": "search.results"`).
 //! - [`check_output_contract`] runs after a step completes.
 //!
 //! **Runtime:** [`ContractViolation::Breach`] fails the step. [`ContractViolation::Drift`]
-//! is still log-only. CI sample-output table asserts covered capabilities
+//! 只打日志，不失败步骤。CI sample-output table asserts covered capabilities
 //! produce no Breach.
 //!
 //! The two severities therefore describe *confidence*, not runtime behaviour:

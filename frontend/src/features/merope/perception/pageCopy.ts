@@ -1,6 +1,6 @@
 import type { PageContent } from '../../../contexts/PageContentContext'
 
-/** Authored summary only. Page body is a fact, not Lite's summary. */
+/** Authored summary only. */
 export function pagePerceptionCopy(
   page: PageContent,
   route: string,

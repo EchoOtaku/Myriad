@@ -41,7 +41,7 @@ const MAX_CONCURRENT_AGENT_RUNS: usize = 2;
 /// Full multi-turn memory: prior successful revisions + optional failed tail.
 const MAX_HISTORY_TURNS: usize = 20;
 /// Adaptive wire format: only the last K *successful* turns keep full project
-/// JSON in model messages. Older turns send a compact summary (no source).
+/// JSON in model messages. 更早的轮次只带 compact summary（无源码）。
 /// Frontend may still store full projects in localStorage; only the model wire
 /// format is adaptive (see `build_codegen_messages` / `compact_project_summary`).
 const FULL_PROJECT_HISTORY_TURNS: usize = 2;
@@ -49,8 +49,7 @@ const FULL_PROJECT_HISTORY_TURNS: usize = 2;
 const MAX_REQUEST_BODY_BYTES: usize = 12 * 1024 * 1024;
 const MAX_HISTORY_EXPLANATION_CHARS: usize = USER_TEXT_MAX_CHARS;
 const MAX_HISTORY_ERROR_CHARS: usize = USER_TEXT_MAX_CHARS;
-/// Pro 模型生成完整项目较慢；与前端 `TappPlaygroundService.ts` 的
-/// 超时预算（约 30 分钟）保持一致。
+/// Pro 模型生成完整项目较慢；单次模型调用超时 [`MODEL_REQUEST_TIMEOUT`]（1080s）。
 ///
 /// 取消语义：
 /// - 非流式 `/generate`：handler future 随客户端断开被 drop，信号量 permit
@@ -151,8 +150,9 @@ You must follow the current Myriad Tapp contract:
   Omit it and the widget library treats it as utility. Any non-empty
   `manifest.widgets` requires `widget:register` permission.
 - Top-level `manifest.settings` are installation-level values controlled by the
-  installer/admin. Per-user preferences belong in `Tapp.storage`; per-Widget
-  instance preferences belong in `widgets[].settings`.
+  installer/admin. Per-user preferences belong in `Tapp.storage`; visitor-visible
+  owner data belongs in `Tapp.shared`; owner/admin-only non-secret data belongs in
+  `Tapp.private`; per-Widget instance preferences belong in `widgets[].settings`.
 - Every setting definition uses the exact camelCase field `defaultValue`; never
   emit the common but invalid alias `default`.
 - Layer entries and resource paths are fixed: `core.entry` is `core.js`,
@@ -519,7 +519,7 @@ async fn generate_project(
 /// SSE stream of real agent steps, then a final `done` (or `error`) event.
 ///
 /// Admin-only (same route layer as `/generate`). Timeouts align with the
-/// one-shot path (per-model-call `MODEL_REQUEST_TIMEOUT`, client ~30m).
+/// one-shot path (per-model-call [`MODEL_REQUEST_TIMEOUT`]).
 /// Client disconnect / AbortController cancel sets the cancel watch so the
 /// worker stops after the current AI HTTP returns (or sooner if reqwest drop
 /// aborts) and does not start the next attempt.
@@ -1324,7 +1324,7 @@ fn format_prior_instructions(history: &[PlaygroundHistoryTurn]) -> String {
     }
 }
 
-/// Compact, source-free project summary for older multi-turn memory turns.
+/// Compact, source-free project summary for turns outside the last-K full window.
 ///
 /// Includes manifest identity, permissions, code/asset field byte sizes, and
 /// widget ids/sizes — never full source text.
@@ -1408,8 +1408,8 @@ fn successful_turn_keeps_full_project(success_index: usize, successful_count: us
 ///
 /// Adaptive wire format (anti context blow-up):
 /// - Last [`FULL_PROJECT_HISTORY_TURNS`] successful turns: full project JSON
-/// in user/assistant turns (previous behavior).
-/// - Older successful turns: instruction + explanation + compact summary only
+/// in user/assistant turns.
+/// - 更早的成功轮次: instruction + explanation + compact summary only
 /// (no full source).
 /// - Failed tail: error + instruction; compact project context at most once
 /// (full CURRENT project is always on the final user message).

@@ -1,9 +1,13 @@
 //! Platform connectivity test endpoint.
-use axum::{http::StatusCode, Json};
+use axum::{
+    http::{HeaderMap, StatusCode},
+    Json,
+};
 use serde_json::{json, Value};
 
 use super::{form_secret_if_plaintext, is_masked_secret_value};
-use crate::services::platform_refresh::humanize_platform_fetch_error;
+use crate::api::reports::locale::locale_from_headers;
+use crate::services::platform_refresh::humanize_platform_fetch_error_for;
 
 /// Map UI platform label → internal platform id for error humanization.
 fn test_platform_id(ui_label: &str) -> &'static str {
@@ -23,9 +27,8 @@ fn test_platform_id(ui_label: &str) -> &'static str {
     }
 }
 
-fn test_fail_message(ui_label: &str, err: impl ToString) -> String {
-    let detail = humanize_platform_fetch_error(test_platform_id(ui_label), &err.to_string());
-    format!("✗ Failed to verify {ui_label}: {detail}")
+fn test_fail_message(ui_label: &str, err: impl ToString, locale: &str) -> String {
+    humanize_platform_fetch_error_for(test_platform_id(ui_label), &err.to_string(), locale)
 }
 
 pub async fn test_platform(
@@ -33,8 +36,10 @@ pub async fn test_platform(
     axum::extract::State(dynamic_config): axum::extract::State<
         std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>,
     >,
+    headers: HeaderMap,
     Json(payload): Json<Value>,
 ) -> (StatusCode, Json<Value>) {
+    let locale = locale_from_headers(&headers).unwrap_or("en-US");
     let platform = payload["platform"].as_str().unwrap_or("");
     let config = &payload["config"];
 
@@ -69,7 +74,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": test_fail_message("GitHub", e)
+                        "message": test_fail_message("GitHub", e, locale)
                     })),
                 ),
             }
@@ -108,7 +113,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": test_fail_message("Bilibili", e)
+                        "message": test_fail_message("Bilibili", e, locale)
                     })),
                 ),
             }
@@ -137,7 +142,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": test_fail_message("Steam", e)
+                        "message": test_fail_message("Steam", e, locale)
                     })),
                 ),
             }
@@ -205,7 +210,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": test_fail_message("YouTube", e)
+                        "message": test_fail_message("YouTube", e, locale)
                     })),
                 ),
             }
@@ -251,7 +256,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": test_fail_message("Netease Music", e)
+                        "message": test_fail_message("Netease Music", e, locale)
                     })),
                 ),
             }
@@ -300,7 +305,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": test_fail_message("Bangumi", e)
+                        "message": test_fail_message("Bangumi", e, locale)
                     })),
                 ),
             }
@@ -351,7 +356,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": test_fail_message("Discord", e)
+                        "message": test_fail_message("Discord", e, locale)
                     })),
                 ),
             }
@@ -422,7 +427,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": test_fail_message("X", e)
+                        "message": test_fail_message("X", e, locale)
                     })),
                 ),
             }
@@ -481,7 +486,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": test_fail_message("MyAnimeList", e)
+                        "message": test_fail_message("MyAnimeList", e, locale)
                     })),
                 ),
             }
@@ -555,7 +560,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": test_fail_message("Xbox", e)
+                        "message": test_fail_message("Xbox", e, locale)
                     })),
                 ),
             }
@@ -635,7 +640,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": test_fail_message("PlayStation", e)
+                        "message": test_fail_message("PlayStation", e, locale)
                     })),
                 ),
             }

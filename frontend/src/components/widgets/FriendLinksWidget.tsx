@@ -1,10 +1,3 @@
-/**
- * Brew 友情链接小组件
- *
- * 直接读取 Brew 的订阅源列表，并复用数据库中的固定分类值“友情链接”。
- * 因此 Brew 中的增删、排序、图标、主题色和标签都会同步到这里。
- */
-
 import type { CSSProperties } from 'react'
 import type { BrewSource } from '../../types/brew'
 import type { WidgetComponentProps } from '../widgetGridTypes'
@@ -98,7 +91,6 @@ function randomRank(id: number, seed: number): number {
   return value - Math.floor(value)
 }
 
-/** Icon avatar: custom image when available, LuLink placeholder on missing/broken. */
 function FriendLinkIcon({
   icon,
   color,
@@ -134,7 +126,7 @@ function FriendLinkIcon({
           decoding="async"
           className="absolute inset-0 h-full w-full object-cover"
           onLoad={(e) => {
-            // Soft-fail proxy returns 1×1 PNG for dead remote icons
+            // 失效远程图标代理回 1×1 PNG。
             const img = e.currentTarget
             if (img.naturalWidth <= 1 && img.naturalHeight <= 1) {
               setFailed(true)
@@ -360,14 +352,12 @@ export const FriendLinksWidget = memo(
       [isEditMode, isPreview],
     )
 
-    // 编辑/预览时禁用指针事件，让父级 WidgetGrid 可以拖拽。
-    // 不要用 native disabled：全局 button:disabled { opacity: 0.5 } 会把预览整片洗灰。
+    // 不要用 native disabled：全局 button:disabled 会把预览洗灰。
     const interactionLocked = isEditMode || isPreview
     const pointerEventsStyle = interactionLocked
       ? { pointerEvents: 'none' as const }
       : {}
     const shellClassName = isEditMode ? 'cursor-grab' : undefined
-    // 仅真实无跳转链接在可交互模式下才标 disabled（空 url / 过渡层用 class 挡点击）
     const entryDisabled = (entryUrl: string, incoming: boolean) =>
       !interactionLocked && (incoming || !entryUrl)
 

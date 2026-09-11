@@ -62,7 +62,7 @@ impl Executor {
                 .await
                 .ok_or_else(|| format!("Unknown capability: {}", step.capability_id))?;
 
-        // 权限校验：检查 capability 声明的 required_permissions
+        // 权限校验：授予权限（自主上限存在时一并重读 grant）对照 capability.required_permissions
         if !capability.required_permissions.is_empty()
             || handler_ctx.autonomy_permission_cap.is_some()
         {
@@ -95,10 +95,8 @@ impl Executor {
             }
         }
 
-        // 敏感操作补检：动态子步骤（技能展开/动态分析生成）绕过了 Planner 层的
-        // check_sensitive_steps 确认流程。策略与 system_sensitive_gate 对齐：
-        // - 系统任务：Medium 自动放行；High/Critical 硬拦并返回清晰 blocked 文案
-        // - 交互用户：Medium+ 一律硬拦直至确认
+        // 动态步骤补检：`should_block_unconfirmed_dynamic_step` 为 true 时
+        // 返回 "This step needs confirmation first"。
         if context.is_dynamic_step(&step.id) {
             if let Some((_, risk)) =
                 crate::services::agent::capability::capability_requires_confirmation_async(
@@ -202,9 +200,8 @@ impl Executor {
         Ok(output)
     }
 
-    /// Breach (wrong JSON type / missing required) fails the step. Drift is
-    /// still log-only: a handler that returns extra keys plus none of the
-    /// declared ones is usually a schema leftover, not a crashed tool.
+    /// Breach (wrong JSON type / missing required) fails the step.
+    /// `ContractViolation::Drift` 只 `tracing::warn` 后 `Ok(())`。
     ///
     /// MCP tools synthesize a local `{"type": "string"}` placeholder and stay
     /// exempt.
@@ -590,7 +587,7 @@ impl Executor {
         // 记录哪些步骤被跳过（gating/无效），用于依赖断裂检测
         let mut skipped_indices: std::collections::HashSet<usize> =
             std::collections::HashSet::new();
-        // 被跳过的 AI step id 集合（用于 pass 2 检测依赖断裂）
+        // 被跳过步骤的 plan id（pass 2 检测依赖断裂）
         let mut skipped_ai_ids: std::collections::HashSet<String> =
             std::collections::HashSet::new();
 
@@ -755,9 +752,7 @@ impl Executor {
 
             let step_id = format!("{}_{}_step_{}", step.id, skill_id, i);
 
-            // 子步骤大多是小操作，所以有个 60 秒地板；但能力自己声明需要更久
-            // 时以声明为准——硬写 60 秒会让 `model3d.generate`（声明 180 秒）
-            // 必然超时。
+            // 子步骤超时：`step_timeout_secs` 再与 `SKILL_SUB_STEP_MIN_SECS` 取较大值。
             let sub_step_timeout_ms = cap_registry
                 .get(cap_id)
                 .map(|capability| {
@@ -817,7 +812,6 @@ impl Executor {
         Ok(last_output)
     }
 
-    /// 解析参数中的引用
     /// 构建 StepDebug 事件用的参数预览（截断超长字符串）
     pub(crate) fn build_debug_params(params: &HashMap<String, Value>) -> Option<Value> {
         let mut p = params.clone();
@@ -836,9 +830,8 @@ impl Executor {
         serde_json::to_value(&p).ok()
     }
 
-    /// 能力特定的参数回退：当 resolve_params 无法填充某个必要参数时，
-    /// 从前置步骤输出中尝试语义搜索。每个能力的回退逻辑集中在此处，
-    /// 避免污染主执行路径。
+    /// 能力特定回退：`context.reference` 用 stepId/path 解析；
+    /// `music.playlist` 缺 playlistId 时取 recommendedPlaylistId 或 playlists[0].id。
     pub(crate) fn apply_capability_param_fallbacks(
         &self,
         capability_id: &str,
@@ -916,7 +909,7 @@ impl Executor {
                     if let Some(output) = resolved_value {
                         let new_key = key.trim_end_matches("From").to_string();
 
-                        // 数据型参数（data, content, input, context）保留完整对象，
+                        // 数据型参数（data, content, input, context, items）保留完整对象，
                         // 因为下游 handler（如 ai.analyze）有自己的 extract_semantic_text 逻辑
                         // 能处理结构化数据（如 results 数组、嵌套字段等）。
                         //
@@ -928,9 +921,7 @@ impl Executor {
                         );
 
                         // ID 型参数（playlistId、songId、id 等）：引用结构化输出时
-                        // 必须提取真实 ID，绝不能走语义文本提取——后者会把
-                        // message 提示文案当 ID 用（歌单播放曾因此拿到
-                        // "找到 10 个…" 字符串，任务"成功"但前端加载必败）
+                        // 必须提取真实 ID，不能走语义文本提取。
                         let is_id_param = new_key == "id"
                             || new_key.ends_with("Id")
                             || new_key.ends_with("ID")
@@ -1093,7 +1084,6 @@ impl Executor {
         })
     }
 
-    // 动态步骤生成系统
 }
 
 fn prior_step_text(out_val: &Value) -> Option<&str> {

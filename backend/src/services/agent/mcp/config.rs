@@ -141,7 +141,7 @@ pub fn validate_config(mut config: McpServersConfig) -> Result<McpServersConfig,
             server.max_restart_attempts = 50;
         }
     }
-    // Keep in lockstep with `transport::MAX_MCP_CHILDREN` (MYR-009).
+    // Keep in lockstep with `transport::MAX_MCP_CHILDREN`.
     if config.servers.len() > 32 {
         return Err("too many MCP servers (max 32)".into());
     }

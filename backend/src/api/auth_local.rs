@@ -36,7 +36,7 @@ fn auth_store_app(context: &'static str, error: impl std::fmt::Display) -> HttpE
     HttpError(AppError::internal(format!("Failed to {context}")))
 }
 
-/// Modest global cap on concurrent Argon2 hash/verify work (MYR-006).
+/// Modest global cap on concurrent Argon2 hash/verify work.
 ///
 /// Argon2 is intentionally CPU- and memory-heavy. Unbounded `spawn_blocking`
 /// under concurrent login/register can exhaust the blocking pool. We allow a
@@ -267,10 +267,7 @@ pub async fn create_admin(
         updated_at
     ) VALUES ($1, $2, $3, true, true, NULL, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     RETURNING id";
-    // avatar_url 留空：占位头像是「显示时的兜底」，不是账号数据。
-    // 曾在这里播种 ui-avatars.com 外链（渲染出的 "Ad" 就是 name=Admin 的缩写），
-    // 结果是每个新装站点从第一天起就依赖一个外部图床，且用户显式选「账号头像」
-    // 时会把这张占位图当成真头像用。现在交给前端 <Avatar> 本地生成。
+    // avatar_url 留空：占位头像是「显示时的兜底」，不是账号数据。交给前端 <Avatar> 本地生成。
     let insert_params = vec![
         SeaValue::String(Some(request.username.clone())),
         SeaValue::String(Some("local".to_string())),
@@ -355,9 +352,7 @@ pub async fn local_login(
 ) -> Result<impl IntoResponse, HttpError> {
     tracing::info!("Local login attempt: {}", request.username);
 
-    // Query user by username
-    // PR #4: 不再要求 auth_provider='local' — 只要 password_hash 存在就能本地登录。
-    // 这样 GitHub-注册用户走 /api/auth/me/set-password 后也能用 username 登录。
+    // 只要 `password_hash IS NOT NULL` 就能本地登录（不要求 `auth_provider='local'`）。
     use sea_orm::Value as SeaValue;
 
     let query = "SELECT id, username, password_hash, is_admin,
@@ -559,9 +554,8 @@ pub async fn change_password(
         ))
     })?;
 
-    // PR #4: 任何拥有 password_hash 的账户都能改密码（不再要求 auth_provider='local'）
-    // 没有密码的账户（纯 OAuth）应走 /api/auth/me/set-password 后补密码。
-    let _ = auth_provider; // 信息性字段，保留读取以兼容旧 SELECT
+    // 有 `password_hash` 就能改密码。没有密码的账户走 `/api/auth/me/set-password`。
+    let _ = auth_provider;
 
     let is_admin: bool = user_row.try_get("", "is_admin").unwrap_or(false);
     let is_owner: bool = user_row.try_get("", "is_owner").unwrap_or(false);
@@ -653,7 +647,7 @@ pub async fn change_password(
 
 // Helper functions
 
-/// Username charset: letters, digits, underscore (compiled once — MYR-036).
+/// Username charset: letters, digits, underscore (compiled once).
 static USERNAME_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^[a-zA-Z0-9_]+$").expect("username regex"));
 
@@ -806,7 +800,7 @@ async fn verify_password(password: &str, hash: &str) -> Result<(), HttpError> {
     }
 }
 
-// PR #4 新增端点：公开注册 + 后补密码 + 本地登录开关
+// 公开注册 + 后补密码 + 本地登录开关
 // 详见 docs/development/OAUTH.md
 
 /// POST /api/auth/register —— 公开本地账号注册
@@ -1186,7 +1180,7 @@ async fn issue_session_cookie(
     Ok(resp)
 }
 
-// PR #6: Admin 后台建本地账号
+// Admin 后台建本地账号
 // 详见 docs/development/OAUTH.md
 //
 // 不受 allow_local_registration 开关限制；is_admin=true 仅站点 owner 可设。
@@ -1216,7 +1210,7 @@ pub async fn admin_create_user(
     ensure_current_admin_on(&claims, &db).await?;
 
     let actor_id: i32 = claims.sub.parse().unwrap_or(0);
-    // 仅站点 owner 可创建带 is_admin=true 的账号（was: actor id=1）
+    // 仅站点 owner 可创建带 is_admin=true 的账号。
     let actor_is_owner = crate::api::admin_users::actor_is_owner(&db, actor_id).await?;
     if let Some(msg) =
         crate::api::admin_users::non_owner_grant_admin_on_create_error(actor_is_owner, req.is_admin)
@@ -1314,8 +1308,6 @@ pub async fn admin_create_user(
     }
     Ok(Json(body))
 }
-
-// admin 用户列表已迁移到 api::admin_users::list_users（设置页用户管理模块）
 
 #[cfg(test)]
 mod tests {
@@ -1449,7 +1441,7 @@ mod tests {
 
     #[test]
     fn password_hash_permit_budget_is_modest() {
-        // MYR-006: cap concurrency ~4; leave headroom — not a harsh multi-axis governor.
+        // DEFAULT_ARGON2_PERMITS == 4；PASSWORD_HASH_ACQUIRE_TIMEOUT == 15s。
         assert_eq!(crate::services::memory_profile::DEFAULT_ARGON2_PERMITS, 4);
         assert!(PASSWORD_HASH_ACQUIRE_TIMEOUT >= StdDuration::from_secs(5));
         assert!(PASSWORD_HASH_ACQUIRE_TIMEOUT <= StdDuration::from_secs(30));

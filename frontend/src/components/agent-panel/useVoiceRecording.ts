@@ -1,10 +1,3 @@
-/**
- * 说给它听。
- *
- * 轻点是按住说话：整段录完再识别。
- * 长按进入连续对话：声网开着就走 RTC；否则本地 VAD 开口就停 TTS，说完一句才提交。麦克风一直开着。
- */
-
 import type { VoiceInputTiming } from '../../features/merope/turnTrace'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
@@ -93,12 +86,12 @@ function cleanupRecorder(recorder: RecorderState) {
     recorder.workletNode.port.onmessage = null
     recorder.workletNode.disconnect()
   } catch {
-    // already disconnected
+    /* already disconnected */
   }
   try {
     recorder.muteNode.disconnect()
   } catch {
-    // already disconnected
+    /* already disconnected */
   }
   recorder.stream.getTracks().forEach((track) => track.stop())
   void recorder.audioContext.close()
@@ -330,8 +323,7 @@ export function useVoiceRecording(
     recorder.capture.reset()
     cleanupRecorder(recorder)
     recorderRef.current = null
-    // Exiting continuous listening discards unfinished speech and late ASR.
-    // Releasing push-to-talk explicitly submits the clip just recorded.
+    // conversation exit drops unfinished speech; PTT submits the clip
     if (!fromConversation) transcribe(pcmData, sampleRate, recorder.startedAt)
   }, [transcribe])
 

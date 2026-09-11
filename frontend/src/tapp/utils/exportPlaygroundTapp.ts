@@ -1,11 +1,4 @@
-/**
- * Client-side .tapp export from Playground project state.
- * Zips the shared package file map from `buildPlaygroundPackageFiles` so the
- * archive matches direct-install staging (reinstall via install-file).
- *
- * Runs installability preflight first so we never download a package that
- * would fail backend resource / manifest validation.
- */
+/** 先做可安装性预检，以免下载后台会拒的包。 */
 
 import type { TappPlaygroundProject } from '../services/TappPlaygroundService'
 import {
@@ -33,10 +26,6 @@ function triggerDownload(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url)
 }
 
-/**
- * Build a .tapp ZIP from the current playground project and download it.
- * @throws Error with human-readable validation messages when preflight fails
- */
 export async function exportPlaygroundProjectAsTapp(
   project: TappPlaygroundProject,
 ): Promise<string> {

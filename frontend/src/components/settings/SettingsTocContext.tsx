@@ -1,6 +1,3 @@
-/**
- * 页内子分类 TOC：顶层 SettingGroup 自动登记，SettingSection 右侧渲染跳转芯片。
- */
 
 import type { ReactNode } from 'react'
 import React, {
@@ -15,7 +12,6 @@ import React, {
 export interface SettingsTocItem {
   id: string
   label: string
-  /** 稳定排序：注册序号 */
   order: number
 }
 
@@ -65,7 +61,6 @@ export const SettingsTocProvider: React.FC<{ children: ReactNode }> = ({
   )
 }
 
-/** title → 稳定 DOM id（页内跳转；不依赖 URL hash） */
 export function slugifySettingGroupId(title: string): string {
   const s = title
     .trim()

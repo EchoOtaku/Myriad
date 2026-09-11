@@ -406,7 +406,7 @@ pub struct SteamAnalysis {
     pub game_summary: String,
     pub genre_analysis: Vec<crate::services::content_databases::game_database::GameGenreAnalysis>,
     pub recent_games: Vec<GameItem>,
-    /// Owned library size (not “recent only”). Default 0 for older cache files.
+    /// Owned library size (not “recent only”). Serde default 0.
     #[serde(default)]
     pub games_count: usize,
     /// Sum of `playtime_forever` over owned games, **minutes** (Steam API unit).

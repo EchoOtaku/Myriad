@@ -101,6 +101,9 @@ pub fn live_presence_from_custom_data(data: &Value) -> SelfLivePresence {
 
 fn apply_whitelisted_presence(live: &mut SelfLivePresence, data: &Value) {
     if let Some(presence) = data.get("presence").and_then(Value::as_object) {
+        if let Some(rig) = presence.get("rigState") {
+            live.rig_state = myriad_merope::sanitize_rig_state(rig);
+        }
         live.speaking = presence
             .get("speaking")
             .and_then(Value::as_bool)
@@ -264,6 +267,42 @@ mod tests {
     use super::*;
     use crate::services::agent::types::{RequestContext, UserRequest};
     use crate::services::agent::AgentInteractionMode;
+
+    #[test]
+    fn inbound_replaces_chat_rig_with_current_sanitized_state() {
+        let old_rig = myriad_merope::sanitize_rig_state(&serde_json::json!({
+            "capabilities": ["head-body", "cry-eye"], "expression": "warm"
+        }))
+        .unwrap();
+        remember_live_presence(
+            906,
+            SelfLivePresence {
+                rig_state: Some(old_rig),
+                captured_at: Some(Utc::now()),
+                ..Default::default()
+            },
+        );
+        let inbound = live_presence_from_custom_data(&serde_json::json!({
+            "presence": { "pageVisible": true, "faceVisible": true,
+                "rigState": { "expression": "tense", "posture": "closed",
+                    "capabilities": ["head-body"], "driver": { "headX": 99 } }
+            }
+        }));
+        remember_live_presence(906, inbound);
+        let rig = last_live_presence(906).rig_state.unwrap();
+        assert_eq!(rig.expression, "tense");
+        assert_eq!(rig.posture, "closed");
+        assert_eq!(rig.capabilities, vec!["head-body"]);
+        assert!(!serde_json::to_string(&rig).unwrap().contains("driver"));
+        // A new report with no rig is not permission to keep a previous body's capabilities.
+        remember_live_presence(
+            906,
+            live_presence_from_custom_data(&serde_json::json!({
+                "presence": { "pageVisible": true, "faceVisible": false, "rigState": null }
+            })),
+        );
+        assert!(last_live_presence(906).rig_state.is_none());
+    }
 
     #[test]
     fn live_presence_does_not_invent_grants() {

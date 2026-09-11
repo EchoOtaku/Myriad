@@ -1,7 +1,4 @@
-/**
- * Observation only: page/panel/perception → POST /agent/presence.
- * Speech is decided on named events; this file never asks the model.
- */
+/** POST /agent/presence only; no consciousness import. */
 import type { PageContent } from '../../../contexts/PageContentContext'
 import type { PerceptionSnapshot } from './registry'
 import {
@@ -29,9 +26,10 @@ import {
 } from '../speech/voicePresence'
 import { MAX_PERCEPTION_ITEMS } from './registry'
 import { subscribeForegroundSurface } from './surface'
+import { PERSONA_UPDATED_EVENT } from '../events'
 
 const MIN_INTERVAL_MS = 2000
-/** Observation lease, shorter than backend PRESENCE_WINDOW_SECS (90). Not a think tick. */
+/** Not a think tick. */
 const PRESENCE_LEASE_MS = 45_000
 
 interface CaptureInput {
@@ -153,8 +151,8 @@ function startPresenceLease(): void {
 }
 
 async function meropeIsEnabled(): Promise<boolean> {
-  if (enabledFn) return enabledFn()
   try {
+    if (enabledFn) return await enabledFn()
     const { getPublicConfigDeduped } =
       await import('../../../utils/requestDedup')
     const config = await getPublicConfigDeduped()
@@ -166,7 +164,6 @@ async function meropeIsEnabled(): Promise<boolean> {
 
 function revisionKey(snapshots: PerceptionSnapshot[]): string {
   return snapshots
-    // Capture renews revisions/TTLs even when the observed content is unchanged.
     .map((item) => JSON.stringify([item.sourceId, item.kind, item.summary, item.privacy,
       Object.entries(item.safeFacts).sort(([a], [b]) => a.localeCompare(b))]))
     .sort()
@@ -183,11 +180,7 @@ function currentRoute(): string {
   return '/'
 }
 
-/**
- * Report live presence when a discrete fact changes, or renew the observation
- * lease while the page is visible. Lease is not a decision heartbeat: the
- * backend still must not start a consciousness decision on this path.
- */
+/** Lease is not a decision heartbeat */
 export async function reportPresence(reason: string): Promise<void> {
   if (!inboundArmed) {
     return
@@ -208,7 +201,9 @@ export async function reportPresence(reason: string): Promise<void> {
     captureFn ? captureFn(input) : await defaultCapture(input)
   ).slice(0, MAX_PERCEPTION_ITEMS)
   if (!inboundArmed || generation !== reportGeneration) return
-  const key = revisionKey(snapshots)
+  const presence = factsFn ? factsFn() : await defaultFacts()
+  if (!inboundArmed || generation !== reportGeneration) return
+  const key = JSON.stringify([revisionKey(snapshots), presence])
   const now = Date.now()
   if (reason !== 'lease' && reason !== 'panel' && reason !== 'visibility' && !consentChange) {
     if (key && key === lastRevisionKey) {
@@ -220,10 +215,7 @@ export async function reportPresence(reason: string): Promise<void> {
     }
   }
   stopTrailingReport()
-  const presence = factsFn ? factsFn() : await defaultFacts()
-  if (!inboundArmed || generation !== reportGeneration) return
-  // Serialize network writes so a slow pre-revocation payload cannot land after
-  // the clear. Pending obsolete captures are skipped, not replayed in a queue.
+  // Serialize network writes so a slow pre-revocation payload cannot land after the clear.
   const post = postPresence
   const sendGeneration = ++postGeneration
   postChain = postChain.catch(() => {}).then(async () => {
@@ -263,10 +255,29 @@ export function startPresenceInbound(): () => void {
   }
   started = true
   let cancelled = false
+  let configurationRevision = 0
   let unbind = () => {}
-  arming = (async () => {
+  const disarm = () => {
+    inboundArmed = false
+    reportGeneration += 1
+    postGeneration += 1
+    stopTrailingReport()
+    unbind()
+    unbind = () => {}
+    stopPresenceLease()
+    lastRevisionKey = ''
+    lastSentAt = 0
+    lastTtsPlaying = null
+    postFailures = 0
+  }
+  const refresh = () => {
+    const revision = ++configurationRevision
+    disarm()
+    arming = arm(revision)
+  }
+  const arm = async (revision: number) => {
     const enabled = await meropeIsEnabled()
-    if (cancelled || !enabled) return
+    if (cancelled || revision !== configurationRevision || !enabled) return
     bindPublishedMusicState()
     if (typeof location !== 'undefined' && !lastRoute) {
       lastRoute = location.pathname
@@ -320,22 +331,22 @@ export function startPresenceInbound(): () => void {
       stopPanel()
       stopPresenceLease()
     }
-    if (cancelled) {
+    if (cancelled || revision !== configurationRevision) {
       unbind()
       return
     }
     inboundArmed = true
     startPresenceLease()
     void reportPresence('start')
-  })()
+  }
+  if (typeof window !== 'undefined') window.addEventListener(PERSONA_UPDATED_EVENT, refresh)
+  refresh()
   return () => {
+    if (cancelled) return
     cancelled = true
-    inboundArmed = false
-    reportGeneration += 1
-    postGeneration += 1
-    stopTrailingReport()
+    configurationRevision += 1
+    if (typeof window !== 'undefined') window.removeEventListener(PERSONA_UPDATED_EVENT, refresh)
+    disarm()
     started = false
-    unbind()
-    stopPresenceLease()
   }
 }

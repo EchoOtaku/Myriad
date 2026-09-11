@@ -81,7 +81,7 @@ pub async fn refresh_platform_for_scheduler(
     if let Some(msg) =
         resolve_platform_fetch_message(platform, outcome.data.get(platform), remote_err)
     {
-        // 无可用数据时调度器记失败；有旧数据则仅告警并继续返回
+        // 无可用数据时调度器记失败；已有缓存则仅告警并继续返回
         if platform_data_warning(platform, outcome.data.get(platform)).is_some() {
             return Err(msg);
         }

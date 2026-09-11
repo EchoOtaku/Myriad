@@ -1,10 +1,3 @@
-/**
- * Library → grid placement: the ghost is the catalog preview.
- * On drop the live tile mounts and starts loading. After the preview
- * lands, the live tile uncovers under it, then the preview dissolves.
- * The live tile is not a preview.
- */
-
 import type { WidgetConfig, WidgetType } from './widgetGridTypes'
 import { GRID_WIDGET_PAD_PX, widgetSizeSpan } from '../utils/widgetSizeScale'
 import { widgetPreviewConfig } from './widgetLibraryModel'
@@ -15,7 +8,6 @@ export interface WidgetDragSession {
   type: WidgetDragKind
   widgetId?: string
   widgetTypeId?: string
-  /** Tile already notified to the parent; ghost stays until that cell commits. */
   pendingId?: string
   pendingCell?: { x: number; y: number }
 }

@@ -1,11 +1,7 @@
-/**
- * clearDedupCache 代际：旧飞行请求不得写回 resultCache
- * @vitest-environment node
- */
+/** @vitest-environment node */
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-// 直接测模块行为：动态 import 后清缓存再 resolve 旧 promise
 describe('requestDedup generation after clear', () => {
   it('does not re-cache stale data after clearDedupCache', async () => {
     const { dedupedFetch, clearDedupCache } = await import('./requestDedup')
@@ -26,14 +22,13 @@ describe('requestDedup generation after clear', () => {
     })
     const p2 = dedupedFetch(key, () => fresh, { cacheTTL: 60_000, cacheKey: key })
 
-    resolveFetch({ n: 1 }) // 旧请求完成，不应污染缓存
+    resolveFetch({ n: 1 })
     await p1.catch(() => {})
 
     resolveFresh({ n: 2 })
     const data = await p2
     assert.equal(data.n, 2)
 
-    // 再读应命中 n=2，而非被旧请求写回的 n=1
     const cached = await dedupedFetch(
       key,
       async () => ({ n: 99 }),

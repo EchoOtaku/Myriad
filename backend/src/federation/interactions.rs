@@ -883,7 +883,7 @@ fn escape_html_lite(s: &str) -> String {
 const MAX_QUOTE_NEST_DEPTH: usize = 3;
 
 /// Plain text from an AP object for quote cards.
-/// Keep enough body so quote blocks can show the full post (not a 200-char stub).
+/// Quote-card body cap (`chars().take`, Unicode scalars).
 const QUOTE_BODY_CHAR_LIMIT: usize = 8000;
 
 fn plain_preview_from_object(obj: &serde_json::Value) -> String {
@@ -1362,7 +1362,7 @@ pub async fn unannounce_object(
                 "to": [AP_PUBLIC],
             })
         } else {
-            // Legacy bare Announce path.
+            // Announce：Undo 包一层 Announce
             json!({
                 "@context": build_ap_context(),
                 "type": "Undo",
@@ -1476,7 +1476,7 @@ async fn deliver_to_object_author(
         let domain: String = row.try_get("", "domain").unwrap_or_default();
         (inbox, domain)
     } else {
-        // Derive shared inbox guess
+        // No inbox row: `{author}/inbox`.
         let domain = extract_domain(&author).unwrap_or_default();
         let inbox = format!("{}/inbox", author.trim_end_matches('/'));
         (inbox, domain)
@@ -1491,8 +1491,6 @@ async fn deliver_to_object_author(
         .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             // 去重交给 (activity_id, target_inbox) 唯一索引。
-            // 原先的 `WHERE NOT EXISTS` 是先查后插，两个并发请求可以同时通过
-            // 检查再双双插入 —— 正是唯一约束要消除的竞态。
             r#"INSERT INTO federation_delivery_queue
                    (activity_id, target_inbox, target_domain, status, created_at)
                VALUES ($1, $2, $3, 'pending', NOW())

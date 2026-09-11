@@ -213,7 +213,7 @@ pub async fn post_inbox(
     let (user_id, _) = get_local_user(&db, &username).await?;
 
     let headers = request.headers().clone();
-    // MYR-002: reserve concurrent raw-body budget *before* buffering; release on drop.
+    // reserve concurrent raw-body budget *before* buffering; release on drop.
     // Exhausted raw-body budget → 429 before allocating the request body.
     let (body, _inflight) = buffer_inbox_body(request).await?;
 
@@ -252,7 +252,7 @@ pub async fn post_inbox(
         ));
     }
 
-    // 验证 HTTP Signature（MYR-022: actor fetch is ephemeral until verified）
+    // 验证 HTTP Signature（actor fetch is ephemeral until verified）
     let request_path = format!("/users/{}/inbox", username);
     verify_request_signature(&db, &headers, &body, &actor_url_str, &request_path).await?;
 
@@ -434,7 +434,7 @@ pub async fn post_shared_inbox(
     request: Request<axum::body::Body>,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
     let headers = request.headers().clone();
-    // MYR-002: reserve concurrent raw-body budget *before* buffering; release on drop.
+    // reserve concurrent raw-body budget *before* buffering; release on drop.
     // Exhausted raw-body budget → 429 before allocating the request body.
     let (body, _inflight) = buffer_inbox_body(request).await?;
 
@@ -469,7 +469,7 @@ pub async fn post_shared_inbox(
         ));
     }
 
-    // 验证签名（MYR-022: actor fetch is ephemeral until verified）
+    // 验证签名（actor fetch is ephemeral until verified）
     verify_request_signature(&db, &headers, &body, &actor_url_str, "/inbox").await?;
 
     let activity_id = activity["id"].as_str().unwrap_or("");
@@ -768,9 +768,8 @@ async fn resolve_shared_inbox_local_user(
 
 /// Resolve a local user id from an actor-ish URL.
 ///
-/// Exact `{base_url}/users/{username}` form only. The previous implementation
-/// fell back to "last path segment" for any URL, so a remote
-/// `https://evil.example/users/alice` resolved to the **local** `alice`.
+/// 只认 `{base_url}/users/{username}`。远端 `https://evil.example/users/alice`
+/// 不得落到本地 `alice`。
 async fn local_user_id_from_actorish_url(db: &impl ConnectionTrait, url: &str) -> Option<i32> {
     let base = get_base_url().await;
     let local = local_username_from_actor_url(&base, url)?;

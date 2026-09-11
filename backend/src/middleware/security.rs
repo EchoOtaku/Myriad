@@ -10,7 +10,7 @@ pub async fn security_headers_middleware(req: Request, next: Next) -> Response {
     let is_production =
         env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string()) == "production";
 
-    // img-src: dual-path image loading (MYR-039 / image proxy).
+    // img-src: dual-path image loading (image proxy).
     // Non-hotlink https hosts are used as original URLs in <img src>, so CSP must
     // allow http(s) remote images. We avoid the bare `*` scheme wildcard (which
     // would also permit data-adjacent exotic schemes) while keeping dual-path working.
@@ -82,7 +82,7 @@ pub async fn security_headers_middleware(req: Request, next: Next) -> Response {
     // X-Frame-Options: 防止点击劫持
     headers.insert(header::X_FRAME_OPTIONS, "DENY".parse().unwrap());
 
-    // X-XSS-Protection: XSS过滤器（虽然现代浏览器已不需要，但为了兼容性保留）
+    // X-XSS-Protection: 1; mode=block
     headers.insert(
         "X-XSS-Protection".parse::<header::HeaderName>().unwrap(),
         "1; mode=block".parse().unwrap(),

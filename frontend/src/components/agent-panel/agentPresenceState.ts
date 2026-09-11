@@ -1,9 +1,3 @@
-/**
- * 进出场记账：DOM 不能说卸就卸，退场那段动画还得留着这行。
- *
- * 纯函数，时间从外面喂，方便测。真正的卸载时机由 hook 用 until 来掐。
- */
-
 export const AGENT_ROW_MS = 480
 export const AGENT_SWAP_MS = 320
 

@@ -1,9 +1,3 @@
-/**
- * Official Tapp store install stats.
- * - Reads: public edge GET /v1/stats
- * - Writes: only via Myriad backend (auth + CSRF + HMAC to edge)
- */
-
 export const DEFAULT_STORE_STATS_URL = 'https://stats.store.myriad.you'
 
 const STATS_TTL_MS = 60_000
@@ -35,7 +29,6 @@ function statsBaseUrl(): string | null {
   return raw.replace(/\/+$/, '')
 }
 
-/** Merge download counts for the given app ids (batch ≤ 100). */
 export async function fetchStoreDownloadCounts(
   appIds: string[],
 ): Promise<Record<string, number>> {
@@ -76,7 +69,7 @@ export async function fetchStoreDownloadCounts(
         if (cachedMap[id] > 0) out[id] = cachedMap[id]
       }
     } catch {
-      // stats failure must never break store UI
+      // stats 失败不得打断商店 UI。
     }
   }
   cachedAt = Date.now()
@@ -94,12 +87,9 @@ export interface ReportStoreHitInput {
   event: StoreStatsEvent
 }
 
-/**
- * Report install/update via Myriad backend (session cookie + CSRF via apiRequest).
- * Edge never sees browser credentials; backend signs HMAC.
- */
+/** 经 Myriad 后端上报。Edge 看不到浏览器凭据；后端签 HMAC。 */
 export function reportStoreInstallHit(input: ReportStoreHitInput): void {
-  // Fire-and-forget; do not block install UI. Use dynamic import to avoid cycles.
+  // fire-and-forget；不阻塞安装 UI。
   void (async () => {
     try {
       const { apiRequest } = await import('./TappHttpClient')
@@ -112,7 +102,7 @@ export function reportStoreInstallHit(input: ReportStoreHitInput): void {
         }),
       })
     } catch {
-      // never surface stats failures
+      // 不把 stats 失败抛给 UI。
     }
   })()
 }

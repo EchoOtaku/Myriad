@@ -57,7 +57,6 @@ impl GameDatabase {
         if file_path.exists() {
             match fs::read_to_string(file_path) {
                 Ok(content) => {
-                    // Try parsing as array first
                     match serde_json::from_str::<Vec<GameEntry>>(&content) {
                         Ok(entries_list) => {
                             for entry in entries_list {
@@ -67,8 +66,6 @@ impl GameDatabase {
                         }
                         Err(e) => {
                             error!("Failed to parse game database JSON as array: {}", e);
-                            // Maybe it's wrapped in an object?
-                            // For now, just log error.
                         }
                     }
                 }

@@ -21,9 +21,7 @@ impl MetadataService {
 
     /// 保存或更新平台元数据，并记录内部差异和用户可读活动。
     ///
-    /// 所有平台共用同一条 upsert 路径。PostgreSQL JSONB 可以直接保存当前规模的
-    /// 平台快照；旧 BatchSaver 只识别 `liked_songs`，会让其他大平台绕过
-    /// 变化检测并重复插入 `platform_metadata`。
+    /// 所有平台共用同一条 upsert 路径。PostgreSQL JSONB 保存完整快照。
     pub async fn save_platform_metadata(
         &self,
         user_id: i32,
@@ -265,7 +263,7 @@ impl MetadataService {
     /// 设计理念：
     /// - metadata_history 用于记录"什么字段变化了"，而不是"完整的数据是什么"
     /// - 完整数据已经保存在 platform_metadata 表中，通过 metadata_id 关联
-    /// - 对于超大数据集(如1919首歌曲)，只保存统计摘要，避免OOM和数据库膨胀
+    /// - 超大数据集只保存统计摘要，避免 OOM 和数据库膨胀
     async fn record_metadata_change(
         &self,
         metadata_id: i32,
@@ -275,8 +273,8 @@ impl MetadataService {
         old_data: Option<Value>,
         new_data: Value,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // 彻底方案：默认不保存完整数据，只保存变化摘要
-        const MAX_SUMMARY_SIZE: usize = 50_000; // 50KB 摘要限制(远小于原来的256KB)
+        // 默认不保存完整数据，只保存变化摘要
+        const MAX_SUMMARY_SIZE: usize = 50_000; // 50KB 摘要上限
 
         let now = Utc::now().naive_utc();
         let activity = build_activity_payload(
@@ -341,7 +339,7 @@ impl MetadataService {
             ..Default::default()
         };
         if let Err(error) = activity_event.insert(&self.db).await {
-            // 原始快照和审计历史已成功；让旧历史兼容层可以继续提供降级摘要。
+            // 原始快照和审计历史已成功；activity_event 失败只记 warn。
             tracing::warn!(
                 "Failed to persist normalized activity event for history {}: {}",
                 inserted_history.id,
@@ -527,7 +525,7 @@ impl MetadataService {
     }
 
     /// 获取所有平台的最新元数据
-    /// 自动合并旧版遗留的分片数据（如网易云音乐的 liked_songs）。
+    /// 合并 `platform_name` 为 `*_chunk_*` 的分片行（如网易云 liked_songs）。
     pub async fn get_all_latest_metadata(
         &self,
         user_id: i32,

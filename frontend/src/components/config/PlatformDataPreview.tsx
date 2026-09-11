@@ -1,8 +1,3 @@
-/**
- * 平台二级页「当前数据」快照。
- * 打开时加载一次；父级在刷新/处理/清缓存后可调用 reload。
- * 不轮询。
- */
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { API_URL } from '../../config'

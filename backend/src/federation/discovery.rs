@@ -1,4 +1,4 @@
-//! 联邦发现层（Layer 1）
+//! 联邦发现（WebFinger RFC 7033 + NodeInfo 2.1）
 //!
 //! WebFinger (RFC 7033) + NodeInfo 2.1 端点
 //! 这些端点不需要认证，是联邦互通的入口。
@@ -161,7 +161,7 @@ pub async fn nodeinfo(
         open_registrations: false, // Myriad 通常是个人实例
         metadata: Some(NodeInfoMetadata {
             mfp_version: Some("1.0".to_string()),
-            tapp_capabilities: None, // Phase 5 补充
+            tapp_capabilities: None, // NodeInfo 未填此字段
             channel_types: Some(vec![
                 "text".to_string(),
                 "file-transfer".to_string(),
@@ -289,10 +289,6 @@ mod tests {
     }
 
     /// An instance on a non-default port must resolve its own users by handle.
-    ///
-    /// `@alice@127.0.0.1:1103` used to 404 here because the port was compared
-    /// away, and the caller reported that 404 as a 502 — the "New chat" box
-    /// rejected every handle while the equivalent profile URL worked.
     #[test]
     fn webfinger_accepts_handle_with_non_default_port() {
         let base = "http://127.0.0.1:1103";

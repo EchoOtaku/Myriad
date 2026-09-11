@@ -34,7 +34,6 @@ describe('previewGrants (MYR-024)', () => {
     ])
     assert.ok(!selectPreviewGrantedPermissions(declared).includes('network:fetch'))
     assert.ok(!selectPreviewGrantedPermissions(declared).includes('ai:generate'))
-    // The retired coarse `storage` name is not a preview grant either.
     assert.ok(!selectPreviewGrantedPermissions(declared).includes('storage'))
   })
 

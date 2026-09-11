@@ -26,7 +26,7 @@ pub struct DagScheduler {
 impl DagScheduler {
     /// 从 RecipeSteps 构建 DAG
     ///
-    /// 如果所有步骤的 `depends_on` 都为空，则按 `order` 字段顺序执行（兼容现有行为）。
+    /// 如果所有步骤的 `depends_on` 都为空，则按 `order` 字段顺序执行。
     /// 如果有依赖关系，则构建 DAG 并并行执行。
     pub fn new(steps: &[RecipeStep]) -> Result<Self, String> {
         let mut step_map = HashMap::new();

@@ -357,7 +357,7 @@ fn task_model_to_state(model: &agent_tasks::Model) -> Result<TaskState, String> 
         .as_ref()
         .and_then(|value| serde_json::from_value(value.clone()).ok());
 
-    // Prefer stored lane_id; fall back to reconstructing from session_id for older rows.
+    // 优先用存着的 `lane_id`；没有则从 `session_id` 重建。
     let lane_id = model.lane_id.clone().or_else(|| {
         model
             .session_id

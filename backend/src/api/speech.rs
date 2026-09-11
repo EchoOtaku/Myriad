@@ -1,7 +1,8 @@
 //! 语音服务 API
 //!
 //! 提供 TTS（文本转语音）和 ASR（语音转文本）的 HTTP API。
-//! 服务商由设置里的 `speech_provider` 决定：腾讯云、OpenAI、OpenRouter、Gemini 或 MiniMax。
+//! 探测/单条 TTS 走 `configured_provider`（`speech_source` 优先，否则 `speech_provider`）。
+//! batch 播客路径固定 `TencentSpeechService`。
 
 use crate::middleware::auth::Claims;
 use axum::{
@@ -72,7 +73,7 @@ pub fn create_speech_routes(app_state: crate::state::AppState) -> Router<crate::
             app_state.clone(),
             crate::api::tapp_runtime::speech_host_attribution,
         ))
-        // TTS/ASR 端点需要认证（调用付费 API）
+        // 以上路由走 auth_middleware
         .route_layer(from_fn_with_state(
             app_state,
             crate::middleware::auth::auth_middleware,
@@ -100,13 +101,13 @@ pub struct BatchTtsApiRequest {
     pub article_id: i32,
     /// 对话列表
     pub dialogues: Vec<BatchTtsDialogue>,
-    /// 返回格式: wav, mp3, pcm，默认mp3
+    /// 音频格式（缺省 mp3；本层不校验枚举）
     #[serde(default)]
     pub codec: Option<String>,
-    /// 采样率: 8000, 16000, 24000，默认16000
+    /// 采样率（缺省 16000；本层不校验取值）
     #[serde(default)]
     pub sample_rate: Option<i32>,
-    /// 强制重新生成（跳过任意音色缓存回退）
+    /// 强制重新生成（跳过 exact 与 any-voice 缓存）
     #[serde(default)]
     pub force_regenerate: bool,
 }
@@ -116,14 +117,14 @@ pub struct BatchTtsApiRequest {
 pub struct BatchTtsDialogue {
     /// 对话索引（用于排序）
     pub index: usize,
-    /// 说话者: "host" 或 "guest"
+    /// 说话者：`host` → 智斌，其余 → 爱小溪（见 `get_default_voice_for_speaker`）
     pub speaker: String,
     /// 对话文本
     pub text: String,
     /// 音色ID（可选，不提供则根据speaker自动选择）
     #[serde(default)]
     pub voice_type: Option<i32>,
-    /// 语速 [-2, 6]，默认0
+    /// 语速（缺省 0.0；本层不校验区间）
     #[serde(default)]
     pub speed: Option<f32>,
 }
@@ -191,7 +192,7 @@ fn get_default_voice_for_speaker(speaker: &str) -> i32 {
 }
 
 /// 获取文章 TTS 文件路径（按音色分文件夹，索引为文件名）
-/// 结构: data/brew/{source_id}/{article_id}/tts/{voice_type}/{index}.{codec}
+/// 结构: `{brew}/{source_id}/{article_id}/tts/{voice_type}/{index}.{codec}`
 fn get_article_tts_file_path(
     source_id: i32,
     article_id: i32,
@@ -298,22 +299,22 @@ async fn write_article_tts_file(
 /// ASR 请求体
 #[derive(Debug, Deserialize)]
 pub struct AsrApiRequest {
-    /// Base64编码的音频数据（与url二选一）
+    /// Base64 音频。与 `url` 同时出现时本层优先用它；非 Tencent 路径只认这个字段。
     #[serde(default)]
     pub audio_data: Option<String>,
-    /// 音频URL（与audio_data二选一）
+    /// 音频 URL。仅 Tencent ASR 使用；非 Tencent 有 URL 无 `audio_data` 会拒。
     #[serde(default)]
     pub url: Option<String>,
-    /// 音频格式: wav, pcm, mp3, m4a, aac, amr，默认wav
+    /// 音频格式（缺省 wav；本层不校验枚举）
     #[serde(default)]
     pub format: Option<String>,
-    /// 引擎类型: 16k_zh, 16k_en, 16k_yue等，默认16k_zh
+    /// 引擎类型（缺省 16k_zh；本层不校验枚举）
     #[serde(default)]
     pub engine: Option<String>,
-    /// 是否返回词级别时间戳: 0-不返回, 1-返回(不含标点), 2-返回(含标点)
+    /// 词级时间戳（透传给 ASR；缺省不填）
     #[serde(default)]
     pub word_info: Option<i32>,
-    /// 是否过滤脏词: 0-不过滤, 1-过滤, 2-替换为*
+    /// 脏词过滤（透传给 ASR；缺省不填）
     #[serde(default)]
     pub filter_dirty: Option<i32>,
     /// 临时热词表 (格式: "热词1|权重,热词2|权重")
@@ -539,7 +540,7 @@ async fn batch_text_to_speech_inner(request: BatchTtsApiRequest) -> impl IntoRes
 
         // force_regenerate：跳过 exact + any-voice 缓存，强制按指定音色重新合成
         if !request.force_regenerate {
-            // 1. 精确缓存（音色分文件夹 data/brew/.../tts/{voice_type}/{index}.mp3）
+            // 1. 精确缓存（音色分文件夹 `{brew}/.../tts/{voice_type}/{index}.{codec}`）
             if let Some(cached_audio) = find_article_exact_tts(
                 request.source_id,
                 request.article_id,
@@ -560,7 +561,7 @@ async fn batch_text_to_speech_inner(request: BatchTtsApiRequest) -> impl IntoRes
                 continue;
             }
 
-            // 2. 任意音色缓存（只要该对话有任何缓存就用）
+            // 2. 任意音色文件夹下的 `{index}.{codec}`
             if let Some(cached_audio) =
                 find_article_any_tts(request.source_id, request.article_id, dialogue.index, codec)
                     .await
@@ -579,7 +580,7 @@ async fn batch_text_to_speech_inner(request: BatchTtsApiRequest) -> impl IntoRes
 
         tracing::info!("TTS cache miss for index {}, will generate", dialogue.index);
 
-        // 3. 完全没有缓存，需要生成新音频
+        // 3. 缓存未命中或 force_regenerate：Tencent 合成
         if service.is_none() {
             match TencentSpeechService::new().await {
                 Ok(s) => service = Some(s),
@@ -1625,7 +1626,7 @@ pub struct VoiceCacheInfo {
     pub voice_id: i32,
     /// 音色名称（如果已知）
     pub voice_name: Option<String>,
-    /// 角色类型 (host/guest)
+    /// 角色类型：偶索引全 host、奇索引全 guest，否则 mixed
     pub role: String,
     /// 文件数量
     pub file_count: usize,

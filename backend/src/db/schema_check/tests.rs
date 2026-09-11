@@ -20,8 +20,7 @@ fn test_expected_schema_tables() {
     assert!(table_names.contains(&"platforms"));
 }
 
-/// 近一个月新功能：须在 get_expected_schema / indexes 有完整条目
-/// （数字系列 001/004/005 已 CREATE；本列表只校验 schema_check 侧期望）。
+/// 001/004/005 扩展表：须在 get_expected_schema / indexes 有完整条目。
 #[test]
 fn test_recent_month_features_in_expected_schema() {
     let tables = get_expected_schema();
@@ -175,6 +174,22 @@ fn test_users_schema_includes_token_version() {
         .expect("users must define token_version (MYR-005 session epoch)");
     assert!(!col.is_nullable);
     assert_eq!(col.default_value.as_deref(), Some("0"));
+}
+
+#[test]
+fn test_users_schema_includes_locale() {
+    let tables = get_expected_schema();
+    let users = tables
+        .iter()
+        .find(|t| t.name == "users")
+        .expect("users table");
+    let col = users
+        .columns
+        .iter()
+        .find(|c| c.name == "locale")
+        .expect("users must define locale (account UI language)");
+    assert!(col.is_nullable);
+    assert_eq!(col.data_type, "character varying");
 }
 
 #[test]
@@ -428,9 +443,7 @@ fn test_generate_create_index_ddl() {
 /// **CI 漂移闸门。**
 ///
 /// 在一个刚跑完 `Migrator::up` 的全新数据库上，`report_schema_drift` 必须返回空。
-/// 一旦不为空，就说明 `migrations/` 里的建表语句与本文件的权威结构列表
-/// （49 个 TableDef / 554 个 ColumnDef）已经不一致 —— 也就是审计指出的
-/// "5228 行 runtime healer 与 migration 重复定义并已发生漂移"。
+/// 一旦不为空，就说明 `migrations/` 里的建表语句与 `get_expected_schema()` 已经不一致。
 ///
 /// 需要真实 PostgreSQL。没有 `MYRIAD_SCHEMA_DRIFT_DB` 时静默跳过，
 /// 这样本地 `cargo test` 不受影响；CI 里由 postgres service 提供该变量。
@@ -1030,8 +1043,7 @@ VALUES
     assert_eq!(after_reject.try_get::<i32>("", "failure_count").unwrap(), 4);
     assert!(!after_reject.try_get::<bool>("", "streak_cleared").unwrap());
 
-    // Phase 3 — count alone must not revoke. A fan-out to one peer can burn an
-    // arbitrary failure count inside a single worker tick while it restarts.
+    // 单靠次数不能撤销。worker 每 tick `LIMIT 1`，次数闸门必须配 streak 窗口。
     outer
         .execute_unprepared(
             "UPDATE federation_instances SET failure_count = 500, failing_since = NOW()

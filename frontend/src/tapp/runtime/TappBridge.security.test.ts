@@ -1,9 +1,3 @@
-/**
- * Bridge inbound message hardening (session token + event allowlist).
- *
- *   pnpm exec tsx --test src/tapp/runtime/TappBridge.security.test.ts
- */
-
 import type { TappInstance } from '../types'
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, describe, it } from 'node:test'
@@ -39,15 +33,13 @@ describe('TappBridge session token + inbound event allowlist', () => {
   beforeEach(() => {
     readyFired = 0
     bridge = new TappBridge()
-    // Minimal iframe stub: contentWindow is a unique object identity.
     const contentWindow = {} as Window
     iframe = {
       contentWindow,
     } as HTMLIFrameElement
     bridge.initialize(iframe, instance, SESSION)
-    // Force route registration (attachSource uses contentWindow)
     bridge.attachSource()
-    // Explicit opt-in (static allowlist removed — host must register)
+    // 须显式 opt-in（无静态白名单）。
     bridge.allowSandboxEvent('tapp.ready')
     bridge.on('tapp.ready', () => {
       readyFired += 1
@@ -67,8 +59,6 @@ describe('TappBridge session token + inbound event allowlist', () => {
       source: iframe.contentWindow,
       data,
     } as MessageEvent
-    // Access private handle via shared listener path: simulate window message
-    // by calling the same static router the production code uses.
     const router = (
       TappBridge as unknown as {
         onSharedWindowMessage: (e: MessageEvent) => void
@@ -78,7 +68,6 @@ describe('TappBridge session token + inbound event allowlist', () => {
       router(event)
       return
     }
-    // Fallback: invoke bound handleMessage if exposed for tests
     void (
       bridge as unknown as { handleMessage: (e: MessageEvent) => void }
     ).handleMessage(event)
@@ -120,7 +109,6 @@ describe('TappBridge session token + inbound event allowlist', () => {
       timestamp: Date.now(),
       _sessionToken: SESSION,
     })
-    // handleMessage is async for requests; events are sync after validation
     await new Promise((r) => setTimeout(r, 0))
     assert.equal(readyFired, 1)
   })
@@ -274,7 +262,6 @@ describe('TappBridge session token + inbound event allowlist', () => {
   })
 
   it('resolves bridge via contentWindow scan when source map is cold', async () => {
-    // Simulate srcdoc race: message arrives before attachSource populated the map.
     const bridgesBySource = (
       TappBridge as unknown as {
         bridgesBySource: Map<MessageEventSource, TappBridge>
@@ -291,7 +278,6 @@ describe('TappBridge session token + inbound event allowlist', () => {
     })
     await new Promise((r) => setTimeout(r, 0))
     assert.equal(readyFired, 1)
-    // Map should be healed for subsequent messages
     assert.equal(
       bridgesBySource.get(iframe.contentWindow as MessageEventSource),
       bridge,
@@ -312,7 +298,6 @@ describe('TappBridge session token + inbound event allowlist', () => {
   it('while muted, answers request-shaped messages with BRIDGE_MUTED + retryAfter', async () => {
     const responses = captureResponses()
 
-    // Force mute window
     ;(bridge as unknown as { mutedUntil: number }).mutedUntil =
       Date.now() + 60_000
 
@@ -321,7 +306,6 @@ describe('TappBridge session token + inbound event allowlist', () => {
       data: 'dark',
     }))
 
-    // Intentionally omit token/payload details — mute path is a cheap shape check
     dispatchFromIframe({
       type: 'request',
       id: 'req-muted-1',
@@ -353,8 +337,7 @@ describe('TappBridge session token + inbound event allowlist', () => {
     ;(bridge as unknown as { mutedUntil: number }).mutedUntil =
       Date.now() + 60_000
 
-    // Huge payload would be expensive under full validateMessage; mute path
-    // must only inspect request shape (type + id).
+    // 只看 request 形状（type + id）。
     const huge = 'x'.repeat(2 * 1024 * 1024)
     dispatchFromIframe({
       type: 'request',

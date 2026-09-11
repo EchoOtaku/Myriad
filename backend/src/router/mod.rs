@@ -133,18 +133,14 @@ pub(crate) async fn start_unified_server(config: AppConfig) -> anyhow::Result<()
         .layer(cors)
         .layer(TraceLayer::new_for_http());
 
-    // Now the type is unified, convert to Router<()> by applying route matching
+    // Convert to Router<()> by applying route matching
     let app: Router = if std::path::Path::new(&config.frontend_dist_path).exists() {
         tracing::info!("Serving frontend from: {}", config.frontend_dist_path);
         // SPA fallback: 未匹配的浏览器路由 → index.html（React Router）。
         // 重要：ServeDir 对任何非 GET/HEAD 请求直接返回 405，所以 /api/* 绝不能落到
-        // 静态文件服务——否则未注册的 POST（例如旧 backend 进程缺 /prefs）会误报 405
-        // 而不是可读的 JSON 404。
+        // 静态文件服务——未注册的 POST 应是可读的 JSON 404，不是 405。
         let index_html = std::path::Path::new(&config.frontend_dist_path).join("index.html");
-        // 前端产物此前是**未压缩**直传的（Cargo.toml 早已开了 compression-gzip/br 两个
-        // feature，但从没接过 CompressionLayer）。实测 dist/assets 的 JS+CSS 合计
-        // 3290KB → gzip 906KB / brotli 687KB，首屏传输量少约八成。
-        // 用默认谓词即可：DefaultPredicate = SizeAbove ∧ 非 gRPC ∧ 非图片 ∧ 非 SSE，
+        // CompressionLayer 包住 ServeDir。默认谓词：DefaultPredicate = SizeAbove ∧ 非 gRPC ∧ 非图片 ∧ 非 SSE，
         // 所以 text/event-stream（agent 流式）和已压缩的图片/字体不会被二次处理；
         // 压缩响应还会自动补 `Vary: accept-encoding`，与下面的 Cache-Control 分层共存。
         let serve_dir = tower::Layer::layer(
@@ -318,9 +314,9 @@ pub(crate) async fn start_unified_server(config: AppConfig) -> anyhow::Result<()
         }
     });
 
-    // Spawn database health check task (P1优化：定期健康检查和自动重连)
+    // 每 60s 做一次数据库健康检查。
     tokio::spawn(async {
-        let mut health_check_interval = tokio::time::interval(tokio::time::Duration::from_secs(60)); // 每分钟检查一次
+        let mut health_check_interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
         loop {
             health_check_interval.tick().await;
 

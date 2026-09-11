@@ -54,7 +54,7 @@ pub(super) struct TappResourcesResponse {
     modules: HashMap<String, String>,
     /// 安装期同语义的静态解析表：模块路径 → require 原文 → 目标模块。
     ///
-    /// 客户端有这个字段时不再扫描源码；缺失时仍可兼容旧后端。
+    /// 客户端有这个字段时不再扫描源码。
     module_resolutions:
         std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>,
     /// 各层入口的相对路径，供客户端知道从哪个模块开始执行。

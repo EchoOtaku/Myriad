@@ -1,10 +1,7 @@
 //! Process-wide memory profile (default vs memory-saver).
 //!
-//! - **default**: current balanced, bounded product budgets. These are not the
-//!   legacy unbounded/high-water values, so upgrading can change request caps.
-//! - **saver**: a second, tighter notch for ~1 GiB hosts. Default is already
-//!   bounded; saver further cuts cache, chunk inflight, pool, Argon2, and
-//!   large-media peaks so those knobs stay meaningfully below default.
+//! - **default**: bounded product budgets.
+//! - **saver**: a tighter notch for ~1 GiB hosts (cache, chunk inflight, pool, Argon2, large-media).
 //!
 //! Selection order: `MYRIAD_MEMORY_PROFILE` env (`default`|`saver`|`small`) >
 //! dynamic config `memory_saver_enabled` > default.
@@ -18,13 +15,11 @@ use std::sync::{Arc, RwLock};
 use once_cell::sync::Lazy;
 use tokio::sync::Semaphore;
 
-/// Current balanced product defaults. They are not compatibility promises for
-/// releases that predate the bounded federation profile.
+/// Current bounded product defaults.
 ///
 /// Pool min is the idle floor (not request concurrency). Keep it small so a
 /// quiet host does not park five Postgres backends; max is the concurrent
-/// query ceiling. 2/24 is +4 peak checkouts versus the old 5/20, paid for by
-/// three fewer idle connections at rest.
+/// query ceiling.
 pub const DEFAULT_DB_MIN_CONNECTIONS: u32 = 2;
 pub const DEFAULT_DB_MAX_CONNECTIONS: u32 = 24;
 pub const DEFAULT_INBOX_INFLIGHT_RAW_BUDGET: usize = 32 * 1024 * 1024;

@@ -1,8 +1,7 @@
 //! Distill personality tags from platform reports.
 //!
-//! The tag-distillation rules live here, not in `myriad-merope`: a copy once
-//! did, gained no consumer, and silently drifted apart on six behaviors before
-//! it was deleted. The shared onboarding sanitizer comes from the crate.
+//! The tag-distillation rules live here, not in `myriad-merope`.
+//! The shared onboarding sanitizer comes from the crate.
 //!
 //! Latest report per platform; evidence is summary / insights / notes /
 //! structured labels. Pro writes spoken temperament tags via
@@ -995,7 +994,7 @@ mod tests {
     fn chunk_platforms_never_count_as_a_platform() {
         assert!(is_chunk_platform("steam_chunk_1"));
         assert!(is_chunk_platform("steam_chunk_12"));
-        // 后缀为空时 `all()` 在空迭代器上为真，历史行为如此，别在搬家时改掉。
+        // 后缀为空时 `all()` 在空迭代器上为真；`is_chunk_platform("steam_chunk_")` 为真。
         assert!(is_chunk_platform("steam_chunk_"));
         assert!(!is_chunk_platform("steam"));
         assert!(!is_chunk_platform("_chunk_1"));

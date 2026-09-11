@@ -1,9 +1,3 @@
-/**
- * Restore confirmation cards and follow-up questions from persisted session
- * metadata. Live SSE already has the overlay; opening a session must rebuild
- * it from what was written on the assistant message.
- */
-
 import type { ConfirmationStep } from '../../services/agent'
 import type { AgentPendingAction } from './agentAction'
 import type { ChatMessage, PendingQuestion } from './engineTypes'

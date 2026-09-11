@@ -1,13 +1,3 @@
-/**
- * AI 设置里 Agent 子分类的内层：定时、技能、记忆。
- *
- * 外层标题由 AiConfigSection 的 Agent 分组承担，这里只做和大语言模型
- * 档位同一套的内层标题（.ai-llm-tier）。
- *
- * 三条列表不能无限平铺。短的跟着内容长；超过窗口就进滚动，
- * 首批条数对齐统计排行（先挂 30，其余「显示更多」）。
- */
-
 import type { ReactNode } from 'react'
 import type {
   HeartbeatTask,

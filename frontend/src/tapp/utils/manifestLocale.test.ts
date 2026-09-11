@@ -1,9 +1,3 @@
-/**
- * Pure-function tests for resolveManifestText.
- * Run from frontend/:
- *   node --experimental-strip-types --test src/tapp/utils/manifestLocale.test.ts
- */
-
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { resolveManifestText } from './manifestLocale.ts'

@@ -1,8 +1,4 @@
-/**
- * Package-asset URL rewriting for guest loaders (Three.js LoadingManager, etc.).
- * Keep this file free of TypeScript syntax inside the helper source so it can
- * be inlined into the sandbox SDK / security wrapper.
- */
+/** helper 源码不要含 TypeScript 语法，以便内联进沙箱。 */
 
 export const ASSET_URL_HELPER_SOURCE = `
 function normalizeDeclaredAssetPath(url) {
@@ -57,7 +53,7 @@ function resolveDeclaredAssetPath(url, urls) {
 }
 `
 
-/** Host/test copy of `ASSET_URL_HELPER_SOURCE` — keep behavior in lockstep. */
+/** 与 ASSET_URL_HELPER_SOURCE 行为保持一致。 */
 export function normalizeDeclaredAssetPath(url: string): string {
   if (typeof url !== 'string') return ''
   let path = url.trim()
@@ -66,9 +62,7 @@ export function normalizeDeclaredAssetPath(url: string): string {
   if (/^https?:\/\//i.test(path) || path.startsWith('//')) return ''
   try {
     path = decodeURI(path)
-  }
-  catch {
-    // keep the raw path
+  } catch {
   }
   let cut = path.split('#')[0].split('?')[0]
   const marker = cut.indexOf('assets/')
@@ -113,7 +107,6 @@ export function resolveDeclaredAssetPath(url: string, urls: Record<string, strin
   return ''
 }
 
-/** Inlined into the sandbox wrapper so FileLoader can `fetch(new Request(blobUrl))`. */
 export const SANDBOXED_FETCH_INSTALL_SOURCE = `
 ${ASSET_URL_HELPER_SOURCE}
 function installSandboxedFetch(window) {

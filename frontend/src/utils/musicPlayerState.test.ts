@@ -139,7 +139,7 @@ describe('mergeMusicPlayerEventDetail', () => {
     )
     assert.equal(merged.musicColor, '#222')
     assert.deepEqual(merged.musicColors, palette)
-    // same song: keep global progress when detail omits it
+    // Keep global progress when detail omits it.
     assert.equal(merged.currentTime, 10)
   })
 

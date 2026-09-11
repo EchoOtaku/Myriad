@@ -1,10 +1,3 @@
-/**
- *   pnpm exec tsx --test src/services/agent/frontendActions.test.ts
- *
- * Locks the Agent frontendAction chain: every type the backend emits must
- * either have a typed handler, or be listed here as a known gap.
- */
-
 import type { FrontendActionType } from './types.ts'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -19,7 +12,6 @@ function source(rel: string): string {
   return readFileSync(join(root, rel), 'utf8')
 }
 
-/** Types `execute_*` handlers put on `frontendAction.type`. */
 const BACKEND_EMITTED: string[] = [
   'query_windows',
   'open_window',
@@ -62,7 +54,6 @@ const TYPED: FrontendActionType[] = [
   'show_report',
 ]
 
-/** Emitted by the backend, but no typed `registerActionHandler` exists. */
 const KNOWN_ORPHANS = [] as const
 
 describe('frontendAction chain', () => {

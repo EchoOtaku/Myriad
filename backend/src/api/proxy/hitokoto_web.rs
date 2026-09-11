@@ -44,12 +44,7 @@ pub async fn proxy_hitokoto(Query(params): Query<HitokotoQuery>) -> Response {
         _ => crate::api::config::default_hitokoto_url(),
     };
 
-    // 这是一个**未认证**的任意 URL 出站端点。以前只用 `is_internal_url` 做
-    // 字符串/字面 IP 检查，然后交给默认 reqwest client —— 于是：
-    // 1. 主机名解析到 169.254.169.254 / 10.x 照样放行（DNS 重绑定）
-    // 2. 默认跟随 10 次重定向，第一跳合法即可跳进内网
-    // 3. `resp.json()` 先把整个响应缓冲进内存，没有上限
-    // 改用集中式安全客户端：解析后逐个地址校验公网可路由、把 DNS 结果 pin 住、
+    // 未认证的任意 URL 出站：解析后逐个地址校验公网可路由、把 DNS 结果 pin 住、
     // 禁用重定向；响应体流式读取并限长。
     let (parsed, client) = match crate::services::outbound_security::build_public_http_client(
         &url,

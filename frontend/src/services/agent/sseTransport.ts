@@ -1,9 +1,3 @@
-/**
- * Agent SSE 订阅传输层。
- *
- * 只负责读取/重连后端 run 事件；它不会创建、取消或拥有任务生命周期。
- * 用户主动中断与网络断线分开处理：前者不自动 re-subscribe，后者会。
- */
 import type {
   AgentResponse,
   ErrorEvent,
@@ -14,6 +8,7 @@ import type {
   TaskInfo,
 } from './types'
 
+import { hostLocaleHeaders } from '../../i18n/hostLocaleHeaders'
 import { currentCopy } from '../../i18n/localeCopy'
 import { clearCSRFToken, getCSRFToken } from '../../utils/csrf'
 import { isUselessErrorText } from '../../utils/userFacingError'
@@ -51,14 +46,7 @@ export function agentHttpFailure(status: number, text: string): ApiError {
   return new ApiError(message, status, body.code, body.details, body.hint)
 }
 
-/**
- * A backend `error` event, keeping its `code`.
- *
- * The stream is already HTTP 200 by the time anything can fail, so the code is
- * the only way a caller can tell an AI budget rejection (cooldown, daily call
- * or token limit) from a processing failure. Rejecting with a bare `Error`
- * dropped it and left the UI string-matching the message.
- */
+/** HTTP 200 already; distinguish quota via error.code. */
 export class AgentStreamError extends Error {
   readonly code: string
 
@@ -68,7 +56,6 @@ export class AgentStreamError extends Error {
     this.code = code
   }
 
-  /** Whether this is an AI quota/cooldown rejection rather than a fault. */
   get isQuotaRejection(): boolean {
     return QUOTA_CODES.has(this.code)
   }
@@ -83,12 +70,11 @@ const QUOTA_CODES = new Set([
   'AI_QUOTA_EXCEEDED',
 ])
 
-/** Why a stream AbortController was aborted. */
 export type StreamAbortIntent = 'user' | 'replace' | 'timeout'
 
 const controllerIntents = new WeakMap<AbortController, StreamAbortIntent>()
 
-/** Token events must paint between reads; React 18 batches a sync for-loop. */
+/** Yield between token reads; React 18 batches a sync for-loop. */
 export function shouldYieldSsePaint(type: string): boolean {
   return type === 'thinking_token' || type === 'summary_token'
 }
@@ -102,10 +88,6 @@ export type StreamDropAction =
   | 'reject_error'
   | 'reject_empty'
 
-/**
- * Pure decision for what to do when an SSE body ends without a final response.
- * Unit-tested; called by the real `executeSSERequest` path.
- */
 export function decideStreamDropAction(input: {
   hasFinalResponse: boolean
   capturedRunId: string | null
@@ -114,10 +96,10 @@ export function decideStreamDropAction(input: {
   hasStreamError: boolean
 }): StreamDropAction {
   if (input.hasFinalResponse) return 'use_final'
-  // Intentional client stop must never re-subscribe the same run.
+  // User abort must not re-subscribe the same run.
   if (input.abortIntent === 'user') return 'reject_user_abort'
   if (input.abortIntent === 'replace') return 'reject_replace'
-  // Transport drop / idle timeout / server close → recover without re-POSTing.
+  // Transport drop: resume without re-POST.
   if (input.capturedRunId) return 'resume_run'
   if (input.capturedTaskId) return 'poll_task'
   if (input.hasStreamError) return 'reject_error'
@@ -131,7 +113,7 @@ interface ExecuteSseOptions {
   onProgress?: ProgressCallback
   abortPrevious: boolean
   activeControllers: Set<AbortController>
-  /** Survives transport resume so replayed sequences are not applied twice. */
+  /** Dedupe replayed sequences across resume. */
   seenSequences?: Map<string, number>
   pollTaskUntilComplete: (
     taskId: string,
@@ -143,10 +125,7 @@ interface ExecuteSseOptions {
   ) => Promise<TaskDetail>
 }
 
-/**
- * Abort all active SSE subscriptions.
- * @param intent - `user` = intentional interrupt (no resume); `replace` = new request supersedes.
- */
+/** user: no resume. replace: new request supersedes. */
 export function abortSseSubscriptions(
   activeControllers: Set<AbortController>,
   intent: StreamAbortIntent = 'user',
@@ -171,7 +150,7 @@ export async function executeSSERequest({
   if (abortPrevious) abortSseSubscriptions(activeControllers, 'replace')
   const seen = seenSequences ?? new Map<string, number>()
 
-  // Cookie sessions need CSRF on POST; match lib/api — refresh once on 403 CSRF.
+  // Cookie POST: CSRF; refresh once on 403.
   let csrfToken = method === 'POST' ? await getCSRFToken() : null
   let csrfRetried = false
 
@@ -194,6 +173,7 @@ export async function executeSSERequest({
         Accept: 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Content-Type': 'application/json',
+        ...hostLocaleHeaders(),
       }
       if (csrfToken) headers['X-CSRF-Token'] = csrfToken
       return headers
@@ -215,8 +195,7 @@ export async function executeSSERequest({
 
     startFetch()
       .then(async (response) => {
-        // 必须先看 status。`clone().text()` 会把 SSE 整条流读完，
-        // 200 的进度事件就永远攒到结束才进 getReader。
+        // Do not clone().text(); it drains SSE.
         if (method === 'POST' && !csrfRetried && response.status === 403) {
           const text = await response.text()
           if (isCsrfBody(response.status, text)) {

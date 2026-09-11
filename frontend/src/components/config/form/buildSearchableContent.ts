@@ -3,7 +3,6 @@ import type { ConfigSearchableItem } from '../../settings/guides/configSearch'
 import type { Config } from './types'
 import { buildGuideSearchIndex } from '../../settings/guides/guideSearchIndex'
 
-/** i18n 切片：只取 build 搜索索引需要的文案字段 */
 export interface ConfigSearchI18n {
   config: {
     platforms: string
@@ -56,10 +55,7 @@ export interface ConfigSearchI18n {
   }
 }
 
-/**
- * 构建设置页搜索索引（section / platform / alias / guide）。
- * 平台名从 config.platforms 动态并入，避免手工列表漂移。
- */
+/** search index; platforms come from config, not a hand list */
 export function buildSearchableContent(
   config: Config | null,
   t: ConfigSearchI18n,
@@ -451,8 +447,6 @@ export function buildSearchableContent(
     ],
   })
 
-  // Federation settings are admin-only in the nav; hide from search for non-admin
-  // so users are not dropped into an empty section.
   if (isAdmin) {
     items.push({
       type: 'section',

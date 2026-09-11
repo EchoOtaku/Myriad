@@ -77,12 +77,11 @@ pub(super) fn build_base_api_router(
                 .route_layer(from_fn(require_installation_capability)),
         )
         // System management routes
-        // P2: system/status 暴露了一些系统信息，但为了监控保持公开（考虑移除敏感字段）
+        // /api/system/status 保持公开（监控探活）。reload-config 走 admin_middleware。
         .route("/api/system/status", get(api::system::system_status))
         .route(
             "/api/system/reload-config",
             post(api::system::reload_config)
-                // P1 修复：配置重载应该只有 admin 可以触发
                 .route_layer(from_fn_with_state(
                     app_state.clone(),
                     middleware::auth::admin_middleware,
@@ -297,8 +296,14 @@ pub(super) fn build_base_api_router(
                 middleware::auth::admin_middleware,
             )),
         )
-        // PR #4: 公开注册（开关受 allow_local_registration 控制） + 后补密码 + 本地登录开关
+        // 公开注册（开关受 allow_local_registration 控制） + 后补密码 + 本地登录开关
         .route("/api/auth/register", post(api::auth_local::register))
+        .route(
+            "/api/auth/me/locale",
+            axum::routing::put(api::auth::set_current_user_locale).route_layer(
+                from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware),
+            ),
+        )
         .route(
             "/api/auth/me/set-password",
             post(api::auth_local::set_password).route_layer(from_fn_with_state(
@@ -406,7 +411,7 @@ pub(super) fn build_base_api_router(
                 middleware::auth::admin_middleware,
             )), // 仅管理员
         )
-        // PR #6: OAuth providers + 本地注册开关（仅管理员可读写）
+        // OAuth providers + 本地注册开关（仅管理员可读写）
         .route(
             "/api/config/oauth-providers",
             get(api::config::get_oauth_providers)
@@ -466,7 +471,7 @@ pub(super) fn build_base_api_router(
             )),
         )
         // Federation (MFP) 公开端点
-        // Layer 1: 发现（无需认证）
+        // 发现（无需认证）
         .route(
             "/.well-known/webfinger",
             get(federation::discovery::webfinger),
@@ -485,7 +490,7 @@ pub(super) fn build_base_api_router(
             "/api/federation/public/limits",
             get(federation::limits::public_limits),
         )
-        // Layer 2: Actor + Outbox + Collections（无需认证，AP 标准端点）
+        // Actor + Outbox + Collections（无需认证，AP 标准端点）
         .route("/users/{username}", get(federation::actor::get_actor))
         .route(
             "/users/{username}/avatar",
@@ -541,7 +546,7 @@ pub(super) fn build_base_api_router(
             "/users/{username}/following",
             get(federation::actor::get_following),
         )
-        // Layer 2: Inbox（远程实例投递，通过 HTTP Signature 验证）
+        // Inbox（远程实例投递，通过 HTTP Signature 验证）
         // Live body limit follows memory profile (default 8 MiB / saver 4 MiB).
         // Concurrent buffering is also gated by inbox inflight budget (429).
         .merge(

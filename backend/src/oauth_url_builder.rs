@@ -10,8 +10,9 @@ impl SiteConfig {
     ///
     /// # 优先级
     /// 1. 数据库 DynamicConfig.base_url
-    /// 2. 环境变量 BASE_URL 或 FRONTEND_URL
-    /// 3. 开发默认值 http://localhost:1102
+    /// 2. 环境变量 `BASE_URL`
+    /// 3. 环境变量 `FRONTEND_URL`
+    /// 4. 开发默认值 `http://localhost:1102`
     pub async fn get_base_url() -> String {
         use crate::GLOBAL_DYNAMIC_CONFIG;
         use std::env;
@@ -70,7 +71,7 @@ impl SiteConfig {
 pub struct OAuthUrlBuilder;
 
 impl OAuthUrlBuilder {
-    /// 启动时检查 base_url + GitHub 凭证状态，仅输出日志，不阻塞启动
+    /// 启动时检查 base_url 与已启用 OAuth provider 条数，仅日志，不阻塞启动。
     pub async fn validate_github_oauth_config() -> Result<(), String> {
         let base_url = SiteConfig::get_base_url().await;
         if base_url.contains("localhost") {

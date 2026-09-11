@@ -1,7 +1,7 @@
 //! Planner 模块
 //!
 //! 合并意图分析 + 方案生成为单次 Pro AI 调用。
-//! 直接输出可执行的 Recipe 步骤。
+//! 输出 PlannerOutput；plan 的步骤是 AiRecipeStep，落地前还要校验/转换。
 
 use std::collections::{HashMap, HashSet};
 
@@ -86,7 +86,7 @@ impl Planner {
         progress_tx: Option<&tokio::sync::mpsc::Sender<AgentProgressEvent>>,
         granted: Option<&HashSet<String>>,
     ) -> Result<PlannerOutput, String> {
-        // 尝试获取 AI（支持热加载配置）
+        // Pro 分析器未持有时再创建一次；已持有的不会按新配置热加载。
         let runtime_analyzer;
         let ai_ref = if self.ai_analyzer.is_some() {
             self.ai_analyzer.as_ref()
@@ -109,8 +109,7 @@ impl Planner {
             .await;
         let user_prompt = self.build_user_prompt(request, escalation_hint);
 
-        // 走提供商原生的结构化输出：由 API 层保证返回是合法 JSON，
-        // 而不是靠 prompt 里的「请只输出 JSON」再从自由文本里抠花括号。
+        // 优先结构化 JSON；parse_response 仍保留 fence/花括号回退。
         let schema = planner_output_schema();
         let mut response = None;
         for attempt in 0..2 {
@@ -199,11 +198,9 @@ impl Planner {
     ///
     /// **段落顺序按「跨请求是否稳定」排，不按叙事顺序排。** OpenAI 的自动 prompt
     /// caching 和 Gemini 的 context caching 都是前缀匹配：前缀一旦出现差异，后面
-    /// 全部无法命中。此前当前时间戳排在第一段，意味着每分钟都会让整个 prompt 前缀
-    /// 失配，而最大的两块（能力索引 ~113 条 + 190 行规则）恰好排在最后，永远进不了
-    /// 缓存。
+    /// 全部无法命中。
     ///
-    /// 现在拆成两段拼接：
+    /// 两段拼接：
     /// - `stable`：身份 / 用户偏好 / 协作团队 / 能力索引 / 规则——只在部署配置、
     ///   Skill 注册表或 MCP 工具列表变化时才变
     /// - `volatile`：环境（时间+语言）/ 记忆 / 教训 / 推荐 Skill / 执行记录 /
@@ -220,14 +217,13 @@ impl Planner {
         let mut stable: Vec<String> = Vec::new();
         let mut volatile: Vec<String> = Vec::new();
 
-        // 1. 身份（全局 SOUL.md）
+        // 1. 身份（Merope 开时为人设，否则 SOUL.md）
         let speaking_soul = crate::services::agent::identity::get_speaking_soul().await;
         let global_identity = identity::get_identity().await;
         let role_prompt = speaking_soul
             .as_deref()
             .or_else(|| global_identity.as_ref().and_then(|id| id.role_prompt()));
-        // 兜底身份此前是死代码：它的条件是 `sections.is_empty()`，而环境段总是先被
-        // 压入，所以没有 SOUL.md 时 prompt 里根本不含身份段。
+        // 无 SOUL.md 时仍写入默认身份段（排进 `stable`）。
         stable.push(match role_prompt {
             Some(role) => format!("## 身份\n{}", role),
             None => {
@@ -271,7 +267,7 @@ impl Planner {
             }
         }
 
-        // 2. 记忆系统（多维召回：语义 + 能力 + 实体 + 教训）
+        // 2. 记忆系统（语义 + 实体 + 教训）
         if let Some(mem) = memory::get_memory() {
             let mut mem_lines: Vec<String> = Vec::new();
 
@@ -362,7 +358,7 @@ impl Planner {
             }
         }
 
-        // 3. 能力索引（含相关 Skill）
+        // 3. 能力索引（授予权限过滤，含 Skill/MCP）
         let compact_index = get_compact_index_for_grants(granted).await;
         stable.push(format!(
             "## 可用能力（紧凑索引）\n\
@@ -463,7 +459,7 @@ impl Planner {
                 ));
             }
 
-            // 对话历史（直接从 conversation_history 读取，不再走 custom_data hack）
+            // 对话历史来自 `context.conversation_history`。
             if let Some(history) = &context.conversation_history {
                 if !history.is_empty() {
                     prompt.push_str("\n\n<conversation_history>");
@@ -1255,10 +1251,7 @@ mod tests {
     }
 
     /// Planner 和 Skill 内部 DAG 面对同一个引擎，调度语义必须逐字同一份。
-    ///
-    /// 这两份提示词此前各手抄一遍，已经漂开过：`on_failure` 与 `timeout_ms`
-    /// 只有 Planner 那份提到，步骤上限那个 8 在五处各写一遍。任何一边重新
-    /// 抄写这几条，这个测试就红。
+    /// DAG 提示词必须引用共享契约槽，不得把契约正文再抄一遍。
     #[test]
     fn both_plan_prompts_quote_the_same_engine_contract() {
         let dag = include_str!("executor/execute_step.rs");
@@ -1285,8 +1278,7 @@ mod tests {
         }
     }
 
-    /// 只查模板不够：能力索引那一段也在同一份系统提示词里，`o` 字段怎么引用
-    /// 曾经在那里又写了一遍。断言落在**组装完的整份提示词**上。
+    /// 断言落在组装完的整份提示词上（能力索引的 `o` 字段引用也在同一份里）。
     #[tokio::test]
     async fn the_assembled_prompt_states_each_shared_rule_once() {
         let planner = test_planner();
@@ -1430,9 +1422,7 @@ mod tests {
 
     #[tokio::test]
     async fn identity_falls_back_when_no_soul_file_is_loaded() {
-        // The previous fallback was unreachable: it was guarded on
-        // `sections.is_empty()` while the environment section had already been
-        // pushed, so a deployment without SOUL.md got no identity at all.
+        // 无 SOUL.md 时 prompt 仍含默认身份段。
         let prompt = test_planner()
             .build_system_prompt(
                 &request("你好"),

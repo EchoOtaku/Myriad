@@ -136,11 +136,8 @@ test('provider event path writes the current-song snapshot', () => {
   assert.ok(provider)
   assert.match(provider, /applyPublishedMusicState\(/)
   assert.match(provider, /music-player-state-change/)
-  const boot = source.split('初始化：监听事件并更新全局状态')[1]
-  assert.ok(boot)
-  assert.match(boot, /applyPublishedMusicState\(/)
-  assert.match(boot, /bindPublishedMusicState\(/)
-  assert.match(boot, /attachMusicEventListener\(/)
+  assert.match(source, /bindPublishedMusicState\(/)
+  assert.match(source, /attachMusicEventListener\(/)
 })
 
 test('capture wires consented sources', () => {
@@ -200,8 +197,6 @@ test('Chat scene sources exist in capture; registry kinds remain a client orderi
   assert.deepEqual([...KINDS], clientKinds)
   assert.equal(clientKinds[2], 'surface')
   assert.equal(clientKinds[1], 'pointer')
-  // Chat deliberately selects pointed-at/playing/reading sources, rather
-  // than forwarding every idle sensor or maintaining a second kind enum.
   const producers = ['capture.ts', 'consentedSources.ts']
     .map((file) => readFileSync(new URL(file, import.meta.url), 'utf8'))
     .join('\n')

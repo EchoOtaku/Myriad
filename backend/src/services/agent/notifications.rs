@@ -159,7 +159,7 @@ pub struct Notification {
     pub priority: NotificationPriority,
     pub title: String,
     pub body: String,
-    /// 目标用户 ID。用户可见通知必须有明确 owner；None 仅兼容旧数据，不再下发。
+    /// 目标用户 ID。用户可见通知必须有明确 owner；`user_id=None` 拒绝下发。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_id: Option<i32>,
     /// 可选的结构化数据（如任务 ID、链接等）
@@ -219,6 +219,12 @@ pub enum NotificationEvent {
     Resync { lagged_by: u64 },
     /// On-page persona speech. Not history, not a toast.
     LiveSpeech { user_id: i32, speech: LiveSpeech },
+    /// Late direction for an already delivered line; never contains speech text.
+    LiveSpeechMotion {
+        user_id: i32,
+        id: String,
+        performance: serde_json::Value,
+    },
     /// Ephemeral addressee state. No notification history, toast or speech.
     MeropeStateChanged {
         user_id: i32,
@@ -250,6 +256,7 @@ pub fn event_is_for_user(event: &NotificationEvent, user_id: i32) -> bool {
         | NotificationEvent::NotificationDeleted { user_id: owner, .. }
         | NotificationEvent::NotificationsCleared { user_id: owner }
         | NotificationEvent::LiveSpeech { user_id: owner, .. }
+        | NotificationEvent::LiveSpeechMotion { user_id: owner, .. }
         | NotificationEvent::MeropeStateChanged { user_id: owner, .. } => *owner == user_id,
         // resync 对所有订阅者广播；由 SSE 转发层无条件下发
         NotificationEvent::Resync { .. } => true,
@@ -289,7 +296,7 @@ impl NotificationManager {
         if let Some(event_key) = notification.event_key() {
             preferences.allows(event_key)
         } else {
-            // 旧数据/第三方生产者缺少精细事件键时，仍必须服从总开关和来源开关。
+            // 缺少精细事件键时，仍必须服从总开关和来源开关。
             preferences.enabled
                 && preferences
                     .sources
@@ -305,8 +312,7 @@ impl NotificationManager {
         let (tx, _) = broadcast::channel(512);
         let mut history = VecDeque::with_capacity(max_history);
 
-        // 旧版本把 user_id=NULL 当作共享广播；该记录允许任意用户删除，且可能包含
-        // Heartbeat/Agent 私有结果。新模型不再支持共享可变通知，启动时安全清理。
+        // 启动时删除 `user_id IS NULL` 的通知：没有共享可变通知。
         match notif_entity::Entity::delete_many()
             .filter(notif_entity::Column::UserId.is_null())
             .exec(&db)
@@ -429,6 +435,19 @@ impl NotificationManager {
         let _ = self
             .tx
             .send(NotificationEvent::LiveSpeech { user_id, speech });
+    }
+
+    pub fn emit_live_speech_motion(
+        &self,
+        user_id: i32,
+        id: String,
+        performance: serde_json::Value,
+    ) {
+        let _ = self.tx.send(NotificationEvent::LiveSpeechMotion {
+            user_id,
+            id,
+            performance,
+        });
     }
 
     pub fn emit_merope_state(
@@ -1082,6 +1101,17 @@ mod tests {
         };
         assert!(event_is_for_user(&live, 2));
         assert!(!event_is_for_user(&live, 1));
+        let refinement = NotificationEvent::LiveSpeechMotion {
+            user_id: 2,
+            id: "spk_1".into(),
+            performance: serde_json::json!({"phrases": []}),
+        };
+        assert!(event_is_for_user(&refinement, 2));
+        assert!(!event_is_for_user(&refinement, 1));
+        let wire = serde_json::to_value(refinement).unwrap();
+        assert_eq!(wire["event"], "live_speech_motion");
+        assert!(wire.get("body").is_none());
+        assert!(wire.get("speech").is_none());
     }
 
     #[tokio::test]

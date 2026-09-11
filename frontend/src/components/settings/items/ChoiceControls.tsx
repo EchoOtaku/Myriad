@@ -1,8 +1,3 @@
-/**
- * Unified choice control for settings — segmented track appearance only.
- *
- * Single or multi select; equal columns or wrapping flex.
- */
 
 import type { ReactNode } from 'react'
 import React, { useCallback } from 'react'
@@ -14,7 +9,6 @@ export interface ChoiceOption<T extends string = string> {
   value: T
   label: ReactNode
   icon?: ReactNode
-  /** Optional trailing count badge */
   count?: number
   disabled?: boolean
 }
@@ -23,10 +17,6 @@ interface SegmentedBaseProps<T extends string> {
   options: ChoiceOption<T>[]
   disabled?: boolean
   size?: ChoiceControlSize
-  /**
-   * Equal-width columns, or `'auto'` for content-sized flex wrap.
-   * Default `'auto'`.
-   */
   columns?: number | 'auto'
   ariaLabel?: string
   className?: string
@@ -35,7 +25,6 @@ interface SegmentedBaseProps<T extends string> {
 export type SegmentedControlProps<T extends string = string> =
   | (SegmentedBaseProps<T> & {
       mode?: 'single'
-      /** Active value; `null` means none selected (e.g. “custom” preset). */
       value: T | null
       onChange: (value: T) => void
     })
@@ -88,16 +77,10 @@ export function SegmentedControl<T extends string = string>(
     [disabled, mode, value, onChange],
   )
 
-  /**
-   * Grid: equal `1fr` columns so the track fills the parent.
-   * --choice-cols / --choice-cols-mobile let CSS reflow on narrow screens
-   * (e.g. 4 → 2×2) without fighting inline grid-template-columns.
-   */
   const isGrid = columns !== 'auto' && typeof columns === 'number'
   const trackStyle = isGrid
     ? ({
         ['--choice-cols' as string]: String(columns),
-        // 3+ options: stack to 2 equal columns on mobile for touch + full width
         ['--choice-cols-mobile' as string]: String(columns >= 3 ? 2 : columns),
       } as React.CSSProperties)
     : undefined

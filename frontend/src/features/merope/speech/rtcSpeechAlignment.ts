@@ -47,7 +47,6 @@ type TextVisemeCompiler = (
   locale?: string,
 ) => Promise<TextVisemeCue[]>
 
-/** Provider word timestamps own the clock; Myriad's existing compiler owns shape. */
 export async function compileRtcVisemeTimeline(
   words: readonly RtcTranscriptWord[],
   locale?: string,
@@ -86,11 +85,7 @@ export async function compileRtcVisemeTimeline(
   return spans
 }
 
-/**
- * A bounded transport-only timing cache, not another transcript/Chat store.
- * RTM can arrive before the authenticated run notice. Buffer those words, but
- * never drive a mouth until that exact provider turn is adopted by Agent Chat.
- */
+/** A bounded transport-only timing cache, not another transcript/Chat store. */
 export class RtcSpeechAlignment {
   private providerTurnId: number | null = null
   private cancelledThrough = -1
@@ -145,7 +140,7 @@ export class RtcSpeechAlignment {
   }
 
   noteAudioPts(ptsMs: number, observedAtMs = monotonicNow()): void {
-    // PTS can be Unix milliseconds. Do not cap it to a session duration.
+    // Do not cap it to a session duration.
     if (!timestamp(ptsMs) || (this.ptsMs !== null && ptsMs <= this.ptsMs))
       return
     this.ptsMs = ptsMs
@@ -346,7 +341,6 @@ function parseTranscript(
     ) {
       continue
     }
-    // The official protocol can omit duration; the next word then bounds it.
     const duration = item.duration_ms === undefined ? 0 : item.duration_ms
     if (
       typeof duration !== 'number' ||

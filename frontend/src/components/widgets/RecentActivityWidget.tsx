@@ -1,10 +1,3 @@
-/**
- * 最近活动小组件
- *
- * 展示由后端从平台快照中提炼出的语义事件。原始 JSON 字段路径只保留在
- * metadata_history 审计表，不再进入 UI。
- */
-
 import type { TranslationKeys } from '../../i18n'
 import type { WidgetComponentProps } from '../widgetGridTypes'
 
@@ -24,7 +17,6 @@ import { WidgetSkeletonCover } from './shared/WidgetSkeleton'
 const CACHE_KEY = 'recent_activities_cache_v4'
 const CACHE_DURATION = 60 * 1000
 const POLL_INTERVAL = 60 * 1000
-/** 小组件只拉/只渲染最近 N 条；角标仍用返回列表长度。 */
 const ACTIVITY_LOAD_LIMIT = 8
 
 let globalFetchPromise: Promise<Activity[]> | null = null
@@ -34,7 +26,6 @@ let globalCacheTimestamp = 0
 interface ActivityChange {
   kind: string
   subject_title?: string
-  /** Cover / icon / avatar when the platform snapshot provides one. */
   subject_image?: string | null
   metric?: string
   old?: unknown
@@ -127,7 +118,6 @@ function formatValue(
   return ''
 }
 
-/** Metric / delta only — subject name is secondary (or implied by the thumb). */
 function formatChangeCore(change: ActivityChange, t: TranslationKeys): string {
   const subject = change.subject_title?.trim()
   if (change.kind === 'item_added') {
@@ -186,13 +176,11 @@ function primarySubjectTitle(activity: Activity): string | null {
     const title = change.subject_title?.trim()
     if (title) return title
   }
-  // Multi-change platform rollups used to put the platform label in `title` —
-  // skip those so we don't re-surface "Steam" as a subject line.
+  // 多条变更的平台汇总不要把平台名当 title 再露出来。
   const title = activity.title?.trim()
   if (!title) return null
   const platform = activity.platform_name?.trim().toLowerCase()
   if (platform && title.toLowerCase() === platform) return null
-  // platform_label style: "Steam", "GitHub", …
   if (/^(steam|github|bilibili|youtube|netease|bangumi|x|discord|myanimelist|mal|xbox|playstation|psn)$/i.test(title)) {
     return null
   }
@@ -200,7 +188,7 @@ function primarySubjectTitle(activity: Activity): string | null {
   return title
 }
 
-/** Stable 0..1 pseudo-random from string (decorations must not reshuffle each render). */
+// 装饰随机必须稳定，不能每次渲染重洗。
 function hash01(seed: string, salt = 0): number {
   let h = (salt * 2654435761) >>> 0
   for (let i = 0; i < seed.length; i++) {
@@ -234,10 +222,6 @@ function decorationSeed(activity: Activity): string {
   ].join('|')
 }
 
-/**
- * Platform-flavored filler when there is no subject cover.
- * Keeps brand cues (heatmap / waveform / bars) without competing with real media.
- */
 const PlatformDecoration = memo(
   ({ activity }: { activity: Activity }) => {
     const platform = activity.platform_name.toLowerCase()
@@ -246,11 +230,9 @@ const PlatformDecoration = memo(
     const metric = activity.changes[0]?.metric
 
     if (platform === 'github') {
-      // Contribution-style heatmap; lit cells scale with metric magnitude.
       const cols = 7
       const rows = 4
       const total = cols * rows
-      // contributions / stars / followers → denser green; cap so it stays readable
       const lit = Math.min(
         total,
         Math.max(
@@ -262,7 +244,6 @@ const PlatformDecoration = memo(
               : Math.ceil(Math.log10(hint + 1) * 6) + 2,
         ),
       )
-      // Level classes work in light + dark without double-mounting cells.
       const heatClass = [
         'bg-neutral-200/80 dark:bg-neutral-800/80',
         'bg-emerald-200/90 dark:bg-emerald-900/80',
@@ -272,7 +253,6 @@ const PlatformDecoration = memo(
       ]
       const cells = Array.from({ length: total }, (_, i) => {
         if (i >= lit) return 0
-        // Bias hotter toward the “recent” end of the strip
         const t = i / Math.max(1, lit - 1)
         const base = 1 + Math.floor(t * 3)
         const jitter = Math.floor(hash01(seed, i) * 2)
@@ -300,7 +280,6 @@ const PlatformDecoration = memo(
     }
 
     if (platform === 'x') {
-      // Abstract “timeline” strokes; count tracks posts / followers delta.
       const lines = Math.min(6, Math.max(3, Math.ceil(Math.log10(hint + 1) * 3)))
       return (
         <div
@@ -338,7 +317,6 @@ const PlatformDecoration = memo(
     }
 
     if (platform === 'netease' || platform === 'netease_music') {
-      // Vinyl disc — music brand cue without fake equalizer bars
       return (
         <div
           className="pointer-events-none absolute inset-0 overflow-hidden"
@@ -353,7 +331,6 @@ const PlatformDecoration = memo(
     }
 
     if (platform === 'steam') {
-      // Soft playtime strips (cover usually exists; this is fallback)
       const strips = Math.min(5, Math.max(2, Math.ceil(hint / 60)))
       return (
         <div
@@ -388,7 +365,6 @@ const PlatformDecoration = memo(
     }
 
     if (platform === 'bangumi' || platform === 'mal' || platform === 'myanimelist') {
-      // Stacked soft “poster” cards — media library cue, no progress dots
       const isBangumi = platform === 'bangumi'
       const accent = isBangumi
         ? {
@@ -469,7 +445,6 @@ const PlatformDecoration = memo(
       )
     }
 
-    // Generic soft watermark
     return (
       <div
         className="pointer-events-none absolute inset-0 overflow-hidden"
@@ -489,7 +464,6 @@ const PlatformDecoration = memo(
 
 PlatformDecoration.displayName = 'PlatformDecoration'
 
-/** Cover when available; otherwise platform decoration. */
 const ActivityCardBackdrop = memo(
   ({
     imageUrl,
@@ -537,7 +511,6 @@ const ActivityCardBackdrop = memo(
 
 ActivityCardBackdrop.displayName = 'ActivityCardBackdrop'
 
-/** Map activity platform_name → report-card PLATFORM_CONFIG key. */
 function platformConfigId(platform: string): string {
   const p = platform.toLowerCase()
   if (p === 'netease_music' || p === 'netease music' || p === '网易云音乐') {
@@ -550,10 +523,6 @@ function platformConfigId(platform: string): string {
   return p
 }
 
-/**
- * Raise rgba/rgb alpha so the bottom-left platform chip reads a bit stronger
- * on activity card covers (report-card pills keep the lighter shared bgColor).
- */
 function deepenPlatformChipColor(color: string, alphaScale = 1.85, maxAlpha = 0.42): string {
   const m = color.match(
     /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)$/i,
@@ -565,10 +534,6 @@ function deepenPlatformChipColor(color: string, alphaScale = 1.85, maxAlpha = 0.
   return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${next})`
 }
 
-/**
- * Same as report-card CardLogoPill collapsed mark (bg / border / text / icon),
- * only smaller — slightly deeper chip fill for legibility on activity cards.
- */
 const PlatformLogoBadge = memo(
   ({ platform, compact }: { platform: string; compact: boolean }) => {
     const id = platformConfigId(platform)
@@ -610,7 +575,7 @@ const ActivityItem = memo(
     compact: boolean
     t: TranslationKeys
   }) => {
-    // 两列视口下单卡偏窄，只展示首条变化，避免副行挤爆。
+    // 两列视口只展示首条变化，避免副行挤爆。
     const detailLimit = 1
     const changeLines = useMemo(
       () =>
@@ -624,8 +589,7 @@ const ActivityItem = memo(
     const isImported = activity.event_type === 'imported'
     const imageUrl = useMemo(() => firstSubjectImage(activity), [activity])
     const subject = useMemo(() => primarySubjectTitle(activity), [activity])
-    // When the primary line already embeds the subject (item_added/removed),
-    // don't repeat it on the meta row.
+    // 主行已含对象时，meta 行不要再重复。
     const showSubjectMeta =
       Boolean(subject) &&
       !changeLines.some((line) => subject && line.includes(subject))
@@ -658,7 +622,6 @@ const ActivityItem = memo(
           onShowCoverChange={onShowCoverChange}
         />
 
-        {/* 内容叠在封面 / 装饰之上 */}
         <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="min-w-0 flex-1">
             <div
@@ -701,7 +664,6 @@ const ActivityItem = memo(
             )}
           </div>
 
-          {/* 左下：小平台 logo */}
           <div className="mt-auto flex items-end pt-1.5">
             <PlatformLogoBadge
               platform={activity.platform_name}
@@ -750,7 +712,6 @@ function saveCachedActivities(data: Activity[]): void {
       JSON.stringify({ data, timestamp: Date.now() }),
     )
   } catch {
-    // The in-memory cache still keeps the widget functional.
   }
 }
 
@@ -770,8 +731,7 @@ async function requestActivities(force = false): Promise<Activity[]> {
       ? `${API_URL}/api/activities?limit=${ACTIVITY_LOAD_LIMIT}`
       : `/api/activities?limit=${ACTIVITY_LOAD_LIMIT}`
     const response = await fetch(endpoint, {
-      // This is an intentionally public, read-only projection. Never attach a
-      // session cookie to the activity-card request.
+      // 公开只读投影，请求不要带 session cookie。
       credentials: 'omit',
       cache: 'no-store',
       signal: AbortSignal.timeout(10000),

@@ -66,7 +66,7 @@ pub use reports::{
     get_tapp_report, list_reports, list_runtime_reports, list_tapp_reports, update_tapp_report,
 };
 
-// Server-side attribution for host-proxied legacy routes
+// Server-side attribution: brew_host_attribution / federation_host_attribution / speech_host_attribution
 pub use host_attribution::{
     brew_host_attribution, federation_host_attribution, speech_host_attribution,
 };

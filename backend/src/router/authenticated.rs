@@ -21,9 +21,6 @@ pub(super) fn build_authenticated_router(
                 middleware::auth::admin_middleware,
             )),
         )
-        // Note: /api/auth/me and /api/auth/logout are now registered above with wrappers
-        // Note: /api/config routes are now registered above with wrappers, not here
-        // Note: /api/profile/user-info, metadata now registered above with wrappers
         .route("/api/platforms", get(api::platforms::list_platforms))
         .route(
             "/api/github/repo",
@@ -77,7 +74,7 @@ pub(super) fn build_authenticated_router(
             )),
         )
         // Global platform reprocess jobs — admin only (site-level work, not per-user).
-        // MYR-015: any authenticated user must not submit/list global reprocess tasks.
+        // any authenticated user must not submit/list global reprocess tasks.
         .route(
             "/api/tasks",
             post(api::tasks::submit_task)
@@ -247,7 +244,7 @@ pub(super) fn build_authenticated_router(
             api::brew::create_brew_routes(app_state.clone()),
         )
         // Brewlia AI 增强 API
-        // AI 词汇注释、内容摘要等增强阅读功能
+        // 注释 / 播客脚本 / 风格标签
         .nest(
             "/api/brewlia",
             api::brewlia::create_brewlia_routes(app_state.clone()),
@@ -311,7 +308,7 @@ pub(super) fn build_authenticated_router(
                 middleware::auth::optional_auth_middleware,
             )),
         )
-        // AI Task API - 支持权限下放（使用 optional_auth）
+        // AI Task API — optional_auth；elevated AI 能力走授予（可下放）
         .route(
             "/api/tapp/ai/v2/tasks",
             post(api::tapp_runtime::create_ai_task).route_layer(from_fn_with_state(
@@ -388,7 +385,7 @@ pub(super) fn build_authenticated_router(
                 middleware::auth::auth_middleware,
             )),
         )
-        // Tapp P0 扩展 API
+        // Tapp 扩展 API
         // Data Processing: inline transforms support guests; platform/storage
         // inputs and outputs are still denied without their Runtime Grant permissions.
         .route(
@@ -428,7 +425,7 @@ pub(super) fn build_authenticated_router(
                 middleware::auth::optional_auth_middleware,
             )),
         )
-        // Context API -  支持权限下放（公开信息）
+        // Context API — optional_auth（公开信息；此处无下放）
         .route(
             "/api/tapp/context/app",
             get(api::tapp_runtime::get_context_app).route_layer(from_fn_with_state(
@@ -480,8 +477,8 @@ pub(super) fn build_authenticated_router(
                 middleware::auth::optional_auth_middleware,
             )),
         )
-        // Tapp P1 扩展 API
-        // Report CRUD -  REQUIRE AUTHENTICATION
+        // Tapp 扩展 API
+        // Report CRUD — REQUIRE AUTHENTICATION
         .route(
             "/api/tapp/reports",
             post(api::tapp_runtime::create_report).route_layer(from_fn_with_state(
@@ -527,7 +524,7 @@ pub(super) fn build_authenticated_router(
                     middleware::auth::auth_middleware,
                 )),
         )
-        // Media Control -  支持权限下放
+        // Media Control — optional_auth；`media:control` 为 basic 授予，不是下放
         .route(
             "/api/tapp/media/control",
             post(api::tapp_runtime::media_control).route_layer(from_fn_with_state(
@@ -772,8 +769,7 @@ pub(super) fn build_authenticated_router(
         .route("/api/proxy/client-geo", get(api::proxy::get_client_geo))
         // Hitokoto proxy route
         .route("/api/proxy/hitokoto", get(api::proxy::proxy_hitokoto))
-        // Deprecated orphan: no first-party FE caller (reader abandoned "load original").
-        // Kept for admin/tools + brew experiments; auth + compute rate-limit required.
+        // auth_middleware + compute rate-limit。
         .route(
             "/api/proxy/fetch-content",
             get(api::proxy::fetch_web_content).route_layer(from_fn_with_state(
@@ -818,7 +814,7 @@ pub(super) fn build_authenticated_router(
             "/api/proxy/music/qq/audio/{id}",
             get(api::proxy::proxy_qq_audio),
         )
-        // 仅解析临时播放链（302），音频字节仍直连 QQ CDN（国内 FE geo 分流）
+        // 仅解析临时播放链（302），音频字节仍直连 QQ CDN
         .route(
             "/api/proxy/music/qq/play-url/{id}",
             get(api::proxy::proxy_qq_play_url),
@@ -1262,7 +1258,7 @@ mod security_route_wiring_tests {
 
     #[test]
     fn global_reprocess_task_routes_require_admin_middleware() {
-        // MYR-015: site-level reprocess must not be open to every authenticated user.
+        // site-level reprocess must not be open to every authenticated user.
         let src = router_src();
         for path in [
             "/api/tasks",

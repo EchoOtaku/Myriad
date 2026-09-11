@@ -31,13 +31,12 @@ pub struct Claims {
     pub sub: String,      // User ID
     pub username: String, // Username
     pub is_admin: bool,   // Admin status
-    /// Durable site owner (`users.is_owner`). Defaults false for older tokens.
+    /// Durable site owner (`users.is_owner`). Claim omitted → serde default false.
     #[serde(default)]
     pub is_owner: bool,
     pub exp: i64, // Expiration time
     pub iat: i64, // Issued at
-    /// Session epoch (`users.token_version`). Defaults `0` for pre-MYR-005 tokens
-    /// so existing sessions keep working until the first revoke bump.
+    /// Session epoch (`users.token_version`). Claim omitted → serde default 0.
     #[serde(default)]
     pub tv: i64,
 }
@@ -406,7 +405,7 @@ pub async fn optional_current_auth_middleware(
 /// 每用户至少间隔 60s 才落一次库，避免高频请求放大写入。
 const PRESENCE_WRITE_INTERVAL: Duration = Duration::from_secs(60);
 /// Drop map entries older than this so long-lived processes do not retain every
-/// user_id forever (MYR-037). Must be ≥ [`PRESENCE_WRITE_INTERVAL`].
+/// user_id forever. Must be ≥ [`PRESENCE_WRITE_INTERVAL`].
 const PRESENCE_MAP_TTL: Duration = Duration::from_secs(15 * 60);
 /// 两次活跃间隔 ≤300s 视为持续在线，计入 online_seconds；更长间隔视为离线后重新上线。
 const PRESENCE_SESSION_GAP_SECS: i64 = 300;
@@ -465,8 +464,7 @@ pub fn record_user_presence(claims: &Claims, db: DatabaseConnection) {
 /// Admin-only middleware - verifies JWT token and checks admin status
 /// Returns 403 if user is not an admin
 ///
-/// Checks both the signed claim and the current database role.
-/// Used for dangerous operations like deleting all reports
+/// Checks both the signed claim and the current database role (`ensure_current_admin_on`)。
 pub async fn admin_middleware(
     State(db): State<DatabaseConnection>,
     req: Request,
@@ -491,8 +489,7 @@ pub async fn admin_middleware(
                 claims.username
             );
 
-            // 关键修复: 将 claims 注入到 request extensions 中
-            // 这样后续的 Extension(claims) 提取器才能正常工作
+            // 注入 claims，供后续 `Extension(Claims)`。
             let mut req = req;
             req.extensions_mut().insert(claims);
             next.run(req).await
@@ -780,8 +777,8 @@ pub async fn authenticate_optional_request(
 
 /// Atomically bump `users.token_version` and return the new value.
 ///
-/// Used on logout and password change so all previously issued JWTs fail
-/// [`ensure_session_epoch`]. Returns `None` if the user row is gone.
+/// logout 调用。后续 JWT 对不上 `session_epoch_matches` 即 401。
+/// 密码修改自行 `UPDATE token_version`。用户行不存在返回 `None`。
 pub async fn bump_token_version(
     db: &DatabaseConnection,
     user_id: i32,
@@ -875,11 +872,8 @@ fn verify_guest_session(secret: &[u8], token: &str) -> Option<String> {
 /// (real users are non-negative).
 ///
 /// ## Hash material
-/// Full SHA-256 is XOR-folded into 31 bits (previous scheme used only 4 raw
-/// prefix bytes). Cookie session tokens themselves are unchanged (HMAC of the
-/// 32-hex session id); only the derived numeric subject remaps. Existing
-/// guest storage rows under the old mapping become orphaned after upgrade —
-/// acceptable for ephemeral guest sandbox data (no migration).
+/// Full SHA-256 is XOR-folded into 31 bits. Cookie session tokens are HMAC of the
+/// 32-hex session id; only the derived numeric subject is this fold.
 ///
 /// A true 63-bit negative `i64` would need `BIGINT` subject columns site-wide;
 /// until then this is the strongest scheme that still fits the DB type.
@@ -900,19 +894,15 @@ fn guest_id(session_id: &str) -> i32 {
 
 /// Optional authentication middleware - allows guest access
 ///
-/// 用于支持权限下放的 API：
-/// - 如果有有效 token，验证并注入 Claims
-/// - 如果没有 token，注入游客 Claims
-/// - 如果提交了无效、已撤销或状态过期的 token，拒绝请求而不是降级为游客
+/// 给允许游客主体的路由注入 Claims：有效 token → Claims；无 token → 游客 Claims；
+/// 无效/已撤销 token 拒绝，不降级为游客。本中间件只注入 Claims；授予权限由调用方 `TappPermissionService::check` 过滤。
 ///
 /// 游客 ID 策略：
 /// - 使用浏览器持有的 HttpOnly 签名 session，而不是共享出口 IP
 /// - 同一浏览器 session 获得稳定的负数 ID
 /// - 负数 ID 与正数用户 ID 区分，便于管理
 ///
-/// 安全说明：
-/// - 游客 Claims 的 is_admin 为 false
-/// - API 端点需要自行检查权限（通过 TappPermissionService）
+/// 游客 Claims 的 is_admin 为 false。
 pub async fn optional_auth_middleware(
     State(db): State<DatabaseConnection>,
     req: Request,
@@ -1115,7 +1105,7 @@ mod tests {
 
     fn ensure_jwt_secret() {
         INIT_JWT.call_once(|| {
-            // Copilot #294: missing *and* empty JWT_SECRET are both unsafe for HS256.
+            // Missing *and* empty JWT_SECRET are both unsafe for HS256.
             if jwt_secret_is_unset() {
                 // SAFETY: unit tests, set once before concurrent use.
                 std::env::set_var("JWT_SECRET", TEST_JWT_SECRET);
@@ -1529,7 +1519,7 @@ mod tests {
 
     #[test]
     fn claims_tv_defaults_when_absent_in_json() {
-        // Pre-MYR-005 tokens omit `tv`; serde default keeps them at epoch 0.
+        // Claim omitted `tv` → serde default 0.
         let json = r#"{"sub":"1","username":"u","is_admin":false,"exp":1,"iat":0}"#;
         let claims: super::Claims = serde_json::from_str(json).expect("deserialize");
         assert_eq!(claims.tv, 0);

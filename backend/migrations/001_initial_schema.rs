@@ -1,9 +1,7 @@
 use sea_orm_migration::prelude::*;
 use sea_orm_migration::sea_orm::sea_query::OnConflict;
 
-/// 初始数据库结构 - 完整统一版本
-///
-/// 包含所有必要的表，清晰简洁，无历史包袱
+/// 初始数据库结构（001）。折叠原 007/009/010/011 列；旧库由 schema_check 补列。
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
@@ -247,7 +245,7 @@ impl MigrationTrait for Migration {
                     // kind = auto | account | identity | platform；ref = identity id 或平台键。
                     .col(ColumnDef::new(Users::ProfileTextSourceKind).string_len(20))
                     .col(ColumnDef::new(Users::ProfileTextSourceRef).string_len(64))
-                    // JWT session epoch (MYR-005): bump on logout / password change / admin
+                    // JWT session epoch: bump on logout / password change / admin
                     // force-revoke so long-lived tokens fail closed without shortening TTL.
                     // Old DBs get the column via schema_check ADD COLUMN DEFAULT 0.
                     .col(
@@ -256,6 +254,9 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0),
                     )
+                    // Host UI locale for this durable account (`zh-CN` | `en-US` | `ja-JP`).
+                    // Guests have no row; old DBs get the column via schema_check ADD.
+                    .col(ColumnDef::new(Users::Locale).string_len(16))
                     .to_owned(),
             )
             .await?;
@@ -789,6 +790,7 @@ enum Users {
     ProfileTextSourceKind,
     ProfileTextSourceRef,
     TokenVersion,
+    Locale,
 }
 
 #[derive(DeriveIden)]

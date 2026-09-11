@@ -1,18 +1,18 @@
 //! Speak intent in → sentence out. Rechecks sight here. Live and notify are
 //! independent channels.
 
-use chrono::Utc;
+use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::DatabaseConnection;
 
-use super::super::gates::{decide_ingest, is_valuable_event};
+use super::super::gates::{decide_ingest, is_valuable_event, IngestDecision};
 use super::super::store::{
     affect_from_state, get_or_create_state, get_persona, insert_proactive, latest_open_session,
-    recent_proactive, recently_spoke_event, set_activity, touch_proactive,
+    recent_proactive, recently_spoke_event, touch_proactive,
 };
 use super::super::{
-    addressee_speaking_section, direct_motion, format_mood_section, public_persona_name,
-    resolve_addressee_label, resolve_round_motion_style, MoodTransition, MotionContext,
-    MotionPhase, PerformanceDirective,
+    addressee_speaking_section, direct_motion, format_mood_section, local_directive,
+    public_persona_name, refine_motion, resolve_addressee_label, resolve_round_motion_style,
+    MoodTransition, MotionContext, MotionPhase, PerformanceDirective,
 };
 use super::{
     compact_summary, current_sight, is_enabled, is_trivial_line, log_skip, SAME_EVENT_MINUTES,
@@ -48,14 +48,14 @@ async fn redeem_speak_intent(
     if intent.expires_at <= Utc::now() {
         return Ok(());
     }
+    let touch = intent.topic == "agent.merope.touch";
     let state = get_or_create_state(db, intent.user_id).await?;
-    let sight = current_sight(intent.user_id, &state).await;
-    let decision = decide_ingest(&intent.topic, &sight);
-    if !decision.allow_model {
-        log_skip(intent.user_id, &intent.topic, decision.reason);
+    let input_at = state.last_user_message_at;
+    let Some(decision) = current_delivery(db, &intent, input_at, false).await else {
         return Ok(());
-    }
-    if recently_spoke_event(db, intent.user_id, &intent.topic, SAME_EVENT_MINUTES).await? {
+    };
+    let repeat_minutes = if touch { 1 } else { SAME_EVENT_MINUTES };
+    if recently_spoke_event(db, intent.user_id, &intent.topic, repeat_minutes).await? {
         log_skip(intent.user_id, &intent.topic, "recently_spoke");
         return Ok(());
     }
@@ -64,11 +64,14 @@ async fn redeem_speak_intent(
     let shown = decision.live
         || (source_intent_id.is_some() && is_valuable_event(&intent.topic))
         || speech_is_shown(&intent.topic, decision.notify);
-    let spoken = if shown {
-        let _ = set_activity(db, intent.user_id, "thinking").await;
-        let line = compose_line(db, intent.user_id, &intent.gist).await;
-        let _ = set_activity(db, intent.user_id, "idle").await;
-        line
+    let spoken = if touch {
+        // The consciousness decision already contains the in-person sentence.
+        // Do not paraphrase it in a second model call or invent a fallback.
+        sanitize_speech(&intent.gist)
+    } else if shown {
+        // Background composition does not own the foreground activity. A late
+        // completion must not reset a newer Chat/Work task to idle.
+        compose_line(db, intent.user_id, &intent.gist).await
     } else {
         fallback_line(&intent.gist)
     };
@@ -87,8 +90,12 @@ async fn redeem_speak_intent(
         }
     }
 
+    let Some(decision) = current_delivery(db, &intent, input_at, false).await else {
+        return Ok(());
+    };
     // Direct motion only after the line has passed every suppression check. This
     // keeps the Lite budget tied to speech the addressee will actually receive.
+    let mut pending_motion = None;
     let (performance, motion_mood) = if shown {
         match get_or_create_state(db, intent.user_id).await {
             Ok(current) => {
@@ -105,19 +112,34 @@ async fn redeem_speak_intent(
                     current.arousal.round() as i32,
                 )
                 .await;
-                let performance = direct_motion(MotionContext {
+                let mut context = MotionContext {
                     user_id: intent.user_id,
                     phase: MotionPhase::Proactive,
                     mood: mood.clone(),
                     activity: "talking".to_string(),
-                    user_text: intent.gist.clone(),
+                    user_text: intent
+                        .observation
+                        .clone()
+                        .unwrap_or_else(|| intent.gist.clone()),
                     response_text: Some(spoken.clone()),
                     previous_phrases: Vec::new(),
                     task_success: None,
                     rig_state: last_live_presence(intent.user_id).rig_state,
                     motion_style,
-                })
-                .await;
+                };
+                let performance = if decision.live {
+                    // Touch already has a local embodied response; do not reset its face.
+                    let floor = if touch {
+                        None
+                    } else {
+                        local_directive(&context)
+                    };
+                    context.phase = MotionPhase::Delivery;
+                    pending_motion = Some(context);
+                    floor
+                } else {
+                    direct_motion(context).await
+                };
                 (performance, Some(mood))
             }
             Err(_) => (None, None),
@@ -126,6 +148,12 @@ async fn redeem_speak_intent(
         (None, None)
     };
 
+    // Re-read after every model operation, before persistence and delivery.
+    // Applies to every event, not just touch, and remembers a new user input
+    // even if its Chat run already finished while composition was in flight.
+    let Some(decision) = current_delivery(db, &intent, input_at, false).await else {
+        return Ok(());
+    };
     // Merope toasts only what it owns. Task / brew / sync already have a
     // producer; sending ours as well would be two notices for one event.
     let merope_notifies = speech_is_shown(&intent.topic, decision.notify);
@@ -139,6 +167,9 @@ async fn redeem_speak_intent(
     .await?;
     let _ = touch_proactive(db, intent.user_id).await;
 
+    let Some(decision) = current_delivery(db, &intent, input_at, false).await else {
+        return Ok(());
+    };
     if decision.live && shown {
         emit_live_speech(
             intent.user_id,
@@ -149,12 +180,36 @@ async fn redeem_speak_intent(
             motion_mood.as_ref(),
             source_intent_id,
         );
+        if let Some(context) = pending_motion.take() {
+            let user_id = intent.user_id;
+            let id = intent.id.clone();
+            let motion_db = db.clone();
+            let motion_intent = intent.clone();
+            tokio::spawn(async move {
+                let Some(performance) = refine_motion(context).await else {
+                    return;
+                };
+                if !current_delivery(&motion_db, &motion_intent, input_at, true)
+                    .await
+                    .is_some_and(|decision| decision.live)
+                {
+                    return;
+                }
+                // The client additionally requires this exact line to still be playing.
+                if let (Some(manager), Ok(value)) = (
+                    get_notification_manager(),
+                    serde_json::to_value(performance),
+                ) {
+                    manager.emit_live_speech_motion(user_id, id, value);
+                }
+            });
+        }
     }
-    if merope_notifies {
+    if speech_is_shown(&intent.topic, decision.notify) {
         emit_speech_notification(
             db,
-            intent.user_id,
-            &intent.topic,
+            &intent,
+            input_at,
             &spoken,
             performance.as_ref(),
             motion_mood.as_ref(),
@@ -163,6 +218,47 @@ async fn redeem_speak_intent(
         .await;
     }
     Ok(())
+}
+
+async fn current_delivery(
+    db: &DatabaseConnection,
+    intent: &SpeakIntent,
+    input_at: Option<DateTime<FixedOffset>>,
+    refinement: bool,
+) -> Option<IngestDecision> {
+    let state = get_or_create_state(db, intent.user_id).await.ok()?;
+    let sight = current_sight(intent.user_id, &state).await;
+    let decision = delivery_decision(
+        intent,
+        input_at,
+        state.last_user_message_at,
+        &sight,
+        is_enabled().await,
+        Utc::now(),
+    )?;
+    let live = last_live_presence(intent.user_id);
+    if (intent.topic == "agent.merope.touch"
+        && (!live.page_visible || !live.face_visible || (!refinement && live.speaking)))
+        || (refinement && !live.face_visible)
+    {
+        return None;
+    }
+    Some(decision)
+}
+
+fn delivery_decision(
+    intent: &SpeakIntent,
+    input_at: Option<DateTime<FixedOffset>>,
+    current_input_at: Option<DateTime<FixedOffset>>,
+    sight: &IngestSight,
+    enabled: bool,
+    now: DateTime<Utc>,
+) -> Option<IngestDecision> {
+    if !enabled || intent.expires_at <= now || input_at != current_input_at {
+        return None;
+    }
+    let decision = decide_ingest(&intent.topic, sight);
+    decision.allow_model.then_some(decision)
 }
 
 /// Whether the composed line reaches the addressee at all. Valuable events whose
@@ -286,13 +382,15 @@ fn emit_live_speech(
 
 async fn emit_speech_notification(
     db: &DatabaseConnection,
-    user_id: i32,
-    event_key: &str,
+    intent: &SpeakIntent,
+    input_at: Option<DateTime<FixedOffset>>,
     spoken: &str,
     performance: Option<&PerformanceDirective>,
     mood: Option<&MoodTransition>,
     source_intent_id: Option<&str>,
 ) {
+    let user_id = intent.user_id;
+    let event_key = &intent.topic;
     let Some(manager) = get_notification_manager() else {
         return;
     };
@@ -338,6 +436,14 @@ async fn emit_speech_notification(
         spoken,
     )
     .with_metadata(metadata);
+    // Name/session lookup above may also yield. Decide the notification channel
+    // from the current panel/DND state, not the original routing decision.
+    if !current_delivery(db, intent, input_at, false)
+        .await
+        .is_some_and(|decision| speech_is_shown(event_key, decision.notify))
+    {
+        return;
+    }
     manager.notify(notification).await;
 }
 
@@ -352,6 +458,132 @@ async fn display_name(db: &DatabaseConnection) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn every_event_rechecks_input_expiry_switch_dnd_and_delivery_surface() {
+        let now = Utc::now();
+        let input = Some(now.fixed_offset());
+        let here = IngestSight {
+            on_page: true,
+            panel_open: true,
+            ..Default::default()
+        };
+        for topic in [
+            "agent.merope.touch",
+            "agent.merope.greeting",
+            "agent.merope.platform_activity",
+            "agent.task_completed",
+        ] {
+            let intent = crate::services::agent::consciousness::new_speak_intent(
+                1,
+                "event".into(),
+                topic.into(),
+                "hello".into(),
+                Default::default(),
+                None,
+            );
+            let decide = |current, sight: &IngestSight, enabled, at| {
+                delivery_decision(&intent, input, current, sight, enabled, at)
+            };
+            let allowed = decide(input, &here, true, now).unwrap();
+            assert!(allowed.live && !allowed.notify);
+            assert!(
+                decide(input, &here, false, now).is_none(),
+                "{topic}: disabled"
+            );
+            assert!(
+                decide(input, &here, true, intent.expires_at).is_none(),
+                "{topic}: expired"
+            );
+            assert!(
+                decide(
+                    Some((now + chrono::Duration::milliseconds(1)).fixed_offset()),
+                    &here,
+                    true,
+                    now
+                )
+                .is_none(),
+                "{topic}: new input even if already idle"
+            );
+            assert!(
+                decide(
+                    input,
+                    &IngestSight {
+                        do_not_disturb: true,
+                        ..here.clone()
+                    },
+                    true,
+                    now
+                )
+                .is_none(),
+                "{topic}: DND"
+            );
+            let away = decide(input, &IngestSight::default(), true, now);
+            if topic == "agent.merope.touch" {
+                assert!(away.is_none());
+            } else {
+                let away = away.unwrap();
+                assert!(!away.live && away.notify, "{topic}: recompute routing");
+            }
+            if topic != "agent.task_completed" {
+                assert!(decide(
+                    input,
+                    &IngestSight {
+                        executing: true,
+                        ..here.clone()
+                    },
+                    true,
+                    now
+                )
+                .is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn background_composition_cannot_reset_foreground_activity_and_outputs_are_guarded() {
+        let src = include_str!("redeem.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .unwrap();
+        assert!(!src.contains("set_activity("));
+        let before_write = src.split("insert_proactive(\n").next().unwrap();
+        assert!(
+            before_write.rfind("current_delivery(").unwrap()
+                > before_write.rfind("direct_motion(context).await").unwrap()
+        );
+        let notify = src
+            .split("async fn emit_speech_notification(")
+            .nth(1)
+            .unwrap();
+        assert!(
+            notify.find("current_delivery(").unwrap()
+                > notify.find("latest_open_session(").unwrap()
+        );
+        assert!(
+            notify.find("current_delivery(").unwrap() < notify.find("manager.notify(").unwrap()
+        );
+    }
+
+    #[test]
+    fn live_speech_is_published_before_background_refinement() {
+        let source = include_str!("redeem.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .unwrap();
+        let live = source.split("if decision.live && shown").nth(1).unwrap();
+        assert!(live.find("emit_live_speech(").unwrap() < live.find("tokio::spawn").unwrap());
+        assert!(live.contains("refine_motion(context).await"));
+        assert!(live.contains("emit_live_speech_motion(user_id, id, value)"));
+        let selection = source
+            .split("let performance = if decision.live {")
+            .nth(1)
+            .unwrap()
+            .split("pending_motion =")
+            .next()
+            .unwrap();
+        assert!(!selection.contains(".await"));
+        assert!(selection.contains("MotionPhase::Delivery"));
+    }
     use super::*;
 
     #[test]

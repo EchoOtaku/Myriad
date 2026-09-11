@@ -1,11 +1,3 @@
-/**
- * OAuth 配置区块
- *
- * 添加入口与 AI 服务商同款：标题栏 CheckboxCard + 预设浮窗。
- * 卡片未填凭证时展开并显示 SetupFlow；配好后收起。
- *
- * 详见 docs/development/OAUTH.md + oauthPresets.ts
- */
 
 import type { OAuthProviderEntry } from '../../utils/oauthSettings'
 

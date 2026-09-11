@@ -23,7 +23,6 @@ test('activityKey treats unknown and stale labels as idle', () => {
   assert.equal(activityKey(undefined), 'idle')
 })
 
-// Keep the duplicated thresholds in place, but fail when either side drifts.
 test('moodBand thresholds stay aligned with backend mood_band source', () => {
   const backend = readFileSync(
     new URL('../../../../backend/src/services/agent/merope/state.rs', import.meta.url),
@@ -52,8 +51,6 @@ test('moodBand thresholds stay aligned with backend mood_band source', () => {
     value: Number(value),
   }))
 
-  // Guard against source changes making the extraction silently match nothing
-  // or omit one of the repeated valence/arousal comparisons.
   assert.equal(backendThresholds.length, 5, 'expected all backend band comparisons')
   assert.equal(frontendThresholds.length, 5, 'expected all frontend band comparisons')
   assert.deepEqual(frontendThresholds, backendThresholds)

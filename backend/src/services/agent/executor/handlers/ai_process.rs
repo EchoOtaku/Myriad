@@ -591,8 +591,7 @@ async fn execute_speech_tts(params: &HashMap<String, Value>) -> Result<Value, St
         })
         .map(|v| v as i32);
 
-    // Agent schema uses speed as relative multiplier (default 1.0).
-    // Product / Tencent API expects speed in roughly [-2, 6]; map 1.0 → 0.0.
+    // Agent schema 语速是倍率（缺省 1.0）；[0.5, 2.0] 映射为 (s-1)*2（1.0→0.0），其余原样传给 TTS。
     let speed = params.get("speed").and_then(|v| v.as_f64()).map(|s| {
         let mapped = if (0.5..=2.0).contains(&s) {
             (s - 1.0) * 2.0

@@ -7,8 +7,7 @@ use super::super::response_agent;
 use super::super::types::*;
 
 impl Agent {
-    /// 提取任务最终结果
-    /// 改进：对于多步骤任务，合并所有相关结果
+    /// 提取任务最终结果：合并全部成功的 `step_results`
     pub(crate) fn extract_final_result(&self, task_state: &TaskState) -> serde_json::Value {
         // 找到所有成功的步骤结果
         let mut results: Vec<_> = task_state

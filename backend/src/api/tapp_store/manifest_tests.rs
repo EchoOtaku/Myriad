@@ -29,8 +29,7 @@ fn permission_errors_return_actionable_service_unavailable() {
     assert!(message.contains("ownership/permissions"));
 }
 
-/// 改键之后旧安装不能再命中任何入口候选——回退已随改键一起删除，否则旧包会
-/// 静默跑起根目录那份 monolith 而不是给出可读失败。
+/// 无 `core` / `page` / `widgets` 时 `installed_core_entry` 与 `installed_layer_entries` 为空。
 #[test]
 fn pre_layer_install_resolves_no_entry_candidate() {
     use crate::services::tapp_package_read::{installed_core_entry, installed_layer_entries};
@@ -46,8 +45,8 @@ fn pre_layer_install_resolves_no_entry_candidate() {
 }
 
 /// 包结构不符合当前契约不是宿主故障，也不能用 404 表达：前端把资源接口的 404
-/// 当作回退到旧 `/code` 端点的信号，用 404 会让不受支持的包换条路继续进沙箱。
-/// `/code` 端点本身已随契约切换删除。
+/// 当作「再试别的资源路径」的信号，用 404 会让不受支持的包换条路继续进沙箱。
+/// `unsupported_package_structure` 是 CONFLICT，不是 404。
 #[test]
 fn unsupported_package_structure_is_conflict_not_404_or_5xx() {
     let error: myriad_error::AppError =
@@ -623,6 +622,7 @@ fn sandbox_storage_rejects_host_managed_key_prefixes() {
     for key in [
         "_settings.theme",
         "_shared.posts",
+        "_private.token",
         "_component:theme:midnight",
         "_shortcut:open",
         "_report:weekly",

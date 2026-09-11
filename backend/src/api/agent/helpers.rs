@@ -162,8 +162,7 @@ mod agent_entry_gate_tests {
 
     /// 能把一轮 Work 提交进 Agent 的 HTTP 入口，必须走带可见性判定的解析。
     ///
-    /// `interrupt_session` 曾经只解析 user_id，而它提交的请求 `context: None`
-    /// 落进 Agent 就是 Work——模块可见性关成 admin 也拦不住它。
+    /// `interrupt_session` 提交 `context: None` 即 Work；只解析 user_id 拦不住。
     #[test]
     fn every_work_entry_checks_module_visibility() {
         let cases: [(&str, &str, &str); 6] = [

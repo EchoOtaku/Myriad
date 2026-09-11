@@ -1,7 +1,3 @@
-/**
- * Run from frontend/:
- *   pnpm test:unit -- src/components/config/analytics/format.test.ts
- */
 
 import assert from 'node:assert/strict'
 import { before, describe, it } from 'node:test'

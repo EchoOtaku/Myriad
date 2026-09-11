@@ -1,12 +1,3 @@
-/**
- * 首页人设小组件共用一个现场形象。谁先挂上谁播 WebGL，其余只出说明；
- * 持有者卸掉后租约交给队列里下一个。面板形象不走这条，它有自己的优先级。
- *
- * 租约只在 layout effect 里 claim/release：render 期间改全局队列，
- * 并发模式下被丢弃的那次 render 会把幽灵 id 留在持有者上。
- * useSyncExternalStore 在 layout 里订阅，claim 之后会在绘制前重渲成播放器，
- * 所以首屏不会先闪那句「一次只播放一个」。
- */
 
 import { useLayoutEffect, useSyncExternalStore } from 'react'
 
@@ -40,7 +31,6 @@ export function subscribeMeropeWidgetFaceSlot(
   }
 }
 
-/** 先占到的那个播。同一 id 再 claim 不会进队两次。 */
 export function claimMeropeWidgetFaceSlot(id: string): () => void {
   if (enqueue(id)) emit()
   let released = false

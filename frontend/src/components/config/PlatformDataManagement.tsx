@@ -5,6 +5,7 @@ import { FaSyncAlt, FaTrash } from '@lib/icons'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { API_URL } from '../../config'
 import { useI18n } from '../../contexts/I18nContext'
+import { hostLocaleHeaders } from '../../i18n/hostLocaleHeaders'
 import { useBackgroundTasks } from '../../hooks/useBackgroundTasks'
 import { fetchJson } from '../../utils/apiHelper'
 import { getCSRFToken } from '../../utils/csrf'
@@ -120,8 +121,7 @@ export default function PlatformDataManagement({
       setCache(cacheResult.value)
     }
 
-    // 单项失败时保留另一项的有效状态并在对应行显示“暂时不可用”；
-    // 只有整块都无法读取时才弹出全局失败提示。
+    // one failure: keep the other; global error only if both fail
     if (rawFailed && cacheFailed) {
       showMessage(t.dataManagement.loadStatusFailed, 'error')
     }
@@ -174,6 +174,7 @@ export default function PlatformDataManagement({
         headers: {
           'Content-Type': 'application/json',
           'X-CSRF-Token': csrfToken,
+          ...hostLocaleHeaders(),
         },
         body: JSON.stringify({ platform: platformId }),
       })
@@ -193,7 +194,6 @@ export default function PlatformDataManagement({
         5000,
       )
       await loadStatus()
-      // 原始数据已更新，智能过滤可能仍是旧的；仍刷新预览以同步时间戳/状态
       void previewRef.current?.reload()
     } catch (error) {
       showMessage(

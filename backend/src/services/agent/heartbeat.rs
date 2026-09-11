@@ -1,7 +1,7 @@
 //! Heartbeat 主动式 Agent
 //!
 //! 基于 cron 调度的定时任务系统，让 Agent 可以主动执行任务。
-//! 任务定义在 `data/agent/HEARTBEAT.md` 中，支持热加载。
+//! 任务定义在 Agent 数据目录的 `HEARTBEAT.md`（DataPaths），支持热加载。
 //!
 //! Cron 匹配按**服务器本地时间**，支持标准 5 字段语法：
 //! `*`、数字、列表 `a,b,c`、区间 `a-b`、步进 `*/n` / `a-b/n` / `a/n`。
@@ -397,7 +397,7 @@ impl HeartbeatManager {
         Ok(())
     }
 
-    /// 清理过期认领记录，防止表无限增长（默认保留 48 小时）
+    /// 删除 `claimed_at` 早于 `keep_hours` 的认领记录（`keep_hours` 至少 1）。
     pub async fn cleanup_old_claims(db: &DatabaseConnection, keep_hours: i64) -> u64 {
         let hours = keep_hours.max(1);
         let sql = format!(
@@ -443,7 +443,7 @@ impl HeartbeatManager {
     /// `last_run` 只在 `record_result`（任务完成/失败）时更新，避免崩溃后 UI
     /// 显示“已跑”而实际未完成。多副本去重由 `try_claim_execution` 负责。
     pub async fn check_due_tasks(&self) -> Vec<HeartbeatTask> {
-        // 每分钟一次的 stat 调用，代价可忽略；让手动编辑的配置在下个调度周期生效
+        // 调度前按 mtime 热加载 HEARTBEAT.md
         self.maybe_reload_if_changed().await;
         let now_local = Local::now();
         let now_utc = Utc::now();
@@ -457,7 +457,7 @@ impl HeartbeatManager {
             if !cron_matches(&task.schedule, &now_local) {
                 continue;
             }
-            // 同一日历分钟内本进程不重复调度（含已在跑 / 已完成）
+            // 同一 UTC unix 分钟内本进程不重复调度（含已在跑 / 已完成）
             let already_reserved = task
                 .last_reserved
                 .map(|t| t.timestamp() / 60 == now_utc.timestamp() / 60)
@@ -640,8 +640,6 @@ fn is_valid_cron_expr(expr: &str) -> bool {
     if parts.len() != 5 {
         return false;
     }
-    // 用一个固定时刻试匹配：解析失败的字段会返回 false 对任意时刻，
-    // 但合法 `*` 恒 true。更稳妥：逐字段检查 item 解析。
     parts.iter().all(|field| {
         field.split(',').all(|item| {
             let item = item.trim();
@@ -794,7 +792,7 @@ mod tests {
 
     #[test]
     fn test_cron_hour_step() {
-        // 默认 HEARTBEAT.md 中的 "0 */6 * * *" 必须可用
+        // 步进小时 cron（0 */6 * * *）必须匹配
         assert!(cron_matches("0 */6 * * *", &local(2026, 7, 11, 0, 0)));
         assert!(cron_matches("0 */6 * * *", &local(2026, 7, 11, 6, 0)));
         assert!(cron_matches("0 */6 * * *", &local(2026, 7, 11, 18, 0)));

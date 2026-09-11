@@ -183,7 +183,7 @@ impl AiAnalyzer {
     ) -> Self {
         let proxy_config = ProxyConfig::from_dynamic_config().await;
 
-        // MYR-019: if proxy is required and build fails, do not silently direct-connect.
+        // if proxy is required and build fails, do not silently direct-connect.
         let client = match transport::pooled_client(&proxy_config, request_timeout) {
             Ok(client) => client,
             Err(e) if crate::services::http_client::proxy_is_required(&proxy_config) => {
@@ -502,9 +502,8 @@ impl AiAnalyzer {
     ///
     /// `schema` is advisory: a schema that cannot be translated (Gemini) is
     /// dropped while JSON enforcement is kept. Gateways that reject the
-    /// parameters outright fall back to a plain prompt-only call, so an older or
-    /// non-conforming OpenAI-compatible endpoint degrades to previous behaviour
-    /// rather than failing the request.
+    /// parameters outright fall back to a plain prompt-only call, so a
+    /// non-conforming OpenAI-compatible endpoint does not fail the request.
     ///
     /// The returned string is still parsed by the caller — JSON validity is
     /// enforced, matching the caller's own type is not.
@@ -623,9 +622,6 @@ impl AiAnalyzer {
     }
 
     /// Structured JSON, but reasoning deltas are pushed live.
-    ///
-    /// Planner used to wait for the whole `analyze_json` body, then dump one
-    /// `reasoning` field — that is why the bubble saw a single package.
     /// OpenAI-compatible providers that reject `stream` + `response_format`
     /// fall back to the blocking call.
     pub async fn analyze_json_streaming<F, Fut>(
@@ -876,10 +872,6 @@ impl AiAnalyzer {
         }
     }
 
-    // TODO: Add more analysis methods
-    // pub async fn generate_summary(&self, profiles: Vec<serde_json::Value>) -> Result<String>
-    // pub async fn extract_skills(&self, profile_data: &serde_json::Value) -> Result<Vec<String>>
-
     /// 流式分析（逐 token 返回可见回复）
     ///
     /// 只把 `content` 交给回调。思考链走 [`Self::analyze_stream_parts`]。
@@ -1080,7 +1072,7 @@ mod tests {
         let inner = source
             .split("async fn analyze_json_inner(")
             .nth(1)
-            .and_then(|rest| rest.split("\n    // TODO").next())
+            .and_then(|rest| rest.split("\n    pub async fn analyze_stream").next())
             .expect("analyze_json_inner body");
         // 只在带预算的那一档附上，跟着一起丢。
         assert!(inner.contains("if budget.is_some()"));

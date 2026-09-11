@@ -204,7 +204,7 @@ pub fn update_response_list_item(tapp: tapps::Model, is_site_owner_install: bool
 /// Project a DB install row into a role-filtered detail DTO.
 ///
 /// `granted_permissions` is the intersection of approved install permissions
-/// with the current role's capability policy (not the legacy DB snapshot field).
+/// with the current role's capability policy (not the `tapps.granted_permissions` column).
 pub fn tapp_detail_from_model(
     tapp: tapps::Model,
     role: UserRole,

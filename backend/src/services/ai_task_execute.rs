@@ -918,8 +918,7 @@ pub async fn execute_task(execution: AiTaskExecution) {
 
     match outcome {
         Ok((result, input_tokens, output_tokens)) => {
-            // Image tasks previously settled 0 tokens. Keep that quota contract;
-            // the ledger row below still carries the size-based estimate.
+            // Image / Search 配额结算记 0 token；ledger 行仍带按尺寸的估算。
             let settle_tokens = if matches!(
                 request.operation,
                 TappAiOperation::Image | TappAiOperation::Search

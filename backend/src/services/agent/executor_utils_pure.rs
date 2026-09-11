@@ -40,9 +40,7 @@ pub fn category_timeout_fallback_secs(
 /// 显式值优先；否则按能力声明的预估时长取 3 倍缓冲；两者都没有就用类别兜底。
 /// 最后给 AI 能力抬一个保底。
 ///
-/// 抽出来是因为 Skill 内部 DAG 曾经绕开它，给每个子步骤硬写 60 秒——于是
-/// `ai.image`（声明 300 秒）只拿到 AI 保底的 300 秒，`model3d.generate`
-/// （声明 180 秒）只拿到 60 秒，后者不可能跑完。
+/// Skill DAG 子步骤也走 `step_timeout_secs`，禁止 `timeout_ms: Some(60000)`。
 pub fn step_timeout_secs(
     explicit_ms: Option<u64>,
     estimated_duration_ms: Option<u64>,
@@ -266,8 +264,7 @@ mod step_timeout_tests {
         assert_eq!(step_timeout_secs(None, None, 30, false), 30);
     }
 
-    /// 声明需要很久的能力必须真的拿到那么久。这两个曾经被 Skill 那条路
-    /// 硬写的 60 秒压死。
+    /// 声明需要很久的能力必须真的拿到那么久（3× 声明时长）。
     #[test]
     fn long_capabilities_keep_their_declared_budget() {
         assert_eq!(step_timeout_secs(None, Some(300_000), 300, true), 900);
@@ -357,7 +354,7 @@ mod step_timeout_tests {
         }
     }
 
-    /// Skill 那条路曾经硬写 `Some(60000)` 盖掉全部推断。别再写回去。
+    /// DAG 子步骤走 `step_timeout_secs`，禁止 `timeout_ms: Some(60000)`。
     #[test]
     fn the_dag_path_derives_its_timeout_instead_of_hardcoding_one() {
         let dag = include_str!("executor/execute_step.rs");

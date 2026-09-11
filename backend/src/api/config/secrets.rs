@@ -13,7 +13,7 @@ pub(crate) fn is_masked_secret_value(value: &str) -> bool {
     if v.is_empty() {
         return false;
     }
-    // save historically accepted both bullet and asterisk masks
+    // Bullet and asterisk masks both count as masked.
     v.starts_with("••")
         || v.starts_with("**")
         || v == "********"

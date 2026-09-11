@@ -29,9 +29,7 @@
   padding-bottom: var(--home-standard-pad-bottom);
 }
 
-/* 标准布局状态条：编辑槽位 0fr↔1fr，条子 fit-content 跟着变长。
-   进入：先拉宽度，字晚 70ms 淡入；退出：字先隐，宽度再收。
-   右侧槽晚 40ms，从「编辑」往两边打开。 */
+/* Edit slot 0fr↔1fr; bar width is fit-content. Width first on enter; text first on exit. */
 .home-status-bar {
   --home-status-bar-ease: cubic-bezier(0.32, 0.72, 0, 1);
   --home-status-bar-ease-exit: cubic-bezier(0.4, 0, 1, 1);
@@ -58,7 +56,7 @@
   white-space: nowrap;
 }
 
-/* 动作区不用 gap：收起的 0fr 槽仍是 flex 子项，gap 会在「编辑」两侧多出空档。 */
+/* No gap: a collapsed 0fr slot is still a flex item and would pad both sides of Edit. */
 .home-status-bar__actions {
   display: flex;
   align-items: center;

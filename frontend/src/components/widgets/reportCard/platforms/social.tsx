@@ -1,8 +1,4 @@
 import { FaXTwitter, SiDiscord } from '@lib/icons'
-/**
- * Social identity report cards: X (following graph) + Discord (guild footprint).
- * Shared: overview/detail flip, avatar walls, highlight carousel, compact stats.
- */
 import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
@@ -18,8 +14,6 @@ import {
 } from '../animations'
 import { formatCompactNumber } from '../format'
 
-// X 兴趣圈层构成条配色 — 固定顺序分配（圈层1→蓝 … 圈层4→粉），
-// 亮/暗两套均通过 CVD 相邻区分与 3:1 对比度验证，勿随意增删或换序
 const X_CIRCLE_COLOR_CLASSES = [
   'bg-[#2563eb] dark:bg-[#3b82f6]',
   'bg-[#d97706]',
@@ -30,13 +24,10 @@ const X_CIRCLE_COLOR_CLASSES = [
 export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
   const { t } = useI18n()
   const stats = data?.stats || {}
-  // 说明：推文轮播已移除——X 卡聚焦关注图谱，top_posts 仅保留在数据层
   const followingSample = useMemo(
     () => (Array.isArray(data?.following_sample) ? data.following_sample : []),
     [data?.following_sample],
   )
-  // 关注亮点：AI 点名的账号，从 following_sample 补齐头像/简介/粉丝数；
-  // AI 未产出亮点时（旧报告），直接用关注样本前几位兜底
   const highlights = useMemo(() => {
     const list = Array.isArray(data?.following_highlights)
       ? data.following_highlights
@@ -61,8 +52,6 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
         }
       })
     if (enriched.length > 0) return enriched
-    // 兜底（旧报告无 AI 亮点时）：样本按粉丝数降序，直接取头部会全是
-    // NHK/连锁品牌这类无个性信号的大众官号——反向取有简介的小众账号
     return followingSample
       .filter((f: any) => String(f.description || '').trim())
       .sort(
@@ -79,7 +68,6 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
       }))
   }, [data?.following_highlights, followingSample])
 
-  // 兴趣圈层构成条：AI 从关注列表聚类，最多 4 段
   const circles = useMemo(() => {
     const list = Array.isArray(data?.interest_circles)
       ? data.interest_circles
@@ -93,7 +81,6 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
     )
     if (total === 0) return []
     return cleaned.map((c: any, i: number) => {
-      // AI 偶尔无视 ≤6 字约束，超长圈层名截断，保证图例不超两行
       const rawName = String(c.name)
       return {
         name: rawName.length > 7 ? `${rawName.slice(0, 6)}…` : rawName,
@@ -104,8 +91,6 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
     })
   }, [data?.interest_circles])
 
-  // 概览态右侧头像墙素材（最多 7 个）：
-  // 优先 AI 点名的品味账号（亮点 + 圈层代表），大众官号（粉丝数最大）不再天然霸榜
   const wallAvatars = useMemo(() => {
     const withAvatar = followingSample.filter((f: any) => f.avatar)
     const rank = new Map<string, number>()
@@ -130,9 +115,7 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
   }, [followingSample, data?.following_highlights, data?.interest_circles])
 
   const [slideIndex, setSlideIndex] = useState(0)
-  // 头像主色缓存（username → hex），用于详情面的氛围光
   const [tints, setTints] = useState<Record<string, string>>({})
-  // 推文列表：flip gate 使用 library_items/top_posts 时详情面可轮播文本
   const tweetItems = useMemo(() => {
     const fromLib = Array.isArray(data?.library_items) ? data.library_items : []
     const fromTop = Array.isArray(data?.top_posts) ? data.top_posts : []
@@ -148,7 +131,6 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
         retweet_count: p.retweet_count,
       }))
   }, [data?.library_items, data?.top_posts])
-  // Prefer following highlights; fall back to tweets when flip uses posts only
   const flipMode: 'following' | 'tweets' =
     highlights.length > 0 ? 'following' : tweetItems.length > 0 ? 'tweets' : 'following'
   const flipItems = flipMode === 'tweets' ? tweetItems : highlights
@@ -162,7 +144,6 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
     }
   }, [showOverview, flipItems.length])
 
-  // 概览态药丸保持纯图标（与其他卡片一致）；详情态由药丸承载账号名/@username 或推文摘要
   useEffect(() => {
     if (!showOverview && flipItems[slideIndex % flipItems.length]) {
       const item = flipItems[slideIndex % flipItems.length] as any
@@ -182,7 +163,6 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
 
   if (showOverview) {
     const profile = data?.profile || {}
-    // 数字降级为一行小统计（重点是评价与画像）；数值与标签分层渲染
     const statsParts = (
       [
         [stats.following, t.reportCardWidget.xFollowing],
@@ -193,7 +173,6 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
     return (
       <div className="relative h-full w-full overflow-hidden">
         <div className="absolute inset-0 bg-linear-to-br from-gray-200/50 to-transparent dark:from-white/[0.06] dark:to-transparent" />
-        {/* 右侧背景：关注头像墙，向左渐隐 */}
         {wallAvatars.length > 0 && (
           <div
             className="absolute inset-y-0 right-0 w-[55%] opacity-80 dark:opacity-60"
@@ -230,9 +209,7 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
             </div>
           </div>
         )}
-        {/* 前景 */}
         <div className="relative z-10 h-full flex flex-col p-3 pb-9">
-          {/* header：账号本人头像 + 用户名 */}
           {(profile.avatar || profile.name || profile.username) && (
             <motion.div
               className="flex items-center gap-2 min-w-0 max-w-[70%]"
@@ -261,7 +238,6 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
               </div>
             </motion.div>
           )}
-          {/* 主角：AI 评价，左侧垂直居中 */}
           {(data?.vibe || data?.engagement_level) && (
             <div className="flex-1 min-h-0 flex items-center pt-2 pb-4">
               <motion.div
@@ -276,7 +252,6 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
               </motion.div>
             </div>
           )}
-          {/* 右上角：一行小统计（数值黑体大字，标签小字灰阶） */}
           {statsParts.length > 0 && (
             <motion.div
               className="absolute top-3 right-3 flex items-baseline gap-2"
@@ -296,7 +271,6 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
               ))}
             </motion.div>
           )}
-          {/* 右下角：用户画像（圈层图例 + 构成条）；无圈层数据时退回话题词 */}
           {circles.length > 0 ? (
             <div className="absolute bottom-3 right-3 w-[48%] flex flex-col items-end gap-1">
               <div className="flex flex-wrap justify-end gap-x-2.5 gap-y-0.5 max-h-[26px] overflow-hidden">
@@ -364,7 +338,6 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
     )
   }
 
-  // Tweet carousel when flip gate uses library_items/top_posts (no following graph)
   if ((item as any).kind === 'tweet') {
     const tweet = item as {
       title: string
@@ -413,8 +386,6 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
     )
   }
 
-  // 关注亮点轮播：账号名/@username 由左下角 logo 药丸展示；
-  // 标签（AI 评语）是主角，头像缩小为径向渐隐的背景图，主色氛围光衔接卡片背景
   const tint = tints[String((item as any).username || '')]
   return (
     <AnimatePresence mode="wait">
@@ -426,7 +397,6 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
         transition={CONTENT_FADE_TRANSITION}
         className="relative h-full w-full overflow-hidden"
       >
-        {/* 主色氛围层：取色算法从头像提主色，向卡片背景弥散 */}
         {tint && (
           <div
             className="absolute inset-0"
@@ -435,7 +405,6 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
             }}
           />
         )}
-        {/* 头像：贴住右缘完整显示，向卡片内部径向渐隐（模糊半圆） */}
         {(item as any).avatar && (
           <motion.div
             className="absolute inset-y-0 right-0 w-[58%]"
@@ -474,13 +443,11 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
                     }))
                   }
                 } catch {
-                  // 取色失败忽略，氛围层缺省即可
                 }
               }}
             />
           </motion.div>
         )}
-        {/* 前景：标签是主角，粉丝量降为统计行 */}
         <div className="relative z-10 h-full p-3 pb-12 flex flex-col">
           {(item as any).tag && (
             <motion.div
@@ -505,7 +472,6 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
               {t.reportCardWidget.xFollowers}
             </motion.div>
           )}
-          {/* 简介最多两行，收在 overflow-hidden 容器里，不侵入底部药丸区 */}
           {(item as any).description && (
             <div className="mt-1.5 flex-1 min-h-0 overflow-hidden max-w-[58%]">
               <p className="text-[9px] leading-relaxed text-gray-600 dark:text-gray-400 line-clamp-2">
@@ -514,7 +480,6 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
             </div>
           )}
         </div>
-        {/* 轮播指示点 */}
         {flipItems.length > 1 && (
           <div className="absolute bottom-3 right-3 z-10 flex gap-1">
             {flipItems.map((_: any, i: number) => (
@@ -534,12 +499,8 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
   )
 })
 
-// Discord 社区身份卡
-// 概览面：账号画像 + 服务器图标墙 + 社区触达 / 角色定位
-// 详情面：代表服务器轮播（规模、角色、认证特性）
 const DISCORD_BLURPLE = '#5865F2'
 
-// 服务器无图标时的字母兜底底色（按名称 hash 取一组柔和 blurple 邻近色）
 const DISCORD_TILE_COLORS = [
   '#5865F2',
   '#7289DA',
@@ -555,7 +516,6 @@ function discordTileColor(name: string): string {
   return DISCORD_TILE_COLORS[Math.abs(hash) % DISCORD_TILE_COLORS.length]
 }
 
-// 从服务器权限 / 特性推出一个角色徽章
 function discordGuildBadge(
   g: any,
   t: any,
@@ -598,7 +558,6 @@ function DiscordGuildIcon({
       />
     )
   }
-  // 兜底：取名称首字（含 emoji）铺底色
   const letter = Array.from(name.trim())[0] || '#'
   return (
     <div
@@ -617,7 +576,6 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
   const { t } = useI18n()
   const profile = data?.profile || {}
   const stats = data?.stats || {}
-  // Single guild list: prefer library_items; fall back to guilds_preview for older rows
   const guilds = useMemo(() => {
     if (Array.isArray(data?.library_items) && data.library_items.length > 0) {
       return data.library_items
@@ -641,7 +599,6 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
     () => (Array.isArray(profile.badges) ? profile.badges.slice(0, 3) : []),
     [profile.badges],
   )
-  // 社区标签：优先 AI 的 community_tags，缺席时退回绑定平台；概览仅 1 行最多 3 个
   const tags: string[] = useMemo(() => {
     const ct = Array.isArray(data?.community_tags) ? data.community_tags : []
     if (ct.length > 0) return ct.slice(0, 3)
@@ -649,11 +606,8 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
     return lp.slice(0, 3)
   }, [data?.community_tags, data?.linked_platforms])
 
-  // 图标墙素材（最多 7 个，后端已按 服主/管理/规模 排序）
   const iconWall = useMemo(() => guilds.slice(0, 7), [guilds])
-  // 详情轮播只取前 8 个代表服务器
   const flipItems = useMemo(() => guilds.slice(0, 8), [guilds])
-  // AI / 兜底锐评：按 id 或 name 映射到轮播项
   const guildTakeByKey = useMemo(() => {
     const map = new Map<string, string>()
     const raw = Array.isArray(data?.guild_takes) ? data.guild_takes : []
@@ -681,7 +635,6 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
     }
   }, [showOverview, flipItems.length])
 
-  // 头部第二行：@用户名与账号徽章共用一行，定时轮换（徽章太少不值得单占一行）
   const hasHandle = Boolean(profile.username || profile.nitro)
   const headerSlides = (hasHandle ? 1 : 0) + badges.length
   const [headerIdx, setHeaderIdx] = useState(0)
@@ -694,7 +647,6 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
     }
   }, [showOverview, headerSlides])
 
-  // 详情态：左下角药丸承载当前服务器名；概览态药丸保持纯图标
   useEffect(() => {
     if (!showOverview && flipItems[slideIndex % flipItems.length]) {
       const g = flipItems[slideIndex % flipItems.length]
@@ -704,12 +656,9 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
     }
   }, [showOverview, slideIndex, flipItems, onContentChange])
 
-  // No guilds for detail face → keep overview (stats/profile) instead of empty icon
   if (showOverview || flipItems.length === 0) {
     const displayName =
       profile.display_name || profile.username || 'Discord'
-    // 概览小统计：服务器数 + 绑定数（member_reach 常为 0，不展示）
-    // guild_count 回退：stats 为 0 时用 library 列表长度
     const guildCount =
       Number(stats.guilds) > 0
         ? Number(stats.guilds)
@@ -726,7 +675,6 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
     return (
       <div className="relative h-full w-full overflow-hidden">
         <div className="absolute inset-0 bg-linear-to-br from-[#5865F2]/10 to-transparent dark:from-[#5865F2]/[0.14] dark:to-transparent" />
-        {/* 右侧背景：服务器图标墙，向左渐隐 */}
         {iconWall.length > 0 && (
           <div
             className="absolute inset-y-0 right-0 w-[55%] opacity-80 dark:opacity-70"
@@ -761,9 +709,7 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
             </div>
           </div>
         )}
-        {/* 前景 */}
         <div className="relative z-10 h-full flex flex-col p-3 pb-9">
-          {/* header：头像相对「标题 + 固定第二行槽」整体垂直居中，轮播切换不跳动 */}
           <motion.div
             className="flex items-center gap-2 min-w-0 max-w-[72%]"
             initial={{ y: 8, opacity: 0 }}
@@ -786,7 +732,6 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
                 {Array.from(String(displayName).trim())[0] || '#'}
               </div>
             )}
-            {/* 稳定两行高度：标题 15px + 第二行槽 15px；无第二行时仅标题，仍与头像 items-center */}
             <div
               className={`min-w-0 flex flex-col justify-center ${
                 headerSlides > 0 ? 'min-h-8' : ''
@@ -835,7 +780,6 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
             </div>
           </motion.div>
 
-          {/* 主角：AI 社区人格 */}
           {(data?.vibe || data?.role_profile) && (
             <div className="flex-1 min-h-0 flex items-center pt-1.5 pb-4">
               <motion.div
@@ -851,7 +795,6 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
             </div>
           )}
 
-          {/* 右上角：一行小统计 */}
           {statsParts.length > 0 && (
             <motion.div
               className="absolute top-3 right-3 flex items-baseline gap-2"
@@ -872,7 +815,6 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
             </motion.div>
           )}
 
-          {/* 右下角：社区标签（单行截断，最多 3 个） */}
           {tags.length > 0 && (
             <div className="absolute bottom-3 right-3 max-w-[55%] flex flex-nowrap justify-end gap-1 overflow-hidden">
               {tags.map((tag) => (
@@ -890,10 +832,8 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
     )
   }
 
-  // 详情面：代表服务器轮播
   const item =
     flipItems.length > 0 ? flipItems[slideIndex % flipItems.length] : null
-  // No guilds → stay on overview path (handled above). Guard only.
   if (!item) {
     return (
       <div className="h-full w-full flex items-center justify-center text-gray-400 text-xl">
@@ -909,7 +849,6 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
       ? guildTakeByKey.get(`name:${guildName.toLowerCase()}`)
       : undefined) ||
     ''
-  // 大标题：锐评优先；无锐评时降级为 muted 服务器名，避免空白
   const detailHeadline = guildTake || guildName || '—'
 
   return (
@@ -922,7 +861,6 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
         transition={CONTENT_FADE_TRANSITION}
         className="relative h-full w-full overflow-hidden"
       >
-        {/* 服务器图标：右侧直接展示 */}
         <motion.div
           className="absolute inset-y-0 right-0 flex items-center pr-4"
           initial={{ opacity: 0, x: 14 }}
@@ -933,7 +871,6 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
             <DiscordGuildIcon icon={item.icon} name={guildName} size={96} />
           </div>
         </motion.div>
-        {/* 前景：角色徽章 + 锐评 + 规模；左下药丸仍为服务器名 */}
         <div className="relative z-10 h-full p-3 pb-12 flex flex-col justify-center">
           {badge && (
             <motion.span
@@ -989,7 +926,6 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
             </motion.div>
           )}
         </div>
-        {/* 轮播指示点 */}
         {flipItems.length > 1 && (
           <div className="absolute bottom-3 right-3 z-10 flex gap-1">
             {flipItems.map((_: any, i: number) => (

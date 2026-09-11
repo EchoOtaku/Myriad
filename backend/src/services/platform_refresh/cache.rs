@@ -65,8 +65,6 @@ pub fn load_platform_data_cache() -> Option<PlatformDataCache> {
                     "⏰ Split platform data cache expired (age: {}h)",
                     age.num_hours()
                 );
-                // 虽然过期，但如果没有其他数据源，也许可以考虑返回？
-                // 目前逻辑是过期就返回 None，触发重新获取
                 return None;
             }
         }

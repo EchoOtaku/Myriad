@@ -74,8 +74,6 @@ test('a thinking head tilt temporarily owns the coarse head/body channel', () =>
       ],
     }),
   )
-  // The resource declaration is precise (`body.head`), while the current
-  // compatibility channel still groups head and torso together.
   assert.deepEqual(channels.sort(), ['expression', 'gaze', 'headBody'])
 })
 

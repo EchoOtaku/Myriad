@@ -269,8 +269,7 @@ WHERE id = $2
 }
 
 /// Remove only this request's lease while preserving the last confirmed
-/// portrait contract, if any. A newer request can never be unlocked by an
-/// older request's error path.
+/// portrait contract, if any. Another request's error path cannot unlock this token.
 pub async fn release_portrait_generation<C>(db: &C, token: &str) -> Result<(), anyhow::Error>
 where
     C: ConnectionTrait,

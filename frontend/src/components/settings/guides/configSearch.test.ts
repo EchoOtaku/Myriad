@@ -1,7 +1,3 @@
-/**
- * Run from frontend/:
- *   pnpm test:unit -- src/components/settings/guides/configSearch.test.ts
- */
 
 import type { ConfigSearchableItem } from './configSearch.ts'
 import assert from 'node:assert/strict'
@@ -129,7 +125,6 @@ describe('rankConfigSearch', () => {
 
   it('AND query 代理 备案 matches neither alone item', () => {
     const r = rankConfigSearch(sample, '代理 备案')
-    // no single item has both
     assert.equal(r.length, 0)
   })
 })

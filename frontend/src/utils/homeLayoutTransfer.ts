@@ -1,11 +1,3 @@
-/**
- * Home layout file transfer: dedicated export envelope plus the stored
- * `dashboard_layout` shapes. Settings backups are rejected, not mined.
- *
- * v2 may carry sticker originals in `assets` (PNG/JPEG/WebP base64). Layout tiles
- * still store paths only; import re-writes those paths after re-store.
- */
-
 import type { WidgetConfig, WidgetSize } from '../components/widgetGridTypes'
 import type { HomeDashboardLayouts, HomeLayoutMode } from './homeLayout'
 import {

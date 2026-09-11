@@ -13,10 +13,6 @@ const MUSIC_TTL_MS = 2_000
 const VOICE_TTL_MS = 2_000
 const PRESENCE_TTL_MS = 4_000
 
-/**
- * Event-time capture. High-frequency pointer/audio frames stay local;
- * Lite only sees these bounded summaries.
- */
 export function capturePerceptionSnapshots(input: {
   route: string
   page: PageContent | null

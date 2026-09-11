@@ -39,6 +39,9 @@ export function isUselessErrorText(text: string): boolean {
   if (/^\{[\s\S]*\}$/.test(detail)) return true
   if (/failed to fetch|networkerror|load failed/i.test(detail)) return true
   if (/^unknown error$/i.test(detail)) return true
+  if (/^(unauthorized|forbidden|not found|bad request|conflict)$/i.test(detail)) {
+    return true
+  }
   if (/^request timeout$/i.test(detail)) return true
   if (/^internal (server )?error$/i.test(detail)) return true
   if (/^operation failed$/i.test(detail)) return true
@@ -178,6 +181,23 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   const code = readCode(reason)
   const hint = readHint(reason)
 
+  if (code === 'unauthorized' || code === 'UNAUTHORIZED') {
+    return joinParts(t.unauthorized, usefulExtra(hint, t.unauthorized))
+  }
+  if (code === 'forbidden' || code === 'FORBIDDEN') {
+    return joinParts(t.forbidden, usefulExtra(hint, t.forbidden))
+  }
+  if (code === 'not_found' || code === 'NOT_FOUND') {
+    return joinParts(t.notFound, usefulExtra(hint, t.notFound))
+  }
+  if (code === 'bad_request' || code === 'BAD_REQUEST') {
+    const label = httpStatusMessage(400)
+    return joinParts(label, usefulExtra(hint, label))
+  }
+  if (code === 'conflict' || code === 'CONFLICT') {
+    const label = httpStatusMessage(409)
+    return joinParts(label, usefulExtra(hint, label))
+  }
   if (code === 'TIMEOUT' || status === 408) {
     return joinParts(t.timeout, usefulExtra(hint, t.timeout))
   }

@@ -63,7 +63,7 @@ mod tests {
 
     #[test]
     fn archive_payload_shares_bytes_via_arc_without_full_clone() {
-        // MYR-025: package clone / extract should share one zip buffer.
+        // package clone / extract should share one zip buffer.
         let bytes = vec![1u8, 2, 3, 4, 5];
         let package = PreparedTappPackage::from_archive_parts(
             base_manifest(),

@@ -330,8 +330,8 @@ impl SkillEvolution {
                             failure_reason = failure_reason,
                             "[SkillEvolution] Triggering AI-powered improvement"
                         );
-                        // 临时标记为"改进中"（使用未来时间戳防止并发重复触发）
-                        // 成功后更新为实际时间，失败后回滚
+                        // 写入 `Utc::now()` 作改进中标记；冷却看 elapsed > `IMPROVE_COOLDOWN_SECS`
+                        // 成功后再写成实际完成时间，失败回滚
                         let improving_marker = Utc::now();
                         {
                             let mut stats = self.stats.lock().await;
@@ -407,7 +407,7 @@ impl SkillEvolution {
 
     /// AI 驱动的 Skill 抽象化创建
     ///
-    /// 与 `auto_create_skill` 不同：不是把用户原始输入当 trigger/name，
+    /// 与 `auto_create_skill_with_params` 不同：不是把用户原始输入当 trigger/name，
     /// 而是用 AI 从成功执行中提取可复用的抽象模式。
     ///
     /// 例如用户说"帮我看看最近B站有没有新番更新"，AI 会抽象为：
@@ -927,7 +927,7 @@ origin: agent_generated
 
     /// 能力缺口检测：当用户请求无法被任何能力/Skill 满足时
     ///
-    /// 由 Planner 在返回 unsupported 或 Executor 找不到能力时调用。
+    /// 由 `process_work` 在 Planner 返回 `PlannerStatus::Unsupported` 时调用。
     pub async fn detect_capability_gap(
         &self,
         user_request: &str,

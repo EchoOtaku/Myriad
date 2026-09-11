@@ -1,9 +1,3 @@
-/** Format store install counts for UI (locale-aware compact form). */
-
-/**
- * @param n non-negative install count
- * @param locale BCP-47 tag (e.g. zh-CN, en-US, ja-JP)
- */
 export function formatDownloadCount(n: number, locale = 'en'): string {
   if (!Number.isFinite(n) || n < 0) return '0'
   const v = Math.floor(n)

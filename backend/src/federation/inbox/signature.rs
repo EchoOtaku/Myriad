@@ -83,11 +83,8 @@ fn signing_header_map(
 
 /// 解析请求体**之前**必须通过的检查。
 ///
-/// inbox 允许 INBOX_BODY_LIMIT 的请求体（更大的文件必须走分块端点），而过去的顺序是
-/// 「先 `serde_json::from_slice` 整个 body，再验签」—— 于是任何未认证客户端都能
-/// 用一坨满额 inbox body 的 JSON 逼服务端做一次完整解析，代价完全不对等。
-///
-/// 这里把只依赖 header 和原始字节、不需要网络往返的检查提到解析之前：
+/// inbox 允许 INBOX_BODY_LIMIT 的请求体（更大的文件必须走分块端点）。
+/// 只依赖 header 和原始字节、不需要网络往返的检查在解析 JSON 之前：
 /// Signature 头存在且可解析、签名覆盖的 header 集合合规、Date 新鲜、
 /// Digest 与原始 body 逐字节相符。攻击者要让我们开始解析 JSON，至少得先算出
 /// 这段 body 正确的 SHA-256 并附上格式合法的签名头。
@@ -139,7 +136,7 @@ pub(crate) fn verify_preparse_gate(
 
 /// 验证请求的 HTTP Signature
 ///
-/// MYR-022: remote Actor material used for the public key is resolved via
+/// remote Actor material used for the public key is resolved via
 /// [`fetch_remote_actor_for_verify`] (DB cache hit or **ephemeral** HTTP fetch).
 /// Failed signatures never write an unauthenticated remote document into
 /// `federation_remote_actors`. Successful verification may persist via
@@ -189,15 +186,13 @@ pub(crate) async fn verify_request_signature(
         }
     }
 
-    // MYR-022: trusted cache or ephemeral remote fetch — never poison DB on 401.
+    // trusted cache or ephemeral remote fetch — never poison DB on 401.
     let mut resolved: ResolvedRemoteActor = fetch_remote_actor_for_verify(db, actor_url_str, false)
         .await
         .map_err(|error| inbox_auth_reject("Cannot verify actor", error))?;
 
     // If we stored a public_key_id for this actor, Signature keyId must match
-    // (normalized). On mismatch, force ephemeral re-fetch once — stale cache
-    // after key rotation / domain path change was a common permanent 401 source.
-    // If no stored key id, PEM-only verify.
+    // (normalized). On mismatch, force ephemeral re-fetch once. If no stored key id, PEM-only verify.
     if let Some(ref stored_kid) = resolved.info.public_key_id {
         if !stored_kid.is_empty() && !same_key_id(stored_kid, &parsed.key_id) {
             tracing::warn!(
@@ -259,7 +254,7 @@ pub(crate) async fn verify_request_signature(
         .map_err(|error| inbox_auth_reject("Signature verification failed", error))?;
 
     if !valid {
-        // Ephemeral document is dropped here — never written to DB (MYR-022).
+        // Ephemeral document is dropped here — never written to DB.
         return Err((
             StatusCode::UNAUTHORIZED,
             Json(json!({"error": "Invalid signature"})),

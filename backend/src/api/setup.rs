@@ -216,7 +216,7 @@ pub async fn init_database(
     let tables_existed = check_database_tables(&db).await;
 
     // Never drop feature tables from an unauthenticated setup endpoint.
-    // Migrator::up strips folded 007–015 history rows, drops leftover
+    // Migrator::up strips folded 007–019 history rows, drops leftover
     // `digital_life_*` experiment tables, then applies pending work;
     // other damaged migration state requires explicit operator intervention.
     // Import the migrator from migrations module
@@ -437,7 +437,7 @@ pub async fn save_database_config(
     crate::api::setup_bootstrap::require_setup_secret(&headers, config.setup_secret.as_deref())
         .map_err(HttpError)?;
 
-    // P0 安全修复：强制要求 CONFIG_MODE
+    // 必须 `CONFIG_MODE=true`。
     let config_mode = crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed);
 
     if !config_mode {

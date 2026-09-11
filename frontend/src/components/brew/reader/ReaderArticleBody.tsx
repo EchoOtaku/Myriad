@@ -1,16 +1,13 @@
-/**
- * 阅读器正文列：标题、元信息、封面、prose、音频、上下篇
- */
-
 import type { BrewItem } from '../../../types/brew'
-import type { FontOption, LayoutOption, ThemeConfig } from './types'
+import type { ReadingQueue } from '../logic/readingQueue'
+import type { FontOption, LayoutOption, ReaderCopy, ThemeConfig } from './types'
 import {
   LuCalendar as Calendar,
   LuClock as Clock,
   LuUser as User,
 } from '@lib/icons'
 import { useMemo } from 'react'
-import { useReadingListOptional } from '../../../contexts/ReadingListContext'
+import { neighborsInQueue } from '../logic/readingQueue'
 import { getArticleProseClass } from './articleProseClass'
 import { getImageUrl } from './contentRender'
 
@@ -22,18 +19,14 @@ export interface ReaderArticleBodyProps {
   isDark: boolean
   fontSize: number
   lineHeight: number
-  t: Record<string, any>
+  t: ReaderCopy
   contentRef: React.RefObject<HTMLDivElement | null>
   contentInnerRef: React.RefObject<HTMLDivElement | null>
-  /**
-   * 中栏根节点。换文章的淡入淡出作用在这一层，两侧面板不跟着动。
-   * 由 BrewReader 持有 —— 动画的时序和 `item` 的延迟切换是同一件事。
-   */
+  /** 换文章淡入淡出只作用这一层，两侧面板不跟着动。 */
   columnRef?: React.RefObject<HTMLDivElement | null>
   contentReady: boolean
   onNavigateToArticle?: (articleId: number) => void
-  articleList?: BrewItem[]
-  currentArticleIndex?: number
+  readingQueue?: ReadingQueue | null
 }
 
 export function ReaderArticleBody({
@@ -50,11 +43,9 @@ export function ReaderArticleBody({
   columnRef,
   contentReady,
   onNavigateToArticle,
-  articleList,
-  currentArticleIndex,
+  readingQueue,
 }: ReaderArticleBodyProps) {
-  const readingList = useReadingListOptional()
-  const positionInfo = readingList?.getPositionInfo(item.id)
+  const queueNav = neighborsInQueue(readingQueue, item.id)
 
   const formattedDate = useMemo(() => {
     if (!item.published_at) return ''
@@ -70,7 +61,6 @@ export function ReaderArticleBody({
             ref={columnRef}
             className={`w-full ${currentLayout.width} px-6 pt-32 pb-16 transition-all duration-300`}
           >
-            {/* 标题 */}
             <h1
               className={`font-bold ${currentTheme.text} leading-tight mb-6`}
               style={{ fontFamily: currentFont.family, fontSize: 40 }}
@@ -78,7 +68,6 @@ export function ReaderArticleBody({
               {item.title}
             </h1>
 
-            {/* 元信息 */}
             <div
               className={`flex flex-wrap items-center gap-4 text-sm ${currentTheme.secondary} mb-8 pb-8 border-b ${currentTheme.border}`}
             >
@@ -120,7 +109,6 @@ export function ReaderArticleBody({
               )}
             </div>
 
-            {/* 封面图 */}
             {item.image && (
               <div className="mb-8">
                 <img
@@ -132,7 +120,6 @@ export function ReaderArticleBody({
               </div>
             )}
 
-            {/* 正文内容 */}
             <div
               ref={contentRef}
               className={getArticleProseClass(isDark, currentTheme.text)}
@@ -143,7 +130,7 @@ export function ReaderArticleBody({
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* WebKit 优化：动画期间显示简单占位，避免同时渲染大量 DOM */}
+              {/* WebKit：动画期间占位，避免同时灌大量 DOM。 */}
               {contentReady ? (
                 <div ref={contentInnerRef} />
               ) : (
@@ -172,7 +159,6 @@ export function ReaderArticleBody({
               )}
             </div>
 
-            {/* 音频播放器 */}
             {item.audio_url && (
               <div
                 className={`mt-8 p-4 rounded-2xl ${currentTheme.surfaceSolid} border ${currentTheme.border}`}
@@ -185,35 +171,28 @@ export function ReaderArticleBody({
               </div>
             )}
 
-            {/* 文章导航 - 上一篇/下一篇 */}
-            {(() => {
-              // 阅读列表导航
-              if (positionInfo && onNavigateToArticle) {
-                const prevItem = readingList?.getPrevious()
-                const nextItem = readingList?.getNext()
-                return (
+            {queueNav && onNavigateToArticle ? (
                   <div
                     className={`mt-12 pt-8 border-t ${currentTheme.border} max-w-2xl mx-auto`}
                     onClick={(e) => e.stopPropagation()}
                   >
+                    {queueNav.name ? (
                     <div
                       className={`text-center mb-6 ${currentTheme.secondary}`}
                     >
                       <span className="text-sm">
-                        {readingList?.currentList?.name} ·
-                        {positionInfo.index + 1} /{positionInfo.total}
+                        {queueNav.name} ·
+                        {queueNav.index + 1} /{queueNav.total}
                       </span>
                     </div>
+                    ) : null}
                     <div className="flex gap-4">
                       <button
                         onClick={() => {
-                          if (prevItem) {
-                            readingList?.goToArticle(positionInfo.index - 1)
-                            onNavigateToArticle(prevItem.id)
-                          }
+                          if (queueNav.prev) onNavigateToArticle(queueNav.prev.id)
                         }}
-                        disabled={!positionInfo.hasPrev}
-                        className={`flex-1 min-w-0 p-4 rounded-2xl text-left transition-all ${positionInfo.hasPrev ? `${currentTheme.surface} hover:opacity-80 cursor-pointer` : 'opacity-30 cursor-not-allowed'} border ${currentTheme.border}`}
+                        disabled={!queueNav.prev}
+                        className={`flex-1 min-w-0 p-4 rounded-2xl text-left transition-all ${queueNav.prev ? `${currentTheme.surface} hover:opacity-80 cursor-pointer` : 'opacity-30 cursor-not-allowed'} border ${currentTheme.border}`}
                       >
                         <div
                           className={`text-xs ${currentTheme.secondary} mb-1 flex items-center gap-1`}
@@ -236,18 +215,15 @@ export function ReaderArticleBody({
                         <div
                           className={`${currentTheme.text} font-medium truncate`}
                         >
-                          {prevItem?.title || t.brew.noMore}
+                          {queueNav.prev?.title || t.brew.noMore}
                         </div>
                       </button>
                       <button
                         onClick={() => {
-                          if (nextItem) {
-                            readingList?.goToArticle(positionInfo.index + 1)
-                            onNavigateToArticle(nextItem.id)
-                          }
+                          if (queueNav.next) onNavigateToArticle(queueNav.next.id)
                         }}
-                        disabled={!positionInfo.hasNext}
-                        className={`flex-1 min-w-0 p-4 rounded-2xl text-right transition-all ${positionInfo.hasNext ? `${currentTheme.surface} hover:opacity-80 cursor-pointer` : 'opacity-30 cursor-not-allowed'} border ${currentTheme.border}`}
+                        disabled={!queueNav.next}
+                        className={`flex-1 min-w-0 p-4 rounded-2xl text-right transition-all ${queueNav.next ? `${currentTheme.surface} hover:opacity-80 cursor-pointer` : 'opacity-30 cursor-not-allowed'} border ${currentTheme.border}`}
                       >
                         <div
                           className={`text-xs ${currentTheme.secondary} mb-1 flex items-center justify-end gap-1`}
@@ -270,103 +246,13 @@ export function ReaderArticleBody({
                         <div
                           className={`${currentTheme.text} font-medium truncate`}
                         >
-                          {nextItem?.title || t.brew.noMore}
+                          {queueNav.next?.title || t.brew.noMore}
                         </div>
                       </button>
                     </div>
                   </div>
-                )
-              }
-              // 全局文章列表导航
-              if (
-                articleList &&
-                currentArticleIndex != null &&
-                onNavigateToArticle
-              ) {
-                const hasPrev = currentArticleIndex > 0
-                const hasNext = currentArticleIndex < articleList.length - 1
-                const prevArticle = hasPrev
-                  ? articleList[currentArticleIndex - 1]
-                  : null
-                const nextArticle = hasNext
-                  ? articleList[currentArticleIndex + 1]
-                  : null
-                return (
-                  <div
-                    className={`mt-12 pt-8 border-t ${currentTheme.border} max-w-2xl mx-auto`}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex gap-4">
-                      <button
-                        onClick={() => {
-                          if (prevArticle) onNavigateToArticle(prevArticle.id)
-                        }}
-                        disabled={!hasPrev}
-                        className={`flex-1 min-w-0 p-4 rounded-2xl text-left transition-all ${hasPrev ? `${currentTheme.surface} hover:opacity-80 cursor-pointer` : 'opacity-30 cursor-not-allowed'} border ${currentTheme.border}`}
-                      >
-                        <div
-                          className={`text-xs ${currentTheme.secondary} mb-1 flex items-center gap-1`}
-                        >
-                          <svg
-                            className="w-3 h-3 shrink-0"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M15 19l-7-7 7-7"
-                            />
-                          </svg>
-                          {t.brew.prevArticle}
-                        </div>
-                        <div
-                          className={`${currentTheme.text} font-medium truncate`}
-                        >
-                          {prevArticle?.title || t.brew.noMore}
-                        </div>
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (nextArticle) onNavigateToArticle(nextArticle.id)
-                        }}
-                        disabled={!hasNext}
-                        className={`flex-1 min-w-0 p-4 rounded-2xl text-right transition-all ${hasNext ? `${currentTheme.surface} hover:opacity-80 cursor-pointer` : 'opacity-30 cursor-not-allowed'} border ${currentTheme.border}`}
-                      >
-                        <div
-                          className={`text-xs ${currentTheme.secondary} mb-1 flex items-center justify-end gap-1`}
-                        >
-                          {t.brew.nextArticle}
-                          <svg
-                            className="w-3 h-3 shrink-0"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M9 5l7 7-7 7"
-                            />
-                          </svg>
-                        </div>
-                        <div
-                          className={`${currentTheme.text} font-medium truncate`}
-                        >
-                          {nextArticle?.title || t.brew.noMore}
-                        </div>
-                      </button>
-                    </div>
-                  </div>
-                )
-              }
-              return null
-            })()}
+            ) : null}
 
-            {/* 底部留白 */}
             <div className="h-20" />
           </div>
   )

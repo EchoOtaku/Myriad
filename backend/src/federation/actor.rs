@@ -1,4 +1,4 @@
-//! 联邦 Actor 端点（Layer 2）
+//! 联邦 Actor 端点
 //!
 //! 本地用户的 ActivityPub Actor 表示，以及远程 Actor 获取/缓存。
 
@@ -302,9 +302,7 @@ pub async fn get_following(
     ))
 }
 
-/// Relationship collections intentionally expose only a count for now.  A
-/// `first` page is omitted until there is an explicit, privacy-reviewed member
-/// enumeration policy and a matching page handler.
+/// Relationship collections expose only `total_items`; `first`/`last` stay `None`.
 fn relationship_collection(id: String, total_items: u64) -> OrderedCollection {
     OrderedCollection {
         context: build_ap_context(),
@@ -318,12 +316,12 @@ fn relationship_collection(id: String, total_items: u64) -> OrderedCollection {
 
 /// 获取远程 Actor 信息（带缓存）
 ///
-/// 如果缓存过期（>24h），重新从远程获取并写入 DB。
+/// 缓存有效：`last_fetched_at` 距今 `num_hours() < 24`；否则重新拉取并写入 DB。
 ///
 /// **Only call after authentication** (signed inbox handlers, outbound follow,
 /// room/channel setup). Pre-signature verification must use
 /// [`fetch_remote_actor_for_verify`] so a failed/forged request cannot poison
-/// `federation_remote_actors` (MYR-022).
+/// `federation_remote_actors`.
 pub async fn fetch_remote_actor(
     db: &DatabaseConnection,
     actor_url_str: &str,
@@ -333,7 +331,7 @@ pub async fn fetch_remote_actor(
         .map(|r| r.info)
 }
 
-/// Resolve a remote actor for **HTTP Signature verification only** (MYR-022).
+/// Resolve a remote actor for **HTTP Signature verification only**.
 ///
 /// - May read a fresh row from `federation_remote_actors` (already trusted).
 /// - May HTTP-fetch the actor document, but **does not** write to the DB.
@@ -366,7 +364,7 @@ pub async fn persist_verified_remote_actor(
     upsert_remote_actor_document(db, doc).await
 }
 
-/// Outcome of actor resolution for signature verification (MYR-022).
+/// Outcome of actor resolution for signature verification.
 #[derive(Debug, Clone)]
 pub struct ResolvedRemoteActor {
     pub info: RemoteActorInfo,
@@ -455,7 +453,7 @@ async fn fetch_remote_actor_inner(
         });
     }
 
-    // Ephemeral: PEM available for verify; nothing written to DB yet (MYR-022).
+    // Ephemeral: PEM available for verify; nothing written to DB yet.
     Ok(ResolvedRemoteActor {
         info: doc.to_info(0),
         needs_persist: true,
@@ -1080,7 +1078,7 @@ async fn force_store_new_keys(
         .public_key_pem()
         .map_err(|e| format!("PEM encoding failed: {}", e))?;
 
-    // 新私钥直接用 v1 信封（数据密钥），不再绑定 JWT_SECRET
+    // 私钥用数据密钥 v1 信封加密。
     let encrypted = keypair
         .encrypt_private_key()
         .map_err(|e| format!("Key encryption failed: {}", e))?;
@@ -1224,15 +1222,14 @@ async fn generate_and_store_keys(
         .public_key_pem()
         .map_err(|e| format!("PEM encoding failed: {}", e))?;
 
-    // 新私钥直接用 v1 信封（数据密钥），不再绑定 JWT_SECRET
+    // 私钥用数据密钥 v1 信封加密。
     let encrypted = keypair
         .encrypt_private_key()
         .map_err(|e| format!("Key encryption failed: {}", e))?;
 
     let kid = key_id(base_url, username);
 
-    // Same ON CONFLICT shape as before, but only apply the update when the
-    // stored public key is missing/empty so concurrent ensures cannot rotate.
+    // ON CONFLICT (user_id)：仅当已存公钥为空才更新，并发 ensure 不能轮换。
     db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_keys (user_id, public_key_pem, private_key_encrypted, key_id, algorithm, created_at)
@@ -1341,7 +1338,7 @@ mod tests {
 
     #[test]
     fn remote_actor_document_to_info_is_ephemeral_until_id_assigned() {
-        // MYR-022: HTTP-fetched documents start with id=0 and must not be treated
+        // HTTP-fetched documents start with id=0 and must not be treated
         // as a trusted cache row until persist_verified_remote_actor assigns an id.
         let doc = RemoteActorDocument {
             actor_url: "https://peer.example/users/alice".into(),

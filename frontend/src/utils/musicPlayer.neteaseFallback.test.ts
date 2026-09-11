@@ -72,8 +72,6 @@ describe('netease play-url / proxy fallback (plan B+C)', () => {
 })
 
 describe('desktop Web Audio spectrum CORS (play-url → same-origin /audio/)', () => {
-  // Node test env has no navigator → shouldPreserveNativeAudioOutput=false
-  // → prefersSameOriginMusicProxy=true（与桌面 Web Audio 路径一致）
   it('prefers same-origin proxy in this test environment (desktop-like)', () => {
     assert.equal(prefersSameOriginMusicProxy(), true)
   })

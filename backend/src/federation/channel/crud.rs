@@ -771,8 +771,7 @@ pub async fn send_message(
     let mut ws_payload = stored_payload.clone();
     let mut ws_is_encrypted = is_encrypted;
     if is_encrypted {
-        // 解密不要求 established：信封自带发送方公钥，只要本地私钥在就能试。
-        // 这样即使 remote_public_key 曾经被并发写覆盖丢失，历史也还能读回来。
+        // 解密不要求 established：信封自带发送方公钥，本地私钥在就能试。
         if let Ok(session) = load_e2e_session(channel_id, properties.as_ref()).await {
             if let Ok(plain) =
                 crate::federation::e2e::decrypt_json_payload(&session, &stored_payload)

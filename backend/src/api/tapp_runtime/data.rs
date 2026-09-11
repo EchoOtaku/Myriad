@@ -67,7 +67,7 @@ fn transform_http_error(err: DataTransformError) -> (StatusCode, Json<Value>) {
 }
 
 fn storage_http_error(err: TappStorageError) -> (StatusCode, Json<Value>) {
-    // Preserve historical transform error strings for storage I/O.
+    // Map `TappStorageError` onto the JSON `error` strings handlers already return.
     match err {
         TappStorageError::InvalidKey(reason) => {
             (StatusCode::BAD_REQUEST, Json(json!({ "error": reason })))
@@ -209,7 +209,7 @@ pub async fn data_transform(
                 let _platform_guard = acquire_platform_lock(&platform)
                     .await
                     .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))))?;
-                // Replace the filtered document items array (historical transform semantics).
+                // Replace the filtered document items array.
                 let data = json!({ "items": items });
                 write_filtered_document(&platform, &data)
                     .await

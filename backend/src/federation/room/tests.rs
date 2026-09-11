@@ -388,7 +388,7 @@ fn room_join_roster_announce_requires_invite_rights() {
         a.is_self_join = false;
         a.announcer_role = Some("member");
     }));
-    // ...but can under member-invite / open, matching invite_to_room.
+    // ...but can under member-invite / open, matching invite_member.
     assert!(join_auth(|a| {
         a.is_self_join = false;
         a.announcer_role = Some("member");
@@ -428,7 +428,7 @@ fn room_join_accepts_home_roster_backfill() {
 
 #[test]
 fn room_join_unknown_policy_falls_back_to_admin_only() {
-    // Mirrors the `_ if !is_admin_role(..)` arm in invite_to_room.
+    // Mirrors the `_ if !is_admin_role(..)` arm in invite_member.
     assert!(!join_auth(|a| {
         a.is_self_join = false;
         a.announcer_role = Some("member");

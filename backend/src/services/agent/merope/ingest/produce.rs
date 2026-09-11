@@ -46,6 +46,8 @@ pub fn stable_consciousness_event_id(user_id: i32, event_key: &str, summary: &st
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         summary.hash(&mut hasher);
         format!("{:x}", hasher.finish())
+    } else if event_key == "agent.merope.touch" {
+        (Utc::now().timestamp() / 30).to_string()
     } else {
         (Utc::now().timestamp() / (SAME_EVENT_MINUTES * 60)).to_string()
     };
@@ -151,6 +153,16 @@ pub async fn ingest(
     let state = get_or_create_state(db, user_id).await?;
     let sight = current_sight(user_id, &state).await;
     let decision = decide_ingest(event_key, &sight);
+    let touch = event_key == "agent.merope.touch";
+    if touch {
+        let live = crate::services::agent::consciousness::last_live_presence(user_id);
+        if !live.face_visible || live.speaking || !decision.allow_model {
+            return Ok(());
+        }
+        if recently_spoke_event(db, user_id, event_key, 1).await? {
+            return Ok(());
+        }
+    }
     // Whether this is a Chat completion is a property of the event, and it is
     // already filtered twice: `run_hub` stops publishing one, and the match in
     // `apply_task_mood` ignores every key but the three task outcomes. Whether
@@ -230,21 +242,28 @@ pub async fn ingest(
             .as_ref()
             .and_then(|value| value.intent.as_ref())
             .map(|intent| intent.id.clone());
-        enqueue_speak_intent(new_speak_intent(
+        let mut intent = new_speak_intent(
             user_id,
             conscious_event.id.clone(),
             event_key.to_string(),
             gist,
             conscious_event.urgency,
             work_intent_id,
-        ));
+        );
+        if touch {
+            intent.expires_at = conscious_event.occurred_at + chrono::Duration::seconds(20);
+            intent.observation = Some(summary.clone());
+        }
+        enqueue_speak_intent(intent);
         let speak_db = db.clone();
         tokio::spawn(async move {
             super::tick_speak_intents(speak_db).await;
         });
     }
 
-    let _ = insert_diary(db, user_id, &summary, DIARY_SOURCE_EVENT).await;
+    if !touch {
+        let _ = insert_diary(db, user_id, &summary, DIARY_SOURCE_EVENT).await;
+    }
     Ok(())
 }
 

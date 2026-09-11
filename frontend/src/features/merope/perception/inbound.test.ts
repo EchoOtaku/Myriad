@@ -2,6 +2,9 @@ import type { PerceptionSnapshot } from './registry'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { PERSONA_UPDATED_EVENT } from '../events'
+import { livePresenceFacts } from '../livePresence'
+import { getProductionMotionRuntime } from '../motion/runtimeHost'
 import { setAgentContextConsent } from '../../../components/agent-panel/agentContextConsent'
 import { setCurrentPageContent } from '../../../contexts/currentPage'
 import {
@@ -35,6 +38,77 @@ function snapshot(
 }
 
 test.describe('presence inbound', { concurrency: false }, () => {
+  test('production presence carries current semantic rig state, without raw drivers', async () => {
+    resetPresenceInboundForTest()
+    setPresenceArmedForTest(true)
+    const runtime = getProductionMotionRuntime()
+    const posts: any[] = []
+    setPresenceCaptureForTest(() => [])
+    setPresenceFactsForTest(livePresenceFacts)
+    setPresencePostForTest(async body => { posts.push(body) })
+    try {
+      runtime.setCapabilities(['head-body', 'cry-eye'])
+      await reportPresence('panel')
+      assert.deepEqual(posts[0].presence.rigState.capabilities, ['head-body', 'cry-eye'])
+      runtime.setCapabilities(['head-body'])
+      await reportPresence('panel')
+      assert.deepEqual(posts[1].presence.rigState.capabilities, ['head-body'])
+      assert.doesNotMatch(JSON.stringify(posts), /"(?:driver|vertices|angles)"/)
+    } finally {
+      runtime.setCapabilities([])
+      resetPresenceInboundForTest()
+    }
+  })
+
+  test('persona changes arm, disarm and rearm without remounting; stale config cannot revive it', async () => {
+    resetPresenceInboundForTest()
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'window')
+    const events = new EventTarget()
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: events })
+    let enabled = false
+    let posts = 0
+    setPresenceEnabledForTest(() => enabled)
+    setPresenceCaptureForTest(() => [])
+    setPresenceFactsForTest(() => ({}))
+    setPresencePostForTest(async () => { posts++ })
+    const stop = startPresenceInbound()
+    const flush = () => new Promise(resolve => setImmediate(resolve))
+    try {
+      await presenceInboundArmingForTest()
+      assert.equal(posts, 0)
+      enabled = true
+      events.dispatchEvent(new Event(PERSONA_UPDATED_EVENT))
+      await presenceInboundArmingForTest()
+      await flush()
+      assert.equal(posts, 1)
+      let release!: (value: boolean) => void
+      setPresenceEnabledForTest(() => new Promise(resolve => { release = resolve }))
+      events.dispatchEvent(new Event(PERSONA_UPDATED_EVENT))
+      const stale = presenceInboundArmingForTest()
+      setPresenceEnabledForTest(() => false)
+      events.dispatchEvent(new Event(PERSONA_UPDATED_EVENT))
+      await presenceInboundArmingForTest()
+      release(true)
+      await stale
+      await reportPresence('lease')
+      assert.equal(posts, 1)
+      setPresenceEnabledForTest(() => true)
+      events.dispatchEvent(new Event(PERSONA_UPDATED_EVENT))
+      await presenceInboundArmingForTest()
+      await flush()
+      assert.equal(posts, 2)
+      stop()
+      events.dispatchEvent(new Event(PERSONA_UPDATED_EVENT))
+      await reportPresence('lease')
+      assert.equal(posts, 2)
+    } finally {
+      stop()
+      if (original) Object.defineProperty(globalThis, 'window', original)
+      else Reflect.deleteProperty(globalThis, 'window')
+      resetPresenceInboundForTest()
+    }
+  })
+
   test('same revision set is posted once', async () => {
     resetPresenceInboundForTest()
     setPresenceArmedForTest(true)
@@ -322,5 +396,6 @@ test('inbound reports changes and renews an observation lease while visible', ()
   assert.match(source, /inboundArmed/)
   assert.match(source, /subscribeAgentSelection/)
   assert.match(source, /turnSelectionText/)
-  assert.match(source, /must not/)
+  assert.match(source, /post\('\/agent\/presence'/)
+  assert.doesNotMatch(source, /from ['"][^'"]*consciousness/)
 })

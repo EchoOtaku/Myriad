@@ -18,8 +18,11 @@ mod store;
 mod types;
 
 #[cfg(test)]
-pub(crate) fn semantic_probe_contract(soul: &str) -> (String, serde_json::Value) {
-    (engine::decision_system_prompt(soul), engine::decision_schema())
+pub(crate) fn semantic_probe_contract(soul: &str, kind: &str) -> (String, serde_json::Value) {
+    (
+        engine::decision_system_prompt(soul),
+        engine::decision_schema_for_event(kind),
+    )
 }
 
 pub use attention::{last_attention, next_attention_segment, touch_attention, AttentionSegment};

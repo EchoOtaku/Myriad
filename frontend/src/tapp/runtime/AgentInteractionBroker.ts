@@ -71,8 +71,6 @@ async function executeHostIntent(
       ) {
         throw new TypeError(currentCopy().errors.agentInputEmpty)
       }
-      // This adapter deliberately delegates confirmation to DataExchangeBroker
-      // so a cross-Tapp read has exactly one detailed, one-shot consent popup.
       return requestDataExchangeFromHost(bridge, {
         targetTappId,
         exportId,
@@ -156,14 +154,16 @@ export function registerAgentInteractionHandlers(
     }
     const confirmed =
       intent.type === 'dataExchange.request' ||
-      window.confirm(
-        currentCopy()
-          .tapp.agentIntentConfirm.replace(
-            '{name}',
-            tappInstance.manifest.name,
-          )
-          .replace('{type}', intent.type || 'unknown')
-          .replace('{reason}', intent.reason || ''),
+      Boolean(
+        globalThis.window?.confirm?.(
+          currentCopy()
+            .tapp.agentIntentConfirm.replace(
+              '{name}',
+              tappInstance.manifest.name,
+            )
+            .replace('{type}', intent.type || 'unknown')
+            .replace('{reason}', intent.reason || ''),
+        ),
       )
     if (!confirmed) return { success: false, error: 'User denied Agent intent' }
     try {

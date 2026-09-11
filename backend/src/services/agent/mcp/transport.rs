@@ -3,12 +3,9 @@
 //! 通过 stdin/stdout 与 MCP 服务器子进程通信。
 //! 协议：每行一个 JSON-RPC 2.0 消息（line-delimited JSON）。
 //!
-//! # MYR-009 (first practical cut)
-//!
 //! - Cap each stdio line / JSON-RPC message at [`MAX_MCP_LINE_BYTES`].
 //! - Cap live child processes at [`MAX_MCP_CHILDREN`] (aligned with config max).
-//! - Residual: MCP children still share the host process UID/namespace. Full OS
-//!   sandbox / seccomp / landlock is intentionally future work (multi-week).
+//! - MCP children share the host process UID/namespace.
 
 use std::collections::HashMap;
 use std::io::ErrorKind;
@@ -224,7 +221,7 @@ pub struct StdioTransport {
 impl StdioTransport {
     /// 启动 MCP 服务器子进程
     pub async fn spawn(config: &McpServerConfig) -> Result<Self, String> {
-        // MYR-009: admit child slot before spawn so reload races cannot pile up.
+        // Admit child slot before spawn so reload races cannot pile up.
         let child_slot = ChildSlot::try_acquire()?;
 
         let mut cmd = Command::new(&config.command);
@@ -234,13 +231,8 @@ impl StdioTransport {
             .stderr(std::process::Stdio::piped()); // stderr 用于服务器日志
 
         // env_clear 必须在任何 cmd.env() 之前。
-        //
-        // Command 默认**继承父进程的整个环境**。之前这里只是"再设一遍"
-        // PATH/HOME，看着像白名单，实际上每个 MCP server 子进程都拿到了
-        // JWT_SECRET、DATABASE_URL（含 POSTGRES_PASSWORD）、
-        // UPDATER_GATEWAY_SECRET —— 一个 `cat /proc/self/environ` 全都有。
-        //
-        // MCP server 是第三方代码（npx 拉取的包、社区实现），不该看到宿主凭据。
+        // Command 默认**继承父进程的整个环境**。MCP server 是第三方代码，不该看到
+        // JWT_SECRET、DATABASE_URL（含 POSTGRES_PASSWORD）、UPDATER_GATEWAY_SECRET。
         cmd.env_clear();
 
         // 显式白名单：只给运行时真正需要的变量。
@@ -281,7 +273,7 @@ impl StdioTransport {
             }
         };
 
-        // 后台转发 stderr 到 tracing（bounded lines — MYR-009）
+        // 后台转发 stderr 到 tracing（bounded lines）
         if let Some(stderr) = child.stderr.take() {
             let server_id = config.id.clone();
             tokio::spawn(async move {
@@ -335,7 +327,7 @@ impl StdioTransport {
         // 序列化 + 换行
         let mut payload = serde_json::to_string(&request)
             .map_err(|error| mcp_json_failed("Failed to serialize MCP request", error))?;
-        // MYR-009: reject oversized outbound messages before write
+        // Reject oversized outbound messages before write.
         if payload.len() > MAX_MCP_LINE_BYTES {
             return Err(format!(
                 "MCP request exceeds max message length ({} bytes)",
@@ -464,7 +456,7 @@ impl StdioTransport {
 
     /// 从 stdout 读取一行 JSON 对象（跳过空行与非 JSON 前缀）
     ///
-    /// MYR-009: lines longer than [`MAX_MCP_LINE_BYTES`] are rejected (no unbounded growth).
+    /// Lines longer than [`MAX_MCP_LINE_BYTES`] are rejected (no unbounded growth).
     async fn read_response_line(&mut self, buf: &mut String) -> Result<(), String> {
         loop {
             let line = read_line_limited(&mut self.stdout, MAX_MCP_LINE_BYTES).await?;

@@ -16,7 +16,6 @@ interface Lane {
   icon: Glyph
   title: string
   meta: string
-  /** 这条路会产出什么。用各步骤自己的短名，改了步骤这里不会漂。 */
   flow: string[]
   locked?: string
   onPick: () => void
@@ -29,15 +28,6 @@ interface Props {
   onHeaderChange: (chrome: OnboardingHeaderChrome) => void
 }
 
-/**
- * 分岔口。两条路从这里分开，之后不再交叉。
- *
- * 生成是让 AI 从你的报告里长出一个人；导入是你已经有一个人，只想让她住进来。
- * 这两件事对「视觉设定」的处理完全不同——生成会推导出一份视觉设定再据此出图，
- * 导入直接拿现成主图当血统源头、不产出视觉设定——所以放在一条链上会互相污染。
- *
- * 左边上下两条选项；右边单独做角色预览（循环滚过视觉设计的全部服装风格）。
- */
 export default function ChoiceStep({
   reportCount,
   onGuided,
@@ -78,7 +68,6 @@ export default function ChoiceStep({
       icon: LuUpload,
       title: o.choiceImportTitle,
       meta: o.choiceImportMeta,
-      // 导入直接给到这两样，中间四步都不经过。
       flow: [o.step3Short, o.step5Short],
       onPick: onImport,
     },

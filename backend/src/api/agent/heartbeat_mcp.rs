@@ -492,8 +492,7 @@ pub(crate) async fn interrupt_session(
     Extension(claims): Extension<Claims>,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, HttpError> {
-    // 这里提交的新请求 `context: None`，落到 Agent 里就是 Work。之前只解析
-    // 了 user_id，等于绕过了模块可见性这道门。
+    // 新请求 `context: None` 落到 Agent 为 Work。`parse_user_id_with_agent_access` 过模块可见性。
     let user_id = parse_user_id_with_agent_access(&claims, &db).await?;
     let new_input = body
         .get("input")

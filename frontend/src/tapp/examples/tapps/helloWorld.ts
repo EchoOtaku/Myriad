@@ -1,12 +1,5 @@
-/**
- * Hello World Tapp
- * 官方入门示例，演示 Tapp 生命周期与常用 API
- * @version 1.0.0
- */
-
 import type { ExampleTapp, TappPlaygroundCode } from './types'
 
-// 页面 HTML 模板
 const PAGE_HTML = `<!-- 背景层 -->
 <div id="tapp-background">
   <div class="hw-bg-base"></div>
@@ -98,7 +91,6 @@ const PAGE_HTML = `<!-- 背景层 -->
 </div>
 `
 
-// CSS 样式
 const STYLES = `/* ========== CSS 变量 ========== */
 :root {
   --hw-primary: var(--tapp-primary, #10B981);
@@ -365,7 +357,6 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 }
 `
 
-// 核心代码
 const CORE_CODE = `// ========== i18n 翻译表 ==========
 var i18n = {
   'zh-CN': {
@@ -463,7 +454,6 @@ function updateTexts() {
 }
 `
 
-// 页面代码
 const PAGE_CODE = `var isPaused = false;
 
 Tapp.lifecycle.onReady(async function() {
@@ -494,7 +484,7 @@ Tapp.lifecycle.onDestroy(async function() {
 });
 `
 
-// 导出 Tapp 定义。core 是共享层，打包时落到 core.js，page 落到 page/index.js。
+// core 落到 core.js，page 落到 page/index.js。
 const codeStructure: TappPlaygroundCode = {
   core: CORE_CODE,
   page: PAGE_CODE,

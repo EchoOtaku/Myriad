@@ -1,14 +1,3 @@
-/**
- * Outbound ActivityPub delivery queue panel for federation settings.
- *
- * Mental model (deliberately small):
- *   - **Retry** — re-queue a failed (non-user-cancel) row, or bulk “retry failures”
- *   - **Remove** — stop + drop from the list (pending → cancel+dismiss; dead → dismiss)
- *   - **Clear** — cancel everything in-flight, then purge all dead (failed + cancelled)
- *
- * Optimistic updates first; quiet refresh only applies successful server payloads.
- */
-
 import type {
   DeliveryQueueItem,
   DeliveryStats,
@@ -132,21 +121,14 @@ function statusTone(
   return 'default'
 }
 
-/**
- * Fully drop a row server-side:
- * - active → cancel (marks dead) then dismiss
- * - already terminal → dismiss only
- */
 async function removeDeliveryOnServer(item: DeliveryQueueItem): Promise<void> {
   if (isActiveItem(item)) {
     await federationApi.cancelDelivery(item.id)
   }
   if (isActiveItem(item) || isTerminalItem(item)) {
-    // After cancel, row is dead; dismiss always for terminal / just-cancelled.
     try {
       await federationApi.dismissDelivery(item.id)
     } catch (e) {
-      // Cancel may race worker (row already gone / not dead yet). Retry dismiss once.
       if (isActiveItem(item)) {
         await federationApi.dismissDelivery(item.id)
       } else {
@@ -156,10 +138,6 @@ async function removeDeliveryOnServer(item: DeliveryQueueItem): Promise<void> {
   }
 }
 
-/**
- * Clear the whole “work queue”: stop in-flight, then hard-delete all dead
- * (failed + cancelled). Does not touch delivered history counters on the server.
- */
 async function clearQueueOnServer(): Promise<void> {
   await federationApi.cancelAllPendingDelivery()
   await federationApi.purgeDeadDelivery({ cancelledOnly: false })
@@ -171,7 +149,6 @@ export interface FederationDeliveryQueueProps {
   onStatsChange: (s: DeliveryStats | null) => void
   onItemsChange: (items: DeliveryQueueItem[]) => void
   onMessage?: Msg
-  /** Optional status scopes server query (delivered tab needs this). */
   onRefresh: (status?: string) => Promise<void>
   className?: string
 }
@@ -194,7 +171,6 @@ export const FederationDeliveryQueue: React.FC<
   const [rowBusy, setRowBusy] = useState<Record<number, string | null>>({})
   const [refreshing, setRefreshing] = useState(false)
   const [search, setSearch] = useState('')
-  /** all | pending | delivering | delivered | dead */
   const [statusFilter, setStatusFilter] = useState('all')
 
   const anyBusy = bulkBusy || refreshing
@@ -218,7 +194,6 @@ export const FederationDeliveryQueue: React.FC<
     }
   }, [onRefresh, statusFilter])
 
-  // Server-side status filter when tab changes (default list prioritizes dead)
   React.useEffect(() => {
     void onRefresh(statusFilter === 'all' ? undefined : statusFilter)
   }, [statusFilter, onRefresh])
@@ -236,7 +211,6 @@ export const FederationDeliveryQueue: React.FC<
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
     try {
-      // Keep status filter (tab change path already passes it)
       await onRefresh(statusFilter === 'all' ? undefined : statusFilter)
     } catch (e) {
       fail(e)
@@ -268,7 +242,6 @@ export const FederationDeliveryQueue: React.FC<
     [items, stats, setItemBusy, onItemsChange, onStatsChange, quietRefresh, fail],
   )
 
-  /** Unified remove: cancel if active, always drop terminal rows from the list. */
   const handleRemove = useCallback(
     async (item: DeliveryQueueItem) => {
       const snapshot = { items: [...items], stats }
@@ -312,10 +285,6 @@ export const FederationDeliveryQueue: React.FC<
     }
   }, [items, stats, onItemsChange, onStatsChange, quietRefresh, fail])
 
-  /**
-   * Clear: cancel all in-flight + purge every dead row (failed and cancelled).
-   * Leaves only rows that are still delivering mid-flight race / delivered stats.
-   */
   const handleClear = useCallback(async () => {
     const snapshot = { items: [...items], stats }
     setBulkBusy(true)
@@ -504,11 +473,9 @@ export const FederationDeliveryQueue: React.FC<
       ? c.federationDeliveryEmpty
       : c.federationDeliveryFilterEmpty
 
-  /** Soft render cap — keep in sync with ManagedList maxVisibleItems below. */
   const LIST_CAP = 60
   const listTruncated = filteredItems.length > LIST_CAP
 
-  // When truncated, ManagedList.truncateFooter owns the count line (avoid double footer).
   const footer =
     queryActive && items.length > 0 && !listTruncated
       ? c.federationDeliveryShowing
@@ -537,7 +504,6 @@ export const FederationDeliveryQueue: React.FC<
       const target = item.target_domain || item.target_inbox || '—'
       const busyAction = rowBusy[item.id]
       const showRetry = shouldOfferDeliveryRetry(item)
-      // Unified remove: any non-delivered row can leave the queue.
       const showRemove = isActiveItem(item) || isTerminalItem(item)
 
       const actions: ManagedListAction[] = []
@@ -632,7 +598,6 @@ export const FederationDeliveryQueue: React.FC<
       maxHeight={filteredItems.length > 8 ? '20rem' : null}
       maxVisibleItems={LIST_CAP}
       truncateFooter={(shown, total) =>
-        // shown = rendered rows; total = filtered list size (items prop length)
         c.federationDeliveryShowing
           .replace('{shown}', String(shown))
           .replace('{total}', String(total))

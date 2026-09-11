@@ -1,55 +1,26 @@
 import type { Locale } from '../../../i18n'
+import { createLocaleLoader } from '../../../i18n/createLocaleLoader'
 import type { SettingGuidesCatalog } from './types'
-import { en } from './catalog.en'
+import en from './catalog.en.json'
 
-const cache = new Map<Locale, SettingGuidesCatalog>([['en-US', en]])
-const inflight = new Map<Locale, Promise<SettingGuidesCatalog>>()
+const loader = createLocaleLoader<SettingGuidesCatalog>({
+  'zh-CN': () => import('./catalog.zh.json').then((m) => m.default),
+  'en-US': async () => en,
+  'ja-JP': () => import('./catalog.ja.json').then((m) => m.default),
+})
+loader.seed('en-US', en)
 
-async function importCatalog(locale: Locale): Promise<SettingGuidesCatalog> {
-  switch (locale) {
-    case 'zh-CN':
-      return (await import('./catalog.zh')).zh
-    case 'ja-JP':
-      return (await import('./catalog.ja')).ja
-    default:
-      return en
-  }
-}
-
-/** Load (and cache) the setting-guide catalog for one locale. */
 export function loadSettingGuidesCatalog(
   locale: Locale,
 ): Promise<SettingGuidesCatalog> {
-  const cached = cache.get(locale)
-  if (cached) return Promise.resolve(cached)
-
-  const pending = inflight.get(locale)
-  if (pending) return pending
-
-  const promise = importCatalog(locale)
-    .then((catalog) => {
-      cache.set(locale, catalog)
-      inflight.delete(locale)
-      return catalog
-    })
-    .catch((err) => {
-      inflight.delete(locale)
-      throw err
-    })
-
-  inflight.set(locale, promise)
-  return promise
+  return loader.load(locale)
 }
 
-/**
- * Sync catalog. ja / zh are not in the static graph: the first call starts
- * the chunk load and returns English until it arrives.
- */
 export function getSettingGuidesCatalog(locale: Locale): SettingGuidesCatalog {
-  const cached = cache.get(locale)
+  const cached = loader.getCached(locale)
   if (cached) return cached
   void loadSettingGuidesCatalog(locale)
-  return cache.get(locale) ?? en
+  return loader.getCached(locale) ?? en
 }
 
 export type { SettingGuideEntry, SettingGuidesCatalog } from './types'

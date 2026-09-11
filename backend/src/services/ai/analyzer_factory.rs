@@ -30,7 +30,7 @@ fn warn_tier_fallback(tier: ModelTier, standard_model: &str) {
     );
 }
 
-/// 创建标准层级的 AI 分析器（默认，向后兼容）
+/// 创建 Standard 档的 AI 分析器。
 pub async fn create_ai_analyzer() -> Option<AiAnalyzer> {
     create_ai_analyzer_for_tier(ModelTier::Standard).await
 }

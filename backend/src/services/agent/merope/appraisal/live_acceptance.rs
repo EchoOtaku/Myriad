@@ -7,7 +7,6 @@ use crate::services::analyzer::{
     probe::{Observation, Policy, Reasoning},
     AiAnalyzer, AiProvider,
 };
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseBackend, Statement};
 use sha2::{Digest, Sha256};
 use std::{io::Write, time::Instant};
 
@@ -179,52 +178,8 @@ async fn configured_lite_appraises_synthetic_scenarios_without_state_writes() {
         .create_new(true)
         .open(report_path)
         .expect("report must be a new file");
-    dotenvy::dotenv().ok();
-    // Do not let the key loader create a new key while doing read-only acceptance.
-    let data_root = std::env::var("DATA_DIR").unwrap_or_else(|_| "data".into());
-    assert!(
-        std::env::var("MYRIAD_DATA_KEY").is_ok()
-            || std::path::Path::new(&data_root)
-                .join(".secret-key")
-                .is_file(),
-        "an existing host data key is required"
-    );
-    let url = std::env::var("DATABASE_URL").expect("host DATABASE_URL required");
-    let mut url = url::Url::parse(&url).unwrap_or_else(|_| panic!("invalid host database URL"));
-    // Every connection is read-only, including reconnects. No startup/migrations,
-    // memory recall, user records, notifications or ledger writes are involved.
-    let pairs: Vec<_> = url
-        .query_pairs()
-        .filter(|(key, _)| key != "options")
-        .map(|(key, value)| (key.into_owned(), value.into_owned()))
-        .collect();
-    url.query_pairs_mut()
-        .clear()
-        .extend_pairs(pairs)
-        .append_pair("options", "-c default_transaction_read_only=on");
-    let mut options = ConnectOptions::new(url.to_string());
-    options.max_connections(1).sqlx_logging(false);
-    let db = Database::connect(options)
-        .await
-        .unwrap_or_else(|_| panic!("read-only database unavailable"));
-    let readonly = db
-        .query_one_raw(Statement::from_string(
-            DatabaseBackend::Postgres,
-            "SHOW default_transaction_read_only",
-        ))
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(
-        readonly
-            .try_get::<String>("", "default_transaction_read_only")
-            .unwrap(),
-        "on"
-    );
-    let config = crate::services::config_service::ConfigService::new(db.clone())
-        .load_config()
-        .await
-        .unwrap_or_else(|_| panic!("cannot load host model configuration"));
+    let db = crate::services::agent::semantic_eval::load_configured_lite().await;
+    let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await.clone();
     let configured_model = config
         .resolve_strict_lite_ai_config()
         .expect("explicit Lite configuration required")

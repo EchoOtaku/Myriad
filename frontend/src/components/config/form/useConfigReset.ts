@@ -99,7 +99,6 @@ export function useConfigReset(args: {
   isAdmin: boolean
   userId?: number
   oauthDraft: OAuthSettings
-  /** Apply side-draft clean state after per-section reset */
   side: {
     setLibrarySourceDraft: Dispatch<SetStateAction<LibrarySourcePreferences>>
     setSavedLibrarySourcePreferences: Dispatch<

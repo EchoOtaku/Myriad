@@ -716,7 +716,7 @@ pub(crate) fn collect_database_updates(
                     "site_visibility_policy".to_string(),
                     JsonValue::String(pol.to_string()),
                 );
-                // Keep legacy noindex bit in lockstep
+                // Keep `site_noindex` in lockstep with policy (`private` → true).
                 updates.insert(
                     "site_noindex".to_string(),
                     JsonValue::Bool(pol == "private"),
@@ -736,7 +736,7 @@ pub(crate) fn collect_database_updates(
                 }
                 let enabled = field.value == "true";
                 updates.insert(field.key.clone(), JsonValue::Bool(enabled));
-                // Legacy-only flip: keep visibility policy in lockstep.
+                // Keep `site_visibility_policy` in lockstep (`true` → private, else ai_full).
                 updates.insert(
                     "site_visibility_policy".to_string(),
                     JsonValue::String(if enabled {

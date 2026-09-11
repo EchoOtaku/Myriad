@@ -133,8 +133,7 @@ test('keeps fallback prosody alive for a complete non-streamed reply', () => {
   assert.deepEqual(rig.active, [true])
   scheduler.advance(500)
   assert.deepEqual(rig.auto, [true])
-  // Advance past the estimate rather than a fixed number: the tail is sized to
-  // outlast the slowest realized cadence, and that budget is allowed to change.
+  // Advance past the estimate rather than a fixed number
   scheduler.advance(estimateAutoSpeechDurationMs('你好，这是一段回答。') + 500)
   assert.deepEqual(rig.auto, [true, false])
   assert.deepEqual(rig.active, [true, false])
@@ -410,7 +409,6 @@ test('a live-conversation energy frame cannot evict a reply that is speaking', (
     source: 'reply',
     text: '在的',
   })
-  // Agora samples the remote track at 20Hz under its own conversation id.
   controller.handle({
     phase: 'energy',
     messageId: 'convo-agent-7',

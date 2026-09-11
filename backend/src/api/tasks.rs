@@ -176,7 +176,7 @@ pub async fn get_platform_task(
 ///
 /// GET /api/tasks
 pub async fn list_tasks(State(_db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
-    // 由于 BackgroundProcessor 没有提供 list_all 方法，我们暂时返回提示
+    // 本路由返回平台列表提示；按平台查 GET /api/tasks/platform/{platform}。
     (
         StatusCode::OK,
         Json(json!({
@@ -237,7 +237,7 @@ async fn process_platform_task(task_id: String, platform: String) {
 
     let platform_data = platform_data_value.unwrap();
 
-    // 5. 处理并保存
+    // Process and save via SmartFilter.
     BACKGROUND_PROCESSOR
         .update_task(task_id, TaskStatus::Processing, 60.0, None)
         .await;

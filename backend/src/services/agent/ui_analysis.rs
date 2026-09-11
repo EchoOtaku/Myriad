@@ -43,10 +43,7 @@ static RE_FUNC_NAME: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(\w+)\s*\("#).unwr
 
 /// Allowed SPA route prefixes for `router.navigate`.
 ///
-/// Keep in lockstep with `frontend/src/App.tsx` `<Route path>`. Dead prefixes
-/// (`/home`, `/platform`, `/report`, `/settings`) used to pass validation and
-/// then 404 to `/`, or reject the live `/library` `/reports` `/config` paths
-/// the planner is told to emit.
+/// Keep in lockstep with `frontend/src/App.tsx` `<Route path>`.
 pub const VALID_ROUTER_PREFIXES: &[&str] = &[
     "/", "/library", "/brew", "/reports", "/config", "/tapp", "/setup",
 ];
@@ -164,8 +161,7 @@ pub fn page_understand_frontend_actions(
 }
 
 /// Planner schema for `page.understand` says `userIntent` / `pageSnapshot`;
-/// the handler historically read `query` / `context`. Accept both so compact
-/// index `p` and injected page snapshots both land.
+/// also accept `query` / `context` so compact index `p` and injected snapshots land.
 pub fn page_understand_query(params: &HashMap<String, Value>) -> String {
     ["userIntent", "query"]
         .iter()

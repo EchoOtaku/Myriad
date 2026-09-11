@@ -1,22 +1,19 @@
-/**
- * AI 注释 Hook
- * 管理 Brewlia AI 注释的加载、显示、高亮等功能
- */
-
 import type { AnnotationItem } from '../../../../services/brewliaApi'
-import { useCallback, useRef, useState } from 'react'
+import type { ReaderCopy } from '../types'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as brewliaApi from '../../../../services/brewliaApi'
 import { userFacingError } from '../../../../utils/userFacingError'
+import { RequestTurn } from '../../logic/requestTurn'
+import { useArticleTaskScope } from './useArticleTaskScope'
 
 export interface UseAnnotationsOptions {
   itemId: number
   isBrewlia: boolean
   showToastMessage: (message: string, duration?: number) => void
-  t: Record<string, any>
+  t: ReaderCopy
 }
 
 export interface UseAnnotationsReturn {
-  // 状态
   annotations: AnnotationItem[]
   annotationsLoading: boolean
   annotationsError: string | null
@@ -26,7 +23,6 @@ export interface UseAnnotationsReturn {
   hoveredAnnotation: AnnotationItem | null
   tooltipPosition: { x: number; y: number }
 
-  // 操作
   setAnnotations: (annotations: AnnotationItem[]) => void
   setShowAnnotations: (show: boolean) => void
   setSelectedAnnotation: (annotation: AnnotationItem | null) => void
@@ -42,7 +38,6 @@ export interface UseAnnotationsReturn {
     articleRef: React.RefObject<HTMLElement | null>,
   ) => void
 
-  // Refs
   hoverTimeoutRef: React.RefObject<ReturnType<typeof setTimeout> | null>
   annotationsLoadingRef: React.RefObject<boolean>
 }
@@ -53,7 +48,9 @@ export function useAnnotations({
   showToastMessage,
   t,
 }: UseAnnotationsOptions): UseAnnotationsReturn {
-  // 状态
+  const captureTask = useArticleTaskScope(itemId)
+  const turns = useRef(new RequestTurn())
+  useEffect(() => () => turns.current.cancel(), [itemId])
   const [annotations, setAnnotations] = useState<AnnotationItem[]>([])
   const [annotationsLoading, setAnnotationsLoading] = useState(false)
   const [annotationsError, setAnnotationsError] = useState<string | null>(null)
@@ -65,26 +62,26 @@ export function useAnnotations({
     useState<AnnotationItem | null>(null)
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
 
-  // Refs
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const annotationsLoadingRef = useRef(false)
 
-  // 加载注释
   const loadAnnotations = useCallback(async () => {
     if (!isBrewlia || annotationsLoadingRef.current) return
 
-    // 如果已有注释，直接显示
     if (annotations.length > 0) {
       setShowAnnotations(true)
       return
     }
 
+    const isCurrent = captureTask()
+    const signal = turns.current.begin()
     annotationsLoadingRef.current = true
     setAnnotationsLoading(true)
     setAnnotationsError(null)
 
     try {
-      const response = await brewliaApi.getAnnotations(itemId)
+      const response = await brewliaApi.getAnnotations(itemId, signal)
+      if (!isCurrent() || signal.aborted) return
 
       if (response.success) {
         setAnnotations(response.annotations)
@@ -99,25 +96,28 @@ export function useAnnotations({
         )
       }
     } catch (err) {
+      if (!isCurrent() || signal.aborted) return
       console.error('Failed to load annotations:', err)
       setAnnotationsError(
         userFacingError(err, t.brew.fetchAnnotationFailed),
       )
     } finally {
-      setAnnotationsLoading(false)
       annotationsLoadingRef.current = false
+      if (isCurrent() && !signal.aborted) setAnnotationsLoading(false)
     }
-  }, [isBrewlia, annotations.length, itemId, showToastMessage, t])
+  }, [captureTask, isBrewlia, annotations.length, itemId, showToastMessage, t])
 
-  // 重新生成注释
   const regenerateAnnotations = useCallback(async () => {
     if (!isBrewlia || annotationsLoading) return
 
+    const isCurrent = captureTask()
+    const signal = turns.current.begin()
     setAnnotationsLoading(true)
     setAnnotationsError(null)
 
     try {
-      const response = await brewliaApi.regenerateAnnotations(itemId)
+      const response = await brewliaApi.regenerateAnnotations(itemId, signal)
+      if (!isCurrent() || signal.aborted) return
 
       if (response.success) {
         setAnnotations(response.annotations)
@@ -132,14 +132,14 @@ export function useAnnotations({
         setAnnotationsError(response.error || t.brew.regenerateFailed)
       }
     } catch (err) {
+      if (!isCurrent() || signal.aborted) return
       console.error('Failed to regenerate annotations:', err)
       setAnnotationsError(userFacingError(err, t.brew.regenerateFailed))
     } finally {
-      setAnnotationsLoading(false)
+      if (isCurrent() && !signal.aborted) setAnnotationsLoading(false)
     }
-  }, [isBrewlia, annotationsLoading, itemId, showToastMessage, t])
+  }, [captureTask, isBrewlia, annotationsLoading, itemId, showToastMessage, t])
 
-  // 切换注释显示
   const toggleAnnotations = useCallback(() => {
     if (annotations.length === 0) {
       loadAnnotations()
@@ -148,7 +148,6 @@ export function useAnnotations({
     }
   }, [annotations.length, loadAnnotations])
 
-  // 跳转到注释位置
   const scrollToAnnotation = useCallback(
     (
       annotation: AnnotationItem,
@@ -173,11 +172,9 @@ export function useAnnotations({
           behavior: 'smooth',
         })
 
-        // 高亮闪烁效果
         mark.classList.add('brewlia-highlight-flash')
         setTimeout(() => mark.classList.remove('brewlia-highlight-flash'), 1500)
 
-        // 关闭面板
         setShowBrewliaPanel(false)
       }
     },
@@ -185,7 +182,6 @@ export function useAnnotations({
   )
 
   return {
-    // 状态
     annotations,
     annotationsLoading,
     annotationsError,
@@ -195,7 +191,6 @@ export function useAnnotations({
     hoveredAnnotation,
     tooltipPosition,
 
-    // 操作
     setAnnotations,
     setShowAnnotations,
     setSelectedAnnotation,
@@ -207,7 +202,6 @@ export function useAnnotations({
     toggleAnnotations,
     scrollToAnnotation,
 
-    // Refs
     hoverTimeoutRef,
     annotationsLoadingRef,
   }

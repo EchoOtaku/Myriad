@@ -1,7 +1,3 @@
-/**
- * Chat-session overlay of a saved wardrobe set. Panel chat may play it;
- * the worn outfit and the home widget stay on `/active`.
- */
 
 import { useSyncExternalStore } from 'react'
 

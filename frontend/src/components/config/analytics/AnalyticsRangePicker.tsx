@@ -1,7 +1,3 @@
-/**
- * 访客统计 / AI 用量共用时间范围：7 · 14 · 30 · 自定义
- * 自定义：Portal 弹出双月历范围选择（DateRangePopover）
- */
 
 import type { DateRangePopoverLabels } from '../../settings/DateRangePopover'
 import type { AnalyticsRangePreset, AnalyticsRangeState } from './analyticsRangeLogic'

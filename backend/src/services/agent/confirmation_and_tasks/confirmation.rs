@@ -558,9 +558,6 @@ impl Agent {
         response_agent::confirmation_dialog(prefix, &step_names.join("、"), &impact_text)
     }
 
-    // NOTE: Old execute_recipe / execute_with_escalation / build_response_from_result
-    // removed — escalation is now handled by Planner.replan_with_progress_for() in execute_recipe_with_progress_v2
-
     /// 从步骤构建 Recipe
     pub(crate) fn build_recipe_from_steps(
         steps: Vec<RecipeStep>,

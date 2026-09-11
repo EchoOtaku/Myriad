@@ -1297,7 +1297,7 @@ pub(crate) async fn build_config(
                 required: true,
             }],
         },
-        // 管理端 ui_config 仅 bag；typed 镜像已删除（见 UiConfig 注释）
+        // 管理端 ui_config 仅 bag（见 UiConfig）
         ui_config: UiConfig {
             // ui_config.config_fields 跨页共享大袋子；按设置 Section 归属 emit。
             // 死字段（无设置页入口）勿再 emit：
