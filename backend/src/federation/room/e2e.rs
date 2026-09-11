@@ -147,7 +147,7 @@ pub async fn initiate_e2e_key_exchange(
     if my_role == "observer" {
         return Err((
             StatusCode::FORBIDDEN,
-            Json(json!({"error": "Observers cannot publish E2E keys"})),
+            Json(AppError::public_json("Observers cannot publish E2E keys")),
         ));
     }
 
@@ -166,7 +166,7 @@ pub async fn initiate_e2e_key_exchange(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Room not found"})),
+                Json(AppError::public_json("Room not found")),
             )
         })?;
 
@@ -183,7 +183,7 @@ pub async fn initiate_e2e_key_exchange(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Member row not found"})),
+                Json(AppError::public_json("Member row not found")),
             )
         })?;
 
@@ -480,3 +480,4 @@ pub async fn handle_key_exchange(
     );
     Ok(())
 }
+use myriad_error::AppError;

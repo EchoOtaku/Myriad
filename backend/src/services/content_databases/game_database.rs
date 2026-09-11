@@ -56,19 +56,17 @@ impl GameDatabase {
 
         if file_path.exists() {
             match fs::read_to_string(file_path) {
-                Ok(content) => {
-                    match serde_json::from_str::<Vec<GameEntry>>(&content) {
-                        Ok(entries_list) => {
-                            for entry in entries_list {
-                                entries.insert(entry.name.clone(), entry);
-                            }
-                            info!("Loaded {} entries from game database", entries.len());
+                Ok(content) => match serde_json::from_str::<Vec<GameEntry>>(&content) {
+                    Ok(entries_list) => {
+                        for entry in entries_list {
+                            entries.insert(entry.name.clone(), entry);
                         }
-                        Err(e) => {
-                            error!("Failed to parse game database JSON as array: {}", e);
-                        }
+                        info!("Loaded {} entries from game database", entries.len());
                     }
-                }
+                    Err(e) => {
+                        error!("Failed to parse game database JSON as array: {}", e);
+                    }
+                },
                 Err(e) => error!("Failed to read game database file: {}", e),
             }
         } else {

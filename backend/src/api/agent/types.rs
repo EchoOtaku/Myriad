@@ -29,7 +29,7 @@ pub struct ProcessContext {
     pub conversation_history: Option<Vec<ConversationMessageApi>>,
     /// 自定义数据
     pub custom_data: Option<Value>,
-    /// 用户已接受、正在进入 Work 的自主提案。
+    /// 已 Accepted、正在进入 Work 的提案 id（用户接单或意识引擎接单都写）。
     pub intention_id: Option<String>,
     pub autonomy_permission_cap: Option<Vec<String>>,
     /// Semantic live-face snapshot. Extra keys are dropped at the sanitizer.
@@ -41,7 +41,7 @@ pub struct ProcessContext {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationMessageApi {
-    /// 角色: user, assistant, system
+    /// 角色
     pub role: String,
     /// 消息内容
     pub content: String,
@@ -230,7 +230,7 @@ pub struct StepExecution {
     /// 错误信息（步骤失败时）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
-    /// 图片 URL（ai.image 输出）
+    /// 图片 URL（输出里的 url / imageUrl）
     #[serde(rename = "imageUrl", skip_serializing_if = "Option::is_none")]
     pub image_url: Option<String>,
     /// 是否为动态生成的步骤
@@ -282,7 +282,7 @@ pub type ProgressEvent = AgentProgressEvent;
 /// 对话消息（用于 conversation_data）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationMessage {
-    /// 消息角色: user, assistant, system
+    /// 消息角色
     pub role: String,
     /// 消息内容
     pub content: String,
@@ -323,7 +323,7 @@ pub struct TaskPresetResponse {
     /// 对话历史数据
     #[serde(rename = "conversationData", skip_serializing_if = "Option::is_none")]
     pub conversation_data: Option<Vec<ConversationMessage>>,
-    /// 是否有对话历史（前端用于判断是否显示"继续对话"按钮）
+    /// 是否有非空 conversation_data
     #[serde(rename = "hasConversation")]
     pub has_conversation: bool,
 }
@@ -613,7 +613,6 @@ impl From<AgentResponse> for ApiResponse {
             }
         });
 
-        // 转换前端操作指令
         let frontend_action = response.frontend_action;
         let performance = response.performance;
 

@@ -1,3 +1,4 @@
+use myriad_error::AppError;
 // 图片代理服务 - 用于处理Bilibili等平台的防盗链图片
 use axum::{
     extract::{Path, Query},
@@ -79,7 +80,6 @@ impl TokenBucket {
     }
 }
 
-// 全局代理限流器映射 (域名 -> 令牌桶)
 /// 上游 JSON 元数据的响应体上限。
 ///
 /// 这些都是歌单/歌词/地理位置之类的小 JSON。`resp.json()` 会无界缓冲，
@@ -100,6 +100,7 @@ async fn read_limited_json(resp: reqwest::Response) -> Result<Value, String> {
     })
 }
 
+// 全局代理限流器映射（域名 → 令牌桶）
 static PROXY_LIMITERS: Lazy<Arc<Mutex<HashMap<String, TokenBucket>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
@@ -155,7 +156,7 @@ async fn wait_for_proxy_permit(url: &str) -> Result<(), ()> {
                     "netease" => TokenBucket::new(12.0, 60.0),
                     // MyAnimeList CDN
                     "mal" => TokenBucket::new(12.0, 60.0),
-                    // 其它 allowlist 图床 / 博客图（RSS 等）
+                    // twimg（domain key "x"）等未单列的 allowlist 域名
                     _ => TokenBucket::new(12.0, 48.0),
                 }
             });
@@ -224,7 +225,7 @@ fn soft_fail_placeholder(reason: &str, url: &str) -> Response {
 /// `IMAGE_PROXY_MAX` (400/min) + `IP_HARD_CAP_MAX` + SSRF guards。非 allowlist 域名硬 403。
 ///
 /// Security rejections (SSRF / domain / unsafe target / rate limit / oversize URL / SVG)
-/// still return hard 4xx. Oversize body is 413. Other upstream fetch/content
+/// still return hard 4xx. Body oversize or unreadable is 413. Send/status/non-image
 /// failures soft-fail with a transparent 1×1 PNG (HTTP 200).
 pub async fn proxy_image(Query(params): Query<ImageProxyQuery>) -> Response {
     let url = params.url;
@@ -594,7 +595,7 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
         Err(_) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid playlist ID"})),
+                Json(AppError::public_json("Invalid playlist ID")),
             )
                 .into_response();
         }
@@ -640,7 +641,7 @@ pub async fn proxy_netease_lyrics(Path(song_id): Path<String>) -> Response {
         Err(_) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid song ID"})),
+                Json(AppError::public_json("Invalid song ID")),
             )
                 .into_response();
         }
@@ -675,7 +676,7 @@ pub async fn proxy_netease_lyrics_verbatim(Path(song_id): Path<String>) -> Respo
         Err(_) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid song ID"})),
+                Json(AppError::public_json("Invalid song ID")),
             )
                 .into_response();
         }
@@ -719,7 +720,7 @@ pub async fn proxy_kugou_lyrics_verbatim(Query(q): Query<KugouLyricsQuery>) -> R
     if q.keyword.trim().is_empty() {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "keyword required"})),
+            Json(AppError::public_json("keyword required")),
         )
             .into_response();
     }
@@ -752,7 +753,7 @@ pub async fn proxy_netease_song(Path(song_id): Path<String>) -> Response {
         Err(_) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid song ID"})),
+                Json(AppError::public_json("Invalid song ID")),
             )
                 .into_response();
         }

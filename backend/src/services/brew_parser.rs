@@ -572,7 +572,6 @@ impl FeedParser {
             buf.clear();
         }
 
-        // 修正 HTML 内容：quick_xml 会错误地解析转义的 HTML 标签
         // 从原始 XML 重新提取 description 和 content:encoded
         for item in &mut feed.items {
             let identifier = if !item.guid.is_empty() {
@@ -1014,8 +1013,8 @@ impl FeedParser {
     }
 }
 
-/// 从原始 XML 中提取指定 item 的 HTML 内容字段
-/// 这是必要的，因为 quick_xml 会自动解码 XML 实体，导致转义的 HTML 被错误解析
+/// 从原始 XML 取指定 item 的 HTML 字段 inner。
+/// 未转义的 HTML 子标签会被 quick_xml 拆成事件，第一遍 Text 拿不全。
 fn extract_item_html_content(xml: &str, guid: &str, tag: &str) -> Option<String> {
     // guid 先做 & < > 转义
     let guid_escaped = guid

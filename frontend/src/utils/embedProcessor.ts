@@ -123,7 +123,7 @@ function generateNeteaseMusicCard(songId: string): string {
             <div>
               <div class="flex items-start gap-1">
                 <h3 class="brew-embed-title font-bold text-white text-xs leading-tight line-clamp-2 mb-1 flex-1">
-                  加载中...
+                  ${currentCopy().common.loading}
                 </h3>
               </div>
               <p class="brew-embed-artist text-[10px] text-white/75 line-clamp-1">
@@ -166,7 +166,7 @@ function generateSteamGameCard(appId: string): string {
               App ID: ${appId}
             </h3>
             <p class="brew-embed-desc text-sm text-white/80 line-clamp-1">
-              点击访问 Steam 商店
+              ${currentCopy().brew.embedSteamStore}
             </p>
           </div>
         </div>

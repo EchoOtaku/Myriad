@@ -169,7 +169,7 @@ async fn main() -> anyhow::Result<()> {
             "updater client configured"
         );
         // Best-effort reachability probe. Don't block startup — the updater container may
-        // still be coming up, and admin routes return 503 cleanly when unreachable.
+        // still be coming up, and admin routes return 502 when unreachable.
         let probe = c.clone();
         tokio::spawn(async move {
             match probe.ping().await {
@@ -866,12 +866,17 @@ async fn config_mode_middleware(req: Request, next: Next) -> Response {
     if CONFIG_MODE.load(Ordering::Relaxed) && !allowed_paths.iter().any(|p| path.starts_with(p)) {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Service in configuration mode",
-                "message": "服务器正在配置模式，请先完成数据库配置和初始化",
-                "configure_endpoint": "/api/setup/database-config",
-                "hint": "After configuration, the service restarts to load the full route table"
-            })),
+            Json({
+                let mut v = AppError::service_unavailable("Service in configuration mode")
+                    .with_message("Finish database setup first.")
+                    .with_hint(
+                        "After configuration, the service restarts to load the full route table",
+                    )
+                    .with_code("configuration_mode")
+                    .to_json();
+                v["configure_endpoint"] = json!("/api/setup/database-config");
+                v
+            }),
         )
             .into_response();
     }
@@ -924,7 +929,7 @@ async fn export_settings(
     let Ok(user_id) = claims.sub.parse::<i32>() else {
         return (
             StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Invalid authenticated user"})),
+            Json(AppError::public_json("Invalid authenticated user")),
         )
             .into_response();
     };
@@ -967,7 +972,7 @@ async fn restore_settings(
     let Ok(user_id) = claims.sub.parse::<i32>() else {
         return (
             StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Invalid authenticated user"})),
+            Json(AppError::public_json("Invalid authenticated user")),
         )
             .into_response();
     };
@@ -1200,3 +1205,4 @@ mod cache_control_tests {
         }
     }
 }
+use myriad_error::AppError;

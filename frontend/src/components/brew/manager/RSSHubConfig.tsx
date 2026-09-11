@@ -207,10 +207,15 @@ type RouteConfigRequirement = 'none' | 'server' | 'optional'
 
 interface RouteTemplate {
   path: string
-  name: string
-  params: string[]
   requiresConfig?: RouteConfigRequirement
   configNote?: string
+}
+
+function rsshubRouteName(
+  names: Record<string, string>,
+  path: string,
+): string {
+  return names[path] || path
 }
 
 const POPULAR_ROUTES: { category: string; routes: RouteTemplate[] }[] = [
@@ -219,26 +224,18 @@ const POPULAR_ROUTES: { category: string; routes: RouteTemplate[] }[] = [
     routes: [
       {
         path: '/bsky/profile/:handle',
-        name: 'Bluesky 用户',
-        params: ['用户handle'],
       },
       {
         path: '/douban/people/:id/status',
-        name: '豆瓣用户广播',
-        params: ['用户ID'],
       },
-      { path: '/douban/group/:groupid', name: '豆瓣小组', params: ['小组ID'] },
-      { path: '/douban/movie/playing', name: '豆瓣正在热映', params: [] },
-      { path: '/douban/explore', name: '豆瓣浏览发现', params: [] },
+      { path: '/douban/group/:groupid' },
+      { path: '/douban/movie/playing' },
+      { path: '/douban/explore' },
       {
         path: '/telegram/channel/:id',
-        name: 'Telegram 频道',
-        params: ['频道名'],
       },
       {
         path: '/weibo/oasis/user/:userid',
-        name: '微博绿洲',
-        params: ['用户ID'],
       },
     ],
   },
@@ -247,53 +244,41 @@ const POPULAR_ROUTES: { category: string; routes: RouteTemplate[] }[] = [
     routes: [
       {
         path: '/bilibili/user/video/:uid',
-        name: 'B站UP主视频',
-        params: ['UID'],
       },
       {
         path: '/bilibili/ranking/:rid?',
-        name: 'B站排行榜',
-        params: ['分区(可选)'],
       },
-      { path: '/bilibili/popular/all', name: 'B站综合热门', params: [] },
-      { path: '/bilibili/weekly', name: 'B站每周必看', params: [] },
-      { path: '/bilibili/precious', name: 'B站入站必刷', params: [] },
-      { path: '/bilibili/hot-search', name: 'B站热搜', params: [] },
+      { path: '/bilibili/popular/all' },
+      { path: '/bilibili/weekly' },
+      { path: '/bilibili/precious' },
+      { path: '/bilibili/hot-search' },
       {
         path: '/bilibili/bangumi/media/:mediaid',
-        name: 'B站番剧',
-        params: ['剧集ID'],
       },
       {
         path: '/bilibili/user/article/:uid',
-        name: 'B站UP主图文',
-        params: ['UID'],
       },
-      { path: '/bilibili/audio/:id', name: 'B站歌单', params: ['歌单ID'] },
+      { path: '/bilibili/audio/:id' },
       {
         path: '/acfun/user/video/:uid',
-        name: 'AcFun用户视频',
-        params: ['用户ID'],
       },
     ],
   },
   {
     category: 'news',
     routes: [
-      { path: '/sspai/index', name: '少数派首页', params: [] },
-      { path: '/sspai/matrix', name: '少数派Matrix', params: [] },
+      { path: '/sspai/index' },
+      { path: '/sspai/matrix' },
       {
         path: '/sspai/author/:id',
-        name: '少数派作者',
-        params: ['作者ID或slug'],
       },
-      { path: '/sspai/tag/:keyword', name: '少数派标签', params: ['标签名'] },
-      { path: '/sspai/topic/:id', name: '少数派专题', params: ['专题ID'] },
-      { path: '/36kr/hot-list', name: '36氪热榜', params: [] },
-      { path: '/36kr/newsflashes', name: '36氪快讯', params: [] },
-      { path: '/thepaper/featured', name: '澎湃新闻头条', params: [] },
-      { path: '/zhihu/daily', name: '知乎日报', params: [] },
-      { path: '/cls/telegraph', name: '财联社电报', params: [] },
+      { path: '/sspai/tag/:keyword' },
+      { path: '/sspai/topic/:id' },
+      { path: '/36kr/hot-list' },
+      { path: '/36kr/newsflashes' },
+      { path: '/thepaper/featured' },
+      { path: '/zhihu/daily' },
+      { path: '/cls/telegraph' },
     ],
   },
   {
@@ -301,41 +286,29 @@ const POPULAR_ROUTES: { category: string; routes: RouteTemplate[] }[] = [
     routes: [
       {
         path: '/github/repos/:user',
-        name: 'GitHub 用户仓库',
-        params: ['用户名'],
       },
       {
         path: '/github/issue/:user/:repo',
-        name: 'GitHub Issues',
-        params: ['用户', '仓库'],
       },
       {
         path: '/github/pull/:user/:repo',
-        name: 'GitHub PRs',
-        params: ['用户', '仓库'],
       },
       {
         path: '/github/wiki/:user/:repo/:page?',
-        name: 'GitHub Wiki',
-        params: ['用户', '仓库', '页面(可选)'],
       },
       {
         path: '/github/topics/:name',
-        name: 'GitHub Topics',
-        params: ['话题名'],
       },
-      { path: '/hellogithub/home', name: 'HelloGitHub 开源项目', params: [] },
-      { path: '/hellogithub/volume', name: 'HelloGitHub 月刊', params: [] },
+      { path: '/hellogithub/home' },
+      { path: '/hellogithub/volume' },
       {
         path: '/huggingface/daily-papers',
-        name: 'HuggingFace 每日论文',
-        params: [],
       },
-      { path: '/anthropic/news', name: 'Anthropic 新闻', params: [] },
-      { path: '/anthropic/research', name: 'Anthropic 研究', params: [] },
-      { path: '/web/articles', name: 'web.dev 文章', params: [] },
-      { path: '/web/blog', name: 'web.dev 博客', params: [] },
-      { path: '/hackernews/best', name: 'Hacker News Best', params: [] },
+      { path: '/anthropic/news' },
+      { path: '/anthropic/research' },
+      { path: '/web/articles' },
+      { path: '/web/blog' },
+      { path: '/hackernews/best' },
     ],
   },
   {
@@ -343,17 +316,13 @@ const POPULAR_ROUTES: { category: string; routes: RouteTemplate[] }[] = [
     routes: [
       {
         path: '/rsshub/routes/:lang?',
-        name: 'RSSHub 路由列表',
-        params: ['语言(可选)'],
       },
-      { path: '/zhubai/:id', name: '竹白专栏', params: ['专栏ID'] },
-      { path: '/substack/:id', name: 'Substack', params: ['作者ID'] },
-      { path: '/xlog/:handle', name: 'xLog 博客', params: ['用户handle'] },
-      { path: '/wordpress/:domain', name: 'WordPress 博客', params: ['域名'] },
+      { path: '/zhubai/:id' },
+      { path: '/substack/:id' },
+      { path: '/xlog/:handle' },
+      { path: '/wordpress/:domain' },
       {
         path: '/zhiy/letters/:author',
-        name: '知园Newsletter',
-        params: ['作者ID'],
       },
     ],
   },
@@ -362,21 +331,15 @@ const POPULAR_ROUTES: { category: string; routes: RouteTemplate[] }[] = [
     routes: [
       {
         path: '/dribbble/popular/:timeframe?',
-        name: 'Dribbble 热门',
-        params: ['时间(可选)'],
       },
       {
         path: '/dribbble/user/:name',
-        name: 'Dribbble 用户',
-        params: ['用户名'],
       },
       {
         path: '/zcool/discover/:type?',
-        name: '站酷发现',
-        params: ['类型(可选)'],
       },
-      { path: '/zcool/user/:uid', name: '站酷用户', params: ['用户ID'] },
-      { path: '/topys', name: 'TOPYS 创意内容', params: [] },
+      { path: '/zcool/user/:uid' },
+      { path: '/topys' },
     ],
   },
   {
@@ -384,30 +347,22 @@ const POPULAR_ROUTES: { category: string; routes: RouteTemplate[] }[] = [
     routes: [
       {
         path: '/smzdm/keyword/:keyword',
-        name: '什么值得买关键词',
-        params: ['关键词'],
       },
       {
         path: '/smzdm/ranking/:rank_type/:rank_id',
-        name: '什么值得买榜单',
-        params: ['类型', '榜单ID'],
       },
     ],
   },
   {
     category: 'other',
     routes: [
-      { path: '/douban/book/latest', name: '豆瓣新书', params: [] },
-      { path: '/bangumi/calendar/today', name: 'Bangumi 每日放送', params: [] },
+      { path: '/douban/book/latest' },
+      { path: '/bangumi/calendar/today' },
       {
         path: '/steam/search/:params',
-        name: 'Steam 搜索',
-        params: ['搜索参数'],
       },
       {
         path: '/earthquake/:region?',
-        name: '地震速报',
-        params: ['地区(可选)'],
       },
     ],
   },
@@ -796,11 +751,6 @@ export default function RSSHubConfigComponent({
 
   const handleSelectRoute = (route: RouteTemplate) => {
     setRoutePath(route.path)
-    const newParams: Record<string, string> = {}
-    route.params.forEach((p) => {
-      const paramName = p.replace(/[\s(可选)]/g, '').toLowerCase()
-      newParams[paramName] = ''
-    })
     setRouteParams({})
     setCurrentRouteConfig(
       route.requiresConfig
@@ -821,14 +771,18 @@ export default function RSSHubConfigComponent({
       routes: category.routes.filter((route) => {
         const matchesCategory =
           !selectedCategory || category.category === selectedCategory
+        const label = rsshubRouteName(
+          t.brew.rsshubRouteNames as Record<string, string>,
+          route.path,
+        )
         const matchesSearch =
           !searchQuery ||
-          route.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          label.toLowerCase().includes(searchQuery.toLowerCase()) ||
           route.path.toLowerCase().includes(searchQuery.toLowerCase())
         return matchesCategory && matchesSearch
       }),
     })).filter((category) => category.routes.length > 0)
-  }, [searchQuery, selectedCategory])
+  }, [searchQuery, selectedCategory, t.brew.rsshubRouteNames])
 
   return (
     <div className="brew-skin brew-rsshub">
@@ -1417,7 +1371,10 @@ export default function RSSHubConfigComponent({
                           >
                             <div className="min-w-0 flex-1">
                               <div className="font-medium text-gray-800 dark:text-gray-100 truncate flex items-center gap-1">
-                                {route.name}
+                                {rsshubRouteName(
+                                  t.brew.rsshubRouteNames as Record<string, string>,
+                                  route.path,
+                                )}
                                 {route.requiresConfig === 'server' && (
                                   <span
                                     className="px-1 py-0.5 text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded"

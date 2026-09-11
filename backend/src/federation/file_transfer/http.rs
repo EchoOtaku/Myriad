@@ -2,6 +2,7 @@
 
 use axum::{http::StatusCode, Json};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait};
 use serde_json::json;
 use tokio::fs;
@@ -48,7 +49,7 @@ pub async fn initiate_transfer(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Channel not found"})),
+                Json(AppError::public_json("Channel not found")),
             )
         })?;
 
@@ -68,7 +69,12 @@ pub async fn initiate_transfer(
         return Err((
             StatusCode::BAD_REQUEST,
             Json(
-                json!({"error": format!("File size must be between 1 byte and {} bytes", MAX_FILE_SIZE)}),
+                AppError::bad_request(format!(
+                    "File size must be between 1 byte and {} bytes",
+                    MAX_FILE_SIZE
+                ))
+                .with_code("file_too_large")
+                .to_json(),
             ),
         ));
     }
@@ -203,13 +209,13 @@ pub async fn initiate_room_transfer(
         .ok_or_else(|| {
             (
                 StatusCode::FORBIDDEN,
-                Json(json!({"error": "Not a room member"})),
+                Json(AppError::public_json("Not a room member")),
             )
         })?;
     if role == "observer" {
         return Err((
             StatusCode::FORBIDDEN,
-            Json(json!({"error": "Observers cannot upload files"})),
+            Json(AppError::public_json("Observers cannot upload files")),
         ));
     }
 
@@ -217,7 +223,12 @@ pub async fn initiate_room_transfer(
         return Err((
             StatusCode::BAD_REQUEST,
             Json(
-                json!({"error": format!("File size must be between 1 byte and {} bytes", MAX_FILE_SIZE)}),
+                AppError::bad_request(format!(
+                    "File size must be between 1 byte and {} bytes",
+                    MAX_FILE_SIZE
+                ))
+                .with_code("file_too_large")
+                .to_json(),
             ),
         ));
     }
@@ -341,7 +352,7 @@ pub async fn upload_chunk(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Transfer not found"})),
+                Json(AppError::public_json("Transfer not found")),
             )
         })?;
 
@@ -364,7 +375,7 @@ pub async fn upload_chunk(
     if !allowed {
         return Err((
             StatusCode::FORBIDDEN,
-            Json(json!({"error": "Not your transfer"})),
+            Json(AppError::public_json("Not your transfer")),
         ));
     }
 
@@ -549,7 +560,9 @@ pub async fn upload_chunk(
                 .ok_or_else(|| {
                     (
                         StatusCode::CONFLICT,
-                        Json(json!({"error": "Transfer progress changed while uploading chunk"})),
+                        Json(AppError::public_json(
+                            "Transfer progress changed while uploading chunk",
+                        )),
                     )
                 })?;
 
@@ -712,7 +725,7 @@ pub async fn open_transfer_file(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Transfer not found"})),
+                Json(AppError::public_json("Transfer not found")),
             )
         })?;
 
@@ -729,7 +742,7 @@ pub async fn open_transfer_file(
         if member.is_none() {
             return Err((
                 StatusCode::FORBIDDEN,
-                Json(json!({"error": "Not a room member"})),
+                Json(AppError::public_json("Not a room member")),
             ));
         }
     } else {
@@ -740,7 +753,7 @@ pub async fn open_transfer_file(
         if channel_user != user_id {
             return Err((
                 StatusCode::FORBIDDEN,
-                Json(json!({"error": "Not your transfer"})),
+                Json(AppError::public_json("Not your transfer")),
             ));
         }
     }
@@ -785,7 +798,7 @@ pub async fn open_transfer_file(
     if !meta.is_file() {
         return Err((
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "Transfer path is not a file"})),
+            Json(AppError::public_json("Transfer path is not a file")),
         ));
     }
 
@@ -793,7 +806,7 @@ pub async fn open_transfer_file(
     if declared_size > 0 && file_size == 0 {
         return Err((
             StatusCode::CONFLICT,
-            Json(json!({"error": "Transfer file is empty"})),
+            Json(AppError::public_json("Transfer file is empty")),
         ));
     }
 
@@ -831,7 +844,7 @@ pub async fn get_transfer(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Transfer not found"})),
+                Json(AppError::public_json("Transfer not found")),
             )
         })?;
 
@@ -849,7 +862,7 @@ pub async fn get_transfer(
         {
             return Err((
                 StatusCode::FORBIDDEN,
-                Json(json!({"error": "Not a room member"})),
+                Json(AppError::public_json("Not a room member")),
             ));
         }
     } else {
@@ -860,7 +873,7 @@ pub async fn get_transfer(
         if channel_user != user_id {
             return Err((
                 StatusCode::FORBIDDEN,
-                Json(json!({"error": "Not your transfer"})),
+                Json(AppError::public_json("Not your transfer")),
             ));
         }
     }
@@ -928,14 +941,14 @@ pub async fn list_transfers(
             if channel_user != user_id {
                 return Err((
                     StatusCode::FORBIDDEN,
-                    Json(json!({"error": "Not your channel"})),
+                    Json(AppError::public_json("Not your channel")),
                 ));
             }
         }
         None => {
             return Err((
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Channel not found"})),
+                Json(AppError::public_json("Channel not found")),
             ));
         }
     }
@@ -1000,7 +1013,7 @@ pub async fn list_room_transfers(
     {
         return Err((
             StatusCode::FORBIDDEN,
-            Json(json!({"error": "Not a room member"})),
+            Json(AppError::public_json("Not a room member")),
         ));
     }
     let _ = user_id; // membership is the gate
@@ -1079,7 +1092,7 @@ pub async fn cancel_transfer(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Transfer not found"})),
+                Json(AppError::public_json("Transfer not found")),
             )
         })?;
 
@@ -1100,7 +1113,7 @@ pub async fn cancel_transfer(
     if !allowed {
         return Err((
             StatusCode::FORBIDDEN,
-            Json(json!({"error": "Not your transfer"})),
+            Json(AppError::public_json("Not your transfer")),
         ));
     }
 
@@ -1108,7 +1121,7 @@ pub async fn cancel_transfer(
     if !["pending", "in-progress"].contains(&status.as_str()) {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Transfer is not ready"})),
+            Json(AppError::public_json("Transfer is not ready")),
         ));
     }
 

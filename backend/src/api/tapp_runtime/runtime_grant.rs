@@ -156,7 +156,7 @@ where
         let claims = parts.extensions.get::<Claims>().ok_or_else(|| {
             HttpError::from((
                 StatusCode::UNAUTHORIZED,
-                Json(json!({ "error": "Authentication context is missing" })),
+                Json(AppError::public_json("Authentication context is missing")),
             ))
         })?;
         let token = parts
@@ -361,3 +361,4 @@ mod tests {
         assert!(TappPermission::from_str("storage:write").is_some());
     }
 }
+use myriad_error::AppError;

@@ -989,7 +989,7 @@ export default memo(
                                         clearingVoiceId === voice.voice_id
                                       }
                                       className="p-1 rounded text-red-500/70 hover:text-red-500 hover:bg-red-500/10 transition-all disabled:opacity-50"
-                                      title={t.brew.clearCache}
+                                      title={t.brew.clearVoiceCache}
                                     >
                                       {clearingVoiceId === voice.voice_id ? (
                                         <Spinner size="xs" color="current" />
@@ -1005,7 +1005,7 @@ export default memo(
                                   className={`flex items-center gap-1 mt-1.5 text-xs ${currentTheme.secondary}`}
                                 >
                                   <Spinner size="xs" color="current" />
-                                  {t.brew.loadingCache}
+                                  {t.brew.loadingCloudCache}
                                 </div>
                               )}
                             </div>
@@ -1064,7 +1064,7 @@ export default memo(
                           onClick={handlePrevious}
                           disabled={podcastCurrentIndex <= 0}
                           className={`p-1.5 rounded-lg transition-colors ${currentTheme.secondary} hover:${currentTheme.text} disabled:opacity-30`}
-                          title={t.brew.previousSegment}
+                          title={t.brew.prevSegment}
                         >
                           <SkipBack className="w-4 h-4" />
                         </button>

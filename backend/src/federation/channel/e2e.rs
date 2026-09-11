@@ -244,7 +244,7 @@ pub async fn accept_channel(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Channel not found"})),
+                Json(AppError::public_json("Channel not found")),
             )
         })?;
 
@@ -426,7 +426,7 @@ pub async fn initiate_e2e_key_exchange(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Channel not found"})),
+                Json(AppError::public_json("Channel not found")),
             )
         })?;
 
@@ -659,3 +659,4 @@ pub async fn initiate_e2e_key_exchange(
         established,
     })
 }
+use myriad_error::AppError;

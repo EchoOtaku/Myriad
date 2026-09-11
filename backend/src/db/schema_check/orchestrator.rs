@@ -15,40 +15,12 @@ use super::seeds::{ensure_default_config, ensure_default_platforms};
 /// 修改此版本号用于记录新的结构基线；schema 安全比对本身会在每次启动执行。
 /// 格式建议：YYYY.MM.DD 或语义版本 X.Y.Z
 ///
-/// 变更日志：
-///
-/// **分工**：数字系列 `migrations/001`–`006` 是新库权威建表，必须完整。
-/// 007–019 的 `seaql_migrations` 行在 `Migrator::up` 之前删掉，不进 Migrator。
-/// 同一步 `DROP` 残留的 `digital_life_*` 实验表。
-/// `ensure_heals.rs` 的 `ensure_*` 覆盖近期补齐（CREATE 兜底、唯一索引、PK 扩维等）；
-/// **普通缺列**一律走 `get_expected_schema` 通用 ADD。
-///
-/// **Support floor: product ≥ 0.3.10.** 不再为更旧版本维护逐列「字段对齐」
-/// heal（approved_permissions / engagement 过渡形态 / rate_* 专用 ALTER 等）。
-///
-/// - 2026.09.02.1: agent_addressee_state.music_mood_credited_at（听歌心情收益跨进程冷却）
-/// - 2026.09.01.3: agent_addressee_state.activity_updated_at（活动过期不再受心情写入续期）
-/// - 2026.09.01.2: 去掉 agent_addressee_state.last_departure_at（离开衰减已删，沉默回归读时 overlay）
-/// - 2026.09.01.1: agent_addressee_state 效价×唤醒 + 短期情绪层（arousal/emotion/settled_at）
-/// - 2026.08.29.3: agent_intentions.accept_source + (user_id, source_event_id) 唯一
-/// - 2026.08.29.2: Agent 个人自主授权账本（004 + runtime CREATE 补齐）
-/// - 2026.08.29.1: Agent 自主意图账本（004 + runtime CREATE 补齐）
-/// - 2026.08.24.1: Merope 四表并入 tables_agent；004 补齐勿扰时间窗列
-/// - 2026.08.19.2: tapps.needs_reauthorization（重新授权标记）
-/// - 2026.08.19.1: Merope 四表折入 004 + ensure_agent_merope_tables
-/// - 2026.08.15.1: federation_inbox_receipts 折入 005；旧无 inbox_scope 表形自愈
-/// - 2026.08.03.2: users 名称/简介文案来源（profile_text_source_kind / profile_text_source_ref）
-/// - 2026.08.03.1: users 画像源选择（avatar_source_kind / avatar_source_ref / avatar_resolved_url / avatar_updated_at）
-/// - 2026.08.02.2: tapp_storage 凭据字段数据库约束与序列化/查询边界加固
-/// - 2026.08.02.1: tapp_storage 加密凭据字段（encrypted_value / binding_fingerprint）
-/// - 2026.08.01.1: tapps.visibility（公开安装可见性 all|admin）
-/// - 2026.07.31.1: 删除 <0.3.10 字段级对齐；缺列通用 ADD；analytics target 仅保留 PK heal
-/// - 2026.07.30.5: analytics_visitor_seen.ordinal（访客到达序号）
-/// - 2026.07.30.4: 近月新表——001 analytics / 004 heartbeat / 005 federation 扩展
-/// - 2026.07.30.3 … 2026.07.30.1: analytics 基线
-/// - 2026.07.27.x: federation FK / last_read_at / comprehensive 清理
-/// - 2026.07.21–20: domain_aliases / interactions / heartbeat / policy / filters
 /// Marker for ops/logs + `_schema_versions`. Bump only with real schema/heal work.
+///
+/// 数字系列 `migrations/001`–`006` 是新库权威建表。Folded 007–019 names
+/// 在 `Migrator::up` 之前从 `seaql_migrations` 删掉。普通缺列走
+/// `get_expected_schema` 通用 ADD。Support floor: product ≥ 0.3.10。
+/// Current: `agent_addressee_state.music_mood_credited_at`。
 pub const SCHEMA_VERSION: &str = "2026.09.02.1";
 
 const SCHEMA_LOCK_WAIT_TIMEOUT: Duration = Duration::from_secs(120);
@@ -250,7 +222,7 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
         changes_made += seeded_config;
     }
 
-    // Rebuild the scope-less 012 receipt shape before generic ADD COLUMN:
+    // Rebuild `federation_inbox_receipts` before generic ADD COLUMN:
     // `inbox_scope` is NOT NULL without a default and belongs in the PK.
     ensure_federation_inbox_receipts_table(db).await?;
 

@@ -111,7 +111,7 @@ interface PlatformReport {
 }
 
 interface CrossPlatformReport {
-  id?: number 
+  id?: number
   platform_reports: PlatformReport[]
   created_at: string
 }
@@ -160,7 +160,7 @@ const PLATFORMS = [
   },
   {
     id: 'netease',
-    name: '网易云',
+    name: 'NetEase',
     icon: <SiNeteasecloudmusic />,
     color: 'from-red-500 to-red-600',
     bg: 'bg-red-50/10 dark:bg-red-900/10',
@@ -505,9 +505,9 @@ export default function Reports() {
   ])
 
   const startPlayAll = useCallback(() => {
-    const platformsWithReports = visiblePlatforms.filter((p) => {
-      platformReportsMap.has(p.id),
-    ).map((p) => p.id)
+    const platformsWithReports = visiblePlatforms
+      .filter((p) => platformReportsMap.has(p.id))
+      .map((p) => p.id)
 
     if (platformsWithReports.length === 0) {
       showToastMessage(t.reportsPage.noPlatformReports, 'error')

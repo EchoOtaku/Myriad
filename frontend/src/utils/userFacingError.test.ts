@@ -53,6 +53,48 @@ describe('userFacingError', () => {
     assert.equal(/Database error/i.test(text), false)
   })
 
+  it('maps configuration_mode away from the English label', () => {
+    const err = new ApiError(
+      'Service in configuration mode',
+      503,
+      'configuration_mode',
+    )
+    const text = userFacingError(err)
+    assert.match(text, /配置|setup|セットアップ/i)
+    assert.equal(/Service in configuration mode/i.test(text), false)
+  })
+
+  it('maps setup_completed away from the English label', () => {
+    const err = new ApiError(
+      'Setup already completed',
+      403,
+      'setup_completed',
+    )
+    const text = userFacingError(err)
+    assert.match(text, /安装|complete|完了/i)
+    assert.equal(/Setup already completed/i.test(text), false)
+  })
+
+  it('maps file and payload size limits without the English template', () => {
+    const file = userFacingError(
+      new ApiError(
+        'File size must be between 1 byte and 104857600 bytes',
+        400,
+        'file_too_large',
+      ),
+    )
+    assert.equal(/File size must be between/i.test(file), false)
+    const payload = userFacingError(
+      new ApiError(
+        'Message payload too large: 9000 bytes (max 4194304)',
+        413,
+        'payload_too_large',
+      ),
+    )
+    assert.equal(/Message payload too large/i.test(payload), false)
+    assert.match(payload, /9000|4194304/)
+  })
+
   it('maps leftover Chinese setup migration copy', () => {
     const text = userFacingError('数据库迁移失败，请检查数据库连接和权限设置')
     assert.equal(text.includes('请检查数据库连接和权限设置'), false)

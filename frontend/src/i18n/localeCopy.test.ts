@@ -11,6 +11,21 @@ describe('currentCopy', () => {
     assert.equal(src.includes('zh-CN.json'), false)
   })
 
+  it('keeps namespace catalogs out of the core locale files', () => {
+    for (const locale of ['en-US', 'zh-CN', 'ja-JP'] as const) {
+      const core = JSON.parse(
+        readFileSync(new URL(`./${locale}.json`, import.meta.url), 'utf8'),
+      ) as Record<string, unknown>
+      for (const ns of ['config', 'tapp', 'brew', 'merope', 'errors']) {
+        assert.equal(
+          ns in core,
+          false,
+          `${locale}.json must not contain top-level "${ns}"`,
+        )
+      }
+    }
+  })
+
   it('returns localized wallpaper and store errors', () => {
     const copy = currentCopy()
     assert.equal(typeof copy.wallpaperStatus.unsafeUrl, 'string')
@@ -33,6 +48,8 @@ describe('currentCopy', () => {
     const ja = await loadLocale('ja-JP')
     assert.equal(copyForLocale('ja-JP'), ja)
     assert.equal(copyForLocale('ja-JP').common.loading, '読み込み中...')
+    assert.equal(typeof ja.config.poweredBy, 'string')
+    assert.equal(typeof ja.errors.configurationMode, 'string')
     assert.equal(currentCopy().common.loading, 'Loading...')
   })
 })

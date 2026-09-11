@@ -114,8 +114,6 @@ impl AgentMemory {
     }
 
     /// 记住一条记忆（完整参数，带实体和能力关联）
-    // This is the single internal boundary that expands all memory metadata.
-    // Keep the call shape stable until the Agent memory API moves to a request object.
     #[allow(clippy::too_many_arguments)]
     pub async fn remember_full(
         &self,
@@ -523,8 +521,8 @@ impl AgentMemory {
 
     /// 检查是否应该去重或合并（返回 true 表示跳过写入）
     ///
-    /// 合并策略：同类型且相似度 > `MERGE_SIMILARITY_THRESHOLD`（0.70）时，用新内容覆盖并提升重要性，
-    /// 同时并入新记忆的实体/能力关联，保证纠错/更新信息能正确替换过时记忆。
+    /// 去重/合并：score > DEDUP（0.85）跳过新写；MERGE（0.70）< score ≤ DEDUP 且同类型才覆盖合并，
+    /// 并入新记忆的实体/能力关联。高于 DEDUP 的近重复不会替换旧内容。
     ///
     /// 候选只在写入者自己的分片里取。
     async fn should_dedup_or_merge(
@@ -1131,7 +1129,7 @@ impl AgentMemory {
             let indexes = self.indexes.read().await;
             let shards = match params.user_id {
                 Some(uid) => Self::visible_shards(uid, &indexes),
-                // 未指定用户（内部调用）时退回全量，语义与过滤阶段一致
+                // user_id 为 None 时扫全部分片；过滤阶段也不做用户隔离
                 None => indexes.keys().copied().collect(),
             };
             let mut merged: Vec<(String, f32)> = shards
@@ -1346,7 +1344,7 @@ impl AgentMemory {
 
     // 持久化
 
-    /// 生成确定性 ID（纯内容 hash，相同内容产生相同 ID，支持幂等去重）
+    /// 对传入字符串做确定性 hash；写入路径传入 `{user_id}:{content}`。
     fn make_id(content: &str) -> String {
         use std::hash::{Hash, Hasher};
         let mut hasher = std::collections::hash_map::DefaultHasher::new();

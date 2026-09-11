@@ -259,7 +259,7 @@ pub async fn job(Path(id): Path<String>) -> Response {
     {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "invalid job id" })),
+            Json(AppError::public_json("invalid job id")),
         )
             .into_response();
     }
@@ -291,7 +291,7 @@ pub async fn delete_snapshot(headers: HeaderMap, Path(id): Path<String>) -> Resp
     {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "invalid snapshot id" })),
+            Json(AppError::public_json("invalid snapshot id")),
         )
             .into_response();
     }

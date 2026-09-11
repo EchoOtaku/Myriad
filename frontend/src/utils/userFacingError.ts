@@ -42,8 +42,16 @@ export function isUselessErrorText(text: string): boolean {
   if (/^(unauthorized|forbidden|not found|bad request|conflict)$/i.test(detail)) {
     return true
   }
-  if (/^request timeout$/i.test(detail)) return true
+  if (
+    /^(user|channel|room|ring|session|transfer|filter|player) not found$/i.test(
+      detail,
+    )
+  ) {
+    return true
+  }
   if (/^internal (server )?error$/i.test(detail)) return true
+  if (/^service unavailable$/i.test(detail)) return true
+  if (/^request timeout$/i.test(detail)) return true
   if (/^operation failed$/i.test(detail)) return true
   if (/^failed$/i.test(detail)) return true
   if (/^ai generation failed$/i.test(detail)) return true
@@ -184,7 +192,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (code === 'unauthorized' || code === 'UNAUTHORIZED') {
     return joinParts(t.unauthorized, usefulExtra(hint, t.unauthorized))
   }
-  if (code === 'forbidden' || code === 'FORBIDDEN') {
+  if (code === 'forbidden' || code === 'FORBIDDEN' || code === 'no_admin') {
     return joinParts(t.forbidden, usefulExtra(hint, t.forbidden))
   }
   if (code === 'not_found' || code === 'NOT_FOUND') {
@@ -197,6 +205,38 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (code === 'conflict' || code === 'CONFLICT') {
     const label = httpStatusMessage(409)
     return joinParts(label, usefulExtra(hint, label))
+  }
+  if (code === 'internal_error' || code === 'INTERNAL_ERROR') {
+    const label = t.serverError.replace('{status}', '500')
+    return joinParts(label, usefulExtra(hint, label))
+  }
+  if (code === 'service_unavailable' || code === 'SERVICE_UNAVAILABLE') {
+    return joinParts(
+      t.serviceUnavailable,
+      usefulExtra(hint, t.serviceUnavailable),
+    )
+  }
+  if (
+    code === 'configuration_mode' ||
+    /service in configuration mode/i.test(raw) ||
+    /服务器正在配置模式|服务器仍在配置模式/.test(raw)
+  ) {
+    return joinParts(
+      t.configurationMode,
+      usefulExtra(hint, t.configurationMode),
+    )
+  }
+  if (code === 'setup_completed' || /setup already completed/i.test(raw)) {
+    return joinParts(t.setupCompleted, usefulExtra(hint, t.setupCompleted))
+  }
+  if (code === 'file_too_large' || /^file size must be between/i.test(raw)) {
+    return classified(t.fileTooLarge, raw, hint)
+  }
+  if (
+    code === 'payload_too_large' ||
+    /^message payload too large/i.test(raw)
+  ) {
+    return classified(t.payloadTooLarge, raw, hint)
   }
   if (code === 'TIMEOUT' || status === 408) {
     return joinParts(t.timeout, usefulExtra(hint, t.timeout))
@@ -289,7 +329,8 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return classified(t.presetDeleteFailed, raw, hint)
   }
   if (
-    /^failed to (look up account|load current user|check existing admin|check username|read installation claim)/i.test(
+    code === 'account_load_failed' ||
+    /^failed to (look up account|load current user|check existing admin|check username|read installation claim|read user data)/i.test(
       raw,
     )
   ) {
@@ -689,7 +730,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return classified(t.tappAccessCheckFailed, raw, hint)
   }
-  if (/^failed to find tapp$/i.test(raw)) {
+  if (code === 'tapp_not_found' || /^failed to find tapp$/i.test(raw)) {
     return classified(t.tappFindFailed, raw, hint)
   }
   if (/^failed to check tapp install permission/i.test(raw)) {

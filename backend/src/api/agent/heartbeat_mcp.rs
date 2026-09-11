@@ -26,7 +26,7 @@ pub(crate) async fn heartbeat_tasks(
     let manager = crate::services::agent::heartbeat::get_heartbeat().ok_or_else(|| {
         HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": "Heartbeat not initialized" })),
+            Json(AppError::public_json("Heartbeat not initialized")),
         ))
     })?;
 
@@ -44,7 +44,7 @@ pub(crate) async fn toggle_heartbeat(
     let manager = crate::services::agent::heartbeat::get_heartbeat().ok_or_else(|| {
         HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": "Heartbeat not initialized" })),
+            Json(AppError::public_json("Heartbeat not initialized")),
         ))
     })?;
 
@@ -52,7 +52,7 @@ pub(crate) async fn toggle_heartbeat(
         Some(enabled) => Ok(Json(json!({ "task_id": task_id, "enabled": enabled }))),
         None => Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "error": "Task not found" })),
+            Json(AppError::public_json("Task not found")),
         ))),
     }
 }
@@ -76,7 +76,7 @@ pub(crate) async fn update_heartbeat(
     let manager = crate::services::agent::heartbeat::get_heartbeat().ok_or_else(|| {
         HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": "Heartbeat not initialized" })),
+            Json(AppError::public_json("Heartbeat not initialized")),
         ))
     })?;
 
@@ -126,7 +126,7 @@ pub(crate) async fn create_heartbeat(
     let manager = crate::services::agent::heartbeat::get_heartbeat().ok_or_else(|| {
         HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": "Heartbeat not initialized" })),
+            Json(AppError::public_json("Heartbeat not initialized")),
         ))
     })?;
 
@@ -156,7 +156,7 @@ pub(crate) async fn delete_heartbeat(
     let manager = crate::services::agent::heartbeat::get_heartbeat().ok_or_else(|| {
         HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": "Heartbeat not initialized" })),
+            Json(AppError::public_json("Heartbeat not initialized")),
         ))
     })?;
 
@@ -204,7 +204,7 @@ pub(crate) async fn mcp_status(
     let manager = crate::services::agent::mcp::get_mcp_manager().ok_or_else(|| {
         HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": "MCP manager not initialized" })),
+            Json(AppError::public_json("MCP manager not initialized")),
         ))
     })?;
     let servers = manager.list_server_status().await;
@@ -221,7 +221,7 @@ pub(crate) async fn mcp_get_config(
     let manager = crate::services::agent::mcp::get_mcp_manager().ok_or_else(|| {
         HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": "MCP manager not initialized" })),
+            Json(AppError::public_json("MCP manager not initialized")),
         ))
     })?;
     let config = manager.read_config().await;
@@ -247,7 +247,7 @@ pub(crate) async fn mcp_put_config(
     let manager = crate::services::agent::mcp::get_mcp_manager().ok_or_else(|| {
         HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": "MCP manager not initialized" })),
+            Json(AppError::public_json("MCP manager not initialized")),
         ))
     })?;
 
@@ -327,7 +327,7 @@ pub(crate) async fn list_skills() -> Result<Json<Value>, HttpError> {
     let registry = crate::services::agent::skill::get_skill_registry().ok_or_else(|| {
         HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": "Skill registry not initialized" })),
+            Json(AppError::public_json("Skill registry not initialized")),
         ))
     })?;
 
@@ -370,7 +370,7 @@ pub(crate) async fn list_memories(
     let memory = crate::services::agent::memory::get_memory().ok_or_else(|| {
         HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": "Memory not initialized" })),
+            Json(AppError::public_json("Memory not initialized")),
         ))
     })?;
 
@@ -404,7 +404,7 @@ pub(crate) async fn delete_memory(
     let memory = crate::services::agent::memory::get_memory().ok_or_else(|| {
         HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": "Memory not initialized" })),
+            Json(AppError::public_json("Memory not initialized")),
         ))
     })?;
 
@@ -413,7 +413,7 @@ pub(crate) async fn delete_memory(
     } else {
         Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "error": "Memory not found" })),
+            Json(AppError::public_json("Memory not found")),
         )))
     }
 }
@@ -428,14 +428,14 @@ pub(crate) async fn update_memory(
     let content = body["content"].as_str().ok_or_else(|| {
         HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Missing field: content" })),
+            Json(AppError::public_json("Missing field: content")),
         ))
     })?;
 
     let memory = crate::services::agent::memory::get_memory().ok_or_else(|| {
         HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": "Memory not initialized" })),
+            Json(AppError::public_json("Memory not initialized")),
         ))
     })?;
 
@@ -444,7 +444,7 @@ pub(crate) async fn update_memory(
     } else {
         Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "error": "Memory not found" })),
+            Json(AppError::public_json("Memory not found")),
         )))
     }
 }
@@ -459,7 +459,7 @@ pub(crate) async fn delete_skill(
     let evo = crate::services::agent::skill_evolution::get_skill_evolution().ok_or_else(|| {
         HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": "Skill evolution not initialized" })),
+            Json(AppError::public_json("Skill evolution not initialized")),
         ))
     })?;
 
@@ -500,7 +500,7 @@ pub(crate) async fn interrupt_session(
         .ok_or_else(|| {
             HttpError::from((
                 StatusCode::BAD_REQUEST,
-                Json(json!({ "error": "Missing 'input' field" })),
+                Json(AppError::public_json("Missing 'input' field")),
             ))
         })?
         .to_string();
@@ -582,7 +582,7 @@ pub(crate) async fn steer_session(
         .ok_or_else(|| {
             HttpError::from((
                 StatusCode::BAD_REQUEST,
-                Json(json!({ "error": "Missing 'instruction' field" })),
+                Json(AppError::public_json("Missing 'instruction' field")),
             ))
         })?;
 
@@ -590,7 +590,9 @@ pub(crate) async fn steer_session(
     if instruction.is_empty() || instruction.chars().count() > MAX_INPUT_LEN {
         return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Instruction must be non-empty and within length limits" })),
+            Json(AppError::public_json(
+                "Instruction must be non-empty and within length limits",
+            )),
         )));
     }
 
@@ -607,7 +609,7 @@ pub(crate) async fn steer_session(
             .ok_or_else(|| {
                 HttpError::from((
                     StatusCode::NOT_FOUND,
-                    Json(json!({ "error": "Running task not found" })),
+                    Json(AppError::public_json("Running task not found")),
                 ))
             })?;
         task.task_id
@@ -617,13 +619,15 @@ pub(crate) async fn steer_session(
             [] => {
                 return Err(HttpError::from((
                     StatusCode::CONFLICT,
-                    Json(json!({ "error": "No running task to steer" })),
+                    Json(AppError::public_json("No running task to steer")),
                 )));
             }
             _ => {
                 return Err(HttpError::from((
                     StatusCode::CONFLICT,
-                    Json(json!({ "error": "Multiple tasks are running; taskId is required" })),
+                    Json(AppError::public_json(
+                        "Multiple tasks are running; taskId is required",
+                    )),
                 )));
             }
         }
@@ -660,3 +664,4 @@ pub(crate) async fn steer_session(
         "instruction": instruction,
     })))
 }
+use myriad_error::AppError;

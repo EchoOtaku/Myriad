@@ -1083,7 +1083,6 @@ impl Executor {
             )
         })
     }
-
 }
 
 fn prior_step_text(out_val: &Value) -> Option<&str> {

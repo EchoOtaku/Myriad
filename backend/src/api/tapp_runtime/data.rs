@@ -74,7 +74,7 @@ fn storage_http_error(err: TappStorageError) -> (StatusCode, Json<Value>) {
         }
         TappStorageError::TooLarge => (
             StatusCode::PAYLOAD_TOO_LARGE,
-            Json(json!({ "error": "Storage value too large" })),
+            Json(AppError::public_json("Storage value too large")),
         ),
         TappStorageError::Database => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -87,7 +87,7 @@ fn storage_write_http_error(err: TappStorageError) -> (StatusCode, Json<Value>) 
     match err {
         TappStorageError::TooLarge => (
             StatusCode::PAYLOAD_TOO_LARGE,
-            Json(json!({ "error": "Storage value too large" })),
+            Json(AppError::public_json("Storage value too large")),
         ),
         TappStorageError::InvalidKey(reason) => {
             (StatusCode::BAD_REQUEST, Json(json!({ "error": reason })))
@@ -108,7 +108,7 @@ fn storage_subject_id(
     if runtime_grant.subject_id() != subject_id {
         return Err(HttpError::from((
             StatusCode::FORBIDDEN,
-            Json(json!({ "error": "Invalid runtime grant subject" })),
+            Json(AppError::public_json("Invalid runtime grant subject")),
         )));
     }
     Ok(subject_id)
@@ -128,7 +128,7 @@ pub async fn data_transform(
         DataInput::Platform { .. } => required_permissions.push(TappPermission::PlatformRead),
         DataInput::Storage { key } => {
             validate_sandbox_storage_key(key)
-                .map_err(|error| (StatusCode::BAD_REQUEST, Json(json!({ "error": error }))))?;
+                .map_err(|error| (StatusCode::BAD_REQUEST, Json(AppError::public_json(error))))?;
             required_permissions.push(TappPermission::StorageRead);
         }
         DataInput::Inline { .. } => {}
@@ -139,7 +139,7 @@ pub async fn data_transform(
         }
         Some(DataOutput::Storage { key }) => {
             validate_sandbox_storage_key(key)
-                .map_err(|error| (StatusCode::BAD_REQUEST, Json(json!({ "error": error }))))?;
+                .map_err(|error| (StatusCode::BAD_REQUEST, Json(AppError::public_json(error))))?;
             required_permissions.push(TappPermission::StorageWrite);
         }
         None => {}
@@ -179,7 +179,7 @@ pub async fn data_transform(
             let data = get_cached_platform_data(&platform).await.map_err(|error| {
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({ "error": error })),
+                    Json(AppError::public_json(error)),
                 )
             })?;
             data.get("items")
@@ -205,10 +205,10 @@ pub async fn data_transform(
         match output {
             DataOutput::Platform { platform } => {
                 validate_platform_name(&platform)
-                    .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))))?;
+                    .map_err(|e| (StatusCode::BAD_REQUEST, Json(AppError::public_json(e))))?;
                 let _platform_guard = acquire_platform_lock(&platform)
                     .await
-                    .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))))?;
+                    .map_err(|e| (StatusCode::BAD_REQUEST, Json(AppError::public_json(e))))?;
                 // Replace the filtered document items array.
                 let data = json!({ "items": items });
                 write_filtered_document(&platform, &data)
@@ -217,7 +217,7 @@ pub async fn data_transform(
                         (
                             StatusCode::from_u16(error.status_hint())
                                 .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-                            Json(json!({ "error": error.message() })),
+                            Json(AppError::public_json(error.message())),
                         )
                     })?;
             }
@@ -240,3 +240,4 @@ pub async fn data_transform(
 
 // Keep services module linked for quota constant visibility in docs/tests.
 const _: i64 = tapp_storage::TAPP_STORAGE_QUOTA_BYTES;
+use myriad_error::AppError;

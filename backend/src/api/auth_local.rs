@@ -25,10 +25,7 @@ use crate::middleware::auth::{
 
 fn auth_store_http(context: &'static str, error: impl std::fmt::Display) -> HttpError {
     tracing::error!(%error, context, "auth store failed");
-    HttpError::from((
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({ "error": format!("Failed to {context}") })),
-    ))
+    HttpError(AppError::internal(format!("Failed to {context}")))
 }
 
 fn auth_store_app(context: &'static str, error: impl std::fmt::Display) -> HttpError {
@@ -83,13 +80,11 @@ async fn acquire_password_hash_permit_from(
                 timeout_secs = timeout.as_secs_f64(),
                 "Password hash concurrency limit reached; returning 503"
             );
-            Err(HttpError::from((
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(json!({
-                    "error": "Server busy",
-                    "message": "Too many password operations in progress. Please try again shortly."
-                })),
-            )))
+            Err(HttpError(
+                AppError::service_unavailable("Server busy").with_message(
+                    "Too many password operations in progress. Please try again shortly.",
+                ),
+            ))
         }
     }
 }
@@ -496,16 +491,15 @@ pub async fn change_password(
     let claims = crate::middleware::auth::authenticate_request(&headers, &db)
         .await
         .map_err(|_| {
-            HttpError::from((
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Unauthorized", "message": "Invalid or missing token"})),
-            ))
+            HttpError(
+                AppError::unauthorized("Unauthorized").with_message("Invalid or missing token"),
+            )
         })?;
 
     let user_id = claims.sub.parse::<i32>().map_err(|_| {
         HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Invalid user ID"})),
+            Json(AppError::public_json("Invalid user ID")),
         ))
     })?;
 
@@ -536,7 +530,7 @@ pub async fn change_password(
         tracing::warn!("User not found: {}", user_id);
         HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "User not found"})),
+            Json(AppError::public_json("User not found")),
         ))
     })?;
 
@@ -677,8 +671,8 @@ fn validate_username(username: &str) -> Result<(), HttpError> {
 }
 
 /// Validate password strength.
-/// Length is **Unicode scalar count** (`chars().count()`), matching FE
-/// `password.length` for BMP/emoji better than UTF-8 byte `len()`.
+/// Length is Unicode scalar count (`chars().count()`). JS `password.length`
+/// is UTF-16 code units — BMP matches, emoji/surrogate pairs do not.
 fn validate_password(password: &str) -> Result<(), HttpError> {
     let char_len = password.chars().count();
     if char_len < 8 {
@@ -889,7 +883,7 @@ pub async fn register(
                     .map(|s| SeaValue::String(Some(s)))
                     .unwrap_or(SeaValue::String(None)),
                 SeaValue::String(Some(password_hash)),
-                // 占位头像退成显示兜底，不落库（见 create_owner 处说明）
+                // 占位头像退成显示兜底，不落库（见 create_admin 处说明）
                 SeaValue::String(None),
             ],
         ))
@@ -920,7 +914,7 @@ pub async fn register(
     issue_session_cookie(&db, user_id, &req.username, false, false).await
 }
 
-/// POST /api/auth/me/set-password —— GitHub-only 用户后补密码
+/// POST /api/auth/me/set-password —— 无密码账户后补密码（不限 GitHub）
 ///
 /// 要求当前账户**没有**密码（已有密码走 `change_password`）。
 #[derive(Debug, Deserialize)]
@@ -940,13 +934,13 @@ pub async fn set_password(
         .map_err(|_| {
             HttpError::from((
                 StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Unauthorized"})),
+                Json(AppError::public_json("Unauthorized")),
             ))
         })?;
     let user_id: i32 = claims.sub.parse().map_err(|_| {
         HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Invalid user id"})),
+            Json(AppError::public_json("Invalid user id")),
         ))
     })?;
 
@@ -964,7 +958,7 @@ pub async fn set_password(
         .ok_or_else(|| {
             HttpError::from((
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "User not found"})),
+                Json(AppError::public_json("User not found")),
             ))
         })?;
     let has_password: bool = row.try_get("", "has_password").unwrap_or(false);
@@ -1003,7 +997,7 @@ pub async fn set_password(
         .ok_or_else(|| {
             HttpError::from((
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "User not found"})),
+                Json(AppError::public_json("User not found")),
             ))
         })?;
     if let Err(error) = notify_auth_cache_invalidation(&db, user_id).await {
@@ -1059,13 +1053,13 @@ pub async fn toggle_local_login(
         .map_err(|_| {
             HttpError::from((
                 StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Unauthorized"})),
+                Json(AppError::public_json("Unauthorized")),
             ))
         })?;
     let user_id: i32 = claims.sub.parse().map_err(|_| {
         HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Invalid user id"})),
+            Json(AppError::public_json("Invalid user id")),
         ))
     })?;
 
@@ -1083,7 +1077,7 @@ pub async fn toggle_local_login(
         .ok_or_else(|| {
             HttpError::from((
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "User not found"})),
+                Json(AppError::public_json("User not found")),
             ))
         })?;
 
@@ -1125,8 +1119,7 @@ pub async fn toggle_local_login(
 
 /// 内部：给指定 user 颁发 JWT + 设置 cookie，返回 AuthResponse + Set-Cookie
 ///
-/// `token_version` is read from the user row (defaults 0) so the mint matches
-/// the session epoch checked by auth middleware.
+/// `token_version` from `COALESCE(token_version, 0)`；query/parse miss is `unwrap_or(0)`，which may not match the row epoch.
 async fn issue_session_cookie(
     db: &sea_orm::DatabaseConnection,
     user_id: i32,
@@ -1204,7 +1197,7 @@ pub async fn admin_create_user(
         .map_err(|_| {
             HttpError::from((
                 StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Unauthorized"})),
+                Json(AppError::public_json("Unauthorized")),
             ))
         })?;
     ensure_current_admin_on(&claims, &db).await?;
@@ -1217,7 +1210,7 @@ pub async fn admin_create_user(
     {
         return Err(HttpError::from((
             StatusCode::FORBIDDEN,
-            Json(json!({"error": msg})),
+            Json(AppError::public_json(msg)),
         )));
     }
 
@@ -1263,7 +1256,7 @@ pub async fn admin_create_user(
                     .unwrap_or(SeaValue::String(None)),
                 SeaValue::String(Some(password_hash)),
                 SeaValue::Bool(Some(create_as_admin)),
-                // 占位头像退成显示兜底，不落库（见 create_owner 处说明）
+                // 占位头像退成显示兜底，不落库（见 create_admin 处说明）
                 SeaValue::String(None),
             ],
         ))
@@ -1441,7 +1434,7 @@ mod tests {
 
     #[test]
     fn password_hash_permit_budget_is_modest() {
-        // DEFAULT_ARGON2_PERMITS == 4；PASSWORD_HASH_ACQUIRE_TIMEOUT == 15s。
+        // DEFAULT_ARGON2_PERMITS == 4; timeout asserted in [5s, 30s] (const is 15s).
         assert_eq!(crate::services::memory_profile::DEFAULT_ARGON2_PERMITS, 4);
         assert!(PASSWORD_HASH_ACQUIRE_TIMEOUT >= StdDuration::from_secs(5));
         assert!(PASSWORD_HASH_ACQUIRE_TIMEOUT <= StdDuration::from_secs(30));

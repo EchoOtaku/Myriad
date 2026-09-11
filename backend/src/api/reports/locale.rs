@@ -21,10 +21,7 @@ pub fn parse_stored_ui_locale(raw: &str) -> Option<&'static str> {
     }
 }
 
-pub async fn locale_from_user(
-    db: &impl ConnectionTrait,
-    user_id: i32,
-) -> Option<&'static str> {
+pub async fn locale_from_user(db: &impl ConnectionTrait, user_id: i32) -> Option<&'static str> {
     let row = db
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,

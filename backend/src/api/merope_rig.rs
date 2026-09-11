@@ -18,6 +18,7 @@ use axum::{
     routing::{get, patch, post},
     Extension, Json, Router,
 };
+use myriad_error::AppError;
 use myriad_merope::{
     build_character_asset_contract, build_character_visual_edit_prompt,
     build_character_visual_prompt, build_sticker_avatar_contract, build_sticker_avatar_prompt,
@@ -101,7 +102,10 @@ pub fn create_routes(app_state: AppState) -> Router<AppState> {
 }
 
 fn bad_request(message: &str) -> ApiError {
-    (StatusCode::BAD_REQUEST, Json(json!({ "error": message })))
+    (
+        StatusCode::BAD_REQUEST,
+        Json(AppError::public_json(message)),
+    )
 }
 
 fn portrait_generation_config_error(error: image_generation::ImageGenerationError) -> ApiError {
@@ -123,7 +127,7 @@ fn portrait_generation_provider_error(error: image_generation::ImageGenerationEr
 }
 
 fn not_found(message: &str) -> ApiError {
-    (StatusCode::NOT_FOUND, Json(json!({ "error": message })))
+    (StatusCode::NOT_FOUND, Json(AppError::public_json(message)))
 }
 
 fn internal_error(error: impl std::fmt::Display) -> ApiError {
@@ -207,7 +211,7 @@ async fn require_owner(claims: &Claims, db: &DatabaseConnection) -> ApiResult<i3
     let user_id = claims.sub.parse::<i32>().map_err(|_| {
         (
             StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
+            Json(AppError::public_json("Invalid user")),
         )
     })?;
     if user_id != owner {
@@ -220,13 +224,6 @@ async fn require_owner(claims: &Claims, db: &DatabaseConnection) -> ApiResult<i3
         ));
     }
     Ok(user_id)
-}
-
-fn active_asset_id(config: &crate::config::DynamicConfig) -> Option<String> {
-    config
-        .agent_rig_asset_id
-        .as_deref()
-        .and_then(merope_rig::normalize_asset_id)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -719,8 +716,13 @@ async fn parse_rig_import(mut multipart: Multipart) -> ApiResult<ParsedRigImport
 }
 
 pub async fn get_active_rig(crate::extract::Db(db): crate::extract::Db) -> ApiResult<Json<Value>> {
-    let master = current_master(&db).await?;
-    let asset_id = active_asset_id(&*crate::GLOBAL_DYNAMIC_CONFIG.read().await);
+    // Read portrait and worn rig from the same committed persona snapshot.
+    // A late configuration mirror must never select a different package.
+    let persona = merope::get_persona(&db).await.map_err(internal_error)?;
+    let master = persona.as_ref().and_then(master_from_persona);
+    let asset_id = myriad_merope::active_outfit_rig_asset_id(
+        persona.as_ref().and_then(|row| row.visual_profile.as_ref()),
+    );
     if let (Some(asset_id), Some(master)) = (asset_id, master.as_ref()) {
         match load_stored_manifest(&asset_id).await {
             Ok(mut manifest) if manifest_matches_master(&manifest, master) => {
@@ -845,7 +847,7 @@ pub async fn get_atlas(Path(asset_id): Path<String>) -> ApiResult<Response> {
     let bytes = merope_rig::read_atlas_bytes(&asset_id).await.map_err(|_| {
         (
             StatusCode::NOT_FOUND,
-            Json(json!({ "error": "Rig atlas not found" })),
+            Json(AppError::public_json("Rig atlas not found")),
         )
     })?;
     Response::builder()
@@ -1789,6 +1791,40 @@ mod rig_invalidation_tests {
 mod portrait_contract_tests {
     use super::*;
     use sha2::Digest;
+
+    #[test]
+    fn active_reader_uses_one_persona_snapshot_not_the_configuration_mirror() {
+        let source = include_str!("merope_rig.rs");
+        let reader = source
+            .split("pub async fn get_active_rig(")
+            .nth(1)
+            .unwrap()
+            .split("\npub ")
+            .next()
+            .unwrap();
+        assert_eq!(reader.matches("merope::get_persona(&db)").count(), 1);
+        assert!(reader.contains("active_outfit_rig_asset_id("));
+        assert!(!reader.contains("GLOBAL_DYNAMIC_CONFIG"));
+        let a = "a".repeat(64);
+        let b = "b".repeat(64);
+        let mut profile = json!({"activeOutfitId":"a", "wardrobe":[
+            {"id":"a", "rigAssetId":a}, {"id":"b", "rigAssetId":b}
+        ]});
+        assert_eq!(
+            myriad_merope::active_outfit_rig_asset_id(Some(&profile)),
+            Some(a)
+        );
+        profile["activeOutfitId"] = json!("b");
+        assert_eq!(
+            myriad_merope::active_outfit_rig_asset_id(Some(&profile)),
+            Some(b)
+        );
+        profile["wardrobe"][1]["rigAssetId"] = Value::Null;
+        assert_eq!(
+            myriad_merope::active_outfit_rig_asset_id(Some(&profile)),
+            None
+        );
+    }
 
     #[test]
     fn activation_anchor_tracks_outfit_even_when_portrait_is_shared() {

@@ -17,6 +17,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use myriad_error::AppError;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -951,12 +952,14 @@ pub async fn tapp_seo_summary(
         Ok(summary) => (StatusCode::OK, Json(summary)).into_response(),
         Err(StatusCode::BAD_REQUEST) => (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Invalid tapp id" })),
+            Json(AppError::public_json("Invalid tapp id")),
         )
             .into_response(),
-        Err(StatusCode::NOT_FOUND) => {
-            (StatusCode::NOT_FOUND, Json(json!({ "error": "Not found" }))).into_response()
-        }
+        Err(StatusCode::NOT_FOUND) => (
+            StatusCode::NOT_FOUND,
+            Json(AppError::public_json("Not found")),
+        )
+            .into_response(),
         Err(status) => (
             status,
             Json(json!({ "error": "Internal error", "code": "internal_error" })),
@@ -1002,12 +1005,14 @@ pub async fn brew_item_seo_summary(
         Ok(summary) => (StatusCode::OK, Json(summary)).into_response(),
         Err(StatusCode::BAD_REQUEST) => (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Invalid item id" })),
+            Json(AppError::public_json("Invalid item id")),
         )
             .into_response(),
-        Err(StatusCode::NOT_FOUND) => {
-            (StatusCode::NOT_FOUND, Json(json!({ "error": "Not found" }))).into_response()
-        }
+        Err(StatusCode::NOT_FOUND) => (
+            StatusCode::NOT_FOUND,
+            Json(AppError::public_json("Not found")),
+        )
+            .into_response(),
         Err(status) => (
             status,
             Json(json!({ "error": "Internal error", "code": "internal_error" })),

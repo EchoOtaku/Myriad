@@ -299,8 +299,7 @@ pub async fn add_platform_items_batch(
             }
             Err(PlatformCacheError::InvalidStructure) => {
                 for _ in ids {
-                    results
-                        .push(json!({ "success": false, "error": "Invalid cache file structure" }));
+                    results.push(AppError::fail_json("Invalid cache file structure"));
                 }
             }
             Err(error) => {
@@ -324,3 +323,4 @@ pub async fn add_platform_items_batch(
         "successCount": success_count
     })))
 }
+use myriad_error::AppError;

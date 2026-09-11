@@ -141,7 +141,7 @@ pub async fn get_session_messages(
     if session.is_none() {
         return Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "Session not found"})),
+            Json(AppError::public_json("Session not found")),
         )));
     }
 
@@ -189,7 +189,7 @@ pub async fn archive_session(
     if session.is_none() {
         return Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "Session not found"})),
+            Json(AppError::public_json("Session not found")),
         )));
     }
 
@@ -228,7 +228,7 @@ pub async fn update_session(
     if session.is_none() {
         return Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "Session not found"})),
+            Json(AppError::public_json("Session not found")),
         )));
     }
 
@@ -268,7 +268,7 @@ pub async fn generate_session_title(
     if session.is_none() {
         return Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "Session not found"})),
+            Json(AppError::public_json("Session not found")),
         )));
     }
 
@@ -284,7 +284,7 @@ pub async fn generate_session_title(
     if messages.is_empty() {
         return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "No messages in session"})),
+            Json(AppError::public_json("No messages in session")),
         )));
     }
 
@@ -525,3 +525,4 @@ mod mode_tests {
         assert_eq!(session_mode(Some(&context)), AgentInteractionMode::Chat);
     }
 }
+use myriad_error::AppError;

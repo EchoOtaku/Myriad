@@ -1,3 +1,4 @@
+use myriad_error::AppError;
 // 权限配置 API
 
 use crate::middleware::auth::authenticate_optional_request;
@@ -18,7 +19,7 @@ pub async fn get_permissions(
         Err(response) => {
             return (
                 response.status(),
-                Json(json!({"success": false, "error": "Invalid authentication state"})),
+                Json(AppError::fail_json("Invalid authentication state")),
             );
         }
     };
@@ -163,7 +164,7 @@ pub async fn update_permissions(
     let Some(db) = app.db() else {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": "Database not connected" })),
+            Json(AppError::public_json("Database not connected")),
         );
     };
     let dynamic_config = app.dynamic_config.clone();
@@ -416,7 +417,7 @@ pub async fn update_oauth_providers(
     let Some(db) = app.db() else {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": "Database not connected" })),
+            Json(AppError::public_json("Database not connected")),
         );
     };
     let dynamic_config = app.dynamic_config.clone();

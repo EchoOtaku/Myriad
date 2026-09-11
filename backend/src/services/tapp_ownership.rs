@@ -39,7 +39,7 @@ impl TappAccessError {
         }
     }
 
-    /// Human-readable message suitable for agents and API `message` fields.
+    /// Human-readable `message`. `PermissionNotGranted` is an approved-permission miss.
     pub fn message(&self) -> String {
         match self {
             Self::Database => "Failed to verify Tapp access".to_string(),
@@ -245,6 +245,7 @@ pub async fn resolve_accessible_tapp(
 }
 
 /// Verify the resolved install’s approved permissions contain each listed name.
+/// Does not compute granted permissions (no role/config filter).
 pub async fn verify_tapp_approved_permissions(
     db: &DatabaseConnection,
     user_id: i32,
@@ -319,8 +320,8 @@ pub fn parse_authenticated_subject_id(sub: &str) -> Option<i32> {
 
 /// Private-install owner id to query before falling back to the public install.
 ///
-/// Returns `None` for guests, unauthenticated callers, or when the subject is
-/// already the site owner (public namespace is authoritative for them).
+/// Returns `None` when `user_id` is `None` or equals `site_owner_id`.
+/// Does not drop negative ids; guest HTTP must pass `None`.
 pub fn private_install_lookup_user_id(
     user_id: Option<i32>,
     site_owner_id: Option<i32>,

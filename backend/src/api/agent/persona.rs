@@ -14,13 +14,11 @@ use crate::middleware::auth::Claims;
 use crate::services::site_owner::site_owner_user_id;
 use crate::services::{agent::merope, merope_rig};
 use axum::http::StatusCode;
+use myriad_error::AppError;
 
 fn persona_store_http(context: &'static str, error: impl std::fmt::Display) -> HttpError {
     tracing::error!(%error, context, "persona store failed");
-    HttpError::from((
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({ "error": format!("Failed to {context}") })),
-    ))
+    HttpError(AppError::internal(format!("Failed to {context}")))
 }
 
 #[derive(Debug, Deserialize)]
@@ -193,7 +191,7 @@ async fn require_site_owner(claims: &Claims, db: &DatabaseConnection) -> Result<
         tracing::error!(%error, "[Agent persona] Failed to resolve site owner");
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Failed to resolve site owner" })),
+            Json(AppError::public_json("Failed to resolve site owner")),
         ))
     })?;
     if user_id != owner {

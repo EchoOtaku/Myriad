@@ -152,7 +152,7 @@ impl Agent {
                     )
                     .await;
                 }
-                // 低置信度时在 process() 中也记录警告
+                // 低置信度：本路径只打 warn；带进度路径会降级为澄清。
                 if planner_output.confidence < 0.3 && planner_output.confidence > 0.0 {
                     tracing::warn!(
                         confidence = planner_output.confidence,
@@ -190,7 +190,7 @@ impl Agent {
             &request,
         );
 
-        // 4. 检查敏感操作（系统任务自动确认，Critical 除外）
+        // 4. 检查敏感操作（系统任务：Low/Medium 自动确认；High/Critical 拒绝）
         let sensitive_steps = self.check_sensitive_steps(&recipe).await;
         if !sensitive_steps.is_empty() {
             match Self::system_sensitive_gate(user_id, &sensitive_steps) {
@@ -264,7 +264,7 @@ impl Agent {
         let task_state = task_result?;
         let result = self.extract_final_result(&task_state);
 
-        // 6. v3 记忆提取 + 日志
+        // 记忆提取 + 日志；history ≥ 4 时会话摘要归档。
         let ok = task_state.status == TaskStatus::Completed;
         record_execution_memory(MemoryRecordParams {
             user_id,
@@ -848,7 +848,7 @@ impl Agent {
             })
             .await;
 
-        // 副 Agent 生成计划说明（AI 流式推送，告诉用户即将做什么）
+        // announce_plan：流式计划说明（说话模型，失败则模板）。
         let _plan_msg =
             response_agent::announce_plan(&request.raw_input, &step_descs, user_id, &progress_tx)
                 .await;
@@ -1177,7 +1177,7 @@ impl Agent {
                 }
             }
         }
-        // 已包含 webSearch 的计划不算「从本地升级到 web」；本地域默认禁止
+        // 本地域（brew / platform / search.fuzzy / config.get / library）默认禁止 web 升级。
         let has_local = capability_ids
             .iter()
             .any(|id| escalation::ResultEvaluator::is_local_data_capability(id));
@@ -1398,7 +1398,7 @@ impl Agent {
             );
         }
 
-        // v3 记忆记录（单步查询也需要记录）
+        // 单步查询同样走 record_execution_memory。
         {
             record_execution_memory(MemoryRecordParams {
                 user_id,

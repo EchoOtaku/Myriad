@@ -159,7 +159,7 @@ pub(crate) async fn create_comment(
         _ => {
             return Err(HttpError::from((
                 StatusCode::NOT_FOUND,
-                Json(json!({ "success": false, "error": "Article not found" })),
+                Json(AppError::fail_json("Article not found")),
             )));
         }
     };
@@ -174,7 +174,7 @@ pub(crate) async fn create_comment(
     if !item_visible {
         return Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "success": false, "error": "Article not found" })),
+            Json(AppError::fail_json("Article not found")),
         )));
     }
 
@@ -194,7 +194,7 @@ pub(crate) async fn create_comment(
         let Some(parent) = parent else {
             return Err(HttpError::from((
                 StatusCode::NOT_FOUND,
-                Json(json!({ "success": false, "error": "Parent comment not found" })),
+                Json(AppError::fail_json("Parent comment not found")),
             )));
         };
         inherited_color = parent.color.clone();
@@ -219,13 +219,15 @@ pub(crate) async fn create_comment(
     if req.comment.len() > 2000 {
         return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": "Comment too long (max 2000 chars)" })),
+            Json(AppError::fail_json("Comment too long (max 2000 chars)")),
         )));
     }
     if req.selected_text.len() > 5000 {
         return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": "Selected text too long (max 5000 chars)" })),
+            Json(AppError::fail_json(
+                "Selected text too long (max 5000 chars)",
+            )),
         )));
     }
 
@@ -304,9 +306,7 @@ pub(crate) async fn update_comment(
                 if comment_text.len() > 2000 {
                     return Err(HttpError::from((
                         StatusCode::BAD_REQUEST,
-                        Json(
-                            json!({ "success": false, "error": "Comment too long (max 2000 chars)" }),
-                        ),
+                        Json(AppError::fail_json("Comment too long (max 2000 chars)")),
                     )));
                 }
                 active.comment = Set(comment_text);
@@ -356,7 +356,7 @@ pub(crate) async fn update_comment(
         }
         Ok(None) => Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "success": false, "error": "Comment not found" })),
+            Json(AppError::fail_json("Comment not found")),
         ))),
         Err(error) => {
             tracing::error!(%error, "Failed to find comment");
@@ -414,7 +414,7 @@ pub(crate) async fn delete_comment(
         }
         Ok(None) => Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "success": false, "error": "Comment not found" })),
+            Json(AppError::fail_json("Comment not found")),
         ))),
         Err(error) => {
             tracing::error!(%error, "Failed to find comment");
@@ -654,7 +654,7 @@ pub(crate) async fn health_check_rsshub_instance(
         Ok(None) => {
             return Err(HttpError::from((
                 StatusCode::NOT_FOUND,
-                Json(json!({ "success": false, "error": "Instance not found" })),
+                Json(AppError::fail_json("Instance not found")),
             )))
         }
         Err(error) => {
@@ -670,7 +670,7 @@ pub(crate) async fn health_check_rsshub_instance(
     if instance.user_id != Some(user_id) && instance.user_id.is_some() {
         return Err(HttpError::from((
             StatusCode::FORBIDDEN,
-            Json(json!({ "success": false, "error": "Permission denied" })),
+            Json(AppError::fail_json("Permission denied")),
         )));
     }
 
@@ -757,3 +757,4 @@ mod tests {
         assert!(build_feed_discovery_candidates("   ").is_err());
     }
 }
+use myriad_error::AppError;

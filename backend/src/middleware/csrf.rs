@@ -983,8 +983,7 @@ mod tests {
             .expect("response");
         assert_eq!(denied.status(), StatusCode::FORBIDDEN);
         let denied_body = to_bytes(denied.into_body(), 2048).await.expect("body");
-        let denied_json: serde_json::Value =
-            serde_json::from_slice(&denied_body).expect("json");
+        let denied_json: serde_json::Value = serde_json::from_slice(&denied_body).expect("json");
         assert_eq!(denied_json["error"], "CSRF token missing");
 
         let allowed_get = app

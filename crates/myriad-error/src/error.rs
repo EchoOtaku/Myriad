@@ -33,6 +33,11 @@ pub struct AppError {
     code: Option<String>,
 }
 
+fn is_resource_not_found(label: &str) -> bool {
+    let lower = label.to_ascii_lowercase();
+    lower.ends_with(" not found") && lower != "method not found"
+}
+
 impl AppError {
     /// Stable machine code for well-known public labels.
     pub fn inferred_code(label: &str) -> Option<&'static str> {
@@ -46,11 +51,57 @@ impl AppError {
             "Failed to create session token" | "Failed to refresh session token" => {
                 Some("session_failed")
             }
-            "Unauthorized" => Some("unauthorized"),
+            "Unauthorized" | "Not authenticated" => Some("unauthorized"),
             "Forbidden" => Some("forbidden"),
             "Not found" | "Not Found" => Some("not_found"),
             "Bad request" | "Bad Request" => Some("bad_request"),
             "Conflict" => Some("conflict"),
+            "Internal server error" | "Internal error" => Some("internal_error"),
+            "Service unavailable" | "Server busy" => Some("service_unavailable"),
+            "Service in configuration mode" => Some("configuration_mode"),
+            "Setup already completed" => Some("setup_completed"),
+            "Activity not ready" => Some("activity_not_ready"),
+            "Access denied" => Some("forbidden"),
+            "Target is closed" => Some("gone"),
+            "Inbox processing failed" => Some("inbox_failed"),
+            "Failed to find Tapp" | "Tapp install not found" => Some("tapp_not_found"),
+            "Failed to read user data" | "Failed to load current user" => {
+                Some("account_load_failed")
+            }
+            "Notification system not initialized" => Some("notification_unavailable"),
+            "No admin user found" => Some("no_admin"),
+            "Not a room member" | "Not your transfer" => Some("forbidden"),
+            "Invalid user id"
+            | "Invalid user ID"
+            | "Invalid song ID"
+            | "Invalid delivery id"
+            | "Invalid origin"
+            | "Invalid JSON body"
+            | "Invalid room id"
+            | "Invalid authenticated user"
+            | "Invalid acct domain"
+            | "Invalid invite_policy"
+            | "Invalid touch summary"
+            | "Invalid authentication state"
+            | "domain required"
+            | "content_id required"
+            | "URL is required"
+            | "Actor reference is required" => Some("bad_request"),
+            "serialization failed" => Some("internal_error"),
+            "Already delivered"
+            | "Room is full"
+            | "Already subscribed to this feed"
+            | "Already following or pending"
+            | "Could not cancel delivery (status changed)"
+            | "Could not retry delivery (status changed)" => Some("conflict"),
+            "Permission denied" => Some("forbidden"),
+            "Scheduler not available"
+            | "Intention service is temporarily unavailable"
+            | "Agent is unavailable" => Some("service_unavailable"),
+            "Intention state changed; refresh and try again" => Some("conflict"),
+            "Cannot resolve remote actor" => Some("not_found"),
+            "Inbox delivery budget exhausted; retry later" => Some("service_unavailable"),
+            other if is_resource_not_found(other) => Some("not_found"),
             _ => None,
         }
     }
@@ -169,6 +220,23 @@ impl AppError {
         }
         v
     }
+
+    /// `{error, code?}` for handlers that still return raw JSON instead of [`AppError`].
+    pub fn public_json(label: impl Into<String>) -> Value {
+        let error = redact_secrets(&label.into());
+        let mut v = json!({ "error": error });
+        if let Some(code) = Self::inferred_code(&error) {
+            v["code"] = json!(code);
+        }
+        v
+    }
+
+    /// Brew-style `{success: false, error, code?}`.
+    pub fn fail_json(label: impl Into<String>) -> Value {
+        let mut v = Self::public_json(label);
+        v["success"] = json!(false);
+        v
+    }
 }
 
 impl std::fmt::Display for AppError {
@@ -248,13 +316,63 @@ mod tests {
             AppError::forbidden("Forbidden").to_json()["code"],
             "forbidden"
         );
-        assert_eq!(AppError::not_found("Not found").to_json()["code"], "not_found");
+        assert_eq!(
+            AppError::not_found("Not found").to_json()["code"],
+            "not_found"
+        );
         assert_eq!(
             AppError::bad_request("Bad request").to_json()["code"],
             "bad_request"
         );
         assert_eq!(AppError::conflict("Conflict").to_json()["code"], "conflict");
-        assert!(AppError::not_found("missing").to_json().get("code").is_none());
+        assert_eq!(
+            AppError::internal("Internal server error").to_json()["code"],
+            "internal_error"
+        );
+        assert_eq!(
+            AppError::service_unavailable("Service unavailable").to_json()["code"],
+            "service_unavailable"
+        );
+        assert_eq!(
+            AppError::service_unavailable("Service in configuration mode").to_json()["code"],
+            "configuration_mode"
+        );
+        assert_eq!(
+            AppError::forbidden("Setup already completed").to_json()["code"],
+            "setup_completed"
+        );
+        assert_eq!(
+            AppError::service_unavailable("Activity not ready").to_json()["code"],
+            "activity_not_ready"
+        );
+        assert_eq!(
+            AppError::forbidden("Access denied").to_json()["code"],
+            "forbidden"
+        );
+        assert_eq!(
+            AppError::not_found("User not found").to_json()["code"],
+            "not_found"
+        );
+        assert_eq!(
+            AppError::internal("Failed to find Tapp").to_json()["code"],
+            "tapp_not_found"
+        );
+        assert!(AppError::not_found("missing")
+            .to_json()
+            .get("code")
+            .is_none());
+        assert!(AppError::internal("Method not found")
+            .to_json()
+            .get("code")
+            .is_none());
+        let unauthorized = AppError::public_json("Unauthorized");
+        assert_eq!(unauthorized["error"], "Unauthorized");
+        assert_eq!(unauthorized["code"], "unauthorized");
+        let user_missing = AppError::public_json("User not found");
+        assert_eq!(user_missing["code"], "not_found");
+        let brew = AppError::fail_json("Source not found");
+        assert_eq!(brew["success"], false);
+        assert_eq!(brew["code"], "not_found");
     }
 
     #[test]

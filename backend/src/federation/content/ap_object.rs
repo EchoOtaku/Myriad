@@ -38,7 +38,9 @@ pub(super) async fn build_ap_object(
             if text.is_empty() && attachments.is_empty() {
                 return Err((
                     StatusCode::BAD_REQUEST,
-                    Json(json!({"error": "Note requires text and/or attachments"})),
+                    Json(AppError::public_json(
+                        "Note requires text and/or attachments",
+                    )),
                 ));
             }
             if text.chars().count() > MAX_NOTE_TEXT_CHARS {
@@ -64,7 +66,7 @@ pub(super) async fn build_ap_object(
                 let kind = classify_media_mime(&mime.to_ascii_lowercase()).ok_or_else(|| {
                     (
                         StatusCode::BAD_REQUEST,
-                        Json(json!({"error": "Unsupported attachment type"})),
+                        Json(AppError::public_json("Unsupported attachment type")),
                     )
                 })?;
                 if let Some(reason) =
@@ -280,60 +282,59 @@ pub(super) async fn build_ap_object(
             // Library 发布：content_id = platform_metadata.id（平台收藏快照）
             // 或 platform 名（取该用户该平台最新一条 metadata）。
             // 无独立 library_items 表；数据来自 platform_metadata.raw_data 摘要。
-            let (meta_id, platform_name, raw): (i32, String, serde_json::Value) = if let Ok(id) =
-                content_id.parse::<i32>()
-            {
-                let row = db
-                    .query_one_raw(Statement::from_sql_and_values(
-                        DatabaseBackend::Postgres,
-                        r#"SELECT id, platform_name, raw_data
+            let (meta_id, platform_name, raw): (i32, String, serde_json::Value) =
+                if let Ok(id) = content_id.parse::<i32>() {
+                    let row = db
+                        .query_one_raw(Statement::from_sql_and_values(
+                            DatabaseBackend::Postgres,
+                            r#"SELECT id, platform_name, raw_data
                                FROM platform_metadata
                                WHERE id = $1 AND user_id = $2"#,
-                        [id.into(), user_id.into()],
-                    ))
-                    .await
-                    .map_err(db_err)?
-                    .ok_or_else(|| not_found("Library metadata not found"))?;
-                (
-                    row.try_get::<i32>("", "id").unwrap_or(id),
-                    row.try_get::<String>("", "platform_name")
-                        .unwrap_or_default(),
-                    row.try_get::<serde_json::Value>("", "raw_data")
-                        .unwrap_or(json!({})),
-                )
-            } else {
-                let platform = content_id.trim();
-                if platform.is_empty() {
-                    return Err((
-                        StatusCode::BAD_REQUEST,
-                        Json(json!({
-                            "error": "library content_id must be platform_metadata id or platform name"
-                        })),
-                    ));
-                }
-                let row = db
-                    .query_one_raw(Statement::from_sql_and_values(
-                        DatabaseBackend::Postgres,
-                        r#"SELECT id, platform_name, raw_data
+                            [id.into(), user_id.into()],
+                        ))
+                        .await
+                        .map_err(db_err)?
+                        .ok_or_else(|| not_found("Library metadata not found"))?;
+                    (
+                        row.try_get::<i32>("", "id").unwrap_or(id),
+                        row.try_get::<String>("", "platform_name")
+                            .unwrap_or_default(),
+                        row.try_get::<serde_json::Value>("", "raw_data")
+                            .unwrap_or(json!({})),
+                    )
+                } else {
+                    let platform = content_id.trim();
+                    if platform.is_empty() {
+                        return Err((
+                            StatusCode::BAD_REQUEST,
+                            Json(AppError::public_json(
+                                "library content_id must be platform_metadata id or platform name",
+                            )),
+                        ));
+                    }
+                    let row = db
+                        .query_one_raw(Statement::from_sql_and_values(
+                            DatabaseBackend::Postgres,
+                            r#"SELECT id, platform_name, raw_data
                                FROM platform_metadata
                                WHERE user_id = $1 AND lower(platform_name) = lower($2)
                                ORDER BY fetched_at DESC NULLS LAST, id DESC
                                LIMIT 1"#,
-                        [user_id.into(), platform.into()],
-                    ))
-                    .await
-                    .map_err(db_err)?
-                    .ok_or_else(|| {
-                        not_found(&format!("No library metadata for platform '{}'", platform))
-                    })?;
-                (
-                    row.try_get::<i32>("", "id").unwrap_or(0),
-                    row.try_get::<String>("", "platform_name")
-                        .unwrap_or_else(|_| platform.to_string()),
-                    row.try_get::<serde_json::Value>("", "raw_data")
-                        .unwrap_or(json!({})),
-                )
-            };
+                            [user_id.into(), platform.into()],
+                        ))
+                        .await
+                        .map_err(db_err)?
+                        .ok_or_else(|| {
+                            not_found(&format!("No library metadata for platform '{}'", platform))
+                        })?;
+                    (
+                        row.try_get::<i32>("", "id").unwrap_or(0),
+                        row.try_get::<String>("", "platform_name")
+                            .unwrap_or_else(|_| platform.to_string()),
+                        row.try_get::<serde_json::Value>("", "raw_data")
+                            .unwrap_or(json!({})),
+                    )
+                };
 
             let (item_count, sample_titles) = summarize_library_raw(&raw);
             let name = format!("{} library", platform_name);
@@ -373,7 +374,7 @@ pub(super) async fn build_ap_object(
         }
         _ => Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Unsupported content type"})),
+            Json(AppError::public_json("Unsupported content type")),
         )),
     }
 }
@@ -982,7 +983,7 @@ fn escape_html(s: &str) -> String {
 }
 
 fn not_found(msg: &str) -> (StatusCode, Json<serde_json::Value>) {
-    (StatusCode::NOT_FOUND, Json(json!({"error": msg})))
+    (StatusCode::NOT_FOUND, Json(AppError::public_json(msg)))
 }
 
 #[cfg(test)]
@@ -1100,3 +1101,4 @@ mod tests {
         );
     }
 }
+use myriad_error::AppError;

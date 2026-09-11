@@ -1,13 +1,11 @@
 //! Agent API — presets
 use super::*;
 use crate::error::HttpError;
+use myriad_error::AppError;
 
 fn preset_store_http(context: &'static str, error: impl std::fmt::Display) -> HttpError {
     tracing::error!(%error, context, "agent preset store failed");
-    HttpError::from((
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({ "error": format!("Failed to {context}") })),
-    ))
+    HttpError(AppError::internal(format!("Failed to {context}")))
 }
 
 // 任务预设 API
@@ -65,7 +63,9 @@ pub async fn create_preset(
     if req.preset_type != "favorite" && req.preset_type != "history" {
         return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Invalid preset type, must be 'favorite' or 'history'" })),
+            Json(AppError::public_json(
+                "Invalid preset type, must be 'favorite' or 'history'",
+            )),
         )));
     }
 
@@ -242,7 +242,7 @@ pub async fn delete_preset(
     let preset = preset.ok_or_else(|| {
         HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "error": "Preset not found" })),
+            Json(AppError::public_json("Preset not found")),
         ))
     })?;
 
@@ -250,7 +250,9 @@ pub async fn delete_preset(
     if preset.preset_type == "favorite" {
         return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Cannot delete favorite preset, please unfavorite first" })),
+            Json(AppError::public_json(
+                "Cannot delete favorite preset, please unfavorite first",
+            )),
         )));
     }
 
@@ -280,7 +282,7 @@ pub async fn toggle_favorite(
         .ok_or_else(|| {
             HttpError::from((
                 StatusCode::NOT_FOUND,
-                Json(json!({ "error": "Preset not found" })),
+                Json(AppError::public_json("Preset not found")),
             ))
         })?;
 
@@ -322,7 +324,7 @@ pub async fn use_preset(
         .ok_or_else(|| {
             HttpError::from((
                 StatusCode::NOT_FOUND,
-                Json(json!({ "error": "Preset not found" })),
+                Json(AppError::public_json("Preset not found")),
             ))
         })?;
 
@@ -359,7 +361,7 @@ pub async fn execute_preset(
         .ok_or_else(|| {
             HttpError::from((
                 StatusCode::NOT_FOUND,
-                Json(json!({ "error": "Preset not found" })),
+                Json(AppError::public_json("Preset not found")),
             ))
         })?;
 
@@ -371,7 +373,9 @@ pub async fn execute_preset(
         .ok_or_else(|| {
             HttpError::from((
                 StatusCode::BAD_REQUEST,
-                Json(json!({ "error": "Preset has no saved recipe, please run the task first" })),
+                Json(AppError::public_json(
+                    "Preset has no saved recipe, please run the task first",
+                )),
             ))
         })?;
 
@@ -440,7 +444,7 @@ pub async fn execute_preset(
                     .unwrap_or_default();
                 let success = api_response.success;
                 let response_value = serde_json::to_value(&api_response)
-                    .unwrap_or_else(|_| json!({"error": "serialization failed"}));
+                    .unwrap_or_else(|_| AppError::public_json("serialization failed"));
                 tracing::info!(
                     "[Agent API] Preset execution completed, sending TaskCompleted event"
                 );

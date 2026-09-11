@@ -136,7 +136,7 @@ pub(crate) async fn generate_platform_reports_internal(
                             .unwrap_or(50)
                             .clamp(0, 100);
                         obj.insert("hardcore_score".to_string(), json!(score));
-                        // player_type: stable enum for FE i18n (legacy Chinese → key)
+                        // player_type: Chinese or English labels → stable enum key
                         if let Some(raw) = obj
                             .get("player_type")
                             .and_then(|v| v.as_str())
@@ -534,8 +534,7 @@ pub(crate) async fn generate_platform_reports_internal(
                                 "liked_posts": analysis.engagement_stats.liked_posts_count,
                             }),
                         );
-                        // top_posts/recent_posts/language_distribution 不再进 card_visuals：
-                        // X 卡已聚焦关注图谱，前端零消费；AI 分析用的推文数据走 metadata
+                        // top_posts/recent_posts/language_distribution 不写入 card_visuals。
                         if !analysis.following_sample.is_empty() {
                             let sample: Vec<Value> = analysis
                                 .following_sample
@@ -601,8 +600,7 @@ pub(crate) async fn generate_platform_reports_internal(
                         // 账号画像（概览卡 header）—— 全部实测，覆盖 AI 幻觉
                         obj.insert("profile".to_string(), json!(analysis.profile));
 
-                        // Single guild list for FE (library_items); guild_count falls back to list len
-                        // when member_reach is dead / OAuth omits approximate counts.
+                        // Single guild list for library_items; guild_count 缺 member_reach 时回落到列表长度。
                         let library_items: Vec<Value> = analysis
                             .guilds_preview
                             .iter()
@@ -1259,7 +1257,7 @@ fn psn_hunter_type_fallback(locale: &str, platinum: i64, avg: f64) -> &'static s
 
 /// GitHub contribution tier for `card_visuals.contribution_level`.
 /// Stable English enum keys only — FE maps to locale labels / badge colors.
-/// Stars are an independent path (`>=1000` legendary, `>=200` veteran, `>=50` rising).
+/// Stars path: `>=1000` legendary, `>=200` veteran, `>=50` active, else emerging.
 pub(crate) fn github_contribution_level(
     total_contributions: i64,
     repos_count: usize,

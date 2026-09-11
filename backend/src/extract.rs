@@ -7,6 +7,7 @@ use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::Json;
+use myriad_error::AppError;
 use sea_orm::DatabaseConnection;
 use serde_json::{json, Value};
 
@@ -84,7 +85,7 @@ impl<S: Send + Sync> FromRequestParts<S> for AuthedClaims {
             .ok_or_else(|| {
                 (
                     StatusCode::UNAUTHORIZED,
-                    Json(json!({"error": "Not authenticated"})),
+                    Json(AppError::public_json("Not authenticated")),
                 )
             })
     }

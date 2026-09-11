@@ -1,3 +1,4 @@
+use myriad_error::AppError;
 // Admin analytics summary, visitor card, export, and import.
 
 use axum::{
@@ -93,7 +94,7 @@ ORDER BY day ASC
             tracing::warn!("analytics summary daily failed: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "db_error" })),
+                Json(AppError::fail_json("db_error")),
             );
         }
     };
@@ -715,7 +716,7 @@ pub async fn get_visitor_card(
         Err(response) => {
             return (
                 response.status(),
-                Json(json!({"success": false, "error": "Invalid authentication state"})),
+                Json(AppError::fail_json("Invalid authentication state")),
             );
         }
     };
@@ -789,7 +790,7 @@ ORDER BY day ASC, path ASC
             tracing::warn!("analytics export page_daily failed: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "db_error" })),
+                Json(AppError::fail_json("db_error")),
             );
         }
     };
@@ -821,7 +822,7 @@ ORDER BY day ASC, path ASC, visitor_hash ASC
             tracing::warn!("analytics export visitor_seen failed: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "db_error" })),
+                Json(AppError::fail_json("db_error")),
             );
         }
     };
@@ -855,7 +856,7 @@ ORDER BY day ASC, event_name ASC, path ASC, target ASC
             tracing::warn!("analytics export event_daily failed: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "db_error" })),
+                Json(AppError::fail_json("db_error")),
             );
         }
     };
@@ -888,7 +889,7 @@ ORDER BY day ASC, event_name ASC, path ASC, target ASC, visitor_hash ASC
             tracing::warn!("analytics export event_visitor failed: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "db_error" })),
+                Json(AppError::fail_json("db_error")),
             );
         }
     };
@@ -919,7 +920,7 @@ ORDER BY day ASC, host ASC
             tracing::warn!("analytics export referrer_daily failed: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "db_error" })),
+                Json(AppError::fail_json("db_error")),
             );
         }
     };
@@ -952,7 +953,7 @@ ORDER BY day ASC, country_code ASC
             tracing::warn!("analytics export country_daily failed: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "db_error" })),
+                Json(AppError::fail_json("db_error")),
             );
         }
     };
@@ -983,7 +984,7 @@ ORDER BY day ASC, country_code ASC, visitor_hash ASC
             tracing::warn!("analytics export country_visitor failed: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "db_error" })),
+                Json(AppError::fail_json("db_error")),
             );
         }
     };
@@ -1018,7 +1019,7 @@ ORDER BY day ASC, country_code ASC, visitor_hash ASC
             tracing::warn!("analytics export content hash failed: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "export_hash_failed" })),
+                Json(AppError::fail_json("export_hash_failed")),
             );
         }
     };
@@ -1028,7 +1029,7 @@ ORDER BY day ASC, country_code ASC, visitor_hash ASC
             tracing::warn!("analytics export integrity seal failed: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "export_integrity_failed" })),
+                Json(AppError::fail_json("export_integrity_failed")),
             );
         }
     };
@@ -1229,7 +1230,7 @@ pub async fn import_analytics(
     {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": "too_many_rows" })),
+            Json(AppError::fail_json("too_many_rows")),
         );
     }
 
@@ -1353,7 +1354,7 @@ pub async fn import_analytics(
         _ => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(json!({ "success": false, "error": "invalid_mode" })),
+                Json(AppError::fail_json("invalid_mode")),
             );
         }
     };
@@ -1364,7 +1365,7 @@ pub async fn import_analytics(
             tracing::warn!("analytics import begin failed: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "db_error" })),
+                Json(AppError::fail_json("db_error")),
             );
         }
     };
@@ -1375,7 +1376,7 @@ pub async fn import_analytics(
             let _ = $txn.rollback().await;
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "db_error" })),
+                Json(AppError::fail_json("db_error")),
             );
         }};
     }
@@ -1880,7 +1881,7 @@ ON CONFLICT (day, country_code, visitor_hash) DO NOTHING
         tracing::warn!("analytics import commit failed: {}", e);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "success": false, "error": "db_error" })),
+            Json(AppError::fail_json("db_error")),
         );
     }
 

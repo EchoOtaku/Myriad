@@ -3,6 +3,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use myriad_error::AppError;
 use serde_json::json;
 
 use crate::error::status_json_to_http;
@@ -70,8 +71,7 @@ fn federation_store_response(context: &'static str, error: impl std::fmt::Displa
 /// `?limit=&cancelled_only=` 查询参数。
 ///
 /// `cancelled_only` 认 `1|true|yes|on`，其余一律 false。
-/// 换成 `Option<bool>` 会让 serde 只认 `true`/`false`，把 `?cancelled_only=1`
-/// 变成 400 —— 前端正在用的写法。
+/// `Option<bool>` 只认 `true`/`false`，`1`/`yes`/`on` 会 400。
 #[derive(serde::Deserialize)]
 pub(crate) struct PurgeDeadQuery {
     pub(crate) limit: Option<String>,
@@ -129,17 +129,15 @@ impl ListQuery {
 /// 把 `Json<T>` 提取失败翻译成本项目的 JSON 错误体。
 ///
 /// 直接用 `Json<T>` 会让超限 body 拿到 axum 的纯文本 413，丢掉分块传输指引。
-/// HTTP 上限是路由上的 `live_*_body_limit`；`size_hint` 里的 4 MiB 是载荷上限。
-///
-/// 体积类拒绝（413）附带 `size_hint`，其余按原状态码返回解析错误详情。
-/// Shared by federation HTTP adapters and `federation::limits` extract helpers.
+/// HTTP 上限是路由上的 `live_*_body_limit`。413 附带调用方给的 `size_hint`；
+/// 其余按原状态码返回解析错误详情。
 pub fn json_rejection_response(
     rejection: axum::extract::rejection::JsonRejection,
     size_hint: Option<&str>,
 ) -> Response {
     let status = rejection.status();
     if status == StatusCode::PAYLOAD_TOO_LARGE {
-        let mut body = json!({"error": "Request body too large or unreadable"});
+        let mut body = AppError::public_json("Request body too large or unreadable");
         if let Some(hint) = size_hint {
             body["hint"] = json!(hint);
         }
@@ -152,10 +150,8 @@ pub fn json_rejection_response(
 
 /// POST /api/admin/federation/domain-move
 ///
-/// POST /api/admin/federation/domain-move
-///
 /// Emit ActivityPub Move for every local user (domain migration). Admin only.
-/// `AdminClaims` 取代函数体里的 `federation_admin_required`。
+/// 管理员校验由 `AdminClaims` 承担。
 pub async fn admin_federation_domain_move(
     extract::AdminClaims(_claims): extract::AdminClaims,
     extract::Db(db): extract::Db,
@@ -466,7 +462,7 @@ pub(crate) async fn federation_media_upload(
             Err(_) => {
                 return (
                     StatusCode::BAD_REQUEST,
-                    Json(json!({"error": "Failed to read file field"})),
+                    Json(AppError::public_json("Failed to read file field")),
                 )
                     .into_response()
             }
@@ -477,7 +473,7 @@ pub(crate) async fn federation_media_upload(
     let Some(bytes) = file_bytes else {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Missing multipart field 'file'"})),
+            Json(AppError::public_json("Missing multipart field 'file'")),
         )
             .into_response();
     };
@@ -502,9 +498,9 @@ pub(crate) async fn federation_unpublish(
     if !has_activity && !has_content {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": "Provide activity_id, or content_type + content_id"
-            })),
+            Json(AppError::public_json(
+                "Provide activity_id, or content_type + content_id",
+            )),
         )
             .into_response();
     }
@@ -933,7 +929,6 @@ pub(crate) async fn federation_set_room_member_role(
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    // Path may be percent-encoded actor URL
     let actor = urlencoding::decode(&actor)
         .map(|s| s.into_owned())
         .unwrap_or(actor);
@@ -1071,9 +1066,8 @@ pub(crate) async fn federation_pin_room_message(
 
 // Ring 去中心化环网
 
-/// `AdminClaims` 取代函数体里的 `federation_admin_required` —— 这些 ring 端点的
-/// 路由只有 router 级 `auth_middleware`（普通登录），管理员校验必须留在这里。
-/// 写进签名后，路由被挪动或重挂中间件也带不走它。
+/// 管理员校验由 `AdminClaims` 承担。这些 ring 端点的路由只有 router 级
+/// `auth_middleware`（普通登录）；写进签名后，路由被挪动或重挂中间件也带不走它。
 pub(crate) async fn federation_create_ring(
     extract::AdminClaims(claims): extract::AdminClaims,
     extract::Db(db): extract::Db,
@@ -1190,7 +1184,7 @@ pub(crate) async fn federation_delivery_stats(
 }
 
 /// POST /api/federation/delivery/{id}/retry — requeue a dead/stuck item
-/// 路由已声明该数值路径参数；`Path<i32>` 取代手工 strip + parse。
+/// 路径参数走 `Path<i32>`。
 pub(crate) async fn federation_retry_delivery(
     extract::AuthedClaims(claims): extract::AuthedClaims,
     extract::Db(db): extract::Db,
@@ -1204,7 +1198,7 @@ pub(crate) async fn federation_retry_delivery(
 }
 
 /// POST /api/federation/delivery/{id}/cancel — cancel pending/delivering item
-/// 路由已声明该数值路径参数；`Path<i32>` 取代手工 strip + parse。
+/// 路径参数走 `Path<i32>`。
 pub(crate) async fn federation_cancel_delivery(
     extract::AuthedClaims(claims): extract::AuthedClaims,
     extract::Db(db): extract::Db,
@@ -1217,7 +1211,7 @@ pub(crate) async fn federation_cancel_delivery(
     }
 }
 
-/// 路由已挂 auth_middleware；`Query<LimitQuery>` 取代手工切 query 串。
+/// 查询参数走 `Query<LimitQuery>`。
 pub(crate) async fn federation_retry_all_dead_delivery(
     extract::AuthedClaims(claims): extract::AuthedClaims,
     extract::Db(db): extract::Db,
@@ -1230,7 +1224,7 @@ pub(crate) async fn federation_retry_all_dead_delivery(
     }
 }
 
-/// 路由已挂 auth_middleware；`Query<LimitQuery>` 取代手工切 query 串。
+/// 查询参数走 `Query<LimitQuery>`。
 pub(crate) async fn federation_cancel_all_pending_delivery(
     extract::AuthedClaims(claims): extract::AuthedClaims,
     extract::Db(db): extract::Db,
@@ -1244,7 +1238,7 @@ pub(crate) async fn federation_cancel_all_pending_delivery(
 }
 
 /// DELETE /api/federation/delivery/{id} — purge a dead queue row (user-owned dismiss)
-/// 路由已声明该数值路径参数；`Path<i32>` 取代手工 strip + parse。
+/// 路径参数走 `Path<i32>`。
 pub(crate) async fn federation_dismiss_delivery(
     extract::AuthedClaims(claims): extract::AuthedClaims,
     extract::Db(db): extract::Db,
@@ -1316,7 +1310,7 @@ pub async fn federation_get_public_room(
     }
 }
 
-/// 路由已挂 auth_middleware；`Query<LimitQuery>` 取代手工 form_urlencoded 解析。
+/// 查询参数走 `Query<LimitQuery>`。
 pub(crate) async fn federation_list_delivery(
     extract::AuthedClaims(claims): extract::AuthedClaims,
     extract::Db(db): extract::Db,
@@ -1411,7 +1405,7 @@ pub(crate) async fn federation_update_instance_trust(
         None => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "domain required"})),
+                Json(AppError::public_json("domain required")),
             )
                 .into_response()
         }
@@ -1509,7 +1503,7 @@ pub(crate) async fn federation_toggle_instance_block(
         None => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "domain required"})),
+                Json(AppError::public_json("domain required")),
             )
                 .into_response()
         }
@@ -1744,7 +1738,7 @@ pub(crate) async fn get_federation_timeline(
                 "content_json": content_json,
                 "object_id": object_id,
                 "is_read": r.try_get::<bool>("", "is_read").unwrap_or(false),
-                // Frontend (Aro) expects created_at / timestamp for timeAgo()
+                // created_at 与 received_at 同值
                 "created_at": received_at.clone(),
                 "received_at": received_at,
                 "actor": actor,

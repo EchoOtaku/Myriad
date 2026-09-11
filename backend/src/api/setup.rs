@@ -3,6 +3,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     Json,
 };
+use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use sea_orm_migration::MigratorTrait;
 use serde::{Deserialize, Serialize};
@@ -205,10 +206,11 @@ pub async fn init_database(
         );
         return Err(status_json_to_http((
             StatusCode::FORBIDDEN,
-            Json(json!({
-                "error": "Setup already completed",
-                "message": "Database has been initialized and an admin user exists. Use the authenticated administration workflow for maintenance."
-            })),
+            Json(
+                AppError::forbidden("Setup already completed").with_message(
+                    "Database has been initialized and an admin user exists. Use the authenticated administration workflow for maintenance.",
+                ).to_json(),
+            ),
         )));
     }
 

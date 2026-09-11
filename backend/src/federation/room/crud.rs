@@ -52,13 +52,15 @@ pub async fn create_room(
     if req.name.is_empty() || req.name.len() > 500 {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Room name must be 1-500 characters"})),
+            Json(AppError::public_json("Room name must be 1-500 characters")),
         ));
     }
     if req.description.as_ref().is_some_and(|d| d.len() > 5000) {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Description must be at most 5000 characters"})),
+            Json(AppError::public_json(
+                "Description must be at most 5000 characters",
+            )),
         ));
     }
 
@@ -66,7 +68,9 @@ pub async fn create_room(
     if !(2..=5000).contains(&max_members) {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "max_members must be between 2 and 5000"})),
+            Json(AppError::public_json(
+                "max_members must be between 2 and 5000",
+            )),
         ));
     }
 
@@ -74,13 +78,13 @@ pub async fn create_room(
     if !["owner", "democratic", "open"].contains(&governance) {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Invalid governance_type"})),
+            Json(AppError::public_json("Invalid governance_type")),
         ));
     }
     if !["admin-only", "member-invite", "open"].contains(&invite_policy) {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Invalid invite_policy"})),
+            Json(AppError::public_json("Invalid invite_policy")),
         ));
     }
 
@@ -164,7 +168,7 @@ pub async fn update_room(
     if !is_admin_role(&my_role) {
         return Err((
             StatusCode::FORBIDDEN,
-            Json(json!({"error": "Only owner or admin can update room"})),
+            Json(AppError::public_json("Only owner or admin can update room")),
         ));
     }
 
@@ -173,7 +177,7 @@ pub async fn update_room(
         if name.is_empty() || name.len() > 500 {
             return Err((
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Room name must be 1-500 characters"})),
+                Json(AppError::public_json("Room name must be 1-500 characters")),
             ));
         }
     }
@@ -181,7 +185,9 @@ pub async fn update_room(
         if desc.len() > 5000 {
             return Err((
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Description must be at most 5000 characters"})),
+                Json(AppError::public_json(
+                    "Description must be at most 5000 characters",
+                )),
             ));
         }
     }
@@ -195,7 +201,7 @@ pub async fn update_room(
         if avatar.is_empty() || avatar.len() > max {
             return Err((
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid avatar (empty or too large)"})),
+                Json(AppError::public_json("Invalid avatar (empty or too large)")),
             ));
         }
         if !avatar.starts_with("data:image/")
@@ -204,7 +210,9 @@ pub async fn update_room(
         {
             return Err((
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Avatar must be http(s) URL or data:image"})),
+                Json(AppError::public_json(
+                    "Avatar must be http(s) URL or data:image",
+                )),
             ));
         }
     }
@@ -212,7 +220,7 @@ pub async fn update_room(
         if !["admin-only", "member-invite", "open"].contains(&policy.as_str()) {
             return Err((
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid invite_policy"})),
+                Json(AppError::public_json("Invalid invite_policy")),
             ));
         }
     }
@@ -220,7 +228,9 @@ pub async fn update_room(
         if !(2..=5000).contains(&max) {
             return Err((
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "max_members must be between 2 and 5000"})),
+                Json(AppError::public_json(
+                    "max_members must be between 2 and 5000",
+                )),
             ));
         }
     }
@@ -281,7 +291,7 @@ pub async fn update_room(
     if set_parts.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "No fields to update"})),
+            Json(AppError::public_json("No fields to update")),
         ));
     }
 
@@ -395,7 +405,7 @@ pub async fn delete_room(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Room not found"})),
+                Json(AppError::public_json("Room not found")),
             )
         })?;
 
@@ -408,7 +418,7 @@ pub async fn delete_room(
     if !same_actor_url(&owner_actor, &local_actor) || my_role != "owner" {
         return Err((
             StatusCode::FORBIDDEN,
-            Json(json!({"error": "Only the room owner can delete room"})),
+            Json(AppError::public_json("Only the room owner can delete room")),
         ));
     }
 
@@ -687,7 +697,7 @@ pub async fn get_room(
         .await
         .map_err(db_err)?
         .ok_or_else(|| {
-            (StatusCode::NOT_FOUND, Json(json!({"error": "Room not found or access denied"})))
+            (StatusCode::NOT_FOUND, Json(AppError::public_json("Room not found or access denied")))
         })?;
 
     Ok(RoomDetail {
@@ -755,7 +765,7 @@ pub async fn get_members(
         if is_public.is_none() {
             return Err((
                 StatusCode::FORBIDDEN,
-                Json(json!({"error": "Not a member of this room"})),
+                Json(AppError::public_json("Not a member of this room")),
             ));
         }
     }
@@ -816,3 +826,4 @@ pub async fn get_members(
 
     Ok(members)
 }
+use myriad_error::AppError;

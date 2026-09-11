@@ -1,6 +1,6 @@
 //! 响应生成副 Agent
 //!
-//! Work 完成/确认/进度等面向用户的文案。Chat 正文走 `process_chat` 流式路径，不经过这里。
+//! Work 完成/确认/进度等面向用户的文案。Chat 正文不走 `generate_final_response`；流结束走 `finish_stream`。
 //!
 //! 两种模式：
 //! - **AI 模式**：调用 AI 模型生成个性化回复（用于最终回复、多步骤汇总）
@@ -24,7 +24,7 @@ pub(crate) async fn emit_stream_delta(
     let _ = tx.send(event).await;
 }
 
-/// Seal both model streams after the caller has published its delivery beat.
+/// Seal ThinkingToken and SummaryToken with empty `done: true` events.
 pub(crate) async fn finish_stream(tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>) {
     let _ = tx
         .send(AgentProgressEvent::ThinkingToken {
@@ -631,7 +631,7 @@ async fn ai_summarize(
 
 /// AI 不可用时的智能 fallback
 ///
-/// 在多步骤链（如 webSearch → ai.analyze → prompt.generate → ai.image）中，
+/// 在多步骤链（如 `ai.webSearch` → `ai.analyze` → `prompt.generate` → `ai.image`）中，
 /// 后续步骤已经消化了前面步骤的输出。因此只取最有语义的一段文本避免冗余拼接。
 fn smart_fallback(step_outputs: &[StepOutput<'_>]) -> String {
     // 1. 按字段优先：`analysis` → 字符串/`reply` → `summary` → `aiSummary`

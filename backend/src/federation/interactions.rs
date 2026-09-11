@@ -5,6 +5,7 @@
 //! Counts combine local interactions with remote Like/Announce activities.
 
 use axum::{http::StatusCode, Json};
+use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -70,7 +71,7 @@ fn db_err(e: impl std::fmt::Display) -> (StatusCode, Json<serde_json::Value>) {
 }
 
 fn bad_request(msg: &str) -> (StatusCode, Json<serde_json::Value>) {
-    (StatusCode::BAD_REQUEST, Json(json!({"error": msg})))
+    (StatusCode::BAD_REQUEST, Json(AppError::public_json(msg)))
 }
 
 /// Extract a canonical object URL/id from an AP object, Create envelope, or string.
@@ -106,8 +107,7 @@ fn require_object_id(raw: &str) -> Result<String, (StatusCode, Json<serde_json::
     Ok(id.to_string())
 }
 
-/// Resolve an AP object (Note/Article) from local DB for repost/reply previews
-/// and public object detail views (no follow graph required).
+/// Resolve an AP object from local DB for quote-repost embeds and public object detail (no follow graph).
 pub async fn resolve_local_object(
     db: &DatabaseConnection,
     object_id: &str,
@@ -472,7 +472,7 @@ pub async fn like_object(
         .map(|r| r.try_get("", "id").unwrap_or(0))
         .unwrap_or(0);
 
-    // Deliver Like to object author + followers (best-effort)
+    // Deliver Like to object author only (best-effort; no follower fan-out).
     if act_db_id > 0 {
         deliver_like_or_announce(db, user_id, act_db_id, &like_json, &object_id).await;
     }
@@ -493,7 +493,7 @@ pub async fn like_object(
     })
 }
 
-/// DELETE /api/federation/like
+/// POST /api/federation/unlike
 pub async fn unlike_object(
     user_id: i32,
     username: &str,
@@ -636,7 +636,7 @@ pub async fn bookmark_object(
     })
 }
 
-/// DELETE /api/federation/bookmark
+/// POST /api/federation/unbookmark
 pub async fn unbookmark_object(
     user_id: i32,
     db: &DatabaseConnection,
@@ -1504,7 +1504,7 @@ async fn deliver_to_object_author(
 
 // Inbound handling
 
-/// Record inbound Like without polluting the home timeline.
+/// Inbound Like: activity already stored; do not insert timeline.
 /// Call after federation_activities insert.
 pub async fn handle_inbound_like(
     _db: &impl ConnectionTrait,
@@ -1666,10 +1666,9 @@ async fn fetch_remote_public_object(object_id: &str) -> Option<serde_json::Value
     if !obj.is_object() {
         return None;
     }
-    // Only return publicly addressed objects for unfollowed authors.
+    // Only return publicly addressed remote objects (no follow check).
     if !object_is_public_addressed(&obj) {
-        // Some remote instances omit to/cc on Note documents; allow type Note/Article
-        // with an id that matches the requested URL.
+        // Some remotes omit to/cc; allow Note/Article/Page whose id matches the requested URL.
         let ty = obj.get("type").and_then(|t| t.as_str()).unwrap_or("");
         let id_ok = obj
             .get("id")
@@ -1723,7 +1722,7 @@ async fn actor_summary_for_object(
 ///
 /// Resolve a public federated object for detail view (quote click-through).
 /// Does **not** require following the author — local DB first, then remote
-/// public fetch for https object ids.
+/// public fetch for http(s) object ids.
 pub async fn get_object(
     _user_id: i32,
     db: &DatabaseConnection,
@@ -1853,7 +1852,7 @@ mod tests {
             });
         }
         let slim = slim_quoted_object(&cur);
-        // Walk embedded chain; should stop without panicking and mark truncation at leaf.
+        // Walk embedded chain; must stop at MAX_QUOTE_NEST_DEPTH without panicking.
         let mut node = &slim;
         let mut depth = 0;
         while let Some(inner) = node.get("mfp:quotedObject").filter(|v| v.is_object()) {

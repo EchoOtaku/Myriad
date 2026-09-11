@@ -42,7 +42,7 @@ pub async fn list_reports(
     let user_id = claims.sub.parse::<i32>().map_err(|_| {
         (
             StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
+            Json(AppError::public_json("Invalid user")),
         )
     })?;
 
@@ -342,3 +342,4 @@ pub async fn delete_tapp_report(
         .map_err(crud_http_error)?;
     Ok(Json(json!({ "success": true, "deleted": report_id })))
 }
+use myriad_error::AppError;

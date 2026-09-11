@@ -56,7 +56,7 @@ const IMPLICIT_LADDER_TEMPLATE: &str = r#"COALESCE(
     NULLIF({alias}.avatar_url, '')
 )"#;
 
-/// 解析器专用：只要隐式阶梯，不含显式快照那一层。
+/// 只要隐式阶梯，不含 `avatar_resolved_url`。
 ///
 /// `resolve_avatar` 要重新算出 auto 的结果，若读进 `avatar_resolved_url` 就会
 /// 自我循环——刷新一次便把旧快照当输入固化下来。
@@ -152,7 +152,7 @@ impl AvatarSourceKind {
         }
     }
 
-    /// 未知/空值一律归为 `Auto` —— 库里存了脏值时退回隐式阶梯，而不是让用户没头像。
+    /// 未知/空值一律归为 `Auto`：站长先平台画像再隐式阶梯，非站长只走阶梯。
     pub fn parse(raw: Option<&str>) -> Self {
         match raw.map(str::trim).unwrap_or_default() {
             "account" => Self::Account,
@@ -330,7 +330,7 @@ async fn load_user_is_owner(db: &DatabaseConnection, user_id: i32) -> bool {
 }
 
 /// 站长的全部平台原始数据：优先数据库，空则回落磁盘缓存。
-/// 第二个返回值是 `"database"` / `"cache"` / `"none"`；当前调用方多用 `.0` 丢掉标记。
+/// 第二个返回值是 `"database"` / `"cache"` / `"none"`。
 ///
 /// Disk-cache fallback is **site-owner only**. For non-owners, empty DB → empty map
 /// (never the site-owner cache under another user_id).
@@ -930,8 +930,7 @@ pub async fn current_avatar_source(
 /// 校验：来源必须真实属于该用户 —— 管理员替他人切换时也只能在**对方已有的**
 /// 来源里选，不能塞任意 URL。
 ///
-/// Multi-step writes (`avatar_source_*`, optional `is_primary`, optional
-/// `linked_github_id`) run in a single DB transaction.
+/// `avatar_source_*` 与 Identity 时的 `is_primary` 同事务写入。
 pub async fn set_avatar_source(
     db: &DatabaseConnection,
     user_id: i32,
@@ -1095,7 +1094,7 @@ mod tests {
             assert!(sql.contains(&format!("ui.user_id = {alias}.id")));
             assert!(!sql.contains("{alias}"), "模板占位符未被替换");
         }
-        // primary 优先是画像源选择的落点，顺序不能被改
+        // identity 阶梯按 is_primary 优先，顺序不能改
         assert!(avatar_snapshot_expr("u").contains("ORDER BY ui.is_primary DESC"));
     }
 

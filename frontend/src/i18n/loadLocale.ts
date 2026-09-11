@@ -1,10 +1,71 @@
 import type { Locale, TranslationKeys } from './index'
+import { assembleLocale } from './assembleLocale'
 import { createLocaleLoader } from './createLocaleLoader'
 
+async function loadPack(locale: Locale): Promise<TranslationKeys> {
+  switch (locale) {
+    case 'zh-CN': {
+      const [core, config, tapp, brew, merope, errors] = await Promise.all([
+        import('./zh-CN.json'),
+        import('./config.zh-CN.json'),
+        import('./tapp.zh-CN.json'),
+        import('./brew.zh-CN.json'),
+        import('./merope.zh-CN.json'),
+        import('./errors.zh-CN.json'),
+      ])
+      return assembleLocale(core.default, {
+        config: config.default,
+        tapp: tapp.default,
+        brew: brew.default,
+        merope: merope.default,
+        errors: errors.default,
+      })
+    }
+    case 'en-US': {
+      const [core, config, tapp, brew, merope, errors] = await Promise.all([
+        import('./en-US.json'),
+        import('./config.en-US.json'),
+        import('./tapp.en-US.json'),
+        import('./brew.en-US.json'),
+        import('./merope.en-US.json'),
+        import('./errors.en-US.json'),
+      ])
+      return assembleLocale(core.default, {
+        config: config.default,
+        tapp: tapp.default,
+        brew: brew.default,
+        merope: merope.default,
+        errors: errors.default,
+      })
+    }
+    case 'ja-JP': {
+      const [core, config, tapp, brew, merope, errors] = await Promise.all([
+        import('./ja-JP.json'),
+        import('./config.ja-JP.json'),
+        import('./tapp.ja-JP.json'),
+        import('./brew.ja-JP.json'),
+        import('./merope.ja-JP.json'),
+        import('./errors.ja-JP.json'),
+      ])
+      return assembleLocale(core.default, {
+        config: config.default,
+        tapp: tapp.default,
+        brew: brew.default,
+        merope: merope.default,
+        errors: errors.default,
+      })
+    }
+    default: {
+      const _exhaustive: never = locale
+      throw new Error(`Unknown locale: ${_exhaustive}`)
+    }
+  }
+}
+
 const loader = createLocaleLoader<TranslationKeys>({
-  'zh-CN': () => import('./zh-CN.json').then((m) => m.default),
-  'en-US': () => import('./en-US.json').then((m) => m.default),
-  'ja-JP': () => import('./ja-JP.json').then((m) => m.default),
+  'zh-CN': () => loadPack('zh-CN'),
+  'en-US': () => loadPack('en-US'),
+  'ja-JP': () => loadPack('ja-JP'),
 })
 
 /** Cache + in-flight dedupe; unused locales stay out of the main bundle. */

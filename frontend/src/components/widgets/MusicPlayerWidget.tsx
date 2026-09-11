@@ -119,6 +119,7 @@ const FloatingLyrics = memo(
     fontScale: number
     animLevel?: AnimationConfig['level']
   }) => {
+    const { t } = useI18n()
     const charsRef = useRef<(HTMLSpanElement | null)[]>([])
     const animationRef = useRef<number | null>(null)
     const pageVisibleRef = useRef(isPageVisible())
@@ -530,7 +531,9 @@ const FloatingLyrics = memo(
 
     if (!hasLyrics) {
       return (
-        <div className="text-sm text-gray-500 dark:text-gray-400">暂无歌词</div>
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          {t.music.noLyrics}
+        </div>
       )
     }
 
@@ -822,7 +825,7 @@ export const MusicPlayerWidget = memo(
             className="text-gray-500 dark:text-gray-400"
             style={{ fontSize: `${12 * fontScale}px` }}
           >
-            音乐播放器未启用
+            {t.music.playerDisabled}
           </span>
         </WidgetShell>
       )

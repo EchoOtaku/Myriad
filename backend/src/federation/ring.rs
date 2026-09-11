@@ -65,7 +65,7 @@ async fn resolve_user_id(
                 .ok_or_else(|| {
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(json!({"error": "No local users found"})),
+                        Json(AppError::public_json("No local users found")),
                     )
                 })?;
             fallback.try_get("", "id").map_err(|e| {
@@ -193,7 +193,7 @@ pub async fn create_ring(
         return Err((
             StatusCode::BAD_REQUEST,
             Json(
-                json!({"error": "Invalid ring_type. Must be one of: tapp-store, brew-recommend, library-exchange, instance-directory"}),
+                AppError::public_json("Invalid ring_type. Must be one of: tapp-store, brew-recommend, library-exchange, instance-directory"),
             ),
         ));
     }
@@ -304,7 +304,7 @@ pub async fn get_ring(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Ring not found"})),
+                Json(AppError::public_json("Ring not found")),
             )
         })?;
 
@@ -360,7 +360,7 @@ pub async fn leave_ring(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Ring not found"})),
+                Json(AppError::public_json("Ring not found")),
             )
         })?;
 
@@ -457,7 +457,7 @@ pub async fn get_peers(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Ring not found"})),
+                Json(AppError::public_json("Ring not found")),
             )
         })?;
 
@@ -500,7 +500,7 @@ pub async fn add_peer(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Ring not found"})),
+                Json(AppError::public_json("Ring not found")),
             )
         })?;
 
@@ -511,7 +511,9 @@ pub async fn add_peer(
     if same_actor_url(&peer_url, &local_actor) {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Cannot add this instance as its own ring peer"})),
+            Json(AppError::public_json(
+                "Cannot add this instance as its own ring peer",
+            )),
         ));
     }
 
@@ -534,7 +536,7 @@ pub async fn add_peer(
         if arr.iter().any(|v| v.as_str() == Some(&peer_url)) {
             return Err((
                 StatusCode::CONFLICT,
-                Json(json!({"error": "Peer already in ring"})),
+                Json(AppError::public_json("Peer already in ring")),
             ));
         }
     }
@@ -632,7 +634,7 @@ pub async fn remove_peer(
     if result.rows_affected() == 0 {
         return Err((
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "Ring not found"})),
+            Json(AppError::public_json("Ring not found")),
         ));
     }
 
@@ -712,7 +714,7 @@ pub async fn trigger_sync(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Ring not found"})),
+                Json(AppError::public_json("Ring not found")),
             )
         })?;
 
@@ -1804,3 +1806,4 @@ mod tests {
         assert!(c.category.is_none());
     }
 }
+use myriad_error::AppError;

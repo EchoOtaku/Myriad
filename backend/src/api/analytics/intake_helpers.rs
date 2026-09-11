@@ -5,6 +5,7 @@ use axum::{
     Json,
 };
 use chrono::{Duration, Local, NaiveDate, Utc};
+use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, Value as SeaValue};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -1213,13 +1214,13 @@ async fn parse_json_body<T: for<'de> Deserialize<'de>>(
         .map_err(|_| {
             crate::error::HttpError::from((
                 StatusCode::BAD_REQUEST,
-                Json(json!({ "success": false, "error": "invalid_body" })),
+                Json(AppError::fail_json("invalid_body")),
             ))
         })?;
     let body: T = serde_json::from_slice(&bytes).map_err(|_| {
         crate::error::HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": "invalid_json" })),
+            Json(AppError::fail_json("invalid_json")),
         ))
     })?;
     Ok((ip, ua, is_staff, body))
@@ -1275,15 +1276,12 @@ pub async fn collect(
     if rate_limited(&ip_key).await {
         return (
             StatusCode::TOO_MANY_REQUESTS,
-            Json(json!({ "success": false, "error": "rate_limited" })),
+            Json(AppError::fail_json("rate_limited")),
         );
     }
 
     if body.items.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": "empty" })),
-        );
+        return (StatusCode::BAD_REQUEST, Json(AppError::fail_json("empty")));
     }
 
     let Some(visitor) = resolve_visitor_hash(body.vid.as_deref(), ip, &ua) else {
@@ -1355,14 +1353,14 @@ pub async fn record_pageview(
     if rate_limited(&ip_key).await {
         return (
             StatusCode::TOO_MANY_REQUESTS,
-            Json(json!({ "success": false, "error": "rate_limited" })),
+            Json(AppError::fail_json("rate_limited")),
         );
     }
 
     let Some(path) = normalize_path(&body.path) else {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": "invalid_path" })),
+            Json(AppError::fail_json("invalid_path")),
         );
     };
 

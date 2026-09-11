@@ -196,7 +196,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0),
                     )
-                    // 当前连续投递失败的起点（原 015）。已存在的表由 schema_check 通用 ADD 补列。
+                    // failing_since；已存在的表由 schema_check 通用 ADD 补列。
                     .col(
                         ColumnDef::new(FederationInstances::FailingSince)
                             .timestamp_with_time_zone(),
@@ -498,7 +498,7 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // 按目标域名扫队列（原 015）。LOWER() 表达式索引 SeaORM Iden 建不了。
+        // 按目标域名扫队列。LOWER() 表达式索引 SeaORM Iden 建不了。
         manager
             .get_connection()
             .execute_unprepared(
@@ -1282,7 +1282,7 @@ CREATE INDEX IF NOT EXISTS idx_fed_interactions_object_kind
 CREATE INDEX IF NOT EXISTS idx_fed_interactions_user_kind_created
     ON federation_object_interactions (user_id, kind, created_at DESC);
 
--- 联邦 inbox 幂等回执（原 012/013；已跑过旧 005 的库由 schema_check 建表/修旧形）
+-- 联邦 inbox 幂等回执；已跑过旧 005 的库由 schema_check 建表/修旧形
 CREATE TABLE IF NOT EXISTS federation_inbox_receipts (
     signer TEXT NOT NULL,
     activity_id TEXT NOT NULL,

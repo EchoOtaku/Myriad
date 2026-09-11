@@ -9,6 +9,7 @@ use axum::{
     http::StatusCode,
     Extension, Json,
 };
+use myriad_error::AppError;
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -211,10 +212,7 @@ pub async fn execute_tapp_api(
         .map_err(|_| {
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "success": false,
-                    "error": "Failed to load Tapp settings"
-                })),
+                Json(AppError::fail_json("Failed to load Tapp settings")),
             ))
         })?
     } else {

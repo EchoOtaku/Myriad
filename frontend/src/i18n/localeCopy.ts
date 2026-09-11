@@ -1,7 +1,21 @@
 import type { Locale, TranslationKeys } from './index'
-import enUS from './en-US.json'
+import { assembleLocale } from './assembleLocale'
+import brew from './brew.en-US.json'
+import config from './config.en-US.json'
+import core from './en-US.json'
+import errors from './errors.en-US.json'
 import { getDefaultLocale } from './index'
 import { getCachedLocale, loadLocale } from './loadLocale'
+import merope from './merope.en-US.json'
+import tapp from './tapp.en-US.json'
+
+const enUS: TranslationKeys = assembleLocale(core, {
+  config,
+  tapp,
+  brew,
+  merope,
+  errors,
+})
 
 function asLocale(value: string): Locale {
   if (value === 'zh-CN' || value === 'ja-JP') return value

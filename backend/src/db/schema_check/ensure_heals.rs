@@ -1,10 +1,10 @@
 //! Runtime schema heal helpers (CREATE IF NOT EXISTS / structural ALTER).
 //!
-//! **Support floor: product ≥ 0.3.10.** Field-level alignment for older trees
-//! (thin ADD COLUMN one-shots, intermediate half-built tables) is not kept;
+//! **Support floor: product ≥ 0.3.10.** Thin ADD COLUMN one-shots are not kept;
 //! missing columns go through `get_expected_schema` + generic DDL.
-//! Heals here are: near-term CREATE IF NOT EXISTS, unique-index data cleanup,
-//! analytics `target` PK expansion, federation FK report/apply, seeds.
+//! Heals here: CREATE IF NOT EXISTS, unique-index cleanup, analytics `target` PK,
+//! federation FK report/apply, triggers, credential CHECK, inbox_scope rebuild,
+//! retired-report DELETE.
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr};
 
 /// `brew_items.topic` 的部分索引（`migrations/003` 已 CREATE）。
@@ -279,7 +279,7 @@ CREATE TABLE IF NOT EXISTS agent_autonomy_grants (
 /// First-party site analytics tables.
 ///
 /// **权威建表**：`migrations/001_initial_schema.rs` §8（新库 Migrator）。
-/// 本函数与 001 的 SQL **逐字同构**，作「表尚不存在」的幂等 CREATE 兜底。
+/// 与 001 §8 同结构（列 / PK / 索引），作表尚不存在时的幂等 CREATE 兜底。
 /// 普通缺列（engagement / ordinal 等）走 `get_expected_schema` 通用 ADD，
 /// 不再为 <0.3.10 或中间过渡形态维护逐列 ALTER。
 ///
@@ -457,9 +457,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_delivery_queue_activity_target
 ///
 /// # Policy (strict, no data mutation)
 ///
-/// 005 migration created federation tables **without** FKs. Adding constraints
-/// on a live DB fails if orphan rows exist. Cleaning orphans means DELETE or
-/// SET NULL — **never automated here**.
+/// 005 SeaORM 主表没有 `ForeignKey::create`（本函数的候选 FK）。
+/// 扩展 SQL 里 `federation_object_interactions.user_id` 已 `REFERENCES users`。
+/// 孤儿行清理（DELETE / SET NULL）从不自动执行。
 ///
 /// **Default (`MYRIAD_FEDERATION_APPLY_FKS` unset/false): report-only.**
 /// For each candidate FK, count orphans and log whether the constraint is

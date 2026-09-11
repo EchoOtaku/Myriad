@@ -1,5 +1,6 @@
 //! Local Channel CRUD and message send/get.
 use axum::{http::StatusCode, Json};
+use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::json;
 
@@ -32,7 +33,7 @@ pub async fn create_channel(
     {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Invalid channel_type"})),
+            Json(AppError::public_json("Invalid channel_type")),
         ));
     }
     if serde_json::from_value::<crate::federation::types::ChannelTransport>(json!(transport))
@@ -40,7 +41,7 @@ pub async fn create_channel(
     {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Invalid transport"})),
+            Json(AppError::public_json("Invalid transport")),
         ));
     }
 
@@ -50,7 +51,9 @@ pub async fn create_channel(
     if same_actor_url(&remote_actor_url, &local_actor) {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Cannot create a channel with your own federation actor"})),
+            Json(AppError::public_json(
+                "Cannot create a channel with your own federation actor",
+            )),
         ));
     }
 
@@ -305,7 +308,7 @@ pub async fn get_channel(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Channel not found"})),
+                Json(AppError::public_json("Channel not found")),
             )
         })?;
 
@@ -362,7 +365,7 @@ pub async fn close_channel(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Channel not found"})),
+                Json(AppError::public_json("Channel not found")),
             )
         })?;
 
@@ -370,7 +373,7 @@ pub async fn close_channel(
     if status == "closed" {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Channel already closed"})),
+            Json(AppError::public_json("Channel already closed")),
         ));
     }
 
@@ -485,7 +488,7 @@ pub async fn delete_channel(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Channel not found"})),
+                Json(AppError::public_json("Channel not found")),
             )
         })?;
 
@@ -493,7 +496,9 @@ pub async fn delete_channel(
     if status != "closed" {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Channel must be closed before delete"})),
+            Json(AppError::public_json(
+                "Channel must be closed before delete",
+            )),
         ));
     }
 
@@ -566,7 +571,15 @@ pub async fn send_message(
         return Err((
             StatusCode::PAYLOAD_TOO_LARGE,
             Json(
-                json!({"error": format!("Message payload too large: {} bytes (max {})", payload_size, max_payload)}),
+                AppError::from_status_u16(
+                    413,
+                    format!(
+                        "Message payload too large: {} bytes (max {})",
+                        payload_size, max_payload
+                    ),
+                )
+                .with_code("payload_too_large")
+                .to_json(),
             ),
         ));
     }
@@ -590,7 +603,7 @@ pub async fn send_message(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Channel not found"})),
+                Json(AppError::public_json("Channel not found")),
             )
         })?;
 
@@ -831,7 +844,7 @@ pub async fn get_messages(
         None => {
             return Err((
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Channel not found"})),
+                Json(AppError::public_json("Channel not found")),
             ))
         }
     };

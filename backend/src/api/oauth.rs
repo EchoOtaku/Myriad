@@ -18,6 +18,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
     Json,
 };
+use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, Value as SeaValue};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -62,10 +63,10 @@ fn oauth_start_failed(error: impl std::fmt::Display) -> HttpError {
     ))
 }
 fn err_400(msg: impl Into<String>) -> HttpError {
-    HttpError::from((StatusCode::BAD_REQUEST, Json(json!({"error": msg.into()}))))
+    HttpError::from((StatusCode::BAD_REQUEST, Json(AppError::public_json(msg))))
 }
 fn err_404(msg: impl Into<String>) -> HttpError {
-    HttpError::from((StatusCode::NOT_FOUND, Json(json!({"error": msg.into()}))))
+    HttpError::from((StatusCode::NOT_FOUND, Json(AppError::public_json(msg))))
 }
 
 /// Attach anti-caching headers so OAuth redirects / callbacks are never stored by browsers or CDNs.
@@ -258,7 +259,7 @@ pub async fn provider_link(
         .map_err(|_| {
             HttpError::from((
                 StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Unauthorized"})),
+                Json(AppError::public_json("Unauthorized")),
             ))
         })?;
 
@@ -1054,7 +1055,7 @@ pub async fn provider_unlink(
         .map_err(|_| {
             HttpError::from((
                 StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Unauthorized"})),
+                Json(AppError::public_json("Unauthorized")),
             ))
         })?;
     let user_id: i32 = claims.sub.parse().map_err(|_| err_400("Invalid user id"))?;
@@ -1145,7 +1146,7 @@ pub async fn list_my_identities(
         .map_err(|_| {
             HttpError::from((
                 StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Unauthorized"})),
+                Json(AppError::public_json("Unauthorized")),
             ))
         })?;
     let user_id: i32 = claims.sub.parse().map_err(|_| err_400("Invalid user id"))?;
@@ -1206,7 +1207,7 @@ pub async fn set_primary_identity(
         .map_err(|_| {
             HttpError::from((
                 StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Unauthorized"})),
+                Json(AppError::public_json("Unauthorized")),
             ))
         })?;
     let user_id: i32 = claims.sub.parse().map_err(|_| err_400("Invalid user id"))?;
@@ -1229,7 +1230,7 @@ pub async fn set_primary_identity(
         .ok_or_else(|| {
             HttpError::from((
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Identity not found"})),
+                Json(AppError::public_json("Identity not found")),
             ))
         })?;
 

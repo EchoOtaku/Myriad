@@ -40,7 +40,7 @@ struct FeedRow {
 fn db_unavailable() -> HttpError {
     HttpError::from((
         StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "Federation feed is unavailable"})),
+        Json(AppError::public_json("Federation feed is unavailable")),
     ))
 }
 
@@ -541,3 +541,4 @@ mod tests {
         assert!(expr.contains("CASE WHEN a.is_local THEN $3::text"));
     }
 }
+use myriad_error::AppError;

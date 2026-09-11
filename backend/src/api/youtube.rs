@@ -78,10 +78,7 @@ pub async fn get_youtube_channel(
     if channel_id.is_empty() {
         return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({
-                "success": false,
-                "error": "channel_id is required"
-            })),
+            Json(AppError::fail_json("channel_id is required")),
         )));
     }
 
@@ -128,10 +125,7 @@ pub async fn get_youtube_bundle(
     if channel_id.is_empty() {
         return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({
-                "success": false,
-                "error": "channel_id is required"
-            })),
+            Json(AppError::fail_json("channel_id is required")),
         )));
     }
 
@@ -170,3 +164,4 @@ pub async fn get_youtube_bundle(
         }
     }
 }
+use myriad_error::AppError;

@@ -205,7 +205,7 @@ async fn get_annotations(
         Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
-                Json(json!({ "success": false, "error": "Article not found" })),
+                Json(AppError::fail_json("Article not found")),
             )
                 .into_response();
         }
@@ -220,7 +220,7 @@ async fn get_annotations(
     if content.trim().is_empty() {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": "Article has no content" })),
+            Json(AppError::fail_json("Article has no content")),
         )
             .into_response();
     }
@@ -253,7 +253,7 @@ async fn regenerate_annotations(
         Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
-                Json(json!({ "success": false, "error": "Article not found" })),
+                Json(AppError::fail_json("Article not found")),
             )
                 .into_response();
         }
@@ -268,7 +268,7 @@ async fn regenerate_annotations(
     if content.trim().is_empty() {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": "Article has no content" })),
+            Json(AppError::fail_json("Article has no content")),
         )
             .into_response();
     }
@@ -289,7 +289,7 @@ async fn generate_and_save_annotations(
             tracing::error!("AI analyzer unavailable: no API key configured");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "AI service unavailable" })),
+                Json(AppError::fail_json("AI service unavailable")),
             )
                 .into_response();
         }
@@ -659,7 +659,6 @@ fn clean_trailing_incomplete(json_str: &str) -> String {
 
         // 移除不完整的键值对（以冒号结尾）
         if let Some(stripped) = trimmed.strip_suffix(':') {
-            // 找到这个键的开始位置并删除整个键
             if let Some(quote_pos) = stripped.rfind('"') {
                 fixed = trimmed[..quote_pos].trim_end().to_string();
                 // 如果以逗号结尾，也删除
@@ -879,7 +878,7 @@ async fn get_podcast_script(
         Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
-                Json(json!({ "success": false, "error": "Article not found" })),
+                Json(AppError::fail_json("Article not found")),
             )
                 .into_response();
         }
@@ -896,7 +895,7 @@ async fn get_podcast_script(
     if content.trim().is_empty() {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": "Article has no content" })),
+            Json(AppError::fail_json("Article has no content")),
         )
             .into_response();
     }
@@ -908,7 +907,7 @@ async fn get_podcast_script(
             tracing::error!("AI analyzer unavailable: no API key configured");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "AI service unavailable" })),
+                Json(AppError::fail_json("AI service unavailable")),
             )
                 .into_response();
         }
@@ -1028,7 +1027,7 @@ async fn regenerate_podcast_script(
         Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
-                Json(json!({ "success": false, "error": "Article not found" })),
+                Json(AppError::fail_json("Article not found")),
             )
                 .into_response();
         }
@@ -1067,7 +1066,7 @@ async fn regenerate_podcast_script(
         }
     }
 
-    // 缓存已删：走 `get_podcast_script`（无缓存则生成）
+    // 接着走 `get_podcast_script`（无缓存则生成）
     get_podcast_script(State(db), headers, Path(item_id))
         .await
         .into_response()
@@ -1287,7 +1286,7 @@ async fn generate_style_tags(
         Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
-                Json(json!({ "success": false, "error": "Source not found" })),
+                Json(AppError::fail_json("Source not found")),
             )
                 .into_response();
         }
@@ -1314,7 +1313,7 @@ async fn generate_style_tags(
     if items.is_empty() {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": "No articles found for this source" })),
+            Json(AppError::fail_json("No articles found for this source")),
         )
             .into_response();
     }
@@ -1367,7 +1366,7 @@ async fn generate_style_tags(
             tracing::error!("AI analyzer unavailable: no API key configured");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "AI service unavailable" })),
+                Json(AppError::fail_json("AI service unavailable")),
             )
                 .into_response();
         }
@@ -1565,3 +1564,4 @@ mod ai_retry_tests {
         );
     }
 }
+use myriad_error::AppError;

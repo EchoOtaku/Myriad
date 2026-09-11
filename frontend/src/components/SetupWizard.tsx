@@ -472,7 +472,7 @@ const SetupWizard: React.FC = () => {
       const heading =
         result.kind === 'initialized' ||
         (typeof result.message === 'string' &&
-          result.message.includes('初始化完成'))
+          /initialized|初始化完成/i.test(result.message))
           ? t.setup.dbInitialized
           : t.setup.dbMigrationChecked
       let message = heading

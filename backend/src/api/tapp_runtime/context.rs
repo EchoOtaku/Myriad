@@ -104,7 +104,7 @@ pub async fn get_context_user(
     let user_id: i32 = claims.sub.parse().map_err(|_| {
         (
             StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
+            Json(AppError::public_json("Invalid user")),
         )
     })?;
 
@@ -273,3 +273,4 @@ pub async fn get_context_geo(
         )))
     }
 }
+use myriad_error::AppError;

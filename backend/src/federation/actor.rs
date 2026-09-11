@@ -8,6 +8,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::Serialize;
 use serde_json::json;
@@ -55,21 +56,21 @@ pub async fn get_actor(
         .map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database query failed"})),
+                Json(AppError::public_json("Database query failed")),
             )
         })?;
 
     let row = user.ok_or_else(|| {
         (
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "User not found"})),
+            Json(AppError::public_json("User not found")),
         )
     })?;
 
     let user_id: i32 = row.try_get("", "id").map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to read user ID"})),
+            Json(AppError::public_json("Failed to read user ID")),
         )
     })?;
     let display_name: Option<String> = row.try_get("", "display_name").ok();
@@ -98,7 +99,9 @@ pub async fn get_actor(
                     );
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(json!({"error": "Failed to initialize federation identity"})),
+                        Json(AppError::public_json(
+                            "Failed to initialize federation identity",
+                        )),
                     )
                 })?
         }
@@ -358,7 +361,6 @@ pub async fn persist_verified_remote_actor(
         return Ok(resolved.info.clone());
     }
     let Some(ref doc) = resolved.document else {
-        // Local-path resolve already persisted; nothing more to do.
         return Ok(resolved.info.clone());
     };
     upsert_remote_actor_document(db, doc).await
@@ -954,7 +956,7 @@ async fn get_local_avatar_url(
         .map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database query failed"})),
+                Json(AppError::public_json("Database query failed")),
             )
                 .into_response()
         })?;
@@ -1300,7 +1302,7 @@ async fn get_local_user(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "User not found"})),
+                Json(AppError::public_json("User not found")),
             )
         })?;
 

@@ -969,7 +969,7 @@ pub async fn start_convo_session(
     {
         return (
             StatusCode::FORBIDDEN,
-            Json(serde_json::json!({"success": false, "error": "Agent is unavailable"})),
+            Json(AppError::fail_json("Agent is unavailable")),
         )
             .into_response();
     }
@@ -1004,11 +1004,13 @@ pub async fn start_convo_session(
     .await
     {
         Ok(id) => id,
-        Err(_) => return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"success": false, "error": "Could not prepare Chat session"})),
-        )
-            .into_response(),
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(AppError::fail_json("Could not prepare Chat session")),
+            )
+                .into_response()
+        }
     };
     let (chat, key) = match crate::services::agora_chat::ChatSession::register(
         claims,
@@ -1020,7 +1022,7 @@ pub async fn start_convo_session(
         Err(message) => {
             return (
                 StatusCode::TOO_MANY_REQUESTS,
-                Json(serde_json::json!({"success": false, "error": message})),
+                Json(AppError::fail_json(message)),
             )
                 .into_response();
         }
@@ -1840,3 +1842,4 @@ pub async fn clear_article_voice_cache(
     })
     .into_response()
 }
+use myriad_error::AppError;

@@ -9,6 +9,7 @@
 //! profileTextSourceApi），首页信息条会强制刷新 name/bio。
 
 use axum::{extract::Path, http::StatusCode, Json};
+use myriad_error::AppError;
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -32,7 +33,7 @@ pub struct SetProfileTextSourceRequest {
 fn unauthorized() -> ApiError {
     (
         StatusCode::UNAUTHORIZED,
-        Json(json!({"error": "Unauthorized"})),
+        Json(AppError::public_json("Unauthorized")),
     )
 }
 

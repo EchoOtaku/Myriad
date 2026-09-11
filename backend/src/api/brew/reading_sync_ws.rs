@@ -50,7 +50,7 @@ pub(crate) async fn get_item(
                 if source.admin_only && !is_admin {
                     return Err(HttpError::from((
                         StatusCode::NOT_FOUND,
-                        Json(json!({ "success": false, "error": "Item not found" })),
+                        Json(AppError::fail_json("Item not found")),
                     )));
                 }
                 // 只有登录用户才查询已读/收藏状态，游客跳过以节约计算
@@ -104,13 +104,13 @@ pub(crate) async fn get_item(
             } else {
                 Err(HttpError::from((
                     StatusCode::NOT_FOUND,
-                    Json(json!({ "success": false, "error": "Item not found" })),
+                    Json(AppError::fail_json("Item not found")),
                 )))
             }
         }
         Ok(None) => Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "success": false, "error": "Item not found" })),
+            Json(AppError::fail_json("Item not found")),
         ))),
         Err(e) => Err(brew_store_http("find article", e)),
     }
@@ -123,7 +123,7 @@ pub(crate) async fn fetch_fulltext(
 ) -> Result<Json<serde_json::Value>, HttpError> {
     Err(HttpError::from((
         StatusCode::NOT_IMPLEMENTED,
-        Json(json!({ "success": false, "error": "Fulltext fetching not yet implemented" })),
+        Json(AppError::fail_json("Fulltext fetching not yet implemented")),
     )))
 }
 
@@ -1258,3 +1258,4 @@ mod sync_transaction_tests {
         db.close().await.unwrap();
     }
 }
+use myriad_error::AppError;

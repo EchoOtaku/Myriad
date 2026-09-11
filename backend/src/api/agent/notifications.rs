@@ -108,7 +108,7 @@ pub(crate) async fn delete_notification(
     if !removed {
         return Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "Notification not found"})),
+            Json(AppError::public_json("Notification not found")),
         )));
     }
     Ok(Json(json!({"success": true})))
@@ -138,3 +138,4 @@ pub(crate) async fn clear_notifications(
 pub(crate) struct NotificationListParams {
     limit: Option<usize>,
 }
+use myriad_error::AppError;

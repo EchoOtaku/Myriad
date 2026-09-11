@@ -211,7 +211,7 @@ pub async fn retry_delivery_item(
     if queue_id <= 0 {
         return Err((
             StatusCode::BAD_REQUEST,
-            json!({"error": "Invalid delivery id"}),
+            AppError::public_json("Invalid delivery id"),
         ));
     }
 
@@ -235,7 +235,7 @@ pub async fn retry_delivery_item(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                json!({"error": "Delivery item not found"}),
+                AppError::public_json("Delivery item not found"),
             )
         })?;
 
@@ -248,13 +248,13 @@ pub async fn retry_delivery_item(
         RetryStatusDecision::AlreadyDelivered => {
             return Err((
                 StatusCode::BAD_REQUEST,
-                json!({"error": "Already delivered"}),
+                AppError::public_json("Already delivered"),
             ));
         }
         RetryStatusDecision::InProgress => {
             return Err((
                 StatusCode::CONFLICT,
-                json!({"error": "Delivery currently in progress"}),
+                AppError::public_json("Delivery currently in progress"),
             ));
         }
         RetryStatusDecision::Allow => {}
@@ -292,7 +292,7 @@ pub async fn retry_delivery_item(
     if result.rows_affected() == 0 {
         return Err((
             StatusCode::CONFLICT,
-            json!({"error": "Could not retry delivery (status changed)"}),
+            AppError::public_json("Could not retry delivery (status changed)"),
         ));
     }
 
@@ -319,7 +319,7 @@ pub async fn cancel_delivery_item(
     if queue_id <= 0 {
         return Err((
             StatusCode::BAD_REQUEST,
-            json!({"error": "Invalid delivery id"}),
+            AppError::public_json("Invalid delivery id"),
         ));
     }
 
@@ -342,7 +342,7 @@ pub async fn cancel_delivery_item(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                json!({"error": "Delivery item not found"}),
+                AppError::public_json("Delivery item not found"),
             )
         })?;
 
@@ -351,7 +351,7 @@ pub async fn cancel_delivery_item(
         CancelStatusDecision::AlreadyDelivered => {
             return Err((
                 StatusCode::BAD_REQUEST,
-                json!({"error": "Already delivered"}),
+                AppError::public_json("Already delivered"),
             ));
         }
         CancelStatusDecision::AlreadyDead => {
@@ -414,7 +414,7 @@ pub async fn cancel_delivery_item(
         let Some(again) = again else {
             return Err((
                 StatusCode::NOT_FOUND,
-                json!({"error": "Delivery item not found"}),
+                AppError::public_json("Delivery item not found"),
             ));
         };
         let st: String = again.try_get("", "status").unwrap_or_default();
@@ -433,14 +433,14 @@ pub async fn cancel_delivery_item(
             "delivered" => {
                 return Err((
                     StatusCode::BAD_REQUEST,
-                    json!({"error": "Already delivered"}),
+                    AppError::public_json("Already delivered"),
                 ));
             }
             _ => {
-                return Err((
-                    StatusCode::CONFLICT,
-                    json!({"error": "Could not cancel delivery (status changed)", "status": st}),
-                ));
+                let mut body =
+                    AppError::conflict("Could not cancel delivery (status changed)").to_json();
+                body["status"] = json!(st);
+                return Err((StatusCode::CONFLICT, body));
             }
         }
     }
@@ -729,7 +729,7 @@ pub async fn dismiss_delivery_item(
     if queue_id <= 0 {
         return Err((
             StatusCode::BAD_REQUEST,
-            json!({"error": "Invalid delivery id"}),
+            AppError::public_json("Invalid delivery id"),
         ));
     }
 
@@ -752,7 +752,7 @@ pub async fn dismiss_delivery_item(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                json!({"error": "Delivery item not found"}),
+                AppError::public_json("Delivery item not found"),
             )
         })?;
 
@@ -790,7 +790,7 @@ pub async fn dismiss_delivery_item(
     if result.rows_affected() == 0 {
         return Err((
             StatusCode::CONFLICT,
-            json!({"error": "Could not dismiss delivery (status changed)"}),
+            AppError::public_json("Could not dismiss delivery (status changed)"),
         ));
     }
 
@@ -874,3 +874,4 @@ pub async fn purge_dead_for_user(
         "cancelled_only": cancelled_only,
     }))
 }
+use myriad_error::AppError;

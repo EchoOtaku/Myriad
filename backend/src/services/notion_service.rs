@@ -1,15 +1,5 @@
-//! Notion 集成服务
-//!
-//! 支持从 Notion 数据库获取内容作为订阅源
-//!
-//! 使用方式：
-//! 1. 创建 Notion Integration 获取 API Token
-//! 2. 将数据库/页面分享给 Integration
-//! 3. 使用数据库 ID 或页面 ID 作为订阅 URL
-//!
-//! URL 格式：
-//! - notion://database/{database_id} - 订阅数据库
-//! - notion://page/{page_id} - 订阅单个页面
+//! Notion 订阅源：`notion://database|page/{id}`，或 `notion.so` /
+//! `notion.site` / `app.notion.com` 网页 URL（网页 URL 先当 Database）。
 
 use chrono::{DateTime, Utc};
 use reqwest::{Client, Url};
@@ -143,10 +133,8 @@ impl NotionService {
         Self { client }
     }
 
-    /// 解析 Notion URL。token 不在 URL 里（`split('?')` 丢掉 query），来自 `extra_config`。
-    /// - `notion://database/{database_id}`
-    /// - `notion://page/{page_id}`
-    /// - `https://www.notion.so/{workspace}/{database_id}?v={view_id}`
+    /// 解析为 `(type, id)`；ID 上 `split('?')` 丢掉 query。
+    /// `notion://database|page/{id}`；https 网页 URL 一律先当 Database。
     pub fn parse_notion_url(url: &str) -> Result<(NotionResourceType, String), NotionError> {
         // notion:// 协议格式
         if url.starts_with("notion://") {
@@ -165,7 +153,6 @@ impl NotionService {
                     }
                 };
 
-                // 提取 ID（可能包含查询参数）
                 let id = parts[1].split('?').next().unwrap_or(parts[1]);
                 return Ok((resource_type, id.to_string()));
             }
@@ -482,7 +469,6 @@ impl NotionService {
             }
         }
 
-        // 尝试从 URL 属性中获取封面（有些用户会用 URL 属性存储图片链接）
         if image.is_none() {
             image = self.extract_url_as_image(properties);
         }
@@ -822,7 +808,6 @@ impl NotionService {
             return false;
         }
 
-        // 排除数据 URI
         if url.starts_with("data:") {
             return false;
         }
@@ -1033,7 +1018,6 @@ impl NotionService {
                                 // 根据块类型选择如何插入子内容
                                 match block_type {
                                     "toggle" => {
-                                        // toggle 的子内容放在 details 内
                                         html.push_str(&format!(
                                             "<div class=\"notion-toggle-content\">{}</div>",
                                             children_html
@@ -1825,7 +1809,6 @@ fn extract_notion_id_from_url(url: &str) -> Option<String> {
             part
         };
 
-        // 检查是否是 32 字符的 hex
         let clean_id = id_part.replace("-", "");
         if clean_id.len() == 32 && clean_id.chars().all(|c| c.is_ascii_hexdigit()) {
             // 返回带短横线格式的 ID

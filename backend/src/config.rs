@@ -332,10 +332,10 @@ pub struct DynamicConfig {
     /// PSN NPSSO cookie（ca.account.sony.com 获取，服务端凭据）
     pub psn_npsso: Option<String>,
 
-    // Tapp 外部 API 密钥（用于 Tapp API 声明系统）
+    /// OpenWeather API key（落库字段）
     pub openweather_api_key: Option<String>,
 
-    // 腾讯云语音服务配置（TTS 文本转语音 / ASR 语音转文本）
+    // 语音：tencent_* 为 tencent 分支凭据；speech_provider 决定出站。
     pub tencent_secret_id: Option<String>,
     pub tencent_secret_key: Option<String>,
     pub tencent_region: Option<String>, // 默认 ap-guangzhou
@@ -658,7 +658,7 @@ impl Default for DynamicConfig {
             openai_model: "minimax/minimax-m3".to_string(),
             openai_base_url: "https://openrouter.ai/api/v1".to_string(),
             openai_max_tokens: 2000,
-            // Lite 默认关。关闭时 Lite 任务不建分析器（不回退 Standard）。
+            // Lite 默认关。
             lite_enabled: false,
             lite_ai_provider: "openai".to_string(),
             lite_gemini_api_key: None,
@@ -712,10 +712,9 @@ impl Default for DynamicConfig {
             psn_online_id: None,
             psn_npsso: None,
 
-            // Tapp 外部 API 密钥
             openweather_api_key: None,
 
-            // 腾讯云语音服务配置
+            // 语音默认：tencent 凭据 + speech_provider=tencent
             tencent_secret_id: None,
             tencent_secret_key: None,
             tencent_region: Some("ap-guangzhou".to_string()),

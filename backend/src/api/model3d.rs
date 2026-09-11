@@ -13,6 +13,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use myriad_error::AppError;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -237,12 +238,12 @@ async fn serve_asset(asset_id: &str, metadata: bool) -> ApiResult<Response> {
         if error.kind() == std::io::ErrorKind::NotFound {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({ "error": "3D asset not found" })),
+                Json(AppError::public_json("3D asset not found")),
             )
         } else {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Could not read 3D asset" })),
+                Json(AppError::public_json("Could not read 3D asset")),
             )
         }
     })?;
@@ -286,13 +287,13 @@ fn map_tripo_error(error: TripoError) -> (StatusCode, Json<Value>) {
         TripoError::Upstream { .. } | TripoError::Transport(_) => StatusCode::BAD_GATEWAY,
         TripoError::Storage(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };
-    (status, Json(json!({ "error": error.to_string() })))
+    (status, Json(AppError::public_json(error.to_string())))
 }
 
 fn bad_request(message: impl Into<String>) -> (StatusCode, Json<Value>) {
     (
         StatusCode::BAD_REQUEST,
-        Json(json!({ "error": message.into() })),
+        Json(AppError::public_json(message)),
     )
 }
 

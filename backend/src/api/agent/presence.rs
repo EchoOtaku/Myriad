@@ -16,7 +16,7 @@ use serde_json::{json, Value};
 fn invalid_presence_payload() -> HttpError {
     HttpError::from((
         StatusCode::BAD_REQUEST,
-        Json(json!({ "error": "Invalid payload" })),
+        Json(AppError::public_json("Invalid payload")),
     ))
 }
 
@@ -94,3 +94,4 @@ mod tests {
         assert!(remember_at < spawn_at);
     }
 }
+use myriad_error::AppError;

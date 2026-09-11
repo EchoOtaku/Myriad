@@ -156,22 +156,9 @@ async fn redeem_speak_intent(
     };
     // Merope toasts only what it owns. Task / brew / sync already have a
     // producer; sending ours as well would be two notices for one event.
-    let merope_notifies = speech_is_shown(&intent.topic, decision.notify);
-    insert_proactive(
-        db,
-        intent.user_id,
-        &spoken,
-        Some(&intent.topic),
-        merope_notifies,
-    )
-    .await?;
-    let _ = touch_proactive(db, intent.user_id).await;
-
-    let Some(decision) = current_delivery(db, &intent, input_at, false).await else {
-        return Ok(());
-    };
+    let mut delivered = false;
     if decision.live && shown {
-        emit_live_speech(
+        delivered = emit_live_speech(
             intent.user_id,
             &intent.id,
             &intent.topic,
@@ -180,7 +167,7 @@ async fn redeem_speak_intent(
             motion_mood.as_ref(),
             source_intent_id,
         );
-        if let Some(context) = pending_motion.take() {
+        if let Some(context) = pending_motion.take().filter(|_| delivered) {
             let user_id = intent.user_id;
             let id = intent.id.clone();
             let motion_db = db.clone();
@@ -205,7 +192,7 @@ async fn redeem_speak_intent(
             });
         }
     }
-    if speech_is_shown(&intent.topic, decision.notify) {
+    let notified = if speech_is_shown(&intent.topic, decision.notify) {
         emit_speech_notification(
             db,
             &intent,
@@ -215,7 +202,15 @@ async fn redeem_speak_intent(
             motion_mood.as_ref(),
             source_intent_id,
         )
-        .await;
+        .await
+    } else {
+        false
+    };
+    // The transcript and cooldown describe accepted delivery, not composition.
+    // Suppression or an unavailable transport must not consume either.
+    if delivered || notified {
+        insert_proactive(db, intent.user_id, &spoken, Some(&intent.topic), notified).await?;
+        let _ = touch_proactive(db, intent.user_id).await;
     }
     Ok(())
 }
@@ -362,9 +357,9 @@ fn emit_live_speech(
     performance: Option<&PerformanceDirective>,
     mood: Option<&MoodTransition>,
     source_intent_id: Option<&str>,
-) {
+) -> bool {
     let Some(manager) = get_notification_manager() else {
-        return;
+        return false;
     };
     manager.emit_live_speech(
         user_id,
@@ -377,7 +372,7 @@ fn emit_live_speech(
                 .map(|mood| serde_json::json!({ "mood": mood, "activity": "talking" })),
             intention_id: source_intent_id.map(str::to_string),
         },
-    );
+    )
 }
 
 async fn emit_speech_notification(
@@ -388,14 +383,14 @@ async fn emit_speech_notification(
     performance: Option<&PerformanceDirective>,
     mood: Option<&MoodTransition>,
     source_intent_id: Option<&str>,
-) {
+) -> bool {
     let user_id = intent.user_id;
     let event_key = &intent.topic;
     let Some(manager) = get_notification_manager() else {
-        return;
+        return false;
     };
     if !is_valuable_event(event_key) {
-        return;
+        return false;
     }
     let title = display_name(db).await;
     let session_id = latest_open_session(db, user_id)
@@ -442,9 +437,9 @@ async fn emit_speech_notification(
         .await
         .is_some_and(|decision| speech_is_shown(event_key, decision.notify))
     {
-        return;
+        return false;
     }
-    manager.notify(notification).await;
+    manager.notify(notification).await
 }
 
 async fn display_name(db: &DatabaseConnection) -> String {
@@ -546,7 +541,10 @@ mod tests {
             .next()
             .unwrap();
         assert!(!src.contains("set_activity("));
-        let before_write = src.split("insert_proactive(\n").next().unwrap();
+        let before_write = src.split("insert_proactive(").next().unwrap();
+        assert!(before_write.contains("if delivered || notified"));
+        assert!(before_write.contains("delivered = emit_live_speech("));
+        assert!(before_write.contains("let notified = if"));
         assert!(
             before_write.rfind("current_delivery(").unwrap()
                 > before_write.rfind("direct_motion(context).await").unwrap()

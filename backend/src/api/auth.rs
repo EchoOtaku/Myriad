@@ -8,6 +8,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde_json::{json, Value};
 use std::env;
@@ -148,7 +149,7 @@ pub async fn get_current_user(
             tracing::error!(%error, "failed to load current user");
             return Err(HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Failed to load current user" })),
+                Json(AppError::public_json("Failed to load current user")),
             )));
         }
     };
@@ -256,7 +257,7 @@ pub async fn set_current_user_locale(
         .map_err(|_| {
             HttpError::from((
                 StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Unauthorized"})),
+                Json(AppError::public_json("Unauthorized")),
             ))
         })?;
 
@@ -298,14 +299,14 @@ pub async fn set_current_user_locale(
             tracing::error!(%error, "failed to save user locale");
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to update user"})),
+                Json(AppError::public_json("Failed to update user")),
             ))
         })?;
 
     if updated.rows_affected() == 0 {
         return Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "Not found"})),
+            Json(AppError::public_json("Not found")),
         )));
     }
 

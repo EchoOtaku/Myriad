@@ -1,8 +1,6 @@
-
 export type Locale = 'zh-CN' | 'en-US' | 'ja-JP'
 
-/** Host UI chrome. Source of truth is `en-US.json` (and zh-CN / ja-JP siblings). */
-export type TranslationKeys = typeof import('./en-US.json')
+export type { TranslationKeys } from './assembleLocale'
 
 /** localStorage → navigator language → en-US */
 export function getDefaultLocale(): Locale {

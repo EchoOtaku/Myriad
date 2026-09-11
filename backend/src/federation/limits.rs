@@ -5,12 +5,15 @@
 //! ```text
 //! 用户提交 payload  ──►  活动 = payload + 信封
 //! │
-//! ├─► 本地 live_*_body_limit（inbox / authenticated / note-media / chunk / small-control）
+//! ├─► 本端 message_payload_limit（默认 MESSAGE_PAYLOAD_LIMIT 4 MiB）
+//! ├─► 本端 HTTP：inbox_body_limit / authenticated_body_limit（默认 8 / 24 MiB）
 //! └─► 对端 inbox 上限（对方控制）
 //! ```
 //!
-//! 实际可用体积 = 链上的**最小值**。所以 [`INBOX_BODY_LIMIT`] 必须显著大于
+//! 消息可用体积 = 这条链上的**最小值**。所以 [`INBOX_BODY_LIMIT`] 必须显著大于
 //! [`MESSAGE_PAYLOAD_LIMIT`]，否则本实例发得出、收不进自己的消息。
+//! 分块上传走 [`TRANSFER_CHUNK_BODY_LIMIT`]；信任/房间元数据等走
+//! [`SMALL_CONTROL_BODY_LIMIT`]（256 KiB，无 memory-saver 包装）。
 //!
 //! 注意跨实例时对端可能是旧版本或别的实现，它的 inbox 上限我们无从得知 ——
 //! 放宽本端只在双方都升级后才完全生效。
@@ -402,9 +405,9 @@ pub async fn buffer_inbox_body(
         );
         (
             StatusCode::TOO_MANY_REQUESTS,
-            Json(json!({
-                "error": "Inbox concurrent memory budget exhausted; retry later"
-            })),
+            Json(AppError::public_json(
+                "Inbox concurrent memory budget exhausted; retry later",
+            )),
         )
     })?;
 
@@ -414,7 +417,7 @@ pub async fn buffer_inbox_body(
             tracing::warn!(%error, "failed to read federation inbox body");
             (
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Failed to read body"})),
+                Json(AppError::public_json("Failed to read body")),
             )
         })?;
 
@@ -426,14 +429,14 @@ pub async fn public_limits() -> axum::Json<serde_json::Value> {
     axum::Json(crate::services::memory_profile::public_limits_snapshot())
 }
 
-// ── Live body limits (memory profile hot-reload) ───────────────────────
+// ── Per-request HTTP body budgets ──────────────────────────────────────
 //
-// Axum's `DefaultBodyLimit::max(N)` freezes N when the router is built. Memory
-// saver can change after config save without rebuilding routes. These layers
-// re-read the active profile **per request**: Content-Length precheck + stream
-// cap via `http_body_util::Limited`.
+// Inbox / authenticated / note-media: re-read memory profile per request
+// (Content-Length precheck + `http_body_util::Limited`). TransferChunk /
+// SmallControl use `TRANSFER_CHUNK_BODY_LIMIT` / `SMALL_CONTROL_BODY_LIMIT`
+// (256 KiB); same machinery, not profile-tunable.
 
-/// Which live budget a route should enforce at the HTTP body layer.
+/// Which HTTP body budget a route should enforce.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LiveBodyLimitKind {
     /// Shared / user inbox (remote deliveries).
@@ -996,3 +999,4 @@ mod rejection_tests {
         );
     }
 }
+use myriad_error::AppError;

@@ -1,7 +1,7 @@
 use sea_orm_migration::prelude::*;
 use sea_orm_migration::sea_orm::sea_query::OnConflict;
 
-/// 初始数据库结构（001）。折叠原 007/009/010/011 列；旧库由 schema_check 补列。
+/// 初始数据库结构（001）。旧库缺列由 schema_check 补。
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
@@ -202,7 +202,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(false),
                     )
-                    // 每用户通知策略（原 007；旧库由 schema_check 补列）
+                    // 每用户通知策略 JSON；旧库由 schema_check 补列
                     .col(
                         ColumnDef::new(Users::NotificationPreferences)
                             .json_binary()
@@ -216,7 +216,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default("{}"),
                     )
-                    // 在线状态跟踪（原 009；旧库由 schema_check 补列）
+                    // last_seen_at / online_seconds；旧库由 schema_check 补列
                     .col(ColumnDef::new(Users::LastSeenAt).timestamp_with_time_zone())
                     .col(
                         ColumnDef::new(Users::OnlineSeconds)
@@ -224,7 +224,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0),
                     )
-                    // 站点 owner（原 010/011；种子与 owner→admin 由 schema_check::ensure_single_owner）
+                    // 站点 owner；种子与 owner→admin 由 schema_check::ensure_single_owner
                     .col(
                         ColumnDef::new(Users::IsOwner)
                             .boolean()

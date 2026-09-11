@@ -374,14 +374,14 @@ impl NotificationManager {
         }
     }
 
-    /// 发布用户通知（实时事件 + 热缓存 + 持久化）
-    pub async fn notify(&self, notification: Notification) {
+    /// 发布用户通知（实时事件 + 热缓存 + 持久化）。返回是否被通知系统接收，非阅读回执。
+    pub async fn notify(&self, notification: Notification) -> bool {
         if notification.user_id.is_none() {
             tracing::error!(
                 id = %notification.id,
                 "[Notifications] Rejected ownerless user notification"
             );
-            return;
+            return false;
         }
         if !self.notification_is_enabled(&notification).await {
             tracing::debug!(
@@ -389,7 +389,7 @@ impl NotificationManager {
                 event_key = notification.event_key().unwrap_or("unknown"),
                 "Notification disabled by user preference"
             );
-            return;
+            return false;
         }
         tracing::debug!(
             id = %notification.id,
@@ -429,12 +429,13 @@ impl NotificationManager {
         let _ = self
             .tx
             .send(NotificationEvent::NewNotification { notification });
+        true
     }
 
-    pub fn emit_live_speech(&self, user_id: i32, speech: LiveSpeech) {
-        let _ = self
-            .tx
-            .send(NotificationEvent::LiveSpeech { user_id, speech });
+    pub fn emit_live_speech(&self, user_id: i32, speech: LiveSpeech) -> bool {
+        self.tx
+            .send(NotificationEvent::LiveSpeech { user_id, speech })
+            .is_ok()
     }
 
     pub fn emit_live_speech_motion(
@@ -957,6 +958,46 @@ pub fn get_notification_manager() -> Option<&'static Arc<NotificationManager>> {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn live_speech_reports_transport_acceptance_and_disconnect() {
+        let manager = test_manager();
+        let speech = || LiveSpeech {
+            id: "delivery-test".into(),
+            body: "hello".into(),
+            event_key: "agent.merope.greeting".into(),
+            performance: None,
+            merope_state: None,
+            intention_id: None,
+        };
+        assert!(!manager.emit_live_speech(2, speech()));
+        let mut stream = manager.subscribe();
+        assert!(manager.emit_live_speech(2, speech()));
+        assert!(matches!(
+            stream.recv().await.unwrap(),
+            NotificationEvent::LiveSpeech { user_id: 2, .. }
+        ));
+        drop(stream);
+        assert!(!manager.emit_live_speech(2, speech()));
+    }
+
+    #[tokio::test]
+    async fn notification_acceptance_distinguishes_rejected_and_retained() {
+        let manager = test_manager();
+        let mut notification = Notification::new(
+            2,
+            NotificationType::SystemInfo,
+            NotificationPriority::Normal,
+            "test",
+            "hello",
+        );
+        notification.user_id = None;
+        assert!(!manager.notify(notification.clone()).await);
+        assert!(manager.get_history_for_user(2, 10).await.is_empty());
+        notification.user_id = Some(2);
+        assert!(manager.notify(notification).await);
+        assert_eq!(manager.get_history_for_user(2, 10).await.len(), 1);
+    }
+
     use super::*;
 
     #[test]

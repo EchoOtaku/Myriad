@@ -14,6 +14,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
     Json,
 };
+use myriad_error::AppError;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -327,7 +328,7 @@ pub async fn oauth_start(
     let user_id: i32 = claims.sub.parse().map_err(|_| {
         (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Invalid user id"})),
+            Json(AppError::public_json("Invalid user id")),
         )
     })?;
 

@@ -38,10 +38,10 @@ pub async fn update_config(
     }
     tracing::info!("✅ Configuration saved to database");
 
-    // 2. Sync deploy keys to .env (BASE_URL / OAuth client / proxy). A/B/C stay DB-only.
+    // Deploy keys to .env (BASE_URL / PROXY_* / API bases). Credentials stay DB-only.
     let body = match save_all_configs(&payload).await {
         Ok(_) => {
-            tracing::info!("✅ Deploy env synced; app config groups A/B/C stay DB-only");
+            tracing::info!("✅ Deploy env synced; app credentials stay DB-only");
             json!({
                 "success": true,
                 "message": "Configuration saved successfully! Changes will be applied automatically within a few seconds."
@@ -877,7 +877,7 @@ pub(crate) fn should_write_env_field(field_key: &str, value: &str) -> bool {
     }
 }
 
-/// Save deploy keys to `.env`. App config groups A/B/C stay DB-only.
+/// Save deploy keys to `.env`. App credentials stay DB-only.
 ///
 /// Never dual-write UI / platform credentials / AI / Tripo / music / site bag
 /// to `.env` or process env. This path writes only:

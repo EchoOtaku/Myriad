@@ -214,7 +214,7 @@ pub async fn list_all_components_by_type(
     let user_id: i32 = claims.sub.parse().map_err(|_| {
         (
             StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
+            Json(AppError::public_json("Invalid user")),
         )
     })?;
 
@@ -227,3 +227,4 @@ pub async fn list_all_components_by_type(
         json!({ "success": true, "type": component_type, "components": components }),
     ))
 }
+use myriad_error::AppError;

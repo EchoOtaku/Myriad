@@ -163,7 +163,7 @@ ORDER BY day ASC
             tracing::warn!("ai usage daily failed: {}", e);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "db_error" })),
+                Json(AppError::fail_json("db_error")),
             );
         }
     };
@@ -601,3 +601,4 @@ mod tests {
         assert_eq!(days, 10);
     }
 }
+use myriad_error::AppError;

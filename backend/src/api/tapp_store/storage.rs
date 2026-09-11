@@ -512,11 +512,7 @@ async fn authorize_tapp_private(
     validate_tapp_id(tapp_id).map_err(|_| HttpError(AppError::bad_request("Bad request")))?;
     let subject_id = require_private_kv_subject(claims)?;
     let tapp = tapp_common::resolve_accessible_tapp(db, subject_id, tapp_id).await?;
-    decide_private_kv_access(
-        subject_id,
-        tapp.user_id,
-        current_is_admin(claims, db).await,
-    )
+    decide_private_kv_access(subject_id, tapp.user_id, current_is_admin(claims, db).await)
 }
 
 fn private_storage_key(key: &str) -> Result<String, HttpError> {

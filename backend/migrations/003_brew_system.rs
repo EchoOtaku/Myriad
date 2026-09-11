@@ -200,7 +200,7 @@ impl MigrationTrait for Migration {
                     )
                     // 关联订阅源
                     .col(ColumnDef::new(BrewItems::SourceId).integer().not_null())
-                    // RSS guid / Atom id（唯一标识）
+                    // varchar(512) NOT NULL
                     .col(ColumnDef::new(BrewItems::Guid).string_len(512).not_null())
                     // 文章标题
                     .col(ColumnDef::new(BrewItems::Title).text().not_null())
@@ -246,8 +246,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(false),
                     )
-                    // 预定义主题 key（关键词或 AI 离线写入）。NULL = 未分类，
-                    // 聚类侧靠 NULL 把文章留在源磁贴里，不建「其他」桶。
+                    // nullable text；本 migration 无 CHECK
                     .col(ColumnDef::new(BrewItems::Topic).text())
                     // 手记原文（Markdown）。只有 source_type = note 的源下的
                     // 条目有值；抓来的文章恒为 NULL。`content` 存的是渲染后的
@@ -304,8 +303,8 @@ impl MigrationTrait for Migration {
             .await?;
 
         // 索引：主题过滤。绝大多数行的 topic 是 NULL，做成部分索引。
-        // 与 `schema_check::ensure_brew_item_topic_index` 的 DDL 必须一字不差 ——
-        // 通用索引路径不支持 WHERE 子句，两边形状不一致就会一直报漂移。
+        // 与 `ensure_brew_item_topic_index` 的 DDL 必须一字不差；不进
+        // `get_expected_indexes`（通用路径没有 WHERE）。
         manager
             .get_connection()
             .execute_unprepared(

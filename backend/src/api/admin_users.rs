@@ -14,6 +14,7 @@
 
 use axum::{extract::Path, http::StatusCode, Json};
 use chrono::{DateTime, Utc};
+use myriad_error::AppError;
 use sea_orm::Value as SeaValue;
 use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseConnection, QueryResult, Statement, TransactionTrait,
@@ -34,7 +35,7 @@ fn db_error<E: std::fmt::Display>(context: &'static str) -> impl FnOnce(E) -> Ap
         tracing::error!(%error, context, "admin users store failed");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("Failed to {context}") })),
+            Json(AppError::public_json(format!("Failed to {context}"))),
         )
     }
 }
@@ -48,7 +49,7 @@ fn http_to_api(err: crate::error::HttpError) -> ApiError {
 fn not_found() -> ApiError {
     (
         StatusCode::NOT_FOUND,
-        Json(json!({"error": "User not found"})),
+        Json(AppError::public_json("User not found")),
     )
 }
 
@@ -140,7 +141,7 @@ async fn require_admin(
     let claims = authenticate_request(headers, db).await.map_err(|_| {
         (
             StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Unauthorized"})),
+            Json(AppError::public_json("Unauthorized")),
         )
     })?;
     crate::middleware::auth::ensure_current_admin_on(&claims, db).await?;
@@ -369,16 +370,16 @@ pub async fn update_user(
     // is_admin 变更保护：仅站点 owner 可改任何用户的 is_admin
     if req.is_admin.is_some() {
         if let Some(msg) = non_owner_is_admin_change_error(actor_is_owner) {
-            return Err((StatusCode::FORBIDDEN, Json(json!({"error": msg}))));
+            return Err((StatusCode::FORBIDDEN, Json(AppError::public_json(msg))));
         }
         if let Some(msg) = cannot_demote_owner_error(target_is_owner, req.is_admin) {
-            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": msg}))));
+            return Err((StatusCode::BAD_REQUEST, Json(AppError::public_json(msg))));
         }
         // Owner：不能撤销自己的管理员（owner always stays admin)
         if req.is_admin == Some(false) && target_is_admin && user_id == self_id {
             return Err((
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Cannot revoke your own admin role"})),
+                Json(AppError::public_json("Cannot revoke your own admin role")),
             ));
         }
         // 不能降级最后一位管理员
@@ -396,7 +397,9 @@ pub async fn update_user(
             if admin_count <= 1 {
                 return Err((
                     StatusCode::BAD_REQUEST,
-                    Json(json!({"error": "Cannot demote the last administrator"})),
+                    Json(AppError::public_json(
+                        "Cannot demote the last administrator",
+                    )),
                 ));
             }
         }
@@ -417,15 +420,15 @@ pub async fn update_user(
         if identity_count == 0 {
             return Err((
                 StatusCode::BAD_REQUEST,
-                Json(
-                    json!({"error": "Cannot disable local login: user has no linked OAuth identity"}),
-                ),
+                Json(AppError::public_json(
+                    "Cannot disable local login: user has no linked OAuth identity",
+                )),
             ));
         }
     }
 
     if let Some(msg) = cannot_restrict_owner_install(target_is_owner, req.tapp_install_disabled) {
-        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": msg}))));
+        return Err((StatusCode::BAD_REQUEST, Json(AppError::public_json(msg))));
     }
 
     let mut sets: Vec<String> = Vec::new();
@@ -462,7 +465,7 @@ pub async fn update_user(
     if sets.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "No fields to update"})),
+            Json(AppError::public_json("No fields to update")),
         ));
     }
 
@@ -553,7 +556,7 @@ pub async fn unlink_identity(
     {
         return Err((
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "Identity not found for this user"})),
+            Json(AppError::public_json("Identity not found for this user")),
         ));
     }
     let has_password = info.try_get::<bool>("", "has_password").unwrap_or(false);
@@ -565,7 +568,9 @@ pub async fn unlink_identity(
     if identity_count <= 1 && (!has_password || local_login_disabled) {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Cannot unlink the user's only sign-in method"})),
+            Json(AppError::public_json(
+                "Cannot unlink the user's only sign-in method",
+            )),
         ));
     }
 
@@ -675,7 +680,7 @@ pub async fn delete_user(
     if user_id == self_id {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Cannot delete your own account"})),
+            Json(AppError::public_json("Cannot delete your own account")),
         ));
     }
 
@@ -698,7 +703,7 @@ pub async fn delete_user(
         } else {
             StatusCode::FORBIDDEN
         };
-        return Err((status, Json(json!({"error": msg}))));
+        return Err((status, Json(AppError::public_json(msg))));
     }
 
     if target_is_admin {
@@ -715,7 +720,9 @@ pub async fn delete_user(
         if admin_count <= 1 {
             return Err((
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Cannot delete the last administrator"})),
+                Json(AppError::public_json(
+                    "Cannot delete the last administrator",
+                )),
             ));
         }
     }

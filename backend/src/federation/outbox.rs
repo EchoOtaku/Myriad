@@ -10,6 +10,7 @@ use axum::{
     response::Response,
     Json,
 };
+use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::Deserialize;
 use serde_json::json;
@@ -258,7 +259,7 @@ pub async fn get_activity(
     let Some(row) = row else {
         return Err((
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "Activity not found"})),
+            Json(AppError::public_json("Activity not found")),
         ));
     };
 
@@ -431,7 +432,7 @@ async fn get_public_object(
 fn object_not_found() -> (StatusCode, Json<serde_json::Value>) {
     (
         StatusCode::NOT_FOUND,
-        Json(json!({"error": "Object not found"})),
+        Json(AppError::public_json("Object not found")),
     )
 }
 
@@ -472,7 +473,7 @@ async fn get_local_user(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "User not found"})),
+                Json(AppError::public_json("User not found")),
             )
         })?;
 

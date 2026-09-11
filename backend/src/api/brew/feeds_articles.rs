@@ -1,4 +1,5 @@
 use crate::error::HttpError;
+use myriad_error::AppError;
 
 use axum::{
     extract::{Path, Query, State},
@@ -410,7 +411,7 @@ pub(crate) async fn add_source(
     if url.is_empty() {
         return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": "URL is required" })),
+            Json(AppError::fail_json("URL is required")),
         )));
     }
 
@@ -424,7 +425,7 @@ pub(crate) async fn add_source(
     if let Ok(Some(_)) = existing {
         return Err(HttpError::from((
             StatusCode::CONFLICT,
-            Json(json!({ "success": false, "error": "Already subscribed to this feed" })),
+            Json(AppError::fail_json("Already subscribed to this feed")),
         )));
     }
 
@@ -463,10 +464,9 @@ pub(crate) async fn add_source(
             let Some(token) = token else {
                 return Err(HttpError::from((
                     StatusCode::BAD_REQUEST,
-                    Json(json!({
-                        "success": false,
-                        "error": "Notion source requires extra_config with token"
-                    })),
+                    Json(AppError::fail_json(
+                        "Notion source requires extra_config with token",
+                    )),
                 )));
             };
 
@@ -689,7 +689,7 @@ pub(crate) async fn get_source(
             if source.admin_only && !is_admin {
                 return Err(HttpError::from((
                     StatusCode::NOT_FOUND,
-                    Json(json!({ "success": false, "error": "Source not found" })),
+                    Json(AppError::fail_json("Source not found")),
                 )));
             }
             let response: brew_sources::SourceResponse = source.into();
@@ -697,7 +697,7 @@ pub(crate) async fn get_source(
         }
         Ok(None) => Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "success": false, "error": "Source not found" })),
+            Json(AppError::fail_json("Source not found")),
         ))),
         Err(e) => Err(brew_store_http("find source", e)),
     }
@@ -746,7 +746,7 @@ pub(crate) async fn update_source(
                 active.enabled = Set(enabled);
             }
             if let Some(card_size) = req.card_size {
-                // 空字符串清除锁定，回到按分数派生（与 theme_color / icon 同一约定）。
+                // 空字符串清除档位锁（与 theme_color / icon 同一约定）。
                 active.card_size = Set(if card_size.is_empty() {
                     None
                 } else {
@@ -825,7 +825,7 @@ pub(crate) async fn update_source(
         }
         Ok(None) => Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "success": false, "error": "Source not found" })),
+            Json(AppError::fail_json("Source not found")),
         ))),
         Err(e) => Err(brew_store_http("find source", e)),
     }
@@ -862,7 +862,7 @@ pub(crate) async fn delete_source(
         }
         Ok(None) => Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "success": false, "error": "Source not found" })),
+            Json(AppError::fail_json("Source not found")),
         ))),
         Err(e) => Err(brew_store_http("find source", e)),
     }
@@ -907,13 +907,13 @@ pub(crate) async fn refresh_source(
             } else {
                 Err(HttpError::from((
                     StatusCode::SERVICE_UNAVAILABLE,
-                    Json(json!({ "success": false, "error": "Scheduler not available" })),
+                    Json(AppError::fail_json("Scheduler not available")),
                 )))
             }
         }
         Ok(None) => Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "success": false, "error": "Source not found" })),
+            Json(AppError::fail_json("Source not found")),
         ))),
         Err(e) => Err(brew_store_http("find source", e)),
     }
@@ -965,7 +965,7 @@ pub(crate) async fn discover_source(
         Err(error) => {
             return Err(HttpError::from((
                 StatusCode::BAD_REQUEST,
-                Json(json!({ "success": false, "error": error })),
+                Json(AppError::fail_json(error)),
             )))
         }
     };
@@ -1026,7 +1026,7 @@ pub(crate) async fn import_opml(
     if feeds.is_empty() {
         return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": "No feeds found in OPML" })),
+            Json(AppError::fail_json("No feeds found in OPML")),
         )));
     }
 
@@ -1196,7 +1196,7 @@ pub(crate) async fn update_category(
         }
         Ok(None) => Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "success": false, "error": "Category not found" })),
+            Json(AppError::fail_json("Category not found")),
         ))),
         Err(e) => Err(brew_store_http("find category", e)),
     }
@@ -1222,7 +1222,7 @@ pub(crate) async fn delete_category(
         },
         Ok(None) => Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "success": false, "error": "Category not found" })),
+            Json(AppError::fail_json("Category not found")),
         ))),
         Err(e) => Err(brew_store_http("find category", e)),
     }

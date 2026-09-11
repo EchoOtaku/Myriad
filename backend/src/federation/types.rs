@@ -18,7 +18,7 @@
 
 use serde::{Deserialize, Serialize};
 
-// ActivityPub 标准上下文
+// JSON-LD 上下文
 
 /// ActivityStreams 2.0 标准上下文 URL
 pub const AS_CONTEXT: &str = "https://www.w3.org/ns/activitystreams";
@@ -127,7 +127,7 @@ pub struct TappCapability {
     pub channel_types: Option<Vec<String>>,
 }
 
-// Activity 相关类型
+// Activity / Collection
 
 /// ActivityPub Activity（通用）
 #[derive(Debug, Clone, Serialize, Deserialize)]

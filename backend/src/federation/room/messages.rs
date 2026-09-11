@@ -1,5 +1,6 @@
 //! Room messages, files, and pin.
 use axum::{http::StatusCode, Json};
+use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait};
 use serde_json::json;
 
@@ -26,7 +27,15 @@ pub async fn send_room_message(
         return Err((
             StatusCode::PAYLOAD_TOO_LARGE,
             Json(
-                json!({"error": format!("Message payload too large: {} bytes (max {})", payload_size, max_payload)}),
+                AppError::from_status_u16(
+                    413,
+                    format!(
+                        "Message payload too large: {} bytes (max {})",
+                        payload_size, max_payload
+                    ),
+                )
+                .with_code("payload_too_large")
+                .to_json(),
             ),
         ));
     }
@@ -43,7 +52,7 @@ pub async fn send_room_message(
     if my_role == "observer" {
         return Err((
             StatusCode::FORBIDDEN,
-            Json(json!({"error": "Observers cannot send messages"})),
+            Json(AppError::public_json("Observers cannot send messages")),
         ));
     }
 
@@ -696,7 +705,9 @@ pub async fn pin_room_message(
     if !is_admin_role(&my_role) {
         return Err((
             StatusCode::FORBIDDEN,
-            Json(json!({"error": "Only owner or admin can pin messages"})),
+            Json(AppError::public_json(
+                "Only owner or admin can pin messages",
+            )),
         ));
     }
 
@@ -714,7 +725,7 @@ pub async fn pin_room_message(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Message not found"})),
+                Json(AppError::public_json("Message not found")),
             )
         })?;
 

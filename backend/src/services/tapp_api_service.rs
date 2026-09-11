@@ -1,12 +1,11 @@
 //! Tapp API 执行服务
 //!
 //! 负责：
-//! 1. 解析 Tapp manifest 中的 API 声明
-//! 2. 执行 API 调用（HTTP 或内置）
-//! 3. 自动注入非敏感上下文（geo、user）
-//! 4. 权限检查（public / protected / manager）
-//! 5. 响应缓存
-//! 6. 区域伪装（绕过地区限制）
+//! 1. 执行已解析的 `TappApiDef`（HTTP 或内置）
+//! 2. 注入非敏感上下文（user / settings / time；geo 仅模板用到时）
+//! 3. 权限：HTTP 要授予 `network:fetch`；access 为 public / protected / manager
+//! 4. 响应缓存
+//! 5. 可选 spoof 请求头（`api_def.spoof`）
 
 use once_cell::sync::Lazy;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
@@ -77,7 +76,7 @@ pub struct ApiExecutionContext {
     pub granted_permissions: Vec<String>,
     /// Manifest AI model tier used by governed builtin adapters.
     pub ai_model_tier: Option<crate::config::ModelTier>,
-    /// Host-only material resolved after install/runtime binding checks.
+    /// Host-only outbound credential; never put in inject context or Tapp-visible payloads.
     pub credential: Option<crate::services::tapp_credentials::ResolvedApiCredential>,
     /// Installation settings the declared API may interpolate as `settings.*`.
     pub settings: std::collections::BTreeMap<String, Value>,
@@ -224,7 +223,7 @@ impl TappApiService {
     /// - `tapp_id`: Tapp ID
     /// - `api_name`: API 名称（在 manifest.apis 中定义的 key）
     /// - `api_def`: API 定义
-    /// - `params`: 前端传入的参数
+    /// - `params`: 调用方参数，写入模板 `params.*`
     /// - `context`: 执行上下文
     ///
     /// # 返回
@@ -272,7 +271,7 @@ impl TappApiService {
             }
         };
 
-        // 4. 合并前端参数
+        // 4. 合并 params.*
         let mut full_context = inject_context;
         if let Some(params) = params {
             if let Some(obj) = params.as_object() {
@@ -596,7 +595,7 @@ impl TappApiService {
             .map_err(|error| Self::redact_needles(&error, &prepared.redaction_needles))?;
         let mut request = client.request(method, target_url);
 
-        // 应用区域伪装（如果配置了 spoof 参数）
+        // 可选 spoof 请求头（`api_def.spoof`）
         if let Some(spoof_region) = &api_def.spoof {
             let spoof_config = SpoofConfig::new(spoof_region);
             let spoof_headers = generate_spoof_headers(&spoof_config);
@@ -1724,14 +1723,9 @@ mod tests {
             .granted_permissions
             .push("network:fetch".into());
 
-        let result = TappApiService::execute(
-            "com.example.app",
-            "weather",
-            &api,
-            None,
-            &execution_context,
-        )
-        .await;
+        let result =
+            TappApiService::execute("com.example.app", "weather", &api, None, &execution_context)
+                .await;
 
         assert!(!result.success);
         assert_eq!(

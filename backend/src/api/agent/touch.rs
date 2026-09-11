@@ -83,7 +83,7 @@ pub async fn complete(
     if !(1200..=600_000).contains(&body.duration_ms) || !(1..=8).contains(&body.repeat_count) {
         return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error":"Invalid touch summary"})),
+            Json(AppError::public_json("Invalid touch summary")),
         )));
     }
     let live = crate::services::agent::consciousness::last_live_presence(user_id);
@@ -152,7 +152,7 @@ pub async fn appraise(
     if !(120..=600_000).contains(&body.duration_ms) || !(1..=8).contains(&body.repeat_count) {
         return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error":"Invalid touch summary"})),
+            Json(AppError::public_json("Invalid touch summary")),
         )));
     }
     let Ok(_slot) = SLOTS.try_acquire() else {
@@ -248,3 +248,4 @@ mod tests {
         );
     }
 }
+use myriad_error::AppError;

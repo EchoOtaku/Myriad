@@ -13,6 +13,7 @@
 //! - PUT /api/admin/users/{id}/avatar-source  管理员替他人切换（只能选对方已有的来源）
 
 use axum::{extract::Path, http::StatusCode, Json};
+use myriad_error::AppError;
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -36,7 +37,7 @@ pub struct SetAvatarSourceRequest {
 fn unauthorized() -> ApiError {
     (
         StatusCode::UNAUTHORIZED,
-        Json(json!({"error": "Unauthorized"})),
+        Json(AppError::public_json("Unauthorized")),
     )
 }
 

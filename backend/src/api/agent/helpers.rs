@@ -96,7 +96,7 @@ pub(crate) fn parse_user_id(claims: &Claims) -> Result<i32, HttpError> {
     claims.sub.parse::<i32>().map_err(|_| {
         HttpError::from((
             StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user" })),
+            Json(AppError::public_json("Invalid user")),
         ))
     })
 }
@@ -211,3 +211,4 @@ mod agent_entry_gate_tests {
         }
     }
 }
+use myriad_error::AppError;

@@ -271,7 +271,7 @@ pub fn parse_user_id(claims: &Claims) -> Result<i32, HttpError> {
     claims.sub.parse().map_err(|_| {
         HttpError::from((
             StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "Invalid user ID" })),
+            Json(AppError::public_json("Invalid user ID")),
         ))
     })
 }
@@ -354,3 +354,4 @@ mod tests {
         assert_eq!(tapp_owner_priority(99, -1, 1), 2);
     }
 }
+use myriad_error::AppError;

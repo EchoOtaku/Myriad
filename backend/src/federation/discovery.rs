@@ -8,6 +8,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use myriad_error::AppError;
 use sea_orm::DatabaseConnection;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde::Deserialize;
@@ -42,7 +43,9 @@ pub async fn webfinger(
     let (username, domain) = parse_acct_uri(resource).ok_or_else(|| {
         (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Invalid resource format. Expected acct:user@domain"})),
+            Json(AppError::public_json(
+                "Invalid resource format. Expected acct:user@domain",
+            )),
         )
     })?;
 
@@ -51,7 +54,7 @@ pub async fn webfinger(
     let our_domain = local_webfinger_domain(&domain, &base_url).ok_or_else(|| {
         (
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "User not found on this instance"})),
+            Json(AppError::public_json("User not found on this instance")),
         )
     })?;
 
@@ -67,14 +70,14 @@ pub async fn webfinger(
         .map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database query failed"})),
+                Json(AppError::public_json("Database query failed")),
             )
         })?;
 
     if user_exists.is_none() {
         return Err((
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "User not found"})),
+            Json(AppError::public_json("User not found")),
         ));
     }
 

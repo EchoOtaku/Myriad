@@ -8,6 +8,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use myriad_error::AppError;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -125,10 +126,7 @@ pub async fn get_task_status(
         }
         None => (
             StatusCode::NOT_FOUND,
-            Json(json!({
-                "success": false,
-                "error": "Task not found"
-            })),
+            Json(AppError::fail_json("Task not found")),
         ),
     }
 }

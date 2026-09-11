@@ -101,7 +101,9 @@ pub async fn process(
     {
         return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "An accepted intention must enter Work mode" })),
+            Json(AppError::public_json(
+                "An accepted intention must enter Work mode",
+            )),
         )));
     }
     validate_intention_work_request(&db, source_intent_id.as_deref(), user_id, &req.input).await?;
@@ -123,7 +125,7 @@ pub async fn process(
             tracing::error!(%error, "[Agent API] Failed to ensure session");
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Could not prepare Agent session" })),
+                Json(AppError::public_json("Could not prepare Agent session")),
             ))
         })?;
     let lane_key = LaneQueue::make_lane_key(user_id, Some(&session_id));
@@ -138,14 +140,14 @@ pub async fn process(
         tracing::error!(%error, "[Agent API] Failed to load session history");
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Could not load Agent session" })),
+            Json(AppError::public_json("Could not load Agent session")),
         ))
     })?;
     if let Err(error) = persist_user_message(&db, &session_id, &req.input).await {
         tracing::error!(%error, "[Agent API] Failed to persist user message");
         return Err(HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Could not save Agent message" })),
+            Json(AppError::public_json("Could not save Agent message")),
         )));
     }
 
@@ -301,7 +303,9 @@ pub(crate) async fn start_process_run(
     {
         return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "An accepted intention must enter Work mode" })),
+            Json(AppError::public_json(
+                "An accepted intention must enter Work mode",
+            )),
         )));
     }
     validate_intention_work_request(&db, source_intent_id.as_deref(), user_id, &req.input).await?;
@@ -330,7 +334,9 @@ pub(crate) async fn start_process_run(
                 {
                     return Err(HttpError::from((
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(json!({ "error": "Could not prepare durable Agent session" })),
+                        Json(AppError::public_json(
+                            "Could not prepare durable Agent session",
+                        )),
                     )));
                 }
                 // 不阻塞主流程，降级为无会话模式
@@ -353,7 +359,7 @@ pub(crate) async fn start_process_run(
             tracing::error!(%error, "[Agent API] Failed to load session history");
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Could not load Agent session" })),
+                Json(AppError::public_json("Could not load Agent session")),
             ))
         })?;
         if !history.is_empty() {
@@ -376,7 +382,9 @@ pub(crate) async fn start_process_run(
             {
                 return Err(HttpError::from((
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({ "error": "Could not save durable Agent message" })),
+                    Json(AppError::public_json(
+                        "Could not save durable Agent message",
+                    )),
                 )));
             }
         }
@@ -607,8 +615,8 @@ pub(crate) async fn start_process_run(
 
         // 使用带进度回调的处理方法
         // New Chat replaces the previous Chat run. Work is never registered here,
-        // so a Chat send cannot cancel background Work. Dropping this future
-        // does not run on SSE disconnect — only claim_chat_turn fires.
+        // so a Chat send cannot cancel background Work. This select is Chat
+        // supersession or cancel_chat_turn/cancel_chat_run — not SSE disconnect.
         let turn_result = if let Some(cancelled) = chat_cancel.take() {
             tokio::select! {
                 biased;
@@ -762,7 +770,7 @@ pub(crate) async fn start_process_run(
                         park_confirmation_run(&api_response, &parked_task_id)
                     } else {
                         serde_json::to_value(&api_response)
-                            .unwrap_or_else(|_| json!({"error": "serialization failed"}))
+                            .unwrap_or_else(|_| AppError::public_json("serialization failed"))
                     };
                     advance_intention_work(
                         &db_clone,
@@ -852,7 +860,9 @@ pub async fn subscribe_run_stream(
     let run = get_run_for_user(&run_id, user_id).await.ok_or_else(|| {
         HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "error": "Run not found, expired, or access denied" })),
+            Json(AppError::public_json(
+                "Run not found, expired, or access denied",
+            )),
         ))
     })?;
 
@@ -907,7 +917,7 @@ pub async fn get_task(
         }
         None => Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "error": "Task not found or access denied" })),
+            Json(AppError::public_json("Task not found or access denied")),
         ))),
     }
 }
@@ -1082,7 +1092,7 @@ pub async fn cancel_task(
     } else {
         Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "error": "Task not found or access denied" })),
+            Json(AppError::public_json("Task not found or access denied")),
         )))
     }
 }
@@ -1122,7 +1132,7 @@ pub async fn frontend_step_ack(
     {
         return Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "error": "Task not found" })),
+            Json(AppError::public_json("Task not found")),
         )));
     }
     let accepted = crate::services::agent::executor::submit_frontend_ack(
@@ -1273,7 +1283,7 @@ pub async fn answer_task_question_stream(
                 let success = api_response.success;
 
                 let response_value = serde_json::to_value(&api_response)
-                    .unwrap_or_else(|_| json!({"error": "serialization failed"}));
+                    .unwrap_or_else(|_| AppError::public_json("serialization failed"));
 
                 // 唤醒 `spawn_restored_wait_loop` 的 `done_tx`（不是 process_stream 本体）
                 if let Some(ctx) = waiting_ctx {
@@ -1396,7 +1406,7 @@ pub async fn confirm_operation_stream(
         .map_err(|error| {
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": error })),
+                Json(AppError::public_json(error)),
             ))
         })?;
     let session_id = resume_ctx
@@ -1429,7 +1439,7 @@ pub async fn confirm_operation_stream(
     let db_clone = db.clone();
     let confirmed = req.confirmed;
     tokio::spawn(async move {
-        // Agent/executor progress events share the same run hub as the SSE subscriber.
+        // Session/completed/error events on this channel publish into the same run hub the SSE subscriber reads. process_confirmation is not given the sender.
         let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentProgressEvent>(256);
         let run_for_forwarder = run_for_task.clone();
         tokio::spawn(async move {
@@ -1739,3 +1749,4 @@ mod quota_error_tests {
         );
     }
 }
+use myriad_error::AppError;

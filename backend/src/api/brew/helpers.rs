@@ -3,6 +3,7 @@
 //! Kept as a real submodule so feeds / reading / comments do not need `include!`.
 
 use axum::{http::StatusCode, Json};
+use myriad_error::AppError;
 use reqwest::Url;
 use sea_orm::DatabaseConnection;
 use serde_json::json;
@@ -14,10 +15,7 @@ use crate::middleware::auth::{
 use crate::models::entities::brew_sources;
 
 pub(crate) fn brew_http_err(status: StatusCode, error: impl Into<String>) -> HttpError {
-    HttpError::from((
-        status,
-        Json(json!({ "success": false, "error": error.into() })),
-    ))
+    HttpError::from((status, Json(AppError::fail_json(error))))
 }
 
 pub(crate) fn brew_store_http(context: &'static str, error: impl std::fmt::Display) -> HttpError {

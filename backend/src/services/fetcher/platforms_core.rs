@@ -165,7 +165,7 @@ impl PlatformFetcher {
         })
     }
 
-    /// 关系计数：following / follower（acc/info 里这两项常年是 0 或不存在）
+    /// 关系计数：(follower, following)。acc/info 这两项常年是 0 或不存在。
     async fn fetch_bilibili_relation_stat(&self, uid: i64) -> Result<(i64, i64)> {
         let url = format!("https://api.bilibili.com/x/relation/stat?vmid={}", uid);
         let response = self
@@ -450,8 +450,7 @@ impl PlatformFetcher {
     pub async fn fetch_all_bilibili_bangumi(&self, uid: i64) -> Result<Vec<BilibiliBangumi>> {
         let mut all_bangumi = Vec::new();
 
-        // 1: 番剧(动画), 2: 电影
-        // 移除 3: 纪录片, 4: 国创, 5: 电视剧 以减少请求数量
+        // 只拉 type=1 番剧、type=2 电影。
         for bangumi_type in [1, 2] {
             match self.fetch_bilibili_bangumi(uid, bangumi_type).await {
                 Ok(mut items) => all_bangumi.append(&mut items),
@@ -838,8 +837,7 @@ impl PlatformFetcher {
             return Err(anyhow!("No contribution data found in HTML"));
         }
 
-        // 返回完整的贡献历史数据（365天），而非截断
-        // 前端会在显示热力图时只取最近60天，但计算总贡献数需要完整数据
+        // 返回 contributions 全量（总贡献数用完整序列求和）。
         let total_days = contributions.len();
         let total_contributions: i64 = contributions
             .iter()
@@ -1092,7 +1090,7 @@ impl PlatformFetcher {
             let body: serde_json::Value = response.json().await?;
 
             if !status.is_success() {
-                // 时间线权限不足时返回空列表，由上层决定是否告警
+                // 已有页则保留部分结果后 break；第一页失败仍 Err。
                 if tweets.is_empty() {
                     let detail = body
                         .get("detail")

@@ -111,9 +111,9 @@ pub(crate) async fn handle_mfp_activity(
             {
                 return Err((
                     StatusCode::SERVICE_UNAVAILABLE,
-                    Json(json!({
-                        "error": "FileChunk requires a transactional filesystem outbox"
-                    })),
+                    Json(AppError::public_json(
+                        "FileChunk requires a transactional filesystem outbox",
+                    )),
                 ));
             }
             crate::federation::file_transfer::handle_file_transfer(db, actor_url_str, activity)
@@ -219,3 +219,4 @@ mod tests {
         );
     }
 }
+use myriad_error::AppError;

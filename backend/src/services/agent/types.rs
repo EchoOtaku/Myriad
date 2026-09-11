@@ -47,7 +47,7 @@ pub struct RequestContext {
     pub interaction_mode: AgentInteractionMode,
     /// 当前页面/路由
     pub current_route: Option<String>,
-    /// 最近活动的平台
+    /// 活跃的平台
     #[serde(default)]
     pub active_platforms: Vec<String>,
     /// 用户偏好
@@ -468,7 +468,7 @@ pub struct PlannerDecisionInfo {
 
 /// Planner 规划的单步摘要
 ///
-/// Field names use camelCase for SSE / FE debug panels (`capabilityId`).
+/// `capabilityId` 为 camelCase（SSE / FE debug）；其余字段 snake_case。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlannerStepSummary {
     pub id: String,
@@ -621,7 +621,7 @@ pub struct AgentResponse {
     pub data_display: Option<DataDisplayHint>,
     /// 后续建议
     pub suggestions: Vec<String>,
-    /// 任务状态（如果有后台任务）
+    /// 任务状态
     pub task: Option<TaskState>,
     /// 确认请求信息（当 response_type 为 ConfirmationRequired 时）
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1441,7 +1441,7 @@ pub enum AgentProgressEvent {
     PerformancePlan {
         performance: super::merope::PerformanceDirective,
     },
-    /// Persisted per-addressee Merope state for stale-result rejection and UI sync.
+    /// Mood/activity for live-face UI sync.
     MeropeStateChanged {
         mood: super::merope::MoodTransition,
         activity: String,

@@ -43,7 +43,7 @@ fn test_recent_month_features_in_expected_schema() {
         "federation_policy_settings",
         "federation_domain_aliases",
         "federation_object_interactions",
-        // 005（原 012/013）
+        // 005
         "federation_inbox_receipts",
     ] {
         assert!(

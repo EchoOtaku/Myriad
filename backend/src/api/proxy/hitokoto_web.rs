@@ -58,7 +58,7 @@ pub async fn proxy_hitokoto(Query(params): Query<HitokotoQuery>) -> Response {
             tracing::warn!("Rejected hitokoto proxy for unsafe url {}: {}", url, e);
             return (
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid or disallowed hitokoto url"})),
+                Json(AppError::public_json("Invalid or disallowed hitokoto url")),
             )
                 .into_response();
         }
@@ -91,7 +91,9 @@ pub async fn proxy_hitokoto(Query(params): Query<HitokotoQuery>) -> Response {
             tracing::error!("Failed to read Hitokoto response: {}", e);
             return (
                 StatusCode::BAD_GATEWAY,
-                Json(json!({"error": "Hitokoto response too large or unreadable"})),
+                Json(AppError::public_json(
+                    "Hitokoto response too large or unreadable",
+                )),
             )
                 .into_response();
         }
@@ -139,7 +141,7 @@ pub async fn fetch_web_content(Query(params): Query<FetchWebContentQuery>) -> Re
     if url.len() > 2048 {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "URL too long"})),
+            Json(AppError::public_json("URL too long")),
         )
             .into_response();
     }
@@ -148,7 +150,7 @@ pub async fn fetch_web_content(Query(params): Query<FetchWebContentQuery>) -> Re
     if !url.starts_with("http://") && !url.starts_with("https://") {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Invalid URL scheme"})),
+            Json(AppError::public_json("Invalid URL scheme")),
         )
             .into_response();
     }
@@ -158,7 +160,7 @@ pub async fn fetch_web_content(Query(params): Query<FetchWebContentQuery>) -> Re
         tracing::warn!(url = %url, "[FetchWebContent] Blocked SSRF attempt to internal URL");
         return (
             StatusCode::FORBIDDEN,
-            Json(json!({"error": "Cannot fetch internal URLs"})),
+            Json(AppError::public_json("Cannot fetch internal URLs")),
         )
             .into_response();
     }
@@ -177,7 +179,7 @@ pub async fn fetch_web_content(Query(params): Query<FetchWebContentQuery>) -> Re
             tracing::warn!(url = %url, %error, "[FetchWebContent] Rejected unsafe target");
             return (
                 StatusCode::FORBIDDEN,
-                Json(json!({"error": "Cannot fetch unsafe URLs"})),
+                Json(AppError::public_json("Cannot fetch unsafe URLs")),
             )
                 .into_response();
         }
@@ -564,3 +566,4 @@ fn extract_domain_from_url_simple(url: &str) -> Option<String> {
 
     url.split('/').next().map(|s| s.to_string())
 }
+use myriad_error::AppError;

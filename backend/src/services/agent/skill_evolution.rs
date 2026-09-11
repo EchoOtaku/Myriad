@@ -308,7 +308,7 @@ impl SkillEvolution {
                 let skill_id = stats_key;
                 if let Some(skill) = registry.get(skill_id).await {
                     if skill.origin == SkillOrigin::Manual {
-                        // 手动 Skill 不自动修改，仅记录警告
+                        // 手动 Skill 不自动修改；should_prune 时才记警告
                         if should_prune {
                             tracing::warn!(
                                 skill_id = skill_id,
@@ -668,13 +668,12 @@ impl SkillEvolution {
 
         // 去重检查：如果已有高度相似的 Skill，跳过创建或改进已有 Skill
         if let Some(registry) = get_skill_registry() {
-            // 用新 skill 的描述+触发词构建查询文本
+            // 用 name+描述+触发词构建查询文本
             let query_text = format!("{} {} {}", name, description, triggers.join(" "));
             let existing_matches = registry.get_relevant_skills(&query_text, 3).await;
 
             for m in &existing_matches {
                 if m.relevance > 1.5 {
-                    // 高度相似的 Skill 已存在 — 尝试改进而非创建
                     if m.skill.origin != SkillOrigin::Manual {
                         tracing::info!(
                             existing = %m.skill.name,
@@ -1134,7 +1133,7 @@ origin: agent_generated
 }
 
 /// 将 skill 文件移入 `skills/_trash/`（带时间戳前缀），避免物理删除无法恢复。
-/// `_trash` 以 `_` 开头，加载器会跳过该目录下的文件。
+/// 加载器只读 skills 目录顶层 `.md`，不进入子目录。
 async fn soft_delete_skill_file(skill: &Skill) -> Result<PathBuf, String> {
     if !skill.file_path.exists() {
         return Err(format!("Skill file missing: {}", skill.file_path.display()));

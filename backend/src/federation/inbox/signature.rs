@@ -21,7 +21,10 @@ fn inbox_auth_reject(
     error: impl std::fmt::Display,
 ) -> (StatusCode, Json<serde_json::Value>) {
     tracing::warn!(%error, public, "inbox signature rejected");
-    (StatusCode::UNAUTHORIZED, Json(json!({"error": public})))
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(AppError::public_json(public)),
+    )
 }
 
 // HTTP Signature 验证
@@ -55,7 +58,7 @@ fn unique_header<'a>(
     first.to_str().map(Some).map_err(|_| {
         (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Invalid request header encoding"})),
+            Json(AppError::public_json("Invalid request header encoding")),
         )
     })
 }
@@ -98,7 +101,7 @@ pub(crate) fn verify_preparse_gate(
     let sig_header = unique_header(headers, "signature")?.ok_or_else(|| {
         (
             StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Missing Signature header"})),
+            Json(AppError::public_json("Missing Signature header")),
         )
     })?;
 
@@ -110,7 +113,7 @@ pub(crate) fn verify_preparse_gate(
     let date = unique_header(headers, "date")?.ok_or_else(|| {
         (
             StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Missing Date header"})),
+            Json(AppError::public_json("Missing Date header")),
         )
     })?;
     verify_date_freshness(date, chrono::Utc::now(), HTTP_DATE_MAX_SKEW)
@@ -120,13 +123,15 @@ pub(crate) fn verify_preparse_gate(
         let digest_str = unique_header(headers, "digest")?.ok_or_else(|| {
             (
                 StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Missing Digest header for request with body"})),
+                Json(AppError::public_json(
+                    "Missing Digest header for request with body",
+                )),
             )
         })?;
         if !verify_digest(body, digest_str) {
             return Err((
                 StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Digest verification failed"})),
+                Json(AppError::public_json("Digest verification failed")),
             ));
         }
     }
@@ -152,7 +157,7 @@ pub(crate) async fn verify_request_signature(
     let sig_header = unique_header(headers, "signature")?.ok_or_else(|| {
         (
             StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Missing Signature header"})),
+            Json(AppError::public_json("Missing Signature header")),
         )
     })?;
 
@@ -164,7 +169,7 @@ pub(crate) async fn verify_request_signature(
     let date = unique_header(headers, "date")?.ok_or_else(|| {
         (
             StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Missing Date header"})),
+            Json(AppError::public_json("Missing Date header")),
         )
     })?;
     verify_date_freshness(date, chrono::Utc::now(), HTTP_DATE_MAX_SKEW)
@@ -175,13 +180,15 @@ pub(crate) async fn verify_request_signature(
         let digest_str = unique_header(headers, "digest")?.ok_or_else(|| {
             (
                 StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Missing Digest header for non-empty body"})),
+                Json(AppError::public_json(
+                    "Missing Digest header for non-empty body",
+                )),
             )
         })?;
         if !verify_digest(body, digest_str) {
             return Err((
                 StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Digest verification failed"})),
+                Json(AppError::public_json("Digest verification failed")),
             ));
         }
     }
@@ -239,7 +246,7 @@ pub(crate) async fn verify_request_signature(
     let public_key_pem = resolved.info.public_key_pem.as_deref().ok_or_else(|| {
         (
             StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Remote actor has no public key"})),
+            Json(AppError::public_json("Remote actor has no public key")),
         )
     })?;
 
@@ -257,7 +264,7 @@ pub(crate) async fn verify_request_signature(
         // Ephemeral document is dropped here — never written to DB.
         return Err((
             StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Invalid signature"})),
+            Json(AppError::public_json("Invalid signature")),
         ));
     }
 
@@ -366,3 +373,4 @@ mod tests {
         assert!(!map.contains_key("x-extra"));
     }
 }
+use myriad_error::AppError;

@@ -384,14 +384,14 @@ pub(super) fn storage_err(e: impl std::fmt::Display) -> (StatusCode, Json<serde_
     tracing::error!("[FileTransfer] storage error: {}", e);
     (
         StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({"error": "File storage error"})),
+        Json(AppError::public_json("File storage error")),
     )
 }
 
 pub(super) fn bad_request(message: impl Into<String>) -> (StatusCode, Json<serde_json::Value>) {
     (
         StatusCode::BAD_REQUEST,
-        Json(json!({"error": message.into()})),
+        Json(AppError::public_json(message)),
     )
 }
 
@@ -450,7 +450,9 @@ pub(super) async fn verify_chunk_bytes(
     if existing != decoded {
         return Err((
             StatusCode::CONFLICT,
-            Json(json!({"error": "Chunk retry content does not match stored bytes"})),
+            Json(AppError::public_json(
+                "Chunk retry content does not match stored bytes",
+            )),
         ));
     }
     Ok(())
@@ -554,7 +556,9 @@ pub(super) fn upload_session_action(
         )),
         "finalizing" | "completed" => Err((
             StatusCode::CONFLICT,
-            Json(json!({"error": "Transfer finalization state is inconsistent"})),
+            Json(AppError::public_json(
+                "Transfer finalization state is inconsistent",
+            )),
         )),
         _ => Err(bad_request(format!("Transfer is {}", status))),
     }
@@ -577,7 +581,9 @@ pub(super) async fn prepare_chunk_file(
         Ok(_) => {
             return Err((
                 StatusCode::CONFLICT,
-                Json(json!({"error": "Final file exists before the last chunk"})),
+                Json(AppError::public_json(
+                    "Final file exists before the last chunk",
+                )),
             ));
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -717,7 +723,7 @@ pub(super) async fn finalize_uploaded_transfer(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "Transfer not found while finalizing"})),
+                Json(AppError::public_json("Transfer not found while finalizing")),
             )
         })?;
     let status: String = row.try_get("", "status").unwrap_or_default();
@@ -730,7 +736,9 @@ pub(super) async fn finalize_uploaded_transfer(
     if status != "finalizing" || chunks_completed != chunks_total {
         return Err((
             StatusCode::CONFLICT,
-            Json(json!({"error": "Transfer state changed while finalizing"})),
+            Json(AppError::public_json(
+                "Transfer state changed while finalizing",
+            )),
         ));
     }
 
@@ -749,7 +757,9 @@ pub(super) async fn finalize_uploaded_transfer(
     if updated.rows_affected() != 1 {
         return Err((
             StatusCode::CONFLICT,
-            Json(json!({"error": "Transfer state changed while finalizing"})),
+            Json(AppError::public_json(
+                "Transfer state changed while finalizing",
+            )),
         ));
     }
     txn.commit().await.map_err(db_err)?;
@@ -1077,3 +1087,4 @@ mod tests {
         );
     }
 }
+use myriad_error::AppError;

@@ -15,18 +15,15 @@ pub(crate) struct MemoryRecordParams<'a> {
     pub(crate) planner_steps_len: usize,
     pub(crate) success: bool,
     pub(crate) error_msg: Option<&'a str>,
-    /// 日志前缀（区分来源: "", "saved:", "confirmed:"）
+    /// 日志前缀（"" / "saved:" / "confirmed:" / "resume:"）
     pub(crate) log_prefix: &'a str,
-    /// 是否记录会话归档（仅完整 process 流程需要）
+    /// 对话上下文：供记忆提取；满 4 条才归档
     pub(crate) conversation_context: Option<&'a [ConversationMessage]>,
     /// 实际步骤执行结果（用于丰富记忆提取的上下文）
     pub(crate) step_results: Option<&'a std::collections::HashMap<String, StepResult>>,
 }
 
 /// 统一的执行后记忆记录
-///
-/// 提取自 process / process_with_progress / execute_saved_recipe /
-/// execute_simple_query_v2 / process_confirmation 中的重复逻辑。
 pub(crate) async fn record_execution_memory(params: MemoryRecordParams<'_>) {
     let Some(mem) = memory::get_memory() else {
         return;
@@ -276,14 +273,6 @@ impl AgentTurnBudget {
     ///
     /// 同时装上归属和计量：归属覆盖 Planner 调用，计量跨越 executor 内层重新设置的归属，
     /// 保证统计的是整个回合。
-    ///
-    /// **调用方必须传入 `Box::pin(...)` 的回合体。** `process` /
-    /// `process_with_progress` 的状态机本来就极大，再套两层 task-local 作用域后，
-    /// 等着它们的 API handler 在计算类型布局时会超过 rustc 的递归上限
-    /// （`queries overflow the depth limit`）。装箱让布局查询在指针处
-    /// 终止；一次回合多一次堆分配，相对一次模型调用可以忽略。
-    ///
-    /// 注意这个错误只在**全新编译**时出现——增量缓存会让本地 `cargo check` 假通过。
     pub(crate) async fn scope<F, T>(&self, fut: F) -> T
     where
         F: std::future::Future<Output = T>,
@@ -312,14 +301,13 @@ impl AgentTurnBudget {
 
     /// 预留 → 在作用域内跑 `body` → 结算，一次做完（用户发起的新回合）。
     ///
-    /// 所有会消耗 AI 的入口都该走这里。
-    ///
     /// 确认 / 恢复采用**重新预留**而不是把首轮的预留挂着：确认之间隔着一次用户
     /// 往返，可能是几分钟，长时间占着额度只会让并发用户互相饿死。代价是一次
     /// 「规划 + 确认后执行」记两次调用，这在语义上也说得通——它确实是两次请求。
     /// 但那第二次是续跑，不该再过冷却门，见 [`Self::run_continuation`]。
     ///
-    /// `body` 用 `Pin<Box<...>>` 接收：见 [`Self::scope`] 关于类型布局递归的说明。
+    /// `body` 用 `Pin<Box<...>>` 接收：装箱让 rustc 类型布局查询在指针处终止
+    /// （`queries overflow the depth limit`；增量缓存会让本地 `cargo check` 假通过）。
     /// 用 `AssertUnwindSafe` + `catch_unwind` 包一层，让 body panic 时预留也能被
     /// 结算掉，否则预留的 tokens 会一直挂到当天配额重置。
     pub(crate) async fn run<T>(
@@ -377,7 +365,7 @@ impl AgentTurnBudget {
         match outcome {
             Ok(result) => result,
             Err(panic) => {
-                // 结算已经完成，这里只把 panic 继续抛出去，保持原有崩溃语义。
+                // 结算已经完成，这里只把 panic 继续抛出去。
                 std::panic::resume_unwind(panic)
             }
         }
@@ -430,7 +418,7 @@ pub async fn user_is_current_admin(db: &sea_orm::DatabaseConnection, user_id: i3
     }
 }
 
-/// Agent 能力预设（与 Tapp 权限页「开关模板」对应；运行时以 Tapp 开关为准）
+/// Agent 能力预设（权限页模板）。生产从 Elevated 候选集再经授予权限过滤。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentUsageMode {
     /// 禁用（Agent 相关 elevated 全关）
@@ -469,7 +457,7 @@ fn permissions_for_usage_mode(mode: AgentUsageMode) -> std::collections::HashSet
                 perms.insert((*p).to_string());
             }
         }
-        // 共享订阅库：普通用户永不授予 brew:manage（加/改/删源仅管理员）
+        // 共享订阅库：候选集不含 brew:manage（加/改/删源仅管理员）
         AgentUsageMode::Standard | AgentUsageMode::Elevated => {
             for p in &[
                 "platform:read",
@@ -555,7 +543,7 @@ pub async fn ensure_agent_usage_allowed(
         return Err("Agent is admin only".to_string());
     }
 
-    // 能力真相源：Tapp 权限（设置页预设模板会批量开关这些项）
+    // 授予权限：TappPermissionService::check(..., AiChat)
     let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
     if !TappPermissionService::check(&config, UserRole::User, TappPermission::AiChat) {
         return Err("Agent chat is not enabled for this account".to_string());
@@ -567,9 +555,8 @@ pub async fn ensure_agent_usage_allowed(
 ///
 /// 非管理员能力 = 候选全集 ∩ 角色授予（`TappPermissionService::check`；下放只影响 elevated）
 ///
-/// `mcp:execute` 不映射到 NetworkFetch。MCP 工具来自 `agent/mcp_servers.json`，
-/// 各带 `required_permissions: ["mcp:execute"]`。无映射 → 非管理员拒；管理员走
-/// `get_user_permissions` 里单独 insert 的那一条。
+/// `mcp:execute` 不映射到 NetworkFetch。Capability 注册写 `required_permissions: ["mcp:execute"]`。
+/// 无映射 → 非管理员拒；管理员走 `get_user_permissions` 里单独 insert 的那一条。
 fn agent_perm_to_tapp(perm: &str) -> Option<crate::services::permission_service::TappPermission> {
     use crate::services::permission_service::TappPermission;
     match perm {
@@ -580,13 +567,13 @@ fn agent_perm_to_tapp(perm: &str) -> Option<crate::services::permission_service:
         "3d:generate" => Some(TappPermission::ThreeDGenerate),
         "ai:search" => Some(TappPermission::AiSearch),
         "ai:generate" => Some(TappPermission::AiGenerate),
-        // 读（basic；对 User 默认开放，需持久主体的不向 Guest 授予）
+        // 读（basic）
         "brew:read" => Some(TappPermission::BrewRead),
         "report:read" => Some(TappPermission::ReportRead),
         "platform:read" | "steam:read" | "bilibili:read" | "bangumi:read" | "github:read"
         | "netease:read" | "weather:read" | "metadata:read" => Some(TappPermission::PlatformRead),
         "tapp:read" => Some(TappPermission::TappListRead),
-        // 写 / 出站（elevated 或 privileged）
+        // 写 / 出站 / 媒体（Tapp 映射）
         "brew:manage" => Some(TappPermission::BrewManage),
         "report:write" => Some(TappPermission::ReportWrite),
         "http:fetch" | "web:scrape" | "proxy:read" => Some(TappPermission::NetworkFetch),
@@ -708,7 +695,7 @@ pub async fn get_user_permissions(
 
     let mut perms = max_user_agent_permissions();
 
-    // 强制与 Tapp 对齐
+    // 候选集 ∩ 角色授予（TappPermissionService::check）
     let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
     perms.retain(|p| {
         if host_agent_permission(p) {
@@ -748,7 +735,6 @@ pub async fn cleanup_expired_confirmations() {
     }
 }
 
-/// 将字段名转换为用户友好的标题
 /// 子任务：AI 生成会话标题（在 tokio::spawn 中调用，与 executor 并行）
 pub(crate) async fn generate_session_title_ai(user_input: &str, reasoning: Option<&str>) -> String {
     use crate::config::ModelTier;

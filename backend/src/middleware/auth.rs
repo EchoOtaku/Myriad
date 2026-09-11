@@ -8,6 +8,7 @@ use axum::{
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use hmac::{Hmac, KeyInit, Mac};
 use jsonwebtoken::{decode, DecodingKey, Validation};
+use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -356,8 +357,6 @@ async fn ensure_auth_cache_listener(db: &DatabaseConnection) {
 
 /// Authentication middleware - verifies JWT token + session epoch
 /// Returns 401 if token is missing, invalid, or revoked
-///
-/// Requires `Router<AppState>` so `State<DatabaseConnection>` resolves via FromRef.
 pub async fn auth_middleware(
     State(db): State<DatabaseConnection>,
     req: Request,
@@ -502,7 +501,6 @@ pub async fn admin_middleware(
 ///
 /// This prevents a demoted admin from keeping admin access until the old JWT
 /// expires.
-/// Preferred: verify admin with an explicit DB handle (handlers / middleware State).
 pub async fn ensure_current_admin_on(
     claims: &Claims,
     db: &DatabaseConnection,
@@ -895,7 +893,7 @@ fn guest_id(session_id: &str) -> i32 {
 /// Optional authentication middleware - allows guest access
 ///
 /// 给允许游客主体的路由注入 Claims：有效 token → Claims；无 token → 游客 Claims；
-/// 无效/已撤销 token 拒绝，不降级为游客。本中间件只注入 Claims；授予权限由调用方 `TappPermissionService::check` 过滤。
+/// 无效/已撤销 token 拒绝，不降级为游客。本中间件只注入 Claims，不计算授予权限。
 ///
 /// 游客 ID 策略：
 /// - 使用浏览器持有的 HttpOnly 签名 session，而不是共享出口 IP
@@ -924,7 +922,9 @@ pub async fn optional_auth_middleware(
                 _ => {
                     return (
                         StatusCode::SERVICE_UNAVAILABLE,
-                        Json(json!({"error": "Guest session signing is unavailable"})),
+                        Json(AppError::public_json(
+                            "Guest session signing is unavailable",
+                        )),
                     )
                         .into_response()
                 }

@@ -81,11 +81,10 @@ pub(super) fn build_base_api_router(
         .route("/api/system/status", get(api::system::system_status))
         .route(
             "/api/system/reload-config",
-            post(api::system::reload_config)
-                .route_layer(from_fn_with_state(
-                    app_state.clone(),
-                    middleware::auth::admin_middleware,
-                )),
+            post(api::system::reload_config).route_layer(from_fn_with_state(
+                app_state.clone(),
+                middleware::auth::admin_middleware,
+            )),
         )
         // 系统监控指标端点（内存、任务、连接等）-  需要管理员权限
         .route(
@@ -300,9 +299,10 @@ pub(super) fn build_base_api_router(
         .route("/api/auth/register", post(api::auth_local::register))
         .route(
             "/api/auth/me/locale",
-            axum::routing::put(api::auth::set_current_user_locale).route_layer(
-                from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware),
-            ),
+            axum::routing::put(api::auth::set_current_user_locale).route_layer(from_fn_with_state(
+                app_state.clone(),
+                middleware::auth::auth_middleware,
+            )),
         )
         .route(
             "/api/auth/me/set-password",

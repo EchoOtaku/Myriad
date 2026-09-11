@@ -54,7 +54,7 @@ pub async fn publish_content(
     if content_type.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "content_type required"})),
+            Json(AppError::public_json("content_type required")),
         ));
     }
 
@@ -77,7 +77,7 @@ pub async fn publish_content(
             .ok_or_else(|| {
                 (
                     StatusCode::BAD_REQUEST,
-                    Json(json!({"error": "content_id required"})),
+                    Json(AppError::public_json("content_id required")),
                 )
             })?;
         id.to_string()
@@ -96,7 +96,7 @@ pub async fn publish_content(
     if existing.is_some() {
         return Err((
             StatusCode::CONFLICT,
-            Json(json!({"error": "Content already published"})),
+            Json(AppError::public_json("Content already published")),
         ));
     }
 
@@ -331,7 +331,7 @@ pub async fn unpublish_content(
         if bare_id.is_empty() {
             return Err((
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "content_id required"})),
+                Json(AppError::public_json("content_id required")),
             ));
         }
         if let Some(ct) = ct_opt.as_deref().filter(|s| !s.is_empty()) {
@@ -374,16 +374,16 @@ pub async fn unpublish_content(
     } else {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": "Provide activity_id, or content_type + content_id"
-            })),
+            Json(AppError::public_json(
+                "Provide activity_id, or content_type + content_id",
+            )),
         ));
     };
 
     let row = row.ok_or_else(|| {
         (
             StatusCode::NOT_FOUND,
-            Json(json!({"error": "Content not published"})),
+            Json(AppError::public_json("Content not published")),
         )
     })?;
 
@@ -561,3 +561,4 @@ mod tests {
         assert!(parse_visibility("publik").is_err());
     }
 }
+use myriad_error::AppError;

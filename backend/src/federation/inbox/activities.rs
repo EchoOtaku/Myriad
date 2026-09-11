@@ -1,6 +1,7 @@
 //! ActivityPub Follow / Accept / Undo / content / Move inbox handlers.
 
 use axum::{http::StatusCode, Json};
+use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::json;
 
@@ -14,11 +15,11 @@ use super::local_deliver::{enqueue_delivery, enqueue_delivery_queue, DeliveryMod
 
 /// Handle ActivityPub Move (domain / account migration).
 ///
-/// Fail-closed unless **all** pass:
-/// 1. 调用方应已验签；`local_deliver` 无 HTTP Signature，inbox 对 Move 现为 503
-/// 2. `actor` == signed actor == `object` (old id); `target` present and distinct
-/// 3. Fresh fetch of old actor has `movedTo` == target
-/// 4. Fresh fetch of new actor has `alsoKnownAs` containing old id
+/// HTTP inbox 对 Move 现为 503（`receive.rs`）；本函数不验签，由 unsigned `local_deliver` 调用。
+/// Fail-closed here:
+/// 1. `actor` == signed actor == `object` (old id); `target` present and distinct
+/// 2. Fresh fetch of old actor has `movedTo` == target
+/// 3. Fresh fetch of new actor has `alsoKnownAs` containing old id
 ///
 /// On accept: re-point local `federation_follows` from old remote actor → new.
 pub(crate) async fn handle_move(
@@ -33,7 +34,7 @@ pub(crate) async fn handle_move(
 
     let (old_actor, new_actor) = verify_move_structure(activity, signed_actor).map_err(|e| {
         tracing::warn!("Move rejected (structure): {}", e);
-        (StatusCode::BAD_REQUEST, Json(json!({"error": e})))
+        (StatusCode::BAD_REQUEST, Json(AppError::public_json(e)))
     })?;
 
     let old_doc = fetch_actor_document(db, &old_actor)
@@ -42,13 +43,15 @@ pub(crate) async fn handle_move(
             tracing::warn!(%error, "Move rejected (old actor fetch)");
             (
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Cannot fetch old actor for Move verify"})),
+                Json(AppError::public_json(
+                    "Cannot fetch old actor for Move verify",
+                )),
             )
         })?;
 
     verify_old_actor_moved_to(&old_doc, &old_actor, &new_actor).map_err(|e| {
         tracing::warn!("Move rejected (movedTo): {}", e);
-        (StatusCode::BAD_REQUEST, Json(json!({"error": e})))
+        (StatusCode::BAD_REQUEST, Json(AppError::public_json(e)))
     })?;
 
     let new_doc = fetch_actor_document(db, &new_actor)
@@ -57,13 +60,15 @@ pub(crate) async fn handle_move(
             tracing::warn!(%error, "Move rejected (new actor fetch)");
             (
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Cannot fetch new actor for Move verify"})),
+                Json(AppError::public_json(
+                    "Cannot fetch new actor for Move verify",
+                )),
             )
         })?;
 
     verify_new_actor_also_known_as(&new_doc, &new_actor, &old_actor).map_err(|e| {
         tracing::warn!("Move rejected (alsoKnownAs): {}", e);
-        (StatusCode::BAD_REQUEST, Json(json!({"error": e})))
+        (StatusCode::BAD_REQUEST, Json(AppError::public_json(e)))
     })?;
 
     let migrated = migrate_follows_old_to_new(db, &old_actor, &new_actor)
@@ -132,7 +137,7 @@ pub(crate) async fn handle_follow(
             tracing::warn!(actor = %actor_url_str, "Follow rejected: missing object");
             return Err((
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Follow.object is required"})),
+                Json(AppError::public_json("Follow.object is required")),
             ));
         }
     }
@@ -140,9 +145,9 @@ pub(crate) async fn handle_follow(
     let remote = follow_remote.ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Follow actor preflight was not completed"
-            })),
+            Json(AppError::public_json(
+                "Follow actor preflight was not completed",
+            )),
         )
     })?;
 
@@ -335,7 +340,7 @@ pub(crate) async fn handle_accept(
     local_user_id: i32,
     activity: &serde_json::Value,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
-    // 签名校验保证了 activity.actor 就是本次请求的签名者
+    // Accept.actor 取自 activity JSON（`extract_activity_actor_id`）；是否验签由调用方决定（inbox 验签，`local_deliver` 不验）。
     // (string IRI or expanded object `{id}`; see extract_activity_actor_id)
     let accept_actor = extract_activity_actor_id(activity);
     // Accept.object: string id OR nested Follow/ChannelOpen {id,type,…}
@@ -390,8 +395,7 @@ pub(crate) async fn handle_accept(
                         &remote_label,
                     )
                     .await;
-                    // Unlock initiator's live Aro client (composer was pending-locked).
-                    // Mirrors handle_channel_accept WS path for myriad:ChannelAccept.
+                    // Broadcast `channel_accepted` on the channel WS (same payload as `handle_channel_accept`).
                     crate::federation::ws_gateway::broadcast_to_channel(
                         channel_id,
                         &serde_json::json!({
@@ -860,14 +864,16 @@ pub(crate) async fn handle_content_activity(
         );
         return Err((
             StatusCode::FORBIDDEN,
-            Json(json!({"error": "Object ownership check failed"})),
+            Json(AppError::public_json("Object ownership check failed")),
         ));
     }
 
     let remote = remote.ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Content actor preflight was not completed"})),
+            Json(AppError::public_json(
+                "Content actor preflight was not completed",
+            )),
         )
     })?;
 
@@ -1110,7 +1116,7 @@ async fn get_username_by_id(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error": "User not found"})),
+                Json(AppError::public_json("User not found")),
             )
         })?;
 

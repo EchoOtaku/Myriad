@@ -1,5 +1,6 @@
 //! Settings backup export / preview / restore and the retired-key denylist.
 use axum::{extract::State, http::StatusCode, Json};
+use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -419,7 +420,10 @@ pub async fn preview_settings_restore(
     Json(backup): Json<SettingsBackup>,
 ) -> (StatusCode, Json<Value>) {
     if let Err(message) = validate_settings_backup(&backup) {
-        return (StatusCode::BAD_REQUEST, Json(json!({"error": message})));
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(AppError::public_json(message)),
+        );
     }
 
     let mut plan = build_settings_restore_plan(&backup);
@@ -454,7 +458,10 @@ pub async fn restore_settings(
     Json(backup): Json<SettingsBackup>,
 ) -> (StatusCode, Json<Value>) {
     if let Err(message) = validate_settings_backup(&backup) {
-        return (StatusCode::BAD_REQUEST, Json(json!({"error": message})));
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(AppError::public_json(message)),
+        );
     }
 
     let mut plan = build_settings_restore_plan(&backup);
@@ -577,7 +584,9 @@ pub async fn restore_settings(
             tracing::error!("Settings restored but runtime reload failed: {}", error);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Settings restored, but runtime reload failed"})),
+                Json(AppError::public_json(
+                    "Settings restored, but runtime reload failed",
+                )),
             );
         }
     }
@@ -589,9 +598,9 @@ pub async fn restore_settings(
         );
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "error": "Settings restored, but platform auto-refresh could not be updated"
-            })),
+            Json(AppError::public_json(
+                "Settings restored, but platform auto-refresh could not be updated",
+            )),
         );
     }
 

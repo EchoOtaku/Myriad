@@ -69,7 +69,7 @@ const CLOUD_PROVIDERS: Record<
     icon: <EdgeOneLogo />,
   },
   upyun: {
-    name: '又拍云',
+    name: 'Upyun',
     url: 'https://www.upyun.com',
     className: 'cdn-upyun',
     icon: <UpyunLogo />,
@@ -120,8 +120,12 @@ export const SiteFooter: React.FC<SiteFooterProps> = memo(
     const [isMobile, setIsMobile] = useState(false)
     const buildInfo = getBuildInfo()
 
-    const providerName = (key: string, fallback: string) =>
-      key === 'upyun' ? t.config.upyun : fallback
+    const providerName = (key: string, fallback: string) => {
+      if (key === 'upyun') return t.config.upyun
+      if (key === 'cloudflare') return t.config.cloudflare
+      if (key === 'edgeone') return t.config.edgeone
+      return fallback
+    }
 
     useEffect(() => {
       const checkMobile = () => setIsMobile(window.innerWidth < 768)
@@ -249,7 +253,7 @@ export const SiteFooter: React.FC<SiteFooterProps> = memo(
                   rel="noopener noreferrer"
                   className="footer-icon-link footer-icon-icp"
                 >
-                  <span className="text-icon">备</span>
+                  <span className="text-icon">{t.config.icpBadge}</span>
                 </a>
               </Tooltip>
             )}
@@ -262,7 +266,7 @@ export const SiteFooter: React.FC<SiteFooterProps> = memo(
                   rel="noopener noreferrer"
                   className="footer-icon-link footer-icon-gongan"
                 >
-                  <span className="text-icon">公</span>
+                  <span className="text-icon">{t.config.gonganBadge}</span>
                 </a>
               </Tooltip>
             )}
@@ -329,7 +333,7 @@ export const SiteFooter: React.FC<SiteFooterProps> = memo(
               rel="noopener noreferrer"
               className="footer-gongan"
             >
-              <span className="gongan-text-icon">公</span>
+              <span className="gongan-text-icon">{t.config.gonganBadge}</span>
               {config.site_gongan}
             </a>
           )}
@@ -338,7 +342,7 @@ export const SiteFooter: React.FC<SiteFooterProps> = memo(
             <>
               <span className="footer-divider">·</span>
               <div className="footer-infra">
-                <span className="infra-label">Powered by</span>
+                <span className="infra-label">{t.config.poweredBy}</span>
                 {providers.map((key) => {
                   const provider = CLOUD_PROVIDERS[key]
                   return (
@@ -348,7 +352,7 @@ export const SiteFooter: React.FC<SiteFooterProps> = memo(
                       target="_blank"
                       rel="noopener noreferrer"
                       className={`infra-link ${provider.className}`}
-                      title={provider.name}
+                      title={providerName(key, provider.name)}
                     >
                       {provider.icon}
                     </a>
