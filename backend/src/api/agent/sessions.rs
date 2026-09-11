@@ -270,7 +270,7 @@ pub async fn generate_session_title(
         )));
     }
 
-    // 加载最近几条消息作为标题生成上下文
+    // Oldest four messages (`order_by_asc` + page 0) as title context.
     let messages = agent_messages::Entity::find()
         .filter(agent_messages::Column::SessionId.eq(&session_id))
         .order_by_asc(agent_messages::Column::CreatedAt)
@@ -457,7 +457,7 @@ pub(crate) async fn load_session_history(
         .collect())
 }
 
-/// 确保会话存在，如果 session_id 为 None 则自动创建
+/// Return the session if id+user+mode match; otherwise insert a new row (None, missing, or mode mismatch).
 pub(crate) async fn ensure_session(
     db: &DatabaseConnection,
     session_id: Option<&str>,

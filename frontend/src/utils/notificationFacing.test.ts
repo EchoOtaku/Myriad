@@ -86,6 +86,28 @@ describe('notificationFacing', () => {
     assert.match(heartbeat, /备份/)
   })
 
+  it('maps leftover skill evolution Chinese bodies', () => {
+    const improved = notificationFacingBody(
+      notice(
+        'Skill improved: demo',
+        'AI 已根据近期失败原因改写该自动技能。',
+        'skill.improved',
+        { skill_id: 'demo' },
+      ),
+    )
+    assert.equal(improved.includes('改写该自动技能'), false)
+    const pruned = notificationFacingBody(
+      notice(
+        'Skill removed: demo',
+        '自动技能「demo」因失败率过高被淘汰（已移入回收站）。',
+        'skill.pruned',
+        { skill_id: 'demo' },
+      ),
+    )
+    assert.equal(pruned.includes('回收站'), false)
+    assert.match(pruned, /demo/)
+  })
+
   it('maps leftover English brew and schedule titles', () => {
     const brew = notificationFacingTitle(
       notice('Tech News feed failed repeatedly', 'timeout', undefined, {

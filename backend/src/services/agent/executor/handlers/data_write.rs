@@ -81,7 +81,7 @@ async fn execute_platform_write(params: &HashMap<String, Value>) -> Result<Value
         .and_then(|v| v.as_str())
         .ok_or("Missing platform parameter")?;
 
-    // 白名单校验，防止路径穿越
+    // Whitelist: `all` or VALID_PLATFORMS (no `..` / separator check).
     let platform = validate_platform_name(platform_raw)?;
 
     let items = params.get("items").ok_or("Missing items parameter")?;
@@ -297,7 +297,6 @@ async fn execute_brew_subscribe(
 ) -> Result<Value, String> {
     let user_id = ctx.user_id;
 
-    // 调试：打印收到的参数
     tracing::debug!(
         params_keys = ?params.keys().collect::<Vec<_>>(),
         "[Brew Subscribe] 收到的参数"
@@ -472,7 +471,8 @@ async fn execute_brew_subscribe(
                     })
                     .collect();
 
-                // Align with brew_scheduler: unique is (source_id, guid); use rows_affected.
+                // Unique (source_id, guid). This path counts exec_without_returning rows;
+                // brew_scheduler counts RETURNING len.
                 let inserted_count = if item_models.is_empty() {
                     0usize
                 } else {
@@ -539,7 +539,7 @@ async fn execute_brew_subscribe(
         }
     }
 
-    // 所有 URL 都失败了
+    // No new source created (SSRF skip / already-subscribed / parse fail).
     Err(crate::services::agent::response_agent::subscribe_all_failed(tried_urls.len(), &last_error))
 }
 

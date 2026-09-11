@@ -456,7 +456,7 @@ JSON: {{"memories": [{{"content": "...", "memory_type": "preference|entity_knowl
                     .unwrap_or_else(|| step_id.clone());
 
                 let lesson = format!(
-                    "执行 {} 时失败: {} (用户请求: {})",
+                    "Failed while running {}: {} (user request: {})",
                     cap_id,
                     error_msg,
                     user_input.chars().take(50).collect::<String>()
@@ -499,22 +499,22 @@ JSON: {{"memories": [{{"content": "...", "memory_type": "preference|entity_knowl
             .take(15)
             .map(|e| {
                 let type_str = match e.memory_type {
-                    MemoryType::Preference => "偏好",
-                    MemoryType::EntityKnowledge => "知识",
-                    MemoryType::ExecutionLesson => "教训",
-                    MemoryType::EffectivePattern => "模式",
-                    MemoryType::SessionInsight => "会话洞察",
-                    MemoryType::Fact => "事实",
-                    MemoryType::Decision => "决策",
-                    MemoryType::SessionSummary => "会话摘要",
-                    _ => "其他",
+                    MemoryType::Preference => "preference",
+                    MemoryType::EntityKnowledge => "knowledge",
+                    MemoryType::ExecutionLesson => "lesson",
+                    MemoryType::EffectivePattern => "pattern",
+                    MemoryType::SessionInsight => "session insight",
+                    MemoryType::Fact => "fact",
+                    MemoryType::Decision => "decision",
+                    MemoryType::SessionSummary => "session summary",
+                    _ => "other",
                 };
                 format!("- [{}] {}", type_str, e.content)
             })
             .collect();
 
         if summaries.is_empty() {
-            "（暂无已有记忆）".to_string()
+            "(no memories yet)".to_string()
         } else {
             summaries.join("\n")
         }

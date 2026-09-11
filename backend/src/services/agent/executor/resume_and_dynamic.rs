@@ -957,10 +957,12 @@ impl Executor {
                     &crate::services::agent::response_agent::step_error_question(error),
                     &crate::services::agent::response_agent::step_error_title(),
                     vec![
-                        QuestionOption::new("retry", "重试").with_description("重新执行这个步骤"),
-                        QuestionOption::new("skip", "跳过")
-                            .with_description("跳过这个步骤继续执行"),
-                        QuestionOption::new("cancel", "取消").with_description("取消整个任务"),
+                        QuestionOption::new("retry", "Retry")
+                            .with_description("Run this step again"),
+                        QuestionOption::new("skip", "Skip")
+                            .with_description("Skip this step and continue"),
+                        QuestionOption::new("cancel", "Cancel")
+                            .with_description("Cancel the whole task"),
                     ],
                     true,
                 ));

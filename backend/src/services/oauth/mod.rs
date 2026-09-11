@@ -37,7 +37,6 @@ pub struct AuthFlowSecrets {
 /// 交换 code 后得到的 token 集合
 ///
 /// 当前只用到 `access_token`（GitHub /user, OIDC userinfo）和 `id_token`（OIDC claims）。
-/// 未来加 token refresh 时再补 refresh_token / expires_in。
 #[derive(Debug, Clone)]
 pub struct ProviderTokens {
     pub access_token: String,

@@ -229,9 +229,8 @@ pub fn require_setup_window() -> Result<(), AppError> {
     state.authorize()
 }
 
-/// Durably mark the installation claimed, then close the process window
-/// immediately before the owner transaction commits. Marker failure leaves the
-/// window open so the database transaction can be rolled back and retried.
+/// Persist `.bootstrap-claimed`, then close the process window.
+/// This fn has no owner transaction (`create_admin` calls it before commit).
 pub fn consume_setup() -> io::Result<()> {
     let Some(state) = INSTALLATION_WINDOW.get() else {
         return Err(io::Error::other("installation window is uninitialized"));
@@ -302,7 +301,7 @@ fn unquote_env(value: &str) -> &str {
     }
 }
 
-/// 从 `.env` 一行或进程环境里取出可用的安装暗号。
+/// Unquote/trim a raw env value (does not read a `.env` file).
 fn setup_secret_from_env_value(raw: Option<&str>) -> Option<String> {
     raw.map(unquote_env)
         .map(str::trim)

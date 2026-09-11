@@ -17,7 +17,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct FreshPlatformData {
     pub data: Value,
-    /// platform id → raw error string from the remote fetcher
+    /// platform id → `{stage}: {error}` (concatenated stages), not a raw remote body.
     pub errors: HashMap<String, String>,
 }
 
@@ -35,8 +35,8 @@ fn has_cfg(v: &Option<String>) -> bool {
     v.as_ref().is_some_and(|s| !s.trim().is_empty())
 }
 
-/// 数据抓取/刷新只要求「已配置」凭证，不要求报告页开关 enabled。
-/// `*_enabled` 仅控制报告页是否展示该平台卡片。
+/// Fetch/refresh needs configured credentials. Does not read `*_enabled`
+/// (that flag also gates report generation, public cards, Agent connection, Steam presence).
 pub(super) fn is_platform_configured(config: &DynamicConfig, p: &str) -> bool {
     match p {
         "github" => has_cfg(&config.github_username),
@@ -94,7 +94,7 @@ pub async fn refresh_platform_for_scheduler(
     Ok(outcome.data.get(platform).cloned().unwrap_or(Value::Null))
 }
 
-/// 一键获取所有平台数据（带缓存）
+/// Fetch configured platforms (always remote). `target_platform` Some = one arm; disk cache is merge base only.
 pub async fn fetch_fresh_platform_data(
     db: &DatabaseConnection,
     target_platform: Option<&str>,

@@ -313,7 +313,7 @@ export default function BrewTilePreview() {
                     ...c.src,
                     recent_items: c.items ?? [],
                   }))}
-                  emptyHint="没有可展示的内容"
+                  emptyHint="Nothing to show"
                 />
               </div>
             </div>
@@ -332,7 +332,7 @@ export default function BrewTilePreview() {
             fontScale={1}
             now={NOW}
             sources={[]}
-            emptyHint="没有可展示的内容"
+            emptyHint="Nothing to show"
           />
         </div>
       </section>

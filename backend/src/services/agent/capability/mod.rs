@@ -246,7 +246,7 @@ pub async fn get_compact_index_for_grants(granted: Option<&HashSet<String>>) -> 
         if !kept.is_empty() {
             total += kept.len();
             by_category
-                .entry("动态技能".to_string())
+                .entry("Dynamic skills".to_string())
                 .or_default()
                 .extend(kept);
         }
@@ -264,7 +264,7 @@ pub async fn get_compact_index_for_grants(granted: Option<&HashSet<String>>) -> 
                     .map(|(server_id, tool)| mcp_compact_entry(server_id, tool))
                     .collect();
                 by_category
-                    .entry("MCP 工具".to_string())
+                    .entry("MCP tools".to_string())
                     .or_default()
                     .extend(mcp_entries);
             }

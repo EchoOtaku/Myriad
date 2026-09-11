@@ -27,7 +27,7 @@ fn ai_step_failed(label: &str, error: impl std::fmt::Display) -> String {
     classify_outbound_fetch(label, &detail)
 }
 
-/// 注入执行上下文到 AI 参数：角色身份 + 对话历史
+/// 注入执行上下文到 AI 参数：角色身份、记忆、对话历史
 fn inject_role_identity(
     capability_id: &str,
     params: &HashMap<String, Value>,
@@ -58,7 +58,7 @@ fn inject_role_identity(
         }
     }
 
-    // 2. 注入记忆上下文（对话/分析/推荐类能力，帮助 AI 基于用户历史偏好生成回复）
+    // 2. 注入记忆上下文（`capability_needs_memory`）
     if capability_needs_memory(capability_id) {
         if let Some(ref mem_ctx) = exec_ctx.memory_context {
             let existing = params
@@ -72,7 +72,7 @@ fn inject_role_identity(
         }
     }
 
-    // 3. 注入对话历史（仅对话/分析类能力需要，纯处理类不注入）
+    // 3. 注入对话历史（`capability_needs_conversation_context`，params 已有 `context` 则跳过）
     if capability_needs_conversation_context(capability_id) && !params.contains_key("context") {
         if let Some(ref history) = exec_ctx.conversation_context {
             if !history.is_empty() {
@@ -102,14 +102,14 @@ pub async fn execute(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
-    // speech.tts 走腾讯云语音服务，不依赖 AI analyzer
+    // speech.tts 走独立 TTS（OpenAI / Gemini / MiniMax / 腾讯），不依赖 AI analyzer
     if capability_id == "speech.tts" {
         return execute_speech_tts(params).await;
     }
 
     let analyzer = ctx.ai_analyzer.ok_or("AI analyzer not configured")?;
 
-    // 注入角色身份上下文到 systemPrompt（如果 Orchestrator 提供了角色 identity）
+    // 注入角色身份 / 记忆 / 对话到 params
     let mut params = inject_role_identity(capability_id, params, ctx);
 
     // 从 __directive (Planner 主 Agent 的具体指令) 和 __user_request 提取上下文
@@ -247,10 +247,10 @@ async fn execute_ai_analyze(
         .unwrap_or("general");
     let instruction = params.get("instruction").and_then(|v| v.as_str());
 
-    // 智能提取输入数据的文本内容，避免把原始 JSON 数组丢给 AI
+    // 提取输入文本；非对象会落到 pretty JSON
     let input_text = extract_semantic_text(&input);
     let truncated_input: String = input_text.chars().take(USER_TEXT_MAX_CHARS).collect();
-    // 同 `execute_summarize`：`data` 是上游输出，来源不可信。
+    // `data` 是上游输出，来源不可信（summarize 用 `input` 标签）。
     let truncated_input = untrusted_block("data", &truncated_input);
 
     // 当 Planner 提供了具体 instruction 时，instruction 是主要驱动指令，
@@ -457,7 +457,7 @@ async fn execute_brewlia_annotate(
         .content
         .as_deref()
         .unwrap_or_else(|| item.summary.as_deref().unwrap_or(""));
-    // 截断过长文章，保留核心内容
+    // 按字符上限截断文章前缀
     let truncated_content: String = content.chars().take(USER_TEXT_MAX_CHARS).collect();
 
     let prompt = format!(
@@ -702,7 +702,7 @@ async fn execute_smart_filter(
         if let Ok(raw_data) = serde_json::from_str::<Value>(&content) {
             let raw_str = serde_json::to_string_pretty(&raw_data).unwrap_or_default();
             let truncated: String = raw_str.chars().take(USER_TEXT_MAX_CHARS).collect();
-            // 检查截断是否在 JSON 中间，尝试保持完整性
+            // 超长则追加 truncated 标记（不解析 JSON 边界）
             let safe_truncated = if truncated.len() < raw_str.len() {
                 format!("{}... (truncated)", truncated)
             } else {

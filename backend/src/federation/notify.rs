@@ -314,7 +314,7 @@ pub async fn notify_channel_invite(
         "channel_id": channel_id,
         "actor_url": actor_url,
         "actor_label": actor_label,
-        // Hint for host UI / Aro deep-link actions
+        // Host UI reads `id` (+ optional label); `api` is unused. Aro deep-link is `route`.
         "actions": [
             { "id": "accept", "api": format!("POST /api/federation/channels/{}/accept", channel_id) },
             { "id": "reject", "api": format!("POST /api/federation/channels/{}/close", channel_id) }

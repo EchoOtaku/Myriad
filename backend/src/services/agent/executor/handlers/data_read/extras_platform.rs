@@ -79,7 +79,7 @@ pub(super) async fn execute_netease_search_playlist(
 
     // 判断是否需要 AI 辅助理解
     let final_category = if mapped_category == keyword && keyword.chars().count() > 2 {
-        // 映射没变化，说明是模糊描述，尝试调用 AI 理解
+        // 映射等于原文且长度 > 2：尝试 AI 理解
         if let Some(ai_analyzer) = ctx.ai_analyzer {
             match ai_understand_music_intent(ai_analyzer, keyword).await {
                 Ok(ai_category) => {
@@ -468,7 +468,7 @@ Return the tag only, no explanation."#,
 
 // 追加的数据读取能力
 
-/// 获取 B 站追番列表
+/// 读取 B 站 `content_analysis.anime_analysis`
 pub(super) async fn execute_bilibili_bangumi(
     _params: &HashMap<String, Value>,
 ) -> Result<Value, String> {

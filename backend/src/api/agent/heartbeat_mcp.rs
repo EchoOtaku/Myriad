@@ -486,13 +486,13 @@ pub(crate) async fn cancel_chat_turn(
     Ok(Json(json!({ "success": cancelled })))
 }
 
-/// 中断当前正在执行的任务并替换为新请求
+/// Cancel every cancellable task for the user (Pending/Running/WaitingForInput/Paused), then `process`.
 pub(crate) async fn interrupt_session(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, HttpError> {
-    // 新请求 `context: None` 落到 Agent 为 Work。`parse_user_id_with_agent_access` 过模块可见性。
+    // `context: None` → Work. Gate: module visibility and granted `AiChat` (non-admin).
     let user_id = parse_user_id_with_agent_access(&claims, &db).await?;
     let new_input = body
         .get("input")

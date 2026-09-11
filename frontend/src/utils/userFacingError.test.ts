@@ -1667,6 +1667,76 @@ describe('userFacingError', () => {
       userFacingError('网易云音乐用户'),
       currentCopy().errors.neteaseMusicUser,
     )
+    assert.equal(userFacingError('Steam 玩家'), currentCopy().errors.steamPlayer)
+    assert.equal(
+      userFacingError('等待 Tapp 完成交互'),
+      currentCopy().errors.waitTappInteraction,
+    )
+    assert.equal(userFacingError('动态技能'), currentCopy().errors.capDynamicSkills)
+    assert.equal(userFacingError('未分类'), currentCopy().brew.uncategorized)
+    assert.equal(
+      userFacingError('任务等待用户输入超时（2小时），已自动取消'),
+      currentCopy().errors.waitInputTimeoutHours.replace('{hours}', '2'),
+    )
+    assert.equal(
+      userFacingError('API 速率限制，等待后重试'),
+      currentCopy().errors.rateLimited,
+    )
+    assert.equal(
+      userFacingError('内容策略违规，尝试清理敏感内容后重试'),
+      currentCopy().errors.contentPolicyRetry,
+    )
+    assert.equal(
+      userFacingError('标题不能为空'),
+      currentCopy().brew.noteTitleRequired,
+    )
+    assert.equal(
+      userFacingError('A title is required'),
+      currentCopy().brew.noteTitleRequired,
+    )
+    assert.equal(
+      userFacingError('标题最多 200 字，现在有 201 字'),
+      currentCopy()
+        .brew.noteTitleTooLong.replace('{max}', '200')
+        .replace('{chars}', '201'),
+    )
+    assert.equal(
+      userFacingError('正文最多 200000 字，现在有 200001 字'),
+      currentCopy()
+        .brew.noteBodyTooLong.replace('{max}', '200000')
+        .replace('{chars}', '200001'),
+    )
+    assert.equal(
+      userFacingError('我现在心情很低，不想接新的事情。我们先说说话吧。'),
+      currentCopy().errors.agentRefuseLowMood,
+    )
+    assert.equal(
+      userFacingError('我对这个请求的理解置信度较低（20%），可能会误解你的意图。能再详细描述一下你想要做什么吗？'),
+      currentCopy().errors.agentNeedClarification,
+    )
+    assert.equal(userFacingError('重试'), currentCopy().errors.retryStep)
+    assert.equal(
+      userFacingError('取消整个任务'),
+      currentCopy().errors.cancelTaskDesc,
+    )
+    assert.equal(
+      userFacingError('联网搜索结果'),
+      currentCopy().errors.webSearchResult,
+    )
+    assert.equal(
+      userFacingError('AI 已根据近期失败原因改写该自动技能。'),
+      currentCopy().errors.noticeSkillImprovedBody,
+    )
+    assert.equal(
+      userFacingError('请尝试其他关键词'),
+      currentCopy().errors.tryOtherKeyword,
+    )
+    assert.equal(
+      userFacingError(
+        'page.content 读取 Tapp 页需要 context.tappId，或由前端提供 content 快照',
+      ),
+      currentCopy().errors.pageContentNeedsTapp,
+    )
     assert.equal(
       userFacingError('即将向外部 URL 发起 HTTP 请求'),
       currentCopy().errors.confirmHttpFetch,

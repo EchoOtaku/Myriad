@@ -3,7 +3,7 @@
 .brew-feeds {
   --brew-story-h: 12rem;
   --brew-story-w: 16.5rem;
-  --brew-rail-pad-x: 0.2rem;
+  --brew-rail-pad-x: 0rem;
   --brew-open-ms: 560ms;
   display: flex;
   position: relative;
@@ -75,7 +75,7 @@
   gap: 0.55rem;
   width: 100%;
   min-width: 0;
-  padding-bottom: 5.25rem;
+  padding-bottom: 0;
   transform: none !important;
 }
 

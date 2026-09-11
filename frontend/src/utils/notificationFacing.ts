@@ -248,6 +248,14 @@ export function notificationFacingBody(notification: AppNotification): string {
       name: metaString(notification, 'target_domain') || 'remote',
     })
   }
+  if (eventKey === 'skill.improved') {
+    return t.noticeSkillImprovedBody
+  }
+  if (eventKey === 'skill.pruned') {
+    return fill(t.noticeSkillPrunedBody, {
+      name: metaString(notification, 'skill_id') || 'skill',
+    })
+  }
   if (
     eventKey === 'brew.new_items' &&
     (!notification.body ||

@@ -11,7 +11,8 @@ use sha2::{Digest, Sha256};
 
 use super::{chat_prompt, consciousness as event, merope::chat_remember as memory};
 
-const SOUL: &str = "你的名字是小灯，性格好奇、直率，和用户自然地聊天。";
+const SOUL: &str =
+    "Your name is 小灯. You are curious and direct, and you chat naturally with the user.";
 
 /// Shared acceptance loader. Credentials stay in the host; every connection is read-only.
 pub(super) async fn load_configured_lite() -> sea_orm::DatabaseConnection {
@@ -696,7 +697,7 @@ async fn run_semantic_suite() {
                 motion.input = event_context(&case).0.summary;
                 motion.reply = line;
                 motion.rubric = format!(
-                    "检查动作、表情与这句真实生成的回应，以及已呈现触摸反应是否一致。{}",
+                    "Check that motion, expression, this generated reply, and the already-shown touch reaction are consistent. {}",
                     case.rubric
                 );
                 pending.push_back(motion);
@@ -830,7 +831,7 @@ fn touch_response_cases_use_production_summary_and_suppress_busy_expired_and_dnd
     assert!(input["event"]["summary"]
         .as_str()
         .unwrap()
-        .contains("客户端记录我最后呈现的反应：躲避"));
+        .contains("Last reaction: withdrew"));
     assert!(request["system"]
         .as_str()
         .unwrap()

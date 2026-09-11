@@ -8,8 +8,8 @@
 //! # 这**不**解决什么
 //!
 //! ETag 由渲染后的文档内容算出，所以命中 304 时数据库查询**仍然发生**了 ——
-//! 省下的是响应体传输与远端的解析成本。真正减少请求次数的是同时给出的
-//! `Cache-Control: max-age`：在有效期内远端根本不会再问。
+//! 省下的是响应体传输与远端的解析成本。`Cache-Control: public, max-age=300`
+//! is emitted; remotes may still GET / If-None-Match (not in our control).
 //!
 //! 不用 `updated_at` 之类的廉价校验器，是因为 Actor 文档由多张表拼成
 //! （users + federation_keys + federation_domain_aliases），没有单一的
@@ -22,10 +22,9 @@ use sha2::{Digest, Sha256};
 
 /// 公开 AP 文档的缓存时长。
 ///
-/// 取值权衡：太长会让密钥轮换/头像更新的传播变慢（远端在有效期内不回来问），
-/// 太短则退化成每次都打数据库。5 分钟够挡住轮询风暴，也不会让轮换后的
-/// 密钥长时间不可见 —— 何况 `verify_request_signature` 在验签失败时本就会
-/// 重新拉取 Actor。
+/// 300s. Actor JSON uses a stable avatar proxy URL (image updates do not
+/// change this ETag). Key rotation changes `public_key_pem`. Inbound
+/// `verify_request_signature` refetches on keyId mismatch, not on PEM verify fail.
 pub const PUBLIC_DOC_MAX_AGE_SECS: u32 = 300;
 
 /// 由文档内容算出强 ETag。

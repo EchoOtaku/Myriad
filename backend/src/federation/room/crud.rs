@@ -330,7 +330,7 @@ pub async fn update_room(
     if let Some(max) = req.max_members {
         changes.insert("max_members".into(), json!(max));
     }
-    // Only fan-out successful public=true transitions (never public→private).
+    // Fan-out when the request sets `is_public: true` (public→private already rejected).
     if req.is_public == Some(true) {
         changes.insert("is_public".into(), json!(true));
     }
@@ -722,7 +722,7 @@ pub async fn get_room(
         enabled_tapps: row
             .try_get::<Option<serde_json::Value>>("", "enabled_tapps")
             .unwrap_or(None),
-        // Public keys only (no private material) — used by Aro E2E readiness badge.
+        // 整份 `shared_data_config`（含 stickers / e2e.published_keys / game）。
         shared_data_config: row
             .try_get::<Option<serde_json::Value>>("", "shared_data_config")
             .unwrap_or(None),
@@ -798,7 +798,7 @@ pub async fn get_members(
         .await
         .map_err(db_err)?;
 
-    let _ = user_id; // validated via actor_url
+    let _ = user_id; // membership 已按 actor_url 查过；公开房间可跳过
     let members = rows
         .iter()
         .map(|r| RoomMember {

@@ -92,7 +92,7 @@ pub(super) struct TappResourcesResponse {
 ///
 /// - `full` (default): every layer
 /// - `core`: core dependency closure only
-/// - `widget`: core + one requested widget dependency closure
+/// - `widget`: core + widgets (all if `widget_id` omitted, else one)
 /// - `page`: core + page layers only
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ResourceMode {
@@ -130,8 +130,7 @@ pub(super) struct GetTappResourcesQuery {
     /// `full` | `core` | `widget` | `page`. Unknown values fall back to full.
     #[serde(default)]
     mode: Option<String>,
-    /// Widget mode may select one manifest widget. Omitted keeps the old
-    /// all-widget projection for backward-compatible callers.
+    /// Widget mode may select one manifest widget. Omitted: all widgets.
     #[serde(default)]
     widget_id: Option<String>,
 }
@@ -205,10 +204,7 @@ async fn load_i18n(tapp_dir: &std::path::Path) -> Option<HashMap<String, serde_j
     (!translations.is_empty()).then_some(translations)
 }
 
-/// Read the JS files a mode needs, keyed by package-relative path.
-///
-/// 层入口加同层可 require 的文件一起下发；客户端从入口出发做闭包，只把用到的
-/// 模块包装进 iframe。
+/// Read the listed package-relative `.js` files (caller then keeps the entry graph).
 async fn load_layer_modules(
     tapp_dir: &std::path::Path,
     entries: &[String],

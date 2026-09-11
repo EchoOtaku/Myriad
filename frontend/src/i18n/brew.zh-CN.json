@@ -33,6 +33,8 @@
   "noteBodyPlaceholder": "用 Markdown 写点什么…",
   "notePreviewEmpty": "开始写，这里会显示预览。",
   "noteTitleRequired": "标题不能为空",
+  "noteTitleTooLong": "标题最多 {max} 字，现在有 {chars} 字",
+  "noteBodyTooLong": "正文最多 {max} 字，现在有 {chars} 字",
   "noteDeleteConfirm": "删除这篇手记？删掉之后找不回来。",
   "noteDiscardConfirm": "有还没保存的改动，确定关掉？",
   "noteTabWrite": "写",

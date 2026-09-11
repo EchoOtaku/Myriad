@@ -1,8 +1,8 @@
 //! Site-wide Anime2.5D face for Agent 人设.
 //!
 //! Owner writes the compiled package. Guests read the same public atlas and
-//! manifest. Hand artwork is one optional layer with bounded follow-through;
-//! independently articulated limbs are outside this API contract.
+//! manifest. Arm fragments (`rigid-*-arm-fragment`) are required.
+//! Independently articulated limbs are outside this API contract.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -1555,8 +1555,8 @@ async fn cleanup_uncommitted_avatar(
 
 /// POST /api/merope/rig/avatar
 ///
-/// 从已确认的主立绘派生一张 Q 版贴纸头像。主立绘是身份锚，项目 logo 是造型
-/// 参考——两张都作为参考图上传，文字只负责把最容易漂的颜色钉住。
+/// Derive a Q-sticker from the confirmed master. Master is identity; project
+/// logo is style. Both images upload; prompt also pins school/framing/pose/die-cut.
 pub async fn generate_sticker_avatar(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -1743,10 +1743,8 @@ mod rig_invalidation_tests {
 
     /// 写 `portrait_asset_id` 的入口，必须在同一次写入里作废旧 Rig。
     ///
-    /// Rig 的血统锚在主图上。换了主图不清 `agent_rig_asset_id`，读路径的
-    /// `manifest_matches_master` 虽然拦得住，但那是每个请求重读一遍旧包再丢
-    /// 掉，而 `/active` 是公开路由。`upload_portrait` 就是这么漏的——另外三处
-    /// 都清了，只有它没有。
+    /// Rig provenance is the master. All four portrait writers must
+    /// `persist_active_asset` in the same write (`/active` is public).
     #[test]
     fn every_portrait_writer_clears_the_active_rig() {
         let rig = include_str!("merope_rig.rs");
@@ -1766,8 +1764,8 @@ mod rig_invalidation_tests {
 
     /// 作废必须落在事务里，并且提交后镜像出去。
     ///
-    /// 分成两步写（先 upsert 后清 asset）而不用事务的话，中间失败会留下
-    /// 「新主图 + 旧 Rig」这种谁也修不回来的状态。
+    /// Split write without a txn can leave a stale package; `/active` drops it
+    /// and serves portrait-only. Clear must still be transactional.
     #[test]
     fn upload_portrait_clears_the_rig_transactionally() {
         let body = body_of(include_str!("merope_rig.rs"), "upload_portrait");

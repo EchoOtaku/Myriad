@@ -130,8 +130,8 @@ pub async fn handle_channel_open(
     }
 
     let Some(target_user_id) = target_user_id else {
-        // 无法路由属于对这台实例而言的永久性条件：记日志后按 AP 惯例
-        // 静默丢弃（上层返回 202），返回 Err 会变成 5xx 引发远端重试风暴。
+        // Unroutable: log and Ok(()) → 202. Err here is not uniformly 5xx
+        // (`map_inbox_handler_error`: 4xx except ChannelOpen race 503).
         tracing::warn!(
             "[Channel] Dropping unroutable ChannelOpen from {} (to={:?})",
             actor_url_str,

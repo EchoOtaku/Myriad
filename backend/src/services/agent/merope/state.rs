@@ -280,8 +280,8 @@ pub fn lite_appraisal(valence: i32, arousal: i32) -> Appraisal {
     }
 }
 
-/// Reads through a stale activity. `age_secs` comes from `updated_at`, which
-/// other writes also touch, so this can only ever be generous, never early.
+/// Reads through a stale activity. Caller passes `activity_updated_at` age
+/// (affect/DND writes bump `updated_at` without resetting this).
 pub fn effective_activity(activity: &str, age_secs: i64) -> &str {
     if activity == "idle" || age_secs < ACTIVITY_STALE_SECS {
         activity

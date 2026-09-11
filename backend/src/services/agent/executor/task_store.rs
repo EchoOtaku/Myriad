@@ -837,7 +837,7 @@ mod tests {
         assert!(retained
             .error
             .as_deref()
-            .is_some_and(|value| value.contains("超时")));
+            .is_some_and(|value| value.contains("timed out")));
         assert_eq!(store.get_user_tasks(7).len(), 1);
     }
 }

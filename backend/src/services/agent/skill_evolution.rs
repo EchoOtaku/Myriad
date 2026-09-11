@@ -371,7 +371,7 @@ impl SkillEvolution {
                                             nm.notify_skill_evolution(
                                                 &skill_id_owned,
                                                 "improved",
-                                                "AI 已根据近期失败原因改写该自动技能。",
+                                                "AI rewrote this auto-skill based on recent failures.",
                                             )
                                             .await;
                                         }
@@ -938,7 +938,7 @@ origin: agent_generated
         };
 
         let workaround = if has_http_fetch {
-            Some("可以尝试通过 http.fetch 调用外部 API 实现".to_string())
+            Some("Try implementing it by calling an external API with http.fetch".to_string())
         } else {
             None
         };
@@ -1053,7 +1053,7 @@ origin: agent_generated
                         &skill.id,
                         "pruned",
                         &format!(
-                            "自动技能「{}」因失败率过高被淘汰（已移入回收站）。",
+                            "Auto-skill \"{}\" was pruned for a high failure rate (moved to trash).",
                             skill.name
                         ),
                     )

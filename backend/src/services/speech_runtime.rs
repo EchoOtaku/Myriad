@@ -211,7 +211,7 @@ pub async fn synthesize_openai_tts(text: &str, codec: &str) -> Result<(Vec<u8>, 
             &resolved.tts_model,
             &resolved.voice,
             codec,
-            Some("用自然、清楚的中文短句。"),
+            Some("Speak in natural, clear short sentences."),
         )
         .await
         .map_err(|e| openai_message(&e));
@@ -391,7 +391,7 @@ pub async fn test_speech_roundtrip() -> SpeechTestResult {
         };
     }
 
-    let phrase = "语音服务测试成功";
+    let phrase = "Speech test succeeded";
     let tts = match provider {
         SpeechProviderKind::Tencent => {
             let service = match TencentSpeechService::new().await {

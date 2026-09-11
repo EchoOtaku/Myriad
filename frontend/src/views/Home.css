@@ -1,22 +1,12 @@
+@import '../styles/page-frame.css';
+
 .home-shell {
-  --home-page-pad-x: 0.75rem;
-  --home-stage-pad: 0.5rem;
+  --home-page-pad-x: var(--page-pad-x);
+  --home-stage-pad: var(--page-stage-pad);
   --home-free-pad-y: 1.5rem;
-  --home-standard-max-width: 80rem;
-  --home-standard-pad-top: 5rem;
-  --home-standard-pad-bottom: 1.5rem;
-}
-
-@media (width >= 375px) {
-  .home-shell {
-    --home-page-pad-x: 1rem;
-  }
-}
-
-@media (width >= 640px) {
-  .home-shell {
-    --home-page-pad-x: 1.5rem;
-  }
+  --home-standard-max-width: var(--page-max-width);
+  --home-standard-pad-top: var(--page-pad-top);
+  --home-standard-pad-bottom: var(--page-pad-bottom);
 }
 
 .home-shell__inner {

@@ -207,7 +207,7 @@ pub(super) async fn execute_fuzzy_search(
             "notFound": true,
             "canDiscover": can_discover,
             "discoveryHint": discovery_hint,
-            "suggestions": ["请尝试其他关键词", "检查拼写是否正确"]
+            "suggestions": ["Try a different keyword", "Check the spelling"]
         }));
     }
 

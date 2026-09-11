@@ -305,7 +305,7 @@ fn parse_room_stickers_rejects_oversized() {
     let list = parse_room_stickers(&shared);
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].id, "stk_ok");
-    let _ = big; // silence unused if compiler optimizes
+    let _ = big; // unused_variables: `big` is only constructed, not asserted.
 }
 
 #[test]
@@ -374,7 +374,7 @@ fn room_join_allows_invitee_accepting() {
 
 #[test]
 fn room_join_allows_open_and_public_self_join() {
-    // join_public_room gate is `invite_policy == "open" || is_public`.
+    // `room_join_authorized`: open invite_policy or is_public.
     assert!(join_auth(|a| a.invite_policy = "open"));
     assert!(join_auth(|a| a.room_is_public = true));
 }

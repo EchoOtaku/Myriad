@@ -20,11 +20,9 @@ use super::types::{
     InitTransferRequest, TransferDetail, TransferFileContent, TransferSummary, UploadChunkRequest,
 };
 
-// 文件传输功能
-
 /// 在 Channel 上发起文件传输
 ///
-/// 创建传输记录 + 通过 ChannelMessage 通知远程方
+/// 创建传输记录 + 发送 `myriad:FileTransfer` Activity
 pub async fn initiate_transfer(
     user_id: i32,
     username: &str,
@@ -34,7 +32,7 @@ pub async fn initiate_transfer(
 ) -> Result<TransferDetail, (StatusCode, Json<serde_json::Value>)> {
     let base_url = get_base_url().await;
 
-    // 验证 Channel 存在且支持 file-transfer
+    // Channel must exist; status active|accepted (channel_type is unread).
     let ch_row = db
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -573,8 +571,8 @@ pub async fn upload_chunk(
                 .try_get("", "status")
                 .unwrap_or_else(|_| target_status.to_string());
 
-            // Filesystem state is durable before database progress is committed.
-            // A retry either verifies this chunk or resumes finalization.
+            // Filesystem is durable before this UPDATE. Same-index retry CONFLICTs
+            // (VerifyCompletedRetry / ResumeFinalization are the other session_action arms).
             txn.commit().await.map_err(db_err)?;
 
             let should_fanout = if target_status == "finalizing" {

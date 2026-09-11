@@ -1,7 +1,8 @@
 //! 请求提取器（axum `FromRequestParts`）。
 //!
 //! 从 `AppState` / `DatabaseConnection` 取 DB；取不到 503。
-//! `FromRequestParts<()>` hard-503s — CONFIG_MODE setup 不得用 `extract::Db`。
+//! `FromRequestParts<()>` hard-503s. Config-mode handlers that need DB still
+//! take `extract::Db` and get 503 until a connection exists.
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
@@ -52,8 +53,8 @@ impl FromRequestParts<DatabaseConnection> for Db {
     }
 }
 
-/// Stateless routers must not pull a process DB — that hid missing `AppState`
-/// wiring. Config-mode setup routes use handlers that do not take `extract::Db`.
+/// Stateless routers must not pull a process DB.
+/// Config-mode handlers that need DB take `extract::Db` (503 until wired).
 /// Full-mode routes are always registered under `Router<AppState>`.
 ///
 /// This impl remains so unit tests can assert a clean 503 when state is `()`,

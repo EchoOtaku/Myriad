@@ -1390,7 +1390,7 @@ async fn execute_page_content(
                 .filter(|v| v.as_str().map(|s| !s.trim().is_empty()).unwrap_or(false));
             let Some(tapp_id) = tapp_id else {
                 return Err(
-                    "page.content 读取 Tapp 页需要 context.tappId，或由前端提供 content 快照"
+                    "page.content needs context.tappId to read a Tapp page, or a content snapshot from the frontend"
                         .to_string(),
                 );
             };
@@ -1407,7 +1407,7 @@ async fn execute_page_content(
                 .or_else(|| route_ctx.get("platform").and_then(Value::as_str));
             let Some(platform) = platform else {
                 return Err(
-                    "page.content 读取平台页需要 context.platform，或由前端提供 content 快照"
+                    "page.content needs context.platform to read a platform page, or a content snapshot from the frontend"
                         .to_string(),
                 );
             };

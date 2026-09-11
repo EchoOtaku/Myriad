@@ -97,7 +97,10 @@ pub async fn create_speaking_analyzer() -> Option<crate::services::analyzer::AiA
 
 pub fn refuse_new_task_message(mood_before: Option<f64>) -> Option<String> {
     if mood_before.is_some_and(is_extremely_low) {
-        Some("我现在心情很低，不想接新的事情。我们先说说话吧。".to_string())
+        Some(
+            "I'm in a very low mood and don't want to take on anything new. Let's just talk."
+                .to_string(),
+        )
     } else {
         None
     }

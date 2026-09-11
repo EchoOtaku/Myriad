@@ -322,11 +322,11 @@ impl Executor {
                         })
                         .unwrap_or_default();
                     caps_desc.push_str(&format!(
-                        "- `{}`: {} (参数: {})\n",
+                        "- `{}`: {} (params: {})\n",
                         cap.id,
                         cap.description,
                         if params_hint.is_empty() {
-                            "无必需"
+                            "none required"
                         } else {
                             &params_hint
                         }

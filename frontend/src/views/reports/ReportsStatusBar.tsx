@@ -260,7 +260,7 @@ export default function ReportsStatusBar({
       onMouseEnter={() => setHeld(true)}
       onMouseLeave={() => setHeld(false)}
     >
-      <div>
+      <div
         className={`rsb-hero ${stageCompactHero ? 'hidden md:block' : ''}`}
         style={{
           top: titleStyle.top,
@@ -296,7 +296,7 @@ export default function ReportsStatusBar({
         }}
       >
         {/* Width follows the current tip; popLayout pulls the outgoing tip out of flow. */}
-        <motion.div>
+        <motion.div
           className="rsb-bar glass"
           layout
           data-tour="reports-status"

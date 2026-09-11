@@ -1098,9 +1098,9 @@ Output in JSON format:
 {{
   "language": "detected language code (zh-CN, en-US, ja-JP, etc.)",
   "dialogues": [
-    {{ "speaker": "host_a", "text": "欢迎收听本期节目！今天我们要聊一个很有意思的话题。" }},
-    {{ "speaker": "host_b", "text": "没错，这个话题最近确实引起了很多关注。" }},
-    {{ "speaker": "host_a", "text": "那我们就开始吧，首先..." }}
+    {{ "speaker": "host_a", "text": "Welcome to the show. Today we have a really interesting topic." }},
+    {{ "speaker": "host_b", "text": "Yes, this one has been getting a lot of attention lately." }},
+    {{ "speaker": "host_a", "text": "Let's dive in. First..." }}
   ]
 }}
 ```

@@ -435,7 +435,7 @@ pub(crate) async fn build_config(
                             db_config.as_ref().and_then(|c| c.xbox_gamertag.clone()),
                             "XBOX_GAMERTAG",
                         ),
-                        placeholder: "Major Nelson 或 名字#1234".to_string(),
+                        placeholder: "Major Nelson or Name#1234".to_string(),
                         required: true,
                     },
                     ConfigField {
@@ -771,7 +771,7 @@ pub(crate) async fn build_config(
                     placeholder: "https://ark.cn-beijing.volces.com/api/v3".to_string(),
                     required: false,
                 },
-                // Lite 模型配置（与 Pro 使用同一字段协议：开关 + 字段留空回退 Standard）
+                // Lite 独立 lite_* 字段。档关或模型空 → None，不回退 Standard。
                 ConfigField {
                     key: "lite_enabled".to_string(),
                     label: "Enable Lite Model".to_string(),
@@ -1303,12 +1303,13 @@ pub(crate) async fn build_config(
             // 死字段（无设置页入口）勿再 emit：
             // pet_*、wallpaper_parallax（已下线，备份恢复会忽略，运行时也不再读）
             // github_client_*（走 OAuth 专用端点，勿进 admin bag）
-            // 归属：
-            // UI        → wallpaper_*, evocative_*, site_*, cloud_sponsors, pwa_enabled, base_url
-            // Platforms → analytics_enabled
-            // Modules   → music_*
-            // Advanced  → proxy_*, gemini_base_url, github_api_base_url
-            // OAuth     → 只读 base_url（编辑走 SiteUrlField 独立 API）
+            // 归属（uiBagOwnership）：
+            // UI        → wallpaper_*, evocative_*, site_*, google_site_verification, cloud_sponsors, pwa_enabled（不含 base_url）
+            // Platforms → analytics_enabled, ga_*, umami_*
+            // Modules   → music_*, island_show_*
+            // Advanced  → memory_saver_enabled, proxy_*, gemini_base_url, github_api_base_url
+            // AI        → merope_*
+            // OAuth     → 只读 base_url（SiteUrlField）
             config_fields: vec![
                 ConfigField {
                     key: "wallpaper_url".to_string(),
@@ -1337,7 +1338,7 @@ pub(crate) async fn build_config(
                 // Evocative 壁纸动效配置
                 ConfigField {
                     key: "evocative_parallax".to_string(),
-                    label: "微动效果".to_string(),
+                    label: "Parallax effect".to_string(),
                     field_type: "checkbox".to_string(),
                     value: db_config
                         .as_ref()
@@ -1351,7 +1352,7 @@ pub(crate) async fn build_config(
                 },
                 ConfigField {
                     key: "evocative_dynamic_blur".to_string(),
-                    label: "动态模糊".to_string(),
+                    label: "Dynamic blur".to_string(),
                     field_type: "checkbox".to_string(),
                     value: db_config
                         .as_ref()
@@ -1365,7 +1366,7 @@ pub(crate) async fn build_config(
                 },
                 ConfigField {
                     key: "evocative_ripple".to_string(),
-                    label: "涟漪效果".to_string(),
+                    label: "Ripple effect".to_string(),
                     field_type: "checkbox".to_string(),
                     value: db_config
                         .as_ref()
@@ -1379,7 +1380,7 @@ pub(crate) async fn build_config(
                 },
                 ConfigField {
                     key: "evocative_fps".to_string(),
-                    label: "动效帧率".to_string(),
+                    label: "Effect frame rate".to_string(),
                     field_type: "select".to_string(),
                     value: db_config
                         .as_ref()
@@ -1392,7 +1393,7 @@ pub(crate) async fn build_config(
                 },
                 ConfigField {
                     key: "evocative_ripple_quality".to_string(),
-                    label: "涟漪画质".to_string(),
+                    label: "Ripple quality".to_string(),
                     field_type: "select".to_string(),
                     value: db_config
                         .as_ref()
@@ -1434,7 +1435,7 @@ pub(crate) async fn build_config(
                 },
                 ConfigField {
                     key: "site_title".to_string(),
-                    label: "网站标题".to_string(),
+                    label: "Site title".to_string(),
                     field_type: "text".to_string(),
                     value: get_value(
                         db_config.as_ref().and_then(|c| c.site_title.clone()),
@@ -1445,7 +1446,7 @@ pub(crate) async fn build_config(
                 },
                 ConfigField {
                     key: "site_description".to_string(),
-                    label: "网站描述".to_string(),
+                    label: "Site description".to_string(),
                     field_type: "text".to_string(),
                     value: get_value(
                         db_config.as_ref().and_then(|c| c.site_description.clone()),
@@ -1456,19 +1457,19 @@ pub(crate) async fn build_config(
                 },
                 ConfigField {
                     key: "site_favicon".to_string(),
-                    label: "网站图标 URL".to_string(),
+                    label: "Favicon URL".to_string(),
                     field_type: "text".to_string(),
                     value: get_value(
                         db_config.as_ref().and_then(|c| c.site_favicon.clone()),
                         "SITE_FAVICON",
                     ),
-                    placeholder: "/favicon.webp 或 https://example.com/icon.png（支持站外链接）"
+                    placeholder: "/favicon.webp or https://example.com/icon.png (external URLs allowed)"
                         .to_string(),
                     required: false,
                 },
                 ConfigField {
                     key: "site_keywords".to_string(),
-                    label: "SEO 关键词".to_string(),
+                    label: "SEO keywords".to_string(),
                     field_type: "text".to_string(),
                     // Clearable: empty DB wins over env (see db_or_env_clearable).
                     value: db_or_env_clearable(
@@ -1476,24 +1477,24 @@ pub(crate) async fn build_config(
                         "SITE_KEYWORDS",
                         "",
                     ),
-                    placeholder: "个人主页, 博客, 数字生活（逗号分隔）".to_string(),
+                    placeholder: "homepage, blog, digital life (comma-separated)".to_string(),
                     required: false,
                 },
                 ConfigField {
                     key: "site_og_image".to_string(),
-                    label: "分享预览图".to_string(),
+                    label: "Share preview image".to_string(),
                     field_type: "text".to_string(),
                     value: db_or_env_clearable(
                         db_config.as_ref().and_then(|c| c.site_og_image.clone()),
                         "SITE_OG_IMAGE",
                         "",
                     ),
-                    placeholder: "https://example.com/og.png 或上传本地图片".to_string(),
+                    placeholder: "https://example.com/og.png or upload a local image".to_string(),
                     required: false,
                 },
                 ConfigField {
                     key: "google_site_verification".to_string(),
-                    label: "Google Search Console 验证".to_string(),
+                    label: "Google Search Console verification".to_string(),
                     field_type: "text".to_string(),
                     value: db_or_env_clearable(
                         db_config
@@ -1502,12 +1503,12 @@ pub(crate) async fn build_config(
                         "GOOGLE_SITE_VERIFICATION",
                         "",
                     ),
-                    placeholder: "粘贴验证码或整段 meta 标签".to_string(),
+                    placeholder: "Paste the verification code or a full meta tag".to_string(),
                     required: false,
                 },
                 ConfigField {
                     key: "site_noindex".to_string(),
-                    label: "禁止搜索引擎收录".to_string(),
+                    label: "Block search engine indexing".to_string(),
                     field_type: "checkbox".to_string(),
                     value: db_config
                         .as_ref()
@@ -1521,7 +1522,7 @@ pub(crate) async fn build_config(
                 },
                 ConfigField {
                     key: "site_visibility_policy".to_string(),
-                    label: "搜索与 AI 可见性".to_string(),
+                    label: "Search and AI visibility".to_string(),
                     field_type: "select".to_string(),
                     value: {
                         let noindex = db_config
@@ -1545,14 +1546,14 @@ pub(crate) async fn build_config(
                 },
                 ConfigField {
                     key: "site_ai_intro".to_string(),
-                    label: "AI 站点简介".to_string(),
+                    label: "AI site intro".to_string(),
                     field_type: "text".to_string(),
                     value: db_or_env_clearable(
                         db_config.as_ref().and_then(|c| c.site_ai_intro.clone()),
                         "SITE_AI_INTRO",
                         "",
                     ),
-                    placeholder: "用 2～4 句话向 AI 说明本站是谁、有什么内容（写入 llms.txt）"
+                    placeholder: "2–4 sentences for AI about who this site is and what it contains (written to llms.txt)"
                         .to_string(),
                     required: false,
                 },
@@ -1600,40 +1601,40 @@ pub(crate) async fn build_config(
                 },
                 ConfigField {
                     key: "site_icp".to_string(),
-                    label: "ICP 备案号".to_string(),
+                    label: "ICP filing number".to_string(),
                     field_type: "text".to_string(),
                     value: db_config
                         .as_ref()
                         .and_then(|c| c.site_icp.clone())
                         .unwrap_or_default(),
-                    placeholder: "如：京ICP备12345678号".to_string(),
+                    placeholder: "e.g. 京ICP备12345678号".to_string(),
                     required: false,
                 },
                 ConfigField {
                     key: "site_gongan".to_string(),
-                    label: "公安备案号".to_string(),
+                    label: "Public security filing number".to_string(),
                     field_type: "text".to_string(),
                     value: db_config
                         .as_ref()
                         .and_then(|c| c.site_gongan.clone())
                         .unwrap_or_default(),
-                    placeholder: "如：京公网安备11010802012345号".to_string(),
+                    placeholder: "e.g. 京公网安备11010802012345号".to_string(),
                     required: false,
                 },
                 ConfigField {
                     key: "cloud_sponsors".to_string(),
-                    label: "云赞助商".to_string(),
+                    label: "Cloud sponsors".to_string(),
                     field_type: "text".to_string(),
                     value: db_config
                         .as_ref()
                         .and_then(|c| c.cloud_sponsors.clone())
                         .unwrap_or_default(),
-                    placeholder: "cloudflare,edgeone,upyun（多个用逗号分隔）".to_string(),
+                    placeholder: "cloudflare,edgeone,upyun (comma-separated)".to_string(),
                     required: false,
                 },
                 ConfigField {
                     key: "site_footer_custom".to_string(),
-                    label: "页脚自定义项".to_string(),
+                    label: "Footer custom items".to_string(),
                     field_type: "text".to_string(),
                     value: db_or_env_clearable(
                         db_config
@@ -1654,7 +1655,7 @@ pub(crate) async fn build_config(
                         .as_ref()
                         .and_then(|c| c.base_url.clone())
                         .unwrap_or_default(),
-                    placeholder: "https://yourdomain.com (用于生成 OAuth 回调 URL)".to_string(),
+                    placeholder: "https://yourdomain.com (used to build OAuth callback URLs)".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -1748,7 +1749,7 @@ pub(crate) async fn build_config(
                 // 内存节约（高级设置）
                 ConfigField {
                     key: "memory_saver_enabled".to_string(),
-                    label: "内存节约".to_string(),
+                    label: "Memory saver".to_string(),
                     field_type: "checkbox".to_string(),
                     value: db_config
                         .as_ref()
@@ -1759,7 +1760,7 @@ pub(crate) async fn build_config(
                 },
                 ConfigField {
                     key: "merope_enabled".to_string(),
-                    label: "Agent 人设".to_string(),
+                    label: "Agent persona".to_string(),
                     field_type: "checkbox".to_string(),
                     value: db_config
                         .as_ref()
@@ -1770,7 +1771,7 @@ pub(crate) async fn build_config(
                 },
                 ConfigField {
                     key: "merope_speech_enabled".to_string(),
-                    label: "Agent 人设说话".to_string(),
+                    label: "Agent persona speech".to_string(),
                     field_type: "checkbox".to_string(),
                     value: db_config
                         .as_ref()
@@ -1782,7 +1783,7 @@ pub(crate) async fn build_config(
                 // 网络代理配置
                 ConfigField {
                     key: "proxy_enabled".to_string(),
-                    label: "启用网络代理".to_string(),
+                    label: "Enable network proxy".to_string(),
                     field_type: "checkbox".to_string(),
                     value: db_config
                         .as_ref()
@@ -1793,18 +1794,18 @@ pub(crate) async fn build_config(
                 },
                 ConfigField {
                     key: "proxy_url".to_string(),
-                    label: "代理服务器地址".to_string(),
+                    label: "Proxy server URL".to_string(),
                     field_type: "text".to_string(),
                     value: db_config
                         .as_ref()
                         .and_then(|c| c.proxy_url.clone())
                         .unwrap_or_default(),
-                    placeholder: "http://127.0.0.1:7890 或 socks5://127.0.0.1:1080".to_string(),
+                    placeholder: "http://127.0.0.1:7890 or socks5://127.0.0.1:1080".to_string(),
                     required: false,
                 },
                 ConfigField {
                     key: "proxy_bypass".to_string(),
-                    label: "代理绕过列表".to_string(),
+                    label: "Proxy bypass list".to_string(),
                     field_type: "text".to_string(),
                     value: db_config
                         .as_ref()
@@ -1815,25 +1816,25 @@ pub(crate) async fn build_config(
                 },
                 ConfigField {
                     key: "gemini_base_url".to_string(),
-                    label: "Gemini API 基础 URL".to_string(),
+                    label: "Gemini API base URL".to_string(),
                     field_type: "text".to_string(),
                     value: db_config
                         .as_ref()
                         .and_then(|c| c.gemini_base_url.clone())
                         .unwrap_or_default(),
-                    placeholder: "https://generativelanguage.googleapis.com (留空使用默认)"
+                    placeholder: "https://generativelanguage.googleapis.com (leave empty for default)"
                         .to_string(),
                     required: false,
                 },
                 ConfigField {
                     key: "github_api_base_url".to_string(),
-                    label: "GitHub API 基础 URL".to_string(),
+                    label: "GitHub API base URL".to_string(),
                     field_type: "text".to_string(),
                     value: db_config
                         .as_ref()
                         .and_then(|c| c.github_api_base_url.clone())
                         .unwrap_or_default(),
-                    placeholder: "https://api.github.com (留空使用默认)".to_string(),
+                    placeholder: "https://api.github.com (leave empty for default)".to_string(),
                     required: false,
                 },
             ],

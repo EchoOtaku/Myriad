@@ -13,7 +13,7 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde_json::{json, Value};
 use std::env;
 
-// Re-export Claims so existing imports `super::auth::Claims` keep working
+// Re-export `Claims`.
 use crate::middleware::auth::clear_auth_cookie_value;
 pub use crate::middleware::auth::Claims;
 

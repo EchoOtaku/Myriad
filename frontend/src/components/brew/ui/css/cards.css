@@ -274,7 +274,7 @@ html.dark .brew-site__unread {
 
 .brew-feeds__items {
   --brew-items-gap: 0.55rem;
-  --brew-items-pad-bottom: 6rem;
+  --brew-items-pad-bottom: 0rem;
   --brew-items-span: calc(
     var(--brew-story-h) * 2 + var(--brew-items-gap) +
       var(--brew-items-pad-bottom) + 0.35rem

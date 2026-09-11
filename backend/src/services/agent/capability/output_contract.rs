@@ -108,7 +108,7 @@ pub fn check_output_contract(schema: &Value, output: &Value) -> Option<ContractV
         myriad_json_schema::validate_inline_json_value(&strip_any_types(schema), output)
     {
         return Some(ContractViolation::Breach(format!(
-            "输出不符合声明的 output_schema：{error}"
+            "Output does not match the declared output_schema: {error}"
         )));
     }
 
@@ -125,7 +125,7 @@ pub fn check_output_contract(schema: &Value, output: &Value) -> Option<ContractV
     }
 
     Some(ContractViolation::Drift(format!(
-        "输出未包含任何声明字段（声明 [{}]，实际 [{}]）",
+        "Output included none of the declared fields (declared [{}], actual [{}])",
         join_keys(declared.keys()),
         join_keys(actual.keys())
     )))

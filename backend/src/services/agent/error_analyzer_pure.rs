@@ -278,6 +278,6 @@ mod tests {
         assert_eq!(analysis.category, ErrorCategory::Unknown);
         assert!(analysis.retryable);
         assert!(analysis.delay_multiplier >= 2.0);
-        assert!(analysis.description.contains("未知错误"));
+        assert!(analysis.description.contains("Unknown error"));
     }
 }

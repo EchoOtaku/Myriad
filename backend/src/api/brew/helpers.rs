@@ -83,7 +83,8 @@ pub(crate) async fn get_admin_user_id_from_headers(
         .map_err(|_| brew_http_err(StatusCode::UNAUTHORIZED, "Invalid user ID"))
 }
 
-pub(crate) const OPML_UNCATEGORIZED: &str = "未分类";
+pub(crate) const OPML_UNCATEGORIZED: &str = "Uncategorized";
+const OPML_UNCATEGORIZED_LEFTOVER: &str = "未分类";
 
 pub(crate) struct OpmlFeed {
     pub title: String,
@@ -121,7 +122,10 @@ fn outline_attr(tag: &str, key: &str) -> Option<String> {
 fn normalized_opml_category(name: Option<String>) -> Option<String> {
     name.and_then(|raw| {
         let trimmed = raw.trim();
-        if trimmed.is_empty() || trimmed == OPML_UNCATEGORIZED {
+        if trimmed.is_empty()
+            || trimmed == OPML_UNCATEGORIZED
+            || trimmed == OPML_UNCATEGORIZED_LEFTOVER
+        {
             None
         } else {
             Some(trimmed.to_string())
@@ -230,7 +234,7 @@ pub(crate) fn generate_opml(sources: &[brew_sources::Model]) -> String {
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
   <head>
-    <title>Myriad Brew 订阅导出</title>
+    <title>Myriad Brew subscriptions</title>
   </head>
   <body>
 "#,
@@ -410,6 +414,16 @@ mod tests {
             None,
         )]);
         let feeds = parse_opml(&opml);
+        assert_eq!(feeds.len(), 1);
+        assert_eq!(feeds[0].category, None);
+        assert!(opml.contains("Uncategorized"));
+        assert!(opml.contains("Myriad Brew subscriptions"));
+    }
+
+    #[test]
+    fn parse_opml_maps_leftover_chinese_uncategorized_folder_to_none() {
+        let opml = r#"<outline text="未分类"><outline text="Plain" xmlUrl="https://plain.example/rss"/></outline>"#;
+        let feeds = parse_opml(opml);
         assert_eq!(feeds.len(), 1);
         assert_eq!(feeds[0].category, None);
     }

@@ -305,7 +305,7 @@ pub fn platform_profile(platform: &str, data: &Value) -> Option<PlatformProfile>
                     .or_else(|| user.get("avatar"))
                     .and_then(Value::as_str)
                     .map(str::to_string),
-                bio: "Steam 玩家".to_string(),
+                bio: "Steam player".to_string(),
             })
         }
         _ => None,

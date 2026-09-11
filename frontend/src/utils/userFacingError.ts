@@ -1439,11 +1439,65 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   }
   if (
     code === 'wait_input_timeout' ||
-    /等待用户输入已超时|^waiting for input timed out|^用户回答已过期|^The answer expired|^回答超时$|^The answer timed out$/i.test(
+    /等待用户输入已超时|任务等待用户输入超时|^waiting for input timed out|^Waiting for a reply timed out|^用户回答已过期|^The answer expired|^回答超时$|^The answer timed out$/i.test(
       raw,
     )
   ) {
+    const hours = raw.match(/（(\d+)小时）|\((\d+) hours\)/)
+    if (hours) {
+      return t.waitInputTimeoutHours.replace(
+        '{hours}',
+        hours[1] || hours[2] || '',
+      )
+    }
     return t.waitInputTimeout
+  }
+  if (
+    /^API 速率限制，等待后重试$|^Rate limited; wait and retry$/i.test(raw)
+  ) {
+    return t.rateLimited
+  }
+  if (
+    /^服务暂时不可用，等待后重试$|^Service temporarily unavailable; wait and retry$/i.test(
+      raw,
+    )
+  ) {
+    return t.serviceUnavailable
+  }
+  if (
+    /^API 响应解析失败|^Failed to parse the API response; retrying may help$/i.test(
+      raw,
+    )
+  ) {
+    return t.aiResponseInvalid
+  }
+  if (
+    /^权限不足，需要用户授权$|^Permission denied; user authorization is required$/i.test(
+      raw,
+    )
+  ) {
+    return t.forbidden
+  }
+  if (
+    /^请求的资源不存在$|^The requested resource does not exist$/i.test(raw)
+  ) {
+    return t.notFound
+  }
+  if (
+    /^内容策略违规|^Content policy violation; retry after removing sensitive content$/i.test(
+      raw,
+    )
+  ) {
+    return t.contentPolicyRetry
+  }
+  if (/^配置缺失|^Configuration missing \(not retryable\)/i.test(raw)) {
+    return classified(t.serviceNotConfigured, raw, hint)
+  }
+  if (/^参数缺失:|^Missing parameter:/i.test(raw)) {
+    return classified(t.missingParameter, raw, hint)
+  }
+  if (/^未知错误:|^Unknown error:/i.test(raw)) {
+    return classified(t.unknown, raw, hint)
   }
   if (
     /^恢复执行超出步骤上限$|^Resume exceeded the step cap$/i.test(raw)
@@ -1576,11 +1630,72 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (/^未知标题$/.test(raw)) return t.unknownTitle
   if (/^未命名内容$/.test(raw)) return t.untitledContent
   if (/^未知用户$/.test(raw)) return currentCopy().userModal.unknownUser
+  if (/^未分类$/.test(raw)) return currentCopy().brew.uncategorized
+  if (/^标题不能为空$|^A title is required$/i.test(raw)) {
+    return currentCopy().brew.noteTitleRequired
+  }
+  const titleTooLong = raw.match(
+    /^标题最多 (\d+) 字，现在有 (\d+) 字$|^Titles can be at most (\d+) characters \(this one is (\d+)\)$/i,
+  )
+  if (titleTooLong) {
+    return currentCopy()
+      .brew.noteTitleTooLong.replace(
+        '{max}',
+        titleTooLong[1] || titleTooLong[3] || '',
+      )
+      .replace('{chars}', titleTooLong[2] || titleTooLong[4] || '')
+  }
+  const bodyTooLong = raw.match(
+    /^正文最多 (\d+) 字，现在有 (\d+) 字$|^Notes can be at most (\d+) characters \(this one is (\d+)\)$/i,
+  )
+  if (bodyTooLong) {
+    return currentCopy()
+      .brew.noteBodyTooLong.replace(
+        '{max}',
+        bodyTooLong[1] || bodyTooLong[3] || '',
+      )
+      .replace('{chars}', bodyTooLong[2] || bodyTooLong[4] || '')
+  }
   if (/^游客$/.test(raw)) return t.guestLabel
   const userNumber = raw.match(/^用户#(\d+)$/)
   if (userNumber) return t.userNumber.replace('{id}', userNumber[1])
   if (/^Xbox 玩家$/.test(raw)) return currentCopy().reportCardWidget.xboxGamerDefault
   if (/^PSN 玩家$/.test(raw)) return t.psnPlayer
+  if (/^Steam 玩家$/.test(raw)) return t.steamPlayer
+  if (/^等待 Tapp 完成交互$/.test(raw)) return t.waitTappInteraction
+  if (/^动态技能$/.test(raw)) return t.capDynamicSkills
+  if (/^MCP 工具$/.test(raw)) return t.capMcpTools
+  if (
+    /^我现在心情很低，不想接新的事情/.test(raw) ||
+    /^I'm in a very low mood and don't want to take on anything new/.test(raw)
+  ) {
+    return t.agentRefuseLowMood
+  }
+  if (/^我对这个请求的理解置信度较低/.test(raw)) return t.agentNeedClarification
+  if (/^重新执行这个步骤$/.test(raw)) return t.retryStepDesc
+  if (/^跳过这个步骤继续执行$/.test(raw)) return t.skipStepDesc
+  if (/^取消整个任务$/.test(raw)) return t.cancelTaskDesc
+  if (/^重试$/.test(raw)) return t.retryStep
+  if (/^跳过$/.test(raw)) return t.skipStep
+  if (/^联网搜索结果$/.test(raw)) return t.webSearchResult
+  if (/试试搜索你已有数据/.test(raw)) return t.searchLocalHint
+  const dbMissing = raw.match(/^(\S+) 数据库文件不存在（(.+)）/)
+  if (dbMissing) {
+    return t.databaseFileMissing
+      .replace('{name}', dbMissing[1])
+      .replace('{path}', dbMissing[2])
+  }
+  if (/^请尝试其他关键词$/.test(raw)) return t.tryOtherKeyword
+  if (/^检查拼写是否正确$/.test(raw)) return t.checkSpelling
+  if (/page\.content 读取 Tapp/.test(raw)) return t.pageContentNeedsTapp
+  if (/page\.content 读取平台/.test(raw)) return t.pageContentNeedsPlatform
+  if (/^AI 联网搜索发现$/.test(raw)) return t.webSearchResult
+  if (/AI 已根据近期失败原因改写/.test(raw)) return t.noticeSkillImprovedBody
+  const prunedSkill = raw.match(/^自动技能「(.+)」因失败率过高被淘汰/)
+  if (prunedSkill) {
+    return t.noticeSkillPrunedBody.replace('{name}', prunedSkill[1])
+  }
+  if (/^我的理解是：/.test(raw)) return t.agentNeedClarification
   if (/^网易云音乐用户$/.test(raw)) return t.neteaseMusicUser
   if (/^Bangumi 用户$/.test(raw)) return t.bangumiUser
   if (/^MyAnimeList 用户$/.test(raw)) return t.malUser

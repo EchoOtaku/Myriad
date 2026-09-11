@@ -1,6 +1,6 @@
 //! 网易云音乐歌手数据库
 //!
-//! 预置常见歌手信息，用于快速分类用户音乐品味
+//! JSON loader (`data/artist_database.json`, default `[]`) plus region/genre analysis.
 
 #![allow(dead_code)]
 
@@ -15,7 +15,7 @@ use tracing::{error, info};
 pub struct ArtistEntry {
     pub name: String,
     pub genres: Vec<String>,
-    pub region: String, // 地区：华语、欧美、日韩等
+    pub region: String, // detect_region: 韩国 / 日本 / 华语 / 欧美
     pub style: Vec<String>,
 }
 
@@ -165,7 +165,7 @@ impl ArtistDatabase {
         } else if has_simplified {
             "华语".to_string()
         } else if has_hanzi {
-            // 只有汉字、无假名无简体：按用户画像归日本（纯汉字标题或繁体）。
+            // Hanzi without Hangul/kana/simplified → hardcoded "日本" (no user profile).
             "日本".to_string()
         } else {
             "欧美".to_string()
@@ -235,7 +235,7 @@ impl ArtistDatabase {
                         percentage,
                     }
                 })
-                .filter(|a| a.percentage >= 5.0 || a.count > 1) // 过滤掉占比过低或只有1个歌手的风格
+                .filter(|a| a.percentage >= 5.0 || a.count > 1) // keep if ≥5% or count>1
                 .collect();
 
             // 按数量排序

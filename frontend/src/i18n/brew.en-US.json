@@ -33,6 +33,8 @@
   "noteBodyPlaceholder": "Write something in Markdown…",
   "notePreviewEmpty": "Start writing and the preview shows up here.",
   "noteTitleRequired": "A title is required",
+  "noteTitleTooLong": "Titles can be at most {max} characters (this one is {chars})",
+  "noteBodyTooLong": "Notes can be at most {max} characters (this one is {chars})",
   "noteDeleteConfirm": "Delete this note? It cannot be recovered.",
   "noteDiscardConfirm": "There are unsaved changes. Close anyway?",
   "noteTabWrite": "Write",

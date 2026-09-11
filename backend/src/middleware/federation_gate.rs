@@ -20,9 +20,8 @@ use axum::{
 use serde_json::json;
 
 /// Path prefixes owned entirely by federation. A match requires at least one
-/// character after the prefix, so sibling non-federation routes that end where
-/// the prefix begins — the SEO pages at `/library`, `/reports`, `/brew` — and
-/// their bare trailing-slash forms stay reachable.
+/// character after the prefix, so SEO `/library` and `/reports` (and trailing
+/// slash) stay reachable. `/brew` is not a remainder-sibling of `/brew/articles/`.
 const FEDERATION_PATH_PREFIXES: &[&str] = &[
     "/api/federation/",
     "/api/tapp/federation/",
@@ -39,7 +38,7 @@ const FEDERATION_PATH_PREFIXES: &[&str] = &[
     "/brew/articles/",
 ];
 
-/// Exact paths, and the media tree served by `nest_service`.
+/// Exact paths (mount `/media/federation`; children are `FEDERATION_NESTED_PREFIXES`).
 const FEDERATION_EXACT_PATHS: &[&str] = &[
     "/.well-known/webfinger",
     "/.well-known/nodeinfo",
@@ -68,9 +67,7 @@ pub(crate) fn is_federation_path(path: &str) -> bool {
 
 /// Refuse this request?
 ///
-/// Kept pure and separate from the middleware so the decision can be tested
-/// without writing the process-wide gate that every other test in this binary
-/// reads concurrently.
+/// Pure so tests can call it without touching process-wide `federation_enabled()`.
 pub(crate) fn should_refuse(path: &str, federation_enabled: bool) -> bool {
     !federation_enabled && is_federation_path(path)
 }
@@ -157,8 +154,8 @@ mod tests {
         }
     }
 
-    /// The SEO pages sit one segment above federation object ids. Closing the
-    /// gate must not take them — or the SPA — down with it.
+    /// SEO `/library` and `/reports` are one segment above object ids; `/brew`
+    /// is two (`/brew/articles/{id}`). Closed gate must not take SPA paths.
     #[test]
     fn spares_sibling_non_federation_routes() {
         for path in [

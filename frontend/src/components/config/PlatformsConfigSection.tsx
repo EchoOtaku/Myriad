@@ -200,6 +200,8 @@ const UNKNOWN_USERNAMES = new Set([
   'bangumi user',
   '网易云音乐用户',
   'netease music user',
+  'steam 玩家',
+  'steam player',
 ])
 
 function formatCardNumber(n: number, locale: string): string {

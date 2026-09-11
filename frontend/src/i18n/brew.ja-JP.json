@@ -33,6 +33,8 @@
   "noteBodyPlaceholder": "Markdown で書いてみましょう…",
   "notePreviewEmpty": "書き始めるとここにプレビューが出ます。",
   "noteTitleRequired": "タイトルを入力してください",
+  "noteTitleTooLong": "タイトルは最大 {max} 文字です（現在 {chars} 文字）",
+  "noteBodyTooLong": "本文は最大 {max} 文字です（現在 {chars} 文字）",
   "noteDeleteConfirm": "この手記を削除しますか？元には戻せません。",
   "noteDiscardConfirm": "保存していない変更があります。閉じますか？",
   "noteTabWrite": "編集",

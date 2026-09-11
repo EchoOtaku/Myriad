@@ -137,8 +137,7 @@ pub(crate) fn validate_settings_backup(backup: &SettingsBackup) -> Result<(), St
 
 /// 敏感 key 判定。
 ///
-/// 单一定义放在 `data_key`，这样"标记为已加密"和"实际加密"永远同源 ——
-/// 修复前这个列只是个标签，值仍然明文落库。
+/// Sensitivity lives in `data_key::is_sensitive_config_key` (seal/open), not the `is_encrypted` label.
 fn is_sensitive_configuration_key(key: &str) -> bool {
     crate::services::data_key::is_sensitive_config_key(key)
 }
@@ -348,10 +347,8 @@ pub async fn export_settings(
         };
         let entry = SettingsBackupEntry {
             value: match row.try_get("", "value") {
-                // 备份**明文**导出：这样导出的文件可以恢复到任意新实例，不必
-                // 同时带上密钥文件。这是有意的取舍 —— 导出是管理员主动执行的
-                // 认证操作（双重 admin 校验），同一个管理员在设置页本来就能看到
-                // 这些值；而加密要挡的是数据库副本泄露，那条路径上库里仍是密文。
+                // Plaintext export (admin, dual `ensure_current_admin_on`).
+                // Settings GET stays masked (`build_config(..., false)`). At rest still ciphertext.
                 Ok(value) => crate::services::data_key::open_config_value(&key, value),
                 Err(error) => {
                     tracing::error!("Failed to decode configuration value: {}", error);
@@ -1417,7 +1414,7 @@ mod settings_backup_tests {
     fn platform_env_fields_write_empty_but_skip_masks() {
         assert!(is_masked_secret_value("••••••••"));
         assert!(is_masked_secret_value("********"));
-        // Empty platform secrets/usernames must clear .env (not keep).
+        // Empty is not a mask; persist path clears DB to null (not .env).
         assert!(!is_masked_secret_value(""));
         assert!(!is_masked_secret_value("ghp_real_token"));
         assert!(!is_masked_secret_value("octocat"));

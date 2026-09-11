@@ -380,7 +380,7 @@ pub async fn oauth_start(
         .append_pair("redirect_uri", &redirect_uri)
         .append_pair("scope", DISCORD_DATA_SCOPES)
         .append_pair("state", &issued.token)
-        // 确保用户能看到权限列表（含 connections / guilds）
+        // prompt=consent only (no in-repo permission-list UI).
         .append_pair("prompt", "consent");
 
     tracing::info!(
@@ -605,7 +605,7 @@ pub async fn oauth_callback(
         None
     };
 
-    // 拉一次 @me 校验 token，并写入 user_id
+    // @me: warn-and-save token on failure; discord_user_id is optional.
     let fetcher = PlatformFetcher::new().await;
     let user_id_discord = match fetcher.fetch_discord_me(&access_token).await {
         Ok(user) => user

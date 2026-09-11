@@ -623,12 +623,12 @@ impl Agent {
                         "[Agent] Very low planner confidence, requesting clarification"
                     );
                     let msg = format!(
-                        "我对这个请求的理解置信度较低（{:.0}%），可能会误解你的意图。{}能再详细描述一下你想要做什么吗？",
+                        "I'm not very confident I understood that ({:.0}%). {}Could you describe what you want in more detail?",
                         planner_output.confidence * 100.0,
                         planner_output
                             .reasoning
                             .as_deref()
-                            .map(|r| format!("我的理解是：{}。", r))
+                            .map(|r| format!("My reading is: {r}. "))
                             .unwrap_or_default()
                     );
                     Self::stream_text_as_tokens(&progress_tx, &msg).await;

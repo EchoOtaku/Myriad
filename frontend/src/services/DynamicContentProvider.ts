@@ -55,7 +55,7 @@ class DynamicContentProviderService {
   constructor() {
     this.registerProvider({
       id: 'builtin',
-      name: '内置内容',
+      name: 'Built-in',
       enabled: true,
     })
   }

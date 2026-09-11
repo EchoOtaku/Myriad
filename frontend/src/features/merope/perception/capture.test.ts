@@ -92,7 +92,7 @@ test.describe('perception capture', { concurrency: false }, () => {
     captureConsented(true)
     const paused = bySource('music_track')
     assert.ok(paused)
-    assert.equal(paused.summary, '已暂停 Night — Lantern')
+    assert.equal(paused.summary, 'Paused Night — Lantern')
     assert.equal(paused.safeFacts.playing, false)
   })
 

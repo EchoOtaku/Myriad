@@ -28,9 +28,9 @@ pub(crate) fn tapp_interaction_wait_question(output: &Value) -> Option<UserQuest
     Some(UserQuestion {
         question_id: format!("tapp_interaction:{interaction_id}"),
         question_type: QuestionType::FreeText,
-        question: "等待 Tapp 完成交互".to_string(),
+        question: "Waiting for the Tapp to finish interacting".to_string(),
         context: format!(
-            "Tapp Agent Interaction {interaction_id} 将在提交结构化结果后自动恢复此任务"
+            "Tapp Agent Interaction {interaction_id} will resume this task after a structured result is submitted"
         ),
         options: None,
         required: true,

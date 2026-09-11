@@ -1,4 +1,4 @@
-//! 图标下载与缓存服务
+//! 图标下载并写入 `{DATA_DIR}/brew/icons`（每次 GET，无读取缓存）。
 //!
 //! 负责下载网站图标并存储到本地，避免直接引用外链。
 //! 图标存储在 data/brew/icons/ 目录下（可通过 DATA_DIR 环境变量配置）。
@@ -61,7 +61,7 @@ pub struct IconService {
 /// 图标文件信息
 #[derive(Debug, Clone)]
 pub struct IconInfo {
-    /// 本地相对路径（用于API返回）
+    /// Site-root API URL (`/api/brew/icons/{filename}`), not a disk path.
     pub local_path: String,
 }
 
@@ -120,7 +120,7 @@ impl IconService {
     ///
     /// # Arguments
     /// * `source_id` - 订阅源 ID，用于命名文件
-    /// * `icon_url` - 图标的原始 URL
+    /// * `icon_url` - http(s) URL or `data:image/*;base64,...`
     ///
     /// # Returns
     /// * `Ok(Some(IconInfo))` - 下载成功，返回本地路径信息
@@ -206,7 +206,7 @@ impl IconService {
             )
         })?;
 
-        // 检查是否为有效的图片（至少有一些字节）
+        // HTTP path: reject `len < MIN_ICON_BYTES` (10). No magic-byte check; no max.
         if bytes.len() < MIN_ICON_BYTES {
             warn!(
                 "Downloaded icon for source {} is too small ({} bytes), skipping",
