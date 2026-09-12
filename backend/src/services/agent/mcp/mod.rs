@@ -1,11 +1,13 @@
 //! MCP (Model Context Protocol) Client 模块
 //!
-//! 通过 stdio 管理多个 MCP 服务器子进程，
-//! 提供统一的工具发现和调用接口。
+//! Production connects to an operator-configured Streamable HTTP gateway.
+//! Local stdio is development-only. Tool discovery and actor budgets are shared.
 //!
 //! # Security
 //!
-//! - Env inheritance allowlist (excludes host secret variables)
+//! - Production host policy blocks local stdio; no outage fallback
+//! - Gateway endpoint/authentication are host configuration, never tool input
+//! - Development stdio env allowlist (excludes host secret variables)
 //! - Config validation (id charset, arg/env caps, max 32 servers)
 //! - Stdio line / JSON-RPC message cap ([`transport::MAX_MCP_LINE_BYTES`])
 //! - Concurrent live child process cap ([`transport::MAX_MCP_CHILDREN`])
@@ -40,7 +42,21 @@ pub async fn init_mcp(config_path: &Path) {
             .await;
         });
     });
-    let manager = McpManager::init_with_reporter(config_path, reporter).await;
+    let mut options = myriad_mcp::connection::RuntimeOptions {
+        allow_stdio: !crate::config::AppConfig::is_production_environment(),
+        gateway: None,
+    };
+    if let Some(endpoint) = std::env::var("MYRIAD_MCP_GATEWAY_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+    {
+        let token = std::env::var("MYRIAD_MCP_GATEWAY_TOKEN").unwrap_or_default();
+        match myriad_mcp::http::GatewayConnection::new(&endpoint, &token) {
+            Ok(connection) => options.gateway = Some(connection),
+            Err(error) => tracing::error!(%error, "MCP gateway configuration rejected"),
+        }
+    }
+    let manager = McpManager::init_with_options(config_path, reporter, options).await;
     let _ = MCP_MANAGER.set(manager);
     tracing::info!("[MCP] Manager initialized");
 }

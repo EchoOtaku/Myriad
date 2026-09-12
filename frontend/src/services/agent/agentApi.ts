@@ -71,11 +71,7 @@ export interface QqPairingStatus {
 }
 
 export type QqBotPhase =
-  | 'offline'
-  | 'connecting'
-  | 'online'
-  | 'rejected'
-  | 'reconnecting'
+  'offline' | 'connecting' | 'online' | 'rejected' | 'reconnecting'
 
 export interface QqBotStatus {
   phase: QqBotPhase
@@ -143,6 +139,7 @@ function sharePersonaGeneration<T>(
 
 export interface McpServerConfig {
   id: string
+  transport?: 'stdio' | 'gateway'
   command: string
   args: string[]
   env: Record<string, string>
@@ -164,6 +161,7 @@ export interface McpConfigSnapshot {
   configPath: string
   runtimeServers: McpRuntimeServer[]
   toolCount: number
+  runtimePolicy?: { localStdioAllowed: boolean; gatewayConfigured: boolean }
 }
 
 export interface AgentPersona {
@@ -211,7 +209,15 @@ export function parseMcpServerConfig(raw: unknown): McpServerConfig | null {
   const o = raw as Record<string, unknown>
   const id = typeof o.id === 'string' ? o.id.trim() : ''
   const command = typeof o.command === 'string' ? o.command.trim() : ''
-  if (!id || !command) return null
+  if (
+    o.transport != null &&
+    o.transport !== 'stdio' &&
+    o.transport !== 'gateway'
+  ) {
+    return null
+  }
+  const transport = o.transport === 'gateway' ? 'gateway' : 'stdio'
+  if (!id || (transport === 'stdio' && !command)) return null
   const args = Array.isArray(o.args)
     ? o.args.filter((a): a is string => typeof a === 'string')
     : []
@@ -223,6 +229,7 @@ export function parseMcpServerConfig(raw: unknown): McpServerConfig | null {
   }
   return {
     id,
+    transport,
     command,
     args,
     env,
@@ -241,6 +248,10 @@ export function parseMcpServerConfig(raw: unknown): McpServerConfig | null {
 function normalizeMcpConfigSnapshot(response: {
   config?: { servers?: unknown }
   config_path?: string
+  runtime_policy?: {
+    local_stdio_allowed?: boolean
+    gateway_configured?: boolean
+  }
   runtime?: {
     servers?: Array<Record<string, unknown>>
     tool_count?: number
@@ -252,6 +263,10 @@ function normalizeMcpConfigSnapshot(response: {
     .filter((s): s is McpServerConfig => s != null)
   return {
     servers,
+    runtimePolicy: {
+      localStdioAllowed: response.runtime_policy?.local_stdio_allowed === true,
+      gatewayConfigured: response.runtime_policy?.gateway_configured === true,
+    },
     configPath:
       typeof response.config_path === 'string' ? response.config_path : '',
     runtimeServers: parseMcpRuntimeServers(response.runtime?.servers),
@@ -310,9 +325,7 @@ class AgentService {
     return response.intentions
   }
 
-  async acceptIntention(
-    intentionId: string,
-  ): Promise<{
+  async acceptIntention(intentionId: string): Promise<{
     intention: AgentIntention
     work: { mode: 'work'; input: string }
   }> {
@@ -564,7 +577,10 @@ class AgentService {
     )
   }
 
-  async getTask(taskId: string, signal = authSubject.signal): Promise<TaskDetail> {
+  async getTask(
+    taskId: string,
+    signal = authSubject.signal,
+  ): Promise<TaskDetail> {
     const response = await apiService.get<{
       success: boolean
       task: TaskInfo & {
@@ -617,13 +633,16 @@ class AgentService {
     signal?: AbortSignal,
   ): Promise<void> {
     try {
-      await apiService.post(`${this.baseUrl}/tasks/${taskId}/frontend-ack`, {
-        stepId,
-        musicStatus: payload.musicStatus ?? null,
-        windowState: payload.windowState ?? null,
-      }, { signal })
-    } catch {
-    }
+      await apiService.post(
+        `${this.baseUrl}/tasks/${taskId}/frontend-ack`,
+        {
+          stepId,
+          musicStatus: payload.musicStatus ?? null,
+          windowState: payload.windowState ?? null,
+        },
+        { signal },
+      )
+    } catch {}
   }
 
   async answerQuestion(
@@ -726,7 +745,12 @@ class AgentService {
       signal?: AbortSignal
     } = {},
   ): Promise<TaskDetail> {
-    const { intervalMs = 1000, timeoutMs = 300000, onProgress, signal = authSubject.signal } = options
+    const {
+      intervalMs = 1000,
+      timeoutMs = 300000,
+      onProgress,
+      signal = authSubject.signal,
+    } = options
     const startTime = Date.now()
 
     while (Date.now() - startTime < timeoutMs) {
@@ -831,10 +855,14 @@ class AgentService {
     taskId: string
     queued: boolean
   }> {
-    return apiService.post(`${this.baseUrl}/session/steer`, {
-      instruction,
-      ...(taskId ? { taskId } : {}),
-    }, { signal })
+    return apiService.post(
+      `${this.baseUrl}/session/steer`,
+      {
+        instruction,
+        ...(taskId ? { taskId } : {}),
+      },
+      { signal },
+    )
   }
 
   async getHeartbeatTasks(): Promise<HeartbeatTask[]> {
@@ -1091,9 +1119,13 @@ class AgentService {
     clothingStyle: string
   }> {
     // Do not reuse sharePersonaGeneration across main-image changes.
-    return apiService.post(`${this.baseUrl}/persona/visual-from-portrait`, body, {
-      timeout: PERSONA_GENERATION_TIMEOUT_MS,
-    })
+    return apiService.post(
+      `${this.baseUrl}/persona/visual-from-portrait`,
+      body,
+      {
+        timeout: PERSONA_GENERATION_TIMEOUT_MS,
+      },
+    )
   }
 
   async getPersona(): Promise<AgentPersona | null> {

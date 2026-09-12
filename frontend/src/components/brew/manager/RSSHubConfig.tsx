@@ -37,6 +37,7 @@ import { API_URL } from '../../../config'
 import { useI18n } from '../../../contexts/I18nContext'
 
 import { getCSRFHeaderName, getCSRFToken } from '../../../utils/csrf'
+import { showError } from '../../../utils/toastManager'
 import { Spinner } from '../../Spinner'
 import '../ui/brew.css'
 
@@ -385,7 +386,6 @@ export default function RSSHubConfigComponent({
 
   const [instances, setInstances] = useState<RsshubInstance[]>([])
   const [loadingInstances, setLoadingInstances] = useState(true)
-  const [instanceError, setInstanceError] = useState<string | null>(null)
 
   const [selectedInstanceId, setSelectedInstanceId] = useState<number | null>(
     null,
@@ -467,7 +467,6 @@ export default function RSSHubConfigComponent({
   const loadInstances = useCallback(async () => {
     try {
       setLoadingInstances(true)
-      setInstanceError(null)
       const response = await fetch(`${API_BASE}/rsshub/instances`, {
         headers: await getAuthHeaders(),
       })
@@ -492,10 +491,10 @@ export default function RSSHubConfigComponent({
           setSelectedInstanceId(enabled?.id || loadedInstances[0].id)
         }
       } else {
-        setInstanceError(data.error || t.brew.errorLoadFailed)
+        showError(data.error || t.brew.errorLoadFailed)
       }
     } catch {
-      setInstanceError(t.brew.errorNetworkRetry)
+      showError(t.brew.errorNetworkRetry)
     } finally {
       setLoadingInstances(false)
     }
@@ -529,10 +528,10 @@ export default function RSSHubConfigComponent({
         setNewAccessKey('')
         setNewPriority(100)
       } else {
-        setInstanceError(data.error || t.brew.errorAddFailed)
+        showError(data.error || t.brew.errorAddFailed)
       }
     } catch {
-      setInstanceError(t.brew.errorNetworkRetry)
+      showError(t.brew.errorNetworkRetry)
     } finally {
       setAdding(false)
     }
@@ -557,10 +556,10 @@ export default function RSSHubConfigComponent({
         )
         setEditingId(null)
       } else {
-        setInstanceError(data.error || t.brew.errorUpdateFailed)
+        showError(data.error || t.brew.errorUpdateFailed)
       }
     } catch {
-      setInstanceError(t.brew.errorNetworkRetry)
+      showError(t.brew.errorNetworkRetry)
     }
   }
 
@@ -581,10 +580,10 @@ export default function RSSHubConfigComponent({
           )
         }
       } else {
-        setInstanceError(data.error || t.brew.errorDeleteFailed)
+        showError(data.error || t.brew.errorDeleteFailed)
       }
     } catch {
-      setInstanceError(t.brew.errorNetworkRetry)
+      showError(t.brew.errorNetworkRetry)
     }
   }
 
@@ -605,7 +604,7 @@ export default function RSSHubConfigComponent({
         )
       }
     } catch {
-      setInstanceError(t.brew.errorNetworkRetry)
+      showError(t.brew.errorNetworkRetry)
     }
   }
 
@@ -621,7 +620,7 @@ export default function RSSHubConfigComponent({
         await loadInstances()
       }
     } catch {
-      setInstanceError(t.brew.errorHealthCheckFailed)
+      showError(t.brew.errorHealthCheckFailed)
     } finally {
       setCheckingHealth(null)
     }
@@ -639,7 +638,7 @@ export default function RSSHubConfigComponent({
         await loadInstances()
       }
     } catch {
-      setInstanceError(t.brew.errorHealthCheckFailed)
+      showError(t.brew.errorHealthCheckFailed)
     } finally {
       setCheckingAllHealth(false)
     }
@@ -656,7 +655,7 @@ export default function RSSHubConfigComponent({
         await loadInstances()
       }
     } catch {
-      setInstanceError(t.brew.errorResetFailed)
+      showError(t.brew.errorResetFailed)
     }
   }
 
@@ -685,7 +684,7 @@ export default function RSSHubConfigComponent({
     let path = routePath
     Object.entries(routeParams).forEach(([key, value]) => {
       if (value) {
-        path = path.replace(`:${key}`, value).replace(`:${key}?`, value)
+        path = path.replaceAll(`:${key}?`, value).replaceAll(`:${key}`, value)
       }
     })
     path = path.replaceAll(/\/:[^/]+\?/g, '')
@@ -707,7 +706,7 @@ export default function RSSHubConfigComponent({
   const extractedParams = useMemo(() => {
     const matches = routePath.match(/:([^/]+)/g) ?? []
     return matches.map((m) => ({
-      name: m.slice(1).replace('?', ''),
+      name: m.slice(1).replaceAll('?', ''),
       required: !m.endsWith('?'),
     }))
   }, [routePath])
@@ -786,31 +785,6 @@ export default function RSSHubConfigComponent({
 
   return (
     <div className="brew-skin brew-rsshub">
-      <AnimatePresence>
-        {instanceError && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/50 rounded-lg flex items-center justify-between"
-          >
-            <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
-              <AlertCircle className="w-3 h-3" />
-              {instanceError}
-            </div>
-            <button
-              type="button"
-              onClick={() => setInstanceError(null)}
-              className="text-red-400 hover:text-red-600"
-              title={t.common.close}
-              aria-label={t.brew.rsshubCloseError}
-            >
-              <X className="w-3 h-3" />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <div className="border border-gray-200/80 dark:border-neutral-700/80 rounded-xl overflow-hidden">
         <button
           type="button"

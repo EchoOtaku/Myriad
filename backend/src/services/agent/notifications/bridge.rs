@@ -24,7 +24,18 @@ fn valid_persona_observation(event: &PersonaObservation) -> bool {
         && event.summary.len() <= 4096
         && matches!(
             event.event_key.as_str(),
-            "federation.channel_message" | "federation.room_message" | "federation.new_follower"
+            "federation.channel_message"
+                | "federation.room_message"
+                | "federation.new_follower"
+                | "brew.starred"
+                | "brew.source_error"
+                | "platform.sync.failed"
+                | "agent.merope.platform_activity"
+                | "agent.merope.report_ready"
+                | "agent.task_completed"
+                | "agent.task_failed"
+                | "agent.task_cancelled"
+                | "agent.clarification"
         )
 }
 

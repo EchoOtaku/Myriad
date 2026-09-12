@@ -24,12 +24,7 @@ export function useBoardEdit(
   const barRef = useRef<BrewControlsHandle>(null)
 
   const handleToggleSelect = useCallback((sourceId: number) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(sourceId)) next.delete(sourceId)
-      else next.add(sourceId)
-      return next
-    })
+    setSelectedIds((prev) => prev.symmetricDifference(new Set([sourceId])))
   }, [])
 
   const handleSelectAll = useCallback(() => {

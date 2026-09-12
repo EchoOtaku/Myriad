@@ -47,7 +47,6 @@ import {
   SettingsPageActionsProvider,
 } from './settings'
 import { Spinner } from './Spinner'
-import Toast from './Toast'
 import './ConfigForm.css'
 
 const ModernConfigForm: React.FC = () => {
@@ -58,7 +57,7 @@ const ModernConfigForm: React.FC = () => {
     url: string
   } | null>(null)
 
-  const { message, messageType, showMessage } = useConfigMessage()
+  const { showMessage } = useConfigMessage()
 
   const bag = useConfigBagState(showMessage, t.config.loadConfigFailed)
   const {
@@ -606,8 +605,6 @@ const ModernConfigForm: React.FC = () => {
       exit={SETTINGS_PAGE_MOTION.exit}
       transition={SETTINGS_PAGE_MOTION.transition}
     >
-      {message && <Toast message={message} type={messageType} />}
-
       <div
         className="config-shell"
         data-mobile-pane={isMobileLayout ? mobilePane : 'desktop'}

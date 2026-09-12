@@ -219,6 +219,7 @@ test('preflight carries analyzed playback profiles into the persisted source', a
   const analyzed = structuredClone(manifest)
   analyzed.anime25dPlayback = {
     ...source.anime25dPlayback,
+    shellProfile: structuredClone(source.anime25dPlayback.shellProfile),
     chestProfile: {
       version: 2,
       enabled: true,
@@ -235,6 +236,10 @@ test('preflight carries analyzed playback profiles into the persisted source', a
       confidence: 0.9,
     },
   }
+  analyzed.anime25dPlayback.shellProfile.poseCorrections = [{
+    surface: 'head', at: { angleX: 0.8, eyeCloseL: 1 },
+    patches: [{ x: -0.4, y: 0, radiusX: 0.5, radiusY: 0.4, dx: 0.03, dy: -0.02 }],
+  }]
   const result = await preflightRigAsset(file, 'master-asset', {
     prepare: async () => ({
       atlas: new Blob(),
@@ -256,6 +261,11 @@ test('preflight carries analyzed playback profiles into the persisted source', a
     result.prepared.source.anime25dPlayback?.shellProfile,
     analyzed.anime25dPlayback.shellProfile,
   )
+  await persistRigAsset(result, async uploaded => {
+    assert.deepEqual(uploaded.anime25dPlayback?.shellProfile.poseCorrections,
+      analyzed.anime25dPlayback?.shellProfile.poseCorrections)
+    return analyzed
+  })
 })
 
 test('failed preview never produces anything to persist', async () => {

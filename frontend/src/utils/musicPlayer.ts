@@ -1165,7 +1165,7 @@ export function highlightText(text: string, query: string): string {
   }
 
   const regex = new RegExp(`(${RegExp.escape(query)})`, 'gi')
-  return escaped.replace(regex, '<mark>$1</mark>')
+  return escaped.replaceAll(regex, '<mark>$1</mark>')
 }
 
 export function createPlaybackAudioElement(

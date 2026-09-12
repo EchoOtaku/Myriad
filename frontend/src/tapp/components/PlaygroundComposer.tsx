@@ -149,62 +149,6 @@ function summarizeInstruction(text: string, max = 48): string {
   return `${cleaned.slice(0, max - 1)}…`
 }
 
-function NotificationCard({
-  tone,
-  onDismiss,
-  dismissLabel,
-  children,
-}: {
-  tone: 'error' | 'warning' | 'success'
-  onDismiss?: () => void
-  dismissLabel: string
-  children: React.ReactNode
-}) {
-  const dotClass = {
-    error: 'bg-red-500',
-    warning: 'bg-amber-500',
-    success: 'bg-emerald-500',
-  }[tone]
-  const textClass = {
-    error: 'text-red-600 dark:text-red-300',
-    warning: 'text-amber-700 dark:text-amber-300',
-    success: 'text-emerald-700 dark:text-emerald-300',
-  }[tone]
-
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 10, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 6, scale: 0.98 }}
-      transition={{ duration: 0.2, ease: 'easeOut' }}
-      className="rounded-2xl glass-surface glass-90 shadow-lg ring-1 ring-black/5 dark:ring-white/10 overflow-hidden"
-    >
-      <div className="flex items-start gap-2.5 px-3.5 py-2.5">
-        {tone === 'success' ? (
-          <FaCheck className="mt-1 w-2.5 h-2.5 shrink-0 text-emerald-500" />
-        ) : (
-          <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${dotClass}`} />
-        )}
-        <span
-          className={`min-w-0 flex-1 break-words whitespace-pre-line text-xs leading-relaxed ${textClass}`}
-        >
-          {children}
-        </span>
-        {onDismiss && (
-          <button
-            onClick={onDismiss}
-            className="shrink-0 -m-1 p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
-            aria-label={dismissLabel}
-          >
-            <FaTimes className="w-2.5 h-2.5" />
-          </button>
-        )}
-      </div>
-    </motion.div>
-  )
-}
-
 function formatElapsedClock(totalSeconds: number): string {
   return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`
 }
@@ -229,18 +173,12 @@ export function PlaygroundComposer({
   historyRevisions = [],
   sessions = [],
   activeSessionId,
-  error,
-  previewError,
-  notice,
-  warnings,
   agentTrace,
   knowledgeSources,
   validation,
   lastFailedAttempt,
   lastSuccessElapsedMs = null,
   examplePrompts = [],
-  capabilityNote,
-  storageNotice,
   onInstructionChange,
   onSubmit,
   onCancel,
@@ -252,14 +190,9 @@ export function PlaygroundComposer({
   onCreateSession,
   onSwitchSession,
   onDeleteSession,
-  onDismissError,
-  onDismissPreviewError,
-  onDismissNotice,
   onRetryFailed,
   onDismissFailed,
   onPickExample,
-  onDismissCapabilityNote,
-  onDismissStorageNotice,
 }: PlaygroundComposerProps) {
   const { t, format, locale } = useI18n()
   const animConfig = useAnimationLevel()
@@ -422,72 +355,6 @@ export function PlaygroundComposer({
           : 'fixed bottom-3 inset-x-3'
       }`}
     >
-      <div className="mb-2 space-y-1.5 max-h-48 overflow-y-auto">
-        <AnimatePresence initial={false}>
-          {error && (
-            <NotificationCard
-              key="error"
-              tone="error"
-              onDismiss={onDismissError}
-              dismissLabel={t.common.close}
-            >
-              {error}
-            </NotificationCard>
-          )}
-          {previewError && (
-            <NotificationCard
-              key="preview-error"
-              tone="warning"
-              onDismiss={onDismissPreviewError}
-              dismissLabel={t.common.close}
-            >
-              {previewError}
-            </NotificationCard>
-          )}
-          {capabilityNote && (
-            <NotificationCard
-              key="capability-note"
-              tone="warning"
-              onDismiss={onDismissCapabilityNote}
-              dismissLabel={
-                t.tapp.playgroundPreviewCapabilitiesDismiss || t.common.close
-              }
-            >
-              {capabilityNote}
-            </NotificationCard>
-          )}
-          {storageNotice && (
-            <NotificationCard
-              key="storage-notice"
-              tone="warning"
-              onDismiss={onDismissStorageNotice}
-              dismissLabel={t.common.close}
-            >
-              {storageNotice}
-            </NotificationCard>
-          )}
-          {warnings.map((warning) => (
-            <NotificationCard
-              key={`warning-${warning}`}
-              tone="warning"
-              dismissLabel={t.common.close}
-            >
-              {warning}
-            </NotificationCard>
-          ))}
-          {notice && (
-            <NotificationCard
-              key="notice"
-              tone="success"
-              onDismiss={onDismissNotice}
-              dismissLabel={t.common.close}
-            >
-              {notice}
-            </NotificationCard>
-          )}
-        </AnimatePresence>
-      </div>
-
       <div className="relative">
         <AnimatePresence>
           {busy && animationsEnabled && (

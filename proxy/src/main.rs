@@ -49,6 +49,11 @@ struct AppState {
     state_path: PathBuf,
     backend_upstream: String,
     federation_upstream: Option<String>,
+    persona_upstream: Option<String>,
+    persona_isolated: Arc<std::sync::atomic::AtomicBool>,
+    persona_requests: Arc<tokio::sync::Semaphore>,
+    persona_streams: Arc<tokio::sync::Semaphore>,
+    persona_controls: Arc<tokio::sync::Semaphore>,
     federation_isolated: Arc<std::sync::atomic::AtomicBool>,
     federation_requests: Arc<tokio::sync::Semaphore>,
     federation_websockets: Arc<tokio::sync::Semaphore>,
@@ -150,6 +155,13 @@ async fn main() -> anyhow::Result<()> {
         state_path,
         backend_upstream,
         federation_upstream,
+        persona_upstream: std::env::var("PROXY_PERSONA_UPSTREAM")
+            .ok()
+            .filter(|s| !s.trim().is_empty()),
+        persona_isolated: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+        persona_requests: Arc::new(tokio::sync::Semaphore::new(32)),
+        persona_streams: Arc::new(tokio::sync::Semaphore::new(64)),
+        persona_controls: Arc::new(tokio::sync::Semaphore::new(16)),
         // Unknown backend state must not send federation work into web.
         federation_isolated: Arc::new(std::sync::atomic::AtomicBool::new(true)),
         federation_requests: Arc::new(tokio::sync::Semaphore::new(32)),
@@ -162,9 +174,7 @@ async fn main() -> anyhow::Result<()> {
         maint_cache: Arc::new(RwLock::new(MaintCache::default())),
     };
 
-    if state.federation_upstream.is_some() {
-        tokio::spawn(refresh_federation_routing(state.clone()));
-    }
+    tokio::spawn(refresh_federation_routing(state.clone()));
 
     let app = Router::new()
         .route("/healthz", axum::routing::get(|| async { "ok" }))
@@ -220,6 +230,9 @@ async fn handle(
     req: Request,
 ) -> Result<Response, Infallible> {
     let path = req.uri().path().to_string();
+    if path == "/internal" || path.starts_with("/internal/") {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    }
 
     // Updater API direct channel: off by default. The backend at /api/admin/updater/*
     // is the recommended path (admin session + server-held UPDATE_TOKEN). The direct path
@@ -262,7 +275,17 @@ async fn handle(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
     let query = req.uri().query().unwrap_or("");
-    let upstream = if is_federation_path(&path) {
+    let persona = is_persona_path(&path);
+    let upstream = if persona
+        && state
+            .persona_isolated
+            .load(std::sync::atomic::Ordering::Acquire)
+    {
+        let Some(upstream) = state.persona_upstream.as_ref() else {
+            return Ok(StatusCode::SERVICE_UNAVAILABLE.into_response());
+        };
+        upstream
+    } else if is_federation_path(&path) {
         if state
             .federation_isolated
             .load(std::sync::atomic::Ordering::Acquire)
@@ -279,6 +302,55 @@ async fn handle(
     } else {
         &state.frontend_upstream
     };
+    if persona && is_websocket_upgrade(req.headers()) {
+        return Ok(StatusCode::BAD_REQUEST.into_response());
+    }
+    if persona {
+        let subscription = req.method() == hyper::Method::GET
+            && (path.ends_with("/stream") || path == "/api/speech/convo/events");
+        let control = path == "/api/agent/presence"
+            || path.ends_with("/cancel")
+            || matches!(
+                path.as_str(),
+                "/api/speech/convo/stop" | "/api/speech/convo/interrupt"
+            );
+        let budget = if subscription {
+            &state.persona_streams
+        } else if control {
+            &state.persona_controls
+        } else {
+            &state.persona_requests
+        };
+        let Ok(permit) = budget.clone().try_acquire_owned() else {
+            return Ok(StatusCode::SERVICE_UNAVAILABLE.into_response());
+        };
+        let response = tokio::time::timeout(
+            Duration::from_secs(600),
+            forward(
+                &state,
+                upstream,
+                &path_with_query(req.uri()),
+                req,
+                client_addr,
+            ),
+        )
+        .await;
+        return Ok(match response {
+            Ok(Ok(response)) => {
+                let (parts, body) = response.into_parts();
+                Response::from_parts(
+                    parts,
+                    Body::new(DomainBody {
+                        body,
+                        _permit: permit,
+                        deadline: Box::pin(tokio::time::sleep(Duration::from_secs(3600))),
+                    }),
+                )
+            }
+            Ok(Err(error)) => bad_gateway(error),
+            Err(_) => StatusCode::GATEWAY_TIMEOUT.into_response(),
+        });
+    }
     if is_websocket_upgrade(req.headers()) {
         let permit = if is_federation_path(&path) {
             match state.federation_websockets.clone().try_acquire_owned() {
@@ -319,7 +391,7 @@ async fn handle(
                 let (parts, body) = response.into_parts();
                 Response::from_parts(
                     parts,
-                    Body::new(FederationBody {
+                    Body::new(DomainBody {
                         body,
                         _permit: permit,
                         deadline: Box::pin(tokio::time::sleep(Duration::from_secs(180))),
@@ -342,13 +414,13 @@ async fn handle(
 }
 
 /// Keep the domain budget through streaming, including a stalled upstream body.
-struct FederationBody {
+struct DomainBody {
     body: Body,
     _permit: tokio::sync::OwnedSemaphorePermit,
     deadline: std::pin::Pin<Box<tokio::time::Sleep>>,
 }
 
-impl hyper::body::Body for FederationBody {
+impl hyper::body::Body for DomainBody {
     type Data = bytes::Bytes;
     type Error = axum::Error;
 
@@ -360,7 +432,7 @@ impl hyper::body::Body for FederationBody {
         if self.deadline.as_mut().poll(cx).is_ready() {
             return std::task::Poll::Ready(Some(Err(axum::Error::new(std::io::Error::new(
                 std::io::ErrorKind::TimedOut,
-                "federation response deadline",
+                "domain response deadline",
             )))));
         }
         std::pin::Pin::new(&mut self.body).poll_frame(cx)
@@ -398,25 +470,57 @@ async fn refresh_federation_routing(state: AppState) {
                 .ok()?
                 .to_bytes();
             let value: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
-            backend_federation_isolated(&value)
+            Some((
+                backend_federation_isolated(&value),
+                backend_isolated(&value, "persona_http_isolated"),
+            ))
         };
-        if let Ok(Some(isolated)) = tokio::time::timeout(Duration::from_secs(2), probe).await {
-            state
-                .federation_isolated
-                .store(isolated, std::sync::atomic::Ordering::Release);
+        if let Ok(Some((federation, persona))) =
+            tokio::time::timeout(Duration::from_secs(2), probe).await
+        {
+            if let Some(isolated) = federation {
+                state
+                    .federation_isolated
+                    .store(isolated, std::sync::atomic::Ordering::Release);
+            }
+            if let Some(isolated) = persona {
+                state
+                    .persona_isolated
+                    .store(isolated, std::sync::atomic::Ordering::Release);
+            }
         }
     }
 }
 
 fn backend_federation_isolated(value: &serde_json::Value) -> Option<bool> {
+    backend_isolated(value, "federation_http_isolated")
+}
+
+fn backend_isolated(value: &serde_json::Value, field: &str) -> Option<bool> {
     if value.get("service")?.as_str()? != "myriad-backend" || value.get("mode")?.as_str()? != "full"
     {
         return None;
     }
-    match value.get("federation_http_isolated") {
+    match value.get(field) {
         Some(value) => value.as_bool(),
         None => Some(false), // Proven legacy backend, before domain extraction.
     }
+}
+
+fn is_persona_path(path: &str) -> bool {
+    [
+        "/api/agent",
+        "/api/speech",
+        "/api/merope/rig",
+        "/api/tapp/agent/v2/interactions",
+    ]
+    .iter()
+    .any(|prefix| {
+        path == *prefix
+            || path
+                .strip_prefix(prefix)
+                .is_some_and(|tail| tail.starts_with('/'))
+    })
 }
 
 /// Includes AP object dereference paths as well as inbox and authenticated APIs.
@@ -1289,6 +1393,11 @@ mod tests {
             backend_upstream: format!("http://{web_address}"),
             frontend_upstream: format!("http://{web_address}"),
             updater_upstream: format!("http://{web_address}"),
+            persona_upstream: None,
+            persona_isolated: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            persona_requests: Arc::new(tokio::sync::Semaphore::new(32)),
+            persona_streams: Arc::new(tokio::sync::Semaphore::new(64)),
+            persona_controls: Arc::new(tokio::sync::Semaphore::new(16)),
             federation_upstream: Some(format!("http://{fed_address}")),
             federation_isolated: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             federation_requests: budget.clone(),
@@ -1308,6 +1417,90 @@ mod tests {
         let rejected = handle(State(state.clone()), ConnectInfo(peer), request("/inbox"))
             .await
             .unwrap();
+        assert_eq!(rejected.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let home = tokio::time::timeout(
+            Duration::from_secs(2),
+            handle(State(state), ConnectInfo(peer), request("/")),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(home.status(), StatusCode::OK);
+        assert_eq!(
+            axum::body::to_bytes(home.into_body(), 1024).await.unwrap(),
+            "homepage"
+        );
+        drop(response);
+        assert_eq!(budget.available_permits(), 1);
+        web.abort();
+        federation.abort();
+    }
+
+    #[tokio::test]
+    async fn saturated_persona_streams_do_not_block_homepage() {
+        let web_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let web_address = web_listener.local_addr().unwrap();
+        let web = tokio::spawn(async move {
+            axum::serve(
+                web_listener,
+                Router::new().fallback(|| async { "homepage" }),
+            )
+            .await
+            .unwrap();
+        });
+        // A stalled response with headers is enough to reproduce streams that
+        // outlive a header-only concurrency permit.
+        let fed_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let fed_address = fed_listener.local_addr().unwrap();
+        let federation = tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let (mut stream, _) = fed_listener.accept().await.unwrap();
+            let mut buf = [0; 4096];
+            assert!(stream.read(&mut buf).await.unwrap() > 0);
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n")
+                .await
+                .unwrap();
+            std::future::pending::<()>().await;
+        });
+        let budget = Arc::new(tokio::sync::Semaphore::new(1));
+        let state = Arc::new(AppState {
+            state_path: PathBuf::from("/__myriad_proxy_test_no_maintenance"),
+            backend_upstream: format!("http://{web_address}"),
+            frontend_upstream: format!("http://{web_address}"),
+            updater_upstream: format!("http://{web_address}"),
+            persona_upstream: Some(format!("http://{fed_address}")),
+            persona_isolated: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+            persona_requests: Arc::new(tokio::sync::Semaphore::new(32)),
+            persona_streams: budget.clone(),
+            persona_controls: Arc::new(tokio::sync::Semaphore::new(16)),
+            federation_upstream: Some(format!("http://{fed_address}")),
+            federation_isolated: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+            federation_requests: Arc::new(tokio::sync::Semaphore::new(32)),
+            federation_websockets: Arc::new(tokio::sync::Semaphore::new(1)),
+            allow_direct_updater: false,
+            trusted_upstreams: vec![],
+            client: Client::builder(TokioExecutor::new()).build_http(),
+            maint_cache: Arc::new(RwLock::new(MaintCache::default())),
+        });
+        let request = |path| Request::builder().uri(path).body(Body::empty()).unwrap();
+        let peer = "127.0.0.1:4444".parse::<SocketAddr>().unwrap();
+        let response = handle(
+            State(state.clone()),
+            ConnectInfo(peer),
+            request("/api/agent/notifications/stream"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(budget.available_permits(), 0);
+        let rejected = handle(
+            State(state.clone()),
+            ConnectInfo(peer),
+            request("/api/agent/notifications/stream"),
+        )
+        .await
+        .unwrap();
         assert_eq!(rejected.status(), StatusCode::SERVICE_UNAVAILABLE);
         let home = tokio::time::timeout(
             Duration::from_secs(2),
@@ -1354,6 +1547,11 @@ mod tests {
             backend_upstream: "http://127.0.0.1:1".into(),
             frontend_upstream: "http://127.0.0.1:1".into(),
             updater_upstream: "http://127.0.0.1:1".into(),
+            persona_upstream: None,
+            persona_isolated: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            persona_requests: Arc::new(tokio::sync::Semaphore::new(32)),
+            persona_streams: Arc::new(tokio::sync::Semaphore::new(64)),
+            persona_controls: Arc::new(tokio::sync::Semaphore::new(16)),
             federation_upstream: Some(format!("http://{address}")),
             federation_isolated: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             federation_requests: Arc::new(tokio::sync::Semaphore::new(1)),
@@ -2044,5 +2242,38 @@ mod tests {
     fn upstream_request_host_none_when_missing() {
         let headers = HeaderMap::new();
         assert!(upstream_request_host(&headers).is_none());
+    }
+    #[test]
+    fn persona_routes_and_legacy_capability_are_explicit() {
+        for path in [
+            "/api/agent",
+            "/api/agent/process/stream",
+            "/api/speech/convo/chat/completions",
+            "/api/merope/rig/assets/id",
+            "/api/tapp/agent/v2/interactions/id/result",
+        ] {
+            assert!(is_persona_path(path), "missing {path}");
+        }
+        for path in [
+            "/api/agentish",
+            "/api/tapp/agent/v2/interactions-other",
+            "/api/tapp/events/stream",
+            "/api/federation/delivery",
+            "/",
+        ] {
+            assert!(!is_persona_path(path), "stole {path}");
+        }
+        let mut value = json!({"service":"myriad-backend","mode":"full"});
+        assert_eq!(
+            backend_isolated(&value, "persona_http_isolated"),
+            Some(false)
+        );
+        value["persona_http_isolated"] = json!(true);
+        assert_eq!(
+            backend_isolated(&value, "persona_http_isolated"),
+            Some(true)
+        );
+        value["persona_http_isolated"] = json!("false");
+        assert_eq!(backend_isolated(&value, "persona_http_isolated"), None);
     }
 }

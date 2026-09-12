@@ -3,6 +3,7 @@ use super::config::McpServerConfig;
 pub(super) fn server_config(id: &str, stall: bool) -> McpServerConfig {
     McpServerConfig {
         id: id.into(),
+        transport: crate::config::McpTransport::Stdio,
         command: "/bin/sh".into(),
         args: vec!["-c".into(), include_str!("fixtures/server.sh").into()],
         env: std::collections::HashMap::from([(

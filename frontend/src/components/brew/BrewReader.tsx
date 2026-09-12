@@ -1,10 +1,7 @@
 import type { AnnotationItem } from '../../services/brewliaApi'
 import type { BrewItem, SourceType } from '../../types/brew'
 import type { ReadingQueue } from './logic/readingQueue'
-import {
-  AnimatePresenceShim as AnimatePresence,
-  motionShim as motion,
-} from '@lib/motionShim'
+import { motionShim as motion } from '@lib/motionShim'
 import {
   useCallback,
   useEffect,
@@ -23,6 +20,7 @@ import {
 } from '../../hooks/animation'
 import { isExlight } from '../../hooks/useAnimationLevel'
 import { authSubject } from '../../utils/authSubject'
+import { showToast } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
 import {
   AnnotationTooltip,
@@ -223,27 +221,15 @@ function ReaderArticleSession({
     cycleLayout,
   } = settings
 
-  const [showToast, setShowToast] = useState<string | null>(null)
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
 
   const showToastMessage = useCallback((message: string, duration = 2000) => {
-    if (toastTimerRef.current) {
-      clearTimeout(toastTimerRef.current)
-    }
-    setShowToast(message)
-    toastTimerRef.current = setTimeout(() => {
-      setShowToast(null)
-      toastTimerRef.current = null
-    }, duration)
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) {
-        clearTimeout(toastTimerRef.current)
-      }
-    }
+    showToast({
+      message,
+      type: 'info',
+      duration,
+      replaceKey: 'brew-reader',
+    })
   }, [])
 
   const {
@@ -403,7 +389,11 @@ function ReaderArticleSession({
       Iterator.from(contentInnerRef.current.querySelectorAll('[data-comment-id]'))
         .map((node) => Number(node.getAttribute('data-comment-id'))),
     )
-    setUnresolvedCommentIds(new Set(comments.filter(comment => comment.selected_text && !comment.parent_id && !marked.has(comment.id)).map(comment => comment.id)))
+    setUnresolvedCommentIds(new Set(
+      Iterator.from(comments)
+        .filter(comment => comment.selected_text && !comment.parent_id && !marked.has(comment.id))
+        .map(comment => comment.id),
+    ))
   }, [baseContent, comments, annotations, showAnnotations, theme, item.content_revision])
 
   useContentPostprocess({
@@ -753,30 +743,6 @@ function ReaderArticleSession({
           </div>
         </div>
       ) : null}
-
-      <AnimatePresence>
-        {showToast && (
-          <motion.div
-            initial={
-              enableAnimations ? { opacity: 0, y: 50, scale: 0.95 } : false
-            }
-            animate={
-              enableAnimations ? { opacity: 1, y: 0, scale: 1 } : undefined
-            }
-            exit={
-              enableAnimations ? { opacity: 0, y: 50, scale: 0.95 } : undefined
-            }
-            transition={
-              enableAnimations
-                ? { duration: 0.25, ease: [0.16, 1, 0.3, 1] }
-                : undefined
-            }
-            className="brew-reader__toast"
-          >
-            {showToast}
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <CommentTooltip
         commentTooltip={commentTooltip}

@@ -8,6 +8,7 @@ import type { SpeechProsodyPlan } from '../speech/prosody'
 import type { MeropeActivity } from '../types'
 import type { Anime25DPlayback } from './types'
 import type { Anime25DWorkbenchPort } from './workbenchPort'
+import type { PoseCorrection } from './poseCorrections'
 import {
   forwardRef,
   useEffect,
@@ -65,6 +66,7 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
   ) => {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const playerRef = useRef<Anime25DPlayer | null>(null)
+    const posePreviewRef = useRef<{ playback: Anime25DPlayback; corrections: readonly PoseCorrection[] } | null>(null)
     const readyRef = useRef(false)
     const recoveriesRef = useRef(0)
     const [ready, setReady] = useState(false)
@@ -209,6 +211,11 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       setDriver(partial) {
         enterManualControl()
         playerRef.current?.setTarget(partial)
+      },
+      previewPoseCorrections(corrections) {
+        enterManualControl()
+        posePreviewRef.current = corrections === null ? null : { playback: playbackRef.current, corrections: structuredClone(corrections) }
+        playerRef.current?.previewPoseCorrections(corrections)
       },
       replaceDriver(driver) {
         enterManualControl()
@@ -387,6 +394,9 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         .then(() => {
           if (cancelled) return
           atlasReadyRef.current = true
+          const preview = posePreviewRef.current
+          if (preview?.playback === playback) player.previewPoseCorrections(preview.corrections)
+          else posePreviewRef.current = null
           recoveriesRef.current = 0
           if (wrapper) {
             const rect = wrapper.getBoundingClientRect()

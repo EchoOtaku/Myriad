@@ -20,6 +20,7 @@ import {
   parseFooterCustomSlots,
   serializeFooterCustom,
 } from '../../utils/footerCustomLogic'
+import { showStickyToast, showToast } from '../../utils/toastManager'
 import { httpStatusMessage, userFacingError } from '../../utils/userFacingError'
 import {
   CheckboxGroupItem,
@@ -273,9 +274,10 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
               : data.site_ai_intro
         if (!generated?.trim()) {
           // HTTP 200 + empty field is not success
-          setAiGenFeedback({
-            field,
+          showStickyToast({
             message: t.config.siteAiGenerateError,
+            type: 'error',
+            replaceKey: 'config-seo-ai',
           })
           return
         }
@@ -286,17 +288,20 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
         } else {
           updateValue('site_ai_intro', generated)
         }
-        setAiGenFeedback({
-          field,
+        setAiGenFeedback(null)
+        showToast({
           message:
             data.source === 'fallback'
               ? t.config.siteAiGenerateFallback
               : t.config.siteAiGenerateSuccess,
+          type: data.source === 'fallback' ? 'warning' : 'success',
+          replaceKey: 'config-seo-ai',
         })
       } catch (err) {
-        setAiGenFeedback({
-          field,
+        showStickyToast({
           message: userFacingError(err, t.config.siteAiGenerateError),
+          type: 'error',
+          replaceKey: 'config-seo-ai',
         })
       } finally {
         setAiGenField(null)

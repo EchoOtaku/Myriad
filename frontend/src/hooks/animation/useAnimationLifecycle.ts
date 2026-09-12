@@ -280,11 +280,11 @@ export function useBatchAnimationLifecycle(
 
       const activateTimer = setTimeout(() => {
         if (!mountedRef.current) return
-        setActiveSet((prev) => new Set(prev).add(i))
+        setActiveSet((prev) => prev.union(new Set([i])))
 
         const completeTimer = setTimeout(() => {
           if (!mountedRef.current) return
-          setCompletedSet((prev) => new Set(prev).add(i))
+          setCompletedSet((prev) => prev.union(new Set([i])))
         }, duration)
 
         timersRef.current.set(i * 2 + 1, completeTimer)

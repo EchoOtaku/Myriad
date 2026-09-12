@@ -120,6 +120,12 @@ pub fn federation_enabled() -> bool {
     STATE.load(Ordering::Relaxed) != DISABLED
 }
 
+/// Dedicated `federation-worker` exits after a closed reading.
+/// Web, persona, and combined `all` keep running.
+pub fn should_exit_process() -> bool {
+    is_resolved() && !federation_enabled()
+}
+
 /// Has the probe produced a reading yet?
 pub fn is_resolved() -> bool {
     STATE.load(Ordering::Relaxed) != PENDING
@@ -253,5 +259,6 @@ mod tests {
     fn pending_reads_as_enabled() {
         assert!(FederationGateStatus::pending().enabled);
         assert!(!FederationGateStatus::pending().resolved);
+        assert!(!should_exit_process() || is_resolved());
     }
 }

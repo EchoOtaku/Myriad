@@ -287,17 +287,3 @@ html.dark .pm-btn-active {
   background: rgb(239 68 68 / 20%);
 }
 
-.pm-toast {
-  margin-top: 0.4rem;
-  padding: 0.25rem 0.35rem;
-  text-align: center;
-  color: #16a34a;
-  font-size: 10px;
-  background: rgb(22 163 74 / 10%);
-  border-radius: 0.4rem;
-}
-
-html.dark .pm-toast {
-  color: #4ade80;
-  background: rgb(74 222 128 / 10%);
-}

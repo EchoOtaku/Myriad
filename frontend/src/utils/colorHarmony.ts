@@ -48,7 +48,7 @@ function signedHueDelta(from: number, to: number): number {
 }
 
 function parseHex(hex: string): { r: number; g: number; b: number } {
-  const n = hex.trim().replace('#', '')
+  const n = hex.trim().replaceAll('#', '')
   if (n.length === 3) {
     return {
       r: Number.parseInt(n[0] + n[0], 16),

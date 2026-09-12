@@ -6,6 +6,7 @@ import { coordinator as animationCoordinator } from '../hooks/animation'
 import { usePerfMetrics } from '../hooks/usePerfMetrics'
 import { clearLyricsCache, clearPlaylistCache } from '../utils/musicPlayer'
 import { globalResourceLoader } from '../utils/resourceLoader'
+import { showToast as emitToast } from '../utils/toastManager'
 
 import './PerformanceMonitor.css'
 
@@ -33,7 +34,6 @@ export default function PerformanceMonitor() {
   const pm = t.perfMonitor
   const [isExpanded, setIsExpanded] = useState(false)
   const [pauseAll, setPauseAll] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
 
   const {
     snapshot,
@@ -73,8 +73,12 @@ export default function PerformanceMonitor() {
   }, [pauseAll])
 
   const showToast = useCallback((msg: string) => {
-    setToast(msg)
-    window.setTimeout(setToast, 1600, null)
+    emitToast({
+      message: msg,
+      type: 'success',
+      duration: 1600,
+      replaceKey: 'perf-monitor',
+    })
   }, [])
 
   const hasResourceActivity = resource.queued > 0 || resource.active > 0
@@ -522,7 +526,6 @@ export default function PerformanceMonitor() {
             </div>
           </section>
 
-          {toast && <div className="pm-toast">{toast}</div>}
         </div>
       )}
     </div>

@@ -7,20 +7,16 @@ import type {
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
-import {
-  FaEdit,
-  FaPlus,
-  FaSearch,
-  FaSyncAlt,
-  LuServer,
-} from '../../lib/icons'
+import { FaEdit, FaPlus, FaSearch, FaSyncAlt, LuServer } from '../../lib/icons'
 import { agentService } from '../../services/agent'
+import { showStickyToast } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
 import {
   InfoActionCard,
   InputItem,
   ManagedList,
   NumberItem,
+  SelectItem,
   SettingFieldErrorTag,
   SettingGroup,
   SettingsButton,
@@ -33,12 +29,10 @@ type Msg = (
   type?: 'success' | 'error' | 'warning' | 'info',
 ) => void
 
-type RuntimeMap = Record<
-  string,
-  { healthy: boolean; tool_count: number }
->
+type RuntimeMap = Record<string, { healthy: boolean; tool_count: number }>
 
 interface DraftServer {
+  transport: 'stdio' | 'gateway'
   originalId: string
   id: string
   command: string
@@ -52,6 +46,7 @@ interface DraftServer {
 
 function emptyDraft(): DraftServer {
   return {
+    transport: 'gateway',
     originalId: '',
     id: '',
     command: '',
@@ -69,6 +64,7 @@ function configToDraft(s: McpServerConfig): DraftServer {
     .map(([k, v]) => `${k}=${v}`)
     .join('\n')
   return {
+    transport: s.transport ?? 'stdio',
     originalId: s.id,
     id: s.id,
     command: s.command,
@@ -109,9 +105,10 @@ function parseEnvText(text: string): Record<string, string> {
 function draftToConfig(d: DraftServer): McpServerConfig {
   return {
     id: d.id.trim(),
-    command: d.command.trim(),
-    args: parseArgsText(d.argsText),
-    env: parseEnvText(d.envText),
+    transport: d.transport,
+    command: d.transport === 'gateway' ? '' : d.command.trim(),
+    args: d.transport === 'gateway' ? [] : parseArgsText(d.argsText),
+    env: d.transport === 'gateway' ? {} : parseEnvText(d.envText),
     enabled: d.enabled,
     auto_restart: d.auto_restart,
     max_restart_attempts: Math.max(
@@ -138,10 +135,14 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
   const [servers, setServers] = useState<McpServerConfig[]>([])
   const [runtime, setRuntime] = useState<RuntimeMap>({})
   const [toolCount, setToolCount] = useState(0)
+  const [policy, setPolicy] = useState({
+    localStdioAllowed: false,
+    gatewayConfigured: false,
+  })
   const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState<'all' | 'enabled' | 'disabled' | 'unhealthy'>(
-    'all',
-  )
+  const [filter, setFilter] = useState<
+    'all' | 'enabled' | 'disabled' | 'unhealthy'
+  >('all')
   const [formOpen, setFormOpen] = useState(false)
   const [draft, setDraft] = useState<DraftServer>(emptyDraft)
   const [formError, setFormError] = useState<string | null>(null)
@@ -150,6 +151,12 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
   const applySnapshot = useCallback(
     (snap: Awaited<ReturnType<typeof agentService.getMcpConfig>>) => {
       setServers(snap.servers)
+      setPolicy(
+        snap.runtimePolicy ?? {
+          localStdioAllowed: false,
+          gatewayConfigured: false,
+        },
+      )
       setToolCount(snap.toolCount)
       const map: RuntimeMap = {}
       for (const r of snap.runtimeServers) {
@@ -170,6 +177,11 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
     } catch (e) {
       const msg = userFacingError(e, c.mcpLoadFailed)
       setError(msg)
+      showStickyToast({
+        message: msg,
+        type: 'error',
+        replaceKey: 'config-mcp',
+      })
       setServers([])
       setRuntime({})
       setToolCount(0)
@@ -194,7 +206,11 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
       } catch (e) {
         const msg = userFacingError(e, c.mcpSaveFailed)
         setError(msg)
-        onMessage?.(msg, 'error')
+        showStickyToast({
+          message: msg,
+          type: 'error',
+          replaceKey: 'config-mcp',
+        })
         return false
       } finally {
         setSaving(false)
@@ -231,15 +247,13 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
       setFormError(c.mcpValidateIdCharset)
       return
     }
-    if (!nextCfg.command) {
+    if (nextCfg.transport !== 'gateway' && !nextCfg.command) {
       setFormError(c.mcpValidateCommandRequired)
       return
     }
     const isEdit = Boolean(draft.originalId)
     const duplicate = servers.some(
-      (s) =>
-        s.id === nextCfg.id &&
-        (!isEdit || s.id !== draft.originalId),
+      (s) => s.id === nextCfg.id && (!isEdit || s.id !== draft.originalId),
     )
     if (duplicate) {
       setFormError(c.mcpValidateIdDuplicate)
@@ -248,17 +262,12 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
 
     let next: McpServerConfig[]
     if (isEdit) {
-      next = servers.map((s) =>
-        s.id === draft.originalId ? nextCfg : s,
-      )
+      next = servers.map((s) => (s.id === draft.originalId ? nextCfg : s))
     } else {
       next = [...servers, nextCfg]
     }
 
-    const ok = await persist(
-      next,
-      isEdit ? c.mcpSaveUpdated : c.mcpSaveCreated,
-    )
+    const ok = await persist(next, isEdit ? c.mcpSaveUpdated : c.mcpSaveCreated)
     if (ok) closeForm()
   }, [draft, servers, persist, closeForm, c])
 
@@ -272,9 +281,7 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
 
   const toggleEnabled = useCallback(
     async (id: string, enabled: boolean) => {
-      const next = servers.map((s) =>
-        s.id === id ? { ...s, enabled } : s,
-      )
+      const next = servers.map((s) => (s.id === id ? { ...s, enabled } : s))
       setServers(next)
       const ok = await persist(next, c.mcpSaveUpdated)
       if (!ok) void load()
@@ -302,8 +309,7 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
       }
       if (!q) return true
       return (
-        s.id.toLowerCase().includes(q) ||
-        s.command.toLowerCase().includes(q)
+        s.id.toLowerCase().includes(q) || s.command.toLowerCase().includes(q)
       )
     })
   }, [servers, query, filter, runtime])
@@ -345,6 +351,17 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
         let badge: { label: string; tone: ManagedListTone }
         if (!s.enabled) {
           badge = { label: c.mcpStatusDisabled, tone: 'muted' }
+        } else if (
+          (s.transport === 'gateway' && !policy.gatewayConfigured) ||
+          (s.transport !== 'gateway' && !policy.localStdioAllowed)
+        ) {
+          badge = {
+            label:
+              s.transport === 'gateway'
+                ? c.mcpGatewayUnavailable
+                : c.mcpLocalUnavailable,
+            tone: 'warn',
+          }
         } else if (rt?.healthy) {
           badge = { label: c.mcpStatusHealthy, tone: 'success' }
         } else if (rt) {
@@ -357,14 +374,15 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
         return {
           id: s.id,
           title: s.id,
-          subtitle: `${s.command}${s.args.length ? ` ${s.args.join(' ')}` : ''}`,
+          subtitle:
+            s.transport === 'gateway'
+              ? c.mcpGateway
+              : `${s.command}${s.args.length ? ` ${s.args.join(' ')}` : ''}`,
           meta: format(c.mcpToolsCount, { n: tools }),
           badge,
           badges: [
             {
-              label: s.auto_restart
-                ? c.mcpAutoRestartOn
-                : c.mcpAutoRestartOff,
+              label: s.auto_restart ? c.mcpAutoRestartOn : c.mcpAutoRestartOff,
               tone: s.auto_restart ? 'default' : 'muted',
             },
           ],
@@ -399,13 +417,7 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
           expandContent: (
             <InfoActionCard
               embedded
-              tone={
-                !s.enabled
-                  ? 'muted'
-                  : rt?.healthy
-                    ? 'success'
-                    : 'danger'
-              }
+              tone={!s.enabled ? 'muted' : rt?.healthy ? 'success' : 'danger'}
               fields={[
                 {
                   key: 'id',
@@ -463,6 +475,7 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
         }
       }),
     [
+      policy,
       filtered,
       runtime,
       expandedId,
@@ -501,45 +514,73 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
         disabled={saving}
         error={idFieldError}
       />
-      <InputItem
-        itemKey="mcp_command"
-        label={c.mcpFieldCommand}
-        description={c.mcpFieldCommandHint}
-        {...bindGuide('advanced.mcpCommand', g.advanced.mcpCommand)}
-        value={draft.command}
-        onChange={(v) => {
-          setFormError(null)
-          setDraft((d) => ({ ...d, command: v }))
-        }}
-        placeholder="npx"
-        layout="vertical"
+      <SelectItem
+        itemKey="mcp_transport"
+        label={c.mcpFieldTransport}
+        description={
+          draft.transport === 'gateway' && !policy.gatewayConfigured
+            ? c.mcpGatewayUnavailable
+            : draft.transport === 'stdio' && !policy.localStdioAllowed
+              ? c.mcpLocalUnavailable
+              : c.mcpTransportHint
+        }
+        value={draft.transport}
+        options={[
+          { value: 'gateway', label: c.mcpGateway },
+          { value: 'stdio', label: c.mcpStdio },
+        ]}
+        onChange={(value) =>
+          setDraft((d) => ({
+            ...d,
+            transport: value === 'gateway' ? 'gateway' : 'stdio',
+          }))
+        }
         disabled={saving}
-        error={commandFieldError}
-      />
-      <InputItem
-        itemKey="mcp_args"
-        label={c.mcpFieldArgs}
-        description={c.mcpFieldArgsHint}
-        {...bindGuide('advanced.mcpArgs', g.advanced.mcpArgs)}
-        value={draft.argsText}
-        onChange={(v) => setDraft((d) => ({ ...d, argsText: v }))}
-        placeholder="-y @modelcontextprotocol/server-github"
         layout="vertical"
-        disabled={saving}
       />
-      <InputItem
-        itemKey="mcp_env"
-        label={c.mcpFieldEnv}
-        description={c.mcpFieldEnvHint}
-        {...bindGuide('advanced.mcpEnv', g.advanced.mcpEnv)}
-        value={draft.envText}
-        onChange={(v) => setDraft((d) => ({ ...d, envText: v }))}
-        placeholder={'GITHUB_TOKEN=ghp_…\nFOO=bar'}
-        layout="vertical"
-        multiline
-        rows={4}
-        disabled={saving}
-      />
+      {draft.transport === 'stdio' && (
+        <>
+          <InputItem
+            itemKey="mcp_command"
+            label={c.mcpFieldCommand}
+            description={c.mcpFieldCommandHint}
+            {...bindGuide('advanced.mcpCommand', g.advanced.mcpCommand)}
+            value={draft.command}
+            onChange={(v) => {
+              setFormError(null)
+              setDraft((d) => ({ ...d, command: v }))
+            }}
+            placeholder="npx"
+            layout="vertical"
+            disabled={saving}
+            error={commandFieldError}
+          />
+          <InputItem
+            itemKey="mcp_args"
+            label={c.mcpFieldArgs}
+            description={c.mcpFieldArgsHint}
+            {...bindGuide('advanced.mcpArgs', g.advanced.mcpArgs)}
+            value={draft.argsText}
+            onChange={(v) => setDraft((d) => ({ ...d, argsText: v }))}
+            placeholder="-y @modelcontextprotocol/server-github"
+            layout="vertical"
+            disabled={saving}
+          />
+          <InputItem
+            itemKey="mcp_env"
+            label={c.mcpFieldEnv}
+            description={c.mcpFieldEnvHint}
+            {...bindGuide('advanced.mcpEnv', g.advanced.mcpEnv)}
+            value={draft.envText}
+            onChange={(v) => setDraft((d) => ({ ...d, envText: v }))}
+            placeholder={'GITHUB_TOKEN=ghp_…\nFOO=bar'}
+            layout="vertical"
+            multiline
+            rows={4}
+            disabled={saving}
+          />
+        </>
+      )}
       <NumberItem
         itemKey="mcp_max_restart"
         label={c.mcpFieldMaxRestart}
@@ -646,9 +687,7 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
         filters={{
           value: filter,
           onChange: (key) =>
-            setFilter(
-              key as 'all' | 'enabled' | 'disabled' | 'unhealthy',
-            ),
+            setFilter(key as 'all' | 'enabled' | 'disabled' | 'unhealthy'),
           ariaLabel: c.mcpFilterAria,
           options: [
             { key: 'all', label: c.mcpFilterAll, count: servers.length },
@@ -672,18 +711,12 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
             },
           ],
         }}
-        formTitle={
-          draft.originalId ? c.mcpFormEditTitle : c.mcpAddServer
-        }
+        formTitle={draft.originalId ? c.mcpFormEditTitle : c.mcpAddServer}
         formDescription={
           draft.originalId ? c.mcpFormEditTitleDesc : c.mcpAddServerDesc
         }
         formIcon={
-          draft.originalId ? (
-            <FaEdit aria-hidden />
-          ) : (
-            <FaPlus aria-hidden />
-          )
+          draft.originalId ? <FaEdit aria-hidden /> : <FaPlus aria-hidden />
         }
         formCollapseLabel={t.common.cancel}
         formCollapseDescription={c.federationListQueryCollapseDesc}

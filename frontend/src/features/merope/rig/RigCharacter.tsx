@@ -202,6 +202,7 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
         animeRef.current?.stopBehaviorPlan(planId)
       },
       setDriver: (partial) => animeRef.current?.setDriver(partial),
+      previewPoseCorrections: (corrections) => animeRef.current?.previewPoseCorrections(corrections),
       replaceDriver: (driver) => animeRef.current?.replaceDriver(driver),
       blinkNow: () => animeRef.current?.blinkNow(),
       debugSnapshot: () => animeRef.current?.debugSnapshot() ?? null,

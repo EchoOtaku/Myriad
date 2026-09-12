@@ -5,6 +5,8 @@ use super::*;
 mod authenticated;
 mod base;
 mod federation_http;
+mod persona_http;
+pub(crate) use persona_http::build_persona_router;
 
 pub(crate) use federation_http::build_federation_router;
 
@@ -13,6 +15,7 @@ pub(crate) fn test_api_router(state: crate::state::AppState) -> Router {
     base::build_base_api_router(state.clone())
         .merge(authenticated::build_authenticated_router(state.clone()))
         .merge(build_federation_router(state.clone()))
+        .merge(build_persona_router(state.clone()))
         .with_state(state)
 }
 
@@ -130,11 +133,24 @@ pub(crate) async fn start_unified_server(
         let routes = base::build_base_api_router(app_state.clone())
             .merge(authenticated::build_authenticated_router(app_state.clone()));
         let routes = if role == crate::runtime_role::RuntimeRole::All {
-            routes.merge(build_federation_router(app_state.clone()))
+            routes
+                .merge(build_federation_router(app_state.clone()))
+                .merge(build_persona_router(app_state.clone()))
         } else {
             routes
         };
-        routes.with_state(app_state)
+        routes
+            .route(
+                crate::persona::web_control::PATH,
+                post(crate::persona::web_control::handle)
+                    .layer(axum::extract::DefaultBodyLimit::max(
+                        crate::persona::web_control::MAX_REQUEST,
+                    ))
+                    .layer(axum::middleware::from_fn(
+                        crate::persona::web_control::admission,
+                    )),
+            )
+            .with_state(app_state)
     } else {
         // Config-mode router — no extract::Db routes (they require AppState).
         base::build_config_mode_router()

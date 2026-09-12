@@ -51,8 +51,7 @@ pub use platform::{
 // AI API
 pub use agent_interactions::{
     accept_agent_interaction, get_agent_interaction, reject_agent_interaction,
-    request_agent_intent, spawn_agent_interaction_expiry_worker, stream_agent_interactions,
-    submit_agent_interaction_result,
+    request_agent_intent, stream_agent_interactions, submit_agent_interaction_result,
 };
 pub use ai_cost_ledger::ai_cost_ledger;
 pub use ai_tasks::{ai_usage, cancel_ai_task, create_ai_task, get_ai_task, stream_ai_task_events};

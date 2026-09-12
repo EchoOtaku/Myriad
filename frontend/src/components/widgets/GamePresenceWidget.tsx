@@ -157,7 +157,7 @@ function resolveTheme(
 }
 
 function hexToRgba(hex: string, alpha: number): string {
-  const h = hex.replace('#', '')
+  const h = hex.replaceAll('#', '')
   if (h.length !== 6) return `rgba(100,100,100,${alpha})`
   const r = Number.parseInt(h.slice(0, 2), 16)
   const g = Number.parseInt(h.slice(2, 4), 16)

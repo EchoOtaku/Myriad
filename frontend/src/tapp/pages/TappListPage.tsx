@@ -23,7 +23,6 @@ import {
 } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AnimatedView from '../../components/AnimatedView'
-import Toast from '../../components/Toast'
 import { GlowBackground } from '../../components/widgets/shared/GlowBackground'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
@@ -37,6 +36,7 @@ import {
   useModuleVisibilityPreferences,
 } from '../../utils/moduleVisibility'
 import { hasSessionHint } from '../../utils/sessionDetection'
+import { showToast } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
 import { InstallTappDialog } from '../components/InstallTappDialog'
 import { TappPlaygroundIcon } from '../components/PlaygroundIcons'
@@ -119,8 +119,6 @@ export function TappListPage() {
   const [showEmpty, setShowEmpty] = useState(false)
   const [showInstallDialog, setShowInstallDialog] = useState(false)
   const [installAnchor, setInstallAnchor] = useState<HTMLElement | null>(null)
-  const [toastMessage, setToastMessage] = useState('')
-  const [toastType, setToastType] = useState<ToastType>('info')
   const [showUninstallDialog, setShowUninstallDialog] = useState(false)
   const [uninstallTargetId, setUninstallTargetId] = useState<string | null>(
     null,
@@ -145,8 +143,7 @@ export function TappListPage() {
 
   const showToastMessage = useCallback(
     (message: string, type: ToastType = 'info') => {
-      setToastType(type)
-      setToastMessage(message)
+      showToast({ message, type, replaceKey: 'tapp-list' })
     },
     [],
   )
@@ -958,13 +955,6 @@ export function TappListPage() {
         onConfirm={handleConfirmUninstall}
       />
 
-      {toastMessage && (
-        <Toast
-          message={toastMessage}
-          type={toastType}
-          onClose={() => setToastMessage('')}
-        />
-      )}
     </AnimatedView>
   )
 }

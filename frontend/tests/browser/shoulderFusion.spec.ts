@@ -3,6 +3,291 @@ import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
 
+for (const [name, assetVariable] of [['off-shoulder', 'MEROPE_SHOULDER_ASSET'], ['high-collar', 'MEROPE_COLLAR_ASSET']] as const) {
+  test(`real ${name} torso carries head, hair and accessories through continuous turns`, async ({ page }, testInfo) => {
+    test.setTimeout(60_000)
+    const root = process.env[assetVariable]
+    test.skip(!root, `Set ${assetVariable} to a real split portrait`)
+    const manifest = JSON.parse(await readFile(`${root}/manifest.json`, 'utf8'))
+    const atlas = await readFile(`${root}/atlas.png`)
+    const modules = `/@fs${fileURLToPath(new URL('../../src/features/merope/anime25drig/', import.meta.url))}`
+    await page.route('**/torso-carry-probe', route => route.fulfill({ contentType: 'text/html', body: '<canvas></canvas>' }))
+    await page.route('**/torso-carry-atlas.png', route => route.fulfill({ contentType: 'image/png', body: atlas }))
+    await page.goto('/torso-carry-probe')
+    const result = await page.evaluate(async ({ manifest, modules }) => {
+      const { Anime25DPlayer } = await import(`${modules}player.ts`)
+      const { IDENTITY_DRIVER } = await import(`${modules}driver.ts`)
+      const metrics = []
+      const screenshots = []
+      for (const fps of [30, 60, 120]) {
+        const player = new Anime25DPlayer(document.querySelector('canvas'), manifest.anime25dPlayback, manifest)
+        await player.replaceLivePackage(manifest.anime25dPlayback, manifest, '/torso-carry-atlas.png')
+        player.resize(768, 1024, 1)
+        let enabled = true; let rootOffset = 0
+        // Isolate the old missing-parent behavior without changing the torso,
+        // clocks, input trajectory, texture, or any production feature flag.
+        Object.defineProperty(player.secondaryDeformationFrame, 'torsoNeckOffsetX', {
+          get: () => enabled ? rootOffset : 0,
+          set: value => { rootOffset = value },
+        })
+        let headError = 0; let bodyError = 0; let attachmentError = 0; let extent = 0
+        let maxStep = 0; let previous = 0
+        for (let frame = 0; frame <= fps * 3; frame++) {
+          const t = frame / fps
+          const yaw = Math.sin(t * Math.PI * 2 / 3)
+          player.setTarget({ ...IDENTITY_DRIVER, angleX: yaw, angleY: yaw * 0.6,
+            angleZ: -yaw * 0.7, body: yaw * 0.8, bodyYaw: 1,
+            idle: false, rand: false, blink: false, phys: true })
+          player.time += 1 / fps
+          player.smoothDriver(1 / fps)
+          player.updateSprings(1 / fps)
+          enabled = false
+          player.deform()
+          const before = player.layers.map(layer => ({ points: layer.deformed.slice(), matrix: layer.layerTransform.slice() }))
+          if (fps === 60 && (frame === 60 || frame === 120)) {
+            player.uploadGeometry(); player.draw()
+            screenshots.push({ name: `previous-${frame}`, image: player.gl.canvas.toDataURL('image/png').split(',')[1] })
+          }
+          enabled = true
+          player.deform()
+          extent = Math.max(extent, Math.abs(rootOffset))
+          maxStep = Math.max(maxStep, Math.abs(rootOffset - previous)); previous = rootOffset
+          player.layers.forEach((layer, i) => {
+            if (layer.source.group === 'head' && !layer.shaderGlobalTransform && layer.frameOpacity > 0.01) {
+              for (let p = 0; p < layer.deformed.length; p += 2) {
+                headError = Math.max(headError, Math.abs(layer.deformed[p] - before[i].points[p] - rootOffset), Math.abs(layer.deformed[p + 1] - before[i].points[p + 1]))
+              }
+            }
+            if (layer.attachment && layer.source.group === 'head' && layer.attachment.hostSource?.group === 'head') {
+              attachmentError = Math.max(attachmentError, Math.abs(layer.layerTransform[6] - before[i].matrix[6] - rootOffset))
+            }
+            if (['topwear', 'bottomwear', 'handwear'].includes(layer.source.role)) {
+              for (let p = 0; p < layer.deformed.length; p++) bodyError = Math.max(bodyError, Math.abs(layer.deformed[p] - before[i].points[p]))
+            }
+          })
+          if (fps === 60 && (frame === 60 || frame === 120)) {
+            player.uploadGeometry(); player.draw()
+            screenshots.push({ name: `carried-${frame}`, image: player.gl.canvas.toDataURL('image/png').split(',')[1] })
+          }
+        }
+        metrics.push({ fps, headError, bodyError, attachmentError, extent, maxStep, glError: player.gl.getError() })
+        player.dispose()
+      }
+      return { metrics, screenshots }
+    }, { manifest, modules })
+    await testInfo.attach('torso-parent-metrics', { body: JSON.stringify(result.metrics, null, 2), contentType: 'application/json' })
+    for (const shot of result.screenshots) await testInfo.attach(shot.name, { body: Buffer.from(shot.image, 'base64'), contentType: 'image/png' })
+    for (const metric of result.metrics) {
+      expect(metric.headError).toBeLessThan(0.01)
+      expect(metric.attachmentError).toBeLessThan(0.1)
+      expect(metric.bodyError).toBe(0)
+      expect(metric.extent).toBeGreaterThan(10)
+      expect(metric.maxStep).toBeLessThan(100 / metric.fps)
+      expect(metric.glError).toBe(0)
+    }
+  })
+
+  test(`real ${name} facial surface keeps eyes and mouth registered during large turns`, async ({ page }, testInfo) => {
+    test.setTimeout(60_000)
+    const root = process.env[assetVariable]
+    test.skip(!root, `Set ${assetVariable} to a real split portrait`)
+    const manifest = JSON.parse(await readFile(`${root}/manifest.json`, 'utf8'))
+    const atlas = await readFile(`${root}/atlas.png`)
+    const modules = `/@fs${fileURLToPath(new URL('../../src/features/merope/anime25drig/', import.meta.url))}`
+    await page.route('**/face-surface-probe', route => route.fulfill({ contentType: 'text/html', body: '<canvas></canvas>' }))
+    await page.route('**/face-surface-atlas.png', route => route.fulfill({ contentType: 'image/png', body: atlas }))
+    await page.goto('/face-surface-probe')
+    const result = await page.evaluate(async ({ manifest, modules }) => {
+      const { Anime25DPlayer } = await import(`${modules}player.ts`)
+      const { IDENTITY_DRIVER } = await import(`${modules}driver.ts`)
+      const { deformAnime25DSecondaryPoint } = await import(`${modules}secondaryDeformation.ts`)
+      const playback = manifest.anime25dPlayback
+      const original = JSON.stringify(playback)
+      const player = new Anime25DPlayer(document.querySelector('canvas'), playback, manifest)
+      player.resize(768, 1024, 1)
+      await player.replaceLivePackage(playback, manifest, '/face-surface-atlas.png')
+      player.shellActivation = 1
+      const features = player.layers.filter(layer => layer.secondaryDeformation.facialSurface)
+      const face = features.find(layer => layer.source.role === 'face')
+      if (!face || features.length < 6) throw new Error('Real face and split features required')
+      const poses = [
+        { angleX: 0, angleY: 0, angleZ: 0 },
+        { angleX: 1, angleY: -0.85, angleZ: 0.8 },
+        { angleX: -1, angleY: 0.85, angleZ: -0.8 },
+        { angleX: 1, angleY: 0.85, eyeOpenL: 0, eyeOpenR: 0, mouthOpen: 0.6 },
+        { angleX: -1, angleY: -0.85, eyeOpenL: 0.35, eyeOpenR: 0.35, mouthOpen: 0.5 },
+      ]
+      const runs = []
+      for (const shared of [false, true, false]) {
+        for (const layer of features) layer.secondaryDeformation.facialSurface = shared
+        const frames = []
+        for (const pose of poses) {
+          Object.assign(player.current, IDENTITY_DRIVER, pose, { idle: false, blink: false, rand: false, phys: false })
+          player.time = 1
+          player.deform()
+          player.uploadGeometry()
+          player.draw()
+          const pixels = new Uint8Array(768 * 1024 * 4)
+          player.gl.readPixels(0, 0, 768, 1024, player.gl.RGBA, player.gl.UNSIGNED_BYTE, pixels)
+          let registrationError = 0
+          for (const layer of features) {
+            const x = layer.source.x + layer.source.w / 2
+            const y = layer.source.y + layer.source.h / 2
+            const a = { x, y }; const b = { x, y }
+            deformAnime25DSecondaryPoint(a, x, y, 0, face.secondaryDeformation, player.secondaryDeformationFrame)
+            deformAnime25DSecondaryPoint(b, x, y, 0, layer.secondaryDeformation, player.secondaryDeformationFrame)
+            registrationError = Math.max(registrationError, Math.hypot(a.x - b.x, a.y - b.y))
+          }
+          frames.push({ pixels, registrationError,
+            protectedGeometry: player.layers.filter(layer => !features.includes(layer)).map(layer => Array.from(layer.deformed)),
+            screenshot: player.gl.canvas.toDataURL('image/png').split(',')[1],
+          })
+        }
+        runs.push(frames)
+      }
+      const differences = poses.map((_, i) => {
+        const before = runs[0][i]; const after = runs[1][i]; const restored = runs[2][i]
+        let changed = 0; let restoreError = 0; let protectedError = 0
+        for (let p = 0; p < before.pixels.length; p += 4) {
+          if (before.pixels.subarray(p, p + 4).some((v, k) => v !== after.pixels[p + k])) changed++
+          if (before.pixels.subarray(p, p + 4).some((v, k) => v !== restored.pixels[p + k])) restoreError++
+        }
+        before.protectedGeometry.forEach((points, j) => points.forEach((v, k) => {
+          protectedError = Math.max(protectedError, Math.abs(v - after.protectedGeometry[j][k]))
+        }))
+        return { changed, restoreError, protectedError, beforeError: before.registrationError, afterError: after.registrationError }
+      })
+      const screenshots = runs.slice(0, 2).map(frames => frames.map(frame => frame.screenshot))
+      const unchangedAsset = original === JSON.stringify(playback)
+      const error = player.gl.getError()
+      player.dispose()
+      return { differences, screenshots, unchangedAsset, error }
+    }, { manifest, modules })
+    await testInfo.attach('face-surface-metrics', { body: JSON.stringify(result.differences, null, 2), contentType: 'application/json' })
+    for (const [run, frames] of result.screenshots.entries()) { for (const [pose, screenshot] of frames.entries()) {
+      await testInfo.attach(`${run ? 'shared' : 'previous'}-face-${pose}`, { body: Buffer.from(screenshot, 'base64'), contentType: 'image/png' })
+    }
+}
+    expect(result.error).toBe(0)
+    expect(result.unchangedAsset).toBe(true)
+    for (const [index, difference] of result.differences.entries()) {
+      expect(difference.afterError).toBeLessThan(1e-6)
+      expect(difference.protectedError).toBe(0)
+      expect(difference.restoreError).toBe(0)
+      if (index === 0) { expect(difference.changed).toBe(0)
+}
+      else {
+        expect(difference.beforeError).toBeGreaterThan(1)
+        expect(difference.changed).toBeGreaterThan(100)
+      }
+    }
+  })
+}
+
+test('real asset combination corrections reach pixels, release exactly and preserve body geometry', async ({ page }, testInfo) => {
+  test.setTimeout(60_000)
+  const root = process.env.MEROPE_SHOULDER_ASSET
+  test.skip(!root, 'Set MEROPE_SHOULDER_ASSET to a real split portrait')
+  const manifest = JSON.parse(await readFile(`${root}/manifest.json`, 'utf8'))
+  const atlas = await readFile(`${root}/atlas.png`)
+  const modules = `/@fs${fileURLToPath(new URL('../../src/features/merope/anime25drig/', import.meta.url))}`
+  await page.route('**/correction-probe', route => route.fulfill({ contentType: 'text/html', body: '<canvas></canvas>' }))
+  await page.route('**/correction-atlas.png', route => route.fulfill({ contentType: 'image/png', body: atlas }))
+  await page.goto('/correction-probe')
+  const result = await page.evaluate(async ({ manifest, modules }) => {
+    const { Anime25DPlayer } = await import(`${modules}player.ts`)
+    const { IDENTITY_DRIVER } = await import(`${modules}driver.ts`)
+    const { poseCorrectionPatch } = await import(`${modules}poseCorrections.ts`)
+    const { isAnime25DPlayback } = await import(`${modules}types.ts`)
+    const { bindAttachmentMesh, sampleAttachmentMesh } = await import(`${modules}attachmentMesh.ts`)
+    const original = manifest.anime25dPlayback
+    const authored = structuredClone(original)
+    const eye = original.anchors.eyeL
+    if (!eye) throw new Error('Fixture must have an eye anchor')
+    // Deliberately visible calibration stroke. It proves authoring reaches the
+    // renderer, NOT that this arbitrary stroke is the artistically correct pose.
+    const patch = poseCorrectionPatch(original.shellProfile.head,
+      { x: eye.icx, y: eye.closeY }, { x: 0, y: 0 }, { x: 0, y: -16 }, { x: 110, y: 95 })
+    authored.shellProfile.poseCorrections = [{ surface: 'head',
+      at: { angleX: 0.8, angleY: -0.6, eyeCloseL: 1 }, patches: [patch] }]
+    if (!isAnime25DPlayback(authored)) throw new Error('Authored package failed validation')
+    const player = new Anime25DPlayer(document.querySelector('canvas'), original, manifest)
+    player.resize(768, 1024, 1)
+    const poses = [
+      { angleX: 0, angleY: 0, eyeOpenL: 0, eyeOpenR: 0 },
+      { angleX: 0.8, angleY: 0, eyeOpenL: 0, eyeOpenR: 0 },
+      { angleX: 0, angleY: -0.6, eyeOpenL: 0, eyeOpenR: 0 },
+      { angleX: 0.8, angleY: -0.6, eyeOpenL: 1, eyeOpenR: 1 },
+      { angleX: 0.8, angleY: -0.6, eyeOpenL: 0, eyeOpenR: 0 },
+      { angleX: 0.8, angleY: 0, eyeOpenL: 0, eyeOpenR: 0 },
+    ]
+    const runs = []
+    for (const playback of [original, authored, original]) {
+      await player.replaceLivePackage(playback, manifest, '/correction-atlas.png')
+      player.shellActivation = 1
+      const frames = []
+      for (const pose of poses) {
+        Object.assign(player.current, IDENTITY_DRIVER, pose, { idle: false, rand: false, blink: false, phys: false })
+        player.time = 1
+        player.deform()
+        player.uploadGeometry()
+        player.draw()
+        const pixels = new Uint8Array(768 * 1024 * 4)
+        player.gl.readPixels(0, 0, 768, 1024, player.gl.RGBA, player.gl.UNSIGNED_BYTE, pixels)
+        const geometry = player.layers.map(layer => ({ role: layer.source.role, head: layer.source.group === 'head', points: Array.from(layer.deformed) }))
+        const face = player.layers.find(layer => layer.source.role === 'face')
+        const witness = bindAttachmentMesh(face, eye.icx, eye.closeY)
+        const point = { x: 0, y: 0 }
+        if (!witness) throw new Error('Eye anchor must bind to final face mesh')
+        sampleAttachmentMesh(witness, point)
+        const screenshot = player.gl.canvas.toDataURL('image/png').split(',')[1]
+        player.deform()
+        const dirty = player.layers.filter(layer => layer.geometryDirty)
+        if (dirty.length) throw new Error(`Repeated evaluation marked geometry dirty: ${JSON.stringify(dirty.map(layer => ({ name: layer.source.name, opacity: layer.frameOpacity, correction: Boolean(layer.secondaryDeformation.poseCorrections) })))}`)
+        frames.push({ geometry, pixels, point, screenshot })
+      }
+      runs.push(frames)
+    }
+    const differences = poses.map((_, poseIndex) => {
+      const before = runs[0][poseIndex]
+      const after = runs[1][poseIndex]
+      const cleared = runs[2][poseIndex]
+      let changedPixels = 0
+      let restoredPixels = 0
+      let bodyError = 0
+      for (let i = 0; i < before.pixels.length; i += 4) {
+        if (before.pixels.slice(i, i + 4).some((v, k) => v !== after.pixels[i + k])) changedPixels++
+        if (before.pixels.slice(i, i + 4).some((v, k) => v !== cleared.pixels[i + k])) restoredPixels++
+      }
+      before.geometry.forEach((layer, index) => {
+        if (!layer.head) layer.points.forEach((v, i) => { bodyError = Math.max(bodyError, Math.abs(v - after.geometry[index].points[i])) })
+      })
+      return { changedPixels, restoredPixels, bodyError, eyeSurfaceShift: Math.hypot(after.point.x - before.point.x, after.point.y - before.point.y) }
+    })
+    const screenshots = [runs[0][4].screenshot, runs[1][4].screenshot]
+    const error = player.gl.getError()
+    player.dispose()
+    return { differences, screenshots, error }
+  }, { manifest, modules })
+  await testInfo.attach('combination-correction-differences', { body: JSON.stringify(result.differences), contentType: 'application/json' })
+  for (const [index, screenshot] of result.screenshots.entries()) {
+    await testInfo.attach(index ? 'authored-combination' : 'baseline-combination', { body: Buffer.from(screenshot, 'base64'), contentType: 'image/png' })
+  }
+  expect(result.error).toBe(0)
+  result.differences.forEach((difference, index) => {
+    expect(difference.bodyError).toBe(0)
+    expect(difference.restoredPixels).toBe(0)
+    if (index === 4) {
+      expect(difference.changedPixels).toBeGreaterThan(100)
+      expect(difference.eyeSurfaceShift).toBeGreaterThan(5)
+      expect(difference.eyeSurfaceShift).toBeLessThan(8.1)
+    } else {
+      expect(difference.changedPixels).toBe(0)
+      expect(difference.eyeSurfaceShift).toBe(0)
+    }
+  })
+})
+
 test('real high collar retains its aperture and does not become a skin contact', async ({ page }, testInfo) => {
   test.setTimeout(60_000)
   const root = process.env.MEROPE_COLLAR_ASSET

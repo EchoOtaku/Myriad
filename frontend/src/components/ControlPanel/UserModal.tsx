@@ -26,7 +26,7 @@ import { getTappIconStyle } from '../../tapp/utils/tappColors'
 import { TAPP_LIST_PATH, tappRunPath } from '../../tapp/utils/tappPaths'
 import { getCSRFToken } from '../../utils/csrf'
 import { normalizeOAuthIconUrl } from '../../utils/oauthIcons'
-import { showError } from '../../utils/toastManager'
+import { showError, showSuccess } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
 import { Avatar } from '../Avatar'
 import { AvatarSourcePicker } from '../AvatarSourcePicker'
@@ -524,7 +524,7 @@ export const UserModal: FC<UserModalProps> = ({
       const result = await response.json()
 
       if (response.ok && result.success) {
-        alert(t.userModal.passwordChanged)
+        showSuccess(t.userModal.passwordChanged)
         setPage('main')
       } else {
         setPasswordError(
@@ -588,7 +588,7 @@ export const UserModal: FC<UserModalProps> = ({
       const result = await response.json()
 
       if (response.ok && result.success) {
-        alert(t.userModal.passwordSet)
+        showSuccess(t.userModal.passwordSet)
         setHasPassword(true)
         setPage('main')
       } else {

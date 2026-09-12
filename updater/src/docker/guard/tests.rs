@@ -59,6 +59,7 @@ fn state_with_visible_root(visible_root: PathBuf) -> GuardState {
             .collect(),
             service_images: [
                 ("backend".into(), "docker.io/example/backend".into()),
+                ("persona-worker".into(), "docker.io/example/backend".into()),
                 (
                     "federation-worker".into(),
                     "docker.io/example/backend".into(),
@@ -1209,4 +1210,48 @@ fn federation_worker_has_fixed_role_and_resource_boundary() {
         .unwrap()
         .push(json!("LD_PRELOAD=/app/data/payload.so"));
     assert!(validate(&altered).is_err());
+}
+
+#[test]
+fn persona_worker_has_fixed_command_resources_and_first_party_mounts() {
+    let state = state();
+    let request = json!({
+        "Image":"docker.io/example/backend:v1.2.3", "User":"1000:1000",
+        "Cmd":["/app/myriad-persona-worker"],
+        "Env":["MYRIAD_PROCESS_ROLE=persona-worker","DATA_DIR=/app/data","CACHE_DIR=/app/cache",
+            "SERVER_PORT=1103","SERVER_HOST=0.0.0.0","PERSONA_WEB_UPSTREAM=http://backend:1103",
+            "MYRIAD_MCP_GATEWAY_URL=http://mcp-gateway:8080/mcp","MYRIAD_MCP_GATEWAY_TOKEN=test-token-000000000000000000000000"],
+        "Labels":{"com.docker.compose.project":"myriad","com.docker.compose.service":"persona-worker"},
+        "Healthcheck":{"Test":["CMD","/usr/bin/wget","--spider","-q","http://localhost:1103/health"]},
+        "HostConfig":{"ReadonlyRootfs":true,"CapDrop":["ALL"],"Memory":1073741824,
+            "NanoCpus":1000000000,"PidsLimit":64,"SecurityOpt":["no-new-privileges:true"],
+            "Tmpfs":{"/tmp":"size=32m,mode=1777"},"NetworkMode":"myriad-net",
+            "Binds":["myriad_backend_data:/app/data:rw","myriad_backend_cache:/app/cache:rw"]}
+    });
+    let validate =
+        |v: &Value| validate_container_create(&state, &Bytes::from(serde_json::to_vec(v).unwrap()));
+    assert!(validate(&request).is_ok());
+    for (path, value) in [
+        ("/Cmd", json!(["/app/myriad-backend"])),
+        ("/User", json!("0:0")),
+        ("/HostConfig/Memory", json!(0)),
+        ("/HostConfig/NanoCpus", json!(2000000000)),
+        ("/HostConfig/PidsLimit", json!(-1)),
+        ("/HostConfig/ReadonlyRootfs", json!(false)),
+        ("/HostConfig/NetworkMode", json!("myriad-admin-net")),
+        (
+            "/HostConfig/Binds",
+            json!(["/var/run/docker.sock:/var/run/docker.sock:rw"]),
+        ),
+        (
+            "/HostConfig/Binds",
+            json!(["myriad_backend_data:/app/cache:rw"]),
+        ),
+        ("/Env/5", json!("PERSONA_WEB_UPSTREAM=http://evil:1103")),
+        ("/Env/5", json!("UPDATER_GATEWAY_SECRET=not-permitted")),
+    ] {
+        let mut invalid = request.clone();
+        *invalid.pointer_mut(path).unwrap() = value;
+        assert!(validate(&invalid).is_err(), "accepted {path}");
+    }
 }

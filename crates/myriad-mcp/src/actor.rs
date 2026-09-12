@@ -46,7 +46,11 @@ impl Drop for Inner {
 pub(super) struct ServerHandle(Arc<Inner>);
 
 impl ServerHandle {
-    pub fn spawn(config: McpServerConfig, reporter: crate::StatusReporter) -> Self {
+    pub fn spawn(
+        config: McpServerConfig,
+        reporter: crate::StatusReporter,
+        options: crate::connection::RuntimeOptions,
+    ) -> Self {
         let (calls, receiver) = mpsc::channel(16);
         let (snapshot_tx, snapshot) = watch::channel(Snapshot {
             state: "starting",
@@ -59,6 +63,7 @@ impl ServerHandle {
             snapshot_tx,
             stopped,
             reporter,
+            options,
         ));
         Self(Arc::new(Inner {
             config,
@@ -110,8 +115,14 @@ impl ServerHandle {
             .map_err(|_| "MCP server busy or stopped".to_string())?;
         tokio::time::timeout_at(deadline, result)
             .await
-            .map_err(|_| "MCP call timed out (including queue wait)".to_string())?
-            .map_err(|_| "MCP server stopped".to_string())?
+            .map_err(|_| {
+                "Execution outcome is unknown: MCP call timed out (including queue wait)"
+                    .to_string()
+            })?
+            .map_err(|_| {
+                "Execution outcome is unknown: MCP server stopped before acknowledging the call"
+                    .to_string()
+            })?
     }
 
     pub async fn shutdown(&self) {
@@ -134,8 +145,9 @@ async fn run(
     snapshot: watch::Sender<Snapshot>,
     mut stop: watch::Receiver<bool>,
     reporter: crate::StatusReporter,
+    options: crate::connection::RuntimeOptions,
 ) {
-    let mut server = McpServer::new(config.clone());
+    let mut server = McpServer::new(config.clone(), options.clone());
     let mut retry_count = 0;
     let mut retry_at = Instant::now();
     let mut first_start = true;
@@ -154,7 +166,7 @@ async fn run(
             }
             first_start = false;
             // Dropping the previous transport also terminates interrupted writes.
-            server = McpServer::new(config.clone());
+            server = McpServer::new(config.clone(), options.clone());
             snapshot.send_replace(Snapshot {
                 state: "starting",
                 ..Default::default()
@@ -170,7 +182,7 @@ async fn run(
             };
             let healthy = result.is_ok();
             if !healthy {
-                server = McpServer::new(config.clone());
+                server = McpServer::new(config.clone(), options.clone());
             }
             retry_at = Instant::now() + RETRY_DELAY;
             snapshot.send_replace(Snapshot {
@@ -215,12 +227,16 @@ async fn run(
                 if result.is_err() {
                     // A cancelled exchange cannot safely be resumed, and the
                     // external program may still be performing side effects.
-                    server = McpServer::new(config.clone());
+                    server = McpServer::new(config.clone(), options.clone());
                     retry_at = Instant::now() + RETRY_DELAY;
                     snapshot.send_replace(Snapshot { state: "failed", ..Default::default() });
                 } else {
                     retry_count = 0;
                 }
+                let result = result.map_err(|error| {
+                    if error.starts_with("Execution outcome is unknown:") { error }
+                    else { format!("Execution outcome is unknown: {error}") }
+                });
                 let _ = call.response.send(result);
             },
             _ = maintenance.tick() => {

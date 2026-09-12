@@ -15,9 +15,9 @@ const MUSIC_MARK = /\[\[music:[^\]]*\]\]/g
 
 export function stripChatWearMarker(text: string): string {
   return text
-    .replace(WEAR_MARK, '')
-    .replace(WEAR_MARK_UNI, '')
-    .replace(MUSIC_MARK, '')
+    .replaceAll(WEAR_MARK, '')
+    .replaceAll(WEAR_MARK_UNI, '')
+    .replaceAll(MUSIC_MARK, '')
     .replaceAll(/\n{3,}/g, '\n\n')
     .trim()
 }

@@ -25,6 +25,7 @@ import {
   makeUpdaterApi,
   UpdaterError,
 } from '../../services/updaterApi'
+import { showToast } from '../../utils/toastManager'
 import {
   httpStatusMessage,
   isUselessErrorText,
@@ -78,6 +79,15 @@ import {
 } from './updaterMaintenanceNav'
 import './UpdaterConfigSection.css'
 
+function emitUpdaterToast(next: Toast) {
+  if (!next) return
+  showToast({
+    message: next.text,
+    type: next.kind === 'error' ? 'error' : 'success',
+    replaceKey: 'updater',
+  })
+}
+
 export interface UpdaterInlinePanelProps {
   heading?: string
 }
@@ -115,10 +125,16 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
   const [activeJob, setActiveJob] = useState<Job | null>(null)
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
-  const [toast, setToast] = useState<Toast>(null)
   const [infraFeedback, setInfraFeedback] = useState<
     ({ scope: 'self' | 'proxy' } & NonNullable<Toast>) | null
   >(null)
+  const reportInfraFeedback = useCallback(
+    (next: ({ scope: 'self' | 'proxy' } & NonNullable<Toast>) | null) => {
+      setInfraFeedback(next)
+      if (next) emitUpdaterToast({ kind: next.kind, text: next.text })
+    },
+    [],
+  )
   /** infra upgrade blip: keep last status, don't flash offline */
   const [linkDown, setLinkDown] = useState(false)
   const [drift, setDrift] = useState<{ build: string; current: string } | null>(
@@ -376,7 +392,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
   const checkAvailable = useCallback(
     async (opts?: { silent?: boolean }) => {
       if (tokenRequired) {
-        setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
+        emitUpdaterToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
         return
       }
       setBusy('check')
@@ -384,11 +400,11 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         const manifest = await api.available()
         setAvailable(manifest)
         if (!opts?.silent) {
-          setToast(manifest ? null : { kind: 'ok', text: u.updaterNoAvailable })
+          emitUpdaterToast(manifest ? null : { kind: 'ok', text: u.updaterNoAvailable })
         }
         await refresh()
       } catch (e) {
-        setToast({ kind: 'error', text: explain(e) })
+        emitUpdaterToast({ kind: 'error', text: explain(e) })
       } finally {
         setBusy(null)
       }
@@ -415,7 +431,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     async (key: ChannelKey) => {
       if (key === sel || busy) return
       if (tokenRequired) {
-        setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
+        emitUpdaterToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
         return
       }
       const opt = CHANNEL_OPTIONS.find((o) => o.key === key)!
@@ -426,7 +442,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       try {
         await api.setPrefs({ channel: opt.channel, mode: opt.mode })
         selHydratedRef.current = true
-        setToast({
+        emitUpdaterToast({
           kind: 'ok',
           text: format(u.updaterChannelSaved, { label: channelLabel(key, u) }),
         })
@@ -434,7 +450,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         await checkAvailable()
       } catch (e) {
         setSel(prev)
-        setToast({ kind: 'error', text: explain(e) })
+        emitUpdaterToast({ kind: 'error', text: explain(e) })
         setBusy(null)
       }
     },
@@ -449,7 +465,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     ) => {
       if (!target) return
       if (tokenRequired) {
-        setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
+        emitUpdaterToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
         return
       }
       const current = status?.current_version ?? '—'
@@ -470,7 +486,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       }
 
       setBusy('update')
-      setToast(null)
+      emitUpdaterToast(null)
       try {
         const r = await api.triggerUpdate(target, {
           mode,
@@ -479,7 +495,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
           allowRisk: opts.needsRisk || opts.isDowngrade,
           idemKey: `update-${target}-${Date.now()}`,
         })
-        setToast({
+        emitUpdaterToast({
           kind: 'ok',
           text: format(u.updaterDispatched, { jobId: r.job_id }),
         })
@@ -507,7 +523,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
                 allowRisk: true,
                 idemKey: `update-dl-${target}-${Date.now()}`,
               })
-              setToast({
+              emitUpdaterToast({
                 kind: 'ok',
                 text: format(u.updaterDispatched, { jobId: r.job_id }),
               })
@@ -515,12 +531,12 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
               await refresh()
               return
             } catch (e2) {
-              setToast({ kind: 'error', text: explain(e2) })
+              emitUpdaterToast({ kind: 'error', text: explain(e2) })
               return
             }
           }
         }
-        setToast({ kind: 'error', text: explain(e) })
+        emitUpdaterToast({ kind: 'error', text: explain(e) })
       } finally {
         setBusy(null)
       }
@@ -531,13 +547,13 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
   /** recheck latest first; on error don't apply the previous cache */
   const updateToLatest = useCallback(async () => {
     if (tokenRequired) {
-      setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
+      emitUpdaterToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
       return
     }
     if (busy) return
 
     setBusy('check')
-    setToast(null)
+    emitUpdaterToast(null)
     let manifest: ReleaseManifest | null = null
     let freshStatus: UpdaterStatus | null = null
     try {
@@ -546,7 +562,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       freshStatus = await api.status()
       setStatus(freshStatus)
     } catch (e) {
-      setToast({ kind: 'error', text: explain(e) })
+      emitUpdaterToast({ kind: 'error', text: explain(e) })
       return
     } finally {
       setBusy(null)
@@ -560,7 +576,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       channelMode: selOption.mode,
     })
     if (!plan.proceed) {
-      setToast({ kind: 'ok', text: u.updaterNoAvailable })
+      emitUpdaterToast({ kind: 'ok', text: u.updaterNoAvailable })
       return
     }
     await dispatchUpdate(plan.target, plan.mode, {
@@ -593,7 +609,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
           const outcome = isFreshInfraOutcome(last, opts.beforeAt, opts.targetTag)
           if (outcome === 'succeeded' && last) {
             setLinkDown(false)
-            setInfraFeedback({
+            reportInfraFeedback({
               scope: opts.kind,
               kind: 'ok',
               text:
@@ -611,7 +627,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
           }
           if (outcome === 'failed' && last) {
             setLinkDown(false)
-            setInfraFeedback({
+            reportInfraFeedback({
               scope: opts.kind,
               kind: 'error',
               text:
@@ -632,7 +648,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         }
       }
       setLinkDown(false)
-      setInfraFeedback({
+      reportInfraFeedback({
         scope: opts.kind,
         kind: 'ok',
         text:
@@ -642,7 +658,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       })
       return 'timeout'
     },
-    [api, u],
+    [api, reportInfraFeedback, u],
   )
 
   const refreshAfterInfra = useCallback(async () => {
@@ -660,7 +676,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
 
   const triggerSelfUpdate = useCallback(async () => {
     if (tokenRequired) {
-      setInfraFeedback({
+      reportInfraFeedback({
         scope: 'self',
         kind: 'error',
         text: u.updaterTokenRequiredDirect,
@@ -685,7 +701,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         target = report.new_updater_tag || ''
       } catch (e) {
         if (!isTransientUpdaterError(e)) {
-          setInfraFeedback({
+          reportInfraFeedback({
             scope: 'self',
             kind: 'error',
             text: explain(e),
@@ -715,11 +731,12 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     u,
     waitInfraUpdateOutcome,
     refreshAfterInfra,
+    reportInfraFeedback,
   ])
 
   const triggerProxyUpdate = useCallback(async () => {
     if (tokenRequired) {
-      setInfraFeedback({
+      reportInfraFeedback({
         scope: 'proxy',
         kind: 'error',
         text: u.updaterTokenRequiredDirect,
@@ -744,7 +761,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       } catch (e) {
         if (!isTransientUpdaterError(e)) {
           await refresh().catch(() => {})
-          setInfraFeedback({
+          reportInfraFeedback({
             scope: 'proxy',
             kind: 'error',
             text: explain(e),
@@ -775,12 +792,13 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     u,
     waitInfraUpdateOutcome,
     refreshAfterInfra,
+    reportInfraFeedback,
   ])
 
   const rollbackTo = useCallback(
     async (snap: SnapshotMeta) => {
       if (tokenRequired) {
-        setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
+        emitUpdaterToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
         return
       }
       if (
@@ -795,11 +813,11 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       setBusy(`rollback-${snap.id}`)
       try {
         const r = await api.rollback(snap.id)
-        setToast({ kind: 'ok', text: u.updaterRollbackDispatched })
+        emitUpdaterToast({ kind: 'ok', text: u.updaterRollbackDispatched })
         beginMaintWatch(r.job_id)
         await refresh()
       } catch (e) {
-        setToast({ kind: 'error', text: explain(e) })
+        emitUpdaterToast({ kind: 'error', text: explain(e) })
       } finally {
         setBusy(null)
       }
@@ -810,7 +828,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
   const deleteSnapshot = useCallback(
     async (snap: SnapshotMeta) => {
       if (tokenRequired) {
-        setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
+        emitUpdaterToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
         return
       }
       const blockReason = snapshotDeleteBlockReason(snap, {
@@ -819,7 +837,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         u,
       })
       if (blockReason) {
-        setToast({ kind: 'error', text: blockReason })
+        emitUpdaterToast({ kind: 'error', text: blockReason })
         return
       }
       if (
@@ -837,11 +855,11 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       setSnapshots((list) => list.filter((s) => s.id !== snap.id))
       try {
         await api.deleteSnapshot(snap.id)
-        setToast({ kind: 'ok', text: u.updaterDeleteSnapshotDispatched })
+        emitUpdaterToast({ kind: 'ok', text: u.updaterDeleteSnapshotDispatched })
         await refresh()
       } catch (e) {
         setSnapshots(prev)
-        setToast({ kind: 'error', text: explain(e) })
+        emitUpdaterToast({ kind: 'error', text: explain(e) })
       } finally {
         setBusy(null)
       }
@@ -863,11 +881,11 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       snapshot_limit?: number
     }) => {
       if (tokenRequired) {
-        setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
+        emitUpdaterToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
         return
       }
       setBusy('snapshot-limit')
-      setToast(null)
+      emitUpdaterToast(null)
       try {
         const res = await api.setPrefs(prefs)
         const pruned = res.pruned_snapshot_ids?.length ?? 0
@@ -880,7 +898,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
           typeof res.eligible_count === 'number' ? res.eligible_count : null
         // don't claim silent success if retention is ignored
         if (enabled && eligible != null && eligible > limit && pruned === 0) {
-          setToast({
+          emitUpdaterToast({
             kind: 'error',
             text: format(u.updaterSnapshotLimitStillOver, {
               eligible: String(eligible),
@@ -889,18 +907,18 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
             }),
           })
         } else if (pruned > 0) {
-          setToast({
+          emitUpdaterToast({
             kind: 'ok',
             text: format(u.updaterSnapshotLimitSavedPruned, {
               n: String(pruned),
             }),
           })
         } else {
-          setToast({ kind: 'ok', text: u.updaterSnapshotLimitSaved })
+          emitUpdaterToast({ kind: 'ok', text: u.updaterSnapshotLimitSaved })
         }
         await refresh()
       } catch (e) {
-        setToast({ kind: 'error', text: explain(e) })
+        emitUpdaterToast({ kind: 'error', text: explain(e) })
       } finally {
         setBusy(null)
       }
@@ -910,17 +928,17 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
 
   const exitMaintenance = useCallback(async () => {
     if (tokenRequired) {
-      setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
+      emitUpdaterToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
       return
     }
     if (!confirm(u.updaterConfirmExitMaintenance)) return
     setBusy('exit-maintenance')
     try {
       await api.exitMaintenance()
-      setToast({ kind: 'ok', text: u.updaterMaintenanceExited })
+      emitUpdaterToast({ kind: 'ok', text: u.updaterMaintenanceExited })
       await refresh()
     } catch (e) {
-      setToast({ kind: 'error', text: explain(e) })
+      emitUpdaterToast({ kind: 'error', text: explain(e) })
     } finally {
       setBusy(null)
     }
@@ -928,7 +946,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
 
   const rescueContinue = useCallback(async () => {
     if (tokenRequired) {
-      setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
+      emitUpdaterToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
       return
     }
     const snap = status?.rescue_snapshot_id
@@ -946,14 +964,14 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     setBusy('rescue-continue')
     try {
       const res = await api.rescueContinue()
-      setToast({
+      emitUpdaterToast({
         kind: 'ok',
         text: `${u.updaterRescueContinueDispatched} · ${res.job_id.slice(0, 8)}`,
       })
       beginMaintWatch(res.job_id)
       await refresh()
     } catch (e) {
-      setToast({ kind: 'error', text: explain(e) })
+      emitUpdaterToast({ kind: 'error', text: explain(e) })
     } finally {
       setBusy(null)
     }
@@ -1084,20 +1102,19 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
           autoRechecking={autoRechecking}
           pendingConfirm={pendingConfirm}
           nowTick={nowTick}
-          toast={toast}
           u={u}
           onCheck={() => checkAvailable()}
           onUpdate={updateToLatest}
           onRetry={refresh}
           onSaveAutoPrefs={async (prefs) => {
             setBusy('auto-prefs')
-            setToast(null)
+            emitUpdaterToast(null)
             try {
               await api.setPrefs(prefs)
-              setToast({ kind: 'ok', text: u.updaterAutoPrefsSaved })
+              emitUpdaterToast({ kind: 'ok', text: u.updaterAutoPrefsSaved })
               await refresh()
             } catch (e) {
-              setToast({ kind: 'error', text: explain(e) })
+              emitUpdaterToast({ kind: 'error', text: explain(e) })
             } finally {
               setBusy(null)
             }

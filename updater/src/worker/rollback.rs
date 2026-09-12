@@ -159,6 +159,7 @@ async fn execute_inline_inner(
             );
             for name in [
                 "myriad-federation-worker",
+                "myriad-persona-worker",
                 "myriad-frontend",
                 "frontend",
                 "myriad-backend",
@@ -174,6 +175,7 @@ async fn execute_inline_inner(
             );
             for name in [
                 "myriad-federation-worker",
+                "myriad-persona-worker",
                 "myriad-frontend",
                 "frontend",
                 "myriad-backend",
@@ -186,6 +188,7 @@ async fn execute_inline_inner(
     // The fallback above is best-effort for legacy containers. This new writer
     // must be proven stopped before either physical or external-DB rollback.
     worker.docker().stop_federation_worker().await?;
+    worker.docker().stop_persona_worker().await?;
     let _ = rec.finish_step_ok();
 
     // --- Resolve + restore MYRIAD_TAG BEFORE snapshot work ---

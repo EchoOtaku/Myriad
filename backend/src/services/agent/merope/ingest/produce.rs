@@ -113,13 +113,34 @@ pub fn spawn_presence(user_id: i32) {
     });
 }
 
+static REMOTE_OBSERVATIONS: std::sync::LazyLock<std::sync::Arc<tokio::sync::Semaphore>> =
+    std::sync::LazyLock::new(|| std::sync::Arc::new(tokio::sync::Semaphore::new(8)));
+
 pub fn spawn(user_id: i32, event_key: impl Into<String>, summary: impl Into<String>) {
+    let relay_permit =
+        if !crate::runtime_role::PERSONA_RUNTIME_LOCAL.load(std::sync::atomic::Ordering::Acquire) {
+            let Ok(permit) = REMOTE_OBSERVATIONS.clone().try_acquire_owned() else {
+                tracing::warn!("Persona observation relay is at capacity");
+                return;
+            };
+            Some(permit)
+        } else {
+            None
+        };
     let event_key = event_key.into();
     let summary = summary.into();
     tokio::spawn(async move {
+        let _relay_permit = relay_permit;
         let Ok(db) = crate::services::tapp_registry::database().await else {
             return;
         };
+        if !crate::runtime_role::PERSONA_RUNTIME_LOCAL.load(std::sync::atomic::Ordering::Acquire) {
+            crate::services::agent::notifications::publish_persona_observation(
+                &db, user_id, &event_key, &summary,
+            )
+            .await;
+            return;
+        }
         if let Err(error) = ingest(&db, user_id, &event_key, &summary).await {
             tracing::warn!(
                 %error,

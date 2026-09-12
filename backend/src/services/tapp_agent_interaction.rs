@@ -347,7 +347,9 @@ pub async fn load_interaction(
     Ok(interaction)
 }
 
-async fn expire_due_interactions(db: &DatabaseConnection) -> Result<usize, AgentInteractionError> {
+pub(crate) async fn expire_due_interactions(
+    db: &DatabaseConnection,
+) -> Result<usize, AgentInteractionError> {
     let rows = shared_registry::RegistryRow::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
@@ -379,28 +381,6 @@ LIMIT 128
         }
     }
     Ok(expired)
-}
-
-/// Start one local sweeper. PostgreSQL CAS makes it safe for every backend
-/// replica to run the worker; only the winner resumes a given Agent task.
-pub fn spawn_expiry_worker(db: DatabaseConnection) {
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(5));
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        loop {
-            interval.tick().await;
-            match expire_due_interactions(&db).await {
-                Ok(count) if count > 0 => {
-                    tracing::info!(count, "[TAPP] Expired Agent interactions resumed")
-                }
-                Ok(_) => {}
-                Err(error) => tracing::warn!(
-                    error = %error.message(),
-                    "[TAPP] Agent interaction expiry sweep failed"
-                ),
-            }
-        }
-    });
 }
 
 async fn conditional_save_interaction(

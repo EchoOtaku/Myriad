@@ -34,6 +34,7 @@ import {
 import SiteMotionWorkbench from '../../features/merope/SiteMotionWorkbench'
 import { agentService } from '../../services/agent'
 import { invalidatePublicConfigCache } from '../../utils/requestDedup'
+import { showStickyToast, showToast } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
 import {
   activityKey,
@@ -90,6 +91,14 @@ interface ConfigField {
 
 const OPENAI_BASE_URL = 'https://api.openai.com/v1'
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
+
+function notifyConfigAction(message: string, ok: boolean, replaceKey: string) {
+  if (ok) {
+    showToast({ message, type: 'success', replaceKey })
+    return
+  }
+  showStickyToast({ message, type: 'error', replaceKey })
+}
 
 /** openai + openrouter.ai base_url displays as openrouter */
 function resolveProvider(rawProvider: string, openaiBaseUrl: string): string {
@@ -693,12 +702,14 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     try {
       const result = await onSpeechTest()
       setSpeechTestResult(result)
+      notifyConfigAction(result.message, result.success, 'config-speech-test')
     } catch (error) {
+      const message = userFacingError(error, t.config.speechTestFailed)
       setSpeechTestResult({
         success: false,
-        message:
-          userFacingError(error, t.config.speechTestFailed),
+        message,
       })
+      notifyConfigAction(message, false, 'config-speech-test')
     } finally {
       setSpeechTesting(false)
     }
@@ -726,11 +737,12 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     try {
       await agentService.testQqBot()
       setQqBotTestMessage(t.config.qqBotTestOk)
+      notifyConfigAction(t.config.qqBotTestOk, true, 'config-bot-test')
       await loadQqBotStatus()
     } catch (error) {
-      setQqBotTestMessage(
-        userFacingError(error, t.config.qqBotTestFailed),
-      )
+      const message = userFacingError(error, t.config.qqBotTestFailed)
+      setQqBotTestMessage(message)
+      notifyConfigAction(message, false, 'config-bot-test')
     } finally {
       setQqBotTesting(false)
     }
@@ -758,6 +770,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     try {
       const tested = await agentService.testTelegramBot()
       setTelegramBotTestMessage(t.config.telegramBotTestOk)
+      notifyConfigAction(t.config.telegramBotTestOk, true, 'config-bot-test')
       if (tested.botUsername || tested.botName) {
         setTelegramBotStatus((current) =>
           current
@@ -771,9 +784,9 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       }
       await loadTelegramBotStatus()
     } catch (error) {
-      setTelegramBotTestMessage(
-        userFacingError(error, t.config.telegramBotTestFailed),
-      )
+      const message = userFacingError(error, t.config.telegramBotTestFailed)
+      setTelegramBotTestMessage(message)
+      notifyConfigAction(message, false, 'config-bot-test')
     } finally {
       setTelegramBotTesting(false)
     }
@@ -805,6 +818,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     try {
       const tested = await agentService.testDiscordBot()
       setDiscordBotTestMessage(t.config.discordBotTestOk)
+      notifyConfigAction(t.config.discordBotTestOk, true, 'config-bot-test')
       if (tested.botUsername || tested.botName || tested.botUserId) {
         setDiscordBotStatus((current) =>
           current
@@ -819,9 +833,9 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       }
       await loadDiscordBotStatus()
     } catch (error) {
-      setDiscordBotTestMessage(
-        userFacingError(error, t.config.discordBotTestFailed),
-      )
+      const message = userFacingError(error, t.config.discordBotTestFailed)
+      setDiscordBotTestMessage(message)
+      notifyConfigAction(message, false, 'config-bot-test')
     } finally {
       setDiscordBotTesting(false)
     }
@@ -853,11 +867,12 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     try {
       await agentService.testFeishuBot()
       setFeishuBotTestMessage(t.config.feishuBotTestOk)
+      notifyConfigAction(t.config.feishuBotTestOk, true, 'config-bot-test')
       await loadFeishuBotStatus()
     } catch (error) {
-      setFeishuBotTestMessage(
-        userFacingError(error, t.config.feishuBotTestFailed),
-      )
+      const message = userFacingError(error, t.config.feishuBotTestFailed)
+      setFeishuBotTestMessage(message)
+      notifyConfigAction(message, false, 'config-bot-test')
     } finally {
       setFeishuBotTesting(false)
     }
@@ -936,19 +951,19 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
   const [portraitUrl, setPortraitUrl] = useState<string | null>(null)
   const [vitalsReady, setVitalsReady] = useState(false)
   const [personaBusy, setPersonaBusy] = useState(false)
-  const [personaError, setPersonaError] = useState<string | null>(null)
 
   const handleDeletePersona = useCallback(async () => {
     setPersonaBusy(true)
-    setPersonaError(null)
     try {
       await agentService.deletePersona()
       invalidatePublicConfigCache()
       window.dispatchEvent(new CustomEvent('arael-persona-updated'))
     } catch (error) {
-      setPersonaError(
-        userFacingError(error, t.config.agentPersonaDeleteFailed),
-      )
+      showStickyToast({
+        message: userFacingError(error, t.config.agentPersonaDeleteFailed),
+        type: 'error',
+        replaceKey: 'config-persona',
+      })
     } finally {
       setPersonaBusy(false)
     }
@@ -1339,7 +1354,6 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
                     },
                   ]
             }
-            footer={personaError}
           >
             {personaCardCopy ? (
               <>
@@ -1432,9 +1446,6 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               ? t.config.qqBotTesting
               : t.config.qqBotTest}
           </SettingsButton>
-          {qqBotTestMessage ? (
-            <p className="ai-llm-tier-desc">{qqBotTestMessage}</p>
-          ) : null}
           <ChannelConnectFacts
             credentialLabel={t.config.qqBotCredentialLabel}
             credentialValue={
@@ -1511,9 +1522,6 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               ? t.config.telegramBotTesting
               : t.config.telegramBotTest}
           </SettingsButton>
-          {telegramBotTestMessage ? (
-            <p className="ai-llm-tier-desc">{telegramBotTestMessage}</p>
-          ) : null}
           <ChannelConnectFacts
             credentialLabel={t.config.telegramBotCredentialLabel}
             credentialValue={
@@ -1600,9 +1608,6 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               ? t.config.discordBotTesting
               : t.config.discordBotTest}
           </SettingsButton>
-          {discordBotTestMessage ? (
-            <p className="ai-llm-tier-desc">{discordBotTestMessage}</p>
-          ) : null}
           <ChannelConnectFacts
             credentialLabel={t.config.discordBotCredentialLabel}
             credentialValue={
@@ -1698,9 +1703,6 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               ? t.config.feishuBotTesting
               : t.config.feishuBotTest}
           </SettingsButton>
-          {feishuBotTestMessage ? (
-            <p className="ai-llm-tier-desc">{feishuBotTestMessage}</p>
-          ) : null}
           <ChannelConnectFacts
             credentialLabel={t.config.feishuBotCredentialLabel}
             credentialValue={

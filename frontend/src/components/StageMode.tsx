@@ -226,15 +226,15 @@ const PUNCTUATION_SPLIT_REGEX = /([。！？.!?，,])/g
 
 function cleanText(text: string): string {
   return text
-    .replace(CONTROL_CHARS_REGEX, '')
-    .replace(MARKDOWN_SYMBOLS_REGEX, '')
-    .replace(WHITESPACE_REGEX, ' ')
+    .replaceAll(CONTROL_CHARS_REGEX, '')
+    .replaceAll(MARKDOWN_SYMBOLS_REGEX, '')
+    .replaceAll(WHITESPACE_REGEX, ' ')
     .trim()
 }
 
 function splitByPunctuation(text: string) {
   return text
-    .replace(PUNCTUATION_SPLIT_REGEX, '$1\uFFFF')
+    .replaceAll(PUNCTUATION_SPLIT_REGEX, '$1\uFFFF')
     .split('\uFFFF')
     .map((s) => s.trim())
     .filter((s) => s.length > 0)

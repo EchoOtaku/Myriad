@@ -15,6 +15,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { agentService } from '../../services/agent'
+import { showStickyToast } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
 import { relativeTimeBucket } from '../agent-panel/agentRelativeTime'
 import {
@@ -28,7 +29,6 @@ import {
   InputItem,
   ManagedList,
   SegmentedControl,
-  SettingFieldErrorTag,
   SettingsButton,
   SettingTitleGuideEntry,
   ToggleSwitch,
@@ -164,10 +164,6 @@ export const AgentOptionsPanel: React.FC = () => {
   const [tasks, setTasks] = useState<HeartbeatTask[]>([])
   const [skills, setSkills] = useState<SkillInfo[]>([])
   const [memories, setMemories] = useState<MemoryEntry[]>([])
-  const [note, setNote] = useState<{
-    area: 'heartbeat' | 'skills' | 'memory' | 'all'
-    text: string
-  } | null>(null)
   const [loading, setLoading] = useState(false)
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [draft, setDraft] = useState<TaskDraft | null>(null)
@@ -181,7 +177,6 @@ export const AgentOptionsPanel: React.FC = () => {
   const [memoryQuery, setMemoryQuery] = useState('')
 
   const load = useCallback(async () => {
-    setNote(null)
     if (!isAuthenticated) {
       setTasks([])
       setSkills([])
@@ -196,9 +191,10 @@ export const AgentOptionsPanel: React.FC = () => {
       setMemories(nextMemories)
       setTasks(await agentService.getHeartbeatTasks())
     } catch (error) {
-      setNote({
-        area: 'all',
-        text: userFacingError(error, m.loadFailed),
+      showStickyToast({
+        message: userFacingError(error, m.loadFailed),
+        type: 'error',
+        replaceKey: 'config-agent-options',
       })
     } finally {
       setLoading(false)
@@ -250,19 +246,15 @@ export const AgentOptionsPanel: React.FC = () => {
   const guard = useCallback(
     async (key: string, run: () => Promise<unknown>): Promise<boolean> => {
       setBusyKey(key)
-      setNote(null)
       try {
         await run()
         await load()
         return true
       } catch (error) {
-        setNote({
-          area: key.startsWith('skill:')
-            ? 'skills'
-            : key.startsWith('memory:')
-              ? 'memory'
-              : 'heartbeat',
-          text: userFacingError(error, m.actionFailed),
+        showStickyToast({
+          message: userFacingError(error, m.actionFailed),
+          type: 'error',
+          replaceKey: 'config-agent-options',
         })
         return false
       } finally {
@@ -275,7 +267,6 @@ export const AgentOptionsPanel: React.FC = () => {
   const saveDraft = async () => {
     if (!draft) return
     if (!isPlausibleCron(draft.schedule)) {
-      setNote({ area: 'heartbeat', text: m.badCron })
       return
     }
     const body = {
@@ -668,16 +659,6 @@ export const AgentOptionsPanel: React.FC = () => {
     ],
   )
 
-  const errorFor = (
-    area: 'heartbeat' | 'skills' | 'memory',
-  ): React.ReactNode => {
-    if (!note) return null
-    if (note.area !== 'all' && note.area !== area) return null
-    return (
-      <SettingFieldErrorTag title={note.text}>{note.text}</SettingFieldErrorTag>
-    )
-  }
-
   const queryChrome = {
     queryToggleLabel: t.config.federationListQueryToggle,
     queryToggleDescription: t.config.federationListQueryToggleDesc,
@@ -702,7 +683,6 @@ export const AgentOptionsPanel: React.FC = () => {
       <AgentNestedSection
         title={t.config.agentHeartbeatTitle}
         description={t.config.agentHeartbeatDesc}
-        error={errorFor('heartbeat')}
         {...bindGuide('ai.heartbeat', g.ai.heartbeat)}
       >
         <ManagedList
@@ -769,7 +749,6 @@ export const AgentOptionsPanel: React.FC = () => {
       <AgentNestedSection
         title={t.config.agentSkillsTitle}
         description={t.config.agentSkillsDesc}
-        error={errorFor('skills')}
         {...bindGuide('ai.skills', g.ai.skills)}
       >
         <ManagedList
@@ -827,7 +806,6 @@ export const AgentOptionsPanel: React.FC = () => {
       <AgentNestedSection
         title={t.config.agentMemoryTitle}
         description={t.config.agentMemoryDesc}
-        error={errorFor('memory')}
         {...bindGuide('ai.memory', g.ai.memory)}
       >
         <ManagedList

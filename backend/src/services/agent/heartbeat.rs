@@ -11,7 +11,6 @@
 //! 避免同一分钟被多个 backend 重复执行。崩溃后超过 STALE 窗口可重认领。
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use chrono::{DateTime, Datelike, Local, Timelike, Utc};
@@ -24,44 +23,6 @@ pub const HEARTBEAT_TASK_TIMEOUT_SECS: u64 = 600;
 
 /// 认领卡住后允许重认领的阈值（秒），略长于执行超时
 const CLAIM_STALE_SECS: i64 = 900;
-
-/// 当前进行中的 heartbeat 执行数（关机 drain 用）
-static HEARTBEAT_INFLIGHT: AtomicUsize = AtomicUsize::new(0);
-
-/// RAII：进入/离开 in-flight 计数
-pub struct HeartbeatInflightGuard;
-
-impl HeartbeatInflightGuard {
-    pub fn enter() -> Self {
-        HEARTBEAT_INFLIGHT.fetch_add(1, Ordering::SeqCst);
-        Self
-    }
-}
-
-impl Drop for HeartbeatInflightGuard {
-    fn drop(&mut self) {
-        HEARTBEAT_INFLIGHT.fetch_sub(1, Ordering::SeqCst);
-    }
-}
-
-/// 优雅关机：等待 in-flight heartbeat 结束（带上限）
-pub async fn wait_inflight_drain(timeout: std::time::Duration) {
-    let start = std::time::Instant::now();
-    loop {
-        let n = HEARTBEAT_INFLIGHT.load(Ordering::SeqCst);
-        if n == 0 {
-            return;
-        }
-        if start.elapsed() >= timeout {
-            tracing::warn!(
-                remaining = n,
-                "[Heartbeat] Shutdown drain timed out with in-flight tasks"
-            );
-            return;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    }
-}
 
 /// Heartbeat 任务定义
 #[derive(Debug, Clone, Serialize, Deserialize)]

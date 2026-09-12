@@ -1,4 +1,5 @@
 import type { MeropeRigImportSource, MeropeRigManifest } from './rig/types'
+import type { PoseCorrection } from './anime25drig/poseCorrections'
 import { currentCopy } from '../../i18n/localeCopy'
 import api from '../../lib/api'
 import { isLiveMeropeManifest, isRigManifest } from './rig/types'
@@ -244,6 +245,20 @@ export async function importMeropeRig(
   atlas: Blob,
 ): Promise<MeropeRigManifest> {
   return submitMeropeRigImport('/import', source, atlas, 'import')
+}
+
+export async function saveRigPoseCorrections(assetId: string, corrections: PoseCorrection[]): Promise<{ manifest: MeropeRigManifest; assetId: string }> {
+  try {
+    const response = await api.patch<{ manifest: unknown; assetId: unknown }>(`${PREFIX}/pose-corrections`, { assetId, corrections })
+    if (!isRigManifest(response.data.manifest) || typeof response.data.assetId !== 'string' || !/^[0-9a-f]{64}$/u.test(response.data.assetId)) {
+      throw new Error(currentCopy().merope.poseCorrection.failed)
+    }
+    return { manifest: response.data.manifest, assetId: response.data.assetId }
+  } catch (reason) {
+    const error = meropeError(reason, currentCopy().merope.poseCorrection.failed)
+    if (error.status === 409) throw new Error(currentCopy().merope.poseCorrection.conflict)
+    throw error
+  }
 }
 
 export async function previewMeropeRigImport(

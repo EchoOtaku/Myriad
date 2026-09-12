@@ -14,12 +14,23 @@ pub struct McpServersConfig {
     pub servers: Vec<McpServerConfig>,
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum McpTransport {
+    #[default]
+    Stdio,
+    Gateway,
+}
+
 /// 单个 MCP 服务器配置
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct McpServerConfig {
     /// 服务器 ID（用于日志和引用）
     pub id: String,
+    #[serde(default)]
+    pub transport: McpTransport,
     /// 启动命令（如 "npx", "python", "node"）
+    #[serde(default)]
     pub command: String,
     /// 命令参数
     #[serde(default)]
@@ -108,7 +119,15 @@ pub fn validate_config(mut config: McpServersConfig) -> Result<McpServersConfig,
         if !seen.insert(server.id.clone()) {
             return Err(format!("duplicate server id '{}'", server.id));
         }
-        if server.command.is_empty() {
+        if server.transport == McpTransport::Gateway
+            && (!server.command.is_empty() || !server.args.is_empty() || !server.env.is_empty())
+        {
+            return Err(format!(
+                "server '{}': gateway definitions cannot supply commands, arguments or environment",
+                server.id
+            ));
+        }
+        if server.command.is_empty() && server.transport == McpTransport::Stdio {
             return Err(format!("server '{}': command must not be empty", server.id));
         }
         if server.command.len() > 512 {
@@ -197,6 +216,7 @@ mod tests {
             servers: vec![
                 McpServerConfig {
                     id: "a".into(),
+                    transport: crate::config::McpTransport::Stdio,
                     command: "npx".into(),
                     args: vec![],
                     env: HashMap::new(),
@@ -207,6 +227,7 @@ mod tests {
                 },
                 McpServerConfig {
                     id: "a".into(),
+                    transport: crate::config::McpTransport::Stdio,
                     command: "npx".into(),
                     args: vec![],
                     env: HashMap::new(),
@@ -222,6 +243,7 @@ mod tests {
         let bad = McpServersConfig {
             servers: vec![McpServerConfig {
                 id: "has space".into(),
+                transport: crate::config::McpTransport::Stdio,
                 command: "npx".into(),
                 args: vec![],
                 env: HashMap::new(),
@@ -239,6 +261,7 @@ mod tests {
         let cfg = McpServersConfig {
             servers: vec![McpServerConfig {
                 id: "github".into(),
+                transport: crate::config::McpTransport::Stdio,
                 command: "npx".into(),
                 args: vec!["-y".into(), "@modelcontextprotocol/server-github".into()],
                 env: HashMap::from([("GITHUB_TOKEN".into(), "x".into())]),
@@ -260,5 +283,26 @@ mod activation_tests {
         let config: McpServerConfig =
             serde_json::from_value(serde_json::json!({"id":"new", "command":"node"})).unwrap();
         assert!(!config.enabled);
+    }
+
+    #[test]
+    fn gateway_definition_cannot_supply_a_local_process() {
+        for extra in [
+            serde_json::json!({"command":"sh"}),
+            serde_json::json!({"args":["-c","anything"]}),
+            serde_json::json!({"env":{"TOKEN":"secret"}}),
+        ] {
+            let mut server = serde_json::json!({"id":"gateway", "transport":"gateway"});
+            for (key, value) in extra.as_object().unwrap() {
+                server[key] = value.clone();
+            }
+            let config = serde_json::from_value(serde_json::json!({"servers":[server]})).unwrap();
+            assert!(validate_config(config).is_err());
+        }
+        let config = serde_json::from_value(
+            serde_json::json!({"servers":[{"id":"gateway", "transport":"gateway"}]}),
+        )
+        .unwrap();
+        assert!(validate_config(config).is_ok());
     }
 }

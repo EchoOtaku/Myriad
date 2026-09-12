@@ -79,6 +79,7 @@ impl GuardConfig {
         // updater-writable `.env` or runtime configuration.
         let service_images = [
             ("backend", "docker.io/somekawahitomi/myriad-backend"),
+            ("persona-worker", "docker.io/somekawahitomi/myriad-backend"),
             (
                 "federation-worker",
                 "docker.io/somekawahitomi/myriad-backend",

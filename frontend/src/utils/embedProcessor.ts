@@ -281,7 +281,7 @@ export function processEmbeds(content: string): string {
 
   const neteaseIframeRegex =
     /<iframe[^>]*src=["']([^"']*music\.163\.com\/outchain\/player[^"']*)["'][^>]*>[\s\S]*?<\/iframe>/gi
-  result = result.replace(neteaseIframeRegex, (match, src) => {
+  result = result.replaceAll(neteaseIframeRegex, (match, src) => {
     const songId = extractNeteaseSongId(src)
     if (songId) {
       return generateNeteaseMusicCard(songId)
@@ -293,7 +293,7 @@ export function processEmbeds(content: string): string {
   // 匹配: <a href="https:
   const neteaseLinkRegex =
     /<a[^>]*href=["'](https?:\/\/(?:y\.)?music\.163\.com\/(?:#\/)?(?:m\/)?song(?:\?[^"']*id=\d|\/\d)[^"']*)["'][^>]*>[\s\S]*?<\/a>/gi
-  result = result.replace(neteaseLinkRegex, (match, url) => {
+  result = result.replaceAll(neteaseLinkRegex, (match, url) => {
     const songId = extractNeteaseSongIdFromUrl(url)
     if (songId) {
       return generateNeteaseMusicCard(songId)
@@ -305,7 +305,7 @@ export function processEmbeds(content: string): string {
   // 只处理独立的链接，避免重复处理
   const steamLinkRegex =
     /<a[^>]*href=["'](https?:\/\/store\.steampowered\.com\/app\/\d[^"']*)["'][^>]*>[\s\S]*?<\/a>/gi
-  result = result.replace(steamLinkRegex, (match, url) => {
+  result = result.replaceAll(steamLinkRegex, (match, url) => {
     const appId = extractSteamAppId(url)
     if (appId) {
       return generateSteamGameCard(appId)
@@ -319,7 +319,7 @@ export function processEmbeds(content: string): string {
   // www / m / b23.tv 短链（路径里带 BV/av 时）
   const bilibiliLinkRegex =
     /<a[^>]*href=["'](https?:\/\/(?:(?:www|m)\.)?bilibili\.com\/video\/(?:BV[a-z0-9]|av\d)[^"']*|https?:\/\/b23\.tv\/[^"']+)["'][^>]*>[\s\S]*?<\/a>/gi
-  result = result.replace(bilibiliLinkRegex, (match, url) => {
+  result = result.replaceAll(bilibiliLinkRegex, (match, url) => {
     const videoId = extractBilibiliVideoId(url)
     if (videoId) {
       return generateBilibiliIframe(videoId)
@@ -330,7 +330,7 @@ export function processEmbeds(content: string): string {
   // 3.1b 纯文本 URL（非 <a>）：m.bilibili / www / b23.tv
   const bilibiliBareUrlRegex =
     /(?<!["'=])(https?:\/\/(?:(?:www|m)\.)?bilibili\.com\/video\/(?:BV[a-z0-9]|av\d)[^\s<]*|https?:\/\/b23\.tv\/[A-Z0-9]+)/gi
-  result = result.replace(bilibiliBareUrlRegex, (url) => {
+  result = result.replaceAll(bilibiliBareUrlRegex, (url) => {
     const videoId = extractBilibiliVideoId(url)
     if (videoId) {
       return generateBilibiliIframe(videoId)
@@ -340,7 +340,7 @@ export function processEmbeds(content: string): string {
 
   const bilibiliPlainTextRegex =
     /(?<!<[^>]*|href=["'][^"']*|>)\b(BV[a-z0-9]{10,12}|av\d{1,12})\b(?![^<]*<\/a>)/gi
-  result = result.replace(bilibiliPlainTextRegex, (match) => {
+  result = result.replaceAll(bilibiliPlainTextRegex, (match) => {
     const videoId = extractBilibiliVideoId(match)
     if (videoId) {
       return generateBilibiliIframe(videoId)
@@ -353,7 +353,7 @@ export function processEmbeds(content: string): string {
   const seenGithubRepos = new Set<string>()
   const githubLinkRegex =
     /<a[^>]*href=["'](https?:\/\/github\.com\/[^/]+\/[^/?#"']+)["'][^>]*>[\s\S]*?<\/a>/gi
-  result = result.replace(githubLinkRegex, (match, url) => {
+  result = result.replaceAll(githubLinkRegex, (match, url) => {
     const cleanUrl = url.split('?')[0].split('#')[0]
     const parts = cleanUrl.replaceAll(/^https?:\/\/github\.com\//g, '').split('/')
     if (parts.length === 2 && parts[0] && parts[1]) {

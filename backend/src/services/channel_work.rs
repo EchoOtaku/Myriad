@@ -881,6 +881,14 @@ use presentation::map_progress;
 
 mod runtime;
 use runtime::{is_active, owns_run, start_delivery, stop_delivery, with_chat_lock};
-pub(crate) use runtime::{revoke_pairing, spawn_recovery_worker};
+pub(crate) use runtime::{revoke_pairing, run_recovery_worker};
 mod delivery;
 use delivery::{clear_outbound, deliver_run, flush_outbound};
+
+/// Cancels a channel session watcher when its owning connection is stopped.
+pub(crate) struct AbortTask<T>(pub tokio::task::JoinHandle<T>);
+impl<T> Drop for AbortTask<T> {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}

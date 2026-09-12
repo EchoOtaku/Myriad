@@ -82,7 +82,7 @@ describe('currentCopy', () => {
     assert.ok(copy.tapp.storeDownloadFailed.includes('{name}'))
     assert.equal(
       formatCurrent(copy.tapp.storeAppNotFound, { id: 'hello' }),
-      copy.tapp.storeAppNotFound.replace('{id}', 'hello'),
+      copy.tapp.storeAppNotFound.replaceAll('{id}', 'hello'),
     )
   })
 

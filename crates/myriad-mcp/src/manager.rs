@@ -19,6 +19,7 @@ pub struct McpManager {
     reload_lock: Mutex<()>,
     stopped: AtomicBool,
     reporter: crate::StatusReporter,
+    options: crate::connection::RuntimeOptions,
 }
 
 impl McpManager {
@@ -30,6 +31,19 @@ impl McpManager {
         config_path: &Path,
         reporter: crate::StatusReporter,
     ) -> Arc<Self> {
+        Self::init_with_options(
+            config_path,
+            reporter,
+            crate::connection::RuntimeOptions::default(),
+        )
+        .await
+    }
+
+    pub async fn init_with_options(
+        config_path: &Path,
+        reporter: crate::StatusReporter,
+        options: crate::connection::RuntimeOptions,
+    ) -> Arc<Self> {
         let manager = Arc::new(Self {
             config_path: config_path.to_path_buf(),
             servers: RwLock::new(BTreeMap::new()),
@@ -37,6 +51,7 @@ impl McpManager {
             reload_lock: Mutex::new(()),
             stopped: AtomicBool::new(false),
             reporter,
+            options,
         });
         if let Err(error) = manager.reload_from_disk().await {
             tracing::warn!(%error, "MCP configuration rejected at startup");
@@ -76,6 +91,10 @@ impl McpManager {
         Ok(())
     }
 
+    pub fn runtime_policy(&self) -> serde_json::Value {
+        serde_json::json!({"local_stdio_allowed": self.options.allow_stdio, "gateway_configured": self.options.gateway.is_some()})
+    }
+
     pub async fn read_config(&self) -> Result<McpServersConfig, String> {
         load_config(&self.config_path).await
     }
@@ -93,6 +112,18 @@ impl McpManager {
         if self.stopped.load(Ordering::Acquire) {
             return Err("MCP manager stopped".into());
         }
+        // Preserve blocked legacy definitions for editing, without activating
+        // them. This lets operators disable/migrate multiple entries one by one.
+        let previous = load_config(&self.config_path).await.unwrap_or_default();
+        let changed = McpServersConfig {
+            servers: config
+                .servers
+                .iter()
+                .filter(|server| !previous.servers.contains(server))
+                .cloned()
+                .collect(),
+        };
+        self.options.validate(&changed)?;
         save_config(&self.config_path, &config).await?;
         let observed_mtime = file_mtime(&self.config_path).await;
         self.apply(config.clone()).await?;
@@ -107,7 +138,7 @@ impl McpManager {
         let desired: BTreeMap<_, _> = config
             .servers
             .into_iter()
-            .filter(|s| s.enabled)
+            .filter(|s| s.enabled && self.options.allows(s.transport))
             .map(|s| (s.id.clone(), s))
             .collect();
         let retired = {
@@ -127,9 +158,9 @@ impl McpManager {
         {
             let mut servers = self.servers.write().await;
             for (id, config) in desired {
-                servers
-                    .entry(id)
-                    .or_insert_with(|| ServerHandle::spawn(config, self.reporter.clone()));
+                servers.entry(id).or_insert_with(|| {
+                    ServerHandle::spawn(config, self.reporter.clone(), self.options.clone())
+                });
             }
         }
         Ok(())
@@ -264,7 +295,12 @@ mod lifecycle_tests {
     #[tokio::test]
     async fn stalled_io_does_not_block_inspection_or_revocation() {
         let path = std::env::temp_dir().join(format!("myriad-mcp-{}.json", uuid::Uuid::new_v4()));
-        let manager = McpManager::init(&path).await;
+        let manager = McpManager::init_with_options(
+            &path,
+            Arc::new(|_, _| {}),
+            crate::connection::RuntimeOptions::development(),
+        )
+        .await;
         let slow = server_config("a", true);
         let fast = server_config("a.b", false);
         manager
@@ -331,6 +367,43 @@ mod lifecycle_tests {
         );
         manager.shutdown_all().await;
         assert!(manager.list_tools().await.is_empty());
+        tokio::fs::remove_file(path).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn restrictive_host_preserves_legacy_definitions_without_starting_them() {
+        let path =
+            std::env::temp_dir().join(format!("myriad-mcp-policy-{}.json", uuid::Uuid::new_v4()));
+        let mut first = server_config("first", false);
+        let second = server_config("second", false);
+        save_config(
+            &path,
+            &McpServersConfig {
+                servers: vec![first.clone(), second.clone()],
+            },
+        )
+        .await
+        .unwrap();
+        let manager = McpManager::init(&path).await;
+        assert!(manager.list_server_status().await.is_empty());
+        assert!(manager.list_tools().await.is_empty());
+        assert_eq!(manager.read_config().await.unwrap().servers.len(), 2);
+        first.enabled = false;
+        manager
+            .replace_config(McpServersConfig {
+                servers: vec![first.clone(), second.clone()],
+            })
+            .await
+            .unwrap();
+        first.enabled = true;
+        assert!(manager
+            .replace_config(McpServersConfig {
+                servers: vec![first, second]
+            })
+            .await
+            .is_err());
+        assert!(manager.list_server_status().await.is_empty());
+        manager.shutdown_all().await;
         tokio::fs::remove_file(path).await.unwrap();
     }
 }

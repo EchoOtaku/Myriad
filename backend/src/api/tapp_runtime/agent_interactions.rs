@@ -67,11 +67,6 @@ impl Drop for StreamGuard {
     }
 }
 
-/// Start one local sweeper (PostgreSQL CAS-safe across replicas).
-pub fn spawn_agent_interaction_expiry_worker(db: DatabaseConnection) {
-    tapp_agent_interaction::spawn_expiry_worker(db);
-}
-
 pub async fn get_agent_interaction(
     State(db): State<DatabaseConnection>,
     runtime: RuntimeGrantContext,

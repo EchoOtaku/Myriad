@@ -33,13 +33,13 @@ export function formatMessage(
   params: Record<string, string | number> = {},
 ): string {
   if (!template) return ''
-  const withPlurals = template.replace(PLURAL_TOKEN, (_, key: string, body: string) => {
+  const withPlurals = template.replaceAll(PLURAL_TOKEN, (_, key: string, body: string) => {
     const raw = params[key]
     const count = typeof raw === 'number' ? raw : Number(raw)
     const n = Number.isFinite(count) ? count : 0
     return pickPluralBranch(body, locale, n).replaceAll('#', String(n))
   })
-  return withPlurals.replace(SIMPLE_TOKEN, (_, key: string) => {
+  return withPlurals.replaceAll(SIMPLE_TOKEN, (_, key: string) => {
     const value = params[key]
     return value == null ? `{${key}}` : String(value)
   })

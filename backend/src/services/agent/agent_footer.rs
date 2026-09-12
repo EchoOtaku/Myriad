@@ -544,7 +544,9 @@ pub async fn ensure_agent_usage_allowed(
     }
 
     // 授予权限：TappPermissionService::check(..., AiChat)
-    let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+    let config = crate::services::config_service::ConfigService::load_permission_config_on(db)
+        .await
+        .map_err(|_| "Could not verify current Agent permission policy".to_string())?;
     if !TappPermissionService::check(&config, UserRole::User, TappPermission::AiChat) {
         return Err("Agent chat is not enabled for this account".to_string());
     }
@@ -696,7 +698,14 @@ pub async fn get_user_permissions(
     let mut perms = max_user_agent_permissions();
 
     // 候选集 ∩ 角色授予（TappPermissionService::check）
-    let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+    let config =
+        match crate::services::config_service::ConfigService::load_permission_config_on(db).await {
+            Ok(config) => config,
+            Err(error) => {
+                tracing::warn!(%error, "Could not verify current Agent permission policy");
+                return HashSet::new();
+            }
+        };
     perms.retain(|p| {
         if host_agent_permission(p) {
             return true;

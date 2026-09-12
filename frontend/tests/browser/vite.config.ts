@@ -19,6 +19,9 @@ export default defineConfig({
     },
   },
   server: {
+    // Each Playwright run starts a server. Editing another task must not
+    // navigate a GPU replay away midway through its assertions.
+    hmr: false,
     host: '127.0.0.1',
     port: 4179,
     strictPort: true,

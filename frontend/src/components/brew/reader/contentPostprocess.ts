@@ -1,7 +1,9 @@
 import type { AnnotationItem } from '../../../services/brewliaApi'
 import type { TocItem } from './types'
 import { useEffect } from 'react'
+import { currentCopy } from '../../../i18n/localeCopy'
 import { loadEmbedData } from '../../../utils/embedProcessor'
+import { showError } from '../../../utils/toastManager'
 
 export interface UseContentPostprocessOptions {
   contentRef: React.RefObject<HTMLDivElement | null>
@@ -89,6 +91,7 @@ export function useContentPostprocess({
             }, 2000)
           } catch (err) {
             console.error('复制失败:', err)
+            showError(currentCopy().errors.clipboardFailed)
           }
         })
 

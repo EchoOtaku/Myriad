@@ -16,6 +16,7 @@ pub use crate::services::channel_pairing::{IssuedPairingCode, PairingStatus};
 const API_BASE: &str = "https://api.bot.qq.com";
 const HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
+#[cfg(test)]
 pub fn mask_openid(openid: &str) -> String {
     channel_pairing::mask_openid(openid)
 }

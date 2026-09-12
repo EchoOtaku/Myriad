@@ -11,6 +11,7 @@ import {
 } from '@lib/icons'
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
+import { showError } from '../../../utils/toastManager'
 import { guideDomProps } from '../guides/guideAnchor'
 import { SettingDefaultChangeTag } from '../SettingDefaultChangeTag'
 import { SettingFieldErrorTag } from '../SettingFieldErrorTag'
@@ -143,12 +144,15 @@ export const InputItem = React.memo<InputItemProps>(
     )
 
     const handleCopy = useCallback(async () => {
-      if (value) {
+      if (!value) return
+      try {
         await navigator.clipboard.writeText(value)
         setIsCopied(true)
         setTimeout(setIsCopied, 2000, false)
+      } catch {
+        showError(t.errors.clipboardFailed)
       }
-    }, [value])
+    }, [t.errors.clipboardFailed, value])
 
     const startEdit = useCallback(() => {
       if (disabled || busy) return

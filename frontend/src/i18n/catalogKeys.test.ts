@@ -56,9 +56,9 @@ describe('host catalog keys', () => {
       for (const locale of LOCALES) {
         if (locale === 'en-US') continue
         assertSameKeys(
-          `${file.replace('en-US', locale)}`,
+          `${file.replaceAll('en-US', locale)}`,
           canonical,
-          loadJson(file.replace('en-US', locale)),
+          loadJson(file.replaceAll('en-US', locale)),
         )
       }
     }

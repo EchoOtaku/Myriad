@@ -68,6 +68,7 @@ mod memory_audit_invariants;
 mod middleware;
 mod models;
 mod oauth_url_builder;
+mod persona;
 mod router;
 mod runtime_role;
 mod services;
@@ -125,8 +126,9 @@ pub static GLOBAL_DYNAMIC_CONFIG: once_cell::sync::Lazy<Arc<RwLock<DynamicConfig
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Load .env before any component reads environment variables.
+    // Cwd .env first; crate .env fills keys when `cargo run` is from the workspace root.
     dotenvy::dotenv().ok();
+    let _ = dotenvy::from_path(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".env"));
     // Docker: durable site origin (DATA_DIR/site_public.env) outlives compose-injected CORS.
     api::site_domain::load_durable_site_public_env();
 
@@ -172,9 +174,21 @@ async fn main() -> anyhow::Result<()> {
         std::sync::atomic::Ordering::Release,
     );
     runtime_role::PERSONA_RUNTIME_LOCAL.store(
-        role != runtime_role::RuntimeRole::FederationWorker,
+        matches!(
+            role,
+            runtime_role::RuntimeRole::PersonaWorker | runtime_role::RuntimeRole::All
+        ),
         std::sync::atomic::Ordering::Release,
     );
+    runtime_role::PERSONA_HTTP_ISOLATED
+        .store(role == runtime_role::RuntimeRole::Web, Ordering::Release);
+    runtime_role::PERSONA_WORKER.store(
+        role == runtime_role::RuntimeRole::PersonaWorker,
+        Ordering::Release,
+    );
+    if role == runtime_role::RuntimeRole::PersonaWorker {
+        return persona::worker::run().await;
+    }
     if role == runtime_role::RuntimeRole::FederationWorker {
         return federation::worker::run().await;
     }
@@ -404,7 +418,11 @@ async fn run_server(role: runtime_role::RuntimeRole) -> anyhow::Result<()> {
 
                 // 通知中心必须先于任何后台调度器启动；interval 首次 tick 会立即执行，
                 // 否则启动阶段的 Tapp/Brew/MCP 事件会静默丢失。
-                services::agent::notifications::init_notifications(db.clone()).await;
+                if role == runtime_role::RuntimeRole::All {
+                    services::agent::notifications::init_notifications(db.clone()).await;
+                } else {
+                    services::agent::notifications::init_notification_publisher(db.clone()).await;
+                }
                 api::updater_admin::resume_pending_job_notifications().await;
                 tracing::info!("✅ Agent notification system initialized");
 
@@ -432,317 +450,9 @@ async fn run_server(role: runtime_role::RuntimeRole) -> anyhow::Result<()> {
                 services::brew_scheduler::init_brew_scheduler(db.clone()).await;
                 tracing::info!("✅ Brew scheduler engine initialized");
 
-                // Initialize Agent identity system (SOUL.md / USER.md)
-                // Agent 数据目录走 DataPaths（DATA_DIR-aware）。
-                let agent_data_dir = services::data_paths::paths().agent.clone();
-                services::agent::identity::init_identity(agent_data_dir.clone()).await;
-                tracing::info!("✅ Agent identity system initialized");
-
-                // Initialize Agent skill system
-                services::agent::skill::init_skills(agent_data_dir.join("skills")).await;
-                tracing::info!("✅ Agent skill system initialized");
-
-                // Initialize Agent skill evolution system
-                services::agent::skill_evolution::init_skill_evolution(
-                    agent_data_dir.join("skills"),
-                )
-                .await;
-                tracing::info!("✅ Agent skill evolution system initialized");
-
-                // Initialize Agent memory system
-                services::agent::memory::init_memory(agent_data_dir.join("memory")).await;
-                tracing::info!("✅ Agent memory system initialized");
-
-                // Initialize MCP (Model Context Protocol) client
-                services::agent::mcp::init_mcp(&agent_data_dir.join("mcp_servers.json")).await;
-                tracing::info!("✅ MCP client initialized");
-
-                // Initialize Agent task store (DB persistence + recovery)
-                services::agent::init_task_store(db.clone()).await;
-                tracing::info!("✅ Agent task store initialized");
-
-                // Re-create run hubs + wait-loops for waiting_for_input tasks so
-                // answer/subscribe work after process restart.
-                api::agent::restore_waiting_runs_after_boot().await;
-                api::agent::reclaim_stranded_running_intentions(&db).await;
-                {
-                    let autonomy_db = db.clone();
-                    tokio::spawn(async move {
-                        let mut interval =
-                            tokio::time::interval(std::time::Duration::from_secs(15));
-                        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-                        loop {
-                            interval.tick().await;
-                            // Share the 15s wake, not a call stack: a slow or
-                            // panicking autonomy tick must not hold the next opening.
-                            let work_db = autonomy_db.clone();
-                            tokio::spawn(async move {
-                                api::agent::tick_autonomy_work(work_db).await;
-                            });
-                            let speak_db = autonomy_db.clone();
-                            tokio::spawn(async move {
-                                crate::services::agent::merope::tick_speak_intents(speak_db).await;
-                            });
-                        }
-                    });
+                if role == runtime_role::RuntimeRole::All {
+                    persona::start(db.clone()).await?;
                 }
-                tracing::info!("✅ Agent waiting-task run hubs restored");
-
-                // Expire persisted Tapp Agent interactions and resume their
-                // waiting Executor tasks. Every replica runs this; DB CAS
-                // ensures a single terminal transition.
-                api::tapp_runtime::spawn_agent_interaction_expiry_worker(db.clone());
-                tracing::info!("✅ Tapp Agent interaction expiry worker started");
-
-                // Initialize Agent heartbeat system
-                services::agent::heartbeat::init_heartbeat(agent_data_dir.join("HEARTBEAT.md"))
-                    .await;
-                tracing::info!("✅ Agent heartbeat system initialized");
-
-                // Spawn confirmation cleanup background worker
-                tokio::spawn(async {
-                    let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
-                    loop {
-                        interval.tick().await;
-                        services::agent::cleanup_expired_confirmations().await;
-                    }
-                });
-                tracing::info!("✅ Agent confirmation cleanup worker started");
-
-                // Spawn heartbeat background worker
-                {
-                    let heartbeat_db = db.clone();
-                    tokio::spawn(async move {
-                        // Heartbeat 独立 Semaphore（上限 2，防止风暴）
-                        let semaphore = Arc::new(tokio::sync::Semaphore::new(2));
-                        let mut interval =
-                            tokio::time::interval(std::time::Duration::from_secs(60));
-                        // 系统休眠恢复后跳过积压的 tick，避免同一分钟内连续触发
-                        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-                        let mut tick_count: u64 = 0;
-
-                        loop {
-                            interval.tick().await;
-                            tick_count = tick_count.wrapping_add(1);
-
-                            // 每小时清理过期认领桶（保留 48h）
-                            if tick_count.is_multiple_of(60) {
-                                services::agent::heartbeat::HeartbeatManager::cleanup_old_claims(
-                                    &heartbeat_db,
-                                    48,
-                                )
-                                .await;
-                            }
-
-                            let hb = match services::agent::heartbeat::get_heartbeat() {
-                                Some(hb) => hb,
-                                None => continue,
-                            };
-
-                            let due_tasks = hb.check_due_tasks().await;
-                            for task in due_tasks {
-                                let task_db = heartbeat_db.clone();
-                                let hb_ref = hb.clone();
-                                let task_semaphore = semaphore.clone();
-                                tokio::spawn(async move {
-                                    // Due tasks have already been reserved by the scheduler. Queue
-                                    // them behind the semaphore instead of dropping them when busy.
-                                    let _permit = match task_semaphore.acquire_owned().await {
-                                        Ok(permit) => permit,
-                                        Err(error) => {
-                                            tracing::error!(
-                                                task_id = %task.id,
-                                                error = %error,
-                                                "[Heartbeat] Execution semaphore closed"
-                                            );
-                                            return;
-                                        }
-                                    };
-
-                                    let minute_bucket =
-                                        services::agent::heartbeat::HeartbeatManager::current_minute_bucket();
-                                    // 多副本 CAS：未抢到则跳过（另一实例已执行或已完成）
-                                    if !services::agent::heartbeat::HeartbeatManager::try_claim_execution(
-                                        &task_db,
-                                        &task.id,
-                                        minute_bucket,
-                                    )
-                                    .await
-                                    {
-                                        return;
-                                    }
-
-                                    let _inflight =
-                                        services::agent::heartbeat::HeartbeatInflightGuard::enter();
-
-                                    tracing::info!(
-                                        task_id = %task.id,
-                                        "[Heartbeat] Executing due task: {}",
-                                        task.name
-                                    );
-
-                                    let request = services::agent::UserRequest {
-                                        raw_input: task.action.clone(),
-                                        timestamp: chrono::Utc::now(),
-                                        user_id: services::agent::SYSTEM_USER_ID,
-                                        context: None,
-                                    };
-
-                                    let agent = services::agent::Agent::new(task_db.clone()).await;
-                                    let task_name = task.name.clone();
-                                    let timeout = std::time::Duration::from_secs(
-                                        services::agent::heartbeat::HEARTBEAT_TASK_TIMEOUT_SECS,
-                                    );
-
-                                    // 捕获 TaskCreated 的 executor task_id，超时后协作取消
-                                    let (progress_tx, mut progress_rx) =
-                                        tokio::sync::mpsc::channel::<
-                                            services::agent::types::AgentProgressEvent,
-                                        >(64);
-                                    let captured_exec_task = std::sync::Arc::new(
-                                        tokio::sync::Mutex::new(None::<String>),
-                                    );
-                                    let captured_for_fwd = captured_exec_task.clone();
-                                    tokio::spawn(async move {
-                                        while let Some(event) = progress_rx.recv().await {
-                                            if let services::agent::types::AgentProgressEvent::TaskCreated {
-                                                task_id,
-                                                ..
-                                            } = &event
-                                            {
-                                                *captured_for_fwd.lock().await = Some(task_id.clone());
-                                            }
-                                        }
-                                    });
-
-                                    let outcome = tokio::time::timeout(
-                                        timeout,
-                                        agent.process_with_progress(request, progress_tx),
-                                    )
-                                    .await;
-
-                                    let mut claim_status = "done";
-                                    match outcome {
-                                        Ok(Ok(response)) => {
-                                            let succeeded = response.is_successful_outcome();
-                                            let response_summary = response
-                                                .message
-                                                .chars()
-                                                .take(200)
-                                                .collect::<String>();
-                                            let result_summary = if succeeded {
-                                                response_summary
-                                            } else {
-                                                claim_status = "failed";
-                                                format!("ERROR: {}", response_summary)
-                                            };
-                                            hb_ref.record_result(&task.id, &result_summary).await;
-                                            let full_body = response
-                                                .message
-                                                .chars()
-                                                .take(4000)
-                                                .collect::<String>();
-                                            if let Some(nm) = services::agent::notifications::get_notification_manager() {
-                                                nm.notify_heartbeat_result(&task_name, &full_body, succeeded).await;
-                                            }
-                                            if succeeded {
-                                                tracing::info!(
-                                                    task_id = %task.id,
-                                                    "[Heartbeat] Task completed: {}",
-                                                    result_summary
-                                                );
-                                            } else {
-                                                tracing::warn!(
-                                                    task_id = %task.id,
-                                                    "[Heartbeat] Task returned a non-success outcome: {}",
-                                                    result_summary
-                                                );
-                                            }
-                                        }
-                                        Ok(Err(e)) => {
-                                            claim_status = "failed";
-                                            let err_msg = format!("ERROR: {}", e);
-                                            hb_ref.record_result(&task.id, &err_msg).await;
-                                            if let Some(nm) = services::agent::notifications::get_notification_manager() {
-                                                nm.notify_heartbeat_result(&task_name, &err_msg, false).await;
-                                            }
-                                            tracing::warn!(
-                                                task_id = %task.id,
-                                                error = %e,
-                                                "[Heartbeat] Task failed"
-                                            );
-                                        }
-                                        Err(_elapsed) => {
-                                            claim_status = "failed";
-                                            // 硬取消：协作式 is_cancelled，打断 executor 步骤环
-                                            if let Some(exec_tid) =
-                                                captured_exec_task.lock().await.clone()
-                                            {
-                                                services::agent::executor::request_cancel(
-                                                    &exec_tid,
-                                                    &format!(
-                                                        "heartbeat timed out after {}s",
-                                                        services::agent::heartbeat::HEARTBEAT_TASK_TIMEOUT_SECS
-                                                    ),
-                                                )
-                                                .await;
-                                            }
-                                            let err_msg = format!(
-                                                "ERROR: heartbeat task timed out after {}s",
-                                                services::agent::heartbeat::HEARTBEAT_TASK_TIMEOUT_SECS
-                                            );
-                                            hb_ref.record_result(&task.id, &err_msg).await;
-                                            if let Some(nm) = services::agent::notifications::get_notification_manager() {
-                                                nm.notify_heartbeat_result(&task_name, &err_msg, false).await;
-                                            }
-                                            tracing::warn!(
-                                                task_id = %task.id,
-                                                timeout_secs = services::agent::heartbeat::HEARTBEAT_TASK_TIMEOUT_SECS,
-                                                "[Heartbeat] Task timed out; cancel requested"
-                                            );
-                                        }
-                                    }
-                                    services::agent::heartbeat::HeartbeatManager::complete_claim(
-                                        &task_db,
-                                        &task.id,
-                                        minute_bucket,
-                                        claim_status,
-                                    )
-                                    .await;
-                                });
-                            }
-                        }
-                    });
-                    tracing::info!("✅ Heartbeat background worker started");
-                }
-
-                // Spawn skill evolution pruning worker (daily)
-                tokio::spawn(async move {
-                    // 初始延迟 1 小时，避免启动时负担
-                    tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
-                    let mut interval = tokio::time::interval(std::time::Duration::from_secs(86400));
-                    loop {
-                        interval.tick().await;
-                        // prune_skills：失败率 > 0.70 或连续失败 >= 5
-                        if let Some(evolution) =
-                            services::agent::skill_evolution::get_skill_evolution()
-                        {
-                            let pruned = evolution.prune_skills().await;
-                            if !pruned.is_empty() {
-                                tracing::info!(
-                                    "[SkillEvolution] Pruned {} low-quality skills: {:?}",
-                                    pruned.len(),
-                                    pruned
-                                );
-                            }
-                        }
-                        // 清理过期记忆日志（保留 30 天）
-                        if let Some(mem) = services::agent::memory::get_memory() {
-                            mem.cleanup_old_logs(30).await;
-                        }
-                    }
-                });
-                tracing::info!("✅ Skill evolution pruning worker started");
 
                 // Prune private Tapp installs when cleanup mode is "inactivity"
                 {
@@ -797,16 +507,6 @@ async fn run_server(role: runtime_role::RuntimeRole) -> anyhow::Result<()> {
                     federation::delivery::spawn_delivery_worker(db.clone());
                     tracing::info!("Federation delivery enabled in combined runtime");
                 }
-
-                services::channel_work::spawn_recovery_worker();
-                services::qq_bot::spawn_worker();
-                tracing::info!("✅ QQ bot Gateway worker started");
-                services::telegram_bot::spawn_worker();
-                tracing::info!("✅ Telegram bot worker started");
-                services::discord_bot::spawn_worker();
-                tracing::info!("✅ Discord bot worker started");
-                services::feishu_bot::spawn_worker();
-                tracing::info!("✅ Feishu bot worker started");
 
                 // 密钥迁移：把存量明文配置与 v0 联邦私钥升级到数据密钥信封。
                 //
@@ -1077,19 +777,7 @@ async fn shutdown_signal() {
     api::tapp_scheduler::shutdown_scheduler().await;
     services::brew_scheduler::shutdown_brew_scheduler().await;
 
-    // 等待进行中的 heartbeat（最长 30s），减少杀进程时半途副作用
-    services::agent::heartbeat::wait_inflight_drain(std::time::Duration::from_secs(30)).await;
-
-    // Agent 状态落盘 + MCP 子进程回收（滚动更新不丢最近记忆/技能统计）
-    if let Some(memory) = services::agent::memory::get_memory() {
-        memory.force_flush().await;
-        tracing::info!("[Shutdown] Agent memory flushed");
-    }
-    if let Some(evolution) = services::agent::skill_evolution::get_skill_evolution() {
-        evolution.flush().await;
-        tracing::info!("[Shutdown] Skill evolution stats flushed");
-    }
-    services::agent::mcp::shutdown_mcp().await;
+    persona::shutdown().await;
 }
 
 #[cfg(test)]

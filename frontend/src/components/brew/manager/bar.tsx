@@ -332,8 +332,6 @@ export function BrewBarEdit({
   onBrewImportFile,
   importExportLoading,
   importProgress,
-  importExportSuccess,
-  importExportError,
   brewExportInputRef,
   sourcesCount,
   tagFrom = 0,
@@ -354,8 +352,6 @@ export function BrewBarEdit({
   onBrewImportFile?: (e: ChangeEvent<HTMLInputElement>) => void
   importExportLoading?: boolean
   importProgress?: ImportProgress | null
-  importExportSuccess?: string | null
-  importExportError?: string | null
   brewExportInputRef?: RefObject<HTMLInputElement | null>
   sourcesCount?: number
   tagFrom?: number
@@ -476,11 +472,6 @@ export function BrewBarEdit({
               ? ` ${importProgress.current}/${importProgress.total}`
               : ''}
           </BrewBarMeta>
-        </BrewChip>
-      ) : null}
-      {!importProgress && (importExportSuccess || importExportError) ? (
-        <BrewChip key="e:result" id="e:result" index={tagAt++}>
-          <BrewBarMeta>{importExportSuccess || importExportError}</BrewBarMeta>
         </BrewChip>
       ) : null}
       <BrewChip key="e:exit" id="e:exit" index={tagAt++}>
@@ -762,8 +753,6 @@ export function BrewBarTags({
         onBrewImportFile={pack.importFile}
         importExportLoading={pack.loading}
         importProgress={pack.progress}
-        importExportSuccess={pack.success}
-        importExportError={pack.error}
         brewExportInputRef={pack.inputRef}
         sourcesCount={sourcesCount}
         tagFrom={tagFrom}

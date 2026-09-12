@@ -49,6 +49,7 @@ import {
   canAccessModuleVisibility,
   useModuleVisibilityPreferences,
 } from '../utils/moduleVisibility'
+import { showToast } from '../utils/toastManager'
 
 const EMPTY_ITEMS: BrewItem[] = []
 
@@ -77,7 +78,9 @@ function BrewSubjectPage() {
   )
   const { isAuthenticated, isAdmin } = useAuth()
   const readingList = useReadingListOptional()
-  const [error, setError] = useState<string | null>(null)
+  const setError = useCallback((message: string) => {
+    showToast({ message, type: 'error', replaceKey: 'brew-page' })
+  }, [])
 
   const sources = useBrewSources(
     isAuthenticated,
@@ -179,6 +182,15 @@ function BrewSubjectPage() {
     t.nav.brewReading || t.nav.brew,
     t.widgets.brewDesc,
   )
+
+  useEffect(() => {
+    if (!item.opening) return
+    showToast({
+      message: t.common.loading,
+      type: 'info',
+      replaceKey: 'brew-page',
+    })
+  }, [item.opening, t.common.loading])
 
   const handleOpenStarred = useCallback(() => {
     item.closeArticle()
@@ -307,11 +319,6 @@ function BrewSubjectPage() {
 
   return (
     <BrewPage lock={lockViewport}>
-      {item.opening && (
-        <div className="brew-skin brew-toast" role="status">
-          {t.common.loading}
-        </div>
-      )}
       <BrewViewLane
         wave={route.viewMode}
         onDisplayed={(next) => setSurfaceView(next as BrewViewMode)}
@@ -404,18 +411,6 @@ function BrewSubjectPage() {
         />
       )}
 
-      {error ? (
-        <div className="brew-skin brew-toast" role="status">
-          <span>{error}</span>
-          <button
-            type="button"
-            className="brew-sheet__ghost is-fit"
-            onClick={() => setError(null)}
-          >
-            {t.brew.close}
-          </button>
-        </div>
-      ) : null}
     </BrewPage>
   )
 }

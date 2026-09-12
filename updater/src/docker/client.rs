@@ -121,7 +121,13 @@ impl DockerClient {
         if !self.is_running(name).await.unwrap_or(false) {
             return Ok(());
         }
-        let stop_opts = StopContainerOptionsBuilder::default().t(15).build();
+        let stop_opts = StopContainerOptionsBuilder::default()
+            .t(if name == "myriad-persona-worker" {
+                45
+            } else {
+                15
+            })
+            .build();
         if let Err(e) = self.inner.stop_container(name, Some(stop_opts)).await {
             warn!(%name, err = %e, "docker stop failed; trying kill");
         }
@@ -314,15 +320,21 @@ impl DockerClient {
         let Some(worker) = worker else {
             return Ok(false);
         };
-        let healthy = worker.state.as_ref().is_some_and(|state| {
-            state.running == Some(true)
-                && state
-                    .health
-                    .as_ref()
-                    .and_then(|h| h.status.as_ref())
-                    .is_some_and(|status| status.to_string().eq_ignore_ascii_case("healthy"))
-        });
-        Ok(healthy && worker.image.as_deref() == Some(backend_image.as_str()))
+        if worker.image.as_deref() != Some(backend_image.as_str()) {
+            return Ok(false);
+        }
+        let Some(state) = worker.state else {
+            return Ok(false);
+        };
+        if state.running == Some(true) {
+            return Ok(state
+                .health
+                .as_ref()
+                .and_then(|h| h.status.as_ref())
+                .is_some_and(|status| status.to_string().eq_ignore_ascii_case("healthy")));
+        }
+        // Gate-closed worker exits 0; compose `on-failure` leaves it down.
+        Ok(state.exit_code == Some(0))
     }
 
     /// Capability is read from the actual local image, not inferred from a tag.
@@ -337,6 +349,131 @@ impl DockerClient {
             .config
             .and_then(|c| c.labels)
             .and_then(|labels| labels.get("io.myriad.runtime.federation-worker").cloned())
+            .as_deref()
+            == Some("1"))
+    }
+
+    async fn persona_worker_present(&self) -> Result<bool> {
+        // Guard intentionally turns unauthorized/missing inspect into 403. Use
+        // the read-only inventory to distinguish absence from an inspect failure.
+        let options = bollard::query_parameters::ListContainersOptionsBuilder::default()
+            .all(true)
+            .build();
+        let containers = self
+            .inner
+            .list_containers(Some(options))
+            .await
+            .map_err(|e| UpdaterError::Docker(format!("list worker presence: {e}")))?;
+        Ok(containers.iter().any(|container| {
+            container.names.as_ref().is_some_and(|names| {
+                names
+                    .iter()
+                    .any(|name| name.trim_start_matches('/') == "myriad-persona-worker")
+            })
+        }))
+    }
+
+    /// Quiesce the optional writer even if the host compose file no longer
+    /// mentions it. Inspection errors are not evidence that it has stopped.
+    pub async fn stop_persona_worker(&self) -> Result<()> {
+        const NAME: &str = "myriad-persona-worker";
+        for attempt in 0..12 {
+            if !self.persona_worker_present().await? {
+                return Ok(());
+            }
+            match self.inner.inspect_container(NAME, None).await {
+                Err(bollard::errors::Error::DockerResponseServerError {
+                    status_code: 404, ..
+                }) => return Ok(()),
+                Err(error) => {
+                    return Err(UpdaterError::Docker(format!(
+                        "verify worker stopped: {error}"
+                    )))
+                }
+                Ok(info) => match info.state.and_then(|state| state.running) {
+                    Some(false) => return Ok(()),
+                    Some(true) if attempt == 0 => self.force_stop_container(NAME).await?,
+                    Some(true) => tokio::time::sleep(Duration::from_millis(200)).await,
+                    None => {
+                        return Err(UpdaterError::Docker(
+                            "worker running state unavailable".into(),
+                        ))
+                    }
+                },
+            }
+        }
+        Err(UpdaterError::Precondition(
+            "persona worker is still writing; database restore forbidden".into(),
+        ))
+    }
+
+    /// Inspect the running backend's immutable image identity and role. This
+    /// needs neither compose subprocesses on every health tick nor worker-network access.
+    pub async fn persona_worker_healthy(&self) -> Result<bool> {
+        let backend = match self.inner.inspect_container("myriad-backend", None).await {
+            Ok(value) => value,
+            Err(_) => self
+                .inner
+                .inspect_container("backend", None)
+                .await
+                .map_err(|e| UpdaterError::Docker(format!("inspect backend role: {e}")))?,
+        };
+        let backend_image = backend
+            .image
+            .ok_or_else(|| UpdaterError::Docker("backend image identity missing".into()))?;
+        let split = backend
+            .config
+            .as_ref()
+            .and_then(|c| c.env.as_ref())
+            .is_some_and(|env| env.iter().any(|v| v == "MYRIAD_PROCESS_ROLE=web"))
+            && self.supports_persona_worker(&backend_image).await?;
+        if !self.persona_worker_present().await? {
+            return Ok(!split);
+        }
+        let worker = match self
+            .inner
+            .inspect_container("myriad-persona-worker", None)
+            .await
+        {
+            Ok(value) => Some(value),
+            Err(bollard::errors::Error::DockerResponseServerError {
+                status_code: 404, ..
+            }) => None,
+            Err(error) => {
+                return Err(UpdaterError::Docker(format!(
+                    "inspect persona worker: {error}"
+                )))
+            }
+        };
+        if !split {
+            return Ok(worker.and_then(|w| w.state).and_then(|s| s.running) != Some(true));
+        }
+        let Some(worker) = worker else {
+            return Ok(false);
+        };
+        let healthy = worker.state.as_ref().is_some_and(|state| {
+            state.running == Some(true)
+                && state
+                    .health
+                    .as_ref()
+                    .and_then(|h| h.status.as_ref())
+                    .is_some_and(|status| status.to_string().eq_ignore_ascii_case("healthy"))
+        });
+        Ok(healthy && worker.image.as_deref() == Some(backend_image.as_str()))
+    }
+
+    /// Capability is read from the actual local image, not inferred from a tag.
+    /// Old images lack the worker executable and must keep their combined backend.
+    pub async fn supports_persona_worker(&self, image: &str) -> Result<bool> {
+        let info = self
+            .inner
+            .inspect_image(image)
+            .await
+            .map_err(|e| UpdaterError::Docker(format!("inspect worker capability: {e}")))?;
+        Ok(info
+            .config
+            .and_then(|c| c.labels)
+            .and_then(|labels| labels.get("io.myriad.runtime.persona-worker").cloned())
             .as_deref()
             == Some("1"))
     }
@@ -496,6 +633,8 @@ mod worker_presence_tests {
             matching: bool,
             healthy: bool,
             web: bool,
+            running: bool,
+            exit_code: i64,
         }
         let state = Arc::new(Mutex::new(Case {
             capable: true,
@@ -503,6 +642,8 @@ mod worker_presence_tests {
             matching: true,
             healthy: true,
             web: true,
+            running: true,
+            exit_code: 0,
         }));
         async fn fake_guard(
             State(state): State<Arc<Mutex<Case>>>,
@@ -520,7 +661,7 @@ mod worker_presence_tests {
                 serde_json::json!({"Image":"sha256:backend", "Config":{"Env": if case.web {vec!["MYRIAD_PROCESS_ROLE=web"]} else {vec![]}}})
             } else if path.ends_with("/containers/myriad-federation-worker/json") {
                 serde_json::json!({"Image": if case.matching {"sha256:backend"} else {"sha256:previous"},
-                    "State":{"Running":true,"Health":{"Status": if case.healthy {"healthy"} else {"unhealthy"}}}})
+                    "State":{"Running":case.running,"ExitCode":case.exit_code,"Health":{"Status": if case.healthy {"healthy"} else {"unhealthy"}}}})
             } else {
                 serde_json::json!({"Config":{"Labels":{"io.myriad.runtime.federation-worker": if case.capable {"1"} else {""}}}})
             };
@@ -539,6 +680,12 @@ mod worker_presence_tests {
             inner: Docker::connect_with_http(&address, 2, bollard::API_DEFAULT_VERSION).unwrap(),
         };
         assert!(client.federation_worker_healthy().await.unwrap());
+        state.lock().unwrap().running = false;
+        assert!(client.federation_worker_healthy().await.unwrap());
+        state.lock().unwrap().exit_code = 1;
+        assert!(!client.federation_worker_healthy().await.unwrap());
+        state.lock().unwrap().running = true;
+        state.lock().unwrap().exit_code = 0;
         state.lock().unwrap().matching = false;
         assert!(!client.federation_worker_healthy().await.unwrap());
         state.lock().unwrap().matching = true;
@@ -554,6 +701,113 @@ mod worker_presence_tests {
         state.lock().unwrap().capable = true;
         state.lock().unwrap().present = false;
         assert!(client.federation_worker_healthy().await.unwrap());
+        server.abort();
+    }
+    #[tokio::test]
+    async fn persona_absence_is_safe_but_guard_inspection_failure_blocks_restore() {
+        let present = Arc::new(AtomicBool::new(false));
+        async fn fake_guard(State(present): State<Arc<AtomicBool>>, uri: Uri) -> impl IntoResponse {
+            if uri.path().ends_with("/containers/json") {
+                let containers = if present.load(Ordering::Acquire) {
+                    serde_json::json!([{"Id":"worker", "Names":["/myriad-persona-worker"]}])
+                } else {
+                    serde_json::json!([])
+                };
+                (StatusCode::OK, Json(containers))
+            } else {
+                (
+                    StatusCode::FORBIDDEN,
+                    Json(serde_json::json!({"message":"container authorization failed"})),
+                )
+            }
+        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(
+            axum::serve(
+                listener,
+                Router::new()
+                    .fallback(fake_guard)
+                    .with_state(present.clone()),
+            )
+            .into_future(),
+        );
+        let client = DockerClient {
+            inner: Docker::connect_with_http(&address, 2, bollard::API_DEFAULT_VERSION).unwrap(),
+        };
+        assert!(client.stop_persona_worker().await.is_ok());
+        present.store(true, Ordering::Release);
+        assert!(client.stop_persona_worker().await.is_err());
+        server.abort();
+    }
+    #[tokio::test]
+    async fn persona_worker_health_requires_the_running_backend_image_and_capability() {
+        use std::sync::Mutex;
+        #[derive(Clone)]
+        struct Case {
+            capable: bool,
+            present: bool,
+            matching: bool,
+            healthy: bool,
+            web: bool,
+        }
+        let state = Arc::new(Mutex::new(Case {
+            capable: true,
+            present: true,
+            matching: true,
+            healthy: true,
+            web: true,
+        }));
+        async fn fake_guard(
+            State(state): State<Arc<Mutex<Case>>>,
+            uri: Uri,
+        ) -> Json<serde_json::Value> {
+            let case = state.lock().unwrap().clone();
+            let path = uri.path();
+            let value = if path.ends_with("/containers/json") {
+                if case.present {
+                    serde_json::json!([{"Id":"worker","Names":["/myriad-persona-worker"]}])
+                } else {
+                    serde_json::json!([])
+                }
+            } else if path.ends_with("/containers/myriad-backend/json") {
+                serde_json::json!({"Image":"sha256:backend", "Config":{"Env": if case.web {vec!["MYRIAD_PROCESS_ROLE=web"]} else {vec![]}}})
+            } else if path.ends_with("/containers/myriad-persona-worker/json") {
+                serde_json::json!({"Image": if case.matching {"sha256:backend"} else {"sha256:previous"},
+                    "State":{"Running":true,"Health":{"Status": if case.healthy {"healthy"} else {"unhealthy"}}}})
+            } else {
+                serde_json::json!({"Config":{"Labels":{"io.myriad.runtime.persona-worker": if case.capable {"1"} else {""}}}})
+            };
+            Json(value)
+        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(
+            axum::serve(
+                listener,
+                Router::new().fallback(fake_guard).with_state(state.clone()),
+            )
+            .into_future(),
+        );
+        let client = DockerClient {
+            inner: Docker::connect_with_http(&address, 2, bollard::API_DEFAULT_VERSION).unwrap(),
+        };
+        assert!(client.persona_worker_healthy().await.unwrap());
+        state.lock().unwrap().matching = false;
+        assert!(!client.persona_worker_healthy().await.unwrap());
+        state.lock().unwrap().matching = true;
+        state.lock().unwrap().healthy = false;
+        assert!(!client.persona_worker_healthy().await.unwrap());
+        state.lock().unwrap().present = false;
+        assert!(!client.persona_worker_healthy().await.unwrap());
+        state.lock().unwrap().capable = false;
+        assert!(client.persona_worker_healthy().await.unwrap());
+        state.lock().unwrap().present = true;
+        assert!(!client.persona_worker_healthy().await.unwrap());
+        state.lock().unwrap().web = false;
+        state.lock().unwrap().capable = true;
+        state.lock().unwrap().present = false;
+        assert!(client.persona_worker_healthy().await.unwrap());
         server.abort();
     }
 }

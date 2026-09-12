@@ -8,6 +8,8 @@ import type { RigCharacterHandle } from '../rig/RigCharacter'
 import type { Anime25DDriver } from './driver'
 import type { Anime25DMotionEnvelopeProbeId } from './motionEnvelope'
 import type { Anime25DDebugSnapshot } from './player'
+import type { PoseCorrection } from './poseCorrections'
+import type { Anime25DPlayback } from './types'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { generationFailureMessage } from '../../../components/agent/onboarding/generationError'
 import {
@@ -51,6 +53,7 @@ import {
   THINKING_EXPRESSION_PRESET,
 } from './expressionPresets'
 import { ANIME25D_MOTION_ENVELOPE_PROBES } from './motionEnvelope'
+import { PoseCorrectionEditor } from './PoseCorrectionEditor'
 
 interface Props {
   characterRef: RefObject<RigCharacterHandle | null>
@@ -74,6 +77,9 @@ interface Props {
   personaLead?: ReactNode
   overviewLead?: ReactNode
   motionEnabled?: boolean
+  correctionPlayback?: Anime25DPlayback | null
+  correctionAssetId?: string | null
+  onSavePoseCorrections?: (corrections: PoseCorrection[]) => Promise<void>
 }
 
 const RIG_IMPORT_STEP_ORDER: RigAssetCompileEvent['stage'][] = [
@@ -226,6 +232,9 @@ export default function Anime25DWorkbench({
   personaLead = null,
   overviewLead = null,
   motionEnabled = false,
+  correctionPlayback,
+  correctionAssetId,
+  onSavePoseCorrections,
 }: Props) {
   const { t, format } = useI18n()
   const labels = t.merope
@@ -1113,6 +1122,10 @@ export default function Anime25DWorkbench({
       <div data-tour="config-persona-motion">
       {panel === 'motion' ? (
         <>
+          {motionEnabled && correctionPlayback && correctionAssetId && onSavePoseCorrections ? (
+            <PoseCorrectionEditor key={correctionAssetId} playback={correctionPlayback} characterRef={characterRef}
+              driver={driver} onDriver={applyDriver} onSave={onSavePoseCorrections} />
+          ) : null}
           <SettingGroup
             title={labels.expressionGroup}
             description={

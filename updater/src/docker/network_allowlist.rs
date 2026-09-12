@@ -65,8 +65,13 @@ fn resolve_name(key: &str, default: &str, env_file: Option<&Path>) -> String {
 }
 
 /// Services recreated during update / rollback `compose up` paths.
-pub const UPDATE_RECREATE_SERVICES: &[&str] =
-    &["backend", "federation-worker", "frontend", "postgres"];
+pub const UPDATE_RECREATE_SERVICES: &[&str] = &[
+    "backend",
+    "federation-worker",
+    "persona-worker",
+    "frontend",
+    "postgres",
+];
 
 /// Collect Docker network names that compose will attach for the given services.
 ///
@@ -125,7 +130,13 @@ pub fn find_disallowed_attachments(
 ) -> Vec<(String, String)> {
     attachments
         .iter()
-        .filter(|(_, name)| !allow.contains(name))
+        .filter(|(service, name)| {
+            !allow.contains(name)
+                || (matches!(
+                    service.as_str(),
+                    "persona-worker" | "federation-worker" | "frontend" | "postgres"
+                ) && name.trim_start_matches('/') != allow.compose_network)
+        })
         .cloned()
         .collect()
 }
@@ -211,5 +222,17 @@ mod tests {
             vec![("backend".into(), "myriad_default".into())]
         );
         assert!(!find_disallowed_attachments(&allow(), &attachments).is_empty());
+    }
+    #[test]
+    fn worker_networks_cannot_inherit_backend_admin_access() {
+        let entries = vec![
+            ("backend".into(), "myriad-admin-net".into()),
+            ("persona-worker".into(), "myriad-admin-net".into()),
+            ("federation-worker".into(), "myriad-admin-net".into()),
+        ];
+        assert_eq!(
+            find_disallowed_attachments(&allow(), &entries),
+            entries[1..]
+        );
     }
 }

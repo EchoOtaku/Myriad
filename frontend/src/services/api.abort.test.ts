@@ -22,7 +22,7 @@ function harness(csrf: () => Promise<string>, fetcher: typeof fetch) {
   const exports: { apiService?: { post: (url: string, body: unknown, options: { signal: AbortSignal; timeout?: number }) => Promise<unknown> } } = {}
   runInNewContext(js, {
     require: (id: string) => {
-      assert.ok(id in dependencies, `unmocked dependency: ${id}`)
+      assert.ok(Object.hasOwn(dependencies, id), `unmocked dependency: ${id}`)
       return dependencies[id]
     },
     exports, fetch: fetcher, window: { location: { origin: 'https://example.test' } },

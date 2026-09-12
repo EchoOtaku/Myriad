@@ -224,6 +224,28 @@ html.dark .toast-content:not(:has(.toast-title)) .toast-text {
   color: #e5e7eb;
 }
 
+.toast-message.toast-sticky {
+  box-shadow:
+    0 10px 36px -8px rgb(0 0 0 / 28%),
+    0 4px 14px -4px rgb(0 0 0 / 14%),
+    inset 0 1px 0 rgb(255 255 255 / 80%);
+}
+
+html.dark .toast-message.toast-sticky {
+  box-shadow:
+    0 10px 36px -8px rgb(0 0 0 / 70%),
+    0 4px 14px -4px rgb(0 0 0 / 48%),
+    inset 0 1px 0 rgb(255 255 255 / 8%);
+}
+
+.toast-message.toast-sticky .toast-close-btn {
+  color: #6b7280;
+}
+
+html.dark .toast-message.toast-sticky .toast-close-btn {
+  color: #d1d5db;
+}
+
 .toast-close-btn {
   display: flex;
   align-items: center;

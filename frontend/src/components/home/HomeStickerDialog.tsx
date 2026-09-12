@@ -232,7 +232,7 @@ export function HomeStickerDialog({
         <header className="home-sticker-guide__head">
           <h2 className="home-sticker-guide__title">{t.home.createSticker}</h2>
           <span className="home-sticker-guide__chip">
-            {stickerAspectKey(size)} · {size.replace('x', '×')}
+            {stickerAspectKey(size)} · {size.replaceAll('x', '×')}
           </span>
         </header>
 

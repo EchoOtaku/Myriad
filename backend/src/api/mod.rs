@@ -85,6 +85,12 @@ fn health_json_from_snapshot() -> Value {
 /// `database_connected`.
 pub async fn health() -> (StatusCode, Json<Value>) {
     let mut payload = health_json_from_snapshot();
+    // Persona is still hosted by web. Report a driver failure separately so it
+    // cannot turn a recoverable persona failure into a web health restart loop.
+    payload["persona_background"] = json!(crate::persona::background_status());
+    payload["persona_http_isolated"] = json!(
+        crate::runtime_role::PERSONA_HTTP_ISOLATED.load(std::sync::atomic::Ordering::Acquire)
+    );
     payload["federation_http_isolated"] = Value::Bool(
         crate::runtime_role::FEDERATION_HTTP_ISOLATED.load(std::sync::atomic::Ordering::Acquire),
     );
@@ -129,6 +135,7 @@ pub async fn ready() -> (StatusCode, Json<Value>) {
         snap.storage_writable,
     );
     payload["ready"] = json!(ready);
+    payload["persona_background"] = json!(crate::persona::background_status());
     let status = if ready {
         StatusCode::OK
     } else {

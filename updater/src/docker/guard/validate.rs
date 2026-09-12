@@ -50,6 +50,7 @@ pub(crate) fn validate_container_rename(
     let allowed = [
         "backend",
         "federation-worker",
+        "persona-worker",
         "frontend",
         "postgres",
         "proxy",
@@ -103,6 +104,9 @@ pub(crate) fn validate_container_create(
     }
     let worker_command = service == "federation-worker"
         && value.get("Cmd") == Some(&json!(["/app/myriad-federation-worker"]));
+    let worker_command = worker_command
+        || (service == "persona-worker"
+            && value.get("Cmd") == Some(&json!(["/app/myriad-persona-worker"])));
     if nonempty(value.get("Entrypoint")) || (nonempty(value.get("Cmd")) && !worker_command) {
         return Err("command or entrypoint overrides are not allowed".into());
     }
@@ -113,6 +117,9 @@ pub(crate) fn validate_container_create(
         .unwrap_or_else(|| json!({}));
     if service == "federation-worker" {
         validate_federation_worker(&value, &host)?;
+    }
+    if service == "persona-worker" {
+        validate_persona_worker(&value, &host)?;
     }
     let narrow_volume_init = is_narrow_backend_volume_init(&value, &host, service);
     if service == "backend-volume-init" && !narrow_volume_init {
@@ -374,7 +381,9 @@ pub(crate) fn authorize_guard_network_attachment(
     config: &GuardConfig,
 ) -> std::result::Result<(), String> {
     let allowed = match service {
-        "postgres" | "frontend" | "federation-worker" => network_name == config.compose_network,
+        "postgres" | "frontend" | "federation-worker" | "persona-worker" => {
+            network_name == config.compose_network
+        }
         "backend" | "proxy" => {
             network_name == config.compose_network || network_name == config.admin_network
         }
@@ -500,6 +509,116 @@ fn validate_federation_worker(value: &Value, host: &Value) -> std::result::Resul
     Ok(())
 }
 
+fn validate_persona_worker(value: &Value, host: &Value) -> std::result::Result<(), String> {
+    if value.get("Cmd") != Some(&json!(["/app/myriad-persona-worker"]))
+        || value.get("User").and_then(Value::as_str) != Some("1000:1000")
+        || host.get("ReadonlyRootfs").and_then(Value::as_bool) != Some(true)
+        || host.get("CapDrop") != Some(&json!(["ALL"]))
+    {
+        return Err("persona worker requires its fixed command, uid 1000, read-only root and dropped capabilities".into());
+    }
+    for (key, ceiling) in [
+        ("Memory", 1_073_741_824),
+        ("NanoCpus", 1_000_000_000),
+        ("PidsLimit", 64),
+    ] {
+        if host
+            .get(key)
+            .and_then(Value::as_i64)
+            .is_none_or(|v| v <= 0 || v > ceiling)
+        {
+            return Err(format!("persona worker requires a bounded {key}"));
+        }
+    }
+    if value.pointer("/Healthcheck/Test")
+        != Some(&json!([
+            "CMD",
+            "/usr/bin/wget",
+            "--spider",
+            "-q",
+            "http://localhost:1103/health"
+        ]))
+    {
+        return Err("persona worker health command is fixed".into());
+    }
+    if host.get("Tmpfs") != Some(&json!({"/tmp": "size=32m,mode=1777"})) {
+        return Err("persona worker tmpfs is fixed to a bounded /tmp".into());
+    }
+    if !host
+        .get("SecurityOpt")
+        .and_then(Value::as_array)
+        .is_some_and(|values| {
+            values.iter().any(|v| {
+                matches!(
+                    v.as_str(),
+                    Some("no-new-privileges" | "no-new-privileges:true")
+                )
+            })
+        })
+    {
+        return Err("persona worker requires no-new-privileges".into());
+    }
+    let env = value
+        .get("Env")
+        .and_then(Value::as_array)
+        .ok_or("worker environment missing")?;
+    let mut seen = std::collections::HashSet::new();
+    for item in env {
+        let (key, _) = item
+            .as_str()
+            .and_then(|v| v.split_once('='))
+            .ok_or("invalid worker environment")?;
+        if !seen.insert(key)
+            || !matches!(
+                key,
+                "MYRIAD_PROCESS_ROLE"
+                    | "PERSONA_WEB_UPSTREAM"
+                    | "MYRIAD_MCP_GATEWAY_URL"
+                    | "MYRIAD_MCP_GATEWAY_TOKEN"
+                    | "DATABASE_URL"
+                    | "SERVER_HOST"
+                    | "SERVER_PORT"
+                    | "DATA_DIR"
+                    | "CACHE_DIR"
+                    | "JWT_SECRET"
+                    | "MYRIAD_DATA_KEY"
+                    | "CORS_ORIGINS"
+                    | "ENVIRONMENT"
+                    | "FRONTEND_URL"
+                    | "BASE_URL"
+                    | "RUST_LOG"
+                    | "TZ"
+                    | "PATH"
+                    | "MYRIAD_VERSION"
+                    | "MYRIAD_COMMIT_SHA"
+                    | "TRUST_PROXY_HEADERS"
+                    | "TRUST_PROXY_PEERS"
+            )
+        {
+            return Err("worker environment contains an unsupported or duplicate key".into());
+        }
+    }
+    if env.iter().filter_map(Value::as_str).any(|entry| {
+        entry.starts_with("PATH=")
+            && entry != "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    }) {
+        return Err("worker PATH must be the image default".into());
+    }
+    for required in [
+        "MYRIAD_PROCESS_ROLE=persona-worker",
+        "PERSONA_WEB_UPSTREAM=http://backend:1103",
+        "DATA_DIR=/app/data",
+        "CACHE_DIR=/app/cache",
+        "SERVER_PORT=1103",
+        "SERVER_HOST=0.0.0.0",
+    ] {
+        if !env.iter().any(|value| value.as_str() == Some(required)) {
+            return Err("worker role and runtime paths are fixed".into());
+        }
+    }
+    Ok(())
+}
+
 fn validate_bind(state: &GuardState, service: &str, bind: &str) -> std::result::Result<(), String> {
     let parts = bind.split(':').collect::<Vec<_>>();
     if !(2..=3).contains(&parts.len()) {
@@ -609,6 +728,19 @@ fn validate_mount_pair(
             {
                 return Err(
                     "federation worker may only mount backend_data read-only at /app/data".into(),
+                );
+            }
+            Ok(())
+        }
+        "persona-worker" => {
+            let allowed = !host_bind
+                && ((source == format!("{}_backend_data", state.config.project)
+                    && target == "/app/data")
+                    || (source == format!("{}_backend_cache", state.config.project)
+                        && target == "/app/cache"));
+            if !allowed {
+                return Err(
+                    "persona worker may only mount its fixed first-party data/cache volumes".into(),
                 );
             }
             Ok(())
@@ -869,6 +1001,7 @@ pub(crate) fn managed_project_service(inspect: &Value, config: &GuardConfig) -> 
             "backend"
                 | "backend-volume-init"
                 | "federation-worker"
+                | "persona-worker"
                 | "frontend"
                 | "postgres"
                 | "proxy"

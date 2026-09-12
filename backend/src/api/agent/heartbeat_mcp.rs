@@ -235,6 +235,7 @@ pub(crate) async fn mcp_get_config(
     Ok(Json(json!({
         "config": config,
         "config_path": manager.config_path_display(),
+        "runtime_policy": manager.runtime_policy(),
         "runtime": {
             "servers": status,
             "tool_count": tools,
@@ -286,6 +287,7 @@ pub(crate) async fn mcp_put_config(
                 "reloaded": true,
                 "config": saved,
                 "config_path": manager.config_path_display(),
+                "runtime_policy": manager.runtime_policy(),
                 "runtime": {
                     "servers": status,
                     "tool_count": tools,
@@ -294,7 +296,9 @@ pub(crate) async fn mcp_put_config(
         }
         Err(e) => {
             tracing::error!(error = %e, "MCP config replace failed");
-            let validation = e.starts_with("server ")
+            let validation = e.starts_with("Local MCP")
+                || e.starts_with("MCP gateway")
+                || e.starts_with("server ")
                 || e.contains("duplicate")
                 || e.contains("empty")
                 || e.contains("too many")

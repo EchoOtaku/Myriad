@@ -30,6 +30,7 @@ ARG MYRIAD_COMMIT_SHA=unknown
 ENV MYRIAD_COMMIT_SHA=${MYRIAD_COMMIT_SHA}
 LABEL org.opencontainers.image.revision=${MYRIAD_COMMIT_SHA}
 LABEL io.myriad.proxy.federation-routing="1"
+LABEL io.myriad.proxy.persona-routing="1"
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates tini \
     && rm -rf /var/lib/apt/lists/*

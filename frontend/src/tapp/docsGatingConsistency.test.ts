@@ -654,7 +654,7 @@ describe('tapp docs gating consistency', () => {
             continue
           }
           live.push(
-            `${file.replace(`${REPO}/`, '')}:${token} :: ${ctx.replaceAll(/\s+/g, ' ').slice(0, 140)}`,
+            `${file.replaceAll(`${REPO}/`, '')}:${token} :: ${ctx.replaceAll(/\s+/g, ' ').slice(0, 140)}`,
           )
         }
       }

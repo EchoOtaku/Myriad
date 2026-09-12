@@ -1,9 +1,10 @@
 import type { QqPairingStatus } from '../../services/agent/agentApi'
 import { LuCopy } from '@lib/icons'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { agentService } from '../../services/agent'
+import { showError, showStickyToast } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
 import { pairingCodeLive } from './channelPairing'
 import './ChannelPairingPanel.css'
@@ -24,7 +25,8 @@ export function ChannelPairingPanel({
   const [pairing, setPairing] = useState<QqPairingStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [error, setError] = useState('')
+  const loadFailedToastRef = useRef(false)
+  const toastKey = `channel-pairing-${channel}`
 
   const load = useCallback(async () => {
     try {
@@ -37,10 +39,17 @@ export function ChannelPairingPanel({
               ? await agentService.getFeishuPairing()
               : await agentService.getDiscordPairing()
       setPairing(data.pairing)
+      loadFailedToastRef.current = false
     } catch (err) {
-      setError(userFacingError(err, copy.loadFailed))
+      if (loadFailedToastRef.current) return
+      loadFailedToastRef.current = true
+      showStickyToast({
+        message: userFacingError(err, copy.loadFailed),
+        type: 'error',
+        replaceKey: toastKey,
+      })
     }
-  }, [channel, copy.loadFailed])
+  }, [channel, copy.loadFailed, toastKey])
 
   useEffect(() => {
     void load()
@@ -71,7 +80,6 @@ export function ChannelPairingPanel({
   }, [format, liveCode, locale, pairing?.pendingExpiresAt, t.userModal])
 
   const handleIssue = async () => {
-    setError('')
     setBusy(true)
     setCopied(false)
     try {
@@ -85,7 +93,11 @@ export function ChannelPairingPanel({
               : await agentService.issueDiscordPairingCode()
       setPairing(data.pairing)
     } catch (err) {
-      setError(userFacingError(err, copy.issueFailed))
+      showStickyToast({
+        message: userFacingError(err, copy.issueFailed),
+        type: 'error',
+        replaceKey: toastKey,
+      })
     } finally {
       setBusy(false)
     }
@@ -96,12 +108,11 @@ export function ChannelPairingPanel({
       await navigator.clipboard.writeText(code)
       setCopied(true)
     } catch {
-      setError(copy.copyFailed)
+      showError(copy.copyFailed)
     }
   }
 
   const handleUnpair = async () => {
-    setError('')
     setBusy(true)
     try {
       if (channel === 'qq') {
@@ -115,7 +126,11 @@ export function ChannelPairingPanel({
       }
       await load()
     } catch (err) {
-      setError(userFacingError(err, copy.unpairFailed))
+      showStickyToast({
+        message: userFacingError(err, copy.unpairFailed),
+        type: 'error',
+        replaceKey: toastKey,
+      })
     } finally {
       setBusy(false)
     }
@@ -205,7 +220,6 @@ export function ChannelPairingPanel({
       {!receiveReady ? (
         <p className="channel-pairing-meta">{t.userModal.pairingWaitingReceive}</p>
       ) : null}
-      {error ? <p className="channel-pairing-error">{error}</p> : null}
       <p className="channel-pairing-work">{t.config.channelWorkHint}</p>
     </section>
   )

@@ -252,13 +252,9 @@ export function useComments({
     async (commentId: number) => {
       const isExpanded = expandedComments.has(commentId)
       if (isExpanded) {
-        setExpandedComments((prev) => {
-          const next = new Set(prev)
-          next.delete(commentId)
-          return next
-        })
+        setExpandedComments((prev) => prev.difference(new Set([commentId])))
       } else {
-        setExpandedComments((prev) => new Set(prev).add(commentId))
+        setExpandedComments((prev) => prev.union(new Set([commentId])))
         if (!commentReplies[commentId]) {
           await loadReplies(commentId)
         }
@@ -303,7 +299,7 @@ export function useComments({
               : c,
           ),
         )
-        setExpandedComments((prev) => new Set(prev).add(topLevelCommentId))
+        setExpandedComments((prev) => prev.union(new Set([topLevelCommentId])))
 
         showToastMessage(t.brew.replyAdded)
         setReplyingTo(null)

@@ -288,51 +288,49 @@ async fn start_outbox_delivery(db: DatabaseConnection, key: String, sink: Channe
     let _ = start.send(());
 }
 
-pub(crate) fn spawn_recovery_worker() {
-    tokio::spawn(async {
-        let mut tick = tokio::time::interval(Duration::from_secs(10));
-        loop {
-            tick.tick().await;
-            let Ok(db) = shared_registry::database().await else {
+pub(crate) async fn run_recovery_worker() {
+    let mut tick = tokio::time::interval(Duration::from_secs(10));
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        tick.tick().await;
+        let Ok(db) = shared_registry::database().await else {
+            continue;
+        };
+        for platform in ["qq", "telegram", "discord", "feishu"] {
+            let Ok(rows) = shared_registry::list(&db, session_ns(platform), None, None).await
+            else {
                 continue;
             };
-            for platform in ["qq", "telegram", "discord", "feishu"] {
-                let Ok(rows) = shared_registry::list(&db, session_ns(platform), None, None).await
+            for row in rows {
+                if is_active(&row.record_id).await {
+                    continue;
+                }
+                let Ok(session) = serde_json::from_value::<StoredSession>(row.payload) else {
+                    continue;
+                };
+                let (Some(binding), Some(address)) =
+                    (session.binding.clone(), session.address.clone())
                 else {
                     continue;
                 };
-                for row in rows {
-                    if is_active(&row.record_id).await {
-                        continue;
-                    }
-                    let Ok(session) = serde_json::from_value::<StoredSession>(row.payload) else {
-                        continue;
-                    };
-                    let (Some(binding), Some(address)) =
-                        (session.binding.clone(), session.address.clone())
-                    else {
-                        continue;
-                    };
-                    if !binding.is_current(&db).await {
-                        destroy_session(&db, platform, binding.user_id, &row.record_id, &session)
-                            .await;
-                        continue;
-                    }
-                    let Some(transport) = address.connect(&db).await else {
-                        continue;
-                    };
-                    let sink = ChannelSink {
-                        transport,
-                        binding,
-                        db: db.clone(),
-                    };
-                    with_chat_lock(
-                        &row.record_id,
-                        recover_session(&db, &row.record_id, Some(sink)),
-                    )
-                    .await;
+                if !binding.is_current(&db).await {
+                    destroy_session(&db, platform, binding.user_id, &row.record_id, &session).await;
+                    continue;
                 }
+                let Some(transport) = address.connect(&db).await else {
+                    continue;
+                };
+                let sink = ChannelSink {
+                    transport,
+                    binding,
+                    db: db.clone(),
+                };
+                with_chat_lock(
+                    &row.record_id,
+                    recover_session(&db, &row.record_id, Some(sink)),
+                )
+                .await;
             }
         }
-    });
+    }
 }

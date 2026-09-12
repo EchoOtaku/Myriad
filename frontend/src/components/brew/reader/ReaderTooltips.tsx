@@ -15,6 +15,8 @@ import {
 } from '@lib/motionShim'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
+import { currentCopy } from '../../../i18n/localeCopy'
+import { showError } from '../../../utils/toastManager'
 import { Spinner } from '../../Spinner'
 import { annotationChrome } from './annotationChrome'
 import { DATE_FORMAT_SHORT } from './constants'
@@ -266,6 +268,7 @@ export function CommentInputPopup({
       }, 800)
     } catch (err) {
       console.error('Failed to copy:', err)
+      showError(currentCopy().errors.clipboardFailed)
     }
   }
 

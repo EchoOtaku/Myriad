@@ -54,7 +54,7 @@ function mixHex(
   toward: '#ffffff' | '#000000',
   amount: number,
 ): string {
-  const raw = hex.trim().replace('#', '')
+  const raw = hex.trim().replaceAll('#', '')
   const full =
     raw.length === 3
       ? raw

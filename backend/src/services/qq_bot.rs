@@ -172,11 +172,9 @@ impl AccessToken {
     }
 }
 
-pub fn spawn_worker() {
-    tokio::spawn(async move {
-        info!("QQ bot Gateway worker started");
-        run_loop().await;
-    });
+/// Owned by the persona supervisor; dropping this future stops channel admission.
+pub(crate) async fn run_worker() {
+    run_loop().await;
 }
 
 async fn run_loop() {
@@ -204,7 +202,7 @@ async fn run_loop() {
 
         let (cancel_tx, cancel_rx) = watch::channel(false);
         let watched = fingerprint.clone();
-        let watch_task = tokio::spawn(async move {
+        let watch_task = crate::services::channel_work::AbortTask(tokio::spawn(async move {
             loop {
                 tokio::time::sleep(POLL).await;
                 let current = {
@@ -216,11 +214,11 @@ async fn run_loop() {
                     break;
                 }
             }
-        });
+        }));
 
         publish_status(QqBotPhase::Connecting, &fingerprint).await;
         let result = run_gateway(&fingerprint, cancel_rx).await;
-        watch_task.abort();
+        drop(watch_task);
         match result {
             Ok(()) => {
                 last_permanent = None;

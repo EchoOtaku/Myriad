@@ -20,6 +20,7 @@ import { API_URL } from '../../config'
 import { useI18n } from '../../contexts/I18nContext'
 import { fetchJson } from '../../utils/apiHelper'
 import { resolvePlatformId } from '../../utils/platformId'
+import { userFacingError } from '../../utils/userFacingError'
 import PlatformIcon from '../PlatformIcon'
 import {
   AutoHeight,
@@ -347,8 +348,9 @@ const PlatformsConfigSection: React.FC<PlatformsConfigSectionProps> = ({
       }
     } catch (e) {
       console.error('Failed to load platform card previews:', e)
+      showMessage(userFacingError(e, dm.previewLoadFailed), 'warning')
     }
-  }, [])
+  }, [dm.previewLoadFailed, showMessage])
 
   useEffect(() => {
     if (selectedPlatform !== null) return

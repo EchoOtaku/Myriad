@@ -110,23 +110,6 @@
   background: var(--reader-accent);
 }
 
-.brew-reader__toast {
-  position: fixed;
-  right: 0;
-  bottom: 2rem;
-  left: 0;
-  z-index: 60;
-  width: fit-content;
-  margin-inline: auto;
-  padding: 0.5rem 0.85rem;
-  border: 1px solid var(--reader-line);
-  border-radius: 0.42rem;
-  background: var(--reader-chip-solid);
-  box-shadow: var(--brew-shadow, 0 1px 2px rgb(0 0 0 / 8%));
-  color: var(--reader-fg);
-  font-size: 0.8125rem;
-}
-
 .brew-reader__conflict {
   position: fixed;
   right: 1rem;

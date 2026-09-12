@@ -29,6 +29,7 @@ import { isExlight, useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { usePageSeo } from '../../hooks/usePageSeo'
 import { useBreakpoints } from '../../hooks/useSharedEventListener'
 import { buildPrivatePageSeo } from '../../utils/modulePageSeo'
+import { showStickyToast, showToast } from '../../utils/toastManager'
 import {
   isUselessErrorText,
   userFacingError,
@@ -564,6 +565,71 @@ export function TappPlaygroundPage() {
   const session = getActiveSession(store)
   const revision = session.revisions[session.revisionIndex]
   const project = revision?.project
+  const playgroundWarningText = revision?.warnings?.length
+    ? revision.warnings.join('\n')
+    : ''
+
+  useEffect(() => {
+    if (!error) return
+    showStickyToast({
+      message: error,
+      type: 'error',
+      replaceKey: 'playground-error',
+    })
+  }, [error])
+
+  useEffect(() => {
+    if (!previewError) return
+    showStickyToast({
+      message: previewError,
+      type: 'warning',
+      replaceKey: 'playground-preview',
+    })
+  }, [previewError])
+
+  useEffect(() => {
+    if (!notice) return
+    showToast({
+      message: notice,
+      type: 'success',
+      replaceKey: 'playground-notice',
+    })
+  }, [notice])
+
+  useEffect(() => {
+    if (!pruneNotice) return
+    showStickyToast({
+      message: pruneNotice,
+      type: 'warning',
+      replaceKey: 'playground-storage',
+      onClose: () => setPruneNotice(''),
+    })
+  }, [pruneNotice])
+
+  useEffect(() => {
+    if (!capabilityNoteVisible) return
+    showStickyToast({
+      message: t.tapp.playgroundPreviewCapabilities,
+      type: 'warning',
+      replaceKey: 'playground-capability',
+      onClose: () => {
+        setCapabilityNoteVisible(false)
+        try {
+          sessionStorage.setItem(CAPABILITY_NOTE_DISMISS_KEY, '1')
+        } catch {
+        }
+      },
+    })
+  }, [capabilityNoteVisible, t.tapp.playgroundPreviewCapabilities])
+
+  useEffect(() => {
+    if (!playgroundWarningText) return
+    showStickyToast({
+      message: playgroundWarningText,
+      type: 'warning',
+      replaceKey: 'playground-warnings',
+    })
+  }, [playgroundWarningText])
   const sessionSummaries = useMemo(
     () =>
       store.sessions

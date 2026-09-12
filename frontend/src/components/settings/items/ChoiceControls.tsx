@@ -64,9 +64,7 @@ export function SegmentedControl<T extends string = string>(
       if (mode === 'multi') {
         const current = value as T[]
         const multiOnChange = onChange as (value: T[]) => void
-        const set = new Set(current)
-        if (set.has(next)) set.delete(next)
-        else set.add(next)
+        const set = new Set(current).symmetricDifference(new Set([next]))
         multiOnChange(Iterator.from(set).toArray())
         return
       }

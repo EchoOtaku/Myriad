@@ -220,21 +220,12 @@ pub(super) fn build_authenticated_router(
             "/api/tapp-playground",
             api::tapp_playground::create_playground_routes(app_state.clone()),
         )
-        // Agent AI 任务编排 API
-        .nest(
-            "/api/agent",
-            api::agent::create_agent_routes(app_state.clone()),
-        )
         // Tripo 3D
         // Provider operations are admin-only; content-addressed GLB assets
         // remain public so guest home scenes can render them.
         .nest(
             "/api/model3d",
             api::model3d::create_routes(app_state.clone()),
-        )
-        .nest(
-            "/api/merope/rig",
-            api::merope_rig::create_routes(app_state.clone()),
         )
         // Brew 阅读 API
         // RSS/Atom 订阅管理、文章获取、阅读状态同步
@@ -247,12 +238,6 @@ pub(super) fn build_authenticated_router(
         .nest(
             "/api/brewlia",
             api::brewlia::create_brewlia_routes(app_state.clone()),
-        )
-        // 语音服务 API
-        // TTS/ASR/convo；单条 TTS 走 configured_provider，batch 播客固定腾讯
-        .nest(
-            "/api/speech",
-            api::speech::create_speech_routes(app_state.clone()),
         )
         // Tapp API
         // Platform reads: public site cache + Runtime Grant (guest widgets OK).
@@ -591,50 +576,6 @@ pub(super) fn build_authenticated_router(
         .route(
             "/api/tapp/events/stream",
             get(api::tapp_runtime::stream_events).route_layer(from_fn_with_state(
-                app_state.clone(),
-                middleware::auth::optional_auth_middleware,
-            )),
-        )
-        .route(
-            "/api/tapp/agent/v2/interactions/stream",
-            get(api::tapp_runtime::stream_agent_interactions).route_layer(from_fn_with_state(
-                app_state.clone(),
-                middleware::auth::optional_auth_middleware,
-            )),
-        )
-        .route(
-            "/api/tapp/agent/v2/interactions/{interaction_id}",
-            get(api::tapp_runtime::get_agent_interaction).route_layer(from_fn_with_state(
-                app_state.clone(),
-                middleware::auth::optional_auth_middleware,
-            )),
-        )
-        .route(
-            "/api/tapp/agent/v2/interactions/{interaction_id}/accept",
-            post(api::tapp_runtime::accept_agent_interaction).route_layer(from_fn_with_state(
-                app_state.clone(),
-                middleware::auth::optional_auth_middleware,
-            )),
-        )
-        .route(
-            "/api/tapp/agent/v2/interactions/{interaction_id}/result",
-            post(api::tapp_runtime::submit_agent_interaction_result).route_layer(
-                from_fn_with_state(
-                    app_state.clone(),
-                    middleware::auth::optional_auth_middleware,
-                ),
-            ),
-        )
-        .route(
-            "/api/tapp/agent/v2/interactions/{interaction_id}/reject",
-            post(api::tapp_runtime::reject_agent_interaction).route_layer(from_fn_with_state(
-                app_state.clone(),
-                middleware::auth::optional_auth_middleware,
-            )),
-        )
-        .route(
-            "/api/tapp/agent/v2/interactions/{interaction_id}/intents",
-            post(api::tapp_runtime::request_agent_intent).route_layer(from_fn_with_state(
                 app_state.clone(),
                 middleware::auth::optional_auth_middleware,
             )),

@@ -32,7 +32,6 @@ import AnimatedView from '../components/AnimatedView'
 import { Spinner } from '../components/Spinner'
 import { setStageLeaveHandler } from '../components/stageLeaveGate'
 import StageMode from '../components/StageMode'
-import Toast from '../components/Toast'
 import { preloadPlatformFaces } from '../components/widgets/reportCard/platformFaceLoaders'
 import { ReportCardWidget } from '../components/widgets/ReportCardWidget'
 import { API_URL } from '../config'
@@ -63,6 +62,7 @@ import { REPORT_PLATFORM_IDS } from '../utils/reportCardVisuals'
 import { reportUserFacingError } from '../utils/reportError'
 import { invalidateLatestReportCache } from '../utils/requestDedup'
 import { hasSessionHint } from '../utils/sessionDetection'
+import { showToast } from '../utils/toastManager'
 import { userFacingError } from '../utils/userFacingError'
 import { pickReportHook } from './reports/reportsDynamicStatus'
 import ReportsStatusBar from './reports/ReportsStatusBar'
@@ -334,8 +334,6 @@ export default function Reports() {
   const [isStageMode, setIsStageMode] = useState(false)
   const [stagePaused, setStagePaused] = useState(false)
   const [refreshingStage, setRefreshingStage] = useState(false)
-  const [toastMessage, setToastMessage] = useState<string>('')
-  const [toastType, setToastType] = useState<ToastType>('info')
   const [playAllMode, setPlayAllMode] = useState(false)
   const [_playAllQueue, setPlayAllQueue] = useState<string[]>([])
   // Ref so play-all queue is not stale in closures.
@@ -350,8 +348,7 @@ export default function Reports() {
 
   const showToastMessage = useCallback(
     (message: string, type: ToastType = 'info') => {
-      setToastType(type)
-      setToastMessage(message)
+      showToast({ message, type, replaceKey: 'reports' })
     },
     [],
   )
@@ -966,14 +963,6 @@ export default function Reports() {
 
   return (
     <AnimatedView className="min-h-screen md:h-screen md:overflow-hidden">
-      {toastMessage && (
-        <Toast
-          message={toastMessage}
-          type={toastType}
-          onClose={() => setToastMessage('')}
-        />
-      )}
-
       <StageMode
         isOpen={isStageMode}
         onClose={handleUserCloseStage}

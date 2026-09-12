@@ -49,6 +49,50 @@ pub(crate) async fn channel_enabled(provider: &str) -> bool {
     }
 }
 
+/// Authorization reads committed bot configuration independently of the
+/// connection supervisor's periodic refresh. Only its digest leaves this helper.
+async fn committed_scope(db: &DatabaseConnection, provider: &str) -> Result<Option<String>, DbErr> {
+    let (enabled_key, app_key, secret_key) = match provider {
+        "qq" => ("qq_bot_enabled", "qq_bot_app_id", "qq_bot_app_secret"),
+        "telegram" => ("telegram_bot_enabled", "", "telegram_bot_token"),
+        "discord_dm" => ("discord_bot_enabled", "", "discord_bot_token"),
+        "feishu" => (
+            "feishu_bot_enabled",
+            "feishu_bot_app_id",
+            "feishu_bot_app_secret",
+        ),
+        _ => return Ok(None),
+    };
+    let rows = db
+        .query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT key, value FROM configurations WHERE key IN ($1, $2, $3)",
+            [enabled_key.into(), app_key.into(), secret_key.into()],
+        ))
+        .await?;
+    let mut enabled = false;
+    let mut app = String::new();
+    let mut secret = String::new();
+    for row in rows {
+        let key: String = row.try_get("", "key")?;
+        let value: serde_json::Value = row.try_get("", "value")?;
+        let value = crate::services::data_key::open_config_value(&key, value);
+        if key == enabled_key {
+            enabled = value.as_bool().unwrap_or(false);
+        } else if key == app_key {
+            app = value.as_str().unwrap_or("").trim().to_string();
+        } else if key == secret_key {
+            secret = value.as_str().unwrap_or("").trim().to_string();
+        }
+    }
+    if !enabled || secret.is_empty() || (!app_key.is_empty() && app.is_empty()) {
+        return Ok(None);
+    }
+    Ok(Some(hex::encode(Sha256::digest(
+        serde_json::to_vec(&(provider, app, secret)).unwrap(),
+    ))))
+}
+
 impl ChannelBinding {
     pub async fn resolve(
         db: &DatabaseConnection,
@@ -58,7 +102,9 @@ impl ChannelBinding {
     ) -> Result<Option<Self>, DbErr> {
         let provider = provider_for_platform(platform);
         let scope = credential_scope(provider).await;
-        if !channel_enabled(provider).await {
+        if !channel_enabled(provider).await
+            || committed_scope(db, provider).await?.as_deref() != Some(scope.as_str())
+        {
             return Ok(None);
         }
         let row = db.query_one_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
@@ -89,6 +135,7 @@ impl ChannelBinding {
     pub async fn is_current(&self, db: &DatabaseConnection) -> bool {
         if !channel_enabled(&self.provider).await
             || credential_scope(&self.provider).await != self.scope
+            || !matches!(committed_scope(db, &self.provider).await, Ok(Some(scope)) if scope == self.scope)
         {
             return false;
         }
@@ -149,6 +196,9 @@ mod postgres_tests {
             config.feishu_bot_app_id = "test-app".into();
             config.feishu_bot_app_secret = Some("test-secret".into());
         }
+        db.execute_unprepared("CREATE TABLE IF NOT EXISTS configurations (key TEXT PRIMARY KEY, value JSONB); \
+            INSERT INTO configurations VALUES ('feishu_bot_enabled', 'true'), ('feishu_bot_app_id', '\"test-app\"'), ('feishu_bot_app_secret', '\"test-secret\"') \
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;").await.unwrap();
         let keys = vec!["open-user".into(), "user-alias".into()];
         let code = mint_code(&db, FEISHU, 101).await.unwrap();
         assert_eq!(
@@ -233,6 +283,25 @@ mod postgres_tests {
             .unwrap()
             .unwrap();
         assert_ne!(first.session_key("chat"), second.session_key("chat"));
+        // Commit revocation while this worker deliberately keeps its old cache.
+        db.execute_unprepared(
+            "UPDATE configurations SET value = 'false' WHERE key = 'feishu_bot_enabled'",
+        )
+        .await
+        .unwrap();
+        assert!(!second.is_current(&db).await);
+        assert!(ChannelBinding::resolve(&db, "feishu", 102, "open-user")
+            .await
+            .unwrap()
+            .is_none());
+        db.execute_unprepared(
+            "UPDATE configurations SET value = 'true' WHERE key = 'feishu_bot_enabled'",
+        )
+        .await
+        .unwrap();
+        assert!(second.is_current(&db).await);
+        db.execute_unprepared(r#"UPDATE configurations SET value = '"rotated-secret"' WHERE key = 'feishu_bot_app_secret'"#).await.unwrap();
+        assert!(!second.is_current(&db).await);
         let unused_code = mint_code(&db, FEISHU, 101).await.unwrap();
         crate::GLOBAL_DYNAMIC_CONFIG
             .write()

@@ -9,6 +9,7 @@ import type { RigCharacterHandle } from './rig/RigCharacter'
 import type { MeropeRigManifest } from './rig/types'
 import type { MeropeActivity } from './types'
 import type { WardrobeItem } from './wardrobe'
+import type { PoseCorrection } from './anime25drig/poseCorrections'
 import { LuRefreshCw, LuSparkles } from '@lib/icons'
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
@@ -42,6 +43,7 @@ import { useI18n } from '../../contexts/I18nContext'
 import { agentService } from '../../services/agent'
 import { notifyAvatarChanged } from '../../services/avatarSourceApi'
 import { invalidatePublicConfigCache } from '../../utils/requestDedup'
+import { showStickyToast } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
 import Anime25DWorkbench from './anime25drig/Anime25DWorkbench'
 import { isAnime25DPlayback } from './anime25drig/types'
@@ -51,6 +53,7 @@ import {
   generateStickerAvatar,
   getSeeThroughStatus,
   getSiteFace,
+  saveRigPoseCorrections,
   updateSeeThroughToken,
 } from './api'
 import { commitRigPsdAsset, preflightRigPsdAsset } from './assets/pipeline'
@@ -77,6 +80,15 @@ import {
 } from './wardrobe'
 import './merope.css'
 import './merope-motion-home.css'
+
+function reportMeropeError(message: string) {
+  if (!message.trim()) return
+  showStickyToast({
+    message,
+    type: 'error',
+    replaceKey: 'merope-workbench',
+  })
+}
 
 function toMeropeActivity(raw: string): MeropeActivity {
   if (raw === 'talking' || raw === 'thinking') return raw
@@ -139,6 +151,9 @@ export default function SiteMotionWorkbench({
   )
   const managingId = personaTouring ? null : managingOutfitId
   const [rigManifest, setRigManifest] = useState<MeropeRigManifest | null>(null)
+  const [rigAssetId, setRigAssetId] = useState<string | null>(null)
+  const manifestRef = useRef(rigManifest)
+  manifestRef.current = rigManifest
   const [portraitUrl, setPortraitUrl] = useState<string | null>(null)
   const [generationFingerprint, setGenerationFingerprint] = useState<
     string | null
@@ -186,6 +201,7 @@ export default function SiteMotionWorkbench({
   const loadFace = useCallback(async () => {
     const face = await getSiteFace()
     setRigManifest(face.manifest)
+    setRigAssetId(face.assetId)
     setPortraitUrl(face.portraitUrl)
     setGenerationFingerprint(face.generationFingerprint)
     return face
@@ -198,7 +214,7 @@ export default function SiteMotionWorkbench({
         setRigManifest(null)
         setPortraitUrl(null)
         setGenerationFingerprint(null)
-        setError(userFacingError(reason, t.merope.loadFailed))
+        reportMeropeError(userFacingError(reason, t.merope.loadFailed))
       }
     })
     return () => {
@@ -256,7 +272,7 @@ export default function SiteMotionWorkbench({
       .catch((reason) => {
         if (!cancelled) {
           setSeeThroughTokenConfigured(false)
-          setError(userFacingError(reason, t.merope.seeThroughStatusFailed))
+          reportMeropeError(userFacingError(reason, t.merope.seeThroughStatusFailed))
         }
       })
     return () => {
@@ -344,7 +360,7 @@ export default function SiteMotionWorkbench({
     async (nextPortraitUrl?: string | null) => {
       if (!personaSnapshot) return
       setGenerating(true)
-      setError('')
+      reportMeropeError('')
       try {
         const observed = await agentService.observeVisualFromPortrait({
           gender:
@@ -408,7 +424,7 @@ export default function SiteMotionWorkbench({
           })
         }
       } catch (reason) {
-        setError(
+        reportMeropeError(
           generationFailureMessage(
             reason,
             t.merope.wardrobeFillFailed,
@@ -470,7 +486,7 @@ export default function SiteMotionWorkbench({
           activeId: activeOutfitId,
         })
       } catch (reason) {
-        setError(
+        reportMeropeError(
           generationFailureMessage(
             reason,
             o.visualDesignSaveFailed,
@@ -505,7 +521,7 @@ export default function SiteMotionWorkbench({
           activeId: activeOutfitId,
         })
       } catch (reason) {
-        setError(
+        reportMeropeError(
           generationFailureMessage(
             reason,
             o.visualDesignSaveFailed,
@@ -558,7 +574,7 @@ export default function SiteMotionWorkbench({
         setPersonaSnapshot(saved)
         window.dispatchEvent(new CustomEvent('arael-persona-updated'))
       } catch (reason) {
-        setError(userFacingError(reason, o.saveFailed))
+        reportMeropeError(userFacingError(reason, o.saveFailed))
       }
     },
     [o.saveFailed, personaSnapshot],
@@ -603,7 +619,7 @@ export default function SiteMotionWorkbench({
         applyAddressee(await agentService.putAddressee({ doNotDisturb: next }))
       } catch (reason) {
         setDoNotDisturb(previous)
-        setError(userFacingError(reason, t.errors.addresseeSaveFailed))
+        reportMeropeError(userFacingError(reason, t.errors.addresseeSaveFailed))
       } finally {
         setDndBusy(false)
       }
@@ -622,7 +638,7 @@ export default function SiteMotionWorkbench({
           }),
         )
       } catch (reason) {
-        setError(userFacingError(reason, t.errors.addresseeSaveFailed))
+        reportMeropeError(userFacingError(reason, t.errors.addresseeSaveFailed))
       } finally {
         setDndBusy(false)
       }
@@ -634,7 +650,7 @@ export default function SiteMotionWorkbench({
   const makeStickerAvatar = useCallback(async () => {
     if (avatarBusy || !portraitUrl) return
     setAvatarBusy(true)
-    setError('')
+    reportMeropeError('')
     try {
       const result = await generateStickerAvatar()
       setStickerAvatarUrl(result.avatarUrl)
@@ -644,7 +660,7 @@ export default function SiteMotionWorkbench({
       // 其它头像位可能仍戴上一张贴纸。
       notifyAvatarChanged()
     } catch (reason) {
-      setError(userFacingError(reason, t.merope.avatarFailed))
+      reportMeropeError(userFacingError(reason, t.merope.avatarFailed))
     } finally {
       setAvatarBusy(false)
     }
@@ -655,7 +671,7 @@ export default function SiteMotionWorkbench({
     if (!window.confirm(t.merope.visualConfirm)) return
     const nextIdentity = applyOutfit(visualIdentity, item)
     setGenerating(true)
-    setError('')
+    reportMeropeError('')
     try {
       await saveVisualProfile({
         identity: nextIdentity,
@@ -687,7 +703,7 @@ export default function SiteMotionWorkbench({
       notifyFaceUpdated()
     } catch (reason) {
       const o = t.agentPersona.onboarding
-      setError(
+      reportMeropeError(
         generationFailureMessage(
           reason,
           t.merope.visualFailed,
@@ -789,6 +805,17 @@ export default function SiteMotionWorkbench({
     },
     [loadFace],
   )
+
+  const savePoseCorrections = useCallback(async (corrections: PoseCorrection[]) => {
+    if (!rigAssetId || !rigManifest) throw new Error(t.merope.poseCorrection.failed)
+    const saved = await saveRigPoseCorrections(rigAssetId, corrections)
+    notifyFaceUpdated()
+    // A late save must not replace a newer portrait/outfit displayed meanwhile.
+    if (manifestRef.current !== rigManifest) return
+    setRigManifest(saved.manifest)
+    setRigAssetId(saved.assetId)
+    setWardrobeItems(items => items.map(item => item.id === activeOutfitId ? { ...item, rigAssetId: saved.assetId } : item))
+  }, [rigAssetId, rigManifest, activeOutfitId, t.merope.poseCorrection.failed])
 
   const downloadPortrait = useCallback(
     async (url?: string | null) => {
@@ -1271,7 +1298,7 @@ export default function SiteMotionWorkbench({
             if ((next ?? '') === (managingOutfit.name ?? '')) return
             void renameOutfit(managingOutfit.id, event.currentTarget.value).catch(
               (reason) => {
-                setError(userFacingError(reason, t.merope.wardrobeRenameFailed))
+                reportMeropeError(userFacingError(reason, t.merope.wardrobeRenameFailed))
               },
             )
           }}
@@ -1287,7 +1314,7 @@ export default function SiteMotionWorkbench({
             loading={generating}
             onClick={() => {
               void wearOutfit(managingOutfit).catch((reason) => {
-                setError(
+                reportMeropeError(
                   userFacingError(reason, t.merope.wardrobeApplyFailed),
                 )
               })
@@ -1330,7 +1357,7 @@ export default function SiteMotionWorkbench({
             disabled={generating}
             onError={setError}
             onUploaded={async (url) => {
-              setError('')
+              reportMeropeError('')
               try {
                 await applyVisualFromPortrait(url)
               } catch {
@@ -1411,6 +1438,9 @@ export default function SiteMotionWorkbench({
           onPreflightRigPsd={preflightRigPsd}
           onCommitRigPsd={commitRigPsd}
           motionEnabled={motionEnabled}
+          correctionPlayback={rigManifest?.anime25dPlayback ?? null}
+          correctionAssetId={rigAssetId}
+          onSavePoseCorrections={savePoseCorrections}
         />
       </div>
       {portraitUrl && motionEnabled && studioHost

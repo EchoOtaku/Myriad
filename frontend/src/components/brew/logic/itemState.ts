@@ -34,7 +34,5 @@ export function dropStarredId(
   id: number,
 ): Set<number> {
   if (!selected.has(id)) return selected
-  const next = new Set(selected)
-  next.delete(id)
-  return next
+  return selected.difference(new Set([id]))
 }

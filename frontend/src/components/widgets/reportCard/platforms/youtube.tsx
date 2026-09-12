@@ -374,7 +374,7 @@ const YoutubeStatsWidget = memo(({ data }: { data: any }) => {
         title={
           awardTier === 'none'
             ? undefined
-            : `YouTube ${awardTier.replace('_', ' ')} play button`
+            : `YouTube ${awardTier.replaceAll('_', ' ')} play button`
         }
       >
         <div

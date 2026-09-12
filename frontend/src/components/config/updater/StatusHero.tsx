@@ -1,5 +1,5 @@
 import type { Job, ReleaseManifest, UpdaterStatus } from '../../../services/updaterApi'
-import type { ChannelKey, Mood, Toast, Tone, U } from './helpers'
+import type { ChannelKey, Mood, Tone, U } from './helpers'
 import { LuRefreshCw } from '@lib/icons'
 import React from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
@@ -36,7 +36,6 @@ export function StatusHero({
   autoRechecking,
   pendingConfirm,
   nowTick,
-  toast,
   u,
   onCheck,
   onUpdate,
@@ -55,7 +54,6 @@ export function StatusHero({
   autoRechecking: boolean
   pendingConfirm: boolean
   nowTick: number
-  toast: Toast
   u: U
   onCheck: () => void
   onUpdate: () => void
@@ -286,16 +284,6 @@ export function StatusHero({
         u={u}
         onSave={onSaveAutoPrefs}
       />
-      {toast && (
-        <div
-          className={`updater-hero-feedback ${toast.kind}`}
-          role={toast.kind === 'error' ? 'alert' : 'status'}
-          aria-live="polite"
-        >
-          <span className="updater-feedback-mark" aria-hidden="true" />
-          <span>{toast.text}</span>
-        </div>
-      )}
     </div>
   )
 }

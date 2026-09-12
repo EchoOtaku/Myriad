@@ -1,7 +1,10 @@
-//! Bounded MCP client runtime. No database, web framework, platform globals,
-//! or application credentials: hosts inject only a non-blocking status reporter.
+//! Bounded MCP client runtime. No database, web framework or platform globals.
+//! Hosts inject transport policy, gateway authentication and status reporting;
+//! editable server definitions cannot choose gateway endpoints or credentials.
 mod actor;
 pub mod config;
+pub mod connection;
+pub mod http;
 pub mod manager;
 pub mod protocol;
 pub mod server;

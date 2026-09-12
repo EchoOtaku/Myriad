@@ -16,6 +16,7 @@ import {
   normalizeOAuthIconUrl,
   preloadOAuthIcons,
 } from '../../utils/oauthIcons'
+import { showError } from '../../utils/toastManager'
 import OAuthIconImage from '../OAuthIconImage'
 import {
   CheckboxCard,
@@ -328,14 +329,22 @@ function ProviderCard({
 
   const copy = async () => {
     if (!callbackUrl) return
-    await navigator.clipboard.writeText(callbackUrl)
-    setCopied(true)
+    try {
+      await navigator.clipboard.writeText(callbackUrl)
+      setCopied(true)
+    } catch {
+      showError(t.errors.clipboardFailed)
+    }
   }
 
   const copyDataCallback = async () => {
     if (!discordDataCallbackUrl) return
-    await navigator.clipboard.writeText(discordDataCallbackUrl)
-    setCopiedData(true)
+    try {
+      await navigator.clipboard.writeText(discordDataCallbackUrl)
+      setCopiedData(true)
+    } catch {
+      showError(t.errors.clipboardFailed)
+    }
   }
 
   const setupGuide = getOAuthSetupGuideForEntry(entry, t.config, {

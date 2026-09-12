@@ -47,7 +47,6 @@ import {
 } from '../../components/settings'
 import { SettingItemWrapper } from '../../components/settings/items/SettingItemWrapper'
 import { Spinner } from '../../components/Spinner'
-import Toast from '../../components/Toast'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { usePageSeo } from '../../hooks/usePageSeo'
@@ -56,6 +55,7 @@ import {
   canAccessModuleVisibility,
   useModuleVisibilityPreferences,
 } from '../../utils/moduleVisibility'
+import { showToast } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
 import { TappIconBadge } from '../components/TappIconBadge'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
@@ -143,8 +143,6 @@ export function TappDetailPage() {
   const debounceTimersRef = useRef<
     Record<string, ReturnType<typeof setTimeout>>
   >({})
-  const [toastMessage, setToastMessage] = useState<string>('')
-  const [toastType, setToastType] = useState<ToastType>('info')
   const [showUninstallDialog, setShowUninstallDialog] = useState(false)
   const [uninstallAnchor, setUninstallAnchor] = useState<HTMLElement | null>(
     null,
@@ -168,8 +166,7 @@ export function TappDetailPage() {
 
   const showToastMessage = useCallback(
     (message: string, type: ToastType = 'info') => {
-      setToastType(type)
-      setToastMessage(message)
+      showToast({ message, type, replaceKey: 'tapp-detail' })
     },
     [],
   )
@@ -1396,14 +1393,6 @@ export function TappDetailPage() {
         </SettingGroup>
         </div>
       </SettingSection>
-
-      {toastMessage && (
-        <Toast
-          message={toastMessage}
-          type={toastType}
-          onClose={() => setToastMessage('')}
-        />
-      )}
 
       <UninstallConfirmDialog
         isOpen={showUninstallDialog}

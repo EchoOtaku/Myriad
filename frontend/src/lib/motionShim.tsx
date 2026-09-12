@@ -63,14 +63,14 @@ const MOTION_PROPS = [
   'custom',
 ] as const
 
+const MOTION_PROP_SET = new Set<string>(MOTION_PROPS)
+
 function filterMotionProps(props: any): any {
-  const filtered: any = {}
-  for (const key in props) {
-    if (!MOTION_PROPS.includes(key as any)) {
-      filtered[key] = props[key]
-    }
-  }
-  return filtered
+  return Object.fromEntries(
+    Iterator.from(Object.entries(props)).filter(
+      ([key]) => !MOTION_PROP_SET.has(key),
+    ),
+  )
 }
 
 /** Apply variants.initial / initial as CSS until motion loads (no flash). */
@@ -189,22 +189,20 @@ function createShim(tag: SupportedTag) {
       props?.exit
     const { motion } = useLazyMotion(Boolean(hasAnimation))
 
-    const { key, ...rest } = props ?? {}
-
     if (motion) {
       const Comp: any = motion[tag]
-      return <Comp key={key} ref={ref} {...rest} />
+      return <Comp ref={ref} {...props} />
     } else {
       // Apply initial CSS so content does not flash.
       const Tag = tag as any
-      const filteredProps = filterMotionProps(rest)
+      const filteredProps = filterMotionProps(props ?? {})
       const initialStyle = getInitialStyle(props)
 
       if (initialStyle) {
         filteredProps.style = { ...filteredProps.style, ...initialStyle }
       }
 
-      return <Tag key={key} ref={ref} {...filteredProps} />
+      return <Tag ref={ref} {...filteredProps} />
     }
   })
   MotionShim.displayName = `MotionShim(${tag})`

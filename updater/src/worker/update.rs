@@ -1281,6 +1281,19 @@ async fn probe_one_tick(
             }
         }
     }
+    match worker.docker().persona_worker_healthy().await {
+        Ok(true) => {}
+        Ok(false) => {
+            return ProbeTick::NotReady {
+                detail: "persona worker health/image not ready".into(),
+            }
+        }
+        Err(error) => {
+            return ProbeTick::NotReady {
+                detail: format!("persona worker probe: {error}"),
+            }
+        }
+    }
     const LOOSE_FRONTEND_AFTER: Duration = Duration::from_secs(45);
 
     let docker = worker.docker();

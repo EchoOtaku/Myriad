@@ -453,7 +453,7 @@ function Start-Services {
                 $backendCommand += "`$env:UPDATER_GATEWAY_SECRET='$gwSecret'; "
                 Write-Info "Backend updater proxy via gateway: http://127.0.0.1:1104 (UPDATER_GATEWAY_SECRET set; no UPDATE_TOKEN)"
             }
-            $backendCommand += "cargo run"
+            $backendCommand += "`$env:MYRIAD_PROCESS_ROLE='all'; cargo run"
 
             Start-Process powershell -ArgumentList `
                 "-NoExit", "-NoProfile", "-Command", `

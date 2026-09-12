@@ -36,6 +36,10 @@ fn connection_options(url: &str) -> ConnectOptions {
 
 pub async fn run() -> anyhow::Result<()> {
     use std::sync::atomic::{AtomicBool, Ordering};
+    crate::services::federation_gate::wait_until_resolved(Duration::from_secs(30)).await;
+    if crate::services::federation_gate::should_exit_process() {
+        return exit_for_closed_gate();
+    }
     crate::services::data_key::init_existing()?;
     let config = AppConfig::from_env()?;
     anyhow::ensure!(
@@ -109,10 +113,6 @@ pub async fn run() -> anyhow::Result<()> {
     let delivery_db = db.clone();
     let mut delivery = tokio::spawn(async move {
         super::delivery::run_delivery_worker(delivery_db).await;
-        if !crate::services::federation_gate::federation_enabled() {
-            // Healthy geographic idle still participates in the outer supervisor.
-            std::future::pending::<()>().await;
-        }
     });
     let mut refresh = tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(15));
@@ -141,7 +141,11 @@ pub async fn run() -> anyhow::Result<()> {
     tracing::info!(%address, "Federation HTTP and delivery process ready");
     let result = tokio::select! {
         signal = termination_signal() => signal,
+        () = wait_until_gate_closes() => exit_for_closed_gate(),
         result = &mut delivery => match result {
+            Ok(()) if crate::services::federation_gate::should_exit_process() => {
+                exit_for_closed_gate()
+            }
             Ok(()) => Err(anyhow::anyhow!("federation delivery loop stopped unexpectedly")),
             Err(error) => Err(error.into()),
         },
@@ -218,6 +222,25 @@ async fn health(State(state): State<HealthState>) -> (StatusCode, Json<serde_jso
             "federation_gate": crate::services::federation_gate::status(),
         })),
     )
+}
+
+fn exit_for_closed_gate() -> anyhow::Result<()> {
+    let status = crate::services::federation_gate::status();
+    tracing::warn!(
+        reason = status.reason,
+        country_codes = ?status.country_codes,
+        "Federation worker exiting: egress-location gate closed"
+    );
+    Ok(())
+}
+
+async fn wait_until_gate_closes() {
+    loop {
+        if crate::services::federation_gate::should_exit_process() {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 }
 
 async fn termination_signal() -> anyhow::Result<()> {

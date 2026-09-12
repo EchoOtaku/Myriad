@@ -1,23 +1,32 @@
-import type { ToastType } from '../../Toast'
 import type { ShowMessage } from './types'
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
+import { showStickyToast, showToast } from '../../../utils/toastManager'
+
+const CONFIG_TOAST_KEY = 'config'
 
 export function useConfigMessage() {
-  const [message, setMessage] = useState('')
-  const [messageType, setMessageType] = useState<ToastType>('info')
-
   const showMessage: ShowMessage = useCallback(
     (nextMessage, nextType = 'info', duration = 3000) => {
-      setMessageType(nextType)
-      setMessage(nextMessage)
-      if (duration > 0) {
-        window.setTimeout(setMessage, duration, '')
+      const persist = duration <= 0
+      if (persist) {
+        showStickyToast({
+          message: nextMessage,
+          type: nextType,
+          replaceKey: CONFIG_TOAST_KEY,
+        })
+        return
       }
+      showToast({
+        message: nextMessage,
+        type: nextType,
+        duration,
+        replaceKey: CONFIG_TOAST_KEY,
+      })
     },
     [],
   )
 
-  const clearMessage = useCallback(() => setMessage(''), [])
+  const clearMessage = useCallback(() => {}, [])
 
-  return { message, messageType, showMessage, clearMessage }
+  return { showMessage, clearMessage }
 }

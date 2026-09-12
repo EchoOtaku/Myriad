@@ -5,8 +5,8 @@
 //! 重启预算、取消和调用排队由 actor 管理。
 
 use super::config::McpServerConfig;
+use super::connection::{RuntimeOptions, Transport};
 use super::protocol::{McpInitializeResult, McpToolCallResult, McpToolDef};
-use super::transport::StdioTransport;
 
 /// MCP 服务器状态
 #[derive(Debug, Clone, PartialEq)]
@@ -21,14 +21,16 @@ pub enum ServerState {
 pub struct McpServer {
     pub config: McpServerConfig,
     state: ServerState,
-    transport: Option<StdioTransport>,
+    transport: Option<Transport>,
     tools: Vec<McpToolDef>,
+    options: RuntimeOptions,
 }
 
 impl McpServer {
-    pub fn new(config: McpServerConfig) -> Self {
+    pub fn new(config: McpServerConfig, options: RuntimeOptions) -> Self {
         Self {
             config,
+            options,
             state: ServerState::Stopped,
             transport: None,
             tools: Vec::new(),
@@ -45,9 +47,11 @@ impl McpServer {
         tracing::info!(server = %self.config.id, "Starting MCP server");
 
         // 1. Spawn 子进程
-        let transport = StdioTransport::spawn(&self.config).await.inspect_err(|e| {
-            self.state = ServerState::Failed(e.clone());
-        })?;
+        let transport = Transport::open(&self.config, &self.options)
+            .await
+            .inspect_err(|e| {
+                self.state = ServerState::Failed(e.clone());
+            })?;
         self.transport = Some(transport);
 
         // 2. Initialize 握手
@@ -75,7 +79,7 @@ impl McpServer {
         let transport = self.transport.as_mut().ok_or("No transport")?;
 
         let params = serde_json::json!({
-            "protocolVersion": "2024-11-05",
+            "protocolVersion": transport.protocol_version(),
             "capabilities": {},
             "clientInfo": {
                 "name": "myriad-agent",
@@ -90,6 +94,7 @@ impl McpServer {
             "Invalid MCP initialize response".to_string()
         })?;
 
+        transport.set_protocol(&init_result.protocol_version)?;
         tracing::debug!(
             server = %self.config.id,
             protocol = %init_result.protocol_version,
@@ -211,7 +216,7 @@ impl McpServer {
 
     pub async fn terminate(&mut self) {
         if let Some(transport) = self.transport.as_mut() {
-            transport.terminate_and_reap().await;
+            transport.revoke().await;
         }
         self.transport = None;
         self.tools.clear();

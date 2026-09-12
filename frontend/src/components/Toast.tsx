@@ -19,6 +19,7 @@ export interface ToastProps {
   onClose?: () => void
   duration?: number
   showCloseButton?: boolean
+  sticky?: boolean
   icon?: React.ReactNode
   onClick?: () => void
 }
@@ -62,6 +63,7 @@ export default function Toast({
   onClose,
   duration = 3000,
   showCloseButton = false,
+  sticky = false,
   icon,
   onClick,
 }: ToastProps) {
@@ -69,6 +71,9 @@ export default function Toast({
   const [isPaused, setIsPaused] = useState(false)
 
   const config = TYPE_CONFIG[type]
+  const persist = sticky
+  const hideAfter = persist ? 0 : duration > 0 ? duration : 3000
+  const canClose = persist || showCloseButton
 
   const handleClose = useCallback(() => {
     setIsHiding(true)
@@ -78,16 +83,16 @@ export default function Toast({
   }, [onClose])
 
   useEffect(() => {
-    if (duration <= 0 || isPaused) return
+    if (persist || hideAfter <= 0 || isPaused) return
 
     const hideTimer = setTimeout(() => {
       handleClose()
-    }, duration)
+    }, hideAfter)
 
     return () => {
       clearTimeout(hideTimer)
     }
-  }, [duration, isPaused, handleClose])
+  }, [persist, hideAfter, isPaused, handleClose])
 
   const handleMouseEnter = useCallback(() => {
     setIsPaused(true)
@@ -118,7 +123,7 @@ export default function Toast({
       onMouseLeave={handleMouseLeave}
     >
       <div
-        className={`toast-message ${config.colorClass}${onClick ? ' toast-clickable' : ''}`}
+        className={`toast-message ${config.colorClass}${onClick ? ' toast-clickable' : ''}${persist ? ' toast-sticky' : ''}`}
         role={onClick ? 'button' : undefined}
         tabIndex={onClick ? 0 : undefined}
         onClick={onClick ? handleBodyClick : undefined}
@@ -140,7 +145,7 @@ export default function Toast({
           <div className="toast-text">{message}</div>
         </div>
 
-        {showCloseButton && (
+        {canClose && (
           <button
             className="toast-close-btn"
             onClick={(e) => {

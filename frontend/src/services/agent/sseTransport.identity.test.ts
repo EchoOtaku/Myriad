@@ -32,7 +32,7 @@ function harness(csrf: () => Promise<string>, fetcher: typeof fetch) {
   const exports = {} as typeof Transport
   runInNewContext(code, {
     exports,
-    require: (id: string) => { assert.ok(id in dependencies, id); return dependencies[id] },
+      require: (id: string) => { assert.ok(Object.hasOwn(dependencies, id), id); return dependencies[id] },
     AbortController, AbortSignal, setTimeout, clearTimeout, TextDecoder, Error, console,
     fetch: fetcher,
   })

@@ -1,5 +1,5 @@
-const BANGUMI_COVER_LARGE = /\/pic\/cover\/l\//i
-const BANGUMI_COVER_GRID = /\/pic\/cover\/g\//i
+const BANGUMI_COVER_LARGE = /\/pic\/cover\/l\//gi
+const BANGUMI_COVER_GRID = /\/pic\/cover\/g\//gi
 const BANGUMI_RESIZE_COVER = /\/r\/\d+\/pic\/cover\//i
 
 export function preferCardCoverUrl(url: string | null | undefined): string | null {
@@ -32,8 +32,8 @@ export function preferCardCoverUrl(url: string | null | undefined): string | nul
   if (trimmed.includes('bgm.tv') || trimmed.includes('lain.bgm')) {
     if (BANGUMI_RESIZE_COVER.test(trimmed)) return trimmed
     return trimmed
-      .replace(BANGUMI_COVER_LARGE, '/pic/cover/c/')
-      .replace(BANGUMI_COVER_GRID, '/pic/cover/c/')
+      .replaceAll(BANGUMI_COVER_LARGE, '/pic/cover/c/')
+      .replaceAll(BANGUMI_COVER_GRID, '/pic/cover/c/')
   }
 
   if (

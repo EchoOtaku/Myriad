@@ -13,6 +13,22 @@ const base = {
 }
 
 describe('parseMcpServerConfig', () => {
+  it('preserves gateway definitions without converting them to local commands', () => {
+    const parsed = parseMcpServerConfig({
+      id: 'gateway',
+      transport: 'gateway',
+      enabled: true,
+    })
+    assert.equal(parsed?.transport, 'gateway')
+    assert.equal(parsed?.command, '')
+    assert.deepEqual(parsed?.args, [])
+    assert.deepEqual(parsed?.env, {})
+    assert.equal(
+      parseMcpServerConfig({ ...base, transport: 'arbitrary' }),
+      null,
+    )
+    assert.equal(parseMcpServerConfig(base)?.transport, 'stdio')
+  })
   it('round-trips trust_annotations: true', () => {
     // Must parse; dropping the field writes false on next save.
     const parsed = parseMcpServerConfig({ ...base, trust_annotations: true })
@@ -39,10 +55,7 @@ describe('parseMcpServerConfig', () => {
     const parsed = parseMcpServerConfig({ ...base, trust_annotations: true })
     assert.equal(parsed?.id, 'docs')
     assert.equal(parsed?.command, 'npx')
-    assert.deepEqual(parsed?.args, [
-      '-y',
-      '@modelcontextprotocol/server-docs',
-    ])
+    assert.deepEqual(parsed?.args, ['-y', '@modelcontextprotocol/server-docs'])
     assert.deepEqual(parsed?.env, { TOKEN: 'x' })
     assert.equal(parsed?.enabled, true)
     assert.equal(parsed?.auto_restart, true)

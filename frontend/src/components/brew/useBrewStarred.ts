@@ -39,12 +39,7 @@ export function useBrewStarred(
   }, [items])
 
   const toggle = useCallback((id: number) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+    setSelectedIds((prev) => prev.symmetricDifference(new Set([id])))
   }, [])
 
   const unselect = useCallback((id: number) => {

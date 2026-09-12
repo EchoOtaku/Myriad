@@ -38,6 +38,21 @@ pub async fn execute_capability(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
+    if crate::runtime_role::PERSONA_WORKER.load(std::sync::atomic::Ordering::Acquire)
+        && crate::persona::web_control::is_web_owned(capability_id)
+    {
+        return crate::persona::web_control::call(capability_id, params, ctx).await;
+    }
+    execute_local_capability(capability_id, action, category, params, ctx).await
+}
+
+pub(crate) async fn execute_local_capability(
+    capability_id: &str,
+    action: &str,
+    category: &CapabilityCategory,
+    params: &HashMap<String, Value>,
+    ctx: &HandlerContext<'_>,
+) -> Result<Value, String> {
     match category {
         CapabilityCategory::DataRead => data_read::execute(capability_id, params, ctx).await,
         CapabilityCategory::DataWrite => data_write::execute(capability_id, params, ctx).await,

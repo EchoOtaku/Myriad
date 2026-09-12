@@ -20,6 +20,7 @@ use crate::worker::Worker;
 pub const EXPECTED_CONTAINER_NAMES: &[(&str, &str)] = &[
     ("backend", "myriad-backend"),
     ("federation-worker", "myriad-federation-worker"),
+    ("persona-worker", "myriad-persona-worker"),
     ("frontend", "myriad-frontend"),
     ("postgres", "myriad-postgres"),
 ];
@@ -53,6 +54,8 @@ pub async fn check_compose_contract(
     check_compose_topology(compose_config, db_mode)?;
     check_federation_http_storage(compose_config)?;
     check_federation_edge(worker.as_ref()).await?;
+    check_persona_runtime(compose_config)?;
+    check_persona_edge(worker.as_ref()).await?;
     check_postgres_pgdata_volume(compose_config, db_mode)?;
     check_running_compose_project(worker.as_ref(), project).await?;
     info!(
@@ -104,6 +107,126 @@ async fn check_federation_edge(worker: &Worker) -> Result<()> {
     if !running || !routing_env || !capable {
         return Err(UpdaterError::Precondition(
             "upgrade/recreate the proxy TCB with federation-routing support and PROXY_FEDERATION_UPSTREAM=http://federation-worker:1103 before upgrading the backend".into(),
+        ));
+    }
+    Ok(())
+}
+
+async fn check_persona_edge(worker: &Worker) -> Result<()> {
+    let proxy = worker
+        .docker()
+        .raw()
+        .inspect_container("myriad-proxy", None)
+        .await
+        .map_err(|error| UpdaterError::Precondition(format!("inspect persona edge: {error}")))?;
+    let running = proxy.state.as_ref().and_then(|state| state.running) == Some(true);
+    let routing_env = proxy
+        .config
+        .as_ref()
+        .and_then(|config| config.env.as_ref())
+        .is_some_and(|env| {
+            env.iter()
+                .any(|value| value == "PROXY_PERSONA_UPSTREAM=http://persona-worker:1103")
+        });
+    let image = proxy
+        .image
+        .as_deref()
+        .ok_or_else(|| UpdaterError::Precondition("proxy image identity missing".into()))?;
+    let image = worker
+        .docker()
+        .raw()
+        .inspect_image(image)
+        .await
+        .map_err(|error| {
+            UpdaterError::Precondition(format!("inspect persona edge capability: {error}"))
+        })?;
+    let capable = image
+        .config
+        .and_then(|config| config.labels)
+        .is_some_and(|labels| {
+            labels
+                .get("io.myriad.proxy.persona-routing")
+                .is_some_and(|value| value == "1")
+        });
+    if !running || !routing_env || !capable {
+        return Err(UpdaterError::Precondition(
+            "upgrade/recreate the proxy TCB with persona-routing support and PROXY_PERSONA_UPSTREAM=http://persona-worker:1103 before upgrading the backend".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn check_persona_runtime(config: &serde_json::Value) -> Result<()> {
+    let worker = &config["services"]["persona-worker"];
+    let cpu = worker
+        .pointer("/deploy/resources/limits/cpus")
+        .and_then(|v| v.as_f64().or_else(|| v.as_str()?.parse().ok()));
+    let memory = worker
+        .pointer("/deploy/resources/limits/memory")
+        .and_then(|v| v.as_i64().or_else(|| v.as_str()?.parse().ok()));
+    let pids = worker
+        .pointer("/deploy/resources/limits/pids")
+        .and_then(serde_json::Value::as_i64);
+    if worker["user"] != "1000:1000"
+        || worker["read_only"] != true
+        || worker["cap_drop"] != serde_json::json!(["ALL"])
+        || cpu.is_none_or(|n| n <= 0.0 || n > 1.0)
+        || memory.is_none_or(|n| n <= 0 || n > 1_073_741_824)
+        || pids.is_none_or(|n| n <= 0 || n > 64)
+        || worker["pids_limit"]
+            .as_i64()
+            .is_none_or(|n| n <= 0 || n > 64)
+        || worker["tmpfs"] != serde_json::json!(["/tmp:size=32m,mode=1777"])
+        || !worker["security_opt"].as_array().is_some_and(|values| {
+            values.iter().any(|v| {
+                matches!(
+                    v.as_str(),
+                    Some("no-new-privileges" | "no-new-privileges:true")
+                )
+            })
+        })
+    {
+        return Err(UpdaterError::Precondition("persona worker resource or security boundary is missing; migrate Compose before upgrading".into()));
+    }
+
+    if worker["command"] != serde_json::json!(["/app/myriad-persona-worker"]) {
+        return Err(UpdaterError::Precondition(
+            "persona worker command is missing; migrate Compose before upgrading".into(),
+        ));
+    }
+    for (key, expected) in [
+        ("MYRIAD_PROCESS_ROLE", "persona-worker"),
+        ("DATA_DIR", "/app/data"),
+        ("CACHE_DIR", "/app/cache"),
+        ("PERSONA_WEB_UPSTREAM", "http://backend:1103"),
+    ] {
+        if worker["environment"][key].as_str() != Some(expected) {
+            return Err(UpdaterError::Precondition(format!(
+                "persona worker requires {key}={expected}"
+            )));
+        }
+    }
+    let mounts = worker["volumes"].as_array().ok_or_else(|| {
+        UpdaterError::Precondition("persona worker data/cache volumes missing".into())
+    })?;
+    if mounts.len() != 2
+        || [
+            ("backend_data", "/app/data"),
+            ("backend_cache", "/app/cache"),
+        ]
+        .iter()
+        .any(|(source, target)| {
+            !mounts.iter().any(|m| {
+                m["type"] == "volume"
+                    && m["source"] == *source
+                    && m["target"] == *target
+                    && m["read_only"] != true
+                    && m.pointer("/volume/subpath").is_none()
+            })
+        })
+    {
+        return Err(UpdaterError::Precondition(
+            "persona worker requires exactly the writable first-party data/cache volumes".into(),
         ));
     }
     Ok(())
@@ -345,11 +468,12 @@ pub fn check_compose_topology(config: &serde_json::Value, db_mode: DbMode) -> Re
         != Some("web")
     {
         return Err(UpdaterError::Precondition(
-            "migrate Compose and updater/Guard before upgrading: backend requires explicit MYRIAD_PROCESS_ROLE=web and federation-worker; implicit combined execution is no longer supported".into(),
+            "migrate Compose and updater/Guard before upgrading: backend requires explicit MYRIAD_PROCESS_ROLE=web, federation-worker and persona-worker; implicit combined execution is no longer supported".into(),
         ));
     }
     let mut required = required_services(db_mode);
     required.push("federation-worker");
+    required.push("persona-worker");
     let mut missing_svc = Vec::new();
     let mut name_issues = Vec::new();
 
@@ -589,6 +713,7 @@ mod tests {
             "services": {
                 "backend": { "container_name": "myriad-backend", "environment": {"MYRIAD_PROCESS_ROLE": "web"} },
                 "federation-worker": {"container_name": "myriad-federation-worker"},
+                "persona-worker": {"container_name": "myriad-persona-worker"},
                 "frontend": { "container_name": "myriad-frontend" },
                 "postgres": { "container_name": "myriad-postgres" }
             }
@@ -616,6 +741,8 @@ mod tests {
         assert!(check_compose_topology(&config, DbMode::External).is_err());
         config["services"]["federation-worker"] =
             json!({"container_name": "myriad-federation-worker"});
+        assert!(check_compose_topology(&config, DbMode::External).is_err());
+        config["services"]["persona-worker"] = json!({"container_name": "myriad-persona-worker"});
         assert!(check_compose_topology(&config, DbMode::External).is_ok());
         config["services"]["federation-worker"]["container_name"] = json!("other-worker");
         assert!(check_compose_topology(&config, DbMode::External).is_err());
@@ -631,6 +758,7 @@ mod tests {
             "services": {
                 "backend": { "container_name": "bt-backend", "environment": {"MYRIAD_PROCESS_ROLE": "web"} },
                 "federation-worker": {"container_name": "myriad-federation-worker"},
+                "persona-worker": {"container_name": "myriad-persona-worker"},
                 "frontend": { "container_name": "myriad-frontend" },
                 "postgres": { "container_name": "myriad-postgres" }
             }
@@ -645,6 +773,7 @@ mod tests {
             "services": {
                 "backend": { "container_name": "myriad-backend", "environment": {"MYRIAD_PROCESS_ROLE": "web"} },
                 "federation-worker": {"container_name": "myriad-federation-worker"},
+                "persona-worker": {"container_name": "myriad-persona-worker"},
                 "frontend": { "container_name": "myriad-frontend" }
             }
         });
@@ -705,5 +834,38 @@ mod tests {
         let external = running_check_containers(DbMode::External);
         assert!(!external.contains(&"myriad-postgres"));
         assert!(external.contains(&"myriad-backend"));
+    }
+}
+
+#[cfg(test)]
+mod persona_runtime_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn persona_runtime_contract_rejects_broken_storage_and_unbounded_resources() {
+        let config = json!({"services":{"persona-worker":{
+            "command":["/app/myriad-persona-worker"],"user":"1000:1000","read_only":true,"cap_drop":["ALL"],
+            "security_opt":["no-new-privileges:true"],"tmpfs":["/tmp:size=32m,mode=1777"],"pids_limit":64,
+            "deploy":{"resources":{"limits":{"cpus":1,"memory":"1073741824","pids":64}}},
+            "environment":{"MYRIAD_PROCESS_ROLE":"persona-worker","DATA_DIR":"/app/data","CACHE_DIR":"/app/cache","PERSONA_WEB_UPSTREAM":"http://backend:1103"},
+            "volumes":[{"type":"volume","source":"backend_data","target":"/app/data","read_only":false},{"type":"volume","source":"backend_cache","target":"/app/cache"}]
+        }}});
+        assert!(check_persona_runtime(&config).is_ok());
+        for (path, value) in [
+            ("/command", json!(["/app/myriad-backend"])),
+            ("/environment/MYRIAD_PROCESS_ROLE", json!("all")),
+            ("/volumes/0/read_only", json!(true)),
+            ("/volumes/1/source", json!("other")),
+            ("/deploy/resources/limits/cpus", json!(0)),
+            ("/deploy/resources/limits/memory", json!(0)),
+            ("/pids_limit", json!(-1)),
+            ("/read_only", json!(false)),
+        ] {
+            let mut invalid = config.clone();
+            *invalid["services"]["persona-worker"]
+                .pointer_mut(path)
+                .unwrap() = value;
+            assert!(check_persona_runtime(&invalid).is_err(), "accepted {path}");
+        }
     }
 }

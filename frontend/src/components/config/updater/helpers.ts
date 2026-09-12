@@ -56,7 +56,7 @@ export function modeForTarget(target: string, fallback: UpdateMode): UpdateMode 
 }
 
 export function format(template: string, params: Record<string, string>): string {
-  return template.replace(TEMPLATE_RE, (_, k) => params[k] ?? `{${k}}`)
+  return template.replaceAll(TEMPLATE_RE, (_, k) => params[k] ?? `{${k}}`)
 }
 
 export function isFreshInfraOutcome(
@@ -252,7 +252,7 @@ export function infraLatestTip(
 }
 
 function normalizeDeployTag(tag: string): string {
-  return tag.trim().replaceAll(/^v/ig, '').toLowerCase()
+  return tag.trim().replaceAll(/^v/gi, '').toLowerCase()
 }
 
 export function infraComponentBehind(

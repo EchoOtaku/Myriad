@@ -123,7 +123,7 @@ interface AiUsageSectionProps {
   showMessage?: (msg: string, type?: ToastType, duration?: number) => void
 }
 
-const AiUsageSection: React.FC<AiUsageSectionProps> = () => {
+const AiUsageSection: React.FC<AiUsageSectionProps> = ({ showMessage }) => {
   const { t, locale, format } = useI18n()
   const { catalog: g, bindGuide } = useSettingGuide()
   const a = t.config.analytics
@@ -159,18 +159,21 @@ const AiUsageSection: React.FC<AiUsageSectionProps> = () => {
         } else {
           setError(a.aiUsageLoadFailed)
           setData(null)
+          showMessage?.(a.aiUsageLoadFailed, 'error', 0)
         }
       } catch (e) {
         if (signal?.aborted) return
         if (e instanceof DOMException && e.name === 'AbortError') return
         console.error('ai usage summary failed', e)
-        setError(userFacingError(e, a.aiUsageLoadFailed))
+        const msg = userFacingError(e, a.aiUsageLoadFailed)
+        setError(msg)
         setData(null)
+        showMessage?.(msg, 'error', 0)
       } finally {
         if (!signal?.aborted) setLoading(false)
       }
     },
-    [range, subjectId, model, source, a.aiUsageLoadFailed],
+    [range, subjectId, model, source, a.aiUsageLoadFailed, showMessage],
   )
 
   useEffect(() => {

@@ -29,7 +29,7 @@ function stickerDownloadName(blob: Blob, src: string): string {
       : type.includes('gif')
         ? 'gif'
         : fromUrl
-          ? fromUrl.toLowerCase().replace('jpeg', 'jpg')
+          ? fromUrl.toLowerCase().replaceAll('jpeg', 'jpg')
           : 'png'
   return `sticker.${ext}`
 }

@@ -561,7 +561,7 @@ export function TappStore({
       }
       if (installingIds.has(app.id) || updatingIds.has(app.id)) return
 
-      setInstallingIds((prev) => new Set(prev).add(app.id))
+      setInstallingIds((prev) => prev.union(new Set([app.id])))
       clearProgress(app.id)
       try {
         if (app.source === 'local' && app.localTapp) {
@@ -643,11 +643,7 @@ export function TappStore({
           t.tapp.installFailed,
         )
       } finally {
-        setInstallingIds((prev) => {
-          const next = new Set(prev)
-          next.delete(app.id)
-          return next
-        })
+        setInstallingIds((prev) => prev.difference(new Set([app.id])))
         clearProgress(app.id)
       }
     },
@@ -680,7 +676,7 @@ export function TappStore({
       }
       if (installingIds.has(app.id) || updatingIds.has(app.id)) return
 
-      setUpdatingIds((prev) => new Set(prev).add(app.id))
+      setUpdatingIds((prev) => prev.union(new Set([app.id])))
       clearProgress(app.id)
       try {
         if (app.source === 'local' && app.localTapp) {
@@ -759,11 +755,7 @@ export function TappStore({
           t.tapp.updateFailed,
         )
       } finally {
-        setUpdatingIds((prev) => {
-          const next = new Set(prev)
-          next.delete(app.id)
-          return next
-        })
+        setUpdatingIds((prev) => prev.difference(new Set([app.id])))
         clearProgress(app.id)
       }
     },
@@ -1006,7 +998,7 @@ export function TappStore({
     if (selectedCategory) {
       return t.tapp[TAPP_CATEGORY_I18N_KEYS[selectedCategory]]
     }
-    if (searchQuery) return t.tapp.searchApps.replace('...', '')
+    if (searchQuery) return t.tapp.searchApps.replaceAll('...', '')
     return t.tapp.storeDiscover
   }, [selectedCategory, searchQuery, t])
 

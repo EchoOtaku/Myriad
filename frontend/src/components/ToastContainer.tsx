@@ -1,6 +1,6 @@
 import type { ToastEvent } from '../utils/toastManager'
 import { useCallback, useEffect, useState } from 'react'
-import { subscribeToast } from '../utils/toastManager'
+import { pickVisibleToasts, subscribeToast } from '../utils/toastManager'
 import Toast from './Toast'
 
 interface ToastItem extends ToastEvent {
@@ -25,7 +25,12 @@ export function ToastContainer() {
       id: generateId(),
     }
 
-    setToasts((prev) => [...prev, newToast])
+    setToasts((prev) => {
+      const next = event.replaceKey
+        ? prev.filter((toast) => toast.replaceKey !== event.replaceKey)
+        : prev
+      return [...next, newToast]
+    })
   }, [])
 
   useEffect(() => {
@@ -39,7 +44,7 @@ export function ToastContainer() {
 
   return (
     <div className="toast-container-wrapper">
-      {toasts.slice(0, 5).map((toast, index) => (
+      {pickVisibleToasts(toasts).map((toast, index) => (
         <div
           key={toast.id}
           className="toast-container-item"
@@ -54,9 +59,13 @@ export function ToastContainer() {
             type={toast.type}
             duration={toast.duration}
             showCloseButton={toast.showCloseButton}
+            sticky={toast.sticky}
             icon={toast.icon}
             onClick={toast.onClick}
-            onClose={() => removeToast(toast.id)}
+            onClose={() => {
+              toast.onClose?.()
+              removeToast(toast.id)
+            }}
           />
         </div>
       ))}

@@ -965,7 +965,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                   const isVip =
                     isNeteaseMusic && isNeteaseVipFromMeta(item.metadata)
                   const currentSongId = (
-                    item.metadata.id || item.id.replace('netease_song_', '')
+                    item.metadata.id || item.id.replaceAll('netease_song_', '')
                   ).toString()
 
                   const isCurrentSong = liveSongId === currentSongId

@@ -1304,7 +1304,7 @@ export function useLibraryCardActions() {
       }
 
       const songId = (
-        item.metadata.id || item.id.replace('netease_song_', '')
+        item.metadata.id || item.id.replaceAll('netease_song_', '')
       ).toString()
       const musicState = (window as any).__musicPlayerState
       if (

@@ -62,5 +62,6 @@ export interface SaveLibrarySourcePreferencesResponse {
 export type ShowMessage = (
   message: string,
   type?: import('../../Toast').ToastType,
+  /** <= 0 declares a sticky toast; otherwise auto-dismisses. */
   duration?: number,
 ) => void

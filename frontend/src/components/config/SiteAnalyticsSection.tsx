@@ -211,7 +211,7 @@ function pageLabel(
 const ANALYTICS_BACKUP_FORMAT = 'myriad-analytics-backup'
 
 interface SiteAnalyticsSectionProps {
-  showMessage?: (message: string, type?: ToastType) => void
+  showMessage?: (message: string, type?: ToastType, duration?: number) => void
   enabled?: boolean
   onEnabledChange?: (enabled: boolean) => void
 }
@@ -305,18 +305,21 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
         } else {
           setError(a.loadFailed)
           setData(null)
+          showMessage?.(a.loadFailed, 'error', 0)
         }
       } catch (e) {
         if (signal?.aborted) return
         if (e instanceof DOMException && e.name === 'AbortError') return
         console.error('analytics summary failed', e)
-        setError(userFacingError(e, a.loadFailed))
+        const msg = userFacingError(e, a.loadFailed)
+        setError(msg)
         setData(null)
+        showMessage?.(msg, 'error', 0)
       } finally {
         if (!signal?.aborted) setLoading(false)
       }
     },
-    [range, a.loadFailed],
+    [range, a.loadFailed, showMessage],
   )
 
   useEffect(() => {

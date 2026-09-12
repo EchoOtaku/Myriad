@@ -326,12 +326,12 @@ function removeEmptyTags(html: string): string {
       `<(${tagPattern})[^>]*>\\s*(<br\\s*\\/?>\\s*)*<\\/\\1>`,
       'gi',
     )
-    result = result.replace(regex, '')
+    result = result.replaceAll(regex, '')
     const nbspRegex = new RegExp(
       `<(${tagPattern})[^>]*>(&nbsp;|\\s)*<\\/\\1>`,
       'gi',
     )
-    result = result.replace(nbspRegex, '')
+    result = result.replaceAll(nbspRegex, '')
   }
   return result
 }
@@ -387,7 +387,7 @@ function processFigures(html: string): string {
   let result = html.replaceAll(/<figure([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
       return match.replaceAll(
-        /class\s*=\s*["']([^"']*)["']/ig,
+        /class\s*=\s*["']([^"']*)["']/gi,
         'class="$1 rss-content-figure my-6"',
       )
     }
@@ -397,7 +397,7 @@ function processFigures(html: string): string {
   result = result.replaceAll(/<figcaption([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
       return match.replaceAll(
-        /class\s*=\s*["']([^"']*)["']/ig,
+        /class\s*=\s*["']([^"']*)["']/gi,
         'class="$1 rss-content-figcaption text-center text-sm mt-2 opacity-60"',
       )
     }
@@ -411,7 +411,7 @@ function processVideos(html: string): string {
   const result = html.replaceAll(/<video([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
       return match.replaceAll(
-        /class\s*=\s*["']([^"']*)["']/ig,
+        /class\s*=\s*["']([^"']*)["']/gi,
         'class="$1 rss-content-video w-full rounded-xl my-4"',
       )
     }
@@ -425,7 +425,7 @@ function processAudio(html: string): string {
   return html.replaceAll(/<audio([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
       return match.replaceAll(
-        /class\s*=\s*["']([^"']*)["']/ig,
+        /class\s*=\s*["']([^"']*)["']/gi,
         'class="$1 rss-content-audio w-full my-4"',
       )
     }
@@ -437,7 +437,7 @@ function processBlockquotes(html: string): string {
   return html.replaceAll(/<blockquote([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
       return match.replaceAll(
-        /class\s*=\s*["']([^"']*)["']/ig,
+        /class\s*=\s*["']([^"']*)["']/gi,
         'class="$1 rss-content-blockquote rounded-xl px-4 py-3 my-4 italic"',
       )
     }
@@ -449,7 +449,7 @@ function processCodeBlocks(html: string): string {
   let result = html.replaceAll(/<pre([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
       return match.replaceAll(
-        /class\s*=\s*["']([^"']*)["']/ig,
+        /class\s*=\s*["']([^"']*)["']/gi,
         'class="$1 rss-content-pre rounded-xl p-4 my-4 overflow-x-auto text-sm"',
       )
     }
@@ -472,7 +472,7 @@ function processTables(html: string): string {
       'rss-content-table w-full text-sm border-collapse rounded-xl overflow-hidden border'
     if (attrs.includes('class=')) {
       const newTag = match.replaceAll(
-        /class\s*=\s*["']([^"']*)["']/ig,
+        /class\s*=\s*["']([^"']*)["']/gi,
         `class="$1 ${tableClass}"`,
       )
       return `<div class="rss-content-table-wrapper overflow-x-auto my-4 rounded-xl">${newTag}`
@@ -503,7 +503,7 @@ function processDescriptionLists(html: string): string {
   result = result.replaceAll(/<dl([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
       return match.replaceAll(
-        /class\s*=\s*["']([^"']*)["']/ig,
+        /class\s*=\s*["']([^"']*)["']/gi,
         'class="$1 rss-content-dl my-4"',
       )
     }
@@ -513,7 +513,7 @@ function processDescriptionLists(html: string): string {
   result = result.replaceAll(/<dt([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
       return match.replaceAll(
-        /class\s*=\s*["']([^"']*)["']/ig,
+        /class\s*=\s*["']([^"']*)["']/gi,
         'class="$1 rss-content-dt font-semibold mt-2"',
       )
     }
@@ -523,7 +523,7 @@ function processDescriptionLists(html: string): string {
   result = result.replaceAll(/<dd([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
       return match.replaceAll(
-        /class\s*=\s*["']([^"']*)["']/ig,
+        /class\s*=\s*["']([^"']*)["']/gi,
         'class="$1 rss-content-dd ml-4 pl-4 mt-1"',
       )
     }
@@ -539,7 +539,7 @@ function processDetails(html: string): string {
   result = result.replaceAll(/<details([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
       return match.replaceAll(
-        /class\s*=\s*["']([^"']*)["']/ig,
+        /class\s*=\s*["']([^"']*)["']/gi,
         'class="$1 rss-content-details rounded-xl my-4 overflow-hidden"',
       )
     }
@@ -549,7 +549,7 @@ function processDetails(html: string): string {
   result = result.replaceAll(/<summary([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
       return match.replaceAll(
-        /class\s*=\s*["']([^"']*)["']/ig,
+        /class\s*=\s*["']([^"']*)["']/gi,
         'class="$1 rss-content-summary cursor-pointer py-3 px-4 font-medium select-none transition-colors"',
       )
     }
@@ -583,7 +583,7 @@ function processLinks(html: string, options: ProcessOptions): string {
       }
     }
 
-    let newAttrs = attrs.replaceAll(/href\s*=\s*["'][^"']+["']/ig, `href="${href}"`)
+    let newAttrs = attrs.replaceAll(/href\s*=\s*["'][^"']+["']/gi, `href="${href}"`)
 
     if (href.startsWith('http')) {
       if (!newAttrs.includes('target=')) {
@@ -607,7 +607,7 @@ function processKbd(html: string): string {
   return html.replaceAll(/<kbd([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
       return match.replaceAll(
-        /class\s*=\s*["']([^"']*)["']/ig,
+        /class\s*=\s*["']([^"']*)["']/gi,
         'class="$1 rss-content-kbd border px-1.5 py-0.5 rounded text-[0.85em] font-mono"',
       )
     }
@@ -619,7 +619,7 @@ function processMark(html: string): string {
   return html.replaceAll(/<mark([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
       return match.replaceAll(
-        /class\s*=\s*["']([^"']*)["']/ig,
+        /class\s*=\s*["']([^"']*)["']/gi,
         'class="$1 rss-content-mark px-0.5 rounded"',
       )
     }
@@ -631,7 +631,7 @@ function processAbbr(html: string): string {
   return html.replaceAll(/<abbr([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
       return match.replaceAll(
-        /class\s*=\s*["']([^"']*)["']/ig,
+        /class\s*=\s*["']([^"']*)["']/gi,
         'class="$1 rss-content-abbr border-b border-dashed cursor-help"',
       )
     }
@@ -662,7 +662,7 @@ function processSemanticTags(html: string): string {
   result = result.replaceAll(/<aside([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
       return match.replaceAll(
-        /class\s*=\s*["']([^"']*)["']/ig,
+        /class\s*=\s*["']([^"']*)["']/gi,
         `class="$1 ${asideClass}"`,
       )
     }
@@ -758,9 +758,9 @@ function fixMalformedHtml(html: string): string {
 
   const attrNames =
     'width|height|src|href|class|id|style|alt|title|frameborder|allowfullscreen|loading|referrerpolicy|data-[a-z-]+'
-  result = result.replace(new RegExp(`(\\d)(${attrNames})=`, 'gi'), '$1 $2=')
-  result = result.replace(new RegExp(`(["'])(${attrNames})=`, 'gi'), '$1 $2=')
-  result = result.replace(
+  result = result.replaceAll(new RegExp(`(\\d)(${attrNames})=`, 'gi'), '$1 $2=')
+  result = result.replaceAll(new RegExp(`(["'])(${attrNames})=`, 'gi'), '$1 $2=')
+  result = result.replaceAll(
     new RegExp(
       `(allowfullscreen|readonly|disabled|checked|selected)(${attrNames})=`,
       'gi',

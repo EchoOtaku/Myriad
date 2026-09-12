@@ -266,6 +266,27 @@ impl ComposeRunner {
         Ok(Some(image.into()))
     }
 
+    pub async fn persona_worker_image(&self) -> Result<Option<String>> {
+        let config = self.config_json().await?;
+        let Some(worker) = config.pointer("/services/persona-worker") else {
+            return Ok(None);
+        };
+        let image = worker
+            .get("image")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| UpdaterError::Precondition("persona worker image missing".into()))?;
+        if config
+            .pointer("/services/backend/image")
+            .and_then(serde_json::Value::as_str)
+            != Some(image)
+        {
+            return Err(UpdaterError::Precondition(
+                "persona worker must use the backend image".into(),
+            ));
+        }
+        Ok(Some(image.into()))
+    }
+
     async fn application_services<'a>(
         &self,
         requested: &[&'a str],
@@ -284,6 +305,18 @@ impl ComposeRunner {
                 }
             }
         }
+        if requested.contains(&"backend") && !requested.contains(&"persona-worker") {
+            if let Some(image) = self.persona_worker_image().await? {
+                let supported = !starting
+                    || super::DockerClient::connect()
+                        .await?
+                        .supports_persona_worker(&image)
+                        .await?;
+                if supported {
+                    services.insert(0, "persona-worker");
+                }
+            }
+        }
         Ok(services)
     }
 
@@ -292,6 +325,10 @@ impl ComposeRunner {
             super::DockerClient::connect()
                 .await?
                 .stop_federation_worker()
+                .await?;
+            super::DockerClient::connect()
+                .await?
+                .stop_persona_worker()
                 .await?;
         }
         let services = self.application_services(services, false).await?;
@@ -303,8 +340,9 @@ impl ComposeRunner {
     }
 
     pub async fn start(&self, services: &[&str]) -> Result<ComposeOutput> {
+        let services = self.application_services(services, true).await?;
         let mut args: Vec<&str> = vec!["start"];
-        args.extend_from_slice(services);
+        args.extend_from_slice(&services);
         self.run(&args, Duration::from_secs(120)).await
     }
 

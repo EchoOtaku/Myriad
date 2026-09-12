@@ -66,7 +66,7 @@ function isValidUrlPattern(pattern: string): boolean {
     return false
   }
 
-  if (SUSPICIOUS_CHARS_REGEX.test(pattern.replace('{username}', ''))) {
+  if (SUSPICIOUS_CHARS_REGEX.test(pattern.replaceAll('{username}', ''))) {
     return false
   }
 
@@ -75,15 +75,15 @@ function isValidUrlPattern(pattern: string): boolean {
 
 function sanitizePlatformName(name: string): string {
   return name
-    .replace(HTML_TAG_REGEX, '')
-    .replace(DANGEROUS_CHARS_REGEX, '')
+    .replaceAll(HTML_TAG_REGEX, '')
+    .replaceAll(DANGEROUS_CHARS_REGEX, '')
     .trim()
     .slice(0, 50)
 }
 
 function sanitizeUsername(username: string): string {
   return username
-    .replace(DANGEROUS_CHARS_WITH_AMP_REGEX, '')
+    .replaceAll(DANGEROUS_CHARS_WITH_AMP_REGEX, '')
     .trim()
     .slice(0, 100)
 }
@@ -431,7 +431,7 @@ function customPlatformToPlatformInfo(
   const getUserUrl =
     linkType === 'url' && linkPattern
       ? hasUsername
-        ? (userId: string) => linkPattern.replace('{username}', userId)
+        ? (userId: string) => linkPattern.replaceAll('{username}', userId)
         : () => linkPattern
       : () => '#'
 
@@ -805,7 +805,7 @@ function parsePopupContent(text?: string): {
 
   const imageUrls = rawImageUrls.filter(isValidImageUrl)
 
-  const textContent = text.replace(imageUrlRegex, '').trim()
+  const textContent = text.replaceAll(imageUrlRegex, '').trim()
 
   return { textContent, imageUrls }
 }
@@ -968,7 +968,7 @@ const GlobalSettingsModal = memo(() => {
 
   const handleCustomFormSubmit = useCallback(async () => {
     if (!customFormData.name) {
-      alert(t.socialNetworkWidget.fillPlatformName)
+      showError(t.socialNetworkWidget.fillPlatformName)
       return
     }
 
@@ -977,11 +977,11 @@ const GlobalSettingsModal = memo(() => {
       !customFormData.username &&
       !customFormData.linkPattern
     ) {
-      alert(t.socialNetworkWidget.fillUsernameOrUrl)
+      showError(t.socialNetworkWidget.fillUsernameOrUrl)
       return
     }
     if (customFormData.linkType === 'popup' && !customFormData.popupText) {
-      alert(t.socialNetworkWidget.fillPopupContent)
+      showError(t.socialNetworkWidget.fillPopupContent)
       return
     }
 
@@ -991,7 +991,7 @@ const GlobalSettingsModal = memo(() => {
       urlPattern &&
       !isValidUrlPattern(urlPattern)
     ) {
-      alert(t.socialNetworkWidget.invalidUrlPattern)
+      showError(t.socialNetworkWidget.invalidUrlPattern)
       return
     }
 

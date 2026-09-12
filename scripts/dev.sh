@@ -799,7 +799,12 @@ maybe_autodetect_native() {
 
 ensure_backend_env() {
     local env_file="$BACKEND_DIR/.env"
-    [[ -f "$env_file" ]] && return 0
+    if [[ -f "$env_file" ]]; then
+        if ! grep -q '^[[:space:]]*MYRIAD_PROCESS_ROLE=' "$env_file"; then
+            printf '\n# Local development selects combined execution explicitly.\nMYRIAD_PROCESS_ROLE=all\n' >> "$env_file"
+        fi
+        return 0
+    fi
 
     print_info "backend/.env missing — writing a development default"
 
@@ -838,6 +843,7 @@ CORS_ORIGINS=http://localhost:$FRONTEND_PORT,http://localhost:$BACKEND_PORT
 BASE_URL=http://127.0.0.1:$BACKEND_PORT
 FRONTEND_URL=http://localhost:$FRONTEND_PORT
 TAPP_STORE_STATS_ENABLED=false
+MYRIAD_PROCESS_ROLE=all
 ENV
     ) || { print_error "Failed to write $env_file"; return 1; }
     print_success "Wrote $env_file (chmod 600, JWT_SECRET generated)"

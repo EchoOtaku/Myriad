@@ -5,6 +5,8 @@ import type { ImportProgress } from './modes'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
+import { showError, showSuccess } from '../../../utils/toastManager'
+import { userFacingError } from '../../../utils/userFacingError'
 import { RequestTurn, unlessAborted } from '../logic/requestTurn'
 import {
   exportBrewpackFile,
@@ -45,38 +47,27 @@ export function useBrewpack(
   copyRef.current = brewpackCopyFrom(t.brew)
 
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
   const [progress, setProgress] = useState<ImportProgress | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const flashRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const turns = useRef(new RequestTurn())
 
   useEffect(
     () => () => {
-      if (flashRef.current) clearTimeout(flashRef.current)
       turns.current.cancel()
     },
     [],
   )
 
-  const flash = useCallback((message: string) => {
-    setSuccess(message)
-    if (flashRef.current) clearTimeout(flashRef.current)
-    flashRef.current = setTimeout(setSuccess, 3000, null)
-  }, [])
-
   const exportPack = useCallback(async () => {
     const signal = turns.current.begin()
     setLoading(true)
-    setError(null)
     const result = await exportBrewpackFile(sources, copyRef.current, signal)
     unlessAborted(signal, () => {
-      if (result.ok) flash(result.message)
-      else setError(result.error)
+      if (result.ok) showSuccess(result.message)
+      else showError(result.error)
       setLoading(false)
     })
-  }, [sources, flash])
+  }, [sources])
 
   const importFile = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
@@ -84,8 +75,6 @@ export function useBrewpack(
       if (!file) return
       const signal = turns.current.begin()
       setLoading(true)
-      setError(null)
-      setSuccess(null)
       const result = await importBrewpackFile(
         file,
         sources,
@@ -100,15 +89,15 @@ export function useBrewpack(
         return
       }
       if (result.ok) {
-        flash(result.message)
+        showSuccess(result.message)
         onSourcesChange?.()
       } else {
-        setError(result.error)
+        showError(result.error)
       }
       setLoading(false)
       if (inputRef.current) inputRef.current.value = ''
     },
-    [sources, onSourcesChange, flash],
+    [sources, onSourcesChange],
   )
 
   const exportOpml = useCallback(() => {
@@ -116,13 +105,12 @@ export function useBrewpack(
     void exportOpmlFile(signal).catch((err) => {
       if (signal.aborted) return
       console.error('OPML export failed:', err)
+      showError(userFacingError(err, copyRef.current.errorExportFailed))
     })
   }, [])
 
   return {
     loading,
-    error,
-    success,
     progress,
     inputRef,
     exportPack,
