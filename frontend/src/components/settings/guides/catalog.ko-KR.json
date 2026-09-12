@@ -577,6 +577,30 @@
       "chain": "1) 읽기 모델과 같이 저장해요.\n2) 지금 공급자가 지원하는 목소리 ID여야 해요.\n3) 인격 말하기도 이 목소리를 써요.\n4) 비우면 페이지 안 자리 표시의 기본 목소리를 써요.",
       "frontend": "설정 → AI → 음성 서비스 → 목소리. 한 마디만 틀어도 차이가 들려요.",
       "notes": "집마다 목소리 이름이 완전히 달라요. OpenAI 것을 Gemini에 넣지 마세요."
+    },
+    "qqBot": {
+      "what": "Send a QQ private message into site Work and get the result back in the same chat.",
+      "chain": "1) Turn on, fill AppID / AppSecret, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The secret is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, incomplete credentials, or 401/403 stop the worker. Network jitter reconnects.\n5) After connect succeeds, bind your QQ here: copy the pairing code and send it in a private chat. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Reply yes/no or an option number. You can send 停止 / 新对话 / 当前任务.",
+      "frontend": "Settings → AI → Agent → QQ bot.",
+      "notes": "Do not paste Discord data-platform OAuth here. AppSecret never appears in page plaintext or error text."
+    },
+    "telegramBot": {
+      "what": "Send a Telegram DM into site Work and get the result back in the same chat.",
+      "chain": "1) Turn on, paste the BotFather token, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The token is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, missing token, or 401/403 stop the worker. 429 waits retry_after. 409 (webhook / another getUpdates client) backs off; it is not a bad token.\n5) After connect succeeds, bind your Telegram here: copy the pairing code and open the bot. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Buttons belong to that step only. You can send 停止 / 新对话 / 当前任务.",
+      "frontend": "Settings → AI → Agent → Telegram bot.",
+      "notes": "Do not paste MTProto api_id / api_hash. The token never appears in page plaintext or error text. Reachability of api.telegram.org is outside the platform."
+    },
+    "discordBot": {
+      "what": "Send a Discord DM into site Work and get the result back in the same chat.",
+      "chain": "1) Turn on, paste the Developer Portal bot token, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The token is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, missing token, or 401/403 stop the worker. Network jitter resumes the Gateway session; do not Identify on every disconnect.\n5) After connect succeeds, bind your Discord here: copy the pairing code and send it in a DM. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Buttons belong to that step only. You can send 停止 / 新对话 / 当前任务.",
+      "frontend": "Settings → AI → Agent → Discord bot.",
+      "notes": "Do not paste the data-platform OAuth access token. Pairing identity is discord_dm, not Discord login. The token never appears in page plaintext or error text."
+    },
+    "feishuBot": {
+      "what": "Send a Feishu private message into site Work and get the result back in the same chat.",
+      "chain": "1) Turn on, fill the internal-app AppID / AppSecret, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The secret is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, incomplete credentials, or auth rejects stop the worker. Network jitter reconnects.\n5) After connect succeeds, bind your Feishu here: copy the pairing code and send it in a private chat. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Buttons belong to that step only. You can send 停止 / 新对话 / 当前任务.",
+      "frontend": "Settings → AI → Agent → Feishu bot.",
+      "notes": "Use an internal company app, not a group custom-bot webhook. AppSecret never appears in page plaintext or error text."
     }
   },
   "tripo": {

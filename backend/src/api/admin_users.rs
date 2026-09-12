@@ -241,7 +241,7 @@ pub async fn list_users(
             DatabaseBackend::Postgres,
             "SELECT id, user_id, provider, provider_username, email, avatar_url, \
                     is_primary, linked_at, last_login_at \
-             FROM user_identities ORDER BY is_primary DESC, linked_at ASC",
+             FROM user_identities WHERE LOWER(provider) NOT IN ('qq', 'telegram', 'discord_dm', 'feishu') ORDER BY is_primary DESC, linked_at ASC",
             vec![],
         ))
         .await
@@ -291,7 +291,7 @@ pub async fn get_user(
             DatabaseBackend::Postgres,
             "SELECT id, user_id, provider, provider_username, email, avatar_url, \
                     is_primary, linked_at, last_login_at \
-             FROM user_identities WHERE user_id = $1 \
+             FROM user_identities WHERE user_id = $1 AND LOWER(provider) NOT IN ('qq', 'telegram', 'discord_dm', 'feishu') \
              ORDER BY is_primary DESC, linked_at ASC",
             [user_id.into()],
         ))
@@ -416,7 +416,10 @@ pub async fn update_user(
             let identity_count = txn
                 .query_one_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
-                    "SELECT COUNT(*) AS n FROM user_identities WHERE user_id = $1",
+                    format!(
+                        "SELECT COUNT(*) AS n FROM user_identities WHERE user_id = $1 AND {}",
+                        crate::services::channel_pairing::SQL_NOT_PAIRING_PROVIDER
+                    ),
                     [user_id.into()],
                 ))
                 .await
@@ -553,7 +556,10 @@ pub async fn unlink_identity(
 ) -> Result<Json<Value>, ApiError> {
     let claims = require_admin(&headers, &db).await?;
 
-    let txn = db.begin().await.map_err(db_error("begin identity unlink"))?;
+    let txn = db
+        .begin()
+        .await
+        .map_err(db_error("begin identity unlink"))?;
     crate::api::oauth::lock_login_methods(&txn, user_id)
         .await
         .map_err(db_error("lock login methods"))?;
@@ -562,8 +568,8 @@ pub async fn unlink_identity(
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT u.password_hash IS NOT NULL AS has_password, u.local_login_disabled, \
-                    (SELECT COUNT(*) FROM user_identities i WHERE i.user_id = u.id) AS identity_count, \
-                    EXISTS(SELECT 1 FROM user_identities i WHERE i.id = $2 AND i.user_id = u.id) AS identity_belongs \
+                    (SELECT COUNT(*) FROM user_identities i WHERE i.user_id = u.id AND LOWER(i.provider) NOT IN ('qq', 'telegram', 'discord_dm', 'feishu')) AS identity_count, \
+                    EXISTS(SELECT 1 FROM user_identities i WHERE i.id = $2 AND i.user_id = u.id AND LOWER(i.provider) NOT IN ('qq', 'telegram', 'discord_dm', 'feishu')) AS identity_belongs \
              FROM users u WHERE u.id = $1",
             [user_id.into(), identity_id.into()],
         ))

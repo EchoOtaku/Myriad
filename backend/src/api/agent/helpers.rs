@@ -101,6 +101,18 @@ pub(crate) fn parse_user_id(claims: &Claims) -> Result<i32, HttpError> {
     })
 }
 
+/// Existing pairings must remain revocable after Agent access is withdrawn.
+pub(crate) fn parse_pairing_user_id(claims: &Claims) -> Result<i32, HttpError> {
+    let id = parse_user_id(claims)?;
+    if id <= 0 {
+        return Err(HttpError::from((
+            StatusCode::UNAUTHORIZED,
+            Json(AppError::public_json("Login required")),
+        )));
+    }
+    Ok(id)
+}
+
 /// 解析 user_id 并校验 Agent 可见性/使用权限
 pub(crate) async fn parse_user_id_with_agent_access(
     claims: &Claims,

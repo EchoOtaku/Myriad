@@ -61,6 +61,71 @@ export interface AgentIntention {
   expires_at?: string
 }
 
+export interface QqPairingStatus {
+  paired: boolean
+  identityId: number | null
+  openidMasked: string | null
+  linkedAt: string | null
+  pendingCode: string | null
+  pendingExpiresAt: string | null
+}
+
+export type QqBotPhase =
+  | 'offline'
+  | 'connecting'
+  | 'online'
+  | 'rejected'
+  | 'reconnecting'
+
+export interface QqBotStatus {
+  phase: QqBotPhase
+  enabled: boolean
+  hasAppId: boolean
+  hasSecret: boolean
+  appId?: string | null
+  lastInboundAt?: string | null
+}
+
+export type TelegramBotPhase = QqBotPhase
+
+export interface TelegramBotStatus {
+  phase: TelegramBotPhase
+  enabled: boolean
+  hasToken: boolean
+  botUsername?: string | null
+  botName?: string | null
+  lastInboundAt?: string | null
+}
+
+export type TelegramPairingStatus = QqPairingStatus
+
+export type DiscordBotPhase = QqBotPhase
+
+export interface DiscordBotStatus {
+  phase: DiscordBotPhase
+  enabled: boolean
+  hasToken: boolean
+  botUsername?: string | null
+  botName?: string | null
+  botUserId?: string | null
+  lastInboundAt?: string | null
+}
+
+export type DiscordPairingStatus = QqPairingStatus
+
+export type FeishuBotPhase = QqBotPhase
+
+export interface FeishuBotStatus {
+  phase: FeishuBotPhase
+  enabled: boolean
+  hasAppId: boolean
+  hasSecret: boolean
+  appId?: string | null
+  lastInboundAt?: string | null
+}
+
+export type FeishuPairingStatus = QqPairingStatus
+
 function sharePersonaGeneration<T>(
   key: string,
   start: () => Promise<T>,
@@ -286,6 +351,117 @@ class AgentService {
     return apiService.delete(`${this.baseUrl}/autonomy`)
   }
 
+  async getQqPairing(): Promise<{ pairing: QqPairingStatus }> {
+    return apiService.get(`${this.baseUrl}/qq/pairing`)
+  }
+
+  async issueQqPairingCode(): Promise<{
+    code: string
+    expiresAt: string
+    pairing: QqPairingStatus
+  }> {
+    return apiService.post(`${this.baseUrl}/qq/pairing`)
+  }
+
+  async unpairQq(): Promise<{ success: boolean }> {
+    return apiService.delete(`${this.baseUrl}/qq/pairing`)
+  }
+
+  async getQqBotStatus(): Promise<QqBotStatus> {
+    return apiService.get(`${this.baseUrl}/qq/status`)
+  }
+
+  async testQqBot(): Promise<{ success: boolean; phase?: QqBotPhase }> {
+    return apiService.post(`${this.baseUrl}/qq/test`)
+  }
+
+  async getTelegramPairing(): Promise<{ pairing: TelegramPairingStatus }> {
+    return apiService.get(`${this.baseUrl}/telegram/pairing`)
+  }
+
+  async issueTelegramPairingCode(): Promise<{
+    code: string
+    expiresAt: string
+    pairing: TelegramPairingStatus
+  }> {
+    return apiService.post(`${this.baseUrl}/telegram/pairing`)
+  }
+
+  async unpairTelegram(): Promise<{ success: boolean }> {
+    return apiService.delete(`${this.baseUrl}/telegram/pairing`)
+  }
+
+  async getTelegramBotStatus(): Promise<TelegramBotStatus> {
+    return apiService.get(`${this.baseUrl}/telegram/status`)
+  }
+
+  async testTelegramBot(): Promise<{
+    success: boolean
+    phase?: TelegramBotPhase
+    botUsername?: string | null
+    botName?: string | null
+  }> {
+    return apiService.post(`${this.baseUrl}/telegram/test`)
+  }
+
+  async getDiscordPairing(): Promise<{ pairing: DiscordPairingStatus }> {
+    return apiService.get(`${this.baseUrl}/discord/pairing`)
+  }
+
+  async issueDiscordPairingCode(): Promise<{
+    code: string
+    expiresAt: string
+    pairing: DiscordPairingStatus
+  }> {
+    return apiService.post(`${this.baseUrl}/discord/pairing`)
+  }
+
+  async unpairDiscord(): Promise<{ success: boolean }> {
+    return apiService.delete(`${this.baseUrl}/discord/pairing`)
+  }
+
+  async getDiscordBotStatus(): Promise<DiscordBotStatus> {
+    return apiService.get(`${this.baseUrl}/discord/status`)
+  }
+
+  async testDiscordBot(): Promise<{
+    success: boolean
+    phase?: DiscordBotPhase
+    botUsername?: string | null
+    botName?: string | null
+    botUserId?: string | null
+  }> {
+    return apiService.post(`${this.baseUrl}/discord/test`)
+  }
+
+  async getFeishuPairing(): Promise<{ pairing: FeishuPairingStatus }> {
+    return apiService.get(`${this.baseUrl}/feishu/pairing`)
+  }
+
+  async issueFeishuPairingCode(): Promise<{
+    code: string
+    expiresAt: string
+    pairing: FeishuPairingStatus
+  }> {
+    return apiService.post(`${this.baseUrl}/feishu/pairing`)
+  }
+
+  async unpairFeishu(): Promise<{ success: boolean }> {
+    return apiService.delete(`${this.baseUrl}/feishu/pairing`)
+  }
+
+  async getFeishuBotStatus(): Promise<FeishuBotStatus> {
+    return apiService.get(`${this.baseUrl}/feishu/status`)
+  }
+
+  async testFeishuBot(): Promise<{ success: boolean; phase?: FeishuBotPhase }> {
+    return apiService.post(`${this.baseUrl}/feishu/test`)
+  }
+
+  /**
+   * 重新订阅一个已存在的后端 run（页面刷新 / 通知打开后恢复进度）。
+   * 不会创建新任务。
+   */
   async subscribeRun(
     runId: string,
     onProgress: ProgressCallback,

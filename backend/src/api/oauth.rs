@@ -29,6 +29,7 @@ use std::env;
 
 use crate::middleware::auth::{auth_cookie_value, encode_session_token, mint_session_claims};
 use crate::oauth_url_builder::SiteConfig;
+use crate::services::channel_pairing::{is_pairing_provider, SQL_NOT_PAIRING_PROVIDER};
 use crate::services::oauth::{
     registry::REGISTRY,
     state::{
@@ -212,13 +213,21 @@ async fn sync_user_oauth_columns(
 // GET /api/auth/oauth/providers
 
 pub async fn list_providers() -> Json<Value> {
-    let providers = REGISTRY.list().await;
+    let providers: Vec<_> = REGISTRY
+        .list()
+        .await
+        .into_iter()
+        .filter(|provider| !is_pairing_provider(&provider.slug))
+        .collect();
     Json(json!({ "providers": providers }))
 }
 
 // GET /api/auth/oauth/:slug/login
 
 pub async fn provider_login(Path(slug): Path<String>) -> Result<Response, HttpError> {
+    if is_pairing_provider(&slug) {
+        return Err(err_400("Channel pairing is not an OAuth provider"));
+    }
     let provider = REGISTRY
         .get(&slug)
         .await
@@ -264,6 +273,9 @@ pub async fn provider_link(
     let user_id: i32 = claims.sub.parse().map_err(|_| err_400("Invalid user id"))?;
     if user_id <= 0 {
         return Err(err_400("Guest sessions cannot link OAuth providers"));
+    }
+    if is_pairing_provider(&slug) {
+        return Err(err_400("Channel pairing is not an OAuth provider"));
     }
 
     let provider = REGISTRY
@@ -954,7 +966,8 @@ async fn upsert_identity(
             avatar_url, profile_url, raw_profile, is_primary, linked_at, last_login_at \
          ) VALUES ( \
             $1, $2, $3, $4, $5, $6, $7, $8, $9, \
-            (NOT EXISTS (SELECT 1 FROM user_identities WHERE user_id = $1)), \
+            (NOT EXISTS (SELECT 1 FROM user_identities WHERE user_id = $1 \
+                AND LOWER(provider) NOT IN ('qq', 'telegram', 'discord_dm', 'feishu'))), \
             NOW(), NOW() \
          ) \
          ON CONFLICT (provider, provider_user_id) DO UPDATE SET \
@@ -1093,6 +1106,16 @@ pub async fn provider_unlink(
         })?;
     let user_id: i32 = claims.sub.parse().map_err(|_| err_400("Invalid user id"))?;
 
+    if is_pairing_provider(&slug) {
+        return Err(HttpError::from((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Unlink channel pairing from the pairing page",
+                "code": "channel_pairing_identity"
+            })),
+        )));
+    }
+
     let txn = db.begin().await.map_err(|e| {
         tracing::error!("OAuth DB error: {e}");
         err_500("Database error")
@@ -1128,10 +1151,10 @@ pub async fn provider_unlink(
     let summary = txn
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT \
+            format!("SELECT \
                 (SELECT password_hash IS NOT NULL FROM users WHERE id = $1) AS has_password, \
                 (SELECT local_login_disabled FROM users WHERE id = $1) AS local_login_disabled, \
-                (SELECT COUNT(*) FROM user_identities WHERE user_id = $1) AS identity_count",
+                (SELECT COUNT(*) FROM user_identities WHERE user_id = $1 AND {SQL_NOT_PAIRING_PROVIDER}) AS identity_count"),
             vec![SeaValue::Int(Some(user_id))],
         ))
         .await
@@ -1208,9 +1231,13 @@ pub async fn list_my_identities(
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT id, provider, provider_username, email, avatar_url, profile_url, \
-                    is_primary, linked_at, last_login_at \
-             FROM user_identities WHERE user_id = $1 ORDER BY linked_at ASC",
+            format!(
+                "SELECT id, provider, provider_username, email, avatar_url, profile_url, \
+                        is_primary, linked_at, last_login_at \
+                 FROM user_identities WHERE user_id = $1 \
+                    AND {SQL_NOT_PAIRING_PROVIDER} \
+                 ORDER BY linked_at ASC"
+            ),
             vec![SeaValue::Int(Some(user_id))],
         ))
         .await
@@ -1289,6 +1316,15 @@ pub async fn set_primary_identity(
         })?;
 
     let provider: String = row.try_get("", "provider").unwrap_or_default();
+    if is_pairing_provider(&provider) {
+        return Err(HttpError::from((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Channel pairing is not an avatar source",
+                "code": "channel_pairing_identity"
+            })),
+        )));
+    }
     let provider_username: Option<String> = row.try_get("", "provider_username").unwrap_or(None);
     let provider_user_id: String = row.try_get("", "provider_user_id").unwrap_or_default();
 
@@ -1400,5 +1436,20 @@ mod unlink_lockout_tests {
         assert!(toggle_fn.contains(".begin()"));
         assert!(toggle_fn.contains("lock_login_methods"));
         assert!(toggle_fn.contains("disable_local_login_blocks"));
+    }
+}
+
+#[cfg(test)]
+mod channel_identity_tests {
+    #[test]
+    fn channel_pairing_is_not_a_login() {
+        for provider in ["qq", "Telegram", "discord_dm", "feishu"] {
+            assert!(crate::services::channel_pairing::is_pairing_provider(
+                provider
+            ));
+        }
+        assert!(!crate::services::channel_pairing::is_pairing_provider(
+            "discord"
+        ));
     }
 }
