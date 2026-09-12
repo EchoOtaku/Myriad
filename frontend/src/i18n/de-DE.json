@@ -444,7 +444,7 @@
     "backendDisconnected": "Backend getrennt",
     "reconnecting": "Verbindung wird erneut aufgebaut...",
     "retry": "Erneut",
-    "doneGreeting": "Hi, {name}",
+    "doneGreeting": "Hallo, {name}",
     "doneReadyTitle": "Bereit loszulegen?",
     "doneEyebrow": "Einrichtung fertig",
     "completeDesc": "Ihr Myriad-System ist einsatzbereit.",
@@ -984,7 +984,7 @@
         "mystic": "Mystisch",
         "travel": "Reisende",
         "vintage": "Vintage",
-        "rain": "Trench"
+        "rain": "Trenchcoat"
       },
       "extraLabel": "Zusätzliche Notizen",
       "extraPlaceholder": "z. B. Ruhig, ernst, weicher zu Menschen, die sie kennt",
@@ -1102,8 +1102,8 @@
   },
   "perfMonitor": {
     "label": "Perf",
-    "lastLongTask": "Letzter Long Task {ms}ms",
-    "longTasks": "Long Tasks",
+    "lastLongTask": "Letzte lange Aufgabe {ms}ms",
+    "longTasks": "Lange Aufgaben",
     "collapseTitle": "Einklappen (Strg+Umschalt+M)",
     "expandTitle": "Aufklappen (Strg+Umschalt+M)",
     "sectionFrame": "Frame",
@@ -1613,7 +1613,7 @@
     "sampleProject": "Beispielprojekt",
     "sampleProjectDesc": "Das ist ein Beispielprojekt",
     "sampleGame": "Beispielspiel",
-    "sampleGame2": "Open World",
+    "sampleGame2": "Offene Welt",
     "sampleGame3": "Indie-Perle",
     "sampleAnime": "Beispiel-Anime",
     "sampleAnime2": "Staffel zwei",
