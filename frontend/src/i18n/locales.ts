@@ -6,9 +6,78 @@ import {
   resolveHostLocale,
 } from './parseLocale.shared.js'
 
-export const LOCALES = ['zh-CN', 'zh-TW', 'en-US', 'ja-JP'] as const
+export const LOCALES = [
+  'zh-CN',
+  'zh-TW',
+  'en-US',
+  'ja-JP',
+  'ko-KR',
+  'fr-FR',
+  'de-DE',
+] as const
 
 export type Locale = (typeof LOCALES)[number]
+
+export interface HostLanguageLabels {
+  languageZh: string
+  languageZhTw: string
+  languageEn: string
+  languageJa: string
+  languageKo: string
+  languageFr: string
+  languageDe: string
+  languageZhShort: string
+  languageZhTwShort: string
+  languageEnShort: string
+  languageJaShort: string
+  languageKoShort: string
+  languageFrShort: string
+  languageDeShort: string
+}
+
+export function hostLanguageName(
+  locale: Locale,
+  labels: HostLanguageLabels,
+): string {
+  switch (locale) {
+    case 'zh-CN':
+      return labels.languageZh
+    case 'zh-TW':
+      return labels.languageZhTw
+    case 'en-US':
+      return labels.languageEn
+    case 'ja-JP':
+      return labels.languageJa
+    case 'ko-KR':
+      return labels.languageKo
+    case 'fr-FR':
+      return labels.languageFr
+    case 'de-DE':
+      return labels.languageDe
+  }
+}
+
+export function hostLanguageShort(
+  locale: Locale,
+  labels: HostLanguageLabels,
+): string {
+  switch (locale) {
+    case 'zh-CN':
+      return labels.languageZhShort
+    case 'zh-TW':
+      return labels.languageZhTwShort
+    case 'en-US':
+      return labels.languageEnShort
+    case 'ja-JP':
+      return labels.languageJaShort
+    case 'ko-KR':
+      return labels.languageKoShort
+    case 'fr-FR':
+      return labels.languageFrShort
+    case 'de-DE':
+      return labels.languageDeShort
+  }
+}
 
 export function isLocale(value: unknown): value is Locale {
   return isLocaleValue(value)

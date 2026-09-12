@@ -1,12 +1,17 @@
-/** Host UI locale parsing. No TypeScript — first-paint inlines this file.
- *  Cases: `shared/host_locale_cases.json` (must match backend parse_host_locale). */
+/**
+ * Host UI locale parsing. No TypeScript — first-paint inlines this file.
+ *  Cases: `shared/host_locale_cases.json` (must match backend parse_host_locale).
+ */
 
 export function isLocale(value) {
   return (
     value === 'zh-CN' ||
     value === 'zh-TW' ||
     value === 'en-US' ||
-    value === 'ja-JP'
+    value === 'ja-JP' ||
+    value === 'ko-KR' ||
+    value === 'fr-FR' ||
+    value === 'de-DE'
   )
 }
 
@@ -27,6 +32,9 @@ export function mapLanguageTag(tag) {
   }
   if (lower.startsWith('zh')) return 'zh-CN'
   if (lower.startsWith('ja')) return 'ja-JP'
+  if (lower.startsWith('ko')) return 'ko-KR'
+  if (lower.startsWith('fr')) return 'fr-FR'
+  if (lower.startsWith('de')) return 'de-DE'
   if (lower.startsWith('en')) return 'en-US'
   return null
 }
@@ -93,6 +101,12 @@ export function htmlLang(locale) {
       return 'zh-TW'
     case 'ja-JP':
       return 'ja-JP'
+    case 'ko-KR':
+      return 'ko-KR'
+    case 'fr-FR':
+      return 'fr-FR'
+    case 'de-DE':
+      return 'de-DE'
     default:
       return 'en'
   }

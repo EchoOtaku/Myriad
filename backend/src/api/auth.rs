@@ -283,7 +283,7 @@ pub async fn set_current_user_locale(
             Json(json!({
                 "error": "Bad request",
                 "code": "locale_invalid",
-                "message": "locale must be zh-CN, zh-TW, en-US, or ja-JP",
+                "message": "locale must be a host UI tag",
             })),
         )));
     };

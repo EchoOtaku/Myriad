@@ -442,14 +442,14 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
     const filteredWidgets = useMemo((): WidgetType[] => {
       if (gridRows === 1) {
         return CONTROL_PANEL_WIDGETS.filter((w) => {
-          const sizes = w.supportedSizes || []
+          const sizes = w.supportedSizes ?? []
           return (
             sizes.includes('4x1') ||
             sizes.includes('2x1') ||
             sizes.includes('1x1')
           )
         }).map((w) => {
-          const sizes = w.supportedSizes || []
+          const sizes = w.supportedSizes ?? []
           const allowedSizes = sizes.filter(
             (s) => s === '4x1' || s === '2x1' || s === '1x1',
           )

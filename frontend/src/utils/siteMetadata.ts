@@ -438,7 +438,7 @@ export async function refreshSiteMetadata(): Promise<void> {
 }
 
 export function getCurrentMetadata(): SiteMetadata {
-  return getCachedMetadata() || baseMetadata || DEFAULT_METADATA
+  return getCachedMetadata() ?? baseMetadata ?? DEFAULT_METADATA
 }
 
 export function formatPageTitle(pageTitle: string): string {

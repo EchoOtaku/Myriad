@@ -4,6 +4,8 @@ export type { Locale } from './locales'
 
 export {
   getDefaultLocale,
+  hostLanguageName,
+  hostLanguageShort,
   htmlLang,
   isLocale,
   localeOrFallback,
@@ -12,6 +14,7 @@ export {
   parseLocaleCookie,
   saveLocale,
 } from './locales'
+export type { HostLanguageLabels } from './locales'
 
 /** Event keys are domain enums, not TranslationKeys. */
 export {

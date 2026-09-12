@@ -38,7 +38,7 @@ import { useNotificationCenter } from '../hooks/useNotificationCenter'
 import { useNotificationPreferences } from '../hooks/useNotificationPreferences'
 import { usePerformanceProfile } from '../hooks/usePerformanceProfile'
 import { useWallpaper } from '../hooks/useWallpaper'
-import { LOCALES } from '../i18n'
+import { hostLanguageName, hostLanguageShort, LOCALES } from '../i18n'
 import { getDynamicContentProvider } from '../services/DynamicContentProvider'
 import {
   notificationSourceFor,
@@ -1824,13 +1824,7 @@ const GlobalControlPanel: React.FC = () => {
                             {t.controlPanel.language}
                           </h4>
                           <p className="control-item-desc">
-                            {locale === 'zh-CN'
-                              ? t.controlPanel.languageZh
-                              : locale === 'zh-TW'
-                                ? t.controlPanel.languageZhTw
-                                : locale === 'ja-JP'
-                                  ? t.controlPanel.languageJa
-                                  : t.controlPanel.languageEn}
+                            {hostLanguageName(locale, t.controlPanel)}
                           </p>
                         </div>
                       </div>
@@ -1854,13 +1848,7 @@ const GlobalControlPanel: React.FC = () => {
                         aria-label={t.controlPanel.languageSwitch}
                       >
                         <span className="language-code">
-                          {locale === 'zh-CN'
-                            ? t.controlPanel.languageZhShort
-                            : locale === 'zh-TW'
-                              ? t.controlPanel.languageZhTwShort
-                              : locale === 'ja-JP'
-                                ? t.controlPanel.languageJaShort
-                                : t.controlPanel.languageEnShort}
+                          {hostLanguageShort(locale, t.controlPanel)}
                         </span>
                       </button>
                     </div>

@@ -45,6 +45,9 @@ const loader = createLocaleLoader<NotificationCopy>({
   'zh-TW': () => import('./notifications.zh-TW.json').then((m) => m.default),
   'en-US': async () => en,
   'ja-JP': () => import('./notifications.ja-JP.json').then((m) => m.default),
+  'ko-KR': () => import('./notifications.ko-KR.json').then((m) => m.default),
+  'fr-FR': () => import('./notifications.fr-FR.json').then((m) => m.default),
+  'de-DE': () => import('./notifications.de-DE.json').then((m) => m.default),
 })
 loader.seed('en-US', en)
 

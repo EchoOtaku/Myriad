@@ -252,7 +252,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     const prevG = getGlobalState()
     const resolvedPalette = resolveMusicPalette(
       musicColors,
-      (prevG?.musicColors as MusicColors | null | undefined) ||
+      (prevG?.musicColors as MusicColors | null | undefined) ??
         musicColorsRef.current,
     )
 

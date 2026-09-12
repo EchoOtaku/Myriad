@@ -284,7 +284,7 @@ export function ensureDefaultWardrobe(
   }
   const portrait = parsePortraitAssetId(portraitAssetId)
   const bindPortraitOnDefault = items.length <= 1
-  const locked = items.find((item) => item.id === DEFAULT_WARDROBE_ID)
+  const locked = items.some((item) => item.id === DEFAULT_WARDROBE_ID)
   if (locked) {
     return {
       items: items.map((item) => {

@@ -230,8 +230,8 @@ export class PodcastPlayer {
   constructor(config?: PodcastPlayerConfig) {
     this.synth = window.speechSynthesis
     this.config = {
-      voiceA: config?.voiceA || (null as unknown as SpeechSynthesisVoice),
-      voiceB: config?.voiceB || (null as unknown as SpeechSynthesisVoice),
+      voiceA: config?.voiceA ?? (null as unknown as SpeechSynthesisVoice),
+      voiceB: config?.voiceB ?? (null as unknown as SpeechSynthesisVoice),
       rate: config?.rate ?? 1.0,
       pitch: config?.pitch ?? 1.0,
       dialogueGap: config?.dialogueGap ?? 500,
@@ -338,7 +338,7 @@ export class PodcastPlayer {
 
     if (!maleVoice) maleVoice = filtered[0]
     if (!femaleVoice)
-      femaleVoice = filtered.find((v) => v !== maleVoice) || filtered[0]
+      femaleVoice = filtered.find((v) => v !== maleVoice) ?? filtered[0]
 
     const voicesAreSame =
       maleVoice === femaleVoice || maleVoice?.name === femaleVoice?.name

@@ -97,7 +97,7 @@ describe('TappBridge KV permission gates', () => {
 
   async function lastPayload(responses: Array<Record<string, unknown>>) {
     await new Promise((resolve) => setTimeout(resolve, 0))
-    const last = responses[responses.length - 1]
+    const last = responses.at(-1)
     assert.ok(last, 'expected a bridge response')
     return last.payload as {
       success?: boolean

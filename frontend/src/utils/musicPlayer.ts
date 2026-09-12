@@ -172,12 +172,12 @@ export function throttle<T extends (...args: any[]) => any>(
         timeout = null
       }
       previous = now
-      func.apply(this, args)
+      func.call(this, ...args)
     } else if (!timeout) {
       timeout = setTimeout(() => {
         previous = Date.now()
         timeout = null
-        func.apply(this, args)
+        func.call(this, ...args)
       }, remaining)
     }
   } as ((...args: Parameters<T>) => void) & { cancel: () => void }
@@ -1162,10 +1162,7 @@ export function highlightText(text: string, query: string): string {
     return escaped
   }
 
-  const regex = new RegExp(
-    `(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`,
-    'gi',
-  )
+  const regex = new RegExp(`(${RegExp.escape(query)})`, 'gi')
   return escaped.replace(regex, '<mark>$1</mark>')
 }
 
@@ -1415,7 +1412,7 @@ class GlobalAudioManager {
   }
 
   async resumeAudioContext(): Promise<void> {
-    if (this.audioContext && this.audioContext.state === 'suspended') {
+    if (this.audioContext?.state === 'suspended') {
       try {
         await this.audioContext.resume()
       } catch {
@@ -1505,7 +1502,7 @@ class GlobalAudioManager {
     this.lastSpectrumTime = now
 
     // Resume AudioContext if Chromium suspends it.
-    if (this.audioContext && this.audioContext.state === 'suspended') {
+    if (this.audioContext?.state === 'suspended') {
       void this.audioContext.resume().catch(() => {})
     }
 

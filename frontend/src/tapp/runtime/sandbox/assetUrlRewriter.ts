@@ -109,13 +109,13 @@ export function resolveDeclaredAssetPath(url: string, urls: Record<string, strin
 export const SANDBOXED_FETCH_INSTALL_SOURCE = `
 ${ASSET_URL_HELPER_SOURCE}
 function installSandboxedFetch(window) {
-  var _nativeFetch = typeof window.fetch === 'function' ? window.fetch.bind(window) : null;
+  const _nativeFetch = typeof window.fetch === 'function' ? window.fetch.bind(window) : null;
   window.fetch = function(input, init) {
-    var url = '';
+    let url = '';
     try {
       if (typeof input === 'string') url = input;
       else if (input && typeof input.url === 'string') url = input.url;
-    } catch (e) {}
+    } catch {}
     if (_nativeFetch && isSandboxedFetchUrl(url)) {
       return _nativeFetch(input, init);
     }

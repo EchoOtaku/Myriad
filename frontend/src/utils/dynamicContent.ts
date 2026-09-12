@@ -38,7 +38,7 @@ export function getGreeting(
   let icon: GreetingIconName = 'sun'
 
   const g = currentCopy().greeting
-  const t = translations || {
+  const t = translations ?? {
     morning: g.morning,
     forenoon: g.forenoon,
     noon: g.noon,

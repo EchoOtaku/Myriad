@@ -128,8 +128,8 @@ export function useCoverColors(options: {
 
       const g = getGlobalState()
       const prevColors =
-        (g?.musicColors as MusicColors | null | undefined) ||
-        musicColorsRef.current ||
+        (g?.musicColors as MusicColors | null | undefined) ??
+        musicColorsRef.current ??
         null
       const resolvedColors = resolveMusicPalette(colors, prevColors)
 
@@ -193,7 +193,7 @@ export function useCoverColors(options: {
 
   const peekCoverColors = useCallback((cover: string): MusicColors | null => {
     return (
-      colorCacheRef.current.get(cover) ||
+      colorCacheRef.current.get(cover) ??
       (getCachedPalette(cover) as MusicColors | null)
     )
   }, [])
@@ -411,7 +411,7 @@ export function useCoverColors(options: {
       if (!song?.cover || !detail?.cover) return
       if (song.id !== detail.songId && song.cover !== detail.cover) return
       const hit =
-        colorCacheRef.current.get(song.cover) || getCachedPalette(song.cover)
+        colorCacheRef.current.get(song.cover) ?? getCachedPalette(song.cover)
       if (hit && !isDefaultPalette(hit)) return
       extractCoverColorsForSong(
         song,

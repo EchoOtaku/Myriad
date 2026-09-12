@@ -18,6 +18,9 @@ pub fn parse_stored_ui_locale(raw: &str) -> Option<&'static str> {
         "zh-TW" => Some("zh-TW"),
         "en-US" => Some("en-US"),
         "ja-JP" => Some("ja-JP"),
+        "ko-KR" => Some("ko-KR"),
+        "fr-FR" => Some("fr-FR"),
+        "de-DE" => Some("de-DE"),
         _ => None,
     }
 }
@@ -58,6 +61,12 @@ fn map_language_tag(raw: &str) -> Option<&'static str> {
         Some("zh-CN")
     } else if lower.starts_with("ja") {
         Some("ja-JP")
+    } else if lower.starts_with("ko") {
+        Some("ko-KR")
+    } else if lower.starts_with("fr") {
+        Some("fr-FR")
+    } else if lower.starts_with("de") {
+        Some("de-DE")
     } else if lower.starts_with("en") {
         Some("en-US")
     } else {
@@ -215,7 +224,8 @@ pub fn pick<'a>(locale: &str, zh: &'a str, ja: &'a str, en: &'a str) -> &'a str 
     match normalize_report_locale(locale) {
         "ja-JP" => ja,
         "en-US" => en,
-        _ => zh,
+        "zh-CN" | "zh-TW" => zh,
+        _ => en,
     }
 }
 
@@ -271,6 +281,9 @@ mod tests {
         assert_eq!(parse_stored_ui_locale("ja-JP"), Some("ja-JP"));
         assert_eq!(parse_stored_ui_locale(" zh-CN "), Some("zh-CN"));
         assert_eq!(parse_stored_ui_locale("zh-TW"), Some("zh-TW"));
+        assert_eq!(parse_stored_ui_locale("ko-KR"), Some("ko-KR"));
+        assert_eq!(parse_stored_ui_locale("fr-FR"), Some("fr-FR"));
+        assert_eq!(parse_stored_ui_locale("de-DE"), Some("de-DE"));
         assert_eq!(parse_stored_ui_locale("zh"), None);
         assert_eq!(parse_stored_ui_locale(""), None);
     }
@@ -305,7 +318,7 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("x-myriad-locale", HeaderValue::from_static("zh-HK"));
         assert_eq!(host_locale_from_headers(&headers), "zh-TW");
-        headers.insert("accept-language", HeaderValue::from_static("fr,zh-HK;q=0.8"));
+        headers.insert("accept-language", HeaderValue::from_static("it,zh-HK;q=0.8"));
         headers.remove("x-myriad-locale");
         assert_eq!(host_locale_from_headers(&headers), "zh-TW");
     }
@@ -316,6 +329,9 @@ mod tests {
         assert!(missing_platform_data_message("zh-TW").contains("可用資料"));
         assert!(missing_platform_data_message("en-US").contains("usable data"));
         assert!(missing_platform_data_message("ja-JP").contains("データ"));
+        assert!(missing_platform_data_message("ko-KR").contains("데이터"));
+        assert!(missing_platform_data_message("fr-FR").contains("données"));
+        assert!(missing_platform_data_message("de-DE").contains("Daten"));
         assert!(!missing_platform_data_message("en-US").contains("cache/raw"));
     }
 

@@ -270,7 +270,7 @@ export function pruneStoreWithMeta(
   while (sessions.length > 1 && measure(sessions) > MAX_STORE_BYTES) {
     const sorted = sessions.toSorted((a, b) => a.updatedAt - b.updatedAt)
     const victim =
-      sorted.find((s) => s.id !== store.activeSessionId) || sorted[0]
+      sorted.find((s) => s.id !== store.activeSessionId) ?? sorted[0]
     if (!victim) break
     sessions = sessions.filter((s) => s.id !== victim.id)
     sessionsDropped += 1
@@ -335,8 +335,8 @@ export function getActiveSession(
   store: PlaygroundSessionsStore,
 ): PlaygroundSession {
   return (
-    store.sessions.find((s) => s.id === store.activeSessionId) ||
-    store.sessions[0] ||
+    store.sessions.find((s) => s.id === store.activeSessionId) ??
+    store.sessions[0] ??
     createEmptySession()
   )
 }

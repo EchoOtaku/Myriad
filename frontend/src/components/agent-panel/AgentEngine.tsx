@@ -1323,7 +1323,7 @@ export const AgentEngine: React.FC = () => {
       void import('../../utils/analyticsEvents').then(
         ({ trackProductEvent, AnalyticsEvents }) => {
           trackProductEvent(AnalyticsEvents.AGENT_SEND, {
-            target: location.pathname.split('/').filter(Boolean)[0] || 'home',
+            target: location.pathname.split('/').find(Boolean) || 'home',
             throttleMs: 2000,
           })
         },

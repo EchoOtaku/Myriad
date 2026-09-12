@@ -25,7 +25,7 @@ const SDK_MODEL3D_AWAIT_TIMEOUT_MS = 15 * 60 * 1000
 
 export function sdkRequestTimeoutHelper(): string {
   return `
-  var requestTimeoutMs = function(api, method) {
+  const requestTimeoutMs = function(api, method) {
     if (api === 'ai') return ${SDK_AI_REQUEST_TIMEOUT_MS};
     if (api === 'model3d' && method === 'awaitTask') return ${SDK_MODEL3D_AWAIT_TIMEOUT_MS};
     return ${SDK_DEFAULT_REQUEST_TIMEOUT_MS};
@@ -201,7 +201,7 @@ export function generateSettingsNamespaceCode(style: SdkFnStyle): string {
 
 /** Page / Widget 共用：宿主主题推送时写 CSS 变量。依赖同作用域的 forceRepaint。 */
 export const SDK_HOST_CHROME_CODE = `
-  var forceRepaint = function () {
+  const forceRepaint = function () {
     void document.body.offsetHeight;
     if (window._TAPP_DISABLE_TRANSFORM_REPAINT) return;
     try {
@@ -213,7 +213,7 @@ export const SDK_HOST_CHROME_CODE = `
       });
     } catch {}
   };
-  var applyTappTheme = function(payload) {
+  const applyTappTheme = function(payload) {
     const isDark = payload === 'dark';
     document.body.classList.toggle('dark', isDark);
     document.body.classList.toggle('light', !isDark);
@@ -232,7 +232,7 @@ export const SDK_HOST_CHROME_CODE = `
     document.body.style.color = isDark ? 'rgba(255,255,255,.92)' : '#1a1a1a';
     forceRepaint();
   };
-  var applyTappPrimaryColor = function(payload) {
+  const applyTappPrimaryColor = function(payload) {
     if (!payload) return;
     document.documentElement.style.setProperty('--tapp-primary', payload);
     forceRepaint();

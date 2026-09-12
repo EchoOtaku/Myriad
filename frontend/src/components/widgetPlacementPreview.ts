@@ -200,7 +200,7 @@ export function placementHasCommitted(
   if (!id || !cell) return false
   const found = widgets.find((widget) => widget.id === id)
   return Boolean(
-    found && found.position.x === cell.x && found.position.y === cell.y,
+    found?.position.x === cell.x && found.position.y === cell.y,
   )
 }
 

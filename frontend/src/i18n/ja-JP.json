@@ -100,10 +100,16 @@
     "languageZhTw": "繁體中文",
     "languageEn": "English",
     "languageJa": "日本語",
+    "languageKo": "한국어",
+    "languageFr": "Français",
+    "languageDe": "Deutsch",
     "languageZhShort": "简",
     "languageZhTwShort": "繁",
     "languageEnShort": "En",
-    "languageJaShort": "日"
+    "languageJaShort": "日",
+    "languageKoShort": "한",
+    "languageFrShort": "Fr",
+    "languageDeShort": "De"
   },
   "tour": {
     "start": "案内",

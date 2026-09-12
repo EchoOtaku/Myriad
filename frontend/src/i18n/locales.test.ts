@@ -31,6 +31,9 @@ describe('parseLocale', () => {
   it('uses a short html lang for English', () => {
     assert.equal(htmlLang('en-US'), 'en')
     assert.equal(htmlLang('zh-TW'), 'zh-TW')
+    assert.equal(htmlLang('ko-KR'), 'ko-KR')
+    assert.equal(htmlLang('fr-FR'), 'fr-FR')
+    assert.equal(htmlLang('de-DE'), 'de-DE')
   })
 })
 

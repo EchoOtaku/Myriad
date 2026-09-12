@@ -48,6 +48,9 @@ const LOCALE_ENGINE_MAP: Record<string, string> = {
   'zh-TW': '16k_zh',
   'en-US': '16k_en',
   'ja-JP': '16k_ja',
+  'ko-KR': '16k_ko',
+  'fr-FR': '16k_en',
+  'de-DE': '16k_en',
 }
 
 const WORKLET_PROCESSOR_NAME = 'pcm-capture-processor'

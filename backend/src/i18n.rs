@@ -40,6 +40,18 @@ static REPORTS: LazyLock<HashMap<&'static str, Catalog>> = LazyLock::new(|| {
             "ja-JP",
             parse_catalog(include_str!("../i18n/reports.ja-JP.json")),
         ),
+        (
+            "ko-KR",
+            parse_catalog(include_str!("../i18n/reports.ko-KR.json")),
+        ),
+        (
+            "fr-FR",
+            parse_catalog(include_str!("../i18n/reports.fr-FR.json")),
+        ),
+        (
+            "de-DE",
+            parse_catalog(include_str!("../i18n/reports.de-DE.json")),
+        ),
     ])
 });
 
@@ -60,6 +72,18 @@ static SEO: LazyLock<HashMap<&'static str, Catalog>> = LazyLock::new(|| {
         (
             "ja-JP",
             parse_catalog(include_str!("../i18n/seo.ja-JP.json")),
+        ),
+        (
+            "ko-KR",
+            parse_catalog(include_str!("../i18n/seo.ko-KR.json")),
+        ),
+        (
+            "fr-FR",
+            parse_catalog(include_str!("../i18n/seo.fr-FR.json")),
+        ),
+        (
+            "de-DE",
+            parse_catalog(include_str!("../i18n/seo.de-DE.json")),
         ),
     ])
 });
@@ -143,13 +167,16 @@ mod tests {
 
     #[test]
     fn catalogs_share_keys() {
-        for (name, en, zh, tw, ja) in [
+        for (name, en, zh, tw, ja, ko, fr, de) in [
             (
                 "reports",
                 include_str!("../i18n/reports.en-US.json"),
                 include_str!("../i18n/reports.zh-CN.json"),
                 include_str!("../i18n/reports.zh-TW.json"),
                 include_str!("../i18n/reports.ja-JP.json"),
+                include_str!("../i18n/reports.ko-KR.json"),
+                include_str!("../i18n/reports.fr-FR.json"),
+                include_str!("../i18n/reports.de-DE.json"),
             ),
             (
                 "seo",
@@ -157,10 +184,20 @@ mod tests {
                 include_str!("../i18n/seo.zh-CN.json"),
                 include_str!("../i18n/seo.zh-TW.json"),
                 include_str!("../i18n/seo.ja-JP.json"),
+                include_str!("../i18n/seo.ko-KR.json"),
+                include_str!("../i18n/seo.fr-FR.json"),
+                include_str!("../i18n/seo.de-DE.json"),
             ),
         ] {
             let expected = object_keys(en);
-            for (locale, raw) in [("zh-CN", zh), ("zh-TW", tw), ("ja-JP", ja)] {
+            for (locale, raw) in [
+                ("zh-CN", zh),
+                ("zh-TW", tw),
+                ("ja-JP", ja),
+                ("ko-KR", ko),
+                ("fr-FR", fr),
+                ("de-DE", de),
+            ] {
                 assert_eq!(
                     object_keys(raw),
                     expected,

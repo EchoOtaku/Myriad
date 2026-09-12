@@ -246,20 +246,21 @@ export function buildLayerRuntime(
   return {
     source: `(function () {
   'use strict';
-  var __factories = {
+  const __factories = {
 ${registry}
   };
-  var __resolve = ${JSON.stringify(resolutionTable)};
-  var __cache = {};
+  const __resolve = ${JSON.stringify(resolutionTable)};
+  const __cache = {};
+  const __hasOwn = Object.hasOwn;
   function __require(from, request) {
-    var target = (__resolve[from] && __resolve[from][request]) || request;
-    if (!Object.prototype.hasOwnProperty.call(__factories, target)) {
+    const target = (__resolve[from] && __resolve[from][request]) || request;
+    if (!__hasOwn(__factories, target)) {
       throw new Error('Cannot find module ' + JSON.stringify(request) + ' from ' + JSON.stringify(from));
     }
-    if (Object.prototype.hasOwnProperty.call(__cache, target)) {
+    if (__hasOwn(__cache, target)) {
       return __cache[target].exports;
     }
-    var module = { exports: {} };
+    const module = { exports: {} };
     // 先入缓存再执行：循环依赖拿到的是部分导出，而不是无限递归。
     __cache[target] = module;
     __factories[target](module, module.exports, function (request) {

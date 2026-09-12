@@ -393,14 +393,14 @@ export default function RSSHubConfigComponent({
 
   const [routePath, setRoutePath] = useState(initialConfig?.routePath || '')
   const [routeParams, setRouteParams] = useState<Record<string, string>>(
-    initialConfig?.routeParams || {},
+    initialConfig?.routeParams ?? {},
   )
 
   const [queryParams, setQueryParams] = useState<RSSHubQueryParams>(
-    initialConfig?.queryParams || {},
+    initialConfig?.queryParams ?? {},
   )
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(
-    Object.keys(initialConfig?.queryParams || {}).length > 0,
+    Object.keys(initialConfig?.queryParams ?? {}).length > 0,
   )
   const [customQueryKey, setCustomQueryKey] = useState('')
   const [customQueryValue, setCustomQueryValue] = useState('')
@@ -437,8 +437,8 @@ export default function RSSHubConfigComponent({
 
   const currentInstance = useMemo(
     () =>
-      instances.find((i) => i.id === selectedInstanceId) ||
-      instances.find((i) => i.enabled) ||
+      instances.find((i) => i.id === selectedInstanceId) ??
+      instances.find((i) => i.enabled) ??
       instances[0],
     [instances, selectedInstanceId],
   )
@@ -705,7 +705,7 @@ export default function RSSHubConfigComponent({
   }, [currentInstance, routePath, routeParams, queryParams])
 
   const extractedParams = useMemo(() => {
-    const matches = routePath.match(/:([^/]+)/g) || []
+    const matches = routePath.match(/:([^/]+)/g) ?? []
     return matches.map((m) => ({
       name: m.slice(1).replace('?', ''),
       required: !m.endsWith('?'),

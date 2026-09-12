@@ -339,7 +339,7 @@ export class TappRuntime {
     getResourceLoader().clearCache(manifest.id)
 
     await this.syncFromBackend(true)
-    const synchronized = this.installedTapps.get(manifest.id) || instance
+    const synchronized = this.installedTapps.get(manifest.id) ?? instance
     this.emit('tapp:installed', { id: manifest.id, instance: synchronized })
 
     return synchronized
@@ -433,7 +433,7 @@ export class TappRuntime {
     tappId: string,
     operation: () => Promise<void>,
   ): Promise<void> {
-    const previous = this.lifecycleTransitions.get(tappId) || Promise.resolve()
+    const previous = this.lifecycleTransitions.get(tappId) ?? Promise.resolve()
     const transition: Promise<void> = previous
       .catch(() => undefined)
       .then(operation)
@@ -457,7 +457,7 @@ export class TappRuntime {
   private registerManifestBackgroundRequirements(instance: TappInstance): void {
     this.setManifestBackgroundRequirements(
       instance.id,
-      instance.manifest.backgroundRequirements || [],
+      instance.manifest.backgroundRequirements ?? [],
     )
   }
 
@@ -486,8 +486,8 @@ export class TappRuntime {
     tappId: string,
   ): Set<BackgroundRequirement> {
     return new Set([
-      ...(this.manifestBackgroundRequirements.get(tappId) || []),
-      ...(this.backgroundRequirements.get(tappId) || []),
+      ...(this.manifestBackgroundRequirements.get(tappId) ?? []),
+      ...(this.backgroundRequirements.get(tappId) ?? []),
     ])
   }
 

@@ -358,7 +358,7 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 `
 
 const CORE_CODE = `// ========== i18n 翻译表 ==========
-var i18n = {
+const i18n = {
   'zh-CN': {
     title: 'Hello World',
     subtitle: '欢迎使用 Tapp 系统！探索下方卡片了解核心功能。',
@@ -421,23 +421,23 @@ var i18n = {
   },
 };
 
-var currentLocale = 'en-US';
+let currentLocale = 'en-US';
 
 function normalizeLocale(locale) {
   if (!locale) return 'en-US';
-  var l = String(locale).toLowerCase().replace(/_/g, '-');
-  if (l.indexOf('zh-tw') === 0 || l.indexOf('zh-hk') === 0 || l.indexOf('zh-mo') === 0 || l.indexOf('hant') !== -1) return 'zh-TW';
-  if (l.indexOf('zh') === 0) return 'zh-CN';
-  if (l.indexOf('en') === 0) return 'en-US';
-  if (l.indexOf('ja') === 0) return 'ja-JP';
+  const l = String(locale).toLowerCase().replace(/_/g, '-');
+  if (l.startsWith('zh-tw') || l.startsWith('zh-hk') || l.startsWith('zh-mo') || l.includes('hant')) return 'zh-TW';
+  if (l.startsWith('zh')) return 'zh-CN';
+  if (l.startsWith('en')) return 'en-US';
+  if (l.startsWith('ja')) return 'ja-JP';
   return 'en-US';
 }
 
 function t(key) {
-  var keys = key.split('.');
-  var value = i18n[currentLocale] || i18n['en-US'];
-  for (var i = 0; i < keys.length; i++) {
-    value = value[keys[i]];
+  const keys = key.split('.');
+  let value = i18n[currentLocale] || i18n['en-US'];
+  for (const part of keys) {
+    value = value[part];
     if (!value) return key;
   }
   return value;
@@ -445,7 +445,7 @@ function t(key) {
 
 // 更新页面文本（i18n）
 function updateTexts() {
-  var el;
+  let el;
   
   // 标题区域
   el = document.getElementById('hw-title');
@@ -455,7 +455,7 @@ function updateTexts() {
   if (el) Tapp.dom.setText(el, t('subtitle'));
   
   // 功能卡片
-  var features = ['lifecycle', 'storage', 'theme', 'page', 'security', 'responsive', 'i18n', 'cssArch'];
+  const features = ['lifecycle', 'storage', 'theme', 'page', 'security', 'responsive', 'i18n', 'cssArch'];
   features.forEach(function(key) {
     el = document.getElementById('hw-feat-' + key + '-title');
     if (el) Tapp.dom.setText(el, t('features.' + key + '.title'));
@@ -468,21 +468,25 @@ function updateTexts() {
   el = document.getElementById('hw-footer');
   if (el) Tapp.dom.setText(el, t('footer'));
 }
+
+module.exports = {
+  setLocale(locale) {
+    currentLocale = normalizeLocale(locale);
+    updateTexts();
+  },
+};
 `
 
-const PAGE_CODE = `var isPaused = false;
+const PAGE_CODE = `const { setLocale } = require('../core.js');
+let isPaused = false;
 
 Tapp.lifecycle.onReady(async function() {
   // 获取当前语言并更新文本
-  var locale = await Tapp.ui.getLocale();
-  currentLocale = normalizeLocale(locale);
-  updateTexts();
+  const locale = await Tapp.ui.getLocale();
+  setLocale(locale);
   
   // 监听语言变化
-  Tapp.ui.onLocaleChange(function(newLocale) {
-    currentLocale = normalizeLocale(newLocale);
-    updateTexts();
-  });
+  Tapp.ui.onLocaleChange(setLocale);
 });
 
 // 页面不可见时暂停

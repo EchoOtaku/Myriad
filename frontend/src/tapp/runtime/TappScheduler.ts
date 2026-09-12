@@ -523,7 +523,7 @@ export class TappScheduler {
   onTask(tappId: string, taskId: string, callback: TaskCallback): () => void {
     const key = `${tappId}:${taskId}`
     const registration = { callback }
-    const registrations = this.taskCallbacks.get(key) || []
+    const registrations = this.taskCallbacks.get(key) ?? []
     registrations.push(registration)
     this.taskCallbacks.set(key, registrations)
     return () => {

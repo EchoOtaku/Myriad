@@ -415,9 +415,9 @@ class AnimationCoordinator {
     // 页面切换爆发 10s。
     this.activateBurstMode(10000)
 
-    this.pageReadyPromise = new Promise((resolve) => {
-      this.pageReadyResolve = resolve
-    })
+    const { promise, resolve } = Promise.withResolvers<void>()
+    this.pageReadyPromise = promise
+    this.pageReadyResolve = resolve
   }
 
   completePageTransition(pageId?: string): boolean {
@@ -1418,7 +1418,7 @@ class AnimationCoordinator {
   }
 
   getCachedSize(element: Element): { width: number; height: number } | null {
-    return this.elementSizeCache.get(element) || null
+    return this.elementSizeCache.get(element) ?? null
   }
 
   private getIntersectionObserver(

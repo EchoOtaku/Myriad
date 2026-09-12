@@ -9,6 +9,9 @@ describe('currentCopy', () => {
     const src = readFileSync(new URL('./localeCopy.ts', import.meta.url), 'utf8')
     assert.equal(src.includes('ja-JP.json'), false)
     assert.equal(src.includes('zh-CN.json'), false)
+    assert.equal(src.includes('ko-KR.json'), false)
+    assert.equal(src.includes('fr-FR.json'), false)
+    assert.equal(src.includes('de-DE.json'), false)
   })
 
   it('formats ICU against the returned copy locale', () => {
@@ -28,7 +31,15 @@ describe('currentCopy', () => {
   })
 
   it('keeps namespace catalogs out of the core locale files', () => {
-    for (const locale of ['en-US', 'zh-CN', 'zh-TW', 'ja-JP'] as const) {
+    for (const locale of [
+      'en-US',
+      'zh-CN',
+      'zh-TW',
+      'ja-JP',
+      'ko-KR',
+      'fr-FR',
+      'de-DE',
+    ] as const) {
       const core = JSON.parse(
         readFileSync(new URL(`./${locale}.json`, import.meta.url), 'utf8'),
       ) as Record<string, unknown>

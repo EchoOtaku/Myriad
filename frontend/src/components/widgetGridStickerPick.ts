@@ -112,5 +112,5 @@ export function sameGridCell(
   prev: { x: number; y: number } | null,
   next: { x: number; y: number },
 ): boolean {
-  return Boolean(prev && prev.x === next.x && prev.y === next.y)
+  return Boolean(prev?.x === next.x && prev.y === next.y)
 }

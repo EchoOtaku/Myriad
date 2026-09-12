@@ -264,6 +264,8 @@ pub async fn transcribe_bytes(
             let engine = match language.unwrap_or("zh") {
                 code if code.starts_with("en") => "16k_en",
                 code if code.starts_with("ja") => "16k_ja",
+                code if code.starts_with("ko") => "16k_ko",
+                code if code.starts_with("fr") || code.starts_with("de") => "16k_en",
                 _ => "16k_zh",
             };
             let request = AsrRequest {
@@ -591,6 +593,8 @@ async fn fallback_transcribe_bytes(
         let engine = match language.unwrap_or("zh") {
             code if code.starts_with("en") => "16k_en",
             code if code.starts_with("ja") => "16k_ja",
+            code if code.starts_with("ko") => "16k_ko",
+            code if code.starts_with("fr") || code.starts_with("de") => "16k_en",
             _ => "16k_zh",
         };
         let request = AsrRequest {

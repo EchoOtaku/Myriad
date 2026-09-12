@@ -98,8 +98,7 @@ function injectScript(scriptUrl: string, websiteId: string): void {
     `script[${SCRIPT_ATTR}]`,
   )
   if (
-    existing &&
-    existing.getAttribute('src') === scriptUrl &&
+    existing?.getAttribute('src') === scriptUrl &&
     existing.getAttribute('data-website-id') === websiteId
   ) {
     return

@@ -27,8 +27,8 @@ export function httpStatusMessage(status: number): string {
 
 export function statusFromErrorText(text: string): number {
   const m =
-    text.match(/\bHTTP\s+(\d{3})\b/i) ||
-    text.match(/^API Error:\s*(\d{3})$/i) ||
+    text.match(/\bHTTP\s+(\d{3})\b/i) ??
+    text.match(/^API Error:\s*(\d{3})$/i) ??
     text.match(/\((?:HTTP\s*)?(\d{3})\)$/)
   const status = m ? Number(m[1]) : 0
   return status >= 400 && status <= 599 ? status : 0
@@ -699,16 +699,13 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (code === 'login_required') {
     return t.unauthorized
   }
-  if (code === 'lyrics_fetch_failed' || /^failed to fetch (verbatim )?lyrics/i.test(raw)) {
+  if (code === 'lyrics_fetch_failed') {
     return fill(t.lyricsFailed, { status: status || 502 })
   }
-  if (
-    code === 'playlist_fetch_failed' ||
-    /^failed to fetch (verbatim )?playlist/i.test(raw)
-  ) {
+  if (code === 'playlist_fetch_failed') {
     return classified(currentCopy().music.loadPlaylistFailed, raw, hint)
   }
-  if (code === 'song_fetch_failed' || /^failed to fetch song detail/i.test(raw)) {
+  if (code === 'song_fetch_failed') {
     return classified(currentCopy().music.loadSongFailed, raw, hint)
   }
   if (code === 'hitokoto_fetch_failed' || /^hitokoto api failed$/i.test(raw)) {
@@ -1092,14 +1089,8 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return classified(t.e2eKeyFailed, raw, hint)
   }
-  if (
-    code === 'config_save_failed' ||
-    /^failed to (load|save) config$/i.test(raw) ||
-    /^failed to save (configuration|permissions)/i.test(raw) ||
-    /^failed to serialize providers$/i.test(raw)
-  ) {
-    const label = /load config/i.test(raw) ? t.configFileReadFailed : t.configSaveFailed
-    return classified(label, raw, hint)
+  if (code === 'config_save_failed') {
+    return classified(t.configSaveFailed, raw, hint)
   }
   if (/^failed to reload configuration/i.test(raw)) {
     return classified(t.configReloadFailed, raw, hint)

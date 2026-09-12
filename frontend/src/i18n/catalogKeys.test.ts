@@ -2,7 +2,15 @@ import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 
-const LOCALES = ['en-US', 'zh-CN', 'zh-TW', 'ja-JP'] as const
+const LOCALES = [
+  'en-US',
+  'zh-CN',
+  'zh-TW',
+  'ja-JP',
+  'ko-KR',
+  'fr-FR',
+  'de-DE',
+] as const
 const NAMESPACES = [
   'config',
   'tapp',
@@ -41,7 +49,7 @@ function assertSameKeys(label: string, canonical: unknown, other: unknown) {
   )
 }
 
-describe('four-locale catalog keys', () => {
+describe('host catalog keys', () => {
   it('keeps core and namespace keys aligned', () => {
     for (const file of [`./en-US.json`, ...NAMESPACES.map((ns) => `./${ns}.en-US.json`)]) {
       const canonical = loadJson(file)
@@ -62,9 +70,15 @@ describe('four-locale catalog keys', () => {
       ['catalog.en-US.json', 'catalog.zh-CN.json'],
       ['catalog.en-US.json', 'catalog.zh-TW.json'],
       ['catalog.en-US.json', 'catalog.ja-JP.json'],
+      ['catalog.en-US.json', 'catalog.ko-KR.json'],
+      ['catalog.en-US.json', 'catalog.fr-FR.json'],
+      ['catalog.en-US.json', 'catalog.de-DE.json'],
       ['tappPermissionGuides.en-US.json', 'tappPermissionGuides.zh-CN.json'],
       ['tappPermissionGuides.en-US.json', 'tappPermissionGuides.zh-TW.json'],
       ['tappPermissionGuides.en-US.json', 'tappPermissionGuides.ja-JP.json'],
+      ['tappPermissionGuides.en-US.json', 'tappPermissionGuides.ko-KR.json'],
+      ['tappPermissionGuides.en-US.json', 'tappPermissionGuides.fr-FR.json'],
+      ['tappPermissionGuides.en-US.json', 'tappPermissionGuides.de-DE.json'],
     ]
     for (const [canonicalName, otherName] of pairs) {
       assertSameKeys(

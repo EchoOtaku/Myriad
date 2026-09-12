@@ -18,6 +18,12 @@ const loader = createLocaleLoader<TappPermissionGuides>({
   'en-US': async () => en,
   'ja-JP': () =>
     import('./tappPermissionGuides.ja-JP.json').then((m) => m.default),
+  'ko-KR': () =>
+    import('./tappPermissionGuides.ko-KR.json').then((m) => m.default),
+  'fr-FR': () =>
+    import('./tappPermissionGuides.fr-FR.json').then((m) => m.default),
+  'de-DE': () =>
+    import('./tappPermissionGuides.de-DE.json').then((m) => m.default),
 })
 loader.seed('en-US', en)
 

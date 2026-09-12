@@ -95,8 +95,14 @@ describe('localeLangInlineScript', () => {
     const painted = applyFirstPaint({
       stored: null,
       languages: undefined,
-      language: 'fr, zh-TW;q=0.9',
+      language: 'it, zh-TW;q=0.9',
     })
     assert.equal(painted.lang, 'zh-TW')
+  })
+
+  it('paints Korean chrome when the stored locale is ko-KR', () => {
+    const painted = applyFirstPaint({ stored: 'ko-KR' })
+    assert.equal(painted.lang, 'ko-KR')
+    assert.match(painted.title ?? '', /만천/)
   })
 })

@@ -143,7 +143,7 @@ export function generateSecurityWrapper(
     if (window.parent !== window) {
       _parentPostMessage = window.parent.postMessage.bind(window.parent);
     }
-  } catch (e) {
+  } catch {
     // 回退：使用 postMessage 的通用调用方式
     _parentPostMessage = (msg, origin) => window.parent.postMessage(msg, origin);
   }
@@ -159,7 +159,7 @@ export function generateSecurityWrapper(
       enumerable: false,
       configurable: true
     });
-  } catch (e) {
+  } catch {
     window.__TAPP_TAKE_NATIVE_PARENT__ = () => _nativeParentWindow;
   }
   
@@ -179,7 +179,7 @@ export function generateSecurityWrapper(
       }
       Object.defineProperty(obj, prop, { ...descriptor, configurable: false });
       return true;
-    } catch (e) {
+    } catch {
       // 静默失败，某些浏览器限制了对这些属性的修改
       return false;
     }
@@ -198,7 +198,7 @@ export function generateSecurityWrapper(
       return _Function.apply(this, args);
     };
     window.Function.prototype = _Function.prototype;
-  } catch (e) {}
+  } catch {}
   
   // 安全加强：拦截 setTimeout/setInterval 的字符串参数
   // 防止通过 setTimeout("malicious code", 0) 绕过 eval 禁用
@@ -223,15 +223,16 @@ export function generateSecurityWrapper(
   
   // 限制 parent 访问，只允许 postMessage；对象消息自动注入 session token
   // （Bridge 对 request/event 均校验 token；用户代码漏加也会被补上）
-  var _postMessageWithToken = function(message, origin) {
+  const _hasOwn = Object.hasOwn;
+  const _postMessageWithToken = function(message, origin) {
     if (!_parentPostMessage) return undefined;
     if (message && typeof message === 'object') {
       try {
-        if (!Object.prototype.hasOwnProperty.call(message, '_sessionToken') ||
+        if (!_hasOwn(message, '_sessionToken') ||
             message._sessionToken == null || message._sessionToken === '') {
           message._sessionToken = _SESSION_TOKEN;
         }
-      } catch (e) {
+      } catch {
         // frozen / non-extensible message: still attempt send; Bridge will reject if missing
       }
     }
@@ -331,7 +332,7 @@ export function generateSecurityWrapper(
       Object.defineProperty(this, 'src', {
         set(value) {
           if (!_isAllowedImageUrl(value)) {
-            console.warn('[Security] Image URL is blocked by the Tapp CSP:', String(value).substring(0, 50));
+            console.warn('[Security] Image URL is blocked by the Tapp CSP:', String(value).slice(0, 50));
             return;
           }
           if (originalSrcDescriptor && typeof originalSrcDescriptor.set === 'function') {

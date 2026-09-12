@@ -32,6 +32,10 @@ describe('error codes', () => {
       inferErrorCode('Service in configuration mode — retry later'),
       'configuration_mode',
     )
+    assert.equal(
+      inferErrorCode('Failed to fetch playlist: timed out'),
+      'playlist_fetch_failed',
+    )
   })
 
   it('lets leftover text win over an unmapped code', () => {

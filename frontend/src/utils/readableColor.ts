@@ -232,7 +232,7 @@ function firstUsableRgb(
     const rgb = hexToRgb(value)
     if (rgb) return rgb
   }
-  return hexToRgb(fallbackColor) || hexToRgb(DEFAULT_FALLBACK)!
+  return hexToRgb(fallbackColor) ?? hexToRgb(DEFAULT_FALLBACK)!
 }
 
 function softDarkenFromPrimary(
@@ -240,7 +240,7 @@ function softDarkenFromPrimary(
   backdrop: RgbColor,
   minContrast: number,
 ): string {
-  const rgb = hexToRgb(primaryHex) || hexToRgb(DEFAULT_FALLBACK)!
+  const rgb = hexToRgb(primaryHex) ?? hexToRgb(DEFAULT_FALLBACK)!
   const hsl = rgbToHsl(rgb)
   const s = clampNumber(hsl.s * 1.06, 0.3, 0.84)
   const floor = 0.36

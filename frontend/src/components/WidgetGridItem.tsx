@@ -148,7 +148,7 @@ export const WidgetGridItem = React.memo(
     const [stickerTipAnchor, setStickerTipAnchor] = useState<DOMRect | null>(
       null,
     )
-    const instanceSettings = widgetType.settings || []
+    const instanceSettings = widgetType.settings ?? []
     const stickerSrc =
       typeof widget.config?.imageUrl === 'string'
         ? widget.config.imageUrl.trim()

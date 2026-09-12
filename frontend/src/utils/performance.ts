@@ -31,7 +31,7 @@ export function rafThrottle<T extends (...args: any[]) => any>(
     }
 
     rafId = requestAnimationFrame(() => {
-      fn.apply(this, args)
+      fn.call(this, ...args)
       rafId = null
     })
   } as ((...args: Parameters<T>) => void) & { cancel: () => void }

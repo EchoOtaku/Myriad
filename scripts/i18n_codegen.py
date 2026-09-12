@@ -680,10 +680,29 @@ def convert_value(value, converter):
     return value
 
 
+HOST_LOCALES = ("en-US", "zh-CN", "zh-TW", "ja-JP", "ko-KR", "fr-FR", "de-DE")
+TABLE_LOCALES = ("en-US", "zh-CN", "zh-TW", "ja-JP")
+
+
 def write_locale_table(table: dict, name: str) -> None:
     BACKEND_I18N.mkdir(parents=True, exist_ok=True)
-    for locale in ("en-US", "zh-CN", "zh-TW", "ja-JP"):
-        payload = {key: variants[locale] for key, variants in table.items()}
+    extras: dict[str, dict] = {}
+    for locale in HOST_LOCALES:
+        if locale in TABLE_LOCALES:
+            continue
+        extra_path = BACKEND_I18N / f"{name}.{locale}.json"
+        extras[locale] = (
+            json.loads(extra_path.read_text(encoding="utf-8")) if extra_path.exists() else {}
+        )
+    for locale in HOST_LOCALES:
+        payload = {}
+        for key, variants in table.items():
+            if locale in variants:
+                payload[key] = variants[locale]
+            elif key in extras.get(locale, {}):
+                payload[key] = extras[locale][key]
+            else:
+                raise SystemExit(f"missing {name}.{key} [{locale}]")
         path = BACKEND_I18N / f"{name}.{locale}.json"
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(f"wrote {path.relative_to(ROOT)}")
