@@ -46,8 +46,8 @@ describe('permission catalog lock to tapp-contract export', () => {
 
   it('PERMISSION_COPY covers the export catalog', () => {
     assert.deepEqual(
-      Object.keys(PERMISSION_COPY).sort(),
-      Object.keys(exportedLevels).sort(),
+      Object.keys(PERMISSION_COPY).toSorted(),
+      Object.keys(exportedLevels).toSorted(),
     )
   })
 
@@ -57,7 +57,7 @@ describe('permission catalog lock to tapp-contract export', () => {
       'utf8',
     )
     const unionMembers = tappPermissionUnionMembers(source)
-    const catalogNames = Object.keys(exportedLevels).sort()
-    assert.deepEqual([...unionMembers].sort(), catalogNames)
+    const catalogNames = Object.keys(exportedLevels).toSorted()
+    assert.deepEqual([...unionMembers].toSorted(), catalogNames)
   })
 })

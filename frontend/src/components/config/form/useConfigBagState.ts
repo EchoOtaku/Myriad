@@ -175,9 +175,11 @@ export function useConfigBagState(
       ) {
         return
       }
-      const newPlatforms = [...config.platforms]
-      const [moved] = newPlatforms.splice(fromIndex, 1)
-      newPlatforms.splice(toIndex, 0, moved)
+      const moved = config.platforms[fromIndex]
+      if (moved === undefined) return
+      const newPlatforms = config.platforms
+        .toSpliced(fromIndex, 1)
+        .toSpliced(toIndex, 0, moved)
       setConfig({ ...config, platforms: newPlatforms })
       notifyDirtyState(true)
     },

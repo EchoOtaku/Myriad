@@ -90,7 +90,7 @@ export function queryCanvasVisibleItems(
     }
   }
 
-  return candidates.sort(
+  return candidates.toSorted(
     (a, b) =>
       (spatialIndex.order.get(a.id) ?? 0) - (spatialIndex.order.get(b.id) ?? 0),
   )

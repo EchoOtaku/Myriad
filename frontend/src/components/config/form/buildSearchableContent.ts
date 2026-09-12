@@ -280,10 +280,9 @@ export function buildSearchableContent(
     if (item.type !== 'section' && item.type !== 'alias') continue
     const extra = bySection.get(item.section)
     if (!extra?.length) continue
-    const merged = new Set([
-      ...item.keywords.map((k) => k.toLowerCase()),
-      ...extra,
-    ])
+    const merged = new Set(item.keywords.map((k) => k.toLowerCase())).union(
+      new Set(extra),
+    )
     item.keywords = Array.from(merged)
     item.haystack = [item.title, item.description, ...item.keywords]
       .join('\n')

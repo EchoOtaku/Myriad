@@ -164,7 +164,7 @@ export function getWidgetPerfSummary(): {
   const totals = all
     .map((r) => r.measures.totalHostToReadyMs)
     .filter((n): n is number => typeof n === 'number' && Number.isFinite(n))
-    .sort((a, b) => a - b)
+    .toSorted((a, b) => a - b)
   const readyCount = totals.length
   const avg =
     readyCount > 0

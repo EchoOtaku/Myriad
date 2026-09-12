@@ -1,12 +1,12 @@
 //! Speak intent in → sentence out. Rechecks sight here. Live and notify are
 //! independent channels.
 
+use super::delivery_claim::DeliveryCoordinator;
 use chrono::{DateTime, FixedOffset, Utc};
 use futures::{stream, StreamExt};
 use once_cell::sync::Lazy;
 use sea_orm::DatabaseConnection;
 use std::collections::HashMap;
-use super::delivery_claim::DeliveryCoordinator;
 
 use super::super::gates::{decide_ingest, is_valuable_event, IngestDecision};
 use super::super::store::{
@@ -45,16 +45,18 @@ pub async fn tick_speak_intents(db: DatabaseConnection) {
     }
     // Preserve each addressee's queue order without making one slow model
     // stall every other addressee taken by this drain.
-    stream::iter(users.into_values()).for_each_concurrent(8, |intents| {
-        let db = &db;
-        async move {
-            for intent in intents {
-                if let Err(error) = redeem_speak_intent(db, intent).await {
-                    tracing::warn!(%error, "[Merope] redeem speak intent failed");
+    stream::iter(users.into_values())
+        .for_each_concurrent(8, |intents| {
+            let db = &db;
+            async move {
+                for intent in intents {
+                    if let Err(error) = redeem_speak_intent(db, intent).await {
+                        tracing::warn!(%error, "[Merope] redeem speak intent failed");
+                    }
                 }
             }
-        }
-    }).await;
+        })
+        .await;
 }
 
 async fn redeem_speak_intent(
@@ -65,7 +67,11 @@ async fn redeem_speak_intent(
         return Ok(());
     }
     let Some(mut claim) = DELIVERY.claim(&intent).await else {
-        log_skip(intent.user_id, &intent.topic, "delivery_already_claimed_or_expired");
+        log_skip(
+            intent.user_id,
+            &intent.topic,
+            "delivery_already_claimed_or_expired",
+        );
         return Ok(());
     };
     let touch = intent.topic == "agent.merope.touch";
@@ -187,7 +193,9 @@ async fn redeem_speak_intent(
             motion_mood.as_ref(),
             source_intent_id,
         );
-        if delivered { claim.delivered(&intent, repeat_minutes); }
+        if delivered {
+            claim.delivered(&intent, repeat_minutes);
+        }
         if let Some(context) = pending_motion.take().filter(|_| delivered) {
             let user_id = intent.user_id;
             let id = intent.id.clone();
@@ -295,7 +303,9 @@ pub fn fallback_line(summary: &str) -> String {
 
 async fn compose_line(db: &DatabaseConnection, user_id: i32, summary: &str) -> String {
     let fallback = fallback_line(summary);
-    let Some(analyzer) = create_strict_lite_ai_analyzer_with_timeout(Some(std::time::Duration::from_secs(12))).await else {
+    let Some(analyzer) =
+        create_strict_lite_ai_analyzer_with_timeout(Some(std::time::Duration::from_secs(12))).await
+    else {
         return fallback;
     };
     let soul = crate::services::agent::identity::get_speaking_soul()

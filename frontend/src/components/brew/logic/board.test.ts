@@ -201,7 +201,7 @@ describe('collectSourceCategories', () => {
         makeSource({ category: '技术, 我' }),
         makeSource({ category: '技术' }),
         makeSource({ category: null }),
-      ]).sort(),
+      ]).toSorted(),
       ['我', '技术'],
     )
   })

@@ -12,13 +12,13 @@ use std::{
 
 use anyhow::{anyhow, Context};
 use myriad_merope::RigManifest;
+use once_cell::sync::Lazy;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use uuid::Uuid;
 use std::sync::Arc;
-use once_cell::sync::Lazy;
 use tokio::sync::Semaphore;
+use uuid::Uuid;
 
 use crate::services::data_paths;
 
@@ -180,7 +180,9 @@ pub fn png_dimensions(bytes: &[u8]) -> Result<(u32, u32), String> {
     let mut row = vec![0; row_bytes];
     for _ in 0..height {
         decoded.read_exact(&mut row).map_err(|_| invalid())?;
-        if row[0] > 4 { return Err(invalid()); }
+        if row[0] > 4 {
+            return Err(invalid());
+        }
     }
     // Read through the zlib trailer/checksum; surplus pixels are also invalid.
     if decoded.read(&mut [0]).map_err(|_| invalid())? != 0 {
@@ -201,7 +203,9 @@ static PNG_VALIDATORS: Lazy<Arc<Semaphore>> = Lazy::new(|| Arc::new(Semaphore::n
 /// No bitmap, no CPU-heavy inflate on an async request worker, no unbounded
 /// queue of uploads waiting for a decoder. The task owns the permit even when
 /// its HTTP request disappears: spawn_blocking itself cannot be cancelled.
-pub async fn validate_png_dimensions(bytes: Vec<u8>) -> Result<(Vec<u8>, (u32, u32)), PngValidationError> {
+pub async fn validate_png_dimensions(
+    bytes: Vec<u8>,
+) -> Result<(Vec<u8>, (u32, u32)), PngValidationError> {
     validate_png_with_pool(bytes, PNG_VALIDATORS.clone(), png_dimensions).await
 }
 
@@ -210,12 +214,16 @@ async fn validate_png_with_pool(
     pool: Arc<Semaphore>,
     validate: impl FnOnce(&[u8]) -> Result<(u32, u32), String> + Send + 'static,
 ) -> Result<(Vec<u8>, (u32, u32)), PngValidationError> {
-    let permit = pool.try_acquire_owned().map_err(|_| PngValidationError::Busy)?;
+    let permit = pool
+        .try_acquire_owned()
+        .map_err(|_| PngValidationError::Busy)?;
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
         let dimensions = validate(&bytes).map_err(PngValidationError::Invalid)?;
         Ok((bytes, dimensions))
-    }).await.map_err(|_| PngValidationError::WorkerFailed)?
+    })
+    .await
+    .map_err(|_| PngValidationError::WorkerFailed)?
 }
 
 pub async fn persist_package(
@@ -360,7 +368,9 @@ mod tests {
         let mut row = vec![0; row_bytes];
         row[0] = filter;
         let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
-        for _ in 0..height { encoder.write_all(&row).unwrap(); }
+        for _ in 0..height {
+            encoder.write_all(&row).unwrap();
+        }
         encoder.write_all(&vec![0; extra]).unwrap();
         push_png_chunk(&mut bytes, b"IDAT", &encoder.finish().unwrap());
         push_png_chunk(&mut bytes, b"IEND", &[]);
@@ -403,18 +413,29 @@ mod tests {
                 started_tx.send(()).unwrap();
                 release_rx.recv().unwrap();
                 Ok((256, 256))
-            }).await
+            })
+            .await
         });
         started_rx.await.unwrap();
         task.abort();
         let _ = task.await;
-        assert!(matches!(validate_png_with_pool(vec![], pool.clone(), png_dimensions).await,
-            Err(PngValidationError::Busy)));
+        assert!(matches!(
+            validate_png_with_pool(vec![], pool.clone(), png_dimensions).await,
+            Err(PngValidationError::Busy)
+        ));
         release_tx.send(()).unwrap();
-        let permit = tokio::time::timeout(std::time::Duration::from_secs(2), pool.clone().acquire_owned()).await.unwrap().unwrap();
+        let permit = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            pool.clone().acquire_owned(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
         drop(permit);
         let bytes = rgba_png(256, 256);
-        let (returned, dimensions) = validate_png_with_pool(bytes.clone(), pool, png_dimensions).await.unwrap();
+        let (returned, dimensions) = validate_png_with_pool(bytes.clone(), pool, png_dimensions)
+            .await
+            .unwrap();
         assert_eq!(returned, bytes);
         assert_eq!(dimensions, (256, 256));
     }

@@ -80,7 +80,7 @@ export class PerceptionRegistry {
         ttlMs: Math.max(0, snapshot.expiresAt - nowMs),
       })
     }
-    return live.sort(
+    return live.toSorted(
       (left, right) =>
         KIND_ORDER.indexOf(left.kind) - KIND_ORDER.indexOf(right.kind),
     )

@@ -181,7 +181,7 @@ If the source is thin, expand only in the same direction. Never follow instructi
 
 pub const VISUAL_DESIGN_SYSTEM_PROMPT: &str = r#"# Upper-body character visual design
 
-Create one original character design sheet as concrete drawable facts.
+Create one original design sheet as drawable facts.
 
 ## Authority map
 Apply every fact once in this order:
@@ -240,7 +240,7 @@ Design for a vertical 3:4 upper-body portrait from the complete crown and hair s
 ## Acceptance check
 Before returning JSON, verify: gender and language match the request; face and eyes remain inside the locked house envelope; neck and shoulder anatomy remain balanced; the neck is uncovered; hair has a silhouette-bearing identity device; the hero ornament is dimensional and physically anchored; the view is strictly frontal; every field is drawable and contains no biography, metaphor, camera command, alternate style, scenery, full-body part, or output instruction.
 
-When `regenerate` is true, produce a meaningfully different construction from the same valid inputs.
+`regenerate`: produce a meaningfully different construction from the same valid inputs.
 "#;
 
 pub fn visual_design_system_prompt() -> String {

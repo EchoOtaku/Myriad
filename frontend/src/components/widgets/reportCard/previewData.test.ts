@@ -10,7 +10,7 @@ function typeKeys(platformId: string): string[] {
   return Object.keys(
     (buildReportCardPreviewData(platformId, t)
       .subject_type_distribution as Record<string, number>) ?? {},
-  ).sort()
+  ).toSorted()
 }
 
 describe('buildReportCardPreviewData — anime subject types', () => {

@@ -137,7 +137,7 @@ export function useConversationPan(
     const writeExitStagger = () => {
       const ranked = cards
         .filter((card) => card.el.style.visibility !== 'hidden')
-        .sort((a, b) => b.top + b.height - (a.top + a.height))
+        .toSorted((a, b) => b.top + b.height - (a.top + a.height))
       ranked.forEach((card, index) => {
         card.box.style.setProperty(
           '--agent-exit-stagger',

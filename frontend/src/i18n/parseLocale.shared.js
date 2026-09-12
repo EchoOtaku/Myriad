@@ -54,7 +54,7 @@ export function parseLanguageList(raw) {
       return { tag: (bits[0] || '').trim(), q, index }
     })
     .filter((item) => item.tag && item.q > 0)
-    .sort((a, b) => b.q - a.q || a.index - b.index)
+    .toSorted((a, b) => b.q - a.q || a.index - b.index)
 }
 
 export function parseLocale(raw) {

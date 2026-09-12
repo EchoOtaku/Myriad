@@ -425,7 +425,7 @@ let currentLocale = 'en-US';
 
 function normalizeLocale(locale) {
   if (!locale) return 'en-US';
-  const l = String(locale).toLowerCase().replace(/_/g, '-');
+  const l = String(locale).toLowerCase().replaceAll('_', '-');
   if (l.startsWith('zh-tw') || l.startsWith('zh-hk') || l.startsWith('zh-mo') || l.includes('hant')) return 'zh-TW';
   if (l.startsWith('zh')) return 'zh-CN';
   if (l.startsWith('en')) return 'en-US';

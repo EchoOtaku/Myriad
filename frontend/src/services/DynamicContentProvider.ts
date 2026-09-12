@@ -170,7 +170,7 @@ class DynamicContentProviderService {
       }
     }
 
-    return allContents.sort((a, b) => (b.priority || 0) - (a.priority || 0))
+    return allContents.toSorted((a, b) => (b.priority || 0) - (a.priority || 0))
   }
 
   /** 未命中当前语言则 en-US，再原文。 */

@@ -114,8 +114,8 @@ describe('tapp docs gating consistency', () => {
       (m) => m[1],
     )
     assert.deepEqual(
-      [...ids].sort(),
-      [...TAPP_CATEGORIES].sort(),
+      [...ids].toSorted(),
+      [...TAPP_CATEGORIES].toSorted(),
       'MANIFEST category table must match TAPP_CATEGORIES',
     )
     assert.equal(normalizeTappCategory('games'), 'game')
@@ -137,8 +137,8 @@ describe('tapp docs gating consistency', () => {
       (m) => m[1],
     )
     assert.deepEqual(
-      [...ids].sort(),
-      [...TAPP_CATEGORIES].sort(),
+      [...ids].toSorted(),
+      [...TAPP_CATEGORIES].toSorted(),
       'MANIFEST Widget 分类 table must match TAPP_CATEGORIES',
     )
     assert.match(section, /同一套/)
@@ -484,11 +484,11 @@ describe('tapp docs gating consistency', () => {
   })
 
   it('MANIFEST permission-table tokens equal the shipped catalog', () => {
-    const catalog = Object.keys(PERMISSION_LEVELS).sort()
+    const catalog = Object.keys(PERMISSION_LEVELS).toSorted()
     const contract = JSON.parse(
       read(join(REPO, 'tools/tapp-cli/src/generated/contract.json')),
     ) as { permissionLevels: Record<string, string> }
-    const contractTokens = Object.keys(contract.permissionLevels).sort()
+    const contractTokens = Object.keys(contract.permissionLevels).toSorted()
     assert.deepEqual(
       contractTokens,
       catalog,
@@ -501,7 +501,7 @@ describe('tapp docs gating consistency', () => {
       ...section.matchAll(/^\|\s*`([a-z0-9:]+)`\s*\|/gim),
     ].map((m) => m[1])
     assert.deepEqual(
-      [...tokens].sort(),
+      [...tokens].toSorted(),
       catalog,
       `MANIFEST 权限列表 must list every TappPermission catalog token (missing ${catalog
         .filter((t) => !tokens.includes(t))

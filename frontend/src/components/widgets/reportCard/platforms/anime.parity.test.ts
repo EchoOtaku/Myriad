@@ -14,8 +14,8 @@ const BACKEND_SUBJECT_TYPES = {
 
 describe('anime report cards — Bangumi / MAL parity', () => {
   it('both platforms declare every theme slot', () => {
-    const slots = Object.keys(ANIME_THEMES.bangumi).sort()
-    assert.deepEqual(Object.keys(ANIME_THEMES.mal).sort(), slots)
+    const slots = Object.keys(ANIME_THEMES.bangumi).toSorted()
+    assert.deepEqual(Object.keys(ANIME_THEMES.mal).toSorted(), slots)
     for (const [platform, theme] of Object.entries(ANIME_THEMES)) {
       for (const slot of slots) {
         assert.ok(

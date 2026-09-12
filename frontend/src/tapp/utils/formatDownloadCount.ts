@@ -1,7 +1,7 @@
 export function formatDownloadCount(n: number, locale = 'en'): string {
   if (!Number.isFinite(n) || n < 0) return '0'
   const v = Math.floor(n)
-  const lang = locale.toLowerCase().replace(/_/g, '-')
+  const lang = locale.toLowerCase().replaceAll('_', '-')
 
   if (
     lang.startsWith('zh-tw') ||

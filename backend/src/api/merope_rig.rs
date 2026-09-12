@@ -688,7 +688,8 @@ async fn parse_rig_import(mut multipart: Multipart) -> ApiResult<ParsedRigImport
     }
     let atlas_bytes = atlas_bytes.ok_or_else(|| bad_request("Rig import is missing atlas PNG"))?;
     let (atlas_bytes, dimensions) = merope_rig::validate_png_dimensions(atlas_bytes)
-        .await.map_err(png_validation_error)?;
+        .await
+        .map_err(png_validation_error)?;
     if dimensions != (source.atlas.width, source.atlas.height) {
         return Err(bad_request(
             "Rig atlas dimensions do not match source metadata",
@@ -703,8 +704,15 @@ async fn parse_rig_import(mut multipart: Multipart) -> ApiResult<ParsedRigImport
         return Err(bad_request("Rig atlas contract is invalid"));
     }
     let analysis_reference_bytes = if let Some(reference) = analysis_reference_bytes {
-        Some(merope_rig::validate_png_dimensions(reference).await.map_err(png_validation_error)?.0)
-    } else { None };
+        Some(
+            merope_rig::validate_png_dimensions(reference)
+                .await
+                .map_err(png_validation_error)?
+                .0,
+        )
+    } else {
+        None
+    };
     Ok(ParsedRigImport {
         source,
         atlas_bytes,
@@ -717,7 +725,9 @@ fn png_validation_error(error: merope_rig::PngValidationError) -> ApiError {
         merope_rig::PngValidationError::Invalid(message) => bad_request(&message),
         merope_rig::PngValidationError::Busy => (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(AppError::public_json("Rig image validation is busy; retry shortly")),
+            Json(AppError::public_json(
+                "Rig image validation is busy; retry shortly",
+            )),
         ),
         merope_rig::PngValidationError::WorkerFailed => (
             StatusCode::INTERNAL_SERVER_ERROR,

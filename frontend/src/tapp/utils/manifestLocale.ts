@@ -6,7 +6,7 @@ export interface LocalizedManifestText {
 }
 
 function chineseScript(tag: string): 'hant' | 'hans' | null {
-  const lower = tag.toLowerCase().replace(/_/g, '-')
+  const lower = tag.toLowerCase().replaceAll('_', '-')
   if (!lower.startsWith('zh')) return null
   if (
     lower.startsWith('zh-tw') ||
@@ -24,10 +24,10 @@ export function pickLocaleEntry<T>(
   locale: string | undefined,
 ): T | undefined {
   if (!locales || !locale) return undefined
-  const target = locale.toLowerCase().replace(/_/g, '-')
+  const target = locale.toLowerCase().replaceAll('_', '-')
   const keys = Object.keys(locales)
 
-  const exact = keys.find((key) => key.toLowerCase().replace(/_/g, '-') === target)
+  const exact = keys.find((key) => key.toLowerCase().replaceAll('_', '-') === target)
   if (exact) return locales[exact]
 
   const targetScript = chineseScript(target)
@@ -38,7 +38,7 @@ export function pickLocaleEntry<T>(
 
   const targetLang = target.split('-')[0]
   const prefix = keys.find(
-    (key) => key.toLowerCase().replace(/_/g, '-').split('-')[0] === targetLang,
+    (key) => key.toLowerCase().replaceAll('_', '-').split('-')[0] === targetLang,
   )
   return prefix ? locales[prefix] : undefined
 }

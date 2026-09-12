@@ -18,7 +18,7 @@ for (const [label, code] of Object.entries(CODES.leftovers)) {
   EXACT.set(label, code)
 }
 
-const PREFIXES = Object.entries(CODES.prefixes).sort(
+const PREFIXES = Object.entries(CODES.prefixes).toSorted(
   (a, b) => b[0].length - a[0].length,
 )
 

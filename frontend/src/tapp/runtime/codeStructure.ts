@@ -63,7 +63,7 @@ function hashParts(parts: string[]): string {
 function sortedRecordParts(record?: Record<string, string>): string[] {
   if (!record) return []
   return Object.entries(record)
-    .sort(([left], [right]) => left.localeCompare(right))
+    .toSorted(([left], [right]) => left.localeCompare(right))
     .flatMap(([key, value]) => [key, value])
 }
 

@@ -295,7 +295,7 @@ export function pickMusicContextState(
 ): Partial<Record<MusicContextOwnedKey, unknown>> {
   const out: Record<string, unknown> = {}
   for (const key of MUSIC_CONTEXT_OWNED_KEYS) {
-    if (key in detail) out[key] = MUSIC_CONTEXT_COERCERS[key](detail[key])
+    if (Object.hasOwn(detail, key)) out[key] = MUSIC_CONTEXT_COERCERS[key](detail[key])
   }
   return out
 }

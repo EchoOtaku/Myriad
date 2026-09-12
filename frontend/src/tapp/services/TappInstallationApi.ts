@@ -24,7 +24,7 @@ export function storeInstallModules(
   const modules: Record<string, string> = { ...(downloaded || {}) }
   if (manifest.core?.entry) modules[manifest.core.entry] = code
   for (const entry of tappLayerEntries(manifest)) {
-    if (!(entry in modules)) {
+    if (!Object.hasOwn(modules, entry)) {
       throw new Error(
         `Store index is missing download.modules entry for declared layer entry ${entry}`,
       )

@@ -621,9 +621,9 @@ export function TappListPage() {
         const fromIndex = base.indexOf(fromId)
         const toIndex = base.indexOf(toId)
         if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return prev
-        const next = [...base]
-        next.splice(fromIndex, 1)
-        next.splice(toIndex, 0, fromId)
+        const next = base
+          .toSpliced(fromIndex, 1)
+          .toSpliced(toIndex, 0, fromId)
         persistLayout(cardSizes, next)
         return next
       })

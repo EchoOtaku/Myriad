@@ -178,8 +178,7 @@ function CardPermissionIndicators({
         : p
       out.push({ key: p, level, label })
     }
-    out.sort((a, b) => rank[a.level] - rank[b.level])
-    return out
+    return out.toSorted((a, b) => rank[a.level] - rank[b.level])
   }, [permissions, t.tapp])
 
   if (items.length === 0) {

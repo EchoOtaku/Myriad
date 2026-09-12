@@ -26,7 +26,9 @@ impl LivePresenceStore {
             pages.retain(|_, value| presence_is_fresh_at(value, now));
             !pages.is_empty()
         });
-        if user_id <= 0 || (!self.users.contains_key(&user_id) && self.users.len() >= MAX_LIVE_USERS) {
+        if user_id <= 0
+            || (!self.users.contains_key(&user_id) && self.users.len() >= MAX_LIVE_USERS)
+        {
             return false;
         }
         let was_present = self.last(user_id, now).page_visible;
@@ -34,9 +36,11 @@ impl LivePresenceStore {
         let key = live.instance_id.clone().unwrap_or_default();
         if !pages.contains_key(&key) && pages.len() >= MAX_USER_PAGES {
             // Prefer evicting an old hidden page, not the actively viewed one.
-            if let Some(oldest) = pages.iter()
+            if let Some(oldest) = pages
+                .iter()
                 .min_by_key(|(id, value)| (value.page_visible, value.captured_at, *id))
-                .map(|(id, _)| id.clone()) {
+                .map(|(id, _)| id.clone())
+            {
                 pages.remove(&oldest);
             }
         }
@@ -45,47 +49,68 @@ impl LivePresenceStore {
     }
 
     fn last(&self, user_id: i32, now: DateTime<Utc>) -> SelfLivePresence {
-        let Some(pages) = self.users.get(&user_id) else { return SelfLivePresence::default() };
-        let fresh: Vec<_> = pages.iter().filter(|(_, live)| presence_is_fresh_at(live, now)).collect();
+        let Some(pages) = self.users.get(&user_id) else {
+            return SelfLivePresence::default();
+        };
+        let fresh: Vec<_> = pages
+            .iter()
+            .filter(|(_, live)| presence_is_fresh_at(live, now))
+            .collect();
         // Select one coherent body/perception/music source. Never splice the rig
         // of one outfit into another page's observations. Visible panel wins,
         // then visible face, then recency; hidden updates cannot displace it.
-        let Some((_, selected)) = fresh.iter().max_by_key(|(id, live)| (
-            live.page_visible, live.page_visible && live.panel_visible,
-            live.page_visible && live.face_visible, live.captured_at, *id,
-        )) else { return SelfLivePresence::default() };
+        let Some((_, selected)) = fresh.iter().max_by_key(|(id, live)| {
+            (
+                live.page_visible,
+                live.page_visible && live.panel_visible,
+                live.page_visible && live.face_visible,
+                live.captured_at,
+                *id,
+            )
+        }) else {
+            return SelfLivePresence::default();
+        };
         let mut live = (*selected).clone();
         live.page_visible = fresh.iter().any(|(_, value)| value.page_visible);
-        live.panel_visible = fresh.iter().any(|(_, value)| value.page_visible && value.panel_visible);
-        live.face_visible = fresh.iter().any(|(_, value)| value.page_visible && value.face_visible);
+        live.panel_visible = fresh
+            .iter()
+            .any(|(_, value)| value.page_visible && value.panel_visible);
+        live.face_visible = fresh
+            .iter()
+            .any(|(_, value)| value.page_visible && value.face_visible);
         // Hidden audio still owns the mouth. Interruptibility is conservative.
         live.speaking = fresh.iter().any(|(_, value)| value.speaking);
-        live.speech_interruptible = live.speaking && fresh.iter()
-            .filter(|(_, value)| value.speaking).all(|(_, value)| value.speech_interruptible);
+        live.speech_interruptible = live.speaking
+            && fresh
+                .iter()
+                .filter(|(_, value)| value.speaking)
+                .all(|(_, value)| value.speech_interruptible);
         age_perception(&mut live, now);
         live
     }
 }
 
-static LIVE: Lazy<RwLock<LivePresenceStore>> = Lazy::new(|| RwLock::new(LivePresenceStore::default()));
+static LIVE: Lazy<RwLock<LivePresenceStore>> =
+    Lazy::new(|| RwLock::new(LivePresenceStore::default()));
 
 /// Returns true when the addressee moved from absent/expired to on-page.
 pub fn remember_live_presence(user_id: i32, live: SelfLivePresence) -> bool {
-    LIVE.write().map(|mut store| store.remember(user_id, live, Utc::now())).unwrap_or(false)
+    LIVE.write()
+        .map(|mut store| store.remember(user_id, live, Utc::now()))
+        .unwrap_or(false)
 }
 
 pub fn last_live_presence(user_id: i32) -> SelfLivePresence {
-    LIVE.read().map(|store| store.last(user_id, Utc::now())).unwrap_or_default()
+    LIVE.read()
+        .map(|store| store.last(user_id, Utc::now()))
+        .unwrap_or_default()
 }
 
 fn age_perception(live: &mut SelfLivePresence, now: DateTime<Utc>) {
     // The page-presence lease is longer than individual observations. Age a
     // copy on read, never renew the stored TTL by repeatedly reading it.
     let elapsed = live.captured_at.map_or(0, |at| {
-        now
-            .signed_duration_since(at)
-            .num_milliseconds()
-            .max(0)
+        now.signed_duration_since(at).num_milliseconds().max(0)
     });
     for item in &mut live.perception_payload {
         let remaining = item
@@ -144,8 +169,16 @@ pub fn live_presence_from_custom_data(data: &Value) -> SelfLivePresence {
 
 fn apply_whitelisted_presence(live: &mut SelfLivePresence, data: &Value) {
     if let Some(presence) = data.get("presence").and_then(Value::as_object) {
-        live.instance_id = presence.get("instanceId").and_then(Value::as_str)
-            .filter(|id| !id.is_empty() && id.len() <= 64 && id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_'))
+        live.instance_id = presence
+            .get("instanceId")
+            .and_then(Value::as_str)
+            .filter(|id| {
+                !id.is_empty()
+                    && id.len() <= 64
+                    && id
+                        .bytes()
+                        .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+            })
             .map(str::to_owned);
         if let Some(rig) = presence.get("rigState") {
             live.rig_state = myriad_merope::sanitize_rig_state(rig);
@@ -357,8 +390,15 @@ mod tests {
         store.remember(1, page("back", false, false, later), later);
         assert!(!store.last(1, later).page_visible);
         assert_eq!(store.users[&1].len(), 1);
-        assert!(store.last(1, later + Duration::seconds(61)).perception.is_empty());
-        assert!(!store.last(1, later + Duration::seconds(PRESENCE_WINDOW_SECS + 1)).speaking);
+        assert!(store
+            .last(1, later + Duration::seconds(61))
+            .perception
+            .is_empty());
+        assert!(
+            !store
+                .last(1, later + Duration::seconds(PRESENCE_WINDOW_SECS + 1))
+                .speaking
+        );
     }
 
     #[test]
@@ -386,7 +426,10 @@ mod tests {
         assert_eq!(store.users[&1].len(), MAX_USER_PAGES);
         let live = page("page-key", true, true, now);
         assert_eq!(live.instance_id.as_deref(), Some("page-key"));
-        assert!(serde_json::to_value(&live).unwrap().get("instanceId").is_none());
+        assert!(serde_json::to_value(&live)
+            .unwrap()
+            .get("instanceId")
+            .is_none());
         let invalid = live_presence_from_custom_data(&serde_json::json!({
             "presence": { "instanceId": "x".repeat(65) }
         }));

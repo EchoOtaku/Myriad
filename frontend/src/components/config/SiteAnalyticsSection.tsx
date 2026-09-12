@@ -447,7 +447,7 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
     () =>
       [...(data?.countries ?? [])]
         .filter((c) => c.code && (c.unique_visitors > 0 || c.views > 0))
-        .sort(
+        .toSorted(
           (a, b) =>
             b.unique_visitors - a.unique_visitors ||
             b.views - a.views ||

@@ -44,7 +44,7 @@ function pruneRateLimitStore(now: number): void {
 
   const evictable = [...rateLimitStore.entries()]
     .filter(([, entry]) => !isBlocked(entry, now))
-    .sort(([, a], [, b]) => lastSeenAt(a) - lastSeenAt(b))
+    .toSorted(([, a], [, b]) => lastSeenAt(a) - lastSeenAt(b))
 
   const overflow = rateLimitStore.size - MAX_TRACKED_KEYS
   for (const [key] of evictable.slice(0, overflow)) {

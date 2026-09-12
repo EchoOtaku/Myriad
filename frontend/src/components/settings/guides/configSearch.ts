@@ -188,7 +188,7 @@ export function rankConfigSearch(
   const ranked = items
     .map((item) => scoreSearchItem(item, tokens))
     .filter((x): x is RankedSearchItem => x != null && x.score > 0)
-    .sort((a, b) => {
+    .toSorted((a, b) => {
       if (b.score !== a.score) return b.score - a.score
       const typeOrder = (t: string) =>
         t === 'section' ? 0 : t === 'platform' ? 1 : t === 'alias' ? 2 : 3

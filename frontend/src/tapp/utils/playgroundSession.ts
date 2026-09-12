@@ -254,7 +254,7 @@ export function pruneStoreWithMeta(
     const active = sessions.find((s) => s.id === store.activeSessionId)
     const others = sessions
       .filter((s) => s.id !== store.activeSessionId)
-      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .toSorted((a, b) => b.updatedAt - a.updatedAt)
     const keep = others.slice(0, MAX_SESSIONS - (active ? 1 : 0))
     const next = active ? [active, ...keep] : keep
     sessionsDropped += sessions.length - next.length

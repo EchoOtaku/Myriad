@@ -98,7 +98,7 @@ export class TtsPipeline {
         ({ segment }) =>
           segment.messageId === messageId && segment.generation === generation,
       )
-      .sort((a, b) => a.playId - b.playId)
+      .toSorted((a, b) => a.playId - b.playId)
       .slice(0, 6)
       .map(({ segment }) => segment.text)
       .join('\n')

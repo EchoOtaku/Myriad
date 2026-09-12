@@ -54,7 +54,7 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
     if (enriched.length > 0) return enriched
     return followingSample
       .filter((f: any) => String(f.description || '').trim())
-      .sort(
+      .toSorted(
         (a: any, b: any) =>
           (Number(a.follower_count) || 0) - (Number(b.follower_count) || 0),
       )
@@ -109,7 +109,7 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
     const keyOf = (f: any) => String(f.username || '').toLowerCase()
     const curated = withAvatar
       .filter((f: any) => rank.has(keyOf(f)))
-      .sort((a: any, b: any) => rank.get(keyOf(a))! - rank.get(keyOf(b))!)
+      .toSorted((a: any, b: any) => rank.get(keyOf(a))! - rank.get(keyOf(b))!)
     const rest = withAvatar.filter((f: any) => !rank.has(keyOf(f)))
     return [...curated, ...rest].slice(0, 7)
   }, [followingSample, data?.following_highlights, data?.interest_circles])

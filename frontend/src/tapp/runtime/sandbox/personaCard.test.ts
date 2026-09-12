@@ -68,7 +68,7 @@ describe('projectPersonaCard', () => {
       personality: 'secret soul',
       visualProfile: { hair: 'black' },
     } as never)
-    assert.deepEqual(Object.keys(card).sort(), [...CARD_FIELDS])
+    assert.deepEqual(Object.keys(card).toSorted(), [...CARD_FIELDS])
     assert.equal(card.moodBand, 'tense')
     assert.equal(card.activity, 'working')
     assert.equal(card.portraitUrl, '/api/brew/image-cache/ab/face.png')
@@ -112,6 +112,6 @@ describe('persona.get handler wall', () => {
     const keys = [...stub[1].matchAll(/^\s*([A-Z]+):/gim)].map(
       match => match[1],
     )
-    assert.deepEqual(keys.sort(), [...CARD_FIELDS])
+    assert.deepEqual(keys.toSorted(), [...CARD_FIELDS])
   })
 })

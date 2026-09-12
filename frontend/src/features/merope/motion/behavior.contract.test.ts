@@ -262,19 +262,19 @@ test('the behavior vocabulary is exactly what a producer can emit', () => {
     sources.add(name!)
   }
 
-  assert.deepEqual([...functions].sort(), [...BEHAVIOR_FUNCTIONS].sort())
-  assert.deepEqual([...sources].sort(), [...BEHAVIOR_SOURCES].sort())
+  assert.deepEqual([...functions].toSorted(), [...BEHAVIOR_FUNCTIONS].toSorted())
+  assert.deepEqual([...sources].toSorted(), [...BEHAVIOR_SOURCES].toSorted())
 
   const contract = source(
     '../../../../../crates/myriad-merope/src/rig_state.rs',
   )
   assert.deepEqual(
-    rustList(contract, 'RIG_STATE_BEHAVIOR_FUNCTIONS').sort(),
-    [...functions].sort(),
+    rustList(contract, 'RIG_STATE_BEHAVIOR_FUNCTIONS').toSorted(),
+    [...functions].toSorted(),
   )
   assert.deepEqual(
-    rustList(contract, 'RIG_STATE_BEHAVIOR_SOURCES').sort(),
-    [...sources].sort(),
+    rustList(contract, 'RIG_STATE_BEHAVIOR_SOURCES').toSorted(),
+    [...sources].toSorted(),
   )
 })
 

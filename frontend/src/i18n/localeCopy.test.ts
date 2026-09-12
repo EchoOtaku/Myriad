@@ -58,7 +58,7 @@ describe('currentCopy', () => {
       ) as Record<string, unknown>
       for (const ns of ['config', 'tapp', 'brew', 'merope', 'errors', 'agentCaps']) {
         assert.equal(
-          ns in core,
+          Object.hasOwn(core, ns),
           false,
           `${locale}.json must not contain top-level "${ns}"`,
         )

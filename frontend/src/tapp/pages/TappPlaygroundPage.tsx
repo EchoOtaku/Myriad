@@ -1286,7 +1286,7 @@ export function TappPlaygroundPage() {
         setDraftInvalid(true)
         return
       }
-    } else if (!(file in textKeys)) {
+    } else if (!Object.hasOwn(textKeys, file)) {
       return
     }
     setDraftInvalid(false)

@@ -571,7 +571,7 @@ const SetupWizard: React.FC = () => {
         memory_saver_enabled: siteForm.memorySaver ? 'true' : 'false',
       }
       config.ui_config.config_fields = fields.map((field: any) =>
-        field && typeof field.key === 'string' && field.key in patch
+        field && typeof field.key === 'string' && Object.hasOwn(patch, field.key)
           ? { ...field, value: patch[field.key] }
           : field,
       )

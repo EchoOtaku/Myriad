@@ -28,7 +28,7 @@ export function stripHtmlTags(input: string): string {
   s = s.replace(/<[^>]*>/g, '')
   s = s.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (full, body: string) => {
     const key = body.toLowerCase()
-    if (key in ENTITY_MAP) return ENTITY_MAP[key]!
+    if (Object.hasOwn(ENTITY_MAP, key)) return ENTITY_MAP[key]!
     if (key.startsWith('#x')) {
       const code = Number.parseInt(key.slice(2), 16)
       return Number.isFinite(code) ? String.fromCodePoint(code) : ''

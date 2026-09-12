@@ -312,7 +312,7 @@ export function parseLyrics(lrcText: string): LyricLine[] {
     }
   }
 
-  return lyrics.sort((a, b) => a.time - b.time)
+  return lyrics.toSorted((a, b) => a.time - b.time)
 }
 
 export function parseYrc(yrcText: string): WordLyricLine[] {
@@ -357,7 +357,7 @@ export function parseYrc(yrcText: string): WordLyricLine[] {
     })
   }
 
-  return result.sort((a, b) => a.time - b.time)
+  return result.toSorted((a, b) => a.time - b.time)
 }
 
 export function parseKrc(krcText: string): WordLyricLine[] {
@@ -401,7 +401,7 @@ export function parseKrc(krcText: string): WordLyricLine[] {
     })
   }
 
-  return result.sort((a, b) => a.time - b.time)
+  return result.toSorted((a, b) => a.time - b.time)
 }
 
 /** Normalize cached 126.net covers. */
