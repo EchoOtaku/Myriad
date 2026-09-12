@@ -881,7 +881,7 @@
   "advanced": "Advanced",
   "advancedDesc": "Runtime diagnostics, memory saver, outbound proxy, API mirrors, settings backup/restore, and dangerous actions",
   "memorySaverGroup": "Memory",
-  "memorySaverGroupDesc": "Lower concurrent memory use on small hosts (~1 GiB). Default off uses the current bounded balanced profile; upgrades from older releases can change request limits.",
+  "memorySaverGroupDesc": "Lower concurrent memory use on small hosts (~1 GiB). Default off uses the current bounded balanced profile; upgrades from older releases can change request limits.",
   "memorySaver": "Memory saver",
   "memorySaverHint": "A second notch below the bounded default: smaller chunk inflight, process caches, DB pool, password-hash concurrency, and video/audio peaks. Everyday messages still fit; large media should use chunked transfer, and lossless audio may reject sooner. Env MYRIAD_MEMORY_PROFILE can override. DB pool fully applies after backend restart.",
   "agentOptions": "Agent",

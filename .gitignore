@@ -136,6 +136,11 @@ backend/data/.bootstrap-claimed
 !/frontend/tests/browser/fixture/liquidGlass.html
 !/frontend/tests/browser/fixture/liquidGlass.ts
 
+# Frontend render and event performance regressions
+!/frontend/tests/browser/performance.spec.ts
+!/frontend/tests/browser/fixture/performance.html
+!/frontend/tests/browser/fixture/performance.tsx
+
 # Real backend + disposable Postgres business smokes
 !/frontend/tests/smoke/
 !/frontend/tests/smoke/**

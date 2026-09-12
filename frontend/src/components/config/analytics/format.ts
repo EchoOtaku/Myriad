@@ -1,4 +1,3 @@
-
 import { formatMessage, localeOrFallback } from '../../../i18n'
 import { copyForLocale } from '../../../i18n/localeCopy'
 

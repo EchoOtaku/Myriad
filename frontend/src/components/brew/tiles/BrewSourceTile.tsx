@@ -12,9 +12,9 @@ import { useNavigate } from 'react-router-dom'
 
 import { useAuth } from '../../../contexts/AuthContext'
 import { useI18n } from '../../../contexts/I18nContext'
-import { formatMessage, localeOrFallback } from '../../../i18n'
 import { isExlight, useAnimationLevel } from '../../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../../hooks/useWidgetSize'
+import { formatMessage, localeOrFallback } from '../../../i18n'
 import { extractColorsFromLoadedImage } from '../../../utils/colorExtractor'
 import {
   DEFAULT_THEME_COLOR,

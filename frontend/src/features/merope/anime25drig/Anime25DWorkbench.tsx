@@ -1,6 +1,5 @@
 import type { ReactNode, RefObject } from 'react'
 import type { TranslationKeys } from '../../../i18n'
-import { formatMessage, getDefaultLocale } from '../../../i18n'
 import type {
   RigAssetCompileEvent,
   RigAssetPreflight,
@@ -27,6 +26,7 @@ import {
 } from '../../../components/tour/tourEngine'
 import { personaTourPanel } from '../../../components/tour/tourLogic'
 import { useI18n } from '../../../contexts/I18nContext'
+import { formatMessage, getDefaultLocale } from '../../../i18n'
 import { userFacingError } from '../../../utils/userFacingError'
 import { PreviewMotionScope } from '../motion/previewScope'
 import {

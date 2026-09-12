@@ -22,7 +22,7 @@ interface ListenerEntry {
 class SharedEventManager {
   private listeners = new Map<string, Set<ListenerEntry>>()
   private nativeListeners = new Map<string, EventCallback>()
-  private throttledCallbacks = new Map<string, EventCallback>()
+  private throttledCallbacks = new Map<string, () => void>()
 
   private sortedListenersCache = new Map<string, ListenerEntry[]>()
   private listenersDirty = new Map<string, boolean>()
@@ -81,11 +81,12 @@ class SharedEventManager {
       }
     }
 
-    const finalHandler = throttle ? rafThrottle(handler) : handler
+    const throttled = throttle ? rafThrottle(handler) : null
+    const finalHandler = throttled ?? handler
 
     this.nativeListeners.set(eventType, finalHandler)
-    if (throttle) {
-      this.throttledCallbacks.set(eventType, handler)
+    if (throttled) {
+      this.throttledCallbacks.set(eventType, throttled.cancel)
     }
 
     window.addEventListener(eventType, finalHandler, { passive: true })
@@ -96,6 +97,7 @@ class SharedEventManager {
     if (handler) {
       window.removeEventListener(eventType, handler)
       this.nativeListeners.delete(eventType)
+      this.throttledCallbacks.get(eventType)?.()
       this.throttledCallbacks.delete(eventType)
     }
   }
@@ -113,6 +115,8 @@ class SharedEventManager {
       this.removeNativeListener(eventType)
     }
     this.listeners.clear()
+    this.sortedListenersCache.clear()
+    this.listenersDirty.clear()
   }
 }
 

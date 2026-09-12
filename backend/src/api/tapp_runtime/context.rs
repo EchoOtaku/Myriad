@@ -6,7 +6,7 @@
 
 use axum::{
     extract::State,
-    http::{header, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode},
     Extension, Json,
 };
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
@@ -27,35 +27,6 @@ use crate::services::tapp_context::{
 use super::common::get_available_platforms;
 use super::runtime_grant::RuntimeGrantContext;
 
-/// Host UI locale from `X-Myriad-Locale` or `Accept-Language` (not hard-coded zh-CN).
-fn locale_from_headers(headers: &HeaderMap) -> String {
-    if let Some(v) = headers
-        .get("x-myriad-locale")
-        .and_then(|h| h.to_str().ok())
-        .map(str::trim)
-        .filter(|s| !s.is_empty() && s.len() <= 32)
-    {
-        return v.to_string();
-    }
-    if let Some(al) = headers
-        .get(header::ACCEPT_LANGUAGE)
-        .and_then(|h| h.to_str().ok())
-    {
-        // Take first tag: "en-US,en;q=0.9" → "en-US"
-        let tag = al
-            .split(',')
-            .next()
-            .unwrap_or("")
-            .split(';')
-            .next()
-            .unwrap_or("")
-            .trim();
-        if !tag.is_empty() && tag.len() <= 32 {
-            return tag.to_string();
-        }
-    }
-    "en-US".to_string()
-}
 
 /// Host timezone from `X-Myriad-Timezone` (IANA), default UTC.
 fn timezone_from_headers(headers: &HeaderMap) -> String {
@@ -88,7 +59,7 @@ pub async fn get_context_app(
         env!("CARGO_PKG_VERSION"),
         ai_enabled,
         &platforms,
-        &locale_from_headers(&headers),
+        crate::api::reports::locale::host_locale_from_headers(&headers),
     )))
 }
 
@@ -147,7 +118,7 @@ pub async fn get_context_user(
         avatar_url,
         is_current_admin,
         &connected_platforms,
-        &locale_from_headers(&headers),
+        crate::api::reports::locale::host_locale_from_headers(&headers),
         &timezone_from_headers(&headers),
     )))
 }

@@ -1,4 +1,3 @@
-
 import type { CheckboxSettingConfig } from '../types'
 import React, { useCallback } from 'react'
 import './SettingItem.css'

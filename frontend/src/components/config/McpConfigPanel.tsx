@@ -1,4 +1,3 @@
-
 import type { McpServerConfig } from '../../services/agent/agentApi'
 import type {
   ManagedListItem,

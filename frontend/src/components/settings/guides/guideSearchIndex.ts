@@ -1,4 +1,3 @@
-
 import type { Locale } from '../../../i18n'
 import type { SettingGuideEntry, SettingGuidesCatalog } from './types'
 import { getSettingGuidesCatalog } from './catalog'

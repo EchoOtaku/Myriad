@@ -1,13 +1,13 @@
-import type { SettingGuidesCatalog } from './types'
 import type { TappPermissionGuides } from './tappPermissionGuides'
-import catalogEn from './catalog.en.json'
-import catalogJa from './catalog.ja.json'
+import type { SettingGuidesCatalog } from './types'
+import catalogEn from './catalog.en-US.json'
+import catalogJa from './catalog.ja-JP.json'
+import catalogZh from './catalog.zh-CN.json'
 import catalogTw from './catalog.zh-TW.json'
-import catalogZh from './catalog.zh.json'
-import permEn from './tappPermissionGuides.en.json'
-import permJa from './tappPermissionGuides.ja.json'
+import permEn from './tappPermissionGuides.en-US.json'
+import permJa from './tappPermissionGuides.ja-JP.json'
+import permZh from './tappPermissionGuides.zh-CN.json'
 import permTw from './tappPermissionGuides.zh-TW.json'
-import permZh from './tappPermissionGuides.zh.json'
 
 const _catalogEn: SettingGuidesCatalog = catalogEn
 const _catalogZh: SettingGuidesCatalog = catalogZh

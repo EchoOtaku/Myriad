@@ -1,4 +1,3 @@
-
 import type { Job, ReleaseManifest, UpdaterStatus } from '../../../services/updaterApi'
 import type { ChannelKey, Mood, Toast, Tone, U } from './helpers'
 import { LuRefreshCw } from '@lib/icons'
@@ -301,7 +300,6 @@ export function StatusHero({
   )
 }
 
-
 export function ProgressCard({ job, u }: { job: Job; u: U }) {
   const done = job.steps.filter((s) => s.ok === true).length
   const total = Math.max(job.steps.length, done + 1)
@@ -366,7 +364,6 @@ export function ProgressCard({ job, u }: { job: Job; u: U }) {
     </div>
   )
 }
-
 
 const INTERVAL_OPTIONS: Array<{
   value: number

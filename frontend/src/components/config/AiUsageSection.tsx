@@ -1,4 +1,3 @@
-
 import type { SettingOption } from '../settings/types'
 import type { ToastType } from '../Toast'
 import type { AnalyticsRangeState } from './analytics/AnalyticsRangePicker'

@@ -68,7 +68,7 @@ export function localizedVoiceDescription(
   voice: Pick<VoiceInfo, 'id' | 'description'>,
 ): string {
   const key = `voiceDesc.${voice.id}`
-  if (!Object.prototype.hasOwnProperty.call(catalog, key)) {
+  if (!Object.hasOwn(catalog, key)) {
     return voice.description
   }
   const value = Reflect.get(catalog, key)

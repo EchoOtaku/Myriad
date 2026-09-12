@@ -1,4 +1,3 @@
-
 import type { GreetingIconName } from '../../utils/dynamicContent'
 import React, { useEffect, useId, useMemo, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'

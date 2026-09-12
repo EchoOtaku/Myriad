@@ -1,4 +1,3 @@
-
 export interface ConfigSearchableItem {
   type: string
   section: string

@@ -1,4 +1,3 @@
-
 import type { SnapshotsResponse, UpdaterStatus } from '../../../services/updaterApi'
 import type { U } from './helpers'
 import React, { useMemo } from 'react'

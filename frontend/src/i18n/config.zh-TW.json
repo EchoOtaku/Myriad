@@ -881,7 +881,7 @@
   "advanced": "高階配置",
   "advancedDesc": "執行診斷、記憶體節約、出站代理、API 映象、設定備份/恢復與危險操作",
   "memorySaverGroup": "記憶體",
-  "memorySaverGroupDesc": "在約 1 GB 記憶體的主機上降低併發記憶體佔用。預設關閉時使用當前有界的均衡檔；從舊版本升級會改變部分請求上限。",
+  "memorySaverGroupDesc": "在約 1 GB 記憶體的主機上降低併發記憶體佔用。預設關閉時使用當前有界的均衡檔；從舊版本升級會改變部分請求上限。",
   "memorySaver": "記憶體節約",
   "memorySaverHint": "在均衡檔之上再收一檔：分塊併發、程序內快取、連線池、密碼雜湊併發，以及影片/音訊峰值。日常訊息仍可用；大媒體請走分塊傳輸，無損音訊可能更早拒收。可用 MYRIAD_MEMORY_PROFILE 覆蓋。連線池需重啟後端後完全生效。",
   "agentOptions": "Agent",

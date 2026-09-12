@@ -15,7 +15,10 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { bindMusicMoodListening } from '../features/merope/musicMood'
-import { pickMusicContextState } from '../utils/musicPlayerState'
+import {
+  mergeMusicContextState,
+  pickMusicContextState,
+} from '../utils/musicPlayerState'
 import {
   applyPublishedMusicState,
   bindPublishedMusicState,
@@ -104,10 +107,8 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
       if (!detail) return
 
       applyPublishedMusicState(detail)
-      setState((prev) => ({
-        ...prev,
-        ...(pickMusicContextState(detail) as Partial<MusicPlayerState>),
-      }))
+      const patch = pickMusicContextState(detail) as Partial<MusicPlayerState>
+      setState((prev) => mergeMusicContextState(prev, patch))
     }
 
     window.addEventListener('music-player-state-change', handleMusicStateChange)
@@ -120,7 +121,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const updateState = useCallback((newState: Partial<MusicPlayerState>) => {
-    setState((prev) => ({ ...prev, ...newState }))
+    setState((prev) => mergeMusicContextState(prev, newState))
   }, [])
 
   const playSong = useCallback((song: Song) => {

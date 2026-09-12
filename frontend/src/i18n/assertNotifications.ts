@@ -1,8 +1,8 @@
 import type { NotificationCopy } from './notificationCatalog'
 import en from './notifications.en-US.json'
 import ja from './notifications.ja-JP.json'
-import tw from './notifications.zh-TW.json'
 import zh from './notifications.zh-CN.json'
+import tw from './notifications.zh-TW.json'
 
 const _en: NotificationCopy = en
 const _zh: NotificationCopy = zh

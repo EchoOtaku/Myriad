@@ -62,7 +62,7 @@ export function siteRestOpacity(open: boolean, on: boolean): number {
   return open ? SITE_GRID_OP : SITE_RAIL_OP
 }
 
-export type FeedsChrome = {
+export interface FeedsChrome {
   airHeight: number
   itemsHeight: number
   sitesHeight: number
@@ -158,7 +158,7 @@ export function flipWaitMs(): number {
   return Math.max(openEnd, foldEnd) + FLIP_WAIT_PAD_MS
 }
 
-export type FlipBox = {
+export interface FlipBox {
   left: number
   top: number
   width: number

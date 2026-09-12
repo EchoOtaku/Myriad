@@ -56,7 +56,7 @@ test('queued speech keeps its original source and generation through playback an
         source,
       ).push('你真的这么想吗？')[0]!
       // Test the real outlet without widening its production visibility.
-      const handle = host['play'](new ArrayBuffer(0), segment, () => {})
+      const handle = host.play(new ArrayBuffer(0), segment, () => {})
       handle.stop()
       const scoped = events.filter(
         (event) => event.messageId === segment.messageId,

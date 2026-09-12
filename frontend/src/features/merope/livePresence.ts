@@ -1,9 +1,9 @@
+import type { RigStateSummary } from '../../services/agent/types'
 import { getAgentPanelMode } from '../../components/agent-panel/agentPanelMode'
 import { getAgentPanelVisible } from '../../components/agent-panel/agentPanelVisible'
 import { liveFaceVisible } from './faceVisible'
 import { captureProductionRigStateSummary } from './motion/runtimeHost'
 import { getVoicePresence } from './speech/voicePresence'
-import type { RigStateSummary } from '../../services/agent/types'
 
 export function livePresenceFacts(): {
   speaking: boolean

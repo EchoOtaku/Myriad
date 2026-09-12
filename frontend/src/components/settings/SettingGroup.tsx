@@ -1,4 +1,3 @@
-
 import type { SettingGroupConfig } from './types'
 import React, { useEffect, useMemo } from 'react'
 import { useI18n } from '../../contexts/I18nContext'

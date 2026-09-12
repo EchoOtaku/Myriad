@@ -1,4 +1,3 @@
-
 import type { ReactNode } from 'react'
 import type { SettingOption } from '../settings/types'
 import type { ToastType } from '../Toast'

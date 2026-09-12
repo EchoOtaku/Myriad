@@ -1,4 +1,3 @@
-
 import type { ReactNode } from 'react'
 import type { GuidePlacement } from './settingTitleGuideLogic'
 import { FaTimes, LuGripVertical, LuPin } from '@lib/icons'

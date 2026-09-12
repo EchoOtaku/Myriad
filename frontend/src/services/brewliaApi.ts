@@ -1,6 +1,6 @@
 import { API_URL } from '../config'
-import { getDefaultLocale } from '../i18n/locales'
 import { currentCopy } from '../i18n/localeCopy'
+import { getDefaultLocale } from '../i18n/locales'
 import { withAiTimeoutSignal } from '../utils/aiRequestTimeout.mjs'
 import { brewSubject } from '../utils/brewSubject'
 import { clearCSRFToken, getCSRFToken } from '../utils/csrf'

@@ -277,6 +277,19 @@ export const MUSIC_CONTEXT_OWNED_KEYS = Object.keys(
   MUSIC_CONTEXT_COERCERS,
 ) as MusicContextOwnedKey[]
 
+/** Preserve snapshot identity when an event changes only host-owned fields. */
+export function mergeMusicContextState<T extends object>(
+  previous: T,
+  patch: Partial<T>,
+): T {
+  for (const key of Object.keys(patch) as (keyof T)[]) {
+    if (!Object.is(previous[key], patch[key])) {
+      return { ...previous, ...patch }
+    }
+  }
+  return previous
+}
+
 export function pickMusicContextState(
   detail: Record<string, unknown>,
 ): Partial<Record<MusicContextOwnedKey, unknown>> {

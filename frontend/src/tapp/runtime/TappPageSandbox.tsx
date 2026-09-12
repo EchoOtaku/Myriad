@@ -423,7 +423,6 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     return buildTappMediaState(detail)
   }, [])
 
-
   useEffect(() => {
     if (!isReady) return
 

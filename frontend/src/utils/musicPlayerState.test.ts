@@ -4,6 +4,7 @@ import { describe, it } from 'node:test'
 import {
   buildMusicPlayerSnapshot,
   buildTappMediaState,
+  mergeMusicContextState,
   mergeMusicPlayerEventDetail,
   pickMusicContextState,
   readLiveAudioProgress,
@@ -243,5 +244,30 @@ describe('pickMusicContextState', () => {
     assert.equal('currentTime' in picked, false)
     assert.equal('musicColors' in picked, false)
     assert.equal('volume' in picked, false)
+  })
+})
+
+describe('mergeMusicContextState', () => {
+  it('keeps the snapshot for duplicate events and host-only progress updates', () => {
+    const previous = { currentSong: songA, isPlaying: true, lyrics: [] }
+    assert.equal(mergeMusicContextState(previous, previous), previous)
+    assert.equal(
+      mergeMusicContextState(previous, pickMusicContextState({ currentTime: 42 })),
+      previous,
+    )
+  })
+
+  it('applies partial changes without dropping lyrics or mutating the old snapshot', () => {
+    const lyrics = [{ time: 0, text: 'A' }]
+    const previous = { currentSong: songA, isPlaying: true, lyrics }
+    const next = mergeMusicContextState(previous, { isPlaying: false })
+    assert.notEqual(next, previous)
+    assert.equal(next.isPlaying, false)
+    assert.equal(previous.isPlaying, true)
+    assert.equal(next.lyrics, lyrics)
+    assert.equal(next.currentSong, songA)
+    const cleared = mergeMusicContextState(next, { lyrics: [] })
+    assert.notEqual(cleared, next)
+    assert.deepEqual(cleared.lyrics, [])
   })
 })

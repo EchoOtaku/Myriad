@@ -31,9 +31,9 @@ import AnimatedView from '../../components/AnimatedView'
 import {
   getTappPermissionGuides,
   guideDomProps,
-  loadTappPermissionGuides,
   InfoActionCard,
   InputItem,
+  loadTappPermissionGuides,
   NumberItem,
   SegmentedControl,
   SelectItem,

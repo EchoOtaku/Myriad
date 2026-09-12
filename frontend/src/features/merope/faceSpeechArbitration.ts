@@ -241,8 +241,9 @@ export function refineProactiveFace(
     !liveBody ||
     !liveFaceVisible() ||
     (typeof document !== 'undefined' && document.hidden)
-  )
+  ) {
     return
+}
   const performance = sanitizePerformanceDirective(raw)
   if (!performance) return
   liveBody.intend({

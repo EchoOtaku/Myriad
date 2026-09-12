@@ -1,4 +1,3 @@
-
 const FENCE = /```[\s\S]*?```/g
 const INLINE_CODE = /`[^`]+`/g
 const IMAGE = /!\[[^\]]*\]\([^)]+\)/g

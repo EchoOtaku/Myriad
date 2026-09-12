@@ -2,11 +2,11 @@ import type { PerceptionSnapshot } from './registry'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { setAgentContextConsent } from '../../../components/agent-panel/agentContextConsent'
+import { setCurrentPageContent } from '../../../contexts/currentPage'
 import { PERSONA_UPDATED_EVENT } from '../events'
 import { livePresenceFacts } from '../livePresence'
 import { getProductionMotionRuntime } from '../motion/runtimeHost'
-import { setAgentContextConsent } from '../../../components/agent-panel/agentContextConsent'
-import { setCurrentPageContent } from '../../../contexts/currentPage'
 import {
   presenceInboundArmingForTest,
   reportPresence,

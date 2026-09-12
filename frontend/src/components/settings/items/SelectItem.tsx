@@ -1,4 +1,3 @@
-
 import type { SelectSettingConfig } from '../types'
 import React, { useCallback } from 'react'
 import { guideDomProps } from '../guides/guideAnchor'

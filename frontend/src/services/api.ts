@@ -29,7 +29,7 @@ export class ApiError extends Error {
 }
 
 /** Machine codes: snake_case, SCREAMING_SNAKE, or short ALLCAPS. Not English labels. */
-const STABLE_ERROR_CODE = /^(?:[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+|[A-Z][A-Z0-9]{2,64})$/
+const STABLE_ERROR_CODE = /^(?:[A-Za-z][A-Za-z0-9]*_\w+|[A-Z][A-Z0-9]{2,64})$/
 
 function readErrorString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined

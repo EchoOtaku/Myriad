@@ -99,7 +99,7 @@ function walk(dir: string, acc: string[] = []): string[] {
 }
 
 function isIdentChar(c: string): boolean {
-  return /[A-Za-z0-9_$]/.test(c)
+  return /[\w$]/.test(c)
 }
 
 function prevNonWs(text: string, idx: number): string {
@@ -366,11 +366,12 @@ function extractHtmlComments(
 ): { line: number; raw: string }[] {
   const out: { line: number; raw: string }[] = []
   const re = /<!--([\s\S]*?)-->/g
-  let m: RegExpExecArray | null
-  while ((m = re.exec(text))) {
+  let m = re.exec(text)
+  while (m) {
     const before = text.slice(0, m.index)
     const line = 1 + (before.match(/\n/g) || []).length
     out.push({ line, raw: m[0] })
+    m = re.exec(text)
   }
   return out
 }

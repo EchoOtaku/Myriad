@@ -218,3 +218,24 @@ test('non-geometric changes leave a settled lens untouched', async ({ page }) =>
   expect(mutations).toBe(0)
   expect((await lens(page, 'card')).exists).toBe(true)
 })
+
+test('repeated class mutations discover a surface subtree once per delivery', async ({ page }) => {
+  const before = await lens(page, 'card')
+  const scans = await page.locator('#card').evaluate(async (el) => {
+    const original = el.querySelectorAll
+    let scans = 0
+    el.querySelectorAll = ((selector: string) => {
+      if (selector.includes('.control-bar-trigger')) scans++
+      return original.call(el, selector)
+    }) as typeof el.querySelectorAll
+    try {
+      for (let i = 0; i < 100; i++) el.classList.toggle('unrelated-state')
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+      return scans
+    } finally {
+      el.querySelectorAll = original
+    }
+  })
+  expect(scans).toBe(1)
+  expect((await lens(page, 'card')).map).toBe(before.map)
+})

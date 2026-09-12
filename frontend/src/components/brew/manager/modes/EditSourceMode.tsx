@@ -1,4 +1,5 @@
 import type { BrewSource } from '../../../../types/brew'
+import type { SubscriptionMode } from './editSource'
 import {
   LuAlertCircle as AlertCircle,
   LuCheck as Check,
@@ -11,11 +12,17 @@ import {
   LuUpload as Upload,
   LuX as X,
 } from '@lib/icons'
-import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
 import { userFacingError } from '../../../../utils/userFacingError'
 import { Spinner } from '../../../Spinner'
+import {
+  getIconUrl,
+  isFriendLinkCategory,
+  isMineCategory,
+  PRESET_CATEGORY_DB_VALUES,
+} from '../../constants'
 import { RequestTurn, unlessAborted } from '../../logic/requestTurn'
 import { BrewBarWrap } from '../../ui/Bar'
 import {
@@ -44,20 +51,12 @@ import {
   SheetTrigger,
 } from '../../ui/Sheet'
 import {
-  BREW_FRIEND_LINK_CATEGORY,
-  BREW_MINE_CATEGORY,
-  PRESET_CATEGORY_DB_VALUES,
-  getIconUrl,
-  isFriendLinkCategory,
-  isMineCategory,
-} from '../../constants'
-import {
   canAddCategory,
   categoriesOf,
   EDIT_INTERVALS,
   resolveEditSourcePayload,
+
   subscriptionModeOf,
-  type SubscriptionMode,
 } from './editSource'
 
 export interface EditSourceModeProps {

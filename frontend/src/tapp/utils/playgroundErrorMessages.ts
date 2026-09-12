@@ -280,7 +280,7 @@ export function mapPlaygroundGenerateError(
   }
 
   const looksLocalized =
-    /[\u3040-\u30FF\u3400-\u9FFF]/.test(raw) || 
+    /[\u3040-\u30FF\u3400-\u9FFF]/.test(raw) ||
     raw.length > 40
 
   if (looksLocalized && !/^HTTP\s*\d+/i.test(raw) && !/^[a-z]{2,}Error$/i.test(raw)) {

@@ -8,11 +8,11 @@ import React, {
   useState,
 } from 'react'
 import { formatMessage, getDefaultLocale, htmlLang, saveLocale } from '../i18n'
-import { persistLocaleToAccount } from '../i18n/localeAccount'
 import {
   getCachedLocale,
   loadLocale,
 } from '../i18n/loadLocale'
+import { persistLocaleToAccount } from '../i18n/localeAccount'
 import { currentCopy } from '../i18n/localeCopy'
 
 interface I18nContextType {
@@ -98,9 +98,9 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const format = useCallback(
     (template: string, params: Record<string, string | number>) => {
-      return formatMessage(locale, template, params)
+      return formatMessage(bundle?.locale ?? locale, template, params)
     },
-    [locale],
+    [bundle?.locale, locale],
   )
 
   const value = useMemo(() => {

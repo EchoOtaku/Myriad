@@ -56,7 +56,8 @@ export function resolveEditSourcePayload(input: {
 
   if (!isLink && !isNote) {
     enabled = input.subscriptionMode !== 'disabled'
-    if (input.subscriptionMode === 'brewlia') sourceType = 'brewlia'
+    if (input.subscriptionMode === 'brewlia') { sourceType = 'brewlia'
+}
     else if (input.subscriptionMode === 'normal') {
       sourceType = isRssHub ? 'rsshub' : 'rss'
     }

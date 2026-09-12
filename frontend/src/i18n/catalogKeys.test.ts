@@ -59,12 +59,12 @@ describe('four-locale catalog keys', () => {
   it('keeps setting-guide keys aligned', () => {
     const guides = new URL('../components/settings/guides/', import.meta.url)
     const pairs: Array<[string, string]> = [
-      ['catalog.en.json', 'catalog.zh.json'],
-      ['catalog.en.json', 'catalog.zh-TW.json'],
-      ['catalog.en.json', 'catalog.ja.json'],
-      ['tappPermissionGuides.en.json', 'tappPermissionGuides.zh.json'],
-      ['tappPermissionGuides.en.json', 'tappPermissionGuides.zh-TW.json'],
-      ['tappPermissionGuides.en.json', 'tappPermissionGuides.ja.json'],
+      ['catalog.en-US.json', 'catalog.zh-CN.json'],
+      ['catalog.en-US.json', 'catalog.zh-TW.json'],
+      ['catalog.en-US.json', 'catalog.ja-JP.json'],
+      ['tappPermissionGuides.en-US.json', 'tappPermissionGuides.zh-CN.json'],
+      ['tappPermissionGuides.en-US.json', 'tappPermissionGuides.zh-TW.json'],
+      ['tappPermissionGuides.en-US.json', 'tappPermissionGuides.ja-JP.json'],
     ]
     for (const [canonicalName, otherName] of pairs) {
       assertSameKeys(

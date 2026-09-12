@@ -1,4 +1,3 @@
-
 export const GUIDE_VIEWPORT_PAD = 10
 export const GUIDE_GAP = 8
 /** min visible edge (px); below = hidden */

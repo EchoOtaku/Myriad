@@ -699,8 +699,8 @@ def convert_frontend_packs(converter) -> None:
         (FRONTEND_I18N / "errors.zh-CN.json", FRONTEND_I18N / "errors.zh-TW.json"),
         (FRONTEND_I18N / "agentCaps.zh-CN.json", FRONTEND_I18N / "agentCaps.zh-TW.json"),
         (FRONTEND_I18N / "notifications.zh-CN.json", FRONTEND_I18N / "notifications.zh-TW.json"),
-        (GUIDES / "catalog.zh.json", GUIDES / "catalog.zh-TW.json"),
-        (GUIDES / "tappPermissionGuides.zh.json", GUIDES / "tappPermissionGuides.zh-TW.json"),
+        (GUIDES / "catalog.zh-CN.json", GUIDES / "catalog.zh-TW.json"),
+        (GUIDES / "tappPermissionGuides.zh-CN.json", GUIDES / "tappPermissionGuides.zh-TW.json"),
     ]
     for src, dest in pairs:
         data = json.loads(src.read_text(encoding="utf-8"))

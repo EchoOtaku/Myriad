@@ -1,7 +1,7 @@
 /** 内置 greeting/weather/quote/theme/music/notification；Tapp 为 `tapp-{id}`。 */
 
-import { getDefaultLocale } from '../i18n/locales'
 import type { TappInstance } from '../tapp/types'
+import { getDefaultLocale } from '../i18n/locales'
 
 export type BuiltinContentType =
   'greeting' | 'weather' | 'quote' | 'theme' | 'music' | 'notification'
@@ -195,7 +195,6 @@ class DynamicContentProviderService {
     return localized
   }
 
-
   addListener(listener: ContentUpdateListener): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
@@ -214,7 +213,6 @@ class DynamicContentProviderService {
       }
     }
   }
-
 
   registerTappProvider(tappInstance: TappInstance): string {
     const providerId = `tapp-${tappInstance.id}`
@@ -273,7 +271,6 @@ class DynamicContentProviderService {
     return contents.find((c) => c.sourceTappId === tappId)
   }
 
-
   /** 默认仅 weather/theme；tapp 有 subtext 才显示。 */
   shouldShowSubtext(content: DynamicContentItem): boolean {
     if (content.showSubtext !== undefined) {
@@ -306,7 +303,6 @@ class DynamicContentProviderService {
     return content.subtext || fallback
   }
 }
-
 
 export const dynamicContentProvider = new DynamicContentProviderService()
 

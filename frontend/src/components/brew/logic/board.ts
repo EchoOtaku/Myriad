@@ -1,13 +1,14 @@
 /** `sites` 深链 id 不能改。「友情链接」是分类名；朋友源从订阅 inbox 拿走。手记源仍可出现在订阅墙。 */
 
 import type { BrewSource } from '../../../types/brew'
+import type { BrewViewerRole } from './score'
 import {
   brewCategoryParts,
   brewMainCategory,
   isFriendLinkCategory,
   isOwnBrewSource,
 } from '../constants'
-import { compareByScore, type BrewViewerRole } from './score'
+import { compareByScore } from './score'
 
 export type BrewBoard = 'feeds' | 'notes' | 'sites'
 

@@ -19,9 +19,14 @@ shift || true
 DOCKER="${DOCKER:-docker}"
 
 env_file_value() {
-    local key="$1"
-    [ -f .env ] || return 0
-    grep -E "^${key}=" .env 2>/dev/null | head -1 | cut -d= -f2-
+    env_file_key .env "$1"
+}
+
+# Read KEY= from a dotenv file. Never prints the value.
+env_file_key() {
+    local file="$1" key="$2"
+    [ -f "$file" ] || return 0
+    grep -E "^${key}=" "$file" 2>/dev/null | head -1 | cut -d= -f2-
 }
 
 compose_bin() {
@@ -96,6 +101,45 @@ ensure_data_volume() {
     fi
 }
 
+# Official compose inits Postgres with POSTGRES_PASSWORD from the host .env.
+# This restore only targets a cluster that already uses the backup's password.
+# A different role password is unsupported: refuse before stop / copy / restore.
+require_same_postgres_password() {
+    local backup_env="$1"
+    local current backup
+    if [ ! -f .env ]; then
+        err "restore requires the current .env so it can match the running Postgres password"
+        exit 1
+    fi
+    current="$(env_file_key .env POSTGRES_PASSWORD)"
+    backup="$(env_file_key "$backup_env" POSTGRES_PASSWORD)"
+    if [ -z "$current" ] || [ -z "$backup" ]; then
+        err "POSTGRES_PASSWORD missing in current or backup .env; refuse restore"
+        exit 1
+    fi
+    if [ "$current" != "$backup" ]; then
+        err "restore refuses a different PostgreSQL password than the running cluster"
+        err "supported scope: same compose project, same POSTGRES_PASSWORD as the live role"
+        err "re-init the cluster to the backup password first, or restore onto a matching host"
+        exit 1
+    fi
+}
+
+wait_backend_ready() {
+    local i
+    info "==> waiting for backend /ready"
+    for i in $(seq 1 30); do
+        if compose exec -T backend wget -qO- http://127.0.0.1:1103/ready >/dev/null 2>&1 \
+            || compose exec -T backend curl -fsS http://127.0.0.1:1103/ready >/dev/null 2>&1; then
+            ok "backend /ready"
+            return 0
+        fi
+        sleep 2
+    done
+    err "backend /ready did not succeed after restore; do not treat frontend HTML 200 as ready"
+    return 1
+}
+
 show_usage() {
     cat <<EOF
 Usage: $0 <backup|restore> [options]
@@ -109,8 +153,11 @@ Usage: $0 <backup|restore> [options]
   restore --from DIR [--no-stop]
       Restore Postgres, backend_data, and .env from a backup directory.
       Destructive. Stops backend unless --no-stop is set.
-      Order: stop writers → restore .env → restore Postgres → restore
-      volume → recreate backend so the restored env is applied.
+      Supported scope: same compose project and the same
+      POSTGRES_PASSWORD as the running role. A different password is
+      refused before any stop, copy, or restore.
+      Order: match password → stop writers → restore .env → restore
+      Postgres → restore volume → recreate backend → wait /ready.
       A failed restore leaves backend stopped.
 
 Notes:
@@ -205,6 +252,8 @@ do_restore() {
     [ -f "$from/backend_data.tar.gz" ] || { err "missing $from/backend_data.tar.gz"; exit 1; }
     [ -f "$from/env" ] || { err "missing $from/env"; exit 1; }
 
+    require_same_postgres_password "$from/env"
+
     BACKEND_STOPPED_BY_US=0
     trap 'code=$?; trap - EXIT; if [ "$code" -ne 0 ] && [ "${BACKEND_STOPPED_BY_US:-0}" -eq 1 ]; then err "restore failed; backend left stopped so writes stay quiesced"; fi; exit "$code"' EXIT
 
@@ -242,6 +291,7 @@ do_restore() {
         info "==> recreating backend with restored environment"
         compose up -d --force-recreate --no-deps backend
         BACKEND_STOPPED_BY_US=0
+        wait_backend_ready
     fi
     ok "restore complete from $from"
 }

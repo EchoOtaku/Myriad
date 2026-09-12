@@ -1593,7 +1593,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.agentSubmitted
   }
   const planFailed = raw.match(
-    /^I understood the request, but planning failed:\s*(.+?)\.\s*Please describe what you want more specifically\.?$/i,
+    /^I understood the request, but planning failed:\s*(\S.*?)\.\s*Please describe what you want more specifically\.?$/i,
   )
   if (planFailed) {
     const detail = (planFailed[1] || '').trim()
@@ -1601,7 +1601,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       ? fill(t.agentPlanningFailed, { detail })
       : t.agentPlanningFailedBare
   }
-  if (/^我理解了你的请求，但生成执行计划时出现问题/.test(raw)) {
+  if (raw.startsWith('我理解了你的请求，但生成执行计划时出现问题')) {
     const detail = raw
       .replace(/^我理解了你的请求，但生成执行计划时出现问题[：:.\s]*/, '')
       .replace(/请更具体地描述你想要什么。?$/, '')
@@ -1721,12 +1721,12 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (/^动态技能$/.test(raw)) return t.capDynamicSkills
   if (/^MCP 工具$/.test(raw)) return t.capMcpTools
   if (
-    /^我现在心情很低，不想接新的事情/.test(raw) ||
-    /^I'm in a very low mood and don't want to take on anything new/.test(raw)
+    raw.startsWith('我现在心情很低，不想接新的事情') ||
+    raw.startsWith('I\'m in a very low mood and don\'t want to take on anything new')
   ) {
     return t.agentRefuseLowMood
   }
-  if (/^我对这个请求的理解置信度较低/.test(raw)) return t.agentNeedClarification
+  if (raw.startsWith('我对这个请求的理解置信度较低')) return t.agentNeedClarification
   if (/^重新执行这个步骤$/.test(raw)) return t.retryStepDesc
   if (/^跳过这个步骤继续执行$/.test(raw)) return t.skipStepDesc
   if (/^取消整个任务$/.test(raw)) return t.cancelTaskDesc
@@ -1751,7 +1751,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (prunedSkill) {
     return fill(t.noticeSkillPrunedBody, { name: prunedSkill[1] })
   }
-  if (/^我的理解是：/.test(raw)) return t.agentNeedClarification
+  if (raw.startsWith('我的理解是：')) return t.agentNeedClarification
   if (/^网易云音乐用户$/.test(raw)) return t.neteaseMusicUser
   if (/^Bangumi 用户$/.test(raw)) return t.bangumiUser
   if (/^MyAnimeList 用户$/.test(raw)) return t.malUser
@@ -1765,11 +1765,11 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (/^请提供更多信息$|^Please provide more information\.?$/i.test(raw)) {
     return t.agentNeedMoreInfo
   }
-  const webSearchNamed = raw.match(/^网络搜索\s*[—\-]\s*(.+)$/)
+  const webSearchNamed = raw.match(/^网络搜索\s*[—\-]\s*(\S.*)$/)
   if (webSearchNamed) {
     return fill(t.webSearchNamed, { name: webSearchNamed[1] })
   }
-  const readingListNamed = raw.match(/^阅读列表\s*[—\-]\s*(.+)$/)
+  const readingListNamed = raw.match(/^阅读列表\s*[—\-]\s*(\S.*)$/)
   if (readingListNamed) {
     return fill(t.readingListNamed, { name: readingListNamed[1] })
   }
@@ -1811,7 +1811,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     })
   }
   const leftoverHeartbeatTask = raw.match(
-    /^定时任务:\s*(.+)$|^Scheduled task:\s*(.+)$/i,
+    /^定时任务:\s*(\S.*)$|^Scheduled task:\s*(\S.*)$/i,
   )
   if (leftoverHeartbeatTask) {
     return fill(t.noticeHeartbeatTask, {
@@ -1910,11 +1910,11 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return t.agentNeedClarification
   }
-  const willRun = raw.match(/^This will run (.+)$|^此操作将执行\s*(.+)$/)
+  const willRun = raw.match(/^This will run (.+)$|^此操作将执行\s*(\S.*)$/)
   if (willRun) {
     return fill(t.willExecute, { name: willRun[1] || willRun[2] || '' })
   }
-  if (/^此操作将/.test(raw)) return t.stepNeedsConfirm
+  if (raw.startsWith('此操作将')) return t.stepNeedsConfirm
   if (/^数据读取$|^Data$/.test(raw)) return t.capCategoryData
   if (/^数据写入$|^Write$/.test(raw)) return t.capCategoryWrite
   if (/^AI处理$|^AI$/.test(raw)) return t.capCategoryAi

@@ -373,7 +373,6 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     return CHANNEL_OPTIONS.filter((o) => fromServer.includes(o.channel))
   }, [status?.available_channels])
 
-
   const checkAvailable = useCallback(
     async (opts?: { silent?: boolean }) => {
       if (tokenRequired) {
@@ -991,7 +990,6 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     } catch {
     }
   }, [api, refresh, status?.proxy_update_last?.at])
-
 
   const mood = useMemo<Mood>(() => deriveMood(status), [status])
 

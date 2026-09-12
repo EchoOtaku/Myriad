@@ -1,17 +1,17 @@
+export type { TranslationKeys } from './assembleLocale'
+export { formatDate, formatMessage, formatNumber } from './formatMessage'
 export type { Locale } from './locales'
+
 export {
-  LOCALES,
   getDefaultLocale,
   htmlLang,
   isLocale,
   localeOrFallback,
+  LOCALES,
   parseLocale,
   parseLocaleCookie,
   saveLocale,
 } from './locales'
-export { formatDate, formatMessage, formatNumber } from './formatMessage'
-
-export type { TranslationKeys } from './assembleLocale'
 
 /** Event keys are domain enums, not TranslationKeys. */
 export {

@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 /**
  * First-paint JS/CSS budget for the home shell.
  * Counts compressed (gzip) bytes of assets referenced by index.html plus
@@ -6,9 +10,6 @@
  * that set.
  */
 import { promisify } from 'node:util'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { gzip } from 'node:zlib'
 
 const gzipAsync = promisify(gzip)
@@ -54,7 +55,7 @@ function walkStaticImports(entryFiles, assetsDir) {
   const seen = new Set(entryFiles)
   const queue = [...entryFiles]
   const importRe =
-    /(?:from|import)\s*["'](\.?\.?\/[^"']+\.js)["']|import\(["'](\.?\.?\/[^"']+\.js)["']\)/g
+    /(?:from|import)\s*["'](\.{0,2}\/[^"']+\.js)["']|import\(["'](\.{0,2}\/[^"']+\.js)["']\)/g
   while (queue.length > 0) {
     const file = queue.pop()
     if (!file.endsWith('.js') || !existsSync(file)) continue

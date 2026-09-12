@@ -230,10 +230,14 @@ export function useReaderControls({
     const handleScrollForToc = () => {
       let currentId = ''
 
-      for (const heading of headings) {
+      // The result is the last qualifying heading in DOM order. Search from
+      // that end and stop, without caching positions that images/fonts can move.
+      for (let index = headings.length - 1; index >= 0; index--) {
+        const heading = headings[index]
         const rect = heading.getBoundingClientRect()
         if (rect.top <= 150) {
           currentId = heading.id
+          break
         }
       }
 

@@ -1,4 +1,3 @@
-
 import type { DateRangePopoverLabels } from '../../settings/DateRangePopover'
 import type { AnalyticsRangePreset, AnalyticsRangeState } from './analyticsRangeLogic'
 import { LuCalendar, LuChevronDown } from '@lib/icons'

@@ -125,6 +125,11 @@ fn locale_from_cookie(headers: &HeaderMap) -> Option<&'static str> {
     None
 }
 
+/// Request-scoped host UI locale. Missing signal → `en-US`.
+pub fn host_locale_from_headers(headers: &HeaderMap) -> &'static str {
+    locale_from_headers(headers).unwrap_or(DEFAULT_AUTO_REGEN_LOCALE)
+}
+
 pub fn locale_from_headers(headers: &HeaderMap) -> Option<&'static str> {
     if let Some(v) = headers
         .get("x-myriad-locale")
@@ -274,6 +279,17 @@ mod tests {
     #[test]
     fn headerless_request_has_no_locale_signal() {
         assert_eq!(locale_from_headers(&HeaderMap::new()), None);
+        assert_eq!(host_locale_from_headers(&HeaderMap::new()), "en-US");
+    }
+
+    #[test]
+    fn host_locale_normalizes_traditional_tags() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-myriad-locale", HeaderValue::from_static("zh-HK"));
+        assert_eq!(host_locale_from_headers(&headers), "zh-TW");
+        headers.insert("accept-language", HeaderValue::from_static("fr,zh-HK;q=0.8"));
+        headers.remove("x-myriad-locale");
+        assert_eq!(host_locale_from_headers(&headers), "zh-TW");
     }
 
     #[test]

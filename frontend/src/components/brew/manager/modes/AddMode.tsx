@@ -1,3 +1,4 @@
+import type { AddSubmitInput } from './useAddSourceForm'
 import {
   LuAlertCircle as AlertCircle,
   LuCheck as Check,
@@ -16,13 +17,6 @@ import {
 } from '@lib/icons'
 import { useI18n } from '../../../../contexts/I18nContext'
 import { Spinner } from '../../../Spinner'
-import {
-  addHintKey,
-  addSubmitLabelKey,
-  addUrlLabelKey,
-  addUrlPlaceholder,
-} from './addSource'
-import { useAddSourceForm, type AddSubmitInput } from './useAddSourceForm'
 import { BrewBarWrap, BrewMark } from '../../ui/Bar'
 import {
   Sheet,
@@ -50,6 +44,13 @@ import {
   SheetTab,
   SheetTrigger,
 } from '../../ui/Sheet'
+import {
+  addHintKey,
+  addSubmitLabelKey,
+  addUrlLabelKey,
+  addUrlPlaceholder,
+} from './addSource'
+import { useAddSourceForm } from './useAddSourceForm'
 
 export interface AddModeProps {
   allCategories: string[]

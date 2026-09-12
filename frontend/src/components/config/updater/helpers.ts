@@ -1,4 +1,3 @@
-
 import type { useI18n } from '../../../contexts/I18nContext'
 import type {
   SnapshotMeta,

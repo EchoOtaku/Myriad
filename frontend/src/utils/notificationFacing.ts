@@ -37,7 +37,7 @@ export function notificationFacingTitle(notification: AppNotification): string {
       return fill(t.noticeBrewNewItems, {
         name:
           name ||
-          notification.title.replace(/\s*·\s*\d+.*$/, '').trim() ||
+          notification.title.replace(/\s*·\s*\d.*$/, '').trim() ||
           'RSS',
         n:
           typeof notification.metadata?.new_count === 'number'
@@ -127,7 +127,7 @@ export function notificationFacingTitle(notification: AppNotification): string {
       n: leftoverBrewNew[2],
     })
   }
-  const leftoverHeartbeat = raw.match(/^定时任务:\s*(.+)$/)
+  const leftoverHeartbeat = raw.match(/^定时任务:\s*(\S.*)$/)
   if (leftoverHeartbeat) {
     return fill(t.noticeHeartbeatTask, { name: leftoverHeartbeat[1] })
   }

@@ -1,4 +1,3 @@
-
 import type { FooterCustomItem } from '../../utils/footerCustomLogic'
 import {
   FaGlobe,

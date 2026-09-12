@@ -3,6 +3,11 @@ import { describe, it } from 'node:test'
 import { formatMessage, getDefaultLocale } from '../i18n/index.ts'
 import { currentCopy } from '../i18n/localeCopy.ts'
 import { ApiError } from '../services/api.ts'
+import {
+  httpStatusMessage,
+  isUselessErrorText,
+  userFacingError,
+} from './userFacingError.ts'
 
 function fill(
   template: string,
@@ -10,11 +15,6 @@ function fill(
 ): string {
   return formatMessage(getDefaultLocale(), template, params)
 }
-import {
-  httpStatusMessage,
-  isUselessErrorText,
-  userFacingError,
-} from './userFacingError.ts'
 
 describe('userFacingError', () => {
   it('treats API Error: 500 and JSON dumps as useless', () => {

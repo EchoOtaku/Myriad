@@ -27,7 +27,7 @@ function fill(
   return formatMessage(getDefaultLocale(), template, params)
 }
 
-export type BrewpackCopy = {
+export interface BrewpackCopy {
   exportSuccess: string
   errorExportFailed: string
   importStepReading: string

@@ -36,20 +36,29 @@ bash scripts/extra/backup.sh backup --out /var/backups/myriad-20260101
 
 ## 恢复
 
+**支持范围：** 同一 compose 项目、运行中的 Postgres 角色口令与备份 `.env`
+的 `POSTGRES_PASSWORD` 相同。官方 compose 用该值初始化角色
+（`postgres://myriad:${POSTGRES_PASSWORD}@postgres:5432/myriad`）。
+
+**不支持：** 目标集群角色口令与备份不同。脚本在停写、覆盖 `.env`、
+`pg_restore` 之前拒绝，不会改口令、也不会重做 Postgres 初始化。要对齐口令，
+须先按部署文档把集群收成备份那套口令，再跑恢复。
+
 会覆盖当前库、数据卷和 `.env`。现有 `.env` 会先复制为 `.env.bak.restore`。
 
-顺序：停写 → 覆盖 `.env` → 恢复 Postgres → 恢复数据卷（没有卷则先建空卷）
-→ `compose up -d --force-recreate --no-deps backend`，让恢复后的 JWT /
-`DATABASE_URL` 进入新容器。中途失败会保持 backend 停止。空卷恢复路径尚未在
-空机器上做过整段实测。
+顺序：核对口令 → 停写 → 覆盖 `.env` → 恢复 Postgres → 恢复数据卷（没有卷
+则先建空卷）→ `compose up -d --force-recreate --no-deps backend` → 容器内
+探测 `/ready`。中途失败会保持 backend 停止。不要用前端 HTML 的 200 认定就绪。
+
+空数据卷与「目标口令不同」只做过脚本级演练（拒绝路径 / `volume create`），
+没有在真实库上做过破坏性恢复；账户、Tapp、形象文件与凭据可用性 uncertain。
 
 ```bash
 bash scripts/extra/backup.sh restore --from /var/backups/myriad-20260101
 ```
 
-恢复后检查 `/ready`（经 proxy 或直连 backend）。`/health` 只表示进程存活；
-不要用前端 HTML 的 200 认定就绪。业务字段看 `db_connected`（最近一次探测）、
-`migrations_applied`、`routes_full`、`storage_writable`。
+业务字段看 `db_connected`（最近一次探测）、`migrations_applied`、
+`routes_full`、`storage_writable`。
 
 ## 不要做的事
 

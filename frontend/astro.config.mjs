@@ -921,56 +921,60 @@ export default defineConfig({
         build: {
           rollupOptions: {
             output: {
-              manualChunks: (id) => {
-                // Keep React + React Router in one chunk so Router v7 cannot
-                // load before React Context and break hydration.
-                if (
-                  id.includes('node_modules/react/') ||
-                  id.includes('node_modules/react-dom/') ||
-                  id.includes('node_modules/react-router') ||
-                  id.includes('node_modules/@remix-run') ||
-                  // jsx-runtime ids may omit node_modules/react/ (pnpm / virtual).
-                  // Unclassified, Rolldown parks it in an arbitrary chunk
-                  // (observed: motion), so every JSX chunk statically depends
-                  // on the 124K motion chunk for 1KB of jsx-runtime.
-                  id.includes('jsx-runtime')
-                ) {
-                  return 'react-vendor'
-                }
-                if (
-                  id.includes('node_modules/chart.js') ||
-                  id.includes('node_modules/react-chartjs-2')
-                ) {
-                  return 'chart-vendor'
-                }
-                // motion-dom / motion-utils are separate packages whose paths
-                // also contain node_modules/motion. Merging them into `motion`
-                // would make shared helpers a static dep of the 124K chunk and
-                // break lazyMotion's dynamic load.
-                if (id.includes('node_modules/motion-utils')) {
-                  return 'motion-utils'
-                }
-                if (id.includes('node_modules/motion-dom')) {
-                  return 'motion-dom'
-                }
-                if (id.includes('node_modules/motion')) {
-                  return 'motion'
-                }
-                if (id.includes('node_modules/react-icons/fa6/')) {
-                  return 'icons-fa6'
-                }
-                if (id.includes('node_modules/react-icons/fa/')) {
-                  return 'icons-fa'
-                }
-                if (id.includes('node_modules/react-icons/si/')) {
-                  return 'icons-si'
-                }
-                if (id.includes('node_modules/react-icons')) {
-                  return 'icons-base'
-                }
-                if (id.includes('node_modules/axios')) {
-                  return 'axios'
-                }
+              codeSplitting: {
+                groups: [
+                  {
+                    // Claim React before other groups recursively capture their
+                    // dependencies. A manualChunks name alone lets Motion take
+                    // jsx-runtime and forces every JSX entry to load Motion.
+                    name: 'react-vendor',
+                    priority: 100,
+                    test: (id) =>
+                      id.includes('node_modules/react/') ||
+                      id.includes('node_modules/react-dom/') ||
+                      id.includes('node_modules/react-router') ||
+                      id.includes('node_modules/@remix-run') ||
+                      id.includes('jsx-runtime'),
+                  },
+                  {
+                    name: (id) => {
+                      if (
+                        id.includes('node_modules/chart.js') ||
+                        id.includes('node_modules/react-chartjs-2')
+                      ) {
+                        return 'chart-vendor'
+                      }
+                      // motion-dom / motion-utils are separate packages whose paths
+                      // also contain node_modules/motion. Merging them into `motion`
+                      // would make shared helpers a static dep of the 124K chunk and
+                      // break lazyMotion's dynamic load.
+                      if (id.includes('node_modules/motion-utils')) {
+                        return 'motion-utils'
+                      }
+                      if (id.includes('node_modules/motion-dom')) {
+                        return 'motion-dom'
+                      }
+                      if (id.includes('node_modules/motion')) {
+                        return 'motion-vendor'
+                      }
+                      if (id.includes('node_modules/react-icons/fa6/')) {
+                        return 'icons-fa6'
+                      }
+                      if (id.includes('node_modules/react-icons/fa/')) {
+                        return 'icons-fa'
+                      }
+                      if (id.includes('node_modules/react-icons/si/')) {
+                        return 'icons-si'
+                      }
+                      if (id.includes('node_modules/react-icons')) {
+                        return 'icons-base'
+                      }
+                      if (id.includes('node_modules/axios')) {
+                        return 'axios'
+                      }
+                    },
+                  },
+                ],
               },
               chunkFileNames: 'assets/[name]-[hash].js',
               entryFileNames: 'assets/[name]-[hash].js',

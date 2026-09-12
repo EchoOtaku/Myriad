@@ -356,7 +356,6 @@ export const AgentEngine: React.FC = () => {
     return null
   }, [messages])
 
-
   const startNewSession = useCallback(async () => {
     const current = getAgentPanelMode()
     if (current === 'chat') void stopAgoraConversation()
@@ -719,7 +718,6 @@ export const AgentEngine: React.FC = () => {
   useEffect(() => {
     setAgentSessionId(sessionId)
   }, [sessionId])
-
 
   const interruptCurrentTask = useCallback(async () => {
     const current = getAgentPanelMode()
@@ -1305,7 +1303,6 @@ export const AgentEngine: React.FC = () => {
   )
 
   createProgressHandlerRef.current = createProgressHandler
-
 
   const handleSend = useCallback(
     async (

@@ -1,3 +1,4 @@
+import type { APIRequestContext, Playwright } from '@playwright/test'
 /**
  * API integration smoke against a real backend + disposable Postgres.
  * Not a production-page UI end-to-end suite.
@@ -6,10 +7,10 @@
  * logout / grant rebind is not enforced.
  */
 import {
+
   expect,
+
   test,
-  type APIRequestContext,
-  type Playwright,
 } from '@playwright/test'
 
 const USER = 'smokeadmin'
@@ -235,8 +236,8 @@ test.describe.serial('business API smoke', () => {
     const oldDenied = await storageUsage(request, oldGrant.token ?? '')
     expect(
       oldDenied.status(),
-      'shrinking approved permissions must rebind the old grant',
-    ).toBe(403)
+      'install update revokes every prior grant; the old token is Invalid (401), not 403',
+    ).toBe(401)
 
     const newGrantRes = await request.post(`/api/tapps/${TAPP_ID}/runtime-grants`, {
       headers: { 'X-CSRF-Token': token },

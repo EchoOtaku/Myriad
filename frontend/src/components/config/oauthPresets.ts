@@ -1,4 +1,3 @@
-
 import type { OAuthProviderEntry } from '../../utils/oauthSettings'
 import { getOAuthIconAsset } from '../../utils/oauthIcons'
 

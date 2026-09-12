@@ -8,7 +8,7 @@ export function formatCompactNumber(n: number | undefined | null): string {
   return String(num)
 }
 
-type DiscordTakeLabels = {
+interface DiscordTakeLabels {
   discordRoleOwner: string
   discordRoleAdmin: string
   discordRoleMod: string

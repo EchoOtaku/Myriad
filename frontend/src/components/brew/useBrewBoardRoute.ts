@@ -1,14 +1,15 @@
 import type { BrewSource } from '../../types/brew'
-import type { BrewBoard, BrewViewMode } from './logic/board'
+import type { boardEntry, BrewBoard,
+  BrewViewMode } from './logic/board'
 
+import type { TopicNameKey } from './logic/topics'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  boardEntry,
   eatSearchKeys,
   resolveBoardParam,
   viewForBoardEntry,
 } from './logic/board'
-import { topicNameKey, type TopicNameKey } from './logic/topics'
+import { topicNameKey } from './logic/topics'
 
 export function useBrewBoardRoute(
   isAuthenticated: boolean,

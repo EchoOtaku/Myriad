@@ -881,7 +881,7 @@
   "advanced": "高级配置",
   "advancedDesc": "运行诊断、内存节约、出站代理、API 镜像、设置备份/恢复与危险操作",
   "memorySaverGroup": "内存",
-  "memorySaverGroupDesc": "在约 1 GB 内存的主机上降低并发内存占用。默认关闭时使用当前有界的均衡档；从旧版本升级会改变部分请求上限。",
+  "memorySaverGroupDesc": "在约 1 GB 内存的主机上降低并发内存占用。默认关闭时使用当前有界的均衡档；从旧版本升级会改变部分请求上限。",
   "memorySaver": "内存节约",
   "memorySaverHint": "在均衡档之上再收一档：分块并发、进程内缓存、连接池、密码哈希并发，以及视频/音频峰值。日常消息仍可用；大媒体请走分块传输，无损音频可能更早拒收。可用 MYRIAD_MEMORY_PROFILE 覆盖。连接池需重启后端后完全生效。",
   "agentOptions": "Agent",

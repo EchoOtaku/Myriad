@@ -1,4 +1,3 @@
-
 import { prefersReducedMotion, SETTINGS_DURATION_MS } from '../motion'
 
 export const GUIDE_PATH_ATTR = 'data-guide-path'

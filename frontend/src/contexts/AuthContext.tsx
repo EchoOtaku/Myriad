@@ -9,8 +9,8 @@ import {
   useRef,
   useState,
 } from 'react'
-import { isLocale } from '../i18n'
 import { API_URL } from '../config'
+import { isLocale } from '../i18n'
 import { isAuthMeHttpOk, parseAuthMeResponse } from '../utils/authMe'
 import { setKnownAuthState } from '../utils/authState'
 import { brewSubject, brewSubjectKey } from '../utils/brewSubject'

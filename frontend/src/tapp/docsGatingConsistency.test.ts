@@ -5,6 +5,7 @@ import { dirname, join, resolve } from 'node:path'
 import { describe, it } from 'node:test'
 
 import { fileURLToPath } from 'node:url'
+import { compileFunction } from 'node:vm'
 import { classifyWidgetLibraryKind } from '../components/widgetLibrarySearch.ts'
 import { PERMISSION_LEVELS } from './runtime/permissionConfig.ts'
 import {
@@ -559,7 +560,7 @@ describe('tapp docs gating consistency', () => {
       },
       documentElement: { style: { setProperty: () => undefined } },
     }
-    const run = new Function(
+    const run = compileFunction(pageSdk, [
       'window',
       'document',
       'crypto',
@@ -567,8 +568,7 @@ describe('tapp docs gating consistency', () => {
       'URL',
       'Blob',
       'atob',
-      pageSdk,
-    )
+    ])
     run(
       sandboxWindow,
       sandboxDocument,

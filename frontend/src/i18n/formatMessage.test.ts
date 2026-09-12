@@ -124,4 +124,12 @@ describe('formatMessage', () => {
       'Too many login attempts, please retry in 60 seconds',
     )
   })
+
+  it('I18n format binds ICU to the loaded bundle locale', () => {
+    const src = readFileSync(
+      new URL('../contexts/I18nContext.tsx', import.meta.url),
+      'utf8',
+    )
+    assert.match(src, /formatMessage\(bundle\?\.locale \?\? locale/)
+  })
 })

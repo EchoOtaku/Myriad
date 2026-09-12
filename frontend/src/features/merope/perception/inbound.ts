@@ -20,13 +20,13 @@ import {
   currentAgentMusicStatus,
   subscribeCurrentSong,
 } from '../../../contexts/currentSong'
+import { PERSONA_UPDATED_EVENT } from '../events'
 import {
   getVoicePresence,
   subscribeVoicePresence,
 } from '../speech/voicePresence'
 import { MAX_PERCEPTION_ITEMS } from './registry'
 import { subscribeForegroundSurface } from './surface'
-import { PERSONA_UPDATED_EVENT } from '../events'
 
 const MIN_INTERVAL_MS = 2000
 /** Not a think tick. */

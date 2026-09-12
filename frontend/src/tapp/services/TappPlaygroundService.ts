@@ -354,6 +354,7 @@ export async function generatePlaygroundProject(
           typeof error === 'object' &&
           '__streamUnavailable' in error
         ) {
+          // fall through to the one-shot generator
         } else if (
           error instanceof DOMException &&
           (error.name === 'AbortError' || error.name === 'TimeoutError')
@@ -367,6 +368,7 @@ export async function generatePlaygroundProject(
               error.message,
             ))
         ) {
+          // fall through to the one-shot generator
         } else {
           throw error
         }

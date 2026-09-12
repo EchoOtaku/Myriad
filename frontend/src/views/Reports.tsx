@@ -49,6 +49,7 @@ import {
   useResolvedTitleColor,
   useTitleFont,
 } from '../hooks/useTitleFont'
+import { hostLocaleHeaders } from '../i18n/hostLocaleHeaders'
 import { getCSRFToken } from '../utils/csrf'
 import { notifyHttpRateLimit } from '../utils/httpRateLimitToast'
 import { buildModulePageSeo } from '../utils/modulePageSeo'
@@ -70,6 +71,14 @@ import {
   REPORT_CAROUSEL_CSS_VARS,
   REPORT_STRIP_ALIGN_PAD,
 } from './reports/types'
+
+function jsonLocaleHeaders(csrfToken: string): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    'X-CSRF-Token': csrfToken,
+    ...hostLocaleHeaders(),
+  }
+}
 
 interface PlatformReport {
   platform: string
@@ -290,7 +299,7 @@ export default function Reports() {
     void preloadPlatformFaces(REPORT_PLATFORM_IDS).catch(() => {})
   }, [])
 
-  const { t, locale, format } = useI18n()
+  const { t, format } = useI18n()
   const { preferences: moduleVisibility } = useModuleVisibilityPreferences()
   const moduleOpenToAll = canAccessModuleVisibility(
     moduleVisibility.modules.reports,
@@ -629,12 +638,7 @@ export default function Reports() {
           `${API_URL}/api/profile/fetch-platform`,
           {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-CSRF-Token': csrfToken,
-              'X-Myriad-Locale': locale,
-              'Accept-Language': locale,
-            },
+            headers: jsonLocaleHeaders(csrfToken),
             credentials: 'include',
             body: JSON.stringify({ platform: platformId }),
           },
@@ -650,12 +654,7 @@ export default function Reports() {
 
       const response = await fetch(`${API_URL}/api/reports/platform`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken,
-          'X-Myriad-Locale': locale,
-          'Accept-Language': locale,
-        },
+        headers: jsonLocaleHeaders(csrfToken),
         credentials: 'include',
         body: JSON.stringify({ platforms: [platformId] }),
       })
@@ -728,7 +727,7 @@ export default function Reports() {
     } finally {
       setRefreshingStage(false)
     }
-  }, [stageReportData, mergePlatformReport, t.reportsPage, translatedPlatforms, showToastMessage, locale, format])
+  }, [stageReportData, mergePlatformReport, t.reportsPage, translatedPlatforms, showToastMessage, format])
 
   const {
     isAdmin: authIsAdmin,
@@ -851,12 +850,7 @@ export default function Reports() {
             `${API_URL}/api/profile/fetch-platform`,
             {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': csrfToken,
-                'X-Myriad-Locale': locale,
-                'Accept-Language': locale,
-              },
+              headers: jsonLocaleHeaders(csrfToken),
               credentials: 'include',
               body: JSON.stringify({ platform: platformId }),
             },
@@ -886,12 +880,7 @@ export default function Reports() {
 
         const response = await fetch(`${API_URL}/api/reports/platform`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': csrfToken,
-            'X-Myriad-Locale': locale,
-            'Accept-Language': locale,
-          },
+          headers: jsonLocaleHeaders(csrfToken),
           credentials: 'include',
           body: JSON.stringify({ platforms: [platformId] }),
         })
@@ -971,7 +960,7 @@ export default function Reports() {
         setLoadingPlatform(null)
       }
     },
-    [t.reportsPage, translatedPlatforms, mergePlatformReport, showToastMessage, locale, format],
+    [t.reportsPage, translatedPlatforms, mergePlatformReport, showToastMessage, format],
   )
 
   return (

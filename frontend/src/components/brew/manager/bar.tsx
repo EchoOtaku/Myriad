@@ -31,9 +31,9 @@ import { useEffect, useRef, useState } from 'react'
 
 import { useI18n } from '../../../contexts/I18nContext'
 import { BREW_SHORTCUTS } from '../../../hooks/useBrewKeyboard'
-import { Spinner } from '../../Spinner'
 import { SettingGuideBody } from '../../settings/guides/SettingGuideBody'
 import { SettingTitleGuideEntry } from '../../settings/SettingTitleGuideEntry'
+import { Spinner } from '../../Spinner'
 
 import { refreshableSourceCount } from '../logic/board'
 import {

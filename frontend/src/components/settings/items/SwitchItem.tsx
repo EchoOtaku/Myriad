@@ -1,4 +1,3 @@
-
 import type { SwitchSettingConfig } from '../types'
 import React, { useCallback } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'

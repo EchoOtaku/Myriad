@@ -2,7 +2,7 @@ import type { Locale } from './locales'
 
 const SIMPLE_TOKEN = /\{(\w+)\}/g
 const PLURAL_TOKEN =
-  /\{(\w+),\s*plural\s*,((?:[^{}]+|\{[^{}]*\})+)\}/g
+  /\{(\w+),\s*plural\s*,((?:[^{}]|\{[^{}]*\})+)\}/g
 
 function pluralCategory(locale: Locale, count: number): string {
   try {
@@ -14,10 +14,11 @@ function pluralCategory(locale: Locale, count: number): string {
 
 function pickPluralBranch(body: string, locale: Locale, count: number): string {
   const branches = new Map<string, string>()
-  const re = /(=[0-9]+|zero|one|two|few|many|other)\s*\{([^{}]*)\}/g
-  let match: RegExpExecArray | null
-  while ((match = re.exec(body))) {
+  const re = /(=\d+|zero|one|two|few|many|other)\s*\{([^{}]*)\}/g
+  let match = re.exec(body)
+  while (match) {
     branches.set(match[1], match[2])
+    match = re.exec(body)
   }
   const exact = branches.get(`=${count}`)
   if (exact != null) return exact

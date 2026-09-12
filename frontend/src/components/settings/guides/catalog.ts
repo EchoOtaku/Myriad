@@ -1,13 +1,13 @@
 import type { Locale } from '../../../i18n'
-import { createLocaleLoader } from '../../../i18n/createLocaleLoader'
 import type { SettingGuidesCatalog } from './types'
-import en from './catalog.en.json'
+import { createLocaleLoader } from '../../../i18n/createLocaleLoader'
+import en from './catalog.en-US.json'
 
 const loader = createLocaleLoader<SettingGuidesCatalog>({
-  'zh-CN': () => import('./catalog.zh.json').then((m) => m.default),
+  'zh-CN': () => import('./catalog.zh-CN.json').then((m) => m.default),
   'zh-TW': () => import('./catalog.zh-TW.json').then((m) => m.default),
   'en-US': async () => en,
-  'ja-JP': () => import('./catalog.ja.json').then((m) => m.default),
+  'ja-JP': () => import('./catalog.ja-JP.json').then((m) => m.default),
 })
 loader.seed('en-US', en)
 
