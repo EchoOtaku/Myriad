@@ -73,6 +73,9 @@ for (const [index, root] of fullAssets.entries()) {
     expect(result.lateMusicFrames).toBe(0)
     expect(result.thinkingFrames).toBeGreaterThan(60)
     expect(result.speechFrames).toBeGreaterThan(90)
+    expect(result.naturalSpeechEnd).toBeGreaterThan(19)
+    expect(result.naturalSpeechEnd).toBeLessThan(20)
+    expect(result.phases.finalIdle.mouth).toBeLessThan(0.01)
     expect(result.touchFrames).toBeGreaterThan(20)
     expect(result.phases.speechTouch.mouth).toBeGreaterThan(0.15)
     for (const phase of ['music', 'afterMusic', 'finalIdle']) {

@@ -16,6 +16,7 @@ const sharedSource = readFileSync(
 
 function applyFirstPaint(options: {
   stored?: string | null
+  siteMetadata?: string | null
   cookie?: string
   languages?: string[]
   language?: string
@@ -34,8 +35,10 @@ function applyFirstPaint(options: {
   const documentElement = { lang: 'en-US' }
   const sandbox = createContext({
     localStorage: {
-      getItem() {
-        return options.stored ?? null
+      getItem(key: string) {
+        if (key === 'locale') return options.stored ?? null
+        if (key === 'site_metadata') return options.siteMetadata ?? null
+        return null
       },
     },
     document: {
@@ -104,5 +107,14 @@ describe('localeLangInlineScript', () => {
     const painted = applyFirstPaint({ stored: 'ko-KR' })
     assert.equal(painted.lang, 'ko-KR')
     assert.match(painted.title ?? '', /만천/)
+  })
+
+  it('does not replace the default title when site_metadata already has a title', () => {
+    const painted = applyFirstPaint({
+      stored: 'zh-CN',
+      siteMetadata: JSON.stringify({ site_title: 'Kiseki' }),
+    })
+    assert.equal(painted.lang, 'zh-CN')
+    assert.equal(painted.title, LOCALE_LANG_DEFAULT_TITLE)
   })
 })

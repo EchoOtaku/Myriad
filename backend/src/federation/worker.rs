@@ -29,6 +29,9 @@ fn connection_options(url: &str) -> ConnectOptions {
                 ("statement_timeout", "10000"),
                 ("lock_timeout", "3000"),
                 ("idle_in_transaction_session_timeout", "10000"),
+                ("transaction_timeout", "15000"),
+                ("work_mem", "4MB"),
+                ("max_parallel_workers_per_gather", "0"),
             ])
         });
     options
@@ -48,6 +51,7 @@ pub async fn run() -> anyhow::Result<()> {
     );
     *crate::GLOBAL_CONFIG.write().await = config.clone();
     let db = Database::connect(connection_options(&config.database_url)).await?;
+    crate::db::worker_policy::verify(&db, crate::db::worker_policy::WorkerKind::Federation).await?;
     // The web process owns migrations. Starting a worker against an incomplete
     // deployment fails before the first claim; the supervisor can retry later.
     let drift = crate::db::schema_check::report_schema_drift(&db).await?;

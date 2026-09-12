@@ -26,6 +26,8 @@ services:
     logging:
       driver: json-file
       options: {max-size: "10m", max-file: "2"}
+    ulimits:
+      nofile: {soft: 1024, hard: 1024}
     mem_limit: 256m
     memswap_limit: 256m
     cpus: 0.5
@@ -51,6 +53,8 @@ services:
     logging:
       driver: json-file
       options: {max-size: "10m", max-file: "2"}
+    ulimits:
+      nofile: {soft: 1024, hard: 1024}
     mem_limit: 256m
     memswap_limit: 256m
     cpus: 0.5

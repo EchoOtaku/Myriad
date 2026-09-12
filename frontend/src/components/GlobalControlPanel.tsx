@@ -90,7 +90,7 @@ import {
   showsPanelContent,
   showsProgressUi,
 } from './ControlPanel/panelTransition'
-import { LanguageSwitch } from './ControlPanel/LanguageSwitch'
+import { ControlQuickActions } from './ControlPanel/ControlQuickActions'
 import { UserSection } from './ControlPanel/UserSection'
 import { isHoverCapablePointer } from './ControlPanel/widgetCarousel'
 import NotificationPanelList from './NotificationPanelList'
@@ -128,16 +128,6 @@ const GREETING_ICON_ASSETS = {
   cloudSun: WEATHER_ICON_ASSETS.partlyCloudy,
   sunset: '/icons/greeting/sunset.webp',
   moon: '/icons/greeting/night.webp',
-} as const
-
-const CONTROL_PANEL_ICON_ASSETS = {
-  appearanceLight: WEATHER_ICON_ASSETS.sunny,
-  appearanceDark: GREETING_ICON_ASSETS.moon,
-  animationStandard: '/icons/control-panel/animation-standard.webp',
-  animationLight: '/icons/control-panel/animation-light.webp',
-  language: '/icons/control-panel/language.webp',
-  wallpaper: '/icons/control-panel/wallpaper.webp',
-  config: '/icons/control-panel/config.webp',
 } as const
 
 const DYNAMIC_ICON_ASSETS = {
@@ -497,9 +487,6 @@ const GlobalControlPanel: React.FC = () => {
   const effectiveAnimationLevel =
     animPreference === 'auto' ? anim.level : animPreference
   const isStandardAnimation = effectiveAnimationLevel === 'standard'
-  const animationModeClass = isStandardAnimation
-    ? 'performance-standard'
-    : 'performance-light'
 
   // layout effect 在同一次提交内、早于测量 effect 同步镜像。
   useLayoutEffect(() => {
@@ -1223,6 +1210,10 @@ const GlobalControlPanel: React.FC = () => {
     [collapsePanel, navigate],
   )
 
+  const handleOpenConfig = useCallback(() => {
+    handleNavigateFromPanel('/config')
+  }, [handleNavigateFromPanel])
+
   const handleOpenNotifSession = useCallback(
     (sessionId: string, opts?: { runId?: string; taskId?: string }) => {
       handleClosePanel()
@@ -1725,185 +1716,22 @@ const GlobalControlPanel: React.FC = () => {
                     />
                   </Suspense>
 
-                  <div className="control-items-grid">
-                    <div className="control-item control-item-compact">
-                      <div className="control-item-info">
-                        <div className="control-item-icon icon-theme">
-                          <WeatherAssetIcon
-                            icon={
-                              isDark
-                                ? CONTROL_PANEL_ICON_ASSETS.appearanceDark
-                                : CONTROL_PANEL_ICON_ASSETS.appearanceLight
-                            }
-                            className="h-full w-full object-contain"
-                          />
-                        </div>
-                        <div>
-                          <h4 className="control-item-title">
-                            {t.controlPanel.appearance}
-                          </h4>
-                          <p className="control-item-desc">
-                            {themePreference === 'auto'
-                              ? t.controlPanel.auto
-                              : themePreference === 'dark'
-                                ? t.controlPanel.dark
-                                : t.controlPanel.light}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={cycleTheme}
-                        className="control-action-btn"
-                        aria-label={t.controlPanel.themeSwitch}
-                      >
-                        <svg
-                          className="w-5 h-5"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-
-                    <div className="control-item control-item-compact">
-                      <div className="control-item-info">
-                        <div
-                          className={`control-item-icon icon-performance ${animationModeClass}`}
-                        >
-                          <WeatherAssetIcon
-                            icon={
-                              isStandardAnimation
-                                ? CONTROL_PANEL_ICON_ASSETS.animationStandard
-                                : CONTROL_PANEL_ICON_ASSETS.animationLight
-                            }
-                            className="h-full w-full object-contain"
-                          />
-                        </div>
-                        <div>
-                          <h4 className="control-item-title">
-                            {t.controlPanel.animation}
-                          </h4>
-                          <p className="control-item-desc">
-                            {animPreference === 'auto'
-                              ? anim.level === 'standard'
-                                ? t.controlPanel.highPerformance
-                                : t.controlPanel.lowPerformance
-                              : animPreference === 'light'
-                                ? t.controlPanel.lowPerformance
-                                : t.controlPanel.highPerformance}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={togglePerformanceMode}
-                        className={`control-toggle animation-toggle ${animationModeClass} ${isStandardAnimation ? 'active' : ''}`}
-                        aria-label={t.controlPanel.animation}
-                      >
-                        <span className="control-toggle-slider"></span>
-                      </button>
-                    </div>
-
-                    <LanguageSwitch
-                      locale={locale}
-                      labels={t.controlPanel}
-                      title={t.controlPanel.language}
-                      ariaLabel={t.controlPanel.languageSwitch}
-                      onChange={setLocale}
-                      icon={
-                        <WeatherAssetIcon
-                          icon={CONTROL_PANEL_ICON_ASSETS.language}
-                          className="h-full w-full object-contain"
-                        />
-                      }
-                    />
-
-                    {canRefreshWallpaper && (
-                      <div className="control-item control-item-compact">
-                        <div className="control-item-info">
-                          <div className="control-item-icon icon-wallpaper">
-                            <WeatherAssetIcon
-                              icon={CONTROL_PANEL_ICON_ASSETS.wallpaper}
-                              className="h-full w-full object-contain"
-                            />
-                          </div>
-                          <div>
-                            <h4 className="control-item-title">
-                              {t.controlPanel.wallpaper}
-                            </h4>
-                            <p className="control-item-desc">
-                              {t.controlPanel.random}
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={refreshWallpaper}
-                          className="control-action-btn"
-                          aria-label={t.controlPanel.wallpaperSwitch}
-                        >
-                          <svg
-                            className="w-5 h-5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                    )}
-
-                    {user?.is_admin && (
-                      <div className="control-item control-item-compact">
-                        <div className="control-item-info">
-                          <div className="control-item-icon icon-config">
-                            <WeatherAssetIcon
-                              icon={CONTROL_PANEL_ICON_ASSETS.config}
-                              className="h-full w-full object-contain"
-                            />
-                          </div>
-                          <div>
-                            <h4 className="control-item-title">
-                              {t.controlPanel.configuration}
-                            </h4>
-                            <p className="control-item-desc">
-                              {t.controlPanel.system}
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleNavigateFromPanel('/config')}
-                          className="control-action-btn"
-                          aria-label={t.controlPanel.configuration}
-                        >
-                          <svg
-                            className="w-5 h-5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M13 7l5 5m0 0l-5 5m5-5H6"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  <ControlQuickActions
+                    locale={locale}
+                    labels={t.controlPanel}
+                    onLocaleChange={setLocale}
+                    isDark={isDark}
+                    themePreference={themePreference}
+                    onCycleTheme={cycleTheme}
+                    animPreference={animPreference}
+                    animLevel={anim.level}
+                    isStandardAnimation={isStandardAnimation}
+                    onToggleAnimation={togglePerformanceMode}
+                    canRefreshWallpaper={canRefreshWallpaper}
+                    onRefreshWallpaper={refreshWallpaper}
+                    isAdmin={!!user?.is_admin}
+                    onOpenConfig={handleOpenConfig}
+                  />
                 </div>
 
                 {/* 通知层 inset:0 跟高；首次进入后保持挂载，tab 往返交叉淡入；收起才卸载。 */}

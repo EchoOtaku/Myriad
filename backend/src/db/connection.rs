@@ -202,7 +202,13 @@ pub async fn establish_connection(database_url: &str) -> Result<DatabaseConnecti
         .acquire_timeout(Duration::from_secs(10)) // 获取连接超时
         .idle_timeout(Duration::from_secs(300)) // 空闲连接超时（5分钟）
         .max_lifetime(Duration::from_secs(3600)) // 连接最大存活时间（1小时）
-        .sqlx_logging(false); // 关闭 SQL 日志
+        .sqlx_logging(false) // 关闭 SQL 日志
+        .map_sqlx_postgres_opts(|opts| {
+            opts.application_name("myriad-web").options([
+                ("lock_timeout", "1000"),
+                ("idle_in_transaction_session_timeout", "10000"),
+            ])
+        });
 
     let db = Database::connect(opt).await?;
     Ok(db)

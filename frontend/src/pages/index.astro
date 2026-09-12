@@ -3,6 +3,7 @@ import { Font } from 'astro:assets'
 import MachineReadableMetadata from '@components/MachineReadableMetadata.astro'
 import NoScriptFallback from '@components/NoScriptFallback.astro'
 import LocaleLang from '@components/LocaleLang.astro'
+import SiteBrandingBoot from '@components/SiteBrandingBoot.astro'
 import PageLoader from '@components/PageLoader.astro'
 import StripSpaQuery from '@components/StripSpaQuery.astro'
 import App from '../App'
@@ -34,6 +35,7 @@ const myriadCommit = import.meta.env.PUBLIC_MYRIAD_COMMIT_SHA || ''
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Myriad" />
     <title>{title}</title>
+    <SiteBrandingBoot />
 
     <meta name="referrer" content="strict-origin-when-cross-origin" />
 

@@ -190,7 +190,12 @@ describe('configuration domain lifecycle', () => {
       ready: true,
       persist: async (value: number) => value,
       effects: () => [
-        { id: 'runtime', run: () => { refreshed.push('runtime') } },
+        {
+          id: 'runtime',
+          run: () => {
+            refreshed.push('runtime')
+          },
+        },
         {
           id: 'speech',
           after: ['runtime'],
@@ -202,13 +207,19 @@ describe('configuration domain lifecycle', () => {
       ],
     }))
     domain.setDraft(1)
-    const first = await executeConfigOperations([domain], [domain.prepareSave()!])
+    const first = await executeConfigOperations(
+      [domain],
+      [domain.prepareSave()!],
+    )
     assert.equal(first.errors.length, 1)
     assert.deepEqual(refreshed, ['runtime', 'speech'])
     fail = false
     refreshed.length = 0
     domain.setDraft(2)
-    const second = await executeConfigOperations([domain], [domain.prepareSave()!])
+    const second = await executeConfigOperations(
+      [domain],
+      [domain.prepareSave()!],
+    )
     assert.equal(second.errors.length, 0)
     assert.deepEqual(refreshed, ['runtime', 'speech'])
     assert.equal(domain.getSnapshot().pendingSync, false)
@@ -226,7 +237,10 @@ describe('configuration domain lifecycle', () => {
       ],
     }))
     domain.setDraft(1)
-    const result = await executeConfigOperations([domain], [domain.prepareSave()!])
+    const result = await executeConfigOperations(
+      [domain],
+      [domain.prepareSave()!],
+    )
     assert.equal(result.errors.length, 1)
     assert.equal(domain.getSnapshot().pendingSync, true)
   })

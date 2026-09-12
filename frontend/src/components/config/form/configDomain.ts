@@ -233,15 +233,29 @@ export function createConfigDomain<T>(
     flushEffects: async () => {
       if (pending.size === 0) return []
       const errors: unknown[] = []
-      for (const [id, effect] of pending) {
-        if (effect.after?.some((dependency) => pending.has(dependency)))
-          continue
+      const attempted = new Set<string>()
+      // Retried effects keep their Map position. A newly queued prerequisite
+      // can appear later, so revisit dependents after each successful refresh.
+      while (true) {
+        const runnable = [...pending].find(
+          ([id, effect]) =>
+            !attempted.has(id) &&
+            !effect.after?.some((dependency) => pending.has(dependency)),
+        )
+        if (!runnable) break
+        const [id, effect] = runnable
+        attempted.add(id)
         try {
           await effect.run()
           if (pending.get(id) === effect) pending.delete(id)
         } catch (error) {
           errors.push(error)
         }
+      }
+      if (pending.size > 0 && errors.length === 0) {
+        errors.push(
+          new Error('Configuration refresh dependencies could not be resolved'),
+        )
       }
       publish({})
       return errors

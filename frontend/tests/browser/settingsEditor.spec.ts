@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 
 interface SettingsFixture {
   bagEffectIds: () => { id: string; after?: string[] }[]
+  refreshSpeech: () => Promise<void>
   writes: string[]
   refreshes: string[]
   failSecond: (value: boolean) => void
@@ -17,7 +18,9 @@ declare global {
 }
 
 test.beforeEach(async ({ page }, testInfo) => {
-  const query = testInfo.title.startsWith('an unavailable independent domain') ? '?failedLoad=1' : ''
+  const query = testInfo.title.startsWith('an unavailable independent domain')
+    ? '?failedLoad=1'
+    : ''
   await page.goto(`/settingsEditor.html${query}`)
   await expect(page.getByLabel('First', { exact: true })).toHaveValue('saved')
 })
@@ -142,4 +145,31 @@ test('an unavailable independent domain does not block saving a loaded page', as
       window.settingsFixture.writes.map((value) => value.split(':')[0]),
     ),
   ).toEqual(['first'])
+})
+
+test('the real bag speech refresh rejects an unavailable status and accepts a disabled status on retry', async ({
+  page,
+}) => {
+  let requests = 0
+  await page.route('**/api/speech/status', async (route) => {
+    requests++
+    await route.fulfill({
+      status: requests === 1 ? 503 : 200,
+      contentType: 'application/json',
+      body: JSON.stringify(
+        requests === 1
+          ? { error: 'Speech status unavailable' }
+          : {
+              available: true,
+              tts_enabled: true,
+              persona_speech_enabled: false,
+            },
+      ),
+    })
+  })
+  await expect(
+    page.evaluate(() => window.settingsFixture.refreshSpeech()),
+  ).rejects.toThrow()
+  await page.evaluate(() => window.settingsFixture.refreshSpeech())
+  expect(requests).toBe(2)
 })

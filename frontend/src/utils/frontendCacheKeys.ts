@@ -1,3 +1,8 @@
+import {
+  SITE_METADATA_CACHE_KEY,
+  SITE_METADATA_CACHE_TIME_KEY,
+} from './siteMetadataKeys'
+
 /** Prefs whitelist (not cache). */
 export const PRESERVE_LOCAL_KEYS = new Set([
   'theme',
@@ -17,8 +22,8 @@ export const KNOWN_LOCAL_CACHE_KEYS = [
   'myriad_profile_display_cache_time',
   'myriad_wallpaper_color_cache_v5',
   'wallpaperColorCache',
-  'site_metadata',
-  'site_metadata_time',
+  SITE_METADATA_CACHE_KEY,
+  SITE_METADATA_CACHE_TIME_KEY,
   'quote_cache',
   'quote_cache_time',
   'quote_cache_source',

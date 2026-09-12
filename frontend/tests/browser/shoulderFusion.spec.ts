@@ -328,20 +328,33 @@ test('real high collar retains its aperture and does not become a skin contact',
       player.updateSprings(1 / 60)
       player.deform()
       if (!clip.deformed.every(Number.isFinite)) throw new Error('Invalid collar aperture geometry')
+      player.uploadGeometry()
       for (let i = 0; i < initial.length; i++) excursion = Math.max(excursion, Math.abs(clip.deformed[i] - initial[i]))
     }
     player.draw()
     const screenshot = player.gl.canvas.toDataURL('image/png').split(',')[1]
+    let uploadedError = 0
+    // A high collar draws the aperture mesh instead of the retired neck grid.
+    for (const layer of [clip, ...protectedLayers]) {
+      if (!layer.vertexBuffer) continue
+      const uploaded = new Float32Array(layer.deformed.length)
+      player.gl.bindBuffer(player.gl.ARRAY_BUFFER, layer.vertexBuffer)
+      player.gl.getBufferSubData(player.gl.ARRAY_BUFFER, 0, uploaded)
+      for (let i = 0; i < uploaded.length; i++) uploadedError = Math.max(uploadedError, Math.abs(uploaded[i] - layer.deformed[i]))
+    }
+    player.gl.bindBuffer(player.gl.ARRAY_BUFFER, null)
     const error = player.gl.getError()
     player.dispose()
-    return { roles, contacts, sleeves: sleeves.length, unchangedSleeves, excursion, screenshot, error }
+    return { roles, contacts, sleeves: sleeves.length, unchangedSleeves, excursion, uploadedError, screenshot, error }
   }, { manifest, modules })
   expect(result.roles).toEqual(expect.arrayContaining(['neck', 'collar-front', 'collar-back']))
   expect(result.contacts).toBe(0)
   expect(result.sleeves).toBe(2)
   expect(result.unchangedSleeves).toBe(true)
   expect(result.excursion).toBeGreaterThan(1)
+  expect(result.uploadedError).toBeLessThan(0.0001)
   expect(result.error).toBe(0)
+  await testInfo.attach('collar-upload-metrics', { body: JSON.stringify({ uploadedError: result.uploadedError, excursion: result.excursion }), contentType: 'application/json' })
   await testInfo.attach('real-high-collar', { body: Buffer.from(result.screenshot, 'base64'), contentType: 'image/png' })
 })
 

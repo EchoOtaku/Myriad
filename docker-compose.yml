@@ -135,6 +135,8 @@ services:
       # one-shot initializer. Do not redirect these to the container layer.
       DATA_DIR: /app/data
       CACHE_DIR: /app/cache
+      PERSONA_DB_PASSWORD: ${PERSONA_DB_PASSWORD:?Run deploy.sh to generate worker DB passwords}
+      FEDERATION_DB_PASSWORD: ${FEDERATION_DB_PASSWORD:?Run deploy.sh to generate worker DB passwords}
       JWT_SECRET: ${JWT_SECRET}
       # Official compose always writes DATABASE_URL, so setup writes must match
       # this passphrase. deploy.sh / the generator fill host .env if empty.
@@ -215,7 +217,7 @@ services:
     pids_limit: 64
     environment:
       MYRIAD_PROCESS_ROLE: federation-worker
-      DATABASE_URL: postgres://myriad:${POSTGRES_PASSWORD}@postgres:5432/myriad
+      DATABASE_URL: postgres://myriad_federation:${FEDERATION_DB_PASSWORD:?Run deploy.sh to generate worker DB passwords}@postgres:5432/myriad
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 1103
       DATA_DIR: /app/data
@@ -273,7 +275,7 @@ services:
     pids_limit: 64
     environment:
       MYRIAD_PROCESS_ROLE: persona-worker
-      DATABASE_URL: postgres://myriad:${POSTGRES_PASSWORD}@postgres:5432/myriad
+      DATABASE_URL: postgres://myriad_persona:${PERSONA_DB_PASSWORD:?Run deploy.sh to generate worker DB passwords}@postgres:5432/myriad
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 1103
       DATA_DIR: /app/data

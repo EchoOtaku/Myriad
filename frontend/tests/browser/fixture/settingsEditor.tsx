@@ -42,6 +42,40 @@ const source = {
   },
 }
 
+function changedBagEffects() {
+  const field = (key: string, value: string): ConfigField => ({
+    key,
+    value,
+    label: key,
+    field_type: 'text',
+    placeholder: '',
+    required: false,
+  })
+  const base: Config = {
+    platforms: [],
+    auto_fetch: { enabled: false, interval_hours: 24 },
+    ai_config: { config_fields: [] },
+    tripo_config: { config_fields: [] },
+    report_config: { config_fields: [] },
+    ui_config: {
+      config_fields: [
+        field('merope_enabled', 'false'),
+        field('wallpaper_url', 'old'),
+      ],
+    },
+  }
+  const next = {
+    ...base,
+    ui_config: {
+      config_fields: [
+        field('merope_enabled', 'true'),
+        field('wallpaper_url', 'new'),
+      ],
+    },
+  }
+  return configBagEffects(next, base)
+}
+
 function Editor() {
   const first = useConfigDomain({
     id: 'first',
@@ -89,41 +123,12 @@ function Editor() {
     settingsFixture: {
       writes,
       refreshes,
-      bagEffectIds: () => {
-        const field = (key: string, value: string): ConfigField => ({
-          key,
-          value,
-          label: key,
-          field_type: 'text',
-          placeholder: '',
-          required: false,
-        })
-        const base: Config = {
-          platforms: [],
-          auto_fetch: { enabled: false, interval_hours: 24 },
-          ai_config: { config_fields: [] },
-          tripo_config: { config_fields: [] },
-          report_config: { config_fields: [] },
-          ui_config: {
-            config_fields: [
-              field('merope_enabled', 'false'),
-              field('wallpaper_url', 'old'),
-            ],
-          },
-        }
-        const next = {
-          ...base,
-          ui_config: {
-            config_fields: [
-              field('merope_enabled', 'true'),
-              field('wallpaper_url', 'new'),
-            ],
-          },
-        }
-        return configBagEffects(next, base).map(({ id, after }) => ({
-          id,
-          after,
-        }))
+      bagEffectIds: () =>
+        changedBagEffects().map(({ id, after }) => ({ id, after })),
+      refreshSpeech: async () => {
+        await changedBagEffects()
+          .find((effect) => effect.id === 'speech')!
+          .run()
       },
       failSecond: (value: boolean) => {
         failSecond = value

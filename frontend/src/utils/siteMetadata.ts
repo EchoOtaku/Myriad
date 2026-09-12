@@ -5,6 +5,10 @@ import {
   sanitizeUmamiScriptUrl,
 } from './configUrlPolicy'
 import { configureGoogleAnalytics } from './googleAnalytics'
+import {
+  SITE_METADATA_CACHE_KEY,
+  SITE_METADATA_CACHE_TIME_KEY,
+} from './siteMetadataKeys'
 import { configureUmami } from './umamiAnalytics'
 
 export interface SiteMetadata {
@@ -33,31 +37,41 @@ const DEFAULT_METADATA: SiteMetadata = {
   umami_script_url: '',
 }
 
-const CACHE_KEY = 'site_metadata'
-const CACHE_TIME_KEY = 'site_metadata_time'
-const CACHE_DURATION = 5 * 60 * 1000 // 5 min
+const CACHE_DURATION = 5 * 60 * 1000 // 5 min; stale values still paint
 
-function getCachedMetadata(): SiteMetadata | null {
+function readStoredMetadata(): SiteMetadata | null {
   try {
-    const cached = localStorage.getItem(CACHE_KEY)
-    const cacheTime = localStorage.getItem(CACHE_TIME_KEY)
-
-    if (cached && cacheTime) {
-      const age = Date.now() - Number.parseInt(cacheTime)
-      if (age < CACHE_DURATION) {
-        return normalizeMetadata(JSON.parse(cached))
-      }
-    }
+    const cached = localStorage.getItem(SITE_METADATA_CACHE_KEY)
+    if (!cached) return null
+    return normalizeMetadata(JSON.parse(cached) as Partial<SiteMetadata>)
   } catch (error) {
     console.warn('[元数据] 读取缓存失败:', error)
+    return null
   }
+}
+
+function cacheIsFresh(): boolean {
+  try {
+    const cacheTime = localStorage.getItem(SITE_METADATA_CACHE_TIME_KEY)
+    if (!cacheTime) return false
+    return Date.now() - Number.parseInt(cacheTime, 10) < CACHE_DURATION
+  } catch {
+    return false
+  }
+}
+
+/** Fresh cache by default; `allowStale` keeps last-known title/icon for first paint. */
+function getCachedMetadata(allowStale = false): SiteMetadata | null {
+  const parsed = readStoredMetadata()
+  if (!parsed) return null
+  if (allowStale || cacheIsFresh()) return parsed
   return null
 }
 
 function cacheMetadata(metadata: SiteMetadata): void {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(metadata))
-    localStorage.setItem(CACHE_TIME_KEY, Date.now().toString())
+    localStorage.setItem(SITE_METADATA_CACHE_KEY, JSON.stringify(metadata))
+    localStorage.setItem(SITE_METADATA_CACHE_TIME_KEY, Date.now().toString())
   } catch (error) {
     console.warn('[元数据] 写入缓存失败:', error)
   }
@@ -394,6 +408,18 @@ function applyMetadata(metadata: SiteMetadata): void {
     })
 }
 
+/** Sync: last-known title/icon before usePageSeo can paint DEFAULT_METADATA. */
+export function applyStoredSiteMetadata(): void {
+  if (typeof window === 'undefined') return
+  const cached = getCachedMetadata(true)
+  if (!cached) return
+  baseMetadata = cached
+  updateFavicon(baseMetadata.site_favicon)
+  applyEffectiveSeo()
+}
+
+applyStoredSiteMetadata()
+
 let isInitialized = false
 let initPromise: Promise<void> | null = null
 
@@ -407,7 +433,7 @@ export async function initSiteMetadata(): Promise<void> {
   }
 
   initPromise = (async () => {
-    const cached = getCachedMetadata()
+    const cached = getCachedMetadata(true)
     if (cached) {
       applyMetadata(cached)
     }
@@ -418,8 +444,6 @@ export async function initSiteMetadata(): Promise<void> {
       if (!cached || JSON.stringify(cached) !== JSON.stringify(fetched)) {
         applyMetadata(fetched)
       }
-    } else if (!cached) {
-      applyMetadata(DEFAULT_METADATA)
     }
 
     isInitialized = true
@@ -430,15 +454,15 @@ export async function initSiteMetadata(): Promise<void> {
 }
 
 export async function refreshSiteMetadata(): Promise<void> {
-  localStorage.removeItem(CACHE_KEY)
-  localStorage.removeItem(CACHE_TIME_KEY)
+  localStorage.removeItem(SITE_METADATA_CACHE_KEY)
+  localStorage.removeItem(SITE_METADATA_CACHE_TIME_KEY)
   isInitialized = false
   initPromise = null
   await initSiteMetadata()
 }
 
 export function getCurrentMetadata(): SiteMetadata {
-  return getCachedMetadata() ?? baseMetadata ?? DEFAULT_METADATA
+  return getCachedMetadata(true) ?? baseMetadata ?? DEFAULT_METADATA
 }
 
 export function formatPageTitle(pageTitle: string): string {

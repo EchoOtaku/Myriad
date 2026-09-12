@@ -325,6 +325,8 @@ ensure_current_layout() {
     ensure_key GUARD_COMPOSE_PROJECT_NAME myriad
     ensure_update_token
     ensure_updater_gateway_secret
+    ensure_secret_key PERSONA_DB_PASSWORD
+    ensure_secret_key FEDERATION_DB_PASSWORD
     ensure_secret_key MYRIAD_SETUP_SECRET
     ensure_secret_key GUARD_SELF_UPDATE_TOKEN
 }

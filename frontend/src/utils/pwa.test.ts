@@ -10,12 +10,14 @@ import {
   clampPwaLogoScale,
   computeContainedLogoRect,
   DEFAULT_PWA_LOGO_SCALE,
+  fallbackManifestIcons,
   PWA_ICON_BACKGROUND,
   PWA_LOGO_SCALE_MAX,
   PWA_LOGO_SCALE_MIN,
   pwaIconIsCanvasReadable,
   resolveManifestUrl,
   resolvePwaIconSourceUrl,
+  SITE_ICON_API_PATH,
 } from './pwa'
 
 const TINY_PNG_DATA_URL =
@@ -175,7 +177,7 @@ describe('PWA logo compositing geometry', () => {
     assert.ok(Math.abs(rect.width - 96) < 0.001)
   })
 
-  it('dual-path: same-origin raw; hotlink CDNs proxy; other hosts stay original', () => {
+  it('dual-path: same-origin raw; hotlink CDNs proxy; other hosts use site-icon', () => {
     const origin = 'https://kiseki.blog'
     assert.equal(
       resolvePwaIconSourceUrl('/favicon.webp', origin),
@@ -187,7 +189,15 @@ describe('PWA logo compositing geometry', () => {
     )
     assert.equal(
       resolvePwaIconSourceUrl('https://cdn.example/logo.png', origin, ''),
-      'https://cdn.example/logo.png',
+      SITE_ICON_API_PATH,
+    )
+    assert.equal(
+      resolvePwaIconSourceUrl(
+        'https://api.fuukei.org/myriad/frontend/public/siteicon.ico',
+        origin,
+        'https://api.example',
+      ),
+      `https://api.example${SITE_ICON_API_PATH}`,
     )
     const bilibili = 'https://i0.hdslb.com/bfs/face/x.jpg'
     assert.equal(
@@ -226,5 +236,25 @@ describe('PWA logo compositing geometry', () => {
       pwaIconIsCanvasReadable('https://cdn.example/logo.png', origin),
       false,
     )
+    assert.equal(pwaIconIsCanvasReadable(SITE_ICON_API_PATH, origin), true)
+    assert.equal(
+      pwaIconIsCanvasReadable(`https://api.example${SITE_ICON_API_PATH}`, origin),
+      true,
+    )
+  })
+
+  it('keeps the site favicon in the manifest when compose cannot run', () => {
+    const origin = 'https://kiseki.blog'
+    const icons = fallbackManifestIcons(
+      'https://api.fuukei.org/myriad/frontend/public/siteicon.ico',
+      origin,
+    )
+    assert.equal(icons.length, 1)
+    assert.equal(
+      icons[0]?.src,
+      'https://api.fuukei.org/myriad/frontend/public/siteicon.ico',
+    )
+    assert.equal(icons[0]?.type, 'image/x-icon')
+    assert.equal(icons[0]?.purpose, 'any')
   })
 })

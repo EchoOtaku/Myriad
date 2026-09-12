@@ -60,7 +60,11 @@ export class SpeechPipelineHost {
   /** Invalidate status probes too: a late old-account response cannot re-enable TTS. */
   resetSubject(): void {
     this.cancel()
-    this.applyStatus({ available: false, tts_enabled: false, persona_speech_enabled: false })
+    this.applyStatus({
+      available: false,
+      tts_enabled: false,
+      persona_speech_enabled: false,
+    })
   }
 
   applyStatus(
@@ -78,12 +82,20 @@ export class SpeechPipelineHost {
     if (wasEnabled && !this.enabled) this.cancel()
   }
 
+  /** Explicit refreshes report request failures so settings can retry them. */
+  async refreshStatus(): Promise<boolean> {
+    const epoch = this.statusEpoch
+    const status = await getSpeechStatus()
+    if (this.statusEpoch !== epoch) return this.enabled
+    this.applyStatus(status)
+    return this.enabled
+  }
+
+  /** Startup probing is best effort; explicit refreshes use refreshStatus. */
   async probe(): Promise<boolean> {
     const epoch = this.statusEpoch
     try {
-      const status = await getSpeechStatus()
-      if (this.statusEpoch !== epoch) return this.enabled
-      this.applyStatus(status)
+      return await this.refreshStatus()
     } catch {
       if (this.statusEpoch !== epoch) return this.enabled
       this.applyStatus({

@@ -67,7 +67,11 @@ test('production feedback sends CSRF, captures fresh evidence and never sends af
   }
 })
 
-test('feedback is single-flight, bounded, nonblocking and cancelled with its round', async () => {
+test('feedback is single-flight, bounded, nonblocking and cancelled with its round', async (t) => {
+  // start() also samples this clock. Fixed check(10000) values can otherwise
+  // move backwards when a busy test worker takes >20s to import its modules.
+  let now = 30_000
+  t.mock.method(globalThis.performance, 'now', () => now)
   let finish!: () => void
   let count = 0
   let signal!: AbortSignal
@@ -88,15 +92,18 @@ test('feedback is single-flight, bounded, nonblocking and cancelled with its rou
     note: () => {},
   })
   client.start(scope)
-  client.check(10000)
+  now += 10_000
+  client.check()
   assert.equal(count, 1)
   finish()
   await flush()
-  client.check(20000)
+  now += 10_000
+  client.check()
   assert.equal(count, 2)
   finish()
   await flush()
-  client.check(20001)
+  now += 1
+  client.check()
   assert.equal(count, 2)
   client.stop()
   assert.equal(signal.aborted, true)

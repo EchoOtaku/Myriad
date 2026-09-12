@@ -422,6 +422,7 @@ pub(super) fn build_base_api_router(
             )),
         )
         .route("/api/config/metadata", get(api::config::get_site_metadata)) // 公开端点：网站元数据
+        .route("/api/config/site-icon", get(api::config::get_site_icon)) // 公开端点：站点图标字节（PWA 合成）
         .route("/api/config/public", get(api::config::get_public_config)) // 公开端点：平台公开信息（用于社交链接）
         .route("/api/config/ui", get(api::config::get_public_ui_config)) // 公开端点：UI 运行时（壁纸/动效/音乐/站点展示）
         // SEO：sitemap / robots / 公开 Tapp·Brew 摘要与爬虫 HTML 壳

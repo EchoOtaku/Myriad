@@ -13,20 +13,41 @@ export const AGENT_AI_FIELD_KEYS = new Set([
   'feishu_bot_app_secret',
 ])
 
+// Bag keys from api/config/build.rs, with factory values from DynamicConfig::default.
+// Credentials and optional source/model overrides reset to an empty value.
+const AI_FIELD_DEFAULTS: Readonly<Record<string, string>> = {
+  provider: 'openai',
+  gemini_model: 'gemini-3.6-flash',
+  openai_model: 'minimax/minimax-m3',
+  openai_base_url: 'https://openrouter.ai/api/v1',
+  lite_enabled: 'false',
+  lite_provider: 'openai',
+  lite_gemini_model: 'gemini-3.5-flash-lite',
+  lite_openai_model: 'openai/gpt-oss-20b:free',
+  lite_openai_base_url: 'https://openrouter.ai/api/v1',
+  pro_enabled: 'false',
+  pro_provider: 'openai',
+  pro_gemini_model: 'gemini-3.1-pro-preview',
+  pro_openai_model: 'anthropic/claude-opus-5',
+  pro_openai_base_url: 'https://openrouter.ai/api/v1',
+  ai_image_provider: 'openrouter',
+  ai_image_model: 'openai/gpt-image-2',
+  ai_image_openai_base_url: 'https://api.openai.com/v1',
+  ai_image_volcengine_base_url: 'https://ark.cn-beijing.volces.com/api/v3',
+  tencent_region: 'ap-guangzhou',
+  speech_provider: 'tencent',
+  speech_openai_base_url: 'https://api.openai.com/v1',
+  provider_openai_base_url: 'https://api.openai.com/v1',
+  provider_volcengine_base_url: 'https://ark.cn-beijing.volces.com/api/v3',
+  ai_vendor_sources: '[]',
+  qq_bot_enabled: 'false',
+  telegram_bot_enabled: 'false',
+  discord_bot_enabled: 'false',
+  feishu_bot_enabled: 'false',
+}
+
 export function defaultAiFieldValue(key: string): string {
-  if (key === 'model') return 'gemini-3.6-flash'
-  if (key === 'ai_image_provider') return 'openrouter'
-  if (key === 'ai_image_model') return 'openai/gpt-image-2'
-  if (key === 'ai_image_openai_base_url') return 'https://api.openai.com/v1'
-  if (key === 'ai_image_volcengine_base_url')
-    return 'https://ark.cn-beijing.volces.com/api/v3'
-  if (key === 'lite_enabled') return 'false'
-  if (key === 'lite_provider') return 'openai'
-  if (key === 'lite_openai_model') return 'openai/gpt-oss-20b:free'
-  if (key === 'lite_openai_base_url') return 'https://openrouter.ai/api/v1'
-  if (key === 'lite_gemini_model') return 'gemini-3.5-flash-lite'
-  if (key === 'pro_enabled') return 'false'
-  return ''
+  return Object.hasOwn(AI_FIELD_DEFAULTS, key) ? AI_FIELD_DEFAULTS[key] : ''
 }
 
 export function defaultTripoFieldValue(key: string): string {

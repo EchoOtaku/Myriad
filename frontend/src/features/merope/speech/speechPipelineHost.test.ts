@@ -1,8 +1,11 @@
 import type { MeropeSpeechEventDetail } from '../speechEvents'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import {
+  createConfigDomain,
+  executeConfigOperations,
+} from '../../../components/config/form/configDomain'
 import { invalidateSpeechStatusCache } from '../../../services/speechApi'
-import { createConfigDomain, executeConfigOperations } from '../../../components/config/form/configDomain'
 import {
   liveMotionGeneration,
   setLiveMotionGeneration,
@@ -181,14 +184,20 @@ test('targeted cancel does not overwrite a successor started synchronously by th
 })
 
 test('old status response cannot enable speech after subject reset', async (t) => {
+  invalidateSpeechStatusCache()
+  t.after(invalidateSpeechStatusCache)
   const result = Promise.withResolvers<Response>()
   t.mock.method(globalThis, 'fetch', () => result.promise)
   const host = new SpeechPipelineHost()
-  const pending = host.probe()
+  const pending = host.refreshStatus()
   host.resetSubject()
-  result.resolve(Response.json({
-    available: true, tts_enabled: true, persona_speech_enabled: true,
-  }))
+  result.resolve(
+    Response.json({
+      available: true,
+      tts_enabled: true,
+      persona_speech_enabled: true,
+    }),
+  )
   await pending
   assert.equal(host.available, false)
   assert.equal(host.speechEnabled, false)
@@ -201,7 +210,9 @@ test('settings status failures remain retryable without repeating a saved write'
   t.mock.method(globalThis, 'fetch', async () => {
     if (fail) throw new Error('status unavailable')
     return Response.json({
-      available: true, tts_enabled: true, persona_speech_enabled: true,
+      available: true,
+      tts_enabled: true,
+      persona_speech_enabled: true,
     })
   })
   const host = new SpeechPipelineHost()
@@ -209,15 +220,27 @@ test('settings status failures remain retryable without repeating a saved write'
   assert.equal(await host.probe(), false)
   let writes = 0
   const domain = createConfigDomain(() => ({
-    id: 'speech', initial: false, ready: true,
-    persist: async (value: boolean) => { writes++; return value },
-    effects: () => [{
-      id: 'speech',
-      run: async () => { await host.refreshStatus() },
-    }],
+    id: 'speech',
+    initial: false,
+    ready: true,
+    persist: async (value: boolean) => {
+      writes++
+      return value
+    },
+    effects: () => [
+      {
+        id: 'speech',
+        run: async () => {
+          await host.refreshStatus()
+        },
+      },
+    ],
   }))
   domain.setDraft(true)
-  const failed = await executeConfigOperations([domain], [domain.prepareSave()!])
+  const failed = await executeConfigOperations(
+    [domain],
+    [domain.prepareSave()!],
+  )
   assert.equal(failed.errors.length, 1)
   assert.equal(domain.getSnapshot().pendingSync, true)
   assert.equal(domain.getSnapshot().dirty, false)
@@ -231,9 +254,13 @@ test('settings status failures remain retryable without repeating a saved write'
 test('an explicitly disabled speech status is a successful refresh', async (t) => {
   invalidateSpeechStatusCache()
   t.after(invalidateSpeechStatusCache)
-  t.mock.method(globalThis, 'fetch', async () => Response.json({
-    available: true, tts_enabled: true, persona_speech_enabled: false,
-  }))
+  t.mock.method(globalThis, 'fetch', async () =>
+    Response.json({
+      available: true,
+      tts_enabled: true,
+      persona_speech_enabled: false,
+    }),
+  )
   const host = new SpeechPipelineHost()
   assert.equal(await host.refreshStatus(), false)
   assert.equal(host.speechEnabled, false)

@@ -348,6 +348,7 @@ async fn run_server(role: runtime_role::RuntimeRole) -> anyhow::Result<()> {
                 db::schema_check::ensure_schema(&db)
                     .await
                     .map_err(|error| startup_schema_error("Schema contract check", &error))?;
+                db::worker_policy::provision(&db).await?;
                 SCHEMA_READY.store(true, Ordering::Release);
 
                 // 站长画像快照兜底：平台画像 SQL 阶梯够不到，存量库补完列后需要算一次，

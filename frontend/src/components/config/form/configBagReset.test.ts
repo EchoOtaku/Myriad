@@ -114,11 +114,18 @@ describe('config bag reset ownership', () => {
     for (const scope of ['ai', 'all']) {
       const reset = resetConfigBag(initial, scope)!
       assert.ok(reset)
-      assert.deepEqual(Object.fromEntries(
-        reset.ai_config.config_fields.map(({ key, value }) => [key, value]),
-      ), expected)
+      assert.deepEqual(
+        Object.fromEntries(
+          reset.ai_config.config_fields.map(({ key, value }) => [key, value]),
+        ),
+        expected,
+      )
     }
-    assert.ok(initial.ai_config.config_fields.every((field) => field.value === 'custom'))
+    assert.ok(
+      initial.ai_config.config_fields.every(
+        (field) => field.value === 'custom',
+      ),
+    )
   })
   it('full reset preserves the separately managed site URL and the input snapshot', () => {
     const initial = config()

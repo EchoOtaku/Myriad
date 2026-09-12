@@ -560,6 +560,10 @@ html.dark .info-card-title {
   contain: layout;
 }
 
+.control-items-grid > .control-item {
+  contain: layout style;
+}
+
 .control-item {
   display: flex;
   align-items: center;

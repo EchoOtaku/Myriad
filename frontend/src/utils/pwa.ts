@@ -6,6 +6,7 @@ import { proxyImageUrl } from './proxyImageUrl'
 const SW_URL = '/sw.js'
 const MANIFEST_HREF = '/manifest.webmanifest'
 const APPLE_TOUCH_HREF = '/icons/pwa/icon-192.png'
+export const SITE_ICON_API_PATH = '/api/config/site-icon'
 
 export const PWA_ICON_BACKGROUND = '#ffffff'
 
@@ -245,7 +246,12 @@ export function computeContainedLogoRect(
   }
 }
 
-/** Hotlink CDNs via proxy (CORS); else original URL. */
+function siteIconEndpoint(apiBase = ''): string {
+  const base = apiBase.replaceAll(/\/$/g, '')
+  return base ? `${base}${SITE_ICON_API_PATH}` : SITE_ICON_API_PATH
+}
+
+/** Same-origin / data raw; hotlink CDNs via proxy; other hosts via site-icon. */
 export function resolvePwaIconSourceUrl(
   iconUrl: string,
   origin: string,
@@ -261,13 +267,15 @@ export function resolvePwaIconSourceUrl(
       return abs.href
     }
     const proxied = proxyImageUrl(abs.href)
-    if (!proxied) return abs.href
-    if (apiBase && proxied.includes('/api/proxy/image')) {
-      const base = apiBase.replaceAll(/\/$/g, '')
-      const q = proxied.indexOf('/api/proxy/image')
-      if (q >= 0) return `${base}${proxied.slice(q)}`
+    if (proxied && proxied.includes('/api/proxy/image')) {
+      if (apiBase) {
+        const base = apiBase.replaceAll(/\/$/g, '')
+        const q = proxied.indexOf('/api/proxy/image')
+        if (q >= 0) return `${base}${proxied.slice(q)}`
+      }
+      return proxied
     }
-    return proxied
+    return siteIconEndpoint(apiBase)
   } catch {
     return trimmed
   }
@@ -279,11 +287,51 @@ export function pwaIconIsCanvasReadable(src: string, origin: string): boolean {
   if (!trimmed) return false
   if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) return true
   if (trimmed.includes('/api/proxy/image')) return true
+  if (trimmed.includes(SITE_ICON_API_PATH)) return true
   try {
     return new URL(trimmed, origin).origin === new URL(origin).origin
   } catch {
     return false
   }
+}
+
+export function inferPwaIconMime(iconUrl: string): string | undefined {
+  if (iconUrl.startsWith('data:image/')) {
+    const match = /^data:(image\/[a-zA-Z0-9.+-]+)/.exec(iconUrl)
+    return match?.[1]
+  }
+  if (iconUrl.endsWith('.svg') || iconUrl.includes('.svg?')) return 'image/svg+xml'
+  if (iconUrl.endsWith('.webp') || iconUrl.includes('.webp?')) return 'image/webp'
+  if (iconUrl.endsWith('.png') || iconUrl.includes('.png?')) return 'image/png'
+  if (iconUrl.endsWith('.ico') || iconUrl.includes('.ico?')) return 'image/x-icon'
+  if (
+    iconUrl.endsWith('.jpg') ||
+    iconUrl.endsWith('.jpeg') ||
+    iconUrl.includes('.jpg?') ||
+    iconUrl.includes('.jpeg?')
+  ) {
+    return 'image/jpeg'
+  }
+  if (iconUrl.endsWith('.gif') || iconUrl.includes('.gif?')) return 'image/gif'
+  return undefined
+}
+
+/** When canvas compose fails, still point the manifest at the site icon. */
+export function fallbackManifestIcons(
+  iconUrl: string,
+  origin: string,
+): ManifestIcon[] {
+  const src = resolveManifestUrl(iconUrl, origin)
+  if (!src) return []
+  const type = inferPwaIconMime(iconUrl)
+  return [
+    {
+      src,
+      sizes: 'any',
+      ...(type ? { type } : {}),
+      purpose: 'any',
+    },
+  ]
 }
 
 type DrawableImage = CanvasImageSource & {
@@ -556,6 +604,12 @@ export function updateManifestBranding(options: {
         if (composed) {
           branded.icons = composed.icons
           setAppleTouchIconHref(composed.appleTouch)
+        } else {
+          const fallback = fallbackManifestIcons(iconUrl, origin)
+          if (fallback.length > 0) {
+            branded.icons = fallback
+            setAppleTouchIconHref(fallback[0]!.src as string)
+          }
         }
       }
 

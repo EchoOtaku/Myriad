@@ -62,6 +62,9 @@ services:
       MYRIAD_PROCESS_ROLE: web
       # Source of truth for DB connectivity — set in .env, do not hardcode stack DNS.
       DATABASE_URL: ${DATABASE_URL}
+      # Optional: let the migration login provision reserved worker roles.
+      PERSONA_DB_PASSWORD: ${PERSONA_DB_PASSWORD:-}
+      FEDERATION_DB_PASSWORD: ${FEDERATION_DB_PASSWORD:-}
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 1103
       DATA_DIR: /app/data
@@ -119,7 +122,7 @@ services:
     pids_limit: 64
     environment:
       MYRIAD_PROCESS_ROLE: federation-worker
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: ${FEDERATION_DATABASE_URL:?Set an independently provisioned worker role URL}
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 1103
       DATA_DIR: /app/data
@@ -177,7 +180,7 @@ services:
     pids_limit: 64
     environment:
       MYRIAD_PROCESS_ROLE: persona-worker
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: ${PERSONA_DATABASE_URL:?Set an independently provisioned worker role URL}
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 1103
       DATA_DIR: /app/data

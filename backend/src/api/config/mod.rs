@@ -13,6 +13,7 @@ mod platform_test;
 mod public_ui;
 mod save;
 mod secrets;
+mod site_icon;
 mod types;
 mod visibility;
 
@@ -25,5 +26,6 @@ pub use platform_test::test_platform;
 pub use public_ui::*;
 pub use save::*;
 pub use secrets::*;
+pub use site_icon::*;
 pub use types::*;
 pub use visibility::*;

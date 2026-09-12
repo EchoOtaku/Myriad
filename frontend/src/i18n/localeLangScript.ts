@@ -1,3 +1,4 @@
+import { SITE_METADATA_CACHE_KEY } from '../utils/siteMetadataKeys'
 import de from './de-DE.json' with { type: 'json' }
 import en from './en-US.json' with { type: 'json' }
 import fr from './fr-FR.json' with { type: 'json' }
@@ -35,6 +36,14 @@ export function localeLangInlineScript(sharedSource: string): string {
     const CHROME = ${JSON.stringify(CHROME)};
     let stored = null;
     try { stored = localStorage.getItem('locale'); } catch {}
+    let cachedSiteTitle = '';
+    try {
+      const raw = localStorage.getItem(${JSON.stringify(SITE_METADATA_CACHE_KEY)});
+      if (raw) {
+        const meta = JSON.parse(raw);
+        if (meta && typeof meta.site_title === 'string') cachedSiteTitle = meta.site_title.trim();
+      }
+    } catch {}
     const cookie = typeof document !== 'undefined' ? document.cookie : '';
     const navList =
       (typeof navigator !== 'undefined' && navigator.languages && navigator.languages.join(','))
@@ -44,7 +53,11 @@ export function localeLangInlineScript(sharedSource: string): string {
     document.documentElement.lang = htmlLang(lang);
     const chrome = CHROME[lang] || CHROME['en-US'];
     const titleEl = document.querySelector('title');
-    if (titleEl && (!titleEl.textContent || titleEl.textContent === DEFAULT_TITLE)) {
+    if (
+      titleEl &&
+      !cachedSiteTitle &&
+      (!titleEl.textContent || titleEl.textContent === DEFAULT_TITLE)
+    ) {
       titleEl.textContent = chrome.title;
     }
     const descEl = document.getElementById('meta-description');

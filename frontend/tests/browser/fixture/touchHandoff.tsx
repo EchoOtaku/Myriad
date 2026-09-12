@@ -138,6 +138,22 @@ function replayDefaultPerformance(
   start: number, setNow: (value: number) => void,
 ) {
   let now = start
+  // Advance the real lifecycle callbacks with the same clock as the renderer.
+  // Previously a forced cancel concealed whether a text utterance could finish.
+  const originalTimeout = window.setTimeout
+  const originalClearTimeout = window.clearTimeout
+  const timers = new Map<number, { atMs: number; run: () => void }>()
+  let timerId = 0
+  window.setTimeout = ((callback: TimerHandler, delay = 0, ...args: unknown[]) => {
+    if (typeof callback !== 'function') throw new Error('The replay only accepts function timers')
+    const id = --timerId
+    timers.set(id, { atMs: now + delay, run: () => callback(...args) })
+    return id
+  }) as typeof window.setTimeout
+  window.clearTimeout = ((id: number | undefined) => {
+    if (id !== undefined && id < 0) timers.delete(id)
+    else originalClearTimeout(id)
+  }) as typeof window.clearTimeout
   const coordinator = new RigMotionCoordinator()
   const audio = { paused: true, ended: false, currentTime: 0 }
   const music = new MusicMotionSource(coordinator, {
@@ -158,31 +174,41 @@ function replayDefaultPerformance(
   let previous = player.getCurrent()
   let maxStep = 0; let resets = 0; let musicFrames = 0; let touchFrames = 0
   let thinkingFrames = 0; let speechFrames = 0; let lateMusicFrames = 0
+  let naturalSpeechEnd: number | null = null
+  let speechWasActive = false
   music.setTrack({ trackId: 'default-scene', duration: 5 })
   runtime.mood.set(70, 'idle', 48)
   try {
     // Full source/runtime/component replay; motion is sampled at 30 Hz here.
-    // Explicit speech cancellation exercises interruption, not timer expiry.
-    for (let frame = 0; frame < 23 * 30; frame++) {
+    for (let frame = 0; frame < 26 * 30; frame++) {
       const seconds = frame / 30
       now = start + seconds * 1000
       setNow(now)
       const before = JSON.stringify(player.getCurrent())
+      for (let drained = 0; ; drained++) {
+        const due = [...timers.entries()].filter(([, timer]) => timer.atMs <= now)
+          .sort((a, b) => a[1].atMs - b[1].atMs)[0]
+        if (!due) break
+        if (drained >= 1000) throw new Error('Runaway lifecycle timer in replay')
+        timers.delete(due[0])
+        due[1].run()
+      }
       if (frame === 90) { audio.paused = false; music.setPlayback(true, false) }
       if (frame === 240) { audio.paused = true; audio.ended = true }
       audio.currentTime = Math.min(5, Math.max(0, seconds - 3))
       if (frame === 330) runtime.mood.set(70, 'thinking', 48)
       if (frame === 420) {
         runtime.mood.set(70, 'idle', 48)
-        dispatchMeropeSpeechUtterance({ ...speech, text: '这首歌让我想到了一些事情。嗯，你也有这样的感觉吗？我们可以慢慢聊。' })
+        dispatchMeropeSpeechUtterance({ ...speech, text: '这首歌真好听。我们慢慢聊吧。' })
       }
-      if (frame === 540) dispatchMeropeSpeech({ ...speech, phase: 'cancel' })
       const point = { pointerId: 1, atMs: now, x: 0.16 * Math.sin(seconds * 1.5), y: 0, region: 'hair' as const }
       if (frame === 450) runtime.touch.update('panel', tracker.begin(point)!, now)
       else if (frame === 510) runtime.touch.update('panel', tracker.cancel(now)!, now)
       else if (frame > 450 && frame < 510) runtime.touch.update('panel', tracker.update(point)!, now)
       music.sampleNow(now)
       const motion = runtime.frame(now)
+      if (motion.snapshot.owners.mouth === 'speech') speechWasActive = true
+      else if (speechWasActive && naturalSpeechEnd === null) naturalSpeechEnd = seconds
       applyMotionFrame(rig, motion, state, feedback => runtime.reportBehaviorRealizer(
         feedback.planId, feedback.behaviorId, feedback.result, feedback.atMs, feedback.reason,
       ))
@@ -191,7 +217,7 @@ function replayDefaultPerformance(
       const current = player.getCurrent()
       for (const key of ['angleX', 'angleY', 'angleZ', 'body'] as const) maxStep = Math.max(maxStep, Math.abs(current[key] - previous[key]))
       const phase = seconds < 3 ? 'idle' : seconds < 8 ? 'music' : seconds < 11 ? 'afterMusic'
-        : seconds < 14 ? 'thinking' : seconds < 18 ? 'speechTouch' : 'finalIdle'
+        : seconds < 14 ? 'thinking' : seconds < 20 ? 'speechTouch' : 'finalIdle'
       const record = phases[phase] ??= { minYaw: Infinity, maxYaw: -Infinity, minBody: Infinity, maxBody: -Infinity, mouth: 0, frames: 0 }
       record.minYaw = Math.min(record.minYaw, current.angleX); record.maxYaw = Math.max(record.maxYaw, current.angleX)
       record.minBody = Math.min(record.minBody, current.body); record.maxBody = Math.max(record.maxBody, current.body)
@@ -202,17 +228,20 @@ function replayDefaultPerformance(
       if (phase === 'speechTouch' && motion.snapshot.owners.mouth === 'speech' && current.talk) speechFrames++
       if (player.getPresentedTouch()?.reaction === 'accept') touchFrames++
       runtime.touch.notePresented('panel', player.getPresentedTouch(), now)
-      if ([75, 195, 315, 405, 495, 570, 675].includes(frame)) {
+      if ([75, 195, 315, 405, 495, 615, 765].includes(frame)) {
         screenshots.push({ name: `${phase}-${frame}.png`, image: canvas.toDataURL('image/png').split(',')[1] })
       }
       previous = current
     }
-    return { phases, maxStep, resets, musicFrames, lateMusicFrames, thinkingFrames, speechFrames, touchFrames,
+    return { phases, maxStep, resets, musicFrames, lateMusicFrames, thinkingFrames, speechFrames, touchFrames, naturalSpeechEnd,
       finalThinking: player.getTarget().thinking, finalTalk: player.getTarget().talk,
       finalTouch: player.getPresentedTouch(), finalOwners: player.getMotionPolicy(),
       error: canvas.getContext('webgl2')!.getError(), screenshots }
   } finally {
     dispatchMeropeSpeech({ ...speech, phase: 'cancel' })
     release()
+    window.setTimeout = originalTimeout
+    window.clearTimeout = originalClearTimeout
+    timers.clear()
   }
 }

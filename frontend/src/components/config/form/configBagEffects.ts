@@ -106,7 +106,7 @@ export function configBagEffects(
         const { getSpeechPipeline } =
           await import('../../../features/merope/speech/speechPipelineHost')
         getSpeechPipeline().cancel()
-        await getSpeechPipeline().probe()
+        await getSpeechPipeline().refreshStatus()
       },
     })
   }

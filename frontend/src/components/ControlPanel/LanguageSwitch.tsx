@@ -1,71 +1,114 @@
-import type { ReactNode } from 'react'
 import type { HostLanguageLabels, Locale } from '../../i18n'
-import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
-import { hostLanguageName, hostLanguageShort, LOCALES } from '../../i18n'
+import React, { memo, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { hostLanguageName, hostLanguageShort } from '../../i18n'
+import { WeatherAssetIcon } from '../weather/WeatherAssetIcon'
+import {
+  initialVirtual,
+  localeAtVirtual,
+  LOOP_ITEMS,
+  needsSnap,
+  rowTone,
+  snapVirtual,
+  stripTransform,
+} from './languageSwitchModel'
 import './LanguageSwitch.css'
 
-const LOCALE_COUNT = LOCALES.length
-const LOOP_OFFSET = LOCALE_COUNT
-const LOOP_ITEMS = [...LOCALES, ...LOCALES, ...LOCALES]
+const LANGUAGE_ICON = '/icons/control-panel/language.webp'
+const SNAP_MS = 320
 
 interface LanguageSwitchProps {
   locale: Locale
   labels: HostLanguageLabels
   title: string
   ariaLabel: string
-  icon: ReactNode
   onChange: (locale: Locale) => void
 }
 
-function wrapIndex(index: number): number {
-  return ((index % LOCALE_COUNT) + LOCALE_COUNT) % LOCALE_COUNT
+function paintTones(strip: HTMLElement, index: number, picking: boolean) {
+  const buttons = strip.children
+  for (let i = 0; i < buttons.length; i++) {
+    const button = buttons[i] as HTMLElement
+    button.className = `language-switch-btn${rowTone(Math.abs(i - index))}`
+    button.setAttribute('aria-checked', i === index ? 'true' : 'false')
+    button.tabIndex = picking && i === index ? 0 : -1
+  }
 }
 
-function localeAt(index: number): Locale {
-  return LOCALES[wrapIndex(index)]
+function writeStrip(
+  strip: HTMLElement,
+  index: number,
+  dragPx: number,
+  instant: boolean,
+) {
+  if (instant) {
+    strip.classList.add('is-snap')
+    strip.classList.remove('is-ready')
+  }
+  strip.style.transform = stripTransform(index, dragPx)
+  if (instant) void strip.offsetWidth
+  strip.classList.remove('is-snap')
+  strip.classList.add('is-ready')
 }
 
-function rowTone(distance: number): string {
-  if (distance === 0) return ' is-current'
-  if (distance === 1) return ' is-near-1'
-  if (distance === 2) return ' is-near-2'
-  return ' is-far'
-}
-
-export function LanguageSwitch({
+export const LanguageSwitch = memo(function LanguageSwitch({
   locale,
   labels,
   title,
   ariaLabel,
-  icon,
   onChange,
 }: LanguageSwitchProps) {
   const [picking, setPicking] = useState(false)
-  const [stripReady, setStripReady] = useState(false)
-  const [dragX, setDragX] = useState(0)
-  const [virtualIndex, setVirtualIndex] = useState(
-    () => LOOP_OFFSET + Math.max(0, LOCALES.indexOf(locale)),
-  )
+  const [armed, setArmed] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const trackRef = useRef<HTMLDivElement>(null)
   const stripRef = useRef<HTMLDivElement>(null)
-  const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
   const dragRef = useRef<{ id: number; startX: number; moved: boolean } | null>(
     null,
   )
   const didDragRef = useRef(false)
-  const skipTransitionRef = useRef(false)
-  const virtualIndexRef = useRef(virtualIndex)
+  const virtualIndexRef = useRef(initialVirtual(locale))
   const localeRef = useRef(locale)
   const onChangeRef = useRef(onChange)
+  const pickingRef = useRef(picking)
+  const dragRafRef = useRef(0)
+  const snapTimerRef = useRef(0)
   const listId = useId()
-  virtualIndexRef.current = virtualIndex
   localeRef.current = locale
   onChangeRef.current = onChange
+  pickingRef.current = picking
+
+  const paint = (index: number, instant = false) => {
+    virtualIndexRef.current = index
+    const strip = stripRef.current
+    if (!strip) return
+    writeStrip(strip, index, 0, instant)
+    paintTones(strip, index, pickingRef.current)
+  }
+
+  const applyDrag = (px: number) => {
+    const strip = stripRef.current
+    if (!strip) return
+    if (dragRafRef.current) cancelAnimationFrame(dragRafRef.current)
+    dragRafRef.current = requestAnimationFrame(() => {
+      dragRafRef.current = 0
+      strip.style.transform = stripTransform(virtualIndexRef.current, px)
+      strip.classList.toggle('is-dragging', px !== 0)
+    })
+  }
+
+  const queueSnap = (index: number) => {
+    if (snapTimerRef.current) window.clearTimeout(snapTimerRef.current)
+    if (!needsSnap(index)) return
+    snapTimerRef.current = window.setTimeout(() => {
+      snapTimerRef.current = 0
+      paint(snapVirtual(index), true)
+    }, SNAP_MS)
+  }
 
   const stepTo = (nextVirtual: number) => {
-    setVirtualIndex(nextVirtual)
-    const nextLocale = localeAt(nextVirtual)
+    paint(nextVirtual)
+    queueSnap(nextVirtual)
+    const nextLocale = localeAtVirtual(nextVirtual)
     if (nextLocale !== localeRef.current) onChangeRef.current(nextLocale)
   }
 
@@ -73,46 +116,26 @@ export function LanguageSwitch({
     stepTo(virtualIndexRef.current + delta)
   }
 
+  const openPicker = () => {
+    if (!armed) setArmed(true)
+    setPicking(true)
+  }
+
   useEffect(() => {
     if (picking) return
-    setDragX(0)
+    applyDrag(0)
     dragRef.current = null
-    setVirtualIndex(LOOP_OFFSET + Math.max(0, LOCALES.indexOf(locale)))
+    if (snapTimerRef.current) {
+      window.clearTimeout(snapTimerRef.current)
+      snapTimerRef.current = 0
+    }
+    paint(initialVirtual(locale), true)
   }, [picking, locale])
 
   useLayoutEffect(() => {
-    const strip = stripRef.current
-    const item = itemRefs.current[virtualIndex]
-    if (!strip || !item) return
-    const center = item.offsetLeft + item.offsetWidth / 2
-    const nextTransform = `translate3d(${-center + dragX}px, -50%, 0)`
-    if (skipTransitionRef.current) {
-      strip.classList.remove('is-ready')
-      strip.style.transform = nextTransform
-      void strip.offsetWidth
-      skipTransitionRef.current = false
-      strip.classList.add('is-ready')
-      return
-    }
-    strip.style.transform = nextTransform
-    if (!stripReady) {
-      requestAnimationFrame(() => setStripReady(true))
-    }
-  }, [virtualIndex, dragX, labels, stripReady])
-
-  useEffect(() => {
-    if (
-      virtualIndex >= LOOP_OFFSET &&
-      virtualIndex < LOOP_OFFSET + LOCALE_COUNT
-    ) {
-      return
-    }
-    const timer = window.setTimeout(() => {
-      skipTransitionRef.current = true
-      setVirtualIndex(LOOP_OFFSET + wrapIndex(virtualIndex))
-    }, 340)
-    return () => window.clearTimeout(timer)
-  }, [virtualIndex])
+    if (!armed) return
+    paint(virtualIndexRef.current, true)
+  }, [armed])
 
   useEffect(() => {
     if (!picking) return
@@ -160,13 +183,11 @@ export function LanguageSwitch({
       }, 280)
     }
     track.addEventListener('wheel', onWheel, { passive: false })
-    return () => track.removeEventListener('wheel', onWheel)
+    return () => {
+      track.removeEventListener('wheel', onWheel)
+      if (dragRafRef.current) cancelAnimationFrame(dragRafRef.current)
+    }
   }, [picking])
-
-  const stepByDrag = (dx: number) => {
-    if (Math.abs(dx) < 28) return
-    stepBy(dx < 0 ? 1 : -1)
-  }
 
   return (
     <div
@@ -184,10 +205,15 @@ export function LanguageSwitch({
         aria-label={ariaLabel}
         aria-hidden={picking}
         tabIndex={picking ? -1 : 0}
-        onClick={() => setPicking(true)}
+        onClick={openPicker}
       >
         <div className="control-item-info">
-          <div className="control-item-icon icon-language">{icon}</div>
+          <div className="control-item-icon icon-language">
+            <WeatherAssetIcon
+              icon={LANGUAGE_ICON}
+              className="h-full w-full object-contain"
+            />
+          </div>
           <div>
             <span className="control-item-title">{title}</span>
             <span className="control-item-desc">
@@ -209,6 +235,7 @@ export function LanguageSwitch({
         id={listId}
         aria-label={title}
         aria-hidden={!picking}
+        inert={!picking}
         onPointerDown={(event) => {
           if (!picking || event.button !== 0) return
           dragRef.current = {
@@ -227,7 +254,7 @@ export function LanguageSwitch({
             drag.moved = true
             event.currentTarget.setPointerCapture(event.pointerId)
           }
-          setDragX(dx)
+          applyDrag(dx)
         }}
         onPointerUp={(event) => {
           if (!picking) return
@@ -237,76 +264,54 @@ export function LanguageSwitch({
           const moved = drag.moved
           didDragRef.current = moved
           dragRef.current = null
-          setDragX(0)
-          if (moved) stepByDrag(dx)
+          applyDrag(0)
+          if (moved && Math.abs(dx) >= 28) stepBy(dx < 0 ? 1 : -1)
           requestAnimationFrame(() => {
             didDragRef.current = false
           })
         }}
         onPointerCancel={() => {
           dragRef.current = null
-          setDragX(0)
+          applyDrag(0)
         }}
         onClick={(event) => {
           if (!picking || didDragRef.current) return
-          if ((event.target as HTMLElement | null)?.closest('.language-switch-btn')) {
+          const button = (event.target as HTMLElement | null)?.closest(
+            '[data-ls-i]',
+          )
+          if (button instanceof HTMLElement) {
+            const index = Number(button.dataset.lsI)
+            if (index === virtualIndexRef.current) {
+              setPicking(false)
+              return
+            }
+            if (Number.isFinite(index)) stepTo(index)
             return
           }
           const rect = event.currentTarget.getBoundingClientRect()
           stepBy(event.clientX >= rect.left + rect.width / 2 ? 1 : -1)
         }}
       >
-        <div
-          ref={stripRef}
-          className={`language-switch-strip${stripReady ? ' is-ready' : ''}${
-            dragX !== 0 ? ' is-dragging' : ''
-          }`}
-          onTransitionEnd={(event) => {
-            if (event.target !== stripRef.current) return
-            if (event.propertyName !== 'transform') return
-            if (
-              virtualIndex >= LOOP_OFFSET &&
-              virtualIndex < LOOP_OFFSET + LOCALE_COUNT
-            ) {
-              return
-            }
-            skipTransitionRef.current = true
-            setVirtualIndex(LOOP_OFFSET + wrapIndex(virtualIndex))
-          }}
-        >
-          {LOOP_ITEMS.map((code, index) => {
-            const current = index === virtualIndex
-            return (
+        {armed && (
+          <div ref={stripRef} className="language-switch-strip">
+            {LOOP_ITEMS.map((code, index) => (
               <button
                 key={`${code}-${index}`}
-                ref={(node) => {
-                  itemRefs.current[index] = node
-                }}
                 type="button"
                 role="radio"
-                tabIndex={picking && current ? 0 : -1}
-                aria-checked={current}
-                className={`language-switch-btn${rowTone(
-                  Math.abs(index - virtualIndex),
-                )}`}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  if (!picking || didDragRef.current) return
-                  if (current) {
-                    setPicking(false)
-                    return
-                  }
-                  stepTo(index)
-                }}
+                tabIndex={-1}
+                aria-checked={false}
+                data-ls-i={index}
+                className="language-switch-btn"
               >
                 <span className="language-code">
                   {hostLanguageShort(code, labels)}
                 </span>
               </button>
-            )
-          })}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
-}
+})
