@@ -282,7 +282,7 @@ export async function resolveStoreSourceForTapp(tappId: string): Promise<{
     './RemoteStoreService',
   )
   const sources = await RemoteStoreService.getEnabledSources()
-  const ordered = [...sources].sort((a, b) => {
+  const ordered = sources.toSorted((a, b) => {
     if (a.official && !b.official) return -1
     if (!a.official && b.official) return 1
     return 0

@@ -101,8 +101,21 @@ fn pick_from_language_list(raw: &str) -> Option<&'static str> {
         .find_map(|(_, _, tag)| map_language_tag(tag))
 }
 
+/// Map a BCP 47 tag or Accept-Language list onto a host UI locale.
+/// Unknown / empty → `None`. Cases live in `shared/host_locale_cases.json`.
+pub fn parse_host_locale(raw: &str) -> Option<&'static str> {
+    let tag = raw.trim();
+    if tag.is_empty() {
+        return None;
+    }
+    if let Some(exact) = parse_stored_ui_locale(tag) {
+        return Some(exact);
+    }
+    pick_from_language_list(tag)
+}
+
 pub fn normalize_report_locale(raw: &str) -> &'static str {
-    pick_from_language_list(raw).unwrap_or(DEFAULT_AUTO_REGEN_LOCALE)
+    parse_host_locale(raw).unwrap_or(DEFAULT_AUTO_REGEN_LOCALE)
 }
 
 /// `None` when the request carries no locale signal — caller should reuse the
@@ -232,20 +245,25 @@ mod tests {
     use axum::http::HeaderValue;
 
     #[test]
-    fn normalizes_host_tags() {
-        assert_eq!(normalize_report_locale("zh-CN"), "zh-CN");
-        assert_eq!(normalize_report_locale("zh"), "zh-CN");
-        assert_eq!(normalize_report_locale("zh-TW"), "zh-TW");
-        assert_eq!(normalize_report_locale("zh-HK"), "zh-TW");
-        assert_eq!(normalize_report_locale("zh-Hant"), "zh-TW");
-        assert_eq!(normalize_report_locale("ja-JP,ja;q=0.9"), "ja-JP");
-        assert_eq!(normalize_report_locale("en-GB"), "en-US");
-        assert_eq!(normalize_report_locale(""), "en-US");
-        assert_eq!(normalize_report_locale("fr-FR"), "en-US");
-        assert_eq!(normalize_report_locale("fr,zh-TW;q=0.9"), "zh-TW");
-        assert_eq!(normalize_report_locale("en-US,zh-TW;q=0.8"), "en-US");
-        assert_eq!(normalize_report_locale("zh-HK,en;q=0.4"), "zh-TW");
-        assert_eq!(normalize_report_locale("fr;q=1,en;q=0"), "en-US");
+    fn shared_host_locale_cases() {
+        let spec: Value = serde_json::from_str(include_str!(
+            "../../../../shared/host_locale_cases.json"
+        ))
+        .expect("shared/host_locale_cases.json");
+        for case in spec["parse"].as_array().expect("parse") {
+            let input = case["input"].as_str().expect("input");
+            let expected = case["output"].as_str();
+            assert_eq!(
+                parse_host_locale(input),
+                expected,
+                "parse_host_locale({input:?})"
+            );
+            assert_eq!(
+                normalize_report_locale(input),
+                expected.unwrap_or(DEFAULT_AUTO_REGEN_LOCALE),
+                "normalize_report_locale({input:?})"
+            );
+        }
     }
 
     #[test]

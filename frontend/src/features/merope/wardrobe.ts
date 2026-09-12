@@ -175,7 +175,7 @@ export function stampPortrait(
 }
 
 export function sortWardrobe(items: WardrobeItem[]): WardrobeItem[] {
-  return [...items].sort((left, right) => {
+  return items.toSorted((left, right) => {
     if (left.id === DEFAULT_WARDROBE_ID) return -1
     if (right.id === DEFAULT_WARDROBE_ID) return 1
     const byStyle =

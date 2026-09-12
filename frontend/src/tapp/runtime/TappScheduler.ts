@@ -335,7 +335,7 @@ export class TappScheduler {
 
     const callbackKey = `${message.task.tappId}:${message.task.taskId}`
     const registrations = this.taskCallbacks.get(callbackKey)
-    const callback = registrations?.[registrations.length - 1]?.callback
+    const callback = registrations?.at(-1)?.callback
 
     if (callback) {
       try {

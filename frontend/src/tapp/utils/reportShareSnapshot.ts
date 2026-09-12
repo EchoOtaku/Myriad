@@ -95,14 +95,9 @@ export function formatReportContentBody(
 export function buildReportShareSnapshot(
   report: ReportShareSource | null | undefined,
 ): ReportShareSnapshot {
-  const reportId =
-    report && report.id != null
-      ? report.id
-      : report && report.report_id != null
-        ? report.report_id
-        : ''
+  const reportId = report?.id ?? report?.report_id ?? ''
   const platform =
-    (report && (report.platform || report.platform_id)) || ''
+    report?.platform || report?.platform_id || ''
 
   let summary = ''
   if (report) {

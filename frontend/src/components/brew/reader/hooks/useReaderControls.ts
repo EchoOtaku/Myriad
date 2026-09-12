@@ -285,7 +285,7 @@ export function useReaderControls({
 
   const goToPreviousHeading = useCallback(() => {
     if (headingHistory.length > 0) {
-      const prevId = headingHistory[headingHistory.length - 1]
+      const prevId = headingHistory.at(-1)!
       setHeadingHistory((prev) => prev.slice(0, -1))
       scrollToHeading(prevId)
       showToastMessage(t.brew.backToPrevParagraph, 1500)

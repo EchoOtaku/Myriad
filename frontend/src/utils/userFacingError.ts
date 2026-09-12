@@ -1,12 +1,12 @@
-import { formatMessage, getDefaultLocale } from '../i18n'
-import { currentCopy } from '../i18n/localeCopy'
+import { currentCopy, formatCurrent } from '../i18n/localeCopy'
 import { ApiError } from '../services/api'
+import { resolveErrorCode } from './errorCodes'
 
 function fill(
   template: string,
   params: Record<string, string | number> = {},
 ): string {
-  return formatMessage(getDefaultLocale(), template, params)
+  return formatCurrent(template, params)
 }
 
 export function httpStatusMessage(status: number): string {
@@ -183,7 +183,7 @@ function classified(label: string, raw: string, hint = ''): string {
   )
 }
 
-/** Localized, diagnosable copy for anything that can land in the UI. */
+/** Localized, diagnosable copy. New faults need a machine `code`; leftover regex is last-resort. */
 export function userFacingError(reason: unknown, fallback?: string): string {
   const t = currentCopy().errors
   const fallbackText = fallback?.trim() || t.unknown
@@ -194,7 +194,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
         ? reason.trim()
         : ''
   const status = readStatus(reason) || statusFromErrorText(raw)
-  const code = readCode(reason)
+  const code = resolveErrorCode(readCode(reason), raw)
   const hint = readHint(reason)
 
   if (code === 'unauthorized' || code === 'UNAUTHORIZED') {
@@ -261,26 +261,22 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       usefulExtra(hint, t.serviceUnavailable),
     )
   }
-  if (
-    code === 'configuration_mode' ||
-    /service in configuration mode/i.test(raw) ||
-    /服务器正在配置模式|服务器仍在配置模式/.test(raw)
-  ) {
+  if (code === 'configuration_mode') {
     return joinParts(
       t.configurationMode,
       usefulExtra(hint, t.configurationMode),
     )
   }
-  if (code === 'setup_completed' || /setup already completed/i.test(raw)) {
+  if (code === 'setup_completed') {
     return joinParts(t.setupCompleted, usefulExtra(hint, t.setupCompleted))
   }
-  if (code === 'username_required' || /^username is required$/i.test(raw)) {
+  if (code === 'username_required') {
     return joinParts(t.usernameRequired, usefulExtra(hint, t.usernameRequired))
   }
-  if (code === 'uid_required' || /^uid is required$/i.test(raw)) {
+  if (code === 'uid_required') {
     return joinParts(t.uidRequired, usefulExtra(hint, t.uidRequired))
   }
-  if (code === 'invalid_uid' || /^invalid uid format$/i.test(raw)) {
+  if (code === 'invalid_uid') {
     return joinParts(t.invalidUid, usefulExtra(hint, t.invalidUid))
   }
   if (code === 'steam_credentials_required') {
@@ -298,15 +294,14 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       usefulExtra(hint, t.youtubeApiKeyRequired),
     )
   }
-  if (code === 'user_id_required' || /^user id is required$/i.test(raw)) {
+  if (code === 'user_id_required') {
     return joinParts(t.userIdRequired, usefulExtra(hint, t.userIdRequired))
   }
-  if (code === 'invalid_user_id' || /^invalid user id format$/i.test(raw)) {
+  if (code === 'invalid_user_id') {
     return joinParts(t.invalidUserId, usefulExtra(hint, t.invalidUserId))
   }
   if (
-    code === 'bangumi_credentials_required' ||
-    /username 或 access_token 至少需要提供一个/.test(raw)
+    code === 'bangumi_credentials_required'
   ) {
     return joinParts(
       t.bangumiCredentialsRequired,
@@ -325,13 +320,13 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       usefulExtra(hint, t.bearerTokenRequired),
     )
   }
-  if (code === 'gamertag_required' || /^gamertag is required$/i.test(raw)) {
+  if (code === 'gamertag_required') {
     return joinParts(t.gamertagRequired, usefulExtra(hint, t.gamertagRequired))
   }
   if (code === 'xbox_api_key_required') {
     return joinParts(t.xboxApiKeyRequired, usefulExtra(hint, t.xboxApiKeyRequired))
   }
-  if (code === 'online_id_required' || /^online id is required$/i.test(raw)) {
+  if (code === 'online_id_required') {
     return joinParts(t.onlineIdRequired, usefulExtra(hint, t.onlineIdRequired))
   }
   if (code === 'npsso_required') {
@@ -344,8 +339,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     )
   }
   if (
-    code === 'site_owner_missing' ||
-    /^site owner is not configured$/i.test(raw)
+    code === 'site_owner_missing'
   ) {
     return joinParts(t.siteOwnerMissing, usefulExtra(hint, t.siteOwnerMissing))
   }
@@ -367,10 +361,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       usefulExtra(hint, t.discordTokenRequired),
     )
   }
-  if (
-    code === 'discord_app_not_configured' ||
-    /请先在「OAuth 登录」中添加并启用 Discord/.test(raw)
-  ) {
+  if (code === 'discord_app_not_configured') {
     return joinParts(
       currentCopy().config.discordOAuthAppMissing,
       usefulExtra(hint, currentCopy().config.discordOAuthAppMissing),
@@ -385,12 +376,11 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       usefulExtra(hint, t.queryTokenNotAllowed),
     )
   }
-  if (code === 'share_text_empty' || /分享内容为空/.test(raw)) {
+  if (code === 'share_text_empty') {
     return joinParts(t.shareTextEmpty, usefulExtra(hint, t.shareTextEmpty))
   }
   if (
-    code === 'module_visibility_save_failed' ||
-    /^failed to save module visibility/i.test(raw)
+    code === 'module_visibility_save_failed'
   ) {
     return joinParts(
       t.moduleVisibilitySaveFailed,
@@ -400,15 +390,14 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (code === 'invalid_platform') {
     return classified(t.invalidPlatform, raw, hint)
   }
-  if (code === 'hitokoto_save_failed' || /^failed to save hitokoto config$/i.test(raw)) {
+  if (code === 'hitokoto_save_failed') {
     return joinParts(
       currentCopy().config.hitokotoSaveFailed,
       usefulExtra(hint, currentCopy().config.hitokotoSaveFailed),
     )
   }
   if (
-    code === 'report_settings_save_failed' ||
-    /^failed to save report settings$/i.test(raw)
+    code === 'report_settings_save_failed'
   ) {
     return joinParts(
       currentCopy().config.reportSettingsSaveFailed,
@@ -416,15 +405,14 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     )
   }
   if (
-    code === 'no_permission_settings' ||
-    /^no permission settings provided$/i.test(raw)
+    code === 'no_permission_settings'
   ) {
     return joinParts(
       t.noPermissionSettings,
       usefulExtra(hint, t.noPermissionSettings),
     )
   }
-  if (code === 'no_valid_report' || /^no valid report found$/i.test(raw)) {
+  if (code === 'no_valid_report') {
     return joinParts(t.noValidReport, usefulExtra(hint, t.noValidReport))
   }
   if (code === 'file_too_large' || /^file size must be between/i.test(raw)) {
@@ -587,16 +575,12 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     )
   }
   if (
-    code === 'config_file_read_failed' ||
-    /^failed to read configuration/i.test(raw) ||
-    /无法读取配置文件/.test(raw)
+    code === 'config_file_read_failed'
   ) {
     return classified(t.configFileReadFailed, raw, hint)
   }
   if (
-    code === 'config_file_permission' ||
-    /^failed to (write|create) configuration/i.test(raw) ||
-    /无法创建配置文件|无法保存配置文件/.test(raw)
+    code === 'config_file_permission'
   ) {
     return classified(t.configFilePermission, raw, hint)
   }
@@ -683,7 +667,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return currentCopy().tapp.installFailed
   }
-  if (code === 'steering_unavailable' || /^failed to persist steering/i.test(raw)) {
+  if (code === 'steering_unavailable') {
     return classified(t.agentSteeringFailed, raw, hint)
   }
   if (code === 'dnd_schedule_invalid' || /invalid do-not-disturb/i.test(raw)) {
@@ -695,12 +679,11 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return t.dndScheduleIncomplete
   }
-  if (code === 'merope_disabled' || /^agent persona is disabled$/i.test(raw)) {
+  if (code === 'merope_disabled') {
     return currentCopy().agentPanel.agentPersonaOff
   }
   if (
-    code === 'consent_required' ||
-    /^explicit consent is required$/i.test(raw)
+    code === 'consent_required'
   ) {
     return t.stepNeedsConfirm
   }
@@ -928,7 +911,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return classified(t.tappAccessCheckFailed, raw, hint)
   }
-  if (code === 'tapp_not_found' || /^failed to find tapp$/i.test(raw)) {
+  if (code === 'tapp_not_found') {
     return classified(t.tappFindFailed, raw, hint)
   }
   if (/^failed to check tapp install permission/i.test(raw)) {
@@ -1093,7 +1076,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (/^rate limited by upstream/i.test(raw)) {
     return t.rateLimited
   }
-  if (code === 'youtube_upstream_failed' || /^youtube upstream failed$/i.test(raw)) {
+  if (code === 'youtube_upstream_failed') {
     return joinParts(
       t.youtubeUpstreamFailed,
       status ? `HTTP ${status}` : '',
@@ -1221,7 +1204,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return classified(currentCopy().config.mcpSaveFailed, raw, hint)
   }
-  if (code === 'mcp_config_invalid' || /^invalid mcp config/i.test(raw)) {
+  if (code === 'mcp_config_invalid') {
     return classified(currentCopy().config.mcpInvalidConfig, raw, hint)
   }
   if (
@@ -1238,8 +1221,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.speechNotConfigured
   }
   if (
-    code === 'realtime_session_unavailable' ||
-    /^realtime session is unavailable$/i.test(raw)
+    code === 'realtime_session_unavailable'
   ) {
     return t.realtimeSessionUnavailable
   }
@@ -1263,7 +1245,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       raw,
     )
   ) {
-    return raw.toLowerCase().includes('list') || /对话列表/.test(raw)
+    return raw.toLowerCase().includes('list') || raw.includes('对话列表')
       ? t.speechBatchEmpty
       : t.emptyDialogueText
   }
@@ -1308,7 +1290,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return t.roomJoinFailed
   }
-  if (code === 'oauth_slug_required' || /^provider slug is required$/i.test(raw)) {
+  if (code === 'oauth_slug_required') {
     return t.oauthSlugRequired
   }
   if (code === 'oauth_slug_invalid' || /invalid slug /i.test(raw)) {
@@ -1733,7 +1715,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (/^重试$/.test(raw)) return t.retryStep
   if (/^跳过$/.test(raw)) return t.skipStep
   if (/^联网搜索结果$/.test(raw)) return t.webSearchResult
-  if (/试试搜索你已有数据/.test(raw)) return t.searchLocalHint
+  if (raw.includes('试试搜索你已有数据')) return t.searchLocalHint
   const dbMissing = raw.match(/^(\S+) 数据库文件不存在（(.+)）/)
   if (dbMissing) {
     return fill(t.databaseFileMissing, {
@@ -1743,10 +1725,10 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   }
   if (/^请尝试其他关键词$/.test(raw)) return t.tryOtherKeyword
   if (/^检查拼写是否正确$/.test(raw)) return t.checkSpelling
-  if (/page\.content 读取 Tapp/.test(raw)) return t.pageContentNeedsTapp
-  if (/page\.content 读取平台/.test(raw)) return t.pageContentNeedsPlatform
+  if (raw.includes('page.content 读取 Tapp')) return t.pageContentNeedsTapp
+  if (raw.includes('page.content 读取平台')) return t.pageContentNeedsPlatform
   if (/^AI 联网搜索发现$/.test(raw)) return t.webSearchResult
-  if (/AI 已根据近期失败原因改写/.test(raw)) return t.noticeSkillImprovedBody
+  if (raw.includes('AI 已根据近期失败原因改写')) return t.noticeSkillImprovedBody
   const prunedSkill = raw.match(/^自动技能「(.+)」因失败率过高被淘汰/)
   if (prunedSkill) {
     return fill(t.noticeSkillPrunedBody, { name: prunedSkill[1] })
@@ -1796,7 +1778,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.noticeMcpAutoRestart
   }
   if (
-    /状态监控超时/.test(raw) ||
+    raw.includes('状态监控超时') ||
     /Status watch timed out/i.test(raw)
   ) {
     return t.noticeUpdaterWatchTimeout
@@ -2141,19 +2123,19 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return /TTS|语音|Speech/.test(raw) ? t.speechNotConfigured : t.serviceNotConfigured
   }
-  if (/图片生成完成，但无法提取/.test(raw)) {
+  if (raw.includes('图片生成完成，但无法提取')) {
     return currentCopy().agentPersona.onboarding.imageProviderInvalidResponse
   }
   if (
     /^invalid tappid$/i.test(raw) ||
-    /无效的 tappId/.test(raw)
+    raw.includes('无效的 tappId')
   ) {
     return currentCopy().tapp.invalidId
   }
-  if (code === 'media_action_invalid' || /^invalid action$/i.test(raw)) {
+  if (code === 'media_action_invalid') {
     return classified(t.mediaActionInvalid, raw, hint)
   }
-  if (code === 'media_mode_invalid' || /^invalid mode$/i.test(raw)) {
+  if (code === 'media_mode_invalid') {
     return classified(t.mediaModeInvalid, raw, hint)
   }
   if (
@@ -2304,51 +2286,39 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return agentPanel.presetHistoryTooLong
   }
   if (
-    code === 'notification_unavailable' ||
-    /^notification system not initialized$/i.test(raw)
+    code === 'notification_unavailable'
   ) {
     return t.notificationUnavailable
   }
   const setup = currentCopy().setup
   if (
-    code === 'db_migration_failed' ||
-    /^database migration failed$/i.test(raw) ||
-    /数据库迁移失败/.test(raw)
+    code === 'db_migration_failed'
   ) {
     return setup.dbMigrationFailed
   }
-  if (code === 'schema_ensure_failed' || /^schema ensure failed$/i.test(raw)) {
+  if (code === 'schema_ensure_failed') {
     return setup.schemaEnsureFailed
   }
   if (
-    code === 'setup_cleanup_failed' ||
-    /^setup window cleanup failed$/i.test(raw) ||
-    /无法持久化安装关闭/.test(raw)
+    code === 'setup_cleanup_failed'
   ) {
     return setup.cleanupFailed
   }
   if (
-    code === 'setup_claim_failed' ||
-    /failed to write setup claim marker/i.test(raw) ||
-    /无法写入安装认领标记/.test(raw)
+    code === 'setup_claim_failed'
   ) {
     return setup.claimFailed
   }
-  if (code === 'config_mode_required' || /只能在配置模式下修改/.test(raw)) {
+  if (code === 'config_mode_required') {
     return setup.configModeRequired
   }
   if (
-    code === 'setup_window_closed' ||
-    /^setup window closed$/i.test(raw) ||
-    /安装向导已关闭/.test(raw)
+    code === 'setup_window_closed'
   ) {
     return setup.claimedRepairDesc
   }
   if (
-    code === 'setup_secret_mismatch' ||
-    /^setup secret required$/i.test(raw) ||
-    /setup passphrase does not match/i.test(raw) ||
-    /安装暗号不对/.test(raw)
+    code === 'setup_secret_mismatch'
   ) {
     return setup.secretMismatch
   }

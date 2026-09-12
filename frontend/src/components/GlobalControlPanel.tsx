@@ -768,7 +768,7 @@ const GlobalControlPanel: React.FC = () => {
       loadResource.high('quote-info', async () => {
         try {
           const quote = await getRandomQuote(locale)
-          if (quote && quote.text) {
+          if (quote?.text) {
             setQuoteData(quote)
             safeSetDynamicContents((prev) => {
               const filtered = prev.filter((c) => c.type !== 'quote')

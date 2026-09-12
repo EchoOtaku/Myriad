@@ -214,7 +214,7 @@ export function clusterTopics(
         key,
         nameKey: def.nameKey,
         hue: def.hue,
-        items: [...list].sort(
+        items: list.toSorted(
           (a, b) => (b.published_at ?? 0) - (a.published_at ?? 0),
         ),
       }

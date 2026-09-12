@@ -152,7 +152,7 @@ export function resetGeoCache(): void {
         localStorage.removeItem(key)
       }
     })
-  } catch (_error) {
+  } catch {
   }
 
   console.log('[GeoLocation] 缓存已重置')
@@ -223,7 +223,7 @@ async function getGeoFromFallbackServices(): Promise<GeoLocationData | null> {
         }
       }
     }
-  } catch (_error) {
+  } catch {
   }
 
   try {
@@ -248,7 +248,7 @@ async function getGeoFromFallbackServices(): Promise<GeoLocationData | null> {
         }
       }
     }
-  } catch (_error) {
+  } catch {
   }
 
   try {
@@ -280,7 +280,7 @@ async function getGeoFromFallbackServices(): Promise<GeoLocationData | null> {
         }
       }
     }
-  } catch (_error) {
+  } catch {
   }
 
   return null

@@ -3,51 +3,50 @@
 export const ASSET_URL_HELPER_SOURCE = `
 function normalizeDeclaredAssetPath(url) {
   if (typeof url !== 'string') return '';
-  var path = url.trim();
+  let path = url.trim();
   if (!path) return '';
   if (/^blob:/i.test(path) || /^data:/i.test(path)) return '';
-  if (/^https?:\\/\\//i.test(path) || path.indexOf('//') === 0) return '';
-  try { path = decodeURI(path); } catch (e) {}
-  var cut = path.split('#')[0].split('?')[0];
-  var marker = cut.indexOf('assets/');
+  if (/^https?:\\/\\//i.test(path) || path.startsWith('//')) return '';
+  try { path = decodeURI(path); } catch {}
+  let cut = path.split('#')[0].split('?')[0];
+  const marker = cut.indexOf('assets/');
   if (marker >= 0) cut = cut.slice(marker);
   cut = cut.replace(/^(\\.\\/)+/, '');
-  if (cut.indexOf('..') >= 0 || cut.indexOf('\\\\') >= 0 || cut.indexOf('assets/') !== 0) return '';
+  if (cut.includes('..') || cut.includes('\\\\') || !cut.startsWith('assets/')) return '';
   if (cut.length > 512) return '';
   return cut;
 }
 
 function isSandboxedFetchUrl(url) {
   if (typeof url !== 'string') return false;
-  var value = url.trim().toLowerCase();
-  return value.indexOf('blob:') === 0 || value.indexOf('data:') === 0;
+  const value = url.trim().toLowerCase();
+  return value.startsWith('blob:') || value.startsWith('data:');
 }
 
 function rewriteAssetUrl(url, urls) {
   if (typeof url !== 'string' || !url || !urls) return '';
   if (isSandboxedFetchUrl(url)) return url;
-  if (/^https?:\\/\\//i.test(url) || url.indexOf('//') === 0) return '';
-  var declared = normalizeDeclaredAssetPath(url);
+  if (/^https?:\\/\\//i.test(url) || url.startsWith('//')) return '';
+  const declared = normalizeDeclaredAssetPath(url);
   if (declared && urls[declared]) return urls[declared];
   if (urls[url]) return urls[url];
-  var base = url.split('?')[0].split('#')[0].split('/').pop();
+  const base = url.split('?')[0].split('#')[0].split('/').pop();
   if (!base) return '';
-  var hits = [];
-  for (var key in urls) {
-    if (!Object.prototype.hasOwnProperty.call(urls, key)) continue;
-    if (key === base || key.slice(-(base.length + 1)) === '/' + base) hits.push(key);
+  const hits = [];
+  for (const key of Object.keys(urls)) {
+    if (key === base || key.endsWith('/' + base)) hits.push(key);
   }
   return hits.length === 1 ? urls[hits[0]] : '';
 }
 
 function resolveDeclaredAssetPath(url, urls) {
-  var declared = normalizeDeclaredAssetPath(url);
+  const declared = normalizeDeclaredAssetPath(url);
   if (declared) return declared;
   if (typeof url !== 'string' || !url || !urls) return '';
-  var rewritten = rewriteAssetUrl(url, urls);
+  const rewritten = rewriteAssetUrl(url, urls);
   if (!rewritten) return '';
-  for (var key in urls) {
-    if (Object.prototype.hasOwnProperty.call(urls, key) && urls[key] === rewritten) return key;
+  for (const key of Object.keys(urls)) {
+    if (urls[key] === rewritten) return key;
   }
   return '';
 }

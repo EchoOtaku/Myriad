@@ -342,15 +342,15 @@ export function useTitleFont() {
   const mountedRef = useRef(true)
 
   const currentFont = useMemo(
-    () => fontMap.get(state.font) || AVAILABLE_FONTS[0],
+    () => fontMap.get(state.font) ?? AVAILABLE_FONTS[0],
     [state.font],
   )
   const currentColor = useMemo(
-    () => colorMap.get(state.color) || AVAILABLE_COLORS[0],
+    () => colorMap.get(state.color) ?? AVAILABLE_COLORS[0],
     [state.color],
   )
   const currentFontSizeOption = useMemo(
-    () => sizeMap.get(state.fontSize) || FONT_SIZE_OPTIONS[1],
+    () => sizeMap.get(state.fontSize) ?? FONT_SIZE_OPTIONS[1],
     [state.fontSize],
   )
 

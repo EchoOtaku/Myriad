@@ -389,10 +389,10 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                 <text
                   className="site-analytics-end-label"
                   x={px(xOf(points.length - 1) + END_LABEL_GAP)}
-                  y={px(yOfLine(points[points.length - 1]!.visitors))}
+                  y={px(yOfLine(points.at(-1)!.visitors))}
                   dominantBaseline="middle"
                 >
-                  {count(points[points.length - 1]!.visitors, numberLocale)}
+                  {count(points.at(-1)!.visitors, numberLocale)}
                 </text>
               ) : null}
 

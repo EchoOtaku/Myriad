@@ -696,8 +696,7 @@ export const ManagedList = React.memo(({
                 </div>
               ))}
 
-            {((stats &&
-              stats.some((s) => s.kind === 'switch' || s.kind === 'choice')) ||
+            {(stats?.some((s) => s.kind === 'switch' || s.kind === 'choice') ||
               hasChromeBar) && (
               <div
                 className="managed-list-chip-actions"

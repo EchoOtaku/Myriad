@@ -566,8 +566,8 @@ export function TappPlaygroundPage() {
   const project = revision?.project
   const sessionSummaries = useMemo(
     () =>
-      [...store.sessions]
-        .sort((a, b) => b.updatedAt - a.updatedAt)
+      store.sessions
+        .toSorted((a, b) => b.updatedAt - a.updatedAt)
         .map((s) => ({
           id: s.id,
           title: s.title,

@@ -178,7 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         // 5xx is not a definitive guest; do not let the sandbox block on it. Hint may remain.
         return false
-      } catch (_error) {
+      } catch {
         // Network/timeout: keep the session hint; do not claim authenticated.
         if (generation !== checkAuthGeneration.current) return false
         brewSubject.change('unknown', false)

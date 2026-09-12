@@ -25,9 +25,7 @@ const MAX_WINDOW_MS = Math.max(
 )
 
 function lastSeenAt(entry: RateLimitEntry): number {
-  return entry.timestamps.length > 0
-    ? entry.timestamps[entry.timestamps.length - 1]
-    : 0
+  return entry.timestamps.at(-1) ?? 0
 }
 
 function isBlocked(entry: RateLimitEntry, now: number): boolean {

@@ -108,7 +108,7 @@ export const AnalyticsRangePicker: React.FC<AnalyticsRangePickerProps> = ({
 
   const popoverLabels: DateRangePopoverLabels = useMemo(() => {
     const weekdays =
-      labels.weekdays && labels.weekdays.length === 7
+      labels.weekdays?.length === 7
         ? labels.weekdays
         : Array.from({ length: 7 }, (_, i) =>
             new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(

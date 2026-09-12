@@ -17,7 +17,7 @@ export async function parseJsonResponse(response: Response): Promise<any> {
 
   try {
     return await response.json()
-  } catch (_error) {
+  } catch {
     throw new Error(
       formatCurrent(currentCopy().errors.invalidResponse, {
         status: response.status,

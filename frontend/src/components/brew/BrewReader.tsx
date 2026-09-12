@@ -154,7 +154,7 @@ function ReaderArticleSession({
 
   useImmersiveChrome('brew-reader', true)
 
-  const { setPageContent, clearPageContent } = usePageContentOptional() || {}
+  const { setPageContent, clearPageContent } = usePageContentOptional() ?? {}
 
   useEffect(() => {
     if (setPageContent && item) {

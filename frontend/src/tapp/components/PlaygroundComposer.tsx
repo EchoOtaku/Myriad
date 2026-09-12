@@ -408,7 +408,7 @@ export function PlaygroundComposer({
     onDeleteSession(sessionId)
   }
 
-  const orderedRevisions = [...historyRevisions].reverse()
+  const orderedRevisions = historyRevisions.toReversed()
   const memoryChain = historyRevisions
 
   return (

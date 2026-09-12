@@ -1,4 +1,9 @@
 {
+  "chrome": {
+    "title": "Myriad - 万千灯火，汇于一处。",
+    "description": "Myriad 是自托管的个人数字生活主页，用来聚合、整理并展示多个平台的数据。",
+    "noscript": "请启用 JavaScript 以加载完整的交互式个人主页。"
+  },
   "common": {
     "save": "保存",
     "cancel": "取消",

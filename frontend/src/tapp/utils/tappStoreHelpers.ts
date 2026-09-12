@@ -36,7 +36,7 @@ export function findStoreSource(
 ): RemoteStoreSource | undefined {
   const target = normalizeStoreSourceUrl(sourceUrl)
   return (
-    sources.find((s) => s.url === sourceUrl) ||
+    sources.find((s) => s.url === sourceUrl) ??
     sources.find((s) => normalizeStoreSourceUrl(s.url) === target)
   )
 }

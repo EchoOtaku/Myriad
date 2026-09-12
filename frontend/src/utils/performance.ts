@@ -19,7 +19,7 @@ export function rafThrottle<T extends (...args: any[]) => any>(
   },
 ): ((...args: Parameters<T>) => void) & { cancel: () => void } {
   let rafId: number | null = null
-  const { skipOnLowFps = false } = options || {}
+  const { skipOnLowFps = false } = options ?? {}
 
   const throttled = function (this: any, ...args: Parameters<T>) {
     if (rafId !== null) {

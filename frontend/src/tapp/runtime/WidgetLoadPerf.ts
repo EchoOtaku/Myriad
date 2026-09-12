@@ -60,7 +60,7 @@ function safeMeasure(
     }
     performance.measure(name, startMark, endMark)
     const entries = performance.getEntriesByName(name, 'measure')
-    const last = entries[entries.length - 1]
+    const last = entries.at(-1)
     return last?.duration
   } catch {
     return undefined
@@ -170,7 +170,7 @@ export function getWidgetPerfSummary(): {
     readyCount > 0
       ? totals.reduce((s, n) => s + n, 0) / readyCount
       : null
-  const max = readyCount > 0 ? totals[totals.length - 1]! : null
+  const max = readyCount > 0 ? totals.at(-1)! : null
   const p95 =
     readyCount > 0
       ? totals[Math.min(readyCount - 1, Math.floor(readyCount * 0.95))]!

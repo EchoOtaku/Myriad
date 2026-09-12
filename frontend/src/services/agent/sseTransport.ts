@@ -401,7 +401,7 @@ function buildPolledResponse(task: TaskDetail): AgentResponse {
     error?: string
   }>
   const data =
-    stepResults.filter((result) => result.success).at(-1)?.output ??
+    stepResults.findLast((result) => result.success)?.output ??
     task.results
   const message =
     messageFromStepOutput(data) ??

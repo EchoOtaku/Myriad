@@ -110,7 +110,7 @@ function maxAnalyticsPayloadDay(backup: {
   }
   if (days.length === 0) return null
   days.sort()
-  return days[days.length - 1]!
+  return days.at(-1)!
 }
 
 const NICE_STEPS = [1, 2, 5, 10]

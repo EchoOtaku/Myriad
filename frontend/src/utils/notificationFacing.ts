@@ -1,13 +1,12 @@
 import type { AppNotification } from '../services/notificationApi'
-import { formatMessage, getDefaultLocale } from '../i18n'
-import { currentCopy } from '../i18n/localeCopy'
+import { currentCopy, formatCurrent } from '../i18n/localeCopy'
 import { isUselessErrorText, userFacingError } from './userFacingError'
 
 function fill(
   template: string,
   params: Record<string, string | number>,
 ): string {
-  return formatMessage(getDefaultLocale(), template, params)
+  return formatCurrent(template, params)
 }
 
 function metaString(
@@ -131,16 +130,16 @@ export function notificationFacingTitle(notification: AppNotification): string {
   if (leftoverHeartbeat) {
     return fill(t.noticeHeartbeatTask, { name: leftoverHeartbeat[1] })
   }
-  if (/连续抓取失败/.test(raw)) {
+  if (raw.includes('连续抓取失败')) {
     return fill(t.noticeBrewSourceFailed, { name: name || raw.replace(/连续抓取失败/, '').trim() || 'RSS' })
   }
-  if (/自动刷新失败/.test(raw)) {
+  if (raw.includes('自动刷新失败')) {
     return fill(t.noticePlatformSyncFailed, { name: name || raw.replace(/自动刷新失败/, '').trim() })
   }
-  if (/连接失败/.test(raw) && /MCP/.test(raw)) {
+  if (raw.includes('连接失败') && raw.includes('MCP')) {
     return fill(t.noticeMcpFailed, { name: name || 'MCP' })
   }
-  if (/定时任务失败/.test(raw)) return t.noticeScheduleFailed
+  if (raw.includes('定时任务失败')) return t.noticeScheduleFailed
   if (/^任务失败$|^任务执行失败$|^前端任务执行失败$|^The task failed$/.test(raw)) {
     return t.noticeAgentTaskFailed
   }
@@ -165,27 +164,27 @@ export function notificationFacingTitle(notification: AppNotification): string {
   if (/Arael 正在执行任务|^Arael is working$|^Agent is working$/.test(raw)) {
     return t.noticeAgentTaskRunning
   }
-  if (/系统更新任务失败/.test(raw)) return t.noticeUpdaterFailed
-  if (/系统更新需要人工/.test(raw)) return t.noticeUpdaterNeedsManual
-  if (/Tapp 通知/.test(raw)) return t.noticeTapp
-  if (/联邦关系已解除/.test(raw)) {
+  if (raw.includes('系统更新任务失败')) return t.noticeUpdaterFailed
+  if (raw.includes('系统更新需要人工')) return t.noticeUpdaterNeedsManual
+  if (raw.includes('Tapp 通知')) return t.noticeTapp
+  if (raw.includes('联邦关系已解除')) {
     return fill(t.noticeFederationRevoked, {
       name: metaString(notification, 'target_domain') || 'remote',
     })
   }
-  if (/新的关注者/.test(raw)) return t.noticeNewFollower
-  if (/关注已通过/.test(raw)) return t.noticeFollowAccepted
-  if (/新的私信请求/.test(raw)) return t.noticeChannelInvite
-  if (/群组邀请已接受/.test(raw)) return t.noticeRoomInviteAccepted
-  if (/群组邀请/.test(raw)) return t.noticeRoomInvite
-  if (/私信通道已建立/.test(raw)) return t.noticeChannelAccepted
-  if (/联邦投递失败/.test(raw)) return t.noticeDeliveryFailed
-  if (/技能已自动淘汰/.test(raw)) {
+  if (raw.includes('新的关注者')) return t.noticeNewFollower
+  if (raw.includes('关注已通过')) return t.noticeFollowAccepted
+  if (raw.includes('新的私信请求')) return t.noticeChannelInvite
+  if (raw.includes('群组邀请已接受')) return t.noticeRoomInviteAccepted
+  if (raw.includes('群组邀请')) return t.noticeRoomInvite
+  if (raw.includes('私信通道已建立')) return t.noticeChannelAccepted
+  if (raw.includes('联邦投递失败')) return t.noticeDeliveryFailed
+  if (raw.includes('技能已自动淘汰')) {
     return fill(t.noticeSkillPruned, {
       name: metaString(notification, 'skill_id') || name,
     })
   }
-  if (/技能已自动改进/.test(raw)) {
+  if (raw.includes('技能已自动改进')) {
     return fill(t.noticeSkillImproved, {
       name: metaString(notification, 'skill_id') || name,
     })

@@ -325,7 +325,7 @@ export function parseYrc(yrcText: string): WordLyricLine[] {
 
   for (const raw of rawLines) {
     const line = raw.trim()
-    if (!line || line.charAt(0) === '{') continue
+    if (!line || line.startsWith('{')) continue
 
     const header = headerRe.exec(line)
     if (!header) continue
@@ -369,7 +369,7 @@ export function parseKrc(krcText: string): WordLyricLine[] {
 
   for (const raw of krcText.split('\n')) {
     const line = raw.trim()
-    if (!line || line.charAt(0) !== '[') continue
+    if (!line || !line.startsWith('[')) continue
 
     const header = headerRe.exec(line)
     if (!header) continue
@@ -437,7 +437,7 @@ function getPlaylistFromCache(cacheKey: string): Song[] | null {
         return normalizeSongCovers(cached.data)
       }
     }
-  } catch (_error) {
+  } catch {
   }
 
   return null
@@ -485,7 +485,7 @@ export function clearPlaylistCache(): void {
   playlistMemoryCache.clear()
   try {
     sessionStorage.removeItem(PLAYLIST_STORAGE_KEY)
-  } catch (_error) {
+  } catch {
   }
 }
 

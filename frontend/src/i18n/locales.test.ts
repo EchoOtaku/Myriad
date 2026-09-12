@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import {
   htmlLang,
@@ -7,37 +8,24 @@ import {
   parseLocaleCookie,
 } from './locales.ts'
 
+const SHARED_CASES = JSON.parse(
+  readFileSync(
+    new URL('../../../shared/host_locale_cases.json', import.meta.url),
+    'utf8',
+  ),
+) as {
+  parse: Array<{ input: string; output: string | null }>
+}
+
 describe('parseLocale', () => {
-  it('accepts exact host tags', () => {
-    assert.equal(parseLocale('zh-CN'), 'zh-CN')
-    assert.equal(parseLocale('zh-TW'), 'zh-TW')
-    assert.equal(parseLocale('en-US'), 'en-US')
-    assert.equal(parseLocale('ja-JP'), 'ja-JP')
+  it('matches shared/host_locale_cases.json', () => {
+    for (const { input, output } of SHARED_CASES.parse) {
+      assert.equal(parseLocale(input), output, input)
+    }
   })
 
-  it('maps Traditional Chinese tags to zh-TW', () => {
-    assert.equal(parseLocale('zh-HK'), 'zh-TW')
-    assert.equal(parseLocale('zh-MO'), 'zh-TW')
-    assert.equal(parseLocale('zh-Hant'), 'zh-TW')
-  })
-
-  it('maps other Chinese tags to zh-CN', () => {
-    assert.equal(parseLocale('zh'), 'zh-CN')
-    assert.equal(parseLocale('zh-Hans'), 'zh-CN')
-  })
-
-  it('rejects unknown values', () => {
-    assert.equal(parseLocale('fr-FR'), null)
-    assert.equal(parseLocale(''), null)
+  it('rejects unknown values as non-locales', () => {
     assert.equal(isLocale('zh-HK'), false)
-  })
-
-  it('honors Accept-Language quality values', () => {
-    assert.equal(parseLocale('fr, zh-TW;q=0.9'), 'zh-TW')
-    assert.equal(parseLocale('en-US,zh-TW;q=0.8'), 'en-US')
-    assert.equal(parseLocale('zh-HK,en;q=0.4'), 'zh-TW')
-    assert.equal(parseLocale('de;q=0.8,ja-JP;q=0.2'), 'ja-JP')
-    assert.equal(parseLocale('fr;q=1,en;q=0'), null)
   })
 
   it('uses a short html lang for English', () => {

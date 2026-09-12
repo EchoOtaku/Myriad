@@ -425,7 +425,7 @@ const SetupWizard: React.FC = () => {
             return
           }
         }
-      } catch (_err) {
+      } catch {
       }
 
       if (attempts < maxAttempts) {

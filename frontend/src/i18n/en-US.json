@@ -1,4 +1,9 @@
 {
+  "chrome": {
+    "title": "Myriad - A myriad of lights, in one place.",
+    "description": "Myriad is a self-hosted personal digital-life homepage for aggregating, organizing, and presenting data from multiple platforms.",
+    "noscript": "Enable JavaScript to load the full interactive homepage."
+  },
   "common": {
     "save": "Save",
     "cancel": "Cancel",

@@ -72,6 +72,16 @@ describe('localeLangInlineScript', () => {
     assert.equal(script.includes('export '), false)
     assert.match(script, /function parseLocale/)
     assert.match(script, /function resolveHostLocale/)
+    const localeLang = readFileSync(
+      new URL('./localeLangScript.ts', import.meta.url),
+      'utf8',
+    )
+    assert.match(localeLang, /en-US\.json/)
+    assert.equal(localeLang.includes('万千灯火'), false)
+    const en = JSON.parse(
+      readFileSync(new URL('./en-US.json', import.meta.url), 'utf8'),
+    ) as { chrome: { title: string } }
+    assert.match(script, new RegExp(en.chrome.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   })
 
   it('uses the same Traditional mapping as parseLocale', () => {

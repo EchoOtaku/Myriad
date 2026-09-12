@@ -291,7 +291,7 @@ export function stripUntrustedIframes(html: string): string {
 
   const keepIfTrusted = (tag: string): string => {
     const srcMatch =
-      tag.match(/\bsrc\s*=\s*(["'])([^"']*)\1/i) ||
+      tag.match(/\bsrc\s*=\s*(["'])([^"']*)\1/i) ??
       tag.match(/\bsrc\s*=\s*([^\s>]+)/i)
     if (!srcMatch) return ''
     const rawSrc = (srcMatch[2] || srcMatch[1] || '').trim()

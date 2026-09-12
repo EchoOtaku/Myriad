@@ -35,7 +35,7 @@ export function pendingQuestionFromMetadata(
 ): PendingQuestion | undefined {
   const taskMeta = asRecord(meta?.task)
   const pq =
-    asRecord(meta?.pendingQuestion) || asRecord(taskMeta?.pendingQuestion)
+    asRecord(meta?.pendingQuestion) ?? asRecord(taskMeta?.pendingQuestion)
   if (!pq || typeof pq.question !== 'string') return undefined
   const pendingSteps = pendingStepsFrom(pq.pendingSteps ?? pq.pending_steps)
   const confirmationId =

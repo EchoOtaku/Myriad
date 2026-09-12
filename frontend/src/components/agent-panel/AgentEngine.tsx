@@ -1357,14 +1357,12 @@ export const AgentEngine: React.FC = () => {
       }
 
       if (loadingByModeRef.current[mode] && mode !== 'chat') {
-        const activeTaskMessage = [...messages]
-          .reverse()
-          .find(
-            (message) =>
-              message.taskExecution?.status === 'processing' &&
-              !!message.taskExecution.taskId &&
-              !message.taskExecution.taskId.startsWith('confirmation:'),
-          )
+        const activeTaskMessage = messages.findLast(
+          (message) =>
+            message.taskExecution?.status === 'processing' &&
+            !!message.taskExecution.taskId &&
+            !message.taskExecution.taskId.startsWith('confirmation:'),
+        )
         if (!activeTaskMessage?.taskExecution?.taskId) return
 
         const userMessage: ChatMessage = {
@@ -1706,7 +1704,7 @@ export const AgentEngine: React.FC = () => {
         capSet(handledResponseKeysRef.current)
       }
 
-      if (pendingQuestion && pendingQuestion.question) {
+      if (pendingQuestion?.question) {
         if (!pendingQuestion.confirmationId) {
           setAgentStatusAwaitingConfirmation(pendingQuestion.question)
         }

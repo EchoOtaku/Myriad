@@ -49,7 +49,7 @@ function isTransparentColor(color: string): boolean {
   const m = c.match(
     /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/,
   )
-  if (m && m[4] != null && Number.parseFloat(m[4]) <= 0.02) return true
+  if (m?.[4] != null && Number.parseFloat(m[4]) <= 0.02) return true
   return false
 }
 

@@ -39,7 +39,7 @@ function normalizeKeys(keys: string): { parts: string[]; mainKey: string } | nul
     .map((p) => p.trim().toLowerCase())
     .filter(Boolean)
   if (parts.length === 0 || parts.length > 4) return null
-  const mainKey = parts[parts.length - 1]
+  const mainKey = parts.at(-1)!
   return { parts, mainKey }
 }
 

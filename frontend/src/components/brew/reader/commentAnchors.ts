@@ -151,7 +151,7 @@ export function highlightAnchoredAnnotations(
   const root = new DOMParser().parseFromString(html, 'text/html').body
   const text = root.textContent ?? ''
   const seen = new Set<string>()
-  const ordered = [...annotations].sort((a, b) => b.term.length - a.term.length)
+  const ordered = annotations.toSorted((a, b) => b.term.length - a.term.length)
   for (const [index, annotation] of ordered.entries()) {
     const quote = annotation.term
     if (!quote || seen.has(`${annotation.type}:${quote}`)) continue

@@ -152,7 +152,7 @@ function prefixIdsMatch(
 export function syncProjectedMessages(chats: readonly ChatMessage[]): void {
   const prev = getAgentMessagesSnapshot()
   if (prefixIdsMatch(prev, chats)) {
-    const last = chats[chats.length - 1]
+    const last = chats.at(-1)
     if (!last) {
       setAgentMessages([])
       return

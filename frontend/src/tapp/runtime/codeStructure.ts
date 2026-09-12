@@ -112,7 +112,7 @@ export function getCodeStructureFingerprint(
 export function getTappRuntimeFingerprint(instance: TappInstance): string {
   return hashParts([
     JSON.stringify(instance.manifest),
-    JSON.stringify([...instance.grantedPermissions].sort()),
+    JSON.stringify(instance.grantedPermissions.toSorted()),
     instance.userRole,
     String(instance.isTemporary ?? false),
     String(instance.isAdminTapp ?? false),

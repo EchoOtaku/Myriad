@@ -140,6 +140,9 @@ backend/data/.bootstrap-claimed
 !/frontend/tests/browser/performance.spec.ts
 !/frontend/tests/browser/fixture/performance.html
 !/frontend/tests/browser/fixture/performance.tsx
+!/frontend/tests/browser/memoryGpu.spec.ts
+!/frontend/tests/browser/fixture/memoryGpu.html
+!/frontend/tests/browser/fixture/memoryGpu.ts
 
 # Real backend + disposable Postgres business smokes
 !/frontend/tests/smoke/

@@ -31,7 +31,7 @@ export function clampNumber(value: number, min: number, max: number): number {
 export function normalizeHexColor(value: string | null | undefined): string | null {
   if (!value) return null
   let hex = String(value).trim()
-  if (hex.charAt(0) !== '#') return null
+  if (!hex.startsWith('#')) return null
   hex = hex.slice(1)
   if (hex.length === 3) {
     hex =

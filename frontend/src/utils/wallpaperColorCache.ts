@@ -98,8 +98,8 @@ export async function shouldApplyColorExtraction(
   if (!wallpaperState.isUrlActive(url)) {
     const activeUrl = wallpaperState.getActiveUrl()
     console.debug('[ColorCache] URL mismatch:', {
-      provided: url.substring(0, 60),
-      active: activeUrl?.substring(0, 60),
+      provided: url.slice(0, 60),
+      active: activeUrl?.slice(0, 60),
     })
     return {
       shouldApply: false,
@@ -110,8 +110,8 @@ export async function shouldApplyColorExtraction(
   const domUrl = extractBackgroundUrl()
   if (domUrl && !areUrlsEquivalent(domUrl, url)) {
     console.debug('[ColorCache] DOM URL mismatch (may be timing issue):', {
-      provided: url.substring(0, 60),
-      dom: domUrl.substring(0, 60),
+      provided: url.slice(0, 60),
+      dom: domUrl.slice(0, 60),
     })
   }
 
@@ -207,7 +207,7 @@ export function getCacheInfo(): {
       totalSize: cached.length,
       items: store.items.map((item) => ({
         url:
-          item.url.length > 60 ? `${item.url.substring(0, 60)}...` : item.url,
+          item.url.length > 60 ? `${item.url.slice(0, 60)}...` : item.url,
         age: Math.round((now - item.timestamp) / 1000),
         accessCount: item.accessCount,
       })),

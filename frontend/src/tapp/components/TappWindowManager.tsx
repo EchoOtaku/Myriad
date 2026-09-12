@@ -1247,7 +1247,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
 
       if (newWindows.length > 0) {
         setWindows(newWindows)
-        setActiveWindowId(newWindows[newWindows.length - 1].windowId)
+        setActiveWindowId(newWindows.at(-1)!.windowId)
         setNextZIndex(baseZIndex + newWindows.length)
       }
 
@@ -1479,7 +1479,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
       if (!forceNew) {
         const same = windows.filter((w) => w.tappId === tappId)
         if (same.length > 0) {
-          const byZ = [...same].sort((a, b) => b.zIndex - a.zIndex)
+          const byZ = same.toSorted((a, b) => b.zIndex - a.zIndex)
           const top = byZ[0]
           const minimizedTop = byZ.find((w) => w.isMinimized)
           const target =

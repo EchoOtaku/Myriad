@@ -1,4 +1,5 @@
-/** Host UI locale parsing. No TypeScript — first-paint inlines this file. */
+/** Host UI locale parsing. No TypeScript — first-paint inlines this file.
+ *  Cases: `shared/host_locale_cases.json` (must match backend parse_host_locale). */
 
 export function isLocale(value) {
   return (

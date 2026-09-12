@@ -11,6 +11,22 @@ describe('currentCopy', () => {
     assert.equal(src.includes('zh-CN.json'), false)
   })
 
+  it('formats ICU against the returned copy locale', () => {
+    const src = readFileSync(new URL('./localeCopy.ts', import.meta.url), 'utf8')
+    assert.match(src, /function resolveServiceCopy/)
+    assert.equal(src.includes('formatMessage(getDefaultLocale()'), false)
+    assert.match(src, /formatMessage\(resolveServiceCopy\(\)\.locale/)
+    for (const rel of [
+      '../utils/userFacingError.ts',
+      '../utils/notificationFacing.ts',
+      '../utils/httpRateLimitToast.ts',
+    ]) {
+      const service = readFileSync(new URL(rel, import.meta.url), 'utf8')
+      assert.equal(service.includes('getDefaultLocale'), false, rel)
+      assert.match(service, /formatCurrent/)
+    }
+  })
+
   it('keeps namespace catalogs out of the core locale files', () => {
     for (const locale of ['en-US', 'zh-CN', 'zh-TW', 'ja-JP'] as const) {
       const core = JSON.parse(

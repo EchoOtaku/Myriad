@@ -998,7 +998,7 @@ const GlobalSettingsModal = memo(() => {
     setIsGeneratingIcon(true)
 
     try {
-      const customId = `custom_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`
+      const customId = `custom_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
 
       let iconData: {
         iconType?: 'react-icons' | 'url'

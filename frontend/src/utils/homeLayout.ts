@@ -215,7 +215,7 @@ function compareWidgetAreaDesc(a: WidgetConfig, b: WidgetConfig): number {
 const PACK_BAND_Y_SLACK = 1
 
 function clusterWidgetsIntoBands(widgets: WidgetConfig[]): WidgetConfig[][] {
-  const sorted = [...widgets].sort((a, b) => {
+  const sorted = widgets.toSorted((a, b) => {
     if (a.position.y !== b.position.y) return a.position.y - b.position.y
     if (a.position.x !== b.position.x) return a.position.x - b.position.x
     return compareWidgetAreaDesc(a, b)
@@ -259,7 +259,7 @@ function packShelf(
     }
   }
 
-  const ordered = [...items].sort((a, b) => {
+  const ordered = items.toSorted((a, b) => {
     if (a.position.x !== b.position.x) return a.position.x - b.position.x
     return compareWidgetAreaDesc(a, b)
   })

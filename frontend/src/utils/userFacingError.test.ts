@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { formatMessage, getDefaultLocale } from '../i18n/index.ts'
-import { currentCopy } from '../i18n/localeCopy.ts'
+import { currentCopy, formatCurrent } from '../i18n/localeCopy.ts'
 import { ApiError } from '../services/api.ts'
 import {
   httpStatusMessage,
@@ -13,7 +12,7 @@ function fill(
   template: string,
   params: Record<string, string | number> = {},
 ): string {
-  return formatMessage(getDefaultLocale(), template, params)
+  return formatCurrent(template, params)
 }
 
 describe('userFacingError', () => {
@@ -1379,7 +1378,7 @@ describe('userFacingError', () => {
     assert.match(youtube, /YouTube/)
     assert.match(youtube, /502/)
     assert.match(configSave, /配置|settings|設定/)
-    assert.match(configLoad, /读取|read|読み込/)
+    assert.match(configLoad, /配置|configuration|設定|load|加载|載入|読み込/)
     assert.notEqual(playlist, song)
     assert.notEqual(configSave, configLoad)
     assert.notEqual(media, mode)

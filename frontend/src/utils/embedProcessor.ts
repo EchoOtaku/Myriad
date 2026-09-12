@@ -372,7 +372,7 @@ export function processEmbeds(content: string): string {
   // Strip iframes not on the shared host allowlist.
   result = result.replace(/<iframe\b[\s\S]*?<\/iframe>/gi, (match) => {
     const srcMatch =
-      match.match(/\bsrc\s*=\s*(["'])([^"']*)\1/i) ||
+      match.match(/\bsrc\s*=\s*(["'])([^"']*)\1/i) ??
       match.match(/\bsrc\s*=\s*([^\s>]+)/i)
     if (!srcMatch) return ''
     const rawSrc = (srcMatch[2] || srcMatch[1] || '').trim()

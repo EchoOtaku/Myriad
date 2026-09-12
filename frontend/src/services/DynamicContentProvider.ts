@@ -67,7 +67,7 @@ class DynamicContentProviderService {
   }
 
   unregisterProvider(providerId: string): void {
-    const contents = this.contents.get(providerId) || []
+    const contents = this.contents.get(providerId) ?? []
     for (const content of contents) {
       this.notifyListeners({
         type: 'remove',
@@ -105,7 +105,7 @@ class DynamicContentProviderService {
       return
     }
 
-    const contents = this.contents.get(providerId) || []
+    const contents = this.contents.get(providerId) ?? []
     const existingIndex = contents.findIndex((c) => c.type === content.type)
 
     if (existingIndex >= 0) {
@@ -153,7 +153,7 @@ class DynamicContentProviderService {
   }
 
   getProviderContents(providerId: string): DynamicContentItem[] {
-    return this.contents.get(providerId) || []
+    return this.contents.get(providerId) ?? []
   }
 
   getAllContents(): DynamicContentItem[] {
@@ -267,7 +267,7 @@ class DynamicContentProviderService {
 
   getTappContent(tappId: string): DynamicContentItem | undefined {
     const providerId = `tapp-${tappId}`
-    const contents = this.contents.get(providerId) || []
+    const contents = this.contents.get(providerId) ?? []
     return contents.find((c) => c.sourceTappId === tappId)
   }
 

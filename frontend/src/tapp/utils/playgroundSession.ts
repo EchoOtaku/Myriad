@@ -164,7 +164,7 @@ function normalizeSession(raw: unknown): PlaygroundSession | null {
   const updatedAt =
     typeof s.updatedAt === 'number' && Number.isFinite(s.updatedAt)
       ? s.updatedAt
-      : revisions[revisions.length - 1]?.createdAt || createdAt
+      : revisions.at(-1)?.createdAt || createdAt
   const title =
     typeof s.title === 'string'
       ? s.title
@@ -194,7 +194,7 @@ function loadV1Session(): PlaygroundSession | null {
       title: titleFromInstruction(value.revisions[0]?.instruction || ''),
       createdAt: value.revisions[0]?.createdAt || Date.now(),
       updatedAt:
-        value.revisions[value.revisions.length - 1]?.createdAt || Date.now(),
+        value.revisions.at(-1)?.createdAt || Date.now(),
       revisions: value.revisions,
       revisionIndex: value.revisionIndex,
       lastFailedAttempt: value.lastFailedAttempt,
@@ -268,7 +268,7 @@ export function pruneStoreWithMeta(
     }).length
 
   while (sessions.length > 1 && measure(sessions) > MAX_STORE_BYTES) {
-    const sorted = [...sessions].sort((a, b) => a.updatedAt - b.updatedAt)
+    const sorted = sessions.toSorted((a, b) => a.updatedAt - b.updatedAt)
     const victim =
       sorted.find((s) => s.id !== store.activeSessionId) || sorted[0]
     if (!victim) break
@@ -435,10 +435,7 @@ export function buildPlaygroundMemoryHistory(
 
   const failed = session.lastFailedAttempt
   if (failed?.instruction?.trim()) {
-    const baseProject =
-      upToCurrent.length > 0
-        ? upToCurrent[upToCurrent.length - 1].project
-        : undefined
+    const baseProject = upToCurrent.at(-1)?.project
     turns.push({
       instruction: failed.instruction,
       explanation: '',

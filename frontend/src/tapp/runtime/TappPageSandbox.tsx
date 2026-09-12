@@ -736,7 +736,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       sp.forEach((v, k) => {
         launchParams[k] = v
       })
-    } catch (_) {
+    } catch {
       /* ignore */
     }
 

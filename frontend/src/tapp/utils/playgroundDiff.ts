@@ -15,7 +15,7 @@ export interface SideBySideRow {
 function splitLines(text: string): string[] {
   if (!text) return []
   const lines = text.split('\n')
-  if (lines.length > 0 && lines[lines.length - 1] === '' && text.endsWith('\n')) {
+  if (lines.length > 0 && lines.at(-1) === '' && text.endsWith('\n')) {
     lines.pop()
   }
   return lines

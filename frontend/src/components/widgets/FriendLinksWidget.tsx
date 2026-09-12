@@ -245,7 +245,7 @@ export const FriendLinksWidget = memo(
     const batchSize = isWide ? 4 : 1
     const randomizedEntries = useMemo(
       () =>
-        [...entries].sort(
+        entries.toSorted(
           (a, b) => randomRank(a.id, randomSeed) - randomRank(b.id, randomSeed),
         ),
       [entries, randomSeed],

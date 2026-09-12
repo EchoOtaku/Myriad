@@ -724,7 +724,7 @@ export async function extractColorsFromImage(
     }
 
     if (!options.forceRefresh) {
-      const cached = memoryCache.get(imageUrl) || getLocalStorageCache(imageUrl)
+      const cached = memoryCache.get(imageUrl) ?? getLocalStorageCache(imageUrl)
       // Persisted placeholder grey is a miss.
       if (cached && !isDefaultPalette(cached)) {
         setMemoryCache(imageUrl, cached)

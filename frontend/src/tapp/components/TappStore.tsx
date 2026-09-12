@@ -990,8 +990,8 @@ export function TappStore({
       const timestamp = Date.parse(value)
       return Number.isFinite(timestamp) ? timestamp : 0
     }
-    return [...allApps]
-      .sort((a, b) => {
+    return allApps
+      .toSorted((a, b) => {
         const dateOrder = parseDate(b.updatedAt) - parseDate(a.updatedAt)
         if (dateOrder !== 0) return dateOrder
         return a.name.localeCompare(b.name, locale)

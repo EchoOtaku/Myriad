@@ -1,4 +1,9 @@
 {
+  "chrome": {
+    "title": "Myriad - 萬千燈火，匯於一處。",
+    "description": "Myriad 是自託管的個人數位生活首頁，用來聚合、整理並展示多個平臺的資料。",
+    "noscript": "請啟用 JavaScript 以載入完整的互動式個人首頁。"
+  },
   "common": {
     "save": "儲存",
     "cancel": "取消",

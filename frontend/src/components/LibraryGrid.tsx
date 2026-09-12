@@ -544,7 +544,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
   // Pagination changes the slice, not the layout order.
   const listOrderedItems = useMemo(() => {
     if (layoutMode === 'canvas') return []
-    return [...laidOutItems].sort((a, b) => {
+    return laidOutItems.toSorted((a, b) => {
       const layoutA = layouts.get(a.id)!
       const layoutB = layouts.get(b.id)!
       if (Math.abs(layoutA.top - layoutB.top) > 10)
