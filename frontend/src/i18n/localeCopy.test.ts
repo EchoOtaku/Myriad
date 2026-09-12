@@ -14,6 +14,19 @@ describe('currentCopy', () => {
     assert.equal(src.includes('de-DE.json'), false)
   })
 
+  it('does not use JSON import attributes on dynamic locale packs', () => {
+    // Vite serves `*.json?import` as JS; a JSON import attribute then fails in the browser.
+    for (const rel of [
+      './loadLocale.ts',
+      './notificationCatalog.ts',
+      '../components/settings/guides/catalog.ts',
+      '../components/settings/guides/tappPermissionGuides.ts',
+    ]) {
+      const src = readFileSync(new URL(rel, import.meta.url), 'utf8')
+      assert.equal(src.includes('with: { type:'), false, rel)
+    }
+  })
+
   it('formats ICU against the returned copy locale', () => {
     const src = readFileSync(new URL('./localeCopy.ts', import.meta.url), 'utf8')
     assert.match(src, /function resolveServiceCopy/)
@@ -88,6 +101,19 @@ describe('currentCopy', () => {
       'キャッシュ済みプラットフォームデータを読みます。',
     )
     assert.equal(currentCopy().common.loading, 'Loading...')
+  })
+
+  it('loads Korean, French, and German as their own catalogs', async () => {
+    const ko = await loadLocale('ko-KR')
+    const fr = await loadLocale('fr-FR')
+    const de = await loadLocale('de-DE')
+    assert.equal(copyForLocale('ko-KR'), ko)
+    assert.match(ko.common.loading, /불러/)
+    assert.match(fr.common.loading, /Chargement/)
+    assert.match(de.common.loading, /Laden/)
+    assert.notEqual(ko.common.save, 'Save')
+    assert.notEqual(fr.common.save, 'Save')
+    assert.notEqual(de.common.save, 'Save')
   })
 
   it('loads Traditional Chinese as its own catalog', async () => {

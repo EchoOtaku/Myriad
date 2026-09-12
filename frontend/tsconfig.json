@@ -6,7 +6,8 @@
     "lib": [
       "ES2025",
       "DOM",
-      "DOM.Iterable"
+      "DOM.Iterable",
+      "DOM.AsyncIterable"
     ],
     "module": "ESNext",
     "moduleResolution": "bundler",

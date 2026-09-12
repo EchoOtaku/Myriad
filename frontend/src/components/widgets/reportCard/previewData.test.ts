@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import zhCN from '../../../i18n/zh-CN.json'
+import zhCN from '../../../i18n/zh-CN.json' with { type: 'json' }
 import { buildReportCardPreviewData } from './previewData'
 
 // 预览 fixture 不要把 Bangumi/MAL 条目类型并成一份，多余 key 会以未翻译原文画出。

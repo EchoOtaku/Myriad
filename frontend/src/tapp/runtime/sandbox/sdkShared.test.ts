@@ -103,7 +103,7 @@ describe('generateKvNamespaceCode', () => {
       const arrow = generateKvNamespaceCode(api, 'arrow')
       const fn = generateKvNamespaceCode(api, 'fn')
       for (const source of [arrow, fn]) {
-        assert.match(source, new RegExp(`${api}:\\s*\\{`))
+        assert.match(source, new RegExp(`${RegExp.escape(api)}:\\s*\\{`))
         for (const method of [
           'get',
           'set',
@@ -115,12 +115,14 @@ describe('generateKvNamespaceCode', () => {
         ]) {
           assert.match(
             source,
-            new RegExp(`sendRequest\\('${api}', '${method}'`),
+            new RegExp(
+              `sendRequest\\('${RegExp.escape(api)}', '${RegExp.escape(method)}'`,
+            ),
           )
         }
         assert.match(
           source,
-          new RegExp(`addEventListener\\('${api}Changed'`),
+          new RegExp(`addEventListener\\('${RegExp.escape(api)}Changed'`),
         )
       }
       assert.match(arrow, /get:\s*\(k\)\s*=>/)

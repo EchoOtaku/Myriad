@@ -60,7 +60,7 @@ export function tokenizeForSearch(text: string): string[] {
     extra.push(p.slice(0, 2), p.slice(0, 3))
     if (p.length >= 4) extra.push(p.slice(0, 4))
   }
-  return [...new Set([...parts, ...extra])]
+  return [...new Set(parts).union(new Set(extra))]
 }
 
 export function buildGuideSearchIndex(locale: Locale): GuideSearchEntry[] {

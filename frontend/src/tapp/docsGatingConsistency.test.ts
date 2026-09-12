@@ -248,7 +248,7 @@ describe('tapp docs gating consistency', () => {
       docPairs.push(`${method} ${path}`)
     }
     assert.ok(docPairs.length >= 20, 'expected substantial /api/tapps table')
-    const missing = docPairs.filter((p) => !codePaths.has(p))
+    const missing = [...new Set(docPairs).difference(codePaths)]
     assert.deepEqual(
       missing,
       [],
@@ -273,8 +273,8 @@ describe('tapp docs gating consistency', () => {
       'set_private',
       'delete_private',
     ]) {
-      assert.match(auth, new RegExp(`\\b${handler}\\b`))
-      assert.doesNotMatch(optional, new RegExp(`\\b${handler}\\b`))
+      assert.match(auth, new RegExp(`\\b${RegExp.escape(handler)}\\b`))
+      assert.doesNotMatch(optional, new RegExp(`\\b${RegExp.escape(handler)}\\b`))
     }
     assert.doesNotMatch(optional, /\/private/)
   })
@@ -628,7 +628,7 @@ describe('tapp docs gating consistency', () => {
     for (const file of files) {
       const text = read(file)
       for (const token of retired) {
-        const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const escaped = RegExp.escape(token)
         // 只对权限数组 / 权限表单元格，不是命名空间名。
         const re = new RegExp(
           `permissions[\\s\\S]{0,200}[\`'"]${escaped}[\`'"]`,

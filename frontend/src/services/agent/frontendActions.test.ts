@@ -83,7 +83,7 @@ describe('frontendAction chain', () => {
     assert.match(app, /action\.type !== 'agent_interaction'/)
     assert.match(app, /action\.type === 'close_window'/)
 
-    const missing = TYPED.filter((type) => !registered.has(type))
+    const missing = [...new Set(TYPED).difference(registered)]
     assert.deepEqual(
       missing,
       [],

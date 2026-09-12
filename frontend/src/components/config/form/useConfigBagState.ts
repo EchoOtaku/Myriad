@@ -31,7 +31,7 @@ export function useConfigBagState(
         auto_fetch: data.auto_fetch || DEFAULT_AUTO_FETCH_CONFIG,
       }
       setConfig(normalizedData)
-      setInitialConfig(JSON.parse(JSON.stringify(normalizedData)))
+      setInitialConfig(structuredClone(normalizedData))
       notifyDirtyState(false)
       window.dispatchEvent(new CustomEvent('config-loaded', { detail: data }))
     } catch {

@@ -1,19 +1,19 @@
 import type { TappPermissionGuides } from './tappPermissionGuides'
 import type { SettingGuidesCatalog } from './types'
-import catalogDe from './catalog.de-DE.json'
-import catalogEn from './catalog.en-US.json'
-import catalogFr from './catalog.fr-FR.json'
-import catalogJa from './catalog.ja-JP.json'
-import catalogKo from './catalog.ko-KR.json'
-import catalogZh from './catalog.zh-CN.json'
-import catalogTw from './catalog.zh-TW.json'
-import permDe from './tappPermissionGuides.de-DE.json'
-import permEn from './tappPermissionGuides.en-US.json'
-import permFr from './tappPermissionGuides.fr-FR.json'
-import permJa from './tappPermissionGuides.ja-JP.json'
-import permKo from './tappPermissionGuides.ko-KR.json'
-import permZh from './tappPermissionGuides.zh-CN.json'
-import permTw from './tappPermissionGuides.zh-TW.json'
+import catalogDe from './catalog.de-DE.json' with { type: 'json' }
+import catalogEn from './catalog.en-US.json' with { type: 'json' }
+import catalogFr from './catalog.fr-FR.json' with { type: 'json' }
+import catalogJa from './catalog.ja-JP.json' with { type: 'json' }
+import catalogKo from './catalog.ko-KR.json' with { type: 'json' }
+import catalogZh from './catalog.zh-CN.json' with { type: 'json' }
+import catalogTw from './catalog.zh-TW.json' with { type: 'json' }
+import permDe from './tappPermissionGuides.de-DE.json' with { type: 'json' }
+import permEn from './tappPermissionGuides.en-US.json' with { type: 'json' }
+import permFr from './tappPermissionGuides.fr-FR.json' with { type: 'json' }
+import permJa from './tappPermissionGuides.ja-JP.json' with { type: 'json' }
+import permKo from './tappPermissionGuides.ko-KR.json' with { type: 'json' }
+import permZh from './tappPermissionGuides.zh-CN.json' with { type: 'json' }
+import permTw from './tappPermissionGuides.zh-TW.json' with { type: 'json' }
 
 const _catalogEn: SettingGuidesCatalog = catalogEn
 const _catalogZh: SettingGuidesCatalog = catalogZh

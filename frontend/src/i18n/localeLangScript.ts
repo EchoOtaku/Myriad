@@ -1,10 +1,10 @@
-import de from './de-DE.json'
-import en from './en-US.json'
-import fr from './fr-FR.json'
-import ja from './ja-JP.json'
-import ko from './ko-KR.json'
-import zh from './zh-CN.json'
-import tw from './zh-TW.json'
+import de from './de-DE.json' with { type: 'json' }
+import en from './en-US.json' with { type: 'json' }
+import fr from './fr-FR.json' with { type: 'json' }
+import ja from './ja-JP.json' with { type: 'json' }
+import ko from './ko-KR.json' with { type: 'json' }
+import zh from './zh-CN.json' with { type: 'json' }
+import tw from './zh-TW.json' with { type: 'json' }
 
 const CHROME = {
   'zh-CN': zh.chrome,

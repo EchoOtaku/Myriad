@@ -81,14 +81,14 @@ test.describe('presence inbound', { concurrency: false }, () => {
       await presenceInboundArmingForTest()
       await flush()
       assert.equal(posts, 1)
-      let release!: (value: boolean) => void
-      setPresenceEnabledForTest(() => new Promise(resolve => { release = resolve }))
+      const enabledGate = Promise.withResolvers<boolean>()
+      setPresenceEnabledForTest(() => enabledGate.promise)
       events.dispatchEvent(new Event(PERSONA_UPDATED_EVENT))
       const stale = presenceInboundArmingForTest()
       setPresenceEnabledForTest(() => false)
       events.dispatchEvent(new Event(PERSONA_UPDATED_EVENT))
       await presenceInboundArmingForTest()
-      release(true)
+      enabledGate.resolve(true)
       await stale
       await reportPresence('lease')
       assert.equal(posts, 1)
@@ -303,12 +303,12 @@ test.describe('presence inbound', { concurrency: false }, () => {
     setPresenceArmedForTest(true)
     setAgentContextConsent(true)
     const posts: unknown[] = []
-    let release!: () => void
+    const { promise: held, resolve: release } = Promise.withResolvers<void>()
     setPresenceFactsForTest(() => ({}))
     setPresenceCaptureForTest((input) => input.pageConsent ? [snapshot('page', 1, 'private')] : [])
     setPresencePostForTest(async (body) => {
       posts.push(body)
-      if (posts.length === 1) await new Promise<void>((resolve) => { release = resolve })
+      if (posts.length === 1) await held
     })
     const first = reportPresence('route')
     for (let i = 0; i < 6; i += 1) await Promise.resolve()
@@ -366,12 +366,12 @@ test.describe('presence inbound', { concurrency: false }, () => {
     t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 10_000 })
     setPresenceArmedForTest(true)
     const posts: unknown[] = []
-    let release!: () => void
+    const { promise: held, resolve: release } = Promise.withResolvers<void>()
     setPresenceFactsForTest(() => ({}))
     setPresenceCaptureForTest(() => [snapshot('page', 1, 'expires-soon')])
     setPresencePostForTest(async (body) => {
       posts.push(body)
-      if (posts.length === 1) await new Promise<void>((resolve) => { release = resolve })
+      if (posts.length === 1) await held
     })
     const first = reportPresence('route')
     for (let i = 0; i < 6; i += 1) await Promise.resolve()

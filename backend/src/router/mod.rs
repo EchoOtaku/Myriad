@@ -5,6 +5,43 @@ use super::*;
 mod authenticated;
 mod base;
 
+fn cors_allowed_methods() -> [axum::http::Method; 6] {
+    [
+        axum::http::Method::GET,
+        axum::http::Method::POST,
+        axum::http::Method::PUT,
+        axum::http::Method::PATCH,
+        axum::http::Method::DELETE,
+        axum::http::Method::OPTIONS,
+    ]
+}
+
+fn http_cors_layer() -> tower_http::cors::CorsLayer {
+    use tower_http::cors::AllowOrigin;
+
+    // Custom request headers used by the SPA must be listed for cross-origin preflight.
+    let cors_allowed_headers = [
+        axum::http::header::CONTENT_TYPE,
+        axum::http::header::AUTHORIZATION,
+        axum::http::header::ACCEPT,
+        axum::http::header::HeaderName::from_static("x-csrf-token"),
+        axum::http::header::HeaderName::from_static("x-tapp-runtime-grant"),
+        axum::http::header::HeaderName::from_static("x-requested-with"),
+        // Setup wizard passphrase + host locale/TZ for Tapp context.
+        axum::http::header::HeaderName::from_static("x-setup-secret"),
+        axum::http::header::HeaderName::from_static("x-myriad-locale"),
+        axum::http::header::HeaderName::from_static("x-myriad-timezone"),
+    ];
+
+    tower_http::cors::CorsLayer::new()
+        .allow_origin(AllowOrigin::predicate(|origin, _parts| {
+            crate::middleware::cors_runtime::origin_is_allowed(origin)
+        }))
+        .allow_methods(cors_allowed_methods())
+        .allow_headers(cors_allowed_headers)
+        .allow_credentials(true)
+}
+
 async fn installation_claimed(db: &sea_orm::DatabaseConnection) -> anyhow::Result<bool> {
     crate::services::site_owner::installation_has_owner(db)
         .await
@@ -17,8 +54,6 @@ pub(crate) async fn start_unified_server(config: AppConfig) -> anyhow::Result<()
 
     // Build CORS layer with security-first configuration.
     // Origins live in cors_runtime so site-domain changes can hot-reload without restart.
-    use tower_http::cors::AllowOrigin;
-
     let mut initial_origins = config.cors_origins.clone();
     if initial_origins.is_empty() {
         let is_production = AppConfig::is_production_environment();
@@ -41,33 +76,7 @@ pub(crate) async fn start_unified_server(config: AppConfig) -> anyhow::Result<()
     crate::middleware::cors_runtime::set_cors_origins(initial_origins.clone());
     tracing::info!("✅ CORS configured for origins: {:?}", initial_origins);
 
-    // Custom request headers used by the SPA must be listed for cross-origin preflight.
-    let cors_allowed_headers = [
-        axum::http::header::CONTENT_TYPE,
-        axum::http::header::AUTHORIZATION,
-        axum::http::header::ACCEPT,
-        axum::http::header::HeaderName::from_static("x-csrf-token"),
-        axum::http::header::HeaderName::from_static("x-tapp-runtime-grant"),
-        axum::http::header::HeaderName::from_static("x-requested-with"),
-        // Setup wizard passphrase + host locale/TZ for Tapp context.
-        axum::http::header::HeaderName::from_static("x-setup-secret"),
-        axum::http::header::HeaderName::from_static("x-myriad-locale"),
-        axum::http::header::HeaderName::from_static("x-myriad-timezone"),
-    ];
-
-    let cors = CorsLayer::new()
-        .allow_origin(AllowOrigin::predicate(|origin, _parts| {
-            crate::middleware::cors_runtime::origin_is_allowed(origin)
-        }))
-        .allow_methods([
-            axum::http::Method::GET,
-            axum::http::Method::POST,
-            axum::http::Method::PUT,
-            axum::http::Method::DELETE,
-            axum::http::Method::OPTIONS,
-        ])
-        .allow_headers(cors_allowed_headers)
-        .allow_credentials(true);
+    let cors = http_cors_layer();
 
     // A FULL_MODE process losing its registered DB handle must not silently
     // degrade into an unauthenticated setup router.
@@ -369,4 +378,65 @@ pub(crate) async fn start_unified_server(config: AppConfig) -> anyhow::Result<()
 
     // Start server with the app (convert to service within start_server)
     start_server(config, app).await
+}
+
+#[cfg(test)]
+mod cors_method_tests {
+    use super::{cors_allowed_methods, http_cors_layer};
+    use axum::body::Body;
+    use axum::http::{header, Method, Request, StatusCode};
+    use axum::routing::patch;
+    use axum::Router;
+    use tower::ServiceExt;
+
+    #[test]
+    fn cors_allows_patch() {
+        assert!(cors_allowed_methods().contains(&Method::PATCH));
+    }
+
+    #[tokio::test]
+    async fn preflight_allows_patch_on_user_and_session_routes() {
+        crate::middleware::cors_runtime::set_cors_origins(vec![
+            "https://cors-patch.test".into(),
+        ]);
+        let app = Router::new()
+            .route("/api/admin/users/{id}", patch(|| async { StatusCode::OK }))
+            .route(
+                "/api/agent/sessions/{session_id}",
+                patch(|| async { StatusCode::OK }),
+            )
+            .layer(http_cors_layer());
+
+        for path in ["/api/admin/users/1", "/api/agent/sessions/ses_1"] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(Method::OPTIONS)
+                        .uri(path)
+                        .header(header::ORIGIN, "https://cors-patch.test")
+                        .header(header::ACCESS_CONTROL_REQUEST_METHOD, "PATCH")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .expect("preflight");
+            assert_eq!(response.status(), StatusCode::OK, "{path}");
+            let allow_origin = response
+                .headers()
+                .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("");
+            assert_eq!(allow_origin, "https://cors-patch.test", "{path}");
+            let allow_methods = response
+                .headers()
+                .get(header::ACCESS_CONTROL_ALLOW_METHODS)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("");
+            assert!(
+                allow_methods.to_ascii_uppercase().contains("PATCH"),
+                "{path} preflight methods: {allow_methods}"
+            );
+        }
+    }
 }

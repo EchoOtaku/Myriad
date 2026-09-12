@@ -19,7 +19,10 @@ use axum::{
     Json,
 };
 use myriad_error::AppError;
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, Value as SeaValue};
+use sea_orm::{
+    ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait,
+    Value as SeaValue,
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::env;
@@ -1038,6 +1041,43 @@ async fn ensure_unique_username(db: &DatabaseConnection, base: &str) -> Result<S
 
 // DELETE /api/auth/oauth/:slug/unlink/:identity_id
 
+/// Local login is a remaining sign-in method only when a password exists and
+/// the user has not disabled it.
+pub(crate) fn local_login_usable(has_password: bool, local_login_disabled: bool) -> bool {
+    has_password && !local_login_disabled
+}
+
+pub(crate) fn unlink_blocks_last_signin(
+    has_password: bool,
+    local_login_disabled: bool,
+    identity_count: i64,
+) -> bool {
+    identity_count <= 1 && !local_login_usable(has_password, local_login_disabled)
+}
+
+pub(crate) fn disable_local_login_blocks(identity_count: i64) -> bool {
+    identity_count < 1
+}
+
+pub(crate) fn login_methods_lock_key(user_id: i32) -> String {
+    format!("myriad:auth:login_methods:{user_id}")
+}
+
+/// Serialize login-method mutations (unlink / disable local login) per user.
+/// Caller must hold an explicit transaction for the check + write.
+pub(crate) async fn lock_login_methods(
+    db: &impl ConnectionTrait,
+    user_id: i32,
+) -> Result<(), sea_orm::DbErr> {
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        [login_methods_lock_key(user_id).into()],
+    ))
+    .await?;
+    Ok(())
+}
+
 pub async fn provider_unlink(
     Path((slug, identity_id)): Path<(String, i32)>,
     crate::extract::Db(db): crate::extract::Db,
@@ -1074,12 +1114,13 @@ pub async fn provider_unlink(
         return Err(err_404("identity not found or not yours"));
     }
 
-    // 防失联：若此 identity 是唯一登录方式（没密码 + 只有这一条 identity），拒绝
+    // 防失联：最后一个 OAuth 身份，且本地登录不可用（无密码或已禁用）时拒绝。
     let summary = db
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT \
                 (SELECT password_hash IS NOT NULL FROM users WHERE id = $1) AS has_password, \
+                (SELECT local_login_disabled FROM users WHERE id = $1) AS local_login_disabled, \
                 (SELECT COUNT(*) FROM user_identities WHERE user_id = $1) AS identity_count",
             vec![SeaValue::Int(Some(user_id))],
         ))
@@ -1091,14 +1132,15 @@ pub async fn provider_unlink(
         .ok_or_else(|| err_500("user not found"))?;
 
     let has_password: bool = summary.try_get("", "has_password").unwrap_or(false);
+    let local_login_disabled: bool = summary.try_get("", "local_login_disabled").unwrap_or(false);
     let identity_count: i64 = summary.try_get("", "identity_count").unwrap_or(0);
 
-    if !has_password && identity_count <= 1 {
+    if unlink_blocks_last_signin(has_password, local_login_disabled, identity_count) {
         return Err(HttpError::from((
             StatusCode::CONFLICT,
             Json(json!({
                 "error": "Cannot unlink last identity",
-                "message": "Please set a local password first, or link another provider."
+                "message": "Keep a usable local login (password set and not disabled), or link another provider."
             })),
         )));
     }
@@ -1258,4 +1300,36 @@ pub async fn set_primary_identity(
         "provider_username": provider_username,
         "avatar_url": avatar_url,
     })))
+}
+
+#[cfg(test)]
+mod unlink_lockout_tests {
+    use super::{local_login_usable, unlink_blocks_last_signin};
+
+    #[test]
+    fn disable_local_login_then_unlink_last_oauth_is_blocked() {
+        let has_password = true;
+        let identity_count = 1;
+
+        assert!(local_login_usable(has_password, false));
+        assert!(!unlink_blocks_last_signin(
+            has_password,
+            false,
+            identity_count
+        ));
+
+        let local_login_disabled = true;
+        assert!(!local_login_usable(has_password, local_login_disabled));
+        assert!(unlink_blocks_last_signin(
+            has_password,
+            local_login_disabled,
+            identity_count
+        ));
+    }
+
+    #[test]
+    fn last_oauth_without_password_stays_blocked() {
+        assert!(unlink_blocks_last_signin(false, false, 1));
+        assert!(!unlink_blocks_last_signin(true, true, 2));
+    }
 }

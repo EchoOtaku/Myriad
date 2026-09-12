@@ -1,7 +1,7 @@
 {
   "widget:register": {
     "what": "Ermöglicht das Registrieren eigener Widgets auf dem Startseitenraster.",
-    "chain": "1) Der App wird diese Berechtigung erteilt.\n2) Die Widget-Register-API platziert Karten auf dem Startseitenraster.\n3) Admin-Ebene; alle Besucher sehen diese Widgets.",
+    "chain": "1) Der App wird diese Berechtigung erteilt.\n2) Die Widget-Registrierungs-API platziert Karten auf dem Startseitenraster.\n3) Admin-Ebene; alle Besucher sehen diese Widgets.",
     "frontend": "Widget-Raster der Startseite; Registrieren/Entfernen in der App.",
     "notes": "Nur vertrauenswürdige Apps installieren — Widgets erscheinen seitenweit."
   },
@@ -141,7 +141,7 @@
     "what": "Ermöglicht das Abspielen von Paket-/Blob-/Data-Audio in der Sandbox.",
     "chain": "1) Die App startet Audio.\n2) Nur erlaubte Quellen spielen.\n3) Keine beliebige Remote-Steuerung.",
     "frontend": "SFX / Audioclips in der App.",
-    "notes": "Anders als media:control — fokussiert auf sandboxed Quellen."
+    "notes": "Anders als media:control — fokussiert auf Quellen in der Sandbox."
   },
   "component:theme": {
     "what": "Ermöglicht das Registrieren eigener Designstile für die Site.",
@@ -180,7 +180,7 @@
     "notes": "Aggressive Zeitpläne verschwenden Ressourcen; bei der Deinstallation aufräumen."
   },
   "speech:tts": {
-    "what": "Ermöglicht Text-to-Speech.",
+    "what": "Ermöglicht Sprachausgabe.",
     "chain": "1) Die App sendet Text.\n2) Die Site-TTS-Konfiguration erzeugt Audio.\n3) Spielt oder liefert Audio.",
     "frontend": "„Vorlesen“ in der App.",
     "notes": "TTS muss konfiguriert sein; kann Kontingent verbrauchen."

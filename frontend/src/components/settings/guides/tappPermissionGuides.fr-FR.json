@@ -37,7 +37,7 @@
   },
   "ai:analyze": {
     "what": "Permet l’analyse IA de données ou une interprétation structurée.",
-    "chain": "1) L’application soumet du contenu à analyser.\n2) Les appels d’analyse consomment le quota.\n3) Les insights s’affichent dans l’application.",
+    "chain": "1) L’application soumet du contenu à analyser.\n2) Les appels d’analyse consomment le quota.\n3) Les analyses s’affichent dans l’application.",
     "frontend": "Fonctions d’analyse / d’insight dans l’application.",
     "notes": "Les charges volumineuses peuvent être lentes ou échouer."
   },
@@ -60,7 +60,7 @@
     "notes": "Déléguée séparément de ai:generate. Le chat Agent ne peut toujours pas chercher. Sortant."
   },
   "3d:generate": {
-    "what": "Permet à Tripo de générer, rigger ou retargeter des modèles 3D (image/multivue → GLB).",
+    "what": "Permet à Tripo de générer, monter le rig ou réappliquer l’animation de modèles 3D (image/multivue → GLB).",
     "chain": "1) L’application envoie une image ou un modèle de référence.\n2) L’hôte appelle Tripo ; la clé API n’entre jamais dans le bac à sable.\n3) Le GLB persisté renvoie un asset_id ; Tapp.model3d.getUrl le charge dans le bac à sable.",
     "frontend": "Génération/aperçu 3D dans l’application ; paramètres du site « 3D & Tripo ».",
     "notes": "Consomme les crédits Tripo du site ; non déléguée par défaut. Lire des GLB existants ne nécessite pas cette autorisation."

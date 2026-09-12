@@ -2,6 +2,9 @@ import type { Locale, TranslationKeys } from './index'
 import { assembleLocale } from './assembleLocale'
 import { createLocaleLoader } from './createLocaleLoader'
 
+// Vite serves `*.json?import` as JS. A JSON import attribute makes the
+// browser require application/json and reject the module.
+
 async function loadPack(locale: Locale): Promise<TranslationKeys> {
   switch (locale) {
     case 'zh-CN': {

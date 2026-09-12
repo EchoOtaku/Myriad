@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import zhCN from '../../../../i18n/zh-CN.json'
+import zhCN from '../../../../i18n/zh-CN.json' with { type: 'json' }
 import { buildReportCardPreviewData } from '../previewData'
 import { ANIME_THEMES } from './anime'
 

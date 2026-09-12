@@ -190,7 +190,7 @@ export class RtcSpeechAlignment {
     turn.words = new Map(retained.map((word) => [word.start_ms, word]))
     this.turns.set(frame.turnId, turn)
     // Only a few in-flight turns can overtake their server notices.
-    const ids = [...this.turns.keys()].sort((a, b) => a - b)
+    const ids = [...this.turns.keys()].toSorted((a, b) => a - b)
     while (ids.length > 3) this.turns.delete(ids.shift()!)
     return frame.turnId === this.providerTurnId ? this.rebuild() : false
   }

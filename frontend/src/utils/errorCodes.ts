@@ -1,4 +1,4 @@
-import spec from '../../../shared/error_codes.json'
+import spec from '../../../shared/error_codes.json' with { type: 'json' }
 
 interface CodeSpec {
   aliases: Record<string, string>

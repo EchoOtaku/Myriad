@@ -6,20 +6,18 @@ describe('requestDedup generation after clear', () => {
   it('does not re-cache stale data after clearDedupCache', async () => {
     const { dedupedFetch, clearDedupCache } = await import('./requestDedup')
 
-    let resolveFetch!: (v: { n: number }) => void
-    const slow = new Promise<{ n: number }>((resolve) => {
-      resolveFetch = resolve
-    })
+    const { promise: slow, resolve: resolveFetch } = Promise.withResolvers<{
+      n: number
+    }>()
 
     const key = '/api/config/ui-test-generation'
     const p1 = dedupedFetch(key, () => slow, { cacheTTL: 60_000, cacheKey: key })
 
     clearDedupCache(key)
 
-    let resolveFresh!: (v: { n: number }) => void
-    const fresh = new Promise<{ n: number }>((resolve) => {
-      resolveFresh = resolve
-    })
+    const { promise: fresh, resolve: resolveFresh } = Promise.withResolvers<{
+      n: number
+    }>()
     const p2 = dedupedFetch(key, () => fresh, { cacheTTL: 60_000, cacheKey: key })
 
     resolveFetch({ n: 1 })

@@ -210,7 +210,7 @@ test('Chat scene sources exist in capture; registry kinds remain a client orderi
     (match) => match[1],
   )
   assert.deepEqual(selected, ['music_track', 'page', 'pointer', 'surface'])
-  assert.ok(selected.every((source) => sourceIds.has(source)))
+  assert.ok(new Set(selected).isSubsetOf(sourceIds))
   assert.match(server, /perception_view::perception_reader_text\(obj\)/)
 })
 

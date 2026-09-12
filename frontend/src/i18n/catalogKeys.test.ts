@@ -38,10 +38,10 @@ function collectKeys(value: unknown, prefix = ''): string[] {
 }
 
 function assertSameKeys(label: string, canonical: unknown, other: unknown) {
-  const expected = collectKeys(canonical)
+  const expected = new Set(collectKeys(canonical))
   const actual = new Set(collectKeys(other))
-  const missing = expected.filter((key) => !actual.has(key))
-  const extra = [...actual].filter((key) => !expected.includes(key))
+  const missing = [...expected.difference(actual)]
+  const extra = [...actual.difference(expected)]
   assert.deepEqual(
     { missing, extra },
     { missing: [], extra: [] },

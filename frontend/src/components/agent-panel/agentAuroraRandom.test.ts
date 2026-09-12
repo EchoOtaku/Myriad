@@ -71,7 +71,7 @@ describe('aurora prism paint', () => {
   it('draws more than three hues across recipes and does not reuse one', () => {
     const a = paintAuroraPrism(mulberry32(3))
     const b = paintAuroraPrism(mulberry32(11))
-    const unique = new Set([...huesOf(a), ...huesOf(b)])
+    const unique = new Set(huesOf(a)).union(new Set(huesOf(b)))
     assert.ok(unique.size > 3)
     assert.notEqual(JSON.stringify(a.blobs), JSON.stringify(b.blobs))
   })

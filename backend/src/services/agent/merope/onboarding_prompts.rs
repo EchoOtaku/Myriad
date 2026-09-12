@@ -214,7 +214,7 @@ Use the exact `genderPresentation`:
 `faceDesign` must explicitly state that requested read in the request language: feminine / 女性化 / 女性的; masculine / 男性化 / 男性的; or androgynous / neutral / 中性 / 中性的.
 
 ## Output
-Return only this JSON object, with all eleven strings present and written in `language` (`zh-CN`, `zh-TW`, `ja-JP`, or `en-US`):
+Return only this JSON object, with all eleven strings present and written in `language` (`zh-CN`, `zh-TW`, `ja-JP`, `en-US`, `ko-KR`, `fr-FR`, or `de-DE`):
 {"visualIdentity":{"character":{"faceDesign":"...","eyeDesign":"...","hairShape":"...","hairLayerPlan":"..."},"outfit":{"upperBodySilhouette":"...","outfitConstruction":"...","sleeveArmDesign":"...","materialPlan":"...","heroAccessory":"...","paletteHint":"...","motif":"..."}}}
 
 `character` is the stable person; `outfit` is replaceable. Use one or two short drawable sentences per field.

@@ -6,7 +6,7 @@ import LocaleLang from '@components/LocaleLang.astro'
 import PageLoader from '@components/PageLoader.astro'
 import StripSpaQuery from '@components/StripSpaQuery.astro'
 import App from '../App'
-import en from '../i18n/en-US.json'
+import en from '../i18n/en-US.json' with { type: 'json' }
 import '../styles/tailwind.css'
 
 const title = en.chrome.title

@@ -131,7 +131,7 @@
   "permSubscribeEventDesc": "Permettre de s’abonner aux événements système",
   "permAiImageDesc": "Permettre d’appeler l’IA pour générer des images",
   "permAiSearchDesc": "Permettre la recherche web via TinyFish (repli Gemini grounding)",
-  "perm3dGenerateDesc": "Permettre d’appeler Tripo pour générer, rigger ou retargeter des modèles 3D",
+  "perm3dGenerateDesc": "Permettre d’appeler Tripo pour générer, monter le rig ou réappliquer l’animation de modèles 3D",
   "permSchedulerRegisterDesc": "Permettre d’enregistrer et de gérer des tâches planifiées",
   "permSpeechTtsDesc": "Permettre d’utiliser le service de synthèse vocale",
   "permSpeechAsrDesc": "Permettre d’utiliser le service de reconnaissance vocale",

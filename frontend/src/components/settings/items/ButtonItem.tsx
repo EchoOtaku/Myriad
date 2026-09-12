@@ -48,7 +48,7 @@ export const ButtonItem = React.memo<ButtonItemProps>(
 
       setInternalLoading(true)
       try {
-        await Promise.resolve(onClick())
+        await Promise.try(onClick)
       } finally {
         setInternalLoading(false)
       }

@@ -47,15 +47,20 @@ project_name() {
     printf '%s' "$project"
 }
 
+# Restore pins RESTORE_PROJECT before overwriting .env so compose cannot retarget.
+active_project() {
+    printf '%s' "${RESTORE_PROJECT:-$(project_name)}"
+}
+
 compose() {
     local kind
     kind="$(compose_bin)"
     # shellcheck disable=SC2086
-    $kind --env-file .env -p "$(project_name)" "$@"
+    $kind --env-file .env -p "$(active_project)" "$@"
 }
 
 data_volume() {
-    printf '%s_backend_data' "$(project_name)"
+    printf '%s_backend_data' "$(active_project)"
 }
 
 # True only when the named compose service has a running container.
@@ -125,6 +130,29 @@ require_same_postgres_password() {
     fi
 }
 
+# Refuse before stop if the backup names a different compose project.
+# Pins RESTORE_PROJECT so a later .env overwrite cannot switch A → B.
+require_same_compose_project() {
+    local backup_env="$1"
+    local backup_dir backup live
+    live="$(project_name)"
+    backup_dir="$(dirname "$backup_env")"
+    backup=""
+    if [ -f "$backup_dir/MANIFEST.txt" ]; then
+        backup="$(grep -E '^project=' "$backup_dir/MANIFEST.txt" 2>/dev/null | head -1 | cut -d= -f2-)"
+    fi
+    if [ -z "$backup" ]; then
+        backup="$(env_file_key "$backup_env" COMPOSE_PROJECT_NAME)"
+    fi
+    [ -z "$backup" ] && backup="myriad"
+    if [ "$live" != "$backup" ]; then
+        err "restore refuses compose project '$backup'; live project is '$live'"
+        err "stop and restore only target the project that is currently selected"
+        exit 1
+    fi
+    export RESTORE_PROJECT="$live"
+}
+
 wait_backend_ready() {
     local i
     info "==> waiting for backend /ready"
@@ -154,10 +182,11 @@ Usage: $0 <backup|restore> [options]
       Restore Postgres, backend_data, and .env from a backup directory.
       Destructive. Stops backend unless --no-stop is set.
       Supported scope: same compose project and the same
-      POSTGRES_PASSWORD as the running role. A different password is
-      refused before any stop, copy, or restore.
-      Order: match password → stop writers → restore .env → restore
-      Postgres → restore volume → recreate backend → wait /ready.
+      POSTGRES_PASSWORD as the running role. A different password or
+      compose project is refused before any stop, copy, or restore.
+      Order: match password and project → pin project → stop writers →
+      restore .env → restore Postgres → restore volume → recreate
+      backend → wait /ready.
       A failed restore leaves backend stopped.
 
 Notes:
@@ -253,6 +282,7 @@ do_restore() {
     [ -f "$from/env" ] || { err "missing $from/env"; exit 1; }
 
     require_same_postgres_password "$from/env"
+    require_same_compose_project "$from/env"
 
     BACKEND_STOPPED_BY_US=0
     trap 'code=$?; trap - EXIT; if [ "$code" -ne 0 ] && [ "${BACKEND_STOPPED_BY_US:-0}" -eq 1 ]; then err "restore failed; backend left stopped so writes stay quiesced"; fi; exit "$code"' EXIT

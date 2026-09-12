@@ -33,9 +33,10 @@ function samePermissions(
   left: TappPermission[],
   right: TappPermission[],
 ): boolean {
-  if (left.length !== right.length) return false
-  const expected = new Set(left)
-  return right.every((permission) => expected.has(permission))
+  return (
+    left.length === right.length &&
+    new Set(right).isSubsetOf(new Set(left))
+  )
 }
 
 class RequestDeduplicator {

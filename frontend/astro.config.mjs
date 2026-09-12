@@ -165,10 +165,9 @@ function isFederationTransferApiPath(urlPath) {
 }
 
 async function readRequestBody(req) {
-  const chunks = []
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
-  }
+  const chunks = await Array.fromAsync(req, (chunk) =>
+    Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
+  )
   return Buffer.concat(chunks)
 }
 
@@ -195,19 +194,18 @@ function proxyBackendRequest(targetUrl, method, headers, body, timeoutMs) {
       (backendRes) => {
         // Headers arrived: drop the idle timer for a small JSON body.
         backendReq.setTimeout(0)
-        const chunks = []
-        backendRes.on('data', (chunk) =>
-          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)),
+        void Array.fromAsync(backendRes, (chunk) =>
+          Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
         )
-        backendRes.on('end', () => {
-          resolve({
-            statusCode: backendRes.statusCode || 502,
-            statusMessage: backendRes.statusMessage || 'Bad Gateway',
-            headers: backendRes.headers,
-            body: Buffer.concat(chunks),
+          .then((chunks) => {
+            resolve({
+              statusCode: backendRes.statusCode || 502,
+              statusMessage: backendRes.statusMessage || 'Bad Gateway',
+              headers: backendRes.headers,
+              body: Buffer.concat(chunks),
+            })
           })
-        })
-        backendRes.on('error', reject)
+          .catch(reject)
       },
     )
 
@@ -676,7 +674,7 @@ function deferNonCriticalCssIntegration() {
 
         const stripRe = new RegExp(
           `<link[^>]+href="/assets/(${[...stripCss]
-            .map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+            .map((s) => RegExp.escape(s))
             .join('|')})"[^>]*>`,
           'g',
         )
@@ -919,6 +917,7 @@ export default defineConfig({
     environments: {
       client: {
         build: {
+          target: 'es2025',
           rollupOptions: {
             output: {
               codeSplitting: {
@@ -985,6 +984,7 @@ export default defineConfig({
       },
     },
     build: {
+      target: 'es2025',
       cssCodeSplit: true,
       minify: 'terser',
       terserOptions: {
@@ -993,9 +993,6 @@ export default defineConfig({
           drop_console: process.env.NODE_ENV === 'production',
           drop_debugger: true,
           passes: 2,
-        },
-        mangle: {
-          safari10: true,
         },
       },
       assetsInlineLimit: 4096,

@@ -1,16 +1,16 @@
 import type { TranslationKeys } from './assembleLocale'
 import type { Locale } from './locales'
-import agentCaps from './agentCaps.en-US.json'
+import agentCaps from './agentCaps.en-US.json' with { type: 'json' }
 import { assembleLocale } from './assembleLocale'
-import brew from './brew.en-US.json'
-import config from './config.en-US.json'
-import core from './en-US.json'
-import errors from './errors.en-US.json'
+import brew from './brew.en-US.json' with { type: 'json' }
+import config from './config.en-US.json' with { type: 'json' }
+import core from './en-US.json' with { type: 'json' }
+import errors from './errors.en-US.json' with { type: 'json' }
 import { formatMessage } from './formatMessage'
 import { getCachedLocale, loadLocale } from './loadLocale'
 import { getDefaultLocale, localeOrFallback } from './locales'
-import merope from './merope.en-US.json'
-import tapp from './tapp.en-US.json'
+import merope from './merope.en-US.json' with { type: 'json' }
+import tapp from './tapp.en-US.json' with { type: 'json' }
 
 const enUS: TranslationKeys = assembleLocale(core, {
   config,

@@ -109,7 +109,7 @@ export function presentWidgetLibraryKindFilters(
     const kind = `tapp:${category}` as const
     if (seen.has(kind)) chips.push(kind)
   }
-  for (const kind of [...seen].sort()) {
+  for (const kind of [...seen].toSorted()) {
     if (kind.startsWith('tapp:') && !chips.includes(kind)) chips.push(kind)
   }
   return chips

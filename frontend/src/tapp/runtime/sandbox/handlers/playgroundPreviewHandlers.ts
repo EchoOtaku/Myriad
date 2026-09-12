@@ -83,7 +83,11 @@ export function previewAssetFromPackage(
   } else {
     mimeType = guessPreviewAssetMime(path)
     try {
-      base64 = btoa(unescape(encodeURIComponent(raw)))
+      base64 = btoa(
+        Array.from(new TextEncoder().encode(raw), (b) =>
+          String.fromCharCode(b),
+        ).join(''),
+      )
     } catch {
       return null
     }

@@ -4,11 +4,7 @@ import { RequestCache } from '../../../utils/requestCache'
 import { RequestTurn, unlessAborted } from './requestTurn'
 
 function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((yes) => {
-    resolve = yes
-  })
-  return { promise, resolve }
+  return Promise.withResolvers<T>()
 }
 
 describe('RequestTurn', () => {

@@ -282,11 +282,11 @@
       },
       "config-persona-wardrobe": {
         "title": "Garde-robe",
-        "body": "Ouvrez un set pour gérer son portrait. Visage et cheveux restent fixes. On peut ajouter des tenues."
+        "body": "Ouvrez un ensemble pour gérer son portrait. Visage et cheveux restent fixes. On peut ajouter des tenues."
       },
       "config-persona-motion": {
         "title": "Mouvement",
-        "body": "Prévisualisez et ajustez le mouvement après import d'un rig."
+        "body": "Prévisualisez et ajustez le mouvement après l'importation d'un rig."
       },
       "tapp-detail-overview": {
         "title": "Aperçu",
@@ -532,7 +532,7 @@
     "gamePresence": "Carte de jeu HoYoverse",
     "visitorStats": "Visites",
     "brewSource": "Tuile de flux",
-    "brewTopic": "Digest de sujet",
+    "brewTopic": "Synthèse de sujet",
     "brewFeatured": "Sélection Brew",
     "githubRepos": "Dépôts GitHub",
     "githubReposField": "Dépôt",
@@ -614,7 +614,7 @@
     "stickerModeGenerate": "Générer",
     "stickerModeUpload": "Importer",
     "stickerUploadImage": "Choisir une image",
-    "stickerUploading": "Import…",
+    "stickerUploading": "Envoi…",
     "stickerUploadFailed": "Impossible d'importer le sticker",
     "stickerCropHint": "Glissez ou faites défiler pour recadrer la zone visible",
     "stickerLongPressEdit": "Appui long pour ajuster la zone visible",
@@ -920,7 +920,7 @@
       "step3Short": "Persona",
       "step4Short": "Design",
       "step5Short": "Portrait",
-      "step1Title": "Tags de traits",
+      "step1Title": "Traits",
       "step1Lead": "",
       "step2Title": "Nom",
       "step2Lead": "",
@@ -999,7 +999,7 @@
       "importPersonaFailed": "Impossible d'importer la persona. Réessayez.",
       "importPersonaEmpty": "Collez d'abord une persona.",
       "importPortrait": "Importer un portrait",
-      "importPortraitBusy": "Import…",
+      "importPortraitBusy": "Envoi…",
       "importPortraitFailed": "Impossible d'importer le portrait. Réessayez.",
       "importPortraitReplace": "Remplacer",
       "importEnter": "J'en ai déjà une",
@@ -1226,7 +1226,7 @@
     "loadSongFailed": "Impossible de charger ce titre.",
     "playlistEmpty": "Cette playlist est vide, ou l'ID n'a aucun titre jouable.",
     "playlistRateLimited": "La source musique a limité cette requête. Réessayez plus tard ou passez à QQ Music.",
-    "playlistBlocked": "Cette playlist est bloquée par le copyright ou la région. Essayez QQ Music.",
+    "playlistBlocked": "Cette playlist est bloquée par les droits ou la région. Essayez QQ Music.",
     "playFailed": "Lecture échouée, vérifiez le réseau ou la dispo du titre",
     "vipPlayFailed": "Titre VIP indisponible (abonnement ou essai requis)"
   },
@@ -1688,7 +1688,7 @@
     "ytSubscribers": "abos",
     "ytViews": "vues",
     "ytVideos": "vidéos",
-    "ytEmptyChannel": "Chaîne publique liée — pas encore d'uploads"
+    "ytEmptyChannel": "Chaîne publique liée — pas encore de vidéos"
   },
   "socialNetworkWidget": {
     "fillPlatformName": "Entrez le nom de la plateforme",
@@ -1720,7 +1720,7 @@
     "customFontHint": "Utilisez une police que vous avez le droit d'embarquer sur le web. Facultatif.",
     "customFontChoose": "Choisir une police",
     "customFontClear": "Police système",
-    "customFontUploading": "Import…",
+    "customFontUploading": "Envoi…",
     "customFontFailed": "Impossible d'importer la police",
     "customFontInUse": "Police perso en cours"
   },

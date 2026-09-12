@@ -476,13 +476,16 @@ function isGridCoord(value: unknown): value is number {
 }
 
 function clonePlainObject(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    return undefined
+  }
   try {
-    const cloned = JSON.parse(JSON.stringify(value)) as unknown
-    if (!cloned || typeof cloned !== 'object' || Array.isArray(cloned)) {
-      return undefined
-    }
-    return cloned as Record<string, unknown>
+    return structuredClone(value) as Record<string, unknown>
   } catch {
     return undefined
   }

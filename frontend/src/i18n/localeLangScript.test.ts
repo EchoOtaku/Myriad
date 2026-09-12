@@ -81,7 +81,7 @@ describe('localeLangInlineScript', () => {
     const en = JSON.parse(
       readFileSync(new URL('./en-US.json', import.meta.url), 'utf8'),
     ) as { chrome: { title: string } }
-    assert.match(script, new RegExp(en.chrome.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+    assert.match(script, new RegExp(RegExp.escape(en.chrome.title)))
   })
 
   it('uses the same Traditional mapping as parseLocale', () => {

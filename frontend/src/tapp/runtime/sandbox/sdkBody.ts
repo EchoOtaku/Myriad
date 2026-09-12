@@ -514,7 +514,7 @@ function widgetNamespace(surface: SdkSurface): string {
   if (surface === 'widget') {
     return `
     widget: {
-      getInstanceSettings: () => Object.assign({}, (window._TAPP_WIDGET_PROPS && window._TAPP_WIDGET_PROPS.config) || {}),
+      getInstanceSettings: () => ({ ...((window._TAPP_WIDGET_PROPS && window._TAPP_WIDGET_PROPS.config) || {}) }),
       updateInstanceSettings: (patch) => sendRequest('widget', 'instanceSettings.update', [patch]),
       invalidate: (reason, options) => {
         if (options == null) return sendRequest('widget', 'invalidate', [reason]);
@@ -1098,7 +1098,7 @@ ${lifecycleNamespace(surface, idLiteral, nameLiteral, versionLiteral, permission
       getLocale: () => currentLocale,
       getAll: () => {
         const all = window._TAPP_I18N;
-        return all && typeof all === 'object' ? JSON.parse(JSON.stringify(all)) : {};
+        return all && typeof all === 'object' ? structuredClone(all) : {};
       },
     },
 ${widgetNamespace(surface)}

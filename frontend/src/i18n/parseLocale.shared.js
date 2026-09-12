@@ -45,8 +45,8 @@ export function parseLanguageList(raw) {
     .map((part, index) => {
       const bits = part.trim().split(';')
       let q = 1
-      for (let i = 1; i < bits.length; i++) {
-        const match = bits[i].trim().match(/^q=([0-9.]+)$/i)
+      for (const bit of bits.slice(1)) {
+        const match = bit.trim().match(/^q=([0-9.]+)$/i)
         if (!match) continue
         const value = Number(match[1])
         q = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0
@@ -62,8 +62,8 @@ export function parseLocale(raw) {
   if (!tag) return null
   if (isLocale(tag)) return tag
   const items = parseLanguageList(tag)
-  for (let i = 0; i < items.length; i++) {
-    const mapped = mapLanguageTag(items[i].tag)
+  for (const item of items) {
+    const mapped = mapLanguageTag(item.tag)
     if (mapped) return mapped
   }
   return null
@@ -71,8 +71,8 @@ export function parseLocale(raw) {
 
 export function parseLocaleCookie(cookie) {
   const parts = String(cookie || '').split(';')
-  for (let i = 0; i < parts.length; i++) {
-    const trimmed = parts[i].trim()
+  for (const part of parts) {
+    const trimmed = part.trim()
     if (trimmed.startsWith('locale=')) {
       try {
         return decodeURIComponent(trimmed.slice('locale='.length))

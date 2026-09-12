@@ -122,7 +122,11 @@ test('every locale carries the import copy', () => {
   for (const file of files) {
     const source = read(file)
     for (const key of keys) {
-      assert.match(source, new RegExp(`\\b${key}\\b`), `${file} 缺 ${key}`)
+      assert.match(
+        source,
+        new RegExp(`\\b${RegExp.escape(key)}\\b`),
+        `${file} 缺 ${key}`,
+      )
     }
   }
 })
