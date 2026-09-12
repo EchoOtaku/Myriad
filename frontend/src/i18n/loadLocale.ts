@@ -61,6 +61,25 @@ async function loadPack(locale: Locale): Promise<TranslationKeys> {
         agentCaps: agentCaps.default,
       })
     }
+    case 'zh-TW': {
+      const [core, config, tapp, brew, merope, errors, agentCaps] = await Promise.all([
+        import('./zh-TW.json'),
+        import('./config.zh-TW.json'),
+        import('./tapp.zh-TW.json'),
+        import('./brew.zh-TW.json'),
+        import('./merope.zh-TW.json'),
+        import('./errors.zh-TW.json'),
+        import('./agentCaps.zh-TW.json'),
+      ])
+      return assembleLocale(core.default, {
+        config: config.default,
+        tapp: tapp.default,
+        brew: brew.default,
+        merope: merope.default,
+        errors: errors.default,
+        agentCaps: agentCaps.default,
+      })
+    }
     default: {
       const _exhaustive: never = locale
       throw new Error(`Unknown locale: ${_exhaustive}`)
@@ -70,6 +89,7 @@ async function loadPack(locale: Locale): Promise<TranslationKeys> {
 
 const loader = createLocaleLoader<TranslationKeys>({
   'zh-CN': () => loadPack('zh-CN'),
+  'zh-TW': () => loadPack('zh-TW'),
   'en-US': () => loadPack('en-US'),
   'ja-JP': () => loadPack('ja-JP'),
 })

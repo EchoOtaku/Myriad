@@ -669,7 +669,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         ..Default::default()
     });
 
-    // Same `synthesize_standalone_tts` as POST /api/speech/tts (OpenAI|OpenRouter → Gemini → MiniMax → Tencent).
+    // Same synthesize_standalone_tts as POST /api/speech/tts (configured provider; else Tencent).
     registry.register(Capability {
         id: "speech.tts".to_string(),
         name: "Text to speech".to_string(),

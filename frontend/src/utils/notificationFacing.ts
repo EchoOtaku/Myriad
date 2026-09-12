@@ -1,9 +1,13 @@
 import type { AppNotification } from '../services/notificationApi'
+import { formatMessage, getDefaultLocale } from '../i18n'
 import { currentCopy } from '../i18n/localeCopy'
 import { isUselessErrorText, userFacingError } from './userFacingError'
 
-function fill(template: string, params: Record<string, string>): string {
-  return template.replace(/\{(\w+)\}/g, (_, key) => params[key] ?? `{${key}}`)
+function fill(
+  template: string,
+  params: Record<string, string | number>,
+): string {
+  return formatMessage(getDefaultLocale(), template, params)
 }
 
 function metaString(
@@ -35,11 +39,10 @@ export function notificationFacingTitle(notification: AppNotification): string {
           name ||
           notification.title.replace(/\s*·\s*\d+.*$/, '').trim() ||
           'RSS',
-        n: String(
+        n:
           typeof notification.metadata?.new_count === 'number'
             ? notification.metadata.new_count
             : 0,
-        ),
       })
     case 'heartbeat.succeeded':
     case 'heartbeat.failed':
@@ -264,7 +267,7 @@ export function notificationFacingBody(notification: AppNotification): string {
   ) {
     const n = notification.metadata?.new_count
     return fill(t.noticeBrewNewItemsBody, {
-      n: typeof n === 'number' ? String(n) : '0',
+      n: typeof n === 'number' ? n : 0,
     })
   }
   const messageType = metaString(notification, 'message_type')
@@ -291,7 +294,7 @@ export function notificationFacingBody(notification: AppNotification): string {
   }
   const leftoverBrewBody = notification.body.match(/^发现 (\d+) 篇新内容$/)
   if (leftoverBrewBody) {
-    return fill(t.noticeBrewNewItemsBody, { n: leftoverBrewBody[1] })
+    return fill(t.noticeBrewNewItemsBody, { n: Number(leftoverBrewBody[1]) })
   }
   return userFacingError(notification.body, notification.body)
 }

@@ -7,7 +7,7 @@ import React, {
   useMemo,
   useState,
 } from 'react'
-import { getDefaultLocale, saveLocale } from '../i18n'
+import { formatMessage, getDefaultLocale, htmlLang, saveLocale } from '../i18n'
 import { persistLocaleToAccount } from '../i18n/localeAccount'
 import {
   getCachedLocale,
@@ -92,17 +92,15 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({
   // html lang tracks the loaded bundle, not the target locale.
   useEffect(() => {
     if (bundle) {
-      document.documentElement.lang = bundle.locale
+      document.documentElement.lang = htmlLang(bundle.locale)
     }
   }, [bundle])
 
   const format = useCallback(
     (template: string, params: Record<string, string | number>) => {
-      return template.replace(/\{(\w+)\}/g, (_, key) => {
-        return String(params[key] ?? `{${key}}`)
-      })
+      return formatMessage(locale, template, params)
     },
-    [],
+    [locale],
   )
 
   const value = useMemo(() => {

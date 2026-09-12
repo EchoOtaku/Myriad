@@ -200,7 +200,7 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
   privateTappInstallLoading = false,
   onPrivateTappInstallPresetChange,
 }) => {
-  const { t } = useI18n()
+  const { t, format, locale } = useI18n()
   const c = t.config
   const { catalog: g, renderGuide, bindGuide } = useSettingGuide()
   const { user: currentUser } = useAuth()
@@ -279,9 +279,11 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
     (value: string | null) => {
       if (!value) return c.usersNever
       const date = new Date(value)
-      return Number.isNaN(date.getTime()) ? c.usersNever : date.toLocaleString()
+      return Number.isNaN(date.getTime())
+        ? c.usersNever
+        : date.toLocaleString(locale)
     },
-    [c.usersNever],
+    [c.usersNever, locale],
   )
 
   const formatOnlineTotal = useCallback(
@@ -378,7 +380,9 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
     async (user: AdminUser, tapp: { tapp_id: string; name: string }) => {
       if (
         !window.confirm(
-          c.usersUninstallTappConfirm.replace('{name}', tapp.name || tapp.tapp_id),
+          format(c.usersUninstallTappConfirm, {
+            name: tapp.name || tapp.tapp_id,
+          }),
         )
       ) {
         return
@@ -520,10 +524,7 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
             if (Number.isFinite(days) && days >= 1) {
               base.push({
                 value: String(days),
-                label: c.privateTappInstallPresetNShort.replace(
-                  '{n}',
-                  String(days),
-                ),
+                label: format(c.privateTappInstallPresetNShort, { n: days }),
               })
             }
           }

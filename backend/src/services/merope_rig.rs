@@ -1,8 +1,8 @@
 //! Anime2.5D rig store.
 //!
 //! Packages live on disk by content id and can coexist. The live pointer is
-//! the worn outfit's package. Pixels are not decoded here — only the PNG
-//! header is read so a selfie or truncated upload cannot be adopted.
+//! the worn outfit's package. Atlas validation walks PNG chunks and inflates
+//! IDAT (no RGBA bitmap); truncated/invalid zlib fails before adopt.
 //! Compilation stays in `myriad-merope`.
 
 use std::{

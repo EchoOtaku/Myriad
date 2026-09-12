@@ -1537,5 +1537,205 @@
   "siteFooterCustomUrlPlaceholder": "https://example.com",
   "siteFooterCustomUrlHint": "入力するとクリックで遷移。空なら表示のみ",
   "icpBadge": "備",
-  "gonganBadge": "公"
+  "gonganBadge": "公",
+  "searchKeywords": {
+    "platforms": [
+      "データ",
+      "統計",
+      "プラットフォーム",
+      "ソース",
+      "token",
+      "api",
+      "ビジター",
+      "analytics",
+      "キャッシュ",
+      "更新"
+    ],
+    "connectedPlatforms": [
+      "接続",
+      "プラットフォーム",
+      "自動更新",
+      "間隔",
+      "ソース",
+      "connected"
+    ],
+    "visitor": [
+      "ビジター",
+      "統計",
+      "PV",
+      "UV",
+      "visitor",
+      "analytics",
+      "ページ",
+      "pageview",
+      "イベント",
+      "referrer",
+      "analytics_enabled",
+      "opt-out",
+      "プライバシー"
+    ],
+    "aiUsage": [
+      "ai",
+      "usage",
+      "token",
+      "使用量",
+      "モデル",
+      "model",
+      "ledger",
+      "ai-usage"
+    ],
+    "thirdParty": [
+      "第三者",
+      "third-party",
+      "ga",
+      "ga4",
+      "google analytics",
+      "gtag",
+      "umami",
+      "外部統計"
+    ],
+    "data": [
+      "データ管理",
+      "data",
+      "キャッシュ",
+      "cache",
+      "フィルタ",
+      "更新"
+    ],
+    "platformItem": [
+      "プラットフォーム",
+      "ソース",
+      "token",
+      "api"
+    ],
+    "ai": [
+      "ai",
+      "gemini",
+      "openai",
+      "api",
+      "モデル",
+      "画像",
+      "agent",
+      "スキル",
+      "記憶",
+      "heartbeat"
+    ],
+    "tripo": [
+      "tripo",
+      "3d",
+      "glb",
+      "gltf",
+      "low poly",
+      "rig",
+      "animation",
+      "ボーン"
+    ],
+    "basic": [
+      "basic",
+      "基本",
+      "ui",
+      "サイト",
+      "テーマ",
+      "背景",
+      "url",
+      "domain",
+      "ドメイン",
+      "pwa",
+      "install",
+      "オフライン"
+    ],
+    "oauth": [
+      "oauth",
+      "github",
+      "ログイン",
+      "auth"
+    ],
+    "music": [
+      "音楽",
+      "music",
+      "プレイリスト",
+      "プレーヤー",
+      "netease"
+    ],
+    "network": [
+      "proxy",
+      "プロキシ",
+      "ネットワーク",
+      "mirror",
+      "socks"
+    ],
+    "notifications": [
+      "notification",
+      "通知",
+      "toast",
+      "browser",
+      "arael",
+      "brew",
+      "tapp",
+      "mcp"
+    ],
+    "advanced": [
+      "advanced",
+      "上級",
+      "reset",
+      "リセット",
+      "import",
+      "export",
+      "health",
+      "database",
+      "mcp"
+    ],
+    "mcp": [
+      "mcp",
+      "MCP",
+      "model context protocol",
+      "ツールサーバー",
+      "stdio",
+      "reload",
+      "arael"
+    ],
+    "about": [
+      "about",
+      "バージョン",
+      "version",
+      "myriad",
+      "updater",
+      "更新",
+      "rollback",
+      "snapshot"
+    ],
+    "permissions": [
+      "権限",
+      "permission",
+      "quota",
+      "ai",
+      "ゲスト"
+    ],
+    "users": [
+      "ユーザー",
+      "user",
+      "admin",
+      "oauth",
+      "アカウント",
+      "online",
+      "登録"
+    ],
+    "federation": [
+      "federation",
+      "連合",
+      "trust",
+      "allowlist",
+      "block",
+      "mfp",
+      "aro"
+    ],
+    "modules": [
+      "モジュール",
+      "library",
+      "ソース",
+      "カテゴリ",
+      "visibility",
+      "hitokoto"
+    ]
+  }
 }

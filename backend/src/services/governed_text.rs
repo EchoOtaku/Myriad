@@ -86,9 +86,8 @@ mod tests {
     #[tokio::test]
     async fn missing_executor_returns_stable_error_code() {
         // Fresh process may or may not have an executor from other tests; if
-        // installed, skip the negative check. Install a throwaway handler only
-        // when empty so we can still assert the public error shape after a
-        // deliberate double-install attempt is a no-op for first-wins.
+        // installed, skip the negative check. Otherwise assert the missing-executor
+        // public error (`AI_TASK_EXECUTOR_UNAVAILABLE`).
         if EXECUTOR.get().is_some() {
             return;
         }

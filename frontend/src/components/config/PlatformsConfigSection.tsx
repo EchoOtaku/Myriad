@@ -216,13 +216,18 @@ function formatCardNumber(n: number, locale: string): string {
   }
 }
 
-function formatCardPlaytime(minutes: number, hoursTpl: string, minsTpl: string): string {
+function formatCardPlaytime(
+  minutes: number,
+  hoursTpl: string,
+  minsTpl: string,
+  format: (template: string, params: Record<string, string | number>) => string,
+): string {
   if (minutes < 60) {
-    return minsTpl.replace('{n}', String(Math.round(minutes)))
+    return format(minsTpl, { n: Math.round(minutes) })
   }
   const hours = minutes / 60
   const rounded = hours >= 100 ? Math.round(hours) : Math.round(hours * 10) / 10
-  return hoursTpl.replace('{n}', String(rounded))
+  return format(hoursTpl, { n: rounded })
 }
 
 function PlatformCardMetricsMarquee({
@@ -313,12 +318,11 @@ const PlatformsConfigSection: React.FC<PlatformsConfigSectionProps> = ({
   getUiFieldValue,
   onUiFieldChange,
 }) => {
-  const { t, locale } = useI18n()
+  const { t, locale, format } = useI18n()
   const { catalog: settingGuides, bindGuide } = useSettingGuide()
   const g = settingGuides
   const dm = t.dataManagement
-  const numberLocale =
-    locale === 'zh-CN' ? 'zh-CN' : locale === 'ja-JP' ? 'ja-JP' : 'en-US'
+  const numberLocale = locale
 
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null)
   const [platformNavDir, setPlatformNavDir] = useState<
@@ -379,7 +383,7 @@ const PlatformsConfigSection: React.FC<PlatformsConfigSectionProps> = ({
   const formatMetricValue = useCallback(
     (key: string, value: number): string => {
       if (key === 'total_playtime_minutes') {
-        return formatCardPlaytime(value, dm.playtimeHours, dm.playtimeMinutes)
+        return formatCardPlaytime(value, dm.playtimeHours, dm.playtimeMinutes, format)
       }
       if (key === 'average_completion') {
         return `${formatCardNumber(value, numberLocale)}%`

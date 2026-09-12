@@ -1432,7 +1432,7 @@ mod tests {
                         platform: "Steam",
                         name: Some("gaben".into()),
                         avatar: None,
-                        bio: "Steam 玩家".into(),
+                        bio: "Steam player".into(),
                     },
                 ),
             ],

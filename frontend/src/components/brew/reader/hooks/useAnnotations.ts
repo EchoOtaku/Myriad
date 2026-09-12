@@ -1,6 +1,7 @@
 import type { AnnotationItem } from '../../../../services/brewliaApi'
 import type { ReaderCopy } from '../types'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useI18n } from '../../../../contexts/I18nContext'
 import * as brewliaApi from '../../../../services/brewliaApi'
 import { userFacingError } from '../../../../utils/userFacingError'
 import { RequestTurn } from '../../logic/requestTurn'
@@ -48,6 +49,7 @@ export function useAnnotations({
   showToastMessage,
   t,
 }: UseAnnotationsOptions): UseAnnotationsReturn {
+  const { format } = useI18n()
   const captureTask = useArticleTaskScope(itemId)
   const turns = useRef(new RequestTurn())
   useEffect(() => () => turns.current.cancel(), [itemId])
@@ -88,7 +90,7 @@ export function useAnnotations({
         setShowAnnotations(true)
         const cacheHint = response.from_cache ? t.brew.fromCache : ''
         showToastMessage(
-          `${t.brew.foundAnnotations.replace('{count}', String(response.annotations.length))}${cacheHint}`,
+          `${format(t.brew.foundAnnotations, { count: response.annotations.length })}${cacheHint}`,
         )
       } else {
         setAnnotationsError(

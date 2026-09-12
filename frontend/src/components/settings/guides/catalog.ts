@@ -5,6 +5,7 @@ import en from './catalog.en.json'
 
 const loader = createLocaleLoader<SettingGuidesCatalog>({
   'zh-CN': () => import('./catalog.zh.json').then((m) => m.default),
+  'zh-TW': () => import('./catalog.zh-TW.json').then((m) => m.default),
   'en-US': async () => en,
   'ja-JP': () => import('./catalog.ja.json').then((m) => m.default),
 })

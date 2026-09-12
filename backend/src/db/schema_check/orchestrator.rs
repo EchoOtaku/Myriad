@@ -125,7 +125,7 @@ impl SchemaDrift {
         self.missing_tables.len() + self.missing_columns.len() + self.missing_indexes.len()
     }
 
-    /// 补齐全部差异所需的 DDL，顺序为先列后索引（索引可能依赖新列）。
+    /// 缺列/缺索引的 DDL（先列后索引）。缺表不在这里，见 `missing_tables`。
     pub fn ddl_statements(&self) -> Vec<String> {
         self.missing_columns
             .iter()
@@ -152,8 +152,8 @@ impl SchemaDrift {
 
 /// 只读比对期望结构与实际结构；不执行任何 DDL。
 ///
-/// 表本身不存在时记录为不可自动修复的漂移 —— 建表是 Migrator 的职责，
-/// schema_check 不兜底整表创建，也不会把缺表实例标记为 ready。
+/// 缺表记入 `missing_tables`。通用 `ddl_statements` 不建表；部分近期表由后面的
+/// `ensure_*` 做 `CREATE TABLE IF NOT EXISTS`。剩余漂移非空则不写 version / 不 ready。
 pub async fn report_schema_drift(db: &DatabaseConnection) -> Result<SchemaDrift, DbErr> {
     let mut drift = SchemaDrift::default();
 

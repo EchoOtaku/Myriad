@@ -20,6 +20,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAnimationPreference } from '../contexts/AnimationPreferenceContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
+import { LOCALES } from '../i18n'
 import { agentFace } from '../features/merope/agentFaceChannel'
 import {
   deliverProactiveFace,
@@ -1825,29 +1826,29 @@ const GlobalControlPanel: React.FC = () => {
                           <p className="control-item-desc">
                             {locale === 'zh-CN'
                               ? t.controlPanel.languageZh
-                              : locale === 'ja-JP'
-                                ? t.controlPanel.languageJa
-                                : t.controlPanel.languageEn}
+                              : locale === 'zh-TW'
+                                ? t.controlPanel.languageZhTw
+                                : locale === 'ja-JP'
+                                  ? t.controlPanel.languageJa
+                                  : t.controlPanel.languageEn}
                           </p>
                         </div>
                       </div>
                       <button
                         onClick={() => {
-                          const locales = ['zh-CN', 'en-US', 'ja-JP'] as const
-                          const currentIndex = locales.indexOf(locale)
-                          const nextIndex = (currentIndex + 1) % locales.length
-                          setLocale(locales[nextIndex])
+                          const currentIndex = LOCALES.indexOf(locale)
+                          const nextIndex = (currentIndex + 1) % LOCALES.length
+                          setLocale(LOCALES[nextIndex])
                         }}
                         onWheel={(e) => {
                           e.preventDefault()
-                          const locales = ['zh-CN', 'en-US', 'ja-JP'] as const
-                          const currentIndex = locales.indexOf(locale)
+                          const currentIndex = LOCALES.indexOf(locale)
                           const nextIndex =
                             e.deltaY > 0
-                              ? (currentIndex + 1) % locales.length
-                              : (currentIndex - 1 + locales.length) %
-                                locales.length
-                          setLocale(locales[nextIndex])
+                              ? (currentIndex + 1) % LOCALES.length
+                              : (currentIndex - 1 + LOCALES.length) %
+                                LOCALES.length
+                          setLocale(LOCALES[nextIndex])
                         }}
                         className="language-switch-btn"
                         aria-label={t.controlPanel.languageSwitch}
@@ -1855,9 +1856,11 @@ const GlobalControlPanel: React.FC = () => {
                         <span className="language-code">
                           {locale === 'zh-CN'
                             ? t.controlPanel.languageZhShort
-                            : locale === 'ja-JP'
-                              ? t.controlPanel.languageJaShort
-                              : t.controlPanel.languageEnShort}
+                            : locale === 'zh-TW'
+                              ? t.controlPanel.languageZhTwShort
+                              : locale === 'ja-JP'
+                                ? t.controlPanel.languageJaShort
+                                : t.controlPanel.languageEnShort}
                         </span>
                       </button>
                     </div>

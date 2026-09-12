@@ -444,7 +444,7 @@ async fn handle_room_socket(
     let local_actor = crate::federation::types::actor_url(&base_url, &username);
 
     // 验证用户是该 Room 的**活跃**成员（`membership_status = 'active'`）。
-    // 与 REST `get_room_messages` 的 `require_active_member_role` 同一门槛；pending 不能连 socket。
+    // 精确 `actor_url` 匹配 + `membership_status = 'active'`（pending 不能连）。REST 另有 `same_actor_url` 回退。
     use sea_orm::{ConnectionTrait as _, DatabaseBackend, Statement};
     let is_member = db
         .query_one_raw(Statement::from_sql_and_values(

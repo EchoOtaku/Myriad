@@ -26,6 +26,26 @@ describe('userFacingError', () => {
     assert.equal(isUselessErrorText('Steam 未返回游戏数据'), false)
   })
 
+  it('maps unmapped codes without leaking leftover English', () => {
+    const withStatus = new ApiError(
+      'Failed to frobnicate the widget',
+      500,
+      'unmapped',
+    )
+    const statusText = userFacingError(withStatus)
+    assert.equal(/frobnicate/i.test(statusText), false)
+    assert.match(statusText, /500/)
+    assert.equal(
+      userFacingError({ code: 'unmapped' }),
+      currentCopy().errors.operationFailed,
+    )
+  })
+
+  it('maps locale_invalid from the catalog', () => {
+    const err = new ApiError('Bad request', 400, 'locale_invalid')
+    assert.equal(userFacingError(err), currentCopy().errors.localeInvalid)
+  })
+
   it('maps HTTP status to a localized reason', () => {
     assert.match(httpStatusMessage(401), /登录|Sign in|ログイン/)
     assert.match(httpStatusMessage(502), /502/)
@@ -1649,6 +1669,14 @@ describe('userFacingError', () => {
     assert.equal(
       userFacingError('已加载 3 个工具'),
       currentCopy().errors.noticeMcpToolsLoaded.replace('{n}', '3'),
+    )
+    assert.equal(
+      userFacingError('维护重试成功'),
+      currentCopy().errors.noticeMcpMaintenanceRetry,
+    )
+    assert.equal(
+      userFacingError('Auto-restart succeeded'),
+      currentCopy().errors.noticeMcpAutoRestart,
     )
     assert.equal(
       userFacingError('状态监控超时，请在系统更新面板确认任务结果'),

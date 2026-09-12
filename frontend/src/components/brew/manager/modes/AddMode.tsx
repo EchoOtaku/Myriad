@@ -83,7 +83,7 @@ export function AddMode({
   onExportOpml,
   RSSHubConfigComponent,
 }: AddModeProps) {
-  const { t: i18n } = useI18n()
+  const { t: i18n, format } = useI18n()
   const t = i18n.brew
   const form = useAddSourceForm({
     onSubmit,
@@ -410,23 +410,21 @@ export function AddMode({
               ) : (
                 <Download />
               )}
-              {t.exportOpml.replace('{count}', String(sourcesCount))}
+              {format(t.exportOpml, { count: sourcesCount })}
             </SheetGhost>
 
             {form.opmlResult ? (
               <SheetNotice tone="ok">
                 <Check />
-                {t.importResult
-                  .replace('{imported}', String(form.opmlResult.imported))
-                  .replace(
-                    '{skipped}',
+                {format(t.importResult, {
+                  imported: form.opmlResult.imported,
+                  skipped:
                     form.opmlResult.skipped > 0
-                      ? t.skippedCount.replace(
-                          '{count}',
-                          String(form.opmlResult.skipped),
-                        )
+                      ? format(t.skippedCount, {
+                          count: form.opmlResult.skipped,
+                        })
                       : '',
-                  )}
+                })}
               </SheetNotice>
             ) : null}
 

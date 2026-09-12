@@ -49,6 +49,23 @@ impl AppError {
             "Invalid user" => Some("unauthorized"),
             "Failed to process password" | "Failed to verify password" => Some("password_failed"),
             "Failed to create account" => Some("account_create_failed"),
+            "Failed to update user" => Some("account_update_failed"),
+            "Failed to list users" | "Failed to list user identities" => {
+                Some("users_load_failed")
+            }
+            "Failed to delete user" | "Failed to commit user delete" => {
+                Some("account_delete_failed")
+            }
+            "Failed to unlink identity" => Some("identity_unlink_failed"),
+            "Failed to update user locale" => Some("locale_save_failed"),
+            "Failed to load config" | "Failed to load configuration" => {
+                Some("config_load_failed")
+            }
+            "Failed to update permissions" | "Failed to save permissions" => {
+                Some("permissions_save_failed")
+            }
+            "Failed to persist Tapp" => Some("tapp_save_failed"),
+            "Failed to save MCP config" => Some("mcp_config_save_failed"),
             "Failed to create session token" | "Failed to refresh session token" => {
                 Some("session_failed")
             }
@@ -114,7 +131,11 @@ impl AppError {
     /// Build with an explicit status. `error` is the short public label.
     pub fn new(status: StatusCode, error: impl Into<String>) -> Self {
         let error = redact_secrets(&error.into());
-        let code = Self::inferred_code(&error).map(str::to_string);
+        let code = Some(
+            Self::inferred_code(&error)
+                .unwrap_or("unmapped")
+                .to_string(),
+        );
         Self {
             status,
             error,
@@ -220,20 +241,17 @@ impl AppError {
         if let Some(ref h) = self.hint {
             v["hint"] = json!(h);
         }
-        if let Some(ref c) = self.code {
-            v["code"] = json!(c);
-        }
+        v["code"] = json!(self.code.clone().unwrap_or_else(|| "unmapped".into()));
         v
     }
 
-    /// `{error, code?}` for handlers that still return raw JSON instead of [`AppError`].
+    /// `{error, code}` for handlers that still return raw JSON instead of [`AppError`].
     pub fn public_json(label: impl Into<String>) -> Value {
         let error = redact_secrets(&label.into());
-        let mut v = json!({ "error": error });
-        if let Some(code) = Self::inferred_code(&error) {
-            v["code"] = json!(code);
-        }
-        v
+        json!({
+            "error": error,
+            "code": Self::inferred_code(&error).unwrap_or("unmapped"),
+        })
     }
 
     /// Brew-style `{success: false, error, code?}`.
@@ -301,7 +319,7 @@ mod tests {
         assert_eq!(v["error"], "missing");
         assert!(v.get("message").is_none());
         assert!(v.get("hint").is_none());
-        assert!(v.get("code").is_none());
+        assert_eq!(v["code"], "unmapped");
     }
 
     #[test]
@@ -370,14 +388,30 @@ mod tests {
             AppError::internal("Failed to find Tapp").to_json()["code"],
             "tapp_not_found"
         );
-        assert!(AppError::not_found("missing")
-            .to_json()
-            .get("code")
-            .is_none());
-        assert!(AppError::internal("Method not found")
-            .to_json()
-            .get("code")
-            .is_none());
+        assert_eq!(
+            AppError::not_found("missing").to_json()["code"],
+            "unmapped"
+        );
+        assert_eq!(
+            AppError::internal("Method not found").to_json()["code"],
+            "unmapped"
+        );
+        assert_eq!(
+            AppError::internal("Failed to update user").to_json()["code"],
+            "account_update_failed"
+        );
+        assert_eq!(
+            AppError::internal("Failed to load config").to_json()["code"],
+            "config_load_failed"
+        );
+        assert_eq!(
+            AppError::internal("Failed to persist Tapp").to_json()["code"],
+            "tapp_save_failed"
+        );
+        assert_eq!(
+            AppError::internal("Failed to save MCP config").to_json()["code"],
+            "mcp_config_save_failed"
+        );
         let unauthorized = AppError::public_json("Unauthorized");
         assert_eq!(unauthorized["error"], "Unauthorized");
         assert_eq!(unauthorized["code"], "unauthorized");
@@ -411,5 +445,6 @@ mod tests {
         let (st, v): (StatusCode, Value) = AppError::conflict("exists").into();
         assert_eq!(st, StatusCode::CONFLICT);
         assert_eq!(v["error"], "exists");
+        assert_eq!(v["code"], "unmapped");
     }
 }

@@ -45,8 +45,7 @@ export function brewRelativeTime(
     )
   }
 
-  const dateLocale =
-    locale === 'zh-CN' ? 'zh-CN' : locale === 'ja-JP' ? 'ja-JP' : 'en-US'
+  const dateLocale = locale
   return date.toLocaleDateString(dateLocale, {
     month: 'short',
     day: 'numeric',

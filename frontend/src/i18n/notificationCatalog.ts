@@ -42,6 +42,7 @@ export interface NotificationCopy {
 
 const loader = createLocaleLoader<NotificationCopy>({
   'zh-CN': () => import('./notifications.zh-CN.json').then((m) => m.default),
+  'zh-TW': () => import('./notifications.zh-TW.json').then((m) => m.default),
   'en-US': async () => en,
   'ja-JP': () => import('./notifications.ja-JP.json').then((m) => m.default),
 })

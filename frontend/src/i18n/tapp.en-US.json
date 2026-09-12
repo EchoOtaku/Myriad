@@ -416,7 +416,7 @@
   "storeFeaturedEyebrow": "Recommended",
   "storeLatest": "New",
   "storeUpdatedToday": "Updated today",
-  "storeUpdatedDaysAgo": "Updated {n} days ago",
+  "storeUpdatedDaysAgo": "Updated {n, plural, one {# day} other {# days}} ago",
   "storeBrowse": "Browse",
   "storeLibrary": "Library",
   "storeSourceSettings": "Store source settings",

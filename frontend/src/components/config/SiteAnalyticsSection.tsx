@@ -275,11 +275,10 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
   enabled = true,
   onEnabledChange,
 }) => {
-  const { t, locale } = useI18n()
+  const { t, locale, format } = useI18n()
   const { catalog: g, bindGuide, renderGuide } = useSettingGuide()
   const a = t.config.analytics
-  const numberLocale =
-    locale === 'zh-CN' ? 'zh-CN' : locale === 'ja-JP' ? 'ja-JP' : 'en-US'
+  const numberLocale = locale
 
   const [range, setRange] = useState<AnalyticsRangeState>(() =>
     defaultAnalyticsRange(),
@@ -731,7 +730,7 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
             <div className="site-analytics-tile">
               <span className="site-analytics-tile-label">
                 <LuEye size={13} aria-hidden />
-                {a.rangeViews.replace('{n}', String(dayCount))}
+                {format(a.rangeViews, { n: dayCount })}
               </span>
               <div className="site-analytics-tile-metric">
                 <span className="site-analytics-tile-value">
@@ -750,7 +749,7 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
             <div className="site-analytics-tile">
               <span className="site-analytics-tile-label">
                 <LuUsers size={13} aria-hidden />
-                {a.rangeVisitors.replace('{n}', String(dayCount))}
+                {format(a.rangeVisitors, { n: dayCount })}
               </span>
               <div className="site-analytics-tile-metric">
                 <span className="site-analytics-tile-value">
@@ -834,7 +833,7 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
                 <div className="site-analytics-country-tip" role="tooltip">
                   <div className="site-analytics-country-tip-head">
                     {a.topCountries}
-                    <small>{a.daysN.replace('{n}', String(dayCount))}</small>
+                    <small>{format(a.daysN, { n: dayCount })}</small>
                   </div>
                   <ul className="site-analytics-country-tip-list">
                     {countryRows.map((c, i) => (

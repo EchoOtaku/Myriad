@@ -1,4 +1,5 @@
 
+import { formatMessage, localeOrFallback } from '../../../i18n'
 import { copyForLocale } from '../../../i18n/localeCopy'
 
 export function formatCount(n: number, locale: string): string {
@@ -17,16 +18,15 @@ export function formatDuration(ms: number, locale: string): string {
   if (!Number.isFinite(ms) || ms <= 0) return '—'
   const sec = Math.round(ms / 1000)
   const t = copyForLocale(locale).common
+  const loc = localeOrFallback(locale)
   if (sec < 60) {
-    return t.durationSeconds.replace('{sec}', String(sec))
+    return formatMessage(loc, t.durationSeconds, { sec })
   }
   const min = Math.floor(sec / 60)
   const rem = sec % 60
   return rem
-    ? t.durationMinutesSeconds
-        .replace('{min}', String(min))
-        .replace('{sec}', String(rem))
-    : t.durationMinutes.replace('{min}', String(min))
+    ? formatMessage(loc, t.durationMinutesSeconds, { min, sec: rem })
+    : formatMessage(loc, t.durationMinutes, { min })
 }
 
 export function shortDay(day: string): string {

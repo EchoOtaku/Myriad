@@ -1,8 +1,8 @@
 //! 运行上下文 API
 //!
-//! Domain payload builders live in [`crate::services::tapp_context`]. This
-//! module only resolves Claims, DB profile rows, platform lists, and filesystem
-//! cache mtimes before calling pure builders.
+//! Domain payload builders live in [`crate::services::tapp_context`].
+//! Most handlers resolve Claims / DB / platforms / cache mtimes then call
+//! those builders. `get_context_geo` runs `TappApiService` instead.
 
 use axum::{
     extract::State,

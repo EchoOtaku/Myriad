@@ -1,6 +1,6 @@
 //! 番剧/电视剧/电影数据库
 //!
-//! JSON loader (`anime_database.json`, shipped `entries: []`) plus category analysis.
+//! JSON loader (`anime_database.json`; bootstraps `entries: []` if missing) plus category analysis.
 
 #![allow(dead_code)]
 

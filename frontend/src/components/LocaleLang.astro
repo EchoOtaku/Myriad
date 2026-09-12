@@ -3,16 +3,68 @@
 <script is:inline>
   ;(function () {
     try {
-      var saved = localStorage.getItem('locale')
-      var lang = 'en-US'
-      if (saved === 'zh-CN' || saved === 'en-US' || saved === 'ja-JP') {
-        lang = saved
-      } else {
-        var nav = navigator.language || navigator.userLanguage || ''
-        if (nav.indexOf('zh') === 0) lang = 'zh-CN'
-        else if (nav.indexOf('ja') === 0) lang = 'ja-JP'
+      function mapTag(tag) {
+        var raw = String(tag || '').trim().replace(/_/g, '-')
+        if (
+          raw === 'zh-CN' ||
+          raw === 'zh-TW' ||
+          raw === 'en-US' ||
+          raw === 'ja-JP'
+        ) {
+          return raw
+        }
+        var lower = raw.toLowerCase()
+        if (
+          lower.indexOf('zh-tw') === 0 ||
+          lower.indexOf('zh-hk') === 0 ||
+          lower.indexOf('zh-mo') === 0 ||
+          lower.indexOf('hant') !== -1
+        ) {
+          return 'zh-TW'
+        }
+        if (lower.indexOf('zh') === 0) return 'zh-CN'
+        if (lower.indexOf('ja') === 0) return 'ja-JP'
+        if (lower.indexOf('en') === 0) return 'en-US'
+        return ''
       }
-      document.documentElement.lang = lang
+
+      function pickList(raw) {
+        var parts = String(raw || '').split(',')
+        var items = []
+        for (var i = 0; i < parts.length; i++) {
+          var chunk = parts[i].trim()
+          if (!chunk) continue
+          var bits = chunk.split(';')
+          var q = 1
+          for (var j = 1; j < bits.length; j++) {
+            var match = bits[j].trim().match(/^q=([0-9.]+)$/i)
+            if (match) {
+              var value = Number(match[1])
+              q = isFinite(value) ? Math.min(1, Math.max(0, value)) : 0
+            }
+          }
+          if (q > 0) items.push({ tag: bits[0].trim(), q: q, i: i })
+        }
+        items.sort(function (a, b) {
+          return b.q - a.q || a.i - b.i
+        })
+        for (var k = 0; k < items.length; k++) {
+          var mapped = mapTag(items[k].tag)
+          if (mapped) return mapped
+        }
+        return ''
+      }
+
+      var lang = mapTag(localStorage.getItem('locale') || '')
+      if (!lang) {
+        var navList =
+          (navigator.languages && navigator.languages.join(',')) ||
+          navigator.language ||
+          navigator.userLanguage ||
+          ''
+        lang = pickList(navList) || 'en-US'
+      }
+      document.documentElement.lang = lang === 'en-US' ? 'en' : lang
     } catch (e) {}
   })()
 </script>

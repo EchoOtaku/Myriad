@@ -23,9 +23,7 @@ pub(crate) enum DeliveryMode<'a> {
     InProcess(&'a DatabaseConnection),
 }
 
-// 投递入队
-
-/// 将 Activity 入库并加入投递队列。
+/// 将 Activity 入库；同实例 inbox 当场处理，否则入 pending 队列。
 ///
 /// Same-instance inboxes are processed in-process (no HTTP). The delivery worker
 /// refuses localhost/private targets, so without this shortcut Follow Accept

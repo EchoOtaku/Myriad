@@ -106,11 +106,7 @@ fn is_chunk_platform(platform: &str) -> bool {
 
 /// Distinct platforms with a real report. Chunks and the `all` rollup do not count.
 ///
-/// Only the `platform` column is read. `platform_reports` rows carry two `Json`
-/// columns — `metadata` and the report body — and this is called on every
-/// persona page load and on every name / draft roll. Selecting whole rows meant
-/// dragging the owner's entire report corpus across the wire and deserializing
-/// it to count distinct strings, which got slower the longer the site was used.
+/// Only the `platform` column is read; do not load `metadata` or `report`.
 ///
 /// The chunk rule stays in Rust rather than becoming a SQL regex: it is the
 /// same predicate the rest of this module uses, and one copy of it is enough.
@@ -969,10 +965,6 @@ mod tests {
     use super::*;
 
     /// 数报告平台数只该读 `platform` 这一列。
-    ///
-    /// 这个函数在人设页每次打开、每次「换一个名字」、每次起草人设时都会跑。
-    /// 拉整行意味着把两个 Json 大列（metadata 和报告正文）一起搬过来再丢掉，
-    /// 报告越攒越多就越慢——是那种只有老站点才会察觉的慢。
     #[test]
     fn counting_platforms_reads_one_column_not_whole_reports() {
         let source = include_str!("report_dna.rs");

@@ -1,7 +1,6 @@
-//! 图标下载并写入 `{DATA_DIR}/brew/icons`（每次 GET，无读取缓存）。
+//! 写入 `{DATA_DIR}/brew/icons`（`paths().brew_icons`）。HTTP 分支每次拉取并覆盖，不读已有文件。
 //!
 //! 负责下载网站图标并存储到本地，避免直接引用外链。
-//! 图标存储在 data/brew/icons/ 目录下（可通过 DATA_DIR 环境变量配置）。
 
 use super::data_paths::paths;
 use base64::Engine;
@@ -111,7 +110,7 @@ impl IconService {
         } else if url_lower.ends_with(".ico") {
             "ico"
         } else {
-            // 默认使用 ico（大多数 favicon 是这种格式）
+            // 默认 ico
             "ico"
         }
     }
@@ -123,7 +122,7 @@ impl IconService {
     /// * `icon_url` - http(s) URL or `data:image/*;base64,...`
     ///
     /// # Returns
-    /// * `Ok(Some(IconInfo))` - 下载成功，返回本地路径信息
+    /// * `Ok(Some(IconInfo))` — 写入成功；`local_path` 为 `/api/brew/icons/{filename}`
     /// * `Ok(None)` - 下载失败但不是错误（如 404）
     /// * `Err` - 发生错误
     pub async fn download_icon(

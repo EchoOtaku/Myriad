@@ -771,7 +771,7 @@ pub(crate) async fn build_config(
                     placeholder: "https://ark.cn-beijing.volces.com/api/v3".to_string(),
                     required: false,
                 },
-                // Lite 独立 lite_* 字段。档关或模型空 → None，不回退 Standard。
+                // Lite 独立 lite_* 字段。resolve_ai_config(Lite) 模型空时回退 Standard；resolve_strict_lite 才是 None。
                 ConfigField {
                     key: "lite_enabled".to_string(),
                     label: "Enable Lite Model".to_string(),
@@ -866,7 +866,7 @@ pub(crate) async fn build_config(
                     placeholder: "https://openrouter.ai/api/v1".to_string(),
                     required: false,
                 },
-                // 腾讯云语音服务配置 (TTS/ASR)
+                // tencent_* 凭据；其后 speech_* 为多供应商 TTS/ASR
                 ConfigField {
                     key: "tencent_secret_id".to_string(),
                     label: "Tencent Cloud Secret ID".to_string(),
@@ -1309,7 +1309,7 @@ pub(crate) async fn build_config(
             // Modules   → music_*, island_show_*
             // Advanced  → memory_saver_enabled, proxy_*, gemini_base_url, github_api_base_url
             // AI        → merope_*
-            // OAuth     → 只读 base_url（SiteUrlField）
+            // base_url 不进 RESET；OAuth 只读拼回调，编辑走 SiteUrlField
             config_fields: vec![
                 ConfigField {
                     key: "wallpaper_url".to_string(),

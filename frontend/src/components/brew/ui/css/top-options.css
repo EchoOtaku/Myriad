@@ -62,9 +62,6 @@
 
 .brew-management[data-open='true'] {
   width: min(var(--brew-management-width, 3rem), calc(100vw - 6.5rem));
-}
-
-.brew-management[data-open='true'][data-phase='expanded'] {
   overflow: visible;
 }
 
@@ -108,6 +105,7 @@
   width: max-content;
   max-width: calc(100vw - 6.5rem);
   padding: 0 0.25rem 0 0.4rem;
+  overflow: visible;
   opacity: 0;
   visibility: hidden;
   transition:
@@ -143,8 +141,7 @@
   display: flex;
   align-items: center;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: visible;
 }
 
 .brew-shell .brew-management .brew-bar {

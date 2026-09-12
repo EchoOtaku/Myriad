@@ -1,4 +1,4 @@
-import type { ChangeEvent, RefObject } from 'react'
+import type { ChangeEvent, ReactNode, RefObject } from 'react'
 import type { BrewSource } from '../../../types/brew'
 import type {
   ControlMode,
@@ -30,7 +30,10 @@ import {
 import { useEffect, useRef, useState } from 'react'
 
 import { useI18n } from '../../../contexts/I18nContext'
+import { BREW_SHORTCUTS } from '../../../hooks/useBrewKeyboard'
 import { Spinner } from '../../Spinner'
+import { SettingGuideBody } from '../../settings/guides/SettingGuideBody'
+import { SettingTitleGuideEntry } from '../../settings/SettingTitleGuideEntry'
 
 import { refreshableSourceCount } from '../logic/board'
 import {
@@ -48,6 +51,37 @@ import { useManagementDisplay } from '../ui/BrewManagement'
 import { BrewChip } from '../ui/Chip'
 import { cx } from '../ui/cx'
 import { buildBrewSortOptions } from './modes/sortOptions'
+
+function BrewGuideTag({
+  title,
+  guide,
+  children,
+  onClick,
+}: {
+  title: string
+  guide: ReactNode
+  children: ReactNode
+  onClick?: () => void
+}) {
+  return (
+    <SettingTitleGuideEntry
+      title={title}
+      guide={guide}
+      requireShowDetails={false}
+      renderTrigger={(api) => (
+        <BrewTag
+          pressed={api.open}
+          onClick={() => {
+            api.toggle()
+            onClick?.()
+          }}
+        >
+          {children}
+        </BrewTag>
+      )}
+    />
+  )
+}
 
 export function BrewBarDefault({
   sortMode,
@@ -79,6 +113,15 @@ export function BrewBarDefault({
   const options = buildBrewSortOptions()
   const current = options.find((option) => option.value === sortMode) ?? options[0]
   const displayControl = useManagementDisplay()
+  const guideLabels = {
+    what: t.config.guideSectionWhat,
+    chain: t.config.guideSectionChain,
+    frontend: t.config.guideSectionFrontend,
+    notes: t.config.guideSectionNotes,
+  }
+  const shortcutsNotes = BREW_SHORTCUTS.map(
+    (item) => `${item.key}  ${brew[item.descriptionKey]}`,
+  ).join('\n')
   let tagAt = tagFrom
 
   useEffect(() => {
@@ -171,12 +214,24 @@ export function BrewBarDefault({
         </BrewChip>
       ) : null}
       <BrewChip key="d:keys" id="d:keys" index={tagAt++}>
-        <BrewTag title={brew.shortcuts} onClick={() => onModeChange('keyboard')}>
+        <BrewGuideTag
+          title={brew.keyboardShortcuts}
+          guide={
+            <SettingGuideBody
+              entry={{
+                what: brew.shortcutsTip,
+                frontend: brew.shortcutsGuideWhere,
+                notes: shortcutsNotes,
+              }}
+              labels={guideLabels}
+            />
+          }
+        >
           <BrewMark>
             <Keyboard />
           </BrewMark>
           <BrewLabel>{brew.shortcuts}</BrewLabel>
-        </BrewTag>
+        </BrewGuideTag>
       </BrewChip>
       {onWriteNote ? (
         <BrewChip key="d:note" id="d:note" index={tagAt++}>
@@ -190,15 +245,25 @@ export function BrewBarDefault({
       ) : null}
       {isAdmin && hasAddSource ? (
         <BrewChip key="d:add" id="d:add" index={tagAt++}>
-          <BrewTag
+          <BrewGuideTag
             title={brew.addSubscription}
+            guide={
+              <SettingGuideBody
+                entry={{
+                  what: brew.addSubscriptionTip,
+                  frontend: brew.addGuideWhere,
+                  notes: brew.addGuideNotes,
+                }}
+                labels={guideLabels}
+              />
+            }
             onClick={() => onModeChange('add')}
           >
             <BrewMark>
               <Plus />
             </BrewMark>
             <BrewLabel>{brew.add}</BrewLabel>
-          </BrewTag>
+          </BrewGuideTag>
         </BrewChip>
       ) : null}
     </>
@@ -218,7 +283,7 @@ export function BrewBarSearch({
   onClose: () => void
   tagFrom?: number
 }) {
-  const { t } = useI18n()
+  const { t, format } = useI18n()
   const brew = t.brew
   let tagAt = tagFrom
   return (
@@ -235,7 +300,7 @@ export function BrewBarSearch({
       </BrewChip>
       <BrewChip key="s:meta" id="s:meta" index={tagAt++}>
         <BrewBarMeta>
-          {brew.resultsCount.replace('{count}', String(filteredCount))}
+          {format(brew.resultsCount, { count: filteredCount })}
         </BrewBarMeta>
       </BrewChip>
       <BrewChip key="s:close" id="s:close" index={tagAt++}>
@@ -437,7 +502,7 @@ export function BrewBarTopicFeed({
   topicFeedMode: TopicFeedModeConfig
   tagFrom?: number
 }) {
-  const { t } = useI18n()
+  const { t, format } = useI18n()
   const brew = t.brew
   let tagAt = tagFrom
   return (
@@ -454,7 +519,7 @@ export function BrewBarTopicFeed({
         <BrewBarTitle>
           <BrewLabel>{topicFeedMode.topicLabel}</BrewLabel>
           <BrewBarMeta>
-            {brew.totalArticles.replace('{count}', String(topicFeedMode.total))}
+            {format(brew.totalArticles, { count: topicFeedMode.total })}
           </BrewBarMeta>
         </BrewBarTitle>
       </BrewChip>
@@ -469,7 +534,7 @@ export function BrewBarStarred({
   starredMode: StarredModeConfig
   tagFrom?: number
 }) {
-  const { t } = useI18n()
+  const { t, format } = useI18n()
   const brew = t.brew
   let tagAt = tagFrom
   return (
@@ -489,7 +554,7 @@ export function BrewBarStarred({
           </BrewMark>
           <BrewLabel>{brew.starredArticles}</BrewLabel>
           <BrewBarMeta>
-            {brew.starredCount.replace('{count}', String(starredMode.total))}
+            {format(brew.starredCount, { count: starredMode.total })}
           </BrewBarMeta>
         </BrewBarTitle>
       </BrewChip>

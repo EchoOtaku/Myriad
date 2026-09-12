@@ -12,6 +12,8 @@ export function tappPermissionGuidePath(permission: TappPermission): string {
 
 const loader = createLocaleLoader<TappPermissionGuides>({
   'zh-CN': () => import('./tappPermissionGuides.zh.json').then((m) => m.default),
+  'zh-TW': () =>
+    import('./tappPermissionGuides.zh-TW.json').then((m) => m.default),
   'en-US': async () => en,
   'ja-JP': () => import('./tappPermissionGuides.ja.json').then((m) => m.default),
 })

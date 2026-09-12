@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { isLocale } from '../i18n'
 import { API_URL } from '../config'
 import { isAuthMeHttpOk, parseAuthMeResponse } from '../utils/authMe'
 import { setKnownAuthState } from '../utils/authState'
@@ -43,7 +44,7 @@ export interface User {
   last_login_at?: string | null
   identities?: AuthIdentity[]
   /** Account UI language; null if never set. */
-  locale?: 'zh-CN' | 'en-US' | 'ja-JP' | null
+  locale?: import('../i18n').Locale | null
 }
 
 interface AuthContextType {
@@ -150,12 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               last_login_at:
                 typeof u.last_login_at === 'string' ? u.last_login_at : null,
               identities,
-              locale:
-                u.locale === 'zh-CN' ||
-                u.locale === 'en-US' ||
-                u.locale === 'ja-JP'
-                  ? u.locale
-                  : null,
+              locale: isLocale(u.locale) ? u.locale : null,
             })
             setIsAuthenticated(true)
             setIsAdmin(u.is_admin || false)

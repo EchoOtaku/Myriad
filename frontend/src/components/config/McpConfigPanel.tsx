@@ -128,7 +128,7 @@ export interface McpConfigPanelProps {
 }
 
 export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
-  const { t } = useI18n()
+  const { t, format } = useI18n()
   const { isAdmin } = useAuth()
   const { catalog: g, bindGuide } = useSettingGuide()
   const c = t.config
@@ -359,7 +359,7 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
           id: s.id,
           title: s.id,
           subtitle: `${s.command}${s.args.length ? ` ${s.args.join(' ')}` : ''}`,
-          meta: c.mcpToolsCount.replace('{n}', String(tools)),
+          meta: format(c.mcpToolsCount, { n: tools }),
           badge,
           badges: [
             {
@@ -389,7 +389,7 @@ export function McpConfigPanel({ onMessage }: McpConfigPanelProps) {
               key: 'delete',
               label: t.common.delete,
               variant: 'danger',
-              confirm: c.mcpDeleteConfirm.replace('{id}', s.id),
+              confirm: format(c.mcpDeleteConfirm, { id: s.id }),
               onClick: () => void removeServer(s.id),
               disabled: saving,
             },

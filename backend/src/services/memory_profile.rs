@@ -17,8 +17,7 @@ use tokio::sync::Semaphore;
 
 /// Current bounded product defaults.
 ///
-/// Pool min is the idle floor (not request concurrency). Keep it small so a
-/// quiet host does not park five Postgres backends; max is the concurrent
+/// Pool min is the idle floor (not request concurrency); max is the concurrent
 /// query ceiling.
 pub const DEFAULT_DB_MIN_CONNECTIONS: u32 = 2;
 pub const DEFAULT_DB_MAX_CONNECTIONS: u32 = 24;

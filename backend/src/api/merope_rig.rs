@@ -1741,10 +1741,9 @@ mod rig_invalidation_tests {
         &rest[..end]
     }
 
-    /// 写 `portrait_asset_id` 的入口，必须在同一次写入里作废旧 Rig。
+    /// 写 `portrait_asset_id` 的入口必须在同一次事务里 persist_active_asset；PUT 同步穿着套的 live pointer，不是一律作废。
     ///
-    /// Rig provenance is the master. All four portrait writers must
-    /// `persist_active_asset` in the same write (`/active` is public).
+    /// 四个 portrait writer 必须在人设同一次事务里 persist_active_asset；`/active` 仍从该 persona 快照取穿着套，不读 configuration mirror。
     #[test]
     fn every_portrait_writer_clears_the_active_rig() {
         let rig = include_str!("merope_rig.rs");

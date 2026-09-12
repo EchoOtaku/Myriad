@@ -12,7 +12,7 @@ describe('currentCopy', () => {
   })
 
   it('keeps namespace catalogs out of the core locale files', () => {
-    for (const locale of ['en-US', 'zh-CN', 'ja-JP'] as const) {
+    for (const locale of ['en-US', 'zh-CN', 'zh-TW', 'ja-JP'] as const) {
       const core = JSON.parse(
         readFileSync(new URL(`./${locale}.json`, import.meta.url), 'utf8'),
       ) as Record<string, unknown>
@@ -57,5 +57,15 @@ describe('currentCopy', () => {
       'キャッシュ済みプラットフォームデータを読みます。',
     )
     assert.equal(currentCopy().common.loading, 'Loading...')
+  })
+
+  it('loads Traditional Chinese as its own catalog', async () => {
+    const zh = await loadLocale('zh-CN')
+    const tw = await loadLocale('zh-TW')
+    assert.equal(copyForLocale('zh-TW'), tw)
+    assert.match(tw.controlPanel.languageZhTw, /繁體/)
+    assert.notEqual(tw.config.title, zh.config.title)
+    assert.match(tw.config.title, /設定|系統/)
+    assert.match(zh.config.title, /设置|系统/)
   })
 })

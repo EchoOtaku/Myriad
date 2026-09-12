@@ -15,6 +15,7 @@ pub const DEFAULT_AUTO_REGEN_LOCALE: &str = "en-US";
 pub fn parse_stored_ui_locale(raw: &str) -> Option<&'static str> {
     match raw.trim() {
         "zh-CN" => Some("zh-CN"),
+        "zh-TW" => Some("zh-TW"),
         "en-US" => Some("en-US"),
         "ja-JP" => Some("ja-JP"),
         _ => None,
@@ -38,27 +39,61 @@ pub async fn locale_from_user(db: &impl ConnectionTrait, user_id: i32) -> Option
         .and_then(parse_stored_ui_locale)
 }
 
-pub fn normalize_report_locale(raw: &str) -> &'static str {
-    let tag = raw
-        .split(',')
-        .next()
-        .unwrap_or("")
-        .split(';')
-        .next()
-        .unwrap_or("")
-        .trim();
-    let lower = tag.to_ascii_lowercase();
-    if lower.starts_with("zh") {
-        "zh-CN"
-    } else if lower.starts_with("ja") {
-        "ja-JP"
-    } else if lower.starts_with("en") {
-        "en-US"
-    } else if tag.is_empty() {
-        DEFAULT_AUTO_REGEN_LOCALE
-    } else {
-        "en-US"
+fn map_language_tag(raw: &str) -> Option<&'static str> {
+    let tag = raw.trim().replace('_', "-");
+    if tag.is_empty() {
+        return None;
     }
+    if let Some(exact) = parse_stored_ui_locale(&tag) {
+        return Some(exact);
+    }
+    let lower = tag.to_ascii_lowercase();
+    if lower.starts_with("zh-tw")
+        || lower.starts_with("zh-hk")
+        || lower.starts_with("zh-mo")
+        || lower.contains("hant")
+    {
+        Some("zh-TW")
+    } else if lower.starts_with("zh") {
+        Some("zh-CN")
+    } else if lower.starts_with("ja") {
+        Some("ja-JP")
+    } else if lower.starts_with("en") {
+        Some("en-US")
+    } else {
+        None
+    }
+}
+
+fn pick_from_language_list(raw: &str) -> Option<&'static str> {
+    let mut items: Vec<(f64, usize, &str)> = raw
+        .split(',')
+        .enumerate()
+        .filter_map(|(index, part)| {
+            let mut bits = part.split(';');
+            let tag = bits.next()?.trim();
+            if tag.is_empty() {
+                return None;
+            }
+            let mut q = 1.0_f64;
+            for param in bits {
+                let param = param.trim();
+                if let Some(value) = param.strip_prefix("q=").or_else(|| param.strip_prefix("Q=")) {
+                    if let Ok(parsed) = value.parse::<f64>() {
+                        q = parsed.clamp(0.0, 1.0);
+                    }
+                }
+            }
+            Some((q, index, tag))
+        })
+        .filter(|item| item.0 > 0.0)
+        .collect();
+    items.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal).then(a.1.cmp(&b.1)));
+    items.into_iter().find_map(|(_, _, tag)| map_language_tag(tag))
+}
+
+pub fn normalize_report_locale(raw: &str) -> &'static str {
+    pick_from_language_list(raw).unwrap_or(DEFAULT_AUTO_REGEN_LOCALE)
 }
 
 /// `None` when the request carries no locale signal — caller should reuse the
@@ -127,6 +162,7 @@ fn read_locale_field(report: &Value) -> Option<&'static str> {
         .map(normalize_report_locale)
 }
 
+#[allow(dead_code)]
 pub fn pick<'a>(locale: &str, zh: &'a str, ja: &'a str, en: &'a str) -> &'a str {
     match normalize_report_locale(locale) {
         "ja-JP" => ja,
@@ -136,34 +172,22 @@ pub fn pick<'a>(locale: &str, zh: &'a str, ja: &'a str, en: &'a str) -> &'a str 
 }
 
 pub fn missing_platform_data_message(locale: &str) -> String {
-    pick(
-        locale,
-        "该平台还没有可用数据。请先成功抓取后再生成报告。",
-        "このプラットフォームのデータがまだありません。先に取得してからレポートを生成してください。",
-        "This platform has no usable data yet. Fetch it first, then generate the report.",
-    )
-    .to_string()
+    crate::i18n::reports(locale, "missingPlatformData")
 }
 
 pub fn generate_none_message(locale: &str) -> String {
-    pick(
-        locale,
-        "未能生成报告。请确保已获取平台数据。",
-        "レポートを生成できませんでした。先にプラットフォームデータを取得してください。",
-        "Could not generate a report. Fetch the platform data first.",
-    )
-    .to_string()
+    crate::i18n::reports(locale, "generateNone")
 }
 
 /// Instruction block: keep field names / enum keys; write user-visible copy in `locale`.
 pub fn language_rule(locale: &str) -> String {
     let loc = normalize_report_locale(locale);
     format!(
-        "用户可见文案必须用 {loc} 写完：summary、insights、vibe、taste_profile、mood_keywords.tag、\
-danmaku、channel_type、gamer_type、hunter_type、role_profile、engagement_level、\
-signature_topics、interest_circles.name、guild_takes.take。\
-字段名和枚举键（hardcore|casual|balanced）保持原样。作品名、账号名、服名按 Data 原文。\
-这些字符串里不要夹杂其他文种。"
+        "Write every user-visible string in {loc}: summary, insights, vibe, taste_profile, mood_keywords.tag, \
+danmaku, channel_type, gamer_type, hunter_type, role_profile, engagement_level, \
+signature_topics, interest_circles.name, guild_takes.take. \
+Keep field names and enum keys (hardcore|casual|balanced) unchanged. Keep work titles, account names, and guild names as they appear in Data. \
+Do not mix other scripts into these strings."
     )
 }
 
@@ -176,16 +200,24 @@ mod tests {
     fn normalizes_host_tags() {
         assert_eq!(normalize_report_locale("zh-CN"), "zh-CN");
         assert_eq!(normalize_report_locale("zh"), "zh-CN");
+        assert_eq!(normalize_report_locale("zh-TW"), "zh-TW");
+        assert_eq!(normalize_report_locale("zh-HK"), "zh-TW");
+        assert_eq!(normalize_report_locale("zh-Hant"), "zh-TW");
         assert_eq!(normalize_report_locale("ja-JP,ja;q=0.9"), "ja-JP");
         assert_eq!(normalize_report_locale("en-GB"), "en-US");
         assert_eq!(normalize_report_locale(""), "en-US");
         assert_eq!(normalize_report_locale("fr-FR"), "en-US");
+        assert_eq!(normalize_report_locale("fr,zh-TW;q=0.9"), "zh-TW");
+        assert_eq!(normalize_report_locale("en-US,zh-TW;q=0.8"), "en-US");
+        assert_eq!(normalize_report_locale("zh-HK,en;q=0.4"), "zh-TW");
+        assert_eq!(normalize_report_locale("fr;q=1,en;q=0"), "en-US");
     }
 
     #[test]
     fn stored_ui_locale_is_exact() {
         assert_eq!(parse_stored_ui_locale("ja-JP"), Some("ja-JP"));
         assert_eq!(parse_stored_ui_locale(" zh-CN "), Some("zh-CN"));
+        assert_eq!(parse_stored_ui_locale("zh-TW"), Some("zh-TW"));
         assert_eq!(parse_stored_ui_locale("zh"), None);
         assert_eq!(parse_stored_ui_locale(""), None);
     }
@@ -206,6 +238,7 @@ mod tests {
     #[test]
     fn missing_data_message_follows_locale() {
         assert!(missing_platform_data_message("zh-CN").contains("可用数据"));
+        assert!(missing_platform_data_message("zh-TW").contains("可用資料"));
         assert!(missing_platform_data_message("en-US").contains("usable data"));
         assert!(missing_platform_data_message("ja-JP").contains("データ"));
         assert!(!missing_platform_data_message("en-US").contains("cache/raw"));

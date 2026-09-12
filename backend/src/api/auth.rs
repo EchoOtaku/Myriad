@@ -282,8 +282,8 @@ pub async fn set_current_user_locale(
             StatusCode::BAD_REQUEST,
             Json(json!({
                 "error": "Bad request",
-                "code": "bad_request",
-                "message": "locale must be zh-CN, en-US, or ja-JP",
+                "code": "locale_invalid",
+                "message": "locale must be zh-CN, zh-TW, en-US, or ja-JP",
             })),
         )));
     };

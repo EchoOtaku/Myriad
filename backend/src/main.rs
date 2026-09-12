@@ -62,6 +62,7 @@ mod config;
 mod db;
 mod error;
 mod extract;
+mod i18n;
 mod federation;
 mod memory_audit_invariants;
 mod middleware;

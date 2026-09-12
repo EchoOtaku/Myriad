@@ -48,6 +48,8 @@ import {
   BREW_MINE_CATEGORY,
   PRESET_CATEGORY_DB_VALUES,
   getIconUrl,
+  isFriendLinkCategory,
+  isMineCategory,
 } from '../../constants'
 import {
   canAddCategory,
@@ -75,8 +77,8 @@ function categoryLabel(
   cat: string,
   labels: { friendLinks: string; me: string },
 ): string {
-  if (cat === BREW_FRIEND_LINK_CATEGORY) return labels.friendLinks
-  if (cat === BREW_MINE_CATEGORY) return labels.me
+  if (isFriendLinkCategory(cat)) return labels.friendLinks
+  if (isMineCategory(cat)) return labels.me
   return cat
 }
 

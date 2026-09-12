@@ -132,7 +132,7 @@ pub fn is_permanent_delivery_error(err: &str) -> bool {
     if err.starts_with("PERMANENT ") {
         return true;
     }
-    // Body after status line — still permanent if message says so
+    // 整段再走 is_permanent_federation_error（不只看 status line）
     is_permanent_federation_error(err)
 }
 

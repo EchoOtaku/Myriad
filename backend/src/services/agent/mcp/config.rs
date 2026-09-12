@@ -116,7 +116,7 @@ pub fn validate_config(mut config: McpServersConfig) -> Result<McpServersConfig,
                 return Err(format!("server '{}': arg is too long", server.id));
             }
         }
-        // Normalize env: drop empty keys; cap size.
+        // Drop empty env keys; reject key>128, value>8192, or >64 entries.
         let mut env = HashMap::new();
         for (k, v) in server.env.drain() {
             let key = k.trim().to_string();

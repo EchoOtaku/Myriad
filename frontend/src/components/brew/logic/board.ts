@@ -2,9 +2,9 @@
 
 import type { BrewSource } from '../../../types/brew'
 import {
-  BREW_FRIEND_LINK_CATEGORY,
   brewCategoryParts,
   brewMainCategory,
+  isFriendLinkCategory,
   isOwnBrewSource,
 } from '../constants'
 import { compareByScore, type BrewViewerRole } from './score'
@@ -44,7 +44,7 @@ export function isFriendSource(
 ): boolean {
   if (isNotesSource(s)) return false
   if (isSiteSource(s)) return true
-  return brewCategoryParts(s.category).includes(BREW_FRIEND_LINK_CATEGORY)
+  return brewCategoryParts(s.category).some(isFriendLinkCategory)
 }
 
 export function sourcesForBoard(

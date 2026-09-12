@@ -12,7 +12,7 @@ import {
   CONTENT_FADE_INITIAL,
   CONTENT_FADE_TRANSITION,
 } from '../animations'
-import { formatCompactNumber } from '../format'
+import { formatCompactNumber, localizeDiscordGuildTake } from '../format'
 
 const X_CIRCLE_COLOR_CLASSES = [
   'bg-[#2563eb] dark:bg-[#3b82f6]',
@@ -611,9 +611,13 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
   const guildTakeByKey = useMemo(() => {
     const map = new Map<string, string>()
     const raw = Array.isArray(data?.guild_takes) ? data.guild_takes : []
+    const labels = t.reportCardWidget
     for (const entry of raw) {
       if (!entry || typeof entry !== 'object') continue
-      const take = String((entry as any).take || '').trim()
+      const take = localizeDiscordGuildTake(
+        String((entry as any).take || '').trim(),
+        labels,
+      )
       if (!take) continue
       const id = (entry as any).id
       if (id != null && String(id)) map.set(`id:${String(id)}`, take)
@@ -623,7 +627,7 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
       }
     }
     return map
-  }, [data?.guild_takes])
+  }, [data?.guild_takes, t.reportCardWidget])
 
   const [slideIndex, setSlideIndex] = useState(0)
   useEffect(() => {

@@ -1,5 +1,13 @@
+import { formatMessage, getDefaultLocale } from '../i18n'
 import { currentCopy } from '../i18n/localeCopy'
 import { ApiError } from '../services/api'
+
+function fill(
+  template: string,
+  params: Record<string, string | number> = {},
+): string {
+  return formatMessage(getDefaultLocale(), template, params)
+}
 
 export function httpStatusMessage(status: number): string {
   const t = currentCopy().errors
@@ -9,10 +17,10 @@ export function httpStatusMessage(status: number): string {
   if (status === 408) return t.timeout
   if (status === 429) return t.rateLimited
   if (status >= 500) {
-    return t.serverError.replace('{status}', String(status))
+    return fill(t.serverError, { status })
   }
   if (status > 0) {
-    return t.httpStatus.replace('{status}', String(status))
+    return fill(t.httpStatus, { status })
   }
   return t.networkError
 }
@@ -198,6 +206,43 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (code === 'not_found' || code === 'NOT_FOUND') {
     return joinParts(t.notFound, usefulExtra(hint, t.notFound))
   }
+  if (code === 'locale_invalid') {
+    return joinParts(t.localeInvalid, usefulExtra(hint, t.localeInvalid))
+  }
+  if (code === 'locale_save_failed') {
+    return classified(t.operationFailed, raw, hint)
+  }
+  if (code === 'config_load_failed') {
+    return classified(currentCopy().config.loadConfigFailed, raw, hint)
+  }
+  if (code === 'permissions_save_failed') {
+    return classified(currentCopy().config.permissionsSaveFailed, raw, hint)
+  }
+  if (code === 'tapp_save_failed') {
+    return classified(t.tappSaveFailed, raw, hint)
+  }
+  if (code === 'account_update_failed') {
+    return classified(currentCopy().config.usersUpdateFailed, raw, hint)
+  }
+  if (code === 'users_load_failed') {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(
+      joinParts(currentCopy().config.usersLoadError, action),
+      raw,
+      hint,
+    )
+  }
+  if (code === 'account_delete_failed') {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(
+      joinParts(currentCopy().config.usersDeleteFailed, action),
+      raw,
+      hint,
+    )
+  }
+  if (code === 'identity_unlink_failed') {
+    return classified(currentCopy().config.usersUnlinkFailed, raw, hint)
+  }
   if (code === 'bad_request' || code === 'BAD_REQUEST') {
     const label = httpStatusMessage(400)
     return joinParts(label, usefulExtra(hint, label))
@@ -207,7 +252,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return joinParts(label, usefulExtra(hint, label))
   }
   if (code === 'internal_error' || code === 'INTERNAL_ERROR') {
-    const label = t.serverError.replace('{status}', '500')
+    const label = fill(t.serverError, { status: 500 })
     return joinParts(label, usefulExtra(hint, label))
   }
   if (code === 'service_unavailable' || code === 'SERVICE_UNAVAILABLE') {
@@ -672,7 +717,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.unauthorized
   }
   if (code === 'lyrics_fetch_failed' || /^failed to fetch (verbatim )?lyrics/i.test(raw)) {
-    return t.lyricsFailed.replace('{status}', String(status || 502))
+    return fill(t.lyricsFailed, { status: status || 502 })
   }
   if (
     code === 'playlist_fetch_failed' ||
@@ -706,7 +751,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
               : /netease|网易/i.test(raw)
                 ? 'Netease'
                 : 'Platform'
-    const label = t.platformNamedFetchFailed.replace('{name}', name)
+    const label = fill(t.platformNamedFetchFailed, { name })
     const status = raw.match(/\bHTTP\s+(\d{3})\b/i)
     const colon = raw.indexOf(':')
     const rest = colon >= 0 ? raw.slice(colon + 1).trim() : ''
@@ -731,7 +776,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       'platform'
     const name = `${found.charAt(0).toUpperCase()}${found.slice(1)}`
     return joinParts(
-      t.platformCacheMissing.replace('{name}', name),
+      fill(t.platformCacheMissing, { name }),
       usefulExtra(hint, t.platformCacheMissing),
     )
   }
@@ -742,7 +787,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     const found = raw.match(/^failed to (?:read|parse) (\w+) data/i)?.[1] || 'platform'
     const name = `${found.charAt(0).toUpperCase()}${found.slice(1)}`
     return classified(
-      t.platformNamedFetchFailed.replace('{name}', name),
+      fill(t.platformNamedFetchFailed, { name }),
       raw,
       hint,
     )
@@ -947,7 +992,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   }
   if (/^upstream (request failed|http)/i.test(raw)) {
     return classified(
-      t.serverError.replace('{status}', String(status || 502)),
+      fill(t.serverError, { status: status || 502 }),
       raw,
       hint,
     )
@@ -1110,9 +1155,10 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (/store package version mismatch/i.test(raw)) {
     const catalog = raw.match(/catalog lists (\S+)/i)?.[1] || '?'
     const packed = raw.match(/manifest\.json is (\S+)/i)?.[1] || '?'
-    return currentCopy().tapp.storeVersionMismatch
-      .replace('{catalog}', catalog)
-      .replace('{manifest}', packed)
+    return fill(currentCopy().tapp.storeVersionMismatch, {
+      catalog,
+      manifest: packed,
+    })
   }
   const brew = currentCopy().brew
   if (
@@ -1155,6 +1201,17 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   }
   if (/^invalid feed url/i.test(raw)) {
     return classified(t.brewInvalidUrl, raw, hint)
+  }
+  if (
+    /^failed to load config(uration)?$/i.test(raw)
+  ) {
+    return classified(currentCopy().config.loadConfigFailed, raw, hint)
+  }
+  if (/^failed to (update|save) permissions/i.test(raw)) {
+    return classified(currentCopy().config.permissionsSaveFailed, raw, hint)
+  }
+  if (/^failed to persist tapp/i.test(raw)) {
+    return classified(t.tappSaveFailed, raw, hint)
   }
   if (
     code === 'mcp_config_save_failed' ||
@@ -1358,7 +1415,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       ? `${plat[1].charAt(0).toUpperCase()}${plat[1].slice(1)}`
       : 'Platform'
     return classified(
-      t.noticePlatformSyncFailed.replace('{name}', name),
+      fill(t.noticePlatformSyncFailed, { name }),
       raw,
       hint,
     )
@@ -1445,10 +1502,9 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     const hours = raw.match(/（(\d+)小时）|\((\d+) hours\)/)
     if (hours) {
-      return t.waitInputTimeoutHours.replace(
-        '{hours}',
-        hours[1] || hours[2] || '',
-      )
+      return fill(t.waitInputTimeoutHours, {
+        hours: Number(hours[1] || hours[2] || '0'),
+      })
     }
     return t.waitInputTimeout
   }
@@ -1517,16 +1573,17 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     /排队中（前方约\s*(\d+)\s*个任务）|Queued \(about (\d+) ahead\)/i,
   )
   if (queued) {
-    return t.agentQueued.replace('{n}', queued[1] || queued[2] || '0')
+    return fill(t.agentQueued, {
+      n: Number(queued[1] || queued[2] || '0'),
+    })
   }
   const queueWait = raw.match(
     /系统繁忙，排队超过\s*(\d+)\s*秒|Waited more than (\d+) seconds/i,
   )
   if (queueWait) {
-    return t.agentQueueTimeout.replace(
-      '{sec}',
-      queueWait[1] || queueWait[2] || '0',
-    )
+    return fill(t.agentQueueTimeout, {
+      sec: Number(queueWait[1] || queueWait[2] || '0'),
+    })
   }
   if (/^现在没在放歌|^Nothing is playing/i.test(raw)) {
     return currentCopy().music.noPlaying
@@ -1542,7 +1599,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (planFailed) {
     const detail = (planFailed[1] || '').trim()
     return detail
-      ? t.agentPlanningFailed.replace('{detail}', detail)
+      ? fill(t.agentPlanningFailed, { detail })
       : t.agentPlanningFailedBare
   }
   if (/^我理解了你的请求，但生成执行计划时出现问题/.test(raw)) {
@@ -1552,7 +1609,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       .replace(/[。．.]+$/, '')
       .trim()
     return detail
-      ? t.agentPlanningFailed.replace('{detail}', detail)
+      ? fill(t.agentPlanningFailed, { detail })
       : t.agentPlanningFailedBare
   }
   const music = currentCopy().music
@@ -1568,28 +1625,28 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (/^已取消静音$|^Unmuted$/i.test(raw)) return music.unmuted
   if (/^已跳转播放位置$|^Seeked$/i.test(raw)) return music.seeked
   if (/^获取 B 站数据$|^Loading Bilibili data$/i.test(raw)) {
-    return t.loadingNamedData.replace('{name}', 'Bilibili')
+    return fill(t.loadingNamedData, { name: 'Bilibili' })
   }
   if (/^获取 Steam 数据$|^Loading Steam data$/i.test(raw)) {
-    return t.loadingNamedData.replace('{name}', 'Steam')
+    return fill(t.loadingNamedData, { name: 'Steam' })
   }
   if (/^获取 GitHub 数据$|^Loading GitHub data$/i.test(raw)) {
-    return t.loadingNamedData.replace('{name}', 'GitHub')
+    return fill(t.loadingNamedData, { name: 'GitHub' })
   }
   if (/^获取网易云数据$|^Loading NetEase data$/i.test(raw)) {
-    return t.loadingNamedData.replace('{name}', 'NetEase')
+    return fill(t.loadingNamedData, { name: 'NetEase' })
   }
   if (/^获取 Bangumi 数据$|^Loading Bangumi data$/i.test(raw)) {
-    return t.loadingNamedData.replace('{name}', 'Bangumi')
+    return fill(t.loadingNamedData, { name: 'Bangumi' })
   }
   if (/^获取 X 数据$|^Loading X data$/i.test(raw)) {
-    return t.loadingNamedData.replace('{name}', 'X')
+    return fill(t.loadingNamedData, { name: 'X' })
   }
   if (/^获取 Discord 数据$|^Loading Discord data$/i.test(raw)) {
-    return t.loadingNamedData.replace('{name}', 'Discord')
+    return fill(t.loadingNamedData, { name: 'Discord' })
   }
   if (/^获取 MyAnimeList 数据$|^Loading MyAnimeList data$/i.test(raw)) {
-    return t.loadingNamedData.replace('{name}', 'MyAnimeList')
+    return fill(t.loadingNamedData, { name: 'MyAnimeList' })
   }
   if (/^AI 总结$|^Summarizing$/i.test(raw)) return t.agentSummarizing
   if (/^AI 分析$|^Analyzing$/i.test(raw)) return t.agentAnalyzing
@@ -1599,7 +1656,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.agentSubscribeFeed
   }
   if (/^获取平台数据$|^Loading platform data$/i.test(raw)) {
-    return t.loadingNamedData.replace('{name}', 'platform')
+    return fill(t.loadingNamedData, { name: 'platform' })
   }
   if (/^AI 对话$|^Chatting$/i.test(raw)) return t.agentChat
   if (/^生成图片$|^Generating an image$/i.test(raw)) return t.agentGenerateImage
@@ -1641,27 +1698,23 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     /^标题最多 (\d+) 字，现在有 (\d+) 字$|^Titles can be at most (\d+) characters \(this one is (\d+)\)$/i,
   )
   if (titleTooLong) {
-    return currentCopy()
-      .brew.noteTitleTooLong.replace(
-        '{max}',
-        titleTooLong[1] || titleTooLong[3] || '',
-      )
-      .replace('{chars}', titleTooLong[2] || titleTooLong[4] || '')
+    return fill(currentCopy().brew.noteTitleTooLong, {
+      max: titleTooLong[1] || titleTooLong[3] || '',
+      chars: titleTooLong[2] || titleTooLong[4] || '',
+    })
   }
   const bodyTooLong = raw.match(
     /^正文最多 (\d+) 字，现在有 (\d+) 字$|^Notes can be at most (\d+) characters \(this one is (\d+)\)$/i,
   )
   if (bodyTooLong) {
-    return currentCopy()
-      .brew.noteBodyTooLong.replace(
-        '{max}',
-        bodyTooLong[1] || bodyTooLong[3] || '',
-      )
-      .replace('{chars}', bodyTooLong[2] || bodyTooLong[4] || '')
+    return fill(currentCopy().brew.noteBodyTooLong, {
+      max: bodyTooLong[1] || bodyTooLong[3] || '',
+      chars: bodyTooLong[2] || bodyTooLong[4] || '',
+    })
   }
   if (/^游客$/.test(raw)) return t.guestLabel
   const userNumber = raw.match(/^用户#(\d+)$/)
-  if (userNumber) return t.userNumber.replace('{id}', userNumber[1])
+  if (userNumber) return fill(t.userNumber, { id: userNumber[1] })
   if (/^Xbox 玩家$/.test(raw)) return currentCopy().reportCardWidget.xboxGamerDefault
   if (/^PSN 玩家$/.test(raw)) return t.psnPlayer
   if (/^Steam 玩家$/.test(raw)) return t.steamPlayer
@@ -1684,9 +1737,10 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (/试试搜索你已有数据/.test(raw)) return t.searchLocalHint
   const dbMissing = raw.match(/^(\S+) 数据库文件不存在（(.+)）/)
   if (dbMissing) {
-    return t.databaseFileMissing
-      .replace('{name}', dbMissing[1])
-      .replace('{path}', dbMissing[2])
+    return fill(t.databaseFileMissing, {
+      name: dbMissing[1],
+      path: dbMissing[2],
+    })
   }
   if (/^请尝试其他关键词$/.test(raw)) return t.tryOtherKeyword
   if (/^检查拼写是否正确$/.test(raw)) return t.checkSpelling
@@ -1696,7 +1750,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (/AI 已根据近期失败原因改写/.test(raw)) return t.noticeSkillImprovedBody
   const prunedSkill = raw.match(/^自动技能「(.+)」因失败率过高被淘汰/)
   if (prunedSkill) {
-    return t.noticeSkillPrunedBody.replace('{name}', prunedSkill[1])
+    return fill(t.noticeSkillPrunedBody, { name: prunedSkill[1] })
   }
   if (/^我的理解是：/.test(raw)) return t.agentNeedClarification
   if (/^网易云音乐用户$/.test(raw)) return t.neteaseMusicUser
@@ -1714,11 +1768,11 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   }
   const webSearchNamed = raw.match(/^网络搜索\s*[—\-]\s*(.+)$/)
   if (webSearchNamed) {
-    return t.webSearchNamed.replace('{name}', webSearchNamed[1])
+    return fill(t.webSearchNamed, { name: webSearchNamed[1] })
   }
   const readingListNamed = raw.match(/^阅读列表\s*[—\-]\s*(.+)$/)
   if (readingListNamed) {
-    return t.readingListNamed.replace('{name}', readingListNamed[1])
+    return fill(t.readingListNamed, { name: readingListNamed[1] })
   }
   const mcpTool = raw.match(
     /^将调用外部 MCP 服务 '(.+)' 的工具 '(.+)'$|^This will call tool '(.+)' on MCP server '(.+)'$/i,
@@ -1726,14 +1780,21 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (mcpTool) {
     const server = mcpTool[1] || mcpTool[4] || ''
     const tool = mcpTool[2] || mcpTool[3] || ''
-    return t.confirmMcpTool.replace('{server}', server).replace('{tool}', tool)
+    return fill(t.confirmMcpTool, { server, tool })
   }
   const mcpToolsLoaded = raw.match(/^已加载 (\d+) 个工具$|^Loaded (\d+) tools$/i)
   if (mcpToolsLoaded) {
-    return t.noticeMcpToolsLoaded.replace(
-      '{n}',
-      mcpToolsLoaded[1] || mcpToolsLoaded[2] || '',
-    )
+    return fill(t.noticeMcpToolsLoaded, {
+      n: Number(mcpToolsLoaded[1] || mcpToolsLoaded[2] || '0'),
+    })
+  }
+  if (
+    /^维护重试成功$|^Maintenance retry succeeded$/i.test(raw)
+  ) {
+    return t.noticeMcpMaintenanceRetry
+  }
+  if (/^自动重启成功$|^Auto-restart succeeded$/i.test(raw)) {
+    return t.noticeMcpAutoRestart
   }
   if (
     /状态监控超时/.test(raw) ||
@@ -1746,19 +1807,17 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     /^自动刷新 (.+) 数据$|^Auto-refresh (.+) data$/i,
   )
   if (autoRefreshNamed) {
-    return t.autoRefreshNamed.replace(
-      '{name}',
-      autoRefreshNamed[1] || autoRefreshNamed[2] || '',
-    )
+    return fill(t.autoRefreshNamed, {
+      name: autoRefreshNamed[1] || autoRefreshNamed[2] || '',
+    })
   }
   const leftoverHeartbeatTask = raw.match(
     /^定时任务:\s*(.+)$|^Scheduled task:\s*(.+)$/i,
   )
   if (leftoverHeartbeatTask) {
-    return t.noticeHeartbeatTask.replace(
-      '{name}',
-      leftoverHeartbeatTask[1] || leftoverHeartbeatTask[2] || '',
-    )
+    return fill(t.noticeHeartbeatTask, {
+      name: leftoverHeartbeatTask[1] || leftoverHeartbeatTask[2] || '',
+    })
   }
   if (
     /^即将添加新的 RSS|^This will add a new RSS/i.test(raw)
@@ -1835,7 +1894,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       playlistLoad[1] === '网易云' || playlistLoad[2] === 'NetEase'
         ? 'NetEase'
         : 'QQ Music'
-    return t.loadingNamedPlaylist.replace('{name}', name)
+    return fill(t.loadingNamedPlaylist, { name })
   }
   if (/^好了，都处理完|^All done\.?$/i.test(raw)) return t.agentAllDone
   if (/^你好！有什么我可以帮你的吗？$|^Hi! How can I help\?$/i.test(raw)) {
@@ -1854,7 +1913,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   }
   const willRun = raw.match(/^This will run (.+)$|^此操作将执行\s*(.+)$/)
   if (willRun) {
-    return t.willExecute.replace('{name}', willRun[1] || willRun[2] || '')
+    return fill(t.willExecute, { name: willRun[1] || willRun[2] || '' })
   }
   if (/^此操作将/.test(raw)) return t.stepNeedsConfirm
   if (/^数据读取$|^Data$/.test(raw)) return t.capCategoryData
@@ -2494,7 +2553,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   }
   if (/anime2\.5drig playback missing/i.test(raw)) {
     const role = raw.match(/missing (\S+)/i)?.[1] || ''
-    return merope.anime25dMissingLayer.replace('{role}', role || '?')
+    return fill(merope.anime25dMissingLayer, { role: role || '?' })
   }
   if (
     /anime2\.5drig (mesh buffers|layer crop|layer texture|program|shader|link)/i.test(
@@ -2562,6 +2621,14 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   const useful = isUselessErrorText(raw) ? '' : clip(raw)
   const extraHint = usefulExtra(hint, byStatus, useful, fallbackText)
 
+  if (code === 'unmapped') {
+    if (status >= 400) return joinParts(byStatus, extraHint)
+    return joinParts(t.operationFailed, extraHint)
+  }
+  if (useful && /^failed to\b/i.test(useful)) {
+    if (status >= 400) return joinParts(byStatus, extraHint)
+    return joinParts(t.operationFailed, extraHint)
+  }
   if (byStatus && useful && useful !== byStatus) {
     return joinParts(byStatus, useful, extraHint)
   }

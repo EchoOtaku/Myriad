@@ -63,20 +63,20 @@ function formatCompactNumber(n: number, locale: string): string {
 function formatPlaytimeMinutes(minutes: number, t: {
   playtimeHours: string
   playtimeMinutes: string
-}): string {
+}, format: (template: string, params: Record<string, string | number>) => string): string {
   if (minutes < 60) {
-    return t.playtimeMinutes.replace('{n}', String(Math.round(minutes)))
+    return format(t.playtimeMinutes, { n: Math.round(minutes) })
   }
   const hours = minutes / 60
   const rounded = hours >= 100 ? Math.round(hours) : Math.round(hours * 10) / 10
-  return t.playtimeHours.replace('{n}', String(rounded))
+  return format(t.playtimeHours, { n: rounded })
 }
 
 export const PlatformDataPreview = forwardRef<
   PlatformDataPreviewHandle,
   PlatformDataPreviewProps
 >(({ platformName }, ref) => {
-  const { t, locale } = useI18n()
+  const { t, locale, format } = useI18n()
   const dm = t.dataManagement
   const { catalog: g, bindGuide } = useSettingGuide()
   const platformId = resolvePlatformId(platformName)
@@ -87,8 +87,7 @@ export const PlatformDataPreview = forwardRef<
   const [error, setError] = useState<string | null>(null)
   const requestRef = useRef(0)
 
-  const numberLocale =
-    locale === 'zh-CN' ? 'zh-CN' : locale === 'ja-JP' ? 'ja-JP' : 'en-US'
+  const numberLocale = locale
 
   const load = useCallback(async () => {
     if (!platformId) return
@@ -139,7 +138,7 @@ export const PlatformDataPreview = forwardRef<
 
   const formatMetricValue = (key: string, value: number): string => {
     if (key === 'total_playtime_minutes') {
-      return formatPlaytimeMinutes(value, dm)
+      return formatPlaytimeMinutes(value, dm, format)
     }
     if (key === 'average_completion') {
       return `${formatCompactNumber(value, numberLocale)}%`

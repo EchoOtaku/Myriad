@@ -1,6 +1,7 @@
 import type { AppNotification } from '../services/notificationApi'
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import { currentCopy } from '../i18n/localeCopy.ts'
 import {
   notificationFacingBody,
   notificationFacingTitle,
@@ -120,6 +121,21 @@ describe('notificationFacing', () => {
       notice('Scheduled task failed', 'All 3 retries failed'),
     )
     assert.equal(/All 3 retries/.test(schedule), false)
+  })
+
+  it('maps leftover MCP retry bodies', () => {
+    const retry = notificationFacingBody(
+      notice('MCP files is connected', '维护重试成功', 'mcp.connected', {
+        server_id: 'files',
+      }),
+    )
+    assert.equal(retry, currentCopy().errors.noticeMcpMaintenanceRetry)
+    const restart = notificationFacingBody(
+      notice('MCP files is connected', 'Auto-restart succeeded', 'mcp.connected', {
+        server_id: 'files',
+      }),
+    )
+    assert.equal(restart, currentCopy().errors.noticeMcpAutoRestart)
   })
 
   it('maps leftover agent task failure titles', () => {

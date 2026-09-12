@@ -190,7 +190,7 @@ pub fn tencent_speech_error_message(error: &TencentSpeechError) -> String {
 
 /// Shared standalone TTS synthesis used by HTTP `/api/speech/tts` and agent `speech.tts`.
 ///
-/// Dispatch: OpenAI|OpenRouter → Gemini → MiniMax → Tencent.
+/// Match configured_provider(): OpenAI|OpenRouter, Gemini, MiniMax, else Tencent (no fallback).
 /// Tencent reads+writes cache; OpenAI/MiniMax write-only; Gemini no cache.
 pub async fn synthesize_standalone_tts(request: &TtsApiRequest) -> Result<TtsApiResponse, String> {
     if request.text.trim().is_empty() {

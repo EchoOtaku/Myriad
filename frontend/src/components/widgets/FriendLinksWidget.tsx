@@ -18,12 +18,11 @@ import {
 } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
 import { getSources } from '../../services/brewApi'
-import { getIconUrl } from '../brew/constants'
+import { getIconUrl, isFriendLinkCategory } from '../brew/constants'
 import { WidgetShell } from './shared/WidgetShell'
 import { WidgetSkeletonCover } from './shared/WidgetSkeleton'
 import './FriendLinksWidget.css'
 
-const FRIEND_LINK_CATEGORY = '友情链接'
 const REFRESH_INTERVAL = 60 * 1000
 const BATCH_INTERVAL = 5 * 1000
 const BATCH_TRANSITION_DURATION = 810
@@ -42,7 +41,7 @@ function belongsToFriendLinks(source: BrewSource): boolean {
     source.category
       ?.split(',')
       .map((category) => category.trim())
-      .includes(FRIEND_LINK_CATEGORY),
+      .some(isFriendLinkCategory),
   )
 }
 

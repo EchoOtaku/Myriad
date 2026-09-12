@@ -14,7 +14,7 @@ pub struct IconRecommendResponse {
     pub icon_type: String,            // always "react-icons"
     pub icon_library: Option<String>, // "fa" / "si" / "fa6"
     pub icon_name: Option<String>,    // e.g. SiSinaweibo (weibo is not FaWeibo)
-    pub icon_url: Option<String>,     // always None; unknown names get a random Fa*
+    pub icon_url: Option<String>,     // always None
     pub color_suggestion: String,     // 建议的主题色
     pub url_pattern: Option<String>,  // URL模式建议，如 "https://weibo.com/u/{username}"
 }

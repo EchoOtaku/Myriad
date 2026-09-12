@@ -44,6 +44,17 @@ describe('isFriendSource', () => {
     assert.equal(isSiteSource(s), false)
   })
 
+  it('认 friend_links / Friend Links 别名', () => {
+    assert.equal(
+      isFriendSource(makeSource({ source_type: 'rss', category: 'friend_links' })),
+      true,
+    )
+    assert.equal(
+      isFriendSource(makeSource({ source_type: 'rss', category: 'Friend Links' })),
+      true,
+    )
+  })
+
   it('自有源不去朋友们', () => {
     const s = makeSource({
       source_type: 'rss',
@@ -67,6 +78,10 @@ describe('isNotesSource', () => {
     assert.equal(
       isNotesSource(makeSource({ source_type: 'rss', category: '科技' })),
       false,
+    )
+    assert.equal(
+      isNotesSource(makeSource({ source_type: 'rss', category: 'mine' })),
+      true,
     )
   })
 })

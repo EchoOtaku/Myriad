@@ -132,7 +132,7 @@ impl McpManager {
         tools: &[McpToolDef],
     ) {
         let mut index = self.tool_index.lock().await;
-        // 移除该 server_id 下旧工具名（用前缀匹配）
+        // 按 "{id}." 前缀清 index（id 允许含 '.'，可能误伤更长 id）
         let prefix = format!("{}.", server_id);
         index.retain(|k, _| !k.starts_with(&prefix));
         for tool in tools {
@@ -140,7 +140,7 @@ impl McpManager {
         }
     }
 
-    /// 若 `mcp_servers.json` mtime 变化则热重载整表配置
+    /// 若 config_path mtime 变化则热重载整表
     pub async fn reload_if_config_changed(&self) -> Result<bool, String> {
         let current = file_mtime(&self.config_path).await;
         let stale = {
@@ -165,7 +165,7 @@ impl McpManager {
         load_config(&self.config_path).await
     }
 
-    /// Path of the injected config file (returned as `configPath` on GET/PUT).
+    /// 注入配置文件路径（GET/PUT JSON 字段 `config_path`）
     pub fn config_path_display(&self) -> String {
         self.config_path.display().to_string()
     }
@@ -237,7 +237,7 @@ impl McpManager {
                         crate::services::agent::notifications::get_notification_manager()
                     {
                         manager
-                            .notify_mcp_server_status(&server_id, true, "维护重试成功")
+                            .notify_mcp_server_status(&server_id, true, "Maintenance retry succeeded")
                             .await;
                     }
                 }
@@ -286,7 +286,7 @@ impl McpManager {
             if let Some(manager) = crate::services::agent::notifications::get_notification_manager()
             {
                 manager
-                    .notify_mcp_server_status(&restarted_server_id, true, "自动重启成功")
+                    .notify_mcp_server_status(&restarted_server_id, true, "Auto-restart succeeded")
                     .await;
             }
 

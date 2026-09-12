@@ -465,7 +465,6 @@ pub(crate) async fn ensure_session(
     mode: crate::services::agent::AgentInteractionMode,
 ) -> Result<String, String> {
     if let Some(sid) = session_id {
-        // 验证会话存在且属于当前用户
         if let Some(session) = agent_sessions::Entity::find_by_id(sid)
             .filter(agent_sessions::Column::UserId.eq(user_id))
             .one(db)

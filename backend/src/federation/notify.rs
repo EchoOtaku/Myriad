@@ -43,7 +43,7 @@ pub async fn actor_label(db: &impl ConnectionTrait, actor_url: &str) -> String {
         .to_string()
 }
 
-/// True when payload is an E2E ciphertext envelope (not yet decrypted).
+/// True when payload has ciphertext + algorithm (object fields, or a JSON-looking string).
 fn is_e2e_ciphertext_envelope(payload: &Value) -> bool {
     if !payload.is_object() {
         if let Some(s) = payload.as_str() {
@@ -132,7 +132,7 @@ fn aro_route(kind: &str, id: &str) -> String {
     )
 }
 
-/// 轻量 URL 编码（id 多为安全字符；对保留字做 escape）
+/// 轻量 URL 编码：unreserved 原样，其余 %XX
 fn urlencoding_lite(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
