@@ -225,7 +225,7 @@ describe('Tapp store transport strategy', () => {
       'widget/index.js': 'require("../core.js");',
     })
     assert.deepEqual(direct.widgetStyles, { card: '.card{}' })
-    assert.equal('widgetCss' in direct, false)
+    assert.equal(Object.hasOwn(direct, 'widgetCss'), false)
   })
 })
 

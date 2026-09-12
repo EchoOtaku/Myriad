@@ -333,7 +333,7 @@ export const UserModal: FC<UserModalProps> = ({
         (p) => p.slug.toLowerCase() === key,
       )
       if (match?.display_name?.trim()) return match.display_name.trim()
-      const bare = key.replace(/^oidc[-_]?/, '')
+      const bare = key.replaceAll(/^oidc[-_]?/g, '')
       if (bare.length === 0) return slug
       return bare.charAt(0).toUpperCase() + bare.slice(1)
     },

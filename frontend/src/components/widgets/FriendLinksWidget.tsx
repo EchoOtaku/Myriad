@@ -72,7 +72,7 @@ function sourceSubtitle(source: BrewSource): string | null {
   if (description) return description
 
   try {
-    return new URL(safeLink(source)).hostname.replace(/^www\./, '') || null
+    return new URL(safeLink(source)).hostname.replaceAll(/^www\./g, '') || null
   } catch {
     return null
   }

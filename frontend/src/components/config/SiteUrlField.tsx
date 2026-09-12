@@ -18,7 +18,7 @@ export interface SiteUrlFieldProps {
 }
 
 function normalizeOrigin(url: string): string {
-  return url.trim().replace(/\/$/, '')
+  return url.trim().replaceAll(/\/$/g, '')
 }
 
 export const SiteUrlField: React.FC<SiteUrlFieldProps> = ({

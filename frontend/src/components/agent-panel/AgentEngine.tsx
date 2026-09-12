@@ -1237,7 +1237,7 @@ export const AgentEngine: React.FC = () => {
                   const existing = m.taskExecution.debugTrace ?? {
                     stepDebugEntries: [],
                   }
-                  const entries = [...existing.stepDebugEntries]
+                  const entries = Iterator.from(existing.stepDebugEntries).toArray()
 
                   if (sdEvent.phase === 'start') {
                     entries.push({
@@ -1370,7 +1370,7 @@ export const AgentEngine: React.FC = () => {
           role: 'user',
           content: messageText,
           createdAt: new Date(),
-          ...(attachments.length ? { attachments: [...attachments] } : {}),
+          ...(attachments.length ? { attachments: Iterator.from(attachments).toArray() } : {}),
         }
         setMessages((prev) => [...prev, userMessage], mode)
         try {
@@ -1415,7 +1415,7 @@ export const AgentEngine: React.FC = () => {
         role: 'user',
         content: messageText,
         createdAt: new Date(),
-        ...(attachments.length ? { attachments: [...attachments] } : {}),
+        ...(attachments.length ? { attachments: Iterator.from(attachments).toArray() } : {}),
       }
 
       const assistantMsgId = nextAgentMessageId('assistant')
@@ -1818,7 +1818,7 @@ export const AgentEngine: React.FC = () => {
         const msg = findMessage(messageId)
         return msg?.imageUrls ?? []
       })()
-      const mergedImageUrls = [...existingImageUrls]
+      const mergedImageUrls = Iterator.from(existingImageUrls).toArray()
       for (const url of fallbackImageUrls) {
         if (!mergedImageUrls.includes(url)) {
           mergedImageUrls.push(url)

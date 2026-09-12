@@ -72,7 +72,7 @@ export function filterSourcesByQuery(
   query: string,
 ): BrewSource[] {
   const needle = query.trim().toLowerCase()
-  if (!needle) return [...sources]
+  if (!needle) return Iterator.from(sources).toArray()
   return sources.filter(
     (source) =>
       source.name.toLowerCase().includes(needle) ||
@@ -111,7 +111,7 @@ export function sortSourcesForBoard(
     case 'pinyin':
       return sources.toSorted((a, b) => a.name.localeCompare(b.name, locale))
     default:
-      return [...sources]
+      return Iterator.from(sources).toArray()
   }
 }
 

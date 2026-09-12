@@ -149,6 +149,19 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
           }
           return { layer, triangles, witnesses }
         })
+      const hairMeshes = player.layers.filter(layer => ['front-hair', 'back-hair'].includes(layer.source.role)).map(layer => {
+        const raster = readLayerPixels(image, layer.source)
+        const triangles = []
+        for (let i = 0; i < layer.indices.length; i += 3) {
+          const vertices = [...layer.indices.slice(i, i + 3)].map(v => v * 2)
+          const x = vertices.reduce((n, v) => n + layer.rest[v], 0) / 3
+          const y = vertices.reduce((n, v) => n + layer.rest[v + 1], 0) / 3
+          const px = Math.floor((x - layer.source.x) / layer.source.w * raster.width)
+          const py = Math.floor((y - layer.source.y) / layer.source.h * raster.height)
+          if (px >= 0 && py >= 0 && px < raster.width && py < raster.height && raster.pixels[(py * raster.width + px) * 4 + 3] > 128) triangles.push(vertices)
+        }
+        return { layer, triangles }
+      })
       const baseline = createAtlasTexture(gl, image)
       const width = gl.drawingBufferWidth
       const height = gl.drawingBufferHeight
@@ -290,6 +303,8 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
         let redundantDirty = 0
         let maxIdempotenceError = 0
         let maxBoundaryError = 0
+        let minHairAreaRatio = Infinity
+        const deformationTimes = []
         for (let frame = 0; frame < fps * 4; frame++) {
           const t = frame / fps
           player.setTarget({
@@ -307,7 +322,14 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
           player.time += 1 / fps
           player.smoothDriver(1 / fps)
           player.updateSprings(1 / fps)
+          const deformationStart = performance.now()
           player.deform()
+          deformationTimes.push(performance.now() - deformationStart)
+          for (const { layer, triangles } of hairMeshes) {
+            for (const [a, b, c] of triangles) {
+              minHairAreaRatio = Math.min(minHairAreaRatio, area(layer.deformed, a, b, c) / area(layer.rest, a, b, c))
+            }
+          }
           for (const { armSample, bodySample } of boundarySamples) {
             const armPoint = { x: 0, y: 0 }
             const bodyPoint = { x: 0, y: 0 }
@@ -327,9 +349,10 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
               )
             }
           }
-          const retained = contacts.map((layer) => layer.deformed.slice())
+          const checkedLayers = [...contacts, ...hairMeshes.map(({ layer }) => layer)]
+          const retained = checkedLayers.map((layer) => layer.deformed.slice())
           player.deform()
-          contacts.forEach((layer, n) => {
+          checkedLayers.forEach((layer, n) => {
             if (layer.geometryDirty) redundantDirty++
             for (let i = 0; i < layer.deformed.length; i++) {
               maxIdempotenceError = Math.max(
@@ -361,6 +384,8 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
           redundantDirty,
           maxIdempotenceError,
           maxBoundaryError,
+          minHairAreaRatio,
+          deformationP95Ms: deformationTimes.toSorted((a, b) => a - b)[Math.floor(deformationTimes.length * 0.95)],
         })
       }
       for (const pose of poses) {
@@ -397,6 +422,15 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
               worstRest: worst ? [worst.x, worst.y] : null,
             }
           })
+        const hairGeometry = hairMeshes.map(({ layer, triangles }) => {
+          const ratios = triangles.map(([a, b, c]) => area(layer.deformed, a, b, c) / area(layer.rest, a, b, c))
+          const minAreaRatio = Math.min(...ratios)
+          const worst = triangles[ratios.indexOf(minAreaRatio)]
+          return { name: layer.source.name, triangles: triangles.length, minAreaRatio,
+            maxAreaRatio: Math.max(...ratios),
+            worstRest: worst.map(v => [layer.rest[v], layer.rest[v + 1], layer.secondaryDeformation.hairlinePinWeights?.[v / 2] ?? 0]),
+          }
+        })
         const after = read()
         const screenshot = (gl.canvas as HTMLCanvasElement)
           .toDataURL('image/png')
@@ -416,7 +450,7 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
               changed++
           }
         }
-        results.push({ holes, changed, error: gl.getError(), screenshot, headGeometry })
+        results.push({ holes, changed, error: gl.getError(), screenshot, headGeometry, hairGeometry })
       }
       gl.deleteTexture(baseline)
       player.atlasTexture = fused
@@ -435,10 +469,19 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
     expect(sweep.maxBoundaryError).toBeLessThan(0.25)
     expect(sweep.maxUnboundSeamError).toBeGreaterThan(1)
     expect(sweep.minAreaRatio).toBeGreaterThan(0)
+    expect(sweep.minHairAreaRatio).toBeGreaterThan(0)
     expect(sweep.redundantDirty).toBe(0)
     expect(sweep.maxIdempotenceError).toBe(0)
   }
   for (const [index, pose] of result.results.entries()) {
+    await testInfo.attach(`hair-geometry-${index}`, {
+      body: JSON.stringify(pose.hairGeometry, null, 2), contentType: 'application/json',
+    })
+    expect(pose.hairGeometry.length).toBeGreaterThan(0)
+    for (const surface of pose.hairGeometry) {
+      expect(surface.triangles).toBeGreaterThan(0)
+      expect(surface.minAreaRatio, `${index}: ${surface.name}`).toBeGreaterThan(0)
+    }
     await testInfo.attach(`head-geometry-${index}`, {
       body: JSON.stringify(pose.headGeometry, null, 2), contentType: 'application/json',
     })
@@ -446,7 +489,7 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
     for (const surface of pose.headGeometry) {
       expect(surface.triangles, surface.name).toBeGreaterThan(0)
       expect(surface.witnesses, surface.name).toBeGreaterThan(0)
-      if (surface.name !== 'face') expect(surface.maxInterpolationError, `${index}: ${surface.name}`).toBeLessThan(0.25)
+      expect(surface.maxInterpolationError, `${index}: ${surface.name}`).toBeLessThan(surface.name === 'face' ? 1 : 0.25)
       expect(surface.minAreaRatio, `${index}: ${surface.name}`).toBeGreaterThan(0)
     }
     await testInfo.attach(`shoulder-pose-${index}`, {

@@ -221,7 +221,7 @@ export const FederationDeliveryQueue: React.FC<
 
   const handleRetry = useCallback(
     async (item: DeliveryQueueItem) => {
-      const snapshot = { items: [...items], stats }
+      const snapshot = { items: Iterator.from(items).toArray(), stats }
       setItemBusy(item.id, 'retry')
       const nextItems = items.map((it) =>
         it.id === item.id ? asPendingRetry(it) : it,
@@ -244,7 +244,7 @@ export const FederationDeliveryQueue: React.FC<
 
   const handleRemove = useCallback(
     async (item: DeliveryQueueItem) => {
-      const snapshot = { items: [...items], stats }
+      const snapshot = { items: Iterator.from(items).toArray(), stats }
       setItemBusy(item.id, 'remove')
       const nextItems = items.filter((it) => it.id !== item.id)
       onItemsChange(nextItems)
@@ -264,7 +264,7 @@ export const FederationDeliveryQueue: React.FC<
   )
 
   const handleRetryFailures = useCallback(async () => {
-    const snapshot = { items: [...items], stats }
+    const snapshot = { items: Iterator.from(items).toArray(), stats }
     setBulkBusy(true)
     const nextItems = items.map((it) =>
       isTerminalItem(it) && shouldOfferDeliveryRetry(it)
@@ -286,7 +286,7 @@ export const FederationDeliveryQueue: React.FC<
   }, [items, stats, onItemsChange, onStatsChange, quietRefresh, fail])
 
   const handleClear = useCallback(async () => {
-    const snapshot = { items: [...items], stats }
+    const snapshot = { items: Iterator.from(items).toArray(), stats }
     setBulkBusy(true)
     // Keep nothing terminal or active in the optimistic list.
     const nextItems = items.filter(

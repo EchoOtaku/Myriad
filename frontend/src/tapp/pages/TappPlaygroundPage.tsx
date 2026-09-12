@@ -974,9 +974,9 @@ export function TappPlaygroundPage() {
         code:
           requestError &&
           typeof requestError === 'object' &&
-          'code' in requestError &&
-          typeof requestError.code === 'string'
-            ? requestError.code
+          Object.hasOwn(requestError, 'code') &&
+          typeof (requestError as { code: unknown }).code === 'string'
+            ? (requestError as { code: string }).code
             : undefined,
       })
 

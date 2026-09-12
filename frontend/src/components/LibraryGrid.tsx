@@ -502,7 +502,10 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
   ])
 
   const laidOutItems = useMemo(
-    () => filteredAllItems.filter((item) => layouts.has(item.id)),
+    () =>
+      Iterator.from(filteredAllItems)
+        .filter((item) => layouts.has(item.id))
+        .toArray(),
     [filteredAllItems, layouts],
   )
 
@@ -692,7 +695,9 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
       setAllItems((current) => {
         if (incoming.length === 0) return current
         const known = new Set(current.map((item) => item.id))
-        const unique = incoming.filter((item) => !known.has(item.id))
+        const unique = Iterator.from(incoming)
+          .filter((item) => !known.has(item.id))
+          .toArray()
         return unique.length > 0 ? [...current, ...unique] : current
       })
       nextLibraryOffsetRef.current = data.next_offset ?? null

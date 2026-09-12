@@ -36,7 +36,7 @@ export function notificationFacingTitle(notification: AppNotification): string {
       return fill(t.noticeBrewNewItems, {
         name:
           name ||
-          notification.title.replace(/\s*·\s*\d.*$/, '').trim() ||
+          notification.title.replaceAll(/\s*·\s*\d.*$/g, '').trim() ||
           'RSS',
         n:
           typeof notification.metadata?.new_count === 'number'
@@ -49,8 +49,8 @@ export function notificationFacingTitle(notification: AppNotification): string {
         name:
           metaString(notification, 'task_name') ||
           notification.title
-            .replace(/^定时任务:\s*/, '')
-            .replace(/^Scheduled task:\s*/i, '')
+            .replaceAll(/^定时任务:\s*/g, '')
+            .replaceAll(/^Scheduled task:\s*/ig, '')
             .trim() ||
           'task',
       })
@@ -131,10 +131,10 @@ export function notificationFacingTitle(notification: AppNotification): string {
     return fill(t.noticeHeartbeatTask, { name: leftoverHeartbeat[1] })
   }
   if (raw.includes('连续抓取失败')) {
-    return fill(t.noticeBrewSourceFailed, { name: name || raw.replace(/连续抓取失败/, '').trim() || 'RSS' })
+    return fill(t.noticeBrewSourceFailed, { name: name || raw.replaceAll(/连续抓取失败/g, '').trim() || 'RSS' })
   }
   if (raw.includes('自动刷新失败')) {
-    return fill(t.noticePlatformSyncFailed, { name: name || raw.replace(/自动刷新失败/, '').trim() })
+    return fill(t.noticePlatformSyncFailed, { name: name || raw.replaceAll(/自动刷新失败/g, '').trim() })
   }
   if (raw.includes('连接失败') && raw.includes('MCP')) {
     return fill(t.noticeMcpFailed, { name: name || 'MCP' })

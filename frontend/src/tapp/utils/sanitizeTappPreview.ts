@@ -67,7 +67,7 @@ function sanitizePreviewCss(css: string): string {
     .replaceAll(/@import\s[^;]+;?/gi, '')
     .replaceAll(/(?:expression|behavior|-moz-binding)\s*:[^;}]*/gi, '')
     .replaceAll(/url\(([^)]*)\)/gi, (match, raw: string) => {
-      const value = raw.trim().replace(/^(['"])(.*)\1$/, '$2')
+      const value = raw.trim().replaceAll(/^(['"])(.*)\1$/g, '$2')
       return /^(?:data:image\/|blob:)/i.test(value) ? match : 'none'
     })
 }

@@ -111,14 +111,19 @@ export async function apiRequest<T>(
   }
 
   const result = await response.json()
-  if (typeof result === 'object' && result !== null && 'success' in result) {
-    if (!result.success) {
+  if (
+    typeof result === 'object' &&
+    result !== null &&
+    Object.hasOwn(result, 'success')
+  ) {
+    const payload = result as { success: unknown; error?: unknown; data?: T }
+    if (!payload.success) {
       throw new Error(
-        (typeof result.error === 'string' && result.error.trim()) ||
+        (typeof payload.error === 'string' && payload.error.trim()) ||
           currentCopy().errors.requestFailed,
       )
     }
-    if ('data' in result) return result.data as T
+    if (Object.hasOwn(payload, 'data')) return payload.data as T
     return result as T
   }
   return result as T

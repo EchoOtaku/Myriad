@@ -46,7 +46,7 @@ export class TtsPipeline {
   private nextPlayId = 0
   private nextPlay = 1
   private readonly synthesis = new Map<number, Synthesis>()
-  private readonly pending: QueuedSegment[] = []
+  private pending: QueuedSegment[] = []
   private readonly ready = new Map<number, ReadySlot>()
   private handle: TtsAudioHandle | null = null
   private playingMessageId: string | null = null
@@ -180,7 +180,7 @@ export class TtsPipeline {
     let dropped = false
     for (let i = this.pending.length - 1; i >= 0; i--) {
       if (this.pending[i]?.segment.messageId === messageId) {
-        this.pending.splice(i, 1)
+        this.pending = this.pending.toSpliced(i, 1)
         dropped = true
       }
     }

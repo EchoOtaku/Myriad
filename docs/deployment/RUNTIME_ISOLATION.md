@@ -41,6 +41,10 @@ limits remain 0.5 CPU, 512 MiB memory and 64 PIDs. Its DB pool has at most four
 connections, with connection/acquisition and SQL statement/lock deadlines. These
 are first-party credentials; this container is **not** a third-party MCP sandbox.
 
+PostgreSQL and the underlying storage are still shared with web. Pool and SQL
+deadlines limit worker concurrency and waiting; they do not establish database CPU
+or disk quotas. Shared-resource pressure and homepage latency need fault/load tests.
+
 The worker admits eight HTTP requests immediately and holds capacity through the
 response body, with a 60-second handler deadline and 120-second response deadline.
 Proxy federation forwarding has a separate 32-request budget and a 180-second
@@ -56,6 +60,11 @@ a missing/invalid installation key and JWT-derived fallback. Deployments overrid
 worker does not generate a separate key. It refreshes durable site origin and DB
 configuration every 15 seconds; refresh failure stops the process, allowing its
 supervisor to restart it rather than continue indefinitely with stale settings.
+
+Runtime TAPP grant revalidation reads committed permission policy directly from
+PostgreSQL on each request, using the existing permission parser/defaults. The
+15-second general-config refresh is not a revocation grace period. Failed reads or
+invalid policy values reject the grant; host credentials are not read by this query.
 
 `GET /health` reports the worker role, DB readiness, version/commit and federation
 gate. Geographic disablement is healthy idle. The delivery task and HTTP/config

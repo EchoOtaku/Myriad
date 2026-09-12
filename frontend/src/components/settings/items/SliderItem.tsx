@@ -25,7 +25,7 @@ function defaultFormat(value: number, step: number): string {
     4,
     (String(step).split('.')[1] || '').length || 1,
   )
-  return value.toFixed(decimals).replace(/\.?0+$/, '')
+  return value.toFixed(decimals).replaceAll(/\.?0+$/g, '')
 }
 
 function trackWidthRem(stepIntervals: number): number {

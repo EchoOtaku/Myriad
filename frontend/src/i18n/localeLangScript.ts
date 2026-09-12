@@ -21,7 +21,7 @@ export const LOCALE_LANG_DEFAULT_DESC = en.chrome.description
 
 function sharedParserSource(source: string): string {
   return source
-    .replace(/^\/\*\*[\s\S]*?\*\/\s*/u, '')
+    .replaceAll(/^\/\*\*[\s\S]*?\*\/\s*/ug, '')
     .replaceAll(/^export /gm, '')
 }
 

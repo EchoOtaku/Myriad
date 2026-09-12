@@ -134,7 +134,7 @@ describe('TappBridge KV permission gates', () => {
       assert.equal(payload.success, false, action)
       assert.equal(payload.code, 'PERMISSION_DENIED', action)
     }
-    assert.deepEqual(reached, [...READS])
+    assert.deepEqual(reached, Iterator.from(READS).toArray())
   })
 
   it('allows KV writes only after storage:write is granted', async () => {
@@ -145,6 +145,6 @@ describe('TappBridge KV permission gates', () => {
       const payload = await lastPayload(responses)
       assert.equal(payload.success, true, action)
     }
-    assert.deepEqual(reached, [...WRITES])
+    assert.deepEqual(reached, Iterator.from(WRITES).toArray())
   })
 })

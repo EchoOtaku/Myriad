@@ -332,7 +332,7 @@ export function getBuiltinWidgets(
       name: widgetsI18n[WIDGET_NAME_KEY[id]],
       defaultSize: base.defaultSize,
       component: base.component,
-      supportedSizes: [...base.supportedSizes],
+      supportedSizes: Iterator.from(base.supportedSizes).toArray(),
       settings:
         id === 'github-repos'
           ? [

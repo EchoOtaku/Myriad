@@ -291,7 +291,7 @@ async function touchPicking(kind: string) {
         }
       }
     }
-    return { hits, falseHits, misses, regions: [...regions], glError: gl.getError() }
+    return { hits, falseHits, misses, regions: Iterator.from(regions).toArray(), glError: gl.getError() }
   } finally {
     player.dispose()
     canvas.remove()

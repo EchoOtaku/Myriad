@@ -40,7 +40,7 @@ function entryFields(entry: SettingGuideEntry): string[] {
 
 export function guideEntryTitle(what: string, max = 42): string {
   const cleaned = what
-    .replace(/^[①②③④⑤⑥⑦⑧⑨⑩\d]+[).、\s]*/u, '')
+    .replaceAll(/^[①②③④⑤⑥⑦⑧⑨⑩\d]+[).、\s]*/ug, '')
     .trim()
   const first = cleaned.split(/[。！？\n]/u)[0]?.trim() || cleaned
   if (first.length <= max) return first

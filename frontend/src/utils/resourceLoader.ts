@@ -102,7 +102,7 @@ class ResourceLoader {
   cancelTask(id: string): void {
     const index = this.queue.findIndex((t) => t.id === id)
     if (index !== -1) {
-      this.queue.splice(index, 1)
+      this.queue = this.queue.toSpliced(index, 1)
     }
     this.cancelScheduledIdleTask(id)
   }
@@ -112,7 +112,7 @@ class ResourceLoader {
   }
 
   private sortQueue(): void {
-    this.queue.sort((a, b) => a.priority - b.priority)
+    this.queue = this.queue.toSorted((a, b) => a.priority - b.priority)
   }
 
   private async processQueue(): Promise<void> {

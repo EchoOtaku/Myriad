@@ -38,7 +38,7 @@ function collectReferencedAssets(html, htmlDir) {
     for (const match of html.matchAll(pattern)) {
       const href = match[1]
       if (href.startsWith('http') || href.startsWith('data:')) continue
-      const abs = resolve(htmlDir, href.replace(/^\//, ''))
+      const abs = resolve(htmlDir, href.replaceAll(/^\//g, ''))
       if (existsSync(abs)) assets.add(abs)
     }
   }
@@ -53,7 +53,7 @@ function displayPath(file, root) {
 
 function walkStaticImports(entryFiles, assetsDir) {
   const seen = new Set(entryFiles)
-  const queue = [...entryFiles]
+  const queue = Iterator.from(entryFiles).toArray()
   const importRe =
     /(?:from|import)\s*["'](\.{0,2}\/[^"']+\.js)["']|import\(["'](\.{0,2}\/[^"']+\.js)["']\)/g
   while (queue.length > 0) {
@@ -93,7 +93,7 @@ export async function measureHomeBudget(root = distDir) {
   const assetsDir = existsSync(join(htmlDir, 'assets'))
     ? join(htmlDir, 'assets')
     : join(root, 'assets')
-  const firstPaint = walkStaticImports([...referenced], assetsDir)
+  const firstPaint = walkStaticImports(Iterator.from(referenced).toArray(), assetsDir)
 
   let js = 0
   let css = 0

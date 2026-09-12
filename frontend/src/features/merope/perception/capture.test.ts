@@ -67,9 +67,9 @@ test.describe('perception capture', { concurrency: false }, () => {
     assert.equal(first.safeFacts.album, 'Demo')
     assert.equal(first.safeFacts.source, 'netease')
     assert.equal(first.safeFacts.playing, true)
-    assert.equal('url' in first.safeFacts, false)
-    assert.equal('cover' in first.safeFacts, false)
-    assert.equal('id' in first.safeFacts, false)
+    assert.equal(Object.hasOwn(first.safeFacts, 'url'), false)
+    assert.equal(Object.hasOwn(first.safeFacts, 'cover'), false)
+    assert.equal(Object.hasOwn(first.safeFacts, 'id'), false)
     const firstRevision = first.revision
 
     applyPublishedMusicState({
@@ -81,7 +81,7 @@ test.describe('perception capture', { concurrency: false }, () => {
     assert.ok(second)
     assert.equal(second.summary, 'Dawn — Lantern')
     assert.ok(second.revision > firstRevision)
-    assert.equal('url' in second.safeFacts, false)
+    assert.equal(Object.hasOwn(second.safeFacts, 'url'), false)
   })
 
   test('partial play/pause publish does not clear the track', () => {
@@ -111,7 +111,7 @@ test.describe('perception capture', { concurrency: false }, () => {
     assert.ok(row)
     assert.equal(row.safeFacts.lyric, 'harbour light')
     assert.ok(String(row.summary).includes('harbour light'))
-    assert.equal('lyrics' in row.safeFacts, false)
+    assert.equal(Object.hasOwn(row.safeFacts, 'lyrics'), false)
   })
 
   test('closed overlay reports surface none', () => {
@@ -146,9 +146,9 @@ test('agent music status omits url and cover', () => {
   const song = status.currentSong as Record<string, unknown>
   assert.equal(song.name, 'Night')
   assert.equal(song.album, 'Demo')
-  assert.equal('url' in song, false)
-  assert.equal('cover' in song, false)
-  assert.equal('id' in song, false)
+  assert.equal(Object.hasOwn(song, 'url'), false)
+  assert.equal(Object.hasOwn(song, 'cover'), false)
+  assert.equal(Object.hasOwn(song, 'id'), false)
   assert.equal(status.currentLyric, 'harbour light')
 })
 
@@ -179,7 +179,7 @@ test('Chat scene sources exist in capture; registry kinds remain a client orderi
     'export const KINDS',
     'KIND_ORDER',
   )
-  assert.deepEqual([...KINDS], clientKinds)
+  assert.deepEqual(Iterator.from(KINDS).toArray(), clientKinds)
   assert.equal(clientKinds[2], 'surface')
   assert.equal(clientKinds[1], 'pointer')
   const producers = ['capture.ts', 'consentedSources.ts']

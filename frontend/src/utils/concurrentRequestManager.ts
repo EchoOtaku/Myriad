@@ -54,7 +54,9 @@ class ConcurrentRequestManager {
 
     if (this.currentCount >= this.maxConcurrent) {
       this.requestQueue.push(request)
-      this.requestQueue.sort((a, b) => b.priority - a.priority)
+      this.requestQueue = this.requestQueue.toSorted(
+        (a, b) => b.priority - a.priority,
+      )
     } else {
       this.executeRequest(request)
     }

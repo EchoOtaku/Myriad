@@ -183,7 +183,7 @@ class RemoteStoreServiceImpl {
 
   async getSources(): Promise<RemoteStoreSource[]> {
     await this.ensureSourcesLoaded()
-    return [...this.sources]
+    return Iterator.from(this.sources).toArray()
   }
 
   async getEnabledSources(): Promise<RemoteStoreSource[]> {

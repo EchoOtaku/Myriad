@@ -128,8 +128,8 @@ describe('tapp docs gating consistency', () => {
 
   it('widget categories match system Tapp IDs one-to-one', () => {
     assert.deepEqual(
-      [...TAPP_WIDGET_CATEGORIES],
-      [...TAPP_CATEGORIES],
+      Iterator.from(TAPP_WIDGET_CATEGORIES).toArray(),
+      Iterator.from(TAPP_CATEGORIES).toArray(),
       'Widget categories must be the same stable IDs as app categories',
     )
     const manifest = read(join(DOCS_TAPP, 'MANIFEST.md'))

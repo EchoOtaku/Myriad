@@ -443,7 +443,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       if (!tempPlayModeRef.current.enabled) {
         tempPlayModeRef.current = {
           enabled: true,
-          originalPlaylist: [...playlistRef.current],
+          originalPlaylist: Iterator.from(playlistRef.current).toArray(),
           originalIndex: currentSongIndexRef.current,
           originalSource: musicSource,
           originalPlaylistId: playlistId,

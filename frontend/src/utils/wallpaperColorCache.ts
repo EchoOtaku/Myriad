@@ -71,13 +71,14 @@ function cleanupCacheStore(store: WallpaperColorCacheStore): void {
   )
 
   if (store.items.length > MAX_CACHE_ITEMS) {
-    store.items.sort((a, b) => {
-      if (b.accessCount !== a.accessCount) {
-        return b.accessCount - a.accessCount
-      }
-      return b.timestamp - a.timestamp
-    })
-    store.items = store.items.slice(0, MAX_CACHE_ITEMS)
+    store.items = store.items
+      .toSorted((a, b) => {
+        if (b.accessCount !== a.accessCount) {
+          return b.accessCount - a.accessCount
+        }
+        return b.timestamp - a.timestamp
+      })
+      .slice(0, MAX_CACHE_ITEMS)
   }
 }
 

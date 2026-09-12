@@ -133,7 +133,7 @@ export function normalizeManifestForPackage(
 function assetPackagePath(path: string): string {
   return path.startsWith('assets/')
     ? path
-    : `assets/${path.replace(/^\/+/, '')}`
+    : `assets/${path.replaceAll(/^\/+/g, '')}`
 }
 
 export function decodeAssetPayload(value: string): PackageFileContent {

@@ -167,7 +167,7 @@ test('Chat mid-utterance continues while a background Work completion is recorde
     sink.speechEvents.map((event) => [
       event.phase,
       event.messageId,
-      'text' in event ? event.text : '',
+      Object.hasOwn(event, 'text') ? (event as { text: string }).text : '',
     ]),
     [
       ['start', 'chat-msg', ''],

@@ -213,7 +213,7 @@ export const TRUSTED_IFRAME_HOSTS: readonly string[] = [
 ]
 
 export function isTrustedIframeHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/\.$/, '')
+  const host = hostname.toLowerCase().replaceAll(/\.$/g, '')
   if (TRUSTED_IFRAME_HOSTS.includes(host)) return true
   if (host.endsWith('.music.163.com')) return true
   if (host.endsWith('.youtube.com') && host.includes('nocookie')) return true
@@ -278,8 +278,8 @@ export function sanitizeRssHtml(html: string): string {
   if (!html) return ''
   ensurePurifyHooks()
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: [...RSS_ALLOWED_TAGS],
-    ALLOWED_ATTR: [...RSS_ALLOWED_ATTR],
+    ALLOWED_TAGS: Iterator.from(RSS_ALLOWED_TAGS).toArray(),
+    ALLOWED_ATTR: Iterator.from(RSS_ALLOWED_ATTR).toArray(),
     ALLOW_DATA_ATTR: true,
     ALLOW_UNKNOWN_PROTOCOLS: false,
   })
@@ -386,8 +386,8 @@ function processImages(html: string, options: ProcessOptions): string {
 function processFigures(html: string): string {
   let result = html.replaceAll(/<figure([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(
-        /class\s*=\s*["']([^"']*)["']/i,
+      return match.replaceAll(
+        /class\s*=\s*["']([^"']*)["']/ig,
         'class="$1 rss-content-figure my-6"',
       )
     }
@@ -396,8 +396,8 @@ function processFigures(html: string): string {
 
   result = result.replaceAll(/<figcaption([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(
-        /class\s*=\s*["']([^"']*)["']/i,
+      return match.replaceAll(
+        /class\s*=\s*["']([^"']*)["']/ig,
         'class="$1 rss-content-figcaption text-center text-sm mt-2 opacity-60"',
       )
     }
@@ -410,8 +410,8 @@ function processFigures(html: string): string {
 function processVideos(html: string): string {
   const result = html.replaceAll(/<video([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(
-        /class\s*=\s*["']([^"']*)["']/i,
+      return match.replaceAll(
+        /class\s*=\s*["']([^"']*)["']/ig,
         'class="$1 rss-content-video w-full rounded-xl my-4"',
       )
     }
@@ -424,8 +424,8 @@ function processVideos(html: string): string {
 function processAudio(html: string): string {
   return html.replaceAll(/<audio([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(
-        /class\s*=\s*["']([^"']*)["']/i,
+      return match.replaceAll(
+        /class\s*=\s*["']([^"']*)["']/ig,
         'class="$1 rss-content-audio w-full my-4"',
       )
     }
@@ -436,8 +436,8 @@ function processAudio(html: string): string {
 function processBlockquotes(html: string): string {
   return html.replaceAll(/<blockquote([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(
-        /class\s*=\s*["']([^"']*)["']/i,
+      return match.replaceAll(
+        /class\s*=\s*["']([^"']*)["']/ig,
         'class="$1 rss-content-blockquote rounded-xl px-4 py-3 my-4 italic"',
       )
     }
@@ -448,8 +448,8 @@ function processBlockquotes(html: string): string {
 function processCodeBlocks(html: string): string {
   let result = html.replaceAll(/<pre([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(
-        /class\s*=\s*["']([^"']*)["']/i,
+      return match.replaceAll(
+        /class\s*=\s*["']([^"']*)["']/ig,
         'class="$1 rss-content-pre rounded-xl p-4 my-4 overflow-x-auto text-sm"',
       )
     }
@@ -471,8 +471,8 @@ function processTables(html: string): string {
     const tableClass =
       'rss-content-table w-full text-sm border-collapse rounded-xl overflow-hidden border'
     if (attrs.includes('class=')) {
-      const newTag = match.replace(
-        /class\s*=\s*["']([^"']*)["']/i,
+      const newTag = match.replaceAll(
+        /class\s*=\s*["']([^"']*)["']/ig,
         `class="$1 ${tableClass}"`,
       )
       return `<div class="rss-content-table-wrapper overflow-x-auto my-4 rounded-xl">${newTag}`
@@ -502,8 +502,8 @@ function processDescriptionLists(html: string): string {
 
   result = result.replaceAll(/<dl([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(
-        /class\s*=\s*["']([^"']*)["']/i,
+      return match.replaceAll(
+        /class\s*=\s*["']([^"']*)["']/ig,
         'class="$1 rss-content-dl my-4"',
       )
     }
@@ -512,8 +512,8 @@ function processDescriptionLists(html: string): string {
 
   result = result.replaceAll(/<dt([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(
-        /class\s*=\s*["']([^"']*)["']/i,
+      return match.replaceAll(
+        /class\s*=\s*["']([^"']*)["']/ig,
         'class="$1 rss-content-dt font-semibold mt-2"',
       )
     }
@@ -522,8 +522,8 @@ function processDescriptionLists(html: string): string {
 
   result = result.replaceAll(/<dd([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(
-        /class\s*=\s*["']([^"']*)["']/i,
+      return match.replaceAll(
+        /class\s*=\s*["']([^"']*)["']/ig,
         'class="$1 rss-content-dd ml-4 pl-4 mt-1"',
       )
     }
@@ -538,8 +538,8 @@ function processDetails(html: string): string {
 
   result = result.replaceAll(/<details([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(
-        /class\s*=\s*["']([^"']*)["']/i,
+      return match.replaceAll(
+        /class\s*=\s*["']([^"']*)["']/ig,
         'class="$1 rss-content-details rounded-xl my-4 overflow-hidden"',
       )
     }
@@ -548,8 +548,8 @@ function processDetails(html: string): string {
 
   result = result.replaceAll(/<summary([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(
-        /class\s*=\s*["']([^"']*)["']/i,
+      return match.replaceAll(
+        /class\s*=\s*["']([^"']*)["']/ig,
         'class="$1 rss-content-summary cursor-pointer py-3 px-4 font-medium select-none transition-colors"',
       )
     }
@@ -583,7 +583,7 @@ function processLinks(html: string, options: ProcessOptions): string {
       }
     }
 
-    let newAttrs = attrs.replace(/href\s*=\s*["'][^"']+["']/i, `href="${href}"`)
+    let newAttrs = attrs.replaceAll(/href\s*=\s*["'][^"']+["']/ig, `href="${href}"`)
 
     if (href.startsWith('http')) {
       if (!newAttrs.includes('target=')) {
@@ -606,8 +606,8 @@ function processLinks(html: string, options: ProcessOptions): string {
 function processKbd(html: string): string {
   return html.replaceAll(/<kbd([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(
-        /class\s*=\s*["']([^"']*)["']/i,
+      return match.replaceAll(
+        /class\s*=\s*["']([^"']*)["']/ig,
         'class="$1 rss-content-kbd border px-1.5 py-0.5 rounded text-[0.85em] font-mono"',
       )
     }
@@ -618,8 +618,8 @@ function processKbd(html: string): string {
 function processMark(html: string): string {
   return html.replaceAll(/<mark([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(
-        /class\s*=\s*["']([^"']*)["']/i,
+      return match.replaceAll(
+        /class\s*=\s*["']([^"']*)["']/ig,
         'class="$1 rss-content-mark px-0.5 rounded"',
       )
     }
@@ -630,8 +630,8 @@ function processMark(html: string): string {
 function processAbbr(html: string): string {
   return html.replaceAll(/<abbr([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(
-        /class\s*=\s*["']([^"']*)["']/i,
+      return match.replaceAll(
+        /class\s*=\s*["']([^"']*)["']/ig,
         'class="$1 rss-content-abbr border-b border-dashed cursor-help"',
       )
     }
@@ -661,8 +661,8 @@ function processSemanticTags(html: string): string {
   const asideClass = 'rss-content-aside my-4 p-4 rounded-xl opacity-80'
   result = result.replaceAll(/<aside([^>]*)>/gi, (match, attrs) => {
     if (attrs.includes('class=')) {
-      return match.replace(
-        /class\s*=\s*["']([^"']*)["']/i,
+      return match.replaceAll(
+        /class\s*=\s*["']([^"']*)["']/ig,
         `class="$1 ${asideClass}"`,
       )
     }

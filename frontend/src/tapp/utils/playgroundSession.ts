@@ -315,7 +315,8 @@ export function pruneStoreWithMeta(
 
   let activeSessionId = store.activeSessionId
   if (!sessions.some((s) => s.id === activeSessionId)) {
-    activeSessionId = sessions.sort((a, b) => b.updatedAt - a.updatedAt)[0].id
+    sessions = sessions.toSorted((a, b) => b.updatedAt - a.updatedAt)
+    activeSessionId = sessions[0].id
   }
 
   const nextStore = { activeSessionId, sessions }
@@ -391,14 +392,15 @@ export function deleteSessionWithMeta(
   store: PlaygroundSessionsStore,
   sessionId: string,
 ): PruneStoreResult {
-  const remaining = store.sessions.filter((s) => s.id !== sessionId)
+  let remaining = store.sessions.filter((s) => s.id !== sessionId)
   if (!remaining.length) {
     return { store: createEmptyStore(), meta: EMPTY_PRUNE_META }
   }
-  const activeSessionId =
-    store.activeSessionId === sessionId
-      ? remaining.sort((a, b) => b.updatedAt - a.updatedAt)[0].id
-      : store.activeSessionId
+  let activeSessionId = store.activeSessionId
+  if (activeSessionId === sessionId) {
+    remaining = remaining.toSorted((a, b) => b.updatedAt - a.updatedAt)
+    activeSessionId = remaining[0].id
+  }
   return pruneStoreWithMeta({ activeSessionId, sessions: remaining })
 }
 

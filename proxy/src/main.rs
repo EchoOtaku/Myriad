@@ -1276,7 +1276,7 @@ mod tests {
             use tokio::io::{AsyncReadExt, AsyncWriteExt};
             let (mut stream, _) = fed_listener.accept().await.unwrap();
             let mut buf = [0; 4096];
-            stream.read(&mut buf).await.unwrap();
+            assert!(stream.read(&mut buf).await.unwrap() > 0);
             stream
                 .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n")
                 .await

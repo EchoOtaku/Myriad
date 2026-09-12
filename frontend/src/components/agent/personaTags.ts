@@ -6,7 +6,9 @@ export function keepSelectedPersonaTags(
   deckLabels: readonly string[],
 ): string[] {
   const labels = new Set(deckLabels)
-  return selected.filter((label) => labels.has(label))
+  return Iterator.from(selected)
+    .filter((label) => labels.has(label))
+    .toArray()
 }
 
 export function uniqPersonaTags(values: string[]): string[] {

@@ -31,7 +31,7 @@ export function normalizeUmamiWebsiteId(raw: string | null | undefined): string 
 }
 
 export function normalizeUmamiScriptUrl(raw: string | null | undefined): string {
-  return (raw || '').trim().replace(/\/+$/, '')
+  return (raw || '').trim().replaceAll(/\/+$/g, '')
 }
 
 export function isValidUmamiWebsiteId(id: string): boolean {
@@ -143,7 +143,7 @@ export function configureUmami(
       const u = new URL(url)
       if (!u.pathname || u.pathname === '/') {
         u.pathname = '/script.js'
-        url = u.toString().replace(/\/$/, '')
+        url = u.toString().replaceAll(/\/$/g, '')
       }
     } catch {
     }

@@ -241,9 +241,9 @@ describe('pickMusicContextState', () => {
     assert.equal(picked.currentSong, songA)
     assert.equal(picked.isPlaying, true)
     assert.equal(picked.musicColor, '#abc')
-    assert.equal('currentTime' in picked, false)
-    assert.equal('musicColors' in picked, false)
-    assert.equal('volume' in picked, false)
+    assert.equal(Object.hasOwn(picked, 'currentTime'), false)
+    assert.equal(Object.hasOwn(picked, 'musicColors'), false)
+    assert.equal(Object.hasOwn(picked, 'volume'), false)
   })
 })
 

@@ -24,7 +24,7 @@ export function resizeSupportedSizes(
   widgetType?: WidgetType,
 ): WidgetSize[] {
   if (isHomeStickerItem(widget)) {
-    return [...stickerSizesSharingAspect(startSize)]
+    return Iterator.from(stickerSizesSharingAspect(startSize)).toArray()
   }
   const supported = widgetType?.supportedSizes ?? WIDGET_SIZE_KEYS
   return supported.filter((size) =>

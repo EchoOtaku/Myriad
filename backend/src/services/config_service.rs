@@ -23,6 +23,27 @@ impl ConfigService {
         Self { db }
     }
 
+    /// Fresh permission policy for grant revalidation across processes. This is
+    /// a permission-only snapshot, never a replacement for the full config cache.
+    /// Reuse the authoritative parser/defaults without reading/decrypting secrets.
+    pub async fn load_permission_config_on(db: &impl ConnectionTrait) -> Result<DynamicConfig> {
+        let rows = db.query_all_raw(Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT key, value FROM configurations WHERE LEFT(key, 10) = 'user_perm_' OR LEFT(key, 11) = 'guest_perm_'".to_string(),
+        )).await.context("Failed to load current permission policy")?;
+        let mut map = HashMap::new();
+        for row in rows {
+            let key: String = row.try_get("", "key")?;
+            let value: JsonValue = row.try_get("", "value")?;
+            anyhow::ensure!(
+                value.is_boolean(),
+                "permission policy contains a non-boolean value"
+            );
+            map.insert(key, value);
+        }
+        Ok(Self::parse_config(map))
+    }
+
     /// 从数据库加载所有配置
     pub async fn load_config(&self) -> Result<DynamicConfig> {
         // 使用 ConnectionTrait 的方法进行查询
@@ -1264,6 +1285,81 @@ impl ConfigService {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    #[ignore = "requires a disposable MYRIAD_RUNTIME_ISOLATION_TEST_DB"]
+    async fn permission_policy_observes_commits_without_worker_cache_refresh() {
+        use crate::services::permission_service::{TappPermissionService, UserRole};
+        use sea_orm::{ConnectOptions, ConnectionTrait, Database, TransactionTrait};
+        let url = std::env::var("MYRIAD_RUNTIME_ISOLATION_TEST_DB").unwrap();
+        let admin = Database::connect(&url).await.unwrap();
+        let schema = format!("permission_policy_{}", uuid::Uuid::new_v4().simple());
+        admin
+            .execute_unprepared(&format!("CREATE SCHEMA {schema}"))
+            .await
+            .unwrap();
+        let mut options = ConnectOptions::new(url);
+        options.max_connections(2).map_sqlx_postgres_opts({
+            let schema = schema.clone();
+            move |options| options.options([("search_path", schema.as_str())])
+        });
+        let writer = Database::connect(options.clone()).await.unwrap();
+        let observer = Database::connect(options).await.unwrap();
+        writer
+            .execute_unprepared(
+                "CREATE TABLE configurations (key TEXT PRIMARY KEY, value JSONB NOT NULL)",
+            )
+            .await
+            .unwrap();
+        writer.execute_unprepared("INSERT INTO configurations VALUES ('user_perm_network_fetch', 'true'), ('openai_api_key', '\"irrelevant-test-secret\"')").await.unwrap();
+        let permissions = vec!["network:fetch".to_string()];
+        let stale = super::ConfigService::load_permission_config_on(&observer)
+            .await
+            .unwrap();
+        assert_eq!(
+            TappPermissionService::filter_permissions_for_role(
+                &stale,
+                UserRole::User,
+                &permissions
+            )
+            .unwrap(),
+            permissions
+        );
+        assert!(stale.openai_api_key.is_none());
+        let change = writer.begin().await.unwrap();
+        change
+            .execute_unprepared(
+                "UPDATE configurations SET value = 'false' WHERE key = 'user_perm_network_fetch'",
+            )
+            .await
+            .unwrap();
+        assert!(
+            super::ConfigService::load_permission_config_on(&observer)
+                .await
+                .unwrap()
+                .user_perm_network_fetch
+        );
+        change.commit().await.unwrap();
+        let fresh = super::ConfigService::load_permission_config_on(&observer)
+            .await
+            .unwrap();
+        assert!(!fresh.user_perm_network_fetch);
+        assert!(stale.user_perm_network_fetch);
+        assert!(TappPermissionService::filter_permissions_for_role(
+            &fresh,
+            UserRole::User,
+            &permissions
+        )
+        .unwrap()
+        .is_empty());
+        writer.execute_unprepared("UPDATE configurations SET value = '\"false\"' WHERE key = 'user_perm_network_fetch'").await.unwrap();
+        assert!(super::ConfigService::load_permission_config_on(&observer)
+            .await
+            .is_err());
+        admin
+            .execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
+            .await
+            .unwrap();
+    }
     use super::ConfigService;
     use crate::config::DynamicConfig;
     use serde_json::json;

@@ -176,7 +176,7 @@ const PLATFORMS: readonly PlatformInfo[] = Object.freeze([
       if (id.startsWith('UC') && id.length >= 20) {
         return `https://www.youtube.com/channel/${id}`
       }
-      return `https://www.youtube.com/@${id.replace(/^@/, '')}`
+      return `https://www.youtube.com/@${id.replaceAll(/^@/g, '')}`
     },
     configKey: 'youtube_channel_id',
   },
@@ -216,7 +216,7 @@ const PLATFORMS: readonly PlatformInfo[] = Object.freeze([
     color: '#000000',
     darkColor: '#e7e9ea',
     getUserUrl: (username: string) =>
-      `https://x.com/${username.replace(/^@/, '')}`,
+      `https://x.com/${username.replaceAll(/^@/g, '')}`,
     configKey: 'x_username',
   },
 ])

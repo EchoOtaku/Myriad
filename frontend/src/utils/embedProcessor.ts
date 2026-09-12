@@ -355,7 +355,7 @@ export function processEmbeds(content: string): string {
     /<a[^>]*href=["'](https?:\/\/github\.com\/[^/]+\/[^/?#"']+)["'][^>]*>[\s\S]*?<\/a>/gi
   result = result.replace(githubLinkRegex, (match, url) => {
     const cleanUrl = url.split('?')[0].split('#')[0]
-    const parts = cleanUrl.replace(/^https?:\/\/github\.com\//, '').split('/')
+    const parts = cleanUrl.replaceAll(/^https?:\/\/github\.com\//g, '').split('/')
     if (parts.length === 2 && parts[0] && parts[1]) {
       const repo = extractGithubRepo(url)
       if (repo) {

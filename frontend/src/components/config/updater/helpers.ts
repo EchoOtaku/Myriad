@@ -252,7 +252,7 @@ export function infraLatestTip(
 }
 
 function normalizeDeployTag(tag: string): string {
-  return tag.trim().replace(/^v/i, '').toLowerCase()
+  return tag.trim().replaceAll(/^v/ig, '').toLowerCase()
 }
 
 export function infraComponentBehind(

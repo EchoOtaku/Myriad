@@ -676,7 +676,7 @@ class AnimationCoordinator {
         right = mid
       }
     }
-    this.waitingQueue.splice(left, 0, item)
+    this.waitingQueue = this.waitingQueue.toSpliced(left, 0, item)
 
     this.rebuildWaitingQueueIndex(left)
   }
@@ -690,7 +690,7 @@ class AnimationCoordinator {
   private removeQueuedAnimation(id: string) {
     const waitIndex = this.waitingQueueIndex.get(id)
     if (waitIndex !== undefined) {
-      this.waitingQueue.splice(waitIndex, 1)
+      this.waitingQueue = this.waitingQueue.toSpliced(waitIndex, 1)
       this.waitingQueueIndex.delete(id)
       this.rebuildWaitingQueueIndex(waitIndex)
     }
@@ -769,7 +769,7 @@ class AnimationCoordinator {
         right = mid
       }
     }
-    this.delayedQueue.splice(left, 0, item)
+    this.delayedQueue = this.delayedQueue.toSpliced(left, 0, item)
 
     this.scheduleNextDelay()
   }
@@ -1550,7 +1550,9 @@ class AnimationCoordinator {
     this.idleTaskQueue.push({ id, task, timeout, priority: priorityValue })
     this.registeredIdleTasks.add(id)
 
-    this.idleTaskQueue.sort((a, b) => b.priority - a.priority)
+    this.idleTaskQueue = this.idleTaskQueue.toSorted(
+      (a, b) => b.priority - a.priority,
+    )
 
     this.scheduleIdleCallback()
 
@@ -1560,7 +1562,7 @@ class AnimationCoordinator {
   cancelIdleTask(id: string): boolean {
     const index = this.idleTaskQueue.findIndex((t) => t.id === id)
     if (index !== -1) {
-      this.idleTaskQueue.splice(index, 1)
+      this.idleTaskQueue = this.idleTaskQueue.toSpliced(index, 1)
       this.registeredIdleTasks.delete(id)
       return true
     }

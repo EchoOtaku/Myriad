@@ -268,8 +268,8 @@ function isInstallModePlaceholder(value: string | undefined | null): boolean {
 export function normalizeStoreCatalogUrl(url: string): string {
   return url
     .trim()
-    .replace(/\/+$/, '')
-    .replace(/\/index\.json$/i, '')
+    .replaceAll(/\/+$/g, '')
+    .replaceAll(/\/index\.json$/ig, '')
 }
 
 /** 解析 tappId 所在目录，返回 URL，不是本地 DB id。 */
@@ -550,7 +550,7 @@ async function installFromStoreViaClient(
   const index = await RemoteStoreService.fetchStoreIndex(source, true)
   const baseUrl =
     index.base_url ||
-    source.url.replace(/\/index\.json$/, '').replace(/\/$/, '')
+    source.url.replaceAll(/\/index\.json$/g, '').replaceAll(/\/$/g, '')
   const storeIndex = { ...index, base_url: baseUrl }
 
   const app = storeIndex.apps.find((a) => a.id === request.tappId)
@@ -732,7 +732,7 @@ async function updateFromStoreViaClient(
   const index = await RemoteStoreService.fetchStoreIndex(source, true)
   const baseUrl =
     index.base_url ||
-    source.url.replace(/\/index\.json$/, '').replace(/\/$/, '')
+    source.url.replaceAll(/\/index\.json$/g, '').replaceAll(/\/$/g, '')
   const storeIndex = { ...index, base_url: baseUrl }
   const app = storeIndex.apps.find((a) => a.id === tappId)
   if (!app) {

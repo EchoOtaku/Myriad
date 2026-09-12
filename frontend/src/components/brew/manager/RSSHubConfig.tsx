@@ -514,7 +514,7 @@ export default function RSSHubConfigComponent({
         headers: await getAuthHeaders(),
         body: JSON.stringify({
           name: newName.trim(),
-          url: newUrl.trim().replace(/\/$/, ''),
+          url: newUrl.trim().replaceAll(/\/$/g, ''),
           access_key: newAccessKey.trim() || null,
           priority: newPriority,
         }),
@@ -545,7 +545,7 @@ export default function RSSHubConfigComponent({
         headers: await getAuthHeaders(),
         body: JSON.stringify({
           name: editName.trim() || undefined,
-          url: editUrl.trim().replace(/\/$/, '') || undefined,
+          url: editUrl.trim().replaceAll(/\/$/g, '') || undefined,
           access_key: editAccessKey.trim() || undefined,
           priority: editPriority,
         }),

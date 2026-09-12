@@ -22,11 +22,11 @@ export function normalizeStoreSourceUrl(url: string): string {
     const u = new URL(raw)
     u.hash = ''
     if (u.pathname.length > 1 && u.pathname.endsWith('/')) {
-      u.pathname = u.pathname.replace(/\/+$/, '')
+      u.pathname = u.pathname.replaceAll(/\/+$/g, '')
     }
     return u.href
   } catch {
-    return raw.replace(/\/+$/, '')
+    return raw.replaceAll(/\/+$/g, '')
   }
 }
 

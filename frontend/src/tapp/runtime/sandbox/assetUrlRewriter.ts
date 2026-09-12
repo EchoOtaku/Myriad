@@ -11,7 +11,7 @@ function normalizeDeclaredAssetPath(url) {
   let cut = path.split('#')[0].split('?')[0];
   const marker = cut.indexOf('assets/');
   if (marker >= 0) cut = cut.slice(marker);
-  cut = cut.replace(/^(\\.\\/)+/, '');
+  cut = cut.replaceAll(/^(\\.\\/)+/g, '');
   if (cut.includes('..') || cut.includes('\\\\') || !cut.startsWith('assets/')) return '';
   if (cut.length > 512) return '';
   return cut;
@@ -66,7 +66,7 @@ export function normalizeDeclaredAssetPath(url: string): string {
   let cut = path.split('#')[0].split('?')[0]
   const marker = cut.indexOf('assets/')
   if (marker >= 0) cut = cut.slice(marker)
-  cut = cut.replace(/^(\.\/)+/, '')
+  cut = cut.replaceAll(/^(\.\/)+/g, '')
   if (cut.includes('..') || cut.includes('\\') || !cut.startsWith('assets/')) return ''
   if (cut.length > 512) return ''
   return cut

@@ -78,7 +78,7 @@ describe('generated file download helper', () => {
     const large = sent.find((entry) => entry.filename === 'large.bin')!
     const small = sent.find((entry) => entry.filename === 'small.bin')!
     assert.deepEqual(new Uint8Array(Buffer.from(large.base64, 'base64')), bytes)
-    assert.deepEqual([...Buffer.from(small.base64, 'base64')], [0, 255])
+    assert.deepEqual(Iterator.from(Buffer.from(small.base64, 'base64')).toArray(), [0, 255])
     assert.equal(large.mimeType, 'application/octet-stream')
   })
 

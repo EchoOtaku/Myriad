@@ -78,7 +78,7 @@ export function isUselessErrorText(text: string): boolean {
   }
   if (/^database error$/i.test(detail)) return true
   if (/\((?:HTTP\s*)?\d{3}\)$/i.test(detail)) {
-    const inner = detail.replace(/\s*\((?:HTTP\s*)?\d{3}\)\s*$/i, '').trim()
+    const inner = detail.replaceAll(/\s*\((?:HTTP\s*)?\d{3}\)\s*$/ig, '').trim()
     if (
       !inner ||
       /^could not [a-z ]+$/i.test(inner) ||
@@ -1144,7 +1144,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     const status = raw.match(/\bHTTP\s+(\d{3})\b/i)
     const colon = raw.indexOf(':')
     const rest = colon >= 0 ? raw.slice(colon + 1).trim() : ''
-    const phrase = rest.replace(/^HTTP\s+\d{3}\s*:?\s*/i, '').trim()
+    const phrase = rest.replaceAll(/^HTTP\s+\d{3}\s*:?\s*/ig, '').trim()
     const keep =
       phrase && !isInternalDump(phrase) && !isUselessErrorText(phrase)
         ? clip(phrase)
@@ -1576,9 +1576,9 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   }
   if (raw.startsWith('我理解了你的请求，但生成执行计划时出现问题')) {
     const detail = raw
-      .replace(/^我理解了你的请求，但生成执行计划时出现问题[：:.\s]*/, '')
-      .replace(/请更具体地描述你想要什么。?$/, '')
-      .replace(/[。．.]+$/, '')
+      .replaceAll(/^我理解了你的请求，但生成执行计划时出现问题[：:.\s]*/g, '')
+      .replaceAll(/请更具体地描述你想要什么。?$/g, '')
+      .replaceAll(/[。．.]+$/g, '')
       .trim()
     return detail
       ? fill(t.agentPlanningFailed, { detail })

@@ -88,7 +88,7 @@ export function buildSearchableContent(
     section: 'platforms',
     title: t.config.connectedPlatforms,
     description: t.config.connectedPlatformsDesc,
-    keywords: [...t.config.searchKeywords.connectedPlatforms],
+    keywords: Iterator.from(t.config.searchKeywords.connectedPlatforms).toArray(),
   })
 
   items.push({
@@ -96,7 +96,7 @@ export function buildSearchableContent(
     section: 'platforms',
     title: t.config.analytics.visitorTitle,
     description: t.config.analytics.visitorDesc,
-    keywords: [...t.config.searchKeywords.visitor],
+    keywords: Iterator.from(t.config.searchKeywords.visitor).toArray(),
   })
 
   items.push({
@@ -104,7 +104,7 @@ export function buildSearchableContent(
     section: 'platforms',
     title: t.config.analytics.aiUsageTitle,
     description: t.config.analytics.aiUsageDesc,
-    keywords: [...t.config.searchKeywords.aiUsage],
+    keywords: Iterator.from(t.config.searchKeywords.aiUsage).toArray(),
   })
 
   items.push({
@@ -112,7 +112,7 @@ export function buildSearchableContent(
     section: 'platforms',
     title: t.config.thirdPartyAnalytics,
     description: t.config.thirdPartyAnalyticsDesc,
-    keywords: [...t.config.searchKeywords.thirdParty],
+    keywords: Iterator.from(t.config.searchKeywords.thirdParty).toArray(),
   })
 
   items.push({
@@ -120,7 +120,7 @@ export function buildSearchableContent(
     section: 'platforms',
     title: t.config.data,
     description: t.config.dataDesc,
-    keywords: [...t.config.searchKeywords.data],
+    keywords: Iterator.from(t.config.searchKeywords.data).toArray(),
   })
 
   config.platforms.forEach((platform) => {
@@ -154,7 +154,7 @@ export function buildSearchableContent(
     section: 'tripo',
     title: t.config.tripo,
     description: t.config.tripoDesc,
-    keywords: [...t.config.searchKeywords.tripo],
+    keywords: Iterator.from(t.config.searchKeywords.tripo).toArray(),
   })
 
   items.push({
@@ -162,7 +162,7 @@ export function buildSearchableContent(
     section: 'basic',
     title: t.config.basic,
     description: t.config.basicDesc,
-    keywords: [...t.config.searchKeywords.basic],
+    keywords: Iterator.from(t.config.searchKeywords.basic).toArray(),
   })
 
   items.push({
@@ -170,7 +170,7 @@ export function buildSearchableContent(
     section: 'oauth',
     title: t.config.oauth,
     description: t.config.oauthDesc,
-    keywords: [...t.config.searchKeywords.oauth],
+    keywords: Iterator.from(t.config.searchKeywords.oauth).toArray(),
   })
 
   items.push({
@@ -178,7 +178,7 @@ export function buildSearchableContent(
     section: 'modules',
     title: t.config.music,
     description: t.config.musicDesc,
-    keywords: [...t.config.searchKeywords.music],
+    keywords: Iterator.from(t.config.searchKeywords.music).toArray(),
   })
 
   items.push({
@@ -186,7 +186,7 @@ export function buildSearchableContent(
     section: 'advanced',
     title: t.config.network,
     description: t.config.networkDesc,
-    keywords: [...t.config.searchKeywords.network],
+    keywords: Iterator.from(t.config.searchKeywords.network).toArray(),
   })
 
   items.push({
@@ -194,7 +194,7 @@ export function buildSearchableContent(
     section: 'notifications',
     title: t.notificationCenter.title,
     description: t.notificationCenter.settingsDesc,
-    keywords: [...t.config.searchKeywords.notifications],
+    keywords: Iterator.from(t.config.searchKeywords.notifications).toArray(),
   })
 
   items.push({
@@ -202,7 +202,7 @@ export function buildSearchableContent(
     section: 'advanced',
     title: t.config.advanced,
     description: t.config.advancedDesc,
-    keywords: [...t.config.searchKeywords.advanced],
+    keywords: Iterator.from(t.config.searchKeywords.advanced).toArray(),
   })
 
   items.push({
@@ -210,7 +210,7 @@ export function buildSearchableContent(
     section: 'advanced',
     title: t.config.mcpTitle,
     description: t.config.mcpDesc,
-    keywords: [...t.config.searchKeywords.mcp],
+    keywords: Iterator.from(t.config.searchKeywords.mcp).toArray(),
   })
 
   items.push({
@@ -218,7 +218,7 @@ export function buildSearchableContent(
     section: 'about',
     title: t.config.about,
     description: t.config.aboutDesc,
-    keywords: [...t.config.searchKeywords.about],
+    keywords: Iterator.from(t.config.searchKeywords.about).toArray(),
   })
 
   items.push({
@@ -226,7 +226,7 @@ export function buildSearchableContent(
     section: 'permissions',
     title: t.config.permissions,
     description: t.config.permissionsDesc,
-    keywords: [...t.config.searchKeywords.permissions],
+    keywords: Iterator.from(t.config.searchKeywords.permissions).toArray(),
   })
 
   items.push({
@@ -234,7 +234,7 @@ export function buildSearchableContent(
     section: 'users',
     title: t.config.users,
     description: t.config.usersDesc,
-    keywords: [...t.config.searchKeywords.users],
+    keywords: Iterator.from(t.config.searchKeywords.users).toArray(),
   })
 
   if (isAdmin) {
@@ -243,7 +243,7 @@ export function buildSearchableContent(
       section: 'federation',
       title: t.config.federation,
       description: t.config.federationDesc,
-      keywords: [...t.config.searchKeywords.federation],
+      keywords: Iterator.from(t.config.searchKeywords.federation).toArray(),
     })
   }
 
@@ -252,7 +252,7 @@ export function buildSearchableContent(
     section: 'modules',
     title: t.config.moduleSettings,
     description: t.config.moduleSettingsDesc,
-    keywords: [...t.config.searchKeywords.modules],
+    keywords: Iterator.from(t.config.searchKeywords.modules).toArray(),
   })
 
   const guideEntries = buildGuideSearchIndex(locale)

@@ -355,8 +355,8 @@ export function layoutsForFirstPaint(
   source: HomeDashboardLayouts,
 ): HomeDashboardLayouts {
   return {
-    standard: [...source.standard],
-    free: [...source.free],
+    standard: Iterator.from(source.standard).toArray(),
+    free: Iterator.from(source.free).toArray(),
   }
 }
 

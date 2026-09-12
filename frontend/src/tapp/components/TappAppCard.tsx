@@ -144,7 +144,7 @@ function resolveCardPermissions(
   granted: readonly TappPermission[] | undefined,
   manifestPerms: readonly string[] | undefined,
 ): TappPermission[] {
-  if (granted && granted.length > 0) return [...granted]
+  if (granted && granted.length > 0) return Iterator.from(granted).toArray()
   return (manifestPerms ?? []) as TappPermission[]
 }
 

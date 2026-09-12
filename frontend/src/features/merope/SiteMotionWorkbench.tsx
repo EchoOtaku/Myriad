@@ -85,7 +85,7 @@ function toMeropeActivity(raw: string): MeropeActivity {
 
 function joinOverviewSentences(locale: string, parts: string[]): string {
   const cleaned = parts
-    .map((part) => part.replace(/[。．.]+$/u, '').trim())
+    .map((part) => part.replaceAll(/[。．.]+$/ug, '').trim())
     .filter(Boolean)
   if (cleaned.length === 0) return ''
   if (locale.startsWith('en')) return `${cleaned.join('. ')}.`

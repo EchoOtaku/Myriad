@@ -26,7 +26,7 @@ function statsBaseUrl(): string | null {
       ?.VITE_TAPP_STORE_STATS_URL
   const raw = (fromEnv || DEFAULT_STORE_STATS_URL).trim()
   if (!raw || raw === '0' || raw === 'false' || raw === 'off') return null
-  return raw.replace(/\/+$/, '')
+  return raw.replaceAll(/\/+$/g, '')
 }
 
 export async function fetchStoreDownloadCounts(

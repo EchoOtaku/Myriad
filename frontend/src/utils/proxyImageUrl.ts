@@ -5,7 +5,7 @@ const HOTLINK_MARKERS: readonly string[] = hosts.markers
 const AKAMAI_AND = (hosts.akamai_and_contains || 'steam').toLowerCase()
 
 function normalizeHost(host: string): string {
-  return host.replace(/\.$/, '').toLowerCase()
+  return host.replaceAll(/\.$/g, '').toLowerCase()
 }
 
 /** Exact host or DNS suffix; not substring. */

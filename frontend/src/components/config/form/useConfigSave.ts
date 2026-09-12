@@ -424,7 +424,7 @@ export function useConfigSave(args: {
       }
 
       if (hasFavoriteChanges) {
-        const nextFav = [...favorites]
+        const nextFav = Iterator.from(favorites).toArray()
         pendingClean.push(() => {
           localStorage.setItem('config_favorites', JSON.stringify(nextFav))
           setSavedFavorites(nextFav)

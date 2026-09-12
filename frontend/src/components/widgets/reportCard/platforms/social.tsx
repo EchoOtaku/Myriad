@@ -107,10 +107,13 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
       }
     }
     const keyOf = (f: any) => String(f.username || '').toLowerCase()
-    const curated = withAvatar
+    const curated = Iterator.from(withAvatar)
       .filter((f: any) => rank.has(keyOf(f)))
+      .toArray()
       .toSorted((a: any, b: any) => rank.get(keyOf(a))! - rank.get(keyOf(b))!)
-    const rest = withAvatar.filter((f: any) => !rank.has(keyOf(f)))
+    const rest = Iterator.from(withAvatar)
+      .filter((f: any) => !rank.has(keyOf(f)))
+      .toArray()
     return [...curated, ...rest].slice(0, 7)
   }, [followingSample, data?.following_highlights, data?.interest_circles])
 
@@ -422,8 +425,8 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
               src={
                 String((item as any).avatar).includes('/api/proxy/image')
                   ? (item as any).avatar
-                  : String((item as any).avatar).replace(
-                      /_(normal|bigger)\./,
+                  : String((item as any).avatar).replaceAll(
+                      /_(normal|bigger)\./g,
                       '_400x400.',
                     )
               }

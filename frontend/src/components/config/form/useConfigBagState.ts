@@ -109,7 +109,7 @@ export function useConfigBagState(
   const updateFieldValue = useCallback(
     (platformIndex: number, fieldKey: string, value: string) => {
       if (!config) return
-      const newPlatforms = [...config.platforms]
+      const newPlatforms = Iterator.from(config.platforms).toArray()
       const field = newPlatforms[platformIndex].config_fields.find(
         (f) => f.key === fieldKey,
       )
@@ -146,7 +146,7 @@ export function useConfigBagState(
   const togglePlatform = useCallback(
     (platformIndex: number) => {
       if (!config) return
-      const newPlatforms = [...config.platforms]
+      const newPlatforms = Iterator.from(config.platforms).toArray()
       newPlatforms[platformIndex].enabled = !newPlatforms[platformIndex].enabled
       setConfig({ ...config, platforms: newPlatforms })
       notifyDirtyState(true)

@@ -101,7 +101,7 @@ export function parseHomeLayoutImportText(
   }
   let raw: unknown
   try {
-    raw = JSON.parse(text.replace(/^\uFEFF/, ''))
+    raw = JSON.parse(text.replaceAll(/^\uFEFF/g, ''))
   } catch {
     return { ok: false, reason: 'invalid' }
   }

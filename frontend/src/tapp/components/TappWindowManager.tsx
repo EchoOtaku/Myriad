@@ -1368,7 +1368,9 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
     for (const app of dockPanelApps) {
       present.add(resolveTappCategory(app.manifest))
     }
-    return TAPP_CATEGORIES.filter((c) => present.has(c))
+    return Iterator.from(TAPP_CATEGORIES)
+      .filter((c) => present.has(c))
+      .toArray()
   }, [dockPanelApps])
 
   const launchpadCategoryLabel = useCallback(

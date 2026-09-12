@@ -200,7 +200,9 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
         const registeredIds = new Set(CONTROL_PANEL_WIDGETS.map((w) => w.id))
         const validWidgets = isTappWidgetsLoading
           ? newWidgets
-          : newWidgets.filter((w) => registeredIds.has(w.type))
+          : Iterator.from(newWidgets)
+              .filter((w) => registeredIds.has(w.type))
+              .toArray()
         // WidgetGrid 只回可见项；行数装不下的必须并回去，否则 1 行模式一拖就删。
         const merged = mergeVisibleWithHidden(
           validWidgets,

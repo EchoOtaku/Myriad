@@ -514,9 +514,10 @@ export default function Reports() {
   ])
 
   const startPlayAll = useCallback(() => {
-    const platformsWithReports = visiblePlatforms
+    const platformsWithReports = Iterator.from(visiblePlatforms)
       .filter((p) => platformReportsMap.has(p.id))
       .map((p) => p.id)
+      .toArray()
 
     if (platformsWithReports.length === 0) {
       showToastMessage(t.reportsPage.noPlatformReports, 'error')

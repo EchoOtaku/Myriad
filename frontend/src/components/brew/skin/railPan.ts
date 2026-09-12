@@ -81,7 +81,7 @@ export function railSeatSlots(
   overflowLeft = 0,
 ): number[] {
   if (slots.length === 0) return [0]
-  if (overflowLeft <= 0) return [...slots]
+  if (overflowLeft <= 0) return Iterator.from(slots).toArray()
   return slots.map((slot, i) => (i === 0 ? slot : Math.max(0, slot - overflowLeft)))
 }
 

@@ -703,7 +703,7 @@ function resolveLibraryItemUrl(item: {
   const id = item.id || ''
 
   if (platform.includes('steam') || id.startsWith('steam_')) {
-    const appid = m.appid ?? id.replace(/^steam_game_/, '')
+    const appid = m.appid ?? id.replaceAll(/^steam_game_/g, '')
     if (appid !== '' && appid != null) {
       return `https://store.steampowered.com/app/${appid}`
     }

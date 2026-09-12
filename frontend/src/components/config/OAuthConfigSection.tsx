@@ -138,7 +138,7 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
 
   const baseUrl = (
     configFields.find((field) => field.key === 'base_url')?.value || ''
-  ).replace(/\/$/, '')
+  ).replaceAll(/\/$/g, '')
 
   const updateProvider = (idx: number, patch: Partial<OAuthProviderEntry>) => {
     onProvidersChange(

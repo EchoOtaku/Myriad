@@ -17,7 +17,7 @@ import {
 describe('PREDEFINED_TOPICS', () => {
   it('固定 10 个 key，且没有「其他」桶', () => {
     assert.equal(PREDEFINED_TOPICS.length, 10)
-    assert.deepEqual([...PREDEFINED_TOPICS], [
+    assert.deepEqual(Iterator.from(PREDEFINED_TOPICS).toArray(), [
       'engineering',
       'systems',
       'ai',

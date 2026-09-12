@@ -446,8 +446,9 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
 
   const countryRows = useMemo(
     () =>
-      [...(data?.countries ?? [])]
+      Iterator.from(data?.countries ?? [])
         .filter((c) => c.code && (c.unique_visitors > 0 || c.views > 0))
+        .toArray()
         .toSorted(
           (a, b) =>
             b.unique_visitors - a.unique_visitors ||

@@ -10,7 +10,7 @@ async function lens(page: Page, id: string) {
       ref, exists: !!filter,
       width: filter?.getAttribute('width'), height: filter?.getAttribute('height'),
       map: filter?.querySelector('feImage')?.getAttribute('href'),
-      images: [...filter?.querySelectorAll('feImage') ?? []].map(n => n.getAttribute('width')),
+      images: Iterator.from(filter?.querySelectorAll('feImage') ?? []).toArray().map(n => n.getAttribute('width')),
       tone: filter?.querySelector('[result="toned"] feFuncR')?.getAttribute('tableValues'),
       computed: getComputedStyle(el).backdropFilter,
     }

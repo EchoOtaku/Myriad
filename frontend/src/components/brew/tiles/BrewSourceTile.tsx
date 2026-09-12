@@ -108,7 +108,7 @@ function relTime(
 
 function siteHost(source: BrewSource): string {
   try {
-    return new URL(source.site_url || source.url).hostname.replace(/^www\./, '')
+    return new URL(source.site_url || source.url).hostname.replaceAll(/^www\./g, '')
   } catch {
     return ''
   }

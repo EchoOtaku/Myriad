@@ -135,7 +135,7 @@ class DynamicContentProviderService {
 
     const index = contents.findIndex((c) => c.type === contentType)
     if (index >= 0) {
-      contents.splice(index, 1)
+      this.contents.set(providerId, contents.toSpliced(index, 1))
       this.notifyListeners({
         type: 'remove',
         providerId,

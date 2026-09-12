@@ -183,7 +183,7 @@ export function pageNameForPath(
   editMode: string,
   editingHome: boolean,
 ): string {
-  const path = pathname.replace(/\/+$/, '') || '/'
+  const path = pathname.replaceAll(/\/+$/g, '') || '/'
   if ((path === '/' || path === '') && editingHome) return editMode
   if (path === '/library' || path.startsWith('/library')) return nav.library
   if (path === '/brew' || path.startsWith('/brew')) return nav.brew
@@ -481,7 +481,7 @@ export function filterVisibleSteps<T extends { anchor: string }>(
 export function normalizeTourPath(pathname: string): string {
   if (!pathname) return '/'
   if (pathname.length > 1 && pathname.endsWith('/')) {
-    const trimmed = pathname.replace(/\/+$/, '')
+    const trimmed = pathname.replaceAll(/\/+$/g, '')
     return trimmed.length > 0 ? trimmed : '/'
   }
   return pathname

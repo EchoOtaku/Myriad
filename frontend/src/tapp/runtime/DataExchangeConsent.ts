@@ -20,7 +20,7 @@ interface ConsentSnapshot {
   current: DataExchangeConsentRequest | null
 }
 
-const queue: PendingConsent[] = []
+let queue: PendingConsent[] = []
 const listeners = new Set<() => void>()
 let snapshot: ConsentSnapshot = { current: null }
 
@@ -43,7 +43,8 @@ function settle(
   )
   if (index < 0) return false
 
-  const [entry] = queue.splice(index, 1)
+  const entry = queue[index]!
+  queue = queue.toSpliced(index, 1)
   clearTimeout(entry.timeout)
   if (entry.signal && entry.abortListener) {
     entry.signal.removeEventListener('abort', entry.abortListener)

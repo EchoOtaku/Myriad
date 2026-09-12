@@ -299,7 +299,7 @@ export function TappStore({
   const catalogSettled = !loading || remoteApps.length > 0 || error != null
 
   const allApps: UnifiedAppItem[] = useMemo(() => {
-    const merged: UnifiedAppItem[] = [...remoteAppsUnified]
+    const merged: UnifiedAppItem[] = Iterator.from(remoteAppsUnified).toArray()
     if (catalogSettled) {
       for (const localApp of localApps) {
         if (!merged.some((r) => r.id === localApp.id)) {
@@ -457,12 +457,15 @@ export function TappStore({
 
   const installedCurrentApps =
     selectedCategory === '__installed__'
-      ? filteredApps.filter((app) => !availableUpdateIds.has(app.id))
+      ? Iterator.from(filteredApps)
+          .filter((app) => !availableUpdateIds.has(app.id))
+          .toArray()
       : []
   const sortedAvailableUpdates =
     selectedCategory === '__installed__'
-      ? filteredApps
+      ? Iterator.from(filteredApps)
           .filter((app) => availableUpdateIds.has(app.id))
+          .toArray()
           .toSorted((a, b) => {
             const dateOrder =
               parseDate(b.updatedAt ?? installedTapps.get(b.id)?.installedAt) -
