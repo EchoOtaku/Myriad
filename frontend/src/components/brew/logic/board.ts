@@ -87,7 +87,7 @@ export function sortSourcesForBoard(
   mode: SourceSortMode,
   role: BrewViewerRole,
   now: number,
-  locale = 'zh-CN',
+  locale = 'en-US',
 ): BrewSource[] {
   const result = [...sources]
   switch (mode) {

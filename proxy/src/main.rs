@@ -463,6 +463,7 @@ fn is_backend_path(path: &str, user_agent: &str) -> bool {
 fn is_backend_path_for(path: &str, user_agent: &str, query: &str) -> bool {
     if path.starts_with("/api/")
         || path == "/health"
+        || path == "/ready"
         // Public SEO sitemap + robots (backend api::seo)
         || path == "/sitemap.xml"
         || path == "/robots.txt"
@@ -1066,6 +1067,7 @@ mod tests {
             browser
         ));
         assert!(is_backend_path("/health", browser));
+        assert!(is_backend_path("/ready", browser));
         // Public SEO sitemap + robots
         assert!(is_backend_path("/sitemap.xml", browser));
         assert!(is_backend_path("/robots.txt", browser));

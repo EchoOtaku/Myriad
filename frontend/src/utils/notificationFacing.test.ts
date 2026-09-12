@@ -44,6 +44,23 @@ describe('notificationFacing', () => {
     assert.equal(/error sending request/i.test(text), false)
   })
 
+  it('pluralizes federation revoked queued items in English', () => {
+    const one = notificationFacingBody(
+      notice('Unlinked', 'x', 'federation.domain_revoked', {
+        target_domain: 'peer.example',
+        cancelled_deliveries: 1,
+      }),
+    )
+    assert.match(one, /1 queued item was cancelled/)
+    const many = notificationFacingBody(
+      notice('Unlinked', 'x', 'federation.domain_revoked', {
+        target_domain: 'peer.example',
+        cancelled_deliveries: 4,
+      }),
+    )
+    assert.match(many, /4 queued items were cancelled/)
+  })
+
   it('maps leftover federation unlink Chinese', () => {
     const text = notificationFacingTitle(
       notice('联邦关系已解除', 'example.com 长期无法送达', 'federation.domain_revoked', {

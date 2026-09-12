@@ -8,7 +8,7 @@ Myriad is a self-hosted personal digital-life portal: Astro/React UI, Rust/Axum 
 
 ```text
 browser → Astro dev (:1102)
-            └─ /api/*, /health, federation public paths → backend (:1103) → postgres
+            └─ /api/*, /health, /ready, federation public paths → backend (:1103) → postgres
 ```
 
 **Production**（详见 [DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md)）

@@ -21,6 +21,7 @@ import {
   dropPendingTurnTrace,
   stageVoiceInputTrace,
 } from '../../features/merope/turnTrace'
+import { getDefaultLocale } from '../../i18n/locales'
 import {
   audioToBase64,
   getSpeechStatus,
@@ -44,6 +45,7 @@ interface RecorderState {
 
 const LOCALE_ENGINE_MAP: Record<string, string> = {
   'zh-CN': '16k_zh',
+  'zh-TW': '16k_zh',
   'en-US': '16k_en',
   'ja-JP': '16k_ja',
 }
@@ -99,7 +101,7 @@ function cleanupRecorder(recorder: RecorderState) {
 
 export function useVoiceRecording(
   onResult: (text: string) => void,
-  locale: string = 'zh-CN',
+  locale: string = getDefaultLocale(),
 ) {
   const [speechAvailable, setSpeechAvailable] = useState(false)
   const convoRtcRef = useRef(false)

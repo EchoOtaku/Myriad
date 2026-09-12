@@ -206,11 +206,11 @@ export function TargetPicker({
   if (compare) {
     if (compare.is_upgrade) {
       compareText = format(u.updaterFreshnessAhead, {
-        n: compare.ahead_by,
+        n: String(compare.ahead_by),
       })
     } else if (compare.is_downgrade) {
       compareText = format(u.updaterFreshnessBehind, {
-        n: compare.behind_by,
+        n: String(compare.behind_by),
       })
     } else if (compare.relation === 'identical') {
       compareText = u.updaterFreshnessIdentical

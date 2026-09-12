@@ -1,4 +1,5 @@
 import { API_URL } from '../config'
+import { getDefaultLocale } from '../i18n/locales'
 import { currentCopy } from '../i18n/localeCopy'
 import { withAiTimeoutSignal } from '../utils/aiRequestTimeout.mjs'
 import { brewSubject } from '../utils/brewSubject'
@@ -223,7 +224,7 @@ export class PodcastPlayer {
   private onProgress?: (index: number, total: number) => void
   private onEnd?: () => void
   private onStateChange?: (state: 'playing' | 'paused' | 'stopped') => void
-  private language: string = 'zh-CN'
+  private language: string = getDefaultLocale()
   private utteranceId = 0
 
   constructor(config?: PodcastPlayerConfig) {
@@ -254,8 +255,28 @@ export class PodcastPlayer {
     voices: SpeechSynthesisVoice[],
     lang: string,
   ): SpeechSynthesisVoice[] {
-    const langPrefix = lang.split('-')[0].toLowerCase()
-    return voices.filter((v) => v.lang.toLowerCase().startsWith(langPrefix))
+    const requested = lang.trim().toLowerCase()
+    const langPrefix = requested.split('-')[0] ?? ''
+    const wantsTraditional =
+      requested === 'zh-tw' ||
+      requested.startsWith('zh-hk') ||
+      requested.startsWith('zh-mo') ||
+      requested.includes('hant')
+    if (wantsTraditional) {
+      const traditional = voices.filter((voice) => {
+        const voiceLang = voice.lang.toLowerCase()
+        return (
+          voiceLang.startsWith('zh-tw') ||
+          voiceLang.startsWith('zh-hk') ||
+          voiceLang.startsWith('zh-mo') ||
+          voiceLang.includes('hant')
+        )
+      })
+      if (traditional.length > 0) return traditional
+    }
+    return voices.filter((voice) =>
+      voice.lang.toLowerCase().startsWith(langPrefix),
+    )
   }
 
   static selectVoicePair(

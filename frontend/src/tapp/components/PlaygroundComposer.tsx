@@ -126,6 +126,7 @@ function formatRelativeTime(
     daysAgo: string
   },
   fmt: (template: string, params: Record<string, string | number>) => string,
+  locale: string,
 ): string {
   const diffMs = Date.now() - timestamp
   const diffMin = Math.floor(diffMs / 60000)
@@ -135,7 +136,7 @@ function formatRelativeTime(
   if (diffHour < 24) return fmt(labels.hoursAgo, { n: diffHour })
   const diffDay = Math.floor(diffHour / 24)
   if (diffDay < 7) return fmt(labels.daysAgo, { n: diffDay })
-  return new Date(timestamp).toLocaleDateString(undefined, {
+  return new Date(timestamp).toLocaleDateString(locale, {
     month: 'short',
     day: 'numeric',
   })
@@ -260,7 +261,7 @@ export function PlaygroundComposer({
   onDismissCapabilityNote,
   onDismissStorageNotice,
 }: PlaygroundComposerProps) {
-  const { t, format } = useI18n()
+  const { t, format, locale } = useI18n()
   const animConfig = useAnimationLevel()
   const animationsEnabled = !isExlight(animConfig)
   const springTransition = animConfig.spring
@@ -618,6 +619,7 @@ export function PlaygroundComposer({
                                       rev.createdAt,
                                       relativeLabels,
                                       format,
+                                      locale,
                                     )}
                                   </span>
                                 </div>
@@ -687,6 +689,7 @@ export function PlaygroundComposer({
                                     lastFailedAttempt.finishedAt,
                                     relativeLabels,
                                     format,
+                                    locale,
                                   )}
                                 </span>
                               </div>
@@ -801,6 +804,7 @@ export function PlaygroundComposer({
                                         rev.createdAt,
                                         relativeLabels,
                                         format,
+                                        locale,
                                       )}
                                     </span>
                                   </div>
@@ -842,6 +846,7 @@ export function PlaygroundComposer({
                                 lastFailedAttempt.finishedAt,
                                 relativeLabels,
                                 format,
+                                locale,
                               )}
                             </span>
                           </div>
@@ -943,6 +948,7 @@ export function PlaygroundComposer({
                                         sess.updatedAt,
                                         relativeLabels,
                                         format,
+                                        locale,
                                       )}
                                     </span>
                                     <span>·</span>

@@ -128,4 +128,45 @@ mod tests {
         let raw: Value = serde_json::from_str(include_str!("../i18n/reports.en-US.json")).unwrap();
         assert!(raw.as_object().unwrap().contains_key("missingPlatformData"));
     }
+
+    fn object_keys(raw: &str) -> Vec<String> {
+        let value: Value = serde_json::from_str(raw).unwrap();
+        let mut keys: Vec<String> = value
+            .as_object()
+            .expect("catalog must be an object")
+            .keys()
+            .cloned()
+            .collect();
+        keys.sort();
+        keys
+    }
+
+    #[test]
+    fn catalogs_share_keys() {
+        for (name, en, zh, tw, ja) in [
+            (
+                "reports",
+                include_str!("../i18n/reports.en-US.json"),
+                include_str!("../i18n/reports.zh-CN.json"),
+                include_str!("../i18n/reports.zh-TW.json"),
+                include_str!("../i18n/reports.ja-JP.json"),
+            ),
+            (
+                "seo",
+                include_str!("../i18n/seo.en-US.json"),
+                include_str!("../i18n/seo.zh-CN.json"),
+                include_str!("../i18n/seo.zh-TW.json"),
+                include_str!("../i18n/seo.ja-JP.json"),
+            ),
+        ] {
+            let expected = object_keys(en);
+            for (locale, raw) in [("zh-CN", zh), ("zh-TW", tw), ("ja-JP", ja)] {
+                assert_eq!(
+                    object_keys(raw),
+                    expected,
+                    "{name} {locale} keys must match en-US"
+                );
+            }
+        }
+    }
 }

@@ -218,7 +218,7 @@ export function notificationFacingBody(notification: AppNotification): string {
     const count = notification.metadata?.cancelled_deliveries
     return fill(t.noticeFederationRevokedBody, {
       name: metaString(notification, 'target_domain') || 'remote',
-      count: typeof count === 'number' ? String(count) : String(count ?? '0'),
+      count: typeof count === 'number' ? count : Number(count ?? 0),
     })
   }
   if (eventKey === 'federation.new_follower') {

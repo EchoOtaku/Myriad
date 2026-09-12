@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Boot a disposable Postgres + backend, then run Playwright business smokes.
-# Does not touch the operator's existing DATABASE_URL unless you export it.
+# Boot a disposable Postgres + this-process backend, then run API smoke.
+# Never inherits DATABASE_URL. External DB must be MYRIAD_SMOKE_DATABASE_URL.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -9,11 +9,40 @@ cd "$ROOT"
 SMOKE_DIR="${MYRIAD_SMOKE_DIR:-$ROOT/.tmp/smoke}"
 PG_NAME="${MYRIAD_SMOKE_PG_NAME:-myriad-smoke-pg}"
 PG_PORT="${MYRIAD_SMOKE_PG_PORT:-55432}"
-BACKEND_PORT="${MYRIAD_SMOKE_BACKEND_PORT:-1103}"
+BACKEND_PORT="${MYRIAD_SMOKE_BACKEND_PORT:-18103}"
 SETUP_SECRET="${MYRIAD_SETUP_SECRET:-smoke-setup-secret}"
 JWT_SECRET="${JWT_SECRET:-smoke-jwt-key-abcdefghijklmnopqrstuvwxyz012}"
 
 mkdir -p "$SMOKE_DIR/data" "$SMOKE_DIR/cache"
+
+port_in_use() {
+    local port="$1"
+    if command -v lsof >/dev/null 2>&1; then
+        [ -n "$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)" ]
+        return
+    fi
+    if command -v ss >/dev/null 2>&1; then
+        ss -ltn | grep -qE ":${port}\\s"
+        return
+    fi
+    (echo >/dev/tcp/127.0.0.1/"$port") >/dev/null 2>&1
+}
+
+listen_pids() {
+    local port="$1"
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true
+    fi
+}
+
+backend_bin() {
+    if [ -n "${CARGO_TARGET_DIR:-}" ]; then
+        printf '%s/debug/myriad-backend' "$CARGO_TARGET_DIR"
+    else
+        printf '%s/target/debug/myriad-backend' "$ROOT"
+    fi
+}
+
 cleanup() {
     if [ -n "${BACKEND_PID:-}" ]; then
         kill "$BACKEND_PID" 2>/dev/null || true
@@ -25,7 +54,17 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [ -z "${DATABASE_URL:-}" ]; then
+if port_in_use "$BACKEND_PORT"; then
+    echo "smoke: port ${BACKEND_PORT} is already in use; refuse to reuse it" >&2
+    exit 1
+fi
+
+if [ -n "${MYRIAD_SMOKE_DATABASE_URL:-}" ]; then
+    export DATABASE_URL="$MYRIAD_SMOKE_DATABASE_URL"
+elif [ -n "${DATABASE_URL:-}" ]; then
+    echo "smoke: refusing inherited DATABASE_URL; set MYRIAD_SMOKE_DATABASE_URL" >&2
+    exit 1
+else
     if ! docker info >/dev/null 2>&1; then
         echo "smoke: docker is required to start a temporary Postgres" >&2
         exit 2
@@ -55,20 +94,40 @@ export CACHE_DIR="$SMOKE_DIR/cache"
 export SERVER_PORT="$BACKEND_PORT"
 export RUST_LOG="${RUST_LOG:-warn}"
 
-if [ -z "${MYRIAD_SMOKE_BACKEND_PID:-}" ]; then
-    cargo run -p myriad-backend --quiet &
-    BACKEND_PID=$!
-    for _ in $(seq 1 90); do
-        if curl -fsS "http://127.0.0.1:${BACKEND_PORT}/health" >/dev/null 2>&1; then
-            break
-        fi
-        if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
-            echo "smoke: backend exited before /health" >&2
-            exit 1
-        fi
-        sleep 1
-    done
-    curl -fsS "http://127.0.0.1:${BACKEND_PORT}/health" >/dev/null
+cargo build -p myriad-backend --locked --quiet
+BIN="$(backend_bin)"
+if [ ! -x "$BIN" ]; then
+    echo "smoke: missing backend binary $BIN" >&2
+    exit 1
+fi
+"$BIN" &
+BACKEND_PID=$!
+
+HEALTH=""
+for _ in $(seq 1 90); do
+    if HEALTH="$(curl -fsS "http://127.0.0.1:${BACKEND_PORT}/health" 2>/dev/null)"; then
+        break
+    fi
+    if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+        echo "smoke: backend exited before /health" >&2
+        exit 1
+    fi
+    sleep 1
+done
+if [ -z "$HEALTH" ]; then
+    echo "smoke: /health did not become ready" >&2
+    exit 1
+fi
+
+if ! printf '%s' "$HEALTH" | grep -q 'myriad-backend'; then
+    echo "smoke: /health is not this backend: $HEALTH" >&2
+    exit 1
+fi
+
+LISTEN="$(listen_pids "$BACKEND_PORT")"
+if ! printf '%s\n' "$LISTEN" | grep -qx "$BACKEND_PID"; then
+    echo "smoke: /health listener is not this process (pid=$BACKEND_PID listen=${LISTEN:-none})" >&2
+    exit 1
 fi
 
 export MYRIAD_SMOKE_BASE_URL="http://127.0.0.1:${BACKEND_PORT}"

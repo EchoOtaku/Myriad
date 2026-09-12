@@ -81,9 +81,9 @@ export function StatusHero({
 
   let freshness: string | null = null
   if (relation === 'ahead' && aheadBy != null) {
-    freshness = format(u.updaterFreshnessAhead, { n: aheadBy })
+    freshness = format(u.updaterFreshnessAhead, { n: String(aheadBy) })
   } else if (relation === 'behind' && behindBy != null) {
-    freshness = format(u.updaterFreshnessBehind, { n: behindBy })
+    freshness = format(u.updaterFreshnessBehind, { n: String(behindBy) })
   } else if (relation === 'identical') {
     freshness = u.updaterFreshnessIdentical
   } else if (relation === 'diverged') {

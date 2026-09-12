@@ -21,7 +21,8 @@ pub fn backend_routes_full(health: &Value) -> bool {
     }
 }
 
-/// Database probe + migrations + full routes. Soft HTTP 200 is not enough.
+/// Database probe + migrations + full routes + storage.
+/// Soft HTTP 200 is not enough. Missing `storage_writable` stays compatible.
 pub fn backend_business_ready(health: &Value) -> bool {
     let db = health
         .get("db_connected")
@@ -31,7 +32,7 @@ pub fn backend_business_ready(health: &Value) -> bool {
         .get("migrations_applied")
         .and_then(|value| value.as_bool())
         .unwrap_or(false);
-    db && mig && backend_routes_full(health)
+    db && mig && backend_routes_full(health) && backend_storage_writable(health)
 }
 
 #[cfg(test)]
@@ -89,5 +90,16 @@ mod tests {
             "routes_full": true
         });
         assert!(backend_business_ready(&ready));
+    }
+
+    #[test]
+    fn storage_writable_false_blocks_rollback_ready() {
+        let health = json!({
+            "db_connected": true,
+            "migrations_applied": true,
+            "routes_full": true,
+            "storage_writable": false
+        });
+        assert!(!backend_business_ready(&health));
     }
 }

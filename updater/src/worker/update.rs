@@ -1338,7 +1338,7 @@ async fn probe_one_tick(
         target.matches_runtime_version(version) || commit_matches_target(target, commit_sha);
     let backend_identity_ok = version_ok || backend_img_ok;
 
-    if !backend_business_ready(&json) || !storage {
+    if !backend_business_ready(&json) {
         return ProbeTick::NotReady {
             detail: format!(
                 "backend up but db_connected={db} migrations_applied={mig} routes_full={routes} \

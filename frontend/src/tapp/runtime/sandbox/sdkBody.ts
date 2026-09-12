@@ -1073,7 +1073,7 @@ export function generateSdkBody(input: GenerateSdkBodyInput): string {
       ? window._TAPP_I18N
       : {};
     const language = currentLocale.split('-')[0];
-    const table = all[currentLocale] || all[language] || all['en-US'] || all['zh-CN'] || {};
+    const table = all[currentLocale] || all[language] || all['en-US'] || {};
     const directValue = table && typeof table === 'object' ? table[String(key)] : undefined;
     const value = typeof directValue === 'string'
       ? directValue

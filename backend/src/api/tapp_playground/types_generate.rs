@@ -272,6 +272,7 @@ leave page/pageHtml empty, and fill widgets + widget/widgetHtml):
       "assets": {},
       "i18n": {
         "zh-CN": {},
+        "zh-TW": {},
         "en-US": {},
         "ja-JP": {}
       }
@@ -1647,6 +1648,10 @@ mod prompt_contract_tests {
             prompt.contains("ai, data, developer, game, media")
                 && prompt.contains("productivity, social, utility"),
             "generate prompt must teach the eight canonical Widget category IDs"
+        );
+        assert!(
+            prompt.contains("\"zh-TW\": {}"),
+            "generate prompt code.i18n example must include zh-TW"
         );
 
         for required in [

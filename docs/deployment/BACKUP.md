@@ -31,16 +31,25 @@ bash scripts/extra/backup.sh backup --out /var/backups/myriad-20260101
 原生部署没有 Docker volume 时，用
 [NATIVE_DEPLOYMENT.md](NATIVE_DEPLOYMENT.md) 的 `pg_dump` + `tar` `data/`。
 
+备份失败时，若脚本确实停过正在运行的 backend，EXIT 会把它拉起来并保留原
+错误码。`compose stop` 失败会中止，不会假装“本来就没在跑”。
+
 ## 恢复
 
 会覆盖当前库、数据卷和 `.env`。现有 `.env` 会先复制为 `.env.bak.restore`。
+
+顺序：停写 → 覆盖 `.env` → 恢复 Postgres → 恢复数据卷（没有卷则先建空卷）
+→ `compose up -d --force-recreate --no-deps backend`，让恢复后的 JWT /
+`DATABASE_URL` 进入新容器。中途失败会保持 backend 停止。空卷恢复路径尚未在
+空机器上做过整段实测。
 
 ```bash
 bash scripts/extra/backup.sh restore --from /var/backups/myriad-20260101
 ```
 
-恢复后检查 `/health` 与 `/ready`。`/health` 只表示进程存活；业务就绪看
-`db_connected`（最近一次探测）、`migrations_applied`、`routes_full`。
+恢复后检查 `/ready`（经 proxy 或直连 backend）。`/health` 只表示进程存活；
+不要用前端 HTML 的 200 认定就绪。业务字段看 `db_connected`（最近一次探测）、
+`migrations_applied`、`routes_full`、`storage_writable`。
 
 ## 不要做的事
 

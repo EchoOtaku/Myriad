@@ -19,10 +19,10 @@ const baselinePath = resolve(here, 'home-budget.baseline.json')
 
 const SLACK = 0.15
 
-function findIndexHtml() {
+function findIndexHtml(root = distDir) {
   const candidates = [
-    join(distDir, 'index.html'),
-    join(distDir, 'client', 'index.html'),
+    join(root, 'index.html'),
+    join(root, 'client', 'index.html'),
   ]
   return candidates.find((path) => existsSync(path)) ?? null
 }
@@ -30,7 +30,7 @@ function findIndexHtml() {
 function collectReferencedAssets(html, htmlDir) {
   const assets = new Set()
   const patterns = [
-    /(?:src|href)=["']([^"']+\.(?:js|css))["']/g,
+    /(?:src|href|component-url|renderer-url)=["']([^"']+\.(?:js|css))["']/g,
     /<link[^>]+href=["']([^"']+\.(?:js|css))["']/g,
   ]
   for (const pattern of patterns) {
@@ -42,6 +42,12 @@ function collectReferencedAssets(html, htmlDir) {
     }
   }
   return assets
+}
+
+function displayPath(file, root) {
+  if (file.startsWith(root)) return file.slice(root.length + 1)
+  if (file.startsWith(frontendRoot)) return file.slice(frontendRoot.length + 1)
+  return file
 }
 
 function walkStaticImports(entryFiles, assetsDir) {
@@ -76,7 +82,7 @@ async function gzipSize(path) {
 }
 
 export async function measureHomeBudget(root = distDir) {
-  const htmlPath = findIndexHtml()
+  const htmlPath = findIndexHtml(root)
   if (!htmlPath) {
     throw new Error(`home budget: no index.html under ${root}`)
   }
@@ -85,7 +91,7 @@ export async function measureHomeBudget(root = distDir) {
   const referenced = collectReferencedAssets(html, htmlDir)
   const assetsDir = existsSync(join(htmlDir, 'assets'))
     ? join(htmlDir, 'assets')
-    : join(distDir, 'assets')
+    : join(root, 'assets')
   const firstPaint = walkStaticImports([...referenced], assetsDir)
 
   let js = 0
@@ -93,7 +99,7 @@ export async function measureHomeBudget(root = distDir) {
   const files = []
   for (const file of firstPaint) {
     const size = await gzipSize(file)
-    files.push({ file: file.slice(frontendRoot.length + 1), gzip: size })
+    files.push({ file: displayPath(file, root), gzip: size })
     if (file.endsWith('.css')) css += size
     else js += size
   }
@@ -110,7 +116,10 @@ export async function measureHomeBudget(root = distDir) {
     totalGzipBytes: js + css,
     files,
     loadsAgora: /agora-rtc-sdk-ng|agora-rtm/.test(blob),
-    loadsConfigRoute: /views\/Config|Config-/.test(blob) && /routeComponents/.test(blob) === false,
+    // Filename, not a lazy-import string left inside App.
+    loadsConfigRoute: [...firstPaint].some((file) =>
+      /(?:^|\/)Config-[^/]+\.js$/.test(file),
+    ),
   }
 }
 
@@ -174,6 +183,9 @@ async function main() {
     }
     if (measured.loadsAgora) {
       failures.push('first-paint JS contains Agora SDK')
+    }
+    if (measured.loadsConfigRoute) {
+      failures.push('first-paint JS contains the Config route')
     }
     if (failures.length > 0) {
       console.error(failures.join('\n'))

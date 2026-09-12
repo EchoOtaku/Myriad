@@ -218,7 +218,7 @@ export function AiVendorAddTrigger({
   onChange,
   usages = {},
 }: AiVendorSourcesProps) {
-  const { t } = useI18n()
+  const { t, format } = useI18n()
   const addFromPreset = useAddVendorSource(sources, onChange)
   const guide = useMemo(
     () => (
@@ -231,7 +231,7 @@ export function AiVendorAddTrigger({
                 source.slug === preset.defaultSlug,
             )
             .flatMap((source) => usages[source.slug] ?? [])
-          const usedHint = usedByText([...new Set(used)], t)
+          const usedHint = usedByText([...new Set(used)], t, format)
           const capsHint = capabilityText(preset.capabilities, t)
           return (
             <button
@@ -260,7 +260,7 @@ export function AiVendorAddTrigger({
         })}
       </div>
     ),
-    [addFromPreset, sources, t, usages],
+    [addFromPreset, format, sources, t, usages],
   )
 
   return (

@@ -574,8 +574,13 @@ M1 显式拒绝，启动时探测 `docker info` 中 `rootless: true` 或 podman 
 ```
 
 backend 必须实现此 schema，updater 严格校验：升级与回滚都要求数据库探测、
-迁移、完整路由就绪。软通过（仅 HTTP 200 / 镜像标签吻合）只记为降级，不得
-当作业务恢复成功。旧镜像没有 `routes_full` 时，updater 回退到 `mode == "full"`。
+迁移、完整路由就绪，以及 `storage_writable`（缺字段时兼容为 true）。软通过
+（仅 HTTP 200 / 镜像标签吻合）只记为降级，不得当作业务恢复成功。旧镜像没有
+`routes_full` 时，updater 回退到 `mode == "full"`。
+
+`/ready` 与 `/health` 一样由 backend 提供。生产入口经 proxy 转发，开发入口经
+Astro dev proxy 转发；updater 仍直连 `http://backend:1103/health` 读 JSON。
+不要用前端 HTML 的 HTTP 200 认定业务就绪。
 新版 backend 在启动时以实际运行 UID 对 data/cache 及现有 Tapp owner 目录
 执行写入探针；探针失败时不得进入健康状态。`storage_writable` 是最近一次
 写入探测，不是启动预检本身。

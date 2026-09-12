@@ -236,6 +236,7 @@ describe('sortSourcesForBoard', () => {
       'pinyin',
       'guest',
       0,
+      'zh-CN',
     )
     assert.deepEqual(
       sorted.map((s) => s.name),

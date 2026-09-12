@@ -1040,7 +1040,7 @@
   "runtimeDiagnosticsCopyFailed": "Failed to copy diagnostic report",
   "runtimeDiagnosticsActiveTasks": "Active background tasks",
   "runtimeDiagnosticsStuck": "Possibly stuck",
-  "runtimeDiagnosticsRecentFailures": "Failures in the last {n} hours",
+  "runtimeDiagnosticsRecentFailures": "Failures in the last {n, plural, one {# hour} other {# hours}}",
   "runtimeDiagnosticsUnknownFailure": "No failure reason was provided",
   "placeholderWallpaperUrl": "Direct image URL, 302 redirect, or JSON API with url/image field",
   "placeholderSiteTitle": "Myriad - A myriad of lights, in one place.",

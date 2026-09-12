@@ -263,6 +263,7 @@ pub async fn transcribe_bytes(
                 .map_err(|e| tencent_message(&e))?;
             let engine = match language.unwrap_or("zh") {
                 code if code.starts_with("en") => "16k_en",
+                code if code.starts_with("ja") => "16k_ja",
                 _ => "16k_zh",
             };
             let request = AsrRequest {

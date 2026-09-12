@@ -349,7 +349,7 @@
     "passwordLengthError": "Password must be 8-128 characters",
     "loginFailed": "Login failed",
     "userInfoIncomplete": "User info incomplete",
-    "rateLimitError": "Too many login attempts, please retry in {seconds} seconds",
+    "rateLimitError": "Too many login attempts, please retry in {seconds, plural, one {# second} other {# seconds}}",
     "oauthError": "Third-party sign-in failed ({code}). Close extra tabs and try again from this page.",
     "oauthErrorWithDesc": "{message} Details: {desc}",
     "oauthErrorStateMissing": "This sign-in link is invalid or was already used. Start third-party login again from the login page.",

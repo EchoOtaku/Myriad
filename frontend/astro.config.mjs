@@ -408,6 +408,7 @@ function isBackendDevProxyPath(urlPath, userAgent) {
   if (
     path.startsWith('/api/') ||
     path === '/health' ||
+    path === '/ready' ||
     path === '/sitemap.xml' ||
     path === '/robots.txt' ||
     path === '/llms.txt'

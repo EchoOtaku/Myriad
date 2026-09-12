@@ -1,5 +1,6 @@
 /** 内置 greeting/weather/quote/theme/music/notification；Tapp 为 `tapp-{id}`。 */
 
+import { getDefaultLocale } from '../i18n/locales'
 import type { TappInstance } from '../tapp/types'
 
 export type BuiltinContentType =
@@ -50,7 +51,7 @@ class DynamicContentProviderService {
   private providers: Map<string, ContentProviderConfig> = new Map()
   private contents: Map<string, DynamicContentItem[]> = new Map()
   private listeners: Set<ContentUpdateListener> = new Set()
-  private currentLocale: string = 'zh-CN'
+  private currentLocale: string = getDefaultLocale()
 
   constructor() {
     this.registerProvider({

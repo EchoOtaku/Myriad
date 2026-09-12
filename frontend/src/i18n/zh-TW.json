@@ -215,7 +215,7 @@
       },
       "tapp-open-playground": {
         "title": "遊樂場",
-        "body": "用自然語言生成應用。執行於臨時沙箱，無授予許可權。"
+        "body": "用自然語言生成應用。執行於臨時沙箱，無授予權限。"
       },
       "tapp-install": {
         "title": "安裝",
@@ -279,19 +279,19 @@
       },
       "tapp-detail-overview": {
         "title": "概覽",
-        "body": "應用資訊。可匯出。有許可權時可啟動、停止或解除安裝。"
+        "body": "應用資訊。可匯出。有權限時可啟動、停止或解除安裝。"
       },
       "tapp-detail-settings": {
         "title": "應用設定",
         "body": "本次安裝的配置。已登入可見。可見性僅站長可改。"
       },
       "tapp-detail-permissions": {
-        "title": "許可權",
-        "body": "只讀列出本次安裝的授予許可權。"
+        "title": "權限",
+        "body": "只讀列出本次安裝的授予權限。"
       },
       "tapp-playground-toolbar": {
         "title": "工具條",
-        "body": "返回應用列表。此處為無授予許可權的臨時沙箱。"
+        "body": "返回應用列表。此處為無授予權限的臨時沙箱。"
       },
       "tapp-playground-preview": {
         "title": "頁面預覽",
@@ -331,7 +331,7 @@
       },
       "tapp-playground-install": {
         "title": "安裝",
-        "body": "安裝到本站。安裝後才有授予許可權。"
+        "body": "安裝到本站。安裝後才有授予權限。"
       }
     }
   },
@@ -364,7 +364,7 @@
     "oauthErrorInvalidRequest": "授權請求被判定為無效。請從登入頁重試；若持續失敗，請聯絡站點管理員。",
     "oauthErrorUnauthorizedClient": "本應用未在身份提供商側獲得授權。請聯絡管理員檢查 OAuth 客戶端配置。",
     "oauthErrorUnsupportedResponseType": "提供商不支援當前 OAuth 響應型別。請聯絡站點管理員。",
-    "oauthErrorInvalidScope": "請求的 OAuth 許可權範圍無效。請聯絡站點管理員。",
+    "oauthErrorInvalidScope": "請求的 OAuth 權限範圍無效。請聯絡站點管理員。",
     "oauthErrorTokenExchange": "無法完成與提供商的登入（令牌交換失敗）。請重試；若反覆失敗請聯絡管理員。",
     "oauthErrorProfileFetch": "已透過提供商授權，但無法獲取使用者資料。請稍後再試。",
     "oauthErrorProviderUnavailable": "該登入方式當前不可用。請換用其他方式，或聯絡站點管理員。",
@@ -429,7 +429,7 @@
     "connectionFailed": "連線失敗",
     "connectionFailedDesc": "無法連線到後端服務，請確保伺服器正在執行",
     "claimedRepairTitle": "安裝已完成",
-    "claimedRepairDesc": "這個例項已經有站長。庫掛了請先修 PostgreSQL，不要再用安裝嚮導改宿主配置。",
+    "claimedRepairDesc": "這個實例已經有站長。庫掛了請先修 PostgreSQL，不要再用安裝嚮導改宿主配置。",
     "backendDisconnected": "後端服務連線中斷",
     "reconnecting": "正在嘗試重新連線...",
     "retry": "重試",
@@ -482,7 +482,7 @@
     "adminCreated": "所有者賬戶已建立",
     "createAdminFailed": "建立所有者賬戶失敗",
     "createFailed": "建立失敗",
-    "adminAccountFullDesc": "建立本地所有者賬戶，該賬戶擁有系統完整管理許可權",
+    "adminAccountFullDesc": "建立本地所有者賬戶，該賬戶擁有系統完整管理權限",
     "saveHint": "提示：儲存配置後，後端會重啟以載入完整路由",
     "atLeast8Chars": "至少 8 個字元，包含字母和數字",
     "enterPasswordAgain": "再次輸入密碼",
@@ -491,9 +491,9 @@
     "setupSecretPlaceholder": "貼上 MYRIAD_SETUP_SECRET",
     "setupSecretRequired": "請填寫安裝暗號。它在伺服器的 .env 裡，不在網頁設定中。",
     "secretMismatch": "安裝暗號不對。請從伺服器 .env 的 MYRIAD_SETUP_SECRET 複製後再試。",
-    "schemaEnsureFailed": "資料庫表已建立，但收尾檢查失敗。請檢查資料庫許可權後重試。",
-    "cleanupFailed": "管理員已存在，但無法關閉安裝視窗。請檢查資料目錄許可權。",
-    "claimFailed": "無法寫入安裝認領標記，管理員賬戶尚未建立。請檢查資料目錄許可權後重試。",
+    "schemaEnsureFailed": "資料庫表已建立，但收尾檢查失敗。請檢查資料庫權限後重試。",
+    "cleanupFailed": "管理員已存在，但無法關閉安裝視窗。請檢查資料目錄權限。",
+    "claimFailed": "無法寫入安裝認領標記，管理員賬戶尚未建立。請檢查資料目錄權限後重試。",
     "configModeRequired": "現在不能改資料庫配置。需要時請用 CONFIG_MODE=true 重啟。"
   },
   "widgets": {
@@ -746,7 +746,7 @@
       "fallback": "附上了 {names}"
     },
     "expand": "展開對話",
-    "accessDenied": "沒有許可權執行這次操作。",
+    "accessDenied": "沒有權限執行這次操作。",
     "answerFailed": "回答失敗：{error}",
     "askArael": "問 Agent",
     "cancelFailed": "沒能取消這個任務。",
@@ -1073,7 +1073,7 @@
       "portraitInputsChanged": "視覺設定在生成期間被改過，請再生成一次。",
       "imageProviderUnconfigured": "還沒配置圖片生成源，先到配置裡接好再生成立繪。",
       "imageProviderCredits": "圖片源額度不足。",
-      "imageProviderUnauthorized": "圖片源金鑰無效或沒許可權。",
+      "imageProviderUnauthorized": "圖片源金鑰無效或沒權限。",
       "imageProviderRateLimited": "圖片源限流了，稍後再試。",
       "imageProviderRejected": "圖片源拒絕了這次請求。",
       "imageProviderInvalidResponse": "圖片源返回了無法解析的結果。",

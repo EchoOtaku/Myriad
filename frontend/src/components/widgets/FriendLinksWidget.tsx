@@ -45,14 +45,18 @@ function belongsToFriendLinks(source: BrewSource): boolean {
   )
 }
 
-function compareSources(a: BrewSource, b: BrewSource): number {
+function compareSources(
+  a: BrewSource,
+  b: BrewSource,
+  locale: string,
+): number {
   const aHasOrder = typeof a.sort_order === 'number'
   const bHasOrder = typeof b.sort_order === 'number'
   if (aHasOrder && bHasOrder && a.sort_order !== b.sort_order) {
     return a.sort_order! - b.sort_order!
   }
   if (aHasOrder !== bHasOrder) return aHasOrder ? -1 : 1
-  return a.name.localeCompare(b.name, 'zh-CN')
+  return a.name.localeCompare(b.name, locale)
 }
 
 function safeLink(source: BrewSource): string {
@@ -142,7 +146,7 @@ function FriendLinkIcon({
 
 export const FriendLinksWidget = memo(
   ({ config, isEditMode, isPreview }: WidgetComponentProps) => {
-    const { t, format } = useI18n()
+    const { t, format, locale } = useI18n()
     const navigate = useNavigate()
     const anim = useAnimationLevel()
     const { containerRef, scale, fontScale } = useWidgetSize(
@@ -232,9 +236,9 @@ export const FriendLinksWidget = memo(
       if (isPreview) return previewEntries
       return sources
         .filter(belongsToFriendLinks)
-        .sort(compareSources)
+        .sort((left, right) => compareSources(left, right, locale))
         .map(toEntry)
-    }, [isPreview, previewEntries, sources])
+    }, [isPreview, previewEntries, sources, locale])
 
     const isStrip = config.size === '4x1'
     const isWide = config.size === '4x2'
