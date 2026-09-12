@@ -381,7 +381,7 @@ export default function RSSHubConfigComponent({
   isEditMode: _isEditMode = false,
   disabled = false,
 }: RSSHubConfigProps) {
-  const { t, locale } = useI18n()
+  const { t, locale, format } = useI18n()
 
   const [instances, setInstances] = useState<RsshubInstance[]>([])
   const [loadingInstances, setLoadingInstances] = useState(true)
@@ -863,10 +863,9 @@ export default function RSSHubConfigComponent({
           <div className="flex items-center gap-2 shrink-0">
             {instances.length > 0 && (
               <span className="text-xs text-gray-400">
-                {t.brew.rsshubInstanceCount.replace(
-                  '{count}',
-                  String(instances.length),
-                )}
+                {format(t.brew.rsshubInstanceCount, {
+                  count: instances.length,
+                })}
               </span>
             )}
             <ChevronDown
@@ -1445,10 +1444,9 @@ export default function RSSHubConfigComponent({
                       [param.name]: e.target.value,
                     }))
                   }
-                  placeholder={t.brew.rsshubEnterParam.replace(
-                    '{param}',
-                    param.name,
-                  )}
+                  placeholder={format(t.brew.rsshubEnterParam, {
+                    param: param.name,
+                  })}
                   disabled={disabled}
                   className="flex-1 px-2.5 py-1.5 text-sm rounded-lg bg-gray-50 dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50 disabled:opacity-50"
                 />
@@ -1654,14 +1652,12 @@ export default function RSSHubConfigComponent({
                               return rest
                             })
                           }
-                          title={t.brew.rsshubDeleteParam.replace(
-                            '{param}',
-                            key,
-                          )}
-                          aria-label={t.brew.rsshubDeleteParam.replace(
-                            '{param}',
-                            key,
-                          )}
+                          title={format(t.brew.rsshubDeleteParam, {
+                            param: key,
+                          })}
+                          aria-label={format(t.brew.rsshubDeleteParam, {
+                            param: key,
+                          })}
                           className="p-1 text-gray-400 hover:text-red-500 rounded"
                         >
                           <X className="w-3 h-3" />

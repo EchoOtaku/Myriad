@@ -428,8 +428,8 @@ mod pair_integrity_tests {
     }
 }
 
-/// Wait until backend answers /health with db_connected over the compose network.
-/// Soft-pass after 60s if container is running and returns any 200 health JSON.
+/// Wait until backend /health reports business readiness (probe + migrations + full routes).
+/// HTTP 200 alone, or a running container after 60s, is degraded — not success.
 async fn rollback_health_wait(worker: &Worker, deadline: Duration) -> Result<()> {
     let start = std::time::Instant::now();
     let mut last = String::new();
@@ -444,15 +444,13 @@ async fn rollback_health_wait(worker: &Worker, deadline: Duration) -> Result<()>
             Ok((200, body)) => {
                 let json: serde_json::Value =
                     serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
-                let db = json.get("db_connected").and_then(|v| v.as_bool()) == Some(true);
-                if db {
+                if crate::worker::backend_health::backend_business_ready(&json) {
                     info!(
                         elapsed_s = elapsed.as_secs(),
-                        "rollback health: db_connected ok"
+                        "rollback health: database probe, migrations, and full routes ready"
                     );
                     return Ok(());
                 }
-                // Soft: after 60s, HTTP 200 health is enough (config mode may clear slowly).
                 if elapsed >= Duration::from_secs(60) {
                     let running = worker
                         .docker()
@@ -463,13 +461,12 @@ async fn rollback_health_wait(worker: &Worker, deadline: Duration) -> Result<()>
                     if running {
                         warn!(
                             elapsed_s = elapsed.as_secs(),
-                            "rollback health: soft-pass (HTTP 200, db_connected not yet true)"
+                            "rollback health: degraded (HTTP 200, not business-ready); not counting as success"
                         );
-                        return Ok(());
                     }
                 }
                 last = format!(
-                    "backend 200 but db_connected=false body={}",
+                    "degraded: HTTP 200 but not business-ready body={}",
                     &body[..body.len().min(80)]
                 );
             }

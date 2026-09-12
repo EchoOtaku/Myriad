@@ -306,7 +306,7 @@ export const ManagedList = React.memo(({
   className = '',
   footer,
 }: ManagedListProps) => {
-  const { t } = useI18n()
+  const { t, format } = useI18n()
   const queryToggleLabel =
     queryToggleLabelProp ?? t.config.managedListSearchFilter
   const queryCollapseLabel =
@@ -348,9 +348,10 @@ export const ManagedList = React.memo(({
     pageSize != null && totalCount > pageSize
       ? truncateFooter
         ? truncateFooter(visibleItems.length, totalCount)
-        : t.config.managedListShowing
-            .replace('{shown}', String(visibleItems.length))
-            .replace('{total}', String(totalCount))
+        : format(t.config.managedListShowing, {
+            shown: visibleItems.length,
+            total: totalCount,
+          })
       : null
 
   const handleShowMore = useCallback(() => {

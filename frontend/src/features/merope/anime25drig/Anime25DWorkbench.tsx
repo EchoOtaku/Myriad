@@ -1,5 +1,6 @@
 import type { ReactNode, RefObject } from 'react'
 import type { TranslationKeys } from '../../../i18n'
+import { formatMessage, getDefaultLocale } from '../../../i18n'
 import type {
   RigAssetCompileEvent,
   RigAssetPreflight,
@@ -226,7 +227,7 @@ export default function Anime25DWorkbench({
   overviewLead = null,
   motionEnabled = false,
 }: Props) {
-  const { t } = useI18n()
+  const { t, format } = useI18n()
   const labels = t.merope
   type FacePanel = 'overview' | 'persona' | 'wardrobe' | 'motion'
   type RigPath = 'upload' | 'seeThrough'
@@ -1027,9 +1028,10 @@ export default function Anime25DWorkbench({
                   {rigImportResult ? (
                     <div className="merope-motion-rig__summary" role="status">
                       <b>
-                        {labels.rigPreflightSummary
-                          .replace('{parts}', String(rigImportResult.partCount))
-                          .replace('{score}', String(rigImportResult.score))}
+                        {format(labels.rigPreflightSummary, {
+                          parts: rigImportResult.partCount,
+                          score: rigImportResult.score,
+                        })}
                       </b>
                       <span>
                         {rigImportResult.activated
@@ -1408,9 +1410,7 @@ function fillInspect(
   template: string,
   vars: Record<string, string | number>,
 ): string {
-  return template.replace(/\{(\w+)\}/g, (_, key: string) =>
-    String(vars[key] ?? ''),
-  )
+  return formatMessage(getDefaultLocale(), template, vars)
 }
 
 function FaceTabs<T extends string>({

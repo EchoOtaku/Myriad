@@ -404,22 +404,38 @@ var i18n = {
     },
     footer: 'Myriad Tapp System で動作中',
   },
+  'zh-TW': {
+    title: 'Hello World',
+    subtitle: '歡迎使用 Tapp 系統！探索下方卡片了解核心功能。',
+    features: {
+      lifecycle: { title: '生命週期', desc: 'onReady/onDestroy 完整生命週期管理' },
+      storage: { title: '儲存 API', desc: '持久化資料儲存，跨工作階段保持' },
+      theme: { title: '主題適配', desc: '自動適應系統明暗主題' },
+      page: { title: '頁面元件', desc: '註冊自訂頁面，支援全螢幕模式' },
+      security: { title: 'DOM 安全', desc: '內建 XSS 防護的安全渲染' },
+      responsive: { title: '自適應尺寸', desc: 'CSS 變數驅動的回應式設計' },
+      i18n: { title: '國際化', desc: '多語言支援，即時切換' },
+      cssArch: { title: 'CSS 架構', desc: '支援統一/分離/混合三種模式' },
+    },
+    footer: '由 Myriad Tapp 系統驅動',
+  },
 };
 
-var currentLocale = 'zh-CN';
+var currentLocale = 'en-US';
 
 function normalizeLocale(locale) {
-  if (!locale) return 'zh-CN';
-  var l = locale.toLowerCase();
-  if (l.startsWith('zh')) return 'zh-CN';
-  if (l.startsWith('en')) return 'en-US';
-  if (l.startsWith('ja')) return 'ja-JP';
-  return 'zh-CN';
+  if (!locale) return 'en-US';
+  var l = String(locale).toLowerCase().replace(/_/g, '-');
+  if (l.indexOf('zh-tw') === 0 || l.indexOf('zh-hk') === 0 || l.indexOf('zh-mo') === 0 || l.indexOf('hant') !== -1) return 'zh-TW';
+  if (l.indexOf('zh') === 0) return 'zh-CN';
+  if (l.indexOf('en') === 0) return 'en-US';
+  if (l.indexOf('ja') === 0) return 'ja-JP';
+  return 'en-US';
 }
 
 function t(key) {
   var keys = key.split('.');
-  var value = i18n[currentLocale] || i18n['zh-CN'];
+  var value = i18n[currentLocale] || i18n['en-US'];
   for (var i = 0; i < keys.length; i++) {
     value = value[keys[i]];
     if (!value) return key;

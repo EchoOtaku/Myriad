@@ -3,6 +3,7 @@ import type { Job, ReleaseManifest, UpdaterStatus } from '../../../services/upda
 import type { ChannelKey, Mood, Toast, Tone, U } from './helpers'
 import { LuRefreshCw } from '@lib/icons'
 import React from 'react'
+import { useI18n } from '../../../contexts/I18nContext'
 import {
   FieldSelect,
   SettingsButton,
@@ -65,6 +66,7 @@ export function StatusHero({
     auto_install?: boolean
   }) => Promise<void>
 }) {
+  const { locale } = useI18n()
   const { title: moodTitle, hint, tone: moodTone } = moodText(mood, u)
   const latest = status?.latest_available
   const targetVersion = available?.version ?? latest?.version
@@ -79,9 +81,9 @@ export function StatusHero({
 
   let freshness: string | null = null
   if (relation === 'ahead' && aheadBy != null) {
-    freshness = format(u.updaterFreshnessAhead, { n: String(aheadBy) })
+    freshness = format(u.updaterFreshnessAhead, { n: aheadBy })
   } else if (relation === 'behind' && behindBy != null) {
-    freshness = format(u.updaterFreshnessBehind, { n: String(behindBy) })
+    freshness = format(u.updaterFreshnessBehind, { n: behindBy })
   } else if (relation === 'identical') {
     freshness = u.updaterFreshnessIdentical
   } else if (relation === 'diverged') {
@@ -169,7 +171,7 @@ export function StatusHero({
   }
 
   const lastCheckedAbs = status?.last_checked_at
-    ? new Date(status.last_checked_at).toLocaleString()
+    ? new Date(status.last_checked_at).toLocaleString(locale)
     : null
   const checking = busy === 'check' || autoRechecking
 

@@ -1142,10 +1142,9 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       raw.match(/required (\S+)/i)?.[1] ||
       ''
     const http = raw.match(/HTTP\s+(\d{3})/i)
-    const label = currentCopy().tapp.storeDownloadFailed.replace(
-      '{name}',
-      name || 'asset',
-    )
+    const label = fill(currentCopy().tapp.storeDownloadFailed, {
+      name: name || 'asset',
+    })
     return joinParts(
       label,
       http ? `HTTP ${http[1]}` : '',

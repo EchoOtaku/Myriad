@@ -150,7 +150,7 @@
   "noPermissionSettings": "No permission settings were provided.",
   "waitChannelClosed": "The task wait channel closed.",
   "waitInputTimeout": "Waiting for a reply timed out.",
-  "waitInputTimeoutHours": "Waiting for a reply timed out ({hours} hours). The task was cancelled.",
+  "waitInputTimeoutHours": "{hours, plural, one {Waiting for a reply timed out (# hour). The task was cancelled.} other {Waiting for a reply timed out (# hours). The task was cancelled.}}",
   "contentPolicyRetry": "That content is not allowed. Remove the sensitive parts and try again.",
   "missingParameter": "A required parameter is missing.",
   "taskUnavailable": "That task is no longer available.",

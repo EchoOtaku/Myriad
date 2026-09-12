@@ -31,7 +31,10 @@ pub(crate) fn validate_container_create_name(uri: &Uri) -> std::result::Result<(
     Ok(())
 }
 
-pub(crate) fn validate_container_rename(state: &GuardState, uri: &Uri) -> std::result::Result<(), String> {
+pub(crate) fn validate_container_rename(
+    state: &GuardState,
+    uri: &Uri,
+) -> std::result::Result<(), String> {
     let requested =
         query_param(uri, "name").ok_or_else(|| "container rename is missing name".to_string())?;
     let requested = requested.trim_start_matches('/');
@@ -58,7 +61,10 @@ pub(crate) fn validate_container_rename(state: &GuardState, uri: &Uri) -> std::r
     Ok(())
 }
 
-pub(crate) fn validate_container_create(state: &GuardState, body: &Bytes) -> std::result::Result<(), String> {
+pub(crate) fn validate_container_create(
+    state: &GuardState,
+    body: &Bytes,
+) -> std::result::Result<(), String> {
     let value: Value = serde_json::from_slice(body)
         .map_err(|_| "containers/create body must be valid JSON".to_string())?;
     let labels = value
@@ -131,10 +137,7 @@ pub(crate) fn validate_container_create(state: &GuardState, body: &Bytes) -> std
         // Compose v5 sends a zero-value LogConfig (Type="") when the service has
         // no `logging:` block. The engine then applies the daemon default
         // (json-file). Rejecting the empty type blocked `compose run`.
-        let log_type = log_config
-            .get("Type")
-            .and_then(Value::as_str)
-            .unwrap_or("");
+        let log_type = log_config.get("Type").and_then(Value::as_str).unwrap_or("");
         let type_ok = log_type.is_empty() || log_type == "json-file";
         let config_is_safe = log_config
             .get("Config")

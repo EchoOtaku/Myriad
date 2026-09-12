@@ -579,7 +579,7 @@ export function BrewBarStarredEdit({
   starredMode: StarredModeConfig
   tagFrom?: number
 }) {
-  const { t } = useI18n()
+  const { t, format } = useI18n()
   const brew = t.brew
   const allOn =
     starredMode.selectedIds.size === starredMode.total && starredMode.total > 0
@@ -607,10 +607,9 @@ export function BrewBarStarredEdit({
           </BrewMark>
           <BrewLabel>
             {starredMode.selectedIds.size > 0
-              ? brew.selectedCount.replace(
-                  '{count}',
-                  String(starredMode.selectedIds.size),
-                )
+              ? format(brew.selectedCount, {
+                  count: starredMode.selectedIds.size,
+                })
               : brew.selectArticles}
           </BrewLabel>
         </BrewTag>

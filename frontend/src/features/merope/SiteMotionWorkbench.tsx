@@ -83,15 +83,6 @@ function toMeropeActivity(raw: string): MeropeActivity {
   return 'idle'
 }
 
-function fillTemplate(
-  template: string,
-  vars: Record<string, string | number>,
-): string {
-  return template.replace(/\{(\w+)\}/g, (_, key: string) =>
-    Object.hasOwn(vars, key) ? String(vars[key]) : '',
-  )
-}
-
 function joinOverviewSentences(locale: string, parts: string[]): string {
   const cleaned = parts
     .map((part) => part.replace(/[。．.]+$/u, '').trim())
@@ -135,7 +126,7 @@ export default function SiteMotionWorkbench({
   arousal,
   activity,
 }: Props) {
-  const { t, locale } = useI18n()
+  const { t, locale, format } = useI18n()
   const [wardrobeItems, setWardrobeItems] = useState<WardrobeItem[]>([])
   const [activeOutfitId, setActiveOutfitId] = useState<string | null>(null)
   const [managingOutfitId, setManagingOutfitId] = useState<string | null>(null)
@@ -874,12 +865,12 @@ export default function SiteMotionWorkbench({
   const wardrobeSentences: string[] = []
   if (wearingName) {
     wardrobeSentences.push(
-      fillTemplate(t.merope.overviewWardrobeWearing, { name: wearingName }),
+      format(t.merope.overviewWardrobeWearing, { name: wearingName }),
     )
   }
   if (wardrobeCount > 1) {
     wardrobeSentences.push(
-      fillTemplate(t.merope.overviewWardrobeCount, { n: wardrobeCount }),
+      format(t.merope.overviewWardrobeCount, { n: wardrobeCount }),
     )
   }
   if (wardrobeCount > 0) {
@@ -904,7 +895,7 @@ export default function SiteMotionWorkbench({
         wardrobeSentences.push(t.merope.overviewWardrobeAllRigs)
       } else {
         wardrobeSentences.push(
-          fillTemplate(t.merope.overviewWardrobeMixed, {
+          format(t.merope.overviewWardrobeMixed, {
             portrait: portraitReady,
             rig: rigReady,
           }),

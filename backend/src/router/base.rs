@@ -19,6 +19,7 @@ async fn require_installation_capability(req: Request, next: Next) -> Response {
 pub(super) fn build_config_mode_router() -> Router {
     Router::new()
         .route("/health", get(api::health))
+        .route("/ready", get(api::ready))
         .route("/api/setup/config", get(api::setup::get_setup_config))
         // Registered without AppState: extract::Db → 503 until DB is wired.
         .route("/api/setup/status", get(api::setup::check_setup_status))
@@ -59,6 +60,7 @@ pub(super) fn build_base_api_router(
     use axum::middleware::from_fn_with_state;
     let api_router = Router::<crate::state::AppState>::new()
         .route("/health", get(api::health))
+        .route("/ready", get(api::ready))
         // Setup routes (always available when DB/AppState is wired)
         .route("/api/setup/config", get(api::setup::get_setup_config))
         .route("/api/setup/status", get(api::setup::check_setup_status))

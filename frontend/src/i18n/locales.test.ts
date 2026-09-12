@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { htmlLang, isLocale, parseLocale } from './locales.ts'
+import {
+  htmlLang,
+  isLocale,
+  parseLocale,
+  parseLocaleCookie,
+} from './locales.ts'
 
 describe('parseLocale', () => {
   it('accepts exact host tags', () => {
@@ -38,5 +43,13 @@ describe('parseLocale', () => {
   it('uses a short html lang for English', () => {
     assert.equal(htmlLang('en-US'), 'en')
     assert.equal(htmlLang('zh-TW'), 'zh-TW')
+  })
+})
+
+describe('parseLocaleCookie', () => {
+  it('reads the locale cookie among other cookies', () => {
+    assert.equal(parseLocaleCookie('theme=dark; locale=zh-TW; sid=1'), 'zh-TW')
+    assert.equal(parseLocaleCookie('locale=en-US'), 'en-US')
+    assert.equal(parseLocaleCookie('theme=dark'), null)
   })
 })

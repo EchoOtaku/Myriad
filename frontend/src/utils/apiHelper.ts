@@ -1,5 +1,5 @@
 import { hostLocaleHeaders } from '../i18n/hostLocaleHeaders'
-import { currentCopy } from '../i18n/localeCopy'
+import { currentCopy, formatCurrent } from '../i18n/localeCopy'
 import { ApiError, parseApiErrorBody } from '../services/api'
 import { withAiTimeoutSignal } from './aiRequestTimeout.mjs'
 import { httpStatusMessage, isUselessErrorText } from './userFacingError'
@@ -19,10 +19,9 @@ export async function parseJsonResponse(response: Response): Promise<any> {
     return await response.json()
   } catch (_error) {
     throw new Error(
-      currentCopy().errors.invalidResponse.replace(
-        '{status}',
-        String(response.status),
-      ),
+      formatCurrent(currentCopy().errors.invalidResponse, {
+        status: response.status,
+      }),
     )
   }
 }

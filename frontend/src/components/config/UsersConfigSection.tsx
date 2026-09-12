@@ -987,10 +987,7 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
 
   const footer =
     hasActiveFilter && users.length > 0 && !usersListTruncated
-      ? c.usersResultCount.replace(
-          '{count}',
-          String(filteredUsers.length),
-        )
+      ? format(c.usersResultCount, { count: filteredUsers.length })
       : undefined
 
   return (
@@ -1015,9 +1012,7 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
             filteredUsers.length > 12 ? USERS_LIST_CAP : null
           }
           truncateFooter={(shown, total) =>
-            c.usersShowing
-              .replace('{shown}', String(shown))
-              .replace('{total}', String(total))
+            format(c.usersShowing, { shown, total })
           }
           emptyText={emptyText}
           footer={footer}

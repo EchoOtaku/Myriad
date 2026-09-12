@@ -648,7 +648,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
   initialTappId,
   onBack,
 }) => {
-  const { t, locale } = useI18n()
+  const { t, locale, format } = useI18n()
   const { isAuthenticated } = useAuth()
   const animConfig = useAnimationLevel()
   const noAnimation = isExlight(animConfig)
@@ -1700,10 +1700,9 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                                   className="text-xs"
                                   style={{ color: 'var(--text-muted)' }}
                                 >
-                                  {t.tapp.windowCount.replace(
-                                    '{count}',
-                                    String(scheme.windows.length),
-                                  )}
+                                  {format(t.tapp.windowCount, {
+                                    count: scheme.windows.length,
+                                  })}
                                 </span>
                               </motion.button>
                               <motion.button
@@ -1746,10 +1745,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
           <span
             className="px-2 py-1 text-sm font-medium"
             style={{ color: 'var(--text-muted)' }}
-            title={t.tapp.windowCount.replace(
-              '{count}',
-              String(windows.length),
-            )}
+            title={format(t.tapp.windowCount, { count: windows.length })}
           >
             {windows.length}/{MAX_WINDOWS}
           </span>

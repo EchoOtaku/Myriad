@@ -75,7 +75,7 @@ export const InputItem = React.memo<InputItemProps>(
     imageSizeError,
     imageReadError,
   }) => {
-    const { t } = useI18n()
+    const { t, format } = useI18n()
     const [isCopied, setIsCopied] = useState(false)
     const [editing, setEditing] = useState(false)
     const [draft, setDraft] = useState(value)
@@ -206,7 +206,7 @@ export const InputItem = React.memo<InputItemProps>(
           const kb = Math.round(maxImageBytes / 1024)
           setUploadError(
             imageSizeError ||
-              t.config.imageUploadSizeError.replace('{kb}', String(kb)),
+              format(t.config.imageUploadSizeError, { kb }),
           )
           return
         }

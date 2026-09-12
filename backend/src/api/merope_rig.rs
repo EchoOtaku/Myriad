@@ -1256,7 +1256,7 @@ pub async fn generate_portrait(
             .unwrap_or_else(|| {
                 json!({
                     "gender": "unspecified",
-                    "language": "zh-CN"
+                    "language": "en-US"
                 })
             });
         let gender = profile
@@ -1267,7 +1267,7 @@ pub async fn generate_portrait(
         let language = profile
             .get("language")
             .and_then(Value::as_str)
-            .unwrap_or("zh-CN")
+            .unwrap_or("en-US")
             .to_string();
         if let Some(identity) = profile.get("visualIdentity").cloned() {
             if !identity.is_null() {

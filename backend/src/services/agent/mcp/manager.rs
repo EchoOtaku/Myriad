@@ -237,7 +237,11 @@ impl McpManager {
                         crate::services::agent::notifications::get_notification_manager()
                     {
                         manager
-                            .notify_mcp_server_status(&server_id, true, "Maintenance retry succeeded")
+                            .notify_mcp_server_status(
+                                &server_id,
+                                true,
+                                "Maintenance retry succeeded",
+                            )
                             .await;
                     }
                 }

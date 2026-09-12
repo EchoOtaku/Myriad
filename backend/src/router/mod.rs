@@ -310,43 +310,58 @@ pub(crate) async fn start_unified_server(config: AppConfig) -> anyhow::Result<()
         }
     });
 
-    // 每 60s 做一次数据库健康检查。
+    // 每 60s 探测数据库与存储，并写回 /health 快照。失败会尝试重连。
     tokio::spawn(async {
         let mut health_check_interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
         loop {
             health_check_interval.tick().await;
 
             if let Ok(db) = services::tapp_registry::database().await {
-                // 执行简单查询测试连接
-                match db
-                    .execute_raw(sea_orm::Statement::from_string(
-                        sea_orm::DatabaseBackend::Postgres,
-                        "SELECT 1".to_owned(),
-                    ))
-                    .await
-                {
-                    Ok(_) => {
-                        tracing::debug!("💚 Database health check passed");
-                    }
-                    Err(e) => {
-                        tracing::error!("❌ Database health check failed: {}", e);
+                if crate::db::health::probe_database(&db).await {
+                    tracing::debug!("💚 Database health check passed");
+                } else {
+                    tracing::error!("❌ Database health check failed");
 
-                        let config = GLOBAL_CONFIG.read().await;
-                        if !config.database_url.is_empty() {
-                            tracing::info!("🔄 Attempting to reconnect to database...");
-                            match crate::db::connection::establish_connection(&config.database_url)
-                                .await
-                            {
-                                Ok(new_db) => {
-                                    services::tapp_registry::set_process_database(new_db).await;
+                    let config = GLOBAL_CONFIG.read().await;
+                    if !config.database_url.is_empty() {
+                        tracing::info!("🔄 Attempting to reconnect to database...");
+                        match crate::db::connection::establish_connection(&config.database_url)
+                            .await
+                        {
+                            Ok(new_db) => {
+                                services::tapp_registry::set_process_database(new_db.clone()).await;
+                                if crate::db::health::probe_database(&new_db).await {
                                     tracing::info!("✅ Database reconnected successfully");
+                                } else {
+                                    tracing::error!(
+                                        "❌ Reconnected handle failed the live SELECT 1 probe"
+                                    );
                                 }
-                                Err(e) => {
-                                    tracing::error!("❌ Failed to reconnect to database: {}", e);
-                                }
+                            }
+                            Err(e) => {
+                                crate::db::health::record_db_probe(false, false);
+                                tracing::error!("❌ Failed to reconnect to database: {}", e);
                             }
                         }
                     }
+                }
+            } else {
+                crate::db::health::record_db_probe(false, false);
+            }
+
+            match tokio::task::spawn_blocking(
+                crate::services::data_paths::verify_runtime_storage_writable,
+            )
+            .await
+            {
+                Ok(Ok(())) => crate::db::health::record_storage_writable(true),
+                Ok(Err(e)) => {
+                    crate::db::health::record_storage_writable(false);
+                    tracing::error!("❌ Storage writability probe failed: {}", e);
+                }
+                Err(e) => {
+                    crate::db::health::record_storage_writable(false);
+                    tracing::error!("❌ Storage writability probe join failed: {}", e);
                 }
             }
         }

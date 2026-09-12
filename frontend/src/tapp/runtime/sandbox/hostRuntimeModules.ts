@@ -1,4 +1,4 @@
-import { currentCopy } from '../../../i18n/localeCopy'
+import { currentCopy, formatCurrent } from '../../../i18n/localeCopy'
 
 export const THREE_RUNTIME_ID = 'three'
 export const THREE_RUNTIME_PATH = '/tapp-runtime/three.0.170.iife.js'
@@ -22,10 +22,9 @@ export function loadHostRuntimeModule(id: string): Promise<string> {
     .then((response) => {
       if (!response.ok) {
         throw new Error(
-          `${currentCopy().errors.httpStatus.replace(
-            '{status}',
-            String(response.status),
-          )} (${id})`,
+          `${formatCurrent(currentCopy().errors.httpStatus, {
+            status: response.status,
+          })} (${id})`,
         )
       }
       return response.text()

@@ -1607,7 +1607,7 @@ export const AgentEngine: React.FC = () => {
                 ...m,
                 content:
                   m.content ||
-                  t.agentPanel.errorWithDetail.replace('{error}', errorMsg),
+                  format(t.agentPanel.errorWithDetail, { error: errorMsg }),
                 taskExecution: {
                   taskId: existing?.taskId ?? '',
                   status: 'error' as const,

@@ -1,7 +1,7 @@
 import type { TappManifest } from '../types'
 import type { RemoteStoreLocales } from '../utils/storeLocale'
 import type { StorePreviewDescriptor } from '../utils/storePreview'
-import { currentCopy } from '../../i18n/localeCopy'
+import { currentCopy, formatCurrent } from '../../i18n/localeCopy'
 import api from '../../lib/api'
 import {
   httpStatusMessage,
@@ -767,10 +767,9 @@ class RemoteStoreServiceImpl {
       if (!relativePath) {
         if (requiredLabel) {
           throw new Error(
-            currentCopy().tapp.storeDownloadFailed.replace(
-              '{name}',
-              requiredLabel,
-            ),
+            formatCurrent(currentCopy().tapp.storeDownloadFailed, {
+              name: requiredLabel,
+            }),
           )
         }
         return undefined
@@ -783,10 +782,9 @@ class RemoteStoreServiceImpl {
             throw new Error(
               userFacingError(
                 `HTTP ${response.status}`,
-                currentCopy().tapp.storeDownloadFailed.replace(
-                  '{name}',
-                  requiredLabel,
-                ),
+                formatCurrent(currentCopy().tapp.storeDownloadFailed, {
+                  name: requiredLabel,
+                }),
               ),
             )
           }
@@ -800,10 +798,9 @@ class RemoteStoreServiceImpl {
             : new Error(
                 userFacingError(
                   e,
-                  currentCopy().tapp.storeDownloadFailed.replace(
-                    '{name}',
-                    requiredLabel,
-                  ),
+                  formatCurrent(currentCopy().tapp.storeDownloadFailed, {
+                    name: requiredLabel,
+                  }),
                 ),
               )
         }
@@ -851,9 +848,10 @@ class RemoteStoreServiceImpl {
       app.version.trim() !== manifest.version.trim()
     ) {
       throw new Error(
-        currentCopy().tapp.storeVersionMismatch
-          .replace('{catalog}', app.version.trim())
-          .replace('{manifest}', manifest.version.trim()),
+        formatCurrent(currentCopy().tapp.storeVersionMismatch, {
+          catalog: app.version.trim(),
+          manifest: manifest.version.trim(),
+        }),
       )
     }
 
@@ -950,10 +948,9 @@ class RemoteStoreServiceImpl {
           const content = await downloadText(path, `module ${relative}`)
           if (!content) {
             throw new Error(
-              currentCopy().tapp.storeDownloadFailed.replace(
-                '{name}',
-                `${relative}`,
-              ),
+              formatCurrent(currentCopy().tapp.storeDownloadFailed, {
+                name: `${relative}`,
+              }),
             )
           }
           downloaded[relative] = content
@@ -1060,10 +1057,9 @@ class RemoteStoreServiceImpl {
           throw new Error(
             userFacingError(
               `HTTP ${response.status}`,
-              currentCopy().tapp.storeDownloadFailed.replace(
-                '{name}',
-                assetPath,
-              ),
+              formatCurrent(currentCopy().tapp.storeDownloadFailed, {
+                name: assetPath,
+              }),
             ),
           )
         }

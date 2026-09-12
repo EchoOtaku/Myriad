@@ -107,7 +107,7 @@ export function useAnnotations({
       annotationsLoadingRef.current = false
       if (isCurrent() && !signal.aborted) setAnnotationsLoading(false)
     }
-  }, [captureTask, isBrewlia, annotations.length, itemId, showToastMessage, t])
+  }, [captureTask, format, isBrewlia, annotations.length, itemId, showToastMessage, t])
 
   const regenerateAnnotations = useCallback(async () => {
     if (!isBrewlia || annotationsLoading) return
@@ -125,10 +125,9 @@ export function useAnnotations({
         setAnnotations(response.annotations)
         setShowAnnotations(true)
         showToastMessage(
-          t.brew.regeneratedAnnotations.replace(
-            '{count}',
-            String(response.annotations.length),
-          ),
+          format(t.brew.regeneratedAnnotations, {
+            count: response.annotations.length,
+          }),
         )
       } else {
         setAnnotationsError(response.error || t.brew.regenerateFailed)
@@ -140,7 +139,15 @@ export function useAnnotations({
     } finally {
       if (isCurrent() && !signal.aborted) setAnnotationsLoading(false)
     }
-  }, [captureTask, isBrewlia, annotationsLoading, itemId, showToastMessage, t])
+  }, [
+    captureTask,
+    isBrewlia,
+    annotationsLoading,
+    itemId,
+    showToastMessage,
+    t,
+    format,
+  ])
 
   const toggleAnnotations = useCallback(() => {
     if (annotations.length === 0) {

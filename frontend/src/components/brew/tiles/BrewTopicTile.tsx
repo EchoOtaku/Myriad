@@ -212,7 +212,7 @@ export const BrewTopicWidget = memo(
       isPreview ? 1 : undefined,
     )
     const sources = useWidgetSources(
-      isPreview,
+      isPreview ?? false,
       TOPIC_WIDGET_REFRESH_INTERVAL,
       '[BrewTopicWidget]',
     )

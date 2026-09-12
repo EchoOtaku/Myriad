@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import { loadLocale } from './loadLocale.ts'
-import { copyForLocale, currentCopy } from './localeCopy.ts'
+import { copyForLocale, currentCopy, formatCurrent } from './localeCopy.ts'
 
 describe('currentCopy', () => {
   it('does not statically import ja or zh locale modules', () => {
@@ -40,6 +40,10 @@ describe('currentCopy', () => {
     assert.ok(copy.errors.serverError.includes('{status}'))
     assert.ok(copy.errors.lyricsFailed.includes('{status}'))
     assert.ok(copy.tapp.storeDownloadFailed.includes('{name}'))
+    assert.equal(
+      formatCurrent(copy.tapp.storeAppNotFound, { id: 'hello' }),
+      copy.tapp.storeAppNotFound.replace('{id}', 'hello'),
+    )
   })
 
   it('falls back to English until a non-default locale chunk is loaded', async () => {

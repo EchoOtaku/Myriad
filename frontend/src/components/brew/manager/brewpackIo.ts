@@ -6,13 +6,6 @@ import type { ImportProgress } from './modes/types'
 import { formatMessage, getDefaultLocale } from '../../../i18n'
 import * as brewApi from '../../../services/brewApi'
 import { userFacingError } from '../../../utils/userFacingError'
-
-function fill(
-  template: string,
-  params: Record<string, string | number>,
-): string {
-  return formatMessage(getDefaultLocale(), template, params)
-}
 import {
   buildBrewpackManifest,
   categoryToPackEntry,
@@ -26,6 +19,13 @@ import {
   sourceToPackEntry,
   sourceUpdatePayload,
 } from './brewpack'
+
+function fill(
+  template: string,
+  params: Record<string, string | number>,
+): string {
+  return formatMessage(getDefaultLocale(), template, params)
+}
 
 export type BrewpackCopy = {
   exportSuccess: string

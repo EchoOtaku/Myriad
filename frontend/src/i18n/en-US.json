@@ -540,7 +540,7 @@
     "tappFeature": "Widgets, Tools, Extensions"
   },
   "friendLinksWidget": {
-    "siteCount": "{count} sites",
+    "siteCount": "{count, plural, one {# site} other {# sites}}",
     "emptyTitle": "No friend links yet",
     "emptyDescription": "Add them in Brew Reading",
     "loadFailed": "Friend links are temporarily unavailable",
@@ -625,7 +625,7 @@
     "exportLayoutPartial": "{count, plural, one {Home layout exported, but # sticker original could not be included} other {Home layout exported, but # sticker originals could not be included}}",
     "importLayoutSuccess": "Home layout imported",
     "importLayoutFailed": "Could not import the home layout",
-    "importLayoutPartial": "Home layout imported, but {count} sticker original(s) could not be stored",
+    "importLayoutPartial": "{count, plural, one {Home layout imported, but # sticker original could not be stored} other {Home layout imported, but # sticker originals could not be stored}}",
     "importLayoutConfirm": "This replaces the current standard and free layouts. Sticker originals in the file will be stored on this site. Import?",
     "importLayoutInvalid": "That file is not a home layout",
     "importLayoutSettingsBackup": "That is a site settings backup. Import it from system configuration.",
@@ -634,7 +634,7 @@
   },
   "library": {
     "title": "Library",
-    "playedHours": "Played {hours} hours",
+    "playedHours": "{hours, plural, one {Played # hour} other {Played # hours}}",
     "unknownArtist": "Unknown Artist",
     "unknownAlbum": "Unknown Album",
     "alreadyPlaying": "Already playing, opening control panel",
@@ -847,7 +847,7 @@
       "presetCustom": "Custom"
     },
     "thinking": {
-      "doneSteps": "{count} steps",
+      "doneSteps": "{count, plural, one {# step} other {# steps}}",
       "failed": "Something failed along the way"
     },
     "sessions": {
@@ -1272,7 +1272,7 @@
     "viewAllTapps": "View all Tapps",
     "oauthBindings": "Linked Accounts",
     "oauthAccount": "OAuth Account",
-    "linkedProviderCount": "{count} linked",
+    "linkedProviderCount": "{count, plural, one {# linked} other {# linked}}",
     "oauthBind": "Link",
     "oauthUnbind": "Unlink",
     "oauthUnbindConfirm": "Unlink this account? You will no longer be able to sign in with it.",

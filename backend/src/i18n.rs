@@ -11,7 +11,10 @@ fn parse_catalog(raw: &'static str) -> Catalog {
     })
 }
 
-fn catalog_for(table: &'static LazyLock<HashMap<&'static str, Catalog>>, locale: &str) -> &'static Catalog {
+fn catalog_for(
+    table: &'static LazyLock<HashMap<&'static str, Catalog>>,
+    locale: &str,
+) -> &'static Catalog {
     let loc = crate::api::reports::locale::normalize_report_locale(locale);
     table
         .get(loc)
@@ -42,14 +45,30 @@ static REPORTS: LazyLock<HashMap<&'static str, Catalog>> = LazyLock::new(|| {
 
 static SEO: LazyLock<HashMap<&'static str, Catalog>> = LazyLock::new(|| {
     HashMap::from([
-        ("en-US", parse_catalog(include_str!("../i18n/seo.en-US.json"))),
-        ("zh-CN", parse_catalog(include_str!("../i18n/seo.zh-CN.json"))),
-        ("zh-TW", parse_catalog(include_str!("../i18n/seo.zh-TW.json"))),
-        ("ja-JP", parse_catalog(include_str!("../i18n/seo.ja-JP.json"))),
+        (
+            "en-US",
+            parse_catalog(include_str!("../i18n/seo.en-US.json")),
+        ),
+        (
+            "zh-CN",
+            parse_catalog(include_str!("../i18n/seo.zh-CN.json")),
+        ),
+        (
+            "zh-TW",
+            parse_catalog(include_str!("../i18n/seo.zh-TW.json")),
+        ),
+        (
+            "ja-JP",
+            parse_catalog(include_str!("../i18n/seo.ja-JP.json")),
+        ),
     ])
 });
 
-fn lookup(table: &'static LazyLock<HashMap<&'static str, Catalog>>, locale: &str, key: &str) -> String {
+fn lookup(
+    table: &'static LazyLock<HashMap<&'static str, Catalog>>,
+    locale: &str,
+    key: &str,
+) -> String {
     let catalog = catalog_for(table, locale);
     if let Some(value) = catalog.get(key) {
         return value.clone();
@@ -58,7 +77,11 @@ fn lookup(table: &'static LazyLock<HashMap<&'static str, Catalog>>, locale: &str
         .get("en-US")
         .and_then(|fallback| fallback.get(key))
         .cloned()
-        .or_else(|| SEO.get("en-US").and_then(|fallback| fallback.get(key)).cloned())
+        .or_else(|| {
+            SEO.get("en-US")
+                .and_then(|fallback| fallback.get(key))
+                .cloned()
+        })
         .unwrap_or_else(|| key.to_string())
 }
 

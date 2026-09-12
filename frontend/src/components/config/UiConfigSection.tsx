@@ -90,7 +90,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
   description,
   sectionId,
 }) => {
-  const { t } = useI18n()
+  const { t, format } = useI18n()
   const { catalog: g, bindGuide } = useSettingGuide()
   type SeoAiField = 'site_description' | 'site_keywords' | 'site_ai_intro'
 
@@ -763,10 +763,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
               >
                 <div className="site-footer-custom-card-head">
                   <span className="site-footer-custom-card-title">
-                    {t.config.siteFooterCustomItem.replace(
-                      '{n}',
-                      String(index + 1),
-                    )}
+                    {format(t.config.siteFooterCustomItem, { n: index + 1 })}
                   </span>
                   <button
                     type="button"

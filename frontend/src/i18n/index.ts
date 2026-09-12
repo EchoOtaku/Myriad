@@ -6,6 +6,7 @@ export {
   isLocale,
   localeOrFallback,
   parseLocale,
+  parseLocaleCookie,
   saveLocale,
 } from './locales'
 export { formatDate, formatMessage, formatNumber } from './formatMessage'

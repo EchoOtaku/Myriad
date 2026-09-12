@@ -780,7 +780,11 @@ pub(crate) fn discord_fallback_guild_take(
             None => crate::i18n::reports(locale, "discord.takeCommunity"),
         }
     } else if let Some(s) = size {
-        format!("{}{}", crate::i18n::reports(locale, "discord.takeMember"), s)
+        format!(
+            "{}{}",
+            crate::i18n::reports(locale, "discord.takeMember"),
+            s
+        )
     } else {
         crate::i18n::reports(locale, "discord.takeMemberPlain")
     };

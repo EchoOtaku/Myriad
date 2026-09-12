@@ -87,6 +87,7 @@ export function sortSourcesForBoard(
   mode: SourceSortMode,
   role: BrewViewerRole,
   now: number,
+  locale = 'zh-CN',
 ): BrewSource[] {
   const result = [...sources]
   switch (mode) {
@@ -104,11 +105,11 @@ export function sortSourcesForBoard(
       return result.sort((a, b) => {
         const catA = brewMainCategory(a.category, '')
         const catB = brewMainCategory(b.category, '')
-        if (catA !== catB) return catA.localeCompare(catB, 'zh-CN')
-        return a.name.localeCompare(b.name, 'zh-CN')
+        if (catA !== catB) return catA.localeCompare(catB, locale)
+        return a.name.localeCompare(b.name, locale)
       })
     case 'pinyin':
-      return result.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+      return result.sort((a, b) => a.name.localeCompare(b.name, locale))
     default:
       return result
   }

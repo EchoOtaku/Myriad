@@ -60,13 +60,10 @@ const PlatformAutoRefreshSettings: React.FC<
       { value: 'off', label: t.config.autoRefreshOff },
       ...INTERVAL_OPTIONS.map((hours) => ({
         value: String(hours),
-        label: t.config.autoRefreshEveryHours.replace(
-          '{hours}',
-          String(hours),
-        ),
+        label: format(t.config.autoRefreshEveryHours, { hours }),
       })),
     ]
-  }, [t.config.autoRefreshOff, t.config.autoRefreshEveryHours])
+  }, [format, t.config.autoRefreshOff, t.config.autoRefreshEveryHours])
 
   const controls = (
     <div className="settings-stack">
@@ -110,10 +107,7 @@ const PlatformAutoRefreshSettings: React.FC<
             {title}
             {!expandHelp ? (
               <SettingTitleHelp
-                ariaLabel={t.config.detailHelpAriaNamed.replace(
-                  '{title}',
-                  title,
-                )}
+                ariaLabel={format(t.config.detailHelpAriaNamed, { title })}
               >
                 {description}
               </SettingTitleHelp>

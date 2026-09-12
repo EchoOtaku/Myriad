@@ -5,6 +5,7 @@ import brew from './brew.en-US.json'
 import config from './config.en-US.json'
 import core from './en-US.json'
 import errors from './errors.en-US.json'
+import { formatMessage } from './formatMessage'
 import { getDefaultLocale } from './locales'
 import { localeOrFallback } from './locales'
 import { getCachedLocale, loadLocale } from './loadLocale'
@@ -36,4 +37,12 @@ export function copyForLocale(locale: string): TranslationKeys {
 /** Non-React service-layer copy. */
 export function currentCopy(): TranslationKeys {
   return copyForLocale(getDefaultLocale())
+}
+
+/** `formatMessage` against the saved/browser locale. */
+export function formatCurrent(
+  template: string,
+  params: Record<string, string | number> = {},
+): string {
+  return formatMessage(getDefaultLocale(), template, params)
 }

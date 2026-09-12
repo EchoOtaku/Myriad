@@ -46,10 +46,7 @@ fn state_with_visible_root(visible_root: PathBuf) -> GuardState {
             guard_network: "myriad-docker-guard-net".into(),
             compose_dir: visible_root,
             state_dir: "/host/state".into(),
-            expected_guard_image: format!(
-                "{TRUSTED_GUARD_REPOSITORY}@sha256:{}",
-                "a".repeat(64)
-            ),
+            expected_guard_image: format!("{TRUSTED_GUARD_REPOSITORY}@sha256:{}", "a".repeat(64)),
             self_update_token: SecretString::new("g7N2pQ8xV4mK6rT9wY3zA5bC1dF0hJ8l"),
             allow_unpinned_dev: false,
             allowed_images: [
@@ -169,8 +166,7 @@ fn guard_identity_requires_trusted_repository_and_exact_digest() {
     assert!(validate_guard_image_ref(&valid, false).is_ok());
     assert!(validate_guard_image_ref("evil.example/guard@sha256:aaaaaaaa", false).is_err());
     assert!(
-        validate_guard_image_ref("docker.io/somekawahitomi/myriad-updater:latest", false)
-            .is_err()
+        validate_guard_image_ref("docker.io/somekawahitomi/myriad-updater:latest", false).is_err()
     );
     assert!(validate_guard_image_ref(
         &format!("{TRUSTED_GUARD_REPOSITORY}@sha256:{}", "g".repeat(64)),
@@ -185,10 +181,8 @@ fn trusted_digest_canonicalizes_engine_repodigests_without_registry_prefix() {
     let digest = "869973a4d9b4aba6383fdc6aba62b6a908328aebcce748f34ac1f5590193b0b9";
     let canonical = format!("{TRUSTED_GUARD_REPOSITORY}@sha256:{digest}");
     assert_eq!(
-        canonicalize_trusted_digest_ref(&format!(
-            "somekawahitomi/myriad-updater@sha256:{digest}"
-        ))
-        .unwrap(),
+        canonicalize_trusted_digest_ref(&format!("somekawahitomi/myriad-updater@sha256:{digest}"))
+            .unwrap(),
         canonical
     );
     assert_eq!(
@@ -199,10 +193,10 @@ fn trusted_digest_canonicalizes_engine_repodigests_without_registry_prefix() {
         "evil.example/myriad-updater@sha256:{digest}"
     ))
     .is_err());
-    assert!(canonicalize_trusted_digest_ref(&format!(
-        "somekawahitomi/myriad-updater:{digest}"
-    ))
-    .is_err());
+    assert!(
+        canonicalize_trusted_digest_ref(&format!("somekawahitomi/myriad-updater:{digest}"))
+            .is_err()
+    );
 }
 
 #[test]
@@ -263,10 +257,7 @@ fn ensure_host_policy_file_heals_legacy_compose_path() {
     .unwrap();
     assert!(ensure_host_policy_file(&cfg, &path).is_ok());
     let healed = fs::read_to_string(&path).unwrap();
-    assert!(healed.contains(&format!(
-        "DOCKER_GUARD_IMAGE={}",
-        cfg.expected_guard_image
-    )));
+    assert!(healed.contains(&format!("DOCKER_GUARD_IMAGE={}", cfg.expected_guard_image)));
     assert!(healed.contains(&format!("GUARD_SELF_UPDATE_TOKEN={token}")));
     assert!(healed.contains("MYRIAD_GUARD_ENV_FILE=guard-policy/docker-guard.env"));
     assert!(!healed.contains("MYRIAD_GUARD_ENV_FILE=/etc/myriad/docker-guard.env"));
@@ -595,11 +586,10 @@ async fn orphaned_pending_handoff_becomes_a_fresh_failure() {
     let mut state = state();
     Arc::make_mut(&mut state.config).state_dir = root.path().to_path_buf();
     let path = root.path().join("self-update-last.json");
-    let pending =
-        super::super::self_update_helper::SelfUpdateLastStatus::pending_before_handoff(
-            "v1.2.3".into(),
-            "v1.2.2".into(),
-        );
+    let pending = super::super::self_update_helper::SelfUpdateLastStatus::pending_before_handoff(
+        "v1.2.3".into(),
+        "v1.2.2".into(),
+    );
     super::super::self_update_helper::write_status(&path, &pending).unwrap();
 
     assert!(!finalize_or_fail_orphaned_pending_handoff(&state).await);
@@ -640,10 +630,8 @@ fn recovery_retry_budget_survives_guard_restart() {
     assert_eq!(recovery_attempt_from_status(&state, &attempt), 1);
 
     let status: super::super::self_update_helper::SelfUpdateLastStatus =
-        serde_json::from_slice(
-            &std::fs::read(root.path().join("self-update-last.json")).unwrap(),
-        )
-        .unwrap();
+        serde_json::from_slice(&std::fs::read(root.path().join("self-update-last.json")).unwrap())
+            .unwrap();
     assert!(matches!(
         status.status,
         super::super::self_update_helper::SelfUpdateOutcome::Pending
@@ -759,8 +747,7 @@ fn exec_and_unknown_mutations_are_denied() {
 
 #[test]
 fn initializer_logs_remain_project_scoped_read_only_access() {
-    let request =
-        Uri::from_static("/v1.51/containers/init-container-id/logs?stdout=1&stderr=1");
+    let request = Uri::from_static("/v1.51/containers/init-container-id/logs?stdout=1&stderr=1");
     assert_eq!(
         classify_request(&state(), &Method::GET, &request, &Bytes::new()).unwrap(),
         Decision::ProjectContainer("init-container-id".into())
@@ -810,9 +797,7 @@ fn image_pull_is_repository_allowlisted() {
         "/v1.51/images/create?fromImage=docker.io%2Fexample%2Fbackend&tag=v1&fromSrc=https%3A%2F%2Fevil.invalid%2Fimage.tar",
     );
     assert!(validate_image_pull(&state(), &imported, &Bytes::new()).is_err());
-    assert!(
-        validate_image_pull(&state(), &allowed, &Bytes::from_static(b"tar payload")).is_err()
-    );
+    assert!(validate_image_pull(&state(), &allowed, &Bytes::from_static(b"tar payload")).is_err());
 }
 
 #[test]
@@ -824,19 +809,13 @@ fn image_tag_requires_allowlisted_source_and_target() {
     assert!(classify_request(&state(), &Method::POST, &denied_source, &Bytes::new()).is_err());
 
     let cross_repository = Uri::from_static("/v1.51/images/docker.io%2Fexample%2Fbackend:v1/tag?repo=docker.io%2Fexample%2Ffrontend&tag=v1");
-    assert!(
-        classify_request(&state(), &Method::POST, &cross_repository, &Bytes::new()).is_err()
-    );
+    assert!(classify_request(&state(), &Method::POST, &cross_repository, &Bytes::new()).is_err());
 
     let unescaped_slashes = Uri::from_static("/v1.51/images/docker.io/example/backend:v1/tag?repo=docker.io%2Fexample%2Fbackend&tag=myriad-rollback");
-    assert!(
-        classify_request(&state(), &Method::POST, &unescaped_slashes, &Bytes::new()).is_ok()
-    );
+    assert!(classify_request(&state(), &Method::POST, &unescaped_slashes, &Bytes::new()).is_ok());
 
     let restore_version_ref = Uri::from_static("/v1.51/images/docker.io%2Fexample%2Fbackend:myriad-rollback/tag?repo=docker.io%2Fexample%2Fbackend&tag=v1");
-    assert!(
-        classify_request(&state(), &Method::POST, &restore_version_ref, &Bytes::new()).is_ok()
-    );
+    assert!(classify_request(&state(), &Method::POST, &restore_version_ref, &Bytes::new()).is_ok());
 }
 
 #[test]
@@ -1040,30 +1019,21 @@ fn endpoint_identity_overrides_are_denied() {
 #[test]
 fn guard_network_attachment_policy_is_updater_only() {
     let s = state();
-    assert!(authorize_guard_network_attachment(
-        "backend",
-        "myriad-docker-guard-net",
-        &s.config
-    )
-    .is_err());
-    assert!(authorize_guard_network_attachment(
-        "frontend",
-        "myriad-docker-guard-net",
-        &s.config
-    )
-    .is_err());
-    assert!(authorize_guard_network_attachment(
-        "postgres",
-        "myriad-docker-guard-net",
-        &s.config
-    )
-    .is_err());
-    assert!(authorize_guard_network_attachment(
-        "updater",
-        "myriad-docker-guard-net",
-        &s.config
-    )
-    .is_ok());
+    assert!(
+        authorize_guard_network_attachment("backend", "myriad-docker-guard-net", &s.config)
+            .is_err()
+    );
+    assert!(
+        authorize_guard_network_attachment("frontend", "myriad-docker-guard-net", &s.config)
+            .is_err()
+    );
+    assert!(
+        authorize_guard_network_attachment("postgres", "myriad-docker-guard-net", &s.config)
+            .is_err()
+    );
+    assert!(
+        authorize_guard_network_attachment("updater", "myriad-docker-guard-net", &s.config).is_ok()
+    );
 }
 
 #[test]
@@ -1072,8 +1042,7 @@ fn network_connect_classify_requires_container_field() {
     let missing = classify_request(&state(), &Method::POST, &uri, &Bytes::from_static(b"{}"));
     assert!(missing.unwrap_err().contains("Container"));
 
-    let body =
-        Bytes::from(serde_json::to_vec(&json!({"Container": "myriad-backend-1"})).unwrap());
+    let body = Bytes::from(serde_json::to_vec(&json!({"Container": "myriad-backend-1"})).unwrap());
     let decision = classify_request(&state(), &Method::POST, &uri, &body).unwrap();
     assert_eq!(
         decision,

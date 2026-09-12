@@ -85,7 +85,7 @@ export interface UpdaterInlinePanelProps {
 export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
   heading,
 }) => {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const u = t.config
   const { catalog: g, bindGuide } = useSettingGuide()
 
@@ -1461,7 +1461,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
                       tone: 'warn',
                     }
                   : undefined,
-                subtitle: `${new Date(s.created_at).toLocaleString()} · ${formatBytes(s.size_bytes)}`,
+                subtitle: `${new Date(s.created_at).toLocaleString(locale)} · ${formatBytes(s.size_bytes)}`,
                 meta: deleteReason || undefined,
                 busy: rowBusy,
                 actions: [

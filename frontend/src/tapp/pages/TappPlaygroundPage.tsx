@@ -1169,7 +1169,7 @@ export function TappPlaygroundPage() {
     const detail = formatPlaygroundPackageErrors(errors)
     const template = t.tapp.playgroundPackageInvalid
     return template.includes('{errors}')
-      ? template.replace('{errors}', detail)
+      ? format(template, { errors: detail })
       : `${template}\n${detail}`
   }
 
@@ -1207,7 +1207,7 @@ export function TappPlaygroundPage() {
             : ''
         setNotice(
           detail
-            ? t.tapp.playgroundInstallStartFailed.replace('{error}', detail)
+            ? format(t.tapp.playgroundInstallStartFailed, { error: detail })
             : t.tapp.playgroundInstallSuccess,
         )
       }
@@ -1228,7 +1228,7 @@ export function TappPlaygroundPage() {
     try {
       const filename = await exportPlaygroundProjectAsTapp(project)
       setNotice(
-        t.tapp.playgroundExportSuccess.replace('{filename}', filename),
+        format(t.tapp.playgroundExportSuccess, { filename }),
       )
     } catch (exportError) {
       if (exportError instanceof PlaygroundPackageValidationError) {

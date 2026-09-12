@@ -613,10 +613,9 @@ const PlatformsConfigSection: React.FC<PlatformsConfigSectionProps> = ({
                   style={{ cursor: 'pointer' }}
                   role="button"
                   tabIndex={0}
-                  aria-label={t.config.platformOpenDetailAria.replace(
-                    '{name}',
-                    platform.name,
-                  )}
+                  aria-label={format(t.config.platformOpenDetailAria, {
+                    name: platform.name,
+                  })}
                   onClick={openDetail}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
@@ -722,10 +721,9 @@ const PlatformsConfigSection: React.FC<PlatformsConfigSectionProps> = ({
                             />
                             {platformDesc ? (
                               <SettingTitleHelp
-                                ariaLabel={t.config.platformHelpAria.replace(
-                                  '{name}',
-                                  platform.name,
-                                )}
+                                ariaLabel={format(t.config.platformHelpAria, {
+                                  name: platform.name,
+                                })}
                               >
                                 {platformDesc}
                               </SettingTitleHelp>
@@ -817,19 +815,16 @@ const PlatformsConfigSection: React.FC<PlatformsConfigSectionProps> = ({
                         checked={platform.enabled}
                         onChange={() => onToggle(index)}
                         disabled={!platformConfigured}
-                        aria-label={t.config.platformEnableAria.replace(
-                          '{name}',
-                          platform.name,
-                        )}
+                        aria-label={format(t.config.platformEnableAria, {
+                          name: platform.name,
+                        })}
                         preview={{
-                          on: t.config.platformEnablePreviewOn.replace(
-                            '{name}',
-                            platform.name,
-                          ),
-                          off: t.config.platformEnablePreviewOff.replace(
-                            '{name}',
-                            platform.name,
-                          ),
+                          on: format(t.config.platformEnablePreviewOn, {
+                            name: platform.name,
+                          }),
+                          off: format(t.config.platformEnablePreviewOff, {
+                            name: platform.name,
+                          }),
                           disabled: t.config.platformEnablePreviewNeedConfig,
                         }}
                       />

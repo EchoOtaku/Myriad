@@ -62,8 +62,8 @@ mod config;
 mod db;
 mod error;
 mod extract;
-mod i18n;
 mod federation;
+mod i18n;
 mod memory_audit_invariants;
 mod middleware;
 mod models;
@@ -248,6 +248,8 @@ async fn run_server() -> anyhow::Result<()> {
             "backend storage preflight failed; repair /app/data and /app/cache ownership/permissions for uid 1000: {error}"
         )
     })?;
+    crate::db::health::mark_storage_preflight_ok();
+    crate::db::health::record_storage_writable(true);
     tracing::info!(
         data_dir = %services::data_paths::paths().root.display(),
         cache_dir = %services::data_paths::paths().cache.display(),

@@ -400,7 +400,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
             "type": "object",
             "properties": {
                 "text": { "type": "string" },
-                "targetLang": { "type": "string", "enum": ["zh-CN", "zh-TW", "en", "ja", "ko"], "default": "zh-CN" },
+                "targetLang": { "type": "string", "enum": ["zh-CN", "zh-TW", "en", "ja", "ko"], "default": "en-US" },
                 "sourceLang": { "type": "string" }
             },
             "required": ["text"]

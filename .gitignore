@@ -113,6 +113,7 @@ docker/volumes/
 /.dev-updater/
 
 # --- Misc local data trees ---
+.tmp/
 /data
 /.pnpm-store
 /Upload/
@@ -134,6 +135,10 @@ backend/data/.bootstrap-claimed
 !/frontend/tests/browser/liquidGlass.spec.ts
 !/frontend/tests/browser/fixture/liquidGlass.html
 !/frontend/tests/browser/fixture/liquidGlass.ts
+
+# Real backend + disposable Postgres business smokes
+!/frontend/tests/smoke/
+!/frontend/tests/smoke/**
 
 # 本地截图（不提交）
 .local-shots/

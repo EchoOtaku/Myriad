@@ -6,6 +6,7 @@ import type {
 } from '../../../../services/speechApi'
 import type { ReaderCopy } from '../types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { getDefaultLocale } from '../../../../i18n'
 import * as brewliaApi from '../../../../services/brewliaApi'
 import { PodcastPlayer } from '../../../../services/brewliaApi'
 import {
@@ -150,7 +151,9 @@ export function usePodcast({
     'stopped' | 'playing' | 'paused'
   >('stopped')
   const [podcastCurrentIndex, setPodcastCurrentIndex] = useState(0)
-  const [podcastLanguage, setPodcastLanguage] = useState<string>('zh-CN')
+  const [podcastLanguage, setPodcastLanguage] = useState<string>(() =>
+    getDefaultLocale(),
+  )
 
   const [ttsEngine, setTtsEngine] = useState<TTSEngine>(
     () => getTTSSettings().engine,
@@ -651,7 +654,7 @@ export function usePodcast({
 
       if (response.success) {
         setPodcastDialogues(response.dialogues)
-        setPodcastLanguage(response.language || 'zh-CN')
+        setPodcastLanguage(response.language || getDefaultLocale())
         setShowPodcastPlayer(true)
 
         if (cloudTtsAvailable) {
@@ -711,7 +714,7 @@ export function usePodcast({
 
                 const { voiceA, voiceB } = PodcastPlayer.selectVoicePair(
                   voices,
-                  response.language || 'zh-CN',
+                  response.language || getDefaultLocale(),
                 )
                 if (voiceA && voiceB) {
                   podcastPlayerRef.current.setVoices(voiceA, voiceB)
@@ -743,7 +746,7 @@ export function usePodcast({
 
               const { voiceA, voiceB } = PodcastPlayer.selectVoicePair(
                 voices,
-                response.language || 'zh-CN',
+                response.language || getDefaultLocale(),
               )
               if (voiceA && voiceB) {
                 podcastPlayerRef.current.setVoices(voiceA, voiceB)
@@ -760,7 +763,7 @@ export function usePodcast({
 
             const { voiceA, voiceB } = PodcastPlayer.selectVoicePair(
               voices,
-              response.language || 'zh-CN',
+              response.language || getDefaultLocale(),
             )
             if (voiceA && voiceB) {
               podcastPlayerRef.current.setVoices(voiceA, voiceB)
@@ -814,7 +817,7 @@ export function usePodcast({
 
       if (response.success) {
         setPodcastDialogues(response.dialogues)
-        setPodcastLanguage(response.language || 'zh-CN')
+        setPodcastLanguage(response.language || getDefaultLocale())
         setShowPodcastPlayer(true)
 
         setTtsEngine('system')
@@ -827,7 +830,7 @@ export function usePodcast({
 
           const { voiceA, voiceB } = PodcastPlayer.selectVoicePair(
             voices,
-            response.language || 'zh-CN',
+            response.language || getDefaultLocale(),
           )
           if (voiceA && voiceB) {
             podcastPlayerRef.current.setVoices(voiceA, voiceB)

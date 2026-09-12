@@ -142,7 +142,7 @@ function FriendLinkIcon({
 
 export const FriendLinksWidget = memo(
   ({ config, isEditMode, isPreview }: WidgetComponentProps) => {
-    const { t } = useI18n()
+    const { t, format } = useI18n()
     const navigate = useNavigate()
     const anim = useAnimationLevel()
     const { containerRef, scale, fontScale } = useWidgetSize(
@@ -423,10 +423,9 @@ export const FriendLinksWidget = memo(
                       onClick={() => openFriendLink(entry)}
                       disabled={entryDisabled(entry.url, layer.incoming)}
                       className="friend-links-entry group/link relative flex min-w-0 flex-1 cursor-pointer items-center gap-3 overflow-hidden rounded-lg px-3 text-left disabled:cursor-default disabled:opacity-100"
-                      aria-label={t.friendLinksWidget.visitSite.replace(
-                        '{name}',
-                        entry.name,
-                      )}
+                      aria-label={format(t.friendLinksWidget.visitSite, {
+                        name: entry.name,
+                      })}
                     >
                       <FriendLinkIcon
                         icon={entry.icon}
@@ -538,10 +537,9 @@ export const FriendLinksWidget = memo(
                       onClick={() => openFriendLink(entry)}
                       disabled={entryDisabled(entry.url, layer.incoming)}
                       className="friend-links-entry group/link relative flex min-h-0 min-w-0 flex-1 cursor-pointer flex-col items-center justify-center overflow-hidden p-3 text-center disabled:cursor-default disabled:opacity-100"
-                      aria-label={t.friendLinksWidget.visitSite.replace(
-                        '{name}',
-                        entry.name,
-                      )}
+                      aria-label={format(t.friendLinksWidget.visitSite, {
+                        name: entry.name,
+                      })}
                     >
                       <FriendLinkIcon
                         icon={entry.icon}
@@ -605,10 +603,9 @@ export const FriendLinksWidget = memo(
               className="shrink-0 text-gray-400 dark:text-gray-500"
               style={{ fontSize: `${10 * fontScale}px` }}
             >
-              {t.friendLinksWidget.siteCount.replace(
-                '{count}',
-                String(entries.length),
-              )}
+              {format(t.friendLinksWidget.siteCount, {
+                count: entries.length,
+              })}
             </span>
           )}
           <ChevronRight className="h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform group-hover/header:translate-x-0.5 dark:text-gray-500" />
@@ -675,10 +672,9 @@ export const FriendLinksWidget = memo(
                       onClick={() => openFriendLink(entry)}
                       disabled={entryDisabled(entry.url, layer.incoming)}
                       className="friend-links-entry group/link flex min-h-0 cursor-pointer items-center gap-2 overflow-hidden rounded-lg bg-black/3 px-2 text-left transition-colors hover:bg-black/6 disabled:cursor-default disabled:opacity-100 dark:bg-white/4 dark:hover:bg-white/8"
-                      aria-label={t.friendLinksWidget.visitSite.replace(
-                        '{name}',
-                        entry.name,
-                      )}
+                      aria-label={format(t.friendLinksWidget.visitSite, {
+                        name: entry.name,
+                      })}
                     >
                       <FriendLinkIcon
                         icon={entry.icon}

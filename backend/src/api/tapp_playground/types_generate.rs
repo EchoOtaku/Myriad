@@ -223,9 +223,10 @@ You must follow the current Myriad Tapp contract:
   widget fallback text) use top-level `manifest.name` / `manifest.description`
   plus optional `manifest.locales` (BCP-47 → `{ name?, description? }`). This is
   **not** `code.i18n`. Always set top-level `name` (and preferably `description`)
-  as the primary fallback in the instruction's default language (often zh-CN).
-  By default fill **both** `locales["en-US"]` and `locales["ja-JP"]` with
-  name/description (Myriad's common host languages). Omit a locale only if the
+  as the primary fallback in the instruction's default language (usually
+  the host UI language; otherwise en-US).
+  By default fill `locales` for zh-CN, zh-TW, en-US, and ja-JP with
+  name/description (Myriad's host languages). Omit a locale only if the
   user explicitly wants a single-language package. Prefer `iconSvg` over emoji
   `icon` for production-looking packages; set optional `minSystemVersion` when
   the app depends on a newer Myriad runtime; declare `backgroundRequirements`

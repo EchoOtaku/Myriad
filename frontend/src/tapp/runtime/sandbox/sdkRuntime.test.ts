@@ -693,8 +693,8 @@ describe('generated SDK runtime', () => {
     const pageSource = generateFullSDK(makeInstance(), 'tok', 'page')
     const widgetSource = generateWidgetSDK(makeInstance(), 'tok')
     assert.match(pageSource, /document\.documentElement\.lang/)
-    assert.match(widgetSource, /\|\|\s*'zh-CN'/)
-    assert.match(pageSource, /\|\|\s*'zh-CN'/)
+    assert.match(widgetSource, /\|\|\s*'en-US'/)
+    assert.match(pageSource, /\|\|\s*'en-US'/)
     assert.doesNotMatch(widgetSource, /TappWidgetSDK/)
     assert.match(widgetSource, /lifecycle:destroy/)
 

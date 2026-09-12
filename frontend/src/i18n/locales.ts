@@ -69,11 +69,37 @@ export function localeOrFallback(
   return parseLocale(raw) ?? fallback
 }
 
-/** localStorage → navigator languages (q-aware) → en-US */
+const LOCALE_COOKIE = 'locale'
+const LOCALE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365
+
+export function parseLocaleCookie(cookie: string): string | null {
+  const parts = cookie.split(';')
+  for (const part of parts) {
+    const trimmed = part.trim()
+    if (trimmed.startsWith(`${LOCALE_COOKIE}=`)) {
+      return decodeURIComponent(trimmed.slice(LOCALE_COOKIE.length + 1))
+    }
+  }
+  return null
+}
+
+function readLocaleCookie(): string | null {
+  if (typeof document === 'undefined') return null
+  return parseLocaleCookie(document.cookie)
+}
+
+function writeLocaleCookie(locale: Locale): void {
+  if (typeof document === 'undefined') return
+  document.cookie = `${LOCALE_COOKIE}=${encodeURIComponent(locale)}; Path=/; Max-Age=${LOCALE_COOKIE_MAX_AGE}; SameSite=Lax`
+}
+
+/** localStorage → cookie → navigator languages (q-aware) → en-US */
 export function getDefaultLocale(): Locale {
   if (typeof window !== 'undefined') {
     const saved = parseLocale(localStorage.getItem('locale'))
     if (saved) return saved
+    const fromCookie = parseLocale(readLocaleCookie())
+    if (fromCookie) return fromCookie
   }
 
   if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
@@ -96,6 +122,7 @@ export function getDefaultLocale(): Locale {
 export function saveLocale(locale: Locale): void {
   if (typeof window !== 'undefined') {
     localStorage.setItem('locale', locale)
+    writeLocaleCookie(locale)
   }
 }
 

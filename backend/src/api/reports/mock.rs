@@ -45,30 +45,15 @@ pub(crate) fn generate_mock_report(
             (
                 match (anime, video) {
                     (Some(_), Some(_)) => t(locale, "bili.diverge"),
-                    (Some(_), None) => {
-                        t(locale, "bili.leansAnime")
-                    }
+                    (Some(_), None) => t(locale, "bili.leansAnime"),
                     (None, Some(_)) => t(locale, "bili.watchingUploads"),
                     (None, None) => t(locale, "bili.empty"),
                 }
                 .into(),
                 take_insights([
-                    anime.map(|name| {
-                        format!(
-                            "{}《{}》",
-                            t(locale, "bili.stillListed"),
-                            name
-                        )
-                    }),
-                    video.map(|title| {
-                        format!(
-                            "{}《{}》",
-                            t(locale, "bili.watching"),
-                            title
-                        )
-                    }),
-                    (!mix.is_empty())
-                        .then(|| format!("{} {}", t(locale, "bili.mix"), mix)),
+                    anime.map(|name| format!("{}《{}》", t(locale, "bili.stillListed"), name)),
+                    video.map(|title| format!("{}《{}》", t(locale, "bili.watching"), title)),
+                    (!mix.is_empty()).then(|| format!("{} {}", t(locale, "bili.mix"), mix)),
                 ]),
                 json!({ "danmaku": danmaku }),
             )
@@ -97,20 +82,8 @@ pub(crate) fn generate_mock_report(
                 }
                 .into(),
                 take_insights([
-                    top.map(|g| {
-                        format!(
-                            "《{}》{}",
-                            g.name,
-                            t(locale, "steam.mostMinutes")
-                        )
-                    }),
-                    genre.map(|g| {
-                        format!(
-                            "{}{}",
-                            t(locale, "steam.genreLeans"),
-                            g
-                        )
-                    }),
+                    top.map(|g| format!("《{}》{}", g.name, t(locale, "steam.mostMinutes"))),
+                    genre.map(|g| format!("{}{}", t(locale, "steam.genreLeans"), g)),
                     Some(format!(
                         "{} {} · {} {}",
                         t(locale, "steam.library"),
@@ -141,17 +114,11 @@ pub(crate) fn generate_mock_report(
                 .map(|cal| cal.iter().filter(|d| d.count > 0).count())
                 .unwrap_or(0);
             (
-                t(locale, "github.starsNotCalendar")
-                .into(),
+                t(locale, "github.starsNotCalendar").into(),
                 take_insights([
                     top.and_then(|repo| {
                         repo.stars.map(|n| {
-                            format!(
-                                "{} {} {} star",
-                                repo.name,
-                                t(locale, "github.top"),
-                                n
-                            )
+                            format!("{} {} {} star", repo.name, t(locale, "github.top"), n)
                         })
                     }),
                     (cal_days > 0).then(|| {
@@ -162,13 +129,7 @@ pub(crate) fn generate_mock_report(
                             t(locale, "github.activeDays")
                         )
                     }),
-                    lang.map(|name| {
-                        format!(
-                            "{} {}",
-                            t(locale, "github.topLanguage"),
-                            name
-                        )
-                    }),
+                    lang.map(|name| format!("{} {}", t(locale, "github.topLanguage"), name)),
                 ]),
                 json!({}),
             )
@@ -183,10 +144,8 @@ pub(crate) fn generate_mock_report(
             };
             if empty {
                 (
-                    t(locale, "yt.noPublic")
-                    .into(),
-                    vec![t(locale, "yt.videoCountZero")
-                    .into()],
+                    t(locale, "yt.noPublic").into(),
+                    vec![t(locale, "yt.videoCountZero").into()],
                     json!({
                         "vibe": t(locale, "yt.coldShell"),
                         "channel_type": t(locale, "yt.coldStart"),
@@ -200,8 +159,7 @@ pub(crate) fn generate_mock_report(
                         .and_then(|v| v.published_at.as_deref()),
                 );
                 (
-                    t(locale, "yt.subsSplit")
-                    .into(),
+                    t(locale, "yt.subsSplit").into(),
                     take_insights([
                         Some(format!(
                             "{} {} · {} {}",
@@ -210,24 +168,12 @@ pub(crate) fn generate_mock_report(
                             t(locale, "yt.subs"),
                             analysis.subscriber_count
                         )),
-                        latest.map(|title| {
-                            format!(
-                                "{}《{}》",
-                                t(locale, "yt.latest"),
-                                title
-                            )
-                        }),
+                        latest.map(|title| format!("{}《{}》", t(locale, "yt.latest"), title)),
                         analysis
                             .recent_videos
                             .first()
                             .and_then(|v| v.published_at.as_deref())
-                            .map(|at| {
-                                format!(
-                                    "{} {}",
-                                    t(locale, "yt.uploaded"),
-                                    at
-                                )
-                            }),
+                            .map(|at| format!("{} {}", t(locale, "yt.uploaded"), at)),
                     ]),
                     json!({
                         "vibe": t(locale, "yt.hasVideosVibe"),
@@ -295,26 +241,11 @@ pub(crate) fn generate_mock_report(
                 .map(|(i, tag)| json!({ "tag": tag, "color": MOOD_COLORS[i] }))
                 .collect();
             (
-                t(locale, "netease.genreHonest")
-                .into(),
+                t(locale, "netease.genreHonest").into(),
                 take_insights([
-                    artist.map(|name| {
-                        format!(
-                            "{} {}",
-                            t(locale, "netease.keepsShowing"),
-                            name
-                        )
-                    }),
-                    region.map(|name| {
-                        format!("{}{}", t(locale, "netease.regionLeans"), name)
-                    }),
-                    genre.map(|name| {
-                        format!(
-                            "{}{}",
-                            t(locale, "netease.genreLeans"),
-                            name
-                        )
-                    }),
+                    artist.map(|name| format!("{} {}", t(locale, "netease.keepsShowing"), name)),
+                    region.map(|name| format!("{}{}", t(locale, "netease.regionLeans"), name)),
+                    genre.map(|name| format!("{}{}", t(locale, "netease.genreLeans"), name)),
                 ]),
                 json!({
                     "soul_color": "#5B6ABF",
@@ -351,8 +282,7 @@ pub(crate) fn generate_mock_report(
                 .or(analysis.recent_posts.first())
                 .map(|p| p.text.chars().take(24).collect::<String>());
             (
-                t(locale, "x.followsHonest")
-                .into(),
+                t(locale, "x.followsHonest").into(),
                 take_insights([
                     Some(format!(
                         "{} {} {}",
@@ -360,20 +290,8 @@ pub(crate) fn generate_mock_report(
                         analysis.engagement_stats.total_posts,
                         t(locale, "x.postUnit")
                     )),
-                    follow.map(|item| {
-                        format!(
-                            "{} @{}",
-                            t(locale, "x.follows"),
-                            item.username
-                        )
-                    }),
-                    post.map(|text| {
-                        format!(
-                            "{}「{}」",
-                            t(locale, "x.recentPost"),
-                            text
-                        )
-                    }),
+                    follow.map(|item| format!("{} @{}", t(locale, "x.follows"), item.username)),
+                    post.map(|text| format!("{}「{}」", t(locale, "x.recentPost"), text)),
                 ]),
                 json!({
                     "vibe": if analysis.engagement_stats.total_posts == 0 {
@@ -417,8 +335,7 @@ pub(crate) fn generate_mock_report(
                 t(locale, "discord.regular")
             };
             (
-                t(locale, "discord.identityOwned")
-                .into(),
+                t(locale, "discord.identityOwned").into(),
                 take_insights([
                     Some(format!(
                         "{} {} · {} {}",
@@ -427,9 +344,7 @@ pub(crate) fn generate_mock_report(
                         t(locale, "discord.admin"),
                         admin
                     )),
-                    guild.map(|g| {
-                        format!("{} {}", t(locale, "discord.listed"), g.name)
-                    }),
+                    guild.map(|g| format!("{} {}", t(locale, "discord.listed"), g.name)),
                     bind.map(|name| format!("{} {}", t(locale, "discord.linked"), name)),
                 ]),
                 json!({
@@ -456,8 +371,7 @@ pub(crate) fn generate_mock_report(
                 .map(|t| t.name.as_str());
             let hunter = analysis.completed_games >= 5;
             (
-                t(locale, "xbox.greens")
-                .into(),
+                t(locale, "xbox.greens").into(),
                 take_insights([
                     Some(format!(
                         "{} {} / {} {:.0}%",
@@ -467,8 +381,7 @@ pub(crate) fn generate_mock_report(
                         analysis.average_completion
                     )),
                     Some(format!("GS {}", analysis.gamerscore)),
-                    title
-                        .map(|name| format!("{}《{}》", t(locale, "xbox.recent"), name)),
+                    title.map(|name| format!("{}《{}》", t(locale, "xbox.recent"), name)),
                 ]),
                 json!({
                     "gamer_type": if hunter {
@@ -486,8 +399,7 @@ pub(crate) fn generate_mock_report(
                 .or(analysis.top_completed_titles.first())
                 .map(|t| t.name.as_str());
             (
-                t(locale, "psn.cabinet")
-                .into(),
+                t(locale, "psn.cabinet").into(),
                 take_insights([
                     Some(format!(
                         "{} {}",
@@ -499,8 +411,7 @@ pub(crate) fn generate_mock_report(
                         t(locale, "psn.avgProgress"),
                         analysis.average_progress.round()
                     )),
-                    title
-                        .map(|name| format!("{}《{}》", t(locale, "xbox.recent"), name)),
+                    title.map(|name| format!("{}《{}》", t(locale, "xbox.recent"), name)),
                 ]),
                 json!({
                     "hunter_type": if analysis.platinum_count >= 10 {
@@ -534,15 +445,8 @@ fn catalog_mock(
         taste.clone(),
         take_insights([
             Some(format!("wish {} · done {}", wish, done)),
-            top.map(|title| {
-                format!(
-                    "{}《{}》",
-                    t(locale, "catalog.highScore"),
-                    title
-                )
-            }),
-            watching
-                .map(|title| format!("{}《{}》", t(locale, "catalog.watching"), title)),
+            top.map(|title| format!("{}《{}》", t(locale, "catalog.highScore"), title)),
+            watching.map(|title| format!("{}《{}》", t(locale, "catalog.watching"), title)),
         ]),
         json!({ "taste_profile": taste }),
     )

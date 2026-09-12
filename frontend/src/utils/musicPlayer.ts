@@ -1,6 +1,6 @@
 import type { MotionAudioFeatures } from './audioMotionAnalysis'
 import { API_URL } from '../config'
-import { currentCopy } from '../i18n/localeCopy'
+import { currentCopy, formatCurrent } from '../i18n/localeCopy'
 import { analyzeMotionAudio } from './audioMotionAnalysis'
 import { getCachedIsChinaMainland, isUserInChinaMainland } from './geoLocation'
 import { shouldPreserveNativeAudioOutput } from './platformDetect'
@@ -693,10 +693,9 @@ export async function getNeteaseVerbatimLyrics(
 
     if (!response.ok) {
       throw new Error(
-        currentCopy().errors.lyricsFailed.replace(
-          '{status}',
-          String(response.status),
-        ),
+        formatCurrent(currentCopy().errors.lyricsFailed, {
+          status: response.status,
+        }),
       )
     }
 
@@ -820,10 +819,9 @@ export async function getKugouVerbatimLyrics(
     }
     if (!response.ok) {
       throw new Error(
-        currentCopy().errors.lyricsFailed.replace(
-          '{status}',
-          String(response.status),
-        ),
+        formatCurrent(currentCopy().errors.lyricsFailed, {
+          status: response.status,
+        }),
       )
     }
 
@@ -877,10 +875,9 @@ export async function getQQLyricsWithTranslation(
         /* ignore body parse */
       }
       throw new Error(
-        currentCopy().errors.lyricsFailed.replace(
-          '{status}',
-          String(response.status),
-        ),
+        formatCurrent(currentCopy().errors.lyricsFailed, {
+          status: response.status,
+        }),
       )
     }
 

@@ -121,7 +121,7 @@ async function getResponseError(response: Response, fallback: string) {
 }
 
 const SetupWizard: React.FC = () => {
-  const { t } = useI18n()
+  const { t, format } = useI18n()
   const [status, setStatus] = useState<SetupStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -190,10 +190,9 @@ const SetupWizard: React.FC = () => {
       const healthResponse = await fetch(`${API_URL}/health`)
       if (!healthResponse.ok) {
         throw new Error(
-          t.errors.backendUnreachable.replace(
-            '{status}',
-            String(healthResponse.status),
-          ),
+          format(t.errors.backendUnreachable, {
+            status: healthResponse.status,
+          }),
         )
       }
       const healthData = await healthResponse.json()
@@ -201,10 +200,9 @@ const SetupWizard: React.FC = () => {
       const configResponse = await fetch(`${API_URL}/api/setup/config`)
       if (!configResponse.ok) {
         throw new Error(
-          t.errors.setupConfigFailed.replace(
-            '{status}',
-            String(configResponse.status),
-          ),
+          format(t.errors.setupConfigFailed, {
+            status: configResponse.status,
+          }),
         )
       }
       const setupConfig = await configResponse.json()
@@ -258,10 +256,7 @@ const SetupWizard: React.FC = () => {
           return
         }
         throw new Error(
-          t.errors.setupCheckFailed.replace(
-            '{status}',
-            String(response.status),
-          ),
+          format(t.errors.setupCheckFailed, { status: response.status }),
         )
       }
       const data = await response.json()
@@ -281,7 +276,7 @@ const SetupWizard: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [t, format])
 
   useEffect(() => {
     void checkSetupStatus()
@@ -793,19 +788,19 @@ const SetupWizard: React.FC = () => {
           stepName={stepName || undefined}
           current={stepIndex || undefined}
           total={stepIndex ? TOTAL_STEPS : undefined}
-          progressText={t.setup.stepOf
-            .replace('{current}', String(stepIndex))
-            .replace('{total}', String(TOTAL_STEPS))}
+          progressText={format(t.setup.stepOf, {
+            current: stepIndex,
+            total: TOTAL_STEPS,
+          })}
           back={
             stage === 'database' ||
             stage === 'migrate' ||
             stage === 'admin' ||
             stage === 'site' ? (
               <BackButton
-                label={t.setup.backTo.replace(
-                  '{step}',
-                  t.setup.welcomeStepShort,
-                )}
+                label={format(t.setup.backTo, {
+                  step: t.setup.welcomeStepShort,
+                })}
                 destination={t.setup.welcomeStepShort}
                 disabled={
                   savingDb || migratingDb || creatingAdmin || savingSite
@@ -905,7 +900,7 @@ const SetupWizard: React.FC = () => {
                   title={
                     greetingName ? (
                       <>
-                        {t.setup.doneGreeting.replace('{name}', greetingName)}
+                        {format(t.setup.doneGreeting, { name: greetingName })}
                         <br />
                         {t.setup.doneReadyTitle}
                       </>

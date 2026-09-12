@@ -292,7 +292,7 @@ function ProviderCard({
   onChange: (patch: Partial<OAuthProviderEntry>) => void
   onRemove: () => void
 }) {
-  const { t } = useI18n()
+  const { t, format } = useI18n()
   const { catalog: g, bindGuide } = useSettingGuide()
   const providerGuide = bindGuide('oauth.provider', g.oauth.provider).guide
   const configured = hasOAuthCredential(entry)
@@ -359,10 +359,10 @@ function ProviderCard({
           className="ai-vendor-card-hit"
           onClick={() => setOpen((value) => !value)}
           aria-expanded={open}
-          aria-label={(open
-            ? t.config.collapseGroupAria
-            : t.config.expandGroupAria
-          ).replace('{title}', title)}
+          aria-label={format(
+            open ? t.config.collapseGroupAria : t.config.expandGroupAria,
+            { title },
+          )}
         />
         <div className="oidc-provider-title">
           <ProviderIcon entry={entry} />

@@ -72,7 +72,7 @@ import '../components/TappAppCard.css'
 
 export function TappListPage() {
   const navigate = useNavigate()
-  const { t, locale } = useI18n()
+  const { t, locale, format } = useI18n()
   const { isMobile } = useBreakpoints()
   const { isAdmin, isAuthenticated, hasChecked, checkAuth } = useAuth()
   const animConfig = useAnimationLevel()
@@ -944,7 +944,7 @@ export function TappListPage() {
         onInstall={() => loadTapps(true)}
         onSuccess={(name) =>
           showToastMessage(
-            t.tapp.installSuccess.replace('{name}', name),
+            format(t.tapp.installSuccess, { name }),
             'success',
           )
         }

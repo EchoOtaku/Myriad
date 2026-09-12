@@ -43,7 +43,7 @@ function formatLimit(maxBytes: number, maxRecords?: number): string {
 }
 
 export function TappDataExchangeConsentHost() {
-  const { t } = useI18n()
+  const { t, format } = useI18n()
   const { current } = useSyncExternalStore(
     subscribeDataExchangeConsent,
     getDataExchangeConsentSnapshot,
@@ -197,10 +197,9 @@ export function TappDataExchangeConsentHost() {
 
         {current.queuedCount > 0 && (
           <p className="tapp-data-consent-queued">
-            {t.tapp.dataExchangeQueued.replace(
-              '{count}',
-              String(current.queuedCount),
-            )}
+            {format(t.tapp.dataExchangeQueued, {
+              count: current.queuedCount,
+            })}
           </p>
         )}
 

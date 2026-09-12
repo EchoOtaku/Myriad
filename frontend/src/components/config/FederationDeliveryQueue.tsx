@@ -164,7 +164,7 @@ export const FederationDeliveryQueue: React.FC<
   onRefresh,
   className,
 }) => {
-  const { t } = useI18n()
+  const { t, format } = useI18n()
   const c = t.config
 
   const [bulkBusy, setBulkBusy] = useState(false)
@@ -478,9 +478,10 @@ export const FederationDeliveryQueue: React.FC<
 
   const footer =
     queryActive && items.length > 0 && !listTruncated
-      ? c.federationDeliveryShowing
-          .replace('{shown}', String(filteredItems.length))
-          .replace('{total}', String(items.length))
+      ? format(c.federationDeliveryShowing, {
+          shown: filteredItems.length,
+          total: items.length,
+        })
       : undefined
 
   const listItems = useMemo((): ManagedListItem[] => {
@@ -498,9 +499,10 @@ export const FederationDeliveryQueue: React.FC<
                 : item.status === 'delivered'
                   ? c.federationDeliveryStatusDelivered
                   : item.status
-      const attemptsLabel = c.federationDeliveryAttempts
-        .replace('{attempts}', String(item.attempts ?? 0))
-        .replace('{max}', String(item.max_attempts ?? 0))
+      const attemptsLabel = format(c.federationDeliveryAttempts, {
+        attempts: item.attempts ?? 0,
+        max: item.max_attempts ?? 0,
+      })
       const target = item.target_domain || item.target_inbox || '—'
       const busyAction = rowBusy[item.id]
       const showRetry = shouldOfferDeliveryRetry(item)
@@ -567,6 +569,7 @@ export const FederationDeliveryQueue: React.FC<
     handleRetry,
     handleRemove,
     t.errors.noticeDeliveryFailed,
+    format,
   ])
 
   return (
@@ -598,9 +601,7 @@ export const FederationDeliveryQueue: React.FC<
       maxHeight={filteredItems.length > 8 ? '20rem' : null}
       maxVisibleItems={LIST_CAP}
       truncateFooter={(shown, total) =>
-        c.federationDeliveryShowing
-          .replace('{shown}', String(shown))
-          .replace('{total}', String(total))
+        format(c.federationDeliveryShowing, { shown, total })
       }
     />
   )

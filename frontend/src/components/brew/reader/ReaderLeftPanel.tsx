@@ -175,9 +175,8 @@ export default memo(
       }
     }, [voiceList])
 
-    const brewCopy = t.brew as unknown as Record<string, string>
     const voiceTip = (voice: { id: number; description: string }) =>
-      localizedVoiceDescription(brewCopy, voice)
+      localizedVoiceDescription(t.brew, voice)
 
     return (
       // 常驻 DOM，避免切换时重挂 backdrop-blur。用 animate + pointerEvents，不卸载。

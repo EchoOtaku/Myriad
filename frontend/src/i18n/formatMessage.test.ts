@@ -33,4 +33,26 @@ describe('formatMessage', () => {
       'none',
     )
   })
+
+  it('pluralizes English countable nouns', () => {
+    const minutes =
+      '{minutes, plural, one {# minute ago} other {# minutes ago}}'
+    assert.equal(formatMessage('en-US', minutes, { minutes: 1 }), '1 minute ago')
+    assert.equal(
+      formatMessage('en-US', minutes, { minutes: 3 }),
+      '3 minutes ago',
+    )
+    const sites = '{count, plural, one {# site} other {# sites}}'
+    assert.equal(formatMessage('en-US', sites, { count: 1 }), '1 site')
+    assert.equal(formatMessage('en-US', sites, { count: 4 }), '4 sites')
+  })
+
+  it('fills remaining tokens after a plural branch', () => {
+    const tpl =
+      'Showing {shown, plural, one {# item} other {# items}} from {total}'
+    assert.equal(
+      formatMessage('en-US', tpl, { shown: 1, total: 9 }),
+      'Showing 1 item from 9',
+    )
+  })
 })

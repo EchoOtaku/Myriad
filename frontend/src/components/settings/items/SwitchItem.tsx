@@ -30,7 +30,7 @@ export const SwitchItem = React.memo<SwitchItemProps>(
     layout = 'horizontal',
     className = '',
   }) => {
-    const { t } = useI18n()
+    const { t, format } = useI18n()
     const expandHelp = Boolean(useSettingsHelp()?.showDetails)
     const detailText = detail != null && detail !== '' ? detail : null
     const anchorProps = guideDomProps(guidePath)
@@ -57,10 +57,7 @@ export const SwitchItem = React.memo<SwitchItemProps>(
               {label}
               {detailText && !expandHelp && (
                 <SettingTitleHelp
-                  ariaLabel={t.config.detailHelpAriaNamed.replace(
-                    '{title}',
-                    label,
-                  )}
+                  ariaLabel={format(t.config.detailHelpAriaNamed, { title: label })}
                 >
                   {detailText}
                 </SettingTitleHelp>

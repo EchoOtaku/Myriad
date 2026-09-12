@@ -110,15 +110,12 @@ Windows:
 
 ## 数据备份
 
-```bash
-mkdir -p backups
-docker compose exec -T postgres pg_dump -U myriad -d myriad > "backups/backup_$(date +%Y%m%d_%H%M%S).sql"
-```
-
-恢复：
+只 dump 数据库不够：Tapp 安装、形象 atlas 和密钥在 `backend_data` 与 `.env`。
+完整步骤见 [BACKUP.md](deployment/BACKUP.md)。
 
 ```bash
-docker compose exec -T postgres psql -U myriad -d myriad < backups/backup_20240101_120000.sql
+bash scripts/extra/backup.sh backup
+bash scripts/extra/backup.sh restore --from backups/myriad-YYYYMMDD_HHMMSS
 ```
 
 ## 清理数据

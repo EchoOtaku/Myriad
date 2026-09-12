@@ -81,7 +81,7 @@ export function TappStore({
   compact = false,
   fullscreen = false,
 }: TappStoreProps) {
-  const { t, locale } = useI18n()
+  const { t, locale, format } = useI18n()
   const navigate = useNavigate()
   const { isAuthenticated, isAdmin, hasChecked, checkAuth } = useAuth()
   const [searchQuery, setSearchQuery] = useState('')
@@ -633,7 +633,7 @@ export function TappStore({
             ]),
         )
         notifyInstalled()
-        showSuccess(t.tapp.installSuccess.replace('{name}', app.name))
+        showSuccess(format(t.tapp.installSuccess, { name: app.name }))
       } catch (error) {
         console.error('Failed to install Tapp:', error)
         showError(

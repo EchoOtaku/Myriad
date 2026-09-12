@@ -1,4 +1,5 @@
 import type { RemoteStoreSource } from '../services/RemoteStoreService'
+import { formatCurrent } from '../../i18n/localeCopy'
 
 export function compareVersions(left: string, right: string): number {
   const parts1 = left.split('.').map((n) => Number.parseInt(n, 10) || 0)
@@ -84,7 +85,7 @@ export function packageProgressLabel(
   } else {
     template = isUpdate ? tapp.updateDownloading : tapp.installDownloading
   }
-  let label = template.replace('{percent}', String(percent))
+  let label = formatCurrent(template, { percent })
   if (detail && (p === 'download' || p === 'fetch' || p === 'client')) {
     const short =
       detail.length > 28

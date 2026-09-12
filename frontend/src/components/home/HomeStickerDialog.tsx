@@ -82,7 +82,7 @@ export function HomeStickerDialog({
   onGenerate,
   onUpload,
 }: HomeStickerDialogProps) {
-  const { t } = useI18n()
+  const { t, format } = useI18n()
   const refFileId = useId()
   const uploadFileId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
@@ -273,10 +273,9 @@ export function HomeStickerDialog({
               size,
             ) ? (
               <p className="home-sticker-guide__desc">
-                {t.home.stickerGenerateCropHint.replace(
-                  '{aspect}',
-                  stickerAspectKey(size),
-                )}
+                {format(t.home.stickerGenerateCropHint, {
+                  aspect: stickerAspectKey(size),
+                })}
               </p>
             ) : null}
           </>

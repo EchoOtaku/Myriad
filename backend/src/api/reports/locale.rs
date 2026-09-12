@@ -78,7 +78,10 @@ fn pick_from_language_list(raw: &str) -> Option<&'static str> {
             let mut q = 1.0_f64;
             for param in bits {
                 let param = param.trim();
-                if let Some(value) = param.strip_prefix("q=").or_else(|| param.strip_prefix("Q=")) {
+                if let Some(value) = param
+                    .strip_prefix("q=")
+                    .or_else(|| param.strip_prefix("Q="))
+                {
                     if let Ok(parsed) = value.parse::<f64>() {
                         q = parsed.clamp(0.0, 1.0);
                     }
@@ -88,8 +91,14 @@ fn pick_from_language_list(raw: &str) -> Option<&'static str> {
         })
         .filter(|item| item.0 > 0.0)
         .collect();
-    items.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal).then(a.1.cmp(&b.1)));
-    items.into_iter().find_map(|(_, _, tag)| map_language_tag(tag))
+    items.sort_by(|a, b| {
+        b.0.partial_cmp(&a.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.1.cmp(&b.1))
+    });
+    items
+        .into_iter()
+        .find_map(|(_, _, tag)| map_language_tag(tag))
 }
 
 pub fn normalize_report_locale(raw: &str) -> &'static str {
@@ -98,6 +107,24 @@ pub fn normalize_report_locale(raw: &str) -> &'static str {
 
 /// `None` when the request carries no locale signal — caller should reuse the
 /// last stored report language instead of inventing en-US.
+fn locale_from_cookie(headers: &HeaderMap) -> Option<&'static str> {
+    let cookie = headers.get(header::COOKIE)?.to_str().ok()?;
+    for part in cookie.split(';') {
+        let part = part.trim();
+        let Some(value) = part
+            .strip_prefix("locale=")
+            .or_else(|| part.strip_prefix("Locale="))
+        else {
+            continue;
+        };
+        let value = value.trim();
+        if !value.is_empty() && value.len() <= 32 {
+            return Some(normalize_report_locale(value));
+        }
+    }
+    None
+}
+
 pub fn locale_from_headers(headers: &HeaderMap) -> Option<&'static str> {
     if let Some(v) = headers
         .get("x-myriad-locale")
@@ -106,6 +133,9 @@ pub fn locale_from_headers(headers: &HeaderMap) -> Option<&'static str> {
         .filter(|s| !s.is_empty() && s.len() <= 32)
     {
         return Some(normalize_report_locale(v));
+    }
+    if let Some(from_cookie) = locale_from_cookie(headers) {
+        return Some(from_cookie);
     }
     if let Some(al) = headers
         .get(header::ACCEPT_LANGUAGE)
@@ -228,6 +258,17 @@ mod tests {
         headers.insert("accept-language", HeaderValue::from_static("en-US"));
         headers.insert("x-myriad-locale", HeaderValue::from_static("ja-JP"));
         assert_eq!(locale_from_headers(&headers), Some("ja-JP"));
+    }
+
+    #[test]
+    fn header_prefers_locale_cookie_over_accept_language() {
+        let mut headers = HeaderMap::new();
+        headers.insert("accept-language", HeaderValue::from_static("en-US"));
+        headers.insert(
+            "cookie",
+            HeaderValue::from_static("theme=dark; locale=zh-TW"),
+        );
+        assert_eq!(locale_from_headers(&headers), Some("zh-TW"));
     }
 
     #[test]

@@ -1,3 +1,5 @@
+import { formatMessage, getDefaultLocale } from '../../../i18n'
+
 export function formatCompactNumber(n: number | undefined | null): string {
   const num = Number(n) || 0
   if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(1)}B`
@@ -91,18 +93,20 @@ export function localizeDiscordGuildTake(
     const sizeRaw = raw.slice(prefix.length).trim()
     const sizeKey = DISCORD_SIZE_ALIASES.find(([alias]) => alias === sizeRaw)?.[1]
     if (!sizeKey) continue
-    return labels.discordTakeWithSize
-      .replace('{role}', labels.discordTakeMember)
-      .replace('{size}', labels[sizeKey])
+    return formatMessage(getDefaultLocale(), labels.discordTakeWithSize, {
+      role: labels.discordTakeMember,
+      size: labels[sizeKey],
+    })
   }
   for (const [prefix, roleKey] of DISCORD_ROLE_PREFIXES) {
     if (!raw.startsWith(prefix)) continue
     const sizeRaw = raw.slice(prefix.length).trim()
     const sizeKey = DISCORD_SIZE_ALIASES.find(([alias]) => alias === sizeRaw)?.[1]
     if (!sizeKey) continue
-    return labels.discordTakeWithSize
-      .replace('{role}', labels[roleKey])
-      .replace('{size}', labels[sizeKey])
+    return formatMessage(getDefaultLocale(), labels.discordTakeWithSize, {
+      role: labels[roleKey],
+      size: labels[sizeKey],
+    })
   }
   return take
 }

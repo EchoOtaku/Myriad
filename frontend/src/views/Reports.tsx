@@ -290,7 +290,7 @@ export default function Reports() {
     void preloadPlatformFaces(REPORT_PLATFORM_IDS).catch(() => {})
   }, [])
 
-  const { t, locale } = useI18n()
+  const { t, locale, format } = useI18n()
   const { preferences: moduleVisibility } = useModuleVisibilityPreferences()
   const moduleOpenToAll = canAccessModuleVisibility(
     moduleVisibility.modules.reports,
@@ -620,7 +620,7 @@ export default function Reports() {
       }
 
       showToastMessage(
-        t.reportsPage.refreshingReport.replace('{platform}', platformName),
+        format(t.reportsPage.refreshingReport, { platform: platformName }),
         'success',
       )
 
@@ -711,10 +711,9 @@ export default function Reports() {
           card_visuals: updatedPlatformReport.card_visuals,
         })
         showToastMessage(
-          t.reportsPage.reportRefreshSuccess.replace(
-            '{platform}',
-            platformName,
-          ),
+          format(t.reportsPage.reportRefreshSuccess, {
+            platform: platformName,
+          }),
           'success',
         )
       } else {
@@ -723,13 +722,13 @@ export default function Reports() {
     } catch (err) {
       console.error('Refresh stage report failed:', err)
       showToastMessage(
-        t.reportsPage.refreshReportFailed.replace('{platform}', platformName),
+        format(t.reportsPage.refreshReportFailed, { platform: platformName }),
         'error',
       )
     } finally {
       setRefreshingStage(false)
     }
-  }, [stageReportData, mergePlatformReport, t.reportsPage, translatedPlatforms, showToastMessage, locale])
+  }, [stageReportData, mergePlatformReport, t.reportsPage, translatedPlatforms, showToastMessage, locale, format])
 
   const {
     isAdmin: authIsAdmin,
@@ -869,10 +868,9 @@ export default function Reports() {
           if (!fetchResponse.ok || fetchBody?.success === false) {
             fetchWarning = reportUserFacingError(
               typeof fetchBody?.message === 'string' ? fetchBody.message : null,
-              t.reportsPage.refreshReportFailed.replace(
-                '{platform}',
-                platformName,
-              ),
+              format(t.reportsPage.refreshReportFailed, {
+                platform: platformName,
+              }),
               t.reportsPage,
             )
             console.warn(fetchWarning)
@@ -880,10 +878,9 @@ export default function Reports() {
             notifyRecentActivityUpdated()
           }
         } catch (fetchErr) {
-          fetchWarning = t.reportsPage.refreshReportFailed.replace(
-            '{platform}',
-            platformName,
-          )
+          fetchWarning = format(t.reportsPage.refreshReportFailed, {
+            platform: platformName,
+          })
           console.warn(`刷新 ${platformId} 数据请求出错:`, fetchErr)
         }
 
@@ -974,7 +971,7 @@ export default function Reports() {
         setLoadingPlatform(null)
       }
     },
-    [t.reportsPage, translatedPlatforms, mergePlatformReport, showToastMessage, locale],
+    [t.reportsPage, translatedPlatforms, mergePlatformReport, showToastMessage, locale, format],
   )
 
   return (

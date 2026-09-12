@@ -26,7 +26,7 @@ export const SiteUrlField: React.FC<SiteUrlFieldProps> = ({
   value,
   onApplied,
 }) => {
-  const { t } = useI18n()
+  const { t, format } = useI18n()
   const [error, setError] = useState<string | undefined>()
   const [resultOk, setResultOk] = useState<string | null>(null)
   const [applied, setApplied] = useState<
@@ -64,7 +64,7 @@ export const SiteUrlField: React.FC<SiteUrlFieldProps> = ({
       }
 
       if (
-        !window.confirm(t.config.domainChangeConfirm.replace('{origin}', next))
+        !window.confirm(format(t.config.domainChangeConfirm, { origin: next }))
       ) {
         throw new Error('cancelled')
       }

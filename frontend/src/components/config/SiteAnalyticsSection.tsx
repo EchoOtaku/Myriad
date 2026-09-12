@@ -83,7 +83,7 @@ function AnalyticsTextBlock({
   titleExtra?: ReactNode
   children: ReactNode
 }) {
-  const { t } = useI18n()
+  const { t, format } = useI18n()
   const helpCtx = useSettingsHelp()
   const expandHelp = Boolean(helpCtx?.showDetails)
   const showHelp = Boolean(description)
@@ -99,10 +99,7 @@ function AnalyticsTextBlock({
           {title}
           {showHelp && !expandHelp ? (
             <SettingTitleHelp
-              ariaLabel={t.config.detailHelpAriaNamed.replace(
-                '{title}',
-                title,
-              )}
+              ariaLabel={format(t.config.detailHelpAriaNamed, { title })}
             >
               {description}
             </SettingTitleHelp>

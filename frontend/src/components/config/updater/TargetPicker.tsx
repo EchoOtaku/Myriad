@@ -5,6 +5,7 @@ import type {
 } from '../../../services/updaterApi'
 import type { ChannelOption, U } from './helpers'
 import React, { useEffect, useRef, useState } from 'react'
+import { useI18n } from '../../../contexts/I18nContext'
 import { InputItem, SettingsButton, SettingTitleTag } from '../../settings'
 import { Spinner } from '../../Spinner'
 import {
@@ -42,6 +43,7 @@ export function TargetPicker({
     opts: { isDowngrade: boolean; needsRisk: boolean },
   ) => void
 }) {
+  const { locale } = useI18n()
   const [items, setItems] = useState<PickerItem[]>([])
   const [selected, setSelected] = useState('')
   const [input, setInput] = useState('')
@@ -204,11 +206,11 @@ export function TargetPicker({
   if (compare) {
     if (compare.is_upgrade) {
       compareText = format(u.updaterFreshnessAhead, {
-        n: String(compare.ahead_by),
+        n: compare.ahead_by,
       })
     } else if (compare.is_downgrade) {
       compareText = format(u.updaterFreshnessBehind, {
-        n: String(compare.behind_by),
+        n: compare.behind_by,
       })
     } else if (compare.relation === 'identical') {
       compareText = u.updaterFreshnessIdentical
@@ -273,7 +275,7 @@ export function TargetPicker({
                   </span>
                   {item.date && (
                     <span className="updater-commit-date">
-                      {new Date(item.date).toLocaleString()}
+                      {new Date(item.date).toLocaleString(locale)}
                     </span>
                   )}
                 </button>

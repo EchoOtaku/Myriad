@@ -3,7 +3,7 @@ import type { TappListItem } from './TappLifecycleApi'
 import type { TappPlaygroundCode } from './TappPlaygroundService'
 import { API_URL } from '../../config'
 import { hostLocaleHeaders } from '../../i18n/hostLocaleHeaders'
-import { currentCopy } from '../../i18n/localeCopy'
+import { currentCopy, formatCurrent } from '../../i18n/localeCopy'
 import { parseApiErrorBody } from '../../services/api'
 import { getCSRFToken } from '../../utils/csrf'
 import { generateOnDemandTailwindCSS } from '../runtime/sandbox/styles'
@@ -556,7 +556,7 @@ async function installFromStoreViaClient(
   const app = storeIndex.apps.find((a) => a.id === request.tappId)
   if (!app) {
     throw new Error(
-      currentCopy().tapp.storeAppNotFound.replace('{id}', request.tappId),
+      formatCurrent(currentCopy().tapp.storeAppNotFound, { id: request.tappId }),
     )
   }
 
@@ -736,7 +736,9 @@ async function updateFromStoreViaClient(
   const storeIndex = { ...index, base_url: baseUrl }
   const app = storeIndex.apps.find((a) => a.id === tappId)
   if (!app) {
-    throw new Error(currentCopy().tapp.storeAppNotFound.replace('{id}', tappId))
+    throw new Error(
+      formatCurrent(currentCopy().tapp.storeAppNotFound, { id: tappId }),
+    )
   }
 
   report?.({ phase: 'download', message: 'download', percent: 5 })

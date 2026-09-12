@@ -1067,7 +1067,7 @@ export function generateSdkBody(input: GenerateSdkBodyInput): string {
     ? window._TAPP_LOCALE
     : (typeof document !== 'undefined' && document.documentElement && document.documentElement.lang)
       || (typeof navigator !== 'undefined' && navigator.language)
-      || 'zh-CN';
+      || 'en-US';
   const translate = (key, variables = {}) => {
     const all = window._TAPP_I18N && typeof window._TAPP_I18N === 'object'
       ? window._TAPP_I18N
