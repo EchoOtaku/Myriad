@@ -152,9 +152,9 @@ export function buildSanitizedTappPreview(
   )
   const body = parsed.body.innerHTML.slice(0, 512 * 1024)
   const theme = options?.theme || 'auto'
-  const rootClasses = Array.from(parsed.documentElement.classList).filter(
-    (className) => /^[\w-]{1,64}$/.test(className),
-  )
+  const rootClasses = Iterator.from(parsed.documentElement.classList)
+    .filter((className) => /^[\w-]{1,64}$/.test(className))
+    .toArray()
   if (theme !== 'auto') rootClasses.push(theme)
   const rootClassAttribute = rootClasses.length
     ? ` class="${[...new Set(rootClasses)].join(' ')}"`

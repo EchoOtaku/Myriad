@@ -130,7 +130,9 @@ export class BrewItemState {
       this.dropPreview(id, { is_read: true }, false)
     }
     this.observeMany(
-      [...this.entries.keys()].map((id) => ({ id, is_read: true })),
+      Iterator.from(this.entries.keys())
+        .map((id) => ({ id, is_read: true }))
+        .toArray(),
       this.revision,
     )
     this.notifyMutation({ is_read: true })

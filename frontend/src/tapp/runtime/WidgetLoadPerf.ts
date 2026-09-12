@@ -145,11 +145,13 @@ export function widgetPerfMark(
 }
 
 export function getWidgetPerfSnapshot(): WidgetPerfRecord[] {
-  return [...records.values()].map((r) => ({
-    ...r,
-    marks: { ...r.marks },
-    measures: { ...r.measures },
-  }))
+  return Iterator.from(records.values())
+    .map((r) => ({
+      ...r,
+      marks: { ...r.marks },
+      measures: { ...r.measures },
+    }))
+    .toArray()
 }
 
 export function getWidgetPerfSummary(): {

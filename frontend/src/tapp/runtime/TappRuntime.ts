@@ -621,9 +621,9 @@ export class TappRuntime {
   }
 
   getWidgetsByTapp(tappId: string): RegisteredWidget[] {
-    return Array.from(this.registeredWidgets.values()).filter(
-      (w) => w.tappId === tappId,
-    )
+    return Iterator.from(this.registeredWidgets.values())
+      .filter((w) => w.tappId === tappId)
+      .toArray()
   }
 
   registerPlatform(tappId: string, config: CustomPlatformConfig): void {
