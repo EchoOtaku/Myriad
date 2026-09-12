@@ -38,7 +38,7 @@ describe('aurora prism paint', () => {
       assert.equal(blobs.length, AURORA_BLOB_COUNT)
       const centers = blobs
         .map((blob) => pct(blob.x) + pct(blob.w) / 2)
-        .sort((a, b) => a - b)
+        .toSorted((a, b) => a - b)
       assert.ok(centers[0] >= 4 && centers[0] <= 22)
       assert.ok(centers[4] >= 78 && centers[4] <= 96)
       assert.ok(centers[4] - centers[0] >= 58)

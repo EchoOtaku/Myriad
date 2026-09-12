@@ -127,6 +127,7 @@ services:
         limits: { cpus: '2.0', memory: 2G }
         reservations: { cpus: '0.5', memory: 512M }
     environment:
+      MYRIAD_PROCESS_ROLE: web
       DATABASE_URL: postgres://myriad:${POSTGRES_PASSWORD}@postgres:5432/myriad
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 1103
@@ -198,6 +199,49 @@ services:
     # Runs as Dockerfile USER myriad (uid 1000). The one-shot init service repairs
     # ownership left by older root containers before this service starts.
     # Listens on 1103 (no privileged ports); do not force user 0:0.
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }
+
+  federation-worker:
+    image: ${BACKEND_IMAGE:-docker.io/somekawahitomi/myriad-backend}:${MYRIAD_TAG}
+    container_name: myriad-federation-worker
+    command: ["/app/myriad-federation-worker"]
+    user: "1000:1000"
+    deploy:
+      resources:
+        limits: { cpus: '0.5', memory: 512M, pids: 64 }
+        reservations: { cpus: '0.1', memory: 64M }
+    pids_limit: 64
+    environment:
+      MYRIAD_PROCESS_ROLE: federation-worker
+      DATABASE_URL: postgres://myriad:${POSTGRES_PASSWORD}@postgres:5432/myriad
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 1103
+      DATA_DIR: /app/data
+      CACHE_DIR: /tmp/cache
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      FRONTEND_URL: ${FRONTEND_URL:-}
+      BASE_URL: ${BASE_URL:-}
+      RUST_LOG: ${RUST_LOG:-info}
+    depends_on:
+      backend: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "/usr/bin/wget", "--spider", "-q", "http://localhost:1103/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    volumes:
+      - backend_data:/app/data:ro
+    networks: [myriad-net]
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: ["/tmp:size=32m,mode=1777"]
     logging:
       driver: "json-file"
       options: { max-size: "10m", max-file: "3" }

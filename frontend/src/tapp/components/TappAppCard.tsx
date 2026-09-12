@@ -73,7 +73,7 @@ function normalizeLocalLayout(parsed: unknown): TappAppCardLayoutLocal {
   const order: string[] = []
   const seen = new Set<string>()
 
-  if ('sizes' in obj && obj.sizes && typeof obj.sizes === 'object') {
+  if (Object.hasOwn(obj, 'sizes') && obj.sizes && typeof obj.sizes === 'object') {
     for (const [id, size] of Object.entries(
       obj.sizes as Record<string, unknown>,
     )) {

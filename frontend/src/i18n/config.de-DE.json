@@ -940,7 +940,7 @@
   "mcpFieldEnv": "Umgebung",
   "mcpFieldEnvHint": "Eine KEY=value-Zeile; Geheimnisse bleiben auf dem Server",
   "mcpFieldEnabled": "Aktiviert",
-  "mcpFieldEnabledHint": "Wenn aus, wird der Prozess nicht gestartet, die Konfiguration bleibt",
+  "mcpFieldEnabledHint": "Neue Server sind zunächst deaktiviert. Aktivieren führt den Startbefehl aus; Deaktivieren beendet laufende Aufrufe und Prozesse.",
   "mcpFieldHealth": "Gesundheit",
   "mcpFieldTools": "Tool-Anzahl",
   "mcpFieldAutoRestart": "Bei Absturz automatisch neu starten",

@@ -706,7 +706,7 @@ export function registerFederationHandlers(
       const status =
         error &&
         typeof error === 'object' &&
-        'status' in error &&
+        Object.hasOwn(error, 'status') &&
         typeof (error as { status: unknown }).status === 'number'
           ? (error as { status: number }).status
           : undefined
@@ -913,7 +913,7 @@ export function registerFederationHandlers(
       const status =
         error &&
         typeof error === 'object' &&
-        'status' in error &&
+        Object.hasOwn(error, 'status') &&
         typeof (error as { status: unknown }).status === 'number'
           ? (error as { status: number }).status
           : undefined

@@ -157,7 +157,13 @@ async fn execute_inline_inner(
                 summary = %out.error_summary(),
                 "compose stop frontend/backend non-zero; forcing container stop"
             );
-            for name in ["myriad-frontend", "frontend", "myriad-backend", "backend"] {
+            for name in [
+                "myriad-federation-worker",
+                "myriad-frontend",
+                "frontend",
+                "myriad-backend",
+                "backend",
+            ] {
                 let _ = worker.docker().force_stop_container(name).await;
             }
         }
@@ -166,11 +172,20 @@ async fn execute_inline_inner(
                 err = %e,
                 "compose stop frontend/backend errored; forcing container stop"
             );
-            for name in ["myriad-frontend", "frontend", "myriad-backend", "backend"] {
+            for name in [
+                "myriad-federation-worker",
+                "myriad-frontend",
+                "frontend",
+                "myriad-backend",
+                "backend",
+            ] {
                 let _ = worker.docker().force_stop_container(name).await;
             }
         }
     }
+    // The fallback above is best-effort for legacy containers. This new writer
+    // must be proven stopped before either physical or external-DB rollback.
+    worker.docker().stop_federation_worker().await?;
     let _ = rec.finish_step_ok();
 
     // --- Resolve + restore MYRIAD_TAG BEFORE snapshot work ---

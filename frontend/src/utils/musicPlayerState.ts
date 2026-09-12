@@ -161,19 +161,19 @@ export function mergeMusicPlayerEventDetail(
     String(detailId) !== String(globalId)
 
   if (songChanged) {
-    if (!('lyrics' in detail)) {
+    if (!Object.hasOwn(detail, 'lyrics')) {
       merged.lyrics = []
       merged.currentLyricIndex = -1
     }
-    if (!('verbatimLyrics' in detail)) {
+    if (!Object.hasOwn(detail, 'verbatimLyrics')) {
       merged.verbatimLyrics = []
       merged.hasVerbatimLyrics = false
       merged.verbatimLyricsSource = ''
     }
-    if (!('currentTime' in detail)) {
+    if (!Object.hasOwn(detail, 'currentTime')) {
       merged.currentTime = 0
     }
-    if (!('audioDuration' in detail)) {
+    if (!Object.hasOwn(detail, 'audioDuration')) {
       merged.audioDuration = detailSong?.duration || 0
     }
   }

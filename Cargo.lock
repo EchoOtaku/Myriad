@@ -2571,6 +2571,7 @@ dependencies = [
  "myriad-error",
  "myriad-image-proxy",
  "myriad-json-schema",
+ "myriad-mcp",
  "myriad-merope",
  "myriad-module-visibility",
  "myriad-outbound",
@@ -2661,6 +2662,19 @@ name = "myriad-json-schema"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+]
+
+[[package]]
+name = "myriad-mcp"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "libc",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

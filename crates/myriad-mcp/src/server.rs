@@ -2,10 +2,7 @@
 //!
 //! 管理单个 MCP 服务器子进程的完整生命周期：
 //! spawn → initialize handshake → tools/list → ready
-//! 含健康检查和重启方法（`try_restart` / `force_restart`）；何时重启由 manager 的 `auto_restart` 决定。
-
-use std::sync::Arc;
-use tokio::sync::Mutex;
+//! 重启预算、取消和调用排队由 actor 管理。
 
 use super::config::McpServerConfig;
 use super::protocol::{McpInitializeResult, McpToolCallResult, McpToolDef};
@@ -26,7 +23,6 @@ pub struct McpServer {
     state: ServerState,
     transport: Option<StdioTransport>,
     tools: Vec<McpToolDef>,
-    restart_count: u32,
 }
 
 impl McpServer {
@@ -36,7 +32,6 @@ impl McpServer {
             state: ServerState::Stopped,
             transport: None,
             tools: Vec::new(),
-            restart_count: 0,
         }
     }
 
@@ -66,7 +61,6 @@ impl McpServer {
         })?;
 
         self.state = ServerState::Ready;
-        self.restart_count = 0;
         tracing::info!(
             server = %self.config.id,
             tools = self.tools.len(),
@@ -215,37 +209,13 @@ impl McpServer {
         }
     }
 
-    /// 尝试重启（带最大重启次数限制）
-    pub async fn try_restart(&mut self) -> Result<(), String> {
-        if self.restart_count >= self.config.max_restart_attempts {
-            let msg = format!(
-                "MCP server '{}' exceeded max restart attempts ({})",
-                self.config.id, self.config.max_restart_attempts
-            );
-            self.state = ServerState::Failed(msg.clone());
-            return Err(msg);
+    pub async fn terminate(&mut self) {
+        if let Some(transport) = self.transport.as_mut() {
+            transport.terminate_and_reap().await;
         }
-
-        self.restart_count += 1;
-        tracing::warn!(
-            server = %self.config.id,
-            attempt = self.restart_count,
-            max = self.config.max_restart_attempts,
-            "Restarting MCP server"
-        );
-
-        // 关闭旧连接
-        self.shutdown().await;
-
-        // 重新启动
-        self.start().await
-    }
-
-    /// 维护路径强制重启：重置计数后重新 start（用于启动失败后的周期恢复）
-    pub async fn force_restart(&mut self) -> Result<(), String> {
-        self.restart_count = 0;
-        self.shutdown().await;
-        self.start().await
+        self.transport = None;
+        self.tools.clear();
+        self.state = ServerState::Stopped;
     }
 
     /// 优雅关闭
@@ -258,6 +228,3 @@ impl McpServer {
         self.state = ServerState::Stopped;
     }
 }
-
-/// 线程安全的 McpServer 包装
-pub type SharedMcpServer = Arc<Mutex<McpServer>>;

@@ -37,7 +37,7 @@ export function formatMessage(
     const raw = params[key]
     const count = typeof raw === 'number' ? raw : Number(raw)
     const n = Number.isFinite(count) ? count : 0
-    return pickPluralBranch(body, locale, n).replace(/#/g, String(n))
+    return pickPluralBranch(body, locale, n).replaceAll('#', String(n))
   })
   return withPlurals.replace(SIMPLE_TOKEN, (_, key: string) => {
     const value = params[key]

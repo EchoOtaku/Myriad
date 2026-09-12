@@ -751,10 +751,10 @@ function fixMalformedHtml(html: string): string {
       '<img $1/>',
     )
 
-    result = result.replace(/~CLOSE_IFRAME~/g, '</iframe>')
+    result = result.replaceAll('~CLOSE_IFRAME~', '</iframe>')
   }
 
-  result = result.replace(/amp;/g, '&')
+  result = result.replaceAll('amp;', '&')
 
   const attrNames =
     'width|height|src|href|class|id|style|alt|title|frameborder|allowfullscreen|loading|referrerpolicy|data-[a-z-]+'

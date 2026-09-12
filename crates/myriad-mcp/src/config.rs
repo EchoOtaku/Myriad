@@ -15,7 +15,7 @@ pub struct McpServersConfig {
 }
 
 /// 单个 MCP 服务器配置
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct McpServerConfig {
     /// 服务器 ID（用于日志和引用）
     pub id: String,
@@ -27,7 +27,8 @@ pub struct McpServerConfig {
     /// 额外环境变量
     #[serde(default)]
     pub env: HashMap<String, String>,
-    #[serde(default = "default_true")]
+    /// Activation is explicit; saving a new definition never runs code by default.
+    #[serde(default)]
     pub enabled: bool,
     /// Retry when not Ready or child dead (`call_tool` / maintenance).
     #[serde(default = "default_true")]
@@ -52,18 +53,29 @@ fn default_max_restarts() -> u32 {
     3
 }
 
-/// 从文件加载配置
-pub async fn load_config(path: &Path) -> McpServersConfig {
-    match tokio::fs::read_to_string(path).await {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_else(|e| {
-            tracing::warn!("[MCP] Failed to parse config: {}", e);
-            McpServersConfig::default()
-        }),
-        Err(_) => {
-            tracing::debug!("[MCP] Config file not found: {}", path.display());
-            McpServersConfig::default()
+/// Runtime reloads preserve the last known configuration on malformed or unreadable
+/// files. Read through a byte limit before parsing to bound operator mistakes.
+pub async fn load_config(path: &Path) -> Result<McpServersConfig, String> {
+    use tokio::io::AsyncReadExt;
+    let file = match tokio::fs::File::open(path).await {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(McpServersConfig::default())
         }
+        Err(_) => return Err("Cannot read MCP configuration".into()),
+    };
+    const MAX_CONFIG_BYTES: u64 = 2 * 1024 * 1024;
+    let mut bytes = Vec::new();
+    file.take(MAX_CONFIG_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .await
+        .map_err(|_| "Cannot read MCP configuration".to_string())?;
+    if bytes.len() as u64 > MAX_CONFIG_BYTES {
+        return Err("MCP configuration exceeds 2 MiB".into());
     }
+    let config =
+        serde_json::from_slice(&bytes).map_err(|_| "Invalid MCP configuration".to_string())?;
+    validate_config(config)
 }
 
 /// Validate and normalize config before persistence.
@@ -155,6 +167,9 @@ pub async fn save_config(path: &Path, config: &McpServersConfig) -> Result<(), S
         tracing::error!(error = %e, "serialize mcp config");
         "Failed to save MCP config".to_string()
     })?;
+    if json.len() > 2 * 1024 * 1024 {
+        return Err("MCP configuration exceeds 2 MiB".into());
+    }
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     tokio::fs::create_dir_all(parent).await.map_err(|e| {
         tracing::error!(error = %e, "create mcp config dir");
@@ -234,5 +249,16 @@ mod tests {
             }],
         };
         assert!(validate_config(cfg).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod activation_tests {
+    use super::*;
+    #[test]
+    fn missing_activation_never_starts_code() {
+        let config: McpServerConfig =
+            serde_json::from_value(serde_json::json!({"id":"new", "command":"node"})).unwrap();
+        assert!(!config.enabled);
     }
 }

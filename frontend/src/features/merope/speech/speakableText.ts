@@ -11,7 +11,7 @@ const HTML = /<\/?[a-z][^>]*>/gi
 const TABLE_ROW = /^\s*\|.*\|\s*$/gm
 
 export function speakableText(raw: string): string {
-  let text = raw.replace(/\r\n/g, '\n')
+  let text = raw.replaceAll('\r\n', '\n')
   text = text.replace(FENCE, ' ')
   text = text.replace(INLINE_CODE, ' ')
   text = text.replace(IMAGE, ' ')

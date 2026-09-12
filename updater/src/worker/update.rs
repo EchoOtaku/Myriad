@@ -1268,6 +1268,19 @@ async fn probe_one_tick(
     elapsed: Duration,
     mode: FrontendProbe,
 ) -> ProbeTick {
+    match worker.docker().federation_worker_healthy().await {
+        Ok(true) => {}
+        Ok(false) => {
+            return ProbeTick::NotReady {
+                detail: "federation worker health/image not ready".into(),
+            }
+        }
+        Err(error) => {
+            return ProbeTick::NotReady {
+                detail: format!("federation worker probe: {error}"),
+            }
+        }
+    }
     const LOOSE_FRONTEND_AFTER: Duration = Duration::from_secs(45);
 
     let docker = worker.docker();

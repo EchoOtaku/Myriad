@@ -60,6 +60,10 @@ fn state_with_visible_root(visible_root: PathBuf) -> GuardState {
             service_images: [
                 ("backend".into(), "docker.io/example/backend".into()),
                 (
+                    "federation-worker".into(),
+                    "docker.io/example/backend".into(),
+                ),
+                (
                     "backend-volume-init".into(),
                     "docker.io/example/backend".into(),
                 ),
@@ -1113,4 +1117,62 @@ fn managed_project_service_and_network_helpers() {
     let network = allowlisted_network_name(&compose_net, &s.config).unwrap();
     let service = managed_project_service(&backend, &s.config).unwrap();
     assert!(authorize_guard_network_attachment(&service, &network, &s.config).is_ok());
+}
+
+#[test]
+fn federation_worker_has_fixed_role_and_resource_boundary() {
+    let state = state();
+    let request = json!({
+        "Image": "docker.io/example/backend:v1.2.3", "User": "1000:1000",
+        "Cmd": ["/app/myriad-federation-worker"],
+        "Env": ["MYRIAD_PROCESS_ROLE=federation-worker", "DATA_DIR=/app/data",
+            "CACHE_DIR=/tmp/cache", "SERVER_PORT=1103", "SERVER_HOST=0.0.0.0"],
+        "Labels": {"com.docker.compose.project": "myriad", "com.docker.compose.service": "federation-worker"},
+        "Healthcheck": {"Test": ["CMD", "/usr/bin/wget", "--spider", "-q", "http://localhost:1103/health"]},
+        "HostConfig": {"ReadonlyRootfs": true, "CapDrop": ["ALL"], "Memory": 536870912,
+            "NanoCpus": 500000000, "PidsLimit": 64, "SecurityOpt": ["no-new-privileges:true"],
+            "Tmpfs": {"/tmp": "size=32m,mode=1777"},
+            "Binds": ["myriad_backend_data:/app/data:ro"], "NetworkMode": "myriad-net"}
+    });
+    let validate = |value: &Value| {
+        validate_container_create(&state, &Bytes::from(serde_json::to_vec(value).unwrap()))
+    };
+    assert!(validate(&request).is_ok());
+    for (path, value) in [
+        ("/Cmd", json!(["/app/myriad-backend"])),
+        ("/Entrypoint", json!(["/bin/sh"])),
+        ("/User", json!("0:0")),
+        ("/HostConfig/ReadonlyRootfs", json!(false)),
+        ("/HostConfig/PidsLimit", json!(-1)),
+        ("/HostConfig/Memory", json!(0)),
+        ("/HostConfig/NanoCpus", json!(0)),
+        ("/HostConfig/Tmpfs", json!({"/app": "size=32m"})),
+        ("/HostConfig/NetworkMode", json!("myriad-admin-net")),
+        (
+            "/HostConfig/Binds",
+            json!(["myriad_backend_data:/app/data:rw"]),
+        ),
+        (
+            "/HostConfig/Binds",
+            json!(["myriad_backend_cache:/app/cache:ro"]),
+        ),
+        (
+            "/Healthcheck/Test",
+            json!(["CMD-SHELL", "touch /tmp/escape"]),
+        ),
+    ] {
+        let mut altered = request.clone();
+        if path == "/Entrypoint" {
+            altered["Entrypoint"] = value;
+        } else {
+            *altered.pointer_mut(path).unwrap() = value;
+        }
+        assert!(validate(&altered).is_err(), "accepted override {path}");
+    }
+    let mut altered = request.clone();
+    altered["Env"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!("LD_PRELOAD=/app/data/payload.so"));
+    assert!(validate(&altered).is_err());
 }

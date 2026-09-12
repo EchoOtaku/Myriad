@@ -34,8 +34,9 @@ function setCache<T>(key: string, data: T): void {
 
   // Cap 100; drop oldest.
   if (embedDataCache.size > 100) {
-    const entries = Array.from(embedDataCache.entries())
-    entries.sort((a, b) => a[1].timestamp - b[1].timestamp)
+    const entries = Array.from(embedDataCache.entries()).toSorted(
+      (a, b) => a[1].timestamp - b[1].timestamp,
+    )
     for (let i = 0; i < 20; i++) {
       embedDataCache.delete(entries[i][0])
     }

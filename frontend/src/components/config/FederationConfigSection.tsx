@@ -705,7 +705,7 @@ export const FederationConfigSection: React.FC<
     for (const f of filters) {
       if (f.enabled) enabled++
       else disabled++
-      if (f.filter_type in typeCounts) {
+      if (Object.hasOwn(typeCounts, f.filter_type)) {
         typeCounts[f.filter_type]++
       }
     }

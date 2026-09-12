@@ -108,11 +108,9 @@ function backtrack(
     }
   }
 
-  ops.reverse()
-
   let oldLine = 0
   let newLine = 0
-  return ops.map((row) => {
+  return ops.toReversed().map((row) => {
     if (row.op === 'equal') {
       oldLine++
       newLine++

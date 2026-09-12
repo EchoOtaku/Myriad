@@ -775,9 +775,11 @@ export function alignVerbatimToLines(
   }
   if (diffs.length < 4) return verbatim
 
-  diffs.sort((a, b) => a - b)
-  const median = diffs[Math.floor(diffs.length / 2)]
-  const residuals = diffs.map((d) => Math.abs(d - median)).sort((a, b) => a - b)
+  const sortedDiffs = diffs.toSorted((a, b) => a - b)
+  const median = sortedDiffs[Math.floor(sortedDiffs.length / 2)]
+  const residuals = sortedDiffs
+    .map((d) => Math.abs(d - median))
+    .toSorted((a, b) => a - b)
   const medResidual = residuals[Math.floor(residuals.length / 2)]
 
   if (medResidual > 1.2) return null
@@ -913,15 +915,15 @@ export async function getQQLyricsWithTranslation(
 
 export function unescapeQQLyricText(s: string): string {
   return s
-    .replace(/&apos;/g, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/&#34;/g, '"')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&#10;/g, '\n')
-    .replace(/&#13;/g, '\r')
+    .replaceAll('&apos;', "'")
+    .replaceAll('&#39;', "'")
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#34;', '"')
+    .replaceAll('&amp;', '&')
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&#10;', '\n')
+    .replaceAll('&#13;', '\r')
 }
 
 export async function getLyricsWithVerbatim(
@@ -1147,11 +1149,11 @@ export function clampSeekTime(time: number, duration: number): number {
 
 export function escapeHtmlText(text: string): string {
   return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
 }
 
 export function highlightText(text: string, query: string): string {

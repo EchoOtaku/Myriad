@@ -20,6 +20,7 @@ import {
   currentAgentMusicStatus,
   subscribeCurrentSong,
 } from '../../../contexts/currentSong'
+import { authSubject } from '../../../utils/authSubject'
 import { PERSONA_UPDATED_EVENT } from '../events'
 import {
   getVoicePresence,
@@ -37,8 +38,8 @@ interface CaptureInput {
   pageConsent: boolean
   selection?: string
 }
-type CaptureFn = (input: CaptureInput) => PerceptionSnapshot[]
-type PresencePost = (body: unknown) => Promise<void>
+type CaptureFn = (input: CaptureInput) => PerceptionSnapshot[] | Promise<PerceptionSnapshot[]>
+type PresencePost = (body: unknown, signal: AbortSignal) => Promise<void>
 type PresenceFacts = () => unknown
 type PresenceEnabled = () => boolean | Promise<boolean>
 
@@ -60,15 +61,29 @@ let postGeneration = 0
 let postChain: Promise<void> = Promise.resolve()
 let postFailures = 0
 
-async function defaultPostPresence(body: unknown): Promise<void> {
+// A new subject must never wait for, retry, or dedupe against the old subject's work.
+authSubject.subscribe(() => {
+  reportGeneration += 1
+  postGeneration += 1
+  stopTrailingReport()
+  postChain = Promise.resolve()
+  postFailures = 0
+  lastRevisionKey = ''
+  lastSentAt = 0
+})
+
+async function defaultPostPresence(body: unknown, signal: AbortSignal): Promise<void> {
   const { apiService } = await import('../../../services/api')
-  await apiService.post('/agent/presence', body)
+  signal.throwIfAborted()
+  await apiService.post('/agent/presence', body, { signal })
 }
 
 async function defaultCapture(
   input: CaptureInput,
+  subject: AbortSignal,
 ): Promise<PerceptionSnapshot[]> {
   const { capturePerceptionSnapshots } = await import('./capture')
+  if (subject.aborted) return []
   return capturePerceptionSnapshots(input)
 }
 
@@ -181,6 +196,7 @@ function currentRoute(): string {
 
 /** Lease is not a decision heartbeat */
 export async function reportPresence(reason: string): Promise<void> {
+  const subject = authSubject.signal
   if (!inboundArmed) {
     return
   }
@@ -189,6 +205,7 @@ export async function reportPresence(reason: string): Promise<void> {
     return
   }
   const generation = ++reportGeneration
+  const captureStartedAt = Date.now()
   const pageConsent = getAgentContextConsent()
   const input: CaptureInput = {
     route: currentRoute(),
@@ -196,12 +213,12 @@ export async function reportPresence(reason: string): Promise<void> {
     pageConsent,
     selection: turnSelectionText(),
   }
-  const snapshots = (
-    captureFn ? captureFn(input) : await defaultCapture(input)
-  ).slice(0, MAX_PERCEPTION_ITEMS)
-  if (!inboundArmed || generation !== reportGeneration) return
+  const captured = captureFn ? captureFn(input) : defaultCapture(input, subject)
+  const snapshots = (Array.isArray(captured) ? captured : await captured)
+    .slice(0, MAX_PERCEPTION_ITEMS)
+  if (subject.aborted || !inboundArmed || generation !== reportGeneration) return
   const presence = factsFn ? factsFn() : await defaultFacts()
-  if (!inboundArmed || generation !== reportGeneration) return
+  if (subject.aborted || !inboundArmed || generation !== reportGeneration) return
   const key = JSON.stringify([revisionKey(snapshots), presence])
   const now = Date.now()
   if (reason !== 'lease' && reason !== 'panel' && reason !== 'visibility' && !consentChange) {
@@ -218,21 +235,22 @@ export async function reportPresence(reason: string): Promise<void> {
   const post = postPresence
   const sendGeneration = ++postGeneration
   postChain = postChain.catch(() => {}).then(async () => {
-    if (!inboundArmed || sendGeneration !== postGeneration) return
+    if (subject.aborted || !inboundArmed || sendGeneration !== postGeneration) return
     lastSentAt = Date.now()
     try {
-      const elapsed = Math.max(0, Date.now() - now)
+      const elapsed = Math.max(0, Date.now() - captureStartedAt)
       const perception = snapshots.map((snapshot) => ({
         ...snapshot,
         ttlMs: Math.max(0, snapshot.ttlMs - elapsed),
       })).filter((snapshot) => snapshot.ttlMs > 0)
       const musicStatus = currentAgentMusicStatus()
-      await post({ presence, perception, ...(musicStatus ? { musicStatus } : {}) })
+      await post({ presence, perception, ...(musicStatus ? { musicStatus } : {}) }, subject)
+      if (subject.aborted || sendGeneration !== postGeneration) return
       postFailures = 0
       if (sendGeneration === postGeneration) lastRevisionKey = key
     } catch {
       // Do not mark a failed observation delivered or leak response payloads.
-      if (sendGeneration === postGeneration && inboundArmed) {
+      if (!subject.aborted && sendGeneration === postGeneration && inboundArmed) {
         lastRevisionKey = ''
         postFailures += 1
         if (postFailures === 1) scheduleLatestReport(MIN_INTERVAL_MS)

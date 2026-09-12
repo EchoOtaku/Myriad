@@ -940,7 +940,7 @@
   "mcpFieldEnv": "Environnement",
   "mcpFieldEnvHint": "Une ligne KEY=value ; les secrets restent sur le serveur",
   "mcpFieldEnabled": "Activé",
-  "mcpFieldEnabledHint": "Si désactivé, le processus n'est pas lancé mais la config est conservée",
+  "mcpFieldEnabledHint": "Les nouveaux serveurs sont désactivés par défaut. Les activer exécute la commande de démarrage ; les désactiver termine les appels et processus en cours.",
   "mcpFieldHealth": "Santé",
   "mcpFieldTools": "Nombre d'outils",
   "mcpFieldAutoRestart": "Redémarrer auto en cas de crash",

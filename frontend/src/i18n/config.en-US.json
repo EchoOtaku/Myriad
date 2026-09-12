@@ -940,7 +940,7 @@
   "mcpFieldEnv": "Environment",
   "mcpFieldEnvHint": "One KEY=value per line; secrets stay on the server",
   "mcpFieldEnabled": "Enabled",
-  "mcpFieldEnabledHint": "When off, the process is not started but config is kept",
+  "mcpFieldEnabledHint": "New servers start disabled. Enabling runs the startup command; disabling terminates active calls and processes.",
   "mcpFieldHealth": "Health",
   "mcpFieldTools": "Tool count",
   "mcpFieldAutoRestart": "Auto-restart on crash",

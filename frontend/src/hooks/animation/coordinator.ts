@@ -1224,14 +1224,14 @@ class AnimationCoordinator {
     const jankRatio = sampleN > 0 ? jankFrames / sampleN : 0
     let p95FrameMs = 0
     if (sampleN > 0) {
-      samples.sort((a, b) => a - b)
+      const ranked = samples.toSorted((a, b) => a - b)
 
       const idx = Math.min(
         sampleN - 1,
         // nearest-rank P95：ceil(0.95*n)-1。
         Math.max(0, Math.ceil(sampleN * 0.95) - 1),
       )
-      p95FrameMs = samples[idx]
+      p95FrameMs = ranked[idx]
     }
 
     return {

@@ -431,9 +431,7 @@ fn localize_report_seed_keys(keys: &[String], language: &str) -> Vec<String> {
     keys.iter()
         .filter_map(|key| {
             let label = match language {
-                value if traditional_ui_language(value) => {
-                    zh_seed_label(key, true)?
-                }
+                value if traditional_ui_language(value) => zh_seed_label(key, true)?,
                 value if value.starts_with("zh") => zh_seed_label(key, false)?,
                 value if value.starts_with("ja") => match key.as_str() {
                     "thoughtful" => "思慮深い",

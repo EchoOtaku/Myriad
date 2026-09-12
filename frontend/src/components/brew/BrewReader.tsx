@@ -22,6 +22,7 @@ import {
   useBrewAnimationConfig,
 } from '../../hooks/animation'
 import { isExlight } from '../../hooks/useAnimationLevel'
+import { authSubject } from '../../utils/authSubject'
 import { userFacingError } from '../../utils/userFacingError'
 import {
   AnnotationTooltip,
@@ -155,8 +156,11 @@ function ReaderArticleSession({
   useImmersiveChrome('brew-reader', true)
 
   const { setPageContent, clearPageContent } = usePageContentOptional() ?? {}
+  // This article session is keyed by item id; retained old content is not a new observation.
+  const [contentSubject] = useState(() => authSubject.signal)
 
   useEffect(() => {
+    if (contentSubject.aborted) return
     if (setPageContent && item) {
       const articleContent = item.content || item.summary || ''
 
@@ -189,7 +193,7 @@ function ReaderArticleSession({
         clearPageContent()
       }
     }
-  }, [item, sourceType, setPageContent, clearPageContent])
+  }, [item, sourceType, setPageContent, clearPageContent, contentSubject])
 
   const animConfig = useBrewAnimationConfig()
   const readerTransition = useMemo(

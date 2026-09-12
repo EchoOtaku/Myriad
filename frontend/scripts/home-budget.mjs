@@ -104,21 +104,22 @@ export async function measureHomeBudget(root = distDir) {
     if (file.endsWith('.css')) css += size
     else js += size
   }
-  files.sort((a, b) => b.gzip - a.gzip)
+  const ranked = files.toSorted((a, b) => b.gzip - a.gzip)
 
-  const blob = [...firstPaint]
+  const blob = Iterator.from(firstPaint)
     .filter((file) => file.endsWith('.js'))
     .map((file) => readFileSync(file, 'utf8'))
+    .toArray()
     .join('\n')
 
   return {
     jsGzipBytes: js,
     cssGzipBytes: css,
     totalGzipBytes: js + css,
-    files,
+    files: ranked,
     loadsAgora: /agora-rtc-sdk-ng|agora-rtm/.test(blob),
     // Filename, not a lazy-import string left inside App.
-    loadsConfigRoute: [...firstPaint].some((file) =>
+    loadsConfigRoute: Iterator.from(firstPaint).some((file) =>
       /(?:^|\/)Config-[^/]+\.js$/.test(file),
     ),
   }

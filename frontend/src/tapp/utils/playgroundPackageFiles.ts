@@ -34,7 +34,7 @@ export function playgroundCodeToRuntime(
 ): TappCodeStructure {
   const modules = buildPlaygroundModules(code)
   const widgetEntries =
-    PLAYGROUND_WIDGET_ENTRY in modules
+    Object.hasOwn(modules, PLAYGROUND_WIDGET_ENTRY)
       ? Object.fromEntries(
           (manifest.widgets || []).map((widget) => [
             widget.id,
@@ -45,8 +45,9 @@ export function playgroundCodeToRuntime(
   return {
     modules,
     coreEntry: PLAYGROUND_CORE_ENTRY,
-    pageEntry:
-      PLAYGROUND_PAGE_ENTRY in modules ? PLAYGROUND_PAGE_ENTRY : undefined,
+    pageEntry: Object.hasOwn(modules, PLAYGROUND_PAGE_ENTRY)
+      ? PLAYGROUND_PAGE_ENTRY
+      : undefined,
     widgetEntries:
       Object.keys(widgetEntries).length > 0 ? widgetEntries : undefined,
     styles: code.styles,

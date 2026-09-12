@@ -80,6 +80,10 @@ impl GuardConfig {
         let service_images = [
             ("backend", "docker.io/somekawahitomi/myriad-backend"),
             (
+                "federation-worker",
+                "docker.io/somekawahitomi/myriad-backend",
+            ),
+            (
                 "backend-volume-init",
                 "docker.io/somekawahitomi/myriad-backend",
             ),

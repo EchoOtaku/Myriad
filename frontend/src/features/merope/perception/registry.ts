@@ -1,3 +1,5 @@
+import { authSubject } from '../../../utils/authSubject'
+
 export type PerceptionKind =
   | 'page'
   | 'pointer'
@@ -68,6 +70,11 @@ export class PerceptionRegistry {
     this.items.delete(sourceId)
   }
 
+  clear(): void {
+    this.items.clear()
+    this.revisions.clear()
+  }
+
   active(nowMs: number = Date.now()): PerceptionSnapshot[] {
     const live: PerceptionSnapshot[] = []
     for (const [id, snapshot] of this.items) {
@@ -102,3 +109,4 @@ function boundFacts(
 }
 
 export const perceptionRegistry = new PerceptionRegistry()
+authSubject.subscribe(() => perceptionRegistry.clear())

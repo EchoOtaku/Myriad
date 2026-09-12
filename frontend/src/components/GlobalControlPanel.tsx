@@ -682,14 +682,13 @@ const GlobalControlPanel: React.FC = () => {
         const filtered = prev.filter((c) => c.type !== 'weather')
         const greetingIndex = filtered.findIndex((c) => c.type === 'greeting')
         const insertIndex = greetingIndex >= 0 ? greetingIndex + 1 : 0
-        filtered.splice(insertIndex, 0, {
+        return filtered.toSpliced(insertIndex, 0, {
           type: 'weather',
           icon: renderWeatherIcon(weatherData.icon),
           text: weatherText,
           subtext: weatherCity,
           showSubtext: true,
         })
-        return filtered
       })
 
       dynamicContentProvider.setContent('builtin', {
@@ -716,14 +715,13 @@ const GlobalControlPanel: React.FC = () => {
                 (c) => c.type === 'greeting',
               )
               const insertIndex = greetingIndex >= 0 ? greetingIndex + 1 : 0
-              filtered.splice(insertIndex, 0, {
+              return filtered.toSpliced(insertIndex, 0, {
                 type: 'weather',
                 icon: renderWeatherIcon(weather.icon),
                 text: weatherText,
                 subtext: weatherCity,
                 showSubtext: true,
               })
-              return filtered
             })
 
             dynamicContentProvider.setContent('builtin', {

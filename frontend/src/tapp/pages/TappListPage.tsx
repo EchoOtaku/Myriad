@@ -446,7 +446,7 @@ export function TappListPage() {
           const local = loadTappAppCardLayout()
           const localPersonalOnly: Record<string, TappAppCardSize> = {}
           for (const [id, size] of Object.entries(local.sizes)) {
-            if (id in remote.sizes) continue
+            if (Object.hasOwn(remote.sizes, id)) continue
             if (remote.siteSizes[id] === size) continue
             localPersonalOnly[id] = size
           }

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { setAgentContextConsent } from '../../../components/agent-panel/agentContextConsent'
-import { setCurrentPageContent } from '../../../contexts/currentPage'
+import { currentPagePublisher, setCurrentPageContent } from '../../../contexts/currentPage'
+import { authSubject } from '../../../utils/authSubject'
 import { PERSONA_UPDATED_EVENT } from '../events'
 import { livePresenceFacts } from '../livePresence'
 import { getProductionMotionRuntime } from '../motion/runtimeHost'
@@ -38,6 +39,125 @@ function snapshot(
 }
 
 test.describe('presence inbound', { concurrency: false }, () => {
+  test('real capture cannot renew the old subject page after identity loss or late publication', async () => {
+    resetPresenceInboundForTest()
+    setAgentContextConsent(true)
+    setPresenceArmedForTest(true)
+    setPresenceFactsForTest(() => ({}))
+    const posts: unknown[] = []
+    setPresencePostForTest(async body => { posts.push(body) })
+    const publishA = currentPagePublisher()
+    try {
+      publishA({ type: 'custom', title: 'A-private-title', summary: 'A-private-summary' })
+      await reportPresence('lease')
+      assert.match(JSON.stringify(posts[0]), /A-private-summary/)
+      authSubject.change('B', true)
+      publishA({ type: 'custom', title: 'A-late-private' })
+      await reportPresence('lease')
+      assert.doesNotMatch(JSON.stringify(posts[1]), /A-private|A-late/)
+      currentPagePublisher()({ type: 'custom', title: 'B-current' })
+      await reportPresence('lease')
+      assert.match(JSON.stringify(posts[2]), /B-current/)
+    } finally {
+      resetPresenceInboundForTest()
+      authSubject.change('guest', true)
+    }
+  })
+
+  test('identity changes abort transport and discard queued snapshots without blocking the new subject', async () => {
+    resetPresenceInboundForTest()
+    authSubject.change('A', true)
+    setPresenceArmedForTest(true)
+    const held = Promise.withResolvers<void>()
+    const entered = Promise.withResolvers<void>()
+    const posts: unknown[] = []
+    const signals: AbortSignal[] = []
+    let summary = 'A-private'
+    setPresenceCaptureForTest(() => [snapshot('page', 1, summary)])
+    setPresenceFactsForTest(() => ({}))
+    setPresencePostForTest(async (body, signal) => {
+      posts.push(body)
+      signals.push(signal)
+      if (posts.length === 1) { entered.resolve(); await held.promise }
+    })
+    try {
+      const first = reportPresence('lease')
+      await entered.promise
+      const queued = reportPresence('lease')
+      for (let i = 0; i < 6; i++) await Promise.resolve()
+      authSubject.change('B')
+      assert.equal(signals[0].aborted, true)
+      summary = 'B-current'
+      await reportPresence('route')
+      assert.equal(posts.length, 2)
+      assert.match(JSON.stringify(posts[1]), /B-current/)
+      held.resolve()
+      await Promise.all([first, queued])
+      assert.equal(posts.length, 2)
+    } finally {
+      held.resolve()
+      resetPresenceInboundForTest()
+      authSubject.change('guest', true)
+    }
+  })
+
+  test('identity change during asynchronous capture discards the old observation', async () => {
+    resetPresenceInboundForTest()
+    setPresenceArmedForTest(true)
+    const held = Promise.withResolvers<PerceptionSnapshot[]>()
+    let posts = 0
+    setPresenceCaptureForTest(() => held.promise)
+    setPresenceFactsForTest(() => ({}))
+    setPresencePostForTest(async () => { posts++ })
+    try {
+      const pending = reportPresence('lease')
+      authSubject.change('B', true)
+      held.resolve([snapshot('page', 1, 'A-private')])
+      await pending
+      assert.equal(posts, 0)
+    } finally {
+      resetPresenceInboundForTest()
+      authSubject.change('guest', true)
+    }
+  })
+
+  test('identity change cancels trailing reports and stale failure cannot schedule a retry', async (t) => {
+    resetPresenceInboundForTest()
+    t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 10_000 })
+    setPresenceArmedForTest(true)
+    const held = Promise.withResolvers<void>()
+    const entered = Promise.withResolvers<void>()
+    let summary = 'first'
+    let posts = 0
+    setPresenceCaptureForTest(() => [snapshot('page', 1, summary)])
+    setPresenceFactsForTest(() => ({}))
+    setPresencePostForTest(async () => {
+      posts++
+      if (posts === 2) { entered.resolve(); await held.promise; throw new Error('old failure') }
+    })
+    try {
+      await reportPresence('route')
+      summary = 'throttled'
+      await reportPresence('route')
+      authSubject.change('B', true)
+      t.mock.timers.tick(2_000)
+      for (let i = 0; i < 6; i++) await Promise.resolve()
+      assert.equal(posts, 1)
+      const pending = reportPresence('lease')
+      await entered.promise
+      authSubject.change('C')
+      held.resolve()
+      await pending
+      t.mock.timers.tick(10_000)
+      for (let i = 0; i < 6; i++) await Promise.resolve()
+      assert.equal(posts, 2)
+    } finally {
+      held.resolve()
+      resetPresenceInboundForTest()
+      authSubject.change('guest', true)
+    }
+  })
+
   test('production presence carries current semantic rig state, without raw drivers', async () => {
     resetPresenceInboundForTest()
     setPresenceArmedForTest(true)

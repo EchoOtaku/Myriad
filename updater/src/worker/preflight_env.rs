@@ -19,6 +19,7 @@ use crate::worker::Worker;
 /// health probes. Panels that rewrite these names will break stop/up/rollback.
 pub const EXPECTED_CONTAINER_NAMES: &[(&str, &str)] = &[
     ("backend", "myriad-backend"),
+    ("federation-worker", "myriad-federation-worker"),
     ("frontend", "myriad-frontend"),
     ("postgres", "myriad-postgres"),
 ];
@@ -236,7 +237,23 @@ pub fn check_compose_topology(config: &serde_json::Value, db_mode: DbMode) -> Re
         ));
     };
 
-    let required = required_services(db_mode);
+    let mut required = required_services(db_mode);
+    let web_only = config
+        .pointer("/services/backend/environment/MYRIAD_PROCESS_ROLE")
+        .and_then(serde_json::Value::as_str)
+        == Some("web");
+    if services.contains_key("federation-worker") {
+        required.push("federation-worker");
+        if !web_only {
+            return Err(UpdaterError::Precondition(
+                "split deployment requires backend MYRIAD_PROCESS_ROLE=web".into(),
+            ));
+        }
+    } else if web_only {
+        return Err(UpdaterError::Precondition(
+            "web-only backend requires federation-worker in compose".into(),
+        ));
+    }
     let mut missing_svc = Vec::new();
     let mut name_issues = Vec::new();
 
@@ -434,6 +451,24 @@ mod tests {
             }
         });
         assert!(check_compose_topology(&cfg, DbMode::Bundled).is_ok());
+    }
+
+    #[test]
+    fn split_topology_requires_both_roles_and_exact_worker_name() {
+        let mut config = json!({"services": {
+            "backend": {"container_name": "myriad-backend", "environment": {"MYRIAD_PROCESS_ROLE": "web"}},
+            "frontend": {"container_name": "myriad-frontend"}
+        }});
+        assert!(check_compose_topology(&config, DbMode::External).is_err());
+        config["services"]["federation-worker"] =
+            json!({"container_name": "myriad-federation-worker"});
+        assert!(check_compose_topology(&config, DbMode::External).is_ok());
+        config["services"]["federation-worker"]["container_name"] = json!("other-worker");
+        assert!(check_compose_topology(&config, DbMode::External).is_err());
+        config["services"]["federation-worker"]["container_name"] =
+            json!("myriad-federation-worker");
+        config["services"]["backend"]["environment"]["MYRIAD_PROCESS_ROLE"] = json!("all");
+        assert!(check_compose_topology(&config, DbMode::External).is_err());
     }
 
     #[test]

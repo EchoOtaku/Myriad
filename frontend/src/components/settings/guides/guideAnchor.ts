@@ -5,7 +5,7 @@ export const GUIDE_PATH_ATTR = 'data-guide-path'
 export function guideAnchorId(path: string): string {
   const cleaned = path.trim().replace(/^\.+|\.+$/g, '')
   if (!cleaned) return ''
-  return `cfg-g-${cleaned.replace(/\./g, '-')}`
+  return `cfg-g-${cleaned.replaceAll('.', '-')}`
 }
 
 export function guideDomProps(guidePath?: string | null): {
@@ -22,7 +22,7 @@ export function findGuideElement(path: string): HTMLElement | null {
     const byId = document.getElementById(id)
     if (byId) return byId
   }
-  const safe = path.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  const safe = path.replaceAll('\\', '\\\\').replaceAll('"', '\\"')
   return document.querySelector<HTMLElement>(
     `[${GUIDE_PATH_ATTR}="${safe}"]`,
   )

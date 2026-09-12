@@ -178,11 +178,10 @@ class DataExchangeBroker {
     exportId: string,
     providerOwnerId: number,
   ): Promise<RuntimeRegistration | undefined> {
-    const candidates = [...this.runtimes].filter(
+    for (const candidate of Iterator.from(this.runtimes).filter(
       (runtime) =>
         runtime.instance.id === targetTappId && runtime.exports.has(exportId),
-    )
-    for (const candidate of candidates) {
+    )) {
       try {
         if ((await candidate.bridge.getRuntimeOwnerId()) === providerOwnerId) {
           return candidate

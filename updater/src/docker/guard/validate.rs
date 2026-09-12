@@ -47,14 +47,21 @@ pub(crate) fn validate_container_rename(
         .filter(|(prefix, _)| prefix.len() == 12 && prefix.chars().all(|c| c.is_ascii_hexdigit()))
         .map(|(_, base)| base)
         .unwrap_or(requested);
-    let allowed = ["backend", "frontend", "postgres", "proxy", "updater"]
-        .into_iter()
-        .any(|service| {
-            base == format!("{}-{service}-1", state.config.project)
-                || base == format!("{}_{service}_1", state.config.project)
-                || base == format!("{}-{service}", state.config.project)
-                || base == format!("myriad-{service}")
-        });
+    let allowed = [
+        "backend",
+        "federation-worker",
+        "frontend",
+        "postgres",
+        "proxy",
+        "updater",
+    ]
+    .into_iter()
+    .any(|service| {
+        base == format!("{}-{service}-1", state.config.project)
+            || base == format!("{}_{service}_1", state.config.project)
+            || base == format!("{}-{service}", state.config.project)
+            || base == format!("myriad-{service}")
+    });
     if !allowed {
         return Err("container rename target is outside the Compose lifecycle allowlist".into());
     }
@@ -94,7 +101,9 @@ pub(crate) fn validate_container_create(
     if normalize_repository(image) != *expected_repository {
         return Err("container image does not match the fixed service repository".into());
     }
-    if nonempty(value.get("Entrypoint")) || nonempty(value.get("Cmd")) {
+    let worker_command = service == "federation-worker"
+        && value.get("Cmd") == Some(&json!(["/app/myriad-federation-worker"]));
+    if nonempty(value.get("Entrypoint")) || (nonempty(value.get("Cmd")) && !worker_command) {
         return Err("command or entrypoint overrides are not allowed".into());
     }
 
@@ -102,6 +111,9 @@ pub(crate) fn validate_container_create(
         .get("HostConfig")
         .cloned()
         .unwrap_or_else(|| json!({}));
+    if service == "federation-worker" {
+        validate_federation_worker(&value, &host)?;
+    }
     let narrow_volume_init = is_narrow_backend_volume_init(&value, &host, service);
     if service == "backend-volume-init" && !narrow_volume_init {
         return Err("backend-volume-init is allowed only in the narrow root init mode".into());
@@ -362,7 +374,7 @@ pub(crate) fn authorize_guard_network_attachment(
     config: &GuardConfig,
 ) -> std::result::Result<(), String> {
     let allowed = match service {
-        "postgres" | "frontend" => network_name == config.compose_network,
+        "postgres" | "frontend" | "federation-worker" => network_name == config.compose_network,
         "backend" | "proxy" => {
             network_name == config.compose_network || network_name == config.admin_network
         }
@@ -377,6 +389,111 @@ pub(crate) fn authorize_guard_network_attachment(
         return Err(format!(
             "service {service} may not attach to network {network_name}"
         ));
+    }
+    Ok(())
+}
+
+/// Only this fixed first-party role may override the image's default command.
+fn validate_federation_worker(value: &Value, host: &Value) -> std::result::Result<(), String> {
+    if value.get("Cmd") != Some(&json!(["/app/myriad-federation-worker"]))
+        || value.get("User").and_then(Value::as_str) != Some("1000:1000")
+        || host.get("ReadonlyRootfs").and_then(Value::as_bool) != Some(true)
+        || host.get("CapDrop") != Some(&json!(["ALL"]))
+    {
+        return Err("federation worker requires its fixed command, uid 1000, read-only root and dropped capabilities".into());
+    }
+    for (key, ceiling) in [
+        ("Memory", 536_870_912),
+        ("NanoCpus", 500_000_000),
+        ("PidsLimit", 64),
+    ] {
+        if host
+            .get(key)
+            .and_then(Value::as_i64)
+            .is_none_or(|v| v <= 0 || v > ceiling)
+        {
+            return Err(format!("federation worker requires a bounded {key}"));
+        }
+    }
+    if value.pointer("/Healthcheck/Test")
+        != Some(&json!([
+            "CMD",
+            "/usr/bin/wget",
+            "--spider",
+            "-q",
+            "http://localhost:1103/health"
+        ]))
+    {
+        return Err("federation worker health command is fixed".into());
+    }
+    if host.get("Tmpfs") != Some(&json!({"/tmp": "size=32m,mode=1777"})) {
+        return Err("federation worker tmpfs is fixed to a bounded /tmp".into());
+    }
+    if !host
+        .get("SecurityOpt")
+        .and_then(Value::as_array)
+        .is_some_and(|values| {
+            values.iter().any(|v| {
+                matches!(
+                    v.as_str(),
+                    Some("no-new-privileges" | "no-new-privileges:true")
+                )
+            })
+        })
+    {
+        return Err("federation worker requires no-new-privileges".into());
+    }
+    let env = value
+        .get("Env")
+        .and_then(Value::as_array)
+        .ok_or("worker environment missing")?;
+    let mut seen = std::collections::HashSet::new();
+    for item in env {
+        let (key, _) = item
+            .as_str()
+            .and_then(|v| v.split_once('='))
+            .ok_or("invalid worker environment")?;
+        if !seen.insert(key)
+            || !matches!(
+                key,
+                "MYRIAD_PROCESS_ROLE"
+                    | "DATABASE_URL"
+                    | "SERVER_HOST"
+                    | "SERVER_PORT"
+                    | "DATA_DIR"
+                    | "CACHE_DIR"
+                    | "JWT_SECRET"
+                    | "MYRIAD_DATA_KEY"
+                    | "CORS_ORIGINS"
+                    | "ENVIRONMENT"
+                    | "FRONTEND_URL"
+                    | "BASE_URL"
+                    | "RUST_LOG"
+                    | "TZ"
+                    | "PATH"
+                    | "MYRIAD_VERSION"
+                    | "MYRIAD_COMMIT_SHA"
+            )
+        {
+            return Err("worker environment contains an unsupported or duplicate key".into());
+        }
+    }
+    if env.iter().filter_map(Value::as_str).any(|entry| {
+        entry.starts_with("PATH=")
+            && entry != "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    }) {
+        return Err("worker PATH must be the image default".into());
+    }
+    for required in [
+        "MYRIAD_PROCESS_ROLE=federation-worker",
+        "DATA_DIR=/app/data",
+        "CACHE_DIR=/tmp/cache",
+        "SERVER_PORT=1103",
+        "SERVER_HOST=0.0.0.0",
+    ] {
+        if !env.iter().any(|value| value.as_str() == Some(required)) {
+            return Err("worker role and runtime paths are fixed".into());
+        }
     }
     Ok(())
 }
@@ -459,6 +576,18 @@ fn validate_mount_pair(
     };
     match service {
         "frontend" => Err("frontend container may not add mounts".into()),
+        "federation-worker" => {
+            if host_bind
+                || source != format!("{}_backend_data", state.config.project)
+                || target != "/app/data"
+                || !read_only
+            {
+                return Err(
+                    "federation worker may only mount backend_data read-only at /app/data".into(),
+                );
+            }
+            Ok(())
+        }
         "backend" | "backend-volume-init" => {
             if host_bind || source_path.is_absolute() {
                 return Err("backend host bind mounts are forbidden".into());
@@ -712,7 +841,13 @@ pub(crate) fn managed_project_service(inspect: &Value, config: &GuardConfig) -> 
     if project == config.project
         && matches!(
             service,
-            "backend" | "backend-volume-init" | "frontend" | "postgres" | "proxy" | "updater"
+            "backend"
+                | "backend-volume-init"
+                | "federation-worker"
+                | "frontend"
+                | "postgres"
+                | "proxy"
+                | "updater"
         )
     {
         Some(service.to_string())

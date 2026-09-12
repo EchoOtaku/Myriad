@@ -387,8 +387,7 @@ function extractFile(path: string, text: string): { line: number; raw: string }[
       seen.add(k)
       merged.push(c)
     }
-    merged.sort((a, b) => a.line - b.line)
-    return merged
+    return merged.toSorted((a, b) => a.line - b.line)
   }
   return extractJsComments(text)
 }

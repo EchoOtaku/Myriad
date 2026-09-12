@@ -146,21 +146,22 @@ export function TargetPicker({
         }
       } catch {
       }
-      next.sort((a, b) => {
-        const da = a.date ? Date.parse(a.date) : Number.NaN
-        const db = b.date ? Date.parse(b.date) : Number.NaN
-        const aOk = !Number.isNaN(da)
-        const bOk = !Number.isNaN(db)
-        if (aOk && bOk) return db - da
-        if (a.kind === 'release' && b.kind !== 'release') return -1
-        if (b.kind === 'release' && a.kind !== 'release') return 1
-        if (aOk && !bOk) return -1
-        if (!aOk && bOk) return 1
-        return 0
-      })
       if (!cancelled) {
         setTargetSource('github')
-        setItems(next)
+        setItems(
+          next.toSorted((a, b) => {
+            const da = a.date ? Date.parse(a.date) : Number.NaN
+            const db = b.date ? Date.parse(b.date) : Number.NaN
+            const aOk = !Number.isNaN(da)
+            const bOk = !Number.isNaN(db)
+            if (aOk && bOk) return db - da
+            if (a.kind === 'release' && b.kind !== 'release') return -1
+            if (b.kind === 'release' && a.kind !== 'release') return 1
+            if (aOk && !bOk) return -1
+            if (!aOk && bOk) return 1
+            return 0
+          }),
+        )
       }
     }
 

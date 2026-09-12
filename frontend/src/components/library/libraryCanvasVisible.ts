@@ -156,9 +156,9 @@ export function balancedShuffleLibraryItems(
     tv_series: grouped.tv_series ?? [],
     book: grouped.book ?? [],
   }
-  Object.values(groups).forEach((group) =>
-    group.sort(() => Math.random() - 0.5),
-  )
+  for (const type of Object.keys(groups)) {
+    groups[type] = groups[type].toSorted(() => Math.random() - 0.5)
+  }
 
   const result: LibraryItem[] = []
   const maxLength = Math.max(
@@ -167,7 +167,7 @@ export function balancedShuffleLibraryItems(
   )
   for (let index = 0; index < maxLength; index++) {
     Object.keys(groups)
-      .sort(() => Math.random() - 0.5)
+      .toSorted(() => Math.random() - 0.5)
       .forEach((type) => {
         const item = groups[type][index]
         if (item) result.push(item)
@@ -288,8 +288,7 @@ export function computeLibraryListLayout(
         continue
       }
 
-      candidates.sort((a, b) => a.index - b.index)
-      const best = candidates[0]
+      const best = candidates.toSorted((a, b) => a.index - b.index)[0]
 
       const queue = queues[best.type as keyof typeof queues]
       queue.shift()

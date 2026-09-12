@@ -256,10 +256,9 @@ mod tests {
 
     #[test]
     fn shared_host_locale_cases() {
-        let spec: Value = serde_json::from_str(include_str!(
-            "../../../../shared/host_locale_cases.json"
-        ))
-        .expect("shared/host_locale_cases.json");
+        let spec: Value =
+            serde_json::from_str(include_str!("../../../../shared/host_locale_cases.json"))
+                .expect("shared/host_locale_cases.json");
         for case in spec["parse"].as_array().expect("parse") {
             let input = case["input"].as_str().expect("input");
             let expected = case["output"].as_str();
@@ -318,7 +317,10 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("x-myriad-locale", HeaderValue::from_static("zh-HK"));
         assert_eq!(host_locale_from_headers(&headers), "zh-TW");
-        headers.insert("accept-language", HeaderValue::from_static("it,zh-HK;q=0.8"));
+        headers.insert(
+            "accept-language",
+            HeaderValue::from_static("it,zh-HK;q=0.8"),
+        );
         headers.remove("x-myriad-locale");
         assert_eq!(host_locale_from_headers(&headers), "zh-TW");
     }

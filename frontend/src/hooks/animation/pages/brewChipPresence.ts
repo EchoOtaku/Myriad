@@ -63,9 +63,11 @@ export function chipEnterFrames(
 
 function motionTargets(root: HTMLElement | null, selector: string): HTMLElement[] {
   if (!root) return []
-  return [...root.querySelectorAll<HTMLElement>(selector)].filter(
-    (el) => !el.dataset.brewGhost && !el.classList.contains('is-ghosted'),
-  )
+  return Iterator.from(root.querySelectorAll<HTMLElement>(selector))
+    .filter(
+      (el) => !el.dataset.brewGhost && !el.classList.contains('is-ghosted'),
+    )
+    .toArray()
 }
 
 function playMotionExit(

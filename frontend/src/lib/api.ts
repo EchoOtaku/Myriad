@@ -76,7 +76,7 @@ export function assertConfigWriteSuccess(
   if (
     data &&
     typeof data === 'object' &&
-    'success' in data &&
+    Object.hasOwn(data, 'success') &&
     (data as { success: unknown }).success !== true
   ) {
     throw new Error(extractApiErrorMessage(data, fallbackMessage))

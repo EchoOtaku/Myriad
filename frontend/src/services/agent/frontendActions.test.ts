@@ -4,7 +4,12 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { frontendActionDedupeKey } from './frontendActions.ts'
+import {
+  clearAllHandlers,
+  executeFrontendAction,
+  frontendActionDedupeKey,
+  registerActionHandler,
+} from './frontendActions.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../../..')
 
@@ -57,6 +62,47 @@ const TYPED: FrontendActionType[] = [
 const KNOWN_ORPHANS = [] as const
 
 describe('frontendAction chain', () => {
+  it('aborted global handlers cannot fall through into another handler', async () => {
+    const subject = new AbortController()
+    const held = Promise.withResolvers<void>()
+    const entered = Promise.withResolvers<void>()
+    let laterCalls = 0
+    registerActionHandler(async (_action, signal) => {
+      assert.equal(signal, subject.signal)
+      entered.resolve()
+      await held.promise
+      return false
+    })
+    registerActionHandler(async () => { laterCalls++; return true })
+    try {
+      const pending = executeFrontendAction({ type: 'show_data' }, subject.signal)
+      await entered.promise
+      subject.abort()
+      held.resolve()
+      assert.equal(await pending, undefined)
+      assert.equal(laterCalls, 0)
+    } finally { held.resolve(); clearAllHandlers() }
+  })
+
+  it('typed handler receives cancellation and its stale result is discarded', async () => {
+    const subject = new AbortController()
+    const held = Promise.withResolvers<void>()
+    const entered = Promise.withResolvers<void>()
+    registerActionHandler('show_data', async (_action, signal) => {
+      assert.equal(signal, subject.signal)
+      entered.resolve()
+      await held.promise
+      return { private: 'A' }
+    })
+    try {
+      const pending = executeFrontendAction({ type: 'show_data' }, subject.signal)
+      await entered.promise
+      subject.abort()
+      held.resolve()
+      assert.equal(await pending, undefined)
+    } finally { held.resolve(); clearAllHandlers() }
+  })
+
   it('every backend-emitted type is either typed or a known orphan', () => {
     const typed = new Set<string>(TYPED)
     const orphans = new Set<string>(KNOWN_ORPHANS)

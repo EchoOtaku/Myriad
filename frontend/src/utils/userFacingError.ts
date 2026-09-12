@@ -94,7 +94,7 @@ function readHint(reason: unknown): string {
   if (
     reason &&
     typeof reason === 'object' &&
-    'hint' in reason &&
+    Object.hasOwn(reason, 'hint') &&
     typeof (reason as { hint: unknown }).hint === 'string'
   ) {
     return (reason as { hint: string }).hint.trim()
@@ -106,7 +106,7 @@ function readStatus(reason: unknown): number {
   if (
     reason &&
     typeof reason === 'object' &&
-    'status' in reason &&
+    Object.hasOwn(reason, 'status') &&
     typeof (reason as { status: unknown }).status === 'number'
   ) {
     return (reason as { status: number }).status
@@ -118,7 +118,7 @@ function readCode(reason: unknown): string {
   if (
     reason &&
     typeof reason === 'object' &&
-    'code' in reason &&
+    Object.hasOwn(reason, 'code') &&
     typeof (reason as { code: unknown }).code === 'string'
   ) {
     return (reason as { code: string }).code.trim()

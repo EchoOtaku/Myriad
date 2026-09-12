@@ -21,6 +21,7 @@ import type {
 } from './types'
 
 import { currentCopy } from '../../i18n/localeCopy'
+import { authSubject } from '../../utils/authSubject'
 import { userFacingError } from '../../utils/userFacingError'
 import { ApiError, apiService } from '../api'
 import { abortSseSubscriptions, executeSSERequest } from './sseTransport'
@@ -160,7 +161,7 @@ export function parseMcpServerConfig(raw: unknown): McpServerConfig | null {
     command,
     args,
     env,
-    enabled: o.enabled !== false,
+    enabled: o.enabled === true,
     auto_restart: o.auto_restart !== false,
     max_restart_attempts:
       typeof o.max_restart_attempts === 'number' &&
@@ -289,6 +290,7 @@ class AgentService {
     runId: string,
     onProgress: ProgressCallback,
     mode: 'chat' | 'work' = 'work',
+    signal = authSubject.signal,
   ): Promise<AgentResponse> {
     return this.executeSSERequest(
       `/api${this.baseUrl}/runs/${encodeURIComponent(runId)}/stream`,
@@ -297,6 +299,7 @@ class AgentService {
       onProgress,
       false,
       mode,
+      signal,
     )
   }
 
@@ -326,6 +329,7 @@ class AgentService {
     input: string,
     onProgress: ProgressCallback,
     context?: Partial<ProcessContext>,
+    signal = authSubject.signal,
   ): Promise<AgentResponse> {
     console.log('[AgentService] processWithProgress called with input:', input)
 
@@ -345,6 +349,7 @@ class AgentService {
       onProgress,
       lane === 'chat',
       lane,
+      signal,
     )
   }
 
@@ -383,7 +388,7 @@ class AgentService {
     )
   }
 
-  async getTask(taskId: string): Promise<TaskDetail> {
+  async getTask(taskId: string, signal = authSubject.signal): Promise<TaskDetail> {
     const response = await apiService.get<{
       success: boolean
       task: TaskInfo & {
@@ -392,7 +397,7 @@ class AgentService {
       results: Record<string, unknown>
       startedAt: string
       completedAt?: string
-    }>(`${this.baseUrl}/tasks/${taskId}`)
+    }>(`${this.baseUrl}/tasks/${taskId}`, { signal })
 
     return {
       taskId: response.task.taskId,
@@ -433,13 +438,14 @@ class AgentService {
       musicStatus?: unknown
       windowState?: unknown
     },
+    signal?: AbortSignal,
   ): Promise<void> {
     try {
       await apiService.post(`${this.baseUrl}/tasks/${taskId}/frontend-ack`, {
         stepId,
         musicStatus: payload.musicStatus ?? null,
         windowState: payload.windowState ?? null,
-      })
+      }, { signal })
     } catch {
     }
   }
@@ -541,13 +547,16 @@ class AgentService {
       intervalMs?: number
       timeoutMs?: number
       onProgress?: (task: TaskDetail) => void
+      signal?: AbortSignal
     } = {},
   ): Promise<TaskDetail> {
-    const { intervalMs = 1000, timeoutMs = 300000, onProgress } = options
+    const { intervalMs = 1000, timeoutMs = 300000, onProgress, signal = authSubject.signal } = options
     const startTime = Date.now()
 
     while (Date.now() - startTime < timeoutMs) {
-      const task = await this.getTask(taskId)
+      signal.throwIfAborted()
+      const task = await this.getTask(taskId, signal)
+      signal.throwIfAborted()
 
       if (onProgress) {
         onProgress(task)
@@ -639,6 +648,7 @@ class AgentService {
   async steerSession(
     instruction: string,
     taskId?: string,
+    signal = authSubject.signal,
   ): Promise<{
     success: boolean
     message: string
@@ -648,7 +658,7 @@ class AgentService {
     return apiService.post(`${this.baseUrl}/session/steer`, {
       instruction,
       ...(taskId ? { taskId } : {}),
-    })
+    }, { signal })
   }
 
   async getHeartbeatTasks(): Promise<HeartbeatTask[]> {
@@ -980,9 +990,11 @@ class AgentService {
     sessionId: string,
     page: number = 1,
     limit: number = 50,
+    signal = authSubject.signal,
   ): Promise<SessionMessage[]> {
     const response = await apiService.get<{ messages: SessionMessage[] }>(
       `${this.baseUrl}/sessions/${sessionId}/messages?page=${page}&limit=${limit}`,
+      { signal },
     )
     return response.messages
   }
@@ -1017,8 +1029,10 @@ class AgentService {
     onProgress?: ProgressCallback,
     abortPrevious = true,
     lane: 'work' | 'chat' = 'work',
+    signal = authSubject.signal,
   ): Promise<AgentResponse> {
     return executeSSERequest({
+      signal,
       url,
       method,
       body,

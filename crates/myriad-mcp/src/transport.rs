@@ -10,6 +10,7 @@
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::time::Duration;
 
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
@@ -67,22 +68,26 @@ fn mcp_rpc_error(code: i64, message: &str) -> String {
 static MCP_LIVE_CHILDREN: AtomicUsize = AtomicUsize::new(0);
 
 /// RAII slot against [`MCP_LIVE_CHILDREN`].
-struct ChildSlot;
+struct ChildSlot(&'static AtomicUsize);
 
 impl ChildSlot {
     fn try_acquire() -> Result<Self, String> {
+        Self::from_counter(&MCP_LIVE_CHILDREN)
+    }
+
+    fn from_counter(counter: &'static AtomicUsize) -> Result<Self, String> {
         loop {
-            let cur = MCP_LIVE_CHILDREN.load(Ordering::Relaxed);
+            let cur = counter.load(Ordering::Relaxed);
             if cur >= MAX_MCP_CHILDREN {
                 return Err(format!(
                     "Too many concurrent MCP child processes (max {MAX_MCP_CHILDREN})"
                 ));
             }
-            if MCP_LIVE_CHILDREN
+            if counter
                 .compare_exchange_weak(cur, cur + 1, Ordering::AcqRel, Ordering::Relaxed)
                 .is_ok()
             {
-                return Ok(Self);
+                return Ok(Self(counter));
             }
         }
     }
@@ -90,7 +95,7 @@ impl ChildSlot {
 
 impl Drop for ChildSlot {
     fn drop(&mut self) {
-        MCP_LIVE_CHILDREN.fetch_sub(1, Ordering::AcqRel);
+        self.0.fetch_sub(1, Ordering::AcqRel);
     }
 }
 
@@ -209,12 +214,15 @@ const ENV_ALLOWLIST: &[&str] = &[
 
 /// Stdio 双向传输通道
 pub struct StdioTransport {
-    child: Child,
-    stdin: BufWriter<ChildStdin>,
+    child: Option<Child>,
+    process_group: Option<u32>,
+    stderr_task: Option<tokio::task::JoinHandle<()>>,
+    usable: bool,
+    stdin: Option<BufWriter<ChildStdin>>,
     stdout: BufReader<ChildStdout>,
     next_id: AtomicU64,
     /// Held for the lifetime of this transport so child counts stay accurate.
-    _child_slot: ChildSlot,
+    child_slot: Option<ChildSlot>,
 }
 
 impl StdioTransport {
@@ -247,6 +255,10 @@ impl StdioTransport {
             cmd.env(k, v);
         }
 
+        cmd.kill_on_drop(true);
+        #[cfg(unix)]
+        cmd.process_group(0);
+
         let mut child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
@@ -273,7 +285,7 @@ impl StdioTransport {
         };
 
         // 后台转发 stderr 到 tracing（bounded lines）
-        if let Some(stderr) = child.stderr.take() {
+        let stderr_task = child.stderr.take().map(|stderr| {
             let server_id = config.id.clone();
             tokio::spawn(async move {
                 let mut reader = BufReader::new(stderr);
@@ -282,7 +294,7 @@ impl StdioTransport {
                         Ok(line) => {
                             let trimmed = line.trim();
                             if !trimmed.is_empty() {
-                                let preview = &trimmed[..trimmed.len().min(500)];
+                                let preview: String = trimmed.chars().take(500).collect();
                                 tracing::debug!(server = %server_id, "[MCP stderr] {}", preview);
                             }
                         }
@@ -299,15 +311,18 @@ impl StdioTransport {
                         Err(_) => break,
                     }
                 }
-            });
-        }
+            })
+        });
 
         Ok(Self {
-            child,
-            stdin: BufWriter::new(stdin),
+            process_group: child.id(),
+            child: Some(child),
+            stderr_task,
+            usable: true,
+            stdin: Some(BufWriter::new(stdin)),
             stdout: BufReader::new(stdout),
             next_id: AtomicU64::new(1),
-            _child_slot: child_slot,
+            child_slot: Some(child_slot),
         })
     }
 
@@ -316,6 +331,37 @@ impl StdioTransport {
     /// 跳过 server 推送的 notification（无 id）以及 id 不匹配的消息，
     /// 避免把通知或乱序行当成工具结果。
     pub async fn send_request(
+        &mut self,
+        method: &str,
+        params: Option<Value>,
+    ) -> Result<Value, String> {
+        self.send_request_with_timeout(method, params, Duration::from_secs(30))
+            .await
+    }
+
+    async fn send_request_with_timeout(
+        &mut self,
+        method: &str,
+        params: Option<Value>,
+        budget: Duration,
+    ) -> Result<Value, String> {
+        if !self.usable {
+            self.terminate();
+            return Err("MCP transport is closed or interrupted".into());
+        }
+        // Cancellation can interrupt a partial write/read. Never reuse that stream.
+        self.usable = false;
+        let result = tokio::time::timeout(budget, self.request_inner(method, params))
+            .await
+            .unwrap_or_else(|_| Err(format!("MCP request timed out for method '{method}'")));
+        self.usable = result.is_ok();
+        if !self.usable {
+            self.terminate();
+        }
+        result
+    }
+
+    async fn request_inner(
         &mut self,
         method: &str,
         params: Option<Value>,
@@ -336,33 +382,19 @@ impl StdioTransport {
         payload.push('\n');
 
         // 写入 stdin
-        self.stdin
+        let stdin = self.stdin.as_mut().ok_or("MCP stdin is closed")?;
+        stdin
             .write_all(payload.as_bytes())
             .await
             .map_err(|error| mcp_io_failed("Failed to write to MCP server", error))?;
-        self.stdin
+        stdin
             .flush()
             .await
             .map_err(|error| mcp_io_failed("Failed to flush MCP stdin", error))?;
 
-        // 在总超时内读到匹配 id 的响应
-        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
         loop {
-            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            if remaining.is_zero() {
-                return Err(format!("MCP server timeout (30s) for method '{}'", method));
-            }
-
             let mut line = String::new();
-            let read_result =
-                tokio::time::timeout(remaining, self.read_response_line(&mut line)).await;
-            match read_result {
-                Err(_) => {
-                    return Err(format!("MCP server timeout (30s) for method '{}'", method));
-                }
-                Ok(Err(e)) => return Err(e),
-                Ok(Ok(())) => {}
-            }
+            self.read_response_line(&mut line).await?;
 
             let trimmed = line.trim();
             let value: Value = match serde_json::from_str(trimmed) {
@@ -371,7 +403,7 @@ impl StdioTransport {
                     tracing::debug!(
                         "[MCP] skip non-JSON line: {} | raw: {}",
                         e,
-                        &trimmed[..trimmed.len().min(120)]
+                        trimmed.chars().take(120).collect::<String>()
                     );
                     continue;
                 }
@@ -423,6 +455,29 @@ impl StdioTransport {
         method: &str,
         params: Option<Value>,
     ) -> Result<(), String> {
+        if !self.usable {
+            self.terminate();
+            return Err("MCP transport is closed or interrupted".into());
+        }
+        self.usable = false;
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            self.notification_inner(method, params),
+        )
+        .await
+        .unwrap_or_else(|_| Err("MCP notification timed out".into()));
+        self.usable = result.is_ok();
+        if !self.usable {
+            self.terminate();
+        }
+        result
+    }
+
+    async fn notification_inner(
+        &mut self,
+        method: &str,
+        params: Option<Value>,
+    ) -> Result<(), String> {
         // 通知没有 id 字段
         let mut map = HashMap::new();
         map.insert("jsonrpc", Value::String("2.0".to_string()));
@@ -441,11 +496,12 @@ impl StdioTransport {
         }
         payload.push('\n');
 
-        self.stdin
+        let stdin = self.stdin.as_mut().ok_or("MCP stdin is closed")?;
+        stdin
             .write_all(payload.as_bytes())
             .await
             .map_err(|error| mcp_io_failed("Failed to write MCP notification", error))?;
-        self.stdin
+        stdin
             .flush()
             .await
             .map_err(|error| mcp_io_failed("Failed to flush MCP stdin", error))?;
@@ -471,35 +527,85 @@ impl StdioTransport {
             }
 
             // 非 JSON 行（可能是服务器启动消息），跳过
-            tracing::debug!("[MCP stdout skip] {}", &trimmed[..trimmed.len().min(100)]);
+            tracing::debug!(
+                "[MCP stdout skip] {}",
+                trimmed.chars().take(100).collect::<String>()
+            );
         }
     }
 
-    /// 检查子进程是否存活
     pub fn is_alive(&mut self) -> bool {
-        match self.child.try_wait() {
-            Ok(None) => true,     // 仍在运行
-            Ok(Some(_)) => false, // 已退出
-            Err(_) => false,
+        self.usable
+            && self
+                .child
+                .as_mut()
+                .is_some_and(|child| matches!(child.try_wait(), Ok(None)))
+    }
+
+    fn terminate(&mut self) {
+        self.usable = false;
+        #[cfg(unix)]
+        if let Some(group) = self.process_group.take() {
+            // The child starts its own process group, never the backend's group.
+            // This cleans up cooperative descendants; OS/container isolation must
+            // additionally contain children that create their own sessions.
+            unsafe {
+                libc::kill(-(group as i32), libc::SIGKILL);
+            }
+        }
+        if let Some(child) = self.child.as_mut() {
+            let _ = child.start_kill();
+        }
+        if let Some(task) = self.stderr_task.take() {
+            task.abort();
         }
     }
 
-    /// 优雅关闭
+    /// Revocation kills first; retain the admission permit until wait confirms
+    /// exit so replacement servers cannot race unreaped old processes.
+    pub async fn terminate_and_reap(&mut self) {
+        self.terminate();
+        if let Some(child) = self.child.as_mut() {
+            if matches!(
+                tokio::time::timeout(Duration::from_secs(1), child.wait()).await,
+                Ok(Ok(_))
+            ) {
+                self.child_slot.take();
+            }
+        }
+    }
+
+    /// Closing stdin is the stdio shutdown signal. Discard any partial request;
+    /// a server that never reads must not prevent revocation or process exit.
     pub async fn shutdown(&mut self) {
-        // 尝试发送 notifications/cancelled
-        let _ = self
-            .send_notification("notifications/cancelled", None)
-            .await;
-        // 等待 2 秒后强制 kill
-        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), self.child.wait()).await;
-        let _ = self.child.kill().await;
+        self.stdin.take();
+        let _ = tokio::time::timeout(Duration::from_secs(2), async {
+            if let Some(child) = self.child.as_mut() {
+                let _ = child.wait().await;
+            }
+        })
+        .await;
+        self.terminate();
+        if let Some(child) = self.child.as_mut() {
+            let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
+        }
     }
 }
 
 impl Drop for StdioTransport {
     fn drop(&mut self) {
-        // 尽力 kill — 非 async，不能等待
-        let _ = self.child.start_kill();
+        self.terminate();
+        // Retain the admission slot until the direct child has actually exited.
+        // Dropping an in-flight request must not create zombies or free capacity
+        // while the old process is still alive.
+        if let (Some(mut child), Some(slot)) = (self.child.take(), self.child_slot.take()) {
+            if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+                runtime.spawn(async move {
+                    let _ = child.wait().await;
+                    drop(slot);
+                });
+            }
+        }
     }
 }
 
@@ -615,18 +721,19 @@ mod tests {
 
     #[test]
     fn child_slot_caps_concurrent_processes() {
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
         let mut slots = Vec::new();
         for _ in 0..MAX_MCP_CHILDREN {
-            slots.push(ChildSlot::try_acquire().expect("slot within cap"));
+            slots.push(ChildSlot::from_counter(&COUNTER).expect("slot within cap"));
         }
         assert!(
-            ChildSlot::try_acquire().is_err(),
+            ChildSlot::from_counter(&COUNTER).is_err(),
             "must reject when child cap is full"
         );
         drop(slots);
-        let again = ChildSlot::try_acquire().expect("slot after release");
+        let again = ChildSlot::from_counter(&COUNTER).expect("slot after release");
         drop(again);
-        assert_eq!(MCP_LIVE_CHILDREN.load(Ordering::Relaxed), 0);
+        assert_eq!(COUNTER.load(Ordering::Relaxed), 0);
     }
 
     #[tokio::test]
@@ -659,5 +766,88 @@ mod tests {
             err.contains("exceeds max line length"),
             "unexpected err: {err}"
         );
+    }
+}
+
+#[cfg(all(test, unix))]
+mod process_tests {
+    use super::*;
+    use crate::test_support::server_config;
+
+    #[tokio::test]
+    async fn timeout_covers_a_child_that_never_reads_stdin() {
+        let mut config = server_config("blocked", false);
+        config.args = vec!["-c".into(), "exec sleep 60".into()];
+        let mut transport = StdioTransport::spawn(&config).await.unwrap();
+        let error = tokio::time::timeout(
+            Duration::from_secs(2),
+            transport.send_request_with_timeout(
+                "tools/call",
+                Some(serde_json::json!({"data": "x".repeat(2 * 1024 * 1024)})),
+                Duration::from_millis(100),
+            ),
+        )
+        .await
+        .expect("write must have a deadline")
+        .unwrap_err();
+        assert!(error.contains("timed out"), "{error}");
+        assert!(!transport.is_alive());
+        assert!(transport
+            .send_notification("notifications/initialized", None)
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn cancellation_poisoning_prevents_stream_reuse() {
+        let mut config = server_config("cancelled", false);
+        config.args = vec!["-c".into(), "exec sleep 60".into()];
+        let mut transport = StdioTransport::spawn(&config).await.unwrap();
+        assert!(tokio::time::timeout(
+            Duration::from_millis(50),
+            transport.send_request("initialize", None)
+        )
+        .await
+        .is_err());
+        assert!(transport
+            .send_request("initialize", None)
+            .await
+            .unwrap_err()
+            .contains("interrupted"));
+        tokio::time::timeout(Duration::from_secs(5), transport.shutdown())
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn spawn_uses_a_separate_process_group_and_drop_terminates_it() {
+        let mut config = server_config("group", false);
+        config.args = vec![
+            "-c".into(),
+            "sleep 60 & child=$!; printf '%s\\n' \"$child\"; wait".into(),
+        ];
+        let mut transport = StdioTransport::spawn(&config).await.unwrap();
+        let descendant: i32 = tokio::time::timeout(
+            Duration::from_secs(2),
+            read_line_limited(&mut transport.stdout, 32),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+        let pid = transport.child.as_ref().unwrap().id().unwrap() as i32;
+        assert_eq!(unsafe { libc::getpgid(pid) }, pid);
+        assert_ne!(unsafe { libc::getpgrp() }, pid);
+        assert_eq!(unsafe { libc::getpgid(descendant) }, pid);
+        drop(transport);
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while unsafe { libc::kill(-pid, 0) } == 0 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("process group must be reclaimed");
     }
 }

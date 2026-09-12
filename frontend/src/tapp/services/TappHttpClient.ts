@@ -181,7 +181,7 @@ export async function streamRuntimeEvents(
   let buffer = ''
   while (true) {
     const { done, value } = await reader.read()
-    buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, '\n')
+    buffer += decoder.decode(value, { stream: !done }).replaceAll('\r\n', '\n')
     let boundary = buffer.indexOf('\n\n')
     while (boundary >= 0) {
       const block = buffer.slice(0, boundary)

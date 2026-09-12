@@ -403,9 +403,7 @@ mod cors_method_tests {
 
     #[tokio::test]
     async fn preflight_allows_patch_on_user_and_session_routes() {
-        crate::middleware::cors_runtime::set_cors_origins(vec![
-            "https://cors-patch.test".into(),
-        ]);
+        crate::middleware::cors_runtime::set_cors_origins(vec!["https://cors-patch.test".into()]);
         let app = Router::new()
             .route("/api/admin/users/{id}", patch(|| async { StatusCode::OK }))
             .route(

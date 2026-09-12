@@ -940,7 +940,7 @@
   "mcpFieldEnv": "環境變數",
   "mcpFieldEnvHint": "每行 KEY=value；金鑰只儲存在伺服器，勿提交倉庫",
   "mcpFieldEnabled": "啟用",
-  "mcpFieldEnabledHint": "關閉後不啟動子程序，但仍保留配置",
+  "mcpFieldEnabledHint": "新伺服器預設不啟用。開啟後執行啟動命令；停用會終止執行中的呼叫和程序。",
   "mcpFieldHealth": "健康狀態",
   "mcpFieldTools": "工具數",
   "mcpFieldAutoRestart": "崩潰自動重啟",

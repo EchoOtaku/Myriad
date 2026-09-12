@@ -57,7 +57,7 @@ function emptyDraft(): DraftServer {
     command: '',
     argsText: '',
     envText: '',
-    enabled: true,
+    enabled: false,
     auto_restart: true,
     max_restart_attempts: 3,
     trust_annotations: false,

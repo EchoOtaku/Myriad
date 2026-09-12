@@ -806,7 +806,7 @@ export const ManagedList = React.memo(({
                     return (
                       <span
                         key={s.key}
-                        id={`cfg-g-${s.guidePath.replace(/\./g, '-')}`}
+                        id={`cfg-g-${s.guidePath.replaceAll('.', '-')}`}
                         data-guide-path={s.guidePath}
                         className="has-guide-anchor managed-list-guide-anchor"
                       >

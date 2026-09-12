@@ -77,7 +77,12 @@ export function buildGuideSearchIndex(locale: Locale): GuideSearchEntry[] {
     if (!section || !group || typeof group !== 'object') continue
 
     for (const [key, value] of Object.entries(group)) {
-      if (value && typeof value === 'object' && 'what' in value && (value as SettingGuideEntry).what) {
+      if (
+        value &&
+        typeof value === 'object' &&
+        Object.hasOwn(value, 'what') &&
+        (value as SettingGuideEntry).what
+      ) {
         const entry = value as SettingGuideEntry
         const fields = entryFields(entry)
         const blob = fields.join('\n')

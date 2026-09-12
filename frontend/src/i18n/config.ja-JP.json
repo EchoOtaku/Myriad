@@ -940,7 +940,7 @@
   "mcpFieldEnv": "環境変数",
   "mcpFieldEnvHint": "1 行に KEY=value。秘密はサーバー側に置きリポジトリへ入れない",
   "mcpFieldEnabled": "有効",
-  "mcpFieldEnabledHint": "オフにすると子プロセスは起動しませんが設定は残ります",
+  "mcpFieldEnabledHint": "新しいサーバーは無効で保存されます。有効にすると起動コマンドを実行し、無効にすると実行中の呼び出しとプロセスを終了します。",
   "mcpFieldHealth": "ヘルス",
   "mcpFieldTools": "ツール数",
   "mcpFieldAutoRestart": "クラッシュ時の自動再起動",

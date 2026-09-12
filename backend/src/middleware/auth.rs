@@ -773,13 +773,14 @@ pub async fn authenticate_optional_request(
     authenticate_request(headers, db).await.map(Some)
 }
 
-/// Atomically bump `users.token_version` and return the new value.
+/// Atomically revoke the expected session epoch and return the new value.
 ///
 /// logout 调用。后续 JWT 对不上 `session_epoch_matches` 即 401。
-/// 密码修改自行 `UPDATE token_version`。用户行不存在返回 `None`。
+/// 密码修改自行 `UPDATE token_version`。用户不存在或版本已变化返回 `None`。
 pub async fn bump_token_version(
     db: &DatabaseConnection,
     user_id: i32,
+    expected_version: i64,
 ) -> Result<Option<i64>, sea_orm::DbErr> {
     if user_id <= 0 {
         return Ok(None);
@@ -788,8 +789,8 @@ pub async fn bump_token_version(
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "UPDATE users SET token_version = COALESCE(token_version, 0) + 1, updated_at = NOW() \
-             WHERE id = $1 RETURNING token_version",
-            [user_id.into()],
+             WHERE id = $1 AND COALESCE(token_version, 0)::BIGINT = $2 RETURNING token_version",
+            [user_id.into(), expected_version.into()],
         ))
         .await?;
     let new_version = row.and_then(|r| {
@@ -798,6 +799,9 @@ pub async fn bump_token_version(
             .map(i64::from)
             .or_else(|| r.try_get::<i64>("", "token_version").ok())
     });
+    if new_version.is_none() {
+        return Ok(None);
+    }
     // Remove the local entry even if NOTIFY cannot be delivered.  Publishing
     // after the committed UPDATE keeps peer caches bounded by the five-second
     // TTL in the event of a transient notification failure.
@@ -1252,6 +1256,50 @@ mod tests {
                 }
             }
         });
+    }
+
+    /// Run against an explicit test DB; a single-connection TEMP table keeps
+    /// the fixture separate from durable users and exercises the actual SQL.
+    #[tokio::test]
+    async fn logout_epoch_update_rejects_stale_and_concurrent_replays() {
+        use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseBackend, Statement};
+
+        let Ok(url) = std::env::var("AUTH_TEST_DATABASE_URL") else {
+            return;
+        };
+        let mut options = ConnectOptions::new(url);
+        options.max_connections(1).min_connections(1);
+        let db = Database::connect(options).await.expect("connect test DB");
+        db.execute_raw(Statement::from_string(DatabaseBackend::Postgres,
+            "CREATE TEMP TABLE users (id INTEGER PRIMARY KEY, token_version INTEGER, updated_at TIMESTAMPTZ)"))
+            .await.unwrap();
+        db.execute_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "INSERT INTO users (id, token_version) VALUES (1, 4), (2, 9)",
+        ))
+        .await
+        .unwrap();
+
+        let (a, b) = tokio::join!(
+            super::bump_token_version(&db, 1, 4),
+            super::bump_token_version(&db, 1, 4)
+        );
+        let (a, b) = (a.unwrap(), b.unwrap());
+        assert!(matches!((a, b), (Some(5), None) | (None, Some(5))));
+        assert_eq!(super::bump_token_version(&db, 1, 4).await.unwrap(), None);
+        assert_eq!(super::bump_token_version(&db, 1, 5).await.unwrap(), Some(6));
+        assert_eq!(super::bump_token_version(&db, 1, 4).await.unwrap(), None);
+        assert_eq!(super::bump_token_version(&db, 999, 0).await.unwrap(), None);
+        let rows = db
+            .query_all_raw(Statement::from_string(
+                DatabaseBackend::Postgres,
+                "SELECT token_version FROM users ORDER BY id",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(rows[0].try_get::<i32>("", "token_version").unwrap(), 6);
+        assert_eq!(rows[1].try_get::<i32>("", "token_version").unwrap(), 9);
+        db.close().await.unwrap();
     }
 
     #[test]

@@ -274,7 +274,7 @@ export default function SiteMotionWorkbench({
     }) => {
       if (!personaSnapshot) return
       const persisted = persistWardrobeState(patch.items, patch.activeId)
-      const portraitSpecified = 'portraitAssetId' in patch
+      const portraitSpecified = Object.hasOwn(patch, 'portraitAssetId')
       const requestedPortrait = patch.portraitAssetId?.trim() || ''
       const items = requestedPortrait
         ? bindPortrait(persisted.items, persisted.activeId, requestedPortrait)

@@ -1,3 +1,5 @@
+import { authSubject } from '../../utils/authSubject'
+
 /** Click/accidental highlight. */
 export const MIN_SELECTION_LENGTH = 2
 
@@ -51,6 +53,8 @@ let current: AgentSelectionSnapshot = EMPTY
 const listeners = new Set<() => void>()
 let watchers = 0
 let detach: (() => void) | null = null
+
+authSubject.subscribe(clearAgentSelection)
 
 function notify(): void {
   for (const listener of listeners) listener()

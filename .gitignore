@@ -126,6 +126,7 @@ backend/data/.bootstrap-claimed
 !/frontend/tests/browser/
 /frontend/tests/browser/*
 !/frontend/tests/browser/rigImport.spec.ts
+!/frontend/tests/browser/shoulderFusion.spec.ts
 !/frontend/tests/browser/fixture/
 /frontend/tests/browser/fixture/*
 !/frontend/tests/browser/fixture/rigImport.html
