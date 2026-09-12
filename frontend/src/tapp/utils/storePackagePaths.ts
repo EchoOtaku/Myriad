@@ -9,6 +9,6 @@ export function storeAssetStorePath(
   assetPath: string,
 ): string {
   const asset = assetPath.trim().replace(/^\/+/, '')
-  const root = packageRoot.trim().replace(/^\/+|\/+$/g, '')
+  const root = packageRoot.trim().replaceAll(/^\/+|\/+$/g, '')
   return root ? `${root}/${asset}` : asset
 }

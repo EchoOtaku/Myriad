@@ -486,4 +486,74 @@ mod worker_presence_tests {
         assert!(client.stop_federation_worker().await.is_err());
         server.abort();
     }
+    #[tokio::test]
+    async fn worker_health_requires_the_running_backend_image_and_capability() {
+        use std::sync::Mutex;
+        #[derive(Clone)]
+        struct Case {
+            capable: bool,
+            present: bool,
+            matching: bool,
+            healthy: bool,
+            web: bool,
+        }
+        let state = Arc::new(Mutex::new(Case {
+            capable: true,
+            present: true,
+            matching: true,
+            healthy: true,
+            web: true,
+        }));
+        async fn fake_guard(
+            State(state): State<Arc<Mutex<Case>>>,
+            uri: Uri,
+        ) -> Json<serde_json::Value> {
+            let case = state.lock().unwrap().clone();
+            let path = uri.path();
+            let value = if path.ends_with("/containers/json") {
+                if case.present {
+                    serde_json::json!([{"Id":"worker","Names":["/myriad-federation-worker"]}])
+                } else {
+                    serde_json::json!([])
+                }
+            } else if path.ends_with("/containers/myriad-backend/json") {
+                serde_json::json!({"Image":"sha256:backend", "Config":{"Env": if case.web {vec!["MYRIAD_PROCESS_ROLE=web"]} else {vec![]}}})
+            } else if path.ends_with("/containers/myriad-federation-worker/json") {
+                serde_json::json!({"Image": if case.matching {"sha256:backend"} else {"sha256:previous"},
+                    "State":{"Running":true,"Health":{"Status": if case.healthy {"healthy"} else {"unhealthy"}}}})
+            } else {
+                serde_json::json!({"Config":{"Labels":{"io.myriad.runtime.federation-worker": if case.capable {"1"} else {""}}}})
+            };
+            Json(value)
+        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(
+            axum::serve(
+                listener,
+                Router::new().fallback(fake_guard).with_state(state.clone()),
+            )
+            .into_future(),
+        );
+        let client = DockerClient {
+            inner: Docker::connect_with_http(&address, 2, bollard::API_DEFAULT_VERSION).unwrap(),
+        };
+        assert!(client.federation_worker_healthy().await.unwrap());
+        state.lock().unwrap().matching = false;
+        assert!(!client.federation_worker_healthy().await.unwrap());
+        state.lock().unwrap().matching = true;
+        state.lock().unwrap().healthy = false;
+        assert!(!client.federation_worker_healthy().await.unwrap());
+        state.lock().unwrap().present = false;
+        assert!(!client.federation_worker_healthy().await.unwrap());
+        state.lock().unwrap().capable = false;
+        assert!(client.federation_worker_healthy().await.unwrap());
+        state.lock().unwrap().present = true;
+        assert!(!client.federation_worker_healthy().await.unwrap());
+        state.lock().unwrap().web = false;
+        state.lock().unwrap().capable = true;
+        state.lock().unwrap().present = false;
+        assert!(client.federation_worker_healthy().await.unwrap());
+        server.abort();
+    }
 }

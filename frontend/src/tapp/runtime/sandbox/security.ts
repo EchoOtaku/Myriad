@@ -3,17 +3,17 @@ import { SANDBOXED_FETCH_INSTALL_SOURCE } from './assetUrlRewriter'
 export function generateNonce(): string {
   const array = new Uint8Array(16)
   crypto.getRandomValues(array)
-  return Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('')
+  return Iterator.from(array).map((b) => b.toString(16).padStart(2, '0')).toArray().join('')
 }
 
 export function generateSessionToken(): string {
   const array = new Uint8Array(32)
   crypto.getRandomValues(array)
-  return Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('')
+  return Iterator.from(array).map((b) => b.toString(16).padStart(2, '0')).toArray().join('')
 }
 
 export function escapeSandboxHtmlText(value: string): string {
-  return value.replace(/[&<>]/g, (character) => {
+  return value.replaceAll(/[&<>]/g, (character) => {
     if (character === '&') return '&amp;'
     if (character === '<') return '&lt;'
     return '&gt;'
@@ -30,7 +30,7 @@ export function serializeSandboxScriptValue(value: unknown): string {
 }
 
 export function escapeSandboxScriptSource(source: string): string {
-  return source.replace(/<\/script/gi, '<\\/script')
+  return source.replaceAll(/<\/script/gi, '<\\/script')
 }
 
 export interface GenerateCSPOptions {
@@ -405,7 +405,7 @@ export function generateSecurityWrapper(
         if (typeof value === 'string' && /<script[^>]*>/i.test(value)) {
           console.warn('[Security] Script tag in innerHTML blocked');
           // 移除 script 标签
-          value = value.replace(/<script[^>]*>[\\s\\S]*?<\\/script>/gi, '<!-- script removed -->');
+          value = value.replaceAll(/<script[^>]*>[\\s\\S]*?<\\/script>/gi, '<!-- script removed -->');
         }
         if (_originalInnerHTMLDescriptor && typeof _originalInnerHTMLDescriptor.set === 'function') {
           _originalInnerHTMLDescriptor.set.call(this, value);
@@ -428,7 +428,7 @@ export function generateSecurityWrapper(
       set(value) {
         if (typeof value === 'string' && /<script[^>]*>/i.test(value)) {
           console.warn('[Security] Script tag in outerHTML blocked');
-          value = value.replace(/<script[^>]*>[\\s\\S]*?<\\/script>/gi, '<!-- script removed -->');
+          value = value.replaceAll(/<script[^>]*>[\\s\\S]*?<\\/script>/gi, '<!-- script removed -->');
         }
         if (_originalOuterHTMLDescriptor && typeof _originalOuterHTMLDescriptor.set === 'function') {
           _originalOuterHTMLDescriptor.set.call(this, value);
@@ -449,7 +449,7 @@ export function generateSecurityWrapper(
   Element.prototype.insertAdjacentHTML = function(position, text) {
     if (typeof text === 'string' && /<script[^>]*>/i.test(text)) {
       console.warn('[Security] Script tag in insertAdjacentHTML blocked');
-      text = text.replace(/<script[^>]*>[\\s\\S]*?<\\/script>/gi, '<!-- script removed -->');
+      text = text.replaceAll(/<script[^>]*>[\\s\\S]*?<\\/script>/gi, '<!-- script removed -->');
     }
     return _originalInsertAdjacentHTML.call(this, position, text);
   };

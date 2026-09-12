@@ -56,7 +56,7 @@ describe('collectRequires', () => {
         'b.js': '',
       },
     )
-    assert.deepEqual([...resolved.keys()], ['./a.js', '../b.js'])
+    assert.deepEqual(Iterator.from(resolved.keys()).toArray(), ['./a.js', '../b.js'])
     assert.deepEqual(missing, [])
   })
 })

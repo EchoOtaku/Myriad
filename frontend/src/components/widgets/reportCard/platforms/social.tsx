@@ -558,7 +558,7 @@ function DiscordGuildIcon({
       />
     )
   }
-  const letter = Array.from(name.trim())[0] || '#'
+  const letter = Iterator.from(name.trim()).toArray()[0] || '#'
   return (
     <div
       className="w-full h-full flex items-center justify-center font-bold text-white"
@@ -733,7 +733,7 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
                 className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 ring-2 ring-white/80 dark:ring-black/50 self-center"
                 style={{ background: DISCORD_BLURPLE }}
               >
-                {Array.from(String(displayName).trim())[0] || '#'}
+                {Iterator.from(String(displayName).trim()).toArray()[0] || '#'}
               </div>
             )}
             <div

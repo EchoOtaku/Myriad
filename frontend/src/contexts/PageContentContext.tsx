@@ -48,7 +48,7 @@ function extractPlainText(html: string): string {
 
   const text = temp.textContent || ''
 
-  return text.replace(/\s+/g, ' ').trim()
+  return text.replaceAll(/\s+/g, ' ').trim()
 }
 
 function truncateText(text: string, maxLength: number): string {

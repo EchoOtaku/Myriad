@@ -3,6 +3,63 @@ import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
 
+test('real high collar retains its aperture and does not become a skin contact', async ({ page }, testInfo) => {
+  test.setTimeout(60_000)
+  const root = process.env.MEROPE_COLLAR_ASSET
+  test.skip(!root, 'Set MEROPE_COLLAR_ASSET to a genuine high-collar package')
+  const manifest = JSON.parse(await readFile(`${root}/manifest.json`, 'utf8'))
+  const atlas = await readFile(`${root}/atlas.png`)
+  const modules = `/@fs${fileURLToPath(new URL('../../src/features/merope/anime25drig/', import.meta.url))}`
+  await page.route('**/collar-probe', route => route.fulfill({ contentType: 'text/html', body: '<canvas></canvas>' }))
+  await page.route('**/collar-atlas.png', route => route.fulfill({ contentType: 'image/png', body: atlas }))
+  await page.goto('/collar-probe')
+  const result = await page.evaluate(async ({ manifest, modules }) => {
+    const { Anime25DPlayer } = await import(`${modules}player.ts`)
+    const { buildAnime25DLayerBinding } = await import(`${modules}layerBinding.ts`)
+    const player = new Anime25DPlayer(document.querySelector('canvas'), manifest.anime25dPlayback, manifest)
+    await player.replaceLivePackage(manifest.anime25dPlayback, manifest, '/collar-atlas.png')
+    player.resize(768, 1024, 1)
+    const protectedLayers = player.layers.filter(layer => ['neck', 'collar-front', 'collar-back'].includes(layer.source.role))
+    const roles = protectedLayers.map(layer => layer.source.role)
+    const contacts = protectedLayers.filter(layer => layer.surfaceContact).length
+    // Covered sleeves in this fixture must retain every original vertex and UV.
+    const sleeves = player.layers.filter(layer => layer.source.role === 'handwear')
+    const unchangedSleeves = sleeves.every(layer => {
+      const binding = buildAnime25DLayerBinding({ source: layer.source, canvasWidth: manifest.anime25dPlayback.pixelCanvas.width,
+        face: manifest.anime25dPlayback.anchors.face, layerZ: layer.source.z ?? 0 })
+      return !layer.surfaceContact && ['rest', 'atlasUvs', 'indices'].every(key =>
+        binding[key].length === layer[key].length && binding[key].every((v, i) => v === layer[key][i]))
+    })
+    const clip = player.collarClip
+    if (!clip) throw new Error('Genuine collar fixture did not create a neck aperture')
+    const initial = clip.deformed.slice()
+    let excursion = 0
+    for (let frame = 0; frame < 120; frame++) {
+      const t = frame / 60
+      player.setTarget({ bodyYaw: Math.sin(t * 2.3), body: Math.sin(t * 1.7), angleX: Math.sin(t * 1.5),
+        angleY: Math.cos(t * 1.9) * 0.7, angleZ: Math.sin(t * 2.1) * 0.7, idle: false, rand: false, blink: false })
+      player.time += 1 / 60
+      player.smoothDriver(1 / 60)
+      player.updateSprings(1 / 60)
+      player.deform()
+      if (!clip.deformed.every(Number.isFinite)) throw new Error('Invalid collar aperture geometry')
+      for (let i = 0; i < initial.length; i++) excursion = Math.max(excursion, Math.abs(clip.deformed[i] - initial[i]))
+    }
+    player.draw()
+    const screenshot = player.gl.canvas.toDataURL('image/png').split(',')[1]
+    const error = player.gl.getError()
+    player.dispose()
+    return { roles, contacts, sleeves: sleeves.length, unchangedSleeves, excursion, screenshot, error }
+  }, { manifest, modules })
+  expect(result.roles).toEqual(expect.arrayContaining(['neck', 'collar-front', 'collar-back']))
+  expect(result.contacts).toBe(0)
+  expect(result.sleeves).toBe(2)
+  expect(result.unchangedSleeves).toBe(true)
+  expect(result.excursion).toBeGreaterThan(1)
+  expect(result.error).toBe(0)
+  await testInfo.attach('real-high-collar', { body: Buffer.from(result.screenshot, 'base64'), contentType: 'image/png' })
+})
+
 test('real shoulder fusion keeps GPU coverage through body and arm motion', async ({
   page,
 }, testInfo) => {
@@ -28,6 +85,10 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
     async ({ manifest, modules }) => {
       const { Anime25DPlayer } = await import(`${modules}player.ts`)
       const { IDENTITY_DRIVER } = await import(`${modules}driver.ts`)
+      const { deformAnime25DUpstreamFeaturePoint } = await import(`${modules}layerDeformation.ts`)
+      const { deformAnime25DFaceJawPoint } = await import(`${modules}mouthDeformation.ts`)
+      const { deformAnime25DSecondaryPoint } = await import(`${modules}secondaryDeformation.ts`)
+      const { bindAttachmentMesh, sampleAttachmentMesh } = await import(`${modules}attachmentMesh.ts`)
       const { createAtlasTexture, readLayerPixels } = await import(`${modules}webglRuntime.ts`)
       const { intentExpressionPatch } = await import(
         `${modules}performanceCueDefinitions.ts`,
@@ -63,7 +124,9 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
           const raster = readLayerPixels(image, layer.source)
           const triangles: number[][] = []
           for (let i = 0; i < layer.indices.length; i += 3) {
-            const vertices = Array.from(layer.indices.slice(i, i + 3), (v: number) => v * 2)
+            const vertices = Iterator.from(layer.indices.slice(i, i + 3))
+              .map((v: number) => v * 2)
+              .toArray()
             const x = vertices.reduce((n, v) => n + layer.rest[v], 0) / 3
             const y = vertices.reduce((n, v) => n + layer.rest[v + 1], 0) / 3
             const px = Math.floor((x - layer.source.x) / layer.source.w * raster.width)
@@ -72,7 +135,19 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
               triangles.push(vertices)
             }
           }
-          return { layer, triangles }
+          const witnesses = []
+          // Fixed texture-space witnesses are independent of mesh density.
+          const stride = layer.source.role === 'face' ? 12 : 3
+          for (let py = 1; py < raster.height; py += stride) {
+            for (let px = 1; px < raster.width; px += stride) {
+              if (raster.pixels[(py * raster.width + px) * 4 + 3] <= 128) continue
+              const x = layer.source.x + (px + 0.5) / raster.width * layer.source.w
+              const y = layer.source.y + (py + 0.5) / raster.height * layer.source.h
+              const sample = bindAttachmentMesh(layer, x, y)
+              if (sample) witnesses.push(sample)
+            }
+          }
+          return { layer, triangles, witnesses }
         })
       const baseline = createAtlasTexture(gl, image)
       const width = gl.drawingBufferWidth
@@ -137,6 +212,40 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
           )
         }
       }
+      // Probe the torso's actual alpha edge inside the arm, not just vertices
+      // the binder has itself labelled as fully pinned.
+      const torso = player.layers.find(layer => layer.source.role === 'topwear')
+      const bodyPixels = readLayerPixels(image, torso.source)
+      const skinAt = (layer, raster, x, y) => {
+        const px = Math.floor((x - layer.x) / layer.w * raster.width)
+        const py = Math.floor((y - layer.y) / layer.h * raster.height)
+        if (px < 0 || py < 0 || px >= raster.width || py >= raster.height) return false
+        const i = (py * raster.width + px) * 4
+        const [r, g, b, a] = raster.pixels.slice(i, i + 4)
+        return a > 220 && r > 100 && r > g + 3 && g > b - 12 && r - b > 8 && r - g < 85
+      }
+      const boundarySamples = contacts.flatMap(layer => {
+        const raster = readLayerPixels(image, layer.source)
+        const samples = []
+        const fromLeft = layer.source.x < torso.source.x + torso.source.w / 2
+        for (let py = 0; py < bodyPixels.height; py += 4) {
+          const y = torso.source.y + (py + 0.5) / bodyPixels.height * torso.source.h
+          if (y < layer.source.y || y > layer.source.y + layer.source.h * 0.5) continue
+          let edge = -1
+          for (let n = 0; n < bodyPixels.width; n++) {
+            const px = fromLeft ? n : bodyPixels.width - 1 - n
+            if (bodyPixels.pixels[(py * bodyPixels.width + px) * 4 + 3] > 220) { edge = px; break }
+          }
+          if (edge < 0) continue
+          const x = torso.source.x + (edge + 0.5) / bodyPixels.width * torso.source.w
+          if (!skinAt(layer.source, raster, x, y) || !skinAt(torso.source, bodyPixels, x + (fromLeft ? 4 : -4), y)) continue
+          const armSample = bindAttachmentMesh(layer, x, y)
+          const bodySample = bindAttachmentMesh(torso, x, y)
+          if (armSample && bodySample) samples.push({ armSample, bodySample })
+        }
+        if (samples.length < 3) throw new Error(`No independent shoulder edge evidence for ${layer.source.name}`)
+        return samples
+      })
       // Exercise the real controller and geometry continuously, not only settled endpoints.
       // Read the host triangles independently of the contact evaluator.
       const sweeps = []
@@ -147,7 +256,8 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
           vertex < layer.surfaceContact.samples.length;
           vertex++
         ) {
-          if (layer.surfaceContact.weights[vertex] < 0.9999) continue
+          // Feather vertices retain deliberate independent motion, even at .9999.
+          if (layer.surfaceContact.weights[vertex] !== 1) continue
           const sample = layer.surfaceContact.samples[vertex]
           const mesh = sample.mesh
           let x = sample.x
@@ -179,6 +289,7 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
         let minAreaRatio = Infinity
         let redundantDirty = 0
         let maxIdempotenceError = 0
+        let maxBoundaryError = 0
         for (let frame = 0; frame < fps * 4; frame++) {
           const t = frame / fps
           player.setTarget({
@@ -197,13 +308,19 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
           player.smoothDriver(1 / fps)
           player.updateSprings(1 / fps)
           player.deform()
+          for (const { armSample, bodySample } of boundarySamples) {
+            const armPoint = { x: 0, y: 0 }
+            const bodyPoint = { x: 0, y: 0 }
+            sampleAttachmentMesh(armSample, armPoint)
+            sampleAttachmentMesh(bodySample, bodyPoint)
+            maxBoundaryError = Math.max(maxBoundaryError, Math.hypot(armPoint.x - bodyPoint.x, armPoint.y - bodyPoint.y))
+          }
           for (const layer of contacts) {
             maxSeamError = Math.max(maxSeamError, seamError(layer))
             for (let i = 0; i < layer.indices.length; i += 3) {
-              const [a, b, c] = Array.from(
-                layer.indices.slice(i, i + 3),
-                (index: number) => index * 2,
-              )
+              const [a, b, c] = Iterator.from(layer.indices.slice(i, i + 3))
+                .map((index: number) => index * 2)
+                .toArray()
               minAreaRatio = Math.min(
                 minAreaRatio,
                 area(layer.deformed, a, b, c) / area(layer.rest, a, b, c),
@@ -243,6 +360,7 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
           minAreaRatio,
           redundantDirty,
           maxIdempotenceError,
+          maxBoundaryError,
         })
       }
       for (const pose of poses) {
@@ -257,11 +375,28 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
         player.tick(1 / 60)
         const headGeometry = headMeshes
           .filter(({ layer }) => layer.frameOpacity > 0.01)
-          .map(({ layer, triangles }) => ({
-            name: layer.source.name,
-            triangles: triangles.length,
-            minAreaRatio: Math.min(...triangles.map(([a, b, c]) => area(layer.deformed, a, b, c) / area(layer.rest, a, b, c))),
-          }))
+          .map(({ layer, triangles, witnesses }) => {
+            const errors = witnesses.map(sample => {
+              const { x, y } = sample
+              const point = { x, y }
+              if (layer.upstreamFeature) deformAnime25DUpstreamFeaturePoint(point, layer.upstreamFeature, player.irisRebound)
+              if (layer.baseRole === 'face') deformAnime25DFaceJawPoint(point, y, player.deformationFrame)
+              deformAnime25DSecondaryPoint(point, x, y, 0, layer.secondaryDeformation, player.secondaryDeformationFrame)
+              const interpolated = { x: 0, y: 0 }
+              sampleAttachmentMesh(sample, interpolated)
+              return Math.hypot(point.x - interpolated.x, point.y - interpolated.y)
+            })
+            const maxInterpolationError = Math.max(...errors)
+            const worst = witnesses[errors.indexOf(maxInterpolationError)]
+            return {
+              name: layer.source.name,
+              triangles: triangles.length,
+              minAreaRatio: Math.min(...triangles.map(([a, b, c]) => area(layer.deformed, a, b, c) / area(layer.rest, a, b, c))),
+              witnesses: witnesses.length,
+              maxInterpolationError,
+              worstRest: worst ? [worst.x, worst.y] : null,
+            }
+          })
         const after = read()
         const screenshot = (gl.canvas as HTMLCanvasElement)
           .toDataURL('image/png')
@@ -296,6 +431,8 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
   })
   for (const sweep of result.sweeps) {
     expect(sweep.maxSeamError).toBeLessThan(0.001)
+    // Independent, texture-derived visible edge, including triangle interiors.
+    expect(sweep.maxBoundaryError).toBeLessThan(0.25)
     expect(sweep.maxUnboundSeamError).toBeGreaterThan(1)
     expect(sweep.minAreaRatio).toBeGreaterThan(0)
     expect(sweep.redundantDirty).toBe(0)
@@ -308,6 +445,8 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
     expect(pose.headGeometry.some(surface => surface.name === 'face')).toBe(true)
     for (const surface of pose.headGeometry) {
       expect(surface.triangles, surface.name).toBeGreaterThan(0)
+      expect(surface.witnesses, surface.name).toBeGreaterThan(0)
+      if (surface.name !== 'face') expect(surface.maxInterpolationError, `${index}: ${surface.name}`).toBeLessThan(0.25)
       expect(surface.minAreaRatio, `${index}: ${surface.name}`).toBeGreaterThan(0)
     }
     await testInfo.attach(`shoulder-pose-${index}`, {

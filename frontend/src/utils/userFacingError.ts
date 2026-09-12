@@ -35,7 +35,7 @@ export function statusFromErrorText(text: string): number {
 }
 
 export function isUselessErrorText(text: string): boolean {
-  const detail = text.replace(/\s+/g, ' ').trim()
+  const detail = text.replaceAll(/\s+/g, ' ').trim()
   if (!detail) return true
   if (/^API Error:\s*\d+$/i.test(detail)) return true
   if (/^HTTP(\s+error!)?(\s*status:?)?\s*\d+(\s*:.*)?$/i.test(detail)) {
@@ -135,7 +135,7 @@ function clip(text: string): string {
 }
 
 function isInternalDump(text: string): boolean {
-  const detail = text.replace(/\s+/g, ' ').trim()
+  const detail = text.replaceAll(/\s+/g, ' ').trim()
   if (!detail) return true
   if (
     /relation "|does not exist|duplicate key value|violates (unique|not-null|foreign)/i.test(

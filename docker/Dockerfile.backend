@@ -68,6 +68,7 @@ ARG MYRIAD_COMMIT_SHA=unknown
 ENV MYRIAD_COMMIT_SHA=${MYRIAD_COMMIT_SHA}
 LABEL org.opencontainers.image.revision=${MYRIAD_COMMIT_SHA}
 LABEL io.myriad.runtime.federation-worker="1"
+LABEL io.myriad.runtime.federation-http="1"
 
 # Install runtime dependencies
 RUN apt-get update && \

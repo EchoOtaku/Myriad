@@ -170,7 +170,7 @@ export function inferTopicByKeywords(
 ): string | null {
   const title = (item.title || '').toLowerCase()
   const summary = (item.summary || '')
-    .replace(/<[^>]*>/g, '')
+    .replaceAll(/<[^>]*>/g, '')
     .slice(0, SUMMARY_MATCH_CHARS)
     .toLowerCase()
   const haystack = `${title}\n${summary}`
@@ -200,7 +200,7 @@ export function clusterTopics(
 
   const orderOf = new Map(TOPIC_DEFS.map((d, i) => [d.key, i]))
 
-  return [...buckets.entries()]
+  return Iterator.from(buckets.entries()).toArray()
     .filter(([, list]) => list.length >= TOPIC_MIN_ITEMS)
     .map(([key, list]) => {
       const def = TOPIC_BY_KEY.get(key)!

@@ -143,7 +143,7 @@ function formatRelativeTime(
 }
 
 function summarizeInstruction(text: string, max = 48): string {
-  const cleaned = text.replace(/\s+/g, ' ').trim()
+  const cleaned = text.replaceAll(/\s+/g, ' ').trim()
   if (!cleaned) return ''
   if (cleaned.length <= max) return cleaned
   return `${cleaned.slice(0, max - 1)}…`
@@ -210,7 +210,7 @@ function formatElapsedClock(totalSeconds: number): string {
 }
 
 function exampleChipLabel(text: string, max = 22): string {
-  const cleaned = text.replace(/\s+/g, ' ').trim()
+  const cleaned = text.replaceAll(/\s+/g, ' ').trim()
   if (cleaned.length <= max) return cleaned
   return `${cleaned.slice(0, max - 1)}…`
 }

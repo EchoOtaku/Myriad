@@ -441,7 +441,7 @@ class AnimationCoordinator {
           }
         })
       } else {
-        const callbacks = Array.from(this.pageReadyCallbacks)
+        const callbacks = Iterator.from(this.pageReadyCallbacks).toArray()
         this.pageReadyCallbacks.clear()
 
         let index = 0
@@ -869,7 +869,7 @@ class AnimationCoordinator {
       return
     }
 
-    const ids = Array.from(this.pendingUpdates)
+    const ids = Iterator.from(this.pendingUpdates).toArray()
     this.pendingUpdates.clear()
 
     let index = 0

@@ -64,8 +64,8 @@ export function slugifySettingGroupId(title: string): string {
   const s = title
     .trim()
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
-    .replace(/^-+|-+$/g, '')
+    .replaceAll(/[^\p{L}\p{N}]+/gu, '-')
+    .replaceAll(/^-+|-+$/g, '')
     .slice(0, 48)
   return s ? `sg-${s}` : ''
 }

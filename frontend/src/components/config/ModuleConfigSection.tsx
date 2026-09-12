@@ -597,7 +597,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
           bySource.set(source, { source, count: 0 })
         }
       })
-      return Array.from(bySource.values())
+      return Iterator.from(bySource.values()).toArray()
     },
     [sourceDraft.categories, sourceOptions],
   )

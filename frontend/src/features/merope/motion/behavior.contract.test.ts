@@ -262,19 +262,25 @@ test('the behavior vocabulary is exactly what a producer can emit', () => {
     sources.add(name!)
   }
 
-  assert.deepEqual([...functions].toSorted(), [...BEHAVIOR_FUNCTIONS].toSorted())
-  assert.deepEqual([...sources].toSorted(), [...BEHAVIOR_SOURCES].toSorted())
+  assert.deepEqual(
+    Iterator.from(functions).toArray().toSorted(),
+    BEHAVIOR_FUNCTIONS.toSorted(),
+  )
+  assert.deepEqual(
+    Iterator.from(sources).toArray().toSorted(),
+    BEHAVIOR_SOURCES.toSorted(),
+  )
 
   const contract = source(
     '../../../../../crates/myriad-merope/src/rig_state.rs',
   )
   assert.deepEqual(
     rustList(contract, 'RIG_STATE_BEHAVIOR_FUNCTIONS').toSorted(),
-    [...functions].toSorted(),
+    Iterator.from(functions).toArray().toSorted(),
   )
   assert.deepEqual(
     rustList(contract, 'RIG_STATE_BEHAVIOR_SOURCES').toSorted(),
-    [...sources].toSorted(),
+    Iterator.from(sources).toArray().toSorted(),
   )
 })
 
@@ -285,5 +291,7 @@ function rustList(contract: string, name: string): string[] {
     contract,
   )?.[1]
   assert.ok(block, `${name} missing from the director contract`)
-  return [...block.matchAll(/"([a-z.]+)"/gi)].map((match) => match[1]!)
+  return Iterator.from(block.matchAll(/"([a-z.]+)"/gi))
+    .map((match) => match[1]!)
+    .toArray()
 }

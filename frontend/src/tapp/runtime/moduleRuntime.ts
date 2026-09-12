@@ -203,7 +203,7 @@ function collectResolvedLayerModules(
 
 function escapeModuleSource(source: string): string {
   // 模块体嵌进 script，须切断提前闭合 script。
-  return source.replace(/<\/script/gi, '<\\/script')
+  return source.replaceAll(/<\/script/gi, '<\\/script')
 }
 
 export function buildLayerRuntime(

@@ -167,7 +167,7 @@ export function highlightAnchoredAnnotations(
       const rawId = annotation.id || `${annotation.type}-${index}`
       mark.setAttribute(
         'data-annotation-id',
-        String(rawId).replace(/[^\w-]/g, ''),
+        String(rawId).replaceAll(/[^\w-]/g, ''),
       )
       mark.setAttribute('data-type', annotation.type)
       mark.setAttribute('data-term', encodeURIComponent(annotation.term))

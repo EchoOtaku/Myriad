@@ -86,7 +86,7 @@ export function useCoverColors(options: {
   const colorCacheRef = useRef<Map<string, MusicColors>>(new Map())
 
   const normalizeColor = useCallback((color: string): string => {
-    const cleaned = color.trim().replace(/\s+/g, '')
+    const cleaned = color.trim().replaceAll(/\s+/g, '')
     if (/^#([0-9A-F]{3}){1,2}$/i.test(cleaned)) {
       return cleaned.toLowerCase()
     }

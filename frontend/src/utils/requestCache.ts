@@ -106,13 +106,13 @@ export class RequestCache {
 
   deleteByPrefix(prefix: string): number {
     let removed = 0
-    for (const key of [...this.cache.keys()]) {
+    for (const key of Iterator.from(this.cache.keys()).toArray()) {
       if (key.startsWith(prefix)) {
         this.cache.delete(key)
         removed++
       }
     }
-    for (const key of [...this.pendingRequests.keys()]) {
+    for (const key of Iterator.from(this.pendingRequests.keys()).toArray()) {
       if (key.startsWith(prefix)) {
         this.pendingRequests.delete(key)
       }
@@ -166,7 +166,7 @@ export class RequestCache {
   }
 
   get keys(): string[] {
-    return Array.from(this.cache.keys())
+    return Iterator.from(this.cache.keys()).toArray()
   }
 
   getStatus() {

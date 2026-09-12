@@ -97,7 +97,7 @@ export function extractMatchSnippet(
   fallback: string,
   radius = 28,
 ): string {
-  const hay = haystack.replace(/\s+/g, ' ').trim()
+  const hay = haystack.replaceAll(/\s+/g, ' ').trim()
   if (!hay) return fallback
 
   let bestIdx = -1
@@ -110,7 +110,7 @@ export function extractMatchSnippet(
     }
   }
   if (bestIdx < 0) {
-    const f = fallback.replace(/\s+/g, ' ').trim()
+    const f = fallback.replaceAll(/\s+/g, ' ').trim()
     return f.length > 72 ? `${f.slice(0, 71)}…` : f
   }
 

@@ -211,7 +211,7 @@ export function getOrCreateVisitorId(): string {
     } else {
       for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256)
     }
-    id = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+    id = Iterator.from(bytes).map((b) => b.toString(16).padStart(2, '0')).toArray().join('')
   }
   try {
     localStorage.setItem(VID_KEY, id)
@@ -484,7 +484,7 @@ export function sanitizeAnalyticsTarget(raw?: string | null): string | undefined
   const s = String(raw)
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9._:@+-]/g, '')
+    .replaceAll(/[^a-z0-9._:@+-]/g, '')
     .slice(0, 64)
   return s.length >= 1 ? s : undefined
 }

@@ -162,6 +162,14 @@ async fn main() -> anyhow::Result<()> {
     services::federation_gate::spawn_startup_probe();
 
     let role = runtime_role::RuntimeRole::from_env()?;
+    runtime_role::FEDERATION_HTTP_ISOLATED.store(
+        role == runtime_role::RuntimeRole::Web,
+        std::sync::atomic::Ordering::Release,
+    );
+    runtime_role::PERSONA_RUNTIME_LOCAL.store(
+        role != runtime_role::RuntimeRole::FederationWorker,
+        std::sync::atomic::Ordering::Release,
+    );
     if role == runtime_role::RuntimeRole::FederationWorker {
         return federation::worker::run().await;
     }
@@ -394,7 +402,6 @@ async fn run_server(role: runtime_role::RuntimeRole) -> anyhow::Result<()> {
                 services::agent::notifications::init_notifications(db.clone()).await;
                 api::updater_admin::resume_pending_job_notifications().await;
                 tracing::info!("✅ Agent notification system initialized");
-
 
                 // Initialize Tapp scheduler engine
                 api::tapp_scheduler::init_scheduler(db.clone()).await;
@@ -781,10 +788,7 @@ async fn run_server(role: runtime_role::RuntimeRole) -> anyhow::Result<()> {
                 // fan_out_to_followers are drained here every ~15s.
                 // The worker itself waits for the egress-location gate and logs
                 // its own outcome, so this only reports that it was scheduled.
-                if matches!(
-                    role,
-                    runtime_role::RuntimeRole::All | runtime_role::RuntimeRole::LegacyCombined
-                ) {
+                if role == runtime_role::RuntimeRole::All {
                     federation::delivery::spawn_delivery_worker(db.clone());
                     tracing::info!("Federation delivery enabled in combined runtime");
                 }
@@ -845,7 +849,7 @@ async fn run_server(role: runtime_role::RuntimeRole) -> anyhow::Result<()> {
 
     // Start the unified server. If this process booted without a DB, setup writes
     // DATABASE_URL and exits so the supervisor can restart with the full route table.
-    start_unified_server(config).await
+    start_unified_server(config, role).await
 }
 
 /// Middleware to check if route is allowed in configuration mode
@@ -994,8 +998,11 @@ async fn restore_settings(
     (status, json).into_response()
 }
 
-async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
-    router::start_unified_server(config).await
+async fn start_unified_server(
+    config: AppConfig,
+    role: runtime_role::RuntimeRole,
+) -> anyhow::Result<()> {
+    router::start_unified_server(config, role).await
 }
 
 /// Common server startup logic

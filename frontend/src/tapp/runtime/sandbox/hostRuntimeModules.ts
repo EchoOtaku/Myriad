@@ -29,7 +29,7 @@ export function loadHostRuntimeModule(id: string): Promise<string> {
       }
       return response.text()
     })
-    .then((source) => source.replace(/<\/script/gi, '<\\/script'))
+    .then((source) => source.replaceAll(/<\/script/gi, '<\\/script'))
     .catch((error) => {
       cache.delete(id)
       throw error

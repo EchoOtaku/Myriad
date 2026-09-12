@@ -104,8 +104,8 @@ describe('host-proxied action → permission fixture', () => {
           .map(a => a.permission),
       )
       assert.deepEqual(
-        [...hostPerms].toSorted(),
-        [...actionPerms].toSorted(),
+        Iterator.from(hostPerms).toArray().toSorted(),
+        Iterator.from(actionPerms).toArray().toSorted(),
         `domain ${domain}: host route permission set must equal action permission set`,
       )
     }

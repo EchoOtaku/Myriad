@@ -67,7 +67,9 @@ class SharedEventManager {
 
       let sorted = this.sortedListenersCache.get(eventType)
       if (!sorted || this.listenersDirty.get(eventType)) {
-        sorted = Array.from(entries).toSorted((a, b) => b.priority - a.priority)
+        sorted = Iterator.from(entries)
+          .toArray()
+          .toSorted((a, b) => b.priority - a.priority)
         this.sortedListenersCache.set(eventType, sorted)
         this.listenersDirty.set(eventType, false)
       }

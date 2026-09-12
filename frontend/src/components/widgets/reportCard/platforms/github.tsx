@@ -137,7 +137,7 @@ export const GithubStatsWidget = memo(({ data }: any) => {
       }
     }
 
-    const maxCount = Math.max(1, ...Array.from(byDate.values()), 1)
+    const maxCount = Math.max(1, ...Iterator.from(byDate.values()), 1)
     const today = new Date()
     const end = new Date(
       Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()),

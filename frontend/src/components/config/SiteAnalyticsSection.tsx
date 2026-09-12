@@ -193,8 +193,9 @@ interface AnalyticsSummary {
 function flagEmoji(code: string): string {
   const cc = code.trim().toUpperCase()
   if (!/^[A-Z]{2}$/.test(cc)) return '🏳️'
-  const cps = [...cc].map((c) => 0x1F1E6 - 65 + c.charCodeAt(0))
-  return String.fromCodePoint(...cps)
+  return String.fromCodePoint(
+    ...Iterator.from(cc).map((c) => 0x1F1E6 - 65 + c.charCodeAt(0)),
+  )
 }
 
 function pageLabel(

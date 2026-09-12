@@ -465,9 +465,9 @@ describe('generated SDK runtime', () => {
     const widget = generateWidgetSDK(instance, 'tok')
     for (const source of [page, widget]) {
       const actions = new Set(
-        [...source.matchAll(/sendRequest\(\s*'([^']+)',\s*'([^']+)'/g)].map(
-          ([, namespace, operation]) => `${namespace}.${operation}`,
-        ),
+        Iterator.from(
+          source.matchAll(/sendRequest\(\s*'([^']+)',\s*'([^']+)'/g),
+        ).map(([, namespace, operation]) => `${namespace}.${operation}`),
       )
       for (const api of KV_APIS) {
         for (const method of KV_METHODS) {

@@ -197,7 +197,7 @@ function loadFont(font: FontOption): Promise<void> {
     ? computedValue
         .split(',')[0]
         .trim()
-        .replace(/^["']|["']$/g, '')
+        .replaceAll(/^["']|["']$/g, '')
     : font.name
 
   // 带字重加载，确保拉取与 @font-face / hero 使用一致的 face。

@@ -187,9 +187,9 @@ const BrewControls = forwardRef<BrewControlsHandle, BrewControlsProps>(
     )
 
     const pack = useBrewpack(sources, onSourcesChange)
-    const allAddCategories = [
-      ...new Set([t.brew.friendLinks, t.brew.me]).union(new Set(categories)),
-    ]
+    const allAddCategories = Iterator.from(
+      new Set([t.brew.friendLinks, t.brew.me]).union(new Set(categories)),
+    ).toArray()
 
     const panel =
       mode === 'add' ? (

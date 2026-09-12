@@ -688,7 +688,7 @@ export default function RSSHubConfigComponent({
         path = path.replace(`:${key}`, value).replace(`:${key}?`, value)
       }
     })
-    path = path.replace(/\/:[^/]+\?/g, '')
+    path = path.replaceAll(/\/:[^/]+\?/g, '')
 
     const queryParts: string[] = []
 

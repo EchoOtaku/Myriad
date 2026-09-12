@@ -152,7 +152,7 @@ it('Brew hooks reject stale opens, retry failed pages, and settle partial unstar
     await act(async () => { await Promise.all([starred.batchUnstar(), starred.batchUnstar()]) })
     assert.deepEqual(unstarred, [1, 2])
     assert.deepEqual(remaining.map(item => item.id), [2])
-    assert.deepEqual([...starred.selectedIds], [2])
+    assert.deepEqual(Iterator.from(starred.selectedIds).toArray(), [2])
     assert.equal(count, 1)
     assert.equal(starred.editMode, true)
     assert.equal(starred.processing, false)

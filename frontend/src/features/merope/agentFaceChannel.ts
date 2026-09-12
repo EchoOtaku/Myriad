@@ -33,7 +33,7 @@ const windowSink: AgentFaceSink = {
 
 /** 比对前规范化空白。 */
 function normalizeSpokenText(text: string): string {
-  return text.trim().replace(/\s+/gu, ' ').slice(0, 2_000)
+  return text.trim().replaceAll(/\s+/gu, ' ').slice(0, 2_000)
 }
 
 interface ReplyUtteranceContext {

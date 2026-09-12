@@ -87,7 +87,10 @@ export function mountSurfaceLenses(engine: HyaliteAPI = createHyalite()): () => 
     schedule()
   })
   const discover = (node: Element) => {
-    const elements = [node, ...node.querySelectorAll(SURFACES)]
+    const elements = [
+      node,
+      ...Iterator.from(node.querySelectorAll(SURFACES)).toArray(),
+    ]
     for (const el of elements) {
       if (!(el instanceof HTMLElement) || !el.matches(SURFACES)) continue
       if (!candidates.has(el)) {

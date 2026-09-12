@@ -1485,7 +1485,7 @@ export const AgentEngine: React.FC = () => {
               document.querySelector('main') ?? document.body
             // Hidden controls are not what the user is reading.
             // eslint-disable-next-line unicorn/prefer-dom-node-text-content
-            const text = (main?.innerText ?? '').replace(/\s+/g, ' ').trim()
+            const text = (main?.innerText ?? '').replaceAll(/\s+/g, ' ').trim()
             if (text) {
               customData.pageContent = {
                 type: 'custom',

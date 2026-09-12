@@ -1393,3 +1393,13 @@ mod tests {
         }
     }
 }
+
+/// First-party, ephemeral cross-process observation; never returned to a TAPP.
+pub async fn publish_persona_observation(
+    db: &DatabaseConnection,
+    user_id: i32,
+    event_key: &str,
+    summary: &str,
+) {
+    bridge::publish_persona_observation(db, user_id, event_key, summary).await;
+}

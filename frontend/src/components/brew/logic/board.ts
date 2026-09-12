@@ -64,7 +64,7 @@ export function collectSourceCategories(
   for (const source of sources) {
     for (const part of brewCategoryParts(source.category)) cats.add(part)
   }
-  return Array.from(cats)
+  return Iterator.from(cats).toArray()
 }
 
 export function filterSourcesByQuery(

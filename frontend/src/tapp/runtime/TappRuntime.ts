@@ -523,7 +523,7 @@ export class TappRuntime {
   }
 
   getAllTapps(): TappInstance[] {
-    return Array.from(this.installedTapps.values())
+    return Iterator.from(this.installedTapps.values()).toArray()
   }
 
   clearCodeCache(tappId?: string): void {
@@ -617,7 +617,7 @@ export class TappRuntime {
   }
 
   getRegisteredWidgets(): RegisteredWidget[] {
-    return Array.from(this.registeredWidgets.values())
+    return Iterator.from(this.registeredWidgets.values()).toArray()
   }
 
   getWidgetsByTapp(tappId: string): RegisteredWidget[] {
@@ -648,7 +648,7 @@ export class TappRuntime {
   }
 
   getRegisteredPlatforms(): Array<CustomPlatformConfig & { tappId: string }> {
-    return Array.from(this.registeredPlatforms.values())
+    return Iterator.from(this.registeredPlatforms.values()).toArray()
   }
 
   on(event: RuntimeEvent, callback: RuntimeEventCallback): () => void {
@@ -756,7 +756,7 @@ export class TappRuntime {
   }
 
   getBackgroundRequirements(tappId: string): BackgroundRequirement[] {
-    return Array.from(this.getEffectiveBackgroundRequirements(tappId))
+    return Iterator.from(this.getEffectiveBackgroundRequirements(tappId)).toArray()
   }
 
   hasBackgroundRequirements(tappId: string): boolean {
@@ -784,7 +784,7 @@ export class TappRuntime {
     for (const tappId of tappIds) {
       const requirements = this.getEffectiveBackgroundRequirements(tappId)
       if (requirements.size > 0) {
-        result.push({ tappId, requirements: Array.from(requirements) })
+        result.push({ tappId, requirements: Iterator.from(requirements).toArray() })
       }
     }
     return result

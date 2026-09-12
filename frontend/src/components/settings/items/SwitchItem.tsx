@@ -43,7 +43,7 @@ export const SwitchItem = React.memo<SwitchItemProps>(
       [onChange, disabled, loading],
     )
 
-    const id = `setting-switch-${itemKey || label.replace(/\s+/g, '-').toLowerCase()}`
+    const id = `setting-switch-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}`
 
     return (
       <div

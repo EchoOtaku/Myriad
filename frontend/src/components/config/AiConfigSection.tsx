@@ -766,7 +766,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
 
   const personaCardCopy = useMemo(() => {
     if (!meropeOn || !hasSavedPersona) return null
-    const summary = parseFlattenedPersona(personality).summary.replace(/\s+/g, ' ').trim()
+    const summary = parseFlattenedPersona(personality).summary.replaceAll(/\s+/g, ' ').trim()
     return {
       summary,
       mood: vitalsReady ? o.mood[moodBand(mood, arousal)] : '—',

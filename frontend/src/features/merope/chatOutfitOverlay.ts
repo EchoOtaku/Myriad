@@ -18,7 +18,7 @@ export function stripChatWearMarker(text: string): string {
     .replace(WEAR_MARK, '')
     .replace(WEAR_MARK_UNI, '')
     .replace(MUSIC_MARK, '')
-    .replace(/\n{3,}/g, '\n\n')
+    .replaceAll(/\n{3,}/g, '\n\n')
     .trim()
 }
 

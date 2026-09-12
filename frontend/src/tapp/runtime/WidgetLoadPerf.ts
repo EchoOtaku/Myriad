@@ -188,7 +188,7 @@ export function getWidgetPerfSummary(): {
 }
 
 export function clearWidgetPerf(): void {
-  const previous = [...records.values()]
+  const previous = Iterator.from(records.values()).toArray()
   records.clear()
   try {
     if (

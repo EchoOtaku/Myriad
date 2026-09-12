@@ -790,7 +790,7 @@ export function isBangumiPlatform(platform: string) {
 }
 
 export function isMalPlatform(platform: string) {
-  const key = platform.toLowerCase().replace(/[\s_-]/g, '')
+  const key = platform.toLowerCase().replaceAll(/[\s_-]/g, '')
   return key === 'myanimelist' || key === 'mal'
 }
 

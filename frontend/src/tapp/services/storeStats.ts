@@ -35,7 +35,7 @@ export async function fetchStoreDownloadCounts(
   const base = statsBaseUrl()
   if (!base || appIds.length === 0) return {}
 
-  const unique = [...new Set(appIds.filter(Boolean))]
+  const unique = Iterator.from(new Set(appIds.filter(Boolean))).toArray()
   const now = Date.now()
   const out: Record<string, number> = {}
   const missing: string[] = []

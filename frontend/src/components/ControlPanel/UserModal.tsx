@@ -308,14 +308,16 @@ export const UserModal: FC<UserModalProps> = ({
       .map((i) => i.provider)
       .filter((p): p is string => !!p && p.trim().length > 0)
     if (fromLive.length > 0) {
-      return [...new Set(fromLive.map((p) => p.trim().toLowerCase()))]
+      return Iterator.from(
+        new Set(fromLive.map((p) => p.trim().toLowerCase())),
+      ).toArray()
     }
     const fromUser = (user.identities ?? [])
       .map((i) => i.provider)
       .filter((p): p is string => !!p && p.trim().length > 0)
       .map((p) => p.trim().toLowerCase())
     if (fromUser.length > 0) {
-      return [...new Set(fromUser)]
+      return Iterator.from(new Set(fromUser)).toArray()
     }
     if (user.linked_github_id || user.github_id) {
       return ['github']

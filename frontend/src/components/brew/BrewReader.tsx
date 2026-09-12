@@ -399,7 +399,10 @@ function ReaderArticleSession({
 
   useEffect(() => {
     if (!baseContent || !contentInnerRef.current) return
-    const marked = new Set(Array.from(contentInnerRef.current.querySelectorAll('[data-comment-id]'), node => Number(node.getAttribute('data-comment-id'))))
+    const marked = new Set(
+      Iterator.from(contentInnerRef.current.querySelectorAll('[data-comment-id]'))
+        .map((node) => Number(node.getAttribute('data-comment-id'))),
+    )
     setUnresolvedCommentIds(new Set(comments.filter(comment => comment.selected_text && !comment.parent_id && !marked.has(comment.id)).map(comment => comment.id)))
   }, [baseContent, comments, annotations, showAnnotations, theme, item.content_revision])
 

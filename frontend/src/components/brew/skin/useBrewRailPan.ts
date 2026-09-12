@@ -114,14 +114,16 @@ export function useBrewRailPan(
 
     const recache = () => {
       trackW = track.scrollWidth
-      cards = [...track.querySelectorAll<HTMLElement>(cardSelector)].map(
-        (el) => ({
+      cards = Iterator.from(
+        track.querySelectorAll<HTMLElement>(cardSelector),
+      )
+        .map((el) => ({
           el,
           left: el.offsetLeft,
           width: el.offsetWidth,
           key: '',
-        }),
-      )
+        }))
+        .toArray()
     }
 
     const measure = () => {

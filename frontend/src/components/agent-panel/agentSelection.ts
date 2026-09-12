@@ -18,7 +18,7 @@ export interface AgentSelectionSnapshot {
 const EMPTY: AgentSelectionSnapshot = { text: '', capturedAtMs: 0 }
 
 export function normalizeSelection(raw: string): string {
-  const collapsed = raw.replace(/\s+/gu, ' ').trim()
+  const collapsed = raw.replaceAll(/\s+/gu, ' ').trim()
   return collapsed.length > MAX_SELECTION_LENGTH
     ? collapsed.slice(0, MAX_SELECTION_LENGTH)
     : collapsed

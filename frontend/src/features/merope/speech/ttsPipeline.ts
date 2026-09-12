@@ -85,11 +85,11 @@ export class TtsPipeline {
   upcomingText(messageId: string, generation: number): string {
     return [
       ...this.pending,
-      ...[...this.ready].map(([playId, slot]) => ({
+      ...Iterator.from(this.ready).map(([playId, slot]) => ({
         playId,
         segment: slot.segment,
       })),
-      ...[...this.synthesis].map(([playId, task]) => ({
+      ...Iterator.from(this.synthesis).map(([playId, task]) => ({
         playId,
         segment: task.segment,
       })),
@@ -151,7 +151,7 @@ export class TtsPipeline {
     this.stopPlayback()
     this.pending.length = 0
     this.ready.clear()
-    const abandoned = [...this.synthesis.values()]
+    const abandoned = Iterator.from(this.synthesis.values()).toArray()
     this.synthesis.clear()
     this.nextPlayId = 0
     this.nextPlay = 1
@@ -184,7 +184,7 @@ export class TtsPipeline {
         dropped = true
       }
     }
-    for (const [playId, slot] of [...this.ready]) {
+    for (const [playId, slot] of Iterator.from(this.ready).toArray()) {
       if (slot.segment.messageId === messageId) {
         this.ready.delete(playId)
         dropped = true

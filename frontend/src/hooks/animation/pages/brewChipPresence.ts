@@ -211,9 +211,9 @@ export function diffChipKeys(
   const prevSet = new Set(prev)
   const nextSet = new Set(next)
   // difference 固定遍历接收者；intersection 会改走较小集合，不能保 prev 序。
-  const leave = [...prevSet.difference(nextSet)]
+  const leave = Iterator.from(prevSet.difference(nextSet)).toArray()
   const stay = prev.filter((key) => nextSet.has(key))
-  const enter = [...nextSet.difference(prevSet)]
+  const enter = Iterator.from(nextSet.difference(prevSet)).toArray()
   return {
     leave,
     stay,

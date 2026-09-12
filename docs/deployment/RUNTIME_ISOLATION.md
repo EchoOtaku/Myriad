@@ -1,17 +1,18 @@
 # Runtime roles and deployment migration
 
-The bundled and external-PostgreSQL Compose files run outbound federation delivery
-in `federation-worker`. The web service uses `MYRIAD_PROCESS_ROLE=web`. Both services
-use the same backend image and version, but separate processes and resource budgets.
-This currently isolates **outbound delivery only**. Persona execution, federation
-HTTP routes and MCP stdio execution still live in the web process.
+The bundled and external-PostgreSQL Compose files run federation HTTP, WebSocket
+connections and outbound delivery in `federation-worker`. The proxy routes this
+domain directly to that process; `MYRIAD_PROCESS_ROLE=web` does not register its
+handlers. Both services still use the same backend image/version, with separate
+processes and resource budgets. **Persona execution and MCP stdio still run in web;
+this is not yet full runtime isolation.**
 
 | Entry | Starts | Intended use |
 | --- | --- | --- |
-| `MYRIAD_PROCESS_ROLE=web` | Existing web bootstrap, without delivery loop | New deployments |
-| `/app/myriad-federation-worker` or `MYRIAD_PROCESS_ROLE=federation-worker` | Existing-schema check, configuration refresh, delivery queue and health endpoint | Trusted first-party worker |
-| `MYRIAD_PROCESS_ROLE=all` | Combined runtime | Development only; rejected in production |
-| Role unset | Legacy combined runtime, with startup warning | Compatibility while existing host Compose/TCB is migrated |
+| `MYRIAD_PROCESS_ROLE=web` | Web bootstrap without federation HTTP or delivery | Production web |
+| `/app/myriad-federation-worker` or `MYRIAD_PROCESS_ROLE=federation-worker` | Existing-schema check, configuration refresh, federation HTTP/WS, delivery and health | Trusted first-party federation process |
+| `MYRIAD_PROCESS_ROLE=all` | Combined runtime | Development only; rejected with `ENVIRONMENT=production` |
+| Role unset | Startup error before web bootstrap in every environment | Migrate host topology; local dev explicitly selects `all` |
 
 The dedicated worker executable path takes precedence over role environment values.
 It is an alias in new images and absent from old images. Older backend images must
@@ -21,12 +22,33 @@ understand the role and would start the entire application.
 ## Worker boundary
 
 The official worker has a read-only root filesystem, UID/GID 1000, all capabilities
-dropped, `no-new-privileges`, a 32 MiB `/tmp`, and only the `backend_data` volume mounted
-read-only at `/app/data`. It has no backend cache, updater secret, Docker socket or
-management-network attachment. Container limits are 0.5 CPU, 512 MiB memory and 64 PIDs.
-The database pool has at most four connections, with connection/acquisition and SQL
-statement/lock deadlines. These are first-party worker credentials; this container
-is **not** suitable for running third-party MCP programs.
+dropped, `no-new-privileges`, and a 32 MiB `/tmp`. `backend_data` is read-only at
+`/app/data`; only these existing volume subdirectories are writable:
+
+| Volume subpath | Container path | Purpose |
+| --- | --- | --- |
+| `backend_data/federation` | `/app/data/federation` | File transfers |
+| `backend_data/federation_media` | `/app/data/federation_media` | Published Note media |
+| `backend_cache/images` | `/tmp/cache/images` | Shared avatar cache |
+
+The volume initializer creates these directories before container creation and
+rejects symlinks. No data relocation is needed. This requires Docker/Compose support
+for [volume subpath mounts](https://docs.docker.com/reference/compose-file/services/#long-syntax-5).
+Guard allows only these exact source/subpath/destination tuples, with `nocopy`; it
+rejects writable access to the data root, agent files or other caches. The process
+has no updater secret, Docker socket or management-network attachment. Container
+limits remain 0.5 CPU, 512 MiB memory and 64 PIDs. Its DB pool has at most four
+connections, with connection/acquisition and SQL statement/lock deadlines. These
+are first-party credentials; this container is **not** a third-party MCP sandbox.
+
+The worker admits eight HTTP requests immediately and holds capacity through the
+response body, with a 60-second handler deadline and 120-second response deadline.
+Proxy federation forwarding has a separate 32-request budget and a 180-second
+response deadline. Neither queues unbounded waiters. WebSockets keep their existing
+authentication, Origin checks and one-time TAPP tickets; the worker and proxy each
+cap them at 64 connections separately from HTTP. Worker WS frames/messages are
+limited to 1 MiB. The broadcaster registry and its HTTP/WS producers now share the
+federation process. Health is outside the worker's HTTP admission budget.
 
 Web owns migrations and installation-key creation. The worker refuses schema drift,
 a missing/invalid installation key and JWT-derived fallback. Deployments overriding
@@ -43,11 +65,19 @@ recoverable after interruption; remote HTTP delivery is still at-least-once.
 
 ## Update and rollback
 
-Upgrade the updater/Guard TCB to a version supporting `federation-worker` before
-using automatic updates with the new topology. An older Guard does not allow the
-new service or its dedicated command. Merely pulling a new backend image does not
-migrate a host-owned Compose file; role-unset compatibility preserves delivery on
-those installations until the topology is updated.
+Migrate the host-owned Compose file and upgrade the proxy/updater/Guard TCB **before**
+upgrading the business images. The new proxy can still route to an old backend, so
+it can be deployed first. Apply `PROXY_FEDERATION_UPSTREAM=http://federation-worker:1103`
+to the running proxy and set backend `MYRIAD_PROCESS_ROLE=web`. The new Guard must
+understand the worker command and fixed subpath mounts. Pulling an image does not
+migrate Compose. Current binaries reject an unset role in every environment; they no longer
+continue combined execution after a warning.
+
+Updater preflight checks the explicit web role, worker topology and storage mounts,
+and inspects the running proxy's image capability label
+`io.myriad.proxy.federation-routing=1` and routing environment. Failure blocks the
+update before maintenance, service stop or snapshot. Existing installations must
+complete this migration instead of discovering missing services after downtime.
 
 The updated updater manages the worker alongside web for stop/recreate and rescue
 rollback. Before database restore, it proves that the worker has stopped, including
@@ -58,11 +88,26 @@ worker stopped and restores that image's combined backend. Health checks compare
 actual container image identity and Docker health, without attaching updater to
 the worker network.
 
+Proxy refreshes the backend's `/health` routing capability every two seconds. A
+recognized full backend reporting `federation_http_isolated=true` uses the worker;
+a recognized legacy full backend without the field uses its original routes.
+Failed/malformed probes retain the last routing choice (startup defaults to worker).
+Worker failure never triggers fallback into a current web process. A tag transition
+can briefly return 404/502 until the next capability refresh; end-to-end container
+rollback verification remains necessary.
+
 Guard permits only the fixed worker executable, health command, UID, runtime paths,
-environment keys, bounded resources, read-only data mount and business network.
-This exception does not permit a general command override or arbitrary containers.
+environment keys, bounded resources, read-only data root, fixed writable subpaths
+and business network. This does not permit arbitrary command overrides or mounts.
 
 ## Notifications across processes
+
+Federation persona observations use a separate bounded PostgreSQL `NOTIFY` channel,
+independent of notification preferences. Only the process owning persona live state
+consumes them; federation does not start persona inference or speech ticks. These
+observations carry a user ID, whitelisted event kind and capped summary within the
+trusted backend/DB boundary. They are ephemeral: a disconnected listener can miss
+an observation, with no replay on reconnect (matching their best-effort nature).
 
 Notification INSERT/UPSERT and PostgreSQL `NOTIFY` commit in one SQL statement.
 The wakeup carries process/row/user identity, never a notification body. Web reads

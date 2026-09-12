@@ -214,7 +214,7 @@ export function listStickerImageUrls(
     const key = canonicalStickerImageUrl(raw)
     if (key && !key.startsWith('inline:')) urls.add(key)
   }
-  return [...urls]
+  return Iterator.from(urls).toArray()
 }
 
 export function rewriteStickerImageUrls(
@@ -333,7 +333,7 @@ function parseStickerAsset(raw: unknown): HomeLayoutAsset | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const record = raw as Record<string, unknown>
   if (typeof record.data !== 'string' || !record.data) return null
-  const data = record.data.replace(/\s/g, '')
+  const data = record.data.replaceAll(/\s/g, '')
   if (!data || data.length > HOME_LAYOUT_ASSET_MAX_BYTES * 2) return null
   const bytes = decodeBase64(data)
   if (!bytes) return null

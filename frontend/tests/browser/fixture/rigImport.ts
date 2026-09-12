@@ -87,7 +87,7 @@ async function pngPixels(blob: Blob) {
     return {
       width: image.width,
       height: image.height,
-      hash: Array.from(new Uint8Array(hash)),
+      hash: Iterator.from(new Uint8Array(hash)).toArray(),
     }
   } finally {
     image.close()

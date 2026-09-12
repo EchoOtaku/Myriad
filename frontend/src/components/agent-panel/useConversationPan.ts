@@ -87,8 +87,10 @@ export function useConversationPan(
         target += delta
       }
       trackH = nextH
-      cards = [...track.querySelectorAll<HTMLElement>(cardSelector)].map(
-        (el) => {
+      cards = Iterator.from(
+        track.querySelectorAll<HTMLElement>(cardSelector),
+      )
+        .map((el) => {
           const box =
             (el.closest('.agent-panel-presence') as HTMLElement | null) ?? el
           return {
@@ -98,8 +100,8 @@ export function useConversationPan(
             height: box.offsetHeight,
             key: '',
           }
-        },
-      )
+        })
+        .toArray()
     }
 
     const measure = () => {

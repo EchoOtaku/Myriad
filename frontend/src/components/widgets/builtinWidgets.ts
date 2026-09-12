@@ -286,7 +286,7 @@ const WIDGET_NAME_KEY: Record<BuiltinWidgetId, keyof WidgetsI18n> = {
 }
 
 export function preloadBuiltinWidgets(types: Iterable<string>): Promise<void> {
-  const typeList = Array.from(types)
+  const typeList = Iterator.from(types).toArray()
   const jobs: Promise<unknown>[] = []
   const seen = new Set<unknown>()
   let hasReport = false

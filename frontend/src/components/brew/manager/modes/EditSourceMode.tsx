@@ -122,7 +122,10 @@ export function EditSourceMode({
   const showAiTags = subscriptionMode === 'brewlia'
   const showCustomTags = isLink
   const allCategories = useMemo(
-    () => [...new Set(PRESET_CATEGORY_DB_VALUES).union(new Set(categories))],
+    () =>
+      Iterator.from(
+        new Set(PRESET_CATEGORY_DB_VALUES).union(new Set(categories)),
+      ).toArray(),
     [categories],
   )
   const intervalLabels: Record<number, string> = {

@@ -342,7 +342,8 @@ function paletteFromColorMap(
 ): ColorPalette | null {
   if (colorMap.size === 0 || totalSamples <= 0) return null
 
-  const sortedColors: ColorInfo[] = Array.from(colorMap.entries())
+  const sortedColors: ColorInfo[] = Iterator.from(colorMap.entries())
+    .toArray()
     .toSorted((a, b) => b[1] - a[1])
     .map(([color, count]) => {
       const [r, g, b] = color.split(',').map(Number)

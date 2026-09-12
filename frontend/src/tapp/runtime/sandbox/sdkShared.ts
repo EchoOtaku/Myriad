@@ -37,7 +37,7 @@ export const DOM_HELPERS_CODE = `{
       escapeHtml: function(text) {
         if (text == null) return '';
         const htmlEscapes = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;' };
-        return String(text).replace(/[&<>"']/g, function(c) { return htmlEscapes[c]; });
+        return String(text).replaceAll(/[&<>"']/g, function(c) { return htmlEscapes[c]; });
       },
       setText: function(el, text) {
         if (el && el.textContent !== undefined) el.textContent = text;
@@ -100,7 +100,7 @@ export const FILE_DOWNLOAD_METHOD_CODE = `download: function(contentOrOptions, f
           });
         };
         const looksLikeBase64 = function(value) {
-          const compact = String(value).replace(/\\s/g, '');
+          const compact = String(value).replaceAll(/\\s/g, '');
           return compact.length >= 32 && compact.length % 4 === 0 && /^[A-Za-z0-9+/]+=*$/.test(compact);
         };
         const looksBinaryDownload = function(name, type) {

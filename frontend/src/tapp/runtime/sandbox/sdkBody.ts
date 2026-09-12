@@ -1082,7 +1082,7 @@ export function generateSdkBody(input: GenerateSdkBodyInput): string {
           table,
         );
     const text = typeof value === 'string' ? value : String(key);
-    return text.replace(/\\{([a-zA-Z0-9_]+)\\}/g, (match, name) =>
+    return text.replaceAll(/\\{([a-zA-Z0-9_]+)\\}/g, (match, name) =>
       Object.hasOwn(variables, name) ? String(variables[name]) : match
     );
   };

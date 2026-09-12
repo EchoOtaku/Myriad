@@ -428,7 +428,7 @@ export function registerFederationHandlers(
         const NOTE_TEXT_CHAR_LIMIT = 100_000
         const NOTE_ATTACHMENT_COUNT_LIMIT = 32
         const text = typeof noteReq.text === 'string' ? noteReq.text : ''
-        if ([...text].length > NOTE_TEXT_CHAR_LIMIT) {
+        if (Iterator.from(text).reduce((n: number) => n + 1, 0) > NOTE_TEXT_CHAR_LIMIT) {
           return {
             success: false,
             error: currentCopy().errors.agentInputTooLong,

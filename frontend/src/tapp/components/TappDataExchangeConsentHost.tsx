@@ -84,11 +84,9 @@ export function TappDataExchangeConsentHost() {
         return
       }
       if (event.key !== 'Tab' || !dialogRef.current) return
-      const focusable = Array.from(
-        dialogRef.current.querySelectorAll<HTMLElement>(
+      const focusable = Iterator.from(dialogRef.current.querySelectorAll<HTMLElement>(
           'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      )
+        )).toArray()
       if (focusable.length === 0) {
         event.preventDefault()
         return

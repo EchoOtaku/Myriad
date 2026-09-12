@@ -31,7 +31,7 @@ export const CheckboxItem = React.memo<CheckboxItemProps>(
       [onChange, disabled, loading],
     )
 
-    const id = `setting-checkbox-${itemKey || label.replace(/\s+/g, '-').toLowerCase()}`
+    const id = `setting-checkbox-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}`
 
     return (
       <div

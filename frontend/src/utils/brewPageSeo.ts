@@ -15,13 +15,13 @@ function plainTextSnippet(
 ): string | undefined {
   if (!htmlOrText) return undefined
   const plain = htmlOrText
-    .replace(/<[^>]*>/g, ' ')
+    .replaceAll(/<[^>]*>/g, ' ')
     .replaceAll('&nbsp;', ' ')
     .replaceAll('&amp;', '&')
     .replaceAll('&lt;', '<')
     .replaceAll('&gt;', '>')
     .replaceAll('&quot;', '"')
-    .replace(/\s+/g, ' ')
+    .replaceAll(/\s+/g, ' ')
     .trim()
   if (!plain) return undefined
   if (plain.length <= maxLen) return plain

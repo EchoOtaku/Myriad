@@ -38,7 +38,7 @@ function defaultFormat(
 }
 
 function truncateDetail(text: string, max = DETAIL_MAX): string {
-  const t = text.replace(/\s+/g, ' ').trim()
+  const t = text.replaceAll(/\s+/g, ' ').trim()
   if (t.length <= max) return t
   return `${t.slice(0, max - 1)}…`
 }

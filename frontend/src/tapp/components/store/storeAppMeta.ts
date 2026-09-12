@@ -109,9 +109,11 @@ export function collectAppLanguageTags(app: UnifiedAppItem): string[] {
     if (!already) tags.add(inferred)
   }
 
-  return Array.from(tags).toSorted((a, b) =>
-    a.localeCompare(b, undefined, { sensitivity: 'base' }),
-  )
+  return Iterator.from(tags)
+    .toArray()
+    .toSorted((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' }),
+    )
 }
 
 export function formatAppLanguages(tags: string[], uiLocale: string): string {

@@ -24,7 +24,7 @@ function hashSeed(seed: string): number {
 function initial(seed: string): string {
   const trimmed = seed.trim()
   if (!trimmed) return '?'
-  const first = Array.from(trimmed)[0]
+  const first = Iterator.from(trimmed).toArray()[0]
   return first.toUpperCase()
 }
 

@@ -8,7 +8,7 @@ export function escapeHtml(unsafe: string): string {
 }
 
 export function sanitizeUsername(username: string): string {
-  return username.replace(/\W/g, '').slice(0, 50)
+  return username.replaceAll(/\W/g, '').slice(0, 50)
 }
 
 export function sanitizeUrl(url: string): string {
@@ -25,5 +25,5 @@ export function sanitizeUrl(url: string): string {
 }
 
 export function sanitizeFilename(filename: string): string {
-  return filename.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').slice(0, 255)
+  return filename.replaceAll(/[<>:"/\\|?*\x00-\x1F]/g, '_').slice(0, 255)
 }

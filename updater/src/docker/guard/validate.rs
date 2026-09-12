@@ -473,6 +473,8 @@ fn validate_federation_worker(value: &Value, host: &Value) -> std::result::Resul
                     | "PATH"
                     | "MYRIAD_VERSION"
                     | "MYRIAD_COMMIT_SHA"
+                    | "TRUST_PROXY_HEADERS"
+                    | "TRUST_PROXY_PEERS"
             )
         {
             return Err("worker environment contains an unsupported or duplicate key".into());
@@ -539,11 +541,8 @@ fn validate_mount(
             }
         }
     }
-    if kind == "volume"
-        && (nonempty(mount.pointer("/VolumeOptions/DriverConfig"))
-            || nonempty(mount.pointer("/VolumeOptions/Subpath")))
-    {
-        return Err("volume driver configuration or subpath is not allowed".into());
+    if kind == "volume" && nonempty(mount.pointer("/VolumeOptions/DriverConfig")) {
+        return Err("volume driver configuration is not allowed".into());
     }
     let source = mount
         .get("Source")
@@ -558,6 +557,32 @@ fn validate_mount(
         .get("ReadOnly")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    if nonempty(mount.pointer("/VolumeOptions/Subpath")) {
+        let subpath = mount
+            .pointer("/VolumeOptions/Subpath")
+            .and_then(Value::as_str);
+        let data = format!("{}_backend_data", state.config.project);
+        let cache = format!("{}_backend_cache", state.config.project);
+        let pair_allowed =
+            (source == data && subpath == Some("federation") && target == "/app/data/federation")
+                || (source == data
+                    && subpath == Some("federation_media")
+                    && target == "/app/data/federation_media")
+                || (source == cache && subpath == Some("images") && target == "/tmp/cache/images");
+        let allowed = service == "federation-worker"
+            && kind == "volume"
+            && !read_only
+            && mount
+                .pointer("/VolumeOptions/NoCopy")
+                .and_then(Value::as_bool)
+                == Some(true)
+            && pair_allowed;
+        return if allowed {
+            Ok(())
+        } else {
+            Err("volume subpath is outside the fixed federation storage boundary".into())
+        };
+    }
     validate_mount_pair(state, service, source, target, kind == "bind", read_only)
 }
 

@@ -1138,6 +1138,40 @@ fn federation_worker_has_fixed_role_and_resource_boundary() {
         validate_container_create(&state, &Bytes::from(serde_json::to_vec(value).unwrap()))
     };
     assert!(validate(&request).is_ok());
+    // Writable access is restricted to exact volume/subpath/destination tuples.
+    for (source, subpath, target) in [
+        ("myriad_backend_data", "federation", "/app/data/federation"),
+        (
+            "myriad_backend_data",
+            "federation_media",
+            "/app/data/federation_media",
+        ),
+        ("myriad_backend_cache", "images", "/tmp/cache/images"),
+    ] {
+        let mount = json!({"Type":"volume", "Source":source, "Target":target,
+            "ReadOnly":false, "VolumeOptions":{"Subpath":subpath, "NoCopy":true}});
+        let mut mounted = request.clone();
+        mounted["HostConfig"]["Mounts"] = json!([mount]);
+        assert!(validate(&mounted).is_ok(), "rejected {subpath}");
+        for (pointer, replacement) in [
+            ("/HostConfig/Mounts/0/VolumeOptions/Subpath", json!("agent")),
+            (
+                "/HostConfig/Mounts/0/VolumeOptions/Subpath",
+                json!("../federation"),
+            ),
+            ("/HostConfig/Mounts/0/VolumeOptions/Subpath", json!("")),
+            ("/HostConfig/Mounts/0/Target", json!("/app/data")),
+            ("/HostConfig/Mounts/0/Source", json!("other_backend_data")),
+            ("/HostConfig/Mounts/0/VolumeOptions/NoCopy", json!(false)),
+        ] {
+            let mut invalid = mounted.clone();
+            *invalid.pointer_mut(pointer).unwrap() = replacement;
+            assert!(
+                validate(&invalid).is_err(),
+                "accepted {pointer} for {subpath}"
+            );
+        }
+    }
     for (path, value) in [
         ("/Cmd", json!(["/app/myriad-backend"])),
         ("/Entrypoint", json!(["/bin/sh"])),

@@ -317,7 +317,7 @@ class ResourceLoader {
   clear(): void {
     this.queue = []
     this.activeLoads.clear()
-    for (const id of [...this.scheduledIdleTasks.keys()]) {
+    for (const id of Iterator.from(this.scheduledIdleTasks.keys()).toArray()) {
       this.cancelScheduledIdleTask(id)
     }
   }

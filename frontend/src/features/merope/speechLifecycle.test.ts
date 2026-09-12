@@ -36,7 +36,7 @@ class FakeScheduler implements SpeechLifecycleScheduler {
   advance(ms: number): void {
     const destination = this.time + ms
     while (true) {
-      const next = [...this.timers.entries()]
+      const next = Iterator.from(this.timers.entries()).toArray()
         .filter(([, timer]) => timer.at <= destination)
         .toSorted((left, right) => left[1].at - right[1].at)[0]
       if (!next) break

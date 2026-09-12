@@ -115,7 +115,7 @@ export const InputItem = React.memo<InputItemProps>(
         if (disabled || busy) return
         let newValue = e.target.value
         if (newValue.includes('••') || newValue.includes('**')) {
-          newValue = newValue.replace(/[•*]+/g, '')
+          newValue = newValue.replaceAll(/[•*]+/g, '')
         }
         if (isImageUpload) {
           setUploadError(undefined)
@@ -250,8 +250,8 @@ export const InputItem = React.memo<InputItemProps>(
       onChange('')
     }, [busy, disabled, onChange])
 
-    const id = `setting-input-${itemKey || label.replace(/\s+/g, '-').toLowerCase()}`
-    const inputName = `myriad-setting-${itemKey || label.replace(/\s+/g, '-').toLowerCase()}`
+    const id = `setting-input-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}`
+    const inputName = `myriad-setting-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}`
     const inputClassName = `field-input ${shownError ? 'has-error' : ''}`
 
     const renderDefaultControl = () => (

@@ -60,7 +60,7 @@ function readImageFiles(
   onEach: (url: string, name: string) => void,
 ): void {
   if (!files || limit <= 0) return
-  const picked = Array.from(files)
+  const picked = Iterator.from(files).toArray()
     .filter((file) => file.type.startsWith('image/'))
     .slice(0, limit)
   for (const file of picked) {

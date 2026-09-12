@@ -25,9 +25,9 @@ function pct(value: string): number {
 
 function huesOf(paint: ReturnType<typeof paintAuroraPrism>): number[] {
   return paint.blobs.flatMap((blob) =>
-    [...blob.color.matchAll(/(\d+(?:\.\d+)?)deg/g)].map((match) =>
-      Number(match[1]),
-    ),
+    Iterator.from(blob.color.matchAll(/(\d+(?:\.\d+)?)deg/g))
+      .map((match) => Number(match[1]))
+      .toArray(),
   )
 }
 

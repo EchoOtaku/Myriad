@@ -85,7 +85,7 @@ class DynamicContentProviderService {
   }
 
   getAllProviders(): ContentProviderConfig[] {
-    return Array.from(this.providers.values())
+    return Iterator.from(this.providers.values()).toArray()
   }
 
   setLocale(locale: string): void {

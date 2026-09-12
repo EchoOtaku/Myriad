@@ -4,11 +4,15 @@ use super::*;
 
 mod authenticated;
 mod base;
+mod federation_http;
+
+pub(crate) use federation_http::build_federation_router;
 
 #[cfg(test)]
 pub(crate) fn test_api_router(state: crate::state::AppState) -> Router {
     base::build_base_api_router(state.clone())
         .merge(authenticated::build_authenticated_router(state.clone()))
+        .merge(build_federation_router(state.clone()))
         .with_state(state)
 }
 
@@ -23,7 +27,7 @@ fn cors_allowed_methods() -> [axum::http::Method; 6] {
     ]
 }
 
-fn http_cors_layer() -> tower_http::cors::CorsLayer {
+pub(crate) fn http_cors_layer() -> tower_http::cors::CorsLayer {
     use tower_http::cors::AllowOrigin;
 
     // Custom request headers used by the SPA must be listed for cross-origin preflight.
@@ -55,7 +59,10 @@ async fn installation_claimed(db: &sea_orm::DatabaseConnection) -> anyhow::Resul
         .map_err(|error| anyhow::anyhow!("{error}"))
 }
 
-pub(crate) async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
+pub(crate) async fn start_unified_server(
+    config: AppConfig,
+    role: crate::runtime_role::RuntimeRole,
+) -> anyhow::Result<()> {
     // Proxy peer allowlist hygiene (TRUST_PROXY_PEERS) — warn when too broad.
     crate::middleware::client_ip::log_proxy_trust_hygiene();
 
@@ -120,9 +127,14 @@ pub(crate) async fn start_unified_server(config: AppConfig) -> anyhow::Result<()
             GLOBAL_CONFIG.clone(),
             GLOBAL_DYNAMIC_CONFIG.clone(),
         );
-        base::build_base_api_router(app_state.clone())
-            .merge(authenticated::build_authenticated_router(app_state.clone()))
-            .with_state(app_state)
+        let routes = base::build_base_api_router(app_state.clone())
+            .merge(authenticated::build_authenticated_router(app_state.clone()));
+        let routes = if role == crate::runtime_role::RuntimeRole::All {
+            routes.merge(build_federation_router(app_state.clone()))
+        } else {
+            routes
+        };
+        routes.with_state(app_state)
     } else {
         // Config-mode router — no extract::Db routes (they require AppState).
         base::build_config_mode_router()

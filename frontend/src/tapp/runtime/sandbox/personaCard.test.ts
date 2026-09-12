@@ -109,9 +109,9 @@ describe('persona.get handler wall', () => {
       /registerHandler\('persona\.get'[\s\S]*?data:\s*\{([^}]+)\}/,
     )
     assert.ok(stub, 'playground persona.get stub is missing')
-    const keys = [...stub[1].matchAll(/^\s*([A-Z]+):/gim)].map(
-      match => match[1],
-    )
+    const keys = Iterator.from(stub[1].matchAll(/^\s*([A-Z]+):/gim))
+      .map((match) => match[1])
+      .toArray()
     assert.deepEqual(keys.toSorted(), [...CARD_FIELDS])
   })
 })

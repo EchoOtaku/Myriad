@@ -84,15 +84,22 @@ export function parseWardrobeItem(value: unknown): WardrobeItem | null {
 
 export function parseWardrobeName(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
-  const cleaned = [...value]
+  const cleaned = Iterator.from(value)
     .filter((char) => {
       const code = char.charCodeAt(0)
       return code >= 32 && code !== 127
     })
+    .toArray()
     .join('')
     .trim()
   if (!cleaned) return undefined
-  return [...cleaned].slice(0, MAX_WARDROBE_NAME_CHARS).join('').trim() || undefined
+  return (
+    Iterator.from(cleaned)
+      .take(MAX_WARDROBE_NAME_CHARS)
+      .toArray()
+      .join('')
+      .trim() || undefined
+  )
 }
 
 export function wardrobeItemLabel(

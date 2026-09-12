@@ -1,4 +1,4 @@
-//! Standalone outbound delivery process. No routes, TAPP scheduler, persona ticks,
+//! Federation HTTP and delivery process. No TAPP scheduler, persona ticks,
 //! MCP children, or schema mutations are started by this entry point.
 use std::{sync::Arc, time::Duration};
 
@@ -59,6 +59,32 @@ pub async fn run() -> anyhow::Result<()> {
     crate::services::agent::notifications::init_notification_publisher(db.clone()).await;
 
     let configured = Arc::new(AtomicBool::new(true));
+    crate::middleware::cors_runtime::set_cors_origins(config.cors_origins.clone());
+    let app_state = crate::state::AppState::from_shared(
+        db.clone(),
+        crate::GLOBAL_CONFIG.clone(),
+        crate::GLOBAL_DYNAMIC_CONFIG.clone(),
+    );
+    let domain = crate::router::build_federation_router(app_state.clone())
+        .with_state(app_state)
+        .layer(axum::middleware::from_fn(
+            crate::middleware::federation_gate::federation_gate_middleware,
+        ))
+        .layer(axum::middleware::from_fn(
+            crate::middleware::csrf::csrf_middleware,
+        ))
+        .layer(axum::middleware::from_fn(
+            crate::middleware::rate_limit::rate_limit_middleware,
+        ))
+        .layer(axum::middleware::from_fn(
+            crate::middleware::security::security_headers_middleware,
+        ))
+        .layer(axum::extract::DefaultBodyLimit::max(50 * 1024 * 1024))
+        .layer(crate::router::http_cors_layer())
+        .layer(axum::middleware::from_fn_with_state(
+            Arc::new(tokio::sync::Semaphore::new(8)),
+            limit_http_work,
+        ));
     let state = HealthState {
         db: db.clone(),
         configured: configured.clone(),
@@ -68,13 +94,17 @@ pub async fn run() -> anyhow::Result<()> {
     let (shutdown, mut stopped) = watch::channel(false);
     let app = Router::new()
         .route("/health", get(health))
-        .with_state(state);
+        .with_state(state)
+        .merge(domain);
     let mut http = tokio::spawn(async move {
-        axum::serve(listener, app)
-            .with_graceful_shutdown(async move {
-                let _ = stopped.changed().await;
-            })
-            .await
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .with_graceful_shutdown(async move {
+            let _ = stopped.changed().await;
+        })
+        .await
     });
     let delivery_db = db.clone();
     let mut delivery = tokio::spawn(async move {
@@ -93,6 +123,7 @@ pub async fn run() -> anyhow::Result<()> {
             // Reload both origin and DB settings independently of the web process.
             crate::api::site_domain::load_durable_site_public_env();
             let core = AppConfig::from_env()?;
+            crate::middleware::cors_runtime::set_cors_origins(core.cors_origins.clone());
             *crate::GLOBAL_CONFIG.write().await = core;
             match ConfigService::new(db.clone()).load_config().await {
                 Ok(config) => {
@@ -107,7 +138,7 @@ pub async fn run() -> anyhow::Result<()> {
             }
         }
     });
-    tracing::info!(%address, "Federation delivery process ready");
+    tracing::info!(%address, "Federation HTTP and delivery process ready");
     let result = tokio::select! {
         signal = termination_signal() => signal,
         result = &mut delivery => match result {
@@ -131,6 +162,41 @@ pub async fn run() -> anyhow::Result<()> {
         }
     }
     result
+}
+
+/// Admission is immediate and capacity stays held until the response stream is
+/// consumed/dropped. Slow uploads/downloads cannot leave an unbounded waiter list.
+async fn limit_http_work(
+    State(budget): State<Arc<tokio::sync::Semaphore>>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    use futures::StreamExt;
+    let Ok(permit) = budget.try_acquire_owned() else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
+    let response = match tokio::time::timeout(Duration::from_secs(60), next.run(request)).await {
+        Ok(response) => response,
+        Err(_) => return StatusCode::GATEWAY_TIMEOUT.into_response(),
+    };
+    let (parts, body) = response.into_parts();
+    let stream = async_stream::stream! {
+        let _permit = permit;
+        let mut body = body.into_data_stream();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
+        loop {
+            match tokio::time::timeout_at(deadline, body.next()).await {
+                Ok(Some(item)) => yield item.map_err(std::io::Error::other),
+                Ok(None) => break,
+                Err(_) => {
+                    yield Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "federation response deadline"));
+                    break;
+                }
+            }
+        }
+    };
+    axum::response::Response::from_parts(parts, axum::body::Body::from_stream(stream))
 }
 
 async fn health(State(state): State<HealthState>) -> (StatusCode, Json<serde_json::Value>) {
@@ -163,4 +229,45 @@ async fn termination_signal() -> anyhow::Result<()> {
     #[cfg(not(unix))]
     tokio::signal::ctrl_c().await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn federation_http_budget_survives_headers_and_releases_on_disconnect() {
+        let budget = Arc::new(tokio::sync::Semaphore::new(1));
+        let app = Router::new()
+            .route(
+                "/hold",
+                get(|| async {
+                    axum::body::Body::from_stream(futures::stream::pending::<
+                        Result<axum::body::Bytes, std::io::Error>,
+                    >())
+                }),
+            )
+            .layer(axum::middleware::from_fn_with_state(
+                budget.clone(),
+                limit_http_work,
+            ));
+        let request = || {
+            axum::extract::Request::builder()
+                .uri("/hold")
+                .body(axum::body::Body::empty())
+                .unwrap()
+        };
+        let response = app.clone().oneshot(request()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(budget.available_permits(), 0);
+        let refused = app.clone().oneshot(request()).await.unwrap();
+        assert_eq!(refused.status(), StatusCode::SERVICE_UNAVAILABLE);
+        drop(response);
+        assert_eq!(budget.available_permits(), 1);
+        assert_eq!(
+            app.oneshot(request()).await.unwrap().status(),
+            StatusCode::OK
+        );
+    }
 }

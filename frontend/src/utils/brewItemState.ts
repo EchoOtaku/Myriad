@@ -126,7 +126,7 @@ export class BrewItemState {
   }
 
   markAllRead() {
-    for (const id of [...this.pending.keys()]) {
+    for (const id of Iterator.from(this.pending.keys()).toArray()) {
       this.dropPreview(id, { is_read: true }, false)
     }
     this.observeMany(

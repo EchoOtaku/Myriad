@@ -34,7 +34,7 @@ class MemoryStorage implements Storage {
   }
 
   key(index: number): string | null {
-    return Array.from(this.values.keys())[index] ?? null
+    return Iterator.from(this.values.keys()).toArray()[index] ?? null
   }
 
   removeItem(key: string): void {

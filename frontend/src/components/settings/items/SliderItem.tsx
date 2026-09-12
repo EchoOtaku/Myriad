@@ -173,8 +173,8 @@ export const SliderItem = React.memo<SliderItemProps>(
 
     const endActive = useCallback(() => setActive(false), [])
 
-    const id = `setting-slider-${itemKey || label.replace(/\s+/g, '-').toLowerCase()}`
-    const inputName = `myriad-slider-${itemKey || label.replace(/\s+/g, '-').toLowerCase()}`
+    const id = `setting-slider-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}`
+    const inputName = `myriad-slider-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}`
     const anchorProps = guideDomProps(guidePath)
 
     return (

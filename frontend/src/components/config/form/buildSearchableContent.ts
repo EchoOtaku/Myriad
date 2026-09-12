@@ -283,7 +283,7 @@ export function buildSearchableContent(
     const merged = new Set(item.keywords.map((k) => k.toLowerCase())).union(
       new Set(extra),
     )
-    item.keywords = Array.from(merged)
+    item.keywords = Iterator.from(merged).toArray()
     item.haystack = [item.title, item.description, ...item.keywords]
       .join('\n')
       .toLowerCase()

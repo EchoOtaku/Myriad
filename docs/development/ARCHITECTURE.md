@@ -49,7 +49,7 @@ host HTTP_PORT
   - MCP transport: max stdio line **4 MiB**, max **32** concurrent direct children, env allowlist. Cancelled exchanges cannot reuse partial streams; Unix process groups and stderr tasks are reclaimed on destruction. **Residual:** process groups are lifecycle cleanup, not a security boundary; full per-server OS/container isolation remains required.
 - **Tapp**：安装校验、商店、Playground、沙箱 Bridge（见 [Tapp](TAPP_DEVELOPMENT.md)）
 - **Federation**：ActivityPub + MFP（见 [FEDERATION.md](FEDERATION.md)）；file-transfer concurrent budgets (MYR-008) documented there
-  - Outbound delivery has a separate `federation-worker` process in official Compose; web owns migrations, workers require the existing installation key and schema. Resource limits, notification bridging, legacy deployment compatibility and update/rollback behavior are documented in [Runtime isolation](../deployment/RUNTIME_ISOLATION.md). Persona and federation HTTP handlers remain in web; MCP OS isolation remains unfinished.
+  - Federation HTTP, WebSockets and outbound delivery run in `federation-worker` in official Compose; proxy routes this domain directly and web owns migrations. Workers require the existing installation key/schema and have fixed storage subpath mounts and resource budgets. An unset process role is rejected; updater preflight requires the migrated topology and proxy. See [Runtime isolation](../deployment/RUNTIME_ISOLATION.md) for the boundaries and update/rollback behavior. Persona execution and MCP stdio remain in web; MCP OS isolation remains unfinished.
 - **Auth**：本地用户 + GitHub / OIDC（见 [OAUTH.md](OAUTH.md)）
 - **Updater admin**：`/api/admin/updater/*` → gateway
 

@@ -403,7 +403,7 @@ function stripComment(raw: string): string {
   } else if (s.startsWith('/*')) {
     s = s.slice(2, s.endsWith('*/') ? s.length - 2 : s.length)
   }
-  return s.replace(/^\s*\* ?/gm, '').trim()
+  return s.replaceAll(/^\s*\* ?/gm, '').trim()
 }
 
 describe('authored frontend comments', () => {
@@ -465,8 +465,8 @@ describe('authored frontend comments', () => {
   it('remaining comments are not restatement/section stubs', () => {
     const hits: string[] = []
     for (const c of extracted) {
-      const compact = c.body.replace(/\s+/g, ' ').trim()
-      const firstLine = c.body.split('\n')[0]!.replace(/\s+/g, ' ').trim()
+      const compact = c.body.replaceAll(/\s+/g, ' ').trim()
+      const firstLine = c.body.split('\n')[0]!.replaceAll(/\s+/g, ' ').trim()
       for (const stub of RESTATEMENT_STUBS) {
         if (compact === stub || firstLine === stub) {
           hits.push(`${c.rel}:${c.line} ${stub}`)

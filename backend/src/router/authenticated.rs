@@ -460,22 +460,6 @@ pub(super) fn build_authenticated_router(
                 middleware::auth::optional_auth_middleware,
             )),
         )
-        // Federation feed: guests see public items; users see public + personal items.
-        .route(
-            "/api/tapp/federation/feed",
-            get(api::tapp_runtime::get_federation_feed).route_layer(from_fn_with_state(
-                app_state.clone(),
-                middleware::auth::optional_auth_middleware,
-            )),
-        )
-        // Room-peer feed: public posts from every instance sharing a joined group chat.
-        .route(
-            "/api/tapp/federation/rooms-feed",
-            get(api::tapp_runtime::get_federation_rooms_feed).route_layer(from_fn_with_state(
-                app_state.clone(),
-                middleware::auth::optional_auth_middleware,
-            )),
-        )
         // Tapp 报告 catalog + CRUD — 须登录
         .route(
             "/api/tapp/reports",

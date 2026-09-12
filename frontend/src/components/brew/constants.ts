@@ -112,7 +112,7 @@ export function getImageUrl(imageUrl: string | null): string | null {
 
 export function getPlainText(html: string | null): string {
   if (!html) return ''
-  return html.replace(/<[^>]*>/g, '').slice(0, 200)
+  return html.replaceAll(/<[^>]*>/g, '').slice(0, 200)
 }
 
 /** 只产出 #rrggbb，`${color}30` 才是合法 CSS。 */

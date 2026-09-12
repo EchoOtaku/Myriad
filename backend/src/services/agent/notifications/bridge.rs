@@ -1,11 +1,76 @@
-//! PostgreSQL is the durable source; NOTIFY carries only a row identity, never
-//! notification bodies. INSERT/UPDATE and wakeup commit in one statement. LISTEN
-//! reconnects and periodic resync recover missed wakeups (NOTIFY is not a queue).
+//! Notification changes carry row identity only and commit atomically with the row.
+//! A separate ephemeral channel carries capped persona observations between trusted
+//! processes; these are independent of toast preferences and are not replayed.
+//! LISTEN reconnect + periodic resync recover durable notification history.
 use super::*;
 use sea_orm::DatabaseBackend;
 use std::time::Duration;
 
 const CHANNEL: &str = "myriad_notification_changes";
+// Ephemeral persona observations are separate from durable notification rows:
+// disabling a toast must not disable the persona's observation of a conversation.
+const PERSONA_CHANNEL: &str = "myriad_persona_observations";
+
+#[derive(Serialize, Deserialize)]
+struct PersonaObservation {
+    origin: String,
+    user_id: i32,
+    event_key: String,
+    summary: String,
+}
+
+fn valid_persona_observation(event: &PersonaObservation) -> bool {
+    event.user_id > 0
+        && event.summary.len() <= 4096
+        && matches!(
+            event.event_key.as_str(),
+            "federation.channel_message" | "federation.room_message" | "federation.new_follower"
+        )
+}
+
+pub(super) async fn publish_persona_observation(
+    db: &DatabaseConnection,
+    user_id: i32,
+    event_key: &str,
+    summary: &str,
+) {
+    let mut summary = summary.to_owned();
+    if summary.len() > 4096 {
+        let mut end = 4096;
+        while !summary.is_char_boundary(end) {
+            end -= 1;
+        }
+        summary.truncate(end);
+    }
+    let event = PersonaObservation {
+        origin: origin().into(),
+        user_id,
+        event_key: event_key.into(),
+        summary,
+    };
+    if !valid_persona_observation(&event) {
+        return;
+    }
+    let Ok(payload) = serde_json::to_string(&event) else {
+        return;
+    };
+    // JSON escaping can expand a short string; stay below PostgreSQL NOTIFY's
+    // payload cap and never include payload text in error logs.
+    if payload.len() > 7900 {
+        return;
+    }
+    if let Err(error) = db
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT pg_notify($1, $2)",
+            vec![PERSONA_CHANNEL.into(), payload.into()],
+        ))
+        .await
+    {
+        tracing::warn!(%error, "persona observation wakeup failed");
+    }
+}
+
 static ORIGIN: OnceLock<String> = OnceLock::new();
 
 fn origin() -> &'static str {
@@ -77,7 +142,9 @@ pub(super) fn spawn(manager: Arc<NotificationManager>) {
         loop {
             match sea_orm::sqlx::postgres::PgListener::connect_with(&pool).await {
                 Ok(mut listener) => {
-                    if listener.listen(CHANNEL).await.is_ok() {
+                    if listener.listen(CHANNEL).await.is_ok()
+                        && listener.listen(PERSONA_CHANNEL).await.is_ok()
+                    {
                         // Clear cached data from before a reconnect; DB reads are authoritative.
                         manager.history.write().await.clear();
                         let _ = manager.tx.send(NotificationEvent::Resync { lagged_by: 0 });
@@ -86,6 +153,28 @@ pub(super) fn spawn(manager: Arc<NotificationManager>) {
                         loop {
                             match listener.try_recv().await {
                                 Ok(Some(message)) => {
+                                    if message.channel() == PERSONA_CHANNEL {
+                                        if crate::runtime_role::PERSONA_RUNTIME_LOCAL
+                                            .load(std::sync::atomic::Ordering::Acquire)
+                                        {
+                                            if let Ok(event) =
+                                                serde_json::from_str::<PersonaObservation>(
+                                                    message.payload(),
+                                                )
+                                            {
+                                                if event.origin != origin()
+                                                    && valid_persona_observation(&event)
+                                                {
+                                                    super::super::merope::spawn_ingest(
+                                                        event.user_id,
+                                                        event.event_key,
+                                                        event.summary,
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        continue;
+                                    }
                                     if let Ok(change) =
                                         serde_json::from_str::<Change>(message.payload())
                                     {
@@ -155,6 +244,37 @@ impl NotificationManager {
 mod tests {
     use super::*;
     use sea_orm::{ConnectOptions, Database};
+
+    #[tokio::test]
+    #[ignore = "requires a disposable MYRIAD_NOTIFICATION_BRIDGE_TEST_DB"]
+    async fn persona_observation_crosses_connections_without_notification_preferences() {
+        let url = std::env::var("MYRIAD_NOTIFICATION_BRIDGE_TEST_DB").unwrap();
+        let db = Database::connect(url).await.unwrap();
+        let mut listener =
+            sea_orm::sqlx::postgres::PgListener::connect_with(db.get_postgres_connection_pool())
+                .await
+                .unwrap();
+        listener.listen(PERSONA_CHANNEL).await.unwrap();
+        let summary = "界".repeat(2000);
+        publish_persona_observation(&db, 1234567, "federation.room_message", &summary).await;
+        let message = tokio::time::timeout(Duration::from_secs(2), listener.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(message.channel(), PERSONA_CHANNEL);
+        let event: PersonaObservation = serde_json::from_str(message.payload()).unwrap();
+        assert_eq!(event.user_id, 1234567);
+        assert!(valid_persona_observation(&event));
+        assert_eq!(event.summary.len(), 4095);
+        assert!(summary.starts_with(&event.summary));
+        // This path only uses pg_notify; no notification row or opt-in is needed.
+        publish_persona_observation(&db, 1234567, "agent.execute", "not allowed").await;
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), listener.recv())
+                .await
+                .is_err()
+        );
+    }
 
     #[tokio::test]
     #[ignore = "requires a disposable MYRIAD_NOTIFICATION_BRIDGE_TEST_DB"]

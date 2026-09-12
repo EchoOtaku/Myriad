@@ -34,9 +34,9 @@ function setCache<T>(key: string, data: T): void {
 
   // Cap 100; drop oldest.
   if (embedDataCache.size > 100) {
-    const entries = Array.from(embedDataCache.entries()).toSorted(
-      (a, b) => a[1].timestamp - b[1].timestamp,
-    )
+    const entries = Iterator.from(embedDataCache.entries())
+      .toArray()
+      .toSorted((a, b) => a[1].timestamp - b[1].timestamp)
     for (let i = 0; i < 20; i++) {
       embedDataCache.delete(entries[i][0])
     }
@@ -78,7 +78,7 @@ function extractSteamAppId(url: string): string | null {
 function extractBilibiliVideoId(
   url: string,
 ): { type: 'bv' | 'av'; id: string } | null {
-  const cleanUrl = url.replace(/amp;/gi, '&')
+  const cleanUrl = url.replaceAll(/amp;/gi, '&')
 
   const bvMatch = cleanUrl.match(/(?:video\/|bvid=|[?&]bvid=)(BV[a-z0-9]+)/i)
   if (bvMatch) return { type: 'bv', id: bvMatch[1] }
@@ -371,7 +371,7 @@ export function processEmbeds(content: string): string {
   })
 
   // Strip iframes not on the shared host allowlist.
-  result = result.replace(/<iframe\b[\s\S]*?<\/iframe>/gi, (match) => {
+  result = result.replaceAll(/<iframe\b[\s\S]*?<\/iframe>/gi, (match) => {
     const srcMatch =
       match.match(/\bsrc\s*=\s*(["'])([^"']*)\1/i) ??
       match.match(/\bsrc\s*=\s*([^\s>]+)/i)
@@ -398,15 +398,15 @@ export async function loadEmbedData(container: HTMLElement): Promise<void> {
 }
 
 async function loadNeteaseMusicData(container: HTMLElement): Promise<void> {
-  const cards = Array.from(
+  const unloadedCards = Iterator.from(
     container.querySelectorAll('.brew-netease-music[data-song-id]'),
   )
-
-  const unloadedCards = cards.filter(
-    (card) =>
-      card.getAttribute('data-song-id') &&
-      card.getAttribute('data-loaded') !== 'true',
-  )
+    .filter(
+      (card) =>
+        card.getAttribute('data-song-id') &&
+        card.getAttribute('data-loaded') !== 'true',
+    )
+    .toArray()
 
   if (unloadedCards.length === 0) return
 
@@ -483,15 +483,15 @@ async function loadNeteaseMusicData(container: HTMLElement): Promise<void> {
 
 /** Proxy (CORS). */
 async function loadSteamGameData(container: HTMLElement): Promise<void> {
-  const cards = Array.from(
+  const unloadedCards = Iterator.from(
     container.querySelectorAll('.brew-steam-game[data-app-id]'),
   )
-
-  const unloadedCards = cards.filter(
-    (card) =>
-      card.getAttribute('data-app-id') &&
-      card.getAttribute('data-loaded') !== 'true',
-  )
+    .filter(
+      (card) =>
+        card.getAttribute('data-app-id') &&
+        card.getAttribute('data-loaded') !== 'true',
+    )
+    .toArray()
 
   if (unloadedCards.length === 0) return
 
@@ -556,7 +556,7 @@ async function loadSteamGameData(container: HTMLElement): Promise<void> {
               const plainText = doc.body.textContent || ''
               descEl.textContent = plainText
             } catch {
-              descEl.textContent = gameData.short_description.replace(
+              descEl.textContent = gameData.short_description.replaceAll(
                 /<[^>]*>/g,
                 '',
               )
@@ -574,15 +574,15 @@ async function loadSteamGameData(container: HTMLElement): Promise<void> {
 }
 
 async function loadGithubRepoData(container: HTMLElement): Promise<void> {
-  const cards = Array.from(
+  const unloadedCards = Iterator.from(
     container.querySelectorAll('.brew-github-repo[data-owner][data-repo]'),
   )
-
-  const unloadedCards = cards.filter((card) => {
-    const owner = card.getAttribute('data-owner')
-    const repo = card.getAttribute('data-repo')
-    return owner && repo && card.getAttribute('data-loaded') !== 'true'
-  })
+    .filter((card) => {
+      const owner = card.getAttribute('data-owner')
+      const repo = card.getAttribute('data-repo')
+      return owner && repo && card.getAttribute('data-loaded') !== 'true'
+    })
+    .toArray()
 
   if (unloadedCards.length === 0) return
 

@@ -56,7 +56,7 @@ export function useBrewStarred(
     processingRef.current = true
     setProcessing(true)
     try {
-      const ids = Array.from(selectedIds)
+      const ids = Iterator.from(selectedIds).toArray()
       const results = await Promise.allSettled(
         ids.map((id) => brewApi.unstarItem(id)),
       )

@@ -152,7 +152,7 @@ export function sanitizeMaskedFieldValue(value: string): string {
     value !== '••••••••' &&
     value !== '********'
   ) {
-    return value.replace(/[•*]+/g, '')
+    return value.replaceAll(/[•*]+/g, '')
   }
   return value
 }

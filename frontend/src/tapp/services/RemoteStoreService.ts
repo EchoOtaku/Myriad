@@ -1123,7 +1123,7 @@ class RemoteStoreServiceImpl {
   }
 
   getCacheStatus(): { count: number; oldestEntry: number | null } {
-    const entries = Array.from(this.cache.values())
+    const entries = Iterator.from(this.cache.values()).toArray()
     const oldestEntry =
       entries.length > 0 ? Math.min(...entries.map((e) => e.timestamp)) : null
 

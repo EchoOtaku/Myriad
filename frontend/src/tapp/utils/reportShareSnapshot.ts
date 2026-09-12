@@ -29,9 +29,9 @@ const PREVIEW_MAX = 500
 export function stripReportHtml(html: string): string {
   if (!html) return ''
   return String(html)
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
+    .replaceAll(/<br\s*\/?>/gi, '\n')
+    .replaceAll(/<\/p>/gi, '\n')
+    .replaceAll(/<[^>]+>/g, '')
     .replaceAll('&lt;', '<')
     .replaceAll('&gt;', '>')
     .replaceAll('&quot;', '"')

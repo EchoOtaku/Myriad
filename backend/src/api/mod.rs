@@ -84,7 +84,11 @@ fn health_json_from_snapshot() -> Value {
 /// `db_handle_present`, `db_probed_at`, and older `service` / `mode` /
 /// `database_connected`.
 pub async fn health() -> (StatusCode, Json<Value>) {
-    (StatusCode::OK, Json(health_json_from_snapshot()))
+    let mut payload = health_json_from_snapshot();
+    payload["federation_http_isolated"] = Value::Bool(
+        crate::runtime_role::FEDERATION_HTTP_ISOLATED.load(std::sync::atomic::Ordering::Acquire),
+    );
+    (StatusCode::OK, Json(payload))
 }
 
 /// `/ready` is business readiness: live DB probe (2s), schema, full routes, storage.

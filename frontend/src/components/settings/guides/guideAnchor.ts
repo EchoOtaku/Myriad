@@ -3,7 +3,7 @@ import { prefersReducedMotion, SETTINGS_DURATION_MS } from '../motion'
 export const GUIDE_PATH_ATTR = 'data-guide-path'
 
 export function guideAnchorId(path: string): string {
-  const cleaned = path.trim().replace(/^\.+|\.+$/g, '')
+  const cleaned = path.trim().replaceAll(/^\.+|\.+$/g, '')
   if (!cleaned) return ''
   return `cfg-g-${cleaned.replaceAll('.', '-')}`
 }

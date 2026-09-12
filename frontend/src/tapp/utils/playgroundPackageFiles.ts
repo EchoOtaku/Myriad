@@ -143,10 +143,10 @@ export function decodeAssetPayload(value: string): PackageFileContent {
   }
   if (
     /^[A-Z0-9+/=\s]+$/i.test(value) &&
-    value.replace(/\s/g, '').length % 4 === 0
+    value.replaceAll(/\s/g, '').length % 4 === 0
   ) {
     try {
-      return base64ToBytes(value.replace(/\s/g, ''))
+      return base64ToBytes(value.replaceAll(/\s/g, ''))
     } catch {
       return value
     }

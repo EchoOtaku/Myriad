@@ -231,7 +231,11 @@ export function AiVendorAddTrigger({
                 source.slug === preset.defaultSlug,
             )
             .flatMap((source) => usages[source.slug] ?? [])
-          const usedHint = usedByText([...new Set(used)], t, format)
+          const usedHint = usedByText(
+            Iterator.from(new Set(used)).toArray(),
+            t,
+            format,
+          )
           const capsHint = capabilityText(preset.capabilities, t)
           return (
             <button

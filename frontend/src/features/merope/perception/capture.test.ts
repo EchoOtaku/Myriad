@@ -186,14 +186,16 @@ test('Chat scene sources exist in capture; registry kinds remain a client orderi
     .map((file) => readFileSync(new URL(file, import.meta.url), 'utf8'))
     .join('\n')
   const sourceIds = new Set(
-    [...producers.matchAll(/sourceId:\s*'([a-z_]+)'/g)].map(
+    Iterator.from(producers.matchAll(/sourceId:\s*'([a-z_]+)'/g)).map(
       (match) => match[1],
     ),
   )
   const scene = server.split('match source {')[1]!.split('\n            }')[0]!
-  const selected = [...scene.matchAll(/"([a-z_]+)"(?: if [^\n]+)? =>/g)].map(
-    (match) => match[1],
+  const selected = Iterator.from(
+    scene.matchAll(/"([a-z_]+)"(?: if [^\n]+)? =>/g),
   )
+    .map((match) => match[1])
+    .toArray()
   assert.deepEqual(selected, ['music_track', 'page', 'pointer', 'surface'])
   assert.ok(new Set(selected).isSubsetOf(sourceIds))
   assert.match(server, /perception_view::perception_reader_text\(obj\)/)
@@ -227,14 +229,14 @@ test('live perception sources stay below the reader cap with slack', () => {
     ),
     'utf8',
   )
-  const sourceIds = [
-    ...new Set(
+  const sourceIds = Iterator.from(
+    new Set(
       [
         ...capture.matchAll(/sourceId:\s*'([a-z_]+)'/g),
         ...consented.matchAll(/sourceId:\s*'([a-z_]+)'/g),
       ].map((match) => match[1]),
     ),
-  ]
+  ).toArray()
   assert.equal(MAX_PERCEPTION_ITEMS, 12)
   assert.match(view, /MAX_PERCEPTION_ITEMS:\s*usize\s*=\s*12/)
   assert.match(
@@ -262,7 +264,9 @@ function quotedStringsIn(
   assert.ok(start >= 0, `missing ${startAt}`)
   const stop = source.indexOf(stopAt, start + startAt.length)
   assert.ok(stop > start, `missing ${stopAt} after ${startAt}`)
-  return [...source.slice(start, stop).matchAll(/['"]([a-z_]+)['"]/g)].map(
-    (match) => match[1],
+  return Iterator.from(
+    source.slice(start, stop).matchAll(/['"]([a-z_]+)['"]/g),
   )
+    .map((match) => match[1])
+    .toArray()
 }

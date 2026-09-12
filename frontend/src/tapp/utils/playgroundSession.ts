@@ -65,7 +65,7 @@ export function titleFromInstruction(
   instruction: string,
   maxChars = TITLE_MAX_CHARS,
 ): string {
-  const text = instruction.replace(/\s+/g, ' ').trim()
+  const text = instruction.replaceAll(/\s+/g, ' ').trim()
   if (!text) return ''
   if (text.length <= maxChars) return text
   return `${text.slice(0, Math.max(1, maxChars - 1))}…`
@@ -617,9 +617,9 @@ export function saveSessionsStore(
         (n, s) => n + s.revisions.length,
         0,
       )
-      const dropped = [...beforeIds].filter(
-        (id) => !emergency.sessions.some((s) => s.id === id),
-      ).length
+      const dropped = Iterator.from(beforeIds)
+        .filter((id) => !emergency.sessions.some((s) => s.id === id))
+        .toArray().length
       const trimmed = Math.max(0, beforeRevCount - afterRevCount)
       return {
         sessionsDropped: meta.sessionsDropped + dropped,

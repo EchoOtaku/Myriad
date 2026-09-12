@@ -106,7 +106,9 @@ describe('frontendAction chain', () => {
   it('every backend-emitted type is either typed or a known orphan', () => {
     const typed = new Set<string>(TYPED)
     const orphans = new Set<string>(KNOWN_ORPHANS)
-    const leftover = [...new Set(BACKEND_EMITTED).difference(typed.union(orphans))]
+    const leftover = Iterator.from(
+      new Set(BACKEND_EMITTED).difference(typed.union(orphans)),
+    ).toArray()
     assert.deepEqual(leftover, [])
   })
 
@@ -127,7 +129,7 @@ describe('frontendAction chain', () => {
     assert.match(app, /action\.type !== 'agent_interaction'/)
     assert.match(app, /action\.type === 'close_window'/)
 
-    const missing = [...new Set(TYPED).difference(registered)]
+    const missing = Iterator.from(new Set(TYPED).difference(registered)).toArray()
     assert.deepEqual(
       missing,
       [],
