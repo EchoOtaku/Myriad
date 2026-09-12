@@ -14,6 +14,10 @@ export interface ConfigSearchI18n {
     dataDesc: string
     ai: string
     aiDesc: string
+    agent: string
+    agentDesc: string
+    agentChannelsTitle: string
+    agentChannelAdd: string
     agentHeartbeatTitle: string
     agentSkillsTitle: string
     agentMemoryTitle: string
@@ -62,10 +66,11 @@ export function buildSearchableContent(
   config: Config | null,
   t: ConfigSearchI18n,
   locale: Locale,
-  options?: { isAdmin?: boolean },
+  options?: { isAdmin?: boolean; agentTitle?: string },
 ): ConfigSearchableItem[] {
   if (!config) return []
   const isAdmin = options?.isAdmin !== false // default include; pass false to filter
+  const agentTitle = options?.agentTitle?.trim() || t.config.agent
 
   const items: ConfigSearchableItem[] = []
 
@@ -141,8 +146,20 @@ export function buildSearchableContent(
     section: 'ai',
     title: t.config.ai,
     description: t.config.aiDesc,
+    keywords: Iterator.from(t.config.searchKeywords.ai).toArray(),
+  })
+
+  items.push({
+    type: 'section',
+    section: 'agent',
+    title: agentTitle,
+    description: t.config.agentDesc,
     keywords: [
-      ...t.config.searchKeywords.ai,
+      ...t.config.searchKeywords.agent,
+      t.config.agent,
+      ...(agentTitle !== t.config.agent ? [agentTitle] : []),
+      t.config.agentChannelsTitle,
+      t.config.agentChannelAdd,
       t.config.agentHeartbeatTitle,
       t.config.agentSkillsTitle,
       t.config.agentMemoryTitle,

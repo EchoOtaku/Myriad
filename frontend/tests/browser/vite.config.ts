@@ -5,11 +5,19 @@ import { defineConfig } from 'vite'
 // every service request in this harness must be explicitly mocked by the test.
 export default defineConfig({
   root: fileURLToPath(new URL('./fixture', import.meta.url)),
+  // A concurrent Astro dev server must not replace this runner's optimized
+  // React modules mid-test (two dispatcher instances cause invalid hook calls).
+  cacheDir: fileURLToPath(new URL('../../node_modules/.vite/browser-tests', import.meta.url)),
+  optimizeDeps: {
+    include: ['react', 'react-dom/client', 'react/jsx-runtime', 'lucide-react'],
+  },
   build: {
     target: 'es2025',
   },
   resolve: {
+    dedupe: ['react', 'react-dom'],
     alias: {
+      '@lib': fileURLToPath(new URL('../../src/lib', import.meta.url)),
       'agora-rtc-sdk-ng': fileURLToPath(
         new URL('./fixture/fakeAgora.ts', import.meta.url),
       ),

@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { seedWardrobeFromIdentity } from '../../../features/merope/wardrobe'
 import { agentService } from '../../../services/agent'
+import { notifyPersonaUpdated } from '../../../features/merope/events'
 import { invalidatePublicConfigCache } from '../../../utils/requestDedup'
 import {
   CHOICE_STEP,
@@ -307,6 +308,7 @@ export default function OnboardingWizard({
                       },
                     })
                     invalidatePublicConfigCache()
+                    notifyPersonaUpdated()
                     onFinished()
                   })
                 }
@@ -406,6 +408,7 @@ export default function OnboardingWizard({
                       visualProfile: confirmedVisualProfile(),
                     })
                     invalidatePublicConfigCache()
+                    notifyPersonaUpdated()
                     return 6
                   })
                 }

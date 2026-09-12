@@ -36,7 +36,6 @@ export interface StickerAnchorRect {
 export interface HomeStickerDialogProps {
   size: WidgetSize
   busy: boolean
-  error: string
   anchor: StickerAnchorRect
   onCancel: () => void
   onGenerate: (prompt: string, referenceImages: string[]) => void | Promise<void>
@@ -76,7 +75,6 @@ function readImageFiles(
 export function HomeStickerDialog({
   size,
   busy,
-  error,
   anchor,
   onCancel,
   onGenerate,
@@ -385,11 +383,6 @@ export function HomeStickerDialog({
           </div>
         </div>
 
-        {error ? (
-          <p className="home-sticker-guide__error" role="alert">
-            {error}
-          </p>
-        ) : null}
       </form>
     </div>,
     document.body,

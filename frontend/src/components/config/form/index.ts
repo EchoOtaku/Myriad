@@ -1,12 +1,16 @@
 export { buildSearchableContent } from './buildSearchableContent'
 export { ConfigNavItem } from './ConfigNavItem'
 export {
+  CONFIG_NAV_DEFAULT_SECTION,
+  CONFIG_NAV_SECTIONS,
   CONFIG_NAV_STORAGE_KEY,
   loadConfigNavPersisted,
+  resolveConfigSectionFromSearch,
   resolveInitialConfigSection,
   saveConfigNavPersisted,
   snapshotConfigNavScroll,
 } from './configNavPersistence'
+export type { ConfigNavSection } from './configNavPersistence'
 export {
   defaultAiFieldValue,
   defaultUiFieldValue,

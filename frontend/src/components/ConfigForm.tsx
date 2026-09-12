@@ -14,6 +14,7 @@ import { userFacingError } from '../utils/userFacingError'
 import {
   AboutConfigSection,
   AdvancedConfigSection,
+  AgentConfigSection,
   AiConfigSection,
   ConfigTipsBanner,
   FederationConfigSection,
@@ -413,9 +414,17 @@ const ModernConfigForm: React.FC = () => {
           <AiConfigSection
             configFields={config.ai_config.config_fields}
             updateValue={updateAiFieldValue}
+            onSpeechTest={handleSpeechTest}
+            {...props}
+          />
+        )
+      case 'agent':
+        return (
+          <AgentConfigSection
+            configFields={config.ai_config.config_fields}
+            updateValue={updateAiFieldValue}
             uiConfigFields={config.ui_config.config_fields}
             updateUiFieldValue={updateUiFieldValue}
-            onSpeechTest={handleSpeechTest}
             {...props}
           />
         )

@@ -392,9 +392,14 @@ impl StdioTransport {
             .await
             .map_err(|error| mcp_io_failed("Failed to flush MCP stdin", error))?;
 
-        loop {
+        let mut response_bytes = 0usize;
+        for _ in 0..64 {
             let mut line = String::new();
             self.read_response_line(&mut line).await?;
+            response_bytes = response_bytes.saturating_add(line.len());
+            if response_bytes > 4 * MAX_MCP_LINE_BYTES {
+                return Err("MCP response stream exceeds byte budget".into());
+            }
 
             let trimmed = line.trim();
             let value: Value = match serde_json::from_str(trimmed) {
@@ -436,6 +441,12 @@ impl StdioTransport {
                 continue;
             }
 
+            if value.get("jsonrpc").and_then(Value::as_str) != Some("2.0")
+                || (value.get("result").is_some() == value.get("error").is_some())
+            {
+                return Err("Invalid MCP response envelope".into());
+            }
+
             let response: JsonRpcResponse = serde_json::from_value(value)
                 .map_err(|error| mcp_json_failed("Invalid JSON-RPC response", error))?;
 
@@ -447,6 +458,7 @@ impl StdioTransport {
                 .result
                 .ok_or_else(|| "MCP response has no result".to_string());
         }
+        Err("MCP response stream exceeds frame budget".into())
     }
 
     /// 发送 JSON-RPC 通知（无 id，不期望响应）
@@ -509,29 +521,11 @@ impl StdioTransport {
         Ok(())
     }
 
-    /// 从 stdout 读取一行 JSON 对象（跳过空行与非 JSON 前缀）
-    ///
-    /// Lines longer than [`MAX_MCP_LINE_BYTES`] are rejected (no unbounded growth).
+    /// Every line counts toward the caller's frame/byte budget, including
+    /// blank/non-JSON startup output. Never hide an unbounded drain here.
     async fn read_response_line(&mut self, buf: &mut String) -> Result<(), String> {
-        loop {
-            let line = read_line_limited(&mut self.stdout, MAX_MCP_LINE_BYTES).await?;
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-
-            // 确保是 JSON 对象
-            if trimmed.starts_with('{') {
-                *buf = line;
-                return Ok(());
-            }
-
-            // 非 JSON 行（可能是服务器启动消息），跳过
-            tracing::debug!(
-                "[MCP stdout skip] {}",
-                trimmed.chars().take(100).collect::<String>()
-            );
-        }
+        *buf = read_line_limited(&mut self.stdout, MAX_MCP_LINE_BYTES).await?;
+        Ok(())
     }
 
     pub fn is_alive(&mut self) -> bool {
@@ -773,6 +767,50 @@ mod tests {
 mod process_tests {
     use super::*;
     use crate::test_support::server_config;
+
+    #[tokio::test]
+    async fn malformed_response_envelopes_poison_the_transport() {
+        for response in [
+            r#"{"jsonrpc":"1.0","id":1,"result":{}}"#,
+            r#"{"jsonrpc":"2.0","id":1,"result":{},"error":{"code":-1,"message":"bad"}}"#,
+        ] {
+            let mut config = server_config("bad-envelope", false);
+            config.args = vec![
+                "-c".into(),
+                "printf '%s\\n' \"$1\"; exec sleep 60".into(),
+                "fixture".into(),
+                response.into(),
+            ];
+            let mut transport = StdioTransport::spawn(&config).await.unwrap();
+            let error = transport
+                .send_request("initialize", None)
+                .await
+                .unwrap_err();
+            assert!(error.contains("Invalid MCP response envelope"), "{error}");
+            assert!(!transport.is_alive());
+            transport.terminate_and_reap().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn startup_noise_cannot_bypass_the_response_budget() {
+        let mut config = server_config("noise", false);
+        config.args = vec![
+            "-c".into(),
+            "i=0; while [ \"$i\" -lt 65 ]; do printf '\\n'; i=$((i+1)); done; exec sleep 60".into(),
+        ];
+        let mut transport = StdioTransport::spawn(&config).await.unwrap();
+        let error = tokio::time::timeout(
+            Duration::from_secs(2),
+            transport.send_request("initialize", None),
+        )
+        .await
+        .expect("noise must exhaust the frame budget before the 30-second I/O timeout")
+        .unwrap_err();
+        assert!(error.contains("frame budget"), "{error}");
+        assert!(!transport.is_alive());
+        transport.terminate_and_reap().await;
+    }
 
     #[tokio::test]
     async fn timeout_covers_a_child_that_never_reads_stdin() {

@@ -16,7 +16,7 @@ and color communicate status, so the UI does not need 28 unrelated pictograms.
 
 | Source key   | Product          | Icon source                          |
 | ------------ | ---------------- | ------------------------------------ |
-| `agent`      | Agent tasks      | `/icons/notifications/arael.webp`     |
+| `agent`      | Agent tasks      | 人设贴纸，没有则 `/logo.webp`          |
 | `heartbeat`  | Agent Heartbeat  | `/icons/notifications/heartbeat.webp` |
 | `mcp`        | MCP tool servers | `/icons/notifications/mcp.webp`       |
 | `brew`       | Brew             | `/icons/notifications/brew.webp`      |
@@ -27,8 +27,9 @@ and color communicate status, so the UI does not need 28 unrelated pictograms.
 
 The reusable implementation lives in
 `frontend/src/components/notifications/NotificationIcons.tsx`.
-All eight assets are notification-scoped 512×512 transparent WebP; other
-product surfaces keep their existing navigation and module icon implementations.
+Heartbeat through system keep notification-scoped 512×512 transparent WebP.
+Agent follows the persona sticker, then the site logo. Other product surfaces
+keep their existing navigation and module icon implementations.
 
 ## Persisted presentation types
 

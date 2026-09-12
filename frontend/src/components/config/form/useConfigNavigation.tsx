@@ -6,13 +6,19 @@ import {
   scrollToSettingGuide,
 } from '../../settings/guides/guideAnchor'
 import { refreshConfigTourSurface } from '../../tour/tourLogic'
+import { usePersonaPublicName } from '../../../features/merope/usePersonaPublicName'
+import { settingsAgentLabel } from '../../../features/merope/publicName'
 import MyriadConfigIcon from '../MyriadConfigIcon'
 import {
+  CONFIG_NAV_DEFAULT_SECTION,
+  CONFIG_NAV_SECTIONS,
   loadConfigNavPersisted,
+  resolveConfigSectionFromSearch,
   resolveInitialConfigSection,
   saveConfigNavPersisted,
   snapshotConfigNavScroll,
   syncConfigSectionToUrl,
+  type ConfigNavSection,
 } from './configNavPersistence'
 import { LEGACY_CONFIG_SECTION_MAP, loadConfigFavorites } from './defaults'
 
@@ -22,6 +28,8 @@ interface NavI18n {
     platformsDesc: string
     ai: string
     aiDesc: string
+    agent: string
+    agentDesc: string
     tripo: string
     tripoDesc: string
     basic: string
@@ -58,7 +66,9 @@ export function useConfigNavigation(isAdmin: boolean, t: NavI18n) {
     const stored = loadConfigNavPersisted()
     const initial = resolveInitialConfigSection(isAdmin)
     if (stored?.mobilePane) return stored.mobilePane
-    if (initial !== 'platforms' || stored?.section) return 'section'
+    if (initial !== CONFIG_NAV_DEFAULT_SECTION || stored?.section) {
+      return 'section'
+    }
     try {
       if (new URLSearchParams(window.location.search).get('section')) {
         return 'section'
@@ -79,100 +89,107 @@ export function useConfigNavigation(isAdmin: boolean, t: NavI18n) {
   const [favorites, setFavorites] = useState<string[]>(loadConfigFavorites)
   const [savedFavorites, setSavedFavorites] =
     useState<string[]>(loadConfigFavorites)
+  const personaName = usePersonaPublicName()
+  const agentLabel = settingsAgentLabel(t.config.agent, personaName)
 
-  const quickAccessItems: QuickAccessItem[] = useMemo(
-    () => [
-      {
-        id: 'platforms',
-        label: t.config.platforms,
-        description: t.config.platformsDesc,
-        icon: <MyriadConfigIcon kind="platforms" />,
-        section: 'platforms',
-      },
-      {
-        id: 'ai',
-        label: t.config.ai,
-        description: t.config.aiDesc,
-        icon: <MyriadConfigIcon kind="ai" />,
-        section: 'ai',
-      },
-      {
-        id: 'tripo',
-        label: t.config.tripo,
-        description: t.config.tripoDesc,
-        icon: <MyriadConfigIcon kind="tripo" />,
-        section: 'tripo',
-      },
-      {
+  const quickAccessItems: QuickAccessItem[] = useMemo(() => {
+    const catalog: Record<ConfigNavSection, QuickAccessItem> = {
+      basic: {
         id: 'basic',
         label: t.config.basic,
         description: t.config.basicDesc,
         icon: <MyriadConfigIcon kind="basic" />,
         section: 'basic',
       },
-      {
-        id: 'oauth',
-        label: t.config.oauth,
-        description: t.config.oauthDesc,
-        icon: <MyriadConfigIcon kind="oauth" />,
-        section: 'oauth',
-      },
-      ...(isAdmin
-        ? [
-            {
-              id: 'federation',
-              label: t.config.federation,
-              description: t.config.federationDesc,
-              icon: <MyriadConfigIcon kind="federation" />,
-              section: 'federation',
-            },
-          ]
-        : []),
-      {
-        id: 'permissions',
-        label: t.config.permissions,
-        description: t.config.permissionsDesc,
-        icon: <MyriadConfigIcon kind="permissions" />,
-        section: 'permissions',
-      },
-      {
-        id: 'users',
-        label: t.config.users,
-        description: t.config.usersDesc,
-        icon: <MyriadConfigIcon kind="users" />,
-        section: 'users',
-      },
-      {
-        id: 'notifications',
-        label: t.notificationCenter.title,
-        description: t.notificationCenter.settingsDesc,
-        icon: <MyriadConfigIcon kind="notifications" />,
-        section: 'notifications',
-      },
-      {
+      modules: {
         id: 'modules',
         label: t.config.moduleSettings,
         description: t.config.moduleSettingsDesc,
         icon: <MyriadConfigIcon kind="modules" />,
         section: 'modules',
       },
-      {
+      platforms: {
+        id: 'platforms',
+        label: t.config.platforms,
+        description: t.config.platformsDesc,
+        icon: <MyriadConfigIcon kind="platforms" />,
+        section: 'platforms',
+      },
+      ai: {
+        id: 'ai',
+        label: t.config.ai,
+        description: t.config.aiDesc,
+        icon: <MyriadConfigIcon kind="ai" />,
+        section: 'ai',
+      },
+      agent: {
+        id: 'agent',
+        label: agentLabel,
+        description: t.config.agentDesc,
+        icon: <MyriadConfigIcon kind="agent" />,
+        section: 'agent',
+      },
+      tripo: {
+        id: 'tripo',
+        label: t.config.tripo,
+        description: t.config.tripoDesc,
+        icon: <MyriadConfigIcon kind="tripo" />,
+        section: 'tripo',
+      },
+      notifications: {
+        id: 'notifications',
+        label: t.notificationCenter.title,
+        description: t.notificationCenter.settingsDesc,
+        icon: <MyriadConfigIcon kind="notifications" />,
+        section: 'notifications',
+      },
+      oauth: {
+        id: 'oauth',
+        label: t.config.oauth,
+        description: t.config.oauthDesc,
+        icon: <MyriadConfigIcon kind="oauth" />,
+        section: 'oauth',
+      },
+      users: {
+        id: 'users',
+        label: t.config.users,
+        description: t.config.usersDesc,
+        icon: <MyriadConfigIcon kind="users" />,
+        section: 'users',
+      },
+      permissions: {
+        id: 'permissions',
+        label: t.config.permissions,
+        description: t.config.permissionsDesc,
+        icon: <MyriadConfigIcon kind="permissions" />,
+        section: 'permissions',
+      },
+      federation: {
+        id: 'federation',
+        label: t.config.federation,
+        description: t.config.federationDesc,
+        icon: <MyriadConfigIcon kind="federation" />,
+        section: 'federation',
+      },
+      advanced: {
         id: 'advanced',
         label: t.config.advanced,
         description: t.config.advancedDesc,
         icon: <MyriadConfigIcon kind="advanced" />,
         section: 'advanced',
       },
-      {
+      about: {
         id: 'about',
         label: t.config.about,
         description: t.config.aboutDesc,
         icon: <MyriadConfigIcon kind="about" />,
         section: 'about',
       },
-    ],
-    [t, isAdmin],
-  )
+    }
+    return CONFIG_NAV_SECTIONS.filter(
+      (section) => section !== 'federation' || isAdmin,
+    ).map((section) => catalog[section])
+  }, [agentLabel, isAdmin, t])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -294,9 +311,8 @@ export function useConfigNavigation(isAdmin: boolean, t: NavI18n) {
     if (typeof window === 'undefined') return
     const applySectionFromUrl = () => {
       const params = new URLSearchParams(window.location.search)
-      const raw = params.get('section')
-      if (!raw) return
-      const next = LEGACY_CONFIG_SECTION_MAP[raw] ?? raw
+      const next = resolveConfigSectionFromSearch(params, isAdmin)
+      if (!next) return
       const known = quickAccessItems.some((item) => item.section === next)
       if (!known) return
       setActiveSection(next)
@@ -319,7 +335,7 @@ export function useConfigNavigation(isAdmin: boolean, t: NavI18n) {
     applySectionFromUrl()
     window.addEventListener('popstate', applySectionFromUrl)
     return () => window.removeEventListener('popstate', applySectionFromUrl)
-  }, [quickAccessItems])
+  }, [isAdmin, quickAccessItems])
 
   const scrollSettingsToTop = useCallback(() => {
     if (typeof window === 'undefined') return

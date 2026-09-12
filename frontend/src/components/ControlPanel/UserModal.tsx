@@ -26,7 +26,7 @@ import { getTappIconStyle } from '../../tapp/utils/tappColors'
 import { TAPP_LIST_PATH, tappRunPath } from '../../tapp/utils/tappPaths'
 import { getCSRFToken } from '../../utils/csrf'
 import { normalizeOAuthIconUrl } from '../../utils/oauthIcons'
-import { showError, showSuccess } from '../../utils/toastManager'
+import { showError, showStickyToast, showSuccess } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
 import { Avatar } from '../Avatar'
 import { AvatarSourcePicker } from '../AvatarSourcePicker'
@@ -138,7 +138,6 @@ export const UserModal: FC<UserModalProps> = ({
   const [oauthProviders, setOAuthProviders] = useState<OAuthProviderInfo[]>([])
   const [identities, setIdentities] = useState<OAuthIdentity[]>([])
   const [oauthLoading, setOAuthLoading] = useState(false)
-  const [oauthError, setOAuthError] = useState('')
   const [unbindingId, setUnbindingId] = useState<number | null>(null)
   const { t, locale, format } = useI18n()
   const navigate = useNavigate()
@@ -301,7 +300,11 @@ export const UserModal: FC<UserModalProps> = ({
       }
     } catch (error) {
       console.error('Failed to load OAuth bindings:', error)
-      setOAuthError(userFacingError(error, t.userModal.oauthLoadFailed))
+      showStickyToast({
+        message: userFacingError(error, t.userModal.oauthLoadFailed),
+        type: 'error',
+        replaceKey: 'user-oauth',
+      })
     } finally {
       setOAuthLoading(false)
     }
@@ -403,7 +406,6 @@ export const UserModal: FC<UserModalProps> = ({
 
   const backToMain = () => {
     setPage('main')
-    setOAuthError('')
     setPasswordError('')
   }
 
@@ -413,12 +415,15 @@ export const UserModal: FC<UserModalProps> = ({
 
   const handleUnbind = async (identity: OAuthIdentity) => {
     if (!window.confirm(t.userModal.oauthUnbindConfirm)) return
-    setOAuthError('')
     setUnbindingId(identity.id)
     try {
       const csrfToken = await getCSRFToken()
       if (!csrfToken) {
-        setOAuthError(t.userModal.cannotGetCsrf)
+        showStickyToast({
+          message: t.userModal.cannotGetCsrf,
+          type: 'error',
+          replaceKey: 'user-oauth',
+        })
         return
       }
       const response = await fetch(
@@ -431,19 +436,25 @@ export const UserModal: FC<UserModalProps> = ({
       )
       if (!response.ok) {
         const body = await response.json().catch(() => null)
-        setOAuthError(
-          userFacingError(
+        showStickyToast({
+          message: userFacingError(
             (typeof body?.message === 'string' && body.message) ||
               (typeof body?.error === 'string' && body.error) ||
               `HTTP ${response.status}`,
             t.userModal.oauthUnbindFailed,
           ),
-        )
+          type: 'error',
+          replaceKey: 'user-oauth',
+        })
         return
       }
       await loadOAuthBindings()
     } catch (error) {
-      setOAuthError(userFacingError(error, t.userModal.networkError))
+      showStickyToast({
+        message: userFacingError(error, t.userModal.networkError),
+        type: 'error',
+        replaceKey: 'user-oauth',
+      })
     } finally {
       setUnbindingId(null)
     }
@@ -811,9 +822,6 @@ export const UserModal: FC<UserModalProps> = ({
                 <div className="user-modal-qq-pairing">
                   <ChannelPairingPanel channel="feishu" />
                 </div>
-                {oauthError && (
-                  <p className="user-modal-oauth-error">{oauthError}</p>
-                )}
               </div>
             ) : (
               <div className="user-modal-page-body">

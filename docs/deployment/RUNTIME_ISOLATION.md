@@ -221,7 +221,11 @@ violates host policy is rejected before persistence. Development may explicitly
 use local stdio, which still shares its host UID/filesystem/network.
 
 Gateway definitions select `transport: "gateway"` and contain no command, arguments
-or environment. The operator sets `MYRIAD_MCP_GATEWAY_URL` and
+or environment. One definition represents the endpoint's aggregate tool collection;
+IDs do not select individual remote servers. Use one enabled gateway entry. See
+[MCP gateway deployment candidate](MCP_GATEWAY.md) for a pinned upstream Compose
+example, migration steps and its unverified isolation/lifecycle limits.
+The operator sets `MYRIAD_MCP_GATEWAY_URL` and
 `MYRIAD_MCP_GATEWAY_TOKEN` in the persona deployment; the token must contain at least
 32 printable non-space ASCII bytes. Neither is accepted from tool definitions or
 returned by MCP configuration APIs. The UI receives only availability flags.

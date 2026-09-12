@@ -1,4 +1,5 @@
 import { getPublicConfigDeduped } from '../../utils/requestDedup'
+import { PERSONA_UPDATED_EVENT } from './events'
 
 /** Default when persona is on but unnamed; not the product name. */
 export const PERSONA_DEFAULT_NAME = 'Arael'
@@ -38,4 +39,58 @@ export async function loadPublicPersonaName(): Promise<string> {
   } catch {
     return PERSONA_OFF_NAME
   }
+}
+
+/** Settings category stays the product word until the public face has a name. */
+export function settingsAgentLabel(
+  productLabel: string,
+  publicName: string,
+): string {
+  const name = publicName.trim()
+  if (!name || name === PERSONA_OFF_NAME) return productLabel
+  return name
+}
+
+type PersonaNameListener = (name: string) => void
+
+let cachedName = PERSONA_OFF_NAME
+let nameLoaded = false
+let nameInFlight: Promise<string> | null = null
+const nameListeners = new Set<PersonaNameListener>()
+
+function publishPersonaPublicName(next: string) {
+  if (cachedName === next && nameLoaded) return
+  cachedName = next
+  nameLoaded = true
+  for (const listener of nameListeners) listener(cachedName)
+}
+
+export function personaPublicName(): string {
+  if (!nameLoaded && !nameInFlight) void refreshPersonaPublicName()
+  return cachedName
+}
+
+export async function refreshPersonaPublicName(): Promise<string> {
+  if (nameInFlight) return nameInFlight
+  nameInFlight = loadPublicPersonaName()
+  try {
+    const next = await nameInFlight
+    publishPersonaPublicName(next)
+    return next
+  } finally {
+    nameInFlight = null
+  }
+}
+
+export function onPersonaPublicName(listener: PersonaNameListener): () => void {
+  nameListeners.add(listener)
+  return () => {
+    nameListeners.delete(listener)
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener(PERSONA_UPDATED_EVENT, () => {
+    void refreshPersonaPublicName()
+  })
 }

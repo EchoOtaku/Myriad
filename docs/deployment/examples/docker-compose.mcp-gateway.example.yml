@@ -1,0 +1,49 @@
+# Run on a dedicated MCP host/VM, never on the Myriad Docker daemon.
+# See ../MCP_GATEWAY.md. This is a deployment candidate, not a certified sandbox.
+name: myriad-mcp
+services:
+  gateway:
+    image: docker/mcp-gateway:v0.43.3@sha256:e3ee13818cb067a506c5e9acdb2bb4fe0e601caef7d116fc329755782f1a3cfa
+    restart: "no"
+    init: true
+    environment:
+      MCP_GATEWAY_AUTH_TOKEN: ${MCP_GATEWAY_AUTH_TOKEN:?Set a dedicated random gateway token}
+    command:
+      - --transport=streaming
+      - --host=0.0.0.0
+      - --port=8811
+      - --servers=${MCP_SERVERS:?Set the explicit comma-separated catalog server names}
+      - --catalog=/root/.docker/mcp/catalogs/myriad.yaml
+      - --config=/dev/null
+      - --registry=/dev/null
+      - --tools-config=/dev/null
+      - --secrets=/dev/null
+      - --watch=false
+      - --long-lived=false
+      - --log-calls=false
+      - --cpus=1
+      - --memory=256Mb
+    ports:
+      - "127.0.0.1:8811:8811"
+    volumes:
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${MCP_CATALOG_FILE:?Set the absolute path to the reviewed catalog}
+        target: /root/.docker/mcp/catalogs/myriad.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+    cpus: 1.0
+    mem_limit: 512m
+    pids_limit: 128
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "2"

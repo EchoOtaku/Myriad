@@ -92,12 +92,6 @@ export interface SettingGuidesCatalog {
     standard: SettingGuideEntry
     lite: SettingGuideEntry
     liteEnable: SettingGuideEntry
-    agentPersona: SettingGuideEntry
-    agentPersonaSpeech: SettingGuideEntry
-    qqBot: SettingGuideEntry
-    telegramBot: SettingGuideEntry
-    discordBot: SettingGuideEntry
-    feishuBot: SettingGuideEntry
     pro: SettingGuideEntry
     proEnable: SettingGuideEntry
     image: SettingGuideEntry
@@ -108,13 +102,22 @@ export interface SettingGuidesCatalog {
     apiKey: SettingGuideEntry
     baseUrl: SettingGuideEntry
     model: SettingGuideEntry
-    heartbeat: SettingGuideEntry
-    skills: SettingGuideEntry
-    memory: SettingGuideEntry
     imageModel: SettingGuideEntry
     speechStt: SettingGuideEntry
     speechTts: SettingGuideEntry
     speechVoice: SettingGuideEntry
+  }
+  agent: {
+    agentPersona: SettingGuideEntry
+    agentPersonaSpeech: SettingGuideEntry
+    channels: SettingGuideEntry
+    qqBot: SettingGuideEntry
+    telegramBot: SettingGuideEntry
+    discordBot: SettingGuideEntry
+    feishuBot: SettingGuideEntry
+    heartbeat: SettingGuideEntry
+    skills: SettingGuideEntry
+    memory: SettingGuideEntry
   }
   /** keys stay on backend; ConfigForm section id = tripo */
   tripo: {

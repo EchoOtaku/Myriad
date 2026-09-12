@@ -1,7 +1,7 @@
 {
   "poseCorrection": {
-    "title": "Kombinierte Posen korrigieren",
-    "description": "Unten Kopfdrehung, Neigung oder Augenschluss kombinieren, dann eine lokale Korrektur hinzufügen. Koordinaten und Versätze verwenden Kopfradien und die aktuelle Schalenmischung. Die Vorschau ist lokal; Speichern aktualisiert nur das getragene Outfit.",
+    "title": "Erweitert: kombinierte Posen korrigieren",
+    "description": "Optionale Formkorrekturen; die normale Wiedergabe braucht keine Kalibrierung. Lokale Formen bestimmter kombinierter Posen anpassen. Einklappen zeigt den gespeicherten Stand und behält den Entwurf; Speichern aktualisiert nur das getragene Outfit.",
     "region": "Bereich",
     "patch": "Lokale Korrektur",
     "add": "Aktuelle Pose hinzufügen",

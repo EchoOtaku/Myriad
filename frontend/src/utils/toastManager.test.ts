@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  layoutToastStack,
   pickVisibleToasts,
   resolveToastEvent,
   showStickyToast,
@@ -84,5 +85,17 @@ test('pickVisibleToasts keeps the newest sticky when they overflow the cap', () 
   assert.deepEqual(
     visible.map((toast) => toast.id),
     ['s2', 's3', 's4', 's5', 's6'],
+  )
+})
+
+test('layoutToastStack keeps a leaving toast so the stack can collapse around it', () => {
+  const stacked = layoutToastStack([
+    { id: 'a', leaving: true },
+    { id: 'b' },
+    { id: 'c' },
+  ])
+  assert.deepEqual(
+    stacked.map((toast) => toast.id),
+    ['a', 'b', 'c'],
   )
 })

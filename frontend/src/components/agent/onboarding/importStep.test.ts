@@ -181,7 +181,7 @@ test('finishing either lane hands off to the motion workbench', () => {
   assert.match(page, /onFinished=\{onFinished\}/)
   assert.doesNotMatch(page, /onFinished=\{onBack\}/)
 
-  const shell = read('../../config/AiConfigSection.tsx')
+  const shell = read('../../config/AgentConfigSection.tsx')
   assert.match(shell, /onFinished=\{\(\) => openAiSubpage\('merope'\)\}/)
 
   // 两条路的收尾按钮都得说清楚送去哪。
@@ -305,7 +305,7 @@ test('the import lane does not inherit the guided run visual profile', () => {
 
 test('missing reports lock generate, not import', () => {
   // 缺报告只锁生成，不锁导入。
-  const card = read('../../config/AiConfigSection.tsx')
+  const card = read('../../config/AgentConfigSection.tsx')
   assert.match(card, /openAiSubpage\('merope-setup'\)/)
   assert.doesNotMatch(card, /reportCount >= 3/)
 

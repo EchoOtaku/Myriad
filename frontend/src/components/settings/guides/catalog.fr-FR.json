@@ -458,18 +458,6 @@
       "frontend": "Les utilisateurs ne voient en général pas de page séparée — surtout quel réglage utilisent les tâches d’arrière-plan simples.",
       "notes": "Peut utiliser un autre fournisseur que Standard ; plus sûr de s’assurer d’abord que Standard marche."
     },
-    "agentPersona": {
-      "what": "Laisser l’Agent parler avec la persona du site, garder humeur et journal par personne, et parler après des événements nommés.",
-      "chain": "1) Coupé par défaut. Coupé = chat et tâches seulement — pas d’écoute d’événements, pas de parole cachée, persona inutilisée.\n2) L’interrupteur a besoin de Pro. Le chat n’injecte la persona que comme texte système ; il utilise les paliers planificateur/réponse.\n3) Lite choisit le mouvement sémantique et écrit phrases proactives et indices d’humeur. Sans Lite, le mouvement sémantique s’arrête et seuls clignement, respiration, cheveux et autres physiques ambiants locaux restent ; pas de repli Standard.\n4) Activé : rédigez la persona sur la page secondaire de cet élément. Tags, nom et persona passent par Pro.\n5) MEROPE_ENABLED peut forcer l’interrupteur enregistré, mais Pro reste nécessaire.\n6) La parole autonome reste cachée ; les événements de valeur notifient aussi si la personne ne discute pas.",
-      "frontend": "Le chat utilise cette persona. Rédigez-la sur la page de paramètres secondaire de cet élément. La ligne de premier niveau montre votre bande d’humeur et l’activité actuelle. Les invités ne voient pas l’humeur.",
-      "notes": "Seul le propriétaire du site peut rédiger la persona. Supprimer la persona efface aussi humeur et journal. Heartbeat n’est jamais bloqué par l’humeur. Parler à voix haute est un interrupteur séparé sur cette carte, coupé par défaut."
-    },
-    "agentPersonaSpeech": {
-      "what": "Si le visage de la persona lit à voix haute les réponses du chat.",
-      "chain": "1) Coupé par défaut. Coupé : les réponses restent du texte ; le visage articule encore la ligne, sans voix.\n2) Activé, avec la parole configurée : les réponses passent par le pipeline vocal ; l’audio réel anime la bouche ; visèmes texte seulement si le TTS échoue.\n3) Nécessite la persona Agent activée, et un fournisseur de parole sur la page IA. L’interrupteur ne compte pas si la persona est coupée.\n4) L’écoute au maintien reste manuelle et séparée.\n5) Le TTS lecteur/podcast utilise le fournisseur de parole, pas cet interrupteur.",
-      "frontend": "Paramètres → IA → Agent → Parler. Prend effet au prochain tour de chat après enregistrement.",
-      "notes": "La voix utilise du quota. Couper ceci ne coupe pas la persona."
-    },
     "liteEnable": {
       "what": "Activer ou non le palier Lite.",
       "chain": "1) Coupé = les tâches Lite s’arrêtent. Elles ne se rabattent pas sur Standard.\n2) Activé = le choix de mouvement et d’autres tâches lite utilisent le réglage Lite.\n3) Couper ne supprime pas ce que vous avez déjà rempli.\n4) La persona Agent peut s’activer sans Lite ; seuls les physiques ambiants locaux restent, les phrases proactives restent courtes, et les indices d’humeur restent coupés.",
@@ -536,24 +524,6 @@
       "frontend": "Différences de qualité et de vitesse des réponses de l’assistant.",
       "notes": "Un mauvais nom fait échouer l’appel ; utilisez le nom de la console du fournisseur."
     },
-    "heartbeat": {
-      "what": "Laisser l’Agent exécuter une tâche selon un planning sans que vous regardiez.",
-      "chain": "1) Ajoutez une tâche ici : nom, planning (préréglage ou cron), et quoi faire.\n2) À l’échéance, l’Agent exécute cette consigne en mode Travail.\n3) La liste peut activer, modifier ou supprimer ; le dernier résultat s’affiche sur la ligne.\n4) Indépendant de l’humeur de la persona — Heartbeat n’est jamais bloqué par l’humeur.\n5) Vous devez être connecté pour lire ou écrire ces tâches.",
-      "frontend": "Paramètres → IA → Agent → Planning. Les exécutions s’affichent aussi sur la chronologie de l’assistant.",
-      "notes": "Rédigez une action claire. Un cron invalide ne se déclenche jamais. Les tâches utilisent le quota IA."
-    },
-    "skills": {
-      "what": "Façons de travailler dont l’Agent se souvient : celles que vous avez écrites, ou celles qu’il a apprises ou révisées en faisant des tâches.",
-      "chain": "1) Après une tâche réussie, il peut stocker une compétence et la réutiliser la prochaine fois.\n2) Vous pouvez aussi demander à l’assistant d’en apprendre ou d’en modifier une.\n3) Cette page liste, cherche et supprime seulement — elle ne crée pas le texte de compétence.\n4) Après suppression, cette compétence n’est plus utilisée.",
-      "frontend": "Paramètres → IA → Agent → Compétences. Des badges marquent manuel / appris / révisé.",
-      "notes": "Supprimer, c’est réapprendre. Les compétences ne sont pas des autorisations et ne peuvent pas contourner les autorisations ou le quota du site."
-    },
-    "memory": {
-      "what": "Faits courts que l’Agent a choisi de garder, injectés dans le chat ultérieur.",
-      "chain": "1) Il écrit une ligne quand il pense qu’un fait vaut d’être gardé.\n2) Cherchez, modifiez ou supprimez ici.\n3) Les modifications s’appliquent au prochain tour de chat.\n4) Pas le même que le journal de persona : le journal est par personne ; la mémoire est des lignes de faits.",
-      "frontend": "Paramètres → IA → Agent → Mémoire. Dépliez une ligne pour modifier le texte.",
-      "notes": "N’y mettez pas de secrets. Les lignes supprimées ne sont plus injectées."
-    },
     "imageModel": {
       "what": "Le nom exact du modèle utilisé pour la génération d’images.",
       "chain": "1) Enregistré avec le fournisseur d’images.\n2) Doit être un nom déjà activé chez ce fournisseur.\n3) A encore besoin de l’autorisation image et du quota restant.\n4) Peut différer du modèle texte.",
@@ -577,37 +547,75 @@
       "chain": "1) Enregistré avec le modèle TTS.\n2) Doit être une voix que le fournisseur actuel prend en charge.\n3) La parole de la persona utilise aussi cette voix.\n4) Vide se rabat sur le défaut de l’espace réservé à l’écran.",
       "frontend": "Paramètres → IA → Parole → Voix. Une ligne de test suffit pour entendre la différence.",
       "notes": "Les noms de voix sont propres au fournisseur — ne collez pas une voix OpenAI dans Gemini."
+    }
+  },
+  "agent": {
+    "agentPersona": {
+      "what": "Laisser l’Agent parler avec la persona du site, garder humeur et journal par personne, et parler après des événements nommés.",
+      "chain": "1) Coupé par défaut. Coupé = chat et tâches seulement — pas d’écoute d’événements, pas de parole cachée, persona inutilisée.\n2) L’interrupteur a besoin de Pro. Le chat n’injecte la persona que comme texte système ; il utilise les paliers planificateur/réponse.\n3) Lite choisit le mouvement sémantique et écrit phrases proactives et indices d’humeur. Sans Lite, le mouvement sémantique s’arrête et seuls clignement, respiration, cheveux et autres physiques ambiants locaux restent ; pas de repli Standard.\n4) Activé : rédigez la persona sur la page secondaire de cet élément. Tags, nom et persona passent par Pro.\n5) MEROPE_ENABLED peut forcer l’interrupteur enregistré, mais Pro reste nécessaire.\n6) La parole autonome reste cachée ; les événements de valeur notifient aussi si la personne ne discute pas.",
+      "frontend": "Le chat utilise cette persona. Rédigez-la sur la page de paramètres secondaire de cet élément. La ligne de premier niveau montre votre bande d’humeur et l’activité actuelle. Les invités ne voient pas l’humeur.",
+      "notes": "Seul le propriétaire du site peut rédiger la persona. Supprimer la persona efface aussi humeur et journal. Heartbeat n’est jamais bloqué par l’humeur. Parler à voix haute est un interrupteur séparé sur cette carte, coupé par défaut."
+    },
+    "agentPersonaSpeech": {
+      "what": "Si le visage de la persona lit à voix haute les réponses du chat.",
+      "chain": "1) Coupé par défaut. Coupé : les réponses restent du texte ; le visage articule encore la ligne, sans voix.\n2) Activé, avec la parole configurée : les réponses passent par le pipeline vocal ; l’audio réel anime la bouche ; visèmes texte seulement si le TTS échoue.\n3) Nécessite la persona Agent activée, et un fournisseur de parole sur la page IA. L’interrupteur ne compte pas si la persona est coupée.\n4) L’écoute au maintien reste manuelle et séparée.\n5) Le TTS lecteur/podcast utilise le fournisseur de parole, pas cet interrupteur.",
+      "frontend": "Paramètres → Agent → Parler. Prend effet au prochain tour de chat après enregistrement.",
+      "notes": "La voix utilise du quota. Couper ceci ne coupe pas la persona."
+    },
+    "channels": {
+      "what": "Ajouter un bot de travail en message privé pour qu’Agent reçoive une demande depuis QQ, Telegram, Discord ou Feishu.",
+      "chain": "1) Vide par défaut. Utilisez « Ajouter un bot » en haut à droite — même geste que les fournisseurs IA.\n2) Un bot n’apparaît qu’après ajout, ou s’il a déjà des identifiants / est activé.\n3) Remplissez le jeton bot ou AppID / AppSecret, activez, puis enregistrez.\n4) Retirer masque un bot vide et efface les identifiants enregistrés.",
+      "frontend": "Paramètres → Agent → Bots. Le bouton d’ajout est en haut à droite de cette page.",
+      "notes": "Un bot ne fait que l’entrée et la livraison. Ce n’est pas un second cerveau Agent."
     },
     "qqBot": {
       "what": "Send a QQ private message into site Work and get the result back in the same chat.",
       "chain": "1) Turn on, fill AppID / AppSecret, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The secret is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, incomplete credentials, or 401/403 stop the worker. Network jitter reconnects.\n5) After connect succeeds, bind your QQ here: copy the pairing code and send it in a private chat. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Reply yes/no or an option number. You can send 停止 / 新对话 / 当前任务.",
-      "frontend": "Settings → AI → Agent → QQ bot.",
+      "frontend": "Paramètres → Agent → Bots. Ajoutez QQ en haut à droite.",
       "notes": "Do not paste Discord data-platform OAuth here. AppSecret never appears in page plaintext or error text."
     },
     "telegramBot": {
       "what": "Send a Telegram DM into site Work and get the result back in the same chat.",
       "chain": "1) Turn on, paste the BotFather token, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The token is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, missing token, or 401/403 stop the worker. 429 waits retry_after. 409 (webhook / another getUpdates client) backs off; it is not a bad token.\n5) After connect succeeds, bind your Telegram here: copy the pairing code and open the bot. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Buttons belong to that step only. You can send 停止 / 新对话 / 当前任务.",
-      "frontend": "Settings → AI → Agent → Telegram bot.",
+      "frontend": "Paramètres → Agent → Bots. Ajoutez Telegram en haut à droite.",
       "notes": "Do not paste MTProto api_id / api_hash. The token never appears in page plaintext or error text. Reachability of api.telegram.org is outside the platform."
     },
     "discordBot": {
       "what": "Send a Discord DM into site Work and get the result back in the same chat.",
       "chain": "1) Turn on, paste the Developer Portal bot token, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The token is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, missing token, or 401/403 stop the worker. Network jitter resumes the Gateway session; do not Identify on every disconnect.\n5) After connect succeeds, bind your Discord here: copy the pairing code and send it in a DM. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Buttons belong to that step only. You can send 停止 / 新对话 / 当前任务.",
-      "frontend": "Settings → AI → Agent → Discord bot.",
+      "frontend": "Paramètres → Agent → Bots. Ajoutez Discord en haut à droite.",
       "notes": "Do not paste the data-platform OAuth access token. Pairing identity is discord_dm, not Discord login. The token never appears in page plaintext or error text."
     },
     "feishuBot": {
       "what": "Send a Feishu private message into site Work and get the result back in the same chat.",
       "chain": "1) Turn on, fill the internal-app AppID / AppSecret, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The secret is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, incomplete credentials, or auth rejects stop the worker. Network jitter reconnects.\n5) After connect succeeds, bind your Feishu here: copy the pairing code and send it in a private chat. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Buttons belong to that step only. You can send 停止 / 新对话 / 当前任务.",
-      "frontend": "Settings → AI → Agent → Feishu bot.",
+      "frontend": "Paramètres → Agent → Bots. Ajoutez Feishu en haut à droite.",
       "notes": "Use an internal company app, not a group custom-bot webhook. AppSecret never appears in page plaintext or error text."
+    },
+    "heartbeat": {
+      "what": "Laisser l’Agent exécuter une tâche selon un planning sans que vous regardiez.",
+      "chain": "1) Ajoutez une tâche ici : nom, planning (préréglage ou cron), et quoi faire.\n2) À l’échéance, l’Agent exécute cette consigne en mode Travail.\n3) La liste peut activer, modifier ou supprimer ; le dernier résultat s’affiche sur la ligne.\n4) Indépendant de l’humeur de la persona — Heartbeat n’est jamais bloqué par l’humeur.\n5) Vous devez être connecté pour lire ou écrire ces tâches.",
+      "frontend": "Paramètres → Agent → Planning. Les exécutions s’affichent aussi sur la chronologie de l’assistant.",
+      "notes": "Rédigez une action claire. Un cron invalide ne se déclenche jamais. Les tâches utilisent le quota IA."
+    },
+    "skills": {
+      "what": "Façons de travailler dont l’Agent se souvient : celles que vous avez écrites, ou celles qu’il a apprises ou révisées en faisant des tâches.",
+      "chain": "1) Après une tâche réussie, il peut stocker une compétence et la réutiliser la prochaine fois.\n2) Vous pouvez aussi demander à l’assistant d’en apprendre ou d’en modifier une.\n3) Cette page liste, cherche et supprime seulement — elle ne crée pas le texte de compétence.\n4) Après suppression, cette compétence n’est plus utilisée.",
+      "frontend": "Paramètres → Agent → Compétences. Des badges marquent manuel / appris / révisé.",
+      "notes": "Supprimer, c’est réapprendre. Les compétences ne sont pas des autorisations et ne peuvent pas contourner les autorisations ou le quota du site."
+    },
+    "memory": {
+      "what": "Faits courts que l’Agent a choisi de garder, injectés dans le chat ultérieur.",
+      "chain": "1) Il écrit une ligne quand il pense qu’un fait vaut d’être gardé.\n2) Cherchez, modifiez ou supprimez ici.\n3) Les modifications s’appliquent au prochain tour de chat.\n4) Pas le même que le journal de persona : le journal est par personne ; la mémoire est des lignes de faits.",
+      "frontend": "Paramètres → Agent → Mémoire. Dépliez une ligne pour modifier le texte.",
+      "notes": "N’y mettez pas de secrets. Les lignes supprimées ne sont plus injectées."
     }
   },
   "tripo": {
     "connection": {
       "what": "Si Tripo 3D est activé, et quel point d’accès API et quelle clé utiliser.",
       "chain": "1) Activez, remplissez la clé API (et l’URL de base facultative) → enregistrez la config en bas.\n2) Entièrement indépendant de la génération d’images de « Configuration IA » : les images de référence ne sont que des entrées du pipeline 3D, pas les mêmes clés.\n3) Seulement activé et clé valide, des tâches qui consomment des crédits Tripo peuvent être créées.\n4) La clé n’est stockée que sur le serveur — jamais envoyée aux navigateurs ni embarquée dans les fichiers de modèle.\n5) Le trafic sortant utilise le proxy global sous Paramètres avancés ; Tripo n’ouvre pas un chemin réseau séparé.",
-      "frontend": "Paramètres → 3D et Tripo → groupe « Connexion Tripo ».\nPoints d’entrée de création de tâches 3D (administrateur).",
+      "frontend": "Paramètres → Laboratoire → groupe « Connexion Tripo ».\nPoints d’entrée de création de tâches 3D (administrateur).",
       "notes": "Obtenez la clé sur platform.tripo3d.ai. Couper l’activation grise les champs ci-dessous mais garde ce que vous avez déjà rempli."
     },
     "enabled": {

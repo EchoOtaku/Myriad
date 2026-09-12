@@ -1169,11 +1169,6 @@ html.dark .config-sidebar-search .search-input:focus {
   filter: drop-shadow(0 1px 1px rgb(0 0 0 / 12%));
 }
 
-.myriad-config-icon--tripo {
-  transform: scale(0.74);
-  transform-origin: center;
-}
-
 .section-icon .myriad-config-icon {
   position: relative;
   width: 2.75rem;
@@ -1190,12 +1185,6 @@ html.dark .config-sidebar-search .search-input:focus {
   .config-nav-item.is-active .myriad-config-icon,
   .section-icon:hover .myriad-config-icon {
     transform: scale(1.07);
-  }
-
-  .config-nav-item:hover .myriad-config-icon--tripo,
-  .config-nav-item.is-active .myriad-config-icon--tripo,
-  .section-icon:hover .myriad-config-icon--tripo {
-    transform: scale(0.79);
   }
 }
 
@@ -2007,7 +1996,8 @@ html.dark .platform-status-dot.is-unconfigured {
 }
 
 .platforms-pane,
-.ai-pane {
+.ai-pane,
+.agent-pane {
   display: flex;
   flex-direction: column;
   gap: var(--settings-gap-group, 1.25rem);
@@ -3163,4 +3153,3 @@ html.dark .platform-requirement-hint.is-ok {
 html.dark .modal-footer {
   border-top-color: rgb(255 255 255 / 10%);
 }
-

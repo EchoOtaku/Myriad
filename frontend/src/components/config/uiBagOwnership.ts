@@ -75,7 +75,7 @@ export const ADVANCED_RESET_KEYS: readonly string[] = Object.freeze([
   'github_api_base_url',
 ])
 
-export const AI_UI_RESET_KEYS: readonly string[] = Object.freeze([
+export const AGENT_UI_RESET_KEYS: readonly string[] = Object.freeze([
   'merope_enabled',
   'merope_speech_enabled',
 ])
@@ -85,14 +85,14 @@ export const ALL_OWNED_UI_BAG_KEYS: readonly string[] = Object.freeze([
   ...UI_RESET_KEYS,
   ...PLATFORMS_UI_RESET_KEYS,
   ...MODULE_UI_RESET_KEYS,
-  ...AI_UI_RESET_KEYS,
+  ...AGENT_UI_RESET_KEYS,
   ...ADVANCED_RESET_KEYS,
 ])
 
 /** these bag keys hot-reload; no location.reload */
 export const RUNTIME_RELOAD_UI_BAG_KEYS: readonly string[] = Object.freeze([
   ...ADVANCED_RESET_KEYS,
-  ...AI_UI_RESET_KEYS,
+  ...AGENT_UI_RESET_KEYS,
 ])
 
 export const WALLPAPER_SOFT_RELOAD_UI_BAG_KEYS: readonly string[] = Object.freeze([
@@ -186,7 +186,7 @@ export function configChangesNeedSpeechPipelineReload(
   return bagKeysChanged(
     next.ui_config?.config_fields,
     prev.ui_config?.config_fields,
-    AI_UI_RESET_KEYS,
+    AGENT_UI_RESET_KEYS,
   )
 }
 

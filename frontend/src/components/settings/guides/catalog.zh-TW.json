@@ -458,18 +458,6 @@
       "frontend": "一般沒有單獨頁面；可在服務商賬單或呼叫日誌裡看到是否用了輕量模型名。",
       "notes": "可以和標準用不同服務商；先保證標準可用更穩妥。"
     },
-    "agentPersona": {
-      "what": "是否讓 Agent 用全站設定說話，並記住跟每個人的心情、日記，在有名單上的事時自己開口。",
-      "chain": "① 預設關。關上只聊天辦事，不聽事件、不寫主動對話、設定也不生效。\n② 寫設定和開關生效需要 Pro。聊天裡的人設只是系統詞，走規劃/回覆自己的檔。\n③ Lite 選擇動作、寫主動開口和心情微調；沒開 Lite 時語義動作停掉，只保留眨眼、呼吸、頭髮等本地自然物理，不會回落到標準模型。\n④ 開啟並儲存後，在本項二級頁寫設定。詞條、命名、人設走 Pro。首次生成至少要 3 份平臺報告。\n⑤ 環境變數 MEROPE_ENABLED 可覆蓋庫裡的開關，但仍要有 Pro。\n⑥ 主動開口進看不見的主動對話；有價值且沒在聊再通知。",
-      "frontend": "聊天裡用這份設定說話。寫設定從本項二級頁進入。一級可見對你的心情檔和當下活動。遊客看不見心情。",
-      "notes": "只有站長能寫設定。刪除人設會清掉心情和日記。心跳不受心情擋住。形象開口朗讀是同一張卡片裡的說話開關，預設關。"
-    },
-    "agentPersonaSpeech": {
-      "what": "人設形象要不要把聊天回覆讀出來。",
-      "chain": "① 預設關。關上聊天仍出文字，形象用文字口型張嘴，不播語音。\n② 開啟且語音服務可用時，回覆走語音管線，真音訊驅動嘴；語音失敗才退回文字口型。\n③ 先要開啟上面的人設，並配好 AI 頁的語音服務。人設沒生效時這個開關不算開。\n④ 連續聽（麥克風）仍須人手開啟，不受此開關影響。\n⑤ 播客朗讀走語音服務本身，不看這個開關。",
-      "frontend": "設定 → AI → Agent → 說話。儲存後下一輪聊天生效。",
-      "notes": "語音會消耗額度。關上不等於關掉人設。"
-    },
     "liteEnable": {
       "what": "要不要啟用輕量這一檔。",
       "chain": "① 關 = 輕量任務停掉，不再回落到標準模型。\n② 開 = 動作選擇等輕量任務走 Lite 配置。\n③ 關掉不會刪掉你已填的內容。\n④ Agent 人設不用 Lite 也能開；沒開 Lite 時只保留本地自然物理，主動開口走短句，心情微調不跑。",
@@ -536,24 +524,6 @@
       "frontend": "助手回答的質量與速度差異。",
       "notes": "名稱填錯會呼叫失敗；以服務商控制檯裡的為準。"
     },
-    "heartbeat": {
-      "what": "讓 Agent 按時間表自己做一件事，不必你盯著。",
-      "chain": "① 在本項新增任務：名字、時間表（預設或 cron）、要做的事。\n② 到點後 Agent 用辦事檔去執行那句話。\n③ 列表裡可開關、改、刪；上次結果寫在行上。\n④ 和人設心情無關：心跳不會被心情擋住。\n⑤ 要登入後才能讀寫這些任務。",
-      "frontend": "設定 → AI → Agent → 定時。執行記錄也在助手時間線裡。",
-      "notes": "把要做的事寫清楚。亂寫 cron 不會跑。任務會消耗 AI 額度。"
-    },
-    "skills": {
-      "what": "Agent 記住的做法：你手寫的，或它辦事時自己學會、改過的。",
-      "chain": "① 辦事成功後可能記下一條技能，下次同類事會先看這裡。\n② 也可在助手裡讓它「學會」或改一條。\n③ 這裡只能看、搜、刪，不能在設定頁新建正文。\n④ 刪掉後下次不再用這條。",
-      "frontend": "設定 → AI → Agent → 技能。徽章區分手寫 / 學會 / 改過。",
-      "notes": "刪錯只能重新教。技能不是權限，不會越過站點權限和額度。"
-    },
-    "memory": {
-      "what": "Agent 主動記下的短事實，以後對話會帶著。",
-      "chain": "① 它認為值得記住時會寫入。\n② 這裡可搜、改、刪。\n③ 改完下一輪對話才用新內容。\n④ 和人設日記不是同一份：日記跟人，記憶偏事實條。",
-      "frontend": "設定 → AI → Agent → 記憶。點開一行可改正文。",
-      "notes": "別把金鑰寫進記憶。刪掉即不再注入對話。"
-    },
     "imageModel": {
       "what": "出圖時具體用哪一個模型名字。",
       "chain": "① 和服務商一起儲存。\n② 必須是這家已經開通的名字。\n③ 還要權限允許出圖、額度夠。\n④ 和文字模型可以不是同一個。",
@@ -577,37 +547,75 @@
       "chain": "① 和朗讀模型一起儲存。\n② 必須是當前服務商支援的音色 ID。\n③ 人設開口也用這個音色。\n④ 空著時用頁內佔位的預設音色。",
       "frontend": "設定 → AI → 語音服務 → 音色。測一句就能聽出差別。",
       "notes": "各家音色名完全不同，不要拿 OpenAI 的去填 Gemini。"
+    }
+  },
+  "agent": {
+    "agentPersona": {
+      "what": "是否讓 Agent 用全站設定說話，並記住跟每個人的心情、日記，在有名單上的事時自己開口。",
+      "chain": "① 預設關。關上只聊天辦事，不聽事件、不寫主動對話、設定也不生效。\n② 寫設定和開關生效需要 Pro。聊天裡的人設只是系統詞，走規劃/回覆自己的檔。\n③ Lite 選擇動作、寫主動開口和心情微調；沒開 Lite 時語義動作停掉，只保留眨眼、呼吸、頭髮等本地自然物理，不會回落到標準模型。\n④ 開啟並儲存後，在本項二級頁寫設定。詞條、命名、人設走 Pro。首次生成至少要 3 份平臺報告。\n⑤ 環境變數 MEROPE_ENABLED 可覆蓋庫裡的開關，但仍要有 Pro。\n⑥ 主動開口進看不見的主動對話；有價值且沒在聊再通知。",
+      "frontend": "聊天裡用這份設定說話。寫設定從本項二級頁進入。一級可見對你的心情檔和當下活動。遊客看不見心情。",
+      "notes": "只有站長能寫設定。刪除人設會清掉心情和日記。心跳不受心情擋住。形象開口朗讀是同一張卡片裡的說話開關，預設關。"
+    },
+    "agentPersonaSpeech": {
+      "what": "人設形象要不要把聊天回覆讀出來。",
+      "chain": "① 預設關。關上聊天仍出文字，形象用文字口型張嘴，不播語音。\n② 開啟且語音服務可用時，回覆走語音管線，真音訊驅動嘴；語音失敗才退回文字口型。\n③ 先要開啟上面的人設，並配好 AI 頁的語音服務。人設沒生效時這個開關不算開。\n④ 連續聽（麥克風）仍須人手開啟，不受此開關影響。\n⑤ 播客朗讀走語音服務本身，不看這個開關。",
+      "frontend": "設定 → Agent → 說話。儲存後下一輪聊天生效。",
+      "notes": "語音會消耗額度。關上不等於關掉人設。"
+    },
+    "channels": {
+      "what": "新增一個私聊辦事 Bot，讓 Agent 能從 QQ、Telegram、Discord 或飛書接請求。",
+      "chain": "① 預設不展示。用頁面右上角「新增 Bot」，和 AI 供應商同一套互動。\n② 只有新增過、或已經有憑證 / 已打開的 Bot 才會出現。\n③ 填 bot token 或 AppID / AppSecret，打開開關，再儲存。\n④ 移除會藏起空 Bot，並清掉已儲存的憑證。",
+      "frontend": "設定 → Agent → 機器人。新增入口在本頁右上角。",
+      "notes": "Bot 只負責進出，不另造一個大腦。"
     },
     "qqBot": {
       "what": "Send a QQ private message into site Work and get the result back in the same chat.",
       "chain": "1) Turn on, fill AppID / AppSecret, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The secret is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, incomplete credentials, or 401/403 stop the worker. Network jitter reconnects.\n5) After connect succeeds, bind your QQ here: copy the pairing code and send it in a private chat. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Reply yes/no or an option number. You can send 停止 / 新对话 / 当前任务.",
-      "frontend": "Settings → AI → Agent → QQ bot.",
+      "frontend": "設定 → Agent → 機器人。從右上角新增 QQ。",
       "notes": "Do not paste Discord data-platform OAuth here. AppSecret never appears in page plaintext or error text."
     },
     "telegramBot": {
       "what": "Send a Telegram DM into site Work and get the result back in the same chat.",
       "chain": "1) Turn on, paste the BotFather token, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The token is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, missing token, or 401/403 stop the worker. 429 waits retry_after. 409 (webhook / another getUpdates client) backs off; it is not a bad token.\n5) After connect succeeds, bind your Telegram here: copy the pairing code and open the bot. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Buttons belong to that step only. You can send 停止 / 新对话 / 当前任务.",
-      "frontend": "Settings → AI → Agent → Telegram bot.",
+      "frontend": "設定 → Agent → 機器人。從右上角新增 Telegram。",
       "notes": "Do not paste MTProto api_id / api_hash. The token never appears in page plaintext or error text. Reachability of api.telegram.org is outside the platform."
     },
     "discordBot": {
       "what": "Send a Discord DM into site Work and get the result back in the same chat.",
       "chain": "1) Turn on, paste the Developer Portal bot token, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The token is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, missing token, or 401/403 stop the worker. Network jitter resumes the Gateway session; do not Identify on every disconnect.\n5) After connect succeeds, bind your Discord here: copy the pairing code and send it in a DM. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Buttons belong to that step only. You can send 停止 / 新对话 / 当前任务.",
-      "frontend": "Settings → AI → Agent → Discord bot.",
+      "frontend": "設定 → Agent → 機器人。從右上角新增 Discord。",
       "notes": "Do not paste the data-platform OAuth access token. Pairing identity is discord_dm, not Discord login. The token never appears in page plaintext or error text."
     },
     "feishuBot": {
       "what": "Send a Feishu private message into site Work and get the result back in the same chat.",
       "chain": "1) Turn on, fill the internal-app AppID / AppSecret, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The secret is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, incomplete credentials, or auth rejects stop the worker. Network jitter reconnects.\n5) After connect succeeds, bind your Feishu here: copy the pairing code and send it in a private chat. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Buttons belong to that step only. You can send 停止 / 新对话 / 当前任务.",
-      "frontend": "Settings → AI → Agent → Feishu bot.",
+      "frontend": "設定 → Agent → 機器人。從右上角新增飛書。",
       "notes": "Use an internal company app, not a group custom-bot webhook. AppSecret never appears in page plaintext or error text."
+    },
+    "heartbeat": {
+      "what": "讓 Agent 按時間表自己做一件事，不必你盯著。",
+      "chain": "① 在本項新增任務：名字、時間表（預設或 cron）、要做的事。\n② 到點後 Agent 用辦事檔去執行那句話。\n③ 列表裡可開關、改、刪；上次結果寫在行上。\n④ 和人設心情無關：心跳不會被心情擋住。\n⑤ 要登入後才能讀寫這些任務。",
+      "frontend": "設定 → Agent → 定時。執行記錄也在助手時間線裡。",
+      "notes": "把要做的事寫清楚。亂寫 cron 不會跑。任務會消耗 AI 額度。"
+    },
+    "skills": {
+      "what": "Agent 記住的做法：你手寫的，或它辦事時自己學會、改過的。",
+      "chain": "① 辦事成功後可能記下一條技能，下次同類事會先看這裡。\n② 也可在助手裡讓它「學會」或改一條。\n③ 這裡只能看、搜、刪，不能在設定頁新建正文。\n④ 刪掉後下次不再用這條。",
+      "frontend": "設定 → Agent → 技能。徽章區分手寫 / 學會 / 改過。",
+      "notes": "刪錯只能重新教。技能不是權限，不會越過站點權限和額度。"
+    },
+    "memory": {
+      "what": "Agent 主動記下的短事實，以後對話會帶著。",
+      "chain": "① 它認為值得記住時會寫入。\n② 這裡可搜、改、刪。\n③ 改完下一輪對話才用新內容。\n④ 和人設日記不是同一份：日記跟人，記憶偏事實條。",
+      "frontend": "設定 → Agent → 記憶。點開一行可改正文。",
+      "notes": "別把金鑰寫進記憶。刪掉即不再注入對話。"
     }
   },
   "tripo": {
     "connection": {
       "what": "是否啟用 Tripo 3D，以及連到哪套介面（金鑰與地址）。",
       "chain": "① 開啟啟用、填 API Key（及可選 Base URL）→ 底部儲存配置。\n② 與「AI 配置」裡的圖片生成完全獨立：參考圖只是 3D 管線的輸入，不是同一套金鑰。\n③ 僅啟用且金鑰有效時，才允許建立會消耗 Tripo credits 的任務。\n④ 金鑰只儲存在後端，不會下發給瀏覽器或寫進模型檔案。\n⑤ 出站代理走「高階配置」裡的全域代理，不另開通道。",
-      "frontend": "設定 → 3D 與 Tripo →「Tripo 連線」分組。\n3D 任務建立入口（管理員）。",
+      "frontend": "設定 → 實驗室 →「Tripo 連線」分組。\n3D 任務建立入口（管理員）。",
       "notes": "金鑰從 platform.tripo3d.ai 獲取。關啟用後下方欄位會灰掉，已填內容仍保留。"
     },
     "enabled": {

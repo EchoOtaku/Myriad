@@ -1,4 +1,9 @@
-import React from 'react'
+import React, { useSyncExternalStore } from 'react'
+import {
+  onPersonaStickerAvatar,
+  PERSONA_STICKER_FALLBACK,
+  resolvedPersonaStickerAvatar,
+} from '../../features/merope/personaAvatar'
 
 export type MyriadConfigIconKind =
   | 'platforms'
@@ -25,14 +30,19 @@ const SHARED_CONFIG_ICON_ASSETS: Partial<Record<MyriadConfigIconKind, string>> =
   {
     basic: '/icons/control-panel/config.webp',
     music: '/icons/dynamic/music.webp',
-    tripo: '/icons/config/tripo.svg',
+    tripo: '/icons/config/lab.webp',
     federation: '/icons/notifications/aro.webp',
-    agent: '/icons/notifications/arael.webp',
+    agent: PERSONA_STICKER_FALLBACK,
   }
 
 export const MyriadConfigIcon = React.memo<MyriadConfigIconProps>(
   ({ kind, className = '' }) => {
-    const src = SHARED_CONFIG_ICON_ASSETS[kind] ?? `/icons/config/${kind}.webp`
+    const fallback = SHARED_CONFIG_ICON_ASSETS[kind] ?? `/icons/config/${kind}.webp`
+    const src = useSyncExternalStore(
+      onPersonaStickerAvatar,
+      () => (kind === 'agent' ? resolvedPersonaStickerAvatar() : fallback),
+      () => fallback,
+    )
 
     return (
       <img

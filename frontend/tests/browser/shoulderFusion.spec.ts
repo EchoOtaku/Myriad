@@ -589,6 +589,7 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
         let maxIdempotenceError = 0
         let maxBoundaryError = 0
         let minHairAreaRatio = Infinity
+        let worstHair = null
         const deformationTimes = []
         for (let frame = 0; frame < fps * 4; frame++) {
           const t = frame / fps
@@ -612,7 +613,11 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
           deformationTimes.push(performance.now() - deformationStart)
           for (const { layer, triangles } of hairMeshes) {
             for (const [a, b, c] of triangles) {
-              minHairAreaRatio = Math.min(minHairAreaRatio, area(layer.deformed, a, b, c) / area(layer.rest, a, b, c))
+              const ratio = area(layer.deformed, a, b, c) / area(layer.rest, a, b, c)
+              if (ratio < minHairAreaRatio) {
+                minHairAreaRatio = ratio
+                worstHair = { name: layer.source.name, frame, triangle: [a, b, c], baseRatio: area(layer.hairSurface.base, a, b, c) / area(layer.rest, a, b, c) }
+              }
             }
           }
           for (const { armSample, bodySample } of boundarySamples) {
@@ -670,6 +675,7 @@ test('real shoulder fusion keeps GPU coverage through body and arm motion', asyn
           maxIdempotenceError,
           maxBoundaryError,
           minHairAreaRatio,
+          worstHair,
           deformationP95Ms: deformationTimes.toSorted((a, b) => a - b)[Math.floor(deformationTimes.length * 0.95)],
         })
       }

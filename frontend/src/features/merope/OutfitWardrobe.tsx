@@ -145,8 +145,8 @@ export default function OutfitWardrobe({
       setItemName('')
       setRequirements('')
     } catch (reason) {
-      setError(
-        generationFailureMessage(
+      showStickyToast({
+        message: generationFailureMessage(
           reason,
           o.visualDesignFailed,
           o.generationTimeout,
@@ -173,7 +173,9 @@ export default function OutfitWardrobe({
             visual_identity_unusable: o.visualIdentityUnusableForPortrait,
           },
         ),
-      )
+        type: 'error',
+        replaceKey: 'merope-wardrobe',
+      })
     } finally {
       setGenerating(false)
     }
@@ -277,7 +279,6 @@ export default function OutfitWardrobe({
                   className="merope-wardrobe__garment merope-wardrobe__garment--empty"
                   disabled={blocked}
                   onClick={() => {
-                    setError('')
                     setComposing(true)
                   }}
                 >
@@ -394,7 +395,6 @@ export default function OutfitWardrobe({
               onClick={() => {
                 setComposing(false)
                 setItemName('')
-                setError('')
               }}
             >
               {t.common.cancel}
@@ -403,11 +403,6 @@ export default function OutfitWardrobe({
         </div>
       ) : full ? (
         <p className="merope-motion-home__help">{labels.wardrobeFull}</p>
-      ) : null}
-      {error ? (
-        <p className="merope-motion-home__help" role="alert">
-          {error}
-        </p>
       ) : null}
     </section>
   )

@@ -55,7 +55,7 @@ function readConfigTourSurfaceFromLocation(): ConfigTourSurface {
   const page = params.get('page')
   if (page === 'merope-setup') return 'none'
   if (page === 'merope') return 'persona'
-  if (params.get('section') === 'ai') return 'ai-persona'
+  if (params.get('section') === 'agent') return 'ai-persona'
   return 'browse'
 }
 

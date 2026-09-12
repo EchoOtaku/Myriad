@@ -1,7 +1,7 @@
 {
   "poseCorrection": {
-    "title": "Correction des poses combinées",
-    "description": "Combinez ci-dessous la rotation, l’inclinaison de la tête ou la fermeture des yeux, puis ajoutez une correction locale. Les coordonnées et décalages utilisent les rayons de la tête et le mélange de coque actuel. L’aperçu reste local ; l’enregistrement met uniquement à jour la tenue portée.",
+    "title": "Avancé : correction des poses combinées",
+    "description": "Retouches facultatives : la lecture normale ne nécessite aucun calibrage. Corrigez localement certaines poses combinées. Replier rétablit l’apparence enregistrée sans perdre le brouillon ; enregistrer ne modifie que la tenue portée.",
     "region": "Zone",
     "patch": "Correction locale",
     "add": "Ajouter la pose actuelle",

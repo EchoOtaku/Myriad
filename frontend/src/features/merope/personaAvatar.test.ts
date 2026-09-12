@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { personaStickerAvatarFromConfig } from './personaAvatar.ts'
+import {
+  PERSONA_STICKER_FALLBACK,
+  personaStickerAvatarFromConfig,
+} from './personaAvatar.ts'
 
 test('reads the sticker address out of the public config', () => {
   assert.equal(
@@ -42,9 +45,36 @@ test('only the agent notification source follows the persona', () => {
     new URL('../../components/notifications/NotificationIcons.tsx', import.meta.url),
     'utf8',
   )
-  assert.match(
-    source,
-    /if \(source === 'agent'\) \{\s*return personaStickerAvatarUrl\(\) \?\? NOTIFICATION_SOURCE_ICON_ASSETS\.agent/u,
-  )
+  assert.match(source, /if \(source === 'agent'\) \{\s*return resolvedPersonaStickerAvatar\(\)/u)
   assert.match(source, /satisfies Record<NotificationSourceKey, string>/u)
+})
+
+test('settings Agent icon uses the same sticker fallback as notifications', () => {
+  assert.equal(PERSONA_STICKER_FALLBACK, '/logo.webp')
+  const icon = readFileSync(
+    new URL('../../components/config/MyriadConfigIcon.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(icon, /kind === 'agent' \? resolvedPersonaStickerAvatar\(\)/)
+  assert.match(icon, /agent: PERSONA_STICKER_FALLBACK/)
+  assert.doesNotMatch(icon, /agent: '\/logo\.webp'/)
+})
+
+test('persona updates refresh the sticker cache', () => {
+  const source = readFileSync(new URL('./personaAvatar.ts', import.meta.url), 'utf8')
+  assert.match(source, /PERSONA_UPDATED_EVENT/)
+  assert.match(source, /refreshPersonaStickerAvatar/)
+})
+
+test('agent notification toasts use the source icon', () => {
+  const panel = readFileSync(
+    new URL('../../components/GlobalControlPanel.tsx', import.meta.url),
+    'utf8',
+  )
+  const toast = readFileSync(
+    new URL('../../components/Toast.tsx', import.meta.url),
+    'utf8',
+  )
+  assert.match(panel, /icon: notificationSourceIconAsset\(source\)/)
+  assert.match(toast, /typeof icon === 'string'/)
 })

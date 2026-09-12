@@ -1,4 +1,8 @@
 import { getPublicConfigDeduped } from '../../utils/requestDedup'
+import { PERSONA_UPDATED_EVENT } from './events'
+
+/** No sticker → site logo. Shared by settings and notifications. */
+export const PERSONA_STICKER_FALLBACK = '/logo.webp'
 
 type Listener = (url: string | null) => void
 
@@ -51,4 +55,14 @@ export function onPersonaStickerAvatar(listener: Listener): () => void {
   return () => {
     listeners.delete(listener)
   }
+}
+
+export function resolvedPersonaStickerAvatar(): string {
+  return personaStickerAvatarUrl() ?? PERSONA_STICKER_FALLBACK
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener(PERSONA_UPDATED_EVENT, () => {
+    void refreshPersonaStickerAvatar()
+  })
 }

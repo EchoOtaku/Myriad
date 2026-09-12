@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import {
   ADVANCED_RESET_KEYS,
-  AI_UI_RESET_KEYS,
+  AGENT_UI_RESET_KEYS,
   ALL_OWNED_UI_BAG_KEYS,
   bagFieldValue,
   configChangesNeedHardReload,
@@ -42,11 +42,11 @@ describe('uiBagOwnership', () => {
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('island_show_tapp'))
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('merope_enabled'))
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('merope_speech_enabled'))
-    // switch lives on AI; Advanced reset must leave it
+    // switch lives on Agent; Advanced reset must leave it
     assert.ok(!ADVANCED_RESET_KEYS.includes('merope_enabled'))
     assert.ok(!ADVANCED_RESET_KEYS.includes('merope_speech_enabled'))
-    assert.ok(AI_UI_RESET_KEYS.includes('merope_enabled'))
-    assert.ok(AI_UI_RESET_KEYS.includes('merope_speech_enabled'))
+    assert.ok(AGENT_UI_RESET_KEYS.includes('merope_enabled'))
+    assert.ok(AGENT_UI_RESET_KEYS.includes('merope_speech_enabled'))
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('proxy_url'))
     assert.ok(!ALL_OWNED_UI_BAG_KEYS.includes('base_url'))
   })

@@ -52,6 +52,18 @@ export function pickVisibleToasts<T extends { id: string; sticky?: boolean }>(
   return toasts.filter((toast) => keep.has(toast.id))
 }
 
+/** Keep leaving toasts in the list so the slot can collapse instead of popping out. */
+export function layoutToastStack<
+  T extends { id: string; sticky?: boolean; leaving?: boolean },
+>(toasts: T[], cap?: number): T[] {
+  const active = pickVisibleToasts(
+    toasts.filter((toast) => !toast.leaving),
+    cap,
+  )
+  const activeIds = new Set(active.map((toast) => toast.id))
+  return toasts.filter((toast) => toast.leaving || activeIds.has(toast.id))
+}
+
 type ToastListener = (event: ToastEvent) => void
 
 const listeners = new Set<ToastListener>()

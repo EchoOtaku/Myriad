@@ -2,20 +2,27 @@ import { LEGACY_CONFIG_SECTION_MAP } from './defaults'
 
 export const CONFIG_NAV_STORAGE_KEY = 'myriad_config_nav_v1'
 
+/** 侧栏「全部配置」默认顺序：基础与数据 → 智能 → 人与权限 → 模块与运维。 */
 export const CONFIG_NAV_SECTIONS = [
+  'basic',
   'platforms',
   'ai',
-  'tripo',
-  'basic',
-  'oauth',
-  'federation',
-  'permissions',
-  'users',
+  'agent',
   'notifications',
+  'oauth',
+  'users',
+  'permissions',
+  'federation',
   'modules',
   'advanced',
+  'tripo',
   'about',
 ] as const
+
+export type ConfigNavSection = (typeof CONFIG_NAV_SECTIONS)[number]
+
+/** 无 URL / 无 session 时落到侧栏第一项。 */
+export const CONFIG_NAV_DEFAULT_SECTION: ConfigNavSection = 'basic'
 
 export interface ConfigNavPersisted {
   section: string
@@ -36,6 +43,16 @@ export function normalizeConfigSection(
   if (!raw) return null
   const next = LEGACY_CONFIG_SECTION_MAP[raw] ?? raw
   return isKnownSection(next, isAdmin) ? next : null
+}
+
+/** 人设二级页旧深链是 ?section=ai&page=merope，归到 Agent。 */
+export function resolveConfigSectionFromSearch(
+  params: URLSearchParams,
+  isAdmin: boolean,
+): string | null {
+  const page = params.get('page')
+  if (page === 'merope' || page === 'merope-setup') return 'agent'
+  return normalizeConfigSection(params.get('section'), isAdmin)
 }
 
 export function loadConfigNavPersisted(): ConfigNavPersisted | null {
@@ -73,7 +90,9 @@ export function saveConfigNavPersisted(
 ): void {
   if (typeof window === 'undefined') return
   try {
-    const prev = loadConfigNavPersisted() ?? { section: 'platforms' }
+    const prev = loadConfigNavPersisted() ?? {
+      section: CONFIG_NAV_DEFAULT_SECTION,
+    }
     const next: ConfigNavPersisted = {
       section: patch.section ?? prev.section,
       mobilePane: patch.mobilePane ?? prev.mobilePane,
@@ -94,12 +113,12 @@ export function snapshotConfigNavScroll(): void {
   saveConfigNavPersisted({ scrollY: window.scrollY || window.pageYOffset || 0 })
 }
 
-/** URL ?section=, else sessionStorage, else platforms */
+/** URL ?section=, else sessionStorage, else 侧栏第一项 */
 export function resolveInitialConfigSection(isAdmin: boolean): string {
-  if (typeof window === 'undefined') return 'platforms'
+  if (typeof window === 'undefined') return CONFIG_NAV_DEFAULT_SECTION
   try {
     const params = new URLSearchParams(window.location.search)
-    const fromUrl = normalizeConfigSection(params.get('section'), isAdmin)
+    const fromUrl = resolveConfigSectionFromSearch(params, isAdmin)
     if (fromUrl) return fromUrl
     const stored = loadConfigNavPersisted()
     const fromStore = normalizeConfigSection(stored?.section, isAdmin)
@@ -107,7 +126,7 @@ export function resolveInitialConfigSection(isAdmin: boolean): string {
   } catch {
     /* ignore */
   }
-  return 'platforms'
+  return CONFIG_NAV_DEFAULT_SECTION
 }
 
 /** replaceState ?section=; keep other query */
@@ -117,7 +136,7 @@ export function syncConfigSectionToUrl(section: string): void {
     const url = new URL(window.location.href)
     if (url.searchParams.get('section') === section) return
     url.searchParams.set('section', section)
-    if (section !== 'ai') url.searchParams.delete('page')
+    if (section !== 'agent') url.searchParams.delete('page')
     window.history.replaceState(window.history.state, '', url.toString())
   } catch {
     /* ignore */

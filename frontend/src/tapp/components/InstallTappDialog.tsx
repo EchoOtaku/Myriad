@@ -11,6 +11,7 @@ import { createPortal } from 'react-dom'
 import { SettingsButton } from '../../components/settings'
 import { Spinner } from '../../components/Spinner'
 import { useI18n } from '../../contexts/I18nContext'
+import { showError, showStickyToast } from '../../utils/toastManager'
 import { userFacingError } from '../../utils/userFacingError'
 import { useAnchoredFloatTip } from '../hooks/useAnchoredFloatTip'
 import * as TappApiService from '../services/TappApiService'
@@ -36,7 +37,6 @@ export function InstallTappDialog({
   const titleId = useId()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
 
@@ -48,7 +48,6 @@ export function InstallTappDialog({
   onCancelRef.current = onCancel
 
   const resetForm = useCallback(() => {
-    setError('')
     setLoading(false)
     setDragOver(false)
   }, [])
@@ -65,7 +64,7 @@ export function InstallTappDialog({
     isOpen,
     anchorEl,
     onRequestClose: onCancel,
-    contentKey: `${error ? 1 : 0}-${loading ? 1 : 0}`,
+    contentKey: `${loading ? 1 : 0}`,
     onEnter: resetForm,
     canDismiss: !loading,
   })
@@ -79,12 +78,11 @@ export function InstallTappDialog({
     async (file: File) => {
       if (loading) return
       if (!file.name.endsWith('.tapp')) {
-        setError(t.tapp.selectTappFile)
+        showError(t.tapp.selectTappFile)
         return
       }
 
       const startedSession = session
-      setError('')
       setLoading(true)
 
       try {
@@ -100,7 +98,11 @@ export function InstallTappDialog({
         close({ notifyParent: false })
       } catch (err) {
         if (!isCurrentSession(startedSession)) return
-        setError(userFacingError(err, t.tapp.installFailed))
+        showStickyToast({
+          message: userFacingError(err, t.tapp.installFailed),
+          type: 'error',
+          replaceKey: 'tapp-install',
+        })
         setLoading(false)
       }
     },
@@ -153,8 +155,6 @@ export function InstallTappDialog({
           {t.tapp.installTappTitle}
         </h3>
       </div>
-
-      {error ? <p className="install-tip-error">{error}</p> : null}
 
       <div
         className={[

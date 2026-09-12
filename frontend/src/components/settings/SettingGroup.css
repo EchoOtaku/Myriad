@@ -15,7 +15,7 @@
 }
 
 /* no .config-form: keep group gap; skip grid cards (same specificity as grid gap) */
-:not(.config-form, .ai-pane)
+:not(.config-form, .ai-pane, .agent-pane)
   > .setting-group:not(.setting-group--in-grid)
   + .setting-group:not(.setting-group--in-grid) {
   margin-top: var(--settings-gap-group, 1.25rem);

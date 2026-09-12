@@ -1,7 +1,7 @@
 {
   "poseCorrection": {
-    "title": "Combined-pose calibration",
-    "description": "Set a combination of head turn, pitch or eye closure below, then add a local correction. Coordinates and offsets use head radii and the current shell blend. Preview is local; saving updates only the worn outfit.",
+    "title": "Advanced: combined-pose corrections",
+    "description": "Optional artwork corrections; normal playback needs no calibration. Adjust local shapes in specific combined poses. Collapsing restores the saved appearance and keeps your draft; saving updates only the worn outfit.",
     "region": "Region",
     "patch": "Patch",
     "add": "Add current pose",

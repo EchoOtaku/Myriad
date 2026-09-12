@@ -1,5 +1,18 @@
 import type { ConfigField } from './types'
 
+export const AGENT_AI_FIELD_KEYS = new Set([
+  'qq_bot_enabled',
+  'qq_bot_app_id',
+  'qq_bot_app_secret',
+  'telegram_bot_enabled',
+  'telegram_bot_token',
+  'discord_bot_enabled',
+  'discord_bot_token',
+  'feishu_bot_enabled',
+  'feishu_bot_app_id',
+  'feishu_bot_app_secret',
+])
+
 export function defaultAiFieldValue(key: string): string {
   if (key === 'model') return 'gemini-3.6-flash'
   if (key === 'ai_image_provider') return 'openrouter'

@@ -3,6 +3,8 @@ import type { ConfigSearchableItem } from '../../settings/guides/configSearch'
 import type { ConfigSearchI18n } from './buildSearchableContent'
 import type { Config } from './types'
 import { useEffect, useMemo, useState } from 'react'
+import { usePersonaPublicName } from '../../../features/merope/usePersonaPublicName'
+import { settingsAgentLabel } from '../../../features/merope/publicName'
 import { useDebounce } from '../../../hooks/useDebounce'
 import { loadSettingGuidesCatalog } from '../../settings/guides/catalog'
 import { rankConfigSearch } from '../../settings/guides/configSearch'
@@ -16,6 +18,8 @@ export function useConfigSearch(
 ) {
   const [searchQuery, setSearchQuery] = useState('')
   const [catalogEpoch, setCatalogEpoch] = useState(0)
+  const personaName = usePersonaPublicName()
+  const agentTitle = settingsAgentLabel(t.config.agent, personaName)
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
 
   useEffect(() => {
@@ -30,8 +34,8 @@ export function useConfigSearch(
 
   const searchableContent = useMemo(
     (): ConfigSearchableItem[] =>
-      buildSearchableContent(config, t, locale, { isAdmin }),
-    [config, t, locale, isAdmin, catalogEpoch],
+      buildSearchableContent(config, t, locale, { isAdmin, agentTitle }),
+    [agentTitle, config, t, locale, isAdmin, catalogEpoch],
   )
 
   const filteredContent = useMemo(() => {

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import avatarSourceApi from '../services/avatarSourceApi'
+import { showStickyToast } from '../utils/toastManager'
 import { userFacingError } from '../utils/userFacingError'
 import { Avatar } from './Avatar'
 import { Spinner } from './Spinner'
@@ -33,7 +34,6 @@ export function AvatarSourcePicker({
   const [currentKey, setCurrentKey] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [applyingKey, setApplyingKey] = useState<string | null>(null)
-  const [error, setError] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -49,9 +49,12 @@ export function AvatarSourcePicker({
           ? sourceKey(currentFromList.kind, currentFromList.ref || null)
           : sourceKey(data.current.kind, data.current.ref),
       )
-      setError('')
     } catch (error) {
-      setError(userFacingError(error, t.userModal.profileSourceFailed))
+      showStickyToast({
+        message: userFacingError(error, t.userModal.profileSourceFailed),
+        type: 'error',
+        replaceKey: 'avatar-source',
+      })
     } finally {
       setLoading(false)
     }
@@ -65,7 +68,6 @@ export function AvatarSourcePicker({
     const key = sourceKey(kind, ref)
     if (key === currentKey || applyingKey != null) return
     setApplyingKey(key)
-    setError('')
     try {
       if (userId == null) {
         await avatarSourceApi.setMine(kind, ref)
@@ -78,7 +80,11 @@ export function AvatarSourcePicker({
       setCurrentKey(key)
       onApplied?.()
     } catch (e) {
-      setError(userFacingError(e, t.userModal.profileSourceFailed))
+      showStickyToast({
+        message: userFacingError(e, t.userModal.profileSourceFailed),
+        type: 'error',
+        replaceKey: 'avatar-source',
+      })
     } finally {
       setApplyingKey(null)
     }
@@ -177,7 +183,6 @@ export function AvatarSourcePicker({
           })}
         </ul>
       )}
-      {error && <p className="user-modal-oauth-error">{error}</p>}
     </>
   )
 }

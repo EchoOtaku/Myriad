@@ -336,6 +336,7 @@ const GlobalControlPanel: React.FC = () => {
           title,
           message: snippet,
           type: notificationToastType(n),
+          icon: notificationSourceIconAsset(source),
           duration: 6000,
           showCloseButton: true,
           onClick: showInPanel

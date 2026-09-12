@@ -10,7 +10,7 @@ import type {
   ManagedListStat,
   ManagedListTone,
 } from '../settings'
-import { FaSearch, LuRefreshCw } from '@lib/icons'
+import { FaSearch, LuBookOpen, LuClock, LuRefreshCw, LuSparkles } from '@lib/icons'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
@@ -29,6 +29,7 @@ import {
   InputItem,
   ManagedList,
   SegmentedControl,
+  SettingGroup,
   SettingsButton,
   SettingTitleGuideEntry,
   ToggleSwitch,
@@ -42,10 +43,12 @@ export function AgentNestedSection({
   badge,
   error,
   toggle,
+  action,
   guide,
   guidePath,
   tourAnchor,
   toggleTourAnchor,
+  className,
   children,
 }: {
   title: string
@@ -59,15 +62,19 @@ export function AgentNestedSection({
     ariaLabel?: string
     title?: string
   }
+  action?: ReactNode
   guide?: ReactNode
   guidePath?: string
   tourAnchor?: string
   toggleTourAnchor?: string
+  className?: string
   children?: ReactNode
 }) {
   return (
     <div
-      className={`ai-llm-tier${guidePath ? ' has-guide-anchor' : ''}`}
+      className={`ai-llm-tier${guidePath ? ' has-guide-anchor' : ''}${
+        className ? ` ${className}` : ''
+      }`}
       data-tour={tourAnchor}
       {...guideDomProps(guidePath)}
     >
@@ -83,15 +90,18 @@ export function AgentNestedSection({
           ) : null}
           {error}
         </div>
-        {toggle ? (
+        {toggle || action ? (
           <div className="ai-llm-tier-switch">
-            <ToggleSwitch
-              checked={toggle.checked}
-              onChange={toggle.onChange}
-              disabled={toggle.disabled}
-              aria-label={toggle.ariaLabel ?? title}
-              title={toggle.title}
-            />
+            {toggle ? (
+              <ToggleSwitch
+                checked={toggle.checked}
+                onChange={toggle.onChange}
+                disabled={toggle.disabled}
+                aria-label={toggle.ariaLabel ?? title}
+                title={toggle.title}
+              />
+            ) : null}
+            {action}
           </div>
         ) : null}
       </div>
@@ -680,10 +690,11 @@ export const AgentOptionsPanel: React.FC = () => {
 
   return (
     <>
-      <AgentNestedSection
+      <SettingGroup
         title={t.config.agentHeartbeatTitle}
+        icon={<LuClock />}
         description={t.config.agentHeartbeatDesc}
-        {...bindGuide('ai.heartbeat', g.ai.heartbeat)}
+        {...bindGuide('agent.heartbeat', g.agent.heartbeat)}
       >
         <ManagedList
           stats={heartbeatStats}
@@ -744,12 +755,13 @@ export const AgentOptionsPanel: React.FC = () => {
           }}
           items={heartbeatItems}
         />
-      </AgentNestedSection>
+      </SettingGroup>
 
-      <AgentNestedSection
+      <SettingGroup
         title={t.config.agentSkillsTitle}
+        icon={<LuSparkles />}
         description={t.config.agentSkillsDesc}
-        {...bindGuide('ai.skills', g.ai.skills)}
+        {...bindGuide('agent.skills', g.agent.skills)}
       >
         <ManagedList
           loading={loading}
@@ -801,12 +813,13 @@ export const AgentOptionsPanel: React.FC = () => {
           }
           items={skillItems}
         />
-      </AgentNestedSection>
+      </SettingGroup>
 
-      <AgentNestedSection
+      <SettingGroup
         title={t.config.agentMemoryTitle}
+        icon={<LuBookOpen />}
         description={t.config.agentMemoryDesc}
-        {...bindGuide('ai.memory', g.ai.memory)}
+        {...bindGuide('agent.memory', g.agent.memory)}
       >
         <ManagedList
           loading={loading}
@@ -827,7 +840,7 @@ export const AgentOptionsPanel: React.FC = () => {
           }
           items={memoryItems}
         />
-      </AgentNestedSection>
+      </SettingGroup>
     </>
   )
 }

@@ -1,5 +1,6 @@
 export { default as AboutConfigSection } from './AboutConfigSection'
 export { AdvancedConfigSection } from './AdvancedConfigSection'
+export { default as AgentConfigSection } from './AgentConfigSection'
 export { default as AiConfigSection } from './AiConfigSection'
 export { ConfigTipsBanner } from './ConfigTipsBanner'
 export type { ConfigTipsBannerProps, GreetingPeriod } from './ConfigTipsBanner'

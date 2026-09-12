@@ -29,6 +29,7 @@ import {
 import { personaTourPanel } from '../../../components/tour/tourLogic'
 import { useI18n } from '../../../contexts/I18nContext'
 import { formatMessage, getDefaultLocale } from '../../../i18n'
+import { showStickyToast } from '../../../utils/toastManager'
 import { userFacingError } from '../../../utils/userFacingError'
 import { PreviewMotionScope } from '../motion/previewScope'
 import {
@@ -309,6 +310,14 @@ export default function Anime25DWorkbench({
   >(null)
   const importingRig = rigImportOperation !== null
   const importAbortRef = useRef<AbortController | null>(null)
+  const failRigImport = (message: string) => {
+    setRigImportError(message)
+    showStickyToast({
+      message,
+      type: 'error',
+      replaceKey: 'merope-rig-import',
+    })
+  }
 
   useEffect(() => {
     importAbortRef.current?.abort()
@@ -421,7 +430,7 @@ export default function Anime25DWorkbench({
       })
     } catch (reason) {
       if (controller.signal.aborted) return
-      setRigImportError(
+      failRigImport(
         userFacingError(
           generationFailureMessage(
             reason,
@@ -469,7 +478,7 @@ export default function Anime25DWorkbench({
       })
     } catch (reason) {
       if (controller.signal.aborted) return
-      setRigImportError(
+      failRigImport(
         userFacingError(
           generationFailureMessage(
             reason,
@@ -502,7 +511,7 @@ export default function Anime25DWorkbench({
       })
       setRigPreflight(null)
     } catch (reason) {
-      setRigImportError(
+      failRigImport(
         userFacingError(
           generationFailureMessage(
             reason,
@@ -1083,11 +1092,6 @@ export default function Anime25DWorkbench({
                       )}
                     </div>
                   ) : null}
-                  {rigImportError ? (
-                    <p className="merope-motion-home__help" role="alert">
-                      {rigImportError}
-                    </p>
-                  ) : null}
                   {rigPreflight ? (
                     <SettingsButton
                       type="button"
@@ -1122,10 +1126,6 @@ export default function Anime25DWorkbench({
       <div data-tour="config-persona-motion">
       {panel === 'motion' ? (
         <>
-          {motionEnabled && correctionPlayback && correctionAssetId && onSavePoseCorrections ? (
-            <PoseCorrectionEditor key={correctionAssetId} playback={correctionPlayback} characterRef={characterRef}
-              driver={driver} onDriver={applyDriver} onSave={onSavePoseCorrections} />
-          ) : null}
           <SettingGroup
             title={labels.expressionGroup}
             description={
@@ -1412,6 +1412,16 @@ export default function Anime25DWorkbench({
               emptyText={labels.anime25dInspectEmpty}
             />
           </SettingGroup>
+          {motionEnabled && correctionPlayback && correctionAssetId && onSavePoseCorrections ? (
+            <PoseCorrectionEditor
+              key={correctionAssetId}
+              playback={correctionPlayback}
+              characterRef={characterRef}
+              driver={driver}
+              onDriver={applyDriver}
+              onSave={onSavePoseCorrections}
+            />
+          ) : null}
         </>
       ) : null}
       </div>

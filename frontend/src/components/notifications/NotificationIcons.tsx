@@ -2,11 +2,12 @@ import type { NotificationSourceKey } from '../../services/notificationPreferenc
 import { useSyncExternalStore } from 'react'
 import {
   onPersonaStickerAvatar,
-  personaStickerAvatarUrl,
+  PERSONA_STICKER_FALLBACK,
+  resolvedPersonaStickerAvatar,
 } from '../../features/merope/personaAvatar'
 
 const NOTIFICATION_SOURCE_ICON_ASSETS = {
-  agent: '/icons/notifications/arael.webp',
+  agent: PERSONA_STICKER_FALLBACK,
   heartbeat: '/icons/notifications/heartbeat.webp',
   mcp: '/icons/notifications/mcp.webp',
   brew: '/icons/notifications/brew.webp',
@@ -18,7 +19,7 @@ const NOTIFICATION_SOURCE_ICON_ASSETS = {
 
 export function notificationSourceIconAsset(source: NotificationSourceKey) {
   if (source === 'agent') {
-    return personaStickerAvatarUrl() ?? NOTIFICATION_SOURCE_ICON_ASSETS.agent
+    return resolvedPersonaStickerAvatar()
   }
   return NOTIFICATION_SOURCE_ICON_ASSETS[source]
 }

@@ -79,7 +79,12 @@ import { stickerAspectKey } from '../utils/homeStickerSize'
 import { buildHomePageSeo } from '../utils/modulePageSeo'
 import { getUIConfigDeduped } from '../utils/requestDedup'
 import { hasSessionHint } from '../utils/sessionDetection'
-import { showError, showSuccess, showWarning } from '../utils/toastManager'
+import {
+  showError,
+  showStickyToast,
+  showSuccess,
+  showWarning,
+} from '../utils/toastManager'
 import { userFacingError } from '../utils/userFacingError'
 import { widgetSizeSpan } from '../utils/widgetSizeScale'
 import '../components/home/HomeStickerDialog.css'
@@ -267,7 +272,6 @@ export default function Home() {
     }
   } | null>(null)
   const [stickerBusy, setStickerBusy] = useState(false)
-  const [stickerError, setStickerError] = useState('')
   const showHomeAdminActions = Boolean(isAdmin && isDesktopBand)
 
   useEffect(() => {
@@ -620,7 +624,6 @@ export default function Home() {
   }
 
   const startStickerPick = () => {
-    setStickerError('')
     setStickerDraft(null)
     setStickerPicking((on) => !on)
   }
@@ -631,7 +634,6 @@ export default function Home() {
   ) => {
     if (!stickerDraft || stickerBusy) return
     setStickerBusy(true)
-    setStickerError('')
     try {
       const { getCSRFToken } = await import('../utils/csrf')
       const token = (await getCSRFToken(true)) || csrfToken
@@ -667,7 +669,11 @@ export default function Home() {
       ])
       setStickerDraft(null)
     } catch (err) {
-      setStickerError(userFacingError(err, t.home.stickerFailed))
+      showStickyToast({
+        message: userFacingError(err, t.home.stickerFailed),
+        type: 'error',
+        replaceKey: 'home-sticker',
+      })
     } finally {
       setStickerBusy(false)
     }
@@ -676,7 +682,6 @@ export default function Home() {
   const handleUploadSticker = async (image: string, crop: StickerCrop) => {
     if (!stickerDraft || stickerBusy) return
     setStickerBusy(true)
-    setStickerError('')
     try {
       const { getCSRFToken } = await import('../utils/csrf')
       const token = (await getCSRFToken(true)) || csrfToken
@@ -700,7 +705,11 @@ export default function Home() {
       ])
       setStickerDraft(null)
     } catch (err) {
-      setStickerError(userFacingError(err, t.home.stickerUploadFailed))
+      showStickyToast({
+        message: userFacingError(err, t.home.stickerUploadFailed),
+        type: 'error',
+        replaceKey: 'home-sticker',
+      })
     } finally {
       setStickerBusy(false)
     }
@@ -839,7 +848,6 @@ export default function Home() {
             }
             onPickStickerSlot={(slot) => {
               setStickerPicking(false)
-              setStickerError('')
               setStickerDraft({
                 size: slot.size,
                 position: { x: slot.x, y: slot.y },
@@ -1126,12 +1134,10 @@ export default function Home() {
         <HomeStickerDialog
           size={stickerDraft.size}
           busy={stickerBusy}
-          error={stickerError}
           anchor={stickerDraft.anchor}
           onCancel={() => {
             if (!stickerBusy) {
               setStickerDraft(null)
-              setStickerError('')
             }
           }}
           onGenerate={handleGenerateSticker}

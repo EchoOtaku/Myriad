@@ -458,18 +458,6 @@
       "frontend": "Users usually don’t see a separate page — mainly which setup simple background tasks use.",
       "notes": "Can use a different provider than Standard; safer to make sure Standard works first."
     },
-    "agentPersona": {
-      "what": "Let Agent speak with the site persona, keep per-person mood and diary, and speak after named events.",
-      "chain": "1) Off by default. Off means chat and tasks only — no event listening, no hidden speech, persona unused.\n2) The switch needs Pro. Chat only injects the persona as system text; it uses the planner/reply tiers.\n3) Lite selects semantic motion and writes proactive lines and mood hints. Without Lite, semantic motion stops and only local blink, breath, hair, and other ambient physics remain; there is no Standard fallback.\n4) On: write the persona on this item’s secondary page. Tags, name, and persona run through Pro.\n5) MEROPE_ENABLED can override the saved switch, but still needs Pro.\n6) Autonomic speech stays hidden; valuable events also notify if the person is not chatting.",
-      "frontend": "Chat uses this persona. Write it on this item’s secondary settings page. The first-level row shows your mood band and current activity. Guests do not see mood.",
-      "notes": "Only the site owner can write the persona. Deleting the persona also clears mood and diary. Heartbeat is never blocked by mood. Speaking aloud is a separate switch on this card, off by default."
-    },
-    "agentPersonaSpeech": {
-      "what": "Whether the persona face speaks chat replies aloud.",
-      "chain": "1) Off by default. Off: replies stay text; the face still mouths the line, with no voice.\n2) On, with speech configured: replies go through the speech pipeline; real audio drives the mouth; text visemes only if TTS fails.\n3) Requires Agent persona on, and a speech provider on the AI page. The switch does not count while persona is off.\n4) Push-to-listen is still manual and separate.\n5) Reader/podcast TTS uses the speech provider, not this switch.",
-      "frontend": "Settings → AI → Agent → Speak. Takes effect on the next chat turn after save.",
-      "notes": "Voice uses quota. Turning this off does not turn off the persona."
-    },
     "liteEnable": {
       "what": "Whether to enable the Lite tier.",
       "chain": "1) Off = Lite jobs stop. They do not fall back to Standard.\n2) On = motion selection and other lite tasks use the Lite setup.\n3) Turning off does not delete what you already filled in.\n4) Agent persona can turn on without Lite; only local ambient physics remain, proactive lines stay short, and mood hints stay off.",
@@ -536,24 +524,6 @@
       "frontend": "Differences in assistant answer quality and speed.",
       "notes": "Wrong name causes the call to fail; use the name from the provider’s console."
     },
-    "heartbeat": {
-      "what": "Let Agent run a task on a schedule without you watching.",
-      "chain": "1) Add a task here: name, schedule (preset or cron), and what to do.\n2) When due, Agent runs that instruction in Work mode.\n3) The list can enable, edit, or delete; last result shows on the row.\n4) Independent of persona mood — heartbeat is never blocked by mood.\n5) You must be signed in to read or write these tasks.",
-      "frontend": "Settings → AI → Agent → Schedule. Runs also show on the assistant timeline.",
-      "notes": "Write a clear action. Invalid cron never fires. Tasks use AI quota."
-    },
-    "skills": {
-      "what": "Ways of working Agent remembers: ones you wrote, or ones it learned or revised while doing tasks.",
-      "chain": "1) After a successful job it may store a skill and reuse it next time.\n2) You can also ask the assistant to learn or edit one.\n3) This page only lists, searches, and deletes — it does not create skill text.\n4) After delete, that skill is no longer used.",
-      "frontend": "Settings → AI → Agent → Skills. Badges mark manual / learned / revised.",
-      "notes": "Deleting means teaching again. Skills are not permissions and cannot bypass site permissions or quota."
-    },
-    "memory": {
-      "what": "Short facts Agent chose to keep, injected into later chat.",
-      "chain": "1) It writes a row when it thinks a fact is worth keeping.\n2) Search, edit, or delete here.\n3) Edits apply on the next chat turn.\n4) Not the same as persona diary: diary is per person; memory is fact lines.",
-      "frontend": "Settings → AI → Agent → Memory. Expand a row to edit the text.",
-      "notes": "Do not put secrets in memory. Deleted rows are no longer injected."
-    },
     "imageModel": {
       "what": "The exact model name used for image generation.",
       "chain": "1) Saved together with the image provider.\n2) Must be a name already enabled on that provider.\n3) Still needs image permission and remaining quota.\n4) Can differ from the text model.",
@@ -577,37 +547,75 @@
       "chain": "1) Saved with the TTS model.\n2) Must be a voice the current provider supports.\n3) Persona speaking uses this voice too.\n4) Empty falls back to the on-page placeholder default.",
       "frontend": "Settings → AI → Speech → Voice. One test line is enough to hear the difference.",
       "notes": "Voice names are vendor-specific — do not paste an OpenAI voice into Gemini."
+    }
+  },
+  "agent": {
+    "agentPersona": {
+      "what": "Let Agent speak with the site persona, keep per-person mood and diary, and speak after named events.",
+      "chain": "1) Off by default. Off means chat and tasks only — no event listening, no hidden speech, persona unused.\n2) The switch needs Pro. Chat only injects the persona as system text; it uses the planner/reply tiers.\n3) Lite selects semantic motion and writes proactive lines and mood hints. Without Lite, semantic motion stops and only local blink, breath, hair, and other ambient physics remain; there is no Standard fallback.\n4) On: write the persona on this item’s secondary page. Tags, name, and persona run through Pro.\n5) MEROPE_ENABLED can override the saved switch, but still needs Pro.\n6) Autonomic speech stays hidden; valuable events also notify if the person is not chatting.",
+      "frontend": "Chat uses this persona. Write it on this item’s secondary settings page. The first-level row shows your mood band and current activity. Guests do not see mood.",
+      "notes": "Only the site owner can write the persona. Deleting the persona also clears mood and diary. Heartbeat is never blocked by mood. Speaking aloud is a separate switch on this card, off by default."
+    },
+    "agentPersonaSpeech": {
+      "what": "Whether the persona face speaks chat replies aloud.",
+      "chain": "1) Off by default. Off: replies stay text; the face still mouths the line, with no voice.\n2) On, with speech configured: replies go through the speech pipeline; real audio drives the mouth; text visemes only if TTS fails.\n3) Requires Agent persona on, and a speech provider on the AI page. The switch does not count while persona is off.\n4) Push-to-listen is still manual and separate.\n5) Reader/podcast TTS uses the speech provider, not this switch.",
+      "frontend": "Settings → Agent → Speak. Takes effect on the next chat turn after save.",
+      "notes": "Voice uses quota. Turning this off does not turn off the persona."
+    },
+    "channels": {
+      "what": "Add a private-chat Work bot so Agent can take a request from QQ, Telegram, Discord, or Feishu.",
+      "chain": "1) Empty by default. Use Add bot at the top right — same pattern as AI vendors.\n2) Each bot appears only after you add it, or if it already has credentials / is turned on.\n3) Fill the bot token or AppID / AppSecret, turn it on, then save.\n4) Remove hides an empty bot and clears saved credentials.",
+      "frontend": "Settings → Agent → Bots. The add control sits at the top right of this page.",
+      "notes": "A bot is only ingress and delivery. It is not a second Agent brain."
     },
     "qqBot": {
       "what": "Send a QQ private message into site Work and get the result back in the same chat.",
-      "chain": "1) Turn on, fill AppID / AppSecret, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The secret is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, incomplete credentials, or 401/403 stop the worker. Network jitter reconnects.\n5) After connect succeeds, bind your QQ here: copy the pairing code and send it in a private chat. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Reply yes/no or an option number. You can send 停止 / 新对话 / 当前任务.",
-      "frontend": "Settings → AI → Agent → QQ bot.",
+      "chain": "1) Add QQ from the top-right control, turn on, fill AppID / AppSecret, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The secret is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, incomplete credentials, or 401/403 stop the worker. Network jitter reconnects.\n5) After connect succeeds, bind your QQ here: copy the pairing code and send it in a private chat. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Reply yes/no or an option number. You can send 停止 / 新对话 / 当前任务.",
+      "frontend": "Settings → Agent → Bots. Add QQ from the top right.",
       "notes": "Do not paste Discord data-platform OAuth here. AppSecret never appears in page plaintext or error text."
     },
     "telegramBot": {
       "what": "Send a Telegram DM into site Work and get the result back in the same chat.",
       "chain": "1) Turn on, paste the BotFather token, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The token is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, missing token, or 401/403 stop the worker. 429 waits retry_after. 409 (webhook / another getUpdates client) backs off; it is not a bad token.\n5) After connect succeeds, bind your Telegram here: copy the pairing code and open the bot. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Buttons belong to that step only. You can send 停止 / 新对话 / 当前任务.",
-      "frontend": "Settings → AI → Agent → Telegram bot.",
+      "frontend": "Settings → Agent → Bots. Add Telegram from the top right.",
       "notes": "Do not paste MTProto api_id / api_hash. The token never appears in page plaintext or error text. Reachability of api.telegram.org is outside the platform."
     },
     "discordBot": {
       "what": "Send a Discord DM into site Work and get the result back in the same chat.",
       "chain": "1) Turn on, paste the Developer Portal bot token, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The token is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, missing token, or 401/403 stop the worker. Network jitter resumes the Gateway session; do not Identify on every disconnect.\n5) After connect succeeds, bind your Discord here: copy the pairing code and send it in a DM. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Buttons belong to that step only. You can send 停止 / 新对话 / 当前任务.",
-      "frontend": "Settings → AI → Agent → Discord bot.",
+      "frontend": "Settings → Agent → Bots. Add Discord from the top right.",
       "notes": "Do not paste the data-platform OAuth access token. Pairing identity is discord_dm, not Discord login. The token never appears in page plaintext or error text."
     },
     "feishuBot": {
       "what": "Send a Feishu private message into site Work and get the result back in the same chat.",
       "chain": "1) Turn on, fill the internal-app AppID / AppSecret, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The secret is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, incomplete credentials, or auth rejects stop the worker. Network jitter reconnects.\n5) After connect succeeds, bind your Feishu here: copy the pairing code and send it in a private chat. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Buttons belong to that step only. You can send 停止 / 新对话 / 当前任务.",
-      "frontend": "Settings → AI → Agent → Feishu bot.",
+      "frontend": "Settings → Agent → Bots. Add Feishu from the top right.",
       "notes": "Use an internal company app, not a group custom-bot webhook. AppSecret never appears in page plaintext or error text."
+    },
+    "heartbeat": {
+      "what": "Let Agent run a task on a schedule without you watching.",
+      "chain": "1) Add a task here: name, schedule (preset or cron), and what to do.\n2) When due, Agent runs that instruction in Work mode.\n3) The list can enable, edit, or delete; last result shows on the row.\n4) Independent of persona mood — heartbeat is never blocked by mood.\n5) You must be signed in to read or write these tasks.",
+      "frontend": "Settings → Agent → Schedule. Runs also show on the assistant timeline.",
+      "notes": "Write a clear action. Invalid cron never fires. Tasks use AI quota."
+    },
+    "skills": {
+      "what": "Ways of working Agent remembers: ones you wrote, or ones it learned or revised while doing tasks.",
+      "chain": "1) After a successful job it may store a skill and reuse it next time.\n2) You can also ask the assistant to learn or edit one.\n3) This page only lists, searches, and deletes — it does not create skill text.\n4) After delete, that skill is no longer used.",
+      "frontend": "Settings → Agent → Skills. Badges mark manual / learned / revised.",
+      "notes": "Deleting means teaching again. Skills are not permissions and cannot bypass site permissions or quota."
+    },
+    "memory": {
+      "what": "Short facts Agent chose to keep, injected into later chat.",
+      "chain": "1) It writes a row when it thinks a fact is worth keeping.\n2) Search, edit, or delete here.\n3) Edits apply on the next chat turn.\n4) Not the same as persona diary: diary is per person; memory is fact lines.",
+      "frontend": "Settings → Agent → Memory. Expand a row to edit the text.",
+      "notes": "Do not put secrets in memory. Deleted rows are no longer injected."
     }
   },
   "tripo": {
     "connection": {
       "what": "Whether Tripo 3D is enabled, and which API endpoint and key to use.",
       "chain": "1) Turn enable on, fill the API key (and optional base URL) → save config at the bottom.\n2) Fully independent from “AI configuration” image generation: reference images are only inputs to the 3D pipeline, not the same keys.\n3) Only when enabled and the key is valid may tasks that consume Tripo credits be created.\n4) The key is stored on the server only — never sent to browsers or embedded in model files.\n5) Outbound traffic uses the global proxy under Advanced settings; Tripo does not open a separate network path.",
-      "frontend": "Settings → 3D & Tripo → “Tripo connection” group.\n3D task creation entry points (admin).",
+      "frontend": "Settings → Laboratory → “Tripo connection” group.\n3D task creation entry points (admin).",
       "notes": "Get the key from platform.tripo3d.ai. Turning enable off greys out fields below but keeps what you already filled."
     },
     "enabled": {

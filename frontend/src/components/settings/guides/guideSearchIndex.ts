@@ -11,6 +11,7 @@ export const GUIDE_CATALOG_TO_SECTION: Record<
   platforms: 'platforms',
   notifications: 'notifications',
   ai: 'ai',
+  agent: 'agent',
   tripo: 'tripo',
   oauth: 'oauth',
   permissions: 'permissions',

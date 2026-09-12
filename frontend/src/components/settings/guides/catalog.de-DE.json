@@ -458,18 +458,6 @@
       "frontend": "Nutzer sehen meist keine eigene Seite — vor allem, welche Einrichtung einfache Hintergrundaufgaben nutzen.",
       "notes": "Kann einen anderen Anbieter als Standard nutzen; sicherer, zuerst Standard zum Laufen zu bringen."
     },
-    "agentPersona": {
-      "what": "Den Agent mit der Site-Persona sprechen lassen, Stimmung und Tagebuch je Person halten und nach benannten Ereignissen sprechen.",
-      "chain": "1) Standardmäßig aus. Aus bedeutet nur Chat und Aufgaben — kein Ereignishören, keine versteckte Sprache, Persona ungenutzt.\n2) Der Schalter braucht Pro. Chat injiziert die Persona nur als Systemtext; er nutzt die Planer-/Antwortstufen.\n3) Lite wählt semantische Bewegung und schreibt proaktive Zeilen und Stimmungshinweise. Ohne Lite stoppt semantische Bewegung und es bleiben nur lokales Blinzeln, Atem, Haar und andere Umgebungsphysik; es gibt keinen Standard-Rückfall.\n4) An: Persona auf der Unterseite dieses Punkts schreiben. Tags, Name und Persona laufen über Pro.\n5) MEROPE_ENABLED kann den gespeicherten Schalter überschreiben, braucht aber weiter Pro.\n6) Autonome Sprache bleibt versteckt; wertvolle Ereignisse benachrichtigen auch, wenn die Person nicht chattet.",
-      "frontend": "Chat nutzt diese Persona. Schreiben Sie sie auf der Unterseite dieses Punkts. Die erste Zeile zeigt Ihr Stimmungsband und die aktuelle Aktivität. Gäste sehen keine Stimmung.",
-      "notes": "Nur der Site-Inhaber kann die Persona schreiben. Persona löschen leert auch Stimmung und Tagebuch. Heartbeat wird nie durch Stimmung blockiert. Laut sprechen ist ein eigener Schalter auf dieser Karte, standardmäßig aus."
-    },
-    "agentPersonaSpeech": {
-      "what": "Ob das Persona-Gesicht Chat-Antworten laut spricht.",
-      "chain": "1) Standardmäßig aus. Aus: Antworten bleiben Text; das Gesicht formt die Zeile weiter, ohne Stimme.\n2) An, mit konfigurierter Sprache: Antworten laufen durch die Sprachpipeline; echtes Audio treibt den Mund; Text-Viseme nur, wenn TTS scheitert.\n3) Braucht Agent-Persona an und einen Sprachanbieter auf der KI-Seite. Der Schalter zählt nicht, solange Persona aus ist.\n4) Push-to-listen bleibt manuell und getrennt.\n5) Reader-/Podcast-TTS nutzt den Sprachanbieter, nicht diesen Schalter.",
-      "frontend": "Einstellungen → KI → Agent → Sprechen. Wirkt auf den nächsten Chat-Zug nach dem Speichern.",
-      "notes": "Stimme nutzt Kontingent. Diesen aus schaltet die Persona nicht aus."
-    },
     "liteEnable": {
       "what": "Ob die Lite-Stufe aktiviert wird.",
       "chain": "1) Aus = Lite-Jobs stoppen. Sie fallen nicht auf Standard zurück.\n2) An = Bewegungsauswahl und andere Lite-Aufgaben nutzen die Lite-Einrichtung.\n3) Ausschalten löscht nicht, was Sie bereits ausgefüllt haben.\n4) Agent-Persona kann ohne Lite an; es bleibt nur lokale Umgebungsphysik, proaktive Zeilen bleiben kurz, Stimmungshinweise bleiben aus.",
@@ -536,24 +524,6 @@
       "frontend": "Unterschiede in Qualität und Geschwindigkeit der Assistentenantworten.",
       "notes": "Falscher Name lässt den Aufruf scheitern; den Namen aus der Anbieterkonsole nutzen."
     },
-    "heartbeat": {
-      "what": "Den Agent eine Aufgabe nach Zeitplan ausführen lassen, ohne dass Sie zusehen.",
-      "chain": "1) Hier eine Aufgabe anlegen: Name, Zeitplan (Vorgabe oder cron) und was zu tun ist.\n2) Wenn fällig, führt Agent diese Anweisung im Arbeitsmodus aus.\n3) Die Liste kann aktivieren, bearbeiten oder löschen; das letzte Ergebnis steht in der Zeile.\n4) Unabhängig von Persona-Stimmung — Heartbeat wird nie durch Stimmung blockiert.\n5) Sie müssen angemeldet sein, um diese Aufgaben zu lesen oder zu schreiben.",
-      "frontend": "Einstellungen → KI → Agent → Zeitplan. Läufe erscheinen auch auf der Assistenten-Zeitleiste.",
-      "notes": "Eine klare Aktion schreiben. Ungültiges cron feuert nie. Aufgaben nutzen KI-Kontingent."
-    },
-    "skills": {
-      "what": "Arbeitsweisen, die der Agent merkt: von Ihnen geschrieben oder beim Erledigen von Aufgaben gelernt oder überarbeitet.",
-      "chain": "1) Nach einem erfolgreichen Auftrag kann er einen Skill speichern und ihn nächstes Mal wiederverwenden.\n2) Sie können den Assistenten auch bitten, einen zu lernen oder zu bearbeiten.\n3) Diese Seite listet, sucht und löscht nur — sie erzeugt keinen Skill-Text.\n4) Nach dem Löschen wird dieser Skill nicht mehr genutzt.",
-      "frontend": "Einstellungen → KI → Agent → Skills. Badges markieren manuell / gelernt / überarbeitet.",
-      "notes": "Löschen bedeutet erneut lehren. Skills sind keine Berechtigungen und umgehen weder Site-Berechtigungen noch Kontingent."
-    },
-    "memory": {
-      "what": "Kurze Fakten, die der Agent behalten hat, in späteren Chat injiziert.",
-      "chain": "1) Er schreibt eine Zeile, wenn er einen Fakt für merkwürdig hält.\n2) Hier suchen, bearbeiten oder löschen.\n3) Bearbeitungen gelten beim nächsten Chat-Zug.\n4) Nicht dasselbe wie Persona-Tagebuch: Tagebuch ist je Person; Speicher sind Faktzeilen.",
-      "frontend": "Einstellungen → KI → Agent → Speicher. Eine Zeile aufklappen, um den Text zu bearbeiten.",
-      "notes": "Keine Geheimnisse in den Speicher legen. Gelöschte Zeilen werden nicht mehr injiziert."
-    },
     "imageModel": {
       "what": "Der genaue Modellname für die Bilderzeugung.",
       "chain": "1) Zusammen mit dem Bildanbieter gespeichert.\n2) Muss ein auf diesem Anbieter bereits aktivierter Name sein.\n3) Braucht weiter Bildberechtigung und verbleibendes Kontingent.\n4) Kann vom Textmodell abweichen.",
@@ -577,37 +547,75 @@
       "chain": "1) Mit dem TTS-Modell gespeichert.\n2) Muss eine Stimme sein, die der aktuelle Anbieter unterstützt.\n3) Persona-Sprechen nutzt diese Stimme ebenfalls.\n4) Leer fällt auf die Platzhalter-Vorgabe auf der Seite zurück.",
       "frontend": "Einstellungen → KI → Sprache → Stimme. Eine Testzeile reicht, um den Unterschied zu hören.",
       "notes": "Stimmlnamen sind anbieterspezifisch — keine OpenAI-Stimme in Gemini einfügen."
+    }
+  },
+  "agent": {
+    "agentPersona": {
+      "what": "Den Agent mit der Site-Persona sprechen lassen, Stimmung und Tagebuch je Person halten und nach benannten Ereignissen sprechen.",
+      "chain": "1) Standardmäßig aus. Aus bedeutet nur Chat und Aufgaben — kein Ereignishören, keine versteckte Sprache, Persona ungenutzt.\n2) Der Schalter braucht Pro. Chat injiziert die Persona nur als Systemtext; er nutzt die Planer-/Antwortstufen.\n3) Lite wählt semantische Bewegung und schreibt proaktive Zeilen und Stimmungshinweise. Ohne Lite stoppt semantische Bewegung und es bleiben nur lokales Blinzeln, Atem, Haar und andere Umgebungsphysik; es gibt keinen Standard-Rückfall.\n4) An: Persona auf der Unterseite dieses Punkts schreiben. Tags, Name und Persona laufen über Pro.\n5) MEROPE_ENABLED kann den gespeicherten Schalter überschreiben, braucht aber weiter Pro.\n6) Autonome Sprache bleibt versteckt; wertvolle Ereignisse benachrichtigen auch, wenn die Person nicht chattet.",
+      "frontend": "Chat nutzt diese Persona. Schreiben Sie sie auf der Unterseite dieses Punkts. Die erste Zeile zeigt Ihr Stimmungsband und die aktuelle Aktivität. Gäste sehen keine Stimmung.",
+      "notes": "Nur der Site-Inhaber kann die Persona schreiben. Persona löschen leert auch Stimmung und Tagebuch. Heartbeat wird nie durch Stimmung blockiert. Laut sprechen ist ein eigener Schalter auf dieser Karte, standardmäßig aus."
+    },
+    "agentPersonaSpeech": {
+      "what": "Ob das Persona-Gesicht Chat-Antworten laut spricht.",
+      "chain": "1) Standardmäßig aus. Aus: Antworten bleiben Text; das Gesicht formt die Zeile weiter, ohne Stimme.\n2) An, mit konfigurierter Sprache: Antworten laufen durch die Sprachpipeline; echtes Audio treibt den Mund; Text-Viseme nur, wenn TTS scheitert.\n3) Braucht Agent-Persona an und einen Sprachanbieter auf der KI-Seite. Der Schalter zählt nicht, solange Persona aus ist.\n4) Push-to-listen bleibt manuell und getrennt.\n5) Reader-/Podcast-TTS nutzt den Sprachanbieter, nicht diesen Schalter.",
+      "frontend": "Einstellungen → Agent → Sprechen. Wirkt auf den nächsten Chat-Zug nach dem Speichern.",
+      "notes": "Stimme nutzt Kontingent. Diesen aus schaltet die Persona nicht aus."
+    },
+    "channels": {
+      "what": "Einen Privatchat-Arbeitsbot hinzufügen, damit Agent Anfragen von QQ, Telegram, Discord oder Feishu entgegennimmt.",
+      "chain": "1) Standardmäßig leer. „Bot hinzufügen“ oben rechts — gleiches Muster wie KI-Anbieter.\n2) Ein Bot erscheint nur nach dem Hinzufügen, oder wenn schon Zugangsdaten da sind / er an ist.\n3) Bot-Token oder AppID / AppSecret eintragen, einschalten, dann speichern.\n4) Entfernen blendet einen leeren Bot aus und löscht gespeicherte Zugangsdaten.",
+      "frontend": "Einstellungen → Agent → Bots. Der Zusatzknopf sitzt oben rechts auf dieser Seite.",
+      "notes": "Ein Bot ist nur Eingang und Zustellung. Kein zweites Agent-Gehirn."
     },
     "qqBot": {
       "what": "Send a QQ private message into site Work and get the result back in the same chat.",
       "chain": "1) Turn on, fill AppID / AppSecret, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The secret is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, incomplete credentials, or 401/403 stop the worker. Network jitter reconnects.\n5) After connect succeeds, bind your QQ here: copy the pairing code and send it in a private chat. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Reply yes/no or an option number. You can send 停止 / 新对话 / 当前任务.",
-      "frontend": "Settings → AI → Agent → QQ bot.",
+      "frontend": "Einstellungen → Agent → Bots. QQ oben rechts hinzufügen.",
       "notes": "Do not paste Discord data-platform OAuth here. AppSecret never appears in page plaintext or error text."
     },
     "telegramBot": {
       "what": "Send a Telegram DM into site Work and get the result back in the same chat.",
       "chain": "1) Turn on, paste the BotFather token, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The token is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, missing token, or 401/403 stop the worker. 429 waits retry_after. 409 (webhook / another getUpdates client) backs off; it is not a bad token.\n5) After connect succeeds, bind your Telegram here: copy the pairing code and open the bot. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Buttons belong to that step only. You can send 停止 / 新对话 / 当前任务.",
-      "frontend": "Settings → AI → Agent → Telegram bot.",
+      "frontend": "Einstellungen → Agent → Bots. Telegram oben rechts hinzufügen.",
       "notes": "Do not paste MTProto api_id / api_hash. The token never appears in page plaintext or error text. Reachability of api.telegram.org is outside the platform."
     },
     "discordBot": {
       "what": "Send a Discord DM into site Work and get the result back in the same chat.",
       "chain": "1) Turn on, paste the Developer Portal bot token, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The token is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, missing token, or 401/403 stop the worker. Network jitter resumes the Gateway session; do not Identify on every disconnect.\n5) After connect succeeds, bind your Discord here: copy the pairing code and send it in a DM. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Buttons belong to that step only. You can send 停止 / 新对话 / 当前任务.",
-      "frontend": "Settings → AI → Agent → Discord bot.",
+      "frontend": "Einstellungen → Agent → Bots. Discord oben rechts hinzufügen.",
       "notes": "Do not paste the data-platform OAuth access token. Pairing identity is discord_dm, not Discord login. The token never appears in page plaintext or error text."
     },
     "feishuBot": {
       "what": "Send a Feishu private message into site Work and get the result back in the same chat.",
       "chain": "1) Turn on, fill the internal-app AppID / AppSecret, then save. The title tag is messaging: offline / connecting / online / rejected / reconnecting.\n2) Test saved credentials hits the stored values, not unsaved form fields. Treat that separately from messaging being online.\n3) The secret is write-only: reads come back masked, empty clears it, a mask resubmit keeps the stored value.\n4) Off, incomplete credentials, or auth rejects stop the worker. Network jitter reconnects.\n5) After connect succeeds, bind your Feishu here: copy the pairing code and send it in a private chat. Codes expire; regenerate after expiry.\n6) After pairing, send a request. Buttons belong to that step only. You can send 停止 / 新对话 / 当前任务.",
-      "frontend": "Settings → AI → Agent → Feishu bot.",
+      "frontend": "Einstellungen → Agent → Bots. Feishu oben rechts hinzufügen.",
       "notes": "Use an internal company app, not a group custom-bot webhook. AppSecret never appears in page plaintext or error text."
+    },
+    "heartbeat": {
+      "what": "Den Agent eine Aufgabe nach Zeitplan ausführen lassen, ohne dass Sie zusehen.",
+      "chain": "1) Hier eine Aufgabe anlegen: Name, Zeitplan (Vorgabe oder cron) und was zu tun ist.\n2) Wenn fällig, führt Agent diese Anweisung im Arbeitsmodus aus.\n3) Die Liste kann aktivieren, bearbeiten oder löschen; das letzte Ergebnis steht in der Zeile.\n4) Unabhängig von Persona-Stimmung — Heartbeat wird nie durch Stimmung blockiert.\n5) Sie müssen angemeldet sein, um diese Aufgaben zu lesen oder zu schreiben.",
+      "frontend": "Einstellungen → Agent → Zeitplan. Läufe erscheinen auch auf der Assistenten-Zeitleiste.",
+      "notes": "Eine klare Aktion schreiben. Ungültiges cron feuert nie. Aufgaben nutzen KI-Kontingent."
+    },
+    "skills": {
+      "what": "Arbeitsweisen, die der Agent merkt: von Ihnen geschrieben oder beim Erledigen von Aufgaben gelernt oder überarbeitet.",
+      "chain": "1) Nach einem erfolgreichen Auftrag kann er einen Skill speichern und ihn nächstes Mal wiederverwenden.\n2) Sie können den Assistenten auch bitten, einen zu lernen oder zu bearbeiten.\n3) Diese Seite listet, sucht und löscht nur — sie erzeugt keinen Skill-Text.\n4) Nach dem Löschen wird dieser Skill nicht mehr genutzt.",
+      "frontend": "Einstellungen → Agent → Skills. Badges markieren manuell / gelernt / überarbeitet.",
+      "notes": "Löschen bedeutet erneut lehren. Skills sind keine Berechtigungen und umgehen weder Site-Berechtigungen noch Kontingent."
+    },
+    "memory": {
+      "what": "Kurze Fakten, die der Agent behalten hat, in späteren Chat injiziert.",
+      "chain": "1) Er schreibt eine Zeile, wenn er einen Fakt für merkwürdig hält.\n2) Hier suchen, bearbeiten oder löschen.\n3) Bearbeitungen gelten beim nächsten Chat-Zug.\n4) Nicht dasselbe wie Persona-Tagebuch: Tagebuch ist je Person; Speicher sind Faktzeilen.",
+      "frontend": "Einstellungen → Agent → Speicher. Eine Zeile aufklappen, um den Text zu bearbeiten.",
+      "notes": "Keine Geheimnisse in den Speicher legen. Gelöschte Zeilen werden nicht mehr injiziert."
     }
   },
   "tripo": {
     "connection": {
       "what": "Ob Tripo 3D aktiviert ist und welcher API-Endpunkt und Schlüssel genutzt wird.",
       "chain": "1) Aktivieren an, API-Schlüssel (und optionale Basis-URL) ausfüllen → Konfiguration unten speichern.\n2) Vollständig unabhängig von der Bilderzeugung unter „KI-Konfiguration“: Referenzbilder sind nur Eingaben in die 3D-Pipeline, nicht dieselben Schlüssel.\n3) Nur wenn aktiviert und der Schlüssel gültig ist, dürfen Aufgaben angelegt werden, die Tripo-Guthaben verbrauchen.\n4) Der Schlüssel liegt nur auf dem Server — nie an Browser gesendet oder in Modelldateien eingebettet.\n5) Ausgehender Verkehr nutzt den globalen Proxy unter Erweiterte Einstellungen; Tripo öffnet keinen eigenen Netzpfad.",
-      "frontend": "Einstellungen → 3D & Tripo → Gruppe „Tripo-Verbindung“.\nEinstiege zur 3D-Aufgabenanlage (Admin).",
+      "frontend": "Einstellungen → Labor → Gruppe „Tripo-Verbindung“.\nEinstiege zur 3D-Aufgabenanlage (Admin).",
       "notes": "Den Schlüssel von platform.tripo3d.ai holen. Aktivieren aus graut Felder darunter, behält aber, was Sie bereits ausgefüllt haben."
     },
     "enabled": {

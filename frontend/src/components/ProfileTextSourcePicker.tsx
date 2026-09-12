@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import profileTextSourceApi from '../services/profileTextSourceApi'
+import { showStickyToast } from '../utils/toastManager'
 import { userFacingError } from '../utils/userFacingError'
 import { Spinner } from './Spinner'
 import './AvatarSourcePicker.css'
@@ -32,7 +33,6 @@ export function ProfileTextSourcePicker({
   const [currentKey, setCurrentKey] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [applyingKey, setApplyingKey] = useState<string | null>(null)
-  const [error, setError] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -48,9 +48,12 @@ export function ProfileTextSourcePicker({
           ? sourceKey(currentFromList.kind, currentFromList.ref || null)
           : sourceKey(data.current.kind, data.current.ref),
       )
-      setError('')
     } catch (error) {
-      setError(userFacingError(error, t.userModal.profileTextSourceFailed))
+      showStickyToast({
+        message: userFacingError(error, t.userModal.profileTextSourceFailed),
+        type: 'error',
+        replaceKey: 'profile-text-source',
+      })
     } finally {
       setLoading(false)
     }
@@ -64,7 +67,6 @@ export function ProfileTextSourcePicker({
     const key = sourceKey(kind, ref)
     if (key === currentKey || applyingKey != null) return
     setApplyingKey(key)
-    setError('')
     try {
       if (userId == null) {
         await profileTextSourceApi.setMine(kind, ref)
@@ -77,7 +79,11 @@ export function ProfileTextSourcePicker({
       setCurrentKey(key)
       onApplied?.()
     } catch (e) {
-      setError(userFacingError(e, t.userModal.profileTextSourceFailed))
+      showStickyToast({
+        message: userFacingError(e, t.userModal.profileTextSourceFailed),
+        type: 'error',
+        replaceKey: 'profile-text-source',
+      })
     } finally {
       setApplyingKey(null)
     }
@@ -180,7 +186,6 @@ export function ProfileTextSourcePicker({
           })}
         </ul>
       )}
-      {error && <p className="user-modal-oauth-error">{error}</p>}
     </>
   )
 }

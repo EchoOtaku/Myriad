@@ -59,12 +59,14 @@ import {
 } from '../ModuleConfigSection'
 import {
   ADVANCED_RESET_KEYS,
+  AGENT_UI_RESET_KEYS,
   ALL_OWNED_UI_BAG_KEYS,
   MODULE_UI_RESET_KEYS,
   PLATFORMS_UI_RESET_KEYS,
   UI_RESET_KEYS,
 } from '../uiBagOwnership'
 import {
+  AGENT_AI_FIELD_KEYS,
   defaultAiFieldValue,
   defaultTripoFieldValue,
   defaultUiFieldValue,
@@ -262,6 +264,11 @@ export function useConfigReset(args: {
         setInitialConfig(structuredClone(next))
         setPlatformFocus(null)
       } else if (section === 'ai') {
+        const aiKeys = new Set(
+          config.ai_config.config_fields
+            .map((field) => field.key)
+            .filter((key) => !AGENT_AI_FIELD_KEYS.has(key)),
+        )
         const next = {
           ...config,
           ai_config: {
@@ -269,6 +276,33 @@ export function useConfigReset(args: {
             config_fields: mapConfigFields(
               config.ai_config.config_fields,
               defaultAiFieldValue,
+              aiKeys,
+            ),
+          },
+        }
+        const result = await updateConfig(next)
+        if (result?.success === false) {
+          throw new Error(result.message || t.config.resetFailed)
+        }
+        setConfig(next)
+        setInitialConfig(structuredClone(next))
+      } else if (section === 'agent') {
+        const next = {
+          ...config,
+          ai_config: {
+            ...config.ai_config,
+            config_fields: mapConfigFields(
+              config.ai_config.config_fields,
+              defaultAiFieldValue,
+              AGENT_AI_FIELD_KEYS,
+            ),
+          },
+          ui_config: {
+            ...config.ui_config,
+            config_fields: mapConfigFields(
+              config.ui_config.config_fields,
+              defaultUiFieldValue,
+              new Set(AGENT_UI_RESET_KEYS),
             ),
           },
         }
