@@ -424,7 +424,9 @@ describe('home shell CSS contract', () => {
     )
     assert.match(
       frame,
-      new RegExp(`--page-max-width:\\s*${HOME_STANDARD_MAX_WIDTH_REM}rem`),
+      new RegExp(
+        `--page-max-width:\\s*${RegExp.escape(String(HOME_STANDARD_MAX_WIDTH_REM))}rem`,
+      ),
     )
     assert.match(css, /--home-standard-max-width:\s*var\(--page-max-width\)/)
     assert.equal(home.includes('px-3 xs:px-4 sm:px-6'), false)

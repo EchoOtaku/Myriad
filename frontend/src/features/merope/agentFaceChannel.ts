@@ -144,7 +144,8 @@ export class AgentFaceChannel {
 
   resetSubject(): void {
     this.subjectEpoch += 1
-    for (const id of new Set([...this.openMessages, ...this.spoken.keys()])) this.cancel(id)
+    for (const id of this.openMessages.union(new Set(this.spoken.keys())))
+      this.cancel(id)
     this.openMessages.clear()
     this.spoken.clear()
   }

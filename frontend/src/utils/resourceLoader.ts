@@ -267,7 +267,7 @@ class ResourceLoader {
   async waitForCritical(): Promise<void> {
     while (
       this.queue.some((t) => t.priority <= LoadPriority.HIGH) ||
-      Array.from(this.activeLoads).some((id) => {
+      Iterator.from(this.activeLoads).some((id) => {
         const task = this.queue.find((t) => t.id === id)
         return task && task.priority <= LoadPriority.HIGH
       })

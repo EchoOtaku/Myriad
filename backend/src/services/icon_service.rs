@@ -11,7 +11,7 @@ use tokio::fs;
 use tracing::{debug, error, info, warn};
 
 const MIN_ICON_BYTES: usize = 10;
-const MAX_ICON_DATA_URI_BYTES: usize = 512 * 1024;
+const MAX_ICON_BYTES: usize = 512 * 1024;
 
 fn icon_io_failed(action: &'static str, error: std::io::Error) -> String {
     tracing::error!(%error, action, "icon io failed");
@@ -40,13 +40,13 @@ pub(crate) fn parse_icon_data_uri(icon: &str) -> Option<(Vec<u8>, &'static str)>
         return None;
     }
     let mime = metadata.split(';').next()?.trim();
-    if encoded.len() > MAX_ICON_DATA_URI_BYTES.div_ceil(3) * 4 {
+    if encoded.len() > MAX_ICON_BYTES.div_ceil(3) * 4 {
         return None;
     }
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(encoded.trim())
         .ok()?;
-    if bytes.len() < MIN_ICON_BYTES || bytes.len() > MAX_ICON_DATA_URI_BYTES {
+    if bytes.len() < MIN_ICON_BYTES || bytes.len() > MAX_ICON_BYTES {
         return None;
     }
     Some((bytes, IconService::get_extension(Some(mime), "")))
@@ -196,16 +196,10 @@ impl IconService {
         // 获取扩展名
         let extension = Self::get_extension(content_type, icon_url);
 
-        // 读取内容
-        let bytes = response.bytes().await.map_err(|error| {
-            tracing::warn!(%error, "failed to read icon bytes");
-            crate::services::agent::external_pure::classify_outbound_fetch(
-                "Failed to read icon bytes",
-                &error.to_string(),
-            )
-        })?;
+        // Bound the body while reading, including responses without Content-Length.
+        let bytes = myriad_outbound::read_limited_body(response, MAX_ICON_BYTES).await?;
 
-        // HTTP path: reject `len < MIN_ICON_BYTES` (10). No magic-byte check; no max.
+        // Ignore empty / tiny responses before persisting.
         if bytes.len() < MIN_ICON_BYTES {
             warn!(
                 "Downloaded icon for source {} is too small ({} bytes), skipping",

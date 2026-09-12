@@ -379,7 +379,7 @@ export function TappStore({
     return Number.isFinite(timestamp) ? timestamp : 0
   }
 
-  const filteredApps = allApps.filter((app) => {
+  const filteredAppsUnsorted = allApps.filter((app) => {
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
       const matchName = app.name.toLowerCase().includes(query)
@@ -419,27 +419,28 @@ export function TappStore({
     return a.name.localeCompare(b.name, locale)
   }
 
-  if (selectedCategory === '__installed__') {
-    filteredApps.sort((a, b) => {
-      const categoryOrder =
-        TAPP_CATEGORIES.indexOf(a.category) -
-        TAPP_CATEGORIES.indexOf(b.category)
-      const dateOrder =
-        parseDate(installedTapps.get(b.id)?.installedAt) -
-        parseDate(installedTapps.get(a.id)?.installedAt)
+  const filteredApps =
+    selectedCategory === '__installed__'
+      ? filteredAppsUnsorted.toSorted((a, b) => {
+          const categoryOrder =
+            TAPP_CATEGORIES.indexOf(a.category) -
+            TAPP_CATEGORIES.indexOf(b.category)
+          const dateOrder =
+            parseDate(installedTapps.get(b.id)?.installedAt) -
+            parseDate(installedTapps.get(a.id)?.installedAt)
 
-      if (installedSortOrder === 'category') {
-        if (categoryOrder !== 0) return categoryOrder
-        if (dateOrder !== 0) return dateOrder
-      } else {
-        if (dateOrder !== 0) return dateOrder
-        if (categoryOrder !== 0) return categoryOrder
-      }
-      return a.name.localeCompare(b.name, locale)
-    })
-  } else if (selectedCategory) {
-    filteredApps.sort(compareCatalogSort)
-  }
+          if (installedSortOrder === 'category') {
+            if (categoryOrder !== 0) return categoryOrder
+            if (dateOrder !== 0) return dateOrder
+          } else {
+            if (dateOrder !== 0) return dateOrder
+            if (categoryOrder !== 0) return categoryOrder
+          }
+          return a.name.localeCompare(b.name, locale)
+        })
+      : selectedCategory
+        ? filteredAppsUnsorted.toSorted(compareCatalogSort)
+        : filteredAppsUnsorted
 
   const allAppsCatalogSorted = useMemo(() => {
     return allApps.toSorted((a, b) => {
@@ -462,7 +463,7 @@ export function TappStore({
     selectedCategory === '__installed__'
       ? filteredApps
           .filter((app) => availableUpdateIds.has(app.id))
-          .sort((a, b) => {
+          .toSorted((a, b) => {
             const dateOrder =
               parseDate(b.updatedAt ?? installedTapps.get(b.id)?.installedAt) -
               parseDate(a.updatedAt ?? installedTapps.get(a.id)?.installedAt)

@@ -147,15 +147,15 @@ export function readCanvasDefaultScale(): number {
 export function balancedShuffleLibraryItems(
   items: LibraryItem[],
 ): LibraryItem[] {
+  const grouped = Object.groupBy(items, (item) => item.item_type)
   const groups: Record<string, LibraryItem[]> = {
-    game: [],
-    video: [],
-    music: [],
-    anime: [],
-    tv_series: [],
-    book: [],
+    game: grouped.game ?? [],
+    video: grouped.video ?? [],
+    music: grouped.music ?? [],
+    anime: grouped.anime ?? [],
+    tv_series: grouped.tv_series ?? [],
+    book: grouped.book ?? [],
   }
-  items.forEach((item) => groups[item.item_type]?.push(item))
   Object.values(groups).forEach((group) =>
     group.sort(() => Math.random() - 0.5),
   )

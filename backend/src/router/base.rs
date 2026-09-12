@@ -323,7 +323,7 @@ pub(super) fn build_base_api_router(
             "/api/config",
             get(api::config::get_config).route_layer(from_fn_with_state(
                 app_state.clone(),
-                middleware::auth::auth_middleware,
+                middleware::auth::admin_middleware,
             )),
         )
         .route(
@@ -426,7 +426,7 @@ pub(super) fn build_base_api_router(
             "/api/config/test",
             post(api::config::test_platform).route_layer(from_fn_with_state(
                 app_state.clone(),
-                middleware::auth::auth_middleware,
+                middleware::auth::admin_middleware,
             )),
         )
         .route("/api/config/metadata", get(api::config::get_site_metadata)) // 公开端点：网站元数据

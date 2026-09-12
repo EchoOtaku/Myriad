@@ -5,7 +5,12 @@ import { liveFaceVisible } from './faceVisible'
 import { captureProductionRigStateSummary } from './motion/runtimeHost'
 import { getVoicePresence } from './speech/voicePresence'
 
+// Memory-only: duplicated tabs must not inherit a shared sessionStorage ID.
+const instanceId = globalThis.crypto?.randomUUID?.()
+  ?? `page-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+
 export function livePresenceFacts(): {
+  instanceId: string
   speaking: boolean
   visibleMode: string
   faceVisible: boolean
@@ -20,6 +25,7 @@ export function livePresenceFacts(): {
   const voice = getVoicePresence()
   const speaking = rig.speaking || voice.ttsPlaying
   return {
+    instanceId,
     speaking,
     visibleMode: getAgentPanelMode(),
     faceVisible: liveFaceVisible() && rig.faceVisible,

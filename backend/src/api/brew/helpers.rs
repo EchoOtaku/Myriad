@@ -10,7 +10,8 @@ use serde_json::json;
 
 use crate::error::HttpError;
 use crate::middleware::auth::{
-    authenticate_request, ensure_current_admin_on, verify_current_admin_from_headers,
+    authenticate_optional_request, authenticate_request, ensure_current_admin_on,
+    verify_current_admin_from_headers,
 };
 use crate::models::entities::brew_sources;
 
@@ -40,15 +41,21 @@ pub(crate) async fn get_user_id_from_headers(
     }
 }
 
-/// 从请求头获取可选用户 ID（用于游客访问）
-/// 游客返回 None，登录用户返回 Some(user_id)
-///
-/// Crypto-only: soft optional paths; revoked tokens may still appear signed.
-/// Prefer `authenticate_request` when a DB handle is available.
-pub(crate) fn get_optional_user_id_from_headers(headers: &axum::http::HeaderMap) -> Option<i32> {
-    crate::middleware::auth::verify_jwt_token(headers)
-        .ok()
-        .and_then(|claims| claims.sub.parse::<i32>().ok())
+/// 无凭据返回 None；提供凭据时必须通过当前会话校验。
+pub(crate) async fn get_optional_user_id_from_headers(
+    headers: &axum::http::HeaderMap,
+    db: &DatabaseConnection,
+) -> Result<Option<i32>, HttpError> {
+    authenticate_optional_request(headers, db)
+        .await
+        .map_err(|response| HttpError::from(response.status()))?
+        .map(|claims| {
+            claims
+                .sub
+                .parse::<i32>()
+                .map_err(|_| brew_http_err(StatusCode::UNAUTHORIZED, "Invalid user ID"))
+        })
+        .transpose()
 }
 
 /// 检查请求头中的用户是否为管理员

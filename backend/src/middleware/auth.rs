@@ -1187,6 +1187,139 @@ mod tests {
     }
 
     #[test]
+    fn site_management_routes_reject_ordinary_and_anonymous_users() {
+        use axum::{body::Body, http::Request};
+        use tower::ServiceExt;
+
+        ensure_jwt_secret();
+        let _test_guard = auth_cache_test_guard();
+        clear_auth_cache_for_test();
+        auth_cache_put(
+            79,
+            Some(AuthSnapshot {
+                token_version: 0,
+                is_admin: false,
+                is_owner: false,
+            }),
+        );
+        let token = encode_session_token(&mint_session_claims(79, "ordinary", false, false, 0))
+            .expect("token");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        runtime.block_on(async {
+            let app = crate::router::test_api_router(crate::state::AppState::new(
+                DatabaseConnection::default(),
+                crate::config::AppConfig::default(),
+                crate::config::DynamicConfig::default(),
+            ));
+            for (method, path, body) in [
+                ("GET", "/api/config", ""),
+                (
+                    "POST",
+                    "/api/config/test",
+                    r#"{"platform":"Discord","config":{}}"#,
+                ),
+                (
+                    "POST",
+                    "/api/prompt/generate",
+                    r#"{"title":"test","summary":"test"}"#,
+                ),
+            ] {
+                for authenticated in [false, true] {
+                    let mut request = Request::builder()
+                        .method(method)
+                        .uri(path)
+                        .header(header::CONTENT_TYPE, "application/json");
+                    if authenticated {
+                        request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
+                    }
+                    let response = app
+                        .clone()
+                        .oneshot(request.body(Body::from(body)).expect("request"))
+                        .await
+                        .expect("response");
+                    assert_eq!(
+                        response.status(),
+                        if authenticated {
+                            StatusCode::FORBIDDEN
+                        } else {
+                            StatusCode::UNAUTHORIZED
+                        },
+                        "{method} {path}, authenticated={authenticated}"
+                    );
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn brew_private_comment_routes_reject_revoked_sessions() {
+        use axum::{
+            body::{to_bytes, Body},
+            http::Request,
+        };
+        use tower::ServiceExt;
+
+        ensure_jwt_secret();
+        let _test_guard = auth_cache_test_guard();
+        clear_auth_cache_for_test();
+        let token = encode_session_token(&mint_session_claims(80, "revoked", false, false, 0))
+            .expect("token");
+        auth_cache_put(
+            80,
+            Some(AuthSnapshot {
+                token_version: 1,
+                is_admin: false,
+                is_owner: false,
+            }),
+        );
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        runtime.block_on(async {
+            let state = crate::state::AppState::new(
+                DatabaseConnection::default(),
+                crate::config::AppConfig::default(),
+                crate::config::DynamicConfig::default(),
+            );
+            let app = axum::Router::new()
+                .nest("/api/brew", crate::api::brew::create_brew_routes(state.clone()))
+                .with_state(state);
+            for (path, field) in [
+                ("/api/brew/items/1/comments", "comments"),
+                ("/api/brew/comments/1/replies", "replies"),
+            ] {
+                let response = app
+                    .clone()
+                    .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), StatusCode::OK, "anonymous {path}");
+                let body = to_bytes(response.into_body(), 4096).await.unwrap();
+                let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                assert_eq!(body[field], serde_json::json!([]));
+                for value in [format!("Bearer {token}"), "Bearer invalid".to_string()] {
+                    let response = app
+                        .clone()
+                        .oneshot(
+                            Request::builder()
+                                .uri(path)
+                                .header(header::AUTHORIZATION, value)
+                                .body(Body::empty())
+                                .unwrap(),
+                        )
+                        .await
+                        .unwrap();
+                    assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{path}");
+                }
+            }
+        });
+    }
+
+    #[test]
     fn optional_current_auth_only_treats_absence_as_anonymous() {
         ensure_jwt_secret();
         let _test_guard = auth_cache_test_guard();

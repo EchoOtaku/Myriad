@@ -279,7 +279,9 @@ test('the behavior vocabulary is exactly what a producer can emit', () => {
 })
 
 function rustList(contract: string, name: string): string[] {
-  const block = new RegExp(`${name}: &\\[&str\\] = &\\[([^\\]]*)\\]`).exec(
+  const block = new RegExp(
+    `${RegExp.escape(name)}: &\\[&str\\] = &\\[([^\\]]*)\\]`,
+  ).exec(
     contract,
   )?.[1]
   assert.ok(block, `${name} missing from the director contract`)

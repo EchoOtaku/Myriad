@@ -425,10 +425,9 @@ class RemoteStoreServiceImpl {
 
   private pruneCacheToSources(): void {
     const activeUrls = new Set(this.sources.map((source) => source.url))
-    const knownUrls = new Set([
-      ...this.cache.keys(),
-      ...this.pendingIndexRequests.keys(),
-    ])
+    const knownUrls = new Set(this.cache.keys()).union(
+      new Set(this.pendingIndexRequests.keys()),
+    )
     for (const url of knownUrls) {
       if (!activeUrls.has(url)) this.clearCachedSource(url)
     }
@@ -507,7 +506,7 @@ class RemoteStoreServiceImpl {
     const enabledSources = await this.getEnabledSources()
     const prioritizedSources = enabledSources
       .map((source, configuredIndex) => ({ source, configuredIndex }))
-      .sort((a, b) => {
+      .toSorted((a, b) => {
         const officialRank =
           Number(Boolean(b.source.official)) -
           Number(Boolean(a.source.official))

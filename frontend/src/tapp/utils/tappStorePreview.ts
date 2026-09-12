@@ -78,13 +78,11 @@ export function isRenderedPreviewAdapted(
   if (bodyStyle.backgroundImage !== 'none') return true
   if (!isTransparentColor(bodyStyle.backgroundColor || '')) return true
 
-  const candidates = Array.from(document.body.querySelectorAll('*')).slice(
-    0,
-    600,
-  )
   let laidOut = 0
 
-  for (const element of candidates) {
+  for (const element of Iterator.from(
+    document.body.querySelectorAll('*'),
+  ).take(600)) {
     const rect = element.getBoundingClientRect()
     if (
       rect.width < 2 ||
@@ -108,7 +106,7 @@ export function isRenderedPreviewAdapted(
 
     laidOut++
 
-    const hasDirectText = Array.from(element.childNodes).some(
+    const hasDirectText = Iterator.from(element.childNodes).some(
       (node) => node.nodeType === 3 && Boolean(node.textContent?.trim()),
     )
     const tagName = element.tagName.toLowerCase()

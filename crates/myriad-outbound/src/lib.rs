@@ -387,6 +387,55 @@ pub async fn tests_lab_env_lock() -> tokio::sync::MutexGuard<'static, ()> {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn limited_body_rejects_oversize_before_response_finishes() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        for chunked in [false, true] {
+            for size in [8, 9] {
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                    .await
+                    .expect("bind fixture");
+                let addr = listener.local_addr().unwrap();
+                let server = tokio::spawn(async move {
+                    let (mut socket, _) = listener.accept().await.unwrap();
+                    let mut request = [0; 4096];
+                    socket.read(&mut request).await.unwrap();
+                    let body = "x".repeat(size);
+                    let response = if chunked {
+                        // The oversize stream deliberately never terminates.
+                        let end = if size == 8 { "0\r\n\r\n" } else { "" };
+                        format!("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n{size:x}\r\n{body}\r\n{end}")
+                    } else {
+                        format!("HTTP/1.1 200 OK\r\nContent-Length: {size}\r\n\r\n{body}")
+                    };
+                    socket.write_all(response.as_bytes()).await.unwrap();
+                    std::future::pending::<()>().await;
+                });
+                let response = reqwest::Client::builder()
+                    .no_proxy()
+                    .timeout(Duration::from_secs(2))
+                    .build()
+                    .unwrap()
+                    .get(format!("http://{addr}/image"))
+                    .send()
+                    .await
+                    .unwrap();
+                let result = read_limited_body(response, 8).await;
+                server.abort();
+                if size == 8 {
+                    assert_eq!(result.unwrap(), b"xxxxxxxx");
+                } else {
+                    assert_eq!(
+                        result.unwrap_err(),
+                        "Response exceeds 8 bytes",
+                        "chunked={chunked}: must reject on size, not wait for EOF or timeout"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn rejects_non_public_address_ranges() {
         for ip in [

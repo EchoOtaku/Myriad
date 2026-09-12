@@ -185,7 +185,7 @@ export class RtcSpeechAlignment {
             Math.max(word.duration_ms, DEFAULT_WORD_DURATION_MS) >=
           oldestPts,
       )
-      .sort((a, b) => a.start_ms - b.start_ms)
+      .toSorted((a, b) => a.start_ms - b.start_ms)
       .slice(-MAX_WORDS)
     turn.words = new Map(retained.map((word) => [word.start_ms, word]))
     this.turns.set(frame.turnId, turn)

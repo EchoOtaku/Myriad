@@ -25,12 +25,11 @@ import {
   getVoicePresence,
   subscribeVoicePresence,
 } from '../speech/voicePresence'
+import { PRESENCE_LEASE_MS } from './leasePolicy'
 import { MAX_PERCEPTION_ITEMS } from './registry'
 import { subscribeForegroundSurface } from './surface'
 
 const MIN_INTERVAL_MS = 2000
-/** Not a think tick. */
-const PRESENCE_LEASE_MS = 45_000
 
 interface CaptureInput {
   route: string
@@ -165,8 +164,8 @@ async function meropeIsEnabled(): Promise<boolean> {
 function revisionKey(snapshots: PerceptionSnapshot[]): string {
   return snapshots
     .map((item) => JSON.stringify([item.sourceId, item.kind, item.summary, item.privacy,
-      Object.entries(item.safeFacts).sort(([a], [b]) => a.localeCompare(b))]))
-    .sort()
+      Object.entries(item.safeFacts).toSorted(([a], [b]) => a.localeCompare(b))]))
+    .toSorted()
     .join('|')
 }
 

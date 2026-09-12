@@ -18,7 +18,7 @@ export function isLocale(value) {
 export function mapLanguageTag(tag) {
   const raw = String(tag || '')
     .trim()
-    .replace(/_/g, '-')
+    .replaceAll('_', '-')
   if (!raw) return null
   if (isLocale(raw)) return raw
   const lower = raw.toLowerCase()

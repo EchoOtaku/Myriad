@@ -236,7 +236,7 @@ export const FriendLinksWidget = memo(
       if (isPreview) return previewEntries
       return sources
         .filter(belongsToFriendLinks)
-        .sort((left, right) => compareSources(left, right, locale))
+        .toSorted((left, right) => compareSources(left, right, locale))
         .map(toEntry)
     }, [isPreview, previewEntries, sources, locale])
 

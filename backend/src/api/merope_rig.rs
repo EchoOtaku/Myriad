@@ -687,8 +687,8 @@ async fn parse_rig_import(mut multipart: Multipart) -> ApiResult<ParsedRigImport
         fingerprint.make_ascii_lowercase();
     }
     let atlas_bytes = atlas_bytes.ok_or_else(|| bad_request("Rig import is missing atlas PNG"))?;
-    let dimensions =
-        merope_rig::png_dimensions(&atlas_bytes).map_err(|error| bad_request(&error))?;
+    let (atlas_bytes, dimensions) = merope_rig::validate_png_dimensions(atlas_bytes)
+        .await.map_err(png_validation_error)?;
     if dimensions != (source.atlas.width, source.atlas.height) {
         return Err(bad_request(
             "Rig atlas dimensions do not match source metadata",
@@ -702,17 +702,28 @@ async fn parse_rig_import(mut multipart: Multipart) -> ApiResult<ParsedRigImport
     {
         return Err(bad_request("Rig atlas contract is invalid"));
     }
-    if let Some(reference) = analysis_reference_bytes.as_deref() {
-        merope_rig::png_dimensions(reference).map_err(|error| {
-            tracing::error!(%error, "Invalid rig analysis reference");
-            bad_request("Invalid rig import")
-        })?;
-    }
+    let analysis_reference_bytes = if let Some(reference) = analysis_reference_bytes {
+        Some(merope_rig::validate_png_dimensions(reference).await.map_err(png_validation_error)?.0)
+    } else { None };
     Ok(ParsedRigImport {
         source,
         atlas_bytes,
         analysis_reference_bytes,
     })
+}
+
+fn png_validation_error(error: merope_rig::PngValidationError) -> ApiError {
+    match error {
+        merope_rig::PngValidationError::Invalid(message) => bad_request(&message),
+        merope_rig::PngValidationError::Busy => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(AppError::public_json("Rig image validation is busy; retry shortly")),
+        ),
+        merope_rig::PngValidationError::WorkerFailed => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(AppError::public_json("Rig image validation failed")),
+        ),
+    }
 }
 
 pub async fn get_active_rig(crate::extract::Db(db): crate::extract::Db) -> ApiResult<Json<Value>> {

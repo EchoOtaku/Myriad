@@ -109,7 +109,7 @@ export function collectAppLanguageTags(app: UnifiedAppItem): string[] {
     if (!already) tags.add(inferred)
   }
 
-  return Array.from(tags).sort((a, b) =>
+  return Array.from(tags).toSorted((a, b) =>
     a.localeCompare(b, undefined, { sensitivity: 'base' }),
   )
 }

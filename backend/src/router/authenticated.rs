@@ -29,12 +29,12 @@ pub(super) fn build_authenticated_router(
                 middleware::auth::auth_middleware,
             )),
         )
-        // Prompt generation -  REQUIRE AUTHENTICATION
+        // Site-funded prompt generation is a management operation.
         .route(
             "/api/prompt/generate",
             post(api::prompt::generate_prompt).route_layer(from_fn_with_state(
                 app_state.clone(),
-                middleware::auth::auth_middleware,
+                middleware::auth::admin_middleware,
             )),
         )
         // Home free-layout stickers — admin AI generation + local upload

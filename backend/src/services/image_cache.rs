@@ -200,16 +200,8 @@ impl ImageCacheService {
             }
         }
 
-        // 下载数据
-        let data = response.bytes().await.map_err(|e| {
-            tracing::warn!(error = %e, "Failed to read image data");
-            "Failed to read image data".to_string()
-        })?;
-
-        // 检查大小
-        if data.len() > MAX_IMAGE_SIZE {
-            return Err(format!("Image too large: {} bytes", data.len()));
-        }
+        // Enforce the existing image limit before buffering the entire response.
+        let data = myriad_outbound::read_limited_body(response, MAX_IMAGE_SIZE).await?;
 
         // 生成文件名
         let filename = Self::generate_cache_filename(url);

@@ -1290,7 +1290,7 @@ export function generateOnDemandTailwindCSS(html: string): string {
     '*,::before,::after{--tw-gradient-from:#fff;--tw-gradient-to:transparent;--tw-gradient-stops:var(--tw-gradient-from),var(--tw-gradient-to)}',
   )
 
-  const needsAnimations = Array.from(usedClasses).some((c) =>
+  const needsAnimations = Iterator.from(usedClasses).some((c) =>
     c.includes('animate-'),
   )
   if (needsAnimations) {

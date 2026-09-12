@@ -646,7 +646,7 @@ async function loadGithubRepoData(container: HTMLElement): Promise<void> {
           '.brew-github-card-meta',
         ) as HTMLElement | null
         if (meta) {
-          const visible = Array.from(meta.children).some(
+          const visible = Iterator.from(meta.children).some(
             (el) => el instanceof HTMLElement && !el.hidden,
           )
           meta.hidden = !visible

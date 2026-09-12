@@ -5,6 +5,13 @@ use super::*;
 mod authenticated;
 mod base;
 
+#[cfg(test)]
+pub(crate) fn test_api_router(state: crate::state::AppState) -> Router {
+    base::build_base_api_router(state.clone())
+        .merge(authenticated::build_authenticated_router(state.clone()))
+        .with_state(state)
+}
+
 fn cors_allowed_methods() -> [axum::http::Method; 6] {
     [
         axum::http::Method::GET,

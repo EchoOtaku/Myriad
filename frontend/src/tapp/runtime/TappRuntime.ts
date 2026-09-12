@@ -244,10 +244,9 @@ export class TappRuntime {
           this.registeredWidgets.set(widget.id, widget)
         }
 
-        const backgroundTappIds = new Set([
-          ...this.backgroundRequirements.keys(),
-          ...this.manifestBackgroundRequirements.keys(),
-        ])
+        const backgroundTappIds = new Set(
+          this.backgroundRequirements.keys(),
+        ).union(new Set(this.manifestBackgroundRequirements.keys()))
         for (const tappId of backgroundTappIds) {
           if (!this.runningTapps.has(tappId)) {
             this.dropStoppedTappHostState(tappId)
@@ -486,10 +485,9 @@ export class TappRuntime {
   private getEffectiveBackgroundRequirements(
     tappId: string,
   ): Set<BackgroundRequirement> {
-    return new Set([
-      ...(this.manifestBackgroundRequirements.get(tappId) ?? []),
-      ...(this.backgroundRequirements.get(tappId) ?? []),
-    ])
+    return new Set(
+      this.manifestBackgroundRequirements.get(tappId) ?? [],
+    ).union(new Set(this.backgroundRequirements.get(tappId) ?? []))
   }
 
   async stopTapp(tappId: string): Promise<void> {
@@ -780,10 +778,9 @@ export class TappRuntime {
       tappId: string
       requirements: BackgroundRequirement[]
     }> = []
-    const tappIds = new Set([
-      ...this.backgroundRequirements.keys(),
-      ...this.manifestBackgroundRequirements.keys(),
-    ])
+    const tappIds = new Set(this.backgroundRequirements.keys()).union(
+      new Set(this.manifestBackgroundRequirements.keys()),
+    )
     for (const tappId of tappIds) {
       const requirements = this.getEffectiveBackgroundRequirements(tappId)
       if (requirements.size > 0) {
