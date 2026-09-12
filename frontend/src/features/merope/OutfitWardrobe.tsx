@@ -16,6 +16,7 @@ import { Field, TextArea, TextInput } from '../../components/agent/onboarding/ui
 import { SettingsButton } from '../../components/settings'
 import { useI18n } from '../../contexts/I18nContext'
 import { agentService } from '../../services/agent'
+import { showStickyToast } from '../../utils/toastManager'
 import {
   applyOutfit,
   isDefaultWardrobeItem,
@@ -68,7 +69,6 @@ export default function OutfitWardrobe({
   const [itemName, setItemName] = useState('')
   const [requirements, setRequirements] = useState('')
   const [generating, setGenerating] = useState(false)
-  const [error, setError] = useState('')
   const blocked = busy || generating
   const full = items.length >= MAX_WARDROBE_ITEMS
   const canGenerate = Boolean(identity && gender && style) && !full
@@ -86,35 +86,36 @@ export default function OutfitWardrobe({
     wardrobeItemLabel(item, styleNames, labels.wardrobeDefault)
 
   const manageItem = (item: WardrobeItem) => {
-    setError('')
     void onManage(item).catch((reason) => {
-      setError(
-        generationFailureMessage(
+      showStickyToast({
+        message: generationFailureMessage(
           reason,
           labels.wardrobeApplyFailed,
           o.generationTimeout,
         ),
-      )
+        type: 'error',
+        replaceKey: 'merope-wardrobe',
+      })
     })
   }
 
   const removeItem = (id: string) => {
-    setError('')
     void onDelete(id).catch((reason) => {
-      setError(
-        generationFailureMessage(
+      showStickyToast({
+        message: generationFailureMessage(
           reason,
           labels.wardrobeDeleteFailed,
           o.generationTimeout,
         ),
-      )
+        type: 'error',
+        replaceKey: 'merope-wardrobe',
+      })
     })
   }
 
   const generate = async () => {
     if (!identity || !gender || !style || blocked || full) return
     setGenerating(true)
-    setError('')
     try {
       const response = await agentService.suggestPersonaVisualDesign({
         gender,

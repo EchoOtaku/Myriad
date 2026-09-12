@@ -160,7 +160,6 @@ export default function SiteMotionWorkbench({
   >(null)
   const [seeThroughTokenConfigured, setSeeThroughTokenConfigured] =
     useState(false)
-  const [error, setError] = useState('')
   const [generating, setGenerating] = useState(false)
   const [visualIdentity, setVisualIdentity] =
     useState<UpperBodyVisualIdentity | null>(null)
@@ -1355,7 +1354,7 @@ export default function SiteMotionWorkbench({
           <PortraitImportButton
             appearance="settings"
             disabled={generating}
-            onError={setError}
+            onError={reportMeropeError}
             onUploaded={async (url) => {
               reportMeropeError('')
               try {
@@ -1368,11 +1367,6 @@ export default function SiteMotionWorkbench({
           />
         ) : null}
       </div>
-      {error ? (
-        <p className="merope-motion-home__help" role="alert">
-          {error}
-        </p>
-      ) : null}
       {managingIdentity ? (
         <VisualIdentityView
           identity={managingIdentity}
