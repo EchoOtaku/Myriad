@@ -1,4 +1,5 @@
 import type { ChoiceOption } from '../settings'
+import type { PlatformAutoFetchConfig } from './form/types'
 import { LuRefreshCw } from '@lib/icons'
 
 import React, { useMemo } from 'react'
@@ -13,10 +14,7 @@ import {
   useSettingsHelp,
 } from '../settings'
 
-export interface PlatformAutoFetchConfig {
-  enabled: boolean
-  interval_hours: number
-}
+export type { PlatformAutoFetchConfig } from './form/types'
 
 interface PlatformAutoRefreshSettingsProps {
   value: PlatformAutoFetchConfig
@@ -30,13 +28,7 @@ const INTERVAL_OPTIONS = [6, 12, 24]
 
 const PlatformAutoRefreshSettings: React.FC<
   PlatformAutoRefreshSettingsProps
-> = ({
-  value,
-  configuredPlatformCount,
-  onChange,
-  toc = true,
-  children,
-}) => {
+> = ({ value, configuredPlatformCount, onChange, toc = true, children }) => {
   const { t, format } = useI18n()
   const { catalog: g, bindGuide, renderGuide } = useSettingGuide()
   const helpCtx = useSettingsHelp()

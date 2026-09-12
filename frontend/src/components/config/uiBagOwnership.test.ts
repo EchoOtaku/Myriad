@@ -1,13 +1,11 @@
 /** @vitest-environment node */
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import {
   ADVANCED_RESET_KEYS,
   AGENT_UI_RESET_KEYS,
   ALL_OWNED_UI_BAG_KEYS,
   bagFieldValue,
-  configChangesNeedHardReload,
   configChangesNeedIslandReload,
   configChangesNeedMetadataReload,
   configChangesNeedPersonaPublicNameRefresh,
@@ -51,7 +49,7 @@ describe('uiBagOwnership', () => {
     assert.ok(!ALL_OWNED_UI_BAG_KEYS.includes('base_url'))
   })
 
-  it('does not hard-reload pure UI bag edits', () => {
+  it('keeps pure UI bag edits out of backend runtime reload', () => {
     const prev = cfg([
       { key: 'site_title', value: 'A' },
       { key: 'wallpaper_url', value: 'https://a' },
@@ -60,10 +58,10 @@ describe('uiBagOwnership', () => {
       { key: 'site_title', value: 'B' },
       { key: 'wallpaper_url', value: 'https://b' },
     ])
-    assert.equal(configChangesNeedHardReload(next, prev, deepEqual), false)
+    assert.equal(configChangesNeedRuntimeReload(next, prev), false)
   })
 
-  it('soft-reloads site metadata / SEO / GA without hard reload', () => {
+  it('soft-reloads site metadata / SEO / GA with targeted refresh', () => {
     const prev = cfg([
       { key: 'site_title', value: 'A' },
       { key: 'site_keywords', value: '' },
@@ -78,7 +76,6 @@ describe('uiBagOwnership', () => {
     ])
     assert.equal(configChangesNeedMetadataReload(next, prev), true)
     assert.equal(configChangesNeedMetadataReload(prev, prev), false)
-    assert.equal(configChangesNeedHardReload(next, prev, deepEqual), false)
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('site_keywords'))
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('site_og_image'))
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('google_site_verification'))
@@ -88,24 +85,22 @@ describe('uiBagOwnership', () => {
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('umami_script_url'))
   })
 
-  it('soft-reloads island content flags without hard reload', () => {
+  it('soft-reloads island content flags with targeted refresh', () => {
     const prev = cfg([{ key: 'island_show_greeting', value: 'true' }])
     const next = cfg([{ key: 'island_show_greeting', value: 'false' }])
     assert.equal(configChangesNeedIslandReload(next, prev), true)
     assert.equal(configChangesNeedIslandReload(prev, prev), false)
-    assert.equal(configChangesNeedHardReload(next, prev, deepEqual), false)
   })
 
-  it('soft-reloads pwa_enabled without hard reload', () => {
+  it('soft-reloads pwa_enabled with targeted refresh', () => {
     const prev = cfg([{ key: 'pwa_enabled', value: 'true' }])
     const next = cfg([{ key: 'pwa_enabled', value: 'false' }])
     assert.equal(configChangesNeedPwaReload(next, prev), true)
     assert.equal(configChangesNeedPwaReload(prev, prev), false)
-    assert.equal(configChangesNeedHardReload(next, prev, deepEqual), false)
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('pwa_enabled'))
   })
 
-  it('soft-reloads wallpaper / evocative without hard reload', () => {
+  it('soft-reloads wallpaper / evocative with targeted refresh', () => {
     const prev = cfg([
       { key: 'evocative_parallax', value: 'true' },
       { key: 'wallpaper_blur', value: '3' },
@@ -114,23 +109,18 @@ describe('uiBagOwnership', () => {
       { key: 'evocative_parallax', value: 'false' },
       { key: 'wallpaper_blur', value: '3' },
     ])
-    assert.equal(configChangesNeedHardReload(next, prev, deepEqual), false)
     assert.equal(configChangesNeedWallpaperReload(next, prev), true)
     assert.equal(configChangesNeedWallpaperReload(prev, prev), false)
     assert.equal(configChangesNeedRuntimeReload(next, prev), false)
   })
 
-  it('does not hard-reload AI / platforms / auto_fetch', () => {
+  it('classifies AI / platforms / auto_fetch refresh needs', () => {
     const prev = cfg([{ key: 'proxy_url', value: '' }])
 
     const nextPlatforms = {
       ...prev,
       platforms: [{ name: 'Steam' }],
     }
-    assert.equal(
-      configChangesNeedHardReload(nextPlatforms, prev, deepEqual),
-      false,
-    )
     assert.equal(
       configChangesNeedPlatformsCacheInvalidation(
         nextPlatforms,
@@ -145,7 +135,6 @@ describe('uiBagOwnership', () => {
       ...prev,
       ai_config: { enabled: false },
     }
-    assert.equal(configChangesNeedHardReload(nextAi, prev, deepEqual), false)
     assert.equal(configChangesNeedRuntimeReload(nextAi, prev), false)
     assert.equal(
       configChangesNeedPlatformsCacheInvalidation(nextAi, prev, deepEqual),
@@ -156,19 +145,14 @@ describe('uiBagOwnership', () => {
       ...prev,
       auto_fetch: { enabled: true, interval_hours: 12 },
     }
-    assert.equal(
-      configChangesNeedHardReload(nextAutoFetch, prev, deepEqual),
-      false,
-    )
     assert.equal(configChangesNeedRuntimeReload(nextAutoFetch, prev), false)
   })
 
-  it('classifies proxy / API mirror as runtime reload without hard reload', () => {
+  it('classifies proxy / API mirror as runtime reload with targeted refresh', () => {
     const prev = cfg([{ key: 'proxy_url', value: '' }])
     const nextProxy = cfg([
       { key: 'proxy_url', value: 'http://127.0.0.1:7890' },
     ])
-    assert.equal(configChangesNeedHardReload(nextProxy, prev, deepEqual), false)
     assert.equal(configChangesNeedRuntimeReload(nextProxy, prev), true)
     assert.equal(configChangesNeedRuntimeReload(prev, prev), false)
 
@@ -180,10 +164,6 @@ describe('uiBagOwnership', () => {
       { key: 'gemini_base_url', value: '' },
       { key: 'github_api_base_url', value: '' },
     ])
-    assert.equal(
-      configChangesNeedHardReload(nextMirror, prevMirror, deepEqual),
-      false,
-    )
     assert.equal(configChangesNeedRuntimeReload(nextMirror, prevMirror), true)
     assert.equal(
       configChangesNeedSpeechPipelineReload(nextMirror, prevMirror),
@@ -215,7 +195,9 @@ describe('uiBagOwnership', () => {
   })
 
   it('refreshes the public persona name only when merope_enabled changes', () => {
-    assert.deepEqual(Iterator.from(PERSONA_PUBLIC_NAME_UI_BAG_KEYS).toArray(), ['merope_enabled'])
+    assert.deepEqual(Iterator.from(PERSONA_PUBLIC_NAME_UI_BAG_KEYS).toArray(), [
+      'merope_enabled',
+    ])
     assert.equal(
       configChangesNeedPersonaPublicNameRefresh(
         cfg([{ key: 'merope_enabled', value: 'false' }]),
@@ -239,24 +221,15 @@ describe('uiBagOwnership', () => {
     )
   })
 
-  it('save path refreshes public name after a merope_enabled runtime reload', () => {
-    const source = readFileSync(new URL('./form/useConfigSave.ts', import.meta.url), 'utf8')
-    assert.match(source, /configChangesNeedPersonaPublicNameRefresh/)
-    assert.match(source, /invalidatePublicConfigCache/)
-    assert.match(source, /notifyPersonaUpdated/)
-    const runtime = source
-      .split('if (needRuntimeReload && !needHardReload)')
-      .at(1)
-    assert.ok(runtime, 'runtime reload branch')
-    assert.match(
-      runtime.split('if (!needHardReload)')[0] ?? '',
-      /refreshPersonaPublicName/,
-    )
-  })
-
   it('bagFieldValue reads by key', () => {
     assert.equal(
-      bagFieldValue([{ key: 'a', value: '1' }, { key: 'b', value: '2' }], 'b'),
+      bagFieldValue(
+        [
+          { key: 'a', value: '1' },
+          { key: 'b', value: '2' },
+        ],
+        'b',
+      ),
       '2',
     )
     assert.ok(RUNTIME_RELOAD_UI_BAG_KEYS.length > 0)

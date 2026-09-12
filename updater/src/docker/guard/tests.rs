@@ -1022,6 +1022,26 @@ fn endpoint_identity_overrides_are_denied() {
 }
 
 #[test]
+fn custom_project_keeps_official_service_aliases_without_impersonation() {
+    let mut config = (*state().config).clone();
+    config.project = "isolated-test".into();
+    for service in ["backend", "persona-worker", "federation-worker"] {
+        assert!(validate_endpoint_settings(
+            service,
+            &json!({"Aliases": [service, format!("myriad-{service}")]}),
+            &config
+        )
+        .is_ok());
+        assert!(validate_endpoint_settings(
+            service,
+            &json!({"Aliases": ["myriad-postgres"]}),
+            &config
+        )
+        .is_err());
+    }
+}
+
+#[test]
 fn guard_network_attachment_policy_is_updater_only() {
     let s = state();
     assert!(

@@ -1,5 +1,5 @@
 import type { CheckboxSettingConfig } from '../types'
-import React, { useCallback } from 'react'
+import React, { useCallback, useId } from 'react'
 import './SettingItem.css'
 
 export interface CheckboxItemProps extends Omit<
@@ -31,7 +31,7 @@ export const CheckboxItem = React.memo<CheckboxItemProps>(
       [onChange, disabled, loading],
     )
 
-    const id = `setting-checkbox-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}`
+    const id = `setting-checkbox-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}-${useId()}`
 
     return (
       <div
@@ -45,6 +45,7 @@ export const CheckboxItem = React.memo<CheckboxItemProps>(
           <div className="checkbox-wrapper">
             <input
               id={id}
+              aria-label={label}
               type="checkbox"
               checked={value}
               onChange={handleChange}

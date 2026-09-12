@@ -1,5 +1,5 @@
 import type { NumberSettingConfig } from '../types'
-import React, { useCallback } from 'react'
+import React, { useCallback, useId } from 'react'
 import { guideDomProps } from '../guides/guideAnchor'
 import { SettingDefaultChangeTag } from '../SettingDefaultChangeTag'
 import { SettingFieldErrorTag } from '../SettingFieldErrorTag'
@@ -41,7 +41,7 @@ export const NumberItem = React.memo<NumberItemProps>(
       [onChange, disabled, loading],
     )
 
-    const id = `setting-number-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}`
+    const id = `setting-number-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}-${useId()}`
     const inputName = `myriad-number-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}`
     const anchorProps = guideDomProps(guidePath)
 

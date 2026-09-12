@@ -107,39 +107,10 @@ pub async fn run(
 ///
 /// Returns the version tag that was restored into `MYRIAD_TAG` (when known).
 ///
-/// **Invariant**: after this function returns (Ok or Err), we best-effort attempt to
-/// leave backend/frontend (and postgres when bundled) running. Mid-rollback `?` must
-/// not leave a fully stopped stack without a start attempt.
+/// Errors leave maintenance active and require explicit retry/recovery. Do not
+/// restart writers after failed restoration: pgdata may be partially replaced,
+/// or the restored image tag may not match the database still on disk.
 pub async fn execute_inline(
-    worker: Arc<Worker>,
-    rec: &PhaseRecorder<'_>,
-    compose: &ComposeRunner,
-    snap: &SnapshotManager<'_>,
-    snapshot_id: &str,
-    swap_back_tag: Option<&str>,
-) -> Result<Option<DeployTag>> {
-    let result = execute_inline_inner(
-        worker.clone(),
-        rec,
-        compose,
-        snap,
-        snapshot_id,
-        swap_back_tag,
-    )
-    .await;
-    if result.is_err() {
-        // Last resort: do not leave the stack fully stopped after a partial rollback.
-        warn!("rollback path failed; best-effort restart of app (and postgres if bundled)");
-        if !worker.cli().db_mode.is_external() {
-            let _ = compose.start(&["postgres"]).await;
-            let _ = compose.up_detached(&["postgres"]).await;
-        }
-        let _ = compose.up_detached(&["backend", "frontend"]).await;
-    }
-    result
-}
-
-async fn execute_inline_inner(
     worker: Arc<Worker>,
     rec: &PhaseRecorder<'_>,
     compose: &ComposeRunner,
@@ -241,7 +212,7 @@ async fn execute_inline_inner(
         if let Err(e) = crate::probe::filesystem::require_pgdata(&worker.cli().pgdata) {
             let msg = e.to_string();
             let _ = rec.finish_step_err(&msg);
-            // Tag may already be restored; outer execute_inline will best-effort start services.
+            // Tag may already be restored; leave writers stopped for explicit recovery.
             return Err(e);
         }
         match compose.stop(&["postgres"], 60).await {

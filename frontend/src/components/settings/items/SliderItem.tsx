@@ -1,5 +1,5 @@
 import type { SliderSettingConfig } from '../types'
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useId, useMemo, useState } from 'react'
 import { guideDomProps } from '../guides/guideAnchor'
 import { SettingDefaultChangeTag } from '../SettingDefaultChangeTag'
 import { SettingFieldErrorTag } from '../SettingFieldErrorTag'
@@ -21,10 +21,7 @@ function clamp(n: number, min: number, max: number): number {
 function defaultFormat(value: number, step: number): string {
   if (!Number.isFinite(value)) return '0'
   if (step >= 1) return String(Math.round(value))
-  const decimals = Math.min(
-    4,
-    (String(step).split('.')[1] || '').length || 1,
-  )
+  const decimals = Math.min(4, (String(step).split('.')[1] || '').length || 1)
   return value.toFixed(decimals).replaceAll(/\.?0+$/g, '')
 }
 
@@ -153,13 +150,7 @@ export const SliderItem = React.memo<SliderItemProps>(
         label: recommendedLabel?.trim() || '',
         text: formatNum(recommendedValue),
       }
-    }, [
-      formatNum,
-      recommendedLabel,
-      recommendedValue,
-      safeMax,
-      safeMin,
-    ])
+    }, [formatNum, recommendedLabel, recommendedValue, safeMax, safeMin])
 
     const handleChange = useCallback(
       (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -173,7 +164,7 @@ export const SliderItem = React.memo<SliderItemProps>(
 
     const endActive = useCallback(() => setActive(false), [])
 
-    const id = `setting-slider-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}`
+    const id = `setting-slider-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}-${useId()}`
     const inputName = `myriad-slider-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}`
     const anchorProps = guideDomProps(guidePath)
 
@@ -297,8 +288,7 @@ export const SliderItem = React.memo<SliderItemProps>(
                 />
               </div>
 
-              {(recommended ||
-                (showEnds && (startHint || endHint))) && (
+              {(recommended || (showEnds && (startHint || endHint))) && (
                 <div className="slider-footer">
                   {showEnds && (startHint || endHint) && (
                     <div className="slider-range-hints">

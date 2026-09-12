@@ -14,7 +14,6 @@ export interface SettingItemWrapperProps extends Partial<BaseSettingItemConfig> 
   children: React.ReactNode
   className?: string
   id?: string
-  contentRight?: boolean
   detail?: ReactNode
   guide?: ReactNode
   onApplyDefault?: (newDefault: string) => void
@@ -35,7 +34,6 @@ export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
   className = '',
   id,
   children,
-  contentRight = false,
   disabled = false,
   onApplyDefault,
 }) => {
@@ -64,10 +62,7 @@ export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
         </SettingTitleHelp>
       )}
       <SettingTitleGuideEntry title={label} guide={guide} />
-      <SettingDefaultChangeTag
-        fieldKey={itemKey}
-        onApply={onApplyDefault}
-      />
+      <SettingDefaultChangeTag fieldKey={itemKey} onApply={onApplyDefault} />
       <SettingFieldErrorTag>{error}</SettingFieldErrorTag>
     </span>
   )
@@ -89,17 +84,8 @@ export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
         className={`setting-item setting-${layout} setting-${size} ${className} ${disabled ? 'disabled' : ''}${guidePath ? ' has-guide-anchor' : ''}`}
       >
         <div className="setting-item-content">
-          {contentRight ? (
-            <>
-              {labelContent}
-              <div className="setting-control">{children}</div>
-            </>
-          ) : (
-            <>
-              {labelContent}
-              <div className="setting-control">{children}</div>
-            </>
-          )}
+          {labelContent}
+          <div className="setting-control">{children}</div>
         </div>
         {hint && <p className="setting-hint">{hint}</p>}
       </div>

@@ -200,16 +200,13 @@ export const InputItem = React.memo<InputItemProps>(
         if (!file || disabled || busy) return
 
         if (!file.type.startsWith('image/')) {
-          setUploadError(
-            imageTypeError || t.config.imageUploadTypeError,
-          )
+          setUploadError(imageTypeError || t.config.imageUploadTypeError)
           return
         }
         if (file.size > maxImageBytes) {
           const kb = Math.round(maxImageBytes / 1024)
           setUploadError(
-            imageSizeError ||
-              format(t.config.imageUploadSizeError, { kb }),
+            imageSizeError || format(t.config.imageUploadSizeError, { kb }),
           )
           return
         }
@@ -254,7 +251,7 @@ export const InputItem = React.memo<InputItemProps>(
       onChange('')
     }, [busy, disabled, onChange])
 
-    const id = `setting-input-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}`
+    const id = `setting-input-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}-${useId()}`
     const inputName = `myriad-setting-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}`
     const inputClassName = `field-input ${shownError ? 'has-error' : ''}`
 
@@ -263,6 +260,7 @@ export const InputItem = React.memo<InputItemProps>(
         {multiline ? (
           <textarea
             id={id}
+            aria-label={label}
             name={inputName}
             value={value}
             onChange={handleChange}
@@ -279,6 +277,7 @@ export const InputItem = React.memo<InputItemProps>(
         ) : (
           <input
             id={id}
+            aria-label={label}
             name={inputName}
             type={inputType}
             value={value}
@@ -313,6 +312,7 @@ export const InputItem = React.memo<InputItemProps>(
           <button
             type="button"
             id={id}
+            aria-label={label}
             className={`${inputClassName} field-input--static`}
             onClick={startEdit}
             disabled={disabled || busy}
@@ -406,6 +406,7 @@ export const InputItem = React.memo<InputItemProps>(
           {isLocalImage ? (
             <span
               id={id}
+              aria-label={label}
               className="field-input-local-label"
               title={localImageLabel || t.config.imageUploadLocal}
             >

@@ -35,10 +35,8 @@ export type {
   UiConfig,
 } from './types'
 export { useConfigBagState } from './useConfigBagState'
-export { useConfigDirty } from './useConfigDirty'
+export { useConfigDomains } from './useConfigDomains'
+export { useConfigEditor } from './useConfigEditor'
 export { useConfigMessage } from './useConfigMessage'
 export { useConfigNavigation } from './useConfigNavigation'
-export { useConfigReset } from './useConfigReset'
-export { useConfigSave } from './useConfigSave'
 export { useConfigSearch } from './useConfigSearch'
-export { useConfigSideDrafts } from './useConfigSideDrafts'

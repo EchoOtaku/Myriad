@@ -1,13 +1,8 @@
-import type { SettingDefaultChangeNotice } from './settingDefaultChanges'
+import type { SettingDefaultChangeNotice } from './SettingsDefaultsContext'
 import { LuSparkles } from '@lib/icons'
 import React, { useCallback, useEffect, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
-import {
-  dismissSettingDefaultChange,
-  getSettingDefaultChangeNotice,
-
-  subscribeSettingDefaultChanges,
-} from './settingDefaultChanges'
+import { useSettingsDefaults } from './SettingsDefaultsContext'
 import { SettingTitleTag } from './SettingTitleTag'
 
 export interface SettingDefaultChangeTagProps {
@@ -23,25 +18,26 @@ export function SettingDefaultChangeTag({
   className = '',
 }: SettingDefaultChangeTagProps) {
   const { t, format } = useI18n()
+  const source = useSettingsDefaults()
   const [notice, setNotice] = useState<SettingDefaultChangeNotice | null>(
-    () => getSettingDefaultChangeNotice(fieldKey),
+    () => source?.getNotice(fieldKey) ?? null,
   )
 
   useEffect(() => {
-    const sync = () => setNotice(getSettingDefaultChangeNotice(fieldKey))
+    const sync = () => setNotice(source?.getNotice(fieldKey) ?? null)
     sync()
-    return subscribeSettingDefaultChanges(sync)
-  }, [fieldKey])
+    return source?.subscribe(sync)
+  }, [fieldKey, source])
 
   const handleDismiss = useCallback(() => {
-    dismissSettingDefaultChange(fieldKey)
-  }, [fieldKey])
+    source?.dismiss(fieldKey)
+  }, [fieldKey, source])
 
   const handleApply = useCallback(() => {
     if (!notice) return
     onApply?.(notice.to)
-    dismissSettingDefaultChange(fieldKey)
-  }, [fieldKey, notice, onApply])
+    source?.dismiss(fieldKey)
+  }, [fieldKey, notice, onApply, source])
 
   if (!notice) return null
 

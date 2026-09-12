@@ -1,0 +1,7 @@
+registry:
+  approved:
+    title: Operator-approved isolated MCP tools
+    type: server
+    # Upstream requires a nonempty image field even in --static mode. It does
+    # not pull/run it; Compose's MCP_TOOL_IMAGE selects the actual tool image.
+    image: myriad-mcp-approved:local

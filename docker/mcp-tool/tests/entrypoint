@@ -1,0 +1,55 @@
+#!/usr/local/bin/python3
+
+import json,sys,os,signal,time,socket,ctypes,errno,platform,subprocess
+resist=False
+for line in sys.stdin:
+    m=json.loads(line)
+    if 'id' not in m:continue
+    method=m['method']
+    if method=='initialize':r={'protocolVersion':'2025-06-18','capabilities':{'tools':{}},'serverInfo':{'name':'fixture','version':'1'}}
+    elif method=='tools/list':r={'tools':[{'name':n,'description':'Bounded test probe','inputSchema':{'type':'object'}} for n in ['probe','resist','hang','boundaries','pids','disk','memory']]}
+    elif method=='tools/call':
+        if m['params']['name']=='hang':time.sleep(60)
+        if m['params']['name']=='resist':
+            resist=True;signal.signal(signal.SIGTERM,signal.SIG_IGN)
+            if os.fork()==0:
+                os.setsid()
+                while True:time.sleep(1)
+        extra={}
+        name=m['params']['name']
+        if name=='boundaries':
+            libc=ctypes.CDLL(None,use_errno=True)
+            calls={'setns':268,'unshare':97} if platform.machine()=='aarch64' else {'setns':308,'unshare':272}
+            for n,num in calls.items():
+                ctypes.set_errno(0);libc.syscall(num,-1,0);extra[n]=ctypes.get_errno()
+            extra['proc_absent']=not os.path.exists('/proc')
+            extra['filter_absent']=not os.path.exists('/etc/myriad/guest.bpf')
+            try:open('/opt/mcp/forbidden','w');extra['root_write']=0
+            except OSError as e:extra['root_write']=e.errno
+            try:socket.create_connection(('1.1.1.1',443),timeout=1);extra['network']=0
+            except OSError as e:extra['network']=e.errno
+            extra['clean_work']=not os.listdir('/work')
+        if name=='pids':
+            children=[]
+            try:
+                for _ in range(96):
+                    pid=os.fork()
+                    if pid==0:time.sleep(30);os._exit(0)
+                    children.append(pid)
+            except OSError as e:extra['fork_errno']=e.errno
+            extra['children']=len(children)
+        if name=='disk':
+            count=0
+            try:
+                with open('/work/full','wb',buffering=0) as f:
+                    for _ in range(40):f.write(b'x'*1048576);count+=1
+            except OSError as e:extra['disk_errno']=e.errno
+            extra['written_mib']=count
+        if name=='memory':
+            blocks=[bytearray(1048576) for _ in range(384)]
+        data={'uid':os.getuid(),'gateway_token_present':'MCP_GATEWAY_AUTH_TOKEN' in os.environ,'resist':resist,**extra}
+        r={'content':[{'type':'text','text':json.dumps(data)}]}
+    else:r={}
+    print(json.dumps({'jsonrpc':'2.0','id':m['id'],'result':r}),flush=True)
+if resist:
+    while True:time.sleep(1)

@@ -1,3 +1,5 @@
+import type { SettingDefaultChangeNotice } from '../settings/SettingsDefaultsContext'
+
 const STORAGE_KEY = 'myriad_setting_default_notices_v1'
 
 export const SETTING_PRODUCT_DEFAULTS: Readonly<Record<string, string>> = {
@@ -102,13 +104,6 @@ function seedInitialState(): StoredState {
 
 function transitionId(key: string, from: string, to: string): string {
   return `${key}:${from}→${to}`
-}
-
-export interface SettingDefaultChangeNotice {
-  fieldKey: string
-  from: string
-  to: string
-  transitionId: string
 }
 
 /** notice when product default moved vs known and not dismissed */

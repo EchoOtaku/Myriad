@@ -12,8 +12,8 @@
 //! 4. **After `committed`**: always leave job=`Succeeded` + maintenance clear; return `Ok`
 //!    even if bookkeeping I/O fails.
 //! 5. **Preflight / maintenance entry failures**: always clear maintenance (best-effort).
-//! 6. **Rollback paths**: on Err after stopping services, best-effort `compose up` again
-//!    (`execute_inline` outer wrapper).
+//! 6. **Rollback paths**: failed restoration keeps writers stopped and maintenance
+//!    active for explicit recovery; never start services on uncertain pgdata.
 
 use std::sync::Arc;
 use std::time::Duration;

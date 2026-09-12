@@ -615,7 +615,7 @@
     "connection": {
       "what": "Whether Tripo 3D is enabled, and which API endpoint and key to use.",
       "chain": "1) Turn enable on, fill the API key (and optional base URL) → save config at the bottom.\n2) Fully independent from “AI configuration” image generation: reference images are only inputs to the 3D pipeline, not the same keys.\n3) Only when enabled and the key is valid may tasks that consume Tripo credits be created.\n4) The key is stored on the server only — never sent to browsers or embedded in model files.\n5) Outbound traffic uses the global proxy under Advanced settings; Tripo does not open a separate network path.",
-      "frontend": "Settings → Laboratory → “Tripo connection” group.\n3D task creation entry points (admin).",
+      "frontend": "Settings → Laboratory → “Tripo” group.\n3D task creation entry points (admin).",
       "notes": "Get the key from platform.tripo3d.ai. Turning enable off greys out fields below but keeps what you already filled."
     },
     "enabled": {
@@ -639,7 +639,7 @@
     "webBudget": {
       "what": "Default generation budget for Web/WebGL scenes: which low-poly model, face cap, and max size to persist.",
       "chain": "1) These are default request parameters; a single call can override them, and results are inspected again after generation.\n2) Aimed at one-character Web scenes: a balance of look and mobile performance.\n3) Too many faces or too large a download slow downloads and frame rate; too low blurs detail.\n4) Unrelated to AI text-to-image resolution/models.",
-      "frontend": "“Web model budget” group; results become long-lived local assets, not temporary external links.",
+      "frontend": "Default low-poly model, face cap, and max size in the “Tripo” group; results become long-lived local assets, not temporary external links.",
       "notes": "Face limit ~4,000–8,000 is recommended (default 5,000). Changing budget does not rebuild old models."
     },
     "model": {
@@ -663,7 +663,7 @@
     "taskControl": {
       "what": "How the backend waits on Tripo jobs: how often to poll and how long to wait.",
       "chain": "1) After create, poll status on the interval until success, failure, or timeout.\n2) On success, download and persist promptly before temporary URLs expire.\n3) Too short an interval may hit provider rate limits; too long makes progress feel stuck.\n4) Independent of connection: with enable/key off, these also have no effect.",
-      "frontend": "“Task control” group. Users mainly feel “how long until a model appears.”",
+      "frontend": "Polling interval and task timeout in the “Tripo” group. Users mainly feel “how long until a model appears.”",
       "notes": "Defaults ~2s poll and ~15 minutes timeout match common provider guidance."
     },
     "pollInterval": {

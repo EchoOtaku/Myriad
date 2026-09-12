@@ -116,13 +116,6 @@ export type {
   SettingAnchoredPanelProps,
   SettingAnchoredPanelTriggerApi,
 } from './SettingAnchoredPanel'
-export {
-  dismissSettingDefaultChange,
-  getSettingDefaultChangeNotice,
-  resetSettingDefaultChangeNoticesForTests,
-  SETTING_PRODUCT_DEFAULTS,
-} from './settingDefaultChanges'
-export type { SettingDefaultChangeNotice } from './settingDefaultChanges'
 export { SettingDefaultChangeTag } from './SettingDefaultChangeTag'
 export type { SettingDefaultChangeTagProps } from './SettingDefaultChangeTag'
 export { SettingFieldErrorTag } from './SettingFieldErrorTag'
@@ -137,11 +130,13 @@ export type {
   SettingGroupGridVariant,
 } from './SettingGroupGrid'
 export { SettingItem } from './SettingItem'
+export { SettingsDefaultsProvider } from './SettingsDefaultsContext'
+export type {
+  SettingDefaultChangeNotice,
+  SettingsDefaultsSource,
+} from './SettingsDefaultsContext'
 export { SettingSection } from './SettingSection'
-export {
-  SettingsHelpProvider,
-  useSettingsHelp,
-} from './SettingsHelpContext'
+export { SettingsHelpProvider, useSettingsHelp } from './SettingsHelpContext'
 export type { SettingsHelpContextValue } from './SettingsHelpContext'
 export { SettingsHelpToggle } from './SettingsHelpToggle'
 export type { SettingsHelpToggleProps } from './SettingsHelpToggle'

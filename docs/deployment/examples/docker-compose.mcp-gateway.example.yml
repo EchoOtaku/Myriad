@@ -1,49 +1,62 @@
-# Run on a dedicated MCP host/VM, never on the Myriad Docker daemon.
-# See ../MCP_GATEWAY.md. This is a deployment candidate, not a certified sandbox.
-name: myriad-mcp
+# Fixed tool containers; no Docker socket or runtime container creation.
+# Build the tool image using docker/mcp-tool/README.md before enabling it.
 services:
   gateway:
     image: docker/mcp-gateway:v0.43.3@sha256:e3ee13818cb067a506c5e9acdb2bb4fe0e601caef7d116fc329755782f1a3cfa
-    restart: "no"
     init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/root/.docker, /tmp]
     environment:
       MCP_GATEWAY_AUTH_TOKEN: ${MCP_GATEWAY_AUTH_TOKEN:?Set a dedicated random gateway token}
-    command:
-      - --transport=streaming
-      - --host=0.0.0.0
-      - --port=8811
-      - --servers=${MCP_SERVERS:?Set the explicit comma-separated catalog server names}
-      - --catalog=/root/.docker/mcp/catalogs/myriad.yaml
-      - --config=/dev/null
-      - --registry=/dev/null
-      - --tools-config=/dev/null
-      - --secrets=/dev/null
-      - --watch=false
-      - --long-lived=false
-      - --log-calls=false
-      - --cpus=1
-      - --memory=256Mb
-    ports:
-      - "127.0.0.1:8811:8811"
+    command: [--static, --transport=streaming, --host=0.0.0.0, --port=8811, --servers=approved, --catalog=/root/.docker/mcp/catalogs/myriad.yaml, --config=/dev/null, --registry=/dev/null, --tools-config=/dev/null, --secrets=/dev/null, --watch=false, --long-lived=false, --log-calls=false]
+    ports: ["127.0.0.1:8811:8811"]
     volumes:
-      - type: bind
-        source: /var/run/docker.sock
-        target: /var/run/docker.sock
-        bind:
-          create_host_path: false
       - type: bind
         source: ${MCP_CATALOG_FILE:?Set the absolute path to the reviewed catalog}
         target: /root/.docker/mcp/catalogs/myriad.yaml
         read_only: true
-        bind:
-          create_host_path: false
-    cpus: 1.0
-    mem_limit: 512m
-    pids_limit: 128
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
+        bind: {create_host_path: false}
+    networks: [mcp, ingress]
+    depends_on:
+      mcp-approved:
+        condition: service_healthy
+    restart: on-failure
     logging:
       driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "2"
+      options: {max-size: "10m", max-file: "2"}
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.5
+    pids_limit: 64
+  mcp-approved:
+    image: ${MCP_TOOL_IMAGE:?Set the reviewed tool image built from the sandbox base}
+    init: true
+    read_only: true
+    user: "65534:65534"
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    healthcheck:
+      test: [CMD, socat, -T1, -u, "OPEN:/dev/null", "TCP4:127.0.0.1:4444"]
+      interval: 30s
+      start_period: 5s
+      start_interval: 1s
+      timeout: 3s
+      retries: 3
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=${MCP_SECCOMP_PROFILE:?Set the absolute path to docker/mcp-tool/namespace-seccomp.json}
+    restart: on-failure
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "2"}
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.5
+    pids_limit: 64
+    networks: [mcp]
+networks:
+  ingress: {}
+  mcp:
+    internal: true

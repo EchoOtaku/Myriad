@@ -40,6 +40,7 @@ COPY tools/tapp-contract-export ./tools/tapp-contract-export
 
 # Copy actual source code early to avoid dummy build issues
 COPY backend/src ./backend/src
+COPY backend/i18n ./backend/i18n
 # Style reference compiled in via include_bytes! in merope_rig.rs
 COPY backend/assets ./backend/assets
 

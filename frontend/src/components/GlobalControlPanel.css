@@ -818,65 +818,6 @@ html.dark .control-toggle-slider {
   transform: translateX(18px);
 }
 
-.language-switch-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.125rem;
-  min-height: 1.65rem;
-  padding: 0.22rem 0.65rem;
-  font-size: 0.72rem;
-  font-weight: 600;
-  line-height: 1.2;
-  border: 1px solid var(--chrome-inner-stroke, rgb(229 231 235 / 55%));
-  border-radius: 0.45rem;
-  background:
-    var(--chrome-sheen, linear-gradient(180deg, rgb(255 255 255 / 6%), transparent 40%)),
-    var(--chrome-elevated, rgb(255 255 255 / 92%));
-  box-shadow:
-    var(--chrome-shine, inset 0 1px 0 rgb(255 255 255 / 52%)),
-    var(--chrome-hairline, inset 0 -1px 0 rgb(0 0 0 / 5%)),
-    var(--chrome-chip-shadow, 0 1px 2px rgb(0 0 0 / 6%));
-  color: #5c5c60;
-  cursor: pointer;
-  transition:
-    background 0.2s ease,
-    border-color 0.2s ease,
-    color 0.2s ease,
-    box-shadow 0.2s ease,
-    transform 0.2s ease;
-}
-
-html.dark .language-switch-btn {
-  color: #ebebf0;
-}
-
-/* hover 能力媒体查询；避免触屏粘滞 :hover。 */
-@media (hover: hover) {
-  .language-switch-btn:hover {
-    color: #1d1d1f;
-    border-color: var(--chrome-inner-stroke-hover, rgb(229 231 235 / 75%));
-    background:
-      var(--chrome-sheen),
-      rgb(255 255 255 / 98%);
-  }
-
-  html.dark .language-switch-btn:hover {
-    color: #f5f5f7;
-    background:
-      var(--chrome-sheen),
-      var(--chrome-fill-hover, rgb(16 16 16 / 80%));
-  }
-}
-
-.language-switch-btn:active {
-  transform: scale(0.95);
-}
-
-.language-code {
-  min-width: 1rem;
-  text-align: center;
-}
-
 .control-action-btn {
   display: flex;
   align-items: center;

@@ -119,7 +119,7 @@ export interface SettingGuidesCatalog {
     skills: SettingGuideEntry
     memory: SettingGuideEntry
   }
-  /** keys stay on backend; ConfigForm section id = tripo */
+  /** keys stay on backend; settings nav / URL section is lab */
   tripo: {
     connection: SettingGuideEntry
     enabled: SettingGuideEntry

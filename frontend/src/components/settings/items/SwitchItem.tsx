@@ -1,5 +1,5 @@
 import type { SwitchSettingConfig } from '../types'
-import React, { useCallback } from 'react'
+import React, { useCallback, useId } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { guideDomProps } from '../guides/guideAnchor'
 import { SettingDefaultChangeTag } from '../SettingDefaultChangeTag'
@@ -43,7 +43,7 @@ export const SwitchItem = React.memo<SwitchItemProps>(
       [onChange, disabled, loading],
     )
 
-    const id = `setting-switch-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}`
+    const id = `setting-switch-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}-${useId()}`
 
     return (
       <div
@@ -56,7 +56,9 @@ export const SwitchItem = React.memo<SwitchItemProps>(
               {label}
               {detailText && !expandHelp && (
                 <SettingTitleHelp
-                  ariaLabel={format(t.config.detailHelpAriaNamed, { title: label })}
+                  ariaLabel={format(t.config.detailHelpAriaNamed, {
+                    title: label,
+                  })}
                 >
                   {detailText}
                 </SettingTitleHelp>

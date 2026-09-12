@@ -15,7 +15,7 @@ export const CONFIG_NAV_SECTIONS = [
   'federation',
   'modules',
   'advanced',
-  'tripo',
+  'lab',
   'about',
 ] as const
 

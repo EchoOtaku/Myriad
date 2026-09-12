@@ -1,115 +1,102 @@
-# MCP gateway deployment candidate
+# MCP gateway deployment
 
-Myriad's production MCP client uses one operator-configured Streamable HTTP
-endpoint. Use **one enabled `gateway` definition** for that endpoint's aggregate
-tool collection. Definition IDs are local labels, not remote server selectors;
-adding another ID reconnects to the same tool collection. The current API does
-not enforce this convention. Keep `trust_annotations` false unless the operator
-has independently established that the server's risk descriptions are trustworthy.
+Production uses one operator-configured Streamable HTTP endpoint. Local stdio is
+blocked in production; an unavailable gateway never enables a local fallback.
+Use **one enabled `gateway` definition** for the aggregate tool collection.
+Definition IDs are labels, not remote server selectors; the API does not enforce
+this one-entry convention. Keep `trust_annotations` false by default.
 
-## Smallest deployment to evaluate
+## Fixed offline tool containers
 
-The [standalone Compose example](examples/docker-compose.mcp-gateway.example.yml)
-pins Docker MCP Gateway v0.43.3 by its published multi-platform image digest.
-It is deliberately outside the Myriad Compose/updater topology. Run it on a
-**dedicated host or VM and Docker daemon containing no Myriad workload, data,
-credentials or administrator services**. Its Docker socket is a privileged
-control interface; mounting the Myriad daemon's socket would defeat the boundary.
-Constrain the VM's CPU, memory and disk at the hypervisor and deny its access to
-Myriad's private networks. These are deployment requirements, not controls that
-the sample Compose file can establish.
+The [Compose example](examples/docker-compose.mcp-gateway.example.yml) pins Docker
+MCP Gateway v0.43.3 and uses its existing `--static` transport. A fixed, reviewed
+tool container supplies stdio over its private TCP listener. **Neither service
+receives a Docker socket.** The gateway does not create sibling containers.
 
-1. Install Docker Engine on that dedicated machine. Copy the example to an empty
-   deployment directory as `compose.yml`.
-2. Prepare a reviewed local catalog and set `MCP_CATALOG_FILE` to its absolute
-   path. Set `MCP_SERVERS` to the exact comma-separated catalog names to expose.
-   Start with offline servers: pin each image by verified digest, set
-   `disableNetwork: true`, and supply no volumes, secrets, environment, network
-   names, DNS overrides or links. The catalog shape is:
+The [tool image instructions](../../docker/mcp-tool/README.md) explain the base
+image, required operator variables and limits. Build a derived image with the
+reviewed executable at `/opt/mcp/entrypoint`, validate Compose, and start the two
+services. Tool health must pass before gateway discovery. Each connection runs
+inside bubblewrap with private filesystem/process/network namespaces; CPU,
+memory, swap, PID and tmpfs limits bound the enclosing container and guest.
+This deployment supports **offline, stateless tools**. Hosts must support
+unprivileged user namespaces; denied setup fails closed. Compatibility with
+other Linux/AppArmor host policies must be checked on the target host.
 
-   ```yaml
-   registry:
-     approved:
-       title: Approved offline tools
-       type: server
-       image: YOUR_REVIEWED_IMAGE@sha256:YOUR_VERIFIED_DIGEST
-       disableNetwork: true
-       user: "65534:65534"
-   ```
-
-   Replace the image placeholder with a real compatible stdio MCP server; the
-   sample does not select or install third-party tools on the operator's behalf.
-   The image must work as that unprivileged UID without host files. If it cannot,
-   fix or replace the image before enabling it. Networked tools require a separate
-   egress review and enforcement; do not simply drop `disableNetwork`.
-3. Generate a dedicated random token of at least 32 non-space ASCII characters
-   and provide it as `MCP_GATEWAY_AUTH_TOKEN` through a protected host environment
-   or a mode-0600 `.env`. Do not reuse a Myriad JWT, updater secret or TAPP credential.
-4. Run `docker compose config --quiet`, then `docker compose up -d`. Check the
-   local `/health` and confirm unauthenticated `/mcp` requests return 401. The
-   listener is published only on loopback. Expose `/mcp` through an authenticated
-   HTTPS reverse proxy/private tunnel reachable by persona, preserving the
-   Authorization and MCP session/protocol headers and streaming responses.
-5. Set `MYRIAD_MCP_GATEWAY_URL` to that HTTPS `/mcp` endpoint and
-   `MYRIAD_MCP_GATEWAY_TOKEN` to the same dedicated token **only in persona's
-   deployment**, then recreate persona. Disable the old stdio definitions
-   individually and enable the single aggregate definition:
+1. Build the reviewed tool image and set `MCP_TOOL_IMAGE`, `MCP_CATALOG_FILE`,
+   `MCP_SECCOMP_PROFILE`, and a dedicated `MCP_GATEWAY_AUTH_TOKEN` as documented
+   beside the base image. Supply no Myriad data, host/JWT/updater secrets or TAPP
+   credentials to either image or the tool environment.
+2. Run `docker compose config --quiet`, then `docker compose up -d`. Check `/health`
+   and that an unauthenticated `/mcp` request returns 401. The published listener
+   binds only `127.0.0.1:8811`. Expose `/mcp` through HTTPS/private ingress reachable
+   by persona, preserving Authorization, MCP session/protocol headers and streaming.
+3. Set `MYRIAD_MCP_GATEWAY_URL` to that `/mcp` endpoint and
+   `MYRIAD_MCP_GATEWAY_TOKEN` to its dedicated token **only in persona's deployment**,
+   then recreate persona. The token must have at least 32 printable non-space ASCII
+   characters. It is never returned by configuration APIs.
+4. Disable old stdio entries individually through the existing configuration API/UI,
+   then enable one aggregate definition:
 
    ```json
    {"id":"isolated-tools","transport":"gateway","enabled":true,"trust_annotations":false}
    ```
 
-   Save through the existing MCP configuration UI/API so that actors are revoked
-   normally. Verify that the entry becomes healthy and discovers the expected
-   tools. If it fails, disable the entry and correct the gateway deployment.
-   Production never falls back to local stdio when the gateway is down.
+   Confirm discovery matches the reviewed catalog. Disable the definition if
+   discovery fails; correct the external deployment before re-enabling it.
+5. For code/credential/catalog changes, disable the definition, stop the affected
+   tool container, update/recreate it, and restart gateway discovery before enabling
+   it again. Attention changes alone do not authorize destroying unrelated work.
 
-The explicit server list disables the gateway's dynamic server-management tools.
-The example overrides the default Docker Desktop secret provider with `/dev/null`,
-does not load ambient server configuration, disables call logging and live catalog
-reload, and does not request privileged/DinD mode. Editing the catalog requires a
-controlled restart. Do not pass host/TAPP credentials to third-party containers.
+The gateway disables dynamic management tools, ambient config/secret providers,
+call logging and live catalog reload. Its token stays in the gateway, outside the
+untrusted guest. The guest sees only read-only executable dependencies, minimal
+`/dev`, two bounded tmpfs directories, and PATH/HOME/LANG. It cannot reach the
+network or `/proc`, create/enter additional namespaces, or signal its watchdog.
+No privileged mode, additional capabilities or unconfined seccomp profile is used.
 
-## What this does not prove
+## Destruction and tested limits
 
-The gateway's child launch arguments apply CPU, memory and `no-new-privileges`
-limits. They do **not** set a child PID limit, read-only root or capability drop.
-The Compose service's limits apply to the gateway, not to sibling containers
-created through the Docker socket. Consequently this candidate relies on the
-separate machine as the outer resource and credential boundary; it is not approved
-for hostile tools on the Myriad host.
+Connection teardown destroys the untrusted guest process tree, including detached
+`setsid` descendants. The fixed trusted listener/container persists. A watchdog
+outside the guest PID namespace caps its lifetime at 35 seconds, including startup;
+allow up to five additional seconds for protocol teardown. Continuing stdout does
+not reset this deadline. Myriad removes a revoked actor's routing immediately and
+sends cancellation/session DELETE with a bounded best-effort cleanup budget.
 
-Likewise, a Myriad cancellation/DELETE closes a remote protocol session; it is
-not proof that every remote descendant was destroyed. The upstream SDK closes
-stdin and eventually signals/kills its Docker CLI child. A server ignoring EOF
-or signals needs real container fault testing. For removal/credential changes,
-disable the Myriad definition first, stop the gateway, inspect and forcibly remove
-remaining MCP containers on the dedicated daemon before re-enabling the revised
-catalog. Stopping the gateway alone is insufficient evidence of destruction.
+HTTP cancellation alone cannot attest arbitrary remote execution. These destruction
+claims apply to this fixed deployment, not to an independently operated endpoint.
+Do not remove its watchdog or switch to dynamic Docker execution: testing the
+upstream dynamic mode reproduced surviving sibling containers after DELETE and
+SIGKILL of the gateway, which is why that candidate was rejected.
 
-Native process fault testing has verified that an unavailable gateway produces a
-failed MCP entry without local stdio fallback, while persona and web remain ready.
-Killing persona with SIGKILL leaves web's readiness and public configuration API
-available; persona restarts independently with the gateway still offline. These
-checks used a disposable database and an HTTP fixture, not the gateway image or
-the production proxy. They establish neither container isolation nor homepage
-latency under shared-resource exhaustion.
+Run the actual container acceptance test (requires Docker, Python 3.9+, and an
+unused localhost port 8811):
 
-Before calling this deployment production-ready, verify: child host mounts/env
-contain no Myriad secrets; offline tools cannot reach the network; memory, fork
-and disk exhaustion stay inside the dedicated VM budget; timeout, disablement,
-gateway crash and restart leave no unauthorized descendants; and web/TAPP remain
-available while persona/federation/gateway are stopped separately. Shared database
-and storage load still require a separate test. **Container execution and these
-fault checks have not yet been performed for this example (`uncertain`).**
+```sh
+python3 docker/mcp-tool/tests/integration.py
+python3 -m unittest discover -s docker/mcp-tool -p 'test_*.py'
+```
 
-## Verified upstream references
+The test builds a bounded adversarial fixture, creates uniquely named containers
+with fake credentials, records redacted logs/results in a temporary directory, and
+removes its containers, networks, volumes and image tags afterward. It checks:
 
-The example uses the v0.43.3 flags and catalog layout, not mutable `latest`:
+- unauthenticated 401, real initialize/discovery/tool calls, UID 65534 and no token;
+- read-only filesystem, absent host configuration/proc, denied network and namespace
+  syscalls, 64 PIDs, 256 MiB memory including swap, no host mounts or capabilities;
+- fork limit, 32 MiB disk exhaustion, cgroup OOM and subsequent recovery;
+- resistant descendants, cancellation, DELETE without cancellation, and gateway kill.
+
+Docker Desktop Engine 29.6.2 on arm64 passed these cases on 2026-09-12. The guest
+seccomp filter also has instruction-level tests for x86_64; actual x86_64 container
+execution is not covered by this run. Shared-host and shared-database availability
+is documented separately in [runtime isolation](RUNTIME_ISOLATION.md).
+
+## Upstream implementation references
+
+The pinned implementation supplies the existing static transport and authentication:
 [gateway flags](https://github.com/docker/mcp-gateway/blob/v0.43.3/cmd/docker-mcp/commands/gateway.go),
-[child container launch](https://github.com/docker/mcp-gateway/blob/v0.43.3/pkg/gateway/clientpool.go),
-[catalog path validation](https://github.com/docker/mcp-gateway/blob/v0.43.3/pkg/catalog/catalog.go),
-[authentication](https://github.com/docker/mcp-gateway/blob/v0.43.3/pkg/gateway/auth.go),
-and [SDK command cleanup](https://github.com/docker/mcp-gateway/blob/v0.43.3/vendor/github.com/modelcontextprotocol/go-sdk/mcp/cmd.go).
-These references establish implementation behavior; they do not replace the
-deployment-specific tests above.
+[client pool](https://github.com/docker/mcp-gateway/blob/v0.43.3/pkg/gateway/clientpool.go),
+[authentication](https://github.com/docker/mcp-gateway/blob/v0.43.3/pkg/gateway/auth.go).
+The base image records the exact Moby seccomp profile provenance and license.

@@ -25,12 +25,10 @@ import {
   ISLAND_CONTENT_KEYS,
   islandBagKey,
   islandContentFromBagFields,
-
 } from '../../utils/islandContent'
 import {
   DEFAULT_LIBRARY_SOURCE_PREFERENCES,
   LIBRARY_ITEM_TYPES,
-  normalizeLibraryPreferences,
 } from '../../utils/librarySourcePreferences'
 import {
   CONFIGURABLE_MODULE_KEYS,
@@ -80,11 +78,6 @@ interface LibraryResponse {
   available_sources?: Partial<Record<LibraryItemType, LibrarySourceOption[]>>
 }
 
-interface PreferencesResponse {
-  success: boolean
-  preferences?: LibrarySourcePreferences
-}
-
 interface ModuleConfigSectionProps {
   title: string
   icon?: React.ReactNode
@@ -96,12 +89,7 @@ interface ModuleConfigSectionProps {
   setVisibilityDraft: React.Dispatch<
     React.SetStateAction<ModuleVisibilityPreferences>
   >
-  isSourceDirty: boolean
-  saveRevision: number
-  onSourcePreferencesLoaded: (
-    preferences: LibrarySourcePreferences,
-    options?: { resetDraft?: boolean },
-  ) => void
+  savedPreferences: LibrarySourcePreferences
   hitokotoDraft: HitokotoConfig
   setHitokotoDraft: React.Dispatch<React.SetStateAction<HitokotoConfig>>
   reportSettingsDraft: ReportSettings
@@ -217,11 +205,7 @@ function IslandTitleIcon({ className }: { className?: string }) {
     >
       <rect x="3" y="8" width="18" height="8" rx="4" strokeWidth="2" />
       <circle cx="8" cy="12" r="1.2" fill="currentColor" stroke="none" />
-      <path
-        strokeLinecap="round"
-        strokeWidth="1.8"
-        d="M11.5 12h7"
-      />
+      <path strokeLinecap="round" strokeWidth="1.8" d="M11.5 12h7" />
     </svg>
   )
 }
@@ -357,9 +341,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
   setSourceDraft,
   visibilityDraft,
   setVisibilityDraft,
-  isSourceDirty,
-  saveRevision,
-  onSourcePreferencesLoaded,
+  savedPreferences,
   hitokotoDraft,
   setHitokotoDraft,
   reportSettingsDraft,
@@ -390,7 +372,6 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
   }, [onMessage, t.config.musicCacheCleared])
   const [rawTotal, setRawTotal] = useState(0)
   const [shownTotal, setShownTotal] = useState(0)
-  const isSourceDirtyRef = React.useRef(isSourceDirty)
   const [sourceOptions, setSourceOptions] = useState<
     Partial<Record<LibraryItemType, LibrarySourceOption[]>>
   >({})
@@ -513,10 +494,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
     (selected: IslandContentKey[]) => {
       const selectedSet = new Set(selected)
       for (const key of ISLAND_CONTENT_KEYS) {
-        updateUiFieldValue(
-          islandBagKey(key),
-          String(selectedSet.has(key)),
-        )
+        updateUiFieldValue(islandBagKey(key), String(selectedSet.has(key)))
       }
     },
     [updateUiFieldValue],
@@ -537,48 +515,29 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
   )
 
   useEffect(() => {
-    isSourceDirtyRef.current = isSourceDirty
-  }, [isSourceDirty])
-
-  const loadLibrarySourceSettings = useCallback(async () => {
-    try {
-      setLoading(true)
-      const preferenceData = await apiService.get<PreferencesResponse>(
-        '/library/preferences',
-      )
-      const preferences = normalizeLibraryPreferences(
-        preferenceData.preferences,
-      )
-      onSourcePreferencesLoaded(preferences, {
-        resetDraft: !isSourceDirtyRef.current,
-      })
-
-      try {
-        const data = await apiService.get<LibraryResponse>('/library')
+    let cancelled = false
+    setLoading(true)
+    void apiService
+      .get<LibraryResponse>('/library')
+      .then((data) => {
+        if (cancelled) return
         setRawTotal(data.raw_total ?? data.total ?? 0)
         setShownTotal(data.total ?? 0)
         setSourceOptions(data.available_sources ?? {})
-        onSourcePreferencesLoaded(
-          normalizeLibraryPreferences(data.preferences),
-          {
-            resetDraft: !isSourceDirtyRef.current,
-          },
-        )
-      } catch {
+      })
+      .catch(() => {
+        if (cancelled) return
         setRawTotal(0)
         setShownTotal(0)
         setSourceOptions({})
-      }
-    } catch {
-      onMessage?.(t.config.librarySourceLoadFailed, 'error')
-    } finally {
-      setLoading(false)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
     }
-  }, [onMessage, onSourcePreferencesLoaded, t])
-
-  useEffect(() => {
-    loadLibrarySourceSettings()
-  }, [loadLibrarySourceSettings, saveRevision])
+  }, [savedPreferences])
 
   const getSourceOptionsForType = useCallback(
     (type: LibraryItemType) => {

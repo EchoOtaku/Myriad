@@ -6,15 +6,13 @@
 
 | 模块 | 职责 |
 | ---- | ---- |
-| `useConfigBagState` | bag 主状态、字段更新、loadConfig |
-| `useConfigSideDrafts` | 旁路 draft（OAuth / 权限 / 联邦 / 库 / 一言…） |
-| `useConfigDirty` | 多源 dirty + beforeunload |
-| `useConfigSave` | 两阶段原子保存 + 按需硬刷 |
-| `useConfigReset` | 全量 / 本页重置 |
-| `useConfigSearch` | 搜索索引 + 防抖 rank |
-| `useConfigNavigation` | 侧栏、移动分层、收藏、section 切换 |
-| `buildSearchableContent` | 纯函数搜索索引 |
-| `uiBagOwnership` | bag 归属 key / hard-reload 判定 |
+| `configDomain` / `useConfigDomain` | 单配置域的草稿、已保存快照、加载、保存、重置与可重试生效动作 |
+| `domains/*` / `useConfigDomains` | 各独立端点的持久化适配与页面归属；不依赖区块组件的实现 |
+| `useConfigBagState` / `configBagReset` / `configBagEffects` | bag 字段编辑、按页默认转换与运行时刷新 |
+| `useConfigEditor` | 汇总 dirty、串行执行、保存/重置互斥、错误反馈与 beforeunload |
+| `useConfigSearch` / `buildSearchableContent` | 搜索索引与防抖排序 |
+| `useConfigNavigation` | 侧栏、移动分层、收藏域与页面切换 |
+| `uiBagOwnership` | bag 字段的页面归属与刷新判定 |
 
 `ConfigForm.tsx` 只做编排与 JSX 壳。
 
@@ -104,15 +102,16 @@
 
 - **可清空非敏感串**必须在 `collect_database_updates` 里 early-insert（空串也写库）：`site_*` / `wallpaper_url` / `music_playlist_id` / `proxy_*` / `*_base_url` 镜像等。默认路径 `if !value.is_empty()` 会吞掉「重置本页」写的空串。
 - **`base_url` 空串不得覆盖**已生效域名（改域名走 `SiteUrlField` 独立 API）。
-- **`silent` 更新 bag**（旁路 API 已落库）必须同步 patch `initialConfig`，否则 `deepEqual(config, initialConfig)` 仍会点亮浮动保存。
-- **多 draft 统一保存**：阶段 1 全部写库 → 阶段 2 再 mark clean（`setInitialConfig` / 各 `setSaved*`）。禁止中途 clean，避免 OAuth 失败后 bag 已 clean 的状态分裂。
-- **保存后刷新策略**（见 `uiBagOwnership.ts`）与 toast 文案：
-  - AI / platforms / auto_fetch / 纯 UI bag → 软保存 `savedSuccess`（platforms 另 `clearDedupCache` library）
-  - 代理 / API 镜像 → `configChangesNeedRuntimeReload`：`reloadSystemConfig` **无** `location.reload`；toast `savedSuccessRuntimeReload`
-  - 壁纸 / Evocative → `configChangesNeedWallpaperReload` 软刷壁纸层
-  - 硬刷路径（导入 / 清缓存 / 预留 hard save）：`hardReloadPreparing` → `savedSuccessHardReload`（勿盖成泛用 `savedSuccess`）；导入确认文案也说明将整页刷新
-  - `configChangesNeedHardReload` 当前主表单恒 false（保留分支供未来进程级变更）
-- **全量重置 bag**：只用 `ALL_OWNED_UI_BAG_KEYS`（见 `uiBagOwnership.ts`），勿重置 `base_url`。
+- **`silent` 更新 bag**（旁路 API 已落库）必须通过 `acceptPatch` 同步更新草稿与已保存快照，否则仍会点亮浮动保存。
+- **多域统一保存并非跨端点事务**：每个端点写入成功立即更新其快照；后续端点失败时保留未保存域的草稿。所有已落库域的生效动作仍执行，不能因为后续失败而跳过。
+- **生效动作可重试**：运行时重载、权限授予刷新、壁纸/元数据/PWA/语音等各有动作标识；失败动作保留，下次保存只重试剩余动作，不重复写已保存域。
+- **写入后读回**：bag 与 OAuth 的写请求和规范化快照读请求分开计账；读回失败保留可重试动作，不重复已确认写入。读回的服务器掩码与规范化字段同样保留期间的新编辑。
+- **保存期间继续编辑**：只对自提交后未再编辑的字段应用服务器返回值（包括密钥掩码）。新编辑保留为 dirty。字段数组按稳定身份合并，不能按可能重排的数组位置合并。
+- **本页重置**：请求由已保存快照生成，只修改该页拥有的字段；其他页的未保存草稿既不提交也不清除。重置成功走与保存相同的生效动作。
+- **全量重置**：对编辑器拥有的配置域应用默认值（包括独立端点）；收藏属于本地导航偏好，不参与。bag 只重置 `ALL_OWNED_UI_BAG_KEYS`，不重置 `base_url`。
+- **加载失败**：只在依赖该域的页面显示重试入口，不阻止其他已加载域保存；未加载域不能提交初始默认值。资料库偏好由配置域加载，区块只读取展示统计，不回写编辑器快照。
+- **权限边界**：权限域保存与重置改变平台下放配置，并刷新运行时授予权限；不修改 TAPP 的声明权限或批准权限。
+- **默认值提示**：`ConfigDefaultsProvider` 注入产品提示源。`settings/` 只消费接口，不持有模型名称、历史默认值或持久化策略。
 
 ### 管理端 vs 公开 API
 

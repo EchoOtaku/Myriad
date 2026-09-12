@@ -38,7 +38,6 @@ import { useNotificationCenter } from '../hooks/useNotificationCenter'
 import { useNotificationPreferences } from '../hooks/useNotificationPreferences'
 import { usePerformanceProfile } from '../hooks/usePerformanceProfile'
 import { useWallpaper } from '../hooks/useWallpaper'
-import { hostLanguageName, hostLanguageShort, LOCALES } from '../i18n'
 import { getDynamicContentProvider } from '../services/DynamicContentProvider'
 import {
   notificationSourceFor,
@@ -91,6 +90,7 @@ import {
   showsPanelContent,
   showsProgressUi,
 } from './ControlPanel/panelTransition'
+import { LanguageSwitch } from './ControlPanel/LanguageSwitch'
 import { UserSection } from './ControlPanel/UserSection'
 import { isHoverCapablePointer } from './ControlPanel/widgetCarousel'
 import NotificationPanelList from './NotificationPanelList'
@@ -1810,47 +1810,19 @@ const GlobalControlPanel: React.FC = () => {
                       </button>
                     </div>
 
-                    <div className="control-item control-item-compact">
-                      <div className="control-item-info">
-                        <div className="control-item-icon icon-language">
-                          <WeatherAssetIcon
-                            icon={CONTROL_PANEL_ICON_ASSETS.language}
-                            className="h-full w-full object-contain"
-                          />
-                        </div>
-                        <div>
-                          <h4 className="control-item-title">
-                            {t.controlPanel.language}
-                          </h4>
-                          <p className="control-item-desc">
-                            {hostLanguageName(locale, t.controlPanel)}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          const currentIndex = LOCALES.indexOf(locale)
-                          const nextIndex = (currentIndex + 1) % LOCALES.length
-                          setLocale(LOCALES[nextIndex])
-                        }}
-                        onWheel={(e) => {
-                          e.preventDefault()
-                          const currentIndex = LOCALES.indexOf(locale)
-                          const nextIndex =
-                            e.deltaY > 0
-                              ? (currentIndex + 1) % LOCALES.length
-                              : (currentIndex - 1 + LOCALES.length) %
-                                LOCALES.length
-                          setLocale(LOCALES[nextIndex])
-                        }}
-                        className="language-switch-btn"
-                        aria-label={t.controlPanel.languageSwitch}
-                      >
-                        <span className="language-code">
-                          {hostLanguageShort(locale, t.controlPanel)}
-                        </span>
-                      </button>
-                    </div>
+                    <LanguageSwitch
+                      locale={locale}
+                      labels={t.controlPanel}
+                      title={t.controlPanel.language}
+                      ariaLabel={t.controlPanel.languageSwitch}
+                      onChange={setLocale}
+                      icon={
+                        <WeatherAssetIcon
+                          icon={CONTROL_PANEL_ICON_ASSETS.language}
+                          className="h-full w-full object-contain"
+                        />
+                      }
+                    />
 
                     {canRefreshWallpaper && (
                       <div className="control-item control-item-compact">

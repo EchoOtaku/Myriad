@@ -1,0 +1,193 @@
+.language-switch-item {
+  position: relative;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.language-switch-idle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: inherit;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transform-origin: center;
+  transition:
+    opacity 0.28s ease,
+    transform 0.32s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.language-switch-item .control-item-title,
+.language-switch-item .control-item-desc {
+  display: block;
+}
+
+.language-switch-track {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+  touch-action: pan-x;
+  transform-origin: center;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.92);
+  transition:
+    opacity 0.28s ease,
+    transform 0.32s cubic-bezier(0.33, 1, 0.68, 1);
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    #000 16%,
+    #000 84%,
+    transparent 100%
+  );
+}
+
+.language-switch-item.is-picking .language-switch-idle {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-0.4rem) scale(0.98);
+}
+
+.language-switch-item.is-picking .language-switch-track {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+.language-switch-strip {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: max-content;
+  will-change: transform;
+}
+
+.language-switch-strip.is-ready {
+  transition: transform 0.32s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.language-switch-strip.is-dragging {
+  transition: none;
+}
+
+.language-switch-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 2.15rem;
+  height: 1.65rem;
+  padding: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
+  background: transparent;
+  box-shadow: none;
+  color: #5c5c60;
+  cursor: pointer;
+  opacity: 0.34;
+  filter: blur(1.2px);
+  transition:
+    opacity 0.32s cubic-bezier(0.33, 1, 0.68, 1),
+    filter 0.32s cubic-bezier(0.33, 1, 0.68, 1),
+    color 0.24s ease,
+    background 0.24s ease,
+    border-color 0.24s ease,
+    box-shadow 0.24s ease;
+}
+
+.language-switch-idle .language-switch-btn {
+  pointer-events: none;
+  opacity: 1;
+  filter: none;
+}
+
+.language-switch-btn.is-near-2 {
+  opacity: 0.5;
+  filter: blur(0.8px);
+}
+
+.language-switch-btn.is-near-1 {
+  opacity: 0.78;
+  filter: blur(0.35px);
+}
+
+.language-switch-btn.is-current,
+.language-switch-idle .language-switch-btn {
+  opacity: 1;
+  filter: none;
+  border-color: var(--chrome-inner-stroke, rgb(229 231 235 / 55%));
+  background:
+    var(--chrome-sheen, linear-gradient(180deg, rgb(255 255 255 / 6%), transparent 40%)),
+    var(--chrome-elevated, rgb(255 255 255 / 92%));
+  box-shadow:
+    var(--chrome-shine, inset 0 1px 0 rgb(255 255 255 / 52%)),
+    var(--chrome-hairline, inset 0 -1px 0 rgb(0 0 0 / 5%)),
+    var(--chrome-chip-shadow, 0 1px 2px rgb(0 0 0 / 6%));
+}
+
+html.dark .language-switch-btn {
+  color: #c7c7cc;
+}
+
+html.dark .language-switch-btn.is-current,
+html.dark .language-switch-idle .language-switch-btn {
+  color: #ebebf0;
+}
+
+.language-code {
+  display: block;
+  min-width: 1rem;
+  text-align: center;
+  line-height: 1;
+}
+
+@media (hover: hover) {
+  .language-switch-track .language-switch-btn:hover {
+    color: #1d1d1f;
+  }
+
+  html.dark .language-switch-track .language-switch-btn:hover {
+    color: #f5f5f7;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .language-switch-idle,
+  .language-switch-track,
+  .language-switch-strip.is-ready,
+  .language-switch-btn {
+    transition: none;
+    filter: none;
+  }
+
+  .language-switch-item:not(.is-picking) .language-switch-track,
+  .language-switch-item.is-picking .language-switch-idle {
+    transform: none;
+  }
+}
+
+.language-switch-idle:focus-visible,
+.language-switch-track .language-switch-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-primary, #64748b) 70%, transparent);
+  outline-offset: 2px;
+}

@@ -8,6 +8,7 @@ import {
   SwitchItem,
   useSettingGuide,
 } from '../settings'
+import MyriadConfigIcon from './MyriadConfigIcon'
 
 interface ConfigField {
   key: string
@@ -53,6 +54,7 @@ export const TripoConfigSection: React.FC<TripoConfigSectionProps> = ({
     >
       <SettingGroup
         title={t.config.tripoConnection}
+        icon={<MyriadConfigIcon kind="tripo" />}
         description={t.config.tripoConnectionDesc}
         {...bindGuide('tripo.connection', g.tripo.connection)}
       >
@@ -86,13 +88,6 @@ export const TripoConfigSection: React.FC<TripoConfigSectionProps> = ({
           disabled={!enabled}
           {...bindGuide('tripo.baseUrl', g.tripo.baseUrl)}
         />
-      </SettingGroup>
-
-      <SettingGroup
-        title={t.config.tripoWebBudget}
-        description={t.config.tripoWebBudgetDesc}
-        {...bindGuide('tripo.webBudget', g.tripo.webBudget)}
-      >
         <InputItem
           itemKey="tripo_model"
           label={t.config.tripoModel}
@@ -127,13 +122,6 @@ export const TripoConfigSection: React.FC<TripoConfigSectionProps> = ({
           disabled={!enabled}
           {...bindGuide('tripo.maxDownload', g.tripo.maxDownload)}
         />
-      </SettingGroup>
-
-      <SettingGroup
-        title={t.config.tripoTaskControl}
-        description={t.config.tripoTaskControlDesc}
-        {...bindGuide('tripo.taskControl', g.tripo.taskControl)}
-      >
         <NumberItem
           itemKey="tripo_poll_interval_seconds"
           label={t.config.tripoPollInterval}

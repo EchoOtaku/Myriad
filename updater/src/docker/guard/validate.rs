@@ -262,12 +262,16 @@ pub(crate) fn validate_endpoint_settings(
     }
     if let Some(aliases) = object.get("Aliases").and_then(Value::as_array) {
         let service_alias = service;
+        // Official Compose keeps container_name=myriad-<service> even when
+        // COMPOSE_PROJECT_NAME is customized. This remains the same service identity.
+        let canonical_name = format!("myriad-{service}");
         let fixed_name = format!("{}-{service}", config.project);
         let generated_name = format!("{}-{service}-1", config.project);
         let legacy_generated_name = format!("{}_{service}_1", config.project);
         if aliases.iter().any(|alias| {
             !alias.as_str().is_some_and(|alias| {
                 alias == service_alias
+                    || alias == canonical_name
                     || alias == fixed_name
                     || alias == generated_name
                     || alias == legacy_generated_name

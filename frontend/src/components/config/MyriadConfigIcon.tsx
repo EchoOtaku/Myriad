@@ -8,6 +8,7 @@ import {
 export type MyriadConfigIconKind =
   | 'platforms'
   | 'ai'
+  | 'lab'
   | 'tripo'
   | 'basic'
   | 'music'
@@ -30,7 +31,7 @@ const SHARED_CONFIG_ICON_ASSETS: Partial<Record<MyriadConfigIconKind, string>> =
   {
     basic: '/icons/control-panel/config.webp',
     music: '/icons/dynamic/music.webp',
-    tripo: '/icons/config/lab.webp',
+    tripo: '/icons/config/tripo.svg',
     federation: '/icons/notifications/aro.webp',
     agent: PERSONA_STICKER_FALLBACK,
   }

@@ -6,11 +6,9 @@ import {
   LuRefreshCw,
 } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
-import React, { useCallback, useEffect, useRef } from 'react'
+import React, { useCallback, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
-import { testSpeechService } from '../lib/api'
-import { userFacingError } from '../utils/userFacingError'
 import {
   AboutConfigSection,
   AdvancedConfigSection,
@@ -27,24 +25,25 @@ import {
   UiConfigSection,
   UsersConfigSection,
 } from './config'
+import { ConfigDefaultsProvider } from './config/ConfigDefaultsProvider'
 import {
   ConfigNavItem,
   DEFAULT_AUTO_FETCH_CONFIG,
   useConfigBagState,
-  useConfigDirty,
+  useConfigDomains,
+  useConfigEditor,
   useConfigMessage,
   useConfigNavigation,
-  useConfigReset,
-  useConfigSave,
   useConfigSearch,
-  useConfigSideDrafts,
 } from './config/form'
 import MyriadConfigIcon from './config/MyriadConfigIcon'
+import { useSpeechTest } from './config/useSpeechTest'
 import {
   SectionSwitch,
   SETTINGS_PAGE_MOTION,
   SETTINGS_SIDEBAR_MOTION,
   SettingsButton,
+  SettingSection,
   SettingsPageActionsProvider,
 } from './settings'
 import { Spinner } from './Spinner'
@@ -53,24 +52,12 @@ import './ConfigForm.css'
 const ModernConfigForm: React.FC = () => {
   const { t, locale } = useI18n()
   const { user, isAdmin } = useAuth()
-  const speechTestAudioRef = useRef<{
-    audio: HTMLAudioElement
-    url: string
-  } | null>(null)
 
   const { showMessage } = useConfigMessage()
 
-  const bag = useConfigBagState(showMessage, t.config.loadConfigFailed)
+  const bag = useConfigBagState(t.config)
   const {
     config,
-    setConfig,
-    initialConfig,
-    setInitialConfig,
-    loading,
-    saving,
-    setSaving,
-    notifyDirtyState,
-    loadConfig,
     updateFieldValue,
     updateAiFieldValue,
     updateTripoFieldValue,
@@ -80,7 +67,7 @@ const ModernConfigForm: React.FC = () => {
     reorderPlatform,
   } = bag
 
-  const drafts = useConfigSideDrafts(isAdmin, showMessage, t)
+  const drafts = useConfigDomains(isAdmin, t.config, user?.id)
   const nav = useConfigNavigation(isAdmin, t)
   const {
     activeSection,
@@ -92,8 +79,7 @@ const ModernConfigForm: React.FC = () => {
     platformFocus,
     setPlatformFocus,
     favorites,
-    savedFavorites,
-    setSavedFavorites,
+    favoritesDomain,
     quickAccessItems,
     handleSectionChange: navSectionChange,
     scrollSettingsToTop,
@@ -117,123 +103,35 @@ const ModernConfigForm: React.FC = () => {
     [navSectionChange, setSearchQuery],
   )
 
-  const { isConfigDirty, isLibrarySourceDirty } = useConfigDirty({
-    config,
-    initialConfig,
-    librarySourceDraft: drafts.librarySourceDraft,
-    savedLibrarySourcePreferences: drafts.savedLibrarySourcePreferences,
-    moduleVisibilityDraft: drafts.moduleVisibilityDraft,
-    savedModuleVisibilityPreferences: drafts.savedModuleVisibilityPreferences,
-    hitokotoDraft: drafts.hitokotoDraft,
-    savedHitokotoConfig: drafts.savedHitokotoConfig,
-    reportSettingsDraft: drafts.reportSettingsDraft,
-    savedReportSettings: drafts.savedReportSettings,
-    permissionConfig: drafts.permissionConfig,
-    savedPermissionConfig: drafts.savedPermissionConfig,
-    notificationDraft: drafts.notificationDraft,
-    savedNotificationPreferences: drafts.savedNotificationPreferences,
-    oauthDraft: drafts.oauthDraft,
-    savedOAuthSettings: drafts.savedOAuthSettings,
-    federationPolicyDraft: drafts.federationPolicyDraft,
-    savedFederationPolicy: drafts.savedFederationPolicy,
-    isAdmin,
-    favorites,
-    savedFavorites,
-    notifyDirtyState,
-  })
-
-  const handleSave = useConfigSave({
-    config,
-    initialConfig,
-    setInitialConfig,
-    setSaving,
-    notifyDirtyState,
+  const editor = useConfigEditor(
+    [bag, ...Object.values(drafts), favoritesDomain],
     showMessage,
-    t,
-    isAdmin,
-    userId: user?.id,
-    librarySourceDraft: drafts.librarySourceDraft,
-    savedLibrarySourcePreferences: drafts.savedLibrarySourcePreferences,
-    setLibrarySourceDraft: drafts.setLibrarySourceDraft,
-    setSavedLibrarySourcePreferences: drafts.setSavedLibrarySourcePreferences,
-    setLibrarySourceSaveRevision: drafts.setLibrarySourceSaveRevision,
-    moduleVisibilityDraft: drafts.moduleVisibilityDraft,
-    savedModuleVisibilityPreferences: drafts.savedModuleVisibilityPreferences,
-    setModuleVisibilityDraft: drafts.setModuleVisibilityDraft,
-    setSavedModuleVisibilityPreferences:
-      drafts.setSavedModuleVisibilityPreferences,
-    hitokotoDraft: drafts.hitokotoDraft,
-    savedHitokotoConfig: drafts.savedHitokotoConfig,
-    setHitokotoDraft: drafts.setHitokotoDraft,
-    setSavedHitokotoConfig: drafts.setSavedHitokotoConfig,
-    reportSettingsDraft: drafts.reportSettingsDraft,
-    savedReportSettings: drafts.savedReportSettings,
-    setReportSettingsDraft: drafts.setReportSettingsDraft,
-    setSavedReportSettings: drafts.setSavedReportSettings,
-    permissionConfig: drafts.permissionConfig,
-    savedPermissionConfig: drafts.savedPermissionConfig,
-    setSavedPermissionConfig: drafts.setSavedPermissionConfig,
-    notificationDraft: drafts.notificationDraft,
-    savedNotificationPreferences: drafts.savedNotificationPreferences,
-    setNotificationDraft: drafts.setNotificationDraft,
-    setSavedNotificationPreferences: drafts.setSavedNotificationPreferences,
-    oauthDraft: drafts.oauthDraft,
-    savedOAuthSettings: drafts.savedOAuthSettings,
-    setOAuthDraft: drafts.setOAuthDraft,
-    setSavedOAuthSettings: drafts.setSavedOAuthSettings,
-    federationPolicyDraft: drafts.federationPolicyDraft,
-    savedFederationPolicy: drafts.savedFederationPolicy,
-    setSavedFederationPolicy: drafts.setSavedFederationPolicy,
-    favorites,
-    savedFavorites,
-    setSavedFavorites,
-  })
+    t.config,
+  )
+  const {
+    isDirty: isConfigDirty,
+    saving,
+    save: handleSave,
+    load: loadConfig,
+  } = editor
+  const handleReset = useCallback(() => editor.reset(), [editor.reset])
+  const handleResetCurrentPage = useCallback(
+    () => editor.reset(activeSection),
+    [editor.reset, activeSection],
+  )
 
-  const { handleReset, handleResetCurrentPage } = useConfigReset({
-    config,
-    setConfig,
-    setInitialConfig,
-    setSaving,
-    setPlatformFocus,
-    notifyDirtyState,
-    showMessage,
-    t,
-    activeSection,
-    isAdmin,
-    userId: user?.id,
-    oauthDraft: drafts.oauthDraft,
-    side: {
-      setLibrarySourceDraft: drafts.setLibrarySourceDraft,
-      setSavedLibrarySourcePreferences: drafts.setSavedLibrarySourcePreferences,
-      setLibrarySourceSaveRevision: drafts.setLibrarySourceSaveRevision,
-      setModuleVisibilityDraft: drafts.setModuleVisibilityDraft,
-      setSavedModuleVisibilityPreferences:
-        drafts.setSavedModuleVisibilityPreferences,
-      setHitokotoDraft: drafts.setHitokotoDraft,
-      setSavedHitokotoConfig: drafts.setSavedHitokotoConfig,
-      setReportSettingsDraft: drafts.setReportSettingsDraft,
-      setSavedReportSettings: drafts.setSavedReportSettings,
-      setOAuthDraft: drafts.setOAuthDraft,
-      setSavedOAuthSettings: drafts.setSavedOAuthSettings,
-      setFederationPolicyDraft: drafts.setFederationPolicyDraft,
-      setSavedFederationPolicy: drafts.setSavedFederationPolicy,
-      setPermissionConfig: drafts.setPermissionConfig,
-      setSavedPermissionConfig: drafts.setSavedPermissionConfig,
-      setNotificationDraft: drafts.setNotificationDraft,
-      setSavedNotificationPreferences: drafts.setSavedNotificationPreferences,
-    },
-  })
-
+  const contentReady =
+    bag.ready &&
+    !bag.loading &&
+    !bag.error &&
+    Object.values(drafts).every(
+      (domain) =>
+        !domain.sections.includes(activeSection) ||
+        (domain.ready && !domain.loading && !domain.error),
+    )
   useEffect(() => {
-    void loadConfig()
-    void drafts.loadPermissionConfig()
-    void drafts.loadModuleVisibilityPreferences()
-    void drafts.loadHitokotoSettings()
-    void drafts.loadReportSettings()
-    void drafts.loadNotificationSettings()
-    void drafts.loadOAuthSettings()
-    void drafts.loadFederationPolicy()
-  }, [])
+    if (contentReady) window.dispatchEvent(new CustomEvent('config-loaded'))
+  }, [contentReady, activeSection])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -250,7 +148,6 @@ const ModernConfigForm: React.FC = () => {
 
     if (oauth === 'ok') {
       showMessage(t.config.discordOAuthSuccess, 'success')
-      void loadConfig()
     } else if (oauth === 'error' || (oauth && oauth !== 'ok')) {
       const reason = params.get('reason') || 'unknown'
       showMessage(
@@ -268,7 +165,6 @@ const ModernConfigForm: React.FC = () => {
     const next = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash}`
     window.history.replaceState({}, '', next)
   }, [
-    loadConfig,
     setActiveSection,
     setMobilePane,
     setPlatformFocus,
@@ -289,78 +185,7 @@ const ModernConfigForm: React.FC = () => {
     }
   }, [handleSave, handleReset])
 
-  const releaseSpeechTestAudio = useCallback(() => {
-    const current = speechTestAudioRef.current
-    if (!current) return
-    speechTestAudioRef.current = null
-    current.audio.pause()
-    current.audio.removeAttribute('src')
-    current.audio.load()
-    URL.revokeObjectURL(current.url)
-  }, [])
-
-  useEffect(() => () => releaseSpeechTestAudio(), [releaseSpeechTestAudio])
-
-  const handleSpeechTest = useCallback(async (): Promise<{
-    success: boolean
-    message: string
-  }> => {
-    if (!config) {
-      return { success: false, message: t.config.speechTestFailed }
-    }
-    try {
-      const result = await testSpeechService()
-      if (result.audio) {
-        try {
-          const binary = atob(result.audio)
-          const bytes = new Uint8Array(binary.length)
-          for (let i = 0; i < binary.length; i += 1) {
-            bytes[i] = binary.charCodeAt(i)
-          }
-          const blob = new Blob([bytes], {
-            type:
-              bytes.length >= 12 &&
-              bytes[0] === 0x52 &&
-              bytes[1] === 0x49 &&
-              bytes[2] === 0x46 &&
-              bytes[3] === 0x46
-                ? 'audio/wav'
-                : 'audio/mpeg',
-          })
-          releaseSpeechTestAudio()
-          const url = URL.createObjectURL(blob)
-          const audio = new Audio(url)
-          speechTestAudioRef.current = { audio, url }
-          const release = () => {
-            if (speechTestAudioRef.current?.url !== url) return
-            releaseSpeechTestAudio()
-          }
-          audio.addEventListener('ended', release, { once: true })
-          void audio.play().catch(release)
-        } catch {
-          // 播放是尽力而为，API 结果仍算数。
-        }
-      }
-      if (result.success) {
-        if (result.tts_skipped) {
-          return {
-            success: true,
-            message: userFacingError(
-              result.error,
-              t.config.speechOpenRouterTtsHint,
-            ),
-          }
-        }
-        return { success: true, message: t.config.speechTestSuccess }
-      }
-      return {
-        success: false,
-        message: userFacingError(result.error, t.config.speechTestFailed),
-      }
-    } catch {
-      return { success: false, message: t.config.speechTestFailed }
-    }
-  }, [config, releaseSpeechTestAudio, t])
+  const handleSpeechTest = useSpeechTest()
 
   const handleModuleMessage = useCallback(
     (msg: string, type: 'success' | 'error' | 'info' = 'info') =>
@@ -371,6 +196,38 @@ const ModernConfigForm: React.FC = () => {
   const renderActiveSection = (section: string) => {
     if (!config) return null
     const props = getSectionProps(section)
+
+    const unavailable = Object.values(drafts).filter(
+      (domain) =>
+        domain.sections.includes(section) &&
+        (!domain.ready || domain.loading || domain.error),
+    )
+    if (unavailable.length) {
+      const failed = unavailable.some((domain) => domain.error)
+      return (
+        <SettingSection {...props} showResetPage={false}>
+          {failed ? (
+            <div role="alert">
+              <p>{t.config.loadConfigFailed}</p>
+              <SettingsButton
+                onClick={() => {
+                  void Promise.allSettled(
+                    unavailable.map((domain) => domain.load()),
+                  )
+                }}
+                disabled={unavailable.some((domain) => domain.loading)}
+              >
+                {t.common.retry}
+              </SettingsButton>
+            </div>
+          ) : (
+            <div role="status" aria-label={t.common.loading}>
+              <Spinner size="lg" color="primary" />
+            </div>
+          )}
+        </SettingSection>
+      )
+    }
 
     switch (section) {
       case 'platforms': {
@@ -428,7 +285,7 @@ const ModernConfigForm: React.FC = () => {
             {...props}
           />
         )
-      case 'tripo':
+      case 'lab':
         return (
           <TripoConfigSection
             configFields={config.tripo_config.config_fields}
@@ -448,10 +305,10 @@ const ModernConfigForm: React.FC = () => {
         return (
           <OAuthConfigSection
             configFields={config.ui_config.config_fields}
-            providers={drafts.oauthDraft.providers}
-            loading={drafts.oauthLoading}
+            providers={drafts.oauth.draft.providers}
+            loading={drafts.oauth.loading}
             onProvidersChange={(providers) =>
-              drafts.setOAuthDraft((current) => ({ ...current, providers }))
+              drafts.oauth.setDraft((current) => ({ ...current, providers }))
             }
             {...props}
           />
@@ -460,8 +317,13 @@ const ModernConfigForm: React.FC = () => {
         if (!isAdmin) return null
         return (
           <FederationConfigSection
-            policyDraft={drafts.federationPolicyDraft}
-            onPolicyChange={drafts.updateFederationPolicy}
+            policyDraft={drafts.federation.draft}
+            onPolicyChange={(patch) =>
+              drafts.federation.setDraft((current) => ({
+                ...current,
+                ...patch,
+              }))
+            }
             onMessage={(msg, type = 'info') => showMessage(msg, type)}
             {...props}
           />
@@ -469,28 +331,31 @@ const ModernConfigForm: React.FC = () => {
       case 'permissions':
         return (
           <PermissionsConfigSection
-            permissionConfig={drafts.permissionConfig}
-            updatePermissionConfig={drafts.updatePermissionConfig}
-            loading={drafts.permissionLoading}
+            permissionConfig={drafts.permissions.draft}
+            updatePermissionConfig={(keyOrPatch, value) =>
+              drafts.permissions.setDraft((current) => ({
+                ...current,
+                ...(typeof keyOrPatch === 'string'
+                  ? { [keyOrPatch]: value as boolean | number }
+                  : keyOrPatch),
+              }))
+            }
+            loading={drafts.permissions.loading}
             {...props}
           />
         )
       case 'modules':
         return (
           <ModuleConfigSection
-            sourceDraft={drafts.librarySourceDraft}
-            setSourceDraft={drafts.setLibrarySourceDraft}
-            visibilityDraft={drafts.moduleVisibilityDraft}
-            setVisibilityDraft={drafts.setModuleVisibilityDraft}
-            isSourceDirty={isLibrarySourceDirty}
-            saveRevision={drafts.librarySourceSaveRevision}
-            onSourcePreferencesLoaded={
-              drafts.handleLibrarySourcePreferencesLoaded
-            }
-            hitokotoDraft={drafts.hitokotoDraft}
-            setHitokotoDraft={drafts.setHitokotoDraft}
-            reportSettingsDraft={drafts.reportSettingsDraft}
-            setReportSettingsDraft={drafts.setReportSettingsDraft}
+            sourceDraft={drafts.library.draft}
+            setSourceDraft={drafts.library.setDraft}
+            visibilityDraft={drafts.visibility.draft}
+            setVisibilityDraft={drafts.visibility.setDraft}
+            savedPreferences={drafts.library.saved}
+            hitokotoDraft={drafts.hitokoto.draft}
+            setHitokotoDraft={drafts.hitokoto.setDraft}
+            reportSettingsDraft={drafts.reports.draft}
+            setReportSettingsDraft={drafts.reports.setDraft}
             uiConfigFields={config.ui_config.config_fields}
             updateUiFieldValue={updateUiFieldValue}
             onMessage={handleModuleMessage}
@@ -500,11 +365,11 @@ const ModernConfigForm: React.FC = () => {
       case 'notifications':
         return (
           <NotificationConfigSection
-            preferences={drafts.notificationDraft}
-            sources={drafts.notificationSources}
-            events={drafts.notificationEvents}
-            loading={drafts.notificationLoading}
-            onChange={drafts.setNotificationDraft}
+            preferences={drafts.notifications.draft}
+            sources={drafts.notifications.catalog.sources}
+            events={drafts.notifications.catalog.events}
+            loading={drafts.notifications.loading}
+            onChange={drafts.notifications.setDraft}
             {...props}
           />
         )
@@ -512,23 +377,23 @@ const ModernConfigForm: React.FC = () => {
         return (
           <UsersConfigSection
             onMessage={(msg, type = 'info') => showMessage(msg, type)}
-            allowRegister={drafts.oauthDraft.allowLocalRegistration}
-            allowRegisterLoading={drafts.oauthLoading}
+            allowRegister={drafts.oauth.draft.allowLocalRegistration}
+            allowRegisterLoading={drafts.oauth.loading}
             onAllowRegisterChange={(allowLocalRegistration) =>
-              drafts.setOAuthDraft((current) => ({
+              drafts.oauth.setDraft((current) => ({
                 ...current,
                 allowLocalRegistration,
               }))
             }
             privateTappInstallPreset={(() => {
-              const d = drafts.oauthDraft
+              const d = drafts.oauth.draft
               if (d.privateTappInstallCleanup === 'logout') return 'logout'
               // 保留精确天数（含非预设如 30）。
               return String(d.privateTappInstallInactivityDays)
             })()}
-            privateTappInstallLoading={drafts.oauthLoading}
+            privateTappInstallLoading={drafts.oauth.loading}
             onPrivateTappInstallPresetChange={(preset) =>
-              drafts.setOAuthDraft((current) => {
+              drafts.oauth.setDraft((current) => {
                 if (preset === 'logout') {
                   return {
                     ...current,
@@ -541,7 +406,9 @@ const ModernConfigForm: React.FC = () => {
                   ...current,
                   privateTappInstallCleanup: 'inactivity',
                   privateTappInstallInactivityDays:
-                    Number.isFinite(days) && days >= 1 ? Math.min(365, days) : 14,
+                    Number.isFinite(days) && days >= 1
+                      ? Math.min(365, days)
+                      : 14,
                 }
               })
             }
@@ -565,7 +432,7 @@ const ModernConfigForm: React.FC = () => {
     }
   }
 
-  if (loading) {
+  if (bag.loading || (!bag.ready && !bag.error)) {
     return (
       <div className="modern-config-loading" role="status" aria-live="polite">
         <Spinner size="lg" color="primary" />
@@ -573,7 +440,7 @@ const ModernConfigForm: React.FC = () => {
     )
   }
 
-  if (!config) {
+  if (!config || bag.error) {
     return (
       <div
         className="modern-config-error"
@@ -759,13 +626,7 @@ const ModernConfigForm: React.FC = () => {
             <SettingsPageActionsProvider
               value={{
                 resetCurrentPage: handleResetCurrentPage,
-                canResetCurrentPage: ![
-                  'about',
-                  'updater',
-                  'platforms',
-                  'oauth',
-                  'users',
-                ].includes(activeSection),
+                canResetCurrentPage: nav.canResetCurrentPage,
                 // 移动端选项页标题栏内嵌返回；平台二级页用 headerLeading 覆盖，先回列表再回菜单。
                 onMobileBack: isMobileLayout
                   ? handleMobileBackToNav
@@ -818,4 +679,11 @@ const ModernConfigForm: React.FC = () => {
   )
 }
 
-export default ModernConfigForm
+export default function ConfigForm() {
+  const { user } = useAuth()
+  return (
+    <ConfigDefaultsProvider>
+      <ModernConfigForm key={user?.id ?? 'anonymous'} />
+    </ConfigDefaultsProvider>
+  )
+}

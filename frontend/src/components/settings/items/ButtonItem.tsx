@@ -73,7 +73,6 @@ export const ButtonItem = React.memo<ButtonItemProps>(
         size={size}
         className={`setting-item-button ${className}`}
         disabled={disabled}
-        contentRight={true}
       >
         <div className="setting-button-row">
           <SettingsButton

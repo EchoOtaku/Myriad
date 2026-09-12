@@ -615,7 +615,7 @@
     "connection": {
       "what": "Ob Tripo 3D aktiviert ist und welcher API-Endpunkt und Schlüssel genutzt wird.",
       "chain": "1) Aktivieren an, API-Schlüssel (und optionale Basis-URL) ausfüllen → Konfiguration unten speichern.\n2) Vollständig unabhängig von der Bilderzeugung unter „KI-Konfiguration“: Referenzbilder sind nur Eingaben in die 3D-Pipeline, nicht dieselben Schlüssel.\n3) Nur wenn aktiviert und der Schlüssel gültig ist, dürfen Aufgaben angelegt werden, die Tripo-Guthaben verbrauchen.\n4) Der Schlüssel liegt nur auf dem Server — nie an Browser gesendet oder in Modelldateien eingebettet.\n5) Ausgehender Verkehr nutzt den globalen Proxy unter Erweiterte Einstellungen; Tripo öffnet keinen eigenen Netzpfad.",
-      "frontend": "Einstellungen → Labor → Gruppe „Tripo-Verbindung“.\nEinstiege zur 3D-Aufgabenanlage (Admin).",
+      "frontend": "Einstellungen → Labor → Gruppe „Tripo“.\nEinstiege zur 3D-Aufgabenanlage (Admin).",
       "notes": "Den Schlüssel von platform.tripo3d.ai holen. Aktivieren aus graut Felder darunter, behält aber, was Sie bereits ausgefüllt haben."
     },
     "enabled": {
@@ -639,7 +639,7 @@
     "webBudget": {
       "what": "Standard-Erzeugungsbudget für Web/WebGL-Szenen: welches Low-Poly-Modell, Face-Cap und maximale Größe zum Speichern.",
       "chain": "1) Das sind Standard-Anfrageparameter; ein einzelner Aufruf kann sie überschreiben, und Ergebnisse werden nach der Erzeugung erneut geprüft.\n2) Zielt auf Ein-Charakter-Webszenen: Balance aus Aussehen und mobiler Leistung.\n3) Zu viele Faces oder ein zu großer Download verlangsamen Download und Bildrate; zu niedrig verwässert Details.\n4) Unabhängig von KI-Text-zu-Bild-Auflösung/Modellen.",
-      "frontend": "Gruppe „Web-Modellbudget“; Ergebnisse werden langlebige lokale Assets, keine temporären externen Links.",
+      "frontend": "Standard-Low-Poly, Flächenlimit und maximale Größe in der Gruppe „Tripo“; Ergebnisse werden langlebige lokale Assets, keine temporären externen Links.",
       "notes": "Flächenlimit etwa 4.000–8.000 empfohlen (Standard 5.000). Budget ändern baut alte Modelle nicht neu."
     },
     "model": {
@@ -663,7 +663,7 @@
     "taskControl": {
       "what": "Wie das Backend auf Tripo-Jobs wartet: wie oft abfragen und wie lange warten.",
       "chain": "1) Nach dem Anlegen Status im Intervall abfragen, bis Erfolg, Fehler oder Zeitüberschreitung.\n2) Bei Erfolg zügig herunterladen und speichern, bevor temporäre URLs ablaufen.\n3) Ein zu kurzes Intervall kann Anbieter-Ratenlimits treffen; zu lang lässt Fortschritt festgefahren wirken.\n4) Unabhängig von der Verbindung: bei Aktivieren/Schlüssel aus wirken diese ebenfalls nicht.",
-      "frontend": "Gruppe „Aufgabensteuerung“. Nutzer spüren vor allem „wie lange, bis ein Modell erscheint“.",
+      "frontend": "Abfrageintervall und Aufgaben-Zeitüberschreitung in der Gruppe „Tripo“. Nutzer spüren vor allem „wie lange, bis ein Modell erscheint“.",
       "notes": "Vorgaben etwa 2 s Abfrage und etwa 15 Minuten Zeitüberschreitung entsprechen üblicher Anbieterführung."
     },
     "pollInterval": {

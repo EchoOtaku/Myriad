@@ -3,6 +3,7 @@ import type { LocaleConfig } from '../../../i18n/assembleLocale'
 import type { ConfigSearchableItem } from '../../settings/guides/configSearch'
 import type { Config } from './types'
 import { buildGuideSearchIndex } from '../../settings/guides/guideSearchIndex'
+import { configSectionCatalog } from './configSections'
 
 export interface ConfigSearchI18n {
   config: {
@@ -21,8 +22,8 @@ export interface ConfigSearchI18n {
     agentHeartbeatTitle: string
     agentSkillsTitle: string
     agentMemoryTitle: string
-    tripo: string
-    tripoDesc: string
+    lab: string
+    labDesc: string
     basic: string
     basicDesc: string
     oauth: string
@@ -72,28 +73,43 @@ export function buildSearchableContent(
   const isAdmin = options?.isAdmin !== false // default include; pass false to filter
   const agentTitle = options?.agentTitle?.trim() || t.config.agent
 
-  const items: ConfigSearchableItem[] = []
-
-  items.push({
+  const sections = configSectionCatalog(t, isAdmin, agentTitle)
+  const visibleSections = new Set<string>(sections.map((section) => section.id))
+  const items: ConfigSearchableItem[] = sections.map((section) => ({
     type: 'section',
-    section: 'platforms',
-    title: t.config.platforms,
-    description: t.config.platformsDesc,
-    keywords: [
-      ...t.config.searchKeywords.platforms,
-      ...config.platforms.flatMap((p) => {
-        const n = p.name.trim()
-        return n ? [n, n.toLowerCase()] : []
+    section: section.id,
+    title: section.title,
+    description: section.description,
+    keywords: section.keywords,
+  }))
+  items
+    .find((item) => item.section === 'platforms')
+    ?.keywords.push(
+      ...config.platforms.flatMap((platform) => {
+        const name = platform.name.trim()
+        return name ? [name, name.toLowerCase()] : []
       }),
-    ],
-  })
+    )
+  items
+    .find((item) => item.section === 'agent')
+    ?.keywords.push(
+      t.config.agent,
+      agentTitle,
+      t.config.agentChannelsTitle,
+      t.config.agentChannelAdd,
+      t.config.agentHeartbeatTitle,
+      t.config.agentSkillsTitle,
+      t.config.agentMemoryTitle,
+    )
 
   items.push({
     type: 'section',
     section: 'platforms',
     title: t.config.connectedPlatforms,
     description: t.config.connectedPlatformsDesc,
-    keywords: Iterator.from(t.config.searchKeywords.connectedPlatforms).toArray(),
+    keywords: Iterator.from(
+      t.config.searchKeywords.connectedPlatforms,
+    ).toArray(),
   })
 
   items.push({
@@ -142,55 +158,6 @@ export function buildSearchableContent(
   })
 
   items.push({
-    type: 'section',
-    section: 'ai',
-    title: t.config.ai,
-    description: t.config.aiDesc,
-    keywords: Iterator.from(t.config.searchKeywords.ai).toArray(),
-  })
-
-  items.push({
-    type: 'section',
-    section: 'agent',
-    title: agentTitle,
-    description: t.config.agentDesc,
-    keywords: [
-      ...t.config.searchKeywords.agent,
-      t.config.agent,
-      ...(agentTitle !== t.config.agent ? [agentTitle] : []),
-      t.config.agentChannelsTitle,
-      t.config.agentChannelAdd,
-      t.config.agentHeartbeatTitle,
-      t.config.agentSkillsTitle,
-      t.config.agentMemoryTitle,
-    ],
-  })
-
-  items.push({
-    type: 'section',
-    section: 'tripo',
-    title: t.config.tripo,
-    description: t.config.tripoDesc,
-    keywords: Iterator.from(t.config.searchKeywords.tripo).toArray(),
-  })
-
-  items.push({
-    type: 'section',
-    section: 'basic',
-    title: t.config.basic,
-    description: t.config.basicDesc,
-    keywords: Iterator.from(t.config.searchKeywords.basic).toArray(),
-  })
-
-  items.push({
-    type: 'section',
-    section: 'oauth',
-    title: t.config.oauth,
-    description: t.config.oauthDesc,
-    keywords: Iterator.from(t.config.searchKeywords.oauth).toArray(),
-  })
-
-  items.push({
     type: 'alias',
     section: 'modules',
     title: t.config.music,
@@ -207,22 +174,6 @@ export function buildSearchableContent(
   })
 
   items.push({
-    type: 'section',
-    section: 'notifications',
-    title: t.notificationCenter.title,
-    description: t.notificationCenter.settingsDesc,
-    keywords: Iterator.from(t.config.searchKeywords.notifications).toArray(),
-  })
-
-  items.push({
-    type: 'section',
-    section: 'advanced',
-    title: t.config.advanced,
-    description: t.config.advancedDesc,
-    keywords: Iterator.from(t.config.searchKeywords.advanced).toArray(),
-  })
-
-  items.push({
     type: 'alias',
     section: 'advanced',
     title: t.config.mcpTitle,
@@ -230,49 +181,9 @@ export function buildSearchableContent(
     keywords: Iterator.from(t.config.searchKeywords.mcp).toArray(),
   })
 
-  items.push({
-    type: 'section',
-    section: 'about',
-    title: t.config.about,
-    description: t.config.aboutDesc,
-    keywords: Iterator.from(t.config.searchKeywords.about).toArray(),
-  })
-
-  items.push({
-    type: 'section',
-    section: 'permissions',
-    title: t.config.permissions,
-    description: t.config.permissionsDesc,
-    keywords: Iterator.from(t.config.searchKeywords.permissions).toArray(),
-  })
-
-  items.push({
-    type: 'section',
-    section: 'users',
-    title: t.config.users,
-    description: t.config.usersDesc,
-    keywords: Iterator.from(t.config.searchKeywords.users).toArray(),
-  })
-
-  if (isAdmin) {
-    items.push({
-      type: 'section',
-      section: 'federation',
-      title: t.config.federation,
-      description: t.config.federationDesc,
-      keywords: Iterator.from(t.config.searchKeywords.federation).toArray(),
-    })
-  }
-
-  items.push({
-    type: 'section',
-    section: 'modules',
-    title: t.config.moduleSettings,
-    description: t.config.moduleSettingsDesc,
-    keywords: Iterator.from(t.config.searchKeywords.modules).toArray(),
-  })
-
-  const guideEntries = buildGuideSearchIndex(locale)
+  const guideEntries = buildGuideSearchIndex(locale).filter((guide) =>
+    visibleSections.has(guide.section),
+  )
   for (const g of guideEntries) {
     items.push({
       type: 'guide',

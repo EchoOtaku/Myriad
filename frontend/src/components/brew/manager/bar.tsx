@@ -708,8 +708,6 @@ export function BrewBarTags({
     importFile: (event: ChangeEvent<HTMLInputElement>) => void
     loading: boolean
     progress: ImportProgress | null
-    success: string | null
-    error: string | null
     inputRef: RefObject<HTMLInputElement | null>
   }
   sourcesCount: number

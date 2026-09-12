@@ -357,28 +357,22 @@ export const AgentConfigSection: React.FC<AgentConfigSectionProps> = ({
       <SettingGroup
         title={t.config.agentPersona}
         icon={<LuNotebookPen />}
-        description={t.config.agentOptionsDesc}
+        description={personaGateLead}
+        titleExtra={
+          <SettingTitleTag variant="beta">
+            {t.config.agentPersonaBeta}
+          </SettingTitleTag>
+        }
+        switch={{
+          checked: meropeOn,
+          onChange: (value) =>
+            updateUiFieldValue('merope_enabled', value ? 'true' : 'false'),
+          disabled: !proEnabled,
+          ariaLabel: t.config.agentPersona,
+          tourAnchor: 'config-ai-persona-toggle',
+        }}
         {...bindGuide('agent.agentPersona', g.agent.agentPersona)}
       >
-        <AgentNestedSection
-          title={t.config.agentPersona}
-          description={personaGateLead}
-          {...personaGuide}
-          toggleTourAnchor="config-ai-persona-toggle"
-          badge={
-            <SettingTitleTag variant="beta">
-              {t.config.agentPersonaBeta}
-            </SettingTitleTag>
-          }
-          toggle={{
-            checked: meropeOn,
-            onChange: (value) =>
-              updateUiFieldValue('merope_enabled', value ? 'true' : 'false'),
-            disabled: !proEnabled,
-            ariaLabel: t.config.agentPersona,
-            title: t.config.agentPersonaHint,
-          }}
-        >
         {meropeOn ? (
           <div data-tour="config-ai-persona-card">
           <InfoActionCard
@@ -450,7 +444,6 @@ export const AgentConfigSection: React.FC<AgentConfigSectionProps> = ({
           </InfoActionCard>
           </div>
         ) : null}
-        </AgentNestedSection>
         <AgentNestedSection
           title={t.config.agentPersonaSpeech}
           description={t.config.agentPersonaSpeechHint}

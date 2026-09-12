@@ -223,8 +223,10 @@ use local stdio, which still shares its host UID/filesystem/network.
 Gateway definitions select `transport: "gateway"` and contain no command, arguments
 or environment. One definition represents the endpoint's aggregate tool collection;
 IDs do not select individual remote servers. Use one enabled gateway entry. See
-[MCP gateway deployment candidate](MCP_GATEWAY.md) for a pinned upstream Compose
-example, migration steps and its unverified isolation/lifecycle limits.
+[MCP gateway deployment](MCP_GATEWAY.md) for the pinned static gateway and fixed
+tool containers. The tested deployment uses bubblewrap, cgroup limits and an
+external watchdog to bound untrusted guests; it does not mount the Docker socket.
+The upstream dynamic sibling-container mode failed cleanup tests and is excluded.
 The operator sets `MYRIAD_MCP_GATEWAY_URL` and
 `MYRIAD_MCP_GATEWAY_TOKEN` in the persona deployment; the token must contain at least
 32 printable non-space ASCII bytes. Neither is accepted from tool definitions or
@@ -245,8 +247,8 @@ a one-second cleanup budget and bounded detached cleanup concurrency.
 not inspect or attest the remote gateway's sandbox policy. Before migrating an
 installation with enabled MCP servers, the gateway/server deployment must supply
 per-server filesystem/network/resource isolation and bounded cleanup of detached
-descendants. That deployment and its fault tests are still outstanding; merely
-setting the endpoint does not complete the isolation project. Do not re-enable
+descendants. The bundled fixed-container example supplies and tests those controls;
+merely setting another endpoint does not establish equivalent isolation. Do not re-enable
 production stdio as a gateway-outage fallback.
 
 ## Validation and remaining work
@@ -262,12 +264,47 @@ MYRIAD_NOTIFICATION_BRIDGE_TEST_DB='<disposable PostgreSQL URL>' \
 
 Do not point it at a production database. It creates and drops a uniquely named
 schema. Guard and topology unit tests run with `cargo test --manifest-path
-updater/Cargo.toml --lib`. These tests do not establish container OOM behavior,
-end-to-end rollback recovery or homepage latency under federation load. Those need
-an actual container-engine fault-injection run.
+updater/Cargo.toml --lib`. The unit tests establish policy decisions; the separate container run below
+checks their deployment behavior.
 
-MCP per-server OS isolation and the managed gateway deployment remain unfinished.
-Production local stdio is blocked; development stdio process groups do not prevent
-filesystem/network access. Remote HTTP alone does not guarantee sandboxing or
-termination of a remote server. Shared PostgreSQL/storage pressure also
-requires load tests; process separation alone cannot promise homepage latency.
+Production local stdio is blocked. The optional fixed-container MCP deployment
+provides OS/resource isolation and bounded guest destruction; development stdio
+and independently operated remote endpoints do not inherit those guarantees.
+Shared PostgreSQL and storage remain common failure domains: process separation
+cannot guarantee homepage latency for arbitrary database locks or host failure.
+
+
+### Container acceptance (2026-09-12)
+
+A disposable deployment ran on Docker Desktop Engine 29.6.2 / arm64, using the
+actual published v0.4.8 backend/frontend images and locally built current images
+under the test tag `v0.4.9` (dev profile, official runtime stages). Proxy, updater
+and Guard were real containers; Guard used its exact image digest and normal
+policy. No production data, credentials, registry pushes or live deployment were
+involved. Test healthcheck intervals were shortened; service resource limits and
+filesystem/network restrictions came from official Compose.
+
+| Fault / transition | Observed result |
+| --- | --- |
+| Persona stopped / CPU saturated | Homepage HTML, public config and installed TAPP resources all HTTP 200 (27 / 33 requests); maximum 129 / 57 ms |
+| Federation stopped / CPU saturated | Same paths all HTTP 200 (27 / 33 requests); maximum 48 / 117 ms |
+| Persona / federation memory exhaustion | Each cgroup recorded an OOM kill; 75 requests per case all HTTP 200; maximum 73 / 187 ms |
+| Shared PostgreSQL pressure | 12 concurrent CPU-bound SQL queries, each limited to 15 seconds; 39 application requests all HTTP 200, maximum 296 ms |
+| Both worker domains stopped | TAPP runtime grant issued; authorized private storage write/read succeeded |
+| v0.4.8 → split current topology | Real old database migrated; web, persona and federation independently healthy |
+| Current → real v0.4.8 rollback | Actual updater API / Guard restored the database canary and old images; Docker events showed both workers stopped before PostgreSQL; worker containers stayed stopped; homepage/API recovered |
+| Current → current rollback | Actual updater / Guard restored the database canary and recreated web plus both workers; all three became healthy |
+| Snapshot missing during rollback | Actual restoration error left backend, frontend, both workers and PostgreSQL stopped, with maintenance active; no automatic restart on uncertain data |
+
+The run exposed and fixed two rollback defects: an EROFS rename under the
+read-only deployment root now uses the existing staged in-place restore; failed
+restoration no longer restarts writers. Guard also accepts official `myriad-*`
+service aliases when the Compose project name is customized, without allowing
+another service's identity. The real backend image build required copying
+`backend/i18n` for compile-time embedded locales.
+
+The upgrade above uses local Compose with prebuilt images; release discovery,
+registry/signature verification and TCB self-update are outside this acceptance
+run. The traffic checks exercise HTTP and TAPP grants/storage, not browser rendering.
+Finite resource-pressure results do not establish an availability guarantee for
+arbitrary database locks, shared disk exhaustion, kernel failure or other hosts.

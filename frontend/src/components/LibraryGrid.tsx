@@ -170,6 +170,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
   const [layouts, setLayouts] = useState<Map<string, CardLayout>>(new Map())
   const [preferredLayout, setPreferredLayout] =
     useState<LibraryLayoutMode>('list')
+  const [layoutKnown, setLayoutKnown] = useState(false)
   const { highHardware } = usePerformanceProfile()
   const layoutMode = resolveLibraryLayoutMode(preferredLayout, highHardware)
   const [visibleCount, setVisibleCount] = useState(20)
@@ -340,7 +341,10 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
 
   useLayoutEffect(() => {
     const root = document.documentElement
-    const active = layoutMode === 'canvas'
+    const prev = getLibraryTourSurfaceSnapshot()
+    const active = layoutKnown && layoutMode === 'canvas'
+    if (layoutKnown) root.dataset.libraryLayoutResolved = '1'
+    else delete root.dataset.libraryLayoutResolved
     if (active) {
       root.dataset.libraryCanvas = 'active'
       softLockWallpaperForLibraryCanvas()
@@ -352,10 +356,13 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
       delete root.dataset.libraryCanvas
       delete root.dataset.libraryCanvasSurface
       delete root.dataset.libraryEmpty
+    }
+    if (getLibraryTourSurfaceSnapshot() !== prev) {
       window.dispatchEvent(new Event('libraryCanvasModeChanged'))
     }
 
     return () => {
+      delete root.dataset.libraryLayoutResolved
       if (active && root.dataset.libraryCanvas === 'active') {
         delete root.dataset.libraryCanvas
         delete root.dataset.libraryCanvasSurface
@@ -363,7 +370,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         window.dispatchEvent(new Event('libraryCanvasModeChanged'))
       }
     }
-  }, [layoutMode])
+  }, [layoutKnown, layoutMode])
 
   const containerWidthRef = useRef<number>(0)
   const {
@@ -638,6 +645,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         setPreferredLayout(
           data.preferences?.layout === 'canvas' ? 'canvas' : 'list',
         )
+        setLayoutKnown(true)
         setAllItems(balanced)
         nextLibraryOffsetRef.current = data.next_offset ?? null
         setLibraryHasMore(Boolean(data.has_more && data.next_offset != null))
@@ -660,7 +668,10 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     const handlePreferencesUpdated = (event: Event) => {
       const detail = (event as CustomEvent<LibraryPreferencesUpdatedDetail>)
         .detail
-      if (detail?.layout) setPreferredLayout(detail.layout)
+      if (detail?.layout) {
+        setPreferredLayout(detail.layout)
+        setLayoutKnown(true)
+      }
       void fetchLibraryData()
     }
     window.addEventListener(

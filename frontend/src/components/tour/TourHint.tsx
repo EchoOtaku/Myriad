@@ -182,7 +182,7 @@ export function TourHint() {
   }, [librarySurface, surface])
 
   if (!hasChecked || tourActive) return null
-  if (librarySurface === 'pending') return null
+  if (librarySurface === 'pending' || librarySurface === 'empty') return null
   if (!def) return null
   if (isTourDone(def.id)) return null
   if (snoozedId === def.id && !leaving) return null

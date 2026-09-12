@@ -69,13 +69,15 @@ settings/
 | **多子分类网格**（嵌套多个 SettingGroup，2 列自适应） | **`SettingGroupGrid`**（`columns` / `minColumnWidth` / `variant` / **`align`**） |
 | **标题旁标签**（跳转 / 轻提示） | **`SettingTitleTag`**（经 `SettingGroup` 的 `titleExtra`；可选 `detail`；`variant="danger"` 报错；`onDismiss` 可关闭） |
 | **选项字段报错**（贴在 label 旁） | **`SettingFieldErrorTag`** / 设置项 `error` prop（内部用 `SettingTitleTag` danger；更新器区块除外） |
-| **默认值已更新**（可关闭 / 可一点应用） | **`SettingDefaultChangeTag`**（`itemKey` + 可选 `onApply`；点标签写入新默认并关闭；× 仅关闭） |
+| **默认值已更新**（可关闭 / 可一点应用） | **`SettingDefaultChangeTag`**（直接使用时传 `fieldKey`，设置项通过 `itemKey` 关联；可选 `onApply`；点标签写入新默认并关闭；× 仅关闭） |
+
+设置项的 `itemKey` 是逻辑字段键，用于表单名称与提示元数据；DOM id 按组件实例生成，重复字段键也不会相互抢占标签。导览定位使用 `guidePath`。
 
 ### 默认值变更提示
 
-产品默认变更时，在对应选项标题旁显示「默认值有更新」标签（可 × 关闭，状态存 `localStorage`）。
+页面通过 `SettingsDefaultsProvider` 注入提示源；未注入时通用控件不显示产品提示。设置页的 `ConfigDefaultsProvider` 负责默认值目录与持久化。产品默认变更时，在对应选项标题旁显示「默认值有更新」标签（可 × 关闭，状态存 `localStorage`）。
 
-1. 修改代码默认时，同步更新 `settings/settingDefaultChanges.ts` 里的 **`SETTING_PRODUCT_DEFAULTS`**（与 `defaultFieldValues` / 后端默认对齐）。
+1. 修改代码默认时，同步更新 `config/settingDefaultChanges.ts` 里的 **`SETTING_PRODUCT_DEFAULTS`**（与 `defaultFieldValues` / 后端默认对齐）。
 2. 用户点标签「默认值有更新」→ 写入新默认并关闭提示；点 × → 只关闭、不改值。
 3. 关闭后不再显示该次 `from→to` 变更（已写入 draft 的仍需用户保存配置）。
 4. 调试可在控制台：`localStorage.removeItem('myriad_setting_default_notices_v1')` 后刷新。

@@ -26,7 +26,7 @@ export interface SettingOption<T = string> {
 }
 
 export interface BaseSettingItemConfig {
-  /** DOM id/name; not React key */
+  /** Logical field key for form names and injected metadata; DOM ids are instance-unique. */
   itemKey?: string
   label: string
   detail?: ReactNode
@@ -184,6 +184,7 @@ export interface SettingGroupSwitchConfig {
   loading?: boolean
   ariaLabel?: string
   preview?: ToggleSwitchPreview
+  tourAnchor?: string
 }
 
 export interface SettingGroupConfig {

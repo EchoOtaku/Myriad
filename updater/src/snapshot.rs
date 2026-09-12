@@ -11,9 +11,9 @@
 //!
 //! Restore is the reverse: stop postgres, then put the snapshot back into `pgdata`.
 //!
-//! Production reaches pgdata below the single `/host/compose` deployment-root bind, so directory
-//! rename rollback remains available. The in-place replacement path is retained as a filesystem
-//! compatibility fallback.
+//! Production overlays writable pgdata below a read-only deployment-root bind.
+//! Mount-point / read-only-parent rename failures use staged in-place replacement;
+//! installations with a writable parent can still use the rename path.
 
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -160,7 +160,7 @@ impl<'a> SnapshotManager<'a> {
     ///
     /// Strategy:
     /// 1. Prefer renaming the existing pgdata directory aside (fast, clean).
-    /// 2. If rename fails with EBUSY (typical for bind-mount points like `/host/pgdata`),
+    /// 2. If rename fails with EBUSY or EROFS (mount point / read-only parent),
     ///    fall back to in-place content replace: safety-copy current contents under
     ///    `state/snapshots/`, wipe children of the mount, then copy snapshot contents in.
     ///
@@ -213,7 +213,7 @@ impl<'a> SnapshotManager<'a> {
                     info!(snapshot = %snapshot_id, "pgdata restored from snapshot (rename path)");
                     return Ok(());
                 }
-                Err(e) if is_busy(&e) => {
+                Err(e) if requires_in_place_restore(&e) => {
                     warn!(
                         err = %e,
                         path = %self.pgdata.display(),
@@ -238,7 +238,7 @@ impl<'a> SnapshotManager<'a> {
         Ok(())
     }
 
-    /// In-place restore when `pgdata` cannot be renamed (mount point / EBUSY).
+    /// In-place restore when `pgdata` cannot be renamed (mount point / read-only parent).
     async fn restore_in_place(&self, snap_path: &Path, snapshot_id: &str, ts: &str) -> Result<()> {
         std::fs::create_dir_all(&self.pgdata)?;
 
@@ -594,10 +594,11 @@ impl<'a> SnapshotManager<'a> {
     }
 }
 
-fn is_busy(e: &std::io::Error) -> bool {
-    // Linux: EBUSY = 16. Also accept ErrorKind::ResourceBusy / Other with "busy" text
-    // for portability across libc wrappers.
-    e.raw_os_error() == Some(16)
+fn requires_in_place_restore(e: &std::io::Error) -> bool {
+    // The official read-only compose root overlays a writable pgdata mount.
+    // Renaming that mount can fail with EROFS (parent) as well as EBUSY (mount).
+    // The existing staged in-place path still requires pgdata itself to be writable.
+    matches!(e.raw_os_error(), Some(16 | 30))
         || e.kind() == ErrorKind::ResourceBusy
         || e.to_string().to_ascii_lowercase().contains("busy")
 }
@@ -840,13 +841,19 @@ mod tests {
     }
 
     #[test]
-    fn is_busy_detects_ebusy() {
+    fn mount_or_readonly_parent_requires_in_place_restore() {
         let e = std::io::Error::from_raw_os_error(16);
-        assert!(is_busy(&e));
+        assert!(requires_in_place_restore(&e));
+        assert!(requires_in_place_restore(
+            &std::io::Error::from_raw_os_error(30)
+        ));
+        assert!(!requires_in_place_restore(
+            &std::io::Error::from_raw_os_error(13)
+        ));
         let e2 = std::io::Error::other("Device or resource busy");
-        assert!(is_busy(&e2));
+        assert!(requires_in_place_restore(&e2));
         let e3 = std::io::Error::new(ErrorKind::NotFound, "no such file");
-        assert!(!is_busy(&e3));
+        assert!(!requires_in_place_restore(&e3));
     }
 
     fn plant_snapshot_meta(state: &StateDir, id: &str) {

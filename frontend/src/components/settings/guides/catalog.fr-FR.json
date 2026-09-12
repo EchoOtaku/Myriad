@@ -615,7 +615,7 @@
     "connection": {
       "what": "Si Tripo 3D est activé, et quel point d’accès API et quelle clé utiliser.",
       "chain": "1) Activez, remplissez la clé API (et l’URL de base facultative) → enregistrez la config en bas.\n2) Entièrement indépendant de la génération d’images de « Configuration IA » : les images de référence ne sont que des entrées du pipeline 3D, pas les mêmes clés.\n3) Seulement activé et clé valide, des tâches qui consomment des crédits Tripo peuvent être créées.\n4) La clé n’est stockée que sur le serveur — jamais envoyée aux navigateurs ni embarquée dans les fichiers de modèle.\n5) Le trafic sortant utilise le proxy global sous Paramètres avancés ; Tripo n’ouvre pas un chemin réseau séparé.",
-      "frontend": "Paramètres → Laboratoire → groupe « Connexion Tripo ».\nPoints d’entrée de création de tâches 3D (administrateur).",
+      "frontend": "Paramètres → Laboratoire → groupe « Tripo ».\nPoints d’entrée de création de tâches 3D (administrateur).",
       "notes": "Obtenez la clé sur platform.tripo3d.ai. Couper l’activation grise les champs ci-dessous mais garde ce que vous avez déjà rempli."
     },
     "enabled": {
@@ -639,7 +639,7 @@
     "webBudget": {
       "what": "Budget de génération par défaut pour les scènes Web/WebGL : quel modèle low-poly, plafond de faces, et taille max à persister.",
       "chain": "1) Ce sont des paramètres de requête par défaut ; un appel unique peut les remplacer, et les résultats sont inspectés à nouveau après génération.\n2) Destiné aux scènes Web à un personnage : un équilibre entre rendu et performance mobile.\n3) Trop de faces ou un téléchargement trop lourd ralentissent téléchargements et cadence ; trop bas brouille le détail.\n4) Sans lien avec la résolution/les modèles texte-vers-image de l’IA.",
-      "frontend": "Groupe « Budget de modèle Web » ; les résultats deviennent des assets locaux durables, pas des liens externes temporaires.",
+      "frontend": "Modèle low-poly, plafond de faces et taille max dans le groupe « Tripo » ; les résultats deviennent des assets locaux durables, pas des liens externes temporaires.",
       "notes": "Plafond de faces ~4 000–8 000 recommandé (défaut 5 000). Changer le budget ne reconstruit pas les anciens modèles."
     },
     "model": {
@@ -663,7 +663,7 @@
     "taskControl": {
       "what": "Comment le serveur attend les tâches Tripo : à quelle fréquence interroger et combien de temps attendre.",
       "chain": "1) Après création, interroger l’état à l’intervalle jusqu’à succès, échec ou délai dépassé.\n2) En succès, télécharger et persister vite avant que les URL temporaires n’expirent.\n3) Un intervalle trop court peut heurter les limites du fournisseur ; trop long, l’avancement paraît bloqué.\n4) Indépendant de la connexion : activation/clé coupées, ceux-ci n’ont pas d’effet non plus.",
-      "frontend": "Groupe « Contrôle des tâches ». Les utilisateurs sentent surtout « combien de temps jusqu’à ce qu’un modèle apparaisse ».",
+      "frontend": "Intervalle d’interrogation et délai de tâche dans le groupe « Tripo ». Les utilisateurs sentent surtout « combien de temps jusqu’à ce qu’un modèle apparaisse ».",
       "notes": "Défauts ~2 s d’interrogation et ~15 minutes de délai correspondent aux conseils courants des fournisseurs."
     },
     "pollInterval": {

@@ -25,20 +25,21 @@ export const UI_RESET_KEYS: readonly string[] = Object.freeze([
   'evocative_ripple_quality',
 ])
 
-export const METADATA_SOFT_RELOAD_UI_BAG_KEYS: readonly string[] = Object.freeze([
-  'site_title',
-  'site_description',
-  'site_favicon',
-  'site_keywords',
-  'site_og_image',
-  'google_site_verification',
-  'site_noindex',
-  'site_visibility_policy',
-  'site_ai_intro',
-  'ga_measurement_id',
-  'umami_website_id',
-  'umami_script_url',
-])
+export const METADATA_SOFT_RELOAD_UI_BAG_KEYS: readonly string[] =
+  Object.freeze([
+    'site_title',
+    'site_description',
+    'site_favicon',
+    'site_keywords',
+    'site_og_image',
+    'google_site_verification',
+    'site_noindex',
+    'site_visibility_policy',
+    'site_ai_intro',
+    'ga_measurement_id',
+    'umami_website_id',
+    'umami_script_url',
+  ])
 
 export const FOOTER_SOFT_RELOAD_UI_BAG_KEYS: readonly string[] = Object.freeze([
   'site_icp',
@@ -95,15 +96,16 @@ export const RUNTIME_RELOAD_UI_BAG_KEYS: readonly string[] = Object.freeze([
   ...AGENT_UI_RESET_KEYS,
 ])
 
-export const WALLPAPER_SOFT_RELOAD_UI_BAG_KEYS: readonly string[] = Object.freeze([
-  'wallpaper_url',
-  'wallpaper_blur',
-  'evocative_parallax',
-  'evocative_dynamic_blur',
-  'evocative_ripple',
-  'evocative_fps',
-  'evocative_ripple_quality',
-])
+export const WALLPAPER_SOFT_RELOAD_UI_BAG_KEYS: readonly string[] =
+  Object.freeze([
+    'wallpaper_url',
+    'wallpaper_blur',
+    'evocative_parallax',
+    'evocative_dynamic_blur',
+    'evocative_ripple',
+    'evocative_fps',
+    'evocative_ripple_quality',
+  ])
 
 export function bagFieldValue(
   fields: Array<{ key: string; value: string }> | undefined,
@@ -125,22 +127,6 @@ function bagKeysChanged(
   return false
 }
 
-interface ConfigShape {
-  platforms: unknown
-  auto_fetch: unknown
-  ai_config: unknown
-  ui_config?: { config_fields?: Array<{ key: string; value: string }> }
-}
-
-/** true → window.location.reload */
-export function configChangesNeedHardReload(
-  _next: ConfigShape,
-  _prev: ConfigShape,
-  _deepEqual: (a: unknown, b: unknown) => boolean,
-): boolean {
-  return false
-}
-
 export function configChangesNeedRuntimeReload(
   next: {
     ui_config?: { config_fields?: Array<{ key: string; value: string }> }
@@ -156,9 +142,9 @@ export function configChangesNeedRuntimeReload(
   )
 }
 
-export const PERSONA_PUBLIC_NAME_UI_BAG_KEYS: readonly string[] = Object.freeze([
-  'merope_enabled',
-])
+export const PERSONA_PUBLIC_NAME_UI_BAG_KEYS: readonly string[] = Object.freeze(
+  ['merope_enabled'],
+)
 
 export function configChangesNeedPersonaPublicNameRefresh(
   next: {

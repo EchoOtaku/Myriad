@@ -108,7 +108,7 @@
 }
 
 .toast-message:has(.toast-close-btn) {
-  padding-right: 0.375rem;
+  padding-right: 0.625rem;
 }
 
 html[data-perf-mode='light'] .toast-message,

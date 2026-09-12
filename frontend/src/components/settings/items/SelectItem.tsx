@@ -1,5 +1,5 @@
 import type { SelectSettingConfig } from '../types'
-import React, { useCallback } from 'react'
+import React, { useCallback, useId } from 'react'
 import { guideDomProps } from '../guides/guideAnchor'
 import { SettingDefaultChangeTag } from '../SettingDefaultChangeTag'
 import { SettingFieldErrorTag } from '../SettingFieldErrorTag'
@@ -39,7 +39,7 @@ function SelectItemComponent<T extends string = string>({
     [onChange, disabled, loading],
   )
 
-  const id = `setting-select-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}`
+  const id = `setting-select-${itemKey || label.replaceAll(/\s+/g, '-').toLowerCase()}-${useId()}`
   const anchorProps = guideDomProps(guidePath)
 
   return (
@@ -69,7 +69,13 @@ function SelectItemComponent<T extends string = string>({
         <FieldSelect
           id={id}
           value={value as T & string}
-          options={options as Array<{ value: T & string; label: string; disabled?: boolean }>}
+          options={
+            options as Array<{
+              value: T & string
+              label: string
+              disabled?: boolean
+            }>
+          }
           onChange={handleChange as (v: T & string) => void}
           disabled={disabled || loading}
           className={error ? 'has-error' : ''}

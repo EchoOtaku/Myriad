@@ -1,0 +1,145 @@
+import { expect, test } from '@playwright/test'
+
+interface SettingsFixture {
+  bagEffectIds: () => { id: string; after?: string[] }[]
+  writes: string[]
+  refreshes: string[]
+  failSecond: (value: boolean) => void
+  deferFirst: () => void
+  release: () => void
+  save: () => Promise<void>
+  reset: () => Promise<void>
+}
+declare global {
+  interface Window {
+    settingsFixture: SettingsFixture
+  }
+}
+
+test.beforeEach(async ({ page }, testInfo) => {
+  const query = testInfo.title.startsWith('an unavailable independent domain') ? '?failedLoad=1' : ''
+  await page.goto(`/settingsEditor.html${query}`)
+  await expect(page.getByLabel('First', { exact: true })).toHaveValue('saved')
+})
+
+test('independent save failure preserves retry and refreshes the acknowledged domain', async ({
+  page,
+}) => {
+  await page.evaluate(() => window.settingsFixture.failSecond(true))
+  await page.getByLabel('First', { exact: true }).fill('first edit')
+  await page.getByLabel('Second', { exact: true }).fill('second edit')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByTestId('message')).toContainText(
+    'Second endpoint unavailable',
+  )
+  await expect(page.getByTestId('dirty')).toHaveText('true')
+  expect(await page.evaluate(() => window.settingsFixture.refreshes)).toEqual([
+    'first',
+  ])
+  await page.evaluate(() => window.settingsFixture.failSecond(false))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByTestId('dirty')).toHaveText('false')
+  expect(
+    await page.evaluate(() =>
+      window.settingsFixture.writes.map((value) => value.split(':')[0]),
+    ),
+  ).toEqual(['first', 'second', 'second'])
+})
+
+test('save and reset share one lock, and in-flight edits remain dirty', async ({
+  page,
+}) => {
+  await page.getByLabel('First', { exact: true }).fill('submitted')
+  await page.evaluate(() => {
+    window.settingsFixture.deferFirst()
+    void window.settingsFixture.save()
+    void window.settingsFixture.save()
+    void window.settingsFixture.reset()
+  })
+  await expect(
+    page.getByRole('button', { name: 'Save', exact: true }),
+  ).toBeDisabled()
+  await page.getByLabel('First', { exact: true }).fill('new edit')
+  await page.evaluate(() => window.settingsFixture.release())
+  await expect(
+    page.getByRole('button', { name: 'Save', exact: true }),
+  ).toBeEnabled()
+  await expect(page.getByTestId('dirty')).toHaveText('true')
+  await expect(page.getByLabel('First', { exact: true })).toHaveValue(
+    'new edit',
+  )
+  expect(await page.evaluate(() => window.settingsFixture.writes.length)).toBe(
+    1,
+  )
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByTestId('dirty')).toHaveText('false')
+})
+
+test('page reset persists only the selected fields and leaves siblings dirty', async ({
+  page,
+}) => {
+  await page.getByLabel('First', { exact: true }).fill('old edit')
+  await page.getByLabel('Sibling', { exact: true }).fill('unsaved sibling')
+  await page.getByRole('button', { name: 'Reset first', exact: true }).click()
+  await expect(page.getByLabel('First', { exact: true })).toHaveValue('default')
+  await expect(page.getByLabel('Sibling', { exact: true })).toHaveValue(
+    'unsaved sibling',
+  )
+  await expect(page.getByTestId('dirty')).toHaveText('true')
+  await expect(page.getByTestId('saved')).toHaveText(
+    '{"one":"default","two":"saved"}',
+  )
+})
+
+test('default notices are scoped to their provider and apply through the field callback', async ({
+  page,
+}) => {
+  await expect(
+    page.getByTestId('plain').locator('.setting-title-tag'),
+  ).toHaveCount(0)
+  const tag = page.getByTestId('injected').locator('.setting-title-tag').first()
+  await expect(tag).toBeVisible()
+  await tag.locator('.setting-title-tag-main').click()
+  await expect(page.getByLabel('First', { exact: true })).toHaveValue(
+    'new-default',
+  )
+  await expect(page.getByTestId('dirty')).toHaveText('true')
+  await expect(
+    page.getByTestId('injected').locator('.setting-title-tag'),
+  ).toHaveCount(0)
+})
+
+test('bag changes schedule wallpaper and persona refresh, with runtime dependency', async ({
+  page,
+}) => {
+  const effects = await page.evaluate(() =>
+    window.settingsFixture.bagEffectIds(),
+  )
+  expect(effects.map((effect) => effect.id)).toEqual(
+    expect.arrayContaining(['runtime', 'wallpaper', 'persona-name']),
+  )
+  expect(effects.find((effect) => effect.id === 'persona-name')?.after).toEqual(
+    ['runtime'],
+  )
+  const ids = await page
+    .locator('input[id]')
+    .evaluateAll((inputs) => inputs.map((input) => input.id))
+  expect(new Set(ids).size).toBe(ids.length)
+})
+
+test('an unavailable independent domain does not block saving a loaded page', async ({
+  page,
+}) => {
+  await expect(page.getByTestId('second-ready')).toHaveText('false')
+  await expect(page.getByTestId('message')).toContainText(
+    'Second load unavailable',
+  )
+  await page.getByLabel('First', { exact: true }).fill('available edit')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByTestId('dirty')).toHaveText('false')
+  expect(
+    await page.evaluate(() =>
+      window.settingsFixture.writes.map((value) => value.split(':')[0]),
+    ),
+  ).toEqual(['first'])
+})

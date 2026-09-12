@@ -12,7 +12,7 @@ export const GUIDE_CATALOG_TO_SECTION: Record<
   notifications: 'notifications',
   ai: 'ai',
   agent: 'agent',
-  tripo: 'tripo',
+  tripo: 'lab',
   oauth: 'oauth',
   permissions: 'permissions',
   users: 'users',

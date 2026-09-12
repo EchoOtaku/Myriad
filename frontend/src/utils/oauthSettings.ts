@@ -99,9 +99,9 @@ export async function fetchOAuthSettings(): Promise<OAuthSettings> {
   return normalizeOAuthSettings(data)
 }
 
-export async function updateOAuthSettings(
+export async function writeOAuthSettings(
   settings: OAuthSettings,
-): Promise<OAuthSettings> {
+): Promise<void> {
   const body = JSON.stringify({
     providers: settings.providers.map(normalizeProviderEntry),
     allow_local_registration: settings.allowLocalRegistration,
@@ -141,7 +141,4 @@ export async function updateOAuthSettings(
       throw error
     }
   }
-
-  // Save uses the server snapshot (secret masked).
-  return fetchOAuthSettings()
 }

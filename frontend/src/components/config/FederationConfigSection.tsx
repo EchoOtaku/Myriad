@@ -4,8 +4,6 @@ import type {
   DeliveryStats,
   FederationIdentity,
   FederationInstance,
-  TrustPolicyResponse,
-  UpdateTrustPolicyRequest,
 } from '../../types/federation'
 import type { InfoActionField } from '../settings'
 import type {
@@ -13,6 +11,7 @@ import type {
   ManagedListItem,
   ManagedListStat,
 } from '../settings/ManagedList'
+import type { FederationPolicyDraft } from './federationPolicy'
 import {
   FaCog,
   FaFilter,
@@ -45,70 +44,13 @@ import {
 } from '../settings'
 import { FederationDeliveryQueue } from './FederationDeliveryQueue'
 
-/** owned by ConfigForm save */
-export interface FederationPolicyDraft {
-  minTrust: number
-  allowlistText: string
-  autoDiscover: boolean
-  rateMax: number
-  rateWindow: number
-  rateTrustedMul: number
-}
-
-export const DEFAULT_FEDERATION_POLICY: FederationPolicyDraft = {
-  minTrust: 0,
-  allowlistText: '',
-  autoDiscover: true,
-  rateMax: 100,
-  rateWindow: 60,
-  rateTrustedMul: 5,
-}
-
-export function federationPolicyFromApi(
-  p: TrustPolicyResponse,
-): FederationPolicyDraft {
-  return {
-    minTrust: p.min_trust_level ?? 0,
-    allowlistText: (p.allowed_domains || []).join('\n'),
-    autoDiscover: p.auto_discover !== false,
-    rateMax: p.rate_limit?.max_requests_per_window ?? 100,
-    rateWindow: p.rate_limit?.window_seconds ?? 60,
-    rateTrustedMul: p.rate_limit?.trusted_multiplier ?? 5,
-  }
-}
-
-export function areFederationPoliciesEqual(
-  a: FederationPolicyDraft,
-  b: FederationPolicyDraft,
-): boolean {
-  return (
-    a.minTrust === b.minTrust &&
-    a.allowlistText === b.allowlistText &&
-    a.autoDiscover === b.autoDiscover &&
-    a.rateMax === b.rateMax &&
-    a.rateWindow === b.rateWindow &&
-    a.rateTrustedMul === b.rateTrustedMul
-  )
-}
-
-export function federationPolicyToUpdateRequest(
-  draft: FederationPolicyDraft,
-): UpdateTrustPolicyRequest {
-  const domains = draft.allowlistText
-    .split(/[\n,]+/)
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean)
-  return {
-    min_trust_level: draft.minTrust,
-    allowed_domains: domains,
-    auto_discover: draft.autoDiscover,
-    rate_limit: {
-      max_requests_per_window: draft.rateMax,
-      window_seconds: draft.rateWindow,
-      trusted_multiplier: draft.rateTrustedMul,
-    },
-  }
-}
+export type { FederationPolicyDraft } from './federationPolicy'
+export {
+  areFederationPoliciesEqual,
+  DEFAULT_FEDERATION_POLICY,
+  federationPolicyFromApi,
+  federationPolicyToUpdateRequest,
+} from './federationPolicy'
 
 interface FederationConfigSectionProps {
   title: string
@@ -319,8 +261,7 @@ export const FederationConfigSection: React.FC<
 
   /** apply successful responses only; never wipe a good list on a blip */
   const loadDelivery = useCallback(async (status?: string) => {
-    const statusParam =
-      status && status !== 'all' ? status : undefined
+    const statusParam = status && status !== 'all' ? status : undefined
     const [statsResult, listResult] = await Promise.allSettled([
       federationApi.getDeliveryStats(),
       federationApi.listDelivery(25, undefined, statusParam),
@@ -959,7 +900,10 @@ export const FederationConfigSection: React.FC<
         <SettingGroup
           title={c.federationKnownInstances}
           description={c.federationKnownInstancesDesc}
-          {...bindGuide('federation.knownInstances', g.federation.knownInstances)}
+          {...bindGuide(
+            'federation.knownInstances',
+            g.federation.knownInstances,
+          )}
           icon={<FaServer />}
         >
           <ManagedList
@@ -985,9 +929,7 @@ export const FederationConfigSection: React.FC<
             emptyText={instanceEmptyText}
             footer={instanceFooter}
             maxHeight={instances.length > 8 ? '22rem' : null}
-            maxVisibleItems={
-              instances.length > 8 ? INSTANCE_LIST_CAP : null
-            }
+            maxVisibleItems={instances.length > 8 ? INSTANCE_LIST_CAP : null}
             truncateFooter={(shown, total) =>
               format(c.federationInstanceShowing, { shown, total })
             }
@@ -997,7 +939,10 @@ export const FederationConfigSection: React.FC<
         <SettingGroup
           title={c.federationContentFilters}
           description={c.federationContentFiltersDesc}
-          {...bindGuide('federation.contentFilters', g.federation.contentFilters)}
+          {...bindGuide(
+            'federation.contentFilters',
+            g.federation.contentFilters,
+          )}
           icon={<FaFilter />}
         >
           <ManagedList

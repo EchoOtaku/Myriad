@@ -87,7 +87,10 @@ export const SettingGroup: React.FC<SettingGroupProps> = ({
     (descriptionVisible || expandHelp) && showHelp
 
   const switchEl = switchConfig ? (
-    <div className="setting-group-header-switch">
+    <div
+      className="setting-group-header-switch"
+      data-tour={switchConfig.tourAnchor}
+    >
       <ToggleSwitch
         checked={switchConfig.checked}
         onChange={switchConfig.onChange}

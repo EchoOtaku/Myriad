@@ -89,7 +89,7 @@ export function readTourSurface(
       (typeof window === 'undefined' ? '/' : window.location.pathname),
   )
   if (path === '/library') {
-    return getLibraryTourSurfaceSnapshot() === 'canvas' ? 'canvas' : 'browse'
+    return libraryTourPickSurface(getLibraryTourSurfaceSnapshot())
   }
   if (path !== '/config') return 'browse'
   return configTourSurface
@@ -101,11 +101,22 @@ export function isLibraryCanvasTourSurface(): boolean {
 
 export type LibraryTourSurface = 'list' | 'canvas' | 'empty' | 'pending'
 
+/** List and canvas tours are separate. Unresolved or empty canvas must not pick the waterfall tour. */
+export function libraryTourPickSurface(
+  library: LibraryTourSurface,
+): TourSurfacePick {
+  if (library === 'canvas') return 'canvas'
+  if (library === 'list') return 'browse'
+  return 'none'
+}
+
 export function libraryTourSurfaceFromFlags(flags: {
   preference: boolean
   surface: boolean
   empty: boolean
+  resolved?: boolean
 }): LibraryTourSurface {
+  if (flags.resolved === false) return 'pending'
   if (flags.surface) return 'canvas'
   if (flags.preference) return flags.empty ? 'empty' : 'pending'
   return 'list'
@@ -115,6 +126,7 @@ function readLibraryCanvasTourFlags(): {
   preference: boolean
   surface: boolean
   empty: boolean
+  resolved?: boolean
 } {
   if (typeof document === 'undefined') {
     return { preference: false, surface: false, empty: false }
@@ -124,6 +136,7 @@ function readLibraryCanvasTourFlags(): {
     preference: root.dataset.libraryCanvas === 'active',
     surface: root.dataset.libraryCanvasSurface === '1',
     empty: root.dataset.libraryEmpty === '1',
+    resolved: root.dataset.libraryLayoutResolved === '1',
   }
 }
 
@@ -142,7 +155,7 @@ export function shouldAbortLibraryTour(
   librarySurface: LibraryTourSurface,
 ): boolean {
   if (tourId === 'library-visitor' || tourId === 'library-owner') {
-    return librarySurface === 'canvas'
+    return librarySurface !== 'list'
   }
   if (
     tourId === 'library-canvas-visitor' ||

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { ToastType } from '../Toast'
-
 import type { PlatformAutoFetchConfig } from './PlatformAutoRefreshSettings'
+
 import {
   FaChartLine,
   LuChevronLeft,
@@ -9,7 +9,6 @@ import {
   LuGripVertical,
 } from '@lib/icons'
 import React, {
-
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -36,10 +35,18 @@ import {
 } from '../settings'
 import AiUsageSection from './AiUsageSection'
 import PlatformAutoRefreshSettings from './PlatformAutoRefreshSettings'
+import { isBangumiPlatform, isPlatformConfigured } from './platformConfigRules'
 import PlatformDataManagement from './PlatformDataManagement'
 import { getPlatformSetupGuide } from './platformSetupGuides'
 import SiteAnalyticsSection from './SiteAnalyticsSection'
 import './PlatformCardSnapshot.css'
+
+export {
+  hasBangumiCredential,
+  isBangumiPlatform,
+  isPlatformConfigured,
+  sanitizeMaskedFieldValue,
+} from './platformConfigRules'
 
 export interface PlatformConfigField {
   key: string
@@ -74,11 +81,7 @@ export interface PlatformsConfigSectionProps {
   onToggle: (platformIndex: number) => void
   onReorder: (fromIndex: number, toIndex: number) => void
   onAutoFetchChange: (value: PlatformAutoFetchConfig) => void
-  showMessage: (
-    message: string,
-    type?: ToastType,
-    duration?: number,
-  ) => void
+  showMessage: (message: string, type?: ToastType, duration?: number) => void
   openOAuthSection: () => void
   /** consume via onFocusPlatformConsumed or it reopens */
   focusPlatform?: string | null
@@ -87,75 +90,6 @@ export interface PlatformsConfigSectionProps {
   onAnalyticsEnabledChange?: (enabled: boolean) => void
   getUiFieldValue?: (key: string) => string
   onUiFieldChange?: (key: string, value: string) => void
-}
-
-function isMaskedValue(value: string) {
-  return value.includes('••') || value.includes('**') || value === '********'
-}
-
-function hasFieldValue(field?: PlatformConfigField) {
-  if (!field) return false
-  const v = String(field.value ?? '').trim()
-  return v.length > 0
-}
-
-function findField(platform: PlatformConfig, key: string) {
-  return platform.config_fields.find((f) => f.key === key)
-}
-
-export function isBangumiPlatform(platform: PlatformConfig) {
-  return platform.name.toLowerCase() === 'bangumi'
-}
-
-export function hasBangumiCredential(platform: PlatformConfig) {
-  return (
-    hasFieldValue(findField(platform, 'username')) ||
-    hasFieldValue(findField(platform, 'access_token'))
-  )
-}
-
-export function isPlatformConfigured(platform: PlatformConfig) {
-  if (!platform.config_fields || platform.config_fields.length === 0) {
-    return Boolean(platform.has_token)
-  }
-
-  const name = platform.name.trim().toLowerCase()
-
-  if (isBangumiPlatform(platform)) {
-    return hasBangumiCredential(platform)
-  }
-
-  if (name === 'discord') {
-    return hasFieldValue(findField(platform, 'access_token'))
-  }
-
-  if (name === 'x' || name === 'twitter' || name === 'x (twitter)') {
-    const userOk = hasFieldValue(findField(platform, 'username'))
-    const tokenOk =
-      hasFieldValue(findField(platform, 'bearer_token')) || platform.has_token
-    return userOk && tokenOk
-  }
-
-  return platform.config_fields.every((field) => {
-    if (!field.required) return true
-    return hasFieldValue(field)
-  })
-}
-
-export function sanitizeMaskedFieldValue(value: string): string {
-  const trimmed = value.trimStart()
-  // JSON 袋（服务商列表等）里会嵌套 •••• 掩码，不能当单个密码框清洗
-  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
-    return value
-  }
-  if (
-    isMaskedValue(value) &&
-    value !== '••••••••' &&
-    value !== '********'
-  ) {
-    return value.replaceAll(/[•*]+/g, '')
-  }
-  return value
 }
 
 interface CardPreviewUser {
@@ -332,9 +266,9 @@ const PlatformsConfigSection: React.FC<PlatformsConfigSectionProps> = ({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const dragIndexRef = useRef<number | null>(null)
   const suppressCardClickRef = useRef(false)
-  const [cardPreviews, setCardPreviews] = useState<
-    Record<string, CardPreview>
-  >({})
+  const [cardPreviews, setCardPreviews] = useState<Record<string, CardPreview>>(
+    {},
+  )
 
   const loadCardPreviews = useCallback(async () => {
     try {
@@ -384,7 +318,12 @@ const PlatformsConfigSection: React.FC<PlatformsConfigSectionProps> = ({
   const formatMetricValue = useCallback(
     (key: string, value: number): string => {
       if (key === 'total_playtime_minutes') {
-        return formatCardPlaytime(value, dm.playtimeHours, dm.playtimeMinutes, format)
+        return formatCardPlaytime(
+          value,
+          dm.playtimeHours,
+          dm.playtimeMinutes,
+          format,
+        )
       }
       if (key === 'average_completion') {
         return `${formatCardNumber(value, numberLocale)}%`
@@ -470,8 +409,7 @@ const PlatformsConfigSection: React.FC<PlatformsConfigSectionProps> = ({
   const detailIndex = selectedPlatform
     ? platforms.findIndex((p) => p.name === selectedPlatform)
     : -1
-  const detailPlatform =
-    detailIndex >= 0 ? platforms[detailIndex] : null
+  const detailPlatform = detailIndex >= 0 ? platforms[detailIndex] : null
   const paneKey = selectedPlatform ?? '__list__'
 
   if (detailPlatform && detailIndex >= 0) {
@@ -493,7 +431,10 @@ const PlatformsConfigSection: React.FC<PlatformsConfigSectionProps> = ({
         }
         description={platformCapability}
         detail={platformCapability}
-        {...bindGuide('platforms.platformFields', settingGuides.platforms.platformFields)}
+        {...bindGuide(
+          'platforms.platformFields',
+          settingGuides.platforms.platformFields,
+        )}
         headerLeading={
           <button
             type="button"
@@ -584,267 +525,268 @@ const PlatformsConfigSection: React.FC<PlatformsConfigSectionProps> = ({
             title={t.config.connectedPlatforms}
             description={t.config.connectedPlatformsDesc}
             icon={<LuDatabase size={15} />}
-            {...bindGuide('platforms.connected', settingGuides.platforms.connected)}
+            {...bindGuide(
+              'platforms.connected',
+              settingGuides.platforms.connected,
+            )}
           >
-          <div className="platforms-grid">
-            {platforms.map((platform, index) => {
-              const platformConfigured = isPlatformConfigured(platform)
-              const platformDesc = getPlatformDescription(platform)
-              const isDragging = dragIndex === index
-              const isDragOver =
-                dragOverIndex === index && dragIndex !== index
+            <div className="platforms-grid">
+              {platforms.map((platform, index) => {
+                const platformConfigured = isPlatformConfigured(platform)
+                const platformDesc = getPlatformDescription(platform)
+                const isDragging = dragIndex === index
+                const isDragOver =
+                  dragOverIndex === index && dragIndex !== index
 
-              const openDetail = () => {
-                if (suppressCardClickRef.current) {
-                  suppressCardClickRef.current = false
-                  return
+                const openDetail = () => {
+                  if (suppressCardClickRef.current) {
+                    suppressCardClickRef.current = false
+                    return
+                  }
+                  openPlatformDetail(platform.name)
                 }
-                openPlatformDetail(platform.name)
-              }
 
-              return (
-                <div
-                  key={platform.name}
-                  data-guide-path="platforms.platformCard"
-                  className={`platform-card has-guide-anchor${
-                    platform.enabled ? ' platform-card--enabled' : ''
-                  }${isDragging ? ' dragging' : ''}${
-                    isDragOver ? ' drag-over' : ''
-                  }`}
-                  style={{ cursor: 'pointer' }}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={format(t.config.platformOpenDetailAria, {
-                    name: platform.name,
-                  })}
-                  onClick={openDetail}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
+                return (
+                  <div
+                    key={platform.name}
+                    data-guide-path="platforms.platformCard"
+                    className={`platform-card has-guide-anchor${
+                      platform.enabled ? ' platform-card--enabled' : ''
+                    }${isDragging ? ' dragging' : ''}${
+                      isDragOver ? ' drag-over' : ''
+                    }`}
+                    style={{ cursor: 'pointer' }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={format(t.config.platformOpenDetailAria, {
+                      name: platform.name,
+                    })}
+                    onClick={openDetail}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        openDetail()
+                      }
+                    }}
+                    onDragOver={(e) => {
+                      const from = dragIndexRef.current
+                      if (from === null || from === index) return
                       e.preventDefault()
-                      openDetail()
-                    }
-                  }}
-                  onDragOver={(e) => {
-                    const from = dragIndexRef.current
-                    if (from === null || from === index) return
-                    e.preventDefault()
-                    e.dataTransfer.dropEffect = 'move'
-                    setDragOverIndex((prev) =>
-                      prev === index ? prev : index,
-                    )
-                  }}
-                  onDragLeave={(e) => {
-                    const next = e.relatedTarget as Node | null
-                    if (next && e.currentTarget.contains(next)) return
-                    setDragOverIndex((prev) =>
-                      prev === index ? null : prev,
-                    )
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    const from = dragIndexRef.current
-                    if (from !== null && from !== index) {
-                      onReorder(from, index)
-                    }
-                    clearPlatformDrag()
-                  }}
-                >
-                  <div className="platform-header">
-                    <div className="platform-info">
-                      <div
-                        className="platform-drag-handle"
-                        role="button"
-                        tabIndex={0}
-                        aria-label={t.config.dragToReorder}
-                        title={t.config.dragToReorder}
-                        draggable
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault()
-                            e.stopPropagation()
-                          }
-                        }}
-                        onDragStart={(e) => {
-                          e.stopPropagation()
-                          suppressCardClickRef.current = true
-                          dragIndexRef.current = index
-                          setDragIndex(index)
-                          e.dataTransfer.effectAllowed = 'move'
-                          e.dataTransfer.setData('text/plain', String(index))
-                          const card = e.currentTarget.closest(
-                            '.platform-card',
-                          ) as HTMLElement | null
-                          if (card) {
-                            try {
-                              e.dataTransfer.setDragImage(card, 24, 24)
-                            } catch {
-                              /* ignore */
+                      e.dataTransfer.dropEffect = 'move'
+                      setDragOverIndex((prev) =>
+                        prev === index ? prev : index,
+                      )
+                    }}
+                    onDragLeave={(e) => {
+                      const next = e.relatedTarget as Node | null
+                      if (next && e.currentTarget.contains(next)) return
+                      setDragOverIndex((prev) => (prev === index ? null : prev))
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      const from = dragIndexRef.current
+                      if (from !== null && from !== index) {
+                        onReorder(from, index)
+                      }
+                      clearPlatformDrag()
+                    }}
+                  >
+                    <div className="platform-header">
+                      <div className="platform-info">
+                        <div
+                          className="platform-drag-handle"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={t.config.dragToReorder}
+                          title={t.config.dragToReorder}
+                          draggable
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              e.stopPropagation()
                             }
-                          }
-                        }}
-                        onDragEnd={() => {
-                          clearPlatformDrag()
-                          window.setTimeout(() => {
-                            suppressCardClickRef.current = false
-                          }, 0)
-                        }}
-                      >
-                        <span className="platform-order-num" aria-hidden>
-                          {index + 1}
-                        </span>
-                        <LuGripVertical
-                          className="platform-drag-grip"
-                          aria-hidden
-                        />
-                      </div>
-                      <div className="platform-icon-wrapper">
-                        <PlatformIcon
-                          platform={platform.name}
-                          className="platform-icon"
-                        />
-                      </div>
-                      <div className="platform-details">
-                        <div className="platform-title-row">
-                          <h3 className="platform-name">
-                            <span className="platform-name-text">
-                              {platform.name}
-                            </span>
-                            <SettingTitleGuideEntry
-                              title={platform.name}
-                              guide={
-                                bindGuide(
-                                  'platforms.platformCard',
-                                  settingGuides.platforms.platformCard,
-                                ).guide
+                          }}
+                          onDragStart={(e) => {
+                            e.stopPropagation()
+                            suppressCardClickRef.current = true
+                            dragIndexRef.current = index
+                            setDragIndex(index)
+                            e.dataTransfer.effectAllowed = 'move'
+                            e.dataTransfer.setData('text/plain', String(index))
+                            const card = e.currentTarget.closest(
+                              '.platform-card',
+                            ) as HTMLElement | null
+                            if (card) {
+                              try {
+                                e.dataTransfer.setDragImage(card, 24, 24)
+                              } catch {
+                                /* ignore */
                               }
-                            />
-                            {platformDesc ? (
-                              <SettingTitleHelp
-                                ariaLabel={format(t.config.platformHelpAria, {
-                                  name: platform.name,
-                                })}
-                              >
-                                {platformDesc}
-                              </SettingTitleHelp>
-                            ) : null}
-                          </h3>
-                          {(() => {
-                            const statusClass = !platformConfigured
-                              ? 'is-unconfigured'
-                              : platform.enabled
-                                ? 'is-enabled'
-                                : 'is-configured'
-                            const statusLabel = !platformConfigured
-                              ? t.config.platformStatusUnconfigured
-                              : platform.enabled
-                                ? t.config.platformStatusEnabled
-                                : t.config.platformStatusConfiguredOff
-                            return (
-                              <span
-                                className={`platform-status-dot ${statusClass}`}
-                                title={statusLabel}
-                                aria-label={statusLabel}
-                                role="status"
+                            }
+                          }}
+                          onDragEnd={() => {
+                            clearPlatformDrag()
+                            window.setTimeout(() => {
+                              suppressCardClickRef.current = false
+                            }, 0)
+                          }}
+                        >
+                          <span className="platform-order-num" aria-hidden>
+                            {index + 1}
+                          </span>
+                          <LuGripVertical
+                            className="platform-drag-grip"
+                            aria-hidden
+                          />
+                        </div>
+                        <div className="platform-icon-wrapper">
+                          <PlatformIcon
+                            platform={platform.name}
+                            className="platform-icon"
+                          />
+                        </div>
+                        <div className="platform-details">
+                          <div className="platform-title-row">
+                            <h3 className="platform-name">
+                              <span className="platform-name-text">
+                                {platform.name}
+                              </span>
+                              <SettingTitleGuideEntry
+                                title={platform.name}
+                                guide={
+                                  bindGuide(
+                                    'platforms.platformCard',
+                                    settingGuides.platforms.platformCard,
+                                  ).guide
+                                }
                               />
+                              {platformDesc ? (
+                                <SettingTitleHelp
+                                  ariaLabel={format(t.config.platformHelpAria, {
+                                    name: platform.name,
+                                  })}
+                                >
+                                  {platformDesc}
+                                </SettingTitleHelp>
+                              ) : null}
+                            </h3>
+                            {(() => {
+                              const statusClass = !platformConfigured
+                                ? 'is-unconfigured'
+                                : platform.enabled
+                                  ? 'is-enabled'
+                                  : 'is-configured'
+                              const statusLabel = !platformConfigured
+                                ? t.config.platformStatusUnconfigured
+                                : platform.enabled
+                                  ? t.config.platformStatusEnabled
+                                  : t.config.platformStatusConfiguredOff
+                              return (
+                                <span
+                                  className={`platform-status-dot ${statusClass}`}
+                                  title={statusLabel}
+                                  aria-label={statusLabel}
+                                  role="status"
+                                />
+                              )
+                            })()}
+                          </div>
+                          {(() => {
+                            const slug = resolvePlatformId(platform.name)
+                            const snap = slug ? cardPreviews[slug] : undefined
+                            if (!snap?.exists) return null
+                            const rawName = snap.user?.username?.trim() || ''
+                            const showUser =
+                              rawName.length > 0 &&
+                              !UNKNOWN_USERNAMES.has(rawName.toLowerCase()) &&
+                              rawName !== '未知用户'
+                            const level = snap.user?.level?.trim() || ''
+                            const metrics = (snap.metrics || []).slice(0, 6)
+                            if (!showUser && !level && metrics.length === 0) {
+                              return null
+                            }
+                            const metricsTitle = metrics
+                              .map(
+                                (m) =>
+                                  `${formatMetricValue(m.key, m.value)}${metricLabel(m.key)}`,
+                              )
+                              .join(' · ')
+                            return (
+                              <div className="platform-card-snapshot">
+                                {showUser || level ? (
+                                  <div className="platform-card-snapshot-user">
+                                    {showUser ? (
+                                      <span className="platform-card-snapshot-username">
+                                        {rawName}
+                                      </span>
+                                    ) : null}
+                                    {level ? (
+                                      <span className="platform-card-snapshot-level">
+                                        {level}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                                {metrics.length > 0 ? (
+                                  <PlatformCardMetricsMarquee
+                                    title={metricsTitle}
+                                    items={metrics}
+                                    renderItem={(m, keyPrefix) => (
+                                      <span
+                                        key={`${keyPrefix}-${m.key}`}
+                                        className="platform-card-snapshot-metric"
+                                      >
+                                        <span className="platform-card-snapshot-metric-value">
+                                          {formatMetricValue(m.key, m.value)}
+                                        </span>
+                                        <span className="platform-card-snapshot-metric-label">
+                                          {metricLabel(m.key)}
+                                        </span>
+                                      </span>
+                                    )}
+                                  />
+                                ) : null}
+                              </div>
                             )
                           })()}
                         </div>
-                        {(() => {
-                          const slug = resolvePlatformId(platform.name)
-                          const snap = slug ? cardPreviews[slug] : undefined
-                          if (!snap?.exists) return null
-                          const rawName = snap.user?.username?.trim() || ''
-                          const showUser =
-                            rawName.length > 0 &&
-                            !UNKNOWN_USERNAMES.has(rawName.toLowerCase()) &&
-                            rawName !== '未知用户'
-                          const level = snap.user?.level?.trim() || ''
-                          const metrics = (snap.metrics || []).slice(0, 6)
-                          if (!showUser && !level && metrics.length === 0) {
-                            return null
-                          }
-                          const metricsTitle = metrics
-                            .map(
-                              (m) =>
-                                `${formatMetricValue(m.key, m.value)}${metricLabel(m.key)}`,
-                            )
-                            .join(' · ')
-                          return (
-                            <div className="platform-card-snapshot">
-                              {showUser || level ? (
-                                <div className="platform-card-snapshot-user">
-                                  {showUser ? (
-                                    <span className="platform-card-snapshot-username">
-                                      {rawName}
-                                    </span>
-                                  ) : null}
-                                  {level ? (
-                                    <span className="platform-card-snapshot-level">
-                                      {level}
-                                    </span>
-                                  ) : null}
-                                </div>
-                              ) : null}
-                              {metrics.length > 0 ? (
-                                <PlatformCardMetricsMarquee
-                                  title={metricsTitle}
-                                  items={metrics}
-                                  renderItem={(m, keyPrefix) => (
-                                    <span
-                                      key={`${keyPrefix}-${m.key}`}
-                                      className="platform-card-snapshot-metric"
-                                    >
-                                      <span className="platform-card-snapshot-metric-value">
-                                        {formatMetricValue(m.key, m.value)}
-                                      </span>
-                                      <span className="platform-card-snapshot-metric-label">
-                                        {metricLabel(m.key)}
-                                      </span>
-                                    </span>
-                                  )}
-                                />
-                              ) : null}
-                            </div>
-                          )
-                        })()}
+                      </div>
+                      <div className="platform-actions">
+                        <ToggleSwitch
+                          checked={platform.enabled}
+                          onChange={() => onToggle(index)}
+                          disabled={!platformConfigured}
+                          aria-label={format(t.config.platformEnableAria, {
+                            name: platform.name,
+                          })}
+                          preview={{
+                            on: format(t.config.platformEnablePreviewOn, {
+                              name: platform.name,
+                            }),
+                            off: format(t.config.platformEnablePreviewOff, {
+                              name: platform.name,
+                            }),
+                            disabled: t.config.platformEnablePreviewNeedConfig,
+                          }}
+                        />
                       </div>
                     </div>
-                    <div className="platform-actions">
-                      <ToggleSwitch
-                        checked={platform.enabled}
-                        onChange={() => onToggle(index)}
-                        disabled={!platformConfigured}
-                        aria-label={format(t.config.platformEnableAria, {
-                          name: platform.name,
-                        })}
-                        preview={{
-                          on: format(t.config.platformEnablePreviewOn, {
-                            name: platform.name,
-                          }),
-                          off: format(t.config.platformEnablePreviewOff, {
-                            name: platform.name,
-                          }),
-                          disabled: t.config.platformEnablePreviewNeedConfig,
-                        }}
-                      />
-                    </div>
                   </div>
-                </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
 
-          <PlatformAutoRefreshSettings
-            toc={false}
-            value={autoFetch}
-            configuredPlatformCount={
-              platforms.filter((platform) => isPlatformConfigured(platform))
-                .length
-            }
-            onChange={onAutoFetchChange}
-          />
+            <PlatformAutoRefreshSettings
+              toc={false}
+              value={autoFetch}
+              configuredPlatformCount={
+                platforms.filter((platform) => isPlatformConfigured(platform))
+                  .length
+              }
+              onChange={onAutoFetchChange}
+            />
           </SettingGroup>
 
           <SiteAnalyticsSection

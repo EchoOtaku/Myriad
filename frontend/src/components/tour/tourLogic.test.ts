@@ -20,6 +20,7 @@ import {
   isHomeAgentActionStep,
   isPredictedTourAnchor,
   isTourActionSatisfied,
+  libraryTourPickSurface,
   libraryTourSurfaceFromFlags,
   nextIndexAfterTourAction,
   normalizeTourPath,
@@ -367,6 +368,19 @@ describe('tour hint copy', () => {
       }),
       'canvas',
     )
+    assert.equal(
+      libraryTourSurfaceFromFlags({
+        preference: false,
+        surface: false,
+        empty: false,
+        resolved: false,
+      }),
+      'pending',
+    )
+    assert.equal(libraryTourPickSurface('list'), 'browse')
+    assert.equal(libraryTourPickSurface('canvas'), 'canvas')
+    assert.equal(libraryTourPickSurface('pending'), 'none')
+    assert.equal(libraryTourPickSurface('empty'), 'none')
   })
 
   it('skips live measure on the library collection hole only', () => {
@@ -381,7 +395,9 @@ describe('tour hint copy', () => {
 
   it('aborts a canvas tour once the live canvas is gone', () => {
     assert.equal(shouldAbortLibraryTour('library-owner', 'canvas'), true)
-    assert.equal(shouldAbortLibraryTour('library-visitor', 'pending'), false)
+    assert.equal(shouldAbortLibraryTour('library-owner', 'list'), false)
+    assert.equal(shouldAbortLibraryTour('library-visitor', 'pending'), true)
+    assert.equal(shouldAbortLibraryTour('library-owner', 'empty'), true)
     assert.equal(shouldAbortLibraryTour('library-canvas-owner', 'canvas'), false)
     assert.equal(shouldAbortLibraryTour('library-canvas-owner', 'pending'), true)
     assert.equal(shouldAbortLibraryTour('library-canvas-visitor', 'empty'), true)
@@ -398,6 +414,26 @@ describe('tour hint copy', () => {
       'library-canvas-owner',
     )
     assert.equal(pickTour(LIBRARY_TOURS, '/library', true)?.id, 'library-owner')
+  })
+
+  it('uses the list tour after canvas falls back to the waterfall', () => {
+    // hardware fallback and "switch back to list" only write list flags
+    assert.equal(
+      libraryTourSurfaceFromFlags({
+        preference: false,
+        surface: false,
+        empty: false,
+        resolved: true,
+      }),
+      'list',
+    )
+    assert.equal(libraryTourPickSurface('list'), 'browse')
+    assert.equal(shouldAbortLibraryTour('library-canvas-owner', 'list'), true)
+    assert.equal(shouldAbortLibraryTour('library-owner', 'list'), false)
+    assert.equal(
+      pickTour(LIBRARY_TOURS, '/library', true, 'browse')?.id,
+      'library-owner',
+    )
   })
 
   it('fills {page} and drops empty values so the hint can fall back', () => {

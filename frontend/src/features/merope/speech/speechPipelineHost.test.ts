@@ -1,6 +1,8 @@
 import type { MeropeSpeechEventDetail } from '../speechEvents'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { invalidateSpeechStatusCache } from '../../../services/speechApi'
+import { createConfigDomain, executeConfigOperations } from '../../../components/config/form/configDomain'
 import {
   liveMotionGeneration,
   setLiveMotionGeneration,
@@ -189,5 +191,50 @@ test('old status response cannot enable speech after subject reset', async (t) =
   }))
   await pending
   assert.equal(host.available, false)
+  assert.equal(host.speechEnabled, false)
+})
+
+test('settings status failures remain retryable without repeating a saved write', async (t) => {
+  invalidateSpeechStatusCache()
+  t.after(invalidateSpeechStatusCache)
+  let fail = true
+  t.mock.method(globalThis, 'fetch', async () => {
+    if (fail) throw new Error('status unavailable')
+    return Response.json({
+      available: true, tts_enabled: true, persona_speech_enabled: true,
+    })
+  })
+  const host = new SpeechPipelineHost()
+  // Startup remains best effort; an explicit settings refresh must report failures.
+  assert.equal(await host.probe(), false)
+  let writes = 0
+  const domain = createConfigDomain(() => ({
+    id: 'speech', initial: false, ready: true,
+    persist: async (value: boolean) => { writes++; return value },
+    effects: () => [{
+      id: 'speech',
+      run: async () => { await host.refreshStatus() },
+    }],
+  }))
+  domain.setDraft(true)
+  const failed = await executeConfigOperations([domain], [domain.prepareSave()!])
+  assert.equal(failed.errors.length, 1)
+  assert.equal(domain.getSnapshot().pendingSync, true)
+  assert.equal(domain.getSnapshot().dirty, false)
+  fail = false
+  assert.equal((await executeConfigOperations([domain], [])).errors.length, 0)
+  assert.equal(domain.getSnapshot().pendingSync, false)
+  assert.equal(host.available, true)
+  assert.equal(writes, 1)
+})
+
+test('an explicitly disabled speech status is a successful refresh', async (t) => {
+  invalidateSpeechStatusCache()
+  t.after(invalidateSpeechStatusCache)
+  t.mock.method(globalThis, 'fetch', async () => Response.json({
+    available: true, tts_enabled: true, persona_speech_enabled: false,
+  }))
+  const host = new SpeechPipelineHost()
+  assert.equal(await host.refreshStatus(), false)
   assert.equal(host.speechEnabled, false)
 })

@@ -1,5 +1,4 @@
-import type { PermissionConfigValues } from '../PermissionsConfigSection'
-import type { PlatformAutoFetchConfig } from '../PlatformAutoRefreshSettings'
+import type { PermissionConfigValues, PlatformAutoFetchConfig } from './types'
 
 export const DEFAULT_PERMISSION_CONFIG: PermissionConfigValues = {
   user_perm_ai_generate: false,
@@ -64,6 +63,7 @@ export const LEGACY_CONFIG_SECTION_MAP: Record<string, string> = {
   updater: 'about',
   mcp: 'advanced',
   ui: 'basic',
+  tripo: 'lab',
 }
 
 export function loadConfigFavorites(): string[] {

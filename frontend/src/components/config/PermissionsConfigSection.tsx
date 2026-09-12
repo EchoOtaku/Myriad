@@ -1,4 +1,5 @@
 import type { PermissionItem, QuotaItem } from '../settings'
+import type { PermissionConfigValues } from './form/types'
 import { FaSlidersH, LuSparkles } from '@lib/icons'
 import React, { useCallback, useMemo } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
@@ -13,6 +14,8 @@ import {
   useSettingGuide,
 } from '../settings'
 import { MyriadConfigIcon } from './MyriadConfigIcon'
+
+export type { PermissionConfigValues } from './form/types'
 
 /** Agent elevated keys only; media/theme unchanged */
 const AGENT_PRESET_PERM_KEYS = [
@@ -103,56 +106,6 @@ function detectAgentPreset(
     }
   }
   return 'custom'
-}
-
-export interface PermissionConfigValues extends Record<
-  string,
-  boolean | number
-> {
-  user_perm_ai_generate: boolean
-  user_perm_ai_analyze: boolean
-  user_perm_ai_chat: boolean
-  user_perm_report_write: boolean
-  user_perm_network_fetch: boolean
-  user_perm_component_theme: boolean
-  user_perm_shortcut_register: boolean
-  user_perm_event_publish: boolean
-  user_perm_ai_image: boolean
-  user_perm_ai_search: boolean
-  user_perm_3d_generate: boolean
-  user_perm_scheduler_register: boolean
-  user_perm_speech_tts: boolean
-  user_perm_speech_asr: boolean
-  user_perm_storage_write: boolean
-  user_perm_federation_post: boolean
-  user_perm_federation_channel: boolean
-  user_perm_federation_room: boolean
-  user_perm_brew_comment_write: boolean
-  guest_perm_ai_generate: boolean
-  guest_perm_ai_analyze: boolean
-  guest_perm_ai_chat: boolean
-  guest_perm_report_write: boolean
-  guest_perm_network_fetch: boolean
-  guest_perm_component_theme: boolean
-  guest_perm_shortcut_register: boolean
-  guest_perm_event_publish: boolean
-  guest_perm_ai_image: boolean
-  guest_perm_ai_search: boolean
-  guest_perm_3d_generate: boolean
-  guest_perm_scheduler_register: boolean
-  guest_perm_speech_tts: boolean
-  guest_perm_speech_asr: boolean
-  guest_perm_storage_write: boolean
-  guest_perm_federation_post: boolean
-  guest_perm_federation_channel: boolean
-  guest_perm_federation_room: boolean
-  guest_perm_brew_comment_write: boolean
-  user_ai_daily_calls: number
-  user_ai_daily_tokens: number
-  user_ai_cooldown_seconds: number
-  guest_ai_daily_calls: number
-  guest_ai_daily_tokens: number
-  guest_ai_cooldown_seconds: number
 }
 
 interface PermissionsConfigSectionProps {
@@ -488,7 +441,10 @@ export const PermissionsConfigSection: React.FC<
         <PermissionGroup
           title={t.config.guestElevatedPermissions}
           description={t.config.guestElevatedPermissionsDesc}
-          {...bindGuide('permissions.guestElevated', g.permissions.guestElevated)}
+          {...bindGuide(
+            'permissions.guestElevated',
+            g.permissions.guestElevated,
+          )}
           permissions={guestPermissionItems}
           values={getGuestPermValues()}
           onChange={(key, value) =>

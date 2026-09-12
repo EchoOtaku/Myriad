@@ -6,9 +6,9 @@ import type { MeropeRigManifest } from '../rig/types'
 import type { MusicMotionSignal } from '../singing/musicSignal'
 import type { SpeechProsodyPlan } from '../speech/prosody'
 import type { MeropeActivity } from '../types'
+import type { PoseCorrection } from './poseCorrections'
 import type { Anime25DPlayback } from './types'
 import type { Anime25DWorkbenchPort } from './workbenchPort'
-import type { PoseCorrection } from './poseCorrections'
 import {
   forwardRef,
   useEffect,
@@ -129,13 +129,14 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       const expressionFree =
         policy.expression === 'idle' || policy.expression === 'mood'
       const mouthFree = policy.mouth === 'idle'
+      // Mood/speech mouth writes are independent of the thinking preset.
+      // Apply them first so a fresh player's auto-talk default cannot suppress
+      // the initial thinking state before idle has released speech ownership.
+      if (mouthFree) player.setTarget(idleSpeechDriverPatch(moodRef.current, speechActiveRef.current))
       player.setTarget({
         thinking,
         blink: true,
         ...(expressionFree ? activityExpressionDriverPatch(thinking) : {}),
-        ...(mouthFree
-          ? idleSpeechDriverPatch(moodRef.current, speechActiveRef.current)
-          : {}),
       })
       if (bearingRef.current) player.setBearing(bearingRef.current)
     }
