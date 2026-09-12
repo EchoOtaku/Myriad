@@ -11,6 +11,9 @@ describe('logout destroys Tapp runtimes', () => {
     assert.ok(resetAt >= 0, 'destroyAll must stay on the auth-reset path')
     assert.ok(logoutAt >= 0, 'logout callback')
     assert.ok(resetCallAt > logoutAt, 'logout must reset Tapp state')
+    const invalidateAt = src.indexOf("authSubject.change('guest', true)", logoutAt)
+    assert.ok(invalidateAt > logoutAt && invalidateAt < resetCallAt,
+      'old speech and callbacks must be invalidated synchronously, before async cleanup')
     assert.ok(
       src.indexOf('setUser(null)', resetCallAt) > resetCallAt,
       'clearing the user after destroy keeps a dead grant from surviving',

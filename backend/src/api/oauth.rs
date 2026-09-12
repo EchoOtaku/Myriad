@@ -1093,8 +1093,16 @@ pub async fn provider_unlink(
         })?;
     let user_id: i32 = claims.sub.parse().map_err(|_| err_400("Invalid user id"))?;
 
-    // 确认 identity 属于当前用户
-    let row = db
+    let txn = db.begin().await.map_err(|e| {
+        tracing::error!("OAuth DB error: {e}");
+        err_500("Database error")
+    })?;
+    lock_login_methods(&txn, user_id).await.map_err(|e| {
+        tracing::error!("OAuth DB error: {e}");
+        err_500("Database error")
+    })?;
+
+    let row = txn
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT id FROM user_identities WHERE id = $1 AND user_id = $2 AND provider = $3",
@@ -1115,7 +1123,9 @@ pub async fn provider_unlink(
     }
 
     // 防失联：最后一个 OAuth 身份，且本地登录不可用（无密码或已禁用）时拒绝。
-    let summary = db
+    // Count + delete stay under the same xact lock so two unlinks cannot both
+    // read "still two" and wipe the last sign-in method.
+    let summary = txn
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT \
@@ -1145,10 +1155,14 @@ pub async fn provider_unlink(
         )));
     }
 
-    db.execute_raw(Statement::from_sql_and_values(
+    txn.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
-        "DELETE FROM user_identities WHERE id = $1",
-        vec![SeaValue::Int(Some(identity_id))],
+        "DELETE FROM user_identities WHERE id = $1 AND user_id = $2 AND provider = $3",
+        vec![
+            SeaValue::Int(Some(identity_id)),
+            SeaValue::Int(Some(user_id)),
+            SeaValue::String(Some(slug.clone())),
+        ],
     ))
     .await
     .map_err(|e| {
@@ -1158,7 +1172,7 @@ pub async fn provider_unlink(
 
     // 解绑 GitHub 时清空 users.linked_github_id。
     if slug == "github" {
-        let _ = db
+        let _ = txn
             .execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "UPDATE users SET linked_github_id = NULL WHERE id = $1",
@@ -1166,6 +1180,11 @@ pub async fn provider_unlink(
             ))
             .await;
     }
+
+    txn.commit().await.map_err(|e| {
+        tracing::error!("OAuth DB error: {e}");
+        err_500("Database error")
+    })?;
 
     Ok(Json(json!({"success": true})))
 }
@@ -1304,7 +1323,16 @@ pub async fn set_primary_identity(
 
 #[cfg(test)]
 mod unlink_lockout_tests {
-    use super::{local_login_usable, unlink_blocks_last_signin};
+    use super::{
+        disable_local_login_blocks, local_login_usable, login_methods_lock_key,
+        unlink_blocks_last_signin,
+    };
+
+    #[test]
+    fn login_methods_lock_key_is_per_user() {
+        assert_eq!(login_methods_lock_key(7), "myriad:auth:login_methods:7");
+        assert_ne!(login_methods_lock_key(7), login_methods_lock_key(8));
+    }
 
     #[test]
     fn disable_local_login_then_unlink_last_oauth_is_blocked() {
@@ -1331,5 +1359,46 @@ mod unlink_lockout_tests {
     fn last_oauth_without_password_stays_blocked() {
         assert!(unlink_blocks_last_signin(false, false, 1));
         assert!(!unlink_blocks_last_signin(true, true, 2));
+    }
+
+    #[test]
+    fn serialized_dual_unlink_keeps_one_identity() {
+        // Isolated PG: two unlinks both read count=2 without a lock.
+        // Under the xact lock the second check sees count=1.
+        assert!(!unlink_blocks_last_signin(false, false, 2));
+        assert!(unlink_blocks_last_signin(false, false, 1));
+    }
+
+    #[test]
+    fn serialized_disable_and_unlink_keep_a_signin() {
+        // Isolated PG: disable + unlink last OAuth both pass their stale reads.
+        // Order A: disable first — unlink must then refuse.
+        assert!(!disable_local_login_blocks(1));
+        assert!(unlink_blocks_last_signin(true, true, 1));
+        // Order B: unlink first (password still usable) — disable must then refuse.
+        assert!(!unlink_blocks_last_signin(true, false, 1));
+        assert!(disable_local_login_blocks(0));
+    }
+
+    #[test]
+    fn unlink_and_toggle_share_the_login_methods_lock() {
+        let unlink = include_str!("oauth.rs");
+        let unlink_fn = unlink
+            .split("pub async fn provider_unlink")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn list_my_identities").next())
+            .expect("provider_unlink body");
+        assert!(unlink_fn.contains(".begin()"));
+        assert!(unlink_fn.contains("lock_login_methods"));
+
+        let toggle = include_str!("auth_local.rs");
+        let toggle_fn = toggle
+            .split("pub async fn toggle_local_login")
+            .nth(1)
+            .and_then(|rest| rest.split("async fn issue_session_cookie").next())
+            .expect("toggle_local_login body");
+        assert!(toggle_fn.contains(".begin()"));
+        assert!(toggle_fn.contains("lock_login_methods"));
+        assert!(toggle_fn.contains("disable_local_login_blocks"));
     }
 }

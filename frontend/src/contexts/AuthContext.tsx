@@ -13,6 +13,7 @@ import { API_URL } from '../config'
 import { isLocale } from '../i18n'
 import { isAuthMeHttpOk, parseAuthMeResponse } from '../utils/authMe'
 import { setKnownAuthState } from '../utils/authState'
+import { authSubject, authSubjectKey } from '../utils/authSubject'
 import { brewSubject, brewSubjectKey } from '../utils/brewSubject'
 import {
   clearSessionHint,
@@ -114,6 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (generation !== checkAuthGeneration.current) return false
           if (parsed.authenticated) {
             const u = parsed.user
+            authSubject.change(authSubjectKey(u))
             brewSubject.change(brewSubjectKey(u))
             setSessionHint()
             const rawIdentities = (u as { identities?: unknown }).identities
@@ -160,6 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           // Drop the session hint only on a definitive guest body.
           clearSessionHint()
+          authSubject.change('guest')
           brewSubject.change('guest')
           setUser(null)
           setIsAuthenticated(false)
@@ -169,6 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         if (response.status === 401 || response.status === 403) {
+          authSubject.change('guest')
           brewSubject.change('guest')
           clearSessionHint()
           setUser(null)
@@ -181,6 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         // Network/timeout: keep the session hint; do not claim authenticated.
         if (generation !== checkAuthGeneration.current) return false
+        authSubject.change('unknown')
         brewSubject.change('unknown', false)
         setUser(null)
         setIsAuthenticated(false)
@@ -203,6 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     checkAuthGeneration.current++
+    authSubject.change('guest', true)
     brewSubject.change('guest', true, true)
     setIsLoading(false)
     // Logout need not await; this reset and a later login share the import cache.
@@ -259,6 +265,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const handleAuthChange = (e: Event) => {
       const isAuth = (e as CustomEvent).detail?.isAuthenticated ?? false
       if (isAuth) {
+        authSubject.change('changing', true)
         brewSubject.change('changing', false, true)
         // Remount sandboxes only after destroyAll and a known user, or Aro keeps a dead grant.
         void (async () => {

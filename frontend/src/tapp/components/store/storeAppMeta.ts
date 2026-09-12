@@ -103,7 +103,7 @@ export function collectAppLanguageTags(app: UnifiedAppItem): string[] {
   const inferred = inferPrimaryCatalogLocale(primaryText)
   if (inferred) {
     const primary = inferred.split(/[-_]/)[0]!.toLowerCase()
-    const already = Array.from(tags).some(
+    const already = Iterator.from(tags).some(
       (tag) => tag.split(/[-_]/)[0]!.toLowerCase() === primary,
     )
     if (!already) tags.add(inferred)

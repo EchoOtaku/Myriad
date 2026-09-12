@@ -60,9 +60,7 @@ describe('frontendAction chain', () => {
   it('every backend-emitted type is either typed or a known orphan', () => {
     const typed = new Set<string>(TYPED)
     const orphans = new Set<string>(KNOWN_ORPHANS)
-    const leftover = BACKEND_EMITTED.filter(
-      (type) => !typed.has(type) && !orphans.has(type),
-    )
+    const leftover = [...new Set(BACKEND_EMITTED).difference(typed.union(orphans))]
     assert.deepEqual(leftover, [])
   })
 

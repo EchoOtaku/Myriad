@@ -88,6 +88,7 @@ import {
   isUserInterruptError,
   nextAgentMessageId,
 } from '../../services/agent/turnIdentity'
+import { authSubject } from '../../utils/authSubject'
 import { userFacingError } from '../../utils/userFacingError'
 import {
   errorCode,
@@ -694,6 +695,28 @@ export const AgentEngine: React.FC = () => {
     return attachLiveBody()
   }, [])
 
+  useEffect(() => authSubject.subscribe(() => {
+    // Identity loss, not attention transfer: detach both old transport lanes.
+    // This does not cancel the previous user's server-side Work task.
+    for (const lane of ['work', 'chat'] as const) {
+      agentService.abortCurrentRequest(lane)
+      const id = loadingMessageIdByModeRef.current[lane]
+      if (id) discardedResponseIdsRef.current.add(id)
+      loadingMessageIdByModeRef.current[lane] = null
+      loadingByModeRef.current[lane] = false
+      setAgentLaneLoading(lane, false)
+      setSessionId(null, lane)
+      setMessages([], lane)
+      sessionTitleSetByModeRef.current[lane] = false
+    }
+    capSet(discardedResponseIdsRef.current)
+    setTurnGeneration(chatTurnClockRef.current.next())
+    setIsLoading(false)
+    resetAgentStatus()
+    clearChatOutfitOverlay()
+    void stopAgoraConversation()
+  }), [setMessages, setSessionId])
+
   useEffect(() => {
     const handleOpenSession = (event: Event) => {
       const id = agentPanelOpenSessionId(event)
@@ -798,13 +821,14 @@ export const AgentEngine: React.FC = () => {
       speechOutput: 'local' | 'external' = 'local',
       initialRunId?: string,
     ) => {
+      const subject = authSubject.signal
       let streamedSummary = ''
       let streamedThinking = ''
       let performancePlanCount = 0
       let performanceRunId = initialRunId
       let notedStaleGeneration = false
       let liveTaskId = ''
-      const speech = openTurnSpeech(assistantMessageId, generation, locale, speechOutput)
+      const speech = openTurnSpeech(mode, assistantMessageId, generation, locale, speechOutput)
       const utterance = openTurnReply(
         mode,
         assistantMessageId,
@@ -818,6 +842,7 @@ export const AgentEngine: React.FC = () => {
       }
 
       return (event: ProgressEvent) => {
+        if (subject.aborted) return
         if (
           mode === 'chat' &&
           !isCurrentChatGeneration(generation, chatTurnClockRef.current.current())
@@ -1652,7 +1677,7 @@ export const AgentEngine: React.FC = () => {
       generation = 0,
       speechOutput: 'local' | 'external' = 'local',
     ) => {
-      if (discardedResponseIdsRef.current.delete(messageId)) return
+      if (discardedResponseIdsRef.current.has(messageId)) return
       const taskData = response.task as Record<string, unknown> | undefined
       let pendingQuestion = taskData?.pendingQuestion as
         PendingQuestion | undefined

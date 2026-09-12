@@ -70,11 +70,11 @@ describe('sandbox capability profiles', () => {
 
     const permissionActions = new Set(PERMISSION_MAP.keys())
     assert.deepEqual(
-      [...sdkActions].filter(action => !permissionActions.has(action)),
+      [...sdkActions.difference(permissionActions)],
       [],
     )
     assert.deepEqual(
-      [...permissionActions].filter(action => !sdkActions.has(action)).sort(),
+      [...permissionActions.difference(sdkActions)].toSorted(),
       ['widget.instanceSettings.update', 'widget.invalidate'],
       'only Widget-SDK-specific actions may be absent from the Page SDK',
     )

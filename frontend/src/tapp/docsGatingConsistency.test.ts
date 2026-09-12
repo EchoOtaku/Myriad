@@ -145,7 +145,7 @@ describe('tapp docs gating consistency', () => {
     assert.match(section, /\*\*限制\*\*/)
     assert.match(section, /只能写上表八个/)
     for (const category of TAPP_CATEGORIES) {
-      assert.match(section, new RegExp(`\`tapp:${category}\``))
+      assert.match(section, new RegExp(`\`tapp:${RegExp.escape(category)}\``))
       assert.equal(
         classifyWidgetLibraryKind({
           id: `com.example.${category}`,
@@ -598,7 +598,7 @@ describe('tapp docs gating consistency', () => {
     const cap = apiRef.split('## 能力边界与完整命名空间')[1] ?? ''
     const capUntilNext = cap.split(/^## /m)[0] ?? cap
     const missing = frozenNs.filter(
-      (ns) => !new RegExp(`\`${ns}\``).test(capUntilNext),
+      (ns) => !new RegExp(`\`${RegExp.escape(ns)}\``).test(capUntilNext),
     )
     assert.deepEqual(
       missing,

@@ -177,3 +177,17 @@ test('targeted cancel does not overwrite a successor started synchronously by th
     patchVoicePresence({ ttsPlaying: false })
   }
 })
+
+test('old status response cannot enable speech after subject reset', async (t) => {
+  const result = Promise.withResolvers<Response>()
+  t.mock.method(globalThis, 'fetch', () => result.promise)
+  const host = new SpeechPipelineHost()
+  const pending = host.probe()
+  host.resetSubject()
+  result.resolve(Response.json({
+    available: true, tts_enabled: true, persona_speech_enabled: true,
+  }))
+  await pending
+  assert.equal(host.available, false)
+  assert.equal(host.speechEnabled, false)
+})

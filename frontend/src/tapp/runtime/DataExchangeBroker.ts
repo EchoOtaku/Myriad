@@ -164,7 +164,7 @@ class DataExchangeBroker {
     bridge: TappBridge,
     request: DataExchangeRequest,
   ): Promise<unknown> {
-    const requester = [...this.runtimes].find(
+    const requester = Iterator.from(this.runtimes).find(
       (runtime) => runtime.bridge === bridge,
     )
     if (!requester) {
@@ -285,31 +285,30 @@ class DataExchangeBroker {
         runtimeGrant,
       )
 
-      const result = await new Promise<unknown>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          this.pending.delete(prepared.requestId)
-          void cancelDataExchange(prepared.requestId, runtimeGrant).catch(
-            () => {},
-          )
-          reject(new Error('Data provider response timed out'))
-        }, PROVIDER_TIMEOUT_MS)
-        this.pending.set(prepared.requestId, {
-          requester,
-          provider,
-          requesterRuntimeGrant: runtimeGrant,
-          access,
-          resolve,
-          reject,
-          timeout,
-        })
-        provider.bridge.emit('dataExchange:invoke', {
-          requestId: prepared.requestId,
-          exportId: prepared.exportId,
-          params: access.params,
-          purpose: access.purpose,
-        })
+      const { promise, resolve, reject } = Promise.withResolvers<unknown>()
+      const timeout = setTimeout(() => {
+        this.pending.delete(prepared.requestId)
+        void cancelDataExchange(prepared.requestId, runtimeGrant).catch(
+          () => {},
+        )
+        reject(new Error('Data provider response timed out'))
+      }, PROVIDER_TIMEOUT_MS)
+      this.pending.set(prepared.requestId, {
+        requester,
+        provider,
+        requesterRuntimeGrant: runtimeGrant,
+        access,
+        resolve,
+        reject,
+        timeout,
       })
-      return result
+      provider.bridge.emit('dataExchange:invoke', {
+        requestId: prepared.requestId,
+        exportId: prepared.exportId,
+        params: access.params,
+        purpose: access.purpose,
+      })
+      return await promise
     } finally {
       requester.activeRequests = Math.max(0, requester.activeRequests - 1)
     }

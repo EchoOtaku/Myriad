@@ -216,7 +216,7 @@ test('the fork shows what each lane actually produces', () => {
 
   // 两张卡都要有各自的规模提示。
   for (const key of ['choiceGuidedMeta', 'choiceImportMeta']) {
-    assert.match(choice, new RegExp(`o\\.${key}`))
+    assert.match(choice, new RegExp(`o\\.${RegExp.escape(key)}`))
     for (const locale of [
       'zh-CN',
       'zh-TW',
@@ -226,7 +226,7 @@ test('the fork shows what each lane actually produces', () => {
       'fr-FR',
       'de-DE',
     ]) {
-      assert.match(read(`../../../i18n/${locale}.json`), new RegExp(`\\b${key}\\b`))
+      assert.match(read(`../../../i18n/${locale}.json`), new RegExp(`\\b${RegExp.escape(key)}\\b`))
     }
   }
 })

@@ -117,9 +117,9 @@ function planClientPreferenceRestore(
     ]),
   )
   const values: Record<string, string> = {}
-  const ignoredKeys = Object.keys(preferences).filter(
-    (key) => !registry.has(key),
-  )
+  const ignoredKeys = [
+    ...new Set(Object.keys(preferences)).difference(new Set(registry.keys())),
+  ]
   const invalidKeys: string[] = []
 
   for (const descriptor of CLIENT_PREFERENCE_REGISTRY) {

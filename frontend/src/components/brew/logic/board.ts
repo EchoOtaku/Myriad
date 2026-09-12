@@ -90,12 +90,11 @@ export function sortSourcesForBoard(
   now: number,
   locale = 'en-US',
 ): BrewSource[] {
-  const result = [...sources]
   switch (mode) {
     case 'smart':
-      return result.sort((a, b) => compareByScore(a, b, role, now))
+      return sources.toSorted((a, b) => compareByScore(a, b, role, now))
     case 'update':
-      return result.sort((a, b) => {
+      return sources.toSorted((a, b) => {
         const latestA =
           a.recent_items?.[0]?.published_at || a.last_success_at || 0
         const latestB =
@@ -103,16 +102,16 @@ export function sortSourcesForBoard(
         return latestB - latestA
       })
     case 'category':
-      return result.sort((a, b) => {
+      return sources.toSorted((a, b) => {
         const catA = brewMainCategory(a.category, '')
         const catB = brewMainCategory(b.category, '')
         if (catA !== catB) return catA.localeCompare(catB, locale)
         return a.name.localeCompare(b.name, locale)
       })
     case 'pinyin':
-      return result.sort((a, b) => a.name.localeCompare(b.name, locale))
+      return sources.toSorted((a, b) => a.name.localeCompare(b.name, locale))
     default:
-      return result
+      return [...sources]
   }
 }
 

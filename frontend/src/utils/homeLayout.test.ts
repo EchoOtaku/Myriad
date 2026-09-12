@@ -411,12 +411,16 @@ describe('home shell CSS contract', () => {
     assert.match(css, /--home-page-pad-x:\s*var\(--page-pad-x\)/)
     assert.match(
       frame,
-      new RegExp(`--page-stage-pad:\\s*${HOME_STANDARD_STAGE_PAD_REM}rem`),
+      new RegExp(
+        `--page-stage-pad:\\s*${RegExp.escape(String(HOME_STANDARD_STAGE_PAD_REM))}rem`,
+      ),
     )
     assert.match(css, /--home-stage-pad:\s*var\(--page-stage-pad\)/)
     assert.match(
       css,
-      new RegExp(`--home-free-pad-y:\\s*${HOME_FREE_PAGE_PAD_Y_REM}rem`),
+      new RegExp(
+        `--home-free-pad-y:\\s*${RegExp.escape(String(HOME_FREE_PAGE_PAD_Y_REM))}rem`,
+      ),
     )
     assert.match(
       frame,

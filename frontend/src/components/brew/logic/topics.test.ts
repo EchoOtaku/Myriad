@@ -168,7 +168,7 @@ describe('clusterTopics', () => {
     ]
     const keys = clusterTopics(items, NOW).map((t) => t.key)
     assert.deepEqual(keys, ['ai', 'engineering', 'systems'])
-    assert.deepEqual(clusterTopics([...items].reverse(), NOW).map((t) => t.key), keys)
+    assert.deepEqual(clusterTopics(items.toReversed(), NOW).map((t) => t.key), keys)
   })
 
   it('聚类只看 item.topic，不重新跑关键词', () => {

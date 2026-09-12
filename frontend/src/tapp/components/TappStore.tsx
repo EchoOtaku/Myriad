@@ -442,8 +442,7 @@ export function TappStore({
   }
 
   const allAppsCatalogSorted = useMemo(() => {
-    const list = [...allApps]
-    list.sort((a, b) => {
+    return allApps.toSorted((a, b) => {
       if (categorySortOrder === 'date') {
         const dateOrder = parseDate(b.updatedAt) - parseDate(a.updatedAt)
         if (dateOrder !== 0) return dateOrder
@@ -453,7 +452,6 @@ export function TappStore({
       }
       return a.name.localeCompare(b.name, locale)
     })
-    return list
   }, [allApps, categorySortOrder, locale])
 
   const installedCurrentApps =
