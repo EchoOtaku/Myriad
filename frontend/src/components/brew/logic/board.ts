@@ -15,7 +15,7 @@ export type BrewBoard = 'feeds' | 'notes' | 'sites'
 /** 收藏和主题流不是板块，是订阅上的筛选。 */
 export type BrewViewMode = 'sources' | 'starred' | 'topic-feed'
 
-export const BREW_BOARDS = ['feeds', 'notes', 'sites'] as const satisfies
+const BREW_BOARDS = ['feeds', 'notes', 'sites'] as const satisfies
   readonly BrewBoard[]
 
 export function isBrewBoard(value: string): value is BrewBoard {

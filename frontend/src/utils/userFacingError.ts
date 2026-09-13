@@ -1684,6 +1684,15 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       chars: bodyTooLong[2] || bodyTooLong[4] || '',
     })
   }
+  if (/^Note draft was updated elsewhere$/i.test(raw)) {
+    return currentCopy().brew.noteRevisionConflict
+  }
+  if (/^That time has already passed$/i.test(raw)) {
+    return currentCopy().brew.noteSchedulePast
+  }
+  if (/^A schedule time is required$/i.test(raw)) {
+    return currentCopy().brew.noteScheduleNeedTime
+  }
   if (/^游客$/.test(raw)) return t.guestLabel
   const userNumber = raw.match(/^用户#(\d+)$/)
   if (userNumber) return fill(t.userNumber, { id: userNumber[1] })

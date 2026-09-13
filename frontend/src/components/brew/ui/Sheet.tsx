@@ -2,7 +2,6 @@
 import type {
   ButtonHTMLAttributes,
   FormEventHandler,
-  HTMLAttributes,
   InputHTMLAttributes,
   LabelHTMLAttributes,
   ReactNode,
@@ -201,10 +200,6 @@ export function SheetRow({ children }: { children: ReactNode }) {
   return <div className="brew-sheet__field-row">{children}</div>
 }
 
-export function SheetGrow({ children }: { children: ReactNode }) {
-  return <div className="brew-sheet__grow">{children}</div>
-}
-
 export function SheetPair({ children }: { children: ReactNode }) {
   return <div className="brew-sheet__pair">{children}</div>
 }
@@ -261,21 +256,6 @@ export function SheetMenuItem({
   )
 }
 
-export function SheetDrop({
-  on,
-  children,
-  ...rest
-}: {
-  on?: boolean
-  children: ReactNode
-} & HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div className={cx('brew-sheet__drop', on && 'is-on')} {...rest}>
-      {children}
-    </div>
-  )
-}
-
 export function SheetSubmit({
   children,
   ...rest
@@ -320,30 +300,6 @@ export function SheetGhostLabel({
   )
 }
 
-export function SheetFoot({ children }: { children: ReactNode }) {
-  return <div className="brew-sheet__foot">{children}</div>
-}
-
-export function SheetTab({
-  on,
-  children,
-  onClick,
-}: {
-  on?: boolean
-  children: ReactNode
-  onClick?: () => void
-}) {
-  return (
-    <button
-      type="button"
-      className={cx('brew-sheet__tab', on && 'is-on')}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  )
-}
-
 export function SheetPills({ children }: { children: ReactNode }) {
   return <div className="brew-sheet__pills">{children}</div>
 }
@@ -354,28 +310,4 @@ export function SheetPill({ children }: { children: ReactNode }) {
 
 export function SheetSwatch({ children }: { children: ReactNode }) {
   return <label className="brew-sheet__swatch">{children}</label>
-}
-
-export function SheetCount({ children }: { children: ReactNode }) {
-  return <span className="brew-sheet__count">{children}</span>
-}
-
-export function SheetKeys({ children }: { children: ReactNode }) {
-  return <div className="brew-sheet__keys">{children}</div>
-}
-
-export function SheetGroup({ children }: { children: ReactNode }) {
-  return <section className="brew-sheet__group">{children}</section>
-}
-
-export function SheetGroupHead({ children }: { children: ReactNode }) {
-  return <div className="brew-sheet__group-head">{children}</div>
-}
-
-export function SheetShortcut({ children }: { children: ReactNode }) {
-  return <div className="brew-sheet__shortcut">{children}</div>
-}
-
-export function SheetKbd({ children }: { children: ReactNode }) {
-  return <kbd className="brew-sheet__kbd">{children}</kbd>
 }

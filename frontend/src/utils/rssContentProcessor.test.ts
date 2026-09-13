@@ -57,6 +57,29 @@ describe('sanitizeRssHtml (DOMPurify allowlist)', () => {
     assert.match(out, /alt="cover"/)
   })
 
+  it('keeps task-list checkboxes read-only and drops every other input', () => {
+    const out = sanitizeRssHtml(
+      '<ul><li><input type="checkbox" checked> done</li>'
+      + '<li><input type="checkbox"> todo</li></ul>'
+      + '<input type="text" name="card"><input type="checkbox" onclick="x()">',
+    )
+    assert.equal((out.match(/<input\b/g) ?? []).length, 3)
+    assert.equal(/type="text"/i.test(out), false)
+    assert.equal(/onclick/i.test(out), false)
+    assert.equal((out.match(/disabled/g) ?? []).length, 3)
+    assert.match(out, /checked/)
+  })
+
+  it('keeps footnote anchors so the reader can jump', () => {
+    const out = sanitizeRssHtml(
+      '<p>a<sup class="footnote-reference"><a href="#note-fn-1">1</a></sup></p>'
+      + '<div class="footnote-definition" id="note-fn-1"><sup class="footnote-definition-label">1</sup><p>b</p></div>',
+    )
+    assert.match(out, /id="note-fn-1"/)
+    assert.match(out, /href="#note-fn-1"/)
+    assert.match(out, /footnote-definition/)
+  })
+
   it('handles nested script mutation payloads', () => {
     const out = sanitizeRssHtml(
       '<div><scr<script>ipt>alert(1)</script></div>',

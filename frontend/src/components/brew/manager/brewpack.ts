@@ -15,7 +15,7 @@ import type {
 export const BREWPACK_VERSION = '2.0'
 export const BREWPACK_LEGACY_VERSION = '1.0'
 
-export function isSupportedBrewpackVersion(version: string): boolean {
+function isSupportedBrewpackVersion(version: string): boolean {
   return version === BREWPACK_VERSION || version === BREWPACK_LEGACY_VERSION
 }
 

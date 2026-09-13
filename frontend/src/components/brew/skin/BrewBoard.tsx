@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { BrewItemPreview, BrewSource } from '../../../types/brew'
+import type { BrewItemPreview, BrewNoteDoc, BrewSource } from '../../../types/brew'
 import type { BrewBoard } from '../logic/board'
 
 import type { FeedStory } from '../logic/feedStories'
@@ -7,6 +7,11 @@ import type { FeedStory } from '../logic/feedStories'
 import type { HomeBoardNote } from '../logic/homeBoard'
 import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../../../contexts/I18nContext'
+import {
+  noteDocKicker,
+  notesBoardIsEmpty,
+  visibleCloudNoteDocs,
+} from '../notes/noteBoard'
 import { brewOwnItemPath, getIconUrl, getImageUrl } from '../constants'
 import { isSiteSource, visitFriendHref } from '../logic/board'
 import { BrewVacant } from '../ui/Empty'
@@ -38,9 +43,11 @@ export interface BrewBoardViewProps {
   onToggleStar?: (item: BrewItemPreview) => void
   onEditSource?: (source: BrewSource) => void
   onWriteNote?: () => void
+  onOpenDoc?: (id: number) => void
   onSitesOpenChange?: (open: boolean) => void
   toolbar?: ReactNode
   notes?: HomeBoardNote[]
+  docs?: BrewNoteDoc[]
   vacant?: ReactNode
   stories?: FeedStory[]
   onReadySource?: (id: number | null) => void
@@ -67,9 +74,11 @@ export default function BrewBoardView({
   onToggleStar,
   onEditSource,
   onWriteNote,
+  onOpenDoc,
   onSitesOpenChange,
   toolbar,
   notes = [],
+  docs = [],
   vacant,
   stories,
   onReadySource,
@@ -91,8 +100,11 @@ export default function BrewBoardView({
     onSourceClick(source)
   }
 
+  const cloudDocs = board === 'notes' ? visibleCloudNoteDocs(docs) : []
   const empty =
-    sources.length === 0 && (board !== 'notes' || notes.length === 0)
+    board === 'notes'
+      ? notesBoardIsEmpty(sources.length, notes.length, docs)
+      : sources.length === 0
 
   if (empty && board !== 'feeds') {
     return (
@@ -155,6 +167,28 @@ export default function BrewBoardView({
 
   return (
     <SalonGrid>
+      {board === 'notes'
+        ? cloudDocs.map((doc, index) => (
+              <SalonNote
+                key={`doc:${doc.id}`}
+                cardKey={`doc:${doc.id}`}
+                arrive={index < 8 ? index : undefined}
+                cover={getImageUrl(doc.image)}
+                kicker={noteDocKicker(
+                  doc,
+                  {
+                    failed: t.brew.noteScheduleFailed,
+                    scheduled: t.brew.noteStatusScheduled,
+                    draft: t.brew.noteStatusDraft,
+                  },
+                  locale,
+                )}
+                title={doc.title.trim() || t.brew.noteCloudDraft}
+                summary={doc.content_md.slice(0, 80)}
+                onClick={() => onOpenDoc?.(doc.id)}
+              />
+            ))
+        : null}
       {board === 'notes'
         ? notes.map((note, index) => (
             <SalonNote

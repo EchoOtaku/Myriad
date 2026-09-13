@@ -65,11 +65,9 @@ html.dark #brew-veil-bloom {
   --brew-shadow: var(--cfg-card-shadow-sm, var(--chrome-chip-shadow));
   --brew-shadow-hover: var(--cfg-card-shadow-md, var(--chrome-shadow));
   --brew-radius: 0.75rem;
-  --brew-radius-lg: 1rem;
   --brew-focus:
     0 0 0 2px rgb(255 255 255 / 90%),
     0 0 0 4px color-mix(in srgb, var(--brew-accent) 45%, transparent);
-  --brew-frost: var(--cfg-frost-bg, var(--brew-fill));
   --brew-frost-line: var(--cfg-frost-border, var(--brew-line));
   --brew-chip: rgb(255 255 255 / 78%);
   --brew-rail-pad-x: 0.2rem;
@@ -104,6 +102,8 @@ html.dark .brew-skin {
   .choice-segmented-item,
   .setting-title-tag,
   .field-input,
+  .field-select-trigger,
+  .field-select-option,
   .toggle-switch,
   .brew-search__icon,
   .brew-search__hint
@@ -117,6 +117,8 @@ html.dark .brew-skin {
 .brew-skin button:not(
   .settings-btn,
   .choice-segmented-item,
+  .field-select-trigger,
+  .field-select-option,
   .brew-search__icon,
   .brew-search__hint
 ):focus {
@@ -126,6 +128,8 @@ html.dark .brew-skin {
 .brew-skin button:not(
   .settings-btn,
   .choice-segmented-item,
+  .field-select-trigger,
+  .field-select-option,
   .brew-search__icon,
   .brew-search__hint
 ):focus-visible {

@@ -59,6 +59,8 @@ export function useContentPostprocess({
 
       const links = contentRef.current.querySelectorAll('a')
       links.forEach((link) => {
+        // 站内锚点（脚注跳转）留在本页
+        if ((link.getAttribute('href') ?? '').startsWith('#')) return
         link.target = '_blank'
         link.rel = 'noopener noreferrer'
       })
@@ -69,6 +71,11 @@ export function useContentPostprocess({
 
         const wrapper = document.createElement('div')
         wrapper.className = 'code-block-wrapper relative group my-5'
+        // 手记后端渲染只留 `class="language-x"`；抄到 data-lang 让角标能读到
+        const lang = pre
+          .querySelector('code')
+          ?.className.match(/\blanguage-([\w+#.-]+)/)?.[1]
+        if (lang) wrapper.dataset.lang = lang
 
         pre.parentNode?.insertBefore(wrapper, pre)
         wrapper.appendChild(pre)

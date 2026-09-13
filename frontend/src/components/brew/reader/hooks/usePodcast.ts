@@ -24,7 +24,7 @@ import { userFacingError } from '../../../../utils/userFacingError'
 import { RequestTurn } from '../../logic/requestTurn'
 import { useArticleTaskScope } from './useArticleTaskScope'
 
-export interface UsePodcastOptions {
+interface UsePodcastOptions {
   itemId: number
   sourceId: number
   isBrewlia: boolean
@@ -73,7 +73,7 @@ function findCompleteCacheVoices(
   return null
 }
 
-export interface UsePodcastReturn {
+interface UsePodcastReturn {
   podcastDialogues: PodcastDialogue[]
   podcastLoading: boolean
   podcastError: string | null

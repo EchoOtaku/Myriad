@@ -41,6 +41,7 @@ const MAX_ERROR_COUNT: i32 = 10;
 
 /// 调度器检查间隔（秒）
 const SCHEDULER_INTERVAL_SECS: u64 = 60;
+const NOTE_SCHEDULE_INTERVAL_SECS: u64 = 15;
 
 /// 通知广播通道容量
 const NOTIFICATION_CHANNEL_SIZE: usize = 100;
@@ -111,19 +112,34 @@ impl BrewSchedulerEngine {
         let notification_tx = self.notification_tx.clone();
 
         tokio::spawn(async move {
-            let mut interval =
+            let mut feeds =
                 tokio::time::interval(tokio::time::Duration::from_secs(SCHEDULER_INTERVAL_SECS));
+            let mut notes = tokio::time::interval(tokio::time::Duration::from_secs(
+                NOTE_SCHEDULE_INTERVAL_SECS,
+            ));
+            feeds.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            notes.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
             loop {
-                interval.tick().await;
-
-                if !*running.read().await {
-                    tracing::info!("[BrewScheduler] Scheduler stopped");
-                    break;
-                }
-
-                if let Err(e) = Self::tick(&db, &notification_tx).await {
-                    tracing::error!("[BrewScheduler] Tick error: {}", e);
+                tokio::select! {
+                    _ = notes.tick() => {
+                        if !*running.read().await {
+                            tracing::info!("[BrewScheduler] Scheduler stopped");
+                            break;
+                        }
+                        if let Err(e) = crate::services::note_publish::publish_due_note_docs(&db).await {
+                            tracing::error!("[BrewScheduler] Note schedule error: {}", e);
+                        }
+                    }
+                    _ = feeds.tick() => {
+                        if !*running.read().await {
+                            tracing::info!("[BrewScheduler] Scheduler stopped");
+                            break;
+                        }
+                        if let Err(e) = Self::tick(&db, &notification_tx).await {
+                            tracing::error!("[BrewScheduler] Tick error: {}", e);
+                        }
+                    }
                 }
             }
         });

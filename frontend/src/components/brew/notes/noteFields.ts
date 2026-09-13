@@ -4,6 +4,7 @@ export const MAX_NOTE_TITLE_CHARS = 200
 export const MAX_NOTE_BODY_CHARS = 200_000
 
 export type NoteFieldError = 'empty-title' | 'title-too-long' | 'body-too-long'
+export type NoteScheduleError = 'missing-time' | 'already-due'
 
 export function countNoteChars(value: string): number {
   return [...value].length
@@ -23,7 +24,7 @@ export function noteFieldError(
 
 /** 正文第一张图，给封面空位看。 */
 export function firstMarkdownImage(markdown: string): string | null {
-  const match = /!\[[^\]]*]\(([^\s)]+)/.exec(markdown)
+  const match = /!\[[^\]]*\]\(([^\s)]+)/.exec(markdown)
   const href = match?.[1]?.trim()
   return href || null
 }
@@ -41,6 +42,16 @@ export function fromDatetimeLocal(value: string): number | null {
   if (!trimmed) return null
   const ms = new Date(trimmed).getTime()
   return Number.isFinite(ms) ? ms : null
+}
+
+/** 和后端 `schedule_at` 同一口径：必须给一个还没到的时间。 */
+export function noteScheduleError(
+  scheduledAt: number | null | undefined,
+  now = Date.now(),
+): NoteScheduleError | null {
+  if (scheduledAt == null || !Number.isFinite(scheduledAt)) return 'missing-time'
+  if (scheduledAt <= now) return 'already-due'
+  return null
 }
 
 export function sameNoteMinute(left: number | null, right: number | null): boolean {

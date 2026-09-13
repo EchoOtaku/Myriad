@@ -142,6 +142,33 @@ export interface BrewNoteDraft {
   published_at: number
 }
 
+export type BrewNoteDocStatus = 'draft' | 'scheduled' | 'published'
+
+export interface BrewNoteDoc {
+  id: number
+  item_id: number | null
+  title: string
+  content_md: string
+  topic: string | null
+  image: string | null
+  status: BrewNoteDocStatus
+  scheduled_at: number | null
+  published_at: number | null
+  revision: number
+  last_error?: string | null
+  updated_at: number
+}
+
+export interface BrewNoteDocInput {
+  title?: string
+  content_md?: string
+  topic?: string | null
+  image?: string | null
+  published_at?: number | null
+  scheduled_at?: number | null
+  revision?: number
+}
+
 export interface BrewCategory {
   id: number
   user_id: number

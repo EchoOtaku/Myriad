@@ -5,6 +5,8 @@
 mod comments_rsshub;
 mod feeds_articles;
 mod helpers;
+mod note_collab;
+mod note_docs;
 mod notes;
 mod reading_sync_ws;
 
@@ -95,5 +97,40 @@ mod integration_tests {
             .await
             .expect("topic filter executes");
         let _ = filtered.len();
+    }
+
+    /// DB-gated: 云端手记文档表必须存在，草稿才不会被硬塞进 brew_items。
+    #[tokio::test]
+    async fn brew_note_docs_table_when_db_provided() {
+        use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+
+        let database_url = std::env::var("BREW_TEST_DATABASE_URL")
+            .or_else(|_| std::env::var("NOTIFICATION_TEST_DATABASE_URL"))
+            .or_else(|_| std::env::var("MYRIAD_SCHEMA_DRIFT_DB"));
+        let Ok(database_url) = database_url else {
+            return;
+        };
+        let db = Database::connect(&database_url)
+            .await
+            .expect("connect test db");
+        migration::Migrator::up(&db, None)
+            .await
+            .expect("migrator up");
+        let col = db
+            .query_one_raw(Statement::from_string(
+                DatabaseBackend::Postgres,
+                "SELECT data_type FROM information_schema.columns \
+                 WHERE table_schema = 'public' AND table_name = 'brew_note_docs' \
+                 AND column_name = 'status'"
+                    .to_string(),
+            ))
+            .await
+            .expect("query information_schema")
+            .expect("brew_note_docs.status 必须存在");
+        let data_type: String = col.try_get("", "data_type").expect("data_type");
+        assert!(
+            data_type.contains("char"),
+            "status should be a varchar-like type, got {data_type}"
+        );
     }
 }

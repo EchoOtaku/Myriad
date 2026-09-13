@@ -103,6 +103,8 @@ const RSS_ALLOWED_TAGS: readonly string[] = [
   'i',
   'iframe',
   'img',
+  // 只放任务列表的勾选框；别的 input 在 hook 里删掉
+  'input',
   'ins',
   'kbd',
   'li',
@@ -176,6 +178,8 @@ const RSS_ALLOWED_ATTR: readonly string[] = [
   'sandbox',
   'frameborder',
   'data-rss-image',
+  'checked',
+  'disabled',
 ]
 
 /** Iframe host allowlist; no executable sandboxes. */
@@ -242,6 +246,19 @@ function ensurePurifyHooks(): void {
   purifyHooksRegistered = true
 
   DOMPurify.addHook('uponSanitizeElement', (node, data) => {
+    if (data.tagName === 'input') {
+      // 任务列表的勾选框是正文里唯一合法的 input，而且只能是只读的。
+      const input = node as Element
+      if (
+        typeof input.getAttribute !== 'function'
+        || (input.getAttribute('type') || '').toLowerCase() !== 'checkbox'
+      ) {
+        input.parentNode?.removeChild(input)
+        return
+      }
+      input.setAttribute('disabled', '')
+      return
+    }
     if (data.tagName !== 'iframe') return
     const el = node as Element
     if (typeof el.getAttribute !== 'function') {

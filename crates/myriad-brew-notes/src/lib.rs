@@ -11,6 +11,11 @@ use std::collections::{HashMap, HashSet};
 
 use pulldown_cmark::{Options, Parser, html};
 
+mod merge;
+mod status;
+pub use merge::merge_text;
+pub use status::{NoteDocStatus, ScheduleError, is_due, schedule_at};
+
 /// 正文长度上限（字符）。超出的部分不截断，直接拒绝 —— 悄悄截掉用户写的东西
 /// 比报错更糟。
 pub const MAX_NOTE_CHARS: usize = 200_000;
@@ -103,6 +108,8 @@ fn allowed_tags() -> HashSet<&'static str> {
         "br",
         "code",
         "del",
+        // 只为脚注定义放行；别的 div 会被剥掉外壳只留内容
+        "div",
         "em",
         "h1",
         "h2",
@@ -144,8 +151,26 @@ fn allowed_attributes() -> HashMap<&'static str, HashSet<&'static str>> {
     map.insert("th", ["colspan", "rowspan", "scope"].into_iter().collect());
     // 代码块的语言类名（`language-rust`），高亮靠它
     map.insert("code", ["class"].into_iter().collect());
+    // 脚注定义的锚点；`id_prefix` 会给它和指向它的 `#` 链接一起加前缀
+    map.insert("div", ["id"].into_iter().collect());
     map
 }
+
+/// 脚注用到的类名。`class` 不整体放行，只认这几个。
+fn allowed_classes() -> HashMap<&'static str, HashSet<&'static str>> {
+    let mut map: HashMap<&'static str, HashSet<&'static str>> = HashMap::new();
+    map.insert("div", ["footnote-definition"].into_iter().collect());
+    map.insert(
+        "sup",
+        ["footnote-reference", "footnote-definition-label"]
+            .into_iter()
+            .collect(),
+    );
+    map
+}
+
+/// 脚注锚点的前缀，避免和页面上别的 id 撞车。
+const FOOTNOTE_ID_PREFIX: &str = "note-fn-";
 
 /// 把 Markdown 渲染成可以直接插进阅读器的 HTML。
 ///
@@ -155,10 +180,15 @@ pub fn render_markdown(markdown: &str) -> String {
     let parser = Parser::new_ext(markdown, markdown_options());
     let mut raw = String::new();
     html::push_html(&mut raw, parser);
+    // 消毒器只给 id 加前缀，不改指向它的 `#` 链接；这里先把站内锚点补上同一个前缀。
+    // 正文里唯一能有 id 的就是脚注定义，所以所有 `#` 链接都按脚注处理。
+    let raw = raw.replace("href=\"#", &format!("href=\"#{FOOTNOTE_ID_PREFIX}"));
 
     ammonia::Builder::default()
         .tags(allowed_tags())
         .tag_attributes(allowed_attributes())
+        .allowed_classes(allowed_classes())
+        .id_prefix(Some(FOOTNOTE_ID_PREFIX))
         // 站外链接一律新窗口打开并断开 referrer / opener
         .link_rel(Some("noopener noreferrer nofollow"))
         // 只认这几种协议：javascript: / data: 一律拦掉
@@ -356,6 +386,30 @@ mod tests {
         let html = render_markdown("| a | b |\n| - | - |\n| 1 | 2 |\n\n~~删~~");
         assert!(html.contains("<table>"));
         assert!(html.contains("<del>删</del>"));
+    }
+
+    #[test]
+    fn footnotes_keep_anchor_and_classes() {
+        let html = render_markdown("注[^1]\n\n[^1]: 底");
+        assert!(html.contains("class=\"footnote-reference\""), "{html}");
+        assert!(html.contains("class=\"footnote-definition\""), "{html}");
+        assert!(html.contains("id=\"note-fn-1\""), "{html}");
+        assert!(html.contains("href=\"#note-fn-1\""), "{html}");
+        assert!(html.contains("footnote-definition-label"), "{html}");
+    }
+
+    #[test]
+    fn task_list_checkbox_survives() {
+        let html = render_markdown("- [x] 做完\n- [ ] 还没");
+        assert!(html.contains("type=\"checkbox\""), "{html}");
+        assert!(html.contains("checked"), "{html}");
+        assert!(html.contains("disabled"), "{html}");
+    }
+
+    #[test]
+    fn nested_lists_render() {
+        let html = render_markdown("- 甲\n  - 甲一\n- 乙");
+        assert!(html.contains("<li>甲\n<ul>"), "{html}");
     }
 
     #[test]

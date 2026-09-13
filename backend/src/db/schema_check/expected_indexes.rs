@@ -363,6 +363,24 @@ pub(crate) fn get_expected_indexes() -> Vec<IndexDef> {
             columns: vec!["item_id".into(), "user_id".into()],
             is_unique: false,
         },
+        IndexDef {
+            name: "idx_brew_note_docs_user".into(),
+            table: "brew_note_docs".into(),
+            columns: vec!["user_id".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_brew_note_docs_item".into(),
+            table: "brew_note_docs".into(),
+            columns: vec!["item_id".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_brew_note_docs_schedule".into(),
+            table: "brew_note_docs".into(),
+            columns: vec!["status".into(), "scheduled_at".into()],
+            is_unique: false,
+        },
         // rsshub_instances 索引
         IndexDef {
             name: "idx_rsshub_instances_user_url".into(),

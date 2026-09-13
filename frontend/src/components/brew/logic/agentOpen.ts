@@ -8,7 +8,7 @@ export interface AgentOpenHint {
 
 export const PENDING_OPEN_KEY = 'brew_pending_open_article'
 export const PENDING_READING_KEY = 'brew_pending_reading_list'
-export const PENDING_TTL_MS = 10_000
+const PENDING_TTL_MS = 10_000
 
 export function itemMatchesAgentHint(
   item: { id: number; link?: string | null; guid?: string | null },

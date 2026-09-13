@@ -179,6 +179,7 @@ export default memo(
       // 常驻 DOM，避免切换时重挂 backdrop-blur。用 animate + pointerEvents，不卸载。
       <>
         <motion.aside
+          data-brew-reader-controls
           inert={!showPanels || undefined}
           aria-hidden={!showPanels || undefined}
           initial={enableAnimations ? { opacity: 0, x: -24, scale: 0.92 } : false}

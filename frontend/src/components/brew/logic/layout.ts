@@ -27,18 +27,18 @@ export function allowedTileSizes(
 
 export type BrewTileLayout = 'feature' | 'list' | 'cadence' | 'numeric' | 'icon'
 
-export const NUMERIC_UNREAD_MIN = 20
-export const CADENCE_QUIET_DAYS = 60
+const NUMERIC_UNREAD_MIN = 20
+const CADENCE_QUIET_DAYS = 60
 /** pulses 不足则 cadence 降级 feature。 */
-export const CADENCE_MIN_PULSES = 6
-export const FEATURE_MAX_ITEMS = 2
+const CADENCE_MIN_PULSES = 6
+const FEATURE_MAX_ITEMS = 2
 /** 无封面源少于此条数不配 4x4。 */
-export const FULL_TILE_MIN_ITEMS = 5
+const FULL_TILE_MIN_ITEMS = 5
 
 /** 源少于此数一律撑满。 */
-export const FULL_BLEED_SOURCE_COUNT = 6
-export const SIZE_SCORE_LARGE = 0.55
-export const SIZE_SCORE_MEDIUM = 0.3
+const FULL_BLEED_SOURCE_COUNT = 6
+const SIZE_SCORE_LARGE = 0.55
+const SIZE_SCORE_MEDIUM = 0.3
 
 /** `now` 必须注入。itemCount 要用补拉后的条数，默认 3 条预览会误判 feature。 */
 export function tileLayout(
@@ -135,8 +135,8 @@ export function tileSize(
   return downgradeForBand('2x2', band)
 }
 
-export const TOPIC_LARGE_COUNT_SMART = 2
-export const TOPIC_LARGE_COUNT_TOPIC_MODE = 4
+const TOPIC_LARGE_COUNT_SMART = 2
+const TOPIC_LARGE_COUNT_TOPIC_MODE = 4
 
 /** 主题卡最小 4x2，不进 2x2。 */
 export function topicTileSize(

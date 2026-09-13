@@ -126,6 +126,124 @@
   font-weight: 600;
 }
 
+/* 任务列表：后端渲染是 input[type=checkbox]，可视层是 li[data-task]。两种画法一致。 */
+.brew-note-preview li:has(> input[type='checkbox']),
+.brew-note-preview li[data-task] {
+  position: relative;
+  list-style: none;
+}
+
+.brew-note-preview li > input[type='checkbox'] {
+  position: absolute;
+  top: 0.35em;
+  left: -1.55em;
+  width: 1.05em;
+  height: 1.05em;
+  margin: 0;
+  accent-color: currentcolor;
+}
+
+.brew-note-preview li[data-task]::before {
+  content: '';
+  position: absolute;
+  top: 0.35em;
+  left: -1.55em;
+  width: 1.05em;
+  height: 1.05em;
+  box-sizing: border-box;
+  border: 1.5px solid rgb(0 0 0 / 35%);
+  border-radius: 0.25em;
+  background: transparent;
+  cursor: pointer;
+}
+
+.brew-note-preview li[data-task='1']::before {
+  border-color: currentcolor;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 13l4 4L19 7'/%3E%3C/svg%3E")
+    center / 75% no-repeat currentcolor;
+}
+
+.brew-note-preview li[data-task='1'],
+.brew-note-preview li:has(> input[type='checkbox']:checked) {
+  color: var(--brew-fg-dim, var(--color-gray-500, #6b7280));
+}
+
+/* 脚注：正文里是上标编号，底下是带编号的小字段。 */
+.brew-note-preview sup[data-fnref],
+.brew-note-preview sup.footnote-reference {
+  margin-inline: 0.1em;
+  font-size: 0.7em;
+  font-weight: 600;
+  line-height: 0;
+}
+
+.brew-note-preview sup.footnote-reference a {
+  text-decoration: none;
+}
+
+.brew-note-preview p[data-fn]::before {
+  content: attr(data-fn) '. ';
+  color: var(--brew-fg-dim, #6b7280);
+  font-weight: 600;
+}
+
+.brew-note-preview p[data-fn],
+.brew-note-preview .footnote-definition {
+  display: flex;
+  gap: 0.5em;
+  margin: 0.4em 0;
+  font-size: 0.875em;
+  color: var(--brew-fg-soft, var(--color-gray-600, #4b5563));
+}
+
+.brew-note-preview p[data-fn]:first-of-type,
+.brew-note-preview .footnote-definition:first-of-type {
+  margin-top: 1.5em;
+  padding-top: 1em;
+  border-top: 1px solid rgb(0 0 0 / 10%);
+}
+
+.brew-note-preview .footnote-definition > .footnote-definition-label {
+  flex-shrink: 0;
+  font-size: inherit;
+  font-weight: 600;
+  line-height: inherit;
+  color: var(--brew-fg-dim, #6b7280);
+}
+
+.brew-note-preview .footnote-definition > p {
+  margin: 0;
+}
+
+/* 代码块角上的语言。 */
+.brew-note-preview pre {
+  position: relative;
+}
+
+.brew-note-preview pre[data-lang]::before {
+  content: attr(data-lang);
+  position: absolute;
+  top: 0.45em;
+  right: 0.8em;
+  color: var(--brew-fg-dim, #6b7280);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7em;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  pointer-events: none;
+}
+
+.brew-note-preview code:not(pre code) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* 嵌套列表不再往下加外边距。 */
+.brew-note-preview li > ul,
+.brew-note-preview li > ol {
+  margin: 0.35em 0 0;
+}
+
 html.dark .brew-note-preview {
   color: var(--brew-fg-soft, var(--color-gray-300, #d1d5db));
 }
@@ -161,4 +279,18 @@ html.dark .brew-note-preview td {
 
 html.dark .brew-note-preview th {
   background: rgb(255 255 255 / 5%);
+}
+
+html.dark .brew-note-preview li[data-task]::before {
+  border-color: rgb(255 255 255 / 35%);
+}
+
+html.dark .brew-note-preview li[data-task='1']::before {
+  border-color: currentcolor;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23111' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 13l4 4L19 7'/%3E%3C/svg%3E");
+}
+
+html.dark .brew-note-preview p[data-fn]:first-of-type,
+html.dark .brew-note-preview .footnote-definition:first-of-type {
+  border-top-color: rgb(255 255 255 / 12%);
 }

@@ -108,7 +108,7 @@ export default function BrewReader(props: BrewReaderProps) {
       fade.onfinish = null
       fade.cancel()
     }
-  }, [props.item.id, sameArticle, enabled])
+  }, [sameArticle, enabled])
 
   useLayoutEffect(() => {
     const column = columnRef.current
@@ -428,6 +428,7 @@ function ReaderArticleSession({
   }, [enableAnimations, readerTransition.duration])
 
   const { handleTooltipMouseEnter, handleTooltipMouseLeave } = useContentEvents({
+    contentReady,
     contentRef: contentInnerRef,
     setFocusedCommentIds,
     comments,
@@ -497,7 +498,7 @@ function ReaderArticleSession({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
+      if (event.key !== 'Escape' || event.defaultPrevented) return
       const typing = Boolean(
         event.target instanceof HTMLElement &&
           event.target.closest(
@@ -894,6 +895,7 @@ function ReaderArticleSession({
       />
 
       <Lightbox
+        enableAnimations={enableAnimations}
         src={lightboxImage}
         isDark={isDark}
         onClose={() => setLightboxImage(null)}

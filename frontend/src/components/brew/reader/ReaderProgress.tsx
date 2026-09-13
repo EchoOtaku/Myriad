@@ -1,7 +1,7 @@
 import type { ReadingProgress } from './progressStore'
 import { useSyncExternalStore } from 'react'
 
-export function useReadingProgressValue(progress: ReadingProgress): number {
+function useReadingProgressValue(progress: ReadingProgress): number {
   return useSyncExternalStore(progress.subscribe, progress.get, progress.get)
 }
 

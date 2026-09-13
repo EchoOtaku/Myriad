@@ -1,47 +1,148 @@
-/* 页面组合不要往这里塞业务。 */
+/* 写作器：整页纸面 + 居中阅读宽度。控件皮肤在设置那边，这里只管布局。 */
 
 .brew-note {
+  --note-col: 44rem;
+  --note-gutter: clamp(1rem, 4vw, 2.5rem);
+
   display: flex;
   position: fixed;
   inset: 0;
   z-index: 9999;
   flex-direction: column;
-  padding: 0;
-  background: rgb(0 0 0 / 42%);
+  background: var(--cfg-frost-elevated-bg, rgb(255 255 255 / 96%));
+  color: var(--brew-fg);
 }
 
 .brew-note__frame {
   display: flex;
-  overflow: hidden;
+  position: relative;
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
-  border: 0;
-  background: var(--brew-chip);
-  box-shadow: var(--brew-shadow);
 }
 
-.brew-note__head,
-.brew-note__tools {
+/* ---- 顶栏：薄、透明 ---- */
+
+.brew-note__top {
   display: flex;
   flex-shrink: 0;
-  align-items: center;
+  flex-direction: column;
   gap: 0.35rem;
-  padding: 0.45rem 0.7rem;
-  border-bottom: 1px solid var(--brew-line);
+  padding: 0.5rem var(--note-gutter) 0.45rem;
+}
+
+.brew-note__top-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.brew-note__top-left,
+.brew-note__top-right {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.brew-note__top-left {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.brew-note__top-right {
+  flex-shrink: 0;
+}
+
+.brew-note__state {
+  overflow: hidden;
+  color: var(--note-ink-3);
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brew-note__state.is-failed {
+  color: var(--note-danger);
+}
+
+.brew-note__peers {
+  display: flex;
+  align-items: center;
+}
+
+.brew-note__peer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-inline-start: -0.4rem;
+  border: 2px solid var(--note-paper);
+  border-radius: 999px;
+  background: hsl(var(--peer-hue, 210) 55% 88%);
+  color: hsl(var(--peer-hue, 210) 45% 28%);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+html.dark .brew-note__peer {
+  background: hsl(var(--peer-hue, 210) 35% 28%);
+  color: hsl(var(--peer-hue, 210) 60% 88%);
+}
+
+.brew-note__peer:first-child {
+  margin-inline-start: 0.25rem;
+}
+
+.brew-note__alert {
+  align-self: flex-start;
+  margin: 0;
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.5rem;
+  background: var(--note-danger-fill);
+  color: var(--note-danger);
+  font-size: 0.8125rem;
+}
+
+/* ---- 纸面 ---- */
+
+.brew-note__scroll {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.brew-note__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40vh;
+}
+
+.brew-note__paper {
+  width: min(var(--note-col), 100%);
+  margin: 0 auto;
+  padding: clamp(1.5rem, 6vh, 4rem) var(--note-gutter) 35vh;
 }
 
 .brew-note__title {
-  min-width: 0;
-  flex: 1 1 auto;
-  height: 2rem;
-  padding: 0 0.2rem;
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
   border: 0;
   background: transparent;
   color: var(--brew-fg);
-  font-size: 1rem;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  font-family: inherit;
+  font-size: clamp(1.9rem, 3.4vw, 2.6rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  overflow: hidden;
+  resize: none;
 }
 
 .brew-note__title:focus {
@@ -50,182 +151,72 @@
 
 .brew-note__title::placeholder {
   color: var(--brew-fg-dim);
-  font-weight: 500;
+  opacity: 0.7;
 }
 
-.brew-note__tool {
+.brew-note.brew-skin .brew-note__byline {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 1.9rem;
-  height: 1.9rem;
-  border: 0;
-  border-radius: 0.42rem;
-  background: transparent;
-  color: var(--brew-fg-soft);
-  cursor: pointer;
-  transition: var(--sm-t-fill, background-color 140ms ease);
-}
-
-.brew-note__tool svg,
-.brew-note__publish svg {
-  width: 0.9rem;
-  height: 0.9rem;
-}
-
-.brew-note__tool:hover {
-  background: var(--brew-fill-hover);
-  color: var(--brew-fg);
-}
-
-.brew-note__tool.is-danger:hover {
-  background: color-mix(in srgb, #dc2626 10%, transparent);
-  color: #dc2626;
-}
-
-.brew-note__publish {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  height: 1.9rem;
-  padding: 0 0.8rem;
-  border: 1px solid var(--brew-accent-line);
-  border-radius: 0.42rem;
-  background: var(--brew-accent-fill);
-  color: var(--brew-accent-ink);
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.brew-note__pane {
-  height: 1.9rem;
-  padding: 0 0.65rem;
-  border: 0;
-  border-radius: 0.42rem;
-  background: transparent;
-  color: var(--brew-fg-soft);
-  font-size: 0.75rem;
-  font-weight: 550;
-  cursor: pointer;
-}
-
-.brew-note__pane.is-on {
-  background: var(--brew-accent-fill);
-  color: var(--brew-accent-ink);
-}
-
-.brew-note__meta {
-  display: flex;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.45rem 0.75rem;
-  padding: 0.4rem 0.7rem;
-  border-bottom: 1px solid var(--brew-line);
-}
-
-.brew-note__field {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.brew-note__field span,
-.brew-note__field-label,
-.brew-note__cover-hint {
-  color: var(--brew-fg-dim);
-  font-size: 0.7rem;
-  font-weight: 550;
-  white-space: nowrap;
-}
-
-.brew-note__field select,
-.brew-note__field input[type='datetime-local'] {
-  height: 1.9rem;
+  gap: 0.45rem;
+  height: 2rem;
+  margin: 0.6rem 0 1.6rem;
   padding: 0 0.5rem;
-  border: 1px solid var(--brew-frost-line, var(--brew-line));
-  border-radius: 0.42rem;
+  margin-inline-start: -0.5rem;
+  border: 0;
+  border-radius: 0.5rem;
   background: transparent;
-  color: var(--brew-fg);
-  font-family: inherit;
-  font-size: 0.75rem;
-  font-weight: 550;
+  color: var(--note-ink-3);
+  font-size: 0.875rem;
+  cursor: pointer;
 }
 
-.brew-note__field select:focus,
-.brew-note__field input[type='datetime-local']:focus {
-  outline: none;
-  border-color: var(--brew-line-hover);
-}
-
-html.dark .brew-note__field select,
-html.dark .brew-note__field input[type='datetime-local'] {
-  color-scheme: dark;
-}
-
-.brew-note__cover {
-  display: flex;
-  min-width: 0;
-  flex: 1 1 auto;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.4rem;
-}
-
-.brew-note__cover-thumb {
-  width: 2.4rem;
-  height: 1.9rem;
-  border-radius: 0.35rem;
-  background: var(--brew-fill-hover);
-  object-fit: cover;
-}
-
-.brew-note__alert {
-  padding: 0.45rem 0.9rem;
-  border-bottom: 1px solid color-mix(in srgb, #dc2626 22%, var(--brew-line));
-  background: color-mix(in srgb, #dc2626 8%, transparent);
-  color: #dc2626;
-  font-size: 0.75rem;
-}
-
-.brew-note__body {
-  display: flex;
-  min-height: 0;
-  flex: 1 1 auto;
+.brew-note.brew-skin .brew-note__byline:hover {
+  background: var(--note-fill-hover);
+  color: var(--note-ink-2);
 }
 
 .brew-note__write,
 .brew-note__read {
+  position: relative;
   min-height: 0;
-  flex: 1 1 auto;
 }
 
-.brew-note__write {
-  display: flex;
+.brew-note__write.is-hidden,
+.brew-note__read.is-hidden {
+  display: none;
 }
 
-.brew-note__read {
-  overflow: auto;
-  padding: 1rem 1.25rem;
-  border-left: 1px solid var(--brew-line);
+.brew-note__caret {
+  position: absolute;
+  z-index: 1;
+  width: 2px;
+  height: 1.15em;
+  pointer-events: none;
+  background: hsl(var(--peer-hue, 210) 60% 45%);
+}
+
+/* 写栏外移一个内边距，文字和标题左对齐；协作光标的 16px 内边距也刚好对上。 */
+.brew-note__source {
+  margin-inline: -1rem;
 }
 
 .brew-note__write textarea {
+  display: block;
   width: 100%;
-  height: 100%;
-  padding: 1rem 1.25rem;
+  min-height: 50vh;
+  padding: 1rem;
   border: 0;
   background: transparent;
   color: var(--brew-fg);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.875rem;
-  line-height: 1.75;
+  font-size: 0.9375rem;
+  line-height: 1.8;
+  overflow: hidden;
   resize: none;
 }
 
-.brew-note__write textarea:focus {
+.brew-note__write textarea:focus,
+.brew-note__visual:focus {
   outline: none;
 }
 
@@ -234,31 +225,414 @@ html.dark .brew-note__field input[type='datetime-local'] {
   color: var(--brew-fg-dim);
 }
 
+.brew-note__visual {
+  min-height: 50vh;
+  font-size: 1.0625rem;
+  line-height: 1.8;
+  caret-color: var(--brew-fg);
+}
+
+.brew-note__visual:empty::before {
+  content: attr(data-placeholder);
+  color: var(--brew-fg-dim);
+  pointer-events: none;
+}
+
+.brew-note__read .brew-note-preview {
+  font-size: 1.0625rem;
+  line-height: 1.8;
+}
+
+/* ---- 选区浮动条 ---- */
+
+.brew-note__bubble {
+  display: flex;
+  position: absolute;
+  z-index: 30;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.25rem;
+  border-radius: 0.7rem;
+  background: var(--note-solid-bg);
+  box-shadow:
+    0 12px 30px rgb(0 0 0 / 22%),
+    0 2px 6px rgb(0 0 0 / 12%);
+  transform: translate(-50%, 0);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.brew-note__bubble.is-placed {
+  opacity: 1;
+  pointer-events: auto;
+  animation: sm-pop-in var(--sm-dur-fast, 120ms) var(--sm-ease-enter, ease-out)
+    backwards;
+}
+
+.brew-note.brew-skin .brew-note__bubble-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--note-solid-fg);
+  cursor: pointer;
+}
+
+.brew-note.brew-skin .brew-note__bubble-btn svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.brew-note.brew-skin .brew-note__bubble-btn:hover {
+  background: rgb(255 255 255 / 14%);
+}
+
+html.dark .brew-note.brew-skin .brew-note__bubble-btn:hover {
+  background: rgb(0 0 0 / 10%);
+}
+
+.brew-note.brew-skin .brew-note__bubble-btn:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--note-solid-fg);
+}
+
+.brew-note.brew-skin .brew-note__bubble-btn--text {
+  width: auto;
+  padding: 0 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.brew-note__bubble-link {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 18rem;
+}
+
+.brew-note.brew-skin .brew-note__bubble-input {
+  flex: 1 1 auto;
+  height: 2.25rem;
+  padding: 0 0.7rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--note-solid-fg);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.brew-note.brew-skin .brew-note__bubble-input::placeholder {
+  color: color-mix(in srgb, var(--note-solid-fg) 55%, transparent);
+}
+
+.brew-note.brew-skin .brew-note__bubble-input:focus {
+  outline: none;
+}
+
+/* ---- 表格 / 代码块的角上工具条 ---- */
+
+.brew-note__blockbar {
+  display: flex;
+  position: absolute;
+  z-index: 26;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.2rem;
+  border: 1px solid var(--note-line);
+  border-radius: 0.6rem;
+  background: var(--note-paper);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 10%);
+  transform: translate(-100%, -100%);
+}
+
+.brew-note.brew-skin .brew-note__blockbar-btn {
+  height: 2rem;
+  padding: 0 0.65rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--note-ink-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.brew-note.brew-skin .brew-note__blockbar-btn:hover {
+  background: var(--note-fill-hover);
+  color: var(--note-ink);
+}
+
+.brew-note.brew-skin .brew-note__blockbar-btn.is-danger:hover {
+  background: var(--note-danger-fill);
+  color: var(--note-danger);
+}
+
+.brew-note__blockbar-field {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding-inline-start: 0.5rem;
+  color: var(--note-ink-3);
+  font-size: 0.8125rem;
+}
+
+.brew-note.brew-skin .brew-note__blockbar-input {
+  width: 7rem;
+  height: 2rem;
+  padding: 0 0.55rem;
+  border: 1px solid var(--note-line);
+  border-radius: 0.45rem;
+  background: var(--note-paper);
+  color: var(--note-ink);
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+}
+
+.brew-note.brew-skin .brew-note__blockbar-input:focus {
+  outline: none;
+  border-color: var(--note-ink);
+}
+
+/* ---- 底栏 ---- */
+
+.brew-note__foot {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem var(--note-gutter) 0.45rem;
+  border-top: 1px solid var(--brew-line);
+}
+
+.brew-note__count {
+  color: var(--note-ink-3);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.brew-note__foot-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ---- 行槛「+」 ---- */
+
+.brew-note__gutter {
+  position: absolute;
+  z-index: 25;
+}
+
+.brew-note.brew-skin .brew-note__plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--note-line-strong);
+  border-radius: 999px;
+  background: var(--note-paper);
+  color: var(--note-ink-3);
+  cursor: pointer;
+  transition:
+    color var(--sm-dur-fast, 120ms) ease,
+    border-color var(--sm-dur-fast, 120ms) ease,
+    transform var(--sm-dur-base, 180ms) var(--sm-ease-standard, ease);
+}
+
+.brew-note.brew-skin .brew-note__plus svg {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.brew-note.brew-skin .brew-note__plus:hover:not(:disabled),
+.brew-note.brew-skin .brew-note__plus.is-open {
+  border-color: var(--note-ink);
+  color: var(--note-ink);
+}
+
+.brew-note.brew-skin .brew-note__plus.is-open {
+  transform: rotate(45deg);
+}
+
+.brew-note.brew-skin .brew-note__plus:disabled {
+  opacity: 0.45;
+  cursor: progress;
+}
+
+.brew-note.brew-skin .brew-note__plus:focus-visible {
+  outline: none;
+  box-shadow: var(--note-focus);
+}
+
+.brew-note__menu {
+  display: flex;
+  position: absolute;
+  inset: calc(100% + 0.4rem) auto auto 0;
+  z-index: 40;
+  flex-direction: column;
+  min-width: 14rem;
+  padding: 0.4rem;
+  border: 1px solid var(--note-line);
+  border-radius: 0.85rem;
+  background: var(--note-paper);
+  box-shadow:
+    0 14px 36px rgb(0 0 0 / 14%),
+    0 2px 8px rgb(0 0 0 / 6%);
+  animation: sm-pop-in var(--sm-dur-base, 160ms) var(--sm-ease-enter, ease-out)
+    backwards;
+}
+
+.brew-note.brew-skin .brew-note__menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  height: 2.5rem;
+  padding: 0 0.75rem;
+  border: 0;
+  border-radius: 0.55rem;
+  background: transparent;
+  color: var(--note-ink-2);
+  font-size: 0.9375rem;
+  text-align: start;
+  cursor: pointer;
+}
+
+.brew-note.brew-skin .brew-note__menu-item:hover {
+  background: var(--note-fill-hover);
+  color: var(--note-ink);
+}
+
+.brew-note.brew-skin .brew-note__menu-item:focus-visible {
+  outline: none;
+  box-shadow: var(--note-focus);
+}
+
+.brew-note__menu-icon {
+  display: inline-flex;
+  color: var(--note-ink-3);
+}
+
+.brew-note__menu-icon svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.brew-note__menu-item:hover .brew-note__menu-icon {
+  color: var(--note-ink);
+}
+
+/* ---- 发布抽屉 ---- */
+
+.brew-note__drawer {
+  display: flex;
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: 35;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: min(22rem, 100%);
+  padding: 0.75rem 1.25rem 1.25rem;
+  overflow: auto;
+  border-left: 1px solid var(--note-line);
+  background: var(--note-paper);
+  box-shadow: -12px 0 32px rgb(0 0 0 / 8%);
+  animation: brew-note-drawer-in var(--sm-dur-base, 180ms)
+    var(--sm-ease-enter, ease-out) backwards;
+}
+
+@keyframes brew-note-drawer-in {
+  from {
+    transform: translateX(12px);
+    opacity: 0;
+  }
+
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.brew-note__drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.brew-note__drawer-title {
+  margin: 0;
+  color: var(--note-ink);
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.brew-note__drawer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.brew-note__cover {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.brew-note__cover-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--note-line);
+  border-radius: 0.65rem;
+  background: var(--note-fill);
+  object-fit: cover;
+}
+
+.brew-note__cover-thumb--empty {
+  color: var(--note-ink-3);
+}
+
+.brew-note__cover-thumb--empty svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.brew-note__drawer-foot {
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid var(--note-line);
+}
+
+/* ---- 窄屏 ---- */
+
 @media (width < 640px) {
-  .brew-note {
+  .brew-note__top-right .note-btn--quiet .note-btn__label {
+    display: none;
+  }
+
+  .brew-note__top-right .note-btn--quiet {
+    width: var(--note-ctl-h);
     padding: 0;
   }
-}
 
-@media (width >= 640px) {
-  .brew-note {
-    padding: 1.25rem;
-  }
-
-  .brew-note__frame {
-    border: 1px solid var(--brew-frost-line, var(--brew-line));
-    border-radius: var(--brew-radius-lg);
-  }
-}
-
-@media (width < 1024px) {
-  .brew-note__read {
+  .brew-note__drawer {
+    width: 100%;
     border-left: 0;
   }
 
-  .brew-note__write.is-hidden,
-  .brew-note__read.is-hidden {
-    display: none;
+  .brew-note__paper {
+    padding-bottom: 25vh;
   }
 }
-

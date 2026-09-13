@@ -48,11 +48,6 @@
   padding: 0 var(--brew-rail-pad-x);
 }
 
-.brew-feeds__bar > .brew-bar {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
 .brew-feeds.is-sites-open .brew-feeds__air {
   flex-grow: 0;
 }

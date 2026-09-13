@@ -169,6 +169,7 @@ it('Brew hooks reject stale opens, retry failed pages, and settle partial unstar
       const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
       const noop = () => {}
       useContentEvents({
+        contentReady: true,
         contentRef, hoverTimeoutRef, comments: [], isAuthenticated: false,
         showCommentPopup: false, showAnnotations: false,
         setFocusedCommentIds: ids => { chosenIds = ids },

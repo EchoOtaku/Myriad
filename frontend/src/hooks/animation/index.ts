@@ -49,35 +49,12 @@ export {
 } from './pageFeatures'
 
 export {
-  awaitLaneSwap,
-  BREW_TAG_ENTER_MS,
-  BREW_TAG_EXIT_MS,
-  BREW_TAG_STAGGER_MS,
   brewAnimationPresets,
-  brewMotionClaim,
-  brewMotionLane,
-  brewMotionQuiet,
-  brewMotionReset,
-  brewSurfaceSwapWait,
-  brewTagDelay,
-  brewTagQuiet,
-  brewTagSwapWait,
-  chipEnterFrames,
-  chipExitFrames,
-  collectBrewSurfaceNodes,
-  cleanupBrew,
-  diffChipKeys,
   getBrewTransition,
-  planChipLaneSwap,
-  playBrewChipEnter,
-  playBrewChipExit,
-  playBrewSurfaceExit,
   playBrewVeilEnter,
   playBrewVeilExit,
-  shouldPlayChipEnter,
   useBrewAnimationConfig,
   useBrewScheduler,
-  useBrewTag,
 } from './pages/brew'
 
 export {

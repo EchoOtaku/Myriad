@@ -94,25 +94,3 @@
   color: #fff;
 }
 
-.brew-rsshub__status {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.08rem 0.32rem;
-  border-radius: 999px;
-  background: var(--brew-fill);
-  color: var(--brew-fg-dim);
-  font-size: 0.5625rem;
-  font-weight: 650;
-}
-
-.brew-rsshub__status.is-ok {
-  background: var(--brew-accent-fill);
-  color: var(--brew-accent-ink);
-}
-
-.brew-rsshub__status.is-warn,
-.brew-rsshub__status.is-bad {
-  background: var(--brew-fill);
-  color: var(--brew-fg-soft);
-}
-

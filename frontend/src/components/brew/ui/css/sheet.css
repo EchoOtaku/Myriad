@@ -302,12 +302,6 @@ button.brew-sheet__input {
   gap: 0.4rem;
 }
 
-.brew-sheet__field-row .brew-sheet__grow {
-  position: relative;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
 .brew-sheet__field-row .brew-bar__mark {
   position: absolute;
   top: 50%;
@@ -423,49 +417,6 @@ button.brew-sheet__input {
   color: var(--brew-accent-ink);
 }
 
-.brew-sheet__drop {
-  padding: 1rem 0.75rem;
-  border: 1px dashed var(--brew-line);
-  border-radius: 0.42rem;
-  background: transparent;
-  color: var(--brew-fg-soft);
-  text-align: center;
-  cursor: pointer;
-  transition: var(--sm-t-fill, background-color 140ms ease);
-}
-
-.brew-sheet__drop:hover,
-.brew-sheet__drop.is-on {
-  background: var(--brew-fill-hover);
-  border-color: var(--brew-accent-line);
-  color: var(--brew-fg);
-}
-
-.brew-sheet__drop svg {
-  display: block;
-  width: 1.6rem;
-  height: 1.6rem;
-  margin: 0 auto 0.35rem;
-  opacity: 0.45;
-}
-
-.brew-sheet__drop.is-on svg {
-  opacity: 0.8;
-  color: var(--brew-accent-ink);
-}
-
-.brew-sheet__drop p {
-  margin: 0;
-  font-size: 0.75rem;
-}
-
-.brew-sheet__drop small {
-  display: block;
-  margin-top: 0.2rem;
-  color: var(--brew-fg-dim);
-  font-size: 0.6875rem;
-}
-
 .brew-sheet__submit,
 .brew-sheet__ghost {
   display: inline-flex;
@@ -517,112 +468,3 @@ label.brew-sheet__ghost {
   cursor: not-allowed;
   opacity: 0.5;
 }
-
-.brew-sheet__foot {
-  display: flex;
-  align-items: center;
-  gap: 0.32rem;
-  padding: 0.5rem 0.65rem;
-  border-top: 1px solid var(--brew-line);
-}
-
-.brew-sheet__tab {
-  display: inline-flex;
-  flex: 1 1 auto;
-  align-items: center;
-  justify-content: center;
-  gap: 0.34rem;
-  height: var(--brew-tag-h);
-  padding: 0 0.65rem;
-  border: 1px solid transparent;
-  border-radius: 0.42rem;
-  background: transparent;
-  color: var(--brew-fg-soft);
-  font-size: var(--brew-tag-type);
-  font-weight: 550;
-  cursor: pointer;
-}
-
-.brew-sheet__tab svg {
-  width: var(--brew-tag-mark);
-  height: var(--brew-tag-mark);
-}
-
-.brew-sheet__tab:hover,
-.brew-sheet__tab.is-on {
-  background: var(--brew-fill-hover);
-  color: var(--brew-fg);
-}
-
-.brew-sheet__tab.is-on {
-  border-color: var(--brew-frost-line, var(--brew-line));
-  background: var(--brew-fill-hover);
-}
-
-.brew-sheet__keys {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.55rem;
-}
-
-.brew-sheet__group {
-  padding: 0.55rem 0.6rem;
-  border: 1px solid var(--brew-line);
-  border-radius: 0.42rem;
-  background: var(--brew-fill);
-}
-
-.brew-sheet__group-head {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-bottom: 0.4rem;
-  padding-bottom: 0.35rem;
-  border-bottom: 1px solid var(--brew-line);
-  color: var(--brew-fg-dim);
-  font-size: 0.625rem;
-  font-weight: 650;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.brew-sheet__count {
-  margin-left: auto;
-  padding: 0.08rem 0.32rem;
-  border-radius: 999px;
-  background: var(--brew-chip);
-  color: var(--brew-fg-dim);
-  font-size: 0.5625rem;
-  font-weight: 650;
-}
-
-.brew-sheet__shortcut {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.45rem;
-  min-height: 1.45rem;
-}
-
-.brew-sheet__shortcut span {
-  overflow: hidden;
-  color: var(--brew-fg-soft);
-  font-size: 0.75rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.brew-sheet__kbd {
-  flex-shrink: 0;
-  min-width: 1.15rem;
-  padding: 0.08rem 0.35rem;
-  border: 1px solid var(--brew-line);
-  border-radius: 0.28rem;
-  background: var(--brew-chip);
-  color: var(--brew-fg-dim);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.625rem;
-  line-height: 1.2;
-  text-align: center;
-}
-

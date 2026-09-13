@@ -26,7 +26,7 @@ pub use retired_history::{RETIRED_MIGRATION_NAMES, purge_retired_migration_histo
 pub struct Migrator;
 
 impl Migrator {
-    /// Strip folded 007–019 names from `seaql_migrations`, drop leftover
+    /// Strip folded 007–020 names from `seaql_migrations`, drop leftover
     /// `digital_life_*` experiment tables, then apply 001–006.
     ///
     /// SeaORM rejects applied versions that have no file *before* any `up()`

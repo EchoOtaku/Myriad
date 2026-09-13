@@ -485,10 +485,10 @@ export const MobileReaderBar = memo(
         <AnimatePresence>
           {activePanel && (
             <motion.div
-              initial={{ opacity: 0 }}
+              initial={enableAnimations ? { opacity: 0 } : false}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
+              transition={{ duration: enableAnimations ? 0.2 : 0, ease: 'easeOut' }}
               className="sm:hidden fixed inset-0 z-40 flex flex-col"
             >
               <div
@@ -497,11 +497,12 @@ export const MobileReaderBar = memo(
               />
 
               <motion.div
-                initial={{ y: '100%' }}
+                initial={enableAnimations ? { y: '100%' } : false}
                 animate={{ y: 0 }}
                 exit={{ y: '100%' }}
-                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                transition={{ duration: enableAnimations ? 0.35 : 0, ease: [0.16, 1, 0.3, 1] }}
                 id={READER_TOOL_SHEET_ID}
+                data-brew-shortcuts="suspended"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby={READER_TOOL_TITLE_ID}

@@ -7,8 +7,6 @@ import {
 import { buildModulePageSeo } from './modulePageSeo'
 import { formatPageTitle } from './siteMetadata'
 
-export { brewOwnItemPath, isOwnBrewSource }
-
 function plainTextSnippet(
   htmlOrText: string | null | undefined,
   maxLen = 160,

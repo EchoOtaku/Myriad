@@ -9,7 +9,7 @@ import type {
   TTSEngine,
   VoiceInfo,
 } from '../../../services/speechApi'
-import type { BrewItem, SourceType } from '../../../types/brew'
+import type { BrewItem } from '../../../types/brew'
 import type { ReadingProgress } from './progressStore'
 
 export type ReaderCopy = Pick<TranslationKeys, 'brew' | 'errors'>
@@ -35,9 +35,9 @@ export interface ThemeConfig {
   icon: string
 }
 
-export type FontLabelKey = 'fontSerif' | 'fontSans' | 'fontSystem'
+type FontLabelKey = 'fontSerif' | 'fontSans' | 'fontSystem'
 
-export type LayoutLabelKey = 'layoutNarrow' | 'layoutWide'
+type LayoutLabelKey = 'layoutNarrow' | 'layoutWide'
 
 export interface FontOption {
   id: string
@@ -49,15 +49,6 @@ export interface LayoutOption {
   id: LayoutKey
   labelKey: LayoutLabelKey
   width: string
-}
-
-export interface BrewReaderProps {
-  item: BrewItem
-  onClose: () => void
-  onToggleStar: () => void
-  isAuthenticated?: boolean
-  isAdmin?: boolean
-  sourceType?: SourceType
 }
 
 export interface MobileReaderBarProps {

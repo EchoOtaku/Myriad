@@ -1760,6 +1760,18 @@ describe('userFacingError', () => {
       currentCopy().brew.noteTitleRequired,
     )
     assert.equal(
+      userFacingError('Note draft was updated elsewhere'),
+      currentCopy().brew.noteRevisionConflict,
+    )
+    assert.equal(
+      userFacingError('That time has already passed'),
+      currentCopy().brew.noteSchedulePast,
+    )
+    assert.equal(
+      userFacingError('A schedule time is required'),
+      currentCopy().brew.noteScheduleNeedTime,
+    )
+    assert.equal(
       userFacingError('标题最多 200 字，现在有 201 字'),
       fill(currentCopy().brew.noteTitleTooLong, { max: '200', chars: '201' }),
     )

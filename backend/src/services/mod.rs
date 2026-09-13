@@ -104,6 +104,7 @@ pub mod updater_client;
 pub mod brew_parser;
 pub mod brew_scheduler;
 pub mod brew_topics;
+pub mod note_publish;
 pub mod channel_pairing; // Shared pairing mint/consume/unbind
 pub mod channel_work; // Shared private-chat Work: session, pending, delivery
 pub mod discord_bot; // Discord DM Gateway worker

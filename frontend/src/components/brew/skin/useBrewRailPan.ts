@@ -34,8 +34,6 @@ import {
   settleRailSlot,
 } from './railPan'
 
-export { railLeadIndex } from './railPan'
-
 function applyRailExit(el: HTMLElement, style: ConversationExitStyle): void {
   applyConversationExit(el, style)
   if (!style.hidden) el.style.pointerEvents = ''

@@ -1,0 +1,70 @@
+import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
+import { lineIsBlank, placeBubble, placeGutter } from './noteSelection'
+
+describe('placeBubble', () => {
+  const bubble = { width: 200, height: 32 }
+
+  it('居中压在选区上方', () => {
+    const placed = placeBubble(
+      { top: 300, left: 100, width: 80 },
+      bubble,
+      { width: 800, scrollTop: 0 },
+    )
+    assert.deepEqual(placed, { top: 260, left: 140 })
+  })
+
+  it('左右夹在容器里', () => {
+    const left = placeBubble(
+      { top: 300, left: 0, width: 10 },
+      bubble,
+      { width: 800, scrollTop: 0 },
+    )
+    assert.equal(left.left, 108)
+    const right = placeBubble(
+      { top: 300, left: 790, width: 10 },
+      bubble,
+      { width: 800, scrollTop: 0 },
+    )
+    assert.equal(right.left, 692)
+  })
+
+  it('顶上被滚出去就翻到下面', () => {
+    const placed = placeBubble(
+      { top: 1010, left: 100, width: 20 },
+      bubble,
+      { width: 800, scrollTop: 1000 },
+    )
+    assert.equal(placed.top, 1010 + 32 + 8)
+  })
+})
+
+describe('placeGutter', () => {
+  it('左边够宽就放在光标行左侧，垂直居中', () => {
+    assert.deepEqual(
+      placeGutter({ top: 100, left: 120, height: 28 }, 36),
+      { top: 96, left: 74 },
+    )
+  })
+
+  it('左边不够宽就贴着光标', () => {
+    assert.deepEqual(
+      placeGutter({ top: 100, left: 16, height: 28 }, 36),
+      { top: 96, left: 20 },
+    )
+  })
+})
+
+describe('lineIsBlank', () => {
+  it('空文档、空行、只有空白都算空行', () => {
+    assert.equal(lineIsBlank('', 0), true)
+    assert.equal(lineIsBlank('abc\n\ndef', 4), true)
+    assert.equal(lineIsBlank('abc\n   \ndef', 5), true)
+  })
+
+  it('行上有字就不算，不管光标在行首还是行尾', () => {
+    assert.equal(lineIsBlank('abc\ndef', 4), false)
+    assert.equal(lineIsBlank('abc\ndef', 7), false)
+    assert.equal(lineIsBlank('abc', 0), false)
+  })
+})

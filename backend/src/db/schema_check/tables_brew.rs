@@ -712,5 +712,94 @@ pub(crate) fn tables() -> Vec<TableDef> {
                 },
             ],
         },
+        TableDef {
+            name: "brew_note_docs".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "item_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "title".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: Some("''".into()),
+                },
+                ColumnDef {
+                    name: "content_md".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: Some("''".into()),
+                },
+                ColumnDef {
+                    name: "topic".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "image".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "status".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: Some("'draft'".into()),
+                },
+                ColumnDef {
+                    name: "scheduled_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "published_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "revision".into(),
+                    data_type: "bigint".into(),
+                    is_nullable: false,
+                    default_value: Some("1".into()),
+                },
+                ColumnDef {
+                    name: "last_error".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+                ColumnDef {
+                    name: "updated_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+            ],
+        },
     ]
 }

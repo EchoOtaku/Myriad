@@ -3,10 +3,17 @@ import { beforeEach, describe, it } from 'node:test'
 import {
   clearNoteDraft,
   draftDiffersFrom,
+  hardBreak,
+  indentLines,
+  linkAtCursor,
   NOTE_DRAFT_TTL_MS,
   noteDraftKey,
   prefixLines,
+  pruneOrphanFootnotes,
   readNoteDraft,
+  replaceLink,
+  setHeadingLevel,
+  toggleWrap,
   wrapSelection,
   writeNoteDraft,
 } from './noteDraft.ts'
@@ -222,6 +229,97 @@ describe('wrapSelection', () => {
     const r = wrapSelection('ab', 1, 1, '`', '`')
     assert.equal(r.value, 'a``b')
     assert.equal(r.selectionStart, r.selectionEnd)
+  })
+})
+
+describe('toggleWrap', () => {
+  it('没包过就包上', () => {
+    const r = toggleWrap('甲乙丙', 1, 2, '**', '**')
+    assert.equal(r.value, '甲**乙**丙')
+    assert.equal(r.selectionStart, 3)
+    assert.equal(r.selectionEnd, 4)
+  })
+
+  it('选区外面已经有记号就拆掉', () => {
+    const r = toggleWrap('甲**乙**丙', 3, 4, '**', '**')
+    assert.equal(r.value, '甲乙丙')
+    assert.deepEqual([r.selectionStart, r.selectionEnd], [1, 2])
+  })
+
+  it('选区连着记号一起选也拆掉', () => {
+    const r = toggleWrap('甲**乙**丙', 1, 6, '**', '**')
+    assert.equal(r.value, '甲乙丙')
+    assert.deepEqual([r.selectionStart, r.selectionEnd], [1, 2])
+  })
+
+  it('没选区时插占位符', () => {
+    const r = toggleWrap('甲', 1, 1, '`', '`', '代码')
+    assert.equal(r.value, '甲`代码`')
+  })
+})
+
+describe('linkAtCursor / replaceLink', () => {
+  it('光标在链接里就找得到，图片不算', () => {
+    const md = '看 [这里](https://a.b) 和 ![图](https://c.d)'
+    const link = linkAtCursor(md, 5)
+    assert.deepEqual(link, { start: 2, end: 19, text: '这里', url: 'https://a.b' })
+    assert.equal(linkAtCursor(md, 25), null)
+  })
+
+  it('改地址或只留文字', () => {
+    const md = '看 [这里](https://a.b)'
+    const link = linkAtCursor(md, 4)!
+    assert.equal(replaceLink(md, link, 'https://x.y').value, '看 [这里](https://x.y)')
+    assert.equal(replaceLink(md, link, null).value, '看 这里')
+  })
+})
+
+describe('hardBreak / pruneOrphanFootnotes', () => {
+  it('硬换行是两个空格加换行', () => {
+    const r = hardBreak('甲乙', 1, 1)
+    assert.equal(r.value, '甲  \n乙')
+    assert.equal(r.selectionStart, 4)
+  })
+
+  it('没有引用的脚注定义被删，有引用的留下', () => {
+    const md = '正文[^1]\n\n[^1]: 一\n\n[^2]: 二\n'
+    assert.equal(pruneOrphanFootnotes(md), '正文[^1]\n\n[^1]: 一')
+  })
+})
+
+describe('setHeadingLevel', () => {
+  it('普通行变成对应级别', () => {
+    assert.equal(setHeadingLevel('节', 0, 0, 2).value, '## 节')
+  })
+
+  it('换级别不叠井号', () => {
+    assert.equal(setHeadingLevel('## 节', 3, 3, 3).value, '### 节')
+  })
+
+  it('同级再点一次是去掉', () => {
+    assert.equal(setHeadingLevel('### 节', 2, 2, 3).value, '节')
+  })
+})
+
+describe('indentLines', () => {
+  it('光标收拢：进两格，光标跟着走', () => {
+    const r = indentLines('- 甲\n- 乙', 6, 6, false)
+    assert.equal(r.value, '- 甲\n  - 乙')
+    assert.equal(r.selectionStart, 8)
+    assert.equal(r.selectionEnd, 8)
+  })
+
+  it('退格吃掉两格或一个制表符，退不动就不动', () => {
+    assert.equal(indentLines('  - 甲', 4, 4, true).value, '- 甲')
+    assert.equal(indentLines('\t- 甲', 2, 2, true).value, '- 甲')
+    assert.equal(indentLines('- 甲', 1, 1, true).value, '- 甲')
+  })
+
+  it('多行选区每行都动，结果选中整块', () => {
+    const r = indentLines('- 甲\n- 乙', 0, 7, false)
+    assert.equal(r.value, '  - 甲\n  - 乙')
+    assert.equal(r.selectionStart, 0)
+    assert.equal(r.selectionEnd, r.value.length)
   })
 })
 

@@ -346,6 +346,8 @@ function BrewSubjectPage() {
             onToggleStar={handleCardStar}
             onMarkAllRead={isAuthenticated ? actions.markAllRead : undefined}
             onWriteNote={isAdmin ? notes.write : undefined}
+            onOpenDoc={isAdmin ? notes.editDoc : undefined}
+            docsEpoch={notes.docsEpoch}
             isAuthenticated={isAuthenticated}
             isAdmin={isAdmin}
           />
@@ -403,8 +405,21 @@ function BrewSubjectPage() {
       <AnimatePresence mode="wait">
         {notes.noteEditor !== null && (
           <NoteEditor
-            key={notes.noteEditor}
-            noteId={notes.noteEditor === 'new' ? undefined : notes.noteEditor}
+            key={
+              notes.noteEditor === 'new'
+                ? 'new'
+                : typeof notes.noteEditor === 'number'
+                  ? `item:${notes.noteEditor}`
+                  : `doc:${notes.noteEditor.docId}`
+            }
+            noteId={
+              typeof notes.noteEditor === 'number' ? notes.noteEditor : undefined
+            }
+            docId={
+              typeof notes.noteEditor === 'object'
+                ? notes.noteEditor.docId
+                : undefined
+            }
             onClose={notes.close}
             onSaved={notes.onSaved}
             onDeleted={notes.onDeleted}

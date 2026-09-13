@@ -6,9 +6,10 @@ import {
   fromDatetimeLocal,
   MAX_NOTE_BODY_CHARS,
   MAX_NOTE_TITLE_CHARS,
-  noteFieldError,
   normalizeNoteCover,
   normalizeNoteTopic,
+  noteFieldError,
+  noteScheduleError,
   sameNoteMinute,
   toDatetimeLocal,
   toNoteWritePayload,
@@ -45,6 +46,15 @@ describe('firstMarkdownImage', () => {
 
   it('没有图就是空', () => {
     assert.equal(firstMarkdownImage('没有图'), null)
+  })
+})
+
+describe('noteScheduleError', () => {
+  it('没给时间或已经过了都不行', () => {
+    assert.equal(noteScheduleError(null, 100), 'missing-time')
+    assert.equal(noteScheduleError(100, 100), 'already-due')
+    assert.equal(noteScheduleError(99, 100), 'already-due')
+    assert.equal(noteScheduleError(101, 100), null)
   })
 })
 

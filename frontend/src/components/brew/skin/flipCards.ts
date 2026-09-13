@@ -3,7 +3,7 @@
 import { brewMotionQuiet } from '../../../hooks/animation/pages/brewMotion'
 import { RAIL_OVERFLOW_LEFT_PX, railSeatScroll } from './railPan'
 
-export const FLIP_EASE = 'cubic-bezier(0.4, 0.0, 0.2, 1)'
+const FLIP_EASE = 'cubic-bezier(0.4, 0.0, 0.2, 1)'
 export const FLIP_SITE_MS = 560
 export const FLIP_STORY_MS = 400
 export const FLIP_STAGGER_MS = 24
@@ -111,7 +111,7 @@ export function holdFeedsChrome(root: HTMLElement, chrome: FeedsChrome): void {
   }
 }
 
-export function releaseFeedsChrome(root: HTMLElement): void {
+function releaseFeedsChrome(root: HTMLElement): void {
   for (const sel of [
     '.brew-feeds__air',
     '.brew-feeds__sites',
@@ -172,7 +172,7 @@ function liveCards(root: ParentNode, selector: string): HTMLElement[] {
     .toArray()
 }
 
-export function readOpacity(el: Element): number {
+function readOpacity(el: Element): number {
   const n = Number(getComputedStyle(el).opacity)
   return Number.isFinite(n) ? n : 1
 }
@@ -235,64 +235,6 @@ function play(
     fill: 'both',
     composite: 'replace',
   })
-}
-
-export function flipFromBoxes(
-  root: ParentNode,
-  selector: string,
-  first: Map<string, FlipBox>,
-  leadId?: string | null,
-  delayExtra = 0,
-): Animation[] {
-  const anims: Animation[] = []
-  const cards = liveCards(root, selector)
-  const leadIndex = leadId
-    ? cards.findIndex((el) => el.dataset.railId === leadId)
-    : -1
-  cards.forEach((el, index) => {
-    const id = el.dataset.railId
-    if (!id) return
-    const prev = first.get(id)
-    const next = el.getBoundingClientRect()
-    const toOp = readOpacity(el)
-    const delay = delayExtra + flipDelayFromLead(index, leadIndex)
-    if (!prev) {
-      const from = index < leadIndex ? SITE_ENTER_LEFT : SITE_ENTER
-      anims.push(
-        play(
-          el,
-          [
-            { opacity: toOp, transform: from },
-            { opacity: toOp, transform: 'translate3d(0, 0, 0)' },
-          ],
-          delay,
-          FLIP_SITE_MS,
-        ),
-      )
-      return
-    }
-    const dx = prev.left - next.left
-    const dy = prev.top - next.top
-    const fromOp = prev.opacity
-    if (Math.abs(dx) < 0.6 && Math.abs(dy) < 0.6 && Math.abs(fromOp - toOp) < 0.02) {
-      return
-    }
-    anims.push(
-      play(
-        el,
-        [
-          {
-            opacity: fromOp,
-            transform: `translate3d(${dx}px, ${dy}px, 0)`,
-          },
-          { opacity: toOp, transform: 'translate3d(0, 0, 0)' },
-        ],
-        delay,
-        FLIP_SITE_MS,
-      ),
-    )
-  })
-  return anims
 }
 
 /** 真卡保持隐藏，避免宫格先闪一帧。 */
@@ -363,7 +305,7 @@ export function flySites(
   return anims
 }
 
-export function pinFlipBox(
+function pinFlipBox(
   el: HTMLElement,
   box: Pick<FlipBox, 'left' | 'top' | 'width' | 'height'>,
   host?: DOMRect | null,
@@ -380,7 +322,7 @@ export function pinFlipBox(
   el.style.boxSizing = 'border-box'
 }
 
-export function unpinFlip(el: HTMLElement): void {
+function unpinFlip(el: HTMLElement): void {
   el.style.removeProperty('position')
   el.style.removeProperty('left')
   el.style.removeProperty('top')
@@ -412,28 +354,6 @@ function liftCard(
   return ghost
 }
 
-/** 换布局前钉在原位，避免先上屏再追。 */
-export function liftCards(
-  root: HTMLElement,
-  selector: string,
-  first: Map<string, FlipBox>,
-  kind: 'site' | 'story',
-): HTMLElement[] {
-  const hostBox = root.getBoundingClientRect()
-  const ghosts: HTMLElement[] = []
-  for (const el of liveCards(root, selector)) {
-    const id = el.dataset.railId
-    const box = id ? first.get(id) : undefined
-    if (!box) {
-      el.classList.add('is-ghosted')
-      el.style.visibility = 'hidden'
-      continue
-    }
-    ghosts.push(liftCard(el, box, root, hostBox, kind))
-  }
-  return ghosts
-}
-
 function findGhost(
   root: ParentNode,
   kind: 'site' | 'story',
@@ -444,7 +364,7 @@ function findGhost(
   )
 }
 
-export function clearStoryLifts(root: ParentNode): void {
+function clearStoryLifts(root: ParentNode): void {
   const feeds =
     root instanceof HTMLElement && root.classList.contains('brew-feeds')
       ? root
@@ -515,7 +435,7 @@ export function exitStories(
   })
 }
 
-export function enterCards(
+function enterCards(
   root: ParentNode,
   selector: string,
   extraDelay = 0,

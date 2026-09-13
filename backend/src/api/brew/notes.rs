@@ -17,7 +17,7 @@ use axum::{
     http::StatusCode,
 };
 use chrono::{TimeZone, Utc};
-use myriad_brew_notes::{note_guid, note_link, render_markdown, render_note, validate_note};
+use myriad_brew_notes::{render_markdown, validate_note};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     Set,
@@ -27,7 +27,7 @@ use serde_json::json;
 
 use super::helpers::{brew_http_err, brew_store_http, get_admin_user_id_from_headers};
 use crate::error::HttpError;
-use crate::models::entities::{brew_items, brew_sources};
+use crate::models::entities::{brew_items, brew_note_docs, brew_sources};
 
 /// 手记源的固定名字。和分类「我」一样是**数据值**而不是界面文案 ——
 /// 站长可以像改任何订阅源一样把它改掉，改了也不影响这里的查找（按
@@ -78,51 +78,6 @@ pub(crate) struct NoteDraftResponse {
 
 fn validation_err(err: myriad_brew_notes::NoteError) -> HttpError {
     brew_http_err(StatusCode::BAD_REQUEST, err.message())
-}
-
-/// 找到（必要时创建）该站长的手记源。
-///
-/// 按 `source_type` 查，不按名字或 URL 查 —— 站长改了名字之后仍要找得到同一个源。
-/// 一个用户通常一个手记源；多个时 `.one()` 取第一行，不合并、不报错。
-async fn ensure_note_source(
-    db: &DatabaseConnection,
-    user_id: i32,
-) -> Result<brew_sources::Model, HttpError> {
-    let existing = brew_sources::Entity::find()
-        .filter(brew_sources::Column::UserId.eq(user_id))
-        .filter(brew_sources::Column::SourceType.eq(brew_sources::SourceType::Note))
-        .one(db)
-        .await
-        .map_err(|e| brew_store_http("find note source", e))?;
-
-    if let Some(source) = existing {
-        return Ok(source);
-    }
-
-    let now = Utc::now();
-    let source = brew_sources::ActiveModel {
-        user_id: Set(user_id),
-        name: Set(NOTE_SOURCE_NAME.to_string()),
-        url: Set(NOTE_SOURCE_URL.to_string()),
-        feed_type: Set(brew_sources::FeedType::Rss),
-        source_type: Set(brew_sources::SourceType::Note),
-        category: Set(Some(NOTE_SOURCE_CATEGORY.to_string())),
-        // 不抓取：调度器按 source_type 绕开；间隔置 0
-        update_interval: Set(0),
-        enabled: Set(true),
-        error_count: Set(0),
-        item_count: Set(0),
-        unread_count: Set(0),
-        admin_only: Set(false),
-        created_at: Set(now.into()),
-        updated_at: Set(now.into()),
-        ..Default::default()
-    };
-
-    source
-        .insert(db)
-        .await
-        .map_err(|e| brew_store_http("create note source", e))
 }
 
 /// 校验这条 item 确实是该站长的手记。
@@ -215,48 +170,28 @@ pub(crate) async fn create_note(
     Json(req): Json<NoteWriteRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
-    validate_note(&req.title, &req.content_md).map_err(validation_err)?;
-
-    let source = ensure_note_source(&db, user_id).await?;
-    let rendered = render_note(&req.title, &req.content_md);
-    let now = Utc::now();
-    let published_at = req.published_at.and_then(millis_to_datetime).unwrap_or(now);
-
-    let new_item = brew_items::ActiveModel {
-        source_id: Set(source.id),
-        // guid 先落一个 uuid；`link` 需要 id，插入后再补
-        guid: Set(note_guid(&uuid::Uuid::new_v4().to_string())),
-        title: Set(rendered.title),
-        link: Set(String::new()),
-        summary: Set(rendered.summary),
-        content: Set(Some(rendered.html)),
-        content_md: Set(Some(req.content_md.clone())),
-        image: Set(req.image.clone().or(rendered.image)),
-        published_at: Set(published_at.into()),
-        fetched_at: Set(now.into()),
-        word_count: Set(Some(rendered.word_count)),
-        reading_time: Set(Some(rendered.reading_time)),
-        // 手记就是全文，没有「再去抓一次原文」这回事
-        fulltext_fetched: Set(true),
-        topic: Set(req.topic.clone().filter(|t| !t.trim().is_empty())),
-        ..Default::default()
-    };
-
-    let item = new_item
-        .insert(&db)
-        .await
-        .map_err(|e| brew_store_http("save note", e))?;
-
-    // link 指向站内规范路径，需要 id 才能拼出来
-    let item_id = item.id;
-    let mut active: brew_items::ActiveModel = item.into();
-    active.link = Set(note_link(item_id));
-    let item = active
-        .update(&db)
-        .await
-        .map_err(|e| brew_store_http("save note", e))?;
-
-    sync_item_count(&db, &source).await;
+    let item = crate::services::note_publish::write_published_item(
+        &db,
+        user_id,
+        None,
+        &req.title,
+        &req.content_md,
+        req.topic.clone(),
+        req.image.clone(),
+        req.published_at,
+    )
+    .await?;
+    let _ = crate::services::note_publish::upsert_doc_for_published_item(
+        &db,
+        user_id,
+        &item,
+        &req.title,
+        &req.content_md,
+        req.topic.clone(),
+        req.image.clone(),
+        req.published_at,
+    )
+    .await;
 
     Ok(Json(json!({
         "success": true,
@@ -273,29 +208,29 @@ pub(crate) async fn update_note(
     Json(req): Json<NoteWriteRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
-    validate_note(&req.title, &req.content_md).map_err(validation_err)?;
-
     let (item, _) = find_own_note(&db, user_id, id).await?;
-    let rendered = render_note(&req.title, &req.content_md);
-
-    let mut active: brew_items::ActiveModel = item.into();
-    active.title = Set(rendered.title);
-    active.summary = Set(rendered.summary);
-    active.content = Set(Some(rendered.html));
-    active.content_md = Set(Some(req.content_md.clone()));
-    active.image = Set(req.image.clone().or(rendered.image));
-    active.word_count = Set(Some(rendered.word_count));
-    active.reading_time = Set(Some(rendered.reading_time));
-    active.topic = Set(req.topic.clone().filter(|t| !t.trim().is_empty()));
-    // 不给发布时间就保持原值：改一个错别字不该把文章顶到列表最前面
-    if let Some(published_at) = req.published_at.and_then(millis_to_datetime) {
-        active.published_at = Set(published_at.into());
-    }
-
-    let item = active
-        .update(&db)
-        .await
-        .map_err(|e| brew_store_http("save note", e))?;
+    let item = crate::services::note_publish::write_published_item(
+        &db,
+        user_id,
+        Some(item.id),
+        &req.title,
+        &req.content_md,
+        req.topic.clone(),
+        req.image.clone(),
+        req.published_at,
+    )
+    .await?;
+    let _ = crate::services::note_publish::upsert_doc_for_published_item(
+        &db,
+        user_id,
+        &item,
+        &req.title,
+        &req.content_md,
+        req.topic.clone(),
+        req.image.clone(),
+        req.published_at,
+    )
+    .await;
 
     Ok(Json(json!({
         "success": true,
@@ -317,6 +252,11 @@ pub(crate) async fn delete_note(
         .exec(&db)
         .await
         .map_err(|e| brew_store_http("delete note", e))?;
+    brew_note_docs::Entity::delete_many()
+        .filter(brew_note_docs::Column::ItemId.eq(item.id))
+        .exec(&db)
+        .await
+        .map_err(|e| brew_store_http("delete note doc", e))?;
 
     sync_item_count(&db, &source).await;
 
@@ -337,6 +277,7 @@ mod tests {
     #[test]
     fn note_source_url_is_not_fetchable() {
         // 非 http(s)：即便某天有人漏掉了 source_type 判断，抓取也发不出请求
+        assert!(!NOTE_SOURCE_NAME.is_empty());
         assert!(!NOTE_SOURCE_URL.starts_with("http"));
     }
 
@@ -349,5 +290,24 @@ mod tests {
     #[test]
     fn absurd_millis_are_rejected_rather_than_panicking() {
         assert!(millis_to_datetime(i64::MAX).is_none());
+    }
+
+    #[test]
+    fn public_item_list_does_not_read_note_docs() {
+        let src = include_str!("feeds_articles.rs");
+        let start = src
+            .find("pub(crate) async fn list_items")
+            .expect("list_items");
+        let body = &src[start..];
+        let end = body[1..]
+            .find("\npub(crate) async fn ")
+            .map(|index| index + 1)
+            .unwrap_or(body.len());
+        let list = &body[..end];
+        assert!(list.contains("brew_items"));
+        assert!(
+            !list.contains("brew_note_docs"),
+            "drafts must not leak into the public item list"
+        );
     }
 }

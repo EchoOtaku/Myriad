@@ -18,13 +18,18 @@ export function useBrewNotes(
   loadSources: () => Promise<void>,
   loadStats: () => Promise<void>,
 ) {
-  const [noteEditor, setNoteEditor] = useState<number | 'new' | null>(null)
+  const [noteEditor, setNoteEditor] = useState<
+    number | 'new' | { docId: number } | null
+  >(null)
+  const [docsEpoch, setDocsEpoch] = useState(0)
+  const bumpDocs = useCallback(() => setDocsEpoch((value) => value + 1), [])
   const saveTurn = useRef(new RequestTurn())
   useEffect(() => () => saveTurn.current.cancel(), [])
 
   const onSaved = useCallback(
     async (id: number) => {
       setNoteEditor(null)
+      bumpDocs()
       await Promise.all([loadSources(), loadStats()])
       if (selectedItem?.id === id) {
         const signal = saveTurn.current.begin()
@@ -49,22 +54,28 @@ export function useBrewNotes(
       loadItems,
       loadSources,
       loadStats,
+      bumpDocs,
     ],
   )
 
   const onDeleted = useCallback(
     (id: number) => {
       setNoteEditor(null)
+      bumpDocs()
       setItems((prev) => dropItem(prev, id))
       if (selectedItem?.id === id) setSelectedItem(null)
       reloadBoard()
     },
-    [selectedItem?.id, setItems, setSelectedItem, reloadBoard],
+    [selectedItem?.id, setItems, setSelectedItem, reloadBoard, bumpDocs],
   )
 
   const write = useCallback(() => setNoteEditor('new'), [])
   const edit = useCallback((id: number) => setNoteEditor(id), [])
-  const close = useCallback(() => setNoteEditor(null), [])
+  const editDoc = useCallback((docId: number) => setNoteEditor({ docId }), [])
+  const close = useCallback(() => {
+    setNoteEditor(null)
+    bumpDocs()
+  }, [bumpDocs])
 
-  return { noteEditor, write, edit, close, onSaved, onDeleted }
+  return { noteEditor, docsEpoch, write, edit, editDoc, close, onSaved, onDeleted }
 }

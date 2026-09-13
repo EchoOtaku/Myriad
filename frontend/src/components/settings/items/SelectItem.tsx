@@ -78,6 +78,7 @@ function SelectItemComponent<T extends string = string>({
           }
           onChange={handleChange as (v: T & string) => void}
           disabled={disabled || loading}
+          size={size === 'sm' ? 'sm' : 'md'}
           className={error ? 'has-error' : ''}
           aria-label={label}
         />

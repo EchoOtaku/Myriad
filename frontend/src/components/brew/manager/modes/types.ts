@@ -3,7 +3,7 @@ import type { SourceSortMode } from '../../logic/board'
 /** 排序取值跟板块源表同一份。 */
 export type SortMode = SourceSortMode
 
-export type SortLabelKey =
+type SortLabelKey =
   | 'sortBySmart'
   | 'sortByUpdate'
   | 'sortByCategory'
@@ -40,5 +40,3 @@ export interface StarredModeConfig {
   onBatchUnstar: () => void
   isProcessing?: boolean
 }
-
-export type { BrewExportManifest } from '../../../../types/brew'

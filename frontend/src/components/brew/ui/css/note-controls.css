@@ -1,0 +1,268 @@
+/* 编辑器控件皮：只用纸色和墨色。壁纸强调色不进这里。 */
+
+.brew-note {
+  --note-paper: var(--cfg-frost-elevated-bg, rgb(255 255 255 / 96%));
+  --note-ink: var(--brew-fg, #111);
+  --note-ink-2: var(--brew-fg-soft, #4b4b52);
+  --note-ink-3: var(--brew-fg-dim, #86868f);
+  --note-line: rgb(0 0 0 / 11%);
+  --note-line-strong: rgb(0 0 0 / 22%);
+  --note-fill: rgb(0 0 0 / 4.5%);
+  --note-fill-hover: rgb(0 0 0 / 8%);
+  --note-solid-bg: #141414;
+  --note-solid-bg-hover: #2a2a2a;
+  --note-solid-fg: #fff;
+  --note-danger: #c92a2a;
+  --note-danger-fill: rgb(201 42 42 / 9%);
+  --note-focus: 0 0 0 2px var(--note-paper), 0 0 0 4px var(--note-ink);
+  --note-ctl-h: 2.5rem;
+  --note-ctl-h-lg: 2.75rem;
+  --note-ctl-radius: 0.65rem;
+  --note-ctl-font: 0.9375rem;
+}
+
+html.dark .brew-note {
+  --note-line: rgb(255 255 255 / 13%);
+  --note-line-strong: rgb(255 255 255 / 26%);
+  --note-fill: rgb(255 255 255 / 6%);
+  --note-fill-hover: rgb(255 255 255 / 10%);
+  --note-solid-bg: #f2f2f2;
+  --note-solid-bg-hover: #dcdcdc;
+  --note-solid-fg: #111;
+  --note-danger: #f06565;
+  --note-danger-fill: rgb(240 101 101 / 14%);
+}
+
+/* ---- 按钮 ---- */
+
+.brew-note.brew-skin .note-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: var(--note-ctl-h);
+  min-width: var(--note-ctl-h);
+  padding: 0 1rem;
+  border: 1px solid transparent;
+  border-radius: var(--note-ctl-radius);
+  background: transparent;
+  color: var(--note-ink);
+  font-size: var(--note-ctl-font);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--sm-dur-fast, 120ms) ease,
+    border-color var(--sm-dur-fast, 120ms) ease,
+    color var(--sm-dur-fast, 120ms) ease;
+}
+
+.brew-note.brew-skin .note-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.brew-note.brew-skin .note-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--note-focus);
+}
+
+.brew-note.brew-skin .note-btn--lg {
+  height: var(--note-ctl-h-lg);
+  min-width: var(--note-ctl-h-lg);
+  padding: 0 1.35rem;
+  font-size: 1rem;
+}
+
+.brew-note.brew-skin .note-btn--icon {
+  width: var(--note-ctl-h);
+  padding: 0;
+}
+
+.brew-note.brew-skin .note-btn--icon.note-btn--lg {
+  width: var(--note-ctl-h-lg);
+}
+
+.note-btn__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.note-btn__icon svg {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.note-btn--lg .note-btn__icon svg {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.brew-note.brew-skin .note-btn--solid {
+  border-color: var(--note-solid-bg);
+  background: var(--note-solid-bg);
+  color: var(--note-solid-fg);
+}
+
+.brew-note.brew-skin .note-btn--solid:hover:not(:disabled) {
+  border-color: var(--note-solid-bg-hover);
+  background: var(--note-solid-bg-hover);
+}
+
+.brew-note.brew-skin .note-btn--outline {
+  border-color: var(--note-line-strong);
+  background: var(--note-paper);
+}
+
+.brew-note.brew-skin .note-btn--outline:hover:not(:disabled),
+.brew-note.brew-skin .note-btn--outline.is-active {
+  border-color: var(--note-ink);
+  background: var(--note-fill);
+}
+
+.brew-note.brew-skin .note-btn--quiet {
+  color: var(--note-ink-2);
+}
+
+.brew-note.brew-skin .note-btn--quiet:hover:not(:disabled) {
+  background: var(--note-fill-hover);
+  color: var(--note-ink);
+}
+
+.brew-note.brew-skin .note-btn--quiet.is-active {
+  background: var(--note-fill);
+  color: var(--note-ink);
+  box-shadow: inset 0 0 0 1px var(--note-line-strong);
+}
+
+.brew-note.brew-skin .note-btn--danger {
+  color: var(--note-danger);
+}
+
+.brew-note.brew-skin .note-btn--danger:hover:not(:disabled) {
+  background: var(--note-danger-fill);
+}
+
+/* ---- 滑块开关 ---- */
+
+.brew-note.brew-skin .note-switch {
+  display: grid;
+  position: relative;
+  grid-template-columns: repeat(var(--note-switch-count, 2), minmax(5.5rem, 1fr));
+  height: var(--note-ctl-h);
+  padding: 0.25rem;
+  border-radius: var(--note-ctl-radius);
+  background: var(--note-fill);
+}
+
+.brew-note.brew-skin .note-switch__thumb {
+  position: absolute;
+  inset: 0.25rem auto 0.25rem 0.25rem;
+  width: calc((100% - 0.5rem) / var(--note-switch-count, 2));
+  border-radius: calc(var(--note-ctl-radius) - 0.2rem);
+  background: var(--note-paper);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 10%),
+    0 0 0 1px var(--note-line);
+  transform: translateX(calc(100% * var(--note-switch-index, 0)));
+  transition: transform var(--sm-dur-base, 180ms) var(--sm-ease-standard, ease);
+}
+
+.brew-note.brew-skin .note-switch__item {
+  position: relative;
+  z-index: 1;
+  padding: 0 0.9rem;
+  border: 0;
+  border-radius: calc(var(--note-ctl-radius) - 0.2rem);
+  background: transparent;
+  color: var(--note-ink-3);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color var(--sm-dur-fast, 120ms) ease;
+}
+
+.brew-note.brew-skin .note-switch__item:hover {
+  color: var(--note-ink-2);
+}
+
+.brew-note.brew-skin .note-switch__item.is-on {
+  color: var(--note-ink);
+}
+
+.brew-note.brew-skin .note-switch__item:focus-visible {
+  outline: none;
+  box-shadow: var(--note-focus);
+}
+
+/* ---- 表单 ---- */
+
+.note-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.note-field__label {
+  color: var(--note-ink-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.note-field__hint {
+  margin: 0;
+  color: var(--note-ink-3);
+  font-size: 0.75rem;
+}
+
+.brew-note.brew-skin .note-input {
+  width: 100%;
+  height: var(--note-ctl-h);
+  padding: 0 0.85rem;
+  border: 1px solid var(--note-line-strong);
+  border-radius: var(--note-ctl-radius);
+  background: var(--note-paper);
+  color: var(--note-ink);
+  font: inherit;
+  font-size: var(--note-ctl-font);
+  appearance: none;
+  color-scheme: light;
+}
+
+html.dark .brew-note.brew-skin .note-input {
+  color-scheme: dark;
+}
+
+.brew-note.brew-skin .note-input:hover {
+  border-color: var(--note-ink-3);
+}
+
+.brew-note.brew-skin .note-input:focus {
+  outline: none;
+  border-color: var(--note-ink);
+  box-shadow: 0 0 0 1px var(--note-ink);
+}
+
+.note-select {
+  display: block;
+  position: relative;
+}
+
+.brew-note.brew-skin .note-select__native {
+  padding-inline-end: 2.4rem;
+  cursor: pointer;
+}
+
+.note-select__chevron {
+  position: absolute;
+  top: 50%;
+  right: 0.8rem;
+  width: 1.05rem;
+  height: 1.05rem;
+  color: var(--note-ink-3);
+  transform: translateY(-50%);
+  pointer-events: none;
+}

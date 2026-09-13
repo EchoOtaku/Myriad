@@ -6,28 +6,28 @@ import {
 } from '../../agent-panel/conversationPan'
 
 /** 比对话轨略慢，才能看见下一张进来。 */
-export const RAIL_FOLLOW_TAU = 0.04
+const RAIL_FOLLOW_TAU = 0.04
 
-export const RAIL_SNAP_FAR_TAU = 0.046
-export const RAIL_SNAP_MID_TAU = 0.06
-export const RAIL_SNAP_NEAR_TAU = 0.072
+const RAIL_SNAP_FAR_TAU = 0.046
+const RAIL_SNAP_MID_TAU = 0.06
+const RAIL_SNAP_NEAR_TAU = 0.072
 
 /** 坐进槽位时提前咬死，去掉指数衰减的长尾巴。 */
 export const RAIL_SEAT_PX = 2.6
 
 export const RAIL_WHEEL_SETTLE_MS = 96
 
-export const RAIL_FLING_LOOKAHEAD_S = 0.22
+const RAIL_FLING_LOOKAHEAD_S = 0.22
 export const RAIL_FLING_SLOT_PX_S = 360
 
 /** 推过槽距这么多，松手就进下一张，不弹回。 */
 export const RAIL_COMMIT_RATIO = 0.28
 
 /** 再进一格必须几乎走过下一张，避免轻滑连跳。 */
-export const RAIL_NEXT_RATIO = 0.85
+const RAIL_NEXT_RATIO = 0.85
 
 /** 甩的预估位移要超过这么多槽距，才允许跳第二张。 */
-export const RAIL_MULTI_SPAN = 1.52
+const RAIL_MULTI_SPAN = 1.52
 
 export const RAIL_OVERFLOW_LEFT_PX = 0
 
@@ -100,18 +100,6 @@ export function railSlotOffsets(
   return slots
 }
 
-export function railFloorIndex(
-  offset: number,
-  slots: readonly number[],
-): number {
-  let index = 0
-  for (let i = 1; i < slots.length; i++) {
-    if (slots[i] <= offset + 0.5) index = i
-    else break
-  }
-  return index
-}
-
 export function nearestRailSlot(
   offset: number,
   slots: readonly number[],
@@ -131,7 +119,7 @@ export function nearestRailSlot(
   return best
 }
 
-export function railNearestIndex(
+function railNearestIndex(
   offset: number,
   slots: readonly number[],
 ): number {

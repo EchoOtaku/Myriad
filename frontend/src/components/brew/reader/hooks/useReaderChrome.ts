@@ -1,19 +1,24 @@
 import type { LayoutKey } from '../types'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-export interface UseReaderChromeOptions {
+interface UseReaderChromeOptions {
   articleRef: React.RefObject<HTMLElement | null>
   layout: LayoutKey
   closeAllTooltips: () => void
 }
 
-export interface UseReaderChromeReturn {
+interface UseReaderChromeReturn {
   showPanels: boolean
   setShowPanels: (show: boolean) => void
   showMobileControls: boolean
   setShowMobileControls: (show: boolean) => void
   isHoveringControlsRef: React.RefObject<boolean>
   resetHideTimer: (delay?: number) => void
+}
+
+function controlsHaveFocus(): boolean {
+  return document.activeElement instanceof HTMLElement &&
+    !!document.activeElement.closest('[data-brew-reader-controls]')
 }
 
 export function useReaderChrome({
@@ -24,6 +29,7 @@ export function useReaderChrome({
   const [showPanels, setShowPanels] = useState(true)
   const [showMobileControls, setShowMobileControls] = useState(false)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastMouseMoveRef = useRef<number>(0)
   const isScrollingRef = useRef(false)
   const cooldownRef = useRef(false) // 冷却期内不立刻再显示。
@@ -36,15 +42,17 @@ export function useReaderChrome({
         clearTimeout(hideTimerRef.current)
       }
       hideTimerRef.current = setTimeout(() => {
-        if (isHoveringControlsRef.current) {
+        if (isHoveringControlsRef.current || controlsHaveFocus()) {
           resetHideTimer(delay)
           return
         }
         setShowPanels(false)
         closeAllTooltips()
         cooldownRef.current = true
-        setTimeout(() => {
+        if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current)
+        cooldownTimerRef.current = setTimeout(() => {
           cooldownRef.current = false
+          cooldownTimerRef.current = null
         }, 800)
       }, delay)
     },
@@ -75,7 +83,7 @@ export function useReaderChrome({
         setShowPanels(true)
         resetHideTimer(2000)
       } else if (!isScrollingUp) {
-        if (!isScrollingRef.current && !isHoveringControlsRef.current) {
+        if (!isScrollingRef.current && !isHoveringControlsRef.current && !controlsHaveFocus()) {
           isScrollingRef.current = true
           setShowPanels(false)
           closeAllTooltips()
@@ -151,6 +159,10 @@ export function useReaderChrome({
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
     }
   }, [resetHideTimer])
+
+  useEffect(() => () => {
+    if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current)
+  }, [])
 
   return {
     showPanels,

@@ -8,14 +8,6 @@
   word-break: normal;
 }
 
-.brew-bar__panel > .brew-add-form {
-  padding: 0.85rem 0.9rem 0.95rem;
-  border: 1px solid var(--cfg-frost-border, var(--brew-frost-line, var(--brew-line)));
-  border-radius: 0.875rem;
-  background: var(--cfg-frost-bg, var(--brew-chip));
-  box-shadow: var(--brew-shadow);
-}
-
 .brew-add-form .setting-item,
 .brew-add-form__stack .setting-item {
   margin-bottom: 0;

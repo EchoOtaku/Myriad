@@ -30,7 +30,7 @@ function saveSettings(settings: object) {
   } catch {}
 }
 
-export interface UseReaderSettingsReturn {
+interface UseReaderSettingsReturn {
   fontSize: number
   lineHeight: number
   fontFamily: string

@@ -4,7 +4,8 @@ import type { ReaderCopy } from '../types'
 import { useCallback, useEffect, useRef } from 'react'
 import { playNeteaseSong } from '../../../../utils/embedProcessor'
 
-export interface UseContentEventsOptions {
+interface UseContentEventsOptions {
+  contentReady: boolean
   setFocusedCommentIds: (ids: number[]) => void
   contentRef: React.RefObject<HTMLDivElement | null>
   comments: CommentItem[]
@@ -35,12 +36,13 @@ export interface UseContentEventsOptions {
   t: ReaderCopy
 }
 
-export interface UseContentEventsReturn {
+interface UseContentEventsReturn {
   handleTooltipMouseEnter: () => void
   handleTooltipMouseLeave: () => void
 }
 
 export function useContentEvents({
+  contentReady,
   setFocusedCommentIds,
   contentRef,
   comments,
@@ -229,13 +231,13 @@ export function useContentEvents({
       if (focusTimer) clearTimeout(focusTimer)
       container.removeEventListener('keydown', handleKeyDown)
       container.removeEventListener('click', handleContentClick)
-      contentRef.current?.removeEventListener('mouseover', handleMouseOver)
-      contentRef.current?.removeEventListener(
+      container.removeEventListener('mouseover', handleMouseOver)
+      container.removeEventListener(
         'mouseleave',
         handleContentMouseLeave,
       )
     }
-  }, [])
+  }, [contentReady])
 
   const handleTextSelection = useCallback(() => {
     if (!isAuthenticated) return
@@ -404,7 +406,7 @@ export function useContentEvents({
       }
       setHoveredAnnotation(null)
     }
-  }, [showAnnotations])
+  }, [showAnnotations, contentReady])
 
   return {
     handleTooltipMouseEnter,

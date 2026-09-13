@@ -10,7 +10,7 @@ import { createReadingProgress } from '../progressStore'
 import { ProgressSync } from '../progressSync'
 import { useArticleTaskScope } from './useArticleTaskScope'
 
-export interface UseReaderControlsOptions {
+interface UseReaderControlsOptions {
   articleRef: React.RefObject<HTMLElement | null>
   contentRef: React.RefObject<HTMLDivElement | null>
   itemId: number
@@ -23,7 +23,7 @@ export interface UseReaderControlsOptions {
   t: ReaderCopy
 }
 
-export interface UseReaderControlsReturn {
+interface UseReaderControlsReturn {
   readingProgress: ReadingProgress
   toc: TocItem[]
   setToc: (toc: TocItem[]) => void

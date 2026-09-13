@@ -10,21 +10,21 @@ import { RequestTurn } from '../../logic/requestTurn'
 import { highlightAnchoredComments } from '../commentAnchors'
 import { useArticleTaskScope } from './useArticleTaskScope'
 
-export interface UseCommentsOptions {
+interface UseCommentsOptions {
   itemId: number
   isAuthenticated: boolean
   showToastMessage: (message: string, duration?: number) => void
   t: ReaderCopy
 }
 
-export interface SelectionRange {
+interface SelectionRange {
   start: number
   end: number
   contextBefore: string
   contextAfter: string
 }
 
-export interface UseCommentsReturn {
+interface UseCommentsReturn {
   comments: CommentItem[]
   commentsLoading: boolean
   hasComments: boolean

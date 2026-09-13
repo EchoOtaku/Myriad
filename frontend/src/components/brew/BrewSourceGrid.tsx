@@ -1,13 +1,15 @@
 import type {
   AddSourceInput,
   BrewItemPreview,
+  BrewNoteDoc,
   BrewSource,
   UpdateSourceRequest,
 } from '../../types/brew'
 import type { BrewBoard, SourceSortMode } from './logic/board'
 import { refreshableSourceCount } from './logic/board'
 
-import { useCallback, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import * as brewApi from '../../services/brewApi'
 import { useI18n } from '../../contexts/I18nContext'
 import { roleFromAuth } from './logic/score'
 import BrewControls from './manager/BrewControls'
@@ -56,7 +58,9 @@ interface BrewSourceGridProps {
   onPeekEnd?: () => void
   onToggleStar?: (item: BrewItemPreview) => void
   onWriteNote?: () => void
+  onOpenDoc?: (id: number) => void
   onMarkAllRead?: () => void
+  docsEpoch?: number
   isAuthenticated?: boolean
   isAdmin?: boolean
 }
@@ -79,7 +83,9 @@ export default function BrewSourceGrid({
   onPeekEnd,
   onToggleStar,
   onWriteNote,
+  onOpenDoc,
   onMarkAllRead,
+  docsEpoch = 0,
   isAuthenticated = false,
   isAdmin = false,
 }: BrewSourceGridProps) {
@@ -100,6 +106,23 @@ export default function BrewSourceGrid({
     scoreNow,
   )
   const notes = useBoardNotes(board, sources)
+  const [docs, setDocs] = useState<BrewNoteDoc[]>([])
+  useEffect(() => {
+    if (board !== 'notes' || !isAdmin) {
+      setDocs([])
+      return
+    }
+    const controller = new AbortController()
+    void brewApi
+      .listNoteDocs(controller.signal)
+      .then((next) => {
+        if (!controller.signal.aborted) setDocs(next)
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setDocs([])
+      })
+    return () => controller.abort()
+  }, [board, isAdmin, notes, docsEpoch])
   const readySource = useMemo(
     () => sources.find((source) => source.id === readySourceId) ?? null,
     [sources, readySourceId],
@@ -212,6 +235,8 @@ export default function BrewSourceGrid({
       onReadySource={board === 'feeds' ? handleReadySource : undefined}
       sourceTags={board === 'feeds' ? sourceTags : undefined}
       notes={notes}
+      docs={docs}
+      onOpenDoc={onOpenDoc}
     />
   )
 

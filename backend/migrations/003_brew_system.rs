@@ -855,10 +855,48 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // ==================== 9. BREW_NOTE_DOCS 表 ====================
+        // 云端手记文档。草稿 / 定时只活在这里，发布后才有 brew_items。
+        // 与 `ensure_brew_note_docs_table` / TableDef 同一段 DDL。
+        manager
+            .get_connection()
+            .execute_unprepared(
+                r#"
+CREATE TABLE IF NOT EXISTS brew_note_docs (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    item_id INTEGER,
+    title TEXT NOT NULL DEFAULT '',
+    content_md TEXT NOT NULL DEFAULT '',
+    topic TEXT,
+    image TEXT,
+    status VARCHAR NOT NULL DEFAULT 'draft',
+    scheduled_at TIMESTAMPTZ,
+    published_at TIMESTAMPTZ,
+    revision BIGINT NOT NULL DEFAULT 1,
+    last_error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_brew_note_docs_user
+    ON brew_note_docs (user_id);
+CREATE INDEX IF NOT EXISTS idx_brew_note_docs_item
+    ON brew_note_docs (item_id);
+CREATE INDEX IF NOT EXISTS idx_brew_note_docs_schedule
+    ON brew_note_docs (status, scheduled_at);
+"#,
+            )
+            .await?;
+
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .get_connection()
+            .execute_unprepared("DROP TABLE IF EXISTS brew_note_docs")
+            .await?;
+
         // 删除 rsshub_instances 表
         manager
             .drop_table(Table::drop().table(RsshubInstances::Table).to_owned())

@@ -217,7 +217,7 @@ pub async fn init_database(
     let tables_existed = check_database_tables(&db).await;
 
     // Never drop feature tables from an unauthenticated setup endpoint.
-    // Migrator::up strips folded 007–019 history rows, drops leftover
+    // Migrator::up strips folded 007–020 history rows, drops leftover
     // `digital_life_*` experiment tables, then applies pending work;
     // other damaged migration state requires explicit operator intervention.
     // Import the migrator from migrations module

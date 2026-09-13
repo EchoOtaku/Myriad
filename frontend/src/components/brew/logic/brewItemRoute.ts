@@ -1,7 +1,5 @@
 import { brewOwnItemPath } from '../constants'
 
-export const BREW_OPENED_ITEM = 'brewOpenedItem'
-
 export function brewOpenedItemState(id: number): { brewOpenedItem: number } {
   return { brewOpenedItem: id }
 }

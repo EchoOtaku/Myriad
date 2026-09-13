@@ -24,6 +24,7 @@ pub const RETIRED_MIGRATION_NAMES: &[&str] = &[
     "017_agent_tapp_approved_permissions",
     "018_brew_state_revision",
     "019_brew_content_revision",
+    "020_brew_note_docs",
 ];
 
 /// Temporary digital_life experiment tables from retired `007_digital_life`
@@ -138,7 +139,7 @@ END $$;
     )
 }
 
-/// Remove folded 007–019 names from `seaql_migrations` and drop leftover
+/// Remove folded 007–020 names from `seaql_migrations` and drop leftover
 /// `digital_life_*` experiment tables.
 ///
 /// History DELETE no-ops when the tracking table does not exist yet

@@ -11,9 +11,12 @@ import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
+
+import { useReaderDialogFocus } from './useReaderDialogFocus'
 
 interface LightboxProps {
+  enableAnimations?: boolean
   src: string | null
   alt?: string
   isDark: boolean
@@ -21,13 +24,17 @@ interface LightboxProps {
   t: ReaderCopy
 }
 
-export function Lightbox({ src, alt = '', onClose, t }: LightboxProps) {
+export function Lightbox({ src, alt = '', onClose, t, enableAnimations = true }: LightboxProps) {
+  const dialogId = useId()
+  useReaderDialogFocus(!!src, dialogId)
   const [scale, setScale] = useState(1)
   const [rotation, setRotation] = useState(0)
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
         onClose()
       }
     }
@@ -79,20 +86,25 @@ export function Lightbox({ src, alt = '', onClose, t }: LightboxProps) {
     <AnimatePresence onExitComplete={resetView}>
       {src && (
         <motion.div
-          initial={{ opacity: 0 }}
+          id={dialogId}
+          role="dialog"
+          aria-modal="true"
+          aria-label={alt || t.brew.lightboxCloseHint}
+          data-brew-shortcuts="suspended"
+          initial={enableAnimations ? { opacity: 0 } : false}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.2, ease: 'easeOut' }}
+          transition={{ duration: enableAnimations ? 0.2 : 0, ease: 'easeOut' }}
           className="fixed inset-0 z-100 flex flex-col items-center justify-center"
           onClick={handleClose}
         >
           <div className="brew-reader__lb-scrim" />
 
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
+            initial={enableAnimations ? { opacity: 0, y: -20 } : false}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: enableAnimations ? 0.25 : 0, ease: [0.16, 1, 0.3, 1] }}
             className="hidden sm:flex absolute top-6 items-center gap-2 px-4 py-2.5 brew-reader__chip z-10"
             onClick={(e: MouseEvent) => e.stopPropagation()}
           >
@@ -141,6 +153,7 @@ export function Lightbox({ src, alt = '', onClose, t }: LightboxProps) {
             <div className="brew-reader__rule" />
 
             <button
+              data-reader-dialog-close
               onClick={handleClose}
               className="brew-reader__btn"
               title={`${t.brew.lightboxClose} (ESC)`}
@@ -150,15 +163,16 @@ export function Lightbox({ src, alt = '', onClose, t }: LightboxProps) {
           </motion.div>
 
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
+            initial={enableAnimations ? { opacity: 0, y: -20 } : false}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: enableAnimations ? 0.25 : 0, ease: [0.16, 1, 0.3, 1] }}
             className="sm:hidden absolute top-4 left-4 flex items-center gap-2 px-3 py-2 brew-reader__chip z-10"
             onClick={(e: MouseEvent) => e.stopPropagation()}
           >
             <button
               type="button"
+              data-reader-dialog-close
               onClick={handleClose}
               className="brew-reader__btn"
               title={t.brew.lightboxClose}
@@ -179,10 +193,10 @@ export function Lightbox({ src, alt = '', onClose, t }: LightboxProps) {
           </motion.div>
 
           <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
+            initial={enableAnimations ? { opacity: 0, scale: 0.9 } : false}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
-            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: enableAnimations ? 0.3 : 0, ease: [0.16, 1, 0.3, 1] }}
             className="relative flex items-center justify-center"
             onClick={(e: MouseEvent) => e.stopPropagation()}
           >
@@ -193,7 +207,7 @@ export function Lightbox({ src, alt = '', onClose, t }: LightboxProps) {
                 scale,
                 rotate: rotation,
               }}
-              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              transition={{ duration: enableAnimations ? 0.3 : 0, ease: [0.16, 1, 0.3, 1] }}
               className="max-w-[90vw] max-h-[calc(90vh-120px)] object-contain rounded-lg shadow-2xl"
               style={{
                 transformOrigin: 'center center',
@@ -202,10 +216,10 @@ export function Lightbox({ src, alt = '', onClose, t }: LightboxProps) {
           </motion.div>
 
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={enableAnimations ? { opacity: 0, y: 20 } : false}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
-            transition={{ duration: 0.25, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: enableAnimations ? 0.25 : 0, delay: enableAnimations ? 0.1 : 0, ease: [0.16, 1, 0.3, 1] }}
             className="absolute bottom-6 px-4 py-2 brew-reader__chip brew-reader__mute text-sm z-10"
           >
             {t.brew.lightboxCloseHint}

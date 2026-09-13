@@ -1014,3 +1014,36 @@ ALTER TABLE tapp_storage
     .await?;
     Ok(())
 }
+
+/// 云端手记文档。草稿 / 定时不进 `brew_items`，发布时才落文章。
+pub(crate) async fn ensure_brew_note_docs_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+CREATE TABLE IF NOT EXISTS brew_note_docs (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    item_id INTEGER,
+    title TEXT NOT NULL DEFAULT '',
+    content_md TEXT NOT NULL DEFAULT '',
+    topic TEXT,
+    image TEXT,
+    status VARCHAR NOT NULL DEFAULT 'draft',
+    scheduled_at TIMESTAMPTZ,
+    published_at TIMESTAMPTZ,
+    revision BIGINT NOT NULL DEFAULT 1,
+    last_error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_brew_note_docs_user
+    ON brew_note_docs (user_id);
+CREATE INDEX IF NOT EXISTS idx_brew_note_docs_item
+    ON brew_note_docs (item_id);
+CREATE INDEX IF NOT EXISTS idx_brew_note_docs_schedule
+    ON brew_note_docs (status, scheduled_at);
+ALTER TABLE brew_note_docs ADD COLUMN IF NOT EXISTS last_error TEXT;
+"#,
+    )
+    .await?;
+    Ok(())
+}

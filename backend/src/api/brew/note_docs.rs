@@ -1,0 +1,521 @@
+//! 云端手记文档：草稿、定时、协同。公开文章仍只从 `brew_items` 读。
+
+use axum::{
+    Extension, Json,
+    extract::{
+        Path, State,
+        ws::{Message, WebSocket, WebSocketUpgrade},
+    },
+    http::StatusCode,
+    response::IntoResponse,
+};
+use chrono::Utc;
+use myriad_brew_notes::{NoteDocStatus, schedule_at, validate_note};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+
+use super::helpers::{brew_http_err, brew_store_http, get_admin_user_id_from_headers};
+use super::note_collab::{NoteCollabEvent, note_collab_hub};
+use crate::error::HttpError;
+use crate::middleware::auth::Claims;
+use crate::models::entities::brew_note_docs;
+use crate::services::note_publish::{
+    datetime_to_millis, mark_doc_published, millis_to_datetime, upsert_doc_for_published_item,
+    write_published_item,
+};
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct NoteDocWriteRequest {
+    pub title: Option<String>,
+    pub content_md: Option<String>,
+    pub topic: Option<String>,
+    pub image: Option<String>,
+    pub published_at: Option<i64>,
+    pub scheduled_at: Option<i64>,
+    pub revision: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct NoteDocResponse {
+    pub id: i32,
+    pub item_id: Option<i32>,
+    pub title: String,
+    pub content_md: String,
+    pub topic: Option<String>,
+    pub image: Option<String>,
+    pub status: String,
+    pub scheduled_at: Option<i64>,
+    pub published_at: Option<i64>,
+    pub revision: i64,
+    pub last_error: Option<String>,
+    pub updated_at: i64,
+}
+
+fn to_response(doc: brew_note_docs::Model) -> NoteDocResponse {
+    NoteDocResponse {
+        id: doc.id,
+        item_id: doc.item_id,
+        title: doc.title,
+        content_md: doc.content_md,
+        topic: doc.topic,
+        image: doc.image,
+        status: doc.status,
+        scheduled_at: doc.scheduled_at.map(datetime_to_millis),
+        published_at: doc.published_at.map(datetime_to_millis),
+        revision: doc.revision,
+        last_error: doc.last_error,
+        updated_at: datetime_to_millis(doc.updated_at),
+    }
+}
+
+fn revision_matches(expected: Option<i64>, actual: i64) -> bool {
+    expected.is_none_or(|value| value == actual)
+}
+
+fn empty_to_none(value: Option<String>) -> Option<String> {
+    value.and_then(|text| {
+        let trimmed = text.trim().to_string();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    })
+}
+
+async fn find_doc(db: &DatabaseConnection, id: i32) -> Result<brew_note_docs::Model, HttpError> {
+    brew_note_docs::Entity::find_by_id(id)
+        .one(db)
+        .await
+        .map_err(|e| brew_store_http("find note doc", e))?
+        .ok_or_else(|| brew_http_err(StatusCode::NOT_FOUND, "Note draft not found"))
+}
+
+/// `GET /notes/docs` — 管理端文档列表，含草稿和定时。
+pub(crate) async fn list_note_docs(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    get_admin_user_id_from_headers(&headers, &db).await?;
+    let docs = brew_note_docs::Entity::find()
+        .order_by_desc(brew_note_docs::Column::UpdatedAt)
+        .all(&db)
+        .await
+        .map_err(|e| brew_store_http("list note docs", e))?;
+    Ok(Json(json!({
+        "success": true,
+        "docs": docs.into_iter().map(to_response).collect::<Vec<_>>(),
+    })))
+}
+
+/// `POST /notes/docs` — 建一篇云端草稿。标题可空。
+pub(crate) async fn create_note_doc(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<NoteDocWriteRequest>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
+    let now = Utc::now();
+    let doc = brew_note_docs::ActiveModel {
+        user_id: Set(user_id),
+        title: Set(req.title.unwrap_or_default()),
+        content_md: Set(req.content_md.unwrap_or_default()),
+        topic: Set(empty_to_none(req.topic)),
+        image: Set(empty_to_none(req.image)),
+        status: Set(NoteDocStatus::Draft.as_str().to_string()),
+        published_at: Set(req.published_at.and_then(millis_to_datetime).map(|at| at.into())),
+        revision: Set(1),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+        ..Default::default()
+    };
+    let doc = doc
+        .insert(&db)
+        .await
+        .map_err(|e| brew_store_http("create note doc", e))?;
+    Ok(Json(json!({ "success": true, "doc": to_response(doc) })))
+}
+
+/// `GET /notes/docs/{id}`
+pub(crate) async fn get_note_doc(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Path(id): Path<i32>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    get_admin_user_id_from_headers(&headers, &db).await?;
+    let doc = find_doc(&db, id).await?;
+    Ok(Json(json!({ "success": true, "doc": to_response(doc) })))
+}
+
+/// `GET /notes/docs/for-item/{item_id}` — 给已发布手记找或建对应文档。
+pub(crate) async fn get_note_doc_for_item(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Path(item_id): Path<i32>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
+    if let Some(doc) = brew_note_docs::Entity::find()
+        .filter(brew_note_docs::Column::ItemId.eq(item_id))
+        .one(&db)
+        .await
+        .map_err(|e| brew_store_http("find note doc", e))?
+    {
+        return Ok(Json(json!({ "success": true, "doc": to_response(doc) })));
+    }
+    let item = crate::models::entities::brew_items::Entity::find_by_id(item_id)
+        .one(&db)
+        .await
+        .map_err(|e| brew_store_http("find note", e))?
+        .ok_or_else(|| brew_http_err(StatusCode::NOT_FOUND, "Note not found"))?;
+    let published = crate::services::note_publish::PublishedNote {
+        id: item.id,
+        link: item.link.clone(),
+    };
+    let doc = upsert_doc_for_published_item(
+        &db,
+        user_id,
+        &published,
+        &item.title,
+        item.content_md.as_deref().unwrap_or(""),
+        item.topic,
+        item.image,
+        Some(datetime_to_millis(item.published_at)),
+    )
+    .await?;
+    Ok(Json(json!({ "success": true, "doc": to_response(doc) })))
+}
+
+/// `PUT /notes/docs/{id}` — 存草稿。带 revision，对不上 409。
+pub(crate) async fn update_note_doc(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Path(id): Path<i32>,
+    Json(req): Json<NoteDocWriteRequest>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
+    let doc = find_doc(&db, id).await?;
+    if !revision_matches(req.revision, doc.revision) {
+        return Err(brew_http_err(
+            StatusCode::CONFLICT,
+            "Note draft was updated elsewhere",
+        ));
+    }
+    let mut active: brew_note_docs::ActiveModel = doc.clone().into();
+    if let Some(title) = req.title {
+        active.title = Set(title);
+    }
+    if let Some(content_md) = req.content_md {
+        active.content_md = Set(content_md);
+    }
+    if req.topic.is_some() {
+        active.topic = Set(empty_to_none(req.topic));
+    }
+    if req.image.is_some() {
+        active.image = Set(empty_to_none(req.image));
+    }
+    if let Some(published_at) = req.published_at.and_then(millis_to_datetime) {
+        active.published_at = Set(Some(published_at.into()));
+    }
+    active.updated_at = Set(Utc::now().into());
+    active.revision = Set(doc.revision + 1);
+    active.last_error = Set(None);
+    let saved = active
+        .update(&db)
+        .await
+        .map_err(|e| brew_store_http("save note doc", e))?;
+    note_collab_hub().publish(
+        saved.id,
+        NoteCollabEvent {
+            kind: "doc".into(),
+            peer_id: String::new(),
+            user_id,
+            name: None,
+            revision: Some(saved.revision),
+            cursor: None,
+            title: Some(saved.title.clone()),
+            content_md: Some(saved.content_md.clone()),
+            topic: saved.topic.clone(),
+            image: saved.image.clone(),
+        },
+    );
+    Ok(Json(json!({ "success": true, "doc": to_response(saved) })))
+}
+
+/// `DELETE /notes/docs/{id}` — 删云端文档。已发布的文章另走 DELETE /notes/{item}。
+pub(crate) async fn delete_note_doc(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Path(id): Path<i32>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    get_admin_user_id_from_headers(&headers, &db).await?;
+    let doc = find_doc(&db, id).await?;
+    if doc.status == NoteDocStatus::Published.as_str() {
+        return Err(brew_http_err(
+            StatusCode::BAD_REQUEST,
+            "Published notes must be deleted from the article",
+        ));
+    }
+    brew_note_docs::Entity::delete_by_id(doc.id)
+        .exec(&db)
+        .await
+        .map_err(|e| brew_store_http("delete note doc", e))?;
+    Ok(Json(json!({ "success": true })))
+}
+
+/// `POST /notes/docs/{id}/publish`
+pub(crate) async fn publish_note_doc(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Path(id): Path<i32>,
+    Json(req): Json<NoteDocWriteRequest>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
+    let mut doc = find_doc(&db, id).await?;
+    if let Some(title) = req.title.clone() {
+        doc.title = title;
+    }
+    if let Some(content_md) = req.content_md.clone() {
+        doc.content_md = content_md;
+    }
+    if req.topic.is_some() {
+        doc.topic = empty_to_none(req.topic.clone());
+    }
+    if req.image.is_some() {
+        doc.image = empty_to_none(req.image.clone());
+    }
+    let published_at = req.published_at.or(doc.published_at.map(datetime_to_millis));
+    let item = write_published_item(
+        &db,
+        user_id,
+        doc.item_id,
+        &doc.title,
+        &doc.content_md,
+        doc.topic.clone(),
+        doc.image.clone(),
+        published_at,
+    )
+    .await?;
+    let saved = mark_doc_published(&db, doc, &item, published_at).await?;
+    Ok(Json(json!({
+        "success": true,
+        "id": item.id,
+        "link": item.link,
+        "doc": to_response(saved),
+    })))
+}
+
+/// `POST /notes/docs/{id}/schedule`
+pub(crate) async fn schedule_note_doc(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Path(id): Path<i32>,
+    Json(req): Json<NoteDocWriteRequest>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    get_admin_user_id_from_headers(&headers, &db).await?;
+    let doc = find_doc(&db, id).await?;
+    if doc.status == NoteDocStatus::Published.as_str() {
+        return Err(brew_http_err(
+            StatusCode::BAD_REQUEST,
+            "Published notes cannot be scheduled",
+        ));
+    }
+    let now_ms = Utc::now().timestamp_millis();
+    let at = schedule_at(now_ms, req.scheduled_at).map_err(|err| match err {
+        myriad_brew_notes::ScheduleError::AlreadyDue => {
+            brew_http_err(StatusCode::BAD_REQUEST, "That time has already passed")
+        }
+        myriad_brew_notes::ScheduleError::MissingTime => {
+            brew_http_err(StatusCode::BAD_REQUEST, "A schedule time is required")
+        }
+    })?;
+    let title = req.title.clone().unwrap_or_else(|| doc.title.clone());
+    let content_md = req
+        .content_md
+        .clone()
+        .unwrap_or_else(|| doc.content_md.clone());
+    validate_note(&title, &content_md)
+        .map_err(|err| brew_http_err(StatusCode::BAD_REQUEST, err.message()))?;
+    let mut active: brew_note_docs::ActiveModel = doc.clone().into();
+    active.title = Set(title);
+    active.content_md = Set(content_md);
+    if req.topic.is_some() {
+        active.topic = Set(empty_to_none(req.topic));
+    }
+    if req.image.is_some() {
+        active.image = Set(empty_to_none(req.image));
+    }
+    active.status = Set(NoteDocStatus::Scheduled.as_str().to_string());
+    active.scheduled_at = Set(millis_to_datetime(at).map(|value| value.into()));
+    active.published_at = Set(millis_to_datetime(at).map(|value| value.into()));
+    active.updated_at = Set(Utc::now().into());
+    active.revision = Set(doc.revision + 1);
+    active.last_error = Set(None);
+    let saved = active
+        .update(&db)
+        .await
+        .map_err(|e| brew_store_http("schedule note doc", e))?;
+    Ok(Json(json!({ "success": true, "doc": to_response(saved) })))
+}
+
+/// `POST /notes/docs/{id}/unschedule`
+pub(crate) async fn unschedule_note_doc(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Path(id): Path<i32>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    get_admin_user_id_from_headers(&headers, &db).await?;
+    let doc = find_doc(&db, id).await?;
+    if doc.status != NoteDocStatus::Scheduled.as_str() {
+        return Ok(Json(json!({ "success": true, "doc": to_response(doc) })));
+    }
+    let mut active: brew_note_docs::ActiveModel = doc.clone().into();
+    active.status = Set(NoteDocStatus::Draft.as_str().to_string());
+    active.scheduled_at = Set(None);
+    active.last_error = Set(None);
+    active.updated_at = Set(Utc::now().into());
+    active.revision = Set(doc.revision + 1);
+    let saved = active
+        .update(&db)
+        .await
+        .map_err(|e| brew_store_http("unschedule note doc", e))?;
+    Ok(Json(json!({ "success": true, "doc": to_response(saved) })))
+}
+
+/// `GET /notes/docs/{id}/ws`
+pub(crate) async fn note_doc_websocket(
+    ws: WebSocketUpgrade,
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    headers: axum::http::HeaderMap,
+    Path(id): Path<i32>,
+) -> Result<impl IntoResponse, HttpError> {
+    let allowed = crate::middleware::ws_origin::allowed_origins_from_global_config().await;
+    crate::middleware::ws_origin::assert_ws_origin_for_cookie_session(&headers, &allowed)?;
+    crate::middleware::auth::ensure_current_admin_on(&claims, &db)
+        .await
+        .map_err(|_| brew_http_err(StatusCode::FORBIDDEN, "Admin only"))?;
+    let user_id = claims
+        .sub
+        .parse::<i32>()
+        .map_err(|_| brew_http_err(StatusCode::UNAUTHORIZED, "Unauthorized"))?;
+    let username = claims.username.clone();
+    let _ = find_doc(&db, id).await?;
+    Ok(ws.on_upgrade(move |socket| handle_note_doc_socket(socket, id, user_id, username)))
+}
+
+async fn handle_note_doc_socket(
+    mut socket: WebSocket,
+    doc_id: i32,
+    user_id: i32,
+    username: String,
+) {
+    let hub = note_collab_hub();
+    let mut rx = hub.subscribe(doc_id);
+    let peer_id = uuid::Uuid::new_v4().to_string();
+    hub.publish(
+        doc_id,
+        NoteCollabEvent {
+            kind: "join".into(),
+            peer_id: peer_id.clone(),
+            user_id,
+            name: Some(username.clone()),
+            revision: None,
+            cursor: None,
+            title: None,
+            content_md: None,
+            topic: None,
+            image: None,
+        },
+    );
+    loop {
+        tokio::select! {
+            Ok(event) = rx.recv() => {
+                if event.peer_id == peer_id {
+                    continue;
+                }
+                let msg = serde_json::to_string(&event).unwrap_or_default();
+                if socket.send(Message::Text(msg.into())).await.is_err() {
+                    break;
+                }
+            }
+            Some(msg) = socket.recv() => {
+                match msg {
+                    Ok(Message::Ping(data)) => {
+                        if socket.send(Message::Pong(data)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Ok(Message::Text(text)) => {
+                        if let Ok(mut incoming) = serde_json::from_str::<NoteCollabEvent>(&text) {
+                            incoming.peer_id = peer_id.clone();
+                            incoming.user_id = user_id;
+                            incoming.name = Some(username.clone());
+                            if incoming.kind.is_empty() {
+                                incoming.kind = "presence".into();
+                            }
+                            hub.publish(doc_id, incoming);
+                        }
+                    }
+                    Ok(Message::Close(_)) | Err(_) => break,
+                    _ => {}
+                }
+            }
+            else => break,
+        }
+    }
+    hub.publish(
+        doc_id,
+        NoteCollabEvent {
+            kind: "leave".into(),
+            peer_id,
+            user_id,
+            name: None,
+            revision: None,
+            cursor: None,
+            title: None,
+            content_md: None,
+            topic: None,
+            image: None,
+        },
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_strings_become_none() {
+        assert_eq!(empty_to_none(Some("  ".into())), None);
+        assert_eq!(empty_to_none(Some("ai".into())), Some("ai".into()));
+    }
+
+    #[test]
+    fn stale_revision_is_a_conflict() {
+        assert!(revision_matches(None, 3));
+        assert!(revision_matches(Some(3), 3));
+        assert!(!revision_matches(Some(2), 3));
+    }
+
+    #[test]
+    fn creating_a_doc_does_not_write_brew_items() {
+        let src = include_str!("note_docs.rs");
+        let start = src
+            .find("pub(crate) async fn create_note_doc")
+            .expect("create_note_doc");
+        let body = &src[start..];
+        let end = body[1..]
+            .find("\npub(crate) async fn ")
+            .map(|index| index + 1)
+            .unwrap_or(body.len());
+        let create = &body[..end];
+        assert!(create.contains("NoteDocStatus::Draft"));
+        assert!(
+            !create.contains("write_published_item"),
+            "cloud drafts must stay out of brew_items"
+        );
+    }
+}

@@ -2,7 +2,7 @@ import { API_URL as CONFIG_API_URL } from '../../config'
 import { proxyImageUrl } from '../../utils/proxyImageUrl'
 
 /** Canonical stored values. Display copy lives in locale JSON. */
-export const BREW_FRIEND_LINK_CATEGORY = '友情链接'
+const BREW_FRIEND_LINK_CATEGORY = '友情链接'
 export const BREW_MINE_CATEGORY = '我'
 
 const FRIEND_LINK_ALIASES = new Set([
@@ -84,7 +84,7 @@ export function brewOwnItemPath(itemId: number | string): string {
 
 export const DEFAULT_THEME_COLOR = '#6b7280'
 
-export const API_URL = CONFIG_API_URL
+const API_URL = CONFIG_API_URL
 
 /** 仅 must-proxy 走 `/api/proxy/image`。 */
 export function getIconUrl(iconUrl: string | null): string | null {

@@ -12,30 +12,6 @@
   gap: 0.5rem;
 }
 
-.brew-shell .brew-bar {
-  --brew-tag-h: 3rem;
-}
-
-.brew-shell .brew-bar__row,
-.brew-shell .brew-bar__set {
-  gap: 0.5rem;
-}
-
-.brew-shell .brew-skin .brew-bar__tag {
-  height: var(--brew-tag-h);
-  padding-inline: 1.125rem;
-  border: 1px solid var(--surface-border);
-  border-radius: 2rem;
-  background: var(--surface-bg);
-  box-shadow: var(--surface-shadow);
-  backdrop-filter: var(--surface-filter);
-}
-
-.brew-shell .brew-skin .brew-bar__tag.is-on {
-  color: var(--brew-accent-ink);
-  border-color: var(--brew-accent-line);
-}
-
 .brew-search {
   --brew-search-hint-h: 1.75rem;
   --brew-search-inset: calc((3rem - var(--brew-search-hint-h)) / 2);

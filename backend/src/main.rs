@@ -337,7 +337,7 @@ async fn run_server(role: runtime_role::RuntimeRole) -> anyhow::Result<()> {
                 tracing::info!(db_target = %db_target, "✅ Database connection established");
 
                 // Run database migrations automatically on startup (idempotent).
-                // Folded 007–019 names are deleted from `seaql_migrations` first
+                // Folded 007–020 names are deleted from `seaql_migrations` first
                 // so SeaORM does not require no-op files for them; leftover
                 // `digital_life_*` experiment tables are dropped in the same
                 // step. Any remaining migration failure is fatal to full mode.

@@ -10,44 +10,13 @@ import {
   BREW_TAG_SWAP_PAD_MS,
   brewSurfaceSwapWait,
   brewTagSwapWait,
-  chipEnterFrames,
   chipExitFrames,
   collectBrewSurfaceNodes,
-  diffChipKeys,
   planChipLaneSwap,
-  shouldPlayChipEnter,
 } from './brewChipPresence.ts'
 import { BREW_TAG_EXIT_MS, brewTagDelay } from './brewTag.ts'
 
 const require = createRequire(import.meta.url)
-
-describe('diffChipKeys', () => {
-  it('整栏替换先退后进', () => {
-    const diff = diffChipKeys(['d:sort', 'd:search'], ['s:field', 's:close'])
-    assert.equal(diff.fullSwap, true)
-    assert.deepEqual(diff.leave, ['d:sort', 'd:search'])
-    assert.deepEqual(diff.enter, ['s:field', 's:close'])
-    assert.deepEqual(diff.stay, [])
-  })
-
-  it('只加一枚不是整栏替换', () => {
-    const diff = diffChipKeys(['d:sort', 'd:search'], [
-      'd:sort',
-      'd:edit',
-      'd:search',
-    ])
-    assert.equal(diff.fullSwap, false)
-    assert.deepEqual(diff.enter, ['d:edit'])
-    assert.deepEqual(diff.leave, [])
-  })
-
-  it('同一组只刷新不算进出', () => {
-    const diff = diffChipKeys(['s:field', 's:close'], ['s:field', 's:close'])
-    assert.equal(diff.fullSwap, false)
-    assert.deepEqual(diff.enter, [])
-    assert.deepEqual(diff.leave, [])
-  })
-})
 
 describe('planChipLaneSwap', () => {
   it('退场中只改目的地', () => {
@@ -90,23 +59,6 @@ describe('brewTagSwapWait', () => {
 
   it('降级立刻切', () => {
     assert.equal(brewTagSwapWait(4, true), 0)
-  })
-})
-
-describe('chipEnterFrames', () => {
-  it('从退场姿态进到当前值', () => {
-    const frames = chipEnterFrames('1', 'none')
-    assert.equal(frames[0]?.opacity, 0)
-    assert.equal(frames[0]?.transform, BREW_TAG_EXIT_TRANSFORM)
-    assert.equal(frames[1]?.opacity, '1')
-    assert.equal(frames[1]?.transform, 'none')
-  })
-})
-
-describe('shouldPlayChipEnter', () => {
-  it('退场中不播入场', () => {
-    assert.equal(shouldPlayChipEnter(true), false)
-    assert.equal(shouldPlayChipEnter(false), true)
   })
 })
 
@@ -157,13 +109,10 @@ describe('collectBrewSurfaceNodes', () => {
 
 describe('brewSurfaceSwapWait', () => {
   it('卡片多时以封顶错开为准', () => {
-    assert.equal(
-      brewSurfaceSwapWait(2, 20),
-      brewTagSwapWait(BREW_SURFACE_CARD_CAP),
-    )
+    assert.equal(brewSurfaceSwapWait(20), brewTagSwapWait(BREW_SURFACE_CARD_CAP))
   })
 
-  it('栏更长时听栏的', () => {
-    assert.equal(brewSurfaceSwapWait(6, 2), brewTagSwapWait(6))
+  it('卡片少时按实际张数等', () => {
+    assert.equal(brewSurfaceSwapWait(2), brewTagSwapWait(2))
   })
 })

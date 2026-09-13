@@ -113,5 +113,3 @@ export default function BrewControls({
     />
   )
 }
-
-export type { SortMode } from './modes'

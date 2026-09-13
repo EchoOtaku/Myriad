@@ -7,7 +7,6 @@
 //! - JSON Feed 1.1
 
 use chrono::{DateTime, Utc};
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -133,11 +132,7 @@ impl ParseError {
 /// Feed 解析器
 ///
 /// 出站请求经 `outbound_security` 做公网 DNS 钉扎与禁用重定向，防止 SSRF。
-pub struct FeedParser {
-    /// 未用于抓取；`fetch_and_parse` 用 per-request 安全客户端
-    #[allow(dead_code)]
-    client: Client,
-}
+pub struct FeedParser;
 
 impl Default for FeedParser {
     fn default() -> Self {
@@ -149,13 +144,7 @@ impl FeedParser {
     pub const USER_AGENT: &'static str = "Myriad Brew Reader/1.0 (RSS/Atom Feed Reader)";
 
     pub fn new() -> Self {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(30))
-            .user_agent(Self::USER_AGENT)
-            .build()
-            .unwrap_or_else(|_| Client::new());
-
-        Self { client }
+        Self
     }
 
     /// 校验 URL 是否允许作为出站 feed 目标（公网 HTTP/HTTPS，无凭据，DNS 非内网）
@@ -863,12 +852,10 @@ impl FeedParser {
     /// 解析 JSON Feed
     fn parse_json_feed(&self, content: &str, _source_url: &str) -> Result<ParsedFeed, ParseError> {
         #[derive(Deserialize)]
-        #[allow(dead_code)]
         struct JsonFeed {
             title: String,
             description: Option<String>,
             home_page_url: Option<String>,
-            feed_url: Option<String>,
             icon: Option<String>,
             favicon: Option<String>,
             language: Option<String>,

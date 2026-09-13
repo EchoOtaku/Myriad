@@ -20,7 +20,7 @@ export const FEED_STORIES_CACHE_PREFIX = 'brew:feed-stories:'
 export const HOME_NOTES_CACHE_PREFIX = 'brew:home-notes:'
 const BOARD_PAGE_TTL = 60_000
 
-export interface CachedFeedStories {
+interface CachedFeedStories {
   stamp: number
   items: FeedStory[]
 }

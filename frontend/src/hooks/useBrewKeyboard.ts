@@ -118,19 +118,23 @@ export function useBrewKeyboard({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (!enabled) return
+      if (!enabled || e.defaultPrevented) return
+      // 修饰键属于浏览器 / 系统快捷键；Shift+A 仍保留给批量已读。
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const modalOpen = Iterator.from(
+        document.querySelectorAll<HTMLElement>('[data-brew-shortcuts="suspended"]'),
+      ).some(element => element.getClientRects().length > 0 &&
+        getComputedStyle(element).visibility === 'visible')
+      if (modalOpen) return
 
-      const target = e.target as HTMLElement
-      const isInputFocused =
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable
-
-      const now = Date.now()
-      if (now - lastKeyTime.current < 50) return
-      lastKeyTime.current = now
+      const target = e.target
+      const isInputFocused = target instanceof HTMLElement && (
+        !!target.closest('input, textarea, select') || target.isContentEditable
+      )
 
       if (e.key === 'Escape') {
+        // 阅读器自行按覆层顺序关闭，页面快捷键不能越层。
+        if (selectedItem) return
         e.preventDefault()
         onCloseReader?.()
 
@@ -141,6 +145,13 @@ export function useBrewKeyboard({
       }
 
       if (isInputFocused) return
+      if (e.key === 'Enter' && target instanceof HTMLElement &&
+        target.closest('button, a[href], [role="button"], summary')) { return
+}
+
+      const now = Date.now()
+      if (now - lastKeyTime.current < 50) return
+      lastKeyTime.current = now
 
       switch (e.key.toLowerCase()) {
         case 'j':

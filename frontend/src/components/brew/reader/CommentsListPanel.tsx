@@ -118,6 +118,7 @@ export default function CommentsListPanel({
             className={`fixed left-0 right-0 top-0 z-60 shadow-2xl border-b ${currentTheme.border} ${currentTheme.surfaceSolid} overflow-hidden`}
             style={STYLE_MAX_HEIGHT_60VH}
             id={READER_COMMENTS_PANEL_ID}
+            data-brew-shortcuts="suspended"
             role="dialog"
             aria-modal="true"
             aria-labelledby={READER_COMMENTS_TITLE_ID}

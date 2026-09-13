@@ -59,18 +59,6 @@ const TOPIC_SEEDS: &[(&str, &[&str])] = &[
 /// 摘要参与匹配的前缀字符数。
 const SUMMARY_MATCH_CHARS: usize = 200;
 
-/// 全部预定义主题 key。
-#[allow(dead_code)] // tests only; no production AI tagger
-pub fn predefined_topics() -> Vec<&'static str> {
-    TOPIC_SEEDS.iter().map(|(key, _)| *key).collect()
-}
-
-/// key 是否在预定义表内。
-#[allow(dead_code)] // tests only; no production AI tagger
-pub fn is_predefined_topic(key: &str) -> bool {
-    TOPIC_SEEDS.iter().any(|(k, _)| *k == key)
-}
-
 fn strip_html(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let mut in_tag = false;
@@ -108,6 +96,14 @@ pub fn infer_topic_by_keywords(title: &str, summary: Option<&str>) -> Option<&'s
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn predefined_topics() -> Vec<&'static str> {
+        TOPIC_SEEDS.iter().map(|(key, _)| *key).collect()
+    }
+
+    fn is_predefined_topic(key: &str) -> bool {
+        TOPIC_SEEDS.iter().any(|(k, _)| *k == key)
+    }
 
     #[test]
     fn ten_stable_keys_and_no_other_bucket() {

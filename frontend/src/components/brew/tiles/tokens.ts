@@ -6,8 +6,8 @@ export const T_TITLE = 14.5
 export const T_MINOR = 11
 export const T_META = 8
 export const T_NUM = 24
-export const T_NUM_HERO_LARGE = 38
-export const T_NUM_HERO_WIDE = 30
+const T_NUM_HERO_LARGE = 38
+const T_NUM_HERO_WIDE = 30
 
 export const MARK_SIZE = 18
 export const LEAD_THUMB_SIZE = 52

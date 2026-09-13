@@ -4,10 +4,6 @@
   will-change: transform;
 }
 
-.brew-rotate-paused .brew-rotate-track {
-  animation-play-state: paused !important;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .brew-rotate-track {
     animation: none !important;

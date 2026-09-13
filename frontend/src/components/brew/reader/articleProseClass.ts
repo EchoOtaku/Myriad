@@ -93,8 +93,42 @@ export function getArticleProseClass(
               /* mark 高亮 */
               [&_mark]:px-1 [&_mark]:rounded-md [&_mark]:bg-transparent
 
-              /* 脚注 */
+              /* 脚注（手记后端渲染：sup.footnote-reference / div.footnote-definition） */
               prose-footnotes:text-[0.85em] prose-footnotes:mt-8 prose-footnotes:opacity-70
+              [&_sup.footnote-reference]:text-[0.7em] [&_sup.footnote-reference]:font-semibold
+              [&_sup.footnote-reference]:mx-0.5 [&_sup.footnote-reference]:leading-none
+              [&_sup.footnote-reference_a]:no-underline
+              [&_.footnote-definition]:flex [&_.footnote-definition]:gap-2
+              [&_.footnote-definition]:my-1.5 [&_.footnote-definition]:text-[0.875em]
+              [&_.footnote-definition]:opacity-80 [&_.footnote-definition]:scroll-mt-24
+              [&_.footnote-definition:first-of-type]:mt-8 [&_.footnote-definition:first-of-type]:pt-4
+              [&_.footnote-definition:first-of-type]:border-t
+              [&_.footnote-definition_.footnote-definition-label]:shrink-0
+              [&_.footnote-definition_.footnote-definition-label]:text-[1em]
+              [&_.footnote-definition_.footnote-definition-label]:font-semibold
+              [&_.footnote-definition_.footnote-definition-label]:leading-[inherit]
+              [&_.footnote-definition_.footnote-definition-label]:top-0
+              [&_.footnote-definition_p]:my-0
+
+              /* 任务列表（手记）：勾选框顶替圆点，勾掉的淡一点 */
+              [&_li:has(>input[type=checkbox])]:list-none
+              [&_li:has(>input[type=checkbox])]:relative
+              [&_li>input[type=checkbox]]:absolute [&_li>input[type=checkbox]]:-left-[1.55em]
+              [&_li>input[type=checkbox]]:top-[0.4em] [&_li>input[type=checkbox]]:m-0
+              [&_li>input[type=checkbox]]:size-[1.05em] [&_li>input[type=checkbox]]:accent-current
+              [&_li:has(>input[type=checkbox]:checked)]:opacity-60
+
+              /* 嵌套列表：子列表紧跟父项，不再叠外边距 */
+              [&_li>ul]:my-1 [&_li>ol]:my-1
+
+              /* 代码块语言角标（contentPostprocess 从 code.language-* 抄到 data-lang） */
+              [&_.code-block-wrapper[data-lang]]:before:content-[attr(data-lang)]
+              [&_.code-block-wrapper[data-lang]]:before:absolute
+              [&_.code-block-wrapper[data-lang]]:before:top-3 [&_.code-block-wrapper[data-lang]]:before:left-4
+              [&_.code-block-wrapper[data-lang]]:before:text-[0.7em] [&_.code-block-wrapper[data-lang]]:before:font-mono
+              [&_.code-block-wrapper[data-lang]]:before:tracking-wide [&_.code-block-wrapper[data-lang]]:before:lowercase
+              [&_.code-block-wrapper[data-lang]]:before:opacity-50 [&_.code-block-wrapper[data-lang]]:before:pointer-events-none
+              [&_.code-block-wrapper[data-lang]_pre]:pt-8
 
               /* 嵌入卡片通用样式 */
               [&_.brew-embed-card]:my-6 [&_.brew-embed-card]:font-sans
@@ -242,6 +276,9 @@ export function getArticleProseClass(
 
                 /* 分隔线 */
                 prose-hr:bg-white/6
+
+                /* 脚注分隔 */
+                [&_.footnote-definition:first-of-type]:border-white/10
 
                 /* 表格 */
                 [&_table]:bg-white/2
@@ -471,6 +508,9 @@ export function getArticleProseClass(
 
                 /* 分隔线 */
                 prose-hr:bg-black/6
+
+                /* 脚注分隔 */
+                [&_.footnote-definition:first-of-type]:border-black/10
 
                 /* 表格 */
                 [&_table]:bg-black/1

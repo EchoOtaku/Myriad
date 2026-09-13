@@ -3,38 +3,9 @@ import { useMemo } from 'react'
 import { isExlight, useAnimationLevel } from '../../useAnimationLevel'
 import { registerPageCleanup } from '../core'
 import { brewMotionQuiet, brewMotionReset } from './brewMotion'
-import { resetBrewTagIds } from './brewTag'
 
-export {
-  awaitLaneSwap,
-  brewSurfaceSwapWait,
-  brewTagSwapWait,
-  chipEnterFrames,
-  chipExitFrames,
-  collectBrewSurfaceNodes,
-  diffChipKeys,
-  planChipLaneSwap,
-  playBrewChipEnter,
-  playBrewChipExit,
-  playBrewSurfaceExit,
-  shouldPlayChipEnter,
-} from './brewChipPresence'
-export {
-  brewMotionClaim,
-  brewMotionLane,
-  brewMotionOwns,
-  brewMotionQuiet,
-  brewMotionRelease,
-  brewMotionReset,
-} from './brewMotion'
-export {
-  BREW_TAG_ENTER_MS,
-  BREW_TAG_EXIT_MS,
-  BREW_TAG_STAGGER_MS,
-  brewTagDelay,
-  brewTagQuiet,
-  useBrewTag,
-} from './brewTag'
+export { brewMotionClaim, brewMotionRelease } from './brewMotion'
+export { brewTagQuiet } from './brewTag'
 
 type AnimationConfig = ReturnType<typeof useAnimationLevel>
 
@@ -152,9 +123,8 @@ export function getBrewTransition(
   }
 }
 
-export function cleanupBrew(): void {
+function cleanupBrew(): void {
   ANIM_CONFIG_CACHE.clear()
-  resetBrewTagIds()
   brewMotionReset()
   playBrewVeilExit()
 }

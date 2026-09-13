@@ -27,13 +27,13 @@ export function getImageUrl(imageUrl: string | null): string | null {
   return proxyImageUrl(imageUrl) ?? imageUrl
 }
 
-export interface BuildBaseContentOptions {
+interface BuildBaseContentOptions {
   contentReady: boolean
   item: Pick<BrewItem, 'content' | 'summary' | 'link' | 'fromWebSearch'>
   t: ReaderCopy
 }
 
-export function buildBaseContent({
+function buildBaseContent({
   contentReady,
   item,
   t,

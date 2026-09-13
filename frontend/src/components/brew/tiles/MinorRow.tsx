@@ -5,7 +5,7 @@ import { memo } from 'react'
 
 import { fs, sp, T_META, T_MINOR } from './tokens'
 
-export type MinorDim = 0 | 1 | 2
+type MinorDim = 0 | 1 | 2
 
 const DIM_CLASS: Record<MinorDim, string> = {
   0: 'text-gray-600 dark:text-gray-300',

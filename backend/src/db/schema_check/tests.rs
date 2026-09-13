@@ -45,6 +45,8 @@ fn test_recent_month_features_in_expected_schema() {
         "federation_object_interactions",
         // 005
         "federation_inbox_receipts",
+        // 003
+        "brew_note_docs",
     ] {
         assert!(
             names.contains(&required),

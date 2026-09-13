@@ -9,8 +9,6 @@ import { topicDisplayName, topicHue, topicNameKey } from '../logic/topics'
 import { StoryCard } from '../ui/StoryCard'
 import { brewRelativeTime } from './time'
 
-export { BrewPick } from '../ui/Pick'
-
 export type BrewStoryItem = FeedStory
 
 export const BrewStory = forwardRef<

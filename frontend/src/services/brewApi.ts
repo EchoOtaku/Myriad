@@ -6,6 +6,8 @@ import type {
   BrewItem,
   BrewItemsQuery,
   BrewItemsResponse,
+  BrewNoteDoc,
+  BrewNoteDocInput,
   BrewNoteDraft,
   BrewNoteInput,
   BrewSource,
@@ -161,7 +163,7 @@ export function invalidateSourcesCache(): void {
 }
 
 /** Source/note mutations only; not read/star. */
-export function invalidateBoardPageCache(): void {
+function invalidateBoardPageCache(): void {
   requestCache.deleteByPrefix('brew:feed-stories:')
   requestCache.deleteByPrefix('brew:home-notes:')
 }
@@ -321,7 +323,7 @@ export async function getCategories(
   )
 }
 
-export function invalidateCategoriesCache(): void {
+function invalidateCategoriesCache(): void {
   requestCache.delete('brew:categories')
 }
 
@@ -414,7 +416,7 @@ export async function deleteCategory(
   invalidateCategoriesCache()
 }
 
-export type BrewItemListEntry = Omit<BrewItem, 'content'>
+type BrewItemListEntry = Omit<BrewItem, 'content'>
 export type BrewItemPreviewsResponse = Omit<BrewItemsResponse, 'items'> & { items: BrewItemListEntry[] }
 
 export function getItems(
@@ -541,6 +543,115 @@ export async function getNoteDraft(
   return data.note
 }
 
+export async function listNoteDocs(
+  signal?: AbortSignal,
+): Promise<BrewNoteDoc[]> {
+  const data = await request<{ success: boolean; docs: BrewNoteDoc[] }>(
+    '/notes/docs',
+    { signal },
+  )
+  return data.docs
+}
+
+export async function createNoteDoc(
+  req: BrewNoteDocInput = {},
+): Promise<BrewNoteDoc> {
+  const data = await request<{ success: boolean; doc: BrewNoteDoc }>(
+    '/notes/docs',
+    {
+      method: 'POST',
+      body: JSON.stringify(req),
+    },
+  )
+  return data.doc
+}
+
+export async function getNoteDoc(
+  id: number,
+  signal?: AbortSignal,
+): Promise<BrewNoteDoc> {
+  const data = await request<{ success: boolean; doc: BrewNoteDoc }>(
+    `/notes/docs/${id}`,
+    { signal },
+  )
+  return data.doc
+}
+
+export async function getNoteDocForItem(
+  itemId: number,
+  signal?: AbortSignal,
+): Promise<BrewNoteDoc> {
+  const data = await request<{ success: boolean; doc: BrewNoteDoc }>(
+    `/notes/docs/for-item/${itemId}`,
+    { signal },
+  )
+  return data.doc
+}
+
+export async function updateNoteDoc(
+  id: number,
+  req: BrewNoteDocInput,
+): Promise<BrewNoteDoc> {
+  const data = await request<{ success: boolean; doc: BrewNoteDoc }>(
+    `/notes/docs/${id}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(req),
+    },
+  )
+  return data.doc
+}
+
+export async function deleteNoteDoc(id: number): Promise<void> {
+  await request(`/notes/docs/${id}`, { method: 'DELETE' })
+}
+
+export async function publishNoteDoc(
+  id: number,
+  req: BrewNoteDocInput = {},
+): Promise<{ id: number; link: string; doc: BrewNoteDoc }> {
+  const data = await request<{
+    success: boolean
+    id: number
+    link: string
+    doc: BrewNoteDoc
+  }>(`/notes/docs/${id}/publish`, {
+    method: 'POST',
+    body: JSON.stringify(req),
+  })
+  if (data.id) invalidateItemCache(data.id)
+  invalidateSourcesCache()
+  invalidateBoardPageCache()
+  return { id: data.id, link: data.link, doc: data.doc }
+}
+
+export async function scheduleNoteDoc(
+  id: number,
+  req: BrewNoteDocInput,
+): Promise<BrewNoteDoc> {
+  const data = await request<{ success: boolean; doc: BrewNoteDoc }>(
+    `/notes/docs/${id}/schedule`,
+    {
+      method: 'POST',
+      body: JSON.stringify(req),
+    },
+  )
+  return data.doc
+}
+
+export async function unscheduleNoteDoc(id: number): Promise<BrewNoteDoc> {
+  const data = await request<{ success: boolean; doc: BrewNoteDoc }>(
+    `/notes/docs/${id}/unschedule`,
+    { method: 'POST' },
+  )
+  return data.doc
+}
+
+export function noteDocWsUrl(id: number): string {
+  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  return `${proto}://${window.location.host}/api/brew/notes/docs/${id}/ws`
+}
+
 export async function previewNote(
   contentMd: string,
   signal?: AbortSignal,
@@ -556,7 +667,7 @@ export async function previewNote(
   return data.html
 }
 
-export function invalidateItemCache(id: number): void {
+function invalidateItemCache(id: number): void {
   requestCache.delete(`brew:item:${id}`)
 }
 
@@ -940,5 +1051,4 @@ export async function createReply(
   })
 }
 
-export type { StyleTagsResponse } from './brewliaApi'
 export { generateStyleTags } from './brewliaApi'

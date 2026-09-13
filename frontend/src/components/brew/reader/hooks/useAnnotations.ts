@@ -7,14 +7,14 @@ import { userFacingError } from '../../../../utils/userFacingError'
 import { RequestTurn } from '../../logic/requestTurn'
 import { useArticleTaskScope } from './useArticleTaskScope'
 
-export interface UseAnnotationsOptions {
+interface UseAnnotationsOptions {
   itemId: number
   isBrewlia: boolean
   showToastMessage: (message: string, duration?: number) => void
   t: ReaderCopy
 }
 
-export interface UseAnnotationsReturn {
+interface UseAnnotationsReturn {
   annotations: AnnotationItem[]
   annotationsLoading: boolean
   annotationsError: string | null
