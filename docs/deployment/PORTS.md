@@ -7,7 +7,7 @@ Current port ownership after the proxy + updater migration.
 | Service | Container port | Host exposure | Notes |
 | --- | --- | --- | --- |
 | proxy | `80` | `${HTTP_PORT:-80}` | The only public Docker Compose port. Routes SPA pages to frontend; backend paths below; optional rescue `/_updater/*`. |
-| frontend | `1102` | none | `myriad-net` only; reached through `proxy`. |
+| frontend | `1102` | none | `myriad-net` only; reached through `proxy`. Stamps SPA title/icon from `GET /api/config/metadata`. Crawler / share HTML stays on backend. |
 | backend | `1103` | none | `myriad-net` + `myriad-admin-net`; reached through `proxy` for API + federation public paths. |
 | postgres | `5432` | none | `myriad-net` only; data lives in `./pgdata`. |
 | updater-gateway | `1104` | none | `myriad-admin-net` only; backend default hop; requires `X-Updater-Gateway-Secret`, injects `X-Update-Token`. |
@@ -27,7 +27,7 @@ else goes to the frontend SPA). Match path-only (no query):
 | `/sitemap.xml` | Public SEO sitemap (also `/api/seo/sitemap.xml`); empty urlset when durable origin (`FRONTEND_URL`/`BASE_URL`) is unset — no client Host fallback |
 | `/robots.txt` | Dynamic robots; absolute `Sitemap:` line only when `FRONTEND_URL` or `BASE_URL` is set (omitted when unset) |
 | `/llms.txt` | AI-facing site index (when GEO policy allows) |
-| `/` `/tapp` `/brew` `/library` `/reports` | **Crawler / WeChat-Weibo in-app share UA** → backend SEO HTML shell; `?_spa=1` and ordinary browsers → SPA |
+| `/` `/tapp` `/brew` `/library` `/reports` | **Crawler / WeChat-Weibo in-app share UA** → backend SEO HTML shell (proxy routes only; it does not rewrite HTML); `?_spa=1` and ordinary browsers → SPA |
 | `/tapp/run/*` | **Crawler UA only** → backend SEO HTML shell; browsers → SPA |
 | `/brew/item/*` | **Crawler UA only** → own Brew articles SEO shell (`我` category, article body); browsers → SPA |
 | `/api/seo/tapp/{id}` | Public Tapp share summary JSON |

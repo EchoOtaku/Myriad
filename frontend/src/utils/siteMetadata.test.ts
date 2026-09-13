@@ -66,6 +66,9 @@ function installDom() {
   Object.defineProperty(globalThis, 'document', {
     value: {
       title: 'Myriad - A myriad of lights, in one place.',
+      getElementById() {
+        return null
+      },
       querySelector(selector: string) {
         if (selector === 'link[rel="icon"]') return favicon
         return null
@@ -130,5 +133,35 @@ describe('stored site metadata paint', () => {
     applyStoredSiteMetadata()
     assert.equal(document.title, 'Kiseki')
     assert.match(favicon.href, /siteicon\.ico/)
+  })
+
+  it('prefers the first-byte document brand over a stale cache', () => {
+    installDom()
+    store.set(
+      SITE_METADATA_CACHE_KEY,
+      JSON.stringify({
+        site_title: 'Stale',
+        site_favicon: '/old.ico',
+        ga_measurement_id: 'G-KEEP',
+      }),
+    )
+    store.set(SITE_METADATA_CACHE_TIME_KEY, '1')
+    const doc = document as Document & {
+      getElementById: (id: string) => { textContent: string } | null
+    }
+    doc.getElementById = (id: string) =>
+      id === 'myriad-site-brand'
+        ? {
+            textContent: JSON.stringify({
+              site_title: 'Kiseki',
+              site_favicon: 'https://cdn.example/siteicon.ico',
+            }),
+          }
+        : null
+
+    applyStoredSiteMetadata()
+    assert.equal(document.title, 'Kiseki')
+    assert.match(favicon.href, /siteicon\.ico/)
+    assert.equal(getCurrentMetadata().ga_measurement_id, 'G-KEEP')
   })
 })

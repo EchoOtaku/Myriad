@@ -6,6 +6,7 @@ import {
 } from './configUrlPolicy'
 import { configureGoogleAnalytics } from './googleAnalytics'
 import {
+  SITE_BRAND_ELEMENT_ID,
   SITE_METADATA_CACHE_KEY,
   SITE_METADATA_CACHE_TIME_KEY,
 } from './siteMetadataKeys'
@@ -408,12 +409,42 @@ function applyMetadata(metadata: SiteMetadata): void {
     })
 }
 
-/** Sync: last-known title/icon before usePageSeo can paint DEFAULT_METADATA. */
+function readDocumentBrand(): Partial<SiteMetadata> | null {
+  if (typeof document === 'undefined') return null
+  const raw = document.getElementById(SITE_BRAND_ELEMENT_ID)?.textContent?.trim()
+  if (!raw || raw === '{}') return null
+  try {
+    const parsed = JSON.parse(raw) as Partial<SiteMetadata>
+    if (!parsed || typeof parsed !== 'object') return null
+    if (typeof parsed.site_title !== 'string' || !parsed.site_title.trim()) {
+      return null
+    }
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function mergeDocumentBrand(brand: Partial<SiteMetadata>): SiteMetadata {
+  const previous = readStoredMetadata() ?? DEFAULT_METADATA
+  const next = normalizeMetadata({
+    ...previous,
+    site_title: brand.site_title || previous.site_title,
+    site_description: brand.site_description || previous.site_description,
+    site_favicon: brand.site_favicon || previous.site_favicon,
+    site_og_image: brand.site_og_image || previous.site_og_image,
+  })
+  cacheMetadata(next)
+  return next
+}
+
+/** Sync: document first-byte brand, else last-known cache, before usePageSeo. */
 export function applyStoredSiteMetadata(): void {
   if (typeof window === 'undefined') return
-  const cached = getCachedMetadata(true)
-  if (!cached) return
-  baseMetadata = cached
+  const fromDoc = readDocumentBrand()
+  const next = fromDoc ? mergeDocumentBrand(fromDoc) : getCachedMetadata(true)
+  if (!next) return
+  baseMetadata = next
   updateFavicon(baseMetadata.site_favicon)
   applyEffectiveSeo()
 }

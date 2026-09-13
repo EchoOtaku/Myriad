@@ -7,8 +7,9 @@ handlers. Persona HTTP, live state, channel bots, background execution and the M
 `persona-worker`. These three services use the same backend image/version, with
 separate processes and resource budgets. They can restart independently but are
 not independent release artifacts. **Production refuses local MCP subprocesses.
-Remote gateway transport is available, but per-server OS isolation and gateway
-deployment/lifecycle enforcement remain unfinished.**
+The fixed-container gateway provides OS/resource isolation and bounded lifecycle
+cleanup; see [MCP gateway](MCP_GATEWAY.md) and its optional
+[network/persistence controls](MCP_CAPABILITIES.md).**
 
 | Entry | Starts | Intended use |
 | --- | --- | --- |
@@ -45,9 +46,11 @@ limits remain 0.5 CPU, 512 MiB memory and 64 PIDs. Its DB pool has at most four
 connections, with connection/acquisition and SQL statement/lock deadlines. These
 are first-party credentials; this container is **not** a third-party MCP sandbox.
 
-PostgreSQL and the underlying storage are still shared with web. Pool and SQL
-deadlines limit worker concurrency and waiting; they do not establish database CPU
-or disk quotas. Shared-resource pressure and homepage latency need fault/load tests.
+Workers use separate database logins with server-enforced connection limits,
+transaction deadlines, and bounded temporary query files; see
+[worker database budgets](WORKER_DATABASE.md) for migration and external-DB setup.
+PostgreSQL and underlying storage remain shared: these controls do not establish
+CPU quotas or provide database high availability.
 
 The worker admits eight HTTP requests immediately and holds capacity through the
 response body, with a 60-second handler deadline and 120-second response deadline.
@@ -308,3 +311,42 @@ registry/signature verification and TCB self-update are outside this acceptance
 run. The traffic checks exercise HTTP and TAPP grants/storage, not browser rendering.
 Finite resource-pressure results do not establish an availability guarantee for
 arbitrary database locks, shared disk exhaustion, kernel failure or other hosts.
+
+## Release verification
+
+Use an immutable source snapshot when other work is changing the checkout. Build
+backend and proxy with their Dockerfiles and `CARGO_PROFILE=ci-release`; the backend
+accepts `CARGO_BUILD_JOBS=1` to reduce concurrent compiler memory on small builders.
+Build frontend with `docker/Dockerfile.frontend`. Tag the three local images
+`myriad-closeout/backend:current`, `myriad-closeout/frontend:current` and
+`myriad-closeout/proxy:current`, or pass explicit image arguments to the test.
+
+```sh
+cargo clippy -p myriad-backend -- -D warnings
+docker build -f docker/mcp-tool/Dockerfile -t myriad-closeout/mcp-base:current .
+docker build --build-arg BASE_IMAGE=myriad-closeout/mcp-base:current \
+  -t myriad-closeout/mcp-fixture:current docker/mcp-tool/tests
+python3 scripts/extra/test-worker-database.py
+python3 scripts/extra/test-runtime-upgrade.py
+```
+
+The upgrade test starts actual v0.4.8 business images, creates fixture data, then
+recreates web/frontend and the two workers with the current images. It verifies
+preserved data, worker health and separate database logins, real gateway discovery,
+production stdio refusal, TAPP grants/storage with both workers stopped, and MCP
+configuration reload/revocation after worker recreation. It creates a unique
+Compose project with fake credentials and disposable volumes, removes containers
+and volumes in `finally`, and prints the location of redacted logs/results.
+
+This is a host-driven business-image rollout test; it does not exercise the
+updater API, Guard replacement, external PostgreSQL failover, or production data.
+Those deployment operations retain their separate acceptance requirements.
+
+On 2026-09-12, this release check passed on Docker Engine 29.7.2 / Linux arm64
+with an 8 GiB builder: the complete backend/frontend/proxy images, strict backend
+Clippy, 47 Agent-rule tests, PostgreSQL budget tests and the old-to-current rollout
+above. The rollout exposed an IPv4-only frontend listener paired with a localhost
+probe resolving to IPv6. The image and both official Compose files now probe
+`127.0.0.1:1102`; the complete rollout passed after that correction. Test volumes
+and containers were removed. This validates the recorded source snapshot and
+explicit probes, not unrelated edits made concurrently after the snapshot.

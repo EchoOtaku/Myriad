@@ -27,7 +27,6 @@ use crate::services::tapp_context::{
 use super::common::get_available_platforms;
 use super::runtime_grant::RuntimeGrantContext;
 
-
 /// Host timezone from `X-Myriad-Timezone` (IANA), default UTC.
 fn timezone_from_headers(headers: &HeaderMap) -> String {
     if let Some(v) = headers

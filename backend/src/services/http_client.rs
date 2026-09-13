@@ -749,7 +749,10 @@ mod tests {
             proxy_log_target("http://user:super-secret-proxy-pass@127.0.0.1:8080"),
             "http://127.0.0.1:8080"
         );
-        assert_eq!(proxy_log_target("not a valid proxy url"), "invalid-proxy-url");
+        assert_eq!(
+            proxy_log_target("not a valid proxy url"),
+            "invalid-proxy-url"
+        );
     }
 
     #[test]

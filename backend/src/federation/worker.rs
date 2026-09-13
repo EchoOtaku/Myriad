@@ -137,7 +137,7 @@ pub async fn run() -> anyhow::Result<()> {
                 Err(error) => {
                     configured.store(false, Ordering::Release);
                     // Stop claims instead of continuing indefinitely with stale policy.
-                    return Err::<(), anyhow::Error>(error.into());
+                    return Err::<(), anyhow::Error>(error);
                 }
             }
         }

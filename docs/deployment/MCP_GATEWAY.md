@@ -19,7 +19,8 @@ reviewed executable at `/opt/mcp/entrypoint`, validate Compose, and start the tw
 services. Tool health must pass before gateway discovery. Each connection runs
 inside bubblewrap with private filesystem/process/network namespaces; CPU,
 memory, swap, PID and tmpfs limits bound the enclosing container and guest.
-This deployment supports **offline, stateless tools**. Hosts must support
+The default is **offline and stateless**. Reviewed tools can opt into
+[allowlisted HTTP/HTTPS and bounded persistent state](MCP_CAPABILITIES.md). Hosts must support
 unprivileged user namespaces; denied setup fails closed. Compatibility with
 other Linux/AppArmor host policies must be checked on the target host.
 
@@ -51,8 +52,10 @@ other Linux/AppArmor host policies must be checked on the target host.
 The gateway disables dynamic management tools, ambient config/secret providers,
 call logging and live catalog reload. Its token stays in the gateway, outside the
 untrusted guest. The guest sees only read-only executable dependencies, minimal
-`/dev`, two bounded tmpfs directories, and PATH/HOME/LANG. It cannot reach the
-network or `/proc`, create/enter additional namespaces, or signal its watchdog.
+`/dev`, two bounded tmpfs directories, and PATH/HOME/LANG by default. Optional
+capabilities add only their explicit state/proxy mounts. Direct networking and
+`/proc` access remain blocked; guests cannot create/enter additional namespaces
+or signal their watchdog.
 No privileged mode, additional capabilities or unconfined seccomp profile is used.
 
 ## Destruction and tested limits

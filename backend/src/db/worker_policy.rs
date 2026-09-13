@@ -37,7 +37,7 @@ fn valid_password(value: &str) -> bool {
 
 /// Official bundled deployment provisions after migrations, before web is ready.
 /// An external managed DB may instead pre-provision roles and omit both passwords.
-/// Secrets never enter errors, notices, or SQL logs.
+/// Application errors are redacted; DBA statement logging must protect role DDL.
 pub async fn provision(db: &DatabaseConnection) -> anyhow::Result<()> {
     let persona = std::env::var("PERSONA_DB_PASSWORD").unwrap_or_default();
     let federation = std::env::var("FEDERATION_DB_PASSWORD").unwrap_or_default();
@@ -103,7 +103,9 @@ pub async fn verify(db: &DatabaseConnection, kind: WorkerKind) -> anyhow::Result
             DbBackend::Postgres,
             r#"
 SELECT r.rolsuper OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolbypassrls
-       OR EXISTS (SELECT 1 FROM pg_roles a WHERE (a.rolsuper OR a.rolcreaterole)
+       OR EXISTS (SELECT 1 FROM pg_roles a WHERE (a.rolsuper OR a.rolcreaterole OR a.rolcreatedb OR a.rolreplication OR a.rolbypassrls
+             OR a.rolname IN ('pg_execute_server_program', 'pg_read_server_files',
+                             'pg_write_server_files', 'pg_signal_backend'))
           AND pg_has_role(current_user, a.oid, 'MEMBER')) AS privileged,
        r.rolconnlimit,
        pg_size_bytes(current_setting('temp_file_limit')) AS temp_limit,
@@ -124,7 +126,7 @@ FROM pg_roles r WHERE r.rolname = current_user
     let can_create: bool = row.try_get("", "can_create")?;
     anyhow::ensure!(
         !privileged && !can_temp && !can_create && limit > 0 && limit <= kind.connection_limit()
-            && temp >= 0 && temp <= 64 * 1024 * 1024
+            && (0..=64 * 1024 * 1024).contains(&temp)
             && transaction > 0 && transaction <= i64::from(kind.statement_ms() + 5_000),
         "Worker requires an unprivileged connection-limited PostgreSQL 17+ role, no DDL/TEMP privileges, temp_file_limit<=64MB and bounded transaction_timeout; provision worker DB roles before startup"
     );

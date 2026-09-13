@@ -1,13 +1,24 @@
-import { SITE_METADATA_CACHE_KEY } from './siteMetadataKeys'
+import {
+  SITE_BRAND_ELEMENT_ID,
+  SITE_METADATA_CACHE_KEY,
+} from './siteMetadataKeys'
 
 /** Inline first-paint boot. Must stay import-free in the emitted IIFE. */
 export function siteBrandingInlineScript(): string {
   return `(function () {
   try {
-    var raw = null;
-    try { raw = localStorage.getItem(${JSON.stringify(SITE_METADATA_CACHE_KEY)}); } catch (e) {}
-    if (!raw) return;
-    var meta = JSON.parse(raw);
+    var meta = null;
+    try {
+      var el = document.getElementById(${JSON.stringify(SITE_BRAND_ELEMENT_ID)});
+      var docRaw = el && el.textContent ? el.textContent.trim() : '';
+      if (docRaw && docRaw !== '{}') meta = JSON.parse(docRaw);
+    } catch (e) {}
+    if (!meta) {
+      var raw = null;
+      try { raw = localStorage.getItem(${JSON.stringify(SITE_METADATA_CACHE_KEY)}); } catch (e) {}
+      if (!raw) return;
+      meta = JSON.parse(raw);
+    }
     if (!meta || typeof meta !== 'object') return;
     var title = typeof meta.site_title === 'string' ? meta.site_title.trim() : '';
     if (title && title.length <= 500) document.title = title;

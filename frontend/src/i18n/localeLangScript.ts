@@ -1,4 +1,7 @@
-import { SITE_METADATA_CACHE_KEY } from '../utils/siteMetadataKeys'
+import {
+  SITE_BRAND_ELEMENT_ID,
+  SITE_METADATA_CACHE_KEY,
+} from '../utils/siteMetadataKeys'
 import de from './de-DE.json' with { type: 'json' }
 import en from './en-US.json' with { type: 'json' }
 import fr from './fr-FR.json' with { type: 'json' }
@@ -38,10 +41,20 @@ export function localeLangInlineScript(sharedSource: string): string {
     try { stored = localStorage.getItem('locale'); } catch {}
     let cachedSiteTitle = '';
     try {
-      const raw = localStorage.getItem(${JSON.stringify(SITE_METADATA_CACHE_KEY)});
-      if (raw) {
-        const meta = JSON.parse(raw);
-        if (meta && typeof meta.site_title === 'string') cachedSiteTitle = meta.site_title.trim();
+      const brandEl = document.getElementById(${JSON.stringify(SITE_BRAND_ELEMENT_ID)});
+      const docRaw = brandEl && brandEl.textContent ? brandEl.textContent.trim() : '';
+      if (docRaw && docRaw !== '{}') {
+        const brand = JSON.parse(docRaw);
+        if (brand && typeof brand.site_title === 'string') cachedSiteTitle = brand.site_title.trim();
+      }
+    } catch {}
+    try {
+      if (!cachedSiteTitle) {
+        const raw = localStorage.getItem(${JSON.stringify(SITE_METADATA_CACHE_KEY)});
+        if (raw) {
+          const meta = JSON.parse(raw);
+          if (meta && typeof meta.site_title === 'string') cachedSiteTitle = meta.site_title.trim();
+        }
       }
     } catch {}
     const cookie = typeof document !== 'undefined' ? document.cookie : '';

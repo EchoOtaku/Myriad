@@ -11,6 +11,11 @@ import {
   AI_REQUEST_TIMEOUT_FLOOR_MS,
   aiRequestTimeoutMs,
 } from './src/utils/aiRequestTimeout.mjs'
+import {
+  createBrandLoader,
+  stampDocumentHtml,
+  stampWebManifest,
+} from './scripts/siteBrandingStamp.mjs'
 // rollup-plugin-visualizer is incompatible with Vite/Rolldown; do not import it.
 // import { visualizer } from 'rollup-plugin-visualizer'
 
@@ -94,6 +99,102 @@ function spaFallbackPlugin() {
 }
 
 const BACKEND_TARGET = 'http://127.0.0.1:1103'
+
+/** Dev / preview: stamp the same slots spa-server paints in production. */
+function siteBrandingStampPlugin() {
+  const loadBrand = createBrandLoader(`${BACKEND_TARGET}/api/config/metadata`)
+  const manifestPath = path.resolve(__dirname, './public/manifest.webmanifest')
+
+  function attach(server) {
+    server.middlewares.use(async (req, res, next) => {
+      const urlPath = String(req.url || '').split('?')[0]
+      if (urlPath === '/manifest.webmanifest') {
+        try {
+          const brand = await loadBrand()
+          const raw = JSON.parse(readFileSync(manifestPath, 'utf8'))
+          const body = JSON.stringify(brand ? stampWebManifest(raw, brand) : raw)
+          res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8')
+          res.setHeader('Cache-Control', 'no-cache')
+          res.end(body)
+          return
+        } catch {
+          next()
+          return
+        }
+      }
+
+      const accept = req.headers.accept || ''
+      if (!accept.includes('text/html')) {
+        next()
+        return
+      }
+
+      const chunks = []
+      const originalEnd = res.end.bind(res)
+      let finished = false
+
+      const take = (chunk, encoding) => {
+        if (chunk == null) return
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding))
+      }
+
+      res.write = (chunk, encoding, callback) => {
+        take(chunk, typeof encoding === 'string' ? encoding : undefined)
+        if (typeof encoding === 'function') encoding()
+        else if (typeof callback === 'function') callback()
+        return true
+      }
+
+      res.end = (chunk, encoding, callback) => {
+        if (finished) return res
+        finished = true
+        if (typeof chunk === 'function') {
+          callback = chunk
+          chunk = undefined
+          encoding = undefined
+        } else if (typeof encoding === 'function') {
+          callback = encoding
+          encoding = undefined
+        }
+        take(chunk, typeof encoding === 'string' ? encoding : undefined)
+        const raw = Buffer.concat(chunks)
+        const ctype = String(res.getHeader('content-type') || '')
+        const finish = (body) => {
+          res.setHeader('Content-Length', body.length)
+          originalEnd(body, callback)
+        }
+        if (
+          ctype.includes('text/html') &&
+          res.statusCode === 200 &&
+          raw.length > 0
+        ) {
+          loadBrand()
+            .then((brand) =>
+              finish(
+                brand
+                  ? Buffer.from(stampDocumentHtml(raw.toString('utf8'), brand))
+                  : raw,
+              ),
+            )
+            .catch(() => finish(raw))
+          return res
+        }
+        finish(raw)
+        return res
+      }
+
+      next()
+    })
+  }
+
+  return {
+    name: 'site-branding-stamp',
+    apply: 'serve',
+    enforce: 'pre',
+    configureServer: attach,
+    configurePreviewServer: attach,
+  }
+}
 
 // Must stay >= TappPlaygroundService AbortSignal (30m).
 // Node http.request timeout is socket-idle; playground holds the connection
@@ -900,6 +1001,7 @@ export default defineConfig({
     },
     plugins: [
       tailwindcss(),
+      siteBrandingStampPlugin(),
       backendDevProxyPlugin(),
       spaFallbackPlugin(),
       stripDevSourcemapsPlugin(),

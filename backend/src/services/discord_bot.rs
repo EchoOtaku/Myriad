@@ -248,9 +248,7 @@ async fn run_session(
         .ok_or((ConnectFailureKind::Permanent, None))?;
     let identity = get_me(token).await.map_err(|kind| (kind, resume.clone()))?;
     publish_identity(&identity).await;
-    gateway_session(token, &identity.id, resume, cancel)
-        .await
-        .map_err(|(kind, next)| (kind, next))
+    gateway_session(token, &identity.id, resume, cancel).await
 }
 
 async fn gateway_session(

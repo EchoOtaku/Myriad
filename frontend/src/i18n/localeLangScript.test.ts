@@ -17,6 +17,7 @@ const sharedSource = readFileSync(
 function applyFirstPaint(options: {
   stored?: string | null
   siteMetadata?: string | null
+  siteBrand?: string | null
   cookie?: string
   languages?: string[]
   language?: string
@@ -50,6 +51,9 @@ function applyFirstPaint(options: {
       getElementById(id: string) {
         if (id === 'meta-description') return desc
         if (id === 'noscript-enable-js') return noscript
+        if (id === 'myriad-site-brand' && options.siteBrand) {
+          return { textContent: options.siteBrand }
+        }
         return null
       },
     },
@@ -113,6 +117,15 @@ describe('localeLangInlineScript', () => {
     const painted = applyFirstPaint({
       stored: 'zh-CN',
       siteMetadata: JSON.stringify({ site_title: 'Kiseki' }),
+    })
+    assert.equal(painted.lang, 'zh-CN')
+    assert.equal(painted.title, LOCALE_LANG_DEFAULT_TITLE)
+  })
+
+  it('does not replace the default title when the document brand is present', () => {
+    const painted = applyFirstPaint({
+      stored: 'zh-CN',
+      siteBrand: JSON.stringify({ site_title: 'Kiseki' }),
     })
     assert.equal(painted.lang, 'zh-CN')
     assert.equal(painted.title, LOCALE_LANG_DEFAULT_TITLE)

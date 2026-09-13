@@ -7,12 +7,16 @@
 //! - Brew: only sources categorized as site-owner original content (`我`);
 //! never index friend-links or third-party RSS items
 //!
-//! Ordinary browsers get the SPA via the proxy. Crawler UAs and WeChat/Weibo/WeCom
-//! in-app UAs get these HTML shells (`?_spa=1` → SPA). Direct backend GETs skip the UA split.
+//! Ordinary browsers get the SPA via the proxy. The frontend process stamps site
+//! identity into that document; the proxy only routes. Crawler UAs and
+//! WeChat/Weibo/WeCom in-app UAs get these HTML shells (`?_spa=1` → SPA index
+//! if the dist file exists, otherwise this shell). Direct backend GETs skip
+//! the UA split; `?_spa=1` is honored here so a bounce cannot stick on SEO HTML.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Request, State},
     http::{header, HeaderMap, StatusCode},
+    middleware::Next,
     response::{IntoResponse, Response},
     Json,
 };
@@ -109,8 +113,10 @@ struct SeoChrome {
     html_lang: &'static str,
     og_locale: &'static str,
     site_name: String,
+    favicon: String,
     keywords: String,
     google_site_verification: String,
+    description: String,
     spa_escape: bool,
 }
 
@@ -120,8 +126,10 @@ impl Default for SeoChrome {
             html_lang: "en",
             og_locale: "en_US",
             site_name: "Myriad".to_string(),
+            favicon: String::new(),
             keywords: String::new(),
             google_site_verification: String::new(),
+            description: "A myriad of lights, in one place.".to_string(),
             spa_escape: false,
         }
     }
@@ -215,13 +223,7 @@ fn render_seo_html(doc: SeoDocument<'_>) -> String {
                 html_escape(doc.chrome.google_site_verification.trim())
             )
         });
-    let spa_escape = if doc.chrome.spa_escape {
-        r#"  <script>(function(){try{var s=location.search;if(/(?:^|[?&])_spa=1(?:&|$)/.test(s))return;var q=s?s+"&_spa=1":"?_spa=1";location.replace(location.pathname+q+location.hash)}catch(e){}})();</script>
-"#
-        .to_string()
-    } else {
-        String::new()
-    };
+    let spa_escape = spa_escape_script(doc.chrome);
 
     format!(
         r#"<!DOCTYPE html>
@@ -323,6 +325,49 @@ fn infer_site_locale(texts: &[&str]) -> SiteLocale {
     host_site_locale("en-US")
 }
 
+/// Match proxy `is_seo_document_shell_path`. Humans with `?_spa=1` must not
+/// stay on this SEO document — the bounce script is a no-op once that query is set.
+pub(crate) fn is_seo_document_shell_path(path: &str) -> bool {
+    matches!(path, "/" | "/tapp" | "/brew" | "/library" | "/reports")
+        || path.starts_with("/tapp/run/")
+        || path.starts_with("/brew/item/")
+}
+
+pub(crate) fn query_has_spa_bypass(query: Option<&str>) -> bool {
+    query
+        .unwrap_or("")
+        .split('&')
+        .any(|pair| pair == "_spa=1")
+}
+
+/// When the request already has `?_spa=1`, serve the SPA index instead of a
+/// crawler shell. Proxy usually sends that query to frontend; this covers
+/// native / direct backend hits so the WeChat bounce cannot stick on SEO HTML.
+pub async fn spa_document_bypass(req: Request, next: Next) -> Response {
+    if !is_seo_document_shell_path(req.uri().path())
+        || !query_has_spa_bypass(req.uri().query())
+    {
+        return next.run(req).await;
+    }
+    let dist = crate::GLOBAL_CONFIG.read().await.frontend_dist_path.clone();
+    let index = std::path::Path::new(&dist).join("index.html");
+    if !index.is_file() {
+        return next.run(req).await;
+    }
+    match tokio::fs::read_to_string(&index).await {
+        Ok(html) => (
+            StatusCode::OK,
+            [
+                (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+                (header::CACHE_CONTROL, "no-cache"),
+            ],
+            html,
+        )
+            .into_response(),
+        Err(_) => next.run(req).await,
+    }
+}
+
 fn is_inapp_share_ua(ua: &str) -> bool {
     let ua = ua.to_ascii_lowercase();
     ua.contains("micromessenger")
@@ -353,10 +398,29 @@ fn seo_chrome(branding: &SiteBranding, headers: &HeaderMap) -> SeoChrome {
         html_lang: loc.html_lang,
         og_locale: loc.og_locale,
         site_name: branding.title.clone(),
+        favicon: branding.favicon.clone(),
         keywords: branding.keywords.trim().to_string(),
         google_site_verification: branding.google_site_verification.trim().to_string(),
+        description: branding.description.clone(),
         spa_escape: is_inapp_share_ua(ua),
     }
+}
+
+fn spa_escape_script(chrome: &SeoChrome) -> String {
+    if !chrome.spa_escape {
+        return String::new();
+    }
+    let payload = json!({
+        "site_title": chrome.site_name,
+        "site_description": chrome.description,
+        "site_favicon": chrome.favicon,
+    });
+    let object_json = payload.to_string().replace('<', "\\u003c");
+    let js_literal = serde_json::to_string(&object_json).unwrap_or_else(|_| "\"{}\"".to_string());
+    format!(
+        r#"  <script>(function(){{try{{localStorage.setItem("site_metadata",{js_literal});var s=location.search;if(/(?:^|[?&])_spa=1(?:&|$)/.test(s))return;var q=s?s+"&_spa=1":"?_spa=1";location.replace(location.pathname+q+location.hash)}}catch(e){{}}}})();</script>
+"#
+    )
 }
 
 fn plain_text_paragraphs_html(text: &str) -> String {
@@ -1915,5 +1979,20 @@ mod tests {
         );
         assert!(html.contains("_spa=1"));
         assert!(html.contains("og:title"));
+        assert!(html.contains("site_metadata"));
+        assert!(html.contains("site_description"));
+    }
+
+    #[test]
+    fn spa_bypass_matches_proxy_shell_paths() {
+        assert!(query_has_spa_bypass(Some("_spa=1")));
+        assert!(query_has_spa_bypass(Some("foo=1&_spa=1")));
+        assert!(!query_has_spa_bypass(Some("spa=1")));
+        assert!(!query_has_spa_bypass(None));
+        assert!(is_seo_document_shell_path("/"));
+        assert!(is_seo_document_shell_path("/tapp/run/com.example"));
+        assert!(is_seo_document_shell_path("/brew/item/1"));
+        assert!(!is_seo_document_shell_path("/config"));
+        assert!(!is_seo_document_shell_path("/api/seo/tapp/x"));
     }
 }

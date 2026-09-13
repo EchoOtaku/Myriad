@@ -143,7 +143,10 @@ container ports.
 
 Compose does **not** inject YouTube / OpenXBL / PSN keys — those are site
 settings. `PUBLIC_API_URL` is a frontend **build** stamp (empty = same-origin
-`/api`); the stock image does not read it at runtime. Container `MYRIAD_VERSION`
+`/api`); the stock image does not read it at runtime. Compose sets
+`BRANDING_METADATA_URL` so the frontend process can stamp site title/icon into
+the SPA document from `GET /api/config/metadata` (same public fields backend SEO
+shells already use). The proxy does not rewrite HTML. Container `MYRIAD_VERSION`
 comes from the image, not from `MYRIAD_TAG` / `UPDATER_TAG`.
 
 For the full port map, see [PORTS.md](./PORTS.md).

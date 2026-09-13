@@ -30,7 +30,7 @@ The Docker stack runs five containers (`proxy`, `frontend`, `backend`,
 | --- | --- |
 | `postgres` container | A normal PostgreSQL 16+ server (system package) |
 | `backend` container | The `myriad-backend` binary, run under systemd |
-| `frontend` container (`serve dist`) | **Gone** — the backend serves `frontend/dist` directly via `FRONTEND_DIST_PATH` |
+| `frontend` container (`spa-server`) | **Gone** — the backend serves `frontend/dist` directly via `FRONTEND_DIST_PATH` |
 | `proxy` container (Rust reverse proxy) | **Optional** — replaced by Caddy/nginx purely for TLS, or omitted for HTTP-only/LAN |
 | `updater` container | **Not available** — it drives Docker via `docker.sock`. Updates are done by rebuild (see [§10](#10-updating)) |
 

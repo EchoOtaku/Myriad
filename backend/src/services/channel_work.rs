@@ -840,9 +840,7 @@ async fn take_pending_if_id(
                 return None;
             }
         };
-    let Some(pending) = taken else {
-        return None;
-    };
+    let pending = taken?;
     let mut prompt = pending.prompt.clone();
     ensure_pending_id(&mut prompt);
     if !expected_id.is_empty() && prompt.id != expected_id {

@@ -76,11 +76,10 @@ resource limits. Do not switch back to the gateway's dynamic Docker execution.
   failure closes its internal connections; it cannot leave sibling containers
   that it created, because it has no container-creation interface.
 
-These defaults support offline, stateless tools. They do not promise persistence,
-arbitrary host files, `/proc` access, network access, or calls longer than the
-existing client deadline. Use first-party approved outbound capabilities or a
-separately operated remote MCP endpoint for those needs; do not loosen this base
-silently. Hosts must support unprivileged user namespaces; a denied namespace
+These defaults are offline and stateless. Reviewed tools can opt into
+[controlled HTTP/HTTPS and bounded persistent state](../../docs/deployment/MCP_CAPABILITIES.md).
+Arbitrary host files, `/proc` access and calls beyond the client deadline remain
+unsupported. Hosts must support unprivileged user namespaces; a denied namespace
 setup fails the tool rather than falling back to unsandboxed execution.
 
 ## Seccomp provenance
@@ -104,3 +103,7 @@ exercise the actual pinned deployment, including resource exhaustion and process
 destruction. Run `python3 -m unittest discover -s docker/mcp-tool -p 'test_*.py'`
 for the architecture-specific seccomp instruction tests. See the migration guide
 for the tested host and explicit compatibility limits.
+
+For optional capabilities, provision a disposable bounded state volume and run
+`python3 docker/mcp-tool/tests/capabilities.py --state-volume VOLUME`. This writes
+test data into that volume; never point it at an existing tool's data.

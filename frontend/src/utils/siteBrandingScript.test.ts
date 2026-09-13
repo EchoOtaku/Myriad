@@ -28,6 +28,9 @@ function applyBranding(siteMetadata: string | null) {
     },
     document: {
       title: 'Myriad - A myriad of lights, in one place.',
+      getElementById() {
+        return null
+      },
       querySelector(selector: string) {
         if (selector === 'link[rel="icon"]') return favicon
         if (selector === 'link[rel="apple-touch-icon"]') return apple
@@ -51,7 +54,7 @@ describe('siteBrandingInlineScript', () => {
         'utf8',
       )
       assert.match(source, /SiteBrandingBoot/)
-      const titleAt = source.indexOf('<title>{title}</title>')
+      const titleAt = source.search(/<title(?:\s[^>]*)?>\{title\}<\/title>/)
       const bootAt = source.indexOf('<SiteBrandingBoot')
       assert.ok(titleAt >= 0 && bootAt > titleAt, file)
     }
@@ -84,6 +87,54 @@ describe('siteBrandingInlineScript', () => {
     )
     assert.equal(painted.title, 'Kiseki')
     assert.equal(painted.favicon, '/favicon.webp')
+  })
+
+  it('prefers the first-byte document brand over localStorage', () => {
+    const favicon = {
+      href: '/favicon.webp',
+      setAttribute(name: string, value: string) {
+        if (name === 'href') this.href = value
+      },
+    }
+    const apple = {
+      href: '/icons/pwa/icon-192.png',
+      setAttribute(name: string, value: string) {
+        if (name === 'href') this.href = value
+      },
+    }
+    const sandbox = createContext({
+      localStorage: {
+        getItem() {
+          return JSON.stringify({
+            site_title: 'Stale',
+            site_favicon: '/old.ico',
+          })
+        },
+      },
+      document: {
+        title: 'Myriad - A myriad of lights, in one place.',
+        getElementById(id: string) {
+          if (id !== 'myriad-site-brand') return null
+          return {
+            textContent: JSON.stringify({
+              site_title: 'Kiseki',
+              site_favicon: '/siteicon.ico',
+            }),
+          }
+        },
+        querySelector(selector: string) {
+          if (selector === 'link[rel="icon"]') return favicon
+          if (selector === 'link[rel="apple-touch-icon"]') return apple
+          return null
+        },
+      },
+    })
+    runInContext(siteBrandingInlineScript(), sandbox)
+    assert.equal(
+      (sandbox as { document: { title: string } }).document.title,
+      'Kiseki',
+    )
+    assert.equal(favicon.href, '/siteicon.ico')
   })
 
   it('leaves the baked chrome when cache is missing', () => {

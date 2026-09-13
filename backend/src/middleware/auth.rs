@@ -1334,7 +1334,10 @@ mod tests {
                 crate::config::DynamicConfig::default(),
             );
             let app = axum::Router::new()
-                .nest("/api/brew", crate::api::brew::create_brew_routes(state.clone()))
+                .nest(
+                    "/api/brew",
+                    crate::api::brew::create_brew_routes(state.clone()),
+                )
                 .with_state(state);
             for (path, field) in [
                 ("/api/brew/items/1/comments", "comments"),

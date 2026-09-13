@@ -314,7 +314,9 @@ pub(super) async fn fetch_from_store(
         let i18n_url = join_store_file_url(&base_url, &entry.path);
         if let Ok(resp) = fetch_public_store_url(&i18n_url).await {
             if resp.status().is_success() {
-                let bytes = budget.read(resp, MAX_TAPP_I18N_RESOURCE_BYTES as u64).await?;
+                let bytes = budget
+                    .read(resp, MAX_TAPP_I18N_RESOURCE_BYTES as u64)
+                    .await?;
                 if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&bytes) {
                     i18n_data.insert(entry.key, json);
                 }

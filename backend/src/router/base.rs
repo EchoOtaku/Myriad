@@ -432,17 +432,21 @@ pub(super) fn build_base_api_router(
         .route("/llms.txt", get(api::seo::llms_txt))
         .route("/api/seo/llms.txt", get(api::seo::llms_txt))
         .route("/api/seo/tapp/{tapp_id}", get(api::seo::tapp_seo_summary))
-        .route("/", get(api::seo::home_seo_html))
-        .route("/tapp", get(api::seo::tapp_list_seo_html))
-        .route("/tapp/run/{tapp_id}", get(api::seo::tapp_run_seo_html))
         .route(
             "/api/seo/brew/{item_id}",
             get(api::seo::brew_item_seo_summary),
         )
-        .route("/brew", get(api::seo::brew_list_seo_html))
-        .route("/brew/item/{item_id}", get(api::seo::brew_item_seo_html))
-        .route("/library", get(api::seo::library_seo_html))
-        .route("/reports", get(api::seo::reports_seo_html))
+        .merge(
+            Router::new()
+                .route("/", get(api::seo::home_seo_html))
+                .route("/tapp", get(api::seo::tapp_list_seo_html))
+                .route("/tapp/run/{tapp_id}", get(api::seo::tapp_run_seo_html))
+                .route("/brew", get(api::seo::brew_list_seo_html))
+                .route("/brew/item/{item_id}", get(api::seo::brew_item_seo_html))
+                .route("/library", get(api::seo::library_seo_html))
+                .route("/reports", get(api::seo::reports_seo_html))
+                .layer(from_fn(api::seo::spa_document_bypass)),
+        )
         // CSRF Token 获取端点
         .route("/api/csrf-token", get(middleware::csrf::get_csrf_token))
         // AI推荐API -  公开端点：图标推荐服务

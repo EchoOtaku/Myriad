@@ -91,10 +91,7 @@ fn icon_response(bytes: Vec<u8>, content_type: String) -> Response {
         StatusCode::OK,
         [
             (header::CONTENT_TYPE, content_type),
-            (
-                header::CACHE_CONTROL,
-                "public, max-age=300".to_string(),
-            ),
+            (header::CACHE_CONTROL, "public, max-age=300".to_string()),
             (
                 header::HeaderName::from_static("cross-origin-resource-policy"),
                 "cross-origin".to_string(),
@@ -133,14 +130,13 @@ pub async fn get_site_icon(crate::extract::Db(db): crate::extract::Db) -> Respon
 }
 
 async fn fetch_remote_site_icon(url: &str) -> Option<(Vec<u8>, String)> {
-    let (target_url, client) =
-        crate::services::outbound_security::build_public_http_client(
-            url,
-            Duration::from_secs(10),
-            Some("Mozilla/5.0 (compatible; MyriadSiteIcon/1.0)"),
-        )
-        .await
-        .ok()?;
+    let (target_url, client) = crate::services::outbound_security::build_public_http_client(
+        url,
+        Duration::from_secs(10),
+        Some("Mozilla/5.0 (compatible; MyriadSiteIcon/1.0)"),
+    )
+    .await
+    .ok()?;
 
     let response = client.get(target_url).send().await.ok()?;
     if !response.status().is_success() {
@@ -157,10 +153,7 @@ async fn fetch_remote_site_icon(url: &str) -> Option<(Vec<u8>, String)> {
     if bytes.len() < MIN_ICON_BYTES {
         return None;
     }
-    Some((
-        bytes,
-        infer_remote_content_type(url, header_ct.as_deref()),
-    ))
+    Some((bytes, infer_remote_content_type(url, header_ct.as_deref())))
 }
 
 #[cfg(test)]
@@ -199,7 +192,10 @@ mod tests {
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
         );
         match classify_configured_favicon(png) {
-            SiteIconKind::Data { bytes, content_type } => {
+            SiteIconKind::Data {
+                bytes,
+                content_type,
+            } => {
                 assert!(bytes.len() > 10);
                 assert_eq!(content_type, "image/png");
             }

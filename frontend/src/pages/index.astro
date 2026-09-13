@@ -23,18 +23,22 @@ const myriadCommit = import.meta.env.PUBLIC_MYRIAD_COMMIT_SHA || ''
     <meta charset="UTF-8" />
     <LocaleLang />
     <StripSpaQuery />
-    <meta name="description" content={description} id="meta-description" />
+    <meta name="description" content={description} id="meta-description" data-myriad-brand="description" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f5f5f5" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
-    <link rel="icon" type="image/webp" href="/favicon.webp" id="favicon-link" />
+    <link rel="icon" type="image/webp" href="/favicon.webp" id="favicon-link" data-myriad-brand="favicon" />
     <!-- utils/pwa applies manifest/install meta when pwa_enabled. -->
     <link rel="manifest" href="/manifest.webmanifest" id="pwa-manifest-link" />
-    <link rel="apple-touch-icon" href="/icons/pwa/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/pwa/icon-192.png" data-myriad-brand="apple-touch" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="Myriad" />
-    <title>{title}</title>
+    <meta name="apple-mobile-web-app-title" content="Myriad" data-myriad-brand="app-title" />
+    <meta property="og:title" content={title} data-myriad-brand="og-title" />
+    <meta property="og:description" content={description} data-myriad-brand="og-description" />
+    <meta property="og:image" content="" data-myriad-brand="og-image" />
+    <title data-myriad-brand="title">{title}</title>
+    <script type="application/json" id="myriad-site-brand" data-myriad-brand="json" is:inline>{}</script>
     <SiteBrandingBoot />
 
     <meta name="referrer" content="strict-origin-when-cross-origin" />
