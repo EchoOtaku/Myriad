@@ -32,7 +32,7 @@ export function useContentPostprocess({
       const images = contentRef.current.querySelectorAll('img')
       images.forEach((img) => {
         // 跳过嵌入卡片内的图片。
-        if (img.closest('.brew-embed-card, .brew-embed-exempt')) {
+        if (img.closest('.note-widget, .brew-embed-card, .brew-embed-exempt')) {
           return
         }
 
@@ -60,6 +60,7 @@ export function useContentPostprocess({
 
       const links = contentRef.current.querySelectorAll('a')
       links.forEach((link) => {
+        if (link.closest('.note-widget')) return
         // 站内锚点（脚注跳转）留在本页
         if ((link.getAttribute('href') ?? '').startsWith('#')) return
         link.target = '_blank'
@@ -68,6 +69,7 @@ export function useContentPostprocess({
 
       const codeBlocks = contentRef.current.querySelectorAll('pre')
       codeBlocks.forEach((pre) => {
+        if (pre.closest('.note-widget')) return
         if (pre.parentElement?.classList.contains('code-block-wrapper')) return
 
         const wrapper = document.createElement('div')
@@ -114,7 +116,7 @@ export function useContentPostprocess({
         // 跳过已在 brew-embed 内的 iframe。
         if (
           iframe.closest(
-            '.brew-embed-card, .brew-bilibili-embed, .rss-content-iframe-wrapper',
+            '.note-widget, .brew-embed-card, .brew-bilibili-embed, .rss-content-iframe-wrapper',
           )
         ) {
           return
@@ -146,6 +148,7 @@ export function useContentPostprocess({
       const tocItems: TocItem[] = []
 
       headings.forEach((heading, index) => {
+        if (heading.closest('.note-widget')) return
         const level = Number.parseInt(heading.tagName[1])
         const text = heading.textContent?.trim() || ''
         const id = `heading-${index}-${text.slice(0, 20).replaceAll(/\s+/g, '-').toLowerCase()}`

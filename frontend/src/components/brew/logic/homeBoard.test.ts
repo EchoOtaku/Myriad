@@ -6,6 +6,7 @@ import {
   noteSourceKey,
   pickHomeBoardNotes,
   toHomeBoardNote,
+  toNoteStory,
 } from './homeBoard.ts'
 
 describe('toHomeBoardNote', () => {
@@ -26,8 +27,30 @@ describe('toHomeBoardNote', () => {
       image: '/c.jpg',
       published_at: note.published_at,
       source_id: 10,
+      is_starred: false,
+      topic: null,
+      author: null,
+      source_name: '示例源',
+      source_icon: null,
     })
     assert.equal(NOTES_FEATURED_MAX, 3)
+  })
+})
+
+describe('toNoteStory', () => {
+  it('缺源名字时用源卡补上', () => {
+    const story = toNoteStory(
+      toHomeBoardNote(makeItem({
+        id: 9,
+        title: 'n9',
+        source_id: 10,
+        source_name: '',
+      })),
+      { name: '手记', icon: '/n.png' },
+    )
+    assert.equal(story.source_name, '手记')
+    assert.equal(story.source_icon, '/n.png')
+    assert.equal(story.is_read, true)
   })
 })
 

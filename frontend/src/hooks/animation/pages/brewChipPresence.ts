@@ -19,7 +19,6 @@ export const BREW_SURFACE_CARD_SELECTOR = [
   '[data-brew-surface]',
   '[data-brew-card]',
   '.brew-rail-title',
-  '.brew-salon__card',
   '.brew-story',
   '.brew-vacant',
   '.brew-site',

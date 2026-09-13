@@ -29,6 +29,21 @@ describe('brew 舞台契约', () => {
     assert.doesNotMatch(filter, /BrewManagement/)
   })
 
+  it('手记文章卡走 StoryCard，不再用 salon 大方卡', () => {
+    const board = read('skin/BrewBoard.tsx')
+    const notes = read('skin/BrewNotes.tsx')
+    const css = read('ui/css/cards.css')
+    assert.match(board, /<BrewNotes/)
+    assert.doesNotMatch(board, /SalonNote/)
+    assert.doesNotMatch(board, /SalonGrid/)
+    assert.match(notes, /<BrewStory/)
+    assert.match(notes, /<StoryCard/)
+    assert.match(notes, /brew-notes/)
+    assert.match(css, /\.brew-notes/)
+    assert.match(css, /\.brew-notes \{[\s\S]*grid-auto-flow: row;/)
+    assert.doesNotMatch(css, /brew-salon/)
+  })
+
   it('朋友们换页不另开舞台高度，点网站卡不去阅读器', () => {
     const stage = read('ui/BrewPageStage.tsx')
     const grid = read('BrewSourceGrid.tsx')
@@ -39,6 +54,43 @@ describe('brew 舞台契约', () => {
     assert.doesNotMatch(css, /brew-friends-span/)
     assert.match(friends, /visitFriendHref/)
     assert.doesNotMatch(friends, /onSourceClick/)
+  })
+
+  it('文章区不走网站卡的卡槽轨', () => {
+    const feeds = read('skin/BrewFeeds.tsx')
+    const css = read('ui/css/cards.css')
+    assert.match(feeds, /useBrewRailPan\(/)
+    assert.match(feeds, /data-brew-rail-track="items"/)
+    assert.match(css, /\.brew-feeds__items-track \{[\s\S]*?grid-auto-flow: row;/)
+    assert.match(css, /\.brew-feeds__items-track \{[\s\S]*?width: max-content;/)
+    assert.doesNotMatch(
+      css.match(/\.brew-feeds__items-track \{[^}]*\}/)?.[0] ?? '',
+      /overflow/,
+    )
+    assert.match(css, /\.brew-friends__items-track \{[\s\S]*?grid-auto-flow: row;/)
+    assert.match(css, /\.brew-friends__sites \{[\s\S]*?grid-auto-flow: column;/)
+  })
+
+  it('朋友们网站轨和文章轨用订阅页同一套间距', () => {
+    const css = read('ui/css/cards.css')
+    const feeds = read('ui/css/feeds.css')
+    const empty = read('ui/css/empty.css')
+    assert.match(feeds, /gap: 0\.75rem/)
+    assert.match(
+      feeds,
+      /padding: 0\.28rem var\(--brew-rail-pad-x\) 0\.35rem/,
+    )
+    assert.match(css, /\.brew-friends__sites \{[\s\S]*?padding: 0\.28rem 0 0\.35rem/)
+    assert.match(css, /\.brew-friends__items-track \{[\s\S]*?padding: 0\.35rem 0/)
+    assert.match(css, /\.brew-friends > \.brew-rail-title \{[\s\S]*?margin-top: 0\.75rem/)
+    assert.match(
+      empty,
+      /\.brew-vacant__sites \{[\s\S]*?padding: 0\.28rem 0 0\.35rem/,
+    )
+    assert.match(
+      empty,
+      /\.brew-vacant\.is-friends > \.brew-rail-title \{[\s\S]*?margin-top: 0\.75rem/,
+    )
   })
 
   it('标题、网站卡、文章卡、空占位挂同一套 surface', () => {

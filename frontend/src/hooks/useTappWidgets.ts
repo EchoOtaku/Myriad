@@ -135,14 +135,14 @@ function createTappWidgetType(
 }
 
 /** 等 TappRuntime 同步完成后再读；runtime 模块动态加载，不进 Home 首屏。 */
-export function useTappWidgets(): {
+export function useTappWidgets(enabled = true): {
   tappWidgets: TappWidgetType[]
   isLoading: boolean
   error: string | null
   refreshWidgets: () => void
 } {
   const [tappWidgets, setTappWidgets] = useState<TappWidgetType[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(enabled)
   const [error, setError] = useState<string | null>(null)
 
   // 用函数读 mounted：TS 会把字面量比较收窄成 true/false，后续比较报 TS2367。
@@ -212,10 +212,15 @@ export function useTappWidgets(): {
   }, [])
 
   useEffect(() => {
+    if (!enabled) {
+      setIsLoading(false)
+      return
+    }
     loadWidgetsAsync()
-  }, [loadWidgetsAsync])
+  }, [enabled, loadWidgetsAsync])
 
   useEffect(() => {
+    if (!enabled) return
     let disposed = false
     const unsubs: Array<() => void> = []
 
@@ -253,7 +258,7 @@ export function useTappWidgets(): {
       disposed = true
       unsubs.forEach((unsub) => unsub())
     }
-  }, [])
+  }, [enabled])
 
   return {
     tappWidgets,

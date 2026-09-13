@@ -100,6 +100,13 @@
   border-radius: 10px;
 }
 
+.brew-note-preview .note-widget img {
+  margin: 0;
+  max-width: none;
+  height: unset;
+  border-radius: unset;
+}
+
 .brew-note-preview hr {
   margin: 1.8em 0;
   border: 0;
@@ -202,6 +209,61 @@
   content: attr(data-fn) '. ';
   color: var(--brew-fg-dim, #6b7280);
   font-weight: 600;
+}
+
+.brew-note-preview p[data-linkdef] {
+  margin: 0.2em 0;
+  color: var(--brew-fg-dim, #6b7280);
+  font-size: 0.8125em;
+  line-height: 1.5;
+}
+
+.brew-note-preview p[data-linkdef]::before {
+  content: '[' attr(data-linkdef) '] ';
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
+}
+
+.brew-note-preview p:not([data-fn]):not([data-linkdef]) + p[data-linkdef],
+.brew-note-preview p[data-linkdef]:first-child {
+  margin-top: 1.5em;
+  padding-top: 1em;
+  border-top: 1px solid rgb(0 0 0 / 10%);
+}
+
+.brew-note-preview p[data-linkdef] + p[data-linkdef] {
+  margin-top: 0.2em;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.brew-note-preview .link-definition {
+  margin: 0.2em 0;
+  color: var(--brew-fg-dim, #6b7280);
+  font-size: 0.8125em;
+  line-height: 1.5;
+}
+
+.brew-note-preview .link-definition a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.brew-note-preview .link-definition a:hover {
+  text-decoration: underline;
+}
+
+.brew-note-preview p:not([data-fn]):not([data-linkdef]) + .link-definition,
+.brew-note-preview .link-definition:first-child {
+  margin-top: 1.5em;
+  padding-top: 1em;
+  border-top: 1px solid rgb(0 0 0 / 10%);
+}
+
+.brew-note-preview .link-definition + .link-definition {
+  margin-top: 0.2em;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .brew-note-preview p[data-fn],
@@ -307,6 +369,10 @@ html.dark .brew-note-preview li[data-task='1']::before {
 }
 
 html.dark .brew-note-preview p[data-fn]:first-of-type,
-html.dark .brew-note-preview .footnote-definition:first-of-type {
+html.dark .brew-note-preview .footnote-definition:first-of-type,
+html.dark .brew-note-preview p:not([data-fn]):not([data-linkdef]) + p[data-linkdef],
+html.dark .brew-note-preview p[data-linkdef]:first-child,
+html.dark .brew-note-preview p:not([data-fn]):not([data-linkdef]) + .link-definition,
+html.dark .brew-note-preview .link-definition:first-child {
   border-top-color: rgb(255 255 255 / 12%);
 }

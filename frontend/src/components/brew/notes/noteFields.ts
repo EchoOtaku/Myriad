@@ -22,11 +22,23 @@ export function noteFieldError(
   return null
 }
 
-/** 正文第一张图，给封面空位看。 */
+/** 正文第一张图，给封面空位看。行内 `![](url)` 和参考式 `![][id]` 都认。 */
 export function firstMarkdownImage(markdown: string): string | null {
-  const match = /!\[[^\]]*\]\(([^\s)]+)/.exec(markdown)
-  const href = match?.[1]?.trim()
-  return href || null
+  const inline = /!\[[^\]]*\]\(([^\s)]+)/.exec(markdown)
+  const ref = /!\[([^\]]*)\]\[([^\]\s]*)\]/.exec(markdown)
+  const inlineAt = inline?.index ?? Number.POSITIVE_INFINITY
+  const refAt = ref?.index ?? Number.POSITIVE_INFINITY
+  if (inline && inlineAt <= refAt) return inline[1]!.trim() || null
+  if (!ref) return null
+  const key = (ref[2] || ref[1]).trim().toLowerCase()
+  for (const match of markdown.matchAll(
+    /\[(?!\^)([^\]]+)\]:\s+(?:<([^>\s]+)>|(\S+))/g,
+  )) {
+    if (match[1]!.trim().toLowerCase() === key) {
+      return (match[2] || match[3] || '').trim() || null
+    }
+  }
+  return null
 }
 
 export function toDatetimeLocal(ms: number): string {

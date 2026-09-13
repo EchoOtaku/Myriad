@@ -45,6 +45,8 @@ import {
   useReaderControls,
   useReaderSettings,
 } from './reader'
+import { hasNoteWidgetMarkup } from './notes/noteWidgetHtml'
+import { useNoteWidgetCatalog, useNoteWidgetHydration } from './notes/noteWidgetMount'
 import { dismissReaderChrome, escapeWhileTyping } from './reader/readerPanels'
 import './ui/brew.css'
 import './skin/brew-reader.css'
@@ -384,6 +386,14 @@ function ReaderArticleSession({
     highlightComments,
     theme,
   })
+  const hasNoteWidgets = hasNoteWidgetMarkup(item.content)
+  const noteWidgetCatalog = useNoteWidgetCatalog(hasNoteWidgets)
+  useNoteWidgetHydration(
+    contentInnerRef,
+    noteWidgetCatalog,
+    baseContent,
+    hasNoteWidgets && contentReady,
+  )
 
   useEffect(() => {
     if (!baseContent || !contentInnerRef.current) return
@@ -419,9 +429,7 @@ function ReaderArticleSession({
     // 延迟略长于动画时长。
     const delay = readerTransition.duration * 1000 + 50
     const timer = setTimeout(() => {
-      requestAnimationFrame(() => {
-        setContentReady(true)
-      })
+      setContentReady(true)
     }, delay)
 
     return () => clearTimeout(timer)

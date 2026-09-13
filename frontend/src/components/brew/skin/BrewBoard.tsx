@@ -5,28 +5,15 @@ import type { BrewBoard } from '../logic/board'
 import type { FeedStory } from '../logic/feedStories'
 
 import type { HomeBoardNote } from '../logic/homeBoard'
-import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../../../contexts/I18nContext'
-import { brewOwnItemPath, getIconUrl, getImageUrl } from '../constants'
-import { isSiteSource, visitFriendHref } from '../logic/board'
 import {
-  noteDocKicker,
   notesBoardIsEmpty,
   visibleCloudNoteDocs,
 } from '../notes/noteBoard'
 import { BrewVacant } from '../ui/Empty'
-import { BrewPick } from '../ui/Pick'
-import {
-  SalonCard,
-  SalonEdit,
-  SalonGrid,
-  SalonHit,
-  SalonNote,
-  SiteMark,
-} from '../ui/SiteCard'
 import BrewFeeds from './BrewFeeds'
 import BrewFriends from './BrewFriends'
-import { brewRelativeTime, useBrewTimes } from './time'
+import BrewNotes from './BrewNotes'
 import '../ui/brew.css'
 
 interface BrewBoardViewProps {
@@ -49,14 +36,13 @@ interface BrewBoardViewProps {
   docs?: BrewNoteDoc[]
   vacant?: ReactNode
   stories?: FeedStory[]
+  onExpandStories?: (direction: 1 | -1) => void
+  onJumpSource?: (sourceId: number) => void
+  onHoldStories?: () => void
+  onReleaseStories?: () => void
+  railEpoch?: number | string
   onReadySource?: (id: number | null) => void
   sourceTags?: ReactNode
-}
-
-function openLink(source: BrewSource) {
-  const href = visitFriendHref(source)
-  if (!href) return
-  window.open(href, '_blank', 'noopener,noreferrer')
 }
 
 export default function BrewBoardView({
@@ -79,24 +65,15 @@ export default function BrewBoardView({
   docs = [],
   vacant,
   stories,
+  onExpandStories,
+  onJumpSource,
+  onHoldStories,
+  onReleaseStories,
+  railEpoch = 0,
   onReadySource,
   sourceTags,
 }: BrewBoardViewProps) {
-  const { t, locale } = useI18n()
-  const navigate = useNavigate()
-  const times = useBrewTimes()
-
-  const activateSource = (source: BrewSource) => {
-    if (isEditMode) {
-      onToggleSelect?.(source.id)
-      return
-    }
-    if (isSiteSource(source)) {
-      openLink(source)
-      return
-    }
-    onSourceClick(source)
-  }
+  const { t } = useI18n()
 
   const cloudDocs = board === 'notes' ? visibleCloudNoteDocs(docs) : []
   const empty =
@@ -140,6 +117,11 @@ export default function BrewBoardView({
         toolbar={toolbar}
         vacant={vacant}
         stories={stories}
+        onExpandStories={onExpandStories}
+        onJumpSource={onJumpSource}
+        onHoldStories={onHoldStories}
+        onReleaseStories={onReleaseStories}
+        railEpoch={railEpoch}
         onReadySource={onReadySource}
         sourceTags={sourceTags}
       />
@@ -164,94 +146,19 @@ export default function BrewBoardView({
   }
 
   return (
-    <SalonGrid>
-      {board === 'notes'
-        ? cloudDocs.map((doc, index) => (
-              <SalonNote
-                key={`doc:${doc.id}`}
-                cardKey={`doc:${doc.id}`}
-                arrive={index < 8 ? index : undefined}
-                cover={getImageUrl(doc.image)}
-                kicker={noteDocKicker(
-                  doc,
-                  {
-                    failed: t.brew.noteScheduleFailed,
-                    scheduled: t.brew.noteStatusScheduled,
-                    draft: t.brew.noteStatusDraft,
-                  },
-                  locale,
-                )}
-                title={doc.title.trim() || t.brew.noteCloudDraft}
-                summary={doc.content_md.slice(0, 80)}
-                onClick={() => onOpenDoc?.(doc.id)}
-              />
-            ))
-        : null}
-      {board === 'notes'
-        ? notes.map((note, index) => (
-            <SalonNote
-              key={`note:${note.id}`}
-              cardKey={`note:${note.id}`}
-              arrive={index < 8 ? index : undefined}
-              cover={getImageUrl(note.image)}
-              kicker={
-                brewRelativeTime(note.published_at, times, locale) ||
-                t.brew.boardNotes
-              }
-              title={note.title}
-              summary={note.summary}
-              onClick={() => {
-                const source = sources.find((s) => s.id === note.source_id)
-                const preview: BrewItemPreview = {
-                  id: note.id,
-                  title: note.title,
-                  summary: note.summary,
-                  image: note.image,
-                  published_at: note.published_at,
-                  is_read: true,
-                }
-                if (source && onOpenItem) onOpenItem(preview, source)
-                else navigate(brewOwnItemPath(note.id))
-              }}
-            />
-          ))
-        : null}
-      {sources.map((source, index) => {
-        const at = (board === 'notes' ? notes.length : 0) + index
-        return (
-          <SalonCard
-            key={source.id}
-            cardKey={`site:${source.id}`}
-            arrive={at < 8 ? at : undefined}
-            editing={isEditMode}
-            picked={selectedIds?.has(source.id)}
-            onClick={() => activateSource(source)}
-          >
-            {isEditMode ? (
-              <BrewPick on={selectedIds?.has(source.id) ?? false} />
-            ) : null}
-            {isEditMode && onEditSource ? (
-              <SalonEdit
-                label={t.brew.editSource}
-                onClick={() => onEditSource(source)}
-              />
-            ) : null}
-            <SalonHit
-              pressed={isEditMode ? selectedIds?.has(source.id) : undefined}
-              title={source.name}
-              mark={
-                <SiteMark name={source.name} icon={getIconUrl(source.icon)} />
-              }
-              summary={
-                source.description ||
-                source.recent_items?.[0]?.title ||
-                undefined
-              }
-              onClick={() => activateSource(source)}
-            />
-          </SalonCard>
-        )
-      })}
-    </SalonGrid>
+    <BrewNotes
+      sources={sources}
+      notes={notes}
+      docs={cloudDocs}
+      isEditMode={isEditMode}
+      selectedIds={selectedIds}
+      onToggleSelect={onToggleSelect}
+      onSourceClick={onSourceClick}
+      onOpenItem={onOpenItem}
+      onPeekItem={onPeekItem}
+      onPeekEnd={onPeekEnd}
+      onToggleStar={onToggleStar}
+      onOpenDoc={onOpenDoc}
+    />
   )
 }

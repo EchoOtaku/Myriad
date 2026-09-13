@@ -86,33 +86,52 @@ export const DEFAULT_THEME_COLOR = '#6b7280'
 
 const API_URL = CONFIG_API_URL
 
+const brewImageUrls = new Map<string, string | null>()
+const BREW_IMAGE_URL_CAP = 400
+
+function resolveBrewImageUrl(imageUrl: string | null): string | null {
+  if (!imageUrl) return null
+  if (brewImageUrls.has(imageUrl)) return brewImageUrls.get(imageUrl) ?? null
+  let next: string | null
+  if (imageUrl.startsWith(`${API_URL}/api/`)) {
+    next = imageUrl
+  } else if (imageUrl.startsWith('/api/')) {
+    next = `${API_URL}${imageUrl}`
+  } else {
+    next = proxyImageUrl(imageUrl) ?? imageUrl
+  }
+  if (brewImageUrls.size >= BREW_IMAGE_URL_CAP) {
+    const first = brewImageUrls.keys().next().value
+    if (first != null) brewImageUrls.delete(first)
+  }
+  brewImageUrls.set(imageUrl, next)
+  return next
+}
+
 /** 仅 must-proxy 走 `/api/proxy/image`。 */
 export function getIconUrl(iconUrl: string | null): string | null {
-  if (!iconUrl) return null
-  if (iconUrl.startsWith(`${API_URL}/api/`)) {
-    return iconUrl
-  }
-  if (iconUrl.startsWith('/api/')) {
-    return `${API_URL}${iconUrl}`
-  }
-  return proxyImageUrl(iconUrl) ?? iconUrl
+  return resolveBrewImageUrl(iconUrl)
 }
 
 /** 规则同 getIconUrl。 */
 export function getImageUrl(imageUrl: string | null): string | null {
-  if (!imageUrl) return null
-  if (imageUrl.startsWith(`${API_URL}/api/`)) {
-    return imageUrl
-  }
-  if (imageUrl.startsWith('/api/')) {
-    return `${API_URL}${imageUrl}`
-  }
-  return proxyImageUrl(imageUrl) ?? imageUrl
+  return resolveBrewImageUrl(imageUrl)
 }
+
+const plainCache = new Map<string, string>()
+const PLAIN_CACHE_CAP = 400
 
 export function getPlainText(html: string | null): string {
   if (!html) return ''
-  return html.replaceAll(/<[^>]*>/g, '').slice(0, 200)
+  const hit = plainCache.get(html)
+  if (hit != null) return hit
+  const text = html.replaceAll(/<[^>]*>/g, '').slice(0, 200)
+  if (plainCache.size >= PLAIN_CACHE_CAP) {
+    const first = plainCache.keys().next().value
+    if (first != null) plainCache.delete(first)
+  }
+  plainCache.set(html, text)
+  return text
 }
 
 /** 只产出 #rrggbb，`${color}30` 才是合法 CSS。 */

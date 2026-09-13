@@ -89,6 +89,7 @@ export const BUILTIN_WIDGET_BASE_CONFIG = {
     defaultSize: '4x2' as WidgetSize,
     component: WelcomeWidget,
     supportedSizes: ['2x2', '4x2'] as WidgetSize[],
+    hosts: ['home', 'control-panel'] as const,
   },
   'agent-persona': {
     defaultSize: '2x2' as WidgetSize,
@@ -205,16 +206,19 @@ export const BUILTIN_WIDGET_BASE_CONFIG = {
     defaultSize: '4x2' as WidgetSize,
     component: BrewSourceWidget,
     supportedSizes: ['2x2', '4x2', '4x4'] as WidgetSize[],
+    hosts: ['home', 'control-panel'] as const,
   },
   'brew-topic': {
     defaultSize: '4x2' as WidgetSize,
     component: BrewTopicWidget,
     supportedSizes: ['2x2', '4x2', '4x4'] as WidgetSize[],
+    hosts: ['home', 'control-panel'] as const,
   },
   'brew-featured': {
     defaultSize: '4x4' as WidgetSize,
     component: BrewFeaturedWidget,
     supportedSizes: ['4x2', '4x4'] as WidgetSize[],
+    hosts: ['home', 'control-panel'] as const,
   },
   'github-repos': {
     defaultSize: '2x2' as WidgetSize,
@@ -312,7 +316,7 @@ export function preloadBuiltinWidgets(types: Iterable<string>): Promise<void> {
   return Promise.all(jobs).then(() => undefined)
 }
 
-export type BuiltinWidgetHost = 'home' | 'control-panel'
+export type BuiltinWidgetHost = 'home' | 'control-panel' | 'note'
 
 export function getBuiltinWidgets(
   widgetsI18n: WidgetsI18n,

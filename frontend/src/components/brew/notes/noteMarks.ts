@@ -61,7 +61,7 @@ export function markdownMarksAt(value: string, start: number, end: number): Set<
   if (italicAround(value, start, end)) marks.add('italic')
   if (linkAtCursor(value, start)) marks.add('link')
   const lineStart = value.lastIndexOf('\n', start - 1) + 1
-  const line = value.slice(lineStart, value.indexOf('\n', start) < 0 ? value.length : value.indexOf('\n', start))
+  const line = value.slice(lineStart, !value.includes('\n', start) ? value.length : value.indexOf('\n', start))
   const heading = /^(#{1,3}) /.exec(line)
   if (heading) marks.add(`h${heading[1]!.length}` as NoteMark)
   if (line.startsWith('> ')) marks.add('quote')
@@ -102,6 +102,7 @@ export function visualMarksAt(root: HTMLElement): Set<NoteMark> {
 
 export function sameMarks(a: Set<NoteMark>, b: Set<NoteMark>): boolean {
   if (a.size !== b.size) return false
-  for (const mark of a) if (!b.has(mark)) return false
+  for (const mark of a) { if (!b.has(mark)) return false
+}
   return true
 }

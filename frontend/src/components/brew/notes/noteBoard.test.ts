@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  leftoverNoteSources,
   noteDocKicker,
   noteEditorStatus,
   notesBoardIsEmpty,
   noteScheduleLabel,
+  sourceLatestStory,
   visibleCloudNoteDocs,
 } from './noteBoard.ts'
 
@@ -26,6 +28,45 @@ describe('visibleCloudNoteDocs', () => {
     const label = noteScheduleLabel(Date.UTC(2026, 2, 3, 8, 30), 'en-US')
     assert.match(label, /Mar/)
     assert.match(label, /3/)
+  })
+})
+
+describe('leftoverNoteSources', () => {
+  it('已有精选手记的源不再另占一张', () => {
+    assert.deepEqual(
+      leftoverNoteSources(
+        [{ id: 1 }, { id: 2 }, { id: 3 }],
+        [{ source_id: 2 }],
+      ).map((source) => source.id),
+      [1, 3],
+    )
+  })
+})
+
+describe('sourceLatestStory', () => {
+  it('没有近文就空着', () => {
+    assert.equal(sourceLatestStory({ id: 1, name: '我', icon: null }), null)
+  })
+
+  it('近文带上源名', () => {
+    const story = sourceLatestStory({
+      id: 4,
+      name: '我',
+      icon: '/me.png',
+      recent_items: [
+        {
+          id: 8,
+          title: '近文',
+          summary: null,
+          image: null,
+          published_at: 1,
+          is_read: false,
+        },
+      ],
+    })
+    assert.equal(story?.source_id, 4)
+    assert.equal(story?.source_name, '我')
+    assert.equal(story?.title, '近文')
   })
 })
 

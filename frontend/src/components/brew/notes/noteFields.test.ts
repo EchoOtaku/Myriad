@@ -47,6 +47,15 @@ describe('firstMarkdownImage', () => {
   it('没有图就是空', () => {
     assert.equal(firstMarkdownImage('没有图'), null)
   })
+
+  it('参考式图片也能取到定义里的地址', () => {
+    assert.equal(
+      firstMarkdownImage(
+        '![一小杯咖啡][cup]\n\n[cup]: https://upload.wikimedia.org/wikipedia/commons/4/45/A_small_cup_of_coffee.JPG "Wikimedia Commons：A small cup of coffee"',
+      ),
+      'https://upload.wikimedia.org/wikipedia/commons/4/45/A_small_cup_of_coffee.JPG',
+    )
+  })
 })
 
 describe('noteScheduleError', () => {

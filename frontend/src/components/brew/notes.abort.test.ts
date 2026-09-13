@@ -12,8 +12,13 @@ describe('note editor abort', () => {
     const api = readFileSync(join(dir, '../../services/brewApi.ts'), 'utf8')
     assert.match(api, /export async function getNoteDraft\(\s*id: number,\s*signal\?: AbortSignal/)
     assert.match(editor, /openNoteCloudDoc\(/)
-    assert.match(editor, /previewNote\(contentMd, controller\.signal\)/)
+    assert.match(editor, /previewNote\([^,]+, controller\.signal\)/)
+    assert.match(editor, /prepareNoteReaderHtml\(/)
+    assert.match(editor, /setHtml\(markdownToVisualHtml\(source\)\)/)
     assert.match(editor, /controller\.abort\(\)/)
+    assert.match(editor, /pane !== 'preview'/)
+    assert.match(editor, /textareaSupportsFieldSizing\(\)/)
+    assert.match(editor, /growTextarea\(/)
   })
 
   it('发布载荷带主题、封面和发布时间', () => {
@@ -25,7 +30,7 @@ describe('note editor abort', () => {
     assert.match(editor, /noteDocWsUrl\(/)
     assert.match(editor, /contentEditable/)
     assert.match(editor, /markdownToVisualHtml\(/)
-    assert.match(editor, /previewNote\(contentMd, controller\.signal\)/)
+    assert.match(editor, /previewNote\([^,]+, controller\.signal\)/)
   })
 
   it('外壳是编辑器：薄顶栏、浮动条、底栏、发布抽屉；不进口 brewApi', () => {
@@ -48,5 +53,8 @@ describe('note editor abort', () => {
     assert.doesNotMatch(chrome, /from ['"].*brewApi['"]/)
     assert.match(editor, /brew-note__title/)
     assert.match(editor, /useNoteSelection\(/)
+    assert.match(editor, /showNoteNotice\(/)
+    assert.doesNotMatch(chrome, /brew-note__alert/)
+    assert.doesNotMatch(editor, /error=\{error\}/)
   })
 })

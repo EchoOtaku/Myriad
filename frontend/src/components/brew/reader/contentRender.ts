@@ -2,12 +2,13 @@ import type { CommentItem } from '../../../services/brewApi'
 import type { AnnotationItem } from '../../../services/brewliaApi'
 import type { BrewItem } from '../../../types/brew'
 import type { ReaderCopy, ThemeKey } from './types'
-import { useEffect, useMemo, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef } from 'react'
 import { API_URL as CONFIG_API_URL } from '../../../config'
 import { processEmbeds } from '../../../utils/embedProcessor'
 import { escapeHtml } from '../../../utils/inputSanitizer'
-import { proxyImageUrl } from '../../../utils/proxyImageUrl'
 import { processRssContent } from '../../../utils/rssContentProcessor'
+import { displayImageUrl, prepareNoteReaderHtml } from '../notes/noteImageUrl'
+import { replaceNoteHtml } from '../notes/noteWidgetMount'
 import {
   commentAnchorStale,
   highlightAnchoredAnnotations,
@@ -18,18 +19,18 @@ import '../../github/githubRepoCard.css'
 
 const API_URL = CONFIG_API_URL
 
-// 仅 must-proxy 走 `/api/proxy/image`。
+// 本站媒体（/api、/media/federation）改走当前 API origin；外站图仅 must-proxy 走 `/api/proxy/image`。
 export function getImageUrl(imageUrl: string | null): string | null {
   if (!imageUrl) return null
-  if (imageUrl.startsWith('/api/') || imageUrl.startsWith(`${API_URL}/api/`)) {
-    return imageUrl.startsWith('/api/') ? `${API_URL}${imageUrl}` : imageUrl
-  }
-  return proxyImageUrl(imageUrl) ?? imageUrl
+  return displayImageUrl(imageUrl, API_URL)
 }
 
 interface BuildBaseContentOptions {
   contentReady: boolean
-  item: Pick<BrewItem, 'content' | 'summary' | 'link' | 'fromWebSearch'>
+  item: Pick<
+    BrewItem,
+    'content' | 'summary' | 'link' | 'fromWebSearch' | 'guid'
+  >
   t: ReaderCopy
 }
 
@@ -60,10 +61,12 @@ function buildBaseContent({
       </div>`
   }
 
-  let content =
-    item.content ||
-    item.summary ||
-    `<p class="opacity-50">${t.brew.noContent}</p>`
+  const empty = `<p class="opacity-50">${t.brew.noContent}</p>`
+  if (item.guid.startsWith('note:')) {
+    return prepareNoteReaderHtml(item.content, empty)
+  }
+
+  let content = item.content || item.summary || empty
 
   content = processRssContent(content, {
     lazyLoadImages: true,
@@ -81,7 +84,12 @@ interface UseContentRenderOptions {
   contentReady: boolean
   item: Pick<
     BrewItem,
-    'content' | 'summary' | 'link' | 'fromWebSearch' | 'content_revision'
+    | 'content'
+    | 'summary'
+    | 'link'
+    | 'fromWebSearch'
+    | 'content_revision'
+    | 'guid'
   >
   t: ReaderCopy
   showAnnotations: boolean
@@ -120,6 +128,7 @@ export function useContentRender({
       item.summary,
       item.link,
       item.fromWebSearch,
+      item.guid,
       t.brew.noContent,
       t.brew.webSearchNote,
       t.brew.noSummary,
@@ -129,7 +138,9 @@ export function useContentRender({
   const prevBaseContentRef = useRef('')
 
   // 正文变化才挂载 HTML；批注变化仅装饰文本节点。
-  useEffect(() => {
+  // 必须和 useNoteWidgetHydration 同相：先写占位，同一轮 layout 再挂组件。
+  // 放进 useEffect 会晚于水合，阅读器只剩未挂载的壳，预览却是活件。
+  useLayoutEffect(() => {
     const container = contentInnerRef.current
     if (!container || !baseContent) return
 
@@ -151,7 +162,7 @@ export function useContentRender({
       // 仅替换文本片段，不摘下 iframe 或其祖先。
       applyTextDecorations(container, displayHtml)
     } else {
-      container.innerHTML = displayHtml
+      replaceNoteHtml(container, displayHtml)
     }
   }, [
     baseContent,

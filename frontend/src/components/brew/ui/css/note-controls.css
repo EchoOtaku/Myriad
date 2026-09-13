@@ -1,6 +1,8 @@
 /* 编辑器控件皮：只用纸色和墨色。壁纸强调色不进这里。 */
 
-.brew-note {
+/* 「+」菜单挂在 body 上，不在 .brew-note 里，变量要单独给它一份。 */
+.brew-note,
+.brew-note__menu {
   --note-paper: var(--cfg-frost-elevated-bg, rgb(255 255 255 / 96%));
   --note-ink: var(--brew-fg, #111);
   --note-ink-2: var(--brew-fg-soft, #4b4b52);
@@ -21,7 +23,8 @@
   --note-ctl-font: 0.9375rem;
 }
 
-html.dark .brew-note {
+html.dark .brew-note,
+html.dark .brew-note__menu {
   --note-line: rgb(255 255 255 / 13%);
   --note-line-strong: rgb(255 255 255 / 26%);
   --note-fill: rgb(255 255 255 / 6%);
@@ -52,10 +55,7 @@ html.dark .brew-note {
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
-  transition:
-    background-color var(--sm-dur-fast, 120ms) ease,
-    border-color var(--sm-dur-fast, 120ms) ease,
-    color var(--sm-dur-fast, 120ms) ease;
+  transition: var(--sm-t-fill);
 }
 
 .brew-note.brew-skin .note-btn:disabled {
@@ -167,7 +167,7 @@ html.dark .brew-note {
     0 1px 2px rgb(0 0 0 / 10%),
     0 0 0 1px var(--note-line);
   transform: translateX(calc(100% * var(--note-switch-index, 0)));
-  transition: transform var(--sm-dur-base, 180ms) var(--sm-ease-standard, ease);
+  transition: transform var(--sm-dur-base, 220ms) var(--sm-ease-emphasis, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
 .brew-note.brew-skin .note-switch__item {
@@ -243,6 +243,9 @@ html.dark .brew-note.brew-skin .note-input {
 .brew-note.brew-skin .note-input:focus {
   outline: none;
   border-color: var(--note-ink);
+
+  /* 盖掉全局 select:focus / input:focus 的主题色底和光晕 */
+  background: var(--note-paper);
   box-shadow: 0 0 0 1px var(--note-ink);
 }
 

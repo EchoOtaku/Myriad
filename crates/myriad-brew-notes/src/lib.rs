@@ -11,10 +11,16 @@ use std::collections::{HashMap, HashSet};
 
 use pulldown_cmark::{Options, Parser, html};
 
+mod layout;
 #[cfg(test)]
 mod merge;
 mod status;
 pub use status::{NoteDocStatus, ScheduleError, is_due, schedule_at};
+
+use layout::{
+    eat_fence, fence_close, fence_open, parse_note_layout, stamp_wrapper, widget_html, LayoutSeg,
+    MdFence,
+};
 
 /// 正文长度上限（字符）。超出的部分不截断，直接拒绝 —— 悄悄截掉用户写的东西
 /// 比报错更糟。
@@ -151,19 +157,39 @@ fn allowed_attributes() -> HashMap<&'static str, HashSet<&'static str>> {
     map.insert("td", ["colspan", "rowspan", "align"].into_iter().collect());
     map.insert(
         "th",
-        ["colspan", "rowspan", "scope", "align"].into_iter().collect(),
+        ["colspan", "rowspan", "scope", "align"]
+            .into_iter()
+            .collect(),
     );
     // 代码块的语言类名（`language-rust`），高亮靠它
     map.insert("code", ["class"].into_iter().collect());
     // 脚注定义的锚点；`id_prefix` 会给它和指向它的 `#` 链接一起加前缀
-    map.insert("div", ["id"].into_iter().collect());
+    // 正文分栏 / 正文小组件：类型、尺寸、配置走这三个 data-*
+    map.insert(
+        "div",
+        ["id", "data-widget", "data-size", "data-config"]
+            .into_iter()
+            .collect(),
+    );
     map
 }
 
 /// 脚注用到的类名。`class` 不整体放行，只认这几个。
 fn allowed_classes() -> HashMap<&'static str, HashSet<&'static str>> {
     let mut map: HashMap<&'static str, HashSet<&'static str>> = HashMap::new();
-    map.insert("div", ["footnote-definition"].into_iter().collect());
+    map.insert(
+        "div",
+        [
+            "footnote-definition",
+            "link-definition",
+            "note-columns",
+            "note-column",
+            "note-widget",
+            "not-prose",
+        ]
+        .into_iter()
+        .collect(),
+    );
     map.insert(
         "sup",
         ["footnote-reference", "footnote-definition-label"]
@@ -181,9 +207,453 @@ const FOOTNOTE_ID_PREFIX: &str = "note-fn-";
 /// 消毒是硬性的一步，不是可选项：手记正文虽然只有站长能写，但它会经联邦发到
 /// 别人的实例上，也会被搜索引擎抓走。
 pub fn render_markdown(markdown: &str) -> String {
+    render_markdown_inner(markdown, false)
+}
+
+/// 预览专用的顶层块标签。`hr` 自闭合；`li` 不算块，`<ul>` 里的 `<p>` 深度是 1。
+const BLOCK_TAGS: &[&str] = &[
+    "p",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "ul",
+    "ol",
+    "blockquote",
+    "pre",
+    "table",
+    "hr",
+    "div",
+];
+
+/// 编辑器预览：和 [`render_markdown`] 同一份 HTML，只多两个属性——
+/// 每个顶层块带上它在原文里的字节区间 `data-md-start` / `data-md-end`。
+/// 前端靠它把「点了预览的哪一段」映射回 Markdown 的哪个位置。发布用的 HTML 不带。
+pub fn render_markdown_preview(markdown: &str) -> String {
+    render_markdown_inner(markdown, true)
+}
+
+fn pulldown_html(markdown: &str) -> String {
     let parser = Parser::new_ext(markdown, markdown_options());
     let mut raw = String::new();
     html::push_html(&mut raw, parser);
+    raw
+}
+
+fn render_markdown_inner(markdown: &str, preview: bool) -> String {
+    let markdown = expand_jammed_definitions(markdown);
+    let defs = collect_link_defs(&markdown);
+    let raw = render_layout_segments(&markdown, preview);
+    let raw = with_link_definitions(&raw, &defs);
+    sanitize_rendered(&raw, preview)
+}
+
+fn render_layout_segments(markdown: &str, preview: bool) -> String {
+    let segs = parse_note_layout(markdown);
+    if segs.is_empty() {
+        let raw = pulldown_html(markdown);
+        return if preview {
+            stamp_block_ranges(&raw, &top_level_block_ranges(markdown))
+        } else {
+            raw
+        };
+    }
+
+    // 小组件是 HTML 岛，正文仍是一份 Markdown。拆开分别 pulldown 会让
+    // 文末的参考定义 / 脚注够不到前面的 `[text][label]` / `[^id]`。
+    let mut stitched = String::new();
+    let mut text_ranges: Vec<(usize, usize)> = Vec::new();
+    for seg in segs {
+        match seg {
+            LayoutSeg::Text { start, end } => {
+                let slice = &markdown[start..end];
+                if preview {
+                    text_ranges.extend(
+                        top_level_block_ranges(slice)
+                            .into_iter()
+                            .map(|(a, b)| (a + start, b + start)),
+                    );
+                }
+                stitched.push_str(slice);
+            }
+            LayoutSeg::Columns {
+                start,
+                end,
+                columns,
+            } => {
+                let mut inner = String::from("<div class=\"note-columns\">");
+                for col in columns {
+                    inner.push_str("<div class=\"note-column\">");
+                    inner.push_str(&render_layout_segments(&col, false));
+                    inner.push_str("</div>");
+                }
+                inner.push_str("</div>");
+                let html = if preview {
+                    stamp_wrapper(&inner, start, end)
+                } else {
+                    inner
+                };
+                push_html_island(&mut stitched, &html);
+            }
+            LayoutSeg::Widget {
+                start,
+                end,
+                typ,
+                size,
+                config,
+            } => {
+                let html = widget_html(&typ, &size, config.as_deref());
+                let html = if preview {
+                    stamp_wrapper(&html, start, end)
+                } else {
+                    html
+                };
+                push_html_island(&mut stitched, &html);
+            }
+        }
+    }
+
+    let raw = pulldown_html(&stitched);
+    if preview {
+        stamp_block_ranges(&raw, &text_ranges)
+    } else {
+        raw
+    }
+}
+
+fn push_html_island(out: &mut String, html: &str) {
+    if !out.is_empty() {
+        if !out.ends_with('\n') {
+            out.push('\n');
+        }
+        if !out.ends_with("\n\n") {
+            out.push('\n');
+        }
+    }
+    out.push_str(html);
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out.push('\n');
+}
+
+/// 可视层曾把相邻的 `[label]:` / `[^id]:` 揉成一行。CommonMark 不认这种行，
+/// 阅读器和预览会把整段定义当正文。拆开后再交给解析器。代码围栏里不动。
+fn expand_jammed_definitions(markdown: &str) -> String {
+    let normalized = markdown.replace("\r\n", "\n");
+    let mut fence = None;
+    let mut out = Vec::new();
+    for line in normalized.split('\n') {
+        if eat_fence(line, &mut fence) {
+            out.push(line.to_string());
+            continue;
+        }
+        out.push(expand_definition_line(line));
+    }
+    close_fence_before_trailing_defs(&out.join("\n"))
+}
+
+/// 未闭合的 ` ``` ` / `~~~` 会把文末 `[label]:` / `[^id]:` 吞进代码块。
+/// 定义行本身不是围栏内容；在它们前面补上闭合行。
+fn close_fence_before_trailing_defs(markdown: &str) -> String {
+    let lines: Vec<&str> = markdown.split('\n').collect();
+    let mut fence = None;
+    let mut opener: Option<(usize, MdFence)> = None;
+    for (index, line) in lines.iter().enumerate() {
+        if fence.is_none() {
+            if let Some(open) = fence_open(line) {
+                fence = Some(open);
+                opener = Some((index, open));
+                continue;
+            }
+        } else if let Some(open) = fence {
+            if fence_close(line, open) {
+                fence = None;
+            }
+        }
+    }
+    let Some((open_at, open)) = opener.filter(|_| fence.is_some()) else {
+        return markdown.to_string();
+    };
+    let mut end = lines.len();
+    while end > 0 && lines[end - 1].trim().is_empty() {
+        end -= 1;
+    }
+    let mut start = end;
+    while start > 0 && is_definition_line(lines[start - 1]) {
+        start -= 1;
+    }
+    if start == end || start <= open_at {
+        return markdown.to_string();
+    }
+    let closer = open.closer();
+    let mut out: Vec<String> = lines[..start].iter().map(|line| (*line).to_string()).collect();
+    out.push(closer);
+    out.push(String::new());
+    out.extend(lines[start..].iter().map(|line| (*line).to_string()));
+    out.join("\n")
+}
+
+fn is_definition_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    take_footnote_def(trimmed).is_some() || take_link_def(trimmed).is_some()
+}
+
+fn expand_definition_line(line: &str) -> String {
+    let trimmed = line.trim();
+    if !trimmed.starts_with('[') {
+        return line.to_string();
+    }
+    let pieces = split_definition_blocks(trimmed);
+    if pieces.len() <= 1 {
+        line.to_string()
+    } else {
+        pieces.join("\n")
+    }
+}
+
+fn split_definition_blocks(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = text.to_string();
+    while !rest.is_empty() {
+        if let Some((head, tail)) = take_footnote_def(&rest) {
+            out.push(head);
+            rest = tail;
+            continue;
+        }
+        if let Some((head, tail)) = take_link_def(&rest) {
+            out.push(head);
+            rest = tail;
+            continue;
+        }
+        if out.is_empty() {
+            return vec![text.to_string()];
+        }
+        out.push(rest);
+        break;
+    }
+    if out.is_empty() {
+        vec![text.to_string()]
+    } else {
+        out
+    }
+}
+
+fn take_footnote_def(text: &str) -> Option<(String, String)> {
+    let rest = text.strip_prefix("[^")?;
+    let close = rest.find("]:")?;
+    let id = &rest[..close];
+    if id.is_empty() || id.chars().any(char::is_whitespace) {
+        return None;
+    }
+    let after = rest[close + 2..].trim_start();
+    let next = next_def_index(after);
+    let (body, tail) = match next {
+        Some(index) => (after[..index].trim(), after[index..].trim_start()),
+        None => (after.trim(), ""),
+    };
+    let head = if body.is_empty() {
+        format!("[^{id}]:")
+    } else {
+        format!("[^{id}]: {body}")
+    };
+    Some((head, tail.to_string()))
+}
+
+fn take_link_def(text: &str) -> Option<(String, String)> {
+    if !text.starts_with('[') || text.starts_with("[^") {
+        return None;
+    }
+    let close = text.find("]:")?;
+    let label = &text[1..close];
+    if label.is_empty() || label.contains(']') {
+        return None;
+    }
+    let after_colon = &text[close + 2..];
+    if !after_colon.starts_with(char::is_whitespace) {
+        return None;
+    }
+    let dest_src = after_colon.trim_start();
+    if dest_src.is_empty() {
+        return None;
+    }
+    let dest_len = if dest_src.starts_with('<') {
+        dest_src.find('>')? + 1
+    } else {
+        dest_src.find(char::is_whitespace).unwrap_or(dest_src.len())
+    };
+    if dest_len == 0 {
+        return None;
+    }
+    let dest = &dest_src[..dest_len];
+    let after_dest = dest_src[dest_len..].trim_start();
+    let title_len = link_title_len(after_dest).unwrap_or(0);
+    let title = &after_dest[..title_len];
+    let consumed = text.len() - after_dest.len() + title_len;
+    let tail = text[consumed..].trim_start().to_string();
+    let head = if title.is_empty() {
+        format!("[{label}]: {dest}")
+    } else {
+        format!("[{label}]: {dest} {title}")
+    };
+    Some((head, tail))
+}
+
+fn link_title_len(text: &str) -> Option<usize> {
+    let close = match text.as_bytes().first()? {
+        b'"' => text[1..].find('"')?,
+        b'\'' => text[1..].find('\'')?,
+        b'(' => text[1..].find(')')?,
+        _ => return None,
+    };
+    Some(close + 2)
+}
+
+fn next_def_index(text: &str) -> Option<usize> {
+    let footnote = find_ascii_marker(text, "[^", "]:", |id| {
+        !id.is_empty() && !id.chars().any(char::is_whitespace)
+    });
+    let link = find_link_def_start(text);
+    match (footnote, link) {
+        (None, None) => None,
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (Some(a), Some(b)) => Some(a.min(b)),
+    }
+}
+
+fn find_ascii_marker<'a>(
+    text: &'a str,
+    open: &str,
+    close: &str,
+    ok: impl Fn(&str) -> bool,
+) -> Option<usize> {
+    let mut from = 0;
+    while let Some(rel) = text[from..].find(open) {
+        let at = from + rel;
+        let inner_at = at + open.len();
+        if let Some(end) = text[inner_at..].find(close) {
+            if ok(&text[inner_at..inner_at + end]) {
+                return Some(at);
+            }
+        }
+        from = at + open.len();
+    }
+    None
+}
+
+struct LinkDefRef {
+    label: String,
+    href: String,
+    title: String,
+}
+
+fn collect_link_defs(markdown: &str) -> Vec<LinkDefRef> {
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    let mut fence = None;
+    for line in markdown.split('\n') {
+        if eat_fence(line, &mut fence) {
+            continue;
+        }
+        let Some((def, tail)) = parse_link_def(line.trim()) else {
+            continue;
+        };
+        if !tail.is_empty() {
+            continue;
+        }
+        let key = def.label.to_ascii_lowercase();
+        if seen.insert(key) {
+            out.push(def);
+        }
+    }
+    out
+}
+
+fn parse_link_def(text: &str) -> Option<(LinkDefRef, String)> {
+    let (head, tail) = take_link_def(text)?;
+    let close = head.find("]:")?;
+    let label = head[1..close].to_string();
+    let rest = head[close + 2..].trim_start();
+    let (href, title) = if rest.starts_with('<') {
+        let end = rest.find('>')?;
+        let href = rest[1..end].to_string();
+        (href, title_from_suffix(rest[end + 1..].trim_start()))
+    } else {
+        let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        let href = rest[..end].to_string();
+        (href, title_from_suffix(rest[end..].trim_start()))
+    };
+    Some((LinkDefRef { label, href, title }, tail))
+}
+
+fn title_from_suffix(text: &str) -> String {
+    let len = link_title_len(text).unwrap_or(0);
+    if len < 2 {
+        return String::new();
+    }
+    text[1..len - 1].to_string()
+}
+
+fn with_link_definitions(html: &str, defs: &[LinkDefRef]) -> String {
+    if defs.is_empty() || html.contains("class=\"link-definition\"") {
+        return html.to_string();
+    }
+    let extra: String = defs
+        .iter()
+        .map(|def| {
+            let shown = if def.title.is_empty() {
+                def.href.as_str()
+            } else {
+                def.title.as_str()
+            };
+            let title = if def.title.is_empty() {
+                String::new()
+            } else {
+                format!(" title=\"{}\"", escape_html(&def.title))
+            };
+            format!(
+                "<div class=\"link-definition\"><a href=\"{}\"{}>[{}] {}</a></div>",
+                escape_html(&def.href),
+                title,
+                escape_html(&def.label),
+                escape_html(shown),
+            )
+        })
+        .collect();
+    match html.find("<div class=\"footnote-definition\"") {
+        Some(at) => format!("{}{}{}", &html[..at], extra, &html[at..]),
+        None => format!("{html}{extra}"),
+    }
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+fn find_link_def_start(text: &str) -> Option<usize> {
+    let mut from = 0;
+    while let Some(rel) = text[from..].find('[') {
+        let at = from + rel;
+        if text[at..].starts_with("[^") {
+            from = at + 1;
+            continue;
+        }
+        if take_link_def(&text[at..]).is_some() {
+            return Some(at);
+        }
+        from = at + 1;
+    }
+    None
+}
+
+fn sanitize_rendered(raw: &str, preview: bool) -> String {
     // 消毒器只给 id 加前缀，不改指向它的 `#` 链接；这里先把站内锚点补上同一个前缀。
     // 正文里唯一能有 id 的就是脚注定义，所以所有 `#` 链接都按脚注处理。
     let raw = raw.replace("href=\"#", &format!("href=\"#{FOOTNOTE_ID_PREFIX}"));
@@ -193,9 +663,19 @@ pub fn render_markdown(markdown: &str) -> String {
         .replace("style=\"text-align: center\"", "align=\"center\"")
         .replace("style=\"text-align: right\"", "align=\"right\"");
 
+    let mut attributes = allowed_attributes();
+    if preview {
+        for tag in BLOCK_TAGS {
+            attributes
+                .entry(tag)
+                .or_default()
+                .extend(["data-md-start", "data-md-end"]);
+        }
+    }
+
     ammonia::Builder::default()
         .tags(allowed_tags())
-        .tag_attributes(allowed_attributes())
+        .tag_attributes(attributes)
         .allowed_classes(allowed_classes())
         .id_prefix(Some(FOOTNOTE_ID_PREFIX))
         // 站外链接一律新窗口打开并断开 referrer / opener
@@ -204,6 +684,112 @@ pub fn render_markdown(markdown: &str) -> String {
         .url_schemes(["http", "https", "mailto"].into_iter().collect())
         .clean(&raw)
         .to_string()
+}
+
+/// 每个顶层块在原文里的字节区间，按出现顺序。
+fn top_level_block_ranges(markdown: &str) -> Vec<(usize, usize)> {
+    use pulldown_cmark::Event;
+    let mut ranges = Vec::new();
+    let mut depth = 0usize;
+    for (event, range) in Parser::new_ext(markdown, markdown_options()).into_offset_iter() {
+        match event {
+            Event::Start(tag) if is_block_tag(&tag) => {
+                if depth == 0 {
+                    ranges.push((range.start, range.end));
+                }
+                depth += 1;
+            }
+            Event::End(end) if is_block_tag_end(&end) => {
+                depth = depth.saturating_sub(1);
+            }
+            Event::Rule if depth == 0 => ranges.push((range.start, range.end)),
+            _ => {}
+        }
+    }
+    ranges
+}
+
+fn is_block_tag(tag: &pulldown_cmark::Tag<'_>) -> bool {
+    use pulldown_cmark::Tag;
+    matches!(
+        tag,
+        Tag::Paragraph
+            | Tag::Heading { .. }
+            | Tag::BlockQuote(_)
+            | Tag::CodeBlock(_)
+            | Tag::List(_)
+            | Tag::Table(_)
+            | Tag::FootnoteDefinition(_)
+            | Tag::HtmlBlock
+    )
+}
+
+fn is_block_tag_end(end: &pulldown_cmark::TagEnd) -> bool {
+    use pulldown_cmark::TagEnd;
+    matches!(
+        end,
+        TagEnd::Paragraph
+            | TagEnd::Heading(_)
+            | TagEnd::BlockQuote(_)
+            | TagEnd::CodeBlock
+            | TagEnd::List(_)
+            | TagEnd::Table
+            | TagEnd::FootnoteDefinition
+            | TagEnd::HtmlBlock
+    )
+}
+
+/// 扫一遍渲染出的 HTML，给第 i 个顶层块的开标签插上第 i 个区间。
+/// 深度只数块级标签；`li` / `tr` 这些不算，所以列表项里的 `<p>` 不会被当成顶层。
+fn stamp_block_ranges(html: &str, ranges: &[(usize, usize)]) -> String {
+    let mut out = String::with_capacity(html.len() + ranges.len() * 48);
+    let mut depth = 0usize;
+    let mut next = 0usize;
+    let mut rest = html;
+    while let Some(lt) = rest.find('<') {
+        out.push_str(&rest[..lt]);
+        let tag_slice = &rest[lt..];
+        let Some(gt) = tag_slice.find('>') else {
+            out.push_str(tag_slice);
+            return out;
+        };
+        let tag = &tag_slice[..=gt];
+        let inner = tag[1..tag.len() - 1].trim_end_matches('/').trim();
+        let closing = inner.starts_with('/');
+        let name = inner
+            .trim_start_matches('/')
+            .split(|c: char| c.is_whitespace())
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let is_block = BLOCK_TAGS.contains(&name.as_str());
+        let self_closing = name == "hr";
+        if is_block && !closing && depth == 0 {
+            if tag.contains("data-md-start=") {
+                out.push_str(tag);
+            } else if let Some((start, end)) = ranges.get(next) {
+                let insert_at = 1 + name.len();
+                out.push_str(&tag[..insert_at]);
+                out.push_str(&format!(" data-md-start=\"{start}\" data-md-end=\"{end}\""));
+                out.push_str(&tag[insert_at..]);
+                next += 1;
+            } else {
+                out.push_str(tag);
+            }
+        } else {
+            out.push_str(tag);
+        }
+        if is_block && !self_closing {
+            if closing {
+                depth = depth.saturating_sub(1);
+            } else {
+                depth += 1;
+            }
+        }
+        rest = &tag_slice[gt + 1..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// 从 HTML 里剥出纯文本。只处理本模块产出的、已消毒的 HTML。
@@ -398,6 +984,151 @@ mod tests {
     }
 
     #[test]
+    fn preview_stamps_top_level_blocks_with_source_ranges() {
+        let md = "# 标题\n\n第一段 **粗**。\n\n- 甲\n- 乙\n\n---\n\n```rust\nfn a() {}\n```";
+        let html = render_markdown_preview(md);
+        // 标题 0..9（"# 标题\n" 是 9 字节）
+        assert!(
+            html.contains("<h1 data-md-start=\"0\" data-md-end=\"9\">"),
+            "{html}"
+        );
+        assert!(html.contains("<p data-md-start=\"10\""), "{html}");
+        assert!(html.contains("<ul data-md-start="), "{html}");
+        assert!(html.contains("<hr data-md-start="), "{html}");
+        assert!(html.contains("<pre data-md-start="), "{html}");
+        // 列表项里的 <li> 不带；顶层块各带一次
+        assert_eq!(html.matches("data-md-start=").count(), 5, "{html}");
+        assert!(!html.contains("<li data-md"), "{html}");
+        // 发布用的那份一个都不带
+        assert!(!render_markdown(md).contains("data-md-"));
+    }
+
+    #[test]
+    fn preview_ranges_slice_back_to_the_source() {
+        let md = "前言\n\n> 引用\n> 两行\n\n[^1]: 底\n\n注[^1]";
+        let html = render_markdown_preview(md);
+        let mut seen = 0;
+        for cap in html.split("data-md-start=\"").skip(1) {
+            let start: usize = cap.split('"').next().unwrap().parse().unwrap();
+            let end: usize = cap
+                .split("data-md-end=\"")
+                .nth(1)
+                .unwrap()
+                .split('"')
+                .next()
+                .unwrap()
+                .parse()
+                .unwrap();
+            assert!(
+                md.is_char_boundary(start) && md.is_char_boundary(end),
+                "{start}..{end}"
+            );
+            assert!(start < end && end <= md.len());
+            seen += 1;
+        }
+        assert!(seen >= 3, "{html}");
+        // "前言\n\n" 是 8 字节，引用块从这里开始
+        assert!(html.contains("<blockquote data-md-start=\"8\""), "{html}");
+    }
+
+    #[test]
+    fn jammed_reference_and_footnote_defs_parse() {
+        let md = concat!(
+            "看 [规范][cm] 和 [gfm]。\n\n",
+            "[cm]: https://spec.commonmark.org/0.31.2/ \"CommonMark Spec 0.31.2\" ",
+            "[gfm]: https://github.github.com/gfm/ \"GitHub Flavored Markdown Spec\"\n\n",
+            "[^didion]: 一 [^swartz]: 二",
+        );
+        let html = render_markdown(md);
+        assert!(
+            html.contains("href=\"https://spec.commonmark.org/0.31.2/\""),
+            "{html}"
+        );
+        assert!(
+            html.contains("href=\"https://github.github.com/gfm/\""),
+            "{html}"
+        );
+        assert!(html.contains("class=\"link-definition\""), "{html}");
+        assert!(html.contains("[cm] CommonMark Spec 0.31.2"), "{html}");
+        assert!(html.contains("footnote-definition"), "{html}");
+        assert!(html.contains(">一<"), "{html}");
+        assert!(html.contains(">二<"), "{html}");
+        assert!(!html.contains("[cm]:"), "{html}");
+        assert!(!html.contains("[^didion]:"), "{html}");
+    }
+
+    #[test]
+    fn widget_does_not_break_reference_and_footnotes() {
+        let md = concat!(
+            "看 [规范][cm] 和脚注[^didion]。\n\n",
+            ":::widget weather 2x2\n\n",
+            "![杯][cup]\n\n",
+            "[cm]: https://spec.commonmark.org/0.31.2/ \"CommonMark Spec 0.31.2\"\n",
+            "[cup]: https://example.com/cup.jpg \"Cup\"\n",
+            "[^didion]: 为了看见自己的想法。\n",
+        );
+        let html = render_markdown(md);
+        assert!(
+            html.contains("href=\"https://spec.commonmark.org/0.31.2/\""),
+            "{html}"
+        );
+        assert!(html.contains("class=\"footnote-reference\""), "{html}");
+        assert!(html.contains("class=\"footnote-definition\""), "{html}");
+        assert!(html.contains("src=\"https://example.com/cup.jpg\""), "{html}");
+        assert!(html.contains("data-widget=\"weather\""), "{html}");
+        assert!(!html.contains("[^didion]"), "{html}");
+        assert!(!html.contains("[规范][cm]"), "{html}");
+        assert!(!html.contains("![杯][cup]"), "{html}");
+    }
+
+    #[test]
+    fn tilde_fence_keeps_trailing_defs() {
+        let md = concat!(
+            "前[^fn]\n\n",
+            "~~~\n",
+            "围栏里\n",
+            "~~~\n\n",
+            "[^fn]: 底\n",
+        );
+        let html = render_markdown(md);
+        assert!(html.contains("class=\"footnote-definition\""), "{html}");
+        assert!(html.contains("围栏里"), "{html}");
+        assert!(html.contains("footnote-reference"), "{html}");
+        assert!(!html.contains("[^fn]"), "{html}");
+    }
+
+    #[test]
+    fn unclosed_tilde_does_not_swallow_trailing_defs() {
+        let md = concat!(
+            "看 [规范][cm] 和脚注[^didion]。\n\n",
+            "~~~第一杯：16g\n",
+            "缩进四个空格是更老的代码块。\n",
+            "## 收尾时只做清单上的事\n\n",
+            "[cm]: https://spec.commonmark.org/0.31.2/ \"CommonMark Spec 0.31.2\"\n",
+            "[^didion]: 为了看见自己的想法。\n",
+        );
+        let html = render_markdown(md);
+        assert!(html.contains("class=\"footnote-definition\""), "{html}");
+        assert!(
+            html.contains("href=\"https://spec.commonmark.org/0.31.2/\""),
+            "{html}"
+        );
+        assert!(html.contains("缩进四个空格是更老的代码块。"), "{html}");
+        assert!(!html.contains("[cm]:"), "{html}");
+        assert!(!html.contains("[^didion]:"), "{html}");
+    }
+
+    #[test]
+    fn fence_keeps_jammed_defs_as_code() {
+        let html = render_markdown("```\n[cm]: https://example.com/ [gfm]: https://x/\n```");
+        assert!(
+            html.contains("[cm]: https://example.com/ [gfm]: https://x/"),
+            "{html}"
+        );
+        assert!(!html.contains("href=\"https://example.com/\""), "{html}");
+    }
+
+    #[test]
     fn footnotes_keep_anchor_and_classes() {
         let html = render_markdown("注[^1]\n\n[^1]: 底");
         assert!(html.contains("class=\"footnote-reference\""), "{html}");
@@ -546,5 +1277,46 @@ mod tests {
     fn entities_survive_a_round_trip() {
         let note = render_note("标题", "a & b < c");
         assert_eq!(note.summary.as_deref(), Some("a & b < c"));
+    }
+
+    #[test]
+    fn renders_columns_and_keeps_inner_markdown() {
+        let html = render_markdown(":::columns\n左 **粗**\n:::col\n右\n:::");
+        assert!(html.contains("class=\"note-columns\""), "{html}");
+        assert!(html.contains("class=\"note-column\""), "{html}");
+        assert!(html.contains("<strong>粗</strong>"), "{html}");
+        assert!(html.contains("右"), "{html}");
+    }
+
+    #[test]
+    fn renders_widget_placeholder_and_strips_unknown_attrs() {
+        let html = render_markdown(":::widget weather 2x2");
+        assert!(html.contains("class=\"note-widget not-prose\""), "{html}");
+        assert!(html.contains("data-widget=\"weather\""), "{html}");
+        assert!(html.contains("data-size=\"2x2\""), "{html}");
+        assert!(html.contains(">weather<"), "{html}");
+
+        let configured = render_markdown(r#":::widget weather 2x2 {"city":"Tokyo"}"#);
+        assert!(
+            configured.contains("data-config=\"%7B%22city%22%3A%22Tokyo%22%7D\""),
+            "{configured}"
+        );
+
+        let dirty = render_markdown(
+            "<div class=\"note-widget\" data-widget=\"weather\" data-size=\"2x2\" data-config=\"%7B%22city%22%3A%22Tokyo%22%7D\" onclick=\"alert(1)\"><iframe src=\"https://evil\"></iframe></div>",
+        );
+        assert!(!dirty.contains("onclick"), "{dirty}");
+        assert!(!dirty.contains("iframe"), "{dirty}");
+        assert!(dirty.contains("class=\"note-widget\""), "{dirty}");
+        assert!(dirty.contains("data-config="), "{dirty}");
+    }
+
+    #[test]
+    fn preview_stamps_layout_wrappers() {
+        let md = "上\n\n:::widget quote 2x2\n\n下";
+        let html = render_markdown_preview(md);
+        assert!(html.contains("class=\"note-widget\""), "{html}");
+        assert!(html.contains("data-md-start="), "{html}");
+        assert!(!render_markdown(md).contains("data-md-"));
     }
 }

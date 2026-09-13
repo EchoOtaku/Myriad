@@ -95,8 +95,6 @@ export default function BrewSourceGrid({
   const [searchQuery, setSearchQuery] = useState('')
   const [sortMode, setSortMode] = useState<SourceSortMode>('smart')
   const [scoreNow, setScoreNow] = useState(() => Date.now())
-  const [readySourceId, setReadySourceId] = useState<number | null>(null)
-
   const { categories, filtered, sorted } = useBoardCatalog(
     sources,
     board,
@@ -123,11 +121,8 @@ export default function BrewSourceGrid({
       })
     return () => controller.abort()
   }, [board, isAdmin, notes, docsEpoch])
-  const readySource = useMemo(
-    () => sources.find((source) => source.id === readySourceId) ?? null,
-    [sources, readySourceId],
-  )
-  const { stories, onStar } = useFeedStories(board, readySource, onToggleStar)
+  const { stories, onStar, expand, jump, holdStories, releaseStories, railEpoch } =
+    useFeedStories(board, sorted, onToggleStar)
   const flags = useArticleFlags()
   const friendSeed = useRef(Math.random())
   const friendStories = (
@@ -146,58 +141,100 @@ export default function BrewSourceGrid({
     setSortMode(mode)
     setScoreNow(Date.now())
   }, [])
-  const handleReadySource = useCallback((id: number | null) => {
-    setReadySourceId(id)
-  }, [])
   const pack = useBrewpack(sources, onSourcesChange)
 
-  const bar =
-    board === 'feeds' ? (
-      <BrewControls
-        sources={sources}
-        filteredSources={sorted}
-        categories={categories}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        onAddSource={onAddSource}
-        onDiscover={onDiscoverSource}
-        onImportOpml={onImportOpml}
-        onSourcesChange={onSourcesChange}
-        isAdmin={isAdmin}
-      />
-    ) : null
+  const bar = useMemo(
+    () =>
+      board === 'feeds' ? (
+        <BrewControls
+          sources={sources}
+          filteredSources={sorted}
+          categories={categories}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          onAddSource={onAddSource}
+          onDiscover={onDiscoverSource}
+          onImportOpml={onImportOpml}
+          onSourcesChange={onSourcesChange}
+          isAdmin={isAdmin}
+        />
+      ) : null,
+    [
+      board,
+      sources,
+      sorted,
+      categories,
+      searchQuery,
+      onAddSource,
+      onDiscoverSource,
+      onImportOpml,
+      onSourcesChange,
+      isAdmin,
+    ],
+  )
 
-  const sourceTags = (
-    <BrewSourceTitleTags
-      kind={board === 'feeds' ? 'feeds' : 'salon'}
-      sortMode={sortMode}
-      onSortModeChange={handleSortModeChange}
-      isAdmin={isAdmin}
-      isAuthenticated={isAuthenticated}
-      canEdit={board !== 'feeds' || edit.sitesOpen}
-      editing={edit.isEditMode}
-      selectedIds={edit.selectedIds}
-      sources={sorted}
-      categories={categories}
-      refreshableCount={refreshableSourceCount(sorted)}
-      isDeleting={edit.isDeleting}
-      isRefreshing={edit.isRefreshing}
-      onEnterEdit={edit.handleEnterEditMode}
-      onExitEdit={edit.handleExitEditMode}
-      onSelectAll={edit.handleSelectAll}
-      onBatchDelete={edit.handleBatchDelete}
-      onBatchRefresh={edit.handleBatchRefresh}
-      onMarkAllRead={onMarkAllRead}
-      onWriteNote={board === 'notes' ? onWriteNote : undefined}
-      onUpdateSource={onUpdateSource}
-      onGenerateStyleTags={onGenerateStyleTags}
-      sourceEditTick={edit.sourceEditTick}
-      importExportLoading={board === 'feeds' ? pack.loading : false}
-      importProgress={board === 'feeds' ? pack.progress : undefined}
-      onBrewExport={board === 'feeds' ? pack.exportPack : undefined}
-      onBrewImportFile={board === 'feeds' ? pack.importFile : undefined}
-      brewExportInputRef={board === 'feeds' ? pack.inputRef : undefined}
-    />
+  const sourceTags = useMemo(
+    () => (
+      <BrewSourceTitleTags
+        kind={board === 'feeds' ? 'feeds' : 'salon'}
+        sortMode={sortMode}
+        onSortModeChange={handleSortModeChange}
+        isAdmin={isAdmin}
+        isAuthenticated={isAuthenticated}
+        canEdit={board !== 'feeds' || edit.sitesOpen}
+        editing={edit.isEditMode}
+        selectedIds={edit.selectedIds}
+        sources={sorted}
+        categories={categories}
+        refreshableCount={refreshableSourceCount(sorted)}
+        isDeleting={edit.isDeleting}
+        isRefreshing={edit.isRefreshing}
+        onEnterEdit={edit.handleEnterEditMode}
+        onExitEdit={edit.handleExitEditMode}
+        onSelectAll={edit.handleSelectAll}
+        onBatchDelete={edit.handleBatchDelete}
+        onBatchRefresh={edit.handleBatchRefresh}
+        onMarkAllRead={onMarkAllRead}
+        onWriteNote={board === 'notes' ? onWriteNote : undefined}
+        onUpdateSource={onUpdateSource}
+        onGenerateStyleTags={onGenerateStyleTags}
+        sourceEditTick={edit.sourceEditTick}
+        importExportLoading={board === 'feeds' ? pack.loading : false}
+        importProgress={board === 'feeds' ? pack.progress : undefined}
+        onBrewExport={board === 'feeds' ? pack.exportPack : undefined}
+        onBrewImportFile={board === 'feeds' ? pack.importFile : undefined}
+        brewExportInputRef={board === 'feeds' ? pack.inputRef : undefined}
+      />
+    ),
+    [
+      board,
+      sortMode,
+      handleSortModeChange,
+      isAdmin,
+      isAuthenticated,
+      edit.sitesOpen,
+      edit.isEditMode,
+      edit.selectedIds,
+      sorted,
+      categories,
+      edit.isDeleting,
+      edit.isRefreshing,
+      edit.handleEnterEditMode,
+      edit.handleExitEditMode,
+      edit.handleSelectAll,
+      edit.handleBatchDelete,
+      edit.handleBatchRefresh,
+      onMarkAllRead,
+      onWriteNote,
+      onUpdateSource,
+      onGenerateStyleTags,
+      edit.sourceEditTick,
+      pack.loading,
+      pack.progress,
+      pack.exportPack,
+      pack.importFile,
+      pack.inputRef,
+    ],
   )
 
   const searchMiss = filtered.length === 0 && !!searchQuery.trim()
@@ -231,7 +268,11 @@ export default function BrewSourceGrid({
       stories={
         board === 'feeds' ? stories : board === 'sites' ? friendStories : undefined
       }
-      onReadySource={board === 'feeds' ? handleReadySource : undefined}
+      onExpandStories={board === 'feeds' ? expand : undefined}
+      onJumpSource={board === 'feeds' ? jump : undefined}
+      onHoldStories={board === 'feeds' ? holdStories : undefined}
+      onReleaseStories={board === 'feeds' ? releaseStories : undefined}
+      railEpoch={board === 'feeds' ? railEpoch : 0}
       sourceTags={board === 'feeds' ? sourceTags : undefined}
       notes={notes}
       docs={docs}

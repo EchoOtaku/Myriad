@@ -50,8 +50,7 @@ pub fn schedule_at(now_ms: i64, scheduled_at_ms: Option<i64>) -> Result<i64, Sch
 
 /// 调度器：已到点的定时稿该落库。
 pub fn is_due(status: NoteDocStatus, scheduled_at_ms: Option<i64>, now_ms: i64) -> bool {
-    status == NoteDocStatus::Scheduled
-        && scheduled_at_ms.is_some_and(|at| at <= now_ms)
+    status == NoteDocStatus::Scheduled && scheduled_at_ms.is_some_and(|at| at <= now_ms)
 }
 
 #[cfg(test)]

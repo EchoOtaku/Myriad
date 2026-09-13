@@ -1,12 +1,14 @@
 /** 不认识 brew_sources。 */
 
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties } from 'react'
 
 import { LuEdit3 as Edit3 } from '@lib/icons'
+
+import { memo } from 'react'
 import { cx } from './cx'
 import { BrewPick } from './Pick'
 
-export function SiteCard({
+function SiteCardInner({
   id,
   name,
   description,
@@ -41,9 +43,9 @@ export function SiteCard({
   ink?: string | null
   emptyLabel: string
   editLabel?: string
-  onActivate: () => void
-  onOpenLatest?: () => void
-  onEdit?: () => void
+  onActivate: (id: number | string) => void
+  onOpenLatest?: (id: number | string) => void
+  onEdit?: (id: number | string) => void
   onIconLoad?: (img: HTMLImageElement) => void
   arrive?: number
 }) {
@@ -65,7 +67,7 @@ export function SiteCard({
           ...(arrive != null ? { '--brew-card-i': arrive } : null),
         } as CSSProperties
       }
-      onClick={onActivate}
+      onClick={() => onActivate(id)}
     >
       {cover ? (
         <span className="brew-site__scene" aria-hidden>
@@ -94,7 +96,7 @@ export function SiteCard({
           aria-label={editLabel}
           onClick={(event) => {
             event.stopPropagation()
-            onEdit()
+            onEdit(id)
           }}
         >
           <Edit3 />
@@ -106,7 +108,7 @@ export function SiteCard({
       <button
         type="button"
         className="brew-site__head"
-        onClick={onActivate}
+        onClick={() => onActivate(id)}
         aria-pressed={on}
       >
         <span className="brew-site__name">{name}</span>
@@ -120,7 +122,7 @@ export function SiteCard({
           className="brew-site__article"
           onClick={(event) => {
             event.stopPropagation()
-            onOpenLatest?.()
+            onOpenLatest?.(id)
           }}
         >
           <span className="brew-site__article-title">{latestTitle}</span>
@@ -134,6 +136,9 @@ export function SiteCard({
     </div>
   )
 }
+
+export const SiteCard = memo(SiteCardInner)
+SiteCard.displayName = 'SiteCard'
 
 export function SiteMark({
   name,
@@ -158,156 +163,4 @@ export function SiteMark({
       )}
     </span>
   )
-}
-
-export function SalonCard({
-  cardKey,
-  arrive,
-  note,
-  cover,
-  editing,
-  picked,
-  onClick,
-  children,
-}: {
-  cardKey?: string
-  arrive?: number
-  note?: boolean
-  cover?: string | null
-  editing?: boolean
-  picked?: boolean
-  onClick?: () => void
-  children: ReactNode
-}) {
-  return (
-    <div
-      className={cx(
-        'brew-salon__card',
-        note && 'is-note',
-        cover && 'has-cover',
-        editing && 'is-edit',
-        picked && 'is-picked',
-        arrive != null && 'is-arrive',
-      )}
-      data-brew-surface="card"
-      data-brew-card={cardKey}
-      style={
-        arrive != null
-          ? ({ '--brew-card-i': arrive } as CSSProperties)
-          : undefined
-      }
-      onClick={onClick}
-    >
-      {cover ? (
-        <span className="brew-salon__cover" aria-hidden>
-          <img src={cover} alt="" loading="lazy" />
-        </span>
-      ) : null}
-      {children}
-    </div>
-  )
-}
-
-export function SalonNote({
-  cardKey,
-  arrive,
-  cover,
-  kicker,
-  title,
-  summary,
-  onClick,
-}: {
-  cardKey?: string
-  arrive?: number
-  cover?: string | null
-  kicker?: ReactNode
-  title: ReactNode
-  summary?: ReactNode
-  onClick?: () => void
-}) {
-  return (
-    <button
-      type="button"
-      className={cx(
-        'brew-salon__card is-note',
-        cover && 'has-cover',
-        arrive != null && 'is-arrive',
-      )}
-      data-brew-surface="card"
-      data-brew-card={cardKey}
-      style={
-        arrive != null
-          ? ({ '--brew-card-i': arrive } as CSSProperties)
-          : undefined
-      }
-      onClick={onClick}
-    >
-      {cover ? (
-        <span className="brew-salon__cover" aria-hidden>
-          <img src={cover} alt="" loading="lazy" />
-        </span>
-      ) : null}
-      {kicker != null ? (
-        <span className="brew-salon__kicker">{kicker}</span>
-      ) : null}
-      <span className="brew-salon__title">{title}</span>
-      {summary ? <span className="brew-salon__summary">{summary}</span> : null}
-    </button>
-  )
-}
-
-export function SalonHit({
-  pressed,
-  title,
-  mark,
-  summary,
-  onClick,
-}: {
-  pressed?: boolean
-  title: ReactNode
-  mark?: ReactNode
-  summary?: ReactNode
-  onClick?: () => void
-}) {
-  return (
-    <button
-      type="button"
-      className="brew-salon__hit"
-      onClick={onClick}
-      aria-pressed={pressed}
-    >
-      <span className="brew-salon__head">
-        {mark}
-        <span className="brew-salon__title">{title}</span>
-      </span>
-      {summary ? <span className="brew-salon__summary">{summary}</span> : null}
-    </button>
-  )
-}
-
-export function SalonEdit({
-  label,
-  onClick,
-}: {
-  label: string
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      className="brew-salon__edit"
-      title={label}
-      aria-label={label}
-      onClick={(event) => {
-        event.stopPropagation()
-        onClick()
-      }}
-    >
-      <Edit3 />
-    </button>
-  )
-}
-
-export function SalonGrid({ children }: { children: ReactNode }) {
-  return <div className="brew-skin brew-salon">{children}</div>
 }

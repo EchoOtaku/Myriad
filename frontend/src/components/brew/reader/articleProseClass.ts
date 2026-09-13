@@ -57,8 +57,10 @@ export function getArticleProseClass(
               /* 代码块容器（有复制按钮时）*/
               [&_.code-block-wrapper]:my-5
 
-              /* 图片 - 自然圆角 */
+              /* 图片 - 自然圆角；正文小组件自己排版，不吃这篇的图距 */
               prose-img:rounded-2xl prose-img:mx-auto prose-img:my-5
+              [&_.note-widget_img]:my-0 [&_.note-widget_img]:mx-0 [&_.note-widget_img]:max-w-none
+              [&_.note-widget_p]:my-0 [&_.note-widget_a]:no-underline
 
               /* 分隔线 - 极简 */
               prose-hr:my-8 prose-hr:border-0 prose-hr:h-px
@@ -109,6 +111,10 @@ export function getArticleProseClass(
               [&_.footnote-definition_.footnote-definition-label]:leading-[inherit]
               [&_.footnote-definition_.footnote-definition-label]:top-0
               [&_.footnote-definition_p]:my-0
+              [&_.link-definition]:my-1 [&_.link-definition]:text-[0.8125em]
+              [&_.link-definition]:opacity-80
+              [&_.link-definition_a]:no-underline
+              [&_.link-definition_a]:text-inherit
 
               /* 任务列表（手记）：勾选框顶替圆点，勾掉的淡一点 */
               [&_li:has(>input[type=checkbox])]:list-none

@@ -1,11 +1,12 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, MouseEvent, PointerEvent, ReactNode, RefObject } from 'react'
 import type { BrewItemPreview, BrewSource } from '../../../types/brew'
 import type { FeedStory } from '../logic/feedStories'
+import type { TimeTranslations } from '../types'
 import type { FeedsChrome, FlipBox } from './flipCards'
 import type { BrewRailApi } from './useBrewRailPan'
 
 import { FaCompress as Compress, FaExpand as Expand } from '@lib/icons'
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { isValidElement, memo, startTransition, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import {
   brewMotionClaim,
@@ -25,11 +26,22 @@ import {
   idleSitesIntent,
   requestSiteView,
 } from '../logic/feedsMotion'
+import {
+  clipPaintedBatches,
+  extendPaintedRange,
+  sourceColumnStarts,
+  sourceScrollStarts,
+  storyColumnLeads,
+  storyColumnShift,
+  storyRailSlots,
+  storySlotAtColumn,
+  storySlotsByColumn,
+} from '../logic/feedStories'
 import { FeedsAddFormProvider } from '../ui/BrewFeedsPanel'
 import { BrewRailTitle } from '../ui/BrewRailTitle'
 import { BrewVacant } from '../ui/Empty'
 import { SiteCard } from '../ui/SiteCard'
-import { BrewStory } from './BrewStory'
+import { BrewStoryColumn } from './BrewStory'
 import {
   brewFlipQuiet,
   clearRailExits,
@@ -54,10 +66,830 @@ import {
   storyPhaseDelay,
   waitFlip,
 } from './flipCards'
+import {
+  dropStoryDomShells,
+  eagerStoryCovers,
+  ensureStoryShells,
+  followRailScroll,
+  onStoryMediaError,
+  paintStoryAway,
+  paintStoryLiveCols,
+  RAIL_MOUNT_BOOT_TO,
+  RAIL_MOUNT_GROW_AHEAD,
+  RAIL_MOUNT_LIVE_PAD,
+  RAIL_MOUNT_RESERVE,
+  RAIL_OVERFLOW_LEFT_PX,
+  railLeadColumn,
+  railLiveTo,
+  railMountColumns,
+  railMountColumnsCovered,
+  railMountColumnsPan,
+  railMountColumnsSettle,
+  railSeatScroll,
+  railTrackScroll,
+  sourceAtScroll,
+  storyMountWindow,
+  storyRailTrackSize,
+} from './railPan'
+import { warmStoryCovers, warmStoryFaces } from './storyFace'
 import { brewRelativeTime, useBrewTimes } from './time'
 import { useBrewRailPan } from './useBrewRailPan'
 
 const ARTICLES_SETTLE_MS = 200
+const FOCUS_FOLLOW_MS = 160
+
+function indexSiteOnEls(
+  track: HTMLElement,
+  byId: Map<number, HTMLElement>,
+): void {
+  if (byId.size > 0) return
+  const kids = track.children
+  for (let i = 0; i < kids.length; i++) {
+    const el = kids[i] as HTMLElement
+    const next = Number(el.dataset?.railId)
+    if (Number.isFinite(next)) byId.set(next, el)
+  }
+}
+
+function paintSiteOn(
+  track: HTMLElement | null,
+  id: number | null,
+  painted: { current: number | null },
+  paintedEl: { current: HTMLElement | null },
+  byId: Map<number, HTMLElement>,
+): void {
+  if (!track || id == null || painted.current === id) return
+  indexSiteOnEls(track, byId)
+  const prevEl =
+    paintedEl.current
+    ?? (painted.current != null ? byId.get(painted.current) : undefined)
+  prevEl?.classList.remove('is-on')
+  let next = byId.get(id)
+  if (!next) {
+    next = track.querySelector<HTMLElement>(`.brew-site[data-rail-id="${id}"]`)
+    if (next) byId.set(id, next)
+  }
+  next?.classList.add('is-on')
+  painted.current = id
+  paintedEl.current = next ?? null
+}
+
+const BrewFeedsSites = memo(({
+  sources,
+  onId,
+  readyId,
+  scene,
+  times,
+  locale,
+  isEditMode,
+  selectedIds,
+  emptyLabel,
+  editLabel,
+  canEdit,
+  onActivate,
+  onOpenLatest,
+  onEdit,
+  onIconLoad,
+}: {
+  sources: BrewSource[]
+  onId: number | null | undefined
+  readyId: number | null | undefined
+  scene: string
+  times: TimeTranslations
+  locale: string
+  isEditMode: boolean
+  selectedIds?: Set<number>
+  emptyLabel: string
+  editLabel: string
+  canEdit: boolean
+  onActivate: (id: number | string) => void
+  onOpenLatest: (id: number | string) => void
+  onEdit: (id: number | string) => void
+  onIconLoad: (img: HTMLImageElement) => void
+}) => {
+  return sources.map((source) => {
+    const latest = source.recent_items?.[0] ?? null
+    return (
+      <SiteCard
+        key={source.id}
+        id={source.id}
+        name={source.name}
+        description={source.description?.trim() || ''}
+        icon={getIconUrl(source.icon)}
+        unread={source.unread_count}
+        latestTitle={latest?.title}
+        latestWhen={
+          latest ? brewRelativeTime(latest.published_at, times, locale) : ''
+        }
+        on={source.id === onId}
+        cover={source.id === readyId ? scene : ''}
+        editing={isEditMode}
+        picked={selectedIds?.has(source.id)}
+        ink={normalizeThemeColor(source.theme_color)}
+        emptyLabel={emptyLabel}
+        editLabel={editLabel}
+        onActivate={onActivate}
+        onOpenLatest={latest ? onOpenLatest : undefined}
+        onEdit={canEdit ? onEdit : undefined}
+        onIconLoad={onIconLoad}
+      />
+    )
+  })
+})
+
+interface StorySlot { story: FeedStory; column: number; row: 1 | 2 }
+
+function storyAtRailTarget(
+  target: EventTarget | null,
+  byId: ReadonlyMap<number, FeedStory>,
+): FeedStory | undefined {
+  if (!(target instanceof Element)) return
+  const node = target.closest('.brew-story')
+  if (
+    !(node instanceof HTMLElement)
+    || node.classList.contains('brew-story--slot')
+  ) {
+    return
+  }
+  const id = Number(node.dataset.railId)
+  if (!Number.isFinite(id)) return
+  return byId.get(id)
+}
+
+const PaintedRailHead = memo(({
+  nodes,
+}: {
+  nodes: readonly ReactNode[]
+}) => nodes)
+PaintedRailHead.displayName = 'PaintedRailHead'
+
+const BrewFeedsStories = memo(({
+  storySlots,
+  times,
+  locale,
+  labels,
+  onOpen,
+  onPeek,
+  onPeekEnd,
+  onToggleStar,
+  trackRef,
+  setMountRef,
+  setLiveRef,
+  mountColsRef,
+  liveToRef,
+  pendingStoryAlignRef,
+  itemsApiRef,
+  eagerBandRef,
+  lastEagerRef,
+  warmRef,
+  grabbingRef,
+}: {
+  storySlots: readonly StorySlot[]
+  times: TimeTranslations
+  locale: string
+  labels: {
+    unread: string
+    starred: string
+    unstar: string
+  }
+  onOpen: (item: FeedStory) => void
+  onPeek: (item: FeedStory) => void
+  onPeekEnd: () => void
+  onToggleStar?: (item: FeedStory) => void | false
+  trackRef: RefObject<HTMLDivElement | null>
+  setMountRef: RefObject<(next: { from: number; to: number }) => void>
+  setLiveRef: RefObject<(next: number) => void>
+  mountColsRef: RefObject<{ from: number; to: number }>
+  liveToRef: RefObject<number>
+  pendingStoryAlignRef: RefObject<number | null>
+  itemsApiRef: RefObject<BrewRailApi | null>
+  eagerBandRef: RefObject<{ from: number; to: number }>
+  lastEagerRef: RefObject<{ from: number; to: number }>
+  warmRef: RefObject<() => void>
+  grabbingRef: RefObject<boolean>
+}) => {
+  const [mountCols, setMountCols] = useState({
+    from: 1,
+    to: Math.min(RAIL_MOUNT_GROW_AHEAD, RAIL_MOUNT_BOOT_TO),
+  })
+  const [liveTo, setLiveTo] = useState(liveToRef.current)
+  const setMount = useCallback((next: { from: number; to: number }) => {
+    mountColsRef.current = next
+    setMountCols((prev) =>
+      prev.from === next.from && prev.to === next.to ? prev : next,
+    )
+  }, [mountColsRef])
+  const setLive = useCallback((next: number) => {
+    liveToRef.current = next
+    setLiveTo((prev) => (prev === next ? prev : next))
+  }, [liveToRef])
+  useLayoutEffect(() => {
+    setMountRef.current = setMount
+  }, [setMount, setMountRef])
+  useLayoutEffect(() => {
+    setLiveRef.current = setLive
+  }, [setLive, setLiveRef])
+  const alignId = pendingStoryAlignRef.current
+  useLayoutEffect(() => {
+    if (alignId == null) return
+    pendingStoryAlignRef.current = null
+    itemsApiRef.current?.align(alignId, true)
+  }, [alignId, itemsApiRef, pendingStoryAlignRef])
+  const storyCols = storySlots.at(-1)?.column ?? 1
+  const grid = storyMountWindow(mountCols.from, mountCols.to, storyCols)
+  const byColRef = useRef<Map<number, StorySlot[]> | undefined>(undefined)
+  const byCol = useMemo(() => {
+    const next = storySlotsByColumn(storySlots, byColRef.current)
+    byColRef.current = next
+    return next
+  }, [storySlots])
+  const paintedEagerRef = useRef<{ from: number; to: number } | undefined>(
+    undefined,
+  )
+  const prebuiltColsRef = useRef<Map<number, ReactNode>>(new Map())
+  const canStar = onToggleStar != null
+  useEffect(() => {
+    const band = eagerBandRef.current
+    eagerStoryCovers(
+      trackRef.current,
+      band.from,
+      band.to,
+      paintedEagerRef.current,
+    )
+    paintStoryAway(
+      trackRef.current,
+      band.from,
+      band.to,
+      paintedEagerRef.current,
+    )
+    paintedEagerRef.current = band
+    lastEagerRef.current = band
+  }, [eagerBandRef, lastEagerRef, mountCols.from, mountCols.to, storySlots, trackRef])
+  useEffect(() => {
+    const track = trackRef.current
+    if (!track) return
+    track.addEventListener('error', onStoryMediaError, true)
+    return () => track.removeEventListener('error', onStoryMediaError, true)
+  }, [trackRef])
+  const eagerBand = eagerBandRef.current
+  const paintTo = grid.to
+  useEffect(() => {
+    const from = paintTo + 1
+    const faceTo = Math.min(paintTo + RAIL_MOUNT_GROW_AHEAD * 2, storyCols)
+    const bootTo = Math.min(RAIL_MOUNT_GROW_AHEAD, RAIL_MOUNT_BOOT_TO)
+    const warm = () => {
+      const holdAt = eagerBandRef.current.to
+      const prebuilt = prebuiltColsRef.current
+      const fill = (colFrom: number, colTo: number, covers: boolean) => {
+        if (colFrom > colTo) return
+        const pack: FeedStory[] = []
+        for (let col = colFrom; col <= colTo; col++) {
+          const slots = byCol.get(col)
+          if (!slots) continue
+          for (const slot of slots) pack.push(slot.story)
+        }
+        warmStoryFaces(pack, times, locale, labels)
+        if (!covers) return
+        for (let col = colFrom; col <= colTo; col++) {
+          if (prebuilt.has(col)) continue
+          prebuilt.set(
+            col,
+            <BrewStoryColumn
+              key={col}
+              col={col}
+              slots={byCol.get(col)}
+              times={times}
+              locale={locale}
+              labels={labels}
+              holdCover={col > holdAt}
+              canStar={canStar}
+            />,
+          )
+        }
+        warmStoryCovers(pack)
+      }
+      if (grabbingRef.current) {
+        const liveNow = liveToRef.current
+        fill(
+          liveNow + 1,
+          Math.min(
+            liveNow + RAIL_MOUNT_LIVE_PAD + RAIL_MOUNT_RESERVE,
+            mountColsRef.current.to,
+            storyCols,
+          ),
+          false,
+        )
+      } else if (from <= faceTo) {
+        fill(from, faceTo, true)
+      }
+      if (grabbingRef.current) return
+      const mounted = mountColsRef.current
+      if (mounted.to <= bootTo + RAIL_MOUNT_LIVE_PAD) {
+        const padTo = Math.min(bootTo + RAIL_MOUNT_LIVE_PAD, storyCols)
+        if (padTo <= mounted.to) return
+        const next = { from: mounted.from, to: padTo }
+        mountColsRef.current = next
+        liveToRef.current = padTo
+        startTransition(() => {
+          setLive(padTo)
+          setMount(next)
+        })
+        return
+      }
+      const cap = Math.min(
+        eagerBandRef.current.to + RAIL_MOUNT_GROW_AHEAD,
+        storyCols,
+      )
+      if (cap <= mounted.to) return
+      const next = { from: mounted.from, to: cap }
+      mountColsRef.current = next
+      liveToRef.current = cap
+      startTransition(() => {
+        setLive(cap)
+        setMount(next)
+      })
+    }
+    warmRef.current = warm
+    if (typeof requestIdleCallback === 'function') {
+      const idle = requestIdleCallback(warm)
+      return () => cancelIdleCallback(idle)
+    }
+    const timer = window.setTimeout(warm, 0)
+    return () => window.clearTimeout(timer)
+  }, [
+    byCol,
+    canStar,
+    eagerBandRef,
+    grabbingRef,
+    labels,
+    locale,
+    liveToRef,
+    mountColsRef,
+    paintTo,
+    setLive,
+    setMount,
+    storyCols,
+    times,
+    warmRef,
+  ])
+  const trackStyle = useMemo(
+    () => ({
+      '--brew-story-cols': storyCols,
+      width: storyRailTrackSize(storyCols),
+      gridTemplateColumns: 'minmax(0, 100%)',
+    }) as CSSProperties,
+    [storyCols],
+  )
+  const paintedCacheRef = useRef<ReactNode[]>([])
+  const paintedOutRef = useRef<ReactNode[]>([])
+  const paintedHeadRef = useRef<ReactNode>(null)
+  const paintedBatchesRef = useRef<{
+    from: number
+    to: number
+    nodes: readonly ReactNode[]
+    head: ReactNode
+  }[]>([])
+  const paintedRangeRef = useRef({ from: 0, to: 0 })
+  const paintedLiveToRef = useRef(0)
+  const paintedByColRef = useRef(byCol)
+  const paintedFaceRef = useRef({
+    times,
+    locale,
+    labels,
+    canStar,
+  })
+  const painted = useMemo(() => {
+    const face = paintedFaceRef.current
+    const prevByCol = paintedByColRef.current
+    const reset =
+      face.times !== times
+      || face.locale !== locale
+      || face.labels !== labels
+      || face.canStar !== canStar
+    paintedByColRef.current = byCol
+    paintedFaceRef.current = {
+      times,
+      locale,
+      labels,
+      canStar,
+    }
+    if (reset) prebuiltColsRef.current.clear()
+    const prevRange = paintedRangeRef.current
+    const prevLive = paintedLiveToRef.current
+    const prev = paintedCacheRef.current
+    const prebuilt = prebuiltColsRef.current
+    const paintLive = Math.min(liveTo, paintTo)
+    const makeFull = (col: number) => {
+      const hit = prebuilt.get(col)
+      if (hit) return hit
+      const node = (
+        <BrewStoryColumn
+          key={col}
+          col={col}
+          slots={byCol.get(col)}
+          times={times}
+          locale={locale}
+          labels={labels}
+          holdCover={col > eagerBand.to}
+          canStar={canStar}
+        />
+      )
+      prebuilt.set(col, node)
+      return node
+    }
+    const make = (col: number) => (
+      col > paintLive
+        ? (
+            <BrewStoryColumn
+              key={col}
+              col={col}
+              times={times}
+              locale={locale}
+              labels={labels}
+              holdCover={col > eagerBand.to}
+              canStar={canStar}
+            />
+          )
+        : makeFull(col)
+    )
+    let next = extendPaintedRange(
+      prev,
+      prevRange.from,
+      prevRange.to,
+      grid.from,
+      paintTo,
+      make,
+      reset,
+    )
+    const hydrate =
+      !reset
+      && paintLive > prevLive
+      && prevRange.from === grid.from
+      && prevRange.to === paintTo
+      && prevRange.to >= prevRange.from
+    const leftoverShells = paintedBatchesRef.current.some(
+      (batch) => batch.from > prevLive || batch.to > prevLive,
+    )
+    if (
+      !reset
+      && paintLive > prevLive
+      && prevRange.from === grid.from
+      && prevRange.to >= prevRange.from
+    ) {
+      const copy = next.slice()
+      for (
+        let col = prevLive + 1;
+        col <= paintLive && col <= paintTo;
+        col++
+      ) {
+        copy[col - grid.from] = makeFull(col)
+      }
+      next = copy
+    }
+    if (!reset && prevByCol !== byCol) {
+      const copy = next.slice()
+      let patched = false
+      const overlapFrom = Math.max(grid.from, prevRange.from)
+      const overlapTo = Math.min(paintTo, prevRange.to)
+      for (let col = overlapFrom; col <= overlapTo; col++) {
+        if (prevByCol.get(col) !== byCol.get(col)) {
+          prebuilt.delete(col)
+          copy[col - grid.from] = make(col)
+          patched = true
+        }
+      }
+      if (patched) next = copy
+      if (patched && paintedBatchesRef.current.length > 0) {
+        const batches: {
+          from: number
+          to: number
+          nodes: readonly ReactNode[]
+          head: ReactNode
+        }[] = []
+        const heads: ReactNode[] = []
+        for (const batch of paintedBatchesRef.current) {
+          let hit = false
+          for (let col = batch.from; col <= batch.to; col++) {
+            if (prevByCol.get(col) !== byCol.get(col)) {
+              hit = true
+              break
+            }
+          }
+          if (!hit) {
+            batches.push(batch)
+            heads.push(batch.head)
+            continue
+          }
+          const from = Math.max(batch.from, grid.from)
+          const to = Math.min(batch.to, paintTo)
+          if (from > to) continue
+          const nodes = next.slice(from - grid.from, to - grid.from + 1)
+          const head = (
+            <PaintedRailHead
+              key={
+                isValidElement(batch.head) && batch.head.key != null
+                  ? batch.head.key
+                  : `${from}:${to}`
+              }
+              nodes={nodes}
+            />
+          )
+          batches.push({ from, to, nodes, head })
+          heads.push(head)
+        }
+        paintedBatchesRef.current = batches
+        paintedOutRef.current = heads
+        paintedHeadRef.current = heads[0] ?? null
+      }
+    }
+    paintedRangeRef.current = { from: grid.from, to: paintTo }
+    paintedLiveToRef.current = paintLive
+    paintedCacheRef.current = next
+    if (next === prev && paintedOutRef.current.length > 0) {
+      return paintedOutRef.current
+    }
+    const grew =
+      !reset
+      && paintedHeadRef.current
+      && grid.from === prevRange.from
+      && paintTo > prevRange.to
+      && next.length > prev.length
+      && next[0] === prev[0]
+    if (grew && !leftoverShells) {
+      const addFrom = prevRange.to + 1
+      let out = paintedOutRef.current
+      if (addFrom <= paintLive) {
+        const liveNodes = next.slice(
+          addFrom - grid.from,
+          paintLive - grid.from + 1,
+        )
+        const head = (
+          <PaintedRailHead
+            key={`${prevRange.to}:${paintTo}`}
+            nodes={liveNodes}
+          />
+        )
+        paintedHeadRef.current = head
+        out = out.concat(head)
+        paintedBatchesRef.current.push({
+          from: addFrom,
+          to: paintLive,
+          nodes: liveNodes,
+          head,
+        })
+      }
+      if (paintLive < paintTo) {
+        const shellNodes = next.slice(paintLive - grid.from + 1)
+        const head = (
+          <PaintedRailHead
+            key={`shell:${paintTo}`}
+            nodes={shellNodes}
+          />
+        )
+        if (addFrom > paintLive) paintedHeadRef.current = head
+        out = out.concat(head)
+        paintedBatchesRef.current.push({
+          from: paintLive + 1,
+          to: paintTo,
+          nodes: shellNodes,
+          head,
+        })
+      }
+      paintedOutRef.current = out
+      return out
+    }
+    if (
+      (hydrate || (grew && leftoverShells))
+      && paintedBatchesRef.current.length > 0
+    ) {
+      const tailAt = paintedBatchesRef.current.findIndex(
+        (batch) => batch.to > prevLive,
+      )
+      if (tailAt >= 0) {
+        const batches = paintedBatchesRef.current.slice()
+        const heads = batches.map((batch) => batch.head)
+        const batch = batches[tailAt]
+        if (!batch) {
+          paintedHeadRef.current = heads[0] ?? null
+          paintedOutRef.current = heads
+          paintedBatchesRef.current = batches
+          return heads
+        }
+        const nodes = batch.nodes.slice()
+        const hydFrom = Math.max(prevLive + 1, batch.from, grid.from)
+        let tailTo = batch.to
+        for (let col = hydFrom; col <= paintLive; col++) {
+          const at = col - batch.from
+          const node = next[col - grid.from]
+          if (node == null) continue
+          if (at >= 0 && at < nodes.length) {
+            nodes[at] = node
+          }
+          else {
+            nodes.push(node)
+            if (col > tailTo) tailTo = col
+          }
+        }
+        if (paintTo > tailTo) {
+          for (let col = tailTo + 1; col <= paintTo; col++) {
+            const node = next[col - grid.from]
+            if (node != null) nodes.push(node)
+          }
+          tailTo = paintTo
+        }
+        const head = (
+          <PaintedRailHead
+            key={
+              isValidElement(batch.head) && batch.head.key != null
+                ? batch.head.key
+                : `shell:${paintTo}`
+            }
+            nodes={nodes}
+          />
+        )
+        batches[tailAt] = {
+          from: batch.from,
+          to: tailTo,
+          nodes,
+          head,
+        }
+        heads[tailAt] = head
+        paintedHeadRef.current = heads[0] ?? null
+        paintedOutRef.current = heads
+        paintedBatchesRef.current = batches
+        return heads
+      }
+      const kept = paintedBatchesRef.current.filter((batch) => batch.to <= prevLive)
+      const heads: ReactNode[] = kept.map((batch) => batch.head)
+      const batches = kept.slice()
+      const hydFrom = Math.max(prevLive + 1, grid.from)
+      if (hydFrom <= paintLive) {
+        const nodes = next.slice(
+          hydFrom - grid.from,
+          paintLive - grid.from + 1,
+        )
+        const head = (
+          <PaintedRailHead
+            key={`${prevLive}:${paintLive}`}
+            nodes={nodes}
+          />
+        )
+        heads.push(head)
+        batches.push({
+          from: hydFrom,
+          to: paintLive,
+          nodes,
+          head,
+        })
+      }
+      if (paintLive < paintTo) {
+        const nodes = next.slice(paintLive - grid.from + 1)
+        const head = (
+          <PaintedRailHead
+            key={`shell:${paintTo}`}
+            nodes={nodes}
+          />
+        )
+        heads.push(head)
+        batches.push({
+          from: paintLive + 1,
+          to: paintTo,
+          nodes,
+          head,
+        })
+      }
+      paintedHeadRef.current = heads[0] ?? null
+      paintedOutRef.current = heads
+      paintedBatchesRef.current = batches
+      return heads
+    }
+    if (reset || !paintedHeadRef.current || paintedBatchesRef.current.length === 0) {
+      const head = <PaintedRailHead nodes={next} />
+      paintedHeadRef.current = head
+      paintedOutRef.current = [head]
+      paintedBatchesRef.current = [{
+        from: grid.from,
+        to: paintTo,
+        nodes: next,
+        head,
+      }]
+      return paintedOutRef.current
+    }
+    const clipped = clipPaintedBatches(
+      paintedBatchesRef.current,
+      grid.from,
+      paintTo,
+      next,
+    )
+    const heads: ReactNode[] = []
+    const batches: {
+      from: number
+      to: number
+      nodes: readonly ReactNode[]
+      head: ReactNode
+    }[] = []
+    for (const batch of clipped) {
+      const head = batch.keep?.head ?? (
+        <PaintedRailHead
+          key={`${batch.from}:${batch.to}`}
+          nodes={batch.nodes}
+        />
+      )
+      heads.push(head)
+      batches.push({
+        from: batch.from,
+        to: batch.to,
+        nodes: batch.nodes,
+        head,
+      })
+    }
+    paintedHeadRef.current = heads[0] ?? null
+    paintedOutRef.current = heads
+    paintedBatchesRef.current = batches
+    return heads
+  }, [
+    byCol,
+    canStar,
+    grid.from,
+    labels,
+    liveTo,
+    locale,
+    paintTo,
+    times,
+  ])
+  const storyByIdRef = useRef<Map<number, FeedStory>>(new Map())
+  const storySlotsSeenRef = useRef(storySlots)
+  if (storySlotsSeenRef.current !== storySlots) {
+    storySlotsSeenRef.current = storySlots
+    const map = new Map<number, FeedStory>()
+    for (const slot of storySlots) map.set(slot.story.id, slot.story)
+    storyByIdRef.current = map
+  }
+  const onOpenRef = useRef(onOpen)
+  onOpenRef.current = onOpen
+  const onPeekRef = useRef(onPeek)
+  onPeekRef.current = onPeek
+  const onPeekEndRef = useRef(onPeekEnd)
+  onPeekEndRef.current = onPeekEnd
+  const onStarRef = useRef(onToggleStar)
+  onStarRef.current = onToggleStar
+  const onTrackClick = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    const star = event.target instanceof Element
+      ? event.target.closest('.brew-story__star')
+      : null
+    if (star) {
+      const story = storyAtRailTarget(star, storyByIdRef.current)
+      if (story) onStarRef.current?.(story)
+      return
+    }
+    const hit = event.target instanceof Element
+      ? event.target.closest('.brew-story__hit')
+      : null
+    if (!hit) return
+    const story = storyAtRailTarget(hit, storyByIdRef.current)
+    if (story) onOpenRef.current(story)
+  }, [])
+  const onTrackPointerOver = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (event.pointerType === 'touch') return
+      const story = storyAtRailTarget(event.target, storyByIdRef.current)
+      if (!story) return
+      const node = event.target instanceof Element
+        ? event.target.closest('.brew-story')
+        : null
+      const from = event.relatedTarget
+      if (from instanceof Node && node?.contains(from)) return
+      onPeekRef.current(story)
+    },
+    [],
+  )
+  const onTrackPointerOut = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (event.pointerType === 'touch') return
+      const node = event.target instanceof Element
+        ? event.target.closest('.brew-story')
+        : null
+      const to = event.relatedTarget
+      if (node && to instanceof Node && node.contains(to)) return
+      if (storyAtRailTarget(event.relatedTarget, storyByIdRef.current)) return
+      onPeekEndRef.current()
+    },
+    [],
+  )
+  return (
+    <div
+      className="brew-feeds__items-track"
+      ref={trackRef}
+      data-brew-rail-track="items"
+      style={trackStyle}
+      onClick={onTrackClick}
+      onPointerOver={onTrackPointerOver}
+      onPointerOut={onTrackPointerOut}
+    >
+      {painted}
+    </div>
+  )
+})
 
 function paintSiteInk(img: HTMLImageElement, fallback: string | null): void {
   if (fallback) return
@@ -95,11 +927,16 @@ interface BrewFeedsProps {
   toolbar?: ReactNode
   vacant?: ReactNode
   stories?: FeedStory[]
+  onExpandStories?: (direction: 1 | -1) => void
+  onJumpSource?: (sourceId: number) => void
+  onHoldStories?: () => void
+  onReleaseStories?: () => void
+  railEpoch?: number | string
   onReadySource?: (id: number | null) => void
   sourceTags?: ReactNode
 }
 
-export default function BrewFeeds({
+function BrewFeeds({
   sources,
   focusSourceId,
   isEditMode = false,
@@ -115,6 +952,11 @@ export default function BrewFeeds({
   toolbar,
   vacant,
   stories = [],
+  onExpandStories,
+  onJumpSource,
+  onHoldStories,
+  onReleaseStories,
+  railEpoch = 0,
   onReadySource,
   sourceTags,
 }: BrewFeedsProps) {
@@ -127,9 +969,34 @@ export default function BrewFeeds({
   const sitesApiRef = useRef<BrewRailApi | null>(null)
   const itemsViewRef = useRef<HTMLDivElement>(null)
   const itemsTrackRef = useRef<HTMLDivElement>(null)
+  const itemsApiRef = useRef<BrewRailApi | null>(null)
+  const skipStoryAlignRef = useRef(false)
+  const pendingStoryAlignRef = useRef<number | null>(null)
+  const railDriverRef = useRef<'sites' | 'stories' | null>(null)
   const [focusId, setFocusId] = useState<number | null>(sources[0]?.id ?? null)
   const [readyId, setReadyId] = useState<number | null>(sources[0]?.id ?? null)
+  const lastSourceRef = useRef<number | null>(sources[0]?.id ?? null)
+  const paintedOnRef = useRef<number | null>(sources[0]?.id ?? null)
+  const paintedElRef = useRef<HTMLElement | null>(null)
+  const focusIdRef = useRef<number | null>(sources[0]?.id ?? null)
+  focusIdRef.current = focusId
+  const focusTimerRef = useRef(0)
+  const growFrameRef = useRef(0)
+  const reactMountStaleRef = useRef(false)
+  const coverFrameRef = useRef(0)
+  const pendingEagerRef = useRef<{ from: number; to: number } | null>(null)
+  const pendingAwayRef = useRef<{
+    from: number
+    to: number
+    prev: { from: number; to: number }
+  } | null>(null)
+  const lastEagerRef = useRef<{ from: number; to: number }>({ from: 1, to: 8 })
+  const storyWarmRef = useRef<() => void>(() => {})
+  const pendingFlushRef = useRef(false)
+  const pendingExpandRef = useRef<1 | -1 | null>(null)
   const [hoverStoryId, setHoverStoryId] = useState<number | null>(null)
+  const hoverStoryIdRef = useRef<number | null>(null)
+  const grabbingRef = useRef(false)
   const [sitesOpen, setSitesOpen] = useState(false)
   const [flipping, setFlipping] = useState(false)
   const [morphing, setMorphing] = useState(false)
@@ -150,6 +1017,18 @@ export default function BrewFeeds({
   const appliedFocus = useRef<number | null>(null)
   const brewLabels = t.brew
   const times = useBrewTimes()
+  const storyPaintRef = useRef({
+    times,
+    locale,
+    labels: brewLabels,
+    canStar: onToggleStar != null,
+  })
+  storyPaintRef.current = {
+    times,
+    locale,
+    labels: brewLabels,
+    canStar: onToggleStar != null,
+  }
 
   const focus = useMemo(
     () => sources.find((s) => s.id === focusId) ?? sources[0] ?? null,
@@ -162,6 +1041,9 @@ export default function BrewFeeds({
 
   useEffect(() => {
     if (!sources.length) {
+      lastSourceRef.current = null
+      paintedOnRef.current = null
+      paintedElRef.current = null
       setFocusId(null)
       setReadyId(null)
       return
@@ -172,15 +1054,23 @@ export default function BrewFeeds({
       sources.some((s) => s.id === focusSourceId)
     ) {
       appliedFocus.current = focusSourceId
+      railDriverRef.current = 'sites'
+      lastSourceRef.current = focusSourceId
+      paintedOnRef.current = focusSourceId
+      paintedElRef.current = null
       setFocusId(focusSourceId)
       setReadyId(focusSourceId)
+      onJumpSource?.(focusSourceId)
       return
     }
     if (!focusId || !sources.some((s) => s.id === focusId)) {
+      lastSourceRef.current = sources[0].id
+      paintedOnRef.current = sources[0].id
+      paintedElRef.current = null
       setFocusId(sources[0].id)
       setReadyId(sources[0].id)
     }
-  }, [sources, focusId, focusSourceId])
+  }, [sources, focusId, focusSourceId, onJumpSource])
 
   useEffect(() => {
     if (focusSourceId == null || focusId !== focusSourceId) return
@@ -201,14 +1091,15 @@ export default function BrewFeeds({
     () => sources.map((source) => source.id).join(','),
     [sources],
   )
-  const itemKey = `${ready?.id ?? 0}:${stories.map((item) => item.id).join(',')}`
-
   useEffect(() => {
+    hoverStoryIdRef.current = null
     setHoverStoryId(null)
   }, [focusId])
 
   useEffect(() => {
-    if (sitesOpen) setHoverStoryId(null)
+    if (!sitesOpen) return
+    hoverStoryIdRef.current = null
+    setHoverStoryId(null)
   }, [sitesOpen])
 
   useEffect(() => {
@@ -222,8 +1113,612 @@ export default function BrewFeeds({
   }, [])
 
   const onLeadChange = useCallback((id: number) => {
+    lastSourceRef.current = id
+    paintedOnRef.current = id
+    paintedElRef.current = null
+    if (focusTimerRef.current) {
+      window.clearTimeout(focusTimerRef.current)
+      focusTimerRef.current = 0
+    }
+    pendingFlushRef.current = false
     setFocusId(id)
+    onJumpSource?.(id)
+  }, [onJumpSource])
+
+  useEffect(() => {
+    return () => {
+      if (focusTimerRef.current) window.clearTimeout(focusTimerRef.current)
+      if (growFrameRef.current) window.cancelAnimationFrame(growFrameRef.current)
+      pendingAwayRef.current = null
+      if (coverFrameRef.current) window.cancelAnimationFrame(coverFrameRef.current)
+    }
   }, [])
+  const storiesRef = useRef(stories)
+  const storyIndexRef = useRef<Map<number, number>>(new Map())
+  if (storyIndexRef.current.size === 0 || storiesRef.current !== stories) {
+    const map = new Map<number, number>()
+    for (let i = 0; i < stories.length; i++) map.set(stories[i].id, i)
+    storyIndexRef.current = map
+  }
+  storiesRef.current = stories
+  const sourcesRef = useRef(sources)
+  sourcesRef.current = sources
+  const activateSiteRef = useRef<(source: BrewSource) => void>(() => {})
+  const onEditSourceRef = useRef(onEditSource)
+  onEditSourceRef.current = onEditSource
+  const onActivateSite = useCallback((id: number | string) => {
+    const source = sourcesRef.current.find((entry) => entry.id === Number(id))
+    if (source) activateSiteRef.current(source)
+  }, [])
+  const onOpenLatestSite = useCallback((id: number | string) => {
+    const source = sourcesRef.current.find((entry) => entry.id === Number(id))
+    const latest = source?.recent_items?.[0]
+    if (source && latest) openArticleRef.current(latest, source)
+  }, [])
+  const onEditSite = useCallback((id: number | string) => {
+    const source = sourcesRef.current.find((entry) => entry.id === Number(id))
+    if (source) onEditSourceRef.current?.(source)
+  }, [])
+  const onIconLoadSite = useCallback((img: HTMLImageElement) => {
+    const id = Number(img.closest('.brew-site')?.getAttribute('data-rail-id'))
+    const theme = sourcesRef.current.find((entry) => entry.id === id)?.theme_color
+    const idle = window.requestIdleCallback
+    if (idle) {
+      idle(() => paintSiteInk(img, theme ?? null), { timeout: 800 })
+      return
+    }
+    window.setTimeout(paintSiteInk, 0, img, theme ?? null)
+  }, [])
+  const slotCacheRef = useRef<StorySlot[]>([])
+  const storySlots = useMemo(() => {
+    const next = storyRailSlots(stories, slotCacheRef.current)
+    slotCacheRef.current = next
+    return next
+  }, [stories])
+  const colCacheRef = useRef<Array<{ id: number; column: number }>>([])
+  const sourceCols = useMemo(() => {
+    const next = sourceColumnStarts(storySlots, colCacheRef.current)
+    colCacheRef.current = next
+    return next
+  }, [storySlots])
+  const sourceColsRef = useRef(sourceCols)
+  sourceColsRef.current = sourceCols
+  const storySlotsRef = useRef(storySlots)
+  storySlotsRef.current = storySlots
+  const colLeadRef = useRef(new Map<number, number>())
+  const colLeadSlotsRef = useRef<readonly StorySlot[] | null>(null)
+  if (colLeadSlotsRef.current !== storySlots) {
+    colLeadSlotsRef.current = storySlots
+    colLeadRef.current = storyColumnLeads(storySlots)
+  }
+  const driveStopsRef = useRef<number[]>([])
+  const followStopsRef = useRef<number[]>([])
+  const sourceStartsRef = useRef<Array<{ id: number; start: number }>>([])
+  const stopsColsRef = useRef(sourceCols)
+  const stopsColWRef = useRef(0)
+  const colWRef = useRef(276)
+  const lastSeekRef = useRef(0)
+  const followHintRef = useRef({ i: 0 })
+  const lastScrollRef = useRef(0)
+  const lastViewWRef = useRef(800)
+  const siteCardsRef = useRef<Array<{ id: number; left: number }>>([])
+  const siteIndexRef = useRef<Map<number, number>>(new Map())
+  const siteIndexCardsRef = useRef(siteCardsRef.current)
+  const lastSiteViewWRef = useRef(-1)
+  const siteCardsMissRef = useRef(false)
+  const siteElsRef = useRef(new Map<number, HTMLElement>())
+  const eagerBandRef = useRef({ from: 1, to: 8 })
+  const storyColRef = useRef(0)
+  const lastWindowViewRef = useRef(-1)
+  const lastWindowColWRef = useRef(-1)
+  const siteKeyRef = useRef(siteKey)
+  if (siteKeyRef.current !== siteKey) {
+    siteKeyRef.current = siteKey
+    siteCardsRef.current = []
+    lastSiteViewWRef.current = -1
+    siteCardsMissRef.current = false
+    siteElsRef.current.clear()
+  }
+  const rebuildFollowStops = useCallback((colW: number, viewW?: number) => {
+    const columns = sourceColsRef.current
+    const sites = sitesApiRef.current
+    const knownView = lastSiteViewWRef.current
+    const viewChanged =
+      viewW != null
+      && knownView >= 0
+      && Math.abs(knownView - viewW) > 8
+    if (viewChanged) siteCardsMissRef.current = false
+    if (
+      sites
+      && (
+        siteCardsRef.current.length === 0
+        || viewChanged
+      )
+      && !(siteCardsRef.current.length === 0 && siteCardsMissRef.current)
+    ) {
+      siteCardsRef.current = sites.cards(viewChanged)
+      siteCardsMissRef.current = siteCardsRef.current.length === 0
+      if (viewW != null) lastSiteViewWRef.current = viewW
+    } else if (viewW != null && knownView < 0) {
+      lastSiteViewWRef.current = viewW
+    }
+    const sameDrive =
+      stopsColsRef.current === columns
+      && Math.abs(stopsColWRef.current - colW) <= 0.5
+      && sourceStartsRef.current.length === columns.length
+      && driveStopsRef.current.length === columns.length
+    stopsColsRef.current = columns
+    stopsColWRef.current = colW
+    if (!sameDrive) {
+      const starts = sourceScrollStarts(columns, colW)
+      driveStopsRef.current = starts.map((block) => block.start)
+      sourceStartsRef.current = starts
+    }
+    const siteCards = siteCardsRef.current
+    const cardsChanged = siteIndexCardsRef.current !== siteCards
+    if (cardsChanged) {
+      siteIndexCardsRef.current = siteCards
+      const map = new Map<number, number>()
+      for (let i = 0; i < siteCards.length; i++) {
+        const id = siteCards[i]?.id
+        if (id != null) map.set(id, i)
+      }
+      siteIndexRef.current = map
+    }
+    if (
+      sameDrive
+      && !cardsChanged
+      && followStopsRef.current.length === columns.length
+    ) {
+      return
+    }
+    const siteIndex = siteIndexRef.current
+    followStopsRef.current = columns.map((block) =>
+      railSeatScroll(
+        siteCards,
+        siteIndex.get(block.id) ?? 0,
+        RAIL_OVERFLOW_LEFT_PX,
+      ),
+    )
+  }, [])
+  useLayoutEffect(() => {
+    rebuildFollowStops(colWRef.current)
+  }, [rebuildFollowStops, sourceCols])
+  const mountColsRef = useRef({
+    from: 1,
+    to: Math.min(RAIL_MOUNT_GROW_AHEAD, RAIL_MOUNT_BOOT_TO),
+  })
+  const storySetMountRef = useRef<(next: { from: number; to: number }) => void>(
+    () => {},
+  )
+  const liveToRef = useRef(Math.min(RAIL_MOUNT_GROW_AHEAD, RAIL_MOUNT_BOOT_TO))
+  const storySetLiveRef = useRef<(next: number) => void>(() => {})
+  const expandRef = useRef(onExpandStories)
+  expandRef.current = onExpandStories
+  const jumpRef = useRef(onJumpSource)
+  jumpRef.current = onJumpSource
+  const holdStoriesRef = useRef(onHoldStories)
+  holdStoriesRef.current = onHoldStories
+  const releaseStoriesRef = useRef(onReleaseStories)
+  releaseStoriesRef.current = onReleaseStories
+  const openArticleRef = useRef<
+    (item: BrewItemPreview & { source_id?: number }, source?: BrewSource) => void
+  >(() => {})
+  const onOpenStory = useCallback((item: FeedStory) => {
+    openArticleRef.current(item)
+  }, [])
+  const onPeekEndRef = useRef(onPeekEnd)
+  onPeekEndRef.current = onPeekEnd
+  const dropPeek = () => {
+    if (hoverStoryIdRef.current == null) return
+    hoverStoryIdRef.current = null
+    setHoverStoryId(null)
+    onPeekEndRef.current?.()
+  }
+  const onPeekStory = useCallback((item: FeedStory) => {
+    if (grabbingRef.current) return
+    hoverStoryIdRef.current = item.id
+    setHoverStoryId(item.id)
+    onPeekItem?.(item)
+  }, [onPeekItem])
+  const onPeekEndStory = useCallback(() => {
+    if (grabbingRef.current) return
+    hoverStoryIdRef.current = null
+    setHoverStoryId(null)
+    onPeekEnd?.()
+  }, [onPeekEnd])
+  const onToggleStarRef = useRef(onToggleStar)
+  onToggleStarRef.current = onToggleStar
+  const onStarStory = useCallback((item: FeedStory) => {
+    return onToggleStarRef.current?.(item)
+  }, [])
+  const flushStorySettle = useCallback(() => {
+    focusTimerRef.current = 0
+    if (grabbingRef.current) {
+      pendingFlushRef.current = true
+      return
+    }
+    pendingFlushRef.current = false
+    dropStoryDomShells(itemsTrackRef.current)
+    let settleId: number | null = null
+    let expandDir: 1 | -1 | null = null
+    if (railDriverRef.current !== 'sites') {
+      const id = lastSourceRef.current
+      if (id != null && id !== focusIdRef.current) {
+        skipStoryAlignRef.current = true
+        focusIdRef.current = id
+        settleId = id
+      }
+      expandDir = pendingExpandRef.current
+      pendingExpandRef.current = null
+    }
+    const columns = sourceColsRef.current
+    const totalCols = Math.max(
+      1,
+      columns.at(-1)?.column ?? storySlotsRef.current.at(-1)?.column ?? 1,
+    )
+    const prev = mountColsRef.current
+    const next = railMountColumnsSettle(
+      prev,
+      lastScrollRef.current,
+      lastViewWRef.current,
+      colWRef.current,
+      totalCols,
+    )
+    const stale = reactMountStaleRef.current
+    reactMountStaleRef.current = false
+    const mountChanged = next.from !== prev.from || next.to !== prev.to
+    if (mountChanged) {
+      mountColsRef.current = next
+      liveToRef.current = Math.min(liveToRef.current, next.to)
+    }
+    const syncMount = mountChanged || stale
+    const ideal = railMountColumns(
+      lastScrollRef.current,
+      lastViewWRef.current,
+      colWRef.current,
+      totalCols,
+    )
+    if (coverFrameRef.current) {
+      window.cancelAnimationFrame(coverFrameRef.current)
+      coverFrameRef.current = 0
+    }
+    pendingEagerRef.current = null
+    pendingAwayRef.current = null
+    const prevBand = eagerBandRef.current
+    eagerBandRef.current = ideal
+    eagerStoryCovers(itemsTrackRef.current, ideal.from, ideal.to, prevBand)
+    lastEagerRef.current = { from: ideal.from, to: ideal.to }
+    paintStoryAway(itemsTrackRef.current, ideal.from, ideal.to, prevBand)
+    if (settleId == null && expandDir == null && !syncMount) {
+      storySetLiveRef.current(liveToRef.current)
+      return
+    }
+    startTransition(() => {
+      if (settleId != null) {
+        setFocusId(settleId)
+        jumpRef.current?.(settleId)
+      }
+      if (expandDir) expandRef.current?.(expandDir)
+      if (syncMount) storySetMountRef.current(mountColsRef.current)
+      storySetLiveRef.current(liveToRef.current)
+    })
+  }, [])
+  const onStoryScroll = useCallback(
+    (state: { scroll: number; viewW: number; colW: number }) => {
+      if (state.colW > 1) colWRef.current = state.colW
+      lastScrollRef.current = state.scroll
+      lastViewWRef.current = state.viewW
+      const colW = colWRef.current
+      const columns = sourceColsRef.current
+      const sites = sitesApiRef.current
+      let needStops =
+        stopsColsRef.current !== columns
+        || driveStopsRef.current.length !== columns.length
+        || Math.abs(stopsColWRef.current - colW) > 0.5
+      if (
+        sites
+        && (
+          (
+            siteCardsRef.current.length === 0
+            && !siteCardsMissRef.current
+          )
+          || (
+            lastSiteViewWRef.current >= 0
+            && Math.abs(lastSiteViewWRef.current - state.viewW) > 8
+          )
+        )
+      ) {
+        needStops = true
+      } else if (lastSiteViewWRef.current < 0) {
+        lastSiteViewWRef.current = state.viewW
+      }
+      if (needStops) {
+        rebuildFollowStops(colW, state.viewW)
+        followHintRef.current.i = 0
+      }
+      if (railDriverRef.current !== 'sites') {
+        const siteX = followRailScroll(
+          state.scroll,
+          driveStopsRef.current,
+          followStopsRef.current,
+          followHintRef.current,
+        )
+        if (Math.abs(siteX - lastSeekRef.current) > 0.5) {
+          lastSeekRef.current = siteX
+          sitesApiRef.current?.seek(siteX)
+        }
+      }
+      const col = railLeadColumn(state.scroll, colW)
+      if (
+        col === storyColRef.current
+        && Math.abs(state.viewW - lastWindowViewRef.current) <= 8
+        && Math.abs(colW - lastWindowColWRef.current) <= 0.5
+      ) {
+        return
+      }
+      storyColRef.current = col
+      lastWindowViewRef.current = state.viewW
+      lastWindowColWRef.current = colW
+      const lead = storySlotAtColumn(
+        storySlotsRef.current,
+        col,
+        colLeadRef.current,
+      )
+      if (lead) {
+        const index = storyIndexRef.current.get(lead.story.id)
+        if (index != null) {
+          const len = storiesRef.current.length
+          const dir: 1 | -1 | null =
+            index >= len - 4 ? 1 : index <= 3 ? -1 : null
+          if (dir != null) {
+            pendingExpandRef.current = dir
+            if (!focusTimerRef.current) {
+              focusTimerRef.current = window.setTimeout(
+                flushStorySettle,
+                FOCUS_FOLLOW_MS,
+              )
+            }
+          }
+        }
+      }
+      const totalCols = Math.max(
+        1,
+        columns.at(-1)?.column ?? storySlotsRef.current.at(-1)?.column ?? 1,
+      )
+      const ideal = railMountColumns(
+        state.scroll,
+        state.viewW,
+        colW,
+        totalCols,
+      )
+      if (
+        ideal.from !== eagerBandRef.current.from
+        || ideal.to !== eagerBandRef.current.to
+      ) {
+        const prevBand = eagerBandRef.current
+        eagerBandRef.current = ideal
+        const mounted = mountColsRef.current
+        const eagerFrom = Math.max(ideal.from, mounted.from)
+        const eagerTo = Math.min(ideal.to, mounted.to)
+        paintStoryAway(
+          itemsTrackRef.current,
+          ideal.from,
+          ideal.to,
+          prevBand,
+          !grabbingRef.current,
+        )
+        if (grabbingRef.current) {
+          pendingAwayRef.current = {
+            from: ideal.from,
+            to: ideal.to,
+            prev: prevBand,
+          }
+          pendingEagerRef.current = { from: eagerFrom, to: eagerTo }
+        } else {
+          eagerStoryCovers(
+            itemsTrackRef.current,
+            eagerFrom,
+            eagerTo,
+            prevBand,
+          )
+          lastEagerRef.current = { from: eagerFrom, to: eagerTo }
+        }
+      }
+      let dirty = false
+      let growReact = false
+      const fillGrabLive = (from: number, to: number) => {
+        if (from > to) return
+        const paint = storyPaintRef.current
+        const ready = ensureStoryShells(
+          itemsTrackRef.current,
+          from,
+          to,
+          storySlotsRef.current,
+        )
+        paintStoryLiveCols(
+          itemsTrackRef.current,
+          from,
+          to,
+          storySlotsRef.current,
+          paint.times,
+          paint.locale,
+          paint.labels,
+          eagerBandRef.current.to,
+          paint.canStar,
+          true,
+          ready,
+        )
+      }
+      const prevCols = mountColsRef.current
+      const grown = railMountColumnsCovered(
+        prevCols,
+        ideal,
+        totalCols,
+        Number.POSITIVE_INFINITY,
+        RAIL_MOUNT_RESERVE,
+      )
+        ? prevCols
+        : railMountColumnsPan(
+            prevCols,
+            state.scroll,
+            state.viewW,
+            colW,
+            totalCols,
+          )
+      if (grown.from !== prevCols.from || grown.to !== prevCols.to) {
+        const prevLive = liveToRef.current
+        if (grabbingRef.current) {
+          mountColsRef.current = grown
+          storyWarmRef.current()
+          reactMountStaleRef.current = true
+        }
+        mountColsRef.current = grown
+        liveToRef.current = railLiveTo(
+          ideal.to,
+          grown.to,
+          liveToRef.current,
+        )
+        if (grabbingRef.current) {
+          fillGrabLive(prevLive + 1, liveToRef.current)
+        } else {
+          growReact = true
+        }
+        dirty = true
+      }
+      if (ideal.to + RAIL_MOUNT_RESERVE > liveToRef.current) {
+        const prevLive = liveToRef.current
+        const nextLive = railLiveTo(
+          ideal.to,
+          mountColsRef.current.to,
+          liveToRef.current,
+        )
+        if (nextLive > prevLive) {
+          if (grabbingRef.current) storyWarmRef.current()
+          liveToRef.current = nextLive
+          if (grabbingRef.current) {
+            fillGrabLive(prevLive + 1, nextLive)
+          } else {
+            dirty = true
+            growReact = true
+          }
+        }
+      }
+      const flushAway = () => {
+        const away = pendingAwayRef.current
+        pendingAwayRef.current = null
+        if (!away) return
+        paintStoryAway(
+          itemsTrackRef.current,
+          away.from,
+          away.to,
+          away.prev,
+        )
+      }
+      const armCovers = () => {
+        if (coverFrameRef.current || !pendingEagerRef.current) return
+        coverFrameRef.current = window.requestAnimationFrame(() => {
+          coverFrameRef.current = 0
+          flushAway()
+          const next = pendingEagerRef.current
+          pendingEagerRef.current = null
+          if (!next || grabbingRef.current) return
+          eagerStoryCovers(
+            itemsTrackRef.current,
+            next.from,
+            next.to,
+            lastEagerRef.current,
+          )
+          lastEagerRef.current = next
+        })
+      }
+      if (growReact && !growFrameRef.current) {
+        if (coverFrameRef.current) {
+          window.cancelAnimationFrame(coverFrameRef.current)
+          coverFrameRef.current = 0
+        }
+        growFrameRef.current = window.requestAnimationFrame(() => {
+          growFrameRef.current = 0
+          flushAway()
+          startTransition(() => {
+            storySetMountRef.current(mountColsRef.current)
+            storySetLiveRef.current(liveToRef.current)
+          })
+          armCovers()
+        })
+      } else if (
+        pendingEagerRef.current
+        && !coverFrameRef.current
+        && !growFrameRef.current
+      ) {
+        armCovers()
+      }
+      if (railDriverRef.current === 'sites') return
+      const sourceId =
+        lead?.story.source_id
+        ?? sourceAtScroll(state.scroll, sourceStartsRef.current)
+      if (sourceId != null && sourceId !== lastSourceRef.current) {
+        lastSourceRef.current = sourceId
+        paintSiteOn(
+          sitesTrackRef.current,
+          sourceId,
+          paintedOnRef,
+          paintedElRef,
+          siteElsRef.current,
+        )
+        skipStoryAlignRef.current = true
+        dirty = true
+      }
+      if (!dirty) return
+      if (focusTimerRef.current) window.clearTimeout(focusTimerRef.current)
+      focusTimerRef.current = window.setTimeout(flushStorySettle, FOCUS_FOLLOW_MS)
+    },
+    [flushStorySettle, rebuildFollowStops],
+  )
+  const paintGrabbing = (on: boolean) => {
+    grabbingRef.current = on
+    feedsRef.current?.classList.toggle('is-rail-grabbing', on)
+  }
+  const paintFollowLayer = (on: boolean) => {
+    const track = sitesTrackRef.current
+    if (track) track.style.willChange = on ? 'transform' : ''
+  }
+  useLayoutEffect(() => {
+    feedsRef.current?.classList.toggle('is-rail-grabbing', grabbingRef.current)
+  })
+  const onSiteGrab = useCallback(() => {
+    railDriverRef.current = 'sites'
+    paintGrabbing(true)
+    holdStoriesRef.current?.()
+    dropPeek()
+  }, [])
+  const onStoryGrab = useCallback(() => {
+    railDriverRef.current = 'stories'
+    paintGrabbing(true)
+    paintFollowLayer(true)
+    holdStoriesRef.current?.()
+    dropPeek()
+  }, [])
+  const onSiteIdle = useCallback(() => {
+    paintGrabbing(false)
+    if (pendingFlushRef.current) flushStorySettle()
+    releaseStoriesRef.current?.()
+  }, [flushStorySettle])
+  const onStoryIdle = useCallback(() => {
+    if (focusTimerRef.current) window.clearTimeout(focusTimerRef.current)
+    paintGrabbing(false)
+    paintFollowLayer(false)
+    flushStorySettle()
+    const releaseAndWarm = () => {
+      releaseStoriesRef.current?.()
+      storyWarmRef.current()
+    }
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(releaseAndWarm)
+    } else {
+      window.setTimeout(releaseAndWarm, 0)
+    }
+  }, [flushStorySettle])
 
   const railsReady =
     brewFlipQuiet() ||
@@ -238,14 +1733,71 @@ export default function BrewFeeds({
     onLeadChange,
     sitesApiRef,
     true,
+    undefined,
+    onSiteGrab,
+    onSiteIdle,
   )
+
   useBrewRailPan(
     itemsViewRef,
     itemsTrackRef,
     !sitesOpen && !flipping && railsReady && stories.length > 0,
-    itemKey,
+    railEpoch,
     '.brew-story',
+    undefined,
+    itemsApiRef,
+    true,
+    onStoryScroll,
+    onStoryGrab,
+    onStoryIdle,
   )
+
+  const prevStorySlotsRef = useRef(storySlots)
+  useLayoutEffect(() => {
+    const prev = prevStorySlotsRef.current
+    prevStorySlotsRef.current = storySlots
+    if (prev === storySlots) return
+    const colW = colWRef.current
+    if (colW <= 1) return
+    const scroll = railTrackScroll(itemsTrackRef.current, lastScrollRef.current)
+    lastScrollRef.current = scroll
+    const leadCol = railLeadColumn(scroll, colW)
+    const shift = storyColumnShift(prev, storySlots, leadCol)
+    if (shift) itemsApiRef.current?.nudge(shift * colW)
+  }, [storySlots])
+
+  useLayoutEffect(() => {
+    if (skipStoryAlignRef.current) {
+      skipStoryAlignRef.current = false
+      return
+    }
+    const slot = storySlots.find((item) => item.story.source_id === focusId)
+    if (!slot) return
+    const mounted = mountColsRef.current
+    if (slot.column < mounted.from || slot.column > mounted.to) {
+      const colW = colWRef.current
+      const totalCols = storySlots.at(-1)?.column ?? slot.column
+      const ideal = railMountColumns(
+        (slot.column - 1) * colW,
+        itemsViewRef.current?.clientWidth || 800,
+        colW,
+        totalCols,
+      )
+      const next = {
+        from: ideal.from,
+        to: Math.min(totalCols, ideal.to + RAIL_MOUNT_GROW_AHEAD),
+      }
+      eagerBandRef.current = ideal
+      pendingStoryAlignRef.current = slot.story.id
+      dropStoryDomShells(itemsTrackRef.current)
+      mountColsRef.current = next
+      liveToRef.current = railLiveTo(ideal.to, next.to)
+      storySetMountRef.current(next)
+      storySetLiveRef.current(liveToRef.current)
+      return
+    }
+    itemsApiRef.current?.align(slot.story.id, true)
+  }, [focusId, railEpoch])
 
   const holdMotion = () => {
     motionHolds.current += 1
@@ -308,10 +1860,10 @@ export default function BrewFeeds({
     const anims = [
       ...flySites(root, first, lead, siteOpenDelay(story ?? 'enter'), sitesOpen),
       ...(story === 'exit'
-        ? exitStories(root, '.brew-story', storyBoxes, root)
+        ? exitStories(root, '.brew-story:not(.brew-story--slot)', storyBoxes, root)
         : enterStories(
             root,
-            '.brew-story',
+            '.brew-story:not(.brew-story--slot)',
             storyPhaseDelay(story ?? 'enter'),
           )),
     ]
@@ -409,7 +1961,7 @@ export default function BrewFeeds({
     setStoriesBooted(true)
     clearRailExits(root, '.brew-story')
     const extra = motionHolds.current > 1 ? FLIP_INTRO_STORY_MS : 0
-    const anims = enterStories(root, '.brew-story', extra)
+    const anims = enterStories(root, '.brew-story:not(.brew-story--slot)', extra)
     let alive = true
     let released = false
     const finish = () => {
@@ -465,7 +2017,7 @@ export default function BrewFeeds({
       ? readFlipBoxes(root, '.brew-site')
       : new Map()
     pendingStoryBoxes.current = root
-      ? readFlipBoxes(root, '.brew-story')
+      ? readFlipBoxes(root, '.brew-story:not(.brew-story--slot)')
       : new Map()
     pendingChrome.current = root ? readFeedsChrome(root) : null
     pendingStory.current = open ? 'exit' : 'enter'
@@ -485,28 +2037,54 @@ export default function BrewFeeds({
       onToggleSelect?.(source.id)
       return
     }
+    railDriverRef.current = 'sites'
+    lastSourceRef.current = source.id
+    paintedOnRef.current = source.id
+    paintedElRef.current = null
+    if (focusTimerRef.current) {
+      window.clearTimeout(focusTimerRef.current)
+      focusTimerRef.current = 0
+    }
+    pendingFlushRef.current = false
     setFocusId(source.id)
     setReadyId(source.id)
+    onJumpSource?.(source.id)
     if (sitesOpen) {
       foldSites(source.id)
       return
     }
     sitesApiRef.current?.align(source.id)
+    const first = storiesRef.current.find((item) => item.source_id === source.id)
+    if (first) itemsApiRef.current?.align(first.id)
   }
+  activateSiteRef.current = activateSite
 
-  const openArticle = (item: BrewItemPreview, source?: BrewSource) => {
-    const target = source ?? ready ?? focus
+  const openArticle = (
+    item: BrewItemPreview & { source_id?: number },
+    source?: BrewSource,
+  ) => {
+    const target =
+      source ??
+      (item.source_id != null
+        ? sources.find((entry) => entry.id === item.source_id)
+        : undefined) ??
+      ready ??
+      focus
     if (!target) return
     if (isEditMode) {
       onToggleSelect?.(target.id)
       return
     }
+    lastSourceRef.current = target.id
+    paintedOnRef.current = target.id
+    paintedElRef.current = null
     setFocusId(target.id)
     setReadyId(target.id)
     if (sitesOpen) foldSites(target.id)
     else sitesApiRef.current?.align(target.id)
     onOpenItem?.(item, target)
   }
+  openArticleRef.current = openArticle
 
   return (
     <FeedsAddFormProvider>
@@ -554,49 +2132,23 @@ export default function BrewFeeds({
             data-brew-rail-track="sites"
             hidden={!!vacant}
           >
-          {sources.map((source) => {
-            const latest = source.recent_items?.[0] ?? null
-            const cover = source.id === ready?.id ? scene : ''
-            return (
-              <SiteCard
-                key={source.id}
-                id={source.id}
-                name={source.name}
-                description={source.description?.trim() || ''}
-                icon={getIconUrl(source.icon)}
-                unread={source.unread_count}
-                latestTitle={latest?.title}
-                latestWhen={
-                  latest
-                    ? brewRelativeTime(latest.published_at, times, locale)
-                    : ''
-                }
-                on={source.id === focus?.id}
-                cover={cover}
-                editing={isEditMode}
-                picked={selectedIds?.has(source.id)}
-                ink={normalizeThemeColor(source.theme_color)}
-                emptyLabel={t.brew.noArticles}
-                editLabel={t.brew.editSource}
-                onActivate={() => activateSite(source)}
-                onOpenLatest={
-                  latest ? () => openArticle(latest, source) : undefined
-                }
-                onEdit={
-                  onEditSource ? () => onEditSource(source) : undefined
-                }
-                onIconLoad={(img) => {
-                  const theme = source.theme_color
-                  const idle = window.requestIdleCallback
-                  if (idle) {
-                    idle(() => paintSiteInk(img, theme), { timeout: 800 })
-                    return
-                  }
-                  window.setTimeout(paintSiteInk, 0, img, theme)
-                }}
-              />
-            )
-          })}
+          <BrewFeedsSites
+            sources={sources}
+            onId={lastSourceRef.current ?? focus?.id}
+            readyId={ready?.id}
+            scene={scene}
+            times={times}
+            locale={locale}
+            isEditMode={isEditMode}
+            selectedIds={selectedIds}
+            emptyLabel={t.brew.noArticles}
+            editLabel={t.brew.editSource}
+            canEdit={!!onEditSource}
+            onActivate={onActivateSite}
+            onOpenLatest={onOpenLatestSite}
+            onEdit={onEditSite}
+            onIconLoad={onIconLoadSite}
+          />
           </div>
         </section>
 
@@ -614,37 +2166,27 @@ export default function BrewFeeds({
           {stories.length === 0 ? (
             <BrewVacant title={t.brew.noArticles} />
           ) : (
-            <div
-              className="brew-feeds__items-track"
-              ref={itemsTrackRef}
-              data-brew-rail-track="items"
-            >
-            {stories.map((item) => (
-              <BrewStory
-                key={item.id}
-                item={item}
-                times={times}
-                locale={locale}
-                labels={brewLabels}
-                onOpen={() => openArticle(item)}
-                onPeek={() => {
-                  setHoverStoryId(item.id)
-                  onPeekItem?.(item)
-                }}
-                onPeekEnd={() => {
-                  setHoverStoryId((id) => (id === item.id ? null : id))
-                  onPeekEnd?.()
-                }}
-                onToggleStar={
-                  onToggleStar
-                    ? (story) => {
-                        onToggleStar(story)
-                      }
-                    : undefined
-                }
-              />
-            ))}
-            </div>
+            <BrewFeedsStories
+              storySlots={storySlots}
+              times={times}
+              locale={locale}
+              labels={brewLabels}
+              onOpen={onOpenStory}
+              onPeek={onPeekStory}
+              onPeekEnd={onPeekEndStory}
+              onToggleStar={onToggleStar ? onStarStory : undefined}
+              trackRef={itemsTrackRef}
+              setMountRef={storySetMountRef}
+              setLiveRef={storySetLiveRef}
+              mountColsRef={mountColsRef}
+              liveToRef={liveToRef}
+              pendingStoryAlignRef={pendingStoryAlignRef}
+              itemsApiRef={itemsApiRef}
+              eagerBandRef={eagerBandRef}
+              lastEagerRef={lastEagerRef}
+              warmRef={storyWarmRef}
+              grabbingRef={grabbingRef}
+            />
           )}
         </section>
       </div>
@@ -652,3 +2194,5 @@ export default function BrewFeeds({
     </FeedsAddFormProvider>
   )
 }
+
+export default memo(BrewFeeds)

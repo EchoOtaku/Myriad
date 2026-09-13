@@ -30,4 +30,13 @@ describe('brew page hooks 边界', () => {
       assert.doesNotMatch(src, /from ['"]\.\/manager/)
     }
   })
+
+  it('订阅轨手势中按住拼轨，松手再 tick', () => {
+    const src = readFileSync(join(dir, 'useBoardPage.ts'), 'utf8')
+    assert.match(src, /quietRef/)
+    assert.match(src, /pendingBumpRef/)
+    assert.match(src, /holdStories/)
+    assert.match(src, /releaseStories/)
+    assert.match(src, /if \(quietRef\.current\)/)
+  })
 })

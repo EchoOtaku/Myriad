@@ -2,6 +2,7 @@
 
 .brew-note {
   --note-col: 44rem;
+  --note-wide-pad: 6rem;
   --note-gutter: clamp(1rem, 4vw, 2.5rem);
 
   display: flex;
@@ -9,6 +10,8 @@
   inset: 0;
   z-index: 9999;
   flex-direction: column;
+  contain: layout style;
+  isolation: isolate;
   background: var(--cfg-frost-elevated-bg, rgb(255 255 255 / 96%));
   color: var(--brew-fg);
 }
@@ -84,6 +87,8 @@
   font-size: 0.75rem;
   font-weight: 700;
   line-height: 1;
+  animation: sm-pop-in var(--sm-dur-fast, 140ms) var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1))
+    backwards;
 }
 
 html.dark .brew-note__peer {
@@ -95,16 +100,6 @@ html.dark .brew-note__peer {
   margin-inline-start: 0.25rem;
 }
 
-.brew-note__alert {
-  align-self: flex-start;
-  margin: 0;
-  padding: 0.45rem 0.75rem;
-  border-radius: 0.5rem;
-  background: var(--note-danger-fill);
-  color: var(--note-danger);
-  font-size: 0.8125rem;
-}
-
 /* ---- 纸面 ---- */
 
 .brew-note__scroll {
@@ -113,6 +108,10 @@ html.dark .brew-note__peer {
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
+  /* html 写了 scroll-behavior:smooth 且会继承。换栏时高度一变，浏览器就
+   * 平滑滑进新位置，像卡进槽。写作纸只要瞬间到位，不要这条惯性。 */
+  scroll-behavior: auto;
+  overflow-anchor: none;
 }
 
 .brew-note__center {
@@ -123,9 +122,18 @@ html.dark .brew-note__peer {
 }
 
 .brew-note__paper {
-  width: min(var(--note-col), 100%);
+  /* 栏宽只约束正文。纸是整页，两侧留给「+」、宽图、代码块、表格往外溢。 */
+  box-sizing: border-box;
+  contain: style;
+  width: 100%;
   margin: 0 auto;
-  padding: clamp(1.5rem, 6vh, 4rem) var(--note-gutter) 35vh;
+  padding: clamp(1.5rem, 6vh, 4rem)
+    max(var(--note-gutter), calc((100% - var(--note-col)) / 2))
+    35vh;
+  --note-out: min(
+    var(--note-wide-pad),
+    max(0px, (100% - var(--note-col)) / 2 - var(--note-gutter))
+  );
 }
 
 .brew-note__title {
@@ -143,10 +151,38 @@ html.dark .brew-note__peer {
   line-height: 1.2;
   overflow: hidden;
   resize: none;
+  field-sizing: content;
+  /* 纸面已经随外壳抬起，标题只淡，避免再叠一层位移。 */
+  animation: sm-fade-in var(--sm-dur-slow, 320ms) var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1))
+    both;
 }
 
-.brew-note__title:focus {
+/*
+ * 全局 overrides.css 给 textarea / input[type=url] 的聚焦态加了底色、主题色边和 3px 光晕。
+ * 写作面不是表单，这些都不要：聚焦就是光标在那里闪，没有别的。
+ */
+.brew-note .brew-note__title,
+.brew-note .brew-note__title:focus,
+.brew-note .brew-note__write textarea,
+.brew-note .brew-note__write textarea:focus,
+.brew-note .brew-note__visual:focus,
+.brew-note.brew-skin .brew-note__bubble-input,
+.brew-note.brew-skin .brew-note__bubble-input:focus,
+.brew-skin.brew-note__menu .brew-note__menu-input,
+.brew-skin.brew-note__menu .brew-note__menu-input:focus {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
   outline: none;
+  transition: none;
+}
+
+.brew-note.brew-skin .brew-note__blockbar-input,
+.brew-note.brew-skin .brew-note__blockbar-input:focus {
+  background: var(--note-paper);
+  box-shadow: none;
+  outline: none;
+  transition: border-color var(--sm-dur-fast, 120ms) ease;
 }
 
 .brew-note__title::placeholder {
@@ -168,6 +204,10 @@ html.dark .brew-note__peer {
   color: var(--note-ink-3);
   font-size: 0.875rem;
   cursor: pointer;
+  transition: var(--sm-t-fill);
+  animation: sm-fade-in var(--sm-dur-base, 220ms) var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1))
+    both;
+  animation-delay: var(--sm-stagger, 26ms);
 }
 
 .brew-note.brew-skin .brew-note__byline:hover {
@@ -184,6 +224,18 @@ html.dark .brew-note__peer {
 .brew-note__write.is-hidden,
 .brew-note__read.is-hidden {
   display: none;
+}
+
+/* Markdown / 预览可以带一点位移；可视层只淡，避免 contenteditable 跟着位移。 */
+.brew-note__source:not(.is-hidden),
+.brew-note__read:not(.is-hidden) {
+  animation: sm-enter var(--sm-dur-base, 220ms) var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1))
+    both;
+}
+
+.brew-note__write:not(.brew-note__source):not(.is-hidden) {
+  animation: sm-fade-in var(--sm-dur-base, 220ms) var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1))
+    both;
 }
 
 .brew-note__caret {
@@ -213,11 +265,18 @@ html.dark .brew-note__peer {
   line-height: 1.8;
   overflow: hidden;
   resize: none;
+  field-sizing: content;
 }
 
-.brew-note__write textarea:focus,
 .brew-note__visual:focus {
   outline: none;
+}
+
+/* 触屏点进去也别闪系统那层灰。 */
+.brew-note__title,
+.brew-note__write textarea,
+.brew-note__visual {
+  -webkit-tap-highlight-color: transparent;
 }
 
 .brew-note__write textarea::placeholder,
@@ -243,6 +302,35 @@ html.dark .brew-note__peer {
   line-height: 1.8;
 }
 
+/* 预览点哪里就去编辑哪里：光标形态先把话说出来。 */
+.brew-note__read .brew-note-preview [data-md-start] {
+  cursor: text;
+}
+
+.brew-note__read .brew-note-preview a {
+  cursor: text;
+}
+
+/* 默认栏也可以溢出：图、代码、表格吃掉两侧多出来的空，不必缩在 44rem 里。 */
+.brew-note .brew-note-preview > pre,
+.brew-note .brew-note-preview > table,
+.brew-note .brew-note-preview > img,
+.brew-note .brew-note-preview > p:has(> img:only-child),
+.brew-note .brew-note__visual > pre,
+.brew-note .brew-note__visual > table,
+.brew-note .brew-note__visual > img,
+.brew-note .brew-note__visual > p:has(> img:only-child) {
+  width: calc(100% + 2 * var(--note-out, 0px));
+  max-width: none;
+  margin-inline: calc(-1 * var(--note-out, 0px));
+}
+
+.brew-note .brew-note-preview > p:has(> img:only-child) img,
+.brew-note .brew-note__visual > p:has(> img:only-child) img {
+  width: 100%;
+  max-width: none;
+}
+
 /* ---- 选区浮动条 ---- */
 
 .brew-note__bubble {
@@ -265,8 +353,20 @@ html.dark .brew-note__peer {
 .brew-note__bubble.is-placed {
   opacity: 1;
   pointer-events: auto;
-  animation: sm-pop-in var(--sm-dur-fast, 120ms) var(--sm-ease-enter, ease-out)
-    backwards;
+  animation: brew-note-bubble-in var(--sm-dur-fast, 140ms)
+    var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+}
+
+@keyframes brew-note-bubble-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -2px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
 }
 
 .brew-note.brew-skin .brew-note__bubble-btn {
@@ -280,6 +380,7 @@ html.dark .brew-note__peer {
   background: transparent;
   color: var(--note-solid-fg);
   cursor: pointer;
+  transition: var(--sm-t-fill);
 }
 
 .brew-note.brew-skin .brew-note__bubble-btn svg {
@@ -298,6 +399,16 @@ html.dark .brew-note.brew-skin .brew-note__bubble-btn:hover {
 .brew-note.brew-skin .brew-note__bubble-btn:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 2px var(--note-solid-fg);
+}
+
+/* 选区上已经有的记号：反白，像被按下去。 */
+.brew-note.brew-skin .brew-note__bubble-btn.is-active {
+  background: var(--note-solid-fg);
+  color: var(--note-solid-bg);
+}
+
+.brew-note.brew-skin .brew-note__bubble-btn.is-active:hover {
+  background: color-mix(in srgb, var(--note-solid-fg) 88%, var(--note-solid-bg));
 }
 
 .brew-note.brew-skin .brew-note__bubble-btn--text {
@@ -349,9 +460,29 @@ html.dark .brew-note.brew-skin .brew-note__bubble-btn:hover {
   background: var(--note-paper);
   box-shadow: 0 6px 18px rgb(0 0 0 / 10%);
   transform: translate(-100%, -100%);
+  animation: brew-note-blockbar-in var(--sm-dur-fast, 140ms)
+    var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+  transition:
+    top var(--sm-dur-base, 220ms) var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1)),
+    left var(--sm-dur-base, 220ms) var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+@keyframes brew-note-blockbar-in {
+  from {
+    opacity: 0;
+    transform: translate(-100%, calc(-100% + 4px)) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-100%, -100%) scale(1);
+  }
 }
 
 .brew-note.brew-skin .brew-note__blockbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 2rem;
   padding: 0 0.65rem;
   border: 0;
@@ -360,8 +491,10 @@ html.dark .brew-note.brew-skin .brew-note__bubble-btn:hover {
   color: var(--note-ink-2);
   font-size: 0.8125rem;
   font-weight: 600;
+  line-height: 1;
   white-space: nowrap;
   cursor: pointer;
+  transition: var(--sm-t-fill);
 }
 
 .brew-note.brew-skin .brew-note__blockbar-btn:hover {
@@ -386,6 +519,7 @@ html.dark .brew-note.brew-skin .brew-note__bubble-btn:hover {
 }
 
 .brew-note.brew-skin .brew-note__blockbar-btn svg {
+  display: block;
   width: 1.05rem;
   height: 1.05rem;
 }
@@ -406,26 +540,311 @@ html.dark .brew-note.brew-skin .brew-note__bubble-btn:hover {
   align-items: center;
   gap: 0.5rem;
   min-width: 18rem;
-  padding: 0.4rem 0.6rem;
+  padding: 0.3rem 0.6rem;
 }
 
-.brew-note.brew-skin .brew-note__menu-input {
+.brew-skin.brew-note__menu .brew-note__menu-input {
   flex: 1 1 auto;
   height: 2rem;
   border: 0;
   background: transparent;
   color: var(--note-ink);
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
-.brew-note.brew-skin .brew-note__menu-input:focus {
+.brew-skin.brew-note__menu .brew-note__menu-input:focus {
   outline: none;
 }
 
-.brew-note__visual img.is-selected {
-  outline: 2px solid var(--note-ink);
+.brew-note__visual img {
+  border-radius: 2px;
+  outline: 2px solid transparent;
   outline-offset: 2px;
+  transition:
+    outline-color var(--sm-dur-fast, 140ms) var(--sm-ease-standard, ease),
+    box-shadow var(--sm-dur-fast, 140ms) var(--sm-ease-standard, ease);
+}
+
+.brew-note__visual img.is-selected {
+  outline-color: var(--note-ink);
+  box-shadow: 0 0 0 2px var(--note-paper);
+}
+
+.note-columns {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  margin: 1em 0;
+}
+
+.note-column {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.brew-note__visual .note-column {
+  min-height: 4.5rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px dashed color-mix(in srgb, var(--note-ink, #111) 18%, transparent);
+  border-radius: 0.55rem;
+}
+
+.note-widget {
+  --note-widget-cell: 5rem;
+  --note-widget-cols: 2;
+  --note-widget-rows: 2;
+  --note-widget-max-h: 20rem;
+
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  aspect-ratio: var(--note-widget-cols) / var(--note-widget-rows);
+  width: min(
+    calc(var(--note-widget-cols) * var(--note-widget-cell)),
+    100%,
+    calc(var(--note-widget-max-h) * var(--note-widget-cols) / var(--note-widget-rows))
+  );
+  height: auto;
+  max-width: 100%;
+  margin: 1em 0;
+  overflow: hidden;
+  border-radius: 0.85rem;
+  font-size: 1rem;
+  line-height: 1.4;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+/* 阅读器 prose / 预览栏会给所有 img 加边距和居中，正文小组件自己排版。 */
+.prose .note-widget img,
+.brew-note-preview .note-widget img,
+.brew-note__visual .note-widget img,
+.note-widget img {
+  margin: 0;
+  max-width: none;
+}
+
+.brew-note__visual .note-widget img {
+  outline: none;
+  box-shadow: none;
+}
+
+.prose .note-widget p,
+.brew-note-preview .note-widget p {
+  margin: 0;
+}
+
+.note-widget[data-size='1x1'] {
+  --note-widget-cols: 1;
+  --note-widget-rows: 1;
+}
+
+.note-widget[data-size='2x1'] {
+  --note-widget-cols: 2;
+  --note-widget-rows: 1;
+}
+
+.note-widget[data-size='1x2'] {
+  --note-widget-cols: 1;
+  --note-widget-rows: 2;
+}
+
+.note-widget[data-size='2x2'] {
+  --note-widget-cols: 2;
+  --note-widget-rows: 2;
+}
+
+.note-widget[data-size='2x3'] {
+  --note-widget-cols: 2;
+  --note-widget-rows: 3;
+}
+
+.note-widget[data-size='3x2'] {
+  --note-widget-cols: 3;
+  --note-widget-rows: 2;
+}
+
+.note-widget[data-size='3x3'] {
+  --note-widget-cols: 3;
+  --note-widget-rows: 3;
+}
+
+.note-widget[data-size='2x4'] {
+  --note-widget-cols: 2;
+  --note-widget-rows: 4;
+}
+
+.note-widget[data-size='4x1'] {
+  --note-widget-cols: 4;
+  --note-widget-rows: 1;
+}
+
+.note-widget[data-size='4x2'] {
+  --note-widget-cols: 4;
+  --note-widget-rows: 2;
+}
+
+.note-widget[data-size='4x4'] {
+  --note-widget-cols: 4;
+  --note-widget-rows: 4;
+}
+
+.note-widget__face {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.note-widget.is-selected {
+  outline: 2px solid var(--note-ink, #111);
+  outline-offset: 2px;
+}
+
+.brew-note__visual .note-widget > *,
+.brew-note__read .note-widget > * {
+  pointer-events: none;
+}
+
+.brew-note__visual .note-widget.is-selected .note-widget__face {
+  pointer-events: auto;
+}
+
+.note-widget__missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0.75rem;
+  color: var(--brew-fg-dim, var(--note-ink-3, #6b7280));
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.brew-note__widget-picker-layer {
+  display: flex;
+  position: fixed;
+  inset: 0;
+  z-index: 10060;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgb(0 0 0 / 28%);
+}
+
+.brew-note__widget-picker {
+  display: flex;
+  flex-direction: column;
+  width: min(22rem, calc(100vw - 2rem));
+  max-height: min(70vh, 28rem);
+  overflow: hidden;
+  border: 1px solid var(--cfg-frost-border, var(--chrome-stroke, rgb(255 255 255 / 50%)));
+  border-radius: 0.7rem;
+  background: var(--cfg-frost-elevated-bg, var(--chrome-elevated, rgb(255 255 255 / 96%)));
+  backdrop-filter: var(--cfg-frost-filter, blur(20px) saturate(180%));
+  box-shadow:
+    0 16px 40px -12px rgb(0 0 0 / 28%),
+    0 0 0 1px rgb(255 255 255 / 40%) inset;
+}
+
+.brew-note__widget-picker-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.6rem 0.4rem;
+}
+
+.brew-note__widget-picker-search {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0 0.55rem;
+  border: 1px solid var(--note-line, rgb(0 0 0 / 10%));
+  border-radius: 0.45rem;
+  color: var(--note-ink-3, #6b7280);
+}
+
+.brew-note__widget-picker-search input {
+  width: 100%;
+  height: 2rem;
+  border: 0;
+  background: transparent;
+  color: var(--note-ink, inherit);
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.brew-note__widget-picker-search input:focus {
+  outline: none;
+}
+
+.brew-note__widget-picker-close {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: inherit;
+}
+
+.brew-note__widget-picker-list {
+  overflow: hidden auto;
+  padding: 0.25rem 0.4rem 0.5rem;
+}
+
+.brew-note__widget-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.5rem 0.55rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+}
+
+.brew-note__widget-picker-item:hover,
+.brew-note__widget-picker-item:focus-visible {
+  background: rgb(0 0 0 / 5%);
+  outline: none;
+}
+
+.brew-note__widget-picker-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brew-note__widget-picker-size {
+  flex-shrink: 0;
+  color: var(--note-ink-3, #6b7280);
+  font-size: 0.75rem;
+}
+
+.brew-note__widget-picker-empty {
+  margin: 0;
+  padding: 1.25rem 0.75rem;
+  color: var(--note-ink-3, #6b7280);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+@media (width <= 640px) {
+  .note-columns {
+    flex-direction: column;
+  }
 }
 
 .brew-note__blockbar-field {
@@ -483,6 +902,11 @@ html.dark .brew-note.brew-skin .brew-note__bubble-btn:hover {
 .brew-note__gutter {
   position: absolute;
   z-index: 25;
+  animation: sm-pop-in var(--sm-dur-fast, 140ms) var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1))
+    backwards;
+  transition:
+    top var(--sm-dur-base, 220ms) var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1)),
+    left var(--sm-dur-base, 220ms) var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1));
 }
 
 .brew-note.brew-skin .brew-note__plus {
@@ -497,9 +921,9 @@ html.dark .brew-note.brew-skin .brew-note__bubble-btn:hover {
   color: var(--note-ink-3);
   cursor: pointer;
   transition:
-    color var(--sm-dur-fast, 120ms) ease,
-    border-color var(--sm-dur-fast, 120ms) ease,
-    transform var(--sm-dur-base, 180ms) var(--sm-ease-standard, ease);
+    color var(--sm-dur-fast, 140ms) var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1)),
+    border-color var(--sm-dur-fast, 140ms) var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1)),
+    transform var(--sm-dur-fast, 140ms) var(--sm-ease-emphasis, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
 .brew-note.brew-skin .brew-note__plus svg {
@@ -527,45 +951,136 @@ html.dark .brew-note.brew-skin .brew-note__bubble-btn:hover {
   box-shadow: var(--note-focus);
 }
 
+/*
+ * 「+」菜单挂在 body 上，皮和定位规则都借设置页的悬浮提示（SettingTitleHelp.css）：
+ * 霜面 + 模糊 + 1px 霜边 + 内侧高光，先量再显，淡入 2px 位移。
+ */
 .brew-note__menu {
   display: flex;
-  position: absolute;
-  inset: calc(100% + 0.4rem) auto auto 0;
-  z-index: 40;
+  position: fixed;
+  z-index: 10050;
   flex-direction: column;
-  min-width: 14rem;
-  padding: 0.4rem;
-  border: 1px solid var(--note-line);
-  border-radius: 0.85rem;
-  background: var(--note-paper);
+  min-width: 13rem;
+  max-width: min(20rem, calc(100vw - 1rem));
+  max-height: min(60vh, 22rem);
+  overflow: hidden auto;
+  padding: 0.3rem;
+  border: 1px solid var(--cfg-frost-border, var(--chrome-stroke, rgb(255 255 255 / 50%)));
+  border-radius: 0.5rem;
+  background: var(--cfg-frost-elevated-bg, var(--chrome-elevated, rgb(255 255 255 / 96%)));
+  backdrop-filter: var(--cfg-frost-filter, blur(20px) saturate(180%));
   box-shadow:
-    0 14px 36px rgb(0 0 0 / 14%),
-    0 2px 8px rgb(0 0 0 / 6%);
-  animation: sm-pop-in var(--sm-dur-base, 160ms) var(--sm-ease-enter, ease-out)
-    backwards;
+    0 8px 24px -6px rgb(0 0 0 / 16%),
+    0 0 0 1px rgb(255 255 255 / 40%) inset;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform-origin: 1.125rem 0;
 }
 
-.brew-note.brew-skin .brew-note__menu-item {
+.brew-note__menu--top {
+  transform-origin: 1.125rem 100%;
+}
+
+.brew-note__menu.is-ready {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  animation: brew-note-menu-in var(--sm-dur-base, 220ms)
+    var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+}
+
+.brew-note__menu--top.is-ready {
+  animation-name: brew-note-menu-in-top;
+}
+
+.brew-note__menu.is-leaving {
+  animation: brew-note-menu-out var(--sm-dur-fast, 140ms)
+    var(--sm-ease-exit, cubic-bezier(0.4, 0, 1, 1)) forwards;
+}
+
+.brew-note__menu--top.is-leaving {
+  animation-name: brew-note-menu-out-top;
+}
+
+@keyframes brew-note-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--sm-shift-xs, 2px)) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes brew-note-menu-in-top {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--sm-shift-xs, 2px) * -1)) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes brew-note-menu-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(var(--sm-shift-xs, 2px)) scale(0.98);
+  }
+}
+
+@keyframes brew-note-menu-out-top {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(calc(var(--sm-shift-xs, 2px) * -1)) scale(0.98);
+  }
+}
+
+html.dark .brew-note__menu {
+  box-shadow:
+    0 10px 28px -6px rgb(0 0 0 / 50%),
+    0 0 0 1px rgb(255 255 255 / 6%) inset;
+}
+
+.brew-skin.brew-note__menu .brew-note__menu-item {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
-  height: 2.5rem;
-  padding: 0 0.75rem;
+  gap: 0.6rem;
+  height: 2.25rem;
+  padding: 0 0.6rem;
   border: 0;
-  border-radius: 0.55rem;
+  border-radius: 0.4rem;
   background: transparent;
   color: var(--note-ink-2);
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
   text-align: start;
+  white-space: nowrap;
   cursor: pointer;
+  transition: var(--sm-t-fill);
 }
 
-.brew-note.brew-skin .brew-note__menu-item:hover {
+.brew-skin.brew-note__menu .brew-note__menu-item:hover {
   background: var(--note-fill-hover);
   color: var(--note-ink);
 }
 
-.brew-note.brew-skin .brew-note__menu-item:focus-visible {
+.brew-skin.brew-note__menu .brew-note__menu-item:focus-visible {
   outline: none;
   box-shadow: var(--note-focus);
 }
@@ -599,19 +1114,36 @@ html.dark .brew-note.brew-skin .brew-note__bubble-btn:hover {
   border-left: 1px solid var(--note-line);
   background: var(--note-paper);
   box-shadow: -12px 0 32px rgb(0 0 0 / 8%);
-  animation: brew-note-drawer-in var(--sm-dur-base, 180ms)
-    var(--sm-ease-enter, ease-out) backwards;
+  animation: brew-note-drawer-in var(--sm-dur-base, 220ms)
+    var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+}
+
+.brew-note__drawer.is-leaving {
+  animation: brew-note-drawer-out var(--sm-dur-base, 220ms)
+    var(--sm-ease-exit, cubic-bezier(0.4, 0, 1, 1)) forwards;
 }
 
 @keyframes brew-note-drawer-in {
   from {
-    transform: translateX(12px);
+    transform: translateX(var(--sm-shift-md, 12px));
     opacity: 0;
   }
 
   to {
     transform: none;
     opacity: 1;
+  }
+}
+
+@keyframes brew-note-drawer-out {
+  from {
+    transform: none;
+    opacity: 1;
+  }
+
+  to {
+    transform: translateX(var(--sm-shift-md, 12px));
+    opacity: 0;
   }
 }
 
@@ -651,6 +1183,8 @@ html.dark .brew-note.brew-skin .brew-note__bubble-btn:hover {
   border-radius: 0.65rem;
   background: var(--note-fill);
   object-fit: cover;
+  animation: sm-fade-in var(--sm-dur-fast, 140ms) var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1))
+    both;
 }
 
 .brew-note__cover-thumb--empty {
@@ -666,6 +1200,14 @@ html.dark .brew-note.brew-skin .brew-note__bubble-btn:hover {
   margin-top: auto;
   padding-top: 1rem;
   border-top: 1px solid var(--note-line);
+}
+
+.brew-note__read .link-definition,
+.brew-note__read .footnote-definition,
+.brew-note__read p[data-linkdef],
+.brew-note__read p[data-fn] {
+  animation: sm-enter var(--sm-dur-fast, 140ms) var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1))
+    backwards;
 }
 
 /* ---- 窄屏 ---- */
@@ -687,5 +1229,71 @@ html.dark .brew-note.brew-skin .brew-note__bubble-btn:hover {
 
   .brew-note__paper {
     padding-bottom: 25vh;
+  }
+}
+
+html[data-perf-mode='exlight'] .brew-note__title,
+html[data-perf-mode='exlight'] .brew-note.brew-skin .brew-note__byline,
+html[data-perf-mode='exlight'] .brew-note__source,
+html[data-perf-mode='exlight'] .brew-note__write,
+html[data-perf-mode='exlight'] .brew-note__read,
+html[data-perf-mode='exlight'] .brew-note__peer,
+html[data-perf-mode='exlight'] .brew-note__bubble,
+html[data-perf-mode='exlight'] .brew-note__blockbar,
+html[data-perf-mode='exlight'] .brew-note__gutter,
+html[data-perf-mode='exlight'] .brew-note__drawer,
+html[data-perf-mode='exlight'] .brew-note__cover-thumb,
+html[data-perf-mode='exlight'] .brew-note__read .link-definition,
+html[data-perf-mode='exlight'] .brew-note__read .footnote-definition,
+html[data-perf-mode='exlight'] .brew-note__read p[data-linkdef],
+html[data-perf-mode='exlight'] .brew-note__read p[data-fn],
+html[data-perf-mode='exlight'] .brew-note.brew-skin .note-switch__thumb,
+html[data-perf-mode='exlight'] .brew-note.brew-skin .brew-note__plus,
+html[data-perf-mode='exlight'] .brew-note.brew-skin .brew-note__bubble-btn,
+html[data-perf-mode='exlight'] .brew-note.brew-skin .brew-note__blockbar-btn,
+html[data-perf-mode='exlight'] .brew-note__visual img,
+html[data-perf-mode='exlight'] .brew-note__menu,
+html[data-perf-mode='exlight'] .brew-note__widget-picker,
+html[data-perf-mode='exlight'] .brew-note__menu .brew-note__menu-item {
+  animation: none;
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brew-note__title,
+  .brew-note.brew-skin .brew-note__byline,
+  .brew-note__source,
+  .brew-note__write,
+  .brew-note__read,
+  .brew-note__peer,
+  .brew-note__bubble,
+  .brew-note__blockbar,
+  .brew-note__gutter,
+  .brew-note__drawer,
+  .brew-note__cover-thumb,
+  .brew-note__read .link-definition,
+  .brew-note__read .footnote-definition,
+  .brew-note__read p[data-linkdef],
+  .brew-note__read p[data-fn],
+  .brew-note.brew-skin .note-switch__thumb,
+  .brew-note.brew-skin .brew-note__plus,
+  .brew-note.brew-skin .brew-note__bubble-btn,
+  .brew-note.brew-skin .brew-note__blockbar-btn,
+  .brew-note__visual img,
+  .brew-note__menu,
+  .brew-note__widget-picker,
+  .brew-note__menu .brew-note__menu-item {
+    animation: none;
+    transition: none;
+  }
+
+  .brew-note__bubble.is-placed,
+  .brew-note__menu.is-ready {
+    opacity: 1;
+    transform: none;
+  }
+
+  .brew-note__bubble.is-placed {
+    transform: translate(-50%, 0);
   }
 }

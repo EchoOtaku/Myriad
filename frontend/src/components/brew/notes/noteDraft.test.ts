@@ -8,6 +8,7 @@ import {
   linkAtCursor,
   NOTE_DRAFT_TTL_MS,
   noteDraftKey,
+  openLineBelow,
   prefixLines,
   pruneOrphanFootnotes,
   readNoteDraft,
@@ -271,6 +272,18 @@ describe('linkAtCursor / replaceLink', () => {
     const link = linkAtCursor(md, 4)!
     assert.equal(replaceLink(md, link, 'https://x.y').value, '看 [这里](https://x.y)')
     assert.equal(replaceLink(md, link, null).value, '看 这里')
+  })
+})
+
+describe('openLineBelow', () => {
+  it('行上有字就在行尾开新行，光标到新行', () => {
+    assert.deepEqual(openLineBelow('甲乙\n丙', 1), { value: '甲乙\n\n丙', caret: 3 })
+    assert.deepEqual(openLineBelow('甲乙', 2), { value: '甲乙\n', caret: 3 })
+  })
+
+  it('空行原地不动', () => {
+    assert.deepEqual(openLineBelow('甲\n\n乙', 2), { value: '甲\n\n乙', caret: 2 })
+    assert.deepEqual(openLineBelow('', 0), { value: '', caret: 0 })
   })
 })
 

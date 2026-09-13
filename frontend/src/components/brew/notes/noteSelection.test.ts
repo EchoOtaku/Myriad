@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { lineIsBlank, placeBubble, placeGutter } from './noteSelection'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const source = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), 'noteSelection.ts'),
+  'utf8',
+)
 
 describe('placeBubble', () => {
   const bubble = { width: 200, height: 32 }
@@ -59,10 +67,10 @@ describe('placeGutter', () => {
     )
   })
 
-  it('左边不够宽就贴着光标', () => {
+  it('左边不够宽就贴着纸边，允许溢出正文', () => {
     assert.deepEqual(
       placeGutter({ top: 100, left: 16, height: 28 }, 36),
-      { top: 96, left: 20 },
+      { top: 96, left: 4 },
     )
   })
 })
@@ -78,5 +86,27 @@ describe('lineIsBlank', () => {
     assert.equal(lineIsBlank('abc\ndef', 4), false)
     assert.equal(lineIsBlank('abc\ndef', 7), false)
     assert.equal(lineIsBlank('abc', 0), false)
+  })
+})
+
+describe('textarea 镜像', () => {
+  it('复用一份镜像，量选区不带上光标后的全文', () => {
+    assert.match(source, /export function releaseTextareaMirror/)
+    assert.match(source, /prefix\.nodeValue = el\.value\.slice\(0, start\)/)
+    assert.doesNotMatch(source, /el\.value\.slice\(end\) \|\|/)
+    assert.match(source, /doc\.body\.appendChild\(root\)/)
+    assert.match(source, /textareaMirror\?\.root\.remove\(\)/)
+  })
+
+  it('锚点取整，避免亚像素把浮动条钉着重渲', () => {
+    assert.match(source, /function snapPx/)
+    assert.match(source, /top: snapPx\(/)
+  })
+})
+
+describe('可视块种类', () => {
+  it('块工具条认分栏和小组件', () => {
+    assert.match(source, /'columns' \| 'widget'/)
+    assert.match(source, /\.note-columns, \.note-widget/)
   })
 })

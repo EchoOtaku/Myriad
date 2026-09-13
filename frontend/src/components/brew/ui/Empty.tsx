@@ -72,7 +72,14 @@ export function BrewVacant({
         {articleTitle ? (
           <BrewRailTitle arrive={false}>{articleTitle}</BrewRailTitle>
         ) : null}
-        <div className="brew-vacant__items">
+        <div
+          className="brew-vacant__items"
+          style={
+            {
+              '--brew-story-cols': Math.ceil(FRIEND_STORY_GHOSTS.length / 2),
+            } as CSSProperties
+          }
+        >
           {FRIEND_STORY_GHOSTS.map((i) => (
             <StoryGhost key={i} i={i} />
           ))}
@@ -87,6 +94,11 @@ export function BrewVacant({
       data-brew-surface="vacant"
       data-brew-card="vacant"
       role="status"
+      style={
+        {
+          '--brew-story-cols': Math.ceil((1 + STORY_GHOSTS.length) / 2),
+        } as CSSProperties
+      }
     >
       <article className="brew-vacant__note">
         <div className="brew-float brew-vacant__shell">

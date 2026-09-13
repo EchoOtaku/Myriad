@@ -13,17 +13,18 @@ import { useEffect, useState } from 'react'
 import { markdownMarksAt, sameMarks, visualMarksAt } from './noteMarks'
 import {
   anchorInContainer,
-  textareaEmptyLineRect,
+  releaseTextareaMirror,
+  textareaCaretLineRect,
   textareaSelectionRect,
   visualBlockRect,
-  visualEmptyLineRect,
+  visualCaretLineRect,
   visualSelectionRect,
 } from './noteSelection'
 
 export interface NoteSelectionState {
   selection: SelectionAnchor | null
   marks: Set<NoteMark>
-  emptyLine: SelectionAnchor | null
+  caretLine: SelectionAnchor | null
   block: { kind: VisualBlockKind; anchor: SelectionAnchor } | null
 }
 
@@ -31,7 +32,7 @@ const NO_MARKS: Set<NoteMark> = new Set()
 const EMPTY: NoteSelectionState = {
   selection: null,
   marks: NO_MARKS,
-  emptyLine: null,
+  caretLine: null,
   block: null,
 }
 
@@ -44,7 +45,7 @@ function sameAnchor(a: SelectionAnchor | null, b: SelectionAnchor | null): boole
 function sameState(a: NoteSelectionState, b: NoteSelectionState): boolean {
   return (
     sameAnchor(a.selection, b.selection) &&
-    sameAnchor(a.emptyLine, b.emptyLine) &&
+    sameAnchor(a.caretLine, b.caretLine) &&
     (a.block?.kind ?? null) === (b.block?.kind ?? null) &&
     sameAnchor(a.block?.anchor ?? null, b.block?.anchor ?? null) &&
     sameMarks(a.marks, b.marks)
@@ -77,19 +78,19 @@ export function useNoteSelection(
     }
     const measure = () => {
       let selection: DOMRect | null = null
-      let emptyLine: DOMRect | null = null
+      let caretLine: DOMRect | null = null
       let block: { kind: VisualBlockKind; rect: DOMRect } | null = null
       let marks: Set<NoteMark> = NO_MARKS
       if (pane === 'visual') {
         if (visual && document.activeElement === visual) {
           selection = visualSelectionRect(visual)
-          emptyLine = visualEmptyLineRect(visual)
+          caretLine = visualCaretLineRect(visual)
           block = visualBlockRect(visual)
           if (selection) marks = visualMarksAt(visual)
         }
       } else if (textarea && document.activeElement === textarea) {
         selection = textareaSelectionRect(textarea)
-        emptyLine = textareaEmptyLineRect(textarea)
+        caretLine = textareaCaretLineRect(textarea)
         if (selection) {
           marks = markdownMarksAt(textarea.value, textarea.selectionStart, textarea.selectionEnd)
         }
@@ -97,7 +98,7 @@ export function useNoteSelection(
       commit({
         selection: selection ? anchorInContainer(selection, container) : null,
         marks,
-        emptyLine: emptyLine ? anchorInContainer(emptyLine, container) : null,
+        caretLine: caretLine ? anchorInContainer(caretLine, container) : null,
         block: block
           ? { kind: block.kind, anchor: anchorInContainer(block.rect, container) }
           : null,
@@ -131,6 +132,7 @@ export function useNoteSelection(
       editor?.removeEventListener('mouseup', schedule)
       editor?.removeEventListener('focus', schedule)
       editor?.removeEventListener('blur', hide)
+      releaseTextareaMirror()
     }
   }, [pane, active, hold, scrollRef, textareaRef, visualRef])
 

@@ -5,7 +5,7 @@ import { it } from 'node:test'
 import { act, createElement, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { brewItemState } from '../../utils/brewItemState'
-import { peekFeedStoriesLoose, putFeedStories } from './pageData'
+import { putFeedStories } from './pageData'
 import { useArticleTaskScope } from './reader/hooks/useArticleTaskScope'
 import { useContentEvents } from './reader/hooks/useContentEvents'
 import { useArticleOpen } from './useArticleOpen'
@@ -208,8 +208,14 @@ it('Brew hooks reject stale opens, retry failed pages, and settle partial unstar
     await act(async () => { root.render(null) })
     assert.equal(newTask(), false)
 
-    const feedSource = { id: 91, last_success_at: 0 } as BrewSource
-    const story = { id: 92, is_starred: false, title: 'story', is_read: false }
+    const story = { id: 92, is_starred: false, title: 'story', is_read: false, published_at: 1, summary: null, image: null }
+    const feedSource = {
+      id: 91,
+      last_success_at: 0,
+      name: '源',
+      icon: null,
+      recent_items: [story],
+    } as BrewSource
     putFeedStories(91, 0, [story])
     let feed!: ReturnType<typeof useFeedStories>
     let acceptStar = false
@@ -218,20 +224,19 @@ it('Brew hooks reject stale opens, retry failed pages, and settle partial unstar
       brewItemState.commit(story.id, { is_starred: true })
     }
     function FeedHarness() {
-      feed = useFeedStories('feeds', feedSource, changeStar)
+      feed = useFeedStories('feeds', [feedSource], changeStar)
       session = useArticleOpen(report, 'failed')
       return null
     }
     await act(async () => { root.render(createElement(FeedHarness)) })
+    await act(async () => { await Promise.resolve() })
     await act(async () => { await feed.onStar(story) })
     assert.equal(feed.stories[0].is_starred, false)
-    assert.equal(peekFeedStoriesLoose(91)![0].is_starred, false)
     await act(async () => { await session.openArticle(story as BrewItem) })
     acceptStar = true
     await act(async () => { await feed.onStar(story) })
     assert.equal(feed.stories[0].is_starred, true)
     assert.equal(session.selectedItem?.is_starred, true)
-    assert.equal(peekFeedStoriesLoose(91)![0].is_starred, false)
 
     let serverStarred = 5
     let statsFetches = 0

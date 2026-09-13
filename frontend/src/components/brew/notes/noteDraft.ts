@@ -230,6 +230,18 @@ export function replaceLink(
   }
 }
 
+/** 光标所在行有字时，在行尾开一个新行并把光标放到新行；空行原地不动。返回新光标位置。 */
+export function openLineBelow(value: string, position: number): { value: string; caret: number } {
+  const lineStart = value.lastIndexOf('\n', position - 1) + 1
+  const lineEndIndex = value.indexOf('\n', position)
+  const lineEnd = lineEndIndex < 0 ? value.length : lineEndIndex
+  if (!value.slice(lineStart, lineEnd).trim()) return { value, caret: position }
+  return {
+    value: `${value.slice(0, lineEnd)}\n${value.slice(lineEnd)}`,
+    caret: lineEnd + 1,
+  }
+}
+
 /** 硬换行：行尾两个空格再换行。 */
 export function hardBreak(value: string, start: number, end: number): WrapResult {
   const next = `${value.slice(0, start)}  \n${value.slice(end)}`

@@ -70,7 +70,8 @@
 .brew-feeds.is-sites-flipping .brew-feeds__sites,
 .brew-feeds.is-sites-open.is-sites-flipping .brew-feeds__sites,
 .brew-feeds.is-sites-flipping .brew-feeds__sites-track,
-.brew-feeds.is-sites-open.is-sites-flipping .brew-feeds__sites-track {
+.brew-feeds.is-sites-open.is-sites-flipping .brew-feeds__sites-track,
+.brew-feeds.is-sites-flipping .brew-feeds__items {
   overflow: visible;
   touch-action: none;
 }
@@ -125,6 +126,20 @@
 .brew-feeds.is-sites-flipping .brew-story:hover,
 .brew-feeds.is-sites-flipping .brew-story:active {
   transform: none;
+}
+
+.brew-feeds.is-rail-grabbing .brew-story,
+.brew-feeds.is-rail-grabbing .brew-site {
+  pointer-events: none;
+  transition: none;
+}
+
+.brew-feeds.is-rail-grabbing .brew-story {
+  transform: none;
+}
+
+.brew-feeds.is-rail-grabbing .brew-feeds__items-track {
+  contain: layout style paint;
 }
 
 .brew-feeds.is-sites-open.is-sites-flipping .brew-feeds__items {
@@ -224,18 +239,18 @@
   pointer-events: none;
 }
 
-.brew-feeds__sites,
+.brew-feeds__sites {
+  overflow: visible;
+  touch-action: none;
+  flex-shrink: 0;
+}
+
 .brew-feeds__items {
   overflow: visible;
   touch-action: none;
 }
 
-.brew-feeds__sites {
-  flex-shrink: 0;
-}
-
-.brew-feeds__sites-track,
-.brew-feeds__items-track {
+.brew-feeds__sites-track {
   width: max-content;
   min-width: 100%;
   contain: layout style;

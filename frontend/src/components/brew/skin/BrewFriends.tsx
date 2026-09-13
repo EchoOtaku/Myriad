@@ -1,9 +1,10 @@
-/** 朋友们：两行网站卡，一行文章卡。 */
+/** 朋友们：两行网站卡，文章区两行从左到右填，左右挪轨不裁切。 */
 
+import type { CSSProperties } from 'react'
 import type { BrewItemPreview, BrewSource } from '../../../types/brew'
 import type { FeedStory } from '../logic/feedStories'
 
-import { useId } from 'react'
+import { useId, useMemo, useRef } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import {
   getIconUrl,
@@ -14,6 +15,7 @@ import { BrewRailTitle } from '../ui/BrewRailTitle'
 import { SiteCard } from '../ui/SiteCard'
 import { BrewStory } from './BrewStory'
 import { brewRelativeTime, useBrewTimes } from './time'
+import { useBrewRailPan } from './useBrewRailPan'
 
 function visitFriend(source: BrewSource) {
   const href = visitFriendHref(source)
@@ -47,7 +49,24 @@ export default function BrewFriends({
   const { t, locale } = useI18n()
   const itemsTitleId = useId()
   const times = useBrewTimes()
+  const itemsViewRef = useRef<HTMLDivElement>(null)
+  const itemsTrackRef = useRef<HTMLDivElement>(null)
+  const itemKey = useMemo(
+    () => stories.map((item) => item.id).join(','),
+    [stories],
+  )
   const byId = new Map(sources.map((source) => [source.id, source]))
+
+  useBrewRailPan(
+    itemsViewRef,
+    itemsTrackRef,
+    stories.length > 0,
+    itemKey,
+    '.brew-story',
+    undefined,
+    undefined,
+    true,
+  )
 
   const activate = (source: BrewSource) => {
     if (isEditMode) {
@@ -106,7 +125,21 @@ export default function BrewFriends({
         })}
       </div>
       <BrewRailTitle id={itemsTitleId}>{t.brew.friendArticles}</BrewRailTitle>
-      <div className="brew-friends__items" aria-labelledby={itemsTitleId}>
+      <div
+        className="brew-friends__items"
+        ref={itemsViewRef}
+        aria-labelledby={itemsTitleId}
+      >
+        <div
+          className="brew-friends__items-track"
+          ref={itemsTrackRef}
+          data-brew-rail-track="items"
+          style={
+            {
+              '--brew-story-cols': Math.max(1, Math.ceil(stories.length / 2)),
+            } as CSSProperties
+          }
+        >
         {stories.map((item, index) => (
           <BrewStory
             key={item.id}
@@ -125,6 +158,7 @@ export default function BrewFriends({
             }
           />
         ))}
+        </div>
       </div>
     </div>
   )

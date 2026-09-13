@@ -17,7 +17,7 @@ use axum::{
     http::StatusCode,
 };
 use chrono::Utc;
-use myriad_brew_notes::{render_markdown, validate_note};
+use myriad_brew_notes::{render_markdown_preview, validate_note};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     Set,
@@ -115,7 +115,8 @@ async fn sync_item_count(db: &DatabaseConnection, source: &brew_sources::Model) 
 
 /// `POST /api/brew/notes/preview` — 编辑器预览。
 ///
-/// 预览调 `render_markdown`；发布调 `render_note`（内部仍用 `render_markdown`）。前端不自己渲染。
+/// 预览调 `render_markdown_preview`：和发布同一份 HTML，只多了每个顶层块的原文区间
+/// （`data-md-start/end`），前端靠它做「点预览即编辑」。发布调 `render_note`。前端不自己渲染。
 pub(crate) async fn preview_note(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
@@ -125,7 +126,7 @@ pub(crate) async fn preview_note(
     validate_note("Preview", &req.content_md).map_err(validation_err)?;
     Ok(Json(json!({
         "success": true,
-        "html": render_markdown(&req.content_md),
+        "html": render_markdown_preview(&req.content_md),
     })))
 }
 

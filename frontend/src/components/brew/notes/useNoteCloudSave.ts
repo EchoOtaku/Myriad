@@ -73,7 +73,8 @@ export interface UseNoteCloudSaveOptions {
   onServerDoc: (doc: BrewNoteDoc) => void
   /** 冲突合并后的本地内容。 */
   onMerged: (fields: NoteCloudFields) => void
-  onSaved: () => void
+  /** 服务端确认了这一份。 */
+  onSaved: (acked: NoteCloudFields) => void
   onError: (message: string | null) => void
   labels: { saveFailed: string; conflict: string }
   io?: NoteCloudSaveIo
@@ -146,7 +147,7 @@ export function useNoteCloudSave({
         baseRef.current = sending
         serverDoc(doc)
         if (!doc.last_error) failed(null)
-        saved()
+        saved(sending)
       } catch (err) {
         if (!aliveRef.current) return
         const message = userFacingError(err, text.saveFailed)
@@ -179,7 +180,7 @@ export function useNoteCloudSave({
           ackedRef.current = result
           baseRef.current = result
           serverDoc(persisted)
-          saved()
+          saved(result)
         } catch (mergeErr) {
           if (aliveRef.current) failed(userFacingError(mergeErr, message))
         }

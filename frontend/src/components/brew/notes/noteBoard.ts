@@ -1,5 +1,36 @@
 /** 手记板上只列还没公开的云端稿。空草稿不占格子。 */
 
+import type { BrewItemPreview } from '../../../types/brew'
+
+import type { FeedStory } from '../logic/feedStories'
+
+/** 已有精选手记的源不再另占一张源卡。 */
+export function leftoverNoteSources<T extends { id: number }>(
+  sources: readonly T[],
+  notes: ReadonlyArray<{ source_id: number }>,
+): T[] {
+  const taken = new Set(notes.map((note) => note.source_id))
+  return sources.filter((source) => !taken.has(source.id))
+}
+
+export function sourceLatestStory(
+  source: {
+    id: number
+    name: string
+    icon: string | null
+    recent_items?: readonly BrewItemPreview[] | null
+  },
+): (FeedStory & { source_id: number }) | null {
+  const latest = source.recent_items?.[0]
+  if (!latest) return null
+  return {
+    ...latest,
+    source_id: source.id,
+    source_name: source.name,
+    source_icon: source.icon,
+  }
+}
+
 export function noteScheduleLabel(
   ms: number | null | undefined,
   locale: string,

@@ -14,7 +14,12 @@ import {
   sortSourcesForBoard,
   sourcesForBoard,
 } from './logic/board'
-import { paintReadyStories, storiesAreFresh, storiesForSource } from './logic/feedStories'
+import {
+  coverFeedIndices,
+  expandFeedCover,
+  reuseFeedStories,
+  stitchStoriesBySources,
+} from './logic/feedStories'
 import { noteSourceKey } from './logic/homeBoard'
 import {
   loadFeedStories,
@@ -79,75 +84,170 @@ export function useBoardNotes(
 
 export function useFeedStories(
   board: BrewBoard,
-  readySource: BrewSource | null,
+  sources: readonly BrewSource[],
   onToggleStar?: (item: BrewItemPreview) => void | false | Promise<void | false>,
-): { stories: FeedStory[]; onStar: (item: BrewItemPreview) => void } {
+): {
+  stories: FeedStory[]
+  onStar: (item: BrewItemPreview) => void
+  expand: (direction: 1 | -1) => void
+  jump: (sourceId: number) => void
+  holdStories: () => void
+  releaseStories: () => void
+  railEpoch: string
+} {
   const flags = useArticleFlags()
-  const readySourceId = readySource?.id ?? null
-  const stamp = readySource?.last_success_at ?? 0
-  const [local, setLocal] = useState<{
-    id: number
-    stamp: number
-    items: FeedStory[]
-  } | null>(null)
-  const localRef = useRef(local)
-  localRef.current = local
+  const flagsRevision = flags.getSnapshot()
+  const idKey = useMemo(
+    () => sources.map((source) => source.id).join(','),
+    [sources],
+  )
+  const stampKey = useMemo(
+    () =>
+      sources
+        .map((source) => `${source.id}:${source.last_success_at ?? 0}`)
+        .join(','),
+    [sources],
+  )
+  const lastIndex = Math.max(0, sources.length - 1)
+  const [cover, setCover] = useState<number[]>(() =>
+    coverFeedIndices([], 0, lastIndex, 3),
+  )
+  const [tick, setTick] = useState(0)
   const slotsRef = useRef<Map<number, FeedStorySlot>>(new Map())
+  const sourcesRef = useRef(sources)
+  sourcesRef.current = sources
+  const inflightRef = useRef(new Set<string>())
+  const fetchLiveRef = useRef(true)
+  const quietRef = useRef(false)
+  const pendingBumpRef = useRef(false)
+  const queuedRef = useRef(false)
+
+  const bump = useCallback(() => {
+    if (!fetchLiveRef.current) return
+    if (quietRef.current) {
+      pendingBumpRef.current = true
+      return
+    }
+    if (queuedRef.current) return
+    queuedRef.current = true
+    queueMicrotask(() => {
+      queuedRef.current = false
+      if (!fetchLiveRef.current) return
+      if (quietRef.current) {
+        pendingBumpRef.current = true
+        return
+      }
+      setTick((value) => value + 1)
+    })
+  }, [])
+
+  const holdStories = useCallback(() => {
+    quietRef.current = true
+  }, [])
+
+  const releaseStories = useCallback(() => {
+    if (!quietRef.current && !pendingBumpRef.current) return
+    quietRef.current = false
+    if (!pendingBumpRef.current) return
+    pendingBumpRef.current = false
+    bump()
+  }, [bump])
 
   useEffect(() => {
-    if (board !== 'feeds' || readySourceId == null) return
-    const controller = new AbortController()
-    const exact = peekFeedStories(readySourceId, stamp)
-    const slot = slotsRef.current.get(readySourceId)
-    const painted = paintReadyStories(
-      stamp,
-      exact,
-      peekFeedStoriesLoose(readySourceId),
-      slot,
+    setCover(coverFeedIndices([], 0, lastIndex, 3))
+  }, [board, lastIndex, idKey])
+
+  const expand = useCallback((direction: 1 | -1) => {
+    setCover((current) =>
+      expandFeedCover(current, direction, sourcesRef.current.length - 1),
     )
-    if (painted) setLocal({ id: readySourceId, stamp, items: painted })
-    if (exact && slot?.stamp !== stamp) {
-      slotsRef.current.set(readySourceId, { stamp, items: exact })
+  }, [])
+
+  const jump = useCallback((sourceId: number) => {
+    const list = sourcesRef.current
+    const index = list.findIndex((source) => source.id === sourceId)
+    if (index < 0) return
+    setCover((current) =>
+      coverFeedIndices(current, index, list.length - 1, 3),
+    )
+  }, [])
+
+  useEffect(() => {
+    fetchLiveRef.current = true
+    return () => {
+      fetchLiveRef.current = false
     }
-    if (!storiesAreFresh(stamp, exact, slot)) {
-      void loadFeedStories(readySourceId, stamp, controller.signal)
+  }, [board, stampKey])
+
+  useEffect(() => {
+    if (board !== 'feeds' || sources.length === 0) return
+    for (const i of cover) {
+      const source = sources[i]
+      if (!source) continue
+      const stamp = source.last_success_at ?? 0
+      const key = `${source.id}:${stamp}`
+      const exact = peekFeedStories(source.id, stamp)
+      const slot = slotsRef.current.get(source.id)
+      if (exact && slot?.stamp !== stamp) {
+        slotsRef.current.set(source.id, { stamp, items: exact })
+        bump()
+      }
+      if (exact || slot?.stamp === stamp) continue
+      if (inflightRef.current.has(key)) continue
+      inflightRef.current.add(key)
+      void loadFeedStories(source.id, stamp)
         .then((items) => {
-          if (controller.signal.aborted) return
-          slotsRef.current.set(readySourceId, { stamp, items })
-          setLocal({ id: readySourceId, stamp, items })
+          inflightRef.current.delete(key)
+          const current = sourcesRef.current.find((entry) => entry.id === source.id)
+          if (!fetchLiveRef.current) return
+          if ((current?.last_success_at ?? 0) !== stamp) return
+          slotsRef.current.set(source.id, { stamp, items })
+          bump()
         })
         .catch(() => {
-          /* 换源失败不闪空 */
+          inflightRef.current.delete(key)
         })
     }
-    return () => {
-      controller.abort()
-    }
-  }, [board, readySourceId, stamp])
+  }, [board, stampKey, cover, bump])
 
-  const painted =
-    readySourceId == null
-      ? null
-      : paintReadyStories(
-          stamp,
-          peekFeedStories(readySourceId, stamp),
-          peekFeedStoriesLoose(readySourceId),
-          slotsRef.current.get(readySourceId) ??
-            (local?.id === readySourceId
-              ? { stamp: local.stamp, items: local.items }
-              : undefined),
-        )
-  const stories = storiesForSource(
-    painted && readySourceId != null
-      ? { id: readySourceId, items: painted }
-      : null,
-    readySource,
-  )
+  const fetched = useMemo(() => {
+    const map = new Map<number, FeedStory[]>()
+    for (const source of sources) {
+      const stamp = source.last_success_at ?? 0
+      const exact = peekFeedStories(source.id, stamp)
+      const slot = slotsRef.current.get(source.id)
+      const items = exact ?? (slot?.stamp === stamp ? slot.items : null) ?? peekFeedStoriesLoose(source.id)
+      if (items) map.set(source.id, items)
+    }
+    return map
+    // tick：某源拉完后重拼。cover 只决定去拉谁，不进这张表。
+  }, [sources, tick])
+
+  const prevStoriesRef = useRef<FeedStory[]>([])
+  const stories = useMemo(() => {
+    const next =
+      board === 'feeds'
+        ? stitchStoriesBySources(sources, fetched, 0, lastIndex).map((story) =>
+            flags.project(story),
+          )
+        : []
+    const reused = reuseFeedStories(prevStoriesRef.current, next)
+    prevStoriesRef.current = reused
+    return reused
+  }, [board, fetched, flags, flagsRevision, lastIndex, sources])
 
   const onStar = useCallback(
     (item: BrewItemPreview) => onToggleStar?.(flags.project(item)),
     [onToggleStar, flags],
   )
 
-  return { stories: stories.map(story => flags.project(story)), onStar }
+  return {
+    stories,
+    onStar,
+    expand,
+    jump,
+    holdStories,
+    releaseStories,
+    railEpoch: idKey,
+  }
 }
