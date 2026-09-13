@@ -5,11 +5,11 @@ import type {
   UpperBodyVisualIdentityKey,
 } from '../../components/agent/onboarding/onboardingTypes'
 import type { AgentPersona } from '../../services/agent/agentApi'
+import type { PoseCorrection } from './anime25drig/poseCorrections'
 import type { RigCharacterHandle } from './rig/RigCharacter'
 import type { MeropeRigManifest } from './rig/types'
 import type { MeropeActivity } from './types'
 import type { WardrobeItem } from './wardrobe'
-import type { PoseCorrection } from './anime25drig/poseCorrections'
 import { LuRefreshCw, LuSparkles } from '@lib/icons'
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
@@ -97,7 +97,7 @@ function toMeropeActivity(raw: string): MeropeActivity {
 
 function joinOverviewSentences(locale: string, parts: string[]): string {
   const cleaned = parts
-    .map((part) => part.replaceAll(/[。．.]+$/ug, '').trim())
+    .map((part) => part.replaceAll(/[。．.]+$/gu, '').trim())
     .filter(Boolean)
   if (cleaned.length === 0) return ''
   if (locale.startsWith('en')) return `${cleaned.join('. ')}.`

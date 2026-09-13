@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type {
   DiscordBotPhase,
   DiscordBotStatus,
@@ -17,7 +18,7 @@ import {
   SiQq,
   SiTelegram,
 } from '@lib/icons'
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { agentService } from '../../services/agent'
 import { showStickyToast, showToast } from '../../utils/toastManager'

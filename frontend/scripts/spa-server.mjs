@@ -1,12 +1,17 @@
-/** Production SPA server: static files + fallback, stamps site identity.
+/**
+ * Production SPA server: static files + fallback, stamps site identity.
  *  Proxy stays a dumb hop. Crawler / share HTML is backend SEO, not this process.
  */
+import { Buffer } from 'node:buffer'
 import { createReadStream, existsSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import http from 'node:http'
 import path from 'node:path'
+import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
+import { DOCUMENT_PERMISSIONS_POLICY } from './astro/constants.mjs'
+import { isClientAbortError } from './devServerResponse.mjs'
 import {
   createBrandLoader,
   stampDocumentHtml,
@@ -19,9 +24,6 @@ const PORT = Number(process.env.PORT || 1102)
 const HOST = process.env.HOST || '0.0.0.0'
 const INDEX = path.join(DIST, 'index.html')
 const MANIFEST_NAME = 'manifest.webmanifest'
-
-const DOCUMENT_PERMISSIONS_POLICY =
-  'geolocation=(self), microphone=(self), camera=()'
 
 const ASSET_EXT =
   /\.(?:js|mjs|cjs|css|map|png|webp|jpe?g|gif|svg|ico|woff2?|ttf|otf|json|webmanifest|txt|wasm|webm|mp3|mp4)$/i
@@ -221,11 +223,12 @@ if (!existsSync(INDEX)) {
 
 const server = http.createServer((req, res) => {
   handle(req, res).catch((error) => {
+    if (isClientAbortError(error) || res.writableEnded || res.destroyed) return
     console.error('[spa-server]', error)
     if (!res.headersSent) {
       res.writeHead(500)
     }
-    res.end()
+    if (!res.writableEnded) res.end()
   })
 })
 

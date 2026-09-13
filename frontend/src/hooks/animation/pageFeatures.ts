@@ -24,7 +24,6 @@ export const PAGE_FEATURES: Record<string, number> = {
     Feature.Visibility | Feature.Intersection | Feature.Timeout | Feature.Idle,
   config: Feature.Timeout,
   login: Feature.Timeout,
-  details: 0,
   setup: Feature.Timeout,
   'tapp-multi': Feature.Visibility | Feature.Idle,
 }

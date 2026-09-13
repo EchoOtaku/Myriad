@@ -82,7 +82,7 @@ test('import persona uses the long onboarding timeout, including the dev proxy',
 
 test('dev proxy long-timeouts cover model3d downloads, agent process, and SSE', () => {
   const astro = readFileSync(
-    new URL('../../../astro.config.mjs', import.meta.url),
+    new URL('../../../scripts/astro/backendDevProxy.mjs', import.meta.url),
     'utf8',
   )
   assert.match(astro, /aiRequestTimeoutMs/)

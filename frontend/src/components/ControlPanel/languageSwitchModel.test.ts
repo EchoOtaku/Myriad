@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
+import { existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { LOCALES } from '../../i18n'
 import {
   initialVirtual,
@@ -12,6 +15,11 @@ import {
 } from './languageSwitchModel'
 
 describe('languageSwitchModel', () => {
+  it('keeps the stylesheet LanguageSwitch.tsx imports', () => {
+    const here = dirname(fileURLToPath(import.meta.url))
+    assert.equal(existsSync(join(here, 'LanguageSwitch.css')), true)
+  })
+
   it('centers the current locale on the middle copy', () => {
     assert.equal(LOOP_ITEMS[initialVirtual('ja-JP')], 'ja-JP')
     assert.equal(LOOP_ITEMS[initialVirtual('zh-CN')], 'zh-CN')

@@ -43,7 +43,7 @@ const REFRESH_ICON = (
   </svg>
 )
 
-export const ControlQuickActions = memo(function ControlQuickActions({
+export const ControlQuickActions = memo(({
   locale,
   labels,
   onLocaleChange,
@@ -58,7 +58,7 @@ export const ControlQuickActions = memo(function ControlQuickActions({
   onRefreshWallpaper,
   isAdmin,
   onOpenConfig,
-}: ControlQuickActionsProps) {
+}: ControlQuickActionsProps) => {
   const animationModeClass = isStandardAnimation
     ? 'performance-standard'
     : 'performance-light'

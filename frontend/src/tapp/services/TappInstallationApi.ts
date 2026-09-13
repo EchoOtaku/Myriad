@@ -269,7 +269,7 @@ export function normalizeStoreCatalogUrl(url: string): string {
   return url
     .trim()
     .replaceAll(/\/+$/g, '')
-    .replaceAll(/\/index\.json$/ig, '')
+    .replaceAll(/\/index\.json$/gi, '')
 }
 
 /** 解析 tappId 所在目录，返回 URL，不是本地 DB id。 */

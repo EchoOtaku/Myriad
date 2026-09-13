@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { API_URL } from '../config'
 import { currentCopy } from '../i18n/localeCopy'
+import { SITE_TITLE_FONTS } from '../siteFonts.mjs'
 import { usePrimaryColor } from '../utils/colorSubscriber'
 import { deriveAdaptiveTitleColor } from '../utils/readableColor'
 import { getUIConfigDeduped } from '../utils/requestDedup'
@@ -16,7 +17,7 @@ export interface FontOption {
   cssVariable: string
   cssClass: string
 
-  /** 实际注册/使用的字重，与 fonts.css / astro.config 对齐。 */
+  /** 实际注册/使用的字重，与 fonts.css / siteFonts 对齐。 */
   weight: 400 | 700
 }
 
@@ -87,88 +88,16 @@ export const FONT_SIZE_OPTIONS: readonly {
   { id: 'xxl', nameKey: 'sizeXXLarge', value: 1.4 },
 ])
 
-export const AVAILABLE_FONTS: readonly FontOption[] = Object.freeze([
-  {
-    id: 'qwitcher-grypen',
-    name: 'Qwitcher Grypen',
-    family: 'var(--font-qwitcher-grypen), cursive',
-    cssVariable: '--font-qwitcher-grypen',
-    cssClass: 'title-font-qwitcher-grypen',
-    weight: 700,
-  },
-  {
-    id: 'codystar',
-    name: 'Codystar',
-    family: 'var(--font-codystar), system-ui',
-    cssVariable: '--font-codystar',
-    cssClass: 'title-font-codystar',
-    weight: 400,
-  },
-  {
-    id: 'henny-penny',
-    name: 'Henny Penny',
-    family: 'var(--font-henny-penny), system-ui',
-    cssVariable: '--font-henny-penny',
-    cssClass: 'title-font-henny-penny',
-    weight: 400,
-  },
-  {
-    id: 'srisakdi',
-    name: 'Srisakdi',
-    family: 'var(--font-srisakdi), system-ui',
-    cssVariable: '--font-srisakdi',
-    cssClass: 'title-font-srisakdi',
-    weight: 700,
-  },
-  {
-    id: 'fleur-de-leah',
-    name: 'Fleur De Leah',
-    family: 'var(--font-fleur-de-leah), cursive',
-    cssVariable: '--font-fleur-de-leah',
-    cssClass: 'title-font-fleur-de-leah',
-    weight: 400,
-  },
-  {
-    id: 'league-script',
-    name: 'League Script',
-    family: 'var(--font-league-script), cursive',
-    cssVariable: '--font-league-script',
-    cssClass: 'title-font-league-script',
-    weight: 400,
-  },
-  {
-    id: 'megrim',
-    name: 'Megrim',
-    family: 'var(--font-megrim), system-ui',
-    cssVariable: '--font-megrim',
-    cssClass: 'title-font-megrim',
-    weight: 400,
-  },
-  {
-    id: 'silkscreen',
-    name: 'Silkscreen',
-    family: 'var(--font-silkscreen), system-ui',
-    cssVariable: '--font-silkscreen',
-    cssClass: 'title-font-silkscreen',
-    weight: 700,
-  },
-  {
-    id: 'unifraktur-maguntia',
-    name: 'UnifrakturMaguntia',
-    family: 'var(--font-unifraktur-maguntia), serif',
-    cssVariable: '--font-unifraktur-maguntia',
-    cssClass: 'title-font-unifraktur-maguntia',
-    weight: 400,
-  },
-  {
-    id: 'cinzel',
-    name: 'Cinzel',
-    family: 'var(--font-cinzel), serif',
-    cssVariable: '--font-cinzel',
-    cssClass: 'title-font-cinzel',
-    weight: 700,
-  },
-])
+export const AVAILABLE_FONTS: readonly FontOption[] = Object.freeze(
+  SITE_TITLE_FONTS.map((font) => ({
+    id: font.id,
+    name: font.name,
+    family: `var(${font.cssVariable}), ${font.fallbacks[0]}`,
+    cssVariable: font.cssVariable,
+    cssClass: font.cssClass,
+    weight: font.weights[0] as 400 | 700,
+  })),
+)
 
 const fontMap = new Map(AVAILABLE_FONTS.map((f) => [f.id, f]))
 const colorMap = new Map(AVAILABLE_COLORS.map((c) => [c.id, c]))

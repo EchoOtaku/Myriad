@@ -50,7 +50,7 @@ export function notificationFacingTitle(notification: AppNotification): string {
           metaString(notification, 'task_name') ||
           notification.title
             .replaceAll(/^定时任务:\s*/g, '')
-            .replaceAll(/^Scheduled task:\s*/ig, '')
+            .replaceAll(/^Scheduled task:\s*/gi, '')
             .trim() ||
           'task',
       })

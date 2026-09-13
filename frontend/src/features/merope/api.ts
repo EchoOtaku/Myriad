@@ -1,5 +1,5 @@
-import type { MeropeRigImportSource, MeropeRigManifest } from './rig/types'
 import type { PoseCorrection } from './anime25drig/poseCorrections'
+import type { MeropeRigImportSource, MeropeRigManifest } from './rig/types'
 import { currentCopy } from '../../i18n/localeCopy'
 import api from '../../lib/api'
 import { isLiveMeropeManifest, isRigManifest } from './rig/types'

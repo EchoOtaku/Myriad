@@ -18,7 +18,6 @@ const pathToPageId: Record<string, string> = {
   '/tapp': 'tapp',
   '/config': 'config',
   '/login': 'login',
-  '/details': 'details',
   '/setup': 'setup',
 }
 

@@ -1,7 +1,7 @@
 /*
  * Title fonts load on demand via useTitleFont — no CSS @import (Lighthouse
  * render-blocking). @font-face is emitted by Astro Fonts API at build time;
- * no runtime Google CDN. Weights must match astro.config.mjs / FontOption.weight.
+ * no runtime Google CDN. Weights must match siteFonts.mjs / FontOption.weight.
  */
 .qwitcher-grypen {
   font-family: var(--font-qwitcher-grypen), cursive;

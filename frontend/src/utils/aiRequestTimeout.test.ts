@@ -69,8 +69,11 @@ describe('aiRequestTimeoutMs', () => {
 
 describe('dev proxy uses the shared AI timeout table', () => {
   it('imports aiRequestTimeoutMs', () => {
-    const astro = readFileSync(new URL('../../astro.config.mjs', import.meta.url), 'utf8')
-    assert.match(astro, /from '\.\/src\/utils\/aiRequestTimeout\.mjs'/)
+    const astro = readFileSync(
+      new URL('../../scripts/astro/backendDevProxy.mjs', import.meta.url),
+      'utf8',
+    )
+    assert.match(astro, /from '\.\.\/\.\.\/src\/utils\/aiRequestTimeout\.mjs'/)
     assert.match(astro, /aiRequestTimeoutMs/)
     const timeoutPick = astro.slice(
       astro.indexOf('const aiTimeoutMs = aiRequestTimeoutMs'),

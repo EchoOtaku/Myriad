@@ -1,4 +1,5 @@
-/** Stamp site title/icon into the SPA document and web app manifest.
+/**
+ * Stamp site title/icon into the SPA document and web app manifest.
  *  Fail-open: invalid or missing brand leaves build-time defaults.
  *  Metadata URL is operator-configured only; never taken from the request.
  *
@@ -184,7 +185,7 @@ export function stampDocumentHtml(html, brand) {
 
   let out = String(html)
   out = out.replace(
-    /(<title\b[^>]*\bdata-myriad-brand="title"(?=[\s>])[^>]*>)[\s\S]*?(<\/title>)/i,
+    /(<title\b[^>]+\bdata-myriad-brand="title"(?=[\s>])[^>]*>)[\s\S]*?(<\/title>)/i,
     `$1${title}$2`,
   )
   out = replaceBrandAttr(out, 'description', 'content', description)

@@ -78,7 +78,7 @@ export function isUselessErrorText(text: string): boolean {
   }
   if (/^database error$/i.test(detail)) return true
   if (/\((?:HTTP\s*)?\d{3}\)$/i.test(detail)) {
-    const inner = detail.replaceAll(/\s*\((?:HTTP\s*)?\d{3}\)\s*$/ig, '').trim()
+    const inner = detail.replaceAll(/\s*\((?:HTTP\s*)?\d{3}\)\s*$/gi, '').trim()
     if (
       !inner ||
       /^could not [a-z ]+$/i.test(inner) ||
@@ -1144,7 +1144,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     const status = raw.match(/\bHTTP\s+(\d{3})\b/i)
     const colon = raw.indexOf(':')
     const rest = colon >= 0 ? raw.slice(colon + 1).trim() : ''
-    const phrase = rest.replaceAll(/^HTTP\s+\d{3}\s*:?\s*/ig, '').trim()
+    const phrase = rest.replaceAll(/^HTTP\s+\d{3}\s*:?\s*/gi, '').trim()
     const keep =
       phrase && !isInternalDump(phrase) && !isUselessErrorText(phrase)
         ? clip(phrase)

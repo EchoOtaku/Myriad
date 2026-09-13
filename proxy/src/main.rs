@@ -700,7 +700,7 @@ fn is_seo_crawler_ua(ua: &str) -> bool {
 /// In-app browsers that also fetch link previews with the same UA (WeChat / Weibo /
 /// WeCom). Must NOT be treated as ordinary browsers, but humans in these WebViews
 /// still need the SPA — backend shells inject a `?_spa=1` bounce for them.
-/// Keep in sync with frontend `isInappShareUserAgent` and backend `is_inapp_share_ua`.
+/// Keep in sync with frontend `seoShell.mjs` and backend `is_inapp_share_ua`.
 fn is_inapp_share_ua(ua: &str) -> bool {
     let ua = ua.to_ascii_lowercase();
     ua.contains("micromessenger")
@@ -721,7 +721,7 @@ fn wants_seo_html_shell(user_agent: &str) -> bool {
 ///
 /// Keep in sync with:
 /// - `backend` public federation routes in `main.rs` (non-`/api` ActivityPub + media)
-/// - frontend `isBackendDevProxyPath` in `astro.config.mjs`
+/// - frontend `isBackendDevProxyPath` in `scripts/astro/backendDevProxy.mjs`
 /// - docs/deployment/PORTS.md
 ///
 /// Missing an entry silently serves the SPA HTML for that URL (broken media, broken

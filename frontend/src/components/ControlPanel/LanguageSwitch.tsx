@@ -50,13 +50,13 @@ function writeStrip(
   strip.classList.add('is-ready')
 }
 
-export const LanguageSwitch = memo(function LanguageSwitch({
+export const LanguageSwitch = memo(({
   locale,
   labels,
   title,
   ariaLabel,
   onChange,
-}: LanguageSwitchProps) {
+}: LanguageSwitchProps) => {
   const [picking, setPicking] = useState(false)
   const [armed, setArmed] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)

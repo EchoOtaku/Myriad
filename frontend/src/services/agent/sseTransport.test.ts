@@ -46,7 +46,7 @@ describe('shouldYieldSsePaint', () => {
 describe('dev proxy pipes agent SSE', () => {
   it('does not treat process/stream as a buffered JSON body', () => {
     const src = readFileSync(
-      new URL('../../../astro.config.mjs', import.meta.url),
+      new URL('../../../scripts/astro/backendDevProxy.mjs', import.meta.url),
       'utf8',
     )
     assert.match(src, /function isAgentSsePath/)

@@ -423,7 +423,7 @@ export const SteamStatsWidget = memo(({ data, isPreview }: any) => {
     if (!raw) return null
     if (raw.includes('/api/proxy/image')) return proxyImageUrl(raw) ?? raw
     const full = raw.replaceAll(
-      /(_full|_medium)?\.(jpg|png)(\?.*)?$/ig,
+      /(_full|_medium)?\.(jpg|png)(\?.*)?$/gi,
       '_full.$2$3',
     )
     return proxyImageUrl(full) ?? full

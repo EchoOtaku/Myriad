@@ -47,16 +47,24 @@ function applyBranding(siteMetadata: string | null) {
 }
 
 describe('siteBrandingInlineScript', () => {
-  it('is wired into both SPA shells after the default title tag', () => {
+  it('is wired into the shared SPA document after the default title tag', () => {
+    const source = readFileSync(
+      new URL('../layouts/SpaDocument.astro', import.meta.url),
+      'utf8',
+    )
+    assert.match(source, /SiteBrandingBoot/)
+    const titleAt = source.search(/<title(?:\s[^>]*)?>\{title\}<\/title>/)
+    const bootAt = source.indexOf('<SiteBrandingBoot')
+    assert.ok(titleAt >= 0 && bootAt > titleAt)
+  })
+
+  it('keeps both page entries on the shared document shell', () => {
     for (const file of ['index.astro', '[...path].astro']) {
       const source = readFileSync(
         new URL(`../pages/${file}`, import.meta.url),
         'utf8',
       )
-      assert.match(source, /SiteBrandingBoot/)
-      const titleAt = source.search(/<title(?:\s[^>]*)?>\{title\}<\/title>/)
-      const bootAt = source.indexOf('<SiteBrandingBoot')
-      assert.ok(titleAt >= 0 && bootAt > titleAt, file)
+      assert.match(source, /SpaDocument/)
     }
   })
 

@@ -89,7 +89,7 @@ export function InstallTappDialog({
         const result = await TappApiService.installTappFile(file)
         onInstallRef.current()
         onSuccessRef.current?.(
-          result.name || file.name.replaceAll(/\.tapp$/ig, ''),
+          result.name || file.name.replaceAll(/\.tapp$/gi, ''),
         )
         // 仅当前会话仍 open 时收起 UI。
         if (!isCurrentSession(startedSession)) return

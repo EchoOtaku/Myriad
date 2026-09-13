@@ -4,13 +4,13 @@ import { describe, it } from 'node:test'
 import {
   DEFAULT_BRAND_FAVICON,
   DEFAULT_BRAND_TITLE,
-  SITE_BRAND_ELEMENT_ID,
-  SITE_ICON_API_PATH,
   escapeHtml,
-  sanitizeStampOgImage,
   fetchStampBrand,
   isAllowedMetadataUrl,
   sanitizeStampFavicon,
+  sanitizeStampOgImage,
+  SITE_BRAND_ELEMENT_ID,
+  SITE_ICON_API_PATH,
   stampDocumentHtml,
   stampWebManifest,
 } from '../../scripts/siteBrandingStamp.mjs'

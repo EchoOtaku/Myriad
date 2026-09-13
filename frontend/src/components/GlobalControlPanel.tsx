@@ -77,6 +77,7 @@ import {
   subscribeLookingAtAgentPanel,
 } from './agent-panel/agentPanelVisible'
 import { ADDRESSEE_UPDATED_EVENT } from './agent/meropeVitals'
+import { ControlQuickActions } from './ControlPanel/ControlQuickActions'
 import {
   initialPanelState,
   isPanelMorphing,
@@ -90,7 +91,6 @@ import {
   showsPanelContent,
   showsProgressUi,
 } from './ControlPanel/panelTransition'
-import { ControlQuickActions } from './ControlPanel/ControlQuickActions'
 import { UserSection } from './ControlPanel/UserSection'
 import { isHoverCapablePointer } from './ControlPanel/widgetCarousel'
 import NotificationPanelList from './NotificationPanelList'

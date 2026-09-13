@@ -19,7 +19,7 @@ export default {
       },
       fontFamily: {
         sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
-        // JetBrains Mono is not self-hosted (not in astro.config fonts). Uninstalled
+        // JetBrains Mono is not self-hosted (not in siteFonts). Uninstalled
         // machines would fall through to generic monospace — on Chinese Windows that
         // is SimSun-style and code blocks misalign. List per-platform system mono.
         mono: [

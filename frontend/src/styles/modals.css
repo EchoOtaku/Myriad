@@ -79,6 +79,7 @@ html.dark .modal-content {
 }
 
 @media (width <= 640px) {
+  .modal-overlay,
   .modal-overlay-portal {
     padding: 0;
     align-items: flex-end;
@@ -139,12 +140,19 @@ html.dark .modal-content {
   }
 }
 
+@media (width <= 375px) {
+  .modal-content {
+    max-height: 90vh;
+  }
+}
+
 @media (width <= 640px) and (orientation: landscape) {
   .modal-content {
     max-height: 80vh;
     border-radius: 1rem;
   }
 
+  .modal-overlay,
   .modal-overlay-portal {
     align-items: center;
   }

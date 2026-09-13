@@ -8,9 +8,9 @@ import type {
 } from './onboardingTypes'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
+import { notifyPersonaUpdated } from '../../../features/merope/events'
 import { seedWardrobeFromIdentity } from '../../../features/merope/wardrobe'
 import { agentService } from '../../../services/agent'
-import { notifyPersonaUpdated } from '../../../features/merope/events'
 import { invalidatePublicConfigCache } from '../../../utils/requestDedup'
 import {
   CHOICE_STEP,
