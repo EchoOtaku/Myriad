@@ -13,15 +13,39 @@ export function escapeHtml(value: string): string {
     .replaceAll('"', '&quot;')
 }
 
+/** 反斜杠转义先挪成占位符，免得被下面的规则当记号；转回 Markdown 时还原成 `\x`。 */
+const ESCAPABLE = '\\`*_{}[]()#+-.!~<>|'
+const ESC_MARK = '\uE000'
+
+function stashEscapes(text: string): string {
+  return text.replaceAll(/\\([\\`*_{}[\]()#+\-.!~<>|])/g, (_m, ch: string) => {
+    const index = ESCAPABLE.indexOf(ch)
+    return `${ESC_MARK}${String.fromCharCode(0xE100 + index)}`
+  })
+}
+
+function renderEscapes(html: string): string {
+  return html.replaceAll(/\uE000([\uE100-\uE1FF])/g, (_m, code: string) => {
+    const ch = ESCAPABLE[code.charCodeAt(0) - 0xE100] ?? ''
+    return `<span data-esc="${escapeHtml(ch)}">${escapeHtml(ch)}</span>`
+  })
+}
+
+/** 行内 Markdown → HTML。`  \n` 和 `\\\n` 是硬换行，普通换行只是空格。 */
 function inlineMarkdown(text: string): string {
-  return escapeHtml(text)
+  const html = escapeHtml(stashEscapes(text))
+    .replaceAll(/(?: {2,}|\\)\n/g, '<br>')
+    .replaceAll('\n', ' ')
     .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, '<img src="$2" alt="$1">')
     .replace(/\[\^(\d+)\](?!:)/g, '<sup data-fnref="$1">$1</sup>')
     .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2">$1</a>')
+    .replace(/&lt;(https?:\/\/[^\s&]+)&gt;/g, '<a href="$1" data-autolink="1">$1</a>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/~~([^~]+)~~/g, '<del>$1</del>')
+    .replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+  return renderEscapes(html)
 }
 
 const LIST_LINE = /^( *)([-*]|\d+\.) (\[([ x])\] )?(.*)$/i
@@ -156,7 +180,7 @@ export function markdownToVisualHtml(markdown: string): string {
           .join('')
         return `<table>${html}</table>`
       }
-      return `<p>${inlineMarkdown(block.replaceAll('\n', '<br>'))}</p>`
+      return `<p>${inlineMarkdown(block)}</p>`
     })
     .join('')
 }
