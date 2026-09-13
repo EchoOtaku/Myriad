@@ -194,6 +194,9 @@ mod tests {
     #[tokio::test]
     async fn accepted_work_does_not_hold_admission_lock() {
         let (finish, done) = tokio::sync::oneshot::channel::<()>();
+        // Spawned work must outlive the lock; awaiting the JoinHandle here
+        // would keep admission held until `done` fires.
+        #[allow(clippy::async_yields_async)]
         let task = with_chat_lock("admission-test", async {
             tokio::spawn(async {
                 let _ = done.await;

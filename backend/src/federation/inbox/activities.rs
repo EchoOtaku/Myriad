@@ -1,6 +1,6 @@
 //! ActivityPub Follow / Accept / Undo / content / Move inbox handlers.
 
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::json;
@@ -9,7 +9,7 @@ use crate::federation::actor::RemoteActorInfo;
 use crate::federation::types::*;
 
 use super::inbox_err;
-use super::local_deliver::{enqueue_delivery, enqueue_delivery_queue, DeliveryMode};
+use super::local_deliver::{DeliveryMode, enqueue_delivery, enqueue_delivery_queue};
 
 // Activity 处理器
 

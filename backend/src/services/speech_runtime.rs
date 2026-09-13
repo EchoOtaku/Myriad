@@ -1,6 +1,6 @@
 //! Resolve the configured speech provider and run file STT / TTS.
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use serde::Serialize;
 
 use crate::GLOBAL_DYNAMIC_CONFIG;
@@ -8,11 +8,11 @@ use crate::GLOBAL_DYNAMIC_CONFIG;
 use super::gemini_media::{self, GeminiMediaError};
 use super::http_client::ProxyConfig;
 use super::minimax_speech::{
-    is_minimax_vendor, MiniMaxSpeech, MiniMaxSpeechError, DEFAULT_MINIMAX_HOST,
-    DEFAULT_MINIMAX_TTS_MODEL, DEFAULT_MINIMAX_VOICE,
+    DEFAULT_MINIMAX_HOST, DEFAULT_MINIMAX_TTS_MODEL, DEFAULT_MINIMAX_VOICE, MiniMaxSpeech,
+    MiniMaxSpeechError, is_minimax_vendor,
 };
 use super::openai_compatible_speech::{
-    openrouter_official_tts_unavailable, OpenAiCompatibleSpeech, OpenAiSpeechError,
+    OpenAiCompatibleSpeech, OpenAiSpeechError, openrouter_official_tts_unavailable,
 };
 use super::tencent_speech_service::{
     AsrRequest, TencentSpeechError, TencentSpeechService, TtsRequest,

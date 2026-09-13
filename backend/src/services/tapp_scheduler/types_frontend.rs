@@ -2,8 +2,8 @@ use chrono::{TimeZone, Utc};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::RwLock;
 
 use crate::services::tapp_registry::{self as shared_registry, RegistryIdentity};

@@ -4,8 +4,8 @@
 //! GET and send `auth_token` cookies automatically — Origin allowlisting is
 //! defense-in-depth against cross-site WS CSRF.
 
-use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
+use axum::http::{HeaderMap, StatusCode};
 use serde_json::json;
 
 /// Reject browser cookie sessions when `Origin` is missing or not allowlisted.

@@ -2,12 +2,12 @@
 //!
 //! Types, constants, and load live in `myriad_module_visibility` so Agent does
 //! not import this HTTP module for flags or preference structs.
-use axum::{http::StatusCode, Json};
-use serde_json::{json, Value};
+use axum::{Json, http::StatusCode};
+use serde_json::{Value, json};
 
 pub use myriad_module_visibility::{
-    AgentUsagePreferences, ModuleVisibilityPreferences, MODULE_VISIBILITY_KEYS,
-    MODULE_VISIBILITY_LEVELS, MODULE_VISIBILITY_PREFERENCES_KEY,
+    AgentUsagePreferences, MODULE_VISIBILITY_KEYS, MODULE_VISIBILITY_LEVELS,
+    MODULE_VISIBILITY_PREFERENCES_KEY, ModuleVisibilityPreferences,
 };
 
 pub async fn get_module_visibility_preferences(

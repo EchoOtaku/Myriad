@@ -8,17 +8,17 @@ use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use myriad_agent_rules::channel::{
-    feishu_worker_intent, parse_feishu_tenant_token, parse_feishu_ws_endpoint, ConnectFailureKind,
-    WorkerIntent,
+    ConnectFailureKind, WorkerIntent, feishu_worker_intent, parse_feishu_tenant_token,
+    parse_feishu_ws_endpoint,
 };
 use myriad_error::redact_secrets;
 use serde::Serialize;
-use tokio::sync::{watch, RwLock};
+use tokio::sync::{RwLock, watch};
 use tracing::{info, warn};
 
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::config::DynamicConfig;
 use crate::services::http_client;
-use crate::GLOBAL_DYNAMIC_CONFIG;
 
 const POLL: Duration = Duration::from_secs(2);
 const HTTP_TIMEOUT: Duration = Duration::from_secs(15);

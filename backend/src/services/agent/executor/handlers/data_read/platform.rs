@@ -1,6 +1,6 @@
 use crate::services::agent::executor::utils::validate_platform_name;
 use crate::services::data_paths::platform_filtered_file;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::io::ErrorKind;

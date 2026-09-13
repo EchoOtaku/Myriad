@@ -6,6 +6,7 @@ import {
   isBangumiPlatform,
   sanitizeMaskedFieldValue,
 } from '../platformConfigRules'
+import { omitAgentOwnedFields } from './agentBagSlice'
 import { configBagEffects } from './configBagEffects'
 import { resetConfigBag } from './configBagReset'
 import { DEFAULT_AUTO_FETCH_CONFIG } from './defaults'
@@ -22,10 +23,10 @@ export function useConfigBagState(messages: {
     readBack: true,
     load: async () => {
       const data: Config = await fetchConfig()
-      return {
+      return omitAgentOwnedFields({
         ...data,
         auto_fetch: data.auto_fetch || DEFAULT_AUTO_FETCH_CONFIG,
-      }
+      })
     },
     persist: async (config) => {
       if (!config) throw new Error(messages.configEmpty)
@@ -40,10 +41,10 @@ export function useConfigBagState(messages: {
         throw new Error(messages.bangumiCredentialMissing)
       }
       await getCSRFToken(true)
-      const result = await updateConfig(config)
+      const result = await updateConfig(omitAgentOwnedFields(config))
       if (result?.success === false)
         throw new Error(result.message || messages.configSaveFailed)
-      return config
+      return omitAgentOwnedFields(config)
     },
     reset: resetConfigBag,
     effects: configBagEffects,

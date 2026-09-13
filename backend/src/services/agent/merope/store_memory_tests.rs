@@ -113,15 +113,21 @@ async fn recall_and_memory_writes_cover_old_rows_duplicates_and_addressee_isolat
             .await
             .unwrap()
     );
-    assert!(!insert_remembered_if_new(&db, -1, "guest memory")
-        .await
-        .unwrap());
-    assert!(!insert_remembered_if_new(&db, 0, "system memory")
-        .await
-        .unwrap());
-    assert!(!insert_remembered_if_new(&db, user_id, "{\"secret\":true}")
-        .await
-        .unwrap());
+    assert!(
+        !insert_remembered_if_new(&db, -1, "guest memory")
+            .await
+            .unwrap()
+    );
+    assert!(
+        !insert_remembered_if_new(&db, 0, "system memory")
+            .await
+            .unwrap()
+    );
+    assert!(
+        !insert_remembered_if_new(&db, user_id, "{\"secret\":true}")
+            .await
+            .unwrap()
+    );
 
     // No-query recall also fills its budget through legacy blank/duplicate rows.
     for _ in 0..10 {
@@ -148,14 +154,18 @@ async fn recall_and_memory_writes_cover_old_rows_duplicates_and_addressee_isolat
             .unwrap(),
         recent
     );
-    assert!(recall_remembered(&db, user_id, Some("tea"), 0)
-        .await
-        .unwrap()
-        .is_empty());
-    assert!(recall_remembered(&db, -1, Some("tea"), 8)
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        recall_remembered(&db, user_id, Some("tea"), 0)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        recall_remembered(&db, -1, Some("tea"), 8)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -242,9 +252,11 @@ async fn explicit_corrections_retire_only_scoped_facts_and_recheck_the_input_und
         supersedes: vec![],
         evidence: Some("我也喜欢茶".into()),
     };
-    assert!(apply_chat_memory_update(&db, user_id, input_at, &addition)
-        .await
-        .unwrap());
+    assert!(
+        apply_chat_memory_update(&db, user_id, input_at, &addition)
+            .await
+            .unwrap()
+    );
     assert_eq!(
         recall_remembered(&db, user_id, None, 8)
             .await
@@ -258,9 +270,11 @@ async fn explicit_corrections_retire_only_scoped_facts_and_recheck_the_input_und
         supersedes: vec!["喜欢茶".into(), "不存在的事实".into()],
         evidence: Some("更正".into()),
     };
-    assert!(!apply_chat_memory_update(&db, user_id, input_at, &invalid)
-        .await
-        .unwrap());
+    assert!(
+        !apply_chat_memory_update(&db, user_id, input_at, &invalid)
+            .await
+            .unwrap()
+    );
     assert_eq!(
         recall_remembered(&db, user_id, None, 8)
             .await
@@ -324,8 +338,10 @@ async fn explicit_corrections_retire_only_scoped_facts_and_recheck_the_input_und
     .unwrap();
     transaction.commit().await.unwrap();
     assert!(!late.await.unwrap());
-    assert!(recall_remembered(&db, user_id, None, 8)
-        .await
-        .unwrap()
-        .contains(&"喜欢茶".into()));
+    assert!(
+        recall_remembered(&db, user_id, None, 8)
+            .await
+            .unwrap()
+            .contains(&"喜欢茶".into())
+    );
 }

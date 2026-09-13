@@ -18,7 +18,7 @@ pub(crate) fn is_retired_configuration_key(key: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_retired_configuration_key, RETIRED_CONFIGURATION_KEYS, RETIRED_CONFIGURATION_PREFIXES,
+        RETIRED_CONFIGURATION_KEYS, RETIRED_CONFIGURATION_PREFIXES, is_retired_configuration_key,
     };
 
     #[test]

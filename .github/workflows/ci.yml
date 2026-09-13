@@ -51,7 +51,7 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@1.94
+      - uses: dtolnay/rust-toolchain@1.98
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
@@ -81,7 +81,7 @@ jobs:
         working-directory: proxy
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@1.94
+      - uses: dtolnay/rust-toolchain@1.98
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
@@ -104,7 +104,7 @@ jobs:
         working-directory: updater
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@1.94
+      - uses: dtolnay/rust-toolchain@1.98
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
@@ -144,7 +144,7 @@ jobs:
       MYRIAD_SMOKE_BACKEND_PORT: 18103
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@1.94
+      - uses: dtolnay/rust-toolchain@1.98
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
@@ -193,7 +193,7 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@1.94
+      - uses: dtolnay/rust-toolchain@1.98
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
@@ -211,7 +211,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@1.94
+      - uses: dtolnay/rust-toolchain@1.98
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
@@ -230,12 +230,12 @@ jobs:
       - name: Verify updater lockfile
         working-directory: updater
         run: cargo metadata --locked --no-deps --format-version 1
-      - name: Prove allowlisted rkyv advisory is unreachable
+      - name: Prove rkyv stays out of the resolved graph
         run: |
           rkyv_tree="$(cargo tree -i rkyv --target all --locked 2>/dev/null)"
           if [ -n "$rkyv_tree" ]; then
             printf '%s\n' "$rkyv_tree" >&2
-            echo 'rkyv became active; remove the RUSTSEC-2026-0235 exception and upgrade it' >&2
+            echo 'rkyv reappeared after rust_decimal 1.43 dropped it; restore or upgrade past RUSTSEC-2026-0235' >&2
             exit 1
           fi
       # MYR-027: hard-fail on unignored *vulnerabilities*; soft-report warnings
@@ -287,7 +287,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 20
-      - uses: dtolnay/rust-toolchain@1.94
+      - uses: dtolnay/rust-toolchain@1.98
       - name: Install dependencies
         run: npm ci
       - name: Regenerate contract

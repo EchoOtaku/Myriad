@@ -1,6 +1,6 @@
 //! Platform library/stats extractors and Discord guild-take helpers for reports.
 use crate::services::smart_filter::SmartFilteredData;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 fn is_unknown_artist(name: &str) -> bool {
     name == "未知艺术家" || name.eq_ignore_ascii_case("unknown artist")
@@ -610,11 +610,7 @@ pub(crate) fn bilibili_stats_from_raw_json(raw_json: &Value) -> Option<BilibiliU
     let has_data = stats.level.as_i64().unwrap_or(0) > 0
         || stats.follower_count.as_i64().unwrap_or(0) > 0
         || stats.following_count.as_i64().unwrap_or(0) > 0;
-    if has_data {
-        Some(stats)
-    } else {
-        None
-    }
+    if has_data { Some(stats) } else { None }
 }
 
 /// 提取哔哩哔哩用户统计数据
@@ -922,16 +918,14 @@ pub(crate) async fn extract_bilibili_library_items(
                                     .filter(|s| !s.is_empty());
                                 // Some scrapers put progress in `new_ep.title` / `new_ep.index_show`
                                 let progress = progress.or_else(|| {
-                                    let ep = item
-                                        .get("new_ep")
+                                    item.get("new_ep")
                                         .and_then(|v| v.as_object())
                                         .and_then(|o| {
                                             o.get("title").or_else(|| o.get("index_show"))
                                         })
                                         .and_then(|v| v.as_str())
                                         .map(|s| s.trim().to_string())
-                                        .filter(|s| !s.is_empty());
-                                    ep
+                                        .filter(|s| !s.is_empty())
                                 });
                                 let season_id = item
                                     .get("season_id")

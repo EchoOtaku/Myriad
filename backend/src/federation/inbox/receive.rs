@@ -1,9 +1,9 @@
 //! Personal and shared ActivityPub inbox HTTP receive paths.
 
 use axum::{
+    Json,
     extract::{Path, State},
     http::{Request, StatusCode},
-    Json,
 };
 use myriad_error::AppError;
 use sea_orm::{
@@ -12,7 +12,7 @@ use sea_orm::{
 };
 use serde_json::json;
 
-use crate::federation::actor::{fetch_remote_actor, RemoteActorInfo};
+use crate::federation::actor::{RemoteActorInfo, fetch_remote_actor};
 use crate::federation::errors::public_inbox_error;
 use crate::federation::limits::{
     buffer_inbox_body, try_acquire_inbox_parse, validate_inbox_json_budget,
@@ -27,7 +27,7 @@ use super::inbox_err;
 use super::local_deliver::DeliveryMode;
 use super::mfp::handle_mfp_activity;
 use super::receipt::{
-    claim_receipt, finish_receipt, receipt_key, ReceiptClaim, ReceiptKey, ReceiptOutcome,
+    ReceiptClaim, ReceiptKey, ReceiptOutcome, claim_receipt, finish_receipt, receipt_key,
 };
 use super::signature::{verify_preparse_gate, verify_request_signature};
 
@@ -857,12 +857,12 @@ mod tests {
         );
         assert_eq!(err.0, StatusCode::FORBIDDEN);
         assert_eq!(
-            err.1 .0.get("error").and_then(|v| v.as_str()),
+            err.1.0.get("error").and_then(|v| v.as_str()),
             Some("Inbox processing failed")
         );
         let ownership = receipt_rejected(403, Some("Object ownership check failed"));
         assert_eq!(
-            ownership.1 .0.get("error").and_then(|v| v.as_str()),
+            ownership.1.0.get("error").and_then(|v| v.as_str()),
             Some("Access denied")
         );
     }

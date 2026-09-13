@@ -4,8 +4,8 @@
 //! metadata but never the encrypted or plaintext credential value.
 
 use super::{
-    can_write_installation_settings, current_is_admin, optional_authenticated_user_id,
-    validate_tapp_id, ApiResponse, TappStorageAccess,
+    ApiResponse, TappStorageAccess, can_write_installation_settings, current_is_admin,
+    optional_authenticated_user_id, validate_tapp_id,
 };
 use crate::api::tapp_runtime::common as tapp_common;
 use crate::error::HttpError;
@@ -13,9 +13,9 @@ use crate::middleware::auth::Claims;
 use crate::models::entities::tapps;
 use crate::services::tapp_credentials::{self, TappCredentialError, TappCredentialStatus};
 use axum::{
+    Extension, Json,
     extract::{Path, State},
     http::StatusCode,
-    Extension, Json,
 };
 use myriad_error::AppError;
 use sea_orm::{DatabaseConnection, TransactionTrait};

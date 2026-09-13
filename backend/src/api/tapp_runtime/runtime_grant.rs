@@ -4,13 +4,13 @@
 //! This module owns Axum extractors, HTTP DTO mapping, and revoke side-effects.
 
 use axum::{
-    extract::{FromRef, FromRequestParts, Path, State},
-    http::{request::Parts, StatusCode},
     Extension, Json,
+    extract::{FromRef, FromRequestParts, Path, State},
+    http::{StatusCode, request::Parts},
 };
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::config::DynamicConfig;
 use crate::error::HttpError;
@@ -172,7 +172,7 @@ where
                     })),
                 ))
             })?;
-        validate_runtime_grant(&db, token, claims).await
+        return validate_runtime_grant(&db, token, claims).await;
     }
 }
 

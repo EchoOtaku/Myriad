@@ -29,15 +29,15 @@ mod uninstall;
 mod validation;
 mod widgets;
 
+pub(crate) use access::{
+    TappStorageAccess, authorize_runtime_storage_write, installation_write_forbidden_error,
+};
 use access::{
     authorize_runtime_storage, authorize_tapp_permission, can_write_installation_settings,
     canonical_installation_owner_id, current_is_admin, current_user_role,
     ensure_tapp_install_allowed, filter_install_permissions, find_admin_user_id, find_visible_tapp,
     get_admin_user_id, installation_conflict_owner_ids, lock_tapp_lifecycle,
     optional_authenticated_user_id, require_current_admin,
-};
-pub(crate) use access::{
-    authorize_runtime_storage_write, installation_write_forbidden_error, TappStorageAccess,
 };
 #[cfg(test)]
 use catalog::tapp_detail_from_model;
@@ -67,8 +67,8 @@ pub(crate) use storage::validate_sandbox_storage_key;
 #[cfg(test)]
 use store_package::validate_store_manifest_category;
 pub use store_sources::*;
-use types::{api_error, api_http_error, api_response_err};
 pub use types::{ApiResponse, TappDetail, TappListItem};
+use types::{api_error, api_http_error, api_response_err};
 pub use uninstall::prune_stale_private_tapps;
 #[cfg(test)]
 use uninstall::uninstall_post_commit_cleanup_path;
@@ -82,8 +82,8 @@ pub type RegisterWidgetRequest = widgets::RegisterWidgetRequest;
 use widgets::{list_all_widgets, reconcile_manifest_widgets, register_widget, unregister_widget};
 
 use axum::{
-    routing::{delete, get, post, put},
     Router,
+    routing::{delete, get, post, put},
 };
 
 use crate::middleware::auth::{

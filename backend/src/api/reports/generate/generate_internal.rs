@@ -1,7 +1,7 @@
 //! Platform report generation internals: bounded fan-out, AI, and platform data.
 
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::api::reports::extract::*;
 use crate::config::ModelTier;
@@ -9,8 +9,8 @@ use crate::models::entities::platform_reports;
 use crate::services::ai::create_ai_analyzer_for_tier;
 use crate::services::smart_filter::{SmartFilter, SmartFilteredData};
 
-use super::persist::{persist_platform_report_atomic, MAX_CONCURRENT_PLATFORM_REPORTS};
 use super::PlatformReport;
+use super::persist::{MAX_CONCURRENT_PLATFORM_REPORTS, persist_platform_report_atomic};
 
 /// 内部函数：生成平台报告逻辑（有界并行 + 逐平台原子落库）
 ///
@@ -1122,12 +1122,11 @@ async fn generate_ai_report(
     let schema = crate::api::reports::prompt_data::platform_report_schema();
 
     // 6. 调用 AI（全站费用账本：source=reports，主体记在站长；含管理员触发）
-    let admin_id = if let Ok(db) = crate::services::tapp_registry::database().await {
-        crate::services::tapp_ownership::get_admin_user_id(&db)
+    let admin_id = match crate::services::tapp_registry::database().await {
+        Ok(db) => crate::services::tapp_ownership::get_admin_user_id(&db)
             .await
-            .unwrap_or(1)
-    } else {
-        1
+            .unwrap_or(1),
+        _ => 1,
     };
     let attr = crate::services::ai_cost_ledger::AiLedgerAttribution {
         subject_id: admin_id,
@@ -1222,11 +1221,7 @@ pub(crate) fn normalize_steam_player_type(raw: &str) -> &'static str {
         return "balanced";
     }
     // 空串 casual；无法识别的非空文案 balanced。
-    if t.is_empty() {
-        "casual"
-    } else {
-        "balanced"
-    }
+    if t.is_empty() { "casual" } else { "balanced" }
 }
 
 fn xbox_gamer_type_fallback(locale: &str, completed: usize, avg: f64, gs: i64) -> String {

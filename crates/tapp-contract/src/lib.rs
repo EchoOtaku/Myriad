@@ -1,7 +1,7 @@
 #![recursion_limit = "512"]
 
 #[cfg(feature = "tapp-contract-schema")]
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 #[cfg(feature = "tapp-contract-schema")]
 use std::collections::BTreeMap;
 

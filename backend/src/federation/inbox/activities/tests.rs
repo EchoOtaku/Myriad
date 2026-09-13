@@ -571,12 +571,14 @@ fn same_host_username_compatible_at_handle_and_reject() {
 
 #[test]
 fn resolve_follow_accept_empty_candidates_and_empty_id() {
-    assert!(resolve_follow_accept_target(
-        "https://a.example/activities/1",
-        "https://b.example/users/bob",
-        &[],
-    )
-    .is_none());
+    assert!(
+        resolve_follow_accept_target(
+            "https://a.example/activities/1",
+            "https://b.example/users/bob",
+            &[],
+        )
+        .is_none()
+    );
     // Empty follow_id skips id match; only unique pending-to-actor fallback.
     let candidates = vec![(
         "https://a.example/activities/9".into(),
@@ -614,12 +616,14 @@ fn resolve_follow_accept_fallback_ignores_non_pending() {
             "rejected".into(),
         ),
     ];
-    assert!(resolve_follow_accept_target(
-        "https://unknown/activities/z",
-        "https://b.example/users/bob",
-        &candidates,
-    )
-    .is_none());
+    assert!(
+        resolve_follow_accept_target(
+            "https://unknown/activities/z",
+            "https://b.example/users/bob",
+            &candidates,
+        )
+        .is_none()
+    );
 }
 
 #[test]
@@ -630,18 +634,22 @@ fn resolve_follow_accept_port_sensitive_actor_auth() {
         "pending".into(),
     )];
     // Port mismatch → not same actor
-    assert!(resolve_follow_accept_target(
-        "https://a.example/activities/1",
-        "https://b.example/users/bob",
-        &candidates,
-    )
-    .is_none());
-    assert!(resolve_follow_accept_target(
-        "https://a.example/activities/1",
-        "https://b.example:8443/users/bob",
-        &candidates,
-    )
-    .is_some());
+    assert!(
+        resolve_follow_accept_target(
+            "https://a.example/activities/1",
+            "https://b.example/users/bob",
+            &candidates,
+        )
+        .is_none()
+    );
+    assert!(
+        resolve_follow_accept_target(
+            "https://a.example/activities/1",
+            "https://b.example:8443/users/bob",
+            &candidates,
+        )
+        .is_some()
+    );
 }
 
 #[test]
@@ -708,12 +716,14 @@ fn resolve_follow_accept_prefers_actor_auth_over_host_only() {
     );
     // Carol citing bob's id must fail when she has no own pending row.
     let bob_only = vec![candidates[0].clone()];
-    assert!(resolve_follow_accept_target(
-        "https://a.example/activities/1",
-        "https://b.example/users/carol",
-        &bob_only,
-    )
-    .is_none());
+    assert!(
+        resolve_follow_accept_target(
+            "https://a.example/activities/1",
+            "https://b.example/users/carol",
+            &bob_only,
+        )
+        .is_none()
+    );
 }
 
 #[test]
@@ -742,12 +752,14 @@ fn r46_same_host_username_compatible_at_handle_last_segment() {
 
 #[test]
 fn r47_resolve_follow_accept_target_no_candidates() {
-    assert!(resolve_follow_accept_target(
-        "https://a.example/activities/1",
-        "https://b.example/users/bob",
-        &[],
-    )
-    .is_none());
+    assert!(
+        resolve_follow_accept_target(
+            "https://a.example/activities/1",
+            "https://b.example/users/bob",
+            &[],
+        )
+        .is_none()
+    );
 }
 
 #[test]
@@ -757,12 +769,14 @@ fn r48_resolve_follow_accept_target_id_match_trailing_slash() {
         "https://b.example/users/bob".into(),
         "pending".into(),
     )];
-    assert!(resolve_follow_accept_target(
-        "https://a.example/activities/1/",
-        "https://b.example/users/bob",
-        &candidates,
-    )
-    .is_some());
+    assert!(
+        resolve_follow_accept_target(
+            "https://a.example/activities/1/",
+            "https://b.example/users/bob",
+            &candidates,
+        )
+        .is_some()
+    );
 }
 
 #[test]
@@ -772,12 +786,14 @@ fn r49_resolve_follow_accept_target_rejects_cross_user_same_host() {
         "https://b.example/users/bob".into(),
         "pending".into(),
     )];
-    assert!(resolve_follow_accept_target(
-        "https://a.example/activities/1",
-        "https://b.example/users/carol",
-        &candidates,
-    )
-    .is_none());
+    assert!(
+        resolve_follow_accept_target(
+            "https://a.example/activities/1",
+            "https://b.example/users/carol",
+            &candidates,
+        )
+        .is_none()
+    );
 }
 
 #[test]

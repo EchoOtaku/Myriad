@@ -5,17 +5,18 @@
 //! data.transform 管道复用 [`crate::services::tapp_data_transform`]。
 
 use super::HandlerContext;
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::models::entities::tapp_scheduled_tasks::{
     ExecutionTarget, MissedPolicy, ScheduleType, TaskScope,
 };
 use crate::services::agent::executor::utils::{
-    is_valid_platform, is_valid_platform as validate_platform_name, VALID_PLATFORMS,
+    VALID_PLATFORMS, is_valid_platform, is_valid_platform as validate_platform_name,
 };
 use crate::services::agent::external_pure::first_string_param;
 use crate::services::agent::system_op_pure::{
-    extract_raw_backend_actions, heartbeat_task_id, heartbeat_update_has_fields,
-    parse_brew_schedule_action, parse_execution_target, parse_schedule_type, AgentExecutionTarget,
-    AgentScheduleType, BrewScheduleAction,
+    AgentExecutionTarget, AgentScheduleType, BrewScheduleAction, extract_raw_backend_actions,
+    heartbeat_task_id, heartbeat_update_has_fields, parse_brew_schedule_action,
+    parse_execution_target, parse_schedule_type,
 };
 use crate::services::background_processor::BACKGROUND_PROCESSOR;
 use crate::services::brew_scheduler::get_brew_scheduler;
@@ -23,14 +24,13 @@ use crate::services::data_paths::platform_filtered_file;
 use crate::services::image_cache::ImageCacheService;
 use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
 use crate::services::tapp_data_transform::{
-    apply_pipeline, items_from_agent_input, parse_pipeline_steps_lenient, DataTransformError,
+    DataTransformError, apply_pipeline, items_from_agent_input, parse_pipeline_steps_lenient,
 };
 use crate::services::tapp_ownership::verify_tapp_ownership;
 use crate::services::tapp_scheduler::{
     backend_action_permissions, normalize_backend_actions, scheduler_engine,
 };
-use crate::GLOBAL_DYNAMIC_CONFIG;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 /// 执行系统操作能力
@@ -286,7 +286,7 @@ async fn execute_scheduler_trigger(
             _ => {
                 return Err(format!(
                     "Task ID {task_id} exists in multiple Tapps; provide tappId"
-                ))
+                ));
             }
         }
     };
@@ -314,8 +314,8 @@ async fn require_heartbeat_admin(ctx: &HandlerContext<'_>) -> Result<(), String>
     }
 }
 
-fn heartbeat_manager(
-) -> Result<&'static std::sync::Arc<crate::services::agent::heartbeat::HeartbeatManager>, String> {
+fn heartbeat_manager()
+-> Result<&'static std::sync::Arc<crate::services::agent::heartbeat::HeartbeatManager>, String> {
     crate::services::agent::heartbeat::get_heartbeat()
         .ok_or_else(|| "Heartbeat not initialized".to_string())
 }
@@ -883,8 +883,8 @@ async fn execute_brew_schedule(params: &HashMap<String, Value>) -> Result<Value,
     let source_id = params.get("sourceId").and_then(|v| v.as_i64());
 
     match action {
-        BrewScheduleAction::Start => {
-            if let Some(scheduler) = get_brew_scheduler() {
+        BrewScheduleAction::Start => match get_brew_scheduler() {
+            Some(scheduler) => {
                 scheduler.start().await;
                 Ok(json!({
                     "success": true,
@@ -892,12 +892,11 @@ async fn execute_brew_schedule(params: &HashMap<String, Value>) -> Result<Value,
                     "status": "started",
                     "message": "Brew scheduler started"
                 }))
-            } else {
-                Err("Brew scheduler not initialized".to_string())
             }
-        }
-        BrewScheduleAction::Stop => {
-            if let Some(scheduler) = get_brew_scheduler() {
+            _ => Err("Brew scheduler not initialized".to_string()),
+        },
+        BrewScheduleAction::Stop => match get_brew_scheduler() {
+            Some(scheduler) => {
                 scheduler.stop().await;
                 Ok(json!({
                     "success": true,
@@ -905,12 +904,11 @@ async fn execute_brew_schedule(params: &HashMap<String, Value>) -> Result<Value,
                     "status": "stopped",
                     "message": "Brew scheduler stopped"
                 }))
-            } else {
-                Err("Brew scheduler not initialized".to_string())
             }
-        }
-        BrewScheduleAction::Refresh => {
-            if let Some(scheduler) = get_brew_scheduler() {
+            _ => Err("Brew scheduler not initialized".to_string()),
+        },
+        BrewScheduleAction::Refresh => match get_brew_scheduler() {
+            Some(scheduler) => {
                 if let Some(sid) = source_id {
                     match scheduler.refresh_source(sid as i32).await {
                         Ok(new_count) => Ok(json!({
@@ -943,10 +941,9 @@ async fn execute_brew_schedule(params: &HashMap<String, Value>) -> Result<Value,
                         }
                     }
                 }
-            } else {
-                Err("Brew scheduler not initialized".to_string())
             }
-        }
+            _ => Err("Brew scheduler not initialized".to_string()),
+        },
         BrewScheduleAction::Status => {
             let scheduler_active = get_brew_scheduler().is_some();
             Ok(json!({

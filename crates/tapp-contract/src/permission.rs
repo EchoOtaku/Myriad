@@ -54,9 +54,9 @@ pub fn tapp_permission_replacement_hint(permission: &str) -> Option<&'static str
         "federation:write" => Some(
             "use 'federation:post', 'federation:interact', 'federation:channel', 'federation:room', or 'federation:ring' instead; update the TAPP Manifest, then update or reinstall the app",
         ),
-        "brew:comment" => Some(
-            "use 'brew:read' (read comments) or 'brew:commentWrite' (write comments) instead",
-        ),
+        "brew:comment" => {
+            Some("use 'brew:read' (read comments) or 'brew:commentWrite' (write comments) instead")
+        }
         _ => None,
     }
 }

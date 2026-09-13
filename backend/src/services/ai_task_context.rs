@@ -5,14 +5,14 @@
 
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::models::entities::platform_reports;
 use crate::services::ai_task_prepare::MAX_CONTEXT_BYTES;
 use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
 use crate::services::platform_cache::{get_cached_platform_data, validate_platform_name};
 use crate::services::tapp_ownership::{self, TappAccessError};
-use crate::GLOBAL_DYNAMIC_CONFIG;
 use myriad_tapp_contract::manifest::{TappAiContextSource, TappAiManifest};
 
 pub const MAX_CONTEXT_ITEM_BYTES: usize = 64 * 1024;
@@ -273,7 +273,7 @@ pub async fn resolve_context(
                                 400,
                                 "INVALID_AI_CONTEXT",
                                 "Profile fields are limited to id, username, and role",
-                            ))
+                            ));
                         }
                     };
                     profile.insert(field.clone(), value);

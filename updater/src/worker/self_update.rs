@@ -30,7 +30,7 @@ use crate::env_file::EnvFile;
 use crate::error::{Result, UpdaterError};
 use crate::release::{CosignPolicy, GithubClient};
 use crate::version::{
-    release_channel_name_for_self_update, DeployTag, DeployTagKind, MyriadVersion, UpdateMode,
+    DeployTag, DeployTagKind, MyriadVersion, UpdateMode, release_channel_name_for_self_update,
 };
 use crate::worker::Worker;
 

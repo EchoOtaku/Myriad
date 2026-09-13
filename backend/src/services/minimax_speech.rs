@@ -3,10 +3,10 @@
 //! Not OpenAI `/audio/speech`. ASR is intentionally out of scope here.
 
 use reqwest::Client;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::time::Duration;
 
-use super::http_client::{apply_proxy, ProxyConfig};
+use super::http_client::{ProxyConfig, apply_proxy};
 use crate::config::AiVendorSource;
 
 pub const DEFAULT_MINIMAX_HOST: &str = "https://api.minimaxi.com";

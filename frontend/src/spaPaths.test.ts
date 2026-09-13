@@ -45,6 +45,7 @@ describe('spaPaths', () => {
     assert.equal(prod.includes('dev/brew-tiles'), false)
     assert.ok(spaPrerenderPaths(true).includes('dev/brew-tiles'))
     assert.ok(SPA_STATIC_PATHS.includes('config'))
+    assert.ok(SPA_STATIC_PATHS.includes('agent/settings'))
   })
 
   it('rewrites dest URLs onto the prerendered files', () => {

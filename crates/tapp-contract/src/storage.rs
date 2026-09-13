@@ -136,9 +136,11 @@ mod tests {
     fn storage_key_rejects_empty_long_and_invalid_chars() {
         assert_eq!(validate_storage_key("").unwrap_err(), "Key cannot be empty");
         let too_long = "a".repeat(MAX_STORAGE_KEY_LEN + 1);
-        assert!(validate_storage_key(&too_long)
-            .unwrap_err()
-            .contains("too long"));
+        assert!(
+            validate_storage_key(&too_long)
+                .unwrap_err()
+                .contains("too long")
+        );
         assert!(validate_storage_key("space key").is_err());
         assert!(validate_storage_key("slash/key").is_err());
     }

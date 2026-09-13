@@ -17,8 +17,8 @@
 //! here so AI task execution does not import `crate::api`.
 
 use std::future::Future;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value as SeaValue};
 
@@ -332,10 +332,10 @@ pub async fn record_ai_cost(db: &DatabaseConnection, entry: AiCostLedgerEntry<'_
 #[cfg(test)]
 mod tests {
     use super::{
-        estimate_image_tokens, estimate_stt_tokens, estimate_text_tokens, estimate_tts_tokens,
-        ledger_write_enabled, record_ai_call_from_attribution, with_ai_ledger_attribution,
-        with_ai_ledger_suppressed, with_ai_usage_meter, with_site_ai_ledger, AiCostLedgerEntry,
-        AiLedgerAttribution, AiUsageMeter,
+        AiCostLedgerEntry, AiLedgerAttribution, AiUsageMeter, estimate_image_tokens,
+        estimate_stt_tokens, estimate_text_tokens, estimate_tts_tokens, ledger_write_enabled,
+        record_ai_call_from_attribution, with_ai_ledger_attribution, with_ai_ledger_suppressed,
+        with_ai_usage_meter, with_site_ai_ledger,
     };
 
     #[tokio::test]

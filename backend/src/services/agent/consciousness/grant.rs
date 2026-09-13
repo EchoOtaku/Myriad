@@ -416,9 +416,11 @@ mod tests {
             effective_granted_permissions(&granted, Some(&cap)),
             vec!["calendar:read".to_string()]
         );
-        assert!(!effective_granted_permissions(&granted, Some(&cap))
-            .iter()
-            .any(|p| p == "mail:send"));
+        assert!(
+            !effective_granted_permissions(&granted, Some(&cap))
+                .iter()
+                .any(|p| p == "mail:send")
+        );
         assert_eq!(effective_granted_permissions(&granted, None), granted);
         assert!(required_permissions_within_cap(
             &["calendar:read".into()],

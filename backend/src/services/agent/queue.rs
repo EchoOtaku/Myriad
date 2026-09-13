@@ -4,8 +4,8 @@
 //! 防止同一 lane 的并发请求竞态，控制系统整体负载。
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tokio::sync::{Mutex, OwnedMutexGuard, OwnedSemaphorePermit, RwLock, Semaphore};
 

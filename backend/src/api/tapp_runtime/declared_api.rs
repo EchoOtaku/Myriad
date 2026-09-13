@@ -5,17 +5,17 @@
 //! checks, rate limits, client-IP extraction, and Axum DTO mapping.
 
 use axum::{
+    Extension, Json,
     extract::{Path, State},
     http::StatusCode,
-    Extension, Json,
 };
 use myriad_error::AppError;
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::error::HttpError;
-use crate::middleware::auth::{ensure_current_admin_on, Claims};
+use crate::middleware::auth::{Claims, ensure_current_admin_on};
 use crate::services::permission_service::{TappPermission, UserRole};
 use crate::services::tapp_api_service::{ApiExecutionContext, TappApiService};
 use crate::services::tapp_credentials::{self, TappCredentialError};

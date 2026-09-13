@@ -574,11 +574,7 @@ fn slugify_id(raw: &str) -> String {
 fn unique_slug_from_name(name: &str, existing: &[HeartbeatTask]) -> String {
     let base = {
         let s = slugify_id(name);
-        if s.is_empty() {
-            "task".to_string()
-        } else {
-            s
-        }
+        if s.is_empty() { "task".to_string() } else { s }
     };
     if !existing.iter().any(|t| t.id == base) {
         return base;

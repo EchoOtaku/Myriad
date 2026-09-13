@@ -569,8 +569,8 @@ pub async fn disconnect_all_tapp_events(tapp_id: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        dedupe_record_id, subject_can_publish_scope, valid_topic, validate_payload, EventError,
-        EventScope,
+        EventError, EventScope, dedupe_record_id, subject_can_publish_scope, valid_topic,
+        validate_payload,
     };
     use serde_json::json;
 
@@ -584,11 +584,13 @@ mod tests {
 
     #[test]
     fn owner_events_reject_data_bodies() {
-        assert!(validate_payload(
-            EventScope::Owner,
-            &json!({ "status": "changed", "revision": 3 })
-        )
-        .is_ok());
+        assert!(
+            validate_payload(
+                EventScope::Owner,
+                &json!({ "status": "changed", "revision": 3 })
+            )
+            .is_ok()
+        );
         assert!(
             validate_payload(EventScope::Owner, &json!({ "items": [{ "secret": true }] })).is_err()
         );

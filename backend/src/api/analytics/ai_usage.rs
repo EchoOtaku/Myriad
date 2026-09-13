@@ -4,16 +4,16 @@
 //! (`subject_id`), model, and source. Complements the per-user journal at
 //! `GET /api/tapp/ai/v2/ledger`.
 
-use axum::{extract::Query, http::StatusCode, Json};
+use axum::{Json, extract::Query, http::StatusCode};
 use chrono::Duration;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement, Value as SeaValue};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 use super::intake_helpers::{
-    analytics_tz_label, compare_range_kind, metric_delta, resolve_analytics_window,
-    DEFAULT_SUMMARY_DAYS, MAX_SUMMARY_DAYS,
+    DEFAULT_SUMMARY_DAYS, MAX_SUMMARY_DAYS, analytics_tz_label, compare_range_kind, metric_delta,
+    resolve_analytics_window,
 };
 
 #[derive(Debug, Deserialize)]

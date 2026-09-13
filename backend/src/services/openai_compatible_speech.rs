@@ -2,12 +2,12 @@
 //!
 //! Used for official OpenAI and OpenRouter. Not the chat-completions audio path.
 
-use reqwest::multipart;
 use reqwest::Client;
+use reqwest::multipart;
 use serde_json::json;
 use std::time::Duration;
 
-use super::http_client::{apply_proxy, ProxyConfig};
+use super::http_client::{ProxyConfig, apply_proxy};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);

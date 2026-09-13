@@ -112,13 +112,16 @@ pub(super) async fn fetch_discord(ctx: &mut FetchCtx<'_>) {
                     json!(exp.to_string()),
                 );
             }
-            if let Err(e) = crate::services::config_service::ConfigService::new(ctx.db.clone())
+            match crate::services::config_service::ConfigService::new(ctx.db.clone())
                 .update_configs(token_updates)
                 .await
             {
-                tracing::warn!("Failed to persist refreshed Discord tokens: {}", e);
-            } else {
-                tracing::info!("✓ Discord access token refreshed and saved");
+                Err(e) => {
+                    tracing::warn!("Failed to persist refreshed Discord tokens: {}", e);
+                }
+                _ => {
+                    tracing::info!("✓ Discord access token refreshed and saved");
+                }
             }
         }
 

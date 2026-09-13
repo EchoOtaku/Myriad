@@ -1,7 +1,7 @@
 //! In-place allowlist/truncate for GitHub/Steam/Bilibili/Netease/Bangumi/X.
 //! Discord/MAL/Xbox/PSN/YouTube pass through.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// In-place allowlist/truncate for some platform trees (not 5W1H).
 pub(super) fn clean_platform_data(data: &mut Value) {

@@ -245,6 +245,12 @@ _Avoid_: 卡片尺寸（那是老网格的说法）
 用户界面叫 **Agent**。内部项目名是 Arael。站点助手：计划、执行、记忆、MCP。
 _Avoid_: Arael Agent、Arael 智能体、把 Arael 当产品名
 
+**站点管理台**：`/config`。站点身份、平台、模型、权限、联邦。不是 Agent 的家。
+_Avoid_: 把人设、频道、MCP、心跳再堆进 ConfigForm
+
+**Agent 设置**：`/agent/settings`。人设、频道、MCP、心跳。只有站长能写。门禁是这页自己的，不是管理台的附带门。
+_Avoid_: /config?section=agent、把 Agent 当管理台的一节
+
 **办事（Work）**：
 面板里计划、执行、确认的那条路径。保留现有 Agent / Pro 能力。开放给所有能用 Agent 的登录用户，能做到哪一步由授予权限逐条决定，不按身份分档。
 _Avoid_: 任务模式、Agent 模式、把 PlannerStatus 的 Chat 当成产品聊天档、把办事整条按管理员开关

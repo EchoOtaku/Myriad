@@ -1,6 +1,6 @@
 //! Public (unauthenticated) site metadata, platform cards, and UI runtime config.
-use axum::{http::StatusCode, Json};
-use serde_json::{json, Value};
+use axum::{Json, http::StatusCode};
+use serde_json::{Value, json};
 
 use super::flags::{
     db_or_env_clearable, nonempty_db, nonempty_env, resolve_platform_enabled,

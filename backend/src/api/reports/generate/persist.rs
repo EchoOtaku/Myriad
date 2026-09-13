@@ -91,8 +91,8 @@ pub(super) async fn persist_platform_report_atomic(
 mod report_persist_concurrency_tests {
     use super::MAX_CONCURRENT_PLATFORM_REPORTS;
     use futures::stream::{self, StreamExt};
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
     #[test]

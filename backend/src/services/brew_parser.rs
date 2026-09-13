@@ -344,8 +344,8 @@ impl FeedParser {
 
     /// 解析 RSS 2.0
     fn parse_rss(&self, content: &str, _source_url: &str) -> Result<ParsedFeed, ParseError> {
-        use quick_xml::events::Event;
         use quick_xml::Reader;
+        use quick_xml::events::Event;
 
         let mut reader = Reader::from_str(content);
         reader.config_mut().trim_text(true);
@@ -373,7 +373,7 @@ impl FeedParser {
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) => {
-                    let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag_name = e.name().as_ref().to_string();
                     // 处理带命名空间的标签名（如 content:encoded -> encoded）
                     let simple_tag = tag_name
                         .split(':')
@@ -415,19 +415,11 @@ impl FeedParser {
                                 };
                                 for attr in e.attributes().flatten() {
                                     match attr.key.as_ref() {
-                                        b"url" => {
-                                            enc.url =
-                                                String::from_utf8_lossy(&attr.value).to_string()
+                                        "url" => enc.url = attr.value.as_ref().to_string(),
+                                        "type" => {
+                                            enc.mime_type = Some(attr.value.as_ref().to_string())
                                         }
-                                        b"type" => {
-                                            enc.mime_type = Some(
-                                                String::from_utf8_lossy(&attr.value).to_string(),
-                                            )
-                                        }
-                                        b"length" => {
-                                            enc.length =
-                                                String::from_utf8_lossy(&attr.value).parse().ok()
-                                        }
+                                        "length" => enc.length = attr.value.parse().ok(),
                                         _ => {}
                                     }
                                 }
@@ -446,21 +438,15 @@ impl FeedParser {
                     }
                 }
                 Ok(Event::Text(e)) => {
-                    let text = reader
-                        .decoder()
-                        .decode(e.as_ref())
-                        .unwrap_or_default()
-                        .to_string();
-                    // 累积文本而不是直接赋值
-                    text_buffer.push_str(&text);
+                    // 0.42 stores UTF-8 text; keep the raw event (no xml_content
+                    // unescape) so entity-ref handling stays aligned with 0.41.
+                    text_buffer.push_str(e.as_ref());
                 }
                 Ok(Event::CData(ref e)) => {
-                    let text = String::from_utf8_lossy(e.as_ref()).to_string();
-                    // 累积 CDATA 内容
-                    text_buffer.push_str(&text);
+                    text_buffer.push_str(e.as_ref());
                 }
                 Ok(Event::End(ref e)) => {
-                    let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag_name = e.name().as_ref().to_string();
                     // 处理带命名空间的标签名
                     let simple_tag = tag_name.split(':').next_back().unwrap_or(&tag_name);
 
@@ -614,8 +600,8 @@ impl FeedParser {
 
     /// 解析 Atom 1.0
     fn parse_atom(&self, content: &str, _source_url: &str) -> Result<ParsedFeed, ParseError> {
-        use quick_xml::events::Event;
         use quick_xml::Reader;
+        use quick_xml::events::Event;
 
         let mut reader = Reader::from_str(content);
         reader.config_mut().trim_text(true);
@@ -642,7 +628,7 @@ impl FeedParser {
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
-                    let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag_name = e.name().as_ref().to_string();
                     current_tag = tag_name.clone();
                     text_buffer.clear(); // 新标签开始，清空缓冲区
 
@@ -674,15 +660,9 @@ impl FeedParser {
 
                             for attr in e.attributes().flatten() {
                                 match attr.key.as_ref() {
-                                    b"href" => {
-                                        href = String::from_utf8_lossy(&attr.value).to_string()
-                                    }
-                                    b"rel" => {
-                                        rel = String::from_utf8_lossy(&attr.value).to_string()
-                                    }
-                                    b"type" => {
-                                        link_type = String::from_utf8_lossy(&attr.value).to_string()
-                                    }
+                                    "href" => href = attr.value.as_ref().to_string(),
+                                    "rel" => rel = attr.value.as_ref().to_string(),
+                                    "type" => link_type = attr.value.as_ref().to_string(),
                                     _ => {}
                                 }
                             }
@@ -726,9 +706,8 @@ impl FeedParser {
                         "category" if in_entry => {
                             if let Some(ref mut item) = current_item {
                                 for attr in e.attributes().flatten() {
-                                    if attr.key.as_ref() == b"term" {
-                                        item.categories
-                                            .push(String::from_utf8_lossy(&attr.value).to_string());
+                                    if attr.key.as_ref() == "term" {
+                                        item.categories.push(attr.value.as_ref().to_string());
                                     }
                                 }
                             }
@@ -737,21 +716,15 @@ impl FeedParser {
                     }
                 }
                 Ok(Event::Text(e)) => {
-                    let text = reader
-                        .decoder()
-                        .decode(e.as_ref())
-                        .unwrap_or_default()
-                        .to_string();
-                    // 累积文本而不是直接赋值
-                    text_buffer.push_str(&text);
+                    // 0.42 stores UTF-8 text; keep the raw event (no xml_content
+                    // unescape) so entity-ref handling stays aligned with 0.41.
+                    text_buffer.push_str(e.as_ref());
                 }
                 Ok(Event::CData(ref e)) => {
-                    let text = String::from_utf8_lossy(e.as_ref()).to_string();
-                    // 累积 CDATA 内容
-                    text_buffer.push_str(&text);
+                    text_buffer.push_str(e.as_ref());
                 }
                 Ok(Event::End(ref e)) => {
-                    let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    let tag_name = e.name().as_ref().to_string();
 
                     // 在标签结束时处理累积的文本
                     let text = text_buffer.clone();
@@ -1566,5 +1539,101 @@ mod tests {
             matches!(err, ParseError::InvalidUrl(_)),
             "expected InvalidUrl for SSRF block, got {err}"
         );
+    }
+
+    #[test]
+    fn rss_and_atom_event_fields_stay_stable() {
+        let parser = FeedParser::new();
+        let rss = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Chan Title</title>
+    <description>Chan Desc</description>
+    <link>https://example.com</link>
+    <language>zh-CN</language>
+    <lastBuildDate>Sat, 14 Dec 2024 12:00:00 +0000</lastBuildDate>
+    <image><url>https://example.com/icon.png</url></image>
+    <item>
+      <title>Item &amp; Title</title>
+      <link>https://example.com/p/1</link>
+      <guid>https://example.com/p/1</guid>
+      <description>Summary text</description>
+      <content:encoded><![CDATA[<p>Full</p>]]></content:encoded>
+      <dc:creator>Alice</dc:creator>
+      <pubDate>Sat, 14 Dec 2024 12:00:00 +0000</pubDate>
+      <category>Tech</category>
+      <enclosure url="https://example.com/a.mp3" type="audio/mpeg" length="123"></enclosure>
+    </item>
+  </channel>
+</rss>"#;
+        let feed = parser
+            .parse_content(rss, "application/rss+xml", "https://example.com/rss.xml")
+            .expect("rss");
+        assert_eq!(feed.title, "Chan Title");
+        assert_eq!(feed.description.as_deref(), Some("Chan Desc"));
+        assert_eq!(feed.site_url.as_deref(), Some("https://example.com"));
+        assert_eq!(feed.language.as_deref(), Some("zh-CN"));
+        assert_eq!(feed.icon.as_deref(), Some("https://example.com/icon.png"));
+        assert_eq!(feed.items.len(), 1);
+        let item = &feed.items[0];
+        // 0.41 dropped standalone entity-ref events (`&amp;`) between trimmed
+        // text nodes, so "Item &amp; Title" collapsed to "ItemTitle".
+        assert_eq!(item.title, "ItemTitle");
+        assert_eq!(item.link, "https://example.com/p/1");
+        assert_eq!(item.guid, "https://example.com/p/1");
+        assert_eq!(item.author.as_deref(), Some("Alice"));
+        assert_eq!(item.categories, vec!["Tech".to_string()]);
+        assert_eq!(item.audio_url.as_deref(), Some("https://example.com/a.mp3"));
+        assert_eq!(item.enclosures.len(), 1);
+        assert_eq!(item.enclosures[0].url, "https://example.com/a.mp3");
+        assert_eq!(item.enclosures[0].mime_type.as_deref(), Some("audio/mpeg"));
+        assert_eq!(item.enclosures[0].length, Some(123));
+        assert!(item.content.as_deref().is_some_and(|c| c.contains("Full")));
+        assert!(item.published_at.is_some());
+
+        let atom = r#"<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Atom Title</title>
+  <subtitle>Atom Sub</subtitle>
+  <link href="https://example.com/" rel="alternate"/>
+  <icon>https://example.com/icon.png</icon>
+  <updated>2024-12-14T12:00:00Z</updated>
+  <entry>
+    <id>https://example.com/p/2</id>
+    <title>Second</title>
+    <link href="https://example.com/p/2" rel="alternate"/>
+    <link href="https://example.com/v.mp4" rel="enclosure" type="video/mp4"/>
+    <summary>Atom summary</summary>
+    <content type="html"><![CDATA[<p>Atom full</p>]]></content>
+    <author><name>Bob</name></author>
+    <published>2024-12-14T12:00:00Z</published>
+    <updated>2024-12-14T13:00:00Z</updated>
+    <category term="News"/>
+  </entry>
+</feed>"#;
+        let feed = parser
+            .parse_content(atom, "application/atom+xml", "https://example.com/atom.xml")
+            .expect("atom");
+        assert_eq!(feed.title, "Atom Title");
+        assert_eq!(feed.description.as_deref(), Some("Atom Sub"));
+        assert_eq!(feed.site_url.as_deref(), Some("https://example.com/"));
+        assert_eq!(feed.icon.as_deref(), Some("https://example.com/icon.png"));
+        assert_eq!(feed.items.len(), 1);
+        let item = &feed.items[0];
+        assert_eq!(item.title, "Second");
+        assert_eq!(item.link, "https://example.com/p/2");
+        assert_eq!(item.guid, "https://example.com/p/2");
+        assert_eq!(item.author.as_deref(), Some("Bob"));
+        assert_eq!(item.categories, vec!["News".to_string()]);
+        assert_eq!(item.video_url.as_deref(), Some("https://example.com/v.mp4"));
+        assert_eq!(item.enclosures.len(), 1);
+        assert_eq!(item.enclosures[0].url, "https://example.com/v.mp4");
+        assert!(
+            item.content
+                .as_deref()
+                .is_some_and(|c| c.contains("Atom full"))
+        );
+        assert!(item.published_at.is_some());
+        assert!(item.updated_at.is_some());
     }
 }

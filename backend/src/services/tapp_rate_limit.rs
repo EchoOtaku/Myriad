@@ -398,8 +398,8 @@ pub async fn get_rate_limiter_active_count(
 #[cfg(test)]
 mod tests {
     use super::{
-        get_rate_limit_config, host_write_rate_limit_operation, rate_limit_key,
-        rate_limit_record_id, RateLimitError,
+        RateLimitError, get_rate_limit_config, host_write_rate_limit_operation, rate_limit_key,
+        rate_limit_record_id,
     };
     use crate::services::permission_service::TappPermission;
 

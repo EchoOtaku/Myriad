@@ -18,11 +18,11 @@
 //! 不写解析快照：文案来自 JSON / 用户列，实时解析即可。
 
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, Value as SeaValue};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::services::avatar::{
-    identity_provider_platform_key, owner_platform_profiles, platform_display_label,
-    PlatformProfile, LAZY_BIO, PLATFORM_ORDER,
+    LAZY_BIO, PLATFORM_ORDER, PlatformProfile, identity_provider_platform_key,
+    owner_platform_profiles, platform_display_label,
 };
 
 /// 文案来源。列独立于画像源（无 Persona）。

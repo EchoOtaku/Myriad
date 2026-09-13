@@ -100,8 +100,10 @@ mod tests {
         let serialized = serde_json::to_value(model).expect("model must serialize");
         assert!(serialized.get("encrypted_value").is_none());
         assert!(serialized.get("binding_fingerprint").is_none());
-        assert!(!serialized
-            .to_string()
-            .contains("ciphertext-must-not-serialize"));
+        assert!(
+            !serialized
+                .to_string()
+                .contains("ciphertext-must-not-serialize")
+        );
     }
 }

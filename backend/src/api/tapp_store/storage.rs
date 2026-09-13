@@ -5,21 +5,21 @@
 //! them to Axum status codes and owns HTTP handlers.
 
 use super::{
-    authorize_runtime_storage, authorize_runtime_storage_write, can_write_installation_settings,
-    current_is_admin, optional_authenticated_user_id, tapp_setting_value_is_valid,
-    validate_tapp_id, ApiResponse, TappSettingDef, TappStorageAccess,
+    ApiResponse, TappSettingDef, TappStorageAccess, authorize_runtime_storage,
+    authorize_runtime_storage_write, can_write_installation_settings, current_is_admin,
+    optional_authenticated_user_id, tapp_setting_value_is_valid, validate_tapp_id,
 };
-use crate::api::tapp_runtime::{common as tapp_common, RuntimeGrantContext};
+use crate::api::tapp_runtime::{RuntimeGrantContext, common as tapp_common};
 use crate::error::HttpError;
 use crate::middleware::auth::Claims;
 use crate::models::entities::tapp_storage as tapp_storage_entity;
 use crate::services::tapp_storage::{
-    self as storage_svc, TappStorageError, TAPP_STORAGE_QUOTA_BYTES,
+    self as storage_svc, TAPP_STORAGE_QUOTA_BYTES, TappStorageError,
 };
 use axum::{
+    Extension, Json,
     extract::{Path, State},
     http::StatusCode,
-    Extension, Json,
 };
 use myriad_error::AppError;
 use sea_orm::{
@@ -764,8 +764,8 @@ pub(super) async fn clear_storage(
 #[cfg(test)]
 mod private_kv_gate_tests {
     use super::{
-        decide_private_kv_access, prefixed_storage_key, require_private_kv_subject,
-        PRIVATE_KEY_PREFIX,
+        PRIVATE_KEY_PREFIX, decide_private_kv_access, prefixed_storage_key,
+        require_private_kv_subject,
     };
     use crate::middleware::auth::Claims;
 

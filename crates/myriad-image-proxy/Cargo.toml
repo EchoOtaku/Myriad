@@ -1,7 +1,7 @@
 [package]
 name = "myriad-image-proxy"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 publish = false
 description = "Image proxy URL rewrite helpers + shared hotlink host list (profile/export/library)."
 authors = ["Myriad Contributors"]

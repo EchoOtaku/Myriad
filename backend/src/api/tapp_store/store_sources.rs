@@ -4,11 +4,11 @@
 //! [`crate::services::tapp_store_sources`]. This module keeps Claims/DB and
 //! maps policy errors to HTTP status codes.
 
-use super::{require_current_admin, ApiResponse};
+use super::{ApiResponse, require_current_admin};
 use axum::{
+    Extension, Json,
     extract::{Path, State},
     http::StatusCode,
-    Extension, Json,
 };
 use chrono::Utc;
 use sea_orm::{
@@ -20,8 +20,9 @@ use crate::error::HttpError;
 use crate::middleware::auth::Claims;
 use crate::models::entities::tapp_store_sources;
 use crate::services::tapp_store_sources::{
-    default_store_source_enabled, may_change_store_source_url, may_delete_store_source,
-    store_source_urls_conflict, validate_store_source_url, StoreSourcePolicyError, StoreSourceView,
+    StoreSourcePolicyError, StoreSourceView, default_store_source_enabled,
+    may_change_store_source_url, may_delete_store_source, store_source_urls_conflict,
+    validate_store_source_url,
 };
 use myriad_error::AppError;
 

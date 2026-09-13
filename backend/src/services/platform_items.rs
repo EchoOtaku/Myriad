@@ -7,7 +7,7 @@
 //! Lives in services so agent / future readers do not reach through
 //! `api::tapp_runtime::platform` for pure projection.
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::collections::{HashMap, HashSet};
 
 /// Smart-filter caches store content under `raw_unknown_content` / `content_analysis`,
@@ -1605,10 +1605,12 @@ mod tests {
         assert_eq!(items[0]["video_id"], "dQw4w9WgXcQ");
         assert_eq!(items[0]["view_count"], 1000);
         assert_eq!(items[0]["name"], "Sample Upload One");
-        assert!(items[0]["url"]
-            .as_str()
-            .unwrap_or("")
-            .contains("dQw4w9WgXcQ"));
+        assert!(
+            items[0]["url"]
+                .as_str()
+                .unwrap_or("")
+                .contains("dQw4w9WgXcQ")
+        );
     }
 
     #[test]

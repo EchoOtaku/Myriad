@@ -3,17 +3,17 @@
 use crate::contract_rules::{
     API_INJECT_RESERVED_PREFIXES, FORBIDDEN_OUTBOUND_HEADERS, HTTP_BODY_METHODS, HTTP_METHODS,
     MAX_AI_OPERATIONS, MAX_CREDENTIAL_HEADER_PREFIX_LEN, MAX_CREDENTIAL_KEY_LEN,
-    MAX_DATA_EXCHANGE_DECLARATIONS, MAX_DATA_EXCHANGE_RESPONSE_BYTES, MAX_OPEN_URLS,
-    MAX_OPEN_URL_ID_LEN, MAX_TAPP_ASSETS, MAX_TAPP_CREDENTIALS, MAX_TAPP_GAME_ASSETS,
+    MAX_DATA_EXCHANGE_DECLARATIONS, MAX_DATA_EXCHANGE_RESPONSE_BYTES, MAX_OPEN_URL_ID_LEN,
+    MAX_OPEN_URLS, MAX_TAPP_ASSETS, MAX_TAPP_CREDENTIALS, MAX_TAPP_GAME_ASSETS,
     MAX_TAPP_GAME_MESSAGE_BYTES, MAX_TAPP_GAME_PLAYERS, MAX_TAPP_GAME_PROTOCOL_LEN,
     MAX_TAPP_RUNTIME_MODULES, MAX_WIDGETS_PER_TAPP, MIN_TAPP_GAME_PLAYERS, OPEN_URL_PERMISSION,
     ROUTE_MAX_MAX_SKEW_SECS, ROUTE_MAX_PREFIX_LEN, ROUTE_METHODS, ROUTE_MIN_MAX_SKEW_SECS,
     TAPP_RUNTIME_MODULES,
 };
 use crate::manifest::{
-    valid_agent_name, valid_event_topic, valid_inbound_route_path, valid_inbound_verify_header,
     TappAiContextSource, TappAiOperation, TappAiOutputFormat, TappApiAccess, TappCredentialIn,
     TappCredentialSignAlg, TappHttpBodyMode, TappManifest, TappOpenUrlMatch, TappRouteVerifyOver,
+    valid_agent_name, valid_event_topic, valid_inbound_route_path, valid_inbound_verify_header,
 };
 use crate::paths::{
     is_safe_path_component, is_valid_widget_size, parse_system_version, valid_data_exchange_id,
@@ -21,7 +21,7 @@ use crate::paths::{
     validate_resource_path, validate_tapp_id, validate_tapp_settings,
     validate_widget_refresh_policy,
 };
-use crate::permission::{tapp_permission_replacement_hint, TappPermission};
+use crate::permission::{TappPermission, tapp_permission_replacement_hint};
 use crate::urls::{validate_http_url, validate_open_url_target};
 
 fn validate_open_urls(manifest: &TappManifest) -> Result<(), String> {
@@ -312,20 +312,18 @@ pub fn validate_tapp_manifest(
         {
             return Err("Tapp game.protocol must be lowercase [a-z0-9._-]".to_string());
         }
-        if let Some(players) = game.max_players {
-            if !(MIN_TAPP_GAME_PLAYERS..=MAX_TAPP_GAME_PLAYERS).contains(&players) {
+        if let Some(players) = game.max_players
+            && !(MIN_TAPP_GAME_PLAYERS..=MAX_TAPP_GAME_PLAYERS).contains(&players) {
                 return Err(format!(
                     "Tapp game.maxPlayers must be {MIN_TAPP_GAME_PLAYERS}-{MAX_TAPP_GAME_PLAYERS}"
                 ));
             }
-        }
-        if let Some(bytes) = game.max_message_bytes {
-            if !(1024..=MAX_TAPP_GAME_MESSAGE_BYTES).contains(&bytes) {
+        if let Some(bytes) = game.max_message_bytes
+            && !(1024..=MAX_TAPP_GAME_MESSAGE_BYTES).contains(&bytes) {
                 return Err(format!(
                     "Tapp game.maxMessageBytes must be 1024-{MAX_TAPP_GAME_MESSAGE_BYTES}"
                 ));
             }
-        }
         if !manifest
             .permissions
             .iter()

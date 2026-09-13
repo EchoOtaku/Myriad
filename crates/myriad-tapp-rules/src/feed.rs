@@ -1,6 +1,6 @@
 //! Federation feed merge and row projection.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Max items returned by the Tapp federation feed endpoint.
 pub const FEDERATION_FEED_LIMIT: usize = 100;

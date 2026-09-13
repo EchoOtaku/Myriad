@@ -10,6 +10,7 @@ import {
   isFriendSource,
   isNotesSource,
   isSiteSource,
+  navIdForBoardEntry,
   refreshableSourceCount,
   resolveBoardParam,
   showsFilterLane,
@@ -155,6 +156,16 @@ describe('resolveBoardParam', () => {
       view: 'starred',
       board: 'feeds',
     })
+  })
+
+  it('登录后二级导航高亮收藏，游客落到订阅', () => {
+    const entry = resolveBoardParam('starred')!
+    assert.equal(navIdForBoardEntry(entry, true), 'starred')
+    assert.equal(navIdForBoardEntry(entry, false), 'feeds')
+    assert.equal(
+      navIdForBoardEntry({ view: 'sources', board: 'notes' }, true),
+      'notes',
+    )
   })
 
   it('认不出的取值返回 null，不回落默认板块', () => {

@@ -3,8 +3,8 @@
 //! Loop: analyze → param fixes → collect prepend suggestions → backoff → retry.
 //! Callers inject prepends. Pure decisions: [`crate::services::agent::retry_pure`].
 
-use super::handlers::HandlerContext;
 use super::Executor;
+use super::handlers::HandlerContext;
 use crate::config::ModelTier;
 use crate::services::agent::error_analyzer_pure::{analyze_error, apply_param_fixes};
 use crate::services::agent::retry_pure::{

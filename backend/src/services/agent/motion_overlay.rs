@@ -767,11 +767,13 @@ pub(super) mod motion_refinement_tests {
             .unwrap()
             .unwrap();
         delivery.observe("第二句话。", &tx);
-        assert!(tokio::time::timeout(Duration::from_secs(1), calls.recv())
-            .await
-            .unwrap()
-            .unwrap()
-            .ends_with("第二句话。"));
+        assert!(
+            tokio::time::timeout(Duration::from_secs(1), calls.recv())
+                .await
+                .unwrap()
+                .unwrap()
+                .ends_with("第二句话。")
+        );
         assert!(!guard.has_refinement());
         guard.stop().await;
     }
@@ -824,10 +826,12 @@ pub(super) mod motion_refinement_tests {
             .await
             .unwrap();
         assert_eq!(guard.stop().await, MotionPublication::None);
-        assert!(tokio::time::timeout(Duration::from_secs(1), events.recv())
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            tokio::time::timeout(Duration::from_secs(1), events.recv())
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

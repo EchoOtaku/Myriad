@@ -100,9 +100,7 @@ When regenerate is true: a new set from the same evidence (new angles), not a re
 /// every time made Lite mix scripts, which then failed the host gate and retried.
 pub fn name_system_prompt(name_style: &str) -> String {
     let style = match name_style {
-        "japanese" => {
-            "japanese: 2–5 kanji and/or kana. The token is the meaning. No Latin."
-        }
+        "japanese" => "japanese: 2–5 kanji and/or kana. The token is the meaning. No Latin.",
         "european" => "european: one ASCII given name, 3–16 letters, with a sayable gloss.",
         "mythic" => {
             "mythic: one ASCII given name in a classical-myth register, 3–16 letters, with a sayable gloss."
@@ -337,7 +335,9 @@ mod tests {
         assert!(TAGS_SYSTEM_PROMPT.contains("Not a sentence, metaphor"));
         assert!(PERSONA_SYSTEM_PROMPT.contains("Fail the draft if"));
         assert!(IMPORT_PERSONA_SYSTEM_PROMPT.contains("rewrite source into structured persona"));
-        assert!(IMPORT_PERSONA_SYSTEM_PROMPT.contains("`source` is an existing character write-up"));
+        assert!(
+            IMPORT_PERSONA_SYSTEM_PROMPT.contains("`source` is an existing character write-up")
+        );
         assert!(TAGS_SYSTEM_PROMPT.contains("Literary sludge"));
         assert!(PERSONA_SYSTEM_PROMPT.contains("not recite a poem"));
         assert!(!name_system_prompt("chinese").contains("晚衡"));

@@ -9,15 +9,15 @@
 
 use crate::error::HttpError;
 use axum::{
-    extract::Query,
-    http::{header, HeaderMap, HeaderValue, StatusCode},
-    response::{IntoResponse, Redirect, Response},
     Json,
+    extract::Query,
+    http::{HeaderMap, HeaderValue, StatusCode, header},
+    response::{IntoResponse, Redirect, Response},
 };
 use myriad_error::AppError;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 use crate::config::DynamicConfig;
@@ -26,8 +26,8 @@ use crate::oauth_url_builder::SiteConfig;
 use crate::services::config_service::ConfigService;
 use crate::services::fetcher::PlatformFetcher;
 use crate::services::oauth::state::{
-    issue_state, oauth_tx_clear_cookie_value, oauth_tx_cookie_matches, oauth_tx_set_cookie_value,
-    verify_state, ConsumeStateError, OAuthPurpose, StoredState,
+    ConsumeStateError, OAuthPurpose, StoredState, issue_state, oauth_tx_clear_cookie_value,
+    oauth_tx_cookie_matches, oauth_tx_set_cookie_value, verify_state,
 };
 
 const DISCORD_AUTHORIZE_URL: &str = "https://discord.com/api/oauth2/authorize";

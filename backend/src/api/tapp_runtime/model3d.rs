@@ -5,20 +5,20 @@
 //! locally). The Tripo API key never appears in responses or error bodies.
 
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
-    Json,
 };
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::error::HttpError;
 use crate::services::permission_service::TappPermission;
 use crate::services::tripo::{
-    apply_web_defaults, is_configured, is_enabled, persist_task_models, poll_until_terminal,
-    validate_upload_type, PersistedTripoAsset, TripoClient, TripoError, TripoOperation, TripoTask,
-    PUBLIC_CAPABILITIES, TAPP_UPLOAD_MAX_BYTES,
+    PUBLIC_CAPABILITIES, PersistedTripoAsset, TAPP_UPLOAD_MAX_BYTES, TripoClient, TripoError,
+    TripoOperation, TripoTask, apply_web_defaults, is_configured, is_enabled, persist_task_models,
+    poll_until_terminal, validate_upload_type,
 };
 use crate::state::AppState;
 

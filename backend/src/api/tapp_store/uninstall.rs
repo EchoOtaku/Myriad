@@ -1,12 +1,12 @@
 //! Tapp uninstall lifecycle: authorization, transactional cleanup and filesystem recovery.
 
 use super::{
-    current_is_admin, find_admin_user_id, lock_tapp_lifecycle, reinstall_orphan_paths,
-    remove_path_best_effort, require_current_admin, tapp_dir_for, validate_tapp_id, ApiResponse,
+    ApiResponse, current_is_admin, find_admin_user_id, lock_tapp_lifecycle, reinstall_orphan_paths,
+    remove_path_best_effort, require_current_admin, tapp_dir_for, validate_tapp_id,
 };
 use axum::{
-    extract::{Path, Query, State},
     Extension, Json,
+    extract::{Path, Query, State},
 };
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
@@ -19,7 +19,7 @@ use crate::error::HttpError;
 use crate::middleware::auth::Claims;
 use crate::models::entities::{tapp_storage, tapp_widgets, tapps};
 use crate::services::tapp_lifecycle::{
-    select_uninstall_target, uninstall_quarantine_dir_name, UninstallTarget,
+    UninstallTarget, select_uninstall_target, uninstall_quarantine_dir_name,
 };
 use myriad_error::AppError;
 

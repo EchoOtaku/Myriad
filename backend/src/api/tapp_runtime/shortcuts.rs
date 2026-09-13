@@ -4,13 +4,13 @@
 //! grant/permission checks, installation-write gating, and Axum DTOs.
 
 use axum::{
+    Extension, Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Extension, Json,
 };
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 use crate::middleware::auth::Claims;
@@ -19,7 +19,7 @@ use crate::services::tapp_shortcuts::{self, ShortcutRegistryError};
 
 use super::common::authorize_tapp_permission;
 use super::runtime_grant::RuntimeGrantContext;
-use crate::api::tapp_store::{installation_write_forbidden_error, TappStorageAccess};
+use crate::api::tapp_store::{TappStorageAccess, installation_write_forbidden_error};
 use crate::error::HttpError;
 
 #[derive(Debug, Deserialize)]

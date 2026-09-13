@@ -4,9 +4,9 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use bollard::Docker;
 use bollard::auth::DockerCredentials;
 use bollard::query_parameters::CreateImageOptions;
-use bollard::Docker;
 use futures::StreamExt;
 use tracing::{debug, warn};
 
@@ -257,7 +257,7 @@ impl DockerClient {
                 Err(error) => {
                     return Err(UpdaterError::Docker(format!(
                         "verify worker stopped: {error}"
-                    )))
+                    )));
                 }
                 Ok(info) => match info.state.and_then(|state| state.running) {
                     Some(false) => return Ok(()),
@@ -266,7 +266,7 @@ impl DockerClient {
                     None => {
                         return Err(UpdaterError::Docker(
                             "worker running state unavailable".into(),
-                        ))
+                        ));
                     }
                 },
             }
@@ -311,7 +311,7 @@ impl DockerClient {
             Err(error) => {
                 return Err(UpdaterError::Docker(format!(
                     "inspect federation worker: {error}"
-                )))
+                )));
             }
         };
         if !split {
@@ -388,7 +388,7 @@ impl DockerClient {
                 Err(error) => {
                     return Err(UpdaterError::Docker(format!(
                         "verify worker stopped: {error}"
-                    )))
+                    )));
                 }
                 Ok(info) => match info.state.and_then(|state| state.running) {
                     Some(false) => return Ok(()),
@@ -397,7 +397,7 @@ impl DockerClient {
                     None => {
                         return Err(UpdaterError::Docker(
                             "worker running state unavailable".into(),
-                        ))
+                        ));
                     }
                 },
             }
@@ -442,7 +442,7 @@ impl DockerClient {
             Err(error) => {
                 return Err(UpdaterError::Docker(format!(
                     "inspect persona worker: {error}"
-                )))
+                )));
             }
         };
         if !split {
@@ -575,15 +575,15 @@ mod tests {
 mod worker_presence_tests {
     use super::*;
     use axum::{
+        Json, Router,
         extract::State,
         http::{StatusCode, Uri},
         response::IntoResponse,
-        Json, Router,
     };
     use std::future::IntoFuture;
     use std::sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     };
 
     #[tokio::test]

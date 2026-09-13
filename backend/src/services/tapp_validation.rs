@@ -13,14 +13,14 @@ pub use myriad_tapp_contract::contract_rules::{
     MAX_CREDENTIAL_HEADER_PREFIX_LEN, MAX_CREDENTIAL_KEY_LEN, MAX_DATA_EXCHANGE_DECLARATIONS,
     MAX_DATA_EXCHANGE_ID_LEN, MAX_DATA_EXCHANGE_RESPONSE_BYTES, MAX_DATA_EXCHANGE_SCHEMA_BYTES,
     MAX_RESOURCE_PATH_LEN, MAX_TAPP_ARCHIVE_BYTES, MAX_TAPP_ARCHIVE_FILES,
-    MAX_TAPP_ARCHIVE_UNCOMPRESSED_BYTES, MAX_TAPP_ASSETS, MAX_TAPP_ASSETS_TOTAL_BYTES,
-    MAX_TAPP_ASSET_BYTES, MAX_TAPP_CREDENTIALS, MAX_TAPP_GAME_ARCHIVE_BYTES,
-    MAX_TAPP_GAME_ARCHIVE_FILES, MAX_TAPP_GAME_ARCHIVE_UNCOMPRESSED_BYTES, MAX_TAPP_GAME_ASSETS,
-    MAX_TAPP_GAME_ASSETS_TOTAL_BYTES, MAX_TAPP_GAME_ASSET_BYTES, MAX_TAPP_GAME_MESSAGE_BYTES,
-    MAX_TAPP_GAME_PLAYERS, MAX_TAPP_GAME_PROTOCOL_LEN, MAX_TAPP_GAME_RESOURCE_BYTES,
-    MAX_TAPP_I18N_FILES, MAX_TAPP_I18N_RESOURCE_BYTES, MAX_TAPP_ID_LEN, MAX_TAPP_MANIFEST_BYTES,
-    MAX_TAPP_RESOURCE_BYTES, MAX_TAPP_RUNTIME_MODULES, MAX_TAPP_UPLOAD_BYTES, MAX_WIDGETS_PER_TAPP,
-    MIN_TAPP_GAME_PLAYERS, TAPP_RUNTIME_MODULES,
+    MAX_TAPP_ARCHIVE_UNCOMPRESSED_BYTES, MAX_TAPP_ASSET_BYTES, MAX_TAPP_ASSETS,
+    MAX_TAPP_ASSETS_TOTAL_BYTES, MAX_TAPP_CREDENTIALS, MAX_TAPP_GAME_ARCHIVE_BYTES,
+    MAX_TAPP_GAME_ARCHIVE_FILES, MAX_TAPP_GAME_ARCHIVE_UNCOMPRESSED_BYTES,
+    MAX_TAPP_GAME_ASSET_BYTES, MAX_TAPP_GAME_ASSETS, MAX_TAPP_GAME_ASSETS_TOTAL_BYTES,
+    MAX_TAPP_GAME_MESSAGE_BYTES, MAX_TAPP_GAME_PLAYERS, MAX_TAPP_GAME_PROTOCOL_LEN,
+    MAX_TAPP_GAME_RESOURCE_BYTES, MAX_TAPP_I18N_FILES, MAX_TAPP_I18N_RESOURCE_BYTES,
+    MAX_TAPP_ID_LEN, MAX_TAPP_MANIFEST_BYTES, MAX_TAPP_RESOURCE_BYTES, MAX_TAPP_RUNTIME_MODULES,
+    MAX_TAPP_UPLOAD_BYTES, MAX_WIDGETS_PER_TAPP, MIN_TAPP_GAME_PLAYERS, TAPP_RUNTIME_MODULES,
 };
 pub use myriad_tapp_contract::paths::{
     is_safe_path_component, is_valid_widget_size, parse_system_version,
@@ -73,7 +73,7 @@ pub fn guess_asset_mime_type(path: &str) -> &'static str {
 }
 
 pub fn decode_asset_base64(value: &str) -> Result<Vec<u8>, String> {
-    use base64::{engine::general_purpose::STANDARD, Engine};
+    use base64::{Engine, engine::general_purpose::STANDARD};
     let trimmed = value.trim();
     // Allow optional data-URL prefix: data:<mime>;base64,<payload>
     let payload = trimmed
@@ -167,10 +167,12 @@ mod tests {
 
     #[test]
     fn credential_binding_accepts_fixed_https_origin() {
-        assert!(validate_tapp_manifest(&credential_manifest(
-            "https://api.example.com/games/{{params.id}}"
-        ))
-        .is_ok());
+        assert!(
+            validate_tapp_manifest(&credential_manifest(
+                "https://api.example.com/games/{{params.id}}"
+            ))
+            .is_ok()
+        );
     }
 
     #[test]
@@ -744,17 +746,21 @@ mod tests {
         .unwrap();
         assert!(validate_tapp_manifest(&manifest).is_ok());
         manifest.permissions.clear();
-        assert!(validate_tapp_manifest(&manifest)
-            .unwrap_err()
-            .contains("game:session"));
+        assert!(
+            validate_tapp_manifest(&manifest)
+                .unwrap_err()
+                .contains("game:session")
+        );
         manifest.permissions = vec![
             "game:session".into(),
             "federation:read".into(),
             "federation:room".into(),
         ];
-        assert!(validate_tapp_manifest(&manifest)
-            .unwrap_err()
-            .contains("federation:message"));
+        assert!(
+            validate_tapp_manifest(&manifest)
+                .unwrap_err()
+                .contains("federation:message")
+        );
         manifest.permissions = vec![
             "game:session".into(),
             "federation:read".into(),
@@ -762,9 +768,11 @@ mod tests {
             "federation:message".into(),
         ];
         manifest.game.as_mut().unwrap().protocol = "V1".into();
-        assert!(validate_tapp_manifest(&manifest)
-            .unwrap_err()
-            .contains("lowercase"));
+        assert!(
+            validate_tapp_manifest(&manifest)
+                .unwrap_err()
+                .contains("lowercase")
+        );
     }
 
     #[test]
@@ -782,8 +790,10 @@ mod tests {
         assert!(validate_tapp_manifest(&manifest).is_ok());
         assert!(manifest.uses_game_asset_limits());
         manifest.category = Some(myriad_tapp_contract::manifest::TappCategory::Utility);
-        assert!(validate_tapp_manifest(&manifest)
-            .unwrap_err()
-            .contains("runtimeModules"));
+        assert!(
+            validate_tapp_manifest(&manifest)
+                .unwrap_err()
+                .contains("runtimeModules")
+        );
     }
 }

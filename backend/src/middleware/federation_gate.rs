@@ -11,11 +11,11 @@
 //! invite the retry-with-backoff that 503 does.
 
 use axum::{
+    Json,
     extract::Request,
     http::StatusCode,
     middleware::Next,
     response::{IntoResponse, Response},
-    Json,
 };
 use serde_json::json;
 
@@ -186,7 +186,7 @@ mod tests {
     /// a silent bypass of the whole gate. Pin the behaviour it depends on.
     #[tokio::test]
     async fn percent_encoded_paths_do_not_reach_federation_routes() {
-        use axum::{body::Body, http::Request, routing::get, Router};
+        use axum::{Router, body::Body, http::Request, routing::get};
         use tower::ServiceExt;
 
         let app = Router::new().route(

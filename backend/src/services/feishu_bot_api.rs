@@ -3,15 +3,15 @@
 use std::time::Duration;
 
 use myriad_agent_rules::channel::{
-    feishu_photo_messages, feishu_token_needs_refresh, parse_feishu_api_code, truncate_feishu_text,
-    ConnectFailureKind,
+    ConnectFailureKind, feishu_photo_messages, feishu_token_needs_refresh, parse_feishu_api_code,
+    truncate_feishu_text,
 };
 use myriad_error::redact_secrets;
 use serde_json::Value;
 use tracing::warn;
 
-use crate::services::http_client;
 use crate::GLOBAL_DYNAMIC_CONFIG;
+use crate::services::http_client;
 
 const API_BASE: &str = "https://open.feishu.cn/open-apis";
 const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
@@ -286,6 +286,9 @@ mod resource_tests {
     #[test]
     fn downloads_message_resources_and_escapes_ids() {
         let url = super::message_resource_url("om_123", "img/a?b").unwrap();
-        assert_eq!(url.as_str(), "https://open.feishu.cn/open-apis/im/v1/messages/om_123/resources/img%2Fa%3Fb?type=image");
+        assert_eq!(
+            url.as_str(),
+            "https://open.feishu.cn/open-apis/im/v1/messages/om_123/resources/img%2Fa%3Fb?type=image"
+        );
     }
 }

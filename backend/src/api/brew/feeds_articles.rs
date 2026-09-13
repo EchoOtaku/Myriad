@@ -2,11 +2,11 @@ use crate::error::HttpError;
 use myriad_error::AppError;
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::IntoResponse,
     routing::{get, post, put},
-    Json, Router,
 };
 use chrono::Utc;
 use futures::StreamExt;
@@ -884,33 +884,30 @@ pub(crate) async fn refresh_source(
         .await;
 
     match source {
-        Ok(Some(_)) => {
-            if let Some(scheduler) = get_brew_scheduler() {
-                match scheduler.refresh_source(id).await {
-                    Ok(new_count) => Ok(Json(json!({ "success": true, "new_items": new_count }))),
-                    Err(error) => {
-                        tracing::error!(%error, "Failed to refresh source");
-                        let status = if error.starts_with("Failed to fetch feed") {
-                            StatusCode::BAD_GATEWAY
-                        } else if error.starts_with("Failed to parse feed") {
-                            StatusCode::UNPROCESSABLE_ENTITY
-                        } else if error.starts_with("Invalid feed URL") {
-                            StatusCode::BAD_REQUEST
-                        } else if error == "Source not found" {
-                            StatusCode::NOT_FOUND
-                        } else {
-                            StatusCode::INTERNAL_SERVER_ERROR
-                        };
-                        Err(brew_http_err(status, error))
-                    }
+        Ok(Some(_)) => match get_brew_scheduler() {
+            Some(scheduler) => match scheduler.refresh_source(id).await {
+                Ok(new_count) => Ok(Json(json!({ "success": true, "new_items": new_count }))),
+                Err(error) => {
+                    tracing::error!(%error, "Failed to refresh source");
+                    let status = if error.starts_with("Failed to fetch feed") {
+                        StatusCode::BAD_GATEWAY
+                    } else if error.starts_with("Failed to parse feed") {
+                        StatusCode::UNPROCESSABLE_ENTITY
+                    } else if error.starts_with("Invalid feed URL") {
+                        StatusCode::BAD_REQUEST
+                    } else if error == "Source not found" {
+                        StatusCode::NOT_FOUND
+                    } else {
+                        StatusCode::INTERNAL_SERVER_ERROR
+                    };
+                    Err(brew_http_err(status, error))
                 }
-            } else {
-                Err(HttpError::from((
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    Json(AppError::fail_json("Scheduler not available")),
-                )))
-            }
-        }
+            },
+            _ => Err(HttpError::from((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(AppError::fail_json("Scheduler not available")),
+            ))),
+        },
         Ok(None) => Err(HttpError::from((
             StatusCode::NOT_FOUND,
             Json(AppError::fail_json("Source not found")),
@@ -966,7 +963,7 @@ pub(crate) async fn discover_source(
             return Err(HttpError::from((
                 StatusCode::BAD_REQUEST,
                 Json(AppError::fail_json(error)),
-            )))
+            )));
         }
     };
     let requested_url = candidates.remove(0);

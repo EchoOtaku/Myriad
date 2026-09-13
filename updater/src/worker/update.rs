@@ -31,7 +31,7 @@ use crate::version::{DeployTag, MyriadVersion, UpdateMode};
 use crate::worker::backend_health::{
     backend_business_ready, backend_routes_full, backend_storage_writable,
 };
-use crate::worker::{machine::PhaseRecorder, preflight, rollback, Worker};
+use crate::worker::{Worker, machine::PhaseRecorder, preflight, rollback};
 
 pub async fn run(
     worker: Arc<Worker>,
@@ -385,12 +385,11 @@ async fn run_update_body(
 
     match pin_rollback_images(&worker, &from_tag_backup).await {
         Ok(true) => {
-            if let Ok(v) = DeployTag::parse(&from_tag_backup) {
-                if let Ok(mut st) = worker.state().read_updater() {
+            if let Ok(v) = DeployTag::parse(&from_tag_backup)
+                && let Ok(mut st) = worker.state().read_updater() {
                     st.rollback_version = Some(v);
                     let _ = worker.state().write_updater(&st);
                 }
-            }
         }
         Ok(false) => {
             tracing::warn!(
@@ -795,8 +794,8 @@ async fn finish_with_rollback(
     // Health-probe false negatives used to destroy a working stack via rollback.
     // Before any destructive step, re-check with the hardened multi-path probe under
     // soft-pass timing (treat elapsed as already past soft threshold).
-    if is_health_probe_failure(&original_err) {
-        if let Some(target) = rec.to_version.clone() {
+    if is_health_probe_failure(&original_err)
+        && let Some(target) = rec.to_version.clone() {
             info!(
                 err = %original_err,
                 target = %target,
@@ -863,12 +862,11 @@ async fn finish_with_rollback(
                 }
             }
         }
-    }
 
     // Health probe may have set maintenance.active=false; re-enter so proxy shows
     // maintenance during destructive rollback and crash recovery can see us.
-    if let Ok(mut m) = worker.state().read_maintenance() {
-        if !m.active {
+    if let Ok(mut m) = worker.state().read_maintenance()
+        && !m.active {
             m.active = true;
             m.phase = Phase::RollbackInProgress;
             m.message_key = "updater.phase.rollback".into();
@@ -876,7 +874,6 @@ async fn finish_with_rollback(
             m.bump_heartbeat();
             let _ = worker.state().write_maintenance(&m);
         }
-    }
 
     error!(err = %original_err, "rollback triggered");
     let rb_result =
@@ -1273,12 +1270,12 @@ async fn probe_one_tick(
         Ok(false) => {
             return ProbeTick::NotReady {
                 detail: "federation worker health/image not ready".into(),
-            }
+            };
         }
         Err(error) => {
             return ProbeTick::NotReady {
                 detail: format!("federation worker probe: {error}"),
-            }
+            };
         }
     }
     match worker.docker().persona_worker_healthy().await {
@@ -1286,12 +1283,12 @@ async fn probe_one_tick(
         Ok(false) => {
             return ProbeTick::NotReady {
                 detail: "persona worker health/image not ready".into(),
-            }
+            };
         }
         Err(error) => {
             return ProbeTick::NotReady {
                 detail: format!("persona worker probe: {error}"),
-            }
+            };
         }
     }
     const LOOSE_FRONTEND_AFTER: Duration = Duration::from_secs(45);
@@ -1511,11 +1508,10 @@ fn image_ref_matches_target(image_ref: &str, target: &DeployTag) -> bool {
         return true;
     }
     // Digest-only refs cannot prove tag; still allow short sha substring for commit tags.
-    if let Some(sha) = target.commit_sha() {
-        if image_ref.contains(sha) {
+    if let Some(sha) = target.commit_sha()
+        && image_ref.contains(sha) {
             return true;
         }
-    }
     image_ref.contains(tag)
 }
 

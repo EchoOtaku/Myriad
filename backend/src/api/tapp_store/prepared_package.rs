@@ -5,11 +5,11 @@
 //! Axum responses and performs filesystem staging (resources write + archive extract).
 
 use super::{
-    api_error, archive_entry_path, log_install_failure, validate_installed_resources,
+    ApiResponse, api_error, archive_entry_path, log_install_failure, validate_installed_resources,
     validate_tapp_archive, validate_tapp_archive_with, widget_template_path, write_install_assets,
-    write_install_generation, write_tapp_resource, ApiResponse,
+    write_install_generation, write_tapp_resource,
 };
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use chrono::{DateTime, FixedOffset};
 use std::path::Path;
 use std::sync::Arc;
@@ -17,8 +17,8 @@ use tokio::fs;
 
 use crate::services::tapp_package_read::{HOST_PAGE_CSS, HOST_WIDGET_CSS};
 use crate::services::tapp_prepared_package::{
-    check_manifest_byte_size, nonempty_content, parse_manifest_json, PackageLoadError,
-    PackageValidateError,
+    PackageLoadError, PackageValidateError, check_manifest_byte_size, nonempty_content,
+    parse_manifest_json,
 };
 
 // Path-stable re-exports for installation / store_package / tests.
@@ -437,12 +437,16 @@ mod tests {
             },
         );
 
-        assert!(package
-            .validate_for_http(Some("com.example.other"))
-            .is_err());
-        assert!(package
-            .validate_for_http(Some("com.example.prepared"))
-            .is_ok());
+        assert!(
+            package
+                .validate_for_http(Some("com.example.other"))
+                .is_err()
+        );
+        assert!(
+            package
+                .validate_for_http(Some("com.example.prepared"))
+                .is_ok()
+        );
     }
 
     #[test]
@@ -656,9 +660,11 @@ mod tests {
             for_entries(&["src/core.js"]),
             vec!["lib/shared.js", "src/core.js"]
         );
-        assert!(!for_entries(&["src/core.js", "components/card.js"])
-            .iter()
-            .any(|path| path == "components/other-widget.js"));
+        assert!(
+            !for_entries(&["src/core.js", "components/card.js"])
+                .iter()
+                .any(|path| path == "components/other-widget.js")
+        );
 
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -953,7 +959,7 @@ mod tests {
 
         let err = package.validate_for_http(None).unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
-        let body = serde_json::to_string(&err.1 .0).unwrap_or_default();
+        let body = serde_json::to_string(&err.1.0).unwrap_or_default();
         assert!(
             body.contains("page.styles"),
             "error should name the declaring layer field, got: {body}"
@@ -992,7 +998,7 @@ mod tests {
 
         let err = package.validate_for_http(None).unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
-        let body = serde_json::to_string(&err.1 .0).unwrap_or_default();
+        let body = serde_json::to_string(&err.1.0).unwrap_or_default();
         assert!(
             body.contains("styles/page.css"),
             "error should mention declared path, got: {body}"
@@ -1031,7 +1037,7 @@ mod tests {
 
         let err = package.validate_for_http(None).unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
-        let body = serde_json::to_string(&err.1 .0).unwrap_or_default();
+        let body = serde_json::to_string(&err.1.0).unwrap_or_default();
         assert!(
             body.contains("widgets[].styles"),
             "error should name the declaring layer field, got: {body}"

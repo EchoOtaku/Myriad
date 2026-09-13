@@ -1,18 +1,18 @@
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
+    password_hash::{PasswordHasher, PasswordVerifier, phc::PasswordHash},
 };
 use axum::{
-    http::{header, HeaderMap, StatusCode},
-    response::IntoResponse,
     Json,
+    http::{HeaderMap, StatusCode, header},
+    response::IntoResponse,
 };
 use myriad_error::AppError;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -729,10 +729,8 @@ async fn hash_password(password: &str) -> Result<String, HttpError> {
     let _permit = acquire_password_hash_permit().await?;
     let password = password.to_owned();
     let joined = tokio::task::spawn_blocking(move || {
-        let salt = SaltString::generate(&mut OsRng);
-        let argon2 = Argon2::default();
-        argon2
-            .hash_password(password.as_bytes(), &salt)
+        Argon2::default()
+            .hash_password(password.as_bytes())
             .map(|h| h.to_string())
     })
     .await;
@@ -1316,12 +1314,12 @@ pub async fn admin_create_user(
 #[cfg(test)]
 mod tests {
     use super::{
-        acquire_password_hash_permit_from, admin_already_exists_error, create_admin_gate,
-        hash_password, map_create_admin_insert_error, verify_password, AuthResponse,
-        CreateAdminRequest, UserInfo, CREATE_ADMIN_ADVISORY_LOCK_KEY,
-        PASSWORD_HASH_ACQUIRE_TIMEOUT,
+        AuthResponse, CREATE_ADMIN_ADVISORY_LOCK_KEY, CreateAdminRequest,
+        PASSWORD_HASH_ACQUIRE_TIMEOUT, UserInfo, acquire_password_hash_permit_from,
+        admin_already_exists_error, create_admin_gate, hash_password,
+        map_create_admin_insert_error, verify_password,
     };
-    use crate::error::{app_error_response, HttpError};
+    use crate::error::{HttpError, app_error_response};
     use axum::body::to_bytes;
     use axum::http::StatusCode;
     use axum::response::IntoResponse;

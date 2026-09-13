@@ -8,7 +8,7 @@ use sea_orm::{
     QueryFilter, QueryOrder, Set,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::models::entities::tapp_storage;
 
@@ -336,41 +336,49 @@ pub async fn list_components_by_type_for_subject(
 #[cfg(test)]
 mod tests {
     use super::{
-        component_storage_key, validate_component_config, ComponentRegistryError, ComponentType,
+        ComponentRegistryError, ComponentType, component_storage_key, validate_component_config,
     };
     use serde_json::json;
 
     #[test]
     fn theme_config_accepts_only_effective_fields() {
-        assert!(validate_component_config(
-            ComponentType::Theme,
-            &json!({
-                "id": "glass.primary",
-                "name": "Glass Primary",
-                "surface": "glass",
-                "glow": "primary"
-            })
-        )
-        .is_ok());
-        assert!(validate_component_config(
-            ComponentType::Theme,
-            &json!({ "id": "legacy", "name": "Legacy", "styles": "*{}" })
-        )
-        .is_err());
+        assert!(
+            validate_component_config(
+                ComponentType::Theme,
+                &json!({
+                    "id": "glass.primary",
+                    "name": "Glass Primary",
+                    "surface": "glass",
+                    "glow": "primary"
+                })
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_component_config(
+                ComponentType::Theme,
+                &json!({ "id": "legacy", "name": "Legacy", "styles": "*{}" })
+            )
+            .is_err()
+        );
     }
 
     #[test]
     fn agent_config_requires_declared_capabilities() {
-        assert!(validate_component_config(
-            ComponentType::Agent,
-            &json!({ "id": "helper", "name": "Helper", "capabilities": ["chat"] })
-        )
-        .is_ok());
-        assert!(validate_component_config(
-            ComponentType::Agent,
-            &json!({ "id": "helper", "name": "Helper", "capabilities": [] })
-        )
-        .is_err());
+        assert!(
+            validate_component_config(
+                ComponentType::Agent,
+                &json!({ "id": "helper", "name": "Helper", "capabilities": ["chat"] })
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_component_config(
+                ComponentType::Agent,
+                &json!({ "id": "helper", "name": "Helper", "capabilities": [] })
+            )
+            .is_err()
+        );
     }
 
     #[test]

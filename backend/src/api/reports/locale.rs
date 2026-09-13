@@ -4,7 +4,7 @@
 //! Missing headers (auto-regen / header-less generate-all) reuse the last
 //! stored report locale, else the account locale, else en-US.
 
-use axum::http::{header, HeaderMap};
+use axum::http::{HeaderMap, header};
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde_json::Value;
 

@@ -3,7 +3,7 @@
 //! Compact JSON, strip display noise, and shrink arrays so the budget keeps Look paths.
 
 use serde::Deserialize;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 use crate::services::smart_filter::SmartFilteredData;
 

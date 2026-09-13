@@ -7,9 +7,9 @@ use serde_json::json;
 use crate::services::agent::AgentInteractionMode;
 
 use super::{
-    capture_self_snapshot, evaluate_autonomy_grant, skips_user_review, validate_decision,
     AcceptSource, AutonomyGrantStore, ConsciousnessAction, ConsciousnessDecision,
     ConsciousnessEvent, IntentRecord, IntentStatus, IntentStore, SelfSnapshot,
+    capture_self_snapshot, evaluate_autonomy_grant, skips_user_review, validate_decision,
 };
 
 const DECISION_REQUEST_TIMEOUT: Duration = Duration::from_secs(4);

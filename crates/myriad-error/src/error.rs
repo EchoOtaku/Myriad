@@ -7,7 +7,7 @@
 use crate::redact::redact_secrets;
 use http::StatusCode;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
@@ -347,10 +347,7 @@ mod tests {
             AppError::internal("Failed to find Tapp").to_json()["code"],
             "tapp_not_found"
         );
-        assert_eq!(
-            AppError::not_found("missing").to_json()["code"],
-            "unmapped"
-        );
+        assert_eq!(AppError::not_found("missing").to_json()["code"], "unmapped");
         assert_eq!(
             AppError::internal("Method not found").to_json()["code"],
             "unmapped"

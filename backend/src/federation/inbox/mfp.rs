@@ -1,6 +1,6 @@
 //! Myriad Federation Protocol (MFP) inbox activity handlers.
 
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use sea_orm::ConnectionTrait;
 use serde_json::json;
 

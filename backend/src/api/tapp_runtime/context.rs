@@ -5,19 +5,19 @@
 //! those builders. `get_context_geo` runs `TappApiService` instead.
 
 use axum::{
+    Extension, Json,
     extract::State,
     http::{HeaderMap, StatusCode},
-    Extension, Json,
 };
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::config::DynamicConfig;
 use crate::error::HttpError;
-use crate::middleware::auth::{ensure_current_admin_on, Claims};
+use crate::middleware::auth::{Claims, ensure_current_admin_on};
 use crate::services::tapp_api_service::{ApiExecutionContext, TappApiService};
 use crate::services::tapp_context::{
     context_app_payload, context_system_payload, context_user_payload, idle_navigation_context,

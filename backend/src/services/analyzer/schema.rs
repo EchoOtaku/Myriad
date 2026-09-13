@@ -128,7 +128,7 @@ fn gemini_response_schema(schema: &serde_json::Value) -> Option<serde_json::Valu
 
 #[cfg(test)]
 mod tests {
-    use super::{gemini_response_schema, JsonMode};
+    use super::{JsonMode, gemini_response_schema};
     use crate::services::analyzer::types::{OpenAIMessage, OpenAIRequest, OutputBudget};
     use serde_json::json;
 
@@ -234,24 +234,28 @@ mod tests {
         // how a planner step's open `params` map is declared. The whole schema
         // must be dropped rather than silently losing the field.
         assert!(gemini_response_schema(&json!({ "type": "object" })).is_none());
-        assert!(gemini_response_schema(&json!({
-            "type": "object",
-            "properties": {}
-        }))
-        .is_none());
-        assert!(gemini_response_schema(&json!({
-            "type": "object",
-            "properties": {
-                "steps": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": { "params": { "type": "object" } }
+        assert!(
+            gemini_response_schema(&json!({
+                "type": "object",
+                "properties": {}
+            }))
+            .is_none()
+        );
+        assert!(
+            gemini_response_schema(&json!({
+                "type": "object",
+                "properties": {
+                    "steps": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": { "params": { "type": "object" } }
+                        }
                     }
                 }
-            }
-        }))
-        .is_none());
+            }))
+            .is_none()
+        );
     }
 
     #[test]

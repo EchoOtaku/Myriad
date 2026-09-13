@@ -5,7 +5,7 @@
 //! capability registry reuses the same input/output schemas so the two aliases
 //! cannot drift.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub fn normalize_search_type(search_type: &str) -> &'static str {
     match search_type {

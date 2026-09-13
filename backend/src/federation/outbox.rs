@@ -5,10 +5,10 @@
 //! `GET /users/{username}/outbox?page=N` 返回 OrderedCollectionPage
 
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::Response,
-    Json,
 };
 use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};

@@ -5,7 +5,7 @@
 use super::{schema::JsonMode, *};
 use anyhow::Result;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -156,9 +156,11 @@ fn probe_does_not_confuse_truncation_or_reasoning_with_an_answer() {
     assert!(extract_answer(&response, &mut observation).is_err());
     assert_eq!(observation.reasoning_tokens, Some(2040));
     assert_eq!(observation.finish.as_deref(), Some("length"));
-    assert!(!serde_json::to_string(&observation)
-        .unwrap()
-        .contains("private"));
+    assert!(
+        !serde_json::to_string(&observation)
+            .unwrap()
+            .contains("private")
+    );
     response["choices"][0]["finish_reason"] = json!("stop");
     response["choices"][0]["message"]["content"] = Value::Null;
     assert!(extract_answer(&response, &mut observation).is_err());

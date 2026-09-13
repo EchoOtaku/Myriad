@@ -252,8 +252,8 @@ pub(super) fn gateway_of(provider: AiProvider, base_url: Option<&str>) -> Gatewa
 #[cfg(test)]
 mod tests {
     use super::{
-        gateway_of, AiProvider, Gateway, GeminiContent, GeminiPart, GeminiRequest, OpenAIMessage,
-        OpenAIRequest,
+        AiProvider, Gateway, GeminiContent, GeminiPart, GeminiRequest, OpenAIMessage,
+        OpenAIRequest, gateway_of,
     };
     use serde_json::json;
 

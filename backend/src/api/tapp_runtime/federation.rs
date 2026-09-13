@@ -5,15 +5,15 @@
 //! interaction enrichment, and HTTP grant checks.
 
 use crate::error::HttpError;
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{Json, extract::State, http::StatusCode};
 use chrono::{DateTime, FixedOffset};
 use sea_orm::{DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::services::permission_service::TappPermission;
 use crate::services::tapp_federation_feed::{
-    dedupe_federation_feed, federation_feed_includes_personal, federation_feed_item,
-    merge_federation_feed, FederationFeedRowView,
+    FederationFeedRowView, dedupe_federation_feed, federation_feed_includes_personal,
+    federation_feed_item, merge_federation_feed,
 };
 
 use super::RuntimeGrantContext;

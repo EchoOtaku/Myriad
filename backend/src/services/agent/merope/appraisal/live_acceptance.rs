@@ -4,8 +4,8 @@
 
 use super::*;
 use crate::services::analyzer::{
-    probe::{Observation, Policy, Reasoning},
     AiAnalyzer, AiProvider,
+    probe::{Observation, Policy, Reasoning},
 };
 use sha2::{Digest, Sha256};
 use std::{io::Write, time::Instant};
@@ -210,7 +210,9 @@ async fn configured_lite_appraises_synthetic_scenarios_without_state_writes() {
         "{:?}",
         trial_analyzer(model_override.as_deref()).await.gateway()
     );
-    println!("configured_model={configured_model} trial_model={model} gateway={gateway} rounds={rounds} policy={exact_policy:?}");
+    println!(
+        "configured_model={configured_model} trial_model={model} gateway={gateway} rounds={rounds} policy={exact_policy:?}"
+    );
     if std::env::var("MEROPE_APPRAISAL_INSPECT_ONLY").as_deref() == Ok("1") {
         serde_json::to_writer_pretty(
             &mut report,
@@ -555,7 +557,10 @@ async fn configured_lite_appraises_synthetic_scenarios_without_state_writes() {
         let direction_ok = mood_direction_ok && arousal_direction_ok;
         let transition =
             MoodTransition::from_affect(&before, &after, "user_appraisal", index as i64 + 100);
-        println!("{id}: path={path} hint={hint:?} latency_ms={elapsed} semantic_ok={semantic_ok} direction_ok={direction_ok} mood={mood:.1}->{:.1} arousal={arousal:.1}->{:.1}", after.mood, after.arousal);
+        println!(
+            "{id}: path={path} hint={hint:?} latency_ms={elapsed} semantic_ok={semantic_ok} direction_ok={direction_ok} mood={mood:.1}->{:.1} arousal={arousal:.1}->{:.1}",
+            after.mood, after.arousal
+        );
         rows.push(json!({"id":id,"round":round,"inputHash":input_hash,"observation":observation,"text":text,"expected":expected,"path":path,"hint":hint,"outcome":outcome,"timing":timing,"analyzerSetupMs":analyzer_setup_ms,"latencyMs":elapsed,"semanticOk":semantic_ok,"directionOk":direction_ok,"event":{"event":"merope_state_changed","user_id":1,"activity":"idle","mood":transition}}));
     }
     let passed = rows

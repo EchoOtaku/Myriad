@@ -371,8 +371,8 @@ pub async fn buffer_inbox_body(
     (axum::body::Bytes, InboxInflightPermit),
     (axum::http::StatusCode, axum::Json<serde_json::Value>),
 > {
-    use axum::http::{header, StatusCode};
     use axum::Json;
+    use axum::http::{StatusCode, header};
     use serde_json::json;
 
     let body_cap = inbox_body_limit();
@@ -469,10 +469,10 @@ async fn live_body_limit_middleware(
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
-    use axum::body::Body;
-    use axum::http::{header, StatusCode};
-    use axum::response::IntoResponse;
     use axum::Json;
+    use axum::body::Body;
+    use axum::http::{StatusCode, header};
+    use axum::response::IntoResponse;
     use serde_json::json;
 
     let limit = kind.limit_bytes();
@@ -638,7 +638,7 @@ mod tests {
     #[tokio::test]
     async fn inner_body_limit_overrides_the_outer_one() {
         use axum::http::{Request, StatusCode};
-        use axum::{body::Body, extract::DefaultBodyLimit, routing::post, Router};
+        use axum::{Router, body::Body, extract::DefaultBodyLimit, routing::post};
         use tower::ServiceExt;
 
         const OUTER: usize = 1024;
@@ -891,7 +891,7 @@ mod optional_json_tests {
     #[tokio::test]
     async fn optional_json_distinguishes_absent_from_malformed() {
         use axum::http::{Request, StatusCode};
-        use axum::{body::Body, routing::post, Json, Router};
+        use axum::{Json, Router, body::Body, routing::post};
         use tower::ServiceExt;
 
         #[derive(Default, serde::Deserialize)]
@@ -956,7 +956,7 @@ mod rejection_tests {
     async fn oversized_body_keeps_the_chunked_transfer_hint() {
         use axum::extract::rejection::JsonRejection;
         use axum::http::{Request, StatusCode};
-        use axum::{body::Body, extract::DefaultBodyLimit, routing::post, Json, Router};
+        use axum::{Json, Router, body::Body, extract::DefaultBodyLimit, routing::post};
         use tower::ServiceExt;
 
         #[derive(serde::Deserialize)]

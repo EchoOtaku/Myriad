@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::sync::RwLock;
 
 use crate::config::ModelTier;

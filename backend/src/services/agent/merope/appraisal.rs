@@ -6,12 +6,12 @@ use std::time::{Duration, Instant};
 use chrono::{DateTime, FixedOffset};
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::models::entities::{agent_addressee_state, agent_persona};
 use crate::services::agent::UserRequest;
 
-use super::state::{apply_appraisal, lite_appraisal, MoodTransition};
+use super::state::{MoodTransition, apply_appraisal, lite_appraisal};
 use super::store::{affect_from_state, get_persona, recall_remembered, update_utterance_appraisal};
 
 const CALL_TIMEOUT: Duration = Duration::from_secs(8);
@@ -357,7 +357,7 @@ mod tests {
 
     #[tokio::test]
     async fn streaming_returns_valid_emotion_before_a_stalled_response_tail() {
-        use futures::{stream, StreamExt};
+        use futures::{StreamExt, stream};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let router = axum::Router::new().route(

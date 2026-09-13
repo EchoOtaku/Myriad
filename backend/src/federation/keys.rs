@@ -9,7 +9,7 @@
 //! 就不会再让实例丢掉 ActivityPub 身份。
 
 use anyhow::{Context, Result};
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use rsa::pkcs8::{
     DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey, LineEnding,
 };
@@ -133,7 +133,7 @@ fn decrypt_private_key_pem(stored: &str, legacy_jwt_secret: &str) -> Result<Stri
 
 /// v0 解密：`base64(nonce || ciphertext)`，密钥 = SHA-256("myriad-federation-key-encryption:" || jwt_secret)
 fn decrypt_legacy_private_key(stored: &str, jwt_secret: &str) -> Result<String> {
-    use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
+    use aes_gcm::{Aes256Gcm, KeyInit, Nonce, aead::Aead};
 
     let combined = BASE64
         .decode(stored)
@@ -272,7 +272,7 @@ mod tests {
 
     /// 用历史算法产出 v0 密文，模拟已有部署库里的数据。
     fn encrypt_v0(kp: &KeyPair, jwt_secret: &str) -> String {
-        use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
+        use aes_gcm::{Aes256Gcm, KeyInit, Nonce, aead::Aead};
 
         let pem = kp.private_key_pem().unwrap();
         let aes_key = crate::services::data_key::derive_legacy_key(jwt_secret);

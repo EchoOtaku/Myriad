@@ -13,6 +13,7 @@ import {
   predictExpandedControlPanelBox,
   predictRestoredLibraryDockBox,
 } from '../../utils/libraryDockStage'
+import { isAgentSettingsPath } from '../agent/settings/agentSettingsPath'
 import { getAgentPanelVisible } from '../agent-panel/agentPanelVisible'
 import { expandCollapsibleAncestors } from '../settings/guides/guideAnchor'
 import { clamp } from '../settings/settingTitleGuideLogic'
@@ -51,11 +52,17 @@ const configTourListeners = new Set<() => void>()
 
 function readConfigTourSurfaceFromLocation(): ConfigTourSurface {
   if (typeof window === 'undefined') return 'browse'
+  const path =
+    typeof window === 'undefined'
+      ? '/'
+      : window.location.pathname.replace(/\/+$/, '') || '/'
   const params = new URLSearchParams(window.location.search)
   const page = params.get('page')
-  if (page === 'merope-setup') return 'none'
-  if (page === 'merope') return 'persona'
-  if (params.get('section') === 'agent') return 'ai-persona'
+  if (isAgentSettingsPath(path)) {
+    if (page === 'merope-setup') return 'none'
+    if (page === 'merope') return 'persona'
+    return 'ai-persona'
+  }
   return 'browse'
 }
 
@@ -91,6 +98,7 @@ export function readTourSurface(
   if (path === '/library') {
     return libraryTourPickSurface(getLibraryTourSurfaceSnapshot())
   }
+  if (isAgentSettingsPath(path)) return configTourSurface
   if (path !== '/config') return 'browse'
   return configTourSurface
 }
@@ -192,6 +200,7 @@ export function pageNameForPath(
     reports: string
     tapp: string
     config: string
+    agent: string
   },
   editMode: string,
   editingHome: boolean,
@@ -202,6 +211,9 @@ export function pageNameForPath(
   if (path === '/brew' || path.startsWith('/brew')) return nav.brew
   if (path === '/reports' || path.startsWith('/reports')) return nav.reports
   if (path === '/tapp' || path.startsWith('/tapp')) return nav.tapp
+  if (path === '/agent/settings' || path.startsWith('/agent/settings')) {
+    return nav.agent
+  }
   if (path === '/config' || path.startsWith('/config')) return nav.config
   return nav.home
 }

@@ -531,6 +531,7 @@ html.dark .modern-config-loading {
 .modern-config-error-actions {
   display: flex;
   align-items: center;
+  gap: 0.5rem;
 }
 
 html.dark .modern-config-error-icon {
@@ -647,6 +648,10 @@ html.dark .config-shell {
   .config-shell {
     grid-template-columns: 16.5rem minmax(0, 1fr);
     gap: 1.5rem;
+  }
+
+  .config-shell--solo {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use myriad_error::AppError;
 use serde_json::json;
@@ -464,7 +464,7 @@ pub(crate) async fn federation_media_upload(
                     StatusCode::BAD_REQUEST,
                     Json(AppError::public_json("Failed to read file field")),
                 )
-                    .into_response()
+                    .into_response();
             }
         }
         break;
@@ -673,8 +673,10 @@ pub(crate) async fn federation_send_message(
         Err(e) => {
             return json_rejection_response(
                 e,
-                Some("Inline payloads max ~4 MiB (MESSAGE_PAYLOAD_LIMIT); larger files use chunked transfer"),
-            )
+                Some(
+                    "Inline payloads max ~4 MiB (MESSAGE_PAYLOAD_LIMIT); larger files use chunked transfer",
+                ),
+            );
         }
     };
 
@@ -998,7 +1000,9 @@ pub(crate) async fn federation_send_room_message(
             );
             return json_rejection_response(
                 e,
-                Some("Inline payloads max ~4 MiB (MESSAGE_PAYLOAD_LIMIT); larger files use chunked transfer"),
+                Some(
+                    "Inline payloads max ~4 MiB (MESSAGE_PAYLOAD_LIMIT); larger files use chunked transfer",
+                ),
             );
         }
     };
@@ -1407,7 +1411,7 @@ pub(crate) async fn federation_update_instance_trust(
                 StatusCode::BAD_REQUEST,
                 Json(AppError::public_json("domain required")),
             )
-                .into_response()
+                .into_response();
         }
     };
     let level = payload
@@ -1505,7 +1509,7 @@ pub(crate) async fn federation_toggle_instance_block(
                 StatusCode::BAD_REQUEST,
                 Json(AppError::public_json("domain required")),
             )
-                .into_response()
+                .into_response();
         }
     };
     let block = payload

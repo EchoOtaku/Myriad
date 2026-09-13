@@ -58,6 +58,21 @@ describe('agentChannels', () => {
 })
 
 describe('Agent page channel add wiring', () => {
+  it('leaves the Agent page back to site settings', () => {
+    const page = readFileSync(
+      new URL('./AgentConfigSection.tsx', import.meta.url),
+      'utf8',
+    )
+    const form = readFileSync(
+      new URL('../agent/settings/AgentSettingsForm.tsx', import.meta.url),
+      'utf8',
+    )
+    assert.match(page, /onLeave/)
+    assert.match(page, /leaveLabel/)
+    assert.match(form, /navigate\('\/config'\)/)
+    assert.match(form, /leaveLabel=\{t\.nav\.config\}/)
+  })
+
   it('puts add on the page header and does not mount all bots by default', () => {
     const page = readFileSync(
       new URL('./AgentConfigSection.tsx', import.meta.url),

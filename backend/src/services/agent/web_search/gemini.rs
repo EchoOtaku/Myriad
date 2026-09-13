@@ -5,7 +5,7 @@ use super::mapping::{
 };
 use crate::services::agent::ai_process_pure::sanitize_prompt_input;
 use crate::services::agent::data_read_pure::extract_json_array_from_ai_response;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 struct GroundingGen {
@@ -117,7 +117,7 @@ pub async fn search_reading_list(
                 .map(|parts| parts.join(" "))
                 .filter(|s| s.len() > 20)
                 .unwrap_or_else(|| {
-                    format!("Article from {}: {}", extract_domain_from_url(&uri), &title)
+                    format!("Article from {}: {}", extract_domain_from_url(&uri), title)
                 });
             results.push(json!({
                 "title": title,
@@ -148,13 +148,13 @@ async fn grounding_generate(
     api_key: &str,
     model: &str,
     prompt: &str,
-    gen: GroundingGen,
+    r#gen: GroundingGen,
 ) -> Result<(String, Value), String> {
     let mut generation_config = json!({
-        "temperature": gen.temperature,
-        "maxOutputTokens": gen.max_output_tokens,
+        "temperature": r#gen.temperature,
+        "maxOutputTokens": r#gen.max_output_tokens,
     });
-    if gen.json_mime {
+    if r#gen.json_mime {
         generation_config["responseMimeType"] = json!("application/json");
     }
     let request_body = json!({

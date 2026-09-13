@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::sync::{watch, Mutex};
+use tokio::sync::{Mutex, watch};
 
 use super::agent::run_hub::AgentRun;
 use crate::middleware::auth::Claims;
@@ -364,10 +364,12 @@ mod tests {
         );
         assert_eq!(a.unwrap().run_id(), b.unwrap().run_id());
         assert_eq!(calls.load(Ordering::SeqCst), 1);
-        assert!(session
-            .start_or_replay(5, "different", start)
-            .await
-            .is_err());
+        assert!(
+            session
+                .start_or_replay(5, "different", start)
+                .await
+                .is_err()
+        );
         assert!(session.start_or_replay(4, "older", start).await.is_err());
         let notices = session.notices().await.0;
         assert_eq!(notices.len(), 1);
@@ -399,10 +401,12 @@ mod tests {
                 .unwrap();
         }
         assert_eq!(session.notices().await.0.len(), RECENT_TURNS);
-        assert!(session
-            .start_or_replay(0, "a", || async { panic!("must not rerun") })
-            .await
-            .is_err());
+        assert!(
+            session
+                .start_or_replay(0, "a", || async { panic!("must not rerun") })
+                .await
+                .is_err()
+        );
         session.close().await;
     }
 
@@ -425,9 +429,11 @@ mod tests {
         let serialized = serde_json::to_string(&b.notices().await.0).unwrap();
         assert!(!serialized.contains(&key_b));
         b.close().await;
-        assert!(ChatSession::register(claims(0), "guest".into())
-            .await
-            .is_err());
+        assert!(
+            ChatSession::register(claims(0), "guest".into())
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]

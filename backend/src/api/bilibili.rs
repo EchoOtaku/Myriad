@@ -1,8 +1,8 @@
 // Bilibili API routes
 use crate::error::HttpError;
 use axum::{
-    extract::{Path, Query},
     Json,
+    extract::{Path, Query},
 };
 use serde::{Deserialize, Serialize};
 

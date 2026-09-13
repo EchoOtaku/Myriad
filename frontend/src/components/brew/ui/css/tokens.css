@@ -99,18 +99,36 @@ html.dark .brew-skin {
     0 0 0 4px color-mix(in srgb, var(--brew-accent) 50%, transparent);
 }
 
-.brew-skin button {
+.brew-skin button:not(
+  .settings-btn,
+  .choice-segmented-item,
+  .setting-title-tag,
+  .field-input,
+  .toggle-switch,
+  .brew-search__icon,
+  .brew-search__hint
+) {
   appearance: none;
   font: inherit;
   color: inherit;
   -webkit-tap-highlight-color: transparent;
 }
 
-.brew-skin button:focus {
+.brew-skin button:not(
+  .settings-btn,
+  .choice-segmented-item,
+  .brew-search__icon,
+  .brew-search__hint
+):focus {
   outline: none;
 }
 
-.brew-skin button:focus-visible {
+.brew-skin button:not(
+  .settings-btn,
+  .choice-segmented-item,
+  .brew-search__icon,
+  .brew-search__hint
+):focus-visible {
   outline: none;
   box-shadow: var(--brew-focus);
 }

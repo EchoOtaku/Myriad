@@ -8,9 +8,9 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::SUPPORTED_RELEASE_SCHEMA;
 use crate::error::{Result, UpdaterError};
 use crate::version::MyriadVersion;
-use crate::SUPPORTED_RELEASE_SCHEMA;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
@@ -119,13 +119,12 @@ impl Manifest {
                 )));
             }
         }
-        if let Some(sha) = &self.commit_sha {
-            if sha.len() != 40 || !sha.bytes().all(|b| b.is_ascii_hexdigit()) {
+        if let Some(sha) = &self.commit_sha
+            && (sha.len() != 40 || !sha.bytes().all(|b| b.is_ascii_hexdigit())) {
                 return Err(UpdaterError::Precondition(format!(
                     "release.json has invalid commit_sha: {sha}"
                 )));
             }
-        }
         Ok(())
     }
 

@@ -12,9 +12,9 @@
 //! 否则阅读器、RSS、联邦三处会各自拿到一份不同的 HTML。
 
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
-    Json,
 };
 use chrono::{TimeZone, Utc};
 use myriad_brew_notes::{note_guid, note_link, render_markdown, render_note, validate_note};

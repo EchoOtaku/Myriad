@@ -9,15 +9,15 @@
 use chrono::{Duration, Utc};
 use futures::stream::{self, StreamExt};
 use sea_orm::{
-    sea_query::OnConflict, ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition,
-    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
+    QueryFilter, QueryOrder, QuerySelect, sea_query::OnConflict,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 
 use crate::models::entities::{brew_items, brew_sources};
-use crate::services::brew_parser::{calculate_reading_stats, FeedParser, ParsedFeed};
+use crate::services::brew_parser::{FeedParser, ParsedFeed, calculate_reading_stats};
 use crate::services::notion_service::{NotionConfig, NotionService};
 use crate::services::rsshub_service::RsshubService;
 

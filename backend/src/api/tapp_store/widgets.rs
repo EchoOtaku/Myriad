@@ -1,14 +1,14 @@
 //! Manifest and runtime Widget registry boundaries.
 
 use super::{
-    authorize_tapp_permission, current_is_admin, find_admin_user_id, lock_tapp_lifecycle,
-    optional_authenticated_user_id, require_current_admin, validate_tapp_settings,
-    validate_widget_refresh_policy, ApiResponse, TappManifest, TappSettingDef, TappWidgetCategory,
-    TappWidgetRefreshPolicy, MAX_WIDGETS_PER_TAPP,
+    ApiResponse, MAX_WIDGETS_PER_TAPP, TappManifest, TappSettingDef, TappWidgetCategory,
+    TappWidgetRefreshPolicy, authorize_tapp_permission, current_is_admin, find_admin_user_id,
+    lock_tapp_lifecycle, optional_authenticated_user_id, require_current_admin,
+    validate_tapp_settings, validate_widget_refresh_policy,
 };
 use axum::{
-    extract::{Path, State},
     Extension, Json,
+    extract::{Path, State},
 };
 use chrono::Utc;
 use sea_orm::{

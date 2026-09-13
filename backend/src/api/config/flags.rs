@@ -2,7 +2,7 @@
 //!
 //! No Axum: Agent and other services must not import the HTTP config handlers
 //! just to read these flags.
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::types::PlatformConfig;
 

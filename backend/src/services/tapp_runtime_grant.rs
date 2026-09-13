@@ -15,8 +15,8 @@ use std::time::Duration;
 use uuid::Uuid;
 
 use crate::services::permission_service::{
-    tapp_permission_replacement_hint, TappPermission, TappPermissionService, UnknownTappPermission,
-    UserRole,
+    TappPermission, TappPermissionService, UnknownTappPermission, UserRole,
+    tapp_permission_replacement_hint,
 };
 use crate::services::tapp_ownership;
 use crate::services::tapp_registry as shared_registry;
@@ -489,8 +489,8 @@ pub async fn revoke_all_tapp_runtime_grants(db: &DatabaseConnection, tapp_id: &s
 #[cfg(test)]
 mod tests {
     use super::{
-        intersect_current_permissions, refuse_if_needs_reauthorization, token_hash,
-        valid_instance_id, RuntimeGrantError, RuntimeKind,
+        RuntimeGrantError, RuntimeKind, intersect_current_permissions,
+        refuse_if_needs_reauthorization, token_hash, valid_instance_id,
     };
 
     #[test]

@@ -1,10 +1,10 @@
 // Federation file transfer handlers and authenticated router surface.
 
 use axum::{
+    Json, Router,
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{delete, get, post, put},
-    Json, Router,
 };
 use serde_json::json;
 
@@ -135,7 +135,7 @@ async fn federation_download_transfer(
     axum::extract::Path(transfer_id): axum::extract::Path<String>,
 ) -> Response {
     use axum::body::Body;
-    use axum::http::header::{HeaderValue, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE};
+    use axum::http::header::{CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, HeaderValue};
     use tokio::io::AsyncReadExt;
     use tokio_stream::wrappers::ReceiverStream;
 
@@ -205,13 +205,16 @@ async fn federation_download_transfer(
     let mut res = Response::new(body);
     *res.status_mut() = StatusCode::OK;
     let headers = res.headers_mut();
-    if let Ok(v) = HeaderValue::from_str(&file.mime_type) {
-        headers.insert(CONTENT_TYPE, v);
-    } else {
-        headers.insert(
-            CONTENT_TYPE,
-            HeaderValue::from_static("application/octet-stream"),
-        );
+    match HeaderValue::from_str(&file.mime_type) {
+        Ok(v) => {
+            headers.insert(CONTENT_TYPE, v);
+        }
+        _ => {
+            headers.insert(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/octet-stream"),
+            );
+        }
     }
     if let Ok(v) = HeaderValue::from_str(&disposition) {
         headers.insert(CONTENT_DISPOSITION, v);
@@ -238,7 +241,7 @@ async fn federation_upload_chunk(
     let Json(chunk_req) = match chunk_req {
         Ok(v) => v,
         Err(e) => {
-            return json_rejection_response(e, Some("Chunk payload exceeds the per-chunk limit"))
+            return json_rejection_response(e, Some("Chunk payload exceeds the per-chunk limit"));
         }
     };
 
@@ -668,11 +671,13 @@ mod query_parse_tests {
             assert!(!t(falsy), "{falsy} should be falsy");
         }
 
-        assert!(!PurgeDeadQuery {
-            limit: None,
-            cancelled_only: None,
-        }
-        .cancelled_only());
+        assert!(
+            !PurgeDeadQuery {
+                limit: None,
+                cancelled_only: None,
+            }
+            .cancelled_only()
+        );
 
         assert_eq!(
             PurgeDeadQuery {

@@ -276,8 +276,8 @@ pub async fn consume_ws_ticket(
 #[cfg(test)]
 mod tests {
     use super::{
-        has_permission, new_ticket, token_hash, StoredWsTicket, WsTicketError, WsTicketKind,
-        TAPP_WS_TICKET_QUERY, TICKET_PREFIX,
+        StoredWsTicket, TAPP_WS_TICKET_QUERY, TICKET_PREFIX, WsTicketError, WsTicketKind,
+        has_permission, new_ticket, token_hash,
     };
     use crate::services::permission_service::TappPermission;
 

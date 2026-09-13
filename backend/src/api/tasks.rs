@@ -4,14 +4,14 @@ use crate::services::smart_filter::SmartFilter;
 ///
 /// 提供异步任务提交、状态查询、进度跟踪等功能
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
-    Json,
 };
 use myriad_error::AppError;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Platforms accepted by POST /api/tasks reprocess (smart_filter ids; seeds use `netease_music`).
 const TASK_SUPPORTED_PLATFORMS: &[&str] = &[

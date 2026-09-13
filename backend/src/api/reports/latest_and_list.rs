@@ -2,15 +2,15 @@
 
 use axum::Json;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::error::HttpError;
 use crate::models::entities::platform_reports;
 use myriad_error::AppError;
 
 use super::generate::{
-    finalize_public_platform_report, generate_platform_reports_internal,
-    public_report_owner_user_id, resolve_report_user_id_for_public_read, REPORT_REGEN_IN_FLIGHT,
+    REPORT_REGEN_IN_FLIGHT, finalize_public_platform_report, generate_platform_reports_internal,
+    public_report_owner_user_id, resolve_report_user_id_for_public_read,
 };
 
 /// 后台重新生成过期的平台报告（只用已有缓存数据调 AI，不重新抓平台）

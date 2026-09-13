@@ -1386,17 +1386,21 @@ mod tests {
             .unwrap();
         assert!(!fresh.user_perm_network_fetch);
         assert!(stale.user_perm_network_fetch);
-        assert!(TappPermissionService::filter_permissions_for_role(
-            &fresh,
-            UserRole::User,
-            &permissions
-        )
-        .unwrap()
-        .is_empty());
+        assert!(
+            TappPermissionService::filter_permissions_for_role(
+                &fresh,
+                UserRole::User,
+                &permissions
+            )
+            .unwrap()
+            .is_empty()
+        );
         writer.execute_unprepared("UPDATE configurations SET value = '\"false\"' WHERE key = 'user_perm_network_fetch'").await.unwrap();
-        assert!(super::ConfigService::load_permission_config_on(&observer)
-            .await
-            .is_err());
+        assert!(
+            super::ConfigService::load_permission_config_on(&observer)
+                .await
+                .is_err()
+        );
         admin
             .execute_unprepared(&format!("DROP SCHEMA {schema} CASCADE"))
             .await
@@ -1956,9 +1960,11 @@ mod tests {
         let mut visitor = MapGetVisitor::default();
         visitor.visit_impl_item_fn(parse_config);
         let exemptions: HashSet<&str> = EXEMPTIONS.iter().map(|(field, _)| *field).collect();
-        assert!(EXEMPTIONS
-            .iter()
-            .all(|(_, reason)| !reason.trim().is_empty()));
+        assert!(
+            EXEMPTIONS
+                .iter()
+                .all(|(_, reason)| !reason.trim().is_empty())
+        );
 
         let mut missing: Vec<_> = fields
             .difference(&visitor.parsed_fields)

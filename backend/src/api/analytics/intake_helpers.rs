@@ -1,14 +1,14 @@
 use crate::config::DynamicConfig;
 use axum::{
-    extract::{ConnectInfo, Request},
-    http::{header, StatusCode},
     Json,
+    extract::{ConnectInfo, Request},
+    http::{StatusCode, header},
 };
 use chrono::{Duration, Local, NaiveDate, Utc};
 use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, Value as SeaValue};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -60,11 +60,7 @@ pub(crate) fn i64_nonneg(v: Option<&Value>) -> Option<i64> {
         v.and_then(|x| x.as_u64())
             .and_then(|u| i64::try_from(u).ok())
     })?;
-    if n < 0 {
-        None
-    } else {
-        Some(n)
-    }
+    if n < 0 { None } else { Some(n) }
 }
 pub(crate) const MAX_IMPORT_PAGE_DAILY: usize = 50_000;
 pub(crate) const MAX_IMPORT_VISITOR_SEEN: usize = 200_000;
@@ -1447,11 +1443,7 @@ WHERE day >= $1 AND day <= $2 AND path <> $3
 /// (undefined baseline — UI shows "新" / new).
 pub(crate) fn pct_change(current: i64, previous: i64) -> Option<f64> {
     if previous == 0 {
-        if current == 0 {
-            Some(0.0)
-        } else {
-            None
-        }
+        if current == 0 { Some(0.0) } else { None }
     } else {
         Some(((current - previous) as f64 / previous as f64) * 100.0)
     }

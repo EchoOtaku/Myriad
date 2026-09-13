@@ -1,6 +1,6 @@
 // Chat-only Agent path. Strict Lite; no Planner, Recipe, or Pro.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::agent_header::Agent;
 use super::motion_overlay::{

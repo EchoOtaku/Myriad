@@ -12,18 +12,15 @@ describe('resolveConfigSectionFromSearch', () => {
     assert.equal(resolveConfigSectionFromSearch(params, true), 'ai')
   })
 
-  it('routes old AI persona deep links to Agent', () => {
+  it('does not treat Agent as a /config room', () => {
     const merope = new URLSearchParams('section=ai&page=merope')
     const setup = new URLSearchParams('section=ai&page=merope-setup')
     const bare = new URLSearchParams('page=merope')
-    assert.equal(resolveConfigSectionFromSearch(merope, true), 'agent')
-    assert.equal(resolveConfigSectionFromSearch(setup, false), 'agent')
-    assert.equal(resolveConfigSectionFromSearch(bare, true), 'agent')
-  })
-
-  it('accepts the new Agent section id', () => {
-    const params = new URLSearchParams('section=agent')
-    assert.equal(resolveConfigSectionFromSearch(params, true), 'agent')
+    const agent = new URLSearchParams('section=agent')
+    assert.equal(resolveConfigSectionFromSearch(merope, true), 'ai')
+    assert.equal(resolveConfigSectionFromSearch(setup, false), 'ai')
+    assert.equal(resolveConfigSectionFromSearch(bare, true), null)
+    assert.equal(resolveConfigSectionFromSearch(agent, true), null)
   })
 
   it('maps the old Laboratory deep link to lab', () => {
@@ -42,7 +39,6 @@ describe('CONFIG_NAV_SECTIONS', () => {
         'basic',
         'platforms',
         'ai',
-        'agent',
         'notifications',
         'oauth',
         'users',

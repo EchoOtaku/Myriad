@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use super::{github::GithubProvider, oidc::OidcProvider, OAuthProvider, ProviderDescriptor};
+use super::{OAuthProvider, ProviderDescriptor, github::GithubProvider, oidc::OidcProvider};
 
 pub static REGISTRY: Lazy<Arc<ProviderRegistry>> = Lazy::new(|| Arc::new(ProviderRegistry::new()));
 

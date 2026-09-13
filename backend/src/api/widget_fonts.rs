@@ -4,11 +4,11 @@
 //! frontend public tree). GET is unauthenticated so the public homepage can load
 //! the face. Filenames are content-addressed; path traversal is rejected.
 
-use axum::extract::Path;
-use axum::http::{header, HeaderValue, StatusCode};
-use axum::response::{IntoResponse, Response};
 use axum::Json;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use axum::extract::Path;
+use axum::http::{HeaderValue, StatusCode, header};
+use axum::response::{IntoResponse, Response};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use serde::Deserialize;
 use serde_json::json;
 use sha2::{Digest, Sha256};

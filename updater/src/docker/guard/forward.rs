@@ -2,13 +2,13 @@
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-use anyhow::{anyhow, Context, Result};
-use axum::body::{to_bytes, Body};
+use anyhow::{Context, Result, anyhow};
+use axum::body::{Body, to_bytes};
 use axum::extract::{ConnectInfo, State};
-use axum::http::{header, Method, Request, StatusCode, Uri};
+use axum::http::{Method, Request, StatusCode, Uri, header};
 use axum::response::Response;
 use hyper::client::conn::http1;
 use hyper_util::rt::TokioIo;
@@ -16,15 +16,15 @@ use serde_json::Value;
 use tokio::net::UnixStream;
 use tracing::{error, warn};
 
-use super::classify::{classify_request, Decision};
+use super::classify::{Decision, classify_request};
 use super::self_update::handle_self_update;
 use super::validate::{
     allowlisted_network_name, authorize_guard_network_attachment, managed_project_service,
     validate_endpoint_settings,
 };
 use super::{
-    denial, strip_api_version, validate_identifier, GuardState, DOCKER_API_TIMEOUT,
-    SELF_UPDATE_GATE,
+    DOCKER_API_TIMEOUT, GuardState, SELF_UPDATE_GATE, denial, strip_api_version,
+    validate_identifier,
 };
 
 const MAX_REQUEST_BODY: usize = 1024 * 1024;
@@ -66,7 +66,7 @@ pub(crate) async fn handle(
                     return denial(
                         StatusCode::FORBIDDEN,
                         "container is not a managed service in this Compose project",
-                    )
+                    );
                 }
                 Err(e) => {
                     warn!(container, err = %e, "docker guard could not authorize container");

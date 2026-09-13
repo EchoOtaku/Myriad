@@ -6,12 +6,12 @@ pub mod definitions;
 mod output_contract;
 mod utils;
 
-pub use output_contract::{check_output_contract, declared_output_fields, ContractViolation};
+pub use output_contract::{ContractViolation, check_output_contract, declared_output_fields};
 pub use utils::*;
 
 use super::types::*;
 use once_cell::sync::Lazy;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::RwLock;

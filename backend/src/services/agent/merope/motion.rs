@@ -7,20 +7,20 @@
 use std::time::{Duration, Instant};
 
 use myriad_merope::{
-    cue_is_playable, cue_survives_state, grounded_speech_phrases, parse_performance_plan,
-    plan_is_empty, refine_performance_plan, round_motion_style, ChatPerformanceBaseline,
-    ChatPerformanceCue, ChatPerformancePlan, RigStateSummary, SpeechPhrase,
+    ChatPerformanceBaseline, ChatPerformanceCue, ChatPerformancePlan,
     PERFORMANCE_BASELINE_EXPRESSIONS, PERFORMANCE_CUE_INTENTS, PERFORMANCE_INTERRUPT_MODES,
-    PERFORMANCE_PHRASE_INTENTS, PERFORMANCE_POSTURES, RIG_STATE_MOTION_STYLES,
+    PERFORMANCE_PHRASE_INTENTS, PERFORMANCE_POSTURES, RIG_STATE_MOTION_STYLES, RigStateSummary,
+    SpeechPhrase, cue_is_playable, cue_survives_state, grounded_speech_phrases,
+    parse_performance_plan, plan_is_empty, refine_performance_plan, round_motion_style,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::models::entities::agent_persona;
 
+use super::MoodTransition;
 use super::motion_local::local_performance_plan;
 use super::store::get_persona;
-use super::MoodTransition;
 
 /// MOTION_TIMEOUT 9s; MOTION_TOTAL_TIMEOUT 10s.
 /// Streaming publishes `local_directive` first; Lite is a refinement.
@@ -611,9 +611,18 @@ const BASELINE_INDEX: &[(&str, &str)] = &[
         "withdrawn",
         "Drawn in, avoiding, not opening up. Slow-to-warm, low mood, or offended.",
     ),
-    ("subdued", "Held down but still present. Restrained, earnest, not festive."),
-    ("steady", "Ordinary face. Neutral base; still pair with a cue, not a blank."),
-    ("warm", "Relaxed, close, smiling. Common for outgoing or soft personas."),
+    (
+        "subdued",
+        "Held down but still present. Restrained, earnest, not festive.",
+    ),
+    (
+        "steady",
+        "Ordinary face. Neutral base; still pair with a cue, not a blank.",
+    ),
+    (
+        "warm",
+        "Relaxed, close, smiling. Common for outgoing or soft personas.",
+    ),
     (
         "tense",
         "Irritable, taut, out of patience. Low mood but wired — not sad, can't sit still; brow down, eyes more open.",
@@ -629,10 +638,18 @@ const POSTURE_INDEX: &[(&str, &str)] = &[
 const CUE_INDEX: &[(&str, &str, &str)] = &[
     ("greet", "Greeting, a nod", "head-body"),
     ("respond", "Catching what they just said", "head-body"),
-    ("question", "Doubt, a counter-question, didn't catch it", "head-body"),
+    (
+        "question",
+        "Doubt, a counter-question, didn't catch it",
+        "head-body",
+    ),
     ("delight", "Glad, amused, things going well", "head-body"),
     ("emphasize", "Stress one earnest line", "head-body"),
-    ("listen", "Listening, waiting for them to finish", "head-body"),
+    (
+        "listen",
+        "Listening, waiting for them to finish",
+        "head-body",
+    ),
     ("notify", "A reminder or notice", "head-body"),
     ("think", "Thinking, recalling, weighing", "head-body"),
     (

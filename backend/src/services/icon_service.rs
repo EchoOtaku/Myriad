@@ -89,7 +89,7 @@ impl IconService {
                 t if t.contains("image/webp") => return "webp",
                 t if t.contains("image/svg+xml") => return "svg",
                 t if t.contains("image/x-icon") || t.contains("image/vnd.microsoft.icon") => {
-                    return "ico"
+                    return "ico";
                 }
                 _ => {}
             }

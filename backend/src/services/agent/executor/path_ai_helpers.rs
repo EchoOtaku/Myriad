@@ -7,8 +7,8 @@ use myriad_agent_rules::{extract_json_array_from_ai_response, untrusted_block};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use super::summarize_output;
 use super::Executor;
+use super::summarize_output;
 
 fn walk_dot_path(root: &Value, parts: &[&str]) -> Option<Value> {
     let mut current = root.clone();

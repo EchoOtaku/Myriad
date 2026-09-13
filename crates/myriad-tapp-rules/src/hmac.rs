@@ -1,7 +1,7 @@
 //! HMAC-SHA256 for outbound signed credentials and inbound `/tapi` verify.
 
-use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use hmac::{Hmac, KeyInit, Mac};
 use myriad_tapp_contract::manifest::TappRouteVerifyEncoding;
 use sha2::Sha256;

@@ -26,7 +26,7 @@ use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait,
     Value as SeaValue,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// 站长平台画像的固定考察顺序（auto 模式兜底优先级）。
 pub const PLATFORM_ORDER: [&str; 4] = ["bilibili", "github", "youtube", "steam"];
@@ -718,11 +718,7 @@ fn merge_platform_sublabel(
             let nl = n.to_ascii_lowercase();
             if nl.contains(&ul) || ul.contains(&nl) {
                 // 更长的一侧通常信息量更大（如 "The Octocat" vs "octocat"）
-                if n.len() >= u.len() {
-                    Some(n)
-                } else {
-                    Some(u)
-                }
+                if n.len() >= u.len() { Some(n) } else { Some(u) }
             } else {
                 Some(format!("{u} · {n}"))
             }

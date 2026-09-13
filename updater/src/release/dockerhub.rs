@@ -42,11 +42,10 @@ impl DockerHubRepository {
             .unwrap_or(without_digest);
 
         // Strip an accidental tag while preserving registry ports in unsupported hosts.
-        if let Some((prefix, suffix)) = path.rsplit_once(':') {
-            if !suffix.contains('/') {
+        if let Some((prefix, suffix)) = path.rsplit_once(':')
+            && !suffix.contains('/') {
                 path = prefix;
             }
-        }
 
         let parts: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
         if parts.len() > 1
@@ -311,11 +310,10 @@ fn immutable_component_tags(tags: Vec<TagResult>, limit: usize) -> Vec<Component
 /// - Commit/dev: newest immutable tag overall (dev-* or v*), same tip policy as backend.
 /// - Release: newest formal `vX.Y.Z` release tag; if none, fall through to newest immutable.
 pub fn select_component_tip(tags: &[ComponentTag], prefer_release: bool) -> Option<&ComponentTag> {
-    if prefer_release {
-        if let Some(rel) = tags.iter().find(|t| t.kind == "release") {
+    if prefer_release
+        && let Some(rel) = tags.iter().find(|t| t.kind == "release") {
             return Some(rel);
         }
-    }
     tags.first()
 }
 
@@ -455,11 +453,10 @@ pub fn same_deploy_identity(
     if target_tag.is_empty() {
         return false;
     }
-    if let Some(cur) = current_tag.map(str::trim).filter(|s| !s.is_empty()) {
-        if cur.eq_ignore_ascii_case(target_tag) || same_commit_identity(cur, target_tag) {
+    if let Some(cur) = current_tag.map(str::trim).filter(|s| !s.is_empty())
+        && (cur.eq_ignore_ascii_case(target_tag) || same_commit_identity(cur, target_tag)) {
             return true;
         }
-    }
     // Cross-kind: running formal release stamped with commit_sha of tip (or vice versa).
     let tip_sha = tip_commit_sha
         .and_then(deploy_sha_fragment)
@@ -523,20 +520,19 @@ pub fn commit_upgrade_direction_ex(
         if matches!(f.relation, crate::release::CommitRelation::Identical) {
             return CommitUpgradeDirection::identical();
         }
-        if let (Some(c), Some(t)) = (f.current_sha.as_deref(), f.target_sha.as_deref()) {
-            if same_commit_identity(c, t) {
+        if let (Some(c), Some(t)) = (f.current_sha.as_deref(), f.target_sha.as_deref())
+            && same_commit_identity(c, t) {
                 return CommitUpgradeDirection::identical();
             }
-        }
     }
 
     // Formal release → formal release: order by semver (re-push must not invert).
     if let (Some(cur_raw), Ok(tgt)) = (
         current_tag.map(str::trim).filter(|s| !s.is_empty()),
         DeployTag::parse(target_tag),
-    ) {
-        if let (Ok(cur), Some(tgt_rel)) = (DeployTag::parse(cur_raw), tgt.as_release()) {
-            if let Some(cur_rel) = cur.as_release() {
+    )
+        && let (Ok(cur), Some(tgt_rel)) = (DeployTag::parse(cur_raw), tgt.as_release())
+            && let Some(cur_rel) = cur.as_release() {
                 if cur_rel.as_str() == tgt_rel.as_str() {
                     return CommitUpgradeDirection::identical();
                 }
@@ -556,8 +552,6 @@ pub fn commit_upgrade_direction_ex(
                 }
                 // Non-orderable prerelease edge — fall through.
             }
-        }
-    }
 
     if let Some(f) = ancestry {
         match f.relation {
@@ -683,8 +677,8 @@ pub fn select_dev_channel_tip_for<'a>(
             return false;
         }
         // Semver-newer formal release is always a candidate (Hub re-push safe).
-        if let (Some(cur_rel), Ok(tip_tag)) = (&current_release, DeployTag::parse(&b.tag)) {
-            if let Some(tip_rel) = tip_tag.as_release() {
+        if let (Some(cur_rel), Ok(tip_tag)) = (&current_release, DeployTag::parse(&b.tag))
+            && let Some(tip_rel) = tip_tag.as_release() {
                 if cur_rel.older_than(&tip_rel) {
                     return true;
                 }
@@ -692,7 +686,6 @@ pub fn select_dev_channel_tip_for<'a>(
                     return false;
                 }
             }
-        }
         // Drop tips older than current by wall-clock (previous builds).
         !matches!(
             (

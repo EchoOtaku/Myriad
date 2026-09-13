@@ -4,6 +4,7 @@
 //! HTML/JS 解析、路由/窗口/音乐纯规则见 [`crate::services::agent::ui_analysis`]。
 
 use super::HandlerContext;
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::models::entities::{tapp_scheduled_tasks, tapp_task_executions, tapp_widgets, tapps};
 use crate::services::agent::ai_process_pure::USER_TEXT_MAX_CHARS;
 use crate::services::agent::external_pure::classify_outbound_fetch;
@@ -17,16 +18,15 @@ use crate::services::agent::ui_analysis::{
     resolve_window_focus_target, router_can_go_back,
 };
 use crate::services::data_paths::paths;
-use crate::services::permission_service::{role_from_user_id, TappPermissionService};
+use crate::services::permission_service::{TappPermissionService, role_from_user_id};
 use crate::services::tapp_package_read::{
     installed_core_entry, installed_page_entry, installed_text_resource_plan,
 };
 use crate::services::tapp_storage::{sandbox_storage_count, sandbox_storage_entries};
 use crate::services::tapp_validation::validate_resource_path;
-use crate::GLOBAL_DYNAMIC_CONFIG;
 use myriad_agent_rules::untrusted_block;
 use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, PaginatorTrait, QueryFilter, QueryOrder};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::Path;
 

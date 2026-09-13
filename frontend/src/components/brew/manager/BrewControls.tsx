@@ -1,6 +1,7 @@
 import type { AddSourceInput, BrewSource, UpdateSourceRequest } from '../../../types/brew'
 import type {
   BrewControlsHandle,
+  ControlMode,
   SortMode,
   StarredModeConfig,
   TopicFeedModeConfig,
@@ -9,13 +10,14 @@ import type {
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useRef,
 } from 'react'
-
 import { useI18n } from '../../../contexts/I18nContext'
 import { userFacingError } from '../../../utils/userFacingError'
 import { BrewBar } from '../ui/Bar'
+import { useSetFeedsAddForm } from '../ui/BrewFeedsPanel'
 import { BrewManagement } from '../ui/BrewManagement'
 import { BrewSearch } from '../ui/BrewSearch'
 import { BrewBarTags } from './bar'
@@ -68,11 +70,11 @@ interface BrewControlsProps {
   topicFeedMode?: TopicFeedModeConfig
   isAdmin?: boolean
   isAuthenticated?: boolean
-  onOpenStarred?: () => void
   onWriteNote?: () => void
   embedded?: boolean
   canEdit?: boolean
   onWaveDisplayed?: (wave: string) => void
+  onMode?: (mode: ControlMode) => void
 }
 
 export type { BrewControlsHandle }
@@ -109,11 +111,11 @@ const BrewControls = forwardRef<BrewControlsHandle, BrewControlsProps>(
       starredMode,
       isAdmin = false,
       isAuthenticated = false,
-      onOpenStarred,
       onWriteNote,
       embedded = false,
       canEdit = true,
       onWaveDisplayed,
+      onMode,
     },
     ref,
   ) => {
@@ -146,9 +148,14 @@ const BrewControls = forwardRef<BrewControlsHandle, BrewControlsProps>(
       (next: Parameters<typeof changeMode>[0]) => {
         if (next !== 'add' && next !== 'source-edit') formTurn.current.abandon()
         changeMode(next)
+        onMode?.(next)
       },
-      [changeMode],
+      [changeMode, onMode],
     )
+
+    useEffect(() => {
+      onMode?.(mode)
+    }, [mode, onMode])
 
     useImperativeHandle(ref, () => ({ changeMode: switchMode }), [switchMode])
 
@@ -186,10 +193,12 @@ const BrewControls = forwardRef<BrewControlsHandle, BrewControlsProps>(
       [onAddSource, t.brew.errorAddFailed],
     )
 
+    const setAddForm = useSetFeedsAddForm()
     const pack = useBrewpack(sources, onSourcesChange)
     const allAddCategories = Iterator.from(
       new Set([t.brew.friendLinks, t.brew.me]).union(new Set(categories)),
     ).toArray()
+    const categoryKey = allAddCategories.join('\0')
 
     const panel =
       mode === 'add' ? (
@@ -214,49 +223,89 @@ const BrewControls = forwardRef<BrewControlsHandle, BrewControlsProps>(
         <KeyboardMode />
       ) : null
 
-    const content = (
-      <>
-      <BrewSearch value={searchQuery} onChange={setSearchQuery} />
-      <BrewBar
-        page={!embedded}
-        panel={panel}
-        wave={mode}
-        onDisplayed={handleWaveDisplayed}
-      >
-        <BrewBarTags
-          mode={mode}
-          embedded={embedded}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          filteredSources={filteredSources}
-          selectedIds={selectedIds}
-          selectedSource={selectedSource}
-          sortMode={sortMode}
-          onSortModeChange={onSortModeChange}
-          onModeChange={switchMode}
-          onClose={dismissForm}
-          topicFeedMode={topicFeedMode}
-          starredMode={starredMode}
-          isDeleting={isDeleting}
-          isRefreshing={isRefreshing}
-          isAuthenticated={isAuthenticated}
-          isAdmin={isAdmin}
-          hasAddSource={!!onAddSource}
-          canEdit={canEdit}
-          onSelectAll={onSelectAll}
-          onBatchDelete={onBatchDelete}
-          onBatchRefresh={onBatchRefresh}
-          onMarkAllSourcesRead={onMarkAllSourcesRead}
-          onOpenStarred={onOpenStarred}
-          onWriteNote={onWriteNote}
-          pack={pack}
+    useEffect(() => {
+      if (!embedded || !onAddSource || !isAdmin) {
+        setAddForm(null)
+        return
+      }
+      const nextCategories = Iterator.from(
+        new Set([t.brew.friendLinks, t.brew.me]).union(new Set(categories)),
+      ).toArray()
+      setAddForm(
+        <AddMode
+          allCategories={nextCategories}
           sourcesCount={sources.length}
-        />
-      </BrewBar>
-      </>
+          onSubmit={handleAddSubmit}
+          onDiscover={onDiscover}
+          onImportOpml={onImportOpml}
+          onExportOpml={pack.exportOpml}
+          RSSHubConfigComponent={RSSHubConfigComponent}
+        />,
+      )
+      return () => setAddForm(null)
+    }, [
+      categories,
+      categoryKey,
+      embedded,
+      handleAddSubmit,
+      isAdmin,
+      onAddSource,
+      onDiscover,
+      onImportOpml,
+      pack.exportOpml,
+      setAddForm,
+      sources.length,
+      t.brew.friendLinks,
+      t.brew.me,
+    ])
+
+    const search = (
+      <BrewSearch
+        value={searchQuery}
+        onChange={setSearchQuery}
+        matchCount={filteredSources.length}
+      />
     )
-    return embedded ? content : (
-      <BrewManagement embedded={false} active={mode !== 'default'}>{content}</BrewManagement>
+    if (embedded) return search
+    return (
+      <BrewManagement embedded={false} active={mode !== 'default'}>
+        {search}
+        <BrewBar
+          page
+          panel={panel}
+          wave={mode}
+          onDisplayed={handleWaveDisplayed}
+        >
+          <BrewBarTags
+            mode={mode}
+            embedded={false}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            filteredSources={filteredSources}
+            selectedIds={selectedIds}
+            selectedSource={selectedSource}
+            sortMode={sortMode}
+            onSortModeChange={onSortModeChange}
+            onModeChange={switchMode}
+            onClose={dismissForm}
+            topicFeedMode={topicFeedMode}
+            starredMode={starredMode}
+            isDeleting={isDeleting}
+            isRefreshing={isRefreshing}
+            isAuthenticated={isAuthenticated}
+            isAdmin={isAdmin}
+            hasAddSource={!!onAddSource}
+            canEdit={canEdit}
+            onSelectAll={onSelectAll}
+            onBatchDelete={onBatchDelete}
+            onBatchRefresh={onBatchRefresh}
+            onMarkAllSourcesRead={onMarkAllSourcesRead}
+            onWriteNote={onWriteNote}
+            pack={pack}
+            sourcesCount={sources.length}
+          />
+        </BrewBar>
+      </BrewManagement>
     )
   },
 )

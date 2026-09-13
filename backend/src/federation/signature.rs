@@ -4,7 +4,7 @@
 //! Inbox POST 必须验签。出站投递 POST 走 `sign_request`；WebFinger / Actor GET 不签名。
 
 use anyhow::{Context, Result};
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use chrono::{DateTime, Duration, Utc};
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
@@ -104,7 +104,7 @@ pub fn parse_signature_header(header: &str) -> Result<ParsedSignature> {
     // 攻击面：中间环节按第一个值判断、我们按最后一个值验证，两边就会对同一个
     // 请求得出不同结论。宁可 401。
     macro_rules! set_once {
-        ($slot:expr, $name:literal, $value:expr) => {{
+        ($slot:expr_2021, $name:literal, $value:expr_2021) => {{
             if $slot.is_some() {
                 anyhow::bail!(concat!(
                     "Duplicate `",

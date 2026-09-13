@@ -2,7 +2,7 @@
 //!
 //! 本地用户发起关注远程 Actor、取消关注等操作
 
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -670,7 +670,7 @@ mod tests {
     #[tokio::test]
     async fn webfinger_candidates_https_only_without_lab_flag() {
         let _guard = crate::services::outbound_security::tests_lab_env_lock().await;
-        std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND");
+        unsafe { std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND") };
         let candidates = build_webfinger_url_candidates("alice@example.com").unwrap();
         assert_eq!(candidates.len(), 1);
         assert!(candidates[0].starts_with("https://example.com/"));
@@ -679,10 +679,10 @@ mod tests {
     #[tokio::test]
     async fn webfinger_candidates_add_http_fallback_in_lab() {
         let _guard = crate::services::outbound_security::tests_lab_env_lock().await;
-        std::env::remove_var("ENVIRONMENT");
-        std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1");
+        unsafe { std::env::remove_var("ENVIRONMENT") };
+        unsafe { std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1") };
         let candidates = build_webfinger_url_candidates("alice@127.0.0.1:1103").unwrap();
-        std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND");
+        unsafe { std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND") };
         assert_eq!(candidates.len(), 2);
         assert!(candidates[0].starts_with("https://127.0.0.1:1103/"));
         assert!(candidates[1].starts_with("http://127.0.0.1:1103/"));

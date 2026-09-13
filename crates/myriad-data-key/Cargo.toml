@@ -1,7 +1,7 @@
 [package]
 name = "myriad-data-key"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 publish = false
 description = "AES-GCM data encryption key for Myriad config secrets and federation key envelopes."
 authors = ["Myriad Contributors"]

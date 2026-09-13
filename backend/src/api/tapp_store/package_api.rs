@@ -5,17 +5,17 @@
 //! and filesystem IO.
 
 use super::{
-    append_directory_to_zip, collect_package_module_paths, find_visible_tapp,
-    guess_asset_mime_type, installed_tapp_dir, is_safe_path_component,
-    optional_authenticated_user_id, read_tapp_text_resource, regular_resource_directory,
-    regular_resource_path, unsupported_package_structure, validate_asset_path,
-    WidgetTemplateContents, MAX_TAPP_GAME_ASSET_BYTES,
+    MAX_TAPP_GAME_ASSET_BYTES, WidgetTemplateContents, append_directory_to_zip,
+    collect_package_module_paths, find_visible_tapp, guess_asset_mime_type, installed_tapp_dir,
+    is_safe_path_component, optional_authenticated_user_id, read_tapp_text_resource,
+    regular_resource_directory, regular_resource_path, unsupported_package_structure,
+    validate_asset_path,
 };
 use axum::{
-    extract::{Path, Query, State},
-    http::{header, StatusCode},
-    response::IntoResponse,
     Extension, Json,
+    extract::{Path, Query, State},
+    http::{StatusCode, header},
+    response::IntoResponse,
 };
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
@@ -26,10 +26,10 @@ use crate::error::HttpError;
 use crate::middleware::auth::{Claims, OptionalClaims};
 use crate::services::tapp_install_resources::collect_tapp_module_graph;
 use crate::services::tapp_package_read::{
-    asset_bytes_within_limit, filter_widget_paths, installed_core_entry,
-    installed_manifest_declares_asset, installed_page_entry, installed_text_resource_plan,
-    installed_widget_layer_paths, installed_widget_template_paths, require_known_widget_id,
-    HOST_PAGE_CSS, HOST_WIDGET_CSS,
+    HOST_PAGE_CSS, HOST_WIDGET_CSS, asset_bytes_within_limit, filter_widget_paths,
+    installed_core_entry, installed_manifest_declares_asset, installed_page_entry,
+    installed_text_resource_plan, installed_widget_layer_paths, installed_widget_template_paths,
+    require_known_widget_id,
 };
 use myriad_error::AppError;
 
@@ -385,7 +385,7 @@ pub(super) async fn get_tapp_asset(
     Path(tapp_id): Path<String>,
     Query(query): Query<GetTappAssetQuery>,
 ) -> Result<Json<TappAssetResponse>, HttpError> {
-    use base64::{engine::general_purpose::STANDARD, Engine};
+    use base64::{Engine, engine::general_purpose::STANDARD};
 
     let tapp = visible_tapp(&db, claims.as_ref(), &tapp_id).await?;
     validate_asset_path(&query.path)
@@ -423,8 +423,8 @@ pub(super) async fn export_tapp(
     let tapp_dir = installed_tapp_dir(&tapp)?;
     let filename = format!("{tapp_id}.tapp");
     let zip_data = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, std::io::Error> {
-        use zip::write::SimpleFileOptions;
         use zip::ZipWriter;
+        use zip::write::SimpleFileOptions;
 
         let mut zip = ZipWriter::new(std::io::Cursor::new(Vec::new()));
         let options =

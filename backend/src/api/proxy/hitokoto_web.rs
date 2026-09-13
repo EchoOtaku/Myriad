@@ -1,13 +1,13 @@
 //! Hitokoto proxy + web content fetch (public, SSRF-hardened).
 
 use axum::{
-    extract::Query,
-    http::{header, StatusCode},
-    response::{IntoResponse, Response},
     Json,
+    extract::Query,
+    http::{StatusCode, header},
+    response::{IntoResponse, Response},
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Debug, Deserialize)]
 pub struct HitokotoQuery {
@@ -443,10 +443,9 @@ fn extract_main_content(html: &str) -> String {
 /// 移除指定标签及其内容
 fn remove_tags(html: &str, tag: &str) -> String {
     let pattern = format!(r"(?is)<{}\b[^>]*>.*?</{}>", tag, tag);
-    if let Ok(re) = regex::Regex::new(&pattern) {
-        re.replace_all(html, "").to_string()
-    } else {
-        html.to_string()
+    match regex::Regex::new(&pattern) {
+        Ok(re) => re.replace_all(html, "").to_string(),
+        _ => html.to_string(),
     }
 }
 

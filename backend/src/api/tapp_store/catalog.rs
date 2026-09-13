@@ -5,12 +5,12 @@
 //! `tapps.visibility` (`set_tapp_visibility`).
 
 use super::{
-    current_is_admin, find_admin_user_id, find_visible_tapp, optional_authenticated_user_id,
-    require_current_admin, ApiResponse, TappDetail, TappListItem,
+    ApiResponse, TappDetail, TappListItem, current_is_admin, find_admin_user_id, find_visible_tapp,
+    optional_authenticated_user_id, require_current_admin,
 };
 use axum::{
-    extract::{Query, State},
     Extension, Json,
+    extract::{Query, State},
 };
 use chrono::Utc;
 use sea_orm::{

@@ -1,5 +1,5 @@
 //! Local Channel CRUD and message send/get.
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::json;
@@ -845,7 +845,7 @@ pub async fn get_messages(
             return Err((
                 StatusCode::NOT_FOUND,
                 Json(AppError::public_json("Channel not found")),
-            ))
+            ));
         }
     };
 

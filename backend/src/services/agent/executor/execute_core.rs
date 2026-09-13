@@ -6,13 +6,13 @@ use crate::services::agent::types::{self, *};
 use crate::services::ai::create_ai_analyzer_for_tier;
 use crate::services::analyzer::AiAnalyzer;
 use sea_orm::DatabaseConnection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 
+use super::Executor;
 use super::executor_footer::*;
 use super::handlers::HandlerContext;
-use super::Executor;
-use super::{clear_cancellation, is_cancelled, persist_task_async, TASK_STORE};
+use super::{TASK_STORE, clear_cancellation, is_cancelled, persist_task_async};
 use super::{dag, error_analyzer, events, frontend_ack, retry, task_store};
 
 impl Executor {
@@ -571,7 +571,7 @@ impl Executor {
 
                                 // process_step_generator，除非已是 DAG 注入步骤。
                                 if !is_injected {
-                                    if let Some(ref gen) = step.generator {
+                                    if let Some(ref r#gen) = step.generator {
                                         if let Some(ref output_val) = task_state
                                             .step_results
                                             .get(&step.id)
@@ -579,7 +579,7 @@ impl Executor {
                                         {
                                             let generated = self
                                                 .process_step_generator(
-                                                    gen,
+                                                    r#gen,
                                                     &step,
                                                     output_val,
                                                     &mut context,
@@ -1173,9 +1173,9 @@ impl Executor {
 
                 // 动态步骤生成器
                 if !_is_dynamic {
-                    if let Some(ref gen) = step.generator {
+                    if let Some(ref r#gen) = step.generator {
                         let generated = self
-                            .process_step_generator(gen, &step, &output, &mut context)
+                            .process_step_generator(r#gen, &step, &output, &mut context)
                             .await;
                         if !generated.is_empty() {
                             tracing::info!(

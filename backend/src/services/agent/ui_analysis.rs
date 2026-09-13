@@ -11,7 +11,7 @@
 
 use once_cell::sync::Lazy;
 use regex::Regex;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 // HTML element parsing regexes (compiled once)
@@ -45,7 +45,7 @@ static RE_FUNC_NAME: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(\w+)\s*\("#).unwr
 ///
 /// Keep in lockstep with `frontend/src/App.tsx` `<Route path>`.
 pub const VALID_ROUTER_PREFIXES: &[&str] = &[
-    "/", "/library", "/brew", "/reports", "/config", "/tapp", "/setup",
+    "/", "/library", "/brew", "/reports", "/config", "/agent", "/tapp", "/setup",
 ];
 
 /// Allowed `page.interact` action names.
@@ -851,6 +851,8 @@ mod tests {
         assert!(is_valid_router_path("/brew/item/1"));
         assert!(is_valid_router_path("/reports"));
         assert!(is_valid_router_path("/config"));
+        assert!(is_valid_router_path("/agent/settings"));
+        assert!(!is_valid_router_path("/agentish"));
         assert!(!is_valid_router_path("/home"));
         assert!(!is_valid_router_path("/platform/steam"));
         assert!(!is_valid_router_path("/report"));
@@ -896,11 +898,13 @@ mod tests {
         let structure = parse_html_structure(html);
         assert_eq!(structure["hasBackground"], true);
         assert_eq!(structure["hasContent"], true);
-        assert!(structure["sections"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|s| s == "main"));
+        assert!(
+            structure["sections"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|s| s == "main")
+        );
 
         let elements = parse_html_elements(html, "all");
         let buttons = elements["buttons"].as_array().unwrap();
@@ -936,11 +940,13 @@ mod tests {
 
         let i18n = parse_i18n(js);
         assert_eq!(i18n["supported"], true);
-        assert!(i18n["languages"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|l| l == "zh-CN"));
+        assert!(
+            i18n["languages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|l| l == "zh-CN")
+        );
     }
 
     #[test]

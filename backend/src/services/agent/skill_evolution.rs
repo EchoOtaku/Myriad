@@ -14,8 +14,8 @@
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use chrono::{NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
@@ -23,7 +23,7 @@ use tokio::sync::Mutex;
 
 use super::capability;
 use super::external_pure::classify_outbound_fetch;
-use super::skill::{get_skill_registry, Skill, SkillOrigin};
+use super::skill::{Skill, SkillOrigin, get_skill_registry};
 
 fn skill_io_failed(action: &str, error: std::io::Error) -> String {
     tracing::error!(%error, action, "skill file io failed");

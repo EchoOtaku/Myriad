@@ -1,13 +1,13 @@
 use axum::{
+    Json,
     extract::{Request, State},
-    http::{header, HeaderMap, HeaderValue, StatusCode},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
     middleware::Next,
     response::{IntoResponse, Response},
-    Json,
 };
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use hmac::{Hmac, KeyInit, Mac};
-use jsonwebtoken::{decode, DecodingKey, Validation};
+use jsonwebtoken::{DecodingKey, Validation, decode};
 use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
@@ -18,7 +18,7 @@ use std::env;
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use std::time::{Duration, Instant};
 use subtle::ConstantTimeEq;
-use tokio::sync::{watch, Mutex as AsyncMutex};
+use tokio::sync::{Mutex as AsyncMutex, watch};
 use uuid::Uuid;
 
 /// Browser / API session lifetime (days). Keep long-lived; revoke via `token_version`.
@@ -323,10 +323,11 @@ async fn ensure_auth_cache_listener(db: &DatabaseConnection) {
     tokio::spawn(async move {
         loop {
             match sea_orm::sqlx::postgres::PgListener::connect_with(&pool).await {
-                Ok(mut listener) => {
-                    if let Err(error) = listener.listen(AUTH_CACHE_INVALIDATION_CHANNEL).await {
+                Ok(mut listener) => match listener.listen(AUTH_CACHE_INVALIDATION_CHANNEL).await {
+                    Err(error) => {
                         tracing::warn!(error = %error, "auth cache LISTEN setup failed");
-                    } else {
+                    }
+                    _ => {
                         tracing::debug!(
                             channel = AUTH_CACHE_INVALIDATION_CHANNEL,
                             "auth cache invalidation listener started"
@@ -345,7 +346,7 @@ async fn ensure_auth_cache_listener(db: &DatabaseConnection) {
                             }
                         }
                     }
-                }
+                },
                 Err(error) => {
                     tracing::debug!(error = %error, "auth cache listener connection unavailable");
                 }
@@ -882,8 +883,8 @@ fn verify_guest_session(secret: &[u8], token: &str) -> Option<String> {
 fn guest_id(session_id: &str) -> i32 {
     let digest = Sha256::digest(session_id.as_bytes());
     let mut acc = 0u64;
-    for chunk in digest.chunks_exact(8) {
-        acc ^= u64::from_be_bytes(chunk.try_into().expect("SHA-256 8-byte chunk"));
+    for chunk in digest.as_chunks::<8>().0 {
+        acc ^= u64::from_be_bytes(*chunk);
     }
     // 31 payload bits → always map into i32::MIN ..= -1 (never 0 / positive).
     let bits31 = (acc & 0x7FFF_FFFF) as u32;
@@ -930,7 +931,7 @@ pub async fn optional_auth_middleware(
                             "Guest session signing is unavailable",
                         )),
                     )
-                        .into_response()
+                        .into_response();
                 }
             };
             let session_id = cookie_value(headers, GUEST_SESSION_COOKIE)
@@ -954,7 +955,7 @@ pub async fn optional_auth_middleware(
             }
         }
         Err(error_response) => {
-            return clear_invalid_cookie_response(*error_response, credential_source).await
+            return clear_invalid_cookie_response(*error_response, credential_source).await;
         }
     };
 
@@ -1082,14 +1083,14 @@ async fn clear_invalid_cookie_response(
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_current_roles, auth_cache_generation, auth_cache_get, auth_cache_put,
+        AUTH_CACHE_CAPACITY, AUTH_CACHE_TTL, AUTH_COOKIE_MAX_AGE_SECS, AuthLoadSlot, AuthSnapshot,
+        JWT_TTL_DAYS, apply_current_roles, auth_cache_generation, auth_cache_get, auth_cache_put,
         auth_cache_put_if_generation, authenticate_optional_request, claim_auth_load_slot,
         encode_session_token, guest_id, invalidate_auth_cache_local, mint_session_claims,
         optional_current_auth_middleware, revalidate_bound_claims, session_epoch_matches,
-        sign_guest_session, verify_guest_session, verify_jwt_token, AuthLoadSlot, AuthSnapshot,
-        AUTH_CACHE_CAPACITY, AUTH_CACHE_TTL, AUTH_COOKIE_MAX_AGE_SECS, JWT_TTL_DAYS,
+        sign_guest_session, verify_guest_session, verify_jwt_token,
     };
-    use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+    use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
     use sea_orm::DatabaseConnection;
     use std::sync::{Mutex, Once, OnceLock};
     use std::time::{Duration, Instant};
@@ -1112,13 +1113,13 @@ mod tests {
             // Missing *and* empty JWT_SECRET are both unsafe for HS256.
             if jwt_secret_is_unset() {
                 // SAFETY: unit tests, set once before concurrent use.
-                std::env::set_var("JWT_SECRET", TEST_JWT_SECRET);
+                unsafe { std::env::set_var("JWT_SECRET", TEST_JWT_SECRET) };
             }
         });
         // If another test left an empty secret after Once already ran, repair it.
         if jwt_secret_is_unset() {
             // SAFETY: unit tests only.
-            std::env::set_var("JWT_SECRET", TEST_JWT_SECRET);
+            unsafe { std::env::set_var("JWT_SECRET", TEST_JWT_SECRET) };
         }
     }
 
@@ -1127,15 +1128,15 @@ mod tests {
         // Empty string must be handled like missing — never mint with a zero-length key.
         // SAFETY: sequential unit tests; restore is best-effort.
         let previous = std::env::var("JWT_SECRET").ok();
-        std::env::set_var("JWT_SECRET", "");
+        unsafe { std::env::set_var("JWT_SECRET", "") };
         assert!(jwt_secret_is_unset());
         ensure_jwt_secret();
         let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET set");
         assert!(!secret.is_empty());
         assert_eq!(secret, TEST_JWT_SECRET);
         match previous {
-            Some(v) if !v.is_empty() => std::env::set_var("JWT_SECRET", v),
-            _ => std::env::set_var("JWT_SECRET", TEST_JWT_SECRET),
+            Some(v) if !v.is_empty() => unsafe { std::env::set_var("JWT_SECRET", v) },
+            _ => unsafe { std::env::set_var("JWT_SECRET", TEST_JWT_SECRET) },
         }
     }
 
@@ -1305,7 +1306,7 @@ mod tests {
     #[test]
     fn brew_private_comment_routes_reject_revoked_sessions() {
         use axum::{
-            body::{to_bytes, Body},
+            body::{Body, to_bytes},
             http::Request,
         };
         use tower::ServiceExt;
@@ -1443,7 +1444,7 @@ mod tests {
 
     #[test]
     fn optional_current_auth_http_rejects_revoked_cookie_and_clears_it() {
-        use axum::{body::Body, middleware::from_fn_with_state, routing::get, Router};
+        use axum::{Router, body::Body, middleware::from_fn_with_state, routing::get};
         use tower::ServiceExt;
 
         ensure_jwt_secret();

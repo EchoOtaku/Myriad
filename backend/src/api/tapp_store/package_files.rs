@@ -1,7 +1,7 @@
 //! Filesystem staging, recovery, package resources and archive boundaries.
 
 use super::{
-    decode_asset_base64, lock_tapp_lifecycle, validate_asset_path, validate_tapp_id, TappManifest,
+    TappManifest, decode_asset_base64, lock_tapp_lifecycle, validate_asset_path, validate_tapp_id,
 };
 use crate::error::HttpError;
 use axum::http::StatusCode;
@@ -50,20 +50,21 @@ async fn rename_activation_path(from: &FsPath, to: &FsPath) -> Result<(), std::i
 use crate::models::entities::tapps;
 use crate::services::data_paths::paths;
 use crate::services::tapp_package_fs::{
-    archive_entry_relative_path, filesystem_error_message, filesystem_error_status_hint,
-    install_generation_matches_micros, install_generation_payload, is_lifecycle_artifact_filename,
-    lifecycle_artifact_dir_name, looks_like_tapp_installation_from_markers,
-    orphan_tapp_key_if_unowned, parse_tapp_owner_dir_name, plan_tapp_directory_recovery,
+    RecoveryPlan, archive_entry_relative_path, filesystem_error_message,
+    filesystem_error_status_hint, install_generation_matches_micros, install_generation_payload,
+    is_lifecycle_artifact_filename, lifecycle_artifact_dir_name,
+    looks_like_tapp_installation_from_markers, orphan_tapp_key_if_unowned,
+    parse_tapp_owner_dir_name, plan_tapp_directory_recovery,
     recovery_artifacts_to_remove_after_promote, recovery_discard_artifact_name,
     recovery_plan_mutates_live, resource_relative_path, sandbox_path_matches_relative,
     should_log_filesystem_permission_context, should_preserve_orphan_path,
-    sort_recovery_artifact_paths, RecoveryPlan,
+    sort_recovery_artifact_paths,
 };
 use myriad_tapp_contract::contract_rules::ASSET_DIRECTORY;
 
 // Path-stable re-exports for manifest_tests / parent imports.
 pub(crate) use crate::services::tapp_package_fs::{
-    has_reinstall_orphan_state, MANIFEST_JSON, TAPP_INSTALL_STATE_FILE,
+    MANIFEST_JSON, TAPP_INSTALL_STATE_FILE, has_reinstall_orphan_state,
 };
 
 pub(crate) fn tapp_dir_for(user_id: i32, tapp_id: &str) -> Result<PathBuf, String> {
@@ -684,7 +685,7 @@ pub(crate) async fn cleanup_orphaned_tapp_directories(
                     return Err(DbErr::Custom(format!(
                         "Failed to inspect orphaned Tapp directory {}: {error}",
                         directory.display()
-                    )))
+                    )));
                 }
             }
         }
@@ -828,7 +829,7 @@ pub(crate) async fn write_install_assets(
 
 // Domain: services::tapp_prepared_package (path-stable re-export).
 pub(crate) use crate::services::tapp_prepared_package::{
-    validate_widget_template_contents, widget_template_path, WidgetTemplateContents,
+    WidgetTemplateContents, validate_widget_template_contents, widget_template_path,
 };
 
 /// Post-stage check: every declared resource is a regular in-sandbox file with
@@ -839,10 +840,10 @@ pub(crate) fn validate_installed_resources(
     tapp_dir: &FsPath,
 ) -> Result<(), String> {
     use crate::services::tapp_install_resources::{
-        agent_schema_not_found, agent_schema_not_regular, asset_not_found, asset_not_regular,
-        collect_declared_install_resources, invalid_declared_path, missing_after_install,
-        not_regular_file, not_regular_in_sandbox, resource_not_found, validate_agent_schema_bytes,
-        validate_text_resource_bytes, DeclaredResourceKind,
+        DeclaredResourceKind, agent_schema_not_found, agent_schema_not_regular, asset_not_found,
+        asset_not_regular, collect_declared_install_resources, invalid_declared_path,
+        missing_after_install, not_regular_file, not_regular_in_sandbox, resource_not_found,
+        validate_agent_schema_bytes, validate_text_resource_bytes,
     };
 
     let mut asset_total: u64 = 0;

@@ -125,9 +125,14 @@ FROM pg_roles r WHERE r.rolname = current_user
     let can_temp: bool = row.try_get("", "can_temp")?;
     let can_create: bool = row.try_get("", "can_create")?;
     anyhow::ensure!(
-        !privileged && !can_temp && !can_create && limit > 0 && limit <= kind.connection_limit()
+        !privileged
+            && !can_temp
+            && !can_create
+            && limit > 0
+            && limit <= kind.connection_limit()
             && (0..=64 * 1024 * 1024).contains(&temp)
-            && transaction > 0 && transaction <= i64::from(kind.statement_ms() + 5_000),
+            && transaction > 0
+            && transaction <= i64::from(kind.statement_ms() + 5_000),
         "Worker requires an unprivileged connection-limited PostgreSQL 17+ role, no DDL/TEMP privileges, temp_file_limit<=64MB and bounded transaction_timeout; provision worker DB roles before startup"
     );
     Ok(())

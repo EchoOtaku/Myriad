@@ -1,7 +1,7 @@
 [package]
 name = "myriad-prompt-security"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 publish = false
 description = "Prompt injection / jailbreak / NSFW heuristics shared by Tapp AI and agent services."
 authors = ["Myriad Contributors"]

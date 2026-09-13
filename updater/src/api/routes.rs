@@ -1,17 +1,17 @@
 //! Route definitions.
 
 use axum::{
+    Router,
     extract::{Path, Query, State},
     http::StatusCode,
     middleware,
     response::{IntoResponse, Json},
     routing::{delete, get, post},
-    Router,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use crate::api::{auth, ApiState};
+use crate::api::{ApiState, auth};
 use crate::error::UpdaterError;
 use crate::state::Phase;
 use crate::version::{DeployTag, UpdateMode};

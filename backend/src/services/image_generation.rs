@@ -5,9 +5,9 @@
 //! local image cache so Agent / Tapp surfaces get a stable `/api/...` URL
 //! instead of a short-lived provider link or an inline data URL.
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use flate2::read::GzDecoder;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::borrow::Cow;
 use std::io::Read;
 use std::time::Duration;
@@ -579,13 +579,15 @@ fn request_parts_with_background(
             }
             apply_background_options(&mut body, options);
             if !reference_data_urls.is_empty() {
-                body["input_references"] = json!(reference_data_urls
-                    .iter()
-                    .map(|reference| json!({
-                        "type": "image_url",
-                        "image_url": { "url": reference }
-                    }))
-                    .collect::<Vec<_>>());
+                body["input_references"] = json!(
+                    reference_data_urls
+                        .iter()
+                        .map(|reference| json!({
+                            "type": "image_url",
+                            "image_url": { "url": reference }
+                        }))
+                        .collect::<Vec<_>>()
+                );
             }
             Ok((format!("{}/images", config.base_url), body))
         }
@@ -1498,8 +1500,8 @@ mod tests {
 
     #[test]
     fn decodes_gzip_wrapped_image_json() {
-        use flate2::write::GzEncoder;
         use flate2::Compression;
+        use flate2::write::GzEncoder;
         use std::io::Write;
 
         let json = serde_json::to_vec(&json!({ "data": [{ "b64_json": "AA==" }] })).unwrap();

@@ -1,7 +1,7 @@
 //! Transform pipeline types, evaluation, and input adapters.
 
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 pub const MAX_PIPELINE_STEPS: usize = 20;
@@ -178,11 +178,7 @@ pub fn apply_process_step(
                     (Some(Value::String(a)), Some(Value::String(b))) => a.cmp(b),
                     _ => std::cmp::Ordering::Equal,
                 };
-                if desc {
-                    cmp.reverse()
-                } else {
-                    cmp
-                }
+                if desc { cmp.reverse() } else { cmp }
             });
         }
         ProcessStep::Limit { count } => {
@@ -370,11 +366,10 @@ pub fn apply_map_op(item: &mut Value, op: &MapOp) {
             }
         }
         MapOp::ToNumber { field } => {
-            if let Some(Value::String(s)) = obj.get(field.as_str()) {
-                if let Ok(n) = s.parse::<f64>() {
+            if let Some(Value::String(s)) = obj.get(field.as_str())
+                && let Ok(n) = s.parse::<f64>() {
                     obj.insert(field.clone(), json!(n));
                 }
-            }
         }
         MapOp::Default { field, value } => {
             let needs_default = match obj.get(field.as_str()) {

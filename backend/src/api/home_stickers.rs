@@ -1,16 +1,16 @@
 //! Home free-layout stickers: admin AI generation and local image upload.
 
 use axum::Json;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::error::HttpError;
 use crate::services::ai_task_image::load_image_references;
 use crate::services::image_generation::{
-    self, image_generation_failure_code, ImageBackground, ImageGenerationError,
+    self, ImageBackground, ImageGenerationError, image_generation_failure_code,
 };
-use crate::GLOBAL_DYNAMIC_CONFIG;
 use myriad_error::AppError;
 
 const MAX_PROMPT_CHARS: usize = 2_000;

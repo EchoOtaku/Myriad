@@ -14,7 +14,7 @@ interface UseBrewKeyboardOptions {
   onMarkAllRead?: () => void
   onCloseReader?: () => void
   onShowHelp?: () => void
-  searchInputRef?: React.RefObject<HTMLInputElement>
+  searchInputRef?: React.RefObject<HTMLInputElement | null>
 }
 
 export type ShortcutDescKey =

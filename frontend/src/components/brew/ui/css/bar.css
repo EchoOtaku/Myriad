@@ -79,8 +79,7 @@
 
 .brew-skin button.brew-bar__tag,
 .brew-skin a.brew-bar__tag,
-.brew-skin label.brew-bar__tag,
-.brew-skin button.brew-feeds__spread {
+.brew-skin label.brew-bar__tag {
   display: inline-flex;
   align-items: center;
   gap: 0.34rem;
@@ -104,8 +103,7 @@
     transform var(--sm-dur-fast, 140ms) var(--sm-ease-spring, cubic-bezier(0.34, 1.4, 0.64, 1));
 }
 
-.brew-bar__label,
-.brew-feeds__spread-label {
+.brew-bar__label {
   display: block;
   overflow: hidden;
   max-width: 11rem;
@@ -117,32 +115,7 @@
   white-space: nowrap;
 }
 
-.brew-feeds__spread-label {
-  display: grid;
-  justify-items: start;
-}
-
-.brew-feeds__spread-label span {
-  grid-area: 1 / 1;
-  overflow: hidden;
-  max-width: 11rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: opacity var(--brew-open-ms, 560ms)
-    var(--sm-ease-standard, ease);
-}
-
-.brew-feeds__spread-label span:last-child,
-.brew-skin button.brew-feeds__spread[aria-pressed='true'] .brew-feeds__spread-label span:first-child {
-  opacity: 0;
-}
-
-.brew-skin button.brew-feeds__spread[aria-pressed='true'] .brew-feeds__spread-label span:last-child {
-  opacity: 1;
-}
-
-.brew-bar__mark,
-.brew-feeds__mark {
+.brew-bar__mark {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
@@ -151,29 +124,8 @@
   height: var(--brew-tag-mark);
 }
 
-.brew-feeds__mark {
-  display: grid;
-  place-items: center;
-}
-
-.brew-feeds__spread .brew-feeds__mark :is(svg) {
-  grid-area: 1 / 1;
-  transition: opacity var(--brew-open-ms, 560ms)
-    var(--sm-ease-standard, ease);
-}
-
-.brew-feeds__spread .brew-feeds__mark :is(svg):last-child,
-.brew-skin button.brew-feeds__spread[aria-pressed='true'] .brew-feeds__mark :is(svg):first-child {
-  opacity: 0;
-}
-
-.brew-skin button.brew-feeds__spread[aria-pressed='true'] .brew-feeds__mark :is(svg):last-child {
-  opacity: 1;
-}
-
 .brew-bar__tag .brew-bar__mark :is(svg),
-.brew-bar__menu-item .brew-bar__mark :is(svg),
-.brew-feeds__spread .brew-feeds__mark :is(svg) {
+.brew-bar__menu-item .brew-bar__mark :is(svg) {
   display: block;
   width: var(--brew-tag-mark);
   height: var(--brew-tag-mark);
@@ -181,8 +133,7 @@
 
 .brew-skin button.brew-bar__tag:hover,
 .brew-skin a.brew-bar__tag:hover,
-.brew-skin label.brew-bar__tag:hover,
-.brew-skin button.brew-feeds__spread:hover {
+.brew-skin label.brew-bar__tag:hover {
   background: var(--brew-fill-hover);
   border-color: var(--brew-line-hover);
   color: var(--brew-fg);
@@ -190,17 +141,14 @@
 
 .brew-skin button.brew-bar__tag:active,
 .brew-skin a.brew-bar__tag:active,
-.brew-skin label.brew-bar__tag:active,
-.brew-skin button.brew-feeds__spread:active {
+.brew-skin label.brew-bar__tag:active {
   transform: scale(var(--sm-scale-press, 0.97));
 }
 
 .brew-skin button.brew-bar__tag.is-on,
 .brew-skin button.brew-bar__tag[aria-pressed='true'],
 .brew-skin a.brew-bar__tag.is-on,
-.brew-skin label.brew-bar__tag.is-on,
-.brew-skin button.brew-feeds__spread.is-on,
-.brew-skin button.brew-feeds__spread[aria-pressed='true'] {
+.brew-skin label.brew-bar__tag.is-on {
   background: var(--brew-fill-hover);
   border-color: var(--brew-line-hover);
   color: var(--brew-fg);
@@ -211,8 +159,7 @@
   border-color: color-mix(in srgb, #dc2626 35%, var(--brew-line));
 }
 
-.brew-skin button.brew-bar__tag:disabled,
-.brew-skin button.brew-feeds__spread:disabled {
+.brew-skin button.brew-bar__tag:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }

@@ -9,13 +9,13 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use myriad_tapp_contract::manifest::TappManifest;
 
 use crate::services::tapp_validation::{
-    is_safe_path_component, validate_asset_path, validate_inline_data_schema,
     MAX_AGENT_SCHEMA_RESOURCE_BYTES, MAX_TAPP_ARCHIVE_BYTES, MAX_TAPP_ARCHIVE_FILES,
-    MAX_TAPP_ARCHIVE_UNCOMPRESSED_BYTES, MAX_TAPP_ASSETS_TOTAL_BYTES, MAX_TAPP_ASSET_BYTES,
+    MAX_TAPP_ARCHIVE_UNCOMPRESSED_BYTES, MAX_TAPP_ASSET_BYTES, MAX_TAPP_ASSETS_TOTAL_BYTES,
     MAX_TAPP_GAME_ARCHIVE_BYTES, MAX_TAPP_GAME_ARCHIVE_FILES,
-    MAX_TAPP_GAME_ARCHIVE_UNCOMPRESSED_BYTES, MAX_TAPP_GAME_ASSETS_TOTAL_BYTES,
-    MAX_TAPP_GAME_ASSET_BYTES, MAX_TAPP_GAME_RESOURCE_BYTES, MAX_TAPP_I18N_FILES,
-    MAX_TAPP_I18N_RESOURCE_BYTES, MAX_TAPP_RESOURCE_BYTES,
+    MAX_TAPP_GAME_ARCHIVE_UNCOMPRESSED_BYTES, MAX_TAPP_GAME_ASSET_BYTES,
+    MAX_TAPP_GAME_ASSETS_TOTAL_BYTES, MAX_TAPP_GAME_RESOURCE_BYTES, MAX_TAPP_I18N_FILES,
+    MAX_TAPP_I18N_RESOURCE_BYTES, MAX_TAPP_RESOURCE_BYTES, is_safe_path_component,
+    validate_asset_path, validate_inline_data_schema,
 };
 
 /// Kind of declared install resource used when reading/validating bytes.
@@ -675,9 +675,11 @@ mod tests {
     #[test]
     fn text_resource_rejects_non_utf8() {
         assert!(validate_text_resource_bytes("main.js", b"ok").is_ok());
-        assert!(validate_text_resource_bytes("main.js", &[0xff, 0xfe])
-            .unwrap_err()
-            .contains("UTF-8"));
+        assert!(
+            validate_text_resource_bytes("main.js", &[0xff, 0xfe])
+                .unwrap_err()
+                .contains("UTF-8")
+        );
     }
 
     #[test]
@@ -694,9 +696,11 @@ mod tests {
                 .contains("does not support $ref")
         );
         let huge = vec![b'a'; MAX_AGENT_SCHEMA_RESOURCE_BYTES + 1];
-        assert!(validate_agent_schema_bytes("schemas/input.json", &huge)
-            .unwrap_err()
-            .contains("exceeds"));
+        assert!(
+            validate_agent_schema_bytes("schemas/input.json", &huge)
+                .unwrap_err()
+                .contains("exceeds")
+        );
     }
 
     #[test]
@@ -706,37 +710,45 @@ mod tests {
                 .unwrap(),
             10
         );
-        assert!(validate_asset_resource_bytes_with(
-            "assets/a.png",
-            MAX_TAPP_ASSET_BYTES + 1,
-            0,
-            AssetBudget::standard(),
-        )
-        .unwrap_err()
-        .contains("exceeds"));
-        assert!(validate_asset_resource_bytes_with(
-            "assets/a.png",
-            1,
-            MAX_TAPP_ASSETS_TOTAL_BYTES,
-            AssetBudget::standard(),
-        )
-        .unwrap_err()
-        .contains("total size exceeds"));
-        assert!(validate_asset_resource_bytes_with(
-            "not-under-assets.png",
-            1,
-            0,
-            AssetBudget::standard()
-        )
-        .is_err());
+        assert!(
+            validate_asset_resource_bytes_with(
+                "assets/a.png",
+                MAX_TAPP_ASSET_BYTES + 1,
+                0,
+                AssetBudget::standard(),
+            )
+            .unwrap_err()
+            .contains("exceeds")
+        );
+        assert!(
+            validate_asset_resource_bytes_with(
+                "assets/a.png",
+                1,
+                MAX_TAPP_ASSETS_TOTAL_BYTES,
+                AssetBudget::standard(),
+            )
+            .unwrap_err()
+            .contains("total size exceeds")
+        );
+        assert!(
+            validate_asset_resource_bytes_with(
+                "not-under-assets.png",
+                1,
+                0,
+                AssetBudget::standard()
+            )
+            .is_err()
+        );
     }
 
     #[test]
     fn i18n_filename_and_body_rules() {
         assert_eq!(validate_i18n_filename("en-US.json").unwrap(), "en-US");
-        assert!(validate_i18n_filename("en-US.txt")
-            .unwrap_err()
-            .contains("JSON file"));
+        assert!(
+            validate_i18n_filename("en-US.txt")
+                .unwrap_err()
+                .contains("JSON file")
+        );
         assert!(validate_i18n_filename("../x.json").is_err());
 
         assert!(validate_i18n_file_bytes("en-US.json", br#"{"title":"T"}"#).is_ok());
@@ -782,16 +794,18 @@ mod tests {
             validate_archive_entry_with("empty/", true, 0, &mut paths, total, budget).unwrap(),
             total
         );
-        assert!(validate_archive_entry_with(
-            "big.bin",
-            false,
-            MAX_TAPP_RESOURCE_BYTES + 1,
-            &mut HashSet::new(),
-            0,
-            budget
-        )
-        .unwrap_err()
-        .contains("too large"));
+        assert!(
+            validate_archive_entry_with(
+                "big.bin",
+                false,
+                MAX_TAPP_RESOURCE_BYTES + 1,
+                &mut HashSet::new(),
+                0,
+                budget
+            )
+            .unwrap_err()
+            .contains("too large")
+        );
     }
 
     /// 与运行时解析器共用的用例表。
@@ -877,9 +891,11 @@ mod tests {
             "entry.js".to_string(),
             "require('./missing.js');".to_string(),
         )]);
-        assert!(collect_tapp_module_graph(&broken, &["entry.js".into()])
-            .unwrap_err()
-            .contains("requires ./missing.js"));
+        assert!(
+            collect_tapp_module_graph(&broken, &["entry.js".into()])
+                .unwrap_err()
+                .contains("requires ./missing.js")
+        );
     }
 
     /// 与运行时提取器共用的用例。改这里时同步改

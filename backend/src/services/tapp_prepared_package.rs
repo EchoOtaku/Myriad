@@ -5,9 +5,9 @@
 //! presence rules live here so they are free of Axum/`StatusCode`.
 
 pub use myriad_tapp_rules::{
-    check_manifest_byte_size, nonempty_content, parse_manifest_json,
-    validate_widget_template_contents, widget_template_path, PackageLoadError,
-    PackageValidateError, PreparedTappPackage, PreparedTappResources, WidgetTemplateContents,
+    PackageLoadError, PackageValidateError, PreparedTappPackage, PreparedTappResources,
+    WidgetTemplateContents, check_manifest_byte_size, nonempty_content, parse_manifest_json,
+    validate_widget_template_contents, widget_template_path,
 };
 
 /// Backend package version used by prepared-package manifest checks.
@@ -56,9 +56,11 @@ mod tests {
                 .unwrap_err(),
             PackageValidateError::IdMismatch
         );
-        assert!(package
-            .validate(Some("com.example.prepared"), &current_system())
-            .is_ok());
+        assert!(
+            package
+                .validate(Some("com.example.prepared"), &current_system())
+                .is_ok()
+        );
     }
 
     #[test]

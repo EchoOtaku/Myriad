@@ -5,7 +5,7 @@ use std::path::{Component, Path as FsPath};
 use crate::contract_rules::{
     ASSET_DIRECTORY, ASSET_FORBIDDEN_EXTENSIONS, INLINE_SCHEMA_ROOT_KEYS, MAX_DATA_EXCHANGE_ID_LEN,
     MAX_DATA_EXCHANGE_SCHEMA_BYTES, MAX_INLINE_SCHEMA_DEPTH, MAX_RESOURCE_PATH_LEN,
-    MAX_SETTING_LABEL_LEN, MAX_SETTING_OPTIONS, MAX_SETTING_OPTION_VALUE_LEN, MAX_TAPP_ID_LEN,
+    MAX_SETTING_LABEL_LEN, MAX_SETTING_OPTION_VALUE_LEN, MAX_SETTING_OPTIONS, MAX_TAPP_ID_LEN,
     MAX_TAPP_SETTINGS, MAX_WIDGET_REFRESH_INTERVAL_SECONDS, MIN_WIDGET_REFRESH_INTERVAL_SECONDS,
     SEMVER_PREFIXES, SETTING_TYPES, WIDGET_SIZES,
 };
@@ -216,14 +216,13 @@ pub fn validate_tapp_settings(settings: &[TappSettingDef], scope: &str) -> Resul
                 setting.key
             ));
         }
-        if let Some(default) = &setting.default_value {
-            if !tapp_setting_value_is_valid(setting, default) {
+        if let Some(default) = &setting.default_value
+            && !tapp_setting_value_is_valid(setting, default) {
                 return Err(format!(
                     "Invalid defaultValue for {scope} setting: {}",
                     setting.key
                 ));
             }
-        }
     }
     Ok(())
 }
@@ -462,8 +461,10 @@ mod tests {
             step: None,
             placeholder: None,
         };
-        assert!(validate_tapp_settings(&[select], "Tapp")
-            .unwrap_err()
-            .contains("1-100 options"));
+        assert!(
+            validate_tapp_settings(&[select], "Tapp")
+                .unwrap_err()
+                .contains("1-100 options")
+        );
     }
 }

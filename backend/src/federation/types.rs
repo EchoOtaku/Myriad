@@ -864,28 +864,28 @@ mod tests {
         let _guard = crate::services::outbound_security::tests_lab_env_lock().await;
         let prev = std::env::var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND").ok();
         let prev_env = std::env::var("ENVIRONMENT").ok();
-        std::env::remove_var("ENVIRONMENT"); // lab only outside production
-        std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND");
+        unsafe { std::env::remove_var("ENVIRONMENT") }; // lab only outside production
+        unsafe { std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND") };
         assert!(is_internal_url("http://127.0.0.1:18080/users/a"));
         assert!(is_internal_url("http://localhost:18081/inbox"));
         assert!(is_internal_url("http://10.0.0.5/inbox"));
         assert!(!is_internal_url("https://example.com/users/a"));
 
-        std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1");
+        unsafe { std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1") };
         assert!(!is_internal_url("http://127.0.0.1:18081/users/bob/inbox"));
         // Still reject non-http
         assert!(is_internal_url("ftp://127.0.0.1/x"));
         assert!(is_internal_url("not-a-url"));
         // Production ignores lab flag
-        std::env::set_var("ENVIRONMENT", "production");
+        unsafe { std::env::set_var("ENVIRONMENT", "production") };
         assert!(is_internal_url("http://127.0.0.1:18081/users/bob/inbox"));
         match prev {
-            Some(v) => std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", v),
-            None => std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND"),
+            Some(v) => unsafe { std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", v) },
+            None => unsafe { std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND") },
         }
         match prev_env {
-            Some(v) => std::env::set_var("ENVIRONMENT", v),
-            None => std::env::remove_var("ENVIRONMENT"),
+            Some(v) => unsafe { std::env::set_var("ENVIRONMENT", v) },
+            None => unsafe { std::env::remove_var("ENVIRONMENT") },
         }
     }
 
@@ -1296,9 +1296,10 @@ mod tests {
             .filter_map(|v| v.as_str().map(str::to_string))
             .collect();
         assert!(s.iter().any(|x| x.contains("activitystreams")));
-        assert!(s
-            .iter()
-            .any(|x| x.contains("security") || x.contains("w3id.org/security")));
+        assert!(
+            s.iter()
+                .any(|x| x.contains("security") || x.contains("w3id.org/security"))
+        );
     }
 
     #[test]
@@ -1308,10 +1309,11 @@ mod tests {
         if let Some(s) = ctx.as_str() {
             assert!(s.contains("activitystreams"));
         } else if let Some(arr) = ctx.as_array() {
-            assert!(arr.iter().any(|v| v
-                .as_str()
-                .map(|s| s.contains("activitystreams"))
-                .unwrap_or(false)));
+            assert!(arr.iter().any(|v| {
+                v.as_str()
+                    .map(|s| s.contains("activitystreams"))
+                    .unwrap_or(false)
+            }));
         } else {
             panic!("unexpected build_ap_context shape: {ctx}");
         }

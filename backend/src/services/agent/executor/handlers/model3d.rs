@@ -1,15 +1,15 @@
 //! Agent Tripo 3D execution. Host key stays on the outbound client.
 
 use super::HandlerContext;
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::services::image_cache::ImageCacheService;
 use crate::services::tripo::{
-    apply_web_defaults, is_configured, is_enabled, persist_task_models, poll_until_terminal,
-    validate_upload_type, PersistedTripoAsset, TripoClient, TripoError, TripoOperation, TripoTask,
-    PUBLIC_CAPABILITIES, TAPP_UPLOAD_MAX_BYTES,
+    PUBLIC_CAPABILITIES, PersistedTripoAsset, TAPP_UPLOAD_MAX_BYTES, TripoClient, TripoError,
+    TripoOperation, TripoTask, apply_web_defaults, is_configured, is_enabled, persist_task_models,
+    poll_until_terminal, validate_upload_type,
 };
-use crate::GLOBAL_DYNAMIC_CONFIG;
-use base64::{engine::general_purpose::STANDARD, Engine};
-use serde_json::{json, Map, Value};
+use base64::{Engine, engine::general_purpose::STANDARD};
+use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
 pub async fn execute(

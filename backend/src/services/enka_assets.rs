@@ -216,11 +216,7 @@ pub async fn gi_character(avatar_id: i64, lang: &str) -> CharacterMeta {
     }
     meta.rarity = entry.get("QualityType").and_then(|v| v.as_str()).map(|q| {
         // ORANGE / ORANGE_SP（埃洛伊）按五星，其余四星
-        if q.contains("ORANGE") {
-            5
-        } else {
-            4
-        }
+        if q.contains("ORANGE") { 5 } else { 4 }
     });
 
     if let Some(hash) = entry.get("NameTextMapHash") {

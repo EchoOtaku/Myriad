@@ -2,9 +2,8 @@
 
 import type { BrewSource } from '../../types/brew'
 import type { BrewBoard } from './logic/board'
-import type { BrewControlsHandle } from './manager/modes'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { showBrewError } from './brewNotice'
 
 export function useBoardEdit(
@@ -21,7 +20,7 @@ export function useBoardEdit(
   const [sitesOpen, setSitesOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const barRef = useRef<BrewControlsHandle>(null)
+  const [sourceEditTick, setSourceEditTick] = useState(0)
 
   const handleToggleSelect = useCallback((sourceId: number) => {
     setSelectedIds((prev) => prev.symmetricDifference(new Set([sourceId])))
@@ -35,19 +34,21 @@ export function useBoardEdit(
     )
   }, [filtered])
 
-  const handleEnterEditMode = useCallback(() => setIsEditMode(true), [])
+  const handleEnterEditMode = useCallback(() => {
+    setIsEditMode(true)
+    setBoardEdit(true)
+  }, [])
   const handleExitEditMode = useCallback(() => {
     setIsEditMode(false)
+    setBoardEdit(false)
     setSelectedIds(new Set())
-  }, [])
-  const handleWaveDisplayed = useCallback((wave: string) => {
-    setBoardEdit(wave === 'edit' || wave === 'source-edit')
   }, [])
 
   const handleOpenSourceEdit = useCallback((source: BrewSource) => {
     setSelectedIds(new Set([source.id]))
     setIsEditMode(true)
-    barRef.current?.changeMode('source-edit')
+    setBoardEdit(true)
+    setSourceEditTick((tick) => tick + 1)
   }, [])
 
   useEffect(() => {
@@ -93,12 +94,11 @@ export function useBoardEdit(
     setSitesOpen,
     isDeleting,
     isRefreshing,
-    barRef,
+    sourceEditTick,
     handleToggleSelect,
     handleSelectAll,
     handleEnterEditMode,
     handleExitEditMode,
-    handleWaveDisplayed,
     handleOpenSourceEdit,
     handleBatchDelete,
     handleBatchRefresh,

@@ -3,8 +3,8 @@ use super::*;
 
 // 路由构建
 
-use axum::routing::{delete, get, post, put};
 use axum::Router;
+use axum::routing::{delete, get, post, put};
 
 /// 创建 Agent API 路由
 pub fn create_agent_routes(app_state: crate::state::AppState) -> Router<crate::state::AppState> {

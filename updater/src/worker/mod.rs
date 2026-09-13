@@ -21,16 +21,16 @@ pub mod recovery;
 
 pub use check::auto_install_latest_ok;
 pub use prefs::{
-    validate_check_interval_secs, validate_snapshot_limit, Prefs, SnapshotListDiagnostics,
-    CHECK_INTERVAL_PRESETS,
+    CHECK_INTERVAL_PRESETS, Prefs, SnapshotListDiagnostics, validate_check_interval_secs,
+    validate_snapshot_limit,
 };
-pub use recovery::{plan_crash_recovery, CrashRecoveryPlan, RecoveryReport};
+pub use recovery::{CrashRecoveryPlan, RecoveryReport, plan_crash_recovery};
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
 
@@ -209,13 +209,11 @@ impl Worker {
             return Err(UpdaterError::Conflict);
         }
         // Job file left in NeedsManual even if maintenance was partially cleared.
-        if let Ok(Some(id)) = self.state.read_current_job() {
-            if let Ok(job) = self.state.read_job(&id) {
-                if matches!(job.status, JobStatus::NeedsManual) {
+        if let Ok(Some(id)) = self.state.read_current_job()
+            && let Ok(job) = self.state.read_job(&id)
+                && matches!(job.status, JobStatus::NeedsManual) {
                     return Err(UpdaterError::Conflict);
                 }
-            }
-        }
         Ok(())
     }
 

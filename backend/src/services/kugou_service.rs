@@ -8,8 +8,8 @@
 // 2. 歌词下载  lyrics.kugou.com/download?id=&accesskey=&fmt=krc  -> base64(KRC)
 // KRC 解码：base64 -> 去掉前 4 字节 "krc1" 头 -> 逐字节 XOR 固定 key -> zlib inflate
 
-use anyhow::{anyhow, Result};
-use base64::{engine::general_purpose, Engine};
+use anyhow::{Result, anyhow};
+use base64::{Engine, engine::general_purpose};
 use flate2::read::ZlibDecoder;
 use serde_json::Value;
 use std::io::Read;

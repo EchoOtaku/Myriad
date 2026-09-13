@@ -3,7 +3,7 @@ use super::helpers::*;
 use super::members::{
     home_servers_match, may_promote_private_room_to_public, validate_remote_public_room_doc,
 };
-use super::stickers::{parse_room_stickers, stickers_to_json, ROOM_STICKER_MAX_DATA_LEN};
+use super::stickers::{ROOM_STICKER_MAX_DATA_LEN, parse_room_stickers, stickers_to_json};
 use super::*;
 use serde_json::json;
 
@@ -331,7 +331,7 @@ fn stickers_to_json_roundtrip_shape() {
 // pass the admin check in handle_room_governance.
 
 use super::inbox::{
-    require_remote_inbox, room_join_authorized, room_join_effective_role, RoomJoinAuth,
+    RoomJoinAuth, require_remote_inbox, room_join_authorized, room_join_effective_role,
 };
 
 /// Builder defaulting to the hostile case: a stranger self-joining a closed room.

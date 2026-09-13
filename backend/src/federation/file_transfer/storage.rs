@@ -1,6 +1,6 @@
 //! Path confinement, concurrent admission, and chunk I/O.
 
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait};
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -20,8 +20,8 @@ pub(super) use crate::federation::limits::TRANSFER_CHUNK_SIZE as DEFAULT_CHUNK_S
 /// 单个文件传输总大小上限（产品决策，见 limits 注释）
 pub(super) use crate::federation::limits::MAX_FILE_SIZE;
 use crate::federation::limits::{
-    max_in_flight_chunk_bytes, MAX_CONCURRENT_TRANSFERS, MAX_CONCURRENT_TRANSFERS_PER_USER,
-    MAX_CONCURRENT_TRANSFER_BYTES, MAX_IN_FLIGHT_CHUNK_BYTES,
+    MAX_CONCURRENT_TRANSFER_BYTES, MAX_CONCURRENT_TRANSFERS, MAX_CONCURRENT_TRANSFERS_PER_USER,
+    MAX_IN_FLIGHT_CHUNK_BYTES, max_in_flight_chunk_bytes,
 };
 
 // ── in-flight chunk byte budget ────────────────────────────────────
@@ -412,7 +412,7 @@ pub(super) fn bad_request(message: impl Into<String>) -> (StatusCode, Json<serde
 }
 
 pub(super) fn http_err_to_string(err: (StatusCode, Json<serde_json::Value>)) -> String {
-    format!("{}: {}", err.0, err.1 .0)
+    format!("{}: {}", err.0, err.1.0)
 }
 
 pub(super) async fn stored_bytes(path: &str) -> i64 {

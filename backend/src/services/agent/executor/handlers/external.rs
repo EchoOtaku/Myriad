@@ -13,7 +13,7 @@ use crate::services::agent::external_pure::{
 use crate::services::data_paths::platform_filtered_file;
 use crate::services::fetcher::PlatformFetcher;
 use crate::services::outbound_security;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::time::Duration;
 

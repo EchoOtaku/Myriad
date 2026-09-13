@@ -1,15 +1,15 @@
 //! Trusted TCB self-update handoff owned by Guard.
 
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
-use axum::body::{to_bytes, Body};
-use axum::http::{header, Method, Request, StatusCode};
+use anyhow::{Context, Result, anyhow};
+use axum::body::{Body, to_bytes};
+use axum::http::{Method, Request, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::process::Command;
 use tracing::{error, info, warn};
 
@@ -21,9 +21,9 @@ use super::config::{
 };
 use super::forward::{daemon_json, forward};
 use super::{
-    denial, validate_identifier, GuardState, DOCKER_API_TIMEOUT, POLICY_CONTAINER_FILE,
-    SELF_UPDATE_EXHAUSTED_NAME, SELF_UPDATE_GATE, SELF_UPDATE_HELPER_NAME,
-    SELF_UPDATE_RECOVERY_NAME, TRUSTED_UPDATER_REPOSITORY,
+    DOCKER_API_TIMEOUT, GuardState, POLICY_CONTAINER_FILE, SELF_UPDATE_EXHAUSTED_NAME,
+    SELF_UPDATE_GATE, SELF_UPDATE_HELPER_NAME, SELF_UPDATE_RECOVERY_NAME,
+    TRUSTED_UPDATER_REPOSITORY, denial, validate_identifier,
 };
 
 pub(crate) const SELF_UPDATE_TOKEN_HEADER: &str = "x-guard-self-update-token";
@@ -168,7 +168,7 @@ pub(crate) async fn handle_self_update(state: GuardState, req: Request<Body>) ->
             return denial(
                 StatusCode::PAYLOAD_TOO_LARGE,
                 "self-update body exceeds 4 KiB",
-            )
+            );
         }
     };
     let request: SelfUpdateRequestBody = match serde_json::from_slice(&body) {
@@ -177,7 +177,7 @@ pub(crate) async fn handle_self_update(state: GuardState, req: Request<Body>) ->
             return denial(
                 StatusCode::BAD_REQUEST,
                 "JSON body requires only target_tag and trust_path",
-            )
+            );
         }
     };
     if request.trust_path != "dockerhub_tag" {
@@ -367,8 +367,8 @@ pub(crate) fn monitor_handoff(
                 Some("trusted TCB handoff exceeded its total deadline".into())
             }
         };
-        if let (Some(failure), Some(attempt)) = (failure.as_deref(), attempt.as_ref()) {
-            if !recovery_only {
+        if let (Some(failure), Some(attempt)) = (failure.as_deref(), attempt.as_ref())
+            && !recovery_only {
                 warn!(%failure, "starting fixed previous-digest recovery handoff");
                 match launch_trusted_handoff(
                     &state,
@@ -417,7 +417,6 @@ pub(crate) fn monitor_handoff(
                     }
                 }
             }
-        }
         if failure.is_some() && recovery_only && recovery_retries < 2 {
             let next_attempt = recovery_retries + 1;
             let retry_persisted = attempt
@@ -1077,11 +1076,9 @@ pub(crate) fn validate_self_update_tag(tag: &str) -> std::result::Result<(), Str
 pub(crate) fn prevent_release_downgrade(previous: &str, target: &str) -> Result<()> {
     if let (Ok(previous), Ok(target)) =
         (MyriadVersion::parse(previous), MyriadVersion::parse(target))
-    {
-        if target.older_than(&previous) {
+        && target.older_than(&previous) {
             return Err(anyhow!("TCB release downgrade is forbidden"));
         }
-    }
     Ok(())
 }
 

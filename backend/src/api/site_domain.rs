@@ -9,10 +9,10 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{Json, extract::State, http::StatusCode};
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use url::Url;
 
 use crate::services::config_service::ConfigService;
@@ -188,20 +188,17 @@ pub fn build_domain_migration_checklist() -> DomainMigrationChecklist {
         oauth_callbacks: ChecklistItem {
             key: "oauth_callbacks",
             status: "manual",
-            summary:
-                "Update OAuth app callback URLs in GitHub/Google/etc. consoles to the new origin",
+            summary: "Update OAuth app callback URLs in GitHub/Google/etc. consoles to the new origin",
         },
         federation_move_separate: ChecklistItem {
             key: "federation_move_separate",
             status: "manual",
-            summary:
-                "Federation actor Move is separate — use federation domain-move when available; this API does not rewrite federation tables",
+            summary: "Federation actor Move is separate — use federation domain-move when available; this API does not rewrite federation tables",
         },
         backend_restart_for_cors: ChecklistItem {
             key: "backend_restart_for_cors",
             status: "auto",
-            summary:
-                "HTTP CorsLayer allowlist is hot-reloaded after domain change; also persisted under DATA_DIR/site_public.env when DATA_DIR is set. Update host compose .env for cold starts that inject CORS_ORIGINS",
+            summary: "HTTP CorsLayer allowlist is hot-reloaded after domain change; also persisted under DATA_DIR/site_public.env when DATA_DIR is set. Update host compose .env for cold starts that inject CORS_ORIGINS",
         },
     }
 }

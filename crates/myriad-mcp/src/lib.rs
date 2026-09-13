@@ -1,6 +1,7 @@
 //! Bounded MCP client runtime. No database, web framework or platform globals.
 //! Hosts inject transport policy, gateway authentication and status reporting;
 //! editable server definitions cannot choose gateway endpoints or credentials.
+#![deny(tail_expr_drop_order)]
 mod actor;
 pub mod config;
 pub mod connection;

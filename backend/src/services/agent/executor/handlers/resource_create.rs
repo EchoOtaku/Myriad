@@ -4,24 +4,24 @@
 //! 纯投影见 [`crate::services::agent::resource_create_pure`]。
 
 use super::HandlerContext;
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::models::entities::{tapp_storage, tapps};
 use crate::services::agent::resource_create_pure::{
+    AGENT_BOOKMARKS_TAPP_ID, AGENT_NOTES_TAPP_ID, AGENT_REMINDERS_TAPP_ID, AGENT_REPORTS_TAPP_ID,
     agent_page_require_core_source, extract_html_title, extract_note_content, extract_string_tags,
     format_bookmark_id, format_note_id, format_reminder_id, format_report_id,
     generated_tapp_fallback, limit_html_for_title, manifest_permission_strings,
     normalize_agent_tapp_manifest, note_auto_title, parse_generated_tapp_json,
     reminder_repeat_or_default, render_report_content, require_nonempty_code,
-    resolve_bookmark_title, truncate_json_for_prompt, AGENT_BOOKMARKS_TAPP_ID, AGENT_NOTES_TAPP_ID,
-    AGENT_REMINDERS_TAPP_ID, AGENT_REPORTS_TAPP_ID,
+    resolve_bookmark_title, truncate_json_for_prompt,
 };
 use crate::services::data_paths::paths;
 use crate::services::permission_service::{TappPermissionService, UserRole};
 use crate::services::tapp_install::select_install_approved_permissions;
 use crate::services::tapp_package_read::{installed_core_entry, installed_page_entry};
-use crate::GLOBAL_DYNAMIC_CONFIG;
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 /// 执行资源创建能力
@@ -530,8 +530,8 @@ async fn execute_bookmark_save(
         )
         .await
         {
-            Ok((target_url, client)) => {
-                if let Ok(resp) = client.get(target_url).send().await {
+            Ok((target_url, client)) => match client.get(target_url).send().await {
+                Ok(resp) => {
                     match crate::services::outbound_security::read_limited_body(resp, 256 * 1024)
                         .await
                     {
@@ -542,10 +542,9 @@ async fn execute_bookmark_save(
                         }
                         Err(_) => None,
                     }
-                } else {
-                    None
                 }
-            }
+                _ => None,
+            },
             Err(e) => {
                 tracing::debug!(url = %url, error = %e, "[Bookmark] title fetch blocked/failed");
                 None
@@ -635,11 +634,13 @@ mod tests {
             "permissions": ["storage:read", "unknown:permission"]
         }));
         let approved = select_install_approved_permissions(&requested, &[]);
-        assert!(TappPermissionService::filter_permissions_for_role(
-            &DynamicConfig::default(),
-            UserRole::Admin,
-            &approved
-        )
-        .is_err());
+        assert!(
+            TappPermissionService::filter_permissions_for_role(
+                &DynamicConfig::default(),
+                UserRole::Admin,
+                &approved
+            )
+            .is_err()
+        );
     }
 }

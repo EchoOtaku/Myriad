@@ -5,18 +5,18 @@
 
 use once_cell::sync::Lazy;
 use sea_orm::DatabaseConnection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::models::entities::tapps;
 use crate::services::permission_service::{
-    tapp_permission_replacement_hint, TappPermissionService, UnknownTappPermission, UserRole,
+    TappPermissionService, UnknownTappPermission, UserRole, tapp_permission_replacement_hint,
 };
 use crate::services::tapp_ownership::{self, TappAccessError};
-use crate::GLOBAL_DYNAMIC_CONFIG;
 use myriad_tapp_contract::manifest::{TappApiAccess, TappApiDef};
 
 /// 缓存条目：已解析的 API 定义 + 缓存时间
@@ -274,8 +274,8 @@ pub fn ai_model_tier_from_manifest(manifest: &Value) -> Option<crate::config::Mo
 #[cfg(test)]
 mod tests {
     use super::{
-        declared_settings_from_manifest, list_api_summaries, manifest_apis_fingerprint,
-        DeclaredApiError,
+        DeclaredApiError, declared_settings_from_manifest, list_api_summaries,
+        manifest_apis_fingerprint,
     };
     use crate::services::tapp_ownership::tapp_owner_priority;
     use myriad_tapp_contract::manifest::{TappApiAccess, TappApiDef};
@@ -309,17 +309,21 @@ mod tests {
 
     #[test]
     fn declared_settings_treat_missing_and_null_as_empty() {
-        assert!(declared_settings_from_manifest(&json!({}))
-            .unwrap()
-            .is_empty());
+        assert!(
+            declared_settings_from_manifest(&json!({}))
+                .unwrap()
+                .is_empty()
+        );
         assert!(
             declared_settings_from_manifest(&json!({ "settings": null }))
                 .unwrap()
                 .is_empty()
         );
-        assert!(declared_settings_from_manifest(&json!({ "settings": [] }))
-            .unwrap()
-            .is_empty());
+        assert!(
+            declared_settings_from_manifest(&json!({ "settings": [] }))
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

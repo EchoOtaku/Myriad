@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    Json,
 };
 use chrono::{Duration, Utc};
 use sea_orm::{
@@ -9,14 +9,14 @@ use sea_orm::{
     QueryOrder, Statement,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
 
 // Platform refresh / site owner live in services (scheduler must not depend on HTTP).
 use crate::services::platform_refresh::{
-    fetch_fresh_platform_data, load_platform_data_cache, platform_data_warning_for,
-    resolve_platform_fetch_message_for, save_platform_data_cache, PLATFORM_CACHE_HOURS,
+    PLATFORM_CACHE_HOURS, fetch_fresh_platform_data, load_platform_data_cache,
+    platform_data_warning_for, resolve_platform_fetch_message_for, save_platform_data_cache,
 };
 pub use crate::services::site_owner::site_owner_user_id;
 
@@ -503,10 +503,10 @@ pub use crate::services::image_proxy_urls::{normalize_json_media_urls, proxy_ima
 
 // library_items：分页/组装缓存；DB 与 Steam/Bili/Netease 组装仍在本文件。
 pub use crate::services::library_items::{
+    CachedLibraryItems, LIBRARY_SOURCE_PREFERENCES_KEY, LibraryItem, LibrarySourcePreferences,
     append_bangumi_library_items, append_mal_library_items, cached_library_items,
     collect_library_source_options, invalidate_library_assembly_cache, paginate_library_items,
-    store_library_items, CachedLibraryItems, LibraryItem, LibrarySourcePreferences,
-    LIBRARY_SOURCE_PREFERENCES_KEY,
+    store_library_items,
 };
 async fn load_library_source_preferences(db: &DatabaseConnection) -> LibrarySourcePreferences {
     let sql = "SELECT value FROM configurations WHERE key = $1";
@@ -620,7 +620,7 @@ async fn library_page_response(
                     "message": message,
                     "code": "bad_request",
                 })),
-            )
+            );
         }
     };
 

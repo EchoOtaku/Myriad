@@ -6,12 +6,12 @@ use std::io::Write;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use tracing::{info, warn};
 
-use crate::config::{SecretString, GUARD_SELF_UPDATE_TOKEN_MIN_LEN};
+use crate::config::{GUARD_SELF_UPDATE_TOKEN_MIN_LEN, SecretString};
 
-use super::{validate_identifier, POLICY_CONTAINER_FILE, TRUSTED_GUARD_REPOSITORY};
+use super::{POLICY_CONTAINER_FILE, TRUSTED_GUARD_REPOSITORY, validate_identifier};
 
 const COMPOSE_RELATIVE_POLICY_PATH: &str = "guard-policy/docker-guard.env";
 

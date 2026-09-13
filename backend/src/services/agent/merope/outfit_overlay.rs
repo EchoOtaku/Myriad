@@ -11,8 +11,8 @@ use sea_orm::DatabaseConnection;
 
 use super::store::get_persona;
 use myriad_merope::{
-    looks_from_visual_profile, resolve_wear_directive, wardrobe_look, worn_outfit_id,
-    OverlayDecision, WearDirective, DEFAULT_WARDROBE_ID,
+    DEFAULT_WARDROBE_ID, OverlayDecision, WearDirective, looks_from_visual_profile,
+    resolve_wear_directive, wardrobe_look, worn_outfit_id,
 };
 
 static OVERLAYS: Lazy<Mutex<HashMap<(i32, String), String>>> =

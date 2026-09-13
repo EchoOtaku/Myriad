@@ -7,18 +7,18 @@ use std::time::Duration;
 
 use chrono::Utc;
 use myriad_agent_rules::channel::{
+    ConnectFailureKind, TelegramBotIdentity, TelegramPrivateInbound, WorkerIntent,
     parse_telegram_bot_identity, parse_telegram_ok_payload, parse_telegram_private_inbounds,
-    telegram_max_update_id, telegram_retry_after, telegram_worker_intent, ConnectFailureKind,
-    TelegramBotIdentity, TelegramPrivateInbound, WorkerIntent,
+    telegram_max_update_id, telegram_retry_after, telegram_worker_intent,
 };
 use myriad_error::redact_secrets;
 use serde::Serialize;
-use tokio::sync::{watch, RwLock};
+use tokio::sync::{RwLock, watch};
 use tracing::{info, warn};
 
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::config::DynamicConfig;
 use crate::services::http_client;
-use crate::GLOBAL_DYNAMIC_CONFIG;
 
 const POLL: Duration = Duration::from_secs(2);
 const LONG_POLL_SECS: u64 = 25;

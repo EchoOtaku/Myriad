@@ -13,8 +13,8 @@
 //! ## Receive (D)
 //! Fail-closed here: actor == signed actor == object; target distinct. Signature is inbox; movedTo/alsoKnownAs are separate helpers.
 
-use axum::http::StatusCode;
 use axum::Json;
+use axum::http::StatusCode;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -1744,12 +1744,14 @@ mod tests {
             got.as_deref(),
             Some("https://new.example/users/alice/inbox")
         );
-        assert!(rewrite_url_if_local(
-            "https://foreign.example/users/alice",
-            "https://old.example",
-            "https://new.example",
-        )
-        .is_none());
+        assert!(
+            rewrite_url_if_local(
+                "https://foreign.example/users/alice",
+                "https://old.example",
+                "https://new.example",
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -1806,12 +1808,14 @@ mod tests {
             .as_deref(),
             Some("https://new.example/users/alice/inbox")
         );
-        assert!(rewrite_url_if_local(
-            "https://foreign.example/users/alice",
-            "https://old.example",
-            "https://new.example",
-        )
-        .is_none());
+        assert!(
+            rewrite_url_if_local(
+                "https://foreign.example/users/alice",
+                "https://old.example",
+                "https://new.example",
+            )
+            .is_none()
+        );
     }
 
     #[test]

@@ -1,22 +1,22 @@
 use axum::{
+    Json, Router,
     http::StatusCode,
     response::sse::{Event, KeepAlive, Sse},
     routing::post,
-    Json, Router,
 };
 use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet},
     convert::Infallible,
     sync::LazyLock,
     time::Duration,
 };
-use tokio::sync::{mpsc, watch, Semaphore};
+use tokio::sync::{Semaphore, mpsc, watch};
 
 use crate::{
-    api::tapp_store::{validate_tapp_manifest, TappManifest},
+    api::tapp_store::{TappManifest, validate_tapp_manifest},
     config::ModelTier,
     middleware::auth::admin_middleware,
     services::{
@@ -530,7 +530,7 @@ async fn generate_project_stream(
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, ApiError> {
     validate_generate_request(&request)?;
 
-    let (event_tx, mut event_rx) = mpsc::channel::<PlaygroundStreamEvent>(32);
+    let (event_tx, event_rx) = mpsc::channel::<PlaygroundStreamEvent>(32);
     let (cancel_tx, cancel_rx) = watch::channel(false);
 
     tokio::spawn(async move {
@@ -582,22 +582,22 @@ async fn generate_project_stream(
         }
     });
 
-    let stream = async_stream::stream! {
-        let _cancel_on_drop = CancelOnDrop(Some(cancel_tx));
-        while let Some(event) = event_rx.recv().await {
-            let terminal = matches!(
-                event,
-                PlaygroundStreamEvent::Done { .. } | PlaygroundStreamEvent::Error { .. }
-            );
-            let data = serde_json::to_string(&event).unwrap_or_else(|_| {
-                r#"{"type":"error","message":"Failed to serialize stream event"}"#.to_string()
-            });
-            yield Ok::<_, Infallible>(Event::default().data(data));
-            if terminal {
-                break;
-            }
-        }
-    };
+    let inner = futures::stream::unfold(Some(event_rx), |event_rx| async move {
+        let mut event_rx = event_rx?;
+        let event = event_rx.recv().await?;
+        let terminal = matches!(
+            event,
+            PlaygroundStreamEvent::Done { .. } | PlaygroundStreamEvent::Error { .. }
+        );
+        let data = serde_json::to_string(&event).unwrap_or_else(|_| {
+            r#"{"type":"error","message":"Failed to serialize stream event"}"#.to_string()
+        });
+        return Some((
+            Ok::<_, Infallible>(Event::default().data(data)),
+            if terminal { None } else { Some(event_rx) },
+        ));
+    });
+    let stream = crate::held_stream::HeldStream::new(inner, CancelOnDrop(Some(cancel_tx)));
 
     Ok(Sse::new(stream).keep_alive(
         KeepAlive::new()
@@ -1234,14 +1234,20 @@ fn validate_history(history: &[PlaygroundHistoryTurn]) -> Result<(), ApiError> {
         }
         let instruction = turn.instruction.trim();
         if instruction.is_empty() || instruction.chars().count() > MAX_INSTRUCTION_CHARS {
-            return Err(api_error(StatusCode::BAD_REQUEST, format!(
+            return Err(api_error(
+                StatusCode::BAD_REQUEST,
+                format!(
                     "History turn {index} instruction must contain 1-{MAX_INSTRUCTION_CHARS} characters"
-                )));
+                ),
+            ));
         }
         if turn.explanation.chars().count() > MAX_HISTORY_EXPLANATION_CHARS {
-            return Err(api_error(StatusCode::BAD_REQUEST, format!(
+            return Err(api_error(
+                StatusCode::BAD_REQUEST,
+                format!(
                     "History turn {index} explanation exceeds {MAX_HISTORY_EXPLANATION_CHARS} characters"
-                )));
+                ),
+            ));
         }
         if let Some(error) = &turn.error {
             if error.chars().count() > MAX_HISTORY_ERROR_CHARS {

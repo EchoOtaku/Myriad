@@ -19,7 +19,7 @@ mod tests {
 
     #[test]
     fn public_federation_limits_route_is_mounted() {
-        let src = include_str!("router/base.rs");
+        let src = include_str!("router/federation_http.rs");
         assert!(src.contains("/api/federation/public/limits"));
         assert!(src.contains("federation::limits::public_limits"));
     }
@@ -94,8 +94,8 @@ mod tests {
     #[tokio::test]
     async fn inbox_inflight_permit_api_is_live() {
         use crate::federation::limits::{
-            inbox_inflight_raw_bytes, try_acquire_inbox_inflight, INBOX_BODY_LIMIT,
-            INBOX_INFLIGHT_RAW_BUDGET,
+            INBOX_BODY_LIMIT, INBOX_INFLIGHT_RAW_BUDGET, inbox_inflight_raw_bytes,
+            try_acquire_inbox_inflight,
         };
 
         let before = inbox_inflight_raw_bytes();

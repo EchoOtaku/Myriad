@@ -11,8 +11,9 @@
 //! - response bodies read with an explicit byte cap
 //!
 //! Lab-only: `MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND` may allow private/loopback.
+#![deny(tail_expr_drop_order)]
 
-use reqwest::{redirect::Policy, Client, ClientBuilder};
+use reqwest::{Client, ClientBuilder, redirect::Policy};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::{Mutex, OnceLock};
@@ -357,7 +358,11 @@ pub async fn read_limited_body(
     }
     let mut body =
         Vec::with_capacity(response.content_length().unwrap_or(0).min(max_bytes as u64) as usize);
-    while let Some(chunk) = response.chunk().await.map_err(body_read_error)? {
+    loop {
+        let next = response.chunk().await.map_err(body_read_error)?;
+        let Some(chunk) = next else {
+            break;
+        };
         if body.len().saturating_add(chunk.len()) > max_bytes {
             return Err(format!("Response exceeds {max_bytes} bytes"));
         }
@@ -408,7 +413,9 @@ mod tests {
                     let response = if chunked {
                         // The oversize stream deliberately never terminates.
                         let end = if size == 8 { "0\r\n\r\n" } else { "" };
-                        format!("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n{size:x}\r\n{body}\r\n{end}")
+                        format!(
+                            "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n{size:x}\r\n{body}\r\n{end}"
+                        )
                     } else {
                         format!("HTTP/1.1 200 OK\r\nContent-Length: {size}\r\n\r\n{body}")
                     };
@@ -465,7 +472,7 @@ mod tests {
     #[tokio::test]
     async fn mixed_dns_keeps_public_addresses() {
         let _guard = tests_lab_env_lock().await;
-        std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND");
+        unsafe { std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND") };
         let mixed = vec![
             "127.0.0.1:443".parse().unwrap(),
             "1.1.1.1:443".parse().unwrap(),
@@ -486,7 +493,7 @@ mod tests {
     #[tokio::test]
     async fn all_private_dns_is_rejected() {
         let _guard = tests_lab_env_lock().await;
-        std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND");
+        unsafe { std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND") };
         let private = vec![
             "127.0.0.1:443".parse().unwrap(),
             "10.0.0.1:443".parse().unwrap(),
@@ -498,7 +505,7 @@ mod tests {
     #[tokio::test]
     async fn refuses_literal_internal_targets() {
         let _guard = tests_lab_env_lock().await;
-        std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND");
+        unsafe { std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND") };
         let result = build_public_http_client(
             "http://169.254.169.254/latest/meta-data/",
             Duration::from_secs(1),
@@ -512,14 +519,14 @@ mod tests {
     async fn lab_flag_allows_loopback_http_client() {
         let _guard = tests_lab_env_lock().await;
         let prev_env = std::env::var("ENVIRONMENT").ok();
-        std::env::remove_var("ENVIRONMENT"); // lab only outside production
-        std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1");
+        unsafe { std::env::remove_var("ENVIRONMENT") }; // lab only outside production
+        unsafe { std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1") };
         let result =
             build_public_http_client("http://127.0.0.1:18080/inbox", Duration::from_secs(1), None)
                 .await;
-        std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND");
+        unsafe { std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND") };
         if let Some(v) = prev_env {
-            std::env::set_var("ENVIRONMENT", v);
+            unsafe { std::env::set_var("ENVIRONMENT", v) };
         }
         assert!(
             result.is_ok(),
@@ -532,30 +539,30 @@ mod tests {
     async fn lab_flag_env_parsing() {
         let _guard = tests_lab_env_lock().await;
         let prev_env = std::env::var("ENVIRONMENT").ok();
-        std::env::remove_var("ENVIRONMENT");
-        std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND");
+        unsafe { std::env::remove_var("ENVIRONMENT") };
+        unsafe { std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND") };
         assert!(!federation_lab_private_outbound_enabled());
-        std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1");
+        unsafe { std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1") };
         assert!(federation_lab_private_outbound_enabled());
-        std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "true");
+        unsafe { std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "true") };
         assert!(federation_lab_private_outbound_enabled());
-        std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "0");
+        unsafe { std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "0") };
         assert!(!federation_lab_private_outbound_enabled());
         // Production hard-disables lab flag even when set.
-        std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1");
-        std::env::set_var("ENVIRONMENT", "production");
+        unsafe { std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1") };
+        unsafe { std::env::set_var("ENVIRONMENT", "production") };
         assert!(!federation_lab_private_outbound_enabled());
-        std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND");
-        std::env::remove_var("ENVIRONMENT");
+        unsafe { std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND") };
+        unsafe { std::env::remove_var("ENVIRONMENT") };
         if let Some(v) = prev_env {
-            std::env::set_var("ENVIRONMENT", v);
+            unsafe { std::env::set_var("ENVIRONMENT", v) };
         }
     }
 
     #[tokio::test]
     async fn proxy_path_rejects_ipv6_loopback_and_ula() {
         let _guard = tests_lab_env_lock().await;
-        std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND");
+        unsafe { std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND") };
         let proxy = reqwest::Proxy::all("http://203.0.113.1:8080").expect("proxy");
         for url in ["http://[::1]/", "http://[fc00::1]/", "http://127.0.0.1/"] {
             let error = build_public_http_client_via_proxy(

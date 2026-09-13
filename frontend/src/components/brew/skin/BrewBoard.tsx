@@ -9,11 +9,7 @@ import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../../../contexts/I18nContext'
 import { brewOwnItemPath, getIconUrl, getImageUrl } from '../constants'
 import { isSiteSource } from '../logic/board'
-import {
-  BrewEmpty,
-  BrewEmptyAction,
-  BrewEmptyRow,
-} from '../ui/Empty'
+import { BrewVacant } from '../ui/Empty'
 import { BrewPick } from '../ui/Pick'
 import {
   SalonCard,
@@ -47,6 +43,7 @@ export interface BrewBoardViewProps {
   vacant?: ReactNode
   stories?: FeedStory[]
   onReadySource?: (id: number | null) => void
+  sourceTags?: ReactNode
 }
 
 function openLink(source: BrewSource) {
@@ -75,6 +72,7 @@ export default function BrewBoardView({
   vacant,
   stories,
   onReadySource,
+  sourceTags,
 }: BrewBoardViewProps) {
   const { t, locale } = useI18n()
   const navigate = useNavigate()
@@ -97,22 +95,15 @@ export default function BrewBoardView({
 
   if (empty && board !== 'feeds') {
     return (
-      <BrewEmpty>
-        <BrewEmptyRow>
-          <span>
-            {board === 'notes'
-              ? t.brew.emptyNoNotes
-              : board === 'sites'
-                ? t.brew.emptyNoSites
-                : t.brew.emptyNoSources}
-          </span>
-          {board === 'notes' && onWriteNote ? (
-            <BrewEmptyAction onClick={onWriteNote}>
-              {t.brew.noteWrite}
-            </BrewEmptyAction>
-          ) : null}
-        </BrewEmptyRow>
-      </BrewEmpty>
+      <BrewVacant
+        title={
+          board === 'notes'
+            ? t.brew.emptyNoNotes
+            : board === 'sites'
+              ? t.brew.emptyNoSites
+              : t.brew.emptyNoSources
+        }
+      />
     )
   }
 
@@ -135,6 +126,7 @@ export default function BrewBoardView({
         vacant={vacant}
         stories={stories}
         onReadySource={onReadySource}
+        sourceTags={sourceTags}
       />
     )
   }

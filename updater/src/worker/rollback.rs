@@ -28,7 +28,7 @@ use crate::error::{Result, UpdaterError};
 use crate::snapshot::SnapshotManager;
 use crate::state::{JobStatus, Phase, StateDir, UpdaterStateFile};
 use crate::version::DeployTag;
-use crate::worker::{machine::PhaseRecorder, Worker};
+use crate::worker::{Worker, machine::PhaseRecorder};
 
 pub async fn run(
     worker: Arc<Worker>,
@@ -78,12 +78,11 @@ pub async fn run(
     // when metadata is available.
     match execute_inline(worker.clone(), &rec, &compose, &snap, &snapshot_id, None).await {
         Ok(restored) => {
-            if let Some(v) = restored {
-                if let Ok(mut job) = worker.state().read_job(&job_id) {
+            if let Some(v) = restored
+                && let Ok(mut job) = worker.state().read_job(&job_id) {
                     job.to_version = Some(v);
                     let _ = worker.state().write_job(&job);
                 }
-            }
             let _ = rec.finalize(JobStatus::Succeeded);
             let _ = crate::worker::machine::clear_maintenance(worker.state());
             Ok(())
@@ -169,15 +168,14 @@ pub async fn execute_inline(
         Some(tag) => {
             let _ = rec.enter(Phase::SwapTagBack, "updater.phase.swap_tag_back");
             let parsed = DeployTag::parse(tag).ok();
-            if let Some(ref version) = parsed {
-                if let Err(e) = materialize_pinned_rollback_images(worker.as_ref(), version).await {
+            if let Some(ref version) = parsed
+                && let Err(e) = materialize_pinned_rollback_images(worker.as_ref(), version).await {
                     warn!(
                         err = %e,
                         version = %version,
                         "failed to restore version refs from the local rollback slot"
                     );
                 }
-            }
             let mut env = EnvFile::load(&worker.cli().env_file)?;
             let before = env.get("MYRIAD_TAG").unwrap_or("").to_string();
             env.set("MYRIAD_TAG", tag)?;
@@ -495,11 +493,10 @@ pub(crate) fn resolve_previous_tag(
     }
 
     let snaps = state.read_snapshots()?;
-    if let Some(meta) = snaps.items.iter().find(|m| m.id == snapshot_id) {
-        if let Some(v) = &meta.source_version {
+    if let Some(meta) = snaps.items.iter().find(|m| m.id == snapshot_id)
+        && let Some(v) = &meta.source_version {
             return Ok(Some(v.to_string()));
         }
-    }
 
     if let Some(v) = state.read_updater()?.current_version {
         return Ok(Some(v.to_string()));

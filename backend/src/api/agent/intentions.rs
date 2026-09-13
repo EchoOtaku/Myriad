@@ -3,9 +3,9 @@
 use super::*;
 use crate::error::HttpError;
 use crate::services::agent::consciousness::{
-    evaluate_autonomy_grant, intention_may_enter_work, prepare_personal_grant,
-    revoke_personal_grant, AcceptSource, AutonomyGrantStore, AutonomyGrantWriteError,
-    AutonomyVerdict, IntentStatus, IntentStore,
+    AcceptSource, AutonomyGrantStore, AutonomyGrantWriteError, AutonomyVerdict, IntentStatus,
+    IntentStore, evaluate_autonomy_grant, intention_may_enter_work, prepare_personal_grant,
+    revoke_personal_grant,
 };
 use myriad_error::AppError;
 
@@ -299,8 +299,8 @@ pub async fn dismiss_intention(
 #[cfg(test)]
 mod work_grant_tests {
     use super::validate_intention_work_grant;
-    use crate::services::agent::consciousness::{AcceptSource, AutonomyGrantView};
     use crate::services::agent::SYSTEM_USER_ID;
+    use crate::services::agent::consciousness::{AcceptSource, AutonomyGrantView};
 
     fn grant(revoked: bool, allowed: &[&str]) -> AutonomyGrantView {
         AutonomyGrantView {
@@ -334,26 +334,30 @@ mod work_grant_tests {
         assert!(
             validate_intention_work_grant(7, Some(&revoked), &current, AcceptSource::User,).is_ok()
         );
-        assert!(validate_intention_work_grant(
-            SYSTEM_USER_ID,
-            Some(&live),
-            &current,
-            AcceptSource::User,
-        )
-        .is_err());
+        assert!(
+            validate_intention_work_grant(
+                SYSTEM_USER_ID,
+                Some(&live),
+                &current,
+                AcceptSource::User,
+            )
+            .is_err()
+        );
         assert!(prepare_personal_grant(SYSTEM_USER_ID, &current, &current).is_err());
     }
 
     #[test]
     fn require_user_review_cannot_enter_work_after_revoke_or_permission_drop() {
         let revoked = grant(true, &["calendar:read"]);
-        assert!(validate_intention_work_grant(
-            7,
-            Some(&revoked),
-            &["calendar:read".into()],
-            AcceptSource::Autonomy,
-        )
-        .is_err());
+        assert!(
+            validate_intention_work_grant(
+                7,
+                Some(&revoked),
+                &["calendar:read".into()],
+                AcceptSource::Autonomy,
+            )
+            .is_err()
+        );
         let live = grant(false, &["calendar:read"]);
         assert!(
             validate_intention_work_grant(7, Some(&live), &[], AcceptSource::Autonomy).is_err()
@@ -362,12 +366,14 @@ mod work_grant_tests {
             validate_intention_work_grant(SYSTEM_USER_ID, None, &[], AcceptSource::User).is_err()
         );
         assert!(validate_intention_work_grant(7, None, &[], AcceptSource::User).is_ok());
-        assert!(validate_intention_work_grant(
-            7,
-            Some(&live),
-            &["calendar:read".into()],
-            AcceptSource::Autonomy,
-        )
-        .is_ok());
+        assert!(
+            validate_intention_work_grant(
+                7,
+                Some(&live),
+                &["calendar:read".into()],
+                AcceptSource::Autonomy,
+            )
+            .is_ok()
+        );
     }
 }

@@ -467,12 +467,16 @@ mod tests {
 
     #[test]
     fn platform_data_warning_when_missing_or_null() {
-        assert!(platform_data_warning("steam", None)
-            .unwrap()
-            .contains("未返回"));
-        assert!(platform_data_warning("steam", Some(&Value::Null))
-            .unwrap()
-            .contains("未返回"));
+        assert!(
+            platform_data_warning("steam", None)
+                .unwrap()
+                .contains("未返回")
+        );
+        assert!(
+            platform_data_warning("steam", Some(&Value::Null))
+                .unwrap()
+                .contains("未返回")
+        );
     }
 
     #[test]

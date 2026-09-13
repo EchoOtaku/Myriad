@@ -60,6 +60,7 @@ const Library = lazy(() => import('./views/Library.tsx'))
 const Brew = lazy(() => import('./views/Brew.tsx'))
 const Reports = lazy(() => import('./views/Reports.tsx'))
 const Config = lazy(() => import('./views/Config.tsx'))
+const AgentSettings = lazy(() => import('./views/AgentSettings.tsx'))
 const Login = lazy(() => import('./views/Login.tsx'))
 const Register = lazy(() => import('./views/Register.tsx'))
 const Setup = lazy(() => import('./views/Setup.tsx'))
@@ -500,6 +501,16 @@ function AppRoutes() {
             <RequireAuth requiresAdmin>
               <SuspensePage>
                 <Config />
+              </SuspensePage>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/agent/settings"
+          element={
+            <RequireAuth requiresAdmin>
+              <SuspensePage>
+                <AgentSettings />
               </SuspensePage>
             </RequireAuth>
           }

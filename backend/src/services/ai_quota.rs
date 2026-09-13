@@ -11,8 +11,8 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-use crate::services::permission_service::UserRole;
 use crate::GLOBAL_DYNAMIC_CONFIG;
+use crate::services::permission_service::UserRole;
 
 #[derive(Debug, Clone, Copy)]
 struct AiQuotaLimits {
@@ -777,8 +777,8 @@ pub async fn get_ai_usage(
 #[cfg(test)]
 mod tests {
     use super::{
-        cooldown_remaining, guest_quota_buckets, is_client_limit_message, quota_type, AiQuotaError,
-        AiQuotaLimits, AiQuotaReserveOptions,
+        AiQuotaError, AiQuotaLimits, AiQuotaReserveOptions, cooldown_remaining,
+        guest_quota_buckets, is_client_limit_message, quota_type,
     };
 
     #[test]
@@ -895,10 +895,12 @@ mod tests {
             "AI_ANONYMOUS_DAILY_TOKEN_LIMIT"
         );
         assert!(AiQuotaError::DailyCallLimit { anonymous: false }.is_client_limit());
-        assert!(!AiQuotaError::Ledger {
-            message: "x".into()
-        }
-        .is_client_limit());
+        assert!(
+            !AiQuotaError::Ledger {
+                message: "x".into()
+            }
+            .is_client_limit()
+        );
     }
 
     #[test]

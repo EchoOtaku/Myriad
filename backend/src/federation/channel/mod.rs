@@ -12,7 +12,7 @@ mod e2e;
 mod inbox;
 mod types;
 
-pub(crate) use buffer::{buffer_early_channel_activity, EARLY_MSG_MAX_PER_CHANNEL};
+pub(crate) use buffer::{EARLY_MSG_MAX_PER_CHANNEL, buffer_early_channel_activity};
 pub use crud::*;
 pub use e2e::*;
 pub use inbox::*;

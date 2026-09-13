@@ -3,12 +3,12 @@
 //! 出站走数据平台同一套：[`GitHubApiUrl`]（可改 API 基址）+ 全局 HTTP 客户端
 //! （代理）+ 可选 `github_token`。浏览器不再直打 api.github.com。
 
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::error::HttpError;
 use crate::services::fetcher::{GithubRepoSummary, PlatformFetcher};
 use crate::services::http_client::GitHubApiUrl;
-use crate::GLOBAL_DYNAMIC_CONFIG;
-use axum::extract::Query;
 use axum::Json;
+use axum::extract::Query;
 use myriad_error::AppError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

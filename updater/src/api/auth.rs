@@ -83,15 +83,14 @@ pub fn record_failure(key: &str) -> bool {
 pub fn is_blocked(key: &str) -> bool {
     let mut l = LIMITER.lock().unwrap();
     let now = Instant::now();
-    if let Some(entry) = l.counters.get_mut(key) {
-        if let Some(until) = entry.1 {
+    if let Some(entry) = l.counters.get_mut(key)
+        && let Some(until) = entry.1 {
             if now < until {
                 return true;
             }
             entry.1 = None;
             entry.0.clear();
         }
-    }
     false
 }
 

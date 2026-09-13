@@ -559,14 +559,13 @@ impl StdioTransport {
     /// exit so replacement servers cannot race unreaped old processes.
     pub async fn terminate_and_reap(&mut self) {
         self.terminate();
-        if let Some(child) = self.child.as_mut() {
-            if matches!(
+        if let Some(child) = self.child.as_mut()
+            && matches!(
                 tokio::time::timeout(Duration::from_secs(1), child.wait()).await,
                 Ok(Ok(_))
             ) {
                 self.child_slot.take();
             }
-        }
     }
 
     /// Closing stdin is the stdio shutdown signal. Discard any partial request;
@@ -592,14 +591,13 @@ impl Drop for StdioTransport {
         // Retain the admission slot until the direct child has actually exited.
         // Dropping an in-flight request must not create zombies or free capacity
         // while the old process is still alive.
-        if let (Some(mut child), Some(slot)) = (self.child.take(), self.child_slot.take()) {
-            if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+        if let (Some(mut child), Some(slot)) = (self.child.take(), self.child_slot.take())
+            && let Ok(runtime) = tokio::runtime::Handle::try_current() {
                 runtime.spawn(async move {
                     let _ = child.wait().await;
                     drop(slot);
                 });
             }
-        }
     }
 }
 
@@ -830,10 +828,12 @@ mod process_tests {
         .unwrap_err();
         assert!(error.contains("timed out"), "{error}");
         assert!(!transport.is_alive());
-        assert!(transport
-            .send_notification("notifications/initialized", None)
-            .await
-            .is_err());
+        assert!(
+            transport
+                .send_notification("notifications/initialized", None)
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -841,17 +841,21 @@ mod process_tests {
         let mut config = server_config("cancelled", false);
         config.args = vec!["-c".into(), "exec sleep 60".into()];
         let mut transport = StdioTransport::spawn(&config).await.unwrap();
-        assert!(tokio::time::timeout(
-            Duration::from_millis(50),
-            transport.send_request("initialize", None)
-        )
-        .await
-        .is_err());
-        assert!(transport
-            .send_request("initialize", None)
+        assert!(
+            tokio::time::timeout(
+                Duration::from_millis(50),
+                transport.send_request("initialize", None)
+            )
             .await
-            .unwrap_err()
-            .contains("interrupted"));
+            .is_err()
+        );
+        assert!(
+            transport
+                .send_request("initialize", None)
+                .await
+                .unwrap_err()
+                .contains("interrupted")
+        );
         tokio::time::timeout(Duration::from_secs(5), transport.shutdown())
             .await
             .unwrap();

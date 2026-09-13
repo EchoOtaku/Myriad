@@ -4,14 +4,14 @@ use crate::config::ModelTier;
 use crate::services::agent::tier_router::TierRouter;
 use crate::services::agent::types::{self, *};
 use myriad_agent_rules::extract_json_object_from_ai_response;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
-use super::executor_footer::*;
 use super::Executor;
+use super::executor_footer::*;
 use super::{
-    claim_task_for_resume, clear_cancellation, is_cancelled, persist_task_async, truncate_str,
-    TASK_STORE,
+    TASK_STORE, claim_task_for_resume, clear_cancellation, is_cancelled, persist_task_async,
+    truncate_str,
 };
 use super::{dag, events, frontend_ack, retry, task_store};
 
@@ -468,9 +468,9 @@ impl Executor {
 
                 // 动态步骤生成器
                 if !_is_dynamic {
-                    if let Some(ref gen) = step.generator {
+                    if let Some(ref r#gen) = step.generator {
                         let generated = self
-                            .process_step_generator(gen, &step, &output, &mut context)
+                            .process_step_generator(r#gen, &step, &output, &mut context)
                             .await;
                         if !generated.is_empty() {
                             tracing::info!(

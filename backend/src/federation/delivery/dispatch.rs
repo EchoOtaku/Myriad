@@ -4,8 +4,8 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use std::time::Duration;
 
 use crate::federation::keys::KeyPair;
-use crate::federation::signature::{sign_request, SignatureParams};
-use crate::federation::types::{is_internal_url, key_id, AP_CONTENT_TYPE};
+use crate::federation::signature::{SignatureParams, sign_request};
+use crate::federation::types::{AP_CONTENT_TYPE, is_internal_url, key_id};
 
 #[derive(Debug)]
 pub(crate) struct DeliveryAttemptError {

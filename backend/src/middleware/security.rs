@@ -59,18 +59,21 @@ pub async fn security_headers_middleware(req: Request, next: Next) -> Response {
     };
 
     if is_production || env::var("ENABLE_CSP_DEV").unwrap_or_default() == "true" {
-        if let Ok(header_value) = csp.parse() {
-            headers.insert(header::CONTENT_SECURITY_POLICY, header_value);
-            tracing::debug!(
-                "CSP enabled: {}",
-                if is_production {
-                    "production"
-                } else {
-                    "development"
-                }
-            );
-        } else {
-            tracing::error!("Failed to parse CSP header value");
+        match csp.parse() {
+            Ok(header_value) => {
+                headers.insert(header::CONTENT_SECURITY_POLICY, header_value);
+                tracing::debug!(
+                    "CSP enabled: {}",
+                    if is_production {
+                        "production"
+                    } else {
+                        "development"
+                    }
+                );
+            }
+            _ => {
+                tracing::error!("Failed to parse CSP header value");
+            }
         }
     } else {
         tracing::debug!("CSP disabled in development mode (set ENABLE_CSP_DEV=true to enable)");

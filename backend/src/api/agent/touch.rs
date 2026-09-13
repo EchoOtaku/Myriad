@@ -48,7 +48,9 @@ pub(crate) fn appraisal_contract(
     arousal: f64,
     activity: &str,
 ) -> Value {
-    let prompt = format!("{soul}\nYou appraise ongoing pointer contact with your displayed avatar. Return only a nonverbal reaction: notice, accept, hesitate, or withdraw. Consider your personality, mood and activity. displayedReaction is the latest rendered response reported by this client, not a model proposal; null means unobserved. Continue it coherently: do not casually reverse hesitation or withdrawal merely because contact repeats. Touch is not proof of affection, force, consent, or user intent. Do not always accept hair strokes. No speech, tools, memory or mood changes. The local reflex already happened; refine the current reaction, never replay it.");
+    let prompt = format!(
+        "{soul}\nYou appraise ongoing pointer contact with your displayed avatar. Return only a nonverbal reaction: notice, accept, hesitate, or withdraw. Consider your personality, mood and activity. displayedReaction is the latest rendered response reported by this client, not a model proposal; null means unobserved. Continue it coherently: do not casually reverse hesitation or withdrawal merely because contact repeats. Touch is not proof of affection, force, consent, or user intent. Do not always accept hair strokes. No speech, tools, memory or mood changes. The local reflex already happened; refine the current reaction, never replay it."
+    );
     json!({"system":prompt,
         "input":json!({"touch":body,"mood":mood,"arousal":arousal,"activity":activity}).to_string(),
         "schemaName":"touch_appraisal",
@@ -123,7 +125,9 @@ pub(crate) fn completion_summary(body: &TouchSummary) -> String {
     };
     format!(
         "Ended {gesture} on avatar {region} ({}×, {}s). Last reaction: {response}. Continue it; after hesitate/withdraw don't suddenly welcome. Pointer only, not intimacy/force/intent. Silence ok; one short line; no tasks or preference guesses.",
-        body.repeat_count, body.duration_ms / 1000)
+        body.repeat_count,
+        body.duration_ms / 1000
+    )
 }
 
 fn admit(recent: &mut HashMap<i32, Instant>, user: i32, now: Instant) -> bool {
@@ -236,14 +240,18 @@ mod tests {
     }
     #[test]
     fn contracts_reject_pointer_data_and_unknown_actions() {
-        assert!(serde_json::from_value::<TouchSummary>(
-            json!({"region":"hair","gesture":"stroke","durationMs":900,"repeatCount":1})
-        )
-        .is_ok());
-        assert!(serde_json::from_value::<TouchSummary>(
-            json!({"region":"hair","gesture":"stroke","durationMs":900,"repeatCount":1,"x":0.5})
-        )
-        .is_err());
+        assert!(
+            serde_json::from_value::<TouchSummary>(
+                json!({"region":"hair","gesture":"stroke","durationMs":900,"repeatCount":1})
+            )
+            .is_ok()
+        );
+        assert!(
+            serde_json::from_value::<TouchSummary>(
+                json!({"region":"hair","gesture":"stroke","durationMs":900,"repeatCount":1,"x":0.5})
+            )
+            .is_err()
+        );
         assert!(serde_json::from_str::<Appraisal>(r#"{"reaction":"execute"}"#).is_err());
         assert!(
             serde_json::from_str::<Appraisal>(r#"{"reaction":"accept","speech":"hello"}"#).is_err()

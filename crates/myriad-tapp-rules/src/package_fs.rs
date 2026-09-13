@@ -7,7 +7,7 @@
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use myriad_tapp_contract::paths::{validate_resource_path, validate_tapp_id};
 

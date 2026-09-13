@@ -273,14 +273,18 @@ mod proxy_image_url_tests {
             "name": "keep"
         });
         normalize_json_media_urls(&mut v);
-        assert!(v["avatar"]
-            .as_str()
-            .unwrap()
-            .starts_with("/api/proxy/image"));
-        assert!(v["library_items"][0]["cover"]
-            .as_str()
-            .unwrap()
-            .starts_with("/api/proxy/image"));
+        assert!(
+            v["avatar"]
+                .as_str()
+                .unwrap()
+                .starts_with("/api/proxy/image")
+        );
+        assert!(
+            v["library_items"][0]["cover"]
+                .as_str()
+                .unwrap()
+                .starts_with("/api/proxy/image")
+        );
         assert_eq!(v["name"], "keep");
     }
 }

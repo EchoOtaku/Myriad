@@ -16,7 +16,6 @@ import {
   LuChevronLeft as ChevronLeft,
   LuDownload as Download,
   LuEdit3 as Edit3,
-  LuKeyboard as Keyboard,
   LuMinusSquare as MinusSquare,
   LuPlus as Plus,
   LuRefreshCw as RefreshCw,
@@ -30,7 +29,6 @@ import {
 import { useEffect, useRef, useState } from 'react'
 
 import { useI18n } from '../../../contexts/I18nContext'
-import { BREW_SHORTCUTS } from '../../../hooks/useBrewKeyboard'
 import { SettingGuideBody } from '../../settings/guides/SettingGuideBody'
 import { SettingTitleGuideEntry } from '../../settings/SettingTitleGuideEntry'
 import { Spinner } from '../../Spinner'
@@ -47,7 +45,6 @@ import {
   BrewMark,
   BrewTag,
 } from '../ui/Bar'
-import { useManagementDisplay } from '../ui/BrewManagement'
 import { BrewChip } from '../ui/Chip'
 import { cx } from '../ui/cx'
 import { buildBrewSortOptions } from './modes/sortOptions'
@@ -87,23 +84,21 @@ export function BrewBarDefault({
   sortMode,
   onSortModeChange,
   onModeChange,
-  onOpenStarred,
   onWriteNote,
   isAdmin,
-  isAuthenticated,
   hasAddSource,
   canEdit = true,
+  hideSortAdd = false,
   tagFrom = 0,
 }: {
   sortMode: SortMode
   onSortModeChange?: (mode: SortMode) => void
   onModeChange: (mode: ControlMode) => void
-  onOpenStarred?: () => void
   onWriteNote?: () => void
   isAdmin?: boolean
-  isAuthenticated?: boolean
   hasAddSource?: boolean
   canEdit?: boolean
+  hideSortAdd?: boolean
   tagFrom?: number
 }) {
   const { t } = useI18n()
@@ -112,16 +107,12 @@ export function BrewBarDefault({
   const menuRef = useRef<HTMLDivElement>(null)
   const options = buildBrewSortOptions()
   const current = options.find((option) => option.value === sortMode) ?? options[0]
-  const displayControl = useManagementDisplay()
   const guideLabels = {
     what: t.config.guideSectionWhat,
     chain: t.config.guideSectionChain,
     frontend: t.config.guideSectionFrontend,
     notes: t.config.guideSectionNotes,
   }
-  const shortcutsNotes = BREW_SHORTCUTS.map(
-    (item) => `${item.key}  ${brew[item.descriptionKey]}`,
-  ).join('\n')
   let tagAt = tagFrom
 
   useEffect(() => {
@@ -139,11 +130,7 @@ export function BrewBarDefault({
 
   return (
     <>
-      {displayControl ? (
-        <BrewChip key="d:spread" id="d:spread" index={tagAt++}>
-          {displayControl}
-        </BrewChip>
-      ) : null}
+      {hideSortAdd ? null : (
       <BrewChip key="d:sort" id="d:sort" index={tagAt++}>
         <BrewBarWrap wrapRef={menuRef}>
           <BrewTag
@@ -189,16 +176,7 @@ export function BrewBarDefault({
           ) : null}
         </BrewBarWrap>
       </BrewChip>
-      {isAuthenticated && onOpenStarred ? (
-        <BrewChip key="d:starred" id="d:starred" index={tagAt++}>
-          <BrewTag title={brew.starred} onClick={onOpenStarred}>
-            <BrewMark>
-              <Star />
-            </BrewMark>
-            <BrewLabel>{brew.starred}</BrewLabel>
-          </BrewTag>
-        </BrewChip>
-      ) : null}
+      )}
       {isAdmin ? (
         <BrewChip key="d:edit" id="d:edit" index={tagAt++} conceal={!canEdit}>
           <BrewTag
@@ -213,26 +191,6 @@ export function BrewBarDefault({
           </BrewTag>
         </BrewChip>
       ) : null}
-      <BrewChip key="d:keys" id="d:keys" index={tagAt++}>
-        <BrewGuideTag
-          title={brew.keyboardShortcuts}
-          guide={
-            <SettingGuideBody
-              entry={{
-                what: brew.shortcutsTip,
-                frontend: brew.shortcutsGuideWhere,
-                notes: shortcutsNotes,
-              }}
-              labels={guideLabels}
-            />
-          }
-        >
-          <BrewMark>
-            <Keyboard />
-          </BrewMark>
-          <BrewLabel>{brew.shortcuts}</BrewLabel>
-        </BrewGuideTag>
-      </BrewChip>
       {onWriteNote ? (
         <BrewChip key="d:note" id="d:note" index={tagAt++}>
           <BrewTag title={brew.noteWrite} onClick={onWriteNote}>
@@ -243,7 +201,7 @@ export function BrewBarDefault({
           </BrewTag>
         </BrewChip>
       ) : null}
-      {isAdmin && hasAddSource ? (
+      {!hideSortAdd && isAdmin && hasAddSource ? (
         <BrewChip key="d:add" id="d:add" index={tagAt++}>
           <BrewGuideTag
             title={brew.addSubscription}
@@ -673,7 +631,6 @@ export function BrewBarTags({
   onBatchDelete,
   onBatchRefresh,
   onMarkAllSourcesRead,
-  onOpenStarred,
   onWriteNote,
   pack,
   sourcesCount,
@@ -701,7 +658,6 @@ export function BrewBarTags({
   onBatchDelete?: () => void
   onBatchRefresh?: () => void
   onMarkAllSourcesRead?: () => void
-  onOpenStarred?: () => void
   onWriteNote?: () => void
   pack: {
     exportPack: () => void
@@ -795,6 +751,22 @@ export function BrewBarTags({
     )
   }
   if (mode === 'add') {
+    if (embedded) {
+      return (
+        <BrewBarDefault
+          key="default"
+          sortMode={sortMode}
+          onSortModeChange={onSortModeChange}
+          onModeChange={onModeChange}
+          onWriteNote={onWriteNote}
+          isAdmin={isAdmin}
+          hasAddSource={hasAddSource}
+          canEdit={canEdit}
+          hideSortAdd
+          tagFrom={tagFrom}
+        />
+      )
+    }
     return (
       <BrewBarPanelClose
         key="add"
@@ -820,14 +792,11 @@ export function BrewBarTags({
       sortMode={sortMode}
       onSortModeChange={onSortModeChange}
       onModeChange={onModeChange}
-      onOpenStarred={
-        isAuthenticated && onOpenStarred ? onOpenStarred : undefined
-      }
       onWriteNote={onWriteNote}
       isAdmin={isAdmin}
-      isAuthenticated={isAuthenticated}
       hasAddSource={hasAddSource}
       canEdit={canEdit}
+      hideSortAdd={embedded}
       tagFrom={tagFrom}
     />
   )

@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use super::identity::get_role_identity;
-use super::routing::{get_router, AgentRole, TaskAssignment};
+use super::routing::{AgentRole, TaskAssignment, get_router};
 use super::types::Recipe;
 
 /// Multi-Agent Orchestrator

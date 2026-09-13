@@ -1,8 +1,8 @@
 //! Bounded Streamable HTTP to an operator-configured MCP gateway.
 //! A remote transport is not proof of an OS sandbox. The deployment owns that
 //! boundary and must enforce server termination; HTTP disconnect alone cannot.
-use reqwest::{header::HeaderValue, Client, RequestBuilder, Response, Url};
-use serde_json::{json, Value};
+use reqwest::{Client, RequestBuilder, Response, Url, header::HeaderValue};
+use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Semaphore;
 
@@ -194,11 +194,14 @@ impl HttpTransport {
             "text/event-stream" => {
                 let mut decoder = SseDecoder::default();
                 let mut total = 0usize;
-                while let Some(chunk) = response
-                    .chunk()
-                    .await
-                    .map_err(|_| "MCP gateway stream interrupted")?
-                {
+                loop {
+                    let next = response
+                        .chunk()
+                        .await
+                        .map_err(|_| "MCP gateway stream interrupted")?;
+                    let Some(chunk) = next else {
+                        break;
+                    };
                     total = total.saturating_add(chunk.len());
                     if total > MAX_STREAM {
                         return Err("MCP gateway stream exceeds byte budget".into());
@@ -325,11 +328,14 @@ async fn read_bounded(response: &mut Response, limit: usize) -> Result<Vec<u8>, 
         return Err("MCP gateway response exceeds byte budget".into());
     }
     let mut body = Vec::new();
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|_| "MCP gateway response interrupted")?
-    {
+    loop {
+        let next = response
+            .chunk()
+            .await
+            .map_err(|_| "MCP gateway response interrupted")?;
+        let Some(chunk) = next else {
+            break;
+        };
         if body.len().saturating_add(chunk.len()) > limit {
             return Err("MCP gateway response exceeds byte budget".into());
         }
@@ -428,11 +434,11 @@ impl SseDecoder {
 mod tests {
     use super::*;
     use axum::{
+        Router,
         body::Body,
         http::{Request, StatusCode},
         response::IntoResponse,
         routing::any,
-        Router,
     };
     use tokio::sync::Mutex;
     const TOKEN: &str = "mcp-test-token-only-000000000000000000000";
@@ -561,9 +567,10 @@ mod tests {
                     .count(),
                 1
             );
-            assert!(seen
-                .iter()
-                .any(|(method, _)| method == "notifications/cancelled"));
+            assert!(
+                seen.iter()
+                    .any(|(method, _)| method == "notifications/cancelled")
+            );
             assert_eq!(seen.last().unwrap().0, "DELETE");
         }
     }

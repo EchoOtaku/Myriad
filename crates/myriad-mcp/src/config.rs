@@ -71,7 +71,7 @@ pub async fn load_config(path: &Path) -> Result<McpServersConfig, String> {
     let file = match tokio::fs::File::open(path).await {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(McpServersConfig::default())
+            return Ok(McpServersConfig::default());
         }
         Err(_) => return Err("Cannot read MCP configuration".into()),
     };

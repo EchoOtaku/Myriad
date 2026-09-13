@@ -2,7 +2,7 @@
 //!
 //! Kept as a real submodule so feeds / reading / comments do not need `include!`.
 
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use myriad_error::AppError;
 use reqwest::Url;
 use sea_orm::DatabaseConnection;

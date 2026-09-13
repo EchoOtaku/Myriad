@@ -17,6 +17,7 @@ const pathToPageId: Record<string, string> = {
   '/brew': 'brew',
   '/tapp': 'tapp',
   '/config': 'config',
+  '/agent/settings': 'config',
   '/login': 'login',
   '/setup': 'setup',
 }

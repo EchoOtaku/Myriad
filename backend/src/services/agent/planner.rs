@@ -17,8 +17,8 @@ use crate::services::agent::types::*;
 use crate::services::ai::create_ai_analyzer_for_tier;
 use crate::services::analyzer::{AiAnalyzer, StreamDelta};
 use myriad_agent_rules::{
-    plan_image_size_rule, plan_step_cap_rule, MAX_PLAN_STEPS, PLAN_DATA_FLOW_RULE,
-    PLAN_DEPENDENCY_RULE,
+    MAX_PLAN_STEPS, PLAN_DATA_FLOW_RULE, PLAN_DEPENDENCY_RULE, plan_image_size_rule,
+    plan_step_cap_rule,
 };
 
 /// Planner — 一次调用完成意图理解 + 执行规划（请求 Pro 档，配置可回落到 Standard）

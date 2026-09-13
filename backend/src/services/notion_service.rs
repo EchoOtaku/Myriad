@@ -149,7 +149,7 @@ impl NotionService {
                         return Err(NotionError::InvalidUrl(format!(
                             "Unknown resource type: {}",
                             parts[0]
-                        )))
+                        )));
                     }
                 };
 
@@ -1087,7 +1087,10 @@ impl NotionService {
                     .as_bool()
                     .unwrap_or(false);
                 if is_toggleable {
-                    format!("<details class=\"notion-heading-toggle {}\"><summary><h1>{}</h1></summary>", class, text)
+                    format!(
+                        "<details class=\"notion-heading-toggle {}\"><summary><h1>{}</h1></summary>",
+                        class, text
+                    )
                 } else {
                     format!("<h1 class=\"{}\">{}</h1>", class, text)
                 }
@@ -1100,7 +1103,10 @@ impl NotionService {
                     .as_bool()
                     .unwrap_or(false);
                 if is_toggleable {
-                    format!("<details class=\"notion-heading-toggle {}\"><summary><h2>{}</h2></summary>", class, text)
+                    format!(
+                        "<details class=\"notion-heading-toggle {}\"><summary><h2>{}</h2></summary>",
+                        class, text
+                    )
                 } else {
                     format!("<h2 class=\"{}\">{}</h2>", class, text)
                 }
@@ -1113,7 +1119,10 @@ impl NotionService {
                     .as_bool()
                     .unwrap_or(false);
                 if is_toggleable {
-                    format!("<details class=\"notion-heading-toggle {}\"><summary><h3>{}</h3></summary>", class, text)
+                    format!(
+                        "<details class=\"notion-heading-toggle {}\"><summary><h3>{}</h3></summary>",
+                        class, text
+                    )
                 } else {
                     format!("<h3 class=\"{}\">{}</h3>", class, text)
                 }
@@ -1146,7 +1155,10 @@ impl NotionService {
                 };
                 format!(
                     "<div class=\"notion-todo {}\"><span class=\"{}\"></span><span class=\"notion-todo-text{}\">{}</span></div>",
-                    class, checkbox_class, if checked { " checked" } else { "" }, text
+                    class,
+                    checkbox_class,
+                    if checked { " checked" } else { "" },
+                    text
                 )
             }
             "toggle" => {
@@ -1166,10 +1178,19 @@ impl NotionService {
                 let escaped_code = Self::escape_html(&code_text);
                 format!(
                     "<figure class=\"notion-code\"><pre><code class=\"language-{}\">{}</code></pre>{}{}{}</figure>",
-                    language, escaped_code,
-                    if caption.is_empty() { "" } else { "<figcaption>" },
+                    language,
+                    escaped_code,
+                    if caption.is_empty() {
+                        ""
+                    } else {
+                        "<figcaption>"
+                    },
                     caption,
-                    if caption.is_empty() { "" } else { "</figcaption>" }
+                    if caption.is_empty() {
+                        ""
+                    } else {
+                        "</figcaption>"
+                    }
                 )
             }
             "quote" => {
@@ -1207,10 +1228,19 @@ impl NotionService {
                     let caption = self.rich_text_to_html(&block["image"]["caption"]);
                     format!(
                         "<figure class=\"notion-image\"><img src=\"{}\" alt=\"{}\" loading=\"lazy\" />{}{}{}</figure>",
-                        url, Self::escape_html(&caption),
-                        if caption.is_empty() { "" } else { "<figcaption>" },
+                        url,
+                        Self::escape_html(&caption),
+                        if caption.is_empty() {
+                            ""
+                        } else {
+                            "<figcaption>"
+                        },
                         caption,
-                        if caption.is_empty() { "" } else { "</figcaption>" }
+                        if caption.is_empty() {
+                            ""
+                        } else {
+                            "</figcaption>"
+                        }
                     )
                 } else {
                     String::new()
@@ -1223,9 +1253,17 @@ impl NotionService {
                     format!(
                         "<figure class=\"notion-audio\"><audio src=\"{}\" controls preload=\"metadata\"></audio>{}{}{}</figure>",
                         url,
-                        if caption.is_empty() { "" } else { "<figcaption>" },
+                        if caption.is_empty() {
+                            ""
+                        } else {
+                            "<figcaption>"
+                        },
                         caption,
-                        if caption.is_empty() { "" } else { "</figcaption>" }
+                        if caption.is_empty() {
+                            ""
+                        } else {
+                            "</figcaption>"
+                        }
                     )
                 } else {
                     String::new()
@@ -1250,9 +1288,17 @@ impl NotionService {
                     format!(
                         "<figure class=\"notion-pdf\"><iframe src=\"{}\" class=\"notion-pdf-embed\"></iframe>{}{}{}</figure>",
                         url,
-                        if caption.is_empty() { "" } else { "<figcaption>" },
+                        if caption.is_empty() {
+                            ""
+                        } else {
+                            "<figcaption>"
+                        },
                         caption,
-                        if caption.is_empty() { "" } else { "</figcaption>" }
+                        if caption.is_empty() {
+                            ""
+                        } else {
+                            "</figcaption>"
+                        }
                     )
                 } else {
                     String::new()
@@ -1291,9 +1337,17 @@ impl NotionService {
                     format!(
                         "<figure class=\"notion-embed\"><div class=\"notion-embed-wrapper\"><iframe src=\"{}\" allowfullscreen></iframe></div>{}{}{}</figure>",
                         url,
-                        if caption.is_empty() { "" } else { "<figcaption>" },
+                        if caption.is_empty() {
+                            ""
+                        } else {
+                            "<figcaption>"
+                        },
                         caption,
-                        if caption.is_empty() { "" } else { "</figcaption>" }
+                        if caption.is_empty() {
+                            ""
+                        } else {
+                            "</figcaption>"
+                        }
                     )
                 } else {
                     String::new()
@@ -1397,35 +1451,67 @@ impl NotionService {
                 format!(
                     "<figure class=\"notion-video\"><div class=\"notion-video-embed\"><iframe src=\"https://www.youtube.com/embed/{}\" allowfullscreen></iframe></div>{}{}{}</figure>",
                     video_id,
-                    if caption.is_empty() { "" } else { "<figcaption>" },
+                    if caption.is_empty() {
+                        ""
+                    } else {
+                        "<figcaption>"
+                    },
                     caption,
-                    if caption.is_empty() { "" } else { "</figcaption>" }
+                    if caption.is_empty() {
+                        ""
+                    } else {
+                        "</figcaption>"
+                    }
                 )
             } else if url.contains("vimeo.com") {
                 let video_id = Self::extract_vimeo_id(&url);
                 format!(
                     "<figure class=\"notion-video\"><div class=\"notion-video-embed\"><iframe src=\"https://player.vimeo.com/video/{}\" allowfullscreen></iframe></div>{}{}{}</figure>",
                     video_id,
-                    if caption.is_empty() { "" } else { "<figcaption>" },
+                    if caption.is_empty() {
+                        ""
+                    } else {
+                        "<figcaption>"
+                    },
                     caption,
-                    if caption.is_empty() { "" } else { "</figcaption>" }
+                    if caption.is_empty() {
+                        ""
+                    } else {
+                        "</figcaption>"
+                    }
                 )
             } else if url.contains("bilibili.com") {
                 let bvid = Self::extract_bilibili_id(&url);
                 format!(
                     "<figure class=\"notion-video\"><div class=\"notion-video-embed\"><iframe src=\"https://player.bilibili.com/player.html?bvid={}&high_quality=1\" allowfullscreen></iframe></div>{}{}{}</figure>",
                     bvid,
-                    if caption.is_empty() { "" } else { "<figcaption>" },
+                    if caption.is_empty() {
+                        ""
+                    } else {
+                        "<figcaption>"
+                    },
                     caption,
-                    if caption.is_empty() { "" } else { "</figcaption>" }
+                    if caption.is_empty() {
+                        ""
+                    } else {
+                        "</figcaption>"
+                    }
                 )
             } else {
                 format!(
                     "<figure class=\"notion-video\"><video src=\"{}\" controls preload=\"metadata\"></video>{}{}{}</figure>",
                     url,
-                    if caption.is_empty() { "" } else { "<figcaption>" },
+                    if caption.is_empty() {
+                        ""
+                    } else {
+                        "<figcaption>"
+                    },
                     caption,
-                    if caption.is_empty() { "" } else { "</figcaption>" }
+                    if caption.is_empty() {
+                        ""
+                    } else {
+                        "</figcaption>"
+                    }
                 )
             }
         } else {
@@ -1865,10 +1951,12 @@ mod tests {
         assert_eq!(resource_type, NotionResourceType::Database);
         assert_eq!(id, "2d19015f-fdc8-80de-a8d3-c523ab64bf1d");
 
-        assert!(NotionService::parse_notion_url(
-            "https://app.notion.com.example.com/p/2d19015ffdc880dea8d3c523ab64bf1d"
-        )
-        .is_err());
+        assert!(
+            NotionService::parse_notion_url(
+                "https://app.notion.com.example.com/p/2d19015ffdc880dea8d3c523ab64bf1d"
+            )
+            .is_err()
+        );
     }
 
     #[test]

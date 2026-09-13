@@ -94,8 +94,7 @@ pub fn install_status_label(status: &tapps::TappStatus) -> String {
 }
 
 /// 不受支持的包结构给用户看的原因。
-pub const UNSUPPORTED_PACKAGE_REASON: &str =
-    "This package predates the layer contract. Reinstall a package that declares core / page / widgets layers.";
+pub const UNSUPPORTED_PACKAGE_REASON: &str = "This package predates the layer contract. Reinstall a package that declares core / page / widgets layers.";
 
 /// 已安装记录是否是当前契约之外的旧结构。
 ///
@@ -367,10 +366,12 @@ mod tests {
         assert!(
             unsupported_install_reason(&json!({ "page": { "template": "page.html" } })).is_none()
         );
-        assert!(unsupported_install_reason(&json!({
-            "widgets": [{ "id": "card", "entry": "widget.js" }]
-        }))
-        .is_none());
+        assert!(
+            unsupported_install_reason(&json!({
+                "widgets": [{ "id": "card", "entry": "widget.js" }]
+            }))
+            .is_none()
+        );
         assert!(unsupported_install_reason(&json!({ "widgets": [] })).is_some());
         assert!(unsupported_install_reason(&json!({})).is_some());
     }
@@ -499,13 +500,17 @@ mod tests {
             true,
             &config,
         );
-        assert!(detail
-            .granted_permissions
-            .contains(&"storage:read".to_string()));
-        assert!(!detail
-            .granted_permissions
-            .iter()
-            .any(|p| p == "ai:generate"));
+        assert!(
+            detail
+                .granted_permissions
+                .contains(&"storage:read".to_string())
+        );
+        assert!(
+            !detail
+                .granted_permissions
+                .iter()
+                .any(|p| p == "ai:generate")
+        );
         assert!(!detail.is_temporary);
         assert!(detail.is_admin_tapp);
     }

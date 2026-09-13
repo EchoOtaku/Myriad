@@ -11,7 +11,7 @@ use super::validate::{
     validate_container_create, validate_container_create_name, validate_container_rename,
     validate_image_pull, validate_image_tag,
 };
-use super::{strip_api_version, validate_identifier, GuardState};
+use super::{GuardState, strip_api_version, validate_identifier};
 
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum Decision {
@@ -45,8 +45,8 @@ pub(crate) fn classify_request(
     // Docker accepts slashes inside the image-name path parameter, and Bollard sends them
     // unescaped (`/images/docker.io/org/image:tag/tag`). Match the bounded prefix/suffix and
     // still enforce the source and target repository allowlists below.
-    if *method == Method::POST {
-        if let Some(source) = path
+    if *method == Method::POST
+        && let Some(source) = path
             .strip_prefix("/images/")
             .and_then(|value| value.strip_suffix("/tag"))
             .filter(|value| !value.is_empty())
@@ -54,7 +54,6 @@ pub(crate) fn classify_request(
             validate_image_tag(state, source, uri)?;
             return Ok(Decision::Allow);
         }
-    }
 
     match segments.as_slice() {
         ["containers", "json"] if *method == Method::GET => Ok(Decision::Allow),

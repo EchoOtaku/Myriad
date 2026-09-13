@@ -1,6 +1,6 @@
 //! Deterministic cross-boundary acceptance. Real producers/consumers, no model.
 use chrono::{Duration, Utc};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::{chat_prompt, consciousness};
 
@@ -76,10 +76,12 @@ async fn parallel_director_reaches_wire_without_metadata_in_prose_or_global_pose
             } // Immediate local floor.
             assert!(performance.plan.baseline.is_none());
             assert!(performance.plan.cues.is_empty());
-            assert!(performance
-                .phrases
-                .iter()
-                .all(|phrase| text.contains(&phrase.text)));
+            assert!(
+                performance
+                    .phrases
+                    .iter()
+                    .all(|phrase| text.contains(&phrase.text))
+            );
             events.push(serde_json::to_value(event).unwrap());
             break;
         }
@@ -150,9 +152,11 @@ fn frontend_observations_reach_chat_and_event_context_without_stale_sources() {
             );
         }
         assert!(!prompt.contains("PRIVATE_MEDIA_URL"));
-        assert!(consciousness::last_live_presence(user_id + 1)
-            .perception
-            .is_empty());
+        assert!(
+            consciousness::last_live_presence(user_id + 1)
+                .perception
+                .is_empty()
+        );
         println!("scene {}: {id} passed", index + 1);
     }
 }

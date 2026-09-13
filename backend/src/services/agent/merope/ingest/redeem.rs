@@ -3,28 +3,28 @@
 
 use super::delivery_claim::DeliveryCoordinator;
 use chrono::{DateTime, FixedOffset, Utc};
-use futures::{stream, StreamExt};
+use futures::{StreamExt, stream};
 use once_cell::sync::Lazy;
 use sea_orm::DatabaseConnection;
 use std::collections::HashMap;
 
-use super::super::gates::{decide_ingest, is_valuable_event, IngestDecision};
+use super::super::gates::{IngestDecision, decide_ingest, is_valuable_event};
 use super::super::store::{
     affect_from_state, get_or_create_state, get_persona, insert_proactive, latest_open_session,
     recent_proactive, recently_spoke_event, touch_proactive,
 };
 use super::super::{
-    addressee_speaking_section, direct_motion, format_mood_section, local_directive,
-    public_persona_name, refine_motion, resolve_addressee_label, resolve_round_motion_style,
-    MoodTransition, MotionContext, MotionPhase, PerformanceDirective,
+    MoodTransition, MotionContext, MotionPhase, PerformanceDirective, addressee_speaking_section,
+    direct_motion, format_mood_section, local_directive, public_persona_name, refine_motion,
+    resolve_addressee_label, resolve_round_motion_style,
 };
 use super::{
-    compact_summary, current_sight, is_enabled, is_trivial_line, log_skip, SAME_EVENT_MINUTES,
+    SAME_EVENT_MINUTES, compact_summary, current_sight, is_enabled, is_trivial_line, log_skip,
 };
-use crate::services::agent::consciousness::{drain_speak_intents, last_live_presence, SpeakIntent};
+use crate::services::agent::consciousness::{SpeakIntent, drain_speak_intents, last_live_presence};
 use crate::services::agent::merope::gates::IngestSight;
 use crate::services::agent::notifications::{
-    get_notification_manager, LiveSpeech, Notification, NotificationPriority, NotificationType,
+    LiveSpeech, Notification, NotificationPriority, NotificationType, get_notification_manager,
 };
 use crate::services::ai::create_strict_lite_ai_analyzer_with_timeout;
 
@@ -551,16 +551,18 @@ mod tests {
                 assert!(!away.live && away.notify, "{topic}: recompute routing");
             }
             if topic != "agent.task_completed" {
-                assert!(decide(
-                    input,
-                    &IngestSight {
-                        executing: true,
-                        ..here.clone()
-                    },
-                    true,
-                    now
-                )
-                .is_none());
+                assert!(
+                    decide(
+                        input,
+                        &IngestSight {
+                            executing: true,
+                            ..here.clone()
+                        },
+                        true,
+                        now
+                    )
+                    .is_none()
+                );
             }
         }
     }

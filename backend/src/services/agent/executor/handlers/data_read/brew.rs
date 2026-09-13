@@ -2,7 +2,7 @@ use super::super::HandlerContext;
 use crate::models::entities::{brew_items, brew_sources, brew_user_states};
 use once_cell::sync::Lazy;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 static RE_HTML_TAG: Lazy<regex::Regex> = Lazy::new(|| regex::Regex::new(r"<[^>]+>").unwrap());
@@ -326,8 +326,8 @@ pub(super) async fn execute_brew_sources(
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
     use crate::services::agent::executor::utils::{
-        best_loose_match, brew_category_token_matches, normalize_brew_category_filter,
-        normalize_brew_source_type_filter, MatchKind,
+        MatchKind, best_loose_match, brew_category_token_matches, normalize_brew_category_filter,
+        normalize_brew_source_type_filter,
     };
 
     let query = params
@@ -516,7 +516,7 @@ pub(super) async fn execute_brew_items(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
-    use crate::services::agent::executor::utils::{best_loose_match, loose_text_match, MatchKind};
+    use crate::services::agent::executor::utils::{MatchKind, best_loose_match, loose_text_match};
 
     let source_id = params.get("sourceId").and_then(|v| v.as_i64());
     let source_name = params.get("sourceName").and_then(|v| v.as_str());

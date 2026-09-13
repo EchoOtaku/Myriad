@@ -1,6 +1,6 @@
 //! Pure mapping for web-search hits. No I/O.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 pub const READING_LIST_SUMMARY_CHARS: usize = 400;
@@ -412,9 +412,11 @@ mod tests {
 
     #[test]
     fn purpose_uses_search_type_and_custom_prompt() {
-        assert!(purpose_for_search_type("rss_source", None)
-            .unwrap()
-            .contains("RSS"));
+        assert!(
+            purpose_for_search_type("rss_source", None)
+                .unwrap()
+                .contains("RSS")
+        );
         assert_eq!(
             purpose_for_search_type("general", Some("  Find invoices  ")).as_deref(),
             Some("Find invoices")
@@ -464,10 +466,12 @@ mod tests {
         let items = hits_to_reading_list(&hits, &fetched, 3);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0]["link"], "https://example.com/a");
-        assert!(items[0]["summary"]
-            .as_str()
-            .unwrap()
-            .contains("fetched body"));
+        assert!(
+            items[0]["summary"]
+                .as_str()
+                .unwrap()
+                .contains("fetched body")
+        );
         assert_eq!(items[0]["fromWebSearch"], true);
     }
 
@@ -557,16 +561,18 @@ mod tests {
         assert!(
             normalize_reading_list_item(json!({ "title": "x", "link": "" }), 0, "", "r").is_none()
         );
-        assert!(normalize_reading_list_item(
-            json!({
-                "title": "x",
-                "link": "https://webcache.googleusercontent.com/search?q=cache:abc"
-            }),
-            0,
-            "",
-            "r"
-        )
-        .is_none());
+        assert!(
+            normalize_reading_list_item(
+                json!({
+                    "title": "x",
+                    "link": "https://webcache.googleusercontent.com/search?q=cache:abc"
+                }),
+                0,
+                "",
+                "r"
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -596,10 +602,12 @@ mod tests {
             Some("https://example.com/a/".into()),
             "Fetched body that is long enough to keep.",
         );
-        assert!(by_url
-            .get("https://example.com/a")
-            .unwrap()
-            .contains("Fetched body"));
+        assert!(
+            by_url
+                .get("https://example.com/a")
+                .unwrap()
+                .contains("Fetched body")
+        );
         assert_eq!(
             by_url.get("https://example.com/a"),
             by_url.get("https://example.com/a/")

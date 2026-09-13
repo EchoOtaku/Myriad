@@ -7,16 +7,16 @@
 use myriad_agent_rules::extract_json_object_from_ai_response;
 use std::time::Duration;
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::{
     config::ModelTier,
     services::{
-        ai_config::{get_ai_config_for_tier, AiConfig},
+        ai_config::{AiConfig, get_ai_config_for_tier},
         ai_cost_ledger::record_ai_call_from_attribution,
-        analyzer::{openai_chat_completions_url, AiProvider},
+        analyzer::{AiProvider, openai_chat_completions_url},
         gemini_media,
         http_client::get_long_running_client,
         image_generation::ImageReference,
@@ -662,19 +662,21 @@ mod tests {
     #[test]
     fn unusably_low_confidence_ai_result_is_rejected() {
         let context = playback_context(&playback()).expect("context");
-        assert!(profile_from_estimate(
-            context,
-            AiChestEstimate {
-                center_x: 0.5,
-                center_y: 0.7,
-                radius_x: 0.2,
-                radius_y: 0.1,
-                visible_scale: 0.5,
-                support_scale: 0.5,
-                garment_motion_scale: 0.6,
-                confidence: 0.2,
-            },
-        )
-        .is_none());
+        assert!(
+            profile_from_estimate(
+                context,
+                AiChestEstimate {
+                    center_x: 0.5,
+                    center_y: 0.7,
+                    radius_x: 0.2,
+                    radius_y: 0.1,
+                    visible_scale: 0.5,
+                    support_scale: 0.5,
+                    garment_motion_scale: 0.6,
+                    confidence: 0.2,
+                },
+            )
+            .is_none()
+        );
     }
 }

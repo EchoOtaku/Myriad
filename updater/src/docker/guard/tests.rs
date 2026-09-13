@@ -1,26 +1,26 @@
 use std::fs;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode, Uri};
 use bytes::Bytes;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::config::SecretString;
 
-use super::classify::{classify_request, Decision};
+use super::classify::{Decision, classify_request};
 use super::config::{
     canonicalize_trusted_digest_ref, digest_reference_matches, ensure_host_policy_file,
     validate_guard_image_ref, validate_host_policy_path,
 };
 use super::forward::GenericMutationLease;
 use super::self_update::{
-    ensure_no_business_update, finalize_or_fail_orphaned_pending_handoff, handle_self_update,
-    handoff_attempt_from_inspect, helper_exit_code_from_inspect, persist_recovery_attempt,
-    prevent_release_downgrade, recovery_attempt_from_status, recovery_is_durably_exhausted,
-    validate_self_update_tag, HandoffAttempt, SelfUpdateRequestBody, SELF_UPDATE_TOKEN_HEADER,
+    HandoffAttempt, SELF_UPDATE_TOKEN_HEADER, SelfUpdateRequestBody, ensure_no_business_update,
+    finalize_or_fail_orphaned_pending_handoff, handle_self_update, handoff_attempt_from_inspect,
+    helper_exit_code_from_inspect, persist_recovery_attempt, prevent_release_downgrade,
+    recovery_attempt_from_status, recovery_is_durably_exhausted, validate_self_update_tag,
 };
 use super::validate::{
     allowlisted_network_name, authorize_guard_network_attachment, managed_project_service,
@@ -28,7 +28,7 @@ use super::validate::{
     validate_image_pull,
 };
 use super::{
-    strip_api_version, GuardConfig, GuardState, SELF_UPDATE_GATE, TRUSTED_GUARD_REPOSITORY,
+    GuardConfig, GuardState, SELF_UPDATE_GATE, TRUSTED_GUARD_REPOSITORY, strip_api_version,
 };
 
 fn state() -> GuardState {
@@ -143,9 +143,10 @@ fn mutation_gate_is_exclusive_and_clone_safe() {
     let response_lease = lease.clone();
     drop(lease);
     assert_eq!(gate.load(Ordering::SeqCst), 1);
-    assert!(gate
-        .compare_exchange(0, SELF_UPDATE_GATE, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err());
+    assert!(
+        gate.compare_exchange(0, SELF_UPDATE_GATE, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+    );
     drop(response_lease);
     assert_eq!(gate.load(Ordering::SeqCst), 0);
     gate.store(SELF_UPDATE_GATE, Ordering::SeqCst);
@@ -173,11 +174,13 @@ fn guard_identity_requires_trusted_repository_and_exact_digest() {
     assert!(
         validate_guard_image_ref("docker.io/somekawahitomi/myriad-updater:latest", false).is_err()
     );
-    assert!(validate_guard_image_ref(
-        &format!("{TRUSTED_GUARD_REPOSITORY}@sha256:{}", "g".repeat(64)),
-        false
-    )
-    .is_err());
+    assert!(
+        validate_guard_image_ref(
+            &format!("{TRUSTED_GUARD_REPOSITORY}@sha256:{}", "g".repeat(64)),
+            false
+        )
+        .is_err()
+    );
     assert!(validate_guard_image_ref("myriad-updater-dev:v0.0.0-dev", true).is_ok());
 }
 
@@ -194,10 +197,10 @@ fn trusted_digest_canonicalizes_engine_repodigests_without_registry_prefix() {
         canonicalize_trusted_digest_ref(&canonical).unwrap(),
         canonical
     );
-    assert!(canonicalize_trusted_digest_ref(&format!(
-        "evil.example/myriad-updater@sha256:{digest}"
-    ))
-    .is_err());
+    assert!(
+        canonicalize_trusted_digest_ref(&format!("evil.example/myriad-updater@sha256:{digest}"))
+            .is_err()
+    );
     assert!(
         canonicalize_trusted_digest_ref(&format!("somekawahitomi/myriad-updater:{digest}"))
             .is_err()
@@ -352,9 +355,11 @@ fn backend_volume_init_allows_only_narrow_root_one_off() {
             "SecurityOpt": ["no-new-privileges:true"]
         }),
     );
-    assert!(validate_container_create(&state(), &missing_flag)
-        .unwrap_err()
-        .contains("narrow root init mode"));
+    assert!(
+        validate_container_create(&state(), &missing_flag)
+            .unwrap_err()
+            .contains("narrow root init mode")
+    );
 
     let auto_remove_payload = backend_volume_init_create(
         "0:0",
@@ -368,9 +373,11 @@ fn backend_volume_init_allows_only_narrow_root_one_off() {
             "SecurityOpt": ["no-new-privileges:true"]
         }),
     );
-    assert!(validate_container_create(&state(), &auto_remove_payload)
-        .unwrap_err()
-        .contains("narrow root init mode"));
+    assert!(
+        validate_container_create(&state(), &auto_remove_payload)
+            .unwrap_err()
+            .contains("narrow root init mode")
+    );
 
     let missing_data_volume = backend_volume_init_create(
         "0:0",
@@ -381,9 +388,11 @@ fn backend_volume_init_allows_only_narrow_root_one_off() {
             "SecurityOpt": ["no-new-privileges:true"]
         }),
     );
-    assert!(validate_container_create(&state(), &missing_data_volume)
-        .unwrap_err()
-        .contains("narrow root init mode"));
+    assert!(
+        validate_container_create(&state(), &missing_data_volume)
+            .unwrap_err()
+            .contains("narrow root init mode")
+    );
 
     let arbitrary_root_backend = backend_volume_init_create(
         "root:root",
@@ -397,9 +406,11 @@ fn backend_volume_init_allows_only_narrow_root_one_off() {
             "SecurityOpt": ["no-new-privileges:true"]
         }),
     );
-    assert!(validate_container_create(&state(), &arbitrary_root_backend)
-        .unwrap_err()
-        .contains("narrow root init mode"));
+    assert!(
+        validate_container_create(&state(), &arbitrary_root_backend)
+            .unwrap_err()
+            .contains("narrow root init mode")
+    );
 
     let networked_initializer = backend_volume_init_create(
         "0:0",
@@ -414,9 +425,11 @@ fn backend_volume_init_allows_only_narrow_root_one_off() {
             "SecurityOpt": ["no-new-privileges:true"]
         }),
     );
-    assert!(validate_container_create(&state(), &networked_initializer)
-        .unwrap_err()
-        .contains("narrow root init mode"));
+    assert!(
+        validate_container_create(&state(), &networked_initializer)
+            .unwrap_err()
+            .contains("narrow root init mode")
+    );
 
     let non_root_initializer = backend_volume_init_create(
         "1000:1000",
@@ -431,9 +444,11 @@ fn backend_volume_init_allows_only_narrow_root_one_off() {
             "SecurityOpt": ["no-new-privileges:true"]
         }),
     );
-    assert!(validate_container_create(&state(), &non_root_initializer)
-        .unwrap_err()
-        .contains("narrow root init mode"));
+    assert!(
+        validate_container_create(&state(), &non_root_initializer)
+            .unwrap_err()
+            .contains("narrow root init mode")
+    );
 
     let regular_root_backend = Bytes::from(
         serde_json::to_vec(&json!({
@@ -457,9 +472,11 @@ fn backend_volume_init_allows_only_narrow_root_one_off() {
         }))
         .unwrap(),
     );
-    assert!(validate_container_create(&state(), &regular_root_backend)
-        .unwrap_err()
-        .contains("explicit root user"));
+    assert!(
+        validate_container_create(&state(), &regular_root_backend)
+            .unwrap_err()
+            .contains("explicit root user")
+    );
 }
 
 #[test]
@@ -469,9 +486,11 @@ fn backend_host_bind_is_denied() {
         "docker.io/example/backend:v1",
         json!({"Binds": ["/:/host:rw"]}),
     );
-    assert!(validate_container_create(&state(), &body)
-        .unwrap_err()
-        .contains("host bind"));
+    assert!(
+        validate_container_create(&state(), &body)
+            .unwrap_err()
+            .contains("host bind")
+    );
 }
 
 #[test]
@@ -481,9 +500,11 @@ fn privileged_create_is_denied() {
         "docker.io/example/frontend:v1",
         json!({"Privileged": true}),
     );
-    assert!(validate_container_create(&state(), &body)
-        .unwrap_err()
-        .contains("Privileged"));
+    assert!(
+        validate_container_create(&state(), &body)
+            .unwrap_err()
+            .contains("Privileged")
+    );
 }
 
 #[test]
@@ -514,9 +535,11 @@ fn compose_v5_zero_log_config_is_treated_as_daemon_json_file() {
 fn generic_api_cannot_recreate_tcb_services() {
     for service in ["updater", "updater-gateway", "docker-guard"] {
         let body = create(service, "docker.io/example/updater:v1", json!({}));
-        assert!(validate_container_create(&state(), &body)
-            .unwrap_err()
-            .contains("generic updater API"));
+        assert!(
+            validate_container_create(&state(), &body)
+                .unwrap_err()
+                .contains("generic updater API")
+        );
     }
 }
 
@@ -605,10 +628,12 @@ async fn orphaned_pending_handoff_becomes_a_fresh_failure() {
         status.status,
         super::super::self_update_helper::SelfUpdateOutcome::Failed
     ));
-    assert!(status
-        .error
-        .unwrap()
-        .contains("target TCB was not fully active"));
+    assert!(
+        status
+            .error
+            .unwrap()
+            .contains("target TCB was not fully active")
+    );
     assert_eq!(state.mutation_gate.load(Ordering::SeqCst), SELF_UPDATE_GATE);
 }
 
@@ -702,17 +727,21 @@ fn postgres_symlink_bind_is_denied() {
         "postgres:18-alpine",
         json!({"Binds": ["/srv/myriad/pgdata:/var/lib/postgresql:rw"]}),
     );
-    assert!(validate_container_create(&state, &body)
-        .unwrap_err()
-        .contains("symbolic links"));
+    assert!(
+        validate_container_create(&state, &body)
+            .unwrap_err()
+            .contains("symbolic links")
+    );
 }
 
 #[test]
 fn service_repository_mapping_rejects_cross_service_images() {
     let body = create("frontend", "docker.io/example/backend:v1", json!({}));
-    assert!(validate_container_create(&state(), &body)
-        .unwrap_err()
-        .contains("fixed service repository"));
+    assert!(
+        validate_container_create(&state(), &body)
+            .unwrap_err()
+            .contains("fixed service repository")
+    );
 }
 
 #[test]
@@ -725,9 +754,11 @@ fn bind_mount_propagation_is_denied() {
         "postgres:18-alpine",
         json!({"Binds": ["/srv/myriad/pgdata:/var/lib/postgresql:rw,rshared"]}),
     );
-    assert!(validate_container_create(&state, &string_bind)
-        .unwrap_err()
-        .contains("propagation"));
+    assert!(
+        validate_container_create(&state, &string_bind)
+            .unwrap_err()
+            .contains("propagation")
+    );
 
     let structured_mount = create(
         "postgres",
@@ -739,9 +770,11 @@ fn bind_mount_propagation_is_denied() {
             "BindOptions": {"Propagation": "rshared"}
         }]}),
     );
-    assert!(validate_container_create(&state, &structured_mount)
-        .unwrap_err()
-        .contains("propagation"));
+    assert!(
+        validate_container_create(&state, &structured_mount)
+            .unwrap_err()
+            .contains("propagation")
+    );
 }
 
 #[test]
@@ -807,19 +840,29 @@ fn image_pull_is_repository_allowlisted() {
 
 #[test]
 fn image_tag_requires_allowlisted_source_and_target() {
-    let allowed = Uri::from_static("/v1.51/images/docker.io%2Fexample%2Fbackend:v1/tag?repo=docker.io%2Fexample%2Fbackend&tag=myriad-rollback");
+    let allowed = Uri::from_static(
+        "/v1.51/images/docker.io%2Fexample%2Fbackend:v1/tag?repo=docker.io%2Fexample%2Fbackend&tag=myriad-rollback",
+    );
     assert!(classify_request(&state(), &Method::POST, &allowed, &Bytes::new()).is_ok());
 
-    let denied_source = Uri::from_static("/v1.51/images/evil%2Fpayload:v1/tag?repo=docker.io%2Fexample%2Fbackend&tag=myriad-rollback");
+    let denied_source = Uri::from_static(
+        "/v1.51/images/evil%2Fpayload:v1/tag?repo=docker.io%2Fexample%2Fbackend&tag=myriad-rollback",
+    );
     assert!(classify_request(&state(), &Method::POST, &denied_source, &Bytes::new()).is_err());
 
-    let cross_repository = Uri::from_static("/v1.51/images/docker.io%2Fexample%2Fbackend:v1/tag?repo=docker.io%2Fexample%2Ffrontend&tag=v1");
+    let cross_repository = Uri::from_static(
+        "/v1.51/images/docker.io%2Fexample%2Fbackend:v1/tag?repo=docker.io%2Fexample%2Ffrontend&tag=v1",
+    );
     assert!(classify_request(&state(), &Method::POST, &cross_repository, &Bytes::new()).is_err());
 
-    let unescaped_slashes = Uri::from_static("/v1.51/images/docker.io/example/backend:v1/tag?repo=docker.io%2Fexample%2Fbackend&tag=myriad-rollback");
+    let unescaped_slashes = Uri::from_static(
+        "/v1.51/images/docker.io/example/backend:v1/tag?repo=docker.io%2Fexample%2Fbackend&tag=myriad-rollback",
+    );
     assert!(classify_request(&state(), &Method::POST, &unescaped_slashes, &Bytes::new()).is_ok());
 
-    let restore_version_ref = Uri::from_static("/v1.51/images/docker.io%2Fexample%2Fbackend:myriad-rollback/tag?repo=docker.io%2Fexample%2Fbackend&tag=v1");
+    let restore_version_ref = Uri::from_static(
+        "/v1.51/images/docker.io%2Fexample%2Fbackend:myriad-rollback/tag?repo=docker.io%2Fexample%2Fbackend&tag=v1",
+    );
     assert!(classify_request(&state(), &Method::POST, &restore_version_ref, &Bytes::new()).is_ok());
 }
 
@@ -932,9 +975,11 @@ fn admin_network_is_allowlisted_but_guard_stays_updater_only() {
         json!({}),
         json!({"bridge": {}}),
     );
-    assert!(validate_container_create(&s, &foreign)
-        .unwrap_err()
-        .contains("outside the Myriad allowlist"));
+    assert!(
+        validate_container_create(&s, &foreign)
+            .unwrap_err()
+            .contains("outside the Myriad allowlist")
+    );
 }
 
 #[test]
@@ -945,9 +990,11 @@ fn generic_api_rejects_guard_network_mode_for_every_service() {
         "docker.io/example/backend:v1",
         json!({"NetworkMode": "myriad-docker-guard-net"}),
     );
-    assert!(validate_container_create(&s, &backend)
-        .unwrap_err()
-        .contains("only the updater service may attach to the docker-guard network"));
+    assert!(
+        validate_container_create(&s, &backend)
+            .unwrap_err()
+            .contains("only the updater service may attach to the docker-guard network")
+    );
 
     let updater = create(
         "updater",
@@ -1004,12 +1051,14 @@ fn managed_services_may_still_attach_compose_network() {
 #[test]
 fn endpoint_identity_overrides_are_denied() {
     let s = state();
-    assert!(validate_endpoint_settings(
-        "backend",
-        &json!({"Aliases": ["backend", "myriad-backend"]}),
-        &s.config,
-    )
-    .is_ok());
+    assert!(
+        validate_endpoint_settings(
+            "backend",
+            &json!({"Aliases": ["backend", "myriad-backend"]}),
+            &s.config,
+        )
+        .is_ok()
+    );
     for endpoint in [
         json!({"Aliases": ["postgres"]}),
         json!({"IPAMConfig": {"IPv4Address": "172.28.0.2"}}),
@@ -1026,18 +1075,18 @@ fn custom_project_keeps_official_service_aliases_without_impersonation() {
     let mut config = (*state().config).clone();
     config.project = "isolated-test".into();
     for service in ["backend", "persona-worker", "federation-worker"] {
-        assert!(validate_endpoint_settings(
-            service,
-            &json!({"Aliases": [service, format!("myriad-{service}")]}),
-            &config
-        )
-        .is_ok());
-        assert!(validate_endpoint_settings(
-            service,
-            &json!({"Aliases": ["myriad-postgres"]}),
-            &config
-        )
-        .is_err());
+        assert!(
+            validate_endpoint_settings(
+                service,
+                &json!({"Aliases": [service, format!("myriad-{service}")]}),
+                &config
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_endpoint_settings(service, &json!({"Aliases": ["myriad-postgres"]}), &config)
+                .is_err()
+        );
     }
 }
 

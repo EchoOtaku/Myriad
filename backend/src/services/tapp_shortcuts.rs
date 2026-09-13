@@ -7,7 +7,7 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, DatabaseConnection, EntityTrait,
     QueryFilter, QueryOrder, Set,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::models::entities::tapp_storage;
 
@@ -254,7 +254,7 @@ pub async fn list_shortcuts(
 
 #[cfg(test)]
 mod tests {
-    use super::{shortcut_storage_key, validate_shortcut_keys, ShortcutRegistryError};
+    use super::{ShortcutRegistryError, shortcut_storage_key, validate_shortcut_keys};
 
     #[test]
     fn accepts_common_chords() {

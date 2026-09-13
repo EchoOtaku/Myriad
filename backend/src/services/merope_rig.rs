@@ -10,11 +10,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use myriad_merope::RigManifest;
 use once_cell::sync::Lazy;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
@@ -154,7 +154,7 @@ pub fn png_dimensions(bytes: &[u8]) -> Result<(u32, u32), String> {
             }
             b"IEND" => return Err("Rig atlas PNG has an invalid IEND".to_string()),
             _ if dimensions.is_none() || saw_iend => {
-                return Err("Rig atlas PNG chunk order is invalid".to_string())
+                return Err("Rig atlas PNG chunk order is invalid".to_string());
             }
             _ => {}
         }
@@ -338,10 +338,10 @@ pub async fn mirror_active_asset(asset_id: Option<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flate2::{write::ZlibEncoder, Compression};
+    use flate2::{Compression, write::ZlibEncoder};
     use myriad_merope::{
-        RigBone, RigManifest, RigPart, RigPoint, RigQuality, RigTexture, RigVertex,
-        CHARACTER_ASSET_CONTRACT_VERSION, RIG_IR_VERSION, RIG_SCHEMA_VERSION,
+        CHARACTER_ASSET_CONTRACT_VERSION, RIG_IR_VERSION, RIG_SCHEMA_VERSION, RigBone, RigManifest,
+        RigPart, RigPoint, RigQuality, RigTexture, RigVertex,
     };
     use std::{collections::HashMap, io::Write};
 

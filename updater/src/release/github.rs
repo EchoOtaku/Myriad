@@ -7,13 +7,13 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, IF_NONE_MATCH, USER_AGENT};
 use reqwest::Client;
+use reqwest::header::{ACCEPT, AUTHORIZATION, HeaderMap, HeaderValue, IF_NONE_MATCH, USER_AGENT};
 use serde::Deserialize;
 
 use crate::config::{Channel, SecretString};
 use crate::error::{Result, UpdaterError};
-use crate::release::{cosign, CosignPolicy, Manifest, VerifyOutcome};
+use crate::release::{CosignPolicy, Manifest, VerifyOutcome, cosign};
 use crate::state::atomic;
 
 pub struct GithubClient {
@@ -108,11 +108,10 @@ impl GithubClient {
             ACCEPT,
             HeaderValue::from_static("application/vnd.github+json"),
         );
-        if let Some(t) = &self.token {
-            if let Ok(v) = HeaderValue::from_str(&format!("Bearer {}", t.expose())) {
+        if let Some(t) = &self.token
+            && let Ok(v) = HeaderValue::from_str(&format!("Bearer {}", t.expose())) {
                 h.insert(AUTHORIZATION, v);
             }
-        }
         h
     }
 
@@ -518,11 +517,10 @@ impl GithubClient {
         // Use the GitHub API asset URL, not browser_download_url. The browser URL is
         // not token-authenticated reliably for private repositories.
         headers.insert(ACCEPT, HeaderValue::from_static("application/octet-stream"));
-        if let Ok(etag) = std::fs::read_to_string(&etag_path) {
-            if let Ok(v) = HeaderValue::from_str(etag.trim()) {
+        if let Ok(etag) = std::fs::read_to_string(&etag_path)
+            && let Ok(v) = HeaderValue::from_str(etag.trim()) {
                 headers.insert(IF_NONE_MATCH, v);
             }
-        }
 
         let resp = self
             .client

@@ -2,7 +2,7 @@
 use std::time::Duration;
 
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr};
-use tokio::time::{sleep, Instant};
+use tokio::time::{Instant, sleep};
 
 use super::ensure_heals::*;
 use super::expected_indexes::get_expected_indexes;
@@ -231,10 +231,11 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     if !drift.is_empty() {
         // 正常情况下这里应该是空的 —— migration 就该产出完整结构。
         // 有内容说明要么是从旧版本升级上来的库，要么 migration 与 `get_expected_schema()` 又漂移了。
+        let drift_summary = drift.summary();
         tracing::info!(
             "📝 Schema healer will patch {} item(s):\n{}",
             drift.len(),
-            drift.summary().trim_end()
+            drift_summary.trim_end()
         );
     }
     let ddl_statements: Vec<String> = drift.ddl_statements();

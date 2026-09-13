@@ -1,4 +1,5 @@
 //! Myriad updater library. See docs/updater-spec.md.
+#![allow(clippy::result_large_err)]
 
 pub mod api;
 pub mod config;

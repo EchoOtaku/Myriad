@@ -1,7 +1,7 @@
 [package]
 name = "myriad-platform-utils"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 publish = false
 description = "Platform request spoof helpers (Bilibili / Netease / regional IP-UA) for Myriad fetchers."
 authors = ["Myriad Contributors"]

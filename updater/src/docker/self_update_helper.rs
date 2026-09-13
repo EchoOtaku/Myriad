@@ -15,7 +15,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::env_file::{persist_env_bytes, EnvFile};
+use crate::env_file::{EnvFile, persist_env_bytes};
 use crate::error::{Result, UpdaterError};
 use crate::state::atomic;
 
@@ -696,7 +696,7 @@ fn require_guard_bootstrap(service: &Value) -> Result<()> {
         _ => {
             return Err(UpdaterError::Precondition(
                 "docker-guard command must be the policy bootstrap script".into(),
-            ))
+            ));
         }
     };
     if !script.contains("exec /usr/bin/tini -- /usr/local/bin/myriad-docker-guard")
@@ -933,11 +933,10 @@ fn normalize_image_repository(repo: &str) -> String {
         .trim_start_matches("docker.io/")
         .trim_start_matches("index.docker.io/")
         .trim_start_matches("registry-1.docker.io/");
-    if let Some((name, maybe_tag)) = repo.rsplit_once(':') {
-        if !maybe_tag.contains('/') {
+    if let Some((name, maybe_tag)) = repo.rsplit_once(':')
+        && !maybe_tag.contains('/') {
             return name.to_string();
         }
-    }
     repo.to_string()
 }
 
@@ -1230,7 +1229,9 @@ mod tests {
         for text in [compose, example] {
             assert!(!text.contains("<<'POLICY'"));
             assert!(!text.contains("cat > /guard-policy/docker-guard.env"));
-            assert!(text.contains("if [ ! -f /guard-policy/docker-guard.env ]; then umask 077; fi"));
+            assert!(
+                text.contains("if [ ! -f /guard-policy/docker-guard.env ]; then umask 077; fi")
+            );
             assert!(text.contains(
                 "MYRIAD_SETUP_SECRET: ${MYRIAD_SETUP_SECRET:?Set MYRIAD_SETUP_SECRET in .env}"
             ));

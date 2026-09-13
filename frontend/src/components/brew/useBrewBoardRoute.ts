@@ -1,11 +1,11 @@
 import type { BrewSource } from '../../types/brew'
-import type { boardEntry, BrewBoard,
-  BrewViewMode } from './logic/board'
+import type { BrewBoard, BrewBoardEntry, BrewViewMode } from './logic/board'
 
 import type { TopicNameKey } from './logic/topics'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   eatSearchKeys,
+  navIdForBoardEntry,
   resolveBoardParam,
   viewForBoardEntry,
 } from './logic/board'
@@ -31,7 +31,7 @@ export function useBrewBoardRoute(
   const [railFocusId, setRailFocusId] = useState<number | null>(null)
 
   const applyBoardEntry = useCallback(
-    (entry: ReturnType<typeof boardEntry>) => {
+    (entry: BrewBoardEntry) => {
       setBoard(entry.board)
       setViewMode(viewForBoardEntry(entry, isAuthenticated))
     },
@@ -47,18 +47,33 @@ export function useBrewBoardRoute(
   }, [activeId, applyBoardEntry])
 
   useEffect(() => {
+    if (isAuthenticated) return
+    setViewMode((current) => (current === 'starred' ? 'sources' : current))
+    if (activeId !== 'starred') return
+    prevActiveIdRef.current = 'feeds'
+    setActiveId('feeds')
+  }, [isAuthenticated, activeId, setActiveId])
+
+  useEffect(() => {
     const raw = searchParams.get('board') ?? searchParams.get('category')
     if (!raw) return
     const entry = resolveBoardParam(raw)
     if (!entry) return
 
     applyBoardEntry(entry)
-    prevActiveIdRef.current = entry.board
-    setActiveId(entry.board)
+    const navId = navIdForBoardEntry(entry, isAuthenticated)
+    prevActiveIdRef.current = navId
+    setActiveId(navId)
     setSearchParams((prev) => eatSearchKeys(prev, ['board', 'category']), {
       replace: true,
     })
-  }, [searchParams, applyBoardEntry, setActiveId, setSearchParams])
+  }, [
+    searchParams,
+    applyBoardEntry,
+    isAuthenticated,
+    setActiveId,
+    setSearchParams,
+  ])
 
   const openTopic = useCallback((topicKey: string, nameKey: TopicNameKey) => {
     setSelectedTopic({ key: topicKey, nameKey })
@@ -104,10 +119,6 @@ export function useBrewBoardRoute(
     setViewMode('sources')
   }, [])
 
-  const openStarred = useCallback(() => {
-    setViewMode('starred')
-  }, [])
-
   const backToFeeds = useCallback(() => {
     setBoard('feeds')
     setViewMode('sources')
@@ -123,7 +134,6 @@ export function useBrewBoardRoute(
     openTopic,
     focusSource,
     backFromTopic,
-    openStarred,
     backToFeeds,
   }
 }

@@ -39,6 +39,7 @@ describe('router.navigate allow-list', () => {
       '/brew',
       '/reports',
       '/config',
+      '/agent/settings',
       '/tapp',
       '/setup',
     ]
@@ -71,7 +72,6 @@ describe('router.navigate allow-list', () => {
       '/report',
       '/settings',
       '/profile',
-      '/agent',
     ]) {
       assert.ok(
         !prefixes.includes(dead),

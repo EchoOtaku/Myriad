@@ -1,15 +1,16 @@
 //! Inbound `myriad:FileTransfer` activity handling (FileMeta, FileChunk, FileCancel).
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde_json::json;
 use tokio::fs;
 
 use super::storage::{
-    admit_chunk_bytes_str, admit_new_transfer_str, final_file_path, finalize_part_file,
-    http_err_to_string, is_strictly_under, is_valid_transfer_id, lock_transfer_admission,
-    lock_transfer_session, part_file_path, path_to_db, prepare_chunk_file, resolve_transfer_path,
-    sha256_file, storage_root, ChunkFileState, DEFAULT_CHUNK_SIZE, MAX_FILE_SIZE,
+    ChunkFileState, DEFAULT_CHUNK_SIZE, MAX_FILE_SIZE, admit_chunk_bytes_str,
+    admit_new_transfer_str, final_file_path, finalize_part_file, http_err_to_string,
+    is_strictly_under, is_valid_transfer_id, lock_transfer_admission, lock_transfer_session,
+    part_file_path, path_to_db, prepare_chunk_file, resolve_transfer_path, sha256_file,
+    storage_root,
 };
 
 // Inbox 处理

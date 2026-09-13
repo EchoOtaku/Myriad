@@ -10,7 +10,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use once_cell::sync::Lazy;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::sync::oneshot;
 
 use crate::services::agent::types::ExecutionContext;

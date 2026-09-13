@@ -1,14 +1,14 @@
 use myriad_error::AppError;
 // 图片代理服务 - 用于处理Bilibili等平台的防盗链图片
 use axum::{
-    extract::{Path, Query},
-    http::{header, StatusCode},
-    response::{IntoResponse, Response},
     Json,
+    extract::{Path, Query},
+    http::{StatusCode, header},
+    response::{IntoResponse, Response},
 };
 use once_cell::sync::Lazy;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -18,7 +18,7 @@ use crate::services::http_client::MEDIA_FETCH_CLIENT;
 
 // 网易云 / 酷狗服务与共享缓存、限流
 use crate::services::kugou_service::KugouService;
-use crate::services::netease_service::{CacheEntry, NeteaseService, MUSIC_CACHE, RATE_LIMITER};
+use crate::services::netease_service::{CacheEntry, MUSIC_CACHE, NeteaseService, RATE_LIMITER};
 
 /// Music proxy 429 with Retry-After + JSON body for FE toast / axios interceptors.
 fn music_rate_limited_response(context: &str) -> Response {
@@ -1426,34 +1426,38 @@ pub async fn get_client_geo(
         );
 
         // 方案1: 使用 ipify.org 获取服务器公网IP
-        if let Ok(resp) = client.get("https://api.ipify.org?format=json").send().await {
-            if let Ok(data) = read_limited_json(resp).await {
-                if let Some(ip) = data.get("ip").and_then(|v| v.as_str()) {
-                    tracing::info!("Server public IP from ipify: {}", ip);
-                    ip.to_string()
+        match client.get("https://api.ipify.org?format=json").send().await {
+            Ok(resp) => {
+                if let Ok(data) = read_limited_json(resp).await {
+                    if let Some(ip) = data.get("ip").and_then(|v| v.as_str()) {
+                        tracing::info!("Server public IP from ipify: {}", ip);
+                        ip.to_string()
+                    } else {
+                        client_ip.clone()
+                    }
                 } else {
                     client_ip.clone()
                 }
-            } else {
-                client_ip.clone()
             }
-        } else {
-            // 方案2: 使用 icanhazip.com
-            if let Ok(resp) = client.get("https://icanhazip.com").send().await {
-                // 期望的响应就是一行 IP。限到 1 KiB：这个端点被劫持或故障时
-                // 不该能把任意大小的响应读进内存。
-                if let Ok(bytes) =
-                    crate::services::outbound_security::read_limited_body(resp, 1024).await
-                {
-                    let text = String::from_utf8_lossy(&bytes);
-                    let ip = text.trim().to_string();
-                    tracing::info!("Server public IP from icanhazip: {}", ip);
-                    ip
-                } else {
-                    client_ip.clone()
+            _ => {
+                // 方案2: 使用 icanhazip.com
+                match client.get("https://icanhazip.com").send().await {
+                    Ok(resp) => {
+                        // 期望的响应就是一行 IP。限到 1 KiB：这个端点被劫持或故障时
+                        // 不该能把任意大小的响应读进内存。
+                        if let Ok(bytes) =
+                            crate::services::outbound_security::read_limited_body(resp, 1024).await
+                        {
+                            let text = String::from_utf8_lossy(&bytes);
+                            let ip = text.trim().to_string();
+                            tracing::info!("Server public IP from icanhazip: {}", ip);
+                            ip
+                        } else {
+                            client_ip.clone()
+                        }
+                    }
+                    _ => client_ip.clone(),
                 }
-            } else {
-                client_ip.clone()
             }
         }
     } else {

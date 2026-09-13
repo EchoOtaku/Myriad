@@ -4,11 +4,11 @@ use std::path::Path;
 
 use axum::http::Uri;
 use bytes::Bytes;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::{
-    validate_identifier, GuardConfig, GuardState, SELF_UPDATE_EXHAUSTED_NAME,
-    SELF_UPDATE_HELPER_NAME, SELF_UPDATE_RECOVERY_NAME, TRUSTED_UPDATER_REPOSITORY,
+    GuardConfig, GuardState, SELF_UPDATE_EXHAUSTED_NAME, SELF_UPDATE_HELPER_NAME,
+    SELF_UPDATE_RECOVERY_NAME, TRUSTED_UPDATER_REPOSITORY, validate_identifier,
 };
 
 pub(crate) fn validate_container_create_name(uri: &Uri) -> std::result::Result<(), String> {
@@ -184,8 +184,8 @@ pub(crate) fn validate_container_create(
             return Err(format!("HostConfig.{field} is not allowed"));
         }
     }
-    if let Some(mode) = host.get("NetworkMode").and_then(Value::as_str) {
-        if !mode.is_empty() && !matches!(mode, "default" | "bridge" | "none") {
+    if let Some(mode) = host.get("NetworkMode").and_then(Value::as_str)
+        && !mode.is_empty() && !matches!(mode, "default" | "bridge" | "none") {
             if mode != state.config.compose_network
                 && mode != state.config.admin_network
                 && mode != state.config.guard_network
@@ -194,15 +194,13 @@ pub(crate) fn validate_container_create(
             }
             authorize_guard_network_attachment(service, mode, &state.config)?;
         }
-    }
-    if let Some(options) = host.get("SecurityOpt").and_then(Value::as_array) {
-        if options.iter().any(|v| {
+    if let Some(options) = host.get("SecurityOpt").and_then(Value::as_array)
+        && options.iter().any(|v| {
             !v.as_str()
                 .is_some_and(|s| s == "no-new-privileges" || s == "no-new-privileges:true")
         }) {
             return Err("only no-new-privileges SecurityOpt is allowed".into());
         }
-    }
 
     for bind in host
         .get("Binds")
@@ -654,16 +652,13 @@ fn validate_mount(
     if !matches!(kind, "bind" | "volume") {
         return Err("only bind and volume mounts are allowed".into());
     }
-    if kind == "bind" {
-        if let Some(propagation) = mount
+    if kind == "bind"
+        && let Some(propagation) = mount
             .pointer("/BindOptions/Propagation")
             .and_then(Value::as_str)
-        {
-            if !matches!(propagation, "" | "private" | "rprivate") {
+            && !matches!(propagation, "" | "private" | "rprivate") {
                 return Err("bind mount propagation is not allowed".into());
             }
-        }
-    }
     if kind == "volume" && nonempty(mount.pointer("/VolumeOptions/DriverConfig")) {
         return Err("volume driver configuration is not allowed".into());
     }

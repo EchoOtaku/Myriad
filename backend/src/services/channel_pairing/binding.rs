@@ -179,10 +179,12 @@ mod postgres_tests {
     #[ignore = "requires MYRIAD_CHANNEL_TEST_DATABASE_URL pointing to a disposable *_channel_test database"]
     async fn pairing_revocation_and_rotation_use_real_postgres() {
         let url = std::env::var("MYRIAD_CHANNEL_TEST_DATABASE_URL").expect("test database URL");
-        assert!(url::Url::parse(&url)
-            .unwrap()
-            .path()
-            .ends_with("_channel_test"));
+        assert!(
+            url::Url::parse(&url)
+                .unwrap()
+                .path()
+                .ends_with("_channel_test")
+        );
         let db = sea_orm::Database::connect(&url).await.unwrap();
         db.execute_unprepared("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT, is_admin BOOLEAN, is_owner BOOLEAN DEFAULT false); \
             CREATE TABLE IF NOT EXISTS user_identities (id SERIAL PRIMARY KEY, user_id INTEGER REFERENCES users(id), provider TEXT, provider_user_id TEXT, is_primary BOOLEAN DEFAULT false, linked_at TIMESTAMPTZ DEFAULT NOW(), raw_profile JSONB, UNIQUE(provider, provider_user_id)); \
@@ -217,10 +219,12 @@ mod postgres_tests {
             .unwrap();
         assert_eq!(first.identity_id, alias.identity_id);
         assert!(first.is_current(&db).await);
-        assert!(ChannelBinding::resolve(&db, "feishu", 102, "open-user")
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            ChannelBinding::resolve(&db, "feishu", 102, "open-user")
+                .await
+                .unwrap()
+                .is_none()
+        );
         shared_registry::put(
             &db,
             "feishu_p2p_pending",
@@ -290,10 +294,12 @@ mod postgres_tests {
         .await
         .unwrap();
         assert!(!second.is_current(&db).await);
-        assert!(ChannelBinding::resolve(&db, "feishu", 102, "open-user")
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            ChannelBinding::resolve(&db, "feishu", 102, "open-user")
+                .await
+                .unwrap()
+                .is_none()
+        );
         db.execute_unprepared(
             "UPDATE configurations SET value = 'true' WHERE key = 'feishu_bot_enabled'",
         )

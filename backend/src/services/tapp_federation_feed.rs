@@ -3,12 +3,12 @@
 //! SQL loaders and interaction enrichment stay in the API/federation layer.
 //! Domain owns personal∪public dedupe, time ordering, and item JSON shape.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub use myriad_tapp_rules::{
-    dedupe_federation_feed, federation_feed_includes_personal, federation_feed_item,
-    merge_federation_feed, merge_federation_feed_with_limit, FederationFeedRowView,
-    FEDERATION_FEED_LIMIT,
+    FEDERATION_FEED_LIMIT, FederationFeedRowView, dedupe_federation_feed,
+    federation_feed_includes_personal, federation_feed_item, merge_federation_feed,
+    merge_federation_feed_with_limit,
 };
 
 #[cfg(test)]

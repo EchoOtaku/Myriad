@@ -1,4 +1,4 @@
-use super::types::{json_token, ChatMessage, StreamDelta};
+use super::types::{ChatMessage, StreamDelta, json_token};
 
 /// Gemini SSE chunk → text / thought-part deltas.
 pub fn gemini_stream_deltas(json: &serde_json::Value) -> Vec<StreamDelta> {

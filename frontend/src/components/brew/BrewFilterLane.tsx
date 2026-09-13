@@ -1,21 +1,19 @@
 /** 订阅轨不走这里。 */
 
-import type { BrewItem, BrewSource } from '../../types/brew'
+import type { BrewItem } from '../../types/brew'
 import type {
   StarredModeConfig,
   TopicFeedModeConfig,
 } from './manager/modes'
 
+import { useId } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
-import BrewControls from './manager/BrewControls'
+import { BrewFilterTitleTags } from './manager/BrewFilterTitleTags'
 import BrewListView from './skin/BrewList'
-
-const EMPTY_CATEGORIES: string[] = []
+import { BrewPageStage } from './ui/BrewPageStage'
+import { BrewRailTitle } from './ui/BrewRailTitle'
 
 interface BrewFilterLaneProps {
-  sources: BrewSource[]
-  isAdmin: boolean
-  isAuthenticated: boolean
   topicFeedMode?: TopicFeedModeConfig
   starredMode?: StarredModeConfig
   items: BrewItem[]
@@ -30,9 +28,6 @@ interface BrewFilterLaneProps {
 }
 
 export default function BrewFilterLane({
-  sources,
-  isAdmin,
-  isAuthenticated,
   topicFeedMode,
   starredMode,
   items,
@@ -46,17 +41,27 @@ export default function BrewFilterLane({
   onItemSelectToggle,
 }: BrewFilterLaneProps) {
   const { t } = useI18n()
+  const titleId = useId()
+  const title = starredMode
+    ? t.brew.starred
+    : (topicFeedMode?.topicLabel ?? '')
+
   return (
-    <div className="brew-page">
-      <BrewControls
-        sources={sources}
-        filteredSources={sources}
-        categories={EMPTY_CATEGORIES}
-        isAdmin={isAdmin}
-        isAuthenticated={isAuthenticated}
-        topicFeedMode={topicFeedMode}
-        starredMode={starredMode}
-      />
+    <BrewPageStage
+      title={
+        <BrewRailTitle
+          id={titleId}
+          action={
+            <BrewFilterTitleTags
+              starredMode={starredMode}
+              topicFeedMode={topicFeedMode}
+            />
+          }
+        >
+          {title}
+        </BrewRailTitle>
+      }
+    >
       <BrewListView
         items={items}
         selectedItem={selectedItem}
@@ -67,15 +72,10 @@ export default function BrewFilterLane({
         onLoadMore={onLoadMore}
         onToggleStar={onToggleStar}
         emptyText={starredMode ? t.brew.starredEmpty : undefined}
-        emptyAction={
-          starredMode
-            ? { label: t.brew.back, onClick: starredMode.onBack }
-            : undefined
-        }
         editMode={starredMode?.isEditMode}
         selectedIds={starredMode?.selectedIds}
         onItemSelectToggle={onItemSelectToggle}
       />
-    </div>
+    </BrewPageStage>
   )
 }

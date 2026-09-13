@@ -2,7 +2,7 @@
 use std::{sync::Arc, time::Duration};
 
 use serde_json::Value;
-use tokio::sync::{mpsc, oneshot, watch, Mutex, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore, mpsc, oneshot, watch};
 use tokio::time::Instant;
 
 use super::{config::McpServerConfig, protocol::McpToolDef, server::McpServer};
@@ -127,15 +127,14 @@ impl ServerHandle {
 
     pub async fn shutdown(&self) {
         let _ = self.0.stop.send(true);
-        if let Some(mut task) = self.0.task.lock().await.take() {
-            if tokio::time::timeout(Duration::from_secs(2), &mut task)
+        if let Some(mut task) = self.0.task.lock().await.take()
+            && tokio::time::timeout(Duration::from_secs(2), &mut task)
                 .await
                 .is_err()
             {
                 task.abort();
                 let _ = task.await;
             }
-        }
     }
 }
 
@@ -175,9 +174,15 @@ async fn run(
                 biased;
                 _ = stop.changed() => break,
                 result = async {
-                    let _permit = STARTS.acquire().await.map_err(|_| "MCP startup stopped".to_string())?;
-                    tokio::time::timeout(START_BUDGET, server.start()).await
-                        .map_err(|_| "MCP initialization timed out".to_string())?
+                    let _permit = STARTS
+                        .acquire()
+                        .await
+                        .map_err(|_| "MCP startup stopped".to_string())?;
+                    let started = tokio::time::timeout(START_BUDGET, server.start()).await;
+                    match started {
+                        Ok(result) => result,
+                        Err(_) => Err("MCP initialization timed out".to_string()),
+                    }
                 } => result,
             };
             let healthy = result.is_ok();
@@ -288,9 +293,11 @@ mod budget_tests {
             argument_size(&value).unwrap(),
             serde_json::to_vec(&value).unwrap().len()
         );
-        assert!(argument_size(&Value::String(
-            "x".repeat(super::super::transport::MAX_MCP_LINE_BYTES)
-        ))
-        .is_err());
+        assert!(
+            argument_size(&Value::String(
+                "x".repeat(super::super::transport::MAX_MCP_LINE_BYTES)
+            ))
+            .is_err()
+        );
     }
 }

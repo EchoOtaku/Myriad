@@ -5,12 +5,12 @@
 //! - 速率限制 HTTP 适配
 //! - 安装解析 / 批准权限校验 HTTP 适配
 
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use sea_orm::DatabaseConnection;
 use serde_json::json;
 
 use crate::error::HttpError;
-use crate::middleware::auth::{ensure_current_admin_on, Claims};
+use crate::middleware::auth::{Claims, ensure_current_admin_on};
 use crate::models::entities::tapps;
 use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
 use crate::services::tapp_ownership::{self, TappAccessError};

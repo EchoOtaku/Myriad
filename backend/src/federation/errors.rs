@@ -6,7 +6,7 @@
 
 use axum::http::StatusCode;
 use myriad_error::AppError;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Errors that mean "peer will never accept this activity as-is".
 ///
@@ -196,8 +196,7 @@ mod tests {
 
     #[test]
     fn channel_wrong_party_is_permanent() {
-        let msg =
-            "Channel ch_x not found or actor https://kiseki.blog/users/Hitomi is not the remote party";
+        let msg = "Channel ch_x not found or actor https://kiseki.blog/users/Hitomi is not the remote party";
         assert!(is_permanent_federation_error(msg));
         let (st, _) = map_inbox_handler_error(msg.into());
         assert!(st == StatusCode::FORBIDDEN || st == StatusCode::NOT_FOUND);

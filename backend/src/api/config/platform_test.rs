@@ -1,9 +1,9 @@
 //! Platform connectivity test endpoint.
 use axum::{
-    http::{HeaderMap, StatusCode},
     Json,
+    http::{HeaderMap, StatusCode},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::{form_secret_if_plaintext, is_masked_secret_value};
 use crate::api::reports::locale::host_locale_from_headers;

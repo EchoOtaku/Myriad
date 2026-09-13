@@ -10,9 +10,9 @@
 
 use crate::error::HttpError;
 use axum::{
+    Extension, Json,
     extract::{Query, State},
     http::StatusCode,
-    Extension, Json,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -20,7 +20,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::config::DynamicConfig;
-use crate::middleware::auth::{ensure_current_admin_on, Claims};
+use crate::middleware::auth::{Claims, ensure_current_admin_on};
 use crate::services::fetcher::PlatformFetcher;
 use sea_orm::DatabaseConnection;
 

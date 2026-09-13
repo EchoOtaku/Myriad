@@ -11,28 +11,28 @@ use std::time::Duration;
 use chrono::Utc;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use tokio::sync::{mpsc, oneshot, watch, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, oneshot, watch};
 
 use crate::services::ai_config::{AiConfig, AiImageConfig};
-use crate::services::ai_cost_ledger::{record_ai_cost, AiCostLedgerEntry};
+use crate::services::ai_cost_ledger::{AiCostLedgerEntry, record_ai_cost};
 use crate::services::ai_quota::{
-    get_ai_usage, release_ai_token_reservation, settle_ai_quota, AiQuotaReservation,
+    AiQuotaReservation, get_ai_usage, release_ai_token_reservation, settle_ai_quota,
 };
 use crate::services::ai_task_context::AiContextRef;
 use crate::services::ai_task_prepare::{
-    assemble_task_prompt, default_output_format, normalize_text_result, AiTaskLogicError,
+    AiTaskLogicError, assemble_task_prompt, default_output_format, normalize_text_result,
 };
 use crate::services::ai_task_provider::{
     image_size_from_input, run_image_provider, run_text_provider,
 };
 use crate::services::ai_task_registry::{
-    AiTaskDelivery, AiTaskStatus, AI_CANCEL_NAMESPACE, AI_TASK_MAILBOX_CHANNEL,
+    AI_CANCEL_NAMESPACE, AI_TASK_MAILBOX_CHANNEL, AiTaskDelivery, AiTaskStatus,
     TASK_RETENTION_SECONDS,
 };
 use crate::services::ai_task_runtime::{
-    finish_task, operation_name, update_task_state, TaskBroadcast,
+    TaskBroadcast, finish_task, operation_name, update_task_state,
 };
 use crate::services::analyzer::AiProvider;
 use crate::services::json_schema_subset::validate_inline_data_schema;
@@ -1010,9 +1010,9 @@ pub async fn execute_task(execution: AiTaskExecution) {
 #[cfg(test)]
 mod tests {
     use super::{
-        default_output, hash_request, merge_task_broadcasts, parse_ai_manifest, validate_output,
         AiTaskEventMetricsInner, BufferedTaskBroadcast, CoalescingBuffer, CreateAiTaskRequest,
-        TaskBroadcast, TaskEventSink,
+        TaskBroadcast, TaskEventSink, default_output, hash_request, merge_task_broadcasts,
+        parse_ai_manifest, validate_output,
     };
     use crate::services::ai_task_registry::AiTaskDelivery;
     use myriad_tapp_contract::manifest::{
@@ -1020,7 +1020,7 @@ mod tests {
     };
     use serde_json::json;
     use std::sync::{Arc, Mutex};
-    use tokio::sync::{mpsc, Semaphore};
+    use tokio::sync::{Semaphore, mpsc};
 
     fn delta(text: &str) -> TaskBroadcast {
         TaskBroadcast {

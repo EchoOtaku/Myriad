@@ -1,8 +1,8 @@
 // MyAnimeList API routes — dual-mode: load.json (username) or official API (optional client_id)
 use crate::error::HttpError;
 use axum::{
-    extract::{Path, Query},
     Json,
+    extract::{Path, Query},
 };
 use serde::{Deserialize, Serialize};
 

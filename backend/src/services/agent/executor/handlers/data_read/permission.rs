@@ -1,5 +1,5 @@
 use super::super::HandlerContext;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 pub(super) async fn execute_tapp_widget(
@@ -41,7 +41,7 @@ pub(super) async fn execute_permission_check(
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
     use crate::services::permission_service::{
-        role_from_user_id, TappPermission, TappPermissionService,
+        TappPermission, TappPermissionService, role_from_user_id,
     };
 
     let permission = params

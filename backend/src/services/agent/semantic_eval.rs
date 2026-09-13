@@ -6,7 +6,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use super::{chat_prompt, consciousness as event, merope::chat_remember as memory};
@@ -791,10 +791,12 @@ fn touch_semantics_reject_blanket_acceptance_and_do_not_claim_unrun_success() {
     let exported = request(boundary);
     assert_eq!(exported["schemaName"], "touch_appraisal");
     assert!(!exported["input"].as_str().unwrap().contains("remainingMs"));
-    assert!(!exported["input"]
-        .as_str()
-        .unwrap()
-        .contains("localReaction"));
+    assert!(
+        !exported["input"]
+            .as_str()
+            .unwrap()
+            .contains("localReaction")
+    );
     let empty = summary(&[json!({"kind":"touch","outcome":"not_run","grade":"not_run"})]);
     assert!(empty["touch"]["validRate"].is_null());
     assert!(empty["touch"]["timelyRate"].is_null());
@@ -828,14 +830,18 @@ fn touch_response_cases_use_production_summary_and_suppress_busy_expired_and_dnd
         .unwrap();
     let request = request(withdrawal);
     let input: Value = serde_json::from_str(request["input"].as_str().unwrap()).unwrap();
-    assert!(input["event"]["summary"]
-        .as_str()
-        .unwrap()
-        .contains("Last reaction: withdrew"));
-    assert!(request["system"]
-        .as_str()
-        .unwrap()
-        .contains(withdrawal.soul.as_deref().unwrap()));
+    assert!(
+        input["event"]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("Last reaction: withdrew")
+    );
+    assert!(
+        request["system"]
+            .as_str()
+            .unwrap()
+            .contains(withdrawal.soul.as_deref().unwrap())
+    );
     assert_eq!(
         request["schema"]["properties"]["action"]["enum"],
         json!(["ignore", "speak", "ask"])
@@ -908,10 +914,12 @@ fn motion_semantics_require_grounded_output_and_real_review() {
     let input: Value = serde_json::from_str(exported["input"].as_str().unwrap()).unwrap();
     assert_eq!(input["previouslyIssuedPhrases"][0]["intent"], "hesitate");
     assert_eq!(input["responseText"], case.reply);
-    assert!(exported["system"]
-        .as_str()
-        .unwrap()
-        .contains("omit baseline"));
+    assert!(
+        exported["system"]
+            .as_str()
+            .unwrap()
+            .contains("omit baseline")
+    );
     assert_eq!(input["rig"]["activeBehaviors"][0]["function"], "uncertain");
 }
 

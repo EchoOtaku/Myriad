@@ -1,7 +1,7 @@
 //! Persist admin config to the database and deploy-key `.env` writes.
-use axum::{extract::State, Json};
+use axum::{Json, extract::State};
 use sea_orm::DatabaseConnection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::build::reconcile_platform_auto_refresh;
 use super::secrets::{
@@ -1041,7 +1041,7 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
 
     // Drop emptied deploy keys from process env (dotenv never unsets missing keys).
     for key in env_keys_to_clear {
-        std::env::remove_var(key);
+        unsafe { std::env::remove_var(key) };
     }
 
     // 触发配置重载标志(虽然数据库连接可能不变,但确保其他服务知道配置已更新)

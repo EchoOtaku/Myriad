@@ -1,67 +1,106 @@
 /* 页面组合不要往这里塞业务。 */
 
-.brew-empty {
-  margin: 2rem 0;
-  padding: 0.95rem 1.05rem;
-  border: 1px solid var(--brew-frost-line, var(--brew-line));
-  border-radius: var(--brew-radius);
-  background: var(--brew-chip);
-  box-shadow: var(--brew-shadow);
-  color: var(--brew-fg-soft);
-  font-size: 0.875rem;
+.brew-vacant {
+  --brew-story-inset: 0.7rem;
+  --brew-story-title-size: 1.2rem;
+
+  display: grid;
+  box-sizing: border-box;
+  grid-template-rows: repeat(2, var(--brew-story-h, 12rem));
+  grid-auto-flow: column;
+  grid-auto-columns: var(--brew-story-w, 16.5rem);
+  gap: var(--brew-items-gap, 0.55rem) 0.75rem;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  padding: 0.35rem var(--brew-rail-pad-x, 0) var(--brew-items-pad-bottom, 0);
+  overflow: hidden;
 }
 
-.brew-empty__mark {
-  display: block;
-  width: 2.5rem;
-  height: 2.5rem;
-  margin-bottom: 0.4rem;
-  opacity: 0.32;
+.brew-vacant__note,
+.brew-vacant__ghost {
+  min-width: 0;
+  height: 100%;
 }
 
-.brew-empty__hint {
-  margin: 0.35rem 0 0;
-  color: var(--brew-fg-dim);
-  font-size: 0.8125rem;
-}
-
-.brew-empty__row {
+.brew-vacant__shell {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
+  box-sizing: border-box;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.28rem;
+  height: 100%;
+  min-height: 0;
+  padding: var(--brew-story-inset);
+  border-radius: var(--brew-radius);
 }
 
-.brew-empty__row p {
+.brew-vacant__title {
   margin: 0;
+  color: var(--brew-fg);
+  font-size: var(--brew-story-title-size);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
 }
 
-.brew-empty__action {
-  height: 1.65rem;
-  padding: 0.22rem 0.65rem;
-  border: 1px solid var(--brew-accent-line);
-  border-radius: 0.45rem;
-  background: var(--brew-accent-fill);
-  color: var(--brew-accent-ink);
-  font-size: 0.72rem;
-  font-weight: 600;
-  line-height: 1.2;
-  cursor: pointer;
-  transition: var(--sm-t-fill, background-color 140ms ease);
+.brew-vacant__hint {
+  margin: 0.08rem 0 0;
+  color: var(--brew-fg-dim);
+  font-size: 0.75rem;
+  font-weight: 450;
+  line-height: 1.45;
 }
 
-.brew-empty__action:hover {
-  background: var(
-    --cfg-accent-fill-hover,
-    color-mix(in srgb, var(--brew-accent) 26%, white)
-  );
-  border-color: var(
-    --cfg-accent-line-hover,
-    color-mix(in srgb, var(--brew-accent) 48%, white)
-  );
+.brew-vacant__ghost {
+  pointer-events: none;
+  opacity: calc(0.5 - (var(--vacant-i, 1) - 1) * 0.09);
 }
 
-.brew-empty__action:active {
-  transform: scale(var(--sm-scale-press, 0.97));
+.brew-vacant__ghost .brew-vacant__shell {
+  border: 1px solid var(--brew-frost-line, var(--brew-line));
+  background: var(--brew-chip);
 }
 
+.brew-vacant__bar {
+  display: block;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--brew-fill);
+}
+
+.brew-vacant__bar.is-meta {
+  width: 36%;
+  height: 0.42rem;
+}
+
+.brew-vacant__bar.is-title {
+  width: 86%;
+  height: 0.72rem;
+  margin-top: 0.18rem;
+}
+
+.brew-vacant__bar.is-title.is-short {
+  width: 58%;
+  margin-top: 0;
+}
+
+.brew-vacant__bar.is-line {
+  width: 100%;
+  height: 0.42rem;
+  margin-top: 0.12rem;
+}
+
+.brew-vacant__bar.is-line.is-short {
+  width: 52%;
+}
+
+html[data-perf-mode='exlight'] .brew-vacant__ghost {
+  opacity: 0.28;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brew-vacant__ghost {
+    opacity: 0.28;
+  }
+}

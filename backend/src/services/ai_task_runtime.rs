@@ -10,12 +10,12 @@ use chrono::Utc;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::sync::{watch, RwLock};
+use tokio::sync::{RwLock, watch};
 
 use crate::services::ai_quota::AiUsageSnapshot;
 use crate::services::ai_task_registry::{
-    persist_ai_task, AiTaskSnapshot, AiTaskStatus, PersistedAiTask, AI_CANCEL_NAMESPACE,
-    AI_TASK_MAILBOX_CHANNEL, AI_TASK_NAMESPACE, TASK_RETENTION_SECONDS,
+    AI_CANCEL_NAMESPACE, AI_TASK_MAILBOX_CHANNEL, AI_TASK_NAMESPACE, AiTaskSnapshot, AiTaskStatus,
+    PersistedAiTask, TASK_RETENTION_SECONDS, persist_ai_task,
 };
 use crate::services::tapp_registry::{self as shared_registry, RegistryIdentity};
 use myriad_tapp_contract::manifest::TappAiOperation;
@@ -306,7 +306,7 @@ pub fn operation_name(operation: TappAiOperation) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{clean_tasks, operation_name, LocalAiTask};
+    use super::{LocalAiTask, clean_tasks, operation_name};
     use crate::services::ai_quota::{AiCooldownStatus, AiUsageCounter, AiUsageSnapshot};
     use crate::services::ai_task_registry::{AiTaskDelivery, AiTaskSnapshot, AiTaskStatus};
     use crate::services::permission_service::UserRole;

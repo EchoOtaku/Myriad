@@ -1,10 +1,10 @@
 use super::super::HandlerContext;
 use super::platform::extract_platform_items;
 use crate::models::entities::{tapp_scheduled_tasks, tapps};
-use crate::services::agent::executor::utils::{validate_platform_name, VALID_PLATFORMS};
+use crate::services::agent::executor::utils::{VALID_PLATFORMS, validate_platform_name};
 use crate::services::data_paths::platform_filtered_file;
 use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, QueryFilter, QueryOrder, QuerySelect};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 pub(super) async fn execute_platform_connection(

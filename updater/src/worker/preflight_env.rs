@@ -277,7 +277,9 @@ fn check_federation_http_storage(config: &serde_json::Value) -> Result<()> {
                     == Some(true)
                 && mount.get("read_only").and_then(serde_json::Value::as_bool) != Some(true)
         }) {
-            return Err(UpdaterError::Precondition(format!("federation HTTP requires the fixed writable {source}/{subpath} subpath at {target}; migrate Compose before upgrading")));
+            return Err(UpdaterError::Precondition(format!(
+                "federation HTTP requires the fixed writable {source}/{subpath} subpath at {target}; migrate Compose before upgrading"
+            )));
         }
     }
     Ok(())
@@ -312,12 +314,11 @@ fn check_manageable_tag_vars(worker: &Worker) -> Result<()> {
     }
     let mut refs_tag = false;
     for f in &files {
-        if let Ok(s) = std::fs::read_to_string(f) {
-            if s.contains("${MYRIAD_TAG}") || s.contains("$MYRIAD_TAG") {
+        if let Ok(s) = std::fs::read_to_string(f)
+            && (s.contains("${MYRIAD_TAG}") || s.contains("$MYRIAD_TAG")) {
                 refs_tag = true;
                 break;
             }
-        }
     }
     if !refs_tag {
         return Err(UpdaterError::Precondition(
@@ -343,8 +344,8 @@ fn discover_compose_files(compose_dir: &Path) -> Vec<PathBuf> {
             files.push(p);
         }
     }
-    if files.is_empty() {
-        if let Ok(rd) = std::fs::read_dir(compose_dir) {
+    if files.is_empty()
+        && let Ok(rd) = std::fs::read_dir(compose_dir) {
             for entry in rd.flatten() {
                 if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                     continue;
@@ -357,7 +358,6 @@ fn discover_compose_files(compose_dir: &Path) -> Vec<PathBuf> {
                 }
             }
         }
-    }
     files
 }
 

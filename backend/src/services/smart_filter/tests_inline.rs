@@ -206,11 +206,13 @@ fn filter_youtube_channel_and_videos() {
             assert_eq!(analysis.recent_videos[0].video_id, "dQw4w9WgXcQ");
             assert_eq!(analysis.recent_videos[0].view_count, Some(1000));
             assert!(analysis.recent_videos[0].cover.is_some());
-            assert!(analysis
-                .channel_url
-                .as_deref()
-                .unwrap_or("")
-                .contains("GoogleDevelopers"));
+            assert!(
+                analysis
+                    .channel_url
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("GoogleDevelopers")
+            );
             assert!(analysis.video_summary.contains("subscribers"));
         }
         other => panic!("expected YouTube analysis, got {:?}", other),
@@ -385,14 +387,18 @@ fn test_filter_discord() {
             assert_eq!(analysis.guild_stats.admin_guild_count, 1);
             // Owner 服务器仍排首位，即使它成员数更少
             assert_eq!(analysis.guilds_preview[0].name, "Owned Server");
-            assert!(analysis.guilds_preview[0]
-                .permissions_highlight
-                .contains(&"ADMINISTRATOR".to_string()));
+            assert!(
+                analysis.guilds_preview[0]
+                    .permissions_highlight
+                    .contains(&"ADMINISTRATOR".to_string())
+            );
             assert_eq!(analysis.connections.len(), 2);
-            assert!(analysis
-                .identity_graph
-                .linked_platforms
-                .contains(&"steam".to_string()));
+            assert!(
+                analysis
+                    .identity_graph
+                    .linked_platforms
+                    .contains(&"steam".to_string())
+            );
             let steam = analysis.identity_graph.cross_check.get("steam").unwrap();
             assert!(steam.discord_linked);
             assert!(steam.myriad_configured);
@@ -407,31 +413,41 @@ fn test_filter_discord() {
             assert_eq!(analysis.guild_stats.community_guild_count, 1);
             assert_eq!(analysis.guild_stats.partnered_or_verified_count, 1);
             assert_eq!(analysis.guilds_preview[0].member_count, Some(1200));
-            assert!(analysis.guilds_preview[0]
-                .feature_highlight
-                .contains(&"COMMUNITY".to_string()));
+            assert!(
+                analysis.guilds_preview[0]
+                    .feature_highlight
+                    .contains(&"COMMUNITY".to_string())
+            );
             // NEWS 属噪声特性，应被过滤
-            assert!(!analysis.guilds_preview[0]
-                .feature_highlight
-                .contains(&"NEWS".to_string()));
+            assert!(
+                !analysis.guilds_preview[0]
+                    .feature_highlight
+                    .contains(&"NEWS".to_string())
+            );
 
             // identify 派生：徽章 / 头像 / accent / MFA / 账号年龄
-            assert!(analysis
-                .profile
-                .badges
-                .contains(&"Active Developer".to_string()));
-            assert!(analysis
-                .profile
-                .badges
-                .contains(&"HypeSquad Balance".to_string()));
+            assert!(
+                analysis
+                    .profile
+                    .badges
+                    .contains(&"Active Developer".to_string())
+            );
+            assert!(
+                analysis
+                    .profile
+                    .badges
+                    .contains(&"HypeSquad Balance".to_string())
+            );
             assert!(analysis.profile.mfa_enabled);
             assert_eq!(analysis.profile.accent_color.as_deref(), Some("#5865F2"));
-            assert!(analysis
-                .profile
-                .avatar_url
-                .as_deref()
-                .unwrap()
-                .contains("155149108183695360"));
+            assert!(
+                analysis
+                    .profile
+                    .avatar_url
+                    .as_deref()
+                    .unwrap()
+                    .contains("155149108183695360")
+            );
             assert!(analysis.profile.account_age_years.unwrap() >= 8);
         }
         other => panic!("expected Discord analysis, got {:?}", other),

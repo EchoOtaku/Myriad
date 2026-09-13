@@ -1,6 +1,6 @@
 //! Publish, unpublish, and list local federation content.
 
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::json;
 

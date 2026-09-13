@@ -1,15 +1,15 @@
 //! Brew reading state, item detail, stats, and WebSocket.
 use axum::{
+    Extension, Json,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
-    Extension, Json,
 };
 use chrono::Utc;
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
-    DatabaseBackend, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
-    QuerySelect, QueryTrait, Statement, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+    QueryTrait, Statement, TransactionTrait, sea_query::Expr,
 };
 use serde_json::json;
 

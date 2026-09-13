@@ -24,14 +24,14 @@ use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 
 use crate::middleware::auth::Claims;
 use crate::middleware::ws_origin::{
     allowed_origins_from_global_config, assert_ws_origin_for_cookie_session,
 };
 use crate::services::tapp_ws_ticket::{
-    self, ConsumedWsTicket, WsTicketError, WsTicketKind, TAPP_WS_TICKET_QUERY,
+    self, ConsumedWsTicket, TAPP_WS_TICKET_QUERY, WsTicketError, WsTicketKind,
 };
 
 use crate::federation::types::get_base_url;

@@ -162,7 +162,8 @@ pub(super) fn spawn(manager: Arc<NotificationManager>) {
                         // try_recv returns None after a connection loss, so silent reconnects
                         // also generate resync instead of losing the gap invisibly.
                         loop {
-                            match listener.try_recv().await {
+                            let received = listener.try_recv().await;
+                            match received {
                                 Ok(Some(message)) => {
                                     if message.channel() == PERSONA_CHANNEL {
                                         if crate::runtime_role::PERSONA_RUNTIME_LOCAL

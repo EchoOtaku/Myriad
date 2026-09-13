@@ -16,8 +16,8 @@ use super::openai::{
 use super::schema::JsonMode;
 use super::transport;
 use super::types::{
-    gateway_of, AiProvider, ChatMessage, Gateway, GeminiContent, GeminiPart, GeminiRequest,
-    GeminiResponse, OpenAIMessage, OpenAIRequest, OpenAIResponse, OutputBudget, StreamDelta,
+    AiProvider, ChatMessage, Gateway, GeminiContent, GeminiPart, GeminiRequest, GeminiResponse,
+    OpenAIMessage, OpenAIRequest, OpenAIResponse, OutputBudget, StreamDelta, gateway_of,
 };
 
 pub struct AiAnalyzer {
@@ -1029,7 +1029,7 @@ impl AiAnalyzer {
 
 #[cfg(test)]
 mod tests {
-    use super::{require_analyze_prompt, ProviderCallFailure};
+    use super::{ProviderCallFailure, require_analyze_prompt};
     use serde_json::json;
 
     /// 预算被拒 → 去掉预算重试 → 还被拒 → prompt-only。三级，不能少。

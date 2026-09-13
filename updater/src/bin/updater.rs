@@ -56,7 +56,7 @@ async fn main() -> Result<()> {
     // Security posture (R5/R6): warn only on non-default / insecure choices.
     // Secure defaults (cosign=strict, strong token) stay quiet beyond the boot audit line.
     {
-        use myriad_updater::config::{cosign_verify_is_off, UPDATE_TOKEN_WARN_BELOW_LEN};
+        use myriad_updater::config::{UPDATE_TOKEN_WARN_BELOW_LEN, cosign_verify_is_off};
         use myriad_updater::release::CosignPolicy;
 
         let policy = CosignPolicy::from_env(Some(&config.cosign_verify));

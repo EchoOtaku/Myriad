@@ -60,7 +60,7 @@ mod tests {
 
     #[tokio::test]
     async fn real_transport_timeout_is_retryable_but_http_auth_failure_is_not() {
-        use axum::{routing::get, Router};
+        use axum::{Router, routing::get};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {

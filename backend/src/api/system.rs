@@ -1,6 +1,6 @@
 use crate::error::HttpError;
 use axum::Json;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 // Global flag to trigger config reload

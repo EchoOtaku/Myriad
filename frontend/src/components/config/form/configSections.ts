@@ -1,4 +1,5 @@
 import type { LocaleConfig } from '../../../i18n/assembleLocale'
+import { AGENT_SETTINGS_PATH } from '../../agent/settings/agentSettingsPath'
 import type { ConfigNavSection } from './configNavPersistence'
 import { CONFIG_NAV_SECTIONS } from './configNavPersistence'
 
@@ -32,17 +33,27 @@ export interface ConfigSectionCopy {
   notificationCenter: { title: string; settingsDesc: string }
 }
 
+export type ConfigCatalogId = ConfigNavSection | 'agent'
+
+export interface ConfigCatalogItem {
+  id: ConfigCatalogId
+  title: string
+  description: string
+  keywords: string[]
+  showReset: boolean
+  href?: string
+}
+
 /** Navigation and search consume the same visible pages and localized names. */
 export function configSectionCatalog(
   t: ConfigSectionCopy,
   isAdmin: boolean,
   agentTitle = t.config.agent,
-) {
+): ConfigCatalogItem[] {
   const titles: Record<ConfigNavSection, [string, string]> = {
     basic: [t.config.basic, t.config.basicDesc],
     platforms: [t.config.platforms, t.config.platformsDesc],
     ai: [t.config.ai, t.config.aiDesc],
-    agent: [agentTitle, t.config.agentDesc],
     lab: [t.config.lab, t.config.labDesc],
     notifications: [
       t.notificationCenter.title,
@@ -56,13 +67,24 @@ export function configSectionCatalog(
     advanced: [t.config.advanced, t.config.advancedDesc],
     about: [t.config.about, t.config.aboutDesc],
   }
-  return CONFIG_NAV_SECTIONS.filter((id) => id !== 'federation' || isAdmin).map(
-    (id) => ({
-      id,
-      title: titles[id][0],
-      description: titles[id][1],
-      keywords: [...t.config.searchKeywords[id]],
-      showReset: !['about', 'platforms', 'oauth', 'users'].includes(id),
-    }),
-  )
+  const sections = CONFIG_NAV_SECTIONS.filter(
+    (id) => id !== 'federation' || isAdmin,
+  ).map((id) => ({
+    id,
+    title: titles[id][0],
+    description: titles[id][1],
+    keywords: [...t.config.searchKeywords[id]],
+    showReset: !['about', 'platforms', 'oauth', 'users'].includes(id),
+  }))
+  const ai = sections.findIndex((section) => section.id === 'ai')
+  const agentPortal: ConfigCatalogItem = {
+    id: 'agent',
+    href: AGENT_SETTINGS_PATH,
+    title: agentTitle,
+    description: t.config.agentDesc,
+    keywords: [...t.config.searchKeywords.agent],
+    showReset: false,
+  }
+  if (ai < 0) return [...sections, agentPortal]
+  return [...sections.slice(0, ai + 1), agentPortal, ...sections.slice(ai + 1)]
 }

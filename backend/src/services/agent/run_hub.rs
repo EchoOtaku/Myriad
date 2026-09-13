@@ -11,12 +11,12 @@ use once_cell::sync::Lazy;
 use sea_orm::{ConnectionTrait, DbBackend, FromQueryResult, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::sync::{broadcast, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, broadcast};
 
 use crate::services::tapp_registry as shared_registry;
 
-use super::notifications::get_notification_manager;
 use super::AgentProgressEvent;
+use super::notifications::get_notification_manager;
 
 /// 单 run 内存事件环：加长以减少超长任务 re-subscribe 丢中间步骤
 const EVENT_HISTORY_LIMIT: usize = 512;
@@ -97,6 +97,11 @@ impl AgentRun {
             }),
             events_tx,
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_for_test(run_id: impl Into<String>, user_id: i32) -> Arc<Self> {
+        Self::new(run_id.into(), user_id, None)
     }
 
     fn from_persisted(
@@ -798,12 +803,13 @@ mod tests {
         let persisted = serde_json::to_value(run.persisted_snapshot().await).unwrap();
         assert!(persisted.get("playback_direction").is_none());
         run.playback_direction.close();
-        assert!(run
-            .playback_direction
-            .read_after(0)
-            .await
-            .performance
-            .is_none());
+        assert!(
+            run.playback_direction
+                .read_after(0)
+                .await
+                .performance
+                .is_none()
+        );
         AGENT_RUNS.write().await.remove(run_id);
     }
 }

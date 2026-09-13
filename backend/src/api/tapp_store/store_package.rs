@@ -5,23 +5,23 @@
 //! outbound HTTP, and status mapping.
 
 use super::prepared_package::{PreparedTappPackage, PreparedTappResources};
-use super::{api_http_error, TappManifest, WidgetTemplateContents};
+use super::{TappManifest, WidgetTemplateContents, api_http_error};
 use crate::error::HttpError;
 use axum::http::StatusCode;
-use base64::{engine::general_purpose::STANDARD as B64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use sea_orm::{DatabaseConnection, EntityTrait};
 use std::collections::HashMap;
 
 use crate::models::entities::tapp_store_sources;
 use crate::services::tapp_install_resources::{ArchiveBudget, AssetBudget};
 use crate::services::tapp_store_package::{
-    append_store_cache_bust, find_store_app_entry, i18n_downloads, is_invalid_store_source_ref,
-    join_store_file_url, module_downloads, nonempty_map_opt, optional_store_text_downloads,
-    parse_store_preview_descriptor, prepare_store_catalog_base,
-    require_download_page_styles_if_declared, require_download_page_template_if_declared,
-    resolve_store_source_among, store_app_download_section, store_asset_download_plan,
-    store_download_core_paths, store_index_url, widget_template_downloads, OptionalStoreTextKind,
-    StoreSourceRowRef,
+    OptionalStoreTextKind, StoreSourceRowRef, append_store_cache_bust, find_store_app_entry,
+    i18n_downloads, is_invalid_store_source_ref, join_store_file_url, module_downloads,
+    nonempty_map_opt, optional_store_text_downloads, parse_store_preview_descriptor,
+    prepare_store_catalog_base, require_download_page_styles_if_declared,
+    require_download_page_template_if_declared, resolve_store_source_among,
+    store_app_download_section, store_asset_download_plan, store_download_core_paths,
+    store_index_url, widget_template_downloads,
 };
 use crate::services::tapp_validation::{MAX_TAPP_I18N_RESOURCE_BYTES, MAX_TAPP_MANIFEST_BYTES};
 
@@ -469,7 +469,7 @@ async fn download_store_package_assets(
 
 #[cfg(test)]
 mod tests {
-    use super::{with_store_cache_bust, StoreDownloadBudget};
+    use super::{StoreDownloadBudget, with_store_cache_bust};
     use crate::services::tapp_store_package::{store_asset_store_path, store_package_root};
 
     fn response(bytes: usize) -> reqwest::Response {

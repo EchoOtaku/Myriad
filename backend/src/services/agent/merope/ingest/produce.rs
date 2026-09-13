@@ -6,17 +6,17 @@ use std::collections::BTreeMap;
 
 use super::super::gates::{decide_ingest, is_valuable_event};
 use super::super::store::{
-    affect_from_state, get_or_create_state, insert_diary, recently_spoke_event, update_affect,
-    DIARY_SOURCE_EVENT,
+    DIARY_SOURCE_EVENT, affect_from_state, get_or_create_state, insert_diary, recently_spoke_event,
+    update_affect,
 };
 use super::super::{apply_task_outcome, is_extremely_low, is_logged_in_addressee};
 use super::{
-    compact_summary, current_sight, is_enabled, is_trivial_line, log_skip,
-    persist_persona_remember, SAME_EVENT_MINUTES,
+    SAME_EVENT_MINUTES, compact_summary, current_sight, is_enabled, is_trivial_line, log_skip,
+    persist_persona_remember,
 };
 use crate::services::agent::consciousness::{
-    consider_event, enqueue_speak_intent, is_work_outcome, new_speak_intent, ConsciousnessAction,
-    ConsciousnessEvent, EventUrgency, IntentStore,
+    ConsciousnessAction, ConsciousnessEvent, EventUrgency, IntentStore, consider_event,
+    enqueue_speak_intent, is_work_outcome, new_speak_intent,
 };
 
 pub fn work_outcome_parent(

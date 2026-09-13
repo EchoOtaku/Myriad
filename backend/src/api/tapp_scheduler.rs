@@ -3,38 +3,38 @@
 //! 提供定时任务的 CRUD 和 WebSocket 推送功能
 
 use axum::{
+    Extension, Json,
     extract::{
-        ws::{Message, WebSocket},
         Path, Query, State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
     },
     http::StatusCode,
     response::IntoResponse,
-    Extension, Json,
 };
 use futures::{SinkExt, StreamExt};
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use crate::api::tapp_runtime::RuntimeGrantContext;
 use crate::api::tapp_runtime::common::{
     check_tapp_permission, resolve_accessible_tapp, verify_tapp_approved_permissions,
     verify_tapp_ownership,
 };
-use crate::api::tapp_runtime::RuntimeGrantContext;
 use crate::error::HttpError;
-use crate::middleware::auth::{ensure_current_admin_on, Claims};
+use crate::middleware::auth::{Claims, ensure_current_admin_on};
 use crate::models::entities::tapp_scheduled_tasks::{
     ExecutionTarget, MissedPolicy, ScheduleType, TaskScope,
 };
 use crate::services::permission_service::TappPermission;
 use crate::services::tapp_scheduler::{
-    backend_action_permissions, drain_frontend_messages, normalize_backend_actions,
-    register_frontend_connection, requeue_frontend_message, scheduler_engine as service_scheduler,
-    try_scheduler_engine, unregister_frontend_connection, validate_backend_action_declarations,
-    TappSchedulerEngine, MAX_SCHEDULER_RETRIES, MAX_SCHEDULER_RETRY_DELAY_MS,
-    SCHEDULER_MAILBOX_POLL_MILLIS, SCHEDULER_PRESENCE_REFRESH_SECONDS,
+    MAX_SCHEDULER_RETRIES, MAX_SCHEDULER_RETRY_DELAY_MS, SCHEDULER_MAILBOX_POLL_MILLIS,
+    SCHEDULER_PRESENCE_REFRESH_SECONDS, TappSchedulerEngine, backend_action_permissions,
+    drain_frontend_messages, normalize_backend_actions, register_frontend_connection,
+    requeue_frontend_message, scheduler_engine as service_scheduler, try_scheduler_engine,
+    unregister_frontend_connection, validate_backend_action_declarations,
 };
 use uuid::Uuid;
 
@@ -840,16 +840,20 @@ mod tests {
         .expect("retry config");
         assert_eq!(normalized["retry_delay"], 1_000);
 
-        assert!(normalize_retry_config(Some(RetryConfigRequest {
-            max_retries: MAX_SCHEDULER_RETRIES + 1,
-            retry_delay: 1_000,
-        }))
-        .is_err());
-        assert!(normalize_retry_config(Some(RetryConfigRequest {
-            max_retries: 0,
-            retry_delay: MAX_SCHEDULER_RETRY_DELAY_MS + 1,
-        }))
-        .is_err());
+        assert!(
+            normalize_retry_config(Some(RetryConfigRequest {
+                max_retries: MAX_SCHEDULER_RETRIES + 1,
+                retry_delay: 1_000,
+            }))
+            .is_err()
+        );
+        assert!(
+            normalize_retry_config(Some(RetryConfigRequest {
+                max_retries: 0,
+                retry_delay: MAX_SCHEDULER_RETRY_DELAY_MS + 1,
+            }))
+            .is_err()
+        );
     }
 
     #[test]

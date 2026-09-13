@@ -162,8 +162,8 @@ fn unrecoverable_key_load_only_empty_username() {
         "No federation keys found for user"
     ));
     assert!(!is_unrecoverable_key_load_error(
-            "Key load failed (ensure): Key generation failed; original: No federation keys found for user"
-        ));
+        "Key load failed (ensure): Key generation failed; original: No federation keys found for user"
+    ));
 }
 
 #[test]
@@ -409,7 +409,7 @@ fn classify_cancel_status_unknown_and_failed() {
     );
     assert_eq!(classify_cancel_status(""), CancelStatusDecision::Cancel);
     assert_eq!(classify_cancel_status("DEAD"), CancelStatusDecision::Cancel); // case-sensitive
-                                                                              // Canonical dead stays idempotent
+    // Canonical dead stays idempotent
     assert_eq!(
         classify_cancel_status("dead"),
         CancelStatusDecision::AlreadyDead

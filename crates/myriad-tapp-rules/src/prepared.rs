@@ -324,13 +324,11 @@ impl PreparedTappPackage {
             .page
             .as_ref()
             .and_then(|page| page.styles.as_deref())
-        {
-            if nonempty_content(resources.page_styles.as_ref()).is_none() {
+            && nonempty_content(resources.page_styles.as_ref()).is_none() {
                 return Err(PackageValidateError::MissingPageStyles {
                     declared: declared.to_string(),
                 });
             }
-        }
         if self
             .manifest
             .page
@@ -407,9 +405,11 @@ mod tests {
                 .unwrap_err(),
             PackageValidateError::IdMismatch
         );
-        assert!(package
-            .validate(Some("com.example.prepared"), &current_system())
-            .is_ok());
+        assert!(
+            package
+                .validate(Some("com.example.prepared"), &current_system())
+                .is_ok()
+        );
     }
 
     #[test]

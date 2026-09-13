@@ -7,7 +7,6 @@ export const CONFIG_NAV_SECTIONS = [
   'basic',
   'platforms',
   'ai',
-  'agent',
   'notifications',
   'oauth',
   'users',
@@ -45,13 +44,10 @@ export function normalizeConfigSection(
   return isKnownSection(next, isAdmin) ? next : null
 }
 
-/** 人设二级页旧深链是 ?section=ai&page=merope，归到 Agent。 */
 export function resolveConfigSectionFromSearch(
   params: URLSearchParams,
   isAdmin: boolean,
 ): string | null {
-  const page = params.get('page')
-  if (page === 'merope' || page === 'merope-setup') return 'agent'
   return normalizeConfigSection(params.get('section'), isAdmin)
 }
 
@@ -136,7 +132,7 @@ export function syncConfigSectionToUrl(section: string): void {
     const url = new URL(window.location.href)
     if (url.searchParams.get('section') === section) return
     url.searchParams.set('section', section)
-    if (section !== 'agent') url.searchParams.delete('page')
+    url.searchParams.delete('page')
     window.history.replaceState(window.history.state, '', url.toString())
   } catch {
     /* ignore */

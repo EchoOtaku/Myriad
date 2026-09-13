@@ -9,9 +9,9 @@
 
 use myriad_merope::{ChatPerformanceBaseline, ChatPerformanceCue, ChatPerformancePlan};
 
+use super::MotionPhase;
 use super::motion::text_mentions_any;
 use super::state::MoodTransition;
-use super::MotionPhase;
 
 /// Mood moves smaller than this are noise, not a change of bearing.
 const MOOD_NUDGE: f64 = 8.0;
@@ -425,8 +425,8 @@ fn text_is_greeting(text: Option<&str>) -> bool {
 mod tests {
     use super::*;
     use myriad_merope::{
-        plan_is_empty, PERFORMANCE_BASELINE_EXPRESSIONS, PERFORMANCE_CUE_INTENTS,
-        PERFORMANCE_INTERRUPT_MODES, PERFORMANCE_POSTURES,
+        PERFORMANCE_BASELINE_EXPRESSIONS, PERFORMANCE_CUE_INTENTS, PERFORMANCE_INTERRUPT_MODES,
+        PERFORMANCE_POSTURES, plan_is_empty,
     };
 
     fn mood(band: &str, delta: f64) -> MoodTransition {
@@ -708,8 +708,10 @@ mod tests {
                             None,
                         );
                         let baseline = plan.baseline.expect("floor always sets a baseline");
-                        assert!(PERFORMANCE_BASELINE_EXPRESSIONS
-                            .contains(&baseline.expression.as_str()));
+                        assert!(
+                            PERFORMANCE_BASELINE_EXPRESSIONS
+                                .contains(&baseline.expression.as_str())
+                        );
                         assert!(PERFORMANCE_POSTURES.contains(&baseline.posture.as_str()));
                         assert!((0.2..=1.4).contains(&baseline.motion_energy));
                         assert!((0.0..=1.0).contains(&baseline.attention));

@@ -1,7 +1,7 @@
 //! Reuse transport, not model credentials or persona context. Each request
 //! still resolves its current model/key; proxy changes select a different pool.
 
-use crate::services::http_client::{apply_proxy, ProxyConfig};
+use crate::services::http_client::{ProxyConfig, apply_proxy};
 use reqwest::Client;
 use std::{
     collections::VecDeque,
@@ -61,10 +61,10 @@ mod tests {
 
     #[tokio::test]
     async fn ordinary_json_reuses_known_format_support_without_retrying_auth_failures() {
-        use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
+        use axum::{Json, Router, extract::State, http::StatusCode, routing::post};
         use std::sync::{
-            atomic::{AtomicUsize, Ordering},
             Arc,
+            atomic::{AtomicUsize, Ordering},
         };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -108,10 +108,12 @@ mod tests {
             Duration::from_secs(2),
         )
         .await;
-        assert!(denied
-            .analyze_json("test", "test", "test", None)
-            .await
-            .is_err());
+        assert!(
+            denied
+                .analyze_json("test", "test", "test", None)
+                .await
+                .is_err()
+        );
         assert_eq!(
             attempts.load(Ordering::SeqCst),
             4,
@@ -122,7 +124,7 @@ mod tests {
 
     #[tokio::test]
     async fn repeated_analyzers_reuse_a_connection_but_not_auth_or_timeout_policy() {
-        use axum::{extract::ConnectInfo, http::HeaderMap, routing::get, Router};
+        use axum::{Router, extract::ConnectInfo, http::HeaderMap, routing::get};
         use std::net::SocketAddr;
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();

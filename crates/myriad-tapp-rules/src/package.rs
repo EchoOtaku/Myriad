@@ -329,9 +329,11 @@ mod tests {
         });
         let templates = installed_widget_template_paths(&manifest);
         assert_eq!(templates.len(), 2);
-        assert!(templates
-            .iter()
-            .any(|t| t.widget_id == "card" && t.size == "2x2"));
+        assert!(
+            templates
+                .iter()
+                .any(|t| t.widget_id == "card" && t.size == "2x2")
+        );
         assert!(installed_widget_template_paths(&json!({})).is_empty());
     }
 

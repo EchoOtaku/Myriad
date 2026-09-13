@@ -10,7 +10,7 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, DatabaseConnection, EntityTrait,
     QueryFilter, QueryOrder, QuerySelect, Set,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::models::entities::{platform_reports, tapp_storage};
@@ -400,9 +400,9 @@ pub fn clamp_report_list_pagination(limit: Option<u32>, offset: Option<u32>) -> 
 #[cfg(test)]
 mod tests {
     use super::{
-        clamp_report_list_pagination, compact_tapp_report_list_item, platform_report_list_item,
-        platform_report_payload, report_storage_key, validate_report_type, ReportCatalogError,
-        TappReportCrudError,
+        ReportCatalogError, TappReportCrudError, clamp_report_list_pagination,
+        compact_tapp_report_list_item, platform_report_list_item, platform_report_payload,
+        report_storage_key, validate_report_type,
     };
     use crate::models::entities::platform_reports;
     use chrono::Utc;

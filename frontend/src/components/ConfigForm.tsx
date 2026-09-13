@@ -12,7 +12,6 @@ import { useI18n } from '../contexts/I18nContext'
 import {
   AboutConfigSection,
   AdvancedConfigSection,
-  AgentConfigSection,
   AiConfigSection,
   ConfigTipsBanner,
   FederationConfigSection,
@@ -272,16 +271,6 @@ const ModernConfigForm: React.FC = () => {
             configFields={config.ai_config.config_fields}
             updateValue={updateAiFieldValue}
             onSpeechTest={handleSpeechTest}
-            {...props}
-          />
-        )
-      case 'agent':
-        return (
-          <AgentConfigSection
-            configFields={config.ai_config.config_fields}
-            updateValue={updateAiFieldValue}
-            uiConfigFields={config.ui_config.config_fields}
-            updateUiFieldValue={updateUiFieldValue}
             {...props}
           />
         )

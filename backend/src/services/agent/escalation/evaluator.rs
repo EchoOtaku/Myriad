@@ -567,9 +567,10 @@ mod tests {
         let eval = evaluate_result(&result);
 
         assert!(!eval.is_satisfied);
-        assert!(eval
-            .failure_patterns
-            .contains(&FailurePattern::EmptyDataSource));
+        assert!(
+            eval.failure_patterns
+                .contains(&FailurePattern::EmptyDataSource)
+        );
         // 无能力上下文时仍可建议联网（非本地域默认）
         assert!(eval.suggests_web_search);
     }

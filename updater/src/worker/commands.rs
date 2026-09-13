@@ -7,7 +7,7 @@ use tracing::info;
 use crate::config::Channel;
 use crate::error::{Result, UpdaterError};
 use crate::release::{DockerBuild, GithubClient};
-use crate::version::{commit_branch_for_channel, DeployTag};
+use crate::version::{DeployTag, commit_branch_for_channel};
 use crate::worker::Worker;
 
 impl Worker {

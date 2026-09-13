@@ -69,8 +69,8 @@ pub use host_attribution::{
 
 // Runtime identity grants
 pub use runtime_grant::{
-    authorize_runtime_permission, issue_runtime_grant, revoke_all_tapp_runtime_grants,
-    revoke_runtime_grant, revoke_tapp_runtime_grants, RuntimeGrantContext,
+    RuntimeGrantContext, authorize_runtime_permission, issue_runtime_grant,
+    revoke_all_tapp_runtime_grants, revoke_runtime_grant, revoke_tapp_runtime_grants,
 };
 
 // Federation WebSocket one-time tickets (browser WS cannot carry grant headers).
@@ -78,8 +78,8 @@ pub use runtime_grant::{
 // mint routes stay here. Re-exports preserve `api::tapp_runtime::*` path stability.
 #[allow(unused_imports)]
 pub use ws_ticket::{
-    consume_ws_ticket, mint_channel_ws_ticket, mint_room_ws_ticket, ConsumedWsTicket, WsTicketKind,
-    TAPP_WS_TICKET_QUERY,
+    ConsumedWsTicket, TAPP_WS_TICKET_QUERY, WsTicketKind, consume_ws_ticket,
+    mint_channel_ws_ticket, mint_room_ws_ticket,
 };
 
 // Ensure the public query-param constant is linked (used by clients / docs).

@@ -10,7 +10,7 @@ use crate::services::fetcher::PlatformFetcher;
 use crate::services::metadata_service::MetadataService;
 use crate::services::site_owner::site_owner_user_id;
 use sea_orm::DatabaseConnection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 /// 一次抓取的结果：合并后的平台数据 + 各平台远程错误（保留旧缓存时也会记录）。
@@ -207,10 +207,12 @@ pub async fn fetch_fresh_platform_data(
                 platform
             );
         }
-    } else if let Err(e) =
-        crate::services::smart_filter::SmartFilter::process_and_save_all(&all_data)
-    {
-        tracing::error!("Failed to update smart filter cache: {}", e);
+    } else {
+        if let Err(e) =
+            crate::services::smart_filter::SmartFilter::process_and_save_all(&all_data)
+        {
+            tracing::error!("Failed to update smart filter cache: {}", e);
+        }
     }
 
     // 平台画像可能换了（站长在 B站换了头像）——重算站长快照，让 /api/auth/me 等

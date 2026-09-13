@@ -96,7 +96,7 @@ mod tests {
     use chrono::Utc;
 
     use super::*;
-    use crate::services::agent::{consciousness::WorkProposal, AgentInteractionMode};
+    use crate::services::agent::{AgentInteractionMode, consciousness::WorkProposal};
 
     fn snapshot(do_not_disturb: bool) -> SelfSnapshot {
         SelfSnapshot {

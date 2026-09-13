@@ -10,8 +10,8 @@ use sea_orm::{
 use serde_json::Value;
 
 pub use myriad_tapp_contract::storage::{
-    is_host_storage_key, is_reserved_storage_route_key, validate_sandbox_storage_key,
-    validate_storage_key, HOST_STORAGE_KEY_PREFIXES,
+    HOST_STORAGE_KEY_PREFIXES, is_host_storage_key, is_reserved_storage_route_key,
+    validate_sandbox_storage_key, validate_storage_key,
 };
 
 /// Per-install soft quota for sandbox + host-managed keys combined.
@@ -420,9 +420,9 @@ ON CONFLICT (user_id, tapp_id, key) DO UPDATE SET
 #[cfg(test)]
 mod tests {
     use super::{
+        SANDBOX_STORAGE_PREDICATE_SQL, TappStorageAccess, TappStorageAccessError,
         can_write_installation_settings, is_host_storage_key, validate_sandbox_storage_key,
-        validate_storage_key, validate_storage_value_size, TappStorageAccess,
-        TappStorageAccessError, SANDBOX_STORAGE_PREDICATE_SQL,
+        validate_storage_key, validate_storage_value_size,
     };
     use serde_json::json;
 

@@ -2,9 +2,9 @@
 //!
 //! 统一创建 AI 分析器实例，支持 OpenAI 和 Gemini，支持 Lite/Standard/Pro 模型层级
 
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::config::ModelTier;
 use crate::services::analyzer::{AiAnalyzer, AiProvider};
-use crate::GLOBAL_DYNAMIC_CONFIG;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// 每档只喊一次。这条在每次 AI 调用上都会命中，喊满日志反而没人看。

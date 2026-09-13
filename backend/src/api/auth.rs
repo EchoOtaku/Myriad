@@ -4,18 +4,18 @@
 
 use crate::error::HttpError;
 use axum::{
-    http::{header, HeaderMap, HeaderValue, StatusCode},
-    response::{IntoResponse, Response},
     Json,
+    http::{HeaderMap, HeaderValue, StatusCode, header},
+    response::{IntoResponse, Response},
 };
 use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::env;
 
 // Re-export `Claims`.
-use crate::middleware::auth::clear_auth_cookie_value;
 pub use crate::middleware::auth::Claims;
+use crate::middleware::auth::clear_auth_cookie_value;
 
 /// Guest body for the session probe. HTTP 200 — never 401 — so browsers do not
 /// paint Network red for expected unauthenticated state.
@@ -329,34 +329,41 @@ pub async fn logout(
 ) -> impl IntoResponse {
     // Always clear the cookie; only the matching epoch may revoke sessions.
     // The UPDATE checks tv atomically so a stale logout cannot kill a new login.
-    if let Ok(claims) = crate::middleware::auth::verify_jwt_token(&headers) {
-        if let Ok(user_id) = claims.sub.parse::<i32>() {
-            if user_id > 0 {
-                match crate::middleware::auth::bump_token_version(&db, user_id, claims.tv).await {
-                    Ok(Some(new_tv)) => {
-                        tracing::info!(
-                            user_id,
-                            token_version = new_tv,
-                            "🚪 User logout — session epoch bumped"
-                        );
-                    }
-                    Ok(None) => {
-                        tracing::debug!(user_id, "🚪 Stale or missing session — cookie clear only");
-                    }
-                    Err(e) => {
-                        // Cookie still cleared; epoch bump is best-effort so
-                        // logout never 500s on a transient DB blip.
-                        tracing::warn!(
-                            user_id,
-                            error = %e,
-                            "🚪 Logout: failed to bump token_version (cookie still cleared)"
-                        );
+    match crate::middleware::auth::verify_jwt_token(&headers) {
+        Ok(claims) => {
+            if let Ok(user_id) = claims.sub.parse::<i32>() {
+                if user_id > 0 {
+                    match crate::middleware::auth::bump_token_version(&db, user_id, claims.tv).await
+                    {
+                        Ok(Some(new_tv)) => {
+                            tracing::info!(
+                                user_id,
+                                token_version = new_tv,
+                                "🚪 User logout — session epoch bumped"
+                            );
+                        }
+                        Ok(None) => {
+                            tracing::debug!(
+                                user_id,
+                                "🚪 Stale or missing session — cookie clear only"
+                            );
+                        }
+                        Err(e) => {
+                            // Cookie still cleared; epoch bump is best-effort so
+                            // logout never 500s on a transient DB blip.
+                            tracing::warn!(
+                                user_id,
+                                error = %e,
+                                "🚪 Logout: failed to bump token_version (cookie still cleared)"
+                            );
+                        }
                     }
                 }
             }
         }
-    } else {
-        tracing::info!("🚪 User logout - clearing auth cookie (no/invalid token)");
+        _ => {
+            tracing::info!("🚪 User logout - clearing auth cookie (no/invalid token)");
+        }
     }
 
     let is_production = crate::oauth_url_builder::SiteConfig::is_production().await;

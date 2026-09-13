@@ -20,7 +20,7 @@
 //!
 //! Secret: `OAUTH_STATE_SECRET` if set, else `JWT_SECRET`.
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use hmac::{Hmac, KeyInit, Mac};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -642,10 +642,12 @@ mod tests {
         INIT_SECRET.call_once(|| {
             if env::var("OAUTH_STATE_SECRET").is_err() && env::var("JWT_SECRET").is_err() {
                 // SAFETY: tests run single-process; set once before concurrent tests use state.
-                env::set_var(
-                    "OAUTH_STATE_SECRET",
-                    "test-oauth-state-secret-for-unit-tests",
-                );
+                unsafe {
+                    env::set_var(
+                        "OAUTH_STATE_SECRET",
+                        "test-oauth-state-secret-for-unit-tests",
+                    )
+                };
             }
         });
     }

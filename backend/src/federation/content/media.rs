@@ -1,6 +1,6 @@
 //! Federation media upload, MIME classification, and attachment URL checks.
 
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
@@ -273,18 +273,22 @@ mod tests {
     #[test]
     fn attachment_url_rejects_path_traversal() {
         let base = "https://myriad.example";
-        assert!(attachment_url_rejection_reason(
-            base,
-            1,
-            "https://myriad.example/media/federation/1/../etc"
-        )
-        .is_some());
-        assert!(attachment_url_rejection_reason(
-            base,
-            1,
-            "https://myriad.example/media/federation/1/ok-file.jpg"
-        )
-        .is_none());
+        assert!(
+            attachment_url_rejection_reason(
+                base,
+                1,
+                "https://myriad.example/media/federation/1/../etc"
+            )
+            .is_some()
+        );
+        assert!(
+            attachment_url_rejection_reason(
+                base,
+                1,
+                "https://myriad.example/media/federation/1/ok-file.jpg"
+            )
+            .is_none()
+        );
         assert!(attachment_url_rejection_reason(base, 1, "").is_some());
     }
 
@@ -307,18 +311,22 @@ mod tests {
     #[test]
     fn w175_attachment_url_rejects_traversal() {
         let base = "https://myriad.example";
-        assert!(attachment_url_rejection_reason(
-            base,
-            7,
-            "https://myriad.example/media/federation/7/../x"
-        )
-        .is_some());
-        assert!(attachment_url_rejection_reason(
-            base,
-            7,
-            "https://myriad.example/media/federation/7/ok.jpg"
-        )
-        .is_none());
+        assert!(
+            attachment_url_rejection_reason(
+                base,
+                7,
+                "https://myriad.example/media/federation/7/../x"
+            )
+            .is_some()
+        );
+        assert!(
+            attachment_url_rejection_reason(
+                base,
+                7,
+                "https://myriad.example/media/federation/7/ok.jpg"
+            )
+            .is_none()
+        );
         assert!(attachment_url_rejection_reason(base, 7, "").is_some());
     }
 }

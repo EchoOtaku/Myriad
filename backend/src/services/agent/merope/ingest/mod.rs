@@ -94,11 +94,7 @@ pub fn persona_remember_insert(candidate: &str, existing: &[String]) -> Option<S
         return None;
     }
     let duplicate = existing.iter().any(|fact| compact_summary(fact) == compact);
-    if duplicate {
-        None
-    } else {
-        Some(compact)
-    }
+    if duplicate { None } else { Some(compact) }
 }
 
 pub(crate) async fn persist_persona_remember(

@@ -10,12 +10,12 @@ use std::time::{Duration, Instant};
 
 use futures::{SinkExt, StreamExt};
 use myriad_agent_rules::channel::{
-    classify_feishu_handshake, parse_feishu_event_envelope, ConnectFailureKind,
-    FEISHU_CARD_ACTION_TRIGGER, FEISHU_MESSAGE_RECEIVE_V1,
+    ConnectFailureKind, FEISHU_CARD_ACTION_TRIGGER, FEISHU_MESSAGE_RECEIVE_V1,
+    classify_feishu_handshake, parse_feishu_event_envelope,
 };
 use myriad_error::redact_secrets;
 use prost::Message as ProstMessage;
-use tokio::sync::{watch, Mutex};
+use tokio::sync::{Mutex, watch};
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{info, warn};
 

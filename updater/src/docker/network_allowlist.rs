@@ -51,16 +51,14 @@ fn resolve_name(key: &str, default: &str, env_file: Option<&Path>) -> String {
             return trimmed.to_string();
         }
     }
-    if let Some(path) = env_file {
-        if let Ok(env) = EnvFile::load(path) {
-            if let Some(raw) = env.get(key) {
+    if let Some(path) = env_file
+        && let Ok(env) = EnvFile::load(path)
+            && let Some(raw) = env.get(key) {
                 let trimmed = raw.trim();
                 if !trimmed.is_empty() {
                     return trimmed.to_string();
                 }
             }
-        }
-    }
     default.to_string()
 }
 

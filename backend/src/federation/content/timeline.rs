@@ -1,6 +1,6 @@
 //! Author timeline inserts and published-list field extraction.
 
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 
 use super::types::PublishedAttachment;
@@ -255,9 +255,11 @@ mod tests {
         let (title, summary, preview, attachments) =
             published_fields_from_activity_json(Some(&create));
         assert_eq!(title.as_deref(), Some("Spring Report"));
-        assert!(summary
-            .as_ref()
-            .is_some_and(|s| s.contains("short summary")));
+        assert!(
+            summary
+                .as_ref()
+                .is_some_and(|s| s.contains("short summary"))
+        );
         assert!(preview.is_some());
         assert!(attachments.is_empty());
     }

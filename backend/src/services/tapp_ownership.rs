@@ -505,8 +505,8 @@ mod tests {
     #[test]
     fn public_visibility_gates_non_admins() {
         use super::{
-            normalize_tapp_visibility, parse_tapp_visibility, public_install_visible_to_viewer,
-            TAPP_VISIBILITY_ADMIN, TAPP_VISIBILITY_ALL,
+            TAPP_VISIBILITY_ADMIN, TAPP_VISIBILITY_ALL, normalize_tapp_visibility,
+            parse_tapp_visibility, public_install_visible_to_viewer,
         };
         assert!(public_install_visible_to_viewer(TAPP_VISIBILITY_ALL, false));
         assert!(public_install_visible_to_viewer(TAPP_VISIBILITY_ALL, true));
@@ -525,7 +525,7 @@ mod tests {
 
     #[test]
     fn install_visible_to_viewer_covers_private_public_and_admin() {
-        use super::{install_visible_to_viewer, TAPP_VISIBILITY_ADMIN, TAPP_VISIBILITY_ALL};
+        use super::{TAPP_VISIBILITY_ADMIN, TAPP_VISIBILITY_ALL, install_visible_to_viewer};
         use crate::models::entities::tapps;
         use chrono::Utc;
         use serde_json::json;

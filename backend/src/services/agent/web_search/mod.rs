@@ -7,13 +7,13 @@ mod gemini;
 mod mapping;
 mod tinyfish;
 
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::services::agent::ai_process_pure::sanitize_prompt_input;
 use crate::services::agent::response_agent::api_key_not_configured;
 use crate::services::agent::search_output::{capability_payload, normalize_search_type};
-use crate::GLOBAL_DYNAMIC_CONFIG;
 use mapping::{
-    hits_to_reading_list, hits_to_web_search_results, purpose_for_search_type, summarize_hits,
-    urls_needing_fetch, READING_LIST_FETCH_MAX,
+    READING_LIST_FETCH_MAX, hits_to_reading_list, hits_to_web_search_results,
+    purpose_for_search_type, summarize_hits, urls_needing_fetch,
 };
 use serde_json::Value;
 use std::collections::HashMap;

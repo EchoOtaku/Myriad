@@ -12,7 +12,7 @@ use chrono::Utc;
 use myriad_tapp_contract::manifest::{TappDataExchangeManifest, TappDataExport};
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::time::Duration;
 use uuid::Uuid;
@@ -685,7 +685,7 @@ pub async fn cancel_all_tapp_data_exchanges(tapp_id: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{same_provider_scope, token_hash, DataExchangeError};
+    use super::{DataExchangeError, same_provider_scope, token_hash};
     use crate::services::json_schema_subset::validate_inline_json_value;
     use serde_json::json;
 
@@ -710,16 +710,17 @@ mod tests {
             "additionalProperties": false
         });
 
-        assert!(validate_inline_json_value(
-            &schema,
-            &json!({"title": "Now", "tracks": [{"id": "1"}]}),
-        )
-        .is_ok());
-        assert!(validate_inline_json_value(
-            &schema,
-            &json!({"title": "Now", "tracks": [{"id": "1", "secret": true}]}),
-        )
-        .is_err());
+        assert!(
+            validate_inline_json_value(&schema, &json!({"title": "Now", "tracks": [{"id": "1"}]}),)
+                .is_ok()
+        );
+        assert!(
+            validate_inline_json_value(
+                &schema,
+                &json!({"title": "Now", "tracks": [{"id": "1", "secret": true}]}),
+            )
+            .is_err()
+        );
     }
 
     #[test]

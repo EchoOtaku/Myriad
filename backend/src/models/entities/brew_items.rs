@@ -303,7 +303,7 @@ pub fn ordered_list_query(
 }
 
 pub fn preview_query(query: sea_orm::Select<Entity>) -> sea_orm::Select<Entity> {
-    use sea_orm::{sea_query::Expr, QuerySelect};
+    use sea_orm::{QuerySelect, sea_query::Expr};
     query
         .select_only()
         .columns([
@@ -465,10 +465,12 @@ mod preview_tests {
             false,
             false,
         );
-        assert!(serde_json::to_value(&item)
-            .unwrap()
-            .get("state_revision")
-            .is_none());
+        assert!(
+            serde_json::to_value(&item)
+                .unwrap()
+                .get("state_revision")
+                .is_none()
+        );
         item.state_revision = Some(0);
         assert_eq!(serde_json::to_value(&item).unwrap()["state_revision"], 0);
         item.state_revision = Some(9);

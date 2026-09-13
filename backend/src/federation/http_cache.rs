@@ -15,9 +15,9 @@
 //! （users + federation_keys + federation_domain_aliases），没有单一的
 //! 修改时间戳能覆盖全部输入；用内容哈希则天然不会漏。
 
-use axum::http::{header, HeaderMap, StatusCode};
-use axum::response::{IntoResponse, Response};
 use axum::Json;
+use axum::http::{HeaderMap, StatusCode, header};
+use axum::response::{IntoResponse, Response};
 use sha2::{Digest, Sha256};
 
 /// 公开 AP 文档的缓存时长。
@@ -185,8 +185,8 @@ mod roundtrip_tests {
     /// 单测各自验证生成与匹配都通过、串起来却对不上，是这类改动的典型失败方式。
     #[tokio::test]
     async fn conditional_request_roundtrip() {
-        use axum::http::{header, Request, StatusCode};
-        use axum::{body::Body, routing::get, Router};
+        use axum::http::{Request, StatusCode, header};
+        use axum::{Router, body::Body, routing::get};
         use tower::ServiceExt;
 
         async fn handler(headers: axum::http::HeaderMap) -> axum::response::Response {
@@ -213,13 +213,15 @@ mod roundtrip_tests {
             .to_str()
             .unwrap()
             .to_string();
-        assert!(first
-            .headers()
-            .get(header::CACHE_CONTROL)
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .contains("max-age"));
+        assert!(
+            first
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .contains("max-age")
+        );
 
         // 第二次：带上刚拿到的校验器
         let second = app

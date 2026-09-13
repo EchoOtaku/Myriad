@@ -11,12 +11,12 @@ pub(crate) use generate_internal::{
 };
 pub(crate) use persist::MAX_CONCURRENT_PLATFORM_REPORTS;
 
-use axum::{extract::State, http::HeaderMap, Extension, Json};
+use axum::{Extension, Json, extract::State, http::HeaderMap};
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 

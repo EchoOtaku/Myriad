@@ -1,9 +1,7 @@
-import type { BrewBoard, BrewViewMode } from '../components/brew/logic/board'
-
 import type { BoardScroll } from '../components/brew/logic/boardScroll'
 
 import type { BrewItem } from '../types/brew'
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { useLocation, useMatch, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   cancelArticlePrefetch,
@@ -27,6 +25,10 @@ import { topicDisplayName } from '../components/brew/logic/topics'
 import NoteEditor from '../components/brew/notes/NoteEditor'
 import { BrewViewLane } from '../components/brew/skin/BrewChip'
 import { AnimatePresence, BrewPage } from '../components/brew/skin/BrewPage'
+import {
+  brewSearchInputRef,
+  showBrewSearchGuide,
+} from '../components/brew/ui/BrewSearch'
 import { useBrewAgentOpen } from '../components/brew/useBrewAgentOpen'
 import { useBrewBoardRoute } from '../components/brew/useBrewBoardRoute'
 import { useBrewItemActions } from '../components/brew/useBrewItemActions'
@@ -91,7 +93,10 @@ function BrewSubjectPage() {
     setError,
   )
 
-  const navItems = useMemo(() => brewBoardNavItems(t.brew), [t.brew])
+  const navItems = useMemo(
+    () => brewBoardNavItems(t.brew, { includeStarred: isAuthenticated }),
+    [t.brew, isAuthenticated],
+  )
   const { activeId, setActiveId, setExpanded } = useSecondaryNav({
     routePath: '/brew',
     items: navItems,
@@ -192,10 +197,10 @@ function BrewSubjectPage() {
     })
   }, [item.opening, t.common.loading])
 
-  const handleOpenStarred = useCallback(() => {
-    item.closeArticle()
-    route.openStarred()
-  }, [item.closeArticle, route.openStarred])
+  useEffect(() => {
+    if (route.viewMode === 'starred') return
+    starred.exitEdit()
+  }, [route.viewMode, starred.exitEdit])
 
   const handleBackFromTopic = useCallback(() => {
     item.closeArticle()
@@ -305,30 +310,24 @@ function BrewSubjectPage() {
     onAddSource: () => {},
     onMarkAllRead: actions.markAllRead,
     onCloseReader: handleCloseReader,
-    onShowHelp: () => {},
+    onShowHelp: showBrewSearchGuide,
+    searchInputRef: brewSearchInputRef,
   })
 
-  const [surfaceView, setSurfaceView] = useState<BrewViewMode>(route.viewMode)
-  const [surfaceBoard, setSurfaceBoard] = useState<BrewBoard>(route.board)
-  const lockViewport = surfaceView === 'sources' && surfaceBoard === 'feeds'
-  useBrewSurface(sources.booting, lockViewport)
+  useBrewSurface(sources.booting, true)
 
   if (sources.booting) {
     return <BrewPage lock={false} loading />
   }
 
   return (
-    <BrewPage lock={lockViewport}>
-      <BrewViewLane
-        wave={route.viewMode}
-        onDisplayed={(next) => setSurfaceView(next as BrewViewMode)}
-      >
+    <BrewPage lock>
+      <BrewViewLane wave={route.viewMode}>
         {route.viewMode === 'sources' && (
           <BrewSourceGrid
             sources={sources.sources}
             board={route.board}
             focusSourceId={route.railFocusId}
-            onBoardSurface={setSurfaceBoard}
             onSourceClick={actions.openLatest}
             onRefreshSource={sources.refreshSource}
             onSourcesChange={sources.reloadBoard}
@@ -343,7 +342,6 @@ function BrewSubjectPage() {
             onPeekEnd={cancelArticlePrefetch}
             onToggleStar={handleCardStar}
             onMarkAllRead={isAuthenticated ? actions.markAllRead : undefined}
-            onOpenStarred={isAuthenticated ? handleOpenStarred : undefined}
             onWriteNote={isAdmin ? notes.write : undefined}
             isAuthenticated={isAuthenticated}
             isAdmin={isAdmin}
@@ -356,9 +354,6 @@ function BrewSubjectPage() {
           isAuthenticated,
         ) ? (
           <BrewFilterLane
-            sources={sources.sources}
-            isAdmin={isAdmin}
-            isAuthenticated={isAuthenticated}
             topicFeedMode={
               route.viewMode === 'topic-feed' ? topicFeedMode : undefined
             }

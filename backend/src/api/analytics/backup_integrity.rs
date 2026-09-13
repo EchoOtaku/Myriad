@@ -5,13 +5,13 @@
 //! without the same data key. Import verifies before any DB write.
 
 use chrono::{Duration, NaiveDate};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use super::intake_helpers::{
-    analytics_today, i64_nonneg, normalize_country_code, normalize_event_name, normalize_path,
-    normalize_referrer_host, parse_day_str, valid_visitor_hash, ANALYTICS_BACKUP_FORMAT,
-    DAILY_RETENTION_DAYS, ENGAGE_MARKER, SITE_PATH,
+    ANALYTICS_BACKUP_FORMAT, DAILY_RETENTION_DAYS, ENGAGE_MARKER, SITE_PATH, analytics_today,
+    i64_nonneg, normalize_country_code, normalize_event_name, normalize_path,
+    normalize_referrer_host, parse_day_str, valid_visitor_hash,
 };
 
 /// Algorithm id written into export `integrity.alg`.

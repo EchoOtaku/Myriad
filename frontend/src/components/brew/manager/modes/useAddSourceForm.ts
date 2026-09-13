@@ -243,6 +243,7 @@ export function useAddSourceForm(io: {
     category,
     setCategory,
     customIcon,
+    setCustomIcon,
     notionToken,
     setNotionToken,
     enableBrewliaForRsshub,

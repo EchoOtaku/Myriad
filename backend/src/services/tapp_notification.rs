@@ -87,7 +87,7 @@ pub async fn create_tapp_notification(
 #[cfg(test)]
 mod tests {
     use super::{
-        normalize_notification_type, sanitize_message, sanitize_title, TappNotificationError,
+        TappNotificationError, normalize_notification_type, sanitize_message, sanitize_title,
     };
 
     #[test]

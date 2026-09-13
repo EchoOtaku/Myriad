@@ -1,6 +1,6 @@
 use chrono::Utc;
 use sea_orm::DatabaseConnection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 use super::agent_header::*;
@@ -751,42 +751,43 @@ pub(crate) async fn generate_session_title_ai(user_input: &str, reasoning: Optio
 
     let truncated: String = user_input.chars().take(300).collect();
 
-    if let Some(analyzer) = create_ai_analyzer_for_tier(ModelTier::Standard).await {
-        let context = if let Some(r) = reasoning {
-            format!(
-                "User message: {}\nAgent understanding: {}",
-                truncated,
-                r.chars().take(200).collect::<String>()
-            )
-        } else {
-            truncated.clone()
-        };
-        let prompt = format!(
-            "Based on the following conversation context, generate a concise session title (5-15 characters, in the same language as the user). \
+    match create_ai_analyzer_for_tier(ModelTier::Standard).await {
+        Some(analyzer) => {
+            let context = if let Some(r) = reasoning {
+                format!(
+                    "User message: {}\nAgent understanding: {}",
+                    truncated,
+                    r.chars().take(200).collect::<String>()
+                )
+            } else {
+                truncated.clone()
+            };
+            let prompt = format!(
+                "Based on the following conversation context, generate a concise session title (5-15 characters, in the same language as the user). \
              Return ONLY the title text, no quotes, no explanation.\n\n{}",
-            context
-        );
-        match analyzer.analyze(&prompt).await {
-            Ok(raw) => {
-                let cleaned = raw
-                    .trim()
-                    .trim_matches('"')
-                    .trim_matches('\u{300c}')
-                    .trim_matches('\u{300d}')
-                    .trim();
-                if cleaned.is_empty() || cleaned.len() > 100 {
+                context
+            );
+            match analyzer.analyze(&prompt).await {
+                Ok(raw) => {
+                    let cleaned = raw
+                        .trim()
+                        .trim_matches('"')
+                        .trim_matches('\u{300c}')
+                        .trim_matches('\u{300d}')
+                        .trim();
+                    if cleaned.is_empty() || cleaned.len() > 100 {
+                        fallback_title_text(&truncated)
+                    } else {
+                        cleaned.to_string()
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("[Agent] AI title generation failed: {}", e);
                     fallback_title_text(&truncated)
-                } else {
-                    cleaned.to_string()
                 }
             }
-            Err(e) => {
-                tracing::warn!("[Agent] AI title generation failed: {}", e);
-                fallback_title_text(&truncated)
-            }
         }
-    } else {
-        fallback_title_text(&truncated)
+        _ => fallback_title_text(&truncated),
     }
 }
 

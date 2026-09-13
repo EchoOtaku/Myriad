@@ -157,13 +157,12 @@ pub async fn run(
         .map_err(|e| {
             UpdaterError::Precondition(format_proxy_pull_error(&resolved.image_ref, &e))
         })?;
-    if let Some(expected) = &resolved.expected_digest {
-        if !pulled_digest.ends_with(expected) && pulled_digest != *expected {
+    if let Some(expected) = &resolved.expected_digest
+        && !pulled_digest.ends_with(expected) && pulled_digest != *expected {
             return Err(UpdaterError::Precondition(format!(
                 "proxy digest mismatch: pulled {pulled_digest}, expected {expected}"
             )));
         }
-    }
 
     info!(new_tag = %resolved.tag, "proxy-update: rewriting PROXY_TAG in .env");
     {
@@ -349,17 +348,15 @@ async fn try_proxy_from_github(
     explicit_tag: Option<&str>,
 ) -> Result<Option<ProxyTarget>> {
     // Commit-mode immutable tips never have release.json; skip GitHub noise.
-    if let Some(tag) = explicit_tag {
-        if let Ok(dt) = DeployTag::parse(tag) {
-            if dt.kind() == DeployTagKind::Commit {
+    if let Some(tag) = explicit_tag
+        && let Ok(dt) = DeployTag::parse(tag)
+            && dt.kind() == DeployTagKind::Commit {
                 info!(
                     tag = %tag,
                     "proxy-update: commit tag; skipping GitHub, using Docker Hub path"
                 );
                 return Ok(None);
             }
-        }
-    }
 
     let gh = match worker.github_client() {
         Ok(gh) => gh,

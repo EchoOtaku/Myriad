@@ -112,11 +112,7 @@ pub(crate) fn normalize_music_playlist_id(raw: &str) -> String {
     if cur.len() > best.len() {
         best = cur;
     }
-    if best.len() >= 5 {
-        best
-    } else {
-        s.to_string()
-    }
+    if best.len() >= 5 { best } else { s.to_string() }
 }
 
 /// Sanitize a wallpaper URL for persistence.

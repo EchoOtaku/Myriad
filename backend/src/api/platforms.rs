@@ -1,10 +1,10 @@
 use crate::services::data_paths;
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{Json, extract::State, http::StatusCode};
 use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashSet;
 
-use crate::db::schema_check::{default_platform_seeds, DefaultPlatformSeed};
+use crate::db::schema_check::{DefaultPlatformSeed, default_platform_seeds};
 use crate::models::entities::platforms;
 
 /// 平台描述映射（数据库不存储描述，这里提供默认描述；以「能做什么」为中心）

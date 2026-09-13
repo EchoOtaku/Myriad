@@ -185,7 +185,7 @@ export const CONFIG_TOURS: readonly TourDefinition[] = [
 export const CONFIG_AI_PERSONA_TOURS: readonly TourDefinition[] = [
   {
     id: 'config-ai-persona-owner',
-    route: '/config',
+    route: '/agent/settings',
     audience: 'owner',
     surface: 'ai-persona',
     steps: [
@@ -199,7 +199,7 @@ export const CONFIG_AI_PERSONA_TOURS: readonly TourDefinition[] = [
 export const CONFIG_PERSONA_TOURS: readonly TourDefinition[] = [
   {
     id: 'config-persona-owner',
-    route: '/config',
+    route: '/agent/settings',
     audience: 'owner',
     surface: 'persona',
     steps: [

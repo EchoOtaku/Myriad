@@ -4,7 +4,7 @@
 //! Pro 用于 Complex/Critical；Standard 用于 Medium。Simple（数据读取等）不调用模型。
 
 use crate::config::ModelTier;
-use std::sync::atomic::{AtomicU32, AtomicU64, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// 任务复杂度等级

@@ -61,22 +61,17 @@ impl DbMode {
     ///
     /// Does **not** auto-switch from `DATABASE_URL` host — external mode must be explicit.
     pub fn resolve(env_file: Option<&Path>) -> Result<Self, UpdaterError> {
-        if let Ok(raw) = std::env::var("MYRIAD_DB_MODE") {
-            if !raw.trim().is_empty() {
+        if let Ok(raw) = std::env::var("MYRIAD_DB_MODE")
+            && !raw.trim().is_empty() {
                 return Self::parse(&raw);
             }
-        }
-        if let Some(path) = env_file {
-            if path.exists() {
-                if let Ok(env) = crate::env_file::EnvFile::load(path) {
-                    if let Some(raw) = env.get("MYRIAD_DB_MODE") {
-                        if !raw.trim().is_empty() {
+        if let Some(path) = env_file
+            && path.exists()
+                && let Ok(env) = crate::env_file::EnvFile::load(path)
+                    && let Some(raw) = env.get("MYRIAD_DB_MODE")
+                        && !raw.trim().is_empty() {
                             return Self::parse(raw);
                         }
-                    }
-                }
-            }
-        }
         Ok(DbMode::Bundled)
     }
 }
@@ -423,7 +418,7 @@ mod tests {
     fn db_mode_resolve_defaults_bundled() {
         let _guard = db_mode_env_lock();
         // Unset process env + missing file → bundled.
-        std::env::remove_var("MYRIAD_DB_MODE");
+        unsafe { std::env::remove_var("MYRIAD_DB_MODE") };
         let missing = std::path::Path::new("/tmp/myriad-db-mode-missing-env-xyz");
         assert_eq!(DbMode::resolve(Some(missing)).unwrap(), DbMode::Bundled);
         assert_eq!(DbMode::resolve(None).unwrap(), DbMode::Bundled);
@@ -432,7 +427,7 @@ mod tests {
     #[test]
     fn db_mode_resolve_from_env_file() {
         let _guard = db_mode_env_lock();
-        std::env::remove_var("MYRIAD_DB_MODE");
+        unsafe { std::env::remove_var("MYRIAD_DB_MODE") };
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(".env");
         std::fs::write(&path, "MYRIAD_DB_MODE=external\nMYRIAD_TAG=v1.0.0\n").unwrap();
@@ -445,9 +440,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(".env");
         std::fs::write(&path, "MYRIAD_DB_MODE=external\n").unwrap();
-        std::env::set_var("MYRIAD_DB_MODE", "bundled");
+        unsafe { std::env::set_var("MYRIAD_DB_MODE", "bundled") };
         let got = DbMode::resolve(Some(&path));
-        std::env::remove_var("MYRIAD_DB_MODE");
+        unsafe { std::env::remove_var("MYRIAD_DB_MODE") };
         assert_eq!(got.unwrap(), DbMode::Bundled);
     }
 }

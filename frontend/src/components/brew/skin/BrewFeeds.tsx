@@ -5,8 +5,9 @@ import type { FeedsChrome, FlipBox } from './flipCards'
 import type { BrewRailApi } from './useBrewRailPan'
 
 import { FaCompress as Compress, FaExpand as Expand } from '@lib/icons'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
+import { SettingTitleTag } from '../../settings/SettingTitleTag'
 import {
   brewMotionClaim,
   brewMotionOwns,
@@ -24,7 +25,9 @@ import {
   idleSitesIntent,
   requestSiteView,
 } from '../logic/feedsMotion'
-import { BrewManagement } from '../ui/BrewManagement'
+import { FeedsAddFormProvider } from '../ui/BrewFeedsPanel'
+import { BrewVacant } from '../ui/Empty'
+import { BrewRailTitle } from '../ui/BrewRailTitle'
 import { SiteCard } from '../ui/SiteCard'
 import { BrewStory } from './BrewStory'
 import {
@@ -93,6 +96,7 @@ export interface BrewFeedsProps {
   vacant?: ReactNode
   stories?: FeedStory[]
   onReadySource?: (id: number | null) => void
+  sourceTags?: ReactNode
 }
 
 export default function BrewFeeds({
@@ -112,8 +116,11 @@ export default function BrewFeeds({
   vacant,
   stories = [],
   onReadySource,
+  sourceTags,
 }: BrewFeedsProps) {
   const { t, locale } = useI18n()
+  const sitesTitleId = useId()
+  const itemsTitleId = useId()
   const feedsRef = useRef<HTMLDivElement>(null)
   const sitesViewRef = useRef<HTMLDivElement>(null)
   const sitesTrackRef = useRef<HTMLDivElement>(null)
@@ -502,51 +509,50 @@ export default function BrewFeeds({
   }
 
   return (
+    <FeedsAddFormProvider>
     <div
       ref={feedsRef}
       className={`brew-skin brew-feeds${sitesOpen ? ' is-sites-open' : ''}${flipping ? ' is-sites-flipping' : ''}${morphing ? ' is-sites-morphing' : ''}${sitesBooted ? ' is-sites-booted' : ''}${storiesBooted ? ' is-stories-booted' : ''}`}
     >
       <div className="brew-feeds__air" aria-hidden />
       <div className="brew-feeds__stage">
-        <div className="brew-feeds__bar">
-          <BrewManagement
-            embedded
-            active={isEditMode}
-            displayControl={
-              <button
-                type="button"
-                className="brew-feeds__spread"
-                aria-pressed={sitesOpen}
-                aria-busy={flipping}
-                onClick={() => {
-                  if (sitesOpen) foldSites(focusId)
-                  else setSitesMode(true)
-                }}
-              >
-                <span className="brew-feeds__mark" aria-hidden>
-                  <Expand />
-                  <Compress />
-                </span>
-                <span className="brew-feeds__spread-label">
-                  <span>{t.brew.spreadSites}</span>
-                  <span>{t.brew.foldSites}</span>
-                </span>
-              </button>
-            }
-          >
-          {toolbar}
-          </BrewManagement>
-        </div>
-        {vacant || null}
-        <div
+        <div className="brew-feeds__bar">{toolbar}</div>
+        <section
           className="brew-feeds__sites"
           ref={sitesViewRef}
-          hidden={!!vacant}
+          aria-labelledby={sitesTitleId}
         >
+          <div className="brew-feeds__source-chrome">
+          <BrewRailTitle
+            id={sitesTitleId}
+            action={
+              <>
+                <SettingTitleTag
+                  className="brew-feeds__title-tag"
+                  variant={sitesOpen ? 'default' : 'muted'}
+                  icon={sitesOpen ? <Compress /> : <Expand />}
+                  disabled={flipping}
+                  title={sitesOpen ? t.brew.foldSites : t.brew.spreadSites}
+                  onClick={() => {
+                    if (sitesOpen) foldSites(focusId)
+                    else setSitesMode(true)
+                  }}
+                >
+                  {sitesOpen ? t.brew.foldSites : t.brew.spreadSites}
+                </SettingTitleTag>
+                {sourceTags}
+              </>
+            }
+          >
+            {t.brew.sources}
+          </BrewRailTitle>
+          </div>
+          {vacant || null}
           <div
             className="brew-feeds__sites-track"
             ref={sitesTrackRef}
             data-brew-rail-track="sites"
+            hidden={!!vacant}
           >
           {sources.map((source) => {
             const latest = source.recent_items?.[0] ?? null
@@ -592,17 +598,21 @@ export default function BrewFeeds({
             )
           })}
           </div>
-        </div>
+        </section>
 
-        <div
+        <section
           className="brew-feeds__items"
           ref={itemsViewRef}
           hidden={!!vacant}
           aria-hidden={sitesOpen}
+          aria-labelledby={itemsTitleId}
           inert={sitesOpen}
         >
+          <BrewRailTitle id={itemsTitleId}>
+            {t.brew.latestArticles}
+          </BrewRailTitle>
           {stories.length === 0 ? (
-            <p className="brew-feeds__empty">{t.brew.noArticles}</p>
+            <BrewVacant title={t.brew.noArticles} />
           ) : (
             <div
               className="brew-feeds__items-track"
@@ -636,8 +646,9 @@ export default function BrewFeeds({
             ))}
             </div>
           )}
-        </div>
+        </section>
       </div>
     </div>
+    </FeedsAddFormProvider>
   )
 }

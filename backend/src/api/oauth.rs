@@ -13,10 +13,10 @@
 
 use crate::error::HttpError;
 use axum::{
-    extract::{Path, Query},
-    http::{header, HeaderMap, HeaderValue, StatusCode},
-    response::{IntoResponse, Redirect, Response},
     Json,
+    extract::{Path, Query},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
+    response::{IntoResponse, Redirect, Response},
 };
 use myriad_error::AppError;
 use sea_orm::{
@@ -24,20 +24,20 @@ use sea_orm::{
     Value as SeaValue,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::env;
 
 use crate::middleware::auth::{auth_cookie_value, encode_session_token, mint_session_claims};
 use crate::oauth_url_builder::SiteConfig;
-use crate::services::channel_pairing::{is_pairing_provider, SQL_NOT_PAIRING_PROVIDER};
+use crate::services::channel_pairing::{SQL_NOT_PAIRING_PROVIDER, is_pairing_provider};
 use crate::services::oauth::{
+    AuthFlowSecrets, NormalizedProfile,
     registry::REGISTRY,
     state::{
-        issue_state, oauth_tx_clear_cookie_value, oauth_tx_cookie_matches,
-        oauth_tx_set_cookie_value, verify_state, ConsumeOutcome, ConsumeStateError, OAuthPurpose,
-        StoredState, OAUTH_TX_COOKIE,
+        ConsumeOutcome, ConsumeStateError, OAUTH_TX_COOKIE, OAuthPurpose, StoredState, issue_state,
+        oauth_tx_clear_cookie_value, oauth_tx_cookie_matches, oauth_tx_set_cookie_value,
+        verify_state,
     },
-    AuthFlowSecrets, NormalizedProfile,
 };
 
 // 工具函数
@@ -99,10 +99,13 @@ fn oauth_client_error_redirect(frontend_base: &str, error_code: &str) -> Respons
 
 /// Append a `Set-Cookie` header (must use `append` when multiple cookies are set).
 fn append_set_cookie(response: &mut Response, cookie: &str) {
-    if let Ok(value) = HeaderValue::from_str(cookie) {
-        response.headers_mut().append(header::SET_COOKIE, value);
-    } else {
-        tracing::error!("OAuth: invalid Set-Cookie header value");
+    match HeaderValue::from_str(cookie) {
+        Ok(value) => {
+            response.headers_mut().append(header::SET_COOKIE, value);
+        }
+        _ => {
+            tracing::error!("OAuth: invalid Set-Cookie header value");
+        }
     }
 }
 

@@ -643,8 +643,8 @@ fn derive_seal_aes_key(jwt_secret: &str, label: &[u8]) -> [u8; 32] {
 
 /// Seal an E2E X25519 private key (base64) for DB storage.
 pub fn seal_private_key(plain_b64: &str, jwt_secret: &str) -> Result<String, String> {
-    use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
-    use base64::{engine::general_purpose::STANDARD as B64, Engine};
+    use aes_gcm::{Aes256Gcm, KeyInit, Nonce, aead::Aead};
+    use base64::{Engine, engine::general_purpose::STANDARD as B64};
 
     let key = derive_seal_aes_key(jwt_secret, E2E_SEAL_KDF_LABEL);
     let cipher = Aes256Gcm::new_from_slice(&key).map_err(|e| e.to_string())?;
@@ -664,8 +664,8 @@ pub fn seal_private_key(plain_b64: &str, jwt_secret: &str) -> Result<String, Str
 
 /// Unseal a stored E2E private key. Values without `sealed:v1:` pass through.
 pub fn unseal_private_key(stored: &str, jwt_secret: &str) -> Result<String, String> {
-    use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
-    use base64::{engine::general_purpose::STANDARD as B64, Engine};
+    use aes_gcm::{Aes256Gcm, KeyInit, Nonce, aead::Aead};
+    use base64::{Engine, engine::general_purpose::STANDARD as B64};
 
     let Some(rest) = stored.strip_prefix(E2E_SK_SEAL_PREFIX) else {
         return Ok(stored.to_string());

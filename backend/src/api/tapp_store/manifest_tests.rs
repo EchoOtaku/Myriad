@@ -1,4 +1,6 @@
 use super::{
+    RegisterWidgetRequest, TappCategory, TappDirStage, TappManifest, TappSettingDef,
+    TappStorageAccess, TappWidgetCategory, TappWidgetDef, WidgetTemplateContents,
     append_directory_to_zip, archive_entry_path, canonical_installation_owner_id,
     cleanup_reinstall_orphans, fail_next_activation_rename, fail_next_activation_rename_with_kind,
     has_reinstall_orphan_state, installation_conflict_owner_ids, orphaned_tapp_directories,
@@ -7,9 +9,7 @@ use super::{
     unsupported_package_structure, validate_asset_path, validate_installed_resources,
     validate_resource_path, validate_store_manifest_category, validate_tapp_archive,
     validate_tapp_id, validate_tapp_manifest, validate_widget_template_contents,
-    widget_template_path, write_install_generation, RegisterWidgetRequest, TappCategory,
-    TappDirStage, TappManifest, TappSettingDef, TappStorageAccess, TappWidgetCategory,
-    TappWidgetDef, WidgetTemplateContents,
+    widget_template_path, write_install_generation,
 };
 use crate::models::entities::{tapp_widgets, tapps};
 use crate::services::permission_service::UserRole;
@@ -57,7 +57,7 @@ fn unsupported_package_structure_is_conflict_not_404_or_5xx() {
     );
 }
 
-use crate::services::tapp_lifecycle::{select_uninstall_target, UninstallTarget};
+use crate::services::tapp_lifecycle::{UninstallTarget, select_uninstall_target};
 
 #[test]
 fn every_admin_operates_the_canonical_public_owner_namespace() {
@@ -258,9 +258,11 @@ async fn activate_replaces_a_cleaned_or_renameable_live_directory() {
             .unwrap(),
         "updated"
     );
-    assert!(super::lifecycle_artifact_directories(&live)
-        .unwrap()
-        .is_empty());
+    assert!(
+        super::lifecycle_artifact_directories(&live)
+            .unwrap()
+            .is_empty()
+    );
 
     tokio::fs::remove_dir_all(root).await.unwrap();
 }
@@ -295,9 +297,11 @@ async fn backup_rename_failure_preserves_the_last_known_good_live_version() {
         "known-good"
     );
     assert!(!stage_path.exists());
-    assert!(super::lifecycle_artifact_directories(&live)
-        .unwrap()
-        .is_empty());
+    assert!(
+        super::lifecycle_artifact_directories(&live)
+            .unwrap()
+            .is_empty()
+    );
     tokio::fs::remove_dir_all(root).await.unwrap();
 }
 
@@ -331,9 +335,11 @@ async fn staging_rename_failure_restores_the_previous_live_version() {
         "known-good"
     );
     assert!(!stage_path.exists());
-    assert!(super::lifecycle_artifact_directories(&live)
-        .unwrap()
-        .is_empty());
+    assert!(
+        super::lifecycle_artifact_directories(&live)
+            .unwrap()
+            .is_empty()
+    );
     tokio::fs::remove_dir_all(root).await.unwrap();
 }
 
@@ -367,9 +373,11 @@ async fn storage_full_during_candidate_switch_restores_the_previous_live_version
         "known-good"
     );
     assert!(!stage_path.exists());
-    assert!(super::lifecycle_artifact_directories(&live)
-        .unwrap()
-        .is_empty());
+    assert!(
+        super::lifecycle_artifact_directories(&live)
+            .unwrap()
+            .is_empty()
+    );
     tokio::fs::remove_dir_all(root).await.unwrap();
 }
 
@@ -442,9 +450,11 @@ async fn rollback_restore_failure_preserves_both_generations_for_startup_recover
             .unwrap(),
         "known-good"
     );
-    assert!(super::lifecycle_artifact_directories(&live)
-        .unwrap()
-        .is_empty());
+    assert!(
+        super::lifecycle_artifact_directories(&live)
+            .unwrap()
+            .is_empty()
+    );
     assert!(!recover_tapp_directory(&live, &old_manifest, old_generation).unwrap());
 
     tokio::fs::remove_dir_all(root).await.unwrap();
@@ -518,9 +528,11 @@ async fn ambiguous_database_commit_can_recover_the_preserved_candidate_generatio
             .unwrap(),
         "candidate"
     );
-    assert!(super::lifecycle_artifact_directories(&live)
-        .unwrap()
-        .is_empty());
+    assert!(
+        super::lifecycle_artifact_directories(&live)
+            .unwrap()
+            .is_empty()
+    );
     assert!(!recover_tapp_directory(&live, &new_manifest, new_generation).unwrap());
 
     tokio::fs::remove_dir_all(root).await.unwrap();
@@ -679,9 +691,11 @@ async fn staged_directory_rollback_restores_previous_install() {
             .unwrap(),
         "old"
     );
-    assert!(super::lifecycle_artifact_directories(&live)
-        .unwrap()
-        .is_empty());
+    assert!(
+        super::lifecycle_artifact_directories(&live)
+            .unwrap()
+            .is_empty()
+    );
     tokio::fs::remove_dir_all(root).await.unwrap();
 }
 
@@ -772,9 +786,11 @@ async fn startup_recovery_restores_database_generation_after_interrupted_update(
             .unwrap(),
         "old"
     );
-    assert!(super::lifecycle_artifact_directories(&live)
-        .unwrap()
-        .is_empty());
+    assert!(
+        super::lifecycle_artifact_directories(&live)
+            .unwrap()
+            .is_empty()
+    );
     assert!(!recover_tapp_directory(&live, &old_manifest, old_generation).unwrap());
 
     tokio::fs::remove_dir_all(root).await.unwrap();
@@ -938,15 +954,17 @@ fn validates_manifest_locales_overrides() {
     let error = validate_tapp_manifest(&blank_name).expect_err("blank override should fail");
     assert!(error.contains("locales['en-US'].name"));
 
-    assert!(serde_json::from_value::<TappManifest>(json!({
-        "id": "com.example.i18n",
-        "name": "App",
-        "version": "1.0.0",
-        "core": { "entry": "main.js" },
-        "category": "utility",
-        "locales": { "en-US": { "name": "X", "unknown": true } }
-    }))
-    .is_err());
+    assert!(
+        serde_json::from_value::<TappManifest>(json!({
+            "id": "com.example.i18n",
+            "name": "App",
+            "version": "1.0.0",
+            "core": { "entry": "main.js" },
+            "category": "utility",
+            "locales": { "en-US": { "name": "X", "unknown": true } }
+        }))
+        .is_err()
+    );
 }
 
 #[test]
@@ -1288,16 +1306,20 @@ fn validates_author_contact_fields() {
     validate_tapp_manifest(&valid).unwrap();
 
     assert!(validate_tapp_manifest(&parse(json!({ "name": "" }))).is_err());
-    assert!(validate_tapp_manifest(&parse(json!({
-        "name": "Example Team",
-        "email": "not-an-email"
-    })))
-    .is_err());
-    assert!(validate_tapp_manifest(&parse(json!({
-        "name": "Example Team",
-        "url": "javascript:alert(1)"
-    })))
-    .is_err());
+    assert!(
+        validate_tapp_manifest(&parse(json!({
+            "name": "Example Team",
+            "email": "not-an-email"
+        })))
+        .is_err()
+    );
+    assert!(
+        validate_tapp_manifest(&parse(json!({
+            "name": "Example Team",
+            "url": "javascript:alert(1)"
+        })))
+        .is_err()
+    );
 }
 
 #[test]
@@ -1405,10 +1427,12 @@ fn normalizes_legacy_tapp_categories_and_rejects_unknown_values() {
     let missing = parse(None).unwrap();
     assert_eq!(missing.category, None);
     assert!(validate_tapp_manifest(&missing).is_err());
-    assert!(serde_json::to_value(missing)
-        .unwrap()
-        .get("category")
-        .is_none());
+    assert!(
+        serde_json::to_value(missing)
+            .unwrap()
+            .get("category")
+            .is_none()
+    );
 
     assert!(parse(Some("uncategorized")).is_err());
 }
@@ -1994,20 +2018,26 @@ fn validates_agent_schema_and_i18n_contents_at_install_time() {
     assert!(validate_installed_resources(&manifest, &root).is_ok());
 
     std::fs::write(root.join("schemas/input.json"), "not-json").unwrap();
-    assert!(validate_installed_resources(&manifest, &root)
-        .unwrap_err()
-        .contains("not valid JSON"));
+    assert!(
+        validate_installed_resources(&manifest, &root)
+            .unwrap_err()
+            .contains("not valid JSON")
+    );
 
     std::fs::write(root.join("schemas/input.json"), r#"{"$ref":"remote.json"}"#).unwrap();
-    assert!(validate_installed_resources(&manifest, &root)
-        .unwrap_err()
-        .contains("does not support $ref"));
+    assert!(
+        validate_installed_resources(&manifest, &root)
+            .unwrap_err()
+            .contains("does not support $ref")
+    );
 
     std::fs::write(root.join("schemas/input.json"), r#"{"type":"object"}"#).unwrap();
     std::fs::write(root.join("i18n/en-US.json"), r#"["not","an","object"]"#).unwrap();
-    assert!(validate_installed_resources(&manifest, &root)
-        .unwrap_err()
-        .contains("must contain a JSON object"));
+    assert!(
+        validate_installed_resources(&manifest, &root)
+            .unwrap_err()
+            .contains("must contain a JSON object")
+    );
 
     std::fs::remove_dir_all(root).unwrap();
 }

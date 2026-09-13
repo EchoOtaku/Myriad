@@ -461,11 +461,7 @@ pub fn module_downloads(download: &serde_json::Value) -> Vec<NamedPathDownload> 
 pub fn nonempty_map_opt<K, V>(
     map: std::collections::HashMap<K, V>,
 ) -> Option<std::collections::HashMap<K, V>> {
-    if map.is_empty() {
-        None
-    } else {
-        Some(map)
-    }
+    if map.is_empty() { None } else { Some(map) }
 }
 
 // ── Source resolve + fetch orchestration plans ──────────────────────────────
@@ -721,13 +717,17 @@ mod tests {
         assert_eq!(preview.focus_y, 1.0);
         assert_eq!(preview.theme, "dark");
 
-        assert!(parse_store_preview_descriptor(&json!({}))
-            .unwrap()
-            .is_none());
-        assert!(parse_store_preview_descriptor(&json!({
-            "preview": { "version": 2, "type": "snapshot", "html": "preview.html" }
-        }))
-        .is_err());
+        assert!(
+            parse_store_preview_descriptor(&json!({}))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            parse_store_preview_descriptor(&json!({
+                "preview": { "version": 2, "type": "snapshot", "html": "preview.html" }
+            }))
+            .is_err()
+        );
     }
 
     #[test]
@@ -781,11 +781,10 @@ mod tests {
         assert!(
             validate_store_manifest_category(&json!({ "category": "music" }), &manifest).is_ok()
         );
-        assert!(validate_store_manifest_category(
-            &json!({ "category": "productivity" }),
-            &manifest
-        )
-        .is_err());
+        assert!(
+            validate_store_manifest_category(&json!({ "category": "productivity" }), &manifest)
+                .is_err()
+        );
         assert!(validate_store_manifest_category(&json!({}), &manifest).is_err());
     }
 
@@ -817,9 +816,11 @@ mod tests {
 
         let templates = widget_template_downloads(&download);
         assert_eq!(templates.len(), 2);
-        assert!(templates
-            .iter()
-            .any(|t| t.widget_id == "card" && t.size == "2x2"));
+        assert!(
+            templates
+                .iter()
+                .any(|t| t.widget_id == "card" && t.size == "2x2")
+        );
 
         let i18n = i18n_downloads(&download);
         assert_eq!(
@@ -835,11 +836,13 @@ mod tests {
         assert!(optional_store_text_downloads(&json!({})).is_empty());
         assert!(widget_template_downloads(&json!({})).is_empty());
         assert!(nonempty_map_opt(std::collections::HashMap::<String, String>::new()).is_none());
-        assert!(nonempty_map_opt(std::collections::HashMap::from([(
-            "k".to_string(),
-            "v".to_string()
-        )]))
-        .is_some());
+        assert!(
+            nonempty_map_opt(std::collections::HashMap::from([(
+                "k".to_string(),
+                "v".to_string()
+            )]))
+            .is_some()
+        );
     }
 
     #[test]
@@ -880,12 +883,16 @@ mod tests {
         assert_eq!(base, "https://ex.com/store");
         assert_eq!(store_index_url(&base), "https://ex.com/store/index.json");
 
-        assert!(prepare_store_catalog_base("ftp://ex.com/store")
-            .unwrap_err()
-            .contains("HTTP(S)"));
-        assert!(prepare_store_catalog_base("http://localhost/store")
-            .unwrap_err()
-            .contains("Internal"));
+        assert!(
+            prepare_store_catalog_base("ftp://ex.com/store")
+                .unwrap_err()
+                .contains("HTTP(S)")
+        );
+        assert!(
+            prepare_store_catalog_base("http://localhost/store")
+                .unwrap_err()
+                .contains("Internal")
+        );
         assert!(validate_store_fetch_base_url("https://raw.githubusercontent.com/x").is_ok());
     }
 
@@ -918,13 +925,15 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
-        assert!(store_asset_download_plan(
-            "https://ex.com/store",
-            "apps/a",
-            Some(&["main.js".to_string()]),
-            MAX_TAPP_ASSETS
-        )
-        .unwrap_err()
-        .contains("assets/"));
+        assert!(
+            store_asset_download_plan(
+                "https://ex.com/store",
+                "apps/a",
+                Some(&["main.js".to_string()]),
+                MAX_TAPP_ASSETS
+            )
+            .unwrap_err()
+            .contains("assets/")
+        );
     }
 }

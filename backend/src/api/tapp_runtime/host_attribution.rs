@@ -16,23 +16,23 @@
 //! and logging.
 
 use axum::{
+    Json,
     extract::{MatchedPath, Request, State},
     http::StatusCode,
     middleware::Next,
     response::{IntoResponse, Response},
-    Json,
 };
 use sea_orm::DatabaseConnection;
 use serde_json::json;
 
-use crate::middleware::auth::{verify_jwt_token, Claims};
+use crate::middleware::auth::{Claims, verify_jwt_token};
 use crate::services::permission_service::TappPermission;
 use crate::services::tapp_host_attribution::{
     self, brew_permission, error_codes, federation_permission, speech_permission,
 };
 
 use super::common::check_rate_limit;
-use super::runtime_grant::{validate_runtime_grant, RUNTIME_GRANT_HEADER};
+use super::runtime_grant::{RUNTIME_GRANT_HEADER, validate_runtime_grant};
 
 type PermissionMapper = fn(&str, &str) -> Option<TappPermission>;
 

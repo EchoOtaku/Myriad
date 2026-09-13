@@ -86,7 +86,6 @@ export const ALL_OWNED_UI_BAG_KEYS: readonly string[] = Object.freeze([
   ...UI_RESET_KEYS,
   ...PLATFORMS_UI_RESET_KEYS,
   ...MODULE_UI_RESET_KEYS,
-  ...AGENT_UI_RESET_KEYS,
   ...ADVANCED_RESET_KEYS,
 ])
 

@@ -3,7 +3,7 @@
 //! 包含能力名称映射、步骤描述、风险评估等辅助函数
 
 use super::super::types::{Capability, RecipeStep, RiskLevel};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 /// 获取能力的友好名称
@@ -444,26 +444,46 @@ pub fn resolve_capability_hint(capability: &Capability) -> &str {
 pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
     match capability_id {
         // Brew 订阅系统
-        "brew.items" => "Get articles. Use when the user says look at feeds / 看看订阅 / 最新文章 / 打开文章 / 总结文章 / 看看 X. Prefer sourceId; sourceName is a loose match. Do not webSearch when local articles exist.",
+        "brew.items" => {
+            "Get articles. Use when the user says look at feeds / 看看订阅 / 最新文章 / 打开文章 / 总结文章 / 看看 X. Prefer sourceId; sourceName is a loose match. Do not webSearch when local articles exist."
+        }
         "brew.article" => {
             "[internal] Load one article by a known id. Do not pick this directly; the system calls it when the article id is already known."
         }
-        "brew.sources" => "[preferred, local first] List or find feeds. For friend links / 友情链接 / 友链 use category=友情链接 (or friends). Use when the user asks which feeds they have, feed list, or whether a named feed exists. sourceType=link|rss|brewlia. Pass sourceId to brew.items. Do not switch to ai.webSearch when the feed exists locally.",
+        "brew.sources" => {
+            "[preferred, local first] List or find feeds. For friend links / 友情链接 / 友链 use category=友情链接 (or friends). Use when the user asks which feeds they have, feed list, or whether a named feed exists. sourceType=link|rss|brewlia. Pass sourceId to brew.items. Do not switch to ai.webSearch when the feed exists locally."
+        }
         "brew.discover" => "Discover RSS feeds. Use when the user wants the RSS for a site.",
         "brew.subscribe" => "Add a feed. Use when the user says subscribe / 订阅 / 添加订阅.",
-        "brew.stats" => "Reading stats. Use when the user asks how many articles they have read or for feed stats.",
+        "brew.stats" => {
+            "Reading stats. Use when the user asks how many articles they have read or for feed stats."
+        }
         "brew.read" => "Generic feed read. Load Brew RSS content.",
-        "brew.page" => "Brew page content. level=sources returns feeds with sourceType/category. Friend links: category=友情链接.",
+        "brew.page" => {
+            "Brew page content. level=sources returns feeds with sourceType/category. Friend links: category=友情链接."
+        }
         "brew.schedule" => "Brew scheduler. Start, stop, or refresh.",
-        "brew.generateReadingList" => "[preferred] Build a reading list. Use when the user asks for article recommendations, articles about X, a reading list, or what is worth reading.",
+        "brew.generateReadingList" => {
+            "[preferred] Build a reading list. Use when the user asks for article recommendations, articles about X, a reading list, or what is worth reading."
+        }
 
         // AI 智能处理
-        "ai.summarize" => "[required] Summarize. Use when the user says summarize / 总结 / 概括 / 讲讲大意 / 要約.",
-        "ai.analyze" => "[required] Analyze. Use when the user says analyze / 分析 / 研究 / 评估 / 分析して.",
-        "ai.webSearch" => "[required] Web search. Use for live external facts (news, companies, products, weather).",
-        "ai.recommend" => "Recommend. Use when the user says recommend / 推荐 / 有什么好的 / おすすめ.",
+        "ai.summarize" => {
+            "[required] Summarize. Use when the user says summarize / 总结 / 概括 / 讲讲大意 / 要約."
+        }
+        "ai.analyze" => {
+            "[required] Analyze. Use when the user says analyze / 分析 / 研究 / 评估 / 分析して."
+        }
+        "ai.webSearch" => {
+            "[required] Web search. Use for live external facts (news, companies, products, weather)."
+        }
+        "ai.recommend" => {
+            "Recommend. Use when the user says recommend / 推荐 / 有什么好的 / おすすめ."
+        }
         "ai.chat" => "Chat. Use for small talk or general questions.",
-        "ai.image" => "Generate an image. Use when the user says generate an image / 生成图片 / 画一张. Optional width/height (256–2048, default 1024); pass them for portrait, landscape, or wallpaper.",
+        "ai.image" => {
+            "Generate an image. Use when the user says generate an image / 生成图片 / 画一张. Optional width/height (256–2048, default 1024); pass them for portrait, landscape, or wallpaper."
+        }
 
         // 平台数据
         "platform.read" => "Read cached platform data.",
@@ -478,10 +498,16 @@ pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
         "github.repos" => "GitHub repositories, contributions, and activity.",
 
         // 音乐播放器
-        "music.control" => "[player control] Play/pause/next/previous/mute/volume only. If the user asks to find or play some music (放点音乐 / 找点音乐听 / 播放ACG音乐), use netease.searchPlaylist then music.playlist instead.",
+        "music.control" => {
+            "[player control] Play/pause/next/previous/mute/volume only. If the user asks to find or play some music (放点音乐 / 找点音乐听 / 播放ACG音乐), use netease.searchPlaylist then music.playlist instead."
+        }
         "music.status" => "Player status from the browser. The backend has no player.",
-        "music.playlist" => "Load and play a playlist by id. Get the id from netease.searchPlaylist first. Do not use alone.",
-        "netease.searchPlaylist" => "Search NetEase playlists. Use when the user says play some music / 放点音乐 / 找点音乐听 / 播放ACG音乐 / 推荐个歌单, then play with music.playlist.",
+        "music.playlist" => {
+            "Load and play a playlist by id. Get the id from netease.searchPlaylist first. Do not use alone."
+        }
+        "netease.searchPlaylist" => {
+            "Search NetEase playlists. Use when the user says play some music / 放点音乐 / 找点音乐听 / 播放ACG音乐 / 推荐个歌单, then play with music.playlist."
+        }
 
         // Tapp 应用系统
         "tapp.list" => "Installed apps. Use when the user asks which apps they have.",
@@ -497,42 +523,66 @@ pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
         "tapp.window.focus" => "Focus an app window.",
 
         // 报告系统
-        "report.create" => "Create a report. Use when the user says generate a report / 生成报告 / 做个总结报告.",
-        "report.list" => "List reports. Platform reports from platform_reports; without platform, include this user's Agent report.create records.",
+        "report.create" => {
+            "Create a report. Use when the user says generate a report / 生成报告 / 做个总结报告."
+        }
+        "report.list" => {
+            "List reports. Platform reports from platform_reports; without platform, include this user's Agent report.create records."
+        }
 
         // 路由导航
         "router.state" => "Current route. What page the user is on.",
-        "router.navigate" => "[navigate] Go to a page. Use when the user says open / go to / 打开 / 跳转 / 去xx页面.",
+        "router.navigate" => {
+            "[navigate] Go to a page. Use when the user says open / go to / 打开 / 跳转 / 去xx页面."
+        }
 
         // 页面交互
         "page.interact" => "Click buttons, links, tabs, menus.",
         "page.understand" => "Analyze the current page UI and produce actions.",
-        "page.content" => "Page content. Use a frontend snapshot if present, otherwise brew.page / tapp.page / platform.read.",
+        "page.content" => {
+            "Page content. Use a frontend snapshot if present, otherwise brew.page / tapp.page / platform.read."
+        }
 
         // 搜索
         "search.global" => "Search across platforms.",
-        "search.fuzzy" => "Fuzzy search. Brew sources match name/category/site_url; 友情链接 hits the friend-link category.",
+        "search.fuzzy" => {
+            "Fuzzy search. Brew sources match name/category/site_url; 友情链接 hits the friend-link category."
+        }
 
         // 系统操作
         "system.metrics" => "This process: memory, uptime, task counts (not full host monitoring).",
         "cache.status" => "Cache status per platform.",
         "cache.clear" => "Clear cached data for a platform.",
-        "config.get" => "Read config. AI is Standard (enabled/provider/model, no secrets); platforms are connection flags; ui is public display fields.",
-        "setup.status" => "Setup status: tables and owner (same as HTTP /api/setup/status, no AI keys).",
+        "config.get" => {
+            "Read config. AI is Standard (enabled/provider/model, no secrets); platforms are connection flags; ui is public display fields."
+        }
+        "setup.status" => {
+            "Setup status: tables and owner (same as HTTP /api/setup/status, no AI keys)."
+        }
         "auth.status" => "Sign-in and permission status.",
-        "permission.check" => "Granted permissions for this session role. With tappId, intersect with that install's approved permissions; granted is false if re-auth is needed.",
+        "permission.check" => {
+            "Granted permissions for this session role. With tappId, intersect with that install's approved permissions; granted is false if re-auth is needed."
+        }
         "export.data" => "Export platform data.",
-        "image.cache" => "With url, download into image-cache. Without url, action=status or action=clear.",
+        "image.cache" => {
+            "With url, download into image-cache. Without url, action=status or action=clear."
+        }
         "proxy.image" => "Fetch an external image through the image proxy.",
 
         // Tapp 定时任务（tapp_scheduled_tasks）
-        "scheduler.create" => "Create a scheduled app task (needs tappId). For installed apps only, not agent heartbeat.",
+        "scheduler.create" => {
+            "Create a scheduled app task (needs tappId). For installed apps only, not agent heartbeat."
+        }
         "scheduler.list" => "List this user's app scheduled tasks (not HEARTBEAT.md).",
         "scheduler.trigger" => "Run an app scheduled task now.",
 
         // Agent Heartbeat（HEARTBEAT.md，自然语言指令）
-        "heartbeat.list" => "[preferred] List agent heartbeat tasks. Use when the user asks which scheduled/heartbeat tasks they have. Not platform auto-refresh, not Tapp scheduler.",
-        "heartbeat.create" => "[preferred] Create an agent heartbeat. Use when the user says schedule / every day / every hour / heartbeat / 定时 / 每天 / 每隔 / 心跳. params: name, schedule (5-field cron), action (natural language), enabled default true. Example: schedule=\"0 * * * *\" action=\"check whether akiday updated\". Do not use scheduler.create.",
+        "heartbeat.list" => {
+            "[preferred] List agent heartbeat tasks. Use when the user asks which scheduled/heartbeat tasks they have. Not platform auto-refresh, not Tapp scheduler."
+        }
+        "heartbeat.create" => {
+            "[preferred] Create an agent heartbeat. Use when the user says schedule / every day / every hour / heartbeat / 定时 / 每天 / 每隔 / 心跳. params: name, schedule (5-field cron), action (natural language), enabled default true. Example: schedule=\"0 * * * *\" action=\"check whether akiday updated\". Do not use scheduler.create."
+        }
         "heartbeat.update" => "Update a heartbeat by id (name/schedule/action/enabled).",
         "heartbeat.delete" => "Delete a HEARTBEAT.md task by id.",
         "heartbeat.toggle" => "Enable or disable a heartbeat by id.",
@@ -576,10 +626,14 @@ pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
 
         // 其他
         "icon.recommend" => "Recommend an icon for a platform name.",
-        "prompt.generate" => "Write a better image prompt. description must include character/scene detail (full name, work, appearance including hair/eyes/clothes, scene, style). Fill in character details from your knowledge.",
+        "prompt.generate" => {
+            "Write a better image prompt. description must include character/scene detail (full name, work, appearance including hair/eyes/clothes, scene, style). Fill in character details from your knowledge."
+        }
         "random.content" => "Random recommendation from platform data.",
         "content.write" => "Write content data.",
-        "context.reference" => "Reuse earlier step output. params.stepId is the step id, path is a field path (e.g. results[0].title), transform is none/stringify/parse/join/first/last.",
+        "context.reference" => {
+            "Reuse earlier step output. params.stepId is the step id, path is a field path (e.g. results[0].title), transform is none/stringify/parse/join/first/last."
+        }
 
         _ => "",
     }

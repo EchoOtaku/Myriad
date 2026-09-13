@@ -7,9 +7,9 @@ use once_cell::sync::Lazy;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::config::ModelTier;
 use crate::services::analyzer::AiProvider;
-use crate::GLOBAL_DYNAMIC_CONFIG;
 
 /// Text-generation AI provider config (key material included; never log).
 #[derive(Clone)]

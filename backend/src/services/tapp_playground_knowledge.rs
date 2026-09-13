@@ -258,7 +258,10 @@ fn expand_query_aliases(query: &str) -> String {
         ("数据交换", " data exchange "),
         ("接口", " api "),
         ("网络", " api network fetch "),
-        ("图形", " graphics canvas three runtimeModules getUrlMap rewriteUrl assets "),
+        (
+            "图形",
+            " graphics canvas three runtimeModules getUrlMap rewriteUrl assets ",
+        ),
         ("动画", " animation graphics "),
         (
             "凭据",
@@ -272,7 +275,10 @@ fn expand_query_aliases(query: &str) -> String {
             "credentials",
             " credentials credential header query form sign hmac inbound route tapi manifest write-only ",
         ),
-        ("Three", " graphics three runtimeModules canvas getUrlMap rewriteUrl assets "),
+        (
+            "Three",
+            " graphics three runtimeModules canvas getUrlMap rewriteUrl assets ",
+        ),
         (
             "three.js",
             " graphics three runtimeModules canvas getUrlMap rewriteUrl assets ",
@@ -290,8 +296,14 @@ fn expand_query_aliases(query: &str) -> String {
             " game session federation room Tapp.game invite share isPublic ",
         ),
         ("贴图", " assets getUrlMap rewriteUrl graphics glb "),
-        ("入站", " inbound route tapi hmac verify nonce manifest api "),
-        ("tapi", " inbound route tapi hmac verify nonce manifest api "),
+        (
+            "入站",
+            " inbound route tapi hmac verify nonce manifest api ",
+        ),
+        (
+            "tapi",
+            " inbound route tapi hmac verify nonce manifest api ",
+        ),
         ("HMAC", " inbound route tapi hmac verify nonce credentials "),
         ("安装", " install package manifest "),
         (
@@ -312,7 +324,10 @@ fn expand_query_aliases(query: &str) -> String {
         ),
         ("长介绍", " long_description locales store catalog preview "),
         ("标题", " locales name description manifest "),
-        ("商店", " store install locales catalog preview package manifest "),
+        (
+            "商店",
+            " store install locales catalog preview package manifest ",
+        ),
         (
             "联网搜索",
             " ai:search Tapp.ai.tasks search json envelope contextProvenance ",
@@ -358,9 +373,8 @@ mod tests {
             8,
         );
         assert!(
-            results
-                .iter()
-                .all(|result| result.document != "PAGE" && result.document != "PLAYGROUND_GENERATION_CONTEXT"),
+            results.iter().all(|result| result.document != "PAGE"
+                && result.document != "PLAYGROUND_GENERATION_CONTEXT"),
             "generation retrieval must not return PAGE or PLAYGROUND_GENERATION_CONTEXT: {results:?}"
         );
     }

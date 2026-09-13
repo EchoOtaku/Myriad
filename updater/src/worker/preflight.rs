@@ -28,15 +28,15 @@ use std::sync::Arc;
 
 use tracing::{info, warn};
 
+use crate::SUPPORTED_RELEASE_SCHEMA;
 use crate::docker::network_allowlist::{
-    find_disallowed_attachments, networks_for_services, NetworkAllowlist, UPDATE_RECREATE_SERVICES,
+    NetworkAllowlist, UPDATE_RECREATE_SERVICES, find_disallowed_attachments, networks_for_services,
 };
 use crate::env_file::EnvFile;
 use crate::error::{Result, UpdaterError};
 use crate::release::{CommitRelation, Manifest};
 use crate::version::{DeployTag, DeployTagKind, MyriadVersion, UpdateMode};
 use crate::worker::Worker;
-use crate::SUPPORTED_RELEASE_SCHEMA;
 
 pub struct PreflightReport {
     /// Present only for release-mode updates.
@@ -218,66 +218,69 @@ async fn run_release_with_manifest(
 
     // Semver direction when both sides are releases.
     if let (Some(curr), Some(tgt)) = (&from_version, target.as_release()) {
-        if let Some(curr_rel) = curr.as_release() {
-            if curr_rel.as_str() == tgt.as_str() {
-                return Err(UpdaterError::Precondition(format!(
-                    "target {tgt} is already the running release version"
-                )));
-            } else if tgt.older_than(&curr_rel) {
-                is_downgrade = true;
-            } else if !curr_rel.older_than(&tgt) {
-                // Non-orderable prerelease edge cases → require unknown confirmation.
-                require_flag(
-                    risk.allow_unknown,
-                    &format!(
-                        "cannot order {curr_rel} vs {tgt} by semver; re-submit with \
+        match curr.as_release() {
+            Some(curr_rel) => {
+                if curr_rel.as_str() == tgt.as_str() {
+                    return Err(UpdaterError::Precondition(format!(
+                        "target {tgt} is already the running release version"
+                    )));
+                } else if tgt.older_than(&curr_rel) {
+                    is_downgrade = true;
+                } else if !curr_rel.older_than(&tgt) {
+                    // Non-orderable prerelease edge cases → require unknown confirmation.
+                    require_flag(
+                        risk.allow_unknown,
+                        &format!(
+                            "cannot order {curr_rel} vs {tgt} by semver; re-submit with \
                          allow_unknown=true (or allow_risk=true)"
-                    ),
-                )?;
+                        ),
+                    )?;
+                }
             }
-        } else {
-            // Current is commit/branch while target is release — use git compare when possible.
-            match gh.compare_deploy_to_ref(Some(curr), target.as_str()).await {
-                Ok(Some(f)) => {
-                    is_downgrade = f.is_downgrade();
-                    is_diverged = matches!(f.relation, CommitRelation::Diverged);
-                    if matches!(f.relation, CommitRelation::Identical) {
-                        return Err(UpdaterError::Precondition(format!(
-                            "target {} points at the same git commit as current {}",
-                            target.as_str(),
-                            curr
-                        )));
+            _ => {
+                // Current is commit/branch while target is release — use git compare when possible.
+                match gh.compare_deploy_to_ref(Some(curr), target.as_str()).await {
+                    Ok(Some(f)) => {
+                        is_downgrade = f.is_downgrade();
+                        is_diverged = matches!(f.relation, CommitRelation::Diverged);
+                        if matches!(f.relation, CommitRelation::Identical) {
+                            return Err(UpdaterError::Precondition(format!(
+                                "target {} points at the same git commit as current {}",
+                                target.as_str(),
+                                curr
+                            )));
+                        }
+                        if matches!(f.relation, CommitRelation::Unknown) {
+                            require_flag(
+                                risk.allow_unknown,
+                                &format!(
+                                    "cannot determine whether {} is newer than current {}; \
+                                 re-submit with allow_unknown=true (or allow_risk=true)",
+                                    target.as_str(),
+                                    curr
+                                ),
+                            )?;
+                        }
                     }
-                    if matches!(f.relation, CommitRelation::Unknown) {
+                    Ok(None) => {
                         require_flag(
                             risk.allow_unknown,
                             &format!(
-                                "cannot determine whether {} is newer than current {}; \
-                                 re-submit with allow_unknown=true (or allow_risk=true)",
-                                target.as_str(),
-                                curr
+                                "cannot resolve current deploy {curr} to a git commit for comparison \
+                             with release {}; re-submit with allow_unknown=true (or allow_risk=true)",
+                                target.as_str()
                             ),
                         )?;
                     }
-                }
-                Ok(None) => {
-                    require_flag(
-                        risk.allow_unknown,
-                        &format!(
-                            "cannot resolve current deploy {curr} to a git commit for comparison \
-                             with release {}; re-submit with allow_unknown=true (or allow_risk=true)",
-                            target.as_str()
-                        ),
-                    )?;
-                }
-                Err(e) => {
-                    require_flag(
-                        risk.allow_unknown,
-                        &format!(
-                            "git compare failed ({e}); refusing update without known direction. \
+                    Err(e) => {
+                        require_flag(
+                            risk.allow_unknown,
+                            &format!(
+                                "git compare failed ({e}); refusing update without known direction. \
                              Fix GitHub access or re-submit with allow_unknown=true (or allow_risk=true)"
-                        ),
-                    )?;
+                            ),
+                        )?;
+                    }
                 }
             }
         }
@@ -313,8 +316,8 @@ async fn run_release_with_manifest(
     }
 
     // min_from only when upgrading between releases.
-    if let (Some(curr), Some(min_from)) = (&from_version, &manifest.min_from_version) {
-        if let (Some(curr_rel), Some(tgt_rel)) = (curr.as_release(), target.as_release()) {
+    if let (Some(curr), Some(min_from)) = (&from_version, &manifest.min_from_version)
+        && let (Some(curr_rel), Some(tgt_rel)) = (curr.as_release(), target.as_release()) {
             let is_upgrade = curr_rel.older_than(&tgt_rel);
             if is_upgrade && curr_rel.older_than(min_from) {
                 return Err(UpdaterError::Precondition(format!(
@@ -323,7 +326,6 @@ async fn run_release_with_manifest(
                 )));
             }
         }
-    }
 
     check_env_keys(worker.as_ref(), Some(&manifest))?;
     check_disk(worker.as_ref())?;
@@ -414,71 +416,74 @@ async fn run_release_via_dockerhub(
 
     // Semver when both sides are releases (no GitHub needed).
     if let (Some(curr), Some(tgt)) = (&from_version, target.as_release()) {
-        if let Some(curr_rel) = curr.as_release() {
-            if curr_rel.as_str() == tgt.as_str() {
-                return Err(UpdaterError::Precondition(format!(
-                    "target {tgt} is already the running release version"
-                )));
-            } else if tgt.older_than(&curr_rel) {
-                is_downgrade = true;
-            } else if !curr_rel.older_than(&tgt) {
-                require_flag(
-                    risk.allow_unknown,
-                    &format!(
-                        "cannot order {curr_rel} vs {tgt} by semver; re-submit with \
+        match curr.as_release() {
+            Some(curr_rel) => {
+                if curr_rel.as_str() == tgt.as_str() {
+                    return Err(UpdaterError::Precondition(format!(
+                        "target {tgt} is already the running release version"
+                    )));
+                } else if tgt.older_than(&curr_rel) {
+                    is_downgrade = true;
+                } else if !curr_rel.older_than(&tgt) {
+                    require_flag(
+                        risk.allow_unknown,
+                        &format!(
+                            "cannot order {curr_rel} vs {tgt} by semver; re-submit with \
                          allow_unknown=true (or allow_risk=true)"
-                    ),
-                )?;
+                        ),
+                    )?;
+                }
             }
-        } else {
-            // Commit/branch → release without reliable git compare (no release.json path).
-            // Mirror commit mode: do not require allow_unknown solely for missing ancestry.
-            if worker.github_commit_metadata_enabled() {
-                if let Ok(gh) = worker.github_client() {
-                    match gh.compare_deploy_to_ref(Some(curr), target.as_str()).await {
-                        Ok(Some(f)) => {
-                            is_downgrade = f.is_downgrade();
-                            is_diverged = matches!(f.relation, CommitRelation::Diverged);
-                            if matches!(f.relation, CommitRelation::Identical) {
-                                return Err(UpdaterError::Precondition(format!(
-                                    "target {} points at the same git commit as current {}",
-                                    target.as_str(),
-                                    curr
-                                )));
+            _ => {
+                // Commit/branch → release without reliable git compare (no release.json path).
+                // Mirror commit mode: do not require allow_unknown solely for missing ancestry.
+                if worker.github_commit_metadata_enabled() {
+                    if let Ok(gh) = worker.github_client() {
+                        match gh.compare_deploy_to_ref(Some(curr), target.as_str()).await {
+                            Ok(Some(f)) => {
+                                is_downgrade = f.is_downgrade();
+                                is_diverged = matches!(f.relation, CommitRelation::Diverged);
+                                if matches!(f.relation, CommitRelation::Identical) {
+                                    return Err(UpdaterError::Precondition(format!(
+                                        "target {} points at the same git commit as current {}",
+                                        target.as_str(),
+                                        curr
+                                    )));
+                                }
+                                if matches!(f.relation, CommitRelation::Unknown) {
+                                    info!(
+                                        target = %target,
+                                        current = %curr,
+                                        "preflight(release/dh): unknown git relation; proceeding \
+                                         without allow_unknown (no release.json)"
+                                    );
+                                }
                             }
-                            if matches!(f.relation, CommitRelation::Unknown) {
+                            Ok(None) => {
                                 info!(
                                     target = %target,
                                     current = %curr,
-                                    "preflight(release/dh): unknown git relation; proceeding \
-                                     without allow_unknown (no release.json)"
+                                    "preflight(release/dh): cannot resolve current deploy to git; \
+                                     proceeding (semver/tag differ is sufficient without release.json)"
+                                );
+                            }
+                            Err(e) => {
+                                warn!(
+                                    target = %target,
+                                    err = %e,
+                                    "preflight(release/dh): git compare failed; proceeding without allow_unknown"
                                 );
                             }
                         }
-                        Ok(None) => {
-                            info!(
-                                target = %target,
-                                current = %curr,
-                                "preflight(release/dh): cannot resolve current deploy to git; \
-                                 proceeding (semver/tag differ is sufficient without release.json)"
-                            );
-                        }
-                        Err(e) => {
-                            warn!(
-                                target = %target,
-                                err = %e,
-                                "preflight(release/dh): git compare failed; proceeding without allow_unknown"
-                            );
-                        }
                     }
+                } else {
+                    info!(
+                        target = %target,
+                        current = %curr,
+                        "preflight(release/dh): GITHUB_TOKEN unset; skipping git ancestry for \
+                         commit→release (image pull verifies tags exist)"
+                    );
                 }
-            } else {
-                info!(
-                    target = %target,
-                    current = %curr,
-                    "preflight(release/dh): GITHUB_TOKEN unset; skipping git ancestry for \
-                     commit→release (image pull verifies tags exist)"
-                );
             }
         }
     }

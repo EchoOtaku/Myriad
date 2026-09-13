@@ -1,7 +1,7 @@
 [package]
 name = "myriad-module-visibility"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 publish = false
 description = "Module page visibility preferences (types, normalize, DB load) for Myriad."
 authors = ["Myriad Contributors"]

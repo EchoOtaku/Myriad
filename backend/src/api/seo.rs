@@ -14,16 +14,16 @@
 //! the UA split; `?_spa=1` is honored here so a bounce cannot stick on SEO HTML.
 
 use axum::{
+    Json,
     extract::{Path, Request, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header},
     middleware::Next,
     response::{IntoResponse, Response},
-    Json,
 };
 use myriad_error::AppError;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::models::entities::{brew_items, brew_sources, tapps};
 use crate::services::tapp_ownership::{find_admin_user_id, public_install_visible_to_viewer};
@@ -334,19 +334,14 @@ pub(crate) fn is_seo_document_shell_path(path: &str) -> bool {
 }
 
 pub(crate) fn query_has_spa_bypass(query: Option<&str>) -> bool {
-    query
-        .unwrap_or("")
-        .split('&')
-        .any(|pair| pair == "_spa=1")
+    query.unwrap_or("").split('&').any(|pair| pair == "_spa=1")
 }
 
 /// When the request already has `?_spa=1`, serve the SPA index instead of a
 /// crawler shell. Proxy usually sends that query to frontend; this covers
 /// native / direct backend hits so the WeChat bounce cannot stick on SEO HTML.
 pub async fn spa_document_bypass(req: Request, next: Next) -> Response {
-    if !is_seo_document_shell_path(req.uri().path())
-        || !query_has_spa_bypass(req.uri().query())
-    {
+    if !is_seo_document_shell_path(req.uri().path()) || !query_has_spa_bypass(req.uri().query()) {
         return next.run(req).await;
     }
     let dist = crate::GLOBAL_CONFIG.read().await.frontend_dist_path.clone();
@@ -1783,7 +1778,7 @@ mod tests {
         assert!(!brew_source_is_own(&Some("科技".into()), false));
         assert!(!brew_source_is_own(&None, false));
         assert!(!brew_source_is_own(&Some("我".into()), true)); // admin_only
-                                                                // Substring false positive: 「我们」 is not the mine preset
+        // Substring false positive: 「我们」 is not the mine preset
         assert!(!brew_source_is_own(&Some("我们".into()), false));
     }
 

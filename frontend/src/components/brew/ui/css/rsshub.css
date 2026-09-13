@@ -7,6 +7,17 @@
   gap: 0.75rem;
 }
 
+.brew-rsshub .setting-item {
+  margin-bottom: 0;
+}
+
+.brew-rsshub-params {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
 .brew-rsshub [class*='border-gray'],
 .brew-rsshub [class*='border-neutral'] {
   border-color: var(--brew-line);
@@ -59,9 +70,9 @@
   border-color: var(--brew-accent-line);
 }
 
-.brew-rsshub input:not([type='checkbox'], [type='radio']),
-.brew-rsshub select,
-.brew-rsshub textarea {
+.brew-rsshub input:not([type='checkbox'], [type='radio'], .field-input-inner),
+.brew-rsshub select:not(.field-input-inner),
+.brew-rsshub textarea:not(.field-input-inner) {
   border: 1px solid var(--brew-frost-line, var(--brew-line));
   border-radius: 0.42rem;
   background: var(--brew-chip);
@@ -69,9 +80,9 @@
   box-shadow: none;
 }
 
-.brew-rsshub input:focus,
-.brew-rsshub select:focus,
-.brew-rsshub textarea:focus {
+.brew-rsshub input:not(.field-input-inner):focus,
+.brew-rsshub select:not(.field-input-inner):focus,
+.brew-rsshub textarea:not(.field-input-inner):focus {
   outline: none;
   border-color: var(--brew-accent-line);
   box-shadow: var(--brew-focus);

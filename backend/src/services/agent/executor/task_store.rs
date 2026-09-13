@@ -834,10 +834,12 @@ mod tests {
             .expect("timeout should remain queryable during terminal retention");
         assert_eq!(retained.status, TaskStatus::Failed);
         assert!(retained.completed_at.is_some());
-        assert!(retained
-            .error
-            .as_deref()
-            .is_some_and(|value| value.contains("timed out")));
+        assert!(
+            retained
+                .error
+                .as_deref()
+                .is_some_and(|value| value.contains("timed out"))
+        );
         assert_eq!(store.get_user_tasks(7).len(), 1);
     }
 }

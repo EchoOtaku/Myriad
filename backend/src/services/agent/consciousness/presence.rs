@@ -340,8 +340,8 @@ pub fn live_presence_from_request(request: &UserRequest) -> SelfLivePresence {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::agent::types::{RequestContext, UserRequest};
     use crate::services::agent::AgentInteractionMode;
+    use crate::services::agent::types::{RequestContext, UserRequest};
 
     fn page(id: &str, visible: bool, panel: bool, now: DateTime<Utc>) -> SelfLivePresence {
         let mut live = live_presence_from_custom_data(&serde_json::json!({
@@ -386,10 +386,12 @@ mod tests {
         store.remember(1, page("back", false, false, later), later);
         assert!(!store.last(1, later).page_visible);
         assert_eq!(store.users[&1].len(), 1);
-        assert!(store
-            .last(1, later + Duration::seconds(61))
-            .perception
-            .is_empty());
+        assert!(
+            store
+                .last(1, later + Duration::seconds(61))
+                .perception
+                .is_empty()
+        );
         assert!(
             !store
                 .last(1, later + Duration::seconds(PRESENCE_WINDOW_SECS + 1))
@@ -422,10 +424,12 @@ mod tests {
         assert_eq!(store.users[&1].len(), MAX_USER_PAGES);
         let live = page("page-key", true, true, now);
         assert_eq!(live.instance_id.as_deref(), Some("page-key"));
-        assert!(serde_json::to_value(&live)
-            .unwrap()
-            .get("instanceId")
-            .is_none());
+        assert!(
+            serde_json::to_value(&live)
+                .unwrap()
+                .get("instanceId")
+                .is_none()
+        );
         let invalid = live_presence_from_custom_data(&serde_json::json!({
             "presence": { "instanceId": "x".repeat(65) }
         }));

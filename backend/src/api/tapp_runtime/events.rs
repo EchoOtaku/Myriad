@@ -4,18 +4,23 @@
 //! This module owns permission checks, rate limits, ownership resolution, and
 //! the SSE stream shell.
 
-use std::{collections::HashSet, convert::Infallible, time::Duration};
+use std::{
+    collections::{HashSet, VecDeque},
+    convert::Infallible,
+    pin::Pin,
+    time::Duration,
+};
 
 use axum::{
+    Extension, Json,
     extract::State,
     http::StatusCode,
     response::sse::{Event, KeepAlive, Sse},
-    Extension, Json,
 };
 use chrono::Utc;
 use futures::Stream;
 use sea_orm::DatabaseConnection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::error::HttpError;
 use crate::{
@@ -69,6 +74,14 @@ impl Drop for SubscriptionGuard {
             });
         }
     }
+}
+
+struct EventFeed {
+    pending: VecDeque<Result<Event, Infallible>>,
+    deadline: Pin<Box<tokio::time::Sleep>>,
+    poll: tokio::time::Interval,
+    db: DatabaseConnection,
+    runtime_id: String,
 }
 
 /// POST /api/tapp/events/publish
@@ -146,28 +159,45 @@ pub async fn stream_events(
         "delivery": "online-at-most-once",
     });
     let runtime_id = runtime.runtime_id().to_string();
-    let stream = async_stream::stream! {
-        let _guard = guard;
-        yield Ok(Event::default().event("ready").json_data(ready).unwrap_or_default());
-        let deadline = tokio::time::sleep(Duration::from_secs(expires_in));
-        tokio::pin!(deadline);
-        let mut poll = tokio::time::interval(Duration::from_millis(250));
-        poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        loop {
-            tokio::select! {
-                _ = &mut deadline => {
-                    yield Ok(Event::default().event("grant-expired").data("reconnect"));
-                    break;
+    let ready = Ok(Event::default().event("ready").json_data(ready).unwrap_or_default());
+    let inner = futures::stream::unfold(
+        Some(EventFeed {
+            pending: VecDeque::from([ready]),
+            deadline: Box::pin(tokio::time::sleep(Duration::from_secs(expires_in))),
+            poll: {
+                let mut poll = tokio::time::interval(Duration::from_millis(250));
+                poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                poll
+            },
+            db,
+            runtime_id,
+        }),
+        |feed| async move {
+            let mut feed = feed?;
+            loop {
+                if let Some(event) = feed.pending.pop_front() {
+                    return Some((event, Some(feed)));
                 }
-                _ = poll.tick() => {
-                    let events = tapp_events::drain_events(&db, &runtime_id).await;
-                    for event in events {
-                        yield Ok(Event::default().event("event").json_data(event).unwrap_or_default());
+                tokio::select! {
+                    _ = feed.deadline.as_mut() => {
+                        return Some((
+                            Ok(Event::default().event("grant-expired").data("reconnect")),
+                            None,
+                        ));
+                    }
+                    _ = feed.poll.tick() => {
+                        let drained = tapp_events::drain_events(&feed.db, &feed.runtime_id).await;
+                        for event in drained {
+                            feed.pending.push_back(
+                                Ok(Event::default().event("event").json_data(event).unwrap_or_default()),
+                            );
+                        }
                     }
                 }
             }
-        }
-    };
+        },
+    );
+    let stream = crate::held_stream::HeldStream::new(inner, guard);
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
 

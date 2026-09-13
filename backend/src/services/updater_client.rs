@@ -14,8 +14,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
-use myriad_error::{redact_secrets, AppError};
+use anyhow::{Context, Result, anyhow};
+use myriad_error::{AppError, redact_secrets};
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::{Client, Method, StatusCode};
 use serde::Serialize;

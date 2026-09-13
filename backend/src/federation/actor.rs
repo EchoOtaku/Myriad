@@ -3,10 +3,10 @@
 //! 本地用户的 ActivityPub Actor 表示，以及远程 Actor 获取/缓存。
 
 use axum::{
-    extract::{Path, State},
-    http::{header, HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
     Json,
+    extract::{Path, State},
+    http::{HeaderMap, StatusCode, header},
+    response::{IntoResponse, Response},
 };
 use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
@@ -1578,9 +1578,11 @@ mod tests {
         assert_eq!(following.total_items, 2);
         assert!(followers.first.is_none());
         assert!(following.first.is_none());
-        assert!(serde_json::to_value(followers)
-            .unwrap()
-            .get("first")
-            .is_none());
+        assert!(
+            serde_json::to_value(followers)
+                .unwrap()
+                .get("first")
+                .is_none()
+        );
     }
 }

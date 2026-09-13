@@ -876,10 +876,12 @@ VALUES
         .expect("read waiting delivery")
         .expect("waiting delivery row");
     assert_eq!(waiting.try_get::<String>("", "status").unwrap(), "pending");
-    assert!(waiting
-        .try_get::<Option<Uuid>>("", "lease_token")
-        .unwrap()
-        .is_none());
+    assert!(
+        waiting
+            .try_get::<Option<Uuid>>("", "lease_token")
+            .unwrap()
+            .is_none()
+    );
 
     assert!(
         crate::federation::delivery::renew_delivery_lease(&outer, first_id, first_token)
@@ -1399,14 +1401,16 @@ WHERE target_domain = 'other.example';
         )
         .await
         .expect("prepare success streak reset contract");
-    assert!(crate::federation::delivery::settle_remote_delivery_success(
-        &outer,
-        7,
-        Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap(),
-        "other.example",
-    )
-    .await
-    .expect("settle successful remote delivery"));
+    assert!(
+        crate::federation::delivery::settle_remote_delivery_success(
+            &outer,
+            7,
+            Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap(),
+            "other.example",
+        )
+        .await
+        .expect("settle successful remote delivery")
+    );
     // One success clears both halves of the gate, even from the very edge of it.
     let reset = outer
         .query_one_raw(Statement::from_string(

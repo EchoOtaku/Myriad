@@ -15,13 +15,13 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, Context, Result};
-use axum::body::{to_bytes, Body};
+use anyhow::{Context, Result, anyhow};
+use axum::Router;
+use axum::body::{Body, to_bytes};
 use axum::extract::State;
-use axum::http::{header, HeaderMap, HeaderName, HeaderValue, Method, Request, StatusCode, Uri};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, Request, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
-use axum::Router;
 use once_cell::sync::Lazy;
 use reqwest::Client;
 use tracing::{error, info, warn};
@@ -613,14 +613,13 @@ fn validate_update_body(
             validate_short_string(value, key)?;
         }
     }
-    if let Some(mode) = object.get("mode").and_then(|value| value.as_str()) {
-        if !matches!(mode, "release" | "commit") {
+    if let Some(mode) = object.get("mode").and_then(|value| value.as_str())
+        && !matches!(mode, "release" | "commit") {
             return Err(validation_error(
                 StatusCode::BAD_REQUEST,
                 "mode must be release or commit",
             ));
         }
-    }
     for key in BOOLEANS {
         if object.get(*key).is_some_and(|value| !value.is_boolean()) {
             return Err(validation_error(
@@ -852,15 +851,14 @@ fn gateway_record_failure(key: &str) -> bool {
 fn gateway_is_blocked(key: &str) -> bool {
     let mut map = GATEWAY_LIMITER.lock().unwrap();
     let now = Instant::now();
-    if let Some(entry) = map.get_mut(key) {
-        if let Some(until) = entry.1 {
+    if let Some(entry) = map.get_mut(key)
+        && let Some(until) = entry.1 {
             if now < until {
                 return true;
             }
             entry.1 = None;
             entry.0.clear();
         }
-    }
     false
 }
 
@@ -1114,13 +1112,15 @@ mod tests {
         );
 
         let uri: Uri = "/rollback".parse().unwrap();
-        assert!(validate_capability(
-            &Method::POST,
-            &uri,
-            &headers,
-            br#"{"snapshot_id":"../outside"}"#,
-        )
-        .is_err());
+        assert!(
+            validate_capability(
+                &Method::POST,
+                &uri,
+                &headers,
+                br#"{"snapshot_id":"../outside"}"#,
+            )
+            .is_err()
+        );
 
         let uri: Uri = "/prefs".parse().unwrap();
         assert!(

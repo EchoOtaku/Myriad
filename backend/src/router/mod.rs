@@ -360,37 +360,41 @@ pub(crate) async fn start_unified_server(
         loop {
             health_check_interval.tick().await;
 
-            if let Ok(db) = services::tapp_registry::database().await {
-                if crate::db::health::probe_database(&db).await {
-                    tracing::debug!("💚 Database health check passed");
-                } else {
-                    tracing::error!("❌ Database health check failed");
+            match services::tapp_registry::database().await {
+                Ok(db) => {
+                    if crate::db::health::probe_database(&db).await {
+                        tracing::debug!("💚 Database health check passed");
+                    } else {
+                        tracing::error!("❌ Database health check failed");
 
-                    let config = GLOBAL_CONFIG.read().await;
-                    if !config.database_url.is_empty() {
-                        tracing::info!("🔄 Attempting to reconnect to database...");
-                        match crate::db::connection::establish_connection(&config.database_url)
-                            .await
-                        {
-                            Ok(new_db) => {
-                                services::tapp_registry::set_process_database(new_db.clone()).await;
-                                if crate::db::health::probe_database(&new_db).await {
-                                    tracing::info!("✅ Database reconnected successfully");
-                                } else {
-                                    tracing::error!(
-                                        "❌ Reconnected handle failed the live SELECT 1 probe"
-                                    );
+                        let config = GLOBAL_CONFIG.read().await;
+                        if !config.database_url.is_empty() {
+                            tracing::info!("🔄 Attempting to reconnect to database...");
+                            match crate::db::connection::establish_connection(&config.database_url)
+                                .await
+                            {
+                                Ok(new_db) => {
+                                    services::tapp_registry::set_process_database(new_db.clone())
+                                        .await;
+                                    if crate::db::health::probe_database(&new_db).await {
+                                        tracing::info!("✅ Database reconnected successfully");
+                                    } else {
+                                        tracing::error!(
+                                            "❌ Reconnected handle failed the live SELECT 1 probe"
+                                        );
+                                    }
                                 }
-                            }
-                            Err(e) => {
-                                crate::db::health::record_db_probe(false, false);
-                                tracing::error!("❌ Failed to reconnect to database: {}", e);
+                                Err(e) => {
+                                    crate::db::health::record_db_probe(false, false);
+                                    tracing::error!("❌ Failed to reconnect to database: {}", e);
+                                }
                             }
                         }
                     }
                 }
-            } else {
-                crate::db::health::record_db_probe(false, false);
+                _ => {
+                    crate::db::health::record_db_probe(false, false);
+                }
             }
 
             match tokio::task::spawn_blocking(
@@ -418,10 +422,10 @@ pub(crate) async fn start_unified_server(
 #[cfg(test)]
 mod cors_method_tests {
     use super::{cors_allowed_methods, http_cors_layer};
-    use axum::body::Body;
-    use axum::http::{header, Method, Request, StatusCode};
-    use axum::routing::patch;
     use axum::Router;
+    use axum::body::Body;
+    use axum::http::{Method, Request, StatusCode, header};
+    use axum::routing::patch;
     use tower::ServiceExt;
 
     #[test]

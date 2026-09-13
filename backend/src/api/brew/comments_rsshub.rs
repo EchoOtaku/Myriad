@@ -1,8 +1,8 @@
 //! Brew comments (annotations) and RSSHub instance admin.
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
-    Json,
 };
 use chrono::Utc;
 use sea_orm::{
@@ -655,7 +655,7 @@ pub(crate) async fn health_check_rsshub_instance(
             return Err(HttpError::from((
                 StatusCode::NOT_FOUND,
                 Json(AppError::fail_json("Instance not found")),
-            )))
+            )));
         }
         Err(error) => {
             tracing::error!(%error, "Failed to find RSSHub instance");

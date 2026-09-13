@@ -273,10 +273,12 @@ mod postgres_tests {
     #[ignore = "requires a disposable MYRIAD_CHANNEL_TEST_DATABASE_URL ending in _channel_test"]
     async fn channel_outbox_ack_cannot_resurrect_or_overwrite() {
         let url = std::env::var("MYRIAD_CHANNEL_TEST_DATABASE_URL").expect("test database URL");
-        assert!(url::Url::parse(&url)
-            .unwrap()
-            .path()
-            .ends_with("_channel_test"));
+        assert!(
+            url::Url::parse(&url)
+                .unwrap()
+                .path()
+                .ends_with("_channel_test")
+        );
         let db = sea_orm::Database::connect(&url).await.unwrap();
         db.execute_unprepared("CREATE TABLE IF NOT EXISTS tapp_runtime_registry (namespace TEXT, record_id TEXT, subject_id INTEGER, owner_id INTEGER, tapp_id TEXT, runtime_id TEXT, payload JSONB NOT NULL, expires_at BIGINT, updated_at TIMESTAMPTZ DEFAULT NOW(), PRIMARY KEY(namespace, record_id)); CREATE TABLE IF NOT EXISTS tapp_runtime_mailbox (expires_at BIGINT);").await.unwrap();
         let key = format!("ack-test-{}", uuid::Uuid::new_v4());
@@ -292,9 +294,11 @@ mod postgres_tests {
         )
         .await
         .unwrap();
-        assert!(acknowledge_item(&db, "telegram", &key, &sent)
-            .await
-            .unwrap());
+        assert!(
+            acknowledge_item(&db, "telegram", &key, &sent)
+                .await
+                .unwrap()
+        );
         let saved: StoredOutbound = shared_registry::get(&db, outbound_ns("telegram"), &key)
             .await
             .unwrap()
@@ -305,9 +309,11 @@ mod postgres_tests {
             Some(&DeliveryItem::Image("/image.png".into()))
         );
         clear_outbound(&db, "telegram", &key).await;
-        assert!(!acknowledge_item(&db, "telegram", &key, &sent)
-            .await
-            .unwrap());
+        assert!(
+            !acknowledge_item(&db, "telegram", &key, &sent)
+                .await
+                .unwrap()
+        );
         assert!(
             shared_registry::get::<StoredOutbound>(&db, outbound_ns("telegram"), &key)
                 .await
@@ -325,9 +331,11 @@ mod postgres_tests {
         )
         .await
         .unwrap();
-        assert!(!acknowledge_item(&db, "telegram", &key, &sent)
-            .await
-            .unwrap());
+        assert!(
+            !acknowledge_item(&db, "telegram", &key, &sent)
+                .await
+                .unwrap()
+        );
         let saved: StoredOutbound = shared_registry::get(&db, outbound_ns("telegram"), &key)
             .await
             .unwrap()

@@ -1,18 +1,18 @@
 //! Inbox HTTP Signature pre-parse gate and request verification.
 
 use axum::{
-    http::{HeaderMap, StatusCode},
     Json,
+    http::{HeaderMap, StatusCode},
 };
 use sea_orm::DatabaseConnection;
 use serde_json::json;
 
 use crate::federation::actor::{
-    fetch_remote_actor_for_verify, persist_verified_remote_actor, ResolvedRemoteActor,
+    ResolvedRemoteActor, fetch_remote_actor_for_verify, persist_verified_remote_actor,
 };
 use crate::federation::signature::{
-    parse_signature_header, require_covered_headers, verify_date_freshness, verify_digest,
-    verify_signature, HTTP_DATE_MAX_SKEW,
+    HTTP_DATE_MAX_SKEW, parse_signature_header, require_covered_headers, verify_date_freshness,
+    verify_digest, verify_signature,
 };
 use crate::federation::types::*;
 
@@ -316,7 +316,7 @@ mod tests {
         let err = unique_header(&headers, "date").unwrap_err();
         assert_eq!(err.0, StatusCode::UNAUTHORIZED);
         assert_eq!(
-            err.1 .0.get("error").and_then(|v| v.as_str()),
+            err.1.0.get("error").and_then(|v| v.as_str()),
             Some("Ambiguous request: a signed header appears more than once")
         );
 

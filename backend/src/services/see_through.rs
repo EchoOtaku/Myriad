@@ -4,9 +4,9 @@
 //! the host only after the site owner explicitly asks for decomposition, and
 //! the Hugging Face credential is resolved only for these outbound requests.
 
-use reqwest::{multipart, Client, RequestBuilder, StatusCode, Url};
+use reqwest::{Client, RequestBuilder, StatusCode, Url, multipart};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{sync::OnceLock, time::Duration};
 
 pub const SPACE_BASE_URL: &str = "https://24yearsold-see-through-demo.hf.space";
@@ -185,7 +185,7 @@ impl SeeThroughClient {
             _ => {
                 return Err(SeeThroughError::InvalidInput(
                     "See-through accepts PNG, JPEG, or WebP portraits".to_string(),
-                ))
+                ));
             }
         };
         let part = multipart::Part::bytes(image)
@@ -461,12 +461,14 @@ mod tests {
     fn validates_space_options_and_token_shape() {
         assert_eq!(DecomposeOptions::default().resolution, 1280);
         assert!(DecomposeOptions::default().validate().is_ok());
-        assert!(DecomposeOptions {
-            resolution: 800,
-            ..DecomposeOptions::default()
-        }
-        .validate()
-        .is_err());
+        assert!(
+            DecomposeOptions {
+                resolution: 800,
+                ..DecomposeOptions::default()
+            }
+            .validate()
+            .is_err()
+        );
         assert!(validate_hf_token("hf_abcdefghijklmnopqrstuvwxyz").is_ok());
         assert!(validate_hf_token("secret").is_err());
         assert!(validate_hf_token("hf_has whitespace in it").is_err());

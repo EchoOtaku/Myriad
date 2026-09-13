@@ -8,9 +8,9 @@
 //! 5. 可选 spoof 请求头（`api_def.spoof`）
 
 use once_cell::sync::Lazy;
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -20,7 +20,7 @@ use tokio::sync::RwLock;
 use crate::services::agent::ai_process_pure::USER_TEXT_MAX_CHARS;
 use crate::services::http_client::TAPP_HTTP_CLIENT;
 use crate::services::permission_service::UserRole;
-use crate::services::spoof_utils::{generate_spoof_headers, SpoofConfig};
+use crate::services::spoof_utils::{SpoofConfig, generate_spoof_headers};
 use myriad_tapp_contract::contract_rules::{
     HTTP_BODY_METHODS, MAX_TAPP_NON_JSON_HTTP_REQUEST_BYTES,
 };
@@ -472,20 +472,19 @@ impl TappApiService {
                  (check TRUST_PROXY_HEADERS / TRUST_PROXY_PEERS and proxy X-Real-IP)"
             );
             // 获取服务器公网 IP
-            if let Ok(resp) = TAPP_HTTP_CLIENT
+            match TAPP_HTTP_CLIENT
                 .get("https://api.ipify.org?format=json")
                 .send()
                 .await
             {
-                if let Ok(data) = resp.json::<Value>().await {
-                    data.get("ip")
+                Ok(resp) => match resp.json::<Value>().await {
+                    Ok(data) => data
+                        .get("ip")
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                } else {
-                    None
-                }
-            } else {
-                None
+                        .map(|s| s.to_string()),
+                    _ => None,
+                },
+                _ => None,
             }
         } else {
             Some(ip.to_string())
@@ -1345,16 +1344,20 @@ mod tests {
         api.access = TappApiAccess::Public;
         let mut execution_context = context(1, "203.0.113.1");
 
-        assert!(TappApiService::check_permission(&api, &execution_context)
-            .await
-            .is_err());
+        assert!(
+            TappApiService::check_permission(&api, &execution_context)
+                .await
+                .is_err()
+        );
 
         execution_context
             .granted_permissions
             .push("network:fetch".to_string());
-        assert!(TappApiService::check_permission(&api, &execution_context)
-            .await
-            .is_ok());
+        assert!(
+            TappApiService::check_permission(&api, &execution_context)
+                .await
+                .is_ok()
+        );
     }
 
     #[test]
@@ -1587,8 +1590,8 @@ mod tests {
         let _guard = crate::services::outbound_security::tests_lab_env_lock().await;
         let previous_environment = std::env::var("ENVIRONMENT").ok();
         let previous_lab_flag = std::env::var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND").ok();
-        std::env::remove_var("ENVIRONMENT");
-        std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1");
+        unsafe { std::env::remove_var("ENVIRONMENT") };
+        unsafe { std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1") };
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -1636,18 +1639,22 @@ mod tests {
         .unwrap();
         let request = server.await.unwrap();
 
-        assert!(request
-            .to_ascii_lowercase()
-            .contains("authorization: bearer top-secret"));
+        assert!(
+            request
+                .to_ascii_lowercase()
+                .contains("authorization: bearer top-secret")
+        );
         assert_eq!(response, json!({ "echo": "[REDACTED]" }));
 
         match previous_environment {
-            Some(value) => std::env::set_var("ENVIRONMENT", value),
-            None => std::env::remove_var("ENVIRONMENT"),
+            Some(value) => unsafe { std::env::set_var("ENVIRONMENT", value) },
+            None => unsafe { std::env::remove_var("ENVIRONMENT") },
         }
         match previous_lab_flag {
-            Some(value) => std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", value),
-            None => std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND"),
+            Some(value) => unsafe {
+                std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", value)
+            },
+            None => unsafe { std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND") },
         }
     }
 
@@ -1658,8 +1665,8 @@ mod tests {
         let _guard = crate::services::outbound_security::tests_lab_env_lock().await;
         let previous_environment = std::env::var("ENVIRONMENT").ok();
         let previous_lab_flag = std::env::var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND").ok();
-        std::env::remove_var("ENVIRONMENT");
-        std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1");
+        unsafe { std::env::remove_var("ENVIRONMENT") };
+        unsafe { std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1") };
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -1707,20 +1714,24 @@ mod tests {
         .unwrap_err();
         let request = server.await.unwrap();
 
-        assert!(request
-            .to_ascii_lowercase()
-            .contains("authorization: bearer top-secret"));
+        assert!(
+            request
+                .to_ascii_lowercase()
+                .contains("authorization: bearer top-secret")
+        );
         assert!(error.starts_with("HTTP 401"));
         assert!(error.contains("[REDACTED]"));
         assert!(!error.contains("top-secret"));
 
         match previous_environment {
-            Some(value) => std::env::set_var("ENVIRONMENT", value),
-            None => std::env::remove_var("ENVIRONMENT"),
+            Some(value) => unsafe { std::env::set_var("ENVIRONMENT", value) },
+            None => unsafe { std::env::remove_var("ENVIRONMENT") },
         }
         match previous_lab_flag {
-            Some(value) => std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", value),
-            None => std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND"),
+            Some(value) => unsafe {
+                std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", value)
+            },
+            None => unsafe { std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND") },
         }
     }
 
@@ -1824,8 +1835,8 @@ mod tests {
         let _guard = crate::services::outbound_security::tests_lab_env_lock().await;
         let previous_environment = std::env::var("ENVIRONMENT").ok();
         let previous_lab_flag = std::env::var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND").ok();
-        std::env::remove_var("ENVIRONMENT");
-        std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1");
+        unsafe { std::env::remove_var("ENVIRONMENT") };
+        unsafe { std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1") };
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -1878,12 +1889,14 @@ mod tests {
         assert_eq!(response, json!({ "echo": "[REDACTED]" }));
 
         match previous_environment {
-            Some(value) => std::env::set_var("ENVIRONMENT", value),
-            None => std::env::remove_var("ENVIRONMENT"),
+            Some(value) => unsafe { std::env::set_var("ENVIRONMENT", value) },
+            None => unsafe { std::env::remove_var("ENVIRONMENT") },
         }
         match previous_lab_flag {
-            Some(value) => std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", value),
-            None => std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND"),
+            Some(value) => unsafe {
+                std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", value)
+            },
+            None => unsafe { std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND") },
         }
     }
 
@@ -1892,8 +1905,8 @@ mod tests {
         let _guard = crate::services::outbound_security::tests_lab_env_lock().await;
         let previous_environment = std::env::var("ENVIRONMENT").ok();
         let previous_lab_flag = std::env::var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND").ok();
-        std::env::remove_var("ENVIRONMENT");
-        std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1");
+        unsafe { std::env::remove_var("ENVIRONMENT") };
+        unsafe { std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1") };
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -1928,12 +1941,14 @@ mod tests {
         );
 
         match previous_environment {
-            Some(value) => std::env::set_var("ENVIRONMENT", value),
-            None => std::env::remove_var("ENVIRONMENT"),
+            Some(value) => unsafe { std::env::set_var("ENVIRONMENT", value) },
+            None => unsafe { std::env::remove_var("ENVIRONMENT") },
         }
         match previous_lab_flag {
-            Some(value) => std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", value),
-            None => std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND"),
+            Some(value) => unsafe {
+                std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", value)
+            },
+            None => unsafe { std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND") },
         }
     }
 
@@ -2002,8 +2017,8 @@ mod tests {
         let _lab = crate::services::outbound_security::tests_lab_env_lock().await;
         let previous_environment = std::env::var("ENVIRONMENT").ok();
         let previous_lab_flag = std::env::var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND").ok();
-        std::env::remove_var("ENVIRONMENT");
-        std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1");
+        unsafe { std::env::remove_var("ENVIRONMENT") };
+        unsafe { std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1") };
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -2021,12 +2036,14 @@ mod tests {
         let logs = captured_logs(&buf);
 
         match previous_environment {
-            Some(value) => std::env::set_var("ENVIRONMENT", value),
-            None => std::env::remove_var("ENVIRONMENT"),
+            Some(value) => unsafe { std::env::set_var("ENVIRONMENT", value) },
+            None => unsafe { std::env::remove_var("ENVIRONMENT") },
         }
         match previous_lab_flag {
-            Some(value) => std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", value),
-            None => std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND"),
+            Some(value) => unsafe {
+                std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", value)
+            },
+            None => unsafe { std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND") },
         }
         (error, logs)
     }
@@ -2117,8 +2134,8 @@ mod tests {
         let _guard = crate::services::outbound_security::tests_lab_env_lock().await;
         let previous_environment = std::env::var("ENVIRONMENT").ok();
         let previous_lab_flag = std::env::var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND").ok();
-        std::env::remove_var("ENVIRONMENT");
-        std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1");
+        unsafe { std::env::remove_var("ENVIRONMENT") };
+        unsafe { std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1") };
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -2174,12 +2191,14 @@ mod tests {
         let result = TappApiService::execute_http_api_with_credential(&api, &context, None).await;
 
         match previous_environment {
-            Some(value) => std::env::set_var("ENVIRONMENT", value),
-            None => std::env::remove_var("ENVIRONMENT"),
+            Some(value) => unsafe { std::env::set_var("ENVIRONMENT", value) },
+            None => unsafe { std::env::remove_var("ENVIRONMENT") },
         }
         match previous_lab_flag {
-            Some(value) => std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", value),
-            None => std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND"),
+            Some(value) => unsafe {
+                std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", value)
+            },
+            None => unsafe { std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND") },
         }
 
         if let Err(error) = result {
@@ -2187,9 +2206,11 @@ mod tests {
             panic!("raw request failed: {error}");
         }
         let (headers, body) = server.await.unwrap();
-        assert!(headers
-            .lines()
-            .any(|line| line.eq_ignore_ascii_case("content-type: text/plain; charset=utf-8")));
+        assert!(
+            headers
+                .lines()
+                .any(|line| line.eq_ignore_ascii_case("content-type: text/plain; charset=utf-8"))
+        );
         assert_eq!(body, raw.as_bytes());
         assert!(!body.ends_with(b"\n"));
     }

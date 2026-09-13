@@ -7,6 +7,7 @@ export const SPA_STATIC_PATHS = [
   'library',
   'reports',
   'config',
+  'agent/settings',
   'login',
   'register',
   'setup',

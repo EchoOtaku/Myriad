@@ -20,10 +20,12 @@ mod tests {
         assert_eq!(out["minute"], 30);
         assert_eq!(out["weekday"], "Friday"); // 2026-07-31 20:30 +08 is Friday
         assert_eq!(out["timestamp"], now.timestamp());
-        assert!(out["datetime"]
-            .as_str()
-            .unwrap()
-            .starts_with("2026-07-31T20:30:00"));
+        assert!(
+            out["datetime"]
+                .as_str()
+                .unwrap()
+                .starts_with("2026-07-31T20:30:00")
+        );
         assert!(project_time_info(now, "Not/AZone").is_err());
         let utc = project_time_info(now, "UTC").expect("utc");
         assert_eq!(utc["hour"], 12);

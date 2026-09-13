@@ -21,20 +21,20 @@ pub use ingest::{
     tick_speak_intents,
 };
 pub use motion::{
-    direct_motion, local_directive, refine_motion, resolve_round_motion_style, MotionContext,
-    MotionPhase, PerformanceDirective,
+    MotionContext, MotionPhase, PerformanceDirective, direct_motion, local_directive,
+    refine_motion, resolve_round_motion_style,
 };
 pub use myriad_merope::RigStateSummary;
 pub use outfit_overlay::{apply_model_wear_directive, chat_wardrobe_section, overlay_outfit_id};
 pub use store::{
-    acquire_avatar_generation, acquire_portrait_generation, avatar_generation_is_pending,
-    clear_persona_on, complete_avatar_generation, complete_portrait_generation,
-    credit_music_listening, generation_inputs_changed, get_or_create_state, get_persona,
-    get_persona_on, insert_diary, insert_proactive, latest_diary, list_diary_from_sources,
-    normalize_persona_fields, portrait_generation_is_pending, promote_activity, recent_proactive,
-    release_avatar_generation, release_portrait_generation, set_activity, set_dnd_schedule,
-    set_do_not_disturb, sticker_avatar_asset_id, update_affect, upsert_persona_on,
-    JsonDocumentUpdate, PersonaContractUpdate, PortraitUpdate,
+    JsonDocumentUpdate, PersonaContractUpdate, PortraitUpdate, acquire_avatar_generation,
+    acquire_portrait_generation, avatar_generation_is_pending, clear_persona_on,
+    complete_avatar_generation, complete_portrait_generation, credit_music_listening,
+    generation_inputs_changed, get_or_create_state, get_persona, get_persona_on, insert_diary,
+    insert_proactive, latest_diary, list_diary_from_sources, normalize_persona_fields,
+    portrait_generation_is_pending, promote_activity, recent_proactive, release_avatar_generation,
+    release_portrait_generation, set_activity, set_dnd_schedule, set_do_not_disturb,
+    sticker_avatar_asset_id, update_affect, upsert_persona_on,
 };
 
 /// Logged-in users only. Guests use negative ids; heartbeat is `SYSTEM_USER_ID` (0).
@@ -347,11 +347,11 @@ pub fn has_custom_persona(persona: &agent_persona::Model) -> bool {
     format_persona(persona).is_some()
 }
 
-pub use gates::{decide_ingest, is_valuable_event, IngestDecision, IngestSight};
+pub use gates::{IngestDecision, IngestSight, decide_ingest, is_valuable_event};
 pub use state::{
-    apply_task_outcome, apply_user_utterance, clamp_mood, detect_mood_cue, effective_activity,
-    is_extremely_low, mood_band, Affect, AffectBaseline, MoodTransition, ACTIVITY_STALE_SECS,
-    DEFAULT_AROUSAL, DEFAULT_MOOD, MOOD_FLOOR, MUSIC_LISTENING_MIN_SECS, ORIGIN,
+    ACTIVITY_STALE_SECS, Affect, AffectBaseline, DEFAULT_AROUSAL, DEFAULT_MOOD, MOOD_FLOOR,
+    MUSIC_LISTENING_MIN_SECS, MoodTransition, ORIGIN, apply_task_outcome, apply_user_utterance,
+    clamp_mood, detect_mood_cue, effective_activity, is_extremely_low, mood_band,
 };
 
 /// The activity to act on, with a stale one read as idle.
@@ -510,7 +510,9 @@ mod tests {
         assert!(super::refuse_new_task_message(Some(10.0)).is_some());
         assert!(super::refuse_new_task_message(Some(10.1)).is_none());
         assert!(super::refuse_new_task_message(None).is_none());
-        assert!(super::speaking_prompts::PERSONA_SPEAKING_CONTRACT.contains("Do not name the mood"));
+        assert!(
+            super::speaking_prompts::PERSONA_SPEAKING_CONTRACT.contains("Do not name the mood")
+        );
         assert!(super::mood_tone_instruction(8.0, 48.0).contains("Very low"));
         assert!(super::mood_tone_instruction(30.0, 40.0).contains("A bit low"));
         assert!(super::mood_tone_instruction(30.0, 70.0).contains("Irritable"));
@@ -528,9 +530,11 @@ mod tests {
         assert!(block.contains("## About this person"));
         assert!(block.contains("facts you kept"));
         assert!(block.contains("- 今天晚上想打独立游戏"));
-        assert!(super::format_recent_section(&["Steam 解锁了成就".into()])
-            .unwrap()
-            .contains("## Recently"));
+        assert!(
+            super::format_recent_section(&["Steam 解锁了成就".into()])
+                .unwrap()
+                .contains("## Recently")
+        );
     }
 
     #[test]

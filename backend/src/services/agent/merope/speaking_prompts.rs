@@ -30,7 +30,9 @@ pub fn compose_proactive_user(summary: &str) -> String {
 
 pub fn mood_tone_instruction(mood: f64, arousal: f64) -> &'static str {
     match crate::services::agent::merope::state::mood_band(mood, arousal) {
-        "floor" => "Very low mood: keep it short, do not push tasks, do not cheerlead. Low is holding back, not becoming someone else.",
+        "floor" => {
+            "Very low mood: keep it short, do not push tasks, do not cheerlead. Low is holding back, not becoming someone else."
+        }
         "sad" => "A bit low: pull back, fewer words, still answer.",
         "tense" => "Irritable: short, no jokes, get the facts out.",
         "excited" => "In a good mood: lighter, finish the thought.",
@@ -304,9 +306,11 @@ mod tests {
     #[test]
     fn activity_section_skips_idle() {
         assert!(format_activity_section("idle").is_none());
-        assert!(format_activity_section("working")
-            .unwrap()
-            .contains("working"));
+        assert!(
+            format_activity_section("working")
+                .unwrap()
+                .contains("working")
+        );
     }
 
     #[test]

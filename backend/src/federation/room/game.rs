@@ -235,28 +235,19 @@ mod tests {
             max_players: Some(2),
             max_message_bytes: Some(256 * 1024),
         };
-        assert!(validate_room_game_message(
-            "game:com.example.chess:v1",
-            &payload,
-            false,
-            Some(&chess)
-        )
-        .is_ok());
-        assert!(validate_room_game_message(
-            "game:com.example.chess:v1",
-            &payload,
-            true,
-            Some(&chess)
-        )
-        .is_err());
+        assert!(
+            validate_room_game_message("game:com.example.chess:v1", &payload, false, Some(&chess))
+                .is_ok()
+        );
+        assert!(
+            validate_room_game_message("game:com.example.chess:v1", &payload, true, Some(&chess))
+                .is_err()
+        );
         assert!(validate_room_game_message("text", &payload, false, Some(&chess)).is_ok());
-        assert!(validate_room_game_message(
-            "game:com.other.poker:v1",
-            &payload,
-            false,
-            Some(&chess)
-        )
-        .is_err());
+        assert!(
+            validate_room_game_message("game:com.other.poker:v1", &payload, false, Some(&chess))
+                .is_err()
+        );
         assert!(
             validate_room_game_message("game:com.example.chess:v1", &payload, false, None).is_err()
         );
@@ -266,24 +257,28 @@ mod tests {
             "nonce": "n1",
             "body": "x".repeat(70 * 1024)
         });
-        assert!(validate_room_game_message(
-            "game:com.example.chess:v1",
-            &oversized,
-            false,
-            Some(&chess)
-        )
-        .is_ok());
+        assert!(
+            validate_room_game_message(
+                "game:com.example.chess:v1",
+                &oversized,
+                false,
+                Some(&chess)
+            )
+            .is_ok()
+        );
         let tight = RoomGameConfig {
             max_message_bytes: Some(1024),
             ..chess.clone()
         };
-        assert!(validate_room_game_message(
-            "game:com.example.chess:v1",
-            &oversized,
-            false,
-            Some(&tight)
-        )
-        .is_err());
+        assert!(
+            validate_room_game_message(
+                "game:com.example.chess:v1",
+                &oversized,
+                false,
+                Some(&tight)
+            )
+            .is_err()
+        );
     }
 
     #[test]

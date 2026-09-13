@@ -4,7 +4,7 @@
 
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -886,11 +886,13 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].item_type, "anime");
         assert_eq!(items[0].platform, "Bangumi");
-        assert!(items[0]
-            .cover
-            .as_ref()
-            .unwrap()
-            .starts_with("/api/proxy/image"));
+        assert!(
+            items[0]
+                .cover
+                .as_ref()
+                .unwrap()
+                .starts_with("/api/proxy/image")
+        );
         // Prefer common over large when both exist.
         assert!(
             items[0]
@@ -905,11 +907,13 @@ mod tests {
 
         let slimmed = normalize_library_item_for_client(items[0].clone());
         assert!(slimmed.metadata.get("comment").is_none());
-        assert!(slimmed
-            .metadata
-            .get("subject")
-            .and_then(|s| s.get("images"))
-            .is_none());
+        assert!(
+            slimmed
+                .metadata
+                .get("subject")
+                .and_then(|s| s.get("images"))
+                .is_none()
+        );
         assert_eq!(slimmed.metadata.get("ep_status"), Some(&json!(3)));
         assert_eq!(slimmed.metadata.pointer("/subject/eps"), Some(&json!(12)));
     }
@@ -1014,11 +1018,12 @@ mod tests {
         assert_eq!(slim.pointer("/privilege/fee"), Some(&json!(1)));
         assert!(slim.pointer("/privilege/maxBr").is_none());
         assert!(slim.get("alias").is_none());
-        assert!(slim
-            .pointer("/al/picUrl")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .contains("param=300y300"));
+        assert!(
+            slim.pointer("/al/picUrl")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .contains("param=300y300")
+        );
     }
 
     #[test]

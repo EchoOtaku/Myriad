@@ -1,7 +1,7 @@
 use super::super::HandlerContext;
 use crate::models::entities::{brew_items, brew_sources, tapps};
 use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, QueryFilter, QuerySelect};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 pub(super) async fn execute_fuzzy_search(

@@ -4,9 +4,9 @@
 //! 这些端点不需要认证，是联邦互通的入口。
 
 use axum::{
+    Json,
     extract::{Query, State},
     http::StatusCode,
-    Json,
 };
 use myriad_error::AppError;
 use sea_orm::DatabaseConnection;

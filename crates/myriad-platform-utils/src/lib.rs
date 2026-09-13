@@ -17,4 +17,4 @@ pub use netease::{
     convert_http_to_https, ensure_https_url, generate_device_id as netease_generate_device_id,
     get_random_china_ip as netease_random_china_ip, get_random_user_agent as netease_random_ua,
 };
-pub use spoof::{generate_spoof_headers, SpoofConfig, SpoofHeaders};
+pub use spoof::{SpoofConfig, SpoofHeaders, generate_spoof_headers};

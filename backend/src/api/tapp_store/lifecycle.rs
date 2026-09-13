@@ -5,11 +5,11 @@
 //! activity upserts, and grant revocation.
 
 use super::{
-    current_is_admin, find_admin_user_id, get_admin_user_id, validate_tapp_id, ApiResponse,
+    ApiResponse, current_is_admin, find_admin_user_id, get_admin_user_id, validate_tapp_id,
 };
 use axum::{
-    extract::{Path, Query, State},
     Extension, Json,
+    extract::{Path, Query, State},
 };
 use chrono::Utc;
 use sea_orm::{
@@ -22,8 +22,8 @@ use crate::error::HttpError;
 use crate::middleware::auth::Claims;
 use crate::models::entities::{tapp_user_activities, tapps};
 use crate::services::tapp_lifecycle::{
-    clamp_recent_limit, recent_tapp_item, resolve_start_outcome, resolve_stop_outcome,
-    RecentTappItem, StartOutcome, StopOutcome,
+    RecentTappItem, StartOutcome, StopOutcome, clamp_recent_limit, recent_tapp_item,
+    resolve_start_outcome, resolve_stop_outcome,
 };
 use crate::services::tapp_ownership::public_install_visible_to_viewer;
 use myriad_error::AppError;

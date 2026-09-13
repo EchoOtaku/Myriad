@@ -12,15 +12,15 @@ use crate::services::{
     ai_config::get_ai_config_for_tier,
     ai_quota::{get_ai_usage, reserve_ai_quota, rollback_ai_quota_reservation},
     ai_task_execute::{
-        execute_task, hash_request, AiTaskExecution, AiTaskOutputRequest, CreateAiTaskRequest,
-        PreparedModel, PreparedTask,
+        AiTaskExecution, AiTaskOutputRequest, CreateAiTaskRequest, PreparedModel, PreparedTask,
+        execute_task, hash_request,
     },
     ai_task_prepare::MAX_INPUT_BYTES,
     ai_task_registry::{
-        register_ai_task_atomically, task_id_for_request, AiTaskDelivery, AiTaskRegistration,
-        AiTaskSnapshot, AiTaskStatus,
+        AiTaskDelivery, AiTaskRegistration, AiTaskSnapshot, AiTaskStatus,
+        register_ai_task_atomically, task_id_for_request,
     },
-    ai_task_runtime::{insert_local, local_snapshot, LocalAiTask},
+    ai_task_runtime::{LocalAiTask, insert_local, local_snapshot},
     permission_service::UserRole,
     tapp_rate_limit::{check_anonymous_rate_limit, check_rate_limit},
 };
@@ -246,16 +246,20 @@ mod tests {
         let db = DatabaseConnection::default();
         let mut empty = request();
         empty.prompt.clear();
-        assert!(execute_governed_text(&db, empty)
-            .await
-            .unwrap_err()
-            .starts_with("UNSAFE_AI_TASK_INPUT:"));
+        assert!(
+            execute_governed_text(&db, empty)
+                .await
+                .unwrap_err()
+                .starts_with("UNSAFE_AI_TASK_INPUT:")
+        );
         let mut image = request();
         image.operation = TappAiOperation::Image;
-        assert!(execute_governed_text(&db, image)
-            .await
-            .unwrap_err()
-            .starts_with("AI_TASK_UNSUPPORTED_OPERATION:"));
+        assert!(
+            execute_governed_text(&db, image)
+                .await
+                .unwrap_err()
+                .starts_with("AI_TASK_UNSUPPORTED_OPERATION:")
+        );
     }
 
     #[tokio::test]

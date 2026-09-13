@@ -1,7 +1,7 @@
 use super::super::HandlerContext;
 use crate::models::entities::{brew_items, brew_sources};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 /// Opt-in flag for external/web search fallback (brew.generateReadingList).
@@ -452,7 +452,10 @@ pub(super) async fn execute_brew_generate_reading_list(
 
     // 构建关键词提示（如果有）
     let keyword_hint = if !keyword.is_empty() {
-        format!("\nKeyword filter: {}\nCandidates are prefiltered by keyword. Judge real topical fit; drop clickbait or only surface matches.", keyword)
+        format!(
+            "\nKeyword filter: {}\nCandidates are prefiltered by keyword. Judge real topical fit; drop clickbait or only surface matches.",
+            keyword
+        )
     } else {
         String::new()
     };

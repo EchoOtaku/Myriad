@@ -1,7 +1,7 @@
 //! Persona HTTP and background runtime. Web owns migrations and platform schedulers.
 use std::{sync::Arc, time::Duration};
 
-use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
+use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use serde_json::json;
 use tokio::sync::watch;
@@ -186,21 +186,26 @@ async fn limit_http_work(
         Err(_) => return StatusCode::GATEWAY_TIMEOUT.into_response(),
     };
     let (parts, body) = response.into_parts();
-    let stream = async_stream::stream! {
-        let _permit = permit;
-        let mut body = body.into_data_stream();
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(3600);
-        loop {
-            match tokio::time::timeout_at(deadline, body.next()).await {
-                Ok(Some(item)) => yield item.map_err(std::io::Error::other),
-                Ok(None) => break,
-                Err(_) => {
-                    yield Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "persona response deadline"));
-                    break;
-                }
-            }
-        }
-    };
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3600);
+    let inner = futures::stream::unfold(
+        Some(body.into_data_stream()),
+        move |body| async move {
+            let mut body = body?;
+            let next = tokio::time::timeout_at(deadline, body.next()).await;
+            return match next {
+                Ok(Some(item)) => Some((item.map_err(std::io::Error::other), Some(body))),
+                Ok(None) => None,
+                Err(_) => Some((
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "persona response deadline",
+                    )),
+                    None,
+                )),
+            };
+        },
+    );
+    let stream = crate::held_stream::HeldStream::new(inner, permit);
     axum::response::Response::from_parts(parts, axum::body::Body::from_stream(stream))
 }
 

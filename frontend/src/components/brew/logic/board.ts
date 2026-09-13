@@ -139,6 +139,15 @@ export function resolveBoardParam(value: string): BrewBoardEntry | null {
   return LEGACY_NAV_TO_BOARD[value] ?? null
 }
 
+/** 二级导航高亮：登录后收藏用 starred，否则落到所属板块。 */
+export function navIdForBoardEntry(
+  entry: BrewBoardEntry,
+  isAuthenticated: boolean,
+): string {
+  if (entry.view === 'starred' && isAuthenticated) return 'starred'
+  return entry.board
+}
+
 /** 游客没有收藏，深链落到板块本身。 */
 export function viewForBoardEntry(
   entry: BrewBoardEntry,

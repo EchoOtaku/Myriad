@@ -6,9 +6,9 @@
 //! ticket storage.
 
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
-    Json,
 };
 use sea_orm::DatabaseConnection;
 use serde::Serialize;
@@ -21,7 +21,7 @@ use crate::services::tapp_ws_ticket::{self, WsTicketError, WsTicketMintIdentity}
 
 use super::RuntimeGrantContext;
 
-pub use crate::services::tapp_ws_ticket::{ConsumedWsTicket, WsTicketKind, TAPP_WS_TICKET_QUERY};
+pub use crate::services::tapp_ws_ticket::{ConsumedWsTicket, TAPP_WS_TICKET_QUERY, WsTicketKind};
 
 // Force the public name into the non-test binary so renames stay intentional.
 const _: &str = TAPP_WS_TICKET_QUERY;

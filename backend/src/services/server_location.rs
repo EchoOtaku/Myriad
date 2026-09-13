@@ -1,4 +1,4 @@
-use reqwest::{redirect::Policy, Client};
+use reqwest::{Client, redirect::Policy};
 use serde::Serialize;
 use serde_json::Value;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};

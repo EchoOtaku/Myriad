@@ -5,10 +5,10 @@
 //! frontend.
 
 use crate::config::DynamicConfig;
-use futures::{stream, StreamExt, TryStreamExt};
-use reqwest::{multipart, Client};
+use futures::{StreamExt, TryStreamExt, stream};
+use reqwest::{Client, multipart};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -1031,10 +1031,10 @@ fn env_bool(key: &str) -> Option<bool> {
 mod tests {
     use super::*;
     use axum::{
-        extract::Json,
-        http::{header::AUTHORIZATION, header::CONTENT_TYPE, HeaderMap},
-        routing::{get, post},
         Router,
+        extract::Json,
+        http::{HeaderMap, header::AUTHORIZATION, header::CONTENT_TYPE},
+        routing::{get, post},
     };
 
     fn test_runtime_config() -> TripoRuntimeConfig {
@@ -1057,10 +1057,12 @@ mod tests {
                 .and_then(|value| value.to_str().ok()),
             Some("Bearer test")
         );
-        assert!(headers
-            .get(CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .is_some_and(|value| value.starts_with("multipart/form-data; boundary=")));
+        assert!(
+            headers
+                .get(CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.starts_with("multipart/form-data; boundary="))
+        );
         Json(json!({
             "code": 0,
             "data": { "file_token": "file_front" }
@@ -1245,18 +1247,22 @@ mod tests {
     #[test]
     fn retarget_requires_a_task_and_nonempty_presets() {
         let config = test_runtime_config();
-        assert!(TripoOperation::Retarget
-            .validate_body(
-                &json!({"input": "file_model", "animation": "preset:biped:walk"}),
-                &config,
-            )
-            .is_err());
-        assert!(TripoOperation::Retarget
-            .validate_body(
-                &json!({"input": "task_rigged", "animations": ["preset:biped:idle", ""]}),
-                &config,
-            )
-            .is_err());
+        assert!(
+            TripoOperation::Retarget
+                .validate_body(
+                    &json!({"input": "file_model", "animation": "preset:biped:walk"}),
+                    &config,
+                )
+                .is_err()
+        );
+        assert!(
+            TripoOperation::Retarget
+                .validate_body(
+                    &json!({"input": "task_rigged", "animations": ["preset:biped:idle", ""]}),
+                    &config,
+                )
+                .is_err()
+        );
         TripoOperation::Retarget
             .validate_body(
                 &json!({"input": "task_rigged", "animations": ["preset:biped:idle", "preset:biped:walk"]}),

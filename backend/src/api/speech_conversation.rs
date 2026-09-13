@@ -1,25 +1,27 @@
 //! Agora's cloud-facing Chat adapter and the browser's authenticated run notices.
 
 use axum::{
+    Extension, Json,
     extract::{Query, State},
     http::{HeaderMap, StatusCode},
     response::{
-        sse::{Event, KeepAlive, Sse},
         IntoResponse, Response,
+        sse::{Event, KeepAlive, Sse},
     },
-    Extension, Json,
 };
 use futures::{Stream, StreamExt};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::Deserialize;
 use serde_json::json;
+use std::collections::VecDeque;
 use std::convert::Infallible;
+use std::pin::Pin;
 use std::time::Duration;
 
-use crate::middleware::auth::{revalidate_bound_claims, Claims};
+use crate::middleware::auth::{Claims, revalidate_bound_claims};
 use crate::services::agent::{AgentInteractionMode, AgentProgressEvent};
 use crate::services::agora_chat::{
-    completion_chunk, ChatSession, CompletionRequest, CALLBACK_PATH,
+    CALLBACK_PATH, ChatSession, CompletionRequest, completion_chunk,
 };
 
 pub fn callback_url(base: &str) -> Result<String, &'static str> {
@@ -166,61 +168,128 @@ fn completion_stream(
     run: std::sync::Arc<crate::services::agent::run_hub::AgentRun>,
     session: std::sync::Arc<ChatSession>,
 ) -> impl Stream<Item = Result<Event, Infallible>> {
-    async_stream::stream! {
-        let mut changed = session.subscribe();
-        let events = super::agent::agent_run_envelopes(run.clone());
-        futures::pin_mut!(events);
-        let mut emitted = false;
-        let mut sequence = 0;
-        let mut missing_prefix = false;
-        loop {
-            let envelope = tokio::select! {
-                next = events.next() => next,
-                _ = changed.changed() => {
-                    if session.is_closed().await { break; }
-                    continue;
-                }
-            };
-            if session.is_closed().await { break; }
-            let Some(envelope) = envelope else { break; };
-            // A bounded run replay may have evicted its first tokens. Wait for
-            // the authoritative final reply instead of speaking only its tail.
-            if envelope.sequence > sequence + 1 {
-                if emitted {
-                    yield Ok(Event::default().data(json!({"error":{"message":"Reply stream interrupted","type":"realtime_chat_error"}}).to_string()));
-                    break;
-                }
-                missing_prefix = true;
+    let changed = session.subscribe();
+    let events = Box::pin(super::agent::agent_run_envelopes(run.clone()));
+    futures::stream::unfold(
+        Some(CompletionFeed {
+            run,
+            session,
+            changed,
+            events,
+            emitted: false,
+            sequence: 0,
+            missing_prefix: false,
+            pending: VecDeque::new(),
+            finishing: false,
+        }),
+        |feed| async move {
+            let mut feed = feed?;
+            if let Some(event) = feed.pending.pop_front() {
+                return Some((event, Some(feed)));
             }
-            sequence = envelope.sequence;
-            match envelope.event {
-                AgentProgressEvent::SummaryToken { token, done: false } if !missing_prefix && !token.is_empty() => {
-                    emitted = true;
-                    yield Ok(Event::default().data(completion_chunk(run.run_id(), Some(&token), false).to_string()));
-                }
-                AgentProgressEvent::TaskCompleted {success, response, ..} => {
-                    if success {
-                        if !emitted {
-                            if let Some(text) = response.get("message").and_then(|v| v.as_str()) {
-                                yield Ok(Event::default().data(completion_chunk(run.run_id(), Some(text), false).to_string()));
-                            }
+            if feed.finishing {
+                return Some((Ok(Event::default().data("[DONE]")), None));
+            }
+            loop {
+                let envelope = tokio::select! {
+                    next = feed.events.next() => next,
+                    _ = feed.changed.changed() => {
+                        let closed = feed.session.is_closed().await;
+                        if closed {
+                            return Some((Ok(Event::default().data("[DONE]")), None));
                         }
-                        yield Ok(Event::default().data(completion_chunk(run.run_id(), None, true).to_string()));
-                    } else {
-                        yield Ok(Event::default().data(json!({"error":{"message":"Chat turn ended without a reply","type":"realtime_chat_error"}}).to_string()));
+                        continue;
                     }
-                    break;
+                };
+                let closed = feed.session.is_closed().await;
+                if closed {
+                    return Some((Ok(Event::default().data("[DONE]")), None));
                 }
-                AgentProgressEvent::Error {..} => {
-                    // Do not forward provider error bodies or diagnostic details.
-                    yield Ok(Event::default().data(json!({"error":{"message":"Chat is unavailable","type":"realtime_chat_error"}}).to_string()));
-                    break;
+                let Some(envelope) = envelope else {
+                    return Some((Ok(Event::default().data("[DONE]")), None));
+                };
+                // A bounded run replay may have evicted its first tokens. Wait for
+                // the authoritative final reply instead of speaking only its tail.
+                if envelope.sequence > feed.sequence + 1 {
+                    if feed.emitted {
+                        feed.finishing = true;
+                        return Some((
+                            Ok(Event::default().data(
+                                json!({"error":{"message":"Reply stream interrupted","type":"realtime_chat_error"}}).to_string(),
+                            )),
+                            Some(feed),
+                        ));
+                    }
+                    feed.missing_prefix = true;
                 }
-                _ => {},
+                feed.sequence = envelope.sequence;
+                match envelope.event {
+                    AgentProgressEvent::SummaryToken { token, done: false }
+                        if !feed.missing_prefix && !token.is_empty() =>
+                    {
+                        feed.emitted = true;
+                        return Some((
+                            Ok(Event::default().data(
+                                completion_chunk(feed.run.run_id(), Some(&token), false).to_string(),
+                            )),
+                            Some(feed),
+                        ));
+                    }
+                    AgentProgressEvent::TaskCompleted {
+                        success, response, ..
+                    } => {
+                        if success {
+                            if !feed.emitted {
+                                if let Some(text) =
+                                    response.get("message").and_then(|v| v.as_str())
+                                {
+                                    feed.pending.push_back(Ok(Event::default().data(
+                                        completion_chunk(feed.run.run_id(), Some(text), false)
+                                            .to_string(),
+                                    )));
+                                }
+                            }
+                            feed.pending.push_back(Ok(Event::default().data(
+                                completion_chunk(feed.run.run_id(), None, true).to_string(),
+                            )));
+                        } else {
+                            feed.pending.push_back(Ok(Event::default().data(
+                                json!({"error":{"message":"Chat turn ended without a reply","type":"realtime_chat_error"}}).to_string(),
+                            )));
+                        }
+                        feed.finishing = true;
+                        if let Some(event) = feed.pending.pop_front() {
+                            return Some((event, Some(feed)));
+                        }
+                        return Some((Ok(Event::default().data("[DONE]")), None));
+                    }
+                    AgentProgressEvent::Error { .. } => {
+                        // Do not forward provider error bodies or diagnostic details.
+                        feed.finishing = true;
+                        return Some((
+                            Ok(Event::default().data(
+                                json!({"error":{"message":"Chat is unavailable","type":"realtime_chat_error"}}).to_string(),
+                            )),
+                            Some(feed),
+                        ));
+                    }
+                    _ => {}
+                }
             }
-        }
-        yield Ok(Event::default().data("[DONE]"));
-    }
+        },
+    )
+}
+
+struct CompletionFeed {
+    run: std::sync::Arc<crate::services::agent::run_hub::AgentRun>,
+    session: std::sync::Arc<ChatSession>,
+    changed: tokio::sync::watch::Receiver<u64>,
+    events: Pin<Box<dyn Stream<Item = crate::services::agent::run_hub::AgentRunEnvelope> + Send>>,
+    emitted: bool,
+    sequence: u64,
+    missing_prefix: bool,
+    pending: VecDeque<Result<Event, Infallible>>,
+    finishing: bool,
 }
 
 #[derive(Deserialize)]
@@ -244,25 +313,63 @@ pub async fn conversation_events(
         // No owned chat session or tv mismatch: 204. Active streams emit event("closed") on teardown.
         _ => return StatusCode::NO_CONTENT.into_response(),
     };
-    let stream = async_stream::stream! {
-        let mut changed = session.subscribe();
-        let mut after = query.after;
-        loop {
-            let (notices, closed) = session.notices().await;
-            for notice in notices.into_iter().filter(|notice| notice.sequence > after).collect::<Vec<_>>() {
-                after = notice.sequence;
-                yield Ok::<Event, Infallible>(Event::default().id(after.to_string()).json_data(notice).unwrap());
+    let changed = session.subscribe();
+    let stream = futures::stream::unfold(
+        Some(ConversationNoticeFeed {
+            session,
+            changed,
+            after: query.after,
+            pending: VecDeque::new(),
+            closed: false,
+        }),
+        |feed| async move {
+            let mut feed = feed?;
+            loop {
+                if let Some(event) = feed.pending.pop_front() {
+                    return Some((event, Some(feed)));
+                }
+                if feed.closed {
+                    return Some((Ok(Event::default().event("closed").data("{}")), None));
+                }
+                let (notices, closed) = feed.session.notices().await;
+                for notice in notices {
+                    if notice.sequence <= feed.after {
+                        continue;
+                    }
+                    let sequence = notice.sequence;
+                    feed.after = sequence;
+                    feed.pending.push_back(Ok::<Event, Infallible>(
+                        Event::default()
+                            .id(sequence.to_string())
+                            .json_data(notice)
+                            .unwrap(),
+                    ));
+                }
+                if closed {
+                    feed.closed = true;
+                    continue;
+                }
+                if !feed.pending.is_empty() {
+                    continue;
+                }
+                let notified = feed.changed.changed().await;
+                if notified.is_err() {
+                    return None;
+                }
             }
-            if closed {
-                yield Ok(Event::default().event("closed").data("{}"));
-                break;
-            }
-            if changed.changed().await.is_err() { break; }
-        }
-    };
+        },
+    );
     Sse::new(stream)
         .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
         .into_response()
+}
+
+struct ConversationNoticeFeed {
+    session: std::sync::Arc<ChatSession>,
+    changed: tokio::sync::watch::Receiver<u64>,
+    after: u64,
+    pending: VecDeque<Result<Event, Infallible>>,
+    closed: bool,
 }
 
 #[cfg(test)]

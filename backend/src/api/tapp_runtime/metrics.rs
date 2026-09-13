@@ -1,15 +1,15 @@
 //! Tapp 运行状态与速率限制 API
 
 use axum::{
+    Extension, Json,
     extract::{Path, State},
     http::StatusCode,
-    Extension, Json,
 };
 use sea_orm::DatabaseConnection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::error::HttpError;
-use crate::middleware::auth::{ensure_current_admin_on, Claims};
+use crate::middleware::auth::{Claims, ensure_current_admin_on};
 use crate::services::tapp_scheduler::{
     active_frontend_subject_count, scheduler_counters, scheduler_mailbox_depth,
 };

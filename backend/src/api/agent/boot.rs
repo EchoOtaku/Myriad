@@ -242,7 +242,7 @@ pub async fn reclaim_stranded_running_intentions(db: &DatabaseConnection) {
                 }
             }
             RunningRecovery::FailInterrupted => {
-                if let Err(error) = store
+                match store
                     .transition(
                         &intent.id,
                         intent.user_id,
@@ -253,13 +253,16 @@ pub async fn reclaim_stranded_running_intentions(db: &DatabaseConnection) {
                     )
                     .await
                 {
-                    tracing::warn!(
-                        %error,
-                        intent_id = %intent.id,
-                        "[Agent API] Boot restore: fail interrupted intention failed"
-                    );
-                } else {
-                    failed += 1;
+                    Err(error) => {
+                        tracing::warn!(
+                            %error,
+                            intent_id = %intent.id,
+                            "[Agent API] Boot restore: fail interrupted intention failed"
+                        );
+                    }
+                    _ => {
+                        failed += 1;
+                    }
                 }
             }
         }
@@ -545,7 +548,7 @@ pub(crate) async fn spawn_restored_wait_loop(
 
 #[cfg(test)]
 mod tests {
-    use super::{classify_stranded_running, wait_response_still_waiting, RunningRecovery};
+    use super::{RunningRecovery, classify_stranded_running, wait_response_still_waiting};
     use serde_json::json;
 
     #[test]

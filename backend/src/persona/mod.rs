@@ -9,7 +9,7 @@ use crate::{api, services};
 use sea_orm::DatabaseConnection;
 use services::agent;
 use std::{sync::LazyLock, time::Duration};
-use tokio::sync::{watch, Mutex};
+use tokio::sync::{Mutex, watch};
 
 static RUNTIME: Mutex<Option<drivers::Runtime>> = Mutex::const_new(None);
 static FAILURE: LazyLock<watch::Sender<Option<String>>> = LazyLock::new(|| watch::channel(None).0);

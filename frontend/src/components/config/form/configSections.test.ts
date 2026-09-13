@@ -24,10 +24,14 @@ describe('settings page catalog', () => {
       isAdmin: true,
       agentTitle: 'Persona',
     })
+    const ids = pages.map((page) => page.id)
+    assert.ok(ids.includes('agent'))
+    assert.equal(pages.find((page) => page.id === 'agent')?.href, '/agent/settings')
     assert.deepEqual(
-      pages.map((page) => page.id),
+      ids.filter((id) => id !== 'agent'),
       [...CONFIG_NAV_SECTIONS],
     )
+    assert.equal(ids[ids.indexOf('ai') + 1], 'agent')
     for (const page of pages) {
       assert.ok(
         search.some(

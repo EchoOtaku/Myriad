@@ -17,7 +17,7 @@ use sea_orm::{
     IntoActiveModel, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
 };
 use serde::{Deserialize, Serialize};
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 
 use crate::models::entities::agent_notifications as notif_entity;
 

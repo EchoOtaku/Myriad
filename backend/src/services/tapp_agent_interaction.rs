@@ -12,7 +12,7 @@ use myriad_tapp_contract::contract_rules::MAX_AGENT_SCHEMA_RESOURCE_BYTES;
 use myriad_tapp_contract::manifest::{TappAgentInteractionDef, TappAgentManifest};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::models::entities::tapps;
@@ -640,7 +640,7 @@ pub async fn accept_interaction(
         _ => {
             return Err(AgentInteractionError::StateConflict {
                 message: "Agent interaction cannot be accepted in its current state",
-            })
+            });
         }
     }
     if !conditional_save_interaction(db, &interaction, runtime, true).await? {
@@ -964,7 +964,7 @@ async fn resume_agent_task(db: &DatabaseConnection, interaction: &StoredInteract
 
 #[cfg(test)]
 mod tests {
-    use super::{same_interaction_scope, AgentInteractionError, HOST_INTENT_ADAPTERS};
+    use super::{AgentInteractionError, HOST_INTENT_ADAPTERS, same_interaction_scope};
     use crate::services::agent_interaction::InteractionState;
 
     #[test]

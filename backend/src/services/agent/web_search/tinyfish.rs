@@ -1,6 +1,6 @@
 //! TinyFish Search + Fetch outbound. Host secret stays in headers only.
 
-use super::mapping::{infer_search_locale, store_fetched_markdown, SearchHit};
+use super::mapping::{SearchHit, infer_search_locale, store_fetched_markdown};
 use crate::services::agent::external_pure::classify_outbound_fetch;
 use crate::services::agent::response_agent::api_key_not_configured;
 use reqwest::StatusCode;

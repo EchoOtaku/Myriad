@@ -1,9 +1,9 @@
 // Steam API routes
 use crate::error::HttpError;
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};

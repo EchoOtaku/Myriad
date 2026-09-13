@@ -40,7 +40,7 @@ pub async fn probe() -> DockerProbe {
                     "`docker info` failed: {}",
                     String::from_utf8_lossy(&o.stderr).trim()
                 )),
-            }
+            };
         }
         Err(e) => {
             return DockerProbe {
@@ -51,7 +51,7 @@ pub async fn probe() -> DockerProbe {
                 is_podman: false,
                 daemon_time_skew_seconds: None,
                 error: Some(format!("cannot exec docker: {e}")),
-            }
+            };
         }
     };
 

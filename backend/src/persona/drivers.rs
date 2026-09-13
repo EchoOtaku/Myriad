@@ -1,5 +1,5 @@
 //! Fixed driver count, serial ticks and a bounded shutdown drain.
-use futures::{stream, StreamExt};
+use futures::{StreamExt, stream};
 use std::{future::Future, time::Duration};
 use tokio::{sync::watch, task::JoinSet};
 
@@ -149,8 +149,8 @@ async fn periodic<F, Fut>(
 mod tests {
     use super::*;
     use std::sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     };
 
     #[tokio::test]
@@ -167,10 +167,12 @@ mod tests {
         let runtime = drivers.supervise(failure.clone(), Duration::from_secs(30));
         entered.await.unwrap();
         runtime.request_stop();
-        assert!(tokio::time::timeout(Duration::from_secs(1), released)
-            .await
-            .unwrap()
-            .is_err());
+        assert!(
+            tokio::time::timeout(Duration::from_secs(1), released)
+                .await
+                .unwrap()
+                .is_err()
+        );
         runtime.shutdown().await;
         assert!(failure.borrow().is_none());
     }
@@ -241,11 +243,13 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert!(failures
-            .borrow()
-            .as_ref()
-            .unwrap()
-            .contains("stopped unexpectedly"));
+        assert!(
+            failures
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .contains("stopped unexpectedly")
+        );
         runtime.shutdown().await;
     }
 
@@ -310,8 +314,8 @@ where
 #[cfg(test)]
 mod batch_tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[tokio::test]
     async fn batch_bounds_execution_and_stop_discards_only_unstarted_work() {

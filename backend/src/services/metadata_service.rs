@@ -1,12 +1,12 @@
 use crate::models::entities::{activity_events, metadata_history, platform_metadata};
 use crate::services::activity_event_service::{
-    build_activity_payload, platform_label, ActivityPayload,
+    ActivityPayload, build_activity_payload, platform_label,
 };
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 /// 元数据服务，用于管理平台原始元数据的存储和变化历史
@@ -332,21 +332,26 @@ impl MetadataService {
             created_at: Set(now),
             ..Default::default()
         };
-        if let Err(error) = activity_event.insert(&self.db).await {
-            // 原始快照和审计历史已成功；activity_event 失败只记 warn。
-            tracing::warn!(
-                "Failed to persist normalized activity event for history {}: {}",
-                inserted_history.id,
-                error
-            );
-        } else if ingest_imported {
-            crate::services::agent::merope::spawn_diary(user_id, activity_summary);
-        } else if ingest_high_value {
-            crate::services::agent::merope::spawn_ingest(
-                user_id,
-                "agent.merope.platform_activity",
-                activity_summary,
-            );
+        match activity_event.insert(&self.db).await {
+            Err(error) => {
+                // 原始快照和审计历史已成功；activity_event 失败只记 warn。
+                tracing::warn!(
+                    "Failed to persist normalized activity event for history {}: {}",
+                    inserted_history.id,
+                    error
+                );
+            }
+            _ => {
+                if ingest_imported {
+                    crate::services::agent::merope::spawn_diary(user_id, activity_summary);
+                } else if ingest_high_value {
+                    crate::services::agent::merope::spawn_ingest(
+                        user_id,
+                        "agent.merope.platform_activity",
+                        activity_summary,
+                    );
+                }
+            }
         }
         tracing::info!(
             "✅ Metadata change history recorded (summary mode: {})",

@@ -108,11 +108,10 @@ pub async fn run_all(inputs: &ProbeInputs) -> Result<EnvProbe> {
 
     // Optional heuristic only: never auto-switch mode. Warn when URL host is clearly
     // not the compose service name `postgres` while still in bundled mode.
-    if db_mode == DbMode::Bundled {
-        if let Some(w) = database_url_bundled_mismatch_warning(&inputs.env_file) {
+    if db_mode == DbMode::Bundled
+        && let Some(w) = database_url_bundled_mismatch_warning(&inputs.env_file) {
             warnings.push(w);
         }
-    }
 
     if pgdata_snapshot_enabled && pgdata.cross_device {
         warnings.push(format!(
@@ -120,13 +119,12 @@ pub async fn run_all(inputs: &ProbeInputs) -> Result<EnvProbe> {
             inputs.state_dir.display()
         ));
     }
-    if let Some(skew) = docker_probe.daemon_time_skew_seconds {
-        if skew.abs() > 300 {
+    if let Some(skew) = docker_probe.daemon_time_skew_seconds
+        && skew.abs() > 300 {
             warnings.push(format!(
                 "docker daemon clock skew is {skew}s; TLS or rate-limit issues may appear"
             ));
         }
-    }
 
     Ok(EnvProbe {
         schema_version: 1,
@@ -209,13 +207,11 @@ pub fn database_url_host(url: &str) -> Option<String> {
         return None;
     }
     // Prefer url crate when scheme is present.
-    if let Ok(parsed) = url::Url::parse(trimmed) {
-        if let Some(host) = parsed.host_str() {
-            if !host.is_empty() {
+    if let Ok(parsed) = url::Url::parse(trimmed)
+        && let Some(host) = parsed.host_str()
+            && !host.is_empty() {
                 return Some(host.to_string());
             }
-        }
-    }
     // Fallback: postgres://user:pass@host:port/db without full parse.
     let rest = trimmed
         .strip_prefix("postgres://")

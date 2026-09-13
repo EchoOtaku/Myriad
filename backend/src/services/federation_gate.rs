@@ -28,8 +28,8 @@
 
 use once_cell::sync::Lazy;
 use serde::Serialize;
-use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 
 use crate::services::server_location::ServerLocationAssessment;

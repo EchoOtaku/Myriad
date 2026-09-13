@@ -21,7 +21,7 @@ pub use activities::{
 pub use local_deliver::deliver_activity_locally;
 pub use receive::*;
 
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use serde_json::json;
 
 use crate::federation::errors::{is_permanent_federation_error, map_inbox_handler_error};

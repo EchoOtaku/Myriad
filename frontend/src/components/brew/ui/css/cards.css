@@ -273,14 +273,27 @@ html.dark .brew-site__unread {
   color: var(--brew-fg-soft);
 }
 
-.brew-feeds__items {
+.brew-feeds__items,
+.brew-page {
+  --brew-story-h: 12rem;
+  --brew-story-w: 16.5rem;
   --brew-items-gap: 0.55rem;
   --brew-items-pad-bottom: 0rem;
+  --brew-section-title-size: calc(1.2rem - 1px);
+  --brew-section-head-pad-top: 0.2rem;
+  --brew-section-head-pad-bottom: 0.55rem;
+  --brew-section-head-h: calc(
+    var(--brew-section-title-size) * 1.25 +
+      var(--brew-section-head-pad-top) +
+      var(--brew-section-head-pad-bottom)
+  );
   --brew-items-span: calc(
     var(--brew-story-h) * 2 + var(--brew-items-gap) +
-      var(--brew-items-pad-bottom) + 0.35rem
+      var(--brew-items-pad-bottom) + 0.35rem + var(--brew-section-head-h)
   );
+}
 
+.brew-feeds__items {
   box-sizing: border-box;
   flex: 0 0 var(--brew-items-span);
   height: var(--brew-items-span);
@@ -312,12 +325,6 @@ html.dark .brew-site__unread {
   align-items: stretch;
   gap: var(--brew-items-gap) 0.75rem;
   padding: 0.35rem var(--brew-rail-pad-x) var(--brew-items-pad-bottom);
-}
-
-.brew-feeds__empty {
-  margin: 0.35rem 0 0;
-  color: var(--brew-fg-dim);
-  font-size: 0.8125rem;
 }
 
 .brew-story {
@@ -821,9 +828,31 @@ html[data-perf-mode='exlight'] .brew-story[data-leaving='true'] {
 
 .brew-page {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
-  padding-bottom: 2.5rem;
+  overflow: visible;
+}
+
+.brew-page__air {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.brew-page__stage {
+  box-sizing: border-box;
+  display: flex;
+  flex: 0 0 var(--brew-items-span);
+  flex-direction: column;
+  height: var(--brew-items-span);
+  min-height: var(--brew-items-span);
+}
+
+.brew-page__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .brew-stories {

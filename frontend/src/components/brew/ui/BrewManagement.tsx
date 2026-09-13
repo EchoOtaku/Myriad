@@ -13,15 +13,11 @@ import {
   settleTimeoutMs,
 } from '../../ControlPanel/panelTransition'
 
-const DisplayControl = createContext<ReactNode>(null)
-export const useManagementDisplay = () => useContext(DisplayControl)
-
 const AccessorySlot = createContext<HTMLDivElement | null>(null)
 export const useManagementAccessory = () => useContext(AccessorySlot)
 
-export function BrewManagement({ children, embedded, active, displayControl }: {
+export function BrewManagement({ children, embedded, active }: {
   children: ReactNode
-  displayControl?: ReactNode
   embedded: boolean
   active?: boolean
 }) {
@@ -86,7 +82,6 @@ export function BrewManagement({ children, embedded, active, displayControl }: {
   }
 
   return (
-    <DisplayControl.Provider value={displayControl}>
     <AccessorySlot.Provider value={accessory}>
     <div className={`brew-management-tools${embedded ? '' : ' brew-management--page'}`}>
     <div
@@ -142,6 +137,5 @@ export function BrewManagement({ children, embedded, active, displayControl }: {
     <div className="brew-management-accessory" ref={setAccessory} />
     </div>
     </AccessorySlot.Provider>
-    </DisplayControl.Provider>
   )
 }

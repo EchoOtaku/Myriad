@@ -41,8 +41,8 @@ pub async fn probe(compose_dir: &Path) -> ComposeProbe {
     }
     // One-level nested scan for 1Panel-style layouts where the app compose lives
     // under a subdirectory of the mounted compose root.
-    if files.is_empty() {
-        if let Ok(rd) = std::fs::read_dir(compose_dir) {
+    if files.is_empty()
+        && let Ok(rd) = std::fs::read_dir(compose_dir) {
             for entry in rd.flatten() {
                 if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                     continue;
@@ -60,16 +60,14 @@ pub async fn probe(compose_dir: &Path) -> ComposeProbe {
                 }
             }
         }
-    }
 
     let mut refs_tag = false;
     for f in &files {
-        if let Ok(s) = std::fs::read_to_string(f) {
-            if s.contains("${MYRIAD_TAG}") || s.contains("$MYRIAD_TAG") {
+        if let Ok(s) = std::fs::read_to_string(f)
+            && (s.contains("${MYRIAD_TAG}") || s.contains("$MYRIAD_TAG")) {
                 refs_tag = true;
                 break;
             }
-        }
     }
 
     let project_name_pinned = std::env::var("COMPOSE_PROJECT_NAME").is_ok()
@@ -109,22 +107,18 @@ async fn detect_binary() -> Option<ComposeBinary> {
         .stderr(Stdio::null())
         .status()
         .await
-    {
-        if out.success() {
+        && out.success() {
             return Some(ComposeBinary::DockerComposeV2);
         }
-    }
     if let Ok(out) = Command::new("docker-compose")
         .arg("--version")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
         .await
-    {
-        if out.success() {
+        && out.success() {
             return Some(ComposeBinary::DockerComposeV1);
         }
-    }
     None
 }
 

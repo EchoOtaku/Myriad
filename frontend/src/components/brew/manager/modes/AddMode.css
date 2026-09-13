@@ -1,0 +1,481 @@
+.brew-add-form,
+.brew-add-form__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  min-width: 0;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.brew-bar__panel > .brew-add-form {
+  padding: 0.85rem 0.9rem 0.95rem;
+  border: 1px solid var(--cfg-frost-border, var(--brew-frost-line, var(--brew-line)));
+  border-radius: 0.875rem;
+  background: var(--cfg-frost-bg, var(--brew-chip));
+  box-shadow: var(--brew-shadow);
+}
+
+.brew-add-form .setting-item,
+.brew-add-form__stack .setting-item {
+  margin-bottom: 0;
+}
+
+.brew-add-form .setting-label {
+  gap: 0.1rem;
+}
+
+.brew-add-form .setting-label-text {
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.brew-add-form .setting-label-text .setting-title-tag {
+  padding: 0.1rem 0.42rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.brew-add-form .setting-label-text .setting-title-tag-icon svg {
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+.brew-add-form .setting-description {
+  margin-top: 0;
+  font-size: 0.625rem;
+  line-height: 1.25;
+}
+
+.brew-add-form .setting-hint {
+  margin-top: 0.2rem;
+  font-size: 0.625rem;
+  line-height: 1.25;
+}
+
+.brew-add-form .setting-vertical .setting-label {
+  margin-bottom: 0.2rem;
+}
+
+.brew-add-form .setting-horizontal .setting-item-content,
+.brew-add-form .setting-sm.setting-horizontal .setting-item-content {
+  gap: 0.55rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.7rem;
+}
+
+.brew-add-form .setting-horizontal .setting-label {
+  gap: 0.08rem;
+}
+
+.brew-add-form .setting-horizontal .setting-label-text {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.brew-add-form .setting-horizontal .setting-description {
+  font-size: 0.6875rem;
+  line-height: 1.3;
+}
+
+.brew-add-form .setting-horizontal .setting-control {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.brew-add-form .toggle-switch {
+  width: 2rem;
+  height: 1.125rem;
+}
+
+.brew-add-form .toggle-slider {
+  border-width: 1px;
+}
+
+.brew-add-form .toggle-slider::before {
+  width: 0.7rem;
+  height: 0.7rem;
+  left: 0.12rem;
+  bottom: 0.12rem;
+}
+
+.brew-add-form .toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(0.88rem);
+}
+
+@media (width < 1024px) {
+  .brew-add-form .setting-horizontal .setting-item-content {
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+
+  .brew-add-form .setting-horizontal .setting-label {
+    flex: 1 1 auto;
+  }
+
+  .brew-add-form .setting-horizontal .setting-control {
+    flex: 0 0 auto;
+    width: auto;
+  }
+}
+
+.brew-add-form .field-input,
+.brew-add-form .field-select,
+.brew-add-form .field-select-trigger {
+  padding: 0.52rem 0.68rem;
+  border-width: 1px;
+  border-radius: 0.55rem;
+  font-size: 0.875rem;
+  box-shadow: none;
+}
+
+.brew-add-form .field-input-inner {
+  font-size: 0.875rem;
+}
+
+.brew-add-form .field-select-wrap,
+.brew-add-form .field-select-size-sm,
+.brew-add-form .field-select-size-sm .field-select-trigger {
+  width: 100%;
+  max-width: none;
+}
+
+.brew-add-form .field-input:hover,
+.brew-add-form .field-select:hover,
+.brew-add-form .field-select-trigger:hover,
+html.dark .brew-add-form .field-input,
+html.dark .brew-add-form .field-select,
+html.dark .brew-add-form .field-select-trigger,
+html.dark .brew-add-form .field-input:hover,
+html.dark .brew-add-form .field-select:hover {
+  box-shadow: none;
+}
+
+.brew-add-form .field-input:focus,
+.brew-add-form .field-select:focus,
+.brew-add-form .field-select-trigger:focus,
+.brew-add-form .field-select-trigger:focus-visible,
+.brew-add-form .field-input.field-input--composite:focus-within,
+.brew-add-form .field-input.field-input--image:focus-within,
+html.dark .brew-add-form .field-input:focus,
+html.dark .brew-add-form .field-select:focus,
+html.dark .brew-add-form .field-input.field-input--composite:focus-within,
+html.dark .brew-add-form .field-input.field-input--image:focus-within {
+  outline: none;
+  border-color: color-mix(
+    in srgb,
+    var(--cfg-accent, var(--color-primary, #8b5cf6)) 55%,
+    transparent
+  );
+  box-shadow: none;
+}
+
+.brew-add-form .field-input.field-input--image {
+  min-height: 2.25rem;
+  gap: 0.45rem;
+  padding: 0.35rem 0.55rem;
+  border-width: 1px;
+  border-radius: 0.55rem;
+  box-shadow: none;
+}
+
+.brew-add-form .field-input-preview {
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 0.4rem;
+}
+
+.brew-add-form .field-input-preview-placeholder {
+  width: 0.82rem;
+  height: 0.82rem;
+}
+
+.brew-add-form .field-input-local-label {
+  font-size: 0.875rem;
+  line-height: 1.2;
+}
+
+.brew-add-form .field-input.field-input--image .field-input-actions .settings-btn.settings-btn--sm {
+  height: 1.55rem;
+  min-height: 1.55rem;
+  max-height: 1.55rem;
+  padding: 0 0.55rem;
+  font-size: 0.75rem;
+}
+
+.brew-add-form .field-input.field-input--image .field-input-actions .settings-btn.settings-btn--sm.btn-icon {
+  width: 1.55rem;
+  height: 1.55rem;
+  min-height: 1.55rem;
+  max-height: 1.55rem;
+  padding: 0;
+}
+
+.brew-add-form .field-input.field-input--image.field-input--image-actions-1 {
+  padding-right: 5rem;
+}
+
+.brew-add-form .field-input.field-input--image.field-input--image-actions-2 {
+  padding-right: 6.85rem;
+}
+
+.brew-add-form__category {
+  position: relative;
+  z-index: 4;
+  overflow: visible;
+}
+
+.brew-add-form.is-category-open .brew-add-form__category {
+  z-index: 8;
+}
+
+.brew-add-form__category .field-select-search-input {
+  padding: 0.52rem 0.68rem;
+  border-width: 1px;
+  border-radius: 0.55rem;
+  font-size: 0.875rem;
+  box-shadow: none;
+}
+
+.brew-add-form__category .field-select-search-input:focus {
+  box-shadow: none;
+  border-color: color-mix(
+    in srgb,
+    var(--cfg-accent, var(--color-primary, #8b5cf6)) 55%,
+    transparent
+  );
+}
+
+.brew-add-form__category .field-select-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.brew-add-form__category .field-select-option svg {
+  width: 0.7rem;
+  height: 0.7rem;
+  flex-shrink: 0;
+}
+
+.brew-add-form > .choice-segmented,
+.brew-add-form__type .setting-control,
+.brew-add-form__kinds {
+  width: 100%;
+}
+
+.brew-add-form > .choice-segmented .choice-segmented-item,
+.brew-add-form > .choice-segmented .choice-segmented-item:has(.choice-option-icon) {
+  flex-direction: row;
+  white-space: nowrap;
+}
+
+.brew-add-form__kinds.choice-segmented.is-grid,
+.brew-add-form__kinds.choice-segmented.is-grid.choice-segmented--sm {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.brew-add-form__kinds.choice-segmented .choice-segmented-item,
+.brew-add-form__kinds.choice-segmented .choice-segmented-item:has(.choice-option-icon) {
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 0.28rem;
+  height: auto;
+  min-height: 0;
+  padding: 0.42rem 0.15rem;
+  white-space: normal;
+}
+
+.brew-add-form__kinds .choice-option-icon svg,
+.brew-add-form__kinds .choice-option-icon img {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.brew-add-form__kinds .choice-option-label {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brew-add-form__tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.brew-add-form__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.brew-add-form__drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.28rem;
+  min-height: 7.5rem;
+  padding: 1rem 0.85rem;
+  border: 1px dashed var(--cfg-subtle-border);
+  border-radius: 0.75rem;
+  background: var(--cfg-subtle-bg);
+  color: var(--cfg-text-3);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+
+.brew-add-form__drop:hover,
+.brew-add-form__drop:focus-visible,
+.brew-add-form__drop.is-on {
+  border-color: var(--cfg-accent-line);
+  background: var(--cfg-accent-fill);
+  color: var(--cfg-accent-ink);
+  outline: none;
+}
+
+.brew-add-form__drop svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.brew-add-form__drop p {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: inherit;
+}
+
+.brew-add-form__drop small {
+  font-size: 0.6875rem;
+  font-weight: 400;
+  line-height: 1.35;
+  opacity: 0.78;
+}
+
+.brew-add-form__file {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.brew-feeds__add-guide {
+  width: min(26rem, calc(100vw - 1.5rem));
+  min-width: min(26rem, calc(100vw - 1.5rem));
+  max-width: min(26rem, calc(100vw - 1.5rem));
+  max-height: min(82vh, 40rem);
+}
+
+.brew-feeds__add-guide .setting-title-guide-drag {
+  order: 0;
+}
+
+.brew-feeds__add-guide .setting-title-guide-body {
+  order: 1;
+  overflow: hidden auto;
+  overflow-wrap: normal;
+  padding: 0.75rem 0.85rem 0.55rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--cfg-text-1);
+}
+
+.brew-feeds__add-guide .setting-title-guide-actions {
+  position: static;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  order: 2;
+  z-index: auto;
+  flex: 0 0 auto;
+  align-self: stretch;
+  justify-content: flex-end;
+  width: auto;
+  margin: 0;
+  padding: 0.35rem 0.85rem 0.8rem;
+}
+
+.brew-feeds__add-guide .brew-add-form {
+  gap: 0.55rem;
+}
+
+.brew-feeds__add-guide:has(.brew-add-form.is-category-open)
+  .setting-title-guide-body {
+  overflow: visible;
+}
+
+.brew-feeds__add-guide .settings-btn.btn-primary {
+  background: var(--cfg-accent-fill);
+  color: var(--cfg-accent-ink);
+  border-color: var(--cfg-accent-line);
+  box-shadow: none;
+}
+
+.brew-feeds__add-guide .settings-btn.btn-secondary {
+  background: var(--cfg-accent-fill);
+  color: var(--cfg-accent-ink);
+  border-color: var(--cfg-accent-line);
+  box-shadow: none;
+}
+
+.brew-feeds__add-guide .settings-btn.btn-danger {
+  background: rgb(239 68 68 / 12%);
+  color: #dc2626;
+  border-color: rgb(239 68 68 / 30%);
+  box-shadow: none;
+}
+
+@media (width < 1024px) {
+  .brew-add-form > .choice-segmented.is-grid .choice-segmented-item,
+  .brew-add-form > .choice-segmented.is-grid .choice-segmented-item:has(.choice-option-icon) {
+    flex-direction: row;
+    min-height: 1.8rem;
+    padding: 0.22rem 0.45rem;
+    white-space: nowrap;
+  }
+
+  .brew-add-form > .choice-segmented.is-grid .choice-option-label {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    -webkit-line-clamp: unset;
+  }
+
+  .brew-add-form__kinds.choice-segmented.is-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .brew-add-form__kinds.choice-segmented .choice-segmented-item,
+  .brew-add-form__kinds.choice-segmented .choice-segmented-item:has(.choice-option-icon) {
+    flex-direction: column;
+    min-height: 0;
+    padding: 0.42rem 0.15rem;
+  }
+
+  .brew-add-form__kinds.choice-segmented .choice-option-label {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    -webkit-line-clamp: unset;
+  }
+}

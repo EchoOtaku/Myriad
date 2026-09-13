@@ -11,21 +11,21 @@ use std::time::{Duration, Instant};
 
 use futures::{SinkExt, StreamExt};
 use myriad_agent_rules::channel::{
-    classify_gateway_close, parse_access_token_response, parse_gateway_url_response, worker_intent,
-    ConnectFailureKind, InboundC2cText, WorkerIntent, GROUP_AND_C2C_EVENT,
+    ConnectFailureKind, GROUP_AND_C2C_EVENT, InboundC2cText, WorkerIntent, classify_gateway_close,
+    parse_access_token_response, parse_gateway_url_response, worker_intent,
 };
 use myriad_error::redact_secrets;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::sync::{watch, RwLock};
+use tokio::sync::{RwLock, watch};
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{info, warn};
 
 use chrono::Utc;
 
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::config::DynamicConfig;
 use crate::services::http_client;
-use crate::GLOBAL_DYNAMIC_CONFIG;
 
 const POLL: Duration = Duration::from_secs(2);
 const AUTH_URL: &str = "https://bots.qq.com/app/getAppAccessToken";
@@ -648,7 +648,7 @@ fn log_transport(context: &str, err: &impl std::fmt::Display) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use myriad_agent_rules::channel::{classify_connect_failure, ConnectFailure};
+    use myriad_agent_rules::channel::{ConnectFailure, classify_connect_failure};
     use serde_json::json;
 
     #[test]
@@ -735,11 +735,13 @@ mod tests {
         assert_eq!(event.msg_id, "m1");
         assert_eq!(event.user_openid, "openid-a");
         assert_eq!(event.content, "帮我查天气");
-        assert!(inbound_c2c_from_dispatch(Some(&json!({
-            "id": "m2",
-            "author": { "id": "guild-user" }
-        })))
-        .is_none());
+        assert!(
+            inbound_c2c_from_dispatch(Some(&json!({
+                "id": "m2",
+                "author": { "id": "guild-user" }
+            })))
+            .is_none()
+        );
     }
 
     #[test]

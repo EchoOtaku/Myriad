@@ -6,10 +6,9 @@
 // Re-export full pure surface for existing call sites (not all symbols used here).
 #[allow(unused_imports)]
 pub use crate::services::agent::executor_utils_pure::{
-    best_loose_match, brew_category_token_matches, extract_image_url, is_valid_platform,
-    levenshtein_similar, loose_text_match, normalize_brew_category_filter,
+    MatchKind, VALID_PLATFORMS, best_loose_match, brew_category_token_matches, extract_image_url,
+    is_valid_platform, levenshtein_similar, loose_text_match, normalize_brew_category_filter,
     normalize_brew_source_type_filter, summarize_output, truncate_str, validate_platform_name,
-    MatchKind, VALID_PLATFORMS,
 };
 
 #[cfg(test)]

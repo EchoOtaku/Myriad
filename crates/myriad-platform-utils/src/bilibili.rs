@@ -123,8 +123,6 @@ pub fn generate_bilibili_cookie() -> String {
 
     format!(
         "buvid3={}; CURRENT_FNVAL=4048; CURRENT_QUALITY=80; b_nut={}; _uuid={}; DedeUserID=0; DedeUserID__ckMd5=0; SESSDATA=",
-        buvid3,
-        timestamp,
-        device_id
+        buvid3, timestamp, device_id
     )
 }

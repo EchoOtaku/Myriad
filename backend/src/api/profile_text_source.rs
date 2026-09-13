@@ -8,16 +8,16 @@
 //! 切换后前端应广播 `profile-display-changed`（见 avatarSourceApi /
 //! profileTextSourceApi），首页信息条会强制刷新 name/bio。
 
-use axum::{extract::Path, http::StatusCode, Json};
+use axum::{Json, extract::Path, http::StatusCode};
 use myriad_error::AppError;
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use crate::middleware::auth::{authenticate_request, Claims};
+use crate::middleware::auth::{Claims, authenticate_request};
 use crate::services::profile_text::{
-    current_profile_text_source, list_profile_text_sources, set_profile_text_source,
-    ProfileTextSourceKind,
+    ProfileTextSourceKind, current_profile_text_source, list_profile_text_sources,
+    set_profile_text_source,
 };
 
 type ApiError = (StatusCode, Json<Value>);

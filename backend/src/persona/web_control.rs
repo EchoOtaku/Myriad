@@ -2,11 +2,11 @@
 //! No model-supplied URL, category, permission grant or executable is accepted.
 use crate::services::agent::{self, executor::handlers::HandlerContext};
 use axum::{
+    Json,
     body::Bytes,
     extract::State,
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    Json,
 };
 use hmac::{Hmac, KeyInit, Mac};
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
@@ -300,13 +300,15 @@ mod tests {
         assert!(verify(SECRET, &header, br#"{"user_id":0}"#, 100).is_none());
         assert!(verify(SECRET, &header, body, 131).is_none());
         assert!(verify(SECRET, &header, body, 69).is_none());
-        assert!(verify(
-            "different-secret-at-least-thirty-two-bytes",
-            &header,
-            body,
-            100
-        )
-        .is_none());
+        assert!(
+            verify(
+                "different-secret-at-least-thirty-two-bytes",
+                &header,
+                body,
+                100
+            )
+            .is_none()
+        );
     }
     #[test]
     fn replay_cache_does_not_evict_accepted_calls_under_pressure() {

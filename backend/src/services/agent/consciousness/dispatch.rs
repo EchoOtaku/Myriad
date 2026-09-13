@@ -5,7 +5,7 @@
 
 use chrono::Utc;
 
-use crate::services::agent::{AgentInteractionMode, RequestContext, UserRequest, SYSTEM_USER_ID};
+use crate::services::agent::{AgentInteractionMode, RequestContext, SYSTEM_USER_ID, UserRequest};
 
 use super::{AcceptSource, AutonomyGrantView};
 
@@ -86,14 +86,16 @@ mod tests {
 
     #[test]
     fn autonomy_work_request_is_never_heartbeat() {
-        assert!(build_autonomy_work_request(
-            SYSTEM_USER_ID,
-            "do it",
-            "int_1",
-            "ses_1".into(),
-            vec!["calendar:read".into()],
-        )
-        .is_none());
+        assert!(
+            build_autonomy_work_request(
+                SYSTEM_USER_ID,
+                "do it",
+                "int_1",
+                "ses_1".into(),
+                vec!["calendar:read".into()],
+            )
+            .is_none()
+        );
         let request = build_autonomy_work_request(
             7,
             "整理报告",

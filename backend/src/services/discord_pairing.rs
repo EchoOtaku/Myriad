@@ -1,8 +1,8 @@
 //! Discord DM pairing entry: classify inbound text, then shared pairing I/O.
 
 use myriad_agent_rules::channel::{
-    ingest_channel_text, pairing_bind_reply_for, session_key, DiscordPrivateComponent,
-    DiscordPrivateText, InboundDecision, PairingBindResult, PairingLookup, PAIRING_REQUIRED_REPLY,
+    DiscordPrivateComponent, DiscordPrivateText, InboundDecision, PAIRING_REQUIRED_REPLY,
+    PairingBindResult, PairingLookup, ingest_channel_text, pairing_bind_reply_for, session_key,
 };
 use sea_orm::{DatabaseConnection, DbErr};
 use tracing::{info, warn};

@@ -488,10 +488,12 @@ mod ledger_db_tests {
             .reattach_work(&first.id, user_id, "ses_empty".into(), "run_empty".into())
             .await
             .expect("attach");
-        assert!(store
-            .reclaim_running_to_accepted(&first.id, user_id)
-            .await
-            .expect("reclaim"));
+        assert!(
+            store
+                .reclaim_running_to_accepted(&first.id, user_id)
+                .await
+                .expect("reclaim")
+        );
         let reclaimed = store.find(&first.id, user_id).await.expect("reload");
         assert_eq!(reclaimed.status, IntentStatus::Accepted);
         assert_eq!(reclaimed.accept_source, AcceptSource::Autonomy);

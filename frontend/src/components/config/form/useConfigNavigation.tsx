@@ -2,7 +2,9 @@ import type { SectionSwitchDirection } from '../../settings'
 import type { ConfigSectionCopy } from './configSections'
 import type { QuickAccessItem } from './types'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { settingsAgentLabel } from '../../../features/merope/publicName'
+import { agentSettingsPath } from '../../agent/settings/agentSettingsPath'
 import { usePersonaPublicName } from '../../../features/merope/usePersonaPublicName'
 import {
   scheduleScrollToSettingGuide,
@@ -24,6 +26,7 @@ import { LEGACY_CONFIG_SECTION_MAP, loadConfigFavorites } from './defaults'
 import { useConfigDomain } from './useConfigDomain'
 
 export function useConfigNavigation(isAdmin: boolean, t: ConfigSectionCopy) {
+  const navigate = useNavigate()
   const [activeSection, setActiveSection] = useState(() =>
     resolveInitialConfigSection(isAdmin),
   )
@@ -81,6 +84,7 @@ export function useConfigNavigation(isAdmin: boolean, t: ConfigSectionCopy) {
         label: section.title,
         description: section.description,
         icon: <MyriadConfigIcon kind={section.id} />,
+        href: section.href,
       })),
     [sections],
   )
@@ -165,6 +169,15 @@ export function useConfigNavigation(isAdmin: boolean, t: ConfigSectionCopy) {
   const handleSectionChange = useCallback(
     (section: string, options?: { guidePath?: string | null }) => {
       const next = LEGACY_CONFIG_SECTION_MAP[section] ?? section
+      const portal = quickAccessItems.find((item) => item.section === next)
+      if (portal?.href) {
+        navigate(
+          portal.href.startsWith('/agent/settings')
+            ? agentSettingsPath({ guidePath: options?.guidePath })
+            : portal.href,
+        )
+        return
+      }
       // non-admin must not land on federation
       if (next === 'federation' && !isAdmin) {
         return
@@ -200,7 +213,7 @@ export function useConfigNavigation(isAdmin: boolean, t: ConfigSectionCopy) {
         })
       }
     },
-    [quickAccessItems, activeSection, isAdmin],
+    [quickAccessItems, activeSection, isAdmin, navigate],
   )
 
   useEffect(() => {

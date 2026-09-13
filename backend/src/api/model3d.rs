@@ -5,24 +5,23 @@
 //! without exposing the Tripo credential.
 
 use axum::{
+    Json, Router,
     body::Body,
     extract::{Multipart, Path, State},
-    http::{header, HeaderValue, StatusCode},
+    http::{HeaderValue, StatusCode, header},
     middleware::from_fn_with_state,
     response::Response,
     routing::{get, post},
-    Json, Router,
 };
 use myriad_error::AppError;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::{
     services::tripo::{
-        apply_web_defaults, asset_path, is_configured, is_enabled, persist_task_models,
-        poll_until_terminal, validate_upload_type, PersistedTripoAsset, TripoClient, TripoError,
-        TripoOperation, TripoRuntimeConfig, TripoTask, DEFAULT_BASE_URL, DEFAULT_MODEL,
-        PUBLIC_CAPABILITIES,
+        DEFAULT_BASE_URL, DEFAULT_MODEL, PUBLIC_CAPABILITIES, PersistedTripoAsset, TripoClient,
+        TripoError, TripoOperation, TripoRuntimeConfig, TripoTask, apply_web_defaults, asset_path,
+        is_configured, is_enabled, persist_task_models, poll_until_terminal, validate_upload_type,
     },
     state::AppState,
 };
@@ -363,11 +362,13 @@ mod tests {
         assert!(payload.get("file_token").is_none());
         assert_eq!(payload["compress"], "geometry");
 
-        assert!(apply_web_defaults(
-            TripoOperation::ImageToModel,
-            json!({"input": "file_a", "file_token": "file_b"}),
-            &runtime_config(),
-        )
-        .is_err());
+        assert!(
+            apply_web_defaults(
+                TripoOperation::ImageToModel,
+                json!({"input": "file_a", "file_token": "file_b"}),
+                &runtime_config(),
+            )
+            .is_err()
+        );
     }
 }

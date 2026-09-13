@@ -36,7 +36,8 @@
 .brew-view-lane[data-chip-phase='exit'][data-chip-exit='css'] .brew-stories .brew-story,
 .brew-view-lane[data-chip-phase='exit'][data-chip-exit='css'] .brew-site,
 .brew-view-lane[data-chip-phase='exit'][data-chip-exit='css'] .brew-feeds .brew-story,
-.brew-view-lane[data-chip-phase='exit'][data-chip-exit='css'] .brew-empty {
+.brew-view-lane[data-chip-phase='exit'][data-chip-exit='css'] .brew-empty,
+.brew-view-lane[data-chip-phase='exit'][data-chip-exit='css'] .brew-vacant {
   opacity: 0;
   transform: translate3d(0, var(--sm-shift-sm, 6px), 0);
   transition:
@@ -70,7 +71,8 @@
 
 .brew-salon__card.is-arrive,
 .brew-story.is-arrive,
-.brew-empty.is-arrive {
+.brew-empty.is-arrive,
+.brew-vacant.is-arrive {
   animation: brew-card-enter var(--sm-dur-slow, 320ms)
     var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
   animation-delay: calc(var(--brew-card-i, 0) * var(--sm-stagger, 26ms));
@@ -89,6 +91,7 @@ html[data-perf-mode='exlight'] .brew-sheet__menu,
 html[data-perf-mode='exlight'] .brew-salon__card.is-arrive,
 html[data-perf-mode='exlight'] .brew-story.is-arrive,
 html[data-perf-mode='exlight'] .brew-empty.is-arrive,
+html[data-perf-mode='exlight'] .brew-vacant.is-arrive,
 html[data-perf-mode='exlight'] .brew-view-lane[data-chip-phase='exit'] [data-brew-chip],
 html[data-perf-mode='exlight'] .brew-view-lane[data-chip-phase='exit'] [data-brew-card],
 html[data-perf-mode='exlight'] .brew-view-lane[data-chip-phase='exit'] .brew-site,
@@ -119,6 +122,7 @@ html[data-perf-mode='exlight'] .brew-bar__chip.is-conceal {
   .brew-salon__card.is-arrive,
   .brew-story.is-arrive,
   .brew-empty.is-arrive,
+  .brew-vacant.is-arrive,
   .brew-view-lane[data-chip-phase='exit'] [data-brew-chip],
   .brew-view-lane[data-chip-phase='exit'] [data-brew-card],
   .brew-view-lane[data-chip-phase='exit'] .brew-site,
@@ -138,12 +142,13 @@ html[data-perf-mode='exlight'] .brew-bar__chip.is-conceal {
   #brew-veil-bloom,
   .brew-feeds,
   .brew-feeds__air,
+  .brew-page__air,
   .brew-feeds__items,
   .brew-site,
   .brew-story,
   .brew-story__star,
   .brew-salon__card,
-  .brew-empty__action {
+  .brew-vacant {
     transition: none;
   }
 
@@ -159,8 +164,7 @@ html[data-perf-mode='exlight'] .brew-bar__chip.is-conceal {
   .brew-story:hover,
   .brew-story__hit:active,
   .brew-salon__card:hover,
-  .brew-salon__card:active,
-  .brew-empty__action:active {
+  .brew-salon__card:active {
     transform: none;
   }
 }

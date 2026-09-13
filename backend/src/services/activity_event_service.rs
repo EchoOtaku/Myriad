@@ -1,5 +1,5 @@
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 
 const MAX_STORED_CHANGES: usize = 12;

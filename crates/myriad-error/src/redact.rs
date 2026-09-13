@@ -178,12 +178,12 @@ mod tests {
         const VAL: &str = "test-jwt-secret-value-xyz";
         // Use a unique value unlikely to collide with the host env's real JWT_SECRET.
         let prev = std::env::var(KEY).ok();
-        std::env::set_var(KEY, VAL);
+        unsafe { std::env::set_var(KEY, VAL) };
         let r = redact_secrets(&format!("boom token was {VAL} in body"));
         if let Some(p) = prev {
-            std::env::set_var(KEY, p);
+            unsafe { std::env::set_var(KEY, p) };
         } else {
-            std::env::remove_var(KEY);
+            unsafe { std::env::remove_var(KEY) };
         }
         assert!(!r.contains(VAL), "secret value must not leak: {r}");
         assert!(r.contains("[JWT_SECRET_REDACTED]"), "got: {r}");

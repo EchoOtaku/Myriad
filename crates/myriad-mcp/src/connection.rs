@@ -32,10 +32,10 @@ impl RuntimeOptions {
                     return Err(
                         "Local MCP processes are disabled by host policy; use the isolated gateway"
                             .into(),
-                    )
+                    );
                 }
                 McpTransport::Gateway if self.gateway.is_none() => {
-                    return Err("MCP gateway is not configured by the host".into())
+                    return Err("MCP gateway is not configured by the host".into());
                 }
                 _ => {}
             }

@@ -1,11 +1,11 @@
 // X (Twitter) API routes — 读数据 + Intent 分享（不走 OAuth / 不代发帖）
 use crate::error::HttpError;
-use axum::{extract::Query, http::StatusCode, Json};
+use axum::{Json, extract::Query, http::StatusCode};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::services::fetcher::{
-    build_x_intent_url, compose_x_share_text, PlatformFetcher, X_SHARE_DEFAULT_MAX_LEN,
+    PlatformFetcher, X_SHARE_DEFAULT_MAX_LEN, build_x_intent_url, compose_x_share_text,
 };
 
 /// Query for X debug/read endpoints.

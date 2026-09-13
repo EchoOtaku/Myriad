@@ -1,50 +1,135 @@
-import { LuSearch, LuX } from '@lib/icons'
-import { useEffect, useId, useRef, useState } from 'react'
+import { LuKeyboard, LuSearch, LuX } from '@lib/icons'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useI18n } from '../../../contexts/I18nContext'
+import { SettingTitleGuideEntry } from '../../settings/SettingTitleGuideEntry'
+import { SettingTitleTag } from '../../settings/SettingTitleTag'
 import { useManagementAccessory } from './BrewManagement'
+import { BrewSearchGuide } from './BrewSearchGuide'
+import { cx } from './cx'
 
-export function BrewSearch({ value, onChange }: {
+export const brewSearchInputRef: { current: HTMLInputElement | null } = {
+  current: null,
+}
+
+let showGuide: (() => void) | null = null
+
+export function showBrewSearchGuide() {
+  showGuide?.()
+}
+
+export function BrewSearch({
+  value,
+  onChange,
+  matchCount = 0,
+}: {
   value: string
   onChange?: (value: string) => void
+  matchCount?: number
 }) {
   const slot = useManagementAccessory()
-  const { t } = useI18n()
-  const [open, setOpen] = useState(false)
-  const root = useRef<HTMLDivElement>(null)
-  const trigger = useRef<HTMLButtonElement>(null)
-  const id = useId()
-  useEffect(() => {
-    if (!open) return
-    const dismiss = (event: PointerEvent) => {
-      if (event.target instanceof Node && !root.current?.contains(event.target)) setOpen(false)
-    }
-    document.addEventListener('pointerdown', dismiss)
-    return () => document.removeEventListener('pointerdown', dismiss)
-  }, [open])
-  if (!slot || !onChange) return null
-  return createPortal(
-    <div className="brew-search" ref={root}>
-      <button ref={trigger} type="button" className="brew-search__trigger" aria-label={t.brew.search} aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
-        <LuSearch aria-hidden />
-      </button>
-      {open && (
-        <div
-          className="brew-search__field"
-          id={id}
-          onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.stopPropagation()
-            setOpen(false)
-            trigger.current?.focus()
-          }
-        }}
-        >
-          <LuSearch aria-hidden />
-          <input autoFocus aria-label={t.brew.searchSources} placeholder={t.brew.searchSources} value={value} onChange={(event) => onChange(event.target.value)} />
-          <button type="button" aria-label={t.brew.closeSearch} onClick={() => { onChange(''); setOpen(false); trigger.current?.focus() }}><LuX aria-hidden /></button>
-        </div>
-      )}
-    </div>, slot,
+  const { t, format } = useI18n()
+  const brew = t.brew
+  const inputRef = useRef<HTMLInputElement>(null)
+  const guideApiRef = useRef<{ open: boolean; toggle: () => void } | null>(
+    null,
   )
+  const [focused, setFocused] = useState(false)
+  const query = value.trim()
+  const typing = focused || Boolean(query)
+
+  useEffect(() => {
+    showGuide = () => {
+      const api = guideApiRef.current
+      if (api && !api.open) api.toggle()
+    }
+    return () => {
+      showGuide = null
+    }
+  }, [])
+
+  useEffect(() => {
+    brewSearchInputRef.current = inputRef.current
+    return () => {
+      if (brewSearchInputRef.current === inputRef.current) {
+        brewSearchInputRef.current = null
+      }
+    }
+  })
+
+  if (!onChange) return null
+
+  const search = (
+    <div className={cx('brew-skin brew-search glass', typing && 'is-input')}>
+      <span className="brew-search__mark" aria-hidden>
+        <LuSearch />
+      </span>
+      <input
+        ref={inputRef}
+        type="search"
+        value={value}
+        autoComplete="off"
+        spellCheck={false}
+        aria-label={brew.searchSources}
+        placeholder={brew.search}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape') return
+          event.stopPropagation()
+          if (value) onChange('')
+          else inputRef.current?.blur()
+        }}
+      />
+      {query ? (
+        <SettingTitleTag
+          variant="muted"
+          title={format(brew.resultsCount, { count: matchCount })}
+        >
+          {matchCount}
+        </SettingTitleTag>
+      ) : null}
+      {query ? (
+        <button
+          type="button"
+          className="brew-search__icon"
+          aria-label={t.common.close}
+          onClick={() => {
+            onChange('')
+            inputRef.current?.focus()
+          }}
+        >
+          <LuX aria-hidden />
+        </button>
+      ) : null}
+      <SettingTitleGuideEntry
+        title={brew.keyboardShortcuts}
+        requireShowDetails={false}
+        panelClassName="brew-search__guide"
+        guide={<BrewSearchGuide />}
+        renderTrigger={(api) => {
+          guideApiRef.current = { open: api.open, toggle: api.toggle }
+          return (
+            <button
+              type="button"
+              className={cx('brew-search__hint', api.open && 'is-on')}
+              aria-label={brew.keyboardShortcuts}
+              aria-expanded={api.open}
+              aria-controls={api.panelId}
+              aria-hidden={typing || undefined}
+              tabIndex={typing ? -1 : undefined}
+              onClick={() => api.toggle()}
+            >
+              <LuKeyboard aria-hidden />
+              <span>?</span>
+            </button>
+          )
+        }}
+      />
+    </div>
+  )
+
+  if (slot) return createPortal(search, slot)
+  return search
 }

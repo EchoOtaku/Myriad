@@ -659,30 +659,15 @@ pub(super) fn validate_widget_layer_sdk(
             "Tapp.ui.fullscreen",
             "Tapp.ui.fullscreen is not on the Widget SDK",
         ),
-        (
-            "Tapp.game",
-            "Tapp.game is not on the Widget SDK",
-        ),
+        ("Tapp.game", "Tapp.game is not on the Widget SDK"),
         (
             "Tapp.federation",
             "Tapp.federation is not on the Widget SDK",
         ),
-        (
-            "Tapp.tappList",
-            "Tapp.tappList is not on the Widget SDK",
-        ),
-        (
-            "Tapp.brewList",
-            "Tapp.brewList is not on the Widget SDK",
-        ),
-        (
-            "Tapp.component",
-            "Tapp.component is not on the Widget SDK",
-        ),
-        (
-            "Tapp.shortcut",
-            "Tapp.shortcut is not on the Widget SDK",
-        ),
+        ("Tapp.tappList", "Tapp.tappList is not on the Widget SDK"),
+        ("Tapp.brewList", "Tapp.brewList is not on the Widget SDK"),
+        ("Tapp.component", "Tapp.component is not on the Widget SDK"),
+        ("Tapp.shortcut", "Tapp.shortcut is not on the Widget SDK"),
         (
             "Tapp.dynamicContent",
             "Tapp.dynamicContent is not on the Widget SDK",
@@ -911,9 +896,11 @@ mod tests {
         assert_eq!(messages.len(), 5);
         assert_eq!(messages[0].role, "user");
         assert!(messages[0].content.contains("Create a counter"));
-        assert!(messages[0]
-            .content
-            .contains("<previous_project>null</previous_project>"));
+        assert!(
+            messages[0]
+                .content
+                .contains("<previous_project>null</previous_project>")
+        );
         assert_eq!(messages[1].role, "assistant");
         assert!(messages[1].content.contains("Created counter v1"));
         assert!(messages[1].content.contains(&p1.manifest.id));
@@ -1252,11 +1239,10 @@ mod tests {
     fn storage_permission_usage_requires_split_tokens() {
         let mut project = sample_project("Notes");
         project.manifest.permissions = vec!["storage:read".into()];
-        assert!(validate_permission_usage(
-            &project.manifest,
-            &[("page", "Tapp.storage.get('key')")]
-        )
-        .is_ok());
+        assert!(
+            validate_permission_usage(&project.manifest, &[("page", "Tapp.storage.get('key')")])
+                .is_ok()
+        );
         assert!(
             validate_permission_usage(&project.manifest, &[("page", "Tapp.storage.getAll()")])
                 .is_ok()
@@ -1287,14 +1273,16 @@ mod tests {
     fn file_download_does_not_require_storage_read() {
         let mut project = sample_project("Export");
         project.manifest.permissions = vec![];
-        assert!(validate_permission_usage(
-            &project.manifest,
-            &[(
-                "page",
-                "Tapp.file.download('hello', 'hello.txt', 'text/plain')"
-            )]
-        )
-        .is_ok());
+        assert!(
+            validate_permission_usage(
+                &project.manifest,
+                &[(
+                    "page",
+                    "Tapp.file.download('hello', 'hello.txt', 'text/plain')"
+                )]
+            )
+            .is_ok()
+        );
     }
 
     fn image_create_source() -> &'static str {
@@ -1465,9 +1453,11 @@ Tapp.lifecycle.onReady(function () {
             !PREVIEW_PERMISSIONS.contains(&"media:read")
                 && PREVIEW_PERMISSIONS.contains(&"ui:confirm")
         );
-        assert!(preview_warnings(&["media:read".into()])
-            .join(" ")
-            .contains("media:read"));
+        assert!(
+            preview_warnings(&["media:read".into()])
+                .join(" ")
+                .contains("media:read")
+        );
     }
 
     #[test]

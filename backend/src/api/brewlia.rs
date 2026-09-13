@@ -7,11 +7,11 @@
 //! - 重新生成 / 风格标签：仅管理员
 
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
-    Json, Router,
 };
 use chrono::Utc;
 use sea_orm::{
@@ -963,11 +963,14 @@ async fn get_podcast_script(
                 ..Default::default()
             };
 
-            if let Err(e) = podcast_model.insert(&db).await {
-                tracing::warn!("Failed to save podcast to database: {}", e);
-                // 保存失败不影响返回结果
-            } else {
-                tracing::info!("Saved podcast for item {} to database", item_id);
+            match podcast_model.insert(&db).await {
+                Err(e) => {
+                    tracing::warn!("Failed to save podcast to database: {}", e);
+                    // 保存失败不影响返回结果
+                }
+                _ => {
+                    tracing::info!("Saved podcast for item {} to database", item_id);
+                }
             }
 
             (
@@ -1037,14 +1040,17 @@ async fn regenerate_podcast_script(
     };
 
     // 删除现有播客脚本缓存
-    if let Err(e) = brew_podcasts::Entity::delete_many()
+    match brew_podcasts::Entity::delete_many()
         .filter(brew_podcasts::Column::ItemId.eq(item_id))
         .exec(&db)
         .await
     {
-        tracing::warn!("Failed to delete existing podcast cache: {}", e);
-    } else {
-        tracing::info!("Deleted existing podcast cache for item {}", item_id);
+        Err(e) => {
+            tracing::warn!("Failed to delete existing podcast cache: {}", e);
+        }
+        _ => {
+            tracing::info!("Deleted existing podcast cache for item {}", item_id);
+        }
     }
 
     // 清理 TTS 音频缓存目录
@@ -1399,10 +1405,13 @@ async fn generate_style_tags(
             active.ai_style_tags = Set(Some(tags_json));
             active.updated_at = Set(Utc::now().into());
 
-            if let Err(e) = active.update(&db).await {
-                tracing::warn!("Failed to save style tags: {}", e);
-            } else {
-                tracing::info!("Saved style tags for source {}: {:?}", source_id, tags);
+            match active.update(&db).await {
+                Err(e) => {
+                    tracing::warn!("Failed to save style tags: {}", e);
+                }
+                _ => {
+                    tracing::info!("Saved style tags for source {}: {:?}", source_id, tags);
+                }
             }
 
             (

@@ -4,7 +4,7 @@
 //! orchestration module does not own outbound provider logic. Task registry,
 //! quota, and local cancel state stay with the caller.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::services::ai_config::{AiConfig, AiImageConfig};
 use crate::services::analyzer::AiAnalyzer;
@@ -139,7 +139,7 @@ fn image_provider_error(
 
 #[cfg(test)]
 mod tests {
-    use super::{image_size_from_input, parse_image_dim, ProviderError};
+    use super::{ProviderError, image_size_from_input, parse_image_dim};
     use serde_json::json;
 
     #[test]

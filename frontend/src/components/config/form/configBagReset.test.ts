@@ -51,7 +51,7 @@ function value(
 }
 
 describe('config bag reset ownership', () => {
-  it('lab resets only Tripo, while AI and Agent keep separate fields', () => {
+  it('lab resets only Tripo, while AI leaves Agent-owned fields alone', () => {
     const initial = config()
     const lab = resetConfigBag(initial, 'lab')!
     assert.ok(lab)
@@ -62,11 +62,7 @@ describe('config bag reset ownership', () => {
     assert.ok(ai)
     assert.equal(value(ai, 'ai_config', 'gemini_model'), 'gemini-3.6-flash')
     assert.equal(value(ai, 'ai_config', 'qq_bot_enabled'), 'custom')
-    const agent = resetConfigBag(initial, 'agent')!
-    assert.ok(agent)
-    assert.equal(value(agent, 'ai_config', 'gemini_model'), 'custom')
-    assert.equal(value(agent, 'ai_config', 'qq_bot_enabled'), 'false')
-    assert.equal(value(agent, 'ui_config', 'merope_enabled'), 'false')
+    assert.equal(resetConfigBag(initial, 'agent'), undefined)
   })
   it('restores usable AI defaults and clears credentials and source selections', () => {
     const expected = {
@@ -132,6 +128,8 @@ describe('config bag reset ownership', () => {
     const reset = resetConfigBag(initial, 'all')!
     assert.ok(reset)
     assert.equal(value(reset, 'ui_config', 'base_url'), 'custom')
+    assert.equal(value(reset, 'ui_config', 'merope_enabled'), 'custom')
+    assert.equal(value(reset, 'ai_config', 'qq_bot_enabled'), 'custom')
     assert.equal(reset.platforms[0].enabled, false)
     assert.equal(reset.platforms[0].config_fields[0].value, '')
     assert.equal(value(initial, 'ui_config', 'site_title'), 'custom')
@@ -179,6 +177,7 @@ describe('config bag reset ownership', () => {
       'notifications',
       'federation',
       'about',
+      'agent',
     ]) {
       assert.equal(resetConfigBag(config(), scope), undefined)
     }

@@ -161,6 +161,7 @@
       "/brew": "Brew",
       "/reports": "Berichte",
       "/config": "Einstellungen",
+      "/agent/settings": "Agent-Einstellungen",
       "/login": "Anmeldung",
       "/register": "Registrierung",
       "/setup": "Einrichtung",

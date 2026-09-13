@@ -21,7 +21,7 @@ mod oauth_identities;
 
 mod retired_history;
 
-pub use retired_history::{purge_retired_migration_history, RETIRED_MIGRATION_NAMES};
+pub use retired_history::{RETIRED_MIGRATION_NAMES, purge_retired_migration_history};
 
 pub struct Migrator;
 

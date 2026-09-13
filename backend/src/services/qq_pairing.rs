@@ -1,15 +1,15 @@
 //! QQ C2C pairing entry: classify inbound text, then shared pairing I/O.
 
 use myriad_agent_rules::channel::{
-    ingest_c2c_text, pairing_bind_reply, InboundC2cText, InboundDecision, PairingBindResult,
-    PairingLookup, PAIRING_REQUIRED_REPLY,
+    InboundC2cText, InboundDecision, PAIRING_REQUIRED_REPLY, PairingBindResult, PairingLookup,
+    ingest_c2c_text, pairing_bind_reply,
 };
 use sea_orm::{DatabaseConnection, DbErr};
 use tracing::{info, warn};
 
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::services::channel_pairing::{self, QQ};
 use crate::services::http_client;
-use crate::GLOBAL_DYNAMIC_CONFIG;
 
 pub use crate::services::channel_pairing::{IssuedPairingCode, PairingStatus};
 

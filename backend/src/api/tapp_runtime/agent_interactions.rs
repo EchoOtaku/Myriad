@@ -3,19 +3,19 @@
 //! Domain registry / state machine: [`crate::services::tapp_agent_interaction`].
 //! This module owns Axum handlers, SSE shells, and create-executor install.
 
-use std::{convert::Infallible, time::Duration};
+use std::{collections::VecDeque, convert::Infallible, pin::Pin, time::Duration};
 
 use axum::{
+    Extension, Json,
     extract::{Path, State},
     http::StatusCode,
     response::sse::{Event, KeepAlive, Sse},
-    Extension, Json,
 };
 use chrono::Utc;
 use futures::Stream;
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::error::HttpError;
 use crate::{
@@ -25,8 +25,8 @@ use crate::{
 };
 
 use super::{
-    common::{parse_user_id, resolve_accessible_tapp},
     RuntimeGrantContext,
+    common::{parse_user_id, resolve_accessible_tapp},
 };
 
 type ApiError = HttpError;
@@ -65,6 +65,14 @@ impl Drop for StreamGuard {
             });
         }
     }
+}
+
+struct InteractionFeed {
+    pending: VecDeque<Result<Event, Infallible>>,
+    deadline: Pin<Box<tokio::time::Sleep>>,
+    poll: tokio::time::Interval,
+    db: DatabaseConnection,
+    runtime_id: String,
 }
 
 pub async fn get_agent_interaction(
@@ -223,25 +231,47 @@ pub async fn stream_agent_interactions(
         "runtimeId": runtime.runtime_id(),
         "interactions": interaction_types,
     });
-    let stream = async_stream::stream! {
-        let _guard = guard;
-        yield Ok(Event::default().event("ready").json_data(ready).unwrap_or_default());
-        let deadline = tokio::time::sleep(Duration::from_secs(expires_in));
-        tokio::pin!(deadline);
-        let mut poll = tokio::time::interval(Duration::from_millis(250));
-        poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        loop {
-            tokio::select! {
-                _ = &mut deadline => break,
-                _ = poll.tick() => {
-                    let interactions = tapp_agent_interaction::drain_stream(&db, &runtime_id).await;
-                    for interaction in interactions {
-                        yield Ok(Event::default().event("interaction").json_data(interaction).unwrap_or_default());
+    let ready = Ok(Event::default().event("ready").json_data(ready).unwrap_or_default());
+    let inner = futures::stream::unfold(
+        Some(InteractionFeed {
+            pending: VecDeque::from([ready]),
+            deadline: Box::pin(tokio::time::sleep(Duration::from_secs(expires_in))),
+            poll: {
+                let mut poll = tokio::time::interval(Duration::from_millis(250));
+                poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                poll
+            },
+            db,
+            runtime_id,
+        }),
+        |feed| async move {
+            let mut feed = feed?;
+            loop {
+                if let Some(event) = feed.pending.pop_front() {
+                    return Some((event, Some(feed)));
+                }
+                tokio::select! {
+                    _ = feed.deadline.as_mut() => {
+                        return None;
+                    }
+                    _ = feed.poll.tick() => {
+                        let drained = tapp_agent_interaction::drain_stream(
+                            &feed.db,
+                            &feed.runtime_id,
+                        )
+                        .await;
+                        for interaction in drained {
+                            feed.pending.push_back(Ok(Event::default()
+                                .event("interaction")
+                                .json_data(interaction)
+                                .unwrap_or_default()));
+                        }
                     }
                 }
             }
-        }
-    };
+        },
+    );
+    let stream = crate::held_stream::HeldStream::new(inner, guard);
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
 

@@ -161,6 +161,7 @@
       "/brew": "Brew",
       "/reports": "报告",
       "/config": "设置",
+      "/agent/settings": "Agent 设置",
       "/login": "登录",
       "/register": "注册",
       "/setup": "初始化",

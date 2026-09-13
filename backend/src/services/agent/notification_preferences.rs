@@ -425,9 +425,11 @@ mod tests {
         assert!(preferences.events["brew.source_error"]);
         assert!(preferences.events["platform.sync.failed"]);
         assert!(!preferences.sources.contains_key("removed"));
-        assert!(EVENT_DEFINITIONS
-            .iter()
-            .any(|definition| definition.key == "platform.sync.failed"));
+        assert!(
+            EVENT_DEFINITIONS
+                .iter()
+                .any(|definition| definition.key == "platform.sync.failed")
+        );
         assert!(preferences.allows("platform.sync.failed"));
         let mut off = preferences.clone();
         off.events.insert("platform.sync.failed".to_string(), false);

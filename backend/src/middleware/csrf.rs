@@ -1,13 +1,13 @@
 use axum::{
+    Json,
     extract::Request,
-    http::{header, HeaderMap, Method, StatusCode},
+    http::{HeaderMap, Method, StatusCode, header},
     middleware::Next,
     response::{IntoResponse, Response},
-    Json,
 };
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use hmac::{Hmac, KeyInit, Mac};
-use jsonwebtoken::{decode, DecodingKey, Validation};
+use jsonwebtoken::{DecodingKey, Validation, decode};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -533,7 +533,7 @@ pub async fn get_csrf_token(headers: HeaderMap) -> impl IntoResponse {
 mod tests {
     use super::*;
     use axum::body::to_bytes;
-    use jsonwebtoken::{encode, EncodingKey, Header};
+    use jsonwebtoken::{EncodingKey, Header, encode};
     use std::sync::Once;
 
     static INIT_JWT: Once = Once::new();
@@ -545,7 +545,7 @@ mod tests {
                 .unwrap_or(true)
             {
                 // SAFETY: tests single-process; set once before concurrent use.
-                env::set_var("JWT_SECRET", "csrf-unit-test-jwt-secret-key-32b");
+                unsafe { env::set_var("JWT_SECRET", "csrf-unit-test-jwt-secret-key-32b") };
             }
         });
     }
@@ -954,10 +954,10 @@ mod tests {
 
     #[tokio::test]
     async fn cookie_private_post_without_csrf_header_is_forbidden() {
+        use axum::Router;
         use axum::body::Body;
         use axum::middleware::from_fn;
         use axum::routing::{get, post};
-        use axum::Router;
         use tower::ServiceExt;
 
         async fn ok() -> &'static str {

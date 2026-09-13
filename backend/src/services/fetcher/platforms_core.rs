@@ -1,11 +1,11 @@
 // Core platform fetch implementations (Bilibili, Steam, GitHub, …).
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 use crate::services::bilibili_utils::{
     generate_bilibili_cookie, get_random_china_ip, get_random_user_agent,
 };
-use crate::services::http_client::{get_global_client, GitHubApiUrl};
+use crate::services::http_client::{GitHubApiUrl, get_global_client};
 
 use super::types::*;
 
@@ -374,9 +374,10 @@ impl PlatformFetcher {
 
         // 先获取文本以调试
         let response_text = http_response.text().await?;
+        let raw_preview: String = response_text.chars().take(500).collect();
         tracing::debug!(
             "Bilibili bangumi raw response (first 500 chars): {}",
-            &response_text.chars().take(500).collect::<String>()
+            raw_preview
         );
 
         let response: serde_json::Value = serde_json::from_str(&response_text)?;
@@ -830,9 +831,10 @@ impl PlatformFetcher {
                 tracing::warn!("No contribution data found. HTML saved to {}", debug_path);
             }
 
+            let html_preview: String = html.chars().take(500).collect();
             tracing::warn!(
                 "No contribution data found. HTML preview: {}",
-                &html.chars().take(500).collect::<String>()
+                html_preview
             );
             return Err(anyhow!("No contribution data found in HTML"));
         }

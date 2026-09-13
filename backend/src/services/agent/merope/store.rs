@@ -12,7 +12,7 @@ use crate::models::entities::{
 };
 
 use super::state::{
-    apply_music_listening, clamp, persona_affect_baseline, settle, Affect, AffectBaseline,
+    Affect, AffectBaseline, apply_music_listening, clamp, persona_affect_baseline, settle,
 };
 
 pub const PERSONA_ROW_ID: &str = "site";
@@ -1688,14 +1688,16 @@ mod tests {
                 .portrait_generation
                 .as_ref()
         ));
-        assert!(!acquire_portrait_generation(
-            &transaction,
-            "Nova",
-            &profile,
-            &json!({ "token": "second" }),
-        )
-        .await
-        .unwrap());
+        assert!(
+            !acquire_portrait_generation(
+                &transaction,
+                "Nova",
+                &profile,
+                &json!({ "token": "second" }),
+            )
+            .await
+            .unwrap()
+        );
 
         upsert_persona_on(
             &transaction,
@@ -1707,29 +1709,33 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(complete_portrait_generation(
-            &transaction,
-            "Nova",
-            &profile,
-            "first",
-            "/portrait.png",
-            &json!({ "fingerprint": "a".repeat(64), "contract": {} }),
-            1,
-        )
-        .await
-        .unwrap());
+        assert!(
+            complete_portrait_generation(
+                &transaction,
+                "Nova",
+                &profile,
+                "first",
+                "/portrait.png",
+                &json!({ "fingerprint": "a".repeat(64), "contract": {} }),
+                1,
+            )
+            .await
+            .unwrap()
+        );
         let saved = get_persona_on(&transaction).await.unwrap().unwrap();
         assert_eq!(saved.personality, "more curious");
         assert_eq!(saved.portrait_asset_id.as_deref(), Some("/portrait.png"));
 
-        assert!(acquire_portrait_generation(
-            &transaction,
-            "Nova",
-            &profile,
-            &json!({ "token": "third" }),
-        )
-        .await
-        .unwrap());
+        assert!(
+            acquire_portrait_generation(
+                &transaction,
+                "Nova",
+                &profile,
+                &json!({ "token": "third" }),
+            )
+            .await
+            .unwrap()
+        );
         let changed_profile = json!({
             "gender": "unspecified",
             "visualIdentity": { "hairShape": "long ponytail" }
@@ -1747,17 +1753,19 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(!complete_portrait_generation(
-            &transaction,
-            "Nova",
-            &profile,
-            "third",
-            "/stale.png",
-            &json!({ "fingerprint": "b".repeat(64), "contract": {} }),
-            1,
-        )
-        .await
-        .unwrap());
+        assert!(
+            !complete_portrait_generation(
+                &transaction,
+                "Nova",
+                &profile,
+                "third",
+                "/stale.png",
+                &json!({ "fingerprint": "b".repeat(64), "contract": {} }),
+                1,
+            )
+            .await
+            .unwrap()
+        );
         transaction.rollback().await.unwrap();
     }
 }

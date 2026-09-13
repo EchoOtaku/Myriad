@@ -284,13 +284,12 @@ impl Worker {
                     if matches!(job.status, JobStatus::Running | JobStatus::Pending) {
                         job.status = JobStatus::Failed;
                         job.finished_at = Some(Utc::now());
-                        if let Some(step) = job.steps.last_mut() {
-                            if step.finished_at.is_none() {
+                        if let Some(step) = job.steps.last_mut()
+                            && step.finished_at.is_none() {
                                 step.finish_err(
                                     "updater restarted during pre-swap; stack restore will be attempted",
                                 );
                             }
-                        }
                     }
                     let _ = state.write_job(&job);
                 }

@@ -4,10 +4,10 @@
 //! 消息类按会话稳定 ID upsert，避免刷屏；邀请/关注独立条目。
 
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::services::agent::notifications::{
-    get_notification_manager, Notification, NotificationPriority, NotificationType,
+    Notification, NotificationPriority, NotificationType, get_notification_manager,
 };
 
 const ARO_TAPP_ID: &str = "com.myriad.aro";
@@ -640,10 +640,12 @@ mod tests {
 async fn dispatch_persona_observation(user_id: i32, event_key: &str, summary: String) {
     if crate::runtime_role::PERSONA_RUNTIME_LOCAL.load(std::sync::atomic::Ordering::Acquire) {
         crate::services::agent::merope::spawn_ingest(user_id, event_key, summary);
-    } else if let Ok(db) = crate::services::tapp_registry::database().await {
-        crate::services::agent::notifications::publish_persona_observation(
-            &db, user_id, event_key, &summary,
-        )
-        .await;
+    } else {
+        if let Ok(db) = crate::services::tapp_registry::database().await {
+            crate::services::agent::notifications::publish_persona_observation(
+                &db, user_id, event_key, &summary,
+            )
+            .await;
+        }
     }
 }

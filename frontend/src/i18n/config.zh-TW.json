@@ -161,6 +161,7 @@
       "/brew": "Brew",
       "/reports": "報告",
       "/config": "設定",
+      "/agent/settings": "Agent 設定",
       "/login": "登入",
       "/register": "註冊",
       "/setup": "初始化",

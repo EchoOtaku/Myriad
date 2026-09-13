@@ -162,8 +162,7 @@ fn generate_prompt_with_rules(title: &str, summary: &str) -> String {
 
     format!(
         "A {}, {}, in Studio Ghibli art style, transparent background, PNG format, no background, isolated subject, masterpiece, highest quality, detailed character design, soft lighting, hand-drawn animation style, Hayao Miyazaki inspired, watercolor texture, gentle colors, whimsical atmosphere, professional illustration, 8K resolution, ultra detailed, cute kawaii style",
-        character,
-        activity_hint
+        character, activity_hint
     )
 }
 

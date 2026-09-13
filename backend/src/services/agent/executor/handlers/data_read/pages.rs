@@ -3,7 +3,7 @@ use super::brew::brew_query_failed;
 use crate::models::entities::{brew_items, brew_sources, brew_user_states};
 use crate::services::agent::executor::utils::truncate_str;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 pub(super) async fn execute_brew_page_content(

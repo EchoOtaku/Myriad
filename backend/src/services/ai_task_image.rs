@@ -1,13 +1,13 @@
 //! Bounded reference-image input for Tapp AI Tasks. Never fetch caller URLs.
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use myriad_tapp_contract::manifest::TappAiOperation;
 use serde_json::Value;
 
 use super::{
     ai_task_prepare::{AiTaskLogicError, MAX_INPUT_BYTES},
     image_cache::ImageCacheService,
-    image_generation::{load_local_reference, ImageReference},
+    image_generation::{ImageReference, load_local_reference},
 };
 
 pub const MAX_REFERENCE_IMAGES: usize = 4;
@@ -180,10 +180,12 @@ mod tests {
         .unwrap();
         assert_eq!(references[0].media_type, "image/png");
         assert_eq!(references[1].media_type, "image/jpeg");
-        assert!(load_image_references(&json!("draw"))
-            .await
-            .unwrap()
-            .is_empty());
+        assert!(
+            load_image_references(&json!("draw"))
+                .await
+                .unwrap()
+                .is_empty()
+        );
         assert!(
             load_image_references(&json!({"prompt": "draw", "referenceImages": []}))
                 .await

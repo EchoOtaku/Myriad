@@ -2,14 +2,14 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 use std::time::SystemTime;
 use tokio::sync::{Mutex, RwLock};
 
 use super::actor::ServerHandle;
-use super::config::{load_config, save_config, validate_config, McpServersConfig};
+use super::config::{McpServersConfig, load_config, save_config, validate_config};
 use super::protocol::McpToolDef;
 
 pub struct McpManager {
@@ -66,7 +66,8 @@ impl McpManager {
                 if manager.stopped.load(Ordering::Acquire) {
                     break;
                 }
-                if let Err(error) = manager.reload_if_config_changed().await {
+                let reload = manager.reload_if_config_changed().await;
+                if let Err(error) = reload {
                     tracing::warn!(%error, "MCP configuration reload failed");
                 }
             }
@@ -244,13 +245,11 @@ pub struct McpServerStatus {
 /// 工具结果：若为 JSON 对象/数组则解析为结构化 Value，否则保留字符串。
 fn parse_mcp_tool_result(text: &str) -> serde_json::Value {
     let trimmed = text.trim();
-    if (trimmed.starts_with('{') && trimmed.ends_with('}'))
-        || (trimmed.starts_with('[') && trimmed.ends_with(']'))
-    {
-        if let Ok(value) = serde_json::from_str(trimmed) {
+    if ((trimmed.starts_with('{') && trimmed.ends_with('}'))
+        || (trimmed.starts_with('[') && trimmed.ends_with(']')))
+        && let Ok(value) = serde_json::from_str(trimmed) {
             return value;
         }
-    }
     serde_json::Value::String(text.to_string())
 }
 
@@ -396,12 +395,14 @@ mod lifecycle_tests {
             .await
             .unwrap();
         first.enabled = true;
-        assert!(manager
-            .replace_config(McpServersConfig {
-                servers: vec![first, second]
-            })
-            .await
-            .is_err());
+        assert!(
+            manager
+                .replace_config(McpServersConfig {
+                    servers: vec![first, second]
+                })
+                .await
+                .is_err()
+        );
         assert!(manager.list_server_status().await.is_empty());
         manager.shutdown_all().await;
         tokio::fs::remove_file(path).await.unwrap();

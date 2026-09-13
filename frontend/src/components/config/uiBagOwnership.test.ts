@@ -38,9 +38,8 @@ describe('uiBagOwnership', () => {
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('music_enabled'))
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('island_show_greeting'))
     assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('island_show_tapp'))
-    assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('merope_enabled'))
-    assert.ok(ALL_OWNED_UI_BAG_KEYS.includes('merope_speech_enabled'))
-    // switch lives on Agent; Advanced reset must leave it
+    assert.ok(!ALL_OWNED_UI_BAG_KEYS.includes('merope_enabled'))
+    assert.ok(!ALL_OWNED_UI_BAG_KEYS.includes('merope_speech_enabled'))
     assert.ok(!ADVANCED_RESET_KEYS.includes('merope_enabled'))
     assert.ok(!ADVANCED_RESET_KEYS.includes('merope_speech_enabled'))
     assert.ok(AGENT_UI_RESET_KEYS.includes('merope_enabled'))

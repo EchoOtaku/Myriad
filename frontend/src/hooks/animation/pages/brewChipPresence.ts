@@ -22,6 +22,7 @@ export const BREW_SURFACE_CARD_SELECTOR = [
   '.brew-salon__card',
   '.brew-stories .brew-story',
   '.brew-empty',
+  '.brew-vacant',
   '.brew-site',
   '.brew-feeds .brew-story',
 ].join(',')

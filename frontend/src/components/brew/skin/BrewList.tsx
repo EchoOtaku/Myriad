@@ -3,11 +3,7 @@ import { useCallback, useRef } from 'react'
 
 import { useI18n } from '../../../contexts/I18nContext'
 import { Spinner } from '../../Spinner'
-import {
-  BrewEmpty,
-  BrewEmptyAction,
-  BrewEmptyRow,
-} from '../ui/Empty'
+import { BrewVacant } from '../ui/Empty'
 import { StoryGrid } from '../ui/StoryCard'
 import { BrewStory } from './BrewStory'
 import { useBrewTimes } from './time'
@@ -26,7 +22,6 @@ export interface BrewListViewProps {
   onItemSelectToggle?: (id: number) => void
   onToggleStar?: (item: BrewItem) => void
   emptyText?: string
-  emptyAction?: { label: string; onClick: () => void }
 }
 
 export default function BrewListView({
@@ -42,7 +37,6 @@ export default function BrewListView({
   onItemSelectToggle,
   onToggleStar,
   emptyText,
-  emptyAction,
 }: BrewListViewProps) {
   const { t, locale, format } = useI18n()
   const observerRef = useRef<IntersectionObserver | null>(null)
@@ -65,20 +59,7 @@ export default function BrewListView({
   )
 
   if (items.length === 0 && !loading) {
-    return (
-      <BrewEmpty>
-        {emptyAction ? (
-          <BrewEmptyRow>
-            <p>{emptyText || t.brew.noArticles}</p>
-            <BrewEmptyAction onClick={emptyAction.onClick}>
-              {emptyAction.label}
-            </BrewEmptyAction>
-          </BrewEmptyRow>
-        ) : (
-          <p>{emptyText || t.brew.noArticles}</p>
-        )}
-      </BrewEmpty>
-    )
+    return <BrewVacant title={emptyText || t.brew.noArticles} />
   }
 
   return (

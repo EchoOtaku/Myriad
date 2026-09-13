@@ -1,13 +1,13 @@
-use crate::error::{status_json_to_http, HttpError};
+use crate::error::{HttpError, status_json_to_http};
 use axum::{
-    http::{HeaderMap, StatusCode},
     Json,
+    http::{HeaderMap, StatusCode},
 };
 use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use sea_orm_migration::MigratorTrait;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -337,7 +337,10 @@ pub async fn init_database(
 
             tracing::info!(
                 "📊 Database verification - Total tables: {}, Users: {}, Platforms: {}, Configurations: {}",
-                total_tables, users_exists, platforms_exists, configurations_exists
+                total_tables,
+                users_exists,
+                platforms_exists,
+                configurations_exists
             );
 
             let kind = if tables_existed {
@@ -632,7 +635,7 @@ fn get_env_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_database_url, DatabaseConfigRequest};
+    use super::{DatabaseConfigRequest, build_database_url};
 
     #[test]
     fn database_url_escapes_credentials_and_database_name() {

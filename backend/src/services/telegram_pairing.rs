@@ -1,8 +1,8 @@
 //! Telegram DM pairing entry: classify inbound text, then shared pairing I/O.
 
 use myriad_agent_rules::channel::{
-    ingest_channel_text, pairing_bind_reply_for, InboundDecision, PairingBindResult, PairingLookup,
-    TelegramPrivateCallback, TelegramPrivateText, PAIRING_REQUIRED_REPLY,
+    InboundDecision, PAIRING_REQUIRED_REPLY, PairingBindResult, PairingLookup,
+    TelegramPrivateCallback, TelegramPrivateText, ingest_channel_text, pairing_bind_reply_for,
 };
 use sea_orm::{DatabaseConnection, DbErr};
 use tracing::{info, warn};
@@ -140,7 +140,7 @@ async fn send_text(token: &str, chat_id: &str, content: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use myriad_agent_rules::channel::{ingest_channel_text, InboundC2cText};
+    use myriad_agent_rules::channel::{InboundC2cText, ingest_channel_text};
 
     #[test]
     fn unpaired_plain_text_is_not_a_work_request() {

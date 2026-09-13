@@ -13,7 +13,7 @@
 
 use serde_json::Value;
 
-use crate::federation::types::{normalize_actor_url, same_actor_url, AP_PUBLIC};
+use crate::federation::types::{AP_PUBLIC, normalize_actor_url, same_actor_url};
 
 /// AP Public 的几种等价写法。
 ///

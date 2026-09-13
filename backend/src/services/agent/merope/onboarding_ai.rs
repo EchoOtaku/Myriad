@@ -1,24 +1,24 @@
 //! Onboarding helpers: strict-Lite name roll; Pro persona draft and visual design.
 //! Prompts live in `onboarding_prompts`.
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::time::Duration;
 
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::config::ModelTier;
 use crate::services::ai::{
     create_ai_analyzer_for_tier_with_timeout, create_strict_lite_ai_analyzer_with_timeout,
 };
 use crate::services::ai_config::get_ai_config_for_tier;
 use crate::services::ai_cost_ledger::record_ai_call_from_attribution;
-use crate::services::analyzer::{openai_chat_completions_url, AiProvider, OutputBudget};
+use crate::services::analyzer::{AiProvider, OutputBudget, openai_chat_completions_url};
 use crate::services::gemini_media;
 use crate::services::http_client::get_long_running_client;
 use crate::services::image_generation::ImageReference;
-use crate::GLOBAL_DYNAMIC_CONFIG;
 
 use super::onboarding_prompts::{
-    name_system_prompt, observe_portrait_visual_prompt, visual_design_system_prompt,
-    IMPORT_PERSONA_SYSTEM_PROMPT, PERSONA_SYSTEM_PROMPT,
+    IMPORT_PERSONA_SYSTEM_PROMPT, PERSONA_SYSTEM_PROMPT, name_system_prompt,
+    observe_portrait_visual_prompt, visual_design_system_prompt,
 };
 use super::report_dna::sanitize_onboarding_tags_for_language;
 
@@ -1263,10 +1263,12 @@ mod tests {
         }"#;
         let observed = parse_observed_visual(raw, "zh-CN", "female").expect("usable observation");
         assert_eq!(observed.clothing_style, "urban");
-        assert!(observed.visual_identity["character"]["faceDesign"]
-            .as_str()
-            .unwrap_or("")
-            .starts_with("女性化。"));
+        assert!(
+            observed.visual_identity["character"]["faceDesign"]
+                .as_str()
+                .unwrap_or("")
+                .starts_with("女性化。")
+        );
         assert_eq!(observed.visual_identity["outfit"]["clothingStyle"], "urban");
     }
 

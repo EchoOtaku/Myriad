@@ -1,5 +1,5 @@
 use super::super::HandlerContext;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 pub(super) async fn execute_config_get(params: &HashMap<String, Value>) -> Result<Value, String> {
@@ -55,8 +55,8 @@ pub(super) async fn execute_time_info(params: &HashMap<String, Value>) -> Result
 }
 
 pub(super) async fn execute_auth_status(ctx: &HandlerContext<'_>) -> Result<Value, String> {
-    use crate::services::agent::merope::is_logged_in_addressee;
     use crate::services::agent::SYSTEM_USER_ID;
+    use crate::services::agent::merope::is_logged_in_addressee;
     use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 
     let user_id = ctx.user_id;

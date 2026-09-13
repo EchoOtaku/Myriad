@@ -388,8 +388,8 @@ impl<'a> SnapshotManager<'a> {
 
         for id in drop_ids {
             let p = self.state.snapshots_dir().join(&id);
-            if p.exists() {
-                if let Err(e) = std::fs::remove_dir_all(&p) {
+            if p.exists()
+                && let Err(e) = std::fs::remove_dir_all(&p) {
                     warn!(
                         snapshot = %id,
                         path = %p.display(),
@@ -399,7 +399,6 @@ impl<'a> SnapshotManager<'a> {
                     disk_failures.push(id);
                     continue;
                 }
-            }
             removed.push(id);
         }
 
@@ -558,15 +557,13 @@ impl<'a> SnapshotManager<'a> {
     /// Returns a human-readable refusal reason when `id` must not be deleted.
     fn in_use_reason(&self, id: &str) -> Result<Option<String>> {
         // Current in-flight job (job.current).
-        if let Some(job_id) = self.state.read_current_job()? {
-            if let Ok(job) = self.state.read_job(&job_id) {
-                if job.snapshot_id.as_deref() == Some(id) {
+        if let Some(job_id) = self.state.read_current_job()?
+            && let Ok(job) = self.state.read_job(&job_id)
+                && job.snapshot_id.as_deref() == Some(id) {
                     return Ok(Some(format!(
                         "snapshot {id} is in use by current job {job_id}"
                     )));
                 }
-            }
-        }
 
         // Rescue / needs_manual: protect the snapshot the operator would roll back to.
         let maint = self.state.read_maintenance()?;
@@ -578,16 +575,14 @@ impl<'a> SnapshotManager<'a> {
                 .job_id
                 .clone()
                 .or_else(|| self.state.read_current_job().ok().flatten());
-            if let Some(job_id) = job_id {
-                if let Ok(job) = self.state.read_job(&job_id) {
-                    if job.snapshot_id.as_deref() == Some(id) {
+            if let Some(job_id) = job_id
+                && let Ok(job) = self.state.read_job(&job_id)
+                    && job.snapshot_id.as_deref() == Some(id) {
                         return Ok(Some(format!(
                             "snapshot {id} is required for rescue (job {job_id}, phase {:?})",
                             maint.phase
                         )));
                     }
-                }
-            }
         }
 
         Ok(None)

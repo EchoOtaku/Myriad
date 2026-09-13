@@ -1,52 +1,48 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties } from 'react'
 
-import { cx } from './cx'
+const GHOSTS = [1, 2, 3, 4, 5] as const
 
-export function BrewEmpty({
-  children,
-  arrive = true,
-  cardKey = 'empty',
-}: {
-  children: ReactNode
-  arrive?: boolean
-  cardKey?: string
-}) {
+function VacantGhost({ i }: { i: number }) {
   return (
     <div
-      className={cx('brew-skin brew-empty', arrive && 'is-arrive')}
-      data-brew-card={cardKey}
+      className="brew-vacant__ghost"
+      style={{ '--vacant-i': i } as CSSProperties}
+      aria-hidden
     >
-      {children}
+      <span className="brew-vacant__shell">
+        <span className="brew-vacant__bar is-meta" />
+        <span className="brew-vacant__bar is-title" />
+        <span className="brew-vacant__bar is-title is-short" />
+        <span className="brew-vacant__bar is-line" />
+        <span className="brew-vacant__bar is-line" />
+        <span className="brew-vacant__bar is-line is-short" />
+      </span>
     </div>
   )
 }
 
-export function BrewEmptyMark({ children }: { children: ReactNode }) {
-  return (
-    <span className="brew-empty__mark" aria-hidden>
-      {children}
-    </span>
-  )
-}
-
-export function BrewEmptyHint({ children }: { children: ReactNode }) {
-  return <p className="brew-empty__hint">{children}</p>
-}
-
-export function BrewEmptyRow({ children }: { children: ReactNode }) {
-  return <div className="brew-empty__row">{children}</div>
-}
-
-export function BrewEmptyAction({
-  children,
-  onClick,
+export function BrewVacant({
+  title,
+  hint,
 }: {
-  children: ReactNode
-  onClick?: () => void
+  title: string
+  hint?: string
 }) {
   return (
-    <button type="button" className="brew-empty__action" onClick={onClick}>
-      {children}
-    </button>
+    <div
+      className="brew-skin brew-vacant is-arrive"
+      data-brew-card="vacant"
+      role="status"
+    >
+      <article className="brew-vacant__note">
+        <div className="brew-float brew-vacant__shell">
+          <h3 className="brew-vacant__title">{title}</h3>
+          {hint ? <p className="brew-vacant__hint">{hint}</p> : null}
+        </div>
+      </article>
+      {GHOSTS.map((i) => (
+        <VacantGhost key={i} i={i} />
+      ))}
+    </div>
   )
 }

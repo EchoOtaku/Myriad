@@ -6,9 +6,9 @@
 //! We use a local newtype [`HttpError`] because Rust's orphan rules forbid
 //! `impl IntoResponse for AppError` (both the trait and the type are foreign).
 
+use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use myriad_error::AppError;
 
 /// Local wrapper so handlers can `return Err(HttpError(...))` / `.into_response()`.

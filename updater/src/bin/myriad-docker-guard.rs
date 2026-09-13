@@ -1,5 +1,5 @@
 use anyhow::Result;
-use myriad_updater::docker::guard::{run, GuardConfig};
+use myriad_updater::docker::guard::{GuardConfig, run};
 
 #[tokio::main]
 async fn main() -> Result<()> {

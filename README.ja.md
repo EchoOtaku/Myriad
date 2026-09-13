@@ -322,7 +322,7 @@ ActivityPub + **MFP**。発見は `BASE_URL` を使う。
 
 **ソースから**
 
-- Rust 1.94+
+- Rust 1.98+
 - Node.js 24 LTS
 - PostgreSQL 18（Compose 既定。下限は release `min_pg_version`）
 
@@ -477,7 +477,7 @@ Agora RTC / RTM（任意）
 <td width="50%" valign="top">
 
 **バックエンド**  
-[Rust](https://github.com/rust-lang/rust) 1.94 · [Axum](https://github.com/tokio-rs/axum) 0.8 · [Tokio](https://github.com/tokio-rs/tokio)  
+[Rust](https://github.com/rust-lang/rust) 1.98 · [Axum](https://github.com/tokio-rs/axum) 0.8 · [Tokio](https://github.com/tokio-rs/tokio)  
 [SeaORM](https://github.com/SeaQL/sea-orm) 2 / [SQLx](https://github.com/launchbadge/sqlx) · [reqwest](https://github.com/seanmonstar/reqwest) 0.13
 
 **データ**  

@@ -4,18 +4,18 @@
 //! Grant. The registry intentionally contains only short-lived execution state;
 //! quota usage remains authoritative and persistent in PostgreSQL.
 
-use std::{convert::Infallible, time::Duration};
+use std::{collections::VecDeque, convert::Infallible, time::Duration};
 
 use axum::{
+    Extension, Json,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::sse::{Event, KeepAlive, Sse},
-    Extension, Json,
 };
 use chrono::Utc;
 use futures::Stream;
 use sea_orm::DatabaseConnection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::error::HttpError;
 use crate::{
@@ -23,33 +23,33 @@ use crate::{
     middleware::auth::Claims,
     services::{
         ai_config::{get_ai_config_for_tier, get_ai_image_config},
-        ai_quota::{get_ai_usage, reserve_ai_quota, rollback_ai_quota_reservation, AiQuotaError},
-        ai_task_context::{resolve_context, AiContextError, AiContextSubject},
+        ai_quota::{AiQuotaError, get_ai_usage, reserve_ai_quota, rollback_ai_quota_reservation},
+        ai_task_context::{AiContextError, AiContextSubject, resolve_context},
         ai_task_execute::{
-            default_output, execute_task, hash_request, parse_ai_manifest, prepare_task,
-            validate_output, AiTaskExecution, PreparedModel,
+            AiTaskExecution, PreparedModel, default_output, execute_task, hash_request,
+            parse_ai_manifest, prepare_task, validate_output,
         },
         ai_task_image::{load_image_references, validate_task_input},
-        ai_task_prepare::{permission_for_operation, validate_idempotency_key, AiTaskLogicError},
+        ai_task_prepare::{AiTaskLogicError, permission_for_operation, validate_idempotency_key},
         ai_task_registry::{
-            register_ai_task_atomically, task_id_for_request, AiTaskRegistration, AiTaskStatus,
-            PersistedAiTask, AI_CANCEL_NAMESPACE, AI_TASK_MAILBOX_CHANNEL, AI_TASK_NAMESPACE,
-            MAX_ACTIVE_TASKS_PER_SUBJECT, MAX_RETAINED_TASKS_PER_SUBJECT,
+            AI_CANCEL_NAMESPACE, AI_TASK_MAILBOX_CHANNEL, AI_TASK_NAMESPACE, AiTaskRegistration,
+            AiTaskStatus, MAX_ACTIVE_TASKS_PER_SUBJECT, MAX_RETAINED_TASKS_PER_SUBJECT,
+            PersistedAiTask, register_ai_task_atomically, task_id_for_request,
         },
         ai_task_runtime::{
-            cancel_local_task, insert_local, local_subject_counts, LocalAiTask, TaskBroadcast,
+            LocalAiTask, TaskBroadcast, cancel_local_task, insert_local, local_subject_counts,
         },
         permission_service::{TappPermission, UserRole},
     },
 };
 
 use super::{
+    RuntimeGrantContext,
     common::{
         authorize_tapp_permission, check_anonymous_rate_limit, check_rate_limit,
         current_tapp_user_role, resolve_accessible_tapp, validate_prompt_security,
     },
     shared_registry::{self, RegistryIdentity},
-    RuntimeGrantContext,
 };
 
 // Domain types (HTTP request/response surfaces).
@@ -550,37 +550,60 @@ pub async fn stream_ai_task_events(
         })?;
     authorize_persisted(&task, &runtime)?;
     let snapshot = task.snapshot;
-    let stream = async_stream::stream! {
-        let initial = serde_json::to_value(&snapshot).unwrap_or(Value::Null);
-        yield Ok(Event::default().event("snapshot").json_data(initial).unwrap_or_default());
-        if !snapshot.status.terminal() {
-            let mut last_updated = snapshot.updated_at.clone();
-            'events: loop {
+    let initial = serde_json::to_value(&snapshot).unwrap_or(Value::Null);
+    let snapshot_event =
+        Ok(Event::default().event("snapshot").json_data(initial).unwrap_or_default());
+    let stream = futures::stream::unfold(
+        Some(AiTaskFeed {
+            pending: VecDeque::from([snapshot_event]),
+            last_updated: snapshot.updated_at.clone(),
+            poll: !snapshot.status.terminal(),
+            db,
+            task_id,
+        }),
+        |feed| async move {
+            let mut feed = feed?;
+            if let Some(event) = feed.pending.pop_front() {
+                return Some((event, Some(feed)));
+            }
+            if !feed.poll {
+                return None;
+            }
+            loop {
                 tokio::time::sleep(Duration::from_millis(250)).await;
-                let events = shared_registry::drain::<TaskBroadcast>(
-                    &db,
+                let drained = shared_registry::drain::<TaskBroadcast>(
+                    &feed.db,
                     AI_TASK_MAILBOX_CHANNEL,
-                    &task_id,
+                    &feed.task_id,
                     128,
-                ).await.unwrap_or_default();
+                )
+                .await;
+                let events = drained.unwrap_or_default();
                 for event in events {
                     let terminal = matches!(event.kind.as_str(), "result" | "error" | "cancelled");
-                    yield Ok(Event::default().event(event.kind).json_data(event.payload).unwrap_or_default());
+                    feed.pending.push_back(Ok(Event::default()
+                        .event(event.kind)
+                        .json_data(event.payload)
+                        .unwrap_or_default()));
                     if terminal {
-                        break 'events;
+                        feed.poll = false;
+                        break;
                     }
                 }
-                let Some(task) = shared_registry::get::<PersistedAiTask>(&db, AI_TASK_NAMESPACE, &task_id)
-                    .await
-                    .ok()
-                    .flatten()
-                else {
-                    break;
-                };
-                if task.snapshot.updated_at == last_updated {
+                if let Some(event) = feed.pending.pop_front() {
+                    return Some((event, Some(feed)));
+                }
+                let fetched = shared_registry::get::<PersistedAiTask>(
+                    &feed.db,
+                    AI_TASK_NAMESPACE,
+                    &feed.task_id,
+                )
+                .await;
+                let task = fetched.ok().flatten()?;
+                if task.snapshot.updated_at == feed.last_updated {
                     continue;
                 }
-                last_updated = task.snapshot.updated_at.clone();
+                feed.last_updated = task.snapshot.updated_at.clone();
                 let kind = match task.snapshot.status {
                     AiTaskStatus::Completed => "result",
                     AiTaskStatus::Cancelled => "cancelled",
@@ -588,14 +611,28 @@ pub async fn stream_ai_task_events(
                     _ => "state",
                 };
                 let terminal = task.snapshot.status.terminal();
-                yield Ok(Event::default().event(kind).json_data(task.snapshot).unwrap_or_default());
                 if terminal {
-                    break 'events;
+                    feed.poll = false;
                 }
+                return Some((
+                    Ok(Event::default()
+                        .event(kind)
+                        .json_data(task.snapshot)
+                        .unwrap_or_default()),
+                    Some(feed),
+                ));
             }
-        }
-    };
+        },
+    );
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+}
+
+struct AiTaskFeed {
+    pending: VecDeque<Result<Event, Infallible>>,
+    last_updated: String,
+    poll: bool,
+    db: DatabaseConnection,
+    task_id: String,
 }
 
 /// GET /api/tapp/ai/v2/usage

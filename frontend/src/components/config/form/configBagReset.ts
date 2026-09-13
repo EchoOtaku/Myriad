@@ -1,7 +1,6 @@
 import type { Config } from './types'
 import {
   ADVANCED_RESET_KEYS,
-  AGENT_UI_RESET_KEYS,
   ALL_OWNED_UI_BAG_KEYS,
   MODULE_UI_RESET_KEYS,
   PLATFORMS_UI_RESET_KEYS,
@@ -20,7 +19,6 @@ const uiKeys: Record<string, readonly string[]> = {
   basic: UI_RESET_KEYS,
   platforms: PLATFORMS_UI_RESET_KEYS,
   modules: MODULE_UI_RESET_KEYS,
-  agent: AGENT_UI_RESET_KEYS,
   advanced: ADVANCED_RESET_KEYS,
   all: ALL_OWNED_UI_BAG_KEYS,
 }
@@ -52,17 +50,11 @@ export function resetConfigBag(
       })),
     }))
   }
-  if (scope === 'all' || scope === 'ai' || scope === 'agent') {
+  if (scope === 'all' || scope === 'ai') {
     const keys = new Set(
       next.ai_config.config_fields
         .map((field) => field.key)
-        .filter(
-          (key) =>
-            scope === 'all' ||
-            (scope === 'agent'
-              ? AGENT_AI_FIELD_KEYS.has(key)
-              : !AGENT_AI_FIELD_KEYS.has(key)),
-        ),
+        .filter((key) => !AGENT_AI_FIELD_KEYS.has(key)),
     )
     next.ai_config.config_fields = mapConfigFields(
       next.ai_config.config_fields,

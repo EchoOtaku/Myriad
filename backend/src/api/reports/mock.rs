@@ -1,7 +1,7 @@
 //! Local fallback when the report model is missing or returns unusable JSON.
 //! Same field contract as the live path; no colon-label insights, no banned hooks.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::services::smart_filter::{ContentAnalysis, SmartFilteredData};
 

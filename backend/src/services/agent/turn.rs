@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use once_cell::sync::Lazy;
 use serde_json::json;
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{Mutex, oneshot};
 
 use super::types::AgentProgressEvent;
 
@@ -265,9 +265,11 @@ mod tests {
     async fn different_sessions_do_not_cancel_each_other() {
         let (mut chat, _) = claim_chat_turn(11, "chat-session", "chat").await;
         let _work = claim_chat_turn(11, "work-session", "work").await;
-        assert!(tokio::time::timeout(Duration::from_millis(30), &mut chat)
-            .await
-            .is_err());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(30), &mut chat)
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]

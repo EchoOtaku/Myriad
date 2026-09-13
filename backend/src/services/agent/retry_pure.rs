@@ -11,8 +11,8 @@
 use crate::services::agent::types::{RecipeStep, RetryConfig as StepRetryConfig};
 
 pub use myriad_agent_rules::{
-    compute_retry_delay_ms, format_retry_final_error, prepend_step_id, should_retry_step,
     RETRY_BASE_DELAY_FLOOR_MS, RETRY_DEFAULT_BASE_DELAY_MS, RETRY_DELAY_CAP_MS,
+    compute_retry_delay_ms, format_retry_final_error, prepend_step_id, should_retry_step,
 };
 
 /// Base delay and whether exponential backoff is enabled for a step.

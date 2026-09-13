@@ -6,23 +6,24 @@
 //! role-config granted filtering.
 
 use super::prepared_package::{
-    package_from_archive, PackageStageContext, PreparedTappPackage, PreparedTappPackageHttp,
-    PreparedTappResources,
+    PackageStageContext, PreparedTappPackage, PreparedTappPackageHttp, PreparedTappResources,
+    package_from_archive,
 };
 use super::store_package::fetch_from_store;
 use super::{
-    api_http_error, api_response_err, canonical_installation_owner_id, cleanup_reinstall_orphans,
-    current_user_role, ensure_tapp_install_allowed, filter_install_permissions, get_admin_user_id,
-    installation_conflict_owner_ids, lock_tapp_lifecycle, log_install_failure,
-    log_tapp_filesystem_access, reconcile_manifest_widgets, tapp_dir_for,
-    tapp_filesystem_error_message, tapp_filesystem_error_status, validate_tapp_id, ApiResponse,
-    TappDirStage, TappListItem, TappManifest, WidgetTemplateContents, MAX_TAPP_GAME_ARCHIVE_BYTES,
+    ApiResponse, MAX_TAPP_GAME_ARCHIVE_BYTES, TappDirStage, TappListItem, TappManifest,
+    WidgetTemplateContents, api_http_error, api_response_err, canonical_installation_owner_id,
+    cleanup_reinstall_orphans, current_user_role, ensure_tapp_install_allowed,
+    filter_install_permissions, get_admin_user_id, installation_conflict_owner_ids,
+    lock_tapp_lifecycle, log_install_failure, log_tapp_filesystem_access,
+    reconcile_manifest_widgets, tapp_dir_for, tapp_filesystem_error_message,
+    tapp_filesystem_error_status, validate_tapp_id,
 };
 use axum::{
+    Extension, Json,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
-    Extension, Json,
 };
 use chrono::Utc;
 use once_cell::sync::Lazy;
@@ -41,11 +42,11 @@ use crate::middleware::auth::Claims;
 use crate::models::entities::tapps;
 use crate::services::permission_service::UserRole;
 use crate::services::tapp_install::{
+    INSTALL_ACQUIRE_TIMEOUT_SECS, InstallMultipartField, InstallSource, MAX_CONCURRENT_INSTALLS,
     archive_upload_too_large_message, archive_upload_would_exceed, build_new_install_persist,
     build_update_install_persist, classify_install_multipart_field, install_overloaded_message,
     install_overloaded_status, is_public_installation_namespace, parse_install_source,
-    select_install_approved_permissions, select_update_approved_permissions, InstallMultipartField,
-    InstallSource, INSTALL_ACQUIRE_TIMEOUT_SECS, MAX_CONCURRENT_INSTALLS,
+    select_install_approved_permissions, select_update_approved_permissions,
 };
 
 /// Global install concurrency gate. Bounds simultaneous archive

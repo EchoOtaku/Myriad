@@ -411,8 +411,8 @@ pub fn build_tapp_written_item(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_tapp_written_item, filtered_cache_path, platform_cache_read_failed,
-        platform_filtered_cache_path, validate_platform_name, PlatformCacheError,
+        PlatformCacheError, build_tapp_written_item, filtered_cache_path,
+        platform_cache_read_failed, platform_filtered_cache_path, validate_platform_name,
     };
     use std::io::{Error, ErrorKind};
 

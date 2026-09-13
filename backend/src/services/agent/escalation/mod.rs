@@ -2,4 +2,4 @@
 
 mod evaluator;
 
-pub use evaluator::{evaluate_with_context, is_local_data_capability, EvaluationContext};
+pub use evaluator::{EvaluationContext, evaluate_with_context, is_local_data_capability};

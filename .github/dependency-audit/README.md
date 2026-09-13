@@ -35,7 +35,6 @@ trees when auditing nested packages like `updater/`).
 | RUSTSEC | Package | Reason |
 | --- | --- | --- |
 | `RUSTSEC-2023-0071` | `rsa` | Medium timing side channel with no fixed release; track `rsa` / `jsonwebtoken`. |
-| `RUSTSEC-2026-0235` | `rkyv` | Inactive optional dependency recorded through SeaORM's `rust_decimal` defaults. CI proves `rkyv` is absent from the resolved feature graph; revisit when SeaORM / `rust_decimal` can use `rkyv` >= 0.8.17 or remove it. |
 
 ### Frontend (`frontend/package.json`)
 
@@ -56,8 +55,8 @@ trees when auditing nested packages like `updater/`).
 cargo audit
 (cd updater && cargo audit)
 
-# This must print no reverse-dependency tree. CI enforces the same boundary
-# before accepting the RUSTSEC-2026-0235 exception.
+# rust_decimal 1.43 dropped the unused rkyv 0.7 dep (RUSTSEC-2026-0235).
+# This must stay empty; CI fails if rkyv re-enters the resolved graph.
 cargo tree -i rkyv --target all --locked
 
 # Frontend

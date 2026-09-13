@@ -1,4 +1,4 @@
-use axum::{http::StatusCode, response::IntoResponse, Json};
+use axum::{Json, http::StatusCode, response::IntoResponse};
 use myriad_process_info::{MEMORY_CRITICAL_MB, MEMORY_WARNING_MB};
 use serde_json::json;
 use std::sync::atomic::Ordering;

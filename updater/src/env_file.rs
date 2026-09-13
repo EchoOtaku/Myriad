@@ -106,13 +106,11 @@ impl EnvFile {
                 raw,
                 value: v,
             } = l
-            {
-                if k == key {
+                && k == key {
                     *raw = quoted.clone();
                     *v = value.to_string();
                     return Ok(());
                 }
-            }
         }
         self.lines.push(Line::KeyValue {
             key: key.to_string(),
@@ -387,9 +385,11 @@ mod tests {
             std::fs::set_permissions(&parent, rw).unwrap();
         }
         saved.unwrap();
-        assert!(std::fs::read_to_string(&p)
-            .unwrap()
-            .contains("MYRIAD_TAG=dev-7a7f66e"));
+        assert!(
+            std::fs::read_to_string(&p)
+                .unwrap()
+                .contains("MYRIAD_TAG=dev-7a7f66e")
+        );
     }
 
     #[test]

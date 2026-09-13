@@ -28,16 +28,14 @@ fn validate_number_bounds(
     let Some(number) = value.as_f64() else {
         return Ok(());
     };
-    if let Some(minimum) = schema.get("minimum").and_then(Value::as_f64) {
-        if number < minimum {
+    if let Some(minimum) = schema.get("minimum").and_then(Value::as_f64)
+        && number < minimum {
             return Err(format!("{path} is below minimum {minimum}"));
         }
-    }
-    if let Some(maximum) = schema.get("maximum").and_then(Value::as_f64) {
-        if number > maximum {
+    if let Some(maximum) = schema.get("maximum").and_then(Value::as_f64)
+        && number > maximum {
             return Err(format!("{path} is above maximum {maximum}"));
         }
-    }
     Ok(())
 }
 
@@ -49,16 +47,14 @@ fn validate_schema(schema: &Value, value: &Value, path: &str, depth: usize) -> R
         .as_object()
         .ok_or_else(|| format!("{path} has an invalid schema"))?;
 
-    if let Some(constant) = object.get("const") {
-        if value != constant {
+    if let Some(constant) = object.get("const")
+        && value != constant {
             return Err(format!("{path} does not match const"));
         }
-    }
-    if let Some(allowed) = object.get("enum").and_then(Value::as_array) {
-        if !allowed.iter().any(|candidate| candidate == value) {
+    if let Some(allowed) = object.get("enum").and_then(Value::as_array)
+        && !allowed.iter().any(|candidate| candidate == value) {
             return Err(format!("{path} is not an allowed enum value"));
         }
-    }
     if let Some(expected) = object.get("type") {
         let matches = match expected {
             Value::String(kind) => schema_type_matches(kind, value),

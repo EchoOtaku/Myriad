@@ -322,7 +322,7 @@ ActivityPub + **MFP**。发现地址使用 `BASE_URL`。
 
 **从源码**
 
-- Rust 1.94+
+- Rust 1.98+
 - Node.js 24 LTS
 - PostgreSQL 18（Compose 默认；下限见 release `min_pg_version`）
 
@@ -477,7 +477,7 @@ Agora RTC / RTM（可选）
 <td width="50%" valign="top">
 
 **后端**  
-[Rust](https://github.com/rust-lang/rust) 1.94 · [Axum](https://github.com/tokio-rs/axum) 0.8 · [Tokio](https://github.com/tokio-rs/tokio)  
+[Rust](https://github.com/rust-lang/rust) 1.98 · [Axum](https://github.com/tokio-rs/axum) 0.8 · [Tokio](https://github.com/tokio-rs/tokio)  
 [SeaORM](https://github.com/SeaQL/sea-orm) 2 / [SQLx](https://github.com/launchbadge/sqlx) · [reqwest](https://github.com/seanmonstar/reqwest) 0.13
 
 **数据**  

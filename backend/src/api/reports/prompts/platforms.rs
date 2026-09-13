@@ -99,7 +99,12 @@ pub fn voice_for(platform: &str) -> PlatformVoice {
             task: "Each danmaku must match a name in Look. Without progress, do not write currently-watching or dropped.",
             visuals: "danmaku: 5-8 lines, each ≤12 chars, not synonymous.",
             look: "①anime_analysis[].examples / genres ②recent_videos[].title ③category (Anime/TvSeries/Movie) / count / percentage. Completion only from Data.raw_unknown_content[].metadata.progress. Do not put level in summary.",
-            omit: &["library_items", "user_level", "follower_count", "following_count"],
+            omit: &[
+                "library_items",
+                "user_level",
+                "follower_count",
+                "following_count",
+            ],
             uses_vibe: false,
             uses_mass_accounts: false,
             uses_console_clock: false,

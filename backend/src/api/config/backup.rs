@@ -1,16 +1,16 @@
 //! Settings backup export / preview / restore and the retired-key denylist.
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{Json, extract::State, http::StatusCode};
 use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::build::{build_config, reconcile_platform_auto_refresh};
-use super::extras::{HitokotoConfig, ReportSettings, HITOKOTO_CONFIG_KEY, REPORT_SETTINGS_KEY};
+use super::extras::{HITOKOTO_CONFIG_KEY, HitokotoConfig, REPORT_SETTINGS_KEY, ReportSettings};
 use super::save::collect_database_updates;
 use super::types::ConfigResponse;
 use crate::services::retired_configuration::is_retired_configuration_key;
-use myriad_module_visibility::{ModuleVisibilityPreferences, MODULE_VISIBILITY_PREFERENCES_KEY};
+use myriad_module_visibility::{MODULE_VISIBILITY_PREFERENCES_KEY, ModuleVisibilityPreferences};
 
 pub(crate) const SETTINGS_BACKUP_FORMAT: &str = "myriad-settings-backup";
 pub(crate) const SETTINGS_BACKUP_VERSION: u32 = 2;
@@ -618,12 +618,12 @@ pub async fn restore_settings(
 mod settings_backup_tests {
     use super::*;
     use crate::api::config::{
-        collect_database_updates, db_or_env_clearable, is_masked_secret_value,
-        normalize_music_playlist_id, platform_configured_flags, public_ui_config_value,
-        sanitize_google_site_verification, sanitize_http_base_url, sanitize_proxy_url,
-        sanitize_site_favicon_url, sanitize_site_og_image_url, sanitize_umami_script_url,
-        sanitize_wallpaper_url, should_write_env_field, update_env_var, AiConfig, ConfigField,
-        ConfigResponse, PlatformAutoFetchConfig, PlatformConfig, MODULE_VISIBILITY_PREFERENCES_KEY,
+        AiConfig, ConfigField, ConfigResponse, MODULE_VISIBILITY_PREFERENCES_KEY,
+        PlatformAutoFetchConfig, PlatformConfig, collect_database_updates, db_or_env_clearable,
+        is_masked_secret_value, normalize_music_playlist_id, platform_configured_flags,
+        public_ui_config_value, sanitize_google_site_verification, sanitize_http_base_url,
+        sanitize_proxy_url, sanitize_site_favicon_url, sanitize_site_og_image_url,
+        sanitize_umami_script_url, sanitize_wallpaper_url, should_write_env_field, update_env_var,
     };
 
     fn empty_config() -> ConfigResponse {
@@ -664,9 +664,11 @@ mod settings_backup_tests {
 
         let duplicate =
             backup_with_entries(vec![entry("report_settings"), entry("report_settings")]);
-        assert!(validate_settings_backup(&duplicate)
-            .unwrap_err()
-            .contains("duplicate key"));
+        assert!(
+            validate_settings_backup(&duplicate)
+                .unwrap_err()
+                .contains("duplicate key")
+        );
     }
 
     #[test]
@@ -798,10 +800,11 @@ mod settings_backup_tests {
 
         assert!(plan.entries.iter().any(|e| e.key == "github_enabled"));
         assert!(plan.entries.iter().any(|e| e.key == "island_show_tapp"));
-        assert!(plan
-            .entries
-            .iter()
-            .any(|e| e.key == "user_perm_federation_post"));
+        assert!(
+            plan.entries
+                .iter()
+                .any(|e| e.key == "user_perm_federation_post")
+        );
         assert!(plan.entries.iter().any(|e| e.key == "see_through_hf_token"));
         assert!(plan.entries.iter().any(|e| e.key == "removed_setting"));
         assert_eq!(plan.preview.ignored_keys, vec!["pet_enabled"]);
@@ -875,18 +878,22 @@ mod settings_backup_tests {
         }
         assert!(plan.entries.iter().any(|e| e.key == "site_title"));
         assert!(!plan.entries.iter().any(|e| e.key.starts_with("pet_")));
-        assert!(!plan
-            .entries
-            .iter()
-            .any(|e| e.key.starts_with("github_client")));
+        assert!(
+            !plan
+                .entries
+                .iter()
+                .any(|e| e.key.starts_with("github_client"))
+        );
     }
 
     #[test]
     fn platform_configured_flags_follow_explicit_enabled_and_credentials() {
         let mut config = crate::config::DynamicConfig::default();
-        assert!(platform_configured_flags(&config)
-            .iter()
-            .all(|(_, on)| !*on));
+        assert!(
+            platform_configured_flags(&config)
+                .iter()
+                .all(|(_, on)| !*on)
+        );
 
         config.steam_api_key = Some("k".into());
         let map: std::collections::HashMap<_, _> =
@@ -1404,9 +1411,11 @@ mod settings_backup_tests {
             sanitize_site_favicon_url("http://192.168.1.5/logo.png"),
             Some("http://192.168.1.5/logo.png".to_string())
         );
-        assert!(sanitize_site_favicon_url("data:image/png;base64,aaa")
-            .unwrap()
-            .starts_with("data:image/png"));
+        assert!(
+            sanitize_site_favicon_url("data:image/png;base64,aaa")
+                .unwrap()
+                .starts_with("data:image/png")
+        );
         assert_eq!(sanitize_site_favicon_url("javascript:alert(1)"), None);
         assert_eq!(sanitize_site_favicon_url("data:text/html,x"), None);
 
@@ -1687,14 +1696,14 @@ mod settings_backup_tests {
     #[test]
     fn platform_resolve_prefers_explicit_empty_db_over_env() {
         let env_key = "MYRIAD_TEST_PLATFORM_RESOLVE_EMPTY";
-        std::env::set_var(env_key, "stale-from-env");
+        unsafe { std::env::set_var(env_key, "stale-from-env") };
         assert_eq!(db_or_env_clearable(Some(String::new()), env_key, ""), "");
         assert_eq!(db_or_env_clearable(None, env_key, ""), "stale-from-env");
         assert_eq!(
             db_or_env_clearable(Some("from-db".to_string()), env_key, ""),
             "from-db"
         );
-        std::env::remove_var(env_key);
+        unsafe { std::env::remove_var(env_key) };
     }
 
     #[test]

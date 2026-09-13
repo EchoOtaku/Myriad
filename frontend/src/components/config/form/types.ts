@@ -50,6 +50,8 @@ export interface QuickAccessItem {
   icon: React.ReactNode
   section: string
   subsection?: string
+  /** 离开 /config 的门，不是管理台房间。 */
+  href?: string
 }
 
 export interface SaveLibrarySourcePreferencesResponse {

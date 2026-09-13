@@ -10,23 +10,23 @@ use std::time::Duration;
 use chrono::Utc;
 use futures::{SinkExt, StreamExt};
 use myriad_agent_rules::channel::{
-    classify_discord_rest, classify_gateway_close, discord_channel_type,
-    discord_private_component_from_create, discord_private_text_from_create, discord_retry_after,
-    discord_session_starts_remaining, discord_worker_intent, is_discord_dm_channel,
-    parse_discord_bot_identity, parse_discord_channel_type, parse_discord_gateway_url,
-    ConnectFailureKind, DiscordBotIdentity, WorkerIntent, DISCORD_CHANNEL_TYPE_DM,
-    DISCORD_DIRECT_MESSAGES, DISCORD_TEXT_LIMIT,
+    ConnectFailureKind, DISCORD_CHANNEL_TYPE_DM, DISCORD_DIRECT_MESSAGES, DISCORD_TEXT_LIMIT,
+    DiscordBotIdentity, WorkerIntent, classify_discord_rest, classify_gateway_close,
+    discord_channel_type, discord_private_component_from_create, discord_private_text_from_create,
+    discord_retry_after, discord_session_starts_remaining, discord_worker_intent,
+    is_discord_dm_channel, parse_discord_bot_identity, parse_discord_channel_type,
+    parse_discord_gateway_url,
 };
 use myriad_error::redact_secrets;
 use serde::Serialize;
 use serde_json::Value;
-use tokio::sync::{watch, RwLock};
+use tokio::sync::{RwLock, watch};
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{info, warn};
 
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::config::DynamicConfig;
 use crate::services::http_client;
-use crate::GLOBAL_DYNAMIC_CONFIG;
 
 const POLL: Duration = Duration::from_secs(2);
 const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
@@ -858,7 +858,7 @@ fn log_transport(context: &str, err: &impl std::fmt::Display, token: &str) {
 mod tests {
     use super::*;
     use myriad_agent_rules::channel::{
-        classify_discord_rest, discord_private_text_from_create, DISCORD_DIRECT_MESSAGES,
+        DISCORD_DIRECT_MESSAGES, classify_discord_rest, discord_private_text_from_create,
     };
 
     #[test]

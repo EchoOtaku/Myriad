@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::future::Future;
 
-use super::types::{json_token, OpenAIResponse, StreamDelta};
+use super::types::{OpenAIResponse, StreamDelta, json_token};
 
 /// Format a failed OpenAI-compatible HTTP response for user-facing errors.
 ///

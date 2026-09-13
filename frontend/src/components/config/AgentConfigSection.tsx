@@ -62,6 +62,8 @@ interface AgentConfigSectionProps {
   icon: React.ReactNode
   description: string
   sectionId?: string
+  onLeave?: () => void
+  leaveLabel?: string
 }
 
 export const AgentConfigSection: React.FC<AgentConfigSectionProps> = ({
@@ -73,6 +75,8 @@ export const AgentConfigSection: React.FC<AgentConfigSectionProps> = ({
   icon,
   description,
   sectionId,
+  onLeave,
+  leaveLabel,
 }) => {
   const { t } = useI18n()
   const { catalog: g, bindGuide } = useSettingGuide()
@@ -324,6 +328,16 @@ export const AgentConfigSection: React.FC<AgentConfigSectionProps> = ({
           >
             <LuChevronLeft size={18} aria-hidden />
             <span>{t.common.back}</span>
+          </button>
+        ) : onLeave ? (
+          <button
+            type="button"
+            className="section-header-back"
+            onClick={onLeave}
+            aria-label={leaveLabel ?? t.common.back}
+          >
+            <LuChevronLeft size={18} aria-hidden />
+            <span>{leaveLabel ?? t.common.back}</span>
           </button>
         ) : undefined
       }

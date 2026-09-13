@@ -12,15 +12,15 @@
 //! - GET /api/admin/users/{id}/avatar-sources 管理员查看他人可选来源
 //! - PUT /api/admin/users/{id}/avatar-source  管理员替他人切换（只能选对方已有的来源）
 
-use axum::{extract::Path, http::StatusCode, Json};
+use axum::{Json, extract::Path, http::StatusCode};
 use myriad_error::AppError;
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use crate::middleware::auth::{authenticate_request, Claims};
+use crate::middleware::auth::{Claims, authenticate_request};
 use crate::services::avatar::{
-    current_avatar_source, list_avatar_sources, set_avatar_source, AvatarSourceKind,
+    AvatarSourceKind, current_avatar_source, list_avatar_sources, set_avatar_source,
 };
 
 type ApiError = (StatusCode, Json<Value>);

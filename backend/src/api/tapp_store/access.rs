@@ -2,10 +2,10 @@ use super::validate_tapp_id;
 use axum::http::StatusCode;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, Statement};
 
-use crate::api::tapp_runtime::common as tapp_common;
 use crate::api::tapp_runtime::RuntimeGrantContext;
+use crate::api::tapp_runtime::common as tapp_common;
 use crate::error::HttpError;
-use crate::middleware::auth::{ensure_current_admin_on, Claims};
+use crate::middleware::auth::{Claims, ensure_current_admin_on};
 use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
 use crate::services::tapp_ownership::{self, TappAccessError};
 use myriad_error::AppError;
@@ -98,7 +98,7 @@ fn require_runtime_storage_grant(
 
 // Domain identity type: services::tapp_storage (path-stable re-export).
 pub(crate) use crate::services::tapp_storage::{
-    can_write_installation_settings, TappStorageAccess, TappStorageAccessError,
+    TappStorageAccess, TappStorageAccessError, can_write_installation_settings,
 };
 
 /// Actor id for storage / grant binding: real users **and** signed guests

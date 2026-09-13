@@ -9,7 +9,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use pulldown_cmark::{html, Options, Parser};
+use pulldown_cmark::{Options, Parser, html};
 
 /// 正文长度上限（字符）。超出的部分不截断，直接拒绝 —— 悄悄截掉用户写的东西
 /// 比报错更糟。

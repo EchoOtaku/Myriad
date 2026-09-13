@@ -2,9 +2,9 @@ use myriad_error::AppError;
 // Admin analytics summary, visitor card, export, and import.
 
 use axum::{
-    extract::{ConnectInfo, Query, Request},
-    http::{header, StatusCode},
     Json,
+    extract::{ConnectInfo, Query, Request},
+    http::{StatusCode, header},
 };
 use chrono::{Duration, NaiveDate, Utc};
 use sea_orm::{
@@ -12,25 +12,25 @@ use sea_orm::{
     Value as SeaValue,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::Instant;
 
 use super::backup_integrity::{
-    content_hash, day_ok_for_import, metric_ok, prevalidate_rows, seal_integrity,
-    validate_counts_object, verify_integrity, MAX_METRIC_VALUE,
+    MAX_METRIC_VALUE, content_hash, day_ok_for_import, metric_ok, prevalidate_rows, seal_integrity,
+    validate_counts_object, verify_integrity,
 };
 use super::intake_helpers::{
-    analytics_collection_enabled, analytics_today, analytics_tz_label, compare_range_kind,
-    count_distinct_site, invalidate_summary_cache, metric_delta, normalize_country_code,
-    normalize_country_name, normalize_event_name, normalize_path, normalize_referrer_host,
-    normalize_target, read_visitor_ordinal, resolve_visitor_hash, sum_page_views, SummaryQuery,
     ANALYTICS_BACKUP_FORMAT, ANALYTICS_BACKUP_VERSION, DAILY_RETENTION_DAYS, ENGAGE_MARKER,
     MAX_IMPORT_COUNTRY_DAILY, MAX_IMPORT_COUNTRY_VISITOR, MAX_IMPORT_EVENT_DAILY,
     MAX_IMPORT_EVENT_VISITOR, MAX_IMPORT_PAGE_DAILY, MAX_IMPORT_REFERRER_DAILY,
     MAX_IMPORT_VISITOR_SEEN, MAX_SUMMARY_DAYS, SITE_PATH, SUMMARY_CACHE, SUMMARY_CACHE_TTL,
-    VISITOR_CARD_CACHE, VISITOR_RETENTION_DAYS,
+    SummaryQuery, VISITOR_CARD_CACHE, VISITOR_RETENTION_DAYS, analytics_collection_enabled,
+    analytics_today, analytics_tz_label, compare_range_kind, count_distinct_site,
+    invalidate_summary_cache, metric_delta, normalize_country_code, normalize_country_name,
+    normalize_event_name, normalize_path, normalize_referrer_host, normalize_target,
+    read_visitor_ordinal, resolve_visitor_hash, sum_page_views,
 };
 
 /// GET /api/analytics/summary?days=7  or  ?from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -1297,7 +1297,9 @@ pub async fn import_analytics(
             "missing_integrity_token" => {
                 "integrity.token is missing or not ciphertext; re-export from this instance."
             }
-            _ => "integrity verification failed; re-export from this instance and import without editing the file.",
+            _ => {
+                "integrity verification failed; re-export from this instance and import without editing the file."
+            }
         };
         return (
             StatusCode::BAD_REQUEST,
@@ -1365,7 +1367,7 @@ pub async fn import_analytics(
     };
 
     macro_rules! import_db_err {
-        ($txn:expr, $e:expr) => {{
+        ($txn:expr_2021, $e:expr_2021) => {{
             tracing::warn!("analytics import failed: {}", $e);
             let _ = $txn.rollback().await;
             return (

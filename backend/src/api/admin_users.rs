@@ -12,7 +12,7 @@
 //!
 //! Privilege model: durable `users.is_owner`.
 
-use axum::{extract::Path, http::StatusCode, Json};
+use axum::{Json, extract::Path, http::StatusCode};
 use chrono::{DateTime, Utc};
 use myriad_error::AppError;
 use sea_orm::Value as SeaValue;
@@ -20,10 +20,10 @@ use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseConnection, QueryResult, Statement, TransactionTrait,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
-use crate::middleware::auth::{authenticate_request, notify_auth_cache_invalidation, Claims};
+use crate::middleware::auth::{Claims, authenticate_request, notify_auth_cache_invalidation};
 
 /// 距最近活跃 ≤300s 视为在线（与 presence 跟踪的会话间隔一致）。
 const ONLINE_WINDOW_SECS: i64 = 300;

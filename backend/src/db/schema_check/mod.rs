@@ -30,7 +30,7 @@ mod types;
 
 pub use orchestrator::{ensure_schema, report_schema_drift};
 pub use seeds::{
-    default_config_seeds, default_platform_seeds, ensure_default_config, DefaultPlatformSeed,
+    DefaultPlatformSeed, default_config_seeds, default_platform_seeds, ensure_default_config,
 };
 
 #[cfg(test)]

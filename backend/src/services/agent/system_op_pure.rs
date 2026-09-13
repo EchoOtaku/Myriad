@@ -5,13 +5,13 @@
 //! - brew.schedule action validation
 //! - heartbeat task-id param keys
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 pub use myriad_agent_rules::{
-    build_schedule_config, extract_raw_backend_actions, heartbeat_task_id,
-    heartbeat_update_has_fields, parse_brew_schedule_action, parse_execution_target,
-    parse_schedule_type, AgentExecutionTarget, AgentScheduleType, BrewScheduleAction,
+    AgentExecutionTarget, AgentScheduleType, BrewScheduleAction, build_schedule_config,
+    extract_raw_backend_actions, heartbeat_task_id, heartbeat_update_has_fields,
+    parse_brew_schedule_action, parse_execution_target, parse_schedule_type,
 };
 
 #[cfg(test)]

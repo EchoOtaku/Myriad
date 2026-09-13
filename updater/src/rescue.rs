@@ -7,10 +7,7 @@ use std::process::Stdio;
 use anyhow::{Context as _, Result};
 use tracing::info;
 
-use crate::docker::{
-    compose::harden_docker_command,
-    ROLLBACK_IMAGE_TAG,
-};
+use crate::docker::{ROLLBACK_IMAGE_TAG, compose::harden_docker_command};
 use crate::snapshot::SnapshotManager;
 use crate::state::StateDir;
 
@@ -68,15 +65,14 @@ pub async fn rollback(ctx: &Context, snapshot_id: &str) -> Result<()> {
                 .and_then(|u| u.current_version.map(|v| v.to_string()))
         });
 
-    if let Some(ref tag) = prev_tag {
-        if let Err(e) = materialize_pinned_rollback_images(ctx, tag).await {
+    if let Some(ref tag) = prev_tag
+        && let Err(e) = materialize_pinned_rollback_images(ctx, tag).await {
             tracing::warn!(
                 err = %e,
                 version = %tag,
                 "rescue could not restore version refs from the local rollback slot"
             );
         }
-    }
 
     info!(snapshot = snapshot_id, "rescue rollback: stopping services");
     compose_v2_or_v1(ctx, &["stop", "-t", "30", "frontend", "backend"]).await?;
@@ -115,14 +111,13 @@ pub async fn rollback(ctx: &Context, snapshot_id: &str) -> Result<()> {
     }
     compose_v2_or_v1(ctx, &["up", "-d", "--no-deps", "backend", "frontend"]).await?;
 
-    if let Some(ref tag) = prev_tag {
-        if let Ok(v) = crate::version::DeployTag::parse(tag) {
+    if let Some(ref tag) = prev_tag
+        && let Ok(v) = crate::version::DeployTag::parse(tag) {
             let mut st = ctx.state.read_updater()?;
             st.current_version = Some(v);
             st.current_commit_sha = None;
             ctx.state.write_updater(&st)?;
         }
-    }
 
     ctx.state.clear_maintenance()?;
     ctx.state.set_current_job(None)?;

@@ -1,6 +1,6 @@
 //! Read-path enrichment for stored platform reports (Xbox/PSN cache fill + media).
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::services::smart_filter::SmartFilter;
 

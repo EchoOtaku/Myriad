@@ -94,7 +94,7 @@ pub async fn handle_room_invite(
     };
 
     // 用 `users.username` 拼本地 actor URL；找不到行则 `actor_url(…, "unknown")`。
-    let local_actor = if let Some(row) = db
+    let local_actor = match db
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT username FROM users WHERE id = $1",
@@ -103,10 +103,11 @@ pub async fn handle_room_invite(
         .await
         .map_err(|e| e.to_string())?
     {
-        let uname: String = row.try_get("", "username").unwrap_or_default();
-        actor_url(&base_url_val, &uname)
-    } else {
-        actor_url(&base_url_val, "unknown")
+        Some(row) => {
+            let uname: String = row.try_get("", "username").unwrap_or_default();
+            actor_url(&base_url_val, &uname)
+        }
+        _ => actor_url(&base_url_val, "unknown"),
     };
 
     // Ensure Room row exists; empty/fallback name is upgraded when the invite carries a real name.

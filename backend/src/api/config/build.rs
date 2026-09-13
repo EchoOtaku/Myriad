@@ -1,7 +1,7 @@
 //! Build the admin config bag from DB (and reconcile platform auto-refresh).
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use sea_orm::DatabaseConnection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::flags::{
     db_or_env_clearable, nonempty_db, nonempty_env, platform_config_is_ready,

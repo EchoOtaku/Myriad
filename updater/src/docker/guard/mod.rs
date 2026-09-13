@@ -15,16 +15,16 @@ mod tests;
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
+use axum::Router;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::any;
-use axum::Router;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tracing::{error, info, warn};
 
 pub use config::GuardConfig;
@@ -210,11 +210,10 @@ pub async fn run(config: GuardConfig) -> Result<()> {
                 recovery_only,
                 recovered_retries,
             );
-        } else if !durable_exhausted {
-            if let Some(attempt) = attempt {
+        } else if !durable_exhausted
+            && let Some(attempt) = attempt {
                 resume_staged_recovery(state.clone(), attempt, recovered_retries);
             }
-        }
     } else {
         let _ = finalize_or_fail_orphaned_pending_handoff(&state).await;
     }

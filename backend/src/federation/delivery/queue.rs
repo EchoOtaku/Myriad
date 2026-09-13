@@ -1087,16 +1087,16 @@ pub async fn run_delivery_worker(db: DatabaseConnection) {
                     || s.relationships_revoked > 0 =>
             {
                 tracing::info!(
-                        "📤 Delivery worker: claimed={} reclaimed={} delivered={} dead={} retried={} lease_lost={} relationships_revoked={} deliveries_cancelled={}",
-                        s.claimed,
-                        s.reclaimed,
-                        s.delivered,
-                        s.dead,
-                        s.retried,
-                        s.lease_lost,
-                        s.relationships_revoked,
-                        s.deliveries_cancelled
-                    );
+                    "📤 Delivery worker: claimed={} reclaimed={} delivered={} dead={} retried={} lease_lost={} relationships_revoked={} deliveries_cancelled={}",
+                    s.claimed,
+                    s.reclaimed,
+                    s.delivered,
+                    s.dead,
+                    s.retried,
+                    s.lease_lost,
+                    s.relationships_revoked,
+                    s.deliveries_cancelled
+                );
             }
             Err(e) => {
                 tracing::error!("Delivery worker error: {}", e);

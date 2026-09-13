@@ -52,9 +52,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-use aes_gcm::{aead::Aead, Aes256Gcm, Key, KeyInit, Nonce};
-use anyhow::{anyhow, Context, Result};
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use aes_gcm::{Aes256Gcm, Key, KeyInit, Nonce, aead::Aead};
+use anyhow::{Context, Result, anyhow};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use sha2::{Digest, Sha256};
 
 const AES_NONCE_LEN: usize = 12;
@@ -210,21 +210,20 @@ fn write_key_file(path: &Path, encoded: &str) -> std::io::Result<()> {
 
 fn load_or_create() -> DataKey {
     // 1) 环境变量覆盖
-    if let Ok(raw) = std::env::var("MYRIAD_DATA_KEY") {
-        if !raw.trim().is_empty() {
+    if let Ok(raw) = std::env::var("MYRIAD_DATA_KEY")
+        && !raw.trim().is_empty() {
             match parse_key_material(&raw) {
                 Some(key) => {
                     return DataKey {
                         key,
                         source: KeySource::Env,
-                    }
+                    };
                 }
                 None => tracing::error!(
                     "MYRIAD_DATA_KEY is set but is not base64-encoded 32 bytes; ignoring it"
                 ),
             }
         }
-    }
 
     // 2) 密钥文件
     let path = key_file_path();

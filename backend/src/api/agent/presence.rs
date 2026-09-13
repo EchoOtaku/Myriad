@@ -11,7 +11,7 @@ use crate::services::agent::consciousness::{
 };
 use axum::body::Bytes;
 use axum::http::StatusCode;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 fn invalid_presence_payload() -> HttpError {
     HttpError::from((

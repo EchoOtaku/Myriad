@@ -1,49 +1,28 @@
+import type { AddFieldKind } from './addSource'
 import type { AddSubmitInput } from './useAddSourceForm'
 import {
-  LuAlertCircle as AlertCircle,
   LuCheck as Check,
-  LuChevronDown as ChevronDown,
   LuDownload as Download,
   LuExternalLink as ExternalLink,
   LuFileText as FileText,
   LuFolderOpen as FolderOpen,
   LuLink as Link,
+  LuPlus as Plus,
   NotionIcon,
   LuRss as Rss,
+  LuSearch as Search,
   RSSHubIcon,
-  LuSparkles as Sparkles,
   LuUpload as Upload,
-  LuX as X,
 } from '@lib/icons'
+import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
+import { CompactSettingGroup } from '../../../settings/CompactSettingGroup'
+import { SegmentedControl } from '../../../settings/items/ChoiceControls'
+import { InputItem } from '../../../settings/items/InputItem'
+import { SettingsButton } from '../../../settings/items/SettingsButton'
+import { SwitchItem } from '../../../settings/items/SwitchItem'
+import { SettingTitleTag } from '../../../settings/SettingTitleTag'
 import { Spinner } from '../../../Spinner'
-import { BrewBarWrap, BrewMark } from '../../ui/Bar'
-import {
-  Sheet,
-  SheetBody,
-  SheetChoice,
-  SheetChoices,
-  SheetCount,
-  SheetDrop,
-  SheetField,
-  SheetFoot,
-  SheetGhost,
-  SheetGhostLabel,
-  SheetGrow,
-  SheetInput,
-  SheetMark,
-  SheetMenu,
-  SheetMenuBody,
-  SheetMenuItem,
-  SheetNotice,
-  SheetPair,
-  SheetRow,
-  SheetStack,
-  SheetSubmit,
-  SheetSwitch,
-  SheetTab,
-  SheetTrigger,
-} from '../../ui/Sheet'
 import {
   addHintKey,
   addSubmitLabelKey,
@@ -51,6 +30,7 @@ import {
   addUrlPlaceholder,
 } from './addSource'
 import { useAddSourceForm } from './useAddSourceForm'
+import './AddMode.css'
 
 export interface AddModeProps {
   allCategories: string[]
@@ -95,363 +75,401 @@ export function AddMode({
   const hint = t[addHintKey(form.fieldKind)]
   const urlLabel = t[addUrlLabelKey(form.fieldKind)]
   const submitLabel = t[addSubmitLabelKey(form.sourceType)]
+  const categoryWrapRef = useRef<HTMLDivElement>(null)
+  const categoryInputRef = useRef<HTMLInputElement>(null)
+  const [categoryDraft, setCategoryDraft] = useState('')
+  const categoryName = categoryDraft.trim()
+  const canAddCategory =
+    categoryName.length > 0 &&
+    !allCategories.some((cat) => cat === categoryName)
+
+  const closeCategory = (next = categoryDraft) => {
+    const value = next.trim()
+    if (value !== form.category) form.setCategory(value)
+    form.setCategoryOpen(false)
+  }
+
+  useEffect(() => {
+    if (!form.categoryOpen) return
+    setCategoryDraft(form.category)
+    const id = window.setTimeout(() => categoryInputRef.current?.focus(), 0)
+    const onDoc = (event: MouseEvent) => {
+      if (!categoryWrapRef.current?.contains(event.target as Node)) {
+        closeCategory(categoryInputRef.current?.value ?? categoryDraft)
+      }
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') form.setCategoryOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      window.clearTimeout(id)
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [form.categoryOpen, form.category, form.setCategoryOpen])
 
   return (
-    <Sheet>
-      <SheetBody>
-        {form.tab === 'single' ? (
-          <SheetStack onSubmit={form.handleSubmit}>
-            <SheetField label={t.sourceTypeLabel} hint={hint}>
-              <SheetChoices>
-                <SheetChoice
-                  on={form.sourceType === 'link'}
-                  disabled={form.loading}
-                  onClick={() => form.pickKind('link')}
-                >
-                  <ExternalLink />
-                  <span>{t.pureLink}</span>
-                </SheetChoice>
-                <SheetChoice
-                  on={form.fieldKind === 'rss'}
-                  disabled={form.loading}
-                  onClick={() => form.pickKind('rss')}
-                >
-                  <Rss />
-                  <span>RSS</span>
-                </SheetChoice>
-                <SheetChoice
-                  on={form.sourceType === 'rsshub'}
-                  disabled={form.loading}
-                  onClick={() => form.pickKind('rsshub')}
-                >
-                  <RSSHubIcon />
-                  <span>RSSHub</span>
-                </SheetChoice>
-                <SheetChoice
-                  on={form.feedType === 'notion'}
-                  disabled={form.loading}
-                  onClick={() => form.pickKind('notion')}
-                >
-                  <NotionIcon />
-                  <span>Notion</span>
-                </SheetChoice>
-              </SheetChoices>
-            </SheetField>
+    <div
+      className={`brew-add-form${form.categoryOpen ? ' is-category-open' : ''}`}
+    >
+      <SegmentedControl
+        size="sm"
+        columns={2}
+        ariaLabel={t.singleAdd}
+        value={form.tab}
+        onChange={form.setTab}
+        options={[
+          { value: 'single', label: t.singleAdd, icon: <Link /> },
+          { value: 'opml', label: 'OPML', icon: <FileText /> },
+        ]}
+      />
 
-            {form.sourceType !== 'link' && form.sourceType !== 'rsshub' ? (
-              <SheetSwitch
-                icon={<Sparkles />}
-                title="Brewlia AI"
-                description={t.brewliaShortDesc}
-                on={form.sourceType === 'brewlia'}
-                onToggle={() =>
-                  form.setSourceType(
-                    form.sourceType === 'brewlia' ? 'rss' : 'brewlia',
-                  )
-                }
+      {form.tab === 'single' ? (
+        <form className="brew-add-form__stack" onSubmit={form.handleSubmit}>
+          <div className="setting-item setting-item-select setting-vertical setting-sm brew-add-form__type">
+            <div className="setting-label">
+              <span className="setting-label-text">{t.sourceTypeLabel}</span>
+            </div>
+            <div className="setting-control">
+              <SegmentedControl<AddFieldKind>
+                size="sm"
+                columns={4}
+                className="brew-add-form__kinds"
+                ariaLabel={t.sourceTypeLabel}
+                value={form.fieldKind}
+                onChange={form.pickKind}
                 disabled={form.loading}
-                toggleTitle={
-                  form.sourceType === 'brewlia' ? t.disableAI : t.enableAI
-                }
+                options={[
+                  {
+                    value: 'link',
+                    label: t.pureLink,
+                    icon: <ExternalLink />,
+                    disabled: form.loading,
+                  },
+                  {
+                    value: 'rss',
+                    label: 'RSS',
+                    icon: <Rss />,
+                    disabled: form.loading,
+                  },
+                  {
+                    value: 'rsshub',
+                    label: 'RSSHub',
+                    icon: <RSSHubIcon />,
+                    disabled: form.loading,
+                  },
+                  {
+                    value: 'notion',
+                    label: 'Notion',
+                    icon: <NotionIcon />,
+                    disabled: form.loading,
+                  },
+                ]}
               />
-            ) : null}
+            </div>
+            <p className="setting-hint">{hint}</p>
+          </div>
 
-            {form.sourceType === 'rsshub' && RSSHubConfigComponent ? (
-              <>
-                <RSSHubConfigComponent
-                  onConfigChange={form.setRsshub}
-                  disabled={form.loading}
-                />
-                <SheetSwitch
-                  icon={<Sparkles />}
-                  title="Brewlia AI"
-                  description={t.brewliaFeatures}
-                  on={form.enableBrewliaForRsshub}
-                  onToggle={() =>
-                    form.setEnableBrewliaForRsshub(!form.enableBrewliaForRsshub)
-                  }
-                  disabled={form.loading}
-                  toggleTitle={
-                    form.enableBrewliaForRsshub ? t.disableAI : t.enableAI
-                  }
-                />
-              </>
-            ) : null}
+          {form.sourceType !== 'link' && form.sourceType !== 'rsshub' ? (
+            <SwitchItem
+              itemKey="brew-add-brewlia"
+              size="sm"
+              label="Brewlia AI"
+              description={t.brewliaShortDesc}
+              value={form.sourceType === 'brewlia'}
+              onChange={(on) => form.setSourceType(on ? 'brewlia' : 'rss')}
+              disabled={form.loading}
+            />
+          ) : null}
 
-            {form.sourceType !== 'rsshub' ? (
-              <SheetField label={urlLabel} required>
-                <SheetRow>
-                  <SheetGrow>
-                    <BrewMark>
-                      <Link />
-                    </BrewMark>
-                    <SheetInput
-                      type="url"
-                      withMark
-                      value={form.url}
-                      onChange={(event) => {
-                        form.setUrl(event.target.value)
-                        form.setDiscovered(null)
-                      }}
-                      placeholder={addUrlPlaceholder(form.fieldKind)}
-                      disabled={form.loading}
-                    />
-                  </SheetGrow>
-                  {form.fieldKind === 'rss' ? (
-                    <SheetGhost
-                      fit
-                      onClick={form.handleDiscover}
-                      disabled={form.discovering || !form.url.trim()}
-                    >
-                      {form.discovering ? (
-                        <Spinner size="xs" color="current" />
-                      ) : (
-                        t.discover
-                      )}
-                    </SheetGhost>
-                  ) : null}
-                </SheetRow>
-              </SheetField>
-            ) : null}
+          {form.sourceType === 'rsshub' && RSSHubConfigComponent ? (
+            <>
+              <RSSHubConfigComponent
+                onConfigChange={form.setRsshub}
+                disabled={form.loading}
+              />
+              <SwitchItem
+                itemKey="brew-add-rsshub-brewlia"
+                size="sm"
+                label="Brewlia AI"
+                description={t.brewliaFeatures}
+                value={form.enableBrewliaForRsshub}
+                onChange={form.setEnableBrewliaForRsshub}
+                disabled={form.loading}
+              />
+            </>
+          ) : null}
 
-            {form.feedType === 'notion' ? (
-              <SheetField label="Notion Integration Token" required>
-                <SheetInput
-                  type="password"
-                  value={form.notionToken}
-                  onChange={(event) => form.setNotionToken(event.target.value)}
-                  placeholder="secret_xxx..."
-                  disabled={form.loading}
-                />
-              </SheetField>
-            ) : null}
-
-            {form.discovered && form.fieldKind === 'rss' ? (
-              <SheetNotice tone="ok">
-                <Check />
-                <span>{form.discovered.title}</span>
-                <SheetCount>
-                  {form.discovered.feed_type.toUpperCase()}
-                </SheetCount>
-                {form.sourceType === 'brewlia' ? (
-                  <SheetCount>AI</SheetCount>
-                ) : null}
-              </SheetNotice>
-            ) : null}
-
-            <SheetPair>
-              <SheetField
-                label={t.nameLabel}
-                required={form.sourceType === 'link'}
-              >
-                <SheetInput
-                  type="text"
-                  value={form.name}
-                  onChange={(event) => form.setName(event.target.value)}
-                  placeholder={
-                    form.sourceType === 'link' ? t.enterName : t.autoFetch
-                  }
-                  disabled={form.loading}
-                />
-              </SheetField>
-              <SheetField label={t.category}>
-                <BrewBarWrap>
-                  <SheetTrigger
-                    onClick={() => form.setCategoryOpen(!form.categoryOpen)}
-                    disabled={form.loading}
+          {form.sourceType !== 'rsshub' ? (
+            <InputItem
+              itemKey="brew-add-url"
+              size="sm"
+              label={urlLabel}
+              required
+              inputType="url"
+              value={form.url}
+              onChange={(value) => {
+                form.setUrl(value)
+                form.setDiscovered(null)
+              }}
+              placeholder={addUrlPlaceholder(form.fieldKind)}
+              disabled={form.loading}
+              labelAccessory={
+                form.fieldKind === 'rss' ? (
+                  <SettingTitleTag
+                    icon={
+                      form.discovering ? <Spinner size="xs" /> : <Search />
+                    }
+                    disabled={form.discovering || !form.url.trim()}
+                    onClick={() => {
+                      void form.handleDiscover()
+                    }}
                   >
-                    <span>{form.category || t.selectCategory}</span>
-                    <ChevronDown
-                      className={`brew-bar__chev${form.categoryOpen ? ' is-open' : ''}`}
-                    />
-                  </SheetTrigger>
+                    {t.discover}
+                  </SettingTitleTag>
+                ) : null
+              }
+            />
+          ) : null}
+
+          {form.feedType === 'notion' ? (
+            <InputItem
+              itemKey="brew-add-notion-token"
+              size="sm"
+              label="Notion Integration Token"
+              required
+              inputType="password"
+              value={form.notionToken}
+              onChange={form.setNotionToken}
+              placeholder="secret_xxx..."
+              disabled={form.loading}
+            />
+          ) : null}
+
+          {form.discovered && form.fieldKind === 'rss' ? (
+            <div className="brew-add-form__tags">
+              <SettingTitleTag icon={<Check />}>
+                {form.discovered.title}
+              </SettingTitleTag>
+              <SettingTitleTag variant="muted">
+                {form.discovered.feed_type.toUpperCase()}
+              </SettingTitleTag>
+              {form.sourceType === 'brewlia' ? (
+                <SettingTitleTag variant="beta">AI</SettingTitleTag>
+              ) : null}
+            </div>
+          ) : null}
+
+          <CompactSettingGroup>
+            <InputItem
+              itemKey="brew-add-name"
+              size="sm"
+              label={t.nameLabel}
+              required={form.sourceType === 'link'}
+              value={form.name}
+              onChange={form.setName}
+              placeholder={
+                form.sourceType === 'link' ? t.enterName : t.autoFetch
+              }
+              disabled={form.loading}
+            />
+            <div className="setting-item setting-item-select setting-vertical setting-sm brew-add-form__category">
+              <label className="setting-label">
+                <span className="setting-label-text">{t.category}</span>
+              </label>
+              <div className="setting-control">
+                <div
+                  ref={categoryWrapRef}
+                  className={`field-select-wrap field-select-size-sm${form.categoryOpen ? ' is-open' : ''}`}
+                >
+                  <button
+                    type="button"
+                    className="field-select field-select-trigger"
+                    disabled={form.loading}
+                    aria-haspopup="listbox"
+                    aria-expanded={form.categoryOpen}
+                    onClick={() => {
+                      if (!form.loading) {
+                        form.setCategoryOpen(!form.categoryOpen)
+                      }
+                    }}
+                  >
+                    <span className="field-select-value">
+                      {form.category || t.selectCategory}
+                    </span>
+                    <span className="field-select-chevron" aria-hidden />
+                  </button>
                   {form.categoryOpen ? (
-                    <SheetMenu>
-                      <div style={{ padding: '0.35rem' }}>
-                        <SheetInput
+                    <div className="field-select-panel">
+                      <div className="field-select-search">
+                        <input
+                          ref={categoryInputRef}
                           type="text"
-                          value={form.category}
+                          className="field-select-search-input"
+                          value={categoryDraft}
                           onChange={(event) =>
-                            form.setCategory(event.target.value)
+                            setCategoryDraft(event.target.value)
                           }
                           placeholder={t.inputNewCategory}
+                          autoComplete="off"
                           onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => {
+                            if (event.key !== 'Enter') return
+                            event.preventDefault()
+                            event.stopPropagation()
+                            if (categoryName) form.pickCategory(categoryName)
+                          }}
                         />
                       </div>
-                      <SheetMenuBody>
-                        <SheetMenuItem
-                          on={!form.category}
-                          onClick={() => form.pickCategory('')}
-                        >
-                          {t.noCategory}
-                          {!form.category ? <Check /> : null}
-                        </SheetMenuItem>
-                        {allCategories.map((cat) => (
-                          <SheetMenuItem
-                            key={cat}
-                            on={form.category === cat}
-                            onClick={() => form.pickCategory(cat)}
+                      <ul className="field-select-menu" role="listbox">
+                        {canAddCategory ? (
+                          <li role="presentation">
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected
+                              className="field-select-option is-selected"
+                              onClick={() => form.pickCategory(categoryName)}
+                            >
+                              <Plus />
+                              {`${t.addCategory.replace(/[….]+$/u, '')}「${categoryName}」`}
+                            </button>
+                          </li>
+                        ) : null}
+                        <li role="presentation">
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={!form.category && !categoryName}
+                            className={`field-select-option${!form.category && !categoryName ? ' is-selected' : ''}`}
+                            onClick={() => form.pickCategory('')}
                           >
-                            {cat}
-                            {form.category === cat ? <Check /> : null}
-                          </SheetMenuItem>
+                            {t.noCategory}
+                          </button>
+                        </li>
+                        {allCategories.map((cat) => (
+                          <li key={cat} role="presentation">
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={form.category === cat}
+                              className={`field-select-option${form.category === cat ? ' is-selected' : ''}`}
+                              onClick={() => form.pickCategory(cat)}
+                            >
+                              {cat}
+                            </button>
+                          </li>
                         ))}
-                      </SheetMenuBody>
-                    </SheetMenu>
+                      </ul>
+                    </div>
                   ) : null}
-                </BrewBarWrap>
-              </SheetField>
-            </SheetPair>
+                </div>
+              </div>
+            </div>
+          </CompactSettingGroup>
 
-            <SheetField label={t.siteIcon}>
-              <SheetRow>
-                <SheetMark>
-                  {form.displayIcon ? (
-                    <img src={form.displayIcon} alt="" />
-                  ) : (
-                    <Rss />
-                  )}
-                </SheetMark>
-                <SheetGhostLabel fit>
-                  <Upload />
-                  {t.upload}
-                  <input
-                    ref={form.iconInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={form.handleIconUpload}
-                    className="brew-bar__file"
-                    disabled={form.loading}
-                  />
-                </SheetGhostLabel>
-                {form.customIcon ? (
-                  <SheetGhost
-                    fit
-                    onClick={form.clearIcon}
-                    title={t.deleteIcon}
-                  >
-                    <X />
-                  </SheetGhost>
-                ) : null}
-              </SheetRow>
-            </SheetField>
+          <InputItem
+            itemKey="brew-add-icon"
+            size="sm"
+            variant="imageUpload"
+            label={t.siteIcon}
+            value={form.customIcon || form.displayIcon || ''}
+            onChange={(value) => form.setCustomIcon(value || null)}
+            uploadLabel={t.upload}
+            clearImageLabel={t.deleteIcon}
+            disabled={form.loading}
+          />
 
-            {form.error ? (
-              <SheetNotice tone="bad">
-                <AlertCircle />
-                {form.error}
-              </SheetNotice>
-            ) : null}
-            {form.success ? (
-              <SheetNotice tone="ok">
-                <Check />
-                {form.success}
-              </SheetNotice>
-            ) : null}
+          {form.error ? (
+            <SettingTitleTag variant="danger">{form.error}</SettingTitleTag>
+          ) : null}
+          {form.success ? (
+            <SettingTitleTag icon={<Check />}>{form.success}</SettingTitleTag>
+          ) : null}
 
-            <SheetSubmit disabled={form.loading || !form.canSubmit}>
-              {form.loading ? <Spinner size="xs" color="current" /> : null}
-              {submitLabel}
-            </SheetSubmit>
-          </SheetStack>
-        ) : (
-          <SheetStack>
-            <SheetDrop
-              role="button"
-              tabIndex={0}
-              on={form.dragOver}
-              onDragOver={(event) => {
-                event.preventDefault()
-                form.setDragOver(true)
-              }}
-              onDragLeave={() => form.setDragOver(false)}
-              onDrop={form.handleDrop}
-              onClick={() => form.fileInputRef.current?.click()}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  form.fileInputRef.current?.click()
-                }
-              }}
-            >
-              <input
-                ref={form.fileInputRef}
-                type="file"
-                accept=".opml,.xml"
-                onChange={form.handleFileSelect}
-                className="brew-bar__file"
-                title={t.selectOpmlFile}
-              />
-              <FolderOpen />
-              <p>{t.dropOpmlHere}</p>
-              <small>{t.supportedFormats}</small>
-            </SheetDrop>
+          <SettingsButton
+            type="submit"
+            variant="primary"
+            size="sm"
+            block
+            loading={form.loading}
+            disabled={form.loading || !form.canSubmit}
+          >
+            {submitLabel}
+          </SettingsButton>
+        </form>
+      ) : (
+        <div className="brew-add-form__stack">
+          <button
+            type="button"
+            className={`brew-add-form__drop${form.dragOver ? ' is-on' : ''}`}
+            onDragOver={(event) => {
+              event.preventDefault()
+              form.setDragOver(true)
+            }}
+            onDragLeave={() => form.setDragOver(false)}
+            onDrop={form.handleDrop}
+            onClick={() => form.fileInputRef.current?.click()}
+          >
+            <input
+              ref={form.fileInputRef}
+              type="file"
+              accept=".opml,.xml"
+              onChange={form.handleFileSelect}
+              className="brew-add-form__file"
+              title={t.selectOpmlFile}
+            />
+            <FolderOpen />
+            <p>{t.dropOpmlHere}</p>
+            <small>{t.supportedFormats}</small>
+          </button>
 
+          <div className="brew-add-form__actions">
             {form.opmlContent ? (
-              <SheetSubmit
-                type="button"
-                onClick={form.handleImport}
+              <SettingsButton
+                variant="primary"
+                size="sm"
+                block
+                icon={<Upload />}
+                loading={form.opmlLoading}
                 disabled={form.opmlLoading}
+                onClick={form.handleImport}
               >
-                {form.opmlLoading ? (
-                  <Spinner size="xs" color="current" />
-                ) : (
-                  <Upload />
-                )}
                 {t.startImport}
-              </SheetSubmit>
+              </SettingsButton>
             ) : null}
-
-            <SheetGhost
-              onClick={form.handleExport}
+            <SettingsButton
+              size="sm"
+              block
+              icon={<Download />}
+              loading={form.exporting}
               disabled={form.exporting || sourcesCount === 0}
+              onClick={form.handleExport}
             >
-              {form.exporting ? (
-                <Spinner size="xs" color="current" />
-              ) : (
-                <Download />
-              )}
               {format(t.exportOpml, { count: sourcesCount })}
-            </SheetGhost>
+            </SettingsButton>
+          </div>
 
-            {form.opmlResult ? (
-              <SheetNotice tone="ok">
-                <Check />
-                {format(t.importResult, {
-                  imported: form.opmlResult.imported,
-                  skipped:
-                    form.opmlResult.skipped > 0
-                      ? format(t.skippedCount, {
-                          count: form.opmlResult.skipped,
-                        })
-                      : '',
-                })}
-              </SheetNotice>
-            ) : null}
-
-            {form.error ? (
-              <SheetNotice tone="bad">
-                <AlertCircle />
-                {form.error}
-              </SheetNotice>
-            ) : null}
-          </SheetStack>
-        )}
-      </SheetBody>
-
-      <SheetFoot>
-        <SheetTab
-          on={form.tab === 'single'}
-          onClick={() => form.setTab('single')}
-        >
-          <Link />
-          {t.singleAdd}
-        </SheetTab>
-        <SheetTab on={form.tab === 'opml'} onClick={() => form.setTab('opml')}>
-          <FileText />
-          OPML
-        </SheetTab>
-      </SheetFoot>
-    </Sheet>
+          {form.opmlResult ? (
+            <SettingTitleTag icon={<Check />}>
+              {format(t.importResult, {
+                imported: form.opmlResult.imported,
+                skipped:
+                  form.opmlResult.skipped > 0
+                    ? format(t.skippedCount, {
+                        count: form.opmlResult.skipped,
+                      })
+                    : '',
+              })}
+            </SettingTitleTag>
+          ) : null}
+          {form.error ? (
+            <SettingTitleTag variant="danger">{form.error}</SettingTitleTag>
+          ) : null}
+        </div>
+      )}
+    </div>
   )
 }

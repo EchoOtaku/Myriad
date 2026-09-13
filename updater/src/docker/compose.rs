@@ -293,8 +293,8 @@ impl ComposeRunner {
         starting: bool,
     ) -> Result<Vec<&'a str>> {
         let mut services = requested.to_vec();
-        if requested.contains(&"backend") && !requested.contains(&"federation-worker") {
-            if let Some(image) = self.federation_worker_image().await? {
+        if requested.contains(&"backend") && !requested.contains(&"federation-worker")
+            && let Some(image) = self.federation_worker_image().await? {
                 let supported = !starting
                     || super::DockerClient::connect()
                         .await?
@@ -304,9 +304,8 @@ impl ComposeRunner {
                     services.insert(0, "federation-worker");
                 }
             }
-        }
-        if requested.contains(&"backend") && !requested.contains(&"persona-worker") {
-            if let Some(image) = self.persona_worker_image().await? {
+        if requested.contains(&"backend") && !requested.contains(&"persona-worker")
+            && let Some(image) = self.persona_worker_image().await? {
                 let supported = !starting
                     || super::DockerClient::connect()
                         .await?
@@ -316,7 +315,6 @@ impl ComposeRunner {
                     services.insert(0, "persona-worker");
                 }
             }
-        }
         Ok(services)
     }
 

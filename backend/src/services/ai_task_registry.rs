@@ -218,7 +218,7 @@ pub async fn persist_ai_task(db: &DatabaseConnection, task: &PersistedAiTask) ->
 
 #[cfg(test)]
 mod tests {
-    use super::{task_id_for_request, AiTaskStatus};
+    use super::{AiTaskStatus, task_id_for_request};
 
     #[test]
     fn task_id_without_idempotency_is_random_prefix() {

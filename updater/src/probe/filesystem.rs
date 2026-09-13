@@ -71,11 +71,9 @@ pub async fn probe_pgdata(path: &Path, state_dir: &Path) -> PgdataProbe {
         .stderr(Stdio::null())
         .output()
         .await
-    {
-        if o.status.success() {
+        && o.status.success() {
             out.fs_type = Some(String::from_utf8_lossy(&o.stdout).trim().to_string());
         }
-    }
 
     // Device id for cross-device detection.
     let dev_pgdata = device_id(path).ok();
@@ -95,13 +93,10 @@ pub async fn probe_pgdata(path: &Path, state_dir: &Path) -> PgdataProbe {
             .output(),
     )
     .await
-    {
-        if o.status.success() {
-            if let Some(first) = String::from_utf8_lossy(&o.stdout).split_whitespace().next() {
+        && o.status.success()
+            && let Some(first) = String::from_utf8_lossy(&o.stdout).split_whitespace().next() {
                 out.size_bytes = first.parse().ok();
             }
-        }
-    }
 
     // Free space on the fs containing pgdata, via statvfs.
     if let Ok(stat) = nix::sys::statvfs::statvfs(path) {
@@ -161,7 +156,7 @@ pub async fn probe_env_file(path: &Path) -> EnvFileProbe {
                 known_required_present: vec![],
                 known_required_missing: vec![],
                 error: Some(format!("read: {e}")),
-            }
+            };
         }
     };
 

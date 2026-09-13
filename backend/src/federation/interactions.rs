@@ -4,7 +4,7 @@
 //! Storage: `federation_object_interactions` (local user actions).
 //! Counts combine local interactions with remote Like/Announce activities.
 
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use myriad_error::AppError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
@@ -1815,16 +1815,20 @@ mod tests {
         let slim = slim_quoted_object(&mid);
         assert_eq!(slim["id"], "https://ex.com/notes/mid");
         assert_eq!(slim["mfp:kind"], "repost");
-        assert!(slim["content_preview"]
-            .as_str()
-            .unwrap_or("")
-            .contains("bob"));
+        assert!(
+            slim["content_preview"]
+                .as_str()
+                .unwrap_or("")
+                .contains("bob")
+        );
         let nested = &slim["mfp:quotedObject"];
         assert_eq!(nested["id"], "https://ex.com/notes/root");
-        assert!(nested["content_preview"]
-            .as_str()
-            .unwrap_or("")
-            .contains("original"));
+        assert!(
+            nested["content_preview"]
+                .as_str()
+                .unwrap_or("")
+                .contains("original")
+        );
         assert_eq!(
             root_quoted_object_id(Some(&mid), "fallback"),
             "https://ex.com/notes/root"

@@ -5,10 +5,10 @@
 //! Tapp notifications enter the shared `NotificationManager`; clients consume
 //! the same events for toast / island / system surfaces.
 
-use axum::{extract::State, http::StatusCode, Extension, Json};
+use axum::{Extension, Json, extract::State, http::StatusCode};
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::error::HttpError;
 use crate::middleware::auth::Claims;

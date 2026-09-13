@@ -3,8 +3,8 @@
 //! Same host / `x-goog-api-key` / proxy as the text analyzer. Not the
 //! OpenAI `/images` or `/audio` routes.
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use serde_json::{json, Value};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use serde_json::{Value, json};
 
 use crate::services::http_client::get_long_running_client;
 use crate::services::image_generation::{

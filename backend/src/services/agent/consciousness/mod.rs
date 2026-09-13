@@ -25,29 +25,29 @@ pub(crate) fn semantic_probe_contract(soul: &str, kind: &str) -> (String, serde_
     )
 }
 
-pub use attention::{last_attention, next_attention_segment, touch_attention, AttentionSegment};
+pub use attention::{AttentionSegment, last_attention, next_attention_segment, touch_attention};
 pub use dispatch::{
-    autonomy_cap_from_grant, autonomy_claim_decision, build_autonomy_work_request, AutonomyClaim,
+    AutonomyClaim, autonomy_cap_from_grant, autonomy_claim_decision, build_autonomy_work_request,
 };
 pub use engine::{
-    consider_event, forbids_propose_work, is_work_outcome, pre_gate, ConsciousnessGate,
-    Consideration,
+    ConsciousnessGate, Consideration, consider_event, forbids_propose_work, is_work_outcome,
+    pre_gate,
 };
 pub use grant::{
-    autonomy_cap_still_allows, autonomy_execute_permission_error, effective_granted_permissions,
-    evaluate_autonomy_grant, intention_may_enter_work, prepare_personal_grant,
-    required_permissions_within_cap, revoke_personal_grant, skips_user_review, AutonomyGrantView,
-    AutonomyGrantWriteError, AutonomyVerdict,
+    AutonomyGrantView, AutonomyGrantWriteError, AutonomyVerdict, autonomy_cap_still_allows,
+    autonomy_execute_permission_error, effective_granted_permissions, evaluate_autonomy_grant,
+    intention_may_enter_work, prepare_personal_grant, required_permissions_within_cap,
+    revoke_personal_grant, skips_user_review,
 };
 pub use grant_store::AutonomyGrantStore;
-pub use policy::{validate_decision, DecisionPolicyError};
+pub use policy::{DecisionPolicyError, validate_decision};
 pub use presence::{
     last_live_presence, live_presence_from_custom_data, live_presence_from_request,
     live_presence_panel_open, remember_live_presence,
 };
 pub use snapshot::capture_self_snapshot;
 pub use speak_intent::{
-    drain_speak_intents, enqueue_speak_intent, new_speak_intent, SpeakIntent, SPEAK_INTENT_TTL_SECS,
+    SPEAK_INTENT_TTL_SECS, SpeakIntent, drain_speak_intents, enqueue_speak_intent, new_speak_intent,
 };
 pub use store::IntentStore;
 pub use types::{

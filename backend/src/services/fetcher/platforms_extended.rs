@@ -1,6 +1,6 @@
 // Extended platform fetch implementations (Discord, MAL, Xbox, PSN, YouTube, …).
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 use super::types::*;
 use super::x_share::urlencoding_lite;

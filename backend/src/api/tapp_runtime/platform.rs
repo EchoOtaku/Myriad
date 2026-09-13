@@ -4,20 +4,20 @@
 //! Cache read/write/lock: [`crate::services::platform_cache`].
 
 use axum::{
+    Extension, Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Extension, Json,
 };
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 use crate::error::HttpError;
 use crate::middleware::auth::Claims;
 use crate::services::permission_service::TappPermission;
 use crate::services::platform_cache::{
-    append_filtered_items, build_tapp_written_item, PlatformCacheError,
+    PlatformCacheError, append_filtered_items, build_tapp_written_item,
 };
 use crate::services::platform_items::extract_platform_items;
 

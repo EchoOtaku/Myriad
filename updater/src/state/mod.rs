@@ -181,11 +181,9 @@ impl StateDir {
             if let Some(id) = name
                 .strip_prefix("job.")
                 .and_then(|s| s.strip_suffix(".json"))
-            {
-                if id != "current" {
+                && id != "current" {
                     out.push(id.to_string());
                 }
-            }
         }
         Ok(out)
     }

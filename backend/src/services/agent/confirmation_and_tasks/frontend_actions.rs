@@ -1,6 +1,6 @@
 // Work result assembly: final result and frontend actions.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::super::agent_header::*;
 use super::super::response_agent;

@@ -3,21 +3,22 @@
 use crate::services::agent::ai_process_pure::USER_TEXT_MAX_CHARS;
 use crate::services::agent::capability::get_registry;
 use crate::services::agent::executor_utils_pure::{
-    category_timeout_fallback_secs, step_timeout_secs, SKILL_SUB_STEP_MIN_SECS,
+    SKILL_SUB_STEP_MIN_SECS, category_timeout_fallback_secs, step_timeout_secs,
 };
 use crate::services::agent::external_pure::classify_outbound_fetch;
 use crate::services::agent::types::{self, *};
 use myriad_agent_rules::{
+    MAX_PLAN_STEPS, PLAN_DATA_FLOW_RULE, PLAN_DEPENDENCY_RULE,
     extract_json_object_from_ai_response, plan_image_size_rule, plan_step_cap_rule,
-    untrusted_block, MAX_PLAN_STEPS, PLAN_DATA_FLOW_RULE, PLAN_DEPENDENCY_RULE,
+    untrusted_block,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
+use super::Executor;
 use super::executor_footer::*;
 use super::handlers::HandlerContext;
 use super::utils;
-use super::Executor;
 use super::{take_steering, truncate_str};
 
 impl Executor {
@@ -1272,12 +1273,10 @@ mod output_contract_tests {
         let id = step("ai.summarize");
         assert!(Executor::apply_output_contract(&id, &cap, &json!({ "summary": "ok" })).is_ok());
         assert!(Executor::apply_output_contract(&id, &cap, &json!({ "summary": 42 })).is_err());
-        assert!(Executor::apply_output_contract(
-            &id,
-            &cap,
-            &json!({ "message": "no declared field" })
-        )
-        .is_ok());
+        assert!(
+            Executor::apply_output_contract(&id, &cap, &json!({ "message": "no declared field" }))
+                .is_ok()
+        );
         assert!(Executor::apply_output_contract(&id, &cap, &json!({})).is_ok());
         assert!(Executor::apply_output_contract(&id, &cap, &json!("not an object")).is_err());
     }
@@ -1333,12 +1332,14 @@ mod output_contract_tests {
 
     #[test]
     fn mcp_tools_are_exempt_from_the_contract() {
-        assert!(Executor::apply_output_contract(
-            &step("mcp.docs.lookup"),
-            &capability("mcp.docs.lookup", json!({ "type": "string" })),
-            &json!({ "content": [{ "type": "text" }] }),
-        )
-        .is_ok());
+        assert!(
+            Executor::apply_output_contract(
+                &step("mcp.docs.lookup"),
+                &capability("mcp.docs.lookup", json!({ "type": "string" })),
+                &json!({ "content": [{ "type": "text" }] }),
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -1442,11 +1443,13 @@ mod output_contract_tests {
 
     #[test]
     fn capabilities_without_a_declared_schema_are_unconstrained() {
-        assert!(Executor::apply_output_contract(
-            &step("router.navigate"),
-            &capability("router.navigate", json!({})),
-            &json!({ "whatever": true }),
-        )
-        .is_ok());
+        assert!(
+            Executor::apply_output_contract(
+                &step("router.navigate"),
+                &capability("router.navigate", json!({})),
+                &json!({ "whatever": true }),
+            )
+            .is_ok()
+        );
     }
 }

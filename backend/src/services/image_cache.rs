@@ -432,15 +432,21 @@ mod tests {
         let hash = "a".repeat(64);
         let ok = format!("https://example.com/api/brew/image-cache/aa/{hash}.png");
         assert!(service.local_path_for_public_url(&ok).is_some());
-        assert!(service
-            .local_path_for_public_url("https://evil.example/secret.png")
-            .is_none());
-        assert!(service
-            .local_path_for_public_url(&format!("/api/brew/image-cache/ab/{hash}.png"))
-            .is_none());
-        assert!(service
-            .local_path_for_public_url("/api/brew/image-cache/aa/../passwd.png")
-            .is_none());
+        assert!(
+            service
+                .local_path_for_public_url("https://evil.example/secret.png")
+                .is_none()
+        );
+        assert!(
+            service
+                .local_path_for_public_url(&format!("/api/brew/image-cache/ab/{hash}.png"))
+                .is_none()
+        );
+        assert!(
+            service
+                .local_path_for_public_url("/api/brew/image-cache/aa/../passwd.png")
+                .is_none()
+        );
     }
 
     #[test]

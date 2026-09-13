@@ -9,17 +9,17 @@ use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, Utc};
 use myriad_agent_rules::channel::{
-    channel_can_finish, clarify_base_input, clarify_followup, collect_channel_image_urls,
-    decide_pending_reply, discord_dm_capabilities, discord_reply_markup, ensure_pending_id,
-    feishu_dm_capabilities, feishu_reply_markup, format_channel_result, format_pending_prompt,
-    panel_entry_reply, parse_channel_command, pending_prompt_from_model_json, plan_delivery,
-    qq_c2c_capabilities, should_deliver_sequence, split_channel_text, task_started_reply,
-    telegram_callback_action, telegram_dm_capabilities, telegram_force_reply_markup,
-    telegram_reply_markup, ChannelCommand, ChannelEvent, ChannelImageRef, DeliveryContext,
-    DeliveryPlan, PendingDecision, PendingKind, PendingOption, PendingPrompt,
-    TelegramCallbackAction, CHANNEL_HELP_REPLY, CHANNEL_IMAGE_LIMIT, CHANNEL_NEW_SESSION_REPLY,
-    CHANNEL_STOP_REPLY, DISCORD_TEXT_LIMIT, FEISHU_TEXT_LIMIT, PANEL_REQUIRED_REPLY,
-    PENDING_STALE_REPLY, QQ_TEXT_LIMIT, TELEGRAM_TEXT_LIMIT,
+    CHANNEL_HELP_REPLY, CHANNEL_IMAGE_LIMIT, CHANNEL_NEW_SESSION_REPLY, CHANNEL_STOP_REPLY,
+    ChannelCommand, ChannelEvent, ChannelImageRef, DISCORD_TEXT_LIMIT, DeliveryContext,
+    DeliveryPlan, FEISHU_TEXT_LIMIT, PANEL_REQUIRED_REPLY, PENDING_STALE_REPLY, PendingDecision,
+    PendingKind, PendingOption, PendingPrompt, QQ_TEXT_LIMIT, TELEGRAM_TEXT_LIMIT,
+    TelegramCallbackAction, channel_can_finish, clarify_base_input, clarify_followup,
+    collect_channel_image_urls, decide_pending_reply, discord_dm_capabilities,
+    discord_reply_markup, ensure_pending_id, feishu_dm_capabilities, feishu_reply_markup,
+    format_channel_result, format_pending_prompt, panel_entry_reply, parse_channel_command,
+    pending_prompt_from_model_json, plan_delivery, qq_c2c_capabilities, should_deliver_sequence,
+    split_channel_text, task_started_reply, telegram_callback_action, telegram_dm_capabilities,
+    telegram_force_reply_markup, telegram_reply_markup,
 };
 use myriad_agent_rules::{is_cancellable_task_status, session_id_from_lane_id};
 use once_cell::sync::Lazy;
@@ -32,7 +32,7 @@ use tokio::sync::Mutex;
 use tracing::{info, warn};
 
 use crate::api::agent::{ProcessContext, ProcessRequest};
-use crate::middleware::auth::{mint_session_claims, Claims};
+use crate::middleware::auth::{Claims, mint_session_claims};
 use crate::services::agent::run_hub::AgentRun;
 use crate::services::agent::{Agent, AgentInteractionMode, AgentProgressEvent};
 use crate::services::tapp_registry::{self as shared_registry, RegistryIdentity};
@@ -66,8 +66,8 @@ struct StoredPending {
 
 mod transport;
 use crate::services::channel_pairing::ChannelBinding;
-use transport::cache_inbound_images;
 pub use transport::ChannelTransport;
+use transport::cache_inbound_images;
 
 #[derive(Clone)]
 struct ChannelSink {

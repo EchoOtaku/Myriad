@@ -9,11 +9,11 @@ use crate::models::entities::{tapp_storage, tapps};
 use myriad_tapp_contract::contract_rules::MAX_CREDENTIAL_VALUE_LEN;
 use myriad_tapp_contract::manifest::{TappApiDef, TappApiRoute, TappCredentialDef};
 use sea_orm::{
-    prelude::DateTimeWithTimeZone, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseConnection, EntityTrait, FromQueryResult, QueryFilter, Statement,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait,
+    FromQueryResult, QueryFilter, Statement, prelude::DateTimeWithTimeZone,
 };
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -677,9 +677,11 @@ mod tests {
         let outbound_fp = credential_binding_fingerprint(&outbound, "wegame").unwrap();
         let inbound_fp = credential_binding_fingerprint(&inbound_only, "wegame").unwrap();
         assert_ne!(outbound_fp, inbound_fp);
-        assert!(credential_binding_origins(&inbound_only, "wegame")
-            .unwrap()
-            .is_empty());
+        assert!(
+            credential_binding_origins(&inbound_only, "wegame")
+                .unwrap()
+                .is_empty()
+        );
         let summaries = credential_binding_summaries(&inbound_only, "wegame").unwrap();
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].placement, "verify");

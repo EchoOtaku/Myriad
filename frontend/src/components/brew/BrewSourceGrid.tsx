@@ -5,15 +5,19 @@ import type {
   UpdateSourceRequest,
 } from '../../types/brew'
 import type { BrewBoard, SourceSortMode } from './logic/board'
+import { refreshableSourceCount } from './logic/board'
 
-import { LuSearch as Search } from '@lib/icons'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useId, useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { roleFromAuth } from './logic/score'
 import BrewControls from './manager/BrewControls'
+import { BrewSourceTitleTags } from './manager/BrewSourceTitleTags'
+import { useBrewpack } from './manager/useBrewpack'
 import BrewBoardView from './skin/BrewBoard'
 import { BrewViewLane } from './skin/BrewChip'
-import { BrewEmpty, BrewEmptyHint } from './ui/Empty'
+import { BrewVacant } from './ui/Empty'
+import { BrewPageStage } from './ui/BrewPageStage'
+import { BrewRailTitle } from './ui/BrewRailTitle'
 import { useBoardEdit } from './useBoardEdit'
 import {
   useBoardCatalog,
@@ -49,7 +53,6 @@ interface BrewSourceGridProps {
   onPeekItem?: (item: BrewItemPreview) => void
   onPeekEnd?: () => void
   onToggleStar?: (item: BrewItemPreview) => void
-  onOpenStarred?: () => void
   onWriteNote?: () => void
   onMarkAllRead?: () => void
   isAuthenticated?: boolean
@@ -74,7 +77,6 @@ export default function BrewSourceGrid({
   onPeekItem,
   onPeekEnd,
   onToggleStar,
-  onOpenStarred,
   onWriteNote,
   onMarkAllRead,
   isAuthenticated = false,
@@ -82,6 +84,7 @@ export default function BrewSourceGrid({
   onBoardSurface,
 }: BrewSourceGridProps) {
   const { t } = useI18n()
+  const titleId = useId()
   const viewerRole = roleFromAuth(isAuthenticated, isAdmin)
   const [searchQuery, setSearchQuery] = useState('')
   const [sortMode, setSortMode] = useState<SourceSortMode>('smart')
@@ -118,51 +121,65 @@ export default function BrewSourceGrid({
   const handleReadySource = useCallback((id: number | null) => {
     setReadySourceId(id)
   }, [])
+  const pack = useBrewpack(sources, onSourcesChange)
 
-  const bar = (
-    <BrewControls
-      ref={edit.barRef}
-      sources={sources}
-      filteredSources={sorted}
-      categories={categories}
-      searchQuery={searchQuery}
-      setSearchQuery={setSearchQuery}
-      selectedIds={edit.selectedIds}
-      onSelectAll={edit.handleSelectAll}
-      onBatchDelete={edit.handleBatchDelete}
-      onBatchRefresh={edit.handleBatchRefresh}
-      onMarkAllSourcesRead={onMarkAllRead}
-      onEnterEditMode={edit.handleEnterEditMode}
-      onExitEditMode={edit.handleExitEditMode}
-      onWaveDisplayed={edit.handleWaveDisplayed}
-      isEditMode={edit.isEditMode}
-      isDeleting={edit.isDeleting}
-      isRefreshing={edit.isRefreshing}
-      onAddSource={onAddSource}
-      onUpdateSource={onUpdateSource}
-      onDiscover={onDiscoverSource}
-      onGenerateStyleTags={onGenerateStyleTags}
-      onImportOpml={onImportOpml}
-      onSourcesChange={onSourcesChange}
+  const bar =
+    board === 'feeds' ? (
+      <BrewControls
+        sources={sources}
+        filteredSources={sorted}
+        categories={categories}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        onAddSource={onAddSource}
+        onDiscover={onDiscoverSource}
+        onImportOpml={onImportOpml}
+        onSourcesChange={onSourcesChange}
+        isAdmin={isAdmin}
+        embedded
+      />
+    ) : null
+
+  const sourceTags = (
+    <BrewSourceTitleTags
+      kind={board === 'feeds' ? 'feeds' : 'salon'}
       sortMode={sortMode}
       onSortModeChange={handleSortModeChange}
       isAdmin={isAdmin}
       isAuthenticated={isAuthenticated}
-      onOpenStarred={onOpenStarred}
-      onWriteNote={board === 'notes' ? onWriteNote : undefined}
-      embedded={board === 'feeds'}
       canEdit={board !== 'feeds' || edit.sitesOpen}
+      editing={edit.isEditMode}
+      selectedIds={edit.selectedIds}
+      sources={sorted}
+      categories={categories}
+      refreshableCount={refreshableSourceCount(sorted)}
+      isDeleting={edit.isDeleting}
+      isRefreshing={edit.isRefreshing}
+      onEnterEdit={edit.handleEnterEditMode}
+      onExitEdit={edit.handleExitEditMode}
+      onSelectAll={edit.handleSelectAll}
+      onBatchDelete={edit.handleBatchDelete}
+      onBatchRefresh={edit.handleBatchRefresh}
+      onMarkAllRead={onMarkAllRead}
+      onWriteNote={board === 'notes' ? onWriteNote : undefined}
+      onUpdateSource={onUpdateSource}
+      onGenerateStyleTags={onGenerateStyleTags}
+      sourceEditTick={edit.sourceEditTick}
+      importExportLoading={board === 'feeds' ? pack.loading : false}
+      importProgress={board === 'feeds' ? pack.progress : undefined}
+      onBrewExport={board === 'feeds' ? pack.exportPack : undefined}
+      onBrewImportFile={board === 'feeds' ? pack.importFile : undefined}
+      brewExportInputRef={board === 'feeds' ? pack.inputRef : undefined}
     />
   )
 
   const searchMiss = filtered.length === 0 && !!searchQuery.trim()
   const miss = useMemo(
     () => (
-      <BrewEmpty cardKey="search-empty">
-        <Search className="brew-empty__mark" aria-hidden />
-        <p>{t.brew.noMatchingSources}</p>
-        <BrewEmptyHint>{t.brew.tryOtherKeywords}</BrewEmptyHint>
-      </BrewEmpty>
+      <BrewVacant
+        title={t.brew.noMatchingSources}
+        hint={t.brew.tryOtherKeywords}
+      />
     ),
     [t.brew.noMatchingSources, t.brew.tryOtherKeywords],
   )
@@ -180,15 +197,14 @@ export default function BrewSourceGrid({
       onPeekItem={onPeekItem}
       onPeekEnd={onPeekEnd}
       onToggleStar={board === 'feeds' ? onStar : onToggleStar}
-      onEditSource={
-        board === 'feeds' && isAdmin ? edit.handleOpenSourceEdit : undefined
-      }
+      onEditSource={isAdmin ? edit.handleOpenSourceEdit : undefined}
       onWriteNote={onWriteNote}
       onSitesOpenChange={board === 'feeds' ? edit.setSitesOpen : undefined}
-      toolbar={board === 'feeds' ? bar : undefined}
+      toolbar={bar}
       vacant={board === 'feeds' && searchMiss ? miss : null}
       stories={board === 'feeds' ? stories : undefined}
       onReadySource={board === 'feeds' ? handleReadySource : undefined}
+      sourceTags={board === 'feeds' ? sourceTags : undefined}
       notes={notes}
     />
   )
@@ -199,13 +215,18 @@ export default function BrewSourceGrid({
       onDisplayed={(next) => onBoardSurface?.(next as BrewBoard)}
       className="relative min-h-0 flex-1 overflow-visible"
     >
-      {board !== 'feeds' ? bar : null}
       {board === 'feeds' ? (
         <div className="flex min-h-0 flex-1 flex-col">{boardView}</div>
-      ) : searchMiss ? (
-        miss
       ) : (
-        boardView
+        <BrewPageStage
+          title={
+            <BrewRailTitle id={titleId} action={sourceTags}>
+              {board === 'notes' ? t.brew.boardNotes : t.brew.boardSites}
+            </BrewRailTitle>
+          }
+        >
+          {boardView}
+        </BrewPageStage>
       )}
     </BrewViewLane>
   )

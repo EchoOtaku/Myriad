@@ -5,12 +5,12 @@
 
 use crate::services::data_paths::paths;
 use crate::services::speech_runtime::{
-    configured_provider, synthesize_openai_tts, SpeechProviderKind,
+    SpeechProviderKind, configured_provider, synthesize_openai_tts,
 };
 use crate::services::tencent_speech_service::{
     TencentSpeechError, TencentSpeechService, TtsRequest,
 };
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
@@ -140,8 +140,9 @@ async fn find_any_tts(text_hash: &str, codec: &str) -> Option<String> {
         let file_name_str = file_name.to_string_lossy();
 
         if file_name_str.ends_with(&format!(".{codec}")) {
-            if let Some(audio) = read_tts_file(&entry.path()).await {
-                tracing::info!("Standalone TTS any-voice match: {}", entry.path().display());
+            let path = entry.path();
+            if let Some(audio) = read_tts_file(&path).await {
+                tracing::info!("Standalone TTS any-voice match: {}", path.display());
                 return Some(audio);
             }
         }

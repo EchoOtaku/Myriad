@@ -249,18 +249,22 @@ mod tests {
         fs::create_dir_all(data_paths.tapps.join("not-an-owner")).unwrap();
 
         verify_storage_layout_writable(&data_paths).unwrap();
-        assert!(fs::read_dir(&data_paths.root).unwrap().all(|entry| !entry
-            .unwrap()
-            .file_name()
-            .to_string_lossy()
-            .contains("write-probe")));
-        assert!(fs::read_dir(data_paths.tapps.join("1"))
-            .unwrap()
-            .all(|entry| !entry
+        assert!(fs::read_dir(&data_paths.root).unwrap().all(|entry| {
+            !entry
                 .unwrap()
                 .file_name()
                 .to_string_lossy()
-                .contains("write-probe")));
+                .contains("write-probe")
+        }));
+        assert!(
+            fs::read_dir(data_paths.tapps.join("1"))
+                .unwrap()
+                .all(|entry| !entry
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .contains("write-probe"))
+        );
 
         fs::remove_dir_all(base).unwrap();
     }

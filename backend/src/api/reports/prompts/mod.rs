@@ -259,9 +259,11 @@ mod tests {
         assert!(voice_for("github").look.contains("calendar_active_days"));
         assert!(voice_for("netease").look.contains("no time-of-day"));
         assert!(voice_for("netease").look.contains("artist_count"));
-        assert!(voice_for("netease")
-            .look
-            .contains("artist_analysis.region_distribution"));
+        assert!(
+            voice_for("netease")
+                .look
+                .contains("artist_analysis.region_distribution")
+        );
         assert!(!voice_for("netease").look.contains("is_vip"));
         assert!(!voice_for("netease").look.contains("fee"));
         assert!(voice_for("x").look.contains("following_sample"));
@@ -281,9 +283,11 @@ mod tests {
         assert!(voice_for("xbox").look.contains("achievement_games"));
         assert!(voice_for("xbox").look.contains("last_played"));
         assert!(voice_for("bangumi").look.contains("watching_subjects"));
-        assert!(voice_for("bangumi")
-            .look
-            .contains("subject_type_distribution"));
+        assert!(
+            voice_for("bangumi")
+                .look
+                .contains("subject_type_distribution")
+        );
         assert!(voice_for("bangumi").look.contains("recent_updates"));
         assert!(voice_for("mal").look.contains("days_watched"));
         assert!(voice_for("mal").look.contains("subject_type_distribution"));

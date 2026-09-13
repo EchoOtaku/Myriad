@@ -18,14 +18,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use axum::Router;
 use axum::body::Body;
 use axum::extract::{ConnectInfo, Request, State};
-use axum::http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode, Uri};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, Uri, header};
 use axum::response::{Html, IntoResponse, Json, Response};
 use axum::routing::any;
-use axum::Router;
 use chrono::{DateTime, Utc};
-use hyper_util::client::legacy::{connect::HttpConnector, Client};
+use hyper_util::client::legacy::{Client, connect::HttpConnector};
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use ipnet::IpNet;
 use serde::Deserialize;
@@ -636,7 +636,10 @@ async fn forward_websocket(
         };
         let mut upstream_io = TokioIo::new(upstream_io);
         let mut client_io = TokioIo::new(client_io);
-        if let Err(err) = tokio::io::copy_bidirectional(&mut client_io, &mut upstream_io).await {
+        // Bind the copy result so `_permit` outlives the bridge future
+        // (2024 drops tail temps before locals; 2021 dropped them last).
+        let copied = tokio::io::copy_bidirectional(&mut client_io, &mut upstream_io).await;
+        if let Err(err) = copied {
             // Normal on abrupt disconnects; keep at debug level.
             tracing::debug!(error = %err, "websocket bridge closed with error");
         }
@@ -1172,10 +1175,10 @@ fn upstream_request_host_for_peer(headers: &HeaderMap, trusted_peer: bool) -> Op
 async fn read_maintenance_cached(state: &AppState) -> MaintenanceFile {
     {
         let cache = state.maint_cache.read().await;
-        if let Some(loaded_at) = cache.loaded_at {
-            if loaded_at.elapsed() < MAINT_CACHE_TTL {
-                return cache.value.clone();
-            }
+        if let Some(loaded_at) = cache.loaded_at
+            && loaded_at.elapsed() < MAINT_CACHE_TTL
+        {
+            return cache.value.clone();
         }
     }
 
@@ -1531,9 +1534,11 @@ mod tests {
             while !request.ends_with(b"\r\n\r\n") {
                 request.push(socket.read_u8().await.unwrap());
             }
-            assert!(String::from_utf8_lossy(&request)
-                .to_ascii_lowercase()
-                .contains("upgrade: websocket"));
+            assert!(
+                String::from_utf8_lossy(&request)
+                    .to_ascii_lowercase()
+                    .contains("upgrade: websocket")
+            );
             socket.write_all(b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n").await.unwrap();
             let mut frame = [0; 8];
             socket.read_exact(&mut frame).await.unwrap();

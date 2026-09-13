@@ -4,8 +4,8 @@
 
 use chrono::{Duration as ChronoDuration, Utc};
 use myriad_agent_rules::channel::{
-    encode_pairing_code, extract_pairing_code, format_pairing_code, PairingBindResult,
-    PairingLookup,
+    PairingBindResult, PairingLookup, encode_pairing_code, extract_pairing_code,
+    format_pairing_code,
 };
 use rand::Rng;
 use sea_orm::{
@@ -565,4 +565,4 @@ mod tests {
 }
 
 mod binding;
-pub(crate) use binding::{credential_scope, provider_for_platform, ChannelBinding};
+pub(crate) use binding::{ChannelBinding, credential_scope, provider_for_platform};

@@ -8,9 +8,9 @@ use super::handlers::{self, HandlerContext};
 use super::task_store::is_cancelled;
 
 #[cfg(test)]
-use super::task_store;
-#[cfg(test)]
 use super::Executor;
+#[cfg(test)]
+use super::task_store;
 #[cfg(test)]
 use serde_json::json;
 

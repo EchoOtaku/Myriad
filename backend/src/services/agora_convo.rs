@@ -1,17 +1,17 @@
 //! Shengwang / Agora Conversational AI Engine (join / leave / interrupt).
 
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
-use super::agora_rtc_token::{build_rtc_rtm_token_now, AgoraTokenError};
-use super::http_client::{apply_proxy, ProxyConfig};
-use super::minimax_speech::{is_minimax_vendor, DEFAULT_MINIMAX_TTS_MODEL, DEFAULT_MINIMAX_VOICE};
-use crate::config::DynamicConfig;
+use super::agora_rtc_token::{AgoraTokenError, build_rtc_rtm_token_now};
+use super::http_client::{ProxyConfig, apply_proxy};
+use super::minimax_speech::{DEFAULT_MINIMAX_TTS_MODEL, DEFAULT_MINIMAX_VOICE, is_minimax_vendor};
 use crate::GLOBAL_DYNAMIC_CONFIG;
+use crate::config::DynamicConfig;
 
 pub const DEFAULT_AGORA_API_BASE: &str = "https://api.agora.io/cn";
 const TOKEN_TTL_SECS: u32 = 3600;

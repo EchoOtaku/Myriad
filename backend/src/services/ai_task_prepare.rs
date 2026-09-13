@@ -3,7 +3,7 @@
 //! HTTP handlers map [`AiTaskLogicError`] to Axum responses; provider execution
 //! and registry state stay elsewhere.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::services::agent::ai_process_pure::{IMAGE_PROMPT_MAX_CHARS, USER_TEXT_MAX_CHARS};
 use crate::services::json_schema_subset::validate_inline_json_value;
@@ -230,7 +230,7 @@ pub fn normalize_text_result(
             return Err(AiTaskLogicError::new(
                 "AI_INVALID_STRUCTURED_OUTPUT",
                 "text task cannot use image output",
-            ))
+            ));
         }
     };
     if let Some(schema) = schema {
@@ -252,8 +252,8 @@ pub fn normalize_text_result(
 #[cfg(test)]
 mod tests {
     use super::{
-        assemble_task_prompt, build_operation_prompt, normalize_text_result,
-        permission_for_operation, validate_idempotency_key, IMAGE_PROMPT_MAX_CHARS,
+        IMAGE_PROMPT_MAX_CHARS, assemble_task_prompt, build_operation_prompt,
+        normalize_text_result, permission_for_operation, validate_idempotency_key,
     };
     use crate::services::permission_service::TappPermission;
     use myriad_tapp_contract::manifest::{TappAiOperation, TappAiOutputFormat};

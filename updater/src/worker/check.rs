@@ -8,11 +8,11 @@ use tracing::{info, warn};
 use crate::config::Channel;
 use crate::error::{Result, UpdaterError};
 use crate::release::{
-    commit_upgrade_direction_ex, is_cross_kind_deploy, pushed_at_for_tag,
-    select_dev_channel_tip_for, DockerBuild, GithubClient, Manifest,
+    DockerBuild, GithubClient, Manifest, commit_upgrade_direction_ex, is_cross_kind_deploy,
+    pushed_at_for_tag, select_dev_channel_tip_for,
 };
 use crate::state::LatestAvailable;
-use crate::version::{commit_branch_for_channel, DeployTag, MyriadVersion, UpdateMode};
+use crate::version::{DeployTag, MyriadVersion, UpdateMode, commit_branch_for_channel};
 use crate::worker::{AvailableInfo, Command, Worker};
 
 impl Worker {
@@ -429,15 +429,13 @@ impl Worker {
         let mut message = "Docker Hub common frontend/backend build".to_string();
         let mut notes_url = tip_backend_url.clone();
         let source = "dockerhub";
-        if self.github_commit_metadata_enabled() {
-            if let Ok(gh) = self.github_client() {
-                if let Ok(info) = gh.resolve_commit(&tip_short_sha).await {
+        if self.github_commit_metadata_enabled()
+            && let Ok(gh) = self.github_client()
+                && let Ok(info) = gh.resolve_commit(&tip_short_sha).await {
                     full_sha = info.sha;
                     message = info.message;
                     notes_url = info.html_url;
                 }
-            }
-        }
 
         let cached = LatestAvailable {
             version: tag.clone(),

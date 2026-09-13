@@ -3,15 +3,15 @@
 use chrono::{DateTime, Duration, FixedOffset, Local, NaiveTime, TimeZone, Utc};
 use cron::Schedule;
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
-    DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-    Statement, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Statement,
+    TransactionTrait, sea_query::Expr,
 };
 use serde_json::json;
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use tokio::sync::RwLock;
 
 use crate::services::agent::ai_process_pure::USER_TEXT_MAX_CHARS;
@@ -22,6 +22,7 @@ use crate::services::tapp_storage::{
 };
 use myriad_tapp_contract::manifest::TappAiOperation;
 
+use crate::GLOBAL_DYNAMIC_CONFIG;
 use crate::models::entities::tapp_scheduled_tasks::{
     self, BackendAction, BackendActionWrapper, ExecutionTarget, MissedPolicy, RetryConfig,
     ScheduleConfig, ScheduleType, TaskScope, TaskStats,
@@ -29,9 +30,8 @@ use crate::models::entities::tapp_scheduled_tasks::{
 use crate::models::entities::tapp_task_executions::{self, ExecutionStatus};
 use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
 use crate::services::platform_auto_refresh::{
-    core_platform_from_task, is_core_platform_sync_task, CORE_PLATFORM_SYNC_TAPP_ID,
+    CORE_PLATFORM_SYNC_TAPP_ID, core_platform_from_task, is_core_platform_sync_task,
 };
-use crate::GLOBAL_DYNAMIC_CONFIG;
 
 use super::types_frontend::*;
 

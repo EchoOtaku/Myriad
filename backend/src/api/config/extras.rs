@@ -1,8 +1,8 @@
 //! Dashboard, control panel, Tapp window schemes, hitokoto, and report settings.
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Debug, Deserialize)]
 pub struct DashboardConfigPayload {
@@ -427,7 +427,7 @@ pub async fn update_report_settings(
 
 #[cfg(test)]
 mod hitokoto_catalog_tests {
-    use super::{default_hitokoto_url, HITOKOTO_BUILTIN_HOSTS, HITOKOTO_SOURCE_IDS};
+    use super::{HITOKOTO_BUILTIN_HOSTS, HITOKOTO_SOURCE_IDS, default_hitokoto_url};
 
     /// Must stay aligned with frontend `BUILTIN_HITOKOTO_SOURCES` + `custom`
     /// (`frontend/src/utils/quote.ts`).

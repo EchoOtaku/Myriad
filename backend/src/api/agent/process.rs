@@ -620,34 +620,35 @@ pub(crate) async fn start_process_run(
         // New Chat replaces the previous Chat run. Work is never registered here,
         // so a Chat send cannot cancel background Work. This select is Chat
         // supersession or cancel_chat_turn/cancel_chat_run — not SSE disconnect.
-        let turn_result = if let Some(cancelled) = chat_cancel.take() {
-            tokio::select! {
-                biased;
-                result = agent.process_with_progress(user_request, tx.clone()) => result,
-                _ = cancelled => {
-                    // Dropping process_with_progress skips its idle mark.
-                    crate::services::agent::merope::mark_activity(
-                        &db_clone,
-                        user_id,
-                        "idle",
-                    )
-                    .await;
-                    let _ = tx
-                        .send(crate::services::agent::turn::superseded_turn_event())
-                        .await;
-                    if let Some(slot_id) = chat_slot_id {
-                        crate::services::agent::turn::finish_chat_turn(
+        let turn_result = match chat_cancel.take() {
+            Some(cancelled) => {
+                tokio::select! {
+                    biased;
+                    result = agent.process_with_progress(user_request, tx.clone()) => result,
+                    _ = cancelled => {
+                        // Dropping process_with_progress skips its idle mark.
+                        crate::services::agent::merope::mark_activity(
+                            &db_clone,
                             user_id,
-                            &session_id_clone,
-                            slot_id,
+                            "idle",
                         )
                         .await;
+                        let _ = tx
+                            .send(crate::services::agent::turn::superseded_turn_event())
+                            .await;
+                        if let Some(slot_id) = chat_slot_id {
+                            crate::services::agent::turn::finish_chat_turn(
+                                user_id,
+                                &session_id_clone,
+                                slot_id,
+                            )
+                            .await;
+                        }
+                        return;
                     }
-                    return;
                 }
             }
-        } else {
-            agent.process_with_progress(user_request, tx.clone()).await
+            _ => agent.process_with_progress(user_request, tx.clone()).await,
         };
         match turn_result {
             Ok(response) => {
@@ -1703,7 +1704,7 @@ pub async fn health() -> Json<Value> {
 #[cfg(test)]
 mod quota_error_tests {
     use super::{
-        agent_stream_error_code, completed_turn_intention_status, quota_code, ApiResponse,
+        ApiResponse, agent_stream_error_code, completed_turn_intention_status, quota_code,
     };
     use crate::services::agent::consciousness::IntentStatus;
     use serde_json::json;

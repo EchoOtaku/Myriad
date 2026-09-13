@@ -3,10 +3,10 @@ use myriad_error::AppError;
 
 use crate::middleware::auth::authenticate_optional_request;
 use crate::services::permission_service::{TappPermissionService, UserRole};
-use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
+use axum::http::{HeaderMap, StatusCode};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// 获取 Tapp 权限配置（公开端点）
 /// 返回当前用户的权限等级和系统权限下放配置

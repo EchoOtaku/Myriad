@@ -5,7 +5,7 @@
 //! refreshes the snapshot with a timed live check.
 
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 

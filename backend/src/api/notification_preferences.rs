@@ -1,12 +1,12 @@
 //! 当前用户的通知策略 API。
 
 use crate::error::HttpError;
-use axum::{http::StatusCode, Extension, Json};
-use serde_json::{json, Value};
+use axum::{Extension, Json, http::StatusCode};
+use serde_json::{Value, json};
 
 use crate::middleware::auth::Claims;
 use crate::services::agent::notification_preferences::{
-    NotificationPreferences, EVENT_DEFINITIONS, SOURCE_KEYS,
+    EVENT_DEFINITIONS, NotificationPreferences, SOURCE_KEYS,
 };
 use crate::services::agent::notifications::get_notification_manager;
 

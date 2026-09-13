@@ -15,7 +15,8 @@
 #![allow(clippy::empty_line_after_doc_comments)]
 #![allow(clippy::unnecessary_sort_by)]
 #![allow(clippy::redundant_guards)]
-// rustc 1.94 clippy pedantic-style lints: style nits, not a security gate.
+// rustc 1.98 clippy pedantic-style lints: style nits, not a security gate.
+#![allow(clippy::result_large_err)]
 #![allow(clippy::needless_borrow)]
 #![allow(clippy::needless_borrows_for_generic_args)]
 #![allow(clippy::field_reassign_with_default)]
@@ -35,14 +36,15 @@
 #![allow(clippy::cloned_ref_to_slice_refs)]
 #![allow(clippy::unnecessary_get_then_check)]
 #![allow(clippy::manual_repeat_n)]
+#![deny(tail_expr_drop_order)]
 
 use axum::{
+    Json, Router,
     extract::Request,
     http::StatusCode,
-    middleware::{from_fn, Next},
+    middleware::{Next, from_fn},
     response::{IntoResponse, Response},
     routing::{delete, get, post, put},
-    Json, Router,
 };
 use serde_json::json;
 use std::net::SocketAddr;
@@ -63,6 +65,7 @@ mod db;
 mod error;
 mod extract;
 mod federation;
+mod held_stream;
 mod i18n;
 mod memory_audit_invariants;
 mod middleware;
@@ -103,7 +106,7 @@ fn warn_if_running_as_root() {
     #[cfg(unix)]
     {
         // Avoid a libc crate dep: libc geteuid is ubiquitous on Unix.
-        extern "C" {
+        unsafe extern "C" {
             fn geteuid() -> u32;
         }
         // SAFETY: geteuid is a pure syscall with no arguments.
@@ -306,7 +309,9 @@ async fn run_server(role: runtime_role::RuntimeRole) -> anyhow::Result<()> {
                         "JWT_SECRET must be at least 32 characters in production environment"
                     );
                 } else {
-                    tracing::warn!("⚠️  Continuing with weak JWT_SECRET in development mode. DO NOT use in production!");
+                    tracing::warn!(
+                        "⚠️  Continuing with weak JWT_SECRET in development mode. DO NOT use in production!"
+                    );
                 }
             } else {
                 tracing::info!("✅ JWT_SECRET strength validated ({} chars)", secret.len());
@@ -853,7 +858,7 @@ mod cache_control_tests {
 
     /// 前端产物必须经 CompressionLayer 下发。
     mod static_compression {
-        use axum::http::{header, Request, StatusCode};
+        use axum::http::{Request, StatusCode, header};
         use std::io::Write;
         use tower::ServiceExt;
         use tower_http::compression::CompressionLayer;

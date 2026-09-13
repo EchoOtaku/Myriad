@@ -12,11 +12,10 @@
 //! 详见 docs/development/OAUTH.md
 
 use async_trait::async_trait;
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use jsonwebtoken::{
-    decode, decode_header,
+    Algorithm, DecodingKey, Validation, decode, decode_header,
     jwk::{AlgorithmParameters, Jwk, JwkSet, PublicKeyUse},
-    Algorithm, DecodingKey, Validation,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -189,7 +188,7 @@ impl OidcProvider {
             return Err("OIDC JWKS endpoint failed".to_string());
         }
 
-        oidc_json(resp, "jwks").await
+        return oidc_json(resp, "jwks").await;
     }
 
     async fn verify_id_token(

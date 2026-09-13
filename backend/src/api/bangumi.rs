@@ -1,9 +1,9 @@
 // Bangumi API routes
 use crate::error::HttpError;
 use axum::{
+    Json,
     extract::{Path, Query},
     http::StatusCode,
-    Json,
 };
 use myriad_error::AppError;
 use serde::{Deserialize, Serialize};

@@ -324,14 +324,16 @@ describe('tour hint copy', () => {
     reports: '报告',
     tapp: 'Tapp',
     config: '配置',
+    agent: 'Agent',
   }
 
   it('names the home edit surface', () => {
     assert.equal(pageNameForPath('/', nav, '编辑模式', true), '编辑模式')
     assert.equal(pageNameForPath('/', nav, '编辑模式', false), '首页')
+    assert.equal(pageNameForPath('/agent/settings', nav, '编辑模式', false), 'Agent')
   })
 
-  it('keeps config persona surfaces on /config only', () => {
+  it('keeps library tour surfaces independent of settings pages', () => {
     assert.equal(readTourSurface(true, '/'), 'edit')
     assert.equal(readTourSurface(false, '/library'), 'browse')
     assert.equal(readTourSurface(false, '/tapp'), 'browse')
@@ -572,17 +574,25 @@ describe('page tours', () => {
     assert.equal(pickTour(CONFIG_TOURS, '/config', true)?.id, 'config-owner')
     assert.equal(pickTour(CONFIG_TOURS, '/config', false), null)
     assert.equal(
-      pickTour(CONFIG_AI_PERSONA_TOURS, '/config', true, 'ai-persona')?.id,
+      pickTour(CONFIG_AI_PERSONA_TOURS, '/agent/settings', true, 'ai-persona')?.id,
       'config-ai-persona-owner',
     )
     assert.equal(
-      pickTour(CONFIG_PERSONA_TOURS, '/config', true, 'persona')?.id,
+      pickTour(CONFIG_PERSONA_TOURS, '/agent/settings', true, 'persona')?.id,
       'config-persona-owner',
     )
     assert.equal(pickTour(TOURS, '/config', true, 'none'), null)
     assert.equal(pickTour(TOURS, '/config', false, 'persona'), null)
-    assert.equal(pickTour(TOURS, '/config', true, 'ai-persona')?.id, 'config-ai-persona-owner')
-    assert.equal(pickTour(TOURS, '/config', true, 'persona')?.id, 'config-persona-owner')
+    assert.equal(pickTour(TOURS, '/config', true, 'ai-persona'), null)
+    assert.equal(pickTour(TOURS, '/config', true, 'persona'), null)
+    assert.equal(
+      pickTour(TOURS, '/agent/settings', true, 'ai-persona')?.id,
+      'config-ai-persona-owner',
+    )
+    assert.equal(
+      pickTour(TOURS, '/agent/settings', true, 'persona')?.id,
+      'config-persona-owner',
+    )
     assert.equal(pickTour(TOURS, '/config', true)?.id, 'config-owner')
   })
 

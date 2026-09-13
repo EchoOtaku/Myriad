@@ -42,8 +42,8 @@ use crate::config::DynamicConfig;
 use serde::{Deserialize, Serialize};
 
 pub use myriad_tapp_contract::permission::{
-    tapp_permission_replacement_hint, PermissionLevel, TappPermission, UnknownTappPermission,
-    UserRole, UNKNOWN_TAPP_PERMISSION_CODE,
+    PermissionLevel, TappPermission, UNKNOWN_TAPP_PERMISSION_CODE, UnknownTappPermission, UserRole,
+    tapp_permission_replacement_hint,
 };
 
 /// `is_admin` → Admin；`user_id <= 0` → Guest；否则 User。
@@ -1166,12 +1166,14 @@ mod tests {
         assert!(message.contains("reinstall"), "{message}");
 
         // 失败仍是 fail-closed：不放行任何权限。
-        assert!(TappPermissionService::filter_permissions_for_role(
-            &DynamicConfig::default(),
-            UserRole::Admin,
-            &["storage".to_string()],
-        )
-        .is_err());
+        assert!(
+            TappPermissionService::filter_permissions_for_role(
+                &DynamicConfig::default(),
+                UserRole::Admin,
+                &["storage".to_string()],
+            )
+            .is_err()
+        );
 
         // 任意未知名保持通用错误形态，不带替代建议。
         let generic = UnknownTappPermission {
