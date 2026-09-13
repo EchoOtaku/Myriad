@@ -7,13 +7,13 @@ import type { FeedStory } from '../logic/feedStories'
 import type { HomeBoardNote } from '../logic/homeBoard'
 import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../../../contexts/I18nContext'
+import { brewOwnItemPath, getIconUrl, getImageUrl } from '../constants'
+import { isSiteSource, visitFriendHref } from '../logic/board'
 import {
   noteDocKicker,
   notesBoardIsEmpty,
   visibleCloudNoteDocs,
 } from '../notes/noteBoard'
-import { brewOwnItemPath, getIconUrl, getImageUrl } from '../constants'
-import { isSiteSource, visitFriendHref } from '../logic/board'
 import { BrewVacant } from '../ui/Empty'
 import { BrewPick } from '../ui/Pick'
 import {
@@ -29,7 +29,7 @@ import BrewFriends from './BrewFriends'
 import { brewRelativeTime, useBrewTimes } from './time'
 import '../ui/brew.css'
 
-export interface BrewBoardViewProps {
+interface BrewBoardViewProps {
   board: BrewBoard
   sources: BrewSource[]
   focusSourceId?: number | null
@@ -42,7 +42,6 @@ export interface BrewBoardViewProps {
   onPeekEnd?: () => void
   onToggleStar?: (item: BrewItemPreview) => void
   onEditSource?: (source: BrewSource) => void
-  onWriteNote?: () => void
   onOpenDoc?: (id: number) => void
   onSitesOpenChange?: (open: boolean) => void
   toolbar?: ReactNode
@@ -73,7 +72,6 @@ export default function BrewBoardView({
   onPeekEnd,
   onToggleStar,
   onEditSource,
-  onWriteNote,
   onOpenDoc,
   onSitesOpenChange,
   toolbar,

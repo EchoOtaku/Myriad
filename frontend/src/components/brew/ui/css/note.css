@@ -374,6 +374,60 @@ html.dark .brew-note.brew-skin .brew-note__bubble-btn:hover {
   color: var(--note-danger);
 }
 
+.brew-note.brew-skin .brew-note__blockbar-btn.is-active {
+  background: var(--note-fill);
+  color: var(--note-ink);
+  box-shadow: inset 0 0 0 1px var(--note-line-strong);
+}
+
+.brew-note.brew-skin .brew-note__blockbar-btn.has-icon {
+  width: 2rem;
+  padding: 0;
+}
+
+.brew-note.brew-skin .brew-note__blockbar-btn svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.brew-note__blockbar-sep {
+  width: 1px;
+  height: 1.25rem;
+  margin: 0 0.2rem;
+  background: var(--note-line);
+}
+
+.brew-note.brew-skin .brew-note__blockbar-input.is-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.brew-note__menu--prompt {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 18rem;
+  padding: 0.4rem 0.6rem;
+}
+
+.brew-note.brew-skin .brew-note__menu-input {
+  flex: 1 1 auto;
+  height: 2rem;
+  border: 0;
+  background: transparent;
+  color: var(--note-ink);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.brew-note.brew-skin .brew-note__menu-input:focus {
+  outline: none;
+}
+
+.brew-note__visual img.is-selected {
+  outline: 2px solid var(--note-ink);
+  outline-offset: 2px;
+}
+
 .brew-note__blockbar-field {
   display: flex;
   align-items: center;
@@ -384,7 +438,7 @@ html.dark .brew-note.brew-skin .brew-note__bubble-btn:hover {
 }
 
 .brew-note.brew-skin .brew-note__blockbar-input {
-  width: 7rem;
+  width: 9rem;
   height: 2rem;
   padding: 0 0.55rem;
   border: 1px solid var(--note-line);
@@ -392,7 +446,6 @@ html.dark .brew-note.brew-skin .brew-note__bubble-btn:hover {
   background: var(--note-paper);
   color: var(--note-ink);
   font: inherit;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.8125rem;
 }
 

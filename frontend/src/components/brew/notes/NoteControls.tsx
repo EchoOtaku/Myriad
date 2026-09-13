@@ -9,10 +9,10 @@ import { useId } from 'react'
 import { ButtonSpinner } from '../../Spinner'
 import { fromDatetimeLocal, toDatetimeLocal } from './noteFields'
 
-export type NoteButtonVariant = 'solid' | 'outline' | 'quiet' | 'danger'
-export type NoteButtonSize = 'md' | 'lg'
+type NoteButtonVariant = 'solid' | 'outline' | 'quiet' | 'danger'
+type NoteButtonSize = 'md' | 'lg'
 
-export interface NoteButtonProps
+interface NoteButtonProps
   extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> {
   variant?: NoteButtonVariant
   size?: NoteButtonSize
@@ -68,12 +68,12 @@ export function NoteButton({
 
 /* ------------------------------------------------------------------ */
 
-export interface NoteSwitchOption<T extends string> {
+interface NoteSwitchOption<T extends string> {
   value: T
   label: ReactNode
 }
 
-export interface NoteSwitchProps<T extends string> {
+interface NoteSwitchProps<T extends string> {
   value: T | null
   options: NoteSwitchOption<T>[]
   onChange: (value: T) => void
@@ -121,7 +121,7 @@ export function NoteSwitch<T extends string>({
 
 /* ------------------------------------------------------------------ */
 
-export interface NoteFieldProps {
+interface NoteFieldProps {
   label: ReactNode
   hint?: ReactNode
   htmlFor?: string
@@ -140,7 +140,7 @@ export function NoteField({ label, hint, htmlFor, children }: NoteFieldProps) {
   )
 }
 
-export interface NoteSelectProps<T extends string> {
+interface NoteSelectProps<T extends string> {
   id?: string
   value: T
   options: { value: T; label: string }[]
@@ -176,7 +176,7 @@ export function NoteSelect<T extends string>({
   )
 }
 
-export interface NoteDateInputProps {
+interface NoteDateInputProps {
   id?: string
   value: number | null
   onChange: (ms: number | null) => void

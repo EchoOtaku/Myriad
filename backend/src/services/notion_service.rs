@@ -18,12 +18,10 @@ const NOTION_API_VERSION: &str = "2022-06-28";
 
 /// Notion 解析错误
 #[derive(Debug)]
-#[allow(dead_code)]
 pub enum NotionError {
     InvalidUrl(String),
     ApiError(String),
     ParseError(String),
-    MissingToken(String),
 }
 
 impl std::fmt::Display for NotionError {
@@ -32,7 +30,6 @@ impl std::fmt::Display for NotionError {
             NotionError::InvalidUrl(msg) => write!(f, "Invalid Notion URL: {}", msg),
             NotionError::ApiError(msg) => write!(f, "Notion API error: {}", msg),
             NotionError::ParseError(msg) => write!(f, "Parse error: {}", msg),
-            NotionError::MissingToken(msg) => write!(f, "Missing Notion token: {}", msg),
         }
     }
 }

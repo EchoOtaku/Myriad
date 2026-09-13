@@ -1,6 +1,6 @@
 import type { LocaleConfig } from '../../../i18n/assembleLocale'
-import { AGENT_SETTINGS_PATH } from '../../agent/settings/agentSettingsPath'
 import type { ConfigNavSection } from './configNavPersistence'
+import { AGENT_SETTINGS_PATH } from '../../agent/settings/agentSettingsPath'
 import { CONFIG_NAV_SECTIONS } from './configNavPersistence'
 
 type SectionTextKey =

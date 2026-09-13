@@ -1,15 +1,15 @@
+import type { AgentSettingsSlice } from '../agentBagSlice'
 import { fetchConfig, updateConfig } from '../../../../lib/api'
 import { getCSRFToken } from '../../../../utils/csrf'
 import { sanitizeMaskedFieldValue } from '../../platformConfigRules'
-import { configBagEffects } from '../configBagEffects'
 import {
-  EMPTY_AGENT_SETTINGS_SLICE,
   agentSliceAsConfig,
   agentSlicePersistPayload,
+  EMPTY_AGENT_SETTINGS_SLICE,
   pickAgentSlice,
   resetAgentSlice,
-  type AgentSettingsSlice,
 } from '../agentBagSlice'
+import { configBagEffects } from '../configBagEffects'
 import { useConfigDomain } from '../useConfigDomain'
 
 export function useAgentDomain(messages: {

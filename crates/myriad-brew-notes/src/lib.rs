@@ -11,20 +11,20 @@ use std::collections::{HashMap, HashSet};
 
 use pulldown_cmark::{Options, Parser, html};
 
+#[cfg(test)]
 mod merge;
 mod status;
-pub use merge::merge_text;
 pub use status::{NoteDocStatus, ScheduleError, is_due, schedule_at};
 
 /// 正文长度上限（字符）。超出的部分不截断，直接拒绝 —— 悄悄截掉用户写的东西
 /// 比报错更糟。
-pub const MAX_NOTE_CHARS: usize = 200_000;
+const MAX_NOTE_CHARS: usize = 200_000;
 /// 标题长度上限（字符）。库里是 text，这个上限是产品上限。
-pub const MAX_TITLE_CHARS: usize = 200;
+const MAX_TITLE_CHARS: usize = 200;
 /// 摘要取多少字符。
-pub const SUMMARY_CHARS: usize = 200;
+const SUMMARY_CHARS: usize = 200;
 /// 估算阅读速度（字/分钟）。中英混排取一个折中值，不区分语言。
-pub const WORDS_PER_MINUTE: i32 = 400;
+const WORDS_PER_MINUTE: i32 = 400;
 
 /// 正文不合法的原因。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -147,8 +147,12 @@ fn allowed_attributes() -> HashMap<&'static str, HashSet<&'static str>> {
         "input",
         ["type", "checked", "disabled"].into_iter().collect(),
     );
-    map.insert("td", ["colspan", "rowspan"].into_iter().collect());
-    map.insert("th", ["colspan", "rowspan", "scope"].into_iter().collect());
+    // 列对齐：渲染器写的是 style，消毒前改成 `align` 属性，白名单里只放它
+    map.insert("td", ["colspan", "rowspan", "align"].into_iter().collect());
+    map.insert(
+        "th",
+        ["colspan", "rowspan", "scope", "align"].into_iter().collect(),
+    );
     // 代码块的语言类名（`language-rust`），高亮靠它
     map.insert("code", ["class"].into_iter().collect());
     // 脚注定义的锚点；`id_prefix` 会给它和指向它的 `#` 链接一起加前缀
@@ -183,6 +187,11 @@ pub fn render_markdown(markdown: &str) -> String {
     // 消毒器只给 id 加前缀，不改指向它的 `#` 链接；这里先把站内锚点补上同一个前缀。
     // 正文里唯一能有 id 的就是脚注定义，所以所有 `#` 链接都按脚注处理。
     let raw = raw.replace("href=\"#", &format!("href=\"#{FOOTNOTE_ID_PREFIX}"));
+    // 表格列对齐：`style="text-align: center"` 过不了消毒，换成 `align="center"`。
+    let raw = raw
+        .replace("style=\"text-align: left\"", "align=\"left\"")
+        .replace("style=\"text-align: center\"", "align=\"center\"")
+        .replace("style=\"text-align: right\"", "align=\"right\"");
 
     ammonia::Builder::default()
         .tags(allowed_tags())
@@ -404,6 +413,15 @@ mod tests {
         assert!(html.contains("type=\"checkbox\""), "{html}");
         assert!(html.contains("checked"), "{html}");
         assert!(html.contains("disabled"), "{html}");
+    }
+
+    #[test]
+    fn table_alignment_becomes_align_attribute() {
+        let html = render_markdown("| a | b | c |\n| :-- | :-: | --: |\n| 1 | 2 | 3 |");
+        assert!(html.contains("<th align=\"left\">"), "{html}");
+        assert!(html.contains("<th align=\"center\">"), "{html}");
+        assert!(html.contains("<td align=\"right\">"), "{html}");
+        assert!(!html.contains("style="), "{html}");
     }
 
     #[test]

@@ -83,6 +83,48 @@ describe('嵌套列表', () => {
   })
 })
 
+describe('行内解析对齐后端', () => {
+  it('*** 是粗斜，转回来还是 ***', () => {
+    const html = markdownToVisualHtml('这是 ***粗斜***')
+    assert.match(html, /<strong><em>粗斜<\/em><\/strong>/)
+    assert.equal(visualHtmlToMarkdown(html), '这是 ***粗斜***')
+  })
+
+  it('反斜杠转义的字不当记号，转回来还带反斜杠', () => {
+    const md = String.raw`价格 \*不是斜体\* 和 \[不是链接\]`
+    const html = markdownToVisualHtml(md)
+    assert.doesNotMatch(html, /<em>/)
+    assert.equal(visualHtmlToMarkdown(html), md)
+  })
+
+  it('<https://…> 自动链接转一圈还是尖括号', () => {
+    const md = '看 <https://a.b/c>'
+    const html = markdownToVisualHtml(md)
+    assert.match(html, /<a href="https:\/\/a\.b\/c" data-autolink="1">/)
+    assert.equal(visualHtmlToMarkdown(html), md)
+  })
+
+  it('硬换行是两个空格，软换行只是空格', () => {
+    assert.match(markdownToVisualHtml('甲  \n乙'), /甲<br>乙/)
+    assert.match(markdownToVisualHtml('甲\n乙'), /<p>甲 乙<\/p>/)
+    assert.equal(visualHtmlToMarkdown('<p>甲<br>乙</p>'), '甲  \n乙')
+  })
+})
+
+describe('表格对齐', () => {
+  it('分隔行的冒号落到 align 属性，转回来还在', () => {
+    const md = '| 左 | 中 | 右 |\n| :--- | :---: | ---: |\n| a | b | c |'
+    const html = markdownToVisualHtml(md)
+    assert.match(html, /<th align="left">左<\/th><th align="center">中<\/th><th align="right">右<\/th>/)
+    assert.match(html, /<td align="center">b<\/td>/)
+    assert.equal(visualHtmlToMarkdown(html), md)
+  })
+
+  it('单元格里的竖线要转义', () => {
+    assert.match(visualHtmlToMarkdown('<table><tr><th>a|b</th></tr></table>'), /a\\\|b/)
+  })
+})
+
 describe('脚注引用', () => {
   it('正文里的 [^1] 是上标，转回来还是 [^1]', () => {
     const html = markdownToVisualHtml('见[^1]。')

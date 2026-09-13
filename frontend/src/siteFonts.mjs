@@ -3,6 +3,21 @@
  * No runtime Google Fonts CDN.
  */
 
+/**
+ * @typedef {'--font-inter' | '--font-qwitcher-grypen' | '--font-codystar' | '--font-henny-penny' | '--font-srisakdi' | '--font-fleur-de-leah' | '--font-league-script' | '--font-megrim' | '--font-silkscreen' | '--font-unifraktur-maguntia' | '--font-cinzel'} SiteFontCssVariable
+ *
+ * @typedef {{
+ *   name: string
+ *   cssVariable: SiteFontCssVariable
+ *   weights: number[]
+ *   styles: string[]
+ *   fallbacks: string[]
+ *   preload?: boolean | { weight: number, style: string }[]
+ *   id?: string
+ *   cssClass?: string
+ * }} SiteFont
+ */
+
 export const SITE_BODY_FONT = {
   name: 'Inter',
   cssVariable: '--font-inter',
@@ -111,4 +126,5 @@ export const SITE_TITLE_FONTS = [
   },
 ]
 
+/** @type {SiteFont[]} */
 export const SITE_FONTS = [SITE_BODY_FONT, ...SITE_TITLE_FONTS]

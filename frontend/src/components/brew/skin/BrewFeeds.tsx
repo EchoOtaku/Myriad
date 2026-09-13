@@ -7,13 +7,13 @@ import type { BrewRailApi } from './useBrewRailPan'
 import { FaCompress as Compress, FaExpand as Expand } from '@lib/icons'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
-import { SettingTitleTag } from '../../settings/SettingTitleTag'
 import {
   brewMotionClaim,
   brewMotionOwns,
   brewMotionRelease,
 } from '../../../hooks/animation/pages/brewMotion'
 import { extractColorsFromLoadedImage } from '../../../utils/colorExtractor'
+import { SettingTitleTag } from '../../settings/SettingTitleTag'
 import {
   DEFAULT_THEME_COLOR,
   getIconUrl,
@@ -26,8 +26,8 @@ import {
   requestSiteView,
 } from '../logic/feedsMotion'
 import { FeedsAddFormProvider } from '../ui/BrewFeedsPanel'
-import { BrewVacant } from '../ui/Empty'
 import { BrewRailTitle } from '../ui/BrewRailTitle'
+import { BrewVacant } from '../ui/Empty'
 import { SiteCard } from '../ui/SiteCard'
 import { BrewStory } from './BrewStory'
 import {
@@ -79,7 +79,7 @@ function paintSiteInk(img: HTMLImageElement, fallback: string | null): void {
   }
 }
 
-export interface BrewFeedsProps {
+interface BrewFeedsProps {
   sources: BrewSource[]
   focusSourceId?: number | null
   isEditMode?: boolean

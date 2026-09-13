@@ -1,6 +1,6 @@
 /** Target vs displayed site-grid, plus a generation so stale flips cannot commit. */
 
-export interface SitesIntent {
+interface SitesIntent {
   targetOpen: boolean
   displayOpen: boolean
   flipping: boolean
@@ -16,7 +16,7 @@ export function idleSitesIntent(open = false): SitesIntent {
   }
 }
 
-export type SitesRequestAction = 'noop' | 'flip' | 'retarget'
+type SitesRequestAction = 'noop' | 'flip' | 'retarget'
 
 export function requestSiteView(
   state: SitesIntent,
@@ -36,7 +36,7 @@ export function requestSiteView(
   }
 }
 
-export type SitesCompleteAction = 'idle' | 'ignore' | 'flip'
+type SitesCompleteAction = 'idle' | 'ignore' | 'flip'
 
 export function completeSiteView(
   state: SitesIntent,

@@ -8,18 +8,22 @@ export interface SelectionAnchor {
   height: number
 }
 
-export interface BubblePlacement {
+interface BubblePlacement {
   top: number
   left: number
 }
 
-/** 浮动条居中压在选区上方；左右夹在容器里，顶上没空间就翻到下面。 */
+/**
+ * 浮动条居中压在选区上方；左右夹在容器里，顶上没空间就翻到下面。
+ * 触屏（`preferBelow`）直接放下面：系统自带的选区菜单占着上面。
+ */
 export function placeBubble(
-  anchor: Pick<SelectionAnchor, 'top' | 'left' | 'width'>,
+  anchor: Pick<SelectionAnchor, 'top' | 'left' | 'width' | 'height'>,
   bubble: { width: number; height: number },
   container: { width: number; scrollTop: number },
   gap = 8,
   margin = 8,
+  preferBelow = false,
 ): BubblePlacement {
   const half = bubble.width / 2
   const center = anchor.left + anchor.width / 2
@@ -27,10 +31,8 @@ export function placeBubble(
   const maxLeft = Math.max(minLeft, container.width - margin - half)
   const left = Math.min(maxLeft, Math.max(minLeft, center))
   const above = anchor.top - gap - bubble.height
-  const top =
-    above >= container.scrollTop + margin
-      ? above
-      : anchor.top + bubble.height + gap
+  const below = anchor.top + anchor.height + gap
+  const top = !preferBelow && above >= container.scrollTop + margin ? above : below
   return { top, left }
 }
 

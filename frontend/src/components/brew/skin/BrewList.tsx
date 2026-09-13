@@ -9,7 +9,7 @@ import { BrewStory } from './BrewStory'
 import { useBrewTimes } from './time'
 import '../ui/brew.css'
 
-export interface BrewListViewProps {
+interface BrewListViewProps {
   items: BrewItem[]
   selectedItem: BrewItem | null
   loading: boolean

@@ -5,22 +5,22 @@ import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../../../contexts/I18nContext'
 import { settingsAgentLabel } from '../../../features/merope/publicName'
 import { usePersonaPublicName } from '../../../features/merope/usePersonaPublicName'
-import {
-  scheduleScrollToSettingGuide,
-} from '../../settings/guides/guideAnchor'
 import { AgentConfigSection } from '../../config'
 import { ConfigDefaultsProvider } from '../../config/ConfigDefaultsProvider'
-import MyriadConfigIcon from '../../config/MyriadConfigIcon'
 import {
   useConfigEditor,
   useConfigMessage,
 } from '../../config/form'
 import { useAgentDomain } from '../../config/form/domains/useAgentDomain'
+import MyriadConfigIcon from '../../config/MyriadConfigIcon'
 import {
   SETTINGS_PAGE_MOTION,
   SettingsButton,
   SettingsPageActionsProvider,
 } from '../../settings'
+import {
+  scheduleScrollToSettingGuide,
+} from '../../settings/guides/guideAnchor'
 import { Spinner } from '../../Spinner'
 import '../../ConfigForm.css'
 

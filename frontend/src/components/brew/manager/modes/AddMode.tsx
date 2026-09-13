@@ -7,11 +7,11 @@ import {
   LuFileText as FileText,
   LuFolderOpen as FolderOpen,
   LuLink as Link,
-  LuPlus as Plus,
   NotionIcon,
+  LuPlus as Plus,
   LuRss as Rss,
-  LuSearch as Search,
   RSSHubIcon,
+  LuSearch as Search,
   LuUpload as Upload,
 } from '@lib/icons'
 import { useEffect, useRef, useState } from 'react'
@@ -32,7 +32,7 @@ import {
 import { useAddSourceForm } from './useAddSourceForm'
 import './AddMode.css'
 
-export interface AddModeProps {
+interface AddModeProps {
   allCategories: string[]
   sourcesCount: number
   onSubmit?: (
@@ -81,7 +81,7 @@ export function AddMode({
   const categoryName = categoryDraft.trim()
   const canAddCategory =
     categoryName.length > 0 &&
-    !allCategories.some((cat) => cat === categoryName)
+    !allCategories.includes(categoryName)
 
   const closeCategory = (next = categoryDraft) => {
     const value = next.trim()

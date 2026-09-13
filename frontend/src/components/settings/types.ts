@@ -67,7 +67,7 @@ export interface InputSettingConfig extends BaseSettingItemConfig {
   onFocus?: () => void
   onBlur?: () => void
   placeholder?: string
-  inputType?: 'text' | 'password' | 'url' | 'email' | 'search'
+  inputType?: 'text' | 'password' | 'url' | 'email' | 'search' | 'number'
   multiline?: boolean
   rows?: number
   autoComplete?: string

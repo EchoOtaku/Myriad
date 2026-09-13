@@ -1,12 +1,16 @@
 //! 把云端手记文档落成公开 `brew_items`。草稿不走这里。
+//!
+//! 写 `brew_items` 和把文档标成已发布是一个事务：要么公开文章和文档状态一起落地，
+//! 要么什么都不变。调度器发定时稿之前先用 revision 「认领」一次，多实例同时到点
+//! 也只有一个能拿到。
 
 use chrono::{TimeZone, Utc};
 use myriad_brew_notes::{
     NoteDocStatus, is_due, note_guid, note_link, render_note, validate_note,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter, Set, TransactionTrait,
 };
 use serde::Serialize;
 
@@ -28,8 +32,8 @@ fn brew_store_http(context: &'static str, error: impl std::fmt::Display) -> Http
     )
 }
 
-const NOTE_SOURCE_NAME: &str = "手记";
-const NOTE_SOURCE_URL: &str = "myriad:notes";
+pub(crate) const NOTE_SOURCE_NAME: &str = "手记";
+pub(crate) const NOTE_SOURCE_URL: &str = "myriad:notes";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PublishedNote {
@@ -49,8 +53,8 @@ fn validation_err(err: myriad_brew_notes::NoteError) -> HttpError {
     brew_http_err(StatusCode::BAD_REQUEST, err.message())
 }
 
-pub async fn ensure_note_source(
-    db: &DatabaseConnection,
+async fn ensure_note_source<C: ConnectionTrait>(
+    db: &C,
     user_id: i32,
 ) -> Result<brew_sources::Model, HttpError> {
     let existing = brew_sources::Entity::find()
@@ -89,7 +93,7 @@ pub async fn ensure_note_source(
         .map_err(|e| brew_store_http("create note source", e))
 }
 
-pub async fn sync_item_count(db: &DatabaseConnection, source: &brew_sources::Model) {
+async fn sync_item_count<C: ConnectionTrait>(db: &C, source: &brew_sources::Model) {
     let count = brew_items::Entity::find()
         .filter(brew_items::Column::SourceId.eq(source.id))
         .count(db)
@@ -104,8 +108,8 @@ pub async fn sync_item_count(db: &DatabaseConnection, source: &brew_sources::Mod
 }
 
 /// 把一篇已经校验过的手记写进 `brew_items`。有 `item_id` 就改，没有就新建。
-pub async fn write_published_item(
-    db: &DatabaseConnection,
+async fn write_published_item<C: ConnectionTrait>(
+    db: &C,
     user_id: i32,
     item_id: Option<i32>,
     title: &str,
@@ -190,8 +194,8 @@ pub async fn write_published_item(
     })
 }
 
-pub async fn mark_doc_published(
-    db: &DatabaseConnection,
+async fn mark_doc_published<C: ConnectionTrait>(
+    db: &C,
     mut doc: brew_note_docs::Model,
     item: &PublishedNote,
     published_at_ms: Option<i64>,
@@ -216,6 +220,80 @@ pub async fn mark_doc_published(
     Ok(doc)
 }
 
+/// 发布一篇云端文档：写 `brew_items` + 标文档已发布，一个事务。
+///
+/// `doc` 里的字段就是要发布的内容（调用方已把请求里的改动合进去）。
+pub async fn publish_doc(
+    db: &DatabaseConnection,
+    doc: brew_note_docs::Model,
+    published_at_ms: Option<i64>,
+) -> Result<(PublishedNote, brew_note_docs::Model), HttpError> {
+    let txn = db
+        .begin()
+        .await
+        .map_err(|e| brew_store_http("begin note publish", e))?;
+    let outcome = async {
+        let item = write_published_item(
+            &txn,
+            doc.user_id,
+            doc.item_id,
+            &doc.title,
+            &doc.content_md,
+            doc.topic.clone(),
+            doc.image.clone(),
+            published_at_ms,
+        )
+        .await?;
+        let saved = mark_doc_published(&txn, doc, &item, published_at_ms).await?;
+        Ok::<_, HttpError>((item, saved))
+    }
+    .await;
+    match outcome {
+        Ok(result) => {
+            txn.commit()
+                .await
+                .map_err(|e| brew_store_http("commit note publish", e))?;
+            Ok(result)
+        }
+        Err(error) => {
+            if let Err(rollback) = txn.rollback().await {
+                tracing::warn!(error = %rollback, "note publish rollback failed");
+            }
+            Err(error)
+        }
+    }
+}
+
+/// 认领一篇到点的定时稿：只在 status/revision 都没变时把 revision 推一格。
+/// 推不动说明别的实例（或用户）先动了它，这一轮跳过。
+async fn claim_due_doc(
+    db: &DatabaseConnection,
+    doc: &brew_note_docs::Model,
+) -> Result<Option<brew_note_docs::Model>, HttpError> {
+    let claimed_revision = doc.revision + 1;
+    let result = brew_note_docs::Entity::update_many()
+        .col_expr(
+            brew_note_docs::Column::Revision,
+            sea_orm::sea_query::Expr::value(claimed_revision),
+        )
+        .col_expr(
+            brew_note_docs::Column::UpdatedAt,
+            sea_orm::sea_query::Expr::value(Utc::now()),
+        )
+        .filter(brew_note_docs::Column::Id.eq(doc.id))
+        .filter(brew_note_docs::Column::Status.eq(NoteDocStatus::Scheduled.as_str()))
+        .filter(brew_note_docs::Column::Revision.eq(doc.revision))
+        .exec(db)
+        .await
+        .map_err(|e| brew_store_http("claim scheduled note", e))?;
+    if result.rows_affected == 0 {
+        return Ok(None);
+    }
+    let mut claimed = doc.clone();
+    claimed.revision = claimed_revision;
+    Ok(Some(claimed))
+}
+
 /// 调度器：把到点的定时稿写成公开文章。
 pub async fn publish_due_note_docs(db: &DatabaseConnection) -> Result<usize, String> {
     let now = Utc::now();
@@ -236,32 +314,23 @@ pub async fn publish_due_note_docs(db: &DatabaseConnection) -> Result<usize, Str
         ) {
             continue;
         }
-        let published_at = scheduled_ms.or(doc.published_at.map(datetime_to_millis));
-        match write_published_item(
-            db,
-            doc.user_id,
-            doc.item_id,
-            &doc.title,
-            &doc.content_md,
-            doc.topic.clone(),
-            doc.image.clone(),
-            published_at,
-        )
-        .await
-        {
-            Ok(item) => {
-                if let Err(error) = mark_doc_published(db, doc, &item, published_at).await {
-                    tracing::error!(error = ?error, "failed to mark scheduled note published");
-                } else {
-                    published += 1;
-                }
-            }
+        let doc = match claim_due_doc(db, &doc).await {
+            Ok(Some(claimed)) => claimed,
+            Ok(None) => continue,
             Err(error) => {
-                tracing::error!(error = ?error, doc_id = doc.id, "failed to publish scheduled note");
+                tracing::error!(error = ?error, doc_id = doc.id, "failed to claim scheduled note");
+                continue;
+            }
+        };
+        let published_at = scheduled_ms.or(doc.published_at.map(datetime_to_millis));
+        let doc_id = doc.id;
+        match publish_doc(db, doc.clone(), published_at).await {
+            Ok(_) => published += 1,
+            Err(error) => {
+                tracing::error!(error = ?error, doc_id, "failed to publish scheduled note");
+                // 4xx 是这篇稿子自己的问题，打回草稿并把原因写下来；5xx 保持 scheduled 下一轮再试。
                 if error.0.status().is_client_error() {
-                    if let Err(revert) =
-                        revert_due_doc(db, doc, error.0.error_label()).await
-                    {
+                    if let Err(revert) = revert_due_doc(db, doc, error.0.error_label()).await {
                         tracing::error!(error = ?revert, "failed to revert scheduled note");
                     }
                 }
@@ -288,8 +357,8 @@ async fn revert_due_doc(
     Ok(())
 }
 
-pub async fn upsert_doc_for_published_item(
-    db: &DatabaseConnection,
+pub async fn upsert_doc_for_published_item<C: ConnectionTrait>(
+    db: &C,
     user_id: i32,
     item: &PublishedNote,
     title: &str,
@@ -343,6 +412,63 @@ pub async fn upsert_doc_for_published_item(
         .map_err(|e| brew_store_http("create note doc", e))
 }
 
+/// 公开手记的写入 + 对应云端文档同步，一个事务。`create_note` / `update_note` 用。
+pub async fn write_note_with_doc(
+    db: &DatabaseConnection,
+    user_id: i32,
+    item_id: Option<i32>,
+    title: &str,
+    content_md: &str,
+    topic: Option<String>,
+    image: Option<String>,
+    published_at_ms: Option<i64>,
+) -> Result<PublishedNote, HttpError> {
+    let txn = db
+        .begin()
+        .await
+        .map_err(|e| brew_store_http("begin note write", e))?;
+    let outcome = async {
+        let item = write_published_item(
+            &txn,
+            user_id,
+            item_id,
+            title,
+            content_md,
+            topic.clone(),
+            image.clone(),
+            published_at_ms,
+        )
+        .await?;
+        upsert_doc_for_published_item(
+            &txn,
+            user_id,
+            &item,
+            title,
+            content_md,
+            topic,
+            image,
+            published_at_ms,
+        )
+        .await?;
+        Ok::<_, HttpError>(item)
+    }
+    .await;
+    match outcome {
+        Ok(item) => {
+            txn.commit()
+                .await
+                .map_err(|e| brew_store_http("commit note write", e))?;
+            Ok(item)
+        }
+        Err(error) => {
+            if let Err(rollback) = txn.rollback().await {
+                tracing::warn!(error = %rollback, "note write rollback failed");
+            }
+            Err(error)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -354,24 +480,47 @@ mod tests {
         assert_eq!(datetime_to_millis(dt.into()), ms);
     }
 
-    #[test]
-    fn due_publish_writes_last_error_and_reverts_client_failures() {
-        let src = include_str!("note_publish.rs");
-        let start = src
-            .find("pub async fn publish_due_note_docs")
-            .expect("publish_due_note_docs");
+    fn body_of(src: &str, signature: &str) -> String {
+        let start = src.find(signature).expect(signature);
         let body = &src[start..];
         let end = body[1..]
             .find("\npub async fn ")
+            .or_else(|| body[1..].find("\nasync fn "))
             .map(|index| index + 1)
             .unwrap_or(body.len());
-        let due = &body[..end];
+        body[..end].to_string()
+    }
+
+    #[test]
+    fn due_publish_claims_then_publishes_and_reverts_client_failures() {
+        let src = include_str!("note_publish.rs");
+        let due = body_of(src, "pub async fn publish_due_note_docs");
+        assert!(due.contains("claim_due_doc"), "must claim before publishing");
+        assert!(due.contains("publish_doc("), "must go through the transactional path");
         assert!(due.contains("is_client_error"));
         assert!(due.contains("revert_due_doc"));
-        assert!(due.contains("last_error"));
-        assert!(
-            due.contains("NoteDocStatus::Draft"),
-            "4xx must put the doc back to draft"
-        );
+        let revert = body_of(src, "async fn revert_due_doc");
+        assert!(revert.contains("NoteDocStatus::Draft"), "4xx must put the doc back to draft");
+        assert!(revert.contains("last_error"));
+    }
+
+    #[test]
+    fn claim_is_conditional_on_status_and_revision() {
+        let src = include_str!("note_publish.rs");
+        let claim = body_of(src, "async fn claim_due_doc");
+        assert!(claim.contains("Column::Status.eq(NoteDocStatus::Scheduled"));
+        assert!(claim.contains("Column::Revision.eq(doc.revision)"));
+        assert!(claim.contains("rows_affected == 0"));
+    }
+
+    #[test]
+    fn publish_and_write_run_in_a_transaction() {
+        let src = include_str!("note_publish.rs");
+        for signature in ["pub async fn publish_doc", "pub async fn write_note_with_doc"] {
+            let body = body_of(src, signature);
+            assert!(body.contains(".begin()"), "{signature} must open a transaction");
+            assert!(body.contains("commit()"), "{signature} must commit");
+            assert!(body.contains("rollback()"), "{signature} must roll back on error");
+        }
     }
 }

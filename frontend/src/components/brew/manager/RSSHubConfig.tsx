@@ -1,4 +1,6 @@
 import type { RSSHubConfig, RSSHubQueryParams } from '../../../types/brew'
+import type { RsshubInstance } from './RSSHubInstances'
+import type { RouteConfigRequirement, RouteTemplate } from './RSSHubRoutes'
 import {
   LuAlertCircle as AlertCircle,
   LuCheck as Check,
@@ -9,12 +11,8 @@ import { useI18n } from '../../../contexts/I18nContext'
 import { InputItem } from '../../settings/items/InputItem'
 import { Spinner } from '../../Spinner'
 import { RSSHubAdvanced } from './RSSHubAdvanced'
-import { RSSHubInstances, type RsshubInstance } from './RSSHubInstances'
-import {
-  RSSHubRouteExplorer,
-  type RouteConfigRequirement,
-  type RouteTemplate,
-} from './RSSHubRoutes'
+import { RSSHubInstances } from './RSSHubInstances'
+import { RSSHubRouteExplorer } from './RSSHubRoutes'
 import '../ui/brew.css'
 
 interface RSSHubConfigProps {

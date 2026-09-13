@@ -1,5 +1,5 @@
 /** 一条链，后来的顶掉前一次收尾权。intro 不 dropFlip；只有 flip 能。ChipLane 不占 lane。 */
-export type BrewMotionLane = 'idle' | 'intro' | 'flip' | 'lane'
+type BrewMotionLane = 'idle' | 'intro' | 'flip' | 'lane'
 
 let token = 0
 let lane: BrewMotionLane = 'idle'

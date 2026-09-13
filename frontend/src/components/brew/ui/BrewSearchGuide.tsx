@@ -1,5 +1,5 @@
-import type { ShortcutDescKey } from '../../../hooks/useBrewKeyboard'
 import type { ReactNode } from 'react'
+import type { ShortcutDescKey } from '../../../hooks/useBrewKeyboard'
 import {
   LuBookOpen,
   LuCheckCircle,

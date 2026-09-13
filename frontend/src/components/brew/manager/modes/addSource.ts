@@ -7,7 +7,7 @@ export type AddSourceKind = Extract<
   'rss' | 'brewlia' | 'link' | 'rsshub'
 >
 
-export type AddFeedKind = Extract<FeedType, 'rss' | 'atom' | 'notion' | 'rsshub'>
+type AddFeedKind = Extract<FeedType, 'rss' | 'atom' | 'notion' | 'rsshub'>
 
 export type AddFieldKind = 'notion' | 'rsshub' | 'link' | 'rss'
 

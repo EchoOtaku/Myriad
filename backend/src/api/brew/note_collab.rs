@@ -50,6 +50,25 @@ impl NoteCollabHub {
             .or_insert_with(|| broadcast::channel(ROOM_CAP).0)
             .clone()
     }
+
+    /// 最后一个人走了就把房间拆掉；调用方先把自己的 receiver drop 掉再来。
+    pub fn release(&self, doc_id: i32) {
+        let mut rooms = self.rooms.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if rooms
+            .get(&doc_id)
+            .is_some_and(|sender| sender.receiver_count() == 0)
+        {
+            rooms.remove(&doc_id);
+        }
+    }
+
+    #[cfg(test)]
+    fn room_count(&self) -> usize {
+        self.rooms
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .len()
+    }
 }
 
 static HUB: OnceCell<Arc<NoteCollabHub>> = OnceCell::new();
@@ -85,5 +104,37 @@ mod tests {
         assert_eq!(event.kind, "join");
         assert_eq!(event.peer_id, "a");
         assert_eq!(event.cursor, Some(4));
+    }
+
+    #[test]
+    fn empty_rooms_are_released_and_occupied_ones_stay() {
+        let hub = NoteCollabHub::new();
+        let rx_a = hub.subscribe(1);
+        let rx_b = hub.subscribe(1);
+        assert_eq!(hub.room_count(), 1);
+        drop(rx_a);
+        hub.release(1);
+        assert_eq!(hub.room_count(), 1, "someone is still in the room");
+        drop(rx_b);
+        hub.release(1);
+        assert_eq!(hub.room_count(), 0);
+        // 没人订阅时 publish 也不能把房间悄悄建回来留着
+        hub.publish(
+            2,
+            NoteCollabEvent {
+                kind: "doc".into(),
+                peer_id: String::new(),
+                user_id: 1,
+                name: None,
+                revision: Some(1),
+                cursor: None,
+                title: None,
+                content_md: None,
+                topic: None,
+                image: None,
+            },
+        );
+        hub.release(2);
+        assert_eq!(hub.room_count(), 0);
     }
 }

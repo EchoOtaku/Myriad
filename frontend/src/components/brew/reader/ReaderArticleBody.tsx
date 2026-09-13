@@ -12,7 +12,7 @@ import { neighborsInQueue } from '../logic/readingQueue'
 import { getArticleProseClass } from './articleProseClass'
 import { getImageUrl } from './contentRender'
 
-export interface ReaderArticleBodyProps {
+interface ReaderArticleBodyProps {
   item: BrewItem
   currentTheme: ThemeConfig
   currentFont: FontOption

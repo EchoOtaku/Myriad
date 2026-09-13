@@ -132,7 +132,7 @@ export function playBrewSurfaceEnter(root: HTMLElement | null): void {
 /** 退场结束后再换树，给最后一枚一点收尾余量。 */
 export const BREW_TAG_SWAP_PAD_MS = 32
 
-export type ChipLanePlan = 'hold' | 'start-exit' | 'retarget'
+type ChipLanePlan = 'hold' | 'start-exit' | 'retarget'
 
 /** 退场进行中只改目的地，不重开节拍。 */
 export function planChipLaneSwap(

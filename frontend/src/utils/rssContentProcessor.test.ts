@@ -70,6 +70,11 @@ describe('sanitizeRssHtml (DOMPurify allowlist)', () => {
     assert.match(out, /checked/)
   })
 
+  it('keeps table column alignment', () => {
+    const out = sanitizeRssHtml('<table><tr><th align="center">a</th></tr></table>')
+    assert.match(out, /align="center"/)
+  })
+
   it('keeps footnote anchors so the reader can jump', () => {
     const out = sanitizeRssHtml(
       '<p>a<sup class="footnote-reference"><a href="#note-fn-1">1</a></sup></p>'

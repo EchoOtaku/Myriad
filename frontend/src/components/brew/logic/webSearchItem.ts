@@ -1,6 +1,6 @@
 import type { BrewItem } from '../../../types/brew'
 
-export interface WebSearchArticleInput {
+interface WebSearchArticleInput {
   id: number
   title: string
   author?: string | null

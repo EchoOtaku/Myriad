@@ -1,9 +1,17 @@
 /** 预览与发布仍走后端渲染。可视层只改 Markdown 原文。 */
 
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react'
+import type { BrewNoteDoc } from '../../../types/brew'
 import type { NoteCollabEvent, NoteCollabPeer } from './noteCollab'
-import type { NoteEditorPane, NoteInsertMenuState } from './NoteEditorChrome'
+import type { InlineLink } from './noteDraft'
+import type {
+  NoteEditorPane,
+  NoteEditorTool,
+  NoteInsertMenuState,
+  TableAlign,
+} from './NoteEditorChrome'
 import type { SelectionAnchor } from './noteSelection'
+import type { NoteCloudFields } from './useNoteCloudSave'
 import {
   LuBold as Bold,
   LuBookOpen as BookOpen,
@@ -11,6 +19,7 @@ import {
   LuCode as Code,
   LuFileText as FileText,
   LuImage as Image,
+  LuImagePlus as ImagePlus,
   LuItalic as Italic,
   LuLink as Link,
   LuList as List,
@@ -20,8 +29,8 @@ import {
   LuSquareCode as SquareCode,
   LuStrikethrough as Strikethrough,
 } from '@lib/icons'
-import { motionShim as motion } from '@lib/motionShim'
 
+import { motionShim as motion } from '@lib/motionShim'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useAuth } from '../../../contexts/AuthContext'
@@ -30,6 +39,7 @@ import { brewAnimationPresets, getBrewTransition, useBrewAnimationConfig } from 
 import { isExlight } from '../../../hooks/useAnimationLevel'
 import * as brewApi from '../../../services/brewApi'
 import { federationApi } from '../../../services/federationApi'
+import { highlightCodeBlocks } from '../../../utils/codeHighlight'
 import { userFacingError } from '../../../utils/userFacingError'
 import { Spinner } from '../../Spinner'
 import { noteTopicChoices } from '../logic/topics'
@@ -42,10 +52,15 @@ import {
 import {
   clearNoteDraft,
   draftDiffersFrom,
+  hardBreak,
   indentLines,
+  linkAtCursor,
   prefixLines,
+  pruneOrphanFootnotes,
   readNoteDraft,
+  replaceLink,
   setHeadingLevel,
+  toggleWrap,
   wrapSelection,
   writeNoteDraft,
 } from './noteDraft'
@@ -73,22 +88,30 @@ import {
   toNoteWritePayload,
 } from './noteFields'
 import { matchEnterRule, matchSpaceRule } from './noteInputRules'
-import { caretOffsetStyle, mergeNoteField, mergeNoteText } from './noteMerge'
+import { caretOffsetStyle } from './noteMerge'
 import {
+  anchorInContainer,
   lineIsBlank,
-
   visualEmptyLineRect,
 } from './noteSelection'
 import {
   applyVisualInputRule,
+  currentColumnAlign,
   insertFootnoteMarkdown,
+  insertImage,
   insertTableMarkdown,
   markdownToVisualHtml,
+  removeImage,
   runVisualCommand,
+  setImageAlt,
+  setImageSrc,
   setCodeLang as setVisualCodeLang,
   tableAddColumn,
   tableAddRow,
   tableRemove,
+  tableRemoveColumn,
+  tableRemoveRow,
+  tableSetAlign,
   tableStep,
   textBeforeCaret,
   toggleVisualHeading,
@@ -100,14 +123,23 @@ import {
   withCodeLangLabels,
 } from './noteVisual'
 import { openNoteCloudDoc } from './useNoteCloud'
+import {
+  cloudFieldsOf,
+  mergeCloudFields,
+
+  useNoteCloudSave,
+} from './useNoteCloudSave'
 import { useNoteSelection } from './useNoteSelection'
 import '../ui/brew.css'
 import './NoteEditor.css'
 
 const PREVIEW_DEBOUNCE_MS = 260
 const DRAFT_SAVE_MS = 800
+const VISUAL_UNDO_GROUP_MS = 600
+const VISUAL_UNDO_LIMIT = 200
+const URL_LIKE = /^https?:\/\/\S+$/i
 
-export interface NoteEditorProps {
+interface NoteEditorProps {
   noteId?: number
   docId?: number
   onClose: () => void
@@ -168,8 +200,12 @@ export default function NoteEditor({
   const [linkInitial, setLinkInitial] = useState('')
   const [blockFocus, setBlockFocus] = useState(false)
   const [codeLang, setCodeLang] = useState('')
+  const [columnAlign, setColumnAlign] = useState<TableAlign>(null)
+  const [selectedImage, setSelectedImage] = useState<{
+    anchor: SelectionAnchor
+    alt: string
+  } | null>(null)
   const [cloudId, setCloudId] = useState<number | null>(docId ?? null)
-  const [revision, setRevision] = useState(1)
   const [docStatus, setDocStatus] = useState<'draft' | 'scheduled' | 'published'>('draft')
   const [scheduledAt, setScheduledAt] = useState<number | null>(null)
   const [peers, setPeers] = useState<NoteCollabPeer[]>([])
@@ -182,32 +218,72 @@ export default function NoteEditor({
   const editPaneRef = useRef<'write' | 'visual'>('write')
   const overlayOpenRef = useRef(false)
   const savedRangeRef = useRef<Range | null>(null)
+  const previewRef = useRef<HTMLDivElement>(null)
   const activeBlockRef = useRef<HTMLElement | null>(null)
   const selectionRef = useRef<SelectionAnchor | null>(null)
+  const selectedImageRef = useRef<HTMLImageElement | null>(null)
+  const imageReplaceRef = useRef<HTMLInputElement>(null)
+  /** 写栏里 ⌘K 落在已有链接上，记住它，回车时是改地址不是再包一层。 */
+  const editingLinkRef = useRef<InlineLink | null>(null)
+  /** 可视层自己的撤销栈：绕过 execCommand 的 DOM 操作也能撤。 */
+  const historyRef = useRef<{
+    past: string[]
+    future: string[]
+    lastPush: number
+    recorded: string
+    restoring: boolean
+  }>({ past: [], future: [], lastPush: 0, recorded: '', restoring: false })
   const fileRef = useRef<HTMLInputElement>(null)
   const coverFileRef = useRef<HTMLInputElement>(null)
-  const skipCloudSave = useRef(true)
   const visualEditing = useRef(false)
+  /** 服务端 revision 只走 ref：变了不该触发任何 effect。 */
   const revisionRef = useRef(1)
   const titleRef = useRef('')
   const contentMdRef = useRef('')
   const topicRef = useRef<string | null>(null)
   const coverRef = useRef<string | null>(null)
-  const baseRef = useRef({
-    title: '',
-    contentMd: '',
-    topic: null as string | null,
-    cover: null as string | null,
-  })
+  const publishedAtRef = useRef<number | null>(null)
   const paneRef = useRef<Pane>('write')
   const wsRef = useRef<WebSocket | null>(null)
   const coverPreview = cover || firstMarkdownImage(contentMd)
-  revisionRef.current = revision
   titleRef.current = title
   contentMdRef.current = contentMd
   topicRef.current = topic
   coverRef.current = cover
+  publishedAtRef.current = publishedAt
   paneRef.current = pane
+
+  /** 服务端回的文档：只更新状态类字段，内容由云存 hook 管。 */
+  const applyServerDoc = useCallback((doc: BrewNoteDoc) => {
+    revisionRef.current = doc.revision
+    setDocStatus(doc.status)
+    setScheduledAt(doc.scheduled_at)
+    setLastError(doc.last_error ?? null)
+  }, [])
+
+  const applyMergedFields = useCallback((fields: NoteCloudFields) => {
+    setTitle(fields.title)
+    setContentMd(fields.contentMd)
+    setTopic(fields.topic)
+    setCover(fields.cover)
+    setPublishedAt(fields.publishedAt)
+  }, [])
+
+  const cloud = useNoteCloudSave({
+    cloudId,
+    loading,
+    fields: { title, contentMd, topic, cover, publishedAt },
+    revisionRef,
+    onServerDoc: applyServerDoc,
+    onMerged: applyMergedFields,
+    onSaved: () => setCloudHint(true),
+    onError: setError,
+    labels: {
+      saveFailed: t.brew.errorSaveFailed,
+      conflict: t.brew.noteRevisionConflict,
+    },
+  })
+  const baseRef = cloud.baseRef
   if (pane !== 'preview') editPaneRef.current = pane
   overlayOpenRef.current = settingsOpen || insertMenu != null || linkOpen
 
@@ -229,6 +305,30 @@ export default function NoteEditor({
     if (paneRef.current === 'visual') visualRef.current?.focus()
     else textareaRef.current?.focus()
   }, [])
+
+  // 可视层的撤销栈：每次正文变化记一笔，连续敲字 600ms 内合成一笔。
+  useEffect(() => {
+    // 挪到下面 syncVisualFromMarkdown 之后再挂 undo/redo；这里只记账。
+    const history = historyRef.current
+    if (pane !== 'visual' || loading) {
+      history.recorded = contentMd
+      return
+    }
+    if (history.restoring) {
+      history.restoring = false
+      history.recorded = contentMd
+      return
+    }
+    if (contentMd === history.recorded) return
+    const now = Date.now()
+    if (now - history.lastPush > VISUAL_UNDO_GROUP_MS || history.past.length === 0) {
+      history.past.push(history.recorded)
+      if (history.past.length > VISUAL_UNDO_LIMIT) history.past.shift()
+      history.future = []
+    }
+    history.lastPush = now
+    history.recorded = contentMd
+  }, [contentMd, pane, loading])
 
   /** 空行上敲 `/`：不落字，直接开插入菜单。 */
   const slashTrigger = useCallback(
@@ -291,27 +391,15 @@ export default function NoteEditor({
               ? draft.publishedAt
               : server.publishedAt,
         }
+        // 服务端那份是「已确认」和合并基准；本地草稿比它新就会在下一拍推上去。
+        cloud.ack(server)
+        applyServerDoc(doc)
         setCloudId(doc.id)
-        setRevision(doc.revision)
-        setDocStatus(doc.status)
-        setScheduledAt(doc.scheduled_at)
-        setTitle(next.title)
-        setContentMd(next.contentMd)
-        setTopic(next.topic)
-        setCover(next.cover)
-        setPublishedAt(next.publishedAt)
+        applyMergedFields(next)
         setSaved(next)
-        baseRef.current = {
-          title: next.title,
-          contentMd: next.contentMd,
-          topic: next.topic,
-          cover: next.cover,
-        }
-        setLastError(doc.last_error ?? null)
         if (doc.last_error) {
           setError(userFacingError(doc.last_error, t.brew.noteScheduleFailed))
         }
-        skipCloudSave.current = true
       } catch (err) {
         if (!controller.signal.aborted) {
           setError(userFacingError(err, t.brew.errorLoadFailed))
@@ -364,6 +452,13 @@ export default function NoteEditor({
     }
   }, [contentMd, loading])
 
+  // 预览里的代码块上色，和阅读器同一套。
+  useEffect(() => {
+    if (pane !== 'preview' || !html) return
+    const root = previewRef.current
+    if (root) void highlightCodeBlocks(root)
+  }, [pane, html])
+
   useEffect(() => {
     if (pane !== 'visual') return
     if (visualEditing.current) return
@@ -372,107 +467,6 @@ export default function NoteEditor({
     const next = markdownToVisualHtml(contentMd)
     if (el.innerHTML !== next) el.innerHTML = next
   }, [pane, contentMd])
-
-  useEffect(() => {
-    if (loading || cloudId == null) return
-    if (skipCloudSave.current) {
-      skipCloudSave.current = false
-      return
-    }
-    const timer = setTimeout(async () => {
-      try {
-        const savedDoc = await brewApi.updateNoteDoc(cloudId, {
-          title,
-          content_md: contentMd,
-          topic,
-          image: cover,
-          published_at: publishedAt,
-          revision,
-        })
-        setRevision(savedDoc.revision)
-        setDocStatus(savedDoc.status)
-        setScheduledAt(savedDoc.scheduled_at)
-        setLastError(savedDoc.last_error ?? null)
-        if (!savedDoc.last_error) setError(null)
-        setCloudHint(true)
-        baseRef.current = {
-          title,
-          contentMd,
-          topic,
-          cover,
-        }
-      } catch (err) {
-        const message = userFacingError(err, t.brew.errorSaveFailed)
-        if (message === t.brew.noteRevisionConflict) {
-          try {
-            const fresh = await brewApi.getNoteDoc(cloudId)
-            const mergedTitle = mergeNoteText(
-              baseRef.current.title,
-              title,
-              fresh.title,
-            )
-            const mergedBody = mergeNoteText(
-              baseRef.current.contentMd,
-              contentMd,
-              fresh.content_md,
-            )
-            const mergedTopic = mergeNoteField(
-              baseRef.current.topic,
-              topic,
-              fresh.topic,
-            )
-            const mergedCover = mergeNoteField(
-              baseRef.current.cover,
-              cover,
-              fresh.image,
-            )
-            skipCloudSave.current = true
-            setTitle(mergedTitle)
-            setContentMd(mergedBody)
-            setTopic(mergedTopic)
-            setCover(mergedCover)
-            setPublishedAt(fresh.published_at)
-            setRevision(fresh.revision)
-            setDocStatus(fresh.status)
-            setScheduledAt(fresh.scheduled_at)
-            setError(t.brew.noteRevisionConflict)
-            const persisted = await brewApi.updateNoteDoc(cloudId, {
-              title: mergedTitle,
-              content_md: mergedBody,
-              topic: mergedTopic,
-              image: mergedCover,
-              published_at: fresh.published_at,
-              revision: fresh.revision,
-            })
-            setRevision(persisted.revision)
-            setDocStatus(persisted.status)
-            setLastError(persisted.last_error ?? null)
-            setCloudHint(true)
-            baseRef.current = {
-              title: mergedTitle,
-              contentMd: mergedBody,
-              topic: mergedTopic,
-              cover: mergedCover,
-            }
-          } catch {
-            setError(message)
-          }
-        }
-      }
-    }, DRAFT_SAVE_MS)
-    return () => clearTimeout(timer)
-  }, [
-    cloudId,
-    title,
-    contentMd,
-    topic,
-    cover,
-    publishedAt,
-    revision,
-    loading,
-    t.brew.errorSaveFailed,
-    t.brew.noteRevisionConflict,
-  ])
 
   useEffect(() => {
     if (cloudId == null) return
@@ -485,34 +479,27 @@ export default function NoteEditor({
         const persist = shouldApplyRemoteDoc(incoming, revisionRef.current)
         const live = shouldApplyRemoteEdit(incoming)
         if ((persist || live) && incoming.content_md != null) {
-          const mergedTitle = mergeNoteText(
-            baseRef.current.title,
-            titleRef.current,
-            incoming.title ?? titleRef.current,
-          )
-          const mergedBody = mergeNoteText(
-            baseRef.current.contentMd,
-            contentMdRef.current,
-            incoming.content_md,
-          )
-          skipCloudSave.current = true
-          setTitle(mergedTitle)
-          setContentMd(mergedBody)
-          setTopic(
-            mergeNoteField(
-              baseRef.current.topic,
-              topicRef.current,
-              incoming.topic ?? topicRef.current,
-            ),
-          )
-          setCover(
-            mergeNoteField(
-              baseRef.current.cover,
-              coverRef.current,
-              incoming.image ?? coverRef.current,
-            ),
-          )
-          if (incoming.revision != null) setRevision(incoming.revision)
+          const local: NoteCloudFields = {
+            title: titleRef.current,
+            contentMd: contentMdRef.current,
+            topic: topicRef.current,
+            cover: coverRef.current,
+            publishedAt: publishedAtRef.current,
+          }
+          const remote: NoteCloudFields = {
+            title: incoming.title ?? local.title,
+            contentMd: incoming.content_md,
+            topic: incoming.topic ?? local.topic,
+            cover: incoming.image ?? local.cover,
+            publishedAt: local.publishedAt,
+          }
+          const merged = mergeCloudFields(baseRef.current, local, remote)
+          if (persist && incoming.revision != null) {
+            // 别人存下来的整篇：服务端就是这份，记为已确认；我们没推上去的改动合进去后会再存。
+            revisionRef.current = incoming.revision
+            cloud.ack(remote)
+          }
+          applyMergedFields(merged)
         }
       } catch {
         /* 坏帧丢掉 */
@@ -586,7 +573,15 @@ export default function NoteEditor({
     [],
   )
 
+  /** 行内记号是切换：已经包着就拆掉。 */
   const wrap = useCallback(
+    (before: string, after: string, placeholder: string) =>
+      applyEdit((v, s, e) => toggleWrap(v, s, e, before, after, placeholder)),
+    [applyEdit],
+  )
+
+  /** 只插，不切换（图片、脚注这种）。 */
+  const insertText = useCallback(
     (before: string, after: string, placeholder: string) =>
       applyEdit((v, s, e) => wrapSelection(v, s, e, before, after, placeholder)),
     [applyEdit],
@@ -622,6 +617,32 @@ export default function NoteEditor({
     [pane, runVisual],
   )
 
+  /** 可视层 ⌘Z / ⌘⇧Z：整段回放 Markdown，光标落到末尾。 */
+  const visualHistoryStep = useCallback(
+    (direction: 'undo' | 'redo') => {
+      const history = historyRef.current
+      const from = direction === 'undo' ? history.past : history.future
+      const to = direction === 'undo' ? history.future : history.past
+      const next = from.pop()
+      if (next === undefined) return
+      to.push(contentMdRef.current)
+      history.restoring = true
+      history.lastPush = 0
+      syncVisualFromMarkdown(next)
+      const root = visualRef.current
+      if (root) {
+        root.focus()
+        const range = document.createRange()
+        range.selectNodeContents(root)
+        range.collapse(false)
+        const selection = document.getSelection()
+        selection?.removeAllRanges()
+        selection?.addRange(range)
+      }
+    },
+    [syncVisualFromMarkdown],
+  )
+
   const fieldMessage = useCallback(
     (kind: ReturnType<typeof noteFieldError>) => {
       if (kind === 'empty-title') return t.brew.noteTitleRequired
@@ -642,30 +663,43 @@ export default function NoteEditor({
     [contentMd, format, t.brew.noteBodyTooLong, t.brew.noteTitleRequired, t.brew.noteTitleTooLong, title],
   )
 
+  /** 往正文插一张图：可视层插 `<img>`，写栏插 Markdown。 */
+  const placeImage = useCallback(
+    (src: string, alt: string) => {
+      const root = visualRef.current
+      if (paneRef.current === 'visual' && root) {
+        setContentMd(insertImage(root, src, alt))
+        return
+      }
+      insertText(`![${alt}](${src})`, '', '')
+    },
+    [insertText],
+  )
+
   const handleUpload = useCallback(
-    async (file: File, as: 'body' | 'cover') => {
+    async (file: File, as: 'body' | 'cover' | 'replace') => {
       setUploading(true)
       setError(null)
       try {
         const uploaded = await federationApi.uploadMedia(file, {
           filename: file.name,
         })
-        if (as === 'cover') { setCover(uploaded.url)
-}
-        else if (paneRef.current === 'visual') {
-          runVisual(
-            'insertHTML',
-            `<img src="${uploaded.url}" alt="${file.name}">`,
-          )
-        } else { wrap(`![${file.name}](${uploaded.url})`, '', '')
-}
+        if (as === 'cover') {
+          setCover(uploaded.url)
+        } else if (as === 'replace') {
+          const root = visualRef.current
+          const img = selectedImageRef.current
+          if (root && img) setContentMd(setImageSrc(root, img, uploaded.url))
+        } else {
+          placeImage(uploaded.url, file.name)
+        }
       } catch (err) {
         setError(userFacingError(err, t.brew.errorSaveFailed))
       } finally {
         setUploading(false)
       }
     },
-    [wrap, runVisual, t.brew.errorSaveFailed],
+    [placeImage, t.brew.errorSaveFailed],
   )
 
   const handleSave = useCallback(async () => {
@@ -677,13 +711,10 @@ export default function NoteEditor({
     }
     setSaving(true)
     setError(null)
-    const payload = toNoteWritePayload(
-      title,
-      contentMd,
-      topic,
-      cover,
-      publishedAt,
-    )
+    // 正文里已经没人引用的脚注定义，发布时清掉；写作过程中不动。
+    const body = pruneOrphanFootnotes(contentMd)
+    if (body !== contentMd) setContentMd(body)
+    const payload = toNoteWritePayload(title, body, topic, cover, publishedAt)
     try {
       if (cloudId != null) {
         const result = await brewApi.publishNoteDoc(cloudId, {
@@ -759,10 +790,10 @@ export default function NoteEditor({
         image: cover,
         scheduled_at: when,
       })
-      setDocStatus(doc.status)
-      setScheduledAt(doc.scheduled_at)
-      setRevision(doc.revision)
-      setLastError(doc.last_error ?? null)
+      // 服务端把发布时间对齐到了定时点；本地跟上，免得下一拍又把旧时间推回去。
+      applyServerDoc(doc)
+      cloud.ack(cloudFieldsOf(doc))
+      setPublishedAt(doc.published_at)
     } catch (err) {
       setError(userFacingError(err, t.brew.errorSaveFailed))
     } finally {
@@ -787,10 +818,7 @@ export default function NoteEditor({
     setSaving(true)
     try {
       const doc = await brewApi.unscheduleNoteDoc(cloudId)
-      setDocStatus(doc.status)
-      setScheduledAt(null)
-      setRevision(doc.revision)
-      setLastError(doc.last_error ?? null)
+      applyServerDoc(doc)
       setError(null)
     } catch (err) {
       setError(userFacingError(err, t.brew.errorSaveFailed))
@@ -912,6 +940,7 @@ export default function NoteEditor({
   /** 链接地址栏。可视层先记住选区，输入框抢焦点后还能放回去。 */
   const openLink = useCallback(() => {
     const root = visualRef.current
+    editingLinkRef.current = null
     if (paneRef.current === 'visual' && root) {
       const selection = document.getSelection()
       savedRangeRef.current =
@@ -920,7 +949,10 @@ export default function NoteEditor({
           : null
       setLinkInitial(visualClosest(root, 'a')?.getAttribute('href') ?? '')
     } else {
-      setLinkInitial('')
+      const el = textareaRef.current
+      const existing = el ? linkAtCursor(el.value, el.selectionStart) : null
+      editingLinkRef.current = existing
+      setLinkInitial(existing?.url ?? '')
     }
     setLinkOpen(true)
   }, [])
@@ -943,11 +975,72 @@ export default function NoteEditor({
         else runVisual('unlink')
         return
       }
-      if (url) wrap('[', `](${url})`, t.brew.noteToolLink)
+      const editing = editingLinkRef.current
+      if (editing) {
+        editingLinkRef.current = null
+        applyEdit((v) => replaceLink(v, editing, url))
+        return
+      }
+      if (url) insertText('[', `](${url})`, t.brew.noteToolLink)
       else textareaRef.current?.focus()
     },
-    [restoreVisualRange, runVisual, wrap, t.brew.noteToolLink],
+    [restoreVisualRange, runVisual, applyEdit, insertText, t.brew.noteToolLink],
   )
+
+  /** 选中了字再粘一个网址：直接变链接，不是替换文字。 */
+  const pasteAsLink = useCallback(
+    (text: string): boolean => {
+      const url = text.trim()
+      if (!URL_LIKE.test(url)) return false
+      const root = visualRef.current
+      if (paneRef.current === 'visual' && root) {
+        const selection = document.getSelection()
+        if (!selection || selection.isCollapsed) return false
+        runVisual('createLink', url)
+        return true
+      }
+      const el = textareaRef.current
+      if (!el || el.selectionStart === el.selectionEnd) return false
+      insertText('[', `](${url})`, '')
+      return true
+    },
+    [runVisual, insertText],
+  )
+
+  /** 点中一张图：记住它，块工具条切到图片。 */
+  const selectImage = useCallback((img: HTMLImageElement | null) => {
+    selectedImageRef.current?.classList.remove('is-selected')
+    img?.classList.add('is-selected')
+    selectedImageRef.current = img
+    const container = scrollRef.current
+    if (!img || !container) {
+      setSelectedImage(null)
+      return
+    }
+    setSelectedImage({
+      anchor: anchorInContainer(img.getBoundingClientRect(), container),
+      alt: img.alt,
+    })
+  }, [])
+
+  const imageOp = useCallback(
+    (fn: (root: HTMLElement, img: HTMLImageElement) => string, keep = true) => {
+      const root = visualRef.current
+      const img = selectedImageRef.current
+      if (!root || !img) return
+      setContentMd(fn(root, img))
+      if (!keep) selectImage(null)
+    },
+    [selectImage],
+  )
+
+  const footnoteJump = useCallback((root: HTMLElement, target: HTMLElement) => {
+    const ref = target.closest<HTMLElement>('sup[data-fnref]')
+    if (!ref) return false
+    const definition = root.querySelector<HTMLElement>(`p[data-fn="${ref.dataset.fnref}"]`)
+    definition?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    return Boolean(definition)
+  }, [])
 
   const closeOverlays = useCallback(() => {
     setSettingsOpen(false)
@@ -968,6 +1061,7 @@ export default function NoteEditor({
     const el = visualClosest(root, block.kind)
     activeBlockRef.current = el
     setCodeLang(el?.dataset.lang ?? '')
+    setColumnAlign(el instanceof HTMLTableElement ? currentColumnAlign(root, el) : null)
   }, [block])
 
   const tableOp = useCallback(
@@ -1004,6 +1098,12 @@ export default function NoteEditor({
       const mod = e.ctrlKey || e.metaKey
       if (!mod) return
       const key = e.key.toLowerCase()
+      // 可视层的撤销走自己的栈，把绕过 execCommand 的改动也管住。
+      if (key === 'z' && !e.altKey && paneRef.current === 'visual') {
+        e.preventDefault()
+        visualHistoryStep(e.shiftKey ? 'redo' : 'undo')
+        return
+      }
       if (!e.shiftKey && !e.altKey) {
         if (key === 's') {
           e.preventDefault()
@@ -1042,9 +1142,10 @@ export default function NoteEditor({
         return
       }
       if (e.altKey && !e.shiftKey) {
-        if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') {
+        const level = /^Digit([1-6])$/.exec(e.code)?.[1]
+        if (level) {
           e.preventDefault()
-          heading(Number(e.code.slice(-1)))
+          heading(Number(level))
         }
       }
     }
@@ -1063,6 +1164,7 @@ export default function NoteEditor({
     taskList,
     heading,
     openLink,
+    visualHistoryStep,
     wrap,
     runVisual,
     t.brew.noteToolLink,
@@ -1178,20 +1280,34 @@ export default function NoteEditor({
           syncVisualFromMarkdown(next)
           return
         }
-        wrap(note.mark, '', '')
+        insertText(note.mark, '', '')
         setContentMd((current) => `${current.trimEnd()}\n\n${note.definition}`)
       },
     },
   ]
 
   const { marks, inserts } = splitNoteTools(tools)
-  const insertItems = [
+  const insertItems: NoteEditorTool[] = [
     {
       key: 'image',
       icon: <Image className="h-4 w-4" />,
       label: t.brew.noteToolImage,
       run: () => fileRef.current?.click(),
     },
+    {
+      key: 'image-url',
+      icon: <ImagePlus className="h-4 w-4" />,
+      label: t.brew.noteImageByUrl,
+      prompt: t.brew.noteImageUrlPlaceholder,
+      run: () => {},
+      runWith: (url) => placeImage(url, ''),
+    },
+    ...[1, 2, 3].map((level) => ({
+      key: `h${level}-block`,
+      icon: <span aria-hidden="true">H{level}</span>,
+      label: t.brew[`noteToolH${level}` as 'noteToolH1' | 'noteToolH2' | 'noteToolH3'],
+      run: () => heading(level),
+    })),
     ...inserts,
   ]
   const canDelete =
@@ -1290,6 +1406,11 @@ export default function NoteEditor({
                       applyEdit((v, s, end) => indentLines(v, s, end, outdent))
                       return
                     }
+                    if (e.key === 'Enter' && e.shiftKey) {
+                      e.preventDefault()
+                      applyEdit(hardBreak)
+                      return
+                    }
                     slashTrigger(e, () => {
                       const el = e.currentTarget
                       return (
@@ -1302,9 +1423,14 @@ export default function NoteEditor({
                     const file = [...e.clipboardData.files].find((item) =>
                       item.type.startsWith('image/'),
                     )
-                    if (!file) return
-                    e.preventDefault()
-                    void handleUpload(file, 'body')
+                    if (file) {
+                      e.preventDefault()
+                      void handleUpload(file, 'body')
+                      return
+                    }
+                    if (pasteAsLink(e.clipboardData.getData('text/plain'))) {
+                      e.preventDefault()
+                    }
                   }}
                   onDrop={(e) => {
                     const file = [...e.dataTransfer.files].find((item) =>
@@ -1336,8 +1462,22 @@ export default function NoteEditor({
                   onBlur={() => {
                     visualEditing.current = false
                   }}
+                  onPaste={(e) => {
+                    const file = [...e.clipboardData.files].find((item) =>
+                      item.type.startsWith('image/'),
+                    )
+                    if (file) {
+                      e.preventDefault()
+                      void handleUpload(file, 'body')
+                      return
+                    }
+                    if (pasteAsLink(e.clipboardData.getData('text/plain'))) {
+                      e.preventDefault()
+                    }
+                  }}
                   onKeyDown={(e) => {
                     const root = e.currentTarget
+                    if (selectedImageRef.current) selectImage(null)
                     if (e.key === 'Tab') {
                       e.preventDefault()
                       const cell =
@@ -1374,6 +1514,11 @@ export default function NoteEditor({
                   onClick={(e) => {
                     const root = e.currentTarget
                     const target = e.target as HTMLElement
+                    selectImage(target instanceof HTMLImageElement ? target : null)
+                    if (footnoteJump(root, target)) {
+                      e.preventDefault()
+                      return
+                    }
                     const item = target.closest<HTMLElement>('li[data-task]')
                     if (!item || target !== item || !root.contains(item)) return
                     // 勾选框画在 li 内容区左边的 ::before 上，点在内容左侧就是点它。
@@ -1400,6 +1545,7 @@ export default function NoteEditor({
                 ) : html ? (
                   <div
                     className="brew-note-preview"
+                    ref={previewRef}
                     dangerouslySetInnerHTML={{ __html: withCodeLangLabels(html) }}
                   />
                 ) : (
@@ -1421,12 +1567,32 @@ export default function NoteEditor({
             onLink={applyLink}
           />
           <NoteBlockBar
-            block={selectionAnchor ? null : block}
+            block={
+              selectedImage
+                ? { kind: 'img', anchor: selectedImage.anchor }
+                : selectionAnchor
+                  ? null
+                  : block
+            }
             codeLang={codeLang}
             onCodeLangChange={changeCodeLang}
+            columnAlign={columnAlign}
+            onTableAlign={(align) => {
+              setColumnAlign(align)
+              tableOp((root, table) => tableSetAlign(root, table, align))
+            }}
             onTableAddRow={() => tableOp(tableAddRow)}
             onTableAddColumn={() => tableOp(tableAddColumn)}
+            onTableRemoveRow={() => tableOp(tableRemoveRow)}
+            onTableRemoveColumn={() => tableOp(tableRemoveColumn)}
             onTableRemove={() => tableOp(tableRemove)}
+            imageAlt={selectedImage?.alt ?? ''}
+            onImageAltChange={(alt) => {
+              setSelectedImage((current) => (current ? { ...current, alt } : current))
+              imageOp((root, img) => setImageAlt(root, img, alt))
+            }}
+            onImageReplace={() => imageReplaceRef.current?.click()}
+            onImageRemove={() => imageOp(removeImage, false)}
             onFocusChange={setBlockFocus}
           />
           <NoteGutter
@@ -1495,6 +1661,17 @@ export default function NoteEditor({
           const file = e.target.files?.[0]
           e.target.value = ''
           if (file) void handleUpload(file, 'cover')
+        }}
+      />
+      <input
+        ref={imageReplaceRef}
+        type="file"
+        accept="image/*"
+        className="brew-bar__file"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          e.target.value = ''
+          if (file) void handleUpload(file, 'replace')
         }}
       />
     </motion.div>,

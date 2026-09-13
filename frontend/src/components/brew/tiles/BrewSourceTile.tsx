@@ -49,7 +49,7 @@ const ROTATE_PAGE_MS = 5600
 const ROTATE_MAX_PAGES = 4
 const WIDGET_REFRESH_INTERVAL = 60 * 1000
 
-export interface BrewSourceTileProps {
+interface BrewSourceTileProps {
   source: BrewSource
   size: BrewTileSize
   role: BrewViewerRole
@@ -484,7 +484,10 @@ export const BrewSourceTile = memo(
           <span>
             {format(t.brew.tileQuietMonths, { months })}
           </span>
-          <span className={alert ? 'text-red-500 dark:text-red-400' : ''}>
+          <span
+            className={alert ? 'text-red-500 dark:text-red-400' : ''}
+            title={alert ? source.last_error ?? undefined : undefined}
+          >
             {alert
               ? format(t.brew.tileFailedTimes, { count: source.error_count })
               : t.brew.tileToday}

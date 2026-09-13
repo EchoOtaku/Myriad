@@ -3,8 +3,8 @@
 export const MAX_NOTE_TITLE_CHARS = 200
 export const MAX_NOTE_BODY_CHARS = 200_000
 
-export type NoteFieldError = 'empty-title' | 'title-too-long' | 'body-too-long'
-export type NoteScheduleError = 'missing-time' | 'already-due'
+type NoteFieldError = 'empty-title' | 'title-too-long' | 'body-too-long'
+type NoteScheduleError = 'missing-time' | 'already-due'
 
 export function countNoteChars(value: string): number {
   return [...value].length

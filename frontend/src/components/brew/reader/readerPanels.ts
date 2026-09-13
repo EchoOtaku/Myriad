@@ -68,7 +68,7 @@ export function readerPopupTrigger(
   }
 }
 
-export type ReaderChromeLayer =
+type ReaderChromeLayer =
   | 'lightbox'
   | 'popup'
   | 'comments'

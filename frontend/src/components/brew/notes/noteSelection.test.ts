@@ -7,7 +7,7 @@ describe('placeBubble', () => {
 
   it('居中压在选区上方', () => {
     const placed = placeBubble(
-      { top: 300, left: 100, width: 80 },
+      { top: 300, left: 100, width: 80, height: 24 },
       bubble,
       { width: 800, scrollTop: 0 },
     )
@@ -16,26 +16,38 @@ describe('placeBubble', () => {
 
   it('左右夹在容器里', () => {
     const left = placeBubble(
-      { top: 300, left: 0, width: 10 },
+      { top: 300, left: 0, width: 10, height: 24 },
       bubble,
       { width: 800, scrollTop: 0 },
     )
     assert.equal(left.left, 108)
     const right = placeBubble(
-      { top: 300, left: 790, width: 10 },
+      { top: 300, left: 790, width: 10, height: 24 },
       bubble,
       { width: 800, scrollTop: 0 },
     )
     assert.equal(right.left, 692)
   })
 
-  it('顶上被滚出去就翻到下面', () => {
+  it('顶上被滚出去就翻到选区下面', () => {
     const placed = placeBubble(
-      { top: 1010, left: 100, width: 20 },
+      { top: 1010, left: 100, width: 20, height: 24 },
       bubble,
       { width: 800, scrollTop: 1000 },
     )
-    assert.equal(placed.top, 1010 + 32 + 8)
+    assert.equal(placed.top, 1010 + 24 + 8)
+  })
+
+  it('触屏一律放下面，把上面让给系统菜单', () => {
+    const placed = placeBubble(
+      { top: 300, left: 100, width: 20, height: 24 },
+      bubble,
+      { width: 800, scrollTop: 0 },
+      8,
+      8,
+      true,
+    )
+    assert.equal(placed.top, 300 + 24 + 8)
   })
 })
 

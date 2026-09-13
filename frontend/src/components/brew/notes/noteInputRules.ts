@@ -1,6 +1,6 @@
 /** 可视层的输入规则：行首敲 Markdown 记号加空格 / 回车，就地变成对应的块。 */
 
-export type InputRule =
+type InputRule =
   | { kind: 'heading'; level: number }
   | { kind: 'bullet' }
   | { kind: 'ordered' }

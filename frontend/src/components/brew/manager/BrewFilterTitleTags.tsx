@@ -10,8 +10,8 @@ import {
   LuX as X,
 } from '@lib/icons'
 import { useI18n } from '../../../contexts/I18nContext'
-import { Spinner } from '../../Spinner'
 import { SettingTitleTag } from '../../settings/SettingTitleTag'
+import { Spinner } from '../../Spinner'
 
 const TAG = 'brew-feeds__title-tag'
 

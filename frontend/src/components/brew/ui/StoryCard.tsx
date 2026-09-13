@@ -7,7 +7,7 @@ import { forwardRef } from 'react'
 import { cx } from './cx'
 import { BrewPick } from './Pick'
 
-export interface StoryCardFace {
+interface StoryCardFace {
   id: number | string
   title: string
   summary?: string

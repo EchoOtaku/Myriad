@@ -27,7 +27,7 @@ import { BrewRevisionChain } from '../utils/brewRevisionChain'
 import { brewSubject } from '../utils/brewSubject'
 import { BrewSyncConflictError } from '../utils/brewSyncConflict'
 import { getCSRFToken } from '../utils/csrf'
-import { notifyHttpRateLimit } from '../utils/httpRateLimitToast'
+import { notifyHttpRateLimit, parseRetryAfterSeconds } from '../utils/httpRateLimitToast'
 import { KeyedWrites } from '../utils/keyedWrites'
 import { requestCache } from '../utils/requestCache'
 import { httpStatusMessage, isUselessErrorText } from '../utils/userFacingError'
@@ -48,6 +48,34 @@ const CACHE_TTL = {
   CATEGORIES: 60 * 1000, // 1 min
   STATS: 30 * 1000, // 30s
   ITEM: 5 * 60 * 1000, // 5 min
+}
+
+/** 429 后最多等这么久再重试一次；更长的窗口就直接报错，别让页面挂着转圈。 */
+export const RATE_LIMIT_RETRY_MAX_MS = 8_000
+
+/** Retry-After 在可等范围内就返回毫秒；没头或太长返回 null。 */
+export function rateLimitRetryDelayMs(retryAfterSeconds: number | null): number | null {
+  if (retryAfterSeconds == null) return 1_000
+  const ms = Math.ceil(retryAfterSeconds * 1000)
+  return ms <= RATE_LIMIT_RETRY_MAX_MS ? Math.max(ms, 250) : null
+}
+
+function sleepWithSignal(ms: number, signal?: AbortSignal | null): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason instanceof Error ? signal.reason : new DOMException('Aborted', 'AbortError'))
+      return
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    function onAbort() {
+      clearTimeout(timer)
+      reject(signal?.reason instanceof Error ? signal.reason : new DOMException('Aborted', 'AbortError'))
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
 }
 
 /** CSRF: retry once. */
@@ -81,11 +109,25 @@ async function request<T>(
   }
 
   brewSubject.assert(subject)
-  const response = await fetch(`${API_BASE}${endpoint}`, {
+  let response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     headers,
     credentials: 'include',
   })
+
+  // 只读请求撞上短的限流窗口：等一下再试一次，不要直接给用户一个红条。
+  if (response.status === 429 && method === 'GET') {
+    const wait = rateLimitRetryDelayMs(parseRetryAfterSeconds(response))
+    if (wait != null) {
+      await sleepWithSignal(wait, options.signal)
+      brewSubject.assert(subject)
+      response = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers,
+        credentials: 'include',
+      })
+    }
+  }
 
   if (!response.ok) {
     notifyHttpRateLimit(response)
@@ -132,7 +174,7 @@ async function request<T>(
 }
 
 /** Tapp sandbox: send Runtime Grant. */
-export type BrewAttributionHeaders = Record<string, string>
+type BrewAttributionHeaders = Record<string, string>
 
 /** Tapp attribution skips cache. */
 export async function getSources(
@@ -417,7 +459,7 @@ export async function deleteCategory(
 }
 
 type BrewItemListEntry = Omit<BrewItem, 'content'>
-export type BrewItemPreviewsResponse = Omit<BrewItemsResponse, 'items'> & { items: BrewItemListEntry[] }
+type BrewItemPreviewsResponse = Omit<BrewItemsResponse, 'items'> & { items: BrewItemListEntry[] }
 
 export function getItems(
   query: BrewItemsQuery = {},
@@ -811,7 +853,7 @@ export async function getStats(
   return requestCache.fetch('brew:stats', fetchStats, CACHE_TTL.STATS)
 }
 
-export interface BrewSyncStateItem {
+interface BrewSyncStateItem {
   expected_revision?: number
   item_id: number
   is_read?: boolean
@@ -822,7 +864,7 @@ export interface BrewSyncStateItem {
   updated_at: number
 }
 
-export interface BrewSyncStatesResponse {
+interface BrewSyncStatesResponse {
   revisions?: Record<number, number>
   confirmed?: number[]
   failed?: number[]
@@ -941,7 +983,7 @@ export interface CommentItem {
   reply_count?: number
 }
 
-export interface CommentsResponse {
+interface CommentsResponse {
   success: boolean
   comments: CommentItem[]
   has_comments: boolean
@@ -960,7 +1002,7 @@ export interface CreateCommentRequest {
   parent_id?: number
 }
 
-export interface UpdateCommentRequest {
+interface UpdateCommentRequest {
   comment?: string
   color?: string
   is_public?: boolean
@@ -1011,7 +1053,7 @@ export async function deleteComment(
   })
 }
 
-export interface RepliesResponse {
+interface RepliesResponse {
   success: boolean
   replies: CommentItem[]
   error?: string

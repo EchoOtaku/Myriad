@@ -16,7 +16,7 @@ use crate::models::entities::brew_sources::FeedType;
 ///
 /// Prevents unbounded memory use on malicious or misconfigured sources.
 /// Fail cleanly via [`ParseError::FetchError`] — never buffer past this limit.
-pub const MAX_FEED_BODY_BYTES: usize = 16 * 1024 * 1024; // 16 MiB
+const MAX_FEED_BODY_BYTES: usize = 16 * 1024 * 1024; // 16 MiB
 
 /// 解析后的订阅源信息
 #[derive(Clone, Debug, Serialize, Deserialize)]

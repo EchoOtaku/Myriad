@@ -126,6 +126,22 @@
   font-weight: 600;
 }
 
+/* 列对齐：后端和可视层都落在 align 属性上；CSS 会盖过属性，这里补回来。 */
+.brew-note-preview th[align='center'],
+.brew-note-preview td[align='center'] {
+  text-align: center;
+}
+
+.brew-note-preview th[align='right'],
+.brew-note-preview td[align='right'] {
+  text-align: end;
+}
+
+.brew-note-preview span[data-esc] {
+  /* 转义字：看起来就是那个字 */
+  display: inline;
+}
+
 /* 任务列表：后端渲染是 input[type=checkbox]，可视层是 li[data-task]。两种画法一致。 */
 .brew-note-preview li:has(> input[type='checkbox']),
 .brew-note-preview li[data-task] {

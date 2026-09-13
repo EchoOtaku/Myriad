@@ -37,11 +37,6 @@ impl NoteDocStatus {
             _ => None,
         }
     }
-
-    /// 公开读路径只认这一态。草稿和定时都不能出现在列表里。
-    pub fn is_public(self) -> bool {
-        self == Self::Published
-    }
 }
 
 /// 订一个未来时间。到点或更早都拒绝，调用方应改走发布。
@@ -62,13 +57,6 @@ pub fn is_due(status: NoteDocStatus, scheduled_at_ms: Option<i64>, now_ms: i64) 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn public_only_means_published() {
-        assert!(!NoteDocStatus::Draft.is_public());
-        assert!(!NoteDocStatus::Scheduled.is_public());
-        assert!(NoteDocStatus::Published.is_public());
-    }
 
     #[test]
     fn schedule_rejects_past_and_now() {

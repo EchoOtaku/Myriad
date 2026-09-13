@@ -142,7 +142,7 @@ export interface BrewNoteDraft {
   published_at: number
 }
 
-export type BrewNoteDocStatus = 'draft' | 'scheduled' | 'published'
+type BrewNoteDocStatus = 'draft' | 'scheduled' | 'published'
 
 export interface BrewNoteDoc {
   id: number

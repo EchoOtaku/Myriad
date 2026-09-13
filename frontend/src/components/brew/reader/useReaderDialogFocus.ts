@@ -4,7 +4,7 @@ import { nextReaderDialogTab } from './readerPanels'
 const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
-export function readerDialogFocusables(root: ParentNode): HTMLElement[] {
+function readerDialogFocusables(root: ParentNode): HTMLElement[] {
   return Iterator.from(root.querySelectorAll<HTMLElement>(FOCUSABLE))
     .filter((element) =>
       element.tabIndex >= 0 &&

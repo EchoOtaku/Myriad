@@ -16,7 +16,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-use chrono::{TimeZone, Utc};
+use chrono::Utc;
 use myriad_brew_notes::{render_markdown, validate_note};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
@@ -28,14 +28,6 @@ use serde_json::json;
 use super::helpers::{brew_http_err, brew_store_http, get_admin_user_id_from_headers};
 use crate::error::HttpError;
 use crate::models::entities::{brew_items, brew_note_docs, brew_sources};
-
-/// 手记源的固定名字。和分类「我」一样是**数据值**而不是界面文案 ——
-/// 站长可以像改任何订阅源一样把它改掉，改了也不影响这里的查找（按
-/// `source_type` 找，不按名字找）。
-const NOTE_SOURCE_NAME: &str = "手记";
-
-/// 手记源的 URL。调度器按 `source_type` 跳过抓取。
-const NOTE_SOURCE_URL: &str = "myriad:notes";
 
 /// 手记落在「我」分类下 —— 这是站内唯一可做文章级 SEO 的分类。
 /// 直接引用 `api::seo` 的那份取值，不另抄一个字面量。
@@ -106,10 +98,6 @@ async fn find_own_note(
     Ok((item, source))
 }
 
-fn millis_to_datetime(ms: i64) -> Option<chrono::DateTime<Utc>> {
-    Utc.timestamp_millis_opt(ms).single()
-}
-
 /// 维护源上的条目计数缓存。手记不走抓取路径，没人替它更新这个数。
 async fn sync_item_count(db: &DatabaseConnection, source: &brew_sources::Model) {
     let count = brew_items::Entity::find()
@@ -170,7 +158,7 @@ pub(crate) async fn create_note(
     Json(req): Json<NoteWriteRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
-    let item = crate::services::note_publish::write_published_item(
+    let item = crate::services::note_publish::write_note_with_doc(
         &db,
         user_id,
         None,
@@ -181,17 +169,6 @@ pub(crate) async fn create_note(
         req.published_at,
     )
     .await?;
-    let _ = crate::services::note_publish::upsert_doc_for_published_item(
-        &db,
-        user_id,
-        &item,
-        &req.title,
-        &req.content_md,
-        req.topic.clone(),
-        req.image.clone(),
-        req.published_at,
-    )
-    .await;
 
     Ok(Json(json!({
         "success": true,
@@ -209,7 +186,7 @@ pub(crate) async fn update_note(
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
     let (item, _) = find_own_note(&db, user_id, id).await?;
-    let item = crate::services::note_publish::write_published_item(
+    let item = crate::services::note_publish::write_note_with_doc(
         &db,
         user_id,
         Some(item.id),
@@ -220,17 +197,6 @@ pub(crate) async fn update_note(
         req.published_at,
     )
     .await?;
-    let _ = crate::services::note_publish::upsert_doc_for_published_item(
-        &db,
-        user_id,
-        &item,
-        &req.title,
-        &req.content_md,
-        req.topic.clone(),
-        req.image.clone(),
-        req.published_at,
-    )
-    .await;
 
     Ok(Json(json!({
         "success": true,
@@ -266,6 +232,7 @@ pub(crate) async fn delete_note(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::note_publish::{NOTE_SOURCE_NAME, NOTE_SOURCE_URL, millis_to_datetime};
 
     #[test]
     fn note_source_lands_in_the_own_content_category() {

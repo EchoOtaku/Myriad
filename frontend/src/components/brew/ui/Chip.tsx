@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react'
 
-import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { brewMotionClaim, brewMotionRelease, brewTagQuiet } from '../../../hooks/animation/pages/brew'
 import { awaitLaneSwap, planChipLaneSwap } from '../../../hooks/animation/pages/brewChipPresence'
 
@@ -39,11 +39,9 @@ export function useBrewWaveLane(
   const [shown, setShown] = useState(wave)
   const [exiting, setExiting] = useState(false)
   const [exitHow, setExitHow] = useState<'waapi' | 'css'>('css')
-  const [arriving, setArriving] = useState(() => !brewTagQuiet())
   shownRef.current = shown
   const onDisplayedRef = useRef(onDisplayed)
   onDisplayedRef.current = onDisplayed
-  const clearArriving = useCallback(() => setArriving(false), [])
 
   if (!exiting && wave === shown) {
     oldChildrenRef.current = children
@@ -68,7 +66,6 @@ export function useBrewWaveLane(
       exitingRef.current = false
       setShown(wave)
       setExiting(false)
-      setArriving(false)
       return
     }
 
@@ -106,8 +103,6 @@ export function useBrewWaveLane(
     exiting,
     exitHow,
     shown,
-    arriving,
-    clearArriving,
     view: frozen ? oldChildrenRef.current : children,
   }
 }

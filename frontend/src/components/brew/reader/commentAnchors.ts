@@ -2,7 +2,7 @@ import type { CommentItem } from '../../../services/brewApi'
 import type { AnnotationItem } from '../../../services/brewliaApi'
 import type { ThemeKey } from './types'
 
-export interface TextAnchor {
+interface TextAnchor {
   selected_text: string
   start_offset?: number
   end_offset?: number

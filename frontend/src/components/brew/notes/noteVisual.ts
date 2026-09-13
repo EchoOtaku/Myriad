@@ -5,7 +5,7 @@
  * 后半是对 contenteditable 的 DOM 操作，只在浏览器里跑。
  */
 
-export function escapeHtml(value: string): string {
+function escapeHtml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -76,17 +76,44 @@ function blocksOf(markdown: string): string[] {
       flush()
       continue
     }
-    const grouped =
-      /^([-*] |\d+\. |> |\|)/.test(line) &&
-      current.length > 0 &&
-      /^([-*] |\d+\. |> |\|)/.test(current[0] ?? '')
-    if (!grouped && current.length > 0 && !/^(> |\||[-*] |\d+\. )/.test(current[0] ?? '')) {
-      flush()
+    const head = current[0]
+    if (head !== undefined) {
+      const headKind = blockKind(head)
+      const lineKind = blockKind(line)
+      // 标题、分隔线只有一行；别的块换了种类就断开；普通行接在任何块后面都是续行。
+      if (
+        headKind === 'heading' ||
+        headKind === 'hr' ||
+        (lineKind !== 'text' && lineKind !== headKind)
+      ) {
+        flush()
+      }
     }
     current.push(line)
   }
   flush()
   return blocks
+}
+
+type BlockKind =
+  | 'heading'
+  | 'hr'
+  | 'quote'
+  | 'table'
+  | 'ul'
+  | 'ol'
+  | 'footnote'
+  | 'text'
+
+function blockKind(line: string): BlockKind {
+  if (/^#{1,6} /.test(line)) return 'heading'
+  if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) return 'hr'
+  if (line.startsWith('> ')) return 'quote'
+  if (line.startsWith('|')) return 'table'
+  if (/^[-*] /.test(line)) return 'ul'
+  if (/^\d+\. /.test(line)) return 'ol'
+  if (/^\[\^[^\]\s]+\]:/.test(line)) return 'footnote'
+  return 'text'
 }
 
 interface ListNode {
@@ -138,6 +165,49 @@ function renderListTree(nodes: ListNode[]): string {
   return `<${tag}${listAttr}>${items}</${tag}>`
 }
 
+type CellAlign = 'left' | 'center' | 'right' | null
+
+function splitTableRow(row: string): string[] {
+  return row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|')
+}
+
+function parseAlignRow(row: string): CellAlign[] {
+  return splitTableRow(row).map((cell) => {
+    const spec = cell.trim()
+    const left = spec.startsWith(':')
+    const right = spec.endsWith(':')
+    if (left && right) return 'center'
+    if (right) return 'right'
+    if (left) return 'left'
+    return null
+  })
+}
+
+function alignAttr(align: CellAlign): string {
+  return align ? ` align="${align}"` : ''
+}
+
+/** 表格：第二行 `:---:` 决定每列对齐，落在单元格的 `align` 属性上，和后端一致。 */
+function renderTable(block: string): string {
+  const lines = block.split('\n')
+  const alignIndex = lines.findIndex((row) => /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$/.test(row))
+  const aligns = alignIndex >= 0 ? parseAlignRow(lines[alignIndex]!) : []
+  const rows = lines.filter((_row, index) => index !== alignIndex)
+  const html = rows
+    .map((row, index) => {
+      const tag = index === 0 ? 'th' : 'td'
+      const cells = splitTableRow(row)
+        .map(
+          (cell, col) =>
+            `<${tag}${alignAttr(aligns[col] ?? null)}>${inlineMarkdown(cell.trim())}</${tag}>`,
+        )
+        .join('')
+      return `<tr>${cells}</tr>`
+    })
+    .join('')
+  return `<table>${html}</table>`
+}
+
 /** Markdown → 可视层 HTML。不是发布用的消毒 HTML。 */
 export function markdownToVisualHtml(markdown: string): string {
   return blocksOf(markdown)
@@ -162,24 +232,7 @@ export function markdownToVisualHtml(markdown: string): string {
         return `<blockquote>${inlineMarkdown(block.replace(/^(> )/gm, ''))}</blockquote>`
       }
       if (/^([-*] |\d+\. )/.test(block)) return renderListTree(parseListTree(block))
-      if (/^\|/.test(block)) {
-        const rows = block.split('\n').filter((row) => !/^\|?\s*-+/.test(row))
-        const html = rows
-          .map((row, index) => {
-            const cells = row
-              .split('|')
-              .slice(1, -1)
-              .map((cell) =>
-                index === 0
-                  ? `<th>${inlineMarkdown(cell.trim())}</th>`
-                  : `<td>${inlineMarkdown(cell.trim())}</td>`,
-              )
-              .join('')
-            return `<tr>${cells}</tr>`
-          })
-          .join('')
-        return `<table>${html}</table>`
-      }
+      if (/^\|/.test(block)) return renderTable(block)
       return `<p>${inlineMarkdown(block)}</p>`
     })
     .join('')
@@ -202,16 +255,29 @@ function inlineHtml(html: string): string {
         const alt = /\balt="([^"]*)"/i.exec(attrs)?.[1] ?? ''
         return `![${alt}](${src})`
       })
+      .replace(/<span[^>]*data-esc="([^"]*)"[^>]*>[\s\S]*?<\/span>/gi, (_m, ch: string) =>
+        `\\${decode(ch)}`,
+      )
       .replace(/<sup[^>]*data-fnref="(\d+)"[^>]*>[\s\S]*?<\/sup>/gi, '[^$1]')
+      .replace(/<a[^>]*data-autolink="1"[^>]*href="([^"]*)"[^>]*>[\s\S]*?<\/a>/gi, `${AUTO_OPEN}$1${AUTO_CLOSE}`)
+      .replace(/<a[^>]*href="([^"]*)"[^>]*data-autolink="1"[^>]*>[\s\S]*?<\/a>/gi, `${AUTO_OPEN}$1${AUTO_CLOSE}`)
       .replace(/<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, '[$2]($1)')
       .replace(/<code>([\s\S]*?)<\/code>/gi, '`$1`')
+      .replace(/<strong><em>([\s\S]*?)<\/em><\/strong>/gi, '***$1***')
+      .replace(/<em><strong>([\s\S]*?)<\/strong><\/em>/gi, '***$1***')
       .replace(/<\/?(strong|b)>/gi, '**')
       .replace(/<\/?(em|i)>/gi, '*')
       .replace(/<\/?(del|s|strike)>/gi, '~~')
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<[^>]+>/g, ''),
+      .replace(/<br\s*\/?>/gi, '  \n')
+      .replace(/<[^>]+>/g, '')
+      .replaceAll(AUTO_OPEN, '<')
+      .replaceAll(AUTO_CLOSE, '>'),
   )
 }
+
+/** 自动链接的尖括号先用占位符顶着，等把标签剥完再换回来。 */
+const AUTO_OPEN = '\uE010'
+const AUTO_CLOSE = '\uE011'
 
 function unwrap(html: string, tag: string): string {
   return html.replace(new RegExp(`^<${tag}[^>]*>|</${tag}>$`, 'gi'), '')
@@ -312,15 +378,28 @@ export function visualHtmlToMarkdown(html: string): string {
       if (tag === 'blockquote') return `> ${inlineHtml(body).replaceAll('\n', '\n> ')}`
       if (tag === 'ul' || tag === 'ol') return serializeList(body, tag === 'ol', attrs, '')
       if (tag === 'table') {
-        const rows = [...body.matchAll(/<tr>([\s\S]*?)<\/tr>/gi)].map((row) => {
-          const cells = [...row[1]!.matchAll(/<t[hd]>([\s\S]*?)<\/t[hd]>/gi)].map(
-            (cell) => inlineHtml(cell[1]!).trim(),
+        const aligns: CellAlign[] = []
+        const rows = [...body.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)].map((row, rowIndex) => {
+          const cells = [...row[1]!.matchAll(/<t[hd]([^>]*)>([\s\S]*?)<\/t[hd]>/gi)].map(
+            (cell, col) => {
+              if (rowIndex === 0) {
+                const align = /\balign="(left|center|right)"/i.exec(cell[1] ?? '')?.[1]
+                aligns[col] = (align?.toLowerCase() as CellAlign) ?? null
+              }
+              return inlineHtml(cell[2]!).trim().replaceAll('|', String.raw`\|`)
+            },
           )
           return `| ${cells.join(' | ')} |`
         })
         if (rows.length === 0) return ''
         const width = (rows[0]!.match(/\|/g)?.length ?? 1) - 1
-        const sep = `| ${Array.from({ length: width }, () => '---').join(' | ')} |`
+        const sep = `| ${Array.from({ length: width }, (_x, col) => {
+          const align = aligns[col] ?? null
+          if (align === 'center') return ':---:'
+          if (align === 'right') return '---:'
+          if (align === 'left') return ':---'
+          return '---'
+        }).join(' | ')} |`
         return [rows[0], sep, ...rows.slice(1)].join('\n')
       }
       const fn = attrs.match(/data-fn="(\d+)"/)?.[1]
@@ -467,6 +546,95 @@ export function tableAddColumn(root: HTMLElement, table: HTMLTableElement): stri
 export function tableRemove(root: HTMLElement, table: HTMLTableElement): string {
   table.remove()
   return visualHtmlToMarkdown(root.innerHTML)
+}
+
+/** 光标所在的单元格；不在表格里就是 null。 */
+function currentCell(root: HTMLElement): HTMLTableCellElement | null {
+  return visualClosest(root, 'td') ?? visualClosest(root, 'th')
+}
+
+/** 删光标所在的行。表头行不删；只剩表头就删整张表。 */
+export function tableRemoveRow(root: HTMLElement, table: HTMLTableElement): string {
+  const cell = currentCell(root)
+  const row = cell?.parentElement
+  if (row instanceof HTMLTableRowElement && row.rowIndex > 0) {
+    row.remove()
+  } else if (table.rows.length <= 1) {
+    table.remove()
+  }
+  return visualHtmlToMarkdown(root.innerHTML)
+}
+
+/** 删光标所在的列。最后一列删掉就是删表。 */
+export function tableRemoveColumn(root: HTMLElement, table: HTMLTableElement): string {
+  const cell = currentCell(root)
+  if (!cell) return visualHtmlToMarkdown(root.innerHTML)
+  const index = cell.cellIndex
+  if ((table.rows[0]?.cells.length ?? 0) <= 1) {
+    table.remove()
+  } else {
+    for (const row of table.rows) row.cells[index]?.remove()
+  }
+  return visualHtmlToMarkdown(root.innerHTML)
+}
+
+/** 给光标所在的列设对齐；写在每个单元格的 `align` 上，Markdown 只看表头那一格。 */
+export function tableSetAlign(
+  root: HTMLElement,
+  table: HTMLTableElement,
+  align: 'left' | 'center' | 'right' | null,
+): string {
+  const cell = currentCell(root)
+  if (!cell) return visualHtmlToMarkdown(root.innerHTML)
+  const index = cell.cellIndex
+  for (const row of table.rows) {
+    const target = row.cells[index]
+    if (!target) continue
+    if (align) target.setAttribute('align', align)
+    else target.removeAttribute('align')
+  }
+  return visualHtmlToMarkdown(root.innerHTML)
+}
+
+export function currentColumnAlign(
+  root: HTMLElement,
+  table: HTMLTableElement,
+): 'left' | 'center' | 'right' | null {
+  const cell = currentCell(root)
+  if (!cell) return null
+  const head = table.rows[0]?.cells[cell.cellIndex]
+  const align = head?.getAttribute('align')?.toLowerCase()
+  return align === 'left' || align === 'center' || align === 'right' ? align : null
+}
+
+/* ---- 图片 ---- */
+
+export function setImageAlt(root: HTMLElement, img: HTMLImageElement, alt: string): string {
+  img.alt = alt
+  return visualHtmlToMarkdown(root.innerHTML)
+}
+
+export function setImageSrc(root: HTMLElement, img: HTMLImageElement, src: string): string {
+  img.src = src
+  return visualHtmlToMarkdown(root.innerHTML)
+}
+
+export function removeImage(root: HTMLElement, img: HTMLImageElement): string {
+  const parent = img.parentElement
+  img.remove()
+  if (parent && parent !== root && !parent.textContent?.trim() && parent.childElementCount === 0) {
+    parent.remove()
+  }
+  return visualHtmlToMarkdown(root.innerHTML)
+}
+
+/** 在光标处插一张图。 */
+export function insertImage(root: HTMLElement, src: string, alt = ''): string {
+  return runVisualCommand(
+    root,
+    'insertHTML',
+    `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}">`,
+  )
 }
 
 /** 表格里 Tab：下一格；最后一格再 Tab 就加一行。 */

@@ -5,7 +5,7 @@ import { isOwnBrewSource } from '../constants'
 
 export type BrewViewerRole = 'guest' | 'member' | 'admin'
 
-export interface ScoreFactors {
+interface ScoreFactors {
   own: number
   recency: number
   corpus: number

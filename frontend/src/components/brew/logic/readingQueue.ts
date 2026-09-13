@@ -1,6 +1,6 @@
-export type ReadingQueueOrigin = 'agent' | 'starred' | 'topic' | 'feeds' | 'direct'
+type ReadingQueueOrigin = 'agent' | 'starred' | 'topic' | 'feeds' | 'direct'
 
-export interface ReadingQueueItem {
+interface ReadingQueueItem {
   id: number
   title: string
 }

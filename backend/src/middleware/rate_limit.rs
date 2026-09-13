@@ -29,6 +29,12 @@ const IMAGE_PROXY_BUCKET: &str = "proxy_image";
 /// Default per-path budget for ordinary API traffic (polls, list/read, music meta).
 const DEFAULT_PATH_MAX: usize = 200;
 
+/// Brew 的只读列表（`/api/brew/items`）：订阅板每个源一条、主题流翻页、首页手记、
+/// 收藏都打这一个路径，而且开发环境所有请求都从代理 IP 来。它是纯 DB 读，
+/// 给一个自己的高桶，别和普通端点挤 200。
+const BREW_LIST_MAX: usize = 1200;
+const BREW_LIST_BUCKET: &str = "brew_list_read";
+
 /// Expensive / abuse-prone paths (AI, bulk external fetch, open egress helpers).
 /// Shared key per path: `COMPUTE_MAX` / 60s.
 const COMPUTE_MAX: usize = 45;
@@ -261,6 +267,11 @@ pub async fn rate_limit_middleware(req: Request, next: Next) -> Response {
             RATE_LIMITER.check_bucket(ip, IMAGE_PROXY_BUCKET, IMAGE_PROXY_MAX, IMAGE_PROXY_WINDOW),
             IMAGE_PROXY_WINDOW.as_secs(),
         )
+    } else if is_brew_list_read(&path, req.method()) {
+        (
+            RATE_LIMITER.check_bucket(ip, BREW_LIST_BUCKET, BREW_LIST_MAX, Duration::from_secs(60)),
+            60,
+        )
     } else if is_compute_intensive(&path) {
         (
             RATE_LIMITER.check_bucket(ip, &path, COMPUTE_MAX, Duration::from_secs(60)),
@@ -335,6 +346,11 @@ fn is_admin_updater_mutate(path: &str) -> bool {
 /// Image proxy — high volume media path (own bucket, not compute).
 fn is_image_proxy(path: &str) -> bool {
     path == "/api/proxy/image" || path.starts_with("/api/proxy/image/")
+}
+
+/// Brew 文章列表的 GET。`/api/brew/items/{id}/read` 这类写操作不算。
+fn is_brew_list_read(path: &str, method: &axum::http::Method) -> bool {
+    method == axum::http::Method::GET && path.trim_end_matches('/') == "/api/brew/items"
 }
 
 /// Expensive or open-egress paths. Prefer **prefix / exact** matches so we do not
@@ -443,6 +459,20 @@ mod tests {
         assert!(IMAGE_PROXY_MAX >= 300);
         assert!(IP_HARD_CAP_MAX >= IMAGE_PROXY_MAX + 200);
         assert_eq!(IMAGE_PROXY_WINDOW, Duration::from_secs(60));
+    }
+
+    #[test]
+    fn brew_item_list_reads_get_their_own_bucket() {
+        use axum::http::Method;
+        assert!(is_brew_list_read("/api/brew/items", &Method::GET));
+        assert!(is_brew_list_read("/api/brew/items/", &Method::GET));
+        // 单篇、标记已读、收藏都不是列表
+        assert!(!is_brew_list_read("/api/brew/items/517", &Method::GET));
+        assert!(!is_brew_list_read("/api/brew/items/517/read", &Method::POST));
+        assert!(!is_brew_list_read("/api/brew/items", &Method::POST));
+        // 订阅板一分钟里能滚过几十个源，每个源一条；200 不够
+        assert!(BREW_LIST_MAX >= 600);
+        assert!(IP_HARD_CAP_MAX >= BREW_LIST_MAX, "hard cap must not undercut the list bucket");
     }
 
     #[test]

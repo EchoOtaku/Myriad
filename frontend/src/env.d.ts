@@ -8,6 +8,12 @@ declare module '*?raw' {
   export default content
 }
 
+/** Prism 语法组件只有副作用（往全局 Prism 注册），没有导出。 */
+declare module 'prismjs/components/prism-*' {
+  const nothing: undefined
+  export default nothing
+}
+
 interface ImportMetaEnv {
   readonly PUBLIC_API_URL: string
   readonly DEV: boolean

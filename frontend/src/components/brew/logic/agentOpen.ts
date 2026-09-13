@@ -1,6 +1,6 @@
 /** 不调 brewApi。 */
 
-export interface AgentOpenHint {
+interface AgentOpenHint {
   articleId?: string
   articleLink?: string
   openLatest?: boolean
@@ -34,7 +34,7 @@ export function wantsLatestOnly(hint: AgentOpenHint): boolean {
 export const AGENT_SCAN_MAX_PAGES = 5
 export const AGENT_SCAN_PER_PAGE = 20
 
-export interface AgentArticle {
+interface AgentArticle {
   id: number
   title?: string
   link?: string | null
@@ -91,7 +91,7 @@ export async function findAgentArticle<T extends AgentArticle>(
   return null
 }
 
-export type PendingTake<T> =
+type PendingTake<T> =
   | { ok: true; value: T }
   | { ok: false; reason: 'missing' | 'bad' | 'expired' }
 

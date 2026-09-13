@@ -13,7 +13,7 @@ function pseudoHeight(days: number): number {
   return 0.35 + (v - Math.floor(v)) * 0.65
 }
 
-export interface CadenceProps {
+interface CadenceProps {
   pulses: readonly number[]
   color: string
   height: number

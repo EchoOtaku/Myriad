@@ -8,9 +8,7 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder,
 };
-use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::RwLock;
 
 use crate::models::entities::rsshub_instances::{self, HealthStatus, Model as InstanceModel};
 
@@ -67,9 +65,6 @@ use crate::services::brew_parser::{FeedParser, ParsedFeed};
 /// RSSHub 服务配置
 #[derive(Clone, Debug)]
 pub struct RsshubConfig {
-    /// 健康检查间隔（秒）— 预留，未读
-    #[allow(dead_code)]
-    pub health_check_interval_secs: u64,
     /// 请求超时（秒）
     pub request_timeout_secs: u64,
     /// 连续失败多少次后标记为不健康
@@ -81,7 +76,6 @@ pub struct RsshubConfig {
 impl Default for RsshubConfig {
     fn default() -> Self {
         Self {
-            health_check_interval_secs: 300, // 5 分钟
             request_timeout_secs: 30,
             unhealthy_threshold: 3,
             degraded_threshold_ms: 2000,
@@ -94,9 +88,6 @@ pub struct RsshubService {
     db: DatabaseConnection,
     parser: FeedParser,
     config: RsshubConfig,
-    /// 缓存的可用实例列表（预留热缓存）
-    #[allow(dead_code)]
-    cached_instances: Arc<RwLock<Vec<InstanceModel>>>,
 }
 
 impl RsshubService {
@@ -106,7 +97,6 @@ impl RsshubService {
             db,
             parser: FeedParser::new(),
             config: RsshubConfig::default(),
-            cached_instances: Arc::new(RwLock::new(Vec::new())),
         }
     }
 

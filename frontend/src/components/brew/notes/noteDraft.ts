@@ -7,7 +7,7 @@ export function noteDraftKey(id: number | 'new'): string {
   return `brew:note-draft:${id}`
 }
 
-export interface NoteDraft {
+interface NoteDraft {
   title: string
   contentMd: string
   /** 缺字段表示旧草稿没记过，不能盖掉服务端值。 */
@@ -126,7 +126,7 @@ export function draftDiffersFrom(
   )
 }
 
-export interface WrapResult {
+interface WrapResult {
   value: string
   selectionStart: number
   selectionEnd: number

@@ -121,6 +121,10 @@ export function getArticleProseClass(
               /* 嵌套列表：子列表紧跟父项，不再叠外边距 */
               [&_li>ul]:my-1 [&_li>ol]:my-1
 
+              /* 表格列对齐：align 属性会被 prose 的 text-left 盖掉，补回来 */
+              [&_th[align=center]]:text-center [&_td[align=center]]:text-center
+              [&_th[align=right]]:text-right [&_td[align=right]]:text-right
+
               /* 代码块语言角标（contentPostprocess 从 code.language-* 抄到 data-lang） */
               [&_.code-block-wrapper[data-lang]]:before:content-[attr(data-lang)]
               [&_.code-block-wrapper[data-lang]]:before:absolute

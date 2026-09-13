@@ -13,8 +13,8 @@ import {
   predictExpandedControlPanelBox,
   predictRestoredLibraryDockBox,
 } from '../../utils/libraryDockStage'
-import { isAgentSettingsPath } from '../agent/settings/agentSettingsPath'
 import { getAgentPanelVisible } from '../agent-panel/agentPanelVisible'
+import { isAgentSettingsPath } from '../agent/settings/agentSettingsPath'
 import { expandCollapsibleAncestors } from '../settings/guides/guideAnchor'
 import { clamp } from '../settings/settingTitleGuideLogic'
 

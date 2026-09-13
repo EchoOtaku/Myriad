@@ -12,7 +12,11 @@ import {
   LuEye as Eye,
   LuImage as Image,
   LuPlus as Plus,
+  LuReplace as Replace,
   LuSlidersHorizontal as SlidersHorizontal,
+  LuTextAlignCenter as TextAlignCenter,
+  LuTextAlignEnd as TextAlignEnd,
+  LuTextAlignStart as TextAlignStart,
   LuTrash2 as Trash2,
   LuUnlink as Unlink,
   LuX as X,
@@ -30,13 +34,16 @@ import {
 import { placeBubble, placeGutter } from './noteSelection'
 
 export type NoteEditorPane = 'write' | 'visual' | 'preview'
-export type NoteEditorDocStatus = 'draft' | 'scheduled' | 'published'
+type NoteEditorDocStatus = 'draft' | 'scheduled' | 'published'
 
 export interface NoteEditorTool {
   key: string
   icon: ReactNode
   label: string
   run: () => void
+  /** 有这个就先在菜单里要一个值（比如图片地址），回车再 `runWith`。 */
+  prompt?: string
+  runWith?: (value: string) => void
 }
 
 /** 选中文字才用得上的放浮动条，其余是块级插入。 */
@@ -53,7 +60,7 @@ export function splitNoteTools(tools: NoteEditorTool[]): {
   return { marks, inserts }
 }
 
-export function peerInitial(peer: NoteCollabPeer): string {
+function peerInitial(peer: NoteCollabPeer): string {
   const name = peer.name?.trim()
   return name ? [...name][0]!.toUpperCase() : '·'
 }
@@ -69,7 +76,7 @@ export function peerHue(peerId: string): number {
 
 /* ------------------------------------------------------------------ */
 
-export interface NoteTopBarProps {
+interface NoteTopBarProps {
   docStatus: NoteEditorDocStatus
   lastError: string | null
   scheduledAt: number | null
@@ -192,7 +199,7 @@ export function NoteTopBar({
 
 /* ------------------------------------------------------------------ */
 
-export interface NoteBylineProps {
+interface NoteBylineProps {
   topic: string | null
   topicChoices: { key: string; nameKey: TopicNameKey }[]
   publishedAt: number | null
@@ -247,9 +254,11 @@ export function NoteByline({
 
 /* ------------------------------------------------------------------ */
 
-export interface NoteBubbleProps {
+interface NoteBubbleProps {
   anchor: SelectionAnchor | null
   tools: NoteEditorTool[]
+  /** 选区上已经有的记号，对应按钮亮起。 */
+  active: ReadonlySet<string>
   containerRef: RefObject<HTMLElement | null>
   /** 链接地址栏打开时，浮动条改成一行输入框。 */
   linkOpen: boolean
@@ -259,10 +268,14 @@ export interface NoteBubbleProps {
   onLink: (url: string | null) => void
 }
 
-/** 选中文字才出现，压在选区上方。深底白字，和 Medium 一样不抢正文。 */
+/**
+ * 选中文字才出现，压在选区上方。深底白字，和 Medium 一样不抢正文。
+ * 选区没了、编辑器失焦、地址栏失焦：都收掉，不留残影。
+ */
 export function NoteBubble({
   anchor,
   tools,
+  active,
   containerRef,
   linkOpen,
   linkInitial,
@@ -289,16 +302,27 @@ export function NoteBubble({
         anchor,
         { width: bubble.offsetWidth, height: bubble.offsetHeight },
         { width: container.clientWidth, scrollTop: container.scrollTop },
+        8,
+        8,
+        window.matchMedia('(pointer: coarse)').matches,
       ),
     )
   }, [anchor, containerRef, linkOpen])
 
   useEffect(() => {
-    if (!linkOpen) return
+    if (!linkOpen) {
+      setUrl('')
+      return
+    }
     setUrl(linkInitial)
     inputRef.current?.focus()
     inputRef.current?.select()
   }, [linkOpen, linkInitial])
+
+  // 地址栏没了锚点（选区被别的操作清掉）也要跟着关，不然 hold 会把它钉在屏幕上。
+  useEffect(() => {
+    if (linkOpen && !anchor) onLinkOpenChange(false)
+  }, [anchor, linkOpen, onLinkOpenChange])
 
   if (!anchor || tools.length === 0) return null
   return (
@@ -319,6 +343,12 @@ export function NoteBubble({
             event.preventDefault()
             const value = url.trim()
             onLink(value || null)
+          }}
+          onBlur={(event) => {
+            // 焦点离开整个地址栏（不是在输入框和「移除」之间挪）就关掉。
+            const next = event.relatedTarget as Node | null
+            if (next && ref.current?.contains(next)) return
+            onLinkOpenChange(false)
           }}
         >
           <input
@@ -352,33 +382,24 @@ export function NoteBubble({
           ) : null}
         </form>
       ) : (
-        tools.map((tool) =>
-          tool.key === 'link' ? (
+        tools.map((tool) => {
+          const on = active.has(tool.key)
+          const text = /^h\d$/.test(tool.key)
+          return (
             <button
               key={tool.key}
               type="button"
-              className="brew-note__bubble-btn"
+              className={`brew-note__bubble-btn${text ? ' brew-note__bubble-btn--text' : ''}${on ? ' is-active' : ''}`}
               title={tool.label}
               aria-label={tool.label}
+              aria-pressed={on}
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onLinkOpenChange(true)}
+              onClick={tool.key === 'link' ? () => onLinkOpenChange(true) : tool.run}
             >
               {tool.icon}
             </button>
-          ) : (
-            <button
-              key={tool.key}
-              type="button"
-              className={`brew-note__bubble-btn${/^h\d$/.test(tool.key) ? ' brew-note__bubble-btn--text' : ''}`}
-              title={tool.label}
-              aria-label={tool.label}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={tool.run}
-            >
-              {tool.icon}
-            </button>
-          ),
-        )
+          )
+        })
       )}
     </div>
   )
@@ -386,24 +407,111 @@ export function NoteBubble({
 
 /* ------------------------------------------------------------------ */
 
-export interface NoteBlockBarProps {
-  block: { kind: VisualBlockKind; anchor: SelectionAnchor } | null
+export type TableAlign = 'left' | 'center' | 'right' | null
+
+interface NoteBlockBarProps {
+  block: { kind: VisualBlockKind | 'img'; anchor: SelectionAnchor } | null
   codeLang: string
   onCodeLangChange: (lang: string) => void
+  columnAlign: TableAlign
+  onTableAlign: (align: TableAlign) => void
   onTableAddRow: () => void
   onTableAddColumn: () => void
+  onTableRemoveRow: () => void
+  onTableRemoveColumn: () => void
   onTableRemove: () => void
+  imageAlt: string
+  onImageAltChange: (alt: string) => void
+  onImageReplace: () => void
+  onImageRemove: () => void
   onFocusChange: (focused: boolean) => void
 }
 
-/** 光标在表格 / 代码块里时，块右上角的一小条：加行加列删表，或者填代码语言。 */
+function BlockBarButton({
+  label,
+  icon,
+  danger,
+  active,
+  onClick,
+}: {
+  label: string
+  icon?: ReactNode
+  danger?: boolean
+  active?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      className={`brew-note__blockbar-btn${danger ? ' is-danger' : ''}${active ? ' is-active' : ''}${icon ? ' has-icon' : ''}`}
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onClick}
+    >
+      {icon ?? label}
+    </button>
+  )
+}
+
+function BlockBarField({
+  label,
+  value,
+  placeholder,
+  mono,
+  onChange,
+  onFocusChange,
+}: {
+  label: string
+  value: string
+  placeholder?: string
+  mono?: boolean
+  onChange: (value: string) => void
+  onFocusChange: (focused: boolean) => void
+}) {
+  return (
+    <label className="brew-note__blockbar-field">
+      <span>{label}</span>
+      <input
+        className={`brew-note__blockbar-input${mono ? ' is-mono' : ''}`}
+        value={value}
+        placeholder={placeholder}
+        spellCheck={false}
+        onFocus={() => onFocusChange(true)}
+        onBlur={() => onFocusChange(false)}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === 'Escape') {
+            event.preventDefault()
+            event.stopPropagation()
+            ;(event.currentTarget as HTMLInputElement).blur()
+          }
+        }}
+      />
+    </label>
+  )
+}
+
+/**
+ * 光标在表格 / 代码块里，或者点中了一张图，块右上角的一小条。
+ * 表格：对齐、加删行列、删表。代码块：语言。图片：替代文字、换图、删图。
+ */
 export function NoteBlockBar({
   block,
   codeLang,
   onCodeLangChange,
+  columnAlign,
+  onTableAlign,
   onTableAddRow,
   onTableAddColumn,
+  onTableRemoveRow,
+  onTableRemoveColumn,
   onTableRemove,
+  imageAlt,
+  onImageAltChange,
+  onImageReplace,
+  onImageRemove,
   onFocusChange,
 }: NoteBlockBarProps) {
   const { t } = useI18n()
@@ -420,51 +528,69 @@ export function NoteBlockBar({
     >
       {kind === 'table' ? (
         <>
-          <button
-            type="button"
-            className="brew-note__blockbar-btn"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={onTableAddRow}
-          >
-            {t.brew.noteTableAddRow}
-          </button>
-          <button
-            type="button"
-            className="brew-note__blockbar-btn"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={onTableAddColumn}
-          >
-            {t.brew.noteTableAddColumn}
-          </button>
-          <button
-            type="button"
-            className="brew-note__blockbar-btn is-danger"
-            onMouseDown={(event) => event.preventDefault()}
+          <BlockBarButton
+            label={t.brew.noteTableAlignLeft}
+            icon={<TextAlignStart />}
+            active={columnAlign === 'left'}
+            onClick={() => onTableAlign(columnAlign === 'left' ? null : 'left')}
+          />
+          <BlockBarButton
+            label={t.brew.noteTableAlignCenter}
+            icon={<TextAlignCenter />}
+            active={columnAlign === 'center'}
+            onClick={() => onTableAlign(columnAlign === 'center' ? null : 'center')}
+          />
+          <BlockBarButton
+            label={t.brew.noteTableAlignRight}
+            icon={<TextAlignEnd />}
+            active={columnAlign === 'right'}
+            onClick={() => onTableAlign(columnAlign === 'right' ? null : 'right')}
+          />
+          <span className="brew-note__blockbar-sep" aria-hidden="true" />
+          <BlockBarButton label={t.brew.noteTableAddRow} onClick={onTableAddRow} />
+          <BlockBarButton label={t.brew.noteTableAddColumn} onClick={onTableAddColumn} />
+          <BlockBarButton label={t.brew.noteTableDeleteRow} onClick={onTableRemoveRow} />
+          <BlockBarButton
+            label={t.brew.noteTableDeleteColumn}
+            onClick={onTableRemoveColumn}
+          />
+          <span className="brew-note__blockbar-sep" aria-hidden="true" />
+          <BlockBarButton
+            label={t.brew.noteTableRemove}
+            icon={<Trash2 />}
+            danger
             onClick={onTableRemove}
-          >
-            {t.brew.noteTableRemove}
-          </button>
+          />
+        </>
+      ) : kind === 'img' ? (
+        <>
+          <BlockBarField
+            label={t.brew.noteImageAlt}
+            value={imageAlt}
+            onChange={onImageAltChange}
+            onFocusChange={onFocusChange}
+          />
+          <BlockBarButton
+            label={t.brew.noteImageReplace}
+            icon={<Replace />}
+            onClick={onImageReplace}
+          />
+          <BlockBarButton
+            label={t.brew.noteImageRemove}
+            icon={<Trash2 />}
+            danger
+            onClick={onImageRemove}
+          />
         </>
       ) : (
-        <label className="brew-note__blockbar-field">
-          <span>{t.brew.noteCodeLang}</span>
-          <input
-            className="brew-note__blockbar-input"
-            value={codeLang}
-            placeholder="rust"
-            spellCheck={false}
-            onFocus={() => onFocusChange(true)}
-            onBlur={() => onFocusChange(false)}
-            onChange={(event) => onCodeLangChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === 'Escape') {
-                event.preventDefault()
-                event.stopPropagation()
-                ;(event.currentTarget as HTMLInputElement).blur()
-              }
-            }}
-          />
-        </label>
+        <BlockBarField
+          label={t.brew.noteCodeLang}
+          value={codeLang}
+          placeholder="rust"
+          mono
+          onChange={onCodeLangChange}
+          onFocusChange={onFocusChange}
+        />
       )}
     </div>
   )
@@ -474,7 +600,7 @@ export function NoteBlockBar({
 
 export type NoteInsertMenuState = null | 'pointer' | 'keys'
 
-export interface NoteGutterProps {
+interface NoteGutterProps {
   /** 光标停在空行时的位置；null 就不画。 */
   emptyLine: SelectionAnchor | null
   menu: NoteInsertMenuState
@@ -499,10 +625,17 @@ export function NoteGutter({
   const { t } = useI18n()
   const wrapRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const promptRef = useRef<HTMLInputElement>(null)
+  const [prompting, setPrompting] = useState<NoteEditorTool | null>(null)
+  const [promptValue, setPromptValue] = useState('')
   const open = menu != null
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      setPrompting(null)
+      setPromptValue('')
+      return
+    }
     const onDown = (event: MouseEvent) => {
       if (!wrapRef.current?.contains(event.target as Node)) onMenuChange(null)
     }
@@ -511,11 +644,15 @@ export function NoteGutter({
   }, [open, onMenuChange])
 
   useEffect(() => {
+    if (prompting) {
+      promptRef.current?.focus()
+      return
+    }
     if (menu !== 'keys') return
     menuRef.current
       ?.querySelector<HTMLButtonElement>('.brew-note__menu-item')
       ?.focus()
-  }, [menu])
+  }, [menu, prompting])
 
   if (!emptyLine) return null
   const placed = placeGutter(emptyLine, GUTTER_SIZE)
@@ -556,7 +693,30 @@ export function NoteGutter({
       >
         <Plus />
       </button>
-      {open ? (
+      {open && prompting ? (
+        <form
+          className="brew-note__menu brew-note__menu--prompt"
+          onSubmit={(event) => {
+            event.preventDefault()
+            const value = promptValue.trim()
+            if (!value) return
+            onMenuChange(null)
+            prompting.runWith?.(value)
+          }}
+        >
+          <span className="brew-note__menu-icon">{prompting.icon}</span>
+          <input
+            ref={promptRef}
+            className="brew-note__menu-input"
+            type="url"
+            inputMode="url"
+            value={promptValue}
+            placeholder={prompting.prompt}
+            aria-label={prompting.label}
+            onChange={(event) => setPromptValue(event.target.value)}
+          />
+        </form>
+      ) : open ? (
         <div
           ref={menuRef}
           className="brew-note__menu"
@@ -572,6 +732,10 @@ export function NoteGutter({
               className="brew-note__menu-item"
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => {
+                if (tool.prompt && tool.runWith) {
+                  setPrompting(tool)
+                  return
+                }
                 onMenuChange(null)
                 tool.run()
               }}
@@ -588,7 +752,7 @@ export function NoteGutter({
 
 /* ------------------------------------------------------------------ */
 
-export interface NoteFootBarProps {
+interface NoteFootBarProps {
   chars: number
   pane: NoteEditorPane
   onPaneChange: (pane: 'write' | 'visual') => void
@@ -620,7 +784,7 @@ export function NoteFootBar({ chars, pane, onPaneChange }: NoteFootBarProps) {
 
 /* ------------------------------------------------------------------ */
 
-export interface NoteSettingsDrawerProps {
+interface NoteSettingsDrawerProps {
   open: boolean
   onClose: () => void
   docStatus: NoteEditorDocStatus

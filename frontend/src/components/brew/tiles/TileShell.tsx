@@ -9,7 +9,7 @@ import { WidgetShell } from '../../widgets/shared/WidgetShell'
 import { fs, MARK_SIZE, sp, T_META, T_TITLE } from './tokens'
 import './TileShell.css'
 
-export interface TileShellProps {
+interface TileShellProps {
   children: ReactNode
   color: string
   scale: number

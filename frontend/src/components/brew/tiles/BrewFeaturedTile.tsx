@@ -23,7 +23,7 @@ import { useWidgetSources } from './useWidgetSources'
 
 const REFRESH_INTERVAL = 60 * 1000
 
-export interface BrewFeaturedTileProps {
+interface BrewFeaturedTileProps {
   size: BrewTileSize
   scale: number
   fontScale: number

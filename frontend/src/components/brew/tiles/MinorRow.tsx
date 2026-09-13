@@ -13,7 +13,7 @@ const DIM_CLASS: Record<MinorDim, string> = {
   2: 'text-gray-400/70 dark:text-gray-500/70',
 }
 
-export interface MinorRowProps {
+interface MinorRowProps {
   title: string
   time?: string
   scale: number

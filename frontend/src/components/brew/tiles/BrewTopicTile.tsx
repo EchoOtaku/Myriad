@@ -35,7 +35,7 @@ import { useWidgetSources } from './useWidgetSources'
 
 const TOPIC_WIDGET_REFRESH_INTERVAL = 60 * 1000
 
-export interface BrewTopicTileProps {
+interface BrewTopicTileProps {
   topic: BrewTopic
   size: BrewTileSize
   scale: number

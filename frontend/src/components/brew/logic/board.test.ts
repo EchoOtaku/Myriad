@@ -10,7 +10,6 @@ import {
   isFriendSource,
   isNotesSource,
   isSiteSource,
-  visitFriendHref,
   navIdForBoardEntry,
   refreshableSourceCount,
   resolveBoardParam,
@@ -18,6 +17,7 @@ import {
   sortSourcesForBoard,
   sourcesForBoard,
   viewForBoardEntry,
+  visitFriendHref,
 } from './board.ts'
 import { makeSource } from './fixtures.ts'
 

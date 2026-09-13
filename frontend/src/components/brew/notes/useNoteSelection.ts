@@ -1,13 +1,16 @@
 /**
- * 监听写栏 / 可视层：选中了字给浮动条锚点，光标停在空行给行槛「+」锚点，
- * 光标落在表格 / 代码块里给块工具条锚点。
- * `hold` 为真时锚点冻住，焦点挪到菜单或输入框上也不消失。
+ * 监听写栏 / 可视层：选中了字给浮动条锚点（和选区上已有的记号），光标停在空行给
+ * 行槛「+」锚点，光标落在表格 / 代码块里给块工具条锚点。
+ * `hold` 为真时锚点冻住，焦点挪到菜单或输入框上也不消失；一放开立刻重量一次。
+ * 编辑器失焦、切换面板、卸载：全部清空，不留任何浮着的东西。
  */
 
 import type { RefObject } from 'react'
 import type { NoteEditorPane } from './NoteEditorChrome'
+import type { NoteMark } from './noteMarks'
 import type { SelectionAnchor, VisualBlockKind } from './noteSelection'
 import { useEffect, useState } from 'react'
+import { markdownMarksAt, sameMarks, visualMarksAt } from './noteMarks'
 import {
   anchorInContainer,
   textareaEmptyLineRect,
@@ -19,11 +22,34 @@ import {
 
 export interface NoteSelectionState {
   selection: SelectionAnchor | null
+  marks: Set<NoteMark>
   emptyLine: SelectionAnchor | null
   block: { kind: VisualBlockKind; anchor: SelectionAnchor } | null
 }
 
-const EMPTY: NoteSelectionState = { selection: null, emptyLine: null, block: null }
+const NO_MARKS: Set<NoteMark> = new Set()
+const EMPTY: NoteSelectionState = {
+  selection: null,
+  marks: NO_MARKS,
+  emptyLine: null,
+  block: null,
+}
+
+function sameAnchor(a: SelectionAnchor | null, b: SelectionAnchor | null): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  return a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height
+}
+
+function sameState(a: NoteSelectionState, b: NoteSelectionState): boolean {
+  return (
+    sameAnchor(a.selection, b.selection) &&
+    sameAnchor(a.emptyLine, b.emptyLine) &&
+    (a.block?.kind ?? null) === (b.block?.kind ?? null) &&
+    sameAnchor(a.block?.anchor ?? null, b.block?.anchor ?? null) &&
+    sameMarks(a.marks, b.marks)
+  )
+}
 
 export function useNoteSelection(
   pane: NoteEditorPane,
@@ -46,22 +72,31 @@ export function useNoteSelection(
     const visual = visualRef.current
     if (!container) return
     let frame = 0
+    const commit = (next: NoteSelectionState) => {
+      setState((current) => (sameState(current, next) ? current : next))
+    }
     const measure = () => {
       let selection: DOMRect | null = null
       let emptyLine: DOMRect | null = null
       let block: { kind: VisualBlockKind; rect: DOMRect } | null = null
+      let marks: Set<NoteMark> = NO_MARKS
       if (pane === 'visual') {
         if (visual && document.activeElement === visual) {
           selection = visualSelectionRect(visual)
           emptyLine = visualEmptyLineRect(visual)
           block = visualBlockRect(visual)
+          if (selection) marks = visualMarksAt(visual)
         }
       } else if (textarea && document.activeElement === textarea) {
         selection = textareaSelectionRect(textarea)
         emptyLine = textareaEmptyLineRect(textarea)
+        if (selection) {
+          marks = markdownMarksAt(textarea.value, textarea.selectionStart, textarea.selectionEnd)
+        }
       }
-      setState({
+      commit({
         selection: selection ? anchorInContainer(selection, container) : null,
+        marks,
         emptyLine: emptyLine ? anchorInContainer(emptyLine, container) : null,
         block: block
           ? { kind: block.kind, anchor: anchorInContainer(block.rect, container) }
@@ -79,6 +114,7 @@ export function useNoteSelection(
     const editor: HTMLElement | null = pane === 'visual' ? visual : textarea
     document.addEventListener('selectionchange', schedule)
     window.addEventListener('resize', schedule)
+    window.addEventListener('blur', hide)
     editor?.addEventListener('input', schedule)
     editor?.addEventListener('keyup', schedule)
     editor?.addEventListener('mouseup', schedule)
@@ -89,6 +125,7 @@ export function useNoteSelection(
       cancelAnimationFrame(frame)
       document.removeEventListener('selectionchange', schedule)
       window.removeEventListener('resize', schedule)
+      window.removeEventListener('blur', hide)
       editor?.removeEventListener('input', schedule)
       editor?.removeEventListener('keyup', schedule)
       editor?.removeEventListener('mouseup', schedule)

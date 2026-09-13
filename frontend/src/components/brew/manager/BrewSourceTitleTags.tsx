@@ -1,6 +1,6 @@
 import type { ChangeEvent, RefObject } from 'react'
-import type { SortMode } from './modes'
 import type { BrewSource, UpdateSourceRequest } from '../../../types/brew'
+import type { SortMode } from './modes'
 import type { ImportProgress } from './modes/types'
 
 import {
@@ -20,9 +20,9 @@ import {
 } from '@lib/icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
-import { Spinner } from '../../Spinner'
 import { SettingTitleGuideEntry } from '../../settings/SettingTitleGuideEntry'
 import { SettingTitleTag } from '../../settings/SettingTitleTag'
+import { Spinner } from '../../Spinner'
 import { BrewBarMenu, BrewBarMenuItem, BrewBarWrap, BrewMark } from '../ui/Bar'
 import { useFeedsAddForm } from '../ui/BrewFeedsPanel'
 import { EditSourceMode } from './modes/EditSourceMode'

@@ -23,8 +23,7 @@ use crate::error::HttpError;
 use crate::middleware::auth::Claims;
 use crate::models::entities::brew_note_docs;
 use crate::services::note_publish::{
-    datetime_to_millis, mark_doc_published, millis_to_datetime, upsert_doc_for_published_item,
-    write_published_item,
+    datetime_to_millis, millis_to_datetime, publish_doc, upsert_doc_for_published_item,
 };
 
 #[derive(Debug, Deserialize)]
@@ -71,8 +70,22 @@ fn to_response(doc: brew_note_docs::Model) -> NoteDocResponse {
     }
 }
 
-fn revision_matches(expected: Option<i64>, actual: i64) -> bool {
-    expected.is_none_or(|value| value == actual)
+/// 存草稿必须带 revision；对不上就是 409，不带是 400。不给「跳过锁」的口子。
+fn expected_revision(revision: Option<i64>) -> Result<i64, HttpError> {
+    revision.ok_or_else(|| brew_http_err(StatusCode::BAD_REQUEST, "A revision is required"))
+}
+
+fn revision_matches(expected: i64, actual: i64) -> bool {
+    expected == actual
+}
+
+/// WS 单帧上限。整篇快照也用不到这么大；再大就是别的东西。
+const WS_MAX_FRAME_BYTES: usize = 256 * 1024;
+/// 客户端能发的事件种类。别的一律丢。
+const WS_CLIENT_KINDS: [&str; 2] = ["presence", "edit"];
+
+fn ws_client_kind_allowed(kind: &str) -> bool {
+    kind.is_empty() || WS_CLIENT_KINDS.contains(&kind)
 }
 
 fn empty_to_none(value: Option<String>) -> Option<String> {
@@ -196,14 +209,16 @@ pub(crate) async fn update_note_doc(
     Json(req): Json<NoteDocWriteRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
+    let expected = expected_revision(req.revision)?;
     let doc = find_doc(&db, id).await?;
-    if !revision_matches(req.revision, doc.revision) {
+    if !revision_matches(expected, doc.revision) {
         return Err(brew_http_err(
             StatusCode::CONFLICT,
             "Note draft was updated elsewhere",
         ));
     }
-    let mut active: brew_note_docs::ActiveModel = doc.clone().into();
+    // 只放 Set 过的列进 UPDATE；条件带 revision，两个并发写只有一个能落地。
+    let mut active = <brew_note_docs::ActiveModel as std::default::Default>::default();
     if let Some(title) = req.title {
         active.title = Set(title);
     }
@@ -220,12 +235,22 @@ pub(crate) async fn update_note_doc(
         active.published_at = Set(Some(published_at.into()));
     }
     active.updated_at = Set(Utc::now().into());
-    active.revision = Set(doc.revision + 1);
+    active.revision = Set(expected + 1);
     active.last_error = Set(None);
-    let saved = active
-        .update(&db)
+    let result = brew_note_docs::Entity::update_many()
+        .set(active)
+        .filter(brew_note_docs::Column::Id.eq(id))
+        .filter(brew_note_docs::Column::Revision.eq(expected))
+        .exec(&db)
         .await
         .map_err(|e| brew_store_http("save note doc", e))?;
+    if result.rows_affected == 0 {
+        return Err(brew_http_err(
+            StatusCode::CONFLICT,
+            "Note draft was updated elsewhere",
+        ));
+    }
+    let saved = find_doc(&db, id).await?;
     note_collab_hub().publish(
         saved.id,
         NoteCollabEvent {
@@ -287,18 +312,8 @@ pub(crate) async fn publish_note_doc(
         doc.image = empty_to_none(req.image.clone());
     }
     let published_at = req.published_at.or(doc.published_at.map(datetime_to_millis));
-    let item = write_published_item(
-        &db,
-        user_id,
-        doc.item_id,
-        &doc.title,
-        &doc.content_md,
-        doc.topic.clone(),
-        doc.image.clone(),
-        published_at,
-    )
-    .await?;
-    let saved = mark_doc_published(&db, doc, &item, published_at).await?;
+    doc.user_id = user_id;
+    let (item, saved) = publish_doc(&db, doc, published_at).await?;
     Ok(Json(json!({
         "success": true,
         "id": item.id,
@@ -449,15 +464,25 @@ async fn handle_note_doc_socket(
                         }
                     }
                     Ok(Message::Text(text)) => {
-                        if let Ok(mut incoming) = serde_json::from_str::<NoteCollabEvent>(&text) {
-                            incoming.peer_id = peer_id.clone();
-                            incoming.user_id = user_id;
-                            incoming.name = Some(username.clone());
-                            if incoming.kind.is_empty() {
-                                incoming.kind = "presence".into();
-                            }
-                            hub.publish(doc_id, incoming);
+                        // 太大的帧直接断开：正常客户端不会发，发了就是出问题了。
+                        if text.len() > WS_MAX_FRAME_BYTES {
+                            tracing::warn!(doc_id, user_id, bytes = text.len(), "note collab frame too large");
+                            break;
                         }
+                        let Ok(mut incoming) = serde_json::from_str::<NoteCollabEvent>(&text) else {
+                            continue;
+                        };
+                        if !ws_client_kind_allowed(&incoming.kind) {
+                            continue;
+                        }
+                        incoming.peer_id = peer_id.clone();
+                        incoming.user_id = user_id;
+                        incoming.name = Some(username.clone());
+                        incoming.revision = None;
+                        if incoming.kind.is_empty() {
+                            incoming.kind = "presence".into();
+                        }
+                        hub.publish(doc_id, incoming);
                     }
                     Ok(Message::Close(_)) | Err(_) => break,
                     _ => {}
@@ -481,6 +506,8 @@ async fn handle_note_doc_socket(
             image: None,
         },
     );
+    drop(rx);
+    hub.release(doc_id);
 }
 
 #[cfg(test)]
@@ -494,10 +521,38 @@ mod tests {
     }
 
     #[test]
-    fn stale_revision_is_a_conflict() {
-        assert!(revision_matches(None, 3));
-        assert!(revision_matches(Some(3), 3));
-        assert!(!revision_matches(Some(2), 3));
+    fn stale_revision_is_a_conflict_and_missing_is_rejected() {
+        assert!(revision_matches(3, 3));
+        assert!(!revision_matches(2, 3));
+        assert!(expected_revision(None).is_err());
+        assert_eq!(expected_revision(Some(4)).ok(), Some(4));
+    }
+
+    #[test]
+    fn draft_save_is_a_conditional_update() {
+        let src = include_str!("note_docs.rs");
+        let start = src
+            .find("pub(crate) async fn update_note_doc")
+            .expect("update_note_doc");
+        let body = &src[start..];
+        let end = body[1..]
+            .find("\npub(crate) async fn ")
+            .map(|index| index + 1)
+            .unwrap_or(body.len());
+        let update = &body[..end];
+        assert!(update.contains("update_many()"));
+        assert!(update.contains("Column::Revision.eq(expected)"));
+        assert!(update.contains("rows_affected == 0"));
+    }
+
+    #[test]
+    fn ws_only_relays_client_kinds() {
+        assert!(ws_client_kind_allowed(""));
+        assert!(ws_client_kind_allowed("presence"));
+        assert!(ws_client_kind_allowed("edit"));
+        assert!(!ws_client_kind_allowed("doc"));
+        assert!(!ws_client_kind_allowed("join"));
+        assert!(!ws_client_kind_allowed("leave"));
     }
 
     #[test]

@@ -36,8 +36,24 @@ const MAX_SOURCES_PER_TICK: u64 = 50;
 /// 限制同时发出的 HTTP 请求数，避免网络/内存压力
 const MAX_CONCURRENT_FETCHES: usize = 5;
 
-/// 连续错误次数上限，超过后记录警告（用户自行决定是否禁用）
+/// 连续错误次数上限：到这里发一次通知；之后不再每轮 WARN，靠退避少抓。
 const MAX_ERROR_COUNT: i32 = 10;
+
+/// 连续失败开始退避的门槛（含）。前两次失败可能只是网络抖动，照常抓。
+const BACKOFF_START_ERRORS: i32 = 3;
+/// 退避上限：一天一次。死源不会被悄悄禁掉，但也不再每分钟去撞。
+const BACKOFF_MAX_MINUTES: i64 = 24 * 60;
+
+/// 连续失败越多，下一次抓取隔得越久：从第 3 次起每失败一次翻倍，最长一天。
+pub(crate) fn retry_interval_minutes(update_interval: i32, error_count: i32) -> i64 {
+    let base = i64::from(update_interval.max(1));
+    if error_count < BACKOFF_START_ERRORS {
+        return base;
+    }
+    let doublings = u32::try_from(error_count - BACKOFF_START_ERRORS + 1).unwrap_or(u32::MAX);
+    base.saturating_mul(2_i64.saturating_pow(doublings.min(20)))
+        .min(BACKOFF_MAX_MINUTES)
+}
 
 /// 调度器检查间隔（秒）
 const SCHEDULER_INTERVAL_SECS: u64 = 60;
@@ -181,14 +197,15 @@ impl BrewSchedulerEngine {
                 "Failed to query sources".to_string()
             })?;
 
-        // 过滤出真正到了更新间隔的订阅源
+        // 过滤出真正到了更新间隔的订阅源；连续失败的源按退避后的间隔算
         let due_sources: Vec<_> = all_due
             .into_iter()
             .filter(|source| match source.last_fetched_at {
                 None => true,
                 Some(last) => {
                     let elapsed = now - last.with_timezone(&Utc);
-                    elapsed.num_minutes() >= source.update_interval as i64
+                    elapsed.num_minutes()
+                        >= retry_interval_minutes(source.update_interval, source.error_count)
                 }
             })
             .collect();
@@ -345,28 +362,35 @@ impl BrewSchedulerEngine {
                 );
 
                 active.last_error = Set(Some(e.clone()));
-                active.error_count = Set(source.error_count + 1);
+                let failures = source.error_count + 1;
+                active.error_count = Set(failures);
 
-                if source.error_count + 1 >= MAX_ERROR_COUNT {
+                if failures == MAX_ERROR_COUNT {
                     tracing::warn!(
-                        "[BrewScheduler] Source '{}' has {} consecutive errors, consider disabling",
+                        "[BrewScheduler] Source '{}' has {} consecutive errors; backing off to every {} min",
                         source.name,
-                        source.error_count + 1
+                        failures,
+                        retry_interval_minutes(source.update_interval, failures)
                     );
-                    if source.error_count + 1 == MAX_ERROR_COUNT {
-                        if let Some(manager) =
-                            crate::services::agent::notifications::get_notification_manager()
-                        {
-                            manager
-                                .notify_brew_source_error(
-                                    source.user_id,
-                                    source.id,
-                                    &source.name,
-                                    &e,
-                                )
-                                .await;
-                        }
+                    if let Some(manager) =
+                        crate::services::agent::notifications::get_notification_manager()
+                    {
+                        manager
+                            .notify_brew_source_error(
+                                source.user_id,
+                                source.id,
+                                &source.name,
+                                &e,
+                            )
+                            .await;
                     }
+                } else if failures > MAX_ERROR_COUNT {
+                    tracing::debug!(
+                        "[BrewScheduler] Source '{}' still failing ({} in a row), next try in {} min",
+                        source.name,
+                        failures,
+                        retry_interval_minutes(source.update_interval, failures)
+                    );
                 }
 
                 active
@@ -782,5 +806,27 @@ pub fn get_brew_scheduler() -> Option<Arc<BrewSchedulerEngine>> {
 pub async fn shutdown_brew_scheduler() {
     if let Some(engine) = BREW_SCHEDULER.get() {
         engine.stop().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn healthy_and_briefly_failing_sources_keep_their_interval() {
+        assert_eq!(retry_interval_minutes(30, 0), 30);
+        assert_eq!(retry_interval_minutes(30, 2), 30);
+        // 0 分钟的源不能变成每轮都抓
+        assert_eq!(retry_interval_minutes(0, 0), 1);
+    }
+
+    #[test]
+    fn repeated_failures_back_off_and_cap_at_a_day() {
+        assert_eq!(retry_interval_minutes(30, 3), 60);
+        assert_eq!(retry_interval_minutes(30, 4), 120);
+        assert_eq!(retry_interval_minutes(30, 8), 1440);
+        assert_eq!(retry_interval_minutes(30, 1236), BACKOFF_MAX_MINUTES);
+        assert_eq!(retry_interval_minutes(i32::MAX, i32::MAX), BACKOFF_MAX_MINUTES);
     }
 }

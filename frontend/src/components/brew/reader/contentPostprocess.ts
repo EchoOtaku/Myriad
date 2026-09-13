@@ -2,10 +2,11 @@ import type { AnnotationItem } from '../../../services/brewliaApi'
 import type { TocItem } from './types'
 import { useEffect } from 'react'
 import { currentCopy } from '../../../i18n/localeCopy'
+import { highlightCodeBlocks } from '../../../utils/codeHighlight'
 import { loadEmbedData } from '../../../utils/embedProcessor'
 import { showError } from '../../../utils/toastManager'
 
-export interface UseContentPostprocessOptions {
+interface UseContentPostprocessOptions {
   contentRef: React.RefObject<HTMLDivElement | null>
   baseContent: string
   showAnnotations: boolean
@@ -104,6 +105,8 @@ export function useContentPostprocess({
 
         wrapper.appendChild(copyBtn)
       })
+      // 有语言标记的代码块上色；Prism 按需加载，没标记的不拉。
+      void highlightCodeBlocks(contentRef.current)
 
       // 用 aspect-ratio 包 iframe，不用 padding-bottom hack。
       const iframes = contentRef.current.querySelectorAll('iframe')

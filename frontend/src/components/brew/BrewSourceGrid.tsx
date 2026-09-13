@@ -6,21 +6,21 @@ import type {
   UpdateSourceRequest,
 } from '../../types/brew'
 import type { BrewBoard, SourceSortMode } from './logic/board'
-import { refreshableSourceCount } from './logic/board'
-
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import * as brewApi from '../../services/brewApi'
+
 import { useI18n } from '../../contexts/I18nContext'
+import * as brewApi from '../../services/brewApi'
+import { refreshableSourceCount } from './logic/board'
+import { storiesFromSources } from './logic/feedStories'
 import { roleFromAuth } from './logic/score'
 import BrewControls from './manager/BrewControls'
-import { storiesFromSources } from './logic/feedStories'
 import { BrewSourceTitleTags } from './manager/BrewSourceTitleTags'
 import { useBrewpack } from './manager/useBrewpack'
 import BrewBoardView from './skin/BrewBoard'
 import { BrewViewLane } from './skin/BrewChip'
-import { BrewVacant } from './ui/Empty'
 import { BrewPageStage } from './ui/BrewPageStage'
 import { BrewRailTitle } from './ui/BrewRailTitle'
+import { BrewVacant } from './ui/Empty'
 import { useArticleFlags } from './useArticleFlags'
 import { useBoardEdit } from './useBoardEdit'
 import {
@@ -225,7 +225,6 @@ export default function BrewSourceGrid({
       onPeekEnd={onPeekEnd}
       onToggleStar={board === 'feeds' ? onStar : onToggleStar}
       onEditSource={isAdmin ? edit.handleOpenSourceEdit : undefined}
-      onWriteNote={onWriteNote}
       onSitesOpenChange={board === 'feeds' ? edit.setSitesOpen : undefined}
       toolbar={bar}
       vacant={board === 'feeds' && searchMiss ? miss : null}

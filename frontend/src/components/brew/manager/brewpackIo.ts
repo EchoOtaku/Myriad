@@ -39,7 +39,7 @@ export interface BrewpackCopy {
   errorImportFailed: string
 }
 
-export type BrewpackResult =
+type BrewpackResult =
   | { ok: true; message: string }
   | { ok: false; error: string }
 

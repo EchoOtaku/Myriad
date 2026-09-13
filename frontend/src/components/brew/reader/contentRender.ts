@@ -76,7 +76,7 @@ function buildBaseContent({
   return content
 }
 
-export interface UseContentRenderOptions {
+interface UseContentRenderOptions {
   contentInnerRef: React.RefObject<HTMLDivElement | null>
   contentReady: boolean
   item: Pick<

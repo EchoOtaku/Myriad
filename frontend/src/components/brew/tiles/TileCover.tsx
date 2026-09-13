@@ -5,7 +5,7 @@ import { memo, useEffect, useState } from 'react'
 import { WIDGET_RADIUS_NESTED } from '../../widgets/shared/WidgetShell'
 import { getImageUrl } from '../constants'
 
-export interface TileCoverProps {
+interface TileCoverProps {
   /** 内部走 getImageUrl，不要自己拼代理 URL。 */
   image: string | null | undefined
   height?: number

@@ -91,24 +91,18 @@ export async function loadHomeBoardNotes(
   const key = noteSourceKey(sources)
   if (!key) return []
   const cacheKey = `${HOME_NOTES_CACHE_PREFIX}${key}`
+  // 请求本身不带 signal：同一份数据几个调用方合并成一次；谁不要了自己丢结果。
   const load = async () => {
-    const res = await brewApi.getItemPreviews(
-      {
-        category: BREW_MINE_CATEGORY,
-        sort_order: 'desc',
-        per_page: 8,
-      },
-      undefined,
-      signal ? { signal } : undefined,
-    )
+    const res = await brewApi.getItemPreviews({
+      category: BREW_MINE_CATEGORY,
+      sort_order: 'desc',
+      per_page: 8,
+    })
     return pickHomeBoardNotes(res.items, sources)
   }
-  if (signal) {
-    const notes = await load()
-    if (!signal.aborted) requestCache.set(cacheKey, notes, BOARD_PAGE_TTL)
-    return notes
-  }
-  return requestCache.fetch(cacheKey, load, BOARD_PAGE_TTL)
+  const notes = await requestCache.fetch(cacheKey, load, BOARD_PAGE_TTL)
+  signal?.throwIfAborted()
+  return notes
 }
 
 export async function loadFeedStories(
@@ -122,24 +116,22 @@ export async function loadFeedStories(
   )
   if (latest?.stamp === normalized) return latest.items
 
+  // 同上：不把 signal 传进请求，换源太快时别把同一个源的请求发好几遍。
   const load = async () => {
-    const res = await brewApi.getItemPreviews(
-      {
-        source_id: sourceId,
-        sort_order: 'desc',
-        per_page: FEEDS_ARTICLE_MAX,
-      },
-      undefined,
-      signal ? { signal } : undefined,
-    )
+    const res = await brewApi.getItemPreviews({
+      source_id: sourceId,
+      sort_order: 'desc',
+      per_page: FEEDS_ARTICLE_MAX,
+    })
     const items = res.items.map(toFeedStory)
-    if (!signal?.aborted) putFeedStories(sourceId, normalized, items)
+    putFeedStories(sourceId, normalized, items)
     return items
   }
-  if (signal) return load()
-  return requestCache.fetch(
+  const items = await requestCache.fetch(
     `${feedStoriesCacheKey(sourceId)}:${normalized}`,
     load,
     BOARD_PAGE_TTL,
   )
+  signal?.throwIfAborted()
+  return items
 }

@@ -59,7 +59,7 @@ import {
   subscriptionModeOf,
 } from './editSource'
 
-export interface EditSourceModeProps {
+interface EditSourceModeProps {
   source: BrewSource
   categories: string[]
   onSave: (

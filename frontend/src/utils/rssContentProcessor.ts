@@ -180,6 +180,7 @@ const RSS_ALLOWED_ATTR: readonly string[] = [
   'data-rss-image',
   'checked',
   'disabled',
+  'align',
 ]
 
 /** Iframe host allowlist; no executable sandboxes. */
