@@ -66,6 +66,7 @@ export const StoryCard = forwardRef<
     <div
       ref={ref}
       data-rail-id={railId}
+      data-brew-surface="story"
       data-brew-card={arrive != null ? `story:${face.id}` : undefined}
       className={cx(
         'brew-story',

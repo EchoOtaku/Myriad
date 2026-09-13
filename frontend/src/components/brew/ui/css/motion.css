@@ -31,18 +31,24 @@
 }
 
 .brew-view-lane[data-chip-phase='exit'][data-chip-exit='css'] [data-brew-chip],
+.brew-view-lane[data-chip-phase='exit'][data-chip-exit='css'] [data-brew-surface],
 .brew-view-lane[data-chip-phase='exit'][data-chip-exit='css'] [data-brew-card],
+.brew-view-lane[data-chip-phase='exit'][data-chip-exit='css'] .brew-rail-title,
 .brew-view-lane[data-chip-phase='exit'][data-chip-exit='css'] .brew-salon__card,
-.brew-view-lane[data-chip-phase='exit'][data-chip-exit='css'] .brew-stories .brew-story,
+.brew-view-lane[data-chip-phase='exit'][data-chip-exit='css'] .brew-story,
 .brew-view-lane[data-chip-phase='exit'][data-chip-exit='css'] .brew-site,
-.brew-view-lane[data-chip-phase='exit'][data-chip-exit='css'] .brew-feeds .brew-story,
-.brew-view-lane[data-chip-phase='exit'][data-chip-exit='css'] .brew-empty,
 .brew-view-lane[data-chip-phase='exit'][data-chip-exit='css'] .brew-vacant {
   opacity: 0;
   transform: translate3d(0, var(--sm-shift-sm, 6px), 0);
   transition:
     opacity var(--sm-dur-base, 220ms) var(--sm-ease-exit, cubic-bezier(0.4, 0, 1, 1)),
     transform var(--sm-dur-base, 220ms) var(--sm-ease-exit, cubic-bezier(0.4, 0, 1, 1));
+}
+
+.brew-view-lane[data-chip-phase='exit'][data-chip-exit='css'] .brew-vacant .brew-rail-title {
+  opacity: inherit;
+  transform: none;
+  transition: none;
 }
 
 @keyframes brew-tag-enter {
@@ -69,13 +75,18 @@
   }
 }
 
+.brew-rail-title.is-arrive,
 .brew-salon__card.is-arrive,
 .brew-story.is-arrive,
-.brew-empty.is-arrive,
+.brew-site.is-arrive,
 .brew-vacant.is-arrive {
   animation: brew-card-enter var(--sm-dur-slow, 320ms)
     var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
   animation-delay: calc(var(--brew-card-i, 0) * var(--sm-stagger, 26ms));
+}
+
+.brew-vacant .brew-rail-title.is-arrive {
+  animation: none;
 }
 
 html[data-perf-mode='exlight'] .brew-bar__chip,
@@ -88,14 +99,17 @@ html[data-perf-mode='exlight'] .brew-bar__panel.is-exit,
 html[data-perf-mode='exlight'] .brew-bar__menu,
 html[data-perf-mode='exlight'] .brew-feeds__menu,
 html[data-perf-mode='exlight'] .brew-sheet__menu,
+html[data-perf-mode='exlight'] .brew-rail-title.is-arrive,
 html[data-perf-mode='exlight'] .brew-salon__card.is-arrive,
 html[data-perf-mode='exlight'] .brew-story.is-arrive,
-html[data-perf-mode='exlight'] .brew-empty.is-arrive,
+html[data-perf-mode='exlight'] .brew-site.is-arrive,
 html[data-perf-mode='exlight'] .brew-vacant.is-arrive,
 html[data-perf-mode='exlight'] .brew-view-lane[data-chip-phase='exit'] [data-brew-chip],
+html[data-perf-mode='exlight'] .brew-view-lane[data-chip-phase='exit'] [data-brew-surface],
 html[data-perf-mode='exlight'] .brew-view-lane[data-chip-phase='exit'] [data-brew-card],
 html[data-perf-mode='exlight'] .brew-view-lane[data-chip-phase='exit'] .brew-site,
 html[data-perf-mode='exlight'] .brew-view-lane[data-chip-phase='exit'] .brew-story,
+html[data-perf-mode='exlight'] .brew-view-lane[data-chip-phase='exit'] .brew-rail-title,
 html[data-perf-mode='exlight'] .brew-pick {
   animation: none;
   transition: none;
@@ -119,14 +133,17 @@ html[data-perf-mode='exlight'] .brew-bar__chip.is-conceal {
   .brew-bar__menu,
   .brew-feeds__menu,
   .brew-sheet__menu,
+  .brew-rail-title.is-arrive,
   .brew-salon__card.is-arrive,
   .brew-story.is-arrive,
-  .brew-empty.is-arrive,
+  .brew-site.is-arrive,
   .brew-vacant.is-arrive,
   .brew-view-lane[data-chip-phase='exit'] [data-brew-chip],
+  .brew-view-lane[data-chip-phase='exit'] [data-brew-surface],
   .brew-view-lane[data-chip-phase='exit'] [data-brew-card],
   .brew-view-lane[data-chip-phase='exit'] .brew-site,
   .brew-view-lane[data-chip-phase='exit'] .brew-story,
+  .brew-view-lane[data-chip-phase='exit'] .brew-rail-title,
   .brew-pick {
     animation: none;
     transition: none;
@@ -148,6 +165,7 @@ html[data-perf-mode='exlight'] .brew-bar__chip.is-conceal {
   .brew-story,
   .brew-story__star,
   .brew-salon__card,
+  .brew-rail-title,
   .brew-vacant {
     transition: none;
   }
@@ -168,4 +186,3 @@ html[data-perf-mode='exlight'] .brew-bar__chip.is-conceal {
     transform: none;
   }
 }
-

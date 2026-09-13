@@ -322,7 +322,10 @@ function BrewSubjectPage() {
 
   return (
     <BrewPage lock>
-      <BrewViewLane wave={route.viewMode}>
+      <BrewViewLane
+        wave={route.viewMode === 'topic-feed' ? `topic-feed:${route.selectedTopic?.key ?? ''}` : route.viewMode}
+        suspended={!!item.selectedItem || notes.noteEditor !== null}
+      >
         {route.viewMode === 'sources' && (
           <BrewSourceGrid
             sources={sources.sources}
@@ -397,14 +400,17 @@ function BrewSubjectPage() {
         )}
       </AnimatePresence>
 
-      {notes.noteEditor !== null && (
-        <NoteEditor
-          noteId={notes.noteEditor === 'new' ? undefined : notes.noteEditor}
-          onClose={notes.close}
-          onSaved={notes.onSaved}
-          onDeleted={notes.onDeleted}
-        />
-      )}
+      <AnimatePresence mode="wait">
+        {notes.noteEditor !== null && (
+          <NoteEditor
+            key={notes.noteEditor}
+            noteId={notes.noteEditor === 'new' ? undefined : notes.noteEditor}
+            onClose={notes.close}
+            onSaved={notes.onSaved}
+            onDeleted={notes.onDeleted}
+          />
+        )}
+      </AnimatePresence>
 
     </BrewPage>
   )

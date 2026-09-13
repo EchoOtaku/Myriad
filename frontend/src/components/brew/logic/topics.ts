@@ -162,6 +162,13 @@ export function topicHue(key: string): string | null {
   return TOPIC_BY_KEY.get(key)?.hue ?? null
 }
 
+export function noteTopicChoices(): {
+  key: string
+  nameKey: TopicNameKey
+}[] {
+  return TOPIC_DEFS.map((def) => ({ key: def.key, nameKey: def.nameKey }))
+}
+
 const SUMMARY_MATCH_CHARS = 200
 
 /** 多命中取 TOPIC_DEFS 第一项。都不命中返回 null，不是「其他」。 */

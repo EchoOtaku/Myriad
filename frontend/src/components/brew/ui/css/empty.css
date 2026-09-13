@@ -95,6 +95,67 @@
   width: 52%;
 }
 
+.brew-vacant.is-friends {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto minmax(0, 1.2fr);
+  gap: 0;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.brew-vacant__sites,
+.brew-vacant__items {
+  display: grid;
+  grid-auto-flow: column;
+  align-items: stretch;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.brew-vacant__sites {
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  grid-auto-columns: var(--brew-site-w, 19rem);
+  gap: 0.45rem;
+  padding: 0.2rem 0 0;
+}
+
+.brew-vacant__items {
+  grid-template-rows: minmax(0, 1fr);
+  grid-auto-columns: var(--brew-story-w, 16.5rem);
+  gap: var(--brew-items-gap, 0.55rem) 0.75rem;
+  padding: 0.2rem 0 0;
+}
+
+.brew-vacant.is-friends .brew-vacant__note,
+.brew-vacant.is-friends .brew-vacant__ghost {
+  height: 100%;
+  min-height: 0;
+}
+
+.brew-vacant__note.is-site .brew-vacant__title {
+  font-size: 1rem;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+
+.brew-vacant__ghost.is-site .brew-vacant__shell {
+  justify-content: space-between;
+}
+
+.brew-vacant__bar.is-name {
+  width: 46%;
+  height: 0.7rem;
+}
+
+.brew-vacant__bar.is-article {
+  width: 70%;
+  height: 0.42rem;
+}
+
 html[data-perf-mode='exlight'] .brew-vacant__ghost {
   opacity: 0.28;
 }

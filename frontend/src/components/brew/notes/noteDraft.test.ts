@@ -37,6 +37,51 @@ describe('草稿存取', () => {
     })
   })
 
+  it('旧草稿没有主题封面时间也能读，且不盖服务端值', () => {
+    store.set(
+      noteDraftKey('new'),
+      JSON.stringify({ title: '标题', contentMd: '正文', savedAt: 1000 }),
+    )
+    const draft = readNoteDraft('new', 1000)
+    assert.deepEqual(draft, {
+      title: '标题',
+      contentMd: '正文',
+      savedAt: 1000,
+    })
+    assert.equal(
+      draftDiffersFrom(draft, {
+        title: '标题',
+        contentMd: '正文',
+        topic: 'ai',
+        cover: 'https://img.example/a.jpg',
+        publishedAt: 1,
+      }),
+      false,
+    )
+  })
+
+  it('新草稿会记下主题封面和时间', () => {
+    writeNoteDraft(
+      'new',
+      {
+        title: '标题',
+        contentMd: '正文',
+        topic: 'ai',
+        cover: 'https://img.example/a.jpg',
+        publishedAt: 1_700_000_000_000,
+      },
+      1000,
+    )
+    assert.deepEqual(readNoteDraft('new', 1000), {
+      title: '标题',
+      contentMd: '正文',
+      topic: 'ai',
+      cover: 'https://img.example/a.jpg',
+      publishedAt: 1_700_000_000_000,
+      savedAt: 1000,
+    })
+  })
+
   it('新草稿和已发布的草稿互不覆盖', () => {
     writeNoteDraft('new', { title: '甲', contentMd: 'a' }, 1)
     writeNoteDraft(7, { title: '乙', contentMd: 'b' }, 1)
@@ -99,9 +144,58 @@ describe('draftDiffersFrom', () => {
   })
 
   it('正文变了就算改动', () => {
-    const draft = { title: '标题', contentMd: '新正文', savedAt: 1 }
+    const draft = {
+      title: '标题',
+      contentMd: '新正文',
+      topic: null,
+      cover: null,
+      publishedAt: null,
+      savedAt: 1,
+    }
     assert.equal(
       draftDiffersFrom(draft, { title: '标题', contentMd: '正文' }),
+      true,
+    )
+  })
+
+  it('主题或封面变了也算改动', () => {
+    const draft = {
+      title: '标题',
+      contentMd: '正文',
+      topic: 'ai',
+      cover: 'https://img.example/a.jpg',
+      publishedAt: null,
+      savedAt: 1,
+    }
+    assert.equal(
+      draftDiffersFrom(draft, { title: '标题', contentMd: '正文' }),
+      true,
+    )
+  })
+
+  it('发布时间同一分钟不算改动', () => {
+    const draft = {
+      title: '标题',
+      contentMd: '正文',
+      topic: null,
+      cover: null,
+      publishedAt: 60_000,
+      savedAt: 1,
+    }
+    assert.equal(
+      draftDiffersFrom(draft, {
+        title: '标题',
+        contentMd: '正文',
+        publishedAt: 90_000,
+      }),
+      false,
+    )
+    assert.equal(
+      draftDiffersFrom(draft, {
+        title: '标题',
+        contentMd: '正文',
+        publishedAt: 120_000,
+      }),
       true,
     )
   })

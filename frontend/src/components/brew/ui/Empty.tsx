@@ -1,8 +1,11 @@
 import type { CSSProperties } from 'react'
+import { BrewRailTitle } from './BrewRailTitle'
 
-const GHOSTS = [1, 2, 3, 4, 5] as const
+const STORY_GHOSTS = [1, 2, 3, 4, 5] as const
+const SITE_GHOSTS = [1, 2, 3, 4, 5] as const
+const FRIEND_STORY_GHOSTS = [1, 2, 3] as const
 
-function VacantGhost({ i }: { i: number }) {
+function StoryGhost({ i }: { i: number }) {
   return (
     <div
       className="brew-vacant__ghost"
@@ -21,16 +24,67 @@ function VacantGhost({ i }: { i: number }) {
   )
 }
 
+function SiteGhost({ i }: { i: number }) {
+  return (
+    <div
+      className="brew-vacant__ghost is-site"
+      style={{ '--vacant-i': i } as CSSProperties}
+      aria-hidden
+    >
+      <span className="brew-vacant__shell">
+        <span className="brew-vacant__bar is-name" />
+        <span className="brew-vacant__bar is-article" />
+      </span>
+    </div>
+  )
+}
+
 export function BrewVacant({
   title,
   hint,
+  articleTitle,
+  layout = 'articles',
 }: {
   title: string
   hint?: string
+  articleTitle?: string
+  layout?: 'articles' | 'friends'
 }) {
+  if (layout === 'friends') {
+    return (
+      <div
+        className="brew-skin brew-vacant is-friends is-arrive"
+        data-brew-surface="vacant"
+        data-brew-card="vacant"
+        role="status"
+      >
+        <div className="brew-vacant__sites">
+          <article className="brew-vacant__note is-site">
+            <div className="brew-float brew-vacant__shell">
+              <h3 className="brew-vacant__title">{title}</h3>
+              {hint ? <p className="brew-vacant__hint">{hint}</p> : null}
+            </div>
+          </article>
+          {SITE_GHOSTS.map((i) => (
+            <SiteGhost key={i} i={i} />
+          ))}
+        </div>
+        {articleTitle ? (
+          <BrewRailTitle arrive={false}>{articleTitle}</BrewRailTitle>
+        ) : null}
+        <div className="brew-vacant__items">
+          {FRIEND_STORY_GHOSTS.map((i) => (
+            <StoryGhost key={i} i={i} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div
       className="brew-skin brew-vacant is-arrive"
+      data-brew-surface="vacant"
       data-brew-card="vacant"
       role="status"
     >
@@ -40,8 +94,8 @@ export function BrewVacant({
           {hint ? <p className="brew-vacant__hint">{hint}</p> : null}
         </div>
       </article>
-      {GHOSTS.map((i) => (
-        <VacantGhost key={i} i={i} />
+      {STORY_GHOSTS.map((i) => (
+        <StoryGhost key={i} i={i} />
       ))}
     </div>
   )

@@ -179,13 +179,15 @@ export default memo(
       // 常驻 DOM，避免切换时重挂 backdrop-blur。用 animate + pointerEvents，不卸载。
       <>
         <motion.aside
-          initial={{ opacity: 0, x: -24, scale: 0.92 }}
+          inert={!showPanels || undefined}
+          aria-hidden={!showPanels || undefined}
+          initial={enableAnimations ? { opacity: 0, x: -24, scale: 0.92 } : false}
           animate={
             enableAnimations
               ? showPanels
                 ? { opacity: 1, x: 0, scale: 1 }
                 : { opacity: 0, x: -24, scale: 0.92 }
-              : { opacity: showPanels ? 1 : 0 }
+              : { opacity: showPanels ? 1 : 0, x: 0, scale: 1 }
           }
           transition={
             enableAnimations

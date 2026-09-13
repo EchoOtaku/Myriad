@@ -8,7 +8,7 @@ import type { HomeBoardNote } from '../logic/homeBoard'
 import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../../../contexts/I18nContext'
 import { brewOwnItemPath, getIconUrl, getImageUrl } from '../constants'
-import { isSiteSource } from '../logic/board'
+import { isSiteSource, visitFriendHref } from '../logic/board'
 import { BrewVacant } from '../ui/Empty'
 import { BrewPick } from '../ui/Pick'
 import {
@@ -20,6 +20,7 @@ import {
   SiteMark,
 } from '../ui/SiteCard'
 import BrewFeeds from './BrewFeeds'
+import BrewFriends from './BrewFriends'
 import { brewRelativeTime, useBrewTimes } from './time'
 import '../ui/brew.css'
 
@@ -47,7 +48,7 @@ export interface BrewBoardViewProps {
 }
 
 function openLink(source: BrewSource) {
-  const href = source.site_url || source.url
+  const href = visitFriendHref(source)
   if (!href) return
   window.open(href, '_blank', 'noopener,noreferrer')
 }
@@ -96,12 +97,16 @@ export default function BrewBoardView({
   if (empty && board !== 'feeds') {
     return (
       <BrewVacant
+        layout={board === 'sites' ? 'friends' : 'articles'}
         title={
           board === 'notes'
             ? t.brew.emptyNoNotes
             : board === 'sites'
               ? t.brew.emptyNoSites
               : t.brew.emptyNoSources
+        }
+        articleTitle={
+          board === 'sites' ? t.brew.friendArticles : undefined
         }
       />
     )
@@ -127,6 +132,23 @@ export default function BrewBoardView({
         stories={stories}
         onReadySource={onReadySource}
         sourceTags={sourceTags}
+      />
+    )
+  }
+
+  if (board === 'sites') {
+    return (
+      <BrewFriends
+        sources={sources}
+        stories={stories ?? []}
+        isEditMode={isEditMode}
+        selectedIds={selectedIds}
+        onToggleSelect={onToggleSelect}
+        onOpenItem={onOpenItem}
+        onPeekItem={onPeekItem}
+        onPeekEnd={onPeekEnd}
+        onToggleStar={onToggleStar}
+        onEditSource={onEditSource}
       />
     )
   }

@@ -10,6 +10,7 @@ import {
   isFriendSource,
   isNotesSource,
   isSiteSource,
+  visitFriendHref,
   navIdForBoardEntry,
   refreshableSourceCount,
   resolveBoardParam,
@@ -31,6 +32,26 @@ describe('isSiteSource', () => {
       ]),
       1,
     )
+  })
+})
+
+describe('visitFriendHref', () => {
+  it('优先站点地址，没有再用源地址', () => {
+    assert.equal(
+      visitFriendHref(
+        makeSource({ site_url: 'https://friend.example', url: 'https://feed.example' }),
+      ),
+      'https://friend.example',
+    )
+    assert.equal(
+      visitFriendHref(makeSource({ site_url: '', url: 'https://feed.example' })),
+      'https://feed.example',
+    )
+  })
+
+  it('都空则不去', () => {
+    assert.equal(visitFriendHref(makeSource({ site_url: '', url: '' })), null)
+    assert.equal(visitFriendHref(makeSource({ site_url: '  ', url: '  ' })), null)
   })
 })
 

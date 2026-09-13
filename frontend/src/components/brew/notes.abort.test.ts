@@ -15,4 +15,14 @@ describe('note editor abort', () => {
     assert.match(editor, /previewNote\(contentMd, controller\.signal\)/)
     assert.match(editor, /controller\.abort\(\)/)
   })
+
+  it('发布载荷带主题、封面和发布时间', () => {
+    const editor = readFileSync(join(dir, 'notes/NoteEditor.tsx'), 'utf8')
+    assert.match(editor, /toNoteWritePayload\(/)
+    assert.match(editor, /noteFieldError\(/)
+    assert.match(
+      editor,
+      /createNote\(payload\)[\s\S]*updateNote\(noteId, payload\)/,
+    )
+  })
 })

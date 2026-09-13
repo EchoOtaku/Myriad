@@ -2,13 +2,15 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   FEEDS_ARTICLE_MAX,
+  FRIENDS_STORY_MAX,
   latestStoryPreview,
   paintReadyStories,
   storiesAreFresh,
   storiesForSource,
+  storiesFromSources,
   toFeedStory,
 } from './feedStories.ts'
-import { makeItem, makePreview } from './fixtures.ts'
+import { makeItem, makePreview, makeSource } from './fixtures.ts'
 
 describe('toFeedStory', () => {
   it('只收轨上文章卡要的字段', () => {
@@ -35,6 +37,43 @@ describe('toFeedStory', () => {
       source_icon: '/i.png',
     })
     assert.equal(FEEDS_ARTICLE_MAX, 20)
+    assert.equal(FRIENDS_STORY_MAX, 12)
+  })
+})
+
+describe('storiesFromSources', () => {
+  const pool = [
+    makeSource({
+      id: 8,
+      name: '甲',
+      icon: '/a.png',
+      recent_items: [makePreview({ id: 1, title: '旧', published_at: 10 })],
+    }),
+    makeSource({
+      id: 9,
+      name: '乙',
+      icon: '/b.png',
+      recent_items: [
+        makePreview({ id: 2, title: '新', published_at: 20 }),
+        makePreview({ id: 2, title: '重复', published_at: 30 }),
+      ],
+    }),
+  ]
+
+  it('把各源预览收成一条轨，同 id 只留一份，按种子随机', () => {
+    const stories = storiesFromSources(pool, 0.42)
+    assert.deepEqual(
+      new Set(stories.map((story) => story.id)),
+      new Set([1, 2]),
+    )
+    assert.equal(stories.find((story) => story.id === 2)?.source_name, '乙')
+  })
+
+  it('同一颗种子顺序稳定', () => {
+    assert.deepEqual(
+      storiesFromSources(pool, 0.3).map((story) => story.id),
+      storiesFromSources(pool, 0.3).map((story) => story.id),
+    )
   })
 })
 

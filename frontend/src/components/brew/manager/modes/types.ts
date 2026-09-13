@@ -3,21 +3,6 @@ import type { SourceSortMode } from '../../logic/board'
 /** 排序取值跟板块源表同一份。 */
 export type SortMode = SourceSortMode
 
-export type ControlMode =
-  | 'default'
-  | 'search'
-  | 'edit'
-  | 'keyboard'
-  | 'add'
-  | 'source-edit'
-  | 'topic-feed'
-  | 'starred'
-  | 'starred-edit'
-
-export interface BrewControlsHandle {
-  changeMode: (mode: ControlMode) => void
-}
-
 export type SortLabelKey =
   | 'sortBySmart'
   | 'sortByUpdate'

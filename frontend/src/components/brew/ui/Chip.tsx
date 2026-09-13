@@ -108,6 +108,17 @@ export function useBrewWaveLane(
   occupy?: boolean,
 ) {
   const rowRef = useRef<HTMLDivElement>(null)
+  const liveRef = useRef(false)
+  const laneTokenRef = useRef<number | null>(null)
+  const [revision, setRevision] = useState(0)
+  useLayoutEffect(() => {
+    liveRef.current = true
+    return () => {
+      liveRef.current = false
+      exitingRef.current = false
+      if (laneTokenRef.current != null) brewMotionRelease(laneTokenRef.current)
+    }
+  }, [])
   const oldChildrenRef = useRef(children)
   const incomingRef = useRef(children)
   const pendingWaveRef = useRef(wave)
@@ -152,18 +163,20 @@ export function useBrewWaveLane(
     }
 
     const token = occupy ? brewMotionClaim('lane') : null
+    laneTokenRef.current = token
     const { wait, waapi, done } = play(rowRef.current)
     exitingRef.current = true
     setExitHow(waapi ? 'waapi' : 'css')
     setExiting(true)
 
     const finish = () => {
-      if (!exitingRef.current) return
+      if (!liveRef.current || !exitingRef.current) return
       exitingRef.current = false
       const next = pendingWaveRef.current
       shownRef.current = next
       oldChildrenRef.current = incomingRef.current
       setShown(next)
+      setRevision((value) => value + 1)
       setExiting(false)
       if (token != null) brewMotionRelease(token)
     }
@@ -178,6 +191,7 @@ export function useBrewWaveLane(
   const frozen = exiting || wave !== shown
   return {
     rowRef,
+    revision,
     frozen,
     exiting,
     exitHow,
@@ -238,6 +252,7 @@ export function BrewChipLane({
             ref={outRef}
             className="brew-bar__set is-leave"
             aria-hidden
+            inert
           >
             {view}
           </div>
@@ -260,6 +275,7 @@ export function BrewPanelLane({ children }: { children?: ReactNode }) {
   const has = children != null && children !== false
   const pendingRef = useRef(children)
   const panelRef = useRef<HTMLDivElement>(null)
+  const exitAnimation = useRef<Animation | null>(null)
   pendingRef.current = children
   const [view, setView] = useState<{
     node: ReactNode
@@ -267,6 +283,9 @@ export function BrewPanelLane({ children }: { children?: ReactNode }) {
   } | null>(has ? { node: children, phase: 'enter' } : null)
 
   useLayoutEffect(() => {
+    const wasClosing = exitAnimation.current != null
+    exitAnimation.current?.cancel()
+    exitAnimation.current = null
     if (brewTagQuiet()) {
       setView(has ? { node: children, phase: 'in' } : null)
       return
@@ -275,7 +294,7 @@ export function BrewPanelLane({ children }: { children?: ReactNode }) {
     if (has) {
       setView((prev) => ({
         node: children,
-        phase: prev ? 'in' : 'enter',
+        phase: prev && !wasClosing ? 'in' : 'enter',
       }))
       return
     }
@@ -283,11 +302,11 @@ export function BrewPanelLane({ children }: { children?: ReactNode }) {
     setView((prev) => (prev ? { ...prev, phase: 'exit' } : null))
     const panel = panelRef.current
     if (panel && typeof panel.animate === 'function') {
-      const style = getComputedStyle(panel)
+      const { opacity, transform } = getComputedStyle(panel)
       for (const anim of panel.getAnimations()) anim.cancel()
-      panel.animate(
+      exitAnimation.current = panel.animate(
         [
-          { opacity: style.opacity, transform: style.transform },
+          { opacity, transform },
           {
             opacity: 0,
             transform: 'translate3d(0, var(--sm-shift-sm, 6px), 0) scale(0.96)',
@@ -306,10 +325,13 @@ export function BrewPanelLane({ children }: { children?: ReactNode }) {
     return () => window.clearTimeout(timer)
   }, [has, children])
 
+  useEffect(() => () => exitAnimation.current?.cancel(), [])
+
   if (!view) return null
   return (
     <div
       ref={panelRef}
+      inert={view.phase === 'exit' || undefined}
       className={cx(
         'brew-bar__panel',
         view.phase === 'enter' && 'is-enter',

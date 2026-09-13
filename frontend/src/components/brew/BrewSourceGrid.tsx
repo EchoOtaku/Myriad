@@ -7,10 +7,11 @@ import type {
 import type { BrewBoard, SourceSortMode } from './logic/board'
 import { refreshableSourceCount } from './logic/board'
 
-import { useCallback, useId, useMemo, useState } from 'react'
+import { useCallback, useId, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { roleFromAuth } from './logic/score'
 import BrewControls from './manager/BrewControls'
+import { storiesFromSources } from './logic/feedStories'
 import { BrewSourceTitleTags } from './manager/BrewSourceTitleTags'
 import { useBrewpack } from './manager/useBrewpack'
 import BrewBoardView from './skin/BrewBoard'
@@ -18,6 +19,7 @@ import { BrewViewLane } from './skin/BrewChip'
 import { BrewVacant } from './ui/Empty'
 import { BrewPageStage } from './ui/BrewPageStage'
 import { BrewRailTitle } from './ui/BrewRailTitle'
+import { useArticleFlags } from './useArticleFlags'
 import { useBoardEdit } from './useBoardEdit'
 import {
   useBoardCatalog,
@@ -57,7 +59,6 @@ interface BrewSourceGridProps {
   onMarkAllRead?: () => void
   isAuthenticated?: boolean
   isAdmin?: boolean
-  onBoardSurface?: (board: BrewBoard) => void
 }
 
 export default function BrewSourceGrid({
@@ -81,7 +82,6 @@ export default function BrewSourceGrid({
   onMarkAllRead,
   isAuthenticated = false,
   isAdmin = false,
-  onBoardSurface,
 }: BrewSourceGridProps) {
   const { t } = useI18n()
   const titleId = useId()
@@ -105,6 +105,11 @@ export default function BrewSourceGrid({
     [sources, readySourceId],
   )
   const { stories, onStar } = useFeedStories(board, readySource, onToggleStar)
+  const flags = useArticleFlags()
+  const friendSeed = useRef(Math.random())
+  const friendStories = (
+    board === 'sites' ? storiesFromSources(sorted, friendSeed.current) : []
+  ).map((story) => flags.project(story))
   const edit = useBoardEdit(
     board,
     filtered,
@@ -136,7 +141,6 @@ export default function BrewSourceGrid({
         onImportOpml={onImportOpml}
         onSourcesChange={onSourcesChange}
         isAdmin={isAdmin}
-        embedded
       />
     ) : null
 
@@ -202,7 +206,9 @@ export default function BrewSourceGrid({
       onSitesOpenChange={board === 'feeds' ? edit.setSitesOpen : undefined}
       toolbar={bar}
       vacant={board === 'feeds' && searchMiss ? miss : null}
-      stories={board === 'feeds' ? stories : undefined}
+      stories={
+        board === 'feeds' ? stories : board === 'sites' ? friendStories : undefined
+      }
       onReadySource={board === 'feeds' ? handleReadySource : undefined}
       sourceTags={board === 'feeds' ? sourceTags : undefined}
       notes={notes}
@@ -212,7 +218,6 @@ export default function BrewSourceGrid({
   return (
     <BrewViewLane
       wave={board}
-      onDisplayed={(next) => onBoardSurface?.(next as BrewBoard)}
       className="relative min-h-0 flex-1 overflow-visible"
     >
       {board === 'feeds' ? (

@@ -25,6 +25,7 @@ export function SiteCard({
   onOpenLatest,
   onEdit,
   onIconLoad,
+  arrive,
 }: {
   id: number | string
   name: string
@@ -44,18 +45,26 @@ export function SiteCard({
   onOpenLatest?: () => void
   onEdit?: () => void
   onIconLoad?: (img: HTMLImageElement) => void
+  arrive?: number
 }) {
   return (
     <div
       data-rail-id={id}
+      data-brew-surface="site"
       className={cx(
         'brew-site',
         on && 'is-on',
         cover && 'is-cover',
         editing && 'is-edit',
         picked && 'is-picked',
+        arrive != null && 'is-arrive',
       )}
-      style={{ '--site-ink': ink } as CSSProperties}
+      style={
+        {
+          '--site-ink': ink,
+          ...(arrive != null ? { '--brew-card-i': arrive } : null),
+        } as CSSProperties
+      }
       onClick={onActivate}
     >
       {cover ? (
@@ -180,6 +189,7 @@ export function SalonCard({
         picked && 'is-picked',
         arrive != null && 'is-arrive',
       )}
+      data-brew-surface="card"
       data-brew-card={cardKey}
       style={
         arrive != null
@@ -223,6 +233,7 @@ export function SalonNote({
         cover && 'has-cover',
         arrive != null && 'is-arrive',
       )}
+      data-brew-surface="card"
       data-brew-card={cardKey}
       style={
         arrive != null

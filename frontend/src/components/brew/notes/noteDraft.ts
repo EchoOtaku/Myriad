@@ -1,5 +1,7 @@
 /** 草稿只在本机：不同步、不进任何载荷。 */
 
+import { sameNoteMinute } from './noteFields'
+
 /** `new` 是还没发布的那篇。 */
 export function noteDraftKey(id: number | 'new'): string {
   return `brew:note-draft:${id}`
@@ -8,6 +10,10 @@ export function noteDraftKey(id: number | 'new'): string {
 export interface NoteDraft {
   title: string
   contentMd: string
+  /** 缺字段表示旧草稿没记过，不能盖掉服务端值。 */
+  topic?: string | null
+  cover?: string | null
+  publishedAt?: number | null
   savedAt: number
 }
 
@@ -25,9 +31,15 @@ export function readNoteDraft(
     const savedAt = Number(parsed.savedAt)
     if (!Number.isFinite(savedAt)) return null
     if (now - savedAt > NOTE_DRAFT_TTL_MS) return null
+    const topic = readOptionalText(parsed, 'topic')
+    const cover = readOptionalText(parsed, 'cover')
+    const publishedAt = readOptionalTime(parsed, 'publishedAt')
     return {
       title: typeof parsed.title === 'string' ? parsed.title : '',
       contentMd: parsed.contentMd,
+      ...(topic !== undefined ? { topic } : {}),
+      ...(cover !== undefined ? { cover } : {}),
+      ...(publishedAt !== undefined ? { publishedAt } : {}),
       savedAt,
     }
   } catch {
@@ -36,9 +48,35 @@ export function readNoteDraft(
   }
 }
 
+function readOptionalText(
+  parsed: Partial<NoteDraft>,
+  key: 'topic' | 'cover',
+): string | null | undefined {
+  if (!Object.hasOwn(parsed, key)) return undefined
+  const value = parsed[key]
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed || null
+}
+
+function readOptionalTime(
+  parsed: Partial<NoteDraft>,
+  key: 'publishedAt',
+): number | null | undefined {
+  if (!Object.hasOwn(parsed, key)) return undefined
+  const value = Number(parsed[key])
+  return Number.isFinite(value) && value > 0 ? value : null
+}
+
 export function writeNoteDraft(
   id: number | 'new',
-  draft: Omit<NoteDraft, 'savedAt'>,
+  draft: {
+    title: string
+    contentMd: string
+    topic?: string | null
+    cover?: string | null
+    publishedAt?: number | null
+  },
   now: number = Date.now(),
 ): void {
   try {
@@ -58,15 +96,33 @@ export function clearNoteDraft(id: number | 'new'): void {
   }
 }
 
-/** 只比正文和标题，不比时间戳。首尾空白不算差异。 */
+/** 只比写出过的字段。首尾空白不算差异；发布时间按分钟。 */
 export function draftDiffersFrom(
   draft: NoteDraft | null,
-  saved: { title: string; contentMd: string },
+  saved: {
+    title: string
+    contentMd: string
+    topic?: string | null
+    cover?: string | null
+    publishedAt?: number | null
+  },
 ): boolean {
   if (!draft) return false
+  const topic = saved.topic?.trim() || null
+  const cover = saved.cover?.trim() || null
+  const topicChanged =
+    draft.topic !== undefined && (draft.topic || null) !== topic
+  const coverChanged =
+    draft.cover !== undefined && (draft.cover || null) !== cover
+  const publishedChanged =
+    draft.publishedAt !== undefined &&
+    !sameNoteMinute(draft.publishedAt, saved.publishedAt ?? null)
   return (
     draft.title.trim() !== saved.title.trim() ||
-    draft.contentMd.trim() !== saved.contentMd.trim()
+    draft.contentMd.trim() !== saved.contentMd.trim() ||
+    topicChanged ||
+    coverChanged ||
+    publishedChanged
   )
 }
 

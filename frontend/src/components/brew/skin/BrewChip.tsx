@@ -1,9 +1,9 @@
-/** 只接订阅轨 flip。 */
+/** 板块 / 视图换树：先揭订阅轨，再整舞台同退。 */
 
 import type { ReactNode } from 'react'
-import { useCallback } from 'react'
+import { useCallback, useLayoutEffect } from 'react'
 
-import { playBrewSurfaceExit } from '../../../hooks/animation/pages/brewChipPresence'
+import { playBrewSurfaceEnter, playBrewSurfaceExit } from '../../../hooks/animation/pages/brewChipPresence'
 import { useBrewWaveLane } from '../ui/Chip'
 import { revealFeedsTree } from './flipCards'
 
@@ -12,17 +12,19 @@ export function BrewViewLane({
   wave,
   className,
   onDisplayed,
+  suspended = false,
 }: {
   children: ReactNode
   wave: string
   className?: string
   onDisplayed?: (wave: string) => void
+  suspended?: boolean
 }) {
   const play = useCallback((node: HTMLElement | null) => {
     revealFeedsTree(node)
     return playBrewSurfaceExit(node)
   }, [])
-  const { rowRef, exiting, exitHow, shown, view } = useBrewWaveLane(
+  const { rowRef, revision, frozen, exiting, exitHow, shown, view } = useBrewWaveLane(
     wave,
     children,
     play,
@@ -30,10 +32,15 @@ export function BrewViewLane({
     true,
   )
 
+  useLayoutEffect(() => {
+    if (revision > 0 && !frozen) playBrewSurfaceEnter(rowRef.current)
+  }, [revision, frozen, rowRef])
+
   return (
     <div
       className={`brew-view-lane${className ? ` ${className}` : ''}`}
       ref={rowRef}
+      inert={frozen || suspended || undefined}
       data-chip-phase={exiting ? 'exit' : 'enter'}
       data-chip-exit={exiting ? exitHow : undefined}
       data-brew-view={shown}

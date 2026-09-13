@@ -29,7 +29,6 @@ export default function BrewListView({
   selectedItem,
   loading,
   hasMore,
-  total,
   onItemSelect,
   onLoadMore,
   editMode,
@@ -38,7 +37,7 @@ export default function BrewListView({
   onToggleStar,
   emptyText,
 }: BrewListViewProps) {
-  const { t, locale, format } = useI18n()
+  const { t, locale } = useI18n()
   const observerRef = useRef<IntersectionObserver | null>(null)
   const times = useBrewTimes()
   const labels = t.brew
@@ -111,11 +110,6 @@ export default function BrewListView({
         <div className="brew-stories__more">
           <Spinner size="md" />
         </div>
-      ) : null}
-      {!loading && !hasMore && items.length > 0 ? (
-        <p className="brew-stories__more">
-          {format(t.brew.loadedAllArticles, { count: total })}
-        </p>
       ) : null}
     </StoryGrid>
   )

@@ -1,21 +1,25 @@
 import assert from 'node:assert/strict'
+import { createRequire } from 'node:module'
 import { describe, it } from 'node:test'
-
 import {
   awaitLaneSwap,
   BREW_CARD_EXIT_TRANSFORM,
   BREW_SURFACE_CARD_CAP,
+  BREW_SURFACE_CARD_SELECTOR,
   BREW_TAG_EXIT_TRANSFORM,
   BREW_TAG_SWAP_PAD_MS,
   brewSurfaceSwapWait,
   brewTagSwapWait,
   chipEnterFrames,
   chipExitFrames,
+  collectBrewSurfaceNodes,
   diffChipKeys,
   planChipLaneSwap,
   shouldPlayChipEnter,
 } from './brewChipPresence.ts'
 import { BREW_TAG_EXIT_MS, brewTagDelay } from './brewTag.ts'
+
+const require = createRequire(import.meta.url)
 
 describe('diffChipKeys', () => {
   it('整栏替换先退后进', () => {
@@ -111,6 +115,43 @@ describe('awaitLaneSwap', () => {
     const started = Date.now()
     await awaitLaneSwap(Promise.resolve(), 40)
     assert.ok(Date.now() - started >= 35)
+  })
+})
+
+describe('BREW_SURFACE_CARD_SELECTOR', () => {
+  it('标题、空占位、网站卡、任意文章卡同一套', () => {
+    assert.match(BREW_SURFACE_CARD_SELECTOR, /data-brew-surface/)
+    assert.match(BREW_SURFACE_CARD_SELECTOR, /brew-rail-title/)
+    assert.match(BREW_SURFACE_CARD_SELECTOR, /\.brew-story/)
+    assert.match(BREW_SURFACE_CARD_SELECTOR, /\.brew-site/)
+    assert.match(BREW_SURFACE_CARD_SELECTOR, /brew-vacant/)
+    assert.doesNotMatch(BREW_SURFACE_CARD_SELECTOR, /brew-empty/)
+  })
+})
+
+describe('collectBrewSurfaceNodes', () => {
+  it('空占位里的标题不单独再退', () => {
+    const { JSDOM } = require(
+      require.resolve('jsdom', {
+        paths: [require.resolve('isomorphic-dompurify')],
+      }),
+    ) as { JSDOM: new (html?: string) => { window: { document: Document } } }
+    const dom = new JSDOM('<!doctype html><html><body></body></html>')
+    const root = dom.window.document.createElement('div')
+    root.innerHTML = `
+      <div class="brew-rail-title" data-brew-surface="title"></div>
+      <div class="brew-vacant" data-brew-surface="vacant">
+        <div class="brew-rail-title"></div>
+      </div>
+      <div class="brew-site" data-brew-surface="site"></div>
+      <div class="brew-story" data-brew-surface="story"></div>
+    `
+    const nodes = collectBrewSurfaceNodes(root)
+    assert.equal(nodes.length, 4)
+    assert.deepEqual(
+      nodes.map((el) => el.dataset.brewSurface ?? el.className),
+      ['title', 'vacant', 'site', 'story'],
+    )
   })
 })
 

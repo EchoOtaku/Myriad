@@ -1,10 +1,8 @@
 import { LuKeyboard, LuSearch, LuX } from '@lib/icons'
 import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useI18n } from '../../../contexts/I18nContext'
 import { SettingTitleGuideEntry } from '../../settings/SettingTitleGuideEntry'
 import { SettingTitleTag } from '../../settings/SettingTitleTag'
-import { useManagementAccessory } from './BrewManagement'
 import { BrewSearchGuide } from './BrewSearchGuide'
 import { cx } from './cx'
 
@@ -27,7 +25,6 @@ export function BrewSearch({
   onChange?: (value: string) => void
   matchCount?: number
 }) {
-  const slot = useManagementAccessory()
   const { t, format } = useI18n()
   const brew = t.brew
   const inputRef = useRef<HTMLInputElement>(null)
@@ -60,7 +57,7 @@ export function BrewSearch({
   if (!onChange) return null
 
   const search = (
-    <div className={cx('brew-skin brew-search glass', typing && 'is-input')}>
+    <div data-brew-surface="search" className={cx('brew-skin brew-search glass', typing && 'is-input')}>
       <span className="brew-search__mark" aria-hidden>
         <LuSearch />
       </span>
@@ -130,6 +127,5 @@ export function BrewSearch({
     </div>
   )
 
-  if (slot) return createPortal(search, slot)
   return search
 }

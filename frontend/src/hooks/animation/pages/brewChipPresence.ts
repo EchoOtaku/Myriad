@@ -17,14 +17,15 @@ export const BREW_CARD_EXIT_TRANSFORM = 'translate3d(0, var(--sm-shift-sm, 6px),
 /** 卡片退场最多错开前 8 张，避免长轨把换页拖住。 */
 export const BREW_SURFACE_CARD_CAP = 8
 
+/** 标题、站点卡、文章卡、空占位共用这一套，换页同退。 */
 export const BREW_SURFACE_CARD_SELECTOR = [
+  '[data-brew-surface]',
   '[data-brew-card]',
+  '.brew-rail-title',
   '.brew-salon__card',
-  '.brew-stories .brew-story',
-  '.brew-empty',
+  '.brew-story',
   '.brew-vacant',
   '.brew-site',
-  '.brew-feeds .brew-story',
 ].join(',')
 
 export const BREW_CHIP_SELECTOR = '[data-brew-chip]'
@@ -71,6 +72,14 @@ function motionTargets(root: HTMLElement | null, selector: string): HTMLElement[
     .toArray()
 }
 
+/** 空占位里的标题跟着整块走，不单独再退一次。 */
+export function collectBrewSurfaceNodes(root: HTMLElement | null): HTMLElement[] {
+  return motionTargets(root, BREW_SURFACE_CARD_SELECTOR).filter((el) => {
+    const parent = el.parentElement
+    return !parent?.closest(BREW_SURFACE_CARD_SELECTOR)
+  })
+}
+
 function playMotionExit(
   nodes: HTMLElement[],
   toTransform: string,
@@ -79,10 +88,10 @@ function playMotionExit(
   const pending: Promise<void>[] = []
   nodes.forEach((el, index) => {
     if (typeof el.animate !== 'function') return
-    const style = getComputedStyle(el)
+    const { opacity, transform } = getComputedStyle(el)
     for (const anim of el.getAnimations()) anim.cancel()
     const anim = el.animate(
-      chipExitFrames(style.opacity, style.transform, toTransform),
+      chipExitFrames(opacity, transform, toTransform),
       {
         duration: BREW_TAG_EXIT_MS,
         delay: brewTagDelay(Math.min(index, Math.max(cap - 1, 0))),
@@ -140,8 +149,10 @@ export function playBrewSurfaceExit(root: HTMLElement | null): {
   done: Promise<void>
 } {
   const quiet = brewTagQuiet()
-  const chips = motionTargets(root, BREW_CHIP_SELECTOR)
-  const cards = motionTargets(root, BREW_SURFACE_CARD_SELECTOR).filter(
+  const chips = motionTargets(root, BREW_CHIP_SELECTOR).filter(
+    (el) => !el.parentElement?.closest(BREW_SURFACE_CARD_SELECTOR),
+  )
+  const cards = collectBrewSurfaceNodes(root).filter(
     (el) => !el.closest(BREW_CHIP_SELECTOR),
   )
   const wait = brewSurfaceSwapWait(chips.length, cards.length, quiet)
@@ -168,13 +179,50 @@ export function playBrewChipEnter(row: HTMLElement | null): void {
     if (typeof el.animate !== 'function') return
     if (el.classList.contains('is-conceal')) return
     for (const anim of el.getAnimations()) anim.cancel()
-    el.animate(chipEnterFrames('1', 'none'), {
+    const animation = el.animate(chipEnterFrames('1', 'none'), {
       duration: BREW_TAG_ENTER_MS,
       delay: brewTagDelay(index),
       easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
       fill: 'both',
     })
+    void animation.finished.then(() => animation.cancel(), () => {})
   })
+}
+
+/** 舞台完成交接后重播入场，含 A → B → A 留在原树的情况。 */
+export function playBrewSurfaceEnter(root: HTMLElement | null): void {
+  const nodes = collectBrewSurfaceNodes(root)
+  for (const [index, el] of nodes.entries()) {
+    // 订阅轨的卡片已由 FLIP 接管；舞台只负责标题等外围元素。
+    if (el.matches('.brew-site, .brew-story') && el.closest('.brew-feeds.is-sites-flipping')) continue
+    for (const animation of el.getAnimations()) animation.cancel()
+    const { opacity, transform, visibility, display } = getComputedStyle(el)
+    if (visibility === 'hidden' || display === 'none' || Number(opacity) === 0 || el.getClientRects().length === 0) continue
+    if (brewTagQuiet() || typeof el.animate !== 'function') continue
+    const animation = el.animate([
+      { opacity: 0, transform: BREW_CARD_EXIT_TRANSFORM },
+      { opacity, transform },
+    ], {
+      duration: BREW_TAG_ENTER_MS,
+      delay: brewTagDelay(Math.min(index, BREW_SURFACE_CARD_CAP - 1)),
+      easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      fill: 'both',
+    })
+    // 交还 hover / FLIP 对 transform 的控制权。
+    void animation.finished.then(() => animation.cancel(), () => {})
+  }
+  // 标题内的 tag 随标题整体移动，避免父子位移叠加。
+  for (const el of motionTargets(root, BREW_CHIP_SELECTOR)) {
+    if (el.classList.contains('is-conceal') || el.parentElement?.closest(BREW_SURFACE_CARD_SELECTOR)) continue
+    for (const animation of el.getAnimations()) animation.cancel()
+    if (brewTagQuiet() || typeof el.animate !== 'function') continue
+    const animation = el.animate(chipEnterFrames('1', 'none'), {
+      duration: BREW_TAG_ENTER_MS,
+      easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      fill: 'both',
+    })
+    void animation.finished.then(() => animation.cancel(), () => {})
+  }
 }
 
 /** 退场未结束不播入场：否则入场在隐藏层播完，揭开时已经停在 opacity:1。 */

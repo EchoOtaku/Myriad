@@ -7,10 +7,13 @@ import { fileURLToPath } from 'node:url'
 const dir = dirname(fileURLToPath(import.meta.url))
 
 describe('brew manager 栏边界', () => {
-  it('栏波次只进口 ui，不进口 skin', () => {
-    const src = readFileSync(join(dir, 'bar.tsx'), 'utf8')
-    assert.match(src, /from ['"]\.\.\/ui\//)
-    assert.doesNotMatch(src, /from ['"]\.\.\/skin\//)
+  it('标题操作只进口 ui，不进口 skin', () => {
+    const source = readFileSync(join(dir, 'BrewSourceTitleTags.tsx'), 'utf8')
+    const filter = readFileSync(join(dir, 'BrewFilterTitleTags.tsx'), 'utf8')
+    assert.match(source, /from ['"]\.\.\/ui\//)
+    assert.match(filter, /SettingTitleTag/)
+    assert.doesNotMatch(source, /from ['"]\.\.\/skin\//)
+    assert.doesNotMatch(filter, /from ['"]\.\.\/skin\//)
   })
 
   it('控制栏不进口 skin，也不直接碰 ZIP', () => {
@@ -19,7 +22,9 @@ describe('brew manager 栏边界', () => {
     assert.doesNotMatch(src, /jszip/i)
     assert.doesNotMatch(src, /from ['"]\.\/brewpackIo['"]/)
     assert.match(src, /from ['"]\.\/useBrewpack['"]/)
-    assert.match(src, /from ['"]\.\/useBarWave['"]/)
+    assert.doesNotMatch(src, /from ['"]\.\/useBarWave['"]/)
+    assert.doesNotMatch(src, /from ['"]\.\.\/ui\/BrewManagement['"]/)
+    assert.doesNotMatch(src, /from ['"]\.\/bar['"]/)
     assert.doesNotMatch(src, /brewApi\.updateSource/)
     assert.doesNotMatch(src, /brewApi\.importOpml/)
     assert.doesNotMatch(src, /brewApi\.deleteSource/)

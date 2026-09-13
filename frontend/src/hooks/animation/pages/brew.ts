@@ -11,6 +11,7 @@ export {
   brewTagSwapWait,
   chipEnterFrames,
   chipExitFrames,
+  collectBrewSurfaceNodes,
   diffChipKeys,
   planChipLaneSwap,
   playBrewChipEnter,

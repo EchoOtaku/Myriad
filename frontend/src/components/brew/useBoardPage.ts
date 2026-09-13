@@ -71,7 +71,8 @@ export function useBoardNotes(
     return () => {
       controller.abort()
     }
-  }, [board, key])
+    // sources 换了就重拉：发布后 item_count 可能不变，但缓存已失效。
+  }, [board, key, sources])
 
   return notes
 }

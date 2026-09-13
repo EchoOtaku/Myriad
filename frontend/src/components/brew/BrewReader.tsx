@@ -68,6 +68,8 @@ interface BrewReaderProps {
 export default function BrewReader(props: BrewReaderProps) {
   const settings = useReaderSettings()
   const [displayed, setDisplayed] = useState(props)
+  const pendingProps = useRef(props)
+  pendingProps.current = props
   const columnRef = useRef<HTMLDivElement>(null)
   const animation = useRef<Animation | null>(null)
   const config = useBrewAnimationConfig()
@@ -86,7 +88,7 @@ export default function BrewReader(props: BrewReaderProps) {
       if (!live) return
       live = false
       switched.current = true
-      setDisplayed(props)
+      setDisplayed(pendingProps.current)
     }
     const column = columnRef.current
     if (!enabled || !column || typeof column.animate !== 'function') {
@@ -94,7 +96,7 @@ export default function BrewReader(props: BrewReaderProps) {
       return
     }
     const fade = column.animate([
-      { opacity: 1, transform: 'translateY(0)' },
+      { opacity: getComputedStyle(column).opacity, transform: getComputedStyle(column).transform },
       { opacity: 0, transform: 'translateY(-6px)' },
     ], { duration: 140, easing: 'ease-in', fill: 'forwards' })
     animation.current = fade
@@ -106,11 +108,11 @@ export default function BrewReader(props: BrewReaderProps) {
       fade.onfinish = null
       fade.cancel()
     }
-  }, [props, sameArticle, enabled])
+  }, [props.item.id, sameArticle, enabled])
 
   useLayoutEffect(() => {
     const column = columnRef.current
-    if (!enabled || !column || typeof column.animate !== 'function') return
+    if (!switched.current || !enabled || !column || typeof column.animate !== 'function') return
     const enter = column.animate([
       { opacity: 0, transform: 'translateY(8px)' },
       { opacity: 1, transform: 'translateY(0)' },

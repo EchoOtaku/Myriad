@@ -3,11 +3,13 @@
 import type { BrewItem, BrewItemPreview } from '../../../types/brew'
 
 export const FEEDS_ARTICLE_MAX = 20
+export const FRIENDS_STORY_MAX = 12
 
 export type FeedStory = BrewItemPreview & {
   author?: string | null
   source_name?: string | null
   source_icon?: string | null
+  source_id?: number
 }
 
 export function toFeedStory(
@@ -39,6 +41,40 @@ export function toFeedStory(
     source_name: item.source_name,
     source_icon: item.source_icon,
   }
+}
+
+function storyRank(id: number, seed: number): number {
+  const value = Math.sin(id * 12.9898 + seed * 78.233) * 43758.5453
+  return value - Math.floor(value)
+}
+
+export function storiesFromSources(
+  sources: ReadonlyArray<{
+    id: number
+    name: string
+    icon: string | null
+    recent_items?: readonly BrewItemPreview[] | null
+  }>,
+  seed: number,
+  limit = FRIENDS_STORY_MAX,
+): Array<FeedStory & { source_id: number }> {
+  const seen = new Set<number>()
+  const stories: Array<FeedStory & { source_id: number }> = []
+  for (const source of sources) {
+    for (const item of source.recent_items ?? []) {
+      if (seen.has(item.id)) continue
+      seen.add(item.id)
+      stories.push({
+        ...item,
+        source_id: source.id,
+        source_name: source.name,
+        source_icon: source.icon,
+      })
+    }
+  }
+  return stories
+    .toSorted((a, b) => storyRank(a.id, seed) - storyRank(b.id, seed))
+    .slice(0, limit)
 }
 
 export function latestStoryPreview(

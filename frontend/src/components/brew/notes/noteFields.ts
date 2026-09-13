@@ -1,0 +1,84 @@
+/** 和 `myriad-brew-notes` 同一套上限，提交前先拦。 */
+
+export const MAX_NOTE_TITLE_CHARS = 200
+export const MAX_NOTE_BODY_CHARS = 200_000
+
+export type NoteFieldError = 'empty-title' | 'title-too-long' | 'body-too-long'
+
+export function countNoteChars(value: string): number {
+  return [...value].length
+}
+
+export function noteFieldError(
+  title: string,
+  body: string,
+): NoteFieldError | null {
+  const trimmed = title.trim()
+  if (!trimmed) return 'empty-title'
+  const titleChars = countNoteChars(trimmed)
+  if (titleChars > MAX_NOTE_TITLE_CHARS) return 'title-too-long'
+  if (countNoteChars(body) > MAX_NOTE_BODY_CHARS) return 'body-too-long'
+  return null
+}
+
+/** 正文第一张图，给封面空位看。 */
+export function firstMarkdownImage(markdown: string): string | null {
+  const match = /!\[[^\]]*]\(([^\s)]+)/.exec(markdown)
+  const href = match?.[1]?.trim()
+  return href || null
+}
+
+export function toDatetimeLocal(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return ''
+  const date = new Date(ms)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+export function fromDatetimeLocal(value: string): number | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const ms = new Date(trimmed).getTime()
+  return Number.isFinite(ms) ? ms : null
+}
+
+export function sameNoteMinute(left: number | null, right: number | null): boolean {
+  if (left == null || right == null) return left == null && right == null
+  return Math.floor(left / 60_000) === Math.floor(right / 60_000)
+}
+
+export function normalizeNoteTopic(topic: string | null | undefined): string | null {
+  const value = topic?.trim()
+  return value || null
+}
+
+export function normalizeNoteCover(cover: string | null | undefined): string | null {
+  const value = cover?.trim()
+  return value || null
+}
+
+/** 没指定封面就不带 `image`，后端改用正文第一张图。 */
+export function toNoteWritePayload(
+  title: string,
+  contentMd: string,
+  topic: string | null | undefined,
+  cover: string | null | undefined,
+  publishedAt: number | null | undefined,
+): {
+  title: string
+  content_md: string
+  topic: string | null
+  image?: string
+  published_at?: number
+} {
+  const image = normalizeNoteCover(cover)
+  const published = publishedAt != null && publishedAt > 0 ? publishedAt : null
+  return {
+    title: title.trim(),
+    content_md: contentMd,
+    topic: normalizeNoteTopic(topic),
+    ...(image ? { image } : {}),
+    ...(published != null ? { published_at: published } : {}),
+  }
+}

@@ -64,6 +64,7 @@ export {
   brewTagSwapWait,
   chipEnterFrames,
   chipExitFrames,
+  collectBrewSurfaceNodes,
   cleanupBrew,
   diffChipKeys,
   getBrewTransition,

@@ -115,6 +115,73 @@
   color: var(--brew-accent-ink);
 }
 
+.brew-note__meta {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.75rem;
+  padding: 0.4rem 0.7rem;
+  border-bottom: 1px solid var(--brew-line);
+}
+
+.brew-note__field {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.brew-note__field span,
+.brew-note__field-label,
+.brew-note__cover-hint {
+  color: var(--brew-fg-dim);
+  font-size: 0.7rem;
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.brew-note__field select,
+.brew-note__field input[type='datetime-local'] {
+  height: 1.9rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--brew-frost-line, var(--brew-line));
+  border-radius: 0.42rem;
+  background: transparent;
+  color: var(--brew-fg);
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 550;
+}
+
+.brew-note__field select:focus,
+.brew-note__field input[type='datetime-local']:focus {
+  outline: none;
+  border-color: var(--brew-line-hover);
+}
+
+html.dark .brew-note__field select,
+html.dark .brew-note__field input[type='datetime-local'] {
+  color-scheme: dark;
+}
+
+.brew-note__cover {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.brew-note__cover-thumb {
+  width: 2.4rem;
+  height: 1.9rem;
+  border-radius: 0.35rem;
+  background: var(--brew-fill-hover);
+  object-fit: cover;
+}
+
 .brew-note__alert {
   padding: 0.45rem 0.9rem;
   border-bottom: 1px solid color-mix(in srgb, #dc2626 22%, var(--brew-line));

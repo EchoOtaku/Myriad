@@ -8,6 +8,7 @@ import {
   PREDEFINED_TOPICS,
   TOPIC_MIN_ITEMS,
   TOPIC_WINDOW_DAYS,
+  noteTopicChoices,
   topicDisplayName,
   topicHue,
   topicNameKey,
@@ -49,6 +50,13 @@ describe('PREDEFINED_TOPICS', () => {
     for (const key of PREDEFINED_TOPICS) {
       assert.match(topicNameKey(key)!, /^topic[A-Z]/)
     }
+  })
+
+  it('手记主题选项就是这 10 个 key', () => {
+    assert.deepEqual(
+      noteTopicChoices().map((choice) => choice.key),
+      Iterator.from(PREDEFINED_TOPICS).toArray(),
+    )
   })
 })
 

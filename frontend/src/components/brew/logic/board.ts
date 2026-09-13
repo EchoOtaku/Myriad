@@ -27,6 +27,14 @@ export function isSiteSource(s: Pick<BrewSource, 'source_type'>): boolean {
   return s.source_type === 'link'
 }
 
+/** 朋友们点网站卡：去对方站点，不进阅读器。 */
+export function visitFriendHref(
+  source: Pick<BrewSource, 'site_url' | 'url'>,
+): string | null {
+  const href = source.site_url?.trim() || source.url?.trim()
+  return href || null
+}
+
 export function refreshableSourceCount(
   sources: readonly Pick<BrewSource, 'source_type'>[],
 ): number {

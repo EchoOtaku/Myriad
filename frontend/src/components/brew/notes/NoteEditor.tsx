@@ -1,7 +1,5 @@
 /** 不做所见即所得：预览与发布走同一套后端渲染。dangerouslySetInnerHTML 只吃后端白名单消毒后的 HTML。 */
 
-import type { BrewNoteInput } from '../../../types/brew'
-
 import {
   LuBold as Bold,
   LuCode as Code,
@@ -14,14 +12,18 @@ import {
   LuTrash2 as Trash2,
   LuX as X,
 } from '@lib/icons'
+import { motionShim as motion } from '@lib/motionShim'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { useI18n } from '../../../contexts/I18nContext'
+import { brewAnimationPresets, getBrewTransition, useBrewAnimationConfig } from '../../../hooks/animation/pages/brew'
+import { isExlight } from '../../../hooks/useAnimationLevel'
 import * as brewApi from '../../../services/brewApi'
 import { federationApi } from '../../../services/federationApi'
 import { userFacingError } from '../../../utils/userFacingError'
 import { Spinner } from '../../Spinner'
+import { noteTopicChoices } from '../logic/topics'
 import {
   clearNoteDraft,
   draftDiffersFrom,
@@ -30,6 +32,19 @@ import {
   wrapSelection,
   writeNoteDraft,
 } from './noteDraft'
+import {
+  countNoteChars,
+  firstMarkdownImage,
+  fromDatetimeLocal,
+  MAX_NOTE_BODY_CHARS,
+  MAX_NOTE_TITLE_CHARS,
+  normalizeNoteCover,
+  normalizeNoteTopic,
+  noteFieldError,
+  sameNoteMinute,
+  toDatetimeLocal,
+  toNoteWritePayload,
+} from './noteFields'
 import '../ui/brew.css'
 import './NoteEditor.css'
 
@@ -45,18 +60,40 @@ export interface NoteEditorProps {
 
 type Pane = 'write' | 'preview'
 
+interface NoteSnapshot {
+  title: string
+  contentMd: string
+  topic: string | null
+  cover: string | null
+  publishedAt: number | null
+}
+
+const EMPTY_SNAPSHOT: NoteSnapshot = {
+  title: '',
+  contentMd: '',
+  topic: null,
+  cover: null,
+  publishedAt: null,
+}
+
 export default function NoteEditor({
   noteId,
   onClose,
   onSaved,
   onDeleted,
 }: NoteEditorProps) {
-  const { t } = useI18n()
+  const { t, format } = useI18n()
+  const animation = useBrewAnimationConfig()
+  const motionEnabled = !isExlight(animation)
   const draftKey = noteId ?? 'new'
+  const topicChoices = useMemo(() => noteTopicChoices(), [])
 
   const [title, setTitle] = useState('')
   const [contentMd, setContentMd] = useState('')
-  const [saved, setSaved] = useState({ title: '', contentMd: '' })
+  const [topic, setTopic] = useState<string | null>(null)
+  const [cover, setCover] = useState<string | null>(null)
+  const [publishedAt, setPublishedAt] = useState<number | null>(null)
+  const [saved, setSaved] = useState<NoteSnapshot>(EMPTY_SNAPSHOT)
   const [loading, setLoading] = useState(Boolean(noteId))
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -68,30 +105,66 @@ export default function NoteEditor({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const coverFileRef = useRef<HTMLInputElement>(null)
+  const coverPreview = cover || firstMarkdownImage(contentMd)
 
   useEffect(() => {
     const controller = new AbortController()
     const run = async () => {
       if (noteId === undefined) {
         const draft = readNoteDraft('new')
+        const now = Date.now()
         if (draft) {
-          setTitle(draft.title)
-          setContentMd(draft.contentMd)
+          const next: NoteSnapshot = {
+            title: draft.title,
+            contentMd: draft.contentMd,
+            topic: draft.topic ?? null,
+            cover: draft.cover ?? null,
+            publishedAt: draft.publishedAt ?? now,
+          }
+          setTitle(next.title)
+          setContentMd(next.contentMd)
+          setTopic(next.topic)
+          setCover(next.cover)
+          setPublishedAt(next.publishedAt)
+          setSaved(next)
+        } else {
+          setPublishedAt(now)
+          setSaved({ ...EMPTY_SNAPSHOT, publishedAt: now })
         }
         return
       }
       try {
         const note = await brewApi.getNoteDraft(noteId, controller.signal)
         if (controller.signal.aborted) return
-        setSaved({ title: note.title, contentMd: note.content_md })
-        // 本地草稿比服务端新才用。
-        const draft = readNoteDraft(noteId)
-        const useDraft = draftDiffersFrom(draft, {
+        const server: NoteSnapshot = {
           title: note.title,
           contentMd: note.content_md,
-        })
-        setTitle(useDraft && draft ? draft.title : note.title)
-        setContentMd(useDraft && draft ? draft.contentMd : note.content_md)
+          topic: normalizeNoteTopic(note.topic),
+          cover: normalizeNoteCover(note.image),
+          publishedAt: note.published_at,
+        }
+        setSaved(server)
+        // 本地草稿比服务端新才用。旧草稿缺的字段仍跟服务端。
+        const draft = readNoteDraft(noteId)
+        const useDraft = draftDiffersFrom(draft, server)
+        setTitle(useDraft && draft ? draft.title : server.title)
+        setContentMd(useDraft && draft ? draft.contentMd : server.contentMd)
+        setTopic(
+          useDraft && draft && draft.topic !== undefined
+            ? draft.topic
+            : server.topic,
+        )
+        setCover(
+          useDraft && draft && draft.cover !== undefined
+            ? draft.cover
+            : server.cover,
+        )
+        setPublishedAt(
+          useDraft && draft && draft.publishedAt != null
+            ? draft.publishedAt
+            : server.publishedAt,
+        )
       } catch (err) {
         if (!controller.signal.aborted) {
           setError(userFacingError(err, t.brew.errorLoadFailed))
@@ -108,9 +181,15 @@ export default function NoteEditor({
 
   useEffect(() => {
     if (loading) return
-    const timer = setTimeout(writeNoteDraft, DRAFT_SAVE_MS, draftKey, { title, contentMd })
+    const timer = setTimeout(writeNoteDraft, DRAFT_SAVE_MS, draftKey, {
+      title,
+      contentMd,
+      topic,
+      cover,
+      publishedAt,
+    })
     return () => clearTimeout(timer)
-  }, [draftKey, title, contentMd, loading])
+  }, [draftKey, title, contentMd, topic, cover, publishedAt, loading])
 
   // 预览防抖 + AbortController：只落地最后一次。
   useEffect(() => {
@@ -140,8 +219,11 @@ export default function NoteEditor({
   const dirty = useMemo(
     () =>
       title.trim() !== saved.title.trim() ||
-      contentMd.trim() !== saved.contentMd.trim(),
-    [title, contentMd, saved],
+      contentMd.trim() !== saved.contentMd.trim() ||
+      normalizeNoteTopic(topic) !== normalizeNoteTopic(saved.topic) ||
+      normalizeNoteCover(cover) !== normalizeNoteCover(saved.cover) ||
+      !sameNoteMinute(publishedAt, saved.publishedAt),
+    [title, contentMd, topic, cover, publishedAt, saved],
   )
 
   const applyEdit = useCallback(
@@ -176,15 +258,36 @@ export default function NoteEditor({
     [applyEdit],
   )
 
+  const fieldMessage = useCallback(
+    (kind: ReturnType<typeof noteFieldError>) => {
+      if (kind === 'empty-title') return t.brew.noteTitleRequired
+      if (kind === 'title-too-long') {
+        return format(t.brew.noteTitleTooLong, {
+          max: MAX_NOTE_TITLE_CHARS,
+          chars: countNoteChars(title.trim()),
+        })
+      }
+      if (kind === 'body-too-long') {
+        return format(t.brew.noteBodyTooLong, {
+          max: MAX_NOTE_BODY_CHARS,
+          chars: countNoteChars(contentMd),
+        })
+      }
+      return null
+    },
+    [contentMd, format, t.brew.noteBodyTooLong, t.brew.noteTitleRequired, t.brew.noteTitleTooLong, title],
+  )
+
   const handleUpload = useCallback(
-    async (file: File) => {
+    async (file: File, as: 'body' | 'cover') => {
       setUploading(true)
       setError(null)
       try {
         const uploaded = await federationApi.uploadMedia(file, {
           filename: file.name,
         })
-        wrap(`![${file.name}](${uploaded.url})`, '', '')
+        if (as === 'cover') setCover(uploaded.url)
+        else wrap(`![${file.name}](${uploaded.url})`, '', '')
       } catch (err) {
         setError(userFacingError(err, t.brew.errorSaveFailed))
       } finally {
@@ -196,16 +299,20 @@ export default function NoteEditor({
 
   const handleSave = useCallback(async () => {
     if (saving) return
-    if (!title.trim()) {
-      setError(t.brew.noteTitleRequired)
+    const invalid = noteFieldError(title, contentMd)
+    if (invalid) {
+      setError(fieldMessage(invalid))
       return
     }
     setSaving(true)
     setError(null)
-    const payload: BrewNoteInput = {
-      title: title.trim(),
-      content_md: contentMd,
-    }
+    const payload = toNoteWritePayload(
+      title,
+      contentMd,
+      topic,
+      cover,
+      publishedAt,
+    )
     try {
       const result =
         noteId === undefined
@@ -224,10 +331,13 @@ export default function NoteEditor({
     saving,
     title,
     contentMd,
+    topic,
+    cover,
+    publishedAt,
     noteId,
     draftKey,
     onSaved,
-    t.brew.noteTitleRequired,
+    fieldMessage,
     t.brew.errorSaveFailed,
   ])
 
@@ -316,7 +426,13 @@ export default function NoteEditor({
   ]
 
   return createPortal(
-    <div className="brew-skin brew-note">
+    <motion.div
+      className="brew-skin brew-note"
+      initial={motionEnabled ? brewAnimationPresets.readerEnter.initial : false}
+      animate={brewAnimationPresets.readerEnter.animate}
+      exit={brewAnimationPresets.readerEnter.exit}
+      transition={getBrewTransition(animation)}
+    >
       <div className="brew-note__frame">
         <div className="brew-note__head">
           <input
@@ -389,7 +505,7 @@ export default function NoteEditor({
             onChange={(e) => {
               const file = e.target.files?.[0]
               e.target.value = ''
-              if (file) void handleUpload(file)
+              if (file) void handleUpload(file, 'body')
             }}
           />
 
@@ -405,6 +521,77 @@ export default function NoteEditor({
                 {value === 'write' ? t.brew.noteTabWrite : t.brew.noteTabPreview}
               </button>
             ))}
+          </div>
+        </div>
+
+        <div className="brew-note__meta">
+          <label className="brew-note__field">
+            <span>{t.brew.noteTopic}</span>
+            <select
+              value={topic ?? ''}
+              onChange={(e) => setTopic(e.target.value || null)}
+              aria-label={t.brew.noteTopic}
+            >
+              <option value="">{t.brew.noteTopicNone}</option>
+              {topicChoices.map((choice) => (
+                <option key={choice.key} value={choice.key}>
+                  {t.brew[choice.nameKey]}
+                </option>
+              ))}
+              {topic && !topicChoices.some((choice) => choice.key === topic) ? (
+                <option value={topic}>{topic}</option>
+              ) : null}
+            </select>
+          </label>
+          <label className="brew-note__field">
+            <span>{t.brew.notePublishedAt}</span>
+            <input
+              type="datetime-local"
+              value={toDatetimeLocal(publishedAt ?? 0)}
+              onChange={(e) => setPublishedAt(fromDatetimeLocal(e.target.value))}
+              aria-label={t.brew.notePublishedAt}
+            />
+          </label>
+          <div className="brew-note__cover">
+            <span className="brew-note__field-label">{t.brew.noteCover}</span>
+            {coverPreview ? (
+              <img
+                src={coverPreview}
+                alt=""
+                className="brew-note__cover-thumb"
+              />
+            ) : null}
+            {cover ? null : (
+              <span className="brew-note__cover-hint">{t.brew.noteCoverAuto}</span>
+            )}
+            <button
+              type="button"
+              onClick={() => coverFileRef.current?.click()}
+              disabled={uploading}
+              className="brew-note__pane"
+            >
+              {t.brew.noteCoverPick}
+            </button>
+            {cover ? (
+              <button
+                type="button"
+                onClick={() => setCover(null)}
+                className="brew-note__pane"
+              >
+                {t.brew.noteCoverClear}
+              </button>
+            ) : null}
+            <input
+              ref={coverFileRef}
+              type="file"
+              accept="image/*"
+              className="brew-bar__file"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                e.target.value = ''
+                if (file) void handleUpload(file, 'cover')
+              }}
+            />
           </div>
         </div>
 
@@ -447,7 +634,7 @@ export default function NoteEditor({
           </div>
         )}
       </div>
-    </div>,
+    </motion.div>,
     document.body,
   )
 }

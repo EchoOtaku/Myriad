@@ -69,14 +69,14 @@ export function Lightbox({ src, alt = '', onClose, t }: LightboxProps) {
     link.click()
   }, [src, alt])
 
-  const handleClose = useCallback(() => {
+  const handleClose = onClose
+  const resetView = useCallback(() => {
     setScale(1)
     setRotation(0)
-    onClose()
-  }, [onClose])
+  }, [])
 
   return (
-    <AnimatePresence>
+    <AnimatePresence onExitComplete={resetView}>
       {src && (
         <motion.div
           initial={{ opacity: 0 }}
