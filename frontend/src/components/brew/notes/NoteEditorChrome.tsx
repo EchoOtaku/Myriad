@@ -3,7 +3,7 @@
  * 控件全是 NoteControls 里自己的，不借设置页；这里不碰 brewApi。
  */
 
-import type { CSSProperties, KeyboardEvent, ReactNode, RefObject } from 'react'
+import type { CSSProperties, FocusEvent, KeyboardEvent, ReactNode, RefObject } from 'react'
 import type { TopicNameKey } from '../logic/topics'
 import type { NoteCollabPeer } from './noteCollab'
 import type { SelectionAnchor, VisualBlockKind } from './noteSelection'
@@ -654,8 +654,21 @@ export function NoteGutter({
       ?.focus()
   }, [menu, prompting])
 
+  // 锚点没了（切到预览、编辑器失焦）菜单不能还开着：否则 hold 会把空状态钉住。
+  useEffect(() => {
+    if (open && !emptyLine) onMenuChange(null)
+  }, [open, emptyLine, onMenuChange])
+
   if (!emptyLine) return null
   const placed = placeGutter(emptyLine, GUTTER_SIZE)
+
+  /** 焦点离开整个「+」区域（不是在菜单项之间挪）就关掉。 */
+  const closeIfFocusLeft = (event: FocusEvent<HTMLElement>) => {
+    const next = event.relatedTarget as Node | null
+    if (next && wrapRef.current?.contains(next)) return
+    // 用指针开的菜单焦点本来就在编辑器里，不按失焦算。
+    if (menu === 'keys' || prompting) onMenuChange(null)
+  }
 
   const onMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const buttons = [
@@ -703,6 +716,7 @@ export function NoteGutter({
             onMenuChange(null)
             prompting.runWith?.(value)
           }}
+          onBlur={closeIfFocusLeft}
         >
           <span className="brew-note__menu-icon">{prompting.icon}</span>
           <input
@@ -723,6 +737,7 @@ export function NoteGutter({
           role="menu"
           aria-label={t.brew.noteInsert}
           onKeyDown={onMenuKeyDown}
+          onBlur={closeIfFocusLeft}
         >
           {items.map((tool) => (
             <button
