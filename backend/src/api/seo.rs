@@ -1,10 +1,10 @@
-//! Public SEO: sitemap, robots, llms.txt, Tapp/Brew share summary, crawler shells.
+//! Public SEO: sitemap, robots, llms.txt, Tapp/Phantasi share summary, crawler shells.
 //!
 //! Indexability (guest / crawler):
 //! - Not `branding.noindex` (`site_noindex` or private visibility policy) for sitemap entries (shell still returns noindex meta)
-//! - Module visibility = `all` (`tapp` / `brew`)
+//! - Module visibility = `all` (`tapp` / `phantasi`)
 //! - Tapp: site-owner public install with `visibility = all`
-//! - Brew: only sources categorized as site-owner original content (`我`);
+//! - Phantasi: only sources categorized as site-owner original content (`我`);
 //! never index friend-links or third-party RSS items
 //!
 //! Ordinary browsers get the SPA via the proxy. The frontend process stamps site
@@ -28,22 +28,22 @@ use sea_orm::{
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::models::entities::{brew_items, brew_sources, tapps};
+use crate::models::entities::{phantasi_items, phantasi_sources, tapps};
 use crate::services::tapp_ownership::{find_admin_user_id, public_install_visible_to_viewer};
 use crate::services::tapp_validation::validate_tapp_id;
 use myriad_module_visibility::load_module_visibility_preferences;
 
-/// Fixed DB category label for site-owner original Brew content.
-/// Must match frontend `BREW_MINE_CATEGORY` (`frontend/src/components/brew/constants.ts`).
+/// Fixed DB category label for site-owner original Phantasi content.
+/// Must match frontend `PHANTASI_MINE_CATEGORY` (`frontend/src/components/phantasi/constants.ts`).
 ///
-/// `api::brew::notes` writes this value only when creating a notes source. Sitemap still requires `brew_source_is_own`; the notes board keeps `source_type = note` even if category is no longer `我`.
-pub(crate) const BREW_MINE_CATEGORY: &str = "我";
-/// Cap brew item URLs in sitemap (newest first).
-const BREW_SITEMAP_ITEM_LIMIT: u64 = 200;
-/// Plain-text article body in the Brew crawler shell (not the 160-char meta snippet).
-const BREW_SHELL_BODY_LIMIT: usize = 8000;
-/// Links on the Brew list crawler shell.
-const BREW_LIST_SHELL_LIMIT: u64 = 30;
+/// `api::phantasi::notes` writes this value only when creating a notes source. Sitemap still requires `phantasi_source_is_own`; the notes board keeps `source_type = note` even if category is no longer `我`.
+pub(crate) const PHANTASI_MINE_CATEGORY: &str = "我";
+/// Cap phantasi item URLs in sitemap (newest first).
+const PHANTASI_SITEMAP_ITEM_LIMIT: u64 = 200;
+/// Plain-text article body in the Phantasi crawler shell (not the 160-char meta snippet).
+const PHANTASI_SHELL_BODY_LIMIT: usize = 8000;
+/// Links on the Phantasi list crawler shell.
+const PHANTASI_LIST_SHELL_LIMIT: u64 = 30;
 /// Fallback bio from `profile_text` — guests see it, crawlers should not.
 
 // ── types ───────────────────────────────────────────────────────────────────
@@ -67,10 +67,10 @@ pub struct TappSeoSummary {
     pub site_title: Option<String>,
 }
 
-/// Public SEO summary for a site-owner original Brew article (`我` category only).
+/// Public SEO summary for a site-owner original Phantasi article (`我` category only).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BrewItemSeoSummary {
+pub struct PhantasiItemSeoSummary {
     pub id: i32,
     pub title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -333,9 +333,9 @@ fn infer_site_locale(texts: &[&str]) -> SiteLocale {
 /// Match proxy `is_seo_document_shell_path`. Humans with `?_spa=1` must not
 /// stay on this SEO document — the bounce script is a no-op once that query is set.
 pub(crate) fn is_seo_document_shell_path(path: &str) -> bool {
-    matches!(path, "/" | "/tapp" | "/brew" | "/library" | "/reports")
+    matches!(path, "/" | "/tapp" | "/phantasi" | "/library" | "/reports")
         || path.starts_with("/tapp/run/")
-        || path.starts_with("/brew/item/")
+        || path.starts_with("/phantasi/item/")
 }
 
 pub(crate) fn query_has_spa_bypass(query: Option<&str>) -> bool {
@@ -668,22 +668,22 @@ async fn tapp_module_open_to_guests(db: &DatabaseConnection) -> bool {
     module_open_to_guests(db, "tapp").await
 }
 
-pub(crate) async fn brew_module_open_to_guests(db: &DatabaseConnection) -> bool {
-    module_open_to_guests(db, "brew").await
+pub(crate) async fn phantasi_module_open_to_guests(db: &DatabaseConnection) -> bool {
+    module_open_to_guests(db, "phantasi").await
 }
 
-/// 站长手记 RSS 开关。缺行 = 关。
+/// 站长笔记 RSS 开关。缺行 = 关。
 pub(crate) async fn notes_rss_enabled(db: &impl ConnectionTrait) -> bool {
     let result = db
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT value FROM configurations WHERE key = $1",
-            vec![myriad_brew_notes::NOTES_RSS_PREFERENCES_KEY.into()],
+            vec![myriad_phantasi_notes::NOTES_RSS_PREFERENCES_KEY.into()],
         ))
         .await;
     match result {
         Ok(Some(row)) => match row.try_get::<Value>("", "value") {
-            Ok(value) => myriad_brew_notes::notes_rss_enabled_from_value(&value),
+            Ok(value) => myriad_phantasi_notes::notes_rss_enabled_from_value(&value),
             Err(error) => {
                 tracing::warn!(%error, "failed to read notes RSS preference");
                 false
@@ -697,9 +697,9 @@ pub(crate) async fn notes_rss_enabled(db: &impl ConnectionTrait) -> bool {
     }
 }
 
-/// 开关打开，且 Brew 对访客开放，公开 feed 才存在。
+/// 开关打开，且 Phantasi 对访客开放，公开 feed 才存在。
 pub(crate) async fn notes_rss_is_public(db: &DatabaseConnection) -> bool {
-    notes_rss_enabled(db).await && brew_module_open_to_guests(db).await
+    notes_rss_enabled(db).await && phantasi_module_open_to_guests(db).await
 }
 
 pub(crate) async fn public_site_identity(
@@ -714,16 +714,16 @@ fn notes_rss_alternate(base: Option<&str>, enabled: bool) -> String {
     if !enabled {
         return String::new();
     }
-    let href = public_absolute_url(base, myriad_brew_notes::NOTES_RSS_PATH);
+    let href = public_absolute_url(base, myriad_phantasi_notes::NOTES_RSS_PATH);
     format!(
         "  <link rel=\"alternate\" type=\"application/rss+xml\" title=\"Notes\" href=\"{}\" />\n",
         html_escape(&href)
     )
 }
 
-/// Whether a Brew source is site-owner original content (category contains `我`).
+/// Whether a Phantasi source is site-owner original content (category contains `我`).
 /// Friend links and third-party feeds must never be treated as own content.
-fn brew_source_is_own(category: &Option<String>, admin_only: bool) -> bool {
+fn phantasi_source_is_own(category: &Option<String>, admin_only: bool) -> bool {
     if admin_only {
         return false;
     }
@@ -732,7 +732,7 @@ fn brew_source_is_own(category: &Option<String>, admin_only: bool) -> bool {
         .map(|c| {
             c.split(',')
                 .map(str::trim)
-                .any(|part| part == BREW_MINE_CATEGORY)
+                .any(|part| part == PHANTASI_MINE_CATEGORY)
         })
         .unwrap_or(false)
 }
@@ -764,43 +764,43 @@ pub(crate) fn strip_html_snippet(raw: &str, max_len: usize) -> String {
     format!("{}…", truncated.trim_end())
 }
 
-fn brew_item_path(item_id: i32) -> String {
-    format!("/brew/item/{item_id}")
+fn phantasi_item_path(item_id: i32) -> String {
+    format!("/phantasi/item/{item_id}")
 }
 
-async fn resolve_brew_item_seo_summary(
+async fn resolve_phantasi_item_seo_summary(
     db: &DatabaseConnection,
     _headers: &HeaderMap,
     item_id: i32,
-) -> Result<BrewItemSeoSummary, StatusCode> {
+) -> Result<PhantasiItemSeoSummary, StatusCode> {
     if item_id <= 0 {
         return Err(StatusCode::BAD_REQUEST);
     }
 
     let base = resolve_public_base_url();
     let branding = load_site_branding(db).await;
-    let module_open = brew_module_open_to_guests(db).await;
-    let path = brew_item_path(item_id);
+    let module_open = phantasi_module_open_to_guests(db).await;
+    let path = phantasi_item_path(item_id);
     let canonical_url = public_absolute_url(base.as_deref(), &path);
 
     if !module_open {
         return Err(StatusCode::NOT_FOUND);
     }
 
-    let item = brew_items::Entity::find_by_id(item_id)
+    let item = phantasi_items::Entity::find_by_id(item_id)
         .one(db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    let source = brew_sources::Entity::find_by_id(item.source_id)
+    let source = phantasi_sources::Entity::find_by_id(item.source_id)
         .one(db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
     // Hard gate: only `我` category, never friend-links / third-party feeds
-    if !brew_source_is_own(&source.category, source.admin_only) {
+    if !phantasi_source_is_own(&source.category, source.admin_only) {
         return Err(StatusCode::NOT_FOUND);
     }
 
@@ -811,7 +811,7 @@ async fn resolve_brew_item_seo_summary(
         .filter(|s| !s.trim().is_empty())
         .or(item.summary.as_deref().filter(|s| !s.trim().is_empty()))
         .unwrap_or("");
-    let body_text = strip_html_snippet(body_source, BREW_SHELL_BODY_LIMIT);
+    let body_text = strip_html_snippet(body_source, PHANTASI_SHELL_BODY_LIMIT);
     let description = item
         .summary
         .as_deref()
@@ -840,7 +840,7 @@ async fn resolve_brew_item_seo_summary(
             }
         });
 
-    Ok(BrewItemSeoSummary {
+    Ok(PhantasiItemSeoSummary {
         id: item.id,
         title: item.title,
         description,
@@ -857,8 +857,8 @@ async fn resolve_brew_item_seo_summary(
     })
 }
 
-fn render_brew_item_seo_html(
-    summary: &BrewItemSeoSummary,
+fn render_phantasi_item_seo_html(
+    summary: &PhantasiItemSeoSummary,
     chrome: &SeoChrome,
     notes_rss: bool,
 ) -> String {
@@ -902,7 +902,7 @@ fn render_brew_item_seo_html(
     }
 
     let body_inner = format!(
-        "    <h1>{name}</h1>\n    {source_line}\n    {article}<p><a href=\"{canonical}\">Read more</a> · <a href=\"/brew\">Brew</a></p>\n",
+        "    <h1>{name}</h1>\n    {source_line}\n    {article}<p><a href=\"{canonical}\">Read more</a> · <a href=\"/phantasi\">Phantasi</a></p>\n",
         name = html_escape(&summary.title),
         source_line = source_line,
         article = article_html,
@@ -1142,13 +1142,13 @@ pub async fn tapp_run_seo_html(
     }
 }
 
-/// GET /api/seo/brew/{item_id} — JSON share summary for site-owner original articles only.
-pub async fn brew_item_seo_summary(
+/// GET /api/seo/phantasi/{item_id} — JSON share summary for site-owner original articles only.
+pub async fn phantasi_item_seo_summary(
     State(db): State<DatabaseConnection>,
     headers: HeaderMap,
     Path(item_id): Path<i32>,
 ) -> Response {
-    match resolve_brew_item_seo_summary(&db, &headers, item_id).await {
+    match resolve_phantasi_item_seo_summary(&db, &headers, item_id).await {
         Ok(summary) => (StatusCode::OK, Json(summary)).into_response(),
         Err(StatusCode::BAD_REQUEST) => (
             StatusCode::BAD_REQUEST,
@@ -1168,20 +1168,20 @@ pub async fn brew_item_seo_summary(
     }
 }
 
-/// GET /brew/item/{item_id} — crawler HTML shell (own content only; 404 otherwise).
-pub async fn brew_item_seo_html(
+/// GET /phantasi/item/{item_id} — crawler HTML shell (own content only; 404 otherwise).
+pub async fn phantasi_item_seo_html(
     State(db): State<DatabaseConnection>,
     headers: HeaderMap,
     Path(item_id): Path<i32>,
 ) -> Response {
-    match resolve_brew_item_seo_summary(&db, &headers, item_id).await {
+    match resolve_phantasi_item_seo_summary(&db, &headers, item_id).await {
         Ok(summary) => {
             let branding = load_site_branding(&db).await;
             let chrome = seo_chrome(&branding, &headers);
             let notes_rss = notes_rss_enabled(&db).await;
             html_response(
                 StatusCode::OK,
-                render_brew_item_seo_html(&summary, &chrome, notes_rss),
+                render_phantasi_item_seo_html(&summary, &chrome, notes_rss),
             )
         }
         Err(StatusCode::BAD_REQUEST) => html_response(
@@ -1259,13 +1259,13 @@ async fn public_tapp_links(
     links
 }
 
-async fn own_brew_item_links(
+async fn own_phantasi_item_links(
     db: &DatabaseConnection,
     base: Option<&str>,
 ) -> Vec<(String, String, Option<String>)> {
     let mut links = Vec::new();
-    let Ok(sources) = brew_sources::Entity::find()
-        .filter(brew_sources::Column::AdminOnly.eq(false))
+    let Ok(sources) = phantasi_sources::Entity::find()
+        .filter(phantasi_sources::Column::AdminOnly.eq(false))
         .all(db)
         .await
     else {
@@ -1273,23 +1273,23 @@ async fn own_brew_item_links(
     };
     let own_source_ids: Vec<i32> = sources
         .into_iter()
-        .filter(|s| brew_source_is_own(&s.category, s.admin_only))
+        .filter(|s| phantasi_source_is_own(&s.category, s.admin_only))
         .map(|s| s.id)
         .collect();
     if own_source_ids.is_empty() {
         return links;
     }
-    let Ok(items) = brew_items::Entity::find()
-        .filter(brew_items::Column::SourceId.is_in(own_source_ids))
-        .order_by_desc(brew_items::Column::PublishedAt)
-        .limit(BREW_LIST_SHELL_LIMIT)
+    let Ok(items) = phantasi_items::Entity::find()
+        .filter(phantasi_items::Column::SourceId.is_in(own_source_ids))
+        .order_by_desc(phantasi_items::Column::PublishedAt)
+        .limit(PHANTASI_LIST_SHELL_LIMIT)
         .all(db)
         .await
     else {
         return links;
     };
     for item in items {
-        let path = brew_item_path(item.id);
+        let path = phantasi_item_path(item.id);
         let blurb = item
             .summary
             .as_deref()
@@ -1304,7 +1304,7 @@ fn module_nav_html(modules: &std::collections::HashMap<String, String>) -> Strin
     let mut parts: Vec<(&str, &str)> = vec![("/", "Home")];
     for (key, path, label) in [
         ("library", "/library", "Library"),
-        ("brew", "/brew", "Brew"),
+        ("phantasi", "/phantasi", "Phantasi"),
         ("reports", "/reports", "Reports"),
         ("tapp", "/tapp", "Apps"),
     ] {
@@ -1486,7 +1486,7 @@ async fn module_list_seo_html(
         list_links_html(&links),
         module_nav_html(&prefs.modules),
     );
-    let extra_head = if module_key == "brew" {
+    let extra_head = if module_key == "phantasi" {
         notes_rss_alternate(base.as_deref(), notes_rss_enabled(db).await)
     } else {
         String::new()
@@ -1531,22 +1531,22 @@ pub async fn tapp_list_seo_html(
     .await
 }
 
-/// GET /brew — own-content article index for crawlers.
-pub async fn brew_list_seo_html(
+/// GET /phantasi — own-content article index for crawlers.
+pub async fn phantasi_list_seo_html(
     State(db): State<DatabaseConnection>,
     headers: HeaderMap,
 ) -> Response {
-    if !brew_module_open_to_guests(&db).await {
+    if !phantasi_module_open_to_guests(&db).await {
         return module_not_found();
     }
     let base = resolve_public_base_url();
-    let links = own_brew_item_links(&db, base.as_deref()).await;
+    let links = own_phantasi_item_links(&db, base.as_deref()).await;
     module_list_seo_html(
         &db,
         &headers,
-        "brew",
-        "/brew",
-        "Brew",
+        "phantasi",
+        "/phantasi",
+        "Phantasi",
         "Original writing from the site owner.",
         links,
         true,
@@ -1637,7 +1637,7 @@ pub async fn llms_txt(State(db): State<DatabaseConnection>, _headers: HeaderMap)
     let mut routes: Vec<(&str, &str)> = vec![("Home", "/")];
     for (key, path, label) in [
         ("library", "/library", "Library"),
-        ("brew", "/brew", "Brew"),
+        ("phantasi", "/phantasi", "Phantasi"),
         ("reports", "/reports", "Reports"),
         ("tapp", "/tapp", "Tapp"),
     ] {
@@ -1657,8 +1657,8 @@ pub async fn llms_txt(State(db): State<DatabaseConnection>, _headers: HeaderMap)
             .collect();
         crate::api::seo_policy::append_llms_link_section(&mut body, "Apps", &apps);
     }
-    if module_is_public_all(modules.get("brew").map(String::as_str).unwrap_or("all")) {
-        let writing: Vec<(String, String)> = own_brew_item_links(&db, base.as_deref())
+    if module_is_public_all(modules.get("phantasi").map(String::as_str).unwrap_or("all")) {
+        let writing: Vec<(String, String)> = own_phantasi_item_links(&db, base.as_deref())
             .await
             .into_iter()
             .map(|(url, title, _)| (title, url))
@@ -1727,7 +1727,7 @@ pub async fn sitemap_xml(State(db): State<DatabaseConnection>, _headers: HeaderM
 
     for (key, path, freq) in [
         ("library", "/library", "weekly"),
-        ("brew", "/brew", "weekly"),
+        ("phantasi", "/phantasi", "weekly"),
         ("reports", "/reports", "weekly"),
         ("tapp", "/tapp", "weekly"),
     ] {
@@ -1764,31 +1764,31 @@ pub async fn sitemap_xml(State(db): State<DatabaseConnection>, _headers: HeaderM
         }
     }
 
-    // Brew: only site-owner original articles (category contains `我`).
+    // Phantasi: only site-owner original articles (category contains `我`).
     // Never include friend-links or third-party RSS items.
-    let brew_level = modules.get("brew").map(String::as_str).unwrap_or("all");
-    if module_is_public_all(brew_level) {
-        if let Ok(sources) = brew_sources::Entity::find()
-            .filter(brew_sources::Column::AdminOnly.eq(false))
+    let phantasi_level = modules.get("phantasi").map(String::as_str).unwrap_or("all");
+    if module_is_public_all(phantasi_level) {
+        if let Ok(sources) = phantasi_sources::Entity::find()
+            .filter(phantasi_sources::Column::AdminOnly.eq(false))
             .all(&db)
             .await
         {
             let own_source_ids: Vec<i32> = sources
                 .into_iter()
-                .filter(|s| brew_source_is_own(&s.category, s.admin_only))
+                .filter(|s| phantasi_source_is_own(&s.category, s.admin_only))
                 .map(|s| s.id)
                 .collect();
             if !own_source_ids.is_empty() {
-                if let Ok(items) = brew_items::Entity::find()
-                    .filter(brew_items::Column::SourceId.is_in(own_source_ids))
-                    .order_by_desc(brew_items::Column::PublishedAt)
-                    .limit(BREW_SITEMAP_ITEM_LIMIT)
+                if let Ok(items) = phantasi_items::Entity::find()
+                    .filter(phantasi_items::Column::SourceId.is_in(own_source_ids))
+                    .order_by_desc(phantasi_items::Column::PublishedAt)
+                    .limit(PHANTASI_SITEMAP_ITEM_LIMIT)
                     .all(&db)
                     .await
                 {
                     for item in items {
                         urls.push(SitemapUrl {
-                            loc: format!("{base}{}", brew_item_path(item.id)),
+                            loc: format!("{base}{}", phantasi_item_path(item.id)),
                             lastmod: Some(item.published_at.format("%Y-%m-%d").to_string()),
                             changefreq: None,
                         });
@@ -1841,17 +1841,17 @@ mod tests {
     }
 
     #[test]
-    fn brew_own_category_gate() {
-        assert!(brew_source_is_own(&Some("我".into()), false));
-        assert!(brew_source_is_own(&Some("博客, 我".into()), false));
-        assert!(brew_source_is_own(&Some("我, 随笔".into()), false));
+    fn phantasi_own_category_gate() {
+        assert!(phantasi_source_is_own(&Some("我".into()), false));
+        assert!(phantasi_source_is_own(&Some("博客, 我".into()), false));
+        assert!(phantasi_source_is_own(&Some("我, 随笔".into()), false));
         // Friend links and third-party feeds must never pass
-        assert!(!brew_source_is_own(&Some("友情链接".into()), false));
-        assert!(!brew_source_is_own(&Some("科技".into()), false));
-        assert!(!brew_source_is_own(&None, false));
-        assert!(!brew_source_is_own(&Some("我".into()), true)); // admin_only
+        assert!(!phantasi_source_is_own(&Some("友情链接".into()), false));
+        assert!(!phantasi_source_is_own(&Some("科技".into()), false));
+        assert!(!phantasi_source_is_own(&None, false));
+        assert!(!phantasi_source_is_own(&Some("我".into()), true)); // admin_only
         // Substring false positive: 「我们」 is not the mine preset
-        assert!(!brew_source_is_own(&Some("我们".into()), false));
+        assert!(!phantasi_source_is_own(&Some("我们".into()), false));
     }
 
     #[test]
@@ -1918,20 +1918,20 @@ mod tests {
     }
 
     #[test]
-    fn brew_shell_includes_article_body_and_json_ld() {
+    fn phantasi_shell_includes_article_body_and_json_ld() {
         let chrome = SeoChrome {
             keywords: "life, notes".into(),
             google_site_verification: "Tok_en-1".into(),
             ..SeoChrome::default()
         };
-        let html = render_brew_item_seo_html(
-            &BrewItemSeoSummary {
+        let html = render_phantasi_item_seo_html(
+            &PhantasiItemSeoSummary {
                 id: 1,
                 title: "Hello".into(),
                 description: Some("short".into()),
                 image: None,
-                canonical_url: "https://ex.com/brew/item/1".into(),
-                path: "/brew/item/1".into(),
+                canonical_url: "https://ex.com/phantasi/item/1".into(),
+                path: "/phantasi/item/1".into(),
                 noindex: false,
                 indexable: true,
                 site_title: Some("Site".into()),
@@ -1950,7 +1950,7 @@ mod tests {
         assert!(html.contains("2026-01-02"));
         assert!(html.contains("og:type") && html.contains("article"));
         assert!(html.contains(r#"type="application/rss+xml""#));
-        assert!(html.contains(myriad_brew_notes::NOTES_RSS_PATH));
+        assert!(html.contains(myriad_phantasi_notes::NOTES_RSS_PATH));
         assert!(html.contains(r#"property="og:site_name""#));
         assert!(html.contains(r#"name="keywords""#) && html.contains("life, notes"));
         assert!(html.contains(r#"name="google-site-verification""#));
@@ -1959,15 +1959,15 @@ mod tests {
     }
 
     #[test]
-    fn brew_shell_omits_notes_rss_when_the_switch_is_off() {
-        let html = render_brew_item_seo_html(
-            &BrewItemSeoSummary {
+    fn phantasi_shell_omits_notes_rss_when_the_switch_is_off() {
+        let html = render_phantasi_item_seo_html(
+            &PhantasiItemSeoSummary {
                 id: 1,
                 title: "Hello".into(),
                 description: Some("short".into()),
                 image: None,
-                canonical_url: "https://ex.com/brew/item/1".into(),
-                path: "/brew/item/1".into(),
+                canonical_url: "https://ex.com/phantasi/item/1".into(),
+                path: "/phantasi/item/1".into(),
                 noindex: false,
                 indexable: true,
                 site_title: Some("Site".into()),
@@ -1980,7 +1980,7 @@ mod tests {
             false,
         );
         assert!(!html.contains(r#"type="application/rss+xml""#));
-        assert!(!html.contains(myriad_brew_notes::NOTES_RSS_PATH));
+        assert!(!html.contains(myriad_phantasi_notes::NOTES_RSS_PATH));
     }
 
     #[test]
@@ -2086,7 +2086,7 @@ mod tests {
         assert!(!query_has_spa_bypass(None));
         assert!(is_seo_document_shell_path("/"));
         assert!(is_seo_document_shell_path("/tapp/run/com.example"));
-        assert!(is_seo_document_shell_path("/brew/item/1"));
+        assert!(is_seo_document_shell_path("/phantasi/item/1"));
         assert!(!is_seo_document_shell_path("/config"));
         assert!(!is_seo_document_shell_path("/api/seo/tapp/x"));
     }

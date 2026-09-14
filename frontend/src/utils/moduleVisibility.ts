@@ -7,7 +7,7 @@ import { userFacingError } from './userFacingError'
 export type ModuleVisibilityLevel = 'all' | 'authenticated' | 'admin'
 export type ModuleVisibilityKey =
   | 'library'
-  | 'brew'
+  | 'phantasi'
   | 'reports'
   | 'tapp'
   | 'agent'
@@ -34,7 +34,7 @@ interface ModuleVisibilityResponse {
 /** Keep in sync with MODULE_VISIBILITY_KEYS. */
 export const MODULE_VISIBILITY_KEYS: ModuleVisibilityKey[] = [
   'library',
-  'brew',
+  'phantasi',
   'reports',
   'tapp',
   'agent',
@@ -62,7 +62,7 @@ export const DEFAULT_MODULE_VISIBILITY_PREFERENCES: ModuleVisibilityPreferences 
   {
     modules: {
       library: 'all',
-      brew: 'all',
+      phantasi: 'all',
       reports: 'all',
       tapp: 'all',
       agent: 'all',

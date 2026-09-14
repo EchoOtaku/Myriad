@@ -41,7 +41,7 @@ host HTTP_PORT
 
 | Component | Path | Role |
 | --- | --- | --- |
-| Frontend | `frontend/` | Astro 7 + React 19 SPA; widgets, Library, Brew, reports, config, Tapp runtime |
+| Frontend | `frontend/` | Astro 7 + React 19 SPA; widgets, Library, Phantasi, reports, config, Tapp runtime |
 | Backend | `backend/` | 同一镜像三个进程：web（迁移 + 剩余 API）、`federation-worker`、`persona-worker` |
 | Proxy | `proxy/` | Host-facing reverse proxy + maintenance page (own Cargo tree) |
 | Updater | `updater/` | Self-update, snapshots, docker-guard / gateway binaries (own Cargo tree) |
@@ -51,7 +51,7 @@ host HTTP_PORT
 ## Backend surfaces (high level)
 
 - **Platforms / profiles**：GitHub、Bilibili、Steam、网易云、YouTube、Bangumi、Discord、X、MAL、Xbox、PSN 等同步与资料库
-- **Brew**：RSS / Notion / RSSHub 等阅读源
+- **Phantasi**：RSS / Notion / RSSHub 等阅读源
 - **Agent**（项目名 Arael）：计划 / 执行 / 记忆 / MCP
   - `backend/src/persona/` owns initialization and supervised background drivers. Autonomy and speech ticks are serial within independent drivers; heartbeat runs one reserved batch with two active executions. `persona-worker` hosts this runtime together with Agent/speech/rig APIs, run hubs, cancellation, notification SSE, TAPP interaction callbacks, four channel bot connections and their recovery loop. Web excludes this domain; seven fixed first-party capabilities call authenticated private web RPC to reach web-owned schedulers/processors.
   - MCP runtime lives in `crates/myriad-mcp` (no DB or backend dependency); backend injects host transport policy and status notifications. Production blocks local stdio; operator-configured Streamable HTTP gateway connections support bounded JSON/SSE, session headers and non-retryable ambiguous calls. The optional fixed-container gateway deployment adds bubblewrap namespaces, cgroup limits and bounded guest destruction without a Docker socket.
@@ -68,7 +68,7 @@ Schema 权威在 `backend/migrations/`（SeaORM），不是独立 `database/` SQ
 ## Frontend surfaces (high level)
 
 - 首页可编排 widgets（欢迎、音乐、天气、访客、游戏 Presence、Report Card、社交网络、Tapp 等）
-- Library / Brew / Reports / Config / Agent / Tapp Store
+- Library / Phantasi / Reports / Config / Agent / Tapp Store
 - i18n：`zh-CN` / `en-US` / `ja-JP`
 
 ## Data & AI

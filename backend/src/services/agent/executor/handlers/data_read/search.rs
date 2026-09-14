@@ -1,5 +1,5 @@
 use super::super::HandlerContext;
-use crate::models::entities::{brew_items, brew_sources, tapps};
+use crate::models::entities::{phantasi_items, phantasi_sources, tapps};
 use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, QueryFilter, QuerySelect};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -22,10 +22,10 @@ pub(super) async fn execute_fuzzy_search(
     let query_lower = query.to_lowercase();
     let mut results: Vec<Value> = Vec::new();
 
-    // 搜索 Brew 订阅源
-    if scope == "all" || scope == "brew" {
+    // 搜索 Phantasi 订阅源
+    if scope == "all" || scope == "phantasi" {
         if search_type.is_none() || search_type == Some("source") {
-            let sources = brew_sources::Entity::find()
+            let sources = phantasi_sources::Entity::find()
                 .all(ctx.db)
                 .await
                 .map_err(|e| {
@@ -48,8 +48,8 @@ pub(super) async fn execute_fuzzy_search(
                     .unwrap_or(0.0);
                 // Also score normalized friend-link aliases against the source category field.
                 let alias_category_score = {
-                    use crate::services::agent::executor::utils::normalize_brew_category_filter;
-                    let normalized = normalize_brew_category_filter(query);
+                    use crate::services::agent::executor::utils::normalize_phantasi_category_filter;
+                    let normalized = normalize_phantasi_category_filter(query);
                     if normalized != query.trim() {
                         source
                             .category
@@ -72,7 +72,7 @@ pub(super) async fn execute_fuzzy_search(
                         "id": source.id.to_string(),
                         "name": source.name,
                         "type": "source",
-                        "scope": "brew",
+                        "scope": "phantasi",
                         "score": score,
                         "metadata": {
                             "icon": source.icon,
@@ -85,9 +85,9 @@ pub(super) async fn execute_fuzzy_search(
             }
         }
 
-        // 搜索 Brew 内容项
+        // 搜索 Phantasi 内容项
         if search_type.is_none() || search_type == Some("item") {
-            let items = brew_items::Entity::find()
+            let items = phantasi_items::Entity::find()
                 .limit(100)
                 .all(ctx.db)
                 .await
@@ -105,7 +105,7 @@ pub(super) async fn execute_fuzzy_search(
                         "id": item.guid.clone(),
                         "name": item.title,
                         "type": "item",
-                        "scope": "brew",
+                        "scope": "phantasi",
                         "score": score,
                         "metadata": {
                             "sourceId": item.source_id,
@@ -188,12 +188,12 @@ pub(super) async fn execute_fuzzy_search(
     results.truncate(limit);
 
     if results.is_empty() {
-        let can_discover = scope == "all" || scope == "brew";
+        let can_discover = scope == "all" || scope == "phantasi";
         let discovery_hint = if can_discover {
             Some(json!({
                 "searchQuery": query,
                 "message": crate::services::agent::response_agent::not_found_in_feeds(query),
-                "suggestAction": "brew.discover",
+                "suggestAction": "phantasi.discover",
                 "suggestParams": { "query": query }
             }))
         } else {

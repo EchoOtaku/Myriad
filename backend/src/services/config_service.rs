@@ -1094,9 +1094,9 @@ impl ConfigService {
                 config.user_perm_federation_room = b;
             }
         }
-        if let Some(v) = map.get("user_perm_brew_comment_write") {
+        if let Some(v) = map.get("user_perm_phantasi_comment_write") {
             if let Some(b) = v.as_bool() {
-                config.user_perm_brew_comment_write = b;
+                config.user_perm_phantasi_comment_write = b;
             }
         }
 
@@ -1196,9 +1196,9 @@ impl ConfigService {
                 config.guest_perm_federation_room = b;
             }
         }
-        if let Some(v) = map.get("guest_perm_brew_comment_write") {
+        if let Some(v) = map.get("guest_perm_phantasi_comment_write") {
             if let Some(b) = v.as_bool() {
-                config.guest_perm_brew_comment_write = b;
+                config.guest_perm_phantasi_comment_write = b;
             }
         }
 

@@ -173,7 +173,7 @@ describe('free layout cell budget', () => {
     const sticker = createHomeStickerItem({
       size: '2x2',
       position: { x: 2, y: 0 },
-      imageUrl: '/api/brew/image-cache/aa/abcd.png',
+      imageUrl: '/api/phantasi/image-cache/aa/abcd.png',
       prompt: 'cat',
     })
     assert.equal(sticker.kind, 'sticker')

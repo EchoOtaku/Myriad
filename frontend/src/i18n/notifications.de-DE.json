@@ -12,8 +12,8 @@
       "title": "MCP-Dienste",
       "description": "Verbindungsstatus der Tool-Server"
     },
-    "brew": {
-      "title": "Brew",
+    "phantasi": {
+      "title": "Journal",
       "description": "Neue Feed-Einträge und wiederholte Abruffehler"
     },
     "tapp": {
@@ -44,8 +44,8 @@
     "heartbeat.failed": "Geplante Aufgabe fehlgeschlagen",
     "mcp.connected": "MCP verbunden",
     "mcp.disconnected": "MCP getrennt oder fehlgeschlagen",
-    "brew.new_items": "Neue Inhalte gefunden",
-    "brew.source_error": "Feed wiederholt fehlgeschlagen",
+    "phantasi.new_items": "Neue Inhalte gefunden",
+    "phantasi.source_error": "Feed wiederholt fehlgeschlagen",
     "platform.sync.failed": "Plattform-Sync fehlgeschlagen",
     "tapp.message": "Nachricht",
     "tapp.warning": "Warnung",

@@ -1,7 +1,7 @@
-//! Agent data-read capability handlers (platform, brew, RSSHub, catalog).
+//! Agent data-read capability handlers (platform, phantasi, RSSHub, catalog).
 
-mod brew;
-mod brew_generate;
+mod phantasi;
+mod phantasi_generate;
 mod catalog;
 mod config_time_auth;
 mod execute;

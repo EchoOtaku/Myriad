@@ -114,9 +114,9 @@ impl FieldSet {
         }
         if self.ai_intro {
             parts.push(match language {
-                "zh" | "zh-TW" => "site_ai_intro：写入 /llms.txt 的「引用友好」简介，供生成式搜索与 AI 助手理解站点。2～4 句、约 120～350 字（上限 ~400 字符）。结构：① 一句话实体定义（谁的站、基于何种用途）；② 公开内容类型（文库/Brew/报告/Tapp 等仅在合理时提及）；③ 引用时请以公开页面为准。事实优先、可被引用；禁止广告腔、禁止承诺未给出的功能。owner hint 是身份与主题的权威来源。",
+                "zh" | "zh-TW" => "site_ai_intro：写入 /llms.txt 的「引用友好」简介，供生成式搜索与 AI 助手理解站点。2～4 句、约 120～350 字（上限 ~400 字符）。结构：① 一句话实体定义（谁的站、基于何种用途）；② 公开内容类型（文库/Phantasi/报告/Tapp 等仅在合理时提及）；③ 引用时请以公开页面为准。事实优先、可被引用；禁止广告腔、禁止承诺未给出的功能。owner hint 是身份与主题的权威来源。",
                 "ja" => "site_ai_intro：/llms.txt 用の引用しやすい紹介。生成 AI がサイトを理解するための 2～4 文（目安 120～350 文字、上限 ~400）。① 誰のサイトか・何のためか；② 公開コンテンツの種類；③ 公開ページを優先して引用する旨。事実ベースで宣伝調を避ける。owner hint を最優先の根拠にする。",
-                _ => "site_ai_intro: citation-friendly blurb for /llms.txt so generative search and AI assistants can ground answers. 2–4 plain sentences, prefer 150–380 characters (cap ~400). Structure: (1) one-sentence entity definition—whose site and purpose; (2) what public content types exist (Library/Brew/Reports/Tapp only when plausible); (3) prefer citing public routes, not inventing admin areas. Answer-first, factual, quotable; no marketing hype. Treat owner hint as ground truth for identity and topics.",
+                _ => "site_ai_intro: citation-friendly blurb for /llms.txt so generative search and AI assistants can ground answers. 2–4 plain sentences, prefer 150–380 characters (cap ~400). Structure: (1) one-sentence entity definition—whose site and purpose; (2) what public content types exist (Library/Phantasi/Reports/Tapp only when plausible); (3) prefer citing public routes, not inventing admin areas. Answer-first, factual, quotable; no marketing hype. Treat owner hint as ground truth for identity and topics.",
             });
         }
         parts.join("\n")
@@ -126,7 +126,7 @@ impl FieldSet {
 /// Shared system prompt: role, output contract, anti-hallucination, language.
 const SYSTEM_PROMPT: &str = r#"You are a specialist copywriter for personal-site SEO and GEO (generative-engine optimization).
 
-Context: Myriad is a self-hosted personal digital-life platform. The site aggregates the owner's public content (e.g. library, brew/blog-like posts, reports, tapp apps). You write short, accurate fields the owner can paste into settings—not ads, not product pitches for Myriad itself unless the title clearly is "Myriad".
+Context: Myriad is a self-hosted personal digital-life platform. The site aggregates the owner's public content (e.g. library, phantasi/blog-like posts, reports, tapp apps). You write short, accurate fields the owner can paste into settings—not ads, not product pitches for Myriad itself unless the title clearly is "Myriad".
 
 Output contract:
 - Return ONLY one JSON object (no markdown fences, no commentary before/after).

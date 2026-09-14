@@ -427,7 +427,7 @@ pub enum AgentUsageMode {
     /// 仅 AI 对话/分析
     #[allow(dead_code)] // Catalog template; production starts from Elevated then Tapp-filters.
     Chat,
-    /// 标准（平台/共享 Brew 只读 + AI；无出站）
+    /// 标准（平台/共享 Phantasi 只读 + AI；无出站）
     #[allow(dead_code)] // Catalog template; production starts from Elevated then Tapp-filters.
     Standard,
     /// 扩展（标准 + 出站抓取 + 调度 + 个人 Tapp 写）
@@ -446,7 +446,7 @@ impl AgentUsageMode {
     }
 }
 
-/// 某预设对应的 Agent 权限串（不含 brew:manage / report:write）
+/// 某预设对应的 Agent 权限串（不含 phantasi:manage / report:write）
 fn permissions_for_usage_mode(mode: AgentUsageMode) -> std::collections::HashSet<String> {
     use std::collections::HashSet;
     let mut perms = HashSet::new();
@@ -457,7 +457,7 @@ fn permissions_for_usage_mode(mode: AgentUsageMode) -> std::collections::HashSet
                 perms.insert((*p).to_string());
             }
         }
-        // 共享订阅库：候选集不含 brew:manage（加/改/删源仅管理员）
+        // 共享订阅库：候选集不含 phantasi:manage（加/改/删源仅管理员）
         AgentUsageMode::Standard | AgentUsageMode::Elevated => {
             for p in &[
                 "platform:read",
@@ -470,7 +470,7 @@ fn permissions_for_usage_mode(mode: AgentUsageMode) -> std::collections::HashSet
                 "ai:chat",
                 "ai:search",
                 "ai:image",
-                "brew:read", // 读共享库 + 个人已读/收藏（brew.mark）
+                "phantasi:read", // 读共享库 + 个人已读/收藏（phantasi.mark）
                 "report:read",
                 "tapp:read",
                 "system:read",
@@ -570,13 +570,13 @@ fn agent_perm_to_tapp(perm: &str) -> Option<crate::services::permission_service:
         "ai:search" => Some(TappPermission::AiSearch),
         "ai:generate" => Some(TappPermission::AiGenerate),
         // 读（basic）
-        "brew:read" => Some(TappPermission::BrewRead),
+        "phantasi:read" => Some(TappPermission::PhantasiRead),
         "report:read" => Some(TappPermission::ReportRead),
         "platform:read" | "steam:read" | "bilibili:read" | "bangumi:read" | "github:read"
         | "netease:read" | "weather:read" | "metadata:read" => Some(TappPermission::PlatformRead),
         "tapp:read" => Some(TappPermission::TappListRead),
         // 写 / 出站 / 媒体（Tapp 映射）
-        "brew:manage" => Some(TappPermission::BrewManage),
+        "phantasi:manage" => Some(TappPermission::PhantasiManage),
         "report:write" => Some(TappPermission::ReportWrite),
         "http:fetch" | "web:scrape" | "proxy:read" => Some(TappPermission::NetworkFetch),
         "scheduler:read" | "scheduler:write" => Some(TappPermission::SchedulerRegister),
@@ -591,7 +591,7 @@ fn agent_perm_to_tapp(perm: &str) -> Option<crate::services::permission_service:
             Some(TappPermission::PlatformRead)
         }
         "platform:write" => Some(TappPermission::PlatformWrite),
-        "brew:admin" => Some(TappPermission::BrewManage),
+        "phantasi:admin" => Some(TappPermission::PhantasiManage),
         // system:read / 宿主 UI 无 Tapp 对应，见 retain 特例
         _ => None,
     }
@@ -1167,12 +1167,12 @@ mod tests {
         let chat = permissions_for_usage_mode(AgentUsageMode::Chat);
         assert!(chat.contains("ai:chat"));
         assert!(!chat.contains("ai:search"));
-        assert!(!chat.contains("brew:manage"));
+        assert!(!chat.contains("phantasi:manage"));
         assert!(!chat.contains("http:fetch"));
 
         let standard = permissions_for_usage_mode(AgentUsageMode::Standard);
-        assert!(standard.contains("brew:read"));
-        assert!(!standard.contains("brew:manage"));
+        assert!(standard.contains("phantasi:read"));
+        assert!(!standard.contains("phantasi:manage"));
         assert!(standard.contains("ai:chat"));
         assert!(!standard.contains("http:fetch"));
         assert!(!standard.contains("3d:generate"));
@@ -1188,7 +1188,7 @@ mod tests {
         assert!(elevated.contains("music:control"));
         assert!(elevated.contains("router:write"));
         assert!(elevated.contains("mcp:execute"));
-        assert!(!elevated.contains("brew:manage"));
+        assert!(!elevated.contains("phantasi:manage"));
         assert!(!elevated.contains("report:write"));
         assert!(!elevated.contains("system:admin"));
 
@@ -1213,12 +1213,12 @@ mod tests {
             Some(TappPermission::NetworkFetch)
         );
         assert_eq!(
-            agent_perm_to_tapp("brew:read"),
-            Some(TappPermission::BrewRead)
+            agent_perm_to_tapp("phantasi:read"),
+            Some(TappPermission::PhantasiRead)
         );
         assert_eq!(
-            agent_perm_to_tapp("brew:manage"),
-            Some(TappPermission::BrewManage)
+            agent_perm_to_tapp("phantasi:manage"),
+            Some(TappPermission::PhantasiManage)
         );
         assert_eq!(
             agent_perm_to_tapp("report:write"),

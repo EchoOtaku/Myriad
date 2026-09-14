@@ -105,11 +105,11 @@ mod tests {
     }
 
     #[test]
-    fn removed_brew_permissions_are_rejected_with_replacement_hints() {
+    fn removed_phantasi_permissions_are_rejected_with_replacement_hints() {
         let manifest = |permissions: Vec<&str>| {
             serde_json::from_value::<TappManifest>(json!({
-                "id": "com.example.brew-removed",
-                "name": "Brew removed",
+                "id": "com.example.phantasi-removed",
+                "name": "Phantasi removed",
                 "version": "1.0.0",
                 "core": { "entry": "main.js" },
                 "category": "utility",
@@ -118,11 +118,11 @@ mod tests {
             .unwrap()
         };
 
-        // brew:comment → brew:read + brew:commentWrite
+        // brew:comment 退役不映射；提示 phantasi:read + phantasi:commentWrite
         let error = validate_tapp_manifest(&manifest(vec!["brew:comment"])).unwrap_err();
         assert!(error.contains("brew:comment"), "{error}");
-        assert!(error.contains("brew:read"), "{error}");
-        assert!(error.contains("brew:commentWrite"), "{error}");
+        assert!(error.contains("phantasi:read"), "{error}");
+        assert!(error.contains("phantasi:commentWrite"), "{error}");
 
         // 普通未知名不带替代提示
         let error = validate_tapp_manifest(&manifest(vec!["legacy:unknown"])).unwrap_err();
@@ -133,9 +133,9 @@ mod tests {
         assert!(!error.contains("instead"), "{error}");
 
         // 重复名保持 duplicate 语义，不附加替代提示
-        let error = validate_tapp_manifest(&manifest(vec!["brew:read", "brew:read"])).unwrap_err();
+        let error = validate_tapp_manifest(&manifest(vec!["phantasi:read", "phantasi:read"])).unwrap_err();
         assert!(
-            error.contains("Duplicate Tapp permission: brew:read"),
+            error.contains("Duplicate Tapp permission: phantasi:read"),
             "{error}"
         );
     }

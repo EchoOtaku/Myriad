@@ -659,7 +659,7 @@ mod tests {
 
     /// Smoke: seeded manual skills under data/agent/skills must load via SkillRegistry.
     #[tokio::test]
-    async fn test_load_seeded_brew_skills_from_data_dir() {
+    async fn test_load_seeded_phantasi_skills_from_data_dir() {
         let skills_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data/agent/skills");
         assert!(
             skills_dir.is_dir(),
@@ -672,9 +672,9 @@ mod tests {
         let ids: Vec<String> = all.iter().map(|s| s.id.clone()).collect();
 
         for required in [
-            "brew-friend-links",
-            "brew-source-latest",
-            "brew-latest-articles",
+            "phantasi-friend-links",
+            "phantasi-source-latest",
+            "phantasi-latest-articles",
             "platform-status",
         ] {
             assert!(
@@ -683,9 +683,9 @@ mod tests {
             );
         }
 
-        // Friend links: category filter on brew.sources, no fake caps
+        // Friend links: category filter on phantasi.sources, no fake caps
         let friend = registry
-            .get("brew-friend-links")
+            .get("phantasi-friend-links")
             .await
             .expect("friend skill");
         assert_eq!(friend.origin, SkillOrigin::Manual);
@@ -693,8 +693,8 @@ mod tests {
             friend
                 .gating
                 .capabilities
-                .contains(&"brew.sources".to_string()),
-            "brew-friend-links must gate on brew.sources"
+                .contains(&"phantasi.sources".to_string()),
+            "phantasi-friend-links must gate on phantasi.sources"
         );
         assert!(
             !friend.full_instructions.is_empty(),
@@ -710,7 +710,7 @@ mod tests {
 
         // Source latest: sourceId handoff + parameter slot
         let source_latest = registry
-            .get("brew-source-latest")
+            .get("phantasi-source-latest")
             .await
             .expect("source-latest skill");
         assert!(
@@ -722,8 +722,8 @@ mod tests {
             source_latest
                 .gating
                 .capabilities
-                .contains(&"brew.items".to_string()),
-            "brew-source-latest must gate on brew.items"
+                .contains(&"phantasi.items".to_string()),
+            "phantasi-source-latest must gate on phantasi.items"
         );
         let body_lower = source_latest.full_instructions.to_lowercase();
         assert!(
@@ -738,23 +738,23 @@ mod tests {
 
         // Latest articles: local-only
         let latest = registry
-            .get("brew-latest-articles")
+            .get("phantasi-latest-articles")
             .await
             .expect("latest skill");
         assert!(
             latest
                 .gating
                 .capabilities
-                .contains(&"brew.items".to_string()),
-            "brew-latest-articles must gate on brew.items"
+                .contains(&"phantasi.items".to_string()),
+            "phantasi-latest-articles must gate on phantasi.items"
         );
         assert!(
             latest
                 .gating
                 .capabilities
                 .iter()
-                .all(|c| c.starts_with("brew.") || c.starts_with("platform.")),
-            "gating must list real brew/platform IDs only, got {:?}",
+                .all(|c| c.starts_with("phantasi.") || c.starts_with("platform.")),
+            "gating must list real phantasi/platform IDs only, got {:?}",
             latest.gating.capabilities
         );
 

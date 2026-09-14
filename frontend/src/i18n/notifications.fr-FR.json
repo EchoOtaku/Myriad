@@ -12,8 +12,8 @@
       "title": "Services MCP",
       "description": "État de connexion des serveurs d’outils"
     },
-    "brew": {
-      "title": "Brew",
+    "phantasi": {
+      "title": "Journal",
       "description": "Nouveaux articles et erreurs de récupération répétées"
     },
     "tapp": {
@@ -44,8 +44,8 @@
     "heartbeat.failed": "Tâche planifiée échouée",
     "mcp.connected": "MCP connecté",
     "mcp.disconnected": "MCP déconnecté ou en échec",
-    "brew.new_items": "Nouveau contenu trouvé",
-    "brew.source_error": "Source en échec répété",
+    "phantasi.new_items": "Nouveau contenu trouvé",
+    "phantasi.source_error": "Source en échec répété",
     "platform.sync.failed": "Synchronisation de plateforme échouée",
     "tapp.message": "Message",
     "tapp.warning": "Avertissement",

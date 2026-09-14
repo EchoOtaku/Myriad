@@ -414,7 +414,7 @@ mod tests {
                 "data": {
                     "format": "image",
                     "value": {
-                        "url": "/api/brew/image-cache/ab/abcd.png",
+                        "url": "/api/phantasi/image-cache/ab/abcd.png",
                         "width": 1,
                         "height": 1
                     }
@@ -438,7 +438,7 @@ mod tests {
         assert_eq!(
             image_urls,
             vec![
-                "/api/brew/image-cache/ab/abcd.png",
+                "/api/phantasi/image-cache/ab/abcd.png",
                 "https://cdn.example/a.png",
             ]
         );
@@ -454,7 +454,7 @@ mod tests {
                 "message": "",
                 "data": {
                     "format": "image",
-                    "value": { "url": "/api/brew/image-cache/ab/abcd.png" }
+                    "value": { "url": "/api/phantasi/image-cache/ab/abcd.png" }
                 }
             }),
             "画一只猫",
@@ -468,7 +468,7 @@ mod tests {
             panic!("{event:?}");
         };
         assert!(message.is_empty());
-        assert_eq!(image_urls, vec!["/api/brew/image-cache/ab/abcd.png"]);
+        assert_eq!(image_urls, vec!["/api/phantasi/image-cache/ab/abcd.png"]);
         assert!(parked.is_none());
     }
 

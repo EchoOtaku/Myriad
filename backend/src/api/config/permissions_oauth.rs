@@ -99,8 +99,8 @@ pub struct UpdatePermissionsPayload {
     pub user_perm_federation_post: Option<bool>,
     pub user_perm_federation_channel: Option<bool>,
     pub user_perm_federation_room: Option<bool>,
-    /// brew:commentWrite - 写 Brew 评论（Elevated，需登录主体）
-    pub user_perm_brew_comment_write: Option<bool>,
+    /// phantasi:commentWrite - 写 Phantasi 评论（Elevated，需登录主体）
+    pub user_perm_phantasi_comment_write: Option<bool>,
     // 游客 elevated 配置（需持久登录主体的能力不在请求体里，保存时强制关闭）
     pub guest_perm_ai_generate: Option<bool>,
     pub guest_perm_ai_analyze: Option<bool>,
@@ -127,7 +127,7 @@ mod tapp_permission_payload_tests {
 
     #[test]
     fn accepts_permission_delegation_fields() {
-        // Extra keys (report:write / guest federation / guest brew comment) are
+        // Extra keys (report:write / guest federation / guest phantasi comment) are
         // ignored: those grants are forced closed on save, not taken from the body.
         let payload: UpdatePermissionsPayload = serde_json::from_value(serde_json::json!({
             "user_perm_speech_tts": true,
@@ -137,12 +137,12 @@ mod tapp_permission_payload_tests {
             "user_perm_federation_post": true,
             "user_perm_federation_channel": false,
             "user_perm_federation_room": true,
-            "user_perm_brew_comment_write": true,
+            "user_perm_phantasi_comment_write": true,
             "user_perm_report_write": true,
             "guest_perm_federation_post": true,
             "guest_perm_federation_channel": true,
             "guest_perm_federation_room": false,
-            "guest_perm_brew_comment_write": true
+            "guest_perm_phantasi_comment_write": true
         }))
         .unwrap();
 
@@ -153,7 +153,7 @@ mod tapp_permission_payload_tests {
         assert_eq!(payload.user_perm_federation_post, Some(true));
         assert_eq!(payload.user_perm_federation_channel, Some(false));
         assert_eq!(payload.user_perm_federation_room, Some(true));
-        assert_eq!(payload.user_perm_brew_comment_write, Some(true));
+        assert_eq!(payload.user_perm_phantasi_comment_write, Some(true));
     }
 }
 
@@ -229,8 +229,8 @@ pub async fn update_permissions(
     if let Some(v) = payload.user_perm_federation_room {
         updates.insert("user_perm_federation_room".to_string(), json!(v));
     }
-    if let Some(v) = payload.user_perm_brew_comment_write {
-        updates.insert("user_perm_brew_comment_write".to_string(), json!(v));
+    if let Some(v) = payload.user_perm_phantasi_comment_write {
+        updates.insert("user_perm_phantasi_comment_write".to_string(), json!(v));
     }
 
     // 游客权限。需要持久登录主体的能力不接收请求字段，保存时强制关闭。
@@ -268,8 +268,8 @@ pub async fn update_permissions(
     updates.insert("guest_perm_scheduler_register".to_string(), json!(false));
     updates.insert("guest_perm_speech_tts".to_string(), json!(false));
     updates.insert("guest_perm_speech_asr".to_string(), json!(false));
-    // brew:commentWrite 路由要求持久登录主体：游客一律强制关闭
-    updates.insert("guest_perm_brew_comment_write".to_string(), json!(false));
+    // phantasi:commentWrite 路由要求持久登录主体：游客一律强制关闭
+    updates.insert("guest_perm_phantasi_comment_write".to_string(), json!(false));
     if let Some(v) = payload.guest_perm_storage_write {
         updates.insert("guest_perm_storage_write".to_string(), json!(v));
     }

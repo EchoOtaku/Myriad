@@ -108,7 +108,7 @@ Chat / Work · 面板
 </td>
 <td width="33%" valign="top">
 
-**Brew** `/brew`  
+**Phantasi**（手帐）`/phantasi`  
 RSS · Notion · RSSHub
 
 </td>
@@ -121,13 +121,13 @@ ActivityPub · MFP
 </tr>
 </table>
 
-`/config` 仅管理员。资料库、Brew、报告、Tapp、Agent：所有人 / 登录用户 / 管理员。
+`/config` 仅管理员。资料库、Phantasi、报告、Tapp、Agent：所有人 / 登录用户 / 管理员。
 
 ---
 
 ## 目录
 
-**产品** — [首页](#首页) · [平台](#平台) · [资料库](#资料库与报告) · [人设](#人设与-25d-形象) · [Tapp](#tapp) · [Agent](#agent) · [Brew](#brew) · [联邦](#联邦) · [账号](#账号与可见性)
+**产品** — [首页](#首页) · [平台](#平台) · [资料库](#资料库与报告) · [人设](#人设与-25d-形象) · [Tapp](#tapp) · [Agent](#agent) · [Phantasi](#phantasi) · [联邦](#联邦) · [账号](#账号与可见性)
 
 **运行** — [运行要求](#运行要求) · [部署](#部署) · [开发](#本地开发) · [运维](#运维)
 
@@ -146,7 +146,7 @@ ActivityPub · MFP
 | --- | --- |
 | 欢迎语 | Agent 人设（现场 2.5D；同时只播一份） |
 | 内容概览 · 最近活动 · 访客 | 天气 · 一言 · 音乐 |
-| 友情链接（Brew）· 社交 · Tapp 快捷方式 | 米哈游游戏 Presence · 各平台 Report Card |
+| 友情链接（Phantasi）· 社交 · Tapp 快捷方式 | 米哈游游戏 Presence · 各平台 Report Card |
 
 已安装的 Tapp 可注册首页小组件。
 
@@ -272,11 +272,11 @@ MCP：管理员 AI 设置，保存后热重载。
 
 ---
 
-## Brew
+## Phantasi
 
-RSS、Notion、RSSHub。默认任何人可读。登录用户标记已读与收藏。管理员管理源。友情链接可出现在首页。
+内部名；用户界面叫**手帐**（en: Journal）。RSS、Notion、RSSHub。默认任何人可读。登录用户标记已读与收藏。管理员管理源。友情链接可出现在首页。
 
-自有文章：`/brew/item/...`。爬虫获得 HTML 壳，浏览器进入应用。
+自有文章：`/phantasi/item/...`。爬虫获得 HTML 壳，浏览器进入应用。
 
 ---
 
@@ -294,7 +294,7 @@ ActivityPub + **MFP**。发现地址使用 `BASE_URL`。
 
 - **本地账号**：所有者创建之后。注册可开可关。绑定 OAuth 后可关闭该用户的密码登录。
 - **OAuth：** 内置 GitHub，以及任意 OIDC（Authentik、Keycloak、Google、Microsoft、GitLab、Discord……）。身份显式绑定；两个 issuer 上同一邮箱不合并。
-- **页面可见性：** 资料库、Brew、报告、Tapp、Agent — 所有人 / 登录用户 / 管理员。
+- **页面可见性：** 资料库、Phantasi、报告、Tapp、Agent — 所有人 / 登录用户 / 管理员。
 - **搜索与 AI：** 私有（noindex、空 sitemap、无 `/llms.txt`）、仅搜索引擎、允许 AI 引用、完全开放。
 - **站点身份：** 名称、简介、图标、可选 PWA、壁纸与主题、第一方访客统计、可选 Google Analytics / Umami。
 
@@ -433,7 +433,7 @@ host HTTP_PORT
 
 </details>
 
-爬虫 / 应用内分享 UA 获得首页、资料库、Brew、报告、Tapp 的 SEO HTML 壳；浏览器获得 SPA。[架构](docs/development/ARCHITECTURE.md)。
+爬虫 / 应用内分享 UA 获得首页、资料库、Phantasi、报告、Tapp 的 SEO HTML 壳；浏览器获得 SPA。[架构](docs/development/ARCHITECTURE.md)。
 
 ---
 

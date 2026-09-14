@@ -103,7 +103,7 @@ const IconLibrary = (
     />
   </svg>
 )
-const IconBrew = (
+const IconPhantasi = (
   <svg
     className="w-5 h-5"
     fill="none"
@@ -946,12 +946,12 @@ export function NavigationIsland() {
           moduleKey: 'library',
         },
         {
-          id: 'brew',
-          path: '/brew',
-          icon: IconBrew,
-          tooltip: t.nav.brewReading,
-          ariaLabel: t.nav.brewReading,
-          moduleKey: 'brew',
+          id: 'phantasi',
+          path: '/phantasi',
+          icon: IconPhantasi,
+          tooltip: t.nav.phantasiReading,
+          ariaLabel: t.nav.phantasiReading,
+          moduleKey: 'phantasi',
         },
         {
           id: 'reports',

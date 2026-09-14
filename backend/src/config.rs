@@ -578,8 +578,8 @@ pub struct DynamicConfig {
     pub user_perm_federation_channel: bool,
     /// federation:room - 房间创建/加入/治理
     pub user_perm_federation_room: bool,
-    /// brew:commentWrite - 写 Brew 评论（需登录主体）
-    pub user_perm_brew_comment_write: bool,
+    /// phantasi:commentWrite - 写 Phantasi 评论（需登录主体）
+    pub user_perm_phantasi_comment_write: bool,
 
     // 游客授予路径读取的配置字段（若干恒 false，见各字段）
     /// ai:generate - AI 生成内容（游客）
@@ -620,8 +620,8 @@ pub struct DynamicConfig {
     pub guest_perm_federation_channel: bool,
     /// federation:room - 房间治理（游客；同上，配置无效）
     pub guest_perm_federation_room: bool,
-    /// brew:commentWrite - 写 Brew 评论（游客；路由要求登录主体，实际恒为关闭）
-    pub guest_perm_brew_comment_write: bool,
+    /// phantasi:commentWrite - 写 Phantasi 评论（游客；路由要求登录主体，实际恒为关闭）
+    pub guest_perm_phantasi_comment_write: bool,
 
     // AI 使用限额配置（非管理员生效；管理员无限制）
     /// 普通用户每日 AI 调用次数限制（所有 AI 权限共享）
@@ -884,7 +884,7 @@ impl Default for DynamicConfig {
             user_perm_federation_post: false,
             user_perm_federation_channel: false,
             user_perm_federation_room: false,
-            user_perm_brew_comment_write: false,
+            user_perm_phantasi_comment_write: false,
 
             // 游客下放字段默认 false（若干授予路径恒 false，见字段注释）
             guest_perm_ai_generate: false,
@@ -906,7 +906,7 @@ impl Default for DynamicConfig {
             guest_perm_federation_post: false,
             guest_perm_federation_channel: false,
             guest_perm_federation_room: false,
-            guest_perm_brew_comment_write: false,
+            guest_perm_phantasi_comment_write: false,
 
             // AI 使用限额默认值
             // 普通用户: 每日 50 次调用, 20000 tokens, 5 秒冷却

@@ -1,10 +1,10 @@
 //! 数据写入能力处理器
 //!
-//! 处理 platform.write, brew.subscribe, brew.mark 等写入类能力。
+//! 处理 platform.write, phantasi.subscribe, phantasi.mark 等写入类能力。
 //! 纯 URL/名称/feed 优先级规则见 [`crate::services::agent::data_write_pure`]。
 
 use super::HandlerContext;
-use crate::models::entities::{brew_items, brew_sources, brew_user_states, tapp_storage};
+use crate::models::entities::{phantasi_items, phantasi_sources, phantasi_user_states, tapp_storage};
 use crate::services::agent::data_write_pure::{
     clamp_update_interval_minutes, collect_subscribe_url_candidates, is_disallowed_subscribe_ip,
     platform_write_cap_error, platform_write_items_over_cap, sanitize_feed_name,
@@ -13,7 +13,7 @@ use crate::services::agent::data_write_pure::{
 use crate::services::agent::executor::utils::VALID_PLATFORMS;
 use crate::services::agent::executor::utils::validate_platform_name;
 use crate::services::agent::external_pure::first_i64_param;
-use crate::services::brew_parser::FeedParser;
+use crate::services::phantasi_parser::FeedParser;
 use crate::services::data_paths::platform_filtered_file;
 use crate::services::tapp_storage::{
     read_storage_value, sandbox_storage_entries, validate_sandbox_storage_key,
@@ -66,8 +66,8 @@ pub async fn execute(
         "platform.refresh" => execute_platform_refresh(params).await,
         "storage.set" => execute_storage_set(params, ctx).await,
         "tapp.storage" => execute_tapp_storage(params, ctx).await,
-        "brew.subscribe" => execute_brew_subscribe(params, ctx).await,
-        "brew.mark" => execute_brew_mark(params, ctx).await,
+        "phantasi.subscribe" => execute_phantasi_subscribe(params, ctx).await,
+        "phantasi.mark" => execute_phantasi_mark(params, ctx).await,
         "content.write" => execute_content_write(params, ctx).await,
         _ => Err(format!("Unknown data_write capability: {}", capability_id)),
     }
@@ -288,10 +288,10 @@ async fn execute_tapp_storage(
     }
 }
 
-// Brew 相关
+// Phantasi 相关
 
 /// 执行订阅源添加 - 支持智能尝试多个源
-async fn execute_brew_subscribe(
+async fn execute_phantasi_subscribe(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
@@ -299,7 +299,7 @@ async fn execute_brew_subscribe(
 
     tracing::debug!(
         params_keys = ?params.keys().collect::<Vec<_>>(),
-        "[Brew Subscribe] received params"
+        "[Phantasi Subscribe] received params"
     );
 
     // 校验并清洗用户提供的名称，防止过长或空白字符串入库
@@ -319,11 +319,11 @@ async fn execute_brew_subscribe(
 
     // 收集要尝试的 URL 列表
     if params.get("feeds").is_some() {
-        tracing::debug!(feeds = ?params.get("feeds"), "[Brew Subscribe] extracting URLs from feeds");
+        tracing::debug!(feeds = ?params.get("feeds"), "[Phantasi Subscribe] extracting URLs from feeds");
     } else if let Some(url) = params.get("url").and_then(|v| v.as_str()) {
-        tracing::debug!(url = %url, "[Brew Subscribe] using a single URL");
+        tracing::debug!(url = %url, "[Phantasi Subscribe] using a single URL");
     } else {
-        tracing::warn!("[Brew Subscribe] missing url and feeds");
+        tracing::warn!("[Phantasi Subscribe] missing url and feeds");
     }
     let urls_to_try = collect_subscribe_url_candidates(
         params.get("feeds"),
@@ -332,7 +332,7 @@ async fn execute_brew_subscribe(
 
     tracing::info!(
         count = urls_to_try.len(),
-        "[Brew] trying {} candidate feeds",
+        "[Phantasi] trying {} candidate feeds",
         urls_to_try.len()
     );
 
@@ -344,7 +344,7 @@ async fn execute_brew_subscribe(
     for (url, feed_name) in take_feed_urls_to_try(urls_to_try) {
         // SSRF 防护：校验 URL 安全性
         if let Err(e) = validate_subscribe_url(&url) {
-            tracing::warn!(url = %url, error = %e, "[Brew] URL failed security check, skip");
+            tracing::warn!(url = %url, error = %e, "[Phantasi] URL failed security check, skip");
             last_error = format!("{}: {}", url, e);
             continue;
         }
@@ -352,20 +352,20 @@ async fn execute_brew_subscribe(
         tried_urls.push(url.clone());
 
         // 检查是否已订阅
-        let existing = brew_sources::Entity::find()
-            .filter(brew_sources::Column::UserId.eq(user_id))
-            .filter(brew_sources::Column::Url.eq(&url))
+        let existing = phantasi_sources::Entity::find()
+            .filter(phantasi_sources::Column::UserId.eq(user_id))
+            .filter(phantasi_sources::Column::Url.eq(&url))
             .one(ctx.db)
             .await
-            .map_err(|error| write_store_failed("check existing brew source", error))?;
+            .map_err(|error| write_store_failed("check existing phantasi source", error))?;
 
         if existing.is_some() {
-            tracing::debug!(url = %url, "[Brew] skip already subscribed feed");
+            tracing::debug!(url = %url, "[Phantasi] skip already subscribed feed");
             continue;
         }
 
         // 尝试解析这个 URL
-        tracing::debug!(url = %url, "[Brew] trying to parse feed");
+        tracing::debug!(url = %url, "[Phantasi] trying to parse feed");
 
         match tokio::time::timeout(
             std::time::Duration::from_secs(10),
@@ -383,7 +383,7 @@ async fn execute_brew_subscribe(
 
                 // item_count / unread_count filled after insert from rows_affected
                 // (take(50) + ON CONFLICT skips must not over-count).
-                let new_source = brew_sources::ActiveModel {
+                let new_source = phantasi_sources::ActiveModel {
                     user_id: Set(user_id),
                     name: Set(name.clone()),
                     url: Set(url.clone()),
@@ -403,12 +403,12 @@ async fn execute_brew_subscribe(
                 };
 
                 let source = new_source.insert(ctx.db).await.map_err(|e| {
-                    tracing::error!("Failed to create brew source: {e}");
+                    tracing::error!("Failed to create phantasi source: {e}");
                     "Failed to create feed".to_string()
                 })?;
 
                 // 批量构建文章 ActiveModel，一次性 insert 代替 N+1 个单条 insert
-                let item_models: Vec<brew_items::ActiveModel> = feed
+                let item_models: Vec<phantasi_items::ActiveModel> = feed
                     .items
                     .iter()
                     .take(50)
@@ -442,7 +442,7 @@ async fn execute_brew_subscribe(
                             };
                         let published_at = item.published_at.unwrap_or(now);
 
-                        brew_items::ActiveModel {
+                        phantasi_items::ActiveModel {
                             source_id: Set(source.id),
                             guid: Set(item.guid.clone()),
                             title: Set(item.title.clone()),
@@ -468,40 +468,40 @@ async fn execute_brew_subscribe(
                     .collect();
 
                 // Unique (source_id, guid). This path counts exec_without_returning rows;
-                // brew_scheduler counts RETURNING len.
+                // phantasi_scheduler counts RETURNING len.
                 let inserted_count = if item_models.is_empty() {
                     0usize
                 } else {
                     let on_conflict = OnConflict::columns([
-                        brew_items::Column::SourceId,
-                        brew_items::Column::Guid,
+                        phantasi_items::Column::SourceId,
+                        phantasi_items::Column::Guid,
                     ])
                     .do_nothing()
                     .to_owned();
-                    match brew_items::Entity::insert_many(item_models)
+                    match phantasi_items::Entity::insert_many(item_models)
                         .on_conflict(on_conflict)
                         .exec_without_returning(ctx.db)
                         .await
                     {
                         Ok(rows) => rows as usize,
                         Err(e) => {
-                            tracing::warn!("[Brew] bulk insert items failed: {}", e);
+                            tracing::warn!("[Phantasi] bulk insert items failed: {}", e);
                             0
                         }
                     }
                 };
 
                 if inserted_count > 0 {
-                    let mut source_active: brew_sources::ActiveModel = source.clone().into();
+                    let mut source_active: phantasi_sources::ActiveModel = source.clone().into();
                     source_active.item_count = Set(inserted_count as i32);
                     source_active.unread_count = Set(inserted_count as i32);
                     if let Err(e) = source_active.update(ctx.db).await {
-                        tracing::warn!("[Brew] failed to update source counts: {}", e);
+                        tracing::warn!("[Phantasi] failed to update source counts: {}", e);
                     }
                     let topic_db = ctx.db.clone();
                     let source_id = source.id;
                     tokio::spawn(async move {
-                        crate::services::brew_topics::recommend_unlabeled_for_source(
+                        crate::services::phantasi_topics::recommend_unlabeled_for_source(
                             &topic_db,
                             source_id,
                             inserted_count,
@@ -514,7 +514,7 @@ async fn execute_brew_subscribe(
                     url = %url,
                     name = %name,
                     items = inserted_count,
-                    "[Brew] subscribed"
+                    "[Phantasi] subscribed"
                 );
 
                 return Ok(json!({
@@ -524,22 +524,22 @@ async fn execute_brew_subscribe(
                     "url": url,
                     "itemCount": inserted_count,
                     "feedType": match feed.feed_type {
-                        brew_sources::FeedType::Rss => "rss",
-                        brew_sources::FeedType::Atom => "atom",
-                        brew_sources::FeedType::JsonFeed => "json_feed",
-                        brew_sources::FeedType::Notion => "notion",
-                        brew_sources::FeedType::RssHub => "rsshub",
+                        phantasi_sources::FeedType::Rss => "rss",
+                        phantasi_sources::FeedType::Atom => "atom",
+                        phantasi_sources::FeedType::JsonFeed => "json_feed",
+                        phantasi_sources::FeedType::Notion => "notion",
+                        phantasi_sources::FeedType::RssHub => "rsshub",
                     },
                     "triedUrls": tried_urls.len(),
                     "message": crate::services::agent::response_agent::subscribe_success(&name, inserted_count)
                 }));
             }
             Ok(Err(e)) => {
-                tracing::debug!(url = %url, error = %e, "[Brew] parse failed, try next");
+                tracing::debug!(url = %url, error = %e, "[Phantasi] parse failed, try next");
                 last_error = format!("{}: {}", url, e);
             }
             Err(_) => {
-                tracing::debug!(url = %url, "[Brew] request timed out, try next");
+                tracing::debug!(url = %url, "[Phantasi] request timed out, try next");
                 last_error = format!("{url}: timed out");
             }
         }
@@ -549,7 +549,7 @@ async fn execute_brew_subscribe(
     Err(crate::services::agent::response_agent::subscribe_all_failed(tried_urls.len(), &last_error))
 }
 
-async fn execute_brew_mark(
+async fn execute_phantasi_mark(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
@@ -563,24 +563,24 @@ async fn execute_brew_mark(
     let user_id = ctx.user_id;
 
     // 验证文章存在
-    let item = brew_items::Entity::find_by_id(item_id)
+    let item = phantasi_items::Entity::find_by_id(item_id)
         .one(ctx.db)
         .await
         .map_err(|error| write_store_failed("find article", error))?
         .ok_or("Article not found")?;
 
     // 验证文章所属 source 归当前用户所有，防止越权操作
-    let source = brew_sources::Entity::find_by_id(item.source_id)
-        .filter(brew_sources::Column::UserId.eq(user_id))
+    let source = phantasi_sources::Entity::find_by_id(item.source_id)
+        .filter(phantasi_sources::Column::UserId.eq(user_id))
         .one(ctx.db)
         .await
-        .map_err(|error| write_store_failed("find brew source", error))?
+        .map_err(|error| write_store_failed("find phantasi source", error))?
         .ok_or("This article cannot be changed")?;
 
     // 查找或创建用户状态
-    let existing = brew_user_states::Entity::find()
-        .filter(brew_user_states::Column::UserId.eq(user_id))
-        .filter(brew_user_states::Column::ItemId.eq(item_id))
+    let existing = phantasi_user_states::Entity::find()
+        .filter(phantasi_user_states::Column::UserId.eq(user_id))
+        .filter(phantasi_user_states::Column::ItemId.eq(item_id))
         .one(ctx.db)
         .await
         .map_err(|error| write_store_failed("find reading state", error))?;
@@ -598,7 +598,7 @@ async fn execute_brew_mark(
     let was_starred = existing.as_ref().map(|e| e.is_starred).unwrap_or(false);
 
     if let Some(state) = existing {
-        let mut active: brew_user_states::ActiveModel = state.into();
+        let mut active: phantasi_user_states::ActiveModel = state.into();
         if let Some(read) = is_read {
             active.is_read = Set(read);
             if read {
@@ -617,7 +617,7 @@ async fn execute_brew_mark(
             .await
             .map_err(|error| write_store_failed("update reading state", error))?;
     } else {
-        let new_state = brew_user_states::ActiveModel {
+        let new_state = phantasi_user_states::ActiveModel {
             user_id: Set(user_id),
             item_id: Set(item_id),
             is_read: Set(is_read.unwrap_or(false)),
@@ -644,7 +644,7 @@ async fn execute_brew_mark(
     if is_starred == Some(true) && !was_starred {
         crate::services::agent::merope::spawn_ingest(
             user_id,
-            "brew.starred",
+            "phantasi.starred",
             format!("Starred \"{}\"", item.title),
         );
     }
@@ -657,7 +657,7 @@ async fn execute_brew_mark(
                 .db
                 .execute_raw(sea_orm::Statement::from_sql_and_values(
                     sea_orm::DatabaseBackend::Postgres,
-                    "UPDATE brew_sources SET unread_count = GREATEST(unread_count + $1, 0) WHERE id = $2 AND user_id = $3",
+                    "UPDATE phantasi_sources SET unread_count = GREATEST(unread_count + $1, 0) WHERE id = $2 AND user_id = $3",
                     [delta.into(), source.id.into(), user_id.into()],
                 ))
                 .await;

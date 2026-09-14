@@ -1,18 +1,18 @@
-.brew-github-repo {
+.phantasi-github-repo {
   max-width: 24rem;
 }
 
-.brew-github-card,
-.brew-github-card:link,
-.brew-github-card:visited,
-.brew-github-card:hover,
-.brew-github-card:active,
-.brew-github-card:focus {
+.phantasi-github-card,
+.phantasi-github-card:link,
+.phantasi-github-card:visited,
+.phantasi-github-card:hover,
+.phantasi-github-card:active,
+.phantasi-github-card:focus {
   color: inherit;
   text-decoration: none;
 }
 
-.brew-github-card {
+.phantasi-github-card {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -29,24 +29,24 @@
     border-color 0.16s ease;
 }
 
-.brew-github-card:hover {
+.phantasi-github-card:hover {
   border-color: color-mix(in srgb, currentcolor 18%, transparent);
   background: color-mix(in srgb, currentcolor 9%, transparent);
 }
 
-.brew-github-card:focus-visible {
+.phantasi-github-card:focus-visible {
   outline: 2px solid color-mix(in srgb, currentcolor 28%, transparent);
   outline-offset: 2px;
 }
 
-.brew-github-card-header {
+.phantasi-github-card-header {
   display: flex;
   align-items: flex-start;
   gap: 0.45rem;
   min-width: 0;
 }
 
-.brew-github-card-avatar {
+.phantasi-github-card-avatar {
   display: block;
   flex: 0 0 auto;
   width: 1.5rem;
@@ -57,14 +57,14 @@
   background: color-mix(in srgb, currentcolor 10%, transparent);
 }
 
-.brew-github-card-avatar img {
+.phantasi-github-card-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
 
-.brew-github-card-text {
+.phantasi-github-card-text {
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -73,7 +73,7 @@
   flex: 1 1 auto;
 }
 
-.brew-github-card-title {
+.phantasi-github-card-title {
   min-width: 0;
   margin: 0;
   font-size: 0.9375rem;
@@ -84,14 +84,14 @@
   word-break: break-word;
 }
 
-.brew-github-card-owner {
+.phantasi-github-card-owner {
   font-size: 0.75rem;
   font-weight: 500;
   line-height: 1.2;
   color: color-mix(in srgb, currentcolor 48%, transparent);
 }
 
-.brew-github-card-stars {
+.phantasi-github-card-stars {
   display: inline-flex;
   align-items: center;
   gap: 0.16rem;
@@ -107,19 +107,19 @@
   color: color-mix(in srgb, currentcolor 78%, transparent);
 }
 
-.brew-github-card-stars svg {
+.phantasi-github-card-stars svg {
   width: 0.72rem;
   height: 0.72rem;
   display: block;
   opacity: 0.85;
 }
 
-.brew-github-repo:not([data-loaded='true']) .brew-github-card-stars,
-.brew-github-card:not([data-loaded='true']) .brew-github-card-stars {
+.phantasi-github-repo:not([data-loaded='true']) .phantasi-github-card-stars,
+.phantasi-github-card:not([data-loaded='true']) .phantasi-github-card-stars {
   visibility: hidden;
 }
 
-.brew-github-card-desc {
+.phantasi-github-card-desc {
   margin: 0;
   padding-right: 1.35rem;
   font-size: 0.8125rem;
@@ -132,11 +132,11 @@
   overflow: hidden;
 }
 
-.brew-github-card-desc:empty {
+.phantasi-github-card-desc:empty {
   display: none;
 }
 
-.brew-github-card-meta {
+.phantasi-github-card-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -148,7 +148,7 @@
   color: color-mix(in srgb, currentcolor 48%, transparent);
 }
 
-.brew-github-card-mark {
+.phantasi-github-card-mark {
   position: absolute;
   right: 0.7rem;
   bottom: 0.62rem;
@@ -160,31 +160,31 @@
   line-height: 0;
 }
 
-.brew-github-card-mark svg {
+.phantasi-github-card-mark svg {
   width: 100%;
   height: 100%;
   display: block;
 }
 
-.brew-github-repo:not([data-loaded='true']) .brew-github-card-meta,
-.brew-github-card:not([data-loaded='true']) .brew-github-card-meta {
+.phantasi-github-repo:not([data-loaded='true']) .phantasi-github-card-meta,
+.phantasi-github-card:not([data-loaded='true']) .phantasi-github-card-meta {
   display: none;
 }
 
-.brew-github-card-meta > span {
+.phantasi-github-card-meta > span {
   display: inline-flex;
   align-items: center;
   gap: 0.28rem;
 }
 
-.brew-github-card-meta svg {
+.phantasi-github-card-meta svg {
   width: 0.75rem;
   height: 0.75rem;
   display: block;
   opacity: 0.8;
 }
 
-.brew-embed-lang-dot {
+.phantasi-embed-lang-dot {
   width: 0.45rem;
   height: 0.45rem;
   border-radius: 50%;
@@ -193,12 +193,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .brew-github-card {
+  .phantasi-github-card {
     transition: none;
   }
 }
 
-[data-brew-reader] a.brew-github-chip {
+[data-phantasi-reader] a.phantasi-github-chip {
   margin: 0 0.12em;
   padding: 0.18rem 0.5rem 0.18rem 0.42rem;
   gap: 0.28rem;
@@ -215,22 +215,22 @@
   transform: none;
 }
 
-[data-brew-reader] a.brew-github-chip:hover {
+[data-phantasi-reader] a.phantasi-github-chip:hover {
   border-color: color-mix(in srgb, currentcolor 22%, transparent);
   background: color-mix(in srgb, currentcolor 10%, transparent);
   color: inherit;
   transform: none;
 }
 
-[data-brew-reader] a.brew-github-chip:active {
+[data-phantasi-reader] a.phantasi-github-chip:active {
   transform: none;
 }
 
-[data-brew-reader] a.brew-github-chip .github-project-badge-mark {
+[data-phantasi-reader] a.phantasi-github-chip .github-project-badge-mark {
   opacity: 1;
 }
 
-[data-brew-reader] a.brew-github-chip .brew-github-chip-avatar {
+[data-phantasi-reader] a.phantasi-github-chip .phantasi-github-chip-avatar {
   width: 1.15rem;
   height: 1.15rem;
   overflow: hidden;
@@ -238,7 +238,7 @@
   background: color-mix(in srgb, currentcolor 10%, transparent);
 }
 
-[data-brew-reader] a.brew-github-chip .brew-github-chip-avatar img {
+[data-phantasi-reader] a.phantasi-github-chip .phantasi-github-chip-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;

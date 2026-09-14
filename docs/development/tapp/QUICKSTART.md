@@ -80,7 +80,7 @@ manifest {
 
 | 沙箱     | 加载的层                         | 能调用什么 |
 | -------- | -------------------------------- | ---------- |
-| Widget   | `core` + 该 widget               | 精简 SDK：生命周期、模板与 `render`；没有联邦 / 对局 / Tapp·Brew 管理 |
+| Widget   | `core` + 该 widget               | 精简 SDK：生命周期、模板与 `render`；没有联邦 / 对局 / Tapp·Phantasi 管理 |
 | Page     | `core` + `page`                  | 完整 SDK、生命周期和页面 UI |
 | headless | 仅 `core`（常驻用这一套）        | 无可见 UI；`Tapp.widget` 只有定向 `invalidate({ widgetId })`；没有 register / `tappList` / 组件 / 快捷键 / 动态内容 / DOM / 文件下载 / `model3d` |
 

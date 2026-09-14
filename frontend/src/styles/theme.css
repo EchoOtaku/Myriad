@@ -601,7 +601,7 @@ html[data-perf-mode='exlight']
 /*
  * Surface fill (base + alpha + filter) — sole declaration, three consumers:
  * 1. .glass — full glass card (border/shadow/transition below)
- * 2. .glass-surface — shared fill for hand-written glass (Tapp/Brew cards,
+ * 2. .glass-surface — shared fill for hand-written glass (Tapp/Phantasi cards,
  *    control island); replaces inline bg-white/X + backdrop-blur-Z; chrome
  *    utilities at the call site stay
  * 3. Floating chrome: nav islands, control-bar trigger, footer.
@@ -802,26 +802,26 @@ html.dark[data-surface='liquid'] .control-bar-trigger:not(.expanded):hover {
     var(--surface-sheen), rgb(var(--surface-rgb) / var(--surface-alpha));
 }
 
-/* Brew reader: paper color into --surface-rgb and redeclare --surface-bg so
+/* Phantasi reader: paper color into --surface-rgb and redeclare --surface-bg so
    descendants do not keep the root-baked site white/black. */
-[data-brew-reader][data-brew-theme='light'] {
+[data-phantasi-reader][data-phantasi-theme='light'] {
   --surface-rgb: 255 249 240;
 }
 
-[data-brew-reader][data-brew-theme='sepia'] {
+[data-phantasi-reader][data-phantasi-theme='sepia'] {
   --surface-rgb: 250 244 230;
 }
 
-[data-brew-reader][data-brew-theme='dark'] {
+[data-phantasi-reader][data-phantasi-theme='dark'] {
   --surface-rgb: 36 36 36;
 }
 
-[data-brew-reader][data-brew-theme='night'] {
+[data-phantasi-reader][data-phantasi-theme='night'] {
   --surface-rgb: 22 27 34;
 }
 
 /* Redeclare fill only on default glass; liquid/solid/flat/outline keep the global stack. */
-:root:not([data-surface]) [data-brew-reader] {
+:root:not([data-surface]) [data-phantasi-reader] {
   --surface-bg:
     var(--surface-sheen), rgb(var(--surface-rgb) / var(--surface-alpha));
 }

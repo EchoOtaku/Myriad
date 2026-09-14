@@ -42,10 +42,10 @@ pub enum NotificationType {
     HeartbeatResult,
     /// MCP 服务器状态变化
     McpServerStatus,
-    /// Brew 订阅源抓取到新内容
-    BrewNewItems,
-    /// Brew 订阅源连续抓取失败
-    BrewSourceError,
+    /// Phantasi 订阅源抓取到新内容
+    PhantasiNewItems,
+    /// Phantasi 订阅源连续抓取失败
+    PhantasiSourceError,
     /// Tapp 用户通知（`source_key` = `tapp_notification`）
     TappNotification,
     /// 系统更新/回滚任务状态
@@ -81,8 +81,8 @@ impl NotificationType {
             NotificationType::TaskCancelled => "task_cancelled",
             NotificationType::HeartbeatResult => "heartbeat_result",
             NotificationType::McpServerStatus => "mcp_server_status",
-            NotificationType::BrewNewItems => "brew_new_items",
-            NotificationType::BrewSourceError => "brew_source_error",
+            NotificationType::PhantasiNewItems => "phantasi_new_items",
+            NotificationType::PhantasiSourceError => "phantasi_source_error",
             NotificationType::TappNotification => "tapp_notification",
             NotificationType::UpdaterStatus => "updater_status",
             NotificationType::SystemInfo => "system_info",
@@ -101,8 +101,8 @@ impl NotificationType {
             "task_cancelled" => NotificationType::TaskCancelled,
             "heartbeat_result" => NotificationType::HeartbeatResult,
             "mcp_server_status" => NotificationType::McpServerStatus,
-            "brew_new_items" => NotificationType::BrewNewItems,
-            "brew_source_error" => NotificationType::BrewSourceError,
+            "phantasi_new_items" => NotificationType::PhantasiNewItems,
+            "phantasi_source_error" => NotificationType::PhantasiSourceError,
             "tapp_notification" => NotificationType::TappNotification,
             "updater_status" => NotificationType::UpdaterStatus,
             "agent_clarification" => NotificationType::AgentClarification,
@@ -122,7 +122,7 @@ impl NotificationType {
             | NotificationType::AgentClarification => "agent",
             NotificationType::HeartbeatResult => "heartbeat",
             NotificationType::McpServerStatus => "mcp",
-            NotificationType::BrewNewItems | NotificationType::BrewSourceError => "brew",
+            NotificationType::PhantasiNewItems | NotificationType::PhantasiSourceError => "phantasi",
             NotificationType::TappNotification => "tapp",
             NotificationType::UpdaterStatus => "updater",
             NotificationType::FederationMessage
@@ -1146,10 +1146,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn brew_and_tapp_producers_target_only_their_owner() {
+    async fn phantasi_and_tapp_producers_target_only_their_owner() {
         let manager = test_manager();
         manager
-            .notify_brew_new_items(
+            .notify_phantasi_new_items(
                 42,
                 7,
                 "Example Feed",
@@ -1165,7 +1165,7 @@ mod tests {
         assert_eq!(owner_history.len(), 2);
         assert!(owner_history.iter().any(|notification| matches!(
             notification.notification_type,
-            NotificationType::BrewNewItems
+            NotificationType::PhantasiNewItems
         )));
         assert!(owner_history.iter().any(|notification| matches!(
             notification.notification_type,
@@ -1209,19 +1209,19 @@ mod tests {
         let mut preferences = NotificationPreferences::default();
         preferences
             .events
-            .insert("brew.new_items".to_string(), false);
+            .insert("phantasi.new_items".to_string(), false);
         notification_preferences::set_cached_for_test(user_id, preferences).await;
 
         manager
             .notify(
                 Notification::new(
                     user_id,
-                    NotificationType::BrewNewItems,
+                    NotificationType::PhantasiNewItems,
                     NotificationPriority::Normal,
                     "new items",
                     "body",
                 )
-                .with_metadata(serde_json::json!({"event_key": "brew.new_items"})),
+                .with_metadata(serde_json::json!({"event_key": "phantasi.new_items"})),
             )
             .await;
 
@@ -1378,8 +1378,8 @@ mod tests {
             NotificationType::TaskCancelled,
             NotificationType::HeartbeatResult,
             NotificationType::McpServerStatus,
-            NotificationType::BrewNewItems,
-            NotificationType::BrewSourceError,
+            NotificationType::PhantasiNewItems,
+            NotificationType::PhantasiSourceError,
             NotificationType::TappNotification,
             NotificationType::UpdaterStatus,
             NotificationType::SystemInfo,

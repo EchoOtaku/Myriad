@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use tokio::fs;
 
-/// Independent TTS cache under `data/brew/standalone_tts/{text_hash}/`.
+/// Independent TTS cache under `data/phantasi/standalone_tts/{text_hash}/`.
 const STANDALONE_TTS_SUBDIR: &str = "standalone_tts";
 
 /// TTS request DTO (HTTP body + agent capability params).
@@ -84,7 +84,7 @@ pub fn generate_audio_filename(
 }
 
 fn get_standalone_tts_dir(text_hash: &str) -> PathBuf {
-    paths().brew.join(STANDALONE_TTS_SUBDIR).join(text_hash)
+    paths().phantasi.join(STANDALONE_TTS_SUBDIR).join(text_hash)
 }
 
 fn get_standalone_tts_file_path(

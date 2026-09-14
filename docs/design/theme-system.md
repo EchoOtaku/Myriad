@@ -117,7 +117,7 @@ TitleFontSelector（编辑模式）→ setSurface/setGlowMode
 - **手写玻璃卡片（自带边框/阴影，只想统一玻璃底）**：用 `.glass-surface` 替换内联的
   `bg-white/X dark:bg-Y backdrop-blur-Z`，边框/阴影/圆角等工具类保留。透明度加档位类
   `.glass-60/70/90/95`（默认 80%）—— **档位仅玻璃默认态生效，切主题时让位给全局收敛**。
-  Tapp/Brew 卡片、共享控制岛（`ISLAND_GLASS`）走的都是这条。
+  Tapp/Phantasi 卡片、共享控制岛（`ISLAND_GLASS`）走的都是这条。
 - **保留自定义透明度的浮动 chrome（CSS 文件里的具名类）**：在 theme.css 的 chrome 覆盖清单里加选择器。
   当前清单：`.dynamic-island` · `.secondary-island` · `.control-bar-trigger` · `.site-footer-content`。
   用 `:root[data-surface] <selector>` 作用域 —— 默认态保留组件硬编码透明度，仅切非玻璃主题时收敛。
@@ -151,7 +151,7 @@ Tapp 经 `component.registerTheme()` 注册，后端存 `_component:theme:{id}`�
 ## 7. 已适配 / 未纳入
 
 **已跟随主题**：所有 `.glass` 组件 · 小组件 · 浮动 chrome（§5 清单）· Tapp 应用卡片与详情弹窗 ·
-Brew 卡片/空态/编辑弹窗 · 共享控制岛（`ISLAND_GLASS`）—— 后三类经 `.glass-surface` 整合。
+Phantasi 卡片/空态/编辑弹窗 · 共享控制岛（`ISLAND_GLASS`）—— 后三类经 `.glass-surface` 整合。
 
 按设计**不跟随**主题的：
 - 功能性遮罩 / hover 态 / 徽章 / 骨架屏等零散 `backdrop-blur`（低透明度小元素，非卡片面）。

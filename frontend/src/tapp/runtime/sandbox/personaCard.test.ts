@@ -14,8 +14,8 @@ const CARD_FIELDS = [
 describe('sameOriginPortraitUrl', () => {
   it('keeps host paths that img-src already allows', () => {
     assert.equal(
-      sameOriginPortraitUrl('/api/brew/image-cache/ab/abcd.png'),
-      '/api/brew/image-cache/ab/abcd.png',
+      sameOriginPortraitUrl('/api/phantasi/image-cache/ab/abcd.png'),
+      '/api/phantasi/image-cache/ab/abcd.png',
     )
     assert.equal(sameOriginPortraitUrl('/uploads/face.png'), '/uploads/face.png')
   })
@@ -64,14 +64,14 @@ describe('projectPersonaCard', () => {
       mood: 40,
       arousal: 70,
       activity: 'working',
-      portraitUrl: '/api/brew/image-cache/ab/face.png',
+      portraitUrl: '/api/phantasi/image-cache/ab/face.png',
       personality: 'secret soul',
       visualProfile: { hair: 'black' },
     } as never)
     assert.deepEqual(Object.keys(card).toSorted(), Iterator.from(CARD_FIELDS).toArray())
     assert.equal(card.moodBand, 'tense')
     assert.equal(card.activity, 'working')
-    assert.equal(card.portraitUrl, '/api/brew/image-cache/ab/face.png')
+    assert.equal(card.portraitUrl, '/api/phantasi/image-cache/ab/face.png')
     assert.equal(Object.hasOwn(card, 'mood'), false)
     assert.equal(Object.hasOwn(card, 'arousal'), false)
     assert.equal(Object.hasOwn(card, 'personality'), false)

@@ -568,8 +568,8 @@ pub(crate) fn extract_capability_name(step_id: &str) -> String {
             "summarize" | "ai.summarize" => "Summarizing".to_string(),
             "analyze" | "ai.analyze" => "Analyzing".to_string(),
             "webSearch" | "ai.webSearch" => "Searching the web".to_string(),
-            "discover" | "brew.discover" => "Discovering feeds".to_string(),
-            "subscribe" | "brew.subscribe" => "Subscribing to a feed".to_string(),
+            "discover" | "phantasi.discover" => "Discovering feeds".to_string(),
+            "subscribe" | "phantasi.subscribe" => "Subscribing to a feed".to_string(),
             _ => cap_part.replace(['.', '_'], " "),
         }
     } else {

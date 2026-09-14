@@ -320,7 +320,7 @@ describe('tour hint copy', () => {
   const nav = {
     home: '首页',
     library: '资料库',
-    brew: 'Brew',
+    phantasi: 'Phantasi',
     reports: '报告',
     tapp: 'Tapp',
     config: '配置',
@@ -596,9 +596,9 @@ describe('page tours', () => {
     assert.equal(pickTour(TOURS, '/config', true)?.id, 'config-owner')
   })
 
-  it('does not register brew reading routes', () => {
-    assert.equal(pickTour(TOURS, '/brew', true), null)
-    assert.equal(pickTour(TOURS, '/brew/item/1', true), null)
+  it('does not register phantasi reading routes', () => {
+    assert.equal(pickTour(TOURS, '/phantasi', true), null)
+    assert.equal(pickTour(TOURS, '/phantasi/item/1', true), null)
   })
 
   it('matches tapp detail by prefix and playground for owner only', () => {

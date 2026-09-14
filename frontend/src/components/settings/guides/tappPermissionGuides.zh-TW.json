@@ -203,29 +203,29 @@
     "frontend": "Tapp 列表、詳情頁的安裝與執行控制。",
     "notes": "可增刪任意應用，屬最高危能力之一。"
   },
-  "brew:read": {
-    "what": "允許讀取 Brew 訂閱源、文章內容與評論/回覆。",
-    "chain": "① 應用請求 Brew 列表/正文/評論。\n② 讀取本站已訂閱資料。\n③ 在應用內展示閱讀內容。",
-    "frontend": "Brew 模組與應用內閱讀檢視。",
+  "phantasi:read": {
+    "what": "允許讀取 Phantasi 訂閱源、文章內容與評論/回覆。",
+    "chain": "① 應用請求 Phantasi 列表/正文/評論。\n② 讀取本站已訂閱資料。\n③ 在應用內展示閱讀內容。",
+    "frontend": "Phantasi 模組與應用內閱讀檢視。",
     "notes": "只讀訂閱資料，不能改已讀狀態、收藏或寫評論。"
   },
-  "brew:write": {
-    "what": "允許寫入 Brew 資料（如已讀、星標等使用者狀態）。",
-    "chain": "① 應用更新條目狀態。\n② 寫入 Brew 儲存。\n③ Brew 列表篩選與角標可能變化。",
-    "frontend": "Brew 已讀/收藏等狀態。",
+  "phantasi:write": {
+    "what": "允許寫入 Phantasi 資料（如已讀、星標等使用者狀態）。",
+    "chain": "① 應用更新條目狀態。\n② 寫入 Phantasi 儲存。\n③ Phantasi 列表篩選與角標可能變化。",
+    "frontend": "Phantasi 已讀/收藏等狀態。",
     "notes": "會改你的閱讀狀態，確認應用行為符合預期。"
   },
-  "brew:commentWrite": {
-    "what": "允許建立、編輯和刪除 Brew 評論與回覆。",
+  "phantasi:commentWrite": {
+    "what": "允許建立、編輯和刪除 Phantasi 評論與回覆。",
     "chain": "① 應用提交評論。\n② 評論關聯到文章。\n③ 其它讀者可能看到（視站點策略）。",
-    "frontend": "Brew 文章評論區。",
+    "frontend": "Phantasi 文章評論區。",
     "notes": "涉及公開表達時注意內容規範；預設僅管理員可下放。"
   },
-  "brew:manage": {
-    "what": "允許管理 Brew 訂閱源與高階設定（新增源、發現源等）。",
+  "phantasi:manage": {
+    "what": "允許管理 Phantasi 訂閱源與高階設定（新增源、發現源等）。",
     "chain": "① 應用呼叫源管理 API。\n② 訂閱源集合變更。\n③ 抓取與列表隨之更新。",
-    "frontend": "Brew 源管理、OPML、發現源。",
-    "notes": "可增刪訂閱源，影響全站 Brew 內容池。"
+    "frontend": "Phantasi 源管理、OPML、發現源。",
+    "notes": "可增刪訂閱源，影響全站 Phantasi 內容池。"
   },
   "federation:read": {
     "what": "允許讀取聯邦房間、頻道、成員等資料。",

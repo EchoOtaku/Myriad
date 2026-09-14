@@ -75,7 +75,7 @@ const THEME_COLOR = new RegExp(contract.patterns.themeColor)
 // diagnostics. Advisory only: the permission is still rejected (fail-closed),
 // never mapped to the new names.
 const REMOVED_PERMISSION_REPLACEMENTS = {
-  'brew:comment': "use 'brew:read' (read) or 'brew:commentWrite' (write)",
+  'brew:comment': "use 'phantasi:read' (read) or 'phantasi:commentWrite' (write)",
 }
 // Fixed allow-list enforced identically by the backend installer.
 const HTTP_METHODS = new Set(contract.rules.httpMethods)

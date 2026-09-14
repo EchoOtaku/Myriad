@@ -371,7 +371,7 @@ storage 路由要求 optional_auth + Runtime Grant。读取需要 `storage:read`
 `_shortcut:`、`_report:` 等宿主保留键。
 
 下列能力的真实后端路由仍要求**持久登录**主体，不会被签入访客 Grant：`report:read`、
-`ui:notification`、组件/快捷键注册、scheduler、语音服务、Brew 写入/评论，以及
+`ui:notification`、组件/快捷键注册、scheduler、语音服务、Phantasi 写入/评论，以及
 **privileged / admin-gated** `platform:write`（`POST …/platform/items*`；非仅「已登录」）。
 动态 Widget 注册与注销进一步限制为当前管理员。
 Manifest Widget 由安装/更新自动对账；动态 Widget 路由要求 `widget:register` 同时存在于
@@ -466,7 +466,7 @@ Manifest operation/model tier/context/output 声明，并将任务绑定 subject
 创建生图任务时使用 `version: 2`、`operation: "image"`、`output: { format: "image" }`。
 `input` 可为提示词字符串，或 `{ prompt, width?, height?, referenceImages? }`。
 `referenceImages` 是有序字符串数组：最多 4 张 PNG/JPEG/WebP，解码后合计 10 MiB；
-支持 base64 data URL 和 `/api/brew/image-cache/...` 路径，后端不抓取调用方提供的外部 URL。
+支持 base64 data URL 和 `/api/phantasi/image-cache/...` 路径，后端不抓取调用方提供的外部 URL。
 参考图在预留额度及注册任务前解析；原始参考图来源与顺序参与请求幂等哈希。
 生图任务的 `context` 必须为空，`delivery` 使用默认 `result`；进度仍可通过任务 SSE 订阅。
 
@@ -543,7 +543,7 @@ Interaction 的动作截止时间独立于终态保留时间；所有副本都�
 联邦写操作、消息、私有 Room 与文件等仍走各自 SDK/宿主路径，且对游客不可用；见
 [ARCHITECTURE 所有权与可见性](ARCHITECTURE.md#所有权与可见性) 与
 [API_REFERENCE Channel/Room](API_REFERENCE.md#channel--room--ring--trust--传输摘要)。
-Brew / 语音 / 联邦 REST 宿主代理路径已统一按 Grant 归因：带 `X-Tapp-Runtime-Grant` 的请求在服务端按路由强制 Tapp
+Phantasi / 语音 / 联邦 REST 宿主代理路径已统一按 Grant 归因：带 `X-Tapp-Runtime-Grant` 的请求在服务端按路由强制 Tapp
 权限并记录归因日志（共享 `host_attribution` 中间件；路由→权限表见
 `docs/development/tapp/fixtures/host_route_permissions.json`，**先改 fixture 再改映射**）。
 `GET /api/federation/public/rooms/*` 与 `GET /api/federation/public/limits` **不**列入该表。联邦 E2E 密钥交换与 Channel/Room

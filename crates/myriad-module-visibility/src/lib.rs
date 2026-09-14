@@ -11,7 +11,7 @@ use std::collections::HashMap;
 /// Configuration key in the `configurations` table.
 pub const MODULE_VISIBILITY_PREFERENCES_KEY: &str = "module_visibility_preferences";
 
-pub const MODULE_VISIBILITY_KEYS: [&str; 5] = ["library", "brew", "reports", "tapp", "agent"];
+pub const MODULE_VISIBILITY_KEYS: [&str; 5] = ["library", "phantasi", "reports", "tapp", "agent"];
 pub const MODULE_VISIBILITY_LEVELS: [&str; 3] = ["all", "authenticated", "admin"];
 
 /// Legacy agent usage levels (compat storage; auth uses Tapp permissions).
@@ -69,7 +69,7 @@ pub struct ModuleVisibilityPreferences {
 fn default_module_visibility_modules() -> HashMap<String, String> {
     HashMap::from([
         ("library".to_string(), "all".to_string()),
-        ("brew".to_string(), "all".to_string()),
+        ("phantasi".to_string(), "all".to_string()),
         ("reports".to_string(), "all".to_string()),
         ("tapp".to_string(), "all".to_string()),
         ("agent".to_string(), "all".to_string()),
@@ -196,7 +196,7 @@ mod tests {
         assert_eq!(p.agent_usage.guest, "none");
         assert_eq!(p.agent_usage.user, "elevated");
         // missing keys filled
-        assert_eq!(p.modules.get("brew").map(String::as_str), Some("all"));
+        assert_eq!(p.modules.get("phantasi").map(String::as_str), Some("all"));
     }
 
     #[test]

@@ -137,7 +137,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
                 "pageName": { "type": "string", "description": "Page name" },
                 "pageType": { 
                     "type": "string", 
-                    "enum": ["home", "library", "platform", "brew", "tapp", "report", "settings", "profile", "other"],
+                    "enum": ["home", "library", "platform", "phantasi", "tapp", "report", "settings", "profile", "other"],
                     "description": "Page type"
                 },
                 "context": {
@@ -177,7 +177,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Target route, e.g. /brew, /platform/steam, /tapp/multi"
+                    "description": "Target route, e.g. /phantasi, /platform/steam, /tapp/multi"
                 },
                 "params": {
                     "type": "object",
@@ -427,8 +427,8 @@ pub fn register(registry: &mut CapabilityRegistry) {
                 },
                 "scope": {
                     "type": "string",
-                    "enum": ["brew", "tapp", "all"],
-                    "description": "Scope: brew=feeds, tapp=apps, all=all",
+                    "enum": ["phantasi", "tapp", "all"],
+                    "description": "Scope: phantasi=feeds, tapp=apps, all=all",
                     "default": "all"
                 },
                 "type": {

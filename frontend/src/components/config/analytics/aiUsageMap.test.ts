@@ -67,7 +67,7 @@ describe('aiUsageMap', () => {
       merope: 'Agent persona',
       playground: 'Playground',
       speech: 'Speech',
-      brewlia: 'Brewlia',
+      phantasiai: 'AI enhance',
       prompt: 'Prompt',
       seo: 'SEO',
       internal: 'Internal',

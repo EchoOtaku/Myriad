@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import type { BrewSource } from '../../types/brew'
+import type { PhantasiSource } from '../../types/phantasi'
 import type { WidgetComponentProps } from '../widgetGridTypes'
 
 import {
@@ -17,8 +17,8 @@ import {
   useAnimationLevel,
 } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
-import { getSources } from '../../services/brewApi'
-import { getIconUrl, isFriendLinkCategory } from '../brew/constants'
+import { getSources } from '../../services/phantasiApi'
+import { getIconUrl, isFriendLinkCategory } from '../phantasi/constants'
 import { WidgetShell } from './shared/WidgetShell'
 import { WidgetSkeletonCover } from './shared/WidgetSkeleton'
 import './FriendLinksWidget.css'
@@ -36,7 +36,7 @@ interface FriendLinkEntry {
   color: string
 }
 
-function belongsToFriendLinks(source: BrewSource): boolean {
+function belongsToFriendLinks(source: PhantasiSource): boolean {
   return Boolean(
     source.category
       ?.split(',')
@@ -46,8 +46,8 @@ function belongsToFriendLinks(source: BrewSource): boolean {
 }
 
 function compareSources(
-  a: BrewSource,
-  b: BrewSource,
+  a: PhantasiSource,
+  b: PhantasiSource,
   locale: string,
 ): number {
   const aHasOrder = typeof a.sort_order === 'number'
@@ -59,12 +59,12 @@ function compareSources(
   return a.name.localeCompare(b.name, locale)
 }
 
-function safeLink(source: BrewSource): string {
+function safeLink(source: PhantasiSource): string {
   const target = source.site_url || source.url
   return /^https?:\/\//i.test(target) ? target : ''
 }
 
-function sourceSubtitle(source: BrewSource): string | null {
+function sourceSubtitle(source: PhantasiSource): string | null {
   const tag = source.ai_style_tags?.find((item) => item.trim())?.trim()
   if (tag) return tag
 
@@ -78,7 +78,7 @@ function sourceSubtitle(source: BrewSource): string | null {
   }
 }
 
-function toEntry(source: BrewSource): FriendLinkEntry {
+function toEntry(source: PhantasiSource): FriendLinkEntry {
   return {
     id: source.id,
     name: source.name,
@@ -154,7 +154,7 @@ export const FriendLinksWidget = memo(
       isPreview ? 1 : undefined,
     )
     const mountedRef = useRef(true)
-    const [sources, setSources] = useState<BrewSource[]>([])
+    const [sources, setSources] = useState<PhantasiSource[]>([])
     const [loading, setLoading] = useState(!isPreview)
     const [failed, setFailed] = useState(false)
     const [randomSeed] = useState(() => Math.random())
@@ -181,7 +181,7 @@ export const FriendLinksWidget = memo(
         setSources(nextSources)
         setFailed(false)
       } catch (error) {
-        console.error('[FriendLinksWidget] Failed to load Brew sources:', error)
+        console.error('[FriendLinksWidget] Failed to load Phantasi sources:', error)
         if (mountedRef.current) setFailed(true)
       } finally {
         if (mountedRef.current) setLoading(false)
@@ -320,16 +320,16 @@ export const FriendLinksWidget = memo(
       !isPreview && !isEditMode && batchCount > 1 && anim.widgetUiRotation,
     )
 
-    const openBrew = useCallback(() => {
+    const openPhantasi = useCallback(() => {
       if (!isEditMode && !isPreview) {
         void import('../../utils/analyticsEvents').then(
           ({ trackProductEvent, AnalyticsEvents }) => {
-            trackProductEvent(AnalyticsEvents.FRIEND_LINKS_BREW, {
+            trackProductEvent(AnalyticsEvents.FRIEND_LINKS_PHANTASI, {
               throttleMs: 3000,
             })
           },
         )
-        navigate('/brew?board=sites')
+        navigate('/phantasi?board=sites')
       }
     }, [isEditMode, isPreview, navigate])
 
@@ -381,7 +381,7 @@ export const FriendLinksWidget = memo(
           ) : !loading && visibleEntries.length === 0 ? (
             <button
               type="button"
-              onClick={openBrew}
+              onClick={openPhantasi}
               className="absolute inset-0 flex cursor-pointer items-center justify-center rounded-lg border border-dashed border-black/8 px-3 text-[10px] text-gray-400 dark:border-white/10 dark:text-gray-500"
             >
               {t.friendLinksWidget.emptyTitle}
@@ -439,7 +439,7 @@ export const FriendLinksWidget = memo(
                       />
                       <span className="relative z-10 min-w-0 flex-1">
                         <span className="mb-0.5 block text-[8px] font-medium tracking-wide text-gray-400 dark:text-gray-500">
-                          {t.brew.friendLinks}
+                          {t.phantasi.friendLinks}
                         </span>
                         <span
                           className="block truncate font-semibold leading-tight text-gray-800 dark:text-gray-100"
@@ -490,7 +490,7 @@ export const FriendLinksWidget = memo(
           ) : !loading && visibleEntries.length === 0 ? (
             <button
               type="button"
-              onClick={openBrew}
+              onClick={openPhantasi}
               className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-black/8 px-4 text-center dark:border-white/10"
             >
               <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -592,15 +592,15 @@ export const FriendLinksWidget = memo(
       >
         <button
           type="button"
-          onClick={openBrew}
+          onClick={openPhantasi}
           className="group/header flex w-full shrink-0 cursor-pointer items-center gap-2 text-left"
-          aria-label={t.friendLinksWidget.openBrew}
+          aria-label={t.friendLinksWidget.openPhantasi}
         >
           <span
             className="min-w-0 flex-1 truncate font-semibold text-gray-800 dark:text-gray-100"
             style={{ fontSize: `${14 * fontScale}px` }}
           >
-            {t.brew.friendLinks}
+            {t.phantasi.friendLinks}
           </span>
           {isWide && !loading && !failed && (
             <span
@@ -623,7 +623,7 @@ export const FriendLinksWidget = memo(
           ) : !loading && visibleEntries.length === 0 ? (
             <button
               type="button"
-              onClick={openBrew}
+              onClick={openPhantasi}
               className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-black/8 px-3 text-center dark:border-white/10"
             >
               <span className="text-xs font-medium text-gray-500 dark:text-gray-400">

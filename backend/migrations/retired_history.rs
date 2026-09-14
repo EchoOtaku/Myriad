@@ -199,6 +199,7 @@ mod tests {
         for kept in [
             "001_initial_schema",
             "002_tapp_system",
+            "003_phantasi_system",
             "003_brew_system",
             "004_agent_system",
             "005_federation",

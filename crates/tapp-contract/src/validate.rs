@@ -265,7 +265,7 @@ pub fn validate_tapp_manifest(
     for permission in &manifest.permissions {
         if TappPermission::from_str(permission).is_none() {
             // Fail-closed：未知权限不落库、不签发；只有错误提示会带上共享的替代建议
-            // （如已移除的 storage 与 Brew 粗权限），不创建任何别名。
+            // （如已移除的 storage 与 Phantasi 粗权限），不创建任何别名。
             return Err(match tapp_permission_replacement_hint(permission) {
                 Some(hint) => format!("Unknown Tapp permission '{permission}'; {hint}"),
                 None => format!("Unknown Tapp permission '{permission}'"),

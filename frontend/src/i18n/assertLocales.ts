@@ -6,12 +6,12 @@ import agentCapsKo from './agentCaps.ko-KR.json' with { type: 'json' }
 import agentCapsZh from './agentCaps.zh-CN.json' with { type: 'json' }
 import agentCapsTw from './agentCaps.zh-TW.json' with { type: 'json' }
 import { assembleLocale } from './assembleLocale'
-import brewDe from './brew.de-DE.json' with { type: 'json' }
-import brewFr from './brew.fr-FR.json' with { type: 'json' }
-import brewJa from './brew.ja-JP.json' with { type: 'json' }
-import brewKo from './brew.ko-KR.json' with { type: 'json' }
-import brewZh from './brew.zh-CN.json' with { type: 'json' }
-import brewTw from './brew.zh-TW.json' with { type: 'json' }
+import phantasiDe from './phantasi.de-DE.json' with { type: 'json' }
+import phantasiFr from './phantasi.fr-FR.json' with { type: 'json' }
+import phantasiJa from './phantasi.ja-JP.json' with { type: 'json' }
+import phantasiKo from './phantasi.ko-KR.json' with { type: 'json' }
+import phantasiZh from './phantasi.zh-CN.json' with { type: 'json' }
+import phantasiTw from './phantasi.zh-TW.json' with { type: 'json' }
 import configDe from './config.de-DE.json' with { type: 'json' }
 import configFr from './config.fr-FR.json' with { type: 'json' }
 import configJa from './config.ja-JP.json' with { type: 'json' }
@@ -46,7 +46,7 @@ import tw from './zh-TW.json' with { type: 'json' }
 const _zh: TranslationKeys = assembleLocale(zh, {
   config: configZh,
   tapp: tappZh,
-  brew: brewZh,
+  phantasi: phantasiZh,
   merope: meropeZh,
   errors: errorsZh,
   agentCaps: agentCapsZh,
@@ -54,7 +54,7 @@ const _zh: TranslationKeys = assembleLocale(zh, {
 const _tw: TranslationKeys = assembleLocale(tw, {
   config: configTw,
   tapp: tappTw,
-  brew: brewTw,
+  phantasi: phantasiTw,
   merope: meropeTw,
   errors: errorsTw,
   agentCaps: agentCapsTw,
@@ -62,7 +62,7 @@ const _tw: TranslationKeys = assembleLocale(tw, {
 const _ja: TranslationKeys = assembleLocale(ja, {
   config: configJa,
   tapp: tappJa,
-  brew: brewJa,
+  phantasi: phantasiJa,
   merope: meropeJa,
   errors: errorsJa,
   agentCaps: agentCapsJa,
@@ -70,7 +70,7 @@ const _ja: TranslationKeys = assembleLocale(ja, {
 const _ko: TranslationKeys = assembleLocale(ko, {
   config: configKo,
   tapp: tappKo,
-  brew: brewKo,
+  phantasi: phantasiKo,
   merope: meropeKo,
   errors: errorsKo,
   agentCaps: agentCapsKo,
@@ -78,7 +78,7 @@ const _ko: TranslationKeys = assembleLocale(ko, {
 const _fr: TranslationKeys = assembleLocale(fr, {
   config: configFr,
   tapp: tappFr,
-  brew: brewFr,
+  phantasi: phantasiFr,
   merope: meropeFr,
   errors: errorsFr,
   agentCaps: agentCapsFr,
@@ -86,7 +86,7 @@ const _fr: TranslationKeys = assembleLocale(fr, {
 const _de: TranslationKeys = assembleLocale(de, {
   config: configDe,
   tapp: tappDe,
-  brew: brewDe,
+  phantasi: phantasiDe,
   merope: meropeDe,
   errors: errorsDe,
   agentCaps: agentCapsDe,

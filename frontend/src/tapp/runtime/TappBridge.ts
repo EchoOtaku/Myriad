@@ -117,7 +117,7 @@ interface PermissionCheckResult {
   requiredPermission?: TappPermission | 'public'
 }
 
-// 仅 media:control 在前端 authorize；speech/brew 走 Runtime Grant 头，由服务端强制。
+// 仅 media:control 在前端 authorize；speech/phantasi 走 Runtime Grant 头，由服务端强制。
 const SERVER_AUTHORITATIVE_HOST_PERMISSIONS = new Set<TappPermission>([
   'media:control',
 ])
@@ -356,7 +356,7 @@ export class TappBridge {
     return this.ensureLiveRuntimeGrant().getToken()
   }
 
-  /** speech/brew 等宿主路径带 Runtime Grant 头。预览无 Grant，返回 undefined。 */
+  /** speech/phantasi 等宿主路径带 Runtime Grant 头。预览无 Grant，返回 undefined。 */
   async hostAttributionHeaders(): Promise<Record<string, string> | undefined> {
     if (!this.runtimeGrant && !this.grantSeed) return undefined
     return {

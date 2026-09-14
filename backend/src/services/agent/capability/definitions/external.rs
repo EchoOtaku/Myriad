@@ -66,7 +66,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         ..Default::default()
     });
 
-    // RSSHub 实例列表（brew rsshub_instances 表，与 Brew UI 同源）
+    // RSSHub 实例列表（phantasi rsshub_instances 表，与 Phantasi UI 同源）
     registry.register(Capability {
         id: "rsshub.instances".to_string(),
         name: "RSSHub instances".to_string(),

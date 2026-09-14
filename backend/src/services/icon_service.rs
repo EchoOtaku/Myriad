@@ -1,4 +1,4 @@
-//! 写入 `{DATA_DIR}/brew/icons`（`paths().brew_icons`）。HTTP 分支每次拉取并覆盖，不读已有文件。
+//! 写入 `{DATA_DIR}/phantasi/icons`（`paths().phantasi_icons`）。HTTP 分支每次拉取并覆盖，不读已有文件。
 //!
 //! 负责下载网站图标并存储到本地，避免直接引用外链。
 
@@ -60,7 +60,7 @@ pub struct IconService {
 /// 图标文件信息
 #[derive(Debug, Clone)]
 pub struct IconInfo {
-    /// Site-root API URL (`/api/brew/icons/{filename}`), not a disk path.
+    /// Site-root API URL (`/api/phantasi/icons/{filename}`), not a disk path.
     pub local_path: String,
 }
 
@@ -68,7 +68,7 @@ impl IconService {
     /// 创建新的图标服务实例
     pub fn new() -> Self {
         // 使用统一的数据路径配置
-        let icons_dir = paths().brew_icons.clone();
+        let icons_dir = paths().phantasi_icons.clone();
 
         Self { icons_dir }
     }
@@ -122,7 +122,7 @@ impl IconService {
     /// * `icon_url` - http(s) URL or `data:image/*;base64,...`
     ///
     /// # Returns
-    /// * `Ok(Some(IconInfo))` — 写入成功；`local_path` 为 `/api/brew/icons/{filename}`
+    /// * `Ok(Some(IconInfo))` — 写入成功；`local_path` 为 `/api/phantasi/icons/{filename}`
     /// * `Ok(None)` - 下载失败但不是错误（如 404）
     /// * `Err` - 发生错误
     pub async fn download_icon(
@@ -235,7 +235,7 @@ impl IconService {
         );
 
         Ok(IconInfo {
-            local_path: format!("/api/brew/icons/{}", filename),
+            local_path: format!("/api/phantasi/icons/{}", filename),
         })
     }
 
@@ -341,7 +341,7 @@ mod tests {
             .await
             .expect("persist")
             .expect("icon info");
-        assert_eq!(info.local_path, "/api/brew/icons/source_42.png");
+        assert_eq!(info.local_path, "/api/phantasi/icons/source_42.png");
         let written = std::fs::read(dir.join("source_42.png")).expect("read icon");
         assert_eq!(written, bytes);
         let _ = std::fs::remove_dir_all(&dir);

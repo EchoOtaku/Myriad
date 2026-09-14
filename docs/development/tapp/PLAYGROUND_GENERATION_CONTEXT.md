@@ -20,7 +20,7 @@ Playground 项目至少需要 **Page** 或 **Widgets** 之一（允许 Widget-on
   Widget 可见 UI **必须**注册 `Tapp.widgets[<id>] = { render(container, props) { ... } }`
   （宿主调用 `render`）。**不要**在 Widget 层写 `Tapp.widget.register`（那是 Page 动态注册）。
   Widget 沙箱没有 `confirm` / `setTitle` / `fullscreen` / `Tapp.model3d` /
-  `Tapp.game` / 联邦 / `tappList` / `brewList`。全屏只用 `Tapp.ui.fullscreen.*`
+  `Tapp.game` / 联邦 / `tappList` / `phantasiList`。全屏只用 `Tapp.ui.fullscreen.*`
   （仅 Page）。详见 [WIDGET.md](./WIDGET.md)。
 - core 是共享层，三种沙箱都先执行它。Playground 一层一个文件（`core.js` /
   `page/index.js` / `widget/index.js`）；跨层共享在 core 里 `module.exports`，层入口
@@ -191,7 +191,7 @@ Tapp.widgets['my-widget'] = {
 
 - **Federation** 全套（`uploadMedia` → `createNote` 附件 URL、Channel/Room/Ring 等）
 - **Tapp.model3d** / `3d:generate`（仅 Page 有对象；预览无 handlers。包内 GLB 仍走 `Tapp.assets`）
-- **platform** / **report**（含 `Tapp.report.platform.*` 平台分析与本安装 `list`/`get`/`create`）/ **brewList** / **tappList**
+- **platform** / **report**（含 `Tapp.report.platform.*` 平台分析与本安装 `list`/`get`/`create`）/ **phantasiList** / **tappList**
 - **dataExchange**、**ai**、**agent**、**event** Broker、**scheduler**、宿主 **media** 控制
 - 声明式 **`Tapp.api` 执行**（预览仅 list 空表）
 - **`Tapp.background.require`**（预览无常驻；勿空写 `backgroundRequirements`）
@@ -221,7 +221,7 @@ Tapp.widgets['my-widget'] = {
   | `search` | `ai:search` | 字符串或 `{ query, searchType?, maxResults?, searchPrompt? }` | **必须** `json` |
 
   完成态读 `task.result`：`{ format, value, contextProvenance }`。业务数据在 `value`
-  （生图是 `{ url, width, height }`，`url` 是 `/api/brew/image-cache/...`，可直接作
+  （生图是 `{ url, width, height }`，`url` 是 `/api/phantasi/image-cache/...`，可直接作
   `<img src>`；下载把 `url`、整份 `task` 或 `task.result` 交给 `Tapp.file.download`，由宿主读缓存，不要 `fetch`。
   3D 用 `/api/model3d/assets/{id}` 或 `getUrl` 的返回对象；TTS 用 `{ audio }` 或 `{ base64: audio }`。
   搜索是 JSON 结果对象）。`subscribe` 的 `result` / 终态 `snapshot`
@@ -267,7 +267,7 @@ Tapp.widgets['my-widget'] = {
 
   文本流式用 `subscribe` 听 `delta`；生图 / 搜索不要 `delivery: "stream"`。
   生图参考图放在 `input.referenceImages` 有序数组中，支持 PNG/JPEG/WebP base64 data URL
-  或 `/api/brew/image-cache/...`，最多 4 张、解码后合计 10 MiB。不要放到 `context`，
+  或 `/api/phantasi/image-cache/...`，最多 4 张、解码后合计 10 MiB。不要放到 `context`，
   不要直接传 `blob:` / 外部 URL。文件选择后可用 `FileReader.readAsDataURL` 转换。
   完整字段见 [AI API](./API_REFERENCE.md#ai-api)。
 - 声明式 HTTP API 必须申请 `network:fetch`。请求体默认使用 `bodyMode: "json"`；纯文本、XML
@@ -286,7 +286,7 @@ Tapp.widgets['my-widget'] = {
   `assets/` 并调用 `getUrlMap` / `rewriteUrl`。
 - 预览验证 UI、生命周期、主题、`code.i18n`、`manifest.locales`、内存 storage/settings/shared，
   以及工作区包内 `Tapp.assets`；
-- **不要**臆造预览 mock 联邦 / Brew / platform API。
+- **不要**臆造预览 mock 联邦 / Phantasi / platform API。
 - 若生成 **正式运行后** 调用 `Tapp.tappList.install` 的商店安装代码，必须使用合法 SDK 形状
   （见 [STORE](./STORE.md) / [API_REFERENCE · Tapp 列表](./API_REFERENCE.md#tapp-列表-api)）：
   - ✅ `{ source: "store", storeSource: "<源 id 或 catalog URL>", tappId }`

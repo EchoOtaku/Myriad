@@ -1,6 +1,6 @@
 //! Host-proxied route → permission maps for Tapp attribution.
 //!
-//! Brew, speech, and federation are host capabilities that Tapp sandboxes reach
+//! Phantasi, speech, and federation are host capabilities that Tapp sandboxes reach
 //! through the same REST routes the host UI uses. Domain maps live here so the
 //! Axum middleware only validates grants, applies rate limits, and attributes
 //! traffic — it does not own fixture indexing or route→permission facts.
@@ -46,7 +46,7 @@ pub mod error_codes {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HostDomain {
     Speech,
-    Brew,
+    Phantasi,
     Federation,
 }
 
@@ -55,7 +55,7 @@ impl HostDomain {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Speech => "speech",
-            Self::Brew => "brew",
+            Self::Phantasi => "phantasi",
             Self::Federation => "federation",
         }
     }
@@ -63,14 +63,14 @@ impl HostDomain {
     pub fn from_str(value: &str) -> Option<Self> {
         match value {
             "speech" => Some(Self::Speech),
-            "brew" => Some(Self::Brew),
+            "phantasi" => Some(Self::Phantasi),
             "federation" => Some(Self::Federation),
             _ => None,
         }
     }
 
     #[cfg(test)]
-    pub const ALL: [Self; 3] = [Self::Speech, Self::Brew, Self::Federation];
+    pub const ALL: [Self; 3] = [Self::Speech, Self::Phantasi, Self::Federation];
 }
 
 #[derive(Debug, Deserialize)]
@@ -98,7 +98,7 @@ pub struct CompiledHostRoute {
 /// method + matched path template → permission, keyed by host domain.
 struct HostRouteIndex {
     speech: Vec<CompiledHostRoute>,
-    brew: Vec<CompiledHostRoute>,
+    phantasi: Vec<CompiledHostRoute>,
     federation: Vec<CompiledHostRoute>,
     /// Full fixture rows for tests.
     #[cfg(test)]
@@ -112,7 +112,7 @@ fn load_host_route_index() -> HostRouteIndex {
         .expect("host_route_permissions.json must be valid JSON");
 
     let mut speech = Vec::new();
-    let mut brew = Vec::new();
+    let mut phantasi = Vec::new();
     let mut federation = Vec::new();
     let mut seen = std::collections::BTreeSet::new();
 
@@ -138,10 +138,10 @@ fn load_host_route_index() -> HostRouteIndex {
         };
         match HostDomain::from_str(&entry.domain) {
             Some(HostDomain::Speech) => speech.push(compiled),
-            Some(HostDomain::Brew) => brew.push(compiled),
+            Some(HostDomain::Phantasi) => phantasi.push(compiled),
             Some(HostDomain::Federation) => federation.push(compiled),
             None => panic!(
-                "host_route_permissions.json: unknown domain {:?} (expected speech|brew|federation)",
+                "host_route_permissions.json: unknown domain {:?} (expected speech|phantasi|federation)",
                 entry.domain
             ),
         }
@@ -149,7 +149,7 @@ fn load_host_route_index() -> HostRouteIndex {
 
     HostRouteIndex {
         speech,
-        brew,
+        phantasi,
         federation,
         #[cfg(test)]
         entries: fixture.routes,
@@ -159,7 +159,7 @@ fn load_host_route_index() -> HostRouteIndex {
 fn routes_slice(domain: HostDomain) -> &'static [CompiledHostRoute] {
     match domain {
         HostDomain::Speech => &HOST_ROUTE_INDEX.speech,
-        HostDomain::Brew => &HOST_ROUTE_INDEX.brew,
+        HostDomain::Phantasi => &HOST_ROUTE_INDEX.phantasi,
         HostDomain::Federation => &HOST_ROUTE_INDEX.federation,
     }
 }
@@ -185,10 +185,10 @@ pub fn speech_permission(method: &str, path: &str) -> Option<TappPermission> {
     permission_for(HostDomain::Speech, method, path)
 }
 
-/// Route → permission map for `/api/brew` (mirrors sandbox `brewList.*` actions).
-/// Host-only brew paths (WebSocket, RSSHub instance admin, offline sync) stay unmapped so grant-bearing requests to them are rejected.
-pub fn brew_permission(method: &str, path: &str) -> Option<TappPermission> {
-    permission_for(HostDomain::Brew, method, path)
+/// Route → permission map for `/api/phantasi` (mirrors sandbox `phantasiList.*` actions).
+/// Host-only phantasi paths (WebSocket, RSSHub instance admin, offline sync) stay unmapped so grant-bearing requests to them are rejected.
+pub fn phantasi_permission(method: &str, path: &str) -> Option<TappPermission> {
+    permission_for(HostDomain::Phantasi, method, path)
 }
 
 /// Route → permission map for `/api/federation`.
@@ -343,7 +343,7 @@ mod tests {
         let actions: ActionFixture =
             serde_json::from_str(ACTION_PERMISSIONS_JSON).expect("valid action fixture");
 
-        for domain in ["speech", "brew", "federation"] {
+        for domain in ["speech", "phantasi", "federation"] {
             let host_perms: BTreeSet<&str> = host
                 .routes
                 .iter()
@@ -405,30 +405,30 @@ mod tests {
     }
 
     #[test]
-    fn brew_routes_map_to_sandbox_permissions() {
+    fn phantasi_routes_map_to_sandbox_permissions() {
         assert_eq!(
-            brew_permission("GET", "/api/brew/items/{id}"),
-            Some(TappPermission::BrewRead)
+            phantasi_permission("GET", "/api/phantasi/items/{id}"),
+            Some(TappPermission::PhantasiRead)
         );
         assert_eq!(
-            brew_permission("POST", "/api/brew/items/{id}/read"),
-            Some(TappPermission::BrewWrite)
+            phantasi_permission("POST", "/api/phantasi/items/{id}/read"),
+            Some(TappPermission::PhantasiWrite)
         );
         assert_eq!(
-            brew_permission("GET", "/api/brew/items/{id}/comments"),
-            Some(TappPermission::BrewRead)
+            phantasi_permission("GET", "/api/phantasi/items/{id}/comments"),
+            Some(TappPermission::PhantasiRead)
         );
         assert_eq!(
-            brew_permission("POST", "/api/brew/items/{id}/comments"),
-            Some(TappPermission::BrewCommentWrite)
+            phantasi_permission("POST", "/api/phantasi/items/{id}/comments"),
+            Some(TappPermission::PhantasiCommentWrite)
         );
         assert_eq!(
-            brew_permission("POST", "/api/brew/sources"),
-            Some(TappPermission::BrewManage)
+            phantasi_permission("POST", "/api/phantasi/sources"),
+            Some(TappPermission::PhantasiManage)
         );
-        assert_eq!(brew_permission("GET", "/api/brew/ws"), None);
-        assert_eq!(brew_permission("POST", "/api/brew/sync-states"), None);
-        assert_eq!(brew_permission("GET", "/api/brew/rsshub/instances"), None);
+        assert_eq!(phantasi_permission("GET", "/api/phantasi/ws"), None);
+        assert_eq!(phantasi_permission("POST", "/api/phantasi/sync-states"), None);
+        assert_eq!(phantasi_permission("GET", "/api/phantasi/rsshub/instances"), None);
     }
 
     #[test]
@@ -664,16 +664,16 @@ mod tests {
     #[test]
     fn host_write_methods_are_rate_limited_by_permission_class() {
         assert_eq!(
-            host_attribution_rate_limit_operation("POST", TappPermission::BrewWrite),
-            Some("brew.write")
+            host_attribution_rate_limit_operation("POST", TappPermission::PhantasiWrite),
+            Some("phantasi.write")
         );
         assert_eq!(
-            host_attribution_rate_limit_operation("PUT", TappPermission::BrewManage),
-            Some("brew.manage")
+            host_attribution_rate_limit_operation("PUT", TappPermission::PhantasiManage),
+            Some("phantasi.manage")
         );
         assert_eq!(
-            host_attribution_rate_limit_operation("DELETE", TappPermission::BrewCommentWrite),
-            Some("brew.commentWrite")
+            host_attribution_rate_limit_operation("DELETE", TappPermission::PhantasiCommentWrite),
+            Some("phantasi.commentWrite")
         );
         assert_eq!(
             host_attribution_rate_limit_operation("POST", TappPermission::FederationPost),
@@ -724,7 +724,7 @@ mod tests {
             None
         );
         assert_eq!(
-            host_attribution_rate_limit_operation("HEAD", TappPermission::BrewWrite),
+            host_attribution_rate_limit_operation("HEAD", TappPermission::PhantasiWrite),
             None
         );
         assert_eq!(
@@ -741,11 +741,11 @@ mod tests {
     #[test]
     fn host_read_permissions_never_rate_limited() {
         assert_eq!(
-            host_attribution_rate_limit_operation("GET", TappPermission::BrewRead),
+            host_attribution_rate_limit_operation("GET", TappPermission::PhantasiRead),
             None
         );
         assert_eq!(
-            host_attribution_rate_limit_operation("POST", TappPermission::BrewRead),
+            host_attribution_rate_limit_operation("POST", TappPermission::PhantasiRead),
             None
         );
         assert_eq!(
@@ -768,7 +768,7 @@ mod tests {
             if matches!(method_upper.as_str(), "GET" | "HEAD" | "OPTIONS")
                 || matches!(
                     permission,
-                    TappPermission::BrewRead | TappPermission::FederationRead
+                    TappPermission::PhantasiRead | TappPermission::FederationRead
                 )
             {
                 assert_eq!(

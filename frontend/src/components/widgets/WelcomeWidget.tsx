@@ -67,10 +67,10 @@ export const WelcomeWidget = memo(
           color: '#06b6d4',
         },
         {
-          title: t.widgets.brewReading,
-          description: t.widgets.brewDesc,
-          features: [t.widgets.brewFeature],
-          path: '/brew',
+          title: t.widgets.phantasiReading,
+          description: t.widgets.phantasiDesc,
+          features: [t.widgets.phantasiFeature],
+          path: '/phantasi',
           color: '#f97316',
         },
         {
@@ -183,7 +183,7 @@ export const WelcomeWidget = memo(
           </svg>
         )
       }
-      if (guide.path === '/brew') {
+      if (guide.path === '/phantasi') {
         return (
           <svg
             className={iconClass}

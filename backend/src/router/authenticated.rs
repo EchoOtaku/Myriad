@@ -244,17 +244,17 @@ pub(super) fn build_authenticated_router(
             "/api/model3d",
             api::model3d::create_routes(app_state.clone()),
         )
-        // Brew 阅读 API
+        // Phantasi 阅读 API
         // RSS/Atom 订阅管理、文章获取、阅读状态同步
         .nest(
-            "/api/brew",
-            api::brew::create_brew_routes(app_state.clone()),
+            "/api/phantasi",
+            api::phantasi::create_phantasi_routes(app_state.clone()),
         )
-        // Brewlia AI 增强 API
+        // Phantasiai AI 增强 API
         // 注释 / 播客脚本 / 风格标签
         .nest(
-            "/api/brewlia",
-            api::brewlia::create_brewlia_routes(app_state.clone()),
+            "/api/phantasiai",
+            api::phantasiai::create_phantasiai_routes(app_state.clone()),
         )
         // Tapp API
         // Platform reads: public site cache + Runtime Grant (guest widgets OK).
@@ -735,7 +735,7 @@ pub(super) fn build_authenticated_router(
             get(api::proxy::proxy_netease_song),
         )
         // Guest-playable: playlist/lyrics/song stay public; audio + play-url
-        // stay public too so brew embeds / music player work without login.
+        // stay public too so phantasi embeds / music player work without login.
         .route(
             "/api/proxy/music/netease/audio/{id}",
             get(api::proxy::proxy_netease_audio),
@@ -893,7 +893,7 @@ pub(super) fn build_authenticated_router(
                 middleware::auth::admin_middleware,
             )),
         )
-        // Public Steam Store appdetails (no API key). Used by brew embedProcessor
+        // Public Steam Store appdetails (no API key). Used by phantasi embedProcessor
         // without credentials — must stay guest-reachable. Debug routes above
         // remain admin (they use server steam_api_key).
         .route(
@@ -1232,7 +1232,7 @@ mod security_route_wiring_tests {
     #[test]
     fn guest_music_play_and_steam_game_are_public() {
         let src = router_src();
-        // Guest brew/music: no auth/admin layer on play-url / audio / steam store details.
+        // Guest phantasi/music: no auth/admin layer on play-url / audio / steam store details.
         assert!(
             !route_has_middleware(
                 src,

@@ -1,0 +1,11 @@
+[package]
+name = "myriad-phantasi"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Pure Phantasi domain rules and legacy rename catalog for Myriad."
+authors = ["Myriad Contributors"]
+license = "AGPL-3.0-only"
+
+[dependencies]
+serde_json = "1"

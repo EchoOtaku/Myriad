@@ -267,7 +267,7 @@ async fn handle(
     // ActivityPub/MFP endpoints registered outside /api (WebFinger discovery,
     // NodeInfo, actor documents and inboxes) — remote instances resolve
     // @user@domain against these, so they must not fall through to the frontend.
-    // SEO: crawler UAs on `/`, module indexes, /tapp/run/* and /brew/item/*
+    // SEO: crawler UAs on `/`, module indexes, /tapp/run/* and /phantasi/item/*
     // get the backend HTML shell; browsers get SPA.
     let ua = req
         .headers()
@@ -544,7 +544,7 @@ fn is_federation_path(path: &str) -> bool {
             "/reports/",
             "/tapps/",
             "/library/",
-            "/brew/articles/",
+            "/phantasi/articles/",
         ]
         .iter()
         .any(|prefix| path.len() > prefix.len() && path.starts_with(prefix))
@@ -733,9 +733,9 @@ fn wants_seo_html_shell(user_agent: &str) -> bool {
 ///
 /// `user_agent` is used only for crawler HTML shells (crawlers → backend, humans → SPA).
 fn is_seo_document_shell_path(path: &str) -> bool {
-    matches!(path, "/" | "/tapp" | "/brew" | "/library" | "/reports")
+    matches!(path, "/" | "/tapp" | "/phantasi" | "/library" | "/reports")
         || path.starts_with("/tapp/run/")
-        || path.starts_with("/brew/item/")
+        || path.starts_with("/phantasi/item/")
 }
 
 #[cfg(test)]
@@ -751,7 +751,7 @@ fn is_backend_path_for(path: &str, user_agent: &str, query: &str) -> bool {
         || path == "/sitemap.xml"
         || path == "/robots.txt"
         || path == "/llms.txt"
-        || path == "/brew/notes.xml"
+        || path == "/phantasi/notes.xml"
     {
         return true;
     }
@@ -1329,7 +1329,7 @@ mod tests {
             "/reports/id",
             "/tapps/id",
             "/library/id",
-            "/brew/articles/id",
+            "/phantasi/articles/id",
             "/media/federation/file",
         ] {
             assert!(is_federation_path(path), "missing {path}");
@@ -1340,8 +1340,8 @@ mod tests {
             "/reports/",
             "/library",
             "/library/",
-            "/brew",
-            "/brew/item/id",
+            "/phantasi",
+            "/phantasi/item/id",
             "/api/tapps",
             "/api/agent/process",
             "/api/profile/user-info",
@@ -1645,13 +1645,13 @@ mod tests {
         assert!(is_backend_path("/sitemap.xml", browser));
         assert!(is_backend_path("/robots.txt", browser));
         assert!(is_backend_path("/llms.txt", browser));
-        assert!(is_backend_path("/brew/notes.xml", browser));
-        assert!(is_backend_path("/api/brew/notes.xml", browser));
+        assert!(is_backend_path("/phantasi/notes.xml", browser));
+        assert!(is_backend_path("/api/phantasi/notes.xml", browser));
         assert!(is_backend_path("/api/seo/sitemap.xml", browser));
-        // Homepage / module indexes / Tapp / Brew SEO shells: crawlers only
+        // Homepage / module indexes / Tapp / Phantasi SEO shells: crawlers only
         assert!(is_backend_path("/", googlebot));
         assert!(is_backend_path("/tapp", googlebot));
-        assert!(is_backend_path("/brew", "facebookexternalhit/1.1"));
+        assert!(is_backend_path("/phantasi", "facebookexternalhit/1.1"));
         assert!(is_backend_path("/library", googlebot));
         assert!(is_backend_path("/reports", googlebot));
         assert!(!is_backend_path("/", browser));
@@ -1665,9 +1665,9 @@ mod tests {
             "facebookexternalhit/1.1"
         ));
         assert!(!is_backend_path("/tapp/run/com.example.app", browser));
-        assert!(is_backend_path("/brew/item/42", googlebot));
-        assert!(is_backend_path("/brew/item/42", "Twitterbot/1.0"));
-        assert!(!is_backend_path("/brew/item/42", browser));
+        assert!(is_backend_path("/phantasi/item/42", googlebot));
+        assert!(is_backend_path("/phantasi/item/42", "Twitterbot/1.0"));
+        assert!(!is_backend_path("/phantasi/item/42", browser));
         // WeChat / QQ share: first document is the SEO shell; `?_spa=1` is SPA.
         assert!(is_backend_path(
             "/",
@@ -1678,7 +1678,7 @@ mod tests {
             "Mozilla/5.0 MicroMessenger/8.0.42 NetType/WIFI",
             "_spa=1"
         ));
-        assert!(is_backend_path("/brew/item/42", "QQ-URL-Preview/1.0"));
+        assert!(is_backend_path("/phantasi/item/42", "QQ-URL-Preview/1.0"));
         assert!(is_backend_path("/", "Mozilla/5.0 Weibo"));
         // GSC HTML-tag verification crawler (not Googlebot)
         assert!(is_backend_path(

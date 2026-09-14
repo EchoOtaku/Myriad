@@ -77,7 +77,7 @@ describe('image references through the sandbox and host transport', () => {
           prompt: 'Use the first subject and the second style',
           referenceImages: [
             `data:image/png;base64,${'A'.repeat(300_000)}`,
-            `/api/brew/image-cache/aa/${'a'.repeat(64)}.png`,
+            `/api/phantasi/image-cache/aa/${'a'.repeat(64)}.png`,
           ],
         },
         output: { format: 'image' },

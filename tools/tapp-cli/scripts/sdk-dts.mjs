@@ -291,7 +291,7 @@ export interface TappAIImageInput {
   width?: number | string
   height?: number | string
   /**
-   * Ordered PNG/JPEG/WebP base64 data URLs or /api/brew/image-cache/ paths.
+   * Ordered PNG/JPEG/WebP base64 data URLs or /api/phantasi/image-cache/ paths.
    * At most 4 images, at most 10 MiB of decoded image data in total.
    */
   referenceImages?: string[]

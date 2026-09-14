@@ -196,7 +196,7 @@ export function pageNameForPath(
   nav: {
     home: string
     library: string
-    brew: string
+    phantasi: string
     reports: string
     tapp: string
     config: string
@@ -208,7 +208,7 @@ export function pageNameForPath(
   const path = pathname.replaceAll(/\/+$/g, '') || '/'
   if ((path === '/' || path === '') && editingHome) return editMode
   if (path === '/library' || path.startsWith('/library')) return nav.library
-  if (path === '/brew' || path.startsWith('/brew')) return nav.brew
+  if (path === '/phantasi' || path.startsWith('/phantasi')) return nav.phantasi
   if (path === '/reports' || path.startsWith('/reports')) return nav.reports
   if (path === '/tapp' || path.startsWith('/tapp')) return nav.tapp
   if (path === '/agent/settings' || path.startsWith('/agent/settings')) {

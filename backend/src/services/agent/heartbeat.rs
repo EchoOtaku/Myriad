@@ -964,14 +964,14 @@ mod tests {
         let created = mgr
             .add_task(
                 None,
-                "Brew Daily Summary".into(),
+                "Phantasi Daily Summary".into(),
                 "0 9 * * *".into(),
-                "总结 brew 订阅".into(),
+                "总结 phantasi 订阅".into(),
                 true,
             )
             .await
             .unwrap();
-        assert_eq!(created.id, "brew-daily-summary");
+        assert_eq!(created.id, "phantasi-daily-summary");
         assert!(created.enabled);
 
         // 中文名回退 task / task-N
@@ -992,14 +992,14 @@ mod tests {
         let dup = mgr
             .add_task(
                 None,
-                "Brew Daily Summary".into(),
+                "Phantasi Daily Summary".into(),
                 "30 9 * * *".into(),
                 "再总结一次".into(),
                 true,
             )
             .await
             .unwrap();
-        assert_eq!(dup.id, "brew-daily-summary-2");
+        assert_eq!(dup.id, "phantasi-daily-summary-2");
 
         // 指定 id 冲突
         let err = mgr
@@ -1015,7 +1015,7 @@ mod tests {
         assert!(err.contains("already exists"), "{err}");
 
         let content = tokio::fs::read_to_string(&path).await.unwrap();
-        assert!(content.contains("brew-daily-summary"), "{content}");
+        assert!(content.contains("phantasi-daily-summary"), "{content}");
         assert!(content.contains("# Keep me"), "正文应保留: {content}");
         assert!(!content.contains("lastRun"), "运行时状态不应落盘");
 
@@ -1035,7 +1035,7 @@ mod tests {
 
     #[test]
     fn test_slugify_id() {
-        assert_eq!(slugify_id("Brew Daily Summary"), "brew-daily-summary");
+        assert_eq!(slugify_id("Phantasi Daily Summary"), "phantasi-daily-summary");
         assert_eq!(slugify_id("  Hello__World!! "), "hello-world");
         assert_eq!(slugify_id("每天检查"), "");
         assert_eq!(slugify_id("a--b"), "a-b");

@@ -60,7 +60,7 @@ export interface AiUsageSourceLabels {
   merope: string
   playground: string
   speech: string
-  brewlia: string
+  phantasiai: string
   prompt: string
   seo: string
   internal: string
@@ -80,7 +80,7 @@ export function aiSourceDisplayName(
   if (key === 'merope') return labels.merope
   if (key === 'playground') return labels.playground
   if (key === 'speech') return labels.speech
-  if (key === 'brewlia') return labels.brewlia
+  if (key === 'phantasiai') return labels.phantasiai
   if (key === 'prompt') return labels.prompt
   if (key === 'seo') return labels.seo
   if (key === 'internal') return labels.internal

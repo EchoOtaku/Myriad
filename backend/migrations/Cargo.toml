@@ -10,6 +10,7 @@ name = "migration"
 path = "lib.rs"
 
 [dependencies]
+myriad-phantasi = { path = "../../crates/myriad-phantasi" }
 sea-orm-migration = { version = "2.0", default-features = false, features = [
   "sqlx-postgres",
   "runtime-tokio-rustls",
@@ -23,6 +24,9 @@ features = [
   "runtime-tokio-rustls",
   "macros",
 ]
+
+[dependencies.serde_json]
+version = "1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

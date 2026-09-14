@@ -1133,7 +1133,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       manifest: packed,
     })
   }
-  const brew = currentCopy().brew
+  const phantasi = currentCopy().phantasi
   if (
     code === 'notion_fetch_failed' ||
     /^failed to fetch notion/i.test(raw) ||
@@ -1151,29 +1151,29 @@ export function userFacingError(reason: unknown, fallback?: string): string {
         : ''
     const http = status ? `HTTP ${status[1]}` : ''
     return joinParts(
-      brew.errorNotionFetch,
+      phantasi.errorNotionFetch,
       keep && keep !== http ? keep : '',
       http,
-      usefulExtra(hint, brew.errorNotionFetch, keep, http),
+      usefulExtra(hint, phantasi.errorNotionFetch, keep, http),
     )
   }
   if (
     code === 'feed_parse_failed' ||
     /^failed to parse feed\. please provide a name/i.test(raw)
   ) {
-    return brew.errorFeedNeedName
+    return phantasi.errorFeedNeedName
   }
   if (/^failed to parse feed/i.test(raw)) {
-    return classified(t.brewParseFailed, raw, hint)
+    return classified(t.phantasiParseFailed, raw, hint)
   }
   if (
     code === 'feed_discover_failed' ||
     /^unable to discover rss/i.test(raw)
   ) {
-    return classified(brew.errorDiscoverFailed, raw, hint)
+    return classified(phantasi.errorDiscoverFailed, raw, hint)
   }
   if (/^invalid feed url/i.test(raw)) {
-    return classified(t.brewInvalidUrl, raw, hint)
+    return classified(t.phantasiInvalidUrl, raw, hint)
   }
   if (
     /^failed to load config(uration)?$/i.test(raw)
@@ -1659,18 +1659,18 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (/^未知标题$/.test(raw)) return t.unknownTitle
   if (/^未命名内容$/.test(raw)) return t.untitledContent
   if (/^未知用户$/.test(raw)) return currentCopy().userModal.unknownUser
-  if (/^未分类$/.test(raw)) return currentCopy().brew.uncategorized
+  if (/^未分类$/.test(raw)) return currentCopy().phantasi.uncategorized
   if (/^最新文章$|^Latest articles$/i.test(raw)) {
-    return currentCopy().brew.latestArticles
+    return currentCopy().phantasi.latestArticles
   }
   if (/^标题不能为空$|^A title is required$/i.test(raw)) {
-    return currentCopy().brew.noteTitleRequired
+    return currentCopy().phantasi.noteTitleRequired
   }
   const titleTooLong = raw.match(
     /^标题最多 (\d+) 字，现在有 (\d+) 字$|^Titles can be at most (\d+) characters \(this one is (\d+)\)$/i,
   )
   if (titleTooLong) {
-    return fill(currentCopy().brew.noteTitleTooLong, {
+    return fill(currentCopy().phantasi.noteTitleTooLong, {
       max: titleTooLong[1] || titleTooLong[3] || '',
       chars: titleTooLong[2] || titleTooLong[4] || '',
     })
@@ -1679,19 +1679,19 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     /^正文最多 (\d+) 字，现在有 (\d+) 字$|^Notes can be at most (\d+) characters \(this one is (\d+)\)$/i,
   )
   if (bodyTooLong) {
-    return fill(currentCopy().brew.noteBodyTooLong, {
+    return fill(currentCopy().phantasi.noteBodyTooLong, {
       max: bodyTooLong[1] || bodyTooLong[3] || '',
       chars: bodyTooLong[2] || bodyTooLong[4] || '',
     })
   }
   if (/^Note draft was updated elsewhere$/i.test(raw)) {
-    return currentCopy().brew.noteRevisionConflict
+    return currentCopy().phantasi.noteRevisionConflict
   }
   if (/^That time has already passed$/i.test(raw)) {
-    return currentCopy().brew.noteSchedulePast
+    return currentCopy().phantasi.noteSchedulePast
   }
   if (/^A schedule time is required$/i.test(raw)) {
-    return currentCopy().brew.noteScheduleNeedTime
+    return currentCopy().phantasi.noteScheduleNeedTime
   }
   if (/^游客$/.test(raw)) return t.guestLabel
   const userNumber = raw.match(/^用户#(\d+)$/)
@@ -1737,13 +1737,13 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (/^网易云音乐用户$/.test(raw)) return t.neteaseMusicUser
   if (/^Bangumi 用户$/.test(raw)) return t.bangumiUser
   if (/^MyAnimeList 用户$/.test(raw)) return t.malUser
-  if (/^智能阅读列表$/.test(raw)) return currentCopy().brew.smartReadingList
-  if (/^订阅源$/.test(raw)) return currentCopy().brew.boardFeeds
-  if (/^已读$/.test(raw)) return t.brewMarkRead
-  if (/^未读$/.test(raw)) return t.brewMarkUnread
-  if (/^已收藏$/.test(raw)) return t.brewMarkStarred
-  if (/^取消收藏$/.test(raw)) return t.brewMarkUnstarred
-  if (/^稍后阅读$/.test(raw)) return t.brewMarkLater
+  if (/^智能阅读列表$/.test(raw)) return currentCopy().phantasi.smartReadingList
+  if (/^订阅源$/.test(raw)) return currentCopy().phantasi.boardFeeds
+  if (/^已读$/.test(raw)) return t.phantasiMarkRead
+  if (/^未读$/.test(raw)) return t.phantasiMarkUnread
+  if (/^已收藏$/.test(raw)) return t.phantasiMarkStarred
+  if (/^取消收藏$/.test(raw)) return t.phantasiMarkUnstarred
+  if (/^稍后阅读$/.test(raw)) return t.phantasiMarkLater
   if (/^请提供更多信息$|^Please provide more information\.?$/i.test(raw)) {
     return t.agentNeedMoreInfo
   }
@@ -1806,11 +1806,11 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.confirmAddFeed
   }
   if (
-    /^即将控制 Brew|^This will start, stop, or refresh the Brew scheduler/i.test(
+    /^即将控制 Phantasi|^This will start, stop, or refresh the Phantasi scheduler/i.test(
       raw,
     )
   ) {
-    return t.confirmBrewSchedule
+    return t.confirmPhantasiSchedule
   }
   if (
     /^即将向外部 URL|^This will send an HTTP request to an external URL/i.test(
@@ -2007,7 +2007,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   }
   if (/^failed to load (source|articles)(?:\s|:|$)/i.test(raw)) {
     const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
-    return classified(joinParts(t.brewLoadFailed, action), raw, hint)
+    return classified(joinParts(t.phantasiLoadFailed, action), raw, hint)
   }
   if (/^failed to (find|load) article(?:\s|:|$)/i.test(raw)) {
     return classified(t.articleLoadFailed, raw, hint)
@@ -2020,10 +2020,10 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return classified(t.iconSaveFailed, raw, hint)
   }
   if (
-    /^failed to (check existing brew source|find brew source)/i.test(raw)
+    /^failed to (check existing phantasi source|find phantasi source)/i.test(raw)
   ) {
     const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
-    return classified(joinParts(t.brewLoadFailed, action), raw, hint)
+    return classified(joinParts(t.phantasiLoadFailed, action), raw, hint)
   }
   if (/^failed to (find|update|create) reading state/i.test(raw)) {
     const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
@@ -2259,12 +2259,12 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       raw,
     )
   ) {
-    return currentCopy().brew.errorDiscoverFailed
+    return currentCopy().phantasi.errorDiscoverFailed
   }
   if (
     /notion is not configured|notion api key 未配置/i.test(raw)
   ) {
-    return currentCopy().brew.errorNotionFetch
+    return currentCopy().phantasi.errorNotionFetch
   }
   if (/^failed to submit refresh$|^提交失败/.test(raw)) {
     return t.taskSubmitFailed
@@ -2555,17 +2555,17 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.gameMessageInvalid
   }
   if (/^failed to fetch feed/i.test(raw)) {
-    return classified(t.brewRefreshFailed, raw, hint)
+    return classified(t.phantasiRefreshFailed, raw, hint)
   }
   if (
-    /^failed to (fetch|count) brew /i.test(raw) ||
+    /^failed to (fetch|count) phantasi /i.test(raw) ||
     /^failed to count (starred|read) items/i.test(raw) ||
     /^failed to (list sources|find source|list categories|find category|list articles|export sources)/i.test(
       raw,
     )
   ) {
     const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
-    return classified(joinParts(t.brewLoadFailed, action), raw, hint)
+    return classified(joinParts(t.phantasiLoadFailed, action), raw, hint)
   }
   if (
     /^failed to (save|update) source/i.test(raw) ||
@@ -2576,20 +2576,20 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
     return classified(
-      joinParts(t.brewSourceSaveFailed, action),
+      joinParts(t.phantasiSourceSaveFailed, action),
       raw,
       hint,
     )
   }
   if (/^failed to delete source/i.test(raw)) {
-    return classified(t.brewSourceDeleteFailed, raw, hint)
+    return classified(t.phantasiSourceDeleteFailed, raw, hint)
   }
   if (/^failed to (save|update) category/i.test(raw)) {
     const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
-    return classified(joinParts(t.brewCategorySaveFailed, action), raw, hint)
+    return classified(joinParts(t.phantasiCategorySaveFailed, action), raw, hint)
   }
   if (/^failed to delete category/i.test(raw)) {
-    return classified(t.brewCategoryDeleteFailed, raw, hint)
+    return classified(t.phantasiCategoryDeleteFailed, raw, hint)
   }
 
   const byStatus = status > 0 ? httpStatusMessage(status) : ''

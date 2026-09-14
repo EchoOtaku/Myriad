@@ -63,8 +63,8 @@
     "book": "书籍",
     "showBook": "显示书籍",
     "expandFilters": "点击展开筛选",
-    "brew": "Brew",
-    "brewReading": "Brew 阅读",
+    "phantasi": "手帐",
+    "phantasiReading": "手帐",
     "agent": "Agent",
     "tapp": "Tapp 应用",
     "openTapp": "打开 Tapp 应用"
@@ -130,7 +130,7 @@
     "steps": {
       "nav": {
         "title": "导航",
-        "body": "切换首页、资料库、Brew 阅读、平台报告与 Tapp 应用。"
+        "body": "切换首页、资料库、手帐、平台报告与 Tapp 应用。"
       },
       "home-grid": {
         "title": "宫格",
@@ -531,9 +531,9 @@
     "tappShortcut": "Tapp 快捷方式",
     "gamePresence": "米哈游游戏卡片",
     "visitorStats": "访客统计",
-    "brewSource": "订阅源磁贴",
-    "brewTopic": "主题聚合",
-    "brewFeatured": "Brew 精选",
+    "phantasiSource": "订阅源磁贴",
+    "phantasiTopic": "主题聚合",
+    "phantasiFeatured": "手帐精选",
     "githubRepos": "GitHub 仓库",
     "githubReposField": "仓库",
     "githubReposFieldHint": "GitHub 地址或 owner/repo",
@@ -543,9 +543,9 @@
     "dualLayerAnalysis": "各平台画像与数据洞察",
     "libraryFeature": "游戏、影视、音乐收在一处",
     "platformProfile": "平台画像与报告生成",
-    "brewReading": "Brew 阅读",
-    "brewDesc": "RSS 订阅管理",
-    "brewFeature": "多源聚合，AI 辅助",
+    "phantasiReading": "手帐",
+    "phantasiDesc": "RSS 订阅管理",
+    "phantasiFeature": "多源聚合，AI 辅助",
     "tappApps": "Tapp 应用",
     "tappDesc": "扩展应用",
     "tappFeature": "小组件、工具、扩展"
@@ -553,15 +553,15 @@
   "friendLinksWidget": {
     "siteCount": "{count} 个站点",
     "emptyTitle": "还没有友情链接",
-    "emptyDescription": "前往 Brew 阅读添加",
+    "emptyDescription": "前往手帐添加",
     "loadFailed": "友情链接暂时不可用",
-    "openBrew": "在 Brew 阅读中查看友情链接",
+    "openPhantasi": "在手帐中查看友情链接",
     "visitSite": "访问 {name}",
     "samplePersonalBlog": "朋友的博客",
     "sampleLifeAndNotes": "生活与随笔",
     "sampleTechNotes": "技术札记",
     "sampleCodeAndIdeas": "代码与想法",
-    "sampleDesignJournal": "设计手记",
+    "sampleDesignJournal": "设计笔记",
     "sampleDesignAndInspiration": "设计与灵感",
     "samplePhotoAlbum": "摄影集",
     "sampleLightAndJourneys": "光影与旅途"
@@ -704,7 +704,7 @@
       "routes": {
         "home": "首页",
         "library": "库",
-        "brew": "资讯",
+        "phantasi": "资讯",
         "reports": "报告",
         "config": "设置",
         "tapp": "Tapp",
@@ -891,7 +891,7 @@
       "button": "撤销",
       "did": {
         "navigate": "刚跳了一次页面",
-        "brew_open_article": "刚打开了一篇文章"
+        "phantasi_open_article": "刚打开了一篇文章"
       }
     }
   },

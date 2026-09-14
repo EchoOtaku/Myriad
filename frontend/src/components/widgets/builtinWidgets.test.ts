@@ -38,7 +38,7 @@ test('note catalog uses hosts, not a special-case blacklist', () => {
   assert.ok(noteIds.includes('tapp-shortcut'))
   assert.ok(!noteIds.includes('welcome'))
   assert.ok(!noteIds.includes('agent-persona'))
-  assert.ok(!noteIds.includes('brew-featured'))
+  assert.ok(!noteIds.includes('phantasi-featured'))
   const homeIds = getBuiltinWidgets(widgetsI18n, 'home').map(({ id }) => id)
   const panelIds = getBuiltinWidgets(widgetsI18n, 'control-panel').map(({ id }) => id)
   assert.ok(homeIds.includes('welcome'))

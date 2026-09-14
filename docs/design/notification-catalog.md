@@ -19,7 +19,7 @@ and color communicate status, so the UI does not need 28 unrelated pictograms.
 | `agent`      | Agent tasks      | 人设贴纸，没有则 `/logo.webp`          |
 | `heartbeat`  | Agent Heartbeat  | `/icons/notifications/heartbeat.webp` |
 | `mcp`        | MCP tool servers | `/icons/notifications/mcp.webp`       |
-| `brew`       | Brew             | `/icons/notifications/brew.webp`      |
+| `phantasi`       | Phantasi             | `/icons/notifications/phantasi.webp`      |
 | `tapp`       | Tapp runtime     | `/icons/notifications/tapp.webp`      |
 | `updater`    | System updater   | `/icons/notifications/updater.webp`   |
 | `federation` | Federation       | `/icons/notifications/aro.webp`       |
@@ -40,7 +40,7 @@ These are intentionally broader than event keys so old history remains readable:
 | Agent | `task_progress`, `task_completed`, `task_failed`, `task_cancelled`, `agent_clarification` |
 | Heartbeat | `heartbeat_result` |
 | MCP | `mcp_server_status` |
-| Brew | `brew_new_items`, `brew_source_error` |
+| Phantasi | `phantasi_new_items`, `phantasi_source_error` |
 | Tapp | `tapp_notification` |
 | Updater | `updater_status` |
 | Federation | `federation_message`, `federation_follow`, `federation_invite` |
@@ -60,8 +60,8 @@ These are intentionally broader than event keys so old history remains readable:
 | Heartbeat | `heartbeat.failed` | Heartbeat scheduled task failure |
 | MCP | `mcp.connected` | MCP server connection/recovery |
 | MCP | `mcp.disconnected` | MCP server connection/restart failure |
-| Brew | `brew.new_items` | Feed refresh with new items |
-| Brew | `brew.source_error` | Feed reaches the consecutive-error threshold |
+| Phantasi | `phantasi.new_items` | Feed refresh with new items |
+| Phantasi | `phantasi.source_error` | Feed reaches the consecutive-error threshold |
 | System | `platform.sync.failed` | Connected-platform auto-refresh failure |
 | Tapp | `tapp.message` | Tapp queued informational notification |
 | Tapp | `tapp.warning` | Tapp queued warning |

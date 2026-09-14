@@ -90,10 +90,10 @@ mod tests {
     #[test]
     fn same_topic_continues_the_segment() {
         let t0 = Utc::now();
-        let first = next_attention_segment(None, "brew.source_error", "feed failed", "e1", t0);
+        let first = next_attention_segment(None, "phantasi.source_error", "feed failed", "e1", t0);
         let t1 = t0 + Duration::seconds(5);
         let second =
-            next_attention_segment(Some(&first), "brew.source_error", "still failing", "e2", t1);
+            next_attention_segment(Some(&first), "phantasi.source_error", "still failing", "e2", t1);
         assert_eq!(second.event_ids.len(), 2);
         assert_eq!(second.opened_at, first.opened_at);
         assert_eq!(second.last_touched_at, t1);
@@ -103,7 +103,7 @@ mod tests {
     #[test]
     fn topic_change_opens_a_new_segment() {
         let t0 = Utc::now();
-        let first = next_attention_segment(None, "brew.source_error", "feed failed", "e1", t0);
+        let first = next_attention_segment(None, "phantasi.source_error", "feed failed", "e1", t0);
         let t1 = t0 + Duration::seconds(5);
         let second = next_attention_segment(Some(&first), "agent.task_completed", "done", "e2", t1);
         assert_eq!(second.event_ids, vec!["e2".to_string()]);
@@ -114,7 +114,7 @@ mod tests {
     #[test]
     fn expired_segment_is_not_read() {
         let stale = AttentionSegment {
-            topic: "brew.source_error".into(),
+            topic: "phantasi.source_error".into(),
             inner: "old".into(),
             opened_at: Utc::now() - Duration::seconds(ATTENTION_TTL_SECS + 30),
             last_touched_at: Utc::now() - Duration::seconds(ATTENTION_TTL_SECS + 10),

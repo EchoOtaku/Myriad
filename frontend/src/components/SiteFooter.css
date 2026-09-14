@@ -343,6 +343,6 @@ html.dark .tooltip-content {
   }
 }
 
-body:has([data-brew-reader='true']) .site-footer {
+body:has([data-phantasi-reader='true']) .site-footer {
   display: none;
 }

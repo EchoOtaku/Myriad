@@ -160,7 +160,7 @@ editor files are not packed into `.tapp`.
 `usage` to `TappAIUsageSnapshot`.
 
 Image tasks accept ordered references in `input.referenceImages`: up to four
-PNG/JPEG/WebP base64 data URLs or local `/api/brew/image-cache/...` paths, with
+PNG/JPEG/WebP base64 data URLs or local `/api/phantasi/image-cache/...` paths, with
 at most 10 MiB of decoded image data in total. Runtime validation enforces these
 limits; editor types do not verify file contents or provider capabilities. See
 the [AI Task examples](../../docs/development/tapp/API_REFERENCE.md#ai-api).

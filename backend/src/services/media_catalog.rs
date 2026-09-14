@@ -67,7 +67,7 @@ fn path_from_url(raw: &str) -> Option<&str> {
 }
 
 fn catalog_path(path: &str) -> Option<String> {
-    if path.starts_with("/media/federation/") || path.starts_with("/api/brew/image-cache/") {
+    if path.starts_with("/media/federation/") || path.starts_with("/api/phantasi/image-cache/") {
         Some(path.to_string())
     } else {
         None
@@ -186,7 +186,7 @@ pub async fn delete_asset(
 }
 
 async fn remove_file(url: &str) {
-    if url.starts_with("/api/brew/image-cache/") {
+    if url.starts_with("/api/phantasi/image-cache/") {
         let _ = ImageCacheService::new().remove_stored_url(url).await;
         return;
     }
@@ -291,7 +291,7 @@ async fn media_references(db: &DatabaseConnection, url: &str) -> Result<Vec<Stri
         .query_all_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
             r#"
-            SELECT id FROM brew_note_docs
+            SELECT id FROM phantasi_note_docs
             WHERE image LIKE $1 OR content_md LIKE $1
             LIMIT 8
             "#,
@@ -307,7 +307,7 @@ async fn media_references(db: &DatabaseConnection, url: &str) -> Result<Vec<Stri
         .query_all_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
             r#"
-            SELECT id FROM brew_items
+            SELECT id FROM phantasi_items
             WHERE image LIKE $1 OR content_md LIKE $1 OR content LIKE $1
             LIMIT 8
             "#,
@@ -362,8 +362,8 @@ mod tests {
             Some("/media/federation/1/a.jpg".into())
         );
         assert_eq!(
-            canonical_media_url("/api/brew/image-cache/ab/abcdef.png"),
-            Some("/api/brew/image-cache/ab/abcdef.png".into())
+            canonical_media_url("/api/phantasi/image-cache/ab/abcdef.png"),
+            Some("/api/phantasi/image-cache/ab/abcdef.png".into())
         );
         assert_eq!(canonical_media_url("https://cdn.example/pic.jpg"), None);
         assert_eq!(catalog_path("/tmp/x.png"), None);

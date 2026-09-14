@@ -12,8 +12,8 @@
       "title": "MCP サービス",
       "description": "ツールサーバーの接続状態"
     },
-    "brew": {
-      "title": "Brew",
+    "phantasi": {
+      "title": "手帳",
       "description": "新着フィードと連続取得エラー"
     },
     "tapp": {
@@ -44,8 +44,8 @@
     "heartbeat.failed": "定期タスク失敗",
     "mcp.connected": "MCP 接続",
     "mcp.disconnected": "MCP 切断または失敗",
-    "brew.new_items": "新着コンテンツ",
-    "brew.source_error": "フィードの連続失敗",
+    "phantasi.new_items": "新着コンテンツ",
+    "phantasi.source_error": "フィードの連続失敗",
     "platform.sync.failed": "プラットフォーム同期失敗",
     "tapp.message": "メッセージ",
     "tapp.warning": "警告",

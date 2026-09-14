@@ -97,7 +97,7 @@ test.describe.serial('business API smoke', () => {
       data: {
         modules: {
           library: 'all',
-          brew: 'authenticated',
+          phantasi: 'authenticated',
           reports: 'all',
           tapp: 'all',
           agent: 'all',
@@ -116,11 +116,11 @@ test.describe.serial('business API smoke', () => {
       const read = await fresh.get('/api/config/module-visibility')
       expect(read.ok(), await read.text()).toBeTruthy()
       const body = (await read.json()) as {
-        preferences?: { modules?: { brew?: string } }
+        preferences?: { modules?: { phantasi?: string } }
       }
       expect(
-        body.preferences?.modules?.brew,
-        'skipping the PUT would leave brew at the default "all"',
+        body.preferences?.modules?.phantasi,
+        'skipping the PUT would leave phantasi at the default "all"',
       ).toBe('authenticated')
     } finally {
       await fresh.dispose()

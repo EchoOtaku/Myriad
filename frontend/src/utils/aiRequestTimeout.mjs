@@ -19,7 +19,7 @@ const LONG_AI_PREFIXES = [
   '/api/prompt/generate',
   '/api/seo/generate-copy',
   '/api/ai/',
-  '/api/brewlia',
+  '/api/phantasiai',
   '/api/agent/process',
   '/api/agent/clarify',
 ]

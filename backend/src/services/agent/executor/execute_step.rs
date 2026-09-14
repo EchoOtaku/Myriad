@@ -1385,14 +1385,14 @@ mod output_contract_tests {
         inject_request_context_params(
             "page.content",
             &mut params,
-            Some(&json!("/brew")),
+            Some(&json!("/phantasi")),
             Some(&snapshot),
             None,
             None,
         );
         assert_eq!(
             params.get("currentPath").and_then(Value::as_str),
-            Some("/brew")
+            Some("/phantasi")
         );
         assert_eq!(params.get("context"), Some(&snapshot));
     }

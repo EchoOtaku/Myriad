@@ -962,7 +962,7 @@ CREATE INDEX IF NOT EXISTS idx_delivery_queue_target_domain
                             .unique_key(),
                     )
                     .col(ColumnDef::new(FederationRingMemberships::RingName).string_len(255))
-                    // tapp-store, brew-recommend, library-exchange, instance-directory
+                    // tapp-store, phantasi-recommend, library-exchange, instance-directory
                     .col(
                         ColumnDef::new(FederationRingMemberships::RingType)
                             .string_len(30)
@@ -1003,7 +1003,7 @@ CREATE INDEX IF NOT EXISTS idx_delivery_queue_target_domain
                             .integer()
                             .not_null(),
                     )
-                    // report, brew-article, library, activity, tapp, dashboard
+                    // report, phantasi-article, library, activity, tapp, dashboard
                     .col(
                         ColumnDef::new(FederationPublishedContent::ContentType)
                             .string_len(30)

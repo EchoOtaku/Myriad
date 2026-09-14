@@ -43,7 +43,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
                 },
                 "imageUrl": {
                     "type": "string",
-                    "description": "Only this site's /api/brew/image-cache/... path; no arbitrary outbound fetch"
+                    "description": "Only this site's /api/phantasi/image-cache/... path; no arbitrary outbound fetch"
                 },
                 "imageBase64": { "type": "string" },
                 "fileName": { "type": "string" },

@@ -13,11 +13,11 @@ describe('homeStickers', () => {
 
   it('reads camelCase generate payload', () => {
     const parsed = parseGenerateHomeStickerResponse({
-      imageUrl: '/api/brew/image-cache/aa/abcd.png',
+      imageUrl: '/api/phantasi/image-cache/aa/abcd.png',
       width: 512,
       height: 512,
     })
-    assert.equal(parsed.imageUrl, '/api/brew/image-cache/aa/abcd.png')
+    assert.equal(parsed.imageUrl, '/api/phantasi/image-cache/aa/abcd.png')
     assert.equal(parsed.width, 512)
     assert.equal(parsed.height, 512)
   })
@@ -30,8 +30,8 @@ describe('homeStickers', () => {
 
   it('reads an uploaded sticker the same way', () => {
     const parsed = parseGenerateHomeStickerResponse({
-      imageUrl: '/api/brew/image-cache/bb/upload.png',
+      imageUrl: '/api/phantasi/image-cache/bb/upload.png',
     })
-    assert.equal(parsed.imageUrl, '/api/brew/image-cache/bb/upload.png')
+    assert.equal(parsed.imageUrl, '/api/phantasi/image-cache/bb/upload.png')
   })
 })

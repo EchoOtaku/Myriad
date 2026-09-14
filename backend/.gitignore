@@ -18,9 +18,9 @@ data/.secret-key
 # Local debug JWT / one-off API tokens (never commit)
 .regen-token
 
-# Brew icon cache (downloaded at runtime)
-data/brew/icons/*
-!data/brew/icons/.gitkeep
+# Phantasi icon cache (downloaded at runtime)
+data/phantasi/icons/*
+!data/phantasi/icons/.gitkeep
 
 # Environment Variables
 .env

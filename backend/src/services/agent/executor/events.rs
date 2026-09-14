@@ -223,7 +223,7 @@ mod tests {
             image_url: None,
             frontend_actions: vec![json!({
                 "type": "navigate",
-                "path": "/brew",
+                "path": "/phantasi",
                 "timestamp": 1
             })],
         };

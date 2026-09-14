@@ -46,7 +46,7 @@ pub(crate) fn is_web_owned(capability: &str) -> bool {
         "scheduler.create"
             | "scheduler.trigger"
             | "scheduler.list"
-            | "brew.schedule"
+            | "phantasi.schedule"
             | "task.submit"
             | "platform.refresh"
             | "system.metrics"
@@ -338,7 +338,7 @@ mod tests {
             "scheduler.create",
             "scheduler.trigger",
             "scheduler.list",
-            "brew.schedule",
+            "phantasi.schedule",
             "task.submit",
             "platform.refresh",
             "system.metrics",

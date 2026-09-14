@@ -2411,8 +2411,10 @@ dependencies = [
 name = "migration"
 version = "0.4.9"
 dependencies = [
+ "myriad-phantasi",
  "sea-orm",
  "sea-orm-migration",
+ "serde_json",
  "tokio",
 ]
 
@@ -2555,7 +2557,6 @@ dependencies = [
  "md5",
  "migration",
  "myriad-agent-rules",
- "myriad-brew-notes",
  "myriad-data-key",
  "myriad-error",
  "myriad-image-proxy",
@@ -2564,6 +2565,8 @@ dependencies = [
  "myriad-merope",
  "myriad-module-visibility",
  "myriad-outbound",
+ "myriad-phantasi",
+ "myriad-phantasi-notes",
  "myriad-platform-utils",
  "myriad-process-info",
  "myriad-prompt-security",
@@ -2604,15 +2607,6 @@ dependencies = [
  "uuid",
  "x25519-dalek",
  "zip",
-]
-
-[[package]]
-name = "myriad-brew-notes"
-version = "0.1.0"
-dependencies = [
- "ammonia",
- "pulldown-cmark",
- "serde_json",
 ]
 
 [[package]]
@@ -2700,6 +2694,23 @@ dependencies = [
  "reqwest",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "myriad-phantasi"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
+name = "myriad-phantasi-notes"
+version = "0.1.0"
+dependencies = [
+ "ammonia",
+ "myriad-phantasi",
+ "pulldown-cmark",
+ "serde_json",
 ]
 
 [[package]]

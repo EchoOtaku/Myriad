@@ -488,7 +488,7 @@ export type FrontendActionType =
   | 'agent_interaction'
   | 'navigate'
   | 'page_interact'
-  | 'brew_open_article'
+  | 'phantasi_open_article'
   | 'music_control'
   | 'music_get_status'
   | 'music_load_playlist'

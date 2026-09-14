@@ -20,7 +20,7 @@ use tokio::sync::RwLock;
 pub(crate) const SITE_PATH: &str = "__site__";
 const MAX_PATH_LEN: usize = 128;
 const MAX_EVENT_NAME_LEN: usize = 48;
-/// Product event dimension (tapp id, platform slug, brew source, …).
+/// Product event dimension (tapp id, platform slug, phantasi source, …).
 const MAX_TARGET_LEN: usize = 64;
 const MAX_BATCH_ITEMS: usize = 20;
 const MAX_ENGAGEMENT_MS: i64 = 30 * 60 * 1000; // 30 min cap per flush
@@ -366,7 +366,7 @@ pub fn normalize_path(raw: &str) -> Option<String> {
 
     let mapped: Vec<String> = match collapsed[0].to_ascii_lowercase().as_str() {
         "library" => vec!["library".into()],
-        "brew" => vec!["brew".into()],
+        "phantasi" => vec!["phantasi".into()],
         "reports" => vec!["reports".into()],
         "config" => vec!["config".into()],
         "login" => vec!["login".into()],

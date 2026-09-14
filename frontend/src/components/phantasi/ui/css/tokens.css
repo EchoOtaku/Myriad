@@ -1,0 +1,332 @@
+/* 页面组合不要往这里塞业务。 */
+
+/* 不复用磁贴墙 / 玻璃卡 / WidgetGrid。优先 --cfg-*，否则 --chrome-* / --text-* / --color-primary。动效走 --sm-*。 */
+
+/* 不动 #bg-gradient。这一层加高并加浓到页脚。 */
+#phantasi-veil-bloom {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    transparent 8%,
+    rgb(255 255 255 / 32%) 26%,
+    rgb(255 255 255 / 52%) 48%,
+    rgb(255 255 255 / 72%) 72%,
+    rgb(255 255 255 / 86%) 100%
+  );
+  transition: opacity 560ms var(--sm-ease-exit, cubic-bezier(0.4, 0, 1, 1));
+}
+
+#phantasi-veil-bloom.is-on {
+  opacity: 1;
+  transition-duration: 780ms;
+  transition-timing-function: var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+html.dark #phantasi-veil-bloom {
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    transparent 8%,
+    rgb(10 10 10 / 36%) 26%,
+    rgb(10 10 10 / 55%) 48%,
+    rgb(10 10 10 / 72%) 72%,
+    rgb(10 10 10 / 88%) 100%
+  );
+}
+
+/* 文章封面 peek：换壁纸，不换网站卡。压在 #bg-gradient 底下。 */
+#phantasi-peek-air,
+.phantasi-peek-air,
+#phantasi-peek-copy,
+.phantasi-peek-air__copy {
+  --phantasi-peek-fade: 220ms;
+}
+
+#phantasi-peek-air,
+.phantasi-peek-air {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.phantasi-peek-air__shot {
+  position: absolute;
+  inset: -6%;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  opacity: 0;
+  transform: scale(1.03);
+  transition:
+    opacity var(--phantasi-peek-fade, 220ms) var(--sm-ease-exit, cubic-bezier(0.4, 0, 1, 1)),
+    transform 360ms var(--sm-ease-exit, cubic-bezier(0.4, 0, 1, 1));
+}
+
+.phantasi-peek-air__shot.is-on {
+  opacity: 1;
+  transform: scale(1);
+  transition:
+    opacity 320ms var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1)),
+    transform 480ms var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.phantasi-peek-air::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    to bottom,
+    rgb(255 255 255 / 10%) 0%,
+    transparent 22%,
+    rgb(255 255 255 / 18%) 42%,
+    rgb(255 255 255 / 48%) 68%,
+    rgb(255 255 255 / 78%) 100%
+  );
+  transition: opacity 320ms var(--sm-ease-exit, cubic-bezier(0.4, 0, 1, 1));
+}
+
+.phantasi-peek-air.is-on::after {
+  opacity: 1;
+  transition-duration: 520ms;
+  transition-timing-function: var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+html.dark .phantasi-peek-air::after {
+  background: linear-gradient(
+    to bottom,
+    rgb(0 0 0 / 22%) 0%,
+    transparent 24%,
+    rgb(10 10 10 / 28%) 46%,
+    rgb(10 10 10 / 58%) 72%,
+    rgb(10 10 10 / 84%) 100%
+  );
+}
+
+/* 标题压在 #bg-gradient / 网格之上，照片仍在底下。 */
+#phantasi-peek-copy,
+.phantasi-peek-air__copy {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.phantasi-peek-air__lede {
+  position: absolute;
+  top: clamp(5.25rem, 14vh, 8.5rem);
+  left: max(
+    calc(var(--page-pad-x, 1.5rem) + var(--page-stage-pad, 0.5rem)),
+    calc((100% - var(--page-max-width, 80rem)) / 2 + var(--page-stage-pad, 0.5rem))
+  );
+  right: auto;
+  max-width: 38rem;
+  opacity: 0;
+  transform: translate3d(0, var(--sm-shift-sm, 6px), 0);
+  transition:
+    opacity var(--phantasi-peek-fade, 220ms) var(--sm-ease-exit, cubic-bezier(0.4, 0, 1, 1)),
+    transform var(--phantasi-peek-fade, 220ms) var(--sm-ease-exit, cubic-bezier(0.4, 0, 1, 1));
+}
+
+.phantasi-peek-air__lede.is-on {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 320ms var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1)),
+    transform 320ms var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.phantasi-peek-air.is-swap .phantasi-peek-air__shot,
+.phantasi-peek-air.is-swap .phantasi-peek-air__shot.is-on {
+  transform: scale(1);
+  transition: opacity 320ms var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.phantasi-peek-air__copy.is-swap .phantasi-peek-air__lede,
+.phantasi-peek-air__copy.is-swap .phantasi-peek-air__lede.is-on {
+  transform: none;
+  transition: opacity 320ms var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.phantasi-peek-air__site {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  max-width: 100%;
+  margin-bottom: 0.62rem;
+  color: rgb(255 255 255 / 90%);
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.phantasi-peek-air__site span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phantasi-peek-air__site img,
+.phantasi-peek-air__mark {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 0.42rem;
+}
+
+.phantasi-peek-air__site img {
+  object-fit: cover;
+}
+
+.phantasi-peek-air__site img[hidden] {
+  display: none;
+}
+
+.phantasi-peek-air__mark {
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 36%);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.phantasi-peek-air__title {
+  display: -webkit-box;
+  overflow: hidden;
+  max-width: 100%;
+  color: #fff;
+  font-size: clamp(1.7rem, 3.6vw, 2.85rem);
+  font-weight: 750;
+  letter-spacing: -0.035em;
+  line-height: 1.18;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.phantasi-skin {
+  --phantasi-fg: var(--cfg-text-1, var(--text-primary));
+  --phantasi-fg-soft: var(--cfg-text-2, var(--text-secondary));
+  --phantasi-fg-dim: var(--cfg-text-3, var(--text-tertiary));
+  --phantasi-line: var(--cfg-subtle-border, var(--chrome-inner-stroke));
+  --phantasi-line-hover: var(
+    --cfg-subtle-border-hover,
+    var(--chrome-inner-stroke-hover)
+  );
+  --phantasi-fill: var(--cfg-subtle-bg, var(--chrome-inner));
+  --phantasi-fill-hover: var(--cfg-subtle-bg-hover, var(--chrome-inner-hover));
+  --phantasi-accent: var(--cfg-accent, var(--color-primary));
+  --phantasi-accent-fill: var(
+    --cfg-accent-fill,
+    color-mix(in srgb, var(--phantasi-accent) 18%, white)
+  );
+  --phantasi-accent-ink: var(
+    --cfg-accent-ink,
+    color-mix(in srgb, var(--phantasi-accent) 48%, black)
+  );
+  --phantasi-accent-line: var(
+    --cfg-accent-line,
+    color-mix(in srgb, var(--phantasi-accent) 38%, white)
+  );
+  --phantasi-shadow: var(--cfg-card-shadow-sm, var(--chrome-chip-shadow));
+  --phantasi-shadow-hover: var(--cfg-card-shadow-md, var(--chrome-shadow));
+  --phantasi-radius: 0.75rem;
+  --phantasi-focus:
+    0 0 0 2px rgb(255 255 255 / 90%),
+    0 0 0 4px color-mix(in srgb, var(--phantasi-accent) 45%, transparent);
+  --phantasi-frost-line: var(--cfg-frost-border, var(--phantasi-line));
+  --phantasi-chip: rgb(255 255 255 / 78%);
+  --phantasi-rail-pad-x: 0.2rem;
+  --phantasi-tag-type: 0.8125rem;
+  --phantasi-tag-h: 1.9rem;
+  --phantasi-tag-mark: 0.78rem;
+
+  color: var(--phantasi-fg);
+}
+
+html.dark .phantasi-skin {
+  --phantasi-chip: rgb(18 18 18 / 72%);
+  --phantasi-accent-fill: var(
+    --cfg-accent-fill,
+    color-mix(in srgb, var(--phantasi-accent) 22%, transparent)
+  );
+  --phantasi-accent-ink: var(
+    --cfg-accent-ink,
+    color-mix(in srgb, var(--phantasi-accent) 46%, white)
+  );
+  --phantasi-accent-line: var(
+    --cfg-accent-line,
+    color-mix(in srgb, var(--phantasi-accent) 40%, transparent)
+  );
+  --phantasi-focus:
+    0 0 0 2px rgb(0 0 0 / 70%),
+    0 0 0 4px color-mix(in srgb, var(--phantasi-accent) 50%, transparent);
+}
+
+.phantasi-skin button:not(
+  .settings-btn,
+  .choice-segmented-item,
+  .setting-title-tag,
+  .field-input,
+  .field-select-trigger,
+  .field-select-option,
+  .toggle-switch,
+  .phantasi-search__icon,
+  .phantasi-search__hint
+) {
+  appearance: none;
+  font: inherit;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.phantasi-skin button:not(
+  .settings-btn,
+  .choice-segmented-item,
+  .field-select-trigger,
+  .field-select-option,
+  .phantasi-search__icon,
+  .phantasi-search__hint
+):focus {
+  outline: none;
+}
+
+.phantasi-skin button:not(
+  .settings-btn,
+  .choice-segmented-item,
+  .field-select-trigger,
+  .field-select-option,
+  .phantasi-search__icon,
+  .phantasi-search__hint
+):focus-visible {
+  outline: none;
+  box-shadow: var(--phantasi-focus);
+}
+
+.phantasi-float {
+  border: 1px solid var(--phantasi-frost-line);
+  background: var(--phantasi-chip);
+  box-shadow: var(--phantasi-shadow);
+}
+
+.phantasi-view-lane {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.phantasi-view-lane[data-chip-phase='exit'] {
+  pointer-events: none;
+}

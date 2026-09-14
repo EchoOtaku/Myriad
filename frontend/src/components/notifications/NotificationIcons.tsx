@@ -10,7 +10,7 @@ const NOTIFICATION_SOURCE_ICON_ASSETS = {
   agent: PERSONA_STICKER_FALLBACK,
   heartbeat: '/icons/notifications/heartbeat.webp',
   mcp: '/icons/notifications/mcp.webp',
-  brew: '/icons/notifications/brew.webp',
+  phantasi: '/icons/notifications/phantasi.webp',
   tapp: '/icons/notifications/tapp.webp',
   updater: '/icons/notifications/updater.webp',
   federation: '/icons/notifications/aro.webp',

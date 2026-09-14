@@ -188,22 +188,22 @@ pub(super) async fn build_ap_object(
                 "content_preview": &content_preview,
             }))
         }
-        "brew-article" => {
-            // Brew 文章 → AP Article
+        "phantasi-article" => {
+            // Phantasi 文章 → AP Article
             let item_id: i32 = content_id.parse().unwrap_or(0);
             let row = db
                 .query_one_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     r#"SELECT bi.id, bi.title, bi.content, bi.link, bi.author,
                               bs.name AS source_name
-                       FROM brew_items bi
-                       LEFT JOIN brew_sources bs ON bs.id = bi.source_id
+                       FROM phantasi_items bi
+                       LEFT JOIN phantasi_sources bs ON bs.id = bi.source_id
                        WHERE bi.id = $1 AND bs.user_id = $2"#,
                     [item_id.into(), user_id.into()],
                 ))
                 .await
                 .map_err(db_err)?
-                .ok_or_else(|| not_found("Brew article not found"))?;
+                .ok_or_else(|| not_found("Phantasi article not found"))?;
 
             let title: String = row.try_get("", "title").unwrap_or_default();
             let content_text: Option<String> = row.try_get("", "content").ok();
@@ -220,7 +220,7 @@ pub(super) async fn build_ap_object(
 
             Ok(json!({
                 "type": "Article",
-                "id": format!("{}/brew/articles/{}", base_url, item_id),
+                "id": format!("{}/phantasi/articles/{}", base_url, item_id),
                 "attributedTo": &local_actor,
                 "name": &title,
                 "content": format!("<p>{}</p>", &summary_text),
@@ -229,7 +229,7 @@ pub(super) async fn build_ap_object(
                 "published": now_iso8601(),
                 "to": to,
                 "cc": cc,
-                "mfp:contentType": "brew-article",
+                "mfp:contentType": "phantasi-article",
                 "mfp:contentId": content_id,
                 "mfp:source": source_name,
                 "mfp:author": author,

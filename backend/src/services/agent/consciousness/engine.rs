@@ -347,7 +347,7 @@ mod tests {
             serde_json::json!({"type": "null"})
         );
         assert_eq!(
-            super::decision_schema_for_event("brew.source_error"),
+            super::decision_schema_for_event("phantasi.source_error"),
             super::decision_schema()
         );
     }
@@ -360,8 +360,8 @@ mod tests {
         ConsciousnessEvent {
             id: "event-1".into(),
             source: "test".into(),
-            kind: "brew.source_error".into(),
-            headline: "Brew refresh failed".into(),
+            kind: "phantasi.source_error".into(),
+            headline: "Phantasi refresh failed".into(),
             summary: "One feed could not refresh.".into(),
             addressee_user_id: 7,
             urgency: EventUrgency::Normal,
@@ -424,13 +424,13 @@ mod tests {
     fn work_outcomes_are_recognized() {
         assert!(is_work_outcome("agent.task_completed"));
         assert!(is_work_outcome("agent.task_failed"));
-        assert!(!is_work_outcome("brew.source_error"));
+        assert!(!is_work_outcome("phantasi.source_error"));
         assert!(forbids_propose_work(
             "agent.task_completed",
             ConsciousnessAction::ProposeWork
         ));
         assert!(!forbids_propose_work(
-            "brew.source_error",
+            "phantasi.source_error",
             ConsciousnessAction::ProposeWork
         ));
         assert!(!forbids_propose_work(

@@ -15,7 +15,7 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     pub ring_id: String,
     pub ring_name: Option<String>,
-    /// tapp-store, brew-recommend, library-exchange, instance-directory
+    /// tapp-store, phantasi-recommend, library-exchange, instance-directory
     pub ring_type: String,
     #[sea_orm(column_type = "Json", nullable)]
     pub gossip_config: Option<Json>,

@@ -12,8 +12,8 @@
       "title": "MCP 서비스",
       "description": "도구 서버 연결 상태"
     },
-    "brew": {
-      "title": "Brew",
+    "phantasi": {
+      "title": "수첩",
       "description": "새 피드와 반복된 수집 오류"
     },
     "tapp": {
@@ -44,8 +44,8 @@
     "heartbeat.failed": "예약 작업 실패",
     "mcp.connected": "MCP 연결됨",
     "mcp.disconnected": "MCP 끊김 또는 실패",
-    "brew.new_items": "새 글 발견",
-    "brew.source_error": "피드가 반복해서 실패",
+    "phantasi.new_items": "새 글 발견",
+    "phantasi.source_error": "피드가 반복해서 실패",
     "platform.sync.failed": "플랫폼 동기화 실패",
     "tapp.message": "메시지",
     "tapp.warning": "경고",

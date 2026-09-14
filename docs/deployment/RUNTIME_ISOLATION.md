@@ -13,7 +13,7 @@ cleanup; see [MCP gateway](MCP_GATEWAY.md) and its optional
 
 | Entry | Starts | Intended use |
 | --- | --- | --- |
-| `MYRIAD_PROCESS_ROLE=web` | Web bootstrap, platform/Brew/TAPP schedulers; no persona or federation domain | Production web |
+| `MYRIAD_PROCESS_ROLE=web` | Web bootstrap, platform/Phantasi/TAPP schedulers; no persona or federation domain | Production web |
 | `/app/myriad-federation-worker` or `MYRIAD_PROCESS_ROLE=federation-worker` | Existing-schema check, configuration refresh, federation HTTP/WS, delivery and health | Trusted first-party federation process |
 | `/app/myriad-persona-worker` or `MYRIAD_PROCESS_ROLE=persona-worker` | Existing-schema check, persona HTTP/state, notifications, supervised drivers and MCP | Trusted first-party persona process |
 | `MYRIAD_PROCESS_ROLE=all` | Combined runtime | Development only; rejected with `ENVIRONMENT=production` |
@@ -190,7 +190,7 @@ Agent task or certify availability of a configured external model/MCP server.
 ## Calls to web-owned schedulers
 
 Persona forwards only seven first-party capabilities to the web state owner:
-`scheduler.create`, `scheduler.trigger`, `scheduler.list`, `brew.schedule`,
+`scheduler.create`, `scheduler.trigger`, `scheduler.list`, `phantasi.schedule`,
 `task.submit`, `platform.refresh` and `system.metrics`. This avoids starting
 second copies of web's schedulers and task processor. Other first-party Agent
 capabilities continue in persona.

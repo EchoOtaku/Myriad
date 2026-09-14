@@ -203,29 +203,29 @@
     "frontend": "Tapp 一覧・詳細の操作。",
     "notes": "最も危険な権限の一つです。"
   },
-  "brew:read": {
-    "what": "Brew の購読・記事・コメントを読めます。",
-    "chain": "① Brew データ取得。\n② サイトの購読から読む。\n③ アプリで表示。",
-    "frontend": "Brew とアプリ内リーダー。",
+  "phantasi:read": {
+    "what": "Phantasi の購読・記事・コメントを読めます。",
+    "chain": "① Phantasi データ取得。\n② サイトの購読から読む。\n③ アプリで表示。",
+    "frontend": "Phantasi とアプリ内リーダー。",
     "notes": "読み取り専用。既読変更・お気に入り・コメント書き込みは不可。"
   },
-  "brew:write": {
-    "what": "Brew のデータ（既読状態やスターなど）を書き込めます。",
-    "chain": "① 項目の状態を更新。\n② Brew ストレージが変わる。\n③ フィルタやバッジが更新されることがあります。",
-    "frontend": "Brew の既読・お気に入り状態。",
+  "phantasi:write": {
+    "what": "Phantasi のデータ（既読状態やスターなど）を書き込めます。",
+    "chain": "① 項目の状態を更新。\n② Phantasi ストレージが変わる。\n③ フィルタやバッジが更新されることがあります。",
+    "frontend": "Phantasi の既読・お気に入り状態。",
     "notes": "読書状態を変更するため、アプリの動作を確認してください。"
   },
-  "brew:commentWrite": {
-    "what": "Brew コメントと返信の作成・編集・削除ができます。",
+  "phantasi:commentWrite": {
+    "what": "Phantasi コメントと返信の作成・編集・削除ができます。",
     "chain": "① コメント投稿。\n② 記事に紐づく。\n③ 方針により他者も見る。",
-    "frontend": "Brew のコメント欄。",
+    "frontend": "Phantasi のコメント欄。",
     "notes": "公開表現のマナーに注意。デフォルトでは管理者のみ下放可能。"
   },
-  "brew:manage": {
-    "what": "Brew の購読源と高度な設定を管理できます。",
+  "phantasi:manage": {
+    "what": "Phantasi の購読源と高度な設定を管理できます。",
     "chain": "① 源管理 API。\n② 購読集合が変わる。\n③ 取得と一覧が更新。",
     "frontend": "源管理、OPML、発見。",
-    "notes": "サイトの Brew 内容プールに影響。"
+    "notes": "サイトの Phantasi 内容プールに影響。"
   },
   "federation:read": {
     "what": "フェデレーションの部屋・チャンネル・メンバーを読めます。",

@@ -13,7 +13,7 @@ pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
     pub user_id: i32,
-    /// report, brew-article, library, activity, tapp, dashboard
+    /// report, phantasi-article, library, activity, tapp, dashboard
     pub content_type: String,
     #[sea_orm(column_type = "Text")]
     pub content_id: String,

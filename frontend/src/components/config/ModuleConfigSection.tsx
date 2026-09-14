@@ -151,7 +151,7 @@ function LibraryCanvasLayoutIcon({ className }: { className?: string }) {
   )
 }
 
-function BrewTitleIcon({ className }: { className?: string }) {
+function PhantasiTitleIcon({ className }: { className?: string }) {
   return (
     <svg
       className={className}
@@ -433,7 +433,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
   const moduleLabels = useMemo<Record<ConfigurableModuleKey, string>>(
     () => ({
       library: t.nav.library,
-      brew: t.nav.brewReading,
+      phantasi: t.nav.phantasiReading,
       reports: t.nav.reports,
       tapp: t.nav.tapp,
       agent: t.nav.agent,
@@ -446,7 +446,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
       library: (
         <LibrarySubtitleIcon className={MODULE_SETTING_TITLE_ICON_CLASS} />
       ),
-      brew: <BrewTitleIcon className={MODULE_SETTING_TITLE_ICON_CLASS} />,
+      phantasi: <PhantasiTitleIcon className={MODULE_SETTING_TITLE_ICON_CLASS} />,
       reports: <ReportsTitleIcon className={MODULE_SETTING_TITLE_ICON_CLASS} />,
       tapp: <MyriadStoreIcon className={MODULE_SETTING_TITLE_ICON_CLASS} />,
       agent: (

@@ -300,7 +300,7 @@
     },
     "eventAnalytics": {
       "what": "Wie oft Produktereignisse im gewählten Zeitraum feuern und wie viele Besucher sie treffen.",
-      "chain": "1) Teilt Erfassungsschalter, Zeitraum und Ausschlüsse der Besucherstatistik (Admin/Inhaber nicht gezählt).\n2) Anzahl = Summe im Zeitraum; Besucher = eindeutige Personen, die das Ereignis ausgelöst haben.\n3) Eingebaute decken Anmeldung/OAuth, Musik, Bibliothek, Brew, Berichtsstufe, Agent, Tapp, Freundeslinks, Design/Sprache/Steuerpanel ab; target für Aufteilung je Entität übergeben (tapp id, Plattform-Slug, …).\n4) Hauptzeile = Ereignissumme; Unterzeilen = Zielaufschlüsselung (bis etwa 20).\n5) Erfassung aus stoppt neue Schreibvorgänge; der Verlauf bleibt lesbar.",
+      "chain": "1) Teilt Erfassungsschalter, Zeitraum und Ausschlüsse der Besucherstatistik (Admin/Inhaber nicht gezählt).\n2) Anzahl = Summe im Zeitraum; Besucher = eindeutige Personen, die das Ereignis ausgelöst haben.\n3) Eingebaute decken Anmeldung/OAuth, Musik, Bibliothek, Phantasi, Berichtsstufe, Agent, Tapp, Freundeslinks, Design/Sprache/Steuerpanel ab; target für Aufteilung je Entität übergeben (tapp id, Plattform-Slug, …).\n4) Hauptzeile = Ereignissumme; Unterzeilen = Zielaufschlüsselung (bis etwa 20).\n5) Erfassung aus stoppt neue Schreibvorgänge; der Verlauf bleibt lesbar.",
       "frontend": "Daten & Statistik → Besucherstatistik → Abschnitt Ereignisse (neben Referrer).",
       "notes": "Eigene Ereignisnamen stabil und kurz halten; laute hochfrequente Ereignisse verdrängen die Rangliste. Export/Import-Sicherungen enthalten Ereignisaggregate und sind mit einem Instanz-Integritätstoken versiegelt, damit handbearbeitete Kennzahlen abgelehnt werden."
     },

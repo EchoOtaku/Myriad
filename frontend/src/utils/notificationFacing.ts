@@ -30,10 +30,10 @@ export function notificationFacingTitle(notification: AppNotification): string {
     metaString(notification, 'tapp_id')
 
   switch (eventKey) {
-    case 'brew.source_error':
-      return fill(t.noticeBrewSourceFailed, { name: name || 'RSS' })
-    case 'brew.new_items':
-      return fill(t.noticeBrewNewItems, {
+    case 'phantasi.source_error':
+      return fill(t.noticePhantasiSourceFailed, { name: name || 'RSS' })
+    case 'phantasi.new_items':
+      return fill(t.noticePhantasiNewItems, {
         name:
           name ||
           notification.title.replaceAll(/\s*·\s*\d.*$/g, '').trim() ||
@@ -119,11 +119,11 @@ export function notificationFacingTitle(notification: AppNotification): string {
   }
 
   const raw = notification.title || ''
-  const leftoverBrewNew = raw.match(/^(.+) · (\d+) 篇新内容$/)
-  if (leftoverBrewNew) {
-    return fill(t.noticeBrewNewItems, {
-      name: leftoverBrewNew[1],
-      n: leftoverBrewNew[2],
+  const leftoverPhantasiNew = raw.match(/^(.+) · (\d+) 篇新内容$/)
+  if (leftoverPhantasiNew) {
+    return fill(t.noticePhantasiNewItems, {
+      name: leftoverPhantasiNew[1],
+      n: leftoverPhantasiNew[2],
     })
   }
   const leftoverHeartbeat = raw.match(/^定时任务:\s*(\S.*)$/)
@@ -131,7 +131,7 @@ export function notificationFacingTitle(notification: AppNotification): string {
     return fill(t.noticeHeartbeatTask, { name: leftoverHeartbeat[1] })
   }
   if (raw.includes('连续抓取失败')) {
-    return fill(t.noticeBrewSourceFailed, { name: name || raw.replaceAll(/连续抓取失败/g, '').trim() || 'RSS' })
+    return fill(t.noticePhantasiSourceFailed, { name: name || raw.replaceAll(/连续抓取失败/g, '').trim() || 'RSS' })
   }
   if (raw.includes('自动刷新失败')) {
     return fill(t.noticePlatformSyncFailed, { name: name || raw.replaceAll(/自动刷新失败/g, '').trim() })
@@ -190,7 +190,7 @@ export function notificationFacingTitle(notification: AppNotification): string {
     })
   }
   if (/feed failed repeatedly/i.test(raw)) {
-    return fill(t.noticeBrewSourceFailed, { name: name || 'RSS' })
+    return fill(t.noticePhantasiSourceFailed, { name: name || 'RSS' })
   }
   if (/auto-refresh failed/i.test(raw)) {
     return fill(t.noticePlatformSyncFailed, { name: name || 'Steam' })
@@ -259,13 +259,13 @@ export function notificationFacingBody(notification: AppNotification): string {
     })
   }
   if (
-    eventKey === 'brew.new_items' &&
+    eventKey === 'phantasi.new_items' &&
     (!notification.body ||
       /^发现 \d+ 篇新内容$/.test(notification.body) ||
       /^\d+ new items found$/i.test(notification.body))
   ) {
     const n = notification.metadata?.new_count
-    return fill(t.noticeBrewNewItemsBody, {
+    return fill(t.noticePhantasiNewItemsBody, {
       n: typeof n === 'number' ? n : 0,
     })
   }
@@ -291,9 +291,9 @@ export function notificationFacingBody(notification: AppNotification): string {
   if (/^新消息$|^New message$/.test(notification.body)) {
     return t.noticePreviewNew
   }
-  const leftoverBrewBody = notification.body.match(/^发现 (\d+) 篇新内容$/)
-  if (leftoverBrewBody) {
-    return fill(t.noticeBrewNewItemsBody, { n: Number(leftoverBrewBody[1]) })
+  const leftoverPhantasiBody = notification.body.match(/^发现 (\d+) 篇新内容$/)
+  if (leftoverPhantasiBody) {
+    return fill(t.noticePhantasiNewItemsBody, { n: Number(leftoverPhantasiBody[1]) })
   }
   return userFacingError(notification.body, notification.body)
 }

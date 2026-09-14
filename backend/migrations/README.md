@@ -20,7 +20,7 @@ sea-orm-cli migrate generate create_new_table
 
 1. `001_initial_schema` - Core users, platforms, profiles, reports, activity events, site analytics and configuration
 2. `002_tapp_system` - Tapp installations, storage, widgets, quota, scheduler and shared runtime state
-3. `003_brew_system` - Brew sources, items, annotations, and cloud note docs (including reading-state `revision` and article `content_revision`)
+3. `003_phantasi_system` - Phantasi sources, items, annotations, and cloud note docs (including reading-state `revision` and article `content_revision`)
 4. `004_agent_system` - Agent tasks, memory, notification state, and Merope persona tables
 5. `005_federation` - Federation identities, messages, delivery queue, and inbox receipts
 6. `006_oauth_identities` - OAuth/OIDC identity bindings
@@ -40,9 +40,9 @@ kept as no-op files:
 - `015_federation_delivery_health` → `federation_instances.failing_since` + `idx_delivery_queue_target_domain` in 005
 - `016_tapp_legacy_grant_clear` → one-shot grant cleanup (#338); `tapps.needs_reauthorization` stays in 002
 - `017_agent_tapp_approved_permissions` → one-shot Agent approval restore; `tapps.approved_permissions` stays in 002
-- `018_brew_state_revision` → `brew_user_states.revision` in 003 + `ensure_brew_state_revision`
-- `019_brew_content_revision` → `brew_items` / `brew_comments.content_revision` in 003 + `ensure_brew_content_revision`
-- `020_brew_note_docs` → `brew_note_docs` in 003 + `ensure_brew_note_docs_table`
+- `018_phantasi_state_revision` → `phantasi_user_states.revision` in 003 + `ensure_phantasi_state_revision`
+- `019_phantasi_content_revision` → `phantasi_items` / `phantasi_comments.content_revision` in 003 + `ensure_phantasi_content_revision`
+- `020_phantasi_note_docs` → `phantasi_note_docs` in 003 + `ensure_phantasi_note_docs_table`
 - `008_tapp_runtime_registry`, `009_activity_events` — also folded into 002 / 001
 - `007_digital_life` / `008_digital_life_phase_two` / `009_digital_life_phase_three` /
   `010_digital_life_phase_four` / `011_digital_life_asset_subjects`：本地实验名，表已并入
@@ -87,7 +87,7 @@ Recent tables:
 | agent_autonomy_grants | `004` | `ensure_agent_autonomy_grants_table` + TableDef |
 | content_filters / policy / domain_aliases / object_interactions / inbox_receipts | `005` 扩展段 | 对应 `ensure_*` + TableDef |
 | delivery lease / health streak | `005`（原 014/015） | TableDef + generic ADD / CREATE INDEX |
-| brew_note_docs | `003` | `ensure_brew_note_docs_table` + TableDef |
+| phantasi_note_docs | `003` | `ensure_phantasi_note_docs_table` + TableDef |
 
 Older DBs that already applied a pre-feature migration version get tables via
 `ensure_*` (`CREATE IF NOT EXISTS`). The `_schema_versions` mark does **not**

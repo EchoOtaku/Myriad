@@ -848,7 +848,7 @@ mod settings_backup_tests {
             .and_then(Value::as_object)
             .unwrap();
         assert_eq!(modules.get("library"), Some(&json!("admin")));
-        assert!(modules.contains_key("brew"));
+        assert!(modules.contains_key("phantasi"));
         assert!(!modules.contains_key("removed_module"));
     }
 

@@ -279,7 +279,7 @@ function NotificationPanelList({
       agent: t.notificationCenter.sourceAgent,
       heartbeat: t.notificationCenter.sourceHeartbeat,
       mcp: t.notificationCenter.sourceMcp,
-      brew: 'Brew',
+      phantasi: 'Phantasi',
       tapp: 'Tapp',
       updater: t.notificationCenter.sourceSystem,
       federation: t.notificationCenter.sourceAro,

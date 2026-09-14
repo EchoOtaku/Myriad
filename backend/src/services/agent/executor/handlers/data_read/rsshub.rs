@@ -3,7 +3,7 @@ use super::search::calculate_fuzzy_score;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
-pub(super) async fn execute_brew_discover(
+pub(super) async fn execute_phantasi_discover(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {

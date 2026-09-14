@@ -1361,26 +1361,26 @@ async fn execute_page_content(
 
     let route_ctx = extract_route_context(current_path, params);
     match page_type {
-        "brew" => {
-            let mut brew_params = HashMap::new();
+        "phantasi" => {
+            let mut phantasi_params = HashMap::new();
             if let Some(id) = context.get("sourceId").cloned().filter(|v| !v.is_null()) {
-                brew_params.insert("sourceId".into(), id);
+                phantasi_params.insert("sourceId".into(), id);
             }
             if let Some(id) = context.get("itemId").cloned().filter(|v| !v.is_null()) {
-                brew_params.insert("itemId".into(), id);
+                phantasi_params.insert("itemId".into(), id);
             }
             if let Some(cat) = context.get("category").cloned().filter(|v| !v.is_null()) {
-                brew_params.insert("category".into(), cat);
+                phantasi_params.insert("category".into(), cat);
             }
-            let level = if brew_params.contains_key("itemId") {
+            let level = if phantasi_params.contains_key("itemId") {
                 "article"
-            } else if brew_params.contains_key("sourceId") {
+            } else if phantasi_params.contains_key("sourceId") {
                 "items"
             } else {
                 "sources"
             };
-            brew_params.insert("level".into(), json!(level));
-            super::data_read::execute("brew.page", &brew_params, ctx).await
+            phantasi_params.insert("level".into(), json!(level));
+            super::data_read::execute("phantasi.page", &phantasi_params, ctx).await
         }
         "tapp" => {
             let tapp_id = context

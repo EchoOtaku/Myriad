@@ -249,7 +249,7 @@ describe('userFacingError', () => {
     assert.equal(/missing field/i.test(text), false)
   })
 
-  it('maps brew feed parse to a name hint', () => {
+  it('maps phantasi feed parse to a name hint', () => {
     const err = new ApiError(
       'Failed to parse feed. Please provide a name.',
       400,
@@ -259,7 +259,7 @@ describe('userFacingError', () => {
     assert.equal(/Failed to parse feed/i.test(text), false)
   })
 
-  it('maps brew AI parse failures', () => {
+  it('maps phantasi AI parse failures', () => {
     const err = new ApiError('Failed to parse AI response', 500, 'ai_response_invalid')
     const text = userFacingError(err)
     assert.equal(/Failed to parse/i.test(text), false)
@@ -568,49 +568,49 @@ describe('userFacingError', () => {
     assert.notEqual(read, currentCopy().errors.database)
   })
 
-  it('maps leftover platform cache and brew reads without dumps', () => {
+  it('maps leftover platform cache and phantasi reads without dumps', () => {
     const missing = userFacingError('No cached steam data')
     const disk = userFacingError(
       'Failed to read steam data: not enough disk space',
     )
     const items = userFacingError(
-      'Failed to fetch brew items: relation "brew_items" does not exist',
+      'Failed to fetch phantasi items: relation "phantasi_items" does not exist',
     )
     assert.match(missing, /Steam/)
     assert.equal(/No cached steam data/.test(missing), false)
     assert.match(disk, /Steam/)
     assert.match(disk, /disk|空间|空き/)
-    assert.equal(/brew_items|does not exist/.test(items), false)
+    assert.equal(/phantasi_items|does not exist/.test(items), false)
     assert.match(items, /加载|load|読み込/)
     assert.notEqual(missing, disk)
     assert.notEqual(items, currentCopy().errors.operationFailed)
     assert.notEqual(items, currentCopy().errors.database)
   })
 
-  it('maps leftover brew refresh without SQL and keeps fetch vs save', () => {
+  it('maps leftover phantasi refresh without SQL and keeps fetch vs save', () => {
     const fetch = userFacingError('Failed to fetch feed: timed out')
     const save = userFacingError(
-      'Failed to update source: relation "brew_sources" does not exist',
+      'Failed to update source: relation "phantasi_sources" does not exist',
     )
     assert.match(fetch, /刷新|refresh|更新/)
     assert.match(fetch, /timed out/)
-    assert.equal(/brew_sources|does not exist/.test(save), false)
+    assert.equal(/phantasi_sources|does not exist/.test(save), false)
     assert.match(save, /保存|save/)
     assert.notEqual(fetch, save)
     assert.notEqual(save, currentCopy().errors.operationFailed)
     assert.notEqual(save, currentCopy().errors.database)
   })
 
-  it('maps leftover brew list save delete and category without unifying them', () => {
+  it('maps leftover phantasi list save delete and category without unifying them', () => {
     const list = userFacingError(
-      'Failed to list sources: relation "brew_sources" does not exist',
+      'Failed to list sources: relation "phantasi_sources" does not exist',
     )
     const save = userFacingError('Failed to save source')
     const remove = userFacingError('Failed to delete source')
     const categorySave = userFacingError('Failed to save category')
     const categoryDelete = userFacingError('Failed to delete category')
     const articles = userFacingError('Failed to list articles')
-    assert.equal(/brew_sources|does not exist/.test(list), false)
+    assert.equal(/phantasi_sources|does not exist/.test(list), false)
     assert.match(list, /加载|load|読み込/)
     assert.match(list, /list sources/)
     assert.match(save, /保存|save/)
@@ -628,7 +628,7 @@ describe('userFacingError', () => {
     assert.notEqual(save, currentCopy().errors.database)
   })
 
-  it('maps leftover brew parse, discover, and invalid URL without dumps', () => {
+  it('maps leftover phantasi parse, discover, and invalid URL without dumps', () => {
     const parse = userFacingError('Failed to parse feed: not valid RSS')
     const named = userFacingError(
       new ApiError(
@@ -996,12 +996,12 @@ describe('userFacingError', () => {
 
   it('maps leftover agent write steps without unifying to database error', () => {
     const article = userFacingError(
-      'Failed to find article: relation "brew_items" does not exist',
+      'Failed to find article: relation "phantasi_items" does not exist',
     )
     const read = userFacingError('Failed to update reading state')
     const storage = userFacingError('Failed to delete Tapp storage')
     const content = userFacingError('Failed to save content')
-    assert.equal(/brew_items|does not exist/.test(article), false)
+    assert.equal(/phantasi_items|does not exist/.test(article), false)
     assert.match(article, /文章|article|記事/)
     assert.match(read, /阅读|reading|読書/)
     assert.match(storage, /存储|storage|保存領域/)
@@ -1036,7 +1036,7 @@ describe('userFacingError', () => {
     assert.notEqual(create, currentCopy().errors.sessionFailed)
   })
 
-  it('maps leftover brew comment load save delete without unifying them', () => {
+  it('maps leftover phantasi comment load save delete without unifying them', () => {
     const load = userFacingError('Failed to load comments')
     const save = userFacingError('Failed to save comment')
     const del = userFacingError('Failed to delete comment replies')
@@ -1297,7 +1297,7 @@ describe('userFacingError', () => {
     assert.notEqual(reportLoad, currentCopy().errors.database)
   })
 
-  it('maps leftover config, icon, and brewlia loads without unifying them', () => {
+  it('maps leftover config, icon, and phantasiai loads without unifying them', () => {
     const write = userFacingError(
       new ApiError(
         'Failed to write configuration: not enough disk space · /data/site_public.env',
@@ -1477,7 +1477,7 @@ describe('userFacingError', () => {
     assert.notEqual(generate, currentCopy().merope.loadFailed)
   })
 
-  it('maps leftover store download config brew leftovers without unifying them', () => {
+  it('maps leftover store download config phantasi leftovers without unifying them', () => {
     const download = userFacingError(
       'Failed to download manifest (apps/foo/manifest.json): HTTP 502',
     )
@@ -1697,10 +1697,10 @@ describe('userFacingError', () => {
     )
     assert.equal(
       userFacingError('智能阅读列表'),
-      currentCopy().brew.smartReadingList,
+      currentCopy().phantasi.smartReadingList,
     )
-    assert.equal(userFacingError('订阅源'), currentCopy().brew.boardFeeds)
-    assert.equal(userFacingError('已收藏'), currentCopy().errors.brewMarkStarred)
+    assert.equal(userFacingError('订阅源'), currentCopy().phantasi.boardFeeds)
+    assert.equal(userFacingError('已收藏'), currentCopy().errors.phantasiMarkStarred)
     assert.equal(
       userFacingError('网络搜索 - 科技'),
       fill(currentCopy().errors.webSearchNamed, { name: '科技' }),
@@ -1747,10 +1747,10 @@ describe('userFacingError', () => {
       currentCopy().errors.waitTappInteraction,
     )
     assert.equal(userFacingError('动态技能'), currentCopy().errors.capDynamicSkills)
-    assert.equal(userFacingError('未分类'), currentCopy().brew.uncategorized)
+    assert.equal(userFacingError('未分类'), currentCopy().phantasi.uncategorized)
     assert.equal(
       userFacingError('最新文章'),
-      currentCopy().brew.latestArticles,
+      currentCopy().phantasi.latestArticles,
     )
     assert.equal(
       userFacingError('任务等待用户输入超时（2小时），已自动取消'),
@@ -1766,31 +1766,31 @@ describe('userFacingError', () => {
     )
     assert.equal(
       userFacingError('标题不能为空'),
-      currentCopy().brew.noteTitleRequired,
+      currentCopy().phantasi.noteTitleRequired,
     )
     assert.equal(
       userFacingError('A title is required'),
-      currentCopy().brew.noteTitleRequired,
+      currentCopy().phantasi.noteTitleRequired,
     )
     assert.equal(
       userFacingError('Note draft was updated elsewhere'),
-      currentCopy().brew.noteRevisionConflict,
+      currentCopy().phantasi.noteRevisionConflict,
     )
     assert.equal(
       userFacingError('That time has already passed'),
-      currentCopy().brew.noteSchedulePast,
+      currentCopy().phantasi.noteSchedulePast,
     )
     assert.equal(
       userFacingError('A schedule time is required'),
-      currentCopy().brew.noteScheduleNeedTime,
+      currentCopy().phantasi.noteScheduleNeedTime,
     )
     assert.equal(
       userFacingError('标题最多 200 字，现在有 201 字'),
-      fill(currentCopy().brew.noteTitleTooLong, { max: '200', chars: '201' }),
+      fill(currentCopy().phantasi.noteTitleTooLong, { max: '200', chars: '201' }),
     )
     assert.equal(
       userFacingError('正文最多 200000 字，现在有 200001 字'),
-      fill(currentCopy().brew.noteBodyTooLong, {
+      fill(currentCopy().phantasi.noteBodyTooLong, {
         max: '200000',
         chars: '200001',
       }),

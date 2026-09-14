@@ -1,125 +1,125 @@
 /* Prism token 配色：一套墨色系，浅色深色各一份。不依赖 Prism 自带主题。 */
 
-.brew-code-highlight .token.comment,
-.brew-code-highlight .token.prolog,
-.brew-code-highlight .token.doctype,
-.brew-code-highlight .token.cdata {
+.phantasi-code-highlight .token.comment,
+.phantasi-code-highlight .token.prolog,
+.phantasi-code-highlight .token.doctype,
+.phantasi-code-highlight .token.cdata {
   color: #8a8f98;
   font-style: italic;
 }
 
-.brew-code-highlight .token.punctuation {
+.phantasi-code-highlight .token.punctuation {
   color: #6b7280;
 }
 
-.brew-code-highlight .token.property,
-.brew-code-highlight .token.tag,
-.brew-code-highlight .token.constant,
-.brew-code-highlight .token.symbol,
-.brew-code-highlight .token.deleted {
+.phantasi-code-highlight .token.property,
+.phantasi-code-highlight .token.tag,
+.phantasi-code-highlight .token.constant,
+.phantasi-code-highlight .token.symbol,
+.phantasi-code-highlight .token.deleted {
   color: #b45309;
 }
 
-.brew-code-highlight .token.boolean,
-.brew-code-highlight .token.number {
+.phantasi-code-highlight .token.boolean,
+.phantasi-code-highlight .token.number {
   color: #0f766e;
 }
 
-.brew-code-highlight .token.selector,
-.brew-code-highlight .token.attr-name,
-.brew-code-highlight .token.string,
-.brew-code-highlight .token.char,
-.brew-code-highlight .token.builtin,
-.brew-code-highlight .token.inserted {
+.phantasi-code-highlight .token.selector,
+.phantasi-code-highlight .token.attr-name,
+.phantasi-code-highlight .token.string,
+.phantasi-code-highlight .token.char,
+.phantasi-code-highlight .token.builtin,
+.phantasi-code-highlight .token.inserted {
   color: #15803d;
 }
 
-.brew-code-highlight .token.operator,
-.brew-code-highlight .token.entity,
-.brew-code-highlight .token.url,
-.brew-code-highlight .language-css .token.string,
-.brew-code-highlight .style .token.string {
+.phantasi-code-highlight .token.operator,
+.phantasi-code-highlight .token.entity,
+.phantasi-code-highlight .token.url,
+.phantasi-code-highlight .language-css .token.string,
+.phantasi-code-highlight .style .token.string {
   color: #4b5563;
 }
 
-.brew-code-highlight .token.atrule,
-.brew-code-highlight .token.attr-value,
-.brew-code-highlight .token.keyword {
+.phantasi-code-highlight .token.atrule,
+.phantasi-code-highlight .token.attr-value,
+.phantasi-code-highlight .token.keyword {
   color: #7c3aed;
 }
 
-.brew-code-highlight .token.function,
-.brew-code-highlight .token.class-name {
+.phantasi-code-highlight .token.function,
+.phantasi-code-highlight .token.class-name {
   color: #1d4ed8;
 }
 
-.brew-code-highlight .token.regex,
-.brew-code-highlight .token.important,
-.brew-code-highlight .token.variable {
+.phantasi-code-highlight .token.regex,
+.phantasi-code-highlight .token.important,
+.phantasi-code-highlight .token.variable {
   color: #c2410c;
 }
 
-.brew-code-highlight .token.important,
-.brew-code-highlight .token.bold {
+.phantasi-code-highlight .token.important,
+.phantasi-code-highlight .token.bold {
   font-weight: 600;
 }
 
-.brew-code-highlight .token.italic {
+.phantasi-code-highlight .token.italic {
   font-style: italic;
 }
 
-html.dark .brew-code-highlight .token.comment,
-html.dark .brew-code-highlight .token.prolog,
-html.dark .brew-code-highlight .token.doctype,
-html.dark .brew-code-highlight .token.cdata {
+html.dark .phantasi-code-highlight .token.comment,
+html.dark .phantasi-code-highlight .token.prolog,
+html.dark .phantasi-code-highlight .token.doctype,
+html.dark .phantasi-code-highlight .token.cdata {
   color: #7d8590;
 }
 
-html.dark .brew-code-highlight .token.punctuation {
+html.dark .phantasi-code-highlight .token.punctuation {
   color: #9ca3af;
 }
 
-html.dark .brew-code-highlight .token.property,
-html.dark .brew-code-highlight .token.tag,
-html.dark .brew-code-highlight .token.constant,
-html.dark .brew-code-highlight .token.symbol,
-html.dark .brew-code-highlight .token.deleted {
+html.dark .phantasi-code-highlight .token.property,
+html.dark .phantasi-code-highlight .token.tag,
+html.dark .phantasi-code-highlight .token.constant,
+html.dark .phantasi-code-highlight .token.symbol,
+html.dark .phantasi-code-highlight .token.deleted {
   color: #fbbf24;
 }
 
-html.dark .brew-code-highlight .token.boolean,
-html.dark .brew-code-highlight .token.number {
+html.dark .phantasi-code-highlight .token.boolean,
+html.dark .phantasi-code-highlight .token.number {
   color: #5eead4;
 }
 
-html.dark .brew-code-highlight .token.selector,
-html.dark .brew-code-highlight .token.attr-name,
-html.dark .brew-code-highlight .token.string,
-html.dark .brew-code-highlight .token.char,
-html.dark .brew-code-highlight .token.builtin,
-html.dark .brew-code-highlight .token.inserted {
+html.dark .phantasi-code-highlight .token.selector,
+html.dark .phantasi-code-highlight .token.attr-name,
+html.dark .phantasi-code-highlight .token.string,
+html.dark .phantasi-code-highlight .token.char,
+html.dark .phantasi-code-highlight .token.builtin,
+html.dark .phantasi-code-highlight .token.inserted {
   color: #86efac;
 }
 
-html.dark .brew-code-highlight .token.operator,
-html.dark .brew-code-highlight .token.entity,
-html.dark .brew-code-highlight .token.url {
+html.dark .phantasi-code-highlight .token.operator,
+html.dark .phantasi-code-highlight .token.entity,
+html.dark .phantasi-code-highlight .token.url {
   color: #d1d5db;
 }
 
-html.dark .brew-code-highlight .token.atrule,
-html.dark .brew-code-highlight .token.attr-value,
-html.dark .brew-code-highlight .token.keyword {
+html.dark .phantasi-code-highlight .token.atrule,
+html.dark .phantasi-code-highlight .token.attr-value,
+html.dark .phantasi-code-highlight .token.keyword {
   color: #c4b5fd;
 }
 
-html.dark .brew-code-highlight .token.function,
-html.dark .brew-code-highlight .token.class-name {
+html.dark .phantasi-code-highlight .token.function,
+html.dark .phantasi-code-highlight .token.class-name {
   color: #93c5fd;
 }
 
-html.dark .brew-code-highlight .token.regex,
-html.dark .brew-code-highlight .token.important,
-html.dark .brew-code-highlight .token.variable {
+html.dark .phantasi-code-highlight .token.regex,
+html.dark .phantasi-code-highlight .token.important,
+html.dark .phantasi-code-highlight .token.variable {
   color: #fdba74;
 }

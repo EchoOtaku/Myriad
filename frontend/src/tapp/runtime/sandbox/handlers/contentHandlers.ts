@@ -198,14 +198,14 @@ export function registerTappListHandlers(
   })
 }
 
-export function registerBrewListHandlers(
+export function registerPhantasiListHandlers(
   bridge: TappBridge,
   _tappInstance: TappInstance,
 ): void {
-  bridge.registerHandler('brewList.list', async (message) => {
+  bridge.registerHandler('phantasiList.list', async (message) => {
     const [options = {}] = getArgs(message) as [Record<string, unknown>?]
     try {
-      const { getItems } = await import('../../../../services/brewApi')
+      const { getItems } = await import('../../../../services/phantasiApi')
       const data = await getItems(
         {
           per_page: (options.limit as number) || 30,
@@ -239,10 +239,10 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.get', async (message) => {
+  bridge.registerHandler('phantasiList.get', async (message) => {
     const [id] = getArgs(message) as [number]
     try {
-      const { getItem } = await import('../../../../services/brewApi')
+      const { getItem } = await import('../../../../services/phantasiApi')
       const item = await getItem(id, await bridge.hostAttributionHeaders())
       return {
         success: true,
@@ -266,9 +266,9 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.sources', async () => {
+  bridge.registerHandler('phantasiList.sources', async () => {
     try {
-      const { getSources } = await import('../../../../services/brewApi')
+      const { getSources } = await import('../../../../services/phantasiApi')
       const sources = await getSources(await bridge.hostAttributionHeaders())
       return {
         success: true,
@@ -288,9 +288,9 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.categories', async () => {
+  bridge.registerHandler('phantasiList.categories', async () => {
     try {
-      const { getCategories } = await import('../../../../services/brewApi')
+      const { getCategories } = await import('../../../../services/phantasiApi')
       const categories = await getCategories(
         await bridge.hostAttributionHeaders(),
       )
@@ -300,9 +300,9 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.stats', async () => {
+  bridge.registerHandler('phantasiList.stats', async () => {
     try {
-      const { getStats } = await import('../../../../services/brewApi')
+      const { getStats } = await import('../../../../services/phantasiApi')
       const stats = await getStats(await bridge.hostAttributionHeaders())
       return { success: true, data: stats }
     } catch (error) {
@@ -310,10 +310,10 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.discover', async (message) => {
+  bridge.registerHandler('phantasiList.discover', async (message) => {
     const [url] = getArgs(message) as [string]
     try {
-      const { discoverSource } = await import('../../../../services/brewApi')
+      const { discoverSource } = await import('../../../../services/phantasiApi')
       const result = await discoverSource(
         url,
         await bridge.hostAttributionHeaders(),
@@ -324,9 +324,9 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.exportOpml', async () => {
+  bridge.registerHandler('phantasiList.exportOpml', async () => {
     try {
-      const { exportOpml } = await import('../../../../services/brewApi')
+      const { exportOpml } = await import('../../../../services/phantasiApi')
       const opml = await exportOpml(await bridge.hostAttributionHeaders())
       return { success: true, data: opml }
     } catch (error) {
@@ -334,10 +334,10 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.markRead', async (message) => {
+  bridge.registerHandler('phantasiList.markRead', async (message) => {
     const [itemId] = getArgs(message) as [number]
     try {
-      const { markRead } = await import('../../../../services/brewApi')
+      const { markRead } = await import('../../../../services/phantasiApi')
       await markRead(itemId, await bridge.hostAttributionHeaders())
       return { success: true }
     } catch (error) {
@@ -345,10 +345,10 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.markUnread', async (message) => {
+  bridge.registerHandler('phantasiList.markUnread', async (message) => {
     const [itemId] = getArgs(message) as [number]
     try {
-      const { markUnread } = await import('../../../../services/brewApi')
+      const { markUnread } = await import('../../../../services/phantasiApi')
       await markUnread(itemId, await bridge.hostAttributionHeaders())
       return { success: true }
     } catch (error) {
@@ -356,10 +356,10 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.star', async (message) => {
+  bridge.registerHandler('phantasiList.star', async (message) => {
     const [itemId] = getArgs(message) as [number]
     try {
-      const { starItem } = await import('../../../../services/brewApi')
+      const { starItem } = await import('../../../../services/phantasiApi')
       await starItem(itemId, await bridge.hostAttributionHeaders())
       return { success: true }
     } catch (error) {
@@ -367,10 +367,10 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.unstar', async (message) => {
+  bridge.registerHandler('phantasiList.unstar', async (message) => {
     const [itemId] = getArgs(message) as [number]
     try {
-      const { unstarItem } = await import('../../../../services/brewApi')
+      const { unstarItem } = await import('../../../../services/phantasiApi')
       await unstarItem(itemId, await bridge.hostAttributionHeaders())
       return { success: true }
     } catch (error) {
@@ -378,12 +378,12 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.markAllRead', async (message) => {
+  bridge.registerHandler('phantasiList.markAllRead', async (message) => {
     const [options] = getArgs(message) as [
       { source_id?: number; category?: string; before?: number }?,
     ]
     try {
-      const { markAllRead } = await import('../../../../services/brewApi')
+      const { markAllRead } = await import('../../../../services/phantasiApi')
       const count = await markAllRead(
         options,
         await bridge.hostAttributionHeaders(),
@@ -394,10 +394,10 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.getComments', async (message) => {
+  bridge.registerHandler('phantasiList.getComments', async (message) => {
     const [itemId] = getArgs(message) as [number]
     try {
-      const { getComments } = await import('../../../../services/brewApi')
+      const { getComments } = await import('../../../../services/phantasiApi')
       const result = await getComments(
         itemId,
         await bridge.hostAttributionHeaders(),
@@ -408,7 +408,7 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.createComment', async (message) => {
+  bridge.registerHandler('phantasiList.createComment', async (message) => {
     const [itemId, req] = getArgs(message) as [
       number,
       {
@@ -422,7 +422,7 @@ export function registerBrewListHandlers(
       },
     ]
     try {
-      const { createComment } = await import('../../../../services/brewApi')
+      const { createComment } = await import('../../../../services/phantasiApi')
       const result = await createComment(
         itemId,
         req,
@@ -434,13 +434,13 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.updateComment', async (message) => {
+  bridge.registerHandler('phantasiList.updateComment', async (message) => {
     const [commentId, req] = getArgs(message) as [
       number,
       { comment?: string; color?: string },
     ]
     try {
-      const { updateComment } = await import('../../../../services/brewApi')
+      const { updateComment } = await import('../../../../services/phantasiApi')
       const result = await updateComment(
         commentId,
         req,
@@ -452,10 +452,10 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.deleteComment', async (message) => {
+  bridge.registerHandler('phantasiList.deleteComment', async (message) => {
     const [commentId] = getArgs(message) as [number]
     try {
-      const { deleteComment } = await import('../../../../services/brewApi')
+      const { deleteComment } = await import('../../../../services/phantasiApi')
       await deleteComment(commentId, await bridge.hostAttributionHeaders())
       return { success: true }
     } catch (error) {
@@ -463,10 +463,10 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.getReplies', async (message) => {
+  bridge.registerHandler('phantasiList.getReplies', async (message) => {
     const [commentId] = getArgs(message) as [number]
     try {
-      const { getCommentReplies } = await import('../../../../services/brewApi')
+      const { getCommentReplies } = await import('../../../../services/phantasiApi')
       const result = await getCommentReplies(
         commentId,
         await bridge.hostAttributionHeaders(),
@@ -477,14 +477,14 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.createReply', async (message) => {
+  bridge.registerHandler('phantasiList.createReply', async (message) => {
     const [itemId, parentId, content] = getArgs(message) as [
       number,
       number,
       string,
     ]
     try {
-      const { createReply } = await import('../../../../services/brewApi')
+      const { createReply } = await import('../../../../services/phantasiApi')
       const result = await createReply(
         itemId,
         parentId,
@@ -497,10 +497,10 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.addSource', async (message) => {
+  bridge.registerHandler('phantasiList.addSource', async (message) => {
     const [req] = getArgs(message) as [{ url: string; category?: string }]
     try {
-      const { addSource } = await import('../../../../services/brewApi')
+      const { addSource } = await import('../../../../services/phantasiApi')
       const source = await addSource(req, await bridge.hostAttributionHeaders())
       return {
         success: true,
@@ -511,13 +511,13 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.updateSource', async (message) => {
+  bridge.registerHandler('phantasiList.updateSource', async (message) => {
     const [id, req] = getArgs(message) as [
       number,
       { name?: string; category?: string },
     ]
     try {
-      const { updateSource } = await import('../../../../services/brewApi')
+      const { updateSource } = await import('../../../../services/phantasiApi')
       const source = await updateSource(
         id,
         req,
@@ -529,10 +529,10 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.deleteSource', async (message) => {
+  bridge.registerHandler('phantasiList.deleteSource', async (message) => {
     const [id] = getArgs(message) as [number]
     try {
-      const { deleteSource } = await import('../../../../services/brewApi')
+      const { deleteSource } = await import('../../../../services/phantasiApi')
       await deleteSource(id, await bridge.hostAttributionHeaders())
       return { success: true }
     } catch (error) {
@@ -540,10 +540,10 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.refreshSource', async (message) => {
+  bridge.registerHandler('phantasiList.refreshSource', async (message) => {
     const [id] = getArgs(message) as [number]
     try {
-      const { refreshSource } = await import('../../../../services/brewApi')
+      const { refreshSource } = await import('../../../../services/phantasiApi')
       const count = await refreshSource(
         id,
         await bridge.hostAttributionHeaders(),
@@ -554,10 +554,10 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.importOpml', async (message) => {
+  bridge.registerHandler('phantasiList.importOpml', async (message) => {
     const [opml] = getArgs(message) as [string]
     try {
-      const { importOpml } = await import('../../../../services/brewApi')
+      const { importOpml } = await import('../../../../services/phantasiApi')
       const result = await importOpml(
         opml,
         await bridge.hostAttributionHeaders(),
@@ -568,10 +568,10 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.createCategory', async (message) => {
+  bridge.registerHandler('phantasiList.createCategory', async (message) => {
     const [req] = getArgs(message) as [{ name: string }]
     try {
-      const { createCategory } = await import('../../../../services/brewApi')
+      const { createCategory } = await import('../../../../services/phantasiApi')
       await createCategory(req, await bridge.hostAttributionHeaders())
       return { success: true }
     } catch (error) {
@@ -579,10 +579,10 @@ export function registerBrewListHandlers(
     }
   })
 
-  bridge.registerHandler('brewList.deleteCategory', async (message) => {
+  bridge.registerHandler('phantasiList.deleteCategory', async (message) => {
     const [id] = getArgs(message) as [number]
     try {
-      const { deleteCategory } = await import('../../../../services/brewApi')
+      const { deleteCategory } = await import('../../../../services/phantasiApi')
       await deleteCategory(id, await bridge.hostAttributionHeaders())
       return { success: true }
     } catch (error) {

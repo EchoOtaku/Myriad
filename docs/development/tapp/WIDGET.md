@@ -20,7 +20,7 @@
 ## Widget SDK 限制
 
 > ⚠️ **重要**：三种沙箱不是同一套 `window.Tapp`。Widget 是精简面；Page 是完整面；headless
-> （常驻）没有可见控制面。需要联邦、对局、Tapp / Brew 管理时用 Page（有授予权限时 headless
+> （常驻）没有可见控制面。需要联邦、对局、Tapp / Phantasi 管理时用 Page（有授予权限时 headless
 > 也可以用联邦和对局），不要假设 Widget 上有这些方法。
 
 | 分类 | Widget | Page | headless |
@@ -39,10 +39,10 @@
 | **媒体 / 语音 / 动画 / 调度 / 事件 / Data Exchange / Agent** | ✅ 按授予权限 | ✅ | ✅ |
 | **`Tapp.api(name, params)` / `Tapp.api.list()`** | ✅ | ✅ | ✅ |
 | **生命周期** | ✅ `onReady` / `onDestroy` / `onPause` / `onResume`（隐藏≠销毁） | ✅ | ✅ |
-| **`tappList` / `brewList` / `federation` / `game` / 组件 / 快捷键** | ❌ | ✅ | `tappList` / 组件 / 快捷键 ❌；`brewList` / `federation` / `game` ✅ |
+| **`tappList` / `phantasiList` / `federation` / `game` / 组件 / 快捷键** | ❌ | ✅ | `tappList` / 组件 / 快捷键 ❌；`phantasiList` / `federation` / `game` ✅ |
 
 Widget 不是纯静态展示层：共享层 `core` 可在其中使用事件、调度和数据交换。Widget 沙箱没有
-平台/报告写入、Tapp/Brew 管理、组件、快捷键、联邦或 `Tapp.game`。
+平台/报告写入、Tapp/Phantasi 管理、组件、快捷键、联邦或 `Tapp.game`。
 
 ---
 

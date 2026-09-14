@@ -49,13 +49,13 @@ export {
 } from './pageFeatures'
 
 export {
-  brewAnimationPresets,
-  getBrewTransition,
-  playBrewVeilEnter,
-  playBrewVeilExit,
-  useBrewAnimationConfig,
-  useBrewScheduler,
-} from './pages/brew'
+  phantasiAnimationPresets,
+  getPhantasiTransition,
+  playPhantasiVeilEnter,
+  playPhantasiVeilExit,
+  usePhantasiAnimationConfig,
+  usePhantasiScheduler,
+} from './pages/phantasi'
 
 export {
   cleanupHome,

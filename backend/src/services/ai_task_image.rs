@@ -97,13 +97,13 @@ pub fn validate_task_input(
             invalid_reference("Each reference image must be a data URL or local image-cache path")
         })?;
         if !source.starts_with("data:")
-            && !(source.starts_with("/api/brew/image-cache/")
+            && !(source.starts_with("/api/phantasi/image-cache/")
                 && ImageCacheService::new()
                     .local_path_for_public_url(source)
                     .is_some())
         {
             return Err(invalid_reference(
-                "Reference images must use base64 data URLs or local /api/brew/image-cache paths",
+                "Reference images must use base64 data URLs or local /api/phantasi/image-cache paths",
             ));
         }
     }
@@ -232,8 +232,8 @@ mod tests {
             "http://127.0.0.1/a.png",
             "file:///etc/passwd",
             "blob:example",
-            "/api/brew/image-cache/aa/../secret.png",
-            "/api/brew/image-cache/aa/not-a-hash.png",
+            "/api/phantasi/image-cache/aa/../secret.png",
+            "/api/phantasi/image-cache/aa/not-a-hash.png",
         ] {
             let error = load_image_references(&json!({"referenceImages": [source]}))
                 .await

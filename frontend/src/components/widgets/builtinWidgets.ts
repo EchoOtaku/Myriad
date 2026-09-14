@@ -23,17 +23,17 @@ function lazyWidget<K extends string>(
   return component
 }
 
-const BrewFeaturedWidget = lazyWidget(
-  () => import('../brew/tiles/BrewFeaturedTile'),
-  'BrewFeaturedWidget',
+const PhantasiFeaturedWidget = lazyWidget(
+  () => import('../phantasi/tiles/PhantasiFeaturedTile'),
+  'PhantasiFeaturedWidget',
 )
-const BrewSourceWidget = lazyWidget(
-  () => import('../brew/tiles/BrewSourceTile'),
-  'BrewSourceWidget',
+const PhantasiSourceWidget = lazyWidget(
+  () => import('../phantasi/tiles/PhantasiSourceTile'),
+  'PhantasiSourceWidget',
 )
-const BrewTopicWidget = lazyWidget(
-  () => import('../brew/tiles/BrewTopicTile'),
-  'BrewTopicWidget',
+const PhantasiTopicWidget = lazyWidget(
+  () => import('../phantasi/tiles/PhantasiTopicTile'),
+  'PhantasiTopicWidget',
 )
 const FriendLinksWidget = lazyWidget(
   () => import('./FriendLinksWidget'),
@@ -202,21 +202,21 @@ export const BUILTIN_WIDGET_BASE_CONFIG = {
     component: VisitorStatsWidget,
     supportedSizes: ['2x2', '4x2'] as WidgetSize[],
   },
-  'brew-source': {
+  'phantasi-source': {
     defaultSize: '4x2' as WidgetSize,
-    component: BrewSourceWidget,
+    component: PhantasiSourceWidget,
     supportedSizes: ['2x2', '4x2', '4x4'] as WidgetSize[],
     hosts: ['home', 'control-panel'] as const,
   },
-  'brew-topic': {
+  'phantasi-topic': {
     defaultSize: '4x2' as WidgetSize,
-    component: BrewTopicWidget,
+    component: PhantasiTopicWidget,
     supportedSizes: ['2x2', '4x2', '4x4'] as WidgetSize[],
     hosts: ['home', 'control-panel'] as const,
   },
-  'brew-featured': {
+  'phantasi-featured': {
     defaultSize: '4x4' as WidgetSize,
-    component: BrewFeaturedWidget,
+    component: PhantasiFeaturedWidget,
     supportedSizes: ['4x2', '4x4'] as WidgetSize[],
     hosts: ['home', 'control-panel'] as const,
   },
@@ -253,9 +253,9 @@ const BUILTIN_WIDGET_ORDER: BuiltinWidgetId[] = [
   'tapp-shortcut',
   'game-presence',
   'visitor-stats',
-  'brew-featured',
-  'brew-topic',
-  'brew-source',
+  'phantasi-featured',
+  'phantasi-topic',
+  'phantasi-source',
   'github-repos',
 ]
 
@@ -283,9 +283,9 @@ const WIDGET_NAME_KEY: Record<BuiltinWidgetId, keyof WidgetsI18n> = {
   'tapp-shortcut': 'tappShortcut',
   'game-presence': 'gamePresence',
   'visitor-stats': 'visitorStats',
-  'brew-source': 'brewSource',
-  'brew-topic': 'brewTopic',
-  'brew-featured': 'brewFeatured',
+  'phantasi-source': 'phantasiSource',
+  'phantasi-topic': 'phantasiTopic',
+  'phantasi-featured': 'phantasiFeatured',
   'github-repos': 'githubRepos',
 }
 

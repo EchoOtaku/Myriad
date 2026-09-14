@@ -26,7 +26,7 @@ const MAX_ID_LENGTH = 128
 const MAX_TYPE_LENGTH = 256
 const MAX_ASSET_KEY_LENGTH = 2048
 const IMAGE_CACHE_FILE =
-  /^\/api\/brew\/image-cache\/([0-9a-f]{2})\/([0-9a-f]{64})\.(jpg|jpeg|png|webp)$/i
+  /^\/api\/phantasi\/image-cache\/([0-9a-f]{2})\/([0-9a-f]{64})\.(jpg|jpeg|png|webp)$/i
 
 export type HomeLayoutImportReason =
   | 'invalid'
@@ -179,7 +179,7 @@ export function canonicalStickerImageUrl(url: string): string | null {
     return url
   }
   const withoutQuery = url.split('#')[0]?.split('?')[0] ?? url
-  const cacheAt = withoutQuery.indexOf('/api/brew/image-cache/')
+  const cacheAt = withoutQuery.indexOf('/api/phantasi/image-cache/')
   const path = cacheAt >= 0 ? withoutQuery.slice(cacheAt) : withoutQuery
   const match = IMAGE_CACHE_FILE.exec(path)
   if (!match) return null
@@ -187,7 +187,7 @@ export function canonicalStickerImageUrl(url: string): string | null {
   const stem = match[2].toLowerCase()
   const ext = match[3].toLowerCase()
   if (!stem.startsWith(subdir)) return null
-  return `/api/brew/image-cache/${subdir}/${stem}.${ext}`
+  return `/api/phantasi/image-cache/${subdir}/${stem}.${ext}`
 }
 
 export function isHomeLayoutStickerTile(item: {

@@ -14,7 +14,7 @@ import { isLocale } from '../i18n'
 import { isAuthMeHttpOk, parseAuthMeResponse } from '../utils/authMe'
 import { setKnownAuthState } from '../utils/authState'
 import { authSubject, authSubjectKey } from '../utils/authSubject'
-import { brewSubject, brewSubjectKey } from '../utils/brewSubject'
+import { phantasiSubject, phantasiSubjectKey } from '../utils/phantasiSubject'
 import {
   clearSessionHint,
   hasSessionHint,
@@ -116,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (parsed.authenticated) {
             const u = parsed.user
             authSubject.change(authSubjectKey(u))
-            brewSubject.change(brewSubjectKey(u))
+            phantasiSubject.change(phantasiSubjectKey(u))
             setSessionHint()
             const rawIdentities = (u as { identities?: unknown }).identities
             const identities = Array.isArray(rawIdentities)
@@ -163,7 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Drop the session hint only on a definitive guest body.
           clearSessionHint()
           authSubject.change('guest')
-          brewSubject.change('guest')
+          phantasiSubject.change('guest')
           setUser(null)
           setIsAuthenticated(false)
           setIsAdmin(false)
@@ -173,7 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (response.status === 401 || response.status === 403) {
           authSubject.change('guest')
-          brewSubject.change('guest')
+          phantasiSubject.change('guest')
           clearSessionHint()
           setUser(null)
           setIsAuthenticated(false)
@@ -186,7 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Network/timeout: keep the session hint; do not claim authenticated.
         if (generation !== checkAuthGeneration.current) return false
         authSubject.change('unknown')
-        brewSubject.change('unknown', false)
+        phantasiSubject.change('unknown', false)
         setUser(null)
         setIsAuthenticated(false)
         setIsAdmin(false)
@@ -209,7 +209,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     checkAuthGeneration.current++
     authSubject.change('guest', true)
-    brewSubject.change('guest', true, true)
+    phantasiSubject.change('guest', true, true)
     setIsLoading(false)
     // Logout need not await; this reset and a later login share the import cache.
     void resetTappSubjectState()
@@ -266,7 +266,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const isAuth = (e as CustomEvent).detail?.isAuthenticated ?? false
       if (isAuth) {
         authSubject.change('changing', true)
-        brewSubject.change('changing', false, true)
+        phantasiSubject.change('changing', false, true)
         // Remount sandboxes only after destroyAll and a known user, or Aro keeps a dead grant.
         void (async () => {
           try {

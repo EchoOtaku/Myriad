@@ -259,125 +259,125 @@ pub(crate) fn get_expected_indexes() -> Vec<IndexDef> {
             columns: vec!["user_id".into(), "last_run_at".into()],
             is_unique: false,
         },
-        // 003_brew_system.rs 索引
-        // brew_sources 索引
+        // 003_phantasi_system.rs 索引
+        // phantasi_sources 索引
         IndexDef {
-            name: "idx_brew_sources_user_id".into(),
-            table: "brew_sources".into(),
+            name: "idx_phantasi_sources_user_id".into(),
+            table: "phantasi_sources".into(),
             columns: vec!["user_id".into()],
             is_unique: false,
         },
         IndexDef {
-            name: "idx_brew_sources_user_url".into(),
-            table: "brew_sources".into(),
+            name: "idx_phantasi_sources_user_url".into(),
+            table: "phantasi_sources".into(),
             columns: vec!["user_id".into(), "url".into()],
             is_unique: true,
         },
         IndexDef {
-            name: "idx_brew_sources_category".into(),
-            table: "brew_sources".into(),
+            name: "idx_phantasi_sources_category".into(),
+            table: "phantasi_sources".into(),
             columns: vec!["user_id".into(), "category".into()],
             is_unique: false,
         },
         IndexDef {
-            name: "idx_brew_sources_schedule".into(),
-            table: "brew_sources".into(),
+            name: "idx_phantasi_sources_schedule".into(),
+            table: "phantasi_sources".into(),
             columns: vec!["enabled".into(), "last_fetched_at".into()],
             is_unique: false,
         },
-        // brew_items 索引
+        // phantasi_items 索引
         IndexDef {
-            name: "idx_brew_items_source_guid".into(),
-            table: "brew_items".into(),
+            name: "idx_phantasi_items_source_guid".into(),
+            table: "phantasi_items".into(),
             columns: vec!["source_id".into(), "guid".into()],
             is_unique: true,
         },
         IndexDef {
-            name: "idx_brew_items_published".into(),
-            table: "brew_items".into(),
+            name: "idx_phantasi_items_published".into(),
+            table: "phantasi_items".into(),
             columns: vec!["source_id".into(), "published_at".into()],
             is_unique: false,
         },
         IndexDef {
-            name: "idx_brew_items_timeline".into(),
-            table: "brew_items".into(),
+            name: "idx_phantasi_items_timeline".into(),
+            table: "phantasi_items".into(),
             columns: vec!["published_at".into()],
             is_unique: false,
         },
-        // brew_user_states 索引
+        // phantasi_user_states 索引
         IndexDef {
-            name: "idx_brew_user_states_unique".into(),
-            table: "brew_user_states".into(),
+            name: "idx_phantasi_user_states_unique".into(),
+            table: "phantasi_user_states".into(),
             columns: vec!["user_id".into(), "item_id".into()],
             is_unique: true,
         },
         IndexDef {
-            name: "idx_brew_user_states_unread".into(),
-            table: "brew_user_states".into(),
+            name: "idx_phantasi_user_states_unread".into(),
+            table: "phantasi_user_states".into(),
             columns: vec!["user_id".into(), "is_read".into()],
             is_unique: false,
         },
         IndexDef {
-            name: "idx_brew_user_states_starred".into(),
-            table: "brew_user_states".into(),
+            name: "idx_phantasi_user_states_starred".into(),
+            table: "phantasi_user_states".into(),
             columns: vec!["user_id".into(), "is_starred".into()],
             is_unique: false,
         },
-        // brew_categories 索引
+        // phantasi_categories 索引
         IndexDef {
-            name: "idx_brew_categories_unique".into(),
-            table: "brew_categories".into(),
+            name: "idx_phantasi_categories_unique".into(),
+            table: "phantasi_categories".into(),
             columns: vec!["user_id".into(), "name".into()],
             is_unique: true,
         },
-        // brew_annotations 索引
+        // phantasi_annotations 索引
         IndexDef {
-            name: "idx_brew_annotations_item".into(),
-            table: "brew_annotations".into(),
+            name: "idx_phantasi_annotations_item".into(),
+            table: "phantasi_annotations".into(),
             columns: vec!["item_id".into()],
             is_unique: false,
         },
-        // brew_podcasts 索引
+        // phantasi_podcasts 索引
         IndexDef {
-            name: "idx_brew_podcasts_item".into(),
-            table: "brew_podcasts".into(),
+            name: "idx_phantasi_podcasts_item".into(),
+            table: "phantasi_podcasts".into(),
             columns: vec!["item_id".into()],
             is_unique: true, // 每篇文章只有一个播客
         },
-        // brew_comments 索引
+        // phantasi_comments 索引
         IndexDef {
-            name: "idx_brew_comments_item".into(),
-            table: "brew_comments".into(),
+            name: "idx_phantasi_comments_item".into(),
+            table: "phantasi_comments".into(),
             columns: vec!["item_id".into()],
             is_unique: false,
         },
         IndexDef {
-            name: "idx_brew_comments_user".into(),
-            table: "brew_comments".into(),
+            name: "idx_phantasi_comments_user".into(),
+            table: "phantasi_comments".into(),
             columns: vec!["user_id".into()],
             is_unique: false,
         },
         IndexDef {
-            name: "idx_brew_comments_item_user".into(),
-            table: "brew_comments".into(),
+            name: "idx_phantasi_comments_item_user".into(),
+            table: "phantasi_comments".into(),
             columns: vec!["item_id".into(), "user_id".into()],
             is_unique: false,
         },
         IndexDef {
-            name: "idx_brew_note_docs_user".into(),
-            table: "brew_note_docs".into(),
+            name: "idx_phantasi_note_docs_user".into(),
+            table: "phantasi_note_docs".into(),
             columns: vec!["user_id".into()],
             is_unique: false,
         },
         IndexDef {
-            name: "idx_brew_note_docs_item".into(),
-            table: "brew_note_docs".into(),
+            name: "idx_phantasi_note_docs_item".into(),
+            table: "phantasi_note_docs".into(),
             columns: vec!["item_id".into()],
             is_unique: false,
         },
         IndexDef {
-            name: "idx_brew_note_docs_schedule".into(),
-            table: "brew_note_docs".into(),
+            name: "idx_phantasi_note_docs_schedule".into(),
+            table: "phantasi_note_docs".into(),
             columns: vec!["status".into(), "scheduled_at".into()],
             is_unique: false,
         },

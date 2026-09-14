@@ -300,7 +300,7 @@
     },
     "eventAnalytics": {
       "what": "How often product events fire in the selected range, and how many visitors hit them.",
-      "chain": "1) Shares the visitor-stats collection switch, date range, and exclusions (admin/owner not counted).\n2) Count = sum in range; visitors = distinct people who fired the event.\n3) Built-ins cover login/OAuth, music, library, Brew, report stage, Agent, Tapp, friend links, theme/locale/control panel; pass target for per-entity split (tapp id, platform slug, …).\n4) Main row = event total; sub-rows = target breakdown (up to ~20).\n5) Turning collection off stops new writes; history stays readable.",
+      "chain": "1) Shares the visitor-stats collection switch, date range, and exclusions (admin/owner not counted).\n2) Count = sum in range; visitors = distinct people who fired the event.\n3) Built-ins cover login/OAuth, music, library, Phantasi, report stage, Agent, Tapp, friend links, theme/locale/control panel; pass target for per-entity split (tapp id, platform slug, …).\n4) Main row = event total; sub-rows = target breakdown (up to ~20).\n5) Turning collection off stops new writes; history stays readable.",
       "frontend": "Data & stats → Visitor stats → Events section (beside Referrers).",
       "notes": "Keep custom event names stable and short; noisy high-frequency events crowd the ranking. Export/import backups include event aggregates and are sealed with an instance integrity token so hand-edited metrics are rejected."
     },

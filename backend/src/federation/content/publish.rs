@@ -281,8 +281,8 @@ fn normalize_unpublish_target(
             "reports" => Some("report".to_string()),
             "library" => Some("library".to_string()),
             "tapps" => Some("tapp".to_string()),
-            "articles" if segments.len() >= 3 && segments[segments.len() - 3] == "brew" => {
-                Some("brew-article".to_string())
+            "articles" if segments.len() >= 3 && segments[segments.len() - 3] == "phantasi" => {
+                Some("phantasi-article".to_string())
             }
             _ => None,
         }

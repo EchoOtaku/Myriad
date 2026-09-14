@@ -6,7 +6,7 @@ import {
   registerActionHandler,
   unregisterActionHandler,
 } from '../services/agent'
-import { brewSubject } from '../utils/brewSubject'
+import { phantasiSubject } from '../utils/phantasiSubject'
 import { useMusicPlayerControl } from './MusicPlayerContext'
 
 function findElement(target: PageElementTarget): HTMLElement | null {
@@ -343,9 +343,9 @@ export function AgentGlobalActions() {
     [],
   )
 
-  const handleBrewOpenArticle = useCallback(
+  const handlePhantasiOpenArticle = useCallback(
     async (action: FrontendAction): Promise<boolean> => {
-      if (action.type !== 'brew_open_article') return false
+      if (action.type !== 'phantasi_open_article') return false
 
       const params = action.params as
         | {
@@ -356,27 +356,27 @@ export function AgentGlobalActions() {
           }
         | undefined
 
-      console.log('[AgentGlobalActions] Opening brew article:', params)
+      console.log('[AgentGlobalActions] Opening phantasi article:', params)
 
-      const isOnBrewPage =
-        location.pathname === '/brew' || location.pathname.startsWith('/brew/')
+      const isOnPhantasiPage =
+        location.pathname === '/phantasi' || location.pathname.startsWith('/phantasi/')
 
-      if (!isOnBrewPage) {
+      if (!isOnPhantasiPage) {
         console.log(
-          '[AgentGlobalActions] Not on Brew page, navigating first...',
+          '[AgentGlobalActions] Not on Phantasi page, navigating first...',
         )
 
-        // Park in sessionStorage so Brew can run it after mount (avoids a pre-mount race).
+        // Park in sessionStorage so Phantasi can run it after mount (avoids a pre-mount race).
         const pendingAction = {
-          subjectKey: brewSubject.capture().key,
-          subjectGeneration: brewSubject.capture().generation,
+          subjectKey: phantasiSubject.capture().key,
+          subjectGeneration: phantasiSubject.capture().generation,
           articleId: params?.articleId,
           articleLink: params?.articleLink,
           openLatest: params?.openLatest ?? true,
           timestamp: Date.now(),
         }
         sessionStorage.setItem(
-          'brew_pending_open_article',
+          'phantasi_pending_open_article',
           JSON.stringify(pendingAction),
         )
         console.log(
@@ -384,9 +384,9 @@ export function AgentGlobalActions() {
           pendingAction,
         )
 
-        navigate('/brew')
+        navigate('/phantasi')
       } else {
-        const event = new CustomEvent('agent:open-brew-article', {
+        const event = new CustomEvent('agent:open-phantasi-article', {
           detail: {
             articleId: params?.articleId,
             articleLink: params?.articleLink,
@@ -578,7 +578,7 @@ export function AgentGlobalActions() {
 
       const readingListData = {
         id: `reading_list_${Date.now()}`,
-        name: payload.name || currentCopy().brew.smartReadingList,
+        name: payload.name || currentCopy().phantasi.smartReadingList,
         criteria: frontendAction.criteria || '',
         items: payload.items,
         createdAt: new Date().toISOString(),
@@ -592,14 +592,14 @@ export function AgentGlobalActions() {
           }
         : null
 
-      const isOnBrewPage =
-        location.pathname === '/brew' || location.pathname.startsWith('/brew/')
+      const isOnPhantasiPage =
+        location.pathname === '/phantasi' || location.pathname.startsWith('/phantasi/')
 
-      if (!isOnBrewPage) {
-        // Park in sessionStorage so Brew can run it after mount (avoids a pre-mount race).
+      if (!isOnPhantasiPage) {
+        // Park in sessionStorage so Phantasi can run it after mount (avoids a pre-mount race).
         const pendingAction = {
-          subjectKey: brewSubject.capture().key,
-          subjectGeneration: brewSubject.capture().generation,
+          subjectKey: phantasiSubject.capture().key,
+          subjectGeneration: phantasiSubject.capture().generation,
           readingList: readingListData,
           articleId:
             payload.items[0]?.id != null
@@ -609,7 +609,7 @@ export function AgentGlobalActions() {
           timestamp: Date.now(),
         }
         sessionStorage.setItem(
-          'brew_pending_reading_list',
+          'phantasi_pending_reading_list',
           JSON.stringify(pendingAction),
         )
         console.log(
@@ -617,7 +617,7 @@ export function AgentGlobalActions() {
           pendingAction,
         )
 
-        navigate('/brew')
+        navigate('/phantasi')
       } else {
         window.dispatchEvent(
           new CustomEvent('agent:set-reading-list', {
@@ -629,7 +629,7 @@ export function AgentGlobalActions() {
           // Wait until the reading list is applied.
           setTimeout(() => {
             window.dispatchEvent(
-              new CustomEvent('agent:open-brew-article', {
+              new CustomEvent('agent:open-phantasi-article', {
                 detail: {
                   articleId: firstItem.id.toString(),
                   openLatest: false,
@@ -826,7 +826,7 @@ export function AgentGlobalActions() {
 
     registerActionHandler('navigate', handleNavigate)
     registerActionHandler('page_interact', handlePageInteract)
-    registerActionHandler('brew_open_article', handleBrewOpenArticle)
+    registerActionHandler('phantasi_open_article', handlePhantasiOpenArticle)
     registerActionHandler('music_control', handleMusicControl)
     registerActionHandler('music_get_status', handleMusicGetStatus)
     registerActionHandler('music_load_playlist', handleMusicLoadPlaylist)
@@ -843,7 +843,7 @@ export function AgentGlobalActions() {
       releasePlayAudio()
       unregisterActionHandler('navigate')
       unregisterActionHandler('page_interact')
-      unregisterActionHandler('brew_open_article')
+      unregisterActionHandler('phantasi_open_article')
       unregisterActionHandler('music_control')
       unregisterActionHandler('music_get_status')
       unregisterActionHandler('music_load_playlist')
@@ -858,7 +858,7 @@ export function AgentGlobalActions() {
   }, [
     handleNavigate,
     handlePageInteract,
-    handleBrewOpenArticle,
+    handlePhantasiOpenArticle,
     handleMusicControl,
     handleMusicGetStatus,
     handleMusicLoadPlaylist,

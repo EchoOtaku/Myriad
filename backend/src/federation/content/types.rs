@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 /// 发布内容请求
 #[derive(Debug, Deserialize)]
 pub struct PublishRequest {
-    /// 内容类型: report, brew-article, tapp, library, note
+    /// 内容类型: report, phantasi-article, tapp, library, note
     pub content_type: String,
     /// 内容 ID（本地数据库 ID 或标识符；note 可省略，由服务端生成）
     #[serde(default)]

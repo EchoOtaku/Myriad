@@ -15,8 +15,8 @@
 //! ## Tapp 权限完整列表
 //!
 //! ### Basic - 默认开放（标注 authenticated 的能力不向游客签发）
-//! - platform:read, analytics:read, tappList:read, brew:read
-//! - brew:write (authenticated), brew:read (guest-safe)
+//! - platform:read, analytics:read, tappList:read, phantasi:read
+//! - phantasi:write (authenticated), phantasi:read (guest-safe)
 //! - report:read (authenticated), storage:read (guest-safe)
 //! - ui:notification (authenticated), ui:fullscreen, ui:theme, ui:confirm, ui:openUrl
 //! - media:read, media:control, media:audio, event:subscribe
@@ -31,11 +31,11 @@
 //! - shortcut:register (authenticated), event:publish
 //! - scheduler:register, speech:tts, speech:asr (all authenticated)
 //! - federation:post, federation:channel, federation:room
-//! - brew:commentWrite (authenticated)
+//! - phantasi:commentWrite (authenticated)
 //!
 //! ### Privileged - 仅管理员
 //! - widget:register, platform:write, platform:register, component:agent
-//! - tappList:manage, brew:manage, federation:trust
+//! - tappList:manage, phantasi:manage, federation:trust
 //! - **report:write**（数据报告生成，不可下放）
 
 use crate::config::DynamicConfig;
@@ -156,7 +156,7 @@ impl TappPermissionService {
             TappPermission::FederationPost => config.user_perm_federation_post,
             TappPermission::FederationChannel => config.user_perm_federation_channel,
             TappPermission::FederationRoom => config.user_perm_federation_room,
-            TappPermission::BrewCommentWrite => config.user_perm_brew_comment_write,
+            TappPermission::PhantasiCommentWrite => config.user_perm_phantasi_comment_write,
             _ => false,
         }
     }
@@ -182,7 +182,7 @@ impl TappPermissionService {
             TappPermission::FederationPost => false,
             TappPermission::FederationChannel => false,
             TappPermission::FederationRoom => false,
-            TappPermission::BrewCommentWrite => config.guest_perm_brew_comment_write,
+            TappPermission::PhantasiCommentWrite => config.guest_perm_phantasi_comment_write,
             _ => false,
         }
     }
@@ -234,7 +234,7 @@ impl TappPermissionService {
                 federation_post: config.user_perm_federation_post,
                 federation_channel: config.user_perm_federation_channel,
                 federation_room: config.user_perm_federation_room,
-                brew_comment_write: config.user_perm_brew_comment_write,
+                phantasi_comment_write: config.user_perm_phantasi_comment_write,
             },
             guest: ElevatedPermissions {
                 ai_generate: config.guest_perm_ai_generate,
@@ -260,8 +260,8 @@ impl TappPermissionService {
                 federation_post: false,
                 federation_channel: false,
                 federation_room: false,
-                // brew:commentWrite 路由要求持久登录主体，游客一律关闭
-                brew_comment_write: false,
+                // phantasi:commentWrite 路由要求持久登录主体，游客一律关闭
+                phantasi_comment_write: false,
             },
             user_ai_quota: AiQuotaConfig {
                 daily_calls: config.user_ai_daily_calls,
@@ -327,8 +327,8 @@ pub struct ElevatedPermissions {
     pub federation_post: bool,
     pub federation_channel: bool,
     pub federation_room: bool,
-    /// brew:commentWrite - 写 Brew 评论（Elevated，需登录主体）
-    pub brew_comment_write: bool,
+    /// phantasi:commentWrite - 写 Phantasi 评论（Elevated，需登录主体）
+    pub phantasi_comment_write: bool,
 }
 
 #[cfg(test)]
@@ -464,8 +464,8 @@ mod tests {
             "media:control".to_string(),
             "event:subscribe".to_string(),
             "widget:register".to_string(),
-            "brew:write".to_string(),
-            "brew:commentWrite".to_string(),
+            "phantasi:write".to_string(),
+            "phantasi:commentWrite".to_string(),
             "report:read".to_string(),
             "storage:read".to_string(),
             "ui:notification".to_string(),
@@ -475,7 +475,7 @@ mod tests {
             "speech:tts".to_string(),
             "speech:asr".to_string(),
             "tappList:read".to_string(),
-            "brew:read".to_string(),
+            "phantasi:read".to_string(),
             "federation:read".to_string(),
         ];
 
@@ -488,7 +488,7 @@ mod tests {
 
         // Guest-safe: platform:read, analytics:read (visitor-card aggregates only;
         // full admin summary is role-gated in the handler) + storage.
-        // Still excluded: brew:write / brew:commentWrite,
+        // Still excluded: phantasi:write / phantasi:commentWrite,
         // report:read, notifications, speech, etc.
         assert_eq!(
             granted,
@@ -500,7 +500,7 @@ mod tests {
                 "event:subscribe",
                 "storage:read",
                 "tappList:read",
-                "brew:read",
+                "phantasi:read",
                 "federation:read"
             ]
         );
@@ -676,120 +676,120 @@ mod tests {
     }
 
     #[test]
-    fn brew_permissions_keep_write_and_add_comment_write() {
+    fn phantasi_permissions_keep_write_and_add_comment_write() {
         let defaults = DynamicConfig::default();
 
-        // brew:write remains Basic and requires a durable login; commentWrite is Elevated.
-        assert_eq!(TappPermission::BrewWrite.level(), PermissionLevel::Basic);
+        // phantasi:write remains Basic and requires a durable login; commentWrite is Elevated.
+        assert_eq!(TappPermission::PhantasiWrite.level(), PermissionLevel::Basic);
         assert_eq!(
-            TappPermission::BrewCommentWrite.level(),
+            TappPermission::PhantasiCommentWrite.level(),
             PermissionLevel::Elevated
         );
 
-        assert!(TappPermission::from_str("brew:write").is_some());
-        assert!(TappPermission::from_str("brew:comment").is_none());
+        assert!(TappPermission::from_str("phantasi:write").is_some());
+        assert!(TappPermission::from_str("phantasi:comment").is_none());
 
-        // brew:write requires a durable login: user can, guest cannot.
+        // phantasi:write requires a durable login: user can, guest cannot.
         assert!(TappPermissionService::check(
             &defaults,
             UserRole::User,
-            TappPermission::BrewWrite
+            TappPermission::PhantasiWrite
         ));
         assert!(!TappPermissionService::check(
             &defaults,
             UserRole::Guest,
-            TappPermission::BrewWrite
+            TappPermission::PhantasiWrite
         ));
 
         // commentWrite 默认不下放：user/guest 均不可
         assert!(!TappPermissionService::check(
             &defaults,
             UserRole::User,
-            TappPermission::BrewCommentWrite
+            TappPermission::PhantasiCommentWrite
         ));
         assert!(!TappPermissionService::check(
             &defaults,
             UserRole::Guest,
-            TappPermission::BrewCommentWrite
+            TappPermission::PhantasiCommentWrite
         ));
 
         // 显式下放后 user 可用；guest 仍受认证主体约束
         let delegated = DynamicConfig {
-            user_perm_brew_comment_write: true,
-            guest_perm_brew_comment_write: true,
+            user_perm_phantasi_comment_write: true,
+            guest_perm_phantasi_comment_write: true,
             ..DynamicConfig::default()
         };
         assert!(TappPermissionService::check(
             &delegated,
             UserRole::User,
-            TappPermission::BrewCommentWrite
+            TappPermission::PhantasiCommentWrite
         ));
         assert!(!TappPermissionService::check(
             &delegated,
             UserRole::Guest,
-            TappPermission::BrewCommentWrite
+            TappPermission::PhantasiCommentWrite
         ));
 
         // 摘要中 guest 的 commentWrite 恒为关闭
         let effective = TappPermissionService::get_permission_config(&defaults);
-        assert!(!effective.guest.brew_comment_write);
+        assert!(!effective.guest.phantasi_comment_write);
         let effective = TappPermissionService::get_permission_config(&delegated);
-        assert!(effective.user.brew_comment_write);
-        assert!(!effective.guest.brew_comment_write);
+        assert!(effective.user.phantasi_comment_write);
+        assert!(!effective.guest.phantasi_comment_write);
     }
 
     #[test]
-    fn brew_write_and_comment_write_are_independent() {
+    fn phantasi_write_and_comment_write_are_independent() {
         let config = DynamicConfig::default();
         let granted = TappPermissionService::filter_permissions_for_role(
             &config,
             UserRole::User,
-            &["brew:write".to_string()],
+            &["phantasi:write".to_string()],
         )
         .unwrap();
-        assert_eq!(granted, vec!["brew:write"]);
+        assert_eq!(granted, vec!["phantasi:write"]);
 
         let granted = TappPermissionService::filter_permissions_for_role(
             &config,
             UserRole::User,
-            &["brew:read".to_string()],
+            &["phantasi:read".to_string()],
         )
         .unwrap();
-        assert_eq!(granted, vec!["brew:read"]);
+        assert_eq!(granted, vec!["phantasi:read"]);
         assert!(!TappPermissionService::check(
             &config,
             UserRole::User,
-            TappPermission::BrewCommentWrite
+            TappPermission::PhantasiCommentWrite
         ));
     }
 
     #[test]
-    fn brew_comment_write_requires_explicit_declaration_after_delegation() {
-        // 即使 commentWrite 已下放，批准集里只有 brew:read 也不会进入授予集合
+    fn phantasi_comment_write_requires_explicit_declaration_after_delegation() {
+        // 即使 commentWrite 已下放，批准集里只有 phantasi:read 也不会进入授予集合
         let config = DynamicConfig {
-            user_perm_brew_comment_write: true,
+            user_perm_phantasi_comment_write: true,
             ..DynamicConfig::default()
         };
         let granted = TappPermissionService::filter_permissions_for_role(
             &config,
             UserRole::User,
-            &["brew:read".to_string()],
+            &["phantasi:read".to_string()],
         )
         .unwrap();
-        assert_eq!(granted, vec!["brew:read"]);
+        assert_eq!(granted, vec!["phantasi:read"]);
 
         // 批准集含 commentWrite 才进入授予集合
         let granted = TappPermissionService::filter_permissions_for_role(
             &config,
             UserRole::User,
-            &["brew:read".to_string(), "brew:commentWrite".to_string()],
+            &["phantasi:read".to_string(), "phantasi:commentWrite".to_string()],
         )
         .unwrap();
-        assert_eq!(granted, vec!["brew:read", "brew:commentWrite"]);
+        assert_eq!(granted, vec!["phantasi:read", "phantasi:commentWrite"]);
     }
 
     #[test]
-    fn removed_brew_permission_names_are_rejected_explicitly() {
+    fn removed_phantasi_permission_names_are_rejected_explicitly() {
         let error = TappPermissionService::filter_permissions_for_role(
             &DynamicConfig::default(),
             UserRole::Admin,
@@ -801,8 +801,8 @@ mod tests {
     }
 
     #[test]
-    fn removed_brew_permission_rejections_list_replacements() {
-        // brew:comment → brew:read + brew:commentWrite
+    fn removed_phantasi_permission_rejections_list_replacements() {
+        // brew:comment 退役不映射；提示 phantasi:read + phantasi:commentWrite
         let error = TappPermissionService::filter_permissions_for_role(
             &DynamicConfig::default(),
             UserRole::Admin,
@@ -811,8 +811,8 @@ mod tests {
         .unwrap_err();
         let message = error.message();
         assert!(message.contains("'brew:comment'"), "{message}");
-        assert!(message.contains("brew:read"), "{message}");
-        assert!(message.contains("brew:commentWrite"), "{message}");
+        assert!(message.contains("phantasi:read"), "{message}");
+        assert!(message.contains("phantasi:commentWrite"), "{message}");
 
         // 未知名的提示不改变通用消息形态
         let generic = UnknownTappPermission {

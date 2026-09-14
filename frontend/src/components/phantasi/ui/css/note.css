@@ -1,0 +1,1294 @@
+/* 写作器：整页纸面 + 居中阅读宽度。控件皮肤在设置那边，这里只管布局。 */
+
+.phantasi-note {
+  --note-col: 44rem;
+  --note-wide-pad: 6rem;
+  --note-gutter: clamp(1rem, 4vw, 2.5rem);
+
+  display: flex;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  flex-direction: column;
+  contain: layout style;
+  isolation: isolate;
+  background: var(--cfg-frost-elevated-bg, rgb(255 255 255 / 96%));
+  color: var(--phantasi-fg);
+}
+
+.phantasi-note__frame {
+  display: flex;
+  position: relative;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ---- 顶栏：薄、透明 ---- */
+
+.phantasi-note__top {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem var(--note-gutter) 0.45rem;
+}
+
+.phantasi-note__top-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.phantasi-note__top-left,
+.phantasi-note__top-right {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.phantasi-note__top-left {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.phantasi-note__top-right {
+  flex-shrink: 0;
+}
+
+.phantasi-note__state {
+  overflow: hidden;
+  color: var(--note-ink-3);
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phantasi-note__state.is-failed {
+  color: var(--note-danger);
+}
+
+.phantasi-note__peers {
+  display: flex;
+  align-items: center;
+}
+
+.phantasi-note__peer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-inline-start: -0.4rem;
+  border: 2px solid var(--note-paper);
+  border-radius: 999px;
+  background: hsl(var(--peer-hue, 210) 55% 88%);
+  color: hsl(var(--peer-hue, 210) 45% 28%);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+  animation: sm-pop-in var(--sm-dur-fast, 140ms) var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1))
+    backwards;
+}
+
+html.dark .phantasi-note__peer {
+  background: hsl(var(--peer-hue, 210) 35% 28%);
+  color: hsl(var(--peer-hue, 210) 60% 88%);
+}
+
+.phantasi-note__peer:first-child {
+  margin-inline-start: 0.25rem;
+}
+
+/* ---- 纸面 ---- */
+
+.phantasi-note__scroll {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  /* html 写了 scroll-behavior:smooth 且会继承。换栏时高度一变，浏览器就
+   * 平滑滑进新位置，像卡进槽。写作纸只要瞬间到位，不要这条惯性。 */
+  scroll-behavior: auto;
+  overflow-anchor: none;
+}
+
+.phantasi-note__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40vh;
+}
+
+.phantasi-note__paper {
+  /* 栏宽只约束正文。纸是整页，两侧留给「+」、宽图、代码块、表格往外溢。 */
+  box-sizing: border-box;
+  contain: style;
+  width: 100%;
+  margin: 0 auto;
+  padding: clamp(1.5rem, 6vh, 4rem)
+    max(var(--note-gutter), calc((100% - var(--note-col)) / 2))
+    35vh;
+  --note-out: min(
+    var(--note-wide-pad),
+    max(0px, (100% - var(--note-col)) / 2 - var(--note-gutter))
+  );
+}
+
+.phantasi-note__title {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--phantasi-fg);
+  font-family: inherit;
+  font-size: clamp(1.9rem, 3.4vw, 2.6rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  overflow: hidden;
+  resize: none;
+  field-sizing: content;
+  /* 纸面已经随外壳抬起，标题只淡，避免再叠一层位移。 */
+  animation: sm-fade-in var(--sm-dur-slow, 320ms) var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1))
+    both;
+}
+
+/*
+ * 全局 overrides.css 给 textarea / input[type=url] 的聚焦态加了底色、主题色边和 3px 光晕。
+ * 写作面不是表单，这些都不要：聚焦就是光标在那里闪，没有别的。
+ */
+.phantasi-note .phantasi-note__title,
+.phantasi-note .phantasi-note__title:focus,
+.phantasi-note .phantasi-note__write textarea,
+.phantasi-note .phantasi-note__write textarea:focus,
+.phantasi-note .phantasi-note__visual:focus,
+.phantasi-note.phantasi-skin .phantasi-note__bubble-input,
+.phantasi-note.phantasi-skin .phantasi-note__bubble-input:focus,
+.phantasi-skin.phantasi-note__menu .phantasi-note__menu-input,
+.phantasi-skin.phantasi-note__menu .phantasi-note__menu-input:focus {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+  transition: none;
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__blockbar-input,
+.phantasi-note.phantasi-skin .phantasi-note__blockbar-input:focus {
+  background: var(--note-paper);
+  box-shadow: none;
+  outline: none;
+  transition: border-color var(--sm-dur-fast, 120ms) ease;
+}
+
+.phantasi-note__title::placeholder {
+  color: var(--phantasi-fg-dim);
+  opacity: 0.7;
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__byline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  height: 2rem;
+  margin: 0.6rem 0 1.6rem;
+  padding: 0 0.5rem;
+  margin-inline-start: -0.5rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--note-ink-3);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: var(--sm-t-fill);
+  animation: sm-fade-in var(--sm-dur-base, 220ms) var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1))
+    both;
+  animation-delay: var(--sm-stagger, 26ms);
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__byline:hover {
+  background: var(--note-fill-hover);
+  color: var(--note-ink-2);
+}
+
+.phantasi-note__write,
+.phantasi-note__read {
+  position: relative;
+  min-height: 0;
+}
+
+.phantasi-note__write.is-hidden,
+.phantasi-note__read.is-hidden {
+  display: none;
+}
+
+/* Markdown / 预览可以带一点位移；可视层只淡，避免 contenteditable 跟着位移。 */
+.phantasi-note__source:not(.is-hidden),
+.phantasi-note__read:not(.is-hidden) {
+  animation: sm-enter var(--sm-dur-base, 220ms) var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1))
+    both;
+}
+
+.phantasi-note__write:not(.phantasi-note__source):not(.is-hidden) {
+  animation: sm-fade-in var(--sm-dur-base, 220ms) var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1))
+    both;
+}
+
+.phantasi-note__caret {
+  position: absolute;
+  z-index: 1;
+  width: 2px;
+  height: 1.15em;
+  pointer-events: none;
+  background: hsl(var(--peer-hue, 210) 60% 45%);
+}
+
+/* 写栏外移一个内边距，文字和标题左对齐；协作光标的 16px 内边距也刚好对上。 */
+.phantasi-note__source {
+  margin-inline: -1rem;
+}
+
+.phantasi-note__write textarea {
+  display: block;
+  width: 100%;
+  min-height: 50vh;
+  padding: 1rem;
+  border: 0;
+  background: transparent;
+  color: var(--phantasi-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9375rem;
+  line-height: 1.8;
+  overflow: hidden;
+  resize: none;
+  field-sizing: content;
+}
+
+.phantasi-note__visual:focus {
+  outline: none;
+}
+
+/* 触屏点进去也别闪系统那层灰。 */
+.phantasi-note__title,
+.phantasi-note__write textarea,
+.phantasi-note__visual {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.phantasi-note__write textarea::placeholder,
+.phantasi-note__empty {
+  color: var(--phantasi-fg-dim);
+}
+
+.phantasi-note__visual {
+  min-height: 50vh;
+  font-size: 1.0625rem;
+  line-height: 1.8;
+  caret-color: var(--phantasi-fg);
+}
+
+.phantasi-note__visual:empty::before {
+  content: attr(data-placeholder);
+  color: var(--phantasi-fg-dim);
+  pointer-events: none;
+}
+
+/* 预览点哪里就去编辑哪里：光标形态先把话说出来。 */
+.phantasi-note__read .phantasi-note__article [data-md-start] {
+  cursor: text;
+}
+
+.phantasi-note__read .phantasi-note__article a {
+  cursor: text;
+}
+
+/* 默认栏也可以溢出：图、代码、表格吃掉两侧多出来的空，不必缩在 44rem 里。 */
+.phantasi-note .phantasi-note__article > pre,
+.phantasi-note .phantasi-note__article > table,
+.phantasi-note .phantasi-note__article > img,
+.phantasi-note .phantasi-note__article > p:has(> img:only-child),
+.phantasi-note .phantasi-note__visual > pre,
+.phantasi-note .phantasi-note__visual > table,
+.phantasi-note .phantasi-note__visual > img,
+.phantasi-note .phantasi-note__visual > p:has(> img:only-child) {
+  width: calc(100% + 2 * var(--note-out, 0px));
+  max-width: none;
+  margin-inline: calc(-1 * var(--note-out, 0px));
+}
+
+.phantasi-note .phantasi-note__article > p:has(> img:only-child) img,
+.phantasi-note .phantasi-note__visual > p:has(> img:only-child) img {
+  width: 100%;
+  max-width: none;
+}
+
+/* ---- 选区浮动条 ---- */
+
+.phantasi-note__bubble {
+  display: flex;
+  position: absolute;
+  z-index: 30;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.25rem;
+  border-radius: 0.7rem;
+  background: var(--note-solid-bg);
+  box-shadow:
+    0 12px 30px rgb(0 0 0 / 22%),
+    0 2px 6px rgb(0 0 0 / 12%);
+  transform: translate(-50%, 0);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.phantasi-note__bubble.is-placed {
+  opacity: 1;
+  pointer-events: auto;
+  animation: phantasi-note-bubble-in var(--sm-dur-fast, 140ms)
+    var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+}
+
+@keyframes phantasi-note-bubble-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -2px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__bubble-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--note-solid-fg);
+  cursor: pointer;
+  transition: var(--sm-t-fill);
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__bubble-btn svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__bubble-btn:hover {
+  background: rgb(255 255 255 / 14%);
+}
+
+html.dark .phantasi-note.phantasi-skin .phantasi-note__bubble-btn:hover {
+  background: rgb(0 0 0 / 10%);
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__bubble-btn:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--note-solid-fg);
+}
+
+/* 选区上已经有的记号：反白，像被按下去。 */
+.phantasi-note.phantasi-skin .phantasi-note__bubble-btn.is-active {
+  background: var(--note-solid-fg);
+  color: var(--note-solid-bg);
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__bubble-btn.is-active:hover {
+  background: color-mix(in srgb, var(--note-solid-fg) 88%, var(--note-solid-bg));
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__bubble-btn--text {
+  width: auto;
+  padding: 0 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.phantasi-note__bubble-link {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 18rem;
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__bubble-input {
+  flex: 1 1 auto;
+  height: 2.25rem;
+  padding: 0 0.7rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--note-solid-fg);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__bubble-input::placeholder {
+  color: color-mix(in srgb, var(--note-solid-fg) 55%, transparent);
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__bubble-input:focus {
+  outline: none;
+}
+
+/* ---- 表格 / 代码块的角上工具条 ---- */
+
+.phantasi-note__blockbar {
+  display: flex;
+  position: absolute;
+  z-index: 26;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.2rem;
+  border: 1px solid var(--note-line);
+  border-radius: 0.6rem;
+  background: var(--note-paper);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 10%);
+  transform: translate(-100%, -100%);
+  animation: phantasi-note-blockbar-in var(--sm-dur-fast, 140ms)
+    var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+  transition:
+    top var(--sm-dur-base, 220ms) var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1)),
+    left var(--sm-dur-base, 220ms) var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+@keyframes phantasi-note-blockbar-in {
+  from {
+    opacity: 0;
+    transform: translate(-100%, calc(-100% + 4px)) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-100%, -100%) scale(1);
+  }
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__blockbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2rem;
+  padding: 0 0.65rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--note-ink-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: var(--sm-t-fill);
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__blockbar-btn:hover {
+  background: var(--note-fill-hover);
+  color: var(--note-ink);
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__blockbar-btn.is-danger:hover {
+  background: var(--note-danger-fill);
+  color: var(--note-danger);
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__blockbar-btn.is-active {
+  background: var(--note-fill);
+  color: var(--note-ink);
+  box-shadow: inset 0 0 0 1px var(--note-line-strong);
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__blockbar-btn.has-icon {
+  width: 2rem;
+  padding: 0;
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__blockbar-btn svg {
+  display: block;
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.phantasi-note__blockbar-sep {
+  width: 1px;
+  height: 1.25rem;
+  margin: 0 0.2rem;
+  background: var(--note-line);
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__blockbar-input.is-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.phantasi-note__menu--prompt {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 18rem;
+  padding: 0.3rem 0.6rem;
+}
+
+.phantasi-skin.phantasi-note__menu .phantasi-note__menu-input {
+  flex: 1 1 auto;
+  height: 2rem;
+  border: 0;
+  background: transparent;
+  color: var(--note-ink);
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.phantasi-skin.phantasi-note__menu .phantasi-note__menu-input:focus {
+  outline: none;
+}
+
+.phantasi-note__visual img {
+  border-radius: 2px;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition:
+    outline-color var(--sm-dur-fast, 140ms) var(--sm-ease-standard, ease),
+    box-shadow var(--sm-dur-fast, 140ms) var(--sm-ease-standard, ease);
+}
+
+.phantasi-note__visual img.is-selected {
+  outline-color: var(--note-ink);
+  box-shadow: 0 0 0 2px var(--note-paper);
+}
+
+.note-columns {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  margin: 1em 0;
+}
+
+.note-column {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.phantasi-note__visual .note-column {
+  min-height: 4.5rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px dashed color-mix(in srgb, var(--note-ink, #111) 18%, transparent);
+  border-radius: 0.55rem;
+}
+
+.note-widget {
+  --note-widget-cell: 5rem;
+  --note-widget-cols: 2;
+  --note-widget-rows: 2;
+  --note-widget-max-h: 20rem;
+
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  aspect-ratio: var(--note-widget-cols) / var(--note-widget-rows);
+  width: min(
+    calc(var(--note-widget-cols) * var(--note-widget-cell)),
+    100%,
+    calc(var(--note-widget-max-h) * var(--note-widget-cols) / var(--note-widget-rows))
+  );
+  height: auto;
+  max-width: 100%;
+  margin: 1em 0;
+  overflow: hidden;
+  border-radius: 0.85rem;
+  font-size: 1rem;
+  line-height: 1.4;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+/* 阅读器 prose / 预览栏会给所有 img 加边距和居中，正文小组件自己排版。 */
+.prose .note-widget img,
+.phantasi-note-preview .note-widget img,
+.phantasi-note__visual .note-widget img,
+.note-widget img {
+  margin: 0;
+  max-width: none;
+}
+
+.phantasi-note__visual .note-widget img {
+  outline: none;
+  box-shadow: none;
+}
+
+.prose .note-widget p,
+.phantasi-note-preview .note-widget p {
+  margin: 0;
+}
+
+.note-widget[data-size='1x1'] {
+  --note-widget-cols: 1;
+  --note-widget-rows: 1;
+}
+
+.note-widget[data-size='2x1'] {
+  --note-widget-cols: 2;
+  --note-widget-rows: 1;
+}
+
+.note-widget[data-size='1x2'] {
+  --note-widget-cols: 1;
+  --note-widget-rows: 2;
+}
+
+.note-widget[data-size='2x2'] {
+  --note-widget-cols: 2;
+  --note-widget-rows: 2;
+}
+
+.note-widget[data-size='2x3'] {
+  --note-widget-cols: 2;
+  --note-widget-rows: 3;
+}
+
+.note-widget[data-size='3x2'] {
+  --note-widget-cols: 3;
+  --note-widget-rows: 2;
+}
+
+.note-widget[data-size='3x3'] {
+  --note-widget-cols: 3;
+  --note-widget-rows: 3;
+}
+
+.note-widget[data-size='2x4'] {
+  --note-widget-cols: 2;
+  --note-widget-rows: 4;
+}
+
+.note-widget[data-size='4x1'] {
+  --note-widget-cols: 4;
+  --note-widget-rows: 1;
+}
+
+.note-widget[data-size='4x2'] {
+  --note-widget-cols: 4;
+  --note-widget-rows: 2;
+}
+
+.note-widget[data-size='4x4'] {
+  --note-widget-cols: 4;
+  --note-widget-rows: 4;
+}
+
+.note-widget__face {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.note-widget.is-selected {
+  outline: 2px solid var(--note-ink, #111);
+  outline-offset: 2px;
+}
+
+.phantasi-note__visual .note-widget > *,
+.phantasi-note__read .note-widget > * {
+  pointer-events: none;
+}
+
+.phantasi-note__visual .note-widget.is-selected .note-widget__face {
+  pointer-events: auto;
+}
+
+.note-widget__missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0.75rem;
+  color: var(--phantasi-fg-dim, var(--note-ink-3, #6b7280));
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.phantasi-note__widget-picker-layer {
+  display: flex;
+  position: fixed;
+  inset: 0;
+  z-index: 10060;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgb(0 0 0 / 28%);
+}
+
+.phantasi-note__widget-picker {
+  display: flex;
+  flex-direction: column;
+  width: min(22rem, calc(100vw - 2rem));
+  max-height: min(70vh, 28rem);
+  overflow: hidden;
+  border: 1px solid var(--cfg-frost-border, var(--chrome-stroke, rgb(255 255 255 / 50%)));
+  border-radius: 0.7rem;
+  background: var(--cfg-frost-elevated-bg, var(--chrome-elevated, rgb(255 255 255 / 96%)));
+  backdrop-filter: var(--cfg-frost-filter, blur(20px) saturate(180%));
+  box-shadow:
+    0 16px 40px -12px rgb(0 0 0 / 28%),
+    0 0 0 1px rgb(255 255 255 / 40%) inset;
+}
+
+.phantasi-note__widget-picker-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.6rem 0.4rem;
+}
+
+.phantasi-note__widget-picker-search {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0 0.55rem;
+  border: 1px solid var(--note-line, rgb(0 0 0 / 10%));
+  border-radius: 0.45rem;
+  color: var(--note-ink-3, #6b7280);
+}
+
+.phantasi-note__widget-picker-search input {
+  width: 100%;
+  height: 2rem;
+  border: 0;
+  background: transparent;
+  color: var(--note-ink, inherit);
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.phantasi-note__widget-picker-search input:focus {
+  outline: none;
+}
+
+.phantasi-note__widget-picker-close {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: inherit;
+}
+
+.phantasi-note__widget-picker-list {
+  overflow: hidden auto;
+  padding: 0.25rem 0.4rem 0.5rem;
+}
+
+.phantasi-note__widget-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.5rem 0.55rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+}
+
+.phantasi-note__widget-picker-item:hover,
+.phantasi-note__widget-picker-item:focus-visible {
+  background: rgb(0 0 0 / 5%);
+  outline: none;
+}
+
+.phantasi-note__widget-picker-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phantasi-note__widget-picker-size {
+  flex-shrink: 0;
+  color: var(--note-ink-3, #6b7280);
+  font-size: 0.75rem;
+}
+
+.phantasi-note__widget-picker-empty {
+  margin: 0;
+  padding: 1.25rem 0.75rem;
+  color: var(--note-ink-3, #6b7280);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+@media (width <= 640px) {
+  .note-columns {
+    flex-direction: column;
+  }
+}
+
+.phantasi-note__blockbar-field {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding-inline-start: 0.5rem;
+  color: var(--note-ink-3);
+  font-size: 0.8125rem;
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__blockbar-input {
+  width: 9rem;
+  height: 2rem;
+  padding: 0 0.55rem;
+  border: 1px solid var(--note-line);
+  border-radius: 0.45rem;
+  background: var(--note-paper);
+  color: var(--note-ink);
+  font: inherit;
+  font-size: 0.8125rem;
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__blockbar-input:focus {
+  outline: none;
+  border-color: var(--note-ink);
+}
+
+/* ---- 底栏 ---- */
+
+.phantasi-note__foot {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem var(--note-gutter) 0.45rem;
+  border-top: 1px solid var(--phantasi-line);
+}
+
+.phantasi-note__count {
+  color: var(--note-ink-3);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.phantasi-note__foot-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ---- 行槛「+」 ---- */
+
+.phantasi-note__gutter {
+  position: absolute;
+  z-index: 25;
+  animation: sm-pop-in var(--sm-dur-fast, 140ms) var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1))
+    backwards;
+  transition:
+    top var(--sm-dur-base, 220ms) var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1)),
+    left var(--sm-dur-base, 220ms) var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--note-line-strong);
+  border-radius: 999px;
+  background: var(--note-paper);
+  color: var(--note-ink-3);
+  cursor: pointer;
+  transition:
+    color var(--sm-dur-fast, 140ms) var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1)),
+    border-color var(--sm-dur-fast, 140ms) var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1)),
+    transform var(--sm-dur-fast, 140ms) var(--sm-ease-emphasis, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__plus svg {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__plus:hover:not(:disabled),
+.phantasi-note.phantasi-skin .phantasi-note__plus.is-open {
+  border-color: var(--note-ink);
+  color: var(--note-ink);
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__plus.is-open {
+  transform: rotate(45deg);
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__plus:disabled {
+  opacity: 0.45;
+  cursor: progress;
+}
+
+.phantasi-note.phantasi-skin .phantasi-note__plus:focus-visible {
+  outline: none;
+  box-shadow: var(--note-focus);
+}
+
+/*
+ * 「+」菜单挂在 body 上，皮和定位规则都借设置页的悬浮提示（SettingTitleHelp.css）：
+ * 霜面 + 模糊 + 1px 霜边 + 内侧高光，先量再显，淡入 2px 位移。
+ */
+.phantasi-note__menu {
+  display: flex;
+  position: fixed;
+  z-index: 10050;
+  flex-direction: column;
+  min-width: 13rem;
+  max-width: min(20rem, calc(100vw - 1rem));
+  max-height: min(60vh, 22rem);
+  overflow: hidden auto;
+  padding: 0.3rem;
+  border: 1px solid var(--cfg-frost-border, var(--chrome-stroke, rgb(255 255 255 / 50%)));
+  border-radius: 0.5rem;
+  background: var(--cfg-frost-elevated-bg, var(--chrome-elevated, rgb(255 255 255 / 96%)));
+  backdrop-filter: var(--cfg-frost-filter, blur(20px) saturate(180%));
+  box-shadow:
+    0 8px 24px -6px rgb(0 0 0 / 16%),
+    0 0 0 1px rgb(255 255 255 / 40%) inset;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform-origin: 1.125rem 0;
+}
+
+.phantasi-note__menu--top {
+  transform-origin: 1.125rem 100%;
+}
+
+.phantasi-note__menu.is-ready {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  animation: phantasi-note-menu-in var(--sm-dur-base, 220ms)
+    var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+}
+
+.phantasi-note__menu--top.is-ready {
+  animation-name: phantasi-note-menu-in-top;
+}
+
+.phantasi-note__menu.is-leaving {
+  animation: phantasi-note-menu-out var(--sm-dur-fast, 140ms)
+    var(--sm-ease-exit, cubic-bezier(0.4, 0, 1, 1)) forwards;
+}
+
+.phantasi-note__menu--top.is-leaving {
+  animation-name: phantasi-note-menu-out-top;
+}
+
+@keyframes phantasi-note-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--sm-shift-xs, 2px)) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes phantasi-note-menu-in-top {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--sm-shift-xs, 2px) * -1)) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes phantasi-note-menu-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(var(--sm-shift-xs, 2px)) scale(0.98);
+  }
+}
+
+@keyframes phantasi-note-menu-out-top {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(calc(var(--sm-shift-xs, 2px) * -1)) scale(0.98);
+  }
+}
+
+html.dark .phantasi-note__menu {
+  box-shadow:
+    0 10px 28px -6px rgb(0 0 0 / 50%),
+    0 0 0 1px rgb(255 255 255 / 6%) inset;
+}
+
+.phantasi-skin.phantasi-note__menu .phantasi-note__menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  height: 2.25rem;
+  padding: 0 0.6rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: var(--note-ink-2);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: start;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: var(--sm-t-fill);
+}
+
+.phantasi-skin.phantasi-note__menu .phantasi-note__menu-item:hover {
+  background: var(--note-fill-hover);
+  color: var(--note-ink);
+}
+
+.phantasi-skin.phantasi-note__menu .phantasi-note__menu-item:focus-visible {
+  outline: none;
+  box-shadow: var(--note-focus);
+}
+
+.phantasi-note__menu-icon {
+  display: inline-flex;
+  color: var(--note-ink-3);
+}
+
+.phantasi-note__menu-icon svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.phantasi-note__menu-item:hover .phantasi-note__menu-icon {
+  color: var(--note-ink);
+}
+
+/* ---- 发布抽屉 ---- */
+
+.phantasi-note__drawer {
+  display: flex;
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: 35;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: min(22rem, 100%);
+  padding: 0.75rem 1.25rem 1.25rem;
+  overflow: auto;
+  border-left: 1px solid var(--note-line);
+  background: var(--note-paper);
+  box-shadow: -12px 0 32px rgb(0 0 0 / 8%);
+  animation: phantasi-note-drawer-in var(--sm-dur-base, 220ms)
+    var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+}
+
+.phantasi-note__drawer.is-leaving {
+  animation: phantasi-note-drawer-out var(--sm-dur-base, 220ms)
+    var(--sm-ease-exit, cubic-bezier(0.4, 0, 1, 1)) forwards;
+}
+
+@keyframes phantasi-note-drawer-in {
+  from {
+    transform: translateX(var(--sm-shift-md, 12px));
+    opacity: 0;
+  }
+
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes phantasi-note-drawer-out {
+  from {
+    transform: none;
+    opacity: 1;
+  }
+
+  to {
+    transform: translateX(var(--sm-shift-md, 12px));
+    opacity: 0;
+  }
+}
+
+.phantasi-note__drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.phantasi-note__drawer-title {
+  margin: 0;
+  color: var(--note-ink);
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.phantasi-note__drawer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.phantasi-note__cover {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.phantasi-note__cover-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--note-line);
+  border-radius: 0.65rem;
+  background: var(--note-fill);
+  object-fit: cover;
+  animation: sm-fade-in var(--sm-dur-fast, 140ms) var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1))
+    both;
+}
+
+.phantasi-note__cover-thumb--empty {
+  color: var(--note-ink-3);
+}
+
+.phantasi-note__cover-thumb--empty svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.phantasi-note__drawer-foot {
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid var(--note-line);
+}
+
+.phantasi-note__read .link-definition,
+.phantasi-note__read .footnote-definition,
+.phantasi-note__read p[data-linkdef],
+.phantasi-note__read p[data-fn] {
+  animation: sm-enter var(--sm-dur-fast, 140ms) var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1))
+    backwards;
+}
+
+/* ---- 窄屏 ---- */
+
+@media (width < 640px) {
+  .phantasi-note__top-right .note-btn--quiet .note-btn__label {
+    display: none;
+  }
+
+  .phantasi-note__top-right .note-btn--quiet {
+    width: var(--note-ctl-h);
+    padding: 0;
+  }
+
+  .phantasi-note__drawer {
+    width: 100%;
+    border-left: 0;
+  }
+
+  .phantasi-note__paper {
+    padding-bottom: 25vh;
+  }
+}
+
+html[data-perf-mode='exlight'] .phantasi-note__title,
+html[data-perf-mode='exlight'] .phantasi-note.phantasi-skin .phantasi-note__byline,
+html[data-perf-mode='exlight'] .phantasi-note__source,
+html[data-perf-mode='exlight'] .phantasi-note__write,
+html[data-perf-mode='exlight'] .phantasi-note__read,
+html[data-perf-mode='exlight'] .phantasi-note__peer,
+html[data-perf-mode='exlight'] .phantasi-note__bubble,
+html[data-perf-mode='exlight'] .phantasi-note__blockbar,
+html[data-perf-mode='exlight'] .phantasi-note__gutter,
+html[data-perf-mode='exlight'] .phantasi-note__drawer,
+html[data-perf-mode='exlight'] .phantasi-note__cover-thumb,
+html[data-perf-mode='exlight'] .phantasi-note__read .link-definition,
+html[data-perf-mode='exlight'] .phantasi-note__read .footnote-definition,
+html[data-perf-mode='exlight'] .phantasi-note__read p[data-linkdef],
+html[data-perf-mode='exlight'] .phantasi-note__read p[data-fn],
+html[data-perf-mode='exlight'] .phantasi-note.phantasi-skin .note-switch__thumb,
+html[data-perf-mode='exlight'] .phantasi-note.phantasi-skin .phantasi-note__plus,
+html[data-perf-mode='exlight'] .phantasi-note.phantasi-skin .phantasi-note__bubble-btn,
+html[data-perf-mode='exlight'] .phantasi-note.phantasi-skin .phantasi-note__blockbar-btn,
+html[data-perf-mode='exlight'] .phantasi-note__visual img,
+html[data-perf-mode='exlight'] .phantasi-note__menu,
+html[data-perf-mode='exlight'] .phantasi-note__widget-picker,
+html[data-perf-mode='exlight'] .phantasi-note__menu .phantasi-note__menu-item {
+  animation: none;
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phantasi-note__title,
+  .phantasi-note.phantasi-skin .phantasi-note__byline,
+  .phantasi-note__source,
+  .phantasi-note__write,
+  .phantasi-note__read,
+  .phantasi-note__peer,
+  .phantasi-note__bubble,
+  .phantasi-note__blockbar,
+  .phantasi-note__gutter,
+  .phantasi-note__drawer,
+  .phantasi-note__cover-thumb,
+  .phantasi-note__read .link-definition,
+  .phantasi-note__read .footnote-definition,
+  .phantasi-note__read p[data-linkdef],
+  .phantasi-note__read p[data-fn],
+  .phantasi-note.phantasi-skin .note-switch__thumb,
+  .phantasi-note.phantasi-skin .phantasi-note__plus,
+  .phantasi-note.phantasi-skin .phantasi-note__bubble-btn,
+  .phantasi-note.phantasi-skin .phantasi-note__blockbar-btn,
+  .phantasi-note__visual img,
+  .phantasi-note__menu,
+  .phantasi-note__widget-picker,
+  .phantasi-note__menu .phantasi-note__menu-item {
+    animation: none;
+    transition: none;
+  }
+
+  .phantasi-note__bubble.is-placed,
+  .phantasi-note__menu.is-ready {
+    opacity: 1;
+    transform: none;
+  }
+
+  .phantasi-note__bubble.is-placed {
+    transform: translate(-50%, 0);
+  }
+}

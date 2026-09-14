@@ -10,15 +10,15 @@ pub mod auth_local;
 pub mod avatar_source; // 画像源选择（本人 + 管理员代改）
 pub mod bangumi;
 pub mod bilibili;
-pub mod brew;
-pub mod brewlia;
+pub mod phantasi;
+pub mod phantasiai;
 pub mod cache;
 pub mod config;
 pub mod diagnostics;
 pub mod discord;
 pub mod federation; // HTTP surface; domain lives in crate::federation
 pub mod game_presence; // public Enka / Xbox / PSN; no user cookies
-pub mod github_stars; // GitHub repo summary for settings badges + Brew (platform egress)
+pub mod github_stars; // GitHub repo summary for settings badges + Phantasi (platform egress)
 pub mod home_stickers; // Free-layout AI stickers
 pub mod mal;
 pub mod media;

@@ -12,8 +12,8 @@
       "title": "MCP Services",
       "description": "Tool server connection state"
     },
-    "brew": {
-      "title": "Brew",
+    "phantasi": {
+      "title": "Journal",
       "description": "New feed items and repeated fetch errors"
     },
     "tapp": {
@@ -44,8 +44,8 @@
     "heartbeat.failed": "Scheduled task failed",
     "mcp.connected": "MCP connected",
     "mcp.disconnected": "MCP disconnected or failed",
-    "brew.new_items": "New content found",
-    "brew.source_error": "Feed repeatedly failed",
+    "phantasi.new_items": "New content found",
+    "phantasi.source_error": "Feed repeatedly failed",
     "platform.sync.failed": "Platform sync failed",
     "tapp.message": "Message",
     "tapp.warning": "Warning",

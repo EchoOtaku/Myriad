@@ -15,7 +15,7 @@ const subjectSnapshot = () => authSubject.signal
 const serverPageSnapshot = () => null
 
 export type PageContentType =
-  'brew_article' | 'tapp_data' | 'platform_data' | 'custom'
+  'phantasi_article' | 'tapp_data' | 'platform_data' | 'custom'
 
 export interface PageContent {
   type: PageContentType

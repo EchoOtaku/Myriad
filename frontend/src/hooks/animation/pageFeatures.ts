@@ -20,7 +20,7 @@ export const PAGE_FEATURES: Record<string, number> = {
   library: Feature.Resize | Feature.Intersection | Feature.Idle,
   reports:
     Feature.Visibility | Feature.Interval | Feature.RAF | Feature.DOMBatch,
-  brew:
+  phantasi:
     Feature.Visibility | Feature.Intersection | Feature.Timeout | Feature.Idle,
   config: Feature.Timeout,
   login: Feature.Timeout,

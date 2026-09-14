@@ -6,7 +6,7 @@ import { PerceptionRegistry } from './registry'
 test('page body text is not the Lite summary', () => {
   const copy = pagePerceptionCopy(
     {
-      type: 'brew_article',
+      type: 'phantasi_article',
       title: 'Hello',
       plainText: 'This is a long article body that must not enter Lite.',
     },
@@ -17,7 +17,7 @@ test('page body text is not the Lite summary', () => {
   assert.equal(copy.summary.includes('long article'), false)
   const withSummary = pagePerceptionCopy(
     {
-      type: 'brew_article',
+      type: 'phantasi_article',
       title: 'Hello',
       summary: 'Short take.',
       plainText: 'This is a long article body that must not enter Lite.',
@@ -31,12 +31,12 @@ test('auto-truncated body is not treated as an authored summary', () => {
   const body = 'The harbour was quiet after midnight.'.repeat(8)
   const copy = pagePerceptionCopy(
     {
-      type: 'brew_article',
+      type: 'phantasi_article',
       title: 'Harbour Notes',
       summary: `${body.slice(0, 200)}...`,
       plainText: body,
     },
-    '/brew',
+    '/phantasi',
   )
   assert.equal(copy.summary, 'Harbour Notes')
   assert.equal(copy.hasBody, true)

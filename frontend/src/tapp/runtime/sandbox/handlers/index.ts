@@ -26,7 +26,7 @@ export {
 } from './baseHandlers'
 
 export {
-  registerBrewListHandlers,
+  registerPhantasiListHandlers,
   registerTappListHandlers,
 } from './contentHandlers'
 

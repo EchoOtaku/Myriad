@@ -389,7 +389,7 @@ test.describe('presence inbound', { concurrency: false }, () => {
     try {
       await presenceInboundArmingForTest()
       for (let i = 0; i < 6; i += 1) await Promise.resolve()
-      setCurrentPageContent({ type: 'brew_article', title: 'loaded article' })
+      setCurrentPageContent({ type: 'phantasi_article', title: 'loaded article' })
       t.mock.timers.tick(2_000)
       for (let i = 0; i < 6; i += 1) await Promise.resolve()
       assert.equal(posts.length, 2)
@@ -401,7 +401,7 @@ test.describe('presence inbound', { concurrency: false }, () => {
       assert.doesNotMatch(JSON.stringify(posts[2]), /loaded article/)
       setAgentContextConsent(false)
       for (let i = 0; i < 6; i += 1) await Promise.resolve()
-      setCurrentPageContent({ type: 'brew_article', title: 'not consented' })
+      setCurrentPageContent({ type: 'phantasi_article', title: 'not consented' })
       t.mock.timers.tick(2_000)
       for (let i = 0; i < 6; i += 1) await Promise.resolve()
       assert.doesNotMatch(JSON.stringify(posts), /not consented/)

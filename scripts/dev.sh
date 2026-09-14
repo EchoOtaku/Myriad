@@ -515,7 +515,7 @@ parse_db_url() {
 find_pg_tool() {
     local name="$1" formula root
     have "$name" && { command -v "$name"; return 0; }
-    native_pg_brew_formula >/dev/null || true
+    native_pg_phantasi_formula >/dev/null || true
     formula="${NATIVE_PG_FORMULA:-}"
     for root in /opt/homebrew /usr/local; do
         if [[ -n "$formula" && -x "$root/opt/$formula/bin/$name" ]]; then
@@ -530,10 +530,10 @@ find_pg_tool() {
     return 1
 }
 
-brew_bin() {
-    have brew && { command -v brew; return 0; }
-    [[ -x /opt/homebrew/bin/brew ]] && { printf '%s\n' /opt/homebrew/bin/brew; return 0; }
-    [[ -x /usr/local/bin/brew ]] && { printf '%s\n' /usr/local/bin/brew; return 0; }
+phantasi_bin() {
+    have phantasi && { command -v phantasi; return 0; }
+    [[ -x /opt/homebrew/bin/phantasi ]] && { printf '%s\n' /opt/homebrew/bin/phantasi; return 0; }
+    [[ -x /usr/local/bin/phantasi ]] && { printf '%s\n' /usr/local/bin/phantasi; return 0; }
     return 1
 }
 
@@ -568,7 +568,7 @@ db_is_local_host() {
 }
 
 # Homebrew formula that owns local PostgreSQL, if any.
-native_pg_brew_formula() {
+native_pg_phantasi_formula() {
     if [[ -n "$NATIVE_PG_FORMULA" ]]; then
         printf '%s\n' "$NATIVE_PG_FORMULA"
         return 0
@@ -586,10 +586,10 @@ native_pg_brew_formula() {
         done
     done
 
-    have brew || { NATIVE_PG_FORMULA_CHECKED=1; return 1; }
+    have phantasi || { NATIVE_PG_FORMULA_CHECKED=1; return 1; }
 
     for formula in postgresql@18 postgresql@17 postgresql@16 postgresql; do
-        prefix="$(brew --prefix "$formula" 2>/dev/null || true)"
+        prefix="$(phantasi --prefix "$formula" 2>/dev/null || true)"
         if [[ -n "$prefix" && -d "$prefix" ]]; then
             NATIVE_PG_FORMULA="$formula"
             printf '%s\n' "$formula"
@@ -597,8 +597,8 @@ native_pg_brew_formula() {
         fi
     done
 
-    local brew_svcs
-    brew_svcs="$(brew services list 2>/dev/null || true)"
+    local phantasi_svcs
+    phantasi_svcs="$(phantasi services list 2>/dev/null || true)"
     while IFS= read -r line; do
         formula="${line%% *}"
         case "$formula" in
@@ -608,9 +608,9 @@ native_pg_brew_formula() {
                 return 0
                 ;;
         esac
-    done <<< "$brew_svcs"
+    done <<< "$phantasi_svcs"
 
-    formula="$(brew list --formula 2>/dev/null | grep -E '^postgresql(@[0-9]+)?$' | tail -n 1 || true)"
+    formula="$(phantasi list --formula 2>/dev/null | grep -E '^postgresql(@[0-9]+)?$' | tail -n 1 || true)"
     if [[ -n "$formula" ]]; then
         NATIVE_PG_FORMULA="$formula"
         printf '%s\n' "$formula"
@@ -628,7 +628,7 @@ native_pg_log_path() {
         return 0
     fi
     [[ "${NATIVE_PG_LOG_CHECKED:-0}" -eq 1 ]] && return 1
-    native_pg_brew_formula >/dev/null || true
+    native_pg_phantasi_formula >/dev/null || true
     formula="${NATIVE_PG_FORMULA:-postgresql@18}"
     for root in /opt/homebrew /usr/local; do
         for log in \
@@ -672,10 +672,10 @@ native_pg_datadir() {
 }
 
 native_pg_do_start() {
-    local formula="$1" brew_cmd pgctl datadir root
-    brew_cmd="$(brew_bin || true)"
-    if [[ -n "$brew_cmd" ]]; then
-        "$brew_cmd" services start "$formula"
+    local formula="$1" phantasi_cmd pgctl datadir root
+    phantasi_cmd="$(phantasi_bin || true)"
+    if [[ -n "$phantasi_cmd" ]]; then
+        "$phantasi_cmd" services start "$formula"
         return
     fi
     datadir="$(native_pg_datadir "$formula" || true)"
@@ -686,10 +686,10 @@ native_pg_do_start() {
         fi
     done
     if [[ -z "$pgctl" || -z "$datadir" ]]; then
-        print_error "Found $formula but neither brew nor pg_ctl could start it"
+        print_error "Found $formula but neither phantasi nor pg_ctl could start it"
         return 1
     fi
-    print_info "brew not on PATH — starting with pg_ctl"
+    print_info "phantasi not on PATH — starting with pg_ctl"
     "$pgctl" -D "$datadir" -l "$datadir/server.log" start
 }
 
@@ -711,7 +711,7 @@ start_native_database() {
     fi
 
     local formula
-    native_pg_brew_formula >/dev/null || true
+    native_pg_phantasi_formula >/dev/null || true
     formula="$NATIVE_PG_FORMULA"
     if [[ -n "$formula" ]]; then
         print_step "Starting Homebrew $formula…"
@@ -731,7 +731,7 @@ start_native_database() {
 }
 
 native_pg_do_stop() {
-    local formula="$1" brew_cmd pgctl="" datadir="" root
+    local formula="$1" phantasi_cmd pgctl="" datadir="" root
     datadir="$(native_pg_datadir "$formula" || true)"
     for root in /opt/homebrew /usr/local; do
         if [[ -x "$root/opt/$formula/bin/pg_ctl" ]]; then
@@ -746,9 +746,9 @@ native_pg_do_stop() {
             "$pgctl" -D "$datadir" stop -m fast || true
         fi
     fi
-    brew_cmd="$(brew_bin || true)"
-    if [[ -n "$brew_cmd" ]]; then
-        "$brew_cmd" services stop "$formula" >/dev/null 2>&1 || true
+    phantasi_cmd="$(phantasi_bin || true)"
+    if [[ -n "$phantasi_cmd" ]]; then
+        "$phantasi_cmd" services stop "$formula" >/dev/null 2>&1 || true
     fi
 }
 
@@ -759,7 +759,7 @@ stop_native_database() {
         return 0
     fi
     local formula
-    native_pg_brew_formula >/dev/null || true
+    native_pg_phantasi_formula >/dev/null || true
     formula="$NATIVE_PG_FORMULA"
     if [[ -z "$formula" ]]; then
         print_info "Local PostgreSQL is not a Homebrew service (left running)"
@@ -1604,7 +1604,7 @@ start_frontend() {
     ensure_frontend_deps || return 1
     # After a lockfile install the dep browserHash changes; leftover
     # node_modules/.vite then 504s "Outdated Optimize Dep" and lazy routes
-    # (Brew.tsx) fail to fetch. Server is down here, so the wipe is safe.
+    # (Phantasi.tsx) fail to fetch. Server is down here, so the wipe is safe.
     clear_vite_cache
 
     if [[ "$DEV_START_BG" -eq 1 ]]; then

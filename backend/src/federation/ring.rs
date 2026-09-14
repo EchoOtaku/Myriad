@@ -1,6 +1,6 @@
 //! 联邦 Ring 管理模块
 //!
-//! 去中心化环网：Tapp 商店发现、Brew 推荐交换、Library 交换圈、实例目录
+//! 去中心化环网：Tapp 商店发现、Phantasi 推荐交换、Library 交换圈、实例目录
 //! 基于 Gossip 协议进行对等同步，每个节点维护 known_peers 列表
 
 use axum::{Json, http::StatusCode};
@@ -86,7 +86,7 @@ async fn resolve_user_id(
 pub struct CreateRingRequest {
     /// Ring 名称
     pub name: String,
-    /// Ring 类型: tapp-store, brew-recommend, library-exchange, instance-directory
+    /// Ring 类型: tapp-store, phantasi-recommend, library-exchange, instance-directory
     pub ring_type: String,
     /// Gossip fanout（缺省 3）
     pub fanout: Option<u32>,
@@ -94,10 +94,10 @@ pub struct CreateRingRequest {
     pub ttl: Option<u32>,
     /// 同步间隔秒（缺省 300）
     pub interval: Option<u64>,
-    /// Optional brew category filter (brew-recommend only).
+    /// Optional phantasi category filter (phantasi-recommend only).
     /// When set, only sources/items under this category name are synced.
-    /// Accepts either `category` or `brew_category` in JSON.
-    #[serde(default, alias = "brew_category")]
+    /// Accepts either `category` or `phantasi_category` in JSON.
+    #[serde(default, alias = "phantasi_category")]
     pub category: Option<String>,
 }
 
@@ -144,15 +144,15 @@ pub struct AddPeerRequest {
 fn validate_ring_type(rt: &str) -> bool {
     [
         "tapp-store",
-        "brew-recommend",
+        "phantasi-recommend",
         "library-exchange",
         "instance-directory",
     ]
     .contains(&rt)
 }
 
-/// Match a brew source `category` field against a single category name.
-/// Supports multi-category values (comma-separated), same rules as brew API.
+/// Match a phantasi source `category` field against a single category name.
+/// Supports multi-category values (comma-separated), same rules as phantasi API.
 ///
 /// Patterns: exact | starts with `"name, "` | ends with `", name"` | contains `", name, "`.
 pub fn source_category_matches(source_category: &str, category_name: &str) -> bool {
@@ -178,8 +178,8 @@ pub fn source_matches_any_category(source_category: Option<&str>, categories: &[
     categories.iter().any(|c| source_category_matches(sc, c))
 }
 
-/// Max brew items to push per brew-recommend ring sync（`BREW_RING_ITEM_LIMIT` = 40）。
-const BREW_RING_ITEM_LIMIT: u64 = 40;
+/// Max phantasi items to push per phantasi-recommend ring sync（`PHANTASI_RING_ITEM_LIMIT` = 40）。
+const PHANTASI_RING_ITEM_LIMIT: u64 = 40;
 
 // Ring CRUD
 
@@ -193,7 +193,7 @@ pub async fn create_ring(
         return Err((
             StatusCode::BAD_REQUEST,
             Json(AppError::public_json(
-                "Invalid ring_type. Must be one of: tapp-store, brew-recommend, library-exchange, instance-directory",
+                "Invalid ring_type. Must be one of: tapp-store, phantasi-recommend, library-exchange, instance-directory",
             )),
         ));
     }
@@ -204,8 +204,8 @@ pub async fn create_ring(
         "ttl": req.ttl.unwrap_or(5),
         "interval": req.interval.unwrap_or(300)
     });
-    // Persist optional brew category filter for brew-recommend rings
-    if req.ring_type == "brew-recommend" {
+    // Persist optional phantasi category filter for phantasi-recommend rings
+    if req.ring_type == "phantasi-recommend" {
         if let Some(cat) = req
             .category
             .as_deref()
@@ -750,13 +750,13 @@ pub async fn trigger_sync(
     ensure_keys_before_ring_outbound(db, local_user_id, username, "ring_sync").await;
     let category_filter = gossip_config
         .get("category")
-        .or_else(|| gossip_config.get("brew_category"))
+        .or_else(|| gossip_config.get("phantasi_category"))
         .and_then(|v| v.as_str())
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
 
-    // 收集本地要同步的数据（根据 ring_type；brew-recommend 按用户分类）
+    // 收集本地要同步的数据（根据 ring_type；phantasi-recommend 按用户分类）
     let entries = collect_sync_entries(
         &ring_type,
         db,
@@ -877,9 +877,9 @@ pub async fn trigger_sync(
     }))
 }
 
-/// 最近 20 条 federated brew-article Create（手发）。
-async fn collect_legacy_brew_activities(db: &impl ConnectionTrait) -> Vec<serde_json::Value> {
-    // 优先 federation_published_content.content_type = brew-article；
+/// 最近 20 条 federated phantasi-article Create（手发）。
+async fn collect_legacy_phantasi_activities(db: &impl ConnectionTrait) -> Vec<serde_json::Value> {
+    // 优先 federation_published_content.content_type = phantasi-article；
     // 空则查 federation_activities（object_type 存 MFP content_type）。
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
@@ -887,7 +887,7 @@ async fn collect_legacy_brew_activities(db: &impl ConnectionTrait) -> Vec<serde_
             r#"SELECT fpc.activity_id, fa.object_json
                FROM federation_published_content fpc
                LEFT JOIN federation_activities fa ON fa.activity_id = fpc.activity_id
-               WHERE fpc.content_type = 'brew-article'
+               WHERE fpc.content_type = 'phantasi-article'
                ORDER BY fpc.published_at DESC
                LIMIT 20"#,
             [],
@@ -904,7 +904,7 @@ async fn collect_legacy_brew_activities(db: &impl ConnectionTrait) -> Vec<serde_
                     .try_get("", "object_json")
                     .unwrap_or(json!({ "type": "Article" }));
                 Some(json!({
-                    "type": "brew",
+                    "type": "phantasi",
                     "activity_id": activity_id,
                     "data": obj
                 }))
@@ -921,8 +921,8 @@ async fn collect_legacy_brew_activities(db: &impl ConnectionTrait) -> Vec<serde_
                WHERE activity_type = 'Create'
                  AND is_local = true
                  AND (
-                   object_type = 'brew-article'
-                   OR object_json::text LIKE '%brew-article%'
+                   object_type = 'phantasi-article'
+                   OR object_json::text LIKE '%phantasi-article%'
                  )
                ORDER BY published_at DESC LIMIT 20"#,
             [],
@@ -933,17 +933,17 @@ async fn collect_legacy_brew_activities(db: &impl ConnectionTrait) -> Vec<serde_
         .filter_map(|r| {
             let obj: serde_json::Value = r.try_get("", "object_json").ok()?;
             let object_type = r.try_get::<String>("", "object_type").unwrap_or_default();
-            let is_brew = object_type == "brew-article"
-                || obj.get("mfp:contentType").and_then(|v| v.as_str()) == Some("brew-article")
+            let is_phantasi = object_type == "phantasi-article"
+                || obj.get("mfp:contentType").and_then(|v| v.as_str()) == Some("phantasi-article")
                 || obj
                     .pointer("/object/mfp:contentType")
                     .and_then(|v| v.as_str())
-                    == Some("brew-article");
-            if !is_brew {
+                    == Some("phantasi-article");
+            if !is_phantasi {
                 return None;
             }
             Some(json!({
-                "type": "brew",
+                "type": "phantasi",
                 "activity_id": r.try_get::<String>("", "activity_id").unwrap_or_default(),
                 "data": obj
             }))
@@ -952,7 +952,7 @@ async fn collect_legacy_brew_activities(db: &impl ConnectionTrait) -> Vec<serde_
 }
 
 /// 摘要（空则 content）截到 500 个 Unicode scalar。
-fn brew_ring_summary(summary: Option<&str>, content: Option<&str>) -> String {
+fn phantasi_ring_summary(summary: Option<&str>, content: Option<&str>) -> String {
     let raw = summary
         .filter(|s| !s.trim().is_empty())
         .or(content)
@@ -974,9 +974,9 @@ fn brew_ring_summary(summary: Option<&str>, content: Option<&str>) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// Collect brew-recommend ring entries from user brew categories + sources.
-/// 用户没有分类时回退 [`collect_legacy_brew_activities`]。
-async fn collect_brew_recommend_entries(
+/// Collect phantasi-recommend ring entries from user phantasi categories + sources.
+/// 用户没有分类时回退 [`collect_legacy_phantasi_activities`]。
+async fn collect_phantasi_recommend_entries(
     db: &impl ConnectionTrait,
     user_id: i32,
     _username: &str,
@@ -986,7 +986,7 @@ async fn collect_brew_recommend_entries(
     let cat_rows = db
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT name FROM brew_categories WHERE user_id = $1 ORDER BY sort_order ASC, id ASC",
+            "SELECT name FROM phantasi_categories WHERE user_id = $1 ORDER BY sort_order ASC, id ASC",
             [user_id.into()],
         ))
         .await
@@ -1004,7 +1004,7 @@ async fn collect_brew_recommend_entries(
         if category_names.is_empty() {
             // Filter set but not in user's categories → nothing to sync (not legacy fallback)
             tracing::debug!(
-                "[Ring] brew-recommend category filter {:?} not in user {} categories",
+                "[Ring] phantasi-recommend category filter {:?} not in user {} categories",
                 filter,
                 user_id
             );
@@ -1014,7 +1014,7 @@ async fn collect_brew_recommend_entries(
 
     if category_names.is_empty() {
         // No user categories → legacy federated Creates so empty categories still work
-        return collect_legacy_brew_activities(db).await;
+        return collect_legacy_phantasi_activities(db).await;
     }
 
     // 2) Load this user's sources
@@ -1022,7 +1022,7 @@ async fn collect_brew_recommend_entries(
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"SELECT id, name, category
-               FROM brew_sources
+               FROM phantasi_sources
                WHERE user_id = $1"#,
             [user_id.into()],
         ))
@@ -1067,9 +1067,9 @@ async fn collect_brew_recommend_entries(
             DatabaseBackend::Postgres,
             r#"SELECT bi.id, bi.title, bi.link, bi.summary, bi.content, bi.source_id, bi.published_at,
                       fpc.activity_id AS published_activity_id
-               FROM brew_items bi
+               FROM phantasi_items bi
                LEFT JOIN federation_published_content fpc
-                 ON fpc.content_type = 'brew-article'
+                 ON fpc.content_type = 'phantasi-article'
                 AND fpc.content_id = bi.id::text
                 AND fpc.user_id = $1
                WHERE bi.source_id = ANY($2)
@@ -1078,7 +1078,7 @@ async fn collect_brew_recommend_entries(
             [
                 user_id.into(),
                 matching_source_ids.clone().into(),
-                (BREW_RING_ITEM_LIMIT as i64).into(),
+                (PHANTASI_RING_ITEM_LIMIT as i64).into(),
             ],
         ))
         .await
@@ -1109,7 +1109,7 @@ async fn collect_brew_recommend_entries(
                     .map(|s| s.to_string())
                     .collect()
             };
-            let summary = brew_ring_summary(summary_opt.as_deref(), content_opt.as_deref());
+            let summary = phantasi_ring_summary(summary_opt.as_deref(), content_opt.as_deref());
 
             // Stable activity_id: reuse published federation activity if any
             let activity_id = r
@@ -1117,10 +1117,10 @@ async fn collect_brew_recommend_entries(
                 .ok()
                 .flatten()
                 .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| format!("{}/brew/ring/{}", base, item_id));
+                .unwrap_or_else(|| format!("{}/phantasi/ring/{}", base, item_id));
 
             Some(json!({
-                "type": "brew",
+                "type": "phantasi",
                 "activity_id": activity_id,
                 "data": {
                     "type": "Article",
@@ -1131,8 +1131,8 @@ async fn collect_brew_recommend_entries(
                     "summary": summary,
                     "source": source_name,
                     "categories": categories,
-                    "brew_item_id": item_id,
-                    "mfp:contentType": "brew-article",
+                    "phantasi_item_id": item_id,
+                    "mfp:contentType": "phantasi-article",
                     "mfp:contentId": item_id.to_string()
                 }
             }))
@@ -1140,8 +1140,8 @@ async fn collect_brew_recommend_entries(
         .collect()
 }
 
-/// 分类 brew 条目落地后，对有 peer 的 brew-recommend ring 各触发一次 sync。
-pub async fn maybe_trigger_brew_recommend_sync_for_user(db: &DatabaseConnection, user_id: i32) {
+/// 分类 phantasi 条目落地后，对有 peer 的 phantasi-recommend ring 各触发一次 sync。
+pub async fn maybe_trigger_phantasi_recommend_sync_for_user(db: &DatabaseConnection, user_id: i32) {
     // Resolve username for trigger_sync
     let username = match db
         .query_one_raw(Statement::from_sql_and_values(
@@ -1162,7 +1162,7 @@ pub async fn maybe_trigger_brew_recommend_sync_for_user(db: &DatabaseConnection,
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"SELECT ring_id FROM federation_ring_memberships
-               WHERE ring_type = 'brew-recommend'
+               WHERE ring_type = 'phantasi-recommend'
                  AND known_peers IS NOT NULL
                  AND jsonb_array_length(COALESCE(known_peers, '[]'::json)::jsonb) > 0"#,
             [],
@@ -1178,7 +1178,7 @@ pub async fn maybe_trigger_brew_recommend_sync_for_user(db: &DatabaseConnection,
     let has_cats = db
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT 1 FROM brew_categories WHERE user_id = $1 LIMIT 1",
+            "SELECT 1 FROM phantasi_categories WHERE user_id = $1 LIMIT 1",
             [user_id.into()],
         ))
         .await
@@ -1197,7 +1197,7 @@ pub async fn maybe_trigger_brew_recommend_sync_for_user(db: &DatabaseConnection,
         match trigger_sync(&ring_id, &username, db).await {
             Ok(res) => {
                 tracing::info!(
-                    "[Ring] Auto brew-recommend sync ring={} user={}: {}",
+                    "[Ring] Auto phantasi-recommend sync ring={} user={}: {}",
                     ring_id,
                     user_id,
                     res
@@ -1205,7 +1205,7 @@ pub async fn maybe_trigger_brew_recommend_sync_for_user(db: &DatabaseConnection,
             }
             Err((status, err)) => {
                 tracing::warn!(
-                    "[Ring] Auto brew-recommend sync failed ring={} user={}: {:?} {:?}",
+                    "[Ring] Auto phantasi-recommend sync failed ring={} user={}: {:?} {:?}",
                     ring_id,
                     user_id,
                     status,
@@ -1225,8 +1225,8 @@ async fn collect_sync_entries(
     category_filter: Option<&str>,
 ) -> Vec<serde_json::Value> {
     match ring_type {
-        "brew-recommend" => {
-            collect_brew_recommend_entries(db, user_id, username, category_filter).await
+        "phantasi-recommend" => {
+            collect_phantasi_recommend_entries(db, user_id, username, category_filter).await
         }
         "tapp-store" => {
             // 收集已发布的 Tapp 内容
@@ -1527,7 +1527,7 @@ pub async fn handle_ring_sync(
             continue;
         }
 
-        // Prefer human-readable title/name for brew (and similar) entries
+        // Prefer human-readable title/name for phantasi (and similar) entries
         let preview = ring_entry_content_preview(entry_type, &data, actor_url_str);
 
         db.execute_raw(Statement::from_sql_and_values(
@@ -1756,47 +1756,47 @@ mod tests {
     }
 
     #[test]
-    fn brew_ring_summary_strips_html_and_limits() {
-        let s = brew_ring_summary(Some("<p>Hello <b>world</b></p>"), None);
+    fn phantasi_ring_summary_strips_html_and_limits() {
+        let s = phantasi_ring_summary(Some("<p>Hello <b>world</b></p>"), None);
         assert_eq!(s, "Hello world");
         let long = "x".repeat(600);
-        let s2 = brew_ring_summary(Some(&long), None);
+        let s2 = phantasi_ring_summary(Some(&long), None);
         assert_eq!(s2.chars().count(), 500);
-        let s3 = brew_ring_summary(None, Some("<div>from content</div>"));
+        let s3 = phantasi_ring_summary(None, Some("<div>from content</div>"));
         assert_eq!(s3, "from content");
-        let s4 = brew_ring_summary(None, None);
+        let s4 = phantasi_ring_summary(None, None);
         assert_eq!(s4, "");
     }
 
     #[test]
     fn ring_entry_content_preview_prefers_title() {
         let data = json!({
-            "title": "My Brew Post",
+            "title": "My Phantasi Post",
             "link": "https://example.com/a"
         });
-        let p = ring_entry_content_preview("brew", &data, "https://peer/users/a");
-        assert!(p.contains("My Brew Post"));
+        let p = ring_entry_content_preview("phantasi", &data, "https://peer/users/a");
+        assert!(p.contains("My Phantasi Post"));
         assert!(p.contains("https://example.com/a"));
 
         let data2 = json!({ "name": "Named Only" });
-        let p2 = ring_entry_content_preview("brew", &data2, "https://peer/users/a");
+        let p2 = ring_entry_content_preview("phantasi", &data2, "https://peer/users/a");
         assert_eq!(p2, "Named Only");
 
         let data3 = json!({});
-        let p3 = ring_entry_content_preview("brew", &data3, "https://peer/users/a");
+        let p3 = ring_entry_content_preview("phantasi", &data3, "https://peer/users/a");
         assert!(p3.contains("Ring Sync"));
-        assert!(p3.contains("brew"));
+        assert!(p3.contains("phantasi"));
     }
 
     #[test]
     fn create_ring_request_deserializes_category_aliases() {
         let a: CreateRingRequest =
-            serde_json::from_str(r#"{"name":"r","ring_type":"brew-recommend","category":"技术"}"#)
+            serde_json::from_str(r#"{"name":"r","ring_type":"phantasi-recommend","category":"技术"}"#)
                 .unwrap();
         assert_eq!(a.category.as_deref(), Some("技术"));
 
         let b: CreateRingRequest = serde_json::from_str(
-            r#"{"name":"r","ring_type":"brew-recommend","brew_category":"生活"}"#,
+            r#"{"name":"r","ring_type":"phantasi-recommend","phantasi_category":"生活"}"#,
         )
         .unwrap();
         assert_eq!(b.category.as_deref(), Some("生活"));

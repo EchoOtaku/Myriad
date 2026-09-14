@@ -68,10 +68,10 @@ describe('formatMessage', () => {
       agentQueueTimeout: string
       noticeFederationRevokedBody: string
     }>('errors.en-US')
-    const brew = catalog<{
+    const phantasi = catalog<{
       noteTitleTooLong: string
       noteBodyTooLong: string
-    }>('brew.en-US')
+    }>('phantasi.en-US')
     const config = catalog<{
       runtimeDiagnosticsRecentFailures: string
     }>('config.en-US')
@@ -99,11 +99,11 @@ describe('formatMessage', () => {
       'peer.example could not be reached for a long time. Federation was unlinked and 4 queued items were cancelled.',
     )
     assert.equal(
-      formatMessage('en-US', brew.noteTitleTooLong, { max: 1, chars: 2 }),
+      formatMessage('en-US', phantasi.noteTitleTooLong, { max: 1, chars: 2 }),
       'Titles can be at most 1 character (this one is 2)',
     )
     assert.equal(
-      formatMessage('en-US', brew.noteBodyTooLong, { max: 200, chars: 201 }),
+      formatMessage('en-US', phantasi.noteBodyTooLong, { max: 200, chars: 201 }),
       'Notes can be at most 200 characters (this one is 201)',
     )
     assert.equal(

@@ -241,7 +241,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
 
     // AI 文章注释
     registry.register(Capability {
-        id: "brewlia.annotate".to_string(),
+        id: "phantasiai.annotate".to_string(),
         name: "Annotate article".to_string(),
         description: "Add AI notes and reading help to an article.".to_string(),
         category: CapabilityCategory::AiProcess,
@@ -270,7 +270,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
 
     // AI 播客生成
     registry.register(Capability {
-        id: "brewlia.podcast".to_string(),
+        id: "phantasiai.podcast".to_string(),
         name: "Generate podcast".to_string(),
         description: "Turn an article into a spoken-dialogue script.".to_string(),
         category: CapabilityCategory::AiProcess,

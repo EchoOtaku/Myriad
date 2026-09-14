@@ -80,8 +80,8 @@ const CLIENT_PREFERENCE_REGISTRY: ClientPreferenceDescriptor[] = [
   { key: 'locale', schemaVersion: 1 },
   { key: 'animation-preference', schemaVersion: 1 },
   { key: 'config_favorites', schemaVersion: 1 },
-  { key: 'brewlia_tts_settings', schemaVersion: 1 },
-  { key: 'brew-reader-settings', schemaVersion: 1 },
+  { key: 'phantasiai_tts_settings', schemaVersion: 1 },
+  { key: 'phantasi-reader-settings', schemaVersion: 1 },
 ]
 
 function collectClientPreferences(): Record<

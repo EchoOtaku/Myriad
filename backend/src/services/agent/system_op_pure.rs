@@ -2,16 +2,16 @@
 //!
 //! Handlers keep DB/scheduler/FS. Domain owns:
 //! - scheduler create schedule-type / execution-target / schedule-config build
-//! - brew.schedule action validation
+//! - phantasi.schedule action validation
 //! - heartbeat task-id param keys
 
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
 pub use myriad_agent_rules::{
-    AgentExecutionTarget, AgentScheduleType, BrewScheduleAction, build_schedule_config,
+    AgentExecutionTarget, AgentScheduleType, PhantasiScheduleAction, build_schedule_config,
     extract_raw_backend_actions, heartbeat_task_id, heartbeat_update_has_fields,
-    parse_brew_schedule_action, parse_execution_target, parse_schedule_type,
+    parse_phantasi_schedule_action, parse_execution_target, parse_schedule_type,
 };
 
 #[cfg(test)]
@@ -95,7 +95,7 @@ mod tests {
     }
 
     #[test]
-    fn heartbeat_and_brew_schedule_helpers() {
+    fn heartbeat_and_phantasi_schedule_helpers() {
         let mut params = HashMap::new();
         params.insert("taskId".into(), json!("hb-1"));
         assert_eq!(heartbeat_task_id(&params), Some("hb-1"));
@@ -103,14 +103,14 @@ mod tests {
         assert!(heartbeat_update_has_fields(Some("n"), None, None, None));
 
         assert_eq!(
-            parse_brew_schedule_action(None).unwrap(),
-            BrewScheduleAction::Status
+            parse_phantasi_schedule_action(None).unwrap(),
+            PhantasiScheduleAction::Status
         );
         assert_eq!(
-            parse_brew_schedule_action(Some("refresh")).unwrap(),
-            BrewScheduleAction::Refresh
+            parse_phantasi_schedule_action(Some("refresh")).unwrap(),
+            PhantasiScheduleAction::Refresh
         );
-        assert!(parse_brew_schedule_action(Some("explode")).is_err());
+        assert!(parse_phantasi_schedule_action(Some("explode")).is_err());
 
         let mut params = HashMap::new();
         params.insert("action".into(), json!({ "type": "x" }));

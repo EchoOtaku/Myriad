@@ -1,4 +1,4 @@
-//! 设置徽章和 Brew 阅读共用的 GitHub 仓库摘要。
+//! 设置徽章和 Phantasi 阅读共用的 GitHub 仓库摘要。
 //!
 //! 出站走数据平台同一套：[`GitHubApiUrl`]（可改 API 基址）+ 全局 HTTP 客户端
 //! （代理）+ 可选 `github_token`。浏览器不再直打 api.github.com。

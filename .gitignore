@@ -94,7 +94,7 @@ docker/volumes/
 /crates/tapp-contract/Cargo.lock
 
 # --- Backend runtime data (seeded skills/*.md remain tracked) ---
-/backend/data/brew
+/backend/data/phantasi
 /backend/data/agent/memory
 /backend/data/agent/skills/_stats.json
 /backend/data/agent/skills/_gaps.json
@@ -120,7 +120,7 @@ docker/volumes/
 /tapp-store
 backend/data/.bootstrap-claimed
 /backend/data
-.brew-shots/
+.phantasi-shots/
 /frontend/public/merope-demo
 /frontend/tests/*
 !/frontend/tests/browser/

@@ -75,8 +75,8 @@ describe('imageUrlFromStepOutput', () => {
       'https://example.invalid/a.png',
     )
     assert.equal(
-      imageUrlFromStepOutput({ imageUrl: '/api/brew/image-cache/aa/abcd.png' }),
-      '/api/brew/image-cache/aa/abcd.png',
+      imageUrlFromStepOutput({ imageUrl: '/api/phantasi/image-cache/aa/abcd.png' }),
+      '/api/phantasi/image-cache/aa/abcd.png',
     )
   })
 })

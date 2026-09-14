@@ -921,7 +921,7 @@ fn now_playing_line(music: Option<&serde_json::Value>) -> Option<String> {
 /// 路由描述
 fn describe_route(route: &str) -> &'static str {
     match route.trim_matches('/') {
-        "brew" => "Brew feeds page",
+        "phantasi" => "Phantasi feeds page",
         "tapp" | "tapps" => "Tapp apps page",
         "library" => "Library page",
         "config" | "settings" => "Settings page",
@@ -1495,7 +1495,7 @@ mod tests {
                 context: Some(RequestContext {
                     custom_data: Some(serde_json::json!({
                         "pageContent": {
-                            "type": "brew_article",
+                            "type": "phantasi_article",
                             "title": "Harbour Notes",
                             "content": "long body",
                             "sourceUrl": "https://example.test/secret"

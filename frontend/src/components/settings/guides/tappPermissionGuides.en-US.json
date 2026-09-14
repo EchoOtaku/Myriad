@@ -203,29 +203,29 @@
     "frontend": "Tapp list and detail run/install controls.",
     "notes": "Among the highest-risk grants."
   },
-  "brew:read": {
-    "what": "Allows reading Brew sources and articles.",
-    "chain": "1) App requests Brew data.\n2) Reads site subscriptions.\n3) Renders reading UI.",
-    "frontend": "Brew module and in-app readers.",
+  "phantasi:read": {
+    "what": "Allows reading Phantasi sources and articles.",
+    "chain": "1) App requests Phantasi data.\n2) Reads site subscriptions.\n3) Renders reading UI.",
+    "frontend": "Phantasi module and in-app readers.",
     "notes": "Read-only; cannot change read state, favorite, or write comments."
   },
-  "brew:write": {
-    "what": "Allows writing Brew data such as read state and stars.",
-    "chain": "1) App updates item state.\n2) Brew storage is changed.\n3) Filters and badges may update.",
-    "frontend": "Brew read and favorite state.",
+  "phantasi:write": {
+    "what": "Allows writing Phantasi data such as read state and stars.",
+    "chain": "1) App updates item state.\n2) Phantasi storage is changed.\n3) Filters and badges may update.",
+    "frontend": "Phantasi read and favorite state.",
     "notes": "Changes your reading state; verify the app behavior before granting."
   },
-  "brew:commentWrite": {
-    "what": "Allows creating, editing, and deleting Brew comments and replies.",
+  "phantasi:commentWrite": {
+    "what": "Allows creating, editing, and deleting Phantasi comments and replies.",
     "chain": "1) App posts comments.\n2) Comments attach to articles.\n3) Others may see them per policy.",
-    "frontend": "Brew article comments.",
+    "frontend": "Phantasi article comments.",
     "notes": "Public expression — follow content norms; delegated by admins only by default."
   },
-  "brew:manage": {
-    "what": "Allows managing Brew sources and advanced settings.",
+  "phantasi:manage": {
+    "what": "Allows managing Phantasi sources and advanced settings.",
     "chain": "1) App calls source-management APIs.\n2) Subscription set changes.\n3) Fetch/list update.",
-    "frontend": "Brew source manager, OPML, discover.",
-    "notes": "Can add/remove feeds site-wide for Brew."
+    "frontend": "Phantasi source manager, OPML, discover.",
+    "notes": "Can add/remove feeds site-wide for Phantasi."
   },
   "federation:read": {
     "what": "Allows reading federation rooms, channels, and members.",

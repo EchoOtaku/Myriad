@@ -60,7 +60,7 @@ pub fn extract_rsshub_route_path_and_query(url: &str) -> Option<String> {
 
     None
 }
-use crate::services::brew_parser::{FeedParser, ParsedFeed};
+use crate::services::phantasi_parser::{FeedParser, ParsedFeed};
 
 /// RSSHub 服务配置
 #[derive(Clone, Debug)]
@@ -348,7 +348,7 @@ impl RsshubService {
         let (target_url, client) = crate::services::outbound_security::build_public_http_client(
             &url,
             Duration::from_secs(self.config.request_timeout_secs),
-            Some("Myriad Brew Reader/1.0 (RSSHub Health Check)"),
+            Some("Myriad Phantasi Reader/1.0 (RSSHub Health Check)"),
         )
         .await
         .map_err(|error| {

@@ -101,9 +101,9 @@ pub mod tencent_speech_service;
 pub mod tripo; // Tripo v3 3D generation + Web GLB persistence
 pub mod updater_client;
 
-pub mod brew_parser;
-pub mod brew_scheduler;
-pub mod brew_topics;
+pub mod phantasi_parser;
+pub mod phantasi_scheduler;
+pub mod phantasi_topics;
 pub mod channel_pairing; // Shared pairing mint/consume/unbind
 pub mod channel_work; // Shared private-chat Work: session, pending, delivery
 pub mod discord_bot; // Discord DM Gateway worker

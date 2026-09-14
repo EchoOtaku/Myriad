@@ -14,7 +14,7 @@ const LOCALES = [
 const NAMESPACES = [
   'config',
   'tapp',
-  'brew',
+  'phantasi',
   'merope',
   'errors',
   'agentCaps',

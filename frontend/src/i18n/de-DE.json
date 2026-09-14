@@ -63,8 +63,8 @@
     "book": "Bücher",
     "showBook": "Bücher zeigen",
     "expandFilters": "Filter aufklappen",
-    "brew": "Brew",
-    "brewReading": "Brew-Reader",
+    "phantasi": "Journal",
+    "phantasiReading": "Journal",
     "agent": "Agent",
     "tapp": "Tapp-Apps",
     "openTapp": "Tapp-Apps öffnen"
@@ -130,7 +130,7 @@
     "steps": {
       "nav": {
         "title": "Navigation",
-        "body": "Wechseln Sie zwischen Start, Bibliothek, Brew-Reader, Plattformberichten und Tapp-Apps."
+        "body": "Wechseln Sie zwischen Start, Bibliothek, Journal, Plattformberichten und Tapp-Apps."
       },
       "home-grid": {
         "title": "Widget-Raster",
@@ -531,9 +531,9 @@
     "tappShortcut": "Tapp-Verknüpfung",
     "gamePresence": "HoYoverse-Spielkarte",
     "visitorStats": "Besucherstatistik",
-    "brewSource": "Feed-Kachel",
-    "brewTopic": "Themenüberblick",
-    "brewFeatured": "Brew-Auswahl",
+    "phantasiSource": "Feed-Kachel",
+    "phantasiTopic": "Themenüberblick",
+    "phantasiFeatured": "Journal",
     "githubRepos": "GitHub-Repos",
     "githubReposField": "Repository",
     "githubReposFieldHint": "GitHub-URL oder owner/repo",
@@ -543,9 +543,9 @@
     "dualLayerAnalysis": "Profile und Einblicke je Plattform",
     "libraryFeature": "Spiele, Filme und Musik an einem Ort",
     "platformProfile": "Plattformprofile und Berichte erzeugen",
-    "brewReading": "Brew-Lesen",
-    "brewDesc": "RSS-Abo",
-    "brewFeature": "Mehrere Quellen, KI-Hilfe",
+    "phantasiReading": "Journal",
+    "phantasiDesc": "RSS-Abo",
+    "phantasiFeature": "Mehrere Quellen, KI-Hilfe",
     "tappApps": "Tapp-Apps",
     "tappDesc": "Erweiterungen",
     "tappFeature": "Widgets, Werkzeuge, Erweiterungen"
@@ -553,9 +553,9 @@
   "friendLinksWidget": {
     "siteCount": "{count, plural, one {# Seite} other {# Seiten}}",
     "emptyTitle": "Noch keine Freundelinks",
-    "emptyDescription": "In Brew-Lesen hinzufügen",
+    "emptyDescription": "In Journal hinzufügen",
     "loadFailed": "Freundelinks sind gerade nicht verfügbar",
-    "openBrew": "Freundelinks in Brew-Lesen ansehen",
+    "openPhantasi": "Freundelinks in Journal ansehen",
     "visitSite": "{name} besuchen",
     "samplePersonalBlog": "Blog einer Freundin",
     "sampleLifeAndNotes": "Leben und Notizen",
@@ -704,7 +704,7 @@
       "routes": {
         "home": "Start",
         "library": "Bibliothek",
-        "brew": "Brew",
+        "phantasi": "Journal",
         "reports": "Berichte",
         "config": "Einstellungen",
         "tapp": "Tapp",
@@ -891,7 +891,7 @@
       "button": "Rückgängig",
       "did": {
         "navigate": "Habe gerade für Sie navigiert",
-        "brew_open_article": "Habe gerade einen Artikel geöffnet"
+        "phantasi_open_article": "Habe gerade einen Artikel geöffnet"
       }
     }
   },

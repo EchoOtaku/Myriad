@@ -136,7 +136,7 @@ export const FILE_DOWNLOAD_METHOD_CODE = `download: function(contentOrOptions, f
         if (typeof contentOrOptions !== 'string') {
           return send({ content: contentOrOptions, filename, mimeType });
         }
-        if (contentOrOptions.includes('/api/brew/image-cache/') || contentOrOptions.includes('/api/model3d/assets/')) {
+        if (contentOrOptions.includes('/api/phantasi/image-cache/') || contentOrOptions.includes('/api/model3d/assets/')) {
           return send({ url: contentOrOptions, filename, mimeType });
         }
         if (contentOrOptions.startsWith('data:') && contentOrOptions.includes(';base64,')) {

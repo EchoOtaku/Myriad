@@ -234,7 +234,7 @@ const PNG_1X1 = Uint8Array.from([
   0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
 ])
 const STICKER_HASH = `ab${'a'.repeat(62)}`
-const STICKER_PATH = `/api/brew/image-cache/ab/${STICKER_HASH}.png`
+const STICKER_PATH = `/api/phantasi/image-cache/ab/${STICKER_HASH}.png`
 const PNG_DATA = encodeBase64(PNG_1X1)
 
 describe('home layout sticker originals', () => {
@@ -252,7 +252,7 @@ describe('home layout sticker originals', () => {
       canonicalStickerImageUrl(`https://host${STICKER_PATH}#frag`),
       STICKER_PATH,
     )
-    const webpPath = `/api/brew/image-cache/ab/${STICKER_HASH}.webp`
+    const webpPath = `/api/phantasi/image-cache/ab/${STICKER_HASH}.webp`
     assert.equal(canonicalStickerImageUrl(webpPath), webpPath)
   })
 
@@ -265,7 +265,7 @@ describe('home layout sticker originals', () => {
     })
     const doc = buildHomeLayoutExport({ standard: [], free: [tile] }, 'free', {
       [STICKER_PATH]: { mime: 'image/png', data: PNG_DATA },
-      '/api/brew/image-cache/ff/not-used.png': {
+      '/api/phantasi/image-cache/ff/not-used.png': {
         mime: 'image/png',
         data: PNG_DATA,
       },
@@ -367,11 +367,11 @@ describe('home layout sticker originals', () => {
     })
     const rewritten = rewriteStickerImageUrls(
       { standard: [], free: [tile] },
-      (url) => (url === STICKER_PATH ? '/api/brew/image-cache/cd/new.png' : url),
+      (url) => (url === STICKER_PATH ? '/api/phantasi/image-cache/cd/new.png' : url),
     )
     assert.equal(
       rewritten.free[0]?.config?.imageUrl,
-      '/api/brew/image-cache/cd/new.png',
+      '/api/phantasi/image-cache/cd/new.png',
     )
 
     const legacy = parseHomeLayoutImport({

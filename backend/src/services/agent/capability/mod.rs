@@ -502,7 +502,7 @@ mod tests {
 
     #[tokio::test]
     async fn compact_index_hides_ungranted_capabilities() {
-        let granted = HashSet::from(["ai:chat".to_string(), "brew:read".to_string()]);
+        let granted = HashSet::from(["ai:chat".to_string(), "phantasi:read".to_string()]);
         let index = get_compact_index_for_grants(Some(&granted)).await;
         let ids: Vec<&str> = index
             .get("caps")
@@ -515,7 +515,7 @@ mod tests {
             .collect();
         assert!(ids.contains(&"ai.chat"), "{ids:?}");
         assert!(
-            ids.contains(&"brew.read") || ids.iter().any(|id| id.starts_with("brew.")),
+            ids.contains(&"phantasi.read") || ids.iter().any(|id| id.starts_with("phantasi.")),
             "{ids:?}"
         );
         assert!(

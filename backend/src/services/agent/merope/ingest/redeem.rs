@@ -180,7 +180,7 @@ async fn redeem_speak_intent(
     let Some(decision) = current_delivery(db, &intent, input_at, false).await else {
         return Ok(());
     };
-    // Merope toasts only what it owns. Task / brew / sync already have a
+    // Merope toasts only what it owns. Task / phantasi / sync already have a
     // producer; sending ours as well would be two notices for one event.
     let mut delivered = false;
     if decision.live && shown {
@@ -725,7 +725,7 @@ mod tests {
         assert!(speech_is_shown("agent.merope.greeting", true));
         // Other producers own these toasts.
         assert!(!speech_is_shown("agent.task_failed", true));
-        assert!(!speech_is_shown("brew.source_error", true));
+        assert!(!speech_is_shown("phantasi.source_error", true));
         // Merope-owned but `notify` is false.
         assert!(!speech_is_shown("agent.merope.greeting", false));
     }

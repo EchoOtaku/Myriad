@@ -32,7 +32,7 @@ interface HostRouteFixture {
   routes: HostRouteEntry[]
 }
 
-const HOSTED_ACTION_PREFIXES = ['speech.', 'brewList.', 'federation.'] as const
+const HOSTED_ACTION_PREFIXES = ['speech.', 'phantasiList.', 'federation.'] as const
 
 function loadJson<T>(name: string): T {
   const raw = readFileSync(join(fixturesDir, name), 'utf8')
@@ -63,7 +63,7 @@ describe('host-proxied action → permission fixture', () => {
     }
   })
 
-  it('has a fixture row for every speech/brewList/federation PERMISSION_MAP entry', () => {
+  it('has a fixture row for every speech/phantasiList/federation PERMISSION_MAP entry', () => {
     const fixtureActions = new Set(actionFixture.actions.map(a => a.action))
     for (const action of PERMISSION_MAP.keys()) {
       if (!isHostedDomainAction(action))
@@ -92,7 +92,7 @@ describe('host-proxied action → permission fixture', () => {
   })
 
   it('shares permission string sets with host routes per domain', () => {
-    for (const domain of ['speech', 'brew', 'federation'] as const) {
+    for (const domain of ['speech', 'phantasi', 'federation'] as const) {
       const hostPerms = new Set(
         hostFixture.routes
           .filter(r => r.domain === domain)

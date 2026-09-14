@@ -142,7 +142,7 @@ impl ImageCacheService {
                 // 返回相对于服务器的 URL
                 let subdir = &filename[..2.min(filename.len())];
                 return Some(format!(
-                    "/api/brew/image-cache/{}/{}.{}",
+                    "/api/phantasi/image-cache/{}/{}.{}",
                     subdir, filename, ext
                 ));
             }
@@ -225,7 +225,7 @@ impl ImageCacheService {
             .map_err(|e| cache_io_error("Failed to write cache file", e))?;
 
         let subdir = &filename[..2.min(filename.len())];
-        let cached_url = format!("/api/brew/image-cache/{}/{}.{}", subdir, filename, ext);
+        let cached_url = format!("/api/phantasi/image-cache/{}/{}.{}", subdir, filename, ext);
 
         tracing::info!(cached = %cached_url, "Image cached");
         Ok(cached_url)
@@ -253,7 +253,7 @@ impl ImageCacheService {
         let ext = Self::infer_extension("", Some(media_type));
         let cache_path = self.get_cache_path(&filename, ext);
         let subdir = &filename[..2.min(filename.len())];
-        let url = format!("/api/brew/image-cache/{}/{}.{}", subdir, filename, ext);
+        let url = format!("/api/phantasi/image-cache/{}/{}.{}", subdir, filename, ext);
         if cache_path.exists() {
             return Ok(StoredImage {
                 url,
@@ -306,10 +306,10 @@ impl ImageCacheService {
         }
     }
 
-    /// Resolve a public `/api/brew/image-cache/{subdir}/{sha256}.{ext}` URL to a local path.
+    /// Resolve a public `/api/phantasi/image-cache/{subdir}/{sha256}.{ext}` URL to a local path.
     pub fn local_path_for_public_url(&self, url: &str) -> Option<PathBuf> {
         let path = image_cache_path(url)?;
-        let rest = path.strip_prefix("/api/brew/image-cache/")?;
+        let rest = path.strip_prefix("/api/phantasi/image-cache/")?;
         let (subdir, file) = rest.split_once('/')?;
         if file.contains('/') || file.contains('\\') || file.contains("..") {
             return None;
@@ -335,7 +335,7 @@ impl ImageCacheService {
     pub async fn read_local_public_url(&self, url: &str) -> Result<(Vec<u8>, String), String> {
         let path = self
             .local_path_for_public_url(url)
-            .ok_or_else(|| "imageUrl must be a local /api/brew/image-cache path".to_string())?;
+            .ok_or_else(|| "imageUrl must be a local /api/phantasi/image-cache path".to_string())?;
         let bytes = fs::read(&path)
             .await
             .map_err(|_| "cached image not found".to_string())?;
@@ -383,7 +383,7 @@ impl ImageCacheService {
 
 fn image_cache_path(url: &str) -> Option<&str> {
     let without_query = url.split('?').next().unwrap_or(url);
-    let start = without_query.find("/api/brew/image-cache/")?;
+    let start = without_query.find("/api/phantasi/image-cache/")?;
     Some(&without_query[start..])
 }
 
@@ -430,7 +430,7 @@ mod tests {
     fn local_path_only_accepts_site_image_cache_urls() {
         let service = ImageCacheService::new();
         let hash = "a".repeat(64);
-        let ok = format!("https://example.com/api/brew/image-cache/aa/{hash}.png");
+        let ok = format!("https://example.com/api/phantasi/image-cache/aa/{hash}.png");
         assert!(service.local_path_for_public_url(&ok).is_some());
         assert!(
             service
@@ -439,12 +439,12 @@ mod tests {
         );
         assert!(
             service
-                .local_path_for_public_url(&format!("/api/brew/image-cache/ab/{hash}.png"))
+                .local_path_for_public_url(&format!("/api/phantasi/image-cache/ab/{hash}.png"))
                 .is_none()
         );
         assert!(
             service
-                .local_path_for_public_url("/api/brew/image-cache/aa/../passwd.png")
+                .local_path_for_public_url("/api/phantasi/image-cache/aa/../passwd.png")
                 .is_none()
         );
     }

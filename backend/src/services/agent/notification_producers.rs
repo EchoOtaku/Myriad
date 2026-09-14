@@ -34,7 +34,7 @@ impl NotificationManager {
         }
     }
 
-    pub async fn notify_brew_new_items(
+    pub async fn notify_phantasi_new_items(
         &self,
         user_id: i32,
         source_id: i32,
@@ -49,14 +49,14 @@ impl NotificationManager {
         };
         let notification = Notification::new(
             user_id,
-            NotificationType::BrewNewItems,
+            NotificationType::PhantasiNewItems,
             NotificationPriority::Normal,
             format!("{source_name} · {new_count} new items"),
             body,
         )
         .with_metadata(serde_json::json!({
-            "event_key": "brew.new_items",
-            "route": "/brew",
+            "event_key": "phantasi.new_items",
+            "route": "/phantasi",
             "source_id": source_id,
             "source_name": source_name,
             "new_count": new_count,
@@ -64,7 +64,7 @@ impl NotificationManager {
         self.notify(notification).await;
     }
 
-    pub async fn notify_brew_source_error(
+    pub async fn notify_phantasi_source_error(
         &self,
         user_id: i32,
         source_id: i32,
@@ -72,7 +72,7 @@ impl NotificationManager {
         error: &str,
     ) {
         let summary = format!("{source_name} feed failed repeatedly");
-        crate::services::agent::merope::spawn_ingest(user_id, "brew.source_error", &summary);
+        crate::services::agent::merope::spawn_ingest(user_id, "phantasi.source_error", &summary);
         if !crate::services::agent::merope::allow_existing_notify(user_id).await {
             return;
         }
@@ -80,7 +80,7 @@ impl NotificationManager {
         // conversation, otherwise the old deep link stands. Carrying both would
         // leave `route` dead, since the panel resolves `action` first.
         let mut metadata = serde_json::json!({
-            "event_key": "brew.source_error",
+            "event_key": "phantasi.source_error",
             "source_id": source_id,
             "source_name": source_name,
             "status": "failed",
@@ -91,11 +91,11 @@ impl NotificationManager {
                 crate::services::agent::merope::ingest::latest_session_id_for(user_id).await
             );
         } else {
-            metadata["route"] = serde_json::json!("/brew");
+            metadata["route"] = serde_json::json!("/phantasi");
         }
         let notification = Notification::new(
             user_id,
-            NotificationType::BrewSourceError,
+            NotificationType::PhantasiSourceError,
             NotificationPriority::High,
             format!("{source_name} feed failed repeatedly"),
             error,

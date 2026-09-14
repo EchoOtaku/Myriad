@@ -40,7 +40,7 @@ describe('aiRequestTimeoutMs', () => {
       '/api/prompt/generate',
       '/api/seo/generate-copy',
       '/api/ai/recommend-icon',
-      '/api/brewlia/items/1/annotations',
+      '/api/phantasiai/items/1/annotations',
       '/api/agent/process',
       '/api/agent/clarify',
       '/api/agent/tasks/x/answer',

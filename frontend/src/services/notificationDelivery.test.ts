@@ -110,9 +110,9 @@ describe('shouldSurfaceNotification', () => {
     notification_type: 'task_progress',
     metadata: { event_key: 'agent.task_progress' },
   })
-  const brew = note({
-    notification_type: 'brew_new_items',
-    metadata: { event_key: 'brew.new_items' },
+  const phantasi = note({
+    notification_type: 'phantasi_new_items',
+    metadata: { event_key: 'phantasi.new_items' },
   })
 
   it('hides agent notifications on every surface while looking at the panel', () => {
@@ -156,17 +156,17 @@ describe('shouldSurfaceNotification', () => {
     )
   })
 
-  it('does not hide brew notifications while looking at the agent panel', () => {
+  it('does not hide phantasi notifications while looking at the agent panel', () => {
     assert.equal(
       shouldSurfaceNotification(
         DEFAULT_NOTIFICATION_PREFERENCES,
-        brew,
+        phantasi,
         'island',
         true,
       ),
       shouldDeliverNotification(
         DEFAULT_NOTIFICATION_PREFERENCES,
-        brew,
+        phantasi,
         'island',
       ),
     )

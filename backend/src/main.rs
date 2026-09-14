@@ -423,7 +423,7 @@ async fn run_server(role: runtime_role::RuntimeRole) -> anyhow::Result<()> {
                 );
 
                 // 通知中心必须先于任何后台调度器启动；interval 首次 tick 会立即执行，
-                // 否则启动阶段的 Tapp/Brew/MCP 事件会静默丢失。
+                // 否则启动阶段的 Tapp/Phantasi/MCP 事件会静默丢失。
                 if role == runtime_role::RuntimeRole::All {
                     services::agent::notifications::init_notifications(db.clone()).await;
                 } else {
@@ -452,9 +452,9 @@ async fn run_server(role: runtime_role::RuntimeRole) -> anyhow::Result<()> {
                     ),
                 }
 
-                // Initialize Brew scheduler engine (RSS/Atom feed updates)
-                services::brew_scheduler::init_brew_scheduler(db.clone()).await;
-                tracing::info!("✅ Brew scheduler engine initialized");
+                // Initialize Phantasi scheduler engine (RSS/Atom feed updates)
+                services::phantasi_scheduler::init_phantasi_scheduler(db.clone()).await;
+                tracing::info!("✅ Phantasi scheduler engine initialized");
 
                 if role == runtime_role::RuntimeRole::All {
                     persona::start(db.clone()).await?;
@@ -781,7 +781,7 @@ async fn shutdown_signal() {
 
     // 停止调度器引擎
     api::tapp_scheduler::shutdown_scheduler().await;
-    services::brew_scheduler::shutdown_brew_scheduler().await;
+    services::phantasi_scheduler::shutdown_phantasi_scheduler().await;
 
     persona::shutdown().await;
 }

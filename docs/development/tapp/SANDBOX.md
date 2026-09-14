@@ -252,7 +252,7 @@ Manifest **安装级 settings** 由 owner / 管理员写入 installation owner �
 - Page、Widget、headless 模式分别验证所需 handler。
 - 用户输入和外部响应在进入 DOM 前完成类型、长度和内容校验。
 - 新增 SDK action 时同步更新权限映射、宿主 handler、后端校验和文档。
-- 若涉及 speech / brew / federation 宿主代理：先改
+- 若涉及 speech / phantasi / federation 宿主代理：先改
   `docs/development/tapp/fixtures/action_permissions.json`（及需要时的
   `host_route_permissions.json`），再改 `permissionConfig.ts` 与后端
   `host_attribution`；跑

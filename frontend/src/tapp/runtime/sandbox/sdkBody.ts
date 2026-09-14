@@ -609,7 +609,7 @@ function pageHostNamespaces(gameTypeLiteral: string): string {
       remove: () => sendRequest('dynamicContent', 'remove', []),
     },
     data: { transform: (r) => sendRequest('data', 'transform', [r]) },
-${brewListNamespace()}
+${phantasiListNamespace()}
 ${federationNamespace()}
     game: {
       create: (opts) => sendRequest('game', 'create', [opts || {}]),
@@ -626,9 +626,9 @@ ${federationNamespace()}
     },`
 }
 
-function brewAndFederation(gameTypeLiteral: string): string {
+function phantasiAndFederation(gameTypeLiteral: string): string {
   return `
-${brewListNamespace()}
+${phantasiListNamespace()}
 ${federationNamespace()}
     game: {
       create: (opts) => sendRequest('game', 'create', [opts || {}]),
@@ -646,34 +646,34 @@ ${federationNamespace()}
     data: { transform: (r) => sendRequest('data', 'transform', [r]) },`
 }
 
-function brewListNamespace(): string {
+function phantasiListNamespace(): string {
   return `
-    brewList: {
-      list: (o) => sendRequest('brewList', 'list', [o]),
-      get: (id) => sendRequest('brewList', 'get', [id]),
-      sources: () => sendRequest('brewList', 'sources', []),
-      categories: () => sendRequest('brewList', 'categories', []),
-      stats: () => sendRequest('brewList', 'stats', []),
-      discover: (url) => sendRequest('brewList', 'discover', [url]),
-      exportOpml: () => sendRequest('brewList', 'exportOpml', []),
-      markRead: (id) => sendRequest('brewList', 'markRead', [id]),
-      markUnread: (id) => sendRequest('brewList', 'markUnread', [id]),
-      star: (id) => sendRequest('brewList', 'star', [id]),
-      unstar: (id) => sendRequest('brewList', 'unstar', [id]),
-      markAllRead: (o) => sendRequest('brewList', 'markAllRead', [o]),
-      getComments: (itemId) => sendRequest('brewList', 'getComments', [itemId]),
-      createComment: (itemId, req) => sendRequest('brewList', 'createComment', [itemId, req]),
-      updateComment: (commentId, req) => sendRequest('brewList', 'updateComment', [commentId, req]),
-      deleteComment: (commentId) => sendRequest('brewList', 'deleteComment', [commentId]),
-      getReplies: (commentId) => sendRequest('brewList', 'getReplies', [commentId]),
-      createReply: (itemId, parentId, content) => sendRequest('brewList', 'createReply', [itemId, parentId, content]),
-      addSource: (req) => sendRequest('brewList', 'addSource', [req]),
-      updateSource: (id, req) => sendRequest('brewList', 'updateSource', [id, req]),
-      deleteSource: (id) => sendRequest('brewList', 'deleteSource', [id]),
-      refreshSource: (id) => sendRequest('brewList', 'refreshSource', [id]),
-      importOpml: (opml) => sendRequest('brewList', 'importOpml', [opml]),
-      createCategory: (req) => sendRequest('brewList', 'createCategory', [req]),
-      deleteCategory: (id) => sendRequest('brewList', 'deleteCategory', [id]),
+    phantasiList: {
+      list: (o) => sendRequest('phantasiList', 'list', [o]),
+      get: (id) => sendRequest('phantasiList', 'get', [id]),
+      sources: () => sendRequest('phantasiList', 'sources', []),
+      categories: () => sendRequest('phantasiList', 'categories', []),
+      stats: () => sendRequest('phantasiList', 'stats', []),
+      discover: (url) => sendRequest('phantasiList', 'discover', [url]),
+      exportOpml: () => sendRequest('phantasiList', 'exportOpml', []),
+      markRead: (id) => sendRequest('phantasiList', 'markRead', [id]),
+      markUnread: (id) => sendRequest('phantasiList', 'markUnread', [id]),
+      star: (id) => sendRequest('phantasiList', 'star', [id]),
+      unstar: (id) => sendRequest('phantasiList', 'unstar', [id]),
+      markAllRead: (o) => sendRequest('phantasiList', 'markAllRead', [o]),
+      getComments: (itemId) => sendRequest('phantasiList', 'getComments', [itemId]),
+      createComment: (itemId, req) => sendRequest('phantasiList', 'createComment', [itemId, req]),
+      updateComment: (commentId, req) => sendRequest('phantasiList', 'updateComment', [commentId, req]),
+      deleteComment: (commentId) => sendRequest('phantasiList', 'deleteComment', [commentId]),
+      getReplies: (commentId) => sendRequest('phantasiList', 'getReplies', [commentId]),
+      createReply: (itemId, parentId, content) => sendRequest('phantasiList', 'createReply', [itemId, parentId, content]),
+      addSource: (req) => sendRequest('phantasiList', 'addSource', [req]),
+      updateSource: (id, req) => sendRequest('phantasiList', 'updateSource', [id, req]),
+      deleteSource: (id) => sendRequest('phantasiList', 'deleteSource', [id]),
+      refreshSource: (id) => sendRequest('phantasiList', 'refreshSource', [id]),
+      importOpml: (opml) => sendRequest('phantasiList', 'importOpml', [opml]),
+      createCategory: (req) => sendRequest('phantasiList', 'createCategory', [req]),
+      deleteCategory: (id) => sendRequest('phantasiList', 'deleteCategory', [id]),
     },`
 }
 
@@ -1103,7 +1103,7 @@ ${lifecycleNamespace(surface, idLiteral, nameLiteral, versionLiteral, permission
     },
 ${widgetNamespace(surface)}
 ${when(isPage, pageHostNamespaces(gameTypeLiteral))}
-${when(isHeadless, brewAndFederation(gameTypeLiteral))}
+${when(isHeadless, phantasiAndFederation(gameTypeLiteral))}
 ${platformNamespace(surface, caps.platform)}
 ${analyticsNamespace(surface, caps.analytics)}
 ${model3dNamespace(surface)}

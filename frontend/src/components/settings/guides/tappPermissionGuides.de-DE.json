@@ -203,29 +203,29 @@
     "frontend": "Tapp-Liste und Start-/Installationssteuerung im Detail.",
     "notes": "Eine der risikoreichsten Erteilungen."
   },
-  "brew:read": {
-    "what": "Ermöglicht das Lesen von Brew-Quellen und Artikeln.",
-    "chain": "1) Die App fordert Brew-Daten an.\n2) Liest Site-Abonnements.\n3) Rendert die Lese-UI.",
-    "frontend": "Brew-Modul und Reader in der App.",
+  "phantasi:read": {
+    "what": "Ermöglicht das Lesen von Phantasi-Quellen und Artikeln.",
+    "chain": "1) Die App fordert Phantasi-Daten an.\n2) Liest Site-Abonnements.\n3) Rendert die Lese-UI.",
+    "frontend": "Phantasi-Modul und Reader in der App.",
     "notes": "Nur Lesen; kein Lesestatus, keine Favoriten, keine Kommentare."
   },
-  "brew:write": {
-    "what": "Ermöglicht das Schreiben von Brew-Daten wie Lesestatus und Sternen.",
-    "chain": "1) Die App aktualisiert den Eintragszustand.\n2) Der Brew-Speicher ändert sich.\n3) Filter und Badges können sich aktualisieren.",
-    "frontend": "Brew-Lese- und Favoritenstatus.",
+  "phantasi:write": {
+    "what": "Ermöglicht das Schreiben von Phantasi-Daten wie Lesestatus und Sternen.",
+    "chain": "1) Die App aktualisiert den Eintragszustand.\n2) Der Phantasi-Speicher ändert sich.\n3) Filter und Badges können sich aktualisieren.",
+    "frontend": "Phantasi-Lese- und Favoritenstatus.",
     "notes": "Ändert Ihren Lesestatus; App-Verhalten vor der Erteilung prüfen."
   },
-  "brew:commentWrite": {
-    "what": "Ermöglicht Anlegen, Bearbeiten und Löschen von Brew-Kommentaren und Antworten.",
+  "phantasi:commentWrite": {
+    "what": "Ermöglicht Anlegen, Bearbeiten und Löschen von Phantasi-Kommentaren und Antworten.",
     "chain": "1) Die App schreibt Kommentare.\n2) Kommentare hängen an Artikeln.\n3) Andere können sie je nach Richtlinie sehen.",
-    "frontend": "Brew-Artikelkommentare.",
+    "frontend": "Phantasi-Artikelkommentare.",
     "notes": "Öffentliche Äußerung — Inhaltsregeln beachten; standardmäßig nur von Admins delegiert."
   },
-  "brew:manage": {
-    "what": "Ermöglicht die Verwaltung von Brew-Quellen und erweiterten Einstellungen.",
+  "phantasi:manage": {
+    "what": "Ermöglicht die Verwaltung von Phantasi-Quellen und erweiterten Einstellungen.",
     "chain": "1) Die App ruft Quellenverwaltungs-APIs auf.\n2) Der Abo-Satz ändert sich.\n3) Abruf/Liste aktualisieren sich.",
-    "frontend": "Brew-Quellenverwaltung, OPML, Entdecken.",
-    "notes": "Kann Feeds siteweit für Brew hinzufügen/entfernen."
+    "frontend": "Phantasi-Quellenverwaltung, OPML, Entdecken.",
+    "notes": "Kann Feeds siteweit für Phantasi hinzufügen/entfernen."
   },
   "federation:read": {
     "what": "Ermöglicht das Lesen föderierter Räume, Kanäle und Mitglieder.",

@@ -103,7 +103,7 @@ impl Executor {
         };
 
         // 构建上下文摘要（按 step id 排序，保证 AI 每次看到一致的上下文顺序）
-        // 这些输出里有 ai.webSearch / web.scrape / brew.article 抓回来的正文，
+        // 这些输出里有 ai.webSearch / web.scrape / phantasi.article 抓回来的正文，
         // 是别人能写的内容；而这个提示词的产物是**要被执行的步骤**。所以必须
         // 划边界，否则正文里一句「忽略以上」就直通执行层。
         let outputs_summary: String = {

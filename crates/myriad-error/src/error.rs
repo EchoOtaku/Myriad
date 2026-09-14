@@ -200,7 +200,7 @@ impl AppError {
         })
     }
 
-    /// Brew-style `{success: false, error, code?}`.
+    /// Phantasi-style `{success: false, error, code?}`.
     pub fn fail_json(label: impl Into<String>) -> Value {
         let mut v = Self::public_json(label);
         v["success"] = json!(false);
@@ -373,9 +373,9 @@ mod tests {
         assert_eq!(unauthorized["code"], "unauthorized");
         let user_missing = AppError::public_json("User not found");
         assert_eq!(user_missing["code"], "not_found");
-        let brew = AppError::fail_json("Source not found");
-        assert_eq!(brew["success"], false);
-        assert_eq!(brew["code"], "not_found");
+        let phantasi = AppError::fail_json("Source not found");
+        assert_eq!(phantasi["success"], false);
+        assert_eq!(phantasi["code"], "not_found");
     }
 
     #[test]

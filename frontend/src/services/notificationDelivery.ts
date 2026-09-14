@@ -22,7 +22,7 @@ export function notificationSourceFor(
       source === 'agent' ||
       source === 'heartbeat' ||
       source === 'mcp' ||
-      source === 'brew' ||
+      source === 'phantasi' ||
       source === 'tapp' ||
       source === 'updater' ||
       source === 'federation' ||
@@ -35,7 +35,7 @@ export function notificationSourceFor(
   if (notification.notification_type === 'agent_clarification') return 'agent'
   if (notification.notification_type === 'heartbeat_result') return 'heartbeat'
   if (notification.notification_type === 'mcp_server_status') return 'mcp'
-  if (notification.notification_type.startsWith('brew_')) return 'brew'
+  if (notification.notification_type.startsWith('phantasi_')) return 'phantasi'
   if (notification.notification_type === 'tapp_notification') return 'tapp'
   if (notification.notification_type === 'updater_status') return 'updater'
   if (notification.notification_type.startsWith('federation_')) {
@@ -98,7 +98,7 @@ export function notificationToastType(
   const tappType = notification.metadata?.tapp_notification_type
   const failed =
     notification.notification_type === 'task_failed' ||
-    notification.notification_type === 'brew_source_error' ||
+    notification.notification_type === 'phantasi_source_error' ||
     status === 'failed' ||
     tappType === 'error' ||
     tappType === 'danger'

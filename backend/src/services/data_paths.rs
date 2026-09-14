@@ -1,6 +1,6 @@
 //! 数据路径配置模块
 //!
-//! DATA_DIR / CACHE_DIR layout for brew, tapps, agent, cache, widget-fonts.
+//! DATA_DIR / CACHE_DIR layout for phantasi, tapps, agent, cache, widget-fonts.
 //! 支持从环境变量覆盖默认值，便于容器化部署
 
 use once_cell::sync::Lazy;
@@ -14,10 +14,10 @@ use std::path::PathBuf;
 pub struct DataPaths {
     /// 应用数据根目录（默认: "data"）
     pub root: PathBuf,
-    /// Brew 订阅源数据目录（默认: "data/brew"）
-    pub brew: PathBuf,
-    /// Brew 图标目录（默认: "data/brew/icons"）
-    pub brew_icons: PathBuf,
+    /// Phantasi 订阅源数据目录（默认: "data/phantasi"）
+    pub phantasi: PathBuf,
+    /// Phantasi 图标目录（默认: "data/phantasi/icons"）
+    pub phantasi_icons: PathBuf,
     /// Tapp 应用数据目录（默认: "data/tapps"）
     pub tapps: PathBuf,
     /// Agent identity / skills / MCP / memory root（默认: "data/agent"）
@@ -42,8 +42,8 @@ impl DataPaths {
             PathBuf::from(env::var("CACHE_DIR").unwrap_or_else(|_| "cache".to_string()));
 
         Self {
-            brew: root.join("brew"),
-            brew_icons: root.join("brew/icons"),
+            phantasi: root.join("phantasi"),
+            phantasi_icons: root.join("phantasi/icons"),
             tapps: root.join("tapps"),
             agent: root.join("agent"),
             cache_platforms: cache_root.join("platforms"),
@@ -148,7 +148,18 @@ fn verify_directory_writable(directory: &Path) -> io::Result<()> {
     fs::remove_file(&probe).map_err(|error| storage_error("remove storage probe", &probe, error))
 }
 
+/// One-shot `data/brew` → `data/phantasi`. Temporary with the DB rename.
+pub fn migrate_legacy_brew_dir(root: &Path) -> io::Result<()> {
+    let old = root.join("brew");
+    let new = root.join("phantasi");
+    if old.exists() && !new.exists() {
+        fs::rename(&old, &new).map_err(|error| storage_error("rename data/brew", &old, error))?;
+    }
+    Ok(())
+}
+
 fn verify_storage_layout_writable(data_paths: &DataPaths) -> io::Result<()> {
+    migrate_legacy_brew_dir(&data_paths.root)?;
     verify_directory_writable(&data_paths.root)?;
     verify_directory_writable(&data_paths.cache)?;
     verify_directory_writable(&data_paths.tapps)?;
@@ -201,7 +212,7 @@ mod tests {
     fn test_default_paths() {
         let paths = DataPaths::from_env();
         assert_eq!(paths.root, PathBuf::from("data"));
-        assert_eq!(paths.brew, PathBuf::from("data/brew"));
+        assert_eq!(paths.phantasi, PathBuf::from("data/phantasi"));
         assert_eq!(paths.tapps, PathBuf::from("data/tapps"));
         assert_eq!(paths.agent, PathBuf::from("data/agent"));
         // Canonical cache layout under CACHE_DIR.
@@ -235,8 +246,8 @@ mod tests {
         ));
         let data_paths = DataPaths {
             root: base.join("data"),
-            brew: base.join("data/brew"),
-            brew_icons: base.join("data/brew/icons"),
+            phantasi: base.join("data/phantasi"),
+            phantasi_icons: base.join("data/phantasi/icons"),
             tapps: base.join("data/tapps"),
             agent: base.join("data/agent"),
             cache: base.join("cache"),
@@ -280,8 +291,8 @@ mod tests {
         fs::write(&data_file, "not a directory").unwrap();
         let data_paths = DataPaths {
             root: data_file.clone(),
-            brew: data_file.join("brew"),
-            brew_icons: data_file.join("brew/icons"),
+            phantasi: data_file.join("phantasi"),
+            phantasi_icons: data_file.join("phantasi/icons"),
             tapps: data_file.join("tapps"),
             agent: data_file.join("agent"),
             cache: base.join("cache"),
@@ -312,8 +323,8 @@ mod tests {
         let outside = base.join("outside");
         let data_paths = DataPaths {
             root: base.join("data"),
-            brew: base.join("data/brew"),
-            brew_icons: base.join("data/brew/icons"),
+            phantasi: base.join("data/phantasi"),
+            phantasi_icons: base.join("data/phantasi/icons"),
             tapps: base.join("data/tapps"),
             agent: base.join("data/agent"),
             cache: base.join("cache"),

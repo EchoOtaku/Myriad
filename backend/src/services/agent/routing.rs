@@ -16,7 +16,7 @@ use std::collections::HashMap;
 pub enum AgentRole {
     /// 编排者角色（前缀为空，`route_capability` 不会选出）
     Orchestrator,
-    /// 数据工作者：平台数据获取、Brew 读取、API 调用
+    /// 数据工作者：平台数据获取、Phantasi 读取、API 调用
     DataWorker,
     /// 内容工作者：总结、分析、过滤、搜索
     ContentWorker,
@@ -113,7 +113,7 @@ impl AgentRouter {
         // Data Worker
         let data_prefixes = vec![
             "platform.".to_string(),
-            "brew.".to_string(),
+            "phantasi.".to_string(),
             "steam.".to_string(),
             "bilibili.".to_string(),
             "bangumi.".to_string(),
@@ -156,7 +156,7 @@ impl AgentRouter {
             "search.".to_string(),
             "fuzzy.".to_string(),
             "translate.".to_string(),
-            "brewlia.".to_string(),
+            "phantasiai.".to_string(),
             "compare.".to_string(),
             "icon.".to_string(),
         ];
@@ -229,9 +229,9 @@ impl AgentRouter {
             "stats.".to_string(),
             "storage.".to_string(),
             "content.write".to_string(),
-            "brew.subscribe".to_string(),
-            "brew.mark".to_string(),
-            "brew.schedule".to_string(),
+            "phantasi.subscribe".to_string(),
+            "phantasi.mark".to_string(),
+            "phantasi.schedule".to_string(),
             "note.".to_string(),
             "bookmark.".to_string(),
             "reminder.".to_string(),
@@ -266,7 +266,7 @@ impl AgentRouter {
             return *role;
         }
 
-        // 前缀匹配（最长前缀优先，避免 "brew." 抢占 "brew.subscribe" 等特化前缀）
+        // 前缀匹配（最长前缀优先，避免 "phantasi." 抢占 "phantasi.subscribe" 等特化前缀）
         let best = self
             .prefix_cache
             .iter()
@@ -405,7 +405,7 @@ mod tests {
             router.route_capability("platform.read"),
             AgentRole::DataWorker
         );
-        assert_eq!(router.route_capability("brew.items"), AgentRole::DataWorker);
+        assert_eq!(router.route_capability("phantasi.items"), AgentRole::DataWorker);
         assert_eq!(router.route_capability("http.fetch"), AgentRole::DataWorker);
         assert_eq!(router.route_capability("steam.user"), AgentRole::DataWorker);
         assert_eq!(

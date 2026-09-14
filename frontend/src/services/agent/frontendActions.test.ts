@@ -25,7 +25,7 @@ const BACKEND_EMITTED: string[] = [
   'agent_interaction',
   'navigate',
   'page_interact',
-  'brew_open_article',
+  'phantasi_open_article',
   'music_control',
   'music_get_status',
   'music_load_playlist',
@@ -46,7 +46,7 @@ const TYPED: FrontendActionType[] = [
   'agent_interaction',
   'navigate',
   'page_interact',
-  'brew_open_article',
+  'phantasi_open_article',
   'music_control',
   'music_get_status',
   'music_load_playlist',
@@ -138,7 +138,7 @@ describe('frontendAction chain', () => {
   })
 
   it('dedupes the same action from step_completed and the final response', () => {
-    const action = { type: 'navigate' as const, path: '/brew', timestamp: 42 }
+    const action = { type: 'navigate' as const, path: '/phantasi', timestamp: 42 }
     assert.equal(frontendActionDedupeKey(action), 'navigate:42')
     assert.equal(
       frontendActionDedupeKey(action),

@@ -139,7 +139,7 @@ You must follow the current Myriad Tapp contract:
   `widget:register` permission. Widget JavaScript MUST assign
   `Tapp.widgets[<id>] = { render(container, props) { ... } }`. Do not call
   `Tapp.widget.register` (Page-only). Widget SDK has no confirm, setTitle,
-  fullscreen, Tapp.game, federation, tappList, or brewList.
+  fullscreen, Tapp.game, federation, tappList, or phantasiList.
   Prefer widget-only when the instruction is clearly widget-only. Never require
   both modes. Projects may still add assets, backgroundRequirements, declared
   APIs, AI tasks, events, agent interactions, or dataExchange when the request

@@ -562,16 +562,16 @@ pub(super) fn validate_capability_usage(
     } else if calls_sdk_method(&source, "Tapp.tappList") {
         require_permission(manifest, "tappList:read", "Tapp.tappList")?;
     }
-    if calls_sdk_method(&source, "Tapp.brewList") {
+    if calls_sdk_method(&source, "Tapp.phantasiList") {
         require_any_permission(
             manifest,
             &[
-                "brew:read",
-                "brew:write",
-                "brew:commentWrite",
-                "brew:manage",
+                "phantasi:read",
+                "phantasi:write",
+                "phantasi:commentWrite",
+                "phantasi:manage",
             ],
-            "Tapp.brewList",
+            "Tapp.phantasiList",
         )?;
     }
     if calls_sdk_method(&source, "Tapp.report.create")
@@ -665,7 +665,7 @@ pub(super) fn validate_widget_layer_sdk(
             "Tapp.federation is not on the Widget SDK",
         ),
         ("Tapp.tappList", "Tapp.tappList is not on the Widget SDK"),
-        ("Tapp.brewList", "Tapp.brewList is not on the Widget SDK"),
+        ("Tapp.phantasiList", "Tapp.phantasiList is not on the Widget SDK"),
         ("Tapp.component", "Tapp.component is not on the Widget SDK"),
         ("Tapp.shortcut", "Tapp.shortcut is not on the Widget SDK"),
         (
@@ -699,7 +699,7 @@ pub(super) fn validate_sdk_namespaces(fields: &[(&str, &str)]) -> Result<(), Str
         "widgets",
         "pages",
         "tappList",
-        "brewList",
+        "phantasiList",
         "platform",
         "analytics",
         "ai",

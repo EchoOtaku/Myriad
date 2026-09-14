@@ -142,21 +142,21 @@ export const PERMISSION_COPY: Record<
     labelKey: 'permManageTappList',
     descriptionKey: 'permManageTappListDesc',
   },
-  'brew:read': {
-    labelKey: 'permReadBrew',
-    descriptionKey: 'permReadBrewDesc',
+  'phantasi:read': {
+    labelKey: 'permReadPhantasi',
+    descriptionKey: 'permReadPhantasiDesc',
   },
-  'brew:write': {
-    labelKey: 'permWriteBrew',
-    descriptionKey: 'permWriteBrewDesc',
+  'phantasi:write': {
+    labelKey: 'permWritePhantasi',
+    descriptionKey: 'permWritePhantasiDesc',
   },
-  'brew:commentWrite': {
-    labelKey: 'permCommentWriteBrew',
-    descriptionKey: 'permCommentWriteBrewDesc',
+  'phantasi:commentWrite': {
+    labelKey: 'permCommentWritePhantasi',
+    descriptionKey: 'permCommentWritePhantasiDesc',
   },
-  'brew:manage': {
-    labelKey: 'permManageBrew',
-    descriptionKey: 'permManageBrewDesc',
+  'phantasi:manage': {
+    labelKey: 'permManagePhantasi',
+    descriptionKey: 'permManagePhantasiDesc',
   },
   'federation:read': {
     labelKey: 'permReadFederation',

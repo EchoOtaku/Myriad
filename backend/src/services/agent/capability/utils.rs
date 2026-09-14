@@ -19,13 +19,13 @@ pub fn get_capability_friendly_name(capability_id: &str) -> String {
         "ai.analyze" => "Analyzing".to_string(),
         "ai.chat" => "Chatting".to_string(),
         "ai.webSearch" => "Searching the web".to_string(),
-        "brew.discover" => "Discovering feeds".to_string(),
-        "brew.subscribe" => "Subscribing to a feed".to_string(),
-        "brew.read" => "Loading feed content".to_string(),
-        "brew.items" => "Loading articles".to_string(),
-        "brew.article" => "Loading article".to_string(),
-        "brew.sources" => "Loading feeds".to_string(),
-        "brew.stats" => "Reading stats".to_string(),
+        "phantasi.discover" => "Discovering feeds".to_string(),
+        "phantasi.subscribe" => "Subscribing to a feed".to_string(),
+        "phantasi.read" => "Loading feed content".to_string(),
+        "phantasi.items" => "Loading articles".to_string(),
+        "phantasi.article" => "Loading article".to_string(),
+        "phantasi.sources" => "Loading feeds".to_string(),
+        "phantasi.stats" => "Reading stats".to_string(),
         "tapp.list" => "Listing apps".to_string(),
         "tapp.page" => "Opening an app".to_string(),
         "ai.image" => "Generating an image".to_string(),
@@ -107,7 +107,7 @@ pub fn get_step_description(step: &RecipeStep) -> String {
 
     // 获取页面类型的友好名称
     let page_name = page_type.map(|pt| match pt {
-        "brew" => "feeds",
+        "phantasi" => "feeds",
         "tapp" => "apps",
         "report" => "reports",
         "dashboard" => "dashboard",
@@ -115,8 +115,8 @@ pub fn get_step_description(step: &RecipeStep) -> String {
     });
 
     match step.capability_id.as_str() {
-        // RSS/Brew 相关
-        "brew.discover" => {
+        // RSS/Phantasi 相关
+        "phantasi.discover" => {
             if !target.is_empty() {
                 format!("Search {}", target)
             } else if let Some(u) = url {
@@ -125,7 +125,7 @@ pub fn get_step_description(step: &RecipeStep) -> String {
                 "Discovering feeds".to_string()
             }
         }
-        "brew.subscribe" => {
+        "phantasi.subscribe" => {
             if !target.is_empty() {
                 format!("Subscribe {}", target)
             } else if let Some(u) = url {
@@ -134,7 +134,7 @@ pub fn get_step_description(step: &RecipeStep) -> String {
                 "Subscribing to a feed".to_string()
             }
         }
-        "brew.read" | "brew.list" => {
+        "phantasi.read" | "phantasi.list" => {
             if let Some(pn) = page_name {
                 format!("Loading {pn} content")
             } else if !target.is_empty() {
@@ -143,14 +143,14 @@ pub fn get_step_description(step: &RecipeStep) -> String {
                 "Loading feed content".to_string()
             }
         }
-        "brew.items" => {
+        "phantasi.items" => {
             if !target.is_empty() {
                 format!("Loading articles from {target}")
             } else {
                 "Loading articles".to_string()
             }
         }
-        "brew.article" => {
+        "phantasi.article" => {
             if !target.is_empty() {
                 format!("Loading article: {}", truncate_str(&target, 30))
             } else {
@@ -298,20 +298,20 @@ pub fn get_sensitive_capabilities() -> HashMap<&'static str, (&'static str, Risk
         ),
     );
     map.insert(
-        "brew.unsubscribe",
+        "phantasi.unsubscribe",
         (
             "This will unsubscribe and delete related data.",
             RiskLevel::High,
         ),
     );
     map.insert(
-        "brew.subscribe",
+        "phantasi.subscribe",
         ("This will add a new RSS/Atom feed.", RiskLevel::Medium),
     );
     map.insert(
-        "brew.schedule",
+        "phantasi.schedule",
         (
-            "This will control the Brew scheduler (start/stop/refresh).",
+            "This will control the Phantasi scheduler (start/stop/refresh).",
             RiskLevel::Medium,
         ),
     );
@@ -406,7 +406,7 @@ pub fn get_sensitive_capabilities() -> HashMap<&'static str, (&'static str, Risk
 
     // 低风险 - 可逆操作
     map.insert(
-        "brew.mark",
+        "phantasi.mark",
         ("This will batch-update article status.", RiskLevel::Low),
     );
     map.insert(
@@ -443,27 +443,27 @@ pub fn resolve_capability_hint(capability: &Capability) -> &str {
 /// [`resolve_capability_hint`] 以便回退到 `description`。
 pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
     match capability_id {
-        // Brew 订阅系统
-        "brew.items" => {
+        // Phantasi 订阅系统
+        "phantasi.items" => {
             "Get articles. Use when the user says look at feeds / 看看订阅 / 最新文章 / 打开文章 / 总结文章 / 看看 X. Prefer sourceId; sourceName is a loose match. Do not webSearch when local articles exist."
         }
-        "brew.article" => {
+        "phantasi.article" => {
             "[internal] Load one article by a known id. Do not pick this directly; the system calls it when the article id is already known."
         }
-        "brew.sources" => {
-            "[preferred, local first] List or find feeds. For friend links / 友情链接 / 友链 use category=友情链接 (or friends). Use when the user asks which feeds they have, feed list, or whether a named feed exists. sourceType=link|rss|brewlia. Pass sourceId to brew.items. Do not switch to ai.webSearch when the feed exists locally."
+        "phantasi.sources" => {
+            "[preferred, local first] List or find feeds. For friend links / 友情链接 / 友链 use category=友情链接 (or friends). Use when the user asks which feeds they have, feed list, or whether a named feed exists. sourceType=link|rss|phantasiai. Pass sourceId to phantasi.items. Do not switch to ai.webSearch when the feed exists locally."
         }
-        "brew.discover" => "Discover RSS feeds. Use when the user wants the RSS for a site.",
-        "brew.subscribe" => "Add a feed. Use when the user says subscribe / 订阅 / 添加订阅.",
-        "brew.stats" => {
+        "phantasi.discover" => "Discover RSS feeds. Use when the user wants the RSS for a site.",
+        "phantasi.subscribe" => "Add a feed. Use when the user says subscribe / 订阅 / 添加订阅.",
+        "phantasi.stats" => {
             "Reading stats. Use when the user asks how many articles they have read or for feed stats."
         }
-        "brew.read" => "Generic feed read. Load Brew RSS content.",
-        "brew.page" => {
-            "Brew page content. level=sources returns feeds with sourceType/category. Friend links: category=友情链接."
+        "phantasi.read" => "Generic feed read. Load Phantasi RSS content.",
+        "phantasi.page" => {
+            "Phantasi page content. level=sources returns feeds with sourceType/category. Friend links: category=友情链接."
         }
-        "brew.schedule" => "Brew scheduler. Start, stop, or refresh.",
-        "brew.generateReadingList" => {
+        "phantasi.schedule" => "Phantasi scheduler. Start, stop, or refresh.",
+        "phantasi.generateReadingList" => {
             "[preferred] Build a reading list. Use when the user asks for article recommendations, articles about X, a reading list, or what is worth reading."
         }
 
@@ -540,13 +540,13 @@ pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
         "page.interact" => "Click buttons, links, tabs, menus.",
         "page.understand" => "Analyze the current page UI and produce actions.",
         "page.content" => {
-            "Page content. Use a frontend snapshot if present, otherwise brew.page / tapp.page / platform.read."
+            "Page content. Use a frontend snapshot if present, otherwise phantasi.page / tapp.page / platform.read."
         }
 
         // 搜索
         "search.global" => "Search across platforms.",
         "search.fuzzy" => {
-            "Fuzzy search. Brew sources match name/category/site_url; 友情链接 hits the friend-link category."
+            "Fuzzy search. Phantasi sources match name/category/site_url; 友情链接 hits the friend-link category."
         }
 
         // 系统操作
@@ -615,8 +615,8 @@ pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
         "time.info" => "Convert wall-clock time (IANA/UTC/local/+08:00). Unknown zones fail.",
 
         // AI 增强阅读
-        "brewlia.annotate" => "AI notes and reading help for an article.",
-        "brewlia.podcast" => "Turn an article into a spoken-dialogue script.",
+        "phantasiai.annotate" => "AI notes and reading help for an article.",
+        "phantasiai.podcast" => "Turn an article into a spoken-dialogue script.",
 
         // 语音服务
         "speech.tts" => "Text to speech. Same path as /api/speech/tts; the frontend plays it.",
@@ -645,11 +645,11 @@ pub fn get_quick_reference() -> Value {
         "intent_to_capability": {
             "summarize / 总结 / 概括 / 讲讲": ["ai.summarize"],
             "analyze / 分析 / 研究 / 评估": ["ai.analyze"],
-            "open / go to / 打开 / 跳转 / 前往 / 进入": ["router.navigate", "brew.items"],
+            "open / go to / 打开 / 跳转 / 前往 / 进入": ["router.navigate", "phantasi.items"],
             "search news/company/product / 搜索外部信息": ["ai.webSearch"],
-            "feeds / articles / 看订阅 / 最新文章": ["brew.items"],
-            "reading list / 生成阅读列表 / 推荐文章": ["brew.generateReadingList"],
-            "subscribe / 订阅 / 添加RSS": ["brew.discover", "brew.subscribe"],
+            "feeds / articles / 看订阅 / 最新文章": ["phantasi.items"],
+            "reading list / 生成阅读列表 / 推荐文章": ["phantasi.generateReadingList"],
+            "subscribe / 订阅 / 添加RSS": ["phantasi.discover", "phantasi.subscribe"],
             "Bilibili / B站": ["platform.read", "bilibili.user"],
             "Bangumi / 番组计划 / 动画收藏": ["platform.read", "bangumi.user", "bangumi.collections"],
             "MyAnimeList / MAL": ["platform.read"],
@@ -665,7 +665,7 @@ pub fn get_quick_reference() -> Value {
             "report / 生成报告": ["report.create"],
             "recommend / 推荐 / 建议": ["ai.recommend"],
             "chat / 对话 / 聊天": ["ai.chat"],
-            "current page / 当前页面内容": ["page.content", "brew.page", "tapp.page"],
+            "current page / 当前页面内容": ["page.content", "phantasi.page", "tapp.page"],
             "refresh / 刷新数据": ["platform.refresh"],
             "clear cache / 清除缓存": ["cache.clear"],
             "export / 导出数据": ["export.data"],
@@ -679,7 +679,7 @@ pub fn get_quick_reference() -> Value {
         },
         "workflow_templates": {
             "summarize_article": {
-                "steps": ["brew.items → ai.summarize"],
+                "steps": ["phantasi.items → ai.summarize"],
                 "note": "Load the article first, then ai.summarize with contentFrom."
             },
             "search_then_analyze": {
@@ -699,7 +699,7 @@ pub fn get_quick_reference() -> Value {
                 "note": "Read platforms in parallel, then analyze. analysisType=custom."
             },
             "discover_and_subscribe": {
-                "steps": ["brew.discover → brew.subscribe"],
+                "steps": ["phantasi.discover → phantasi.subscribe"],
                 "note": "Find the RSS URL, then subscribe with that URL."
             },
             "translate_then_speak": {
@@ -708,18 +708,18 @@ pub fn get_quick_reference() -> Value {
             }
         },
         "special_rules": [
-            "open latest X -> action=navigate + brew.items",
-            "summarize article / 总结文章 -> brew.items then ai.summarize",
+            "open latest X -> action=navigate + phantasi.items",
+            "summarize article / 总结文章 -> phantasi.items then ai.summarize",
             "recent news about X -> ai.webSearch (external)",
-            "summarize on a brew page -> ai.summarize with pageContext",
+            "summarize on a phantasi page -> ai.summarize with pageContext",
             "this page / 当前页面 / 这个 -> target.type=current_page",
             "play/pause/next/previous -> music.control",
             "play some music / 放点音乐 -> netease.searchPlaylist + music.playlist (two steps)",
             "play playlist id X -> music.playlist",
-            "recommend articles / reading list -> brew.generateReadingList",
-            "annotate article / 注释文章 -> brewlia.annotate (needs article id)",
-            "make a podcast / 做成播客 -> brewlia.podcast (needs article id)",
-            "brew.article is internal; brew.items chains to it",
+            "recommend articles / reading list -> phantasi.generateReadingList",
+            "annotate article / 注释文章 -> phantasiai.annotate (needs article id)",
+            "make a podcast / 做成播客 -> phantasiai.podcast (needs article id)",
+            "phantasi.article is internal; phantasi.items chains to it",
             "every day/hour / 定时检查/总结 -> heartbeat.create with a natural-language action; not scheduler.create",
             "which scheduled/heartbeat tasks -> heartbeat.list",
             "platform auto-refresh vs app scheduler vs heartbeat are different: platform.refresh / scheduler.* / heartbeat.*"
@@ -728,11 +728,11 @@ pub fn get_quick_reference() -> Value {
             "platform.read": {"platform": "bilibili|bangumi|mal|steam|github|netease|x|discord|xbox|psn", "type": "overview|favorites|recent"},
             "ai.summarize": {"content": "article text or contentFrom", "maxLength": 300},
             "ai.analyze": {"content": "text to analyze", "analysisType": "sentiment|trends|custom", "customPrompt": "custom angle"},
-            "brew.items": {"limit": 10, "source_id": "optional source id", "unread_only": true},
-            "router.navigate": {"path": "/, /library, /brew, /reports, /config, /tapp"},
+            "phantasi.items": {"limit": 10, "source_id": "optional source id", "unread_only": true},
+            "router.navigate": {"path": "/, /library, /phantasi, /reports, /config, /tapp"},
             "music.control": {"action": "play|pause|toggle|next|previous|mute|unmute|volume", "volume": 50},
             "scheduler.create": {"tappId": "installed app id", "name": "task name", "scheduleType": "cron", "schedule": {"cron": "*/30 * * * *"}},
-            "heartbeat.create": {"name": "Brew morning summary", "schedule": "0 9 * * *", "action": "summarize brew feeds", "enabled": true}
+            "heartbeat.create": {"name": "Phantasi morning summary", "schedule": "0 9 * * *", "action": "summarize phantasi feeds", "enabled": true}
         }
     })
 }
@@ -743,11 +743,11 @@ mod sensitive_caps_tests {
     use crate::services::agent::types::RiskLevel;
 
     #[test]
-    fn network_and_brew_writes_require_confirmation() {
+    fn network_and_phantasi_writes_require_confirmation() {
         let map = get_sensitive_capabilities();
         for id in [
-            "brew.subscribe",
-            "brew.schedule",
+            "phantasi.subscribe",
+            "phantasi.schedule",
             "http.fetch",
             "task.submit",
         ] {

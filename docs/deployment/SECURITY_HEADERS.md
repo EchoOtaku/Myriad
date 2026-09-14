@@ -76,7 +76,7 @@ client -> optional TLS entrypoint -> Myriad proxy:${HTTP_PORT:-80}
 | `/inbox` | 共享 Inbox（federation-worker） |
 | `/users/*` | Actor / outbox / followers / avatar（federation-worker） |
 | `/media/federation/*` | **Note 附件媒体（图片/视频公开 GET）**（federation-worker） |
-| `/activities/*` `/notes/*` `/reports/*` `/tapps/*` `/library/*` `/brew/articles/*` | ActivityPub 对象解引用（前缀长于 SEO 索引路径；federation-worker） |
+| `/activities/*` `/notes/*` `/reports/*` `/tapps/*` `/library/*` `/phantasi/articles/*` | ActivityPub 对象解引用（前缀长于 SEO 索引路径；federation-worker） |
 
 完整表见 [PORTS.md](./PORTS.md)。漏掉 `/media/federation/*` 时，联邦发帖可成功，但时间线图片会空白（请求落到 SPA）。这些路径由 proxy 交给 **federation-worker**，不是 web。
 只应信任实际代理节点，并在防火墙中限制 `HTTP_PORT` 不能被客户端绕过代理直连。

@@ -46,7 +46,7 @@ fn test_recent_month_features_in_expected_schema() {
         // 005
         "federation_inbox_receipts",
         // 003
-        "brew_note_docs",
+        "phantasi_note_docs",
         "media_assets",
     ] {
         assert!(
@@ -273,11 +273,11 @@ fn test_default_config_seeds_include_quota_and_explicit_open_permissions() {
         serde_json::json!(false)
     );
     assert_eq!(
-        values["user_perm_brew_comment_write"],
+        values["user_perm_phantasi_comment_write"],
         serde_json::json!(false)
     );
     assert_eq!(
-        values["guest_perm_brew_comment_write"],
+        values["guest_perm_phantasi_comment_write"],
         serde_json::json!(false)
     );
     assert!(!values.contains_key("user_perm_component_theme"));

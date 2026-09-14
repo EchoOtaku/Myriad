@@ -21,7 +21,7 @@ use serde_json::json;
 
 /// Path prefixes owned entirely by federation. A match requires at least one
 /// character after the prefix, so SEO `/library` and `/reports` (and trailing
-/// slash) stay reachable. `/brew` is not a remainder-sibling of `/brew/articles/`.
+/// slash) stay reachable. `/phantasi` is not a remainder-sibling of `/phantasi/articles/`.
 const FEDERATION_PATH_PREFIXES: &[&str] = &[
     "/api/federation/",
     "/api/tapp/federation/",
@@ -35,7 +35,7 @@ const FEDERATION_PATH_PREFIXES: &[&str] = &[
     "/reports/",
     "/tapps/",
     "/library/",
-    "/brew/articles/",
+    "/phantasi/articles/",
 ];
 
 /// Exact paths (mount `/media/federation`; children are `FEDERATION_NESTED_PREFIXES`).
@@ -146,7 +146,7 @@ mod tests {
             "/reports/1",
             "/tapps/1",
             "/library/1",
-            "/brew/articles/1",
+            "/phantasi/articles/1",
             "/media/federation",
             "/media/federation/2026/pic.png",
         ] {
@@ -154,8 +154,8 @@ mod tests {
         }
     }
 
-    /// SEO `/library` and `/reports` are one segment above object ids; `/brew`
-    /// is two (`/brew/articles/{id}`). Closed gate must not take SPA paths.
+    /// SEO `/library` and `/reports` are one segment above object ids; `/phantasi`
+    /// is two (`/phantasi/articles/{id}`). Closed gate must not take SPA paths.
     #[test]
     fn spares_sibling_non_federation_routes() {
         for path in [
@@ -163,9 +163,9 @@ mod tests {
             "/library/",
             "/reports",
             "/reports/",
-            "/brew",
-            "/brew/",
-            "/brew/item/42",
+            "/phantasi",
+            "/phantasi/",
+            "/phantasi/item/42",
             "/tapp",
             "/tapp/detail/42",
             "/tapp/store",

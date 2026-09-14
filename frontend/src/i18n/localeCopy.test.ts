@@ -56,7 +56,7 @@ describe('currentCopy', () => {
       const core = JSON.parse(
         readFileSync(new URL(`./${locale}.json`, import.meta.url), 'utf8'),
       ) as Record<string, unknown>
-      for (const ns of ['config', 'tapp', 'brew', 'merope', 'errors', 'agentCaps']) {
+      for (const ns of ['config', 'tapp', 'phantasi', 'merope', 'errors', 'agentCaps']) {
         assert.equal(
           Object.hasOwn(core, ns),
           false,
@@ -71,12 +71,12 @@ describe('currentCopy', () => {
     assert.equal(typeof copy.wallpaperStatus.unsafeUrl, 'string')
     assert.ok(copy.wallpaperStatus.unsafeUrl.length > 0)
     assert.equal(typeof copy.tapp.storeAdminRequired, 'string')
-    assert.equal(typeof copy.brew.loadSourcesFailed, 'string')
+    assert.equal(typeof copy.phantasi.loadSourcesFailed, 'string')
     assert.equal(typeof copy.errors.setupCheckFailed, 'string')
     assert.ok(copy.tapp.storeAppNotFound.includes('{id}'))
     assert.ok(copy.merope.anime25dPartCount.includes('{max}'))
     assert.ok(copy.errors.rateLimitedRetry.includes('{sec}'))
-    assert.ok(copy.brew.webSearch.length > 0)
+    assert.ok(copy.phantasi.webSearch.length > 0)
     assert.ok(copy.errors.serverError.includes('{status}'))
     assert.ok(copy.errors.lyricsFailed.includes('{status}'))
     assert.ok(copy.tapp.storeDownloadFailed.includes('{name}'))
@@ -95,7 +95,7 @@ describe('currentCopy', () => {
     assert.equal(typeof ja.config.poweredBy, 'string')
     assert.equal(typeof ja.errors.configurationMode, 'string')
     assert.equal(ja.agentCaps['platform.read'], 'プラットフォームデータ読み取り')
-    assert.equal(typeof ja.brew['voiceDesc.502006'], 'string')
+    assert.equal(typeof ja.phantasi['voiceDesc.502006'], 'string')
     assert.equal(
       ja.agentCaps['platform.read.desc'],
       'キャッシュ済みプラットフォームデータを読みます。',

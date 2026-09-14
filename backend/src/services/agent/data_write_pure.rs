@@ -5,7 +5,7 @@
 //! - subscribe URL scheme/host/IP policy (SSRF string rules)
 //! - update_interval clamp
 //! - platform write item cap
-//! - multi-feed prioritization for brew.subscribe
+//! - multi-feed prioritization for phantasi.subscribe
 
 pub use myriad_agent_rules::{
     MAX_FEED_NAME_LEN, MAX_FEED_URLS, MAX_PLATFORM_WRITE_ITEMS, MAX_UPDATE_INTERVAL,

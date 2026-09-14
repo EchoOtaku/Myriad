@@ -29,7 +29,7 @@ gating:
 
 1. 只使用 `platform.read`，参数 `platform` 必须是真实枚举值之一：
    `bilibili` | `bangumi` | `steam` | `github` | `netease` | `x` | `discord` | `mal` | `xbox` | `psn`
-2. 本 Skill **不**替代 Brew 订阅查询；订阅/友链/文章请用 brew 系列 Skill。
+2. 本 Skill **不**替代 Phantasi 订阅查询；订阅/友链/文章请用 phantasi 系列 Skill。
 3. 若用户未指定平台且上下文也无法推断，先澄清，不要瞎选。
 4. 缓存为空时如实说明「暂无该平台缓存数据」，可建议用户去绑定/刷新；默认不 webSearch。
 

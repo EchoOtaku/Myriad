@@ -84,7 +84,7 @@ describe('registerFileHandlers', { concurrency: false }, () => {
       error: 'Options required',
     })
     const mixed = await invoke(bridge, [
-      { content: 'hi', url: '/api/brew/image-cache/ab/x.png' },
+      { content: 'hi', url: '/api/phantasi/image-cache/ab/x.png' },
     ])
     assert.equal((mixed as { success: boolean }).success, false)
     const remote = await invoke(bridge, [
@@ -109,7 +109,7 @@ describe('registerFileHandlers', { concurrency: false }, () => {
     assert.equal((traversal as { success: boolean }).success, false)
     assert.match(String((traversal as { error?: string }).error), /filename/)
     const badHost = await invoke(bridge, [
-      { url: '/api/brew/image-cache/aa/../x.png' },
+      { url: '/api/phantasi/image-cache/aa/../x.png' },
     ])
     assert.equal((badHost as { success: boolean }).success, false)
     assert.equal(downloads.length, 0)
@@ -134,7 +134,7 @@ describe('registerFileHandlers', { concurrency: false }, () => {
     assert.equal(downloads[0]?.download, 'note.txt')
 
     const hash = `ab${'a'.repeat(62)}`
-    const path = `/api/brew/image-cache/ab/${hash}.png`
+    const path = `/api/phantasi/image-cache/ab/${hash}.png`
     const generated = await invoke(bridge, [{ url: path, filename: 'cat.png' }])
     assert.deepEqual(generated, {
       success: true,

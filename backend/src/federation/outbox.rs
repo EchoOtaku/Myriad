@@ -283,7 +283,7 @@ pub async fn get_activity(
 enum PublicObjectKind {
     Note,
     Report,
-    BrewArticle,
+    PhantasiArticle,
     Tapp,
     Library,
 }
@@ -293,7 +293,7 @@ impl PublicObjectKind {
         match self {
             Self::Note => "note",
             Self::Report => "report",
-            Self::BrewArticle => "brew-article",
+            Self::PhantasiArticle => "phantasi-article",
             Self::Tapp => "tapp",
             Self::Library => "library",
         }
@@ -302,7 +302,7 @@ impl PublicObjectKind {
     const fn activity_object_type(self) -> &'static str {
         match self {
             Self::Note => "Note",
-            Self::Report | Self::BrewArticle => "Article",
+            Self::Report | Self::PhantasiArticle => "Article",
             Self::Tapp => "Application",
             Self::Library => "Collection",
         }
@@ -313,7 +313,7 @@ impl PublicObjectKind {
         match self {
             Self::Note => format!("{base_url}/notes/{id}"),
             Self::Report => format!("{base_url}/reports/{id}"),
-            Self::BrewArticle => format!("{base_url}/brew/articles/{id}"),
+            Self::PhantasiArticle => format!("{base_url}/phantasi/articles/{id}"),
             // `build_ap_object` URL-encodes tapp ids before embedding them in
             // the object URL.  Path extraction gives us the decoded segment,
             // so encode it once more for the canonical comparison.
@@ -341,13 +341,13 @@ pub async fn get_report(
     get_public_object(&db, PublicObjectKind::Report, id, headers).await
 }
 
-/// GET /brew/articles/{id}
-pub async fn get_brew_article(
+/// GET /phantasi/articles/{id}
+pub async fn get_phantasi_article(
     State(db): State<DatabaseConnection>,
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
-    get_public_object(&db, PublicObjectKind::BrewArticle, id, headers).await
+    get_public_object(&db, PublicObjectKind::PhantasiArticle, id, headers).await
 }
 
 /// GET /tapps/{id}
@@ -560,8 +560,8 @@ mod tests {
             "https://example.test/reports/7"
         );
         assert_eq!(
-            PublicObjectKind::BrewArticle.object_id(base, "8"),
-            "https://example.test/brew/articles/8"
+            PublicObjectKind::PhantasiArticle.object_id(base, "8"),
+            "https://example.test/phantasi/articles/8"
         );
         assert_eq!(
             PublicObjectKind::Tapp.object_id(base, "demo tapp"),
@@ -579,7 +579,7 @@ mod tests {
         assert_eq!(PublicObjectKind::Note.activity_object_type(), "Note");
         assert_eq!(PublicObjectKind::Report.activity_object_type(), "Article");
         assert_eq!(
-            PublicObjectKind::BrewArticle.activity_object_type(),
+            PublicObjectKind::PhantasiArticle.activity_object_type(),
             "Article"
         );
         assert_eq!(PublicObjectKind::Tapp.activity_object_type(), "Application");

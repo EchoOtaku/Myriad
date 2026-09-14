@@ -20,15 +20,15 @@ pub mod tapps;
 pub mod tapp_scheduled_tasks;
 pub mod tapp_task_executions;
 
-// Brew 阅读系统实体
-pub mod brew_annotations;
-pub mod brew_categories;
-pub mod brew_comments;
-pub mod brew_items;
-pub mod brew_note_docs;
-pub mod brew_podcasts;
-pub mod brew_sources;
-pub mod brew_user_states;
+// Phantasi 阅读系统实体
+pub mod phantasi_annotations;
+pub mod phantasi_categories;
+pub mod phantasi_comments;
+pub mod phantasi_items;
+pub mod phantasi_note_docs;
+pub mod phantasi_podcasts;
+pub mod phantasi_sources;
+pub mod phantasi_user_states;
 pub mod media_assets;
 pub mod rsshub_instances;
 

@@ -21,7 +21,7 @@ use super::seeds::{ensure_default_config, ensure_default_platforms};
 /// 在 `Migrator::up` 之前从 `seaql_migrations` 删掉。普通缺列走
 /// `get_expected_schema` 通用 ADD。Support floor: product ≥ 0.3.10。
 /// Current: `media_assets` 上传/生成目录。
-pub const SCHEMA_VERSION: &str = "2026.09.14.1";
+pub const SCHEMA_VERSION: &str = "2026.09.14.2";
 
 const SCHEMA_LOCK_WAIT_TIMEOUT: Duration = Duration::from_secs(120);
 const SCHEMA_LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(250);
@@ -274,10 +274,10 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     ensure_agent_autonomy_grants_table(db).await?;
     ensure_agent_merope_tables(db).await?;
     ensure_analytics_tables(db).await?;
-    ensure_brew_item_topic_index(db).await?;
-    ensure_brew_state_revision(db).await?;
-    ensure_brew_content_revision(db).await?;
-    ensure_brew_note_docs_table(db).await?;
+    ensure_phantasi_item_topic_index(db).await?;
+    ensure_phantasi_state_revision(db).await?;
+    ensure_phantasi_content_revision(db).await?;
+    ensure_phantasi_note_docs_table(db).await?;
     ensure_media_assets_table(db).await?;
     ensure_federation_domain_aliases_table(db).await?;
     ensure_federation_object_interactions_table(db).await?;

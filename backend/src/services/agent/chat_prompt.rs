@@ -576,7 +576,7 @@ mod tests {
     #[test]
     fn page_excerpt_keeps_title_author_and_body_without_url() {
         let excerpt = format_page_excerpt(Some(&json!({
-            "type": "brew_article",
+            "type": "phantasi_article",
             "title": "Night Watch",
             "author": "Lantern",
             "content": "The harbour was quiet.",
@@ -586,7 +586,7 @@ mod tests {
         assert!(excerpt.contains("Night Watch / Lantern"));
         assert!(excerpt.contains("The harbour was quiet."));
         assert!(!excerpt.contains("example.test"));
-        assert!(!excerpt.contains("brew_article"));
+        assert!(!excerpt.contains("phantasi_article"));
         let prompt = build_chat_lite_prompt_with_perception(
             "你是 Agent。",
             "",

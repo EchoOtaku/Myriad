@@ -17,7 +17,7 @@ const PUB = path.join(FE, 'public')
 
 const PAINTED_DIRS = [
   'config', 'notifications', 'control-panel', 'dynamic', 'greeting',
-  'status', 'weather', 'tapp', 'widgets', 'brew',
+  'status', 'weather', 'tapp', 'widgets', 'phantasi',
 ]
 
 const kb = (b) => `${(b / 1024).toFixed(1)}KB`

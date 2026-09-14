@@ -268,11 +268,11 @@ async fn resolve_token_or_local_url(value: &str) -> Result<String, String> {
     }
     if looks_like_remote_url(value) {
         return Err(
-            "imageUrl must be a local /api/brew/image-cache path; remote URLs are not fetched"
+            "imageUrl must be a local /api/phantasi/image-cache path; remote URLs are not fetched"
                 .to_string(),
         );
     }
-    if value.contains("/api/brew/image-cache/") {
+    if value.contains("/api/phantasi/image-cache/") {
         return upload_local_image(value, "view.png", "image/png").await;
     }
     Ok(value.to_string())

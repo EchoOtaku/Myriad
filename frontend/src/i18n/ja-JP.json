@@ -63,8 +63,8 @@
     "book": "書籍",
     "showBook": "書籍を表示",
     "expandFilters": "クリックでフィルターを展開",
-    "brew": "Brew",
-    "brewReading": "Brew リーダー",
+    "phantasi": "手帳",
+    "phantasiReading": "手帳",
     "agent": "Agent",
     "tapp": "Tapp アプリ",
     "openTapp": "Tapp アプリを開く"
@@ -130,7 +130,7 @@
     "steps": {
       "nav": {
         "title": "ナビゲーション",
-        "body": "ホーム、ライブラリ、Brew リーダー、プラットフォームレポート、Tapp アプリを切り替えます。"
+        "body": "ホーム、ライブラリ、手帳、プラットフォームレポート、Tapp アプリを切り替えます。"
       },
       "home-grid": {
         "title": "ウィジェット",
@@ -531,9 +531,9 @@
     "tappShortcut": "Tapp ショートカット",
     "gamePresence": "miHoYoゲームカード",
     "visitorStats": "アクセス解析",
-    "brewSource": "フィードタイル",
-    "brewTopic": "トピック集約",
-    "brewFeatured": "Brew ピック",
+    "phantasiSource": "フィードタイル",
+    "phantasiTopic": "トピック集約",
+    "phantasiFeatured": "手帳ピック",
     "githubRepos": "GitHub リポジトリ",
     "githubReposField": "リポジトリ",
     "githubReposFieldHint": "GitHub URL または owner/repo",
@@ -543,9 +543,9 @@
     "dualLayerAnalysis": "各プラットフォームのプロフィールと洞察",
     "libraryFeature": "ゲーム、映像、音楽を一か所に",
     "platformProfile": "プラットフォームレポートの生成と閲覧",
-    "brewReading": "Brew リーディング",
-    "brewDesc": "RSS購読管理",
-    "brewFeature": "マルチソース、AI補助",
+    "phantasiReading": "手帳",
+    "phantasiDesc": "RSS購読管理",
+    "phantasiFeature": "マルチソース、AI補助",
     "tappApps": "Tapp アプリ",
     "tappDesc": "拡張アプリ",
     "tappFeature": "ウィジェット、ツール、拡張"
@@ -553,9 +553,9 @@
   "friendLinksWidget": {
     "siteCount": "{count} サイト",
     "emptyTitle": "相互リンクはまだありません",
-    "emptyDescription": "Brew リーディングで追加できます",
+    "emptyDescription": "手帳で追加できます",
     "loadFailed": "相互リンクを一時的に利用できません",
-    "openBrew": "Brew リーディングで相互リンクを見る",
+    "openPhantasi": "手帳で相互リンクを見る",
     "visitSite": "{name} を開く",
     "samplePersonalBlog": "友人のブログ",
     "sampleLifeAndNotes": "暮らしと随筆",
@@ -704,7 +704,7 @@
       "routes": {
         "home": "ホーム",
         "library": "ライブラリ",
-        "brew": "ニュース",
+        "phantasi": "ニュース",
         "reports": "レポート",
         "config": "設定",
         "tapp": "Tapp",
@@ -891,7 +891,7 @@
       "button": "元に戻す",
       "did": {
         "navigate": "ページを移動しました",
-        "brew_open_article": "記事を開きました"
+        "phantasi_open_article": "記事を開きました"
       }
     }
   },

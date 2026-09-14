@@ -4,8 +4,8 @@ import { toggleImmersiveReason } from './NavigationContext'
 
 test('单个理由进出，chrome 跟着藏和回', () => {
   const reasons = new Set<string>()
-  assert.equal(toggleImmersiveReason(reasons, 'brew-reader', true), true)
-  assert.equal(toggleImmersiveReason(reasons, 'brew-reader', false), false)
+  assert.equal(toggleImmersiveReason(reasons, 'phantasi-reader', true), true)
+  assert.equal(toggleImmersiveReason(reasons, 'phantasi-reader', false), false)
 })
 
 test('两方同时沉浸时，先退出的一方不会替另一方把 chrome 放出来', () => {

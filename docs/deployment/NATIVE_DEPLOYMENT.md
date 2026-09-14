@@ -162,7 +162,7 @@ Resulting layout:
 /opt/myriad/
 ├── myriad-backend          # the binary
 ├── .env                    # created in the next step
-├── data/                   # agent templates (seed) + runtime brew/tapps data
+├── data/                   # agent templates (seed) + runtime phantasi/tapps data
 │   └── agent/              # SOUL.md, USER.md, agents/, mcp_servers.json, ...
 ├── cache/                  # created automatically at first run
 └── frontend/dist/          # static SPA served by the backend
@@ -268,7 +268,7 @@ openssl rand -base64 48   # JWT_SECRET
 | `FRONTEND_URL` | no | — | Redirect target after OAuth; usually equals `BASE_URL`. |
 | `RUST_LOG` | no | `info` | `error\|warn\|info\|debug\|trace`, e.g. `info,myriad_backend=debug`. |
 | `MYRIAD_SETUP_SECRET` | only if pre-set | unset | Required for setup writes **only** when this env is already set (orchestration / compose). Native wizard that types the DB itself does not need it. See [SETUP_BOOTSTRAP.md](./SETUP_BOOTSTRAP.md). |
-| `DATA_DIR` | no | `data` | App data root (brew, tapps). Relative to working dir. Leave default. |
+| `DATA_DIR` | no | `data` | App data root (phantasi, tapps). Relative to working dir. Leave default. |
 | `CACHE_DIR` | no | `cache` | Cache root. Relative to working dir. Leave default. |
 | `MYRIAD_UPDATER_URL` / `UPDATE_TOKEN` | no | — | Docker updater proxy only. **Leave unset** on native installs; a harmless startup warning is logged. |
 
@@ -446,7 +446,7 @@ domain.
 ### Backups
 
 All durable state lives in **PostgreSQL** plus the small `/opt/myriad/data`
-directory (tapps, brew assets, agent memory files). `cache/` is disposable.
+directory (tapps, phantasi assets, agent memory files). `cache/` is disposable.
 
 ```bash
 # Database (run as a user that can auth as 'myriad')

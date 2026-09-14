@@ -1,17 +1,17 @@
 use super::super::HandlerContext;
-use super::brew::brew_query_failed;
-use crate::models::entities::{brew_items, brew_sources, brew_user_states};
+use super::phantasi::phantasi_query_failed;
+use crate::models::entities::{phantasi_items, phantasi_sources, phantasi_user_states};
 use crate::services::agent::executor::utils::truncate_str;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
-pub(super) async fn execute_brew_page_content(
+pub(super) async fn execute_phantasi_page_content(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
     use crate::services::agent::executor::utils::{
-        brew_category_token_matches, normalize_brew_category_filter,
+        phantasi_category_token_matches, normalize_phantasi_category_filter,
     };
 
     let level = params
@@ -29,18 +29,18 @@ pub(super) async fn execute_brew_page_content(
         .and_then(|v| v.as_str())
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
-        .map(normalize_brew_category_filter);
+        .map(normalize_phantasi_category_filter);
     let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(20);
 
     match level {
         "sources" => {
-            let sources = brew_sources::Entity::find()
-                .order_by_desc(brew_sources::Column::UpdatedAt)
+            let sources = phantasi_sources::Entity::find()
+                .order_by_desc(phantasi_sources::Column::UpdatedAt)
                 .all(ctx.db)
                 .await
-                .map_err(|error| brew_query_failed("fetch brew sources", error))?;
+                .map_err(|error| phantasi_query_failed("fetch phantasi sources", error))?;
 
-            let filtered: Vec<&brew_sources::Model> = sources
+            let filtered: Vec<&phantasi_sources::Model> = sources
                 .iter()
                 .filter(|s| {
                     let Some(ref cat) = category_filter else {
@@ -49,11 +49,11 @@ pub(super) async fn execute_brew_page_content(
                     let ok = s
                         .category
                         .as_deref()
-                        .map(|c| brew_category_token_matches(c, cat))
+                        .map(|c| phantasi_category_token_matches(c, cat))
                         .unwrap_or(false);
-                    // Same friend-link legacy fallback as brew.sources
+                    // Same friend-link legacy fallback as phantasi.sources
                     if !ok && cat == "友情链接" {
-                        s.source_type == brew_sources::SourceType::Link
+                        s.source_type == phantasi_sources::SourceType::Link
                             && s.category
                                 .as_deref()
                                 .map(|c| c.trim().is_empty())
@@ -116,18 +116,18 @@ pub(super) async fn execute_brew_page_content(
         "items" => {
             let source_id = source_id.ok_or("Missing sourceId for items level")?;
 
-            let source = brew_sources::Entity::find_by_id(source_id as i32)
+            let source = phantasi_sources::Entity::find_by_id(source_id as i32)
                 .one(ctx.db)
                 .await
-                .map_err(|error| brew_query_failed("fetch brew source", error))?
+                .map_err(|error| phantasi_query_failed("fetch phantasi source", error))?
                 .ok_or("Source not found")?;
 
-            let items = brew_items::Entity::find()
-                .filter(brew_items::Column::SourceId.eq(source_id as i32))
-                .order_by_desc(brew_items::Column::PublishedAt)
+            let items = phantasi_items::Entity::find()
+                .filter(phantasi_items::Column::SourceId.eq(source_id as i32))
+                .order_by_desc(phantasi_items::Column::PublishedAt)
                 .all(ctx.db)
                 .await
-                .map_err(|error| brew_query_failed("fetch brew items", error))?;
+                .map_err(|error| phantasi_query_failed("fetch phantasi items", error))?;
 
             let item_list: Vec<Value> = items
                 .iter()
@@ -177,24 +177,24 @@ pub(super) async fn execute_brew_page_content(
                     "currentFilter": filter,
                     "availableFilters": ["all", "unread", "starred"],
                     "canGoBack": true,
-                    "parentPath": "/brew"
+                    "parentPath": "/phantasi"
                 }
             }))
         }
         "detail" | "reader" => {
             let item_guid = item_id.ok_or("Missing itemId for detail/reader level")?;
 
-            let item = brew_items::Entity::find()
-                .filter(brew_items::Column::Guid.eq(item_guid))
+            let item = phantasi_items::Entity::find()
+                .filter(phantasi_items::Column::Guid.eq(item_guid))
                 .one(ctx.db)
                 .await
-                .map_err(|error| brew_query_failed("fetch brew item", error))?
+                .map_err(|error| phantasi_query_failed("fetch phantasi item", error))?
                 .ok_or("Item not found")?;
 
-            let source = brew_sources::Entity::find_by_id(item.source_id)
+            let source = phantasi_sources::Entity::find_by_id(item.source_id)
                 .one(ctx.db)
                 .await
-                .map_err(|error| brew_query_failed("fetch brew source", error))?;
+                .map_err(|error| phantasi_query_failed("fetch phantasi source", error))?;
 
             let user_id = params
                 .get("userId")
@@ -202,9 +202,9 @@ pub(super) async fn execute_brew_page_content(
                 .map(|v| v as i32);
 
             let user_state = if let Some(uid) = user_id {
-                brew_user_states::Entity::find()
-                    .filter(brew_user_states::Column::UserId.eq(uid))
-                    .filter(brew_user_states::Column::ItemId.eq(item.id))
+                phantasi_user_states::Entity::find()
+                    .filter(phantasi_user_states::Column::UserId.eq(uid))
+                    .filter(phantasi_user_states::Column::ItemId.eq(item.id))
                     .one(ctx.db)
                     .await
                     .ok()
@@ -273,7 +273,7 @@ pub(super) async fn execute_brew_page_content(
                 },
                 "navigation": {
                     "canGoBack": true,
-                    "parentPath": format!("/brew/source/{}", item.source_id)
+                    "parentPath": format!("/phantasi/source/{}", item.source_id)
                 },
                 "actions": {
                     "available": [
@@ -283,7 +283,7 @@ pub(super) async fn execute_brew_page_content(
                 }
             }))
         }
-        _ => Err(format!("Unknown brew page level: {}", level)),
+        _ => Err(format!("Unknown phantasi page level: {}", level)),
     }
 }
 

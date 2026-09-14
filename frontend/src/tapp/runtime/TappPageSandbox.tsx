@@ -39,7 +39,7 @@ import {
   registerAnimationHandlers,
   registerAssetHandlers,
   registerBackgroundHandlers,
-  registerBrewListHandlers,
+  registerPhantasiListHandlers,
   registerContextHandlers,
   registerDataExchangeHandlers,
   registerDynamicContentHandlers,
@@ -634,11 +634,11 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       const hasPlatform = hasExact('platform:read') || hasExact('platform:write')
       const hasAnalytics = hasExact('analytics:read')
       const hasReport = hasExact('report:read')
-      const hasBrew =
-        hasExact('brew:read') ||
-        hasExact('brew:write') ||
-        hasExact('brew:commentWrite') ||
-        hasExact('brew:manage')
+      const hasPhantasi =
+        hasExact('phantasi:read') ||
+        hasExact('phantasi:write') ||
+        hasExact('phantasi:commentWrite') ||
+        hasExact('phantasi:manage')
       const hasFederation =
         hasExact('federation:read') ||
         hasExact('federation:post') ||
@@ -672,8 +672,8 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       if (!headless && hasTappList) {
         registerTappListHandlers(bridge, currentTappInstance)
       }
-      if (hasBrew) {
-        registerBrewListHandlers(bridge, currentTappInstance)
+      if (hasPhantasi) {
+        registerPhantasiListHandlers(bridge, currentTappInstance)
       }
       const closeAITaskStreams = hasAi ? registerAIHandlers(bridge) : () => {}
       if (!headless) {

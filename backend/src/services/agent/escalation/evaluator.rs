@@ -28,7 +28,7 @@ pub struct Evaluation {
     pub reason: Option<String>,
     /// 建议尝试联网搜索
     pub suggests_web_search: bool,
-    /// 建议优先使用本地能力（brew.page / search.fuzzy 等）
+    /// 建议优先使用本地能力（phantasi.page / search.fuzzy 等）
     pub suggests_local_alternatives: bool,
     /// 从 choices/suggestions 抽出的可重试实体名（源名/作者等）
     pub suggested_retry_values: Vec<String>,
@@ -110,10 +110,10 @@ fn apply_escalation_policy(eval: &mut Evaluation, result: &Value, ctx: &Evaluati
     // generateReadingList 空结果默认本地域：禁止空→web cascade（除非 allow_web_search）
     let is_reading_list_empty = is_generate_reading_list_empty(result, &ctx.capability_ids);
 
-    // 已有实体建议：优先用建议值重试 brew，绝不 webSearch
+    // 已有实体建议：优先用建议值重试 phantasi，绝不 webSearch
     if !eval.suggested_retry_values.is_empty()
         && (is_local
-            || ctx.capability_ids.iter().any(|id| id.starts_with("brew."))
+            || ctx.capability_ids.iter().any(|id| id.starts_with("phantasi."))
             || ctx.capability_ids.is_empty())
     {
         eval.suggests_web_search = false;
@@ -132,7 +132,7 @@ fn apply_escalation_policy(eval: &mut Evaluation, result: &Value, ctx: &Evaluati
         eval.suggests_local_alternatives = true;
         if is_reading_list_empty {
             eval.improvement_hints.push(
-                "brew.generateReadingList had no local match. Widen keyword/daysBack, use brew.items / search.fuzzy, or subscribe to more feeds. Do not cascade an empty result to ai.webSearch unless allowWebSearch=true."
+                "phantasi.generateReadingList had no local match. Widen keyword/daysBack, use phantasi.items / search.fuzzy, or subscribe to more feeds. Do not cascade an empty result to ai.webSearch unless allowWebSearch=true."
                     .to_string(),
             );
         }
@@ -151,7 +151,7 @@ fn apply_escalation_policy(eval: &mut Evaluation, result: &Value, ctx: &Evaluati
 fn is_generate_reading_list_empty(result: &Value, capability_ids: &[String]) -> bool {
     let cap_is_grl = capability_ids
         .iter()
-        .any(|id| id == "brew.generateReadingList");
+        .any(|id| id == "phantasi.generateReadingList");
     let looks_like_grl = result
         .as_object()
         .map(|o| o.contains_key("readingList") || o.contains_key("totalMatched"))
@@ -240,22 +240,22 @@ fn is_entity_suggestion(s: &str) -> bool {
     !TIP_MARKERS.iter().any(|m| lower.contains(m))
 }
 
-/// replan 提示：用建议值重试 brew，而不是 webSearch
+/// replan 提示：用建议值重试 phantasi，而不是 webSearch
 fn suggestion_retry_hint(values: &[String], capability_ids: &[String]) -> String {
     let joined = values.join(" / ");
     let cap = capability_ids
         .iter()
-        .find(|id| id.starts_with("brew."))
+        .find(|id| id.starts_with("phantasi."))
         .map(|s| s.as_str())
-        .unwrap_or("brew.items");
+        .unwrap_or("phantasi.items");
     format!(
-        "Previous {cap} returned notFound and already has close suggestions. Retry the same brew capability with sourceName/name/query/author set to one of: {joined}. Do not switch to ai.webSearch / ai.groundingSearch."
+        "Previous {cap} returned notFound and already has close suggestions. Retry the same phantasi capability with sourceName/name/query/author set to one of: {joined}. Do not switch to ai.webSearch / ai.groundingSearch."
     )
 }
 
-/// 本地数据域能力：brew.* / platform.* / search.fuzzy 等
+/// 本地数据域能力：phantasi.* / platform.* / search.fuzzy 等
 pub fn is_local_data_capability(id: &str) -> bool {
-    id.starts_with("brew.")
+    id.starts_with("phantasi.")
         || id.starts_with("platform.")
         || id == "search.fuzzy"
         || id.starts_with("config.get")
@@ -278,19 +278,19 @@ fn is_local_data_domain(capability_ids: &[String]) -> bool {
     }) && capability_ids.iter().any(|id| is_local_data_capability(id))
 }
 
-/// 本地替代方案提示（replan 优先 brew.page / search.fuzzy / brew.items）
+/// 本地替代方案提示（replan 优先 phantasi.page / search.fuzzy / phantasi.items）
 fn local_data_hints(capability_ids: &[String]) -> Vec<String> {
     let mut hints = Vec::new();
-    let has_brew =
-        capability_ids.iter().any(|c| c.starts_with("brew.")) || capability_ids.is_empty();
+    let has_phantasi =
+        capability_ids.iter().any(|c| c.starts_with("phantasi.")) || capability_ids.is_empty();
 
-    if has_brew {
+    if has_phantasi {
         hints.push(
-            "Prefer brew.page / brew.items (widen limit, drop strict filters) or search.fuzzy for local lookup. Do not use ai.webSearch / ai.groundingSearch."
+            "Prefer phantasi.page / phantasi.items (widen limit, drop strict filters) or search.fuzzy for local lookup. Do not use ai.webSearch / ai.groundingSearch."
                 .to_string(),
         );
         hints.push(
-            "If feeds or articles are empty, ask the user, list close matches, or use brew.discover / subscribe. Do not search the public web."
+            "If feeds or articles are empty, ask the user, list close matches, or use phantasi.discover / subscribe. Do not search the public web."
                 .to_string(),
         );
     }
@@ -361,14 +361,14 @@ fn is_data_source_empty(result: &Value) -> bool {
             }
         }
 
-        // 检查 sources 数组（brew.sources）
+        // 检查 sources 数组（phantasi.sources）
         if let Some(Value::Array(arr)) = obj.get("sources") {
             if arr.is_empty() {
                 return true;
             }
         }
 
-        // brew.generateReadingList
+        // phantasi.generateReadingList
         if let Some(Value::Array(arr)) = obj.get("readingList") {
             if arr.is_empty() {
                 return true;
@@ -538,7 +538,7 @@ mod tests {
             let eval = evaluate_with_context(
                 &envelope,
                 &EvaluationContext {
-                    capability_ids: vec!["brew.items".into()],
+                    capability_ids: vec!["phantasi.items".into()],
                     allow_web_search: false,
                 },
             );
@@ -610,7 +610,7 @@ mod tests {
     }
 
     #[test]
-    fn test_local_brew_empty_does_not_suggest_web_search() {
+    fn test_local_phantasi_empty_does_not_suggest_web_search() {
         let result = json!({
             "items": [],
             "total": 0,
@@ -618,7 +618,7 @@ mod tests {
             "message": "未找到相关文章"
         });
         let ctx = EvaluationContext {
-            capability_ids: vec!["brew.items".into()],
+            capability_ids: vec!["phantasi.items".into()],
             allow_web_search: false,
         };
         let eval = evaluate_with_context(&result, &ctx);
@@ -628,10 +628,10 @@ mod tests {
         assert!(eval.suggests_local_alternatives);
         let joined = eval.improvement_hints.join(" ");
         assert!(
-            joined.contains("brew.page")
-                || joined.contains("brew.items")
+            joined.contains("phantasi.page")
+                || joined.contains("phantasi.items")
                 || joined.contains("search.fuzzy"),
-            "replan 应优先本地 brew/search: {:?}",
+            "replan 应优先本地 phantasi/search: {:?}",
             eval.improvement_hints
         );
         assert!(!joined.contains("ai.webSearch") || joined.contains("Do not use ai.webSearch"));
@@ -655,10 +655,10 @@ mod tests {
     }
 
     #[test]
-    fn test_brew_plus_summarize_still_local_domain() {
+    fn test_phantasi_plus_summarize_still_local_domain() {
         let result = json!({ "items": [], "total": 0 });
         let ctx = EvaluationContext {
-            capability_ids: vec!["brew.items".into(), "ai.summarize".into()],
+            capability_ids: vec!["phantasi.items".into(), "ai.summarize".into()],
             allow_web_search: false,
         };
         let eval = evaluate_with_context(&result, &ctx);
@@ -671,7 +671,7 @@ mod tests {
     fn test_allow_web_search_flag_overrides_local_gate() {
         let result = json!({ "items": [], "total": 0 });
         let ctx = EvaluationContext {
-            capability_ids: vec!["brew.generateReadingList".into()],
+            capability_ids: vec!["phantasi.generateReadingList".into()],
             allow_web_search: true,
         };
         let eval = evaluate_with_context(&result, &ctx);
@@ -698,11 +698,11 @@ mod tests {
 
     #[test]
     fn test_is_local_data_capability() {
-        assert!(is_local_data_capability("brew.sources"));
-        assert!(is_local_data_capability("brew.items"));
+        assert!(is_local_data_capability("phantasi.sources"));
+        assert!(is_local_data_capability("phantasi.items"));
         assert!(is_local_data_capability("platform.read"));
         assert!(is_local_data_capability("search.fuzzy"));
-        assert!(is_local_data_capability("brew.generateReadingList"));
+        assert!(is_local_data_capability("phantasi.generateReadingList"));
         assert!(!is_local_data_capability("ai.webSearch"));
         assert!(!is_local_data_capability("ai.image"));
     }
@@ -722,7 +722,7 @@ mod tests {
             ]
         });
         let ctx = EvaluationContext {
-            capability_ids: vec!["brew.generateReadingList".into()],
+            capability_ids: vec!["phantasi.generateReadingList".into()],
             allow_web_search: false,
         };
         let eval = evaluate_with_context(&result, &ctx);
@@ -737,13 +737,13 @@ mod tests {
         // 操作提示不应被当成实体重试值
         assert!(
             eval.suggested_retry_values.is_empty(),
-            "API/配置类 tips 不是 brew 实体建议: {:?}",
+            "API/配置类 tips 不是 phantasi 实体建议: {:?}",
             eval.suggested_retry_values
         );
         let joined = eval.improvement_hints.join(" ");
         assert!(
-            joined.contains("generateReadingList") || joined.contains("brew.items"),
-            "应提示本地 brew 路径: {:?}",
+            joined.contains("generateReadingList") || joined.contains("phantasi.items"),
+            "应提示本地 phantasi 路径: {:?}",
             eval.improvement_hints
         );
     }
@@ -763,8 +763,8 @@ mod tests {
     }
 
     #[test]
-    fn test_not_found_with_suggestions_prefers_brew_retry() {
-        // 与 brew.items 未命中时返回形状一致
+    fn test_not_found_with_suggestions_prefers_phantasi_retry() {
+        // 与 phantasi.items 未命中时返回形状一致
         let result = json!({
             "items": [],
             "total": 0,
@@ -779,7 +779,7 @@ mod tests {
             "hint": "你是不是想找: 天利一下, 天利博客?"
         });
         let ctx = EvaluationContext {
-            capability_ids: vec!["brew.items".into()],
+            capability_ids: vec!["phantasi.items".into()],
             allow_web_search: false,
         };
         let eval = evaluate_with_context(&result, &ctx);
@@ -794,7 +794,7 @@ mod tests {
         let joined = eval.improvement_hints.join(" ");
         assert!(
             joined.contains("天利一下") && joined.contains("sourceName"),
-            "replan 应要求用建议值重试 brew: {:?}",
+            "replan 应要求用建议值重试 phantasi: {:?}",
             eval.improvement_hints
         );
         assert!(
@@ -806,7 +806,7 @@ mod tests {
 
     #[test]
     fn test_not_found_suggestions_override_allow_web_when_entity_present() {
-        // 即便 allow_web_search=true，有实体建议时仍优先 brew 重试
+        // 即便 allow_web_search=true，有实体建议时仍优先 phantasi 重试
         let result = json!({
             "items": [],
             "total": 0,
@@ -815,7 +815,7 @@ mod tests {
             "choices": [{ "value": "MyFeed", "label": "MyFeed" }]
         });
         let ctx = EvaluationContext {
-            capability_ids: vec!["brew.items".into()],
+            capability_ids: vec!["phantasi.items".into()],
             allow_web_search: true,
         };
         let eval = evaluate_with_context(&result, &ctx);

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { PodcastPlayer } from './brewliaApi.ts'
+import { PodcastPlayer } from './phantasiaiApi.ts'
 
 function voice(lang: string, name = lang): SpeechSynthesisVoice {
   return { lang, name } as SpeechSynthesisVoice

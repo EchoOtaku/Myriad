@@ -1,36 +1,36 @@
-//! 把云端手记文档落成公开 `brew_items`。草稿不走这里。
+//! 把云端笔记文档落成公开 `phantasi_items`。草稿不走这里。
 //!
-//! 写 `brew_items` 和把文档标成已发布是一个事务：要么公开文章和文档状态一起落地，
+//! 写 `phantasi_items` 和把文档标成已发布是一个事务：要么公开文章和文档状态一起落地，
 //! 要么什么都不变。调度器发定时稿之前先用 revision 「认领」一次，多实例同时到点
 //! 也只有一个能拿到。
 
 use chrono::{TimeZone, Utc};
-use myriad_brew_notes::{NoteDocStatus, is_due, note_guid, note_link, render_note, validate_note};
+use myriad_phantasi_notes::{NoteDocStatus, is_due, note_guid, note_link, render_note, validate_note};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
     PaginatorTrait, QueryFilter, Set, TransactionTrait,
 };
 use serde::Serialize;
 
-use crate::api::seo::BREW_MINE_CATEGORY as NOTE_SOURCE_CATEGORY;
+use crate::api::seo::PHANTASI_MINE_CATEGORY as NOTE_SOURCE_CATEGORY;
 use crate::error::HttpError;
-use crate::models::entities::{brew_items, brew_note_docs, brew_sources};
+use crate::models::entities::{phantasi_items, phantasi_note_docs, phantasi_sources};
 use axum::{Json, http::StatusCode};
 use myriad_error::AppError;
 
-fn brew_http_err(status: StatusCode, error: impl Into<String>) -> HttpError {
+fn phantasi_http_err(status: StatusCode, error: impl Into<String>) -> HttpError {
     HttpError::from((status, Json(AppError::fail_json(error))))
 }
 
-fn brew_store_http(context: &'static str, error: impl std::fmt::Display) -> HttpError {
-    tracing::error!(%error, context, "brew store failed");
-    brew_http_err(
+fn phantasi_store_http(context: &'static str, error: impl std::fmt::Display) -> HttpError {
+    tracing::error!(%error, context, "phantasi store failed");
+    phantasi_http_err(
         StatusCode::INTERNAL_SERVER_ERROR,
         format!("Failed to {context}"),
     )
 }
 
-pub(crate) const NOTE_SOURCE_NAME: &str = "手记";
+pub(crate) const NOTE_SOURCE_NAME: &str = "笔记";
 pub(crate) const NOTE_SOURCE_URL: &str = "myriad:notes";
 
 #[derive(Debug, Clone, Serialize)]
@@ -47,32 +47,32 @@ pub fn datetime_to_millis(value: sea_orm::prelude::DateTimeWithTimeZone) -> i64 
     value.timestamp_millis()
 }
 
-fn validation_err(err: myriad_brew_notes::NoteError) -> HttpError {
-    brew_http_err(StatusCode::BAD_REQUEST, err.message())
+fn validation_err(err: myriad_phantasi_notes::NoteError) -> HttpError {
+    phantasi_http_err(StatusCode::BAD_REQUEST, err.message())
 }
 
 async fn ensure_note_source<C: ConnectionTrait>(
     db: &C,
     user_id: i32,
-) -> Result<brew_sources::Model, HttpError> {
-    let existing = brew_sources::Entity::find()
-        .filter(brew_sources::Column::UserId.eq(user_id))
-        .filter(brew_sources::Column::SourceType.eq(brew_sources::SourceType::Note))
+) -> Result<phantasi_sources::Model, HttpError> {
+    let existing = phantasi_sources::Entity::find()
+        .filter(phantasi_sources::Column::UserId.eq(user_id))
+        .filter(phantasi_sources::Column::SourceType.eq(phantasi_sources::SourceType::Note))
         .one(db)
         .await
-        .map_err(|e| brew_store_http("find note source", e))?;
+        .map_err(|e| phantasi_store_http("find note source", e))?;
 
     if let Some(source) = existing {
         return Ok(source);
     }
 
     let now = Utc::now();
-    let source = brew_sources::ActiveModel {
+    let source = phantasi_sources::ActiveModel {
         user_id: Set(user_id),
         name: Set(NOTE_SOURCE_NAME.to_string()),
         url: Set(NOTE_SOURCE_URL.to_string()),
-        feed_type: Set(brew_sources::FeedType::Rss),
-        source_type: Set(brew_sources::SourceType::Note),
+        feed_type: Set(phantasi_sources::FeedType::Rss),
+        source_type: Set(phantasi_sources::SourceType::Note),
         category: Set(Some(NOTE_SOURCE_CATEGORY.to_string())),
         update_interval: Set(0),
         enabled: Set(true),
@@ -88,16 +88,16 @@ async fn ensure_note_source<C: ConnectionTrait>(
     source
         .insert(db)
         .await
-        .map_err(|e| brew_store_http("create note source", e))
+        .map_err(|e| phantasi_store_http("create note source", e))
 }
 
-async fn sync_item_count<C: ConnectionTrait>(db: &C, source: &brew_sources::Model) {
-    let count = brew_items::Entity::find()
-        .filter(brew_items::Column::SourceId.eq(source.id))
+async fn sync_item_count<C: ConnectionTrait>(db: &C, source: &phantasi_sources::Model) {
+    let count = phantasi_items::Entity::find()
+        .filter(phantasi_items::Column::SourceId.eq(source.id))
         .count(db)
         .await
         .unwrap_or(0);
-    let mut active: brew_sources::ActiveModel = source.clone().into();
+    let mut active: phantasi_sources::ActiveModel = source.clone().into();
     active.item_count = Set(i32::try_from(count).unwrap_or(i32::MAX));
     active.updated_at = Set(Utc::now().into());
     if let Err(error) = active.update(db).await {
@@ -105,7 +105,7 @@ async fn sync_item_count<C: ConnectionTrait>(db: &C, source: &brew_sources::Mode
     }
 }
 
-/// 把一篇已经校验过的手记写进 `brew_items`。有 `item_id` 就改，没有就新建。
+/// 把一篇已经校验过的笔记写进 `phantasi_items`。有 `item_id` 就改，没有就新建。
 async fn write_published_item<C: ConnectionTrait>(
     db: &C,
     user_id: i32,
@@ -126,15 +126,15 @@ async fn write_published_item<C: ConnectionTrait>(
         .or(rendered.image);
 
     if let Some(id) = item_id {
-        let item = brew_items::Entity::find_by_id(id)
+        let item = phantasi_items::Entity::find_by_id(id)
             .one(db)
             .await
-            .map_err(|e| brew_store_http("find note", e))?
-            .ok_or_else(|| brew_http_err(StatusCode::NOT_FOUND, "Note not found"))?;
+            .map_err(|e| phantasi_store_http("find note", e))?
+            .ok_or_else(|| phantasi_http_err(StatusCode::NOT_FOUND, "Note not found"))?;
         if item.source_id != source.id {
-            return Err(brew_http_err(StatusCode::NOT_FOUND, "Note not found"));
+            return Err(phantasi_http_err(StatusCode::NOT_FOUND, "Note not found"));
         }
-        let mut active: brew_items::ActiveModel = item.into();
+        let mut active: phantasi_items::ActiveModel = item.into();
         active.title = Set(rendered.title);
         active.summary = Set(rendered.summary);
         active.content = Set(Some(rendered.html));
@@ -149,7 +149,7 @@ async fn write_published_item<C: ConnectionTrait>(
         let item = active
             .update(db)
             .await
-            .map_err(|e| brew_store_http("save note", e))?;
+            .map_err(|e| phantasi_store_http("save note", e))?;
         return Ok(PublishedNote {
             id: item.id,
             link: item.link,
@@ -157,7 +157,7 @@ async fn write_published_item<C: ConnectionTrait>(
     }
 
     let published_at = published_at_ms.and_then(millis_to_datetime).unwrap_or(now);
-    let new_item = brew_items::ActiveModel {
+    let new_item = phantasi_items::ActiveModel {
         source_id: Set(source.id),
         guid: Set(note_guid(&uuid::Uuid::new_v4().to_string())),
         title: Set(rendered.title),
@@ -177,14 +177,14 @@ async fn write_published_item<C: ConnectionTrait>(
     let item = new_item
         .insert(db)
         .await
-        .map_err(|e| brew_store_http("save note", e))?;
+        .map_err(|e| phantasi_store_http("save note", e))?;
     let item_id = item.id;
-    let mut active: brew_items::ActiveModel = item.into();
+    let mut active: phantasi_items::ActiveModel = item.into();
     active.link = Set(note_link(item_id));
     let item = active
         .update(db)
         .await
-        .map_err(|e| brew_store_http("save note", e))?;
+        .map_err(|e| phantasi_store_http("save note", e))?;
     sync_item_count(db, &source).await;
     Ok(PublishedNote {
         id: item.id,
@@ -194,16 +194,16 @@ async fn write_published_item<C: ConnectionTrait>(
 
 async fn mark_doc_published<C: ConnectionTrait>(
     db: &C,
-    mut doc: brew_note_docs::Model,
+    mut doc: phantasi_note_docs::Model,
     item: &PublishedNote,
     published_at_ms: Option<i64>,
-) -> Result<brew_note_docs::Model, HttpError> {
+) -> Result<phantasi_note_docs::Model, HttpError> {
     let now = Utc::now();
     let published_at = published_at_ms
         .and_then(millis_to_datetime)
         .or_else(|| doc.published_at.map(|dt| dt.with_timezone(&Utc)))
         .unwrap_or(now);
-    let mut active: brew_note_docs::ActiveModel = doc.clone().into();
+    let mut active: phantasi_note_docs::ActiveModel = doc.clone().into();
     active.item_id = Set(Some(item.id));
     active.status = Set(NoteDocStatus::Published.as_str().to_string());
     active.scheduled_at = Set(None);
@@ -214,22 +214,22 @@ async fn mark_doc_published<C: ConnectionTrait>(
     doc = active
         .update(db)
         .await
-        .map_err(|e| brew_store_http("save note doc", e))?;
+        .map_err(|e| phantasi_store_http("save note doc", e))?;
     Ok(doc)
 }
 
-/// 发布一篇云端文档：写 `brew_items` + 标文档已发布，一个事务。
+/// 发布一篇云端文档：写 `phantasi_items` + 标文档已发布，一个事务。
 ///
 /// `doc` 里的字段就是要发布的内容（调用方已把请求里的改动合进去）。
 pub async fn publish_doc(
     db: &DatabaseConnection,
-    doc: brew_note_docs::Model,
+    doc: phantasi_note_docs::Model,
     published_at_ms: Option<i64>,
-) -> Result<(PublishedNote, brew_note_docs::Model), HttpError> {
+) -> Result<(PublishedNote, phantasi_note_docs::Model), HttpError> {
     let txn = db
         .begin()
         .await
-        .map_err(|e| brew_store_http("begin note publish", e))?;
+        .map_err(|e| phantasi_store_http("begin note publish", e))?;
     let outcome = async {
         let item = write_published_item(
             &txn,
@@ -250,7 +250,7 @@ pub async fn publish_doc(
         Ok(result) => {
             txn.commit()
                 .await
-                .map_err(|e| brew_store_http("commit note publish", e))?;
+                .map_err(|e| phantasi_store_http("commit note publish", e))?;
             Ok(result)
         }
         Err(error) => {
@@ -266,24 +266,24 @@ pub async fn publish_doc(
 /// 推不动说明别的实例（或用户）先动了它，这一轮跳过。
 async fn claim_due_doc(
     db: &DatabaseConnection,
-    doc: &brew_note_docs::Model,
-) -> Result<Option<brew_note_docs::Model>, HttpError> {
+    doc: &phantasi_note_docs::Model,
+) -> Result<Option<phantasi_note_docs::Model>, HttpError> {
     let claimed_revision = doc.revision + 1;
-    let result = brew_note_docs::Entity::update_many()
+    let result = phantasi_note_docs::Entity::update_many()
         .col_expr(
-            brew_note_docs::Column::Revision,
+            phantasi_note_docs::Column::Revision,
             sea_orm::sea_query::Expr::value(claimed_revision),
         )
         .col_expr(
-            brew_note_docs::Column::UpdatedAt,
+            phantasi_note_docs::Column::UpdatedAt,
             sea_orm::sea_query::Expr::value(Utc::now()),
         )
-        .filter(brew_note_docs::Column::Id.eq(doc.id))
-        .filter(brew_note_docs::Column::Status.eq(NoteDocStatus::Scheduled.as_str()))
-        .filter(brew_note_docs::Column::Revision.eq(doc.revision))
+        .filter(phantasi_note_docs::Column::Id.eq(doc.id))
+        .filter(phantasi_note_docs::Column::Status.eq(NoteDocStatus::Scheduled.as_str()))
+        .filter(phantasi_note_docs::Column::Revision.eq(doc.revision))
         .exec(db)
         .await
-        .map_err(|e| brew_store_http("claim scheduled note", e))?;
+        .map_err(|e| phantasi_store_http("claim scheduled note", e))?;
     if result.rows_affected == 0 {
         return Ok(None);
     }
@@ -295,9 +295,9 @@ async fn claim_due_doc(
 /// 调度器：把到点的定时稿写成公开文章。
 pub async fn publish_due_note_docs(db: &DatabaseConnection) -> Result<usize, String> {
     let now = Utc::now();
-    let rows = brew_note_docs::Entity::find()
-        .filter(brew_note_docs::Column::Status.eq(NoteDocStatus::Scheduled.as_str()))
-        .filter(brew_note_docs::Column::ScheduledAt.lte(now))
+    let rows = phantasi_note_docs::Entity::find()
+        .filter(phantasi_note_docs::Column::Status.eq(NoteDocStatus::Scheduled.as_str()))
+        .filter(phantasi_note_docs::Column::ScheduledAt.lte(now))
         .all(db)
         .await
         .map_err(|e| format!("list due note docs: {e}"))?;
@@ -340,10 +340,10 @@ pub async fn publish_due_note_docs(db: &DatabaseConnection) -> Result<usize, Str
 
 async fn revert_due_doc(
     db: &DatabaseConnection,
-    doc: brew_note_docs::Model,
+    doc: phantasi_note_docs::Model,
     label: &str,
 ) -> Result<(), HttpError> {
-    let mut active: brew_note_docs::ActiveModel = doc.clone().into();
+    let mut active: phantasi_note_docs::ActiveModel = doc.clone().into();
     active.status = Set(NoteDocStatus::Draft.as_str().to_string());
     active.last_error = Set(Some(label.to_string()));
     active.updated_at = Set(Utc::now().into());
@@ -351,7 +351,7 @@ async fn revert_due_doc(
     active
         .update(db)
         .await
-        .map_err(|e| brew_store_http("revert scheduled note", e))?;
+        .map_err(|e| phantasi_store_http("revert scheduled note", e))?;
     Ok(())
 }
 
@@ -364,16 +364,16 @@ pub async fn upsert_doc_for_published_item<C: ConnectionTrait>(
     topic: Option<String>,
     image: Option<String>,
     published_at_ms: Option<i64>,
-) -> Result<brew_note_docs::Model, HttpError> {
+) -> Result<phantasi_note_docs::Model, HttpError> {
     let now = Utc::now();
     let published_at = published_at_ms.and_then(millis_to_datetime);
-    if let Some(existing) = brew_note_docs::Entity::find()
-        .filter(brew_note_docs::Column::ItemId.eq(item.id))
+    if let Some(existing) = phantasi_note_docs::Entity::find()
+        .filter(phantasi_note_docs::Column::ItemId.eq(item.id))
         .one(db)
         .await
-        .map_err(|e| brew_store_http("find note doc", e))?
+        .map_err(|e| phantasi_store_http("find note doc", e))?
     {
-        let mut active: brew_note_docs::ActiveModel = existing.clone().into();
+        let mut active: phantasi_note_docs::ActiveModel = existing.clone().into();
         active.title = Set(title.to_string());
         active.content_md = Set(content_md.to_string());
         active.topic = Set(topic.filter(|value| !value.trim().is_empty()));
@@ -388,10 +388,10 @@ pub async fn upsert_doc_for_published_item<C: ConnectionTrait>(
         return active
             .update(db)
             .await
-            .map_err(|e| brew_store_http("save note doc", e));
+            .map_err(|e| phantasi_store_http("save note doc", e));
     }
 
-    let doc = brew_note_docs::ActiveModel {
+    let doc = phantasi_note_docs::ActiveModel {
         user_id: Set(user_id),
         item_id: Set(Some(item.id)),
         title: Set(title.to_string()),
@@ -407,10 +407,10 @@ pub async fn upsert_doc_for_published_item<C: ConnectionTrait>(
     };
     doc.insert(db)
         .await
-        .map_err(|e| brew_store_http("create note doc", e))
+        .map_err(|e| phantasi_store_http("create note doc", e))
 }
 
-/// 公开手记的写入 + 对应云端文档同步，一个事务。`create_note` / `update_note` 用。
+/// 公开笔记的写入 + 对应云端文档同步，一个事务。`create_note` / `update_note` 用。
 pub async fn write_note_with_doc(
     db: &DatabaseConnection,
     user_id: i32,
@@ -424,7 +424,7 @@ pub async fn write_note_with_doc(
     let txn = db
         .begin()
         .await
-        .map_err(|e| brew_store_http("begin note write", e))?;
+        .map_err(|e| phantasi_store_http("begin note write", e))?;
     let outcome = async {
         let item = write_published_item(
             &txn,
@@ -455,7 +455,7 @@ pub async fn write_note_with_doc(
         Ok(item) => {
             txn.commit()
                 .await
-                .map_err(|e| brew_store_http("commit note write", e))?;
+                .map_err(|e| phantasi_store_http("commit note write", e))?;
             Ok(item)
         }
         Err(error) => {

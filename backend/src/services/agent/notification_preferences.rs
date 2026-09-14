@@ -14,7 +14,7 @@ pub const SOURCE_KEYS: [&str; 8] = [
     "agent",
     "heartbeat",
     "mcp",
-    "brew",
+    "phantasi",
     "tapp",
     "updater",
     "federation",
@@ -69,12 +69,12 @@ pub const EVENT_DEFINITIONS: [NotificationEventDefinition; 34] = [
         source: "mcp",
     },
     NotificationEventDefinition {
-        key: "brew.new_items",
-        source: "brew",
+        key: "phantasi.new_items",
+        source: "phantasi",
     },
     NotificationEventDefinition {
-        key: "brew.source_error",
-        source: "brew",
+        key: "phantasi.source_error",
+        source: "phantasi",
     },
     NotificationEventDefinition {
         key: "platform.sync.failed",
@@ -422,7 +422,7 @@ mod tests {
 
         assert!(!preferences.sources["agent"]);
         assert!(!preferences.events["agent.task_failed"]);
-        assert!(preferences.events["brew.source_error"]);
+        assert!(preferences.events["phantasi.source_error"]);
         assert!(preferences.events["platform.sync.failed"]);
         assert!(!preferences.sources.contains_key("removed"));
         assert!(
@@ -441,13 +441,13 @@ mod tests {
     #[test]
     fn source_and_event_switches_are_both_enforced() {
         let mut preferences = NotificationPreferences::default();
-        preferences.sources.insert("brew".to_string(), false);
-        assert!(!preferences.allows("brew.source_error"));
-        preferences.sources.insert("brew".to_string(), true);
+        preferences.sources.insert("phantasi".to_string(), false);
+        assert!(!preferences.allows("phantasi.source_error"));
+        preferences.sources.insert("phantasi".to_string(), true);
         preferences
             .events
-            .insert("brew.source_error".to_string(), false);
-        assert!(!preferences.allows("brew.source_error"));
+            .insert("phantasi.source_error".to_string(), false);
+        assert!(!preferences.allows("phantasi.source_error"));
         assert!(preferences.allows("future.critical_event"));
     }
 
@@ -489,20 +489,20 @@ mod tests {
 
         let defaults = load(Some(&db), user_id).await;
         assert!(defaults.enabled);
-        assert!(defaults.allows("brew.source_error"));
+        assert!(defaults.allows("phantasi.source_error"));
 
         let mut changed = defaults;
-        changed.sources.insert("brew".to_string(), false);
+        changed.sources.insert("phantasi".to_string(), false);
         changed.delivery.browser = false;
-        changed.locations.get_mut("brew").unwrap().panel = false;
+        changed.locations.get_mut("phantasi").unwrap().panel = false;
         save(Some(&db), user_id, changed).await.unwrap();
         clear_cached_for_test(user_id).await;
 
         let restored = load(Some(&db), user_id).await;
-        assert!(!restored.sources["brew"]);
+        assert!(!restored.sources["phantasi"]);
         assert!(!restored.delivery.browser);
-        assert!(!restored.locations["brew"].panel);
-        assert!(!restored.allows("brew.source_error"));
+        assert!(!restored.locations["phantasi"].panel);
+        assert!(!restored.allows("phantasi.source_error"));
 
         db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,

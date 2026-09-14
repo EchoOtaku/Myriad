@@ -523,7 +523,7 @@ case_ring_add_peer() {
 
   local ring_json ring_id
   ring_json=$(api POST "$BASE_A" "$jar_a" /api/federation/rings \
-    "{\"name\":\"Suite Brew Ring\",\"ring_type\":\"brew-recommend\"}")
+    "{\"name\":\"Suite Phantasi Ring\",\"ring_type\":\"phantasi-recommend\"}")
   echo "$ring_json" >"$SCRATCH_DIR/ring-create.json"
   ring_id=$(echo "$ring_json" | python3 -c 'import sys,json; print(json.load(sys.stdin)["ring_id"])')
 

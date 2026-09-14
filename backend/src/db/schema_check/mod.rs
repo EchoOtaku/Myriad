@@ -22,7 +22,7 @@ mod orchestrator;
 mod seeds;
 mod tables_agent;
 mod tables_analytics;
-mod tables_brew;
+mod tables_phantasi;
 mod tables_core;
 mod tables_federation;
 mod tables_tapp;

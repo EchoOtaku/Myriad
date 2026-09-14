@@ -14,12 +14,12 @@ use crate::services::agent::executor::utils::{
 };
 use crate::services::agent::external_pure::first_string_param;
 use crate::services::agent::system_op_pure::{
-    AgentExecutionTarget, AgentScheduleType, BrewScheduleAction, extract_raw_backend_actions,
-    heartbeat_task_id, heartbeat_update_has_fields, parse_brew_schedule_action,
+    AgentExecutionTarget, AgentScheduleType, PhantasiScheduleAction, extract_raw_backend_actions,
+    heartbeat_task_id, heartbeat_update_has_fields, parse_phantasi_schedule_action,
     parse_execution_target, parse_schedule_type,
 };
 use crate::services::background_processor::BACKGROUND_PROCESSOR;
-use crate::services::brew_scheduler::get_brew_scheduler;
+use crate::services::phantasi_scheduler::get_phantasi_scheduler;
 use crate::services::data_paths::platform_filtered_file;
 use crate::services::image_cache::ImageCacheService;
 use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
@@ -54,7 +54,7 @@ pub async fn execute(
         "image.cache" => execute_image_cache(params).await,
         "export.data" => execute_export_data(params).await,
         "task.submit" => execute_task_submit(params).await,
-        "brew.schedule" => execute_brew_schedule(params).await,
+        "phantasi.schedule" => execute_phantasi_schedule(params).await,
         "setup.status" => execute_setup_status(ctx).await,
         _ => Err(format!("Unknown system_op capability: {}", capability_id)),
     }
@@ -878,36 +878,36 @@ async fn execute_task_submit(params: &HashMap<String, Value>) -> Result<Value, S
     }
 }
 
-async fn execute_brew_schedule(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let action = parse_brew_schedule_action(params.get("action").and_then(|v| v.as_str()))?;
+async fn execute_phantasi_schedule(params: &HashMap<String, Value>) -> Result<Value, String> {
+    let action = parse_phantasi_schedule_action(params.get("action").and_then(|v| v.as_str()))?;
     let source_id = params.get("sourceId").and_then(|v| v.as_i64());
 
     match action {
-        BrewScheduleAction::Start => match get_brew_scheduler() {
+        PhantasiScheduleAction::Start => match get_phantasi_scheduler() {
             Some(scheduler) => {
                 scheduler.start().await;
                 Ok(json!({
                     "success": true,
                     "action": "start",
                     "status": "started",
-                    "message": "Brew scheduler started"
+                    "message": "Phantasi scheduler started"
                 }))
             }
-            _ => Err("Brew scheduler not initialized".to_string()),
+            _ => Err("Phantasi scheduler not initialized".to_string()),
         },
-        BrewScheduleAction::Stop => match get_brew_scheduler() {
+        PhantasiScheduleAction::Stop => match get_phantasi_scheduler() {
             Some(scheduler) => {
                 scheduler.stop().await;
                 Ok(json!({
                     "success": true,
                     "action": "stop",
                     "status": "stopped",
-                    "message": "Brew scheduler stopped"
+                    "message": "Phantasi scheduler stopped"
                 }))
             }
-            _ => Err("Brew scheduler not initialized".to_string()),
+            _ => Err("Phantasi scheduler not initialized".to_string()),
         },
-        BrewScheduleAction::Refresh => match get_brew_scheduler() {
+        PhantasiScheduleAction::Refresh => match get_phantasi_scheduler() {
             Some(scheduler) => {
                 if let Some(sid) = source_id {
                     match scheduler.refresh_source(sid as i32).await {
@@ -942,10 +942,10 @@ async fn execute_brew_schedule(params: &HashMap<String, Value>) -> Result<Value,
                     }
                 }
             }
-            _ => Err("Brew scheduler not initialized".to_string()),
+            _ => Err("Phantasi scheduler not initialized".to_string()),
         },
-        BrewScheduleAction::Status => {
-            let scheduler_active = get_brew_scheduler().is_some();
+        PhantasiScheduleAction::Status => {
+            let scheduler_active = get_phantasi_scheduler().is_some();
             Ok(json!({
                 "action": "status",
                 "running": scheduler_active,

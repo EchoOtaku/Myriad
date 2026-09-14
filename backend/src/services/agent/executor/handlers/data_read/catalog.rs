@@ -542,7 +542,7 @@ pub(super) async fn execute_heartbeat_list(
     }))
 }
 
-/// RSSHub 实例列表（来自 brew 的 rsshub_instances 表）
+/// RSSHub 实例列表（来自 phantasi 的 rsshub_instances 表）
 pub(super) async fn execute_rsshub_instances(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,

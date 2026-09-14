@@ -17,7 +17,7 @@ const PNG_1X1 = Uint8Array.from([
   0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
 ])
 const STICKER_HASH = `ab${'a'.repeat(62)}`
-const STICKER_PATH = `/api/brew/image-cache/ab/${STICKER_HASH}.png`
+const STICKER_PATH = `/api/phantasi/image-cache/ab/${STICKER_HASH}.png`
 
 function layoutsWith(url: string) {
   return {
@@ -60,7 +60,7 @@ describe('fetchStickerAssets', () => {
     const webp = Uint8Array.from([
       0x52, 0x49, 0x46, 0x46, 0x08, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50,
     ])
-    const path = `/api/brew/image-cache/ab/${STICKER_HASH}.webp`
+    const path = `/api/phantasi/image-cache/ab/${STICKER_HASH}.webp`
     const { assets, missing } = await fetchStickerAssets(
       layoutsWith(path),
       async () => ({
@@ -114,7 +114,7 @@ describe('restoreStickerAssets', () => {
       assets,
       async (dataUrl) => {
         uploaded.push(dataUrl.slice(0, 22))
-        return '/api/brew/image-cache/cd/restored.png'
+        return '/api/phantasi/image-cache/cd/restored.png'
       },
     )
     assert.equal(uploaded.length, 1)
@@ -123,11 +123,11 @@ describe('restoreStickerAssets', () => {
     assert.deepEqual(result.failed, [])
     assert.equal(
       result.layouts.free[0]?.config?.imageUrl,
-      '/api/brew/image-cache/cd/restored.png',
+      '/api/phantasi/image-cache/cd/restored.png',
     )
     assert.equal(
       result.layouts.free[1]?.config?.imageUrl,
-      '/api/brew/image-cache/cd/restored.png',
+      '/api/phantasi/image-cache/cd/restored.png',
     )
   })
 

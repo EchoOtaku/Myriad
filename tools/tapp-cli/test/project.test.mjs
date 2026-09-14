@@ -211,8 +211,8 @@ describe('Tapp project core', () => {
     )
   })
 
-  it('rejects removed brew permission names with replacement hints', async () => {
-    const root = await temporaryDirectory('brew-removed')
+  it('rejects removed phantasi permission names with replacement hints', async () => {
+    const root = await temporaryDirectory('phantasi-removed')
     await createProject(root, { type: 'page' })
     const manifestPath = join(root, 'manifest.json')
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
@@ -225,13 +225,13 @@ describe('Tapp project core', () => {
     )
     assert.equal(diagnostics.length, 1)
 
-    // brew:comment → brew:read + brew:commentWrite（仍 fail-closed）
+    // brew:comment 退役不映射；提示 phantasi:read / phantasi:commentWrite（仍 fail-closed）
     const comment = diagnostics.find(({ message }) =>
       message.includes('brew:comment'),
     )
     assert.ok(comment, 'brew:comment must be rejected')
-    assert.ok(comment.message.includes('brew:read'))
-    assert.ok(comment.message.includes('brew:commentWrite'))
+    assert.ok(comment.message.includes('phantasi:read'))
+    assert.ok(comment.message.includes('phantasi:commentWrite'))
   })
 
   it('rejects retired layer-contract fields as unknown', async () => {

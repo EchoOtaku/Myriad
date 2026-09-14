@@ -371,8 +371,8 @@ mod tests {
 
     #[test]
     fn ordinary_event_ids_share_a_time_bucket() {
-        let a = stable_consciousness_event_id(7, "brew.source_error", "feed failed");
-        let b = stable_consciousness_event_id(7, "brew.source_error", "feed failed again");
+        let a = stable_consciousness_event_id(7, "phantasi.source_error", "feed failed");
+        let b = stable_consciousness_event_id(7, "phantasi.source_error", "feed failed again");
         assert_eq!(a, b);
     }
 
@@ -381,14 +381,14 @@ mod tests {
         assert_eq!(
             work_outcome_parent(
                 "agent.task_completed",
-                Some("evt_7_brew.source_error_1".into())
+                Some("evt_7_phantasi.source_error_1".into())
             ),
-            Some("evt_7_brew.source_error_1".into())
+            Some("evt_7_phantasi.source_error_1".into())
         );
         assert_eq!(
             work_outcome_parent(
-                "brew.source_error",
-                Some("evt_7_brew.source_error_1".into())
+                "phantasi.source_error",
+                Some("evt_7_phantasi.source_error_1".into())
             ),
             None
         );

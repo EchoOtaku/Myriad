@@ -8,11 +8,11 @@ import { createLocaleLoader } from './createLocaleLoader'
 async function loadPack(locale: Locale): Promise<TranslationKeys> {
   switch (locale) {
     case 'zh-CN': {
-      const [core, config, tapp, brew, merope, errors, agentCaps] = await Promise.all([
+      const [core, config, tapp, phantasi, merope, errors, agentCaps] = await Promise.all([
         import('./zh-CN.json'),
         import('./config.zh-CN.json'),
         import('./tapp.zh-CN.json'),
-        import('./brew.zh-CN.json'),
+        import('./phantasi.zh-CN.json'),
         import('./merope.zh-CN.json'),
         import('./errors.zh-CN.json'),
         import('./agentCaps.zh-CN.json'),
@@ -20,18 +20,18 @@ async function loadPack(locale: Locale): Promise<TranslationKeys> {
       return assembleLocale(core.default, {
         config: config.default,
         tapp: tapp.default,
-        brew: brew.default,
+        phantasi: phantasi.default,
         merope: merope.default,
         errors: errors.default,
         agentCaps: agentCaps.default,
       })
     }
     case 'en-US': {
-      const [core, config, tapp, brew, merope, errors, agentCaps] = await Promise.all([
+      const [core, config, tapp, phantasi, merope, errors, agentCaps] = await Promise.all([
         import('./en-US.json'),
         import('./config.en-US.json'),
         import('./tapp.en-US.json'),
-        import('./brew.en-US.json'),
+        import('./phantasi.en-US.json'),
         import('./merope.en-US.json'),
         import('./errors.en-US.json'),
         import('./agentCaps.en-US.json'),
@@ -39,18 +39,18 @@ async function loadPack(locale: Locale): Promise<TranslationKeys> {
       return assembleLocale(core.default, {
         config: config.default,
         tapp: tapp.default,
-        brew: brew.default,
+        phantasi: phantasi.default,
         merope: merope.default,
         errors: errors.default,
         agentCaps: agentCaps.default,
       })
     }
     case 'ja-JP': {
-      const [core, config, tapp, brew, merope, errors, agentCaps] = await Promise.all([
+      const [core, config, tapp, phantasi, merope, errors, agentCaps] = await Promise.all([
         import('./ja-JP.json'),
         import('./config.ja-JP.json'),
         import('./tapp.ja-JP.json'),
-        import('./brew.ja-JP.json'),
+        import('./phantasi.ja-JP.json'),
         import('./merope.ja-JP.json'),
         import('./errors.ja-JP.json'),
         import('./agentCaps.ja-JP.json'),
@@ -58,18 +58,18 @@ async function loadPack(locale: Locale): Promise<TranslationKeys> {
       return assembleLocale(core.default, {
         config: config.default,
         tapp: tapp.default,
-        brew: brew.default,
+        phantasi: phantasi.default,
         merope: merope.default,
         errors: errors.default,
         agentCaps: agentCaps.default,
       })
     }
     case 'zh-TW': {
-      const [core, config, tapp, brew, merope, errors, agentCaps] = await Promise.all([
+      const [core, config, tapp, phantasi, merope, errors, agentCaps] = await Promise.all([
         import('./zh-TW.json'),
         import('./config.zh-TW.json'),
         import('./tapp.zh-TW.json'),
-        import('./brew.zh-TW.json'),
+        import('./phantasi.zh-TW.json'),
         import('./merope.zh-TW.json'),
         import('./errors.zh-TW.json'),
         import('./agentCaps.zh-TW.json'),
@@ -77,18 +77,18 @@ async function loadPack(locale: Locale): Promise<TranslationKeys> {
       return assembleLocale(core.default, {
         config: config.default,
         tapp: tapp.default,
-        brew: brew.default,
+        phantasi: phantasi.default,
         merope: merope.default,
         errors: errors.default,
         agentCaps: agentCaps.default,
       })
     }
     case 'ko-KR': {
-      const [core, config, tapp, brew, merope, errors, agentCaps] = await Promise.all([
+      const [core, config, tapp, phantasi, merope, errors, agentCaps] = await Promise.all([
         import('./ko-KR.json'),
         import('./config.ko-KR.json'),
         import('./tapp.ko-KR.json'),
-        import('./brew.ko-KR.json'),
+        import('./phantasi.ko-KR.json'),
         import('./merope.ko-KR.json'),
         import('./errors.ko-KR.json'),
         import('./agentCaps.ko-KR.json'),
@@ -96,18 +96,18 @@ async function loadPack(locale: Locale): Promise<TranslationKeys> {
       return assembleLocale(core.default, {
         config: config.default,
         tapp: tapp.default,
-        brew: brew.default,
+        phantasi: phantasi.default,
         merope: merope.default,
         errors: errors.default,
         agentCaps: agentCaps.default,
       })
     }
     case 'fr-FR': {
-      const [core, config, tapp, brew, merope, errors, agentCaps] = await Promise.all([
+      const [core, config, tapp, phantasi, merope, errors, agentCaps] = await Promise.all([
         import('./fr-FR.json'),
         import('./config.fr-FR.json'),
         import('./tapp.fr-FR.json'),
-        import('./brew.fr-FR.json'),
+        import('./phantasi.fr-FR.json'),
         import('./merope.fr-FR.json'),
         import('./errors.fr-FR.json'),
         import('./agentCaps.fr-FR.json'),
@@ -115,18 +115,18 @@ async function loadPack(locale: Locale): Promise<TranslationKeys> {
       return assembleLocale(core.default, {
         config: config.default,
         tapp: tapp.default,
-        brew: brew.default,
+        phantasi: phantasi.default,
         merope: merope.default,
         errors: errors.default,
         agentCaps: agentCaps.default,
       })
     }
     case 'de-DE': {
-      const [core, config, tapp, brew, merope, errors, agentCaps] = await Promise.all([
+      const [core, config, tapp, phantasi, merope, errors, agentCaps] = await Promise.all([
         import('./de-DE.json'),
         import('./config.de-DE.json'),
         import('./tapp.de-DE.json'),
-        import('./brew.de-DE.json'),
+        import('./phantasi.de-DE.json'),
         import('./merope.de-DE.json'),
         import('./errors.de-DE.json'),
         import('./agentCaps.de-DE.json'),
@@ -134,7 +134,7 @@ async function loadPack(locale: Locale): Promise<TranslationKeys> {
       return assembleLocale(core.default, {
         config: config.default,
         tapp: tapp.default,
-        brew: brew.default,
+        phantasi: phantasi.default,
         merope: merope.default,
         errors: errors.default,
         agentCaps: agentCaps.default,

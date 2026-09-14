@@ -13,7 +13,7 @@ export interface TappAIImageInput {
   width?: number | string
   height?: number | string
   /**
-   * Ordered PNG/JPEG/WebP base64 data URLs or /api/brew/image-cache/ paths.
+   * Ordered PNG/JPEG/WebP base64 data URLs or /api/phantasi/image-cache/ paths.
    * At most 4 images, at most 10 MiB of decoded image data in total.
    */
   referenceImages?: string[]
@@ -344,33 +344,6 @@ export interface TappSdk {
     release(...args: unknown[]): Promise<unknown> // permission: event:subscribe
     require(...args: unknown[]): Promise<unknown> // permission: event:subscribe
   }
-  brewList: {
-    addSource(...args: unknown[]): Promise<unknown> // permission: brew:manage
-    categories(...args: unknown[]): Promise<unknown> // permission: brew:read
-    createCategory(...args: unknown[]): Promise<unknown> // permission: brew:manage
-    createComment(...args: unknown[]): Promise<unknown> // permission: brew:commentWrite
-    createReply(...args: unknown[]): Promise<unknown> // permission: brew:commentWrite
-    deleteCategory(...args: unknown[]): Promise<unknown> // permission: brew:manage
-    deleteComment(...args: unknown[]): Promise<unknown> // permission: brew:commentWrite
-    deleteSource(...args: unknown[]): Promise<unknown> // permission: brew:manage
-    discover(...args: unknown[]): Promise<unknown> // permission: brew:manage
-    exportOpml(...args: unknown[]): Promise<unknown> // permission: brew:read
-    get(...args: unknown[]): Promise<unknown> // permission: brew:read
-    getComments(...args: unknown[]): Promise<unknown> // permission: brew:read
-    getReplies(...args: unknown[]): Promise<unknown> // permission: brew:read
-    importOpml(...args: unknown[]): Promise<unknown> // permission: brew:manage
-    list(...args: unknown[]): Promise<unknown> // permission: brew:read
-    markAllRead(...args: unknown[]): Promise<unknown> // permission: brew:write
-    markRead(...args: unknown[]): Promise<unknown> // permission: brew:write
-    markUnread(...args: unknown[]): Promise<unknown> // permission: brew:write
-    refreshSource(...args: unknown[]): Promise<unknown> // permission: brew:manage
-    sources(...args: unknown[]): Promise<unknown> // permission: brew:read
-    star(...args: unknown[]): Promise<unknown> // permission: brew:write
-    stats(...args: unknown[]): Promise<unknown> // permission: brew:read
-    unstar(...args: unknown[]): Promise<unknown> // permission: brew:write
-    updateComment(...args: unknown[]): Promise<unknown> // permission: brew:commentWrite
-    updateSource(...args: unknown[]): Promise<unknown> // permission: brew:manage
-  }
   component: {
     list(...args: unknown[]): Promise<unknown>
     registerAgent(...args: unknown[]): Promise<unknown> // permission: component:agent
@@ -505,6 +478,33 @@ export interface TappSdk {
   }
   persona: {
     get(...args: unknown[]): Promise<unknown>
+  }
+  phantasiList: {
+    addSource(...args: unknown[]): Promise<unknown> // permission: phantasi:manage
+    categories(...args: unknown[]): Promise<unknown> // permission: phantasi:read
+    createCategory(...args: unknown[]): Promise<unknown> // permission: phantasi:manage
+    createComment(...args: unknown[]): Promise<unknown> // permission: phantasi:commentWrite
+    createReply(...args: unknown[]): Promise<unknown> // permission: phantasi:commentWrite
+    deleteCategory(...args: unknown[]): Promise<unknown> // permission: phantasi:manage
+    deleteComment(...args: unknown[]): Promise<unknown> // permission: phantasi:commentWrite
+    deleteSource(...args: unknown[]): Promise<unknown> // permission: phantasi:manage
+    discover(...args: unknown[]): Promise<unknown> // permission: phantasi:manage
+    exportOpml(...args: unknown[]): Promise<unknown> // permission: phantasi:read
+    get(...args: unknown[]): Promise<unknown> // permission: phantasi:read
+    getComments(...args: unknown[]): Promise<unknown> // permission: phantasi:read
+    getReplies(...args: unknown[]): Promise<unknown> // permission: phantasi:read
+    importOpml(...args: unknown[]): Promise<unknown> // permission: phantasi:manage
+    list(...args: unknown[]): Promise<unknown> // permission: phantasi:read
+    markAllRead(...args: unknown[]): Promise<unknown> // permission: phantasi:write
+    markRead(...args: unknown[]): Promise<unknown> // permission: phantasi:write
+    markUnread(...args: unknown[]): Promise<unknown> // permission: phantasi:write
+    refreshSource(...args: unknown[]): Promise<unknown> // permission: phantasi:manage
+    sources(...args: unknown[]): Promise<unknown> // permission: phantasi:read
+    star(...args: unknown[]): Promise<unknown> // permission: phantasi:write
+    stats(...args: unknown[]): Promise<unknown> // permission: phantasi:read
+    unstar(...args: unknown[]): Promise<unknown> // permission: phantasi:write
+    updateComment(...args: unknown[]): Promise<unknown> // permission: phantasi:commentWrite
+    updateSource(...args: unknown[]): Promise<unknown> // permission: phantasi:manage
   }
   platform: {
     addItem(...args: unknown[]): Promise<unknown> // permission: platform:write

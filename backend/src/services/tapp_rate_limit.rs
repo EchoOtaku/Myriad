@@ -87,10 +87,10 @@ pub fn get_rate_limit_config(operation: &str) -> (u32, u64) {
         "platform.write" => (45, 60),
         // Storage autosave / multi-key writes are normal Tapp traffic.
         "storage.set" | "storage.clear" => (180, 60),
-        // Host-proxied brew mutations (grant-bearing only).
-        "brew.write" => (90, 60),
-        "brew.commentWrite" => (90, 60),
-        "brew.manage" => (30, 60),
+        // Host-proxied phantasi mutations (grant-bearing only).
+        "phantasi.write" => (90, 60),
+        "phantasi.commentWrite" => (90, 60),
+        "phantasi.manage" => (30, 60),
         // Host-proxied federation mutations.
         // post/interact: 90/min social class;
         // channel/room/ring 治理操作低频，与 files 同档。
@@ -112,16 +112,16 @@ pub fn get_rate_limit_config(operation: &str) -> (u32, u64) {
 
 /// Map a host-proxied [`TappPermission`] to a coarse rate-limit operation class.
 ///
-/// Returns `None` for pure-read permissions (`brew:read`, `federation:read`)
-/// and anything outside brew/federation/speech host proxies — those paths are
+/// Returns `None` for pure-read permissions (`phantasi:read`, `federation:read`)
+/// and anything outside phantasi/federation/speech host proxies — those paths are
 /// not subject to this host-attribution limiter. Callers must also skip safe
 /// HTTP methods (GET/HEAD/OPTIONS) so e.g. `GET /api/speech/voices` is not
 /// counted against `speech.tts`.
 pub fn host_write_rate_limit_operation(permission: TappPermission) -> Option<&'static str> {
     match permission {
-        TappPermission::BrewWrite => Some("brew.write"),
-        TappPermission::BrewCommentWrite => Some("brew.commentWrite"),
-        TappPermission::BrewManage => Some("brew.manage"),
+        TappPermission::PhantasiWrite => Some("phantasi.write"),
+        TappPermission::PhantasiCommentWrite => Some("phantasi.commentWrite"),
+        TappPermission::PhantasiManage => Some("phantasi.manage"),
         TappPermission::FederationPost => Some("federation.post"),
         TappPermission::FederationInteract => Some("federation.interact"),
         TappPermission::FederationChannel => Some("federation.channel"),
@@ -416,16 +416,16 @@ mod tests {
     #[test]
     fn host_write_permissions_map_to_operation_classes() {
         assert_eq!(
-            host_write_rate_limit_operation(TappPermission::BrewWrite),
-            Some("brew.write")
+            host_write_rate_limit_operation(TappPermission::PhantasiWrite),
+            Some("phantasi.write")
         );
         assert_eq!(
-            host_write_rate_limit_operation(TappPermission::BrewCommentWrite),
-            Some("brew.commentWrite")
+            host_write_rate_limit_operation(TappPermission::PhantasiCommentWrite),
+            Some("phantasi.commentWrite")
         );
         assert_eq!(
-            host_write_rate_limit_operation(TappPermission::BrewManage),
-            Some("brew.manage")
+            host_write_rate_limit_operation(TappPermission::PhantasiManage),
+            Some("phantasi.manage")
         );
         assert_eq!(
             host_write_rate_limit_operation(TappPermission::FederationPost),
@@ -472,7 +472,7 @@ mod tests {
     #[test]
     fn host_read_permissions_are_not_rate_limited() {
         assert_eq!(
-            host_write_rate_limit_operation(TappPermission::BrewRead),
+            host_write_rate_limit_operation(TappPermission::PhantasiRead),
             None
         );
         assert_eq!(
@@ -493,9 +493,9 @@ mod tests {
     #[test]
     fn host_write_rate_limit_defaults_are_sensible() {
         // (limit, window_secs) — tens–low hundreds / minute; manage/trust/speech stricter.
-        assert_eq!(get_rate_limit_config("brew.write"), (90, 60));
-        assert_eq!(get_rate_limit_config("brew.commentWrite"), (90, 60));
-        assert_eq!(get_rate_limit_config("brew.manage"), (30, 60));
+        assert_eq!(get_rate_limit_config("phantasi.write"), (90, 60));
+        assert_eq!(get_rate_limit_config("phantasi.commentWrite"), (90, 60));
+        assert_eq!(get_rate_limit_config("phantasi.manage"), (30, 60));
         assert_eq!(get_rate_limit_config("federation.post"), (90, 60));
         assert_eq!(get_rate_limit_config("federation.interact"), (90, 60));
         assert_eq!(get_rate_limit_config("federation.channel"), (60, 60));
@@ -508,7 +508,7 @@ mod tests {
         assert_eq!(get_rate_limit_config("speech.asr"), (45, 60));
 
         // Stricter classes stay below chatty ones.
-        assert!(get_rate_limit_config("brew.manage").0 < get_rate_limit_config("brew.write").0);
+        assert!(get_rate_limit_config("phantasi.manage").0 < get_rate_limit_config("phantasi.write").0);
         assert!(
             get_rate_limit_config("federation.trust").0
                 < get_rate_limit_config("federation.message").0

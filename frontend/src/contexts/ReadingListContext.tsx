@@ -8,7 +8,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
-import { brewSubject } from '../utils/brewSubject'
+import { phantasiSubject } from '../utils/phantasiSubject'
 
 export interface ReadingListItem {
   id: number
@@ -65,9 +65,9 @@ const ReadingListContext = createContext<ReadingListContextType | null>(null)
 
 export function ReadingListProvider({ children }: { children: ReactNode }) {
   const subject = useSyncExternalStore(
-    brewSubject.subscribe,
-    brewSubject.getSnapshot,
-    brewSubject.getSnapshot,
+    phantasiSubject.subscribe,
+    phantasiSubject.getSnapshot,
+    phantasiSubject.getSnapshot,
   )
   const [currentList, setCurrentListState] = useState<ReadingList | null>(null)
   const [progress, setProgress] = useState<ReadingProgress | null>(null)
@@ -174,7 +174,7 @@ export function ReadingListProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const handleSetReadingList = (event: CustomEvent<ReadingList>) => {
-      if (!brewSubject.getSnapshot().active) return
+      if (!phantasiSubject.getSnapshot().active) return
       console.log(
         '[ReadingListContext] Received set-reading-list event:',
         event.detail,

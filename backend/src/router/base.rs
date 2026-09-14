@@ -425,25 +425,25 @@ pub(super) fn build_base_api_router(
         .route("/api/config/site-icon", get(api::config::get_site_icon)) // 公开端点：站点图标字节（PWA 合成）
         .route("/api/config/public", get(api::config::get_public_config)) // 公开端点：平台公开信息（用于社交链接）
         .route("/api/config/ui", get(api::config::get_public_ui_config)) // 公开端点：UI 运行时（壁纸/动效/音乐/站点展示）
-        // SEO：sitemap / robots / 公开 Tapp·Brew 摘要与爬虫 HTML 壳
+        // SEO：sitemap / robots / 公开 Tapp·Phantasi 摘要与爬虫 HTML 壳
         .route("/sitemap.xml", get(api::seo::sitemap_xml))
         .route("/api/seo/sitemap.xml", get(api::seo::sitemap_xml))
-        .route("/brew/notes.xml", get(api::brew::notes_rss))
+        .route("/phantasi/notes.xml", get(api::phantasi::notes_rss))
         .route("/robots.txt", get(api::seo::robots_txt))
         .route("/llms.txt", get(api::seo::llms_txt))
         .route("/api/seo/llms.txt", get(api::seo::llms_txt))
         .route("/api/seo/tapp/{tapp_id}", get(api::seo::tapp_seo_summary))
         .route(
-            "/api/seo/brew/{item_id}",
-            get(api::seo::brew_item_seo_summary),
+            "/api/seo/phantasi/{item_id}",
+            get(api::seo::phantasi_item_seo_summary),
         )
         .merge(
             Router::new()
                 .route("/", get(api::seo::home_seo_html))
                 .route("/tapp", get(api::seo::tapp_list_seo_html))
                 .route("/tapp/run/{tapp_id}", get(api::seo::tapp_run_seo_html))
-                .route("/brew", get(api::seo::brew_list_seo_html))
-                .route("/brew/item/{item_id}", get(api::seo::brew_item_seo_html))
+                .route("/phantasi", get(api::seo::phantasi_list_seo_html))
+                .route("/phantasi/item/{item_id}", get(api::seo::phantasi_item_seo_html))
                 .route("/library", get(api::seo::library_seo_html))
                 .route("/reports", get(api::seo::reports_seo_html))
                 .layer(from_fn(api::seo::spa_document_bypass)),

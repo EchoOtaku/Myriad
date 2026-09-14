@@ -4,7 +4,7 @@ export const FILE_DOWNLOAD_CONTENT_MAX_BYTES = 32 * 1024 * 1024
 export const FILE_DOWNLOAD_BLOB_MAX_BYTES = 32 * 1024 * 1024
 
 const IMAGE_CACHE_FILE =
-  /^\/api\/brew\/image-cache\/([0-9a-f]{2})\/([0-9a-f]{64})\.(jpg|jpeg|png|gif|webp)$/i
+  /^\/api\/phantasi\/image-cache\/([0-9a-f]{2})\/([0-9a-f]{64})\.(jpg|jpeg|png|gif|webp)$/i
 const MODEL3D_ASSET =
   /^\/api\/model3d\/assets\/([0-9a-f]{64})$/i
 
@@ -27,7 +27,7 @@ function sitePathFromUrl(url: string): string | null {
     return null
   }
   const withoutQuery = url.split('#')[0]?.split('?')[0] ?? url
-  const cacheAt = withoutQuery.indexOf('/api/brew/image-cache/')
+  const cacheAt = withoutQuery.indexOf('/api/phantasi/image-cache/')
   if (cacheAt >= 0) return withoutQuery.slice(cacheAt)
   const modelAt = withoutQuery.indexOf('/api/model3d/assets/')
   if (modelAt >= 0) return withoutQuery.slice(modelAt)
@@ -45,7 +45,7 @@ export function parseHostDownloadUrl(url: string): HostDownloadRef | null {
     const ext = image[3].toLowerCase()
     if (!stem.startsWith(subdir)) return null
     return {
-      path: `/api/brew/image-cache/${subdir}/${stem}.${ext}`,
+      path: `/api/phantasi/image-cache/${subdir}/${stem}.${ext}`,
       defaultFilename: `image.${ext}`,
       mimeType: MIME_BY_EXT[ext] ?? 'application/octet-stream',
     }
@@ -66,7 +66,7 @@ export function parseHostDownloadUrl(url: string): HostDownloadRef | null {
 
 export function parseLocalImageCacheUrl(url: string): HostDownloadRef | null {
   const parsed = parseHostDownloadUrl(url)
-  if (!parsed?.path.startsWith('/api/brew/image-cache/')) return null
+  if (!parsed?.path.startsWith('/api/phantasi/image-cache/')) return null
   return parsed
 }
 

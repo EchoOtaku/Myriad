@@ -2,7 +2,7 @@ import type { TranslationKeys } from './assembleLocale'
 import type { Locale } from './locales'
 import agentCaps from './agentCaps.en-US.json' with { type: 'json' }
 import { assembleLocale } from './assembleLocale'
-import brew from './brew.en-US.json' with { type: 'json' }
+import phantasi from './phantasi.en-US.json' with { type: 'json' }
 import config from './config.en-US.json' with { type: 'json' }
 import core from './en-US.json' with { type: 'json' }
 import errors from './errors.en-US.json' with { type: 'json' }
@@ -15,7 +15,7 @@ import tapp from './tapp.en-US.json' with { type: 'json' }
 const enUS: TranslationKeys = assembleLocale(core, {
   config,
   tapp,
-  brew,
+  phantasi,
   merope,
   errors,
   agentCaps,

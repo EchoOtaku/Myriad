@@ -42,7 +42,7 @@ const GUEST_AUTHENTICATED_PERMISSION_KEYS = new Set([
   'federation_post',
   'federation_channel',
   'federation_room',
-  'brew_comment_write',
+  'phantasi_comment_write',
 ])
 export type AgentPermissionPreset = 'none' | 'chat' | 'standard' | 'elevated'
 
@@ -210,10 +210,10 @@ export const PermissionsConfigSection: React.FC<
       hint: t.tapp.permRoomFederationDesc,
     },
     {
-      key: 'brew_comment_write',
-      code: 'brew:commentWrite',
-      label: t.tapp.permCommentWriteBrew,
-      hint: t.tapp.permCommentWriteBrewDesc,
+      key: 'phantasi_comment_write',
+      code: 'phantasi:commentWrite',
+      label: t.tapp.permCommentWritePhantasi,
+      hint: t.tapp.permCommentWritePhantasiDesc,
     },
     {
       key: 'network_fetch',

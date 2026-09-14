@@ -18,10 +18,10 @@ export const AnalyticsEvents = {
 
   LIBRARY_FILTER: 'library_filter',
 
-  BREW_OPEN_SOURCE: 'brew_open_source',
-  BREW_OPEN_ITEM: 'brew_open_item',
-  BREW_STAR: 'brew_star',
-  BREW_UNSTAR: 'brew_unstar',
+  PHANTASI_OPEN_SOURCE: 'phantasi_open_source',
+  PHANTASI_OPEN_ITEM: 'phantasi_open_item',
+  PHANTASI_STAR: 'phantasi_star',
+  PHANTASI_UNSTAR: 'phantasi_unstar',
 
   REPORT_STAGE_OPEN: 'report_stage_open',
   REPORT_PLAY_ALL: 'report_play_all',
@@ -35,7 +35,7 @@ export const AnalyticsEvents = {
   TAPP_PLAYGROUND: 'tapp_playground',
 
   FRIEND_LINK_CLICK: 'friend_link_click',
-  FRIEND_LINKS_BREW: 'friend_links_brew',
+  FRIEND_LINKS_PHANTASI: 'friend_links_phantasi',
 
   THEME_SWITCH: 'theme_switch',
   LOCALE_SWITCH: 'locale_switch',

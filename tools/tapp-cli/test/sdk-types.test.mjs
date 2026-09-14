@@ -22,7 +22,7 @@ it('types AI task inputs and snapshots and rejects malformed inputs', async () =
       declare const sdk: TappSdk;
       sdk.ai.tasks.create({ version: 2, operation: 'image', input: {
         prompt: 'draw', width: '768px', height: 1024,
-        referenceImages: ['data:image/png;base64,AA==', '/api/brew/image-cache/aa/a.png'],
+        referenceImages: ['data:image/png;base64,AA==', '/api/phantasi/image-cache/aa/a.png'],
       }, output: { format: 'image' } });
       sdk.ai.tasks.create({ version: 2, operation: 'image', input: 'draw' });
       sdk.ai.tasks.create({ version: 2, operation: 'generate', input: { prompt: 'hello' } });

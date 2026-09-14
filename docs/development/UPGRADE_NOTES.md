@@ -1,5 +1,18 @@
 # 升级说明
 
+## Phantasi / 手帐品牌硬切（破坏性变更）
+
+Brew 内部名改为 Phantasi，用户界面改为 **手帐**（en: Journal）。**没有新的 SeaORM 迁移编号。** 绿场直接跑改名后的 `003_phantasi_system`。已有库在 `Migrator::up` 里、退役 007–020 清理之前，走一次性临时改名：把 `brew_*` 表、列内 URL/JSON、TAPP 批准权限和 `seaql_migrations` 的 `003_brew_system` 行改成 phantasi。两套表同时存在会启动失败。无 301，旧路径 `/brew`、`/api/brew`、`/api/brewlia`、`Tapp.brewList`、`brew:*` 一律失效。
+
+- **TAPP：** 批准列里的 `brew:read|write|manage|commentWrite` 会被改写成 `phantasi:*`。包内 Manifest 或源码仍声明 `brew:*` / 调用 `Tapp.brewList` 的安装校验与签发 fail-closed，站长必须改 Manifest 后更新或重装。退役串 `brew:comment` 不映射。
+- **卫星品牌：** `source_type=brewlia` 改为 `phantasiai`（界面「AI 增强」）；导出格式改为 `.pipack`。本机旧 `.brewpack` 不再能导入，从库重新导出。
+- **阅读器：** `/phantasi/item/{id}`、`/api/phantasi/ws`；浏览器里的 `brew-reader-settings` 不双读。
+- **联邦：** 本实例不再认对端的 `brew-article` / `brew-recommend`。
+- **RSS：** `/brew/notes.xml` 改为 `/phantasi/notes.xml`。
+- **磁盘：** 启动时若存在 `data/brew` 且没有 `data/phantasi`，会改名过去。
+
+临时改名机制（`backend/migrations/phantasi_legacy_rename.rs` 与 `myriad_phantasi::legacy`）在全实例升完后删除。
+
 ## TAPP 旧权限清理与重新授权
 
 本次升级会从**已安装** TAPP 的批准权限与授予权限两列中移除三项已退役的粗权限：`storage`、`brew:comment`、`federation:write`。这些权限名已从权限枚举中删除，继续保留会让已装应用读回即失败。仍然有效的 `ui:theme`、`media:control`、`brew:write` 会原样保留，不会触发重新授权标记。

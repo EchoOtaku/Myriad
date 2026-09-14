@@ -1,6 +1,6 @@
-//! Optional server-side Tapp attribution for host-proxied Brew / speech / federation REST.
+//! Optional server-side Tapp attribution for host-proxied Phantasi / speech / federation REST.
 //!
-//! Brew, speech, and federation are host capabilities that Tapp sandboxes reach
+//! Phantasi, speech, and federation are host capabilities that Tapp sandboxes reach
 //! through the same REST routes the host UI uses. When a request carries the
 //! `x-tapp-runtime-grant` header, this middleware validates the grant, enforces
 //! the permission mapped to the matched route, applies per-(subject, tapp,
@@ -28,7 +28,7 @@ use serde_json::json;
 use crate::middleware::auth::{Claims, verify_jwt_token};
 use crate::services::permission_service::TappPermission;
 use crate::services::tapp_host_attribution::{
-    self, brew_permission, error_codes, federation_permission, speech_permission,
+    self, phantasi_permission, error_codes, federation_permission, speech_permission,
 };
 
 use super::common::check_rate_limit;
@@ -63,7 +63,7 @@ async fn attribute_host_request(
     };
 
     // Speech and federation routes run behind auth_middleware and already carry
-    // Claims; Brew routes resolve identity per-handler, so fall back to the JWT
+    // Claims; Phantasi routes resolve identity per-handler, so fall back to the JWT
     // directly.
     let claims: Claims = match req.extensions().get::<Claims>().cloned() {
         Some(claims) => claims,
@@ -137,13 +137,13 @@ pub async fn speech_host_attribution(
     attribute_host_request(&db, req, next, speech_permission).await
 }
 
-/// Middleware for `/api/brew`: enforce and attribute grant-bearing requests.
-pub async fn brew_host_attribution(
+/// Middleware for `/api/phantasi`: enforce and attribute grant-bearing requests.
+pub async fn phantasi_host_attribution(
     State(db): State<DatabaseConnection>,
     req: Request,
     next: Next,
 ) -> Response {
-    attribute_host_request(&db, req, next, brew_permission).await
+    attribute_host_request(&db, req, next, phantasi_permission).await
 }
 
 /// Middleware for `/api/federation`: enforce and attribute grant-bearing requests.

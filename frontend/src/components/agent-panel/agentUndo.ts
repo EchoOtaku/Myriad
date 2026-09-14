@@ -10,7 +10,7 @@ export const ACTION_REVERSIBILITY: Record<
   music_get_status: 'readonly',
 
   navigate: 'undoable',
-  brew_open_article: 'undoable',
+  phantasi_open_article: 'undoable',
 
   // open_window returns true, not a window id
   open_window: 'irreversible',
@@ -36,7 +36,7 @@ export const ACTION_REVERSIBILITY: Record<
   download_file: 'irreversible',
 }
 
-export type UndoableActionType = 'navigate' | 'brew_open_article'
+export type UndoableActionType = 'navigate' | 'phantasi_open_article'
 
 export interface AgentUndoOffer {
   id: string

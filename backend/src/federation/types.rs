@@ -415,7 +415,7 @@ pub enum DistributionStrategy {
 #[serde(rename_all = "kebab-case")]
 pub enum RingType {
     TappStore,
-    BrewRecommend,
+    PhantasiRecommend,
     LibraryExchange,
     InstanceDirectory,
 }
@@ -466,12 +466,12 @@ pub enum Visibility {
     Direct,
 }
 
-/// 本文件枚举。线上 `ap_object` 分支是 note / report / brew-article / tapp / library。
+/// 本文件枚举。线上 `ap_object` 分支是 note / report / phantasi-article / tapp / library。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum FederatedContentType {
     Report,
-    BrewArticle,
+    PhantasiArticle,
     Library,
     Activity,
     Tapp,

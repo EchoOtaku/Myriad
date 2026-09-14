@@ -214,7 +214,7 @@ pub async fn get_avatar(
         }
     };
     let cached_path = cached_path
-        .strip_prefix("/api/brew/image-cache")
+        .strip_prefix("/api/phantasi/image-cache")
         .map(|path| format!("/api/federation/avatar-cache{}", path))
         .unwrap_or(cached_path);
 

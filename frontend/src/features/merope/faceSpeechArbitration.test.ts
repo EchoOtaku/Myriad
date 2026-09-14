@@ -282,7 +282,7 @@ test('notification center and engine cancel go through the gated Work/Chat helpe
 
 test('generic producer event keys are not persona speech', () => {
   assert.equal(
-    notificationCarriesMeropeSpeech({ event_key: 'brew.source_error' }),
+    notificationCarriesMeropeSpeech({ event_key: 'phantasi.source_error' }),
     false,
   )
   assert.equal(

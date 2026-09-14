@@ -89,8 +89,8 @@ pub(crate) fn build_federation_router(
         .route("/notes/{id}", get(federation::outbox::get_note))
         .route("/reports/{id}", get(federation::outbox::get_report))
         .route(
-            "/brew/articles/{id}",
-            get(federation::outbox::get_brew_article),
+            "/phantasi/articles/{id}",
+            get(federation::outbox::get_phantasi_article),
         )
         .route("/tapps/{id}", get(federation::outbox::get_tapp))
         .route("/library/{id}", get(federation::outbox::get_library))

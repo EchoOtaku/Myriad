@@ -586,7 +586,7 @@ export function registerFileHandlers(bridge: TappBridge): void {
           return {
             success: false,
             error:
-              'Only local /api/brew/image-cache images or /api/model3d/assets models can be downloaded',
+              'Only local /api/phantasi/image-cache images or /api/model3d/assets models can be downloaded',
           }
         }
         const downloadName = filename || asset.defaultFilename

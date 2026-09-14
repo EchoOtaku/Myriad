@@ -219,10 +219,10 @@ mod tests {
             "My Site",
             "A personal hub.",
             Some("https://ex.com"),
-            &[("Home", "/"), ("Brew", "/brew")],
+            &[("Home", "/"), ("Phantasi", "/phantasi")],
         );
         assert!(body.contains("# My Site"));
-        assert!(body.contains("[Brew](https://ex.com/brew)"));
+        assert!(body.contains("[Phantasi](https://ex.com/phantasi)"));
     }
 
     #[test]
@@ -231,9 +231,9 @@ mod tests {
             "My Site",
             "A personal hub.",
             None,
-            &[("Home", "/"), ("Brew", "/brew")],
+            &[("Home", "/"), ("Phantasi", "/phantasi")],
         );
-        assert!(body.contains("[Brew](/brew)"));
+        assert!(body.contains("[Phantasi](/phantasi)"));
         assert!(!body.contains("https://"));
     }
 

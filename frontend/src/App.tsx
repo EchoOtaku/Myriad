@@ -57,7 +57,7 @@ const TappBackgroundRunner = lazy(
 
 const Home = lazy(() => import('./views/Home.tsx'))
 const Library = lazy(() => import('./views/Library.tsx'))
-const Brew = lazy(() => import('./views/Brew.tsx'))
+const Phantasi = lazy(() => import('./views/Phantasi.tsx'))
 const Reports = lazy(() => import('./views/Reports.tsx'))
 const Config = lazy(() => import('./views/Config.tsx'))
 const AgentSettings = lazy(() => import('./views/AgentSettings.tsx'))
@@ -461,13 +461,13 @@ function AppRoutes() {
             </ModuleVisibilityGuard>
           }
         />
-        {/* /brew/* 单路由，避免 /brew ↔ /brew/item/:id remount 丢阅读器状态。 */}
+        {/* /phantasi/* 单路由，避免 /phantasi ↔ /phantasi/item/:id remount 丢阅读器状态。 */}
         <Route
-          path="/brew/*"
+          path="/phantasi/*"
           element={
-            <ModuleVisibilityGuard moduleKey="brew">
+            <ModuleVisibilityGuard moduleKey="phantasi">
               <SuspensePage>
-                <Brew />
+                <Phantasi />
               </SuspensePage>
             </ModuleVisibilityGuard>
           }
@@ -475,11 +475,11 @@ function AppRoutes() {
         {/* DEV 专用磁贴预览。lazy() 必须写在 DEV 分支里面，否则动态 import 仍会打进生产 chunk。 */}
         {import.meta.env.DEV && (
           <Route
-            path="/dev/brew-tiles"
+            path="/dev/phantasi-tiles"
             element={
               <SuspensePage>
                 {React.createElement(
-                  lazy(() => import('./views/BrewTilePreview.tsx')),
+                  lazy(() => import('./views/PhantasiTilePreview.tsx')),
                 )}
               </SuspensePage>
             }

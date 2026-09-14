@@ -7,8 +7,8 @@ mod initial_schema;
 #[path = "002_tapp_system.rs"]
 mod tapp_system;
 
-#[path = "003_brew_system.rs"]
-mod brew_system;
+#[path = "003_phantasi_system.rs"]
+mod phantasi_system;
 
 #[path = "004_agent_system.rs"]
 mod agent_system;
@@ -19,8 +19,10 @@ mod federation;
 #[path = "006_oauth_identities.rs"]
 mod oauth_identities;
 
+mod phantasi_legacy_rename;
 mod retired_history;
 
+pub use phantasi_legacy_rename::rename_brew_to_phantasi_if_needed;
 pub use retired_history::{RETIRED_MIGRATION_NAMES, purge_retired_migration_history};
 
 pub struct Migrator;
@@ -36,6 +38,7 @@ impl Migrator {
         C: IntoSchemaManagerConnection<'c>,
     {
         let executor = db.into_database_executor();
+        rename_brew_to_phantasi_if_needed(&executor).await?;
         purge_retired_migration_history(&executor).await?;
         <Self as MigratorTrait>::up(executor, steps).await
     }
@@ -47,7 +50,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(initial_schema::Migration),
             Box::new(tapp_system::Migration),
-            Box::new(brew_system::Migration),
+            Box::new(phantasi_system::Migration),
             Box::new(agent_system::Migration),
             Box::new(federation::Migration),
             Box::new(oauth_identities::Migration),
@@ -74,7 +77,7 @@ mod tests {
             [
                 "001_initial_schema",
                 "002_tapp_system",
-                "003_brew_system",
+                "003_phantasi_system",
                 "004_agent_system",
                 "005_federation",
                 "006_oauth_identities",

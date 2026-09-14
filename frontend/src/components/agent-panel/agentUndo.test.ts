@@ -23,7 +23,7 @@ test('每一种前端操作都表过态，没有漏网的', () => {
     'agent_interaction',
     'navigate',
     'page_interact',
-    'brew_open_article',
+    'phantasi_open_article',
     'music_control',
     'music_get_status',
     'music_load_playlist',
@@ -51,7 +51,7 @@ test('认不出来的类型按退不回去算', () => {
 test('换过路由的操作能原路退回', () => {
   const offer = planAgentUndo({
     action: action('navigate', '/library'),
-    beforePath: '/brew?tag=ai',
+    beforePath: '/phantasi?tag=ai',
     afterPath: '/library',
     nowMs: NOW,
   })
@@ -59,27 +59,27 @@ test('换过路由的操作能原路退回', () => {
   assert.ok(offer)
   assert.equal(offer.actionType, 'navigate')
   assert.equal(offer.inverse.type, 'navigate')
-  assert.equal(offer.inverse.path, '/brew?tag=ai')
+  assert.equal(offer.inverse.path, '/phantasi?tag=ai')
   assert.equal(offer.expiresAtMs, NOW + UNDO_WINDOW_MS)
 })
 
 test('打开文章也算换路由，同样能退', () => {
   const offer = planAgentUndo({
-    action: action('brew_open_article'),
-    beforePath: '/brew',
-    afterPath: '/brew/item/42',
+    action: action('phantasi_open_article'),
+    beforePath: '/phantasi',
+    afterPath: '/phantasi/item/42',
     nowMs: NOW,
   })
-  assert.equal(offer?.actionType, 'brew_open_article')
-  assert.equal(offer?.inverse.path, '/brew')
+  assert.equal(offer?.actionType, 'phantasi_open_article')
+  assert.equal(offer?.inverse.path, '/phantasi')
 })
 
 test('路由没真的变过就没有可撤销的东西', () => {
   assert.equal(
     planAgentUndo({
-      action: action('navigate', '/brew'),
-      beforePath: '/brew',
-      afterPath: '/brew',
+      action: action('navigate', '/phantasi'),
+      beforePath: '/phantasi',
+      afterPath: '/phantasi',
       nowMs: NOW,
     }),
     null,
@@ -97,7 +97,7 @@ test('退不回去的操作不给假的撤销', () => {
     assert.equal(
       planAgentUndo({
         action: action(type),
-        beforePath: '/brew',
+        beforePath: '/phantasi',
         afterPath: '/library',
         nowMs: NOW,
       }),
@@ -113,7 +113,7 @@ test('只是问了一句的操作也没有可撤销的东西', () => {
     assert.equal(
       planAgentUndo({
         action: action(type),
-        beforePath: '/brew',
+        beforePath: '/phantasi',
         afterPath: '/library',
         nowMs: NOW,
       }),

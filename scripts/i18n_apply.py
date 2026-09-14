@@ -193,7 +193,7 @@ SEARCH_KEYWORDS = {
             "toast",
             "browser",
             "arael",
-            "brew",
+            "phantasi",
             "tapp",
             "mcp",
             "aro",
@@ -428,7 +428,7 @@ SEARCH_KEYWORDS = {
             "toast",
             "browser",
             "arael",
-            "brew",
+            "phantasi",
             "tapp",
             "mcp",
             "aro",
@@ -646,7 +646,7 @@ SEARCH_KEYWORDS = {
             "toast",
             "browser",
             "arael",
-            "brew",
+            "phantasi",
             "tapp",
             "mcp",
         ],
@@ -808,10 +808,10 @@ def inject_search_keywords() -> None:
 def patch_icu() -> None:
     replacements = {
         ROOT / "frontend/src/i18n/errors.en-US.json": {
-            "noticeBrewNewItems": "{name} · {n, plural, one {# new item} other {# new items}}",
-            "noticeBrewNewItemsBody": "{n, plural, one {# new item found} other {# new items found}}",
+            "noticePhantasiNewItems": "{name} · {n, plural, one {# new item} other {# new items}}",
+            "noticePhantasiNewItemsBody": "{n, plural, one {# new item found} other {# new items found}}",
         },
-        ROOT / "frontend/src/i18n/brew.en-US.json": {
+        ROOT / "frontend/src/i18n/phantasi.en-US.json": {
             "articlesCount": "{count, plural, one {# article} other {# articles}}",
             "totalArticles": "{count, plural, one {# article} other {# articles}}",
             "starredCount": "{count, plural, one {# starred} other {# starred}}",

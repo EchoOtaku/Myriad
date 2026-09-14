@@ -106,7 +106,7 @@ Chat / Work · panel
 </td>
 <td width="33%" valign="top">
 
-**Brew** `/brew`  
+**Phantasi** (Journal) `/phantasi`  
 RSS · Notion · RSSHub
 
 </td>
@@ -119,13 +119,13 @@ ActivityPub · MFP
 </tr>
 </table>
 
-`/config` is admin-only. Library, Brew, Reports, Tapp, Agent: everyone / signed-in / admins.
+`/config` is admin-only. Library, Phantasi, Reports, Tapp, Agent: everyone / signed-in / admins.
 
 ---
 
 ## Contents
 
-**Product** — [Homepage](#homepage) · [Platforms](#platforms) · [Library](#library-and-reports) · [Persona](#persona-and-25d-face) · [Tapp](#tapp) · [Agent](#agent) · [Brew](#brew) · [Federation](#federation) · [Accounts](#accounts-and-visibility)
+**Product** — [Homepage](#homepage) · [Platforms](#platforms) · [Library](#library-and-reports) · [Persona](#persona-and-25d-face) · [Tapp](#tapp) · [Agent](#agent) · [Phantasi](#phantasi) · [Federation](#federation) · [Accounts](#accounts-and-visibility)
 
 **Run** — [Requirements](#requirements) · [Deploy](#deploy) · [Dev](#local-development) · [Operations](#operations)
 
@@ -144,7 +144,7 @@ ActivityPub · MFP
 | --- | --- |
 | Welcome | Agent persona (live 2.5D; one playback at a time) |
 | Quick stats · recent activity · visitors | Weather · daily quote · music |
-| Friend links (Brew) · social · Tapp shortcuts | miHoYo game presence · per-platform report cards |
+| Friend links (Phantasi) · social · Tapp shortcuts | miHoYo game presence · per-platform report cards |
 
 Installed Tapps may register homepage widgets.
 
@@ -270,11 +270,11 @@ MCP servers: admin AI settings; hot-reload on save.
 
 ---
 
-## Brew
+## Phantasi
 
-RSS, Notion, RSSHub. Default: anyone can read. Signed-in users mark read and save. Admins manage sources. Friend links can appear on the homepage.
+Internal name for the Journal (zh: 手帐, ja/zh-TW: 手帳, ko: 수첩). RSS, Notion, RSSHub. Default: anyone can read. Signed-in users mark read and save. Admins manage sources. Friend links can appear on the homepage.
 
-Own articles: `/brew/item/...`. Crawlers receive an HTML shell; browsers receive the app.
+Own articles: `/phantasi/item/...`. Crawlers receive an HTML shell; browsers receive the app.
 
 ---
 
@@ -292,7 +292,7 @@ Notes: [Federation](docs/development/FEDERATION.md). Federated domain move ≠ o
 
 - **Local accounts** after owner creation. Registration on/off. Per-user password login can be disabled after OAuth is linked.
 - **OAuth:** built-in GitHub plus arbitrary OIDC (Authentik, Keycloak, Google, Microsoft, GitLab, Discord, …). Identities bind explicitly; the same email on two issuers is not merged.
-- **Module visibility:** Library, Brew, Reports, Tapp, Agent — everyone / signed-in / admins.
+- **Module visibility:** Library, Phantasi, Reports, Tapp, Agent — everyone / signed-in / admins.
 - **Search & AI:** private (noindex, empty sitemap, no `/llms.txt`), search engines only, AI citations, or fully open.
 - **Site identity:** name, blurb, icon, optional PWA, wallpaper and theme, first-party visitor stats, optional Google Analytics / Umami.
 
@@ -431,7 +431,7 @@ host HTTP_PORT
 
 </details>
 
-Crawler / in-app-share user-agents receive an SEO HTML shell for Home, Library, Brew, Reports, and Tapp; browsers receive the SPA. [Architecture](docs/development/ARCHITECTURE.md).
+Crawler / in-app-share user-agents receive an SEO HTML shell for Home, Library, Phantasi, Reports, and Tapp; browsers receive the SPA. [Architecture](docs/development/ARCHITECTURE.md).
 
 ---
 

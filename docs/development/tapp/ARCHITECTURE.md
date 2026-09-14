@@ -81,7 +81,7 @@ flowchart LR
 | Manifest 契约 | `crates/tapp-contract/src/manifest.rs`                  | 可安装 `TappManifest`（`deny_unknown_fields`）、声明能力、Widget/设置/API 数据结构 |
 | 权限/路径契约 | `crates/tapp-contract/`                                 | 权限目录、存储键与路径校验、Manifest 校验、宿主 CSS 固定路径；不含授予、HMAC、transform 求值 |
 | Tapp 纯规则 | `crates/myriad-tapp-rules/`                             | HMAC、transform pipeline、已安装资源计划、federation feed、package fs/prepared；backend 对应模块 `pub use` |
-| Agent 纯规则 | `crates/myriad-agent-rules/`                            | 文本上限、brew/MCP/scrape 策略、retry/task 投影；backend `*_pure.rs` `pub use` |
+| Agent 纯规则 | `crates/myriad-agent-rules/`                            | 文本上限、phantasi/MCP/scrape 策略、retry/task 投影；backend `*_pure.rs` `pub use` |
 | Tapp 目录查询 | `backend/src/api/tapp_store/catalog.rs`                  | 角色权限过滤、private-first 列表与详情查询          |
 | Manifest 校验 | `backend/src/api/tapp_store/validation.rs`              | 路径、权限、资源配额及声明能力的纯校验边界          |
 | 包文件生命周期 | `backend/src/api/tapp_store/package_files.rs`           | staging/activate/recovery、资源读写与归档安全边界   |
@@ -330,11 +330,11 @@ runtime ID 和最终权限；停止、更新、卸载或 Bridge 销毁会撤销�
 第二次失败直接返回，避免无限重试。SSE 被撤销后重连也走同一规则。
 
 公开商店/Tapp 列表读取和 scheduler 的宿主共享 WebSocket 不属于
-单个沙箱请求，不要求 Runtime Grant。Brew、语音与联邦这三类宿主代理路径已接入统一服务端归因：
-沙箱 handler 调用 `/api/brew`、`/api/speech`、`/api/federation` 时附带
+单个沙箱请求，不要求 Runtime Grant。Phantasi、语音与联邦这三类宿主代理路径已接入统一服务端归因：
+沙箱 handler 调用 `/api/phantasi`、`/api/speech`、`/api/federation` 时附带
 `X-Tapp-Runtime-Grant`，宿主中间件校验 Grant、按“方法 + 路由”映射强制对应 Tapp 权限
 （映射与沙箱 `PERMISSION_MAP` / `permissionConfig` 一致），未映射的宿主专用路由
-（Brew WebSocket、RSSHub 实例管理、缓存管理、离线同步，以及联邦 E2E 密钥交换等）对带 Grant 的
+（Phantasi WebSocket、RSSHub 实例管理、缓存管理、离线同步，以及联邦 E2E 密钥交换等）对带 Grant 的
 请求直接拒绝；不带 Grant 头的宿主 UI 请求不受影响。联邦 Channel/Room 的浏览器 WebSocket
 升级无法携带自定义头，因此 Bridge 先通过带 Grant 的 `POST .../ws-ticket` 换取短时、单次票据，
 再用 `?tapp_ws_ticket=` 升级；票据按 subject、Tapp、runtime 与目标 Channel/Room 绑定，消费后即删除。
@@ -350,7 +350,7 @@ runtime ID 和最终权限；停止、更新、卸载或 Bridge 销毁会撤销�
 Page 是完整面（含 `Tapp.game`、联邦、tappList、model3d）。
 Widget 为减小能力面和启动成本，只提供生命周期、UI、用户角色、存储、文件、AI Task、
 平台/报告读取、上下文/人设名片/声明 API、媒体、语音、动画、事件、一次性数据交换、
-Agent Interaction、常驻需求和调度；平台与报告写、Tapp/Brew 管理、组件、快捷键、
+Agent Interaction、常驻需求和调度；平台与报告写、Tapp/Phantasi 管理、组件、快捷键、
 联邦和 `Tapp.game` 不会进入 Widget。
 
 headless（常驻）保留 storage、scheduler、event、联邦、`Tapp.game`、AI、报告、人设名片等
@@ -394,7 +394,7 @@ owner 改变则令牌失效并由宿主重新签发。
 `analytics:read`（**仅** visitor-card 聚合；完整 admin summary 在 handler 内按 Admin 角色
 门控，见 `tapp_runtime/analytics.rs`）。下列能力的真实后端路由仍要求**持久登录**主体，
 不会仅因 broad level 为 basic/elevated 就出现在访客 Grant 中：`report:read`、统一通知、
-组件/快捷键注册、scheduler、语音服务、Brew 写入/评论、`platform:write`。动态 Widget 的
+组件/快捷键注册、scheduler、语音服务、Phantasi 写入/评论、`platform:write`。动态 Widget 的
 注册与注销属于 `privileged` 控制面，只允许当前管理员调用。
 
 ## 调度器

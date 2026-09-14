@@ -1160,10 +1160,10 @@ impl Agent {
         task_state: &TaskState,
         capability_ids: &[String],
     ) -> bool {
-        // brew.generateReadingList 仅在步骤参数显式开启时允许 web
+        // phantasi.generateReadingList 仅在步骤参数显式开启时允许 web
         if let Some(recipe) = &task_state.recipe {
             for step in &recipe.steps {
-                if step.capability_id == "brew.generateReadingList" {
+                if step.capability_id == "phantasi.generateReadingList" {
                     let flag = step
                         .params
                         .get("allowWebSearch")
@@ -1177,7 +1177,7 @@ impl Agent {
                 }
             }
         }
-        // 本地域（brew / platform / search.fuzzy / config.get / library）默认禁止 web 升级。
+        // 本地域（phantasi / platform / search.fuzzy / config.get / library）默认禁止 web 升级。
         let has_local = capability_ids
             .iter()
             .any(|id| escalation::is_local_data_capability(id));
@@ -1261,17 +1261,17 @@ impl Agent {
         if let Some(reason) = &eval.reason {
             hints.push(format!("Failure reason: {reason}"));
         }
-        // notFound suggestions: replan first — retry brew with a suggested value, never webSearch
+        // notFound suggestions: replan first — retry phantasi with a suggested value, never webSearch
         if !eval.suggested_retry_values.is_empty() {
             let joined = eval.suggested_retry_values.join(" / ");
-            let brew_cap = ctx
+            let phantasi_cap = ctx
                 .capability_ids
                 .iter()
-                .find(|id| id.starts_with("brew."))
+                .find(|id| id.starts_with("phantasi."))
                 .map(|s| s.as_str())
-                .unwrap_or("brew.items");
+                .unwrap_or("phantasi.items");
             hints.push(format!(
-                "[Highest priority] Retry with {brew_cap}, setting sourceName/name/query/author to one of: {joined}. Do not use ai.webSearch"
+                "[Highest priority] Retry with {phantasi_cap}, setting sourceName/name/query/author to one of: {joined}. Do not use ai.webSearch"
             ));
         }
         for hint in &eval.improvement_hints {
@@ -1282,7 +1282,7 @@ impl Agent {
                 "Try a web search capability (ai.webSearch or ai.groundingSearch)".to_string(),
             );
         } else if eval.suggests_local_alternatives {
-            // Local brew miss: force replan onto brew.page / search.fuzzy / brew.items
+            // Local phantasi miss: force replan onto phantasi.page / search.fuzzy / phantasi.items
             let already_forbids = eval.improvement_hints.iter().any(|h| {
                 h.contains("禁止使用 ai.webSearch")
                     || h.contains("禁止改用 ai.webSearch")
@@ -1290,14 +1290,14 @@ impl Agent {
             });
             if !already_forbids {
                 hints.push(
-                    "Do not use ai.webSearch / ai.groundingSearch; prefer brew.page, search.fuzzy, or brew.items (relax parameters)"
+                    "Do not use ai.webSearch / ai.groundingSearch; prefer phantasi.page, search.fuzzy, or phantasi.items (relax parameters)"
                         .to_string(),
                 );
             }
         }
         if hints.is_empty() {
             if eval.suggests_local_alternatives {
-                "Previous local data result was empty. Use brew.page / search.fuzzy / brew.items with a broader query, or ask the user. Do not search the web."
+                "Previous local data result was empty. Use phantasi.page / search.fuzzy / phantasi.items with a broader query, or ask the user. Do not search the web."
                     .to_string()
             } else {
                 "Previous result was empty or did not meet the goal. Try another capability or a web search.".to_string()

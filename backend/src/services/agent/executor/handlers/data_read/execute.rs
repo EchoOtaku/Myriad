@@ -1,9 +1,9 @@
 use super::super::HandlerContext;
-use super::brew::{
-    execute_brew_article, execute_brew_items, execute_brew_read, execute_brew_sources,
-    execute_brew_stats,
+use super::phantasi::{
+    execute_phantasi_article, execute_phantasi_items, execute_phantasi_read, execute_phantasi_sources,
+    execute_phantasi_stats,
 };
-use super::brew_generate::execute_brew_generate_reading_list;
+use super::phantasi_generate::execute_phantasi_generate_reading_list;
 use super::catalog::{
     execute_context_reference, execute_database_query, execute_heartbeat_list,
     execute_metadata_history, execute_platform_connection, execute_profile_summary,
@@ -15,10 +15,10 @@ use super::extras_platform::{
     execute_bilibili_bangumi, execute_github_repos, execute_netease_playlist,
     execute_netease_search_playlist, execute_steam_wishlist,
 };
-use super::pages::{execute_brew_page_content, execute_tapp_page_content};
+use super::pages::{execute_phantasi_page_content, execute_tapp_page_content};
 use super::permission::{execute_permission_check, execute_tapp_widget};
 use super::platform::{execute_platform_read, execute_platform_stats};
-use super::rsshub::execute_brew_discover;
+use super::rsshub::execute_phantasi_discover;
 use super::search::execute_fuzzy_search;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -31,14 +31,14 @@ pub async fn execute(
     match capability_id {
         "platform.read" => execute_platform_read(params).await,
         "platform.stats" => execute_platform_stats(params).await,
-        "brew.read" => execute_brew_read(params, ctx).await,
-        "brew.sources" => execute_brew_sources(params, ctx).await,
-        "brew.items" => execute_brew_items(params, ctx).await,
-        "brew.article" => execute_brew_article(params, ctx).await,
-        "brew.stats" => execute_brew_stats(params, ctx).await,
-        "brew.discover" => execute_brew_discover(params, ctx).await,
-        "brew.page" => execute_brew_page_content(params, ctx).await,
-        "brew.generateReadingList" => execute_brew_generate_reading_list(params, ctx).await,
+        "phantasi.read" => execute_phantasi_read(params, ctx).await,
+        "phantasi.sources" => execute_phantasi_sources(params, ctx).await,
+        "phantasi.items" => execute_phantasi_items(params, ctx).await,
+        "phantasi.article" => execute_phantasi_article(params, ctx).await,
+        "phantasi.stats" => execute_phantasi_stats(params, ctx).await,
+        "phantasi.discover" => execute_phantasi_discover(params, ctx).await,
+        "phantasi.page" => execute_phantasi_page_content(params, ctx).await,
+        "phantasi.generateReadingList" => execute_phantasi_generate_reading_list(params, ctx).await,
         "tapp.page" => execute_tapp_page_content(params, ctx).await,
         "search.fuzzy" => execute_fuzzy_search(params, ctx).await,
         "config.get" => execute_config_get(params).await,
@@ -89,14 +89,14 @@ mod dispatcher_contract_tests {
         for id in [
             "platform.read",
             "platform.stats",
-            "brew.read",
-            "brew.sources",
-            "brew.items",
-            "brew.article",
-            "brew.stats",
-            "brew.discover",
-            "brew.page",
-            "brew.generateReadingList",
+            "phantasi.read",
+            "phantasi.sources",
+            "phantasi.items",
+            "phantasi.article",
+            "phantasi.stats",
+            "phantasi.discover",
+            "phantasi.page",
+            "phantasi.generateReadingList",
             "tapp.page",
             "search.fuzzy",
             "config.get",

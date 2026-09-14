@@ -55,7 +55,7 @@ pub fn tapp_permission_replacement_hint(permission: &str) -> Option<&'static str
             "use 'federation:post', 'federation:interact', 'federation:channel', 'federation:room', or 'federation:ring' instead; update the TAPP Manifest, then update or reinstall the app",
         ),
         "brew:comment" => {
-            Some("use 'brew:read' (read comments) or 'brew:commentWrite' (write comments) instead")
+            Some("use 'phantasi:read' (read comments) or 'phantasi:commentWrite' (write comments) instead")
         }
         _ => None,
     }
@@ -127,11 +127,11 @@ pub enum TappPermission {
     AnalyticsRead,
     #[serde(rename = "tappList:read")]
     TappListRead,
-    #[serde(rename = "brew:read")]
-    BrewRead,
+    #[serde(rename = "phantasi:read")]
+    PhantasiRead,
     /// 修改当前用户自己的阅读状态与收藏（Basic，需登录主体）。
-    #[serde(rename = "brew:write")]
-    BrewWrite,
+    #[serde(rename = "phantasi:write")]
+    PhantasiWrite,
     #[serde(rename = "report:read")]
     ReportRead,
     #[serde(rename = "storage:read")]
@@ -220,9 +220,9 @@ pub enum TappPermission {
     SpeechAsr,
     #[serde(rename = "storage:write")]
     StorageWrite,
-    /// 创建/更新/删除 Brew 评论与回复（Elevated，需登录主体）。
-    #[serde(rename = "brew:commentWrite")]
-    BrewCommentWrite,
+    /// 创建/更新/删除 Phantasi 评论与回复（Elevated，需登录主体）。
+    #[serde(rename = "phantasi:commentWrite")]
+    PhantasiCommentWrite,
 
     // Privileged 级别
     #[serde(rename = "widget:register")]
@@ -235,8 +235,8 @@ pub enum TappPermission {
     ComponentAgent,
     #[serde(rename = "tappList:manage")]
     TappListManage,
-    #[serde(rename = "brew:manage")]
-    BrewManage,
+    #[serde(rename = "phantasi:manage")]
+    PhantasiManage,
     #[serde(rename = "federation:trust")]
     FederationTrust,
 }
@@ -247,8 +247,8 @@ impl TappPermission {
         TappPermission::PlatformRead,
         TappPermission::AnalyticsRead,
         TappPermission::TappListRead,
-        TappPermission::BrewRead,
-        TappPermission::BrewWrite,
+        TappPermission::PhantasiRead,
+        TappPermission::PhantasiWrite,
         TappPermission::ReportRead,
         TappPermission::StorageRead,
         TappPermission::UiNotification,
@@ -284,13 +284,13 @@ impl TappPermission {
         TappPermission::SpeechTts,
         TappPermission::SpeechAsr,
         TappPermission::StorageWrite,
-        TappPermission::BrewCommentWrite,
+        TappPermission::PhantasiCommentWrite,
         TappPermission::WidgetRegister,
         TappPermission::PlatformWrite,
         TappPermission::PlatformRegister,
         TappPermission::ComponentAgent,
         TappPermission::TappListManage,
-        TappPermission::BrewManage,
+        TappPermission::PhantasiManage,
         TappPermission::FederationTrust,
     ];
 
@@ -304,8 +304,8 @@ impl TappPermission {
     pub fn requires_authenticated_subject(&self) -> bool {
         matches!(
             self,
-            TappPermission::BrewWrite
-                | TappPermission::BrewCommentWrite
+            TappPermission::PhantasiWrite
+                | TappPermission::PhantasiCommentWrite
                 | TappPermission::ReportRead
                 | TappPermission::UiNotification
                 | TappPermission::ComponentTheme
@@ -346,8 +346,8 @@ impl TappPermission {
             TappPermission::PlatformRead
             | TappPermission::AnalyticsRead
             | TappPermission::TappListRead
-            | TappPermission::BrewRead
-            | TappPermission::BrewWrite
+            | TappPermission::PhantasiRead
+            | TappPermission::PhantasiWrite
             | TappPermission::ReportRead
             | TappPermission::StorageRead
             | TappPermission::UiNotification
@@ -384,7 +384,7 @@ impl TappPermission {
             TappPermission::FederationPost
             | TappPermission::FederationChannel
             | TappPermission::FederationRoom => PermissionLevel::Elevated,
-            TappPermission::BrewCommentWrite => PermissionLevel::Elevated,
+            TappPermission::PhantasiCommentWrite => PermissionLevel::Elevated,
 
             // Privileged
             TappPermission::WidgetRegister
@@ -392,7 +392,7 @@ impl TappPermission {
             | TappPermission::PlatformRegister
             | TappPermission::ComponentAgent
             | TappPermission::TappListManage
-            | TappPermission::BrewManage
+            | TappPermission::PhantasiManage
             | TappPermission::FederationTrust
             | TappPermission::ReportWrite => PermissionLevel::Privileged,
         }
@@ -418,7 +418,7 @@ impl TappPermission {
             TappPermission::FederationPost,
             TappPermission::FederationChannel,
             TappPermission::FederationRoom,
-            TappPermission::BrewCommentWrite,
+            TappPermission::PhantasiCommentWrite,
         ]
     }
 
@@ -430,8 +430,8 @@ impl TappPermission {
             "platform:read" => Some(TappPermission::PlatformRead),
             "analytics:read" => Some(TappPermission::AnalyticsRead),
             "tappList:read" => Some(TappPermission::TappListRead),
-            "brew:read" => Some(TappPermission::BrewRead),
-            "brew:write" => Some(TappPermission::BrewWrite),
+            "phantasi:read" => Some(TappPermission::PhantasiRead),
+            "phantasi:write" => Some(TappPermission::PhantasiWrite),
             "platform:write" => Some(TappPermission::PlatformWrite),
             "platform:register" => Some(TappPermission::PlatformRegister),
             "report:read" => Some(TappPermission::ReportRead),
@@ -455,7 +455,7 @@ impl TappPermission {
             "component:theme" => Some(TappPermission::ComponentTheme),
             "component:agent" => Some(TappPermission::ComponentAgent),
             "tappList:manage" => Some(TappPermission::TappListManage),
-            "brew:manage" => Some(TappPermission::BrewManage),
+            "phantasi:manage" => Some(TappPermission::PhantasiManage),
             "shortcut:register" => Some(TappPermission::ShortcutRegister),
             "event:publish" => Some(TappPermission::EventPublish),
             "event:subscribe" => Some(TappPermission::EventSubscribe),
@@ -463,7 +463,7 @@ impl TappPermission {
             "speech:tts" => Some(TappPermission::SpeechTts),
             "speech:asr" => Some(TappPermission::SpeechAsr),
             "storage:write" => Some(TappPermission::StorageWrite),
-            "brew:commentWrite" => Some(TappPermission::BrewCommentWrite),
+            "phantasi:commentWrite" => Some(TappPermission::PhantasiCommentWrite),
             "federation:read" => Some(TappPermission::FederationRead),
             "federation:post" => Some(TappPermission::FederationPost),
             "federation:interact" => Some(TappPermission::FederationInteract),
@@ -485,15 +485,15 @@ impl TappPermission {
             TappPermission::PlatformRead => "platform:read",
             TappPermission::AnalyticsRead => "analytics:read",
             TappPermission::TappListRead => "tappList:read",
-            TappPermission::BrewRead => "brew:read",
-            TappPermission::BrewWrite => "brew:write",
+            TappPermission::PhantasiRead => "phantasi:read",
+            TappPermission::PhantasiWrite => "phantasi:write",
             TappPermission::PlatformWrite => "platform:write",
             TappPermission::PlatformRegister => "platform:register",
             TappPermission::ReportRead => "report:read",
             TappPermission::ReportWrite => "report:write",
             TappPermission::StorageRead => "storage:read",
             TappPermission::StorageWrite => "storage:write",
-            TappPermission::BrewCommentWrite => "brew:commentWrite",
+            TappPermission::PhantasiCommentWrite => "phantasi:commentWrite",
             TappPermission::UiNotification => "ui:notification",
             TappPermission::UiFullscreen => "ui:fullscreen",
             TappPermission::UiTheme => "ui:theme",
@@ -512,7 +512,7 @@ impl TappPermission {
             TappPermission::ComponentTheme => "component:theme",
             TappPermission::ComponentAgent => "component:agent",
             TappPermission::TappListManage => "tappList:manage",
-            TappPermission::BrewManage => "brew:manage",
+            TappPermission::PhantasiManage => "phantasi:manage",
             TappPermission::ShortcutRegister => "shortcut:register",
             TappPermission::EventPublish => "event:publish",
             TappPermission::EventSubscribe => "event:subscribe",
@@ -578,8 +578,8 @@ mod tests {
             TappPermission::PlatformRead
             | TappPermission::AnalyticsRead
             | TappPermission::TappListRead
-            | TappPermission::BrewRead
-            | TappPermission::BrewWrite
+            | TappPermission::PhantasiRead
+            | TappPermission::PhantasiWrite
             | TappPermission::ReportRead
             | TappPermission::StorageRead
             | TappPermission::UiNotification
@@ -615,13 +615,13 @@ mod tests {
             | TappPermission::SpeechTts
             | TappPermission::SpeechAsr
             | TappPermission::StorageWrite
-            | TappPermission::BrewCommentWrite
+            | TappPermission::PhantasiCommentWrite
             | TappPermission::WidgetRegister
             | TappPermission::PlatformWrite
             | TappPermission::PlatformRegister
             | TappPermission::ComponentAgent
             | TappPermission::TappListManage
-            | TappPermission::BrewManage
+            | TappPermission::PhantasiManage
             | TappPermission::FederationTrust => {}
         }
     }
@@ -689,8 +689,8 @@ mod tests {
     #[test]
     fn authenticated_subject_set_matches_guest_grant_filter() {
         let required = [
-            TappPermission::BrewWrite,
-            TappPermission::BrewCommentWrite,
+            TappPermission::PhantasiWrite,
+            TappPermission::PhantasiCommentWrite,
             TappPermission::ReportRead,
             TappPermission::UiNotification,
             TappPermission::ComponentTheme,
@@ -717,7 +717,7 @@ mod tests {
             TappPermission::MediaControl,
             TappPermission::EventSubscribe,
             TappPermission::TappListRead,
-            TappPermission::BrewRead,
+            TappPermission::PhantasiRead,
             TappPermission::FederationRead,
         ];
         for permission in guest_safe {
@@ -796,7 +796,7 @@ mod tests {
         );
 
         let authenticated = requires_authenticated_subject_names();
-        assert!(authenticated.contains(&"brew:write"));
+        assert!(authenticated.contains(&"phantasi:write"));
         assert!(authenticated.contains(&"speech:tts"));
         assert!(!authenticated.contains(&"storage:read"));
         assert!(!authenticated.contains(&"platform:read"));

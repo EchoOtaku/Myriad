@@ -1,6 +1,6 @@
 # Tapp host permission fixtures
 
-Machine-readable source of truth for **speech / brew / federation** host-proxied
+Machine-readable source of truth for **speech / phantasi / federation** host-proxied
 capabilities. Comment-only sync across stacks is not enough; tests fail on drift.
 
 | File | What it captures | Consumers |
@@ -16,7 +16,7 @@ capabilities. Comment-only sync across stacks is not enough; tests fail on drift
    `PERMISSION_LEVELS` / types if you introduced a new permission string.
 3. Update frontend `permissionConfig.ts` `PERMISSION_MAP` for action changes.
 4. Host route maps are loaded from `host_route_permissions.json` — no parallel
-   hand-written match arms to edit for speech/brew/federation.
+   hand-written match arms to edit for speech/phantasi/federation.
 5. Run:
 
    ```bash

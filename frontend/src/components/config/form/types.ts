@@ -94,7 +94,7 @@ export interface PermissionConfigValues extends Record<
   user_perm_federation_post: boolean
   user_perm_federation_channel: boolean
   user_perm_federation_room: boolean
-  user_perm_brew_comment_write: boolean
+  user_perm_phantasi_comment_write: boolean
   guest_perm_ai_generate: boolean
   guest_perm_ai_analyze: boolean
   guest_perm_ai_chat: boolean
@@ -113,7 +113,7 @@ export interface PermissionConfigValues extends Record<
   guest_perm_federation_post: boolean
   guest_perm_federation_channel: boolean
   guest_perm_federation_room: boolean
-  guest_perm_brew_comment_write: boolean
+  guest_perm_phantasi_comment_write: boolean
   user_ai_daily_calls: number
   user_ai_daily_tokens: number
   user_ai_cooldown_seconds: number

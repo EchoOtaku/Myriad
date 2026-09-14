@@ -15,17 +15,17 @@ export const SPA_STATIC_PATHS = [
   'tapp/store',
   'tapp/playground',
   'tapp/run',
-  'brew',
+  'phantasi',
 ]
 
-export const SPA_DEV_ONLY_PATHS = ['dev/brew-tiles']
+export const SPA_DEV_ONLY_PATHS = ['dev/phantasi-tiles']
 
 /** Prerender as `${prefix}/_`; dest rewrites `/${prefix}/:id` to that file. */
 export const SPA_DYNAMIC_PREFIXES = ['tapp/run', 'tapp/detail']
 
 /** Dest rewrite onto an existing static page; no extra prerender file. */
 export const SPA_FALLBACK_ALIASES = [
-  { test: /^\/brew\/item\/[^/]+/, rewrite: '/brew' },
+  { test: /^\/phantasi\/item\/[^/]+/, rewrite: '/phantasi' },
   // Dead URLs: dest matches spa-server's index fallback. React then lands on `/`.
   { test: /^\/details(\?|$)/, rewrite: '/' },
   { test: /^\/federation\/(?:chat|room|ring)(?:\/|(\?|$))/, rewrite: '/' },

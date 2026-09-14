@@ -445,7 +445,7 @@ export function validatePlaygroundPackage(
       ['Tapp.game', 'Tapp.game is not on the Widget SDK'],
       ['Tapp.federation', 'Tapp.federation is not on the Widget SDK'],
       ['Tapp.tappList', 'Tapp.tappList is not on the Widget SDK'],
-      ['Tapp.brewList', 'Tapp.brewList is not on the Widget SDK'],
+      ['Tapp.phantasiList', 'Tapp.phantasiList is not on the Widget SDK'],
       ['Tapp.component', 'Tapp.component is not on the Widget SDK'],
       ['Tapp.shortcut', 'Tapp.shortcut is not on the Widget SDK'],
       ['Tapp.dynamicContent', 'Tapp.dynamicContent is not on the Widget SDK'],

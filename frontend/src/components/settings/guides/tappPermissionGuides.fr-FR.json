@@ -203,29 +203,29 @@
     "frontend": "Liste Tapp et commandes d’exécution/installation du détail.",
     "notes": "Parmi les octrois les plus risqués."
   },
-  "brew:read": {
-    "what": "Permet de lire les sources et articles Brew.",
-    "chain": "1) L’application demande des données Brew.\n2) Lit les abonnements du site.\n3) Affiche une interface de lecture.",
-    "frontend": "Module Brew et lecteurs dans l’application.",
+  "phantasi:read": {
+    "what": "Permet de lire les sources et articles Phantasi.",
+    "chain": "1) L’application demande des données Phantasi.\n2) Lit les abonnements du site.\n3) Affiche une interface de lecture.",
+    "frontend": "Module Phantasi et lecteurs dans l’application.",
     "notes": "Lecture seule ; ne peut pas changer l’état de lecture, les favoris ni écrire de commentaires."
   },
-  "brew:write": {
-    "what": "Permet d’écrire des données Brew telles que l’état de lecture et les favoris.",
-    "chain": "1) L’application met à jour l’état d’un élément.\n2) Le stockage Brew est modifié.\n3) Filtres et badges peuvent se mettre à jour.",
-    "frontend": "État de lecture et favoris Brew.",
+  "phantasi:write": {
+    "what": "Permet d’écrire des données Phantasi telles que l’état de lecture et les favoris.",
+    "chain": "1) L’application met à jour l’état d’un élément.\n2) Le stockage Phantasi est modifié.\n3) Filtres et badges peuvent se mettre à jour.",
+    "frontend": "État de lecture et favoris Phantasi.",
     "notes": "Modifie votre état de lecture ; vérifiez le comportement de l’application avant d’accorder."
   },
-  "brew:commentWrite": {
-    "what": "Permet de créer, modifier et supprimer des commentaires et réponses Brew.",
+  "phantasi:commentWrite": {
+    "what": "Permet de créer, modifier et supprimer des commentaires et réponses Phantasi.",
     "chain": "1) L’application publie des commentaires.\n2) Les commentaires s’attachent aux articles.\n3) D’autres peuvent les voir selon la politique.",
-    "frontend": "Commentaires d’articles Brew.",
+    "frontend": "Commentaires d’articles Phantasi.",
     "notes": "Expression publique — respectez les normes de contenu ; déléguée par les administrateurs uniquement par défaut."
   },
-  "brew:manage": {
-    "what": "Permet de gérer les sources Brew et les paramètres avancés.",
+  "phantasi:manage": {
+    "what": "Permet de gérer les sources Phantasi et les paramètres avancés.",
     "chain": "1) L’application appelle les API de gestion des sources.\n2) L’ensemble des abonnements change.\n3) Récupération/liste se met à jour.",
-    "frontend": "Gestionnaire de sources Brew, OPML, découverte.",
-    "notes": "Peut ajouter/retirer des flux Brew pour tout le site."
+    "frontend": "Gestionnaire de sources Phantasi, OPML, découverte.",
+    "notes": "Peut ajouter/retirer des flux Phantasi pour tout le site."
   },
   "federation:read": {
     "what": "Permet de lire les salons, canaux et membres de la fédération.",

@@ -10,7 +10,7 @@ import {
 } from './fileDownload.ts'
 
 const HASH = `ab${'a'.repeat(62)}`
-const IMAGE_PATH = `/api/brew/image-cache/ab/${HASH}.png`
+const IMAGE_PATH = `/api/phantasi/image-cache/ab/${HASH}.png`
 const MODEL_ID = 'a'.repeat(64)
 const MODEL_PATH = `/api/model3d/assets/${MODEL_ID}`
 
@@ -34,9 +34,9 @@ describe('parseHostDownloadUrl', () => {
 
   it('rejects anything that is not this site generated asset', () => {
     assert.equal(parseHostDownloadUrl('https://evil.example/img.png'), null)
-    assert.equal(parseHostDownloadUrl('/api/brew/image-cache/aa/../x.png'), null)
+    assert.equal(parseHostDownloadUrl('/api/phantasi/image-cache/aa/../x.png'), null)
     assert.equal(
-      parseHostDownloadUrl(`/api/brew/image-cache/aa/${HASH}.png`),
+      parseHostDownloadUrl(`/api/phantasi/image-cache/aa/${HASH}.png`),
       null,
     )
     assert.equal(parseHostDownloadUrl(`${MODEL_PATH}/metadata`), null)

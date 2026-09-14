@@ -13,7 +13,7 @@ Fast, reliable data retrieval from all integrated platforms and external APIs.
 
 ## Capabilities
 - Platform data: Bilibili, Steam, GitHub, Netease
-- Brew feed items and subscriptions
+- Phantasi feed items and subscriptions
 - HTTP fetch for external APIs
 - Database queries and data transforms
 - Export and data pipeline operations

@@ -108,7 +108,7 @@ Chat / Work · パネル
 </td>
 <td width="33%" valign="top">
 
-**Brew** `/brew`  
+**Phantasi**（手帳）`/phantasi`  
 RSS · Notion · RSSHub
 
 </td>
@@ -121,13 +121,13 @@ ActivityPub · MFP
 </tr>
 </table>
 
-`/config` は管理者のみ。ライブラリ、Brew、レポート、Tapp、Agent：全員 / ログイン済み / 管理者。
+`/config` は管理者のみ。ライブラリ、Phantasi、レポート、Tapp、Agent：全員 / ログイン済み / 管理者。
 
 ---
 
 ## 目次
 
-**製品** — [ホームページ](#ホームページ) · [プラットフォーム](#プラットフォーム) · [ライブラリ](#ライブラリとレポート) · [ペルソナ](#ペルソナと-25d-ビジュアル) · [Tapp](#tapp) · [Agent](#agent) · [Brew](#brew) · [連合](#連合) · [アカウント](#アカウントと公開範囲)
+**製品** — [ホームページ](#ホームページ) · [プラットフォーム](#プラットフォーム) · [ライブラリ](#ライブラリとレポート) · [ペルソナ](#ペルソナと-25d-ビジュアル) · [Tapp](#tapp) · [Agent](#agent) · [Phantasi](#phantasi) · [連合](#連合) · [アカウント](#アカウントと公開範囲)
 
 **実行** — [要件](#要件) · [デプロイ](#デプロイ) · [開発](#ローカル開発) · [運用](#運用)
 
@@ -146,7 +146,7 @@ ActivityPub · MFP
 | --- | --- |
 | 歓迎 | Agent ペルソナ（ライブ 2.5D。同時再生は一箇所） |
 | 概要 · 最近の活動 · 訪問 | 天気 · 一言 · 音楽 |
-| 相互リンク（Brew）· ソーシャル · Tapp ショートカット | miHoYo ゲーム Presence · プラットフォーム別 Report Card |
+| 相互リンク（Phantasi）· ソーシャル · Tapp ショートカット | miHoYo ゲーム Presence · プラットフォーム別 Report Card |
 
 インストール済み Tapp はホームページ用ウィジェットを登録できる。
 
@@ -272,11 +272,11 @@ MCP：管理者の AI 設定。保存後ホットリロード。
 
 ---
 
-## Brew
+## Phantasi
 
-RSS、Notion、RSSHub。既定は誰でも閲覧可。ログインユーザーは既読と保存。管理者はソースを管理。相互リンクはホームページに出せる。
+内部名。ユーザー向けの製品名は**手帳**（en: Journal）。RSS、Notion、RSSHub。既定は誰でも閲覧可。ログインユーザーは既読と保存。管理者はソースを管理。相互リンクはホームページに出せる。
 
-自身の記事：`/brew/item/...`。クローラは HTML シェル、ブラウザはアプリ。
+自身の記事：`/phantasi/item/...`。クローラは HTML シェル、ブラウザはアプリ。
 
 ---
 
@@ -294,7 +294,7 @@ ActivityPub + **MFP**。発見は `BASE_URL` を使う。
 
 - **ローカルアカウント：** オーナー作成後。登録のオン/オフ。OAuth 連携後、そのユーザーのパスワードログインを無効化できる。
 - **OAuth：** 組み込み GitHub と任意の OIDC（Authentik、Keycloak、Google、Microsoft、GitLab、Discord、…）。身元は明示バインド。二つの issuer の同一メールはマージしない。
-- **モジュール公開範囲：** ライブラリ、Brew、レポート、Tapp、Agent — 全員 / ログイン済み / 管理者。
+- **モジュール公開範囲：** ライブラリ、Phantasi、レポート、Tapp、Agent — 全員 / ログイン済み / 管理者。
 - **検索と AI：** 非公開（noindex、空 sitemap、`/llms.txt` なし）、検索エンジンのみ、AI 引用、完全公開。
 - **サイト識別：** 名前、紹介、アイコン、任意 PWA、壁紙とテーマ、第一者訪問統計、任意の Google Analytics / Umami。
 
@@ -433,7 +433,7 @@ host HTTP_PORT
 
 </details>
 
-クローラ / アプリ内シェア UA はホーム、ライブラリ、Brew、レポート、Tapp の SEO HTML シェルを受け取り、ブラウザは SPA を受け取る。[アーキテクチャ](docs/development/ARCHITECTURE.md)。
+クローラ / アプリ内シェア UA はホーム、ライブラリ、Phantasi、レポート、Tapp の SEO HTML シェルを受け取り、ブラウザは SPA を受け取る。[アーキテクチャ](docs/development/ARCHITECTURE.md)。
 
 ---
 

@@ -130,10 +130,10 @@ pub struct BatchTtsDialogue {
 }
 
 /// 获取文章 TTS 目录路径
-/// 结构: {brew}/{source_id}/{article_id}/tts/
+/// 结构: {phantasi}/{source_id}/{article_id}/tts/
 fn get_article_tts_dir(source_id: i32, article_id: i32) -> PathBuf {
     paths()
-        .brew
+        .phantasi
         .join(source_id.to_string())
         .join(article_id.to_string())
         .join(TTS_SUBDIR)
@@ -192,7 +192,7 @@ fn get_default_voice_for_speaker(speaker: &str) -> i32 {
 }
 
 /// 获取文章 TTS 文件路径（按音色分文件夹，索引为文件名）
-/// 结构: `{brew}/{source_id}/{article_id}/tts/{voice_type}/{index}.{codec}`
+/// 结构: `{phantasi}/{source_id}/{article_id}/tts/{voice_type}/{index}.{codec}`
 fn get_article_tts_file_path(
     source_id: i32,
     article_id: i32,
@@ -540,7 +540,7 @@ async fn batch_text_to_speech_inner(request: BatchTtsApiRequest) -> impl IntoRes
 
         // force_regenerate：跳过 exact + any-voice 缓存，强制按指定音色重新合成
         if !request.force_regenerate {
-            // 1. 精确缓存（音色分文件夹 `{brew}/.../tts/{voice_type}/{index}.{codec}`）
+            // 1. 精确缓存（音色分文件夹 `{phantasi}/.../tts/{voice_type}/{index}.{codec}`）
             if let Some(cached_audio) = find_article_exact_tts(
                 request.source_id,
                 request.article_id,

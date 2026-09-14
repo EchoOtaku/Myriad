@@ -5,7 +5,7 @@
 
 use super::HandlerContext;
 use crate::GLOBAL_DYNAMIC_CONFIG;
-use crate::models::entities::brew_items;
+use crate::models::entities::phantasi_items;
 use crate::services::agent::ai_process_pure::{
     IMAGE_PROMPT_MAX_CHARS, USER_TEXT_MAX_CHARS, append_memory_to_system_prompt,
     capability_needs_conversation_context, capability_needs_memory, extract_semantic_text,
@@ -141,8 +141,8 @@ pub async fn execute(
         "ai.webSearch" | "ai.groundingSearch" => {
             crate::services::agent::web_search::execute_capability(&params).await
         }
-        "brewlia.annotate" => execute_brewlia_annotate(&params, analyzer, ctx).await,
-        "brewlia.podcast" => execute_brewlia_podcast(&params, analyzer, ctx).await,
+        "phantasiai.annotate" => execute_phantasiai_annotate(&params, analyzer, ctx).await,
+        "phantasiai.podcast" => execute_phantasiai_podcast(&params, analyzer, ctx).await,
         "speech.tts" => execute_speech_tts(&params).await,
         "smart.filter" => execute_smart_filter(&params, analyzer).await,
         "compare.content" => execute_compare_content(&params, analyzer).await,
@@ -431,9 +431,9 @@ async fn execute_ai_chat(
 /// 验证平台名称白名单，防止路径穿越
 use crate::services::agent::executor::utils::validate_platform_name;
 
-// Brewlia 能力
+// Phantasiai 能力
 
-async fn execute_brewlia_annotate(
+async fn execute_phantasiai_annotate(
     params: &HashMap<String, Value>,
     analyzer: &crate::services::analyzer::AiAnalyzer,
     ctx: &HandlerContext<'_>,
@@ -444,7 +444,7 @@ async fn execute_brewlia_annotate(
         .ok_or("Missing itemId parameter")?;
 
     // 从数据库获取文章实际内容
-    let item = brew_items::Entity::find_by_id(item_id as i32)
+    let item = phantasi_items::Entity::find_by_id(item_id as i32)
         .one(ctx.db)
         .await
         .map_err(|e| {
@@ -500,7 +500,7 @@ async fn execute_brewlia_annotate(
     }))
 }
 
-async fn execute_brewlia_podcast(
+async fn execute_phantasiai_podcast(
     params: &HashMap<String, Value>,
     analyzer: &crate::services::analyzer::AiAnalyzer,
     ctx: &HandlerContext<'_>,
@@ -516,7 +516,7 @@ async fn execute_brewlia_podcast(
         .unwrap_or("casual");
 
     // 从数据库获取文章实际内容
-    let item = brew_items::Entity::find_by_id(item_id as i32)
+    let item = phantasi_items::Entity::find_by_id(item_id as i32)
         .one(ctx.db)
         .await
         .map_err(|e| {

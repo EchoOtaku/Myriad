@@ -24,7 +24,7 @@ bash scripts/extra/backup.sh backup --out /var/backups/myriad-20260101
 | 文件 | 内容 |
 | --- | --- |
 | `postgres.dump` | `pg_dump -Fc` |
-| `backend_data.tar.gz` | named volume `*_backend_data`（brew / tapps / agent / site） |
+| `backend_data.tar.gz` | named volume `*_backend_data`（phantasi / tapps / agent / site） |
 | `env` | 当时的 `.env`（含 JWT、数据库口令等） |
 | `MANIFEST.txt` | 时间戳与包含清单，不含秘密值 |
 

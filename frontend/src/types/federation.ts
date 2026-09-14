@@ -91,7 +91,7 @@ export interface NoteAttachmentInput {
 }
 
 export interface PublishRequest {
-  content_type: 'report' | 'brew-article' | 'tapp' | 'library' | 'note'
+  content_type: 'report' | 'phantasi-article' | 'tapp' | 'library' | 'note'
   /** Required except freeform notes (server generates id). */
   content_id?: string
   visibility?: 'public' | 'followers' | 'direct'
@@ -457,9 +457,9 @@ export interface CreateRingRequest {
   fanout?: number
   ttl?: number
   interval?: number
-  /** brew-recommend only. Alias: brew_category. */
+  /** phantasi-recommend only. Alias: phantasi_category. */
   category?: string
-  brew_category?: string
+  phantasi_category?: string
 }
 
 export interface RingSummary {

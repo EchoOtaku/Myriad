@@ -630,7 +630,7 @@ pub async fn unlink_identity(
 ///
 /// - `user_identities`：有 `ON DELETE CASCADE`，随 users 删除即可。
 /// - 其余带 `user_id` 的表多为逻辑关联（无 FK），需显式删除以免残留。
-/// - `brew_sources` 删除会 CASCADE 到 `brew_items` 及其下游。
+/// - `phantasi_sources` 删除会 CASCADE 到 `phantasi_items` 及其下游。
 /// - `federation_room_members.local_user_id` 可空：置 NULL，保留房间成员记录。
 /// - 磁盘上的 Tapp 安装目录等文件资源不在此清理（与卸载路径不同）；DB 行删除后
 /// 对应目录成为孤立文件，可后续由运维/GC 处理。
@@ -664,11 +664,11 @@ async fn cleanup_user_related_data(
         "DELETE FROM tapps WHERE user_id = $1",
         "DELETE FROM tapp_runtime_registry WHERE subject_id = $1 OR owner_id = $1",
         "DELETE FROM tapp_ai_cost_ledger WHERE subject_id = $1 OR owner_id = $1",
-        // Brew（sources → items CASCADE）
-        "DELETE FROM brew_comments WHERE user_id = $1",
-        "DELETE FROM brew_user_states WHERE user_id = $1",
-        "DELETE FROM brew_categories WHERE user_id = $1",
-        "DELETE FROM brew_sources WHERE user_id = $1",
+        // Phantasi（sources → items CASCADE）
+        "DELETE FROM phantasi_comments WHERE user_id = $1",
+        "DELETE FROM phantasi_user_states WHERE user_id = $1",
+        "DELETE FROM phantasi_categories WHERE user_id = $1",
+        "DELETE FROM phantasi_sources WHERE user_id = $1",
         "DELETE FROM rsshub_instances WHERE user_id = $1",
         // Federation
         "DELETE FROM federation_timeline WHERE user_id = $1",

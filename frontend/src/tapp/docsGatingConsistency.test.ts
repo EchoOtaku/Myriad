@@ -348,16 +348,16 @@ describe('tapp docs gating consistency', () => {
     assert.match(manifest, /游戏档 128 MiB \/ 合计 256 MiB/)
   })
 
-  it('brew fixture permissions match PERMISSION_MAP for brewList actions', async () => {
+  it('phantasi fixture permissions match PERMISSION_MAP for phantasiList actions', async () => {
     const fixture = JSON.parse(
       read(join(FIXTURES, 'action_permissions.json')),
     ) as {
       actions: Array<{ domain: string; action: string; permission: string }>
     }
     const { PERMISSION_MAP } = await import('./runtime/permissionConfig.ts')
-    const brew = fixture.actions.filter((a) => a.domain === 'brew')
-    assert.ok(brew.length > 10)
-    for (const row of brew) {
+    const phantasi = fixture.actions.filter((a) => a.domain === 'phantasi')
+    assert.ok(phantasi.length > 10)
+    for (const row of phantasi) {
       const mapped = PERMISSION_MAP.get(row.action)
       assert.equal(
         mapped,
@@ -366,16 +366,16 @@ describe('tapp docs gating consistency', () => {
       )
     }
     const apiRef = read(join(DOCS_TAPP, 'API_REFERENCE.md'))
-    // Doc must not claim discover is brew:read
-    const brewSection =
-      apiRef.split('## Brew 列表 API')[1]?.split('## ')[0] ?? ''
-    assert.match(brewSection, /brew:manage/)
+    // Doc must not claim discover is phantasi:read
+    const phantasiSection =
+      apiRef.split('## Phantasi 列表 API')[1]?.split('## ')[0] ?? ''
+    assert.match(phantasiSection, /phantasi:manage/)
     assert.ok(
-      !/brew:read`[^`]*discover/.test(brewSection) &&
-        !/`brew:read`\s*\|\s*`[^`]*discover/.test(brewSection),
-      'API_REFERENCE must not list discover under brew:read',
+      !/phantasi:read`[^`]*discover/.test(phantasiSection) &&
+        !/`phantasi:read`\s*\|\s*`[^`]*discover/.test(phantasiSection),
+      'API_REFERENCE must not list discover under phantasi:read',
     )
-    assert.match(brewSection, /`discover`/)
+    assert.match(phantasiSection, /`discover`/)
   })
 
   it('docs do not prescribe obsolete /api/tapp-store routes as live API', () => {

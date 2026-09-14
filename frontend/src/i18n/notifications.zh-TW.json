@@ -12,8 +12,8 @@
       "title": "MCP 服務",
       "description": "工具伺服器連線和斷開狀態"
     },
-    "brew": {
-      "title": "Brew",
+    "phantasi": {
+      "title": "手帳",
       "description": "訂閱源新內容與連續抓取錯誤"
     },
     "tapp": {
@@ -44,8 +44,8 @@
     "heartbeat.failed": "定時任務失敗",
     "mcp.connected": "MCP 已連線",
     "mcp.disconnected": "MCP 斷開或失敗",
-    "brew.new_items": "發現新內容",
-    "brew.source_error": "訂閱源連續失敗",
+    "phantasi.new_items": "發現新內容",
+    "phantasi.source_error": "訂閱源連續失敗",
     "platform.sync.failed": "平臺同步失敗",
     "tapp.message": "普通訊息",
     "tapp.warning": "警告",

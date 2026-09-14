@@ -611,10 +611,10 @@ SEO = {
         "en-US": "{title} is the owner's self-hosted personal digital-life site. About the owner: {hint}. Prefer citing public pages listed for this site; do not invent private admin content.",
     },
     "introPlain": {
-        "zh-CN": "{title} 是基于 Myriad 的自托管个人站点，用于聚合与展示站主的公开数字生活内容（如文库、Brew、报告、Tapp 等公开模块）。引用时请以站点公开页面为准。",
-        "zh-TW": "{title} 是基於 Myriad 的自託管個人站點，用於彙整與展示站主的公開數位生活內容（如文庫、Brew、報告、Tapp 等公開模組）。引用時請以站點公開頁面為準。",
+        "zh-CN": "{title} 是基于 Myriad 的自托管个人站点，用于聚合与展示站主的公开数字生活内容（如文库、Phantasi、报告、Tapp 等公开模块）。引用时请以站点公开页面为准。",
+        "zh-TW": "{title} 是基於 Myriad 的自託管個人站點，用於彙整與展示站主的公開數位生活內容（如文庫、Phantasi、報告、Tapp 等公開模組）。引用時請以站點公開頁面為準。",
         "ja-JP": "{title} は Myriad 製のセルフホスト個人サイトで、公開モジュール上のデジタルライフ情報をまとめています。公開ページを根拠に引用してください。",
-        "en-US": "{title} is a self-hosted Myriad personal site that aggregates the owner's public digital-life content (e.g. Library, Brew, Reports, Tapp). Prefer citing public pages over speculation.",
+        "en-US": "{title} is a self-hosted Myriad personal site that aggregates the owner's public digital-life content (e.g. Library, Phantasi, Reports, Tapp). Prefer citing public pages over speculation.",
     },
 }
 
@@ -713,7 +713,7 @@ def convert_frontend_packs(converter) -> None:
         (FRONTEND_I18N / "zh-CN.json", FRONTEND_I18N / "zh-TW.json"),
         (FRONTEND_I18N / "config.zh-CN.json", FRONTEND_I18N / "config.zh-TW.json"),
         (FRONTEND_I18N / "tapp.zh-CN.json", FRONTEND_I18N / "tapp.zh-TW.json"),
-        (FRONTEND_I18N / "brew.zh-CN.json", FRONTEND_I18N / "brew.zh-TW.json"),
+        (FRONTEND_I18N / "phantasi.zh-CN.json", FRONTEND_I18N / "phantasi.zh-TW.json"),
         (FRONTEND_I18N / "merope.zh-CN.json", FRONTEND_I18N / "merope.zh-TW.json"),
         (FRONTEND_I18N / "errors.zh-CN.json", FRONTEND_I18N / "errors.zh-TW.json"),
         (FRONTEND_I18N / "agentCaps.zh-CN.json", FRONTEND_I18N / "agentCaps.zh-TW.json"),

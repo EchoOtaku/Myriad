@@ -203,29 +203,29 @@
     "frontend": "Tapp 목록과 상세의 실행/설치 컨트롤.",
     "notes": "가장 위험한 부여 중 하나예요."
   },
-  "brew:read": {
-    "what": "Brew 소스와 글을 읽을 수 있어요.",
-    "chain": "1) 앱이 Brew 데이터를 요청합니다.\n2) 사이트 구독을 읽습니다.\n3) 읽기 UI를 그립니다.",
-    "frontend": "Brew 모듈과 앱 안 리더.",
+  "phantasi:read": {
+    "what": "Phantasi 소스와 글을 읽을 수 있어요.",
+    "chain": "1) 앱이 Phantasi 데이터를 요청합니다.\n2) 사이트 구독을 읽습니다.\n3) 읽기 UI를 그립니다.",
+    "frontend": "Phantasi 모듈과 앱 안 리더.",
     "notes": "읽기 전용입니다. 읽음 상태, 즐겨찾기, 댓글 쓰기는 못 해요."
   },
-  "brew:write": {
-    "what": "읽음 상태와 별표 같은 Brew 데이터를 쓸 수 있어요.",
-    "chain": "1) 앱이 항목 상태를 갱신합니다.\n2) Brew 저장소가 바뀝니다.\n3) 필터와 배지가 갱신될 수 있어요.",
-    "frontend": "Brew 읽음과 즐겨찾기 상태.",
+  "phantasi:write": {
+    "what": "읽음 상태와 별표 같은 Phantasi 데이터를 쓸 수 있어요.",
+    "chain": "1) 앱이 항목 상태를 갱신합니다.\n2) Phantasi 저장소가 바뀝니다.\n3) 필터와 배지가 갱신될 수 있어요.",
+    "frontend": "Phantasi 읽음과 즐겨찾기 상태.",
     "notes": "읽기 상태가 바뀝니다. 부여하기 전에 앱 동작을 확인하세요."
   },
-  "brew:commentWrite": {
-    "what": "Brew 댓글과 답글을 만들고, 고치고, 지울 수 있어요.",
+  "phantasi:commentWrite": {
+    "what": "Phantasi 댓글과 답글을 만들고, 고치고, 지울 수 있어요.",
     "chain": "1) 앱이 댓글을 올립니다.\n2) 댓글이 글에 붙습니다.\n3) 정책에 따라 다른 사람이 볼 수 있어요.",
-    "frontend": "Brew 글 댓글.",
+    "frontend": "Phantasi 글 댓글.",
     "notes": "공개 표현입니다. 내용 규범을 따르세요. 기본으로는 관리자만 개방해요."
   },
-  "brew:manage": {
-    "what": "Brew 소스와 고급 설정을 관리할 수 있어요.",
+  "phantasi:manage": {
+    "what": "Phantasi 소스와 고급 설정을 관리할 수 있어요.",
     "chain": "1) 앱이 소스 관리 API를 호출합니다.\n2) 구독 집합이 바뀝니다.\n3) 수집/목록이 갱신됩니다.",
-    "frontend": "Brew 소스 관리, OPML, 발견.",
-    "notes": "Brew용 피드를 사이트 전체에서 더하거나 뺄 수 있어요."
+    "frontend": "Phantasi 소스 관리, OPML, 발견.",
+    "notes": "Phantasi용 피드를 사이트 전체에서 더하거나 뺄 수 있어요."
   },
   "federation:read": {
     "what": "연합 방, 채널, 멤버를 읽을 수 있어요.",

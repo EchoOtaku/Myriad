@@ -1304,7 +1304,7 @@ mod tests {
     }
 
     #[test]
-    fn brew_private_comment_routes_reject_revoked_sessions() {
+    fn phantasi_private_comment_routes_reject_revoked_sessions() {
         use axum::{
             body::{Body, to_bytes},
             http::Request,
@@ -1336,13 +1336,13 @@ mod tests {
             );
             let app = axum::Router::new()
                 .nest(
-                    "/api/brew",
-                    crate::api::brew::create_brew_routes(state.clone()),
+                    "/api/phantasi",
+                    crate::api::phantasi::create_phantasi_routes(state.clone()),
                 )
                 .with_state(state);
             for (path, field) in [
-                ("/api/brew/items/1/comments", "comments"),
-                ("/api/brew/comments/1/replies", "replies"),
+                ("/api/phantasi/items/1/comments", "comments"),
+                ("/api/phantasi/comments/1/replies", "replies"),
             ] {
                 let response = app
                     .clone()

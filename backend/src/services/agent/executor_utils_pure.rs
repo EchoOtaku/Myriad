@@ -180,9 +180,9 @@ pub fn best_loose_match(fields: &[&str], needle: &str) -> Option<MatchKind> {
     best
 }
 
-/// Normalize brew category filter aliases (frontend ids / colloquial → DB value).
+/// Normalize phantasi category filter aliases (frontend ids / colloquial → DB value).
 /// e.g. `friends` / `friendlink` / `友链` → `友情链接`.
-pub fn normalize_brew_category_filter(category: &str) -> String {
+pub fn normalize_phantasi_category_filter(category: &str) -> String {
     let c = category.trim();
     let lower = c.to_lowercase();
     match lower.as_str() {
@@ -194,20 +194,20 @@ pub fn normalize_brew_category_filter(category: &str) -> String {
 }
 
 /// Normalize `sourceType` filter; friend-link aliases map to `link`.
-pub fn normalize_brew_source_type_filter(source_type: &str) -> String {
+pub fn normalize_phantasi_source_type_filter(source_type: &str) -> String {
     let lower = source_type.trim().to_lowercase();
     match lower.as_str() {
         "link" | "friendlink" | "friend" | "friends" | "friend-link" | "friend_link" | "友链"
         | "友情链接" => "link".to_string(),
         "rss" | "feed" | "atom" => "rss".to_string(),
-        "brewlia" | "ai" => "brewlia".to_string(),
+        "phantasiai" | "ai" => "phantasiai".to_string(),
         _ => lower,
     }
 }
 
 /// Multi-category token match for comma-separated `category` fields
 /// (e.g. `"友情链接, 技术"` matches `"友情链接"` or `"技术"`, not substring `"科"`).
-pub fn brew_category_token_matches(source_category: &str, category_name: &str) -> bool {
+pub fn phantasi_category_token_matches(source_category: &str, category_name: &str) -> bool {
     let cat = category_name.trim();
     if cat.is_empty() {
         return false;
@@ -287,7 +287,7 @@ mod step_timeout_tests {
 
     /// 产物会被执行的提示词，必须给第三方内容划边界。
     ///
-    /// 这三处的输入里都有 `ai.webSearch` / `web.scrape` / `brew.article` 抓回来
+    /// 这三处的输入里都有 `ai.webSearch` / `web.scrape` / `phantasi.article` 抓回来
     /// 的正文，或 TAPP 自己渲染的 DOM——都是别人能写的字；而它们的输出分别是
     /// 执行步骤和 click/input 计划。少一处边界，正文里一句「忽略以上」就通到
     /// 执行层。
@@ -443,13 +443,13 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_brew_category_friendlink() {
-        assert_eq!(normalize_brew_category_filter("friends"), "友情链接");
-        assert_eq!(normalize_brew_category_filter("friendlink"), "友情链接");
-        assert_eq!(normalize_brew_category_filter("友链"), "友情链接");
-        assert_eq!(normalize_brew_category_filter("友情链接"), "友情链接");
-        assert_eq!(normalize_brew_category_filter("技术"), "技术");
-        assert_eq!(normalize_brew_category_filter("mine"), "我");
+    fn test_normalize_phantasi_category_friendlink() {
+        assert_eq!(normalize_phantasi_category_filter("friends"), "友情链接");
+        assert_eq!(normalize_phantasi_category_filter("friendlink"), "友情链接");
+        assert_eq!(normalize_phantasi_category_filter("友链"), "友情链接");
+        assert_eq!(normalize_phantasi_category_filter("友情链接"), "友情链接");
+        assert_eq!(normalize_phantasi_category_filter("技术"), "技术");
+        assert_eq!(normalize_phantasi_category_filter("mine"), "我");
     }
 
     #[test]
@@ -467,34 +467,34 @@ mod tests {
             Some("https://x/b.png")
         );
         assert_eq!(
-            extract_image_url(&json!({"imageUrl": "/api/brew/image-cache/ab/abcd.png"})).as_deref(),
-            Some("/api/brew/image-cache/ab/abcd.png")
+            extract_image_url(&json!({"imageUrl": "/api/phantasi/image-cache/ab/abcd.png"})).as_deref(),
+            Some("/api/phantasi/image-cache/ab/abcd.png")
         );
         assert!(extract_image_url(&json!({"imageUrl": "data:image/png;base64,xx"})).is_none());
         assert!(extract_image_url(&json!({"imageUrl": "javascript:alert(1)"})).is_none());
     }
 
     #[test]
-    fn test_normalize_brew_source_type_friendlink() {
-        assert_eq!(normalize_brew_source_type_filter("link"), "link");
-        assert_eq!(normalize_brew_source_type_filter("friendlink"), "link");
-        assert_eq!(normalize_brew_source_type_filter("友情链接"), "link");
-        assert_eq!(normalize_brew_source_type_filter("rss"), "rss");
-        assert_eq!(normalize_brew_source_type_filter("brewlia"), "brewlia");
+    fn test_normalize_phantasi_source_type_friendlink() {
+        assert_eq!(normalize_phantasi_source_type_filter("link"), "link");
+        assert_eq!(normalize_phantasi_source_type_filter("friendlink"), "link");
+        assert_eq!(normalize_phantasi_source_type_filter("友情链接"), "link");
+        assert_eq!(normalize_phantasi_source_type_filter("rss"), "rss");
+        assert_eq!(normalize_phantasi_source_type_filter("phantasiai"), "phantasiai");
     }
 
     #[test]
-    fn test_brew_category_token_matches_friendlink() {
-        assert!(brew_category_token_matches("友情链接", "友情链接"));
-        assert!(brew_category_token_matches("友情链接, 技术", "友情链接"));
-        assert!(brew_category_token_matches("技术, 友情链接", "友情链接"));
-        assert!(brew_category_token_matches(
+    fn test_phantasi_category_token_matches_friendlink() {
+        assert!(phantasi_category_token_matches("友情链接", "友情链接"));
+        assert!(phantasi_category_token_matches("友情链接, 技术", "友情链接"));
+        assert!(phantasi_category_token_matches("技术, 友情链接", "友情链接"));
+        assert!(phantasi_category_token_matches(
             "技术, 友情链接, 生活",
             "友情链接"
         ));
-        assert!(!brew_category_token_matches("技术", "友情链接"));
+        assert!(!phantasi_category_token_matches("技术", "友情链接"));
         // substring of a token must not match
-        assert!(!brew_category_token_matches("科学技术", "技术"));
+        assert!(!phantasi_category_token_matches("科学技术", "技术"));
     }
 
     #[test]

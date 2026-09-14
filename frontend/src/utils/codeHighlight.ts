@@ -1,6 +1,6 @@
 /**
  * 代码块高亮：Prism 按需加载，只在页面上真有 `code.language-x` 时才拉。
- * 阅读器和手记预览共用；主题在 codeHighlight.css，跟着 html.dark 走。
+ * 阅读器和笔记预览共用；主题在 codeHighlight.css，跟着 html.dark 走。
  */
 
 import './codeHighlight.css'
@@ -136,7 +136,7 @@ export async function highlightCodeBlocks(root: ParentNode): Promise<void> {
       if (!grammar) return
       code.innerHTML = prism.highlight(code.textContent ?? '', grammar, lang)
       code.dataset.highlighted = lang
-      code.closest('pre')?.classList.add('brew-code-highlight')
+      code.closest('pre')?.classList.add('phantasi-code-highlight')
     }),
   )
 }

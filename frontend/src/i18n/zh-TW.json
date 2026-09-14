@@ -63,8 +63,8 @@
     "book": "書籍",
     "showBook": "顯示書籍",
     "expandFilters": "點選展開篩選",
-    "brew": "Brew",
-    "brewReading": "Brew 閱讀",
+    "phantasi": "手帳",
+    "phantasiReading": "手帳",
     "agent": "Agent",
     "tapp": "Tapp 應用",
     "openTapp": "開啟 Tapp 應用"
@@ -130,7 +130,7 @@
     "steps": {
       "nav": {
         "title": "導航",
-        "body": "切換首頁、資料庫、Brew 閱讀、平臺報告與 Tapp 應用。"
+        "body": "切換首頁、資料庫、手帳、平臺報告與 Tapp 應用。"
       },
       "home-grid": {
         "title": "宮格",
@@ -531,9 +531,9 @@
     "tappShortcut": "Tapp 快捷方式",
     "gamePresence": "米哈遊遊戲卡片",
     "visitorStats": "訪客統計",
-    "brewSource": "訂閱源磁貼",
-    "brewTopic": "主題聚合",
-    "brewFeatured": "Brew 精選",
+    "phantasiSource": "訂閱源磁貼",
+    "phantasiTopic": "主題聚合",
+    "phantasiFeatured": "手帳精選",
     "githubRepos": "GitHub 倉庫",
     "githubReposField": "倉庫",
     "githubReposFieldHint": "GitHub 地址或 owner/repo",
@@ -543,9 +543,9 @@
     "dualLayerAnalysis": "各平臺畫像與資料洞察",
     "libraryFeature": "遊戲、影視、音樂收在一處",
     "platformProfile": "平臺畫像與報告生成",
-    "brewReading": "Brew 閱讀",
-    "brewDesc": "RSS 訂閱管理",
-    "brewFeature": "多源聚合，AI 輔助",
+    "phantasiReading": "手帳",
+    "phantasiDesc": "RSS 訂閱管理",
+    "phantasiFeature": "多源聚合，AI 輔助",
     "tappApps": "Tapp 應用",
     "tappDesc": "擴充套件應用",
     "tappFeature": "小元件、工具、擴充套件"
@@ -553,15 +553,15 @@
   "friendLinksWidget": {
     "siteCount": "{count} 個站點",
     "emptyTitle": "還沒有友情連結",
-    "emptyDescription": "前往 Brew 閱讀新增",
+    "emptyDescription": "前往手帳新增",
     "loadFailed": "友情連結暫時不可用",
-    "openBrew": "在 Brew 閱讀中檢視友情連結",
+    "openPhantasi": "在手帳中檢視友情連結",
     "visitSite": "訪問 {name}",
     "samplePersonalBlog": "朋友的部落格",
     "sampleLifeAndNotes": "生活與隨筆",
     "sampleTechNotes": "技術札記",
     "sampleCodeAndIdeas": "程式碼與想法",
-    "sampleDesignJournal": "設計手記",
+    "sampleDesignJournal": "設計筆記",
     "sampleDesignAndInspiration": "設計與靈感",
     "samplePhotoAlbum": "攝影集",
     "sampleLightAndJourneys": "光影與旅途"
@@ -704,7 +704,7 @@
       "routes": {
         "home": "首頁",
         "library": "庫",
-        "brew": "資訊",
+        "phantasi": "資訊",
         "reports": "報告",
         "config": "設定",
         "tapp": "Tapp",
@@ -891,7 +891,7 @@
       "button": "撤銷",
       "did": {
         "navigate": "剛跳了一次頁面",
-        "brew_open_article": "剛開啟了一篇文章"
+        "phantasi_open_article": "剛開啟了一篇文章"
       }
     }
   },

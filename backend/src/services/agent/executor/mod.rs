@@ -12,7 +12,7 @@
 //!
 //! - `services/analyzer` - AI 分析服务
 //! - `api/reports` - 报告生成系统
-//! - `services/brew_parser` - RSS/Atom 解析
+//! - `services/phantasi_parser` - RSS/Atom 解析
 
 pub mod dag;
 pub mod error_analyzer;

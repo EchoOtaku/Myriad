@@ -49,6 +49,7 @@ myriad-error = { path = "../crates/myriad-error" }
 myriad-data-key = { path = "../crates/myriad-data-key" }
 myriad-mcp = { path = "../crates/myriad-mcp" }
 myriad-merope = { path = "../crates/myriad-merope" }
+myriad-phantasi = { path = "../crates/myriad-phantasi" }
 myriad-image-proxy = { path = "../crates/myriad-image-proxy" }
 myriad-json-schema = { path = "../crates/myriad-json-schema" }
 myriad-outbound = { path = "../crates/myriad-outbound" }
@@ -56,7 +57,7 @@ myriad-platform-utils = { path = "../crates/myriad-platform-utils" }
 myriad-tapp-registry = { path = "../crates/myriad-tapp-registry" }
 myriad-prompt-security = { path = "../crates/myriad-prompt-security" }
 myriad-agent-rules = { path = "../crates/myriad-agent-rules" }
-myriad-brew-notes = { path = "../crates/myriad-brew-notes" }
+myriad-phantasi-notes = { path = "../crates/myriad-phantasi-notes" }
 myriad-tapp-rules = { path = "../crates/myriad-tapp-rules" }
 myriad-module-visibility = { path = "../crates/myriad-module-visibility" }
 myriad-process-info = { path = "../crates/myriad-process-info" }

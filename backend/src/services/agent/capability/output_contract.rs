@@ -390,14 +390,14 @@ mod tests {
                     "totalResults": 0
                 }),
             ),
-            // execute_brewlia_annotate — annotations is always an array
+            // execute_phantasiai_annotate — annotations is always an array
             (
-                "brewlia.annotate",
+                "phantasiai.annotate",
                 json!({ "annotations": [], "fromCache": false, "itemId": 1 }),
             ),
-            // execute_brewlia_podcast — duration is chars/200 as f64
+            // execute_phantasiai_podcast — duration is chars/200 as f64
             (
-                "brewlia.podcast",
+                "phantasiai.podcast",
                 json!({ "script": "台本", "duration": 3.5, "style": "dialogue", "itemId": 1 }),
             ),
             // execute_prompt_generate
@@ -529,12 +529,12 @@ mod tests {
         let schema = json!({
             "type": "object",
             "properties": {
-                "pageType": { "type": "string", "enum": ["home", "brew"] },
+                "pageType": { "type": "string", "enum": ["home", "phantasi"] },
                 "width": { "type": "integer", "minimum": 256, "maximum": 2048 }
             }
         });
         assert!(
-            check_output_contract(&schema, &json!({ "pageType": "brew", "width": 1024 })).is_none()
+            check_output_contract(&schema, &json!({ "pageType": "phantasi", "width": 1024 })).is_none()
         );
         assert!(
             check_output_contract(&schema, &json!({ "pageType": "unknown" }))

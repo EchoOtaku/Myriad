@@ -32,7 +32,7 @@ const VALUABLE: &[&str] = &[
     "agent.task_failed",
     "agent.task_cancelled",
     "agent.clarification",
-    "brew.source_error",
+    "phantasi.source_error",
     "platform.sync.failed",
     "agent.merope.platform_activity",
     "agent.merope.report_ready",
@@ -199,7 +199,7 @@ mod tests {
 
     #[test]
     fn ambient_does_not_notify() {
-        let decision = decide_ingest("brew.starred", &IngestSight::default());
+        let decision = decide_ingest("phantasi.starred", &IngestSight::default());
         assert!(decision.allow_model);
         assert!(!decision.notify);
         assert!(!decision.live);
@@ -247,7 +247,7 @@ mod tests {
         assert!(!decision.notify);
         assert_eq!(decision.reason, "dnd");
         assert!(!is_valuable_event("federation.new_follower"));
-        assert!(!is_valuable_event("brew.starred"));
+        assert!(!is_valuable_event("phantasi.starred"));
     }
 
     #[test]
@@ -259,7 +259,7 @@ mod tests {
         let decision = decide_ingest("agent.task_failed", &working);
         assert!(decision.allow_model);
         assert!(decision.notify);
-        let blocked = decide_ingest("brew.source_error", &working);
+        let blocked = decide_ingest("phantasi.source_error", &working);
         assert!(!blocked.allow_model);
         assert_eq!(blocked.reason, "working");
     }

@@ -166,7 +166,7 @@ mod tests {
             "frontendAction": { "type": "query_windows", "timestamp": 1 }
         })));
         assert!(!actions_need_snapshot_ack(&json!({
-            "frontendAction": { "type": "navigate", "path": "/brew", "timestamp": 1 }
+            "frontendAction": { "type": "navigate", "path": "/phantasi", "timestamp": 1 }
         })));
     }
 

@@ -8,7 +8,7 @@ Current port ownership after the proxy + updater migration.
 | --- | --- | --- | --- |
 | proxy | `80` | `${HTTP_PORT:-80}` | The only public Docker Compose port. Routes SPA to frontend; web / federation / persona paths below; optional rescue `/_updater/*`. |
 | frontend | `1102` | none | `myriad-net` only; reached through `proxy`. Stamps SPA title/icon from `GET /api/config/metadata`. Crawler / share HTML stays on backend. |
-| backend (`MYRIAD_PROCESS_ROLE=web`) | `1103` | none | `myriad-net` + `myriad-admin-net`. Owns migrations, platform/Brew/TAPP schedulers, and remaining `/api/*`. Does **not** register federation or persona HTTP. |
+| backend (`MYRIAD_PROCESS_ROLE=web`) | `1103` | none | `myriad-net` + `myriad-admin-net`. Owns migrations, platform/Phantasi/TAPP schedulers, and remaining `/api/*`. Does **not** register federation or persona HTTP. |
 | federation-worker | `1103` | none | `myriad-net` only. Same backend image; `command: ["/app/myriad-federation-worker"]`. Federation HTTP / WS / outbound delivery. |
 | persona-worker | `1103` | none | `myriad-net` only. Same backend image; `command: ["/app/myriad-persona-worker"]`. Agent / speech / rig / TAPP interaction HTTP. |
 | postgres | `5432` | none | `myriad-net` only; data lives in `./pgdata`. |
@@ -54,14 +54,14 @@ Persona WebSocket upgrades are rejected (400). `/internal/*` is 404 at the edge.
 | `/inbox` | Shared ActivityPub inbox |
 | `/users/*` | Actor documents and per-user inboxes |
 | `/media/federation/*` | Public Note attachment media (Image/Video); must not hit SPA |
-| `/activities/*` `/notes/*` `/reports/*` `/tapps/*` `/library/*` `/brew/articles/*` | ActivityPub object dereference (prefix longer than the SEO index path) |
+| `/activities/*` `/notes/*` `/reports/*` `/tapps/*` `/library/*` `/phantasi/articles/*` | ActivityPub object dereference (prefix longer than the SEO index path) |
 
 Exact `/reports` and `/library` stay on the SEO / SPA owners below. They are
 **not** federation prefixes.
 
 #### Proxy → backend (web)
 
-Everything else that is not SPA. Includes remaining `/api/*` (setup, Brew,
+Everything else that is not SPA. Includes remaining `/api/*` (setup, Phantasi,
 Tapps, updater admin proxy, SEO JSON, …).
 
 | Path | Role |
@@ -70,12 +70,12 @@ Tapps, updater admin proxy, SEO JSON, …).
 | `/health` | Backend liveness (process up). Not business readiness. |
 | `/ready` | Backend readiness (live DB probe, migrations, full routes, storage). 503 when not ready. |
 | `/sitemap.xml` | Public SEO sitemap (also `/api/seo/sitemap.xml`); empty urlset when durable origin (`FRONTEND_URL`/`BASE_URL`) is unset — no client Host fallback |
-| `/brew/notes.xml` | Public RSS of published notes (also `/api/brew/notes.xml`). Off by default. 404 when the owner switch is off or Brew is not guest-visible. Item links are absolute only when `FRONTEND_URL`/`BASE_URL` is set |
+| `/phantasi/notes.xml` | Public RSS of published notes (also `/api/phantasi/notes.xml`). Off by default. 404 when the owner switch is off or Phantasi is not guest-visible. Item links are absolute only when `FRONTEND_URL`/`BASE_URL` is set |
 | `/robots.txt` | Dynamic robots; absolute `Sitemap:` line only when `FRONTEND_URL` or `BASE_URL` is set (omitted when unset) |
 | `/llms.txt` | AI-facing site index (when GEO policy allows) |
-| `/` `/tapp` `/brew` `/library` `/reports` | **Crawler / WeChat-Weibo in-app share UA** → backend SEO HTML shell (proxy routes only; it does not rewrite HTML); `?_spa=1` and ordinary browsers → SPA |
+| `/` `/tapp` `/phantasi` `/library` `/reports` | **Crawler / WeChat-Weibo in-app share UA** → backend SEO HTML shell (proxy routes only; it does not rewrite HTML); `?_spa=1` and ordinary browsers → SPA |
 | `/tapp/run/*` | **Crawler UA only** → backend SEO HTML shell; browsers → SPA |
-| `/brew/item/*` | **Crawler UA only** → own Brew articles SEO shell (`我` category, article body); browsers → SPA |
+| `/phantasi/item/*` | **Crawler UA only** → own Phantasi articles SEO shell (`我` category, article body); browsers → SPA |
 | `/api/seo/tapp/{id}` | Public Tapp share summary JSON |
 
 WebSocket: `proxy` detects `Upgrade: websocket` and bridges upgrades for

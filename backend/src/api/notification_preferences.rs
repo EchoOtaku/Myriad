@@ -120,7 +120,7 @@ mod tests {
         crate::services::agent::notifications::init_notifications(db.clone()).await;
 
         let mut first_preferences = NotificationPreferences::default();
-        first_preferences.sources.insert("brew".to_string(), false);
+        first_preferences.sources.insert("phantasi".to_string(), false);
         let _updated =
             update_notification_preferences(Extension(claims(first_user)), Json(first_preferences))
                 .await
@@ -134,8 +134,8 @@ mod tests {
             .await
             .unwrap()
             .0;
-        assert_eq!(first["preferences"]["sources"]["brew"], false);
-        assert_eq!(second["preferences"]["sources"]["brew"], true);
+        assert_eq!(first["preferences"]["sources"]["phantasi"], false);
+        assert_eq!(second["preferences"]["sources"]["phantasi"], true);
         assert_eq!(first["catalog"]["sources"].as_array().unwrap().len(), 8);
         assert_eq!(first["catalog"]["events"].as_array().unwrap().len(), 28);
 

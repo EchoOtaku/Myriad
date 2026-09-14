@@ -162,9 +162,9 @@ else
     # Without git we can't tell tracked seed files from local runtime state, so
     # copy only the known seed dirs and skip everything else (tapps, downloaded
     # icons, agent memory) to avoid bundling a developer's private runtime data.
-    warn "not a git repo — copying known seed dirs only (agent, brew); skipping runtime state"
+    warn "not a git repo — copying known seed dirs only (agent, phantasi); skipping runtime state"
     mkdir -p "$UPLOAD/data"
-    for seed in agent brew; do
+    for seed in agent phantasi; do
         [ -e "backend/data/$seed" ] && cp -r "backend/data/$seed" "$UPLOAD/data/$seed"
     done
 fi

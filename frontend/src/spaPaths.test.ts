@@ -34,7 +34,7 @@ describe('spaPaths', () => {
       'tapp',
       'tapp/store',
       'tapp/run',
-      'brew',
+      'phantasi',
     ]) {
       assert.ok(prod.includes(route), route)
     }
@@ -42,8 +42,8 @@ describe('spaPaths', () => {
     assert.ok(prod.includes('tapp/detail/_'))
     assert.equal(prod.includes('details'), false)
     assert.equal(prod.includes('federation/chat/_'), false)
-    assert.equal(prod.includes('dev/brew-tiles'), false)
-    assert.ok(spaPrerenderPaths(true).includes('dev/brew-tiles'))
+    assert.equal(prod.includes('dev/phantasi-tiles'), false)
+    assert.ok(spaPrerenderPaths(true).includes('dev/phantasi-tiles'))
     assert.ok(SPA_STATIC_PATHS.includes('config'))
     assert.ok(SPA_STATIC_PATHS.includes('agent/settings'))
   })
@@ -54,7 +54,7 @@ describe('spaPaths', () => {
     assert.equal(rewriteSpaFallbackUrl('/tapp/run?x=1'), '/tapp/run/_')
     assert.equal(rewriteSpaFallbackUrl('/tapp/run/_'), '/tapp/run/_')
     assert.equal(rewriteSpaFallbackUrl('/tapp/detail/xyz'), '/tapp/detail/_')
-    assert.equal(rewriteSpaFallbackUrl('/brew/item/12'), '/brew')
+    assert.equal(rewriteSpaFallbackUrl('/phantasi/item/12'), '/phantasi')
     assert.equal(rewriteSpaFallbackUrl('/details'), '/')
     assert.equal(rewriteSpaFallbackUrl('/federation/chat/room-1'), '/')
     assert.equal(rewriteSpaFallbackUrl('/federation/room/abc'), '/')

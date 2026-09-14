@@ -7,24 +7,24 @@
 //! retired-report DELETE.
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr};
 
-/// `brew_items.topic` 的部分索引（`migrations/003` 已 CREATE）。
+/// `phantasi_items.topic` 的部分索引（`migrations/003` 已 CREATE）。
 ///
 /// 不进 `get_expected_indexes`：通用索引路径生成不出 `WHERE` 子句，注册成普通
 /// 索引会让新库（部分索引）与修复出来的旧库（普通索引）形状不一致。
 /// 与 003 的 DDL 必须一字不差。缺列时通用 ADD COLUMN 先补，这里只管索引。
-pub(crate) async fn ensure_brew_item_topic_index(db: &DatabaseConnection) -> Result<(), DbErr> {
+pub(crate) async fn ensure_phantasi_item_topic_index(db: &DatabaseConnection) -> Result<(), DbErr> {
     db.execute_unprepared(
-        "CREATE INDEX IF NOT EXISTS idx_brew_items_topic ON brew_items (topic) WHERE topic IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_phantasi_items_topic ON phantasi_items (topic) WHERE topic IS NOT NULL",
     )
     .await?;
     Ok(())
 }
 
 /// 阅读状态版本触发器。列走通用 ADD；触发器不进 TableDef。
-pub(crate) async fn ensure_brew_state_revision(db: &DatabaseConnection) -> Result<(), DbErr> {
+pub(crate) async fn ensure_phantasi_state_revision(db: &DatabaseConnection) -> Result<(), DbErr> {
     db.execute_unprepared(
         r#"
-            CREATE OR REPLACE FUNCTION brew_advance_state_revision() RETURNS trigger AS $$
+            CREATE OR REPLACE FUNCTION phantasi_advance_state_revision() RETURNS trigger AS $$
             BEGIN
                 NEW.revision := OLD.revision + 1;
                 RETURN NEW;
@@ -33,18 +33,18 @@ pub(crate) async fn ensure_brew_state_revision(db: &DatabaseConnection) -> Resul
         "#,
     )
     .await?;
-    db.execute_unprepared("DROP TRIGGER IF EXISTS brew_state_revision ON brew_user_states")
+    db.execute_unprepared("DROP TRIGGER IF EXISTS phantasi_state_revision ON phantasi_user_states")
         .await?;
-    db.execute_unprepared("CREATE TRIGGER brew_state_revision BEFORE UPDATE ON brew_user_states FOR EACH ROW EXECUTE FUNCTION brew_advance_state_revision()")
+    db.execute_unprepared("CREATE TRIGGER phantasi_state_revision BEFORE UPDATE ON phantasi_user_states FOR EACH ROW EXECUTE FUNCTION phantasi_advance_state_revision()")
         .await?;
     Ok(())
 }
 
 /// 正文版本触发器。列走通用 ADD；触发器不进 TableDef。
-pub(crate) async fn ensure_brew_content_revision(db: &DatabaseConnection) -> Result<(), DbErr> {
+pub(crate) async fn ensure_phantasi_content_revision(db: &DatabaseConnection) -> Result<(), DbErr> {
     db.execute_unprepared(
         r#"
-            CREATE OR REPLACE FUNCTION brew_advance_content_revision() RETURNS trigger AS $$
+            CREATE OR REPLACE FUNCTION phantasi_advance_content_revision() RETURNS trigger AS $$
             BEGIN
                 IF NEW.content IS DISTINCT FROM OLD.content
                     OR NEW.content_md IS DISTINCT FROM OLD.content_md THEN
@@ -58,9 +58,9 @@ pub(crate) async fn ensure_brew_content_revision(db: &DatabaseConnection) -> Res
         "#,
     )
     .await?;
-    db.execute_unprepared("DROP TRIGGER IF EXISTS brew_content_revision ON brew_items")
+    db.execute_unprepared("DROP TRIGGER IF EXISTS phantasi_content_revision ON phantasi_items")
         .await?;
-    db.execute_unprepared("CREATE TRIGGER brew_content_revision BEFORE UPDATE ON brew_items FOR EACH ROW EXECUTE FUNCTION brew_advance_content_revision()")
+    db.execute_unprepared("CREATE TRIGGER phantasi_content_revision BEFORE UPDATE ON phantasi_items FOR EACH ROW EXECUTE FUNCTION phantasi_advance_content_revision()")
         .await?;
     Ok(())
 }
@@ -1015,11 +1015,11 @@ ALTER TABLE tapp_storage
     Ok(())
 }
 
-/// 云端手记文档。草稿 / 定时不进 `brew_items`，发布时才落文章。
-pub(crate) async fn ensure_brew_note_docs_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+/// 云端笔记文档。草稿 / 定时不进 `phantasi_items`，发布时才落文章。
+pub(crate) async fn ensure_phantasi_note_docs_table(db: &DatabaseConnection) -> Result<(), DbErr> {
     db.execute_unprepared(
         r#"
-CREATE TABLE IF NOT EXISTS brew_note_docs (
+CREATE TABLE IF NOT EXISTS phantasi_note_docs (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     item_id INTEGER,
@@ -1035,13 +1035,13 @@ CREATE TABLE IF NOT EXISTS brew_note_docs (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_brew_note_docs_user
-    ON brew_note_docs (user_id);
-CREATE INDEX IF NOT EXISTS idx_brew_note_docs_item
-    ON brew_note_docs (item_id);
-CREATE INDEX IF NOT EXISTS idx_brew_note_docs_schedule
-    ON brew_note_docs (status, scheduled_at);
-ALTER TABLE brew_note_docs ADD COLUMN IF NOT EXISTS last_error TEXT;
+CREATE INDEX IF NOT EXISTS idx_phantasi_note_docs_user
+    ON phantasi_note_docs (user_id);
+CREATE INDEX IF NOT EXISTS idx_phantasi_note_docs_item
+    ON phantasi_note_docs (item_id);
+CREATE INDEX IF NOT EXISTS idx_phantasi_note_docs_schedule
+    ON phantasi_note_docs (status, scheduled_at);
+ALTER TABLE phantasi_note_docs ADD COLUMN IF NOT EXISTS last_error TEXT;
 "#,
     )
     .await?;

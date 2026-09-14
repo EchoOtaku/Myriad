@@ -554,18 +554,18 @@ export class CloudPodcastPlayer {
               firstError.error === 'empty_dialogue_text'
                 ? currentCopy().errors.emptyDialogueText
                 : firstError.error,
-              currentCopy().brew.generateFailed,
+              currentCopy().phantasi.generateFailed,
             ),
           )
         } else if (response.error) {
           throw new Error(
             userFacingError(
               response.error,
-              currentCopy().brew.generatePodcastFailed,
+              currentCopy().phantasi.generatePodcastFailed,
             ),
           )
         } else {
-          throw new Error(currentCopy().brew.generatePodcastFailed)
+          throw new Error(currentCopy().phantasi.generatePodcastFailed)
         }
       }
 
@@ -812,7 +812,7 @@ export interface TTSSettings {
 
 export function getTTSSettings(): TTSSettings {
   try {
-    const stored = localStorage.getItem('brewlia_tts_settings')
+    const stored = localStorage.getItem('phantasiai_tts_settings')
     if (stored) {
       return JSON.parse(stored)
     }
@@ -826,7 +826,7 @@ export function saveTTSSettings(settings: Partial<TTSSettings>) {
   try {
     const current = getTTSSettings()
     const merged = { ...current, ...settings }
-    localStorage.setItem('brewlia_tts_settings', JSON.stringify(merged))
+    localStorage.setItem('phantasiai_tts_settings', JSON.stringify(merged))
   } catch (e) {
     console.warn('[TTS] Failed to save settings:', e)
     void import('../utils/toastManager').then(({ showError }) => {

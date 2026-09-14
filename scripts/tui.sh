@@ -1215,7 +1215,7 @@ tui_draw_native_pg_log() {
         return 0
     fi
     printf '\n  Native PostgreSQL is not a compose service.\n'
-    printf '  %bNo local postgres log found.%b  Try: brew services info postgresql@18\n' "$DIM" "$NC"
+    printf '  %bNo local postgres log found.%b  Try: phantasi services info postgresql@18\n' "$DIM" "$NC"
 }
 
 tui_draw_tools() {
@@ -1675,7 +1675,7 @@ tui_kill_selected() {
     line="$(tui_proc_at "$TUI_SEL")"
     [[ -n "$line" ]] || return 0
     IFS='|' read -r kind id _ <<< "$line"
-    # Never SIGTERM the postmaster — stop via brew / compose.
+    # Never SIGTERM the postmaster — stop via phantasi / compose.
     if [[ "$kind" == "postgres" ]]; then
         tui_stop_svc database
         return 0

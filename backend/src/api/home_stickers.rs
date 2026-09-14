@@ -339,7 +339,7 @@ mod tests {
     #[test]
     fn decode_sticker_upload_rejects_non_data_urls() {
         assert!(decode_sticker_upload("").is_err());
-        assert!(decode_sticker_upload("/api/brew/image-cache/aa/bb.png").is_err());
+        assert!(decode_sticker_upload("/api/phantasi/image-cache/aa/bb.png").is_err());
         assert!(decode_sticker_upload("data:text/plain;base64,YQ==").is_err());
     }
 

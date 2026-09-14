@@ -29,7 +29,7 @@
 - [Federation API](#federation-api)
 - [Game API](#game-api)
 - [Tapp 列表 API](#tapp-列表-api)
-- [Brew 列表 API](#brew-列表-api)
+- [Phantasi 列表 API](#phantasi-列表-api)
 - [组件注册 API](#组件注册-api)
 - [快捷键 API](#快捷键-api)
 - [事件 API](#事件-api)
@@ -629,7 +629,7 @@ stop();
 | `prompt` | string | — | 非空 | 也可用整段 `input` 字符串代替对象 |
 | `width` | number \| string | `1024` | clamp 到 256–2048 | 宽（像素）；也接受 `"768"` / `"768px"` |
 | `height` | number \| string | `1024` | clamp 到 256–2048 | 高（像素）；也接受 `"1024"` / `"1024px"` |
-| `referenceImages` | string[] | `[]` | 最多 4 张，解码后合计 ≤ 10 MiB | 按数组顺序提供参考图，支持 PNG / JPEG / WebP 的 base64 data URL，或本平台 `/api/brew/image-cache/...` 路径 |
+| `referenceImages` | string[] | `[]` | 最多 4 张，解码后合计 ≤ 10 MiB | 按数组顺序提供参考图，支持 PNG / JPEG / WebP 的 base64 data URL，或本平台 `/api/phantasi/image-cache/...` 路径 |
 
 参考图只用于本次生图请求，不会作为文本拼进 prompt。可以在 prompt 中按顺序说明“第一张图的
 人物、第二张图的画风”。省略或传空数组时仍是文生图。参考图在预留额度和创建任务前校验；
@@ -702,7 +702,7 @@ await Tapp.ai.tasks.create({
 ```json
 {
   "format": "image",
-  "value": { "url": "/api/brew/image-cache/ab/<sha256>.png", "width": 768, "height": 1024 }
+  "value": { "url": "/api/phantasi/image-cache/ab/<sha256>.png", "width": 768, "height": 1024 }
 }
 ```
 
@@ -1086,7 +1086,7 @@ const card = await Tapp.persona.get();
 //   name: "Arael",
 //   moodBand: "calm",   // floor | sad | tense | calm | excited
 //   activity: "idle",   // idle | working | thinking | talking
-//   portraitUrl: "/api/brew/image-cache/ab/abcd.png" // 或 null
+//   portraitUrl: "/api/phantasi/image-cache/ab/abcd.png" // 或 null
 // }
 
 if (card.portraitUrl) {
@@ -1252,7 +1252,7 @@ Bridge 对 `federation.uploadMedia` **不**走默认 ~1 MiB JSON 上限：允许
 ### publish / unpublish / 已发布列表
 
 ```javascript
-// 发布本地已有内容（report / brew-article / tapp / library）或 content_type: "note"
+// 发布本地已有内容（report / phantasi-article / tapp / library）或 content_type: "note"
 const published = await Tapp.federation.publish({
   content_type: "report",
   content_id: "report-id",
@@ -1443,36 +1443,36 @@ await Tapp.tappList.export("com.example.app");
 
 ---
 
-## Brew 列表 API
+## Phantasi 列表 API
 
 **权限**（按 action，见 `permissionConfig` / fixtures）：
 
 | 权限 | 典型方法（与 `fixtures/action_permissions.json` / `PERMISSION_MAP` 对齐） |
 | ---- | -------- |
-| `brew:read` | `list`, `get`, `sources`, `categories`, `stats`, `exportOpml`, `getComments`, `getReplies` |
-| `brew:write` | `markRead`, `markUnread`, `markAllRead`, `star`, `unstar` |
-| `brew:commentWrite` | `createComment`, `updateComment`, `deleteComment`, `createReply` |
-| `brew:manage` | `discover`, `addSource`, `updateSource`, `deleteSource`, `refreshSource`, `importOpml`, `createCategory`, `deleteCategory` |
+| `phantasi:read` | `list`, `get`, `sources`, `categories`, `stats`, `exportOpml`, `getComments`, `getReplies` |
+| `phantasi:write` | `markRead`, `markUnread`, `markAllRead`, `star`, `unstar` |
+| `phantasi:commentWrite` | `createComment`, `updateComment`, `deleteComment`, `createReply` |
+| `phantasi:manage` | `discover`, `addSource`, `updateSource`, `deleteSource`, `refreshSource`, `importOpml`, `createCategory`, `deleteCategory` |
 
-Playground **临时预览不注册** brew handlers。完整 SDK（`Tapp.brewList`）仅在安装后可用：
+Playground **临时预览不注册** phantasi handlers。完整 SDK（`Tapp.phantasiList`）仅在安装后可用：
 
 ```javascript
-const items = await Tapp.brewList.list({ /* filters optional */ });
-const one = await Tapp.brewList.get(itemId);
-const cats = await Tapp.brewList.categories();
-const sources = await Tapp.brewList.sources();
+const items = await Tapp.phantasiList.list({ /* filters optional */ });
+const one = await Tapp.phantasiList.get(itemId);
+const cats = await Tapp.phantasiList.categories();
+const sources = await Tapp.phantasiList.sources();
 
-// 用户文件夹分类（需 brew:manage）
-await Tapp.brewList.createCategory({ name: "Later" });
-await Tapp.brewList.deleteCategory(categoryId);
+// 用户文件夹分类（需 phantasi:manage）
+await Tapp.phantasiList.createCategory({ name: "Later" });
+await Tapp.phantasiList.deleteCategory(categoryId);
 
-await Tapp.brewList.markRead(itemId);
-await Tapp.brewList.star(itemId);
-await Tapp.brewList.addSource({ url: "https://example.com/feed.xml" });
-await Tapp.brewList.exportOpml();
+await Tapp.phantasiList.markRead(itemId);
+await Tapp.phantasiList.star(itemId);
+await Tapp.phantasiList.addSource({ url: "https://example.com/feed.xml" });
+await Tapp.phantasiList.exportOpml();
 ```
 
-参数与 REST 字段以宿主 brew 服务类型为准；不要在预览中假设有 mock 数据。
+参数与 REST 字段以宿主 phantasi 服务类型为准；不要在预览中假设有 mock 数据。
 
 ---
 
@@ -1806,7 +1806,7 @@ await Tapp.file.download(task); // 生图完成态，读 result.value.url
 ```
 
 - 文本 `content`、`base64`、宿主代取的 `url` 落盘上限 **32 MiB**（bridge 不走默认 ~1 MiB postMessage 上限）。
-- `url` **只**接受本站 `/api/brew/image-cache/{subdir}/{sha256}.{jpg|jpeg|png|gif|webp}` 或 `/api/model3d/assets/{sha256}`；任意 http(s) 一律拒绝。
+- `url` **只**接受本站 `/api/phantasi/image-cache/{subdir}/{sha256}.{jpg|jpeg|png|gif|webp}` 或 `/api/model3d/assets/{sha256}`；任意 http(s) 一律拒绝。
 - `filename` 不能含路径分隔或 `..`。`url` / `base64` 可省略文件名（图 `image.{ext}`，模型 `model.glb`，音频按 MIME，否则 `download.bin`）。可选 `mimeType`。
 
 语音能力需要对应权限：
@@ -1883,7 +1883,7 @@ Page 完整面当前包含以下命名空间（`analytics` / `agent` 也挂在 `
 | `file`, `speech`                           | 文件下载、TTS 和 ASR                                | public（`file.download`）, `speech:*` |
 | `assets`                                   | 包内静态资源 list/get/blob URL                      | public（限 manifest.assets）       |
 | `tappList`                                 | Tapp 查询、安装、启停、卸载与导出                   | `tappList:*`                       |
-| `brewList`                                 | Brew 列表、源、用户分类 create/delete、评论和 OPML  | `brew:*`                           |
+| `phantasiList`                                 | Phantasi 列表、源、用户分类 create/delete、评论和 OPML  | `phantasi:*`                           |
 | `federation`                               | 身份、Feed、关注、Note/媒体发布、Channel、Room、Ring、信任和传输 | `federation:*`              |
 | `game`                                     | 联邦房间对局会话（`create`/`join`/`sendIntent`/`sendState`） | `game:session` + `federation:read`/`room`/`message` |
 
@@ -1902,7 +1902,7 @@ Page 完整面当前包含以下命名空间（`analytics` / `agent` 也挂在 `
 | `tappList`, `component`, `shortcut`, `dynamicContent` | ✅ | ❌ | ❌ 无此对象 |
 | `dom`, `file` | ✅ | ✅ | ❌ 无此对象 |
 | `model3d` | ✅ | ❌ 无此对象 | ❌ 无此对象 |
-| `brewList`, `federation`, `game` | ✅ | ❌ | ✅（有授予权限时可用） |
+| `phantasiList`, `federation`, `game` | ✅ | ❌ | ✅（有授予权限时可用） |
 | `platform` 写 / `report` 写 / `data.transform` | ✅ | ❌ 沙箱没有这些方法 | ✅ |
 
 Widget 不会自动拥有完整面的写入/管理能力。调用前必须核对：当前是 Page、Widget 还是

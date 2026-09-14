@@ -1829,7 +1829,7 @@ fn rejects_unbounded_widget_manifests() {
 }
 
 #[test]
-fn batch_detail_mapping_applies_current_role_and_brew_capability_rules() {
+fn batch_detail_mapping_applies_current_role_and_phantasi_capability_rules() {
     let now = chrono::Utc::now().fixed_offset();
     let tapp = tapps::Model {
         id: 1,
@@ -1846,11 +1846,11 @@ fn batch_detail_mapping_applies_current_role_and_brew_capability_rules() {
             "name": "Detail",
             "version": "1.0.0",
             "core": { "entry": "main.js" },
-            "permissions": ["storage:read", "brew:write", "ai:generate"]
+            "permissions": ["storage:read", "phantasi:write", "ai:generate"]
         }),
         status: tapps::TappStatus::Installed,
-        granted_permissions: json!(["storage:read", "brew:write"]),
-        approved_permissions: json!(["storage:read", "brew:write", "ai:generate"]),
+        granted_permissions: json!(["storage:read", "phantasi:write"]),
+        approved_permissions: json!(["storage:read", "phantasi:write", "ai:generate"]),
         file_path: "manifest.json".to_string(),
         code_path: "main.js".to_string(),
         installed_at: now,
@@ -1872,7 +1872,7 @@ fn batch_detail_mapping_applies_current_role_and_brew_capability_rules() {
     assert!(!detail.is_admin_tapp);
     assert_eq!(
         detail.granted_permissions,
-        vec!["storage:read", "brew:write", "ai:generate"]
+        vec!["storage:read", "phantasi:write", "ai:generate"]
     );
 }
 

@@ -46,8 +46,8 @@ pub struct TierRouter;
 impl TierRouter {
     /// 显式登记的复杂度规则；`None` 表示这个能力没有被登记。
     ///
-    /// **顺序敏感**：精确分支必须排在同前缀的通配分支之前。`brew.generateReadingList`
-    /// 必须排在 `brew.` 通配之前，否则会被判成 Simple。
+    /// **顺序敏感**：精确分支必须排在同前缀的通配分支之前。`phantasi.generateReadingList`
+    /// 必须排在 `phantasi.` 通配之前，否则会被判成 Simple。
     ///
     /// 动态命名空间（`skill:` / `mcp.`）也在此登记：它们不在能力注册表里，但同样
     /// 会走 `suggest_tier`，落到兜底分支就会被无声地当成消耗 LLM。
@@ -65,7 +65,7 @@ impl TierRouter {
 
             // Medium：Standard
             // 总结和注释类（定式化 AI 任务）
-            "ai.summarize" | "brewlia.annotate" | "brewlia.podcast" | "translate.text" => {
+            "ai.summarize" | "phantasiai.annotate" | "phantasiai.podcast" | "translate.text" => {
                 TaskComplexity::Medium
             }
             // 智能过滤和搜索
@@ -73,9 +73,9 @@ impl TierRouter {
             // 图标推荐
             "icon.recommend" => TaskComplexity::Medium,
 
-            // `brew.discover` / `brew.generateReadingList` 必须排在 `brew.` 通配之前（后者才 requires_ai）。
-            "brew.discover" | "brew.generateReadingList" => TaskComplexity::Medium,
-            id if id.starts_with("brew.") => TaskComplexity::Simple,
+            // `phantasi.discover` / `phantasi.generateReadingList` 必须排在 `phantasi.` 通配之前（后者才 requires_ai）。
+            "phantasi.discover" | "phantasi.generateReadingList" => TaskComplexity::Medium,
+            id if id.starts_with("phantasi.") => TaskComplexity::Simple,
             // 所有 platform 数据读取与写入
             id if id.starts_with("platform.") => TaskComplexity::Simple,
             // 精确 ID 须排在其余 tapp 规则之前（仅 `tapp.understand` 跑 AI；ui/interact 不跑 LLM）。
@@ -401,11 +401,11 @@ mod tests {
     }
 
     #[test]
-    fn ai_dependent_brew_rules_win_over_the_brew_prefix() {
-        assert!(TierRouter::requires_llm("brew.generateReadingList"));
-        assert!(TierRouter::requires_llm("brew.discover"));
-        assert!(!TierRouter::requires_llm("brew.items"));
-        assert!(!TierRouter::requires_llm("brew.subscribe"));
+    fn ai_dependent_phantasi_rules_win_over_the_phantasi_prefix() {
+        assert!(TierRouter::requires_llm("phantasi.generateReadingList"));
+        assert!(TierRouter::requires_llm("phantasi.discover"));
+        assert!(!TierRouter::requires_llm("phantasi.items"));
+        assert!(!TierRouter::requires_llm("phantasi.subscribe"));
     }
 
     #[test]
@@ -458,7 +458,7 @@ mod tests {
             TierRouter::resolve_tier("platform.read"),
             ModelTier::Standard
         );
-        assert_eq!(TierRouter::resolve_tier("brew.items"), ModelTier::Standard);
+        assert_eq!(TierRouter::resolve_tier("phantasi.items"), ModelTier::Standard);
         assert_eq!(
             TierRouter::resolve_tier("music.status"),
             ModelTier::Standard

@@ -63,8 +63,8 @@
     "book": "Livres",
     "showBook": "Afficher les livres",
     "expandFilters": "Ouvrir les filtres",
-    "brew": "Brew",
-    "brewReading": "Lecteur Brew",
+    "phantasi": "Journal",
+    "phantasiReading": "Journal",
     "agent": "Agent",
     "tapp": "Apps Tapp",
     "openTapp": "Ouvrir les apps Tapp"
@@ -130,7 +130,7 @@
     "steps": {
       "nav": {
         "title": "Navigation",
-        "body": "Passez de l'accueil à la bibliothèque, au lecteur Brew, aux rapports et aux apps Tapp."
+        "body": "Passez de l'accueil à la bibliothèque, au Journal, aux rapports et aux apps Tapp."
       },
       "home-grid": {
         "title": "Grille de widgets",
@@ -531,9 +531,9 @@
     "tappShortcut": "Raccourci Tapp",
     "gamePresence": "Carte de jeu HoYoverse",
     "visitorStats": "Visites",
-    "brewSource": "Tuile de flux",
-    "brewTopic": "Synthèse de sujet",
-    "brewFeatured": "Sélection Brew",
+    "phantasiSource": "Tuile de flux",
+    "phantasiTopic": "Synthèse de sujet",
+    "phantasiFeatured": "Sélection Journal",
     "githubRepos": "Dépôts GitHub",
     "githubReposField": "Dépôt",
     "githubReposFieldHint": "URL GitHub ou owner/repo",
@@ -543,9 +543,9 @@
     "dualLayerAnalysis": "Profils et regards par plateforme",
     "libraryFeature": "Jeux, films et musique au même endroit",
     "platformProfile": "Profils plateforme et génération de rapports",
-    "brewReading": "Lecture Brew",
-    "brewDesc": "Abonnements RSS",
-    "brewFeature": "Multi-sources, aide IA",
+    "phantasiReading": "Journal",
+    "phantasiDesc": "Abonnements RSS",
+    "phantasiFeature": "Multi-sources, aide IA",
     "tappApps": "Apps Tapp",
     "tappDesc": "Extensions",
     "tappFeature": "Widgets, outils, extensions"
@@ -553,9 +553,9 @@
   "friendLinksWidget": {
     "siteCount": "{count, plural, one {# site} other {# sites}}",
     "emptyTitle": "Pas encore de liens amis",
-    "emptyDescription": "Ajoutez-les dans Lecture Brew",
+    "emptyDescription": "Ajoutez-les dans Journal",
     "loadFailed": "Les liens amis sont temporairement indisponibles",
-    "openBrew": "Voir les liens amis dans Lecture Brew",
+    "openPhantasi": "Voir les liens amis dans Journal",
     "visitSite": "Visiter {name}",
     "samplePersonalBlog": "Le blog d'un ami",
     "sampleLifeAndNotes": "Vie et notes",
@@ -704,7 +704,7 @@
       "routes": {
         "home": "Accueil",
         "library": "Bibliothèque",
-        "brew": "Brew",
+        "phantasi": "Journal",
         "reports": "Rapports",
         "config": "Réglages",
         "tapp": "Tapp",
@@ -891,7 +891,7 @@
       "button": "Annuler",
       "did": {
         "navigate": "Vient de naviguer pour vous",
-        "brew_open_article": "Vient d'ouvrir un article"
+        "phantasi_open_article": "Vient d'ouvrir un article"
       }
     }
   },
