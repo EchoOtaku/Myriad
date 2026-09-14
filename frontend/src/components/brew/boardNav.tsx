@@ -46,6 +46,17 @@ const starred = (
   </svg>
 )
 
+const workbench = (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M4 7h16M4 12h16M4 17h10"
+    />
+  </svg>
+)
+
 export function brewBoardNavItems(
   t: {
     boardFeeds: string
@@ -54,9 +65,11 @@ export function brewBoardNavItems(
     boardNotesTitle: string
     boardSites: string
     boardSitesTitle: string
+    boardWorkbench: string
+    boardWorkbenchTitle: string
     starred: string
   },
-  options?: { includeStarred?: boolean },
+  options?: { includeStarred?: boolean; includeWorkbench?: boolean },
 ): SecondaryNavItem[] {
   const items: SecondaryNavItem[] = [
     {
@@ -92,5 +105,14 @@ export function brewBoardNavItems(
       ariaLabel: t.boardSitesTitle,
     },
   )
+  if (options?.includeWorkbench) {
+    items.push({
+      id: 'workbench',
+      icon: workbench,
+      label: t.boardWorkbench,
+      title: t.boardWorkbenchTitle,
+      ariaLabel: t.boardWorkbenchTitle,
+    })
+  }
   return items
 }

@@ -11,6 +11,7 @@ import { useI18n } from '../../../contexts/I18nContext'
 import { neighborsInQueue } from '../logic/readingQueue'
 import { getArticleProseClass } from './articleProseClass'
 import { getImageUrl } from './contentRender'
+import { ReaderTopicField } from './ReaderTopicField'
 
 interface ReaderArticleBodyProps {
   item: BrewItem
@@ -28,6 +29,8 @@ interface ReaderArticleBodyProps {
   contentReady: boolean
   onNavigateToArticle?: (articleId: number) => void
   readingQueue?: ReadingQueue | null
+  canEditTopic?: boolean
+  onTopicChange?: (topic: string | null) => void
 }
 
 export function ReaderArticleBody({
@@ -45,6 +48,8 @@ export function ReaderArticleBody({
   contentReady,
   onNavigateToArticle,
   readingQueue,
+  canEditTopic,
+  onTopicChange,
 }: ReaderArticleBodyProps) {
   const { locale, format } = useI18n()
   const queueNav = neighborsInQueue(readingQueue, item.id)
@@ -106,6 +111,12 @@ export function ReaderArticleBody({
                   {item.word_count.toLocaleString(locale)} {t.brew.wordCount}
                 </span>
               )}
+              <ReaderTopicField
+                itemId={item.id}
+                topic={item.topic}
+                canEdit={!!canEditTopic}
+                onTopicChange={onTopicChange}
+              />
             </div>
 
             {item.image && (

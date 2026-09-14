@@ -9,8 +9,16 @@ import {
   extendPaintedSlots,
   FEEDS_ARTICLE_MAX,
   FRIENDS_STORY_MAX,
+  isInboxFeedSource,
+  isLatestFeedId,
   jumpFeedSpan,
+  LATEST_FEED_ID,
+  LATEST_FEED_STACK,
+  latestFeedStackFaces,
+  latestFeedStories,
+  stackFaceWindow,
   latestStoryPreview,
+  storyRailGroup,
   paintReadyStories,
   reuseFeedStories,
   reusePaintedSlots,
@@ -56,9 +64,18 @@ describe('toFeedStory', () => {
       source_id: 1,
       source_name: '源',
       source_icon: '/i.png',
+      guid: story.guid,
     })
+    assert.match(story.guid ?? '', /^guid-/)
     assert.equal(FEEDS_ARTICLE_MAX, 20)
     assert.equal(FRIENDS_STORY_MAX, 12)
+    assert.equal(LATEST_FEED_ID, -1)
+    assert.equal(isLatestFeedId(-1), true)
+    assert.equal(isLatestFeedId('-1'), true)
+    assert.equal(isLatestFeedId(8), false)
+    assert.equal(isInboxFeedSource({ source_type: 'rss' }), true)
+    assert.equal(isInboxFeedSource({ source_type: 'note' }), false)
+    assert.equal(isInboxFeedSource({ source_type: 'link' }), false)
   })
 })
 
@@ -79,6 +96,177 @@ const pool = [
     ],
   }),
 ]
+
+describe('latestFeedStories', () => {
+  it('按时间混排，去重，跳过手记和入口型，rail_group 标成最新卡', () => {
+    const sources = [
+      makeSource({
+        id: 8,
+        name: '甲',
+        icon: '/a.png',
+        recent_items: [
+          makePreview({ id: 1, title: '旧', published_at: 10 }),
+          makePreview({ id: 4, title: '重复', published_at: 40 }),
+        ],
+      }),
+      makeSource({
+        id: 9,
+        name: '乙',
+        icon: '/b.png',
+        recent_items: [
+          makePreview({ id: 2, title: '中', published_at: 20 }),
+          makePreview({ id: 4, title: '重复', published_at: 40 }),
+        ],
+      }),
+      makeSource({
+        id: 3,
+        name: '手记',
+        source_type: 'note',
+        recent_items: [makePreview({ id: 9, title: '手记文', published_at: 90 })],
+      }),
+      makeSource({
+        id: 4,
+        name: '友链',
+        source_type: 'link',
+        recent_items: [makePreview({ id: 8, title: '入口', published_at: 80 })],
+      }),
+    ]
+    const fetched = new Map([
+      [
+        9,
+        [
+          toFeedStory(
+            makeItem({
+              id: 5,
+              title: '乙全文',
+              source_id: 9,
+              published_at: 50,
+            }),
+          ),
+        ],
+      ],
+    ])
+    const stories = latestFeedStories(sources, fetched)
+    assert.deepEqual(
+      stories.map((story) => ({
+        id: story.id,
+        title: story.title,
+        source_id: story.source_id,
+        rail_group: story.rail_group,
+      })),
+      [
+        { id: 5, title: '乙全文', source_id: 9, rail_group: LATEST_FEED_ID },
+        { id: 4, title: '重复', source_id: 8, rail_group: LATEST_FEED_ID },
+        { id: 1, title: '旧', source_id: 8, rail_group: LATEST_FEED_ID },
+      ],
+    )
+    assert.equal(storyRailGroup(stories[0]!), LATEST_FEED_ID)
+    assert.equal(
+      latestFeedStories(sources, fetched, 2)
+        .map((story) => story.id)
+        .join(','),
+      '5,4',
+    )
+  })
+
+  it('拼到源轨前面时整块占最新卡的列，不按原文源拆开', () => {
+    const mix = latestFeedStories(pool, new Map())
+    const rest = stitchStoriesBySources(pool, new Map(), 0, 1)
+    const slots = storyRailSlots([...mix, ...rest])
+    assert.deepEqual(sourceColumnStarts(slots).map((block) => block.id), [
+      LATEST_FEED_ID,
+      8,
+      9,
+    ])
+    assert.equal(slots[0]?.story.source_id, 9)
+    assert.equal(storyRailGroup(slots[0]!.story), LATEST_FEED_ID)
+  })
+})
+
+describe('latestFeedStackFaces', () => {
+  it('混排先露的源在前，手记和入口型不进，窗口按偏移轮', () => {
+    const sources = [
+      makeSource({ id: 3, name: '手记', source_type: 'note', icon: '/n.png' }),
+      makeSource({ id: 8, name: '甲', icon: '/a.png', theme_color: '#111111' }),
+      makeSource({ id: 9, name: '乙', icon: '/b.png', theme_color: '#222222' }),
+      makeSource({ id: 4, name: '友链', source_type: 'link', icon: '/l.png' }),
+      makeSource({ id: 7, name: '丙', icon: '/c.png' }),
+    ]
+    const faces = latestFeedStackFaces(sources, [
+      {
+        id: 1,
+        title: '乙新',
+        summary: null,
+        image: null,
+        published_at: 20,
+        is_read: false,
+        source_id: 9,
+        source_name: '乙',
+        source_icon: '/b.png',
+        rail_group: LATEST_FEED_ID,
+      },
+      {
+        id: 2,
+        title: '甲旧',
+        summary: null,
+        image: null,
+        published_at: 10,
+        is_read: false,
+        source_id: 8,
+        source_name: '甲',
+        source_icon: '/a.png',
+        rail_group: LATEST_FEED_ID,
+      },
+      {
+        id: 9,
+        title: '手记文',
+        summary: null,
+        image: null,
+        published_at: 90,
+        is_read: false,
+        source_id: 3,
+        source_name: '手记',
+        source_icon: '/n.png',
+        rail_group: LATEST_FEED_ID,
+      },
+    ])
+    assert.deepEqual(
+      faces.map((face) => face.key),
+      ['9', '8', '7'],
+    )
+    assert.equal(faces[0]?.src, '/b.png')
+    assert.equal(faces[0]?.mark, '乙')
+    assert.equal(LATEST_FEED_STACK, 3)
+    assert.deepEqual(
+      stackFaceWindow(faces, 0).map((face) => face.key),
+      ['9', '8', '7'],
+    )
+    assert.deepEqual(
+      stackFaceWindow(['a', 'b', 'c', 'd'], 1, 3),
+      ['b', 'c', 'd'],
+    )
+    assert.deepEqual(stackFaceWindow(['a', 'b'], 4, 3), ['a', 'b'])
+    const noIcon = latestFeedStackFaces(
+      [makeSource({ id: 8, name: '甲', icon: null })],
+      [
+        {
+          id: 1,
+          title: '带图',
+          summary: null,
+          image: '/article.jpg',
+          published_at: 20,
+          is_read: false,
+          source_id: 8,
+          source_name: '甲',
+          source_icon: null,
+          rail_group: LATEST_FEED_ID,
+        },
+      ],
+    )
+    assert.equal(noIcon[0]?.src, null)
+    assert.equal(noIcon[0]?.mark, '甲')
+  })
+})
 
 describe('storiesFromSources', () => {
   it('把各源预览收成一条轨，同 id 只留一份，按种子随机', () => {
@@ -268,6 +456,11 @@ describe('sameFeedStory / reuseFeedStories', () => {
     assert.equal(kept, prev)
     const next = reuseFeedStories([first], [starred])
     assert.equal(next[0], starred)
+    const mix = { ...first, rail_group: LATEST_FEED_ID }
+    assert.equal(sameFeedStory(first, mix), false)
+    const both = reuseFeedStories([first, mix], [mix, first])
+    assert.equal(both[0], mix)
+    assert.equal(both[1], first)
   })
 })
 
@@ -306,6 +499,18 @@ describe('storiesForSource', () => {
     })
     assert.equal(stories[0]?.id, 3)
     assert.equal(stories[0]?.source_name, '当前源')
+  })
+
+  it('手记源把 source_type 写上，卡面用来源换成站点', () => {
+    const stories = storiesForSource(null, {
+      id: 3,
+      name: '手记',
+      icon: '/n.png',
+      source_type: 'note',
+      recent_items: [makePreview({ id: 4, title: '近文' })],
+    })
+    assert.equal(stories[0]?.source_type, 'note')
+    assert.equal(stories[0]?.source_name, '手记')
   })
 
   it('没有焦点源不收', () => {

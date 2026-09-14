@@ -8,6 +8,7 @@ import { processEmbeds } from '../../../utils/embedProcessor'
 import { escapeHtml } from '../../../utils/inputSanitizer'
 import { processRssContent } from '../../../utils/rssContentProcessor'
 import { displayImageUrl, prepareNoteReaderHtml } from '../notes/noteImageUrl'
+import { decorateNoteReadSurface } from '../notes/noteReadSurface'
 import { replaceNoteHtml } from '../notes/noteWidgetMount'
 import {
   commentAnchorStale,
@@ -101,6 +102,7 @@ interface UseContentRenderOptions {
     theme: ThemeKey,
   ) => string
   theme: ThemeKey
+  copyCodeLabel: string
 }
 
 export function useContentRender({
@@ -113,6 +115,7 @@ export function useContentRender({
   comments,
   highlightComments,
   theme,
+  copyCodeLabel,
 }: UseContentRenderOptions): string {
   // 正文版本变化才重建 base HTML；主题由 CSS 变量驱动，避免 iframe 被摘下。
   const baseContent = useMemo(
@@ -138,8 +141,7 @@ export function useContentRender({
   const prevBaseContentRef = useRef('')
 
   // 正文变化才挂载 HTML；批注变化仅装饰文本节点。
-  // 必须和 useNoteWidgetHydration 同相：先写占位，同一轮 layout 再挂组件。
-  // 放进 useEffect 会晚于水合，阅读器只剩未挂载的壳，预览却是活件。
+  // replaceNoteHtml 写完会通知已登记的水合补挂。放进 useEffect 会晚一帧。
   useLayoutEffect(() => {
     const container = contentInnerRef.current
     if (!container || !baseContent) return
@@ -163,6 +165,7 @@ export function useContentRender({
       applyTextDecorations(container, displayHtml)
     } else {
       replaceNoteHtml(container, displayHtml)
+      decorateNoteReadSurface(container, copyCodeLabel)
     }
   }, [
     baseContent,
@@ -172,6 +175,7 @@ export function useContentRender({
     highlightComments,
     theme,
     item.content_revision,
+    copyCodeLabel,
   ])
 
   return baseContent

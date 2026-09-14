@@ -19,6 +19,7 @@ const loadHooks = [
   'useBrewSeo.ts',
   'useBrewNavExpand.ts',
   'useBoardPage.ts',
+  'useBrewWorkbench.ts',
 ]
 
 describe('brew page hooks 边界', () => {
@@ -29,6 +30,15 @@ describe('brew page hooks 边界', () => {
       assert.doesNotMatch(src, /from ['"]\.\/ui/)
       assert.doesNotMatch(src, /from ['"]\.\/manager/)
     }
+  })
+
+  it('工作台 hook 不进口编辑器正文，只调文档和媒体 API', () => {
+    const src = readFileSync(join(dir, 'useBrewWorkbench.ts'), 'utf8')
+    assert.match(src, /listNoteDocs/)
+    assert.match(src, /deleteNoteDoc/)
+    assert.match(src, /mediaApi/)
+    assert.doesNotMatch(src, /NoteEditor/)
+    assert.doesNotMatch(src, /useReaderSettings/)
   })
 
   it('订阅轨手势中按住拼轨，松手再 tick', () => {

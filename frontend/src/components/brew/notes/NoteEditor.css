@@ -1,10 +1,8 @@
-/** 预览 HTML 标签集合固定，按标签选择器排版。 */
+/** 可视层排版。预览和阅读器共用 `getArticleProseClass`，不走这里。 */
 
 .brew-note-preview {
   overflow-wrap: anywhere;
   color: var(--brew-fg, var(--color-gray-700, #374151));
-  font-size: 15px;
-  line-height: 1.75;
 }
 
 .brew-note-preview > :first-child {
@@ -24,15 +22,15 @@
 }
 
 .brew-note-preview h1 {
-  font-size: 1.6em;
+  font-size: 1.5em;
 }
 
 .brew-note-preview h2 {
-  font-size: 1.35em;
+  font-size: 1.25em;
 }
 
 .brew-note-preview h3 {
-  font-size: 1.15em;
+  font-size: 1.1em;
 }
 
 .brew-note-preview p,

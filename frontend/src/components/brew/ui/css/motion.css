@@ -60,6 +60,13 @@
   animation: none;
 }
 
+html[data-perf-mode='exlight'] #brew-peek-air,
+html[data-perf-mode='exlight'] .brew-peek-air,
+html[data-perf-mode='exlight'] .brew-peek-air__shot,
+html[data-perf-mode='exlight'] .brew-peek-air::after,
+html[data-perf-mode='exlight'] #brew-peek-copy,
+html[data-perf-mode='exlight'] .brew-peek-air__copy,
+html[data-perf-mode='exlight'] .brew-peek-air__lede,
 html[data-perf-mode='exlight'] .brew-bar__menu,
 html[data-perf-mode='exlight'] .brew-sheet__menu,
 html[data-perf-mode='exlight'] .brew-rail-title.is-arrive,
@@ -76,6 +83,16 @@ html[data-perf-mode='exlight'] .brew-pick {
   transition: none;
   opacity: 1;
   transform: none;
+}
+
+html[data-perf-mode='exlight'] .brew-story.has-cover,
+html[data-perf-mode='exlight'] .brew-story.has-cover .brew-story__kicker,
+html[data-perf-mode='exlight'] .brew-story.has-cover .brew-story__title,
+html[data-perf-mode='exlight'] .brew-story.has-cover .brew-story__byline,
+html[data-perf-mode='exlight'] .brew-story.has-cover .brew-story__thumb,
+html[data-perf-mode='exlight'] .brew-story.has-cover .brew-story__summary,
+html[data-perf-mode='exlight'] .brew-story.has-cover .brew-story__peek {
+  transition: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -98,15 +115,30 @@ html[data-perf-mode='exlight'] .brew-pick {
   }
 
   #brew-veil-bloom,
+  #brew-peek-air,
+  .brew-peek-air,
+  .brew-peek-air::after,
+  .brew-peek-air__shot,
+  #brew-peek-copy,
+  .brew-peek-air__copy,
+  .brew-peek-air__lede,
   .brew-feeds,
   .brew-feeds__air,
   .brew-page__air,
   .brew-feeds__items,
   .brew-site,
   .brew-story,
+  .brew-story.has-cover,
+  .brew-story.has-cover .brew-story__kicker,
+  .brew-story.has-cover .brew-story__title,
+  .brew-story.has-cover .brew-story__byline,
+  .brew-story.has-cover .brew-story__thumb,
+  .brew-story.has-cover .brew-story__summary,
+  .brew-story.has-cover .brew-story__peek,
   .brew-story__star,
   .brew-rail-title,
   .brew-vacant {
+    animation: none;
     transition: none;
   }
 

@@ -5,9 +5,7 @@
 //! 也只有一个能拿到。
 
 use chrono::{TimeZone, Utc};
-use myriad_brew_notes::{
-    NoteDocStatus, is_due, note_guid, note_link, render_note, validate_note,
-};
+use myriad_brew_notes::{NoteDocStatus, is_due, note_guid, note_link, render_note, validate_note};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
     PaginatorTrait, QueryFilter, Set, TransactionTrait,
@@ -123,7 +121,9 @@ async fn write_published_item<C: ConnectionTrait>(
     let rendered = render_note(title, content_md);
     let now = Utc::now();
     let topic = topic.filter(|value| !value.trim().is_empty());
-    let cover = image.filter(|value| !value.trim().is_empty()).or(rendered.image);
+    let cover = image
+        .filter(|value| !value.trim().is_empty())
+        .or(rendered.image);
 
     if let Some(id) = item_id {
         let item = brew_items::Entity::find_by_id(id)
@@ -156,9 +156,7 @@ async fn write_published_item<C: ConnectionTrait>(
         });
     }
 
-    let published_at = published_at_ms
-        .and_then(millis_to_datetime)
-        .unwrap_or(now);
+    let published_at = published_at_ms.and_then(millis_to_datetime).unwrap_or(now);
     let new_item = brew_items::ActiveModel {
         source_id: Set(source.id),
         guid: Set(note_guid(&uuid::Uuid::new_v4().to_string())),
@@ -495,12 +493,21 @@ mod tests {
     fn due_publish_claims_then_publishes_and_reverts_client_failures() {
         let src = include_str!("note_publish.rs");
         let due = body_of(src, "pub async fn publish_due_note_docs");
-        assert!(due.contains("claim_due_doc"), "must claim before publishing");
-        assert!(due.contains("publish_doc("), "must go through the transactional path");
+        assert!(
+            due.contains("claim_due_doc"),
+            "must claim before publishing"
+        );
+        assert!(
+            due.contains("publish_doc("),
+            "must go through the transactional path"
+        );
         assert!(due.contains("is_client_error"));
         assert!(due.contains("revert_due_doc"));
         let revert = body_of(src, "async fn revert_due_doc");
-        assert!(revert.contains("NoteDocStatus::Draft"), "4xx must put the doc back to draft");
+        assert!(
+            revert.contains("NoteDocStatus::Draft"),
+            "4xx must put the doc back to draft"
+        );
         assert!(revert.contains("last_error"));
     }
 
@@ -516,11 +523,20 @@ mod tests {
     #[test]
     fn publish_and_write_run_in_a_transaction() {
         let src = include_str!("note_publish.rs");
-        for signature in ["pub async fn publish_doc", "pub async fn write_note_with_doc"] {
+        for signature in [
+            "pub async fn publish_doc",
+            "pub async fn write_note_with_doc",
+        ] {
             let body = body_of(src, signature);
-            assert!(body.contains(".begin()"), "{signature} must open a transaction");
+            assert!(
+                body.contains(".begin()"),
+                "{signature} must open a transaction"
+            );
             assert!(body.contains("commit()"), "{signature} must commit");
-            assert!(body.contains("rollback()"), "{signature} must roll back on error");
+            assert!(
+                body.contains("rollback()"),
+                "{signature} must roll back on error"
+            );
         }
     }
 }

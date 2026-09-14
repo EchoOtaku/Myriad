@@ -121,16 +121,17 @@ export function getImageUrl(imageUrl: string | null): string | null {
 const plainCache = new Map<string, string>()
 const PLAIN_CACHE_CAP = 400
 
-export function getPlainText(html: string | null): string {
+export function getPlainText(html: string | null, max = 200): string {
   if (!html) return ''
-  const hit = plainCache.get(html)
+  const key = max === 200 ? html : `${max}\0${html}`
+  const hit = plainCache.get(key)
   if (hit != null) return hit
-  const text = html.replaceAll(/<[^>]*>/g, '').slice(0, 200)
+  const text = html.replaceAll(/<[^>]*>/g, '').slice(0, max)
   if (plainCache.size >= PLAIN_CACHE_CAP) {
     const first = plainCache.keys().next().value
     if (first != null) plainCache.delete(first)
   }
-  plainCache.set(html, text)
+  plainCache.set(key, text)
   return text
 }
 

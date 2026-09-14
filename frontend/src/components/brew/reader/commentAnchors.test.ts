@@ -78,6 +78,17 @@ it('highlights a cross-tag quote once, preserves markup and excludes media text'
       'two',
     )
     assert.equal(result.querySelector('[data-comment-id="3"]'), null)
+    const widgeted = highlightAnchoredComments(
+      '<p>articlequote</p><div class="note-widget" data-widget="quote">widgetquote</div>',
+      [
+        { id: 8, selected_text: 'articlequote' },
+        { id: 9, selected_text: 'widgetquote' },
+      ] as CommentItem[],
+      'light',
+    )
+    const widgetDoc = new dom.window.DOMParser().parseFromString(widgeted, 'text/html')
+    assert.equal(widgetDoc.querySelector('[data-comment-id="8"]')?.textContent, 'articlequote')
+    assert.equal(widgetDoc.querySelector('.note-widget [data-comment-id="9"]'), null)
     assert.equal(
       result.querySelector('p').lastChild.textContent,
       ' then one two',
@@ -113,6 +124,17 @@ it('annotates a unique term with the comment index and skips repeats and media',
     )
     assert.equal(result.querySelectorAll('.brewlia-annotation').length, 1)
     assert.equal(result.querySelector('.brew-embed-card .brewlia-annotation'), null)
+    const widgetHtml =
+      '<p>articlequote</p><div class="note-widget" data-widget="quote">widgetquote</div>'
+    const widgeted = new dom.window.DOMParser().parseFromString(
+      highlightAnchoredAnnotations(widgetHtml, [
+        { type: 'term', term: 'articlequote', explanation: 'n' },
+        { type: 'term', term: 'widgetquote', explanation: 'n' },
+      ]),
+      'text/html',
+    )
+    assert.equal(widgeted.querySelector('p .brewlia-annotation')?.textContent, 'articlequote')
+    assert.equal(widgeted.querySelector('.note-widget .brewlia-annotation'), null)
     assert.equal(typeof cssCustomHighlightAvailable(), 'boolean')
     const ambiguous = highlightAnchoredAnnotations(
       '<p>term then term</p>',

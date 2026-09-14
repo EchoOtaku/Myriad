@@ -88,6 +88,10 @@ describe('normalize', () => {
     assert.equal(normalizeNoteTopic('  '), null)
     assert.equal(normalizeNoteCover(''), null)
     assert.equal(normalizeNoteTopic('ai'), 'ai')
+    assert.equal(
+      [...normalizeNoteTopic('字'.repeat(50))!].length,
+      40,
+    )
   })
 })
 

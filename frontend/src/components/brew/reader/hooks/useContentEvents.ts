@@ -113,7 +113,7 @@ export function useContentEvents({
         const img = target as HTMLImageElement
         // 嵌入卡片内的图片不拦。
         const isInEmbedCard = img.closest(
-          '.brew-embed-card, .brew-embed-exempt, .brew-bilibili-embed, .brew-netease-music, .brew-steam-game, .brew-bilibili-video',
+          '.note-widget, .brew-embed-card, .brew-embed-exempt, .brew-bilibili-embed, .brew-netease-music, .brew-steam-game, .brew-bilibili-video',
         )
 
         if (img.src && !isInEmbedCard) {

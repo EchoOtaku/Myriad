@@ -181,6 +181,7 @@ fn map_generation_error(error: ImageGenerationError) -> HttpError {
 
 /// POST /api/home/stickers/generate — admin only.
 pub async fn generate_home_sticker(
+    crate::extract::Db(db): crate::extract::Db,
     Json(payload): Json<GenerateHomeStickerRequest>,
 ) -> Result<Json<GenerateHomeStickerResponse>, HttpError> {
     let prompt = normalize_sticker_prompt(&payload.prompt).map_err(HttpError)?;
@@ -231,6 +232,17 @@ pub async fn generate_home_sticker(
         .store_bytes_with_status(&png, "image/png")
         .await
         .map_err(|error| HttpError(AppError::internal(error).with_code("STICKER_STORE_FAILED")))?;
+    let _ = crate::services::media_catalog::register(
+        &db,
+        crate::services::media_catalog::RegisterMedia {
+            kind: crate::services::media_catalog::MediaKind::Generated,
+            url: stored.url.clone(),
+            mime: "image/png".into(),
+            name: "sticker.png".into(),
+            size: png.len() as i64,
+        },
+    )
+    .await;
 
     Ok(Json(GenerateHomeStickerResponse {
         image_url: stored.url,
@@ -241,6 +253,7 @@ pub async fn generate_home_sticker(
 
 /// POST /api/home/stickers/upload — admin only. Store as-is; no cutout.
 pub async fn upload_home_sticker(
+    crate::extract::Db(db): crate::extract::Db,
     Json(payload): Json<UploadHomeStickerRequest>,
 ) -> Result<Json<GenerateHomeStickerResponse>, HttpError> {
     let (bytes, media_type) = decode_sticker_upload(&payload.image).map_err(HttpError)?;
@@ -251,6 +264,17 @@ pub async fn upload_home_sticker(
         .store_bytes_with_status(&bytes, media_type)
         .await
         .map_err(|error| HttpError(AppError::internal(error).with_code("STICKER_STORE_FAILED")))?;
+    let _ = crate::services::media_catalog::register(
+        &db,
+        crate::services::media_catalog::RegisterMedia {
+            kind: crate::services::media_catalog::MediaKind::Upload,
+            url: stored.url.clone(),
+            mime: media_type.to_string(),
+            name: "sticker".into(),
+            size: bytes.len() as i64,
+        },
+    )
+    .await;
     Ok(Json(GenerateHomeStickerResponse {
         image_url: stored.url,
         width: decoded.width(),

@@ -1,20 +1,13 @@
-import type { AddFieldKind } from './addSource'
 import type { AddSubmitInput } from './useAddSourceForm'
 import {
   LuCheck as Check,
   LuDownload as Download,
-  LuExternalLink as ExternalLink,
   LuFileText as FileText,
   LuFolderOpen as FolderOpen,
   LuLink as Link,
-  NotionIcon,
-  LuPlus as Plus,
-  LuRss as Rss,
-  RSSHubIcon,
   LuSearch as Search,
   LuUpload as Upload,
 } from '@lib/icons'
-import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
 import { CompactSettingGroup } from '../../../settings/CompactSettingGroup'
 import { SegmentedControl } from '../../../settings/items/ChoiceControls'
@@ -24,21 +17,26 @@ import { SwitchItem } from '../../../settings/items/SwitchItem'
 import { SettingTitleTag } from '../../../settings/SettingTitleTag'
 import { Spinner } from '../../../Spinner'
 import {
-  addHintKey,
   addSubmitLabelKey,
   addUrlLabelKey,
   addUrlPlaceholder,
 } from './addSource'
+import { SourceCategoryField } from './SourceCategoryField'
+import { SourceKindControl } from './SourceKindControl'
 import { useAddSourceForm } from './useAddSourceForm'
 import './AddMode.css'
 
 interface AddModeProps {
+  tabs?: 'all' | 'single' | 'opml'
   allCategories: string[]
   sourcesCount: number
   onSubmit?: (
     data: AddSubmitInput,
   ) => Promise<{ success: boolean; error?: string; title?: string }>
-  onDiscover?: (url: string) => Promise<{
+  onDiscover?: (
+    url: string,
+    signal?: AbortSignal,
+  ) => Promise<{
     url: string
     autocompleted: boolean
     title: string
@@ -56,6 +54,7 @@ interface AddModeProps {
 }
 
 export function AddMode({
+  tabs = 'all',
   allCategories,
   sourcesCount,
   onSubmit,
@@ -72,105 +71,35 @@ export function AddMode({
     onImportOpml,
     onExportOpml,
   })
-  const hint = t[addHintKey(form.fieldKind)]
+  const tab = tabs === 'all' ? form.tab : tabs
   const urlLabel = t[addUrlLabelKey(form.fieldKind)]
   const submitLabel = t[addSubmitLabelKey(form.sourceType)]
-  const categoryWrapRef = useRef<HTMLDivElement>(null)
-  const categoryInputRef = useRef<HTMLInputElement>(null)
-  const [categoryDraft, setCategoryDraft] = useState('')
-  const categoryName = categoryDraft.trim()
-  const canAddCategory =
-    categoryName.length > 0 &&
-    !allCategories.includes(categoryName)
-
-  const closeCategory = (next = categoryDraft) => {
-    const value = next.trim()
-    if (value !== form.category) form.setCategory(value)
-    form.setCategoryOpen(false)
-  }
-
-  useEffect(() => {
-    if (!form.categoryOpen) return
-    setCategoryDraft(form.category)
-    const id = window.setTimeout(() => categoryInputRef.current?.focus(), 0)
-    const onDoc = (event: MouseEvent) => {
-      if (!categoryWrapRef.current?.contains(event.target as Node)) {
-        closeCategory(categoryInputRef.current?.value ?? categoryDraft)
-      }
-    }
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') form.setCategoryOpen(false)
-    }
-    document.addEventListener('mousedown', onDoc)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      window.clearTimeout(id)
-      document.removeEventListener('mousedown', onDoc)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [form.categoryOpen, form.category, form.setCategoryOpen])
 
   return (
     <div
       className={`brew-add-form${form.categoryOpen ? ' is-category-open' : ''}`}
     >
-      <SegmentedControl
-        size="sm"
-        columns={2}
-        ariaLabel={t.singleAdd}
-        value={form.tab}
-        onChange={form.setTab}
-        options={[
-          { value: 'single', label: t.singleAdd, icon: <Link /> },
-          { value: 'opml', label: 'OPML', icon: <FileText /> },
-        ]}
-      />
+      {tabs === 'all' ? (
+        <SegmentedControl
+          size="sm"
+          columns={2}
+          ariaLabel={t.singleAdd}
+          value={form.tab}
+          onChange={form.setTab}
+          options={[
+            { value: 'single', label: t.singleAdd, icon: <Link /> },
+            { value: 'opml', label: 'OPML', icon: <FileText /> },
+          ]}
+        />
+      ) : null}
 
-      {form.tab === 'single' ? (
+      {tab === 'single' ? (
         <form className="brew-add-form__stack" onSubmit={form.handleSubmit}>
-          <div className="setting-item setting-item-select setting-vertical setting-sm brew-add-form__type">
-            <div className="setting-label">
-              <span className="setting-label-text">{t.sourceTypeLabel}</span>
-            </div>
-            <div className="setting-control">
-              <SegmentedControl<AddFieldKind>
-                size="sm"
-                columns={4}
-                className="brew-add-form__kinds"
-                ariaLabel={t.sourceTypeLabel}
-                value={form.fieldKind}
-                onChange={form.pickKind}
-                disabled={form.loading}
-                options={[
-                  {
-                    value: 'link',
-                    label: t.pureLink,
-                    icon: <ExternalLink />,
-                    disabled: form.loading,
-                  },
-                  {
-                    value: 'rss',
-                    label: 'RSS',
-                    icon: <Rss />,
-                    disabled: form.loading,
-                  },
-                  {
-                    value: 'rsshub',
-                    label: 'RSSHub',
-                    icon: <RSSHubIcon />,
-                    disabled: form.loading,
-                  },
-                  {
-                    value: 'notion',
-                    label: 'Notion',
-                    icon: <NotionIcon />,
-                    disabled: form.loading,
-                  },
-                ]}
-              />
-            </div>
-            <p className="setting-hint">{hint}</p>
-          </div>
+          <SourceKindControl
+            value={form.fieldKind}
+            onChange={form.pickKind}
+            disabled={form.loading}
+          />
 
           {form.sourceType !== 'link' && form.sourceType !== 'rsshub' ? (
             <SwitchItem
@@ -275,99 +204,14 @@ export function AddMode({
               }
               disabled={form.loading}
             />
-            <div className="setting-item setting-item-select setting-vertical setting-sm brew-add-form__category">
-              <label className="setting-label">
-                <span className="setting-label-text">{t.category}</span>
-              </label>
-              <div className="setting-control">
-                <div
-                  ref={categoryWrapRef}
-                  className={`field-select-wrap field-select-size-sm${form.categoryOpen ? ' is-open' : ''}`}
-                >
-                  <button
-                    type="button"
-                    className="field-select field-select-trigger"
-                    disabled={form.loading}
-                    aria-haspopup="listbox"
-                    aria-expanded={form.categoryOpen}
-                    onClick={() => {
-                      if (!form.loading) {
-                        form.setCategoryOpen(!form.categoryOpen)
-                      }
-                    }}
-                  >
-                    <span className="field-select-value">
-                      {form.category || t.selectCategory}
-                    </span>
-                    <span className="field-select-chevron" aria-hidden />
-                  </button>
-                  {form.categoryOpen ? (
-                    <div className="field-select-panel">
-                      <div className="field-select-search">
-                        <input
-                          ref={categoryInputRef}
-                          type="text"
-                          className="field-select-search-input"
-                          value={categoryDraft}
-                          onChange={(event) =>
-                            setCategoryDraft(event.target.value)
-                          }
-                          placeholder={t.inputNewCategory}
-                          autoComplete="off"
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => {
-                            if (event.key !== 'Enter') return
-                            event.preventDefault()
-                            event.stopPropagation()
-                            if (categoryName) form.pickCategory(categoryName)
-                          }}
-                        />
-                      </div>
-                      <ul className="field-select-menu" role="listbox">
-                        {canAddCategory ? (
-                          <li role="presentation">
-                            <button
-                              type="button"
-                              role="option"
-                              aria-selected
-                              className="field-select-option is-selected"
-                              onClick={() => form.pickCategory(categoryName)}
-                            >
-                              <Plus />
-                              {`${t.addCategory.replace(/[….]+$/u, '')}「${categoryName}」`}
-                            </button>
-                          </li>
-                        ) : null}
-                        <li role="presentation">
-                          <button
-                            type="button"
-                            role="option"
-                            aria-selected={!form.category && !categoryName}
-                            className={`field-select-option${!form.category && !categoryName ? ' is-selected' : ''}`}
-                            onClick={() => form.pickCategory('')}
-                          >
-                            {t.noCategory}
-                          </button>
-                        </li>
-                        {allCategories.map((cat) => (
-                          <li key={cat} role="presentation">
-                            <button
-                              type="button"
-                              role="option"
-                              aria-selected={form.category === cat}
-                              className={`field-select-option${form.category === cat ? ' is-selected' : ''}`}
-                              onClick={() => form.pickCategory(cat)}
-                            >
-                              {cat}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </div>
+            <SourceCategoryField
+              categories={allCategories}
+              value={form.category}
+              open={form.categoryOpen}
+              onOpenChange={form.setCategoryOpen}
+              onChange={form.setCategory}
+              disabled={form.loading}
+            />
           </CompactSettingGroup>
 
           <InputItem

@@ -32,24 +32,26 @@ describe('toHomeBoardNote', () => {
       author: null,
       source_name: '示例源',
       source_icon: null,
+      guid: note.guid,
     })
     assert.equal(NOTES_FEATURED_MAX, 3)
   })
 })
 
 describe('toNoteStory', () => {
-  it('缺源名字时用源卡补上', () => {
-    const story = toNoteStory(
-      toHomeBoardNote(makeItem({
-        id: 9,
-        title: 'n9',
-        source_id: 10,
-        source_name: '',
-      })),
-      { name: '手记', icon: '/n.png' },
-    )
+  it('缺源名字时用源卡补上，并标成手记好换站点来源', () => {
+    const note = toHomeBoardNote(makeItem({
+      id: 9,
+      title: 'n9',
+      source_id: 10,
+      source_name: '',
+      guid: 'note:n9',
+    }))
+    const story = toNoteStory(note, { name: '手记', icon: '/n.png' })
     assert.equal(story.source_name, '手记')
     assert.equal(story.source_icon, '/n.png')
+    assert.equal(story.source_type, 'note')
+    assert.equal(story.guid, 'note:n9')
     assert.equal(story.is_read, true)
   })
 })

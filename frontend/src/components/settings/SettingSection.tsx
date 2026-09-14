@@ -27,6 +27,8 @@ export interface SettingSectionProps extends SettingSectionConfig {
   /** between reset and help; omit on other pages */
   headerBetweenPinned?: ReactNode
   headerLeading?: ReactNode
+  headerAside?: ReactNode
+  subtitle?: ReactNode
 }
 
 function SectionTocNav() {
@@ -79,6 +81,8 @@ export const SettingSection: React.FC<SettingSectionProps> = ({
   headerActions,
   headerBetweenPinned,
   headerLeading,
+  headerAside,
+  subtitle,
 }) => {
   const { t, format } = useI18n()
   const pageActions = useSettingsPageActions()
@@ -189,7 +193,13 @@ export const SettingSection: React.FC<SettingSectionProps> = ({
                     {helpContent}
                   </div>
                 )}
+                {subtitle != null && subtitle !== false ? (
+                  <div className="section-description">{subtitle}</div>
+                ) : null}
               </div>
+              {headerAside != null && headerAside !== false ? (
+                <div className="section-header-aside">{headerAside}</div>
+              ) : null}
             </div>
 
             <div className="section-header-right">

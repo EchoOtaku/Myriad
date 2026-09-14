@@ -12,13 +12,52 @@ function hideBrokenSourceIcon(
   event.currentTarget.hidden = true
 }
 
+export function markBrewStoryPeek(target: EventTarget | null, on: boolean): void {
+  if (!(target instanceof Element)) return
+  const node = target.closest('.brew-story')
+  if (
+    !(node instanceof HTMLElement)
+    || node.classList.contains('brew-story--slot')
+  ) {
+    return
+  }
+  if (on) {
+    clearBrewStoryPeeks()
+    node.classList.add('is-peek')
+    return
+  }
+  node.classList.remove('is-peek')
+}
+
+export function clearBrewStoryPeeks(root?: ParentNode | null): void {
+  const scope = root ?? (typeof document === 'undefined' ? null : document)
+  scope?.querySelectorAll('.brew-story.is-peek').forEach((node) => {
+    node.classList.remove('is-peek')
+  })
+}
+
+function syncStoryCoverClass(story: Element | null, coverOk: boolean): void {
+  if (!(story instanceof HTMLElement)) return
+  if (coverOk) {
+    story.classList.add('has-cover')
+    if (story.querySelector('.brew-story__peek')) story.classList.add('has-peek')
+    return
+  }
+  story.classList.remove('has-cover', 'has-peek')
+}
+
 function hideBrokenStoryCover(
   event: SyntheticEvent<HTMLImageElement>,
 ): void {
   const thumb = event.currentTarget.closest('.brew-story__thumb')
-  const story = event.currentTarget.closest('.brew-story')
   if (thumb instanceof HTMLElement) thumb.hidden = true
-  story?.classList.remove('has-cover')
+  syncStoryCoverClass(event.currentTarget.closest('.brew-story'), false)
+}
+
+function showLoadedStoryCover(event: SyntheticEvent<HTMLImageElement>): void {
+  const thumb = event.currentTarget.closest('.brew-story__thumb')
+  if (thumb instanceof HTMLElement) thumb.hidden = false
+  syncStoryCoverClass(event.currentTarget.closest('.brew-story'), true)
 }
 
 const placeAbs = new Map<string, CSSProperties>()
@@ -29,18 +68,21 @@ function storyCardClass(
   cover: boolean,
   star: boolean,
   hold: boolean,
+  peek: boolean,
 ): string {
   const key =
     (unread ? 1 : 0)
     | (cover ? 2 : 0)
     | (star ? 4 : 0)
     | (hold ? 8 : 0)
+    | (peek ? 16 : 0)
   const hit = storyClass.get(key)
   if (hit) return hit
   const next = cx(
     'brew-story brew-float brew-story__hit brew-story__shell',
     unread && 'is-unread',
     cover && 'has-cover',
+    peek && 'has-peek',
     star && 'has-star',
     hold && 'is-hold',
   )
@@ -80,7 +122,7 @@ interface StoryCardFace {
 }
 
 export const StoryCard = forwardRef<
-  HTMLElement,
+  HTMLButtonElement,
   {
     face?: StoryCardFace
     unreadLabel?: string
@@ -160,6 +202,7 @@ export const StoryCard = forwardRef<
   ) as CSSProperties | null
   const deferCover = holdCover && !eagerCover
   const showStar = canStar ?? !!onToggleStar
+  const peek = !!(face.cover && face.summary)
   if (
     html
     && !onOpen
@@ -183,6 +226,7 @@ export const StoryCard = forwardRef<
           !!face.cover,
           showStar,
           deferCover,
+          peek,
         )}
         style={style ?? undefined}
         dangerouslySetInnerHTML={{ __html: html }}
@@ -206,6 +250,7 @@ export const StoryCard = forwardRef<
                 !!face.cover,
                 showStar && !picking,
                 deferCover,
+                peek,
               ),
               current && 'is-current',
               picked && 'is-picked',
@@ -217,6 +262,7 @@ export const StoryCard = forwardRef<
               !!face.cover,
               showStar,
               deferCover,
+              peek,
             )
       }
       style={style ?? undefined}
@@ -226,11 +272,19 @@ export const StoryCard = forwardRef<
         onPeek
           ? (event) => {
               if (event.pointerType === 'touch') return
+              markBrewStoryPeek(event.currentTarget, true)
               onPeek()
             }
           : undefined
       }
-      onPointerLeave={onPeekEnd}
+      onPointerLeave={
+        onPeekEnd
+          ? (event) => {
+              markBrewStoryPeek(event.currentTarget, false)
+              onPeekEnd()
+            }
+          : undefined
+      }
     >
         <span className="brew-story__kicker">
           {face.topic ? (
@@ -245,6 +299,7 @@ export const StoryCard = forwardRef<
             >
               {face.sourceIcon && !deferCover ? (
                 <img
+                  key={face.sourceIcon}
                   src={face.sourceIcon}
                   data-src={face.sourceIcon}
                   alt=""
@@ -273,6 +328,7 @@ export const StoryCard = forwardRef<
         ) : null}
         {face.cover ? (
           <span
+            key={face.cover}
             className="brew-story__thumb"
             aria-hidden
             {...(deferCover ? { 'data-src': face.cover } : {})}
@@ -285,12 +341,18 @@ export const StoryCard = forwardRef<
                 loading={eagerCover ? 'eager' : 'lazy'}
                 decoding="async"
                 onError={hideBrokenStoryCover}
+                onLoad={showLoadedStoryCover}
               />
             )}
           </span>
         ) : null}
         {face.summary ? (
           <span className="brew-story__summary">{face.summary}</span>
+        ) : null}
+        {face.cover && face.summary ? (
+          <span className="brew-story__peek" aria-hidden>
+            {face.summary}
+          </span>
         ) : null}
       {picking ? (
         <BrewPick on={picked} />

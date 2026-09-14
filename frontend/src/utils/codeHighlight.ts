@@ -122,7 +122,7 @@ const LANG_CLASS = /\blanguage-([\w+#.-]+)/
 /** 给容器里所有 `pre > code.language-x` 上色。已经上过的跳过。 */
 export async function highlightCodeBlocks(root: ParentNode): Promise<void> {
   const blocks = [...root.querySelectorAll<HTMLElement>('pre > code[class*="language-"]')].filter(
-    (code) => !code.dataset.highlighted,
+    (code) => !code.dataset.highlighted && !code.closest('.note-widget'),
   )
   if (blocks.length === 0) return
   const prism = await loadPrism()

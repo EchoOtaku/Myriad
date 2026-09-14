@@ -8,7 +8,7 @@ export function applyTextDecorations(
   desired.innerHTML = decoratedHtml
   const selector = 'mark.user-comment-highlight, mark.brewlia-annotation'
   const excluded =
-    'script, style, button, iframe, .brew-embed-card, .brew-embed-exempt, .brew-bilibili-embed, .brew-netease-music, .brew-steam-game, .brew-bilibili-video'
+    'script, style, button, iframe, .note-widget, .brew-embed-card, .brew-embed-exempt, .brew-bilibili-embed, .brew-netease-music, .brew-steam-game, .brew-bilibili-video'
   const textNodes = (root: HTMLElement) => {
     const walker = doc.createTreeWalker(root, 4)
     const nodes: Text[] = []

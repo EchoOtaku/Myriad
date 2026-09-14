@@ -1286,6 +1286,16 @@ pub async fn upload_portrait(
         .store_bytes_with_status(&reference.bytes, &reference.media_type)
         .await
         .map_err(internal_error)?;
+    crate::services::media_catalog::register_if_created(
+        &db,
+        crate::services::media_catalog::MediaKind::Upload,
+        stored.url.clone(),
+        reference.media_type.clone(),
+        "portrait",
+        reference.bytes.len() as i64,
+        stored.created,
+    )
+    .await;
     let persona = merope::get_persona(&db).await.map_err(internal_error)?;
     let name = persona
         .as_ref()
@@ -1569,6 +1579,16 @@ pub async fn generate_portrait(
             return Err(bad_request(&error.to_string()));
         }
     };
+    crate::services::media_catalog::register_if_created(
+        &db,
+        crate::services::media_catalog::MediaKind::Generated,
+        persisted.url.clone(),
+        persisted.mime.clone(),
+        "portrait",
+        persisted.size,
+        persisted.created,
+    )
+    .await;
     let url = persisted.url.clone();
     let portrait_generation = json!({
         "fingerprint": contract_fingerprint,
@@ -1801,6 +1821,16 @@ pub async fn generate_sticker_avatar(
             return Err(bad_request(&error.to_string()));
         }
     };
+    crate::services::media_catalog::register_if_created(
+        &db,
+        crate::services::media_catalog::MediaKind::Generated,
+        persisted.url.clone(),
+        persisted.mime.clone(),
+        "avatar",
+        persisted.size,
+        persisted.created,
+    )
+    .await;
     let url = persisted.url.clone();
     let avatar_generation = json!({
         "fingerprint": contract_fingerprint,

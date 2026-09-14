@@ -6,7 +6,9 @@ import {
   encodeWidgetConfigAttr,
   insertColumnsMarkdown,
   insertWidgetMarkdown,
+  NOTE_WIDGET_SIZES,
   noteWidgetCanConfigure,
+  noteWidgetTypesInMarkdown,
   parseNoteLayout,
   parseWidgetDirective,
   serializeColumns,
@@ -15,6 +17,11 @@ import {
 describe('parseWidgetDirective', () => {
   it('读类型和尺寸，类型收成小写', () => {
     assert.deepEqual(parseWidgetDirective(':::widget Weather 4x2'), {
+      type: 'weather',
+      size: '4x2',
+      config: null,
+    })
+    assert.deepEqual(parseWidgetDirective(':::WIDGET weather 4x2'), {
       type: 'weather',
       size: '4x2',
       config: null,
@@ -29,6 +36,7 @@ describe('parseWidgetDirective', () => {
       [...WIDGET_SIZE_KEYS].sort(),
       ['1x1', '1x2', '2x1', '2x2', '2x3', '2x4', '3x2', '3x3', '4x1', '4x2', '4x4'],
     )
+    assert.deepEqual([...NOTE_WIDGET_SIZES].sort(), [...WIDGET_SIZE_KEYS].sort())
   })
 
   it('不认围栏里那种乱写', () => {
@@ -52,6 +60,14 @@ describe('parseWidgetDirective', () => {
     })
     assert.equal(
       parseWidgetDirective(':::widget weather 2x2 {nope}')?.config,
+      null,
+    )
+    assert.equal(
+      parseWidgetDirective(':::widget weather 2x2 {"city":')?.config,
+      null,
+    )
+    assert.equal(
+      parseWidgetDirective(':::widget weather 2x2 {"city":"Tokyo",}')?.config,
       null,
     )
     assert.equal(parseWidgetDirective(':::widget weather 2x2 hello'), null)
@@ -104,6 +120,7 @@ describe('parseNoteLayout', () => {
     if (tail?.kind === 'text') {
       assert.match(tail.text, /:::widget secret/)
     }
+    assert.deepEqual(noteWidgetTypesInMarkdown(md), ['weather'])
   })
 
   it('分栏未闭合也收齐已读到的栏', () => {

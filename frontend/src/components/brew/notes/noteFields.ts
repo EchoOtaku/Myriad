@@ -1,5 +1,7 @@
 /** 和 `myriad-brew-notes` 同一套上限，提交前先拦。 */
 
+import { normalizeNoteCategory } from './noteCategory'
+
 export const MAX_NOTE_TITLE_CHARS = 200
 export const MAX_NOTE_BODY_CHARS = 200_000
 
@@ -72,8 +74,7 @@ export function sameNoteMinute(left: number | null, right: number | null): boole
 }
 
 export function normalizeNoteTopic(topic: string | null | undefined): string | null {
-  const value = topic?.trim()
-  return value || null
+  return normalizeNoteCategory(topic)
 }
 
 export function normalizeNoteCover(cover: string | null | undefined): string | null {

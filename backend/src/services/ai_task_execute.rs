@@ -838,6 +838,7 @@ pub async fn execute_task(execution: AiTaskExecution) {
                 let (width, height) = image_size_from_input(&request.input);
                 let event_sender = event_sink.clone();
                 run_image_provider(
+                    &db,
                     config,
                     &prepared.prompt,
                     width,

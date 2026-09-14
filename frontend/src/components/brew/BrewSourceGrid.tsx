@@ -13,9 +13,9 @@ import * as brewApi from '../../services/brewApi'
 import { refreshableSourceCount } from './logic/board'
 import { storiesFromSources } from './logic/feedStories'
 import { roleFromAuth } from './logic/score'
+import { readSourceSortMode, writeSourceSortMode } from './logic/sourceSort'
 import BrewControls from './manager/BrewControls'
 import { BrewSourceTitleTags } from './manager/BrewSourceTitleTags'
-import { useBrewpack } from './manager/useBrewpack'
 import BrewBoardView from './skin/BrewBoard'
 import { BrewViewLane } from './skin/BrewChip'
 import { BrewPageStage } from './ui/BrewPageStage'
@@ -71,12 +71,9 @@ export default function BrewSourceGrid({
   focusSourceId,
   onSourceClick,
   onRefreshSource,
-  onSourcesChange,
-  onAddSource,
   onUpdateSource,
   onDiscoverSource,
   onGenerateStyleTags,
-  onImportOpml,
   onRemoveSources,
   onOpenItem,
   onPeekItem,
@@ -93,7 +90,7 @@ export default function BrewSourceGrid({
   const titleId = useId()
   const viewerRole = roleFromAuth(isAuthenticated, isAdmin)
   const [searchQuery, setSearchQuery] = useState('')
-  const [sortMode, setSortMode] = useState<SourceSortMode>('smart')
+  const [sortMode, setSortMode] = useState<SourceSortMode>(readSourceSortMode)
   const [scoreNow, setScoreNow] = useState(() => Date.now())
   const { categories, filtered, sorted } = useBoardCatalog(
     sources,
@@ -138,11 +135,10 @@ export default function BrewSourceGrid({
   )
 
   const handleSortModeChange = useCallback((mode: SourceSortMode) => {
+    writeSourceSortMode(mode)
     setSortMode(mode)
     setScoreNow(Date.now())
   }, [])
-  const pack = useBrewpack(sources, onSourcesChange)
-
   const bar = useMemo(
     () =>
       board === 'feeds' ? (
@@ -152,25 +148,10 @@ export default function BrewSourceGrid({
           categories={categories}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
-          onAddSource={onAddSource}
-          onDiscover={onDiscoverSource}
-          onImportOpml={onImportOpml}
-          onSourcesChange={onSourcesChange}
           isAdmin={isAdmin}
         />
       ) : null,
-    [
-      board,
-      sources,
-      sorted,
-      categories,
-      searchQuery,
-      onAddSource,
-      onDiscoverSource,
-      onImportOpml,
-      onSourcesChange,
-      isAdmin,
-    ],
+    [board, sources, sorted, categories, searchQuery, isAdmin],
   )
 
   const sourceTags = useMemo(
@@ -189,7 +170,7 @@ export default function BrewSourceGrid({
         refreshableCount={refreshableSourceCount(sorted)}
         isDeleting={edit.isDeleting}
         isRefreshing={edit.isRefreshing}
-        onEnterEdit={edit.handleEnterEditMode}
+        onEnterEdit={undefined}
         onExitEdit={edit.handleExitEditMode}
         onSelectAll={edit.handleSelectAll}
         onBatchDelete={edit.handleBatchDelete}
@@ -197,13 +178,8 @@ export default function BrewSourceGrid({
         onMarkAllRead={onMarkAllRead}
         onWriteNote={board === 'notes' ? onWriteNote : undefined}
         onUpdateSource={onUpdateSource}
+        onDiscover={onDiscoverSource}
         onGenerateStyleTags={onGenerateStyleTags}
-        sourceEditTick={edit.sourceEditTick}
-        importExportLoading={board === 'feeds' ? pack.loading : false}
-        importProgress={board === 'feeds' ? pack.progress : undefined}
-        onBrewExport={board === 'feeds' ? pack.exportPack : undefined}
-        onBrewImportFile={board === 'feeds' ? pack.importFile : undefined}
-        brewExportInputRef={board === 'feeds' ? pack.inputRef : undefined}
       />
     ),
     [
@@ -227,13 +203,8 @@ export default function BrewSourceGrid({
       onMarkAllRead,
       onWriteNote,
       onUpdateSource,
+      onDiscoverSource,
       onGenerateStyleTags,
-      edit.sourceEditTick,
-      pack.loading,
-      pack.progress,
-      pack.exportPack,
-      pack.importFile,
-      pack.inputRef,
     ],
   )
 
@@ -261,7 +232,7 @@ export default function BrewSourceGrid({
       onPeekItem={onPeekItem}
       onPeekEnd={onPeekEnd}
       onToggleStar={board === 'feeds' ? onStar : onToggleStar}
-      onEditSource={isAdmin ? edit.handleOpenSourceEdit : undefined}
+      onEditSource={undefined}
       onSitesOpenChange={board === 'feeds' ? edit.setSitesOpen : undefined}
       toolbar={bar}
       vacant={board === 'feeds' && searchMiss ? miss : null}

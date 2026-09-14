@@ -159,7 +159,10 @@ pub async fn stream_events(
         "delivery": "online-at-most-once",
     });
     let runtime_id = runtime.runtime_id().to_string();
-    let ready = Ok(Event::default().event("ready").json_data(ready).unwrap_or_default());
+    let ready = Ok(Event::default()
+        .event("ready")
+        .json_data(ready)
+        .unwrap_or_default());
     let inner = futures::stream::unfold(
         Some(EventFeed {
             pending: VecDeque::from([ready]),

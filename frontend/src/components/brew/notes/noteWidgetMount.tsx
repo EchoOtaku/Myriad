@@ -1,36 +1,50 @@
 /**
- * 正文小组件：占位壳只带 data-widget / data-size / data-config，React 挂在内部 face 上。
- * 换 innerHTML 必须走 replaceNoteHtml，避免 root 留在被扔掉的节点上。
- *
- * 岛是独立 createRoot，不在 App 的路由树上。报告卡 / 友链 / Tapp 快捷方式
- * 一挂就 useNavigate，没 Router 会整岛空白。
+ * 正文小组件：占位壳只带 data-widget / data-size / data-config。
+ * React 从手记 / 阅读器这棵树上 portal 进 face，沿用路由和 i18n。
+ * 换 innerHTML 必须走 replaceNoteHtml，写完再补挂，避免 portal 还指着旧节点。
  */
 
-import type { WidgetSize, WidgetType } from '../../widgetGridTypes'
-import type { ErrorInfo, ReactNode } from 'react'
-import { Component, Suspense, useLayoutEffect, useMemo } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
-import { MemoryRouter } from 'react-router-dom'
+import type { WidgetConfig, WidgetSize, WidgetType } from '../../widgetGridTypes'
+import type { ErrorInfo, ReactNode, RefObject } from 'react'
+import { Component, Suspense, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useI18n } from '../../../contexts/I18nContext'
-import useTappWidgets from '../../../hooks/useTappWidgets'
-import { widgetHostConfig, widgetPreviewConfig } from '../../widgetLibraryModel'
-import { getBuiltinWidgets } from '../../widgets/builtinWidgets'
+import { widgetHostConfig } from '../../widgetLibraryModel'
 import {
   decodeWidgetConfigAttr,
   encodeWidgetConfigAttr,
-  serializeWidgetConfigJson,
   type NoteWidgetConfig,
 } from './noteLayout'
+import { noteWidgetInstanceId, noteWidgetIslandKey } from './noteWidgetId'
 import { NOTE_WIDGET_FACE } from './noteWidgetHtml'
 
 export { hasNoteWidgetMarkup, NOTE_WIDGET_FACE } from './noteWidgetHtml'
+export { noteWidgetInstanceId } from './noteWidgetId'
 
-const roots = new WeakMap<HTMLElement, Root>()
-const signatures = new WeakMap<HTMLElement, string>()
+type Surface = { paint: () => void }
+
+const surfaces = new WeakMap<HTMLElement, Set<Surface>>()
+
+function registerSurface(root: HTMLElement, surface: Surface): () => void {
+  let set = surfaces.get(root)
+  if (!set) {
+    set = new Set()
+    surfaces.set(root, set)
+  }
+  set.add(surface)
+  return () => {
+    set.delete(surface)
+  }
+}
 
 export type NoteWidgetHydrateOptions = {
   editable?: boolean
   onConfigChange?: (host: HTMLElement, config: NoteWidgetConfig) => void
+}
+
+export type NoteWidgetHydration = {
+  portals: ReactNode
+  refresh: () => void
 }
 
 class NoteWidgetGuard extends Component<
@@ -55,7 +69,26 @@ class NoteWidgetGuard extends Component<
   }
 }
 
+function noteWidgetConfig(
+  widgetType: WidgetType,
+  host: HTMLElement,
+  size: string,
+  instanceConfig: NoteWidgetConfig | null,
+): WidgetConfig {
+  return {
+    id: noteWidgetInstanceId(host, widgetType.id),
+    type: widgetType.id,
+    size: (size as WidgetSize) || widgetType.defaultSize,
+    position: { x: 0, y: 0 },
+    config: {
+      ...widgetHostConfig(widgetType.id),
+      ...instanceConfig,
+    },
+  }
+}
+
 function NoteWidgetSlot({
+  host,
   type,
   size,
   instanceConfig,
@@ -64,6 +97,7 @@ function NoteWidgetSlot({
   editable,
   onConfigChange,
 }: {
+  host: HTMLElement
   type: string
   size: string
   instanceConfig: NoteWidgetConfig | null
@@ -73,31 +107,26 @@ function NoteWidgetSlot({
   onConfigChange?: (config: NoteWidgetConfig) => void
 }) {
   const widgetType = catalog.find((entry) => entry.id === type)
-  if (!widgetType) {
+  const config = useMemo(
+    () =>
+      widgetType ? noteWidgetConfig(widgetType, host, size, instanceConfig) : null,
+    [host, instanceConfig, size, widgetType],
+  )
+  if (!widgetType || !config) {
     return <div className="note-widget__missing">{missingLabel}</div>
   }
   const WidgetComponent = widgetType.component
-  const config = {
-    ...widgetPreviewConfig(widgetType),
-    size: (size as WidgetSize) || widgetType.defaultSize,
-    config: {
-      ...widgetHostConfig(widgetType.id),
-      ...instanceConfig,
-    },
-  }
   return (
-    <MemoryRouter>
-      <NoteWidgetGuard missingLabel={missingLabel}>
-        <Suspense fallback={null}>
-          <WidgetComponent
-            config={config}
-            isEditMode={Boolean(editable)}
-            isPreview={false}
-            onConfigChange={onConfigChange}
-          />
-        </Suspense>
-      </NoteWidgetGuard>
-    </MemoryRouter>
+    <NoteWidgetGuard missingLabel={missingLabel}>
+      <Suspense fallback={null}>
+        <WidgetComponent
+          config={config}
+          isEditMode={Boolean(editable)}
+          isPreview={false}
+          onConfigChange={onConfigChange}
+        />
+      </Suspense>
+    </NoteWidgetGuard>
   )
 }
 
@@ -110,113 +139,119 @@ function widgetFace(host: HTMLElement): HTMLElement {
   return face
 }
 
-export function unmountNoteWidgets(root: HTMLElement): void {
-  for (const host of root.querySelectorAll<HTMLElement>('.note-widget')) {
-    const mounted = roots.get(host)
-    if (!mounted) continue
-    mounted.unmount()
-    roots.delete(host)
-    signatures.delete(host)
-  }
+type Island = {
+  key: string
+  host: HTMLElement
+  face: HTMLElement
+  type: string
+  size: string
+  instanceConfig: NoteWidgetConfig | null
+  editable: boolean
 }
 
-/** 先卸再写。不要对已水合的根直接赋 innerHTML。 */
-export function replaceNoteHtml(root: HTMLElement, html: string): void {
-  unmountNoteWidgets(root)
-  root.innerHTML = html
-}
-
-export function mountNoteWidgets(
+function collectNoteWidgetIslands(
   root: HTMLElement,
-  catalog: WidgetType[],
-  missingLabel: string,
   options?: NoteWidgetHydrateOptions,
-): void {
-  const catalogKey = catalog.map((entry) => entry.id).join(',')
+): Island[] {
+  const islands: Island[] = []
   for (const host of root.querySelectorAll<HTMLElement>('.note-widget')) {
     const type = host.dataset.widget ?? ''
-    const size = host.dataset.size ?? '2x2'
     if (!type) continue
     host.classList.add('not-prose')
-    const instanceConfig = decodeWidgetConfigAttr(host.dataset.config)
-    const editable = Boolean(
-      options?.editable && host.classList.contains('is-selected'),
-    )
-    const signature = `${type}:${size}:${serializeWidgetConfigJson(instanceConfig) ?? ''}:${editable ? 'edit' : 'view'}:${missingLabel}:${catalogKey}`
-    const existing = roots.get(host)
-    if (existing && signatures.get(host) === signature) continue
-    if (existing) {
-      existing.unmount()
-      roots.delete(host)
-      signatures.delete(host)
-    }
-    const persistConfig = options?.onConfigChange
-      ? (next: NoteWidgetConfig) => {
-          const encoded = encodeWidgetConfigAttr(next)
-          if (encoded) host.dataset.config = encoded
-          else delete host.dataset.config
-          options.onConfigChange?.(host, next)
-        }
-      : undefined
-    const face = widgetFace(host)
-    const mounted = createRoot(face)
-    roots.set(host, mounted)
-    mounted.render(
-      <NoteWidgetSlot
-        type={type}
-        size={size}
-        instanceConfig={instanceConfig}
-        catalog={catalog}
-        missingLabel={missingLabel}
-        editable={editable}
-        onConfigChange={persistConfig}
-      />,
-    )
-    signatures.set(host, signature)
+    islands.push({
+      key: noteWidgetIslandKey(host),
+      host,
+      face: widgetFace(host),
+      type,
+      size: host.dataset.size ?? '2x2',
+      instanceConfig: decodeWidgetConfigAttr(host.dataset.config),
+      editable: Boolean(options?.editable && host.classList.contains('is-selected')),
+    })
   }
+  return islands
 }
 
-export function useNoteWidgetCatalog(enabled = true): WidgetType[] {
-  const { t } = useI18n()
-  const builtins = useMemo(
-    () => (enabled ? getBuiltinWidgets(t.widgets, 'note') : []),
-    [enabled, t.widgets],
-  )
-  const { tappWidgets } = useTappWidgets(enabled)
-  return useMemo(() => [...builtins, ...tappWidgets], [builtins, tappWidgets])
+/** 先写占位。已登记的水合会在同一轮 layout 里补挂。 */
+export function replaceNoteHtml(root: HTMLElement, html: string): void {
+  root.innerHTML = html
+  const set = surfaces.get(root)
+  if (!set) return
+  for (const surface of set) surface.paint()
 }
 
 /**
- * token 变了只补挂新占位，不整树卸载。
+ * 目录变了只重渲，不卸岛。选中切换走 refresh。
  * 切走 / 卸载才卸。写入 HTML 用 replaceNoteHtml。
  */
 export function useNoteWidgetHydration(
-  rootRef: React.RefObject<HTMLElement | null>,
+  rootRef: RefObject<HTMLElement | null>,
   catalog: WidgetType[],
-  token: string,
+  token: string | number | boolean,
   active: boolean,
   options?: NoteWidgetHydrateOptions,
-): void {
+): NoteWidgetHydration {
   const { t } = useI18n()
   const missing = t.brew.noteWidgetMissing
-  const onConfigChange = options?.onConfigChange
-  useLayoutEffect(() => {
+  const [islands, setIslands] = useState<Island[]>([])
+  const optionsRef = useRef(options)
+  optionsRef.current = options
+  const activeRef = useRef(active)
+  activeRef.current = active
+
+  const paint = useCallback(() => {
     const root = rootRef.current
-    if (!root) return
-    if (!active) {
-      unmountNoteWidgets(root)
+    if (!root || !activeRef.current) {
+      setIslands([])
       return
     }
-    mountNoteWidgets(root, catalog, missing, {
-      editable: options?.editable,
-      onConfigChange,
-    })
-  }, [active, catalog, missing, onConfigChange, options?.editable, rootRef, token])
+    setIslands(collectNoteWidgetIslands(root, optionsRef.current))
+  }, [rootRef])
 
   useLayoutEffect(() => {
-    return () => {
-      const root = rootRef.current
-      if (root) unmountNoteWidgets(root)
+    const root = rootRef.current
+    if (!root) {
+      setIslands([])
+      return
     }
-  }, [rootRef])
+    const stop = registerSurface(root, { paint })
+    if (active) paint()
+    else setIslands([])
+    return stop
+  }, [active, paint, rootRef, token])
+
+  const onConfigChangeRef = useRef(options?.onConfigChange)
+  onConfigChangeRef.current = options?.onConfigChange
+  const persistCache = useRef(new WeakMap<HTMLElement, (next: NoteWidgetConfig) => void>())
+  const persistFor = useCallback((host: HTMLElement) => {
+    if (!onConfigChangeRef.current) return undefined
+    const cached = persistCache.current.get(host)
+    if (cached) return cached
+    const persist = (next: NoteWidgetConfig) => {
+      const encoded = encodeWidgetConfigAttr(next)
+      if (encoded) host.dataset.config = encoded
+      else delete host.dataset.config
+      onConfigChangeRef.current?.(host, next)
+    }
+    persistCache.current.set(host, persist)
+    return persist
+  }, [])
+
+  const portals = islands.map((island) =>
+    createPortal(
+      <NoteWidgetSlot
+        host={island.host}
+        type={island.type}
+        size={island.size}
+        instanceConfig={island.instanceConfig}
+        catalog={catalog}
+        missingLabel={missing}
+        editable={island.editable}
+        onConfigChange={persistFor(island.host)}
+      />,
+      island.face,
+      island.key,
+    ),
+  )
+
+  return { portals, refresh: paint }
 }

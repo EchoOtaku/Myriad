@@ -52,6 +52,7 @@ export function BrewSourceTitleTags({
   onMarkAllRead,
   onWriteNote,
   onUpdateSource,
+  onDiscover,
   onGenerateStyleTags,
   sourceEditTick = 0,
   importExportLoading = false,
@@ -81,6 +82,15 @@ export function BrewSourceTitleTags({
   onMarkAllRead?: () => void
   onWriteNote?: () => void
   onUpdateSource?: (id: number, data: UpdateSourceRequest) => Promise<void>
+  onDiscover?: (
+    url: string,
+    signal?: AbortSignal,
+  ) => Promise<{
+    url: string
+    title: string
+    feed_type: string
+    autocompleted: boolean
+  } | null>
   onGenerateStyleTags?: (
     sourceId: number,
     signal?: AbortSignal,
@@ -158,12 +168,14 @@ export function BrewSourceTitleTags({
             title={brew.editSource}
             requireShowDetails={false}
             panelClassName="brew-feeds__add-guide"
+            keepMounted
             guide={
               <EditSourceMode
                 key={selectedSource.id}
                 source={selectedSource}
                 categories={categories}
                 onSave={onUpdateSource}
+                onDiscover={onDiscover}
                 onGenerateStyleTags={onGenerateStyleTags}
               />
             }
@@ -331,6 +343,7 @@ export function BrewSourceTitleTags({
           title={brew.addSubscription}
           requireShowDetails={false}
           panelClassName="brew-feeds__add-guide"
+          keepMounted
           guide={addForm}
           renderTrigger={(api) => (
             <SettingTitleTag
@@ -344,7 +357,7 @@ export function BrewSourceTitleTags({
           )}
         />
       ) : null}
-      {isAdmin && (!salon || total > 0) ? (
+      {isAdmin && onEnterEdit && (!salon || total > 0) ? (
         <SettingTitleTag
           className={TAG}
           variant="muted"

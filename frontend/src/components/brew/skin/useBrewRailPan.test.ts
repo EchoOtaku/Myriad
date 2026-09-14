@@ -46,6 +46,7 @@ import {
   railSettleTau,
   railSlotOffsets,
   railTrackScroll,
+  recycleStoryDomShellsOutside,
   scrollFromTrackTransform,
   settleRailSlot,
   sourceAtScroll,
@@ -626,6 +627,33 @@ describe('railCardKeepsPaint / railMountColumns', () => {
       assert.equal(created[0]?.dataset.brewDomShell, '1')
       dropStoryDomShells(host as unknown as ParentNode)
       assert.equal(kids.length, 0)
+      ensureStoryShells(
+        host as unknown as ParentNode,
+        6,
+        6,
+        [{ column: 6, row: 1 }, { column: 6, row: 2 }],
+      )
+      assert.equal(created.length, 2)
+      assert.equal(kids.length, 2)
+      ensureStoryShells(
+        host as unknown as ParentNode,
+        5,
+        5,
+        [{ column: 5, row: 1 }, { column: 5, row: 2 }],
+      )
+      assert.equal(created.length, 4)
+      assert.equal(kids.length, 4)
+      recycleStoryDomShellsOutside(host as unknown as ParentNode, 6, 6)
+      assert.equal(kids.length, 2)
+      assert.equal(kids[0]?.dataset.railCol, '6')
+      ensureStoryShells(
+        host as unknown as ParentNode,
+        7,
+        7,
+        [{ column: 7, row: 1 }, { column: 7, row: 2 }],
+      )
+      assert.equal(created.length, 4)
+      assert.equal(kids.length, 4)
     } finally {
       globalThis.document = prevDoc
     }
@@ -852,6 +880,10 @@ describe('useBrewRailPan 热路', () => {
     assert.match(wheelIdle, /releaseGrab/)
     const seek = src.slice(src.indexOf('const seek ='), src.indexOf('if (apiRef)'))
     assert.match(seek, /writeTransform/)
+    assert.match(
+      seek,
+      /if \(Math.abs\(scroll - current\) < 0.5 && Math.abs\(scroll - target\) < 0.5\)/,
+    )
     assert.doesNotMatch(seek, /leadElAt/)
     assert.doesNotMatch(seek, /slotAt/)
     assert.match(src, /notifyLeadAt/)

@@ -3,6 +3,14 @@
   /* chrome from ConfigForm .config-section */
 }
 
+.section-header-aside {
+  display: flex;
+  align-items: center;
+  flex: 1 1 12rem;
+  min-width: 8rem;
+  max-width: 22rem;
+}
+
 .section-header-actions-extra,
 .section-header-actions-pinned {
   display: flex;

@@ -77,5 +77,15 @@ export function useBrewNotes(
     bumpDocs()
   }, [bumpDocs])
 
-  return { noteEditor, docsEpoch, write, edit, editDoc, close, onSaved, onDeleted }
+  return {
+    noteEditor,
+    docsEpoch,
+    touchDocs: bumpDocs,
+    write,
+    edit,
+    editDoc,
+    close,
+    onSaved,
+    onDeleted,
+  }
 }

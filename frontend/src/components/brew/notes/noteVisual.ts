@@ -814,7 +814,7 @@ function isDefinitionMarkdown(block: string): boolean {
   return /^\[\^[^\]\s]+\]:/.test(block) || LINK_DEF_LINE.test(block)
 }
 
-/** 预览 HTML 补上参考链接定义。后端没热更新时也靠这一层，免得页脚只剩原文。 */
+/** 参考链接脚注。发布 / 预览由后端 `with_link_definitions` 写进消毒 HTML，读路径不再调用。 */
 export function withLinkDefinitions(html: string, markdown: string): string {
   if (/class=["']link-definition["']/.test(html)) return html
   const extra = [...collectLinkDefs(expandJammedDefinitions(markdown)).values()]
@@ -825,8 +825,22 @@ export function withLinkDefinitions(html: string, markdown: string): string {
     })
     .join('')
   if (!extra) return html
-  const at = html.indexOf('<div class="footnote-definition"')
+  const at = footnoteDefinitionStart(html)
   return at < 0 ? html + extra : html.slice(0, at) + extra + html.slice(at)
+}
+
+/** 预览开标签会插 `data-md-*`，和后端 `footnote_definition_start` 同一口径。 */
+function footnoteDefinitionStart(html: string): number {
+  let from = 0
+  while (from < html.length) {
+    const at = html.indexOf('<div', from)
+    if (at < 0) return -1
+    const gt = html.indexOf('>', at)
+    if (gt < 0) return -1
+    if (html.slice(at, gt + 1).includes('class="footnote-definition"')) return at
+    from = at + 4
+  }
+  return -1
 }
 
 /** 后端渲染的代码块只有 `class="language-x"`，挪成 `data-lang` 让样式能把语言写在角上。 */
@@ -911,7 +925,7 @@ export function visualClosestClass(
   })()
   const el = fromSelection
   if (!el || !root.contains(el)) return null
-  const found = el.closest(`.${className}`)
+  const found = el.closest<HTMLElement>(`.${className}`)
   return found && root.contains(found) && found !== root ? found : null
 }
 

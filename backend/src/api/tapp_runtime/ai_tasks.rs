@@ -551,8 +551,10 @@ pub async fn stream_ai_task_events(
     authorize_persisted(&task, &runtime)?;
     let snapshot = task.snapshot;
     let initial = serde_json::to_value(&snapshot).unwrap_or(Value::Null);
-    let snapshot_event =
-        Ok(Event::default().event("snapshot").json_data(initial).unwrap_or_default());
+    let snapshot_event = Ok(Event::default()
+        .event("snapshot")
+        .json_data(initial)
+        .unwrap_or_default());
     let stream = futures::stream::unfold(
         Some(AiTaskFeed {
             pending: VecDeque::from([snapshot_event]),

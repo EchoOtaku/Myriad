@@ -832,10 +832,7 @@ impl PlatformFetcher {
             }
 
             let html_preview: String = html.chars().take(500).collect();
-            tracing::warn!(
-                "No contribution data found. HTML preview: {}",
-                html_preview
-            );
+            tracing::warn!("No contribution data found. HTML preview: {}", html_preview);
             return Err(anyhow!("No contribution data found in HTML"));
         }
 

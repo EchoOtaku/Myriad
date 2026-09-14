@@ -16,6 +16,7 @@ describe('article prefetch cancel', () => {
     assert.match(feeds, /onPeekEnd\?\.\(\)/)
     assert.match(board, /onPeekEnd=\{onPeekEnd\}/)
     assert.match(grid, /onPeekEnd=\{onPeekEnd\}/)
-    assert.match(page, /onPeekEnd=\{cancelArticlePrefetch\}/)
+    assert.match(page, /onPeekEnd=\{handlePeekEnd\}/)
+    assert.match(page, /cancelArticlePrefetch\(\)/)
   })
 })

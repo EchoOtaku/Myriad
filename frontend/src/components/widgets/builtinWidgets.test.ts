@@ -33,6 +33,9 @@ test('agent persona widget is available on Home only', () => {
 test('note catalog uses hosts, not a special-case blacklist', () => {
   const noteIds = getBuiltinWidgets(widgetsI18n, 'note').map(({ id }) => id)
   assert.ok(noteIds.includes('weather'))
+  assert.ok(noteIds.includes('friend-links'))
+  assert.ok(noteIds.includes('report-bilibili'))
+  assert.ok(noteIds.includes('tapp-shortcut'))
   assert.ok(!noteIds.includes('welcome'))
   assert.ok(!noteIds.includes('agent-persona'))
   assert.ok(!noteIds.includes('brew-featured'))

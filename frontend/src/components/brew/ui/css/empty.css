@@ -145,6 +145,15 @@
   min-height: 0;
 }
 
+.brew-vacant.is-friends .brew-vacant__items .brew-vacant__shell {
+  justify-content: center;
+  gap: 0.2rem;
+}
+
+.brew-vacant.is-friends .brew-vacant__items .brew-vacant__bar.is-title {
+  margin-top: 0;
+}
+
 .brew-vacant__note.is-site .brew-vacant__title {
   font-size: 1rem;
   letter-spacing: -0.015em;

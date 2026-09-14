@@ -38,6 +38,154 @@ html.dark #brew-veil-bloom {
   );
 }
 
+/* 文章封面 peek：换壁纸，不换网站卡。压在 #bg-gradient 底下。 */
+#brew-peek-air,
+.brew-peek-air,
+#brew-peek-copy,
+.brew-peek-air__copy {
+  --brew-peek-fade: 220ms;
+}
+
+#brew-peek-air,
+.brew-peek-air {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.brew-peek-air__shot {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  opacity: 0;
+  transition: opacity var(--brew-peek-fade) var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.brew-peek-air__shot.is-on {
+  opacity: 1;
+}
+
+.brew-peek-air::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    to bottom,
+    rgb(255 255 255 / 10%) 0%,
+    transparent 22%,
+    rgb(255 255 255 / 18%) 42%,
+    rgb(255 255 255 / 48%) 68%,
+    rgb(255 255 255 / 78%) 100%
+  );
+  transition: opacity var(--brew-peek-fade) var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.brew-peek-air.is-on::after {
+  opacity: 1;
+}
+
+html.dark .brew-peek-air::after {
+  background: linear-gradient(
+    to bottom,
+    rgb(0 0 0 / 22%) 0%,
+    transparent 24%,
+    rgb(10 10 10 / 28%) 46%,
+    rgb(10 10 10 / 58%) 72%,
+    rgb(10 10 10 / 84%) 100%
+  );
+}
+
+/* 标题压在 #bg-gradient / 网格之上，照片仍在底下。 */
+#brew-peek-copy,
+.brew-peek-air__copy {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.brew-peek-air__lede {
+  position: absolute;
+  top: clamp(5.25rem, 14vh, 8.5rem);
+  left: max(
+    calc(var(--page-pad-x, 1.5rem) + var(--page-stage-pad, 0.5rem)),
+    calc((100% - var(--page-max-width, 80rem)) / 2 + var(--page-stage-pad, 0.5rem))
+  );
+  right: auto;
+  max-width: 38rem;
+  opacity: 0;
+  transition: opacity var(--brew-peek-fade) var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.brew-peek-air__lede.is-on {
+  opacity: 1;
+}
+
+.brew-peek-air__site {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  max-width: 100%;
+  margin-bottom: 0.62rem;
+  color: rgb(255 255 255 / 90%);
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.brew-peek-air__site span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brew-peek-air__site img,
+.brew-peek-air__mark {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 0.42rem;
+}
+
+.brew-peek-air__site img {
+  object-fit: cover;
+}
+
+.brew-peek-air__site img[hidden] {
+  display: none;
+}
+
+.brew-peek-air__mark {
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 36%);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.brew-peek-air__title {
+  display: -webkit-box;
+  overflow: hidden;
+  max-width: 100%;
+  color: #fff;
+  font-size: clamp(1.7rem, 3.6vw, 2.85rem);
+  font-weight: 750;
+  letter-spacing: -0.035em;
+  line-height: 1.18;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
 .brew-skin {
   --brew-fg: var(--cfg-text-1, var(--text-primary));
   --brew-fg-soft: var(--cfg-text-2, var(--text-secondary));

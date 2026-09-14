@@ -297,25 +297,20 @@ html.dark .brew-note__peer {
   pointer-events: none;
 }
 
-.brew-note__read .brew-note-preview {
-  font-size: 1.0625rem;
-  line-height: 1.8;
-}
-
 /* 预览点哪里就去编辑哪里：光标形态先把话说出来。 */
-.brew-note__read .brew-note-preview [data-md-start] {
+.brew-note__read .brew-note__article [data-md-start] {
   cursor: text;
 }
 
-.brew-note__read .brew-note-preview a {
+.brew-note__read .brew-note__article a {
   cursor: text;
 }
 
 /* 默认栏也可以溢出：图、代码、表格吃掉两侧多出来的空，不必缩在 44rem 里。 */
-.brew-note .brew-note-preview > pre,
-.brew-note .brew-note-preview > table,
-.brew-note .brew-note-preview > img,
-.brew-note .brew-note-preview > p:has(> img:only-child),
+.brew-note .brew-note__article > pre,
+.brew-note .brew-note__article > table,
+.brew-note .brew-note__article > img,
+.brew-note .brew-note__article > p:has(> img:only-child),
 .brew-note .brew-note__visual > pre,
 .brew-note .brew-note__visual > table,
 .brew-note .brew-note__visual > img,
@@ -325,7 +320,7 @@ html.dark .brew-note__peer {
   margin-inline: calc(-1 * var(--note-out, 0px));
 }
 
-.brew-note .brew-note-preview > p:has(> img:only-child) img,
+.brew-note .brew-note__article > p:has(> img:only-child) img,
 .brew-note .brew-note__visual > p:has(> img:only-child) img {
   width: 100%;
   max-width: none;

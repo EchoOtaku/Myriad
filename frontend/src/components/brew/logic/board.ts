@@ -6,17 +6,40 @@ import {
   brewCategoryParts,
   brewMainCategory,
   isFriendLinkCategory,
+  isMineCategory,
   isOwnBrewSource,
 } from '../constants'
 import { compareByScore } from './score'
 
 export type BrewBoard = 'feeds' | 'notes' | 'sites'
 
-/** 收藏和主题流不是板块，是订阅上的筛选。 */
-export type BrewViewMode = 'sources' | 'starred' | 'topic-feed'
+/** 收藏和主题流不是板块，是订阅上的筛选。工作台也不是板块。 */
+export type BrewViewMode = 'sources' | 'starred' | 'topic-feed' | 'workbench'
 
-const BREW_BOARDS = ['feeds', 'notes', 'sites'] as const satisfies
-  readonly BrewBoard[]
+export type WorkbenchPane =
+  | 'home'
+  | 'notes'
+  | 'media'
+  | 'sources'
+  | 'add'
+  | 'rsshub'
+  | 'notesIo'
+  | 'feedsIo'
+
+export const NOTE_TRANSFER_KINDS = [
+  'wordpress',
+  'halo',
+  'typecho',
+  'markdown',
+] as const
+
+export type NoteTransferKind = (typeof NOTE_TRANSFER_KINDS)[number]
+
+const BREW_BOARDS = [
+  'feeds',
+  'notes',
+  'sites',
+] as const satisfies readonly BrewBoard[]
 
 export function isBrewBoard(value: string): value is BrewBoard {
   return (BREW_BOARDS as readonly string[]).includes(value)
@@ -75,6 +98,69 @@ export function collectSourceCategories(
   return Iterator.from(cats).toArray()
 }
 
+const CANON_FRIEND_CATEGORY = '友情链接'
+const CANON_MINE_CATEGORY = '我'
+
+/** 工作台筛选用：预置分类收成官网名，不造「未分类」。 */
+export function collectWorkbenchSourceCategories(
+  sources: readonly Pick<BrewSource, 'category'>[],
+): string[] {
+  const cats = new Set<string>()
+  for (const source of sources) {
+    for (const part of brewCategoryParts(source.category)) {
+      if (isFriendLinkCategory(part)) cats.add(CANON_FRIEND_CATEGORY)
+      else if (isMineCategory(part)) cats.add(CANON_MINE_CATEGORY)
+      else cats.add(part)
+    }
+  }
+  return [...cats].toSorted((a, b) => a.localeCompare(b, 'zh'))
+}
+
+export const WORKBENCH_SOURCE_KINDS = [
+  'rss',
+  'rsshub',
+  'notion',
+  'link',
+  'note',
+] as const
+
+export type WorkbenchSourceKind = (typeof WORKBENCH_SOURCE_KINDS)[number]
+
+export function workbenchSourceKind(
+  source: Pick<BrewSource, 'source_type' | 'feed_type'>,
+): WorkbenchSourceKind {
+  if (source.source_type === 'note') return 'note'
+  if (source.source_type === 'link') return 'link'
+  if (source.source_type === 'rsshub' || source.feed_type === 'rsshub')
+    return 'rsshub'
+  if (source.feed_type === 'notion') return 'notion'
+  return 'rss'
+}
+
+export function collectWorkbenchSourceKinds(
+  sources: readonly Pick<BrewSource, 'source_type' | 'feed_type'>[],
+): WorkbenchSourceKind[] {
+  const seen = new Set(sources.map(workbenchSourceKind))
+  return WORKBENCH_SOURCE_KINDS.filter((kind) => seen.has(kind))
+}
+
+export function sourceMatchesKind(
+  source: Pick<BrewSource, 'source_type' | 'feed_type'>,
+  kind: WorkbenchSourceKind,
+): boolean {
+  return workbenchSourceKind(source) === kind
+}
+
+export function sourceMatchesCategory(
+  source: Pick<BrewSource, 'category'>,
+  category: string,
+): boolean {
+  const parts = brewCategoryParts(source.category)
+  if (isFriendLinkCategory(category)) return parts.some(isFriendLinkCategory)
+  if (isMineCategory(category)) return parts.some(isMineCategory)
+  return parts.includes(category)
+}
+
 export function filterSourcesByQuery(
   sources: readonly BrewSource[],
   query: string,
@@ -123,10 +209,47 @@ export function sortSourcesForBoard(
   }
 }
 
-/** 三个板块都进源墙；收藏仍是订阅上的筛选。 */
+/** 三个板块都进源墙；收藏仍是订阅上的筛选。工作台不是源墙。 */
 export type BrewBoardEntry =
   | { view: 'sources'; board: BrewBoard }
   | { view: 'starred'; board: 'feeds' }
+  | { view: 'workbench' }
+
+export function workbenchEntry(): BrewBoardEntry {
+  return { view: 'workbench' }
+}
+
+export const WORKBENCH_PANES = [
+  'home',
+  'notes',
+  'media',
+  'sources',
+  'add',
+  'rsshub',
+  'notesIo',
+  'feedsIo',
+] as const satisfies readonly WorkbenchPane[]
+
+/** 旧深链 pane=list 并进订阅页；pane=add 进添加订阅。导入导出旧名并进两页。 */
+export function resolveWorkbenchPane(value: string | null): WorkbenchPane {
+  if (value === 'list') return 'sources'
+  if (
+    value === 'wordpress' ||
+    value === 'halo' ||
+    value === 'typecho' ||
+    value === 'markdown' ||
+    value === 'notesIo'
+  ) {
+    return 'notesIo'
+  }
+  if (value === 'brewpack' || value === 'opml' || value === 'feedsIo') {
+    return 'feedsIo'
+  }
+  if (value && (WORKBENCH_PANES as readonly string[]).includes(value)) {
+    return value as WorkbenchPane
+  }
+  return 'home'
+}
 
 export function boardEntry(board: BrewBoard): BrewBoardEntry {
   return { view: 'sources', board }
@@ -144,23 +267,28 @@ const LEGACY_NAV_TO_BOARD: Record<string, BrewBoardEntry> = {
 export function resolveBoardParam(value: string): BrewBoardEntry | null {
   if (isBrewBoard(value)) return boardEntry(value)
   if (value === 'friends') return boardEntry('sites')
+  if (value === 'workbench') return workbenchEntry()
   return LEGACY_NAV_TO_BOARD[value] ?? null
 }
 
-/** 二级导航高亮：登录后收藏用 starred，否则落到所属板块。 */
+/** 二级导航高亮：登录后收藏用 starred；工作台只给管理员。 */
 export function navIdForBoardEntry(
   entry: BrewBoardEntry,
   isAuthenticated: boolean,
+  isAdmin = false,
 ): string {
+  if (entry.view === 'workbench') return isAdmin ? 'workbench' : 'feeds'
   if (entry.view === 'starred' && isAuthenticated) return 'starred'
   return entry.board
 }
 
-/** 游客没有收藏，深链落到板块本身。 */
+/** 游客没有收藏；非管理员没有工作台。 */
 export function viewForBoardEntry(
   entry: BrewBoardEntry,
   isAuthenticated: boolean,
+  isAdmin = false,
 ): BrewViewMode {
+  if (entry.view === 'workbench') return isAdmin ? 'workbench' : 'sources'
   if (entry.view === 'starred' && !isAuthenticated) return 'sources'
   return entry.view
 }

@@ -4,12 +4,124 @@ import type { BrewItem, BrewItemPreview } from '../../../types/brew'
 
 export const FEEDS_ARTICLE_MAX = 20
 export const FRIENDS_STORY_MAX = 12
+/** 订阅墙上第一张「最新」卡。不是 brew_sources 行，勿跟 source_id ?? 0 撞车。 */
+export const LATEST_FEED_ID = -1
+/** 最新卡右边叠卡：同时看见几张，池子按混排源去重。 */
+export const LATEST_FEED_STACK = 3
+export const LATEST_FEED_STACK_POOL = 8
+
+export type LatestFeedStackFace = {
+  key: string
+  src: string | null
+  mark: string
+  ink: string | null
+}
 
 export type FeedStory = BrewItemPreview & {
   author?: string | null
   source_name?: string | null
   source_icon?: string | null
   source_id?: number
+  guid?: string | null
+  source_type?: string
+  /** 有则按它拼列；最新聚合卡用，不改真实 source_id。 */
+  rail_group?: number
+}
+
+export function isLatestFeedId(
+  id: number | string | null | undefined,
+): boolean {
+  return Number(id) === LATEST_FEED_ID
+}
+
+export function storyRailGroup(
+  story: Pick<FeedStory, 'source_id' | 'rail_group'>,
+): number {
+  return story.rail_group ?? story.source_id ?? 0
+}
+
+export function firstStoryForRailGroup(
+  stories: readonly FeedStory[],
+  groupId: number,
+): FeedStory | undefined {
+  return stories.find((story) => storyRailGroup(story) === groupId)
+}
+
+export function stackFaceWindow<T>(
+  faces: readonly T[],
+  offset: number,
+  size = LATEST_FEED_STACK,
+): T[] {
+  if (faces.length === 0) return []
+  if (faces.length <= size) return faces.slice()
+  const start = ((offset % faces.length) + faces.length) % faces.length
+  return Array.from(
+    { length: size },
+    (_, index) => faces[(start + index) % faces.length] as T,
+  )
+}
+
+/** 混排里先露过的源在前，手记和入口型不进叠卡。 */
+export function latestFeedStackFaces(
+  sources: ReadonlyArray<{
+    id: number
+    name: string
+    icon: string | null
+    theme_color?: string | null
+    source_type?: string
+  }>,
+  stories: ReadonlyArray<
+    Pick<FeedStory, 'source_id' | 'source_icon' | 'source_name' | 'rail_group'>
+  >,
+  limit = LATEST_FEED_STACK_POOL,
+): LatestFeedStackFace[] {
+  const byId = new Map(sources.map((source) => [source.id, source]))
+  const mix = stories.filter((story) => story.rail_group === LATEST_FEED_ID)
+  const ordered = mix.length > 0 ? mix : stories
+  const seen = new Set<number>()
+  const faces: LatestFeedStackFace[] = []
+
+  const push = (
+    id: number,
+    name: string,
+    src: string | null,
+    ink: string | null,
+  ) => {
+    if (seen.has(id) || faces.length >= limit) return
+    seen.add(id)
+    faces.push({
+      key: String(id),
+      src,
+      mark: name.trim().slice(0, 1) || '·',
+      ink,
+    })
+  }
+
+  for (const story of ordered) {
+    const id = story.source_id
+    if (id == null) continue
+    const source = byId.get(id)
+    if (source && !isInboxFeedSource(source)) continue
+    push(
+      id,
+      source?.name || story.source_name || '',
+      source?.icon || story.source_icon || null,
+      source?.theme_color ?? null,
+    )
+  }
+
+  for (const source of sources) {
+    if (!isInboxFeedSource(source)) continue
+    push(source.id, source.name, source.icon, source.theme_color ?? null)
+  }
+
+  return faces
+}
+
+export function isInboxFeedSource(source: {
+  source_type?: string
+}): boolean {
+  return source.source_type !== 'note' && source.source_type !== 'link'
 }
 
 export function toFeedStory(
@@ -27,6 +139,7 @@ export function toFeedStory(
     | 'source_id'
     | 'source_name'
     | 'source_icon'
+    | 'guid'
   >,
 ): FeedStory {
   return {
@@ -42,6 +155,7 @@ export function toFeedStory(
     source_id: item.source_id,
     source_name: item.source_name,
     source_icon: item.source_icon,
+    guid: item.guid,
   }
 }
 
@@ -55,6 +169,7 @@ export function storiesFromSources(
     id: number
     name: string
     icon: string | null
+    source_type?: string
     recent_items?: readonly BrewItemPreview[] | null
   }>,
   seed: number,
@@ -71,6 +186,7 @@ export function storiesFromSources(
         source_id: source.id,
         source_name: source.name,
         source_icon: source.icon,
+        source_type: source.source_type,
       })
     }
   }
@@ -168,6 +284,7 @@ export function stitchStoriesBySources(
     id: number
     name: string
     icon: string | null
+    source_type?: string
     recent_items?: readonly BrewItemPreview[] | null
   }>,
   fetched: ReadonlyMap<number, FeedStory[]>,
@@ -193,7 +310,7 @@ export function groupStoriesBySource(
 ): Array<{ sourceId: number; stories: FeedStory[] }> {
   const groups: Array<{ sourceId: number; stories: FeedStory[] }> = []
   for (const story of stories) {
-    const sourceId = story.source_id
+    const sourceId = story.rail_group ?? story.source_id
     const last = groups.at(-1)
     if (sourceId != null && last?.sourceId === sourceId) {
       last.stories.push(story)
@@ -245,12 +362,15 @@ export function storyRailSlots(
 }
 
 export function sourceColumnStarts(
-  slots: ReadonlyArray<{ story: Pick<FeedStory, 'source_id'>; column: number }>,
+  slots: ReadonlyArray<{
+    story: Pick<FeedStory, 'source_id' | 'rail_group'>
+    column: number
+  }>,
   prev: ReadonlyArray<{ id: number; column: number }> = [],
 ): Array<{ id: number; column: number }> {
   const starts: Array<{ id: number; column: number }> = []
   for (const slot of slots) {
-    const id = slot.story.source_id
+    const id = slot.story.rail_group ?? slot.story.source_id
     if (id == null || starts.at(-1)?.id === id) continue
     starts.push({ id, column: slot.column })
   }
@@ -509,8 +629,13 @@ export function sameFeedStory(a: FeedStory, b: FeedStory): boolean {
     a.author === b.author &&
     a.source_id === b.source_id &&
     a.source_name === b.source_name &&
-    a.source_icon === b.source_icon
+    a.source_icon === b.source_icon &&
+    a.rail_group === b.rail_group
   )
+}
+
+function storyReuseKey(story: FeedStory): string {
+  return `${story.rail_group ?? 's'}:${story.id}`
 }
 
 /** 源列没变时沿用上一帧对象，滚动时少造新文章。 */
@@ -520,11 +645,11 @@ export function reuseFeedStories(
 ): FeedStory[] {
   if (prev === next) return next as FeedStory[]
   if (prev.length === 0) return next as FeedStory[]
-  const byId = new Map<number, FeedStory>()
-  for (const story of prev) byId.set(story.id, story)
+  const byId = new Map<string, FeedStory>()
+  for (const story of prev) byId.set(storyReuseKey(story), story)
   let changed = prev.length !== next.length
   const out = next.map((story, index) => {
-    const old = byId.get(story.id)
+    const old = byId.get(storyReuseKey(story))
     if (old && sameFeedStory(old, story)) {
       if (prev[index] !== old) changed = true
       return old
@@ -566,12 +691,48 @@ export function latestStoryPreview(
   return loose?.[0] ?? recent?.[0]
 }
 
+/** 订阅 inbox：各源最新按时间混排。手记和入口型不进这条。 */
+export function latestFeedStories(
+  sources: ReadonlyArray<{
+    id: number
+    name: string
+    icon: string | null
+    source_type?: string
+    recent_items?: readonly BrewItemPreview[] | null
+  }>,
+  fetched: ReadonlyMap<number, FeedStory[]>,
+  limit = FEEDS_ARTICLE_MAX,
+): FeedStory[] {
+  const seen = new Set<number>()
+  const stories: FeedStory[] = []
+  for (const source of sources) {
+    if (!isInboxFeedSource(source)) continue
+    const items = fetched.get(source.id)
+    const group = storiesForSource(
+      items && items.length > 0 ? { id: source.id, items } : null,
+      source,
+    )
+    for (const item of group) {
+      if (seen.has(item.id)) continue
+      seen.add(item.id)
+      stories.push({ ...item, rail_group: LATEST_FEED_ID })
+    }
+  }
+  return stories
+    .toSorted((a, b) => {
+      const byTime = (b.published_at ?? 0) - (a.published_at ?? 0)
+      return byTime !== 0 ? byTime : b.id - a.id
+    })
+    .slice(0, limit)
+}
+
 export function storiesForSource(
   fetched: { id: number; items: FeedStory[] } | null,
   source: {
     id: number
     name: string
     icon: string | null
+    source_type?: string
     recent_items?: readonly BrewItemPreview[] | null
   } | null,
 ): FeedStory[] {
@@ -585,6 +746,7 @@ export function storiesForSource(
     source_id: source.id,
     source_name: source.name,
     source_icon: source.icon,
+    source_type: source.source_type,
   }))
 }
 

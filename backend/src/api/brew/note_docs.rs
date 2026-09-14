@@ -139,7 +139,10 @@ pub(crate) async fn create_note_doc(
         topic: Set(empty_to_none(req.topic)),
         image: Set(empty_to_none(req.image)),
         status: Set(NoteDocStatus::Draft.as_str().to_string()),
-        published_at: Set(req.published_at.and_then(millis_to_datetime).map(|at| at.into())),
+        published_at: Set(req
+            .published_at
+            .and_then(millis_to_datetime)
+            .map(|at| at.into())),
         revision: Set(1),
         created_at: Set(now.into()),
         updated_at: Set(now.into()),
@@ -311,7 +314,9 @@ pub(crate) async fn publish_note_doc(
     if req.image.is_some() {
         doc.image = empty_to_none(req.image.clone());
     }
-    let published_at = req.published_at.or(doc.published_at.map(datetime_to_millis));
+    let published_at = req
+        .published_at
+        .or(doc.published_at.map(datetime_to_millis));
     doc.user_id = user_id;
     let (item, saved) = publish_doc(&db, doc, published_at).await?;
     Ok(Json(json!({

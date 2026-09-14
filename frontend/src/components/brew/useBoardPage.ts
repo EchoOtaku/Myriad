@@ -17,6 +17,8 @@ import {
 import {
   coverFeedIndices,
   expandFeedCover,
+  isLatestFeedId,
+  latestFeedStories,
   reuseFeedStories,
   stitchStoriesBySources,
 } from './logic/feedStories'
@@ -165,6 +167,10 @@ export function useFeedStories(
 
   const jump = useCallback((sourceId: number) => {
     const list = sourcesRef.current
+    if (isLatestFeedId(sourceId)) {
+      setCover((current) => coverFeedIndices(current, 0, list.length - 1, 3))
+      return
+    }
     const index = list.findIndex((source) => source.id === sourceId)
     if (index < 0) return
     setCover((current) =>
@@ -227,9 +233,10 @@ export function useFeedStories(
   const stories = useMemo(() => {
     const next =
       board === 'feeds'
-        ? stitchStoriesBySources(sources, fetched, 0, lastIndex).map((story) =>
-            flags.project(story),
-          )
+        ? [
+            ...latestFeedStories(sources, fetched),
+            ...stitchStoriesBySources(sources, fetched, 0, lastIndex),
+          ].map((story) => flags.project(story))
         : []
     const reused = reuseFeedStories(prevStoriesRef.current, next)
     prevStoriesRef.current = reused

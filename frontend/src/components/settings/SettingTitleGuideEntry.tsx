@@ -41,6 +41,7 @@ export interface SettingTitleGuideEntryProps {
   openLabel?: string
   closeLabel?: string
   panelClassName?: string
+  keepMounted?: boolean
   renderTrigger?: (api: SettingTitleGuideTriggerApi) => ReactNode
 }
 
@@ -91,6 +92,7 @@ export const SettingTitleGuideEntry: React.FC<SettingTitleGuideEntryProps> = ({
   openLabel,
   closeLabel,
   panelClassName = '',
+  keepMounted = false,
   renderTrigger,
 }) => {
   const { t, format } = useI18n()
@@ -100,6 +102,7 @@ export const SettingTitleGuideEntry: React.FC<SettingTitleGuideEntryProps> = ({
   const panelRef = useRef<HTMLDivElement>(null)
 
   const [phase, setPhase] = useState<FloatPhase>('closed')
+  const [opened, setOpened] = useState(false)
   const [ready, setReady] = useState(false)
   const [placement, setPlacement] = useState<GuidePlacement>('top')
   const [pinned, setPinned] = useState(false)
@@ -192,6 +195,15 @@ export const SettingTitleGuideEntry: React.FC<SettingTitleGuideEntryProps> = ({
       const force = opts?.force === true
       if (!shouldAllowGuideClose(pinnedRef.current, force)) return
       if (phaseRef.current === 'closed' || phaseRef.current === 'closing') return
+      if (panelRef.current?.contains(document.activeElement)) {
+        const host = triggerRef.current
+        const trigger = host?.matches('button')
+          ? host
+          : host?.querySelector<HTMLElement>('button, [href], [tabindex="0"]')
+        if (trigger?.isConnected && !trigger.closest('[inert]')) {
+          trigger.focus({ preventScroll: true })
+        }
+      }
       stopSmooth()
       dragSessionRef.current = null
       setDragging(false)
@@ -296,6 +308,7 @@ export const SettingTitleGuideEntry: React.FC<SettingTitleGuideEntryProps> = ({
 
   const openFloat = useCallback(() => {
     window.clearTimeout(exitTimerRef.current)
+    setOpened(true)
     setPhase('open')
     setReady(false)
   }, [])
@@ -458,8 +471,9 @@ export const SettingTitleGuideEntry: React.FC<SettingTitleGuideEntryProps> = ({
     window.addEventListener('resize', onScrollOrResize)
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
+      if (e.defaultPrevented || e.key !== 'Escape') return
       if (pinnedRef.current) return
+      e.preventDefault()
       e.stopPropagation()
       close()
     }
@@ -533,11 +547,14 @@ export const SettingTitleGuideEntry: React.FC<SettingTitleGuideEntryProps> = ({
   const canPortal = typeof document !== 'undefined'
 
   const floating =
-    isMounted && canPortal
+    (isMounted || (keepMounted && opened)) && canPortal
       ? createPortal(
           <div
             ref={panelRef}
             id={panelId}
+            inert={!isActive}
+            aria-hidden={!isActive || undefined}
+            style={phase === 'closed' ? { display: 'none' } : undefined}
             role="dialog"
             aria-modal="false"
             aria-label={heading}

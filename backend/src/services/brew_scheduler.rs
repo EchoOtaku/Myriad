@@ -376,12 +376,7 @@ impl BrewSchedulerEngine {
                         crate::services::agent::notifications::get_notification_manager()
                     {
                         manager
-                            .notify_brew_source_error(
-                                source.user_id,
-                                source.id,
-                                &source.name,
-                                &e,
-                            )
+                            .notify_brew_source_error(source.user_id, source.id, &source.name, &e)
                             .await;
                     }
                 } else if failures > MAX_ERROR_COUNT {
@@ -503,12 +498,8 @@ impl BrewSchedulerEngine {
                 word_count: Set(Some(word_count)),
                 reading_time: Set(Some(reading_time)),
                 fulltext_fetched: Set(item.content.is_some()),
-                // 入库同步关键词打标；命中不了保持 NULL。
-                topic: Set(crate::services::brew_topics::infer_topic_by_keywords(
-                    &item.title,
-                    item.summary.as_deref(),
-                )
-                .map(str::to_string)),
+                // 主题由入库后的 AI 建议或站长手填；这里保持 NULL。
+                topic: Set(None),
                 ..Default::default()
             };
 
@@ -552,6 +543,16 @@ impl BrewSchedulerEngine {
                     return Err("Failed to batch insert items".to_string());
                 }
             };
+            if !inserted.is_empty() {
+                let topic_db = db.clone();
+                let topic_ids: Vec<i32> = inserted.iter().map(|m| m.id).collect();
+                tokio::spawn(async move {
+                    crate::services::brew_topics::recommend_topics_for_item_ids(
+                        &topic_db, &topic_ids,
+                    )
+                    .await;
+                });
+            }
             let titles: Vec<String> = inserted.iter().map(|m| m.title.clone()).take(5).collect();
             (inserted.len() as i32, titles)
         };
@@ -827,6 +828,9 @@ mod tests {
         assert_eq!(retry_interval_minutes(30, 4), 120);
         assert_eq!(retry_interval_minutes(30, 8), 1440);
         assert_eq!(retry_interval_minutes(30, 1236), BACKOFF_MAX_MINUTES);
-        assert_eq!(retry_interval_minutes(i32::MAX, i32::MAX), BACKOFF_MAX_MINUTES);
+        assert_eq!(
+            retry_interval_minutes(i32::MAX, i32::MAX),
+            BACKOFF_MAX_MINUTES
+        );
     }
 }

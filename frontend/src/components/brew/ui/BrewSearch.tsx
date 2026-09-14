@@ -46,9 +46,10 @@ export function BrewSearch({
   }, [])
 
   useEffect(() => {
-    brewSearchInputRef.current = inputRef.current
+    const input = inputRef.current
+    brewSearchInputRef.current = input
     return () => {
-      if (brewSearchInputRef.current === inputRef.current) {
+      if (brewSearchInputRef.current === input) {
         brewSearchInputRef.current = null
       }
     }

@@ -305,6 +305,59 @@ html.dark .managed-list-filter-bar {
   scrollbar-width: thin;
 }
 
+.managed-list-filter-group {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.managed-list-filter-group + .managed-list-filter-group {
+  margin-left: 0.1rem;
+  padding-left: 0.7rem;
+  border-left: 1px solid color-mix(in srgb, currentcolor 12%, transparent);
+  color: var(--cfg-text-3);
+}
+
+html.dark .managed-list-filter-group + .managed-list-filter-group {
+  border-left-color: color-mix(in srgb, currentcolor 20%, transparent);
+}
+
+.managed-list-filter-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 0 0 auto;
+  color: var(--cfg-text-2);
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.managed-list-filter-label-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 0.4rem;
+  background: linear-gradient(
+    135deg,
+    var(--cfg-accent-fill, rgb(59 130 246 / 14%)),
+    var(--cfg-accent-fill-2, rgb(59 130 246 / 8%))
+  );
+  color: var(--cfg-accent-ink, var(--cfg-text-1));
+}
+
+.managed-list-filter-label-icon svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
 .managed-list-filters {
   flex: 0 0 auto;
   width: max-content;
@@ -819,16 +872,85 @@ html.dark .managed-list-error {
   color: #fda4af;
 }
 
+.managed-list--grid .managed-list-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+  align-items: stretch;
+  gap: 0.75rem;
+  padding: 0;
+}
+
+.managed-list--grid .managed-list-body > .managed-list-row {
+  width: auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.managed-list--grid .managed-list-empty {
+  grid-column: 1 / -1;
+}
+
+.managed-list--grid .managed-list-row-head,
+.managed-list--grid .managed-list-row:not(.is-expandable) .managed-list-row-head {
+  position: relative;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  min-height: 0;
+  padding: 0;
+}
+
+.managed-list--grid .managed-list-row-leading {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  background: rgb(0 0 0 / 4%);
+}
+
+html.dark .managed-list--grid .managed-list-row-leading {
+  background: rgb(255 255 255 / 6%);
+}
+
+.managed-list--grid .managed-list-row-leading img,
+.managed-list--grid .managed-list-row-leading video {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  object-fit: cover;
+}
+
+.managed-list--grid .managed-list-row-main {
+  padding: 0.55rem 0.65rem 0.7rem;
+  justify-content: flex-start;
+  gap: 0.18rem;
+}
+
+.managed-list--grid .managed-list-row-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.managed-list--grid .managed-list-row-side {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  z-index: 2;
+  padding: 0;
+  align-self: auto;
+}
+
 @media (width <= 520px) {
-  .managed-list-row-head {
+  .managed-list:not(.managed-list--grid) .managed-list-row-head {
     flex-wrap: wrap;
   }
 
-  .managed-list-row-hit {
+  .managed-list:not(.managed-list--grid) .managed-list-row-hit {
     flex: 1 1 100%;
   }
 
-  .managed-list-row-side {
+  .managed-list:not(.managed-list--grid) .managed-list-row-side {
     width: 100%;
     justify-content: flex-start;
     gap: 0.5rem;

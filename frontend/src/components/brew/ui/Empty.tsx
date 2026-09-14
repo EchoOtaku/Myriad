@@ -5,7 +5,7 @@ const STORY_GHOSTS = [1, 2, 3, 4, 5] as const
 const SITE_GHOSTS = [1, 2, 3, 4, 5] as const
 const FRIEND_STORY_GHOSTS = [1, 2, 3] as const
 
-function StoryGhost({ i }: { i: number }) {
+function StoryGhost({ i, compact = false }: { i: number; compact?: boolean }) {
   return (
     <div
       className="brew-vacant__ghost"
@@ -15,10 +15,14 @@ function StoryGhost({ i }: { i: number }) {
       <span className="brew-vacant__shell">
         <span className="brew-vacant__bar is-meta" />
         <span className="brew-vacant__bar is-title" />
-        <span className="brew-vacant__bar is-title is-short" />
-        <span className="brew-vacant__bar is-line" />
-        <span className="brew-vacant__bar is-line" />
-        <span className="brew-vacant__bar is-line is-short" />
+        {compact ? null : (
+          <>
+            <span className="brew-vacant__bar is-title is-short" />
+            <span className="brew-vacant__bar is-line" />
+            <span className="brew-vacant__bar is-line" />
+            <span className="brew-vacant__bar is-line is-short" />
+          </>
+        )}
       </span>
     </div>
   )
@@ -81,7 +85,7 @@ export function BrewVacant({
           }
         >
           {FRIEND_STORY_GHOSTS.map((i) => (
-            <StoryGhost key={i} i={i} />
+            <StoryGhost key={i} i={i} compact />
           ))}
         </div>
       </div>

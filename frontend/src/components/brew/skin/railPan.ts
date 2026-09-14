@@ -7,7 +7,11 @@ import {
   clampConversationScroll,
   CONVERSATION_FADE_PX,
 } from '../../agent-panel/conversationPan'
-import { storyCardFace, storyCardInnerHtml } from './storyFace'
+import {
+  cloneStoryCardInner,
+  storyCardFace,
+  storyCardInnerHtml,
+} from './storyFace'
 
 /** 比对话轨略慢，才能看见下一张进来。 */
 const RAIL_FOLLOW_TAU = 0.04
@@ -142,7 +146,7 @@ function onHeldCoverError(event: Event): void {
   const thumb = img.closest('.brew-story__thumb')
   const story = img.closest('.brew-story')
   if (thumb instanceof HTMLElement) thumb.hidden = true
-  story?.classList.remove('has-cover')
+  story?.classList.remove('has-cover', 'has-peek')
 }
 
 function onHeldIconError(event: Event): void {
@@ -372,21 +376,31 @@ function paintStoryShell(
     unread: boolean
     cover: string | null
     hue: string | null
+    summary: string
   },
   html: string,
   hold: boolean,
   showStar: boolean,
+  deferCover: boolean,
 ): void {
+  const peeking = el.classList.contains('is-peek')
   el.className =
     `brew-story brew-float brew-story__hit brew-story__shell${
       face.unread ? ' is-unread' : ''
-    }${face.cover ? ' has-cover' : ''}${showStar ? ' has-star' : ''}${
+    }${face.cover ? ' has-cover' : ''}${
+      face.cover && face.summary ? ' has-peek' : ''
+    }${showStar ? ' has-star' : ''}${
       hold ? ' is-hold' : ''
-    }`
+    }${peeking ? ' is-peek' : ''}`
   el.dataset.railId = String(face.id)
   el.removeAttribute('aria-hidden')
   el.removeAttribute('tabindex')
   if (face.hue) el.style.setProperty('--story-topic', face.hue)
+  const node = cloneStoryCardInner(face, (deferCover ? 1 : 0) | (showStar ? 2 : 0))
+  if (node && typeof el.replaceChildren === 'function') {
+    el.replaceChildren(node)
+    return
+  }
   el.innerHTML = html
 }
 
@@ -398,16 +412,41 @@ function storyShellStyle(col: number, row: 1 | 2): string {
   return `position:absolute;left:${left};top:${top};width:var(--brew-story-w)`
 }
 
-function makeStoryShell(col: number, row: 1 | 2): HTMLElement | null {
+const SHELL_POOL_CAP = 48
+const shellPool: HTMLElement[] = []
+const grabShellsByTrack = new WeakMap<ParentNode, HTMLElement[]>()
+
+function recycleStoryShell(el: HTMLElement): void {
+  if (shellPool.length >= SHELL_POOL_CAP) return
+  el.innerHTML = ''
+  delete el.dataset.railId
+  shellPool.push(el)
+}
+
+function rememberGrabShell(track: ParentNode, el: HTMLElement): void {
+  let list = grabShellsByTrack.get(track)
+  if (!list) {
+    list = []
+    grabShellsByTrack.set(track, list)
+  }
+  list.push(el)
+}
+
+function makeStoryShell(
+  track: ParentNode,
+  col: number,
+  row: 1 | 2,
+): HTMLElement | null {
   if (typeof document === 'undefined') return null
-  const el = document.createElement('button')
-  el.type = 'button'
+  const el = shellPool.pop() ?? document.createElement('button')
+  el.setAttribute('type', 'button')
   el.className = 'brew-story brew-story--slot'
   el.dataset.railCol = String(col)
   el.dataset.brewDomShell = '1'
   el.setAttribute('aria-hidden', 'true')
   el.tabIndex = -1
   el.style.cssText = storyShellStyle(col, row)
+  rememberGrabShell(track, el)
   return el
 }
 
@@ -425,13 +464,18 @@ export function ensureStoryShells(
   const byEl = indexStoryCols(track, livePaintCols)
   if (!byEl) return null
   const host = track as Element
+  const frag =
+    typeof document.createDocumentFragment === 'function'
+      ? document.createDocumentFragment()
+      : null
   for (let col = from; col <= to; col++) {
     const stories = liveStoryEls(byEl.get(col))
     for (const row of [1, 2] as const) {
       if (stories[row - 1]) continue
-      const el = makeStoryShell(col, row)
+      const el = makeStoryShell(track, col, row)
       if (!el) continue
-      host.appendChild(el)
+      if (frag) frag.appendChild(el)
+      else host.appendChild(el)
       stories.push(el)
       const list = byEl.get(col)
       if (list !== stories) {
@@ -440,18 +484,111 @@ export function ensureStoryShells(
       }
     }
   }
+  if (frag && frag.childNodes.length > 0) host.appendChild(frag)
   return byEl
+}
+
+function recycleListedShell(
+  el: HTMLElement,
+  from: number,
+  to: number,
+  byCol?: Map<number, HTMLElement[]>,
+): boolean {
+  const railCol = Number(el.dataset?.railCol)
+  if (!Number.isFinite(railCol) || (railCol >= from && railCol <= to)) {
+    return false
+  }
+  el.remove()
+  recycleStoryShell(el)
+  byCol?.delete(railCol)
+  return true
+}
+
+/** 手势里只留预显带上的壳，带外回收给下一列用。不拆 React 已挂列。 */
+export function recycleStoryDomShellsOutside(
+  track: ParentNode | null,
+  from: number,
+  to: number,
+): void {
+  if (!track || to < from) return
+  const byCol = storyColCache.get(track)?.byCol
+  const listed = grabShellsByTrack.get(track)
+  if (listed && listed.length > 0) {
+    let write = 0
+    for (const el of listed) {
+      if (recycleListedShell(el, from, to, byCol)) continue
+      listed[write] = el
+      write += 1
+    }
+    listed.length = write
+    return
+  }
+  const kids = 'children' in track ? (track as Element).children : null
+  if (!kids) return
+  for (let i = kids.length - 1; i >= 0; i--) {
+    const el = kids[i] as HTMLElement
+    if (!el.dataset?.brewDomShell) continue
+    recycleListedShell(el, from, to, byCol)
+  }
 }
 
 /** 松手后拆掉手势补的壳，交给 React 接管。 */
 export function dropStoryDomShells(track: ParentNode | null): void {
+  if (track) storyColCache.delete(track)
+  const listed = track ? grabShellsByTrack.get(track) : undefined
+  if (listed && listed.length > 0) {
+    for (const el of listed) {
+      el.remove()
+      recycleStoryShell(el)
+    }
+    listed.length = 0
+    return
+  }
   const kids = track && 'children' in track ? (track as Element).children : null
   if (!kids) return
   for (let i = kids.length - 1; i >= 0; i--) {
     const el = kids[i] as HTMLElement
     if (!el.dataset?.brewDomShell) continue
     el.remove()
+    recycleStoryShell(el)
   }
+}
+
+interface LiveSlot { story: FeedStory; column: number; row: 1 | 2 }
+
+function paintLiveSlot(
+  stories: HTMLElement[],
+  slot: LiveSlot,
+  hold: boolean,
+  forceDefer: boolean,
+  times: TimeTranslations,
+  locale: string,
+  labels: {
+    unread: string
+    starred: string
+    unstar: string
+  },
+  canStar: boolean,
+): void {
+  const el = stories[slot.row - 1]
+  if (!el?.classList?.contains('brew-story--slot')) return
+  const face = storyCardFace(slot.story, times, locale, labels)
+  const deferCover = forceDefer || hold
+  paintStoryShell(
+    el,
+    face,
+    storyCardInnerHtml(
+      face,
+      labels.unread,
+      labels.starred,
+      labels.unstar,
+      deferCover,
+      canStar,
+    ),
+    hold,
+    canStar,
+    deferCover,
+  )
 }
 
 /** 手势里把已挂的壳就地写成实卡，不走 React setLive。 */
@@ -459,7 +596,7 @@ export function paintStoryLiveCols(
   track: ParentNode | null,
   from: number,
   to: number,
-  slots: ReadonlyArray<{ story: FeedStory; column: number; row: 1 | 2 }>,
+  slots: ReadonlyArray<LiveSlot> | ReadonlyMap<number, readonly LiveSlot[]>,
   times: TimeTranslations,
   locale: string,
   labels: {
@@ -480,6 +617,18 @@ export function paintStoryLiveCols(
     byEl = indexStoryCols(track, livePaintCols)
   }
   if (!byEl) return
+  if ('get' in slots) {
+    for (let col = from; col <= to; col++) {
+      const colSlots = slots.get(col)
+      if (!colSlots || colSlots.length === 0) continue
+      const stories = liveStoryEls(byEl.get(col))
+      const hold = col > holdAt
+      for (const slot of colSlots) {
+        paintLiveSlot(stories, slot, hold, forceDefer, times, locale, labels, canStar)
+      }
+    }
+    return
+  }
   let stories: HTMLElement[] = []
   let storiesCol = 0
   for (const slot of slots) {
@@ -489,22 +638,14 @@ export function paintStoryLiveCols(
       stories = liveStoryEls(byEl.get(col))
       storiesCol = col
     }
-    const el = stories[slot.row - 1]
-    if (!el?.classList?.contains('brew-story--slot')) continue
-    const hold = col > holdAt
-    const face = storyCardFace(slot.story, times, locale, labels)
-    paintStoryShell(
-      el,
-      face,
-      storyCardInnerHtml(
-        face,
-        labels.unread,
-        labels.starred,
-        labels.unstar,
-        forceDefer || hold,
-        canStar,
-      ),
-      hold,
+    paintLiveSlot(
+      stories,
+      slot,
+      col > holdAt,
+      forceDefer,
+      times,
+      locale,
+      labels,
       canStar,
     )
   }
@@ -532,7 +673,7 @@ export function paintStoryAway(
     }
   }
   const byCol = prev ? indexStoryCols(track, awayDeltaCols) : null
-  if (byCol) {
+  if (byCol && prev) {
     if (hide) {
       for (let col = prev.from; col <= prev.to; col++) {
         if (col >= from && col <= to) continue

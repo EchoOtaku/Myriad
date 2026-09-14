@@ -884,6 +884,19 @@ CREATE INDEX IF NOT EXISTS idx_brew_note_docs_item
     ON brew_note_docs (item_id);
 CREATE INDEX IF NOT EXISTS idx_brew_note_docs_schedule
     ON brew_note_docs (status, scheduled_at);
+CREATE TABLE IF NOT EXISTS media_assets (
+    id SERIAL PRIMARY KEY,
+    kind VARCHAR NOT NULL,
+    url TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    size BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_media_assets_url
+    ON media_assets (url);
+CREATE INDEX IF NOT EXISTS idx_media_assets_kind
+    ON media_assets (kind);
 "#,
             )
             .await?;
@@ -894,7 +907,9 @@ CREATE INDEX IF NOT EXISTS idx_brew_note_docs_schedule
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
             .get_connection()
-            .execute_unprepared("DROP TABLE IF EXISTS brew_note_docs")
+            .execute_unprepared(
+                "DROP TABLE IF EXISTS media_assets; DROP TABLE IF EXISTS brew_note_docs",
+            )
             .await?;
 
         // 删除 rsshub_instances 表

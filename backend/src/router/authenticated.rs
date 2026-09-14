@@ -57,6 +57,22 @@ pub(super) fn build_authenticated_router(
                 )),
         )
         .route(
+            "/api/media",
+            get(api::media::list_media)
+                .post(api::media::upload_media)
+                .layer(axum::extract::DefaultBodyLimit::max(24 * 1024 * 1024))
+                .route_layer(from_fn_with_state(
+                    app_state.clone(),
+                    middleware::auth::admin_middleware,
+                )),
+        )
+        .route(
+            "/api/media/{id}",
+            axum::routing::delete(api::media::delete_media).route_layer(
+                from_fn_with_state(app_state.clone(), middleware::auth::admin_middleware),
+            ),
+        )
+        .route(
             "/api/home/widget-fonts",
             post(api::widget_fonts::upload_widget_font)
                 .layer(axum::extract::DefaultBodyLimit::max(4 * 1024 * 1024))
@@ -1303,6 +1319,14 @@ mod security_route_wiring_tests {
                 "admin_middleware"
             ),
             "proxy-update last dismiss must be registered under admin_middleware"
+        );
+        assert!(
+            route_has_middleware(src, "/api/media", "admin_middleware"),
+            "media catalog must be admin only"
+        );
+        assert!(
+            route_has_middleware(src, "/api/media/{id}", "admin_middleware"),
+            "media delete must be admin only"
         );
     }
 }

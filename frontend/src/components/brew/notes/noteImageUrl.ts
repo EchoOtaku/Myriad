@@ -7,7 +7,7 @@
 
 import { API_URL } from '../../../config'
 import { proxyImageUrl } from '../../../utils/proxyImageUrl'
-import { stampNoteWidgetNotProse } from './noteWidgetHtml'
+import { emptyNoteWidgetText, stampNoteWidgetNotProse } from './noteWidgetHtml'
 
 const SELF_HOSTED_PREFIXES = ['/media/federation/', '/api/']
 
@@ -47,7 +47,7 @@ export function prepareNoteReaderHtml(
   apiUrl: string = API_URL,
 ): string {
   const content = html?.trim() ? html : emptyHtml
-  return stampNoteWidgetNotProse(withDisplayImages(content, apiUrl))
+  return emptyNoteWidgetText(stampNoteWidgetNotProse(withDisplayImages(content, apiUrl)))
 }
 
 function decodeAttr(value: string): string {

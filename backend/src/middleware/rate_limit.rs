@@ -365,6 +365,7 @@ fn is_compute_intensive(path: &str) -> bool {
     p == "/api/prompt/generate"
         || p == "/api/home/stickers/generate"
         || p == "/api/home/stickers/upload"
+        || p == "/api/media"
         || p == "/api/home/widget-fonts"
         || p == "/api/seo/generate-copy"
         || p == "/api/profile/refresh"
@@ -437,6 +438,7 @@ mod tests {
         assert!(is_compute_intensive("/api/tapp/ai/v2/tasks"));
         assert!(is_compute_intensive("/api/home/stickers/generate"));
         assert!(is_compute_intensive("/api/home/stickers/upload"));
+        assert!(is_compute_intensive("/api/media"));
         assert!(is_compute_intensive("/api/home/widget-fonts"));
         assert!(!is_compute_intensive("/api/home/widget-fonts/abc.woff2"));
         // Image proxy is media volume, not compute.
@@ -468,11 +470,17 @@ mod tests {
         assert!(is_brew_list_read("/api/brew/items/", &Method::GET));
         // 单篇、标记已读、收藏都不是列表
         assert!(!is_brew_list_read("/api/brew/items/517", &Method::GET));
-        assert!(!is_brew_list_read("/api/brew/items/517/read", &Method::POST));
+        assert!(!is_brew_list_read(
+            "/api/brew/items/517/read",
+            &Method::POST
+        ));
         assert!(!is_brew_list_read("/api/brew/items", &Method::POST));
         // 订阅板一分钟里能滚过几十个源，每个源一条；200 不够
         assert!(BREW_LIST_MAX >= 600);
-        assert!(IP_HARD_CAP_MAX >= BREW_LIST_MAX, "hard cap must not undercut the list bucket");
+        assert!(
+            IP_HARD_CAP_MAX >= BREW_LIST_MAX,
+            "hard cap must not undercut the list bucket"
+        );
     }
 
     #[test]

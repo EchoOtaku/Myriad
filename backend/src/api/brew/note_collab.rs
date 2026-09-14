@@ -44,7 +44,10 @@ impl NoteCollabHub {
     }
 
     fn sender(&self, doc_id: i32) -> broadcast::Sender<NoteCollabEvent> {
-        let mut rooms = self.rooms.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut rooms = self
+            .rooms
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         rooms
             .entry(doc_id)
             .or_insert_with(|| broadcast::channel(ROOM_CAP).0)
@@ -53,7 +56,10 @@ impl NoteCollabHub {
 
     /// 最后一个人走了就把房间拆掉；调用方先把自己的 receiver drop 掉再来。
     pub fn release(&self, doc_id: i32) {
-        let mut rooms = self.rooms.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut rooms = self
+            .rooms
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         if rooms
             .get(&doc_id)
             .is_some_and(|sender| sender.receiver_count() == 0)

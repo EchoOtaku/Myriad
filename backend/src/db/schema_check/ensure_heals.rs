@@ -1047,3 +1047,26 @@ ALTER TABLE brew_note_docs ADD COLUMN IF NOT EXISTS last_error TEXT;
     .await?;
     Ok(())
 }
+
+/// 站点上传/生成媒体目录。外链 `cache_image` 不进。
+pub(crate) async fn ensure_media_assets_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+CREATE TABLE IF NOT EXISTS media_assets (
+    id SERIAL PRIMARY KEY,
+    kind VARCHAR NOT NULL,
+    url TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    size BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_media_assets_url
+    ON media_assets (url);
+CREATE INDEX IF NOT EXISTS idx_media_assets_kind
+    ON media_assets (kind);
+"#,
+    )
+    .await?;
+    Ok(())
+}

@@ -1,63 +1,88 @@
-//! Brew 文章主题打标（关键词版）。
+//! Brew 订阅文章主题。
 //!
-//! 主题 key 是 10 个固定值，前端 `frontend/src/components/brew/logic/topics.ts`
-//! 有同一份词表 —— **key 必须一致**，改一边必须改另一边。展示文案走 i18n，
-//! 这里只产出 key。
+//! 主题名是自由文本，不是 10 个预置 key。一篇一个；空主题写 NULL，
+//! **不要**写「其他」——聚类靠 NULL 把这些文章留在源磁贴里。
 //!
-//! 纪律：
-//! - 单标签。一篇文章只有一个 topic。
-//! - 命中多个主题时按 `TOPIC_SEEDS` 顺序取第一个（确定性，重跑同结果）。
-//! - 一个都不命中返回 `None`，写入 NULL。**不要**写「未知」/「其他」——
-//!   聚类侧靠 NULL 把这些文章留在源磁贴里。
+//! 写入两条路：
+//! - 站长手填（HTTP PUT）
+//! - Lite 按标题/摘要快速归类：先从本站已有主题里筛，对不上再起短名
 //!
-//! 生产路径只有关键词打标（插入时 `infer_topic_by_keywords`）；没有小时级 AI 批量。
+//! 归类只走严格 Lite（短 JSON、限输出），Lite 没配好就保持 NULL，
+//! **不能**落到 Standard / Pro。手记源不走这里。
 
-/// 预定义主题及其关键词种子（大小写不敏感，匹配标题 + 摘要前 200 字）。
-///
-/// 顺序即优先级。宁可漏标（None），不要标错硬塞。
-const TOPIC_SEEDS: &[(&str, &[&str])] = &[
-    (
-        "engineering",
-        &[
-            "refactor",
-            "重构",
-            "微服务",
-            "单体",
-            "code review",
-            "代码审查",
-            "rust",
-            "typescript",
-        ],
-    ),
-    (
-        "systems",
-        &[
-            "linux", "kernel", "tcp", "dns", "sqlite", "postgres", "性能", "perf", "jit",
-        ],
-    ),
-    (
-        "ai",
-        &[
-            "llm",
-            "gpt",
-            "模型",
-            "transformer",
-            "agent",
-            "embedding",
-            "提示词",
-        ],
-    ),
-    ("product", &["设计", "ux", "ui", "独立开发", "产品", "交互"]),
-    ("writing", &["中文", "排版", "写作", "播客", "字体"]),
-    ("tools", &["效率", "笔记", "工作流", "周刊", "工具"]),
-    ("culture", &["生活", "文化", "旅行", "城市"]),
-    ("security", &["安全", "漏洞", "cve", "加密", "privacy"]),
-    ("oss", &["开源", "github", "license", "社区"]),
-    ("hardware", &["芯片", "硬件", "pcb", "制造", "risc-v"]),
+use std::time::Duration;
+
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect,
+};
+use serde_json::json;
+
+use crate::models::entities::brew_sources::SourceType;
+use crate::models::entities::{brew_items, brew_sources};
+use crate::services::ai::create_strict_lite_ai_analyzer_with_timeout;
+use crate::services::analyzer::OutputBudget;
+
+/// 与手记分类同一上限：短名才适合磁贴。
+pub const TOPIC_NAME_MAX_CHARS: usize = 40;
+/// 给 Lite 看的正文前缀。归类不需要读完全文。
+const EXCERPT_CHARS: usize = 240;
+/// 提示词里最多带多少个已有主题，避免把词表整表塞进去。
+const EXISTING_TOPIC_PROMPT_CAP: usize = 40;
+/// 一次抓取/订阅最多打多少篇。剩下的留给站长手改或阅读器里再推荐。
+const MAX_INGEST_SUGGESTS: usize = 20;
+const CLASSIFY_TIMEOUT: Duration = Duration::from_secs(12);
+const CLASSIFY_OUTPUT_BUDGET: OutputBudget = OutputBudget { max_tokens: 512 };
+const CLASSIFY_SCHEMA_NAME: &str = "brew_topic";
+const CLASSIFY_SYSTEM: &str = "\
+Classify one subscription article into a single short topic. \
+Prefer an existing topic. Reply with JSON only.";
+
+/// AI 不会主动产出这些桶名。站长手填不受此限。
+const REJECTED_AI_TOPICS: &[&str] = &[
+    "other",
+    "misc",
+    "unknown",
+    "none",
+    "null",
+    "n/a",
+    "其他",
+    "未分类",
+    "未分類",
+    "その他",
+    "없음",
 ];
 
-/// 摘要参与匹配的前缀字符数。
-const SUMMARY_MATCH_CHARS: usize = 200;
+#[derive(Debug)]
+pub enum TopicWriteError {
+    NotFound,
+    NoteItem,
+    Store,
+}
+
+#[derive(Debug)]
+pub enum TopicSuggestError {
+    NotFound,
+    NoteItem,
+    Unavailable,
+    Failed,
+    Store,
+}
+
+pub fn normalize_topic_name(value: &str) -> Option<String> {
+    let name = value.trim();
+    if name.is_empty() {
+        return None;
+    }
+    Some(name.chars().take(TOPIC_NAME_MAX_CHARS).collect())
+}
+
+pub fn is_rejected_ai_topic(name: &str) -> bool {
+    let folded = name.trim().to_lowercase();
+    REJECTED_AI_TOPICS
+        .iter()
+        .any(|rejected| folded == rejected.to_lowercase())
+}
 
 fn strip_html(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -73,101 +98,390 @@ fn strip_html(input: &str) -> String {
     out
 }
 
-/// 关键词打标。命中返回主题 key，否则 `None`（写 NULL）。
-pub fn infer_topic_by_keywords(title: &str, summary: Option<&str>) -> Option<&'static str> {
-    let summary_plain = summary
-        .map(strip_html)
-        .map(|s| s.chars().take(SUMMARY_MATCH_CHARS).collect::<String>())
-        .unwrap_or_default();
+fn excerpt_for_topic(summary: Option<&str>, content: Option<&str>) -> String {
+    let raw = summary.or(content).unwrap_or("");
+    strip_html(raw)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(EXCERPT_CHARS)
+        .collect()
+}
 
-    let haystack = format!("{}\n{}", title, summary_plain).to_lowercase();
-    if haystack.trim().is_empty() {
+fn extract_json_object(response: &str) -> Option<&str> {
+    let start = response.find('{')?;
+    let end = response.rfind('}')?;
+    if end < start {
         return None;
     }
+    Some(&response[start..=end])
+}
 
-    for (key, seeds) in TOPIC_SEEDS {
-        if seeds.iter().any(|seed| haystack.contains(seed)) {
-            return Some(key);
+#[derive(Debug, serde::Deserialize)]
+struct TopicSuggestion {
+    topic: Option<String>,
+}
+
+/// 解析模型回的 `{"topic": "Rust"}` / `{"topic": null}`。
+pub fn parse_suggested_topic(response: &str) -> Result<Option<String>, String> {
+    let json = extract_json_object(response).ok_or_else(|| "no JSON object".to_string())?;
+    let parsed: TopicSuggestion =
+        serde_json::from_str(json).map_err(|e| format!("JSON parse error: {e}"))?;
+    let Some(name) = parsed.topic.as_deref().and_then(normalize_topic_name) else {
+        return Ok(None);
+    };
+    if is_rejected_ai_topic(&name) {
+        return Ok(None);
+    }
+    Ok(Some(name))
+}
+
+fn topic_response_schema() -> serde_json::Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "topic": { "type": ["string", "null"] },
+        },
+        "required": ["topic"],
+    })
+}
+
+pub fn build_topic_suggest_prompt(title: &str, excerpt: &str, existing: &[String]) -> String {
+    let catalog = if existing.is_empty() {
+        "(none yet — invent a short name if the topic is clear)".to_string()
+    } else {
+        existing
+            .iter()
+            .take(EXISTING_TOPIC_PROMPT_CAP)
+            .map(|name| format!("- {name}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    format!(
+        r#"Screen this article into one topic.
+
+## Existing topics (pick one of these when it fits)
+{catalog}
+
+## Article
+Title: {title}
+Excerpt: {excerpt}
+
+## Rules
+1. If an existing topic fits, copy that name exactly
+2. If none fit and the topic is clear, invent a short new name: 2–8 CJK characters or 1–3 Latin words
+3. If the topic is unclear, return null
+4. Same language as the article
+5. Do not use generic buckets: other, misc, 其他, 未分类, unknown
+6. Do not explain
+
+## Output
+{{"topic":"Rust"}} or {{"topic":null}}
+"#
+    )
+}
+
+async fn list_existing_subscription_topics(
+    db: &DatabaseConnection,
+) -> Result<Vec<String>, sea_orm::DbErr> {
+    let note_ids: Vec<i32> = brew_sources::Entity::find()
+        .filter(brew_sources::Column::SourceType.eq(SourceType::Note))
+        .select_only()
+        .column(brew_sources::Column::Id)
+        .into_tuple()
+        .all(db)
+        .await?;
+
+    let mut query = brew_items::Entity::find()
+        .filter(brew_items::Column::Topic.is_not_null())
+        .filter(brew_items::Column::Topic.ne(""))
+        .select_only()
+        .column(brew_items::Column::Topic)
+        .distinct();
+    if !note_ids.is_empty() {
+        query = query.filter(brew_items::Column::SourceId.is_not_in(note_ids));
+    }
+
+    let rows: Vec<Option<String>> = query.into_tuple().all(db).await?;
+    let mut names: Vec<String> = rows
+        .into_iter()
+        .flatten()
+        .filter(|name| !name.is_empty())
+        .collect();
+    names.sort();
+    names.dedup();
+    Ok(names)
+}
+
+/// 订阅主题目录。手记分类不进这里。
+pub async fn list_subscription_topic_names(
+    db: &DatabaseConnection,
+) -> Result<Vec<String>, sea_orm::DbErr> {
+    list_existing_subscription_topics(db).await
+}
+
+async fn load_subscription_item(
+    db: &DatabaseConnection,
+    item_id: i32,
+) -> Result<(brew_items::Model, brew_sources::Model), TopicWriteError> {
+    let item = brew_items::Entity::find_by_id(item_id)
+        .one(db)
+        .await
+        .map_err(|_| TopicWriteError::Store)?
+        .ok_or(TopicWriteError::NotFound)?;
+    let source = brew_sources::Entity::find_by_id(item.source_id)
+        .one(db)
+        .await
+        .map_err(|_| TopicWriteError::Store)?
+        .ok_or(TopicWriteError::NotFound)?;
+    if source.source_type == SourceType::Note {
+        return Err(TopicWriteError::NoteItem);
+    }
+    Ok((item, source))
+}
+
+pub async fn set_subscription_item_topic(
+    db: &DatabaseConnection,
+    item_id: i32,
+    topic: Option<&str>,
+) -> Result<Option<String>, TopicWriteError> {
+    let (item, _) = load_subscription_item(db, item_id).await?;
+    let normalized = topic.and_then(normalize_topic_name);
+    let mut active: brew_items::ActiveModel = item.into();
+    active.topic = Set(normalized.clone());
+    active
+        .update(db)
+        .await
+        .map_err(|_| TopicWriteError::Store)?;
+    Ok(normalized)
+}
+
+async fn suggest_topic_name(
+    title: &str,
+    excerpt: &str,
+    existing: &[String],
+) -> Result<Option<String>, TopicSuggestError> {
+    let analyzer = create_strict_lite_ai_analyzer_with_timeout(Some(CLASSIFY_TIMEOUT))
+        .await
+        .ok_or(TopicSuggestError::Unavailable)?;
+    let prompt = build_topic_suggest_prompt(title, excerpt, existing);
+    let schema = topic_response_schema();
+    let owner = crate::services::ai_cost_ledger::resolve_site_owner_id().await;
+    let raw = crate::services::ai_cost_ledger::with_site_ai_ledger(
+        owner,
+        "brew",
+        "topic_classify",
+        analyzer.analyze_json_short(
+            CLASSIFY_SYSTEM,
+            &prompt,
+            CLASSIFY_SCHEMA_NAME,
+            Some(&schema),
+            CLASSIFY_OUTPUT_BUDGET,
+        ),
+    )
+    .await
+    .map_err(|error| {
+        tracing::error!(%error, "subscription topic Lite provider failed");
+        TopicSuggestError::Unavailable
+    })?;
+    parse_suggested_topic(&raw).map_err(|reason| {
+        tracing::warn!(
+            reason,
+            raw = %raw.chars().take(200).collect::<String>(),
+            "subscription topic Lite response was unusable"
+        );
+        TopicSuggestError::Failed
+    })
+}
+
+async fn write_suggested_topic(
+    db: &DatabaseConnection,
+    item: brew_items::Model,
+    topic: Option<String>,
+) -> Result<Option<String>, TopicSuggestError> {
+    let mut active: brew_items::ActiveModel = item.into();
+    active.topic = Set(topic.clone());
+    active
+        .update(db)
+        .await
+        .map_err(|_| TopicSuggestError::Store)?;
+    Ok(topic)
+}
+
+/// 给一篇订阅文章建议主题。`apply` 为真时写回。
+pub async fn suggest_subscription_item_topic(
+    db: &DatabaseConnection,
+    item_id: i32,
+    apply: bool,
+) -> Result<Option<String>, TopicSuggestError> {
+    let (item, _) = load_subscription_item(db, item_id)
+        .await
+        .map_err(|err| match err {
+            TopicWriteError::NotFound => TopicSuggestError::NotFound,
+            TopicWriteError::NoteItem => TopicSuggestError::NoteItem,
+            TopicWriteError::Store => TopicSuggestError::Store,
+        })?;
+    let existing = list_existing_subscription_topics(db)
+        .await
+        .map_err(|_| TopicSuggestError::Store)?;
+    let excerpt = excerpt_for_topic(item.summary.as_deref(), item.content.as_deref());
+    let topic = suggest_topic_name(&item.title, &excerpt, &existing).await?;
+    if apply {
+        write_suggested_topic(db, item, topic).await
+    } else {
+        Ok(topic)
+    }
+}
+
+async fn recommend_one(db: &DatabaseConnection, item: brew_items::Model) {
+    match suggest_subscription_item_topic(db, item.id, true).await {
+        Ok(Some(topic)) => {
+            tracing::info!(item_id = item.id, %topic, "assigned subscription topic");
+        }
+        Ok(None) => {
+            tracing::debug!(item_id = item.id, "subscription topic left empty");
+        }
+        Err(TopicSuggestError::Unavailable) => {
+            tracing::debug!(item_id = item.id, "subscription topic AI unavailable");
+        }
+        Err(err) => {
+            tracing::warn!(item_id = item.id, ?err, "subscription topic suggest failed");
         }
     }
-    None
+}
+
+/// 入库后异步打标。一篇一篇来，好让后文复用刚写出的新名字。
+pub async fn recommend_topics_for_item_ids(db: &DatabaseConnection, item_ids: &[i32]) {
+    if item_ids.is_empty() {
+        return;
+    }
+    if create_strict_lite_ai_analyzer_with_timeout(Some(CLASSIFY_TIMEOUT))
+        .await
+        .is_none()
+    {
+        tracing::debug!("subscription topic Lite unavailable; skip ingest classify");
+        return;
+    }
+    for item_id in item_ids.iter().copied().take(MAX_INGEST_SUGGESTS) {
+        let item = match brew_items::Entity::find_by_id(item_id).one(db).await {
+            Ok(Some(item)) => item,
+            Ok(None) => continue,
+            Err(error) => {
+                tracing::warn!(%error, item_id, "load item for topic suggest failed");
+                continue;
+            }
+        };
+        recommend_one(db, item).await;
+    }
+}
+
+/// Agent 订阅没有 RETURNING id，按最近未打标的抓。
+pub async fn recommend_unlabeled_for_source(
+    db: &DatabaseConnection,
+    source_id: i32,
+    inserted_count: usize,
+) {
+    let limit = inserted_count.min(MAX_INGEST_SUGGESTS) as u64;
+    if limit == 0 {
+        return;
+    }
+    let items = match brew_items::Entity::find()
+        .filter(brew_items::Column::SourceId.eq(source_id))
+        .filter(brew_items::Column::Topic.is_null())
+        .order_by_desc(brew_items::Column::FetchedAt)
+        .limit(limit)
+        .all(db)
+        .await
+    {
+        Ok(items) => items,
+        Err(error) => {
+            tracing::warn!(%error, source_id, "list unlabeled items for topic suggest failed");
+            return;
+        }
+    };
+    let ids: Vec<i32> = items.iter().map(|item| item.id).collect();
+    recommend_topics_for_item_ids(db, &ids).await;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn predefined_topics() -> Vec<&'static str> {
-        TOPIC_SEEDS.iter().map(|(key, _)| *key).collect()
-    }
-
-    fn is_predefined_topic(key: &str) -> bool {
-        TOPIC_SEEDS.iter().any(|(k, _)| *k == key)
-    }
-
     #[test]
-    fn ten_stable_keys_and_no_other_bucket() {
-        let keys = predefined_topics();
-        assert_eq!(keys.len(), 10);
+    fn normalize_trims_and_caps() {
+        assert_eq!(normalize_topic_name("  "), None);
+        assert_eq!(normalize_topic_name(" Rust "), Some("Rust".into()));
+        let long = "字".repeat(TOPIC_NAME_MAX_CHARS + 8);
         assert_eq!(
-            keys,
-            vec![
-                "engineering",
-                "systems",
-                "ai",
-                "product",
-                "writing",
-                "tools",
-                "culture",
-                "security",
-                "oss",
-                "hardware",
-            ]
-        );
-        assert!(!is_predefined_topic("other"));
-        assert!(!is_predefined_topic("misc"));
-        assert!(is_predefined_topic("engineering"));
-    }
-
-    #[test]
-    fn matches_title_and_summary() {
-        assert_eq!(
-            infer_topic_by_keywords("这次重构把单体拆了", None),
-            Some("engineering")
-        );
-        assert_eq!(
-            infer_topic_by_keywords("周末随笔", Some("<p>聊聊 <b>embedding</b> 的取舍</p>")),
-            Some("ai")
+            normalize_topic_name(&long).unwrap().chars().count(),
+            TOPIC_NAME_MAX_CHARS
         );
     }
 
     #[test]
-    fn case_insensitive() {
+    fn ai_rejects_bucket_names() {
+        assert!(is_rejected_ai_topic("其他"));
+        assert!(is_rejected_ai_topic("Other"));
+        assert!(is_rejected_ai_topic("MISC"));
+        assert!(!is_rejected_ai_topic("Rust"));
+        assert!(!is_rejected_ai_topic("工程实践"));
+    }
+
+    #[test]
+    fn parse_object_and_null() {
         assert_eq!(
-            infer_topic_by_keywords("Understanding TypeScript", None),
-            Some("engineering")
+            parse_suggested_topic(r#"{"topic":"Rust"}"#).unwrap(),
+            Some("Rust".into())
         );
-        assert_eq!(infer_topic_by_keywords("CVE 复盘", None), Some("security"));
+        assert_eq!(parse_suggested_topic(r#"{"topic":null}"#).unwrap(), None);
+        assert_eq!(
+            parse_suggested_topic("here you go\n{\"topic\":\"安全\"}\n").unwrap(),
+            Some("安全".into())
+        );
+        assert_eq!(parse_suggested_topic(r#"{"topic":"其他"}"#).unwrap(), None);
+        assert_eq!(parse_suggested_topic(r#"{"topic":"  "}"#).unwrap(), None);
+        assert!(parse_suggested_topic("not json").is_err());
     }
 
     #[test]
-    fn no_match_returns_none() {
-        assert_eq!(infer_topic_by_keywords("今天天气不错", None), None);
-        assert_eq!(infer_topic_by_keywords("", None), None);
-        assert_eq!(infer_topic_by_keywords("   ", Some("")), None);
+    fn prompt_reuses_existing_and_forbids_buckets() {
+        let prompt = build_topic_suggest_prompt(
+            "Tokio 0.3",
+            "async runtime notes",
+            &["Rust".into(), "系统".into()],
+        );
+        assert!(prompt.contains("- Rust"));
+        assert!(prompt.contains("Tokio 0.3"));
+        assert!(prompt.contains("pick one of these"));
+        assert!(prompt.contains("其他"));
+        assert!(prompt.contains(r#"{"topic":null}"#));
+    }
+
+    /// 归类必须是严格 Lite：短 JSON、限输出，不能借 Standard 的模型和延迟。
+    #[test]
+    fn classify_is_strict_lite_with_a_small_payload() {
+        let source = include_str!("brew_topics.rs");
+        let body = source
+            .split("async fn suggest_topic_name(")
+            .nth(1)
+            .and_then(|rest| rest.split("\nasync fn ").next())
+            .expect("suggest_topic_name body");
+
+        assert!(body.contains("create_strict_lite_ai_analyzer_with_timeout"));
+        assert!(body.contains("analyze_json_short"));
+        assert!(body.contains("CLASSIFY_OUTPUT_BUDGET"));
+        assert!(!body.contains("create_ai_analyzer_for_tier"));
+        assert!(!body.contains("ModelTier::Standard"));
+        assert!(!body.contains("ModelTier::Lite"));
+        assert!(!body.contains("lite_enabled"));
     }
 
     #[test]
-    fn single_label_deterministic_by_seed_order() {
-        // engineering 在 systems 之前，两边都命中时取前者
-        let out = infer_topic_by_keywords("Rust 写的 kernel 模块", None);
-        assert_eq!(out, Some("engineering"));
-        assert_eq!(infer_topic_by_keywords("Rust 写的 kernel 模块", None), out);
-    }
-
-    #[test]
-    fn only_first_200_summary_chars() {
-        let far = format!("{}kernel", "啊".repeat(400));
-        assert_eq!(infer_topic_by_keywords("无关标题", Some(&far)), None);
+    fn excerpt_strips_html_and_caps() {
+        let out = excerpt_for_topic(Some("<p>聊聊 <b>embedding</b></p>"), None);
+        assert_eq!(out, "聊聊 embedding");
+        let far = format!("{}kernel", "啊".repeat(EXCERPT_CHARS));
+        assert!(!excerpt_for_topic(Some(&far), None).contains("kernel"));
     }
 }

@@ -255,7 +255,7 @@ fn render_layout_segments(markdown: &str, preview: bool) -> String {
     if segs.is_empty() {
         let raw = pulldown_html(markdown);
         return if preview {
-            stamp_block_ranges(&raw, &top_level_block_ranges(markdown))
+            stamp_preview_html(&raw, &top_level_block_ranges(markdown))
         } else {
             raw
         };
@@ -317,7 +317,7 @@ fn render_layout_segments(markdown: &str, preview: bool) -> String {
 
     let raw = pulldown_html(&stitched);
     if preview {
-        stamp_block_ranges(&raw, &text_ranges)
+        stamp_preview_html(&raw, &text_ranges)
     } else {
         raw
     }
@@ -623,10 +623,28 @@ fn with_link_definitions(html: &str, defs: &[LinkDefRef]) -> String {
             )
         })
         .collect();
-    match html.find("<div class=\"footnote-definition\"") {
+    match footnote_definition_start(html) {
         Some(at) => format!("{}{}{}", &html[..at], extra, &html[at..]),
         None => format!("{html}{extra}"),
     }
+}
+
+/// 预览会在开标签里插 `data-md-*`，不能只认 `"<div class=\"footnote-definition\""`。
+fn footnote_definition_start(html: &str) -> Option<usize> {
+    let mut from = 0;
+    while let Some(rel) = html[from..].find("<div") {
+        let at = from + rel;
+        let rest = &html[at..];
+        let Some(gt) = rest.find('>') else {
+            return None;
+        };
+        let tag = &rest[..=gt];
+        if tag.contains("class=\"footnote-definition\"") {
+            return Some(at);
+        }
+        from = at + 4;
+    }
+    None
 }
 
 fn escape_html(value: &str) -> String {
@@ -694,8 +712,18 @@ fn top_level_block_ranges(markdown: &str) -> Vec<(usize, usize)> {
     for (event, range) in Parser::new_ext(markdown, markdown_options()).into_offset_iter() {
         match event {
             Event::Start(tag) if is_block_tag(&tag) => {
+                // 消毒会剥掉的 HtmlBlock（iframe 等）不能占一格，否则后文抢到它的区间。
+                // 留下来的块级 HTML（<hr>、<p>）仍要占一格，否则它会偷走后文的区间。
                 if depth == 0 {
-                    ranges.push((range.start, range.end));
+                    let keep = match tag {
+                        pulldown_cmark::Tag::HtmlBlock => {
+                            html_block_survives_as_block(&markdown[range.start..range.end])
+                        }
+                        _ => true,
+                    };
+                    if keep {
+                        ranges.push((range.start, range.end));
+                    }
                 }
                 depth += 1;
             }
@@ -737,6 +765,71 @@ fn is_block_tag_end(end: &pulldown_cmark::TagEnd) -> bool {
             | TagEnd::FootnoteDefinition
             | TagEnd::HtmlBlock
     )
+}
+
+/// 预扫消毒：不加脚注 id 前缀，也不改写 `href="#"`，完整消毒仍只在
+/// `sanitize_rendered` 做一次。必须放行 `data-md-*`，否则小组件上
+/// `stamp_wrapper` 打的区间会被剥掉。
+fn preview_pre_clean(html: &str) -> String {
+    let mut attributes = allowed_attributes();
+    for tag in BLOCK_TAGS {
+        attributes
+            .entry(tag)
+            .or_default()
+            .extend(["data-md-start", "data-md-end"]);
+    }
+    ammonia::Builder::default()
+        .tags(allowed_tags())
+        .tag_attributes(attributes)
+        .allowed_classes(allowed_classes())
+        .link_rel(Some("noopener noreferrer nofollow"))
+        .url_schemes(["http", "https", "mailto"].into_iter().collect())
+        .clean(html)
+        .to_string()
+}
+
+fn html_block_survives_as_block(src: &str) -> bool {
+    html_has_top_level_block(&preview_pre_clean(src))
+}
+
+fn html_has_top_level_block(html: &str) -> bool {
+    let mut depth = 0usize;
+    let mut rest = html;
+    while let Some(lt) = rest.find('<') {
+        let tag_slice = &rest[lt..];
+        let Some(gt) = tag_slice.find('>') else {
+            return false;
+        };
+        let tag = &tag_slice[..=gt];
+        let inner = tag[1..tag.len() - 1].trim_end_matches('/').trim();
+        let closing = inner.starts_with('/');
+        let name = inner
+            .trim_start_matches('/')
+            .split(|c: char| c.is_whitespace())
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let is_block = BLOCK_TAGS.contains(&name.as_str());
+        let self_closing = name == "hr";
+        if is_block && !closing && depth == 0 {
+            return true;
+        }
+        if is_block && !self_closing {
+            if closing {
+                depth = depth.saturating_sub(1);
+            } else {
+                depth += 1;
+            }
+        }
+        rest = &tag_slice[gt + 1..];
+    }
+    false
+}
+
+/// 先丢掉消毒器会剥掉的块，再打区间。被剥掉的 iframe 不能占一格，
+/// 否则后面的段落会拿到它的原文范围，点预览即编辑就跳错。
+fn stamp_preview_html(html: &str, ranges: &[(usize, usize)]) -> String {
+    stamp_block_ranges(&preview_pre_clean(html), ranges)
 }
 
 /// 扫一遍渲染出的 HTML，给第 i 个顶层块的开标签插上第 i 个区间。
@@ -949,6 +1042,16 @@ mod tests {
         let html = render_markdown("<script>alert(1)</script>\n\n正文");
         assert!(!html.contains("script"));
         assert!(html.contains("正文"));
+    }
+
+    #[test]
+    fn publish_html_drops_tapp_iframe_and_secret_query() {
+        let html = render_markdown(
+            "<iframe src=\"https://tapp.example/sandbox?token=HOST_SECRET\"></iframe>\n\n:::widget weather 2x2",
+        );
+        assert!(!html.contains("iframe"), "{html}");
+        assert!(!html.contains("HOST_SECRET"), "{html}");
+        assert!(html.contains("data-widget=\"weather\""), "{html}");
     }
 
     #[test]
@@ -1290,11 +1393,16 @@ mod tests {
 
     #[test]
     fn renders_widget_placeholder_and_strips_unknown_attrs() {
+        assert_eq!(
+            render_markdown(":::WIDGET weather 2x2"),
+            render_markdown(":::widget weather 2x2")
+        );
         let html = render_markdown(":::widget weather 2x2");
         assert!(html.contains("class=\"note-widget not-prose\""), "{html}");
         assert!(html.contains("data-widget=\"weather\""), "{html}");
         assert!(html.contains("data-size=\"2x2\""), "{html}");
-        assert!(html.contains(">weather<"), "{html}");
+        assert!(html.contains("></div>"), "{html}");
+        assert!(!html.contains(">weather<"), "{html}");
 
         let configured = render_markdown(r#":::widget weather 2x2 {"city":"Tokyo"}"#);
         assert!(
@@ -1315,8 +1423,179 @@ mod tests {
     fn preview_stamps_layout_wrappers() {
         let md = "上\n\n:::widget quote 2x2\n\n下";
         let html = render_markdown_preview(md);
-        assert!(html.contains("class=\"note-widget\""), "{html}");
+        assert!(html.contains("class=\"note-widget not-prose\""), "{html}");
         assert!(html.contains("data-md-start="), "{html}");
         assert!(!render_markdown(md).contains("data-md-"));
+    }
+
+    fn strip_preview_ranges(html: &str) -> String {
+        let mut out = String::with_capacity(html.len());
+        let mut rest = html;
+        while let Some(at) = rest.find(" data-md-") {
+            out.push_str(&rest[..at]);
+            let after = &rest[at + 1..];
+            let end = after.find('"').and_then(|first| {
+                after[first + 1..].find('"').map(|second| first + 1 + second + 1)
+            });
+            match end {
+                Some(end) => rest = &after[end..],
+                None => {
+                    out.push_str(&rest[at..]);
+                    return out;
+                }
+            }
+        }
+        out.push_str(rest);
+        out
+    }
+
+    #[test]
+    fn preview_html_matches_publish_except_source_ranges() {
+        let md = "# 标题\n\n第一段 **粗**。\n\n:::widget weather 2x2 {\"city\":\"Tokyo\"}\n\n- [x] 完\n- [ ] 待\n\n```rust\nfn a() {}\n```";
+        let published = render_markdown(md);
+        let preview = render_markdown_preview(md);
+        assert_ne!(preview, published);
+        assert!(preview.contains("data-md-start="), "{preview}");
+        assert!(!published.contains("data-md-"), "{published}");
+        assert!(!published.contains(">weather<"), "{published}");
+        assert!(!preview.contains(">weather<"), "{preview}");
+        assert_eq!(strip_preview_ranges(&preview), published);
+    }
+
+    #[test]
+    fn preview_keeps_link_defs_before_footnotes_when_stamped() {
+        let md = concat!(
+            "看 [规范][cm] 和脚注[^1]。\n\n",
+            ":::widget weather 2x2 {\"city\":\"Tokyo\"}\n\n",
+            ":::widget friend-links 4x2\n\n",
+            "<iframe src=\"https://tapp.example/sandbox?token=HOST_SECRET\"></iframe>\n\n",
+            "[cm]: https://spec.commonmark.org/0.31.2/ \"CommonMark Spec 0.31.2\"\n",
+            "[^1]: 底。\n",
+        );
+        let published = render_markdown(md);
+        let preview = render_markdown_preview(md);
+        assert!(published.contains("class=\"link-definition\""), "{published}");
+        assert!(preview.contains("class=\"link-definition\""), "{preview}");
+        assert!(!published.contains("iframe"), "{published}");
+        assert!(!published.contains("HOST_SECRET"), "{published}");
+        assert!(!preview.contains("iframe"), "{preview}");
+        assert!(!preview.contains("HOST_SECRET"), "{preview}");
+        let link = published.find("class=\"link-definition\"").unwrap();
+        let foot = published.find("class=\"footnote-definition\"").unwrap();
+        assert!(link < foot, "{published}");
+        assert_eq!(strip_preview_ranges(&preview), published);
+        assert_eq!(published, include_str!("../testdata/link-defs.published.html"));
+        assert_eq!(preview, include_str!("../testdata/link-defs.preview.html"));
+    }
+
+    #[test]
+    fn preview_stamps_surviving_text_not_stripped_iframe() {
+        let md = "前\n\n<iframe src=\"https://tapp.example/sandbox?token=HOST_SECRET\"></iframe>\n\n后\n";
+        let preview = render_markdown_preview(md);
+        assert!(!preview.contains("iframe"), "{preview}");
+        assert!(!preview.contains("HOST_SECRET"), "{preview}");
+        let (start, end) = preview_range_for(&preview, ">后</p>");
+        assert_eq!(md[start..end].trim(), "后", "{preview}");
+        let (start, end) = preview_range_for(&preview, ">前</p>");
+        assert_eq!(md[start..end].trim(), "前", "{preview}");
+    }
+
+    #[test]
+    fn preview_stamps_surviving_raw_html_block_not_next_paragraph() {
+        let md = "vor\n\n<hr>\n\nnach\n";
+        let preview = render_markdown_preview(md);
+        let published = render_markdown(md);
+        assert!(published.contains("<hr>"), "{published}");
+        assert_eq!(strip_preview_ranges(&preview), published);
+        let (start, end) = preview_range_for(&preview, ">nach</p>");
+        assert_eq!(md[start..end].trim(), "nach", "{preview}");
+        let (start, end) = preview_range_on_open_tag(&preview, "<hr");
+        assert_eq!(md[start..end].trim(), "<hr>", "{preview}");
+
+        let kept = "vor\n\n<p>kept</p>\n\nnach\n";
+        let preview = render_markdown_preview(kept);
+        let (start, end) = preview_range_for(&preview, ">nach</p>");
+        assert_eq!(kept[start..end].trim(), "nach", "{preview}");
+        let (start, end) = preview_range_for(&preview, ">kept</p>");
+        assert_eq!(kept[start..end].trim(), "<p>kept</p>", "{preview}");
+    }
+
+    #[test]
+    fn preview_friend_report_tapp_match_publish_and_drop_secret_iframe() {
+        let md = concat!(
+            "vor\n\n",
+            ":::widget friend-links 4x2\n\n",
+            ":::widget report-bilibili 4x2\n\n",
+            ":::widget tapp-shortcut 1x1\n\n",
+            "<iframe src=\"https://tapp.example/sandbox?token=HOST_SECRET\"></iframe>\n\n",
+            "nach\n",
+        );
+        let published = render_markdown(md);
+        let preview = render_markdown_preview(md);
+        assert!(published.contains("data-widget=\"friend-links\""), "{published}");
+        assert!(published.contains("data-widget=\"report-bilibili\""), "{published}");
+        assert!(published.contains("data-widget=\"tapp-shortcut\""), "{published}");
+        assert!(!published.contains("iframe"), "{published}");
+        assert!(!published.contains("HOST_SECRET"), "{published}");
+        assert!(!preview.contains("iframe"), "{preview}");
+        assert!(!preview.contains("HOST_SECRET"), "{preview}");
+        assert!(!published.contains(">friend-links<"), "{published}");
+        assert!(!published.contains(">report-bilibili<"), "{published}");
+        assert!(!published.contains(">tapp-shortcut<"), "{published}");
+        assert_eq!(strip_preview_ranges(&preview), published);
+        assert_eq!(
+            published,
+            include_str!("../testdata/friend-report-tapp.published.html")
+        );
+        assert_eq!(
+            preview,
+            include_str!("../testdata/friend-report-tapp.preview.html")
+        );
+        let (start, end) = preview_range_for(&preview, ">nach</p>");
+        assert_eq!(md[start..end].trim(), "nach", "{preview}");
+    }
+
+    fn preview_range_for(html: &str, needle: &str) -> (usize, usize) {
+        let at = html.find(needle).expect(needle);
+        let before = &html[..at];
+        let start_at = before.rfind("data-md-start=\"").expect("start");
+        let start: usize = before[start_at + 15..].split('"').next().unwrap().parse().unwrap();
+        let end_at = before.rfind("data-md-end=\"").expect("end");
+        let end: usize = before[end_at + 13..].split('"').next().unwrap().parse().unwrap();
+        (start, end)
+    }
+
+    fn preview_range_on_open_tag(html: &str, tag_prefix: &str) -> (usize, usize) {
+        let at = html.find(tag_prefix).expect(tag_prefix);
+        let gt = html[at..].find('>').expect("gt") + at;
+        let tag = &html[at..=gt];
+        let start_at = tag.find("data-md-start=\"").expect("start");
+        let start: usize = tag[start_at + 15..].split('"').next().unwrap().parse().unwrap();
+        let end_at = tag.find("data-md-end=\"").expect("end");
+        let end: usize = tag[end_at + 13..].split('"').next().unwrap().parse().unwrap();
+        (start, end)
+    }
+
+    #[test]
+    fn preview_columns_with_inner_widget_match_publish() {
+        let md = concat!(
+            ":::columns\n左 [^1]\n:::col\n:::widget quote 2x2\n:::\n\n",
+            "[^1]: 底。\n",
+        );
+        let published = render_markdown(md);
+        let preview = render_markdown_preview(md);
+        assert!(published.contains("class=\"note-columns\""), "{published}");
+        assert!(published.contains("data-widget=\"quote\""), "{published}");
+        assert!(published.contains("class=\"footnote-definition\""), "{published}");
+        assert!(!published.contains("iframe"), "{published}");
+        assert_eq!(strip_preview_ranges(&preview), published);
+        assert_eq!(
+            published,
+            include_str!("../testdata/columns-widget.published.html")
+        );
+        assert_eq!(
+            preview,
+            include_str!("../testdata/columns-widget.preview.html")
+        );
     }
 }

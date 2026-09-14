@@ -69,6 +69,12 @@ describe('brew 舞台契约', () => {
     )
     assert.match(css, /\.brew-friends__items-track \{[\s\S]*?grid-auto-flow: row;/)
     assert.match(css, /\.brew-friends__sites \{[\s\S]*?grid-auto-flow: column;/)
+    assert.match(css, /--brew-story-h: 4\.35rem/)
+    assert.match(css, /\.brew-friends \.brew-story__title \{[\s\S]*?-webkit-line-clamp: 1;/)
+    assert.match(css, /\.brew-friends \.brew-story__summary/)
+    assert.match(css, /\.brew-friends \.brew-story__peek/)
+    const vacant = read('ui/Empty.tsx')
+    assert.match(vacant, /<StoryGhost key=\{i\} i=\{i\} compact \/>/)
   })
 
   it('朋友们网站轨和文章轨用订阅页同一套间距', () => {

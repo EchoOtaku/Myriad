@@ -3,10 +3,11 @@ import { describe, it } from 'node:test'
 import { daysAgo, makeItem, NOW } from './fixtures.ts'
 import {
   clusterTopics,
-  inferTopicByKeywords,
   isPredefinedTopic,
-  noteTopicChoices,
+  MAX_TOPIC_NAME_CHARS,
+  normalizeTopicName,
   PREDEFINED_TOPICS,
+  previewsToTopicItems,
   TOPIC_MIN_ITEMS,
   TOPIC_WINDOW_DAYS,
   topicDisplayName,
@@ -15,154 +16,124 @@ import {
   topicSourceCount,
 } from './topics.ts'
 
-describe('PREDEFINED_TOPICS', () => {
-  it('固定 10 个 key，且没有「其他」桶', () => {
+describe('leftover topic keys', () => {
+  it('旧 10 个 key 仍能翻译上色，但不再是写入白名单', () => {
     assert.equal(PREDEFINED_TOPICS.length, 10)
-    assert.deepEqual(Iterator.from(PREDEFINED_TOPICS).toArray(), [
-      'engineering',
-      'systems',
-      'ai',
-      'product',
-      'writing',
-      'tools',
-      'culture',
-      'security',
-      'oss',
-      'hardware',
-    ])
     assert.equal(PREDEFINED_TOPICS.includes('other'), false)
-    assert.equal(PREDEFINED_TOPICS.includes('misc'), false)
-  })
-
-  it('每个 key 都有 i18n key 与身份色', () => {
     for (const key of PREDEFINED_TOPICS) {
       assert.ok(topicNameKey(key), `${key} 缺 nameKey`)
-      assert.match(topicHue(key)!, /^#[0-9a-f]{6}$/i, `${key} 的 hue 不是 hex`)
+      assert.match(topicHue(key), /^#[0-9a-f]{6}$/i, `${key} 的 hue 不是 hex`)
       assert.equal(isPredefinedTopic(key), true)
     }
-    assert.equal(isPredefinedTopic('unknown'), false)
-    assert.equal(isPredefinedTopic(null), false)
-    assert.equal(topicNameKey('unknown'), null)
-  })
-
-  it('nameKey 是 i18n key 而不是展示文案', () => {
-    // 主题名走 i18n，不写死中文。
-    for (const key of PREDEFINED_TOPICS) {
-      assert.match(topicNameKey(key)!, /^topic[A-Z]/)
-    }
-  })
-
-  it('手记主题选项就是这 10 个 key', () => {
-    assert.deepEqual(
-      noteTopicChoices().map((choice) => choice.key),
-      Iterator.from(PREDEFINED_TOPICS).toArray(),
-    )
+    assert.equal(isPredefinedTopic('Rust'), false)
+    assert.equal(topicNameKey('Rust'), null)
+    assert.match(topicHue('Rust'), /^hsl\(/)
   })
 })
 
-describe('inferTopicByKeywords', () => {
-  it('标题命中', () => {
-    assert.equal(
-      inferTopicByKeywords({ title: '这次重构把单体拆了', summary: null }),
-      'engineering',
+describe('normalizeTopicName', () => {
+  it('空串不算主题，超长截断', () => {
+    assert.equal(normalizeTopicName('  '), null)
+    assert.equal(normalizeTopicName(' Rust '), 'Rust')
+    const long = '字'.repeat(MAX_TOPIC_NAME_CHARS + 8)
+    assert.equal([...normalizeTopicName(long)!].length, MAX_TOPIC_NAME_CHARS)
+  })
+})
+
+describe('previewsToTopicItems', () => {
+  it('手记源不进主题聚类', () => {
+    const items = previewsToTopicItems([
+      {
+        id: 1,
+        name: '手记',
+        source_type: 'note',
+        recent_items: [
+          { id: 11, title: 'a', image: null, published_at: NOW, topic: '随笔' },
+          { id: 12, title: 'b', image: null, published_at: NOW, topic: '随笔' },
+          { id: 13, title: 'c', image: null, published_at: NOW, topic: '随笔' },
+        ],
+      },
+      {
+        id: 2,
+        name: '订阅',
+        source_type: 'rss',
+        recent_items: [
+          { id: 21, title: 'd', image: null, published_at: NOW, topic: 'Rust' },
+        ],
+      },
+    ])
+    assert.deepEqual(
+      items.map((item) => item.id),
+      [21],
     )
-    assert.equal(
-      inferTopicByKeywords({ title: 'SQLite 的 WAL 到底怎么工作', summary: null }),
-      'systems',
-    )
-  })
-
-  it('摘要命中；HTML 标签不干扰', () => {
-    assert.equal(
-      inferTopicByKeywords({
-        title: '周末随笔',
-        summary: '<p>聊聊 <b>embedding</b> 的取舍</p>',
-      }),
-      'ai',
-    )
-  })
-
-  it('大小写不敏感', () => {
-    assert.equal(
-      inferTopicByKeywords({ title: 'Understanding TypeScript', summary: null }),
-      'engineering',
-    )
-    assert.equal(inferTopicByKeywords({ title: 'CVE 复盘', summary: null }), 'security')
-  })
-
-  it('一个都不命中返回 null，不硬塞', () => {
-    assert.equal(inferTopicByKeywords({ title: '今天天气不错', summary: null }), null)
-    assert.equal(inferTopicByKeywords({ title: '', summary: null }), null)
-    assert.equal(inferTopicByKeywords({ title: '   ', summary: '' }), null)
-  })
-
-  it('多主题命中时确定性取第一个（单标签）', () => {
-    const item = { title: 'Rust 写的 kernel 模块', summary: null }
-    const first = inferTopicByKeywords(item)
-    assert.equal(first, 'engineering', '按预定义顺序，engineering 在 systems 之前')
-    assert.equal(inferTopicByKeywords(item), first)
-  })
-
-  it('只看摘要前 200 字（与后端 prompt 一致）', () => {
-    const far = { title: '无关标题', summary: `${'啊'.repeat(400)}kernel` }
-    assert.equal(inferTopicByKeywords(far), null)
   })
 })
 
 describe('clusterTopics', () => {
-  const eng = (over = {}) =>
-    makeItem({ topic: 'engineering', published_at: daysAgo(3), ...over })
+  const rust = (over = {}) =>
+    makeItem({ topic: 'Rust', published_at: daysAgo(3), ...over })
 
   it('不足 3 篇不成卡', () => {
-    const two = [eng({ id: 1 }), eng({ id: 2 })]
+    const two = [rust({ id: 1 }), rust({ id: 2 })]
     assert.deepEqual(clusterTopics(two, NOW), [])
 
-    const three = [...two, eng({ id: 3 })]
+    const three = [...two, rust({ id: 3 })]
     const out = clusterTopics(three, NOW)
     assert.equal(out.length, 1)
-    assert.equal(out[0].key, 'engineering')
+    assert.equal(out[0].key, 'Rust')
+    assert.equal(out[0].nameKey, null)
     assert.equal(out[0].items.length, TOPIC_MIN_ITEMS)
   })
 
   it('窗口外的文章不算', () => {
     const items = [
-      eng({ id: 1, published_at: daysAgo(1) }),
-      eng({ id: 2, published_at: daysAgo(2) }),
-      eng({ id: 3, published_at: daysAgo(TOPIC_WINDOW_DAYS + 1) }),
+      rust({ id: 1, published_at: daysAgo(1) }),
+      rust({ id: 2, published_at: daysAgo(2) }),
+      rust({ id: 3, published_at: daysAgo(TOPIC_WINDOW_DAYS + 1) }),
     ]
     assert.deepEqual(clusterTopics(items, NOW), [], '只剩 2 篇在窗口内')
   })
 
-  it('topic 为 null / 未知 key 的文章不参与', () => {
+  it('topic 为空的文章不参与', () => {
     const items = [
       makeItem({ id: 1, topic: null }),
       makeItem({ id: 2, topic: undefined }),
-      makeItem({ id: 3, topic: 'other' }),
+      makeItem({ id: 3, topic: '  ' }),
       makeItem({ id: 4, topic: '' }),
     ]
     assert.deepEqual(clusterTopics(items, NOW), [])
   })
 
+  it('任意非空名满 3 篇就能成卡', () => {
+    const items = Array.from({ length: 3 }, (_, i) =>
+      makeItem({ id: i + 1, topic: '独立开发', published_at: daysAgo(i + 1) }),
+    )
+    const [topic] = clusterTopics(items, NOW)
+    assert.equal(topic.key, '独立开发')
+    assert.equal(topic.nameKey, null)
+    assert.match(topic.hue, /^hsl\(/)
+  })
+
   it('没有 published_at 的文章跳过（无法判断是否在窗口内）', () => {
     const items = [
-      eng({ id: 1 }),
-      eng({ id: 2 }),
-      eng({ id: 3, published_at: null }),
+      rust({ id: 1 }),
+      rust({ id: 2 }),
+      rust({ id: 3, published_at: null }),
     ]
     assert.deepEqual(clusterTopics(items, NOW), [])
   })
 
   it('组内按发布时间新→旧', () => {
     const items = [
-      eng({ id: 1, published_at: daysAgo(9) }),
-      eng({ id: 2, published_at: daysAgo(1) }),
-      eng({ id: 3, published_at: daysAgo(5) }),
+      rust({ id: 1, published_at: daysAgo(9) }),
+      rust({ id: 2, published_at: daysAgo(1) }),
+      rust({ id: 3, published_at: daysAgo(5) }),
     ]
     const [topic] = clusterTopics(items, NOW)
     assert.deepEqual(topic.items.map((i) => i.id), [2, 3, 1])
   })
 
-  it('主题按篇数降序，同篇数按预定义顺序（稳定）', () => {
+  it('主题按篇数降序，同篇数按名字稳定排序', () => {
     const items = [
       ...Array.from({ length: 5 }, (_, i) =>
         makeItem({ id: 100 + i, topic: 'ai', published_at: daysAgo(i + 1) }),
@@ -179,8 +150,7 @@ describe('clusterTopics', () => {
     assert.deepEqual(clusterTopics(items.toReversed(), NOW).map((t) => t.key), keys)
   })
 
-  it('聚类只看 item.topic，不重新跑关键词', () => {
-    // 已有 topic 是唯一真相，不按标题重打。
+  it('聚类只看 item.topic，不重新猜', () => {
     const items = Array.from({ length: 3 }, (_, i) =>
       makeItem({
         id: i + 1,
@@ -194,7 +164,7 @@ describe('clusterTopics', () => {
     assert.equal(out[0].key, 'ai')
   })
 
-  it('携带 hue / nameKey，供 Glow 与字标使用', () => {
+  it('旧 key 仍带 leftover nameKey 与色相', () => {
     const items = Array.from({ length: 3 }, (_, i) =>
       makeItem({ id: i + 1, topic: 'security', published_at: daysAgo(i + 1) }),
     )
@@ -204,7 +174,7 @@ describe('clusterTopics', () => {
   })
 
   it('不改入参数组', () => {
-    const items = [eng({ id: 1 }), eng({ id: 2 }), eng({ id: 3 })]
+    const items = [rust({ id: 1 }), rust({ id: 2 }), rust({ id: 3 })]
     const ids = items.map((i) => i.id)
     clusterTopics(items, NOW)
     assert.deepEqual(items.map((i) => i.id), ids)
@@ -224,14 +194,13 @@ describe('topicSourceCount', () => {
 })
 
 describe('topicDisplayName', () => {
-  it('reads the i18n field without a Record cast', () => {
+  it('旧 key 读 i18n，自建名原样显示', () => {
     assert.equal(
       topicDisplayName({ key: 'ai', nameKey: 'topicAi' }, { topicAi: '人工智能' }),
       '人工智能',
     )
-    assert.equal(
-      topicDisplayName({ key: 'ai', nameKey: 'topicAi' }, {}),
-      'ai',
-    )
+    assert.equal(topicDisplayName({ key: 'ai' }, { topicAi: '人工智能' }), '人工智能')
+    assert.equal(topicDisplayName({ key: 'ai', nameKey: 'topicAi' }, {}), 'ai')
+    assert.equal(topicDisplayName({ key: 'Rust' }, { topicAi: '人工智能' }), 'Rust')
   })
 })

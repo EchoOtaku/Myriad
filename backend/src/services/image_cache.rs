@@ -466,4 +466,14 @@ mod tests {
         );
         assert_eq!(full, "Failed to write cache file: not enough disk space");
     }
+
+    #[test]
+    fn cache_image_does_not_touch_media_catalog() {
+        let src = include_str!("image_cache.rs");
+        let prod = src.split("#[cfg(test)]").next().unwrap_or(src);
+        assert!(
+            !prod.contains("media_catalog"),
+            "cache_image 是外链缓存，不能写进媒体目录"
+        );
+    }
 }

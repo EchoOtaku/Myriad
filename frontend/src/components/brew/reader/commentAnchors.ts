@@ -11,7 +11,7 @@ interface TextAnchor {
 }
 
 const MEDIA_EXEMPT =
-  'script, style, button, iframe, [data-embed-exempt], .brew-embed-card, .brew-embed-exempt, .brew-bilibili-embed, .brew-netease-music, .brew-steam-game, .brew-bilibili-video'
+  'script, style, button, iframe, [data-embed-exempt], .note-widget, .brew-embed-card, .brew-embed-exempt, .brew-bilibili-embed, .brew-netease-music, .brew-steam-game, .brew-bilibili-video'
 
 /** Marks stay elements: overlap, keyboard, and media exemption need DOM. */
 export function cssCustomHighlightAvailable(): boolean {

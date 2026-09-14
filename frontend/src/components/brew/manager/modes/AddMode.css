@@ -300,6 +300,30 @@ html.dark .brew-add-form .field-input.field-input--image:focus-within {
   white-space: nowrap;
 }
 
+.brew-add-form__swatch {
+  width: 1.35rem;
+  height: 1.35rem;
+  padding: 0;
+  border: 1px solid var(--cfg-subtle-border);
+  border-radius: 0.35rem;
+  background: none;
+  cursor: pointer;
+}
+
+.brew-add-form__swatch:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.brew-add-form__swatch::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.brew-add-form__swatch::-webkit-color-swatch {
+  border: none;
+  border-radius: 0.28rem;
+}
+
 .brew-add-form__tags {
   display: flex;
   flex-wrap: wrap;

@@ -34,7 +34,7 @@ describe('brew feeds 开合 class 链', () => {
     )
     assert.doesNotMatch(storyGrab, /startTransition/)
     assert.doesNotMatch(storyGrab, /storySetMount/)
-    assert.match(src, /lead\?\.story\.source_id/)
+    assert.match(src, /storyRailGroup\(lead\.story\)/)
     assert.match(src, /Math\.max\(ideal\.from, mounted\.from\)/)
     assert.match(src, /RAIL_MOUNT_RESERVE/)
     assert.match(src, /const paintTo = grid\.to/)
@@ -96,7 +96,14 @@ describe('brew feeds 开合 class 链', () => {
     assert.match(src, /const releaseAndWarm =/)
     assert.match(src, /requestIdleCallback\(releaseAndWarm\)/)
     assert.match(src, /reactMountStaleRef/)
-    assert.match(src, /const syncMount = mountChanged \|\| stale/)
+    assert.match(src, /const prev = storyMountCommittedRef.current/)
+    assert.match(src, /const settled = railMountColumnsSettle/)
+    assert.match(src, /const stale = reactMountStaleRef.current/)
+    assert.match(src, /const covered = prev.from <= ideal.from && prev.to >= ideal.to/)
+    assert.match(src, /stale && !covered/)
+    assert.match(src, /from: ideal.from, to: ideal.to/)
+    assert.match(src, /const syncMount = mountChanged/)
+    assert.doesNotMatch(src, /const syncMount = mountChanged \|\| stale/)
     assert.match(src, /if \(syncMount\) storySetMountRef.current\(mountColsRef.current\)/)
     assert.match(src, /onSiteIdle/)
     assert.match(src, /holdStoriesRef\.current/)
@@ -136,8 +143,9 @@ describe('brew feeds 开合 class 链', () => {
     assert.match(src, /extendPaintedRange/)
     assert.match(src, /clipPaintedBatches/)
     assert.match(src, /paintedBatchesRef/)
-    assert.match(src, /warmStoryFaces/)
+    assert.match(src, /warmStoryFaces\(pack, times, locale, labels, !covers\)/)
     assert.match(src, /warmStoryCovers/)
+    assert.match(pan, /createDocumentFragment/)
     assert.match(src, /prevByCol\.get\(col\) !== byCol\.get\(col\)/)
     assert.doesNotMatch(
       src,
@@ -151,6 +159,8 @@ describe('brew feeds 开合 class 链', () => {
     assert.match(src, /grabbingRef=\{grabbingRef\}/)
     assert.match(src, /if \(grabbingRef\.current\) return\n {6}const mounted/)
     assert.match(src, /mounted.to <= bootTo \+ RAIL_MOUNT_LIVE_PAD/)
+    assert.match(src, /mounted.from > 1/)
+    assert.match(src, /mounted.to === eagerBandRef.current.to/)
     assert.match(src, /prebuiltColsRef/)
     assert.match(src, /if \(reset\) prebuiltColsRef\.current\.clear\(\)/)
     assert.match(src, /prebuilt\.delete\(col\)/)
@@ -169,6 +179,26 @@ describe('brew feeds 开合 class 链', () => {
     assert.doesNotMatch(src, /liveToRef\.current \+ 1/)
     assert.match(src, /paintStoryLiveCols/)
     assert.match(src, /const fillGrabLive =/)
+    assert.match(src, /Math.min\(to, eagerBandRef.current.to\)/)
+    assert.match(src, /if \(from > paintTo\) return/)
+    assert.match(
+      src,
+      /ensureStoryShells\(\n {10}itemsTrackRef.current,\n {10}from,\n {10}paintTo,/,
+    )
+    assert.match(src, /fillGrabLive\(prevBand.to \+ 1, ideal.to\)/)
+    assert.match(src, /recycleStoryDomShellsOutside/)
+    assert.match(
+      src,
+      /recycleStoryDomShellsOutside\(\n {12}itemsTrackRef.current,\n {12}ideal.from,\n {12}ideal.to,\n {10}\)\n {10}if \(ideal.to > prevBand.to\)/,
+    )
+    assert.match(
+      readFileSync(join(dir, 'storyFace.ts'), 'utf8'),
+      /primeStoryCardTemplate/,
+    )
+    assert.match(pan, /cloneStoryCardInner/)
+    assert.match(pan, /export function recycleStoryDomShellsOutside/)
+    assert.match(pan, /shellPool/)
+    assert.match(pan, /grabShellsByTrack/)
     assert.match(src, /if \(grabbingRef.current\) \{\n {10}fillGrabLive/)
     assert.match(pan, /export function paintStoryLiveCols/)
     assert.match(pan, /forceDefer \|\| hold/)
@@ -193,10 +223,11 @@ describe('brew feeds 开合 class 链', () => {
     assert.doesNotMatch(src, /splitGrowLiveRef/)
     assert.doesNotMatch(src, /grabFillFromRef/)
     const growArm = src.slice(
-      src.indexOf('const armCovers ='),
+      src.indexOf('if (growReact && !growFrameRef.current)'),
       src.indexOf('if (railDriverRef.current === \'sites\')'),
     )
     assert.match(growArm, /startTransition/)
+    assert.doesNotMatch(growArm, /eagerStoryCovers/)
     assert.match(src, /if \(growReact && !growFrameRef.current\)/)
     assert.match(src, /ensureStoryShells/)
     assert.match(src, /paintStoryLiveCols/)
@@ -206,19 +237,12 @@ describe('brew feeds 开合 class 链', () => {
     )
     assert.match(pan, /export function ensureStoryShells/)
     assert.match(pan, /export function dropStoryDomShells/)
-    assert.doesNotMatch(
-      growArm.slice(
-        growArm.indexOf('growFrameRef.current = window.requestAnimationFrame'),
-        growArm.indexOf('startTransition'),
-      ),
-      /eagerStoryCovers/,
-    )
-    assert.match(growArm, /if \(!next \|\| grabbingRef.current\) return/)
-    assert.match(growArm, /coverFrameRef.current \|\| !pendingEagerRef.current/)
-    assert.match(growArm, /flushAway\(\)/)
-    assert.match(src, /const flushAway =/)
     assert.match(src, /if \(!covers\) return/)
-    assert.match(src, /pendingAwayRef/)
+    assert.doesNotMatch(src, /pendingAwayRef/)
+    assert.doesNotMatch(src, /coverFrameRef/)
+    assert.doesNotMatch(src, /pendingEagerRef/)
+    assert.doesNotMatch(src, /const armCovers =/)
+    assert.doesNotMatch(src, /const flushAway =/)
     assert.match(
       src,
       /paintStoryAway\(\n {10}itemsTrackRef.current,\n {10}ideal.from,\n {10}ideal.to,\n {10}prevBand,\n {10}!grabbingRef.current/,
@@ -227,7 +251,7 @@ describe('brew feeds 开合 class 链', () => {
     assert.match(pan, /eagerDeltaCols/)
     assert.match(
       src,
-      /eagerStoryCovers\(itemsTrackRef\.current, ideal\.from, ideal\.to, prevBand\)/,
+      /if \(!syncMount\) \{\n {6}eagerStoryCovers\(itemsTrackRef\.current, ideal\.from, ideal\.to, prevBand\)/,
     )
     assert.match(src, /paintedByColRef/)
     assert.match(src, /paintedFaceRef/)
@@ -240,14 +264,22 @@ describe('brew feeds 开合 class 链', () => {
     assert.match(src, /onStoryMediaError/)
     assert.match(src, /eagerStoryCovers/)
     assert.match(src, /paintStoryAway/)
-    assert.match(src, /coverFrameRef/)
-    assert.match(src, /cancelAnimationFrame\(coverFrameRef/)
-    assert.match(src, /pendingEagerRef/)
     assert.match(src, /lastEagerRef/)
     assert.match(src, /storyWarmRef/)
     assert.match(src, /warmRef=\{storyWarmRef\}/)
-    assert.match(src, /if \(grabbingRef\.current\) \{\n {10}mountColsRef\.current = grown\n {10}storyWarmRef\.current\(\)/)
-    assert.match(src, /if \(grabbingRef\.current\) storyWarmRef\.current\(\)/)
+    assert.match(src, /if \(grabbingRef\.current\) \{\n {10}mountColsRef\.current = grown\n {10}reactMountStaleRef.current = true/)
+    assert.match(src, /fillGrabLive\(prevLive \+ 1, liveToRef\.current\)/)
+    assert.match(src, /fillGrabLive\(prevLive \+ 1, nextLive\)/)
+    assert.doesNotMatch(
+      src,
+      /fillGrabLive\(prevLive \+ 1, liveToRef\.current\)\n {10}storyWarmRef/,
+    )
+    assert.doesNotMatch(
+      src,
+      /fillGrabLive\(prevLive \+ 1, nextLive\)\n {12}storyWarmRef/,
+    )
+    assert.match(src, /storyByColRef/)
+    assert.match(src, /storySlotsByColumn\(storySlots, storyByColRef\.current\)/)
     assert.match(src, /reactMountStaleRef.current = true/)
     assert.match(src, /eagerBandRef/)
     assert.match(src, /prevBand/)
@@ -262,7 +294,8 @@ describe('brew feeds 开合 class 链', () => {
       /useLayoutEffect\(\(\) => \{\s*const band = eagerBandRef/,
     )
     assert.doesNotMatch(src, /\beagerCover\b/)
-    assert.match(src, /holdCover=\{col > eagerBand\.to\}/)
+    assert.match(src, /holdCover = col > eagerBand\.to \|\| col > eagerTo/)
+    assert.match(src, /holdCover=\{col > eagerBand\.to \|\| col > eagerTo\}/)
     assert.doesNotMatch(src, /col < eagerBand\.from/)
     assert.match(src, /<BrewStoryColumn/)
     assert.doesNotMatch(src, /<BrewStory[\s>]/)
@@ -345,6 +378,46 @@ describe('brew feeds 开合 class 链', () => {
     assert.match(
       feedsCss,
       /\.brew-feeds\.is-rail-grabbing \.brew-feeds__items-track \{\n {2}contain: layout style paint;/,
+    )
+  })
+
+  it('最新聚合卡用 mix 语气，叠卡跟源走，不铺渐变底', () => {
+    const src = readFileSync(join(dir, 'BrewFeeds.tsx'), 'utf8')
+    const card = readFileSync(join(dir, '../ui/SiteCard.tsx'), 'utf8')
+    const css = readFileSync(join(dir, '../ui/css/cards.css'), 'utf8')
+    assert.match(src, /tone="mix"/)
+    assert.match(src, /stack=\{inbox\.stack\}/)
+    assert.match(src, /latestFeedStackFaces/)
+    assert.doesNotMatch(src, /unread=\{inbox\.unread\}/)
+    assert.match(css, /\.brew-site\.is-mix \.brew-site__article/)
+    assert.match(css, /\.brew-site\.is-mix \.brew-site__when/)
+    assert.match(card, /tone === 'mix' && 'is-mix'/)
+    assert.match(card, /brew-site__stack-face/)
+    assert.match(card, /brew-site__stack-deck/)
+    assert.match(css, /\.brew-site__stack \{[\s\S]*?align-items: center/)
+    assert.match(
+      css,
+      /\.brew-site__stack-face img \{[\s\S]*?object-fit: cover/,
+    )
+    assert.match(card, /turnStackSlot/)
+    assert.match(card, /live=\{\!\!on\}/)
+    assert.match(card, /roster/)
+    assert.doesNotMatch(src, /cover=\{/)
+    assert.match(card, /slot: 'tuck'/)
+    assert.match(css, /\.brew-site__stack-face\.is-tuck/)
+    assert.match(css, /--stack-scale/)
+    assert.doesNotMatch(card, /setInterval/)
+    assert.doesNotMatch(css, /\.brew-site\.is-mix \{[\s\S]*?linear-gradient/)
+    assert.doesNotMatch(css, /@keyframes brew-site-stack-live/)
+    assert.doesNotMatch(css, /@keyframes brew-site-stack-swap/)
+    assert.match(css, /\.brew-site__stack-face\.is-front/)
+    assert.match(
+      css,
+      /\.brew-site__stack-face \{[\s\S]*?transition:/,
+    )
+    assert.match(
+      css,
+      /prefers-reduced-motion: reduce[\s\S]*brew-site__stack-face/,
     )
   })
 })

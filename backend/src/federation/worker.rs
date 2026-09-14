@@ -190,24 +190,21 @@ async fn limit_http_work(
     };
     let (parts, body) = response.into_parts();
     let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
-    let inner = futures::stream::unfold(
-        Some(body.into_data_stream()),
-        move |body| async move {
-            let mut body = body?;
-            let next = tokio::time::timeout_at(deadline, body.next()).await;
-            return match next {
-                Ok(Some(item)) => Some((item.map_err(std::io::Error::other), Some(body))),
-                Ok(None) => None,
-                Err(_) => Some((
-                    Err(std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        "federation response deadline",
-                    )),
-                    None,
+    let inner = futures::stream::unfold(Some(body.into_data_stream()), move |body| async move {
+        let mut body = body?;
+        let next = tokio::time::timeout_at(deadline, body.next()).await;
+        return match next {
+            Ok(Some(item)) => Some((item.map_err(std::io::Error::other), Some(body))),
+            Ok(None) => None,
+            Err(_) => Some((
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "federation response deadline",
                 )),
-            };
-        },
-    );
+                None,
+            )),
+        };
+    });
     let stream = crate::held_stream::HeldStream::new(inner, permit);
     axum::response::Response::from_parts(parts, axum::body::Body::from_stream(stream))
 }

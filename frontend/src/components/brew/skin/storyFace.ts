@@ -3,7 +3,9 @@ import type { TopicNameKey } from '../logic/topics'
 import type { TimeTranslations } from '../types'
 
 import { getIconUrl, getImageUrl, getPlainText } from '../constants'
-import { topicDisplayName, topicHue, topicNameKey } from '../logic/topics'
+import { topicDisplayName, topicHue } from '../logic/topics'
+import { noteStoryTopic } from '../notes/noteCategory'
+import { isNoteStorySource, siteStoryAttribution, storySourceFace } from '../notes/noteSiteSource'
 import { brewRelativeTime } from './time'
 
 export interface StoryCardFace {
@@ -33,6 +35,8 @@ interface FaceHit {
   labels: FaceLabels
   unread: boolean
   starred: boolean
+  siteName: string
+  siteIcon: string | null
   face: StoryCardFace
 }
 
@@ -111,6 +115,10 @@ export function storyCardInnerHtml(
   const summary = face.summary
     ? `<span class="brew-story__summary">${escapeStoryText(face.summary)}</span>`
     : ''
+  const peek =
+    face.cover && face.summary
+      ? `<span class="brew-story__peek" aria-hidden>${escapeStoryText(face.summary)}</span>`
+      : ''
   let star = ''
   if (showStar) {
     const label = escapeStoryText(
@@ -125,10 +133,42 @@ export function storyCardInnerHtml(
     author,
     thumb,
     summary,
+    peek,
     star,
   ].join('')
   cache.set(key, next)
   return next
+}
+
+const templates = new WeakMap<StoryCardFace, Map<number, HTMLTemplateElement>>()
+
+/** 空闲时把 HTML 解析进 template，滚动补绘只 clone。 */
+export function primeStoryCardTemplate(
+  face: StoryCardFace,
+  html: string,
+  key: number,
+): void {
+  if (typeof document === 'undefined') return
+  if (typeof document.createElement !== 'function') return
+  let cache = templates.get(face)
+  if (!cache) {
+    cache = new Map()
+    templates.set(face, cache)
+  }
+  if (cache.has(key)) return
+  const tpl = document.createElement('template')
+  if (!('content' in tpl)) return
+  tpl.innerHTML = html
+  cache.set(key, tpl)
+}
+
+export function cloneStoryCardInner(
+  face: StoryCardFace,
+  key: number,
+): Node | null {
+  const tpl = templates.get(face)?.get(key)
+  if (!tpl?.content || typeof tpl.content.cloneNode !== 'function') return null
+  return tpl.content.cloneNode(true)
 }
 
 export function storyCardFace(
@@ -139,6 +179,7 @@ export function storyCardFace(
 ): StoryCardFace {
   const unread = !item.is_read
   const starred = !!item.is_starred
+  const site = siteStoryAttribution()
   const hit = faces.get(item)
   if (
     hit
@@ -147,28 +188,47 @@ export function storyCardFace(
     && hit.labels === labels
     && hit.unread === unread
     && hit.starred === starred
+    && hit.siteName === site.name
+    && hit.siteIcon === site.icon
   ) {
     return hit.face
   }
-  const topicKey = item.topic ? topicNameKey(item.topic) : null
+  const source = storySourceFace(item, site)
+  const noteTopic = isNoteStorySource(item)
+    ? noteStoryTopic(item.topic, labels)
+    : null
   const face: StoryCardFace = {
     id: item.id,
     title: item.title,
-    summary: item.summary ? getPlainText(item.summary) : '',
+    summary: item.summary ? getPlainText(item.summary, 480) : '',
     cover: getImageUrl(item.image),
-    source: item.source_name?.trim() || '',
-    sourceIcon: getIconUrl(item.source_icon ?? null),
+    source: source.name,
+    sourceIcon: getIconUrl(source.icon),
     when: brewRelativeTime(item.published_at, times, locale),
-    topic:
-      item.topic && topicKey
-        ? topicDisplayName({ key: item.topic, nameKey: topicKey }, labels)
+    topic: noteTopic
+      ? noteTopic.topic
+      : item.topic
+        ? topicDisplayName({ key: item.topic }, labels)
         : null,
-    hue: item.topic ? topicHue(item.topic) : null,
+    hue: noteTopic
+      ? noteTopic.hue
+      : item.topic
+        ? topicHue(item.topic)
+        : null,
     author: item.author,
     unread,
     starred,
   }
-  faces.set(item, { times, locale, labels, unread, starred, face })
+  faces.set(item, {
+    times,
+    locale,
+    labels,
+    unread,
+    starred,
+    siteName: site.name,
+    siteIcon: site.icon,
+    face,
+  })
   return face
 }
 
@@ -178,10 +238,11 @@ export function warmStoryFaces(
   times: TimeTranslations,
   locale: string,
   labels: FaceLabels,
+  deferOnly = false,
 ): void {
   for (const item of items) {
     const face = storyCardFace(item, times, locale, labels)
-    storyCardInnerHtml(
+    const defer = storyCardInnerHtml(
       face,
       labels.unread,
       labels.starred,
@@ -189,7 +250,9 @@ export function warmStoryFaces(
       true,
       true,
     )
-    storyCardInnerHtml(
+    primeStoryCardTemplate(face, defer, 3)
+    if (deferOnly) continue
+    const full = storyCardInnerHtml(
       face,
       labels.unread,
       labels.starred,
@@ -197,6 +260,7 @@ export function warmStoryFaces(
       false,
       true,
     )
+    primeStoryCardTemplate(face, full, 2)
   }
 }
 

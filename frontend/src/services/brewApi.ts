@@ -523,6 +523,53 @@ export async function getItem(
   return requestCache.fetch(`brew:item:${id}`, fetchItem, CACHE_TTL.ITEM)
 }
 
+export async function listSubscriptionTopics(
+  attributionHeaders?: BrewAttributionHeaders,
+): Promise<string[]> {
+  const data = await request<{ success: boolean; topics: string[] }>(
+    '/topics',
+    { headers: attributionHeaders },
+  )
+  return data.topics ?? []
+}
+
+function rememberItemTopic(id: number, topic: string | null): string | null {
+  requestCache.delete(`brew:item:${id}`)
+  invalidateSourcesCache()
+  invalidateBoardPageCache()
+  return topic
+}
+
+export async function setItemTopic(
+  id: number,
+  topic: string | null,
+  attributionHeaders?: BrewAttributionHeaders,
+): Promise<string | null> {
+  const data = await request<{ success: boolean; topic: string | null }>(
+    `/items/${id}/topic`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ topic }),
+      headers: attributionHeaders,
+    },
+  )
+  return rememberItemTopic(id, data.topic ?? null)
+}
+
+export async function suggestItemTopic(
+  id: number,
+  attributionHeaders?: BrewAttributionHeaders,
+): Promise<string | null> {
+  const data = await request<{ success: boolean; topic: string | null }>(
+    `/items/${id}/suggest-topic`,
+    {
+      method: 'POST',
+      headers: attributionHeaders,
+    },
+  )
+  return rememberItemTopic(id, data.topic ?? null)
+}
+
 export async function createNote(
   req: BrewNoteInput,
   attributionHeaders?: BrewAttributionHeaders,

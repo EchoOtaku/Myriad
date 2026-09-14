@@ -1,5 +1,5 @@
 import type { BrewItem } from '../../../types/brew'
-import { useCallback, useRef } from 'react'
+import { useCallback } from 'react'
 
 import { useI18n } from '../../../contexts/I18nContext'
 import { Spinner } from '../../Spinner'
@@ -38,21 +38,27 @@ export default function BrewListView({
   emptyText,
 }: BrewListViewProps) {
   const { t, locale } = useI18n()
-  const observerRef = useRef<IntersectionObserver | null>(null)
   const times = useBrewTimes()
   const labels = t.brew
 
   const lastItemRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      if (loading) return
-      if (observerRef.current) observerRef.current.disconnect()
-      observerRef.current = new IntersectionObserver(
+    (node: HTMLButtonElement | null) => {
+      if (!node || loading || !hasMore) return
+      let active = true
+      const observer = new IntersectionObserver(
         (entries) => {
-          if (entries[0].isIntersecting && hasMore) onLoadMore()
+          if (!active || !entries.some(entry => entry.isIntersecting)) return
+          active = false
+          observer.disconnect()
+          onLoadMore()
         },
         { rootMargin: '100px' },
       )
-      if (node) observerRef.current.observe(node)
+      observer.observe(node)
+      return () => {
+        active = false
+        observer.disconnect()
+      }
     },
     [loading, hasMore, onLoadMore],
   )
@@ -81,6 +87,7 @@ export default function BrewListView({
               author: item.author,
               source_name: item.source_name,
               source_icon: item.source_icon,
+              guid: item.guid,
             }}
             times={times}
             locale={locale}

@@ -438,6 +438,7 @@ pub(crate) async fn federation_create_note(
 /// 提取失败（非 multipart/form-data）由它自己返回 400。
 pub(crate) async fn federation_media_upload(
     extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
     mut multipart: axum::extract::Multipart,
 ) -> Response {
     let user_id: i32 = claims.sub.parse().unwrap_or(0);
@@ -479,7 +480,20 @@ pub(crate) async fn federation_media_upload(
     };
 
     match federation::content::store_federation_media(user_id, &filename, &mime, &bytes).await {
-        Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+        Ok(resp) => {
+            let _ = crate::services::media_catalog::register(
+                &db,
+                crate::services::media_catalog::RegisterMedia {
+                    kind: crate::services::media_catalog::MediaKind::Upload,
+                    url: resp.url.clone(),
+                    mime: resp.media_type.clone(),
+                    name: resp.name.clone(),
+                    size: resp.size as i64,
+                },
+            )
+            .await;
+            (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
+        }
         Err((status, json)) => status_json_to_http((status, json)).into_response(),
     }
 }

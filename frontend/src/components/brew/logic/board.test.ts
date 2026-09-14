@@ -3,6 +3,11 @@ import { describe, it } from 'node:test'
 import {
   boardEntry,
   collectSourceCategories,
+  collectWorkbenchSourceCategories,
+  collectWorkbenchSourceKinds,
+  sourceMatchesCategory,
+  sourceMatchesKind,
+  workbenchSourceKind,
   eatSearchKeys,
   filterLaneItems,
   filterSourcesByQuery,
@@ -192,6 +197,17 @@ describe('resolveBoardParam', () => {
   it('认不出的取值返回 null，不回落默认板块', () => {
     assert.equal(resolveBoardParam('nope'), null)
   })
+
+  it('工作台不是板块：管理员高亮 workbench，其他人落到订阅', () => {
+    assert.deepEqual(resolveBoardParam('workbench'), { view: 'workbench' })
+    const entry = resolveBoardParam('workbench')!
+    assert.equal(navIdForBoardEntry(entry, true, true), 'workbench')
+    assert.equal(navIdForBoardEntry(entry, true, false), 'feeds')
+    assert.equal(navIdForBoardEntry(entry, false, false), 'feeds')
+    assert.equal(viewForBoardEntry(entry, true, true), 'workbench')
+    assert.equal(viewForBoardEntry(entry, true, false), 'sources')
+    assert.equal(isBrewBoard('workbench'), false)
+  })
 })
 
 describe('viewForBoardEntry / eatSearchKeys / filterLaneItems', () => {
@@ -223,6 +239,7 @@ describe('isBrewBoard', () => {
     assert.equal(isBrewBoard('feeds'), true)
     assert.equal(isBrewBoard('friends'), false)
     assert.equal(isBrewBoard('starred'), false)
+    assert.equal(isBrewBoard('workbench'), false)
   })
 })
 
@@ -236,6 +253,86 @@ describe('collectSourceCategories', () => {
       ]).toSorted(),
       ['我', '技术'],
     )
+  })
+})
+
+describe('collectWorkbenchSourceCategories', () => {
+  it('只收源上已有的分类，预置名收成官网名，不造未分类', () => {
+    assert.deepEqual(
+      collectWorkbenchSourceCategories([
+        makeSource({ category: 'friend_links, 技术' }),
+        makeSource({ category: 'mine' }),
+        makeSource({ category: null }),
+      ]).toSorted(),
+      ['友情链接', '我', '技术'].toSorted(),
+    )
+  })
+})
+
+describe('workbenchSourceKind', () => {
+  it('按订阅源类型分，不按板块', () => {
+    assert.equal(workbenchSourceKind(makeSource({ source_type: 'rss' })), 'rss')
+    assert.equal(
+      workbenchSourceKind(makeSource({ source_type: 'brewlia', feed_type: 'atom' })),
+      'rss',
+    )
+    assert.equal(
+      workbenchSourceKind(makeSource({ source_type: 'rsshub', feed_type: 'rss' })),
+      'rsshub',
+    )
+    assert.equal(
+      workbenchSourceKind(makeSource({ source_type: 'rss', feed_type: 'rsshub' })),
+      'rsshub',
+    )
+    assert.equal(
+      workbenchSourceKind(makeSource({ source_type: 'rss', feed_type: 'notion' })),
+      'notion',
+    )
+    assert.equal(workbenchSourceKind(makeSource({ source_type: 'link' })), 'link')
+    assert.equal(workbenchSourceKind(makeSource({ source_type: 'note' })), 'note')
+  })
+})
+
+describe('collectWorkbenchSourceKinds', () => {
+  it('只收源上已有的类型，顺序固定', () => {
+    assert.deepEqual(
+      collectWorkbenchSourceKinds([
+        makeSource({ source_type: 'note' }),
+        makeSource({ source_type: 'rss', feed_type: 'rsshub' }),
+        makeSource({ source_type: 'link' }),
+        makeSource({ source_type: 'rss' }),
+      ]),
+      ['rss', 'rsshub', 'link', 'note'],
+    )
+  })
+})
+
+describe('sourceMatchesKind', () => {
+  it('只认同一种订阅源类型', () => {
+    assert.equal(sourceMatchesKind(makeSource({ source_type: 'link' }), 'link'), true)
+    assert.equal(sourceMatchesKind(makeSource({ source_type: 'rss' }), 'link'), false)
+    assert.equal(
+      sourceMatchesKind(makeSource({ feed_type: 'rsshub' }), 'rsshub'),
+      true,
+    )
+  })
+})
+
+describe('sourceMatchesCategory', () => {
+  it('预置分类认别名，普通分类精确匹配', () => {
+    assert.equal(
+      sourceMatchesCategory(makeSource({ category: 'friend_links' }), '友情链接'),
+      true,
+    )
+    assert.equal(
+      sourceMatchesCategory(makeSource({ category: '我,技术' }), '技术'),
+      true,
+    )
+    assert.equal(
+      sourceMatchesCategory(makeSource({ category: '技术' }), '我'),
+      false,
+    )
+    assert.equal(sourceMatchesCategory(makeSource({ category: null }), '技术'), false)
   })
 })
 

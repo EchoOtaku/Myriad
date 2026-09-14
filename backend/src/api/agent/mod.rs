@@ -30,9 +30,7 @@ use tokio_stream::StreamExt;
 use crate::middleware::auth::Claims;
 use crate::models::entities::{agent_messages, agent_sessions, agent_task_presets};
 use crate::services::agent::queue::LaneQueue;
-use crate::services::agent::run_hub::{
-    AgentRun, AgentRunEnvelope, create_run, get_run_for_user,
-};
+use crate::services::agent::run_hub::{AgentRun, AgentRunEnvelope, create_run, get_run_for_user};
 use crate::services::agent::{
     Agent, AgentProgressEvent, AgentResponse, AgentResponseType, LANE_QUEUE, RequestContext,
     TaskState, UserAnswer, UserRequest,
@@ -206,9 +204,10 @@ async fn run_envelope_step(
             let receiver = run.subscribe();
             let (history, last_sequence, already_completed) = run.snapshot().await;
             let mut pending = VecDeque::new();
-            if !history.iter().any(|envelope| {
-                matches!(&envelope.event, AgentProgressEvent::RunStarted { .. })
-            }) {
+            if !history
+                .iter()
+                .any(|envelope| matches!(&envelope.event, AgentProgressEvent::RunStarted { .. }))
+            {
                 pending.push_back(AgentRunEnvelope {
                     sequence: 0,
                     event: AgentProgressEvent::RunStarted {
@@ -232,98 +231,98 @@ async fn run_envelope_step(
         RunEnvelopeFeed::Live(live) => live,
     };
     if let Some(envelope) = live.pending.pop_front() {
-                let terminal = agent_run_event_is_terminal(&envelope.event);
-                if terminal {
-                    return Some((envelope, None));
+        let terminal = agent_run_event_is_terminal(&envelope.event);
+        if terminal {
+            return Some((envelope, None));
+        }
+        return Some((envelope, Some(RunEnvelopeFeed::Live(live))));
+    }
+    if live.stop_after_pending {
+        return None;
+    }
+    loop {
+        tokio::select! {
+            received = live.receiver.recv() => match received {
+                Ok(envelope) if envelope.sequence > live.last_sequence => {
+                    live.last_sequence = envelope.sequence;
+                    let terminal = agent_run_event_is_terminal(&envelope.event);
+                    return Some((
+                        envelope,
+                        if terminal {
+                            None
+                        } else {
+                            Some(RunEnvelopeFeed::Live(live))
+                        },
+                    ));
                 }
-                return Some((envelope, Some(RunEnvelopeFeed::Live(live))));
-            }
-            if live.stop_after_pending {
-                return None;
-            }
-            loop {
-                tokio::select! {
-                    received = live.receiver.recv() => match received {
-                        Ok(envelope) if envelope.sequence > live.last_sequence => {
-                            live.last_sequence = envelope.sequence;
-                            let terminal = agent_run_event_is_terminal(&envelope.event);
-                            return Some((
-                                envelope,
-                                if terminal {
-                                    None
-                                } else {
-                                    Some(RunEnvelopeFeed::Live(live))
-                                },
-                            ));
+                Ok(_) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                    // 不关流：从内存快照补发遗漏事件，避免前端必须重开连接。
+                    live.receiver = live.run.subscribe();
+                    let snapshot = live.run.snapshot().await;
+                    let (history, snap_seq, completed) = snapshot;
+                    for envelope in history {
+                        if envelope.sequence <= live.last_sequence {
+                            continue;
                         }
-                        Ok(_) => {}
-                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                            // 不关流：从内存快照补发遗漏事件，避免前端必须重开连接。
-                            live.receiver = live.run.subscribe();
-                            let snapshot = live.run.snapshot().await;
-                            let (history, snap_seq, completed) = snapshot;
-                            for envelope in history {
-                                if envelope.sequence <= live.last_sequence {
-                                    continue;
-                                }
-                                live.last_sequence = envelope.sequence;
-                                let terminal = agent_run_event_is_terminal(&envelope.event);
-                                live.pending.push_back(envelope);
-                                if terminal {
-                                    live.stop_after_pending = true;
-                                    break;
-                                }
-                            }
-                            live.last_sequence = live.last_sequence.max(snap_seq);
-                            if completed {
-                                live.stop_after_pending = true;
-                            }
-                            if let Some(envelope) = live.pending.pop_front() {
-                                let terminal = agent_run_event_is_terminal(&envelope.event);
-                                return Some((
-                                    envelope,
-                                    if terminal || (live.pending.is_empty() && live.stop_after_pending)
-                                    {
-                                        None
-                                    } else {
-                                        Some(RunEnvelopeFeed::Live(live))
-                                    },
-                                ));
-                            }
-                            if live.stop_after_pending {
-                                return None;
-                            }
-                        }
-                        Err(tokio::sync::broadcast::error::RecvError::Closed) => return None,
-                    },
-                    _ = live.registry_poll.tick() => {
-                        let refreshed = live.run.refresh_from_registry().await;
-                        for envelope in refreshed {
-                            if envelope.sequence <= live.last_sequence {
-                                continue;
-                            }
-                            live.last_sequence = envelope.sequence;
-                            let terminal = agent_run_event_is_terminal(&envelope.event);
-                            live.pending.push_back(envelope);
-                            if terminal {
-                                live.stop_after_pending = true;
-                                break;
-                            }
-                        }
-                        if let Some(envelope) = live.pending.pop_front() {
-                            let terminal = agent_run_event_is_terminal(&envelope.event);
-                            return Some((
-                                envelope,
-                                if terminal {
-                                    None
-                                } else {
-                                    Some(RunEnvelopeFeed::Live(live))
-                                },
-                            ));
+                        live.last_sequence = envelope.sequence;
+                        let terminal = agent_run_event_is_terminal(&envelope.event);
+                        live.pending.push_back(envelope);
+                        if terminal {
+                            live.stop_after_pending = true;
+                            break;
                         }
                     }
+                    live.last_sequence = live.last_sequence.max(snap_seq);
+                    if completed {
+                        live.stop_after_pending = true;
+                    }
+                    if let Some(envelope) = live.pending.pop_front() {
+                        let terminal = agent_run_event_is_terminal(&envelope.event);
+                        return Some((
+                            envelope,
+                            if terminal || (live.pending.is_empty() && live.stop_after_pending)
+                            {
+                                None
+                            } else {
+                                Some(RunEnvelopeFeed::Live(live))
+                            },
+                        ));
+                    }
+                    if live.stop_after_pending {
+                        return None;
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => return None,
+            },
+            _ = live.registry_poll.tick() => {
+                let refreshed = live.run.refresh_from_registry().await;
+                for envelope in refreshed {
+                    if envelope.sequence <= live.last_sequence {
+                        continue;
+                    }
+                    live.last_sequence = envelope.sequence;
+                    let terminal = agent_run_event_is_terminal(&envelope.event);
+                    live.pending.push_back(envelope);
+                    if terminal {
+                        live.stop_after_pending = true;
+                        break;
+                    }
+                }
+                if let Some(envelope) = live.pending.pop_front() {
+                    let terminal = agent_run_event_is_terminal(&envelope.event);
+                    return Some((
+                        envelope,
+                        if terminal {
+                            None
+                        } else {
+                            Some(RunEnvelopeFeed::Live(live))
+                        },
+                    ));
                 }
             }
+        }
+    }
 }
 
 mod autonomy_dispatch;
@@ -394,14 +393,16 @@ mod envelope_stream_tests {
     #[test]
     fn task_completed_is_terminal_unless_waiting_for_input() {
         assert!(agent_run_event_is_terminal(&completed("done")));
-        assert!(!agent_run_event_is_terminal(&AgentProgressEvent::TaskCompleted {
-            task_id: "task".into(),
-            success: true,
-            response: Box::new(json!({
-                "success": true,
-                "task": { "status": "waiting_for_input" }
-            })),
-        }));
+        assert!(!agent_run_event_is_terminal(
+            &AgentProgressEvent::TaskCompleted {
+                task_id: "task".into(),
+                success: true,
+                response: Box::new(json!({
+                    "success": true,
+                    "task": { "status": "waiting_for_input" }
+                })),
+            }
+        ));
         assert!(agent_run_event_is_terminal(&AgentProgressEvent::Error {
             task_id: None,
             message: "boom".into(),
@@ -434,7 +435,10 @@ mod envelope_stream_tests {
 
         let events = collect_until_end(run).await;
         assert!(
-            matches!(events.first().map(|e| &e.event), Some(AgentProgressEvent::RunStarted { .. })),
+            matches!(
+                events.first().map(|e| &e.event),
+                Some(AgentProgressEvent::RunStarted { .. })
+            ),
             "first event: {:?}",
             events.first().map(|e| &e.event)
         );
@@ -488,7 +492,10 @@ mod envelope_stream_tests {
         let run = create_run(8103, Some("envelope-terminal".into())).await;
         let mut stream = std::pin::pin!(agent_run_envelopes(run.clone()));
         let started = stream.next().await.expect("RunStarted");
-        assert!(matches!(started.event, AgentProgressEvent::RunStarted { .. }));
+        assert!(matches!(
+            started.event,
+            AgentProgressEvent::RunStarted { .. }
+        ));
 
         run.publish(completed("stop")).await;
         let terminal = tokio::time::timeout(Duration::from_millis(500), stream.next())
@@ -553,7 +560,10 @@ mod envelope_stream_tests {
         let run = create_run(8105, Some("envelope-lag".into())).await;
         let mut stream = std::pin::pin!(agent_run_envelopes(run.clone()));
         let started = stream.next().await.expect("RunStarted");
-        assert!(matches!(started.event, AgentProgressEvent::RunStarted { .. }));
+        assert!(matches!(
+            started.event,
+            AgentProgressEvent::RunStarted { .. }
+        ));
         let last_before_flood = started.sequence;
 
         for i in 0..520 {

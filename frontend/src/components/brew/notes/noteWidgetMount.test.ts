@@ -3,10 +3,18 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { hasNoteWidgetMarkup, stampNoteWidgetNotProse } from './noteWidgetHtml.ts'
+import {
+  emptyNoteWidgetText,
+  hasNoteWidgetMarkup,
+  noteWidgetTypesInHtml,
+  stampNoteWidgetNotProse,
+} from './noteWidgetHtml.ts'
+import { noteWidgetInstanceId } from './noteWidgetId.ts'
 
 const dir = dirname(fileURLToPath(import.meta.url))
 const mount = readFileSync(join(dir, 'noteWidgetMount.tsx'), 'utf8')
+const editor = readFileSync(join(dir, 'NoteEditor.tsx'), 'utf8')
+const reader = readFileSync(join(dir, '../BrewReader.tsx'), 'utf8')
 
 describe('hasNoteWidgetMarkup', () => {
   it('认发布 HTML 里的占位，不靠一段纯文本', () => {
@@ -33,15 +41,66 @@ describe('hasNoteWidgetMarkup', () => {
   })
 
   it('只认占位上的实例配置，不搬首页宫格', () => {
-    assert.doesNotMatch(mount, /useHomeWidgetDefaults|homeWidgetConfigsFromUi/)
+    assert.doesNotMatch(mount, /useHomeWidgetDefaults|homeWidgetConfigsFromUi|widgetPreviewConfig/)
     assert.match(mount, /\.\.\.widgetHostConfig\(widgetType\.id\),\s*\n\s*\.\.\.instanceConfig/)
   })
 
-  it('岛自带 Router，报告卡 / 友链 / Tapp 快捷方式才不会一挂就空白', () => {
-    assert.match(mount, /from 'react-router-dom'/)
-    assert.match(mount, /<MemoryRouter>/)
-    assert.match(mount, /NoteWidgetGuard/)
-    assert.match(mount, /getDerivedStateFromError/)
+  it('从这棵树上 portal 进去，不另开 createRoot，也不造 MemoryRouter', () => {
+    assert.match(mount, /createPortal\(/)
+    assert.doesNotMatch(mount, /createRoot|MemoryRouter/)
+    assert.doesNotMatch(mount, /getBuiltinWidgets|useTappWidgets/)
+    assert.match(editor, /visualWidgets\.portals/)
+    assert.match(editor, /previewWidgets\.portals/)
+    assert.match(reader, /noteWidgets\.portals/)
+    assert.doesNotMatch(editor, /mountNoteWidgets/)
+    assert.match(editor, /visualWidgets\.refresh\(\)/)
+    assert.match(editor, /el\.dataset\.noteVisual === contentMd/)
+    assert.match(editor, /pane !== 'preview'/)
+    assert.match(editor, /preloadNoteWidgets\(/)
+    assert.match(reader, /preloadNoteWidgets\(/)
+    assert.match(editor, /hidden=\{!html\}/)
+    assert.doesNotMatch(editor, /: html \? \(/)
+  })
+
+  it('同一类型两张各有自己的实例 id，不共用 preview- 前缀', () => {
+    const a = {} as HTMLElement
+    const b = {} as HTMLElement
+    const first = noteWidgetInstanceId(a, 'weather')
+    const second = noteWidgetInstanceId(b, 'weather')
+    assert.match(first, /^note-weather-\d+$/)
+    assert.notEqual(first, second)
+    assert.equal(noteWidgetInstanceId(a, 'weather'), first)
+    assert.doesNotMatch(mount, /preview-\$\{/)
+  })
+})
+
+describe('noteWidgetTypesInHtml', () => {
+  it('按出现顺序列出类型，重复的只留一次', () => {
+    assert.deepEqual(
+      noteWidgetTypesInHtml(
+        '<div class="note-widget" data-widget="friend-links"></div><div data-widget="Friend-Links"></div><div data-widget="report-bilibili"></div>',
+      ),
+      ['friend-links', 'report-bilibili'],
+    )
+    assert.deepEqual(noteWidgetTypesInHtml('<p>nope</p>'), [])
+    assert.deepEqual(noteWidgetTypesInHtml(''), [])
+  })
+})
+
+describe('emptyNoteWidgetText', () => {
+  it('只清掉纯文本类型名，有子节点的占位不动', () => {
+    assert.equal(
+      emptyNoteWidgetText(
+        '<div class="note-widget" data-widget="game-presence" data-size="4x2">game-presence</div>',
+      ),
+      '<div class="note-widget" data-widget="game-presence" data-size="4x2"></div>',
+    )
+    assert.equal(
+      emptyNoteWidgetText(
+        '<div class="note-widget" data-widget="weather"><div class="note-widget__face">x</div></div>',
+      ),
+      '<div class="note-widget" data-widget="weather"><div class="note-widget__face">x</div></div>',
+    )
   })
 })
 

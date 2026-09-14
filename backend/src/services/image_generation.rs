@@ -42,6 +42,8 @@ pub struct GeneratedImage {
 pub struct PersistedGeneratedImage {
     pub url: String,
     pub created: bool,
+    pub mime: String,
+    pub size: i64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -450,6 +452,8 @@ pub async fn persist_generated_with_status(
     Ok(PersistedGeneratedImage {
         url: stored.url,
         created: stored.created,
+        mime: media_type,
+        size: bytes.len() as i64,
     })
 }
 

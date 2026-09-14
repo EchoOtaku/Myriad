@@ -47,6 +47,7 @@ fn test_recent_month_features_in_expected_schema() {
         "federation_inbox_receipts",
         // 003
         "brew_note_docs",
+        "media_assets",
     ] {
         assert!(
             names.contains(&required),

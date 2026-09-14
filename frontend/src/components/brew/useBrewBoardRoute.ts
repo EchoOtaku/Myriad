@@ -1,18 +1,24 @@
 import type { BrewSource } from '../../types/brew'
-import type { BrewBoard, BrewBoardEntry, BrewViewMode } from './logic/board'
+import type {
+  BrewBoard,
+  BrewBoardEntry,
+  BrewViewMode,
+  WorkbenchPane,
+} from './logic/board'
 
-import type { TopicNameKey } from './logic/topics'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   eatSearchKeys,
   navIdForBoardEntry,
   resolveBoardParam,
+  resolveWorkbenchPane,
   viewForBoardEntry,
 } from './logic/board'
-import { topicNameKey } from './logic/topics'
+import { normalizeTopicName } from './logic/topics'
 
 export function useBrewBoardRoute(
   isAuthenticated: boolean,
+  isAdmin: boolean,
   sources: BrewSource[],
   activeId: string,
   setActiveId: (id: string) => void,
@@ -26,16 +32,26 @@ export function useBrewBoardRoute(
   const [board, setBoard] = useState<BrewBoard>('feeds')
   const [selectedTopic, setSelectedTopic] = useState<{
     key: string
-    nameKey: TopicNameKey
   } | null>(null)
   const [railFocusId, setRailFocusId] = useState<number | null>(null)
+  const [workbenchPane, setWorkbenchPane] = useState<WorkbenchPane>('home')
 
   const applyBoardEntry = useCallback(
     (entry: BrewBoardEntry) => {
+      const view = viewForBoardEntry(entry, isAuthenticated, isAdmin)
+      if (entry.view === 'workbench') {
+        if (view === 'workbench') {
+          setViewMode('workbench')
+          return
+        }
+        setBoard('feeds')
+        setViewMode('sources')
+        return
+      }
       setBoard(entry.board)
-      setViewMode(viewForBoardEntry(entry, isAuthenticated))
+      setViewMode(view)
     },
-    [isAuthenticated],
+    [isAuthenticated, isAdmin],
   )
 
   const prevActiveIdRef = useRef(activeId)
@@ -55,28 +71,43 @@ export function useBrewBoardRoute(
   }, [isAuthenticated, activeId, setActiveId])
 
   useEffect(() => {
+    if (isAdmin) return
+    setViewMode((current) => (current === 'workbench' ? 'sources' : current))
+    if (activeId !== 'workbench') return
+    prevActiveIdRef.current = 'feeds'
+    setActiveId('feeds')
+  }, [isAdmin, activeId, setActiveId])
+
+  useEffect(() => {
     const raw = searchParams.get('board') ?? searchParams.get('category')
     if (!raw) return
     const entry = resolveBoardParam(raw)
     if (!entry) return
 
     applyBoardEntry(entry)
-    const navId = navIdForBoardEntry(entry, isAuthenticated)
+    if (entry.view === 'workbench') {
+      setWorkbenchPane(resolveWorkbenchPane(searchParams.get('pane')))
+    }
+    const navId = navIdForBoardEntry(entry, isAuthenticated, isAdmin)
     prevActiveIdRef.current = navId
     setActiveId(navId)
-    setSearchParams((prev) => eatSearchKeys(prev, ['board', 'category']), {
-      replace: true,
-    })
+    setSearchParams(
+      (prev) => eatSearchKeys(prev, ['board', 'category', 'pane']),
+      { replace: true },
+    )
   }, [
     searchParams,
     applyBoardEntry,
     isAuthenticated,
+    isAdmin,
     setActiveId,
     setSearchParams,
   ])
 
-  const openTopic = useCallback((topicKey: string, nameKey: TopicNameKey) => {
-    setSelectedTopic({ key: topicKey, nameKey })
+  const openTopic = useCallback((topicKey: string) => {
+    const key = normalizeTopicName(topicKey)
+    if (!key) return
+    setSelectedTopic({ key })
     setViewMode('topic-feed')
   }, [])
 
@@ -93,8 +124,7 @@ export function useBrewBoardRoute(
   useEffect(() => {
     const topicParam = searchParams.get('topic')
     if (topicParam) {
-      const nameKey = topicNameKey(topicParam)
-      if (nameKey) openTopic(topicParam, nameKey)
+      openTopic(topicParam)
       setSearchParams((prev) => eatSearchKeys(prev, ['topic']), {
         replace: true,
       })
@@ -131,6 +161,8 @@ export function useBrewBoardRoute(
     board,
     selectedTopic,
     railFocusId,
+    workbenchPane,
+    setWorkbenchPane,
     openTopic,
     focusSource,
     backFromTopic,

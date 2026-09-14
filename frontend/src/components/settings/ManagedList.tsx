@@ -131,6 +131,7 @@ export interface ManagedListFilterOption {
   key: string
   label: string
   count?: number
+  icon?: ReactNode
 }
 
 export interface ManagedListSearch {
@@ -145,6 +146,8 @@ export interface ManagedListFilters {
   value: string
   onChange: (key: string) => void
   ariaLabel?: string
+  label?: ReactNode
+  icon?: ReactNode
 }
 
 export interface ManagedListItem {
@@ -201,6 +204,7 @@ export interface ManagedListProps {
   emptyText: string
   loading?: boolean
   working?: boolean
+  layout?: 'list' | 'grid'
   maxHeight?: string | number | null
   maxVisibleItems?: number | null
   truncateFooter?: (shown: number, total: number) => ReactNode
@@ -300,6 +304,7 @@ export const ManagedList = React.memo(({
   emptyText,
   loading = false,
   working = false,
+  layout = 'list',
   maxHeight = '18rem',
   maxVisibleItems,
   truncateFooter,
@@ -517,21 +522,45 @@ export const ManagedList = React.memo(({
           <div className="managed-list-filter-groups">
             {resolvedFilterGroups.map((group, gi) =>
               group.options.length > 0 ? (
-                <SegmentedControl
+                <div
                   key={group.ariaLabel ?? `filter-group-${gi}`}
-                  size="sm"
-                  className="managed-list-filters"
-                  ariaLabel={
-                    group.ariaLabel ?? t.config.managedListFilterAria
-                  }
-                  value={group.value}
-                  options={group.options.map((opt) => ({
-                    value: opt.key,
-                    label: opt.label,
-                    count: opt.count,
-                  }))}
-                  onChange={group.onChange}
-                />
+                  className="managed-list-filter-group"
+                >
+                  {group.icon != null || group.label != null ? (
+                    <span className="managed-list-filter-label">
+                      {group.icon != null ? (
+                        <span
+                          className="managed-list-filter-label-icon"
+                          aria-hidden
+                        >
+                          {group.icon}
+                        </span>
+                      ) : null}
+                      {group.label != null && group.label !== '' ? (
+                        <span className="managed-list-filter-label-text">
+                          {group.label}
+                        </span>
+                      ) : null}
+                    </span>
+                  ) : null}
+                  <SegmentedControl
+                    size="sm"
+                    className="managed-list-filters"
+                    ariaLabel={
+                      group.ariaLabel ??
+                      (typeof group.label === 'string' ? group.label : undefined) ??
+                      t.config.managedListFilterAria
+                    }
+                    value={group.value}
+                    options={group.options.map((opt) => ({
+                      value: opt.key,
+                      label: opt.label,
+                      count: opt.count,
+                      icon: opt.icon,
+                    }))}
+                    onChange={group.onChange}
+                  />
+                </div>
               ) : null,
             )}
           </div>
@@ -672,7 +701,9 @@ export const ManagedList = React.memo(({
 
   return (
     <div
-      className={`managed-list${working ? ' is-working' : ''}${className ? ` ${className}` : ''}`}
+      className={`managed-list${working ? ' is-working' : ''}${
+        layout === 'grid' ? ' managed-list--grid' : ''
+      }${className ? ` ${className}` : ''}`}
     >
       {(stats && stats.length > 0) || hasChromeBar ? (
         <div className="managed-list-top">

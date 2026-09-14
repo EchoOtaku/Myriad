@@ -21,7 +21,7 @@ describe('brew manager 栏边界', () => {
     assert.doesNotMatch(src, /from ['"]\.\.\/skin\//)
     assert.doesNotMatch(src, /jszip/i)
     assert.doesNotMatch(src, /from ['"]\.\/brewpackIo['"]/)
-    assert.match(src, /from ['"]\.\/useBrewpack['"]/)
+    assert.doesNotMatch(src, /from ['"]\.\/useBrewpack['"]/)
     assert.doesNotMatch(src, /from ['"]\.\/useBarWave['"]/)
     assert.doesNotMatch(src, /from ['"]\.\.\/ui\/BrewManagement['"]/)
     assert.doesNotMatch(src, /from ['"]\.\/bar['"]/)

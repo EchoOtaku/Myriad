@@ -328,11 +328,19 @@ describe('参考式链接和连续脚注', () => {
     )
   })
 
-  it('预览 HTML 在脚注前补上参考定义', () => {
+  it('withLinkDefinitions 和后端一样在脚注前补参考定义；读路径不再调用', () => {
     const md =
       '看 [规范][cm]\n\n[cm]: https://spec.commonmark.org/0.31.2/ "CommonMark Spec 0.31.2"\n\n[^1]: 底'
     const html = withLinkDefinitions('<p>看</p><div class="footnote-definition">底</div>', md)
     assert.match(html, /<div class="link-definition"><a href="https:\/\/spec\.commonmark\.org\/0\.31\.2\/" title="CommonMark Spec 0\.31\.2">\[cm\] CommonMark Spec 0\.31\.2<\/a><\/div><div class="footnote-definition">/)
+    const stamped = withLinkDefinitions(
+      '<p>看</p><div data-md-start="8" data-md-end="20" class="footnote-definition">底</div>',
+      md,
+    )
+    assert.match(
+      stamped,
+      /link-definition"><a href="https:\/\/spec\.commonmark\.org\/0\.31\.2\/" title="CommonMark Spec 0\.31\.2">\[cm\] CommonMark Spec 0\.31\.2<\/a><\/div><div data-md-start="8" data-md-end="20" class="footnote-definition">/,
+    )
   })
 })
 
@@ -409,6 +417,27 @@ describe('正文分栏和正文小组件', () => {
     const html =
       '<div class="note-widget" data-widget="weather" data-size="2x2"><div onclick="alert(1)">内部</div></div>'
     assert.equal(visualHtmlToMarkdown(html), ':::widget weather 2x2')
+  })
+
+  it('水合后面的 face 再复杂也不写回原文', () => {
+    const face = `
+      <div class="note-widget__face">
+        <h2>Freundeslinks</h2>
+        <hr>
+        <ul><li><a href="https://example.com">友链</a></li></ul>
+        <div class="card"><p>Bilibili</p><div>1,234</div></div>
+        <pre><code class="language-js">secret</code></pre>
+      </div>`
+    const visual =
+      `<p>前</p><div class="note-widget not-prose" data-widget="friend-links" data-size="4x2" contenteditable="false">${face}</div>` +
+      `<div class="note-widget not-prose" data-widget="report-bilibili" data-size="4x2" data-config="%7B%22platformId%22%3A%22bilibili%22%7D">${face}</div>` +
+      `<div class="note-widget not-prose" data-widget="tapp-shortcut" data-size="1x1">${face}</div><p>后</p>`
+    const back = visualHtmlToMarkdown(visual)
+    assert.equal(
+      back,
+      '前\n\n:::widget friend-links 4x2\n\n:::widget report-bilibili 4x2 {"platformId":"bilibili"}\n\n:::widget tapp-shortcut 1x1\n\n后',
+    )
+    assert.doesNotMatch(back, /Freundeslinks|secret|1,234|友链|Bilibili/)
   })
 
   it('普通 div 仍按块切开，不吞进一行', () => {

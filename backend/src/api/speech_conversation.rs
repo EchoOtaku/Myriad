@@ -230,7 +230,8 @@ fn completion_stream(
                         feed.emitted = true;
                         return Some((
                             Ok(Event::default().data(
-                                completion_chunk(feed.run.run_id(), Some(&token), false).to_string(),
+                                completion_chunk(feed.run.run_id(), Some(&token), false)
+                                    .to_string(),
                             )),
                             Some(feed),
                         ));
@@ -240,8 +241,7 @@ fn completion_stream(
                     } => {
                         if success {
                             if !feed.emitted {
-                                if let Some(text) =
-                                    response.get("message").and_then(|v| v.as_str())
+                                if let Some(text) = response.get("message").and_then(|v| v.as_str())
                                 {
                                     feed.pending.push_back(Ok(Event::default().data(
                                         completion_chunk(feed.run.run_id(), Some(text), false)

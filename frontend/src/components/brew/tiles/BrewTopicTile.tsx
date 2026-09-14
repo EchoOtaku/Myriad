@@ -1,4 +1,4 @@
-/** 主题名走 i18n。主题卡永不进 2×2。 */
+/** 主题名：旧 key 走 i18n，自建名原样显示。主题卡永不进 2×2。 */
 
 import type { WidgetComponentProps } from '../../widgetGridTypes'
 import type { BrewTileSize } from '../logic/layout'

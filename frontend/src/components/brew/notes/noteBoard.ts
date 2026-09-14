@@ -18,6 +18,7 @@ export function sourceLatestStory(
     id: number
     name: string
     icon: string | null
+    source_type?: string
     recent_items?: readonly BrewItemPreview[] | null
   },
 ): (FeedStory & { source_id: number }) | null {
@@ -28,6 +29,7 @@ export function sourceLatestStory(
     source_id: source.id,
     source_name: source.name,
     source_icon: source.icon,
+    source_type: source.source_type,
   }
 }
 

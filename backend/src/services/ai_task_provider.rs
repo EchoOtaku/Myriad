@@ -4,6 +4,7 @@
 //! orchestration module does not own outbound provider logic. Task registry,
 //! quota, and local cancel state stay with the caller.
 
+use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
 
 use crate::services::ai_config::{AiConfig, AiImageConfig};
@@ -87,6 +88,7 @@ where
 /// `on_progress` is reserved for providers that poll remote jobs.
 /// Result value shape: `{ format: "image", value: { url, width, height }, contextProvenance: [] }`.
 pub async fn run_image_provider<F>(
+    db: &DatabaseConnection,
     config: AiImageConfig,
     prompt: &str,
     width: u32,
@@ -112,9 +114,20 @@ where
     )
     .await
     .map_err(image_provider_error)?;
-    let url = crate::services::image_generation::persist_generated(&generated)
+    let persisted = crate::services::image_generation::persist_generated_with_status(&generated)
         .await
         .map_err(image_provider_error)?;
+    crate::services::media_catalog::register_if_created(
+        db,
+        crate::services::media_catalog::MediaKind::Generated,
+        persisted.url.clone(),
+        persisted.mime.clone(),
+        "generated",
+        persisted.size,
+        persisted.created,
+    )
+    .await;
+    let url = persisted.url;
     Ok(json!({
         "format": "image",
         "value": {

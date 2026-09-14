@@ -241,19 +241,30 @@ fn looks_like_size(token: &str) -> bool {
 
 fn take_widget_config(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
-    if trimmed.len() > CONFIG_MAX
-        || !trimmed.starts_with('{')
-        || !trimmed.ends_with('}')
-        || trimmed == "{}"
-    {
+    if trimmed.len() > CONFIG_MAX {
+        return None;
+    }
+    // 和前端 parseWidgetConfig 对齐：必须是能 JSON.parse 的非空对象，才写 data-config。
+    let value: serde_json::Value = serde_json::from_str(trimmed).ok()?;
+    let obj = value.as_object()?;
+    if obj.is_empty() {
         return None;
     }
     Some(trimmed.to_string())
 }
 
+fn strip_widget_keyword(trimmed: &str) -> Option<&str> {
+    const KEY: &str = ":::widget";
+    let bytes = trimmed.as_bytes();
+    if bytes.len() < KEY.len() || !bytes[..KEY.len()].eq_ignore_ascii_case(KEY.as_bytes()) {
+        return None;
+    }
+    Some(&trimmed[KEY.len()..])
+}
+
 fn parse_widget_line(line: &str) -> Option<(String, String, Option<String>)> {
     let trimmed = line.trim_end();
-    let rest = trimmed.strip_prefix(":::widget")?;
+    let rest = strip_widget_keyword(trimmed)?;
     if !rest.is_empty() && !rest.starts_with(char::is_whitespace) {
         return None;
     }
@@ -359,7 +370,7 @@ pub(crate) fn widget_html(typ: &str, size: &str, config: Option<&str>) -> String
             escape_attr(&encode_uri_component(json))
         );
     }
-    let _ = write!(out, ">{}</div>", escape_attr(typ));
+    out.push_str("></div>");
     out
 }
 
@@ -437,6 +448,10 @@ mod tests {
         );
         assert_eq!(parse_widget_line(":::widget quote 3x3").unwrap().1, "3x3");
         assert_eq!(parse_widget_line(":::widget quote 9x9").unwrap().1, "2x2");
+        assert_eq!(
+            parse_widget_line(":::WIDGET weather 2x2").unwrap().0,
+            "weather"
+        );
     }
 
     #[test]
@@ -450,9 +465,21 @@ mod tests {
         assert_eq!(no_size.1, "2x2");
         assert_eq!(no_size.2.as_deref(), Some(r#"{"city":"Tokyo"}"#));
 
-        // 花括号垃圾先原样留下，读路径 JSON.parse 丢掉。尾巴不是对象就不当小组件。
+        // 花括号垃圾、截断、尾逗号都丢掉，和前端 JSON.parse 一样。尾巴不是对象就不当小组件。
         let junk = parse_widget_line(":::widget weather 2x2 {nope}").unwrap();
-        assert_eq!(junk.2.as_deref(), Some("{nope}"));
+        assert_eq!(junk.2, None);
+        assert_eq!(
+            parse_widget_line(r#":::widget weather 2x2 {"city":"#)
+                .unwrap()
+                .2,
+            None
+        );
+        assert_eq!(
+            parse_widget_line(r#":::widget weather 2x2 {"city":"Tokyo",}"#)
+                .unwrap()
+                .2,
+            None
+        );
 
         assert_eq!(parse_widget_line(":::widget weather 2x2 hello"), None);
         assert_eq!(
@@ -469,6 +496,8 @@ mod tests {
             "{html}"
         );
         assert!(html.contains("class=\"note-widget not-prose\""), "{html}");
+        assert!(html.contains("></div>"), "{html}");
+        assert!(!html.contains(">weather<"), "{html}");
         assert!(!html.contains("onclick"), "{html}");
     }
 }

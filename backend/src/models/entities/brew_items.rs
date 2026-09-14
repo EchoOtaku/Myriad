@@ -53,8 +53,8 @@ pub struct Model {
     pub reading_time: Option<i32>,
     /// 是否已抓取全文
     pub fulltext_fetched: bool,
-    /// 预定义主题 key（如 "engineering"），不是展示文案。
-    /// NULL = 未分类，不参与主题聚类；关键词入库同步写，AI 每小时补。
+    /// 订阅主题名或手记分类名。自由文本，不是预置 key。
+    /// NULL = 未归类，不参与订阅主题聚类。
     #[sea_orm(column_type = "Text", nullable)]
     pub topic: Option<String>,
     /// 手记原文（Markdown）。只有手记源下的条目有值，抓来的文章恒为 NULL。
@@ -114,7 +114,7 @@ pub struct ItemResponse {
     pub word_count: Option<i32>,
     pub reading_time: Option<i32>,
     pub fulltext_fetched: bool,
-    /// 预定义主题 key；展示文案走前端 i18n
+    /// 订阅主题名或手记分类名；旧的 10 个英文 key 只是历史数据
     pub topic: Option<String>,
     // 用户状态
     pub is_read: bool,
@@ -195,7 +195,7 @@ pub struct ItemsQuery {
     pub source_id: Option<i32>,
     /// 分类筛选
     pub category: Option<String>,
-    /// 主题筛选（预定义 key）。与 category 同级；`topic IS NULL` 的文章不入结果。
+    /// 主题筛选（精确匹配主题名）。与 category 同级；`topic IS NULL` 的文章不入结果。
     pub topic: Option<String>,
     /// 筛选类型: all, unread, starred
     pub filter: Option<String>,

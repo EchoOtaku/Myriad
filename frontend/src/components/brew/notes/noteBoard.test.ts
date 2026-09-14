@@ -66,7 +66,29 @@ describe('sourceLatestStory', () => {
     })
     assert.equal(story?.source_id, 4)
     assert.equal(story?.source_name, '我')
+    assert.equal(story?.source_type, undefined)
     assert.equal(story?.title, '近文')
+  })
+
+  it('手记近文带上 source_type，卡面用来源换成站点', () => {
+    const story = sourceLatestStory({
+      id: 5,
+      name: '手记',
+      icon: '/n.png',
+      source_type: 'note',
+      recent_items: [
+        {
+          id: 9,
+          title: '手记近文',
+          summary: null,
+          image: null,
+          published_at: 1,
+          is_read: true,
+        },
+      ],
+    })
+    assert.equal(story?.source_type, 'note')
+    assert.equal(story?.source_name, '手记')
   })
 })
 

@@ -10,10 +10,10 @@ import { WIDGET_SIZE_KEYS, type WidgetSizeKey } from '../../../utils/widgetSizeS
 
 export const NOTE_MAX_COLUMNS = 4
 
-/** 工具条默认档。原文合法键跟宫格同一份 `WIDGET_SIZE_KEYS`，和后端 layout.rs 对齐。 */
-export const NOTE_WIDGET_SIZES = ['1x1', '2x1', '2x2', '4x1', '4x2'] as const
+/** 工具条和原文合法键跟宫格同一份，和后端 layout.rs 对齐。 */
+export const NOTE_WIDGET_SIZES = WIDGET_SIZE_KEYS
 
-export type NoteWidgetSize = (typeof NOTE_WIDGET_SIZES)[number]
+export type NoteWidgetSize = WidgetSizeKey
 
 /** 原文 JSON 和 `data-config` 解码后的上限。再长就丢掉，不当配置。 */
 export const NOTE_WIDGET_CONFIG_MAX = 2048
@@ -193,6 +193,17 @@ export function parseWidgetDirective(line: string): {
     size: normalizeNoteWidgetSize(sizeRaw),
     config,
   }
+}
+
+export function noteWidgetTypesInMarkdown(markdown: string): string[] {
+  const types: string[] = []
+  const seen = new Set<string>()
+  for (const seg of parseNoteLayout(markdown)) {
+    if (seg.kind !== 'widget' || seen.has(seg.type)) continue
+    seen.add(seg.type)
+    types.push(seg.type)
+  }
+  return types
 }
 
 export function insertWidgetMarkdown(

@@ -217,7 +217,7 @@ export interface BrewStatsResponse {
 export interface BrewItemsQuery {
   source_id?: number
   category?: string
-  /** Topic key; `topic IS NULL` rows are excluded. */
+  /** Topic name; `topic IS NULL` rows are excluded. */
   topic?: string
   filter?: 'all' | 'unread' | 'starred'
   sort_order?: 'asc' | 'desc'

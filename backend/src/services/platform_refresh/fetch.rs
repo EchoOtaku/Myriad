@@ -208,8 +208,7 @@ pub async fn fetch_fresh_platform_data(
             );
         }
     } else {
-        if let Err(e) =
-            crate::services::smart_filter::SmartFilter::process_and_save_all(&all_data)
+        if let Err(e) = crate::services::smart_filter::SmartFilter::process_and_save_all(&all_data)
         {
             tracing::error!("Failed to update smart filter cache: {}", e);
         }

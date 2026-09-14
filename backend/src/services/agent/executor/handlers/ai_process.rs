@@ -150,7 +150,7 @@ pub async fn execute(
         "prompt.generate" => execute_prompt_generate(&params, analyzer).await,
         "translate.text" => execute_translate_text(&params, analyzer).await,
         "code.explain" => execute_code_explain(&params, analyzer).await,
-        "ai.image" => execute_ai_image(&params).await,
+        "ai.image" => execute_ai_image(&params, ctx).await,
         _ => Err(format!(
             "Unknown AI capability: {} (action: {})",
             capability_id, action
@@ -1005,7 +1005,10 @@ async fn execute_code_explain(
 
 // AI 图片生成
 
-async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, String> {
+async fn execute_ai_image(
+    params: &HashMap<String, Value>,
+    ctx: &HandlerContext<'_>,
+) -> Result<Value, String> {
     let prompt = resolve_image_prompt(params)?;
     let (width, height) = resolve_image_dimensions(params);
 
@@ -1018,12 +1021,22 @@ async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, Stri
         crate::services::image_generation::generate_image(&config, &prompt, width, height, None)
             .await
             .map_err(|error| error.to_string())?;
-    let image_url = crate::services::image_generation::persist_generated(&generated)
+    let persisted = crate::services::image_generation::persist_generated_with_status(&generated)
         .await
         .map_err(|error| error.to_string())?;
+    crate::services::media_catalog::register_if_created(
+        ctx.db,
+        crate::services::media_catalog::MediaKind::Generated,
+        persisted.url.clone(),
+        persisted.mime.clone(),
+        "generated",
+        persisted.size,
+        persisted.created,
+    )
+    .await;
 
     Ok(task_image_envelope(
-        &image_url,
+        &persisted.url,
         generated.width,
         generated.height,
     ))

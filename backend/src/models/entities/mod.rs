@@ -26,6 +26,7 @@ pub mod brew_categories;
 pub mod brew_comments;
 pub mod brew_items;
 pub mod brew_note_docs;
+pub mod media_assets;
 pub mod brew_podcasts;
 pub mod brew_sources;
 pub mod brew_user_states;

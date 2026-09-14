@@ -231,7 +231,10 @@ pub async fn stream_agent_interactions(
         "runtimeId": runtime.runtime_id(),
         "interactions": interaction_types,
     });
-    let ready = Ok(Event::default().event("ready").json_data(ready).unwrap_or_default());
+    let ready = Ok(Event::default()
+        .event("ready")
+        .json_data(ready)
+        .unwrap_or_default());
     let inner = futures::stream::unfold(
         Some(InteractionFeed {
             pending: VecDeque::from([ready]),

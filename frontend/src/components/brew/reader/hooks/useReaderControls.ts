@@ -222,7 +222,9 @@ export function useReaderControls({
     const content = contentRef.current
     if (!article || !content || toc.length === 0) return
 
-    const headings = Iterator.from(content.querySelectorAll('h1, h2, h3, h4, h5, h6')).toArray() as HTMLElement[]
+    const headings = Iterator.from(content.querySelectorAll('h1, h2, h3, h4, h5, h6'))
+      .filter((item) => !item.closest('.note-widget'))
+      .toArray() as HTMLElement[]
     if (headings.length === 0) return
 
     const handleScrollForToc = () => {

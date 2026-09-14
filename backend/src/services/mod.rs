@@ -104,7 +104,6 @@ pub mod updater_client;
 pub mod brew_parser;
 pub mod brew_scheduler;
 pub mod brew_topics;
-pub mod note_publish;
 pub mod channel_pairing; // Shared pairing mint/consume/unbind
 pub mod channel_work; // Shared private-chat Work: session, pending, delivery
 pub mod discord_bot; // Discord DM Gateway worker
@@ -117,6 +116,8 @@ pub mod feishu_work; // Feishu p2p send adapter + Work entry
 pub mod feishu_ws; // Feishu pbbp2 Frame + WSS session
 pub mod icon_service;
 pub mod image_cache; // e.g. Notion temporary URLs
+pub mod media_catalog;
+pub mod note_publish;
 pub mod notion_service;
 pub mod qq_bot; // QQ C2C Gateway worker
 pub mod qq_pairing; // QQ C2C pairing codes + user_identities

@@ -78,10 +78,12 @@ function emptyDraft() {
 
 export function RSSHubInstances({
   disabled = false,
+  defaultOpen = false,
   initialUrl,
   onChange,
 }: {
   disabled?: boolean
+  defaultOpen?: boolean
   initialUrl?: string
   onChange: (instance: RsshubInstance | null) => void
 }) {
@@ -95,7 +97,7 @@ export function RSSHubInstances({
   const [loading, setLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [openId, setOpenId] = useState<number | null>(null)
-  const [panelOpen, setPanelOpen] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(defaultOpen)
   const [formOpen, setFormOpen] = useState(false)
   const [draft, setDraft] = useState(emptyDraft)
   const [adding, setAdding] = useState(false)

@@ -18,6 +18,7 @@ export interface HomeBoardNote {
   author?: string | null
   source_name?: string | null
   source_icon?: string | null
+  guid?: string | null
 }
 
 export function toHomeBoardNote(
@@ -34,6 +35,7 @@ export function toHomeBoardNote(
     | 'author'
     | 'source_name'
     | 'source_icon'
+    | 'guid'
   >,
 ): HomeBoardNote {
   return {
@@ -48,6 +50,7 @@ export function toHomeBoardNote(
     author: item.author,
     source_name: item.source_name,
     source_icon: item.source_icon,
+    guid: item.guid,
   }
 }
 
@@ -68,6 +71,8 @@ export function toNoteStory(
     source_id: note.source_id,
     source_name: note.source_name?.trim() || source?.name || '',
     source_icon: note.source_icon ?? source?.icon ?? null,
+    guid: note.guid,
+    source_type: 'note',
   }
 }
 
@@ -86,6 +91,7 @@ export function pickHomeBoardNotes(
       | 'author'
       | 'source_name'
       | 'source_icon'
+      | 'guid'
     >
   >,
   sources: Array<{ id: number; source_type: string }>,

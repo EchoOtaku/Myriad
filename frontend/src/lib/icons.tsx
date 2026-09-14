@@ -317,6 +317,7 @@ import {
   SiLetterboxd as SiLetterboxdRaw,
   SiLine as SiLineRaw,
   SiMaildotru as SiMaildotruRaw,
+  SiMarkdown as SiMarkdownRaw,
   SiMastodon as SiMastodonRaw,
   SiMedium as SiMediumRaw,
   SiMisskey as SiMisskeyRaw,
@@ -438,6 +439,7 @@ const SiLastdotfm = withIconA11y(SiLastdotfmRaw)
 const SiLetterboxd = withIconA11y(SiLetterboxdRaw)
 const SiLine = withIconA11y(SiLineRaw)
 const SiMaildotru = withIconA11y(SiMaildotruRaw)
+const SiMarkdown = withIconA11y(SiMarkdownRaw)
 const SiMastodon = withIconA11y(SiMastodonRaw)
 const SiMedium = withIconA11y(SiMediumRaw)
 const SiMisskey = withIconA11y(SiMisskeyRaw)
@@ -654,6 +656,7 @@ export {
   SiLetterboxd,
   SiLine,
   SiMaildotru,
+  SiMarkdown,
   SiMastodon,
   SiMedium,
   SiMisskey,
@@ -1056,6 +1059,7 @@ export const iconMap: Record<string, IconType> = {
   SiOdnoklassniki,
   SiTumblr,
   SiWordpress,
+  SiMarkdown,
   SiBlogger,
   SiGithub,
   SiSteam,
@@ -1157,6 +1161,99 @@ export function RSSHubIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
+    </svg>
+  )
+}
+
+/** Halo 官网顶栏字标 https://www.halo.run/upload/2022/03/logo.svg */
+export function HaloIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 2144 877"
+      fill="none"
+      aria-hidden
+    >
+      <defs>
+        <linearGradient
+          id="haloWordA"
+          x1="0"
+          y1="0"
+          x2="1"
+          y2="0"
+          gradientUnits="userSpaceOnUse"
+          gradientTransform="matrix(0 -848.921 848.921 0 1308.8 875.397)"
+        >
+          <stop offset="0" stopColor="#0050b5" />
+          <stop offset="1" stopColor="#0b87fd" />
+        </linearGradient>
+        <linearGradient
+          id="haloWordB"
+          x1="0"
+          y1="0"
+          x2="1"
+          y2="0"
+          gradientUnits="userSpaceOnUse"
+          gradientTransform="matrix(0 472.459 -473.895 0 587.619 -0.862)"
+        >
+          <stop offset="0" stopColor="#0048af" />
+          <stop offset="1" stopColor="#003580" />
+        </linearGradient>
+        <linearGradient
+          id="haloWordC"
+          x1="0"
+          y1="0"
+          x2="1"
+          y2="0"
+          gradientUnits="userSpaceOnUse"
+          gradientTransform="matrix(0 898.506 -901.236 0 162.421 -12.134)"
+        >
+          <stop offset="0" stopColor="#0b89ff" />
+          <stop offset="1" stopColor="#004eb2" />
+        </linearGradient>
+      </defs>
+      <path
+        fill="url(#haloWordA)"
+        fillRule="evenodd"
+        d="M1028.16 339.331c148.249 0 268.609 120.36 268.609 268.609s-120.36 268.608-268.609 268.608-268.608-120.359-268.608-268.608 120.359-268.609 268.608-268.609Zm0 119.152c82.488 0 149.457 66.969 149.457 149.457 0 82.487-66.969 149.456-149.457 149.456-82.487 0-149.456-66.969-149.456-149.456 0-82.488 66.969-149.457 149.456-149.457Z"
+      />
+      <path
+        fill="url(#haloWordA)"
+        fillRule="evenodd"
+        d="M1874.58 339.331c148.249 0 268.608 120.36 268.608 268.609s-120.359 268.608-268.608 268.608-268.609-120.359-268.609-268.608 120.36-268.609 268.609-268.609Zm0 119.152c82.487 0 149.456 66.969 149.456 149.457 0 82.487-66.969 149.456-149.456 149.456-82.488 0-149.457-66.969-149.457-149.456 0-82.488 66.969-149.457 149.457-149.457Z"
+      />
+      <path
+        fill="url(#haloWordA)"
+        d="M1309.27 377.585c0-10.083-7.222-18.719-17.146-20.504-19.618-3.528-51.9-9.334-74.172-13.34-6.073-1.092-12.318.564-17.052 4.522-4.734 3.959-7.469 9.812-7.469 15.983v491.469c0 5.525 2.195 10.824 6.102 14.731s9.206 6.102 14.731 6.102h74.173c5.525 0 10.824-2.195 14.731-6.102s6.102-9.206 6.102-14.731V377.585Z"
+      />
+      <path
+        fill="url(#haloWordA)"
+        d="M1542.59 72.033c0-8.288-3.292-16.237-9.153-22.097-5.86-5.861-13.809-9.153-22.097-9.153h-80.477c-8.288 0-16.236 3.292-22.097 9.153-5.86 5.86-9.153 13.809-9.153 22.097v773.265c0 8.288 3.293 16.237 9.153 22.097 5.861 5.861 13.809 9.153 22.097 9.153h80.477c8.288 0 16.237-3.292 22.097-9.153 5.861-5.86 9.153-13.809 9.153-22.097V72.033Z"
+      />
+      <path
+        fill="url(#haloWordB)"
+        d="M506.409 822.063c0 13.815 5.494 27.062 15.271 36.821 9.777 9.76 23.034 15.23 36.848 15.206 18.674-.034 39.711-.072 58.369-.105 28.696-.052 51.932-23.329 51.932-52.026V52.373c0-13.798-5.481-27.031-15.238-36.788S630.601.347 616.803.347h-58.368c-13.798 0-27.031 5.481-36.788 15.238S506.409 38.575 506.409 52.373v769.69Z"
+      />
+      <path
+        fill="#0051b0"
+        d="M616.746 322.662c13.813 0 27.061 5.487 36.829 15.255 9.767 9.768 15.254 23.015 15.254 36.829v447.062c0 13.814-5.487 27.061-15.254 36.829-9.768 9.767-23.016 15.255-36.829 15.255H558.492c-13.813 0-27.061-5.488-36.828-15.255-9.768-9.768-15.255-23.015-15.255-36.829V566.425c0-13.813-5.487-27.061-15.255-36.828S468.139 514.342 454.326 514.342H0v-191.68h616.746Z"
+      />
+      <path
+        fill="url(#haloWordC)"
+        d="M0 822.101c0 13.817 5.497 27.067 15.277 36.827 9.781 9.76 23.043 15.229 36.86 15.199 18.675-.04 39.713-.085 58.368-.124 28.69-.062 51.916-23.337 51.916-52.027V52.252C162.421 23.562 139.195.287 110.505.226 91.85.186 70.812.141 52.137.101 38.32.072 25.058 5.54 15.277 15.3 5.497 25.06 0 38.31 0 52.127v769.974Z"
+      />
+    </svg>
+  )
+}
+
+/** Typecho 官网标左侧图形，见 admin/img/typecho-logo.svg */
+export function TypechoIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 26 26" fill="currentColor" aria-hidden>
+      <path
+        fillRule="evenodd"
+        d="M13 26C3.368 26 0 22.631 0 13 0 3.369 3.368 0 13 0c9.632 0 13 3.369 13 13 0 9.631-3.368 13-13 13ZM6 9h14V7H6v2Zm0 5h10v-2H6v2Zm0 5h12v-2H6v2Z"
+      />
     </svg>
   )
 }

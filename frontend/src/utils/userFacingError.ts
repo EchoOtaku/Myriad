@@ -2406,6 +2406,12 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return classified(t.federationMediaUploadFailed, raw, hint)
   }
+  if (
+    code === 'MEDIA_IN_USE' ||
+    /still in use and cannot be deleted/i.test(raw)
+  ) {
+    return t.mediaInUse
+  }
   const merope = currentCopy().merope
   if (
     code === 'see_through_token_required' ||

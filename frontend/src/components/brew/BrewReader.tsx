@@ -45,8 +45,11 @@ import {
   useReaderControls,
   useReaderSettings,
 } from './reader'
-import { hasNoteWidgetMarkup } from './notes/noteWidgetHtml'
-import { useNoteWidgetCatalog, useNoteWidgetHydration } from './notes/noteWidgetMount'
+import { getIconUrl } from './constants'
+import { hasNoteWidgetMarkup, noteWidgetTypesInHtml } from './notes/noteWidgetHtml'
+import { storySourceFace } from './notes/noteSiteSource'
+import { preloadNoteWidgets, useNoteWidgetCatalog } from './notes/noteWidgetCatalog'
+import { useNoteWidgetHydration } from './notes/noteWidgetMount'
 import { dismissReaderChrome, escapeWhileTyping } from './reader/readerPanels'
 import './ui/brew.css'
 import './skin/brew-reader.css'
@@ -64,6 +67,9 @@ interface BrewReaderProps {
   onEditNote?: () => void
   onNavigateToArticle?: (articleId: number) => void
   readingQueue?: ReadingQueue | null
+  /** 站长改订阅文章主题；手记分类走编辑器。 */
+  canEditTopic?: boolean
+  onTopicChange?: (topic: string | null) => void
 }
 
 /** Persistent settings stay here; article resources live in the keyed child. */
@@ -142,6 +148,8 @@ function ReaderArticleSession({
   onEditNote,
   onNavigateToArticle,
   readingQueue,
+  canEditTopic,
+  onTopicChange,
   settings,
   columnRef,
   articleSwap,
@@ -151,6 +159,26 @@ function ReaderArticleSession({
   articleSwap: boolean
 }) {
   const { t } = useI18n()
+  const sourcedItem = useMemo(() => {
+    const face = storySourceFace({
+      guid: item.guid,
+      source_type: sourceType,
+      source_name: item.source_name,
+      source_icon: item.source_icon,
+    })
+    const icon = getIconUrl(face.icon)
+    if (
+      face.name === (item.source_name?.trim() || '') &&
+      icon === (item.source_icon ?? null)
+    ) {
+      return item
+    }
+    return {
+      ...item,
+      source_name: face.name,
+      source_icon: icon,
+    }
+  }, [item, sourceType])
   const contentRef = useRef<HTMLDivElement>(null)
   const articleRef = useRef<HTMLElement>(null)
   const contentInnerRef = useRef<HTMLDivElement>(null)
@@ -177,7 +205,7 @@ function ReaderArticleSession({
           : undefined,
         metadata: {
           sourceId: item.source_id,
-          sourceName: item.source_name,
+          sourceName: sourcedItem.source_name,
           sourceType,
           isBrewlia: sourceType === 'brewlia',
         },
@@ -195,7 +223,7 @@ function ReaderArticleSession({
         clearPageContent()
       }
     }
-  }, [item, sourceType, setPageContent, clearPageContent, contentSubject])
+  }, [item, sourcedItem, sourceType, setPageContent, clearPageContent, contentSubject])
 
   const animConfig = useBrewAnimationConfig()
   const readerTransition = useMemo(
@@ -385,10 +413,12 @@ function ReaderArticleSession({
     comments,
     highlightComments,
     theme,
+    copyCodeLabel: t.brew.copyCode,
   })
   const hasNoteWidgets = hasNoteWidgetMarkup(item.content)
+  if (hasNoteWidgets) preloadNoteWidgets(noteWidgetTypesInHtml(item.content))
   const noteWidgetCatalog = useNoteWidgetCatalog(hasNoteWidgets)
-  useNoteWidgetHydration(
+  const noteWidgets = useNoteWidgetHydration(
     contentInnerRef,
     noteWidgetCatalog,
     baseContent,
@@ -415,7 +445,6 @@ function ReaderArticleSession({
     annotations,
     comments,
     theme,
-    copyCodeLabel: t.brew.copyCode,
     setToc,
   })
 
@@ -613,7 +642,7 @@ function ReaderArticleSession({
       >
         <div className="flex justify-center">
           <ReaderLeftPanel
-            item={item}
+            item={sourcedItem}
             onClose={onClose}
             isAuthenticated={isAuthenticated || false}
             isAdmin={isAdmin || false}
@@ -692,7 +721,7 @@ function ReaderArticleSession({
           />
 
           <ReaderArticleBody
-            item={item}
+            item={sourcedItem}
             columnRef={columnRef}
             currentTheme={currentTheme}
             currentFont={currentFont}
@@ -706,6 +735,8 @@ function ReaderArticleSession({
             contentReady={contentReady}
             onNavigateToArticle={onNavigateToArticle}
             readingQueue={readingQueue}
+            canEditTopic={canEditTopic}
+            onTopicChange={onTopicChange}
           />
           <ReaderRightPanel
             theme={theme}
@@ -815,7 +846,7 @@ function ReaderArticleSession({
       />
 
       <MobileReaderBar
-        item={item}
+        item={sourcedItem}
         onClose={onClose}
         onToggleStar={onToggleStar}
         isAuthenticated={isAuthenticated || false}
@@ -909,6 +940,7 @@ function ReaderArticleSession({
         onClose={() => setLightboxImage(null)}
         t={t}
       />
+      {noteWidgets.portals}
     </motion.div>
   )
 }

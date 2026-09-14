@@ -277,6 +277,7 @@ struct ChannelImageBytes {
 }
 
 pub(super) async fn cache_inbound_images(
+    db: &sea_orm::DatabaseConnection,
     sink: &ChannelTransport,
     images: &[ChannelImageRef],
 ) -> Result<Option<Value>, String> {
@@ -286,7 +287,7 @@ pub(super) async fn cache_inbound_images(
     let cache = crate::services::image_cache::ImageCacheService::new();
     let mut attachments = Vec::new();
     for image in images.iter().take(CHANNEL_IMAGE_LIMIT) {
-        match resolve_inbound_image(sink, image, &cache).await {
+        match resolve_inbound_image(db, sink, image, &cache).await {
             Ok((url, mime, size, name)) => attachments.push(serde_json::json!({
                 "name": name,
                 "mime": mime,
@@ -303,6 +304,7 @@ pub(super) async fn cache_inbound_images(
 }
 
 async fn resolve_inbound_image(
+    db: &sea_orm::DatabaseConnection,
     sink: &ChannelTransport,
     image: &ChannelImageRef,
     cache: &crate::services::image_cache::ImageCacheService,
@@ -316,16 +318,22 @@ async fn resolve_inbound_image(
             let (bytes, mime) =
                 crate::services::telegram_bot::download_file_bytes(token, file_id).await?;
             let stored = cache.store_bytes_with_status(&bytes, &mime).await?;
-            return Ok((
-                stored.url,
-                if image.mime.starts_with("image/") {
-                    image.mime.clone()
-                } else {
-                    mime
-                },
-                bytes.len(),
+            let stored_mime = if image.mime.starts_with("image/") {
+                image.mime.clone()
+            } else {
+                mime
+            };
+            crate::services::media_catalog::register_if_created(
+                db,
+                crate::services::media_catalog::MediaKind::Upload,
+                stored.url.clone(),
+                stored_mime.clone(),
                 image.name.clone(),
-            ));
+                bytes.len() as i64,
+                stored.created,
+            )
+            .await;
+            return Ok((stored.url, stored_mime, bytes.len(), image.name.clone()));
         }
     }
     if let ChannelTransport::Feishu { .. } = sink {
@@ -337,16 +345,22 @@ async fn resolve_inbound_image(
                 crate::services::feishu_bot_api::download_image_bytes(message_id, image_key)
                     .await?;
             let stored = cache.store_bytes_with_status(&bytes, &mime).await?;
-            return Ok((
-                stored.url,
-                if image.mime.starts_with("image/") {
-                    image.mime.clone()
-                } else {
-                    mime
-                },
-                bytes.len(),
+            let stored_mime = if image.mime.starts_with("image/") {
+                image.mime.clone()
+            } else {
+                mime
+            };
+            crate::services::media_catalog::register_if_created(
+                db,
+                crate::services::media_catalog::MediaKind::Upload,
+                stored.url.clone(),
+                stored_mime.clone(),
                 image.name.clone(),
-            ));
+                bytes.len() as i64,
+                stored.created,
+            )
+            .await;
+            return Ok((stored.url, stored_mime, bytes.len(), image.name.clone()));
         }
     }
     let cached = cache.cache_image(&image.url).await?;

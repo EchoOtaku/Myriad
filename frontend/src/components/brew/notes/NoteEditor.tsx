@@ -45,11 +45,14 @@ import { brewAnimationPresets, getBrewTransition, useBrewAnimationConfig } from 
 import { isExlight } from '../../../hooks/useAnimationLevel'
 import * as brewApi from '../../../services/brewApi'
 import { federationApi } from '../../../services/federationApi'
-import { highlightCodeBlocks } from '../../../utils/codeHighlight'
 import { userFacingError } from '../../../utils/userFacingError'
 import { Spinner } from '../../Spinner'
 import { showNoteNotice } from '../brewNotice'
-import { noteTopicChoices } from '../logic/topics'
+import { BREW_MINE_CATEGORY } from '../constants'
+import {
+  collectNoteCategories,
+  normalizeNoteCategory,
+} from './noteCategory'
 import {
   applyCollabPeers,
 
@@ -123,7 +126,6 @@ import {
   insertWidgetVisual,
   expandJammedDefinitions,
   looksLikeMarkdown,
-  withLinkDefinitions,
   markdownToVisualHtml,
   pasteMarkdownIntoVisual,
   placeCaretAtTextOffset,
@@ -152,22 +154,25 @@ import {
   visualClosestClass,
   visualHtmlToMarkdown,
   visualOpenBlockBelow,
-  withCodeLangLabels,
 } from './noteVisual'
 import {
   decodeWidgetConfigAttr,
   NOTE_WIDGET_SIZES,
   noteWidgetCanConfigure,
+  noteWidgetTypesInMarkdown,
 } from './noteLayout'
 import { widgetDisplayLabel } from '../../widgetLibraryModel'
 import { WidgetInstanceSettings } from '../../widgets/shared/WidgetInstanceSettings'
 import { NoteWidgetPicker } from './NoteWidgetPicker'
+import { decorateNoteReadSurface } from './noteReadSurface'
+import { preloadNoteWidgets, useNoteWidgetCatalog } from './noteWidgetCatalog'
+import { noteWidgetTypesInHtml } from './noteWidgetHtml'
 import {
-  mountNoteWidgets,
   replaceNoteHtml,
-  useNoteWidgetCatalog,
   useNoteWidgetHydration,
 } from './noteWidgetMount'
+import { getArticleProseClass } from '../reader/articleProseClass'
+import { useReaderSettings } from '../reader/hooks/useReaderSettings'
 import { openNoteCloudDoc } from './useNoteCloud'
 import {
   cloudFieldsOf,
@@ -219,7 +224,6 @@ function revealInContainer(container: HTMLElement, rect: DOMRect, margin = 48): 
   setScrollTop(container, container.scrollTop + delta)
 }
 
-const PREVIEW_DEBOUNCE_MS = 260
 const DRAFT_SAVE_MS = 800
 const VISUAL_UNDO_GROUP_MS = 600
 const VISUAL_UNDO_LIMIT = 200
@@ -260,12 +264,31 @@ export default function NoteEditor({
 }: NoteEditorProps) {
   const { t, format } = useI18n()
   const { user } = useAuth()
+  const {
+    isDark,
+    currentTheme,
+    currentFont,
+    fontSize,
+    lineHeight,
+  } = useReaderSettings()
+  const previewSurfaceClass = useMemo(
+    () => `brew-note__article ${getArticleProseClass(isDark, currentTheme.text)}`,
+    [currentTheme.text, isDark],
+  )
+  const readerSurfaceStyle = useMemo(
+    () => ({
+      fontSize: `${fontSize}px`,
+      lineHeight,
+      fontFamily: currentFont.family,
+    }),
+    [currentFont.family, fontSize, lineHeight],
+  )
   const animation = useBrewAnimationConfig()
   const motionEnabled = !isExlight(animation)
   const [cloudId, setCloudId] = useState<number | null>(docId ?? null)
   /** 本地草稿的键：已发布用 item id，云端稿用 doc id，还没建云端稿的新稿才是 'new'。 */
   const draftKey: number | 'new' = noteId ?? cloudId ?? 'new'
-  const topicChoices = useMemo(() => noteTopicChoices(), [])
+  const [categoryNames, setCategoryNames] = useState<string[]>([])
 
   const [title, setTitle] = useState('')
   const [contentMd, setContentMd] = useState('')
@@ -279,6 +302,8 @@ export default function NoteEditor({
   const [lastError, setLastError] = useState<string | null>(null)
   const [html, setHtml] = useState('')
   const htmlRef = useRef('')
+  /** 这份消毒 HTML 对应的原文。正文改过就丢掉，避免预览先闪旧稿。 */
+  const previewMdRef = useRef('')
   const [previewing, setPreviewing] = useState(false)
   /** 写 / 可视是两种输入法；预览是顶栏开关，关掉回到上一种。 */
   const [pane, setPane] = useState<Pane>('write')
@@ -325,7 +350,7 @@ export default function NoteEditor({
   const selectedWidgetRef = useRef<HTMLElement | null>(null)
   const widgetSettingsOpenRef = useRef(false)
   const blockBarRef = useRef<HTMLDivElement | null>(null)
-  const widgetCatalog = useNoteWidgetCatalog()
+  const widgetCatalog = useNoteWidgetCatalog(true)
   const imageReplaceRef = useRef<HTMLInputElement>(null)
   /** 写栏里 ⌘K 落在已有链接上，记住它，回车时是改地址不是再包一层。 */
   const editingLinkRef = useRef<InlineLink | null>(null)
@@ -384,6 +409,8 @@ export default function NoteEditor({
   }, [])
 
   const applyMergedFields = useCallback((fields: NoteCloudFields) => {
+    // 远端合进来的是原文；可视层若还标着自己在改，会跳过灌 DOM。
+    visualEditing.current = false
     setTitle(fields.title)
     setContentMd(expandJammedDefinitions(fields.contentMd))
     setTopic(fields.topic)
@@ -554,6 +581,31 @@ export default function NoteEditor({
   }, [noteId, docId])
 
   useEffect(() => {
+    const controller = new AbortController()
+    void Promise.all([
+      brewApi.getCategories(undefined, { signal: controller.signal }).catch(() => []),
+      brewApi.listNoteDocs(controller.signal).catch(() => []),
+      brewApi
+        .getItemPreviews(
+          { category: BREW_MINE_CATEGORY, per_page: 40, sort_order: 'desc' },
+          undefined,
+          { signal: controller.signal },
+        )
+        .catch(() => ({ items: [] as Array<{ guid: string; topic?: string | null }> })),
+    ]).then(([cats, docs, preview]) => {
+      if (controller.signal.aborted) return
+      setCategoryNames(
+        collectNoteCategories([
+          ...cats.map((cat) => ({ topic: cat.name })),
+          ...docs,
+          ...preview.items.filter((item) => item.guid.startsWith('note:')),
+        ]),
+      )
+    })
+    return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
     if (loading) return
     const timer = setTimeout(writeNoteDraft, DRAFT_SAVE_MS, draftKey, {
       title,
@@ -565,11 +617,13 @@ export default function NoteEditor({
     return () => clearTimeout(timer)
   }, [draftKey, title, contentMd, topic, cover, publishedAt, loading])
 
-  // 预览防抖 + AbortController：只落地最后一次。写栏敲字不打预览。
+  // 预览只在预览栏打。原文对得上就复用，不对就丢掉旧稿再 POST。
   useEffect(() => {
     if (loading || pane !== 'preview') return
     if (!contentMd.trim()) {
+      previewMdRef.current = ''
       setHtml('')
+      setPreviewing(false)
       return
     }
     const source = expandJammedDefinitions(contentMd)
@@ -577,50 +631,68 @@ export default function NoteEditor({
       setContentMd(source)
       return
     }
+    if (previewMdRef.current === source && htmlRef.current) return
     const controller = new AbortController()
-    const delay = htmlRef.current ? PREVIEW_DEBOUNCE_MS : 0
-    const timer = setTimeout(async () => {
-      setPreviewing(true)
+    setPreviewing(true)
+    void (async () => {
       try {
         const rendered = await brewApi.previewNote(source, controller.signal)
-        if (!controller.signal.aborted) setHtml(withLinkDefinitions(rendered, source))
-      } catch {
-        // 后端预览失败不打断写作；空着不像预览，先用可视层顶一下。
-        if (!controller.signal.aborted) setHtml(markdownToVisualHtml(source))
+        if (!controller.signal.aborted && contentMdRef.current === source) {
+          previewMdRef.current = source
+          setHtml(rendered)
+        }
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          showNoteNotice(userFacingError(err, t.brew.notePreviewFailed))
+        }
       } finally {
         if (!controller.signal.aborted) setPreviewing(false)
       }
-    }, delay)
+    })()
     return () => {
-      clearTimeout(timer)
       controller.abort()
     }
-  }, [contentMd, loading, pane])
+  }, [contentMd, loading, pane, t.brew.notePreviewFailed])
 
-  // 预览里的代码块上色，和阅读器同一套。
-  useEffect(() => {
-    if (pane !== 'preview' || !html) return
-    const root = previewRef.current
-    if (root) void highlightCodeBlocks(root)
-  }, [pane, html])
+  useLayoutEffect(() => {
+    if (!html || previewMdRef.current === contentMd) return
+    previewMdRef.current = ''
+    setHtml('')
+  }, [contentMd, html])
 
   useLayoutEffect(() => {
     if (pane !== 'visual') return
     const el = visualRef.current
-    if (!el || visualEditing.current) return
-    const next = markdownToVisualHtml(contentMd)
-    if (el.innerHTML !== next) replaceNoteHtml(el, next)
+    if (!el) return
+    // 水合后 face 会改 innerHTML。用原文指纹，打字 / 失焦 / 写栏往返都不整树重挂。
+    if (visualEditing.current) {
+      el.dataset.noteVisual = contentMd
+      return
+    }
+    if (el.dataset.noteVisual === contentMd) return
+    replaceNoteHtml(el, markdownToVisualHtml(contentMd))
+    el.dataset.noteVisual = contentMd
   }, [pane, contentMd])
 
   useLayoutEffect(() => {
     if (pane !== 'preview') return
     const el = previewRef.current
     if (!el) return
-    const next = html
-      ? withCodeLangLabels(prepareNoteReaderHtml(html, ''))
-      : ''
-    if (el.innerHTML !== next) replaceNoteHtml(el, next)
-  }, [pane, html])
+    const stale = Boolean(html) && previewMdRef.current !== contentMd
+    if (stale) {
+      previewMdRef.current = ''
+      setHtml('')
+    }
+    const source = html && !stale ? prepareNoteReaderHtml(html, '') : ''
+    const stamp = stale ? '' : html
+    if (el.dataset.noteRead === stamp) return
+    replaceNoteHtml(el, source)
+    if (source) decorateNoteReadSurface(el, t.brew.copyCode)
+    el.dataset.noteRead = stamp
+  }, [pane, html, contentMd, t.brew.copyCode])
+
+  if (pane === 'preview') preloadNoteWidgets(noteWidgetTypesInHtml(html))
+  else preloadNoteWidgets(noteWidgetTypesInMarkdown(contentMd))
 
   const persistVisualWidgetConfig = useCallback(
     (host: HTMLElement, config: Parameters<typeof setNoteWidgetConfig>[2]) => {
@@ -631,20 +703,22 @@ export default function NoteEditor({
     },
     [],
   )
-  const remountVisualWidgets = useCallback(() => {
-    const root = visualRef.current
-    if (!root || paneRef.current !== 'visual') return
-    mountNoteWidgets(root, widgetCatalog, t.brew.noteWidgetMissing, {
+  const visualWidgets = useNoteWidgetHydration(
+    visualRef,
+    widgetCatalog,
+    pane,
+    pane !== 'preview',
+    {
       editable: true,
       onConfigChange: persistVisualWidgetConfig,
-    })
-  }, [persistVisualWidgetConfig, t.brew.noteWidgetMissing, widgetCatalog])
-
-  useNoteWidgetHydration(visualRef, widgetCatalog, contentMd, pane === 'visual', {
-    editable: true,
-    onConfigChange: persistVisualWidgetConfig,
-  })
-  useNoteWidgetHydration(previewRef, widgetCatalog, html, pane === 'preview')
+    },
+  )
+  const previewWidgets = useNoteWidgetHydration(
+    previewRef,
+    widgetCatalog,
+    pane,
+    pane === 'preview',
+  )
 
   if (pane !== 'preview') lastEditPaneRef.current = pane
 
@@ -657,7 +731,11 @@ export default function NoteEditor({
       const root = previewRef.current
       const target = event.target as HTMLElement
       if (!root || !root.contains(target)) return
-      const block = target.closest<HTMLElement>('[data-md-start]')
+      // 水合后面的字不在原文里。点小组件只回到这一块的 :::widget，不对齐 face。
+      const widget = target.closest<HTMLElement>('.note-widget')
+      const block = widget?.hasAttribute('data-md-start')
+        ? widget
+        : target.closest<HTMLElement>('[data-md-start]')
       if (!block || !root.contains(block)) return
       const range = blockSourceRange(contentMdRef.current, {
         start: block.dataset.mdStart,
@@ -667,7 +745,7 @@ export default function NoteEditor({
       event.preventDefault()
       const caret = caretFromPoint(document, event.clientX, event.clientY)
       let plainPrefix = ''
-      if (caret && block.contains(caret.node)) {
+      if (!widget && caret && block.contains(caret.node)) {
         const measure = document.createRange()
         measure.setStart(block, 0)
         measure.setEnd(caret.node, caret.offset)
@@ -845,14 +923,21 @@ export default function NoteEditor({
     const el = visualRef.current
     if (paneRef.current === 'visual' && el) {
       replaceNoteHtml(el, markdownToVisualHtml(next))
+      el.dataset.noteVisual = next
     }
+  }, [])
+
+  /** 可视 DOM 已经改过：只回写原文，不 replaceNoteHtml。 */
+  const commitVisualMd = useCallback((next: string) => {
+    visualEditing.current = true
+    setContentMd(next)
   }, [])
 
   const runVisual = useCallback((command: string, value?: string) => {
     const root = visualRef.current
     if (!root) return
-    setContentMd(runVisualCommand(root, command, value))
-  }, [])
+    commitVisualMd(runVisualCommand(root, command, value))
+  }, [commitVisualMd])
 
   const runTool = useCallback(
     (markdown: () => void, visual?: { command: string; value?: string }) => {
@@ -916,12 +1001,12 @@ export default function NoteEditor({
     (src: string, alt: string) => {
       const root = visualRef.current
       if (paneRef.current === 'visual' && root) {
-        setContentMd(insertImage(root, src, alt))
+        commitVisualMd(insertImage(root, src, alt))
         return
       }
       insertText(`![${alt}](${src})`, '', '')
     },
-    [insertText],
+    [insertText, commitVisualMd],
   )
 
   const handleUpload = useCallback(
@@ -936,7 +1021,7 @@ export default function NoteEditor({
         } else if (as === 'replace') {
           const root = visualRef.current
           const img = selectedImageRef.current
-          if (root && img) setContentMd(setImageSrc(root, img, uploaded.url))
+          if (root && img) commitVisualMd(setImageSrc(root, img, uploaded.url))
         } else {
           placeImage(uploaded.url, file.name)
         }
@@ -946,7 +1031,7 @@ export default function NoteEditor({
         setUploading(false)
       }
     },
-    [placeImage, t.brew.errorSaveFailed],
+    [placeImage, t.brew.errorSaveFailed, commitVisualMd],
   )
 
   const handleSave = useCallback(async () => {
@@ -1139,22 +1224,22 @@ export default function NoteEditor({
     (level: number) => {
       const root = visualRef.current
       if (paneRef.current === 'visual' && root) {
-        setContentMd(toggleVisualHeading(root, level))
+        commitVisualMd(toggleVisualHeading(root, level))
         return
       }
       applyEdit((v, s, e) => setHeadingLevel(v, s, e, level))
     },
-    [applyEdit],
+    [applyEdit, commitVisualMd],
   )
 
   const inlineCode = useCallback(() => {
     const root = visualRef.current
     if (paneRef.current === 'visual' && root) {
-      setContentMd(toggleVisualInlineCode(root))
+      commitVisualMd(toggleVisualInlineCode(root))
       return
     }
     wrap('`', '`', t.brew.noteToolInlineCode)
-  }, [wrap, t.brew.noteToolInlineCode])
+  }, [wrap, t.brew.noteToolInlineCode, commitVisualMd])
 
   const bold = useCallback(
     () => runTool(() => wrap('**', '**', t.brew.noteToolBold), { command: 'bold' }),
@@ -1290,7 +1375,7 @@ export default function NoteEditor({
     if (!widget || !container) {
       setSelectedWidget(null)
       setWidgetSettingsOpen(false)
-      remountVisualWidgets()
+      visualWidgets.refresh()
       return
     }
     setSelectedWidget({
@@ -1298,8 +1383,8 @@ export default function NoteEditor({
       type: widget.dataset.widget ?? '',
       size: widget.dataset.size ?? '2x2',
     })
-    remountVisualWidgets()
-  }, [remountVisualWidgets])
+    visualWidgets.refresh()
+  }, [visualWidgets.refresh])
 
   // 正文变了（撤销、远端合并、换图）：选中的图要么已经不在树上了，要么位置挪了。
   useEffect(() => {
@@ -1327,10 +1412,10 @@ export default function NoteEditor({
       const root = visualRef.current
       const img = selectedImageRef.current
       if (!root || !img) return
-      setContentMd(fn(root, img))
+      commitVisualMd(fn(root, img))
       if (!keep) selectImage(null)
     },
-    [selectImage],
+    [selectImage, commitVisualMd],
   )
 
   const footnoteJump = useCallback((root: HTMLElement, target: HTMLElement) => {
@@ -1377,9 +1462,9 @@ export default function NoteEditor({
       const root = visualRef.current
       const table = activeBlockRef.current
       if (!root || !(table instanceof HTMLTableElement)) return
-      setContentMd(fn(root, table))
+      commitVisualMd(fn(root, table))
     },
-    [],
+    [commitVisualMd],
   )
 
   const columnsOp = useCallback(
@@ -1387,9 +1472,9 @@ export default function NoteEditor({
       const root = visualRef.current
       const columns = activeBlockRef.current
       if (!root || !columns?.classList.contains('note-columns')) return
-      setContentMd(fn(root, columns))
+      commitVisualMd(fn(root, columns))
     },
-    [],
+    [commitVisualMd],
   )
 
   const widgetOp = useCallback(
@@ -1397,10 +1482,11 @@ export default function NoteEditor({
       const root = visualRef.current
       const widget = selectedWidgetRef.current ?? activeBlockRef.current
       if (!root || !widget?.classList.contains('note-widget')) return
-      setContentMd(fn(root, widget))
+      commitVisualMd(fn(root, widget))
       if (!keep) selectWidget(null)
+      else visualWidgets.refresh()
     },
-    [selectWidget],
+    [selectWidget, commitVisualMd, visualWidgets.refresh],
   )
 
   const changeCodeLang = useCallback((lang: string) => {
@@ -1408,9 +1494,9 @@ export default function NoteEditor({
     const root = visualRef.current
     const pre = activeBlockRef.current
     if (root && pre instanceof HTMLPreElement) {
-      setContentMd(setVisualCodeLang(root, pre, lang))
+      commitVisualMd(setVisualCodeLang(root, pre, lang))
     }
-  }, [])
+  }, [commitVisualMd])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1643,9 +1729,8 @@ export default function NoteEditor({
       const root = visualRef.current
       if (paneRef.current === 'visual' && root) {
         restoreVisualRange()
-        visualEditing.current = true
         openBlockBelow()
-        setContentMd(insertWidgetVisual(root, type, size))
+        commitVisualMd(insertWidgetVisual(root, type, size))
         const last = [...root.querySelectorAll<HTMLElement>('.note-widget')].at(-1)
         if (last) {
           selectWidget(last)
@@ -1657,7 +1742,7 @@ export default function NoteEditor({
       openBlockBelow()
       insertText(insertWidgetMarkdown(type, size), '', '')
     },
-    [insertText, openBlockBelow, restoreVisualRange, selectWidget, widgetCatalog],
+    [insertText, openBlockBelow, restoreVisualRange, selectWidget, widgetCatalog, commitVisualMd],
   )
 
   const onOwnLine = (tool: NoteEditorTool): NoteEditorTool => ({
@@ -1705,7 +1790,7 @@ export default function NoteEditor({
       run: () => {
         const root = visualRef.current
         if (paneRef.current === 'visual' && root) {
-          setContentMd(insertColumnsVisual(root))
+          commitVisualMd(insertColumnsVisual(root))
           return
         }
         insertText(insertColumnsMarkdown(), '', '')
@@ -1776,7 +1861,6 @@ export default function NoteEditor({
               />
               <NoteByline
                 topic={topic}
-                topicChoices={topicChoices}
                 publishedAt={publishedAt}
                 scheduledAt={scheduledAt}
                 docStatus={docStatus}
@@ -1861,6 +1945,7 @@ export default function NoteEditor({
                 <div
                   ref={visualRef}
                   className="brew-note-preview brew-note__visual"
+                  style={readerSurfaceStyle}
                   contentEditable
                   suppressContentEditableWarning
                   role="textbox"
@@ -1900,7 +1985,7 @@ export default function NoteEditor({
                     // 贴的是 Markdown（没带 HTML）：按 Markdown 解，图片就是图片。
                     if (!e.clipboardData.getData('text/html') && looksLikeMarkdown(text)) {
                       e.preventDefault()
-                      setContentMd(pasteMarkdownIntoVisual(e.currentTarget, text))
+                      commitVisualMd(pasteMarkdownIntoVisual(e.currentTarget, text))
                     }
                   }}
                   onKeyDown={(e) => {
@@ -1914,7 +1999,9 @@ export default function NoteEditor({
                         visualClosest(root, 'td') ?? visualClosest(root, 'th')
                       if (cell) {
                         const changed = tableStep(root, cell, e.shiftKey)
-                        if (changed != null) setContentMd(changed)
+                        if (changed != null) {
+                          commitVisualMd(changed)
+                        }
                         return
                       }
                       if (visualClosest(root, 'li')) {
@@ -1935,7 +2022,7 @@ export default function NoteEditor({
                           : matchEnterRule(text)
                       if (rule) {
                         e.preventDefault()
-                        setContentMd(applyVisualInputRule(root, blockEl, rule))
+                        commitVisualMd(applyVisualInputRule(root, blockEl, rule))
                         return
                       }
                     }
@@ -1961,7 +2048,7 @@ export default function NoteEditor({
                     // 勾选框画在 li 内容区左边的 ::before 上，点在内容左侧就是点它。
                     if (e.clientX < item.getBoundingClientRect().left) {
                       e.preventDefault()
-                      setContentMd(toggleVisualTask(root, item))
+                      commitVisualMd(toggleVisualTask(root, item))
                     }
                   }}
                   onInput={(e) => {
@@ -1971,11 +2058,11 @@ export default function NoteEditor({
                     if (/[)`*~]/.test(typed)) {
                       const converted = applyInlineMarkdownAtCaret(root)
                       if (converted != null) {
-                        setContentMd(converted)
+                        commitVisualMd(converted)
                         return
                       }
                     }
-                    setContentMd(visualHtmlToMarkdown(root.innerHTML))
+                    commitVisualMd(visualHtmlToMarkdown(root.innerHTML))
                   }}
                 />
               </div>
@@ -1987,11 +2074,17 @@ export default function NoteEditor({
                   <div className="brew-note__center">
                     <Spinner size="md" />
                   </div>
-                ) : html ? (
-                  <div className="brew-note-preview" ref={previewRef} />
-                ) : (
+                ) : null}
+                {!html && !previewing && !contentMd.trim() ? (
                   <p className="brew-note__empty">{t.brew.notePreviewEmpty}</p>
-                )}
+                ) : null}
+                <div
+                  className={previewSurfaceClass}
+                  style={readerSurfaceStyle}
+                  hidden={!html}
+                >
+                  <div ref={previewRef} />
+                </div>
               </div>
             </article>
           )}
@@ -2087,7 +2180,6 @@ export default function NoteEditor({
               }
               ignoreRef={blockBarRef}
               onSave={(next) => {
-                visualEditing.current = true
                 widgetOp((root, widget) => setNoteWidgetConfig(root, widget, next))
                 setWidgetSettingsOpen(false)
                 visualRef.current?.focus()
@@ -2124,8 +2216,17 @@ export default function NoteEditor({
           onClose={() => setSettingsOpen(false)}
           docStatus={docStatus}
           topic={topic}
-          topicChoices={topicChoices}
+          topicChoices={categoryNames}
           onTopicChange={setTopic}
+          onCreateTopic={(name) => {
+            const next = normalizeNoteCategory(name)
+            if (!next) return
+            setTopic(next)
+            setCategoryNames((prev) =>
+              collectNoteCategories([...prev.map((item) => ({ topic: item })), { topic: next }]),
+            )
+            void brewApi.createCategory({ name: next }).catch(() => {})
+          }}
           publishedAt={publishedAt}
           onPublishedAtChange={setPublishedAt}
           scheduledAt={scheduledAt}
@@ -2183,6 +2284,8 @@ export default function NoteEditor({
           if (file) void handleUpload(file, 'replace')
         }}
       />
+      {visualWidgets.portals}
+      {previewWidgets.portals}
     </motion.div>,
     document.body,
   )

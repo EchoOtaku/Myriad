@@ -166,6 +166,22 @@ html.dark .setting-horizontal .setting-item-content:hover {
   color: var(--cfg-text-1);
 }
 
+.setting-label-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: auto;
+  min-width: 1.15em;
+  height: 1.15em;
+  color: inherit;
+}
+
+.setting-label-icon svg {
+  width: auto;
+  height: 100%;
+}
+
 .setting-field-error-tag--solo {
   display: inline-flex;
   margin-top: 0.25rem;

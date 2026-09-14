@@ -14,6 +14,7 @@ export interface SettingItemWrapperProps extends Partial<BaseSettingItemConfig> 
   children: React.ReactNode
   className?: string
   id?: string
+  icon?: ReactNode
   detail?: ReactNode
   guide?: ReactNode
   onApplyDefault?: (newDefault: string) => void
@@ -33,6 +34,7 @@ export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
   size = 'md',
   className = '',
   id,
+  icon,
   children,
   disabled = false,
   onApplyDefault,
@@ -50,6 +52,11 @@ export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
 
   const labelText = label && (
     <span className="setting-label-text">
+      {icon ? (
+        <span className="setting-label-icon" aria-hidden>
+          {icon}
+        </span>
+      ) : null}
       {label}
       {required && <span className="required">*</span>}
       {detailText && !expandHelp && (

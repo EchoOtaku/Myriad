@@ -45,3 +45,22 @@ it('decorates text without removing media ancestors, preserving selection and lo
   observer.disconnect()
   dom.window.close()
 })
+
+it('正文小组件里的字不参与对齐，也不被批注包起来', () => {
+  const dom = new JSDOM(
+    '<main><p>one <em>two</em></p><div class="note-widget not-prose" data-widget="friend-links"><div class="note-widget__face">Freundeslinks</div></div></main>',
+  )
+  const root = dom.window.document.querySelector('main')
+  const host = root.querySelector('.note-widget')
+  const face = host.querySelector('.note-widget__face')
+  applyTextDecorations(
+    root,
+    '<p>one <em><mark class="user-comment-highlight" data-comment-id="1">two</mark></em></p><div class="note-widget not-prose" data-widget="friend-links"></div>',
+  )
+  assert.equal(root.querySelector('mark').textContent, 'two')
+  assert.equal(host, root.querySelector('.note-widget'))
+  assert.equal(face, host.querySelector('.note-widget__face'))
+  assert.equal(face.textContent, 'Freundeslinks')
+  assert.equal(host.querySelector('mark'), null)
+  dom.window.close()
+})

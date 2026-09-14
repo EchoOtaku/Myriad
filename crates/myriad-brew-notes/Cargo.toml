@@ -9,3 +9,4 @@ authors = ["Myriad Contributors"]
 [dependencies]
 ammonia = "4.1"
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+serde_json = "1"

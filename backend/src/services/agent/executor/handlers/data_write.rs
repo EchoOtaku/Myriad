@@ -460,12 +460,8 @@ async fn execute_brew_subscribe(
                             word_count: Set(Some(word_count)),
                             reading_time: Set(Some(reading_time)),
                             fulltext_fetched: Set(false),
-                            // 与 brew_scheduler 同一套关键词打标；漏标保持 NULL
-                            topic: Set(crate::services::brew_topics::infer_topic_by_keywords(
-                                &item.title,
-                                item.summary.as_deref(),
-                            )
-                            .map(str::to_string)),
+                            // 与调度器一样：先 NULL，插入后再异步让 AI 建议。
+                            topic: Set(None),
                             ..Default::default()
                         }
                     })
@@ -502,6 +498,16 @@ async fn execute_brew_subscribe(
                     if let Err(e) = source_active.update(ctx.db).await {
                         tracing::warn!("[Brew] failed to update source counts: {}", e);
                     }
+                    let topic_db = ctx.db.clone();
+                    let source_id = source.id;
+                    tokio::spawn(async move {
+                        crate::services::brew_topics::recommend_unlabeled_for_source(
+                            &topic_db,
+                            source_id,
+                            inserted_count,
+                        )
+                        .await;
+                    });
                 }
 
                 tracing::info!(

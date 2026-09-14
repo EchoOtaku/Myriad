@@ -1227,6 +1227,19 @@ describe('userFacingError', () => {
     assert.notEqual(large, disk)
   })
 
+  it('maps media catalog in-use delete', () => {
+    assert.equal(
+      userFacingError(
+        new ApiError(
+          'This file is still in use and cannot be deleted.',
+          409,
+          'MEDIA_IN_USE',
+        ),
+      ),
+      currentCopy().errors.mediaInUse,
+    )
+  })
+
   it('maps Tapp storage leftovers and keeps the cause', () => {
     const perm = userFacingError(
       'Failed to create Tapp staging directory: storage is not writable. Check data volume ownership/permissions.',

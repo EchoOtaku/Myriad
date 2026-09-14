@@ -22,21 +22,26 @@ use serde_json::json;
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 
+use crate::models::entities::brew_sources::SourceType;
 use crate::models::entities::{
     brew_annotations, brew_categories, brew_items, brew_podcasts, brew_sources, brew_user_states,
 };
 use crate::services::brew_parser::{FeedParser, ParseError, ParsedFeed};
 use crate::services::brew_scheduler::get_brew_scheduler;
+use crate::services::brew_topics::{
+    TopicSuggestError, TopicWriteError, list_subscription_topic_names, set_subscription_item_topic,
+    suggest_subscription_item_topic,
+};
 use crate::services::data_paths::paths;
 use crate::services::icon_service::IconService;
 
 use super::comments_rsshub;
-use super::note_docs;
 use super::helpers::{
     brew_http_err, brew_store_http, build_feed_discovery_candidates, generate_opml,
     get_admin_user_id_from_headers, get_user_and_admin_status, overlay_requested_feed_type,
     parse_feed_type_label, parse_opml,
 };
+use super::note_docs;
 use super::notes;
 use super::reading_sync_ws;
 
@@ -61,6 +66,7 @@ pub fn create_brew_routes(app_state: crate::state::AppState) -> Router<crate::st
             "/categories/{id}",
             put(update_category).delete(delete_category),
         )
+        .route("/topics", get(list_subscription_topics))
         // 手记（站长自写内容；写路径一律管理员）
         .route("/notes", post(notes::create_note))
         .route("/notes/preview", post(notes::preview_note))
@@ -78,7 +84,10 @@ pub fn create_brew_routes(app_state: crate::state::AppState) -> Router<crate::st
                 .put(note_docs::update_note_doc)
                 .delete(note_docs::delete_note_doc),
         )
-        .route("/notes/docs/{id}/publish", post(note_docs::publish_note_doc))
+        .route(
+            "/notes/docs/{id}/publish",
+            post(note_docs::publish_note_doc),
+        )
         .route(
             "/notes/docs/{id}/schedule",
             post(note_docs::schedule_note_doc),
@@ -103,6 +112,8 @@ pub fn create_brew_routes(app_state: crate::state::AppState) -> Router<crate::st
         // 文章获取
         .route("/items", get(list_items))
         .route("/items/{id}", get(reading_sync_ws::get_item))
+        .route("/items/{id}/topic", put(update_item_topic))
+        .route("/items/{id}/suggest-topic", post(suggest_item_topic))
         .route("/items/{id}/fulltext", get(reading_sync_ws::fetch_fulltext))
         // 阅读状态
         .route("/items/{id}/read", post(reading_sync_ws::mark_read))
@@ -196,8 +207,7 @@ struct ItemPreview {
     published_at: Option<i64>,
     is_read: bool,
     is_starred: bool,
-    /// 预定义主题 key。首页「精选」磁贴靠预览里的 topic 聚类，
-    /// 这样主题卡不需要额外接口。
+    /// 订阅主题名。首页磁贴靠预览里的 topic 聚类，不另开列表接口。
     topic: Option<String>,
 }
 
@@ -1256,6 +1266,81 @@ pub(crate) async fn delete_category(
     }
 }
 
+// 订阅主题
+
+#[derive(Deserialize)]
+struct UpdateItemTopicRequest {
+    topic: Option<String>,
+}
+
+fn topic_write_http(err: TopicWriteError) -> HttpError {
+    match err {
+        TopicWriteError::NotFound => brew_http_err(StatusCode::NOT_FOUND, "Article not found"),
+        TopicWriteError::NoteItem => brew_http_err(
+            StatusCode::BAD_REQUEST,
+            "Note categories are edited in the note editor",
+        ),
+        TopicWriteError::Store => brew_store_http("update topic", "store failed"),
+    }
+}
+
+fn topic_suggest_http(err: TopicSuggestError) -> HttpError {
+    match err {
+        TopicSuggestError::NotFound => brew_http_err(StatusCode::NOT_FOUND, "Article not found"),
+        TopicSuggestError::NoteItem => brew_http_err(
+            StatusCode::BAD_REQUEST,
+            "Note categories are edited in the note editor",
+        ),
+        TopicSuggestError::Unavailable => {
+            brew_http_err(StatusCode::SERVICE_UNAVAILABLE, "AI service unavailable")
+        }
+        TopicSuggestError::Failed => {
+            brew_http_err(StatusCode::INTERNAL_SERVER_ERROR, "Failed to suggest topic")
+        }
+        TopicSuggestError::Store => brew_store_http("suggest topic", "store failed"),
+    }
+}
+
+/// 本站已有的订阅主题名。手记分类不进这里。
+async fn list_subscription_topics(
+    State(db): State<DatabaseConnection>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    let topics = list_subscription_topic_names(&db)
+        .await
+        .map_err(|e| brew_store_http("list topics", e))?;
+    Ok(Json(json!({ "success": true, "topics": topics })))
+}
+
+/// 站长手填订阅文章主题。手记走编辑器，不走这条。
+async fn update_item_topic(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Path(id): Path<i32>,
+    Json(body): Json<UpdateItemTopicRequest>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    get_admin_user_id_from_headers(&headers, &db).await?;
+    let topic = set_subscription_item_topic(&db, id, body.topic.as_deref())
+        .await
+        .map_err(topic_write_http)?;
+    Ok(Json(json!({ "success": true, "topic": topic })))
+}
+
+/// 按正文建议主题并写回。站长可再手改。
+async fn suggest_item_topic(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Path(id): Path<i32>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    get_admin_user_id_from_headers(&headers, &db).await?;
+    let topic = suggest_subscription_item_topic(&db, id, true)
+        .await
+        .map_err(topic_suggest_http)?;
+    Ok(Json(json!({
+        "success": true,
+        "topic": topic,
+    })))
+}
+
 // 文章获取
 
 /// 获取文章列表（游客可访问）
@@ -1383,8 +1468,8 @@ pub(crate) async fn list_items(
         items_query = items_query.filter(brew_items::Column::SourceId.eq(source_id));
     }
 
-    // 按主题筛选。与 category 同级：只回该主题的文章，`topic IS NULL` 的天然落空。
-    // 打标是离线的，读路径只读已有列，绝不在这里现算。
+    // 按主题筛选。与 category 同级：只回该主题的订阅文章，手记分类同名也不进来。
+    // `topic IS NULL` 的天然落空。读路径只读已有列，绝不在这里现算。
     if let Some(topic) = query
         .topic
         .as_deref()
@@ -1392,6 +1477,13 @@ pub(crate) async fn list_items(
         .filter(|t| !t.is_empty())
     {
         items_query = items_query.filter(brew_items::Column::Topic.eq(topic));
+        let note_source_ids = brew_sources::Entity::find()
+            .filter(brew_sources::Column::SourceType.eq(SourceType::Note))
+            .select_only()
+            .column(brew_sources::Column::Id)
+            .into_query();
+        items_query =
+            items_query.filter(brew_items::Column::SourceId.not_in_subquery(note_source_ids));
     }
 
     // 按分类筛选（支持多分类：category 字段可能是逗号分隔的多个分类）

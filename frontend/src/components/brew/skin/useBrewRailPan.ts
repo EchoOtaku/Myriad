@@ -53,6 +53,8 @@ export interface BrewRailCard {
 
 export interface BrewRailApi {
   align: (id: number, immediate?: boolean) => void
+  /** 按列对齐。聚合卡和分源卡会共用同一篇 id，不能只靠 data-rail-id。 */
+  alignColumn: (col: number, immediate?: boolean) => void
   /** 轨上卡片变了：重测；前面插入时把滚动补回去，视觉不动。 */
   relayout: () => void
   /** 只换实装窗口：重挂卡，不挪滚动。 */
@@ -332,8 +334,7 @@ export function useBrewRailPan(
       track.dataset.brewRailScroll = attr
     }
     const writeTransform = () => {
-      const max = maxScroll()
-      const next = max > 0 ? `translate3d(${-current}px, 0, 0)` : ''
+      const next = scrollMax > 0 ? `translate3d(${-current}px, 0, 0)` : ''
       if (next !== lastTransform) {
         lastTransform = next
         track.style.transform = next
@@ -577,10 +578,37 @@ export function useBrewRailPan(
       }
       if (viewW < 32) measure()
       lastLead = String(id)
+      goToColumn(col, immediate, index)
+    }
+
+    const goToColumn = (col: number, immediate: boolean, index = -1) => {
       const x = clampConversationScroll(
         col > 0 && colW > 1
           ? (col - 1) * colW
           : railSeatScroll(cards, Math.max(0, index), overflowPx),
+        maxScroll(),
+      )
+      if (immediate) {
+        current = x
+        target = x
+        home = slotAt(x)
+        seating = false
+        writeTransform()
+        persistScroll()
+        writeExit()
+        return
+      }
+      snapTo(x)
+    }
+
+    const alignColumn = (col: number, immediate = false) => {
+      if (colW <= 1 || viewW < 32) {
+        recache()
+        measure()
+      }
+      const at = Math.max(1, col)
+      const x = clampConversationScroll(
+        colW > 1 ? (at - 1) * colW : 0,
         maxScroll(),
       )
       if (immediate) {
@@ -638,11 +666,14 @@ export function useBrewRailPan(
     }
 
     const seek = (scroll: number) => {
+      if (Math.abs(scroll - current) < 0.5 && Math.abs(scroll - target) < 0.5) {
+        return
+      }
       if (!cards.length) {
         recache()
         measure()
       }
-      const next = clampConversationScroll(scroll, maxScroll())
+      const next = scroll <= 0 ? 0 : scroll >= scrollMax ? scrollMax : scroll
       if (Math.abs(next - current) < 0.5 && Math.abs(next - target) < 0.5) return
       if (frame) {
         cancelAnimationFrame(frame)
@@ -658,6 +689,7 @@ export function useBrewRailPan(
     if (apiRef) {
       apiRef.current = {
         align,
+        alignColumn,
         relayout,
         refresh,
         seek,

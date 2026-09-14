@@ -166,10 +166,14 @@ pub struct UpdateSourceRequest {
     pub site_url: Option<String>,
     /// 自定义排序顺序
     pub sort_order: Option<i32>,
+    /// 订阅地址。改类型时经常要一起换。
+    pub url: Option<String>,
     /// 来源类型: link, rss, brewlia
     pub source_type: Option<String>,
-    /// Feed 类型: rss, atom, json_feed, notion
+    /// Feed 类型: rss, atom, json_feed, notion, rsshub
     pub feed_type: Option<String>,
+    /// 仅当 feed_type = rsshub 时使用
+    pub rsshub_route: Option<String>,
     /// 额外配置（用于 Notion token 等）
     pub extra_config: Option<serde_json::Value>,
     /// AI 风格标签（用户自定义或 AI 生成）

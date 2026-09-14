@@ -4,7 +4,6 @@
  */
 
 import type { CSSProperties, FocusEvent, KeyboardEvent, ReactNode, RefObject } from 'react'
-import type { TopicNameKey } from '../logic/topics'
 import type { NoteCollabPeer } from './noteCollab'
 import type { PopoverCoords } from './notePopover'
 
@@ -25,6 +24,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom'
 import { useI18n } from '../../../contexts/I18nContext'
 import { noteEditorStatus } from './noteBoard'
+import { noteCategoryLabel, normalizeNoteCategory } from './noteCategory'
 import {
   NoteButton,
   NoteDateInput,
@@ -226,28 +226,24 @@ export function NoteTopBar({
 
 interface NoteBylineProps {
   topic: string | null
-  topicChoices: { key: string; nameKey: TopicNameKey }[]
   publishedAt: number | null
   scheduledAt: number | null
   docStatus: NoteEditorDocStatus
   onOpenSettings: () => void
 }
 
-/** 标题下面一行淡字：主题 · 时间。点开发布设置。 */
+/** 标题下面一行淡字：分类 · 时间。点开发布设置。 */
 export function NoteByline({
   topic,
-  topicChoices,
   publishedAt,
   scheduledAt,
   docStatus,
   onOpenSettings,
 }: NoteBylineProps) {
   const { t, locale } = useI18n()
-  const topicLabel = useMemo(() => {
-    if (!topic) return t.brew.noteTopicNone
-    const choice = topicChoices.find((item) => item.key === topic)
-    return choice ? t.brew[choice.nameKey] : topic
-  }, [t.brew, topic, topicChoices])
+  const topicLabel = topic
+    ? noteCategoryLabel(topic, t.brew)
+    : t.brew.noteTopicNone
   const when = docStatus === 'scheduled' ? scheduledAt : publishedAt
   const whenLabel =
     when != null && Number.isFinite(when)
@@ -964,8 +960,9 @@ interface NoteSettingsDrawerProps {
   onClose: () => void
   docStatus: NoteEditorDocStatus
   topic: string | null
-  topicChoices: { key: string; nameKey: TopicNameKey }[]
+  topicChoices: string[]
   onTopicChange: (topic: string | null) => void
+  onCreateTopic: (name: string) => void
   publishedAt: number | null
   onPublishedAtChange: (ms: number | null) => void
   scheduledAt: number | null
@@ -983,7 +980,7 @@ interface NoteSettingsDrawerProps {
   onDelete: () => void
 }
 
-/** 主题 / 时间 / 封面 / 定时 / 删除。写作时收起来。 */
+/** 分类 / 时间 / 封面 / 定时 / 删除。写作时收起来。 */
 export function NoteSettingsDrawer({
   open,
   onClose,
@@ -991,6 +988,7 @@ export function NoteSettingsDrawer({
   topic,
   topicChoices,
   onTopicChange,
+  onCreateTopic,
   publishedAt,
   onPublishedAtChange,
   scheduledAt,
@@ -1008,16 +1006,24 @@ export function NoteSettingsDrawer({
   onDelete,
 }: NoteSettingsDrawerProps) {
   const { t } = useI18n()
+  const [draftCategory, setDraftCategory] = useState('')
   const topicOptions = useMemo(() => {
-    const choices = topicChoices.map((choice) => ({
-      value: choice.key,
-      label: t.brew[choice.nameKey],
-    }))
-    if (topic && !choices.some((choice) => choice.value === topic)) {
-      choices.push({ value: topic, label: topic })
-    }
-    return [{ value: '', label: t.brew.noteTopicNone }, ...choices]
+    const names = [...topicChoices]
+    if (topic && !names.includes(topic)) names.push(topic)
+    return [
+      { value: '', label: t.brew.noteTopicNone },
+      ...names.map((name) => ({
+        value: name,
+        label: noteCategoryLabel(name, t.brew),
+      })),
+    ]
   }, [t.brew, topic, topicChoices])
+  const commitDraftCategory = () => {
+    const name = normalizeNoteCategory(draftCategory)
+    if (!name) return
+    onCreateTopic(name)
+    setDraftCategory('')
+  }
 
   const { shown, leaving } = useDrawerPresence(open)
   if (!shown) return null
@@ -1043,6 +1049,18 @@ export function NoteSettingsDrawer({
           value={topic ?? ''}
           options={topicOptions}
           onChange={(value) => onTopicChange(value || null)}
+        />
+        <input
+          className="note-input"
+          value={draftCategory}
+          placeholder={t.brew.noteCategoryHint}
+          aria-label={t.brew.noteCategoryNew}
+          onChange={(event) => setDraftCategory(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter') return
+            event.preventDefault()
+            commitDraftCategory()
+          }}
         />
       </NoteField>
 

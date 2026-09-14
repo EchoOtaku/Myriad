@@ -62,17 +62,17 @@ export function useBrewpack(
     const signal = turns.current.begin()
     setLoading(true)
     const result = await exportBrewpackFile(sources, copyRef.current, signal)
-    unlessAborted(signal, () => {
-      if (result.ok) showSuccess(result.message)
-      else showError(result.error)
+    if (signal.aborted) {
       setLoading(false)
-    })
+      return
+    }
+    if (result.ok) showSuccess(result.message)
+    else showError(result.error)
+    setLoading(false)
   }, [sources])
 
-  const importFile = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0]
-      if (!file) return
+  const importFromFile = useCallback(
+    async (file: File) => {
       const signal = turns.current.begin()
       setLoading(true)
       const result = await importBrewpackFile(
@@ -86,6 +86,9 @@ export function useBrewpack(
       )
       if (signal.aborted) {
         if (result.ok) onSourcesChange?.()
+        setLoading(false)
+        setProgress(null)
+        if (inputRef.current) inputRef.current.value = ''
         return
       }
       if (result.ok) {
@@ -95,9 +98,18 @@ export function useBrewpack(
         showError(result.error)
       }
       setLoading(false)
+      setProgress(null)
       if (inputRef.current) inputRef.current.value = ''
     },
     [sources, onSourcesChange],
+  )
+
+  const importFile = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
+      if (file) await importFromFile(file)
+    },
+    [importFromFile],
   )
 
   const exportOpml = useCallback(() => {
@@ -115,6 +127,7 @@ export function useBrewpack(
     inputRef,
     exportPack,
     importFile,
+    importFromFile,
     exportOpml,
   }
 }

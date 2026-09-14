@@ -1,7 +1,8 @@
+import type { Ref } from 'react'
 import type { FeedStory } from '../logic/feedStories'
 import type { TopicNameKey } from '../logic/topics'
-import type { TimeTranslations } from '../types'
 
+import type { TimeTranslations } from '../types'
 import { memo } from 'react'
 
 import { sameFeedStory } from '../logic/feedStories'
@@ -24,6 +25,7 @@ function samePlace(
 }
 
 export const BrewStory = memo(({
+  ref,
   item,
   times,
   locale,
@@ -42,6 +44,7 @@ export const BrewStory = memo(({
   holdCover = false,
   canStar,
 }: {
+  ref?: Ref<HTMLButtonElement>
   item: BrewStoryItem
   times: TimeTranslations
   locale: string
@@ -62,6 +65,7 @@ export const BrewStory = memo(({
 }) => {
   return (
     <StoryCard
+      ref={ref}
       railId={item.id}
       arrive={arrive}
       place={place}
@@ -84,6 +88,7 @@ export const BrewStory = memo(({
   )
 }, (prev, next) => (
   (prev.item === next.item || sameFeedStory(prev.item, next.item))
+  && prev.ref === next.ref
   && samePlace(prev.place, next.place)
   && prev.railCol === next.railCol
   && prev.locale === next.locale

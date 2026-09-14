@@ -18,7 +18,6 @@ import { SettingTitleTag } from '../../settings/SettingTitleTag'
 import {
   DEFAULT_THEME_COLOR,
   getIconUrl,
-  getImageUrl,
   normalizeThemeColor,
 } from '../constants'
 import {
@@ -29,10 +28,15 @@ import {
 import {
   clipPaintedBatches,
   extendPaintedRange,
+  firstStoryForRailGroup,
+  isLatestFeedId,
+  LATEST_FEED_ID,
+  latestFeedStackFaces,
   sourceColumnStarts,
   sourceScrollStarts,
   storyColumnLeads,
   storyColumnShift,
+  storyRailGroup,
   storyRailSlots,
   storySlotAtColumn,
   storySlotsByColumn,
@@ -41,6 +45,7 @@ import { FeedsAddFormProvider } from '../ui/BrewFeedsPanel'
 import { BrewRailTitle } from '../ui/BrewRailTitle'
 import { BrewVacant } from '../ui/Empty'
 import { SiteCard } from '../ui/SiteCard'
+import { markBrewStoryPeek } from '../ui/StoryCard'
 import { BrewStoryColumn } from './BrewStory'
 import {
   brewFlipQuiet,
@@ -87,6 +92,7 @@ import {
   railMountColumnsSettle,
   railSeatScroll,
   railTrackScroll,
+  recycleStoryDomShellsOutside,
   sourceAtScroll,
   storyMountWindow,
   storyRailTrackSize,
@@ -126,7 +132,7 @@ function paintSiteOn(
   prevEl?.classList.remove('is-on')
   let next = byId.get(id)
   if (!next) {
-    next = track.querySelector<HTMLElement>(`.brew-site[data-rail-id="${id}"]`)
+    next = track.querySelector<HTMLElement>(`.brew-site[data-rail-id="${id}"]`) ?? undefined
     if (next) byId.set(id, next)
   }
   next?.classList.add('is-on')
@@ -136,9 +142,8 @@ function paintSiteOn(
 
 const BrewFeedsSites = memo(({
   sources,
+  inbox,
   onId,
-  readyId,
-  scene,
   times,
   locale,
   isEditMode,
@@ -152,9 +157,19 @@ const BrewFeedsSites = memo(({
   onIconLoad,
 }: {
   sources: BrewSource[]
+  inbox: {
+    name: string
+    description: string
+    latestTitle?: string
+    latestWhen?: string
+    stack: Array<{
+      key: string
+      src?: string | null
+      mark?: string
+      ink?: string | null
+    }>
+  } | null
   onId: number | null | undefined
-  readyId: number | null | undefined
-  scene: string
   times: TimeTranslations
   locale: string
   isEditMode: boolean
@@ -167,34 +182,55 @@ const BrewFeedsSites = memo(({
   onEdit: (id: number | string) => void
   onIconLoad: (img: HTMLImageElement) => void
 }) => {
-  return sources.map((source) => {
-    const latest = source.recent_items?.[0] ?? null
-    return (
-      <SiteCard
-        key={source.id}
-        id={source.id}
-        name={source.name}
-        description={source.description?.trim() || ''}
-        icon={getIconUrl(source.icon)}
-        unread={source.unread_count}
-        latestTitle={latest?.title}
-        latestWhen={
-          latest ? brewRelativeTime(latest.published_at, times, locale) : ''
-        }
-        on={source.id === onId}
-        cover={source.id === readyId ? scene : ''}
-        editing={isEditMode}
-        picked={selectedIds?.has(source.id)}
-        ink={normalizeThemeColor(source.theme_color)}
-        emptyLabel={emptyLabel}
-        editLabel={editLabel}
-        onActivate={onActivate}
-        onOpenLatest={latest ? onOpenLatest : undefined}
-        onEdit={canEdit ? onEdit : undefined}
-        onIconLoad={onIconLoad}
-      />
-    )
-  })
+  return (
+    <>
+      {inbox ? (
+        <SiteCard
+          key={LATEST_FEED_ID}
+          id={LATEST_FEED_ID}
+          name={inbox.name}
+          description={inbox.description}
+          latestTitle={inbox.latestTitle}
+          latestWhen={inbox.latestWhen}
+          on={onId === LATEST_FEED_ID}
+          editing={false}
+          tone="mix"
+          stack={inbox.stack}
+          emptyLabel={emptyLabel}
+          onActivate={onActivate}
+          onOpenLatest={inbox.latestTitle ? onOpenLatest : undefined}
+          onIconLoad={onIconLoad}
+        />
+      ) : null}
+      {sources.map((source) => {
+        const latest = source.recent_items?.[0] ?? null
+        return (
+          <SiteCard
+            key={source.id}
+            id={source.id}
+            name={source.name}
+            description={source.description?.trim() || ''}
+            icon={getIconUrl(source.icon)}
+            unread={source.unread_count}
+            latestTitle={latest?.title}
+            latestWhen={
+              latest ? brewRelativeTime(latest.published_at, times, locale) : ''
+            }
+            on={source.id === onId}
+            editing={isEditMode}
+            picked={selectedIds?.has(source.id)}
+            ink={normalizeThemeColor(source.theme_color)}
+            emptyLabel={emptyLabel}
+            editLabel={editLabel}
+            onActivate={onActivate}
+            onOpenLatest={latest ? onOpenLatest : undefined}
+            onEdit={canEdit ? onEdit : undefined}
+            onIconLoad={onIconLoad}
+          />
+        )
+      })}
+    </>
+  )
 })
 
 interface StorySlot { story: FeedStory; column: number; row: 1 | 2 }
@@ -235,6 +271,7 @@ const BrewFeedsStories = memo(({
   trackRef,
   setMountRef,
   setLiveRef,
+  mountCommittedRef,
   mountColsRef,
   liveToRef,
   pendingStoryAlignRef,
@@ -255,10 +292,11 @@ const BrewFeedsStories = memo(({
   onOpen: (item: FeedStory) => void
   onPeek: (item: FeedStory) => void
   onPeekEnd: () => void
-  onToggleStar?: (item: FeedStory) => void | false
+  onToggleStar?: (item: FeedStory) => void | false | Promise<void | false>
   trackRef: RefObject<HTMLDivElement | null>
   setMountRef: RefObject<(next: { from: number; to: number }) => void>
   setLiveRef: RefObject<(next: number) => void>
+  mountCommittedRef: RefObject<{ from: number; to: number }>
   mountColsRef: RefObject<{ from: number; to: number }>
   liveToRef: RefObject<number>
   pendingStoryAlignRef: RefObject<number | null>
@@ -275,10 +313,11 @@ const BrewFeedsStories = memo(({
   const [liveTo, setLiveTo] = useState(liveToRef.current)
   const setMount = useCallback((next: { from: number; to: number }) => {
     mountColsRef.current = next
+    mountCommittedRef.current = next
     setMountCols((prev) =>
       prev.from === next.from && prev.to === next.to ? prev : next,
     )
-  }, [mountColsRef])
+  }, [mountColsRef, mountCommittedRef])
   const setLive = useCallback((next: number) => {
     liveToRef.current = next
     setLiveTo((prev) => (prev === next ? prev : next))
@@ -293,7 +332,7 @@ const BrewFeedsStories = memo(({
   useLayoutEffect(() => {
     if (alignId == null) return
     pendingStoryAlignRef.current = null
-    itemsApiRef.current?.align(alignId, true)
+    itemsApiRef.current?.alignColumn(alignId, true)
   }, [alignId, itemsApiRef, pendingStoryAlignRef])
   const storyCols = storySlots.at(-1)?.column ?? 1
   const grid = storyMountWindow(mountCols.from, mountCols.to, storyCols)
@@ -348,7 +387,7 @@ const BrewFeedsStories = memo(({
           if (!slots) continue
           for (const slot of slots) pack.push(slot.story)
         }
-        warmStoryFaces(pack, times, locale, labels)
+        warmStoryFaces(pack, times, locale, labels, !covers)
         if (!covers) return
         for (let col = colFrom; col <= colTo; col++) {
           if (prebuilt.has(col)) continue
@@ -394,6 +433,12 @@ const BrewFeedsStories = memo(({
           setLive(padTo)
           setMount(next)
         })
+        return
+      }
+      if (
+        mounted.from > 1
+        && mounted.to === eagerBandRef.current.to
+      ) {
         return
       }
       const cap = Math.min(
@@ -479,9 +524,15 @@ const BrewFeedsStories = memo(({
     const prev = paintedCacheRef.current
     const prebuilt = prebuiltColsRef.current
     const paintLive = Math.min(liveTo, paintTo)
+    const eagerTo = paintedEagerRef.current?.to ?? eagerBand.to
     const makeFull = (col: number) => {
-      const hit = prebuilt.get(col)
-      if (hit) return hit
+      const holdCover = col > eagerBand.to || col > eagerTo
+      if (!holdCover) {
+        const hit = prebuilt.get(col)
+        if (hit) return hit
+      } else {
+        prebuilt.delete(col)
+      }
       const node = (
         <BrewStoryColumn
           key={col}
@@ -490,11 +541,11 @@ const BrewFeedsStories = memo(({
           times={times}
           locale={locale}
           labels={labels}
-          holdCover={col > eagerBand.to}
+          holdCover={holdCover}
           canStar={canStar}
         />
       )
-      prebuilt.set(col, node)
+      if (!holdCover) prebuilt.set(col, node)
       return node
     }
     const make = (col: number) => (
@@ -506,7 +557,7 @@ const BrewFeedsStories = memo(({
               times={times}
               locale={locale}
               labels={labels}
-              holdCover={col > eagerBand.to}
+              holdCover={col > eagerBand.to || col > eagerTo}
               canStar={canStar}
             />
           )
@@ -764,7 +815,7 @@ const BrewFeedsStories = memo(({
       return heads
     }
     if (reset || !paintedHeadRef.current || paintedBatchesRef.current.length === 0) {
-      const head = <PaintedRailHead nodes={next} />
+      const head = <PaintedRailHead key={`${grid.from}:${paintTo}`} nodes={next} />
       paintedHeadRef.current = head
       paintedOutRef.current = [head]
       paintedBatchesRef.current = [{
@@ -859,6 +910,7 @@ const BrewFeedsStories = memo(({
         : null
       const from = event.relatedTarget
       if (from instanceof Node && node?.contains(from)) return
+      markBrewStoryPeek(node, true)
       onPeekRef.current(story)
     },
     [],
@@ -960,7 +1012,7 @@ function BrewFeeds({
   onReadySource,
   sourceTags,
 }: BrewFeedsProps) {
-  const { t, locale } = useI18n()
+  const { t, locale, format } = useI18n()
   const sitesTitleId = useId()
   const itemsTitleId = useId()
   const feedsRef = useRef<HTMLDivElement>(null)
@@ -973,29 +1025,30 @@ function BrewFeeds({
   const skipStoryAlignRef = useRef(false)
   const pendingStoryAlignRef = useRef<number | null>(null)
   const railDriverRef = useRef<'sites' | 'stories' | null>(null)
-  const [focusId, setFocusId] = useState<number | null>(sources[0]?.id ?? null)
-  const [readyId, setReadyId] = useState<number | null>(sources[0]?.id ?? null)
-  const lastSourceRef = useRef<number | null>(sources[0]?.id ?? null)
-  const paintedOnRef = useRef<number | null>(sources[0]?.id ?? null)
+  const [focusId, setFocusId] = useState<number | null>(
+    sources.length > 0 ? LATEST_FEED_ID : null,
+  )
+  const [readyId, setReadyId] = useState<number | null>(
+    sources.length > 0 ? LATEST_FEED_ID : null,
+  )
+  const lastSourceRef = useRef<number | null>(
+    sources.length > 0 ? LATEST_FEED_ID : null,
+  )
+  const paintedOnRef = useRef<number | null>(
+    sources.length > 0 ? LATEST_FEED_ID : null,
+  )
   const paintedElRef = useRef<HTMLElement | null>(null)
-  const focusIdRef = useRef<number | null>(sources[0]?.id ?? null)
+  const focusIdRef = useRef<number | null>(
+    sources.length > 0 ? LATEST_FEED_ID : null,
+  )
   focusIdRef.current = focusId
   const focusTimerRef = useRef(0)
   const growFrameRef = useRef(0)
   const reactMountStaleRef = useRef(false)
-  const coverFrameRef = useRef(0)
-  const pendingEagerRef = useRef<{ from: number; to: number } | null>(null)
-  const pendingAwayRef = useRef<{
-    from: number
-    to: number
-    prev: { from: number; to: number }
-  } | null>(null)
   const lastEagerRef = useRef<{ from: number; to: number }>({ from: 1, to: 8 })
   const storyWarmRef = useRef<() => void>(() => {})
   const pendingFlushRef = useRef(false)
   const pendingExpandRef = useRef<1 | -1 | null>(null)
-  const [hoverStoryId, setHoverStoryId] = useState<number | null>(null)
-  const hoverStoryIdRef = useRef<number | null>(null)
   const grabbingRef = useRef(false)
   const [sitesOpen, setSitesOpen] = useState(false)
   const [flipping, setFlipping] = useState(false)
@@ -1031,7 +1084,7 @@ function BrewFeeds({
   }
 
   const focus = useMemo(
-    () => sources.find((s) => s.id === focusId) ?? sources[0] ?? null,
+    () => sources.find((s) => s.id === focusId) ?? null,
     [sources, focusId],
   )
   const ready = useMemo(
@@ -1063,12 +1116,15 @@ function BrewFeeds({
       onJumpSource?.(focusSourceId)
       return
     }
-    if (!focusId || !sources.some((s) => s.id === focusId)) {
-      lastSourceRef.current = sources[0].id
-      paintedOnRef.current = sources[0].id
+    if (
+      focusId == null ||
+      (!isLatestFeedId(focusId) && !sources.some((s) => s.id === focusId))
+    ) {
+      lastSourceRef.current = LATEST_FEED_ID
+      paintedOnRef.current = LATEST_FEED_ID
       paintedElRef.current = null
-      setFocusId(sources[0].id)
-      setReadyId(sources[0].id)
+      setFocusId(LATEST_FEED_ID)
+      setReadyId(LATEST_FEED_ID)
     }
   }, [sources, focusId, focusSourceId, onJumpSource])
 
@@ -1088,20 +1144,33 @@ function BrewFeeds({
   }, [onReadySource, readyId])
 
   const siteKey = useMemo(
-    () => sources.map((source) => source.id).join(','),
+    () =>
+      sources.length > 0
+        ? `${LATEST_FEED_ID},${sources.map((source) => source.id).join(',')}`
+        : '',
     [sources],
   )
-  useEffect(() => {
-    hoverStoryIdRef.current = null
-    setHoverStoryId(null)
-  }, [focusId])
-
-  useEffect(() => {
-    if (!sitesOpen) return
-    hoverStoryIdRef.current = null
-    setHoverStoryId(null)
-  }, [sitesOpen])
-
+  const inboxLead = useMemo(
+    () => firstStoryForRailGroup(stories, LATEST_FEED_ID),
+    [stories],
+  )
+  const inbox = useMemo(() => {
+    if (sources.length === 0) return null
+    return {
+      name: brewLabels.latestFeed,
+      description: format(brewLabels.topicSourceCount, { count: sources.length }),
+      latestTitle: inboxLead?.title,
+      latestWhen: inboxLead
+        ? brewRelativeTime(inboxLead.published_at, times, locale)
+        : '',
+      stack: latestFeedStackFaces(sources, stories).map((face) => ({
+        key: face.key,
+        src: getIconUrl(face.src),
+        mark: face.mark,
+        ink: normalizeThemeColor(face.ink),
+      })),
+    }
+  }, [brewLabels, format, inboxLead, locale, sources, stories, times])
   useEffect(() => {
     if (morphing) return
     onSitesOpenChange?.(sitesOpen)
@@ -1129,8 +1198,6 @@ function BrewFeeds({
     return () => {
       if (focusTimerRef.current) window.clearTimeout(focusTimerRef.current)
       if (growFrameRef.current) window.cancelAnimationFrame(growFrameRef.current)
-      pendingAwayRef.current = null
-      if (coverFrameRef.current) window.cancelAnimationFrame(coverFrameRef.current)
     }
   }, [])
   const storiesRef = useRef(stories)
@@ -1143,15 +1210,20 @@ function BrewFeeds({
   storiesRef.current = stories
   const sourcesRef = useRef(sources)
   sourcesRef.current = sources
-  const activateSiteRef = useRef<(source: BrewSource) => void>(() => {})
+  const activateSiteRef = useRef<(id: number) => void>(() => {})
   const onEditSourceRef = useRef(onEditSource)
   onEditSourceRef.current = onEditSource
   const onActivateSite = useCallback((id: number | string) => {
-    const source = sourcesRef.current.find((entry) => entry.id === Number(id))
-    if (source) activateSiteRef.current(source)
+    activateSiteRef.current(Number(id))
   }, [])
   const onOpenLatestSite = useCallback((id: number | string) => {
-    const source = sourcesRef.current.find((entry) => entry.id === Number(id))
+    const n = Number(id)
+    if (isLatestFeedId(n)) {
+      const latest = firstStoryForRailGroup(storiesRef.current, LATEST_FEED_ID)
+      if (latest) openArticleRef.current(latest)
+      return
+    }
+    const source = sourcesRef.current.find((entry) => entry.id === n)
     const latest = source?.recent_items?.[0]
     if (source && latest) openArticleRef.current(latest, source)
   }, [])
@@ -1187,9 +1259,11 @@ function BrewFeeds({
   storySlotsRef.current = storySlots
   const colLeadRef = useRef(new Map<number, number>())
   const colLeadSlotsRef = useRef<readonly StorySlot[] | null>(null)
+  const storyByColRef = useRef(new Map<number, StorySlot[]>())
   if (colLeadSlotsRef.current !== storySlots) {
     colLeadSlotsRef.current = storySlots
     colLeadRef.current = storyColumnLeads(storySlots)
+    storyByColRef.current = storySlotsByColumn(storySlots, storyByColRef.current)
   }
   const driveStopsRef = useRef<number[]>([])
   const followStopsRef = useRef<number[]>([])
@@ -1288,6 +1362,7 @@ function BrewFeeds({
     from: 1,
     to: Math.min(RAIL_MOUNT_GROW_AHEAD, RAIL_MOUNT_BOOT_TO),
   })
+  const storyMountCommittedRef = useRef(mountColsRef.current)
   const storySetMountRef = useRef<(next: { from: number; to: number }) => void>(
     () => {},
   )
@@ -1310,21 +1385,14 @@ function BrewFeeds({
   const onPeekEndRef = useRef(onPeekEnd)
   onPeekEndRef.current = onPeekEnd
   const dropPeek = () => {
-    if (hoverStoryIdRef.current == null) return
-    hoverStoryIdRef.current = null
-    setHoverStoryId(null)
     onPeekEndRef.current?.()
   }
   const onPeekStory = useCallback((item: FeedStory) => {
     if (grabbingRef.current) return
-    hoverStoryIdRef.current = item.id
-    setHoverStoryId(item.id)
     onPeekItem?.(item)
   }, [onPeekItem])
   const onPeekEndStory = useCallback(() => {
     if (grabbingRef.current) return
-    hoverStoryIdRef.current = null
-    setHoverStoryId(null)
     onPeekEnd?.()
   }, [onPeekEnd])
   const onToggleStarRef = useRef(onToggleStar)
@@ -1357,9 +1425,15 @@ function BrewFeeds({
       1,
       columns.at(-1)?.column ?? storySlotsRef.current.at(-1)?.column ?? 1,
     )
-    const prev = mountColsRef.current
-    const next = railMountColumnsSettle(
+    const prev = storyMountCommittedRef.current
+    const settled = railMountColumnsSettle(
       prev,
+      lastScrollRef.current,
+      lastViewWRef.current,
+      colWRef.current,
+      totalCols,
+    )
+    const ideal = railMountColumns(
       lastScrollRef.current,
       lastViewWRef.current,
       colWRef.current,
@@ -1367,29 +1441,27 @@ function BrewFeeds({
     )
     const stale = reactMountStaleRef.current
     reactMountStaleRef.current = false
+    const covered = prev.from <= ideal.from && prev.to >= ideal.to
+    const next = stale && !covered
+      ? { from: ideal.from, to: ideal.to }
+      : settled
     const mountChanged = next.from !== prev.from || next.to !== prev.to
     if (mountChanged) {
       mountColsRef.current = next
+      storyMountCommittedRef.current = next
       liveToRef.current = Math.min(liveToRef.current, next.to)
+    } else {
+      mountColsRef.current = prev
+      liveToRef.current = Math.min(liveToRef.current, prev.to)
     }
-    const syncMount = mountChanged || stale
-    const ideal = railMountColumns(
-      lastScrollRef.current,
-      lastViewWRef.current,
-      colWRef.current,
-      totalCols,
-    )
-    if (coverFrameRef.current) {
-      window.cancelAnimationFrame(coverFrameRef.current)
-      coverFrameRef.current = 0
-    }
-    pendingEagerRef.current = null
-    pendingAwayRef.current = null
+    const syncMount = mountChanged
     const prevBand = eagerBandRef.current
     eagerBandRef.current = ideal
-    eagerStoryCovers(itemsTrackRef.current, ideal.from, ideal.to, prevBand)
-    lastEagerRef.current = { from: ideal.from, to: ideal.to }
     paintStoryAway(itemsTrackRef.current, ideal.from, ideal.to, prevBand)
+    if (!syncMount) {
+      eagerStoryCovers(itemsTrackRef.current, ideal.from, ideal.to, prevBand)
+      lastEagerRef.current = { from: ideal.from, to: ideal.to }
+    }
     if (settleId == null && expandDir == null && !syncMount) {
       storySetLiveRef.current(liveToRef.current)
       return
@@ -1492,6 +1564,31 @@ function BrewFeeds({
         colW,
         totalCols,
       )
+      const fillGrabLive = (from: number, to: number) => {
+        if (from > to) return
+        const paintTo = Math.min(to, eagerBandRef.current.to)
+        if (from > paintTo) return
+        const paint = storyPaintRef.current
+        const ready = ensureStoryShells(
+          itemsTrackRef.current,
+          from,
+          paintTo,
+          storySlotsRef.current,
+        )
+        paintStoryLiveCols(
+          itemsTrackRef.current,
+          from,
+          paintTo,
+          storyByColRef.current,
+          paint.times,
+          paint.locale,
+          paint.labels,
+          eagerBandRef.current.to,
+          paint.canStar,
+          true,
+          ready,
+        )
+      }
       if (
         ideal.from !== eagerBandRef.current.from
         || ideal.to !== eagerBandRef.current.to
@@ -1509,13 +1606,19 @@ function BrewFeeds({
           !grabbingRef.current,
         )
         if (grabbingRef.current) {
-          pendingAwayRef.current = {
-            from: ideal.from,
-            to: ideal.to,
-            prev: prevBand,
+          recycleStoryDomShellsOutside(
+            itemsTrackRef.current,
+            ideal.from,
+            ideal.to,
+          )
+          if (ideal.to > prevBand.to) {
+            fillGrabLive(prevBand.to + 1, ideal.to)
           }
-          pendingEagerRef.current = { from: eagerFrom, to: eagerTo }
-        } else {
+          if (ideal.from < prevBand.from) {
+            fillGrabLive(ideal.from, prevBand.from - 1)
+          }
+        }
+        if (!grabbingRef.current) {
           eagerStoryCovers(
             itemsTrackRef.current,
             eagerFrom,
@@ -1527,29 +1630,6 @@ function BrewFeeds({
       }
       let dirty = false
       let growReact = false
-      const fillGrabLive = (from: number, to: number) => {
-        if (from > to) return
-        const paint = storyPaintRef.current
-        const ready = ensureStoryShells(
-          itemsTrackRef.current,
-          from,
-          to,
-          storySlotsRef.current,
-        )
-        paintStoryLiveCols(
-          itemsTrackRef.current,
-          from,
-          to,
-          storySlotsRef.current,
-          paint.times,
-          paint.locale,
-          paint.labels,
-          eagerBandRef.current.to,
-          paint.canStar,
-          true,
-          ready,
-        )
-      }
       const prevCols = mountColsRef.current
       const grown = railMountColumnsCovered(
         prevCols,
@@ -1570,7 +1650,6 @@ function BrewFeeds({
         const prevLive = liveToRef.current
         if (grabbingRef.current) {
           mountColsRef.current = grown
-          storyWarmRef.current()
           reactMountStaleRef.current = true
         }
         mountColsRef.current = grown
@@ -1594,7 +1673,6 @@ function BrewFeeds({
           liveToRef.current,
         )
         if (nextLive > prevLive) {
-          if (grabbingRef.current) storyWarmRef.current()
           liveToRef.current = nextLive
           if (grabbingRef.current) {
             fillGrabLive(prevLive + 1, nextLive)
@@ -1604,58 +1682,18 @@ function BrewFeeds({
           }
         }
       }
-      const flushAway = () => {
-        const away = pendingAwayRef.current
-        pendingAwayRef.current = null
-        if (!away) return
-        paintStoryAway(
-          itemsTrackRef.current,
-          away.from,
-          away.to,
-          away.prev,
-        )
-      }
-      const armCovers = () => {
-        if (coverFrameRef.current || !pendingEagerRef.current) return
-        coverFrameRef.current = window.requestAnimationFrame(() => {
-          coverFrameRef.current = 0
-          flushAway()
-          const next = pendingEagerRef.current
-          pendingEagerRef.current = null
-          if (!next || grabbingRef.current) return
-          eagerStoryCovers(
-            itemsTrackRef.current,
-            next.from,
-            next.to,
-            lastEagerRef.current,
-          )
-          lastEagerRef.current = next
-        })
-      }
       if (growReact && !growFrameRef.current) {
-        if (coverFrameRef.current) {
-          window.cancelAnimationFrame(coverFrameRef.current)
-          coverFrameRef.current = 0
-        }
         growFrameRef.current = window.requestAnimationFrame(() => {
           growFrameRef.current = 0
-          flushAway()
           startTransition(() => {
             storySetMountRef.current(mountColsRef.current)
             storySetLiveRef.current(liveToRef.current)
           })
-          armCovers()
         })
-      } else if (
-        pendingEagerRef.current
-        && !coverFrameRef.current
-        && !growFrameRef.current
-      ) {
-        armCovers()
       }
       if (railDriverRef.current === 'sites') return
       const sourceId =
-        lead?.story.source_id
+        (lead ? storyRailGroup(lead.story) : undefined)
         ?? sourceAtScroll(state.scroll, sourceStartsRef.current)
       if (sourceId != null && sourceId !== lastSourceRef.current) {
         lastSourceRef.current = sourceId
@@ -1752,6 +1790,43 @@ function BrewFeeds({
     onStoryIdle,
   )
 
+  const alignStoryGroup = (groupId: number | null) => {
+    if (groupId == null) return
+    const start = sourceColsRef.current.find((block) => block.id === groupId)
+    if (!start) return
+    const column = start.column
+    const mounted = mountColsRef.current
+    const leadCol =
+      storyColRef.current ||
+      railLeadColumn(lastScrollRef.current, colWRef.current)
+    const far = Math.abs(column - leadCol) > 1
+    if (column < mounted.from || column > mounted.to || far) {
+      const colW = colWRef.current
+      const totalCols =
+        sourceColsRef.current.at(-1)?.column ??
+        storySlotsRef.current.at(-1)?.column ??
+        column
+      const ideal = railMountColumns(
+        (column - 1) * colW,
+        itemsViewRef.current?.clientWidth || 800,
+        colW,
+        totalCols,
+      )
+      const next = {
+        from: ideal.from,
+        to: Math.min(totalCols, ideal.to + RAIL_MOUNT_GROW_AHEAD),
+      }
+      eagerBandRef.current = ideal
+      pendingStoryAlignRef.current = column
+      dropStoryDomShells(itemsTrackRef.current)
+      mountColsRef.current = next
+      liveToRef.current = railLiveTo(ideal.to, next.to)
+      storySetMountRef.current(next)
+      storySetLiveRef.current(liveToRef.current)
+    }
+    itemsApiRef.current?.alignColumn(column, true)
+  }
+
   const prevStorySlotsRef = useRef(storySlots)
   useLayoutEffect(() => {
     const prev = prevStorySlotsRef.current
@@ -1771,32 +1846,7 @@ function BrewFeeds({
       skipStoryAlignRef.current = false
       return
     }
-    const slot = storySlots.find((item) => item.story.source_id === focusId)
-    if (!slot) return
-    const mounted = mountColsRef.current
-    if (slot.column < mounted.from || slot.column > mounted.to) {
-      const colW = colWRef.current
-      const totalCols = storySlots.at(-1)?.column ?? slot.column
-      const ideal = railMountColumns(
-        (slot.column - 1) * colW,
-        itemsViewRef.current?.clientWidth || 800,
-        colW,
-        totalCols,
-      )
-      const next = {
-        from: ideal.from,
-        to: Math.min(totalCols, ideal.to + RAIL_MOUNT_GROW_AHEAD),
-      }
-      eagerBandRef.current = ideal
-      pendingStoryAlignRef.current = slot.story.id
-      dropStoryDomShells(itemsTrackRef.current)
-      mountColsRef.current = next
-      liveToRef.current = railLiveTo(ideal.to, next.to)
-      storySetMountRef.current(next)
-      storySetLiveRef.current(liveToRef.current)
-      return
-    }
-    itemsApiRef.current?.align(slot.story.id, true)
+    alignStoryGroup(focusId)
   }, [focusId, railEpoch])
 
   const holdMotion = () => {
@@ -1988,10 +2038,6 @@ function BrewFeeds({
     sitesApiRef.current?.align(id, true)
   }, [sitesOpen, flipping])
 
-  const peeked =
-    stories.find((item) => item.id === hoverStoryId) ?? null
-  const scene = peeked ? getImageUrl(peeked.image) : ''
-
   const setSitesMode = (open: boolean, alignId?: number | null) => {
     if (alignId != null) pendingAlign.current = alignId
     else if (!open) pendingAlign.current = focusId
@@ -2032,30 +2078,30 @@ function BrewFeeds({
     setSitesMode(false, alignId ?? focusId)
   }
 
-  const activateSite = (source: BrewSource) => {
-    if (isEditMode) {
-      onToggleSelect?.(source.id)
+  const activateSite = (id: number) => {
+    if (!isLatestFeedId(id) && isEditMode) {
+      onToggleSelect?.(id)
       return
     }
+    if (isLatestFeedId(id) && isEditMode) return
     railDriverRef.current = 'sites'
-    lastSourceRef.current = source.id
-    paintedOnRef.current = source.id
+    lastSourceRef.current = id
+    paintedOnRef.current = id
     paintedElRef.current = null
     if (focusTimerRef.current) {
       window.clearTimeout(focusTimerRef.current)
       focusTimerRef.current = 0
     }
     pendingFlushRef.current = false
-    setFocusId(source.id)
-    setReadyId(source.id)
-    onJumpSource?.(source.id)
+    setFocusId(id)
+    setReadyId(id)
+    onJumpSource?.(id)
     if (sitesOpen) {
-      foldSites(source.id)
+      foldSites(id)
       return
     }
-    sitesApiRef.current?.align(source.id)
-    const first = storiesRef.current.find((item) => item.source_id === source.id)
-    if (first) itemsApiRef.current?.align(first.id)
+    sitesApiRef.current?.align(id)
+    alignStoryGroup(id)
   }
   activateSiteRef.current = activateSite
 
@@ -2134,9 +2180,8 @@ function BrewFeeds({
           >
           <BrewFeedsSites
             sources={sources}
-            onId={lastSourceRef.current ?? focus?.id}
-            readyId={ready?.id}
-            scene={scene}
+            inbox={inbox}
+            onId={lastSourceRef.current ?? focusId}
             times={times}
             locale={locale}
             isEditMode={isEditMode}
@@ -2178,6 +2223,7 @@ function BrewFeeds({
               trackRef={itemsTrackRef}
               setMountRef={storySetMountRef}
               setLiveRef={storySetLiveRef}
+              mountCommittedRef={storyMountCommittedRef}
               mountColsRef={mountColsRef}
               liveToRef={liveToRef}
               pendingStoryAlignRef={pendingStoryAlignRef}

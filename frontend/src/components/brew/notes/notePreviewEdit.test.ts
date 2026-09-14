@@ -71,4 +71,11 @@ describe('blockSourceRange / previewClickToMarkdownIndex', () => {
     assert.equal(blockSourceRange('x', { start: undefined, end: '3' }), null)
     assert.equal(blockSourceRange('x', { start: '5', end: '3' }), null)
   })
+
+  it('水合后的字对得上周围正文，所以点小组件只能空前缀落到块首', () => {
+    const md = 'Freundeslinks 在正文。\n\n:::widget friend-links 4x2'
+    const intoProse = previewClickToMarkdownIndex(md, { start: 0, end: md.length }, 'Freundeslinks')
+    assert.equal(md.slice(0, intoProse), 'Freundeslinks')
+    assert.equal(previewClickToMarkdownIndex(md, { start: 0, end: md.length }, ''), 0)
+  })
 })

@@ -381,6 +381,18 @@ pub(crate) fn get_expected_indexes() -> Vec<IndexDef> {
             columns: vec!["status".into(), "scheduled_at".into()],
             is_unique: false,
         },
+        IndexDef {
+            name: "idx_media_assets_url".into(),
+            table: "media_assets".into(),
+            columns: vec!["url".into()],
+            is_unique: true,
+        },
+        IndexDef {
+            name: "idx_media_assets_kind".into(),
+            table: "media_assets".into(),
+            columns: vec!["kind".into()],
+            is_unique: false,
+        },
         // rsshub_instances 索引
         IndexDef {
             name: "idx_rsshub_instances_user_url".into(),
