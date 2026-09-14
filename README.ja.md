@@ -302,7 +302,7 @@ ActivityPub + **MFP**。発見は `BASE_URL` を使う。
 
 ## 運用
 
-本番：**proxy + updater**。ホスト公開は **proxy** のみ。backend、frontend、Postgres、updater、docker-guard は内部ネット。
+本番：**proxy + updater**。ホスト公開は **proxy** のみ。web、`federation-worker`、`persona-worker`、frontend、Postgres、updater、updater-gateway、docker-guard は内部ネット。proxy は persona / federation / 残りの API を振り分ける。[PORTS.md](docs/deployment/PORTS.md)。
 
 版切り替えとロールバック：`/config` → 情報 → 更新管理。ブラウザは `UPDATE_TOKEN` を受け取らない。`:latest` を上書きしない。
 

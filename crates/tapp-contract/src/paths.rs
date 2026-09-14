@@ -217,12 +217,13 @@ pub fn validate_tapp_settings(settings: &[TappSettingDef], scope: &str) -> Resul
             ));
         }
         if let Some(default) = &setting.default_value
-            && !tapp_setting_value_is_valid(setting, default) {
-                return Err(format!(
-                    "Invalid defaultValue for {scope} setting: {}",
-                    setting.key
-                ));
-            }
+            && !tapp_setting_value_is_valid(setting, default)
+        {
+            return Err(format!(
+                "Invalid defaultValue for {scope} setting: {}",
+                setting.key
+            ));
+        }
     }
     Ok(())
 }

@@ -21,10 +21,7 @@ fn media_http(status: StatusCode, error: impl Into<String>) -> HttpError {
     HttpError(AppError::from_status_u16(status.as_u16(), error.into()))
 }
 
-async fn require_admin(
-    headers: &HeaderMap,
-    db: &DatabaseConnection,
-) -> Result<(), HttpError> {
+async fn require_admin(headers: &HeaderMap, db: &DatabaseConnection) -> Result<(), HttpError> {
     verify_current_admin_from_headers(headers, db)
         .await
         .map(|_| ())
@@ -37,12 +34,10 @@ pub async fn list_media(
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     require_admin(&headers, &db).await?;
-    let items = list_assets(&db)
-        .await
-        .map_err(|err| {
-            tracing::error!(%err, "list media catalog");
-            media_http(StatusCode::INTERNAL_SERVER_ERROR, "Failed to list media")
-        })?;
+    let items = list_assets(&db).await.map_err(|err| {
+        tracing::error!(%err, "list media catalog");
+        media_http(StatusCode::INTERNAL_SERVER_ERROR, "Failed to list media")
+    })?;
     Ok(Json(json!({ "success": true, "items": items })))
 }
 
@@ -130,14 +125,17 @@ async fn read_file_field(
         if let Some(ct) = field.content_type() {
             mime = ct.to_string();
         }
-        file_bytes = Some(field.bytes().await.map_err(|_| {
-            media_http(StatusCode::BAD_REQUEST, "Failed to read file field")
-        })?.to_vec());
+        file_bytes = Some(
+            field
+                .bytes()
+                .await
+                .map_err(|_| media_http(StatusCode::BAD_REQUEST, "Failed to read file field"))?
+                .to_vec(),
+        );
         break;
     }
-    let bytes = file_bytes.ok_or_else(|| {
-        media_http(StatusCode::BAD_REQUEST, "Missing multipart field 'file'")
-    })?;
+    let bytes = file_bytes
+        .ok_or_else(|| media_http(StatusCode::BAD_REQUEST, "Missing multipart field 'file'"))?;
     Ok((filename, mime, bytes))
 }
 

@@ -11,7 +11,6 @@ import {
   LuEdit3 as Edit3,
   LuMinusSquare as MinusSquare,
   LuNotebookPen as NotebookPen,
-  LuPlus as Plus,
   LuRefreshCw as RefreshCw,
   LuSquare as Square,
   LuTrash2 as Trash2,
@@ -24,7 +23,6 @@ import { SettingTitleGuideEntry } from '../../settings/SettingTitleGuideEntry'
 import { SettingTitleTag } from '../../settings/SettingTitleTag'
 import { Spinner } from '../../Spinner'
 import { BrewBarMenu, BrewBarMenuItem, BrewBarWrap, BrewMark } from '../ui/Bar'
-import { useFeedsAddForm } from '../ui/BrewFeedsPanel'
 import { EditSourceMode } from './modes/EditSourceMode'
 import { buildBrewSortOptions } from './modes/sortOptions'
 
@@ -105,14 +103,14 @@ export function BrewSourceTitleTags({
   const salon = kind === 'salon'
   const { t } = useI18n()
   const brew = t.brew
-  const addForm = useFeedsAddForm()
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const editGuideRef = useRef<{ open: boolean; toggle: () => void } | null>(
     null,
   )
   const options = useMemo(() => buildBrewSortOptions(), [])
-  const current = options.find((option) => option.value === sortMode) ?? options[0]
+  const current =
+    options.find((option) => option.value === sortMode) ?? options[0]
   const total = sources?.length ?? 0
   const picked = selectedIds?.size ?? 0
   const allOn = picked === total && total > 0
@@ -147,13 +145,7 @@ export function BrewSourceTitleTags({
           className={TAG}
           variant="muted"
           icon={
-            allOn ? (
-              <CheckSquare />
-            ) : picked > 0 ? (
-              <MinusSquare />
-            ) : (
-              <Square />
-            )
+            allOn ? <CheckSquare /> : picked > 0 ? <MinusSquare /> : <Square />
           }
           title={allOn ? brew.deselectAll : brew.selectAll}
           onClick={onSelectAll}
@@ -210,7 +202,11 @@ export function BrewSourceTitleTags({
             className={TAG}
             variant="muted"
             icon={
-              isRefreshing ? <Spinner size="sm" color="current" /> : <RefreshCw />
+              isRefreshing ? (
+                <Spinner size="sm" color="current" />
+              ) : (
+                <RefreshCw />
+              )
             }
             disabled={isRefreshing}
             title={brew.refreshAllSources}
@@ -337,25 +333,6 @@ export function BrewSourceTitleTags({
         >
           {brew.noteWrite}
         </SettingTitleTag>
-      ) : null}
-      {!salon && addForm ? (
-        <SettingTitleGuideEntry
-          title={brew.addSubscription}
-          requireShowDetails={false}
-          panelClassName="brew-feeds__add-guide"
-          keepMounted
-          guide={addForm}
-          renderTrigger={(api) => (
-            <SettingTitleTag
-              className={TAG}
-              variant={api.open ? 'default' : 'muted'}
-              icon={<Plus />}
-              onClick={() => api.toggle()}
-            >
-              {brew.add}
-            </SettingTitleTag>
-          )}
-        />
       ) : null}
       {isAdmin && onEnterEdit && (!salon || total > 0) ? (
         <SettingTitleTag

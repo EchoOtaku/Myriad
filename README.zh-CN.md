@@ -302,7 +302,7 @@ ActivityPub + **MFP**。发现地址使用 `BASE_URL`。
 
 ## 运维
 
-生产：**proxy + updater**。仅 **proxy** 暴露宿主端口。backend、frontend、Postgres、updater、docker-guard 在内网。
+生产：**proxy + updater**。仅 **proxy** 暴露宿主端口。web、`federation-worker`、`persona-worker`、frontend、Postgres、updater、updater-gateway、docker-guard 在内网。proxy 按路径把 persona / 联邦 / 其余 API 分开，见 [PORTS.md](docs/deployment/PORTS.md)。
 
 换版与回滚：`/config` → 关于 → 更新管理。浏览器不获得 `UPDATE_TOKEN`。不要覆盖 `:latest`。
 

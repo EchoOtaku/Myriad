@@ -10,31 +10,39 @@ removed.
 host HTTP_PORT
   |
   v
-proxy ──┬── frontend:1102          [myriad-net]
+proxy ──┬── frontend:1102                 [myriad-net]
         ├── backend:1103 ── postgres:5432
-        │       │
-        │       └── updater-gateway:1104 ──► updater:1101   [myriad-admin-net]
-        │                                         │
-        │                                         └── docker-guard:2375 ── sock
-        │                                               [myriad-docker-guard-net]
-        └── (rescue only) ──► updater:1101  when PROXY_ALLOW_DIRECT_UPDATER=true
+        ├── federation-worker:1103
+        ├── persona-worker:1103
+        │
+        └── backend ── updater-gateway:1104 ──► updater:1101   [myriad-admin-net]
+                                                    │
+                                                    └── docker-guard:2375 ── sock
+                                                          [myriad-docker-guard-net]
+        (rescue only) ──► updater:1101  when PROXY_ALLOW_DIRECT_UPDATER=true
 ```
+
+Workers use the same backend image/tag as `backend`, with
+`MYRIAD_PROCESS_ROLE=web` / `federation-worker` / `persona-worker`. They can
+restart independently but are not separate release artifacts. See
+[RUNTIME_ISOLATION.md](./RUNTIME_ISOLATION.md) and
+[WORKER_DATABASE.md](./WORKER_DATABASE.md).
 
 Networks:
 
 | Network | Members | Notes |
 | --- | --- | --- |
-| `myriad-net` | proxy, frontend, backend, postgres | Business L2. **Not** updater. |
-| `myriad-admin-net` | backend, updater, updater-gateway, proxy | Token hop + rescue DNS. |
+| `myriad-net` | proxy, frontend, backend, federation-worker, persona-worker, postgres | Business L2. **Not** updater. |
+| `myriad-admin-net` | backend, updater, updater-gateway, proxy | Token hop + rescue DNS. Workers stay off this net. |
 | `myriad-docker-guard-net` (internal) | updater, docker-guard | Only updater may join (guard policy). |
 
 - Only `proxy` publishes a host port.
-- **Proxy routing**: SPA/static via frontend; `/api/*`, `/health`, `/ready`, and ActivityPub
-  public paths (`/.well-known/webfinger`, `/.well-known/nodeinfo`, `/nodeinfo/2.1`,
-  `/inbox`, `/users/*`, **`/media/federation/*`**) via backend. WebSocket upgrades
-  under `/api/*` are bridged by proxy. See [PORTS.md](./PORTS.md). An outer TLS
-  reverse proxy must pass the whole site (or the same AP + media allowlist) —
-  `/api`-only breaks federation discovery **and** Note attachment media display.
+- **Proxy routing**: SPA/static via frontend; persona prefixes via
+  `persona-worker`; ActivityPub / federation HTTP+WS / Note media via
+  `federation-worker`; remaining `/api/*`, `/health`, `/ready`, and crawler SEO
+  shells via backend. See [PORTS.md](./PORTS.md). An outer TLS reverse proxy
+  must pass the whole site (or the same AP + media allowlist) — `/api`-only
+  breaks federation discovery **and** Note attachment media display.
 - **Frontend/postgres cannot reach updater** (no shared L2 with updater).
 - The updater is not an A/B dual-live system. It uses one running business slot,
   maintenance mode, `pgdata` snapshots, and immutable image tags.
@@ -64,7 +72,9 @@ Networks:
 
 | File | Role |
 | --- | --- |
-| `docker-compose.yml` | Production stack: postgres, backend, frontend, proxy, updater, updater-gateway, docker-guard |
+| `docker-compose.yml` | Production stack: postgres, backend, federation-worker, persona-worker, frontend, proxy, updater, updater-gateway, docker-guard |
+| `docs/deployment/RUNTIME_ISOLATION.md` | Web / federation / persona process boundaries and update/rollback |
+| `docs/deployment/WORKER_DATABASE.md` | Separate worker DB logins and budgets |
 | `.env.production.example` | Template for host `.env` |
 | `scripts/extra/deploy.sh` | Bootstrap and stack management (WSL / Git Bash on Windows) |
 | `docs/deployment/PORTS.md` | Development and production port map |
@@ -123,6 +133,10 @@ database outage.
 | `MYRIAD_GUARD_ENV_FILE` | no | Fixed Compose-relative path `guard-policy/docker-guard.env` |
 | `UPDATER_GATEWAY_SECRET` | yes | Shared secret for backend→gateway (`X-Updater-Gateway-Secret`); deploy fills if empty; backend + gateway only |
 | `MYRIAD_SETUP_SECRET` | yes\* | Passphrase for setup writes **when the stack already has a real DATABASE_URL**. Official compose refuses to start if unset. `deploy.sh` fills it if empty. Wizard-only native DB setup does not require it. \*Required until an owner exists on orchestrated installs. Never expose it in the UI. See [SETUP_BOOTSTRAP.md](./SETUP_BOOTSTRAP.md). |
+| `PERSONA_DB_PASSWORD` | yes (bundled) | URL-safe secret for the reserved `myriad_persona` login. `deploy.sh` fills it if empty. Never copy `POSTGRES_PASSWORD`. See [WORKER_DATABASE.md](./WORKER_DATABASE.md). |
+| `FEDERATION_DB_PASSWORD` | yes (bundled) | URL-safe secret for the reserved `myriad_federation` login. Same rules as persona. |
+| `PERSONA_DATABASE_URL` | yes (external) | Full URL for the bounded persona worker login. Same database/schema as `DATABASE_URL`. |
+| `FEDERATION_DATABASE_URL` | yes (external) | Full URL for the bounded federation worker login. |
 | `HTTP_PORT` | no | Published proxy port, default `80` |
 | `CHANNEL` | no | Release channel, default `stable` |
 | `MYRIAD_GITHUB_REPO` | no | Release source repo, default `Myriad-You/Myriad` |

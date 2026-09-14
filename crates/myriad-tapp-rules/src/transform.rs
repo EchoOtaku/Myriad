@@ -367,9 +367,10 @@ pub fn apply_map_op(item: &mut Value, op: &MapOp) {
         }
         MapOp::ToNumber { field } => {
             if let Some(Value::String(s)) = obj.get(field.as_str())
-                && let Ok(n) = s.parse::<f64>() {
-                    obj.insert(field.clone(), json!(n));
-                }
+                && let Ok(n) = s.parse::<f64>()
+            {
+                obj.insert(field.clone(), json!(n));
+            }
         }
         MapOp::Default { field, value } => {
             let needs_default = match obj.get(field.as_str()) {

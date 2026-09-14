@@ -534,12 +534,6 @@ html.dark .brew-workbench__kpi.is-danger .brew-workbench__kpi-value {
   color: #fca5a5;
 }
 
-.brew-workbench__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
 .brew-workbench__transfer,
 .brew-workbench__transfer-actions {
   display: flex;

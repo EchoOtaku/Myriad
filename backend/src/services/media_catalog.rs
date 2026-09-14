@@ -134,9 +134,9 @@ pub async fn register(
     match row.insert(db).await {
         Ok(model) => Ok(model),
         Err(err) if is_unique_violation(&err) => media_assets::Entity::find()
-            .filter(media_assets::Column::Url.eq(
-                canonical_media_url(&input.url).unwrap_or_default(),
-            ))
+            .filter(
+                media_assets::Column::Url.eq(canonical_media_url(&input.url).unwrap_or_default()),
+            )
             .one(db)
             .await?
             .ok_or(err),
@@ -214,7 +214,12 @@ pub async fn backfill_federation(db: &DatabaseConnection) -> Result<(), DbErr> {
         return Ok(());
     };
     while let Ok(Some(user_ent)) = users.next_entry().await {
-        if !user_ent.file_type().await.map(|t| t.is_dir()).unwrap_or(false) {
+        if !user_ent
+            .file_type()
+            .await
+            .map(|t| t.is_dir())
+            .unwrap_or(false)
+        {
             continue;
         }
         let user = user_ent.file_name();
@@ -226,7 +231,12 @@ pub async fn backfill_federation(db: &DatabaseConnection) -> Result<(), DbErr> {
             continue;
         };
         while let Ok(Some(file_ent)) = files.next_entry().await {
-            if !file_ent.file_type().await.map(|t| t.is_file()).unwrap_or(false) {
+            if !file_ent
+                .file_type()
+                .await
+                .map(|t| t.is_file())
+                .unwrap_or(false)
+            {
                 continue;
             }
             let name = file_ent.file_name();
@@ -343,7 +353,7 @@ fn to_view(row: media_assets::Model, references: Vec<String>) -> MediaAssetView 
 
 #[cfg(test)]
 mod tests {
-    use super::{canonical_media_url, catalogs_cache_image, catalog_path};
+    use super::{canonical_media_url, catalog_path, catalogs_cache_image};
 
     #[test]
     fn canonical_url_keeps_hosted_paths() {

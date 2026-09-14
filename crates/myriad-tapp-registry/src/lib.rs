@@ -29,9 +29,10 @@ pub async fn maybe_cleanup(db: &impl ConnectionTrait) {
     if CLEANUP_COUNTER
         .fetch_add(1, Ordering::Relaxed)
         .is_multiple_of(256)
-        && let Err(error) = cleanup(db).await {
-            tracing::warn!(%error, "[TAPP] Shared registry cleanup failed");
-        }
+        && let Err(error) = cleanup(db).await
+    {
+        tracing::warn!(%error, "[TAPP] Shared registry cleanup failed");
+    }
 }
 
 #[derive(Debug, Clone)]

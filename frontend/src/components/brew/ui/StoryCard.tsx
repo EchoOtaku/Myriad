@@ -1,6 +1,6 @@
 /** 不认识 brew_items。 */
 
-import type { CSSProperties, ReactNode, SyntheticEvent } from 'react'
+import type { CSSProperties, SyntheticEvent } from 'react'
 
 import { forwardRef } from 'react'
 import { cx } from './cx'
@@ -380,11 +380,3 @@ export const StoryCard = forwardRef<
     </button>
   )
 })
-
-export function StoryGrid({ children }: { children: ReactNode }) {
-  return (
-    <div className="brew-skin brew-stories" data-brew-peek-lane>
-      {children}
-    </div>
-  )
-}

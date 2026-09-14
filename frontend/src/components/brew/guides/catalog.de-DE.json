@@ -8,7 +8,7 @@
   "notes": {
     "what": "Notizenliste. Öffnen, löschen, Zeitplan aufheben, Kategorie im Stapel setzen.",
     "chain": "① Titel öffnen zum Bearbeiten.\n② Der Bearbeiten-Modus wählt mehrere aus.\n③ Höchstens zwei Kategorien.",
-    "frontend": "Veröffentlichte Notizen gehen an die Notizwand und das öffentliche RSS. Geplante gehen pünktlich raus.",
+    "frontend": "Veröffentlichte Notizen gehen an die Notizwand. Ins öffentliche RSS nur nach dem Einschalten. Geplante gehen pünktlich raus.",
     "notes": "Text und Cover bleiben im Editor. Eine dritte Kategorie meldet: voll."
   },
   "media": {
@@ -18,8 +18,8 @@
     "notes": "Noch genutzte Dateien lassen sich nicht löschen."
   },
   "sources": {
-    "what": "Abos hinzufügen, ändern, aktualisieren, löschen, Notizen-RSS teilen und Standard-Sortierung.",
-    "chain": "① Hinzufügen oder aktualisieren.\n② Die Standard-Sortierung liegt auf diesem Gerät.\n③ Das Notizen-RSS weitergeben, damit andere folgen können.\n④ Höchstens zwei Kategorien.",
+    "what": "Abos hinzufügen, ändern, aktualisieren, löschen, Notizen-RSS einschalten und Standard-Sortierung.",
+    "chain": "① Hinzufügen oder aktualisieren.\n② Die Standard-Sortierung liegt auf diesem Gerät.\n③ Notizen-RSS ist standardmäßig aus; erst einschalten, dann teilen.\n④ Höchstens zwei Kategorien.",
     "frontend": "Die Abo-Wand nutzt diese Sortierung und Kategorien.",
     "notes": "Die Wand ist zum Lesen. Quellen hier löschen."
   },

@@ -34,21 +34,25 @@ impl SpoofHeaders {
     /// 应用到 reqwest HeaderMap
     pub fn apply_to(&self, headers: &mut HeaderMap) {
         if let Some(ref xff) = self.x_forwarded_for
-            && let Ok(v) = HeaderValue::from_str(xff) {
-                headers.insert("X-Forwarded-For", v);
-            }
+            && let Ok(v) = HeaderValue::from_str(xff)
+        {
+            headers.insert("X-Forwarded-For", v);
+        }
         if let Some(ref xri) = self.x_real_ip
-            && let Ok(v) = HeaderValue::from_str(xri) {
-                headers.insert("X-Real-IP", v);
-            }
+            && let Ok(v) = HeaderValue::from_str(xri)
+        {
+            headers.insert("X-Real-IP", v);
+        }
         if let Some(ref ua) = self.user_agent
-            && let Ok(v) = HeaderValue::from_str(ua) {
-                headers.insert("User-Agent", v);
-            }
+            && let Ok(v) = HeaderValue::from_str(ua)
+        {
+            headers.insert("User-Agent", v);
+        }
         if let Some(ref al) = self.accept_language
-            && let Ok(v) = HeaderValue::from_str(al) {
-                headers.insert("Accept-Language", v);
-            }
+            && let Ok(v) = HeaderValue::from_str(al)
+        {
+            headers.insert("Accept-Language", v);
+        }
     }
 }
 

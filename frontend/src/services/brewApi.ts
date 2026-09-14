@@ -8,7 +8,6 @@ import type {
   BrewItemsResponse,
   BrewNoteDoc,
   BrewNoteDocInput,
-  BrewNoteDraft,
   BrewNoteInput,
   BrewSource,
   BrewSourcesResponse,
@@ -570,6 +569,24 @@ export async function suggestItemTopic(
   return rememberItemTopic(id, data.topic ?? null)
 }
 
+export async function getNotesRssSettings(): Promise<{ enabled: boolean }> {
+  const data = await request<{ success: boolean; enabled: boolean }>(
+    '/notes/rss',
+  )
+  return { enabled: Boolean(data.enabled) }
+}
+
+export async function setNotesRssEnabled(enabled: boolean): Promise<boolean> {
+  const data = await request<{ success: boolean; enabled: boolean }>(
+    '/notes/rss',
+    {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    },
+  )
+  return Boolean(data.enabled)
+}
+
 export async function createNote(
   req: BrewNoteInput,
   attributionHeaders?: BrewAttributionHeaders,
@@ -618,18 +635,6 @@ export async function deleteNote(
   invalidateItemCache(id)
   invalidateSourcesCache()
   invalidateBoardPageCache()
-}
-
-/** Reader HTML is rendered; edit needs Markdown. */
-export async function getNoteDraft(
-  id: number,
-  signal?: AbortSignal,
-): Promise<BrewNoteDraft> {
-  const data = await request<{ success: boolean; note: BrewNoteDraft }>(
-    `/notes/${id}`,
-    { signal },
-  )
-  return data.note
 }
 
 export async function listNoteDocs(

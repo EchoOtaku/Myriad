@@ -247,9 +247,10 @@ fn parse_mcp_tool_result(text: &str) -> serde_json::Value {
     let trimmed = text.trim();
     if ((trimmed.starts_with('{') && trimmed.ends_with('}'))
         || (trimmed.starts_with('[') && trimmed.ends_with(']')))
-        && let Ok(value) = serde_json::from_str(trimmed) {
-            return value;
-        }
+        && let Ok(value) = serde_json::from_str(trimmed)
+    {
+        return value;
+    }
     serde_json::Value::String(text.to_string())
 }
 

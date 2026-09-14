@@ -563,9 +563,10 @@ impl StdioTransport {
             && matches!(
                 tokio::time::timeout(Duration::from_secs(1), child.wait()).await,
                 Ok(Ok(_))
-            ) {
-                self.child_slot.take();
-            }
+            )
+        {
+            self.child_slot.take();
+        }
     }
 
     /// Closing stdin is the stdio shutdown signal. Discard any partial request;
@@ -592,12 +593,13 @@ impl Drop for StdioTransport {
         // Dropping an in-flight request must not create zombies or free capacity
         // while the old process is still alive.
         if let (Some(mut child), Some(slot)) = (self.child.take(), self.child_slot.take())
-            && let Ok(runtime) = tokio::runtime::Handle::try_current() {
-                runtime.spawn(async move {
-                    let _ = child.wait().await;
-                    drop(slot);
-                });
-            }
+            && let Ok(runtime) = tokio::runtime::Handle::try_current()
+        {
+            runtime.spawn(async move {
+                let _ = child.wait().await;
+                drop(slot);
+            });
+        }
     }
 }
 

@@ -58,6 +58,7 @@ interface EditSourceModeProps {
     title: string
     feed_type: string
   } | null>
+  notesRssEnabled?: boolean
 }
 
 function categoryLabel(
@@ -144,6 +145,7 @@ export function EditSourceMode({
   onSave,
   onGenerateStyleTags,
   onDiscover,
+  notesRssEnabled = false,
 }: EditSourceModeProps) {
   const { t } = useI18n()
   const brew = t.brew
@@ -321,14 +323,16 @@ export function EditSourceMode({
         {fieldKind === 'note' ? (
           <div className="brew-add-form__tags">
             <SettingTitleTag>{brew.boardNotes}</SettingTitleTag>
-            <SettingTitleTag
-              icon={<Rss />}
-              disabled={!shareUrl || saving}
-              title={brew.shareRss}
-              onClick={shareRss}
-            >
-              {brew.shareRss}
-            </SettingTitleTag>
+            {notesRssEnabled && shareUrl ? (
+              <SettingTitleTag
+                icon={<Rss />}
+                disabled={saving}
+                title={brew.shareRss}
+                onClick={shareRss}
+              >
+                {brew.shareRss}
+              </SettingTitleTag>
+            ) : null}
           </div>
         ) : (
           <SourceKindControl

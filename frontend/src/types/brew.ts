@@ -133,15 +133,6 @@ export interface BrewNoteInput {
   published_at?: number | null
 }
 
-export interface BrewNoteDraft {
-  id: number
-  title: string
-  content_md: string
-  topic: string | null
-  image: string | null
-  published_at: number
-}
-
 type BrewNoteDocStatus = 'draft' | 'scheduled' | 'published'
 
 export interface BrewNoteDoc {

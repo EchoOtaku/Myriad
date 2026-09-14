@@ -28,7 +28,6 @@ import {
   storySlotAtColumn,
   storySlotsByColumn,
 } from '../logic/feedStories'
-import { FeedsAddFormProvider } from '../ui/BrewFeedsPanel'
 import { BrewRailTitle } from '../ui/BrewRailTitle'
 import { BrewVacant } from '../ui/Empty'
 import { SiteCard } from '../ui/SiteCard'
@@ -1943,7 +1942,6 @@ function BrewFeeds({
   openArticleRef.current = openArticle
 
   return (
-    <FeedsAddFormProvider>
     <div
       ref={feedsRef}
       className={`brew-skin brew-feeds${flipping ? ' is-sites-flipping' : ''}${sitesBooted ? ' is-sites-booted' : ''}${storiesBooted ? ' is-stories-booted' : ''}`}
@@ -2029,7 +2027,6 @@ function BrewFeeds({
         </section>
       </div>
     </div>
-    </FeedsAddFormProvider>
   )
 }
 

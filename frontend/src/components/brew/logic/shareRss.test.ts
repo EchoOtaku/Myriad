@@ -22,6 +22,7 @@ describe('notesRssUrl', () => {
   it('拼公开手记 RSS，和后端同一条路径', () => {
     assert.equal(NOTES_RSS_PATH, '/brew/notes.xml')
     assert.match(rustNotes, /NOTES_RSS_PATH: &str = "\/brew\/notes.xml"/)
+    assert.match(rustNotes, /NOTES_RSS_PREFERENCES_KEY: &str = "brew_notes_rss"/)
     assert.equal(notesRssUrl('https://ex.com/'), 'https://ex.com/brew/notes.xml')
     assert.equal(notesRssUrl('https://ex.com'), 'https://ex.com/brew/notes.xml')
     assert.equal(notesRssUrl(''), '/brew/notes.xml')

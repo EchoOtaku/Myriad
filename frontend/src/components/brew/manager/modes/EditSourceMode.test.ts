@@ -23,6 +23,7 @@ describe('EditSourceMode', () => {
     assert.match(src, /onDiscover/)
     assert.match(src, /shareRss/)
     assert.match(src, /shareRssAddress/)
+    assert.match(src, /notesRssEnabled/)
     assert.match(src, /RSSHubConfigComponent/)
     assert.match(src, /onGenerateStyleTags\(source\.id, signal\)/)
     assert.doesNotMatch(src, /from ['"]\.\.\/\.\.\/ui\/Sheet['"]/)

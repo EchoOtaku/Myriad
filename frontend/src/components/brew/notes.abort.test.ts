@@ -10,7 +10,7 @@ describe('note editor abort', () => {
   it('draft load and preview pass AbortSignal', () => {
     const editor = readFileSync(join(dir, 'notes/NoteEditor.tsx'), 'utf8')
     const api = readFileSync(join(dir, '../../services/brewApi.ts'), 'utf8')
-    assert.match(api, /export async function getNoteDraft\(\s*id: number,\s*signal\?: AbortSignal/)
+    assert.match(api, /export async function getNoteDoc\(\s*id: number,\s*signal\?: AbortSignal/)
     assert.match(editor, /openNoteCloudDoc\(/)
     assert.match(editor, /previewNote\([^,]+, controller\.signal\)/)
     assert.match(editor, /prepareNoteReaderHtml\(/)

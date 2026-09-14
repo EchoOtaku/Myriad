@@ -11,6 +11,7 @@
 //! 渲染只在写入这一侧发生。读路径永远读 `content`，绝不在渲染一次 ——
 //! 否则阅读器、RSS、联邦三处会各自拿到一份不同的 HTML。
 //! 对外订阅走 `GET /brew/notes.xml`（`/api/brew/notes.xml` 同一份）。
+//! 默认关；站长在工作台打开，且 Brew 对访客开放，地址才存在。
 
 use axum::{
     Json,
@@ -23,7 +24,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     Set,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 
 use super::helpers::{brew_http_err, brew_store_http, get_admin_user_id_from_headers};
@@ -55,18 +56,6 @@ pub(crate) struct NoteWriteRequest {
 pub(crate) struct NotePreviewRequest {
     #[serde(default)]
     pub content_md: String,
-}
-
-/// 编辑器要读回的那份原文。比 `ItemResponse` 多一个 `content_md`，
-/// 少掉所有阅读态字段 —— 这个响应只服务编辑器。
-#[derive(Debug, Serialize)]
-pub(crate) struct NoteDraftResponse {
-    pub id: i32,
-    pub title: String,
-    pub content_md: String,
-    pub topic: Option<String>,
-    pub image: Option<String>,
-    pub published_at: i64,
 }
 
 fn validation_err(err: myriad_brew_notes::NoteError) -> HttpError {
@@ -128,28 +117,6 @@ pub(crate) async fn preview_note(
     Ok(Json(json!({
         "success": true,
         "html": render_markdown_preview(&req.content_md),
-    })))
-}
-
-/// `GET /api/brew/notes/{id}` — 取回原文供编辑。
-pub(crate) async fn get_note_draft(
-    State(db): State<DatabaseConnection>,
-    headers: axum::http::HeaderMap,
-    Path(id): Path<i32>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
-    let (item, _) = find_own_note(&db, user_id, id).await?;
-
-    Ok(Json(json!({
-        "success": true,
-        "note": NoteDraftResponse {
-            id: item.id,
-            title: item.title,
-            content_md: item.content_md.unwrap_or_default(),
-            topic: item.topic,
-            image: item.image,
-            published_at: item.published_at.timestamp_millis(),
-        },
     })))
 }
 

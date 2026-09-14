@@ -40,12 +40,6 @@
     {
       "domain": "brew",
       "method": "GET",
-      "path": "/api/brew/sources/{id}",
-      "permission": "brew:read"
-    },
-    {
-      "domain": "brew",
-      "method": "GET",
       "path": "/api/brew/export-opml",
       "permission": "brew:read"
     },
@@ -65,12 +59,6 @@
       "domain": "brew",
       "method": "GET",
       "path": "/api/brew/items/{id}",
-      "permission": "brew:read"
-    },
-    {
-      "domain": "brew",
-      "method": "GET",
-      "path": "/api/brew/items/{id}/fulltext",
       "permission": "brew:read"
     },
     {

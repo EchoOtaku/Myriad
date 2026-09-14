@@ -324,11 +324,12 @@ impl PreparedTappPackage {
             .page
             .as_ref()
             .and_then(|page| page.styles.as_deref())
-            && nonempty_content(resources.page_styles.as_ref()).is_none() {
-                return Err(PackageValidateError::MissingPageStyles {
-                    declared: declared.to_string(),
-                });
-            }
+            && nonempty_content(resources.page_styles.as_ref()).is_none()
+        {
+            return Err(PackageValidateError::MissingPageStyles {
+                declared: declared.to_string(),
+            });
+        }
         if self
             .manifest
             .page

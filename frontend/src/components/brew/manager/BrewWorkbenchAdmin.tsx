@@ -11,9 +11,10 @@ import type { WorkbenchSourceStatus } from '../logic/sourceStatus'
 import { LuRss, LuTag } from '@lib/icons'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
+import * as brewApi from '../../../services/brewApi'
 import { useModuleVisibilityPreferences } from '../../../utils/moduleVisibility'
 import { userFacingError } from '../../../utils/userFacingError'
-import { ButtonItem, ManagedList } from '../../settings'
+import { ButtonItem, ManagedList, SwitchItem } from '../../settings'
 import { BatchCategoryPick } from '../BatchCategoryPick'
 import { getIconUrl, isFriendLinkCategory, isMineCategory } from '../constants'
 import {
@@ -140,6 +141,41 @@ export function BrewWorkbenchAdmin({
   const notesFeedUrl = notesRssUrl(
     typeof window === 'undefined' ? '' : window.location.origin,
   )
+  const [notesRssEnabled, setNotesRssEnabled] = useState(false)
+  const [notesRssSaving, setNotesRssSaving] = useState(false)
+  const notesRssShareable = notesRssEnabled && brewPublic
+
+  useEffect(() => {
+    if (pane !== 'sources') return
+    let cancelled = false
+    void brewApi
+      .getNotesRssSettings()
+      .then((settings) => {
+        if (!cancelled) setNotesRssEnabled(settings.enabled)
+      })
+      .catch(() => {
+        if (!cancelled) setNotesRssEnabled(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [pane])
+
+  const handleNotesRssEnabled = useCallback((next: boolean) => {
+    setNotesRssEnabled(next)
+    setNotesRssSaving(true)
+    void brewApi
+      .setNotesRssEnabled(next)
+      .then((enabled) => {
+        setNotesRssEnabled(enabled)
+      })
+      .catch(() => {
+        setNotesRssEnabled(!next)
+      })
+      .finally(() => {
+        setNotesRssSaving(false)
+      })
+  }, [])
   const query = queryProp ?? ''
   const [kindFilter, setKindFilter] = useState<SourceKindFilter>('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
@@ -341,6 +377,7 @@ export function BrewWorkbenchAdmin({
                 }}
                 onGenerateStyleTags={onGenerateStyleTags}
                 onDiscover={onDiscover}
+                notesRssEnabled={notesRssShareable}
               />
             ) : null,
           busy: refreshingId === source.id || removing,
@@ -367,7 +404,7 @@ export function BrewWorkbenchAdmin({
                       },
                     ]
                   : []),
-                ...(shareUrl
+                ...(shareUrl && notesRssShareable
                   ? [
                       {
                         key: 'share',
@@ -432,6 +469,7 @@ export function BrewWorkbenchAdmin({
       sourceSelect.selecting,
       sourceSelect.selected,
       sourceSelect.toggle,
+      notesRssShareable,
       visible,
     ],
   )
@@ -471,26 +509,39 @@ export function BrewWorkbenchAdmin({
 
       {pane === 'sources' ? (
         <div id="workbench-sources">
-          <ButtonItem
+          <SwitchItem
             itemKey="workbench-notes-rss"
             label={brew.notesRss}
             description={
-              brewPublic ? brew.notesRssHint : brew.notesRssPrivate
+              notesRssEnabled && !brewPublic
+                ? brew.notesRssPrivate
+                : brew.notesRssHint
             }
-            hint={notesFeedUrl}
-            buttonText={brew.shareRss}
-            buttonIcon={<LuRss />}
+            hint={notesRssShareable ? notesFeedUrl : undefined}
+            value={notesRssEnabled}
+            onChange={handleNotesRssEnabled}
+            loading={notesRssSaving}
             size="sm"
             layout="horizontal"
-            onClick={() => {
-              void shareRssAddress(
-                notesFeedUrl,
-                brew.notesRss,
-                brew.rssCopied,
-                t.errors.clipboardFailed,
-              )
-            }}
           />
+          {notesRssShareable ? (
+            <ButtonItem
+              itemKey="workbench-notes-rss-share"
+              label={brew.shareRss}
+              buttonText={brew.shareRss}
+              buttonIcon={<LuRss />}
+              size="sm"
+              layout="horizontal"
+              onClick={() => {
+                void shareRssAddress(
+                  notesFeedUrl,
+                  brew.notesRss,
+                  brew.rssCopied,
+                  t.errors.clipboardFailed,
+                )
+              }}
+            />
+          ) : null}
           <ManagedList
             stats={sourceSelectBar.stats}
             toolbar={sourceSelectBar.toolbar}

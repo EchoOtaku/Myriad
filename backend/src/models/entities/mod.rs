@@ -26,10 +26,10 @@ pub mod brew_categories;
 pub mod brew_comments;
 pub mod brew_items;
 pub mod brew_note_docs;
-pub mod media_assets;
 pub mod brew_podcasts;
 pub mod brew_sources;
 pub mod brew_user_states;
+pub mod media_assets;
 pub mod rsshub_instances;
 
 // Agent 任务系统实体

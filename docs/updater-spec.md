@@ -4,7 +4,8 @@
 > 本文档是 updater / proxy / release 流水线之间的契约，所有实现必须以此为准。
 
 **重要边界**：Myriad updater 不是双活 A/B 分区系统。运行时始终只有一套
-`backend` / `frontend` / `postgres` 业务容器；updater 只在维护模式下停止业务容器、
+`backend` / `federation-worker` / `persona-worker` / `frontend` / `postgres`
+业务容器（同一 backend 镜像的三个进程角色）；updater 只在维护模式下停止业务容器、
 创建 `pgdata` 快照、切换 `.env` 中的镜像 tag，然后启动新版本。回滚依赖快照和旧
 tag，而不是并行保留 A/B 两套在线分区。
 
@@ -37,10 +38,12 @@ tag，而不是并行保留 A/B 两套在线分区。
 │                                                        │
 │  [myriad-net]                                          │
 │   proxy ─┬─► frontend                                  │
-│          └─► backend ─► postgres                       │
+│          ├─► backend ─► postgres                       │
+│          ├─► federation-worker                         │
+│          └─► persona-worker                            │
 │                │                                       │
 │  [myriad-admin-net]                                    │
-│                └──► updater-gateway ──► updater        │
+│   backend ──► updater-gateway ──► updater              │
 │                                        │               │
 │  [myriad-docker-guard-net internal]                    │
 │                                        └──► docker-guard
@@ -49,15 +52,20 @@ tag，而不是并行保留 A/B 两套在线分区。
 ```
 
 - `proxy`：唯一对外暴露端口的组件，负责维护页与反向代理。极少更新；兼入 admin-net 以便
-  rescue 解析 `updater`。
+  rescue 解析 `updater`。官方 compose 设 `PROXY_FEDERATION_UPSTREAM` /
+  `PROXY_PERSONA_UPSTREAM`，把联邦与 persona 域直接打到对应 worker。
 - `updater-gateway`：同 updater 镜像的薄反代；校验 `X-Updater-Gateway-Secret` 后注入
   `X-Update-Token`；**仅** admin-net；不持 compose 挂载、不挂 docker.sock。`/healthz` 不需 secret。
 - `updater`：接收更新指令，执行更新/回滚流程；不挂载 docker.sock；**不在**业务 `myriad-net`。
+  编排根只读，可写叠加 `.env` / `state` /（bundled）`pgdata`。
 - `docker-guard`：唯一挂载 docker.sock 的内部服务，按 API、Compose 项目标签、镜像仓库和
-  `containers/create` 请求体执行白名单策略。
-- `backend` / `frontend`：业务组件，由 updater 拉取并启停；backend 双宿 business+admin，
-  **生产 compose 不注入 `UPDATE_TOKEN`**，注入 `UPDATER_GATEWAY_SECRET` 以调用 gateway。
-- `postgres`：数据存储。更新前后由 updater 做文件级快照。
+  `containers/create` 请求体执行白名单策略。**不**持有 `UPDATE_TOKEN`；自更新用
+  `GUARD_SELF_UPDATE_TOKEN`。
+- `backend` / `federation-worker` / `persona-worker` / `frontend`：业务组件，由 updater
+  拉取并启停。三个进程共用 backend 镜像；web 双宿 business+admin，worker 只在
+  `myriad-net`。**生产 compose 不注入 `UPDATE_TOKEN`**，web 注入 `UPDATER_GATEWAY_SECRET`
+  以调用 gateway。
+- `postgres`：数据存储。bundled 模式下更新前后由 updater 做文件级快照。
 
 ## 2. 仓库产物
 
@@ -189,72 +197,19 @@ jobs:
 `MYRIAD_TAG` / `UPDATER_TAG` 盖进容器 `MYRIAD_VERSION`。
 
 ```yaml
+# 结构示意。字段与挂载以仓库根 docker-compose.yml 为准，不要照抄本块去部署。
 services:
-  proxy:
-    image: <registry>/myriad-proxy:${PROXY_TAG}
-    ports: ["80:80", "443:443"]
-    volumes:
-      - ./state:/state:ro
-
+  postgres:            # bundled only; ./pgdata bind → /var/lib/postgresql
+  backend-volume-init: # 一次性修 named volume 属主
+  backend:             # MYRIAD_PROCESS_ROLE=web；双宿 myriad-net + admin-net
+  federation-worker:   # 同 backend 镜像；command /app/myriad-federation-worker
+  persona-worker:      # 同 backend 镜像；command /app/myriad-persona-worker
   frontend:
-    image: <registry>/myriad-frontend:${MYRIAD_TAG}
-
-  backend:
-    image: <registry>/myriad-backend:${MYRIAD_TAG}
-    env_file: .env
-    depends_on: [postgres]
-
-  postgres:
-    image: postgres:18
-    volumes:
-      - ./pgdata:/var/lib/postgresql        # PostgreSQL 18+ bind mount, 必须
-
-  docker-guard:
-    image: <registry>/myriad-updater:${UPDATER_TAG}
-    entrypoint: ["/usr/local/bin/myriad-docker-guard"]
-    environment:
-      UPDATE_TOKEN: ${UPDATE_TOKEN}
-      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-myriad}
-      MYRIAD_DOCKER_NETWORK: ${MYRIAD_DOCKER_NETWORK:-myriad-net}
-      MYRIAD_ADMIN_NETWORK: ${MYRIAD_ADMIN_NETWORK:-myriad-admin-net}
-      MYRIAD_DOCKER_GUARD_NETWORK: ${MYRIAD_DOCKER_GUARD_NETWORK:-myriad-docker-guard-net}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./:/host/compose:ro
-    networks: [myriad-docker-guard-net]
-
-  updater:
-    image: <registry>/myriad-updater:${UPDATER_TAG}
-    environment:
-      UPDATE_TOKEN: ${UPDATE_TOKEN}
-      CHANNEL: ${CHANNEL:-stable}
-      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
-      REGISTRY_MIRROR: ${REGISTRY_MIRROR:-}
-      UPDATER_STATE_DIR: /host/compose/state
-      UPDATER_ENV_FILE: /host/compose/.env
-      UPDATER_PGDATA: /host/compose/pgdata
-      DOCKER_HOST: tcp://docker-guard:2375
-      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-myriad}
-      MYRIAD_DOCKER_NETWORK: ${MYRIAD_DOCKER_NETWORK:-myriad-net}
-    volumes:
-      - ./:/host/compose
-    networks: [myriad-admin-net, myriad-docker-guard-net]
-
-  updater-gateway:
-    image: <registry>/myriad-updater:${UPDATER_TAG}
-    entrypoint: ["/usr/local/bin/myriad-updater-gateway"]
-    environment:
-      UPDATE_TOKEN: ${UPDATE_TOKEN}
-      UPDATER_UPSTREAM: http://updater:1101
-    networks: [myriad-admin-net]
-
-networks:
-  myriad-net:
-    name: ${MYRIAD_DOCKER_NETWORK:-myriad-net}
-  myriad-admin-net:
-    name: ${MYRIAD_ADMIN_NETWORK:-myriad-admin-net}
-  myriad-docker-guard-net:
-    internal: true
+  proxy:               # 唯一宿主端口 HTTP_PORT:80
+                       # PROXY_FEDERATION_UPSTREAM / PROXY_PERSONA_UPSTREAM 必填
+  docker-guard:        # 唯一 docker.sock；DOCKER_GUARD_IMAGE digest + GUARD_SELF_UPDATE_TOKEN
+  updater:             # 编排根只读；可写叠加 .env / state /（bundled）pgdata
+  updater-gateway:     # admin-net only；注入 X-Update-Token
 ```
 
 当前仓库的 `docker-compose.yml` 使用单个宿主 `.env` 作为部署契约。它同时保存业务
@@ -263,7 +218,7 @@ networks:
 `UPDATER_TAG` 只作首次安装回退，compose **不以** tag 覆盖容器 `MYRIAD_VERSION`
 （身份打在镜像 ENV 里）。`PROXY_TAG` 目前走手动 tag 升级路径。
 
-`.env` 必须包含：
+`.env` 必须包含（完整键以 `.env.production.example` 为准）：
 
 ```
 MYRIAD_TAG=v0.4.9
@@ -273,6 +228,11 @@ UPDATER_IMAGE_REF=docker.io/somekawahitomi/myriad-updater@sha256:<64hex>
 DOCKER_GUARD_IMAGE=docker.io/somekawahitomi/myriad-updater@sha256:<64hex>
 COMPOSE_PROJECT_NAME=myriad
 UPDATE_TOKEN=<32+ char random>
+UPDATER_GATEWAY_SECRET=<32+ char random>
+GUARD_SELF_UPDATE_TOKEN=<32+ char random>
+MYRIAD_SETUP_SECRET=<32+ char random>
+PERSONA_DB_PASSWORD=<32+ URL-safe>      # bundled；external 另需 PERSONA_DATABASE_URL
+FEDERATION_DB_PASSWORD=<32+ URL-safe>   # bundled；external 另需 FEDERATION_DATABASE_URL
 CHANNEL=stable
 GITHUB_TOKEN=    # 可选，提升 rate limit
 REGISTRY_MIRROR= # 可选
@@ -798,8 +758,11 @@ docker compose --env-file .env --env-file ./guard-policy/docker-guard.env up -d 
      docker-guard 的 Docker API `ping` 可达。external 模式要求 `DATABASE_URL`（不要求
      `POSTGRES_PASSWORD`）；bundled 要求 `POSTGRES_PASSWORD`。
   2. **Compose 契约**（`docker compose config`，且**更新时重扫** compose 文件）：必备服务
-     `backend`/`frontend`（bundled 含 `postgres`）；`container_name` 须为 `myriad-backend`
-     等固定名；bundled 下 postgres 的 pgdata 须为 **bind**；运行中容器 project 标签一致
+     `backend`/`frontend`/`federation-worker`/`persona-worker`（bundled 含 `postgres`）；
+     backend 必须 `MYRIAD_PROCESS_ROLE=web`；`container_name` 须为 `myriad-backend` /
+     `myriad-federation-worker` / `myriad-persona-worker` 等固定名；运行中 proxy 必须已带
+     `PROXY_FEDERATION_UPSTREAM` / `PROXY_PERSONA_UPSTREAM` 与对应 capability label；
+     bundled 下 postgres 的 pgdata 须为 **bind**；运行中容器 project 标签一致
      （external 不 inspect 残留 `myriad-postgres`）。
   3. **网络 allowlist**：三网 allowlist + 已存在 + 运行中容器不得挂外来网。
   4. **release 无 manifest**：GitHub `release.json` 不可用时 **允许** 回退 Docker Hub
@@ -988,9 +951,9 @@ E2E 实际覆盖（11 项 / 全过，2026-07-17）：
 3. 业务镜像用 `${MYRIAD_TAG}` / `${PROXY_TAG}`；TCB 用 `UPDATER_IMAGE_REF` digest pin；不使用 `:latest`
 4. 只有 `proxy` 暴露宿主端口
 5. 只有 `docker-guard` 挂载原始 docker.sock；updater 仅通过内部策略代理访问 Docker API
-6. updater 只挂载一次部署根目录；pgdata、state、快照和 `.env` 均从该目录下访问
-7. 网络三分：business / admin / guard；`updater-gateway` 在 admin-net 为 backend 注入 token
+6. updater 编排根只读；`.env` / `state` /（bundled）`pgdata` 以可写子挂载叠加
+7. 网络三分：business / admin / guard；`updater-gateway` 在 admin-net 为 backend 注入 token；worker 不进 admin-net / guard-net
 8. `./state` 和 `./backups` 由部署脚本创建
-9. `UPDATE_TOKEN` 保存在同一个 `.env`，不暴露给浏览器，也不进入 backend 容器 env
+9. `UPDATE_TOKEN` 保存在同一个 `.env`，不暴露给浏览器，也不进入 backend / worker / docker-guard 容器 env
 
 `scripts/extra/deploy.sh` 是当前生产布局的 bootstrap 入口。

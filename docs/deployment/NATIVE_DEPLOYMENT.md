@@ -15,8 +15,10 @@ proxy for TLS. It is a complete alternative to
 
 ## 1. How the native topology differs from Docker
 
-The Docker stack runs five containers (`proxy`, `frontend`, `backend`,
-`postgres`, `updater`). Natively, most of that collapses:
+The Docker stack runs `proxy`, `frontend`, `backend`, `federation-worker`,
+`persona-worker`, `postgres`, `updater`, `updater-gateway`, and `docker-guard`.
+Natively, most of that collapses into one process (`MYRIAD_PROCESS_ROLE` is
+not split):
 
 ```text
                          (optional)
@@ -28,11 +30,11 @@ The Docker stack runs five containers (`proxy`, `frontend`, `backend`,
 
 | Docker component | Native equivalent |
 | --- | --- |
-| `postgres` container | A normal PostgreSQL 16+ server (system package) |
-| `backend` container | The `myriad-backend` binary, run under systemd |
+| `postgres` container | A normal PostgreSQL 17+ server (system package; 18 recommended) |
+| `backend` + `federation-worker` + `persona-worker` | One `myriad-backend` binary under systemd (combined runtime; production Docker rejects this) |
 | `frontend` container (`spa-server`) | **Gone** — the backend serves `frontend/dist` directly via `FRONTEND_DIST_PATH` |
 | `proxy` container (Rust reverse proxy) | **Optional** — replaced by Caddy/nginx purely for TLS, or omitted for HTTP-only/LAN |
-| `updater` container | **Not available** — it drives Docker via `docker.sock`. Updates are done by rebuild (see [§10](#10-updating)) |
+| `updater` / `updater-gateway` / `docker-guard` | **Not available** — they drive Docker via `docker.sock`. Updates are done by rebuild (see [§10](#10-updating)) |
 
 **What you lose without Docker:** the in-app **Update Management** page
 (`/config → About → Update Management`) proxies to the updater service, which
@@ -51,7 +53,7 @@ identically, because they are pure application features backed by PostgreSQL.
 | **Rust** | stable **1.98+** | Install via [rustup](https://rustup.rs/). Image builds pin `rust:1.98-bookworm`; see `docs/development/BUILD.md`. |
 | **Node.js** | **20+** (22 recommended) | For building the frontend only — not needed at runtime. |
 | **pnpm** | **10.x** | Enable via `corepack enable`. |
-| **PostgreSQL** | **16+** | Server + client tools. |
+| **PostgreSQL** | **17+** (18 recommended) | Server + client tools. Stock Docker Compose uses 18; 17+ is required for `transaction_timeout`. |
 | C toolchain + libs | — | `gcc`, `pkg-config`, `libssl-dev`, `libpq-dev` to build; `libssl3`, `libpq5`, `ca-certificates` at runtime. |
 
 Recommended machine size: **2 vCPU / 4 GB RAM** minimum (the AI agent and

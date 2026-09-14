@@ -211,19 +211,20 @@ fn write_key_file(path: &Path, encoded: &str) -> std::io::Result<()> {
 fn load_or_create() -> DataKey {
     // 1) 环境变量覆盖
     if let Ok(raw) = std::env::var("MYRIAD_DATA_KEY")
-        && !raw.trim().is_empty() {
-            match parse_key_material(&raw) {
-                Some(key) => {
-                    return DataKey {
-                        key,
-                        source: KeySource::Env,
-                    };
-                }
-                None => tracing::error!(
-                    "MYRIAD_DATA_KEY is set but is not base64-encoded 32 bytes; ignoring it"
-                ),
+        && !raw.trim().is_empty()
+    {
+        match parse_key_material(&raw) {
+            Some(key) => {
+                return DataKey {
+                    key,
+                    source: KeySource::Env,
+                };
             }
+            None => tracing::error!(
+                "MYRIAD_DATA_KEY is set but is not base64-encoded 32 bytes; ignoring it"
+            ),
         }
+    }
 
     // 2) 密钥文件
     let path = key_file_path();

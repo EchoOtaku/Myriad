@@ -8,7 +8,9 @@ host HTTP_PORT
   v
 proxy ──┬── frontend:1102
         ├── backend:1103 ── postgres:5432
-        └── updater:1101 (internal only)
+        ├── federation-worker:1103
+        ├── persona-worker:1103
+        └── updater-gateway:1104 ── updater:1101 (internal only)
 ```
 
 生产环境只有 `proxy` 暴露宿主端口。不要暴露 backend/frontend 端口，也不要用
@@ -43,7 +45,7 @@ openssl rand -base64 32  # POSTGRES_PASSWORD
 openssl rand -base64 32  # JWT_SECRET
 ```
 
-`UPDATE_TOKEN` 与 `UPDATER_GATEWAY_SECRET` 可以留空；`scripts/extra/deploy.sh up` 会在首次启动时生成。
+`UPDATE_TOKEN`、`UPDATER_GATEWAY_SECRET`、`PERSONA_DB_PASSWORD`、`FEDERATION_DB_PASSWORD` 可以留空；`scripts/extra/deploy.sh up` 会在首次启动时生成。
 
 `BASE_URL` 是联邦发现地址的来源。联邦客户端（例如商店应用 Aro）里显示的
 Actor URL 会形如 `https://yourdomain.com/users/<username>`，别人可以用这个

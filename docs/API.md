@@ -27,7 +27,8 @@ Base URL:
 | 站点配置（脱敏） | `/api/config` | 写操作需管理员 |
 | 资料 / 平台数据 | `/api/profile`、`/api/platforms` 等 | 受模块可见性与权限影响 |
 | 图片 / 媒体代理 | `/api/proxy/…` | 热链域名见 `shared/image_proxy_hosts.json` |
-| 联邦 | `/.well-known/webfinger`、`/inbox`、`/users/*`、`/media/federation/*` 等 | 经 proxy 转到 backend |
+| 联邦 | `/.well-known/webfinger`、`/inbox`、`/users/*`、`/media/federation/*`、`/api/federation/*` 等 | 生产经 proxy 转到 **federation-worker**（不是 web） |
+| Agent / 语音 / rig | `/api/agent`、`/api/speech`、`/api/merope/rig`、`/api/tapp/agent/v2/interactions` | 生产经 proxy 转到 **persona-worker** |
 
 ## 需管理员的典型面
 

@@ -29,7 +29,9 @@ Updater 日常操作见 [UPDATER_QUICKSTART.md](./UPDATER_QUICKSTART.md)。
 
 ```text
 proxy ──┬── frontend
-        └── backend ──► postgres:5432   (./pgdata bind)
+        ├── backend ──► postgres:5432   (./pgdata bind)
+        ├── federation-worker
+        └── persona-worker
 updater ──► docker-guard ── sock
             + 更新前快照 / 回滚恢复 pgdata
 ```
@@ -38,13 +40,15 @@ updater ──► docker-guard ── sock
 
 ```text
 proxy ──┬── frontend
-        └── backend ──► DATABASE_URL ──► 外部 PostgreSQL
+        ├── backend ──► DATABASE_URL ──► 外部 PostgreSQL
+        ├── federation-worker ──► FEDERATION_DATABASE_URL
+        └── persona-worker ──► PERSONA_DATABASE_URL
 updater ──► docker-guard ── sock
             + 仍管理 MYRIAD_TAG / PROXY_TAG / 维护模式；TCB 看 UPDATER_IMAGE_REF
             + MYRIAD_DB_MODE=external → 不碰 pgdata 快照
 ```
 
-业务网络 `myriad-net` 上 **不再** 有 `postgres` 成员；`myriad-admin-net` / `myriad-docker-guard-net` 与默认栈一致。
+业务网络 `myriad-net` 上 **不再** 有 `postgres` 成员；`myriad-admin-net` / `myriad-docker-guard-net` 与默认栈一致。三个进程必须指向**同一** Myriad 库/schema；worker 登录与限额见 [WORKER_DATABASE.md](./WORKER_DATABASE.md)。
 
 ---
 
@@ -55,7 +59,10 @@ updater ──► docker-guard ── sock
 | 变量 | 必需 | 说明 |
 | --- | --- | --- |
 | `MYRIAD_DB_MODE` | 是（外部模式） | 设为 `external`。updater 跳过 pgdata 快照/恢复。缺省或其它值按本地库模式处理。 |
-| `DATABASE_URL` | 是 | backend 唯一连接串，例如 `postgres://user:pass@host:5432/myriad?sslmode=require` |
+| `DATABASE_URL` | 是 | web / 迁移登录的连接串，例如 `postgres://user:pass@host:5432/myriad?sslmode=require` |
+| `PERSONA_DATABASE_URL` | 是 | persona-worker 的独立登录；同一库/schema |
+| `FEDERATION_DATABASE_URL` | 是 | federation-worker 的独立登录；同一库/schema |
+| `PERSONA_DB_PASSWORD` / `FEDERATION_DB_PASSWORD` | 可选 | 迁移登录有建角色权限时，web 可按这两项预置保留角色；否则由 DBA 预置并省略这两项 |
 | `JWT_SECRET` / `CORS_ORIGINS` / tags / tokens | 同默认部署 | 见 [DOCKER_DEPLOYMENT.md](./DOCKER_DEPLOYMENT.md) 环境表 |
 
 说明：
@@ -102,7 +109,8 @@ UPDATER_GATEWAY_SECRET=...
 | --- | --- |
 | `postgres` | **删除** |
 | `backend` | `DATABASE_URL` 来自 env；**去掉** `depends_on: postgres`；仍依赖 `backend-volume-init` |
-| `frontend` / `proxy` | 不变 |
+| `federation-worker` / `persona-worker` | 仍在 `myriad-net`；分别用 `FEDERATION_DATABASE_URL` / `PERSONA_DATABASE_URL` |
+| `frontend` / `proxy` | 不变；proxy 仍指向两个 worker |
 | `docker-guard` / `updater` / `updater-gateway` | 拓扑不变；updater 设 `MYRIAD_DB_MODE=external` |
 | `./pgdata` | **不需要** bind；不要挂空目录装样子 |
 
@@ -215,7 +223,7 @@ pg_dump "$DATABASE_URL" -Fc -f "backups/myriad_$(date +%Y%m%d_%H%M%S).dump"
 
 ### 5. 从栈内 Postgres 迁到外部（概要）
 
-1. 维护窗口：`docker compose stop frontend backend`（或整栈 stop，按你的流程）。  
+1. 维护窗口：`docker compose stop frontend backend federation-worker persona-worker`（或整栈 stop，按你的流程）。  
 2. `pg_dump` 栈内库 → 导入外部 Postgres（建库/用户/权限先就绪）。  
 3. 换用外部 compose（无 `postgres` 服务），设置 `MYRIAD_DB_MODE=external` 与 `DATABASE_URL`。  
 4. 使用 `docker compose --env-file .env up -d`（若 `./guard-policy/docker-guard.env` 已存在可再加 `--env-file ./guard-policy/docker-guard.env`），执行上一节容器内校验。

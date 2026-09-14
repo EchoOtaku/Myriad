@@ -21,7 +21,10 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use myriad_error::AppError;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect, Statement,
+};
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -669,6 +672,36 @@ pub(crate) async fn brew_module_open_to_guests(db: &DatabaseConnection) -> bool 
     module_open_to_guests(db, "brew").await
 }
 
+/// 站长手记 RSS 开关。缺行 = 关。
+pub(crate) async fn notes_rss_enabled(db: &impl ConnectionTrait) -> bool {
+    let result = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT value FROM configurations WHERE key = $1",
+            vec![myriad_brew_notes::NOTES_RSS_PREFERENCES_KEY.into()],
+        ))
+        .await;
+    match result {
+        Ok(Some(row)) => match row.try_get::<Value>("", "value") {
+            Ok(value) => myriad_brew_notes::notes_rss_enabled_from_value(&value),
+            Err(error) => {
+                tracing::warn!(%error, "failed to read notes RSS preference");
+                false
+            }
+        },
+        Ok(None) => false,
+        Err(error) => {
+            tracing::warn!(%error, "failed to load notes RSS preference");
+            false
+        }
+    }
+}
+
+/// 开关打开，且 Brew 对访客开放，公开 feed 才存在。
+pub(crate) async fn notes_rss_is_public(db: &DatabaseConnection) -> bool {
+    notes_rss_enabled(db).await && brew_module_open_to_guests(db).await
+}
+
 pub(crate) async fn public_site_identity(
     db: &DatabaseConnection,
 ) -> (String, String, &'static str) {
@@ -677,7 +710,10 @@ pub(crate) async fn public_site_identity(
     (branding.title, branding.description, locale.html_lang)
 }
 
-fn notes_rss_alternate(base: Option<&str>) -> String {
+fn notes_rss_alternate(base: Option<&str>, enabled: bool) -> String {
+    if !enabled {
+        return String::new();
+    }
     let href = public_absolute_url(base, myriad_brew_notes::NOTES_RSS_PATH);
     format!(
         "  <link rel=\"alternate\" type=\"application/rss+xml\" title=\"Notes\" href=\"{}\" />\n",
@@ -821,7 +857,11 @@ async fn resolve_brew_item_seo_summary(
     })
 }
 
-fn render_brew_item_seo_html(summary: &BrewItemSeoSummary, chrome: &SeoChrome) -> String {
+fn render_brew_item_seo_html(
+    summary: &BrewItemSeoSummary,
+    chrome: &SeoChrome,
+    notes_rss: bool,
+) -> String {
     let site = summary.site_title.as_deref().unwrap_or("Myriad");
     let title = format_document_title(&summary.title, site);
     let desc = summary
@@ -869,7 +909,7 @@ fn render_brew_item_seo_html(summary: &BrewItemSeoSummary, chrome: &SeoChrome) -
         canonical = html_escape(&summary.canonical_url),
     );
 
-    let extra_head = notes_rss_alternate(resolve_public_base_url().as_deref());
+    let extra_head = notes_rss_alternate(resolve_public_base_url().as_deref(), notes_rss);
     render_seo_html(SeoDocument {
         title: &title,
         description: desc,
@@ -1138,7 +1178,11 @@ pub async fn brew_item_seo_html(
         Ok(summary) => {
             let branding = load_site_branding(&db).await;
             let chrome = seo_chrome(&branding, &headers);
-            html_response(StatusCode::OK, render_brew_item_seo_html(&summary, &chrome))
+            let notes_rss = notes_rss_enabled(&db).await;
+            html_response(
+                StatusCode::OK,
+                render_brew_item_seo_html(&summary, &chrome, notes_rss),
+            )
         }
         Err(StatusCode::BAD_REQUEST) => html_response(
             StatusCode::BAD_REQUEST,
@@ -1443,7 +1487,7 @@ async fn module_list_seo_html(
         module_nav_html(&prefs.modules),
     );
     let extra_head = if module_key == "brew" {
-        notes_rss_alternate(base.as_deref())
+        notes_rss_alternate(base.as_deref(), notes_rss_enabled(db).await)
     } else {
         String::new()
     };
@@ -1897,6 +1941,7 @@ mod tests {
                 body_text: "Paragraph one.\n\nParagraph two.".into(),
             },
             &chrome,
+            true,
         );
         assert!(html.contains("<article>"));
         assert!(html.contains("Paragraph one."));
@@ -1911,6 +1956,31 @@ mod tests {
         assert!(html.contains(r#"name="google-site-verification""#));
         assert!(html.contains("Tok_en-1"));
         assert!(!html.contains("_spa=1"));
+    }
+
+    #[test]
+    fn brew_shell_omits_notes_rss_when_the_switch_is_off() {
+        let html = render_brew_item_seo_html(
+            &BrewItemSeoSummary {
+                id: 1,
+                title: "Hello".into(),
+                description: Some("short".into()),
+                image: None,
+                canonical_url: "https://ex.com/brew/item/1".into(),
+                path: "/brew/item/1".into(),
+                noindex: false,
+                indexable: true,
+                site_title: Some("Site".into()),
+                source_name: Some("Blog".into()),
+                published_at: Some("2026-01-02".into()),
+                author: Some("Ada".into()),
+                body_text: "Paragraph one.".into(),
+            },
+            &SeoChrome::default(),
+            false,
+        );
+        assert!(!html.contains(r#"type="application/rss+xml""#));
+        assert!(!html.contains(myriad_brew_notes::NOTES_RSS_PATH));
     }
 
     #[test]

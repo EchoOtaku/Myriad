@@ -16,15 +16,21 @@ browser → Astro dev (:1102)
 ```text
 host HTTP_PORT
   → proxy
-       ├─► frontend (:1102)          [myriad-net]
-       ├─► backend (:1103) → postgres
-       │       └─► updater-gateway → updater   [myriad-admin-net]
-       │                                 └─► docker-guard → Docker sock
-       │                                       [myriad-docker-guard-net]
-       └─ (rescue) updater when PROXY_ALLOW_DIRECT_UPDATER=true
+       ├─► frontend (:1102)                 [myriad-net]
+       ├─► backend (:1103) → postgres         MYRIAD_PROCESS_ROLE=web
+       ├─► federation-worker (:1103)
+       ├─► persona-worker (:1103)
+       │
+       └─► backend ─► updater-gateway → updater   [myriad-admin-net]
+                                          └─► docker-guard → Docker sock
+                                                [myriad-docker-guard-net]
+       (rescue) updater when PROXY_ALLOW_DIRECT_UPDATER=true
 ```
 
-- Only **proxy** publishes a host port. It routes; it does not rewrite HTML.
+- Only **proxy** publishes a host port. It routes SPA to frontend, persona
+  prefixes to `persona-worker`, ActivityPub / federation HTTP+WS / Note media
+  to `federation-worker`, and remaining `/api` + SEO shells to web. It does
+  not rewrite HTML. Path table: [PORTS.md](../deployment/PORTS.md).
 - Site identity in HTML: crawler / share shells are written by backend
   `load_site_branding`; the human SPA document is stamped by the frontend
   process from the same public `GET /api/config/metadata` fields.
@@ -36,7 +42,7 @@ host HTTP_PORT
 | Component | Path | Role |
 | --- | --- | --- |
 | Frontend | `frontend/` | Astro 7 + React 19 SPA; widgets, Library, Brew, reports, config, Tapp runtime |
-| Backend | `backend/` | Axum API, SeaORM, platform sync, Agent, Brew, federation, analytics |
+| Backend | `backend/` | 同一镜像三个进程：web（迁移 + 剩余 API）、`federation-worker`、`persona-worker` |
 | Proxy | `proxy/` | Host-facing reverse proxy + maintenance page (own Cargo tree) |
 | Updater | `updater/` | Self-update, snapshots, docker-guard / gateway binaries (own Cargo tree) |
 | Crates | `crates/` | Shared libs (error, outbound, image-proxy, tapp-*, …) |
@@ -74,6 +80,8 @@ Schema 权威在 `backend/migrations/`（SeaORM），不是独立 `database/` SQ
 
 - [QUICKSTART.md](../QUICKSTART.md) — 部署与本地开发
 - [DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md) — 生产拓扑与 env
-- [PORTS.md](../deployment/PORTS.md) — 端口与代理路径
+- [PORTS.md](../deployment/PORTS.md) — 端口与代理路径（含 web / federation / persona 分流）
+- [RUNTIME_ISOLATION.md](../deployment/RUNTIME_ISOLATION.md) — 进程边界与升级
+- [WORKER_DATABASE.md](../deployment/WORKER_DATABASE.md) — worker 独立数据库登录
 - [BUILD.md](BUILD.md) — 从源码构建
 - [API.md](../API.md) — HTTP API 入口说明

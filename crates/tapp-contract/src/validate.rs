@@ -313,17 +313,19 @@ pub fn validate_tapp_manifest(
             return Err("Tapp game.protocol must be lowercase [a-z0-9._-]".to_string());
         }
         if let Some(players) = game.max_players
-            && !(MIN_TAPP_GAME_PLAYERS..=MAX_TAPP_GAME_PLAYERS).contains(&players) {
-                return Err(format!(
-                    "Tapp game.maxPlayers must be {MIN_TAPP_GAME_PLAYERS}-{MAX_TAPP_GAME_PLAYERS}"
-                ));
-            }
+            && !(MIN_TAPP_GAME_PLAYERS..=MAX_TAPP_GAME_PLAYERS).contains(&players)
+        {
+            return Err(format!(
+                "Tapp game.maxPlayers must be {MIN_TAPP_GAME_PLAYERS}-{MAX_TAPP_GAME_PLAYERS}"
+            ));
+        }
         if let Some(bytes) = game.max_message_bytes
-            && !(1024..=MAX_TAPP_GAME_MESSAGE_BYTES).contains(&bytes) {
-                return Err(format!(
-                    "Tapp game.maxMessageBytes must be 1024-{MAX_TAPP_GAME_MESSAGE_BYTES}"
-                ));
-            }
+            && !(1024..=MAX_TAPP_GAME_MESSAGE_BYTES).contains(&bytes)
+        {
+            return Err(format!(
+                "Tapp game.maxMessageBytes must be 1024-{MAX_TAPP_GAME_MESSAGE_BYTES}"
+            ));
+        }
         if !manifest
             .permissions
             .iter()

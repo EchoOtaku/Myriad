@@ -54,9 +54,11 @@ pub async fn get_psn_access_token(npsso: &str) -> Result<String, String> {
 
     if let Ok(guard) = psn_token_cache().lock()
         && let Some(entry) = guard.as_ref()
-            && entry.npsso_fingerprint == fp && entry.fetched_at.elapsed() < PSN_TOKEN_TTL {
-                return Ok(entry.access_token.clone());
-            }
+        && entry.npsso_fingerprint == fp
+        && entry.fetched_at.elapsed() < PSN_TOKEN_TTL
+    {
+        return Ok(entry.access_token.clone());
+    }
 
     let access_token = psn_exchange_npsso(npsso).await?;
 

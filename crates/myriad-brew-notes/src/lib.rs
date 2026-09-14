@@ -9,13 +9,13 @@
 
 use std::collections::{HashMap, HashSet};
 
-use pulldown_cmark::{Options, Parser, html};
+use pulldown_cmark::{html, Options, Parser};
 
 mod layout;
 #[cfg(test)]
 mod merge;
 mod status;
-pub use status::{NoteDocStatus, ScheduleError, is_due, schedule_at};
+pub use status::{is_due, schedule_at, NoteDocStatus, ScheduleError};
 
 use layout::{
     eat_fence, fence_close, fence_open, parse_note_layout, stamp_wrapper, widget_html, LayoutSeg,
@@ -389,7 +389,10 @@ fn close_fence_before_trailing_defs(markdown: &str) -> String {
         return markdown.to_string();
     }
     let closer = open.closer();
-    let mut out: Vec<String> = lines[..start].iter().map(|line| (*line).to_string()).collect();
+    let mut out: Vec<String> = lines[..start]
+        .iter()
+        .map(|line| (*line).to_string())
+        .collect();
     out.push(closer);
     out.push(String::new());
     out.extend(lines[start..].iter().map(|line| (*line).to_string()));
@@ -1029,6 +1032,22 @@ pub fn note_link(item_id: i32) -> String {
 /// 已发布手记的公开 RSS。代理和前端分享入口必须用同一条路径。
 pub const NOTES_RSS_PATH: &str = "/brew/notes.xml";
 
+/// `configurations` 里手记 RSS 开关的 key。缺省或无法解析 = 关。
+pub const NOTES_RSS_PREFERENCES_KEY: &str = "brew_notes_rss";
+
+/// 解析站长开关。认 JSON bool、`"true"`、`{"enabled": ...}`。
+pub fn notes_rss_enabled_from_value(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Bool(enabled) => *enabled,
+        serde_json::Value::String(text) => text.eq_ignore_ascii_case("true"),
+        serde_json::Value::Object(map) => map
+            .get("enabled")
+            .map(notes_rss_enabled_from_value)
+            .unwrap_or(false),
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1180,7 +1199,10 @@ mod tests {
         );
         assert!(html.contains("class=\"footnote-reference\""), "{html}");
         assert!(html.contains("class=\"footnote-definition\""), "{html}");
-        assert!(html.contains("src=\"https://example.com/cup.jpg\""), "{html}");
+        assert!(
+            html.contains("src=\"https://example.com/cup.jpg\""),
+            "{html}"
+        );
         assert!(html.contains("data-widget=\"weather\""), "{html}");
         assert!(!html.contains("[^didion]"), "{html}");
         assert!(!html.contains("[规范][cm]"), "{html}");
@@ -1189,13 +1211,7 @@ mod tests {
 
     #[test]
     fn tilde_fence_keeps_trailing_defs() {
-        let md = concat!(
-            "前[^fn]\n\n",
-            "~~~\n",
-            "围栏里\n",
-            "~~~\n\n",
-            "[^fn]: 底\n",
-        );
+        let md = concat!("前[^fn]\n\n", "~~~\n", "围栏里\n", "~~~\n\n", "[^fn]: 底\n",);
         let html = render_markdown(md);
         assert!(html.contains("class=\"footnote-definition\""), "{html}");
         assert!(html.contains("围栏里"), "{html}");
@@ -1378,6 +1394,22 @@ mod tests {
         assert_eq!(note_guid("abc"), "note:abc");
         assert_eq!(note_link(12), "/brew/item/12");
         assert_eq!(NOTES_RSS_PATH, "/brew/notes.xml");
+        assert_eq!(NOTES_RSS_PREFERENCES_KEY, "brew_notes_rss");
+    }
+
+    #[test]
+    fn notes_rss_defaults_off_and_parses_common_shapes() {
+        assert!(!notes_rss_enabled_from_value(&serde_json::json!(null)));
+        assert!(!notes_rss_enabled_from_value(&serde_json::json!(false)));
+        assert!(!notes_rss_enabled_from_value(&serde_json::json!("false")));
+        assert!(!notes_rss_enabled_from_value(
+            &serde_json::json!({"enabled": false})
+        ));
+        assert!(notes_rss_enabled_from_value(&serde_json::json!(true)));
+        assert!(notes_rss_enabled_from_value(&serde_json::json!("true")));
+        assert!(notes_rss_enabled_from_value(
+            &serde_json::json!({"enabled": true})
+        ));
     }
 
     #[test]
@@ -1439,7 +1471,9 @@ mod tests {
             out.push_str(&rest[..at]);
             let after = &rest[at + 1..];
             let end = after.find('"').and_then(|first| {
-                after[first + 1..].find('"').map(|second| first + 1 + second + 1)
+                after[first + 1..]
+                    .find('"')
+                    .map(|second| first + 1 + second + 1)
             });
             match end {
                 Some(end) => rest = &after[end..],
@@ -1478,7 +1512,10 @@ mod tests {
         );
         let published = render_markdown(md);
         let preview = render_markdown_preview(md);
-        assert!(published.contains("class=\"link-definition\""), "{published}");
+        assert!(
+            published.contains("class=\"link-definition\""),
+            "{published}"
+        );
         assert!(preview.contains("class=\"link-definition\""), "{preview}");
         assert!(!published.contains("iframe"), "{published}");
         assert!(!published.contains("HOST_SECRET"), "{published}");
@@ -1488,7 +1525,10 @@ mod tests {
         let foot = published.find("class=\"footnote-definition\"").unwrap();
         assert!(link < foot, "{published}");
         assert_eq!(strip_preview_ranges(&preview), published);
-        assert_eq!(published, include_str!("../testdata/link-defs.published.html"));
+        assert_eq!(
+            published,
+            include_str!("../testdata/link-defs.published.html")
+        );
         assert_eq!(preview, include_str!("../testdata/link-defs.preview.html"));
     }
 
@@ -1536,9 +1576,18 @@ mod tests {
         );
         let published = render_markdown(md);
         let preview = render_markdown_preview(md);
-        assert!(published.contains("data-widget=\"friend-links\""), "{published}");
-        assert!(published.contains("data-widget=\"report-bilibili\""), "{published}");
-        assert!(published.contains("data-widget=\"tapp-shortcut\""), "{published}");
+        assert!(
+            published.contains("data-widget=\"friend-links\""),
+            "{published}"
+        );
+        assert!(
+            published.contains("data-widget=\"report-bilibili\""),
+            "{published}"
+        );
+        assert!(
+            published.contains("data-widget=\"tapp-shortcut\""),
+            "{published}"
+        );
         assert!(!published.contains("iframe"), "{published}");
         assert!(!published.contains("HOST_SECRET"), "{published}");
         assert!(!preview.contains("iframe"), "{preview}");
@@ -1563,9 +1612,19 @@ mod tests {
         let at = html.find(needle).expect(needle);
         let before = &html[..at];
         let start_at = before.rfind("data-md-start=\"").expect("start");
-        let start: usize = before[start_at + 15..].split('"').next().unwrap().parse().unwrap();
+        let start: usize = before[start_at + 15..]
+            .split('"')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
         let end_at = before.rfind("data-md-end=\"").expect("end");
-        let end: usize = before[end_at + 13..].split('"').next().unwrap().parse().unwrap();
+        let end: usize = before[end_at + 13..]
+            .split('"')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
         (start, end)
     }
 
@@ -1574,9 +1633,19 @@ mod tests {
         let gt = html[at..].find('>').expect("gt") + at;
         let tag = &html[at..=gt];
         let start_at = tag.find("data-md-start=\"").expect("start");
-        let start: usize = tag[start_at + 15..].split('"').next().unwrap().parse().unwrap();
+        let start: usize = tag[start_at + 15..]
+            .split('"')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
         let end_at = tag.find("data-md-end=\"").expect("end");
-        let end: usize = tag[end_at + 13..].split('"').next().unwrap().parse().unwrap();
+        let end: usize = tag[end_at + 13..]
+            .split('"')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
         (start, end)
     }
 
@@ -1590,7 +1659,10 @@ mod tests {
         let preview = render_markdown_preview(md);
         assert!(published.contains("class=\"note-columns\""), "{published}");
         assert!(published.contains("data-widget=\"quote\""), "{published}");
-        assert!(published.contains("class=\"footnote-definition\""), "{published}");
+        assert!(
+            published.contains("class=\"footnote-definition\""),
+            "{published}"
+        );
         assert!(!published.contains("iframe"), "{published}");
         assert_eq!(strip_preview_ranges(&preview), published);
         assert_eq!(

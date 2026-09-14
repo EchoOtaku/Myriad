@@ -144,13 +144,14 @@ fn get_memory_info() -> Value {
             .args(["-o", "rss=", "-p", &pid.to_string()])
             .output()
             && let Ok(s) = String::from_utf8(output.stdout)
-                && let Ok(rss_kb) = s.trim().parse::<u64>() {
-                    return json!({
-                        "rss_kb": rss_kb,
-                        "rss_mb": rss_kb / 1024,
-                        "platform": "macos",
-                    });
-                }
+            && let Ok(rss_kb) = s.trim().parse::<u64>()
+        {
+            return json!({
+                "rss_kb": rss_kb,
+                "rss_mb": rss_kb / 1024,
+                "platform": "macos",
+            });
+        }
         json!({
             "platform": "macos",
             "note": "Unable to read process RSS via ps"

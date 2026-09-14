@@ -68,9 +68,10 @@ pub(super) fn build_authenticated_router(
         )
         .route(
             "/api/media/{id}",
-            axum::routing::delete(api::media::delete_media).route_layer(
-                from_fn_with_state(app_state.clone(), middleware::auth::admin_middleware),
-            ),
+            axum::routing::delete(api::media::delete_media).route_layer(from_fn_with_state(
+                app_state.clone(),
+                middleware::auth::admin_middleware,
+            )),
         )
         .route(
             "/api/home/widget-fonts",

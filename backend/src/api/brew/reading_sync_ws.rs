@@ -116,17 +116,6 @@ pub(crate) async fn get_item(
     }
 }
 
-pub(crate) async fn fetch_fulltext(
-    State(_db): State<DatabaseConnection>,
-    _headers: axum::http::HeaderMap,
-    Path(_id): Path<i32>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    Err(HttpError::from((
-        StatusCode::NOT_IMPLEMENTED,
-        Json(AppError::fail_json("Fulltext fetching not yet implemented")),
-    )))
-}
-
 // 阅读状态
 
 pub(crate) async fn mark_read(

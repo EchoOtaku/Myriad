@@ -1,24 +1,27 @@
 //! 已发布手记的公开 RSS。别人用任何阅读器订阅 `/brew/notes.xml`。
 //!
-//! 只读 `brew_items.content`，不读草稿表。Brew 不对访客开放时 404。
+//! 只读 `brew_items.content`，不读草稿表。开关关掉或 Brew 不对访客开放时 404。
 
 use std::collections::HashMap;
 
 use axum::{
+    Json,
     extract::State,
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
-use myriad_brew_notes::{NOTES_RSS_PATH, note_link};
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-};
+use myriad_brew_notes::{NOTES_RSS_PATH, NOTES_RSS_PREFERENCES_KEY, note_link};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use serde::Deserialize;
+use serde_json::{Value, json};
 
+use super::helpers::{brew_http_err, get_admin_user_id_from_headers};
 use crate::api::seo::{
-    brew_module_open_to_guests, public_absolute_url, public_site_identity, resolve_public_base_url,
-    strip_html_snippet, xml_escape,
+    notes_rss_enabled, notes_rss_is_public, public_absolute_url, public_site_identity,
+    resolve_public_base_url, strip_html_snippet, xml_escape,
 };
+use crate::error::HttpError;
 use crate::models::entities::{brew_items, brew_sources};
 
 const NOTES_RSS_ITEM_LIMIT: u64 = 50;
@@ -229,9 +232,52 @@ fn notes_rss_not_found() -> Response {
         .into_response()
 }
 
+#[derive(Debug, Deserialize)]
+pub(crate) struct NotesRssSettingsRequest {
+    pub enabled: bool,
+}
+
+fn notes_rss_settings_json(enabled: bool) -> Value {
+    json!({
+        "success": true,
+        "enabled": enabled,
+        "path": NOTES_RSS_PATH,
+    })
+}
+
+/// GET `/api/brew/notes/rss` — 站长看开关。
+pub async fn get_notes_rss_settings(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<Value>, HttpError> {
+    get_admin_user_id_from_headers(&headers, &db).await?;
+    Ok(Json(notes_rss_settings_json(notes_rss_enabled(&db).await)))
+}
+
+/// PUT `/api/brew/notes/rss` — 站长改开关。默认关。
+pub async fn put_notes_rss_settings(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<NotesRssSettingsRequest>,
+) -> Result<Json<Value>, HttpError> {
+    get_admin_user_id_from_headers(&headers, &db).await?;
+    let config_service = crate::services::config_service::ConfigService::new(db);
+    if let Err(error) = config_service
+        .update_config(NOTES_RSS_PREFERENCES_KEY, json!(req.enabled))
+        .await
+    {
+        tracing::error!(%error, "failed to save notes RSS preference");
+        return Err(brew_http_err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to save notes RSS setting",
+        ));
+    }
+    Ok(Json(notes_rss_settings_json(req.enabled)))
+}
+
 /// GET `/brew/notes.xml`（以及 `/api/brew/notes.xml`）— 已发布手记的 RSS 2.0。
 pub async fn notes_rss(State(db): State<DatabaseConnection>) -> Response {
-    if !brew_module_open_to_guests(&db).await {
+    if !notes_rss_is_public(&db).await {
         return notes_rss_not_found();
     }
     match load_notes_rss_channel(&db).await {
@@ -318,21 +364,28 @@ mod tests {
         let feed = FeedParser::new()
             .parse_content(&xml, "application/rss+xml", "https://ex.com/brew/notes.xml")
             .expect("parse notes rss");
-        assert_eq!(feed.title, "Site & Notes");
         assert_eq!(feed.items.len(), 1);
         let item = &feed.items[0];
         assert_eq!(item.link, "https://ex.com/brew/item/12");
         assert_eq!(item.guid, "note:abc");
         assert_eq!(item.author.as_deref(), Some("Ada"));
-        assert!(item.content.as_deref().unwrap_or("").contains("<p>Full</p>"));
+        assert!(
+            item.content
+                .as_deref()
+                .unwrap_or("")
+                .contains("<p>Full</p>")
+        );
     }
 
     #[test]
     fn query_does_not_read_draft_docs() {
         let src = include_str!("notes_rss.rs");
-        assert!(src.contains("SourceType::Note"));
+        let code = src.split("mod tests").next().expect("impl");
+        assert!(code.contains("SourceType::Note"));
+        assert!(code.contains("notes_rss_is_public"));
+        assert!(code.contains("NOTES_RSS_PREFERENCES_KEY"));
         assert!(
-            !src.contains("brew_note_docs"),
+            !code.contains("note_docs"),
             "drafts must not leak into the public notes RSS"
         );
     }

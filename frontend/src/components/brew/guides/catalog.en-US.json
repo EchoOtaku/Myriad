@@ -8,7 +8,7 @@
   "notes": {
     "what": "Note list. Open, delete, cancel a schedule, or batch-add a category.",
     "chain": "① Open a title to edit.\n② Edit mode selects many for delete or category.\n③ Two categories max.",
-    "frontend": "Published notes hit the note wall and the public RSS. Scheduled ones go out on time.",
+    "frontend": "Published notes hit the note wall. They enter the public RSS only after you turn it on. Scheduled ones go out on time.",
     "notes": "Body and cover stay in the editor. A third category prompts that it is full."
   },
   "media": {
@@ -18,8 +18,8 @@
     "notes": "Files still in use cannot be deleted."
   },
   "sources": {
-    "what": "Add, edit, refresh, delete feeds, share the notes RSS, and set default sort.",
-    "chain": "① Add or refresh.\n② Default sort is stored on this device.\n③ Share the notes RSS so others can follow.\n④ Two categories max.",
+    "what": "Add, edit, refresh, delete feeds, turn on notes RSS, and set default sort.",
+    "chain": "① Add or refresh.\n② Default sort is stored on this device.\n③ Notes RSS is off by default; turn it on before sharing.\n④ Two categories max.",
     "frontend": "The feed wall uses this sort and these categories.",
     "notes": "The feed wall is for reading. Delete sources here."
   },

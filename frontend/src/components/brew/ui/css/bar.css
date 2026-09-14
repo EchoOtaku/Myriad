@@ -31,17 +31,6 @@
   position: relative;
 }
 
-.brew-bar__chev {
-  width: 0.62rem;
-  height: 0.62rem;
-  opacity: 0.7;
-  transition: transform 140ms ease;
-}
-
-.brew-bar__chev.is-open {
-  transform: rotate(180deg);
-}
-
 .brew-bar__menu {
   position: absolute;
   top: calc(100% + 0.3rem);

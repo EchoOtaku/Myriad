@@ -31,7 +31,9 @@ docs/
 | [DOCKER_DEPLOYMENT.md](deployment/DOCKER_DEPLOYMENT.md) | 三网拓扑、env、健康检查 |
 | [NATIVE_DEPLOYMENT.md](deployment/NATIVE_DEPLOYMENT.md) | 无 Docker 生产部署 |
 | [EXTERNAL_POSTGRES.md](deployment/EXTERNAL_POSTGRES.md) | 外部数据库 |
-| [PORTS.md](deployment/PORTS.md) | 端口与代理路径 |
+| [PORTS.md](deployment/PORTS.md) | 端口与代理路径（含 web / federation / persona 分流） |
+| [RUNTIME_ISOLATION.md](deployment/RUNTIME_ISOLATION.md) | web / federation-worker / persona-worker 边界与升级 |
+| [WORKER_DATABASE.md](deployment/WORKER_DATABASE.md) | worker 独立数据库登录与限额 |
 | [SETUP_BOOTSTRAP.md](deployment/SETUP_BOOTSTRAP.md) | 编排安装时的安装暗号 |
 | [UPDATER_QUICKSTART.md](deployment/UPDATER_QUICKSTART.md) | 更新 / 回滚 / 救援 |
 | [updater-spec.md](updater-spec.md) | Updater 协议与失败模式 |

@@ -300,7 +300,7 @@ Notes: [Federation](docs/development/FEDERATION.md). Federated domain move ≠ o
 
 ## Operations
 
-Production: **proxy + updater**. Only **proxy** publishes a host port. Backend, frontend, Postgres, updater, and docker-guard stay on internal networks.
+Production: **proxy + updater**. Only **proxy** publishes a host port. Web, `federation-worker`, `persona-worker`, frontend, Postgres, updater, updater-gateway, and docker-guard stay on internal networks. Proxy splits persona / federation / remaining API; see [PORTS.md](docs/deployment/PORTS.md).
 
 Version switch and rollback: `/config` → About → Update management. The browser never receives `UPDATE_TOKEN`. Do not overwrite `:latest`.
 

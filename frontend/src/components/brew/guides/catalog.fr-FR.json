@@ -8,7 +8,7 @@
   "notes": {
     "what": "Liste des notes. Ouvrir, supprimer, annuler une programmation, ajouter une catégorie en lot.",
     "chain": "① Ouvrez un titre pour éditer.\n② Le mode édition sélectionne plusieurs notes.\n③ Deux catégories au plus.",
-    "frontend": "Les notes publiées vont au mur et au RSS public. Les programmées partent à l’heure.",
+    "frontend": "Les notes publiées vont au mur. Elles n’entrent dans le RSS public qu’après activation. Les programmées partent à l’heure.",
     "notes": "Le corps et la couverture restent dans l’éditeur. Une troisième catégorie signale que c’est plein."
   },
   "media": {
@@ -18,8 +18,8 @@
     "notes": "Un fichier encore utilisé ne se supprime pas."
   },
   "sources": {
-    "what": "Ajouter, modifier, actualiser, supprimer des flux, partager le RSS des notes, et le tri par défaut.",
-    "chain": "① Ajoutez ou actualisez.\n② Le tri par défaut est enregistré sur cet appareil.\n③ Partagez le RSS des notes pour que d’autres puissent suivre.\n④ Deux catégories au plus.",
+    "what": "Ajouter, modifier, actualiser, supprimer des flux, activer le RSS des notes, et le tri par défaut.",
+    "chain": "① Ajoutez ou actualisez.\n② Le tri par défaut est enregistré sur cet appareil.\n③ Le RSS des notes est désactivé par défaut ; activez-le avant de partager.\n④ Deux catégories au plus.",
     "frontend": "Le mur utilise ce tri et ces catégories.",
     "notes": "Le mur sert à lire. Supprimez les sources ici."
   },

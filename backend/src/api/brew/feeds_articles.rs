@@ -51,10 +51,7 @@ pub fn create_brew_routes(app_state: crate::state::AppState) -> Router<crate::st
     Router::<crate::state::AppState>::new()
         // 订阅源管理
         .route("/sources", get(list_sources).post(add_source))
-        .route(
-            "/sources/{id}",
-            get(get_source).put(update_source).delete(delete_source),
-        )
+        .route("/sources/{id}", put(update_source).delete(delete_source))
         .route("/sources/{id}/refresh", post(refresh_source))
         .route("/sources/discover", post(discover_source))
         // OPML 导入导出
@@ -69,6 +66,11 @@ pub fn create_brew_routes(app_state: crate::state::AppState) -> Router<crate::st
         .route("/topics", get(list_subscription_topics))
         // 手记（站长自写内容；写路径一律管理员）
         .route("/notes.xml", get(super::notes_rss::notes_rss))
+        .route(
+            "/notes/rss",
+            get(super::notes_rss::get_notes_rss_settings)
+                .put(super::notes_rss::put_notes_rss_settings),
+        )
         .route("/notes", post(notes::create_note))
         .route("/notes/preview", post(notes::preview_note))
         .route(
@@ -106,16 +108,13 @@ pub fn create_brew_routes(app_state: crate::state::AppState) -> Router<crate::st
         )
         .route(
             "/notes/{id}",
-            get(notes::get_note_draft)
-                .put(notes::update_note)
-                .delete(notes::delete_note),
+            put(notes::update_note).delete(notes::delete_note),
         )
         // 文章获取
         .route("/items", get(list_items))
         .route("/items/{id}", get(reading_sync_ws::get_item))
         .route("/items/{id}/topic", put(update_item_topic))
         .route("/items/{id}/suggest-topic", post(suggest_item_topic))
-        .route("/items/{id}/fulltext", get(reading_sync_ws::fetch_fulltext))
         // 阅读状态
         .route("/items/{id}/read", post(reading_sync_ws::mark_read))
         .route("/items/{id}/unread", post(reading_sync_ws::mark_unread))
@@ -713,35 +712,6 @@ pub(crate) async fn add_source(
             Ok(Json(json!({ "success": true, "source": response })))
         }
         Err(e) => Err(brew_store_http("save source", e)),
-    }
-}
-
-/// 获取单个订阅源（游客可访问；admin_only 源仅管理员可见）
-pub(crate) async fn get_source(
-    State(db): State<DatabaseConnection>,
-    headers: axum::http::HeaderMap,
-    Path(id): Path<i32>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    let (_, is_admin) = get_user_and_admin_status(&headers, &db).await;
-
-    let source = brew_sources::Entity::find_by_id(id).one(&db).await;
-
-    match source {
-        Ok(Some(source)) => {
-            if source.admin_only && !is_admin {
-                return Err(HttpError::from((
-                    StatusCode::NOT_FOUND,
-                    Json(AppError::fail_json("Source not found")),
-                )));
-            }
-            let response: brew_sources::SourceResponse = source.into();
-            Ok(Json(json!({ "success": true, "source": response })))
-        }
-        Ok(None) => Err(HttpError::from((
-            StatusCode::NOT_FOUND,
-            Json(AppError::fail_json("Source not found")),
-        ))),
-        Err(e) => Err(brew_store_http("find source", e)),
     }
 }
 

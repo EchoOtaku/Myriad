@@ -72,7 +72,6 @@ html[data-perf-mode='exlight'] .brew-peek-air__lede {
 }
 
 html[data-perf-mode='exlight'] .brew-bar__menu,
-html[data-perf-mode='exlight'] .brew-sheet__menu,
 html[data-perf-mode='exlight'] .brew-rail-title.is-arrive,
 html[data-perf-mode='exlight'] .brew-story.is-arrive,
 html[data-perf-mode='exlight'] .brew-site.is-arrive,
@@ -101,7 +100,6 @@ html[data-perf-mode='exlight'] .brew-story.has-cover .brew-story__peek {
 
 @media (prefers-reduced-motion: reduce) {
   .brew-bar__menu,
-  .brew-sheet__menu,
   .brew-rail-title.is-arrive,
   .brew-story.is-arrive,
   .brew-site.is-arrive,
