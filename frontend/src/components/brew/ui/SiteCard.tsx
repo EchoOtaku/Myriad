@@ -305,29 +305,3 @@ function SiteCardInner({
 
 export const SiteCard = memo(SiteCardInner)
 SiteCard.displayName = 'SiteCard'
-
-export function SiteMark({
-  name,
-  icon,
-}: {
-  name: string
-  icon?: string | null
-}) {
-  return (
-    <span className="brew-mark" aria-hidden>
-      {icon ? (
-        <img
-          key={icon}
-          src={icon}
-          alt=""
-          loading="lazy"
-          onError={(event) => {
-            event.currentTarget.style.display = 'none'
-          }}
-        />
-      ) : (
-        name.slice(0, 1)
-      )}
-    </span>
-  )
-}

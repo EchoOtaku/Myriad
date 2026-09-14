@@ -339,7 +339,8 @@ cd Myriad
 cp .env.production.example .env
 # 必須: POSTGRES_PASSWORD / JWT_SECRET / CORS_ORIGINS
 # BASE_URL / FRONTEND_URL = 公開オリジン（連合の発見は BASE_URL）
-# UPDATE_TOKEN / UPDATER_GATEWAY_SECRET 空欄 → deploy.sh が生成
+# UPDATE_TOKEN / UPDATER_GATEWAY_SECRET / PERSONA_DB_PASSWORD /
+# FEDERATION_DB_PASSWORD 空欄 → deploy.sh が生成
 
 bash scripts/extra/deploy.sh up
 ```
@@ -351,6 +352,8 @@ bash scripts/extra/deploy.sh up
 ```text
 host HTTP_PORT → proxy → frontend:1102
                       → backend:1103 → postgres:5432
+                      → federation-worker:1103
+                      → persona-worker:1103
                       → updater（内部; updater-gateway 経由）
 ```
 

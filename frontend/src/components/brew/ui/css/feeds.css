@@ -93,6 +93,13 @@
   transition: none;
 }
 
+.brew-feeds.is-rail-grabbing,
+.brew-feeds__sites.is-rail-panning,
+.brew-feeds__items.is-rail-panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
 .brew-feeds.is-rail-grabbing .brew-story {
   transform: none;
 }
@@ -216,12 +223,16 @@
 .brew-feeds__sites {
   overflow: visible;
   touch-action: none;
+  overscroll-behavior: none;
   flex-shrink: 0;
+  cursor: grab;
 }
 
 .brew-feeds__items {
   overflow: visible;
   touch-action: none;
+  overscroll-behavior: none;
+  cursor: grab;
 }
 
 .brew-feeds__sites-track {

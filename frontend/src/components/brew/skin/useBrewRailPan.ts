@@ -1,4 +1,5 @@
-/** 轨道只做 transform，不设 overflow、不切遮罩。前一张从左边溢出，不退场。 */
+/** 轨道只做 transform，不设 overflow、不切遮罩。前一张从左边溢出，不退场。
+ *  跟手、惯性都停在该处，不吸入槽位。只有点选 / 外部对齐才坐到某一张。 */
 
 import type { RefObject } from 'react'
 import type { ConversationExitStyle } from '../../agent-panel/conversationPan'
@@ -10,7 +11,6 @@ import {
   CONVERSATION_FADE_PX,
   conversationExitKey,
   conversationExitStyle,
-
   rubberband,
   sampleVelocity,
   smoothToward,
@@ -18,22 +18,20 @@ import {
 } from '../../agent-panel/conversationPan'
 import {
   isDiscreteWheel,
-  nearestRailSlot,
-  neighborRailSlot,
+  RAIL_DRAG_SLOP_PX,
   RAIL_OVERFLOW_LEFT_PX,
   RAIL_SEAT_PX,
+  RAIL_WHEEL_COAST_PX_S,
   RAIL_WHEEL_SETTLE_MS,
   railCardKeepsPaint,
-  railColumnSlotAt,
+  railCoastStep,
   railColumnSlots,
   railLeadIndex,
   railMaxScroll,
   railSeatScroll,
-  railSeatSlots,
   railSettleTau,
   railSlotOffsets,
   scrollFromTrackTransform,
-  settleRailSlot,
 } from './railPan'
 
 function applyRailExit(el: HTMLElement, style: ConversationExitStyle): void {
@@ -107,6 +105,8 @@ export function useBrewRailPan(
     let target = 0
     let dragging = false
     let seating = false
+    let pointerId = -1
+    let pointerArmed = false
     let touchX = 0
     let frame = 0
     let exitFrame = 0
@@ -118,6 +118,7 @@ export function useBrewRailPan(
     let wheelAcc = 0
     let wheelVel = 0
     let home = 0
+    let coastVel = 0
     let viewW = 0
     let cards: Array<{
       el: HTMLElement
@@ -156,7 +157,6 @@ export function useBrewRailPan(
     let colW = 0
     let totalCols = 0
     let rawSlots: number[] = [0]
-    let seatSlots: number[] = [0]
     let scrollMax = 0
     const colLead = new Map<number, HTMLElement>()
 
@@ -176,21 +176,11 @@ export function useBrewRailPan(
         totalCols > 1 && colW > 1
           ? railColumnSlots(totalCols, colW)
           : railSlotOffsets(cards)
-      seatSlots = railSeatSlots(rawSlots, overflowPx)
       scrollMax = railMaxScroll(rawSlots, overflowPx)
       slotsCols = totalCols
       slotsColW = colW
     }
-    const slotsOf = () => seatSlots
     const maxScroll = () => scrollMax
-
-    const slotAt = (scroll: number) =>
-      totalCols > 1 && colW > 1
-        ? railColumnSlotAt(scroll, colW, maxScroll())
-        : nearestRailSlot(scroll, slotsOf(), maxScroll())
-
-    const restOnSlot = (scroll: number) =>
-      Math.abs(scroll - slotAt(scroll)) <= 0.6
 
     const recache = () => {
       cardList = null
@@ -467,8 +457,13 @@ export function useBrewRailPan(
       idleTimer = 0
     }
 
+    const paintPanning = (on: boolean) => {
+      viewport.classList.toggle('is-rail-panning', on)
+    }
+
     const beginGrab = () => {
       clearIdleTimer()
+      paintPanning(true)
       if (grabOn) return
       grabOn = true
       onGrabRef.current?.()
@@ -477,6 +472,7 @@ export function useBrewRailPan(
     const releaseGrab = () => {
       clearIdleTimer()
       track.style.willChange = ''
+      paintPanning(false)
       if (!grabOn) return
       grabOn = false
       onIdleRef.current?.()
@@ -497,6 +493,7 @@ export function useBrewRailPan(
       idleTimer = window.setTimeout(() => {
         idleTimer = 0
         track.style.willChange = ''
+        paintPanning(false)
         if (!grabOn) return
         grabOn = false
         onIdleRef.current?.()
@@ -508,18 +505,41 @@ export function useBrewRailPan(
       last = now
       const max = maxScroll()
 
-      if (!dragging) target = clampConversationScroll(target, max)
-      current = reduce
-        ? target
-        : smoothToward(
-            current,
-            target,
-            dt,
-            railSettleTau(target - current, seating),
-          )
+      if (!dragging) {
+        if (current < 0 || current > max) {
+          coastVel = 0
+          seating = true
+          target = clampConversationScroll(current, max)
+          current = reduce
+            ? target
+            : smoothToward(
+                current,
+                target,
+                dt,
+                railSettleTau(target - current, true),
+              )
+        } else if (coastVel !== 0) {
+          const step = railCoastStep(current, coastVel, dt, max)
+          current = step.scroll
+          target = current
+          coastVel = step.velocity
+          seating = false
+        } else {
+          target = clampConversationScroll(target, max)
+          current = reduce
+            ? target
+            : smoothToward(
+                current,
+                target,
+                dt,
+                railSettleTau(target - current, seating),
+              )
+        }
+      }
 
       const arrived =
         !dragging &&
+        coastVel === 0 &&
         Math.abs(target - current) <= (seating ? RAIL_SEAT_PX : 0.35)
       if (!arrived) {
         write(true)
@@ -527,18 +547,6 @@ export function useBrewRailPan(
         return
       }
       current = target
-      if (!dragging && !restOnSlot(current)) {
-        seating = true
-        target = settleRailSlot(current, wheelVel, slotsOf(), max, home)
-        home = target
-        notifyLeadAt(target)
-        if (Math.abs(target - current) > 0.35 && !reduce) {
-          write(true)
-          frame = requestAnimationFrame(tick)
-          return
-        }
-        current = target
-      }
       seating = false
       write(true)
       stop()
@@ -552,9 +560,10 @@ export function useBrewRailPan(
     const snapTo = (scroll: number) => {
       clearSettleTimer()
       clearIdleTimer()
+      coastVel = 0
       seating = true
       target = clampConversationScroll(scroll, maxScroll())
-      home = slotAt(target)
+      home = target
       notifyLeadAt(target)
       if (reduce) {
         current = target
@@ -591,7 +600,8 @@ export function useBrewRailPan(
       if (immediate) {
         current = x
         target = x
-        home = slotAt(x)
+        home = x
+        coastVel = 0
         seating = false
         writeTransform()
         persistScroll()
@@ -614,7 +624,8 @@ export function useBrewRailPan(
       if (immediate) {
         current = x
         target = x
-        home = slotAt(x)
+        home = x
+        coastVel = 0
         seating = false
         writeTransform()
         persistScroll()
@@ -659,7 +670,8 @@ export function useBrewRailPan(
       if (Math.abs(next - current) < 0.5) return
       current = next
       target = next
-      home = slotAt(current)
+      home = current
+      coastVel = 0
       writeTransform()
       persistScroll()
       notifyScroll(true)
@@ -681,6 +693,7 @@ export function useBrewRailPan(
         last = 0
       }
       seating = false
+      coastVel = 0
       current = next
       target = next
       writeTransform()
@@ -709,9 +722,51 @@ export function useBrewRailPan(
       }
     }
 
+    const finishCoast = (raw: number, flung: number) => {
+      if (totalCols <= 1 || colW <= 1) recache()
+      if (viewW < 32) measure()
+      const max = maxScroll()
+      target = clampConversationScroll(raw, max)
+      if (reduce) {
+        current = target
+        coastVel = 0
+        seating = false
+        write(true)
+        stop()
+        return
+      }
+      coastVel = raw === target ? flung : 0
+      seating = raw !== target
+      notifyLeadAt(target)
+      kick()
+    }
+
+    const armWheelIdle = () => {
+      clearSettleTimer()
+      settleTimer = window.setTimeout(() => {
+        settleTimer = 0
+        if (viewW < 32) measure()
+        const vel = wheelVel
+        wheelAcc = 0
+        wheelStarted = 0
+        wheelVel = 0
+        const max = maxScroll()
+        if (current < 0 || current > max) {
+          finishCoast(current, 0)
+          return
+        }
+        if (!reduce && Math.abs(vel) >= RAIL_WHEEL_COAST_PX_S) {
+          finishCoast(current, vel)
+          return
+        }
+        persistScroll()
+        releaseGrab()
+      }, RAIL_WHEEL_SETTLE_MS)
+    }
+
     const onWheel = (event: WheelEvent) => {
-      beginGrab()
       if (event.ctrlKey) return
+      if (dragging || pointerArmed) return
       if (!cards.length) recache()
       if (viewW < 32) measure()
       const max = maxScroll()
@@ -723,81 +778,63 @@ export function useBrewRailPan(
       event.preventDefault()
       const delta = wheelDelta(event)
       if (delta === 0) return
-      dragging = false
+      beginGrab()
+      coastVel = 0
 
       if (isDiscreteWheel(event)) {
         wheelAcc = 0
         wheelStarted = 0
         wheelVel = 0
-        const dir = Math.sign(delta) || 1
-        snapTo(neighborRailSlot(target, dir, slotsOf(), max))
-        return
-      }
-
-      const now = event.timeStamp
-      const slots = slotsOf()
-
-      if (!wheelStarted) {
-        wheelStarted = now
-        home = slotAt(current)
-        wheelAcc = 0
-      }
-      wheelAcc += delta
-      wheelVel = wheelAcc / Math.max((now - wheelStarted) / 1000, 0.016)
-
-      const pos = clampConversationScroll(home + wheelAcc, max)
-      const committed = settleRailSlot(pos, 0, slots, max, home)
-
-      const armIdle = () => {
-        clearSettleTimer()
-        settleTimer = window.setTimeout(() => {
-          settleTimer = 0
-          if (viewW < 32) measure()
-          const end = settleRailSlot(
-            home + wheelAcc,
-            wheelVel,
-            slotsOf(),
-            maxScroll(),
-            home,
-          )
-          wheelAcc = 0
-          wheelStarted = 0
-          wheelVel = 0
-          if (Math.abs(end - current) > 0.6 || !restOnSlot(current)) {
-            snapTo(end)
-            return
-          }
-          persistScroll()
-          releaseGrab()
-        }, RAIL_WHEEL_SETTLE_MS)
-      }
-
-      if (Math.abs(committed - home) > 0.6) {
-        seating = true
-        if (Math.abs(committed - target) > 0.6) {
-          target = committed
-          notifyLeadAt(target)
-        }
-        armIdle()
+        seating = false
+        target = clampConversationScroll(target + delta, max)
+        notifyLeadAt(target)
+        armWheelIdle()
         kick()
         return
       }
 
+      const now = event.timeStamp
+      if (!wheelStarted) {
+        wheelStarted = now
+        home = current
+        wheelAcc = 0
+      }
+      wheelAcc += delta
+      wheelVel = wheelAcc / Math.max((now - wheelStarted) / 1000, 0.016)
       seating = false
-      target = pos
-      current = pos
-      armIdle()
-      write()
+      target = rubberband(home + wheelAcc, max, viewW)
+      current = target
+      armWheelIdle()
+      write(true)
     }
 
-    const onTouchStart = (event: TouchEvent) => {
-      if (event.touches.length !== 1) return
-      beginGrab()
-      dragging = true
+    const ignorePointer = (event: PointerEvent) => {
+      if (event.button !== 0 || !event.isPrimary) return true
+      const node = event.target
+      if (!(node instanceof Element)) return false
+      return Boolean(
+        node.closest('a[href], input, textarea, select, [contenteditable="true"]'),
+      )
+    }
+
+    const guardClick = () => {
+      const block = (event: Event) => {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+      viewport.addEventListener('click', block, { capture: true, once: true })
+    }
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (ignorePointer(event)) return
+      if (pointerArmed || dragging) return
+      pointerArmed = true
+      pointerId = event.pointerId
+      touchX = event.clientX
+      coastVel = 0
       seating = false
-      home = slotAt(target)
+      home = target
       clearSettleTimer()
-      touchX = event.touches[0].clientX
       sampleN = 0
       sampleAt = 0
       pushSample(event.timeStamp, target)
@@ -805,12 +842,24 @@ export function useBrewRailPan(
       track.style.willChange = 'transform'
     }
 
-    const onTouchMove = (event: TouchEvent) => {
-      if (!dragging || event.touches.length !== 1) return
+    const onPointerMove = (event: PointerEvent) => {
+      if ((!pointerArmed && !dragging) || event.pointerId !== pointerId) return
+      const x = event.clientX
+      if (!dragging) {
+        if (Math.abs(x - touchX) < RAIL_DRAG_SLOP_PX) return
+        dragging = true
+        beginGrab()
+        if (event.pointerType === 'mouse') {
+          try {
+            viewport.setPointerCapture(event.pointerId)
+          } catch {
+            /* capture is optional */
+          }
+        }
+      }
       if (viewW < 32) measure()
       const max = maxScroll()
       if (max <= 0) return
-      const x = event.touches[0].clientX
       const dx = touchX - x
       touchX = x
       if (dx === 0) return
@@ -821,21 +870,25 @@ export function useBrewRailPan(
       writeTransform()
       if (!overflowLeft) scheduleExit()
       if (onLeadChangeRef.current) reportLead()
-      notifyScroll()
+      notifyScroll(true)
     }
 
-    const onTouchEnd = (event: TouchEvent) => {
-      if (!dragging) return
+    const onPointerUp = (event: PointerEvent) => {
+      if (pointerId === -1 || event.pointerId !== pointerId) return
+      const moved = dragging
+      pointerArmed = false
+      pointerId = -1
+      if (!moved) {
+        dragging = false
+        track.style.willChange = ''
+        return
+      }
       dragging = false
-      if (totalCols <= 1 || colW <= 1) recache()
-      if (viewW < 32) measure()
-      const max = maxScroll()
+      guardClick()
       const flung = sampleVelocity(sampleList(), event.timeStamp)
       sampleN = 0
       sampleAt = 0
-      const raw = target
-      target = clampConversationScroll(target, max)
-      snapTo(settleRailSlot(raw, flung, slotsOf(), max, home))
+      finishCoast(target, flung)
     }
 
     recache()
@@ -846,7 +899,7 @@ export function useBrewRailPan(
       : scrollFromTrackTransform(track.style.transform)
     current = seated
     target = seated
-    home = slotAt(seated)
+    home = seated
     const lead = leadElAt(seated)
     if (lead?.dataset.railId) lastLead = lead.dataset.railId
     writeTransform()
@@ -879,13 +932,6 @@ export function useBrewRailPan(
         persistScroll()
       }
       if (Math.abs(viewW - prevView) <= 8) return
-      target = settleRailSlot(target, 0, slotsOf(), max)
-      if (Math.abs(target - current) > 0.35) {
-        seating = true
-        kick()
-        return
-      }
-      current = target
       write(true)
       persistScroll()
     })
@@ -905,14 +951,17 @@ export function useBrewRailPan(
         stop()
         return
       }
-      if (dragging || Math.abs(target - current) > RAIL_SEAT_PX) kick()
+      if (dragging || coastVel !== 0 || Math.abs(target - current) > RAIL_SEAT_PX) {
+        kick()
+      }
     }
     document.addEventListener('visibilitychange', onVis)
     viewport.addEventListener('wheel', onWheel, { passive: false })
-    viewport.addEventListener('touchstart', onTouchStart, { passive: true })
-    viewport.addEventListener('touchmove', onTouchMove, { passive: false })
-    viewport.addEventListener('touchend', onTouchEnd)
-    viewport.addEventListener('touchcancel', onTouchEnd)
+    viewport.addEventListener('pointerdown', onPointerDown)
+    viewport.addEventListener('pointermove', onPointerMove, { passive: false })
+    viewport.addEventListener('pointerup', onPointerUp)
+    viewport.addEventListener('pointercancel', onPointerUp)
+    viewport.addEventListener('lostpointercapture', onPointerUp)
 
     return () => {
       clearSettleTimer()
@@ -929,10 +978,11 @@ export function useBrewRailPan(
       resize.disconnect()
       document.removeEventListener('visibilitychange', onVis)
       viewport.removeEventListener('wheel', onWheel)
-      viewport.removeEventListener('touchstart', onTouchStart)
-      viewport.removeEventListener('touchmove', onTouchMove)
-      viewport.removeEventListener('touchend', onTouchEnd)
-      viewport.removeEventListener('touchcancel', onTouchEnd)
+      viewport.removeEventListener('pointerdown', onPointerDown)
+      viewport.removeEventListener('pointermove', onPointerMove)
+      viewport.removeEventListener('pointerup', onPointerUp)
+      viewport.removeEventListener('pointercancel', onPointerUp)
+      viewport.removeEventListener('lostpointercapture', onPointerUp)
       clearExit()
       if (apiRef) apiRef.current = null
     }

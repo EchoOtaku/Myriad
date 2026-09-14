@@ -70,14 +70,15 @@ client -> optional TLS entrypoint -> Myriad proxy:${HTTP_PORT:-80}
 
 | 路径 | 用途 |
 | --- | --- |
-| `/.well-known/webfinger` | 发现 |
-| `/.well-known/nodeinfo` | NodeInfo 发现 |
-| `/nodeinfo/2.1` | NodeInfo 文档 |
-| `/inbox` | 共享 Inbox |
-| `/users/*` | Actor / outbox / followers / avatar |
-| `/media/federation/*` | **Note 附件媒体（图片/视频公开 GET）** |
+| `/.well-known/webfinger` | 发现（federation-worker） |
+| `/.well-known/nodeinfo` | NodeInfo 发现（federation-worker） |
+| `/nodeinfo/2.1` | NodeInfo 文档（federation-worker） |
+| `/inbox` | 共享 Inbox（federation-worker） |
+| `/users/*` | Actor / outbox / followers / avatar（federation-worker） |
+| `/media/federation/*` | **Note 附件媒体（图片/视频公开 GET）**（federation-worker） |
+| `/activities/*` `/notes/*` `/reports/*` `/tapps/*` `/library/*` `/brew/articles/*` | ActivityPub 对象解引用（前缀长于 SEO 索引路径；federation-worker） |
 
-完整表见 [PORTS.md](../deployment/PORTS.md)。漏掉 `/media/federation/*` 时，联邦发帖可成功，但时间线图片会空白（请求落到 SPA）。
+完整表见 [PORTS.md](./PORTS.md)。漏掉 `/media/federation/*` 时，联邦发帖可成功，但时间线图片会空白（请求落到 SPA）。这些路径由 proxy 交给 **federation-worker**，不是 web。
 只应信任实际代理节点，并在防火墙中限制 `HTTP_PORT` 不能被客户端绕过代理直连。
 
 ### Docker + 宿主反向代理（常见天气定位错误）
@@ -85,7 +86,7 @@ client -> optional TLS entrypoint -> Myriad proxy:${HTTP_PORT:-80}
 典型拓扑：
 
 ```text
-client → 宿主 Nginx/Caddy → Docker 发布的 proxy 端口 → backend
+client → 宿主 Nginx/Caddy → Docker 发布的 proxy 端口 → frontend / web / federation-worker / persona-worker
 ```
 
 此时 proxy 容器看到的 TCP 对端往往是 Docker 网桥地址（例如 `172.17.0.1`），
@@ -204,7 +205,7 @@ server {
 视角下的固定源地址或最窄 CIDR 写入 `PROXY_TRUSTED_UPSTREAMS`；保持为空时
 转发头会被忽略，定位和审计会使用 Docker 网桥对端地址。
 
-**不要**写成分路径只放行 `/api`（除非你完整复制 [PORTS.md](../deployment/PORTS.md) 的 backend 白名单，且包含 `/media/federation/`）。
+**不要**写成分路径只放行 `/api`（除非你完整复制 [PORTS.md](./PORTS.md) 的 proxy 分流表，且包含 `/media/federation/` 与 ActivityPub 对象路径）。
 
 ## 验证
 

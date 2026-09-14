@@ -5,8 +5,8 @@
 安全基线（已完成态 + 运维红线）：[deployment/UPDATER_SECURITY_BASELINE.md](./UPDATER_SECURITY_BASELINE.md)。
 
 > 运行模型：updater 不是 A/B 双活分区。Myriad 生产环境只有一套正在运行的
-> backend/frontend（以及可选的 compose 内 postgres）；更新时进入维护模式，停止业务容器，
-> 在 **bundled** 模式下快照 `pgdata`，切换 `.env` 里的镜像 tag，再启动新版本。
+> backend / federation-worker / persona-worker / frontend（以及可选的 compose 内 postgres）；
+> 更新时进入维护模式，停止业务容器，在 **bundled** 模式下快照 `pgdata`，切换 `.env` 里的镜像 tag，再启动新版本。
 > 回滚在 bundled 下依赖快照 + 旧 tag；**external** 下只恢复镜像 tag（绝不写外部库数据目录）。
 
 ## 0. 准备
@@ -30,7 +30,7 @@ bash scripts/extra/deploy.sh up
 - 如缺少 `.env`，从 `.env.production.example` 复制
 - 创建 `./pgdata`、`./state`、`./backups`
 - 补齐 `MYRIAD_TAG`、`PROXY_TAG`、`UPDATER_TAG`、`COMPOSE_PROJECT_NAME=myriad` 等当前布局 key。生产 TCB 以 `UPDATER_IMAGE_REF` / `DOCKER_GUARD_IMAGE` digest 为准
-- 若 `UPDATE_TOKEN` 为空则随机生成
+- 若 `UPDATE_TOKEN` / `UPDATER_GATEWAY_SECRET` / `MYRIAD_SETUP_SECRET` / `PERSONA_DB_PASSWORD` / `FEDERATION_DB_PASSWORD` 为空则随机生成
 - 若 `.env` / `./guard-policy/docker-guard.env` 缺少 `GUARD_SELF_UPDATE_TOKEN` 则随机生成
 - 未认领的首次安装可直接用浏览器经 proxy 做完向导；编排预置了安装暗号则要对上。官方 compose 没有暗号会拒绝启动；`deploy.sh` 会在空值时生成
 - Docker 网络默认显式命名为 `myriad-net`；同机多套部署时可设置 `MYRIAD_DOCKER_NETWORK`
@@ -43,7 +43,9 @@ bash scripts/extra/deploy.sh up
 
 ```
 proxy (80) ─┬─► frontend
-            └─► backend ─► postgres
+            ├─► backend ─► postgres
+            ├─► federation-worker
+            └─► persona-worker
 updater (内网) ─► docker-guard ─► docker.sock
        └──────── 部署根只读 + .env/pgdata/state 精确可写
 ./guard-policy/docker-guard.env ──► Guard 的独立镜像 digest + 自更新 capability
@@ -171,7 +173,7 @@ audit: update_request job=… target=… mode=… allow_downgrade=… allow_dive
 [updater-spec.md §16.1](../updater-spec.md)）。
 
 Commit 模式成功后 **只写入 `dev-<shortsha>`** 到 `MYRIAD_TAG`。  
-业务更新只换 **backend/frontend**；proxy 独立更新；Guard/updater TCB 可在 UI 中一键升级。
+业务更新只换 **`MYRIAD_TAG`**（web + federation-worker + persona-worker 共用 backend 镜像，加上 frontend）；proxy 独立更新；Guard/updater TCB 可在 UI 中一键升级。
 成功后 `.env` 的 `UPDATER_IMAGE_REF` 固化为官方 `repo@sha256`，后续不能只改
 `UPDATER_TAG` 手工换版本；请继续使用 UI，或同时清除/更新该 digest 引用。
 
@@ -234,7 +236,7 @@ preflight → maintenance_on → stopping → snapshotting → swap_tag
 
 | 失败时机 | 自动行为 | 不会做的事 |
 | -------- | -------- | ---------- |
-| **`swap_tag` 之前**（stop / 快照 / 写 compose 等） | **pre-swap cleanup**：把已停掉的 backend/frontend（以及 bundled 下已停的 postgres）重新拉起，清维护模式，job=`failed` | 不改 `MYRIAD_TAG`；一般也**不需要** restore pgdata（tag 还没换） |
+| **`swap_tag` 之前**（stop / 快照 / 写 compose 等） | **pre-swap cleanup**：把已停掉的 backend / federation-worker / persona-worker / frontend（以及 bundled 下已停的 postgres）重新拉起，清维护模式，job=`failed` | 不改 `MYRIAD_TAG`；一般也**不需要** restore pgdata（tag 还没换） |
 | **`swap_tag` 之后**（起新容器 / 健康检查等） | **完整自动回滚**：stop 新容器 → restore snapshot（bundled）→ 写回上一业务版 `MYRIAD_TAG` → 起旧镜像 → 健康探测 | — |
 | 上述自动恢复本身再失败 | 进入 `needs_manual`，维护页保留，需 `rescue/continue` 或手动回滚 | — |
 

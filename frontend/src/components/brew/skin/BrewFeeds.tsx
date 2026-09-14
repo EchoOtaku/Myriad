@@ -1008,6 +1008,7 @@ function BrewFeeds({
     sources.length > 0 ? LATEST_FEED_ID : null,
   )
   const paintedElRef = useRef<HTMLElement | null>(null)
+  const siteElsRef = useRef(new Map<number, HTMLElement>())
   const focusIdRef = useRef<number | null>(
     sources.length > 0 ? LATEST_FEED_ID : null,
   )
@@ -1028,6 +1029,7 @@ function BrewFeeds({
   const introSites = useRef(false)
   const introStories = useRef(false)
   const appliedFocus = useRef<number | null>(null)
+  const seatSitesRef = useRef<number | null>(null)
   const brewLabels = t.brew
   const times = useBrewTimes()
   const storyPaintRef = useRef({
@@ -1074,6 +1076,7 @@ function BrewFeeds({
       setFocusId(focusSourceId)
       setReadyId(focusSourceId)
       onJumpSource?.(focusSourceId)
+      seatSitesRef.current = focusSourceId
       return
     }
     if (
@@ -1088,10 +1091,12 @@ function BrewFeeds({
     }
   }, [sources, focusId, focusSourceId, onJumpSource])
 
-  useEffect(() => {
-    if (focusSourceId == null || focusId !== focusSourceId) return
-    sitesApiRef.current?.align(focusSourceId)
-  }, [focusSourceId, focusId])
+  useLayoutEffect(() => {
+    const id = seatSitesRef.current
+    if (id == null || id !== focusId) return
+    seatSitesRef.current = null
+    sitesApiRef.current?.align(id, true)
+  }, [focusId])
 
   useEffect(() => {
     if (focusId == null || focusId === readyId) return
@@ -1134,16 +1139,16 @@ function BrewFeeds({
 
   const onLeadChange = useCallback((id: number) => {
     lastSourceRef.current = id
-    paintedOnRef.current = id
-    paintedElRef.current = null
-    if (focusTimerRef.current) {
-      window.clearTimeout(focusTimerRef.current)
-      focusTimerRef.current = 0
-    }
-    pendingFlushRef.current = false
+    paintSiteOn(
+      sitesTrackRef.current,
+      id,
+      paintedOnRef,
+      paintedElRef,
+      siteElsRef.current,
+    )
+    skipStoryAlignRef.current = true
     setFocusId(id)
-    onJumpSource?.(id)
-  }, [onJumpSource])
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -1224,6 +1229,7 @@ function BrewFeeds({
   const colWRef = useRef(276)
   const lastSeekRef = useRef(0)
   const followHintRef = useRef({ i: 0 })
+  const siteFollowHintRef = useRef({ i: 0 })
   const lastScrollRef = useRef(0)
   const lastViewWRef = useRef(800)
   const siteCardsRef = useRef<Array<{ id: number; left: number }>>([])
@@ -1231,7 +1237,6 @@ function BrewFeeds({
   const siteIndexCardsRef = useRef(siteCardsRef.current)
   const lastSiteViewWRef = useRef(-1)
   const siteCardsMissRef = useRef(false)
-  const siteElsRef = useRef(new Map<number, HTMLElement>())
   const eagerBandRef = useRef({ from: 1, to: 8 })
   const storyColRef = useRef(0)
   const lastWindowViewRef = useRef(-1)
@@ -1419,6 +1424,7 @@ function BrewFeeds({
     }
     startTransition(() => {
       if (settleId != null) {
+        appliedFocus.current = settleId
         setFocusId(settleId)
         jumpRef.current?.(settleId)
       }
@@ -1664,6 +1670,36 @@ function BrewFeeds({
     },
     [flushStorySettle, rebuildFollowStops],
   )
+  const onSiteScroll = useCallback(
+    (state: { scroll: number; viewW: number; colW: number }) => {
+      if (railDriverRef.current !== 'sites') return
+      const colW = colWRef.current
+      if (
+        driveStopsRef.current.length === 0
+        || followStopsRef.current.length === 0
+      ) {
+        rebuildFollowStops(colW, state.viewW)
+      }
+      const storyX = followRailScroll(
+        state.scroll,
+        followStopsRef.current,
+        driveStopsRef.current,
+        siteFollowHintRef.current,
+      )
+      if (Math.abs(storyX - lastScrollRef.current) > 0.5) {
+        itemsApiRef.current?.seek(storyX)
+      }
+      onStoryScroll({
+        scroll: storyX,
+        viewW:
+          lastViewWRef.current
+          || itemsViewRef.current?.clientWidth
+          || state.viewW,
+        colW,
+      })
+    },
+    [onStoryScroll, rebuildFollowStops],
+  )
   const paintGrabbing = (on: boolean) => {
     grabbingRef.current = on
     feedsRef.current?.classList.toggle('is-rail-grabbing', on)
@@ -1690,6 +1726,12 @@ function BrewFeeds({
   }, [])
   const onSiteIdle = useCallback(() => {
     paintGrabbing(false)
+    const id = lastSourceRef.current
+    if (id != null) {
+      appliedFocus.current = id
+      skipStoryAlignRef.current = true
+      jumpRef.current?.(id)
+    }
     if (pendingFlushRef.current) flushStorySettle()
     releaseStoriesRef.current?.()
   }, [flushStorySettle])
@@ -1722,7 +1764,7 @@ function BrewFeeds({
     onLeadChange,
     sitesApiRef,
     true,
-    undefined,
+    onSiteScroll,
     onSiteGrab,
     onSiteIdle,
   )
@@ -1798,7 +1840,7 @@ function BrewFeeds({
       return
     }
     alignStoryGroup(focusId)
-  }, [focusId, railEpoch])
+  }, [focusId])
 
   const holdMotion = () => {
     motionHolds.current += 1

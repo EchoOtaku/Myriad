@@ -97,6 +97,7 @@ describe('brew 舞台契约', () => {
     assert.doesNotMatch(vacant, /compact/)
     const friends = read('skin/BrewFriends.tsx')
     assert.match(friends, /useBrewRailPan\(/)
+    assert.match(friends, /undefined,\n {4}undefined,\n {4}true/)
     assert.match(friends, /data-brew-rail-track="sites"/)
     assert.match(friends, /stories\.length/)
     assert.doesNotMatch(friends, /stories\.length \/ 2/)

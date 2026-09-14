@@ -63,39 +63,50 @@ data_volume() {
     printf '%s_backend_data' "$(active_project)"
 }
 
+# Official writers that share backend_data / the same database.
+# Stop workers before web so persona/federation cannot keep writing.
+WRITER_STOP_ORDER="federation-worker persona-worker backend"
+WRITER_START_ORDER="backend federation-worker persona-worker"
+
 # True only when the named compose service has a running container.
 # A failed inspect/ps is an error, not “not running”.
-backend_is_running() {
+# Missing service / no container is “not running”.
+service_is_running() {
+    local service="$1"
     local id running
-    id="$(compose ps -q backend)" || {
-        err "cannot determine backend status"
+    id="$(compose ps -q "$service")" || {
+        err "cannot determine $service status"
         return 2
     }
     [ -n "$id" ] || return 1
     running="$($DOCKER inspect -f '{{.State.Running}}' "$id")" || {
-        err "cannot inspect backend container"
+        err "cannot inspect $service container"
         return 2
     }
     [ "$running" = "true" ]
 }
 
-# Stop a running backend. Detection failure or stop failure aborts.
-# Sets BACKEND_STOPPED_BY_US=1 only after a successful stop of a running unit.
-quiesce_backend() {
-    local state
-    if backend_is_running; then
-        state=running
-    else
-        state=$?
-        if [ "$state" -eq 2 ]; then
-            exit 1
+# Stop running writers. Detection failure or stop failure aborts.
+# Sets WRITERS_STOPPED_BY_US=1 only after a successful stop of at least one unit.
+quiesce_writers() {
+    local svc state
+    STOPPED_WRITERS=""
+    for svc in $WRITER_STOP_ORDER; do
+        if service_is_running "$svc"; then
+            info "==> stopping $svc to quiesce writes"
+            compose stop "$svc"
+            STOPPED_WRITERS="${STOPPED_WRITERS:+$STOPPED_WRITERS }$svc"
+        else
+            state=$?
+            if [ "$state" -eq 2 ]; then
+                exit 1
+            fi
+            info "$svc is not running"
         fi
-        info "backend is not running"
-        return 0
+    done
+    if [ -n "$STOPPED_WRITERS" ]; then
+        WRITERS_STOPPED_BY_US=1
     fi
-    info "==> stopping backend to quiesce writes"
-    compose stop backend
-    BACKEND_STOPPED_BY_US=1
 }
 
 ensure_data_volume() {
@@ -174,20 +185,21 @@ Usage: $0 <backup|restore> [options]
 
   backup [--out DIR] [--no-stop]
       Dump Postgres, archive the backend_data volume, and copy .env.
-      Stops backend briefly unless --no-stop is set. Excludes cache.
-      If this script stopped a running backend, EXIT restarts it and
+      Stops backend / federation-worker / persona-worker briefly unless
+      --no-stop is set. Excludes cache.
+      If this script stopped a running writer, EXIT restarts it and
       keeps the original exit code.
 
   restore --from DIR [--no-stop]
       Restore Postgres, backend_data, and .env from a backup directory.
-      Destructive. Stops backend unless --no-stop is set.
+      Destructive. Stops writers unless --no-stop is set.
       Supported scope: same compose project and the same
       POSTGRES_PASSWORD as the running role. A different password or
       compose project is refused before any stop, copy, or restore.
       Order: match password and project → pin project → stop writers →
       restore .env → restore Postgres → restore volume → recreate
-      backend → wait /ready.
-      A failed restore leaves backend stopped.
+      backend → wait /ready → recreate workers.
+      A failed restore leaves stopped writers down.
 
 Notes:
   - Updater file-level ./pgdata snapshots are rollback material, not this backup.
@@ -202,14 +214,21 @@ stamp_dir() {
     printf '%s/myriad-%s' "$dest" "$(date +%Y%m%d_%H%M%S)"
 }
 
-restart_backend_keep_status() {
+restart_writers_keep_status() {
     local code="$1"
-    if [ "${BACKEND_STOPPED_BY_US:-0}" -eq 1 ]; then
-        info "==> starting backend"
-        if ! compose start backend; then
-            err "could not start backend; start it with scripts/extra/deploy.sh"
-            [ "$code" -ne 0 ] || code=1
-        fi
+    local svc
+    if [ "${WRITERS_STOPPED_BY_US:-0}" -eq 1 ]; then
+        for svc in $WRITER_START_ORDER; do
+            case " $STOPPED_WRITERS " in
+                *" $svc "*)
+                    info "==> starting $svc"
+                    if ! compose start "$svc"; then
+                        err "could not start $svc; start it with scripts/extra/deploy.sh"
+                        [ "$code" -ne 0 ] || code=1
+                    fi
+                    ;;
+            esac
+        done
     fi
     return "$code"
 }
@@ -228,14 +247,15 @@ do_backup() {
     mkdir -p "$out"
     chmod 700 "$out"
 
-    BACKEND_STOPPED_BY_US=0
-    trap 'code=$?; trap - EXIT; restart_backend_keep_status "$code"; exit $?' EXIT
+    WRITERS_STOPPED_BY_US=0
+    STOPPED_WRITERS=""
+    trap 'code=$?; trap - EXIT; restart_writers_keep_status "$code"; exit $?' EXIT
 
     info "==> backup directory $out"
     if [ "$no_stop" -eq 0 ]; then
-        quiesce_backend
+        quiesce_writers
     else
-        warn "backend left running; dump may be crash-consistent only"
+        warn "writers left running; dump may be crash-consistent only"
     fi
 
     info "==> PostgreSQL dump"
@@ -284,13 +304,14 @@ do_restore() {
     require_same_postgres_password "$from/env"
     require_same_compose_project "$from/env"
 
-    BACKEND_STOPPED_BY_US=0
-    trap 'code=$?; trap - EXIT; if [ "$code" -ne 0 ] && [ "${BACKEND_STOPPED_BY_US:-0}" -eq 1 ]; then err "restore failed; backend left stopped so writes stay quiesced"; fi; exit "$code"' EXIT
+    WRITERS_STOPPED_BY_US=0
+    STOPPED_WRITERS=""
+    trap 'code=$?; trap - EXIT; if [ "$code" -ne 0 ] && [ "${WRITERS_STOPPED_BY_US:-0}" -eq 1 ]; then err "restore failed; writers left stopped so writes stay quiesced"; fi; exit "$code"' EXIT
 
     if [ "$no_stop" -eq 0 ]; then
-        quiesce_backend
+        quiesce_writers
     else
-        warn "backend left running; restore may race with live writes"
+        warn "writers left running; restore may race with live writes"
     fi
 
     info "==> restoring .env (previous file kept as .env.bak.restore)"
@@ -315,13 +336,15 @@ do_restore() {
         alpine:3.20 \
         sh -c 'rm -rf /data/* /data/.[!.]* /data/..?* 2>/dev/null; tar xzf /in/backend_data.tar.gz -C /data'
 
-    # Recreate backend after .env is in place so JWT / DATABASE_URL match the files.
+    # Recreate writers after .env is in place so JWT / DATABASE_URL match the files.
     # Postgres stays up: the dump was applied to the running cluster.
     if [ "$no_stop" -eq 0 ]; then
         info "==> recreating backend with restored environment"
         compose up -d --force-recreate --no-deps backend
-        BACKEND_STOPPED_BY_US=0
         wait_backend_ready
+        info "==> recreating federation-worker and persona-worker"
+        compose up -d --force-recreate --no-deps federation-worker persona-worker
+        WRITERS_STOPPED_BY_US=0
     fi
     ok "restore complete from $from"
 }

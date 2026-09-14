@@ -49,9 +49,9 @@ Networks:
 - Only `docker-guard` mounts the raw Docker socket. The updater reaches it over an
   internal-only network; the guard restricts methods, Compose project labels, image
   repositories, container-create privileges, and host bind mounts.
-- **`UPDATE_TOKEN` lives in updater + updater-gateway only**, not in the backend or
-  docker-guard. Gateway injects `X-Update-Token` on the admin-net hop; Guard trust
-  comes from the host-owned digest policy instead.
+- **`UPDATE_TOKEN` lives in updater + updater-gateway only**, not in the backend,
+  workers, or docker-guard. Gateway injects `X-Update-Token` on the admin-net hop;
+  Guard trust comes from the host-owned digest policy instead.
 - **`UPDATER_GATEWAY_SECRET` lives in backend + updater-gateway only.** Backend sends
   `X-Updater-Gateway-Secret` on every proxied call. Admin-net peers without the secret
   cannot drive the gateway. Leaking this secret is still sensitive (can trigger updates
@@ -72,7 +72,7 @@ Networks:
 
 | File | Role |
 | --- | --- |
-| `docker-compose.yml` | Production stack: postgres, backend, federation-worker, persona-worker, frontend, proxy, updater, updater-gateway, docker-guard |
+| `docker-compose.yml` | Production stack: postgres, backend-volume-init, backend, federation-worker, persona-worker, frontend, proxy, updater, updater-gateway, docker-guard |
 | `docs/deployment/RUNTIME_ISOLATION.md` | Web / federation / persona process boundaries and update/rollback |
 | `docs/deployment/WORKER_DATABASE.md` | Separate worker DB logins and budgets |
 | `.env.production.example` | Template for host `.env` |
@@ -92,8 +92,9 @@ cp .env.production.example .env
 # Edit at minimum:
 # POSTGRES_PASSWORD, JWT_SECRET, CORS_ORIGINS
 # DOCKER_GUARD_IMAGE = independently verified release repo@sha256 digest
-# deploy.sh fills UPDATE_TOKEN / UPDATER_GATEWAY_SECRET / MYRIAD_SETUP_SECRET
-# and GUARD_SELF_UPDATE_TOKEN if empty, then writes ./guard-policy/docker-guard.env.
+# deploy.sh fills UPDATE_TOKEN / UPDATER_GATEWAY_SECRET / MYRIAD_SETUP_SECRET /
+# PERSONA_DB_PASSWORD / FEDERATION_DB_PASSWORD and GUARD_SELF_UPDATE_TOKEN if
+# empty, then writes ./guard-policy/docker-guard.env.
 
 bash scripts/extra/deploy.sh up
 ```
@@ -127,7 +128,7 @@ database outage.
 | `UPDATER_IMAGE_REF` | after TCB pin | Exact `docker.io/somekawahitomi/myriad-updater@sha256:<64hex>`. When set, compose runs this instead of `UPDATER_TAG`. Written by Guard self-update. |
 | `UPDATER_TAG` | yes | First-install / dev fallback tag. After a digest pin exists, this is not the running TCB identity. |
 | `COMPOSE_PROJECT_NAME` | yes | Compose project name, default `myriad` |
-| `UPDATE_TOKEN` | yes | Updater token for updater/gateway; deploy script fills it if empty; **not** injected into backend or docker-guard |
+| `UPDATE_TOKEN` | yes | Updater token for updater/gateway; deploy script fills it if empty; **not** injected into backend, workers, or docker-guard |
 | `GUARD_SELF_UPDATE_TOKEN` | yes | Dedicated self-update capability; lives in `.env` and is copied to `./guard-policy/docker-guard.env` on first start; deploy generates it if empty; Guard + updater only |
 | `DOCKER_GUARD_IMAGE` | yes | Exact `docker.io/somekawahitomi/myriad-updater@sha256:<64hex>` identity for Guard; first boot source is `.env`, live TCB copy is `./guard-policy/docker-guard.env` |
 | `MYRIAD_GUARD_ENV_FILE` | no | Fixed Compose-relative path `guard-policy/docker-guard.env` |
@@ -196,7 +197,8 @@ bash scripts/extra/deploy.sh doctor
 ### Hygiene (low-friction)
 
 - **Secrets**: `UPDATE_TOKEN` / `UPDATER_GATEWAY_SECRET` / `JWT_SECRET` / `POSTGRES_PASSWORD` /
-  `GITHUB_TOKEN` are redacted from updater/backend error bodies and log paths that might echo them.
+  `PERSONA_DB_PASSWORD` / `FEDERATION_DB_PASSWORD` / `MYRIAD_SETUP_SECRET` / `GITHUB_TOKEN`
+  are redacted from updater/backend error bodies and log paths that might echo them.
 - **Admin mutative updater** routes (`POST …/update|rollback|rescue/*`) use a
   stricter per-IP rate limit; status/jobs polling stays on the normal limit.
 - **Audit actor**: backend proxies pass `X-Update-Actor: admin:<id>:<user>` after admin

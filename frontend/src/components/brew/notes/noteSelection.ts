@@ -202,13 +202,6 @@ export function textareaSelectionRect(el: HTMLTextAreaElement): DOMRect | null {
   return measureTextarea(el, el.selectionStart, el.selectionEnd)
 }
 
-/** 光标收拢且停在空行时，那一行的位置。 */
-export function textareaEmptyLineRect(el: HTMLTextAreaElement): DOMRect | null {
-  if (el.selectionStart !== el.selectionEnd) return null
-  if (!lineIsBlank(el.value, el.selectionStart)) return null
-  return measureTextarea(el, el.selectionStart, el.selectionStart)
-}
-
 /** 光标收拢时所在那一行的位置，不管行上有没有字。行槛「+」跟着它。 */
 export function textareaCaretLineRect(el: HTMLTextAreaElement): DOMRect | null {
   if (el.selectionStart !== el.selectionEnd) return null

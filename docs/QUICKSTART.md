@@ -22,7 +22,7 @@ proxy ──┬── frontend:1102
 ### 1. 准备仓库和配置
 
 ```bash
-git clone https://github.com/myriad-you/Myriad.git
+git clone https://github.com/Myriad-You/Myriad.git
 cd Myriad
 
 cp .env.production.example .env
@@ -168,6 +168,8 @@ docker compose config
 
 ```bash
 docker compose logs backend
+docker compose logs federation-worker
+docker compose logs persona-worker
 docker compose logs postgres
 ```
 
@@ -200,7 +202,8 @@ CORS_ORIGINS=http://localhost:1102,http://localhost:1103
 - `POSTGRES_PASSWORD` 长度至少 32 字符。
 - `JWT_SECRET` 长度至少 32 字符。
 - `CORS_ORIGINS` 是真实访问域名，不要用 `*`。
-- `UPDATE_TOKEN`、`UPDATER_GATEWAY_SECRET`、`MYRIAD_SETUP_SECRET` 已由部署脚本生成，或已手动设置。编排安装创建所有者需要安装暗号。
+- `UPDATE_TOKEN`、`UPDATER_GATEWAY_SECRET`、`MYRIAD_SETUP_SECRET`、`PERSONA_DB_PASSWORD`、`FEDERATION_DB_PASSWORD` 已由部署脚本生成，或已手动设置。编排安装创建所有者需要安装暗号。
+- 栈内有 `federation-worker` 与 `persona-worker`；proxy 已设 `PROXY_FEDERATION_UPSTREAM` / `PROXY_PERSONA_UPSTREAM`。
 - `pgdata` 使用仓库根目录下的 `./pgdata` bind mount。
 - 外层 HTTPS/TLS 入口代理到 Myriad `proxy` 的 `HTTP_PORT`，不是 backend `1103`。
 - `.env` 未提交到 Git，生产机上建议 `chmod 600 .env`。
@@ -211,5 +214,7 @@ CORS_ORIGINS=http://localhost:1102,http://localhost:1103
 - [无 Docker 部署](deployment/NATIVE_DEPLOYMENT.md)
 - [Setup 安装暗号](deployment/SETUP_BOOTSTRAP.md)
 - [端口清单](deployment/PORTS.md)
+- [运行时隔离](deployment/RUNTIME_ISOLATION.md)
+- [Worker 数据库](deployment/WORKER_DATABASE.md)
 - [Updater 运维](deployment/UPDATER_QUICKSTART.md)
 - [README](../README.md)

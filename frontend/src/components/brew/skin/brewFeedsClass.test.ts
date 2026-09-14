@@ -34,6 +34,9 @@ describe('brew feeds 入场 class 链', () => {
       src,
       /useLayoutEffect\(\(\) => \{\s*paintSiteOn/,
     )
+    assert.match(src, /siteFollowHintRef/)
+    assert.match(src, /followStopsRef\.current,\n {8}driveStopsRef\.current/)
+    assert.match(src, /skipStoryAlignRef\.current = true\n    setFocusId\(id\)/)
     assert.match(src, /railMountColumnsPan/)
     assert.match(src, /railMountColumnsCovered/)
     assert.doesNotMatch(src, /railMountColumnsGrab/)
@@ -83,8 +86,14 @@ describe('brew feeds 入场 class 链', () => {
     assert.match(src, /startTransition/)
     assert.match(src, /settleId/)
     assert.match(src, /railMountColumnsSettle/)
-    assert.match(src, /true,\n {4}onStoryScroll/)
-    assert.match(src, /true,\n {4}undefined,\n {4}onSiteGrab/)
+    assert.match(src, /true,\n {4}onStoryScroll,\n {4}onStoryGrab,\n {4}onStoryIdle,\n {2}\)/)
+    assert.match(src, /true,\n {4}onSiteScroll,\n {4}onSiteGrab,\n {4}onSiteIdle,\n {2}\)/)
+    assert.doesNotMatch(src, /snapSlots/)
+    assert.match(src, /seatSitesRef/)
+    assert.match(src, /appliedFocus\.current = settleId/)
+    assert.match(src, /appliedFocus\.current = id/)
+    assert.doesNotMatch(src, /\[focusSourceId, focusId\]/)
+    assert.match(src, /alignStoryGroup\(focusId\)\n  }, \[focusId\]\)/)
     assert.match(src, /grabbingRef/)
     assert.match(src, /if \(grabbingRef\.current\) return/)
     assert.match(src, /dropPeek/)
@@ -387,6 +396,10 @@ describe('brew feeds 入场 class 链', () => {
       feedsCss,
       /\.brew-feeds\.is-rail-grabbing \.brew-feeds__items-track \{\n {2}contain: layout style paint;/,
     )
+    assert.match(feedsCss, /is-rail-panning/)
+    assert.match(feedsCss, /overscroll-behavior: none/)
+    assert.match(css, /is-rail-panning/)
+    assert.match(css, /overscroll-behavior: none/)
   })
 
   it('最新聚合卡用 mix 语气，叠卡跟源走，不铺渐变底', () => {

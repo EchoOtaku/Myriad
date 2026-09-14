@@ -9,6 +9,8 @@ const SECRET_ENV_KEYS: &[&str] = &[
     "UPDATER_GATEWAY_SECRET",
     "JWT_SECRET",
     "POSTGRES_PASSWORD",
+    "PERSONA_DB_PASSWORD",
+    "FEDERATION_DB_PASSWORD",
     "GITHUB_TOKEN",
     "MYRIAD_SETUP_SECRET",
     "MYRIAD_BOOTSTRAP_TOKEN",
@@ -187,5 +189,21 @@ mod tests {
         }
         assert!(!r.contains(VAL), "secret value must not leak: {r}");
         assert!(r.contains("[JWT_SECRET_REDACTED]"), "got: {r}");
+    }
+
+    #[test]
+    fn redacts_worker_db_passwords_when_present() {
+        const KEY: &str = "PERSONA_DB_PASSWORD";
+        const VAL: &str = "test-persona-db-password-xyz";
+        let prev = std::env::var(KEY).ok();
+        unsafe { std::env::set_var(KEY, VAL) };
+        let r = redact_secrets(&format!("role login used {VAL}"));
+        if let Some(p) = prev {
+            unsafe { std::env::set_var(KEY, p) };
+        } else {
+            unsafe { std::env::remove_var(KEY) };
+        }
+        assert!(!r.contains(VAL), "secret value must not leak: {r}");
+        assert!(r.contains("[PERSONA_DB_PASSWORD_REDACTED]"), "got: {r}");
     }
 }

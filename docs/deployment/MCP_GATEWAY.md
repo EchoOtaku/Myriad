@@ -33,9 +33,10 @@ other Linux/AppArmor host policies must be checked on the target host.
    binds only `127.0.0.1:8811`. Expose `/mcp` through HTTPS/private ingress reachable
    by persona, preserving Authorization, MCP session/protocol headers and streaming.
 3. Set `MYRIAD_MCP_GATEWAY_URL` to that `/mcp` endpoint and
-   `MYRIAD_MCP_GATEWAY_TOKEN` to its dedicated token **only in persona's deployment**,
-   then recreate persona. The token must have at least 32 printable non-space ASCII
-   characters. It is never returned by configuration APIs.
+   `MYRIAD_MCP_GATEWAY_TOKEN` to its dedicated token **only on `persona-worker`**
+   (not web or federation-worker), then recreate `persona-worker`. Official Compose
+   already interpolates these from `.env`. The token must have at least 32 printable
+   non-space ASCII characters. It is never returned by configuration APIs.
 4. Disable old stdio entries individually through the existing configuration API/UI,
    then enable one aggregate definition:
 

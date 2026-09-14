@@ -3,8 +3,8 @@
 # =============================================================================
 # 运维说明：
 #   - 完整文档：../EXTERNAL_POSTGRES.md
-#   - 与仓库根 docker-compose.yml 相同的业务/管理/guard 三网 + proxy + updater
-#   - 差异：无 postgres 服务；backend 使用 .env 中的 DATABASE_URL；
+#   - 与仓库根 docker-compose.yml 相同的三网 + proxy + web/federation/persona workers + updater
+#   - 差异：无 postgres 服务；web 用 DATABASE_URL；worker 用独立 URL；
 #           MYRIAD_DB_MODE=external → updater 跳过 pgdata 快照/恢复
 #   - 数据库备份由运维自管（pg_dump / 云备份 / 1Panel），updater 不替代
 #   - 复制为部署目录 docker-compose.yml 前请先填好 .env（见下方变量清单）
@@ -13,8 +13,9 @@
 # 必需 .env（外部 DB）：
 #   MYRIAD_DB_MODE=external
 #   DATABASE_URL=postgres://user:pass@host:5432/myriad?sslmode=prefer
+#   PERSONA_DATABASE_URL / FEDERATION_DATABASE_URL（同一库，独立登录）
 #   MYRIAD_TAG / PROXY_TAG / UPDATER_TAG
-#   JWT_SECRET / CORS_ORIGINS
+#   JWT_SECRET / CORS_ORIGINS / MYRIAD_SETUP_SECRET
 #   UPDATE_TOKEN / UPDATER_GATEWAY_SECRET
 #   COMPOSE_PROJECT_NAME=myriad
 # .env 必须含 digest 钉死的 DOCKER_GUARD_IMAGE 与 GUARD_SELF_UPDATE_TOKEN。

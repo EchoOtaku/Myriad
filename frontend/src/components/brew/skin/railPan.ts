@@ -6,6 +6,7 @@ import type { TimeTranslations } from '../types'
 import {
   clampConversationScroll,
   CONVERSATION_FADE_PX,
+  decayVelocity,
 } from '../../agent-panel/conversationPan'
 import {
   cloneStoryCardInner,
@@ -23,7 +24,19 @@ const RAIL_SNAP_NEAR_TAU = 0.072
 /** 坐进槽位时提前咬死，去掉指数衰减的长尾巴。 */
 export const RAIL_SEAT_PX = 2.6
 
-export const RAIL_WHEEL_SETTLE_MS = 96
+export const RAIL_WHEEL_SETTLE_MS = 120
+
+/** 甩手惯性比对话轨长，宽卡才滑得开。 */
+export const RAIL_FLING_TAU = 0.38
+
+/** 低于这个速度就停，别卡在对话轨的 90px/s 突然钉死。 */
+export const RAIL_FLING_MIN_PX_S = 24
+
+/** 点选和拖轨的分界。 */
+export const RAIL_DRAG_SLOP_PX = 5
+
+/** 触控板惯性事件停了以后，还很快才接着滑。 */
+export const RAIL_WHEEL_COAST_PX_S = 480
 
 const RAIL_FLING_LOOKAHEAD_S = 0.22
 export const RAIL_FLING_SLOT_PX_S = 360
@@ -1187,6 +1200,29 @@ export function railSettleTau(distance: number, seating: boolean): number {
   if (abs > 160) return RAIL_SNAP_FAR_TAU
   if (abs > 56) return RAIL_SNAP_MID_TAU
   return RAIL_SNAP_NEAR_TAU
+}
+
+/** 惯性直接积分，不再套一层跟手插值。出界就停。 */
+export function railCoastStep(
+  scroll: number,
+  velocity: number,
+  dt: number,
+  max: number,
+): { scroll: number; velocity: number } {
+  if (dt <= 0 || velocity === 0) {
+    return { scroll, velocity: 0 }
+  }
+  const next = scroll + velocity * dt
+  if (next <= 0 || next >= max) {
+    return {
+      scroll: clampConversationScroll(next, max),
+      velocity: 0,
+    }
+  }
+  return {
+    scroll: next,
+    velocity: decayVelocity(velocity, dt, RAIL_FLING_TAU, RAIL_FLING_MIN_PX_S),
+  }
 }
 
 export function isDiscreteWheel(event: WheelEvent): boolean {

@@ -655,6 +655,8 @@ mod tests {
             "POSTGRES_PASSWORD",
             "UPDATER_GATEWAY_SECRET",
             "UPDATE_TOKEN",
+            "PERSONA_DB_PASSWORD",
+            "FEDERATION_DB_PASSWORD",
             "MYRIAD_DATA_KEY",
             "OAUTH_STATE_SECRET",
         ] {

@@ -4,6 +4,13 @@ Operational notes for Myriad’s ActivityPub + MFP stack. Product inventory live
 in the federation-universe scratch; this file is **how the code behaves** for
 developers working on ensure-keys, Accept, delivery, and the dual-instance suite.
 
+Production Compose runs federation HTTP, WebSockets and outbound delivery in
+`federation-worker`. Proxy routes this domain with
+`PROXY_FEDERATION_UPSTREAM=http://federation-worker:1103`. Web owns migrations
+and does not register these handlers. Path table:
+[PORTS.md](../deployment/PORTS.md). Process boundary:
+[RUNTIME_ISOLATION.md](../deployment/RUNTIME_ISOLATION.md).
+
 ## Inbox auth hardening (MYR-022 / MYR-023)
 
 | Concern | Behaviour |

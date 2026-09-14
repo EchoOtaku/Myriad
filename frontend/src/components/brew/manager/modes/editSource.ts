@@ -1,7 +1,6 @@
 /** 分类预置值走库里的「友情链接 / 我」，不走界面语言。 */
 
 import type { BrewSource, FeedType, SourceType, UpdateSourceRequest } from '../../../../types/brew'
-import { brewCategoryParts } from '../../constants'
 import { workbenchSourceKind } from '../../logic/board'
 import type { AddFieldKind } from './addSource'
 import { pickAddKind } from './addSource'
@@ -38,10 +37,6 @@ export function joinCategories(
   const extra = draft.trim()
   if (extra && !next.includes(extra) && next.length < 2) next.push(extra)
   return next.length > 0 ? next.join(', ') : undefined
-}
-
-export function categoriesOf(source: Pick<BrewSource, 'category'>): string[] {
-  return brewCategoryParts(source.category)
 }
 
 export function canSubmitEdit(input: {

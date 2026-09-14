@@ -5,21 +5,25 @@
 # ============================================================================
 # 这个 compose 文件配合 Myriad updater 系统使用。架构：
 #
-#   myriad-net:        proxy, frontend, backend, postgres
+#   myriad-net:        proxy, frontend, backend, federation-worker,
+#                      persona-worker, postgres
 #   myriad-admin-net:  backend, updater, updater-gateway, proxy (rescue)
 #   myriad-docker-guard-net (internal): updater, docker-guard
 #
 #   proxy (80) ──┬──► frontend
-#                └──► backend ──► postgres
-#                       │
-#                       └──► updater-gateway ──► updater ──► docker-guard ──► docker.sock
+#                ├──► backend ──► postgres
+#                ├──► federation-worker
+#                ├──► persona-worker
+#                │
+#                └──► backend ──► updater-gateway ──► updater ──► docker-guard ──► docker.sock
 #
 # 升级流程见 docs/updater-spec.md。
 # 直连 backend/frontend 端口和 :latest 镜像的旧布局已移除。
 #
 # ============================================================================
 # 必需变量（scripts/extra/deploy.sh 会补齐当前布局所需目录、空 UPDATE_TOKEN /
-# UPDATER_GATEWAY_SECRET，以及宿主 Guard 策略中的 GUARD_SELF_UPDATE_TOKEN）
+# UPDATER_GATEWAY_SECRET / MYRIAD_SETUP_SECRET / PERSONA_DB_PASSWORD /
+# FEDERATION_DB_PASSWORD，以及宿主 Guard 策略中的 GUARD_SELF_UPDATE_TOKEN）
 # ============================================================================
 # MYRIAD_TAG             业务镜像版本（选图用，不覆盖容器 MYRIAD_VERSION）
 # PROXY_TAG              代理镜像版本（选图用）
@@ -33,10 +37,13 @@
 #
 # UPDATE_TOKEN           updater 鉴权 token（≥32 字符）
 #                        注入 updater + updater-gateway；docker-guard 不持有该 token，
-#                        **不**注入 backend 进程环境
+#                        **不**注入 backend / worker 进程环境
 # UPDATER_GATEWAY_SECRET backend ↔ updater-gateway 共享密钥（≥32 字符）
-#                        注入 backend + updater-gateway；**不**注入 frontend
+#                        注入 backend + updater-gateway；**不**注入 frontend / worker
 #                        泄露 ≈ 可经 gateway 驱动更新（仍优于 UPDATE_TOKEN 进胖进程）
+# PERSONA_DB_PASSWORD / FEDERATION_DB_PASSWORD
+#                        bundled worker 独立登录；deploy.sh 空值时生成；勿复用 POSTGRES_PASSWORD
+# MYRIAD_SETUP_SECRET    官方 compose 已写 DATABASE_URL 时，安装写操作暗号
 # CHANNEL                stable | beta | nightly
 # GITHUB_TOKEN           可选。Release 模式读 release.json 需要（私有仓必填）。
 #                        Commit/开发版模式可不设：走 Docker Hub 公共镜像发现（私有源码仓常态）

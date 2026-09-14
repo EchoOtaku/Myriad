@@ -28,7 +28,7 @@ docs/
 | 文档 | 说明 |
 | --- | --- |
 | [QUICKSTART.md](QUICKSTART.md) | 生产与开发快速开始 |
-| [DOCKER_DEPLOYMENT.md](deployment/DOCKER_DEPLOYMENT.md) | 三网拓扑、env、健康检查 |
+| [DOCKER_DEPLOYMENT.md](deployment/DOCKER_DEPLOYMENT.md) | 三网拓扑、web/worker 分流、env、健康检查 |
 | [NATIVE_DEPLOYMENT.md](deployment/NATIVE_DEPLOYMENT.md) | 无 Docker 生产部署 |
 | [EXTERNAL_POSTGRES.md](deployment/EXTERNAL_POSTGRES.md) | 外部数据库 |
 | [PORTS.md](deployment/PORTS.md) | 端口与代理路径（含 web / federation / persona 分流） |

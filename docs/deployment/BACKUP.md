@@ -9,7 +9,9 @@
 
 ## 备份
 
-允许短暂停 backend，避免写库与写盘交叉。
+允许短暂停写。官方拓扑里 `federation-worker` / `persona-worker` 与 web
+共用 `backend_data` 并各自写库；`backup.sh` 会停/起这三个服务（先停 worker，再停
+web）。`--no-stop` 只保证崩溃一致，不保证跨进程一致。
 
 ```bash
 bash scripts/extra/backup.sh backup
@@ -31,8 +33,8 @@ bash scripts/extra/backup.sh backup --out /var/backups/myriad-20260101
 原生部署没有 Docker volume 时，用
 [NATIVE_DEPLOYMENT.md](NATIVE_DEPLOYMENT.md) 的 `pg_dump` + `tar` `data/`。
 
-备份失败时，若脚本确实停过正在运行的 backend，EXIT 会把它拉起来并保留原
-错误码。`compose stop` 失败会中止，不会假装“本来就没在跑”。
+备份失败时，若脚本确实停过正在运行的写进程，EXIT 会按 backend → worker
+的顺序拉起来，并保留原错误码。`compose stop` 失败会中止，不会假装“本来就没在跑”。
 
 ## 恢复
 
@@ -46,9 +48,10 @@ bash scripts/extra/backup.sh backup --out /var/backups/myriad-20260101
 
 会覆盖当前库、数据卷和 `.env`。现有 `.env` 会先复制为 `.env.bak.restore`。
 
-顺序：核对口令 → 停写 → 覆盖 `.env` → 恢复 Postgres → 恢复数据卷（没有卷
-则先建空卷）→ `compose up -d --force-recreate --no-deps backend` → 容器内
-探测 `/ready`。中途失败会保持 backend 停止。不要用前端 HTML 的 200 认定就绪。
+顺序：核对口令 → 停写（worker + backend）→ 覆盖 `.env` → 恢复 Postgres →
+恢复数据卷（没有卷则先建空卷）→ `compose up -d --force-recreate --no-deps backend`
+→ 容器内探测 `/ready` → 同样重建两个 worker。中途失败会保持已停的写进程停止。
+不要用前端 HTML 的 200 认定就绪。
 
 空数据卷与「目标口令不同」只做过脚本级演练（拒绝路径 / `volume create`），
 没有在真实库上做过破坏性恢复；账户、Tapp、形象文件与凭据可用性 uncertain。

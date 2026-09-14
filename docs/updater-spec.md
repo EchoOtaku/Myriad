@@ -312,6 +312,7 @@ idle
 ```
 
 业务更新在启动目标构建前，会把当时正在运行且已验证的 backend/frontend 镜像钉到
+（两个 worker 共用 backend 镜像，随同一 `MYRIAD_TAG` 启停）
 本地 `*:myriad-rollback`，并将该版本写入 `rollback_version`。目标构建健康通过后只推进
 `current_version`，不会用当前构建覆盖回退槽位；下一次更新开始前才将槽位推进到届时的
 当前构建。回滚时若快照解析出的原版本 tag 已不在本地，但它与 `rollback_version` 一致，
@@ -326,7 +327,7 @@ updater 会先从 `*:myriad-rollback` 重新创建原版本 tag，再交给 Comp
 | `idle` | 正常启动 |
 | `preflight` | 撤销 lock，回 idle（无副作用） |
 | `maintenance_on` | 退维护，回 idle |
-| `stopping` / `snapshotting` | 清 maintenance + 标记 job failed，并 **best-effort 重启** 上一栈（postgres + backend/frontend）；不自动进入 swap |
+| `stopping` / `snapshotting` | 清 maintenance + 标记 job failed，并 **best-effort 重启** 上一栈（postgres + backend + federation-worker + persona-worker + frontend）；不自动进入 swap |
 | `swap_tag` 之后任意步骤 | **不自动恢复**，进 `needs_manual` |
 | `health_probing` 且 `active=false`（为测前端已抬起维护） | **仍算 post-swap**：进 `needs_manual`（**禁止**当 idle） |
 | `job.current` 仍指向 Running 且 last step 为 post-swap | 即使 maintenance 文件 inactive / 损坏 → `needs_manual` |
@@ -748,7 +749,7 @@ docker compose --env-file .env --env-file ./guard-policy/docker-guard.env up -d 
 - **仅 Compose 服务 `updater` 可附着 docker-guard 网络**（`MYRIAD_DOCKER_GUARD_NETWORK` /
   默认 `myriad-docker-guard-net`）：`networks/{id}/connect|disconnect`、create 时的
   `NetworkingConfig.EndpointsConfig` 与 `HostConfig.NetworkMode` 均强制该规则。backend /
-  frontend / postgres 不得 dual-home 到 guard 网，避免在 updater 被攻破后把业务容器拉进
+  frontend / postgres / federation-worker / persona-worker 不得 dual-home 到 guard 网，避免在 updater 被攻破后把业务容器拉进
   未鉴权的 Docker API（`:2375`）。
 - **允许的网络名**（create/connect）：业务 `myriad-net`、管理平面 `myriad-admin-net`
   （`MYRIAD_ADMIN_NETWORK`）、guard-net。其它网络名拒绝。

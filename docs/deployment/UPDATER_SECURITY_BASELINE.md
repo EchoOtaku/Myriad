@@ -22,15 +22,15 @@ Related:
 
 | Area | What shipped |
 | --- | --- |
-| **Topology** | Business / admin / guard nets; updater off business L2; frontend/postgres cannot reach updater |
+| **Topology** | Business / admin / guard nets; web + federation-worker + persona-worker; updater off business L2; frontend/postgres/workers cannot reach updater |
 | **docker-guard** | Only Guard mounts `docker.sock`; its operation/image/bind policy is compiled into the Guard TCB; updater-only on guard-net |
 | **Guard identity** | Production Guard is selected by `./guard-policy/docker-guard.env` (written by Guard on first start from the `.env` digest) and must use the independently verified `repo@sha256` identity |
 | **Guard local auth** | `/_myriad/self-update` requires a distinct host-policy capability shared only with updater; guard-net membership alone is insufficient |
-| **Token hop** | `UPDATE_TOKEN` in updater + gateway only — **not** in backend or Guard env |
+| **Token hop** | `UPDATE_TOKEN` in updater + gateway only — **not** in backend, workers, or Guard env |
 | **Gateway secret** | `UPDATER_GATEWAY_SECRET` (≥32) on backend ↔ updater-gateway; admin-net alone is not enough; the token hop exposes only explicit method/path/query/body capabilities |
 | **Cosign dual-key** | Default `COSIGN_VERIFY=strict`; `off` requires `UPDATER_ALLOW_INSECURE_COSIGN=true` (or alias) |
 | **Audit** | `state/audit.log` (fsync, rotate); actor header from admin JWT when proxied |
-| **Doctor** | `scripts/extra/deploy.sh doctor` topology + secrets + cosign; optional `--host` scan |
+| **Doctor** | `scripts/extra/deploy.sh doctor` topology + worker/proxy upstreams + secrets + cosign; optional `--host` scan |
 | **TCB upgrade** | One-click trusted handoff: updater submits tag intent only; Guard fixes the official repository, resolves and verifies the pulled digest, then an exact-digest helper can recreate only Guard/updater/gateway with rollback |
 | **Hygiene** | Secret redaction, stricter rate limits on mutative admin routes, `confirm_risk` for high-risk flags |
 | **Rescue path** | `PROXY_ALLOW_DIRECT_UPDATER=false` by default; direct `/_updater/*` is temporary only |

@@ -13,8 +13,6 @@ import {
 } from '../logic/topics'
 
 export const MAX_NOTE_CATEGORY_CHARS = 40
-/** 筛选：全部 */
-export const NOTE_CATEGORY_ALL = null
 /** 筛选：还没归类 */
 export const NOTE_CATEGORY_NONE = ''
 

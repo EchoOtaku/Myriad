@@ -2,7 +2,8 @@
 //!
 //! Replaces known env values (`UPDATE_TOKEN`, `DOCKER_GUARD_SELF_UPDATE_TOKEN`,
 //! `UPDATER_GATEWAY_SECRET`, `JWT_SECRET`,
-//! `POSTGRES_PASSWORD`, `GITHUB_TOKEN`) and a few common header/URL patterns so
+//! `POSTGRES_PASSWORD`, `PERSONA_DB_PASSWORD`, `FEDERATION_DB_PASSWORD`,
+//! `GITHUB_TOKEN`) and a few common header/URL patterns so
 //! accidental echo of secrets does not leak into operator-facing output.
 
 /// Env keys whose values must never appear in logs or error bodies.
@@ -12,6 +13,8 @@ const SECRET_ENV_KEYS: &[&str] = &[
     "UPDATER_GATEWAY_SECRET",
     "JWT_SECRET",
     "POSTGRES_PASSWORD",
+    "PERSONA_DB_PASSWORD",
+    "FEDERATION_DB_PASSWORD",
     "GITHUB_TOKEN",
 ];
 

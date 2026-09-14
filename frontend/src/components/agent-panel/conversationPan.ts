@@ -63,10 +63,11 @@ export function decayVelocity(
   velocity: number,
   dt: number,
   tau = CONVERSATION_FLING_TAU,
+  min = FLING_MIN_PX_S,
 ): number {
   if (tau <= 0 || dt <= 0) return 0
   const next = velocity * Math.exp(-dt / tau)
-  return Math.abs(next) < FLING_MIN_PX_S ? 0 : next
+  return Math.abs(next) < min ? 0 : next
 }
 
 export function sampleVelocity(

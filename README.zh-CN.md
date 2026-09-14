@@ -339,7 +339,8 @@ cd Myriad
 cp .env.production.example .env
 # 必填：POSTGRES_PASSWORD / JWT_SECRET / CORS_ORIGINS
 # BASE_URL / FRONTEND_URL = 公网源站（联邦发现使用 BASE_URL）
-# UPDATE_TOKEN / UPDATER_GATEWAY_SECRET 留空则由 deploy.sh 生成
+# UPDATE_TOKEN / UPDATER_GATEWAY_SECRET / PERSONA_DB_PASSWORD /
+# FEDERATION_DB_PASSWORD 留空则由 deploy.sh 生成
 
 bash scripts/extra/deploy.sh up
 ```
@@ -351,6 +352,8 @@ bash scripts/extra/deploy.sh up
 ```text
 host HTTP_PORT → proxy → frontend:1102
                       → backend:1103 → postgres:5432
+                      → federation-worker:1103
+                      → persona-worker:1103
                       → updater（内网；经 updater-gateway）
 ```
 

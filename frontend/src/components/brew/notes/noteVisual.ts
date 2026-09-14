@@ -1140,11 +1140,6 @@ export function setImageSrc(root: HTMLElement, img: HTMLImageElement, src: strin
   return visualHtmlToMarkdown(root.innerHTML)
 }
 
-/** 图片在 Markdown 里的地址（不是显示地址）。 */
-export function imageSourceOf(img: HTMLImageElement): string {
-  return img.dataset.src ?? img.getAttribute('src') ?? ''
-}
-
 export function removeImage(root: HTMLElement, img: HTMLImageElement): string {
   const parent = img.parentElement
   img.remove()

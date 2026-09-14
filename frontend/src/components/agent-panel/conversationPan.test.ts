@@ -90,6 +90,11 @@ describe('decayVelocity', () => {
     const next = decayVelocity(1400, 0.016)
     assert.ok(next > 1200 && next < 1400)
   })
+
+  it('accepts a lower stop floor', () => {
+    assert.ok(decayVelocity(40, 0.016, 0.38, 24) > 0)
+    assert.equal(decayVelocity(20, 0.016, 0.38, 24), 0)
+  })
 })
 
 describe('sampleVelocity', () => {

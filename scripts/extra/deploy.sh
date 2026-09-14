@@ -297,7 +297,7 @@ ensure_env() {
         warn "  - JWT_SECRET        (openssl rand -base64 32)"
         warn "  - CORS_ORIGINS      (your domain)"
         warn ""
-        warn "This script will create pgdata/state/backups/guard-policy and fill empty UPDATE_TOKEN / UPDATER_GATEWAY_SECRET / MYRIAD_SETUP_SECRET / GUARD_SELF_UPDATE_TOKEN."
+        warn "This script will create pgdata/state/backups/guard-policy and fill empty UPDATE_TOKEN / UPDATER_GATEWAY_SECRET / MYRIAD_SETUP_SECRET / PERSONA_DB_PASSWORD / FEDERATION_DB_PASSWORD / GUARD_SELF_UPDATE_TOKEN."
         warn ""
         read -r -p "Open .env in \$EDITOR now? (y/N): " r
         if [[ "$r" =~ ^[Yy]$ ]]; then
@@ -458,7 +458,9 @@ cmd_status() {
 
 # Read-only topology checks. Does not migrate or restart services.
 # Expected: docker-guard holds docker.sock; updater on admin+guard nets (not business net);
-# updater-gateway injects token; backend has UPDATER_GATEWAY_SECRET but no UPDATE_TOKEN.
+# updater-gateway injects token; backend has UPDATER_GATEWAY_SECRET but no UPDATE_TOKEN;
+# backend MYRIAD_PROCESS_ROLE=web; federation-worker / persona-worker on business net only;
+# proxy has PROXY_FEDERATION_UPSTREAM / PROXY_PERSONA_UPSTREAM.
 # Optional: --host (privileged/docker.sock scan), --events (stream create/start).
 cmd_doctor() {
     local fail=0
@@ -534,6 +536,77 @@ cmd_doctor() {
         # $1=container $2=KEY
         docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$1" 2>/dev/null \
             | grep -E "^${2}=" | head -1 | cut -d= -f2- || true
+    }
+
+    require_process_role() {
+        local container="$1" expected="$2"
+        local role
+        role="$(container_env_value "$container" MYRIAD_PROCESS_ROLE)"
+        if [ "$role" = "$expected" ]; then
+            ok "PASS  $container MYRIAD_PROCESS_ROLE=$expected"
+        else
+            err "FAIL  $container MYRIAD_PROCESS_ROLE=${role:-unset} (expected $expected)"
+            fail=$((fail + 1))
+        fi
+    }
+
+    check_worker() {
+        local container="$1" role="$2"
+        if ! container_exists "$container"; then
+            err "FAIL  $container not found (official topology requires this worker)"
+            fail=$((fail + 1))
+            return
+        fi
+        ok "PASS  $container container exists"
+        require_process_role "$container" "$role"
+        if container_env_has "$container" 'UPDATE_TOKEN='; then
+            err "FAIL  $container Config.Env contains UPDATE_TOKEN"
+            fail=$((fail + 1))
+        else
+            ok "PASS  $container Config.Env has no UPDATE_TOKEN"
+        fi
+        if container_env_has "$container" 'UPDATER_GATEWAY_SECRET='; then
+            err "FAIL  $container Config.Env contains UPDATER_GATEWAY_SECRET"
+            fail=$((fail + 1))
+        else
+            ok "PASS  $container Config.Env has no UPDATER_GATEWAY_SECRET"
+        fi
+        if container_on_network "$container" "$business_net"; then
+            ok "PASS  $container is on $business_net"
+        else
+            err "FAIL  $container is not on $business_net (networks: $(container_networks "$container"))"
+            fail=$((fail + 1))
+        fi
+        if container_on_network "$container" "$admin_net"; then
+            err "FAIL  $container must not be on admin-net $admin_net"
+            fail=$((fail + 1))
+        else
+            ok "PASS  $container is not on admin-net"
+        fi
+        if container_on_network "$container" "$guard_net"; then
+            err "FAIL  $container must not be on guard-net $guard_net"
+            fail=$((fail + 1))
+        else
+            ok "PASS  $container is not on guard-net"
+        fi
+    }
+
+    check_proxy_worker_upstreams() {
+        local fed persona
+        fed="$(container_env_value myriad-proxy PROXY_FEDERATION_UPSTREAM)"
+        persona="$(container_env_value myriad-proxy PROXY_PERSONA_UPSTREAM)"
+        if [ "$fed" = "http://federation-worker:1103" ]; then
+            ok "PASS  proxy PROXY_FEDERATION_UPSTREAM=$fed"
+        else
+            err "FAIL  proxy PROXY_FEDERATION_UPSTREAM=${fed:-unset} (expected http://federation-worker:1103)"
+            fail=$((fail + 1))
+        fi
+        if [ "$persona" = "http://persona-worker:1103" ]; then
+            ok "PASS  proxy PROXY_PERSONA_UPSTREAM=$persona"
+        else
+            err "FAIL  proxy PROXY_PERSONA_UPSTREAM=${persona:-unset} (expected http://persona-worker:1103)"
+            fail=$((fail + 1))
+        fi
     }
 
     # --- docker-guard ---
@@ -705,6 +778,7 @@ cmd_doctor() {
                 ok "PASS  backend Config.User=$buser"
                 ;;
         esac
+        require_process_role myriad-backend web
         if container_env_has myriad-backend 'UPDATE_TOKEN='; then
             err "FAIL  backend Config.Env contains UPDATE_TOKEN (should use updater-gateway only)"
             fail=$((fail + 1))
@@ -747,6 +821,39 @@ cmd_doctor() {
     else
         warn "SKIP  myriad-backend not running"
         skip=$((skip + 1))
+    fi
+
+    # --- workers + proxy worker upstreams (required when backend is up) ---
+    if container_exists myriad-backend; then
+        check_worker myriad-federation-worker federation-worker
+        check_worker myriad-persona-worker persona-worker
+        if container_exists myriad-proxy; then
+            ok "PASS  myriad-proxy container exists"
+            check_proxy_worker_upstreams
+        else
+            err "FAIL  myriad-proxy not found (cannot verify worker upstreams)"
+            fail=$((fail + 1))
+        fi
+    else
+        if container_exists myriad-federation-worker; then
+            check_worker myriad-federation-worker federation-worker
+        else
+            warn "SKIP  myriad-federation-worker not running"
+            skip=$((skip + 1))
+        fi
+        if container_exists myriad-persona-worker; then
+            check_worker myriad-persona-worker persona-worker
+        else
+            warn "SKIP  myriad-persona-worker not running"
+            skip=$((skip + 1))
+        fi
+        if container_exists myriad-proxy; then
+            ok "PASS  myriad-proxy container exists"
+            check_proxy_worker_upstreams
+        else
+            warn "SKIP  myriad-proxy not running"
+            skip=$((skip + 1))
+        fi
     fi
 
     # --- updater-gateway secret presence ---

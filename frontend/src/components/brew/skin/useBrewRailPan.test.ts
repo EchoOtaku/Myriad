@@ -17,6 +17,7 @@ import {
   paintStoryAway,
   paintStoryLiveCols,
   RAIL_COMMIT_RATIO,
+  RAIL_FLING_MIN_PX_S,
   RAIL_FLING_SLOT_PX_S,
   RAIL_MOUNT_BOOT_TO,
   RAIL_MOUNT_GRAB_AHEAD,
@@ -26,6 +27,7 @@ import {
   RAIL_MOUNT_RESERVE,
   RAIL_MOUNT_SETTLE_EXTRA,
   railCardKeepsPaint,
+  railCoastStep,
   railColumnSlotAt,
   railColumnSlots,
   railGroupStarts,
@@ -775,10 +777,28 @@ describe('railSettleTau / isDiscreteWheel', () => {
     assert.ok(railSettleTau(80, false) < railSettleTau(24, true))
   })
 
-  it('只有刻度滚轮当一格，触控板像素量走吸入', () => {
+  it('只有刻度滚轮当行距，触控板跟像素', () => {
     assert.equal(isDiscreteWheel(wheel(120)), false)
     assert.equal(isDiscreteWheel(wheel(3, 1)), true)
     assert.equal(isDiscreteWheel(wheel(12.4)), false)
+  })
+})
+
+describe('railCoastStep', () => {
+  it('惯性直接积分，出界就停', () => {
+    const mid = railCoastStep(200, 800, 0.016, 2000)
+    assert.ok(mid.scroll > 200)
+    assert.ok(mid.scroll < 220)
+    assert.ok(mid.velocity > RAIL_FLING_MIN_PX_S)
+    assert.ok(mid.velocity < 800)
+    assert.deepEqual(railCoastStep(4, -800, 0.016, 2000), {
+      scroll: 0,
+      velocity: 0,
+    })
+    assert.deepEqual(railCoastStep(1990, 800, 0.016, 2000), {
+      scroll: 2000,
+      velocity: 0,
+    })
   })
 })
 
@@ -876,8 +896,12 @@ describe('useBrewRailPan 热路', () => {
       src.indexOf('const leadElAt'),
     )
     assert.doesNotMatch(writeTransform, /brewRailScroll/)
-    const wheelIdle = src.slice(src.indexOf('const armIdle'), src.indexOf('if (Math.abs(committed'))
+    const wheelIdle = src.slice(
+      src.indexOf('const armWheelIdle'),
+      src.indexOf('const onWheel'),
+    )
     assert.match(wheelIdle, /releaseGrab/)
+    assert.match(wheelIdle, /RAIL_WHEEL_COAST_PX_S/)
     const seek = src.slice(src.indexOf('const seek ='), src.indexOf('if (apiRef)'))
     assert.match(seek, /writeTransform/)
     assert.match(
@@ -922,7 +946,12 @@ describe('useBrewRailPan 热路', () => {
     assert.match(src, /if \(cols > 1 && cards\.length > 0\)/)
     assert.match(src, /if \(cols > 1 && colW > 1\) \{\n {8}rebuildSlots\(\)\n {8}return/)
     assert.match(src, /slotsCols === totalCols/)
-    assert.match(src, /railColumnSlotAt/)
+    assert.match(src, /railCoastStep/)
+    assert.match(src, /is-rail-panning/)
+    assert.match(src, /pointerdown/)
+    assert.match(src, /RAIL_DRAG_SLOP_PX/)
+    assert.doesNotMatch(src, /snapSlots/)
+    assert.doesNotMatch(src, /settleRailSlot/)
     assert.match(src, /if \(!cardList\)/)
     assert.match(src, /data-rail-col="\$\{col\}"/)
     const align = src.slice(src.indexOf('const align ='), src.indexOf('const relayout'))
