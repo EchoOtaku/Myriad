@@ -1,13 +1,11 @@
 /** skin 不进口。 */
 
 import type { BrewSource } from '../../types/brew'
-import type { BrewBoard } from './logic/board'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { showBrewError } from './brewNotice'
 
 export function useBoardEdit(
-  board: BrewBoard,
   filtered: BrewSource[],
   onRemoveSources: ((ids: number[]) => Promise<void>) | undefined,
   onRefreshSource: (sourceId: number) => void,
@@ -17,7 +15,6 @@ export function useBoardEdit(
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [isEditMode, setIsEditMode] = useState(false)
   const [boardEdit, setBoardEdit] = useState(false)
-  const [sitesOpen, setSitesOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [sourceEditTick, setSourceEditTick] = useState(0)
@@ -50,12 +47,6 @@ export function useBoardEdit(
     setBoardEdit(true)
     setSourceEditTick((tick) => tick + 1)
   }, [])
-
-  useEffect(() => {
-    if (board === 'feeds' && !sitesOpen && isEditMode) {
-      handleExitEditMode()
-    }
-  }, [board, sitesOpen, isEditMode, handleExitEditMode])
 
   const handleBatchDelete = useCallback(async () => {
     if (selectedIds.size === 0 || !onRemoveSources) return
@@ -90,8 +81,6 @@ export function useBoardEdit(
     selectedIds,
     isEditMode,
     boardEdit,
-    sitesOpen,
-    setSitesOpen,
     isDeleting,
     isRefreshing,
     sourceEditTick,

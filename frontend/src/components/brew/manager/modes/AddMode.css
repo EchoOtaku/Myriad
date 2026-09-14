@@ -324,6 +324,28 @@ html.dark .brew-add-form .field-input.field-input--image:focus-within {
   border-radius: 0.28rem;
 }
 
+.brew-add-form__intervals.choice-segmented.is-grid,
+.brew-add-form__intervals.choice-segmented.is-grid.choice-segmented--sm {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.brew-add-form__intervals.choice-segmented .choice-segmented-item,
+.brew-add-form__intervals.choice-segmented .choice-segmented-item:has(.choice-option-icon) {
+  flex-direction: row;
+  justify-content: center;
+  min-height: 1.75rem;
+  padding: 0.28rem 0.2rem;
+  white-space: nowrap;
+}
+
+.brew-add-form__intervals .choice-option-label {
+  overflow: hidden;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+}
+
 .brew-add-form__tags {
   display: flex;
   flex-wrap: wrap;

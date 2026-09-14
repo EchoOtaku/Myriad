@@ -1,5 +1,7 @@
 /** 工作台只列表和动作；正文仍在编辑器。 */
 
+import { brewCategoryParts } from '../constants'
+
 export type WorkbenchNoteOpen =
   | { kind: 'item'; id: number }
   | { kind: 'doc'; id: number }
@@ -46,8 +48,7 @@ export function collectWorkbenchNoteTopics(
 ): string[] {
   const names = new Set<string>()
   for (const doc of docs) {
-    const name = doc.topic?.trim()
-    if (name) names.add(name)
+    for (const name of brewCategoryParts(doc.topic)) names.add(name)
   }
   return [...names].toSorted((a, b) => a.localeCompare(b, 'zh'))
 }
@@ -77,10 +78,10 @@ export function filterWorkbenchNotes<
       return false
     }
     if (filter.topic != null) {
-      const topic = doc.topic?.trim() ?? ''
+      const parts = brewCategoryParts(doc.topic)
       if (filter.topic === '') {
-        if (topic !== '') return false
-      } else if (topic !== filter.topic) {
+        if (parts.length > 0) return false
+      } else if (!parts.includes(filter.topic)) {
         return false
       }
     }

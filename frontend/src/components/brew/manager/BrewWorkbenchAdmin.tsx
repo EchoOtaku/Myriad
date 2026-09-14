@@ -7,11 +7,14 @@ import type {
 } from '../../../types/brew'
 import type { ManagedListItem } from '../../settings/ManagedList'
 import type { WorkbenchPane, WorkbenchSourceKind } from '../logic/board'
+import type { WorkbenchSourceStatus } from '../logic/sourceStatus'
 import { LuRss, LuTag } from '@lib/icons'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
+import { useModuleVisibilityPreferences } from '../../../utils/moduleVisibility'
 import { userFacingError } from '../../../utils/userFacingError'
-import { ManagedList } from '../../settings'
+import { ButtonItem, ManagedList } from '../../settings'
+import { BatchCategoryPick } from '../BatchCategoryPick'
 import { getIconUrl, isFriendLinkCategory, isMineCategory } from '../constants'
 import {
   collectSourceCategories,
@@ -22,11 +25,20 @@ import {
   sourceMatchesKind,
   workbenchSourceKind,
 } from '../logic/board'
+import { listPickerCategories } from '../logic/categories'
+import { notesRssUrl, sourceRssShareUrl } from '../logic/shareRss'
+import {
+  workbenchSourceStatus,
+  workbenchSourceStatusTone,
+} from '../logic/sourceStatus'
+import { noteScheduleLabel } from '../notes/noteBoard'
+import { listSelectChrome, useListSelection } from '../useListSelection'
 import { AddMode } from './modes'
 import { toAddSourceInput } from './modes/addSource'
 import { EditSourceMode } from './modes/EditSourceMode'
 import RSSHubConfigComponent from './RSSHubConfig'
 import { RSSHubInstances } from './RSSHubInstances'
+import { shareRssAddress } from './shareRss'
 
 type SourceKindFilter = 'all' | WorkbenchSourceKind
 
@@ -54,6 +66,26 @@ function sourceKindLabel(
   return 'RSS'
 }
 
+function sourceStatusLabel(
+  status: WorkbenchSourceStatus,
+  brew: {
+    workbenchSourcePaused: string
+    workbenchSourceOk: string
+    workbenchSourcePending: string
+    workbenchSourceOnceFailed: string
+    workbenchHomeSourceFailed: string
+    workbenchSourceRefreshing: string
+  },
+): string | null {
+  if (status === 'paused') return brew.workbenchSourcePaused
+  if (status === 'ok') return brew.workbenchSourceOk
+  if (status === 'pending') return brew.workbenchSourcePending
+  if (status === 'error') return brew.workbenchSourceOnceFailed
+  if (status === 'failed') return brew.workbenchHomeSourceFailed
+  if (status === 'refreshing') return brew.workbenchSourceRefreshing
+  return null
+}
+
 export function BrewWorkbenchAdmin({
   pane,
   query: queryProp,
@@ -68,11 +100,15 @@ export function BrewWorkbenchAdmin({
   onRemoveSources,
   onRefreshSource,
   onGenerateStyleTags,
+  extraCategories = [],
+  onAssignSources,
 }: {
   pane: Extract<WorkbenchPane, 'sources' | 'add' | 'rsshub' | 'feedsIo'>
   query?: string
   refreshingAll?: boolean
   onAdded?: () => void
+  extraCategories?: readonly string[]
+  onAssignSources?: (ids: number[], category: string) => void
   sources: BrewSource[]
   onAddSource: (input: AddSourceInput) => Promise<void>
   onDiscover: (
@@ -97,8 +133,13 @@ export function BrewWorkbenchAdmin({
     signal?: AbortSignal,
   ) => Promise<{ success: boolean; tags?: string[] }>
 }) {
-  const { t, format } = useI18n()
+  const { t, format, locale } = useI18n()
   const brew = t.brew
+  const { preferences: moduleVisibility } = useModuleVisibilityPreferences()
+  const brewPublic = moduleVisibility.modules.brew === 'all'
+  const notesFeedUrl = notesRssUrl(
+    typeof window === 'undefined' ? '' : window.location.origin,
+  )
   const query = queryProp ?? ''
   const [kindFilter, setKindFilter] = useState<SourceKindFilter>('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
@@ -108,12 +149,11 @@ export function BrewWorkbenchAdmin({
 
   const categories = useMemo(
     () =>
-      Iterator.from(
-        new Set([brew.friendLinks, brew.me]).union(
-          new Set(collectSourceCategories(sources)),
-        ),
-      ).toArray(),
-    [brew.friendLinks, brew.me, sources],
+      listPickerCategories([
+        ...extraCategories,
+        ...collectSourceCategories(sources),
+      ]),
+    [extraCategories, sources],
   )
 
   const handleAddSubmit = useCallback(
@@ -185,100 +225,203 @@ export function BrewWorkbenchAdmin({
     )
   }, [query, resolvedCategory, resolvedKind, sources])
 
+  const sourceIds = useMemo(
+    () => visible.map((source) => source.id),
+    [visible],
+  )
+  const sourceSelect = useListSelection(sourceIds)
+
+  useEffect(() => {
+    if (pane !== 'sources') sourceSelect.exit()
+  }, [pane, sourceSelect.exit])
+
+  const sourceSelectBar = listSelectChrome({
+    selecting: sourceSelect.selecting,
+    picked: sourceSelect.picked,
+    total: sourceSelect.total,
+    allOn: sourceSelect.allOn,
+    busy: removing || refreshingAll,
+    labels: {
+      edit: brew.edit,
+      selectAll: brew.selectAll,
+      deselectAll: brew.deselectAll,
+      deleteSelected: brew.deleteSelected,
+      deleteConfirm: format(brew.workbenchDeleteSelectedSourcesConfirm, {
+        count: sourceSelect.picked,
+      }),
+      exitEdit: brew.exitEdit,
+      selectedLabel: brew.editMode,
+    },
+    onEnter: sourceSelect.enter,
+    onExit: sourceSelect.exit,
+    onSelectAll: sourceSelect.selectAll,
+    onDelete: () => {
+      const ids = visible
+        .filter((source) => sourceSelect.selected.has(source.id))
+        .map((source) => source.id)
+      if (ids.length === 0) return
+      setRemoving(true)
+      sourceSelect.exit()
+      void onRemoveSources(ids).finally(() => {
+        setRemoving(false)
+        setEditingId(null)
+      })
+    },
+  })
+
   const items = useMemo<ManagedListItem[]>(
     () =>
       visible.map((source) => {
         const icon = getIconUrl(source.icon)
         const kind = sourceKindLabel(workbenchSourceKind(source), brew)
         const canRefresh = !isSiteSource(source)
+        const shareUrl = sourceRssShareUrl(source, window.location.origin)
         const editing = editingId === source.id
+        const picking = sourceSelect.selecting
+        const refreshing = refreshingId === source.id
+        const status = workbenchSourceStatus(source, refreshing)
+        const statusLabel = sourceStatusLabel(status, brew)
+        const statusTone = workbenchSourceStatusTone(status)
+        const when =
+          status === 'ok' || status === 'paused'
+            ? noteScheduleLabel(source.last_success_at, locale)
+            : ''
+        const failText =
+          status === 'failed' || status === 'error'
+            ? userFacingError(source.last_error, statusLabel ?? '')
+            : ''
         return {
           id: source.id,
           title: source.name,
           subtitle: [kind, source.category, source.url]
             .filter(Boolean)
             .join(' · '),
-          badge: { label: kind, tone: canRefresh ? 'default' : 'muted' },
+          meta: failText || when || undefined,
+          badges: [
+            ...(statusLabel && statusTone
+              ? [{ label: statusLabel, tone: statusTone }]
+              : []),
+            { label: kind, tone: canRefresh ? 'default' as const : 'muted' as const },
+          ],
           leading: icon ? (
             <img className="brew-workbench__thumb" src={icon} alt="" />
           ) : (
             <span className="brew-workbench__thumb is-empty" />
           ),
-          expanded: editing,
-          onToggleExpand: () =>
-            setEditingId((current) =>
-              current === source.id ? null : source.id,
-            ),
-          expandContent: editing ? (
-            <EditSourceMode
-              key={source.id}
-              source={source}
-              categories={categories}
-              onSave={async (id, data) => {
-                await onUpdateSource(id, data)
-                setEditingId(null)
-              }}
-              onGenerateStyleTags={onGenerateStyleTags}
-              onDiscover={onDiscover}
-            />
-          ) : null,
-          busy: refreshingId === source.id || removing,
-          actions: [
-            ...(canRefresh
-              ? [
-                  {
-                    key: 'refresh',
-                    label: brew.refreshSource,
-                    loading: refreshingId === source.id,
-                    disabled: refreshingAll || removing,
-                    onClick: () => {
-                      setRefreshingId(source.id)
-                      Promise.resolve(onRefreshSource(source.id)).finally(
-                        () => {
-                          setRefreshingId((current) =>
-                            current === source.id ? null : current,
-                          )
-                        },
-                      )
-                    },
-                  },
-                ]
-              : []),
-            {
-              key: 'edit',
-              label: brew.edit,
-              disabled: removing,
-              onClick: () =>
+          selected: sourceSelect.selected.has(source.id),
+          onSelect: picking ? () => sourceSelect.toggle(source.id) : undefined,
+          renderHit: picking
+            ? ({ leading, main }) => (
+                <button
+                  type="button"
+                  className="managed-list-row-hit"
+                  onClick={() => sourceSelect.toggle(source.id)}
+                >
+                  {leading}
+                  {main}
+                </button>
+              )
+            : undefined,
+          expanded: picking ? false : editing,
+          onToggleExpand: picking
+            ? undefined
+            : () =>
                 setEditingId((current) =>
                   current === source.id ? null : source.id,
                 ),
-            },
-            {
-              key: 'delete',
-              label: brew.delete,
-              variant: 'danger' as const,
-              confirm: format(brew.workbenchDeleteSourceConfirm, {
-                name: source.name,
-              }),
-              disabled: removing,
-              onClick: () => {
-                setRemoving(true)
-                void onRemoveSources([source.id]).finally(() => {
-                  setRemoving(false)
-                  setEditingId((current) =>
-                    current === source.id ? null : current,
-                  )
-                })
-              },
-            },
-          ],
+          expandContent:
+            !picking && editing ? (
+              <EditSourceMode
+                key={source.id}
+                source={source}
+                categories={categories}
+                onSave={async (id, data) => {
+                  await onUpdateSource(id, data)
+                  setEditingId(null)
+                }}
+                onGenerateStyleTags={onGenerateStyleTags}
+                onDiscover={onDiscover}
+              />
+            ) : null,
+          busy: refreshingId === source.id || removing,
+          actions: picking
+            ? []
+            : [
+                ...(canRefresh
+                  ? [
+                      {
+                        key: 'refresh',
+                        label: brew.refreshSource,
+                        loading: refreshingId === source.id,
+                        disabled: refreshingAll || removing,
+                        onClick: () => {
+                          setRefreshingId(source.id)
+                          Promise.resolve(onRefreshSource(source.id)).finally(
+                            () => {
+                              setRefreshingId((current) =>
+                                current === source.id ? null : current,
+                              )
+                            },
+                          )
+                        },
+                      },
+                    ]
+                  : []),
+                ...(shareUrl
+                  ? [
+                      {
+                        key: 'share',
+                        label: brew.shareRss,
+                        disabled: removing,
+                        onClick: () => {
+                          void shareRssAddress(
+                            shareUrl,
+                            source.name,
+                            brew.rssCopied,
+                            t.errors.clipboardFailed,
+                          )
+                        },
+                      },
+                    ]
+                  : []),
+                {
+                  key: 'edit',
+                  label: brew.edit,
+                  disabled: removing,
+                  onClick: () =>
+                    setEditingId((current) =>
+                      current === source.id ? null : source.id,
+                    ),
+                },
+                {
+                  key: 'delete',
+                  label: brew.delete,
+                  variant: 'danger' as const,
+                  confirm: format(brew.workbenchDeleteSourceConfirm, {
+                    name: source.name,
+                  }),
+                  disabled: removing,
+                  onClick: () => {
+                    setRemoving(true)
+                    void onRemoveSources([source.id]).finally(() => {
+                      setRemoving(false)
+                      setEditingId((current) =>
+                        current === source.id ? null : current,
+                      )
+                    })
+                  },
+                },
+              ],
         }
       }),
     [
       brew,
+      t.errors.clipboardFailed,
       categories,
       editingId,
       format,
+      locale,
+      onDiscover,
       onGenerateStyleTags,
       onRefreshSource,
       onRemoveSources,
@@ -286,6 +429,9 @@ export function BrewWorkbenchAdmin({
       refreshingAll,
       refreshingId,
       removing,
+      sourceSelect.selecting,
+      sourceSelect.selected,
+      sourceSelect.toggle,
       visible,
     ],
   )
@@ -294,7 +440,7 @@ export function BrewWorkbenchAdmin({
     <>
       {pane === 'rsshub' ? (
         <div id="workbench-rsshub">
-          <RSSHubInstances defaultOpen onChange={() => {}} />
+          <RSSHubInstances layout="page" onChange={() => {}} />
         </div>
       ) : null}
 
@@ -325,7 +471,54 @@ export function BrewWorkbenchAdmin({
 
       {pane === 'sources' ? (
         <div id="workbench-sources">
+          <ButtonItem
+            itemKey="workbench-notes-rss"
+            label={brew.notesRss}
+            description={
+              brewPublic ? brew.notesRssHint : brew.notesRssPrivate
+            }
+            hint={notesFeedUrl}
+            buttonText={brew.shareRss}
+            buttonIcon={<LuRss />}
+            size="sm"
+            layout="horizontal"
+            onClick={() => {
+              void shareRssAddress(
+                notesFeedUrl,
+                brew.notesRss,
+                brew.rssCopied,
+                t.errors.clipboardFailed,
+              )
+            }}
+          />
           <ManagedList
+            stats={sourceSelectBar.stats}
+            toolbar={sourceSelectBar.toolbar}
+            toolbarPlacement="filters"
+            toolbarExtra={
+              sourceSelect.selecting ? (
+                <BatchCategoryPick
+                  names={categories}
+                  disabled={removing || refreshingAll}
+                  placeholder={brew.workbenchAssignCategory}
+                  searchPlaceholder={brew.workbenchSearchCategories}
+                  emptyText={brew.workbenchCategoryKindEmpty}
+                  labelFor={(name) =>
+                    categoryFilterLabel(name, {
+                      friendLinks: brew.friendLinks,
+                      me: brew.me,
+                    })
+                  }
+                  onPick={(name) => {
+                    const ids = visible
+                      .filter((source) => sourceSelect.selected.has(source.id))
+                      .map((source) => source.id)
+                    if (ids.length === 0) return
+                    onAssignSources?.(ids, name)
+                  }}
+                />
+              ) : null
+            }
             filterGroups={[
               {
                 label: brew.sourceTypeLabel,
@@ -350,8 +543,8 @@ export function BrewWorkbenchAdmin({
             items={items}
             emptyText={
               sources.length === 0
-                ? brew.emptyNoSources
-                : brew.noMatchingSources
+                ? brew.workbenchSourceEmpty
+                : brew.workbenchSourceKindEmpty
             }
             maxHeight={null}
           />

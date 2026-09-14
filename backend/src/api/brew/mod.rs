@@ -8,9 +8,11 @@ mod helpers;
 mod note_collab;
 mod note_docs;
 mod notes;
+mod notes_rss;
 mod reading_sync_ws;
 
 pub use feeds_articles::create_brew_routes;
+pub use notes_rss::notes_rss;
 
 #[cfg(test)]
 mod integration_tests {

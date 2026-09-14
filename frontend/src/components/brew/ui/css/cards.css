@@ -283,8 +283,7 @@ html[data-perf-mode='exlight'] .brew-site__stack-face b {
   color: var(--brew-accent-ink);
 }
 
-.brew-site.is-edit.is-picked,
-.brew-feeds.is-sites-open .brew-site.is-edit.is-picked {
+.brew-site.is-edit.is-picked {
   border-color: var(--brew-accent-line);
   background: var(--brew-accent-fill);
   opacity: 1;
@@ -462,21 +461,6 @@ html.dark .brew-site__unread {
   min-height: var(--brew-items-span);
   opacity: 1;
   transform: translate3d(0, 0, 0);
-  transition:
-    flex-basis var(--brew-open-ms) var(--sm-ease-standard, ease),
-    height var(--brew-open-ms) var(--sm-ease-standard, ease),
-    min-height var(--brew-open-ms) var(--sm-ease-standard, ease),
-    opacity var(--brew-open-ms) var(--sm-ease-standard, ease),
-    transform var(--brew-open-ms) var(--sm-ease-standard, ease);
-}
-
-.brew-feeds.is-sites-open:not(.is-sites-morphing) .brew-feeds__items {
-  flex: 0 0 0 !important;
-  height: 0 !important;
-  min-height: 0 !important;
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
 }
 
 .brew-feeds__items-track {
@@ -935,6 +919,7 @@ html[data-perf-mode='exlight'] .brew-story[data-leaving='true'] {
   flex-direction: column;
   height: var(--brew-items-span);
   min-height: var(--brew-items-span);
+  overflow: visible;
 }
 
 .brew-page__body {
@@ -942,8 +927,7 @@ html[data-perf-mode='exlight'] .brew-story[data-leaving='true'] {
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
+  overflow: visible;
 }
 
 .brew-page__body > .brew-friends,
@@ -970,69 +954,32 @@ html[data-perf-mode='exlight'] .brew-story[data-leaving='true'] {
   height: auto;
 }
 
-.brew-page:has(.brew-friends),
-.brew-page:has(.brew-vacant.is-friends),
-.brew-friends,
-.brew-vacant.is-friends {
-  --brew-story-h: 4.35rem;
-}
-
 .brew-friends {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.brew-skin.brew-friends button.brew-story__hit {
-  grid-template:
-    'kicker kicker' auto
-    'title title' auto
-    / minmax(0, 1fr) auto;
-  align-content: center;
-}
-
-.brew-friends .brew-story__kicker {
-  flex-wrap: nowrap;
-  min-width: 0;
-}
-
-.brew-friends .brew-story__title {
-  -webkit-line-clamp: 1;
-  max-height: calc(var(--brew-story-title-size) * 1.25);
-}
-
-.brew-friends .brew-story__summary,
-.brew-friends .brew-story__peek,
-.brew-friends .brew-story__thumb,
-.brew-friends .brew-story__byline {
-  display: none;
-}
-
-.brew-friends .brew-story.has-cover.has-peek:is(:hover, :focus-visible, .is-peek):not(.is-picking) .brew-story__kicker,
-.brew-friends .brew-story.has-cover.has-peek:is(:hover, :focus-visible, .is-peek):not(.is-picking) .brew-story__title,
-.brew-friends .brew-story.has-cover:is(:hover, :focus-visible, .is-peek):not(.is-picking) .brew-story__kicker,
-.brew-friends .brew-story.has-cover:is(:hover, :focus-visible, .is-peek):not(.is-picking) .brew-story__title {
-  opacity: 1;
-  pointer-events: auto;
-}
-
 .brew-friends__sites {
-  display: grid;
   flex: 0 0 auto;
+  min-width: 0;
+  overflow: visible;
+  touch-action: none;
+}
+
+.brew-friends__sites-track {
+  --brew-story-cols: 1;
+
+  display: grid;
   grid-auto-flow: column;
   grid-template-rows: repeat(2, var(--brew-site-h, 5.5rem));
-  grid-auto-columns: var(--brew-site-w, 19rem);
+  grid-template-columns: repeat(var(--brew-story-cols), var(--brew-site-w, 19rem));
   align-items: stretch;
   gap: 0.45rem;
-  min-width: 0;
+  width: max-content;
+  min-width: 100%;
   padding: 0.28rem 0 0.35rem;
-  overflow: auto hidden;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-}
-
-.brew-friends__sites::-webkit-scrollbar {
-  display: none;
+  contain: layout style;
 }
 
 .brew-friends__items {
@@ -1048,7 +995,7 @@ html[data-perf-mode='exlight'] .brew-story[data-leaving='true'] {
 
   display: grid;
   box-sizing: border-box;
-  grid-template-rows: repeat(2, var(--brew-story-h, 12rem));
+  grid-template-rows: var(--brew-story-h, 12rem);
   grid-template-columns: repeat(var(--brew-story-cols), var(--brew-story-w, 16.5rem));
   grid-auto-flow: row;
   align-items: stretch;
@@ -1107,57 +1054,46 @@ button.brew-notes__cat.is-on {
 }
 
 .brew-notes-board > .brew-notes {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
 }
 
-.brew-notes {
-  --brew-story-h: 12rem;
-  --brew-story-w: 16.5rem;
-
-  display: grid;
-  box-sizing: border-box;
-  grid-template-columns: repeat(auto-fill, minmax(var(--brew-story-w), 1fr));
-  grid-template-rows: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: minmax(var(--brew-story-h), 1fr);
-  grid-auto-flow: row;
-  gap: var(--brew-items-gap, 0.55rem) 0.75rem;
-  align-items: stretch;
-  width: 100%;
-  min-width: 0;
-  height: 100%;
-  min-height: 0;
-  padding: 0.35rem 0 var(--brew-items-pad-bottom, 0);
-  overflow: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: none;
-}
-
-.brew-notes::-webkit-scrollbar {
-  display: none;
-}
-
-.brew-notes .brew-story {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-}
-
+.brew-notes,
 .brew-stories {
   --brew-story-h: 12rem;
   --brew-story-w: 16.5rem;
 
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--brew-story-w), 1fr));
-  gap: 0.75rem 0.85rem;
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
+  touch-action: none;
 }
 
-.brew-stories .brew-story {
+.brew-notes-track,
+.brew-stories-track {
+  --brew-story-cols: 1;
+
+  display: grid;
+  box-sizing: border-box;
+  grid-template-rows: repeat(2, var(--brew-story-h));
+  grid-template-columns: repeat(var(--brew-story-cols), var(--brew-story-w));
+  grid-auto-flow: row;
+  align-items: stretch;
+  gap: var(--brew-items-gap, 0.55rem) 0.75rem;
+  width: max-content;
+  min-width: 100%;
+  padding: 0.35rem 0 var(--brew-items-pad-bottom, 0);
+  contain: layout style;
+}
+
+.brew-notes-track .brew-story,
+.brew-stories-track .brew-story {
   width: 100%;
+  height: 100%;
+  min-height: 0;
 }
 
 .brew-stories__more {
-  grid-column: 1 / -1;
-  padding: 1.5rem 0;
+  padding: 0.75rem 0;
   color: var(--brew-fg-dim);
   font-size: 0.8125rem;
   text-align: center;

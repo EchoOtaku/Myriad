@@ -178,6 +178,7 @@ function SiteCardInner({
   onEdit,
   onIconLoad,
   arrive,
+  railCol,
   tone,
   stack,
 }: {
@@ -200,12 +201,14 @@ function SiteCardInner({
   onEdit?: (id: number | string) => void
   onIconLoad?: (img: HTMLImageElement) => void
   arrive?: number
+  railCol?: number
   tone?: 'mix'
   stack?: readonly SiteStackFace[]
 }) {
   return (
     <div
       data-rail-id={id}
+      data-rail-col={railCol}
       data-brew-surface="site"
       className={cx(
         'brew-site',
@@ -284,7 +287,8 @@ function SiteCardInner({
           className="brew-site__article"
           onClick={(event) => {
             event.stopPropagation()
-            onOpenLatest?.(id)
+            if (onOpenLatest) onOpenLatest(id)
+            else onActivate(id)
           }}
         >
           <span className="brew-site__article-title">{latestTitle}</span>

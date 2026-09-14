@@ -2,6 +2,11 @@ import { LuPlus as Plus } from '@lib/icons'
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
 import { brewCategoryParts } from '../../constants'
+import {
+  isLockedCategory,
+  pickerCategoryName,
+  samePickerCategory,
+} from '../../logic/categories'
 
 export function SourceCategoryField({
   categories,
@@ -25,15 +30,18 @@ export function SourceCategoryField({
   const inputRef = useRef<HTMLInputElement>(null)
   const [draft, setDraft] = useState(value)
   const name = draft.trim()
-  const canAdd = name.length > 0 && !categories.includes(name)
+  const canAdd =
+    name.length > 0 &&
+    !isLockedCategory(name) &&
+    !categories.some((cat) => samePickerCategory(cat, name))
   const parts = brewCategoryParts(value)
   const shown = parts.length
     ? parts.map((part) => labelFor?.(part) ?? part).join(' · ')
     : brew.selectCategory
 
   const close = (next = draft) => {
-    const picked = next.trim()
-    if (picked !== value) onChange(picked)
+    const stored = next.trim() ? pickerCategoryName(next) : ''
+    if (stored !== value) onChange(stored)
     onOpenChange(false)
   }
 
@@ -59,12 +67,13 @@ export function SourceCategoryField({
   }, [open, value, onOpenChange])
 
   const pick = (next: string) => {
-    onChange(next)
+    onChange(next.trim() ? pickerCategoryName(next) : '')
     onOpenChange(false)
   }
 
   const selected = (cat: string) =>
-    value === cat || parts.includes(cat) || (labelFor?.(cat) ?? cat) === value
+    samePickerCategory(value, cat) ||
+    parts.some((part) => samePickerCategory(part, cat))
 
   return (
     <div className="setting-item setting-item-select setting-vertical setting-sm brew-add-form__category">

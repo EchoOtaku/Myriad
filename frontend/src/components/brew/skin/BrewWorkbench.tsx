@@ -2,7 +2,7 @@
 
 import type { ReactElement, ReactNode } from 'react'
 import type { MediaAsset } from '../../../services/mediaApi'
-import type { BrewNoteDoc } from '../../../types/brew'
+import type { BrewNoteDoc, BrewSource } from '../../../types/brew'
 import type {
   ManagedListItem,
   ManagedListTone,
@@ -26,15 +26,11 @@ import {
   LuDownload,
   LuFileText,
   LuFolderOpen,
-  LuGauge,
   LuImage,
   LuList,
   LuNotebookPen,
-  LuPackage,
   LuPlus,
   LuRefreshCw,
-  LuRss,
-  LuServer,
   LuSquare,
   LuTag,
   LuUpload,
@@ -60,7 +56,9 @@ import {
   SettingSection,
 } from '../../settings'
 import { SettingItemWrapper } from '../../settings/items/SettingItemWrapper'
+import { BatchCategoryPick } from '../BatchCategoryPick'
 import { getImageUrl } from '../constants'
+import { useBrewGuides } from '../guides/useBrewGuides'
 import { readSourceSortMode, writeSourceSortMode } from '../logic/sourceSort'
 import {
   collectWorkbenchMediaFormats,
@@ -77,8 +75,20 @@ import {
   workbenchNoteStatusKey,
   workbenchNoteWhen,
 } from '../logic/workbench'
+import {
+  workbenchFeedSourceCount,
+  workbenchHomeDrafts,
+  workbenchHomeIsEmpty,
+  workbenchHomeMediaFace,
+  workbenchHomeQuietFails,
+  workbenchHomeRecent,
+  workbenchHomeScheduleKind,
+  workbenchHomeUpcoming,
+} from '../logic/workbenchHome'
 import { noteScheduleLabel } from '../notes/noteBoard'
 import { displayImageUrl } from '../notes/noteImageUrl'
+import { BrewWorkbenchIcon } from '../ui/BrewWorkbenchIcon'
+import { listSelectChrome, useListSelection } from '../useListSelection'
 import '../../ConfigForm.css'
 import '../ui/css/workbench.css'
 
@@ -107,43 +117,43 @@ const RAIL: Array<{
   {
     pane: 'home',
     label: 'workbenchOverview',
-    icon: <LuGauge />,
+    icon: <BrewWorkbenchIcon kind="overview" />,
     pack: 'content',
   },
   {
     pane: 'notes',
     label: 'workbenchNotes',
-    icon: <LuNotebookPen />,
+    icon: <BrewWorkbenchIcon kind="notes" />,
     pack: 'content',
   },
   {
     pane: 'media',
     label: 'workbenchMedia',
-    icon: <LuImage />,
+    icon: <BrewWorkbenchIcon kind="media" />,
     pack: 'content',
   },
   {
     pane: 'notesIo',
     label: 'workbenchNavTransfer',
-    icon: <LuUpload />,
+    icon: <BrewWorkbenchIcon kind="notes-transfer" />,
     pack: 'content',
   },
   {
     pane: 'sources',
     label: 'workbenchSources',
-    icon: <LuRss />,
+    icon: <BrewWorkbenchIcon kind="sources" />,
     pack: 'feeds',
   },
   {
     pane: 'rsshub',
     label: 'workbenchRsshub',
-    icon: <LuServer />,
+    icon: <BrewWorkbenchIcon kind="rsshub" />,
     pack: 'feeds',
   },
   {
     pane: 'feedsIo',
     label: 'workbenchNavTransfer',
-    icon: <LuPackage />,
+    icon: <BrewWorkbenchIcon kind="feeds-transfer" />,
     pack: 'feeds',
   },
 ]
@@ -273,7 +283,8 @@ function NavBtn({
 function WorkbenchPage({
   title,
   icon,
-  description,
+  guide,
+  guidePath,
   action,
   search,
   back,
@@ -281,7 +292,8 @@ function WorkbenchPage({
 }: {
   title: string
   icon: ReactNode
-  description?: string
+  guide?: ReactNode
+  guidePath?: string
   action?: ReactNode
   search?: ReactNode
   back: ReactNode
@@ -291,13 +303,13 @@ function WorkbenchPage({
     <SettingSection
       title={title}
       icon={icon}
-      description={description}
-      descriptionVisible={Boolean(description)}
+      guide={guide}
+      guidePath={guidePath}
+      descriptionVisible={false}
       subtitle={search}
       headerLeading={back}
       headerActions={action ?? false}
       showResetPage={false}
-      helpToggle={false}
       animated={false}
     >
       {children}
@@ -439,6 +451,64 @@ function PageAction({
   )
 }
 
+function HomeBlock({
+  title,
+  children,
+}: {
+  title: string
+  children: ReactNode
+}) {
+  return (
+    <section className="brew-workbench__home-block">
+      <h3>{title}</h3>
+      <div className="brew-workbench__home-list">{children}</div>
+    </section>
+  )
+}
+
+function homeFaceSrc(raw: string | null | undefined): string | undefined {
+  if (!raw?.trim()) return undefined
+  return getImageUrl(raw) || displayImageUrl(raw)
+}
+
+function HomeRow({
+  title,
+  meta,
+  excerpt,
+  src,
+  video = false,
+  quiet = false,
+  onPick,
+}: {
+  title: string
+  meta?: string
+  excerpt?: string
+  src?: string
+  video?: boolean
+  quiet?: boolean
+  onPick: () => void
+}) {
+  const face = Boolean(src) && !quiet
+  return (
+    <button
+      type="button"
+      className={`brew-workbench__home-row${quiet ? ' is-quiet' : ''}${face ? ' has-face' : ''}`}
+      onClick={onPick}
+    >
+      {face ? <Thumb cover src={src} video={video} /> : null}
+      <span className="brew-workbench__home-row-copy">
+        <span className="brew-workbench__home-row-title">{title}</span>
+        {face && excerpt ? (
+          <span className="brew-workbench__home-row-excerpt">{excerpt}</span>
+        ) : null}
+        {meta ? (
+          <span className="brew-workbench__home-row-meta">{meta}</span>
+        ) : null}
+      </span>
+    </button>
+  )
+}
+
 function Kpi({
   value,
   label,
@@ -471,11 +541,12 @@ export default function BrewWorkbench({
   mediaLoading,
   busy,
   sourceCount,
+  sources = [],
   packBusy,
   packProgress,
   onWrite,
   onOpenNote,
-  onDeleteNote,
+  onDeleteNotes,
   onUnschedule,
   onUpload,
   onDeleteMedia,
@@ -488,6 +559,8 @@ export default function BrewWorkbench({
   onImportNotes,
   canRefreshSources,
   onRefreshSources,
+  noteCategories = [],
+  onAssignNotes,
   admin,
 }: {
   pane: WorkbenchPane
@@ -498,11 +571,12 @@ export default function BrewWorkbench({
   mediaLoading: boolean
   busy: boolean
   sourceCount: number
+  sources?: readonly BrewSource[]
   packBusy: boolean
   packProgress: string | null
   onWrite: () => void
   onOpenNote: (open: ReturnType<typeof workbenchNoteOpen>) => void
-  onDeleteNote: (doc: BrewNoteDoc) => void
+  onDeleteNotes: (docs: BrewNoteDoc[]) => void
   onUnschedule: (id: number) => void
   onUpload: (file: File) => void
   onDeleteMedia: (id: number) => void
@@ -515,10 +589,13 @@ export default function BrewWorkbench({
   onImportNotes: (kind: NoteTransferKind, file: File) => void
   canRefreshSources: boolean
   onRefreshSources: () => void | Promise<unknown>
+  noteCategories?: readonly string[]
+  onAssignNotes?: (docs: BrewNoteDoc[], category: string) => void
   admin?: ReactNode
 }) {
   const { t, locale, format } = useI18n()
   const brew = t.brew
+  const { catalog: g, bindGuide } = useBrewGuides()
   const fileRef = useRef<HTMLInputElement>(null)
   const [mobilePane, setMobilePane] = useState<'nav' | 'section'>('section')
   const [mediaKind, setMediaKind] = useState<WorkbenchMediaKindFilter>('all')
@@ -529,12 +606,21 @@ export default function BrewWorkbench({
   const [sourceQuery, setSourceQuery] = useState('')
   const [sourceRefreshing, setSourceRefreshing] = useState(false)
 
+  const [categoryQuery, setCategoryQuery] = useState('')
+
   useEffect(() => {
     if (pane !== 'sources') setSourceQuery('')
+    if (pane !== 'noteCategories' && pane !== 'sourceCategories') {
+      setCategoryQuery('')
+    }
   }, [pane])
 
   const boundAdmin =
-    (pane === 'sources' || pane === 'add') && isValidElement(admin)
+    (pane === 'sources' ||
+      pane === 'add' ||
+      pane === 'noteCategories' ||
+      pane === 'sourceCategories') &&
+    isValidElement(admin)
       ? cloneElement(
           admin as ReactElement<{
             query?: string
@@ -542,7 +628,10 @@ export default function BrewWorkbench({
             onAdded?: () => void
           }>,
           {
-            query: sourceQuery,
+            query:
+              pane === 'noteCategories' || pane === 'sourceCategories'
+                ? categoryQuery
+                : sourceQuery,
             refreshingAll: sourceRefreshing,
             onAdded: () => {
               onPane('sources')
@@ -605,8 +694,68 @@ export default function BrewWorkbench({
       }),
     [docs, noteQuery, noteStatus, resolvedNoteTopic],
   )
-  const scheduledCount = docs.filter((doc) => doc.status === 'scheduled').length
-  const failedCount = docs.filter((doc) => doc.last_error).length
+  const noteIds = useMemo(
+    () => visibleNotes.map((doc) => doc.id),
+    [visibleNotes],
+  )
+  const notesSelect = useListSelection(noteIds)
+
+  useEffect(() => {
+    if (pane !== 'notes') notesSelect.exit()
+  }, [notesSelect.exit, pane])
+
+  const notesSelectBar = listSelectChrome({
+    selecting: notesSelect.selecting,
+    picked: notesSelect.picked,
+    total: notesSelect.total,
+    allOn: notesSelect.allOn,
+    busy,
+    labels: {
+      edit: brew.edit,
+      selectAll: brew.selectAll,
+      deselectAll: brew.deselectAll,
+      deleteSelected: brew.deleteSelected,
+      deleteConfirm: format(brew.workbenchDeleteSelectedNotesConfirm, {
+        count: notesSelect.picked,
+      }),
+      exitEdit: brew.exitEdit,
+      selectedLabel: brew.editMode,
+    },
+    onEnter: notesSelect.enter,
+    onExit: notesSelect.exit,
+    onSelectAll: notesSelect.selectAll,
+    onDelete: () => {
+      const docs = visibleNotes.filter((doc) =>
+        notesSelect.selected.has(doc.id),
+      )
+      if (docs.length === 0) return
+      notesSelect.exit()
+      onDeleteNotes(docs)
+    },
+  })
+  const feedCount = workbenchFeedSourceCount(sources)
+  const homeEmpty = workbenchHomeIsEmpty(docs.length, feedCount, media.length)
+  const homeDrafts = useMemo(() => workbenchHomeDrafts(docs), [docs])
+  const homeUpcoming = useMemo(() => workbenchHomeUpcoming(docs), [docs])
+  const homeQuiet = useMemo(
+    () => workbenchHomeQuietFails(docs, sources),
+    [docs, sources],
+  )
+  const homeRecent = useMemo(
+    () =>
+      workbenchHomeRecent({
+        notes: docs,
+        skipNoteIds: new Set([
+          ...homeDrafts.map((doc) => doc.id),
+          ...homeUpcoming.map((doc) => doc.id),
+          ...homeQuiet.notes.map((doc) => doc.id),
+        ]),
+        sources,
+        skipSourceIds: new Set(homeQuiet.sources.map((source) => source.id)),
+        media,
+      }),
+    [docs, homeDrafts, homeQuiet, homeUpcoming, media, sources],
+  )
 
   const open = (next: WorkbenchPane) => {
     onPane(next)
@@ -637,6 +786,18 @@ export default function BrewWorkbench({
     </button>
   )
 
+  const backToNotes = (
+    <button
+      type="button"
+      className="section-header-back brew-workbench__parent-back"
+      onClick={() => open('notes')}
+      aria-label={brew.workbenchNotes}
+    >
+      <LuChevronLeft size={18} aria-hidden />
+      <span>{t.common.back}</span>
+    </button>
+  )
+
   const noteItems = useMemo<ManagedListItem[]>(
     () =>
       visibleNotes.map((doc) => {
@@ -644,6 +805,7 @@ export default function BrewWorkbench({
         const when = noteScheduleLabel(workbenchNoteWhen(doc), locale)
         const excerpt = workbenchNoteExcerpt(doc.content_md)
         const facts = [doc.topic, when].filter(Boolean).join(' · ')
+        const picking = notesSelect.selecting
         return {
           id: doc.id,
           title: doc.title.trim() || brew.workbenchNoteUntitled,
@@ -653,47 +815,68 @@ export default function BrewWorkbench({
             label: brew[statusKey],
             tone: noteTone(statusKey, Boolean(doc.last_error)),
           },
-          className: 'brew-workbench__note brew-workbench__hover-actions',
+          className: picking
+            ? 'brew-workbench__note'
+            : 'brew-workbench__note brew-workbench__hover-actions',
           leading: (
             <Thumb
               cover
               src={getImageUrl(workbenchNoteCover(doc)) || undefined}
             />
           ),
+          selected: notesSelect.selected.has(doc.id),
+          onSelect: picking ? () => notesSelect.toggle(doc.id) : undefined,
           renderHit: ({ leading, main }) => (
             <button
               type="button"
               className="managed-list-row-hit"
               disabled={busy}
-              onClick={() => onOpenNote(workbenchNoteOpen(doc))}
+              onClick={() =>
+                picking
+                  ? notesSelect.toggle(doc.id)
+                  : onOpenNote(workbenchNoteOpen(doc))
+              }
             >
               {leading}
               {main}
             </button>
           ),
-          actions: [
-            ...(doc.status === 'scheduled'
-              ? [
-                  {
-                    key: 'unschedule',
-                    label: brew.workbenchUnschedule,
-                    onClick: () => onUnschedule(doc.id),
-                    disabled: busy,
-                  },
-                ]
-              : []),
-            {
-              key: 'delete',
-              label: brew.delete,
-              variant: 'danger' as const,
-              confirm: brew.workbenchDeleteConfirm,
-              onClick: () => onDeleteNote(doc),
-              disabled: busy,
-            },
-          ],
+          actions: picking
+            ? []
+            : [
+                ...(doc.status === 'scheduled'
+                  ? [
+                      {
+                        key: 'unschedule',
+                        label: brew.workbenchUnschedule,
+                        onClick: () => onUnschedule(doc.id),
+                        disabled: busy,
+                      },
+                    ]
+                  : []),
+                {
+                  key: 'delete',
+                  label: brew.delete,
+                  variant: 'danger' as const,
+                  confirm: brew.workbenchDeleteConfirm,
+                  onClick: () => onDeleteNotes([doc]),
+                  disabled: busy,
+                },
+              ],
         }
       }),
-    [busy, brew, locale, onDeleteNote, onOpenNote, onUnschedule, visibleNotes],
+    [
+      busy,
+      brew,
+      locale,
+      notesSelect.selecting,
+      notesSelect.selected,
+      notesSelect.toggle,
+      onDeleteNotes,
+      onOpenNote,
+      onUnschedule,
+      visibleNotes,
+    ],
   )
 
   const mediaItems = useMemo<ManagedListItem[]>(
@@ -759,7 +942,7 @@ export default function BrewWorkbench({
       <aside className="config-sidebar brew-workbench__rail">
         <div className="config-sidebar-header">
           <span className="nav-icon" aria-hidden>
-            <LuGauge />
+            <BrewWorkbenchIcon kind="studio" />
           </span>
           <div className="config-sidebar-heading">
             <h3 className="nav-title">{brew.boardWorkbench}</h3>
@@ -772,12 +955,14 @@ export default function BrewWorkbench({
               <div className="config-nav-group-title">{brew[pack.title]}</div>
               {RAIL.filter((item) => item.pack === pack.id).map((item) => (
                 <NavBtn
-                  key={item.pane}
+                  key={`${pack.id}-${item.pane}`}
                   label={brew[item.label]}
                   icon={item.icon}
                   current={
                     pane === item.pane ||
-                    (pane === 'add' && item.pane === 'sources')
+                    (pane === 'add' && item.pane === 'sources') ||
+                    (pane === 'noteCategories' && item.pane === 'notes') ||
+                    (pane === 'sourceCategories' && item.pane === 'sources')
                   }
                   onPick={() => open(item.pane)}
                 />
@@ -791,59 +976,204 @@ export default function BrewWorkbench({
         {pane === 'home' ? (
           <WorkbenchPage
             title={brew.workbenchOverview}
-            icon={<LuGauge />}
-            description={brew.boardWorkbenchTitle}
+            icon={<BrewWorkbenchIcon kind="overview" />}
             back={back}
+            {...bindGuide('workbench.overview', g.overview)}
             action={
-              <PageAction
-                label={brew.noteWrite}
-                description={brew.boardNotesTitle}
-                icon={<LuNotebookPen />}
-                disabled={busy}
-                onPick={onWrite}
-              />
+              <>
+                <PageAction
+                  label={brew.noteWrite}
+                  description={brew.boardNotesTitle}
+                  icon={<LuNotebookPen />}
+                  disabled={busy}
+                  onPick={onWrite}
+                />
+                <PageAction
+                  label={brew.addSubscription}
+                  description={brew.workbenchSourceList}
+                  icon={<LuPlus />}
+                  onPick={() => open('add')}
+                />
+              </>
             }
           >
-            <section
-              className="brew-workbench__kpis"
-              aria-label={brew.workbenchOverview}
-            >
-              <Kpi
-                value={docs.length}
-                label={brew.workbenchNotes}
-                onPick={() => open('notes')}
-              />
-              <Kpi
-                value={scheduledCount}
-                label={brew.noteStatusScheduled}
-                tone={scheduledCount > 0 ? 'warn' : undefined}
-                onPick={() => open('notes')}
-              />
-              <Kpi
-                value={failedCount}
-                label={brew.noteScheduleFailed}
-                tone={failedCount > 0 ? 'danger' : undefined}
-                onPick={() => open('notes')}
-              />
-              <Kpi
-                value={media.length}
-                label={brew.workbenchMedia}
-                onPick={() => open('media')}
-              />
-              <Kpi
-                value={sourceCount}
-                label={brew.workbenchSources}
-                onPick={() => open('sources')}
-              />
-            </section>
+            {homeEmpty ? (
+              <p className="brew-workbench__home-empty">{brew.workbenchHomeEmpty}</p>
+            ) : (
+              <div className="brew-workbench__home">
+                {homeDrafts.length > 0 ? (
+                  <HomeBlock title={brew.workbenchHomeContinue}>
+                    {homeDrafts.map((doc) => {
+                      const src = homeFaceSrc(workbenchNoteCover(doc))
+                      return (
+                        <HomeRow
+                          key={`draft-${doc.id}`}
+                          title={doc.title.trim() || brew.workbenchNoteUntitled}
+                          excerpt={
+                            src
+                              ? workbenchNoteExcerpt(doc.content_md) || undefined
+                              : undefined
+                          }
+                          src={src}
+                          meta={
+                            noteScheduleLabel(doc.updated_at, locale) ||
+                            undefined
+                          }
+                          onPick={() => onOpenNote(workbenchNoteOpen(doc))}
+                        />
+                      )
+                    })}
+                  </HomeBlock>
+                ) : null}
+                {homeUpcoming.length > 0 ? (
+                  <HomeBlock title={brew.workbenchHomeUpcoming}>
+                    {homeUpcoming.map((doc) => {
+                      const kind = workbenchHomeScheduleKind(doc.scheduled_at)
+                      const when = noteScheduleLabel(doc.scheduled_at, locale)
+                      const meta =
+                        kind === 'missing'
+                          ? brew.workbenchHomeScheduleMissing
+                          : kind === 'overdue' && when
+                            ? `${when} · ${brew.workbenchHomeScheduleOverdue}`
+                            : kind === 'overdue'
+                              ? brew.workbenchHomeScheduleOverdue
+                              : when || undefined
+                      const src = homeFaceSrc(workbenchNoteCover(doc))
+                      return (
+                        <HomeRow
+                          key={`soon-${doc.id}`}
+                          title={doc.title.trim() || brew.workbenchNoteUntitled}
+                          excerpt={
+                            src
+                              ? workbenchNoteExcerpt(doc.content_md) || undefined
+                              : undefined
+                          }
+                          src={src}
+                          meta={meta}
+                          onPick={() => onOpenNote(workbenchNoteOpen(doc))}
+                        />
+                      )
+                    })}
+                  </HomeBlock>
+                ) : null}
+                {homeRecent.length > 0 ? (
+                  <HomeBlock title={brew.workbenchHomeRecent}>
+                    {homeRecent.map((item) => {
+                      if (item.kind === 'note') {
+                        const doc = docs.find((row) => row.id === item.id)
+                        if (!doc) return null
+                        const when = noteScheduleLabel(doc.updated_at, locale)
+                        const src = homeFaceSrc(workbenchNoteCover(doc))
+                        return (
+                          <HomeRow
+                            key={`recent-note-${doc.id}`}
+                            title={
+                              doc.title.trim() || brew.workbenchNoteUntitled
+                            }
+                            excerpt={
+                              src
+                                ? workbenchNoteExcerpt(doc.content_md) ||
+                                  undefined
+                                : undefined
+                            }
+                            src={src}
+                            meta={[brew.workbenchHomeRecentNote, when]
+                              .filter(Boolean)
+                              .join(' · ')}
+                            onPick={() => onOpenNote(workbenchNoteOpen(doc))}
+                          />
+                        )
+                      }
+                      if (item.kind === 'source') {
+                        const source = sources.find((row) => row.id === item.id)
+                        if (!source) return null
+                        const when = noteScheduleLabel(
+                          source.created_at,
+                          locale,
+                        )
+                        return (
+                          <HomeRow
+                            key={`recent-source-${source.id}`}
+                            title={source.name}
+                            meta={[brew.workbenchHomeRecentSource, when]
+                              .filter(Boolean)
+                              .join(' · ')}
+                            onPick={() => open('sources')}
+                          />
+                        )
+                      }
+                      const asset = media.find((row) => row.id === item.id)
+                      if (!asset) return null
+                      const when = noteScheduleLabel(asset.created_at, locale)
+                      const face = workbenchHomeMediaFace(asset)
+                      return (
+                        <HomeRow
+                          key={`recent-media-${asset.id}`}
+                          title={asset.name}
+                          src={homeFaceSrc(face?.src)}
+                          video={face?.video}
+                          meta={[brew.workbenchHomeRecentMedia, when]
+                            .filter(Boolean)
+                            .join(' · ')}
+                          onPick={() => open('media')}
+                        />
+                      )
+                    })}
+                  </HomeBlock>
+                ) : null}
+                {homeQuiet.notes.length > 0 || homeQuiet.sources.length > 0 ? (
+                  <div className="brew-workbench__home-quiet">
+                    {homeQuiet.notes.map((doc) => (
+                      <HomeRow
+                        key={`fail-note-${doc.id}`}
+                        quiet
+                        title={doc.title.trim() || brew.workbenchNoteUntitled}
+                        meta={brew.workbenchHomeNoteFailed}
+                        onPick={() => onOpenNote(workbenchNoteOpen(doc))}
+                      />
+                    ))}
+                    {homeQuiet.sources.map((source) => (
+                      <HomeRow
+                        key={`fail-source-${source.id}`}
+                        quiet
+                        title={source.name}
+                        meta={brew.workbenchHomeSourceFailed}
+                        onPick={() => open('sources')}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+                <section
+                  className="brew-workbench__kpis"
+                  aria-label={brew.workbenchOverview}
+                >
+                  <Kpi
+                    value={docs.length}
+                    label={brew.workbenchNotes}
+                    onPick={() => open('notes')}
+                  />
+                  <Kpi
+                    value={media.length}
+                    label={brew.workbenchMedia}
+                    onPick={() => open('media')}
+                  />
+                  <Kpi
+                    value={feedCount}
+                    label={brew.workbenchSources}
+                    onPick={() => open('sources')}
+                  />
+                </section>
+              </div>
+            )}
           </WorkbenchPage>
         ) : null}
 
         {pane === 'notes' ? (
           <WorkbenchPage
             title={brew.workbenchNotes}
-            icon={<LuNotebookPen />}
+            icon={<BrewWorkbenchIcon kind="notes" />}
             back={back}
+            {...bindGuide('workbench.notes', g.notes)}
             search={
               <InputItem
                 itemKey="workbench-note-search"
@@ -859,16 +1189,45 @@ export default function BrewWorkbench({
               />
             }
             action={
-              <PageAction
-                label={brew.noteWrite}
-                description={brew.boardNotesTitle}
-                icon={<LuNotebookPen />}
-                disabled={busy}
-                onPick={onWrite}
-              />
+              <>
+                <PageAction
+                  label={brew.noteWrite}
+                  description={brew.boardNotesTitle}
+                  icon={<LuNotebookPen />}
+                  disabled={busy}
+                  onPick={onWrite}
+                />
+                <PageAction
+                  label={brew.workbenchCategories}
+                  description={brew.noteTopic}
+                  icon={<LuTag />}
+                  onPick={() => open('noteCategories')}
+                />
+              </>
             }
           >
             <ManagedList
+              stats={notesSelectBar.stats}
+              toolbar={notesSelectBar.toolbar}
+              toolbarPlacement="filters"
+              toolbarExtra={
+                notesSelect.selecting ? (
+                  <BatchCategoryPick
+                    names={noteCategories}
+                    disabled={busy}
+                    placeholder={brew.workbenchAssignCategory}
+                    searchPlaceholder={brew.workbenchSearchCategories}
+                    emptyText={brew.workbenchCategoryKindEmpty}
+                    onPick={(name) => {
+                      const picked = visibleNotes.filter((doc) =>
+                        notesSelect.selected.has(doc.id),
+                      )
+                      if (picked.length === 0) return
+                      onAssignNotes?.(picked, name)
+                    }}
+                  />
+                ) : null
+              }
               filterGroups={[
                 {
                   label: brew.workbenchNoteStatus,
@@ -911,8 +1270,9 @@ export default function BrewWorkbench({
         {pane === 'media' ? (
           <WorkbenchPage
             title={brew.workbenchMedia}
-            icon={<LuImage />}
+            icon={<BrewWorkbenchIcon kind="media" />}
             back={back}
+            {...bindGuide('workbench.media', g.media)}
             search={
               <InputItem
                 itemKey="workbench-media-search"
@@ -1015,8 +1375,9 @@ export default function BrewWorkbench({
         {pane === 'sources' ? (
           <WorkbenchPage
             title={brew.workbenchSources}
-            icon={<LuRss />}
+            icon={<BrewWorkbenchIcon kind="sources" />}
             back={back}
+            {...bindGuide('workbench.sources', g.sources)}
             search={
               <InputItem
                 itemKey="workbench-source-search"
@@ -1052,6 +1413,12 @@ export default function BrewWorkbench({
                   icon={<LuPlus />}
                   onPick={() => open('add')}
                 />
+                <PageAction
+                  label={brew.workbenchCategories}
+                  description={brew.category}
+                  icon={<LuTag />}
+                  onPick={() => open('sourceCategories')}
+                />
               </>
             }
           >
@@ -1059,6 +1426,7 @@ export default function BrewWorkbench({
               itemKey="workbench-sort"
               label={brew.workbenchDefaultSort}
               layout="horizontal"
+              {...bindGuide('workbench.defaultSort', g.defaultSort)}
             >
               <SegmentedControl
                 size="sm"
@@ -1083,6 +1451,39 @@ export default function BrewWorkbench({
             title={brew.addSubscription}
             icon={<LuPlus />}
             back={backToSources}
+            {...bindGuide('workbench.add', g.add)}
+          >
+            {boundAdmin}
+          </WorkbenchPage>
+        ) : null}
+
+        {pane === 'noteCategories' || pane === 'sourceCategories' ? (
+          <WorkbenchPage
+            title={brew.workbenchCategories}
+            icon={<LuTag />}
+            {...bindGuide(
+              pane === 'noteCategories'
+                ? 'workbench.noteCategories'
+                : 'workbench.sourceCategories',
+              pane === 'noteCategories'
+                ? g.noteCategories
+                : g.sourceCategories,
+            )}
+            back={pane === 'noteCategories' ? backToNotes : backToSources}
+            search={
+              <InputItem
+                itemKey="workbench-category-search"
+                label={brew.workbenchSearchCategories}
+                value={categoryQuery}
+                onChange={setCategoryQuery}
+                placeholder={brew.workbenchSearchCategories}
+                inputType="search"
+                size="sm"
+                layout="vertical"
+                autoComplete="off"
+                className="brew-workbench__title-search"
+              />
+            }
           >
             {boundAdmin}
           </WorkbenchPage>
@@ -1091,9 +1492,15 @@ export default function BrewWorkbench({
         {pane === 'rsshub' ? (
           <WorkbenchPage
             title={brew.workbenchRsshub}
-            icon={<LuServer />}
-            description={brew.workbenchRsshubHint}
+            icon={<BrewWorkbenchIcon kind="rsshub" />}
             back={back}
+            {...bindGuide('workbench.rsshub', g.rsshub)}
+            action={
+              <div
+                id="workbench-rsshub-actions"
+                className="brew-workbench__rsshub-actions"
+              />
+            }
           >
             {admin}
           </WorkbenchPage>
@@ -1102,9 +1509,9 @@ export default function BrewWorkbench({
         {pane === 'notesIo' ? (
           <WorkbenchPage
             title={brew.workbenchNavTransfer}
-            icon={<LuUpload />}
-            description={brew.workbenchNoteTransferHint}
+            icon={<BrewWorkbenchIcon kind="notes-transfer" />}
             back={back}
+            {...bindGuide('workbench.notesIo', g.notesIo)}
           >
             {NOTE_TRANSFER_FORMATS.map((item) => (
               <SettingItemWrapper
@@ -1113,6 +1520,7 @@ export default function BrewWorkbench({
                 label={brew[item.title]}
                 description={brew[item.hint]}
                 icon={item.icon}
+                {...bindGuide(`workbench.${item.kind}`, g[item.kind])}
               >
                 <TransferActions
                   mark={item.icon}
@@ -1139,14 +1547,15 @@ export default function BrewWorkbench({
         {pane === 'feedsIo' ? (
           <WorkbenchPage
             title={brew.workbenchNavTransfer}
-            icon={<LuPackage />}
-            description={brew.workbenchFeedTransferHint}
+            icon={<BrewWorkbenchIcon kind="feeds-transfer" />}
             back={back}
+            {...bindGuide('workbench.feedsIo', g.feedsIo)}
           >
             <SettingItemWrapper
               itemKey="transfer-brewpack"
               label={brew.workbenchBrewpack}
               description={brew.workbenchBrewpackHint}
+              {...bindGuide('workbench.brewpack', g.brewpack)}
             >
               <TransferActions
                 accept=".brewpack,.zip,application/zip"
@@ -1169,6 +1578,7 @@ export default function BrewWorkbench({
               itemKey="transfer-opml"
               label={brew.workbenchOpml}
               description={brew.workbenchOpmlHint}
+              {...bindGuide('workbench.opml', g.opml)}
             >
               {admin}
             </SettingItemWrapper>

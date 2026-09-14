@@ -751,6 +751,7 @@ fn is_backend_path_for(path: &str, user_agent: &str, query: &str) -> bool {
         || path == "/sitemap.xml"
         || path == "/robots.txt"
         || path == "/llms.txt"
+        || path == "/brew/notes.xml"
     {
         return true;
     }
@@ -1644,6 +1645,8 @@ mod tests {
         assert!(is_backend_path("/sitemap.xml", browser));
         assert!(is_backend_path("/robots.txt", browser));
         assert!(is_backend_path("/llms.txt", browser));
+        assert!(is_backend_path("/brew/notes.xml", browser));
+        assert!(is_backend_path("/api/brew/notes.xml", browser));
         assert!(is_backend_path("/api/seo/sitemap.xml", browser));
         // Homepage / module indexes / Tapp / Brew SEO shells: crawlers only
         assert!(is_backend_path("/", googlebot));

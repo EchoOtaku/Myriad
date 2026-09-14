@@ -10,6 +10,7 @@
 //!
 //! 渲染只在写入这一侧发生。读路径永远读 `content`，绝不在渲染一次 ——
 //! 否则阅读器、RSS、联邦三处会各自拿到一份不同的 HTML。
+//! 对外订阅走 `GET /brew/notes.xml`（`/api/brew/notes.xml` 同一份）。
 
 use axum::{
     Json,

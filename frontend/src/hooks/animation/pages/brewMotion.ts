@@ -1,4 +1,4 @@
-/** 一条链，后来的顶掉前一次收尾权。intro 不 dropFlip；只有 flip 能。ChipLane 不占 lane。 */
+/** 一条链，后来的顶掉前一次收尾权。入场不占 flip。ChipLane 不占 lane。 */
 type BrewMotionLane = 'idle' | 'intro' | 'flip' | 'lane'
 
 let token = 0

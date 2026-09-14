@@ -25,6 +25,7 @@ else goes to the frontend SPA). Match path-only (no query):
 | `/health` | Backend liveness (process up). Not business readiness. |
 | `/ready` | Backend readiness (live DB probe, migrations, full routes, storage). 503 when not ready. |
 | `/sitemap.xml` | Public SEO sitemap (also `/api/seo/sitemap.xml`); empty urlset when durable origin (`FRONTEND_URL`/`BASE_URL`) is unset — no client Host fallback |
+| `/brew/notes.xml` | Public RSS of published notes (also `/api/brew/notes.xml`). 404 when Brew is not guest-visible. Item links are absolute only when `FRONTEND_URL`/`BASE_URL` is set |
 | `/robots.txt` | Dynamic robots; absolute `Sitemap:` line only when `FRONTEND_URL` or `BASE_URL` is set (omitted when unset) |
 | `/llms.txt` | AI-facing site index (when GEO policy allows) |
 | `/` `/tapp` `/brew` `/library` `/reports` | **Crawler / WeChat-Weibo in-app share UA** → backend SEO HTML shell (proxy routes only; it does not rewrite HTML); `?_spa=1` and ordinary browsers → SPA |

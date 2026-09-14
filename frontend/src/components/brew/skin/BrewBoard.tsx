@@ -30,7 +30,6 @@ interface BrewBoardViewProps {
   onToggleStar?: (item: BrewItemPreview) => void
   onEditSource?: (source: BrewSource) => void
   onOpenDoc?: (id: number) => void
-  onSitesOpenChange?: (open: boolean) => void
   toolbar?: ReactNode
   notes?: HomeBoardNote[]
   docs?: BrewNoteDoc[]
@@ -59,7 +58,6 @@ export default function BrewBoardView({
   onToggleStar,
   onEditSource,
   onOpenDoc,
-  onSitesOpenChange,
   toolbar,
   notes = [],
   docs = [],
@@ -113,7 +111,6 @@ export default function BrewBoardView({
         onPeekEnd={onPeekEnd}
         onToggleStar={onToggleStar}
         onEditSource={onEditSource}
-        onSitesOpenChange={onSitesOpenChange}
         toolbar={toolbar}
         vacant={vacant}
         stories={stories}

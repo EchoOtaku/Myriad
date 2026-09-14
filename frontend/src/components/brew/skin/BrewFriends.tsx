@@ -1,4 +1,4 @@
-/** 朋友们：两行网站卡，文章区两行从左到右填，左右挪轨不裁切。 */
+/** 朋友们：两行网站卡，一行文章卡。左右挪轨不裁切。 */
 
 import type { CSSProperties } from 'react'
 import type { BrewItemPreview, BrewSource } from '../../../types/brew'
@@ -49,14 +49,31 @@ export default function BrewFriends({
   const { t, locale } = useI18n()
   const itemsTitleId = useId()
   const times = useBrewTimes()
+  const sitesViewRef = useRef<HTMLDivElement>(null)
+  const sitesTrackRef = useRef<HTMLDivElement>(null)
   const itemsViewRef = useRef<HTMLDivElement>(null)
   const itemsTrackRef = useRef<HTMLDivElement>(null)
+  const siteKey = useMemo(
+    () => sources.map((source) => source.id).join(','),
+    [sources],
+  )
   const itemKey = useMemo(
     () => stories.map((item) => item.id).join(','),
     [stories],
   )
+  const siteCols = Math.max(1, Math.ceil(sources.length / 2))
   const byId = new Map(sources.map((source) => [source.id, source]))
 
+  useBrewRailPan(
+    sitesViewRef,
+    sitesTrackRef,
+    sources.length > 0,
+    siteKey,
+    '.brew-site',
+    undefined,
+    undefined,
+    true,
+  )
   useBrewRailPan(
     itemsViewRef,
     itemsTrackRef,
@@ -88,13 +105,24 @@ export default function BrewFriends({
 
   return (
     <div className="brew-skin brew-friends">
-      <div className="brew-friends__sites">
+      <div className="brew-friends__sites" ref={sitesViewRef}>
+        <div
+          className="brew-friends__sites-track"
+          ref={sitesTrackRef}
+          data-brew-rail-track="sites"
+          style={
+            {
+              '--brew-story-cols': siteCols,
+            } as CSSProperties
+          }
+        >
         {sources.map((source, index) => {
           const latest = source.recent_items?.[0] ?? null
           return (
             <SiteCard
               key={source.id}
               id={source.id}
+              railCol={Math.floor(index / 2) + 1}
               arrive={index < 8 ? index : undefined}
               name={source.name}
               description={source.description?.trim() || ''}
@@ -112,54 +140,55 @@ export default function BrewFriends({
               emptyLabel={t.brew.noArticles}
               editLabel={t.brew.editSource}
               onActivate={() => activate(source)}
-              onOpenLatest={
-                latest
-                  ? () => openArticle(latest, source.id)
-                  : undefined
-              }
               onEdit={
                 onEditSource ? () => onEditSource(source) : undefined
               }
             />
           )
         })}
-      </div>
-      <BrewRailTitle id={itemsTitleId}>{t.brew.friendArticles}</BrewRailTitle>
-      <div
-        className="brew-friends__items"
-        ref={itemsViewRef}
-        aria-labelledby={itemsTitleId}
-      >
-        <div
-          className="brew-friends__items-track"
-          ref={itemsTrackRef}
-          data-brew-rail-track="items"
-          style={
-            {
-              '--brew-story-cols': Math.max(1, Math.ceil(stories.length / 2)),
-            } as CSSProperties
-          }
-        >
-        {stories.map((item, index) => (
-          <BrewStory
-            key={item.id}
-            item={item}
-            times={times}
-            locale={locale}
-            labels={t.brew}
-            arrive={index < 8 ? index : undefined}
-            onOpen={() => openArticle(item)}
-            onPeek={() => onPeekItem?.(item)}
-            onPeekEnd={onPeekEnd}
-            onToggleStar={
-              onToggleStar && !isEditMode
-                ? (story) => onToggleStar(story)
-                : undefined
-            }
-          />
-        ))}
         </div>
       </div>
+      {stories.length > 0 ? (
+        <>
+          <BrewRailTitle id={itemsTitleId}>{t.brew.friendArticles}</BrewRailTitle>
+          <div
+            className="brew-friends__items"
+            ref={itemsViewRef}
+            aria-labelledby={itemsTitleId}
+          >
+            <div
+              className="brew-friends__items-track"
+              ref={itemsTrackRef}
+              data-brew-rail-track="items"
+              style={
+                {
+                  '--brew-story-cols': Math.max(1, stories.length),
+                } as CSSProperties
+              }
+            >
+              {stories.map((item, index) => (
+                <BrewStory
+                  key={item.id}
+                  item={item}
+                  times={times}
+                  locale={locale}
+                  labels={t.brew}
+                  railCol={index + 1}
+                  arrive={index < 8 ? index : undefined}
+                  onOpen={() => openArticle(item)}
+                  onPeek={() => onPeekItem?.(item)}
+                  onPeekEnd={onPeekEnd}
+                  onToggleStar={
+                    onToggleStar && !isEditMode
+                      ? (story) => onToggleStar(story)
+                      : undefined
+                  }
+                />
+              ))}
+            </div>
+          </div>
+        </>
+      ) : null}
     </div>
   )
 }

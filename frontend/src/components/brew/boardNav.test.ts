@@ -15,4 +15,15 @@ describe('brewBoardNavItems', () => {
     assert.match(src, /id: 'workbench'/)
     assert.doesNotMatch(src, /id: 'settings'/)
   })
+
+  it('图标按板块含义：信箱、收藏、手记、朋友、工作台', () => {
+    assert.match(src, /LuInbox/)
+    assert.match(src, /LuStar/)
+    assert.match(src, /LuNotebookPen/)
+    assert.match(src, /LuLink/)
+    assert.match(src, /LuFolderOpen/)
+    assert.match(src, /title: t\.boardFeeds/)
+    assert.match(src, /title: t\.starred/)
+    assert.doesNotMatch(src, /starredTitle/)
+  })
 })

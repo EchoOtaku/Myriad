@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { SettingsButtonVariant } from './items/SettingsButton'
+import { LuCheck } from '@lib/icons'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { Spinner } from '../Spinner'
@@ -164,6 +165,8 @@ export interface ManagedListItem {
   expanded?: boolean
   onToggleExpand?: () => void
   renderHit?: (parts: { leading: ReactNode; main: ReactNode }) => ReactNode
+  selected?: boolean
+  onSelect?: () => void
   busy?: boolean
   className?: string
 }
@@ -188,6 +191,8 @@ export interface ManagedListProps {
   queryChrome?: 'panel' | 'plain'
   queryCollapsible?: boolean
   form?: ReactNode
+  toolbarPlacement?: 'top' | 'filters'
+  toolbarExtra?: ReactNode
   formPlacement?: 'before' | 'after'
   formTitle?: ReactNode
   formDescription?: ReactNode
@@ -289,6 +294,8 @@ export const ManagedList = React.memo(({
   queryChrome = 'panel',
   queryCollapsible = true,
   form,
+  toolbarPlacement = 'top',
+  toolbarExtra,
   formPlacement = 'before',
   formTitle,
   formDescription,
@@ -449,8 +456,11 @@ export const ManagedList = React.memo(({
   const showQueryChip = queryCollapsible && hasFilterBar
   const showFormChip = form != null
   const hasToolbarActions = !!(toolbar && toolbar.length > 0)
+  const toolbarInFilters = toolbarPlacement === 'filters'
+  const hasTopToolbar = hasToolbarActions && !toolbarInFilters
+  const topStats = toolbarInFilters ? undefined : stats
   const hasChromeBar =
-    hasToolbarActions || showQueryChip || showFormChip
+    hasTopToolbar || showQueryChip || showFormChip
 
   const formPanel =
     form != null && formOpen ? (
@@ -518,53 +528,108 @@ export const ManagedList = React.memo(({
             />
           </div>
         )}
-        {resolvedFilterGroups.length > 0 && (
-          <div className="managed-list-filter-groups">
-            {resolvedFilterGroups.map((group, gi) =>
-              group.options.length > 0 ? (
-                <div
-                  key={group.ariaLabel ?? `filter-group-${gi}`}
-                  className="managed-list-filter-group"
-                >
-                  {group.icon != null || group.label != null ? (
-                    <span className="managed-list-filter-label">
-                      {group.icon != null ? (
-                        <span
-                          className="managed-list-filter-label-icon"
-                          aria-hidden
-                        >
-                          {group.icon}
+        {resolvedFilterGroups.length > 0 ||
+        (toolbarInFilters && hasToolbarActions) ? (
+          <div className="managed-list-filter-tools">
+            {resolvedFilterGroups.length > 0 ? (
+              <div className="managed-list-filter-groups">
+                {resolvedFilterGroups.map((group, gi) =>
+                  group.options.length > 0 ? (
+                    <div
+                      key={group.ariaLabel ?? `filter-group-${gi}`}
+                      className="managed-list-filter-group"
+                    >
+                      {group.icon != null || group.label != null ? (
+                        <span className="managed-list-filter-label">
+                          {group.icon != null ? (
+                            <span
+                              className="managed-list-filter-label-icon"
+                              aria-hidden
+                            >
+                              {group.icon}
+                            </span>
+                          ) : null}
+                          {group.label != null && group.label !== '' ? (
+                            <span className="managed-list-filter-label-text">
+                              {group.label}
+                            </span>
+                          ) : null}
                         </span>
                       ) : null}
-                      {group.label != null && group.label !== '' ? (
-                        <span className="managed-list-filter-label-text">
-                          {group.label}
-                        </span>
-                      ) : null}
+                      <SegmentedControl
+                        size="sm"
+                        className="managed-list-filters"
+                        ariaLabel={
+                          group.ariaLabel ??
+                          (typeof group.label === 'string'
+                            ? group.label
+                            : undefined) ??
+                          t.config.managedListFilterAria
+                        }
+                        value={group.value}
+                        options={group.options.map((opt) => ({
+                          value: opt.key,
+                          label: opt.label,
+                          count: opt.count,
+                          icon: opt.icon,
+                        }))}
+                        onChange={group.onChange}
+                      />
+                    </div>
+                  ) : null,
+                )}
+              </div>
+            ) : null}
+            {toolbarInFilters && hasToolbarActions ? (
+              <div className="managed-list-filter-toolbar">
+                {stats
+                  ?.filter(
+                    (s): s is ManagedListStatMetric =>
+                      s.kind !== 'switch' && s.kind !== 'choice',
+                  )
+                  .map((s) => (
+                    <span key={s.key} className="managed-list-filter-label">
+                      <span className="managed-list-filter-label-text">
+                        {s.value}
+                      </span>
                     </span>
-                  ) : null}
-                  <SegmentedControl
-                    size="sm"
-                    className="managed-list-filters"
-                    ariaLabel={
-                      group.ariaLabel ??
-                      (typeof group.label === 'string' ? group.label : undefined) ??
-                      t.config.managedListFilterAria
-                    }
-                    value={group.value}
-                    options={group.options.map((opt) => ({
-                      value: opt.key,
-                      label: opt.label,
-                      count: opt.count,
-                      icon: opt.icon,
-                    }))}
-                    onChange={group.onChange}
-                  />
+                  ))}
+                <div
+                  className="choice-segmented choice-segmented--sm is-flex managed-list-filters"
+                  role="toolbar"
+                  aria-label={t.config.managedListActionsAria}
+                >
+                  {toolbar!.map((action) => (
+                    <button
+                      key={action.key}
+                      type="button"
+                      className={`choice-segmented-item${
+                        action.variant === 'danger' ? ' is-danger' : ''
+                      }`}
+                      disabled={action.disabled || action.loading}
+                      title={action.title ?? action.description}
+                      aria-label={action.ariaLabel ?? action.label}
+                      onClick={() => {
+                        if (action.confirm && !window.confirm(action.confirm)) {
+                          return
+                        }
+                        action.onClick()
+                      }}
+                    >
+                      {action.icon != null ? (
+                        <span className="choice-option-icon" aria-hidden>
+                          {action.icon}
+                        </span>
+                      ) : null}
+                      <span className="choice-option-label">{action.label}</span>
+                    </button>
+                  ))}
                 </div>
-              ) : null,
-            )}
+                {toolbarExtra}
+              </div>
+            ) : null}
           </div>
-        )}
+        ) : null}
       </div>
     ) : null
 
@@ -616,6 +681,25 @@ export const ManagedList = React.memo(({
               )}
             </>
           )
+          const picking = item.onSelect != null
+          const titleText =
+            typeof item.title === 'string' ? item.title : undefined
+          const pick = picking ? (
+            <button
+              type="button"
+              className={`managed-list-pick${item.selected ? ' is-on' : ''}`}
+              aria-pressed={!!item.selected}
+              aria-label={titleText}
+              onClick={(event) => {
+                event.stopPropagation()
+                item.onSelect?.()
+              }}
+            >
+              <span className="managed-list-pick-box" aria-hidden>
+                {item.selected ? <LuCheck /> : null}
+              </span>
+            </button>
+          ) : null
           const leading = item.leading != null && (
             <div className="managed-list-row-leading">{item.leading}</div>
           )
@@ -653,11 +737,12 @@ export const ManagedList = React.memo(({
             <div
               key={item.id}
               role="listitem"
-              className={`managed-list-row${isExpanded ? ' is-expanded' : ''}${item.busy ? ' is-busy' : ''}${canExpand ? ' is-expandable' : ''}${item.className ? ` ${item.className}` : ''}`}
+              className={`managed-list-row${isExpanded ? ' is-expanded' : ''}${item.busy ? ' is-busy' : ''}${canExpand ? ' is-expandable' : ''}${picking ? ' is-picking' : ''}${item.selected ? ' is-selected' : ''}${item.className ? ` ${item.className}` : ''}`}
               aria-busy={item.busy || undefined}
             >
               {hasCustomHit ? (
                 <div className="managed-list-row-head">
+                  {pick}
                   {item.renderHit!({
                     leading,
                     main: (
@@ -669,6 +754,7 @@ export const ManagedList = React.memo(({
               ) : canExpand ? (
                 <div className="managed-list-row-head">
                   {/* hit: leading+main; side actions stopPropagation */}
+                  {pick}
                   <button
                     type="button"
                     className="managed-list-row-hit"
@@ -682,6 +768,7 @@ export const ManagedList = React.memo(({
                 </div>
               ) : (
                 <div className="managed-list-row-head">
+                  {pick}
                   {leading}
                   <div className="managed-list-row-main">{mainInner}</div>
                   {side}
@@ -705,14 +792,14 @@ export const ManagedList = React.memo(({
         layout === 'grid' ? ' managed-list--grid' : ''
       }${className ? ` ${className}` : ''}`}
     >
-      {(stats && stats.length > 0) || hasChromeBar ? (
+      {(topStats && topStats.length > 0) || hasChromeBar ? (
         <div className="managed-list-top">
           <div
             className="managed-list-stats"
             role="group"
             aria-label={t.config.managedListStatsAria}
           >
-            {stats
+            {topStats
               ?.filter(
                 (s): s is ManagedListStatMetric =>
                   s.kind !== 'switch' && s.kind !== 'choice',
@@ -727,14 +814,14 @@ export const ManagedList = React.memo(({
                 </div>
               ))}
 
-            {(stats?.some((s) => s.kind === 'switch' || s.kind === 'choice') ||
+            {(topStats?.some((s) => s.kind === 'switch' || s.kind === 'choice') ||
               hasChromeBar) && (
               <div
                 className="managed-list-chip-actions"
                 role="toolbar"
                 aria-label={t.config.managedListActionsAria}
               >
-                {stats
+                {topStats
                   ?.filter(
                     (s): s is ManagedListStatSwitch | ManagedListStatChoice =>
                       s.kind === 'switch' || s.kind === 'choice',
@@ -878,7 +965,7 @@ export const ManagedList = React.memo(({
                     }
                   />
                 )}
-                {hasToolbarActions &&
+                {hasTopToolbar &&
                   toolbar!.map((a) => (
                     <ListActionButton
                       key={a.key}

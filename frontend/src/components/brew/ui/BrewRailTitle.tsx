@@ -6,16 +6,22 @@ export function BrewRailTitle({
   children,
   action,
   arrive = 0,
+  pinned = false,
 }: {
   id?: string
   children: string
   action?: ReactNode
   arrive?: number | false
+  pinned?: boolean
 }) {
   const entering = arrive !== false
   return (
     <div
-      className={cx('brew-rail-title', entering && 'is-arrive')}
+      className={cx(
+        'brew-rail-title',
+        entering && 'is-arrive',
+        pinned && 'is-actions-on',
+      )}
       data-brew-surface={entering ? 'title' : undefined}
       style={
         typeof arrive === 'number'
@@ -26,7 +32,9 @@ export function BrewRailTitle({
       <h2 className="brew-rail-title__label" id={id}>
         {children}
       </h2>
-      {action}
+      {action ? (
+        <div className="brew-rail-title__actions">{action}</div>
+      ) : null}
     </div>
   )
 }

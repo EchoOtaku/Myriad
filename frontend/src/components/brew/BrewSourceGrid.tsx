@@ -126,7 +126,6 @@ export default function BrewSourceGrid({
     board === 'sites' ? storiesFromSources(sorted, friendSeed.current) : []
   ).map((story) => flags.project(story))
   const edit = useBoardEdit(
-    board,
     filtered,
     onRemoveSources,
     onRefreshSource,
@@ -162,7 +161,7 @@ export default function BrewSourceGrid({
         onSortModeChange={handleSortModeChange}
         isAdmin={isAdmin}
         isAuthenticated={isAuthenticated}
-        canEdit={board !== 'feeds' || edit.sitesOpen}
+        canEdit
         editing={edit.isEditMode}
         selectedIds={edit.selectedIds}
         sources={sorted}
@@ -188,7 +187,6 @@ export default function BrewSourceGrid({
       handleSortModeChange,
       isAdmin,
       isAuthenticated,
-      edit.sitesOpen,
       edit.isEditMode,
       edit.selectedIds,
       sorted,
@@ -233,7 +231,6 @@ export default function BrewSourceGrid({
       onPeekEnd={onPeekEnd}
       onToggleStar={board === 'feeds' ? onStar : onToggleStar}
       onEditSource={undefined}
-      onSitesOpenChange={board === 'feeds' ? edit.setSitesOpen : undefined}
       toolbar={bar}
       vacant={board === 'feeds' && searchMiss ? miss : null}
       stories={
@@ -261,7 +258,11 @@ export default function BrewSourceGrid({
       ) : (
         <BrewPageStage
           title={
-            <BrewRailTitle id={titleId} action={sourceTags}>
+            <BrewRailTitle
+              id={titleId}
+              action={sourceTags}
+              pinned={edit.isEditMode}
+            >
               {board === 'notes' ? t.brew.boardNotes : t.brew.boardSites}
             </BrewRailTitle>
           }

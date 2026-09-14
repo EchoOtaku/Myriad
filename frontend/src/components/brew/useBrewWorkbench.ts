@@ -79,20 +79,45 @@ export function useBrewWorkbench(
     return () => mediaTurn.current.cancel()
   }, [docsEpoch, loadMedia])
 
-  const removeNote = useCallback(
-    async (doc: BrewNoteDoc) => {
+  const removeNotes = useCallback(
+    async (docs: BrewNoteDoc[]) => {
+      if (docs.length === 0) return
       setBusy(true)
       try {
-        if (doc.item_id != null) await brewApi.deleteNote(doc.item_id)
-        else await brewApi.deleteNoteDoc(doc.id)
-        setDocs((prev) => prev.filter((row) => row.id !== doc.id))
-      } catch (err) {
-        setError(userFacingError(err, labelsRef.current.noteDeleteFailed))
+        const results = await Promise.allSettled(
+          docs.map(async (doc) => {
+            if (doc.item_id != null) await brewApi.deleteNote(doc.item_id)
+            else await brewApi.deleteNoteDoc(doc.id)
+            return doc.id
+          }),
+        )
+        const dropped = new Set(
+          results.flatMap((result) =>
+            result.status === 'fulfilled' ? [result.value] : [],
+          ),
+        )
+        if (dropped.size > 0) {
+          setDocs((prev) => prev.filter((row) => !dropped.has(row.id)))
+        }
+        if (results.some((result) => result.status === 'rejected')) {
+          const failed = results.find((result) => result.status === 'rejected')
+          setError(
+            userFacingError(
+              failed && failed.status === 'rejected' ? failed.reason : null,
+              labelsRef.current.noteDeleteFailed,
+            ),
+          )
+        }
       } finally {
         setBusy(false)
       }
     },
     [setError],
+  )
+
+  const removeNote = useCallback(
+    async (doc: BrewNoteDoc) => removeNotes([doc]),
+    [removeNotes],
   )
 
   const unschedule = useCallback(
@@ -147,6 +172,7 @@ export function useBrewWorkbench(
     mediaLoading,
     busy,
     removeNote,
+    removeNotes,
     unschedule,
     upload,
     removeMedia,

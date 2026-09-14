@@ -428,6 +428,7 @@ pub(super) fn build_base_api_router(
         // SEO：sitemap / robots / 公开 Tapp·Brew 摘要与爬虫 HTML 壳
         .route("/sitemap.xml", get(api::seo::sitemap_xml))
         .route("/api/seo/sitemap.xml", get(api::seo::sitemap_xml))
+        .route("/brew/notes.xml", get(api::brew::notes_rss))
         .route("/robots.txt", get(api::seo::robots_txt))
         .route("/llms.txt", get(api::seo::llms_txt))
         .route("/api/seo/llms.txt", get(api::seo::llms_txt))

@@ -146,6 +146,26 @@ html.dark .managed-list-stat--danger .managed-list-stat-value {
 }
 
 
+.managed-list-filter-toolbar .choice-segmented-item.is-danger {
+  color: #b91c1c;
+}
+
+.managed-list-filter-toolbar .choice-segmented-item.is-danger:hover:not(:disabled) {
+  color: #991b1b;
+  background: rgb(239 68 68 / 8%);
+}
+
+html.dark .managed-list-filter-toolbar .choice-segmented-item.is-danger {
+  color: #fca5a5;
+}
+
+html.dark
+  .managed-list-filter-toolbar
+  .choice-segmented-item.is-danger:hover:not(:disabled) {
+  color: #fecaca;
+  background: rgb(248 113 113 / 12%);
+}
+
 .managed-list-top {
   --managed-list-chip-min-h: 2.75rem;
   --managed-list-chip-pad-y: 0.4rem;
@@ -201,8 +221,37 @@ html.dark .managed-list-stat--danger .managed-list-stat-value {
   padding: 0.45rem 0.55rem;
 }
 
-.managed-list-filter-bar.is-plain .managed-list-filter-groups {
+.managed-list-filter-bar.is-plain .managed-list-filter-groups,
+.managed-list-filter-bar.is-plain .managed-list-filter-tools {
   flex: 1 1 auto;
+}
+
+.managed-list-filter-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.7rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.managed-list-filter-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: visible;
+}
+
+.managed-list-filter-groups + .managed-list-filter-toolbar {
+  padding-left: 0.7rem;
+  border-left: 1px solid color-mix(in srgb, currentcolor 12%, transparent);
+}
+
+html.dark .managed-list-filter-groups + .managed-list-filter-toolbar {
+  border-left-color: color-mix(in srgb, currentcolor 20%, transparent);
 }
 
 .managed-list-query-active-dot {
@@ -519,8 +568,77 @@ html.dark .managed-list-empty {
   box-sizing: border-box;
 }
 
-.managed-list-row.is-expanded {
+.managed-list-row.is-expanded,
+.managed-list-row.is-selected {
   border-color: color-mix(in srgb, var(--cfg-accent, #3b82f6) 28%, transparent);
+}
+
+.managed-list-row.is-picking .managed-list-row-head {
+  padding-inline-start: 0.65rem;
+  gap: 0.45rem 0.55rem;
+}
+
+.managed-list-pick {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.managed-list-pick:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--cfg-accent, #3b82f6) 40%, transparent);
+}
+
+.managed-list-pick-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  border: 1.5px solid var(--cfg-separator, rgb(60 60 67 / 18%));
+  border-radius: 0.28rem;
+  background: var(--cfg-input-bg, transparent);
+  box-sizing: border-box;
+  color: transparent;
+}
+
+.managed-list-pick-box svg {
+  display: block;
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+.managed-list-pick.is-on .managed-list-pick-box {
+  border-color: var(--cfg-accent, #3b82f6);
+  background: var(--cfg-accent, #3b82f6);
+  color: #fff;
+}
+
+html.dark .managed-list-pick-box {
+  border-color: var(--cfg-separator);
+}
+
+html.dark .managed-list-pick.is-on .managed-list-pick-box {
+  border-color: var(--cfg-accent, #60a5fa);
+  background: var(--cfg-accent, #60a5fa);
+  color: #0b1220;
+}
+
+.managed-list-filter-toolbar .field-select-wrap {
+  min-width: 8.5rem;
+  max-width: 14rem;
 }
 
 .managed-list-row-hit {

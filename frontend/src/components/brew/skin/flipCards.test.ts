@@ -7,7 +7,6 @@ import {
   FLIP_STAGGER_CAP_MS,
   FLIP_STAGGER_MS,
   FLIP_STORY_FOLLOW_MS,
-  FLIP_STORY_LEAD_MS,
   FLIP_STORY_MS,
   flipDelay,
   flipDelayFromLead,
@@ -15,13 +14,10 @@ import {
   revealFeedsTree,
   SITE_ENTER,
   SITE_ENTER_LEFT,
-  SITE_GRID_OP,
   SITE_RAIL_OP,
-  siteOpenDelay,
   siteRestOpacity,
   storyColumn,
   storyDelay,
-  storyPhaseDelay,
 } from './flipCards.ts'
 
 describe('flipDelay', () => {
@@ -58,32 +54,22 @@ describe('flipDelay', () => {
     assert.equal(storyDelay(0, FLIP_STORY_FOLLOW_MS), FLIP_STORY_FOLLOW_MS)
   })
 
-  it('展开先退文章再飞网站，收回先落网站再进文章，中间不空拍', () => {
-    assert.equal(siteOpenDelay('exit'), FLIP_STORY_LEAD_MS)
-    assert.equal(siteOpenDelay('enter'), 0)
-    assert.equal(storyPhaseDelay('enter'), FLIP_STORY_FOLLOW_MS)
-    assert.equal(storyPhaseDelay('exit'), 0)
-    assert.ok(FLIP_STORY_LEAD_MS < FLIP_STORY_MS)
-    assert.ok(FLIP_STORY_FOLLOW_MS < FLIP_SITE_MS)
+  it('入场等待盖住网站卡和文章卡错开', () => {
     assert.ok(FLIP_INTRO_STORY_MS < FLIP_STORY_FOLLOW_MS)
     assert.ok(
       flipWaitMs() >=
         FLIP_STORY_FOLLOW_MS + FLIP_STORY_MS + FLIP_STAGGER_CAP_MS,
     )
-    assert.ok(
-      flipWaitMs() >= FLIP_STORY_LEAD_MS + FLIP_SITE_MS + FLIP_STAGGER_CAP_MS,
-    )
+    assert.ok(flipWaitMs() >= FLIP_SITE_MS + FLIP_STAGGER_CAP_MS)
   })
 
-  it('换树揭开合树时空根是空操作', () => {
+  it('换树揭入场树时空根是空操作', () => {
     revealFeedsTree(null)
     revealFeedsTree(undefined)
   })
 
-  it('开合落点透明度跟皮肤走，不读隐藏真卡', () => {
-    assert.equal(siteRestOpacity(false, false), SITE_RAIL_OP)
-    assert.equal(siteRestOpacity(true, false), SITE_GRID_OP)
-    assert.equal(siteRestOpacity(false, true), 1)
-    assert.equal(siteRestOpacity(true, true), 1)
+  it('入场落点透明度跟皮肤走，不读隐藏真卡', () => {
+    assert.equal(siteRestOpacity(false), SITE_RAIL_OP)
+    assert.equal(siteRestOpacity(true), 1)
   })
 })

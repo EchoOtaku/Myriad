@@ -57,16 +57,23 @@ html.dark #brew-veil-bloom {
 
 .brew-peek-air__shot {
   position: absolute;
-  inset: 0;
+  inset: -6%;
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
   opacity: 0;
-  transition: opacity var(--brew-peek-fade) var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1));
+  transform: scale(1.03);
+  transition:
+    opacity var(--brew-peek-fade, 220ms) var(--sm-ease-exit, cubic-bezier(0.4, 0, 1, 1)),
+    transform 360ms var(--sm-ease-exit, cubic-bezier(0.4, 0, 1, 1));
 }
 
 .brew-peek-air__shot.is-on {
   opacity: 1;
+  transform: scale(1);
+  transition:
+    opacity 320ms var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1)),
+    transform 480ms var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1));
 }
 
 .brew-peek-air::after {
@@ -83,11 +90,13 @@ html.dark #brew-veil-bloom {
     rgb(255 255 255 / 48%) 68%,
     rgb(255 255 255 / 78%) 100%
   );
-  transition: opacity var(--brew-peek-fade) var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1));
+  transition: opacity 320ms var(--sm-ease-exit, cubic-bezier(0.4, 0, 1, 1));
 }
 
 .brew-peek-air.is-on::after {
   opacity: 1;
+  transition-duration: 520ms;
+  transition-timing-function: var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1));
 }
 
 html.dark .brew-peek-air::after {
@@ -121,11 +130,30 @@ html.dark .brew-peek-air::after {
   right: auto;
   max-width: 38rem;
   opacity: 0;
-  transition: opacity var(--brew-peek-fade) var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1));
+  transform: translate3d(0, var(--sm-shift-sm, 6px), 0);
+  transition:
+    opacity var(--brew-peek-fade, 220ms) var(--sm-ease-exit, cubic-bezier(0.4, 0, 1, 1)),
+    transform var(--brew-peek-fade, 220ms) var(--sm-ease-exit, cubic-bezier(0.4, 0, 1, 1));
 }
 
 .brew-peek-air__lede.is-on {
   opacity: 1;
+  transform: none;
+  transition:
+    opacity 320ms var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1)),
+    transform 320ms var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.brew-peek-air.is-swap .brew-peek-air__shot,
+.brew-peek-air.is-swap .brew-peek-air__shot.is-on {
+  transform: scale(1);
+  transition: opacity 320ms var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1));
+}
+
+.brew-peek-air__copy.is-swap .brew-peek-air__lede,
+.brew-peek-air__copy.is-swap .brew-peek-air__lede.is-on {
+  transform: none;
+  transition: opacity 320ms var(--sm-ease-standard, cubic-bezier(0.32, 0.72, 0, 1));
 }
 
 .brew-peek-air__site {

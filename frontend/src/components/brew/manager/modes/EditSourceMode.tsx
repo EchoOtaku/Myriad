@@ -1,13 +1,14 @@
-import type { AddFieldKind } from './addSource'
+import type { ReactNode } from 'react'
 import type { BrewSource, RSSHubConfig } from '../../../../types/brew'
+import type { AddFieldKind } from './addSource'
 import type { EditFieldKind, SubscriptionMode } from './editSource'
-import { LuSearch as Search, LuSparkles as Sparkles } from '@lib/icons'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { LuRss as Rss, LuSearch as Search, LuSparkles as Sparkles } from '@lib/icons'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
 import { userFacingError } from '../../../../utils/userFacingError'
 import { CompactSettingGroup } from '../../../settings/CompactSettingGroup'
+import { SegmentedControl } from '../../../settings/items/ChoiceControls'
 import { InputItem } from '../../../settings/items/InputItem'
-import { SelectItem } from '../../../settings/items/SelectItem'
 import { SettingsButton } from '../../../settings/items/SettingsButton'
 import { SwitchItem } from '../../../settings/items/SwitchItem'
 import { SettingTitleTag } from '../../../settings/SettingTitleTag'
@@ -16,10 +17,12 @@ import {
   getIconUrl,
   isFriendLinkCategory,
   isMineCategory,
-  PRESET_CATEGORY_DB_VALUES,
 } from '../../constants'
+import { listPickerCategories } from '../../logic/categories'
 import { RequestTurn, unlessAborted } from '../../logic/requestTurn'
+import { draftRssShareUrl } from '../../logic/shareRss'
 import RSSHubConfigComponent from '../RSSHubConfig'
+import { shareRssAddress } from '../shareRss'
 import {
   addUrlLabelKey,
   addUrlPlaceholder,
@@ -180,6 +183,19 @@ export function EditSourceMode({
 
   const isLink = fieldKind === 'link'
   const isNote = fieldKind === 'note'
+  const shareUrl = draftRssShareUrl(
+    fieldKind,
+    typeof window === 'undefined' ? '' : window.location.origin,
+  )
+  const shareRss = () => {
+    if (!shareUrl) return
+    void shareRssAddress(
+      shareUrl,
+      name.trim() || source.name,
+      brew.rssCopied,
+      t.errors.clipboardFailed,
+    )
+  }
   const showMode = !isLink && !isNote
   const subscriptionMode: SubscriptionMode = paused
     ? 'disabled'
@@ -190,10 +206,7 @@ export function EditSourceMode({
   const showAiTags = showMode && !paused && brewliaOn
   const showCustomTags = isLink
   const allCategories = useMemo(
-    () =>
-      Iterator.from(
-        new Set(PRESET_CATEGORY_DB_VALUES).union(new Set(categories)),
-      ).toArray(),
+    () => listPickerCategories(categories),
     [categories],
   )
   const intervalLabels: Record<number, string> = {
@@ -308,6 +321,14 @@ export function EditSourceMode({
         {fieldKind === 'note' ? (
           <div className="brew-add-form__tags">
             <SettingTitleTag>{brew.boardNotes}</SettingTitleTag>
+            <SettingTitleTag
+              icon={<Rss />}
+              disabled={!shareUrl || saving}
+              title={brew.shareRss}
+              onClick={shareRss}
+            >
+              {brew.shareRss}
+            </SettingTitleTag>
           </div>
         ) : (
           <SourceKindControl
@@ -443,23 +464,31 @@ export function EditSourceMode({
         />
 
         {showInterval ? (
-          <SelectItem
-            itemKey="brew-edit-interval"
-            size="sm"
-            label={brew.updateInterval}
-            value={String(updateInterval)}
-            onChange={(next) => setUpdateInterval(Number(next))}
-            disabled={saving}
-            options={(EDIT_INTERVALS.includes(
-              updateInterval as (typeof EDIT_INTERVALS)[number],
-            )
-              ? EDIT_INTERVALS
-              : [...EDIT_INTERVALS, updateInterval].toSorted((a, b) => a - b)
-            ).map((value) => ({
-              value: String(value),
-              label: intervalLabels[value] ?? `${value}`,
-            }))}
-          />
+          <div className="setting-item setting-item-select setting-vertical setting-sm">
+            <div className="setting-label">
+              <span className="setting-label-text">{brew.updateInterval}</span>
+            </div>
+            <div className="setting-control">
+              <SegmentedControl
+                size="sm"
+                columns={4}
+                className="brew-add-form__intervals"
+                ariaLabel={brew.updateInterval}
+                value={String(updateInterval)}
+                onChange={(next) => setUpdateInterval(Number(next))}
+                disabled={saving}
+                options={(EDIT_INTERVALS.includes(
+                  updateInterval as (typeof EDIT_INTERVALS)[number],
+                )
+                  ? EDIT_INTERVALS
+                  : [...EDIT_INTERVALS, updateInterval].toSorted((a, b) => a - b)
+                ).map((value) => ({
+                  value: String(value),
+                  label: intervalLabels[value] ?? `${value}`,
+                }))}
+              />
+            </div>
+          </div>
         ) : null}
 
         <InputItem

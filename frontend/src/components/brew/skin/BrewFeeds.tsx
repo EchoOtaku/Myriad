@@ -2,29 +2,16 @@ import type { CSSProperties, MouseEvent, PointerEvent, ReactNode, RefObject } fr
 import type { BrewItemPreview, BrewSource } from '../../../types/brew'
 import type { FeedStory } from '../logic/feedStories'
 import type { TimeTranslations } from '../types'
-import type { FeedsChrome, FlipBox } from './flipCards'
 import type { BrewRailApi } from './useBrewRailPan'
 
-import { FaCompress as Compress, FaExpand as Expand } from '@lib/icons'
 import { isValidElement, memo, startTransition, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
-import {
-  brewMotionClaim,
-  brewMotionOwns,
-  brewMotionRelease,
-} from '../../../hooks/animation/pages/brewMotion'
 import { extractColorsFromLoadedImage } from '../../../utils/colorExtractor'
-import { SettingTitleTag } from '../../settings/SettingTitleTag'
 import {
   DEFAULT_THEME_COLOR,
   getIconUrl,
   normalizeThemeColor,
 } from '../constants'
-import {
-  completeSiteView,
-  idleSitesIntent,
-  requestSiteView,
-} from '../logic/feedsMotion'
 import {
   clipPaintedBatches,
   extendPaintedRange,
@@ -50,25 +37,10 @@ import { BrewStoryColumn } from './BrewStory'
 import {
   brewFlipQuiet,
   clearRailExits,
-  dropFlip,
-  dropStaleGhosts,
   enterSites,
   enterStories,
-  exitStories,
-
   FLIP_INTRO_STORY_MS,
-
-  flySites,
-  holdFeedsChrome,
-  playFeedsChrome,
-  readFeedsChrome,
-  readFlipBoxes,
-  revealFeedsTree,
   seatSiteTrack,
-  setFeedsRevealHandler,
-  settleFlip,
-  siteOpenDelay,
-  storyPhaseDelay,
   waitFlip,
 } from './flipCards'
 import {
@@ -924,6 +896,7 @@ const BrewFeedsStories = memo(({
       const to = event.relatedTarget
       if (node && to instanceof Node && node.contains(to)) return
       if (storyAtRailTarget(event.relatedTarget, storyByIdRef.current)) return
+      if (to instanceof Node && event.currentTarget.contains(to)) return
       onPeekEndRef.current()
     },
     [],
@@ -975,7 +948,6 @@ interface BrewFeedsProps {
   onPeekEnd?: () => void
   onToggleStar?: (item: BrewItemPreview) => void | false | Promise<void | false>
   onEditSource?: (source: BrewSource) => void
-  onSitesOpenChange?: (open: boolean) => void
   toolbar?: ReactNode
   vacant?: ReactNode
   stories?: FeedStory[]
@@ -1000,7 +972,6 @@ function BrewFeeds({
   onPeekEnd,
   onToggleStar,
   onEditSource,
-  onSitesOpenChange,
   toolbar,
   vacant,
   stories = [],
@@ -1050,21 +1021,11 @@ function BrewFeeds({
   const pendingFlushRef = useRef(false)
   const pendingExpandRef = useRef<1 | -1 | null>(null)
   const grabbingRef = useRef(false)
-  const [sitesOpen, setSitesOpen] = useState(false)
   const [flipping, setFlipping] = useState(false)
-  const [morphing, setMorphing] = useState(false)
   const [sitesBooted, setSitesBooted] = useState(() => brewFlipQuiet())
   const [storiesBooted, setStoriesBooted] = useState(() => brewFlipQuiet())
-  const sitesOpenRef = useRef(sitesOpen)
-  sitesOpenRef.current = sitesOpen
-  const sitesIntent = useRef(idleSitesIntent(false))
   const flipLock = useRef(false)
   const motionHolds = useRef(0)
-  const pendingAlign = useRef<number | null>(null)
-  const pendingFlip = useRef<Map<string, FlipBox> | null>(null)
-  const pendingStory = useRef<'enter' | 'exit' | null>(null)
-  const pendingStoryBoxes = useRef<Map<string, FlipBox> | null>(null)
-  const pendingChrome = useRef<FeedsChrome | null>(null)
   const introSites = useRef(false)
   const introStories = useRef(false)
   const appliedFocus = useRef<number | null>(null)
@@ -1171,15 +1132,6 @@ function BrewFeeds({
       })),
     }
   }, [brewLabels, format, inboxLead, locale, sources, stories, times])
-  useEffect(() => {
-    if (morphing) return
-    onSitesOpenChange?.(sitesOpen)
-  }, [sitesOpen, morphing, onSitesOpenChange])
-
-  useLayoutEffect(() => {
-    setFeedsRevealHandler(() => setMorphing(false))
-    return () => setFeedsRevealHandler(null)
-  }, [])
 
   const onLeadChange = useCallback((id: number) => {
     lastSourceRef.current = id
@@ -1765,7 +1717,7 @@ function BrewFeeds({
   useBrewRailPan(
     sitesViewRef,
     sitesTrackRef,
-    !sitesOpen && !flipping && railsReady && sources.length > 0,
+    !flipping && railsReady && sources.length > 0,
     siteKey,
     '.brew-site',
     onLeadChange,
@@ -1779,7 +1731,7 @@ function BrewFeeds({
   useBrewRailPan(
     itemsViewRef,
     itemsTrackRef,
-    !sitesOpen && !flipping && railsReady && stories.length > 0,
+    !flipping && railsReady && stories.length > 0,
     railEpoch,
     '.brew-story',
     undefined,
@@ -1859,27 +1811,7 @@ function BrewFeeds({
     motionHolds.current = Math.max(0, motionHolds.current - 1)
     if (motionHolds.current > 0) return
     flipLock.current = false
-    pendingChrome.current = null
-    sitesIntent.current = {
-      ...sitesIntent.current,
-      flipping: false,
-      displayOpen: sitesOpenRef.current,
-    }
     setFlipping(false)
-    setMorphing(false)
-  }
-
-  const abortMotion = () => {
-    motionHolds.current = 0
-    flipLock.current = false
-    pendingFlip.current = null
-    pendingStory.current = null
-    pendingStoryBoxes.current = null
-    pendingChrome.current = null
-    setFlipping(false)
-    setMorphing(false)
-    const root = feedsRef.current
-    if (root) revealFeedsTree(root)
   }
 
   const cancelOwn = (anims: readonly Animation[]) => {
@@ -1892,75 +1824,7 @@ function BrewFeeds({
   }
 
   useLayoutEffect(() => {
-    const first = pendingFlip.current
-    const story = pendingStory.current
-    const storyBoxes = pendingStoryBoxes.current
-    const root = feedsRef.current
-    const track = sitesTrackRef.current
-    if (first && !sitesOpen && pendingAlign.current != null && track) {
-      seatSiteTrack(track, pendingAlign.current)
-    }
-    if (!first || !root) return
-    root.classList.add('is-sites-morphing')
-    dropStaleGhosts(root)
-    clearRailExits(root, '.brew-site')
-    clearRailExits(root, '.brew-story')
-    const lead = focusId != null ? String(focusId) : null
-    const destChrome = readFeedsChrome(root)
-    const anims = [
-      ...flySites(root, first, lead, siteOpenDelay(story ?? 'enter'), sitesOpen),
-      ...(story === 'exit'
-        ? exitStories(root, '.brew-story:not(.brew-story--slot)', storyBoxes, root)
-        : enterStories(
-            root,
-            '.brew-story:not(.brew-story--slot)',
-            storyPhaseDelay(story ?? 'enter'),
-          )),
-    ]
-    const fromChrome = pendingChrome.current
-    if (fromChrome) {
-      holdFeedsChrome(root, fromChrome)
-      anims.push(...playFeedsChrome(root, fromChrome, destChrome))
-    }
-    if (story === 'enter') introStories.current = true
-    const token = brewMotionClaim('flip')
-    const generation = sitesIntent.current.generation
-    let alive = true
-    let released = false
-    const finish = (teardown: boolean) => {
-      if (released) return
-      released = true
-      if (teardown && brewMotionOwns(token)) {
-        settleFlip(anims)
-        dropFlip(anims, root)
-        brewMotionRelease(token)
-      } else {
-        cancelOwn(anims)
-        if (brewMotionOwns(token)) brewMotionRelease(token)
-      }
-      if (generation !== sitesIntent.current.generation) return
-      releaseMotion()
-    }
-    void waitFlip(anims).then(() => {
-      if (!alive) return
-      const done = completeSiteView(sitesIntent.current, generation)
-      if (done.action === 'ignore') return
-      pendingFlip.current = null
-      pendingStory.current = null
-      pendingStoryBoxes.current = null
-      sitesIntent.current = done.state
-      finish(brewMotionOwns(token))
-      if (done.action === 'flip') setSitesMode(done.state.targetOpen)
-    })
-    return () => {
-      alive = false
-      // 已钉 first：只放锁，别拆新幽灵。
-      finish(!(pendingFlip.current || pendingStory.current) && brewMotionOwns(token))
-    }
-  }, [sitesOpen])
-
-  useLayoutEffect(() => {
-    if (sitesOpenRef.current || brewFlipQuiet()) {
+    if (brewFlipQuiet()) {
       introSites.current = true
       setSitesBooted(true)
       return
@@ -1992,11 +1856,10 @@ function BrewFeeds({
       alive = false
       finish()
     }
-    // 开合不能进依赖，cleanup 会碰到正在飞的开合。
   }, [sources.length])
 
   useLayoutEffect(() => {
-    if (sitesOpenRef.current || brewFlipQuiet()) {
+    if (brewFlipQuiet()) {
       introStories.current = true
       setStoriesBooted(true)
       return
@@ -2030,54 +1893,6 @@ function BrewFeeds({
     }
   }, [stories.length, sources.length])
 
-  useLayoutEffect(() => {
-    if (sitesOpen || flipping) return
-    const id = pendingAlign.current
-    if (id == null) return
-    pendingAlign.current = null
-    sitesApiRef.current?.align(id, true)
-  }, [sitesOpen, flipping])
-
-  const setSitesMode = (open: boolean, alignId?: number | null) => {
-    if (alignId != null) pendingAlign.current = alignId
-    else if (!open) pendingAlign.current = focusId
-    const request = requestSiteView(sitesIntent.current, open)
-    if (request.action === 'noop') {
-      if (!open && !flipLock.current && pendingAlign.current != null) {
-        sitesApiRef.current?.align(pendingAlign.current, true)
-      }
-      return
-    }
-    sitesIntent.current = request.state
-    if (brewFlipQuiet() || sitesOpenRef.current === open) {
-      sitesIntent.current = completeSiteView(
-        request.state,
-        request.state.generation,
-      ).state
-      if (sitesOpenRef.current === open) abortMotion()
-      setSitesOpen(open)
-      return
-    }
-    const root = feedsRef.current
-    pendingFlip.current = root
-      ? readFlipBoxes(root, '.brew-site')
-      : new Map()
-    pendingStoryBoxes.current = root
-      ? readFlipBoxes(root, '.brew-story:not(.brew-story--slot)')
-      : new Map()
-    pendingChrome.current = root ? readFeedsChrome(root) : null
-    pendingStory.current = open ? 'exit' : 'enter'
-    if (request.action === 'flip') holdMotion()
-    root?.classList.add('is-sites-morphing')
-    setMorphing(true)
-    setFlipping(true)
-    setSitesOpen(open)
-  }
-
-  const foldSites = (alignId?: number | null) => {
-    setSitesMode(false, alignId ?? focusId)
-  }
-
   const activateSite = (id: number) => {
     if (!isLatestFeedId(id) && isEditMode) {
       onToggleSelect?.(id)
@@ -2096,10 +1911,6 @@ function BrewFeeds({
     setFocusId(id)
     setReadyId(id)
     onJumpSource?.(id)
-    if (sitesOpen) {
-      foldSites(id)
-      return
-    }
     sitesApiRef.current?.align(id)
     alignStoryGroup(id)
   }
@@ -2126,8 +1937,7 @@ function BrewFeeds({
     paintedElRef.current = null
     setFocusId(target.id)
     setReadyId(target.id)
-    if (sitesOpen) foldSites(target.id)
-    else sitesApiRef.current?.align(target.id)
+    sitesApiRef.current?.align(target.id)
     onOpenItem?.(item, target)
   }
   openArticleRef.current = openArticle
@@ -2136,7 +1946,7 @@ function BrewFeeds({
     <FeedsAddFormProvider>
     <div
       ref={feedsRef}
-      className={`brew-skin brew-feeds${sitesOpen ? ' is-sites-open' : ''}${flipping ? ' is-sites-flipping' : ''}${morphing ? ' is-sites-morphing' : ''}${sitesBooted ? ' is-sites-booted' : ''}${storiesBooted ? ' is-stories-booted' : ''}`}
+      className={`brew-skin brew-feeds${flipping ? ' is-sites-flipping' : ''}${sitesBooted ? ' is-sites-booted' : ''}${storiesBooted ? ' is-stories-booted' : ''}`}
     >
       <div className="brew-feeds__air" aria-hidden />
       <div className="brew-feeds__stage">
@@ -2149,24 +1959,8 @@ function BrewFeeds({
           <div className="brew-feeds__source-chrome">
           <BrewRailTitle
             id={sitesTitleId}
-            action={
-              <>
-                <SettingTitleTag
-                  className="brew-feeds__title-tag"
-                  variant={sitesOpen ? 'default' : 'muted'}
-                  icon={sitesOpen ? <Compress /> : <Expand />}
-                  disabled={flipping}
-                  title={sitesOpen ? t.brew.foldSites : t.brew.spreadSites}
-                  onClick={() => {
-                    if (sitesOpen) foldSites(focusId)
-                    else setSitesMode(true)
-                  }}
-                >
-                  {sitesOpen ? t.brew.foldSites : t.brew.spreadSites}
-                </SettingTitleTag>
-                {sourceTags}
-              </>
-            }
+            action={sourceTags}
+            pinned={isEditMode}
           >
             {t.brew.sources}
           </BrewRailTitle>
@@ -2201,9 +1995,7 @@ function BrewFeeds({
           className="brew-feeds__items"
           ref={itemsViewRef}
           hidden={!!vacant}
-          aria-hidden={sitesOpen}
           aria-labelledby={itemsTitleId}
-          inert={sitesOpen}
         >
           <BrewRailTitle id={itemsTitleId}>
             {t.brew.latestArticles}

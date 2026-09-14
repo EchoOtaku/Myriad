@@ -33,8 +33,9 @@ describe('collectNoteCategories', () => {
         { topic: '友情链接' },
         { topic: null },
         { topic: '' },
+        { topic: '工程, 旅行' },
       ]),
-      ['旅行', '随笔'],
+      ['工程', '旅行', '随笔'],
     )
   })
 })
@@ -64,5 +65,9 @@ describe('matchesNoteCategory', () => {
     assert.equal(matchesNoteCategory('旅行', '随笔'), false)
     assert.equal(matchesNoteCategory(null, ''), true)
     assert.equal(matchesNoteCategory('随笔', ''), false)
+    assert.equal(matchesNoteCategory('工程, 旅行', '工程'), true)
+    assert.equal(matchesNoteCategory('工程, 旅行', '旅行'), true)
+    assert.equal(matchesNoteCategory('工程, 旅行', '随笔'), false)
+    assert.equal(matchesNoteCategory('工程, 旅行', ''), false)
   })
 })

@@ -294,3 +294,83 @@ html.dark .brew-rsshub-instances .settings-btn.settings-btn--ghost:hover:not(:di
 .brew-feeds__add-guide .brew-rsshub-instances__metrics {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
+
+.brew-rsshub-instances.is-page {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.brew-rsshub-instances.is-page .brew-rsshub-instances__panel {
+  gap: var(--settings-gap-item, 0.625rem);
+  padding: 0;
+  border-top: 0;
+}
+
+.brew-rsshub-instances.is-page .brew-rsshub-instances__bar {
+  gap: 0.35rem;
+  padding-top: 0;
+}
+
+.brew-rsshub-instances.is-page .brew-rsshub-instances__form {
+  gap: 0.5rem;
+}
+
+.brew-rsshub-instances.is-page .brew-rsshub-instances__list.managed-list {
+  gap: 0.65rem;
+}
+
+.brew-rsshub-instances.is-page .brew-rsshub-instances__list .managed-list-body {
+  padding: 0.15rem 0.15rem 0.2rem 0;
+  gap: 0.45rem;
+}
+
+.brew-rsshub-instances.is-page .brew-rsshub-instances__list .managed-list-body > .managed-list-row,
+.brew-rsshub-instances.is-page .brew-rsshub-instances__list .managed-list-row-head,
+.brew-rsshub-instances.is-page .brew-rsshub-instances__list .managed-list-row-hit {
+  min-height: 2.85rem;
+}
+
+.brew-rsshub-instances.is-page .brew-rsshub-instances__list .managed-list-row-hit {
+  padding: 0.65rem 0.75rem;
+}
+
+.brew-rsshub-instances.is-page .brew-rsshub-instances__list .managed-list-row-title {
+  font-size: 0.8125rem;
+}
+
+.brew-rsshub-instances.is-page .brew-rsshub-instances__list .managed-list-row-subtitle {
+  font-size: 0.75rem;
+}
+
+.brew-rsshub-instances.is-page .brew-rsshub-instances__list .managed-list-badge {
+  padding: 0.1rem 0.45rem;
+  font-size: 0.65rem;
+}
+
+.brew-rsshub-instances.is-page .brew-rsshub-instances__list .managed-list-row-trailing {
+  padding-right: 0;
+}
+
+.brew-rsshub-instances.is-page .brew-rsshub-instances__detail {
+  gap: 0.5rem;
+}
+
+.brew-rsshub-instances.is-page .brew-rsshub-instances__metrics {
+  gap: 0.35rem;
+}
+
+.brew-rsshub-instances.is-page .brew-rsshub-instances__metrics span {
+  padding: 0.4rem 0.45rem;
+}
+
+.brew-rsshub-instances.is-page .brew-rsshub-instances__detail-actions {
+  gap: 0.35rem;
+}
+
+@media (width < 640px) {
+  .brew-rsshub-instances.is-page .brew-rsshub-instances__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

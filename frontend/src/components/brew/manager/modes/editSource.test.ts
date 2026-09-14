@@ -26,11 +26,10 @@ describe('subscriptionModeOf', () => {
 })
 
 describe('canAddCategory', () => {
-  it('只有预置分类能挂第二个', () => {
+  it('未满两项就能再加', () => {
     assert.equal(canAddCategory([]), true)
     assert.equal(canAddCategory(['友情链接']), true)
-    assert.equal(canAddCategory(['我']), true)
-    assert.equal(canAddCategory(['工程']), false)
+    assert.equal(canAddCategory(['工程']), true)
     assert.equal(canAddCategory(['友情链接', '工程']), false)
   })
 })
@@ -39,6 +38,7 @@ describe('joinCategories', () => {
   it('空选不写字段，草稿在限额内并进去', () => {
     assert.equal(joinCategories([]), undefined)
     assert.equal(joinCategories(['友情链接'], '工程'), '友情链接, 工程')
+    assert.equal(joinCategories(['工程'], '旅行'), '工程, 旅行')
     assert.equal(joinCategories(['友情链接', '工程'], '多余'), '友情链接, 工程')
   })
 })

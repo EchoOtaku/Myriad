@@ -1,6 +1,10 @@
 /** 手记分类是站长自建的名字，不是订阅主题。 */
 
-import { isFriendLinkCategory, isMineCategory } from '../constants'
+import {
+  brewCategoryParts,
+  isFriendLinkCategory,
+  isMineCategory,
+} from '../constants'
 import {
   topicDisplayName,
   topicHue,
@@ -31,8 +35,10 @@ export function collectNoteCategories(
 ): string[] {
   const names = new Set<string>()
   for (const item of items) {
-    const name = normalizeNoteCategory(item.topic)
-    if (name && isNoteBoardCategory(name)) names.add(name)
+    for (const part of brewCategoryParts(item.topic)) {
+      const name = normalizeNoteCategory(part)
+      if (name && isNoteBoardCategory(name)) names.add(name)
+    }
   }
   return [...names].toSorted((a, b) => a.localeCompare(b, 'zh'))
 }
@@ -67,7 +73,9 @@ export function matchesNoteCategory(
   filter: string | null,
 ): boolean {
   if (filter == null) return true
-  const name = normalizeNoteCategory(topic)
-  if (filter === NOTE_CATEGORY_NONE) return name == null
-  return name === filter
+  const parts = brewCategoryParts(topic)
+    .map((part) => normalizeNoteCategory(part))
+    .filter((name): name is string => name != null)
+  if (filter === NOTE_CATEGORY_NONE) return parts.length === 0
+  return parts.includes(filter)
 }

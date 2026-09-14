@@ -68,6 +68,7 @@ pub fn create_brew_routes(app_state: crate::state::AppState) -> Router<crate::st
         )
         .route("/topics", get(list_subscription_topics))
         // 手记（站长自写内容；写路径一律管理员）
+        .route("/notes.xml", get(super::notes_rss::notes_rss))
         .route("/notes", post(notes::create_note))
         .route("/notes/preview", post(notes::preview_note))
         .route(

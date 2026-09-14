@@ -26,6 +26,7 @@ import BrewSourceGrid from '../components/brew/BrewSourceGrid'
 import { brewOwnItemPath } from '../components/brew/constants'
 import { storySourceFace } from '../components/brew/notes/noteSiteSource'
 import {
+  BREW_PEEK_HANDOFF_MS,
   BrewPeekAir,
   toBrewPeekFace,
   type BrewPeekFace,
@@ -43,6 +44,7 @@ import {
 } from '../components/brew/logic/boardScroll'
 import { shouldPopOpenedItem } from '../components/brew/logic/brewItemRoute'
 import { topicDisplayName } from '../components/brew/logic/topics'
+import { BrewCategoryAdmin } from '../components/brew/manager/BrewCategoryAdmin'
 import { BrewWorkbenchAdmin } from '../components/brew/manager/BrewWorkbenchAdmin'
 import { useBrewpack } from '../components/brew/manager/useBrewpack'
 import { useNoteTransfer } from '../components/brew/manager/useNoteTransfer'
@@ -56,6 +58,7 @@ import {
 } from '../components/brew/ui/BrewSearch'
 import { useBrewAgentOpen } from '../components/brew/useBrewAgentOpen'
 import { useBrewBoardRoute } from '../components/brew/useBrewBoardRoute'
+import { useBrewCategories } from '../components/brew/useBrewCategories'
 import { useBrewItemActions } from '../components/brew/useBrewItemActions'
 import { useBrewItemRoute } from '../components/brew/useBrewItemRoute'
 import { useBrewItems } from '../components/brew/useBrewItems'
@@ -224,6 +227,44 @@ function BrewSubjectPage() {
     },
     setError,
   )
+  const categories = useBrewCategories(
+    isAdmin && route.viewMode === 'workbench',
+    workbench.docs,
+    sources.sources,
+    {
+      loadFailed: t.brew.workbenchCategoryLoadFailed,
+      createFailed: t.brew.workbenchCategoryCreateFailed,
+      renameFailed: t.brew.workbenchCategoryRenameFailed,
+      deleteFailed: t.brew.workbenchCategoryDeleteFailed,
+      assignFailed: t.brew.workbenchAssignCategoryFailed,
+      categoryFull: t.brew.workbenchCategoryFull,
+      untitled: t.brew.workbenchNoteUntitled,
+    },
+    setError,
+    sources.updateSource,
+    () => {
+      notes.touchDocs()
+      void workbench.reloadNotes()
+    },
+  )
+  useEffect(() => {
+    if (
+      !isAdmin ||
+      route.viewMode !== 'workbench' ||
+      (route.workbenchPane !== 'noteCategories' &&
+        route.workbenchPane !== 'sourceCategories')
+    ) {
+      return
+    }
+    void categories.reload()
+    void workbench.reloadNotes()
+  }, [
+    categories.reload,
+    isAdmin,
+    route.viewMode,
+    route.workbenchPane,
+    workbench.reloadNotes,
+  ])
   const notesIo = useNoteTransfer(workbench.docs, () => {
     notes.touchDocs()
     void workbench.reloadNotes()
@@ -367,11 +408,17 @@ function BrewSubjectPage() {
   useBrewSurface(sources.booting, true)
 
   const [peekFace, setPeekFace] = useState<BrewPeekFace | null>(null)
+  const peekEndTimer = useRef(0)
+  useEffect(() => () => window.clearTimeout(peekEndTimer.current), [])
   useEffect(() => {
+    window.clearTimeout(peekEndTimer.current)
     setPeekFace(null)
   }, [route.board, route.viewMode])
   useEffect(() => {
-    if (item.selectedItem || notes.noteEditor !== null) setPeekFace(null)
+    if (item.selectedItem || notes.noteEditor !== null) {
+      window.clearTimeout(peekEndTimer.current)
+      setPeekFace(null)
+    }
   }, [item.selectedItem, notes.noteEditor])
   const handlePeekItem = useCallback(
     (item: {
@@ -383,15 +430,20 @@ function BrewSubjectPage() {
       source_type?: string | null
       guid?: string | null
     }) => {
+      window.clearTimeout(peekEndTimer.current)
       prefetchArticleDetails([item.id])
-      setPeekFace(toBrewPeekFace(item, storySourceFace(item)))
+      const next = toBrewPeekFace(item, storySourceFace(item))
+      if (next) setPeekFace(next)
     },
     [],
   )
   const handlePeekEnd = useCallback(() => {
-    cancelArticlePrefetch()
-    clearBrewStoryPeeks()
-    setPeekFace(null)
+    window.clearTimeout(peekEndTimer.current)
+    peekEndTimer.current = window.setTimeout(() => {
+      cancelArticlePrefetch()
+      clearBrewStoryPeeks()
+      setPeekFace(null)
+    }, BREW_PEEK_HANDOFF_MS)
   }, [])
 
   if (sources.booting) {
@@ -421,6 +473,7 @@ function BrewSubjectPage() {
             mediaLoading={workbench.mediaLoading}
             busy={workbench.busy}
             sourceCount={sources.sources.length}
+            sources={sources.sources}
             packBusy={pack.loading}
             packProgress={
               pack.progress
@@ -436,8 +489,8 @@ function BrewSubjectPage() {
               if (open.kind === 'item') notes.edit(open.id)
               else notes.editDoc(open.id)
             }}
-            onDeleteNote={(doc) => {
-              void workbench.removeNote(doc).then(() => sources.reloadBoard())
+            onDeleteNotes={(docs) => {
+              void workbench.removeNotes(docs).then(() => sources.reloadBoard())
             }}
             onUnschedule={workbench.unschedule}
             onUpload={workbench.upload}
@@ -467,13 +520,59 @@ function BrewSubjectPage() {
                   ),
               )
             }
+            noteCategories={categories.noteRows.map((row) => row.name)}
+            onAssignNotes={(docs, name) => {
+              void categories.assign(
+                'notes',
+                docs.map((doc) => doc.id),
+                name,
+              )
+            }}
             admin={
-              route.workbenchPane === 'sources' ||
-              route.workbenchPane === 'add' ||
-              route.workbenchPane === 'rsshub' ||
-              route.workbenchPane === 'feedsIo' ? (
+              route.workbenchPane === 'noteCategories' ||
+              route.workbenchPane === 'sourceCategories' ? (
+                <BrewCategoryAdmin
+                  page={
+                    route.workbenchPane === 'noteCategories'
+                      ? 'notes'
+                      : 'sources'
+                  }
+                  rows={
+                    route.workbenchPane === 'noteCategories'
+                      ? categories.noteRows
+                      : categories.sourceRows
+                  }
+                  loading={categories.loading}
+                  busy={categories.busy}
+                  onCreate={categories.create}
+                  onRename={(from, to) =>
+                    categories.rename(
+                      from,
+                      to,
+                      route.workbenchPane === 'noteCategories'
+                        ? 'notes'
+                        : 'sources',
+                    )
+                  }
+                  onDelete={(name) =>
+                    categories.remove(
+                      name,
+                      route.workbenchPane === 'noteCategories'
+                        ? 'notes'
+                        : 'sources',
+                    )
+                  }
+                />
+              ) : route.workbenchPane === 'sources' ||
+                route.workbenchPane === 'add' ||
+                route.workbenchPane === 'rsshub' ||
+                route.workbenchPane === 'feedsIo' ? (
                 <BrewWorkbenchAdmin
                   pane={route.workbenchPane}
+                  extraCategories={categories.names}
+                  onAssignSources={(ids, name) => {
+                    void categories.assign('sources', ids, name)
+                  }}
                   sources={sources.sources}
                   onAddSource={sources.addSource}
                   onDiscover={sources.discoverSource}
@@ -534,6 +633,8 @@ function BrewSubjectPage() {
             onLoadMore={list.loadMore}
             onToggleStar={actions.toggleStar}
             onItemSelectToggle={starred.toggle}
+            onPeekItem={handlePeekItem}
+            onPeekEnd={handlePeekEnd}
           />
         ) : null}
       </BrewViewLane>

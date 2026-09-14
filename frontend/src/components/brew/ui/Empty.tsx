@@ -3,9 +3,9 @@ import { BrewRailTitle } from './BrewRailTitle'
 
 const STORY_GHOSTS = [1, 2, 3, 4, 5] as const
 const SITE_GHOSTS = [1, 2, 3, 4, 5] as const
-const FRIEND_STORY_GHOSTS = [1, 2, 3] as const
+const FRIEND_STORY_GHOSTS = [1, 2, 3, 4] as const
 
-function StoryGhost({ i, compact = false }: { i: number; compact?: boolean }) {
+function StoryGhost({ i }: { i: number }) {
   return (
     <div
       className="brew-vacant__ghost"
@@ -15,14 +15,10 @@ function StoryGhost({ i, compact = false }: { i: number; compact?: boolean }) {
       <span className="brew-vacant__shell">
         <span className="brew-vacant__bar is-meta" />
         <span className="brew-vacant__bar is-title" />
-        {compact ? null : (
-          <>
-            <span className="brew-vacant__bar is-title is-short" />
-            <span className="brew-vacant__bar is-line" />
-            <span className="brew-vacant__bar is-line" />
-            <span className="brew-vacant__bar is-line is-short" />
-          </>
-        )}
+        <span className="brew-vacant__bar is-title is-short" />
+        <span className="brew-vacant__bar is-line" />
+        <span className="brew-vacant__bar is-line" />
+        <span className="brew-vacant__bar is-line is-short" />
       </span>
     </div>
   )
@@ -80,12 +76,12 @@ export function BrewVacant({
           className="brew-vacant__items"
           style={
             {
-              '--brew-story-cols': Math.ceil(FRIEND_STORY_GHOSTS.length / 2),
+              '--brew-story-cols': FRIEND_STORY_GHOSTS.length,
             } as CSSProperties
           }
         >
           {FRIEND_STORY_GHOSTS.map((i) => (
-            <StoryGhost key={i} i={i} compact />
+            <StoryGhost key={i} i={i} />
           ))}
         </div>
       </div>

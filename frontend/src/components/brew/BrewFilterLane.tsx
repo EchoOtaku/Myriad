@@ -25,6 +25,8 @@ interface BrewFilterLaneProps {
   onLoadMore: () => void
   onToggleStar: (item: BrewItem) => void
   onItemSelectToggle?: (id: number) => void
+  onPeekItem?: (item: BrewItem) => void
+  onPeekEnd?: () => void
 }
 
 export default function BrewFilterLane({
@@ -39,6 +41,8 @@ export default function BrewFilterLane({
   onLoadMore,
   onToggleStar,
   onItemSelectToggle,
+  onPeekItem,
+  onPeekEnd,
 }: BrewFilterLaneProps) {
   const { t } = useI18n()
   const titleId = useId()
@@ -57,6 +61,7 @@ export default function BrewFilterLane({
               topicFeedMode={topicFeedMode}
             />
           }
+          pinned={!!starredMode?.isEditMode}
         >
           {title}
         </BrewRailTitle>
@@ -71,6 +76,8 @@ export default function BrewFilterLane({
         onItemSelect={onItemSelect}
         onLoadMore={onLoadMore}
         onToggleStar={onToggleStar}
+        onPeekItem={starredMode?.isEditMode ? undefined : onPeekItem}
+        onPeekEnd={starredMode?.isEditMode ? undefined : onPeekEnd}
         emptyText={starredMode ? t.brew.starredEmpty : undefined}
         editMode={starredMode?.isEditMode}
         selectedIds={starredMode?.selectedIds}

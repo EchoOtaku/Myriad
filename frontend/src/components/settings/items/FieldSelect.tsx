@@ -1,14 +1,15 @@
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { SettingOption } from '../types'
 import {
-
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react'
+import { createPortal } from 'react-dom'
 import './FieldSelect.css'
 
 export interface FieldSelectProps<T extends string = string> {
@@ -55,8 +56,14 @@ export function FieldSelect<T extends string = string>({
 }: FieldSelectProps<T>) {
   const [open, setOpen] = useState(false)
   const [menuUp, setMenuUp] = useState(false)
+  const [menuBox, setMenuBox] = useState<{
+    top: number
+    left: number
+    width: number
+  } | null>(null)
   const [query, setQuery] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -138,28 +145,46 @@ export function FieldSelect<T extends string = string>({
   const placeMenu = useCallback(() => {
     const root = rootRef.current
     if (!root) return
-    const panel = root.querySelector('.field-select-panel') as HTMLElement | null
-    const measure = panel ?? listRef.current
-    if (!measure) return
     const rect = root.getBoundingClientRect()
+    const panel = panelRef.current
     const menuH = Math.min(
-      measure.scrollHeight,
+      panel?.offsetHeight || panel?.scrollHeight || 12 * 16,
       window.innerHeight * 0.5,
       18 * 16,
     )
     const spaceBelow = window.innerHeight - rect.bottom - 8
     const spaceAbove = rect.top - 8
-    setMenuUp(spaceBelow < menuH && spaceAbove > spaceBelow)
-  }, [])
+    const up = spaceBelow < menuH && spaceAbove > spaceBelow
+    const minW = size === 'sm' ? Math.max(rect.width, 9 * 16) : rect.width
+    const width = Math.min(minW, Math.min(16 * 16, window.innerWidth - 16))
+    let left = size === 'sm' ? rect.right - width : rect.left
+    left = Math.max(8, Math.min(left, window.innerWidth - width - 8))
+    const top = up
+      ? Math.max(8, rect.top - 8 - menuH)
+      : Math.min(rect.bottom + 5, window.innerHeight - 8)
+    setMenuUp(up)
+    setMenuBox({ top, left, width })
+  }, [size])
 
   useEffect(() => {
     if (!open) return
     const onDoc = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
+      const node = e.target as Node
+      if (rootRef.current?.contains(node)) return
+      if (panelRef.current?.contains(node)) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
   }, [open])
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuBox(null)
+      return
+    }
+    placeMenu()
+  }, [open, placeMenu, query])
 
   useEffect(() => {
     if (!open) {
@@ -168,8 +193,19 @@ export function FieldSelect<T extends string = string>({
     }
     placeMenu()
     const onResize = () => placeMenu()
+    const onScroll = (event: Event) => {
+      const root = rootRef.current
+      const node = event.target
+      if (
+        node instanceof Node &&
+        (root?.contains(node) || panelRef.current?.contains(node))
+      ) {
+        return
+      }
+      placeMenu()
+    }
     window.addEventListener('resize', onResize)
-    window.addEventListener('scroll', onResize, true)
+    window.addEventListener('scroll', onScroll, true)
     requestAnimationFrame(() => {
       if (searchable) {
         searchRef.current?.focus()
@@ -184,7 +220,7 @@ export function FieldSelect<T extends string = string>({
     })
     return () => {
       window.removeEventListener('resize', onResize)
-      window.removeEventListener('scroll', onResize, true)
+      window.removeEventListener('scroll', onScroll, true)
     }
   }, [
     open,
@@ -379,62 +415,77 @@ export function FieldSelect<T extends string = string>({
         </span>
         <span className="field-select-chevron" aria-hidden="true" />
       </button>
-      {open && (
-        <div className="field-select-panel">
-          {searchable ? (
-            <div className="field-select-search">
-              <input
-                ref={searchRef}
-                id={searchId}
-                type="search"
-                className="field-select-search-input"
-                value={query}
-                placeholder={searchPlaceholder}
-                aria-label={searchPlaceholder}
-                autoComplete="off"
-                autoCorrect="off"
-                spellCheck={false}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={onSearchKeyDown}
-                onClick={(e) => e.stopPropagation()}
-              />
-            </div>
-          ) : null}
-          <ul
-            ref={listRef}
-            id={listboxId}
-            className="field-select-menu"
-            role="listbox"
-            aria-label={ariaLabel || selected?.label}
-            onKeyDown={onListKeyDown}
-          >
-            {filteredOptions.length === 0 ? (
-              <li className="field-select-empty" role="presentation">
-                {emptySearchText}
-              </li>
-            ) : (
-              filteredOptions.map((option) => {
-                const isSelected = option.value === value
-                return (
-                  <li key={String(option.value)} role="presentation">
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={isSelected}
-                      disabled={option.disabled}
-                      tabIndex={-1}
-                      className={`field-select-option${isSelected ? ' is-selected' : ''}`}
-                      onClick={() => commit(option.value, option.disabled)}
-                    >
-                      {option.label}
-                    </button>
+      {open && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              ref={panelRef}
+              className={`field-select-panel is-portal field-select-size-${size}${menuUp ? ' is-up' : ''}`}
+              style={
+                menuBox
+                  ? {
+                      top: menuBox.top,
+                      left: menuBox.left,
+                      width: menuBox.width,
+                    }
+                  : { top: 0, left: 0, visibility: 'hidden' }
+              }
+            >
+              {searchable ? (
+                <div className="field-select-search">
+                  <input
+                    ref={searchRef}
+                    id={searchId}
+                    type="search"
+                    className="field-select-search-input"
+                    value={query}
+                    placeholder={searchPlaceholder}
+                    aria-label={searchPlaceholder}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={onSearchKeyDown}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
+              ) : null}
+              <ul
+                ref={listRef}
+                id={listboxId}
+                className="field-select-menu"
+                role="listbox"
+                aria-label={ariaLabel || selected?.label}
+                onKeyDown={onListKeyDown}
+              >
+                {filteredOptions.length === 0 ? (
+                  <li className="field-select-empty" role="presentation">
+                    {emptySearchText}
                   </li>
-                )
-              })
-            )}
-          </ul>
-        </div>
-      )}
+                ) : (
+                  filteredOptions.map((option) => {
+                    const isSelected = option.value === value
+                    return (
+                      <li key={String(option.value)} role="presentation">
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={isSelected}
+                          disabled={option.disabled}
+                          tabIndex={-1}
+                          className={`field-select-option${isSelected ? ' is-selected' : ''}`}
+                          onClick={() => commit(option.value, option.disabled)}
+                        >
+                          {option.label}
+                        </button>
+                      </li>
+                    )
+                  })
+                )}
+              </ul>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   )
 }

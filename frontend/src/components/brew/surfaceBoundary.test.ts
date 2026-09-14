@@ -39,8 +39,9 @@ describe('brew 舞台契约', () => {
     assert.match(notes, /<BrewStory/)
     assert.match(notes, /<StoryCard/)
     assert.match(notes, /brew-notes/)
+    assert.match(notes, /useBrewRailPan\(/)
     assert.match(css, /\.brew-notes/)
-    assert.match(css, /\.brew-notes \{[\s\S]*grid-auto-flow: row;/)
+    assert.match(css, /\.brew-notes-track[\s\S]*?grid-auto-flow: row;/)
     assert.doesNotMatch(css, /brew-salon/)
   })
 
@@ -54,6 +55,7 @@ describe('brew 舞台契约', () => {
     assert.doesNotMatch(css, /brew-friends-span/)
     assert.match(friends, /visitFriendHref/)
     assert.doesNotMatch(friends, /onSourceClick/)
+    assert.doesNotMatch(friends, /onOpenLatest/)
   })
 
   it('文章区不走网站卡的卡槽轨', () => {
@@ -68,13 +70,39 @@ describe('brew 舞台契约', () => {
       /overflow/,
     )
     assert.match(css, /\.brew-friends__items-track \{[\s\S]*?grid-auto-flow: row;/)
-    assert.match(css, /\.brew-friends__sites \{[\s\S]*?grid-auto-flow: column;/)
-    assert.match(css, /--brew-story-h: 4\.35rem/)
-    assert.match(css, /\.brew-friends \.brew-story__title \{[\s\S]*?-webkit-line-clamp: 1;/)
-    assert.match(css, /\.brew-friends \.brew-story__summary/)
-    assert.match(css, /\.brew-friends \.brew-story__peek/)
+    assert.match(
+      css,
+      /\.brew-friends__items-track \{[\s\S]*?grid-template-rows: var\(--brew-story-h/,
+    )
+    assert.match(
+      css,
+      /\.brew-friends__sites-track \{[\s\S]*?grid-auto-flow: column;/,
+    )
+    assert.doesNotMatch(
+      css.match(/\.brew-friends__sites \{[^}]*\}/)?.[0] ?? '',
+      /overflow:\s*(auto|hidden)/,
+    )
+    assert.doesNotMatch(
+      css.match(/\.brew-friends__items \{[^}]*\}/)?.[0] ?? '',
+      /overflow:\s*(auto|hidden)/,
+    )
+    assert.doesNotMatch(
+      css.match(/\.brew-page__body \{[^}]*\}/)?.[0] ?? '',
+      /overflow:\s*(auto|hidden)/,
+    )
+    assert.doesNotMatch(css, /--brew-story-h: 4\.35rem/)
+    assert.doesNotMatch(css, /\.brew-friends \.brew-story__title/)
+    assert.doesNotMatch(css, /\.brew-friends \.brew-story__summary/)
     const vacant = read('ui/Empty.tsx')
-    assert.match(vacant, /<StoryGhost key=\{i\} i=\{i\} compact \/>/)
+    assert.doesNotMatch(vacant, /compact/)
+    const friends = read('skin/BrewFriends.tsx')
+    assert.match(friends, /useBrewRailPan\(/)
+    assert.match(friends, /data-brew-rail-track="sites"/)
+    assert.match(friends, /stories\.length/)
+    assert.doesNotMatch(friends, /stories\.length \/ 2/)
+    const list = read('skin/BrewList.tsx')
+    assert.match(list, /useBrewRailPan\(/)
+    assert.match(list, /brew-stories-track/)
   })
 
   it('朋友们网站轨和文章轨用订阅页同一套间距', () => {
@@ -86,12 +114,16 @@ describe('brew 舞台契约', () => {
       feeds,
       /padding: 0\.28rem var\(--brew-rail-pad-x\) 0\.35rem/,
     )
-    assert.match(css, /\.brew-friends__sites \{[\s\S]*?padding: 0\.28rem 0 0\.35rem/)
+    assert.match(css, /\.brew-friends__sites-track \{[\s\S]*?padding: 0\.28rem 0 0\.35rem/)
     assert.match(css, /\.brew-friends__items-track \{[\s\S]*?padding: 0\.35rem 0/)
     assert.match(css, /\.brew-friends > \.brew-rail-title \{[\s\S]*?margin-top: 0\.75rem/)
     assert.match(
       empty,
       /\.brew-vacant__sites \{[\s\S]*?padding: 0\.28rem 0 0\.35rem/,
+    )
+    assert.doesNotMatch(
+      empty.match(/\.brew-vacant__sites \{[^}]*\}/)?.[0] ?? '',
+      /overflow:\s*(auto|hidden)/,
     )
     assert.match(
       empty,
@@ -107,6 +139,8 @@ describe('brew 舞台契约', () => {
     const friends = read('skin/BrewFriends.tsx')
     assert.match(title, /data-brew-surface=\{entering \? 'title'/)
     assert.match(title, /is-arrive/)
+    assert.match(title, /brew-rail-title__actions/)
+    assert.match(title, /pinned && 'is-actions-on'/)
     assert.match(site, /data-brew-surface="site"/)
     assert.match(site, /arrive != null && 'is-arrive'/)
     assert.match(story, /data-brew-surface="story"/)
@@ -120,6 +154,10 @@ describe('brew 舞台契约', () => {
     assert.match(lane, /playBrewSurfaceExit/)
     assert.match(lane, /revealFeedsTree/)
     assert.match(motion, /\.brew-rail-title\.is-arrive/)
+    const feedsCss = read('ui/css/feeds.css')
+    assert.match(feedsCss, /@media \(hover: hover\) and \(pointer: fine\)/)
+    assert.match(feedsCss, /\.brew-rail-title:hover \.brew-rail-title__actions/)
+    assert.match(feedsCss, /\.brew-rail-title\.is-actions-on \.brew-rail-title__actions/)
     assert.match(motion, /\.brew-site\.is-arrive/)
     assert.match(motion, /\.brew-vacant\.is-arrive/)
     assert.match(

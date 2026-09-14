@@ -6,10 +6,21 @@ import { fileURLToPath } from 'node:url'
 
 const dir = dirname(fileURLToPath(import.meta.url))
 
-describe('brew feeds 开合 class 链', () => {
-  it('morphing 必须在 React className 里，重绘才能保住藏活卡', () => {
+describe('brew feeds 入场 class 链', () => {
+  it('订阅页不再展开宫格', () => {
     const src = readFileSync(join(dir, 'BrewFeeds.tsx'), 'utf8')
-    assert.match(src, /morphing \? ' is-sites-morphing'/)
+    assert.doesNotMatch(src, /spreadSites/)
+    assert.doesNotMatch(src, /setSitesMode/)
+    assert.doesNotMatch(src, /foldSites/)
+    assert.doesNotMatch(src, /is-sites-open/)
+    assert.doesNotMatch(src, /is-sites-morphing/)
+    const css = readFileSync(join(dir, '../ui/css/cards.css'), 'utf8')
+    const feedsCss = readFileSync(join(dir, '../ui/css/feeds.css'), 'utf8')
+    const motionCss = readFileSync(join(dir, '../ui/css/motion.css'), 'utf8')
+    assert.doesNotMatch(css, /is-sites-open/)
+    assert.doesNotMatch(feedsCss, /is-sites-open/)
+    assert.doesNotMatch(feedsCss, /is-sites-morphing/)
+    assert.doesNotMatch(motionCss, /is-sites-open/)
   })
 
   it('滚文章过源先点网站卡，停稳再写 focus / jump，避免整轨重绘', () => {
@@ -344,7 +355,7 @@ describe('brew feeds 开合 class 链', () => {
     assert.match(pan, /wakeStoryCovers/)
   })
 
-  it('文章区收拢只在开合落定后，morphing 时不 !important 压死 chrome', () => {
+  it('文章轨虚拟化样式不依赖展开宫格', () => {
     const css = readFileSync(join(dir, '../ui/css/cards.css'), 'utf8')
     assert.match(css, /\.brew-story--slot \{\n {2}pointer-events: none;\n {2}contain: strict;/)
     assert.match(css, /\.brew-skin button\.brew-story--slot/)
@@ -358,10 +369,7 @@ describe('brew feeds 开合 class 链', () => {
     )
     assert.match(css, /grid-template:/)
     assert.doesNotMatch(css, /\.brew-story__foot/)
-    assert.match(
-      css,
-      /\.brew-feeds\.is-sites-open:not\(\.is-sites-morphing\) \.brew-feeds__items/,
-    )
+    assert.doesNotMatch(css, /is-sites-open/)
     const feedsCss = readFileSync(join(dir, '../ui/css/feeds.css'), 'utf8')
     assert.match(
       feedsCss,

@@ -68,6 +68,7 @@ html.dark .field-select-trigger:hover .field-select-chevron {
   margin: 0;
   padding: 0;
   overflow: hidden;
+  overscroll-behavior: contain;
   border: 1px solid var(--cfg-frost-border);
   border-radius: 0.75rem;
   background: var(--cfg-frost-elevated-bg);
@@ -81,6 +82,14 @@ html.dark .field-select-trigger:hover .field-select-chevron {
 .field-select-wrap.is-up .field-select-panel {
   top: auto;
   bottom: calc(100% + 0.3rem);
+}
+
+.field-select-panel.is-portal {
+  position: fixed;
+  inset: auto;
+  width: auto;
+  max-width: min(16rem, calc(100vw - 1rem));
+  z-index: 10050;
 }
 
 html.dark .field-select-panel {
@@ -129,6 +138,7 @@ html.dark .field-select-panel {
   margin: 0;
   padding: 0.3rem;
   overflow-y: auto;
+  overscroll-behavior: contain;
   list-style: none;
   border: none;
   border-radius: 0;
@@ -218,11 +228,13 @@ html.dark .field-select-option.is-selected {
   left: auto;
 }
 
+.field-select-panel.field-select-size-sm .field-select-option,
 .field-select-size-sm .field-select-option {
   padding: 0.4rem 0.6rem;
   font-size: 0.75rem;
 }
 
+.field-select-panel.field-select-size-sm .field-select-search-input,
 .field-select-size-sm .field-select-search-input {
   font-size: 0.75rem;
   padding: 0.35rem 0.5rem;

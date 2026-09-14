@@ -1,9 +1,9 @@
 /** 手记：云端稿、已发布、剩下的自有源都走文章卡。 */
 
+import type { CSSProperties } from 'react'
 import type { BrewItemPreview, BrewNoteDoc, BrewSource } from '../../../types/brew'
 import type { HomeBoardNote } from '../logic/homeBoard'
-
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../../../contexts/I18nContext'
 import { brewOwnItemPath, getIconUrl, getImageUrl } from '../constants'
@@ -24,6 +24,7 @@ import { storySourceFace } from '../notes/noteSiteSource'
 import { StoryCard } from '../ui/StoryCard'
 import { BrewStory } from './BrewStory'
 import { useBrewTimes } from './time'
+import { useBrewRailPan } from './useBrewRailPan'
 
 function openLink(source: BrewSource) {
   const href = visitFriendHref(source)
@@ -114,6 +115,29 @@ export default function BrewNotes({
     return filter === NOTE_CATEGORY_NONE
   })
   const showCats = categories.length > 0
+  const cardCount = shownDocs.length + shownNotes.length + shownLeftover.length
+  const storyCols = Math.max(1, Math.ceil(cardCount / 2))
+  const notesViewRef = useRef<HTMLDivElement>(null)
+  const notesTrackRef = useRef<HTMLDivElement>(null)
+  const notesKey = useMemo(
+    () =>
+      [
+        ...shownDocs.map((doc) => `doc:${doc.id}`),
+        ...shownNotes.map((note) => `note:${note.id}`),
+        ...shownLeftover.map((source) => `source:${source.id}`),
+      ].join(','),
+    [shownDocs, shownLeftover, shownNotes],
+  )
+  useBrewRailPan(
+    notesViewRef,
+    notesTrackRef,
+    cardCount > 0,
+    notesKey,
+    '.brew-story',
+    undefined,
+    undefined,
+    true,
+  )
 
   const activateSource = (source: BrewSource) => {
     if (isEditMode) {
@@ -137,11 +161,19 @@ export default function BrewNotes({
     else navigate(brewOwnItemPath(item.id))
   }
 
-  let arriveAt = 0
-  const nextArrive = () => {
-    const index = arriveAt
-    arriveAt += 1
-    return index < 8 ? index : undefined
+  let cardAt = 0
+  const takeSeat = () => {
+    const index = cardAt
+    cardAt += 1
+    const column = Math.floor(index / 2) + 1
+    return {
+      arrive: index < 8 ? index : undefined,
+      railCol: column,
+      place: {
+        column,
+        row: (index % 2 === 0 ? 1 : 2) as 1 | 2,
+      },
+    }
   }
 
   return (
@@ -170,13 +202,26 @@ export default function BrewNotes({
           ) : null}
         </div>
       ) : null}
-      <div className="brew-skin brew-notes">
+      <div
+        className="brew-skin brew-notes"
+        ref={notesViewRef}
+        data-brew-peek-lane
+      >
+      <div
+        className="brew-notes-track"
+        ref={notesTrackRef}
+        data-brew-rail-track="items"
+        style={{ '--brew-story-cols': storyCols } as CSSProperties}
+      >
       {shownDocs.map((doc) => {
         const faceTopic = noteStoryTopic(doc.topic, labels)
+        const seat = takeSeat()
         return (
           <StoryCard
             key={`doc:${doc.id}`}
-            arrive={nextArrive()}
+            arrive={seat.arrive}
+            railCol={seat.railCol}
+            place={seat.place}
             unreadLabel={labels.unread}
             starLabel={labels.starred}
             unstarLabel={labels.unstar}
@@ -204,6 +249,7 @@ export default function BrewNotes({
       {shownNotes.map((note) => {
         const source = byId.get(note.source_id)
         const item = toNoteStory(note, source)
+        const seat = takeSeat()
         return (
           <BrewStory
             key={`note:${note.id}`}
@@ -211,7 +257,9 @@ export default function BrewNotes({
             times={times}
             locale={locale}
             labels={labels}
-            arrive={nextArrive()}
+            arrive={seat.arrive}
+            railCol={seat.railCol}
+            place={seat.place}
             picking={isEditMode}
             picked={!!selectedIds?.has(note.source_id)}
             onOpen={() => openArticle(item, note.source_id)}
@@ -227,7 +275,7 @@ export default function BrewNotes({
       })}
       {shownLeftover.map((source) => {
         const story = sourceLatestStory(source)
-        const arrive = nextArrive()
+        const seat = takeSeat()
         if (story) {
           return (
             <BrewStory
@@ -236,7 +284,9 @@ export default function BrewNotes({
               times={times}
               locale={locale}
               labels={labels}
-              arrive={arrive}
+              arrive={seat.arrive}
+              railCol={seat.railCol}
+              place={seat.place}
               picking={isEditMode}
               picked={!!selectedIds?.has(source.id)}
               onOpen={() => openArticle(story, source.id)}
@@ -258,7 +308,9 @@ export default function BrewNotes({
         return (
           <StoryCard
             key={`source:${source.id}`}
-            arrive={arrive}
+            arrive={seat.arrive}
+            railCol={seat.railCol}
+            place={seat.place}
             picking={isEditMode}
             picked={!!selectedIds?.has(source.id)}
             unreadLabel={labels.unread}
@@ -275,6 +327,7 @@ export default function BrewNotes({
           />
         )
       })}
+      </div>
       </div>
     </div>
   )

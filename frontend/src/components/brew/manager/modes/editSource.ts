@@ -1,7 +1,7 @@
 /** 分类预置值走库里的「友情链接 / 我」，不走界面语言。 */
 
 import type { BrewSource, FeedType, SourceType, UpdateSourceRequest } from '../../../../types/brew'
-import { brewCategoryParts, PRESET_CATEGORY_DB_VALUES } from '../../constants'
+import { brewCategoryParts } from '../../constants'
 import { workbenchSourceKind } from '../../logic/board'
 import type { AddFieldKind } from './addSource'
 import { pickAddKind } from './addSource'
@@ -27,9 +27,7 @@ export function editFieldKind(
 }
 
 export function canAddCategory(selected: readonly string[]): boolean {
-  if (selected.length === 0) return true
-  if (selected.length >= 2) return false
-  return selected.some((cat) => PRESET_CATEGORY_DB_VALUES.includes(cat))
+  return selected.length < 2
 }
 
 export function joinCategories(

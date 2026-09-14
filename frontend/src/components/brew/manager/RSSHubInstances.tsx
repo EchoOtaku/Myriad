@@ -7,11 +7,13 @@ import {
   LuRefreshCw as RefreshCw,
   LuTrash2 as Trash2,
 } from '@lib/icons'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { API_URL } from '../../../config'
 import { useI18n } from '../../../contexts/I18nContext'
 import { getCSRFHeaderName, getCSRFToken } from '../../../utils/csrf'
 import { showError } from '../../../utils/toastManager'
+import { CheckboxCard } from '../../settings/items/CheckboxCard'
 import { InputItem } from '../../settings/items/InputItem'
 import { NumberItem } from '../../settings/items/NumberItem'
 import { SettingsButton } from '../../settings/items/SettingsButton'
@@ -79,14 +81,17 @@ function emptyDraft() {
 export function RSSHubInstances({
   disabled = false,
   defaultOpen = false,
+  layout = 'embed',
   initialUrl,
   onChange,
 }: {
   disabled?: boolean
   defaultOpen?: boolean
+  layout?: 'embed' | 'page'
   initialUrl?: string
   onChange: (instance: RsshubInstance | null) => void
 }) {
+  const compact = layout === 'embed'
   const { t, locale } = useI18n()
   const brew = t.brew
   const onChangeRef = useRef(onChange)
@@ -97,7 +102,7 @@ export function RSSHubInstances({
   const [loading, setLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [openId, setOpenId] = useState<number | null>(null)
-  const [panelOpen, setPanelOpen] = useState(defaultOpen)
+  const [panelOpen, setPanelOpen] = useState(defaultOpen || layout === 'page')
   const [formOpen, setFormOpen] = useState(false)
   const [draft, setDraft] = useState(emptyDraft)
   const [adding, setAdding] = useState(false)
@@ -514,74 +519,125 @@ export function RSSHubInstances({
         ? 'default'
         : 'danger'
 
+  const showPanel = !compact || panelOpen
+  const [headerHost, setHeaderHost] = useState<HTMLElement | null>(null)
+
+  useLayoutEffect(() => {
+    if (compact) {
+      setHeaderHost(null)
+      return
+    }
+    setHeaderHost(document.getElementById('workbench-rsshub-actions'))
+  }, [compact])
+
+  const toggleForm = () => {
+    setFormOpen((open) => !open)
+    setEditingId(null)
+    if (formOpen) setDraft(emptyDraft())
+  }
+
+  const bar = compact ? (
+    <div className="brew-rsshub-instances__bar">
+      <SettingsButton
+        size="sm"
+        variant="ghost"
+        icon={<RefreshCw />}
+        loading={checkingAll}
+        disabled={disabled || loading || instances.length === 0}
+        onClick={() => void handleCheckAll()}
+      >
+        {brew.rsshubCheckAll}
+      </SettingsButton>
+      <SettingsButton
+        size="sm"
+        icon={<Plus />}
+        disabled={disabled}
+        variant={formOpen ? 'ghost' : 'primary'}
+        onClick={toggleForm}
+      >
+        {formOpen ? brew.cancel : brew.rsshubAddInstance}
+      </SettingsButton>
+    </div>
+  ) : (
+    <div className="brew-rsshub-instances__bar">
+      <CheckboxCard
+        variant="action"
+        tone="primary"
+        label={brew.rsshubCheckAll}
+        description={brew.workbenchRsshub}
+        icon={<RefreshCw />}
+        showIndicator={false}
+        checked={false}
+        loading={checkingAll}
+        disabled={disabled || loading || instances.length === 0}
+        className="setting-section-header-action"
+        onChange={() => {
+          void handleCheckAll()
+        }}
+      />
+      <CheckboxCard
+        variant="action"
+        tone="primary"
+        label={formOpen ? brew.cancel : brew.rsshubAddInstance}
+        description={brew.workbenchRsshub}
+        icon={<Plus />}
+        showIndicator={false}
+        checked={false}
+        disabled={disabled}
+        className="setting-section-header-action"
+        onChange={toggleForm}
+      />
+    </div>
+  )
+
   return (
     <div
-      className={`brew-rsshub-instances${panelOpen ? ' is-open' : ''}${disabled ? ' is-disabled' : ''}`}
+      className={`brew-rsshub-instances${showPanel ? ' is-open' : ''}${compact ? '' : ' is-page'}${disabled ? ' is-disabled' : ''}`}
     >
-      <button
-        type="button"
-        className="brew-rsshub-instances__summary"
-        disabled={disabled}
-        aria-expanded={panelOpen}
-        onClick={() => {
-          if (disabled) return
-          if (panelOpen) closePanel()
-          else setPanelOpen(true)
-        }}
-      >
-        <span className="brew-rsshub-instances__summary-main">
-          <span className="brew-rsshub-instances__summary-name">
-            {loading ? brew.loading : current?.name ?? brew.rsshubNoInstance}
-            {current?.has_access_key ? <Key /> : null}
+      {compact ? (
+        <button
+          type="button"
+          className="brew-rsshub-instances__summary"
+          disabled={disabled}
+          aria-expanded={panelOpen}
+          onClick={() => {
+            if (disabled) return
+            if (panelOpen) closePanel()
+            else setPanelOpen(true)
+          }}
+        >
+          <span className="brew-rsshub-instances__summary-main">
+            <span className="brew-rsshub-instances__summary-name">
+              {loading ? brew.loading : current?.name ?? brew.rsshubNoInstance}
+              {current?.has_access_key ? <Key /> : null}
+            </span>
+            <span className="brew-rsshub-instances__summary-url">
+              {current?.url ?? brew.rsshubClickToAdd}
+            </span>
           </span>
-          <span className="brew-rsshub-instances__summary-url">
-            {current?.url ?? brew.rsshubClickToAdd}
+          <span className="brew-rsshub-instances__summary-side">
+            {loading ? (
+              <Spinner size="xs" />
+            ) : current ? (
+              <SettingTitleTag variant={healthVariant}>
+                {brew[HEALTH_LABEL[current.health_status]]}
+              </SettingTitleTag>
+            ) : null}
+            {instances.length > 0 ? (
+              <SettingTitleTag variant="muted">
+                {instances.length}
+              </SettingTitleTag>
+            ) : null}
+            <ChevronDown className="brew-rsshub-instances__chevron" />
           </span>
-        </span>
-        <span className="brew-rsshub-instances__summary-side">
-          {loading ? (
-            <Spinner size="xs" />
-          ) : current ? (
-            <SettingTitleTag variant={healthVariant}>
-              {brew[HEALTH_LABEL[current.health_status]]}
-            </SettingTitleTag>
-          ) : null}
-          {instances.length > 0 ? (
-            <SettingTitleTag variant="muted">
-              {instances.length}
-            </SettingTitleTag>
-          ) : null}
-          <ChevronDown className="brew-rsshub-instances__chevron" />
-        </span>
-      </button>
+        </button>
+      ) : null}
 
-      {panelOpen ? (
+      {!compact && headerHost ? createPortal(bar, headerHost) : null}
+
+      {showPanel ? (
         <div className="brew-rsshub-instances__panel">
-          <div className="brew-rsshub-instances__bar">
-            <SettingsButton
-              size="sm"
-              variant="ghost"
-              icon={<RefreshCw />}
-              loading={checkingAll}
-              disabled={disabled || loading || instances.length === 0}
-              onClick={() => void handleCheckAll()}
-            >
-              {brew.rsshubCheckAll}
-            </SettingsButton>
-            <SettingsButton
-              size="sm"
-              icon={<Plus />}
-              disabled={disabled}
-              variant={formOpen ? 'ghost' : 'primary'}
-              onClick={() => {
-                setFormOpen((open) => !open)
-                setEditingId(null)
-                if (formOpen) setDraft(emptyDraft())
-              }}
-            >
-              {formOpen ? brew.cancel : brew.rsshubAddInstance}
-            </SettingsButton>
-          </div>
+          {compact || !headerHost ? bar : null}
 
           {formOpen ? (
             <div className="brew-rsshub-instances__form">
@@ -645,7 +701,7 @@ export function RSSHubInstances({
             className="brew-rsshub-instances__list"
             loading={loading && instances.length === 0}
             working={adding || checkingAll}
-            maxHeight="11rem"
+            maxHeight={compact ? '11rem' : undefined}
             items={items}
             emptyText={loading ? brew.loading : brew.rsshubNoInstances}
           />

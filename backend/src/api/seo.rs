@@ -143,7 +143,7 @@ struct SitemapUrl {
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
-fn xml_escape(s: &str) -> String {
+pub(crate) fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
@@ -167,6 +167,7 @@ struct SeoDocument<'a> {
     image: Option<&'a str>,
     json_ld: Option<Value>,
     body_inner: String,
+    extra_head: &'a str,
     chrome: &'a SeoChrome,
 }
 
@@ -235,7 +236,7 @@ fn render_seo_html(doc: SeoDocument<'_>) -> String {
   <meta name="description" content="{desc}" />
 {keywords_meta}{gsc_meta}  <meta name="robots" content="{robots}" />
   <link rel="canonical" href="{canonical}" />
-  <meta property="og:type" content="{og_type}" />
+{extra_head}  <meta property="og:type" content="{og_type}" />
   <meta property="og:site_name" content="{site_name}" />
   <meta property="og:locale" content="{og_locale}" />
   <meta property="og:title" content="{title}" />
@@ -261,6 +262,7 @@ fn render_seo_html(doc: SeoDocument<'_>) -> String {
         gsc_meta = gsc_meta,
         robots = robots,
         canonical = html_escape(doc.canonical),
+        extra_head = doc.extra_head,
         og_type = html_escape(doc.og_type),
         site_name = html_escape(&doc.chrome.site_name),
         og_locale = html_escape(doc.chrome.og_locale),
@@ -513,7 +515,7 @@ fn collect_widget_labels(layout_json: Option<&str>) -> Vec<String> {
 /// (or `X-Forwarded-Proto`) — a poisoned Host can poison cached sitemap /
 /// robots / canonical absolute links. When unset, callers must omit absolute
 /// URLs (fail closed) rather than invent an origin.
-fn resolve_public_base_url() -> Option<String> {
+pub(crate) fn resolve_public_base_url() -> Option<String> {
     for key in ["FRONTEND_URL", "BASE_URL"] {
         if let Ok(raw) = std::env::var(key) {
             let trimmed = raw.trim().trim_end_matches('/');
@@ -527,7 +529,7 @@ fn resolve_public_base_url() -> Option<String> {
 
 /// Absolute URL when a durable origin is configured; otherwise the path only
 /// (relative — no host poisoning surface).
-fn public_absolute_url(base: Option<&str>, path: &str) -> String {
+pub(crate) fn public_absolute_url(base: Option<&str>, path: &str) -> String {
     match base {
         Some(b) if !b.is_empty() => format!("{b}{path}"),
         _ => path.to_string(),
@@ -663,8 +665,24 @@ async fn tapp_module_open_to_guests(db: &DatabaseConnection) -> bool {
     module_open_to_guests(db, "tapp").await
 }
 
-async fn brew_module_open_to_guests(db: &DatabaseConnection) -> bool {
+pub(crate) async fn brew_module_open_to_guests(db: &DatabaseConnection) -> bool {
     module_open_to_guests(db, "brew").await
+}
+
+pub(crate) async fn public_site_identity(
+    db: &DatabaseConnection,
+) -> (String, String, &'static str) {
+    let branding = load_site_branding(db).await;
+    let locale = infer_site_locale(&[&branding.title, &branding.description]);
+    (branding.title, branding.description, locale.html_lang)
+}
+
+fn notes_rss_alternate(base: Option<&str>) -> String {
+    let href = public_absolute_url(base, myriad_brew_notes::NOTES_RSS_PATH);
+    format!(
+        "  <link rel=\"alternate\" type=\"application/rss+xml\" title=\"Notes\" href=\"{}\" />\n",
+        html_escape(&href)
+    )
 }
 
 /// Whether a Brew source is site-owner original content (category contains `我`).
@@ -683,7 +701,7 @@ fn brew_source_is_own(category: &Option<String>, admin_only: bool) -> bool {
         .unwrap_or(false)
 }
 
-fn strip_html_snippet(raw: &str, max_len: usize) -> String {
+pub(crate) fn strip_html_snippet(raw: &str, max_len: usize) -> String {
     let mut plain = String::with_capacity(raw.len().min(max_len * 2));
     let mut in_tag = false;
     for ch in raw.chars() {
@@ -851,6 +869,7 @@ fn render_brew_item_seo_html(summary: &BrewItemSeoSummary, chrome: &SeoChrome) -
         canonical = html_escape(&summary.canonical_url),
     );
 
+    let extra_head = notes_rss_alternate(resolve_public_base_url().as_deref());
     render_seo_html(SeoDocument {
         title: &title,
         description: desc,
@@ -860,6 +879,7 @@ fn render_brew_item_seo_html(summary: &BrewItemSeoSummary, chrome: &SeoChrome) -
         image: summary.image.as_deref(),
         json_ld: Some(json_ld),
         body_inner,
+        extra_head: &extra_head,
         chrome,
     })
 }
@@ -1010,6 +1030,7 @@ fn render_tapp_seo_html(summary: &TappSeoSummary, chrome: &SeoChrome) -> String 
         image: summary.image.as_deref(),
         json_ld: Some(json_ld),
         body_inner,
+        extra_head: "",
         chrome,
     })
 }
@@ -1377,6 +1398,7 @@ pub async fn home_seo_html(State(db): State<DatabaseConnection>, headers: Header
             image: image.as_deref(),
             json_ld: Some(json_ld),
             body_inner: body,
+            extra_head: "",
             chrome: &chrome,
         }),
     )
@@ -1420,6 +1442,11 @@ async fn module_list_seo_html(
         list_links_html(&links),
         module_nav_html(&prefs.modules),
     );
+    let extra_head = if module_key == "brew" {
+        notes_rss_alternate(base.as_deref())
+    } else {
+        String::new()
+    };
     html_response(
         StatusCode::OK,
         render_seo_html(SeoDocument {
@@ -1431,6 +1458,7 @@ async fn module_list_seo_html(
             image: image.as_deref(),
             json_ld: None,
             body_inner: body,
+            extra_head: &extra_head,
             chrome: &chrome,
         }),
     )
@@ -1876,6 +1904,8 @@ mod tests {
         assert!(html.contains(r#""@type":"Article""#) || html.contains(r#""@type": "Article""#));
         assert!(html.contains("2026-01-02"));
         assert!(html.contains("og:type") && html.contains("article"));
+        assert!(html.contains(r#"type="application/rss+xml""#));
+        assert!(html.contains(myriad_brew_notes::NOTES_RSS_PATH));
         assert!(html.contains(r#"property="og:site_name""#));
         assert!(html.contains(r#"name="keywords""#) && html.contains("life, notes"));
         assert!(html.contains(r#"name="google-site-verification""#));

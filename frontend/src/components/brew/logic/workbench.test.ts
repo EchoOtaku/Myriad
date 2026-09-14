@@ -223,6 +223,41 @@ describe('filterWorkbenchNotes', () => {
     )
     assert.deepEqual(collectWorkbenchNoteTopics(docs), ['工作', '生活'])
   })
+
+  it('分类按段匹配，叠了两个都能筛到', () => {
+    const stacked = [
+      {
+        id: 9,
+        title: '叠分类',
+        content_md: '两档',
+        topic: '工作, 生活',
+        status: 'draft' as const,
+      },
+    ]
+    assert.deepEqual(
+      filterWorkbenchNotes(stacked, {
+        status: 'all',
+        query: '',
+        topic: '工作',
+      }).map((d) => d.id),
+      [9],
+    )
+    assert.deepEqual(
+      filterWorkbenchNotes(stacked, {
+        status: 'all',
+        query: '',
+        topic: '生活',
+      }).map((d) => d.id),
+      [9],
+    )
+    assert.deepEqual(
+      filterWorkbenchNotes(stacked, { status: 'all', query: '', topic: '' }).map(
+        (d) => d.id,
+      ),
+      [],
+    )
+    assert.deepEqual(collectWorkbenchNoteTopics(stacked), ['工作', '生活'])
+  })
 })
 
 describe('workbenchNoteCover', () => {
@@ -273,7 +308,7 @@ describe('workbenchNoteExcerpt', () => {
 })
 
 describe('resolveWorkbenchPane', () => {
-  it('认 home / notes / media / sources / add / rsshub / 两页导入导出；旧深链并进，其余落概览', () => {
+  it('认 home / notes / media / sources / add / rsshub / 两页分类 / 两页导入导出；旧深链并进，其余落概览', () => {
     assert.equal(resolveWorkbenchPane('home'), 'home')
     assert.equal(resolveWorkbenchPane('media'), 'media')
     assert.equal(resolveWorkbenchPane('sources'), 'sources')
@@ -289,6 +324,11 @@ describe('resolveWorkbenchPane', () => {
     assert.equal(resolveWorkbenchPane('markdown'), 'notesIo')
     assert.equal(resolveWorkbenchPane('list'), 'sources')
     assert.equal(resolveWorkbenchPane('notes'), 'notes')
+    assert.equal(resolveWorkbenchPane('noteCategories'), 'noteCategories')
+    assert.equal(resolveWorkbenchPane('sourceCategories'), 'sourceCategories')
+    assert.equal(resolveWorkbenchPane('categories'), 'noteCategories')
+    assert.equal(resolveWorkbenchPane('category'), 'noteCategories')
+    assert.equal(resolveWorkbenchPane('sourceCategory'), 'sourceCategories')
     assert.equal(resolveWorkbenchPane(null), 'home')
     assert.equal(resolveWorkbenchPane('settings'), 'home')
   })

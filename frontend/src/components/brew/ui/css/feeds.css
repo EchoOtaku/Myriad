@@ -4,7 +4,6 @@
   --brew-story-h: 12rem;
   --brew-story-w: 16.5rem;
   --brew-rail-pad-x: 0rem;
-  --brew-open-ms: 560ms;
   --brew-section-title-size: calc(1.2rem - 1px);
   --brew-section-head-pad-top: 0.2rem;
   --brew-section-head-pad-bottom: 0.55rem;
@@ -25,7 +24,6 @@
 .brew-feeds__air {
   flex: 1 1 0;
   min-height: 0;
-  transition: flex-grow var(--brew-open-ms) var(--sm-ease-standard, ease);
 }
 
 .brew-feeds__stage {
@@ -48,48 +46,11 @@
   padding: 0 var(--brew-rail-pad-x);
 }
 
-.brew-feeds.is-sites-open .brew-feeds__air {
-  flex-grow: 0;
-}
-
-.brew-feeds.is-sites-open .brew-feeds__stage {
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
-.brew-feeds.is-sites-open .brew-feeds__sites {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-  overscroll-behavior: contain;
-  touch-action: pan-y;
-}
-
 .brew-feeds.is-sites-flipping .brew-feeds__sites,
-.brew-feeds.is-sites-open.is-sites-flipping .brew-feeds__sites,
 .brew-feeds.is-sites-flipping .brew-feeds__sites-track,
-.brew-feeds.is-sites-open.is-sites-flipping .brew-feeds__sites-track,
 .brew-feeds.is-sites-flipping .brew-feeds__items {
   overflow: visible;
   touch-action: none;
-}
-
-.brew-feeds.is-sites-open .brew-feeds__sites-track {
-  display: flex;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
-  align-content: flex-start;
-  gap: 0.55rem;
-  width: 100%;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden auto;
-  overscroll-behavior: contain;
-  touch-action: pan-y;
-  padding-bottom: 0;
-  transform: none !important;
 }
 
 .brew-feeds.is-sites-flipping .brew-feeds__stage {
@@ -111,9 +72,7 @@
   transition: none !important;
 }
 
-.brew-feeds .is-ghosted,
-.brew-feeds.is-sites-morphing .brew-site:not([data-brew-ghost]),
-.brew-feeds.is-sites-morphing.is-sites-open .brew-story:not([data-brew-ghost]) {
+.brew-feeds .is-ghosted {
   visibility: hidden !important;
   opacity: 0 !important;
 }
@@ -142,18 +101,6 @@
   contain: layout style paint;
 }
 
-.brew-feeds.is-sites-open.is-sites-flipping .brew-feeds__items {
-  opacity: 1;
-  transform: none;
-  visibility: visible;
-}
-
-.brew-feeds.is-sites-open .brew-site,
-.brew-feeds.is-sites-open .brew-site.is-on,
-.brew-feeds.is-sites-open .brew-site:hover {
-  opacity: 1;
-}
-
 .brew-feeds.is-sites-settling .brew-site,
 .brew-feeds.is-sites-settling .brew-story {
   transition: none !important;
@@ -178,10 +125,42 @@
   justify-content: flex-start;
   flex-wrap: wrap;
   gap: 0.35rem 0.5rem;
+  width: 100%;
   padding: var(--brew-section-head-pad-top)
     max(0.15rem, var(--brew-rail-pad-x)) var(--brew-section-head-pad-bottom);
   overflow: visible;
-  transition: opacity var(--brew-open-ms, 560ms) var(--sm-ease-standard, ease);
+}
+
+.brew-rail-title__actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: inherit;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .brew-rail-title__actions {
+    overflow: hidden;
+    max-width: 0;
+    max-height: 0;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 140ms var(--sm-ease-standard, ease);
+  }
+
+  .brew-rail-title:hover .brew-rail-title__actions,
+  .brew-rail-title:focus-within .brew-rail-title__actions,
+  .brew-rail-title.is-actions-on .brew-rail-title__actions,
+  .brew-rail-title:has(.brew-bar__menu) .brew-rail-title__actions,
+  .brew-rail-title:has(.setting-title-guide.is-open) .brew-rail-title__actions {
+    overflow: visible;
+    max-width: none;
+    max-height: none;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
 }
 
 .brew-rail-title__label {
@@ -230,11 +209,6 @@
   padding: 0;
   border: 0;
   overflow: hidden;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.brew-feeds.is-sites-open .brew-feeds__items .brew-rail-title {
   opacity: 0;
   pointer-events: none;
 }

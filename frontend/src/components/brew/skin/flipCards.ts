@@ -1,4 +1,4 @@
-/** 展开文章先退；收回网站卡先落到轨道。 */
+/** 入场：网站卡沿轨道，文章晚半拍跟上。 */
 
 import { brewMotionQuiet } from '../../../hooks/animation/pages/brewMotion'
 import { RAIL_OVERFLOW_LEFT_PX, railSeatScroll } from './railPan'
@@ -8,20 +8,16 @@ export const FLIP_SITE_MS = 560
 export const FLIP_STORY_MS = 400
 export const FLIP_STAGGER_MS = 24
 export const FLIP_STAGGER_CAP_MS = 192
-/** 展开：文章先动，中间不空一拍。 */
-export const FLIP_STORY_LEAD_MS = 96
-/** 收回：网站卡先飞，不空出文章区。 */
-export const FLIP_STORY_FOLLOW_MS = 64
 /** 首次入场：网站卡已经在走，文章晚半拍跟上。 */
+export const FLIP_STORY_FOLLOW_MS = 64
 export const FLIP_INTRO_STORY_MS = 32
 const FLIP_WAIT_PAD_MS = 80
 const STORY_LIFT = 'translate3d(0, 16px, 0) scale(0.97)'
 /** 网站卡沿轨道入场：前一张从左溢出，其余从右边进来。 */
 export const SITE_ENTER = 'translate3d(24px, 0, 0)'
 export const SITE_ENTER_LEFT = 'translate3d(-24px, 0, 0)'
-/** 与 `.brew-site` / `.is-sites-open .brew-site` 默认透明度对齐。 */
+/** 与 `.brew-site` 默认透明度对齐。 */
 export const SITE_RAIL_OP = 0.64
-export const SITE_GRID_OP = 1
 
 export function brewFlipQuiet(): boolean {
   return brewMotionQuiet()
@@ -49,35 +45,8 @@ export function storyDelay(index: number, extra = 0): number {
   return extra + flipDelay(storyColumn(index))
 }
 
-export function siteOpenDelay(story: 'enter' | 'exit'): number {
-  return story === 'exit' ? FLIP_STORY_LEAD_MS : 0
-}
-
-export function storyPhaseDelay(story: 'enter' | 'exit'): number {
-  return story === 'enter' ? FLIP_STORY_FOLLOW_MS : 0
-}
-
-export function siteRestOpacity(open: boolean, on: boolean): number {
-  if (on) return 1
-  return open ? SITE_GRID_OP : SITE_RAIL_OP
-}
-
-export interface FeedsChrome {
-  airHeight: number
-  itemsHeight: number
-  sitesHeight: number
-}
-
-function chromeBox(root: HTMLElement, selector: string): number {
-  return root.querySelector(selector)?.getBoundingClientRect().height ?? 0
-}
-
-export function readFeedsChrome(root: HTMLElement): FeedsChrome {
-  return {
-    airHeight: chromeBox(root, '.brew-feeds__air'),
-    itemsHeight: chromeBox(root, '.brew-feeds__items'),
-    sitesHeight: chromeBox(root, '.brew-feeds__sites'),
-  }
+export function siteRestOpacity(on: boolean): number {
+  return on ? 1 : SITE_RAIL_OP
 }
 
 const CHROME_STYLE = [
@@ -89,27 +58,6 @@ const CHROME_STYLE = [
   'visibility',
   'overflow',
 ] as const
-
-function pinChromeBox(el: HTMLElement | null, height: number): void {
-  if (!el) return
-  const h = `${Math.max(0, height)}px`
-  el.style.transition = 'none'
-  el.style.flex = `0 0 ${h}`
-  el.style.height = h
-  el.style.minHeight = h
-  el.style.overflow = 'visible'
-}
-
-export function holdFeedsChrome(root: HTMLElement, chrome: FeedsChrome): void {
-  pinChromeBox(root.querySelector('.brew-feeds__air'), chrome.airHeight)
-  pinChromeBox(root.querySelector('.brew-feeds__sites'), chrome.sitesHeight)
-  const items = root.querySelector<HTMLElement>('.brew-feeds__items')
-  pinChromeBox(items, chrome.itemsHeight)
-  if (items) {
-    items.style.opacity = chrome.itemsHeight > 1 ? '1' : '0'
-    items.style.visibility = chrome.itemsHeight > 1 ? 'visible' : 'hidden'
-  }
-}
 
 function releaseFeedsChrome(root: HTMLElement): void {
   for (const sel of [
@@ -124,77 +72,18 @@ function releaseFeedsChrome(root: HTMLElement): void {
   }
 }
 
-export function playFeedsChrome(
-  root: HTMLElement,
-  from: FeedsChrome,
-  to: FeedsChrome,
-): Animation[] {
-  const run = (selector: string, a: number, b: number) => {
-    const el = root.querySelector<HTMLElement>(selector)
-    if (!el) return []
-    if (Math.abs(a - b) < 0.6) return []
-    return [
-      play(
-        el,
-        [
-          { height: `${a}px`, minHeight: `${a}px`, flexBasis: `${a}px` },
-          { height: `${b}px`, minHeight: `${b}px`, flexBasis: `${b}px` },
-        ],
-        0,
-        FLIP_SITE_MS,
-      ),
-    ]
-  }
-  return [
-    ...run('.brew-feeds__air', from.airHeight, to.airHeight),
-    ...run('.brew-feeds__items', from.itemsHeight, to.itemsHeight),
-    ...run('.brew-feeds__sites', from.sitesHeight, to.sitesHeight),
-  ]
-}
-
 export function flipWaitMs(): number {
-  const openEnd = FLIP_STORY_LEAD_MS + FLIP_SITE_MS + FLIP_STAGGER_CAP_MS
-  const foldEnd = FLIP_STORY_FOLLOW_MS + FLIP_STORY_MS + FLIP_STAGGER_CAP_MS
-  return Math.max(openEnd, foldEnd) + FLIP_WAIT_PAD_MS
-}
-
-export interface FlipBox {
-  left: number
-  top: number
-  width: number
-  height: number
-  opacity: number
+  return (
+    Math.max(FLIP_SITE_MS, FLIP_STORY_FOLLOW_MS + FLIP_STORY_MS)
+    + FLIP_STAGGER_CAP_MS
+    + FLIP_WAIT_PAD_MS
+  )
 }
 
 function liveCards(root: ParentNode, selector: string): HTMLElement[] {
   return Iterator.from(root.querySelectorAll<HTMLElement>(selector))
     .filter((el) => !el.dataset.brewGhost)
     .toArray()
-}
-
-function readOpacity(el: Element): number {
-  const n = Number(getComputedStyle(el).opacity)
-  return Number.isFinite(n) ? n : 1
-}
-
-export function readFlipBoxes(
-  root: ParentNode,
-  selector: string,
-): Map<string, FlipBox> {
-  const boxes = new Map<string, FlipBox>()
-  for (const el of liveCards(root, selector)) {
-    const id = el.dataset.railId
-    if (!id) continue
-    const rect = el.getBoundingClientRect()
-    boxes.set(id, {
-      left: rect.left,
-      top: rect.top,
-      width: rect.width,
-      height: rect.height,
-      opacity: readOpacity(el),
-    })
-  }
-  return boxes
 }
 
 function clearRailExit(el: HTMLElement): void {
@@ -237,133 +126,6 @@ function play(
   })
 }
 
-/** 真卡保持隐藏，避免宫格先闪一帧。 */
-export function flySites(
-  root: HTMLElement,
-  first: Map<string, FlipBox>,
-  leadId?: string | null,
-  delayExtra = 0,
-  open = false,
-): Animation[] {
-  const cards = liveCards(root, '.brew-site')
-  const leadIndex = leadId
-    ? cards.findIndex((el) => el.dataset.railId === leadId)
-    : -1
-  const hostBox = root.getBoundingClientRect()
-  const next = cards.map((el) => {
-    const rect = el.getBoundingClientRect()
-    const on =
-      el.classList.contains('is-on') || el.classList.contains('is-cover')
-    return {
-      el,
-      id: el.dataset.railId ?? '',
-      box: {
-        left: rect.left,
-        top: rect.top,
-        width: rect.width,
-        height: rect.height,
-      },
-      on,
-      toOp: siteRestOpacity(open, on),
-    }
-  })
-  const anims: Animation[] = []
-  next.forEach((item, index) => {
-    if (!item.id) return
-    const prev = first.get(item.id)
-    const delay = delayExtra + flipDelayFromLead(index, leadIndex)
-    let ghost = findGhost(root, 'site', item.id)
-    if (!ghost && prev) {
-      ghost = liftCard(item.el, prev, root, hostBox, 'site')
-    }
-    if (!ghost) {
-      item.el.classList.add('is-ghosted')
-      item.el.style.visibility = 'hidden'
-      return
-    }
-    const dx = item.box.left - (prev?.left ?? item.box.left)
-    const dy = item.box.top - (prev?.top ?? item.box.top)
-    const fromOp =
-      prev && prev.opacity > 0.05
-        ? prev.opacity
-        : siteRestOpacity(!open, item.on)
-    anims.push(
-      play(
-        ghost,
-        [
-          { opacity: fromOp, transform: 'translate3d(0, 0, 0)' },
-          {
-            opacity: item.toOp,
-            transform: `translate3d(${dx}px, ${dy}px, 0)`,
-          },
-        ],
-        delay,
-        FLIP_SITE_MS,
-      ),
-    )
-  })
-  return anims
-}
-
-function pinFlipBox(
-  el: HTMLElement,
-  box: Pick<FlipBox, 'left' | 'top' | 'width' | 'height'>,
-  host?: DOMRect | null,
-): void {
-  const left = host ? box.left - host.left : box.left
-  const top = host ? box.top - host.top : box.top
-  el.style.position = host ? 'absolute' : 'fixed'
-  el.style.left = `${left}px`
-  el.style.top = `${top}px`
-  el.style.width = `${box.width}px`
-  el.style.height = `${box.height}px`
-  el.style.zIndex = '8'
-  el.style.margin = '0'
-  el.style.boxSizing = 'border-box'
-}
-
-function unpinFlip(el: HTMLElement): void {
-  el.style.removeProperty('position')
-  el.style.removeProperty('left')
-  el.style.removeProperty('top')
-  el.style.removeProperty('width')
-  el.style.removeProperty('height')
-  el.style.removeProperty('z-index')
-  el.style.removeProperty('margin')
-  el.style.removeProperty('box-sizing')
-}
-
-function liftCard(
-  el: HTMLElement,
-  box: FlipBox,
-  host: HTMLElement,
-  hostBox: DOMRect,
-  kind: 'site' | 'story',
-): HTMLElement {
-  const id = el.dataset.railId ?? ''
-  const ghost = el.cloneNode(true) as HTMLElement
-  ghost.dataset.brewGhost = kind
-  if (id) ghost.dataset.brewFrom = id
-  ghost.removeAttribute('data-rail-id')
-  ghost.setAttribute('aria-hidden', 'true')
-  pinFlipBox(ghost, box, hostBox)
-  ghost.style.zIndex = '12'
-  host.appendChild(ghost)
-  el.classList.add('is-ghosted')
-  el.style.visibility = 'hidden'
-  return ghost
-}
-
-function findGhost(
-  root: ParentNode,
-  kind: 'site' | 'story',
-  id: string,
-): HTMLElement | null {
-  return root.querySelector(
-    `[data-brew-ghost="${kind}"][data-brew-from="${CSS.escape(id)}"]`,
-  )
-}
-
 function clearStoryLifts(root: ParentNode): void {
   const feeds =
     root instanceof HTMLElement && root.classList.contains('brew-feeds')
@@ -371,8 +133,6 @@ function clearStoryLifts(root: ParentNode): void {
       : root instanceof Element
         ? root.closest('.brew-feeds')
         : null
-  const open = !!feeds?.classList.contains('is-sites-open')
-  // 先露活卡再拆幽灵，先拆会空一帧。
   for (const el of root.querySelectorAll<HTMLElement>(
     '.is-ghosted, .brew-site, .brew-story',
   )) {
@@ -385,7 +145,7 @@ function clearStoryLifts(root: ParentNode): void {
     if (el.classList.contains('brew-site')) {
       const on =
         el.classList.contains('is-on') || el.classList.contains('is-cover')
-      el.style.opacity = String(siteRestOpacity(open, on))
+      el.style.opacity = String(siteRestOpacity(on))
     } else {
       el.style.removeProperty('opacity')
     }
@@ -406,33 +166,6 @@ function clearStoryLifts(root: ParentNode): void {
       feeds.classList.remove('is-sites-settling')
     })
   }
-}
-
-export function exitStories(
-  root: ParentNode,
-  selector: string,
-  first?: Map<string, FlipBox> | null,
-  host?: HTMLElement | null,
-): Animation[] {
-  const hostBox = host?.getBoundingClientRect() ?? null
-  return liveCards(root, selector).map((el, index) => {
-    const id = el.dataset.railId
-    const prev = id && first ? first.get(id) : undefined
-    const existing = id ? findGhost(root, 'story', id) : null
-    const target =
-      existing ??
-      (host && hostBox && prev ? liftCard(el, prev, host, hostBox, 'story') : el)
-    const fromOp = prev?.opacity ?? readOpacity(el)
-    return play(
-      target,
-      [
-        { opacity: fromOp, transform: 'translate3d(0, 0, 0) scale(1)' },
-        { opacity: 0, transform: STORY_LIFT },
-      ],
-      storyDelay(index),
-      FLIP_STORY_MS,
-    )
-  })
 }
 
 function enterCards(
@@ -475,7 +208,7 @@ export function enterSites(
   return cards.map((el, index) => {
     const on =
       el.classList.contains('is-on') || el.classList.contains('is-cover')
-    const op = siteRestOpacity(false, on)
+    const op = siteRestOpacity(on)
     const from = index < leadIndex ? SITE_ENTER_LEFT : SITE_ENTER
     return play(
       el,
@@ -489,42 +222,13 @@ export function enterSites(
   })
 }
 
-function animTarget(anim: Animation): HTMLElement | null {
-  const effect = anim.effect
-  if (!effect || !('target' in effect)) return null
-  const target = (effect as KeyframeEffect).target
-  return target instanceof HTMLElement ? target : null
-}
-
 export function waitFlip(_anims: readonly Animation[]): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, flipWaitMs())
   })
 }
 
-export function settleFlip(anims: readonly Animation[]): void {
-  for (const anim of anims) {
-    try {
-      if (anim.playState !== 'finished') anim.finish()
-    } catch {
-      anim.cancel()
-    }
-  }
-}
-
-export function dropStaleGhosts(root: ParentNode): void {
-  for (const ghost of root.querySelectorAll('[data-brew-ghost]')) {
-    ghost.remove()
-  }
-}
-
-let feedsRevealHandler: (() => void) | null = null
-
-export function setFeedsRevealHandler(fn: (() => void) | null): void {
-  feedsRevealHandler = fn
-}
-
-/** 换树前揭回活卡，避免幽灵留在退场里。 */
+/** 换树前揭回活卡，避免入场动画留在退场里。 */
 export function revealFeedsTree(root?: ParentNode | null): void {
   if (!root) return
   const feeds =
@@ -534,24 +238,6 @@ export function revealFeedsTree(root?: ParentNode | null): void {
         ? root.querySelector('.brew-feeds')
         : null
   if (!(feeds instanceof HTMLElement)) return
-  feeds.classList.remove('is-sites-morphing')
   clearStoryLifts(feeds)
   releaseFeedsChrome(feeds)
-  feedsRevealHandler?.()
-}
-
-export function dropFlip(
-  anims: readonly Animation[],
-  root?: ParentNode | null,
-): void {
-  for (const anim of anims) {
-    anim.cancel()
-    const el = animTarget(anim)
-    if (!el) continue
-    if (el.dataset.brewGhost) continue
-    el.style.removeProperty('transform')
-    el.style.removeProperty('opacity')
-    unpinFlip(el)
-  }
-  if (root) revealFeedsTree(root)
 }

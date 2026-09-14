@@ -1,4 +1,4 @@
-/** `sites` 深链 id 不能改。「友情链接」是分类名；朋友源从订阅 inbox 拿走。手记源仍可出现在订阅墙。 */
+/** `sites` 深链 id 不能改。朋友们收「友情链接」分类；订阅墙不收入口型和手记源。 */
 
 import type { BrewSource } from '../../../types/brew'
 import type { BrewViewerRole } from './score'
@@ -25,6 +25,8 @@ export type WorkbenchPane =
   | 'rsshub'
   | 'notesIo'
   | 'feedsIo'
+  | 'noteCategories'
+  | 'sourceCategories'
 
 export const NOTE_TRANSFER_KINDS = [
   'wordpress',
@@ -70,11 +72,10 @@ export function isNotesSource(
   return s.source_type === 'note' || isOwnBrewSource(s)
 }
 
-/** 自有源优先去手记，不进朋友们。 */
+/** 朋友们：分类含「友情链接」的都收，类型不限。入口型没挂分类也收。 */
 export function isFriendSource(
-  s: Pick<BrewSource, 'source_type' | 'category' | 'admin_only'>,
+  s: Pick<BrewSource, 'source_type' | 'category'>,
 ): boolean {
-  if (isNotesSource(s)) return false
   if (isSiteSource(s)) return true
   return brewCategoryParts(s.category).some(isFriendLinkCategory)
 }
@@ -85,7 +86,9 @@ export function sourcesForBoard(
 ): BrewSource[] {
   if (board === 'sites') return sources.filter(isFriendSource)
   if (board === 'notes') return sources.filter(isNotesSource)
-  return sources.filter((s) => !isFriendSource(s))
+  return sources.filter(
+    (s) => s.source_type !== 'link' && s.source_type !== 'note',
+  )
 }
 
 export function collectSourceCategories(
@@ -228,11 +231,15 @@ export const WORKBENCH_PANES = [
   'rsshub',
   'notesIo',
   'feedsIo',
+  'noteCategories',
+  'sourceCategories',
 ] as const satisfies readonly WorkbenchPane[]
 
 /** 旧深链 pane=list 并进订阅页；pane=add 进添加订阅。导入导出旧名并进两页。 */
 export function resolveWorkbenchPane(value: string | null): WorkbenchPane {
   if (value === 'list') return 'sources'
+  if (value === 'category' || value === 'categories') return 'noteCategories'
+  if (value === 'sourceCategory') return 'sourceCategories'
   if (
     value === 'wordpress' ||
     value === 'halo' ||

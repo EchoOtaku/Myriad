@@ -66,7 +66,11 @@ html[data-perf-mode='exlight'] .brew-peek-air__shot,
 html[data-perf-mode='exlight'] .brew-peek-air::after,
 html[data-perf-mode='exlight'] #brew-peek-copy,
 html[data-perf-mode='exlight'] .brew-peek-air__copy,
-html[data-perf-mode='exlight'] .brew-peek-air__lede,
+html[data-perf-mode='exlight'] .brew-peek-air__lede {
+  animation: none;
+  transition: none;
+}
+
 html[data-perf-mode='exlight'] .brew-bar__menu,
 html[data-perf-mode='exlight'] .brew-sheet__menu,
 html[data-perf-mode='exlight'] .brew-rail-title.is-arrive,
@@ -137,15 +141,10 @@ html[data-perf-mode='exlight'] .brew-story.has-cover .brew-story__peek {
   .brew-story.has-cover .brew-story__peek,
   .brew-story__star,
   .brew-rail-title,
+  .brew-rail-title__actions,
   .brew-vacant {
     animation: none;
     transition: none;
-  }
-
-  .brew-feeds.is-sites-open .brew-feeds__sites-track,
-  .brew-feeds.is-sites-open .brew-feeds__items {
-    animation: none;
-    transform: none;
   }
 
   .brew-site[data-leaving='true'],

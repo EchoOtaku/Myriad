@@ -4,6 +4,7 @@ import type { CSSProperties, ReactNode, SyntheticEvent } from 'react'
 
 import { forwardRef } from 'react'
 import { cx } from './cx'
+import { peekLaneKeepsAir } from './peekLane'
 import { BrewPick } from './Pick'
 
 function hideBrokenSourceIcon(
@@ -281,6 +282,9 @@ export const StoryCard = forwardRef<
         onPeekEnd
           ? (event) => {
               markBrewStoryPeek(event.currentTarget, false)
+              if (peekLaneKeepsAir(event.currentTarget, event.relatedTarget)) {
+                return
+              }
               onPeekEnd()
             }
           : undefined
@@ -378,5 +382,9 @@ export const StoryCard = forwardRef<
 })
 
 export function StoryGrid({ children }: { children: ReactNode }) {
-  return <div className="brew-skin brew-stories">{children}</div>
+  return (
+    <div className="brew-skin brew-stories" data-brew-peek-lane>
+      {children}
+    </div>
+  )
 }

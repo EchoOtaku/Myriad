@@ -61,17 +61,11 @@ describe('visitFriendHref', () => {
 })
 
 describe('isFriendSource', () => {
-  it('入口型算朋友', () => {
+  it('友情链接分类都收，入口型没挂分类也收', () => {
     assert.equal(isFriendSource(makeSource({ source_type: 'link' })), true)
-  })
-
-  it('挂着「友情链接」的 RSS 算朋友', () => {
-    const s = makeSource({ source_type: 'rss', category: '友情链接' })
-    assert.equal(isFriendSource(s), true)
-    assert.equal(isSiteSource(s), false)
-  })
-
-  it('认 friend_links / Friend Links 别名', () => {
+    const friendRss = makeSource({ source_type: 'rss', category: '友情链接' })
+    assert.equal(isFriendSource(friendRss), true)
+    assert.equal(isSiteSource(friendRss), false)
     assert.equal(
       isFriendSource(makeSource({ source_type: 'rss', category: 'friend_links' })),
       true,
@@ -80,15 +74,24 @@ describe('isFriendSource', () => {
       isFriendSource(makeSource({ source_type: 'rss', category: 'Friend Links' })),
       true,
     )
+    assert.equal(
+      isFriendSource(makeSource({ source_type: 'brewlia', category: '友情链接' })),
+      true,
+    )
+    assert.equal(isFriendSource(makeSource({ source_type: 'rss' })), false)
+    assert.equal(
+      isFriendSource(makeSource({ source_type: 'rss', category: '测试' })),
+      false,
+    )
   })
 
-  it('自有源不去朋友们', () => {
+  it('叠着「我」的友情链接也进朋友们', () => {
     const s = makeSource({
       source_type: 'rss',
       category: '我,友情链接',
     })
     assert.equal(isNotesSource(s), true)
-    assert.equal(isFriendSource(s), false)
+    assert.equal(isFriendSource(s), true)
   })
 })
 
@@ -125,17 +128,17 @@ describe('sourcesForBoard', () => {
   const note = makeSource({ id: 4, source_type: 'note', category: '我' })
   const all = [link, rss, mine, friendRss, note]
 
-  it('sites 收入口和友情链接订阅，不收自有源', () => {
+  it('sites 收友情链接分类，以及没挂分类的入口型', () => {
     assert.deepEqual(
       sourcesForBoard(all, 'sites').map((s) => s.id),
       [1, 5],
     )
   })
 
-  it('feeds 不再收朋友源', () => {
+  it('feeds 收会抓的源，含友情链接 RSS，不收入口和手记源', () => {
     assert.deepEqual(
       sourcesForBoard(all, 'feeds').map((s) => s.id),
-      [2, 3, 4],
+      [2, 3, 5],
     )
   })
 

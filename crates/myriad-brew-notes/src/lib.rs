@@ -1026,6 +1026,9 @@ pub fn note_link(item_id: i32) -> String {
     format!("/brew/item/{item_id}")
 }
 
+/// 已发布手记的公开 RSS。代理和前端分享入口必须用同一条路径。
+pub const NOTES_RSS_PATH: &str = "/brew/notes.xml";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1374,6 +1377,7 @@ mod tests {
     fn guid_and_link_shapes() {
         assert_eq!(note_guid("abc"), "note:abc");
         assert_eq!(note_link(12), "/brew/item/12");
+        assert_eq!(NOTES_RSS_PATH, "/brew/notes.xml");
     }
 
     #[test]

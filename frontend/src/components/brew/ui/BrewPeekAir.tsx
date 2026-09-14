@@ -9,7 +9,8 @@ import { cx } from './cx'
 
 export const BREW_PEEK_AIR_ID = 'brew-peek-air'
 export const BREW_PEEK_COPY_ID = 'brew-peek-copy'
-export const BREW_PEEK_EXIT_MS = 360
+export const BREW_PEEK_EXIT_MS = 520
+export const BREW_PEEK_HANDOFF_MS = 100
 
 export type BrewPeekFace = {
   src: string
@@ -33,33 +34,51 @@ export function toBrewPeekFace(
   }
 }
 
-type Shot = {
-  id: number
-  src: string
-  on: boolean
-}
-
-type CopyLayer = {
+type Layer = {
   id: number
   face: BrewPeekFace
   on: boolean
 }
 
-let shotSeq = 0
+let layerSeq = 0
 
-function nextShot(): number {
-  shotSeq += 1
-  return shotSeq
+function nextLayer(): number {
+  layerSeq += 1
+  return layerSeq
+}
+
+function sameFace(layer: Layer, face: BrewPeekFace): boolean {
+  return layer.face.src === face.src && layer.face.title === face.title
 }
 
 function hideBrokenPeekIcon(event: SyntheticEvent<HTMLImageElement>): void {
   event.currentTarget.hidden = true
 }
 
+function PeekLede({ face }: { face: BrewPeekFace }) {
+  return (
+    <>
+      {face.source || face.sourceIcon ? (
+        <span className="brew-peek-air__site">
+          {face.sourceIcon ? (
+            <img src={face.sourceIcon} alt="" onError={hideBrokenPeekIcon} />
+          ) : face.source ? (
+            <span className="brew-peek-air__mark" aria-hidden>
+              {face.source.slice(0, 1)}
+            </span>
+          ) : null}
+          {face.source ? <span>{face.source}</span> : null}
+        </span>
+      ) : null}
+      {face.title ? (
+        <span className="brew-peek-air__title">{face.title}</span>
+      ) : null}
+    </>
+  )
+}
+
 export function BrewPeekAir({ face }: { face: BrewPeekFace | null }) {
-  const src = face?.src ?? null
-  const [shots, setShots] = useState<Shot[]>([])
-  const [copies, setCopies] = useState<CopyLayer[]>([])
+  const [layers, setLayers] = useState<Layer[]>([])
   const host =
     typeof document === 'undefined'
       ? null
@@ -72,10 +91,10 @@ export function BrewPeekAir({ face }: { face: BrewPeekFace | null }) {
     const quiet = brewMotionQuiet()
     const wait = quiet ? 0 : BREW_PEEK_EXIT_MS
 
-    if (!src) {
-      setShots((current) => current.map((shot) => ({ ...shot, on: false })))
+    if (!face) {
+      setLayers((current) => current.map((layer) => ({ ...layer, on: false })))
       exitTimer = window.setTimeout(() => {
-        if (!cancelled) setShots([])
+        if (!cancelled) setLayers([])
       }, wait)
       return () => {
         cancelled = true
@@ -83,45 +102,53 @@ export function BrewPeekAir({ face }: { face: BrewPeekFace | null }) {
       }
     }
 
-    const image = new Image()
-    image.src = src
-    const show = () => {
-      if (cancelled) return
-      setShots((current) => {
-        if (current.some((shot) => shot.src === src && shot.on)) return current
-        const outgoing = current.filter((shot) => shot.on).slice(-1)
-        return [...outgoing, { id: nextShot(), src, on: false }]
+    const reveal = () => {
+      if (cancelled || !face) return
+      setLayers((current) => {
+        if (current.some((layer) => layer.on && sameFace(layer, face))) {
+          return current
+        }
+        const outgoing = current.filter((layer) => layer.on).slice(-1)
+        const existing = current.find((layer) => sameFace(layer, face))
+        const incoming = existing ?? { id: nextLayer(), face, on: false }
+        return [
+          ...outgoing.filter((layer) => layer.id !== incoming.id),
+          incoming,
+        ]
       })
       const arm = () => {
-        if (cancelled) return
-        setShots((current) =>
-          current.map((shot) =>
-            shot.src === src
-              ? { ...shot, on: true }
-              : { ...shot, on: false },
-          ),
+        if (cancelled || !face) return
+        setLayers((current) =>
+          current.map((layer) => ({
+            ...layer,
+            on: sameFace(layer, face),
+          })),
         )
       }
-      if (quiet) arm()
-      else {
-        frame = window.requestAnimationFrame(() => {
-          frame = window.requestAnimationFrame(arm)
-        })
+      if (quiet) {
+        arm()
+        return
       }
+      frame = window.requestAnimationFrame(() => {
+        frame = window.requestAnimationFrame(arm)
+      })
       exitTimer = window.setTimeout(() => {
         if (!cancelled) {
-          setShots((current) =>
-            current.filter((shot) => shot.on || shot.src === src),
+          setLayers((current) =>
+            current.filter((layer) => layer.on || sameFace(layer, face)),
           )
         }
       }, wait)
     }
-    if (image.complete && image.naturalWidth > 0) show()
+
+    const image = new Image()
+    image.src = face.src
+    if (image.complete && image.naturalWidth > 0) reveal()
     else {
-      image.onload = show
+      image.onload = reveal
       image.onerror = () => {
         if (cancelled) return
-        setShots((current) => current.map((shot) => ({ ...shot, on: false })))
+        setLayers((current) => current.map((layer) => ({ ...layer, on: false })))
       }
     }
     return () => {
@@ -131,111 +158,38 @@ export function BrewPeekAir({ face }: { face: BrewPeekFace | null }) {
       window.clearTimeout(exitTimer)
       window.cancelAnimationFrame(frame)
     }
-  }, [src])
-
-  useEffect(() => {
-    let cancelled = false
-    let exitTimer = 0
-    let frame = 0
-    const quiet = brewMotionQuiet()
-    const wait = quiet ? 0 : BREW_PEEK_EXIT_MS
-
-    if (!face) {
-      setCopies((current) => current.map((layer) => ({ ...layer, on: false })))
-      exitTimer = window.setTimeout(() => {
-        if (!cancelled) setCopies([])
-      }, wait)
-      return () => {
-        cancelled = true
-        window.clearTimeout(exitTimer)
-      }
-    }
-
-    const ready = shots.some((shot) => shot.on && shot.src === face.src)
-    if (!ready) return
-
-    const same = (layer: CopyLayer) =>
-      layer.face.src === face.src && layer.face.title === face.title
-
-    setCopies((current) => {
-      if (current.some((layer) => layer.on && same(layer))) return current
-      const outgoing = current.filter((layer) => layer.on).slice(-1)
-      return [...outgoing, { id: nextShot(), face, on: false }]
-    })
-
-    const arm = () => {
-      if (cancelled) return
-      setCopies((current) =>
-        current.map((layer) => ({ ...layer, on: same(layer) })),
-      )
-    }
-    if (quiet) arm()
-    else {
-      frame = window.requestAnimationFrame(() => {
-        frame = window.requestAnimationFrame(arm)
-      })
-    }
-    exitTimer = window.setTimeout(() => {
-      if (!cancelled) {
-        setCopies((current) =>
-          current.filter((layer) => layer.on || same(layer)),
-        )
-      }
-    }, wait)
-    return () => {
-      cancelled = true
-      window.clearTimeout(exitTimer)
-      window.cancelAnimationFrame(frame)
-    }
-  }, [face, shots])
+  }, [face])
 
   if (!host) return null
-  const on = shots.some((shot) => shot.on)
+  const on = layers.some((layer) => layer.on)
+  const swap = face != null && layers.length > 1
   return createPortal(
     <>
       <div
         id={BREW_PEEK_AIR_ID}
-        className={cx('brew-peek-air', on && 'is-on')}
+        className={cx('brew-peek-air', on && 'is-on', swap && 'is-swap')}
         aria-hidden
       >
-        {shots.map((shot) => (
+        {layers.map((layer) => (
           <span
-            key={shot.id}
-            className={cx('brew-peek-air__shot', shot.on && 'is-on')}
-            style={{ backgroundImage: `url("${shot.src}")` }}
+            key={layer.id}
+            className={cx('brew-peek-air__shot', layer.on && 'is-on')}
+            style={{ backgroundImage: `url("${layer.face.src}")` }}
           />
         ))}
       </div>
-      {copies.length ? (
+      {layers.length ? (
         <div
           id={BREW_PEEK_COPY_ID}
-          className="brew-peek-air__copy"
+          className={cx('brew-peek-air__copy', swap && 'is-swap')}
           aria-hidden
         >
-          {copies.map((layer) => (
+          {layers.map((layer) => (
             <div
               key={layer.id}
               className={cx('brew-peek-air__lede', layer.on && 'is-on')}
             >
-              {layer.face.source || layer.face.sourceIcon ? (
-                <span className="brew-peek-air__site">
-                  {layer.face.sourceIcon ? (
-                    <img
-                      src={layer.face.sourceIcon}
-                      alt=""
-                      onError={hideBrokenPeekIcon}
-                    />
-                  ) : layer.face.source ? (
-                    <span className="brew-peek-air__mark" aria-hidden>
-                      {layer.face.source.slice(0, 1)}
-                    </span>
-                  ) : null}
-                  {layer.face.source ? <span>{layer.face.source}</span> : null}
-                </span>
-              ) : null}
-              {layer.face.title ? (
-                <span className="brew-peek-air__title">{layer.face.title}</span>
-              ) : null}
+              <PeekLede face={layer.face} />
             </div>
           ))}
         </div>
