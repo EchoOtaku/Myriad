@@ -22,7 +22,7 @@ proxy ──┬── frontend:1102
 ### 1. 准备仓库和配置
 
 ```bash
-git clone https://github.com/Myriad-You/Myriad.git
+git clone https://github.com/myriad-you/Myriad.git
 cd Myriad
 
 cp .env.production.example .env
@@ -60,6 +60,8 @@ bash scripts/extra/deploy.sh up
 Windows 用 WSL / Git Bash 跑同一条命令，或直接 `docker compose up -d`。
 
 打开 `http://localhost`，或 `.env` 中 `HTTP_PORT` 指向的端口。首次访问会进入初始化向导，浏览器里可以直接做完。官方 compose 已经写好数据库，未设置 `MYRIAD_SETUP_SECRET` 会拒绝启动（`deploy.sh up` 会生成）。向导自己填库则不用。详见 [SETUP_BOOTSTRAP.md](deployment/SETUP_BOOTSTRAP.md)。
+
+向导之后：站点管理台在 `/config`（高级配置含 MCP 服务器列表与内存节约档）；Agent 人设 / Bot / 心跳在 `/agent/settings`。`/config` 诊断会做数据库、存储、版本、出口与联邦闸门的实检查，报告不含凭据。
 
 ### 3. 常用运维命令
 
@@ -217,4 +219,7 @@ CORS_ORIGINS=http://localhost:1102,http://localhost:1103
 - [运行时隔离](deployment/RUNTIME_ISOLATION.md)
 - [Worker 数据库](deployment/WORKER_DATABASE.md)
 - [Updater 运维](deployment/UPDATER_QUICKSTART.md)
+- [备份](deployment/BACKUP.md)
+- [联邦](development/FEDERATION.md)
+- [Agent 通道](development/AGENT_CHANNELS.md)
 - [README](../README.md)

@@ -1,5 +1,7 @@
 # Phantasi 磁贴网格改造 · 实施手册
 
+> **现状：** 本文是磁贴墙落地时的实施手册，不是现行路由规格。用户地址是 `/journal`（`frontend/src/components/phantasi/logic/journalRoutes.ts`），不是 `/phantasi`。`PhantasiViewMode` 现行是 `'sources' | 'starred' | 'topic-feed' | 'workbench'`（`logic/board.ts`）。订阅列表 API 在 `feeds_articles.rs`。宿主 UI 现为 7 种 locale。下面 PR 验收里的 `/phantasi` 是当时的地址。
+
 交接文档。实施时以**本文为源**，旁边的 Canvas demo 只做视觉对照，不要从 demo 里抄网格行数或装箱参数。
 
 配套视觉：
@@ -31,7 +33,7 @@ Demo 里可以把网格切成 16×8 方便在窄画布里看更多卡。**生产
 - 同一套磁贴组件注册进首页 widget 库，Phantasi 页与首页共用。
 - 游客是多数用户：未读、收藏、失败态全部按角色隐藏或降权。
 
-成功标准：打开 `/phantasi`，第一眼能判断「现在有什么可看的」，而不是先扫一遍站名。
+成功标准：打开 `/journal`，第一眼能判断「现在有什么可看的」，而不是先扫一遍站名。
 
 ---
 
@@ -395,9 +397,9 @@ padding = 4px
 | 主题磁贴 | 新 `viewMode: 'topic-feed'`，跨源列表 |
 | 节律单根竖线 | 第一版整卡可点即可。若要点线，`pulses` 需改成 `{ days, itemId }[]` |
 
-首页磁贴点击：`navigate('/phantasi?source=' + id)` 或 `/phantasi?topic=`。不要在首页打开阅读器。
+首页磁贴点击：`navigate('/journal/feeds/' + id)` 或 `/journal/topics/…`。不要在首页打开阅读器。不要写 `/phantasi?source=` query。
 
-`ViewMode` 现为 `'sources' | 'items' | 'starred' | 'category-feed'`，加 `'topic-feed'`。`ControlMode` 加 `'topic-feed'`，模式组件抄 `CategoryFeedMode`。
+`ViewMode` 现行是 `'sources' | 'starred' | 'topic-feed' | 'workbench'`。收藏和主题流不是板块；工作台也不是板块。
 
 ### 键盘（现有一律保留）
 
@@ -432,7 +434,7 @@ padding = 4px
 | 数量 | 用户放 1–3 张 | 全部源，装箱分页 |
 | 尺寸 | 编辑模式手摆 | `tileSize()` |
 | 轮播 | 默认关，只第一页 | 开 |
-| 点击 | 跳 `/phantasi?...` | 就地切 `viewMode` |
+| 点击 | 跳 `/journal/feeds/…` 或 `/journal/topics/…` | 就地切 `viewMode` |
 | 刷新 | `useHomeVisibilityInterval` 60s | 进入拉取；登录走现有 WS |
 | 数据 | `getSources()` + `find(sourceId)` | 已有全量列表 |
 | 位置动画 | `WidgetGrid` 自带 | Phantasi FLIP；不要混用 |
@@ -542,7 +544,7 @@ export function inferTopicByKeywords(item: PhantasiItem): string | null
 | `types/phantasi.ts` | 改 | pulses / topic |
 | `services/phantasiApi.ts` | 改 | `getItems` 传 `topic` |
 | `components/widgets/builtinWidgets.ts` | 改 | 三条注册 |
-| `i18n/*.json` 三语言包 | 改 | widget 名 + 主题名 |
+| `i18n/*.json` 宿主语言包 | 改 | widget 名 + 主题名（现 7 locale） |
 | `App.tsx` | 改 | DEV 路由 `/dev/phantasi-tiles` |
 | `api/phantasi/feeds_articles.rs` | 改 | pulses；list_items.topic |
 | `models/entities/phantasi_items.rs` | 改 | topic 列 |
@@ -566,14 +568,14 @@ export function inferTopicByKeywords(item: PhantasiItem): string | null
 | 3 | 6 后端 | 2–3 天 / ~200 行 | pulses + topic 列 + list 过滤 |
 | 4 | 2 磁贴 | 3–4 天 / ~1200 行 | 组件 + `/dev/phantasi-tiles` |
 | 5 | 3 首页 | 半天 / ~60 行 | widget 库可拖 |
-| 6 | 4 网格 | 3–4 天 / ~700 行 | `/phantasi` 分页墙 + flag |
+| 6 | 4 网格 | 3–4 天 / ~700 行 | `/journal` 分页墙 + flag |
 | 7 | 5 排序 | 2 天 / ~150 行 | smart 默认；topic-feed |
 | 8 | 7 轮播 | 2 天 / ~250 行 | 错峰 + 可见性 pause |
 | 9 | 清退 | 半天 / −1000 行 | 删旧网格与死键 |
 
 ### PR 1 验收
 
-- 未登录 `/phantasi`：源卡预览无未读圆点
+- 未登录 `/journal`：源卡预览无未读圆点
 - 二级导航只有三项（无收藏）
 - 点开文章 Network 无 `/api/phantasi/...` 401
 
@@ -607,7 +609,7 @@ export function inferTopicByKeywords(item: PhantasiItem): string | null
 - 首页库出现三个 Phantasi 磁贴
 - resize snap 到声明档位
 - 可放多个 `phantasi-source`，各绑不同 `sourceId`
-- 点击跳到 `/phantasi`
+- 点击跳到 `/journal/feeds/…` 或 `/journal/topics/…`
 
 ### PR 6 验收
 

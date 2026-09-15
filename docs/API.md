@@ -44,8 +44,9 @@ Base URL:
 | --- | --- |
 | Tapp REST（含宿主 AI/Agent 路由） | [tapp/REST_API.md](development/tapp/REST_API.md) |
 | Tapp 总体 | [TAPP_DEVELOPMENT.md](development/TAPP_DEVELOPMENT.md) |
-| Phantasi / Agent | 前端服务与 `backend/src/api/phantasi`、`backend/src/api/agent` |
-| Agent Channel | [办事运输适配与 QQ 单聊](design/agent-channel.md) |
+| Phantasi / 手帐 | `backend/src/api/phantasi`；用户地址 `/journal`；笔记 RSS `/journal/notes.xml`（默认关） |
+| Agent | `backend/src/api/agent`；人设 / Bot / 心跳 `/agent/settings`；MCP 配置仍在 `/config` 高级 |
+| Agent Channel | [私聊通道生命周期](development/AGENT_CHANNELS.md)、[办事运输适配](design/agent-channel.md) |
 
 ## 约定
 

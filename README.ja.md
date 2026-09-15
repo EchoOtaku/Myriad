@@ -32,7 +32,7 @@
 
 **Myriad はセルフホストのホームページ兼創作工房です。** プラットフォームを集め、ライブラリを見せ、サイト全体でひとつのペルソナ、2.5D ビジュアル、所有する Tapp を動かします。
 
-シングルテナント。公開または非公開。PostgreSQL。UI：日本語 · 中国語 · 英語。
+シングルテナント。公開または非公開。PostgreSQL。UI：`zh-CN` · `zh-TW` · `en-US` · `ja-JP` · `ko-KR` · `fr-FR` · `de-DE`。
 
 ```mermaid
 flowchart LR
@@ -268,15 +268,15 @@ Page：Canvas / WebGL、パッケージ内アセット、音声、任意のホ�
 
 気づいた事項を Work に渡す提案ができる。提案の受理は自律許可ではない。任意の TTS、聞き取り。音声 / リアルタイム会話を設定すれば長押しで連続会話。
 
-MCP：管理者の AI 設定。保存後ホットリロード。
+ペルソナ、Bot ペアリング、ハートビートは `/agent/settings`。`/config` ではない。MCP サーバー一覧はまだ `/config` → 詳細設定。保存で `mcp_servers.json` を書き、子プロセスをホットリロードする。プライベートチャット Bot（QQ、Telegram、Discord、飛書）は同じ Work パイプラインに入る。ペアリングは新しいログイン方式ではない。[チャンネル](docs/development/AGENT_CHANNELS.md)。
 
 ---
 
 ## Phantasi
 
-内部名。ユーザー向けの製品名は**手帳**（en: Journal）。RSS、Notion、RSSHub。既定は誰でも閲覧可。ログインユーザーは既読と保存。管理者はソースを管理。相互リンクはホームページに出せる。
+内部名。ユーザー向けの製品名は**手帳**（en: Journal）。RSS、Notion、RSSHub、任意の AI 強化。既定は誰でも閲覧可。ログインユーザーは既読と保存。管理者は `/journal/workbench` でソースを管理。相互リンクはホームページに出せる。
 
-自身の記事：`/journal/articles/...`。クローラは HTML シェル、ブラウザはアプリ。
+ボード：`/journal`（購読）、`/journal/notes`、`/journal/friends`。スター：`/journal/starred`。自身の記事：`/journal/articles/...`。ノート RSS（`/journal/notes.xml`）は管理者が有効化するまで非公開。ノートは TeX 数式、共同著者、本文カラム、本文ウィジェットに対応。クローラは HTML シェル、ブラウザはアプリ。
 
 ---
 
@@ -284,7 +284,9 @@ MCP：管理者の AI 設定。保存後ホットリロード。
 
 ActivityPub + **MFP**。発見は `BASE_URL` を使う。
 
-フォロー：Actor URL（`https://your.domain/users/<name>`）または `@name@your.domain`。チャンネルとリングに対応。WebFinger、NodeInfo、inbox、連合メディアは **proxy → backend**。SPA には入らない。
+フォロー：Actor URL（`https://your.domain/users/<name>`）または `@name@your.domain`。チャンネルとリングに対応。WebFinger、NodeInfo、inbox、連合メディアは **proxy → federation-worker**。SPA にも web プロセスにも入らない。
+
+出口地理位置が制限地域なら **連合ゲート** が連合を止める（照会失敗は fail-open）。専用連合プロセスは終了する。web と persona は動き続ける。
 
 注記：[連合](docs/development/FEDERATION.md)。連合ドメインの移転 ≠ 通常のドメイン変更。
 
@@ -308,7 +310,7 @@ ActivityPub + **MFP**。発見は `BASE_URL` を使う。
 
 同梱 Postgres：updater は `./pgdata` をスナップショット。ロールバックはデータディレクトリとイメージ tag を戻す。外部 Postgres：`MYRIAD_DB_MODE=external`。ロールバックはイメージ tag のみ。[外部 PostgreSQL](docs/deployment/EXTERNAL_POSTGRES.md)。
 
-約 1 GiB ホスト向けメモリ節約。`/config` の診断は実検査（データベース、ストレージ、版、出口）。報告に認証情報は含まない。
+約 1 GiB ホスト向けメモリ節約。`/config` の診断は実検査（データベース、ストレージ、版、出口、連合ゲート）。報告に認証情報は含まない。
 
 ---
 
@@ -390,7 +392,7 @@ docker compose exec -T postgres pg_dump -U myriad -d myriad > "backups/backup_$(
 
 バックエンド `:1103`、フロントエンド `:1102`。本機データベースがなければ `./scripts/dev.sh db-setup`。
 
-フロントの dev server は `/api/*`、`/health`、連合の公開パスをバックエンドへプロキシする。
+フロントの dev server は `/api/*`、`/health`、`/ready`、連合の公開パスをバックエンドへプロキシする。
 
 開発 UI の更新管理：`./scripts/dev.sh start all-updater`。イメージ差し替え、メンテナンスモード、`pgdata` スナップショットは本番スタック（`scripts/extra/deploy.sh`）。
 
@@ -402,8 +404,12 @@ docker compose exec -T postgres pg_dump -U myriad -d myriad > "backups/backup_$(
 flowchart LR
   Browser --> Proxy["proxy :HTTP_PORT"]
   Proxy --> FE["frontend :1102"]
-  Proxy --> BE["backend :1103"]
+  Proxy --> BE["web :1103"]
+  Proxy --> FW["federation-worker :1103"]
+  Proxy --> PW["persona-worker :1103"]
   BE --> PG[("postgres :5432")]
+  FW --> PG
+  PW --> PG
   BE --> GW[updater-gateway]
   GW --> UP[updater]
   UP --> Guard[docker-guard]
@@ -416,7 +422,7 @@ flowchart LR
 
 ```text
 browser → Astro dev (:1102)
-            └─ /api/*, /health, federation public paths → backend (:1103) → postgres
+            └─ /api/*, /health, /ready, federation public paths → backend (:1103) → postgres
 ```
 
 **本番**
@@ -424,11 +430,14 @@ browser → Astro dev (:1102)
 ```text
 host HTTP_PORT
   → proxy
-       ├─► frontend (:1102)          [myriad-net]
-       ├─► backend (:1103) → postgres
-       │       └─► updater-gateway → updater   [myriad-admin-net]
-       │                                 └─► docker-guard → Docker sock
-       └─ (rescue) updater when PROXY_ALLOW_DIRECT_UPDATER=true
+       ├─► frontend (:1102)                 [myriad-net]
+       ├─► backend (:1103) → postgres         MYRIAD_PROCESS_ROLE=web
+       ├─► federation-worker (:1103)
+       ├─► persona-worker (:1103)
+       │
+       └─► backend ─► updater-gateway → updater   [myriad-admin-net]
+                                          └─► docker-guard → Docker sock
+       (rescue) updater when PROXY_ALLOW_DIRECT_UPDATER=true
 ```
 
 </details>
@@ -442,7 +451,7 @@ host HTTP_PORT
 ```
 Myriad/
 ├── backend/          Rust API、SeaORM、migrations
-├── frontend/         Astro + React UI、Tapp ランタイム、i18n（日/中/英）
+├── frontend/         Astro + React UI、Tapp ランタイム、i18n（宿主 locale 7 種）
 ├── proxy/            本番リバースプロキシ（独立 Cargo ツリー）
 ├── updater/          自己更新デーモン（独立 Cargo ツリー）
 ├── crates/           ワークスペースライブラリ
@@ -468,7 +477,7 @@ Myriad/
 **フロントエンド**  
 [Astro](https://github.com/withastro/astro) 7 · [React](https://github.com/facebook/react) 19 · [React Router](https://github.com/remix-run/react-router) 7  
 [Tailwind](https://github.com/tailwindlabs/tailwindcss) 4 · [Vite](https://github.com/vitejs/vite) 8 · [TypeScript](https://github.com/microsoft/TypeScript) 6 · [Motion](https://github.com/motiondivision/motion) · [pnpm](https://github.com/pnpm/pnpm)  
-日 / 中 / 英
+`zh-CN` · `zh-TW` · `en-US` · `ja-JP` · `ko-KR` · `fr-FR` · `de-DE`
 
 **ライブ顔**  
 [Anime2.5DRig](https://github.com/852wa/Anime2.5DRig) · WebGL2
@@ -522,7 +531,8 @@ Tapp サンドボックス · [MCP](https://github.com/modelcontextprotocol/mode
 [Tapp](docs/development/TAPP_DEVELOPMENT.md)  
 [ライブラリ](docs/features/LIBRARY.md)  
 [OAuth](docs/development/OAUTH.md)  
-[連合](docs/development/FEDERATION.md)
+[連合](docs/development/FEDERATION.md)  
+[Agent チャンネル](docs/development/AGENT_CHANNELS.md)
 
 </td>
 <td width="33%" valign="top">
@@ -530,6 +540,9 @@ Tapp サンドボックス · [MCP](https://github.com/modelcontextprotocol/mode
 **デプロイ**  
 [Docker](docs/deployment/DOCKER_DEPLOYMENT.md)  
 [ポート](docs/deployment/PORTS.md)  
+[隔離](docs/deployment/RUNTIME_ISOLATION.md)  
+[Worker DB](docs/deployment/WORKER_DATABASE.md)  
+[バックアップ](docs/deployment/BACKUP.md)  
 [Updater](docs/deployment/UPDATER_QUICKSTART.md)  
 [外部 PG](docs/deployment/EXTERNAL_POSTGRES.md)  
 [Docker なし](docs/deployment/NATIVE_DEPLOYMENT.md)  
@@ -543,7 +556,7 @@ Tapp サンドボックス · [MCP](https://github.com/modelcontextprotocol/mode
 
 ## 貢献
 
-Issue と PR を歓迎。UI 文言：`ja-JP` / `zh-CN` / `en-US`。
+Issue と PR を歓迎。UI 文言：`zh-CN` / `zh-TW` / `en-US` / `ja-JP` / `ko-KR` / `fr-FR` / `de-DE`。
 
 ## License
 

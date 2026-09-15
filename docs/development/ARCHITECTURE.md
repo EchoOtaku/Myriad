@@ -51,8 +51,8 @@ host HTTP_PORT
 ## Backend surfaces (high level)
 
 - **Platforms / profiles**：GitHub、Bilibili、Steam、网易云、YouTube、Bangumi、Discord、X、MAL、Xbox、PSN 等同步与资料库
-- **Phantasi**：RSS / Notion / RSSHub 等阅读源
-- **Agent**（项目名 Arael）：计划 / 执行 / 记忆 / MCP
+- **Phantasi**（用户界面「手帐」，地址 `/journal`）：RSS / Notion / RSSHub / 笔记 / 工作台；笔记 RSS 默认关闭
+- **Agent**（项目名 Arael）：Chat / Work / 记忆 / MCP；人设 / 频道 / 心跳在 `/agent/settings`，MCP 服务器列表仍在 `/config` 高级配置
   - `backend/src/persona/` owns initialization and supervised background drivers. Autonomy and speech ticks are serial within independent drivers; heartbeat runs one reserved batch with two active executions. `persona-worker` hosts this runtime together with Agent/speech/rig APIs, run hubs, cancellation, notification SSE, TAPP interaction callbacks, four channel bot connections and their recovery loop. Web excludes this domain; seven fixed first-party capabilities call authenticated private web RPC to reach web-owned schedulers/processors.
   - MCP runtime lives in `crates/myriad-mcp` (no DB or backend dependency); backend injects host transport policy and status notifications. Production blocks local stdio; operator-configured Streamable HTTP gateway connections support bounded JSON/SSE, session headers and non-retryable ambiguous calls. The optional fixed-container gateway deployment adds bubblewrap namespaces, cgroup limits and bounded guest destruction without a Docker socket.
   - MCP lifecycle: one cancellable actor per server; status/tool snapshots never wait on tool I/O. Each server admits at most 16 queued calls and **4 MiB** of encoded arguments across queued/in-flight calls. Request deadlines include pipe writes and queue wait. Changed/disabled definitions revoke their old actors; unchanged servers retain their sessions. New definitions require explicit activation.
@@ -68,8 +68,8 @@ Schema 权威在 `backend/migrations/`（SeaORM），不是独立 `database/` SQ
 ## Frontend surfaces (high level)
 
 - 首页可编排 widgets（欢迎、音乐、天气、访客、游戏 Presence、Report Card、社交网络、Tapp 等）
-- Library / Phantasi / Reports / Config / Agent / Tapp Store
-- i18n：`zh-CN` / `en-US` / `ja-JP`
+- Library / Phantasi（`/journal`）/ Reports / Config / Agent 设置（`/agent/settings`）/ Tapp Store
+- i18n：`zh-CN` / `zh-TW` / `en-US` / `ja-JP` / `ko-KR` / `fr-FR` / `de-DE`
 
 ## Data & AI
 
@@ -85,3 +85,5 @@ Schema 权威在 `backend/migrations/`（SeaORM），不是独立 `database/` SQ
 - [WORKER_DATABASE.md](../deployment/WORKER_DATABASE.md) — worker 独立数据库登录
 - [BUILD.md](BUILD.md) — 从源码构建
 - [API.md](../API.md) — HTTP API 入口说明
+- [AGENT_CHANNELS.md](AGENT_CHANNELS.md) — 私聊通道
+- [FEDERATION.md](FEDERATION.md) — 联邦行为与闸门

@@ -6,16 +6,16 @@ Brew 内部名改为 Phantasi，用户界面改为 **手帐**（en: Journal）�
 
 - **TAPP：** 批准列里的 `brew:read|write|manage|commentWrite` 会被改写成 `phantasi:*`。包内 Manifest 或源码仍声明 `brew:*` / 调用 `Tapp.brewList` 的安装校验与签发 fail-closed，站长必须改 Manifest 后更新或重装。退役串 `brew:comment` 不映射。
 - **卫星品牌：** `source_type=brewlia` 改为 `phantasiai`（界面「AI 增强」）；导出格式改为 `.pipack`。本机旧 `.brewpack` 不再能导入，从库重新导出。
-- **阅读器：** `/phantasi/item/{id}`、`/api/phantasi/ws`；浏览器里的 `brew-reader-settings` 不双读。
-- **联邦：** 本实例不再认对端的 `brew-article` / `brew-recommend`。
-- **RSS：** `/brew/notes.xml` 改为 `/phantasi/notes.xml`。
+- **阅读器：** 用户地址是 `/journal/articles/{id}`，不是 `/phantasi/item/{id}`。协同仍走 `/api/phantasi/ws`。浏览器里的 `brew-reader-settings` 不双读。无 301。
+- **联邦：** 对象 ID 仍是 `/phantasi/articles/{id}`。本实例不再认对端的 `brew-article` / `brew-recommend`。
+- **RSS：** `/brew/notes.xml` 改为 `/journal/notes.xml`（另有 `/api/phantasi/notes.xml` 同一份）。默认关闭，管理员在工作台打开；关闭或手帐不对游客可见时 404。无 301。旧 `/phantasi/notes.xml` 不是用户地址。
 - **磁盘：** 启动时若存在 `data/brew` 且没有 `data/phantasi`，会改名过去。
 
 临时改名机制（`backend/migrations/phantasi_legacy_rename.rs` 与 `myriad_phantasi::legacy`）在全实例升完后删除。
 
 ## TAPP 旧权限清理与重新授权
 
-本次升级会从**已安装** TAPP 的批准权限与授予权限两列中移除三项已退役的粗权限：`storage`、`brew:comment`、`federation:write`。这些权限名已从权限枚举中删除，继续保留会让已装应用读回即失败。仍然有效的 `ui:theme`、`media:control`、`brew:write` 会原样保留，不会触发重新授权标记。
+本次升级会从**已安装** TAPP 的批准权限与授予权限两列中移除三项已退役的粗权限：`storage`、`brew:comment`、`federation:write`。这些权限名已从权限枚举中删除，继续保留会让已装应用读回即失败。仍然有效的 `ui:theme`、`media:control` 会原样保留，不会触发重新授权标记。历史权限名 `brew:write` 已随品牌硬切改写成 `phantasi:write`，不再作为有效权限名保留。
 
 **这不是自动权限转换**：迁移不做任何旧权限到新权限的映射，也不会自动授予替代权限。被移除权限的安装会被标记为「需重新授权」，在站长重新授权前：
 
@@ -50,10 +50,12 @@ Brew 内部名改为 Phantasi，用户界面改为 **手帐**（en: Journal）�
 
 已安装应用的 `approved_permissions` 里如果还留着无法识别的旧名（例如 `storage`），列表和详情会标 `needs_reauthorization`，授予权限为空，直到更新 Manifest 并更新或重装。不会自动把 `storage` 改写成 `storage:read` / `storage:write`。
 
-## TAPP Brew 权限拆分（破坏性变更）
+## TAPP 手帐权限拆分（历史：Brew 权限拆分）
 
-`brew:write` 继续覆盖已读/未读/全部已读和收藏等当前用户状态；评论与回复的读取并入 `brew:read`，创建、更新与删除改用 `brew:commentWrite`。
-- `brew:commentWrite` 是 Elevated 权限，普通用户需由站长显式下放，游客不会获得该授予权限。
+现行权限名是 `phantasi:write` / `phantasi:read` / `phantasi:commentWrite`。下面保留升级当时的 `brew:*` 写法，只说明那次拆分做了什么，不要再往新 Manifest 里写 `brew:*`。
+
+当时：`brew:write` 覆盖已读/未读/全部已读和收藏等当前用户状态；评论与回复的读取并入 `brew:read`，创建、更新与删除改用 `brew:commentWrite`。
+- `brew:commentWrite`（现 `phantasi:commentWrite`）是 Elevated 权限，普通用户需由站长显式下放，游客不会获得该授予权限。只有授予层决定能否写评。
 
 ## TAPP 联邦写权限拆分（破坏性变更）
 

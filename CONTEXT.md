@@ -178,6 +178,10 @@ _Avoid_: 把探测失败当成受限地区、把未决状态当成已关闭
 管理员配置的站点标题、描述与图标。爬虫和分享预览的 HTML 由 backend 写入；给人看的 SPA 文档由 frontend 写入。proxy 只转发，不改 HTML。
 _Avoid_: 在 proxy 里注入标题、把 SEO 壳和 SPA 壳当成同一份文档
 
+**宿主界面语言**：
+站点 SPA 的 BCP-47 目录：`zh-CN`、`zh-TW`、`en-US`、`ja-JP`、`ko-KR`、`fr-FR`、`de-DE`。不是 Tapp 包内作者语言表，也不是仓库 README 的 en / zh / ja 三份。
+_Avoid_: 只写三语、把 README 语言切换当宿主 locale 全集
+
 **标准布局**：首页小组件落在居中、有最大宽度的宫格里，桌面 16×4，窄屏按列档紧凑重排。
 
 **自由布局**：格子像素大小与当前视口下的标准布局相同，画布固定 16 列 × 8 行、与标准同宽居中。两套布局各自保存坐标。
@@ -201,6 +205,7 @@ AI 增强源内部叫 phantasiai，界面叫 **AI 增强**。订阅包格式叫 
 **手帐路由**：
 用户可见地址是 `/journal`，不是内部名。板块、收藏、主题、工作台、自有文章有子路径。
 订阅源也可以有链接（`/journal/feeds/:id`、主题流），但 SEO 与自有写作分开：可链、不收录、不进 sitemap、爬虫薄壳不转载正文。
+笔记 RSS 是 `/journal/notes.xml`（另有 `/api/phantasi/notes.xml` 同一份），默认关闭，管理员在工作台打开。
 抓来的单篇没有本站文章地址。`/api/phantasi` 与联邦对象 ID `/phantasi/articles/{id}` 仍用内部名。
 _Avoid_: Brew、Brewlia、Brewpack、手记（旧板块名）、把 Phantasi 当产品名、把用户可见 URL 写成 `/phantasi`、把订阅源当自己的文章收录、给旧址做 301 或 query 回填
 
@@ -230,7 +235,7 @@ _Avoid_: 控制岛（手帐页不再用底部岛）、订阅栏（那是栏在�
 
 **手帐皮（phantasi ui）**：
 栏、卡、表单这些可复用的样式原语。页面组合在 skin，栏上的波次在 manager。
-板块页 IO 在 pageData：笔记精选和订阅轨文章走这里，skin 不进口。
+板块页 IO 在 pageData：笔记墙和订阅轨文章走这里，skin 不进口。
 _Avoid_: 把订阅源字段写进原语、从皮里进口控制栏编排、从皮里拉 phantasiApi
 
 **入口型来源（site source）**：
@@ -299,25 +304,29 @@ _Avoid_: 卡片尺寸（那是老网格的说法）
 
 ### Agent
 
-用户界面叫 **Agent**。内部项目名是 Arael。站点助手：计划、执行、记忆、MCP。
+用户界面叫 **Agent**。内部项目名是 Arael。站点助手：工具循环、记忆、MCP。
 _Avoid_: Arael Agent、Arael 智能体、把 Arael 当产品名
 
-**站点管理台**：`/config`。站点身份、平台、模型、权限、联邦。不是 Agent 的家。
-_Avoid_: 把人设、频道、MCP、心跳再堆进 ConfigForm
+**站点管理台**：`/config`。站点身份、平台、模型、权限、联邦、高级（内存节约档与 MCP 服务器列表）。不是人设或 Bot 的家。
+_Avoid_: 把人设、频道、心跳再堆进 ConfigForm、把 MCP 写成已经搬到 Agent 设置
 
-**Agent 设置**：`/agent/settings`。人设、频道、MCP、心跳。只有站长能写。门禁是这页自己的，不是管理台的附带门。
-_Avoid_: /config?section=agent、把 Agent 当管理台的一节
+**Agent 设置**：`/agent/settings`。人设、频道、心跳。只有站长能写。门禁是这页自己的，不是管理台的附带门。MCP 服务器列表仍在 `/config` 高级配置，保存写 `mcp_servers.json` 并热重载子进程。
+_Avoid_: /config?section=agent、把 Agent 当管理台的一节、把 MCP 面板写进 `/agent/settings`
 
 **办事（Work）**：
-面板里计划、执行、确认的那条路径。保留现有 Agent / Pro 能力。开放给所有能用 Agent 的登录用户，能做到哪一步由授予权限逐条决定，不按身份分档。
+面板里通过工具循环办事、在具体操作前确认的那条路径。保留现有 Agent / Pro 能力。开放给所有能用 Agent 的登录用户，能做到哪一步由授予权限逐条决定，不按身份分档。
 _Avoid_: 任务模式、Agent 模式、把 PlannerStatus 的 Chat 当成产品聊天档、把办事整条按管理员开关
+
+**工具循环（tool loop）**：
+办事时根据每次工具的真实结果决定下一步，直到完成、需要回答或遇到阻碍。计划是可修订的清单，不是预先固定的全部执行步骤，也不构成执行授权。
+_Avoid_: 把工具循环当成无上限重试、把换模型当成换架构
 
 **聊天（Chat）**：
 面板里只用人设说话的那条路径，固定走 Lite。不能拿办事工具（搜、订、生成、计划），也不能回落到 Standard / Pro。现场可以执行她决定的换装，以及当前播放器的播、停、上一首、下一首。
 _Avoid_: 闲聊、planner Chat、把聊天当办事的降级分支、把搜歌换歌单放进聊天档
 
 **提案（work proposal）**：
-她注意到一件事之后，请说话对象决定要不要交给办事。接受后重新进入 Work 的计划与确认；提出提案本身不是执行授权。
+她注意到一件事之后，请说话对象决定要不要交给办事。接受后进入 Work 的工具循环与确认；提出提案本身不是执行授权。
 _Avoid_: 自动任务、自主执行、把意图账本当成第三种面板模式
 
 **用户接受**：

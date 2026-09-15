@@ -32,7 +32,7 @@
 
 **Myriad 是自托管的个人主页与创作工坊。** 聚合各平台、展示资料库，并运行全站一份人设、2.5D 形象，以及你拥有的 Tapp 应用。
 
-单租户。可公开或私有。PostgreSQL。界面：中 · 英 · 日。
+单租户。可公开或私有。PostgreSQL。界面：`zh-CN` · `zh-TW` · `en-US` · `ja-JP` · `ko-KR` · `fr-FR` · `de-DE`。
 
 ```mermaid
 flowchart LR
@@ -108,7 +108,7 @@ Chat / Work · 面板
 </td>
 <td width="33%" valign="top">
 
-**Phantasi**（手帐）`/phantasi`  
+**Phantasi**（手帐）`/journal`  
 RSS · Notion · RSSHub
 
 </td>
@@ -268,15 +268,15 @@ Page：Canvas / WebGL、包内资源、音频、可选宿主注入的 [Three.js]
 
 可对注意到的事项提出交给 Work 的提案；接受提案不是自治授权。可选 TTS、听写；配置语音 / 实时对话后可长按连续对话。
 
-MCP：管理员 AI 设置，保存后热重载。
+人设、Bot 配对、心跳在 `/agent/settings`，不在 `/config`。MCP 服务器列表仍在 `/config` → 高级配置；保存写 `mcp_servers.json` 并热重载子进程。私聊 Bot（QQ、Telegram、Discord、飞书）走进同一条办事流水线；配对不是新的登录方式。[通道](docs/development/AGENT_CHANNELS.md)。
 
 ---
 
 ## Phantasi
 
-内部名；用户界面叫**手帐**（en: Journal）。RSS、Notion、RSSHub。默认任何人可读。登录用户标记已读与收藏。管理员管理源。友情链接可出现在首页。
+内部名；用户界面叫**手帐**（en: Journal）。RSS、Notion、RSSHub，可选 AI 增强。默认任何人可读。登录用户标记已读与收藏。管理员在 `/journal/workbench` 管理源。友情链接可出现在首页。
 
-自有文章：`/journal/articles/...`。爬虫获得 HTML 壳，浏览器进入应用。
+板块：`/journal`（订阅）、`/journal/notes`、`/journal/friends`。收藏：`/journal/starred`。自有文章：`/journal/articles/...`。笔记 RSS（`/journal/notes.xml`）默认关闭，管理员开启后才公开。笔记支持 TeX 公式、联合作者、正文分栏与正文小组件。爬虫获得 HTML 壳，浏览器进入应用。
 
 ---
 
@@ -284,7 +284,9 @@ MCP：管理员 AI 设置，保存后热重载。
 
 ActivityPub + **MFP**。发现地址使用 `BASE_URL`。
 
-关注：Actor URL（`https://域名/users/<名>`）或 `@名@域名`。支持频道与环网。WebFinger、NodeInfo、inbox、联邦媒体走 **proxy → backend**，不进 SPA。
+关注：Actor URL（`https://域名/users/<名>`）或 `@名@域名`。支持频道与环网。WebFinger、NodeInfo、inbox、联邦媒体走 **proxy → federation-worker**，不进 SPA，也不进 web 进程。
+
+出口地理位置落在受限地区时，**联邦闸门**会关掉联邦（探测失败则失败放行）。专用联邦进程随之退出；web 与 persona 继续跑。
 
 说明：[联邦](docs/development/FEDERATION.md)。联邦域名迁移 ≠ 普通换域名。
 
@@ -308,7 +310,7 @@ ActivityPub + **MFP**。发现地址使用 `BASE_URL`。
 
 自带 Postgres：updater 快照 `./pgdata`；回滚恢复数据目录与镜像 tag。外部 Postgres：`MYRIAD_DB_MODE=external`；回滚只恢复镜像 tag。[外部 PostgreSQL](docs/deployment/EXTERNAL_POSTGRES.md)。
 
-约 1 GiB 主机可用内存节约档。`/config` 诊断执行实检查（数据库、存储、版本、出口），报告不含凭据。
+约 1 GiB 主机可用内存节约档。`/config` 诊断执行实检查（数据库、存储、版本、出口、联邦闸门），报告不含凭据。
 
 ---
 
@@ -390,7 +392,7 @@ docker compose exec -T postgres pg_dump -U myriad -d myriad > "backups/backup_$(
 
 后端 `:1103`，前端 `:1102`。无本机数据库时：`./scripts/dev.sh db-setup`。
 
-前端 dev server 将 `/api/*`、`/health` 与联邦公开路径代理到后端。
+前端 dev server 将 `/api/*`、`/health`、`/ready` 与联邦公开路径代理到后端。
 
 开发 UI 中的更新管理：`./scripts/dev.sh start all-updater`。换镜像、维护模式、`pgdata` 快照走生产栈（`scripts/extra/deploy.sh`）。
 
@@ -402,8 +404,12 @@ docker compose exec -T postgres pg_dump -U myriad -d myriad > "backups/backup_$(
 flowchart LR
   Browser --> Proxy["proxy :HTTP_PORT"]
   Proxy --> FE["frontend :1102"]
-  Proxy --> BE["backend :1103"]
+  Proxy --> BE["web :1103"]
+  Proxy --> FW["federation-worker :1103"]
+  Proxy --> PW["persona-worker :1103"]
   BE --> PG[("postgres :5432")]
+  FW --> PG
+  PW --> PG
   BE --> GW[updater-gateway]
   GW --> UP[updater]
   UP --> Guard[docker-guard]
@@ -416,7 +422,7 @@ flowchart LR
 
 ```text
 browser → Astro dev (:1102)
-            └─ /api/*, /health, federation public paths → backend (:1103) → postgres
+            └─ /api/*, /health, /ready, federation public paths → backend (:1103) → postgres
 ```
 
 **生产**
@@ -424,11 +430,14 @@ browser → Astro dev (:1102)
 ```text
 host HTTP_PORT
   → proxy
-       ├─► frontend (:1102)          [myriad-net]
-       ├─► backend (:1103) → postgres
-       │       └─► updater-gateway → updater   [myriad-admin-net]
-       │                                 └─► docker-guard → Docker sock
-       └─ (rescue) updater when PROXY_ALLOW_DIRECT_UPDATER=true
+       ├─► frontend (:1102)                 [myriad-net]
+       ├─► backend (:1103) → postgres         MYRIAD_PROCESS_ROLE=web
+       ├─► federation-worker (:1103)
+       ├─► persona-worker (:1103)
+       │
+       └─► backend ─► updater-gateway → updater   [myriad-admin-net]
+                                          └─► docker-guard → Docker sock
+       (rescue) updater when PROXY_ALLOW_DIRECT_UPDATER=true
 ```
 
 </details>
@@ -442,7 +451,7 @@ host HTTP_PORT
 ```
 Myriad/
 ├── backend/          Rust API、SeaORM、migrations
-├── frontend/         Astro + React UI、Tapp 运行时、i18n（中/英/日）
+├── frontend/         Astro + React UI、Tapp 运行时、i18n（7 种宿主 locale）
 ├── proxy/            生产反向代理（独立 Cargo 树）
 ├── updater/          自更新守护进程（独立 Cargo 树）
 ├── crates/           工作区库
@@ -468,7 +477,7 @@ Myriad/
 **前端**  
 [Astro](https://github.com/withastro/astro) 7 · [React](https://github.com/facebook/react) 19 · [React Router](https://github.com/remix-run/react-router) 7  
 [Tailwind](https://github.com/tailwindlabs/tailwindcss) 4 · [Vite](https://github.com/vitejs/vite) 8 · [TypeScript](https://github.com/microsoft/TypeScript) 6 · [Motion](https://github.com/motiondivision/motion) · [pnpm](https://github.com/pnpm/pnpm)  
-中 / 英 / 日
+`zh-CN` · `zh-TW` · `en-US` · `ja-JP` · `ko-KR` · `fr-FR` · `de-DE`
 
 **现场形象**  
 [Anime2.5DRig](https://github.com/852wa/Anime2.5DRig) · WebGL2
@@ -522,7 +531,8 @@ Tapp 沙箱 · [MCP](https://github.com/modelcontextprotocol/modelcontextprotoco
 [Tapp](docs/development/TAPP_DEVELOPMENT.md)  
 [资料库](docs/features/LIBRARY.md)  
 [OAuth](docs/development/OAUTH.md)  
-[联邦](docs/development/FEDERATION.md)
+[联邦](docs/development/FEDERATION.md)  
+[Agent 通道](docs/development/AGENT_CHANNELS.md)
 
 </td>
 <td width="33%" valign="top">
@@ -530,6 +540,9 @@ Tapp 沙箱 · [MCP](https://github.com/modelcontextprotocol/modelcontextprotoco
 **部署**  
 [Docker](docs/deployment/DOCKER_DEPLOYMENT.md)  
 [端口](docs/deployment/PORTS.md)  
+[隔离](docs/deployment/RUNTIME_ISOLATION.md)  
+[Worker 数据库](docs/deployment/WORKER_DATABASE.md)  
+[备份](docs/deployment/BACKUP.md)  
 [Updater](docs/deployment/UPDATER_QUICKSTART.md)  
 [外部 PG](docs/deployment/EXTERNAL_POSTGRES.md)  
 [无 Docker](docs/deployment/NATIVE_DEPLOYMENT.md)  
@@ -543,7 +556,7 @@ Tapp 沙箱 · [MCP](https://github.com/modelcontextprotocol/modelcontextprotoco
 
 ## 贡献
 
-欢迎 Issue 与 PR。UI 文案：`zh-CN` / `en-US` / `ja-JP`。
+欢迎 Issue 与 PR。UI 文案：`zh-CN` / `zh-TW` / `en-US` / `ja-JP` / `ko-KR` / `fr-FR` / `de-DE`。
 
 ## License
 

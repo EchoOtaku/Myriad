@@ -30,7 +30,7 @@
 
 **Myriad is a self-hosted homepage and creative studio.** Aggregate your platforms, show a library, and run a site-wide persona, a 2.5D face, and Tapp apps you own.
 
-Single-tenant. Public or private. PostgreSQL. UI: English · Chinese · Japanese.
+Single-tenant. Public or private. PostgreSQL. UI: `zh-CN` · `zh-TW` · `en-US` · `ja-JP` · `ko-KR` · `fr-FR` · `de-DE`.
 
 ```mermaid
 flowchart LR
@@ -106,7 +106,7 @@ Chat / Work · panel
 </td>
 <td width="33%" valign="top">
 
-**Phantasi** (Journal) `/phantasi`  
+**Phantasi** (Journal) `/journal`  
 RSS · Notion · RSSHub
 
 </td>
@@ -266,15 +266,15 @@ Plan, confirm, execute. Memory, skills, scheduled jobs, MCP. Scope is granted pe
 
 May propose handing a noticed item to Work; accepting is not autonomy. Optional TTS, listening, and long-press live conversation when speech / realtime talk is configured.
 
-MCP servers: admin AI settings; hot-reload on save.
+Owner persona, Bot pairing, and heartbeat live at `/agent/settings` — not `/config`. MCP server list is still `/config` → Advanced; save writes `mcp_servers.json` and hot-reloads children. Private-chat Bots (QQ, Telegram, Discord, 飞书) enter the same Work pipeline; pairing is not a new login. [Channels](docs/development/AGENT_CHANNELS.md).
 
 ---
 
 ## Phantasi
 
-Internal name for the Journal (zh: 手帐, ja/zh-TW: 手帳, ko: 수첩). RSS, Notion, RSSHub. Default: anyone can read. Signed-in users mark read and save. Admins manage sources. Friend links can appear on the homepage.
+Internal name for the Journal (zh: 手帐, ja/zh-TW: 手帳, ko: 수첩). RSS, Notion, RSSHub, optional AI enrichment. Default: anyone can read. Signed-in users mark read and save. Admins manage sources from `/journal/workbench`. Friend links can appear on the homepage.
 
-Own articles: `/journal/articles/...`. Crawlers receive an HTML shell; browsers receive the app.
+Boards: `/journal` (feeds), `/journal/notes`, `/journal/friends`. Starred: `/journal/starred`. Own articles: `/journal/articles/...`. Notes RSS (`/journal/notes.xml`) is off until an admin enables it. Notes support TeX math, co-authors, columns, and in-body widgets. Crawlers receive an HTML shell; browsers receive the app.
 
 ---
 
@@ -282,7 +282,9 @@ Own articles: `/journal/articles/...`. Crawlers receive an HTML shell; browsers 
 
 ActivityPub + **MFP**. Discovery uses `BASE_URL`.
 
-Follow via Actor URL (`https://your.domain/users/<name>`) or `@name@your.domain`. Channels and rings are supported. WebFinger, NodeInfo, inboxes, and federation media: **proxy → backend**, not the SPA.
+Follow via Actor URL (`https://your.domain/users/<name>`) or `@name@your.domain`. Channels and rings are supported. WebFinger, NodeInfo, inboxes, and federation media: **proxy → federation-worker**, not the SPA or the web process.
+
+A geographic **federation gate** can disable federation when the server's egress location is a blocked region (fail-open if the lookup fails). The dedicated federation process then exits; web and persona keep running.
 
 Notes: [Federation](docs/development/FEDERATION.md). Federated domain move ≠ ordinary domain change.
 
@@ -306,7 +308,7 @@ Version switch and rollback: `/config` → About → Update management. The brow
 
 Bundled Postgres: updater snapshots `./pgdata`; rollback restores data directory and image tags. External Postgres: `MYRIAD_DB_MODE=external`; rollback restores image tags only. [External PostgreSQL](docs/deployment/EXTERNAL_POSTGRES.md).
 
-Memory-saver profile for ~1 GiB hosts. `/config` diagnostics run live checks (database, storage, version, egress) and emit a credential-free report.
+Memory-saver profile for ~1 GiB hosts. `/config` diagnostics run live checks (database, storage, version, egress, federation gate) and emit a credential-free report.
 
 ---
 
@@ -388,7 +390,7 @@ docker compose exec -T postgres pg_dump -U myriad -d myriad > "backups/backup_$(
 
 Backend `:1103`, frontend `:1102`. Without a local database: `./scripts/dev.sh db-setup`.
 
-The frontend dev server proxies `/api/*`, `/health`, and public federation paths to the backend.
+The frontend dev server proxies `/api/*`, `/health`, `/ready`, and public federation paths to the backend.
 
 Update management in the dev UI: `./scripts/dev.sh start all-updater`. Image replace, maintenance mode, and `pgdata` snapshots: production stack (`scripts/extra/deploy.sh`).
 
@@ -400,8 +402,12 @@ Update management in the dev UI: `./scripts/dev.sh start all-updater`. Image rep
 flowchart LR
   Browser --> Proxy["proxy :HTTP_PORT"]
   Proxy --> FE["frontend :1102"]
-  Proxy --> BE["backend :1103"]
+  Proxy --> BE["web :1103"]
+  Proxy --> FW["federation-worker :1103"]
+  Proxy --> PW["persona-worker :1103"]
   BE --> PG[("postgres :5432")]
+  FW --> PG
+  PW --> PG
   BE --> GW[updater-gateway]
   GW --> UP[updater]
   UP --> Guard[docker-guard]
@@ -414,7 +420,7 @@ flowchart LR
 
 ```text
 browser → Astro dev (:1102)
-            └─ /api/*, /health, federation public paths → backend (:1103) → postgres
+            └─ /api/*, /health, /ready, federation public paths → backend (:1103) → postgres
 ```
 
 **Production**
@@ -422,11 +428,14 @@ browser → Astro dev (:1102)
 ```text
 host HTTP_PORT
   → proxy
-       ├─► frontend (:1102)          [myriad-net]
-       ├─► backend (:1103) → postgres
-       │       └─► updater-gateway → updater   [myriad-admin-net]
-       │                                 └─► docker-guard → Docker sock
-       └─ (rescue) updater when PROXY_ALLOW_DIRECT_UPDATER=true
+       ├─► frontend (:1102)                 [myriad-net]
+       ├─► backend (:1103) → postgres         MYRIAD_PROCESS_ROLE=web
+       ├─► federation-worker (:1103)
+       ├─► persona-worker (:1103)
+       │
+       └─► backend ─► updater-gateway → updater   [myriad-admin-net]
+                                          └─► docker-guard → Docker sock
+       (rescue) updater when PROXY_ALLOW_DIRECT_UPDATER=true
 ```
 
 </details>
@@ -440,7 +449,7 @@ Crawler / in-app-share user-agents receive an SEO HTML shell for Home, Library, 
 ```
 Myriad/
 ├── backend/          Rust API, SeaORM, migrations
-├── frontend/         Astro + React UI, Tapp runtime, i18n (en / zh / ja)
+├── frontend/         Astro + React UI, Tapp runtime, i18n (7 host locales)
 ├── proxy/            production reverse proxy (own Cargo tree)
 ├── updater/          self-update daemon (own Cargo tree)
 ├── crates/           workspace libraries
@@ -466,7 +475,7 @@ Myriad/
 **Frontend**  
 [Astro](https://github.com/withastro/astro) 7 · [React](https://github.com/facebook/react) 19 · [React Router](https://github.com/remix-run/react-router) 7  
 [Tailwind](https://github.com/tailwindlabs/tailwindcss) 4 · [Vite](https://github.com/vitejs/vite) 8 · [TypeScript](https://github.com/microsoft/TypeScript) 6 · [Motion](https://github.com/motiondivision/motion) · [pnpm](https://github.com/pnpm/pnpm)  
-en / zh / ja
+`zh-CN` · `zh-TW` · `en-US` · `ja-JP` · `ko-KR` · `fr-FR` · `de-DE`
 
 **Live face**  
 [Anime2.5DRig](https://github.com/852wa/Anime2.5DRig) · WebGL2
@@ -520,7 +529,8 @@ Currently Chinese. [Index](docs/INDEX.md).
 [Tapp](docs/development/TAPP_DEVELOPMENT.md)  
 [Library](docs/features/LIBRARY.md)  
 [OAuth](docs/development/OAUTH.md)  
-[Federation](docs/development/FEDERATION.md)
+[Federation](docs/development/FEDERATION.md)  
+[Agent channels](docs/development/AGENT_CHANNELS.md)
 
 </td>
 <td width="33%" valign="top">
@@ -528,6 +538,9 @@ Currently Chinese. [Index](docs/INDEX.md).
 **Deploy**  
 [Docker](docs/deployment/DOCKER_DEPLOYMENT.md)  
 [Ports](docs/deployment/PORTS.md)  
+[Isolation](docs/deployment/RUNTIME_ISOLATION.md)  
+[Worker DB](docs/deployment/WORKER_DATABASE.md)  
+[Backup](docs/deployment/BACKUP.md)  
 [Updater](docs/deployment/UPDATER_QUICKSTART.md)  
 [External PG](docs/deployment/EXTERNAL_POSTGRES.md)  
 [Native](docs/deployment/NATIVE_DEPLOYMENT.md)  
@@ -541,7 +554,7 @@ Currently Chinese. [Index](docs/INDEX.md).
 
 ## Contributing
 
-Issues and PRs welcome. UI copy: `en-US` / `zh-CN` / `ja-JP`.
+Issues and PRs welcome. UI copy: `zh-CN` / `zh-TW` / `en-US` / `ja-JP` / `ko-KR` / `fr-FR` / `de-DE`.
 
 ## License
 

@@ -5,7 +5,7 @@ This document provides detailed build and compilation instructions for the Myria
 ## Prerequisites
 
 ### Required Tools
-- **Rust**: 1.98 or later ([install](https://rustup.rs/))
+- **Rust**: 1.98 or later, edition 2024 ([install](https://rustup.rs/))
 - **Node.js**: 24.x LTS ([install](https://nodejs.org/))
 - **PostgreSQL**: 18 recommended (Compose default); see release `min_pg_version` for the compatibility floor ([install](https://www.postgresql.org/download/))
 - **Git**: Latest version
@@ -28,7 +28,10 @@ dependencies (see [Cargo Workspaces](https://doc.rust-lang.org/book/ch14-03-carg
 | `backend/migrations/` | `migration` |
 | `crates/myriad-error/` | `myriad-error` (shared `AppError` + redact) |
 | `crates/myriad-data-key/` | `myriad-data-key` (config/federation AES-GCM key) |
+| `crates/myriad-mcp/` | `myriad-mcp` (bounded MCP client lifecycle and transports) |
 | `crates/myriad-merope/` | `myriad-merope` (Merope domain rules and contracts) |
+| `crates/myriad-phantasi/` | `myriad-phantasi` (Phantasi domain rules and Brew→Phantasi rename catalog) |
+| `crates/myriad-phantasi-notes/` | `myriad-phantasi-notes` (note Markdown render, sanitize, derived fields) |
 | `crates/myriad-outbound/` | `myriad-outbound` (SSRF-safe HTTP egress) |
 | `crates/myriad-image-proxy/` | `myriad-image-proxy` (hotlink image proxy helpers) |
 | `crates/myriad-json-schema/` | `myriad-json-schema` (JSON schema helpers) |

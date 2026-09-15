@@ -11,6 +11,31 @@ and does not register these handlers. Path table:
 [PORTS.md](../deployment/PORTS.md). Process boundary:
 [RUNTIME_ISOLATION.md](../deployment/RUNTIME_ISOLATION.md).
 
+## Federation gate (egress location)
+
+Federation is not an admin toggle. On boot the process probes the machine's
+**egress location** (public IP geolocation, bypassing the outbound proxy) and
+holds the result in memory only. It is never written to `configurations`.
+
+- **Closed** only on a positive reading that this server is in a blocked
+  region (currently ISO `CN`; HK / MO / TW are distinct codes). All
+  `federation:*` grants then evaluate false for every role, including admins.
+- **Fail-open** if the geolocation provider is unreachable, rate-limited, or
+  unparseable. The unresolved probe window also reads as enabled. Outbound
+  delivery is the exception: it waits for the reading before the first drain
+  so a blocked server never emits an Activity on a merely-pending gate.
+- When the gate is closed, `federation-worker` exits with status 0 (Compose
+  `restart: on-failure` does not loop an idle worker). Web and
+  `persona-worker` keep running and do not register the federation router.
+  On a combined / native process the gate middleware answers **404** for
+  federation paths. On official Compose the public path is
+  proxy → `federation-worker`; a missing upstream is **502**, not web 404.
+
+Entry points: `backend/src/services/federation_gate.rs`,
+`backend/src/services/server_location.rs`, worker exit in
+`backend/src/federation/worker.rs`. Diagnostics expose `federation_gate`
+without credentials.
+
 ## Inbox auth hardening (MYR-022 / MYR-023)
 
 | Concern | Behaviour |
