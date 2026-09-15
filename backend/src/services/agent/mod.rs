@@ -7,6 +7,7 @@ pub mod dag_pure;
 pub mod data_read_pure;
 pub mod data_write_pure;
 pub mod error_analyzer_pure;
+#[cfg(test)]
 pub mod escalation;
 pub mod executor;
 pub mod executor_resolve_pure;
@@ -14,6 +15,7 @@ pub mod executor_utils_pure;
 pub mod external_pure;
 pub mod heartbeat;
 pub mod identity;
+#[cfg(test)]
 pub mod intent;
 pub mod mcp;
 pub mod memory;
@@ -21,11 +23,11 @@ pub mod merope;
 pub mod notification_preferences;
 pub mod notification_producers;
 pub mod notifications;
-pub mod orchestrator;
 pub mod perception_view;
 pub(crate) mod playback_direction;
 pub(crate) mod presence_window;
 pub mod queue;
+#[cfg(test)]
 pub mod recipe;
 pub mod resource_create_pure;
 pub mod response_agent;

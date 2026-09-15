@@ -203,6 +203,7 @@ async fn apply_synced_state(
 
 // A failed compare-and-swap is a conflict, not a retryable storage failure.
 // Re-read after the competing write so the response describes current state.
+#[cfg(test)]
 async fn commit_synced_state(
     transaction: sea_orm::DatabaseTransaction,
     source_id: i32,

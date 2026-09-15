@@ -249,39 +249,6 @@ fn spawn_model_outfit_overlay(
 }
 
 impl Agent {
-    /// 真正的流式 Chat 回复：使用 `analyze_stream_parts` 从 AI 模型逐 token 输出
-    ///
-    /// 构建包含人格 + 对话历史的 prompt，调用流式 AI 接口，
-    /// 每个 token 实时推送给前端。AI 不可用时回退到模拟流式。
-    pub(crate) async fn stream_chat_response(
-        &self,
-        request: &UserRequest,
-        planner_reply: &str,
-        progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
-    ) -> String {
-        let analyzer = match crate::services::agent::merope::create_speaking_analyzer().await {
-            Some(a) => a,
-            None => {
-                // AI 不可用，回退到模拟流式
-                Self::stream_text_as_tokens_with_finish(progress_tx, planner_reply, false).await;
-                return planner_reply.to_string();
-            }
-        };
-
-        match self
-            .stream_chat_response_with_analyzer(request, progress_tx, analyzer, None)
-            .await
-        {
-            Ok(reply) => reply,
-            Err(error) => {
-                // Work 路径的兼容降级：Planner 已经产生了可读回复。
-                tracing::warn!(%error, "[Agent] Streaming chat response failed, falling back to planner reply");
-                Self::stream_text_as_tokens_with_finish(progress_tx, planner_reply, false).await;
-                planner_reply.to_string()
-            }
-        }
-    }
-
     /// Chat 模式的唯一模型入口。严格 Lite 不可用时直接失败，绝不借用
     /// Standard / Pro，否则“只聊天”会悄悄变成另一条 Work 费用路径。
     pub(crate) async fn stream_strict_lite_chat_response(

@@ -175,114 +175,6 @@ pub fn generate_single_step_response(result: &Value) -> Option<String> {
     None // 调用方再走 `partial_completion` / `completion_message`
 }
 
-// ─────────────────────────────────────────────
-// 1.5 计划生成后的说明（AI 驱动 + fallback）
-// ─────────────────────────────────────────────
-
-/// 计划生成后，向用户说明即将要做什么
-///
-/// `ai_announce_plan`：`Text` → SummaryToken，`Reasoning` → ThinkingToken。失败走模板。
-pub async fn announce_plan(
-    user_input: &str,
-    step_descriptions: &[String],
-    user_id: i32,
-    progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
-) -> String {
-    // 先尝试 AI 生成
-    if let Some(msg) = ai_announce_plan(user_input, step_descriptions, user_id, progress_tx).await {
-        return msg;
-    }
-    // fallback：模板
-    plan_announcement_fallback(step_descriptions)
-}
-
-/// 模板 fallback（AI 不可用时）
-fn plan_announcement_fallback(step_descriptions: &[String]) -> String {
-    if step_descriptions.is_empty() {
-        return "Let me take a look…".to_string();
-    }
-    if step_descriptions.len() == 1 {
-        return format!("I'll start with {} — one moment.", step_descriptions[0]);
-    }
-    // 直接用箭头串联步骤，一目了然
-    let flow: String = step_descriptions.join(" → ");
-    format!("Plan: {flow}\nStarting now.")
-}
-
-/// AI 生成计划说明（流式推送）
-async fn ai_announce_plan(
-    user_input: &str,
-    step_descriptions: &[String],
-    user_id: i32,
-    progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
-) -> Option<String> {
-    let analyzer = crate::services::agent::merope::create_speaking_analyzer().await?;
-
-    let soul = crate::services::agent::identity::get_speaking_soul()
-        .await
-        .unwrap_or_default();
-    let soul: String = soul.chars().take(2000).collect();
-    let merope_prompt = crate::services::agent::merope::speaking_prompt_plain(
-        &crate::services::agent::merope::speaking_prompt(user_id).await,
-    );
-    let merope_prefix = if merope_prompt.is_empty() {
-        String::new()
-    } else {
-        format!("{merope_prompt}\n\n")
-    };
-
-    let steps_list = step_descriptions
-        .iter()
-        .enumerate()
-        .map(|(i, d)| format!("{}. {}", i + 1, d))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let prompt = format!(
-        "{soul}\n\n{merope}\
-         User: \"{user_input}\"\n\n\
-         Your plan:\n{steps_list}\n\n\
-         In one or two sentences, tell them what you are about to do. Speak in character, in the addressee's language. Name the actual items. No customer-service opening, no list.",
-        soul = soul,
-        merope = merope_prefix,
-        user_input = user_input,
-        steps_list = steps_list,
-    );
-
-    let tx = progress_tx.clone();
-    match analyzer
-        .analyze_stream_parts(&prompt, |delta| {
-            let tx = tx.clone();
-            async move {
-                emit_stream_delta(&tx, delta).await;
-                true
-            }
-        })
-        .await
-    {
-        Ok(full_text) if !full_text.trim().is_empty() => {
-            let _ = tx
-                .send(AgentProgressEvent::ThinkingToken {
-                    token: String::new(),
-                    done: true,
-                })
-                .await;
-            let _ = tx
-                .send(AgentProgressEvent::SummaryToken {
-                    token: String::new(),
-                    done: true,
-                })
-                .await;
-            Some(full_text.trim().to_string())
-        }
-        Ok(_) => None,
-        Err(e) => {
-            tracing::warn!("[ResponseAgent] Plan announcement streaming failed: {}", e);
-            None
-        }
-    }
-}
-
 /// 单步骤开始时的描述文本
 ///
 /// 原样返回 `step_description`
@@ -738,19 +630,9 @@ fn smart_fallback(step_outputs: &[StepOutput<'_>]) -> String {
 // 4. 对话与交互模板
 // ─────────────────────────────────────────────
 
-/// 默认问候
-pub fn greeting() -> String {
-    "Hi! How can I help?".to_string()
-}
-
 /// 正在理解请求
 pub fn understanding_request() -> String {
     "Understanding your request…".to_string()
-}
-
-/// 正在规划步骤
-pub fn planning_steps() -> String {
-    "Planning steps…".to_string()
 }
 
 /// 进度完成
@@ -758,37 +640,9 @@ pub fn done_status() -> String {
     "Done.".to_string()
 }
 
-/// 不支持的操作
-pub fn unsupported_operation() -> String {
-    "This action is not supported".to_string()
-}
-
-/// 需要更多信息（详细版，用于 Clarify 分流）
-pub fn need_clarification() -> String {
-    "I need more information to understand that.".to_string()
-}
-
 /// 未能成功执行
 pub fn not_executed() -> String {
     "Could not finish that.".to_string()
-}
-
-/// 默认建议
-pub fn default_suggestions() -> Vec<String> {
-    vec![
-        "Search the latest tech news".to_string(),
-        "Look at my Steam games".to_string(),
-    ]
-}
-
-/// 升级策略进度
-pub fn escalation_status(hint: &str) -> String {
-    format!("Trying another approach: {hint}")
-}
-
-/// 升级重试
-pub fn escalation_retry() -> String {
-    "Retrying with another approach".to_string()
 }
 
 /// 单参数提问

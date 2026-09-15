@@ -318,6 +318,7 @@ fn default_on_failure() -> String {
 
 impl AiRecipeStep {
     /// 转为 `RecipeStep`：写入 `order` / `model_tier`；`on_failure` 仅 `"skip"`→Skip，其余 Abort；`timeout_ms` 缺省 30000。
+    #[cfg(test)]
     pub fn into_recipe_step(self, order: u32, tier: Option<ModelTier>) -> RecipeStep {
         let failure_strategy = match self.on_failure.as_str() {
             "skip" => FailureStrategy::Skip,

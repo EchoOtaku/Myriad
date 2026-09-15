@@ -28,6 +28,7 @@ pub enum AgentRole {
 
 impl AgentRole {
     /// 获取角色的友好名称
+    #[cfg(test)]
     pub fn display_name(&self) -> &'static str {
         match self {
             AgentRole::Orchestrator => "Orchestrator",
@@ -39,6 +40,7 @@ impl AgentRole {
     }
 
     /// 获取角色的默认 ModelTier
+    #[cfg(test)]
     pub fn default_tier(&self) -> ModelTier {
         match self {
             AgentRole::Orchestrator => ModelTier::Pro,
@@ -50,6 +52,7 @@ impl AgentRole {
     }
 
     /// 获取角色的 emoji 标识
+    #[cfg(test)]
     pub fn icon(&self) -> &'static str {
         match self {
             AgentRole::Orchestrator => "🧠",
@@ -61,23 +64,6 @@ impl AgentRole {
     }
 }
 
-/// Agent 身份配置
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentProfile {
-    /// Agent ID
-    pub id: String,
-    /// Agent 角色
-    pub role: AgentRole,
-    /// 该 Agent 可调用的能力子集（前缀匹配）
-    pub capability_prefixes: Vec<String>,
-    /// 默认模型层级
-    pub default_tier: ModelTier,
-    /// 最大并发数
-    pub max_concurrency: usize,
-    /// 简短描述
-    pub description: String,
-}
-
 // Agent Router
 
 /// 多 Agent 路由器
@@ -85,8 +71,6 @@ pub struct AgentProfile {
 /// 根据能力 ID 将任务路由到合适的 `AgentRole`。
 /// `default_tier` 仅展示；实际模型选择走 `TierRouter`。
 pub struct AgentRouter {
-    /// 角色 → Agent 配置
-    profiles: HashMap<AgentRole, AgentProfile>,
     /// 能力前缀 → 角色 映射缓存
     prefix_cache: HashMap<String, AgentRole>,
 }
@@ -94,21 +78,7 @@ pub struct AgentRouter {
 impl AgentRouter {
     /// 创建带默认 Agent 配置的路由器
     pub fn new() -> Self {
-        let mut profiles = HashMap::new();
         let mut prefix_cache = HashMap::new();
-
-        // Orchestrator
-        profiles.insert(
-            AgentRole::Orchestrator,
-            AgentProfile {
-                id: "orchestrator".to_string(),
-                role: AgentRole::Orchestrator,
-                capability_prefixes: vec![], // Orchestrator 不直接执行能力
-                default_tier: ModelTier::Pro,
-                max_concurrency: 1,
-                description: "Planning, decisions, and summaries".to_string(),
-            },
-        );
 
         // Data Worker
         let data_prefixes = vec![
@@ -133,17 +103,6 @@ impl AgentRouter {
         for p in &data_prefixes {
             prefix_cache.insert(p.clone(), AgentRole::DataWorker);
         }
-        profiles.insert(
-            AgentRole::DataWorker,
-            AgentProfile {
-                id: "data-worker".to_string(),
-                role: AgentRole::DataWorker,
-                capability_prefixes: data_prefixes,
-                default_tier: ModelTier::Standard,
-                max_concurrency: 4,
-                description: "Platform data, API calls, and transforms".to_string(),
-            },
-        );
 
         // Content Worker
         let content_prefixes = vec![
@@ -163,17 +122,6 @@ impl AgentRouter {
         for p in &content_prefixes {
             prefix_cache.insert(p.clone(), AgentRole::ContentWorker);
         }
-        profiles.insert(
-            AgentRole::ContentWorker,
-            AgentProfile {
-                id: "content-worker".to_string(),
-                role: AgentRole::ContentWorker,
-                capability_prefixes: content_prefixes,
-                default_tier: ModelTier::Standard,
-                max_concurrency: 3,
-                description: "Summarize, analyze, filter, and search".to_string(),
-            },
-        );
 
         // Creative Worker
         let creative_prefixes = vec![
@@ -188,17 +136,6 @@ impl AgentRouter {
         for p in &creative_prefixes {
             prefix_cache.insert(p.clone(), AgentRole::CreativeWorker);
         }
-        profiles.insert(
-            AgentRole::CreativeWorker,
-            AgentProfile {
-                id: "creative-worker".to_string(),
-                role: AgentRole::CreativeWorker,
-                capability_prefixes: creative_prefixes,
-                default_tier: ModelTier::Pro,
-                max_concurrency: 2,
-                description: "Creative generation, chat, code, and images".to_string(),
-            },
-        );
 
         // System Worker
         let system_prefixes = vec![
@@ -241,22 +178,8 @@ impl AgentRouter {
         for p in &system_prefixes {
             prefix_cache.insert(p.clone(), AgentRole::SystemWorker);
         }
-        profiles.insert(
-            AgentRole::SystemWorker,
-            AgentProfile {
-                id: "system-worker".to_string(),
-                role: AgentRole::SystemWorker,
-                capability_prefixes: system_prefixes,
-                default_tier: ModelTier::Standard,
-                max_concurrency: 4,
-                description: "Routing, UI control, and system operations".to_string(),
-            },
-        );
 
-        Self {
-            profiles,
-            prefix_cache,
-        }
+        Self { prefix_cache }
     }
 
     /// 根据能力 ID 路由到合适的 Agent 角色
@@ -285,6 +208,7 @@ impl AgentRouter {
     }
 
     /// 分析一组 Recipe Steps 的 Agent 分布
+    #[cfg(test)]
     pub fn analyze_distribution(
         &self,
         capability_ids: &[String],
@@ -299,7 +223,19 @@ impl AgentRouter {
         distribution
     }
 
+    #[cfg(test)]
+    fn role_agent_id(role: AgentRole) -> &'static str {
+        match role {
+            AgentRole::Orchestrator => "orchestrator",
+            AgentRole::DataWorker => "data-worker",
+            AgentRole::ContentWorker => "content-worker",
+            AgentRole::CreativeWorker => "creative-worker",
+            AgentRole::SystemWorker => "system-worker",
+        }
+    }
+
     /// 生成任务分配摘要（用于日志和前端展示）
+    #[cfg(test)]
     pub fn summarize_assignment(&self, capability_ids: &[String]) -> TaskAssignment {
         let distribution = self.analyze_distribution(capability_ids);
 
@@ -307,11 +243,7 @@ impl AgentRouter {
             .iter()
             .map(|(role, caps)| AgentAssignment {
                 role: *role,
-                agent_id: self
-                    .profiles
-                    .get(role)
-                    .map(|p| p.id.clone())
-                    .unwrap_or_default(),
+                agent_id: Self::role_agent_id(*role).to_string(),
                 display_name: role.display_name().to_string(),
                 icon: role.icon().to_string(),
                 tier: role.default_tier(),

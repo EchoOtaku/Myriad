@@ -621,6 +621,7 @@ impl AiAnalyzer {
     /// Structured JSON, but reasoning deltas are pushed live.
     /// OpenAI-compatible providers that reject `stream` + `response_format`
     /// fall back to the blocking call.
+    #[cfg(test)]
     pub async fn analyze_json_streaming<F, Fut>(
         &self,
         system: &str,
@@ -659,6 +660,7 @@ impl AiAnalyzer {
         }
     }
 
+    #[cfg(test)]
     async fn analyze_json_streaming_openai<F, Fut>(
         &self,
         system: &str,

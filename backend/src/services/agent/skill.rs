@@ -128,6 +128,7 @@ impl ModelTierHint {
 }
 
 /// Skill 匹配结果（带相关性分数）
+#[cfg(test)]
 #[derive(Debug, Clone)]
 pub struct SkillMatch {
     pub skill: Skill,
@@ -310,6 +311,7 @@ impl SkillRegistry {
     /// 获取与用户输入最相关的 Skill（子串 + 分词重叠）。
     ///
     /// 相比 `get_compact_index()` 的全量返回，按 trigger/描述/分类分词重叠打分后截断。
+    #[cfg(test)]
     pub async fn get_relevant_skills(&self, user_input: &str, limit: usize) -> Vec<SkillMatch> {
         let input_lower = user_input.to_lowercase();
         let input_tokens = Self::simple_tokenize(&input_lower);
@@ -368,6 +370,7 @@ impl SkillRegistry {
     }
 
     /// 计算 Skill 与用户输入的相关性分数
+    #[cfg(test)]
     fn compute_skill_relevance(skill: &Skill, input_lower: &str, input_tokens: &[String]) -> f32 {
         let mut score: f32 = 0.0;
 
@@ -410,6 +413,7 @@ impl SkillRegistry {
     }
 
     /// 简单分词（中文单字 + 英文空格分词）
+    #[cfg(test)]
     fn simple_tokenize(text: &str) -> Vec<String> {
         let mut tokens = Vec::new();
         let mut latin_buf = String::new();
@@ -466,6 +470,7 @@ impl SkillRegistry {
 }
 
 /// CJK unicode 范围检测
+#[cfg(test)]
 fn is_cjk(ch: char) -> bool {
     matches!(ch,
         '\u{4E00}'..='\u{9FFF}'

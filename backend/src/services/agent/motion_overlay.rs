@@ -125,31 +125,7 @@ impl Drop for MotionRefinementGuard {
     }
 }
 
-pub(super) async fn publish_local_motion(
-    context: &crate::services::agent::merope::MotionContext,
-    progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
-) -> bool {
-    if let Some(performance) = crate::services::agent::merope::local_directive(context) {
-        return progress_tx
-            .send(AgentProgressEvent::PerformancePlan { performance })
-            .await
-            .is_ok();
-    }
-    false
-}
-
-/// Work's one asynchronous reaction refinement.
-pub(super) fn spawn_motion_refinement(
-    context: crate::services::agent::merope::MotionContext,
-    progress_tx: tokio::sync::mpsc::Sender<AgentProgressEvent>,
-) -> MotionRefinementGuard {
-    spawn_motion_refinement_with(
-        context,
-        progress_tx,
-        crate::services::agent::merope::refine_motion,
-    )
-}
-
+#[cfg(test)]
 fn spawn_motion_refinement_with<F, Fut>(
     context: crate::services::agent::merope::MotionContext,
     progress_tx: tokio::sync::mpsc::Sender<AgentProgressEvent>,
