@@ -7,6 +7,7 @@ import {
   cssCustomHighlightAvailable,
   highlightAnchoredAnnotations,
   highlightAnchoredComments,
+  paintAnchoredComments,
   resolveCommentAnchor,
 } from './commentAnchors'
 
@@ -146,4 +147,30 @@ it('annotates a unique term with the comment index and skips repeats and media',
     else Reflect.deleteProperty(globalThis, 'DOMParser')
     dom.window.close()
   }
+})
+
+it('paints comment marks on a live tree without serializing the article', () => {
+  const live = new JSDOM(
+    '<p>one <em>two</em> then one two</p><div class="phantasi-embed-card">media text</div>',
+  )
+  paintAnchoredComments(
+    live.window.document.body,
+    [
+      { id: 1, selected_text: 'one two', start_offset: 0, end_offset: 7 },
+      { id: 3, selected_text: 'media text' },
+    ] as CommentItem[],
+    'light',
+  )
+  assert.equal(
+    Iterator.from(live.window.document.querySelectorAll('[data-comment-id="1"]'))
+      .map((mark: Element) => mark.textContent)
+      .toArray()
+      .join(''),
+    'one two',
+  )
+  assert.equal(
+    live.window.document.querySelector('.phantasi-embed-card [data-comment-id]'),
+    null,
+  )
+  live.window.close()
 })

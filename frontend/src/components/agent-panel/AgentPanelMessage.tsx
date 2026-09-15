@@ -234,7 +234,11 @@ export const AgentPanelMessage: React.FC<AgentPanelMessageProps> = React.memo(
       role: message.role,
       hasAnswer,
       streaming: message.state === 'streaming',
-      hasProcess: !!(message.steps?.length || message.thought),
+      hasProcess: !!(
+        message.steps?.length ||
+        message.thought ||
+        message.workPlan?.length
+      ),
       hideThinking: mode === 'chat',
     })
     const keepThinking = useHeldOpen(showsThinking, THINKING_FOLD_MS)
@@ -267,6 +271,7 @@ export const AgentPanelMessage: React.FC<AgentPanelMessageProps> = React.memo(
                 >
                   <div className="agent-panel-thinking-slot-body">
                     <AgentPanelThinking
+                      plan={message.workPlan}
                       steps={message.steps ?? []}
                       thought={message.thought}
                       live={message.state === 'streaming'}

@@ -10,8 +10,6 @@ pub mod auth_local;
 pub mod avatar_source; // 画像源选择（本人 + 管理员代改）
 pub mod bangumi;
 pub mod bilibili;
-pub mod phantasi;
-pub mod phantasiai;
 pub mod cache;
 pub mod config;
 pub mod diagnostics;
@@ -27,6 +25,8 @@ pub mod metrics;
 pub mod model3d; // Tripo-backed 3D generation + persisted Web GLBs
 pub mod notification_preferences;
 pub mod oauth; // generic OAuth via /api/auth/oauth/:slug/*
+pub mod phantasi;
+pub mod phantasiai;
 pub mod platforms;
 pub mod profile;
 pub mod profile_text_source; // 名称/简介文案来源（与画像源独立）

@@ -5,23 +5,55 @@ import type {
   PhantasiStats,
   UpdateSourceRequest,
 } from '../../types/phantasi'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import * as phantasiApi from '../../services/phantasiApi'
 import { phantasiItemState } from '../../utils/phantasiItemState'
 import { reportPhantasiError } from './phantasiNotice'
 import { RequestTurn } from './logic/requestTurn'
-import { useArticleFlags } from './useArticleFlags'
+
+function applyReadMutation(
+  source: PhantasiSource,
+  itemId: number,
+  isRead: boolean,
+  sourceId?: number,
+): PhantasiSource {
+  if (itemId === 0) {
+    if (
+      source.unread_count === 0 &&
+      !source.recent_items?.some((item) => !item.is_read)
+    ) {
+      return source
+    }
+    return {
+      ...source,
+      unread_count: 0,
+      recent_items: source.recent_items?.map((item) =>
+        item.is_read ? item : { ...item, is_read: true },
+      ),
+    }
+  }
+  const belongs =
+    sourceId === source.id ||
+    Boolean(source.recent_items?.some((item) => item.id === itemId))
+  if (!belongs) return source
+  const hit = source.recent_items?.find((item) => item.id === itemId)
+  if (hit?.is_read === isRead) return source
+  return {
+    ...source,
+    unread_count: Math.max(0, source.unread_count + (isRead ? -1 : 1)),
+    recent_items: source.recent_items?.map((item) =>
+      item.id === itemId ? { ...item, is_read: isRead } : item,
+    ),
+  }
+}
 
 export function usePhantasiSources(
   isAuthenticated: boolean,
   labels: { loadFailed: string; refreshFailed: string },
   setError: (message: string) => void,
 ) {
-  const flags = useArticleFlags()
-  const flagsRevision = flags.getSnapshot()
-  const [rawSources, setSources] = useState<PhantasiSource[]>([])
-  const sources = useMemo(() => rawSources.map(source => ({ ...source, recent_items: source.recent_items?.map(item => flags.project(item)) })), [rawSources, flagsRevision])
+  const [sources, setSources] = useState<PhantasiSource[]>([])
   const [sourcesLoaded, setSourcesLoaded] = useState(false)
   const [stats, setStats] = useState<PhantasiStats | null>(null)
   const [booting, setBooting] = useState(true)
@@ -60,15 +92,19 @@ export function usePhantasiSources(
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined
-    const unsubscribe = phantasiItemState.subscribeMutations(() => {
-      sourceTurns.current.cancel()
+    const unsubscribe = phantasiItemState.subscribeMutations((id, patch, sourceId) => {
       statsTurns.current.cancel()
-      sourceRequest.current++
       statsRequest.current++
+      if (typeof patch.is_read === 'boolean') {
+        setSources((prev) =>
+          prev.map((source) =>
+            applyReadMutation(source, id, patch.is_read!, sourceId),
+          ),
+        )
+      }
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => {
         void loadStats()
-        void loadSources()
       }, 100)
     })
     return () => { unsubscribe(); if (timer) clearTimeout(timer) }
@@ -105,8 +141,7 @@ export function usePhantasiSources(
       if (closed) return
       try {
         ws = phantasiApi.createPhantasiWebSocket(
-          (notification) => {
-            console.debug('[Phantasi] WS notification', notification)
+          () => {
             refreshRef.current()
           },
           () => {
@@ -171,16 +206,29 @@ export function usePhantasiSources(
   const removeSources = useCallback(
     async (ids: number[]) => {
       if (ids.length === 0) return
-      await Promise.all(ids.map((id) => phantasiApi.deleteSource(id)))
-      const dropped = new Set(ids)
-      setSources((prev) =>
-        Iterator.from(prev)
-          .filter((source) => !dropped.has(source.id))
-          .toArray(),
+      const named = new Map(sources.map((source) => [source.id, source.name]))
+      const results = await Promise.allSettled(
+        ids.map((id) => phantasiApi.deleteSource(id)),
       )
-      void loadStats()
+      const dropped = ids.filter((_, index) => results[index]?.status === 'fulfilled')
+      if (dropped.length > 0) {
+        const gone = new Set(dropped)
+        setSources((prev) =>
+          Iterator.from(prev)
+            .filter((source) => !gone.has(source.id))
+            .toArray(),
+        )
+        void loadStats()
+      }
+      const failed = ids.filter((_, index) => results[index]?.status === 'rejected')
+      if (failed.length > 0) {
+        const names = failed
+          .map((id) => named.get(id)?.trim() || `#${id}`)
+          .join('、')
+        throw new Error(names)
+      }
     },
-    [loadStats],
+    [loadStats, sources],
   )
 
   const addSource = useCallback(
@@ -238,6 +286,19 @@ export function usePhantasiSources(
     [reloadBoard, labels.refreshFailed, setError],
   )
 
+  const refreshSources = useCallback(
+    async (ids: number[]) => {
+      if (ids.length === 0) return
+      try {
+        await phantasiApi.refreshSources(ids)
+        reloadBoard()
+      } catch (err) {
+        reportPhantasiError(err, labels.refreshFailed, setError)
+      }
+    },
+    [reloadBoard, labels.refreshFailed, setError],
+  )
+
   return {
     sources,
     setSources,
@@ -253,6 +314,7 @@ export function usePhantasiSources(
     importOpml,
     removeSources,
     refreshSource,
+    refreshSources,
     discoverSource,
     generateStyleTags,
   }

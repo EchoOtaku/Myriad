@@ -92,8 +92,13 @@ mod tests {
         let t0 = Utc::now();
         let first = next_attention_segment(None, "phantasi.source_error", "feed failed", "e1", t0);
         let t1 = t0 + Duration::seconds(5);
-        let second =
-            next_attention_segment(Some(&first), "phantasi.source_error", "still failing", "e2", t1);
+        let second = next_attention_segment(
+            Some(&first),
+            "phantasi.source_error",
+            "still failing",
+            "e2",
+            t1,
+        );
         assert_eq!(second.event_ids.len(), 2);
         assert_eq!(second.opened_at, first.opened_at);
         assert_eq!(second.last_touched_at, t1);

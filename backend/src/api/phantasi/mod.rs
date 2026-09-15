@@ -2,17 +2,26 @@
 //!
 //! Real submodules with shared [`helpers`] (auth + OPML).
 
-mod comments_rsshub;
-mod feeds_articles;
+mod comments;
+mod feeds_list;
+mod feeds_opml;
+mod feeds_sources;
 mod helpers;
 mod note_collab;
 mod note_docs;
 mod notes;
 mod notes_rss;
+mod reading_item;
+mod reading_mark;
+mod reading_state;
+mod reading_stats;
+mod reading_sync;
 mod reading_sync_ws;
+mod routes;
+mod rsshub;
 
-pub use feeds_articles::create_phantasi_routes;
 pub use notes_rss::notes_rss;
+pub use routes::create_phantasi_routes;
 
 #[cfg(test)]
 mod integration_tests {
@@ -68,7 +77,7 @@ mod integration_tests {
             .expect("migrator up");
 
         // 空表也要能执行：这里验证的是 SQL 形状，不是数据
-        let sql = super::feeds_articles::build_pulses_sql(2);
+        let sql = super::feeds_sources::build_pulses_sql(2);
         let stmt = Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             &sql,

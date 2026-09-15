@@ -458,7 +458,10 @@ mod tests {
             TierRouter::resolve_tier("platform.read"),
             ModelTier::Standard
         );
-        assert_eq!(TierRouter::resolve_tier("phantasi.items"), ModelTier::Standard);
+        assert_eq!(
+            TierRouter::resolve_tier("phantasi.items"),
+            ModelTier::Standard
+        );
         assert_eq!(
             TierRouter::resolve_tier("music.status"),
             ModelTier::Standard

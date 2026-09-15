@@ -24,9 +24,11 @@ import { draftRssShareUrl } from '../../logic/shareRss'
 import RSSHubConfigComponent from '../RSSHubConfig'
 import { shareRssAddress } from '../shareRss'
 import {
+  addHintKey,
   addUrlLabelKey,
   addUrlPlaceholder,
 } from './addSource'
+import { FormBlock } from './FormBlock'
 import {
   canSubmitEdit,
   EDIT_INTERVALS,
@@ -320,159 +322,177 @@ export function EditSourceMode({
           void handleSave()
         }}
       >
-        {fieldKind === 'note' ? (
-          <div className="phantasi-add-form__tags">
-            <SettingTitleTag>{phantasi.boardNotes}</SettingTitleTag>
-            {notesRssEnabled && shareUrl ? (
-              <SettingTitleTag
-                icon={<Rss />}
+        <FormBlock
+          title={fieldKind === 'note' ? phantasi.boardNotes : phantasi.sourceTypeLabel}
+          hint={fieldKind === 'note' ? undefined : phantasi[addHintKey(fieldKind)]}
+        >
+          {fieldKind === 'note' ? (
+            notesRssEnabled && shareUrl ? (
+              <div className="phantasi-add-form__tags">
+                <SettingTitleTag
+                  icon={<Rss />}
+                  disabled={saving}
+                  title={phantasi.shareRss}
+                  onClick={shareRss}
+                >
+                  {phantasi.shareRss}
+                </SettingTitleTag>
+              </div>
+            ) : null
+          ) : (
+            <SourceKindControl
+              value={fieldKind}
+              onChange={pickKind}
+              disabled={saving}
+              hideLabel
+            />
+          )}
+          {showMode ? (
+            <div className="phantasi-add-form__toggles">
+              <SwitchItem
+                itemKey="phantasi-edit-phantasiai"
+                size="sm"
+                label={phantasi.phantasiaiLabel}
+                description={
+                  fieldKind === 'rsshub'
+                    ? phantasi.phantasiaiFeatures
+                    : phantasi.phantasiaiShortDesc
+                }
+                value={phantasiaiOn}
+                onChange={setPhantasiaiOn}
                 disabled={saving}
-                title={phantasi.shareRss}
-                onClick={shareRss}
-              >
-                {phantasi.shareRss}
-              </SettingTitleTag>
-            ) : null}
-          </div>
-        ) : (
-          <SourceKindControl
-            value={fieldKind}
-            onChange={pickKind}
-            disabled={saving}
-          />
-        )}
-
-        {showMode ? (
-          <>
-            <SwitchItem
-              itemKey="phantasi-edit-phantasiai"
-              size="sm"
-              label={phantasi.phantasiaiLabel}
-              description={
-                fieldKind === 'rsshub'
-                  ? phantasi.phantasiaiFeatures
-                  : phantasi.phantasiaiShortDesc
-              }
-              value={phantasiaiOn}
-              onChange={setPhantasiaiOn}
-              disabled={saving}
-            />
-            <SwitchItem
-              itemKey="phantasi-edit-paused"
-              size="sm"
-              label={phantasi.pauseFetch}
-              value={paused}
-              onChange={setPaused}
-              disabled={saving}
-            />
-          </>
-        ) : null}
+              />
+              <SwitchItem
+                itemKey="phantasi-edit-paused"
+                size="sm"
+                label={phantasi.pauseFetch}
+                value={paused}
+                onChange={setPaused}
+                disabled={saving}
+              />
+            </div>
+          ) : null}
+        </FormBlock>
 
         {fieldKind === 'rsshub' ? (
-          <RSSHubConfigComponent
-            initialConfig={
-              source.rsshub_route
-                ? { instanceUrl: '', routePath: source.rsshub_route }
-                : undefined
-            }
-            onConfigChange={(config: RSSHubConfig, fullUrl: string) => {
-              setRsshubFullUrl(fullUrl)
-              setRsshubRoute(config.routePath)
-            }}
-            isEditMode
-            disabled={saving}
-          />
+          <FormBlock>
+            <RSSHubConfigComponent
+              initialConfig={
+                source.rsshub_route
+                  ? { instanceUrl: '', routePath: source.rsshub_route }
+                  : undefined
+              }
+              onConfigChange={(config: RSSHubConfig, fullUrl: string) => {
+                setRsshubFullUrl(fullUrl)
+                setRsshubRoute(config.routePath)
+              }}
+              isEditMode
+              disabled={saving}
+            />
+          </FormBlock>
         ) : null}
 
         {fieldKind !== 'note' && fieldKind !== 'rsshub' ? (
+          <FormBlock>
+            <InputItem
+              itemKey="phantasi-edit-url"
+              size="sm"
+              label={phantasi[addUrlLabelKey(fieldKind)]}
+              required
+              inputType="url"
+              value={url}
+              onChange={setUrl}
+              placeholder={addUrlPlaceholder(fieldKind)}
+              disabled={saving}
+              labelAccessory={
+                fieldKind === 'rss' ? (
+                  <SettingTitleTag
+                    icon={discovering ? <Spinner size="xs" /> : <Search />}
+                    disabled={discovering || !url.trim() || !onDiscover}
+                    onClick={() => {
+                      void handleDiscover()
+                    }}
+                  >
+                    {phantasi.discover}
+                  </SettingTitleTag>
+                ) : null
+              }
+            />
+            {fieldKind === 'notion' ? (
+              <InputItem
+                itemKey="phantasi-edit-notion-token"
+                size="sm"
+                label="Notion Integration Token"
+                required={originalKind !== 'notion'}
+                inputType="password"
+                value={notionToken}
+                onChange={setNotionToken}
+                placeholder="secret_xxx..."
+                disabled={saving}
+              />
+            ) : null}
+          </FormBlock>
+        ) : null}
+
+        <FormBlock>
+          <CompactSettingGroup>
+            <InputItem
+              itemKey="phantasi-edit-name"
+              size="sm"
+              label={phantasi.nameLabel}
+              required={isLink}
+              value={name}
+              onChange={setName}
+              placeholder={isLink ? phantasi.enterName : phantasi.sourceName}
+              disabled={saving}
+            />
+            <SourceCategoryField
+              categories={allCategories}
+              value={category}
+              open={categoryOpen}
+              onOpenChange={setCategoryOpen}
+              onChange={setCategory}
+              disabled={saving}
+              labelFor={(name) => categoryLabel(name, presetLabels)}
+            />
+          </CompactSettingGroup>
           <InputItem
-            itemKey="phantasi-edit-url"
+            itemKey="phantasi-edit-color"
             size="sm"
-            label={phantasi[addUrlLabelKey(fieldKind)]}
-            required
-            inputType="url"
-            value={url}
-            onChange={setUrl}
-            placeholder={addUrlPlaceholder(fieldKind)}
+            label={phantasi.themeColor}
+            value={themeColor}
+            onChange={setThemeColor}
+            placeholder="#f97316"
             disabled={saving}
             labelAccessory={
-              fieldKind === 'rss' ? (
-                <SettingTitleTag
-                  icon={discovering ? <Spinner size="xs" /> : <Search />}
-                  disabled={discovering || !url.trim() || !onDiscover}
-                  onClick={() => {
-                    void handleDiscover()
-                  }}
-                >
-                  {phantasi.discover}
-                </SettingTitleTag>
-              ) : null
+              <span className="phantasi-add-form__swatch-well">
+                <input
+                  type="color"
+                  className="phantasi-add-form__swatch"
+                  value={themeColor || '#f97316'}
+                  onChange={(event) => setThemeColor(event.target.value)}
+                  disabled={saving}
+                  title={phantasi.themeColor}
+                />
+              </span>
             }
           />
-        ) : null}
-
-        {fieldKind === 'notion' ? (
           <InputItem
-            itemKey="phantasi-edit-notion-token"
+            itemKey="phantasi-edit-icon"
             size="sm"
-            label="Notion Integration Token"
-            required={originalKind !== 'notion'}
-            inputType="password"
-            value={notionToken}
-            onChange={setNotionToken}
-            placeholder="secret_xxx..."
+            variant="imageUpload"
+            label={phantasi.siteIcon}
+            value={icon}
+            onChange={changeIcon}
+            uploadLabel={phantasi.upload}
+            clearImageLabel={phantasi.deleteIcon}
             disabled={saving}
           />
-        ) : null}
+        </FormBlock>
 
-        <CompactSettingGroup>
-          <InputItem
-            itemKey="phantasi-edit-name"
-            size="sm"
-            label={phantasi.nameLabel}
-            required={isLink}
-            value={name}
-            onChange={setName}
-            placeholder={isLink ? phantasi.enterName : phantasi.sourceName}
-            disabled={saving}
-          />
-          <SourceCategoryField
-            categories={allCategories}
-            value={category}
-            open={categoryOpen}
-            onOpenChange={setCategoryOpen}
-            onChange={setCategory}
-            disabled={saving}
-            labelFor={(name) => categoryLabel(name, presetLabels)}
-          />
-        </CompactSettingGroup>
-
-        <InputItem
-          itemKey="phantasi-edit-color"
-          size="sm"
-          label={phantasi.themeColor}
-          value={themeColor}
-          onChange={setThemeColor}
-          placeholder="#f97316"
-          disabled={saving}
-          labelAccessory={
-            <input
-              type="color"
-              className="phantasi-add-form__swatch"
-              value={themeColor || '#f97316'}
-              onChange={(event) => setThemeColor(event.target.value)}
-              disabled={saving}
-              title={phantasi.themeColor}
-            />
-          }
-        />
-
-        {showInterval ? (
-          <div className="setting-item setting-item-select setting-vertical setting-sm">
-            <div className="setting-label">
-              <span className="setting-label-text">{phantasi.updateInterval}</span>
-            </div>
-            <div className="setting-control">
+        {showInterval || showAiTags || showCustomTags ? (
+          <FormBlock title={showInterval ? phantasi.updateInterval : undefined}>
+            {showInterval ? (
               <SegmentedControl
                 size="sm"
                 columns={4}
@@ -491,24 +511,10 @@ export function EditSourceMode({
                   label: intervalLabels[value] ?? `${value}`,
                 }))}
               />
-            </div>
-          </div>
-        ) : null}
+            ) : null}
 
-        <InputItem
-          itemKey="phantasi-edit-icon"
-          size="sm"
-          variant="imageUpload"
-          label={phantasi.siteIcon}
-          value={icon}
-          onChange={changeIcon}
-          uploadLabel={phantasi.upload}
-          clearImageLabel={phantasi.deleteIcon}
-          disabled={saving}
-        />
-
-        {showAiTags ? (
-          <TagEditor
+            {showAiTags ? (
+              <TagEditor
             itemKey="phantasi-edit-ai-tag"
             label={phantasi.aiStyleTags}
             description={phantasi.styleTagsDesc}
@@ -584,16 +590,20 @@ export function EditSourceMode({
             }
           />
         ) : null}
+          </FormBlock>
+        ) : null}
 
-        <SwitchItem
-          itemKey="phantasi-edit-admin"
-          size="sm"
-          label={phantasi.adminOnlyVisible}
-          description={phantasi.adminOnlyVisibleHint}
-          value={adminOnly}
-          onChange={setAdminOnly}
-          disabled={saving}
-        />
+        <div className="phantasi-add-form__toggles">
+          <SwitchItem
+            itemKey="phantasi-edit-admin"
+            size="sm"
+            label={phantasi.adminOnlyVisible}
+            description={phantasi.adminOnlyVisibleHint}
+            value={adminOnly}
+            onChange={setAdminOnly}
+            disabled={saving}
+          />
+        </div>
 
         {error ? (
           <SettingTitleTag variant="danger">{error}</SettingTitleTag>

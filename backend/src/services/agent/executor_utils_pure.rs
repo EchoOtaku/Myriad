@@ -467,7 +467,8 @@ mod tests {
             Some("https://x/b.png")
         );
         assert_eq!(
-            extract_image_url(&json!({"imageUrl": "/api/phantasi/image-cache/ab/abcd.png"})).as_deref(),
+            extract_image_url(&json!({"imageUrl": "/api/phantasi/image-cache/ab/abcd.png"}))
+                .as_deref(),
             Some("/api/phantasi/image-cache/ab/abcd.png")
         );
         assert!(extract_image_url(&json!({"imageUrl": "data:image/png;base64,xx"})).is_none());
@@ -480,14 +481,23 @@ mod tests {
         assert_eq!(normalize_phantasi_source_type_filter("friendlink"), "link");
         assert_eq!(normalize_phantasi_source_type_filter("友情链接"), "link");
         assert_eq!(normalize_phantasi_source_type_filter("rss"), "rss");
-        assert_eq!(normalize_phantasi_source_type_filter("phantasiai"), "phantasiai");
+        assert_eq!(
+            normalize_phantasi_source_type_filter("phantasiai"),
+            "phantasiai"
+        );
     }
 
     #[test]
     fn test_phantasi_category_token_matches_friendlink() {
         assert!(phantasi_category_token_matches("友情链接", "友情链接"));
-        assert!(phantasi_category_token_matches("友情链接, 技术", "友情链接"));
-        assert!(phantasi_category_token_matches("技术, 友情链接", "友情链接"));
+        assert!(phantasi_category_token_matches(
+            "友情链接, 技术",
+            "友情链接"
+        ));
+        assert!(phantasi_category_token_matches(
+            "技术, 友情链接",
+            "友情链接"
+        ));
         assert!(phantasi_category_token_matches(
             "技术, 友情链接, 生活",
             "友情链接"

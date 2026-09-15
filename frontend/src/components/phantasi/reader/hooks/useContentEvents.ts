@@ -10,6 +10,7 @@ interface UseContentEventsOptions {
   contentRef: React.RefObject<HTMLDivElement | null>
   comments: CommentItem[]
   commentsEnabled: boolean
+  canWrite: boolean
   isAuthenticated: boolean
   showCommentPopup: boolean
   showAnnotations: boolean
@@ -48,7 +49,8 @@ export function useContentEvents({
   contentRef,
   comments,
   commentsEnabled,
-  isAuthenticated,
+  canWrite,
+  isAuthenticated: _isAuthenticated,
   showCommentPopup,
   showAnnotations,
   hoverTimeoutRef,
@@ -242,7 +244,7 @@ export function useContentEvents({
   }, [contentReady])
 
   const handleTextSelection = useCallback(() => {
-    if (!commentsEnabled || !isAuthenticated) return
+    if (!commentsEnabled || !canWrite) return
 
     const selection = window.getSelection()
     if (!selection || selection.isCollapsed || !selection.rangeCount) {
@@ -286,10 +288,10 @@ export function useContentEvents({
     }
 
     setShowCommentPopup(true)
-  }, [commentsEnabled, isAuthenticated])
+  }, [commentsEnabled, canWrite])
 
   useEffect(() => {
-    if (!commentsEnabled || !isAuthenticated) return
+    if (!commentsEnabled || !canWrite) return
 
     let selectionTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -302,7 +304,7 @@ export function useContentEvents({
       document.removeEventListener('mouseup', handleMouseUp)
       if (selectionTimer) clearTimeout(selectionTimer)
     }
-  }, [commentsEnabled, isAuthenticated, handleTextSelection])
+  }, [commentsEnabled, canWrite, handleTextSelection])
 
   useEffect(() => {
     if (!showCommentPopup) return

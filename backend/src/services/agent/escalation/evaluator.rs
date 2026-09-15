@@ -113,7 +113,10 @@ fn apply_escalation_policy(eval: &mut Evaluation, result: &Value, ctx: &Evaluati
     // 已有实体建议：优先用建议值重试 phantasi，绝不 webSearch
     if !eval.suggested_retry_values.is_empty()
         && (is_local
-            || ctx.capability_ids.iter().any(|id| id.starts_with("phantasi."))
+            || ctx
+                .capability_ids
+                .iter()
+                .any(|id| id.starts_with("phantasi."))
             || ctx.capability_ids.is_empty())
     {
         eval.suggests_web_search = false;

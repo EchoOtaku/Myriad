@@ -317,7 +317,6 @@ pub fn preview_query(query: sea_orm::Select<Entity>) -> sea_orm::Select<Entity> 
             Column::Image,
             Column::AudioUrl,
             Column::VideoUrl,
-            Column::Enclosures,
             Column::Categories,
             Column::PublishedAt,
             Column::FetchedAt,
@@ -329,6 +328,7 @@ pub fn preview_query(query: sea_orm::Select<Entity>) -> sea_orm::Select<Entity> 
         ])
         .column_as(Expr::val(Option::<String>::None), Column::Content)
         .column_as(Expr::val(Option::<String>::None), Column::ContentMd)
+        .column_as(Expr::val(Option::<Json>::None), Column::Enclosures)
 }
 
 pub fn list_response_items(
@@ -360,7 +360,9 @@ mod preview_tests {
             .to_string();
         assert!(!sql.contains("\"phantasi_items\".\"content\""));
         assert!(!sql.contains("\"phantasi_items\".\"content_md\""));
+        assert!(!sql.contains("\"phantasi_items\".\"enclosures\""));
         assert!(sql.contains("NULL AS \"content\""));
+        assert!(sql.contains("NULL AS \"enclosures\""));
         assert!(sql.contains("\"phantasi_items\".\"summary\""));
         assert!(sql.contains("\"phantasi_items\".\"content_revision\""));
     }

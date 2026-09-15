@@ -417,7 +417,7 @@ function storyShellStyle(col: number, row: 1 | 2): string {
   const top = row === 2
     ? 'calc(var(--phantasi-story-h) + var(--phantasi-items-gap))'
     : '0px'
-  return `position:absolute;left:${left};top:${top};width:var(--phantasi-story-w)`
+  return `position:absolute;left:${left};top:${top};width:var(--phantasi-story-w);height:var(--phantasi-story-h)`
 }
 
 const SHELL_POOL_CAP = 48
@@ -463,7 +463,7 @@ export function ensureStoryShells(
   track: ParentNode | null,
   from: number,
   to: number,
-  _slots?: ReadonlyArray<{ column: number; row: 1 | 2 }>,
+  slots?: ReadonlyArray<{ column: number; row: 1 | 2 }>,
 ): Map<number, HTMLElement[]> | null {
   if (!track || to < from || typeof document === 'undefined') return null
   if (!('appendChild' in track)) return null
@@ -471,14 +471,28 @@ export function ensureStoryShells(
   for (let col = from; col <= to; col++) livePaintCols.push(col)
   const byEl = indexStoryCols(track, livePaintCols)
   if (!byEl) return null
+  const wantRows = new Map<number, Array<1 | 2>>()
+  if (slots) {
+    for (const slot of slots) {
+      if (slot.column < from || slot.column > to) continue
+      const rows = wantRows.get(slot.column)
+      if (!rows) {
+        wantRows.set(slot.column, [slot.row])
+        continue
+      }
+      if (!rows.includes(slot.row)) rows.push(slot.row)
+    }
+  }
   const host = track as Element
   const frag =
     typeof document.createDocumentFragment === 'function'
       ? document.createDocumentFragment()
       : null
   for (let col = from; col <= to; col++) {
+    const rows = wantRows.get(col)
+    if (!rows) continue
     const stories = liveStoryEls(byEl.get(col))
-    for (const row of [1, 2] as const) {
+    for (const row of rows) {
       if (stories[row - 1]) continue
       const el = makeStoryShell(track, col, row)
       if (!el) continue
@@ -768,7 +782,7 @@ export function railMountColumnsSticky(
 /** 停稳后仍多留的列，下次开滑少拆卡。 */
 export const RAIL_MOUNT_SETTLE_EXTRA = 16
 
-/** 停稳时窗口只大了一点就留下，过大才收回；右侧预显不丢。 */
+/** 停稳时左边只收到预显带外，不拆到视口边；过大才收回右边。 */
 export function railMountColumnsSettle(
   prev: { from: number; to: number },
   scroll: number,
@@ -792,10 +806,16 @@ export function railMountColumnsSettle(
   ) {
     return prev
   }
-  return {
-    from: Math.max(1, need.from - slack),
-    to: Math.min(cols, need.to + Math.max(slack, keepExtra - slack)),
-  }
+  const padTo = Math.max(slack, keepExtra - slack)
+  let from = Math.max(1, Math.min(prev.from, need.from))
+  if (from < need.from - keepExtra) from = Math.max(1, need.from - keepExtra)
+  const to = Math.min(
+    cols,
+    prev.to >= need.to
+      ? Math.min(prev.to, need.to + padTo)
+      : need.to + padTo,
+  )
+  return { from, to }
 }
 
 /** 首屏和停稳窗口可以比视口多留的列。手势里不按这个拆左边。 */
@@ -918,16 +938,6 @@ export function railMountColumnsGrow(
   return { from, to }
 }
 
-export function railColumnWidth(
-  cards: ReadonlyArray<{ left: number }>,
-  fallback = 276,
-): number {
-  const slots = railSlotOffsets(cards)
-  if (slots.length < 2) return fallback
-  const gap = (slots[1] ?? 0) - (slots[0] ?? 0)
-  return gap > 1 ? gap : fallback
-}
-
 export function railColumnSlots(totalCols: number, colW: number): number[] {
   const cols = Math.max(1, totalCols)
   const width = Math.max(1, colW)
@@ -1038,6 +1048,16 @@ export function railSeatScroll(
   const raw = Math.max(0, (cards[focusIndex]?.left ?? origin) - origin)
   if (focusIndex <= 0 || overflowLeft <= 0) return raw
   return Math.max(0, raw - overflowLeft)
+}
+
+/** 跟手用实卡位移，不走槽位座位。 */
+export function railCardOffset(
+  cards: ReadonlyArray<{ left: number }>,
+  index: number,
+): number {
+  if (cards.length === 0 || index < 0) return 0
+  const origin = cards[0]?.left ?? 0
+  return Math.max(0, (cards[index]?.left ?? origin) - origin)
 }
 
 export function railMaxScroll(slots: readonly number[], overflowLeft = 0): number {
@@ -1248,12 +1268,12 @@ function followRailAt(
 ): number {
   const from = driveStops[i] ?? 0
   const to = driveStops[i + 1] ?? from
-  if (to - from <= 0.5) return followStops[i + 1] ?? followStops[i] ?? 0
+  if (to - from <= 0.5) return followStops[i] ?? 0
   const t = Math.min(1, Math.max(0, (driveScroll - from) / (to - from)))
   return (followStops[i] ?? 0) + t * ((followStops[i + 1] ?? 0) - (followStops[i] ?? 0))
 }
 
-/** 主动轨滚过各分组起点时，从动轨在对应座位之间跟着走。 */
+/** 主动轨滚过各分组起点时，从动轨按实卡位移跟着走，不吸入槽位。 */
 export function followRailScroll(
   driveScroll: number,
   driveStops: readonly number[],
@@ -1327,7 +1347,9 @@ export function followSourceRailScroll(
     blocks.map((block) => block.start),
     blocks.map((block) => {
       const index = siteCards.findIndex((card) => card.id === block.id)
-      return railSeatScroll(siteCards, Math.max(0, index), overflowLeft)
+      return overflowLeft > 0
+        ? railSeatScroll(siteCards, Math.max(0, index), overflowLeft)
+        : railCardOffset(siteCards, index)
     }),
   )
 }

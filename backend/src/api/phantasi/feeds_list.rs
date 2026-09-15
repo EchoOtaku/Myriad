@@ -1,0 +1,369 @@
+//! Phantasi feed items list and subscription topics.
+use crate::error::HttpError;
+
+use axum::{
+    Json,
+    extract::{Path, Query, State},
+    http::StatusCode,
+};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect,
+    QueryTrait,
+};
+use serde::Deserialize;
+use serde_json::json;
+
+use crate::models::entities::phantasi_sources::SourceType;
+use crate::models::entities::{
+    phantasi_annotations, phantasi_items, phantasi_podcasts, phantasi_sources, phantasi_user_states,
+};
+use crate::services::phantasi_topics::{
+    TopicSuggestError, TopicWriteError, list_subscription_topic_names, set_subscription_item_topic,
+    suggest_subscription_item_topic,
+};
+
+use super::helpers::{
+    get_admin_user_id_from_headers, get_optional_user_and_admin_status, phantasi_http_err,
+    phantasi_store_http,
+};
+
+// 订阅主题
+
+#[derive(Deserialize)]
+pub(crate) struct UpdateItemTopicRequest {
+    topic: Option<String>,
+}
+
+fn topic_write_http(err: TopicWriteError) -> HttpError {
+    match err {
+        TopicWriteError::NotFound => phantasi_http_err(StatusCode::NOT_FOUND, "Article not found"),
+        TopicWriteError::NoteItem => phantasi_http_err(
+            StatusCode::BAD_REQUEST,
+            "Note categories are edited in the note editor",
+        ),
+        TopicWriteError::Store => phantasi_store_http("update topic", "store failed"),
+    }
+}
+
+fn topic_suggest_http(err: TopicSuggestError) -> HttpError {
+    match err {
+        TopicSuggestError::NotFound => {
+            phantasi_http_err(StatusCode::NOT_FOUND, "Article not found")
+        }
+        TopicSuggestError::NoteItem => phantasi_http_err(
+            StatusCode::BAD_REQUEST,
+            "Note categories are edited in the note editor",
+        ),
+        TopicSuggestError::Unavailable => {
+            phantasi_http_err(StatusCode::SERVICE_UNAVAILABLE, "AI service unavailable")
+        }
+        TopicSuggestError::Failed => {
+            phantasi_http_err(StatusCode::INTERNAL_SERVER_ERROR, "Failed to suggest topic")
+        }
+        TopicSuggestError::Store => phantasi_store_http("suggest topic", "store failed"),
+    }
+}
+
+/// 本站已有的订阅主题名。笔记分类不进这里。
+pub(crate) async fn list_subscription_topics(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    let (user_id, is_admin) = get_optional_user_and_admin_status(&headers, &db).await?;
+    if user_id.is_none() && !crate::api::seo::phantasi_module_open_to_guests(&db).await {
+        return Err(phantasi_http_err(StatusCode::NOT_FOUND, "Not found"));
+    }
+    let topics = list_subscription_topic_names(&db, is_admin)
+        .await
+        .map_err(|e| phantasi_store_http("list topics", e))?;
+    Ok(Json(json!({ "success": true, "topics": topics })))
+}
+
+/// 站长手填订阅文章主题。笔记走编辑器，不走这条。
+pub(crate) async fn update_item_topic(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Path(id): Path<i32>,
+    Json(body): Json<UpdateItemTopicRequest>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    get_admin_user_id_from_headers(&headers, &db).await?;
+    let topic = set_subscription_item_topic(&db, id, body.topic.as_deref())
+        .await
+        .map_err(topic_write_http)?;
+    Ok(Json(json!({ "success": true, "topic": topic })))
+}
+
+/// 按正文建议主题并写回。站长可再手改。
+pub(crate) async fn suggest_item_topic(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Path(id): Path<i32>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    get_admin_user_id_from_headers(&headers, &db).await?;
+    let topic = suggest_subscription_item_topic(&db, id, true)
+        .await
+        .map_err(topic_suggest_http)?;
+    Ok(Json(json!({
+        "success": true,
+        "topic": topic,
+    })))
+}
+
+// 文章获取
+
+/// 获取文章列表（游客可访问）
+/// 游客不计算已读/收藏状态以节约计算
+/// 非管理员看不到 admin_only 源下的文章
+pub(crate) async fn list_items(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Query(query): Query<phantasi_items::ItemsQuery>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    // 获取可选用户 ID 与管理员状态
+    let (user_id, is_admin) = get_optional_user_and_admin_status(&headers, &db).await?;
+    if user_id.is_none() && !crate::api::seo::phantasi_module_open_to_guests(&db).await {
+        return Err(phantasi_http_err(StatusCode::NOT_FOUND, "Not found"));
+    }
+
+    let mut visible_sources = phantasi_sources::Entity::find()
+        .select_only()
+        .column(phantasi_sources::Column::Id);
+    if !is_admin {
+        visible_sources = visible_sources.filter(phantasi_sources::Column::AdminOnly.eq(false));
+    }
+    let visible_source_ids = visible_sources.into_query();
+
+    let page = query.page.unwrap_or(1).max(1);
+    let per_page = query.per_page.unwrap_or(20).clamp(1, 100);
+    let cursor = match query
+        .cursor
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        None => None,
+        Some(raw) => match phantasi_items::decode_item_cursor(raw) {
+            Some(cursor) => Some(cursor),
+            None => {
+                return Err(phantasi_http_err(
+                    StatusCode::BAD_REQUEST,
+                    "Invalid list cursor",
+                ));
+            }
+        },
+    };
+    let filter_type = query.filter.as_deref().unwrap_or("all");
+
+    // 构建查询
+    let mut items_query = phantasi_items::Entity::find()
+        .filter(phantasi_items::Column::SourceId.in_subquery(visible_source_ids));
+
+    // 只有登录用户才应用 starred/unread 过滤
+    if user_id.is_some() {
+        match filter_type {
+            "starred" => {
+                if let Some(uid) = user_id {
+                    let starred_subquery = phantasi_user_states::Entity::find()
+                        .filter(phantasi_user_states::Column::UserId.eq(uid))
+                        .filter(phantasi_user_states::Column::IsStarred.eq(true))
+                        .select_only()
+                        .column(phantasi_user_states::Column::ItemId)
+                        .into_query();
+                    items_query = items_query
+                        .filter(phantasi_items::Column::Id.in_subquery(starred_subquery));
+                }
+            }
+            "unread" => {
+                // 用子查询替代 NOT IN (ids)，避免已读文章数万条时生成巨型参数列表
+                if let Some(uid) = user_id {
+                    let read_subquery = phantasi_user_states::Entity::find()
+                        .filter(phantasi_user_states::Column::UserId.eq(uid))
+                        .filter(phantasi_user_states::Column::IsRead.eq(true))
+                        .select_only()
+                        .column(phantasi_user_states::Column::ItemId)
+                        .into_query(); // QueryTrait::into_query() 消耗 Select 返回 SelectStatement
+                    items_query = items_query
+                        .filter(phantasi_items::Column::Id.not_in_subquery(read_subquery));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // 按订阅源筛选
+    if let Some(source_id) = query.source_id {
+        items_query = items_query.filter(phantasi_items::Column::SourceId.eq(source_id));
+    }
+
+    // 按主题筛选。与 category 同级：只回该主题的订阅文章，笔记分类同名也不进来。
+    // `topic IS NULL` 的天然落空。读路径只读已有列，绝不在这里现算。
+    if let Some(topic) = query
+        .topic
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+    {
+        items_query = items_query.filter(phantasi_items::Column::Topic.eq(topic));
+        let note_source_ids = phantasi_sources::Entity::find()
+            .filter(phantasi_sources::Column::SourceType.eq(SourceType::Note))
+            .select_only()
+            .column(phantasi_sources::Column::Id)
+            .into_query();
+        items_query =
+            items_query.filter(phantasi_items::Column::SourceId.not_in_subquery(note_source_ids));
+    }
+
+    // 按分类筛选（支持多分类：category 字段可能是逗号分隔的多个分类）
+    if let Some(ref category) = query.category {
+        let cat_source_ids = phantasi_sources::Entity::find()
+            .filter(
+                sea_orm::Condition::any()
+                    .add(phantasi_sources::Column::Category.eq(category.clone()))
+                    .add(phantasi_sources::Column::Category.starts_with(format!("{}, ", category)))
+                    .add(phantasi_sources::Column::Category.ends_with(format!(", {}", category)))
+                    .add(phantasi_sources::Column::Category.contains(format!(", {}, ", category))),
+            )
+            .select_only()
+            .column(phantasi_sources::Column::Id)
+            .into_query();
+        items_query =
+            items_query.filter(phantasi_items::Column::SourceId.in_subquery(cat_source_ids));
+    }
+
+    // 排序
+    let sort_order = query.sort_order.as_deref().unwrap_or("desc");
+    items_query = phantasi_items::ordered_list_query(items_query, sort_order == "asc");
+    if let Some(ref cursor) = cursor {
+        items_query = phantasi_items::apply_item_cursor(items_query, sort_order == "asc", cursor);
+    }
+
+    // Extra row tells has-more. COUNT only on the first page; cursor pages skip it.
+    let total = if cursor.is_some() {
+        0
+    } else {
+        items_query
+            .clone()
+            .count(&db)
+            .await
+            .map_err(|error| phantasi_store_http("count articles", error))?
+    };
+
+    let preview = query.projection != Some(phantasi_items::ItemProjection::Full);
+    if preview {
+        items_query = phantasi_items::preview_query(items_query);
+    }
+
+    let fetch = per_page as u64 + 1;
+    let items = if cursor.is_some() {
+        items_query.limit(fetch).all(&db).await
+    } else {
+        items_query
+            .offset(((page - 1) * per_page) as u64)
+            .limit(fetch)
+            .all(&db)
+            .await
+    };
+
+    match items {
+        Ok(items) => {
+            let (items, next_cursor) = phantasi_items::split_list_page(items, per_page);
+            let item_ids: Vec<i32> = items.iter().map(|i| i.id).collect();
+            let page_source_ids: Vec<i32> = items.iter().map(|i| i.source_id).collect();
+
+            // 性能优化：并行执行多个独立查询
+            let (states_result, sources_result, annotations_result, podcast_result) =
+                tokio::try_join!(
+                    async {
+                        if let Some(uid) = user_id {
+                            phantasi_user_states::Entity::find()
+                                .filter(phantasi_user_states::Column::UserId.eq(uid))
+                                .filter(
+                                    phantasi_user_states::Column::ItemId.is_in(item_ids.clone()),
+                                )
+                                .all(&db)
+                                .await
+                        } else {
+                            Ok(Vec::new())
+                        }
+                    },
+                    phantasi_sources::Entity::find()
+                        .filter(phantasi_sources::Column::Id.is_in(page_source_ids))
+                        .all(&db),
+                    phantasi_annotations::Entity::find()
+                        .filter(phantasi_annotations::Column::ItemId.is_in(item_ids.clone()))
+                        .select_only()
+                        .column(phantasi_annotations::Column::ItemId)
+                        .distinct()
+                        .into_tuple::<i32>()
+                        .all(&db),
+                    phantasi_podcasts::Entity::find()
+                        .filter(phantasi_podcasts::Column::ItemId.is_in(item_ids.clone()))
+                        .select_only()
+                        .column(phantasi_podcasts::Column::ItemId)
+                        .into_tuple::<i32>()
+                        .all(&db),
+                )
+                .map_err(|error| phantasi_store_http("list article extras", error))?;
+
+            let states_map: std::collections::HashMap<i32, phantasi_user_states::Model> =
+                states_result.into_iter().map(|s| (s.item_id, s)).collect();
+
+            let sources_map: std::collections::HashMap<i32, phantasi_sources::Model> =
+                sources_result.into_iter().map(|s| (s.id, s)).collect();
+
+            let items_with_annotations: std::collections::HashSet<i32> =
+                annotations_result.into_iter().collect();
+
+            let items_with_podcast: std::collections::HashSet<i32> =
+                podcast_result.into_iter().collect();
+
+            // 构建响应
+            let response_items: Vec<phantasi_items::ItemResponse> = items
+                .into_iter()
+                .map(|item| {
+                    // 游客所有文章都是未读、未收藏
+                    let state = states_map.get(&item.id);
+                    let is_read = user_id.is_some() && state.map(|s| s.is_read).unwrap_or(false);
+                    let is_starred =
+                        user_id.is_some() && state.map(|s| s.is_starred).unwrap_or(false);
+                    let read_progress = if user_id.is_some() {
+                        state.and_then(|s| s.read_progress)
+                    } else {
+                        None
+                    };
+
+                    let source = sources_map.get(&item.source_id);
+                    let source_name = source.map(|s| s.name.clone());
+                    let source_icon = source.and_then(|s| s.icon.clone());
+
+                    // 获取 AI 状态
+                    let has_ai_annotations = items_with_annotations.contains(&item.id);
+                    let has_ai_podcast = items_with_podcast.contains(&item.id);
+
+                    phantasi_items::ItemResponse::from_model_with_ai(
+                        item,
+                        source_name,
+                        source_icon,
+                        is_read,
+                        is_starred,
+                        read_progress,
+                        has_ai_annotations,
+                        has_ai_podcast,
+                    )
+                })
+                .collect();
+
+            let response_items = phantasi_items::list_response_items(response_items, preview)
+                .map_err(|error| phantasi_store_http("serialize articles", error))?;
+            Ok(Json(json!({
+                "success": true,
+                "items": response_items,
+                "total": total,
+                "page": page,
+                "per_page": per_page,
+                "next_cursor": next_cursor,
+            })))
+        }
+        Err(e) => Err(phantasi_store_http("list articles", e)),
+    }
+}

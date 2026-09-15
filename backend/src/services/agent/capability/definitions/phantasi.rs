@@ -211,7 +211,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
                 "suggestions": { "type": "array", "description": "Suggested feeds when there is no exact match" }
             }
         }),
-        required_permissions: vec![],
+        required_permissions: vec!["phantasi:manage".to_string()],
         requires_ai: false,
         estimated_duration_ms: Some(3000),
         ..Default::default()
@@ -253,7 +253,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
     });
 
     // 标记文章状态（个人已读/收藏，不修改共享订阅库）
-    // 权限用 phantasi:read：共享库下普通用户只读订阅源，但仍可维护自己的阅读状态
+    // 声明层与 Tapp 宿主同一操作对齐：phantasi:write。
     registry.register(Capability {
         id: "phantasi.mark".to_string(),
         name: "Mark articles".to_string(),
@@ -275,7 +275,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
                 "status": { "type": "string" }
             }
         }),
-        required_permissions: vec!["phantasi:read".to_string()],
+        required_permissions: vec!["phantasi:write".to_string()],
         requires_ai: false,
         estimated_duration_ms: Some(200),
         ..Default::default()
@@ -452,5 +452,24 @@ mod tests {
             .get("phantasi.subscribe")
             .expect("phantasi.subscribe capability must be registered");
         assert_eq!(capability.required_permissions, vec!["phantasi:manage"]);
+    }
+
+    #[test]
+    fn mark_requires_phantasi_write() {
+        let registry = CapabilityRegistry::new();
+        let capability = registry
+            .get("phantasi.mark")
+            .expect("phantasi.mark capability must be registered");
+        assert_eq!(capability.required_permissions, vec!["phantasi:write"]);
+    }
+
+    #[test]
+    fn discover_feeds_requires_phantasi_manage() {
+        let registry = CapabilityRegistry::new();
+        let capability = registry
+            .get("phantasi.discover")
+            .expect("phantasi.discover capability must be registered");
+        assert_eq!(capability.required_permissions, vec!["phantasi:manage"]);
+        assert!(!capability.required_permissions.is_empty());
     }
 }

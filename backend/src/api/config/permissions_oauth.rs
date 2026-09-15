@@ -269,7 +269,10 @@ pub async fn update_permissions(
     updates.insert("guest_perm_speech_tts".to_string(), json!(false));
     updates.insert("guest_perm_speech_asr".to_string(), json!(false));
     // phantasi:commentWrite 路由要求持久登录主体：游客一律强制关闭
-    updates.insert("guest_perm_phantasi_comment_write".to_string(), json!(false));
+    updates.insert(
+        "guest_perm_phantasi_comment_write".to_string(),
+        json!(false),
+    );
     if let Some(v) = payload.guest_perm_storage_write {
         updates.insert("guest_perm_storage_write".to_string(), json!(v));
     }

@@ -102,6 +102,7 @@ function storyPlaceStyle(col: number, row: 1 | 2): CSSProperties {
       ? 'calc(var(--phantasi-story-h) + var(--phantasi-items-gap))'
       : 0,
     width: 'var(--phantasi-story-w)',
+    height: 'var(--phantasi-story-h)',
   }
   placeAbs.set(key, style)
   return style

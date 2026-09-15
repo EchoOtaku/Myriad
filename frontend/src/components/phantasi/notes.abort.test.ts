@@ -8,7 +8,21 @@ const dir = dirname(fileURLToPath(import.meta.url))
 
 describe('note editor abort', () => {
   it('draft load and preview pass AbortSignal', () => {
-    const editor = readFileSync(join(dir, 'notes/NoteEditor.tsx'), 'utf8')
+    const editor = [
+      'notes/NoteEditor.tsx',
+      'notes/NoteEditorView.tsx',
+      'notes/useNoteEditorSession.ts',
+      'notes/useNoteEditorSidecar.ts',
+      'notes/useNoteEditorPreview.ts',
+      'notes/useNoteEditorFormat.ts',
+      'notes/useNoteEditorAuthors.ts',
+      'notes/useNoteEditorOpen.ts',
+      'notes/useNoteVisual.ts',
+      'notes/useNotePublish.ts',
+      'notes/useNoteCollab.ts',
+    ]
+      .map((file) => readFileSync(join(dir, file), 'utf8'))
+      .join('\n')
     const api = readFileSync(join(dir, '../../services/phantasiApi.ts'), 'utf8')
     assert.match(api, /export async function getNoteDoc\(\s*id: number,\s*signal\?: AbortSignal/)
     assert.match(editor, /openNoteCloudDoc\(/)
@@ -31,7 +45,21 @@ describe('note editor abort', () => {
   })
 
   it('发布载荷带主题、封面和发布时间', () => {
-    const editor = readFileSync(join(dir, 'notes/NoteEditor.tsx'), 'utf8')
+    const editor = [
+      'notes/NoteEditor.tsx',
+      'notes/NoteEditorView.tsx',
+      'notes/useNoteEditorSession.ts',
+      'notes/useNoteEditorSidecar.ts',
+      'notes/useNoteEditorPreview.ts',
+      'notes/useNoteEditorFormat.ts',
+      'notes/useNoteEditorAuthors.ts',
+      'notes/useNoteEditorOpen.ts',
+      'notes/useNoteVisual.ts',
+      'notes/useNotePublish.ts',
+      'notes/useNoteCollab.ts',
+    ]
+      .map((file) => readFileSync(join(dir, file), 'utf8'))
+      .join('\n')
     assert.match(editor, /toNoteWritePayload\(/)
     assert.match(editor, /noteFieldError\(/)
     assert.match(editor, /publishNoteDoc\(/)
@@ -45,11 +73,29 @@ describe('note editor abort', () => {
   it('外壳是编辑器：薄顶栏、浮动条、底栏、发布抽屉；不进口 phantasiApi', () => {
     const chrome = readFileSync(join(dir, 'notes/NoteEditorChrome.tsx'), 'utf8')
     const controls = readFileSync(join(dir, 'notes/NoteControls.tsx'), 'utf8')
-    const editor = readFileSync(join(dir, 'notes/NoteEditor.tsx'), 'utf8')
+    const editor = [
+      'notes/NoteEditor.tsx',
+      'notes/NoteEditorView.tsx',
+      'notes/useNoteEditorSession.ts',
+      'notes/useNoteEditorSidecar.ts',
+      'notes/useNoteEditorPreview.ts',
+      'notes/useNoteEditorFormat.ts',
+      'notes/useNoteEditorAuthors.ts',
+    ]
+      .map((file) => readFileSync(join(dir, file), 'utf8'))
+      .join('\n')
     // 编辑器用自己的控件，不借设置页的。
     assert.doesNotMatch(chrome, /from ['"][^'"]*settings\//)
     assert.doesNotMatch(controls, /from ['"][^'"]*settings\//)
-    for (const control of ['NoteButton', 'NoteSwitch', 'NoteSelect', 'NoteDateInput', 'NoteField']) {
+    for (const control of [
+      'NoteButton',
+      'NoteSwitch',
+      'NoteSelect',
+      'NoteDateInput',
+      'NoteField',
+      'NoteSection',
+      'NoteChip',
+    ]) {
       assert.match(controls, new RegExp(`export function ${control}\\b`))
       assert.match(chrome, new RegExp(`<${control}\\b`))
     }
@@ -71,7 +117,7 @@ describe('note editor abort', () => {
     assert.match(editor, /preloadNoteWidgets\(/)
     assert.match(editor, /from '.\/noteWidgetCatalog'/)
     assert.match(editor, /visualEditing\.current = false/)
-    assert.match(editor, /const commitVisualMd = useCallback/)
+    assert.match(editor, /commitVisualMd\(/)
     assert.match(editor, /commitVisualMd\(toggleVisualHeading/)
     assert.match(editor, /commitVisualMd\(insertImage/)
     assert.match(editor, /commitVisualMd\(visualHtmlToMarkdown/)

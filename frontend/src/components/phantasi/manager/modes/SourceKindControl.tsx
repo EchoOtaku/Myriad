@@ -13,17 +13,21 @@ export function SourceKindControl({
   value,
   onChange,
   disabled = false,
+  hideLabel = false,
 }: {
   value: AddFieldKind
   onChange?: (kind: AddFieldKind) => void
   disabled?: boolean
+  hideLabel?: boolean
 }) {
   const phantasi = useI18n().t.phantasi
   return (
     <div className="setting-item setting-item-select setting-vertical setting-sm phantasi-add-form__type">
-      <div className="setting-label">
-        <span className="setting-label-text">{phantasi.sourceTypeLabel}</span>
-      </div>
+      {hideLabel ? null : (
+        <div className="setting-label">
+          <span className="setting-label-text">{phantasi.sourceTypeLabel}</span>
+        </div>
+      )}
       <div className="setting-control">
         <SegmentedControl<AddFieldKind>
           size="sm"
@@ -56,7 +60,9 @@ export function SourceKindControl({
           ]}
         />
       </div>
-      <p className="setting-hint">{phantasi[addHintKey(value)]}</p>
+      {hideLabel ? null : (
+        <p className="setting-hint">{phantasi[addHintKey(value)]}</p>
+      )}
     </div>
   )
 }

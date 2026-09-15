@@ -100,6 +100,7 @@ export function listSelectChrome({
       toolbar: [
         {
           key: 'edit',
+          slot: 'lead',
           label: labels.edit,
           icon: <LuEdit3 />,
           disabled: total === 0 || busy,
@@ -127,7 +128,16 @@ export function listSelectChrome({
     ],
     toolbar: [
       {
+        key: 'exit',
+        slot: 'lead',
+        label: labels.exitEdit,
+        icon: <LuX />,
+        disabled: busy,
+        onClick: onExit,
+      },
+      {
         key: 'all',
+        slot: 'expanded',
         label: allOn ? labels.deselectAll : labels.selectAll,
         icon: selectIcon,
         disabled: total === 0 || busy,
@@ -135,19 +145,13 @@ export function listSelectChrome({
       },
       {
         key: 'delete',
+        slot: 'expanded',
         label: labels.deleteSelected,
         icon: <LuTrash2 />,
         variant: 'danger',
         confirm: labels.deleteConfirm,
         disabled: picked === 0 || busy,
         onClick: onDelete,
-      },
-      {
-        key: 'exit',
-        label: labels.exitEdit,
-        icon: <LuX />,
-        disabled: busy,
-        onClick: onExit,
       },
     ],
   }

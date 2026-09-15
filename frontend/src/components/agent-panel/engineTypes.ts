@@ -98,6 +98,7 @@ export interface ChatMessage {
 }
 
 export interface TaskExecution {
+  workPlan?: import('../../services/agent/types').WorkPlanItem[]
   taskId: string
   /** Re-subscribe after refresh; do not POST a new run. */
   runId?: string

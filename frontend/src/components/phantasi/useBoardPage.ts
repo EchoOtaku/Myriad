@@ -22,7 +22,7 @@ import {
   reuseFeedStories,
   stitchStoriesBySources,
 } from './logic/feedStories'
-import { noteSourceKey } from './logic/homeBoard'
+import { noteSourceKey, noteSourceStamp } from './logic/homeBoard'
 import {
   loadBoardNotes,
   loadFeedStories,
@@ -54,12 +54,21 @@ export function useBoardCatalog(
 
 export function useBoardNotes(
   board: PhantasiBoard,
-  sources: Array<{ id: number; source_type: string }>,
+  sources: Array<{
+    id: number
+    source_type: string
+    item_count?: number
+    last_success_at?: number | null
+  }>,
+  epoch = 0,
 ): HomeBoardNote[] {
+  const flags = useArticleFlags()
+  const flagsRevision = flags.getSnapshot()
   const key = useMemo(() => noteSourceKey(sources), [sources])
+  const stamp = useMemo(() => noteSourceStamp(sources), [sources])
   const sourcesRef = useRef(sources)
   sourcesRef.current = sources
-  const [notes, setNotes] = useState<HomeBoardNote[]>([])
+  const [rawNotes, setNotes] = useState<HomeBoardNote[]>([])
 
   useEffect(() => {
     if (board !== 'notes') return
@@ -78,10 +87,13 @@ export function useBoardNotes(
     return () => {
       controller.abort()
     }
-    // sources 换了就重拉：发布后 item_count 可能不变，但缓存已失效。
-  }, [board, key, sources])
+    // stamp：源集合或抓取结果变了才重拉。epoch：发布后条数可能不变，但缓存已失效。
+  }, [board, key, stamp, epoch])
 
-  return notes
+  return useMemo(() => {
+    if (board !== 'notes') return []
+    return rawNotes.map((note) => flags.project(note))
+  }, [board, flags, flagsRevision, rawNotes])
 }
 
 export function useFeedStories(
@@ -218,7 +230,7 @@ export function useFeedStories(
 
   const fetched = useMemo(() => {
     const map = new Map<number, FeedStory[]>()
-    for (const source of sources) {
+    for (const source of sourcesRef.current) {
       const stamp = source.last_success_at ?? 0
       const exact = peekFeedStories(source.id, stamp)
       const slot = slotsRef.current.get(source.id)
@@ -226,8 +238,8 @@ export function useFeedStories(
       if (items) map.set(source.id, items)
     }
     return map
-    // tick：某源拉完后重拼。cover 只决定去拉谁，不进这张表。
-  }, [sources, tick])
+    // stampKey：抓取戳变了才换表。tick：某源拉完后重拼。cover 只决定去拉谁。
+  }, [stampKey, tick])
 
   const prevStoriesRef = useRef<FeedStory[]>([])
   const stories = useMemo(() => {

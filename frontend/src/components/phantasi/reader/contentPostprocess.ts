@@ -16,10 +16,10 @@ interface UseContentPostprocessOptions {
 export function useContentPostprocess({
   contentRef,
   baseContent,
-  showAnnotations,
-  annotations,
-  comments,
-  theme,
+  showAnnotations: _showAnnotations,
+  annotations: _annotations,
+  comments: _comments,
+  theme: _theme,
   setToc,
 }: UseContentPostprocessOptions): void {
   useEffect(() => {
@@ -54,5 +54,5 @@ export function useContentPostprocess({
 
       return () => clearTimeout(loadTimer)
     }
-  }, [baseContent, showAnnotations, annotations, comments, theme])
+  }, [baseContent, contentRef, setToc])
 }

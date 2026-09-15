@@ -19,9 +19,10 @@ describe('content Io abort', () => {
       /export async function importTransferFile\([\s\S]*signal\?: AbortSignal/,
     )
     assert.match(io, /if \(signal\?\.aborted\) break/)
+    assert.match(hook, /getNoteDoc\(doc\.id, signal\)/)
     assert.match(
       hook,
-      /exportTransferFile\(\s*kind,\s*docs,\s*copyRef\.current,\s*signal/,
+      /exportTransferFile\(\s*kind,\s*full,\s*copyRef\.current,\s*signal/,
     )
     assert.match(hook, /importTransferFile\([\s\S]*signal,\s*\)/)
     assert.match(hook, /RequestTurn/)

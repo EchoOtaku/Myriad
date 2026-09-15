@@ -24,7 +24,7 @@ interface PhantasiBoardViewProps {
   selectedIds?: Set<number>
   onToggleSelect?: (id: number) => void
   onSourceClick: (source: PhantasiSource) => void
-  onOpenItem?: (item: PhantasiItemPreview, source: PhantasiSource) => void
+  onOpenItem: (item: PhantasiItemPreview, source: PhantasiSource) => void
   onPeekItem?: (item: PhantasiItemPreview) => void
   onPeekEnd?: () => void
   onToggleStar?: (item: PhantasiItemPreview) => void
@@ -43,6 +43,7 @@ interface PhantasiBoardViewProps {
   onReadySource?: (id: number | null) => void
   onRailFocus?: (sourceId: number | null) => void
   sourceTags?: ReactNode
+  noteCategory?: string | null
 }
 
 export default function PhantasiBoardView({
@@ -72,6 +73,7 @@ export default function PhantasiBoardView({
   onReadySource,
   onRailFocus,
   sourceTags,
+  noteCategory = null,
 }: PhantasiBoardViewProps) {
   const { t } = useI18n()
 
@@ -150,6 +152,7 @@ export default function PhantasiBoardView({
       sources={sources}
       notes={notes}
       docs={cloudDocs}
+      category={noteCategory}
       isEditMode={isEditMode}
       selectedIds={selectedIds}
       onToggleSelect={onToggleSelect}

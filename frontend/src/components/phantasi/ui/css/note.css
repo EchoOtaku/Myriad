@@ -1162,37 +1162,35 @@ html.dark .phantasi-note__menu {
   gap: 0.5rem;
 }
 
-.phantasi-note__authors {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.phantasi-note__author {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  min-height: var(--note-ctl-h);
-  padding: 0 0.15rem 0 0.65rem;
-  border: 1px solid var(--note-line);
-  border-radius: 0.65rem;
-  background: var(--note-fill);
-}
-
-.phantasi-note__author-role {
-  padding-right: 0.5rem;
-  color: var(--note-ink-3);
-  font-size: 0.8125rem;
-}
-
 .phantasi-note__cover {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+}
+
+.phantasi-note__cover-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--note-line-strong);
+  border-radius: 0.75rem;
+  background: var(--note-fill);
+  overflow: hidden;
+  cursor: pointer;
+  color: inherit;
+  text-align: left;
+}
+
+.phantasi-note__cover-card:hover,
+.phantasi-note__cover-card:focus-visible {
+  border-color: var(--note-ink);
+  outline: none;
+}
+
+.phantasi-note__cover-card:disabled {
+  cursor: wait;
+  opacity: 0.7;
 }
 
 .phantasi-note__cover-thumb {
@@ -1201,12 +1199,20 @@ html.dark .phantasi-note__menu {
   justify-content: center;
   width: 100%;
   aspect-ratio: 16 / 9;
-  border: 1px solid var(--note-line);
-  border-radius: 0.65rem;
+  border: 0;
+  border-radius: 0;
   background: var(--note-fill);
   object-fit: cover;
   animation: sm-fade-in var(--sm-dur-fast, 140ms) var(--sm-ease-enter, cubic-bezier(0.16, 1, 0.3, 1))
     both;
+}
+
+.phantasi-note__cover-action {
+  padding: 0.55rem 0.75rem;
+  border-top: 1px solid var(--note-line);
+  color: var(--note-ink-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
 }
 
 .phantasi-note__cover-thumb--empty {

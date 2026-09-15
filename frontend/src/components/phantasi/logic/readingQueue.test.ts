@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { it } from 'node:test'
 import {
   neighborsInQueue,
+  notesWallNeighbors,
   readingQueue,
   readingQueueFromStories,
 } from './readingQueue'
@@ -55,4 +56,29 @@ it('uses cached feed stories when present, otherwise the clicked story', () => {
   ])
   assert.equal(fallback.items.length, 1)
   assert.equal(fallback.items[0]?.id, 2)
+})
+
+it('notes board keeps its own origin', () => {
+  const queue = readingQueue('notes', [{ id: 4, title: '笔记' }])
+  assert.equal(queue.origin, 'notes')
+  assert.equal(neighborsInQueue(queue, 4)?.total, 1)
+})
+
+it('notes wall queue uses shown notes and leftover stories', () => {
+  const neighbors = notesWallNeighbors(
+    [
+      { id: 4, title: '墙上第一篇' },
+      { id: 5, title: '墙上第二篇' },
+    ],
+    [{ id: 6, title: '剩下的源' }, null],
+  )
+  const queue = readingQueueFromStories('notes', neighbors, [{ id: 5, title: '墙上第二篇' }])
+  assert.equal(queue.origin, 'notes')
+  assert.deepEqual(neighborsInQueue(queue, 5), {
+    prev: { id: 4, title: '墙上第一篇' },
+    next: { id: 6, title: '剩下的源' },
+    index: 1,
+    total: 3,
+    name: undefined,
+  })
 })

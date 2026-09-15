@@ -56,7 +56,9 @@ async fn verify_admin(
 }
 
 /// 创建 Phantasiai API 路由
-pub fn create_phantasiai_routes(_app_state: crate::state::AppState) -> Router<crate::state::AppState> {
+pub fn create_phantasiai_routes(
+    _app_state: crate::state::AppState,
+) -> Router<crate::state::AppState> {
     Router::<crate::state::AppState>::new()
         // 获取文章注释：缓存命中即返回；无缓存仅管理员生成
         .route("/items/{item_id}/annotations", get(get_annotations))
@@ -1287,7 +1289,10 @@ async fn generate_style_tags(
     }
 
     // 获取订阅源信息
-    let source = match phantasi_sources::Entity::find_by_id(source_id).one(&db).await {
+    let source = match phantasi_sources::Entity::find_by_id(source_id)
+        .one(&db)
+        .await
+    {
         Ok(Some(s)) => s,
         Ok(None) => {
             return (

@@ -116,7 +116,9 @@ impl TaskStore {
     /// asynchronous snapshot that could overwrite a resumed or cancelled run.
     pub(crate) fn cache_committed(&mut self, user_id: i32, task: TaskState) {
         let ids = self.user_tasks.entry(user_id).or_default();
-        if !ids.contains(&task.task_id) { ids.push(task.task_id.clone()); }
+        if !ids.contains(&task.task_id) {
+            ids.push(task.task_id.clone());
+        }
         self.tasks.insert(task.task_id.clone(), task);
     }
     pub fn new() -> Self {
@@ -190,6 +192,10 @@ impl TaskStore {
             }
             // WaitingForInput 任务：超时未响应则标记为失败终态（本轮不删除）
             else if task.status == TaskStatus::WaitingForInput
+                && !task
+                    .recipe
+                    .as_ref()
+                    .is_some_and(crate::services::agent::work_loop::is_work_recipe)
                 && is_waiting_input_timed_out(task.started_at, now)
             {
                 let age_hours = (now - task.started_at).num_hours();
@@ -255,6 +261,20 @@ pub async fn init_task_store_db(db: DatabaseConnection) {
     // Boot：pending/running 在库中原子标 cancelled；只把 waiting_for_input 载入内存。
     if let Err(e) = load_pending_tasks_from_db(&db).await {
         tracing::warn!("加载待处理任务失败: {}", e);
+    }
+    static RECOVERY_STARTED: std::sync::atomic::AtomicBool =
+        std::sync::atomic::AtomicBool::new(false);
+    if !RECOVERY_STARTED.swap(true, std::sync::atomic::Ordering::AcqRel) {
+        tokio::spawn(async {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                if let Some(db) = DB_FOR_TASKS.read().await.clone() {
+                    if let Err(error) = crate::services::agent::work_loop::recover(&db).await {
+                        tracing::warn!(%error,"Work recovery scan failed");
+                    }
+                }
+            }
+        });
     }
 }
 
@@ -397,13 +417,23 @@ pub use task_store_pure::session_id_from_lane_id;
 
 /// 保存任务到数据库
 pub async fn save_task_to_db(user_id: i32, task: &TaskState) -> Result<(), String> {
+    if task
+        .recipe
+        .as_ref()
+        .is_some_and(crate::services::agent::work_loop::is_work_recipe)
+    {
+        return Err("Work tasks must be saved through their revision-checked checkpoint".into());
+    }
     let db_guard = DB_FOR_TASKS.read().await;
     let db = db_guard.as_ref().ok_or("Database is not connected")?;
     save_task_on(db, user_id, task).await
 }
 
-pub(crate) async fn save_task_on(db: &impl ConnectionTrait, user_id: i32, task: &TaskState) -> Result<(), String> {
-
+pub(crate) async fn save_task_on(
+    db: &impl ConnectionTrait,
+    user_id: i32,
+    task: &TaskState,
+) -> Result<(), String> {
     let status_str = task_status_to_db_str(&task.status);
 
     // 检查任务是否已存在（使用 id 字段，它存储的是 task_id）
@@ -421,6 +451,13 @@ pub(crate) async fn save_task_on(db: &impl ConnectionTrait, user_id: i32, task: 
         active_model.status = Set(status_str.to_string());
         active_model.updated_at = Set(chrono::Utc::now().into());
         active_model.current_step = Set(task.current_step as i32);
+        active_model.total_steps = Set(Some(
+            task.recipe
+                .as_ref()
+                .map(|recipe| recipe.steps.len())
+                .unwrap_or(task.step_results.len())
+                .max(1) as i32,
+        ));
         active_model.step_results = Set(json!(task.step_results));
         active_model.completed_at = Set(task.completed_at.map(|t| t.into()));
         active_model.error = Set(task.error.clone());
@@ -702,8 +739,17 @@ pub async fn get_user_tasks(user_id: i32) -> Vec<TaskState> {
             Ok(models) => {
                 for model in models {
                     if let Ok(task) = task_model_to_state(&model) {
-                        // 已有内存副本则保留（活跃执行路径）
-                        by_id.entry(task.task_id.clone()).or_insert(task);
+                        if task
+                            .recipe
+                            .as_ref()
+                            .is_some_and(crate::services::agent::work_loop::is_work_recipe)
+                        {
+                            // Work checkpoints are committed before caching; the
+                            // database also observes other replicas' progress.
+                            by_id.insert(task.task_id.clone(), task);
+                        } else {
+                            by_id.entry(task.task_id.clone()).or_insert(task);
+                        }
                     }
                 }
             }

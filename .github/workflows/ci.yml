@@ -205,6 +205,16 @@ jobs:
         env:
           MYRIAD_SCHEMA_DRIFT_DB: postgres://myriad:myriad_ci@127.0.0.1:5432/myriad_drift
         run: cargo test --workspace --locked federation_outbox_and_delivery_lease_db_contracts -- --nocapture
+      - name: Native Work loop database and provider contracts
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: myriad
+          PGPASSWORD: myriad_ci
+          MYRIAD_WORK_TEST_DATABASE_URL: postgres://myriad:myriad_ci@127.0.0.1:5432/myriad_work_loop_test
+        run: |
+          createdb myriad_work_loop_test
+          cargo test -p myriad-backend --locked postgres_fencing_recovery_and_observation_driven_execution -- --ignored --nocapture
 
   dependency-audit:
     name: Dependency vulnerability scan

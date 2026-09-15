@@ -1035,7 +1035,10 @@ mod tests {
 
     #[test]
     fn test_slugify_id() {
-        assert_eq!(slugify_id("Phantasi Daily Summary"), "phantasi-daily-summary");
+        assert_eq!(
+            slugify_id("Phantasi Daily Summary"),
+            "phantasi-daily-summary"
+        );
         assert_eq!(slugify_id("  Hello__World!! "), "hello-world");
         assert_eq!(slugify_id("每天检查"), "");
         assert_eq!(slugify_id("a--b"), "a-b");

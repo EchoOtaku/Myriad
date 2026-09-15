@@ -943,7 +943,7 @@ html[data-perf-mode='exlight'] .phantasi-story[data-leaving='true'] {
   flex: 0 0 auto;
   min-width: 0;
   overflow: visible;
-  touch-action: none;
+  touch-action: pan-y;
   overscroll-behavior: none;
   cursor: grab;
 }
@@ -968,7 +968,7 @@ html[data-perf-mode='exlight'] .phantasi-story[data-leaving='true'] {
   width: 100%;
   min-width: 0;
   overflow: visible;
-  touch-action: none;
+  touch-action: pan-y;
   overscroll-behavior: none;
   cursor: grab;
 }
@@ -1005,37 +1005,6 @@ html[data-perf-mode='exlight'] .phantasi-story[data-leaving='true'] {
   min-height: 0;
 }
 
-.phantasi-notes__cats {
-  display: flex;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  gap: 0.35rem 0.4rem;
-  padding: 0.15rem 0 0.4rem;
-}
-
-button.phantasi-notes__cat {
-  padding: 0.18rem 0.55rem;
-  border: 1px solid var(--phantasi-frost-line, var(--phantasi-line));
-  border-radius: 999px;
-  background: transparent;
-  color: var(--phantasi-fg-dim);
-  font-size: 0.6875rem;
-  font-weight: 600;
-  line-height: 1.2;
-  cursor: pointer;
-}
-
-button.phantasi-notes__cat:hover {
-  color: var(--phantasi-fg);
-  border-color: var(--phantasi-line-hover);
-}
-
-button.phantasi-notes__cat.is-on {
-  color: var(--phantasi-fg);
-  background: var(--phantasi-chip);
-  border-color: var(--phantasi-frost-line, var(--phantasi-line));
-}
-
 .phantasi-notes-board > .phantasi-notes {
   flex: 0 0 auto;
 }
@@ -1048,7 +1017,7 @@ button.phantasi-notes__cat.is-on {
   width: 100%;
   min-width: 0;
   overflow: visible;
-  touch-action: none;
+  touch-action: pan-y;
   overscroll-behavior: none;
   cursor: grab;
 }
@@ -1072,6 +1041,7 @@ button.phantasi-notes__cat.is-on {
   grid-auto-flow: row;
   align-items: stretch;
   gap: var(--phantasi-items-gap, 0.55rem) 0.75rem;
+  position: relative;
   width: max-content;
   min-width: 100%;
   padding: 0.35rem 0 var(--phantasi-items-pad-bottom, 0);
@@ -1081,8 +1051,8 @@ button.phantasi-notes__cat.is-on {
 .phantasi-notes-track .phantasi-story,
 .phantasi-stories-track .phantasi-story {
   width: 100%;
-  height: 100%;
-  min-height: 0;
+  height: var(--phantasi-story-h);
+  min-height: var(--phantasi-story-h);
 }
 
 .phantasi-stories__more {

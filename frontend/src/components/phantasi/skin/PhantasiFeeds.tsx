@@ -1,20 +1,13 @@
-import type { CSSProperties, MouseEvent, PointerEvent, ReactNode, RefObject } from 'react'
+import type { CSSProperties, ReactNode, RefObject } from 'react'
 import type { PhantasiItemPreview, PhantasiSource } from '../../../types/phantasi'
 import type { FeedStory } from '../logic/feedStories'
 import type { TimeTranslations } from '../types'
 import type { PhantasiRailApi } from './usePhantasiRailPan'
 
-import { isValidElement, memo, startTransition, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { isValidElement, memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
-import { extractColorsFromLoadedImage } from '../../../utils/colorExtractor'
+import { getIconUrl, normalizeThemeColor } from '../constants'
 import {
-  DEFAULT_THEME_COLOR,
-  getIconUrl,
-  normalizeThemeColor,
-} from '../constants'
-import {
-  clipPaintedBatches,
-  extendPaintedRange,
   firstStoryForRailGroup,
   isLatestFeedId,
   LATEST_FEED_ID,
@@ -29,10 +22,9 @@ import {
   storySlotsByColumn,
 } from '../logic/feedStories'
 import { PhantasiRailTitle } from '../ui/PhantasiRailTitle'
+import { clearPhantasiStoryPeeks } from '../ui/StoryCard'
 import { PhantasiVacant } from '../ui/Empty'
-import { SiteCard } from '../ui/SiteCard'
-import { markPhantasiStoryPeek } from '../ui/StoryCard'
-import { PhantasiStoryColumn } from './PhantasiStory'
+import { PhantasiFeedsSites, paintSiteInk, paintSiteOn } from './PhantasiFeedsSites'
 import {
   phantasiFlipQuiet,
   clearRailExits,
@@ -51,889 +43,28 @@ import {
   paintStoryAway,
   paintStoryLiveCols,
   RAIL_MOUNT_BOOT_TO,
+  RAIL_MOUNT_GRAB_AHEAD,
   RAIL_MOUNT_GROW_AHEAD,
   RAIL_MOUNT_LIVE_PAD,
   RAIL_MOUNT_RESERVE,
-  RAIL_OVERFLOW_LEFT_PX,
+  railCardOffset,
   railLeadColumn,
   railLiveTo,
   railMountColumns,
   railMountColumnsCovered,
   railMountColumnsPan,
   railMountColumnsSettle,
-  railSeatScroll,
   railTrackScroll,
   recycleStoryDomShellsOutside,
   sourceAtScroll,
-  storyMountWindow,
   storyRailTrackSize,
 } from './railPan'
 import { warmStoryCovers, warmStoryFaces } from './storyFace'
 import { phantasiRelativeTime, usePhantasiTimes } from './time'
 import { usePhantasiRailPan } from './usePhantasiRailPan'
+import { PhantasiFeedsStories, type StorySlot } from './PhantasiFeedsStories'
 
 const ARTICLES_SETTLE_MS = 200
-const FOCUS_FOLLOW_MS = 160
-
-function indexSiteOnEls(
-  track: HTMLElement,
-  byId: Map<number, HTMLElement>,
-): void {
-  if (byId.size > 0) return
-  const kids = track.children
-  for (let i = 0; i < kids.length; i++) {
-    const el = kids[i] as HTMLElement
-    const next = Number(el.dataset?.railId)
-    if (Number.isFinite(next)) byId.set(next, el)
-  }
-}
-
-function paintSiteOn(
-  track: HTMLElement | null,
-  id: number | null,
-  painted: { current: number | null },
-  paintedEl: { current: HTMLElement | null },
-  byId: Map<number, HTMLElement>,
-): void {
-  if (!track || id == null || painted.current === id) return
-  indexSiteOnEls(track, byId)
-  const prevEl =
-    paintedEl.current
-    ?? (painted.current != null ? byId.get(painted.current) : undefined)
-  prevEl?.classList.remove('is-on')
-  let next = byId.get(id)
-  if (!next) {
-    next = track.querySelector<HTMLElement>(`.phantasi-site[data-rail-id="${id}"]`) ?? undefined
-    if (next) byId.set(id, next)
-  }
-  next?.classList.add('is-on')
-  painted.current = id
-  paintedEl.current = next ?? null
-}
-
-const PhantasiFeedsSites = memo(({
-  sources,
-  inbox,
-  onId,
-  times,
-  locale,
-  isEditMode,
-  selectedIds,
-  emptyLabel,
-  editLabel,
-  canEdit,
-  onActivate,
-  onOpenLatest,
-  onEdit,
-  onIconLoad,
-}: {
-  sources: PhantasiSource[]
-  inbox: {
-    name: string
-    description: string
-    latestTitle?: string
-    latestWhen?: string
-    stack: Array<{
-      key: string
-      src?: string | null
-      mark?: string
-      ink?: string | null
-    }>
-  } | null
-  onId: number | null | undefined
-  times: TimeTranslations
-  locale: string
-  isEditMode: boolean
-  selectedIds?: Set<number>
-  emptyLabel: string
-  editLabel: string
-  canEdit: boolean
-  onActivate: (id: number | string) => void
-  onOpenLatest: (id: number | string) => void
-  onEdit: (id: number | string) => void
-  onIconLoad: (img: HTMLImageElement) => void
-}) => {
-  return (
-    <>
-      {inbox ? (
-        <SiteCard
-          key={LATEST_FEED_ID}
-          id={LATEST_FEED_ID}
-          name={inbox.name}
-          description={inbox.description}
-          latestTitle={inbox.latestTitle}
-          latestWhen={inbox.latestWhen}
-          on={onId === LATEST_FEED_ID}
-          editing={false}
-          tone="mix"
-          stack={inbox.stack}
-          emptyLabel={emptyLabel}
-          onActivate={onActivate}
-          onOpenLatest={inbox.latestTitle ? onOpenLatest : undefined}
-          onIconLoad={onIconLoad}
-        />
-      ) : null}
-      {sources.map((source) => {
-        const latest = source.recent_items?.[0] ?? null
-        return (
-          <SiteCard
-            key={source.id}
-            id={source.id}
-            name={source.name}
-            description={source.description?.trim() || ''}
-            icon={getIconUrl(source.icon)}
-            unread={source.unread_count}
-            latestTitle={latest?.title}
-            latestWhen={
-              latest ? phantasiRelativeTime(latest.published_at, times, locale) : ''
-            }
-            on={source.id === onId}
-            editing={isEditMode}
-            picked={selectedIds?.has(source.id)}
-            ink={normalizeThemeColor(source.theme_color)}
-            emptyLabel={emptyLabel}
-            editLabel={editLabel}
-            onActivate={onActivate}
-            onOpenLatest={latest ? onOpenLatest : undefined}
-            onEdit={canEdit ? onEdit : undefined}
-            onIconLoad={onIconLoad}
-          />
-        )
-      })}
-    </>
-  )
-})
-
-interface StorySlot { story: FeedStory; column: number; row: 1 | 2 }
-
-function storyAtRailTarget(
-  target: EventTarget | null,
-  byId: ReadonlyMap<number, FeedStory>,
-): FeedStory | undefined {
-  if (!(target instanceof Element)) return
-  const node = target.closest('.phantasi-story')
-  if (
-    !(node instanceof HTMLElement)
-    || node.classList.contains('phantasi-story--slot')
-  ) {
-    return
-  }
-  const id = Number(node.dataset.railId)
-  if (!Number.isFinite(id)) return
-  return byId.get(id)
-}
-
-const PaintedRailHead = memo(({
-  nodes,
-}: {
-  nodes: readonly ReactNode[]
-}) => nodes)
-PaintedRailHead.displayName = 'PaintedRailHead'
-
-const PhantasiFeedsStories = memo(({
-  storySlots,
-  times,
-  locale,
-  labels,
-  onOpen,
-  onPeek,
-  onPeekEnd,
-  onToggleStar,
-  trackRef,
-  setMountRef,
-  setLiveRef,
-  mountCommittedRef,
-  mountColsRef,
-  liveToRef,
-  pendingStoryAlignRef,
-  itemsApiRef,
-  eagerBandRef,
-  lastEagerRef,
-  warmRef,
-  grabbingRef,
-}: {
-  storySlots: readonly StorySlot[]
-  times: TimeTranslations
-  locale: string
-  labels: {
-    unread: string
-    starred: string
-    unstar: string
-  }
-  onOpen: (item: FeedStory) => void
-  onPeek: (item: FeedStory) => void
-  onPeekEnd: () => void
-  onToggleStar?: (item: FeedStory) => void | false | Promise<void | false>
-  trackRef: RefObject<HTMLDivElement | null>
-  setMountRef: RefObject<(next: { from: number; to: number }) => void>
-  setLiveRef: RefObject<(next: number) => void>
-  mountCommittedRef: RefObject<{ from: number; to: number }>
-  mountColsRef: RefObject<{ from: number; to: number }>
-  liveToRef: RefObject<number>
-  pendingStoryAlignRef: RefObject<number | null>
-  itemsApiRef: RefObject<PhantasiRailApi | null>
-  eagerBandRef: RefObject<{ from: number; to: number }>
-  lastEagerRef: RefObject<{ from: number; to: number }>
-  warmRef: RefObject<() => void>
-  grabbingRef: RefObject<boolean>
-}) => {
-  const [mountCols, setMountCols] = useState({
-    from: 1,
-    to: Math.min(RAIL_MOUNT_GROW_AHEAD, RAIL_MOUNT_BOOT_TO),
-  })
-  const [liveTo, setLiveTo] = useState(liveToRef.current)
-  const setMount = useCallback((next: { from: number; to: number }) => {
-    mountColsRef.current = next
-    mountCommittedRef.current = next
-    setMountCols((prev) =>
-      prev.from === next.from && prev.to === next.to ? prev : next,
-    )
-  }, [mountColsRef, mountCommittedRef])
-  const setLive = useCallback((next: number) => {
-    liveToRef.current = next
-    setLiveTo((prev) => (prev === next ? prev : next))
-  }, [liveToRef])
-  useLayoutEffect(() => {
-    setMountRef.current = setMount
-  }, [setMount, setMountRef])
-  useLayoutEffect(() => {
-    setLiveRef.current = setLive
-  }, [setLive, setLiveRef])
-  const alignId = pendingStoryAlignRef.current
-  useLayoutEffect(() => {
-    if (alignId == null) return
-    pendingStoryAlignRef.current = null
-    itemsApiRef.current?.alignColumn(alignId, true)
-  }, [alignId, itemsApiRef, pendingStoryAlignRef])
-  const storyCols = storySlots.at(-1)?.column ?? 1
-  const grid = storyMountWindow(mountCols.from, mountCols.to, storyCols)
-  const byColRef = useRef<Map<number, StorySlot[]> | undefined>(undefined)
-  const byCol = useMemo(() => {
-    const next = storySlotsByColumn(storySlots, byColRef.current)
-    byColRef.current = next
-    return next
-  }, [storySlots])
-  const paintedEagerRef = useRef<{ from: number; to: number } | undefined>(
-    undefined,
-  )
-  const prebuiltColsRef = useRef<Map<number, ReactNode>>(new Map())
-  const canStar = onToggleStar != null
-  useEffect(() => {
-    const band = eagerBandRef.current
-    eagerStoryCovers(
-      trackRef.current,
-      band.from,
-      band.to,
-      paintedEagerRef.current,
-    )
-    paintStoryAway(
-      trackRef.current,
-      band.from,
-      band.to,
-      paintedEagerRef.current,
-    )
-    paintedEagerRef.current = band
-    lastEagerRef.current = band
-  }, [eagerBandRef, lastEagerRef, mountCols.from, mountCols.to, storySlots, trackRef])
-  useEffect(() => {
-    const track = trackRef.current
-    if (!track) return
-    track.addEventListener('error', onStoryMediaError, true)
-    return () => track.removeEventListener('error', onStoryMediaError, true)
-  }, [trackRef])
-  const eagerBand = eagerBandRef.current
-  const paintTo = grid.to
-  useEffect(() => {
-    const from = paintTo + 1
-    const faceTo = Math.min(paintTo + RAIL_MOUNT_GROW_AHEAD * 2, storyCols)
-    const bootTo = Math.min(RAIL_MOUNT_GROW_AHEAD, RAIL_MOUNT_BOOT_TO)
-    const warm = () => {
-      const holdAt = eagerBandRef.current.to
-      const prebuilt = prebuiltColsRef.current
-      const fill = (colFrom: number, colTo: number, covers: boolean) => {
-        if (colFrom > colTo) return
-        const pack: FeedStory[] = []
-        for (let col = colFrom; col <= colTo; col++) {
-          const slots = byCol.get(col)
-          if (!slots) continue
-          for (const slot of slots) pack.push(slot.story)
-        }
-        warmStoryFaces(pack, times, locale, labels, !covers)
-        if (!covers) return
-        for (let col = colFrom; col <= colTo; col++) {
-          if (prebuilt.has(col)) continue
-          prebuilt.set(
-            col,
-            <PhantasiStoryColumn
-              key={col}
-              col={col}
-              slots={byCol.get(col)}
-              times={times}
-              locale={locale}
-              labels={labels}
-              holdCover={col > holdAt}
-              canStar={canStar}
-            />,
-          )
-        }
-        warmStoryCovers(pack)
-      }
-      if (grabbingRef.current) {
-        const liveNow = liveToRef.current
-        fill(
-          liveNow + 1,
-          Math.min(
-            liveNow + RAIL_MOUNT_LIVE_PAD + RAIL_MOUNT_RESERVE,
-            mountColsRef.current.to,
-            storyCols,
-          ),
-          false,
-        )
-      } else if (from <= faceTo) {
-        fill(from, faceTo, true)
-      }
-      if (grabbingRef.current) return
-      const mounted = mountColsRef.current
-      if (mounted.to <= bootTo + RAIL_MOUNT_LIVE_PAD) {
-        const padTo = Math.min(bootTo + RAIL_MOUNT_LIVE_PAD, storyCols)
-        if (padTo <= mounted.to) return
-        const next = { from: mounted.from, to: padTo }
-        mountColsRef.current = next
-        liveToRef.current = padTo
-        startTransition(() => {
-          setLive(padTo)
-          setMount(next)
-        })
-        return
-      }
-      if (
-        mounted.from > 1
-        && mounted.to === eagerBandRef.current.to
-      ) {
-        return
-      }
-      const cap = Math.min(
-        eagerBandRef.current.to + RAIL_MOUNT_GROW_AHEAD,
-        storyCols,
-      )
-      if (cap <= mounted.to) return
-      const next = { from: mounted.from, to: cap }
-      mountColsRef.current = next
-      liveToRef.current = cap
-      startTransition(() => {
-        setLive(cap)
-        setMount(next)
-      })
-    }
-    warmRef.current = warm
-    if (typeof requestIdleCallback === 'function') {
-      const idle = requestIdleCallback(warm)
-      return () => cancelIdleCallback(idle)
-    }
-    const timer = window.setTimeout(warm, 0)
-    return () => window.clearTimeout(timer)
-  }, [
-    byCol,
-    canStar,
-    eagerBandRef,
-    grabbingRef,
-    labels,
-    locale,
-    liveToRef,
-    mountColsRef,
-    paintTo,
-    setLive,
-    setMount,
-    storyCols,
-    times,
-    warmRef,
-  ])
-  const trackStyle = useMemo(
-    () => ({
-      '--phantasi-story-cols': storyCols,
-      width: storyRailTrackSize(storyCols),
-      gridTemplateColumns: 'minmax(0, 100%)',
-    }) as CSSProperties,
-    [storyCols],
-  )
-  const paintedCacheRef = useRef<ReactNode[]>([])
-  const paintedOutRef = useRef<ReactNode[]>([])
-  const paintedHeadRef = useRef<ReactNode>(null)
-  const paintedBatchesRef = useRef<{
-    from: number
-    to: number
-    nodes: readonly ReactNode[]
-    head: ReactNode
-  }[]>([])
-  const paintedRangeRef = useRef({ from: 0, to: 0 })
-  const paintedLiveToRef = useRef(0)
-  const paintedByColRef = useRef(byCol)
-  const paintedFaceRef = useRef({
-    times,
-    locale,
-    labels,
-    canStar,
-  })
-  const painted = useMemo(() => {
-    const face = paintedFaceRef.current
-    const prevByCol = paintedByColRef.current
-    const reset =
-      face.times !== times
-      || face.locale !== locale
-      || face.labels !== labels
-      || face.canStar !== canStar
-    paintedByColRef.current = byCol
-    paintedFaceRef.current = {
-      times,
-      locale,
-      labels,
-      canStar,
-    }
-    if (reset) prebuiltColsRef.current.clear()
-    const prevRange = paintedRangeRef.current
-    const prevLive = paintedLiveToRef.current
-    const prev = paintedCacheRef.current
-    const prebuilt = prebuiltColsRef.current
-    const paintLive = Math.min(liveTo, paintTo)
-    const eagerTo = paintedEagerRef.current?.to ?? eagerBand.to
-    const makeFull = (col: number) => {
-      const holdCover = col > eagerBand.to || col > eagerTo
-      if (!holdCover) {
-        const hit = prebuilt.get(col)
-        if (hit) return hit
-      } else {
-        prebuilt.delete(col)
-      }
-      const node = (
-        <PhantasiStoryColumn
-          key={col}
-          col={col}
-          slots={byCol.get(col)}
-          times={times}
-          locale={locale}
-          labels={labels}
-          holdCover={holdCover}
-          canStar={canStar}
-        />
-      )
-      if (!holdCover) prebuilt.set(col, node)
-      return node
-    }
-    const make = (col: number) => (
-      col > paintLive
-        ? (
-            <PhantasiStoryColumn
-              key={col}
-              col={col}
-              times={times}
-              locale={locale}
-              labels={labels}
-              holdCover={col > eagerBand.to || col > eagerTo}
-              canStar={canStar}
-            />
-          )
-        : makeFull(col)
-    )
-    let next = extendPaintedRange(
-      prev,
-      prevRange.from,
-      prevRange.to,
-      grid.from,
-      paintTo,
-      make,
-      reset,
-    )
-    const hydrate =
-      !reset
-      && paintLive > prevLive
-      && prevRange.from === grid.from
-      && prevRange.to === paintTo
-      && prevRange.to >= prevRange.from
-    const leftoverShells = paintedBatchesRef.current.some(
-      (batch) => batch.from > prevLive || batch.to > prevLive,
-    )
-    if (
-      !reset
-      && paintLive > prevLive
-      && prevRange.from === grid.from
-      && prevRange.to >= prevRange.from
-    ) {
-      const copy = next.slice()
-      for (
-        let col = prevLive + 1;
-        col <= paintLive && col <= paintTo;
-        col++
-      ) {
-        copy[col - grid.from] = makeFull(col)
-      }
-      next = copy
-    }
-    if (!reset && prevByCol !== byCol) {
-      const copy = next.slice()
-      let patched = false
-      const overlapFrom = Math.max(grid.from, prevRange.from)
-      const overlapTo = Math.min(paintTo, prevRange.to)
-      for (let col = overlapFrom; col <= overlapTo; col++) {
-        if (prevByCol.get(col) !== byCol.get(col)) {
-          prebuilt.delete(col)
-          copy[col - grid.from] = make(col)
-          patched = true
-        }
-      }
-      if (patched) next = copy
-      if (patched && paintedBatchesRef.current.length > 0) {
-        const batches: {
-          from: number
-          to: number
-          nodes: readonly ReactNode[]
-          head: ReactNode
-        }[] = []
-        const heads: ReactNode[] = []
-        for (const batch of paintedBatchesRef.current) {
-          let hit = false
-          for (let col = batch.from; col <= batch.to; col++) {
-            if (prevByCol.get(col) !== byCol.get(col)) {
-              hit = true
-              break
-            }
-          }
-          if (!hit) {
-            batches.push(batch)
-            heads.push(batch.head)
-            continue
-          }
-          const from = Math.max(batch.from, grid.from)
-          const to = Math.min(batch.to, paintTo)
-          if (from > to) continue
-          const nodes = next.slice(from - grid.from, to - grid.from + 1)
-          const head = (
-            <PaintedRailHead
-              key={
-                isValidElement(batch.head) && batch.head.key != null
-                  ? batch.head.key
-                  : `${from}:${to}`
-              }
-              nodes={nodes}
-            />
-          )
-          batches.push({ from, to, nodes, head })
-          heads.push(head)
-        }
-        paintedBatchesRef.current = batches
-        paintedOutRef.current = heads
-        paintedHeadRef.current = heads[0] ?? null
-      }
-    }
-    paintedRangeRef.current = { from: grid.from, to: paintTo }
-    paintedLiveToRef.current = paintLive
-    paintedCacheRef.current = next
-    if (next === prev && paintedOutRef.current.length > 0) {
-      return paintedOutRef.current
-    }
-    const grew =
-      !reset
-      && paintedHeadRef.current
-      && grid.from === prevRange.from
-      && paintTo > prevRange.to
-      && next.length > prev.length
-      && next[0] === prev[0]
-    if (grew && !leftoverShells) {
-      const addFrom = prevRange.to + 1
-      let out = paintedOutRef.current
-      if (addFrom <= paintLive) {
-        const liveNodes = next.slice(
-          addFrom - grid.from,
-          paintLive - grid.from + 1,
-        )
-        const head = (
-          <PaintedRailHead
-            key={`${prevRange.to}:${paintTo}`}
-            nodes={liveNodes}
-          />
-        )
-        paintedHeadRef.current = head
-        out = out.concat(head)
-        paintedBatchesRef.current.push({
-          from: addFrom,
-          to: paintLive,
-          nodes: liveNodes,
-          head,
-        })
-      }
-      if (paintLive < paintTo) {
-        const shellNodes = next.slice(paintLive - grid.from + 1)
-        const head = (
-          <PaintedRailHead
-            key={`shell:${paintTo}`}
-            nodes={shellNodes}
-          />
-        )
-        if (addFrom > paintLive) paintedHeadRef.current = head
-        out = out.concat(head)
-        paintedBatchesRef.current.push({
-          from: paintLive + 1,
-          to: paintTo,
-          nodes: shellNodes,
-          head,
-        })
-      }
-      paintedOutRef.current = out
-      return out
-    }
-    if (
-      (hydrate || (grew && leftoverShells))
-      && paintedBatchesRef.current.length > 0
-    ) {
-      const tailAt = paintedBatchesRef.current.findIndex(
-        (batch) => batch.to > prevLive,
-      )
-      if (tailAt >= 0) {
-        const batches = paintedBatchesRef.current.slice()
-        const heads = batches.map((batch) => batch.head)
-        const batch = batches[tailAt]
-        if (!batch) {
-          paintedHeadRef.current = heads[0] ?? null
-          paintedOutRef.current = heads
-          paintedBatchesRef.current = batches
-          return heads
-        }
-        const nodes = batch.nodes.slice()
-        const hydFrom = Math.max(prevLive + 1, batch.from, grid.from)
-        let tailTo = batch.to
-        for (let col = hydFrom; col <= paintLive; col++) {
-          const at = col - batch.from
-          const node = next[col - grid.from]
-          if (node == null) continue
-          if (at >= 0 && at < nodes.length) {
-            nodes[at] = node
-          }
-          else {
-            nodes.push(node)
-            if (col > tailTo) tailTo = col
-          }
-        }
-        if (paintTo > tailTo) {
-          for (let col = tailTo + 1; col <= paintTo; col++) {
-            const node = next[col - grid.from]
-            if (node != null) nodes.push(node)
-          }
-          tailTo = paintTo
-        }
-        const head = (
-          <PaintedRailHead
-            key={
-              isValidElement(batch.head) && batch.head.key != null
-                ? batch.head.key
-                : `shell:${paintTo}`
-            }
-            nodes={nodes}
-          />
-        )
-        batches[tailAt] = {
-          from: batch.from,
-          to: tailTo,
-          nodes,
-          head,
-        }
-        heads[tailAt] = head
-        paintedHeadRef.current = heads[0] ?? null
-        paintedOutRef.current = heads
-        paintedBatchesRef.current = batches
-        return heads
-      }
-      const kept = paintedBatchesRef.current.filter((batch) => batch.to <= prevLive)
-      const heads: ReactNode[] = kept.map((batch) => batch.head)
-      const batches = kept.slice()
-      const hydFrom = Math.max(prevLive + 1, grid.from)
-      if (hydFrom <= paintLive) {
-        const nodes = next.slice(
-          hydFrom - grid.from,
-          paintLive - grid.from + 1,
-        )
-        const head = (
-          <PaintedRailHead
-            key={`${prevLive}:${paintLive}`}
-            nodes={nodes}
-          />
-        )
-        heads.push(head)
-        batches.push({
-          from: hydFrom,
-          to: paintLive,
-          nodes,
-          head,
-        })
-      }
-      if (paintLive < paintTo) {
-        const nodes = next.slice(paintLive - grid.from + 1)
-        const head = (
-          <PaintedRailHead
-            key={`shell:${paintTo}`}
-            nodes={nodes}
-          />
-        )
-        heads.push(head)
-        batches.push({
-          from: paintLive + 1,
-          to: paintTo,
-          nodes,
-          head,
-        })
-      }
-      paintedHeadRef.current = heads[0] ?? null
-      paintedOutRef.current = heads
-      paintedBatchesRef.current = batches
-      return heads
-    }
-    if (reset || !paintedHeadRef.current || paintedBatchesRef.current.length === 0) {
-      const head = <PaintedRailHead key={`${grid.from}:${paintTo}`} nodes={next} />
-      paintedHeadRef.current = head
-      paintedOutRef.current = [head]
-      paintedBatchesRef.current = [{
-        from: grid.from,
-        to: paintTo,
-        nodes: next,
-        head,
-      }]
-      return paintedOutRef.current
-    }
-    const clipped = clipPaintedBatches(
-      paintedBatchesRef.current,
-      grid.from,
-      paintTo,
-      next,
-    )
-    const heads: ReactNode[] = []
-    const batches: {
-      from: number
-      to: number
-      nodes: readonly ReactNode[]
-      head: ReactNode
-    }[] = []
-    for (const batch of clipped) {
-      const head = batch.keep?.head ?? (
-        <PaintedRailHead
-          key={`${batch.from}:${batch.to}`}
-          nodes={batch.nodes}
-        />
-      )
-      heads.push(head)
-      batches.push({
-        from: batch.from,
-        to: batch.to,
-        nodes: batch.nodes,
-        head,
-      })
-    }
-    paintedHeadRef.current = heads[0] ?? null
-    paintedOutRef.current = heads
-    paintedBatchesRef.current = batches
-    return heads
-  }, [
-    byCol,
-    canStar,
-    grid.from,
-    labels,
-    liveTo,
-    locale,
-    paintTo,
-    times,
-  ])
-  const storyByIdRef = useRef<Map<number, FeedStory>>(new Map())
-  const storySlotsSeenRef = useRef(storySlots)
-  if (storySlotsSeenRef.current !== storySlots) {
-    storySlotsSeenRef.current = storySlots
-    const map = new Map<number, FeedStory>()
-    for (const slot of storySlots) map.set(slot.story.id, slot.story)
-    storyByIdRef.current = map
-  }
-  const onOpenRef = useRef(onOpen)
-  onOpenRef.current = onOpen
-  const onPeekRef = useRef(onPeek)
-  onPeekRef.current = onPeek
-  const onPeekEndRef = useRef(onPeekEnd)
-  onPeekEndRef.current = onPeekEnd
-  const onStarRef = useRef(onToggleStar)
-  onStarRef.current = onToggleStar
-  const onTrackClick = useCallback((event: MouseEvent<HTMLDivElement>) => {
-    const star = event.target instanceof Element
-      ? event.target.closest('.phantasi-story__star')
-      : null
-    if (star) {
-      const story = storyAtRailTarget(star, storyByIdRef.current)
-      if (story) onStarRef.current?.(story)
-      return
-    }
-    const hit = event.target instanceof Element
-      ? event.target.closest('.phantasi-story__hit')
-      : null
-    if (!hit) return
-    const story = storyAtRailTarget(hit, storyByIdRef.current)
-    if (story) onOpenRef.current(story)
-  }, [])
-  const onTrackPointerOver = useCallback(
-    (event: PointerEvent<HTMLDivElement>) => {
-      if (event.pointerType === 'touch') return
-      const story = storyAtRailTarget(event.target, storyByIdRef.current)
-      if (!story) return
-      const node = event.target instanceof Element
-        ? event.target.closest('.phantasi-story')
-        : null
-      const from = event.relatedTarget
-      if (from instanceof Node && node?.contains(from)) return
-      markPhantasiStoryPeek(node, true)
-      onPeekRef.current(story)
-    },
-    [],
-  )
-  const onTrackPointerOut = useCallback(
-    (event: PointerEvent<HTMLDivElement>) => {
-      if (event.pointerType === 'touch') return
-      const node = event.target instanceof Element
-        ? event.target.closest('.phantasi-story')
-        : null
-      const to = event.relatedTarget
-      if (node && to instanceof Node && node.contains(to)) return
-      if (storyAtRailTarget(event.relatedTarget, storyByIdRef.current)) return
-      if (to instanceof Node && event.currentTarget.contains(to)) return
-      onPeekEndRef.current()
-    },
-    [],
-  )
-  return (
-    <div
-      className="phantasi-feeds__items-track"
-      ref={trackRef}
-      data-phantasi-rail-track="items"
-      style={trackStyle}
-      onClick={onTrackClick}
-      onPointerOver={onTrackPointerOver}
-      onPointerOut={onTrackPointerOut}
-    >
-      {painted}
-    </div>
-  )
-})
-
-function paintSiteInk(img: HTMLImageElement, fallback: string | null): void {
-  if (fallback) return
-  try {
-    const primary = extractColorsFromLoadedImage(img).primary
-    if (
-      !primary ||
-      primary === DEFAULT_THEME_COLOR ||
-      primary === '#6b7280'
-    ) {
-      return
-    }
-    const card = img.closest('.phantasi-site')
-    if (card instanceof HTMLElement) {
-      card.style.setProperty('--site-ink', normalizeThemeColor(primary))
-    }
-  } catch {
-    // 取色失败保持默认灰。
-  }
-}
 
 interface PhantasiFeedsProps {
   sources: PhantasiSource[]
@@ -1021,7 +152,6 @@ function PhantasiFeeds({
   const lastEagerRef = useRef<{ from: number; to: number }>({ from: 1, to: 8 })
   const storyWarmRef = useRef<() => void>(() => {})
   const pendingFlushRef = useRef(false)
-  const pendingExpandRef = useRef<1 | -1 | null>(null)
   const grabbingRef = useRef(false)
   const [flipping, setFlipping] = useState(false)
   const [sitesBooted, setSitesBooted] = useState(() => phantasiFlipQuiet())
@@ -1148,8 +278,6 @@ function PhantasiFeeds({
       paintedElRef,
       siteElsRef.current,
     )
-    skipStoryAlignRef.current = true
-    setFocusId(id)
   }, [])
 
   useEffect(() => {
@@ -1305,13 +433,12 @@ function PhantasiFeeds({
       return
     }
     const siteIndex = siteIndexRef.current
-    followStopsRef.current = columns.map((block) =>
-      railSeatScroll(
-        siteCards,
-        siteIndex.get(block.id) ?? 0,
-        RAIL_OVERFLOW_LEFT_PX,
-      ),
-    )
+    const prevFollow = followStopsRef.current
+    followStopsRef.current = columns.map((block, i) => {
+      const at = siteIndex.get(block.id)
+      if (at == null) return prevFollow[i] ?? 0
+      return railCardOffset(siteCards, at)
+    })
   }, [])
   useLayoutEffect(() => {
     rebuildFollowStops(colWRef.current)
@@ -1365,9 +492,7 @@ function PhantasiFeeds({
       return
     }
     pendingFlushRef.current = false
-    dropStoryDomShells(itemsTrackRef.current)
     let settleId: number | null = null
-    let expandDir: 1 | -1 | null = null
     if (railDriverRef.current !== 'sites') {
       const id = lastSourceRef.current
       if (id != null && id !== focusIdRef.current) {
@@ -1375,8 +500,6 @@ function PhantasiFeeds({
         focusIdRef.current = id
         settleId = id
       }
-      expandDir = pendingExpandRef.current
-      pendingExpandRef.current = null
     }
     const columns = sourceColsRef.current
     const totalCols = Math.max(
@@ -1399,42 +522,137 @@ function PhantasiFeeds({
     )
     const stale = reactMountStaleRef.current
     reactMountStaleRef.current = false
-    const covered = prev.from <= ideal.from && prev.to >= ideal.to
-    const next = stale && !covered
-      ? { from: ideal.from, to: ideal.to }
-      : settled
+    const next = settled
     const mountChanged = next.from !== prev.from || next.to !== prev.to
     if (mountChanged) {
       mountColsRef.current = next
       storyMountCommittedRef.current = next
-      liveToRef.current = Math.min(liveToRef.current, next.to)
     } else {
       mountColsRef.current = prev
-      liveToRef.current = Math.min(liveToRef.current, prev.to)
     }
+    const keepLive = Math.min(liveToRef.current, next.to)
+    liveToRef.current = stale || keepLive < ideal.to
+      ? Math.max(
+          keepLive,
+          Math.min(next.to, railLiveTo(ideal.to, next.to, keepLive)),
+        )
+      : keepLive
     const syncMount = mountChanged
     const prevBand = eagerBandRef.current
     eagerBandRef.current = ideal
-    paintStoryAway(itemsTrackRef.current, ideal.from, ideal.to, prevBand)
+    paintStoryAway(itemsTrackRef.current, ideal.from, ideal.to, prevBand, false)
     if (!syncMount) {
       eagerStoryCovers(itemsTrackRef.current, ideal.from, ideal.to, prevBand)
       lastEagerRef.current = { from: ideal.from, to: ideal.to }
     }
-    if (settleId == null && expandDir == null && !syncMount) {
-      storySetLiveRef.current(liveToRef.current)
+    if (syncMount) storySetMountRef.current(mountColsRef.current)
+    storySetLiveRef.current(liveToRef.current)
+    if (settleId == null) return
+    skipStoryAlignRef.current = true
+    appliedFocus.current = settleId
+    setFocusId(settleId)
+  }, [])
+  const grabFillRef = useRef({ armed: false, from: 0, to: -1, frame: 0 })
+  useEffect(() => {
+    return () => {
+      if (!grabFillRef.current.frame) return
+      window.cancelAnimationFrame(grabFillRef.current.frame)
+      grabFillRef.current.frame = 0
+      grabFillRef.current.armed = false
+    }
+  }, [])
+  const paintGrabLive = (from: number, to: number) => {
+    if (from > to) return
+    const paintTo = Math.min(to, eagerBandRef.current.to)
+    if (from > paintTo) return
+    const paint = storyPaintRef.current
+    const ready = ensureStoryShells(
+      itemsTrackRef.current,
+      from,
+      paintTo,
+      storySlotsRef.current,
+    )
+    paintStoryLiveCols(
+      itemsTrackRef.current,
+      from,
+      paintTo,
+      storyByColRef.current,
+      paint.times,
+      paint.locale,
+      paint.labels,
+      eagerBandRef.current.to,
+      paint.canStar,
+      true,
+      ready,
+    )
+  }
+  const fillGrabLive = (from: number, to: number) => {
+    if (from > to) return
+    const q = grabFillRef.current
+    if (q.armed) {
+      q.from = Math.min(q.from, from)
+      q.to = Math.max(q.to, to)
       return
     }
-    startTransition(() => {
-      if (settleId != null) {
-        appliedFocus.current = settleId
-        setFocusId(settleId)
-        jumpRef.current?.(settleId)
-      }
-      if (expandDir) expandRef.current?.(expandDir)
-      if (syncMount) storySetMountRef.current(mountColsRef.current)
-      storySetLiveRef.current(liveToRef.current)
+    q.armed = true
+    q.from = from
+    q.to = to
+    q.frame = window.requestAnimationFrame(() => {
+      q.frame = 0
+      q.armed = false
+      const a = q.from
+      const b = q.to
+      q.to = -1
+      paintGrabLive(a, b)
     })
-  }, [])
+  }
+  const flushGrabFill = () => {
+    const q = grabFillRef.current
+    if (q.frame) {
+      window.cancelAnimationFrame(q.frame)
+      q.frame = 0
+    }
+    if (!q.armed) return
+    q.armed = false
+    const a = q.from
+    const b = q.to
+    q.to = -1
+    paintGrabLive(a, b)
+  }
+  const primeStoryMount = () => {
+    const colW = colWRef.current
+    if (colW <= 1) return
+    const columns = sourceColsRef.current
+    const totalCols = Math.max(
+      1,
+      columns.at(-1)?.column ?? storySlotsRef.current.at(-1)?.column ?? 1,
+    )
+    const viewW =
+      lastViewWRef.current || itemsViewRef.current?.clientWidth || 800
+    const ideal = railMountColumns(
+      lastScrollRef.current,
+      viewW,
+      colW,
+      totalCols,
+    )
+    const prevBand = eagerBandRef.current
+    eagerBandRef.current = {
+      from: Math.min(prevBand.from, ideal.from),
+      to: Math.max(prevBand.to, ideal.to),
+    }
+    const prev = mountColsRef.current
+    const next = {
+      from: Math.max(1, Math.min(prev.from, ideal.from)),
+      to: Math.min(totalCols, Math.max(prev.to, ideal.to + RAIL_MOUNT_GRAB_AHEAD)),
+    }
+    if (next.from !== prev.from || next.to !== prev.to) {
+      mountColsRef.current = next
+      reactMountStaleRef.current = true
+    }
+    const prevLive = liveToRef.current
+    liveToRef.current = railLiveTo(ideal.to, next.to, prevLive)
+    paintGrabLive(Math.min(prevLive + 1, ideal.from), liveToRef.current)
+  }
   const onStoryScroll = useCallback(
     (state: { scroll: number; viewW: number; colW: number }) => {
       if (state.colW > 1) colWRef.current = state.colW
@@ -1468,7 +686,7 @@ function PhantasiFeeds({
         rebuildFollowStops(colW, state.viewW)
         followHintRef.current.i = 0
       }
-      if (railDriverRef.current !== 'sites') {
+      if (grabbingRef.current && railDriverRef.current === 'stories') {
         const siteX = followRailScroll(
           state.scroll,
           driveStopsRef.current,
@@ -1496,23 +714,6 @@ function PhantasiFeeds({
         col,
         colLeadRef.current,
       )
-      if (lead) {
-        const index = storyIndexRef.current.get(lead.story.id)
-        if (index != null) {
-          const len = storiesRef.current.length
-          const dir: 1 | -1 | null =
-            index >= len - 4 ? 1 : index <= 3 ? -1 : null
-          if (dir != null) {
-            pendingExpandRef.current = dir
-            if (!focusTimerRef.current) {
-              focusTimerRef.current = window.setTimeout(
-                flushStorySettle,
-                FOCUS_FOLLOW_MS,
-              )
-            }
-          }
-        }
-      }
       const totalCols = Math.max(
         1,
         columns.at(-1)?.column ?? storySlotsRef.current.at(-1)?.column ?? 1,
@@ -1523,31 +724,6 @@ function PhantasiFeeds({
         colW,
         totalCols,
       )
-      const fillGrabLive = (from: number, to: number) => {
-        if (from > to) return
-        const paintTo = Math.min(to, eagerBandRef.current.to)
-        if (from > paintTo) return
-        const paint = storyPaintRef.current
-        const ready = ensureStoryShells(
-          itemsTrackRef.current,
-          from,
-          paintTo,
-          storySlotsRef.current,
-        )
-        paintStoryLiveCols(
-          itemsTrackRef.current,
-          from,
-          paintTo,
-          storyByColRef.current,
-          paint.times,
-          paint.locale,
-          paint.labels,
-          eagerBandRef.current.to,
-          paint.canStar,
-          true,
-          ready,
-        )
-      }
       if (
         ideal.from !== eagerBandRef.current.from
         || ideal.to !== eagerBandRef.current.to
@@ -1587,8 +763,6 @@ function PhantasiFeeds({
           lastEagerRef.current = { from: eagerFrom, to: eagerTo }
         }
       }
-      let dirty = false
-      let growReact = false
       const prevCols = mountColsRef.current
       const grown = railMountColumnsCovered(
         prevCols,
@@ -1619,10 +793,7 @@ function PhantasiFeeds({
         )
         if (grabbingRef.current) {
           fillGrabLive(prevLive + 1, liveToRef.current)
-        } else {
-          growReact = true
         }
-        dirty = true
       }
       if (ideal.to + RAIL_MOUNT_RESERVE > liveToRef.current) {
         const prevLive = liveToRef.current
@@ -1635,20 +806,8 @@ function PhantasiFeeds({
           liveToRef.current = nextLive
           if (grabbingRef.current) {
             fillGrabLive(prevLive + 1, nextLive)
-          } else {
-            dirty = true
-            growReact = true
           }
         }
-      }
-      if (growReact && !growFrameRef.current) {
-        growFrameRef.current = window.requestAnimationFrame(() => {
-          growFrameRef.current = 0
-          startTransition(() => {
-            storySetMountRef.current(mountColsRef.current)
-            storySetLiveRef.current(liveToRef.current)
-          })
-        })
       }
       if (railDriverRef.current === 'sites') return
       const sourceId =
@@ -1664,17 +823,14 @@ function PhantasiFeeds({
           siteElsRef.current,
         )
         skipStoryAlignRef.current = true
-        dirty = true
       }
-      if (!dirty) return
-      if (focusTimerRef.current) window.clearTimeout(focusTimerRef.current)
-      focusTimerRef.current = window.setTimeout(flushStorySettle, FOCUS_FOLLOW_MS)
     },
-    [flushStorySettle, rebuildFollowStops],
+    [rebuildFollowStops],
   )
   const onSiteScroll = useCallback(
     (state: { scroll: number; viewW: number; colW: number }) => {
       if (railDriverRef.current !== 'sites') return
+      if (!grabbingRef.current) return
       const colW = colWRef.current
       if (
         driveStopsRef.current.length === 0
@@ -1688,15 +844,29 @@ function PhantasiFeeds({
         driveStopsRef.current,
         siteFollowHintRef.current,
       )
-      if (Math.abs(storyX - lastScrollRef.current) > 0.5) {
+      if (
+        grabbingRef.current
+        && Math.abs(storyX - lastScrollRef.current) > 0.5
+      ) {
         itemsApiRef.current?.seek(storyX)
+      }
+      const viewW =
+        lastViewWRef.current
+        || itemsViewRef.current?.clientWidth
+        || state.viewW
+      lastScrollRef.current = storyX
+      lastViewWRef.current = viewW
+      const col = railLeadColumn(storyX, colW)
+      if (
+        col === storyColRef.current
+        && Math.abs(viewW - lastWindowViewRef.current) <= 8
+        && Math.abs(colW - lastWindowColWRef.current) <= 0.5
+      ) {
+        return
       }
       onStoryScroll({
         scroll: storyX,
-        viewW:
-          lastViewWRef.current
-          || itemsViewRef.current?.clientWidth
-          || state.viewW,
+        viewW,
         colW,
       })
     },
@@ -1707,8 +877,11 @@ function PhantasiFeeds({
     feedsRef.current?.classList.toggle('is-rail-grabbing', on)
   }
   const paintFollowLayer = (on: boolean) => {
-    const track = sitesTrackRef.current
-    if (track) track.style.willChange = on ? 'transform' : ''
+    const value = on ? 'transform' : ''
+    const sites = sitesTrackRef.current
+    if (sites) sites.style.willChange = value
+    const items = itemsTrackRef.current
+    if (items) items.style.willChange = value
   }
   useLayoutEffect(() => {
     feedsRef.current?.classList.toggle('is-rail-grabbing', grabbingRef.current)
@@ -1716,8 +889,10 @@ function PhantasiFeeds({
   const onSiteGrab = useCallback(() => {
     railDriverRef.current = 'sites'
     paintGrabbing(true)
+    paintFollowLayer(true)
     holdStoriesRef.current?.()
     dropPeek()
+    primeStoryMount()
   }, [])
   const onStoryGrab = useCallback(() => {
     railDriverRef.current = 'stories'
@@ -1725,33 +900,30 @@ function PhantasiFeeds({
     paintFollowLayer(true)
     holdStoriesRef.current?.()
     dropPeek()
+    primeStoryMount()
   }, [])
-  const onSiteIdle = useCallback(() => {
-    paintGrabbing(false)
-    const id = lastSourceRef.current
-    if (id != null) {
-      appliedFocus.current = id
-      skipStoryAlignRef.current = true
-      jumpRef.current?.(id)
+  const clearStorySettleTimers = () => {
+    if (focusTimerRef.current) {
+      window.clearTimeout(focusTimerRef.current)
+      focusTimerRef.current = 0
     }
-    if (pendingFlushRef.current) flushStorySettle()
-    releaseStoriesRef.current?.()
-  }, [flushStorySettle])
-  const onStoryIdle = useCallback(() => {
-    if (focusTimerRef.current) window.clearTimeout(focusTimerRef.current)
+    if (growFrameRef.current) {
+      window.cancelAnimationFrame(growFrameRef.current)
+      growFrameRef.current = 0
+    }
+  }
+  const onSiteIdle = useCallback(() => {
+    clearStorySettleTimers()
     paintGrabbing(false)
     paintFollowLayer(false)
-    flushStorySettle()
-    const releaseAndWarm = () => {
-      releaseStoriesRef.current?.()
-      storyWarmRef.current()
-    }
-    if (typeof requestIdleCallback === 'function') {
-      requestIdleCallback(releaseAndWarm)
-    } else {
-      window.setTimeout(releaseAndWarm, 0)
-    }
-  }, [flushStorySettle])
+    flushGrabFill()
+  }, [])
+  const onStoryIdle = useCallback(() => {
+    clearStorySettleTimers()
+    paintGrabbing(false)
+    paintFollowLayer(false)
+    flushGrabFill()
+  }, [])
 
   const railsReady =
     phantasiFlipQuiet() ||
@@ -1814,8 +986,15 @@ function PhantasiFeeds({
       eagerBandRef.current = ideal
       pendingStoryAlignRef.current = column
       dropStoryDomShells(itemsTrackRef.current)
+      clearPhantasiStoryPeeks(itemsTrackRef.current)
       mountColsRef.current = next
-      liveToRef.current = railLiveTo(ideal.to, next.to)
+      liveToRef.current = Math.min(
+        next.to,
+        Math.max(
+          column + RAIL_MOUNT_LIVE_PAD,
+          railLiveTo(ideal.to, next.to, 1),
+        ),
+      )
       storySetMountRef.current(next)
       storySetLiveRef.current(liveToRef.current)
     }
@@ -1951,11 +1130,13 @@ function PhantasiFeeds({
       focusTimerRef.current = 0
     }
     pendingFlushRef.current = false
+    skipStoryAlignRef.current = true
     setFocusId(id)
     setReadyId(id)
     onJumpSource?.(id)
     onRailFocus?.(isLatestFeedId(id) ? null : id)
-    sitesApiRef.current?.align(id)
+    releaseStoriesRef.current?.()
+    sitesApiRef.current?.align(id, true)
     alignStoryGroup(id)
   }
   activateSiteRef.current = activateSite

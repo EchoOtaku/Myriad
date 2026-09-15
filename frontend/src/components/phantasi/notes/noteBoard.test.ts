@@ -17,10 +17,11 @@ describe('visibleCloudNoteDocs', () => {
       { status: 'draft', title: '还没发', content_md: '' },
       { status: 'scheduled', title: '', content_md: '夜里发' },
       { status: 'published', title: '已见', content_md: '公开了' },
+      { status: 'draft', title: '', content_md: '', has_body: true },
     ])
     assert.deepEqual(
       shown.map((doc) => doc.title || doc.content_md),
-      ['还没发', '夜里发'],
+      ['还没发', '夜里发', ''],
     )
   })
 
@@ -32,7 +33,7 @@ describe('visibleCloudNoteDocs', () => {
 })
 
 describe('leftoverNoteSources', () => {
-  it('已有精选笔记的源不再另占一张', () => {
+  it('墙上已有笔记的源不再另占一张', () => {
     assert.deepEqual(
       leftoverNoteSources(
         [{ id: 1 }, { id: 2 }, { id: 3 }],

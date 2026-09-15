@@ -133,7 +133,8 @@ mod tests {
         assert!(!error.contains("instead"), "{error}");
 
         // 重复名保持 duplicate 语义，不附加替代提示
-        let error = validate_tapp_manifest(&manifest(vec!["phantasi:read", "phantasi:read"])).unwrap_err();
+        let error =
+            validate_tapp_manifest(&manifest(vec!["phantasi:read", "phantasi:read"])).unwrap_err();
         assert!(
             error.contains("Duplicate Tapp permission: phantasi:read"),
             "{error}"

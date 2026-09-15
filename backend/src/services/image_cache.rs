@@ -29,6 +29,7 @@ fn cache_io_error(action: &str, error: std::io::Error) -> String {
 const MAX_IMAGE_SIZE: usize = 10 * 1024 * 1024;
 
 /// 图片缓存服务
+#[derive(Clone)]
 pub struct ImageCacheService {
     cache_dir: PathBuf,
 }

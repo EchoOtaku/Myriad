@@ -501,7 +501,6 @@
   "wordCount": "words",
   "audioLabel": "Audio",
   "selectedText": "Selected text:",
-  "myComments": "My Comments",
   "showAllComments": "Show all comments",
   "readingSyncConflict": "Reading state changed elsewhere. Sync is paused. Reopen this article to load the latest state.",
   "readingSyncKeepLocal": "Keep my progress",

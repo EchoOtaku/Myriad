@@ -28,7 +28,7 @@ use serde_json::json;
 use crate::middleware::auth::{Claims, verify_jwt_token};
 use crate::services::permission_service::TappPermission;
 use crate::services::tapp_host_attribution::{
-    self, phantasi_permission, error_codes, federation_permission, speech_permission,
+    self, error_codes, federation_permission, phantasi_permission, speech_permission,
 };
 
 use super::common::check_rate_limit;

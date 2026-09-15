@@ -1115,14 +1115,16 @@ export function NavigationIsland() {
                   >
                     <button
                       onClick={() => {
-                        secondaryNav.onChange(item.id)
+                        if (secondaryNav.activeId !== item.id) {
+                          secondaryNav.onChange(item.id)
+                          return
+                        }
+                        const home = item.path ?? secondaryNav.routePath
                         if (
-                          location.pathname !== secondaryNav.routePath &&
-                          location.pathname.startsWith(
-                            `${secondaryNav.routePath}/`,
-                          )
+                          location.pathname !== home &&
+                          location.pathname.startsWith(`${home}/`)
                         ) {
-                          navigate(secondaryNav.routePath)
+                          navigate(home)
                         }
                       }}
                       className={`nav-item ${secondaryNav.activeId === item.id ? 'active-secondary' : ''}`}

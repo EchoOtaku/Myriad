@@ -1,4 +1,4 @@
-//! Agent 请求、意图与 Planner 类型。
+//! Agent 请求、工具循环与固定 Recipe 类型。
 
 use crate::config::ModelTier;
 use serde::{Deserialize, Serialize};
@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 /// 一轮输入进入哪条运行时路径。
 ///
-/// Work 保留完整 Planner / Executor；Chat 只是人设对话，不得因为
+/// Work 运行模型与工具循环；Chat 只是人设对话，不得因为
 /// 内容像指令就悄悄进入工具执行。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1305,12 +1305,24 @@ impl QuestionOption {
 
 // SSE 进度事件
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkPlanItem {
+    pub description: String,
+    pub status: String,
+}
+
 /// Agent 进度事件（用于 SSE 实时推送）
 ///
 /// executor / Chat / API 都会构造；api 层再序列化成 SSE。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentProgressEvent {
+    /// Revisable checklist, independent of tool execution and authorization.
+    WorkPlanUpdated {
+        #[serde(rename = "taskId")]
+        task_id: String,
+        steps: Vec<WorkPlanItem>,
+    },
     /// 后端已接管本次运行。run_id 在执行任务 ID 产生前就可用，
     /// 前端断线后可用它重新订阅，而不会重新发起任务。
     RunStarted {

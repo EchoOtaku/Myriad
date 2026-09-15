@@ -192,26 +192,29 @@ export async function getSources(
     return data.sources
   }
   if (attributionHeaders) return fetchSources()
-  if (options?.signal) {
-    const sources = await fetchSources()
-    if (!options.signal.aborted) {
-      requestCache.set('phantasi:sources', sources, CACHE_TTL.SOURCES)
-    }
-    return sources
-  }
-  return requestCache.fetch('phantasi:sources', fetchSources, CACHE_TTL.SOURCES)
+  const sources = await requestCache.fetch(
+    'phantasi:sources',
+    fetchSources,
+    CACHE_TTL.SOURCES,
+  )
+  options?.signal?.throwIfAborted()
+  return sources
+}
+
+export function invalidateStatsCache(): void {
+  requestCache.delete('phantasi:stats')
 }
 
 export function invalidateSourcesCache(): void {
   requestCache.delete('phantasi:sources')
-  requestCache.delete('phantasi:stats')
+  invalidateStatsCache()
 }
 
 /** Source/note mutations only; not read/star. */
 function invalidateBoardPageCache(): void {
   requestCache.deleteByPrefix('phantasi:feed-stories:')
-  requestCache.deleteByPrefix('phantasi:home-notes:')
   requestCache.deleteByPrefix('phantasi:board-notes:')
+  requestCache.delete('phantasi:note-docs')
 }
 
 export async function addSource(
@@ -265,14 +268,30 @@ export async function deleteSource(
 export async function refreshSource(
   id: number,
   attributionHeaders?: PhantasiAttributionHeaders,
+  options?: { skipCache?: boolean },
 ): Promise<number> {
   const data = await request<{ success: boolean; new_items: number }>(
     `/sources/${id}/refresh`,
     { method: 'POST', headers: attributionHeaders },
   )
+  if (!options?.skipCache) {
+    invalidateSourcesCache()
+    invalidateBoardPageCache()
+  }
+  return data.new_items
+}
+
+export async function refreshSources(
+  ids: number[],
+  attributionHeaders?: PhantasiAttributionHeaders,
+): Promise<number> {
+  if (ids.length === 0) return 0
+  const counts = await Promise.all(
+    ids.map((id) => refreshSource(id, attributionHeaders, { skipCache: true })),
+  )
   invalidateSourcesCache()
   invalidateBoardPageCache()
-  return data.new_items
+  return counts.reduce((sum, count) => sum + count, 0)
 }
 
 export async function discoverSource(
@@ -662,6 +681,7 @@ export async function createNoteDoc(
       body: JSON.stringify(req),
     },
   )
+  requestCache.delete('phantasi:note-docs')
   return data.doc
 }
 
@@ -698,11 +718,13 @@ export async function updateNoteDoc(
       body: JSON.stringify(req),
     },
   )
+  requestCache.delete('phantasi:note-docs')
   return data.doc
 }
 
 export async function deleteNoteDoc(id: number): Promise<void> {
   await request(`/notes/docs/${id}`, { method: 'DELETE' })
+  requestCache.delete('phantasi:note-docs')
 }
 
 export async function publishNoteDoc(
@@ -738,10 +760,16 @@ export async function scheduleNoteDoc(
   return data.doc
 }
 
-export async function unscheduleNoteDoc(id: number): Promise<PhantasiNoteDoc> {
+export async function unscheduleNoteDoc(
+  id: number,
+  req: PhantasiNoteDocInput = {},
+): Promise<PhantasiNoteDoc> {
   const data = await request<{ success: boolean; doc: PhantasiNoteDoc }>(
     `/notes/docs/${id}/unschedule`,
-    { method: 'POST' },
+    {
+      method: 'POST',
+      body: JSON.stringify(req),
+    },
   )
   return data.doc
 }
@@ -838,7 +866,7 @@ export async function markRead(
   localRevisions.record(itemId, saved.previous_revision, saved.revision)
   phantasiItemState.commit(itemId, { is_read: true })
   invalidateItemCache(itemId)
-  invalidateSourcesCache()
+  invalidateStatsCache()
   })
 }
 
@@ -854,7 +882,7 @@ export async function markUnread(
   localRevisions.record(itemId, saved.previous_revision, saved.revision)
   phantasiItemState.commit(itemId, { is_read: false })
   invalidateItemCache(itemId)
-  invalidateSourcesCache()
+  invalidateStatsCache()
   })
 }
 
@@ -868,7 +896,7 @@ export async function starItem(
     headers: attributionHeaders,
   })
   localRevisions.record(itemId, saved.previous_revision, saved.revision)
-  invalidateSourcesCache()
+  invalidateStatsCache()
   phantasiItemState.commit(itemId, { is_starred: true })
   invalidateItemCache(itemId)
   })
@@ -884,7 +912,7 @@ export async function unstarItem(
     headers: attributionHeaders,
   })
   localRevisions.record(itemId, saved.previous_revision, saved.revision)
-  invalidateSourcesCache()
+  invalidateStatsCache()
   phantasiItemState.commit(itemId, { is_starred: false })
   invalidateItemCache(itemId)
   })
@@ -918,7 +946,7 @@ export async function markAllRead(
   if (options.source_id === undefined && options.category === undefined && options.before === undefined) {
     phantasiItemState.markAllRead()
   }
-  invalidateSourcesCache()
+  invalidateStatsCache()
   return data.marked
   })
 }
@@ -935,14 +963,13 @@ export async function getStats(
     return data.stats
   }
   if (attributionHeaders) return fetchStats()
-  if (options?.signal) {
-    const stats = await fetchStats()
-    if (!options.signal.aborted) {
-      requestCache.set('phantasi:stats', stats, CACHE_TTL.STATS)
-    }
-    return stats
-  }
-  return requestCache.fetch('phantasi:stats', fetchStats, CACHE_TTL.STATS)
+  const stats = await requestCache.fetch(
+    'phantasi:stats',
+    fetchStats,
+    CACHE_TTL.STATS,
+  )
+  options?.signal?.throwIfAborted()
+  return stats
 }
 
 interface PhantasiSyncStateItem {
@@ -1056,6 +1083,7 @@ interface CommentsResponse {
   success: boolean
   comments: CommentItem[]
   has_comments: boolean
+  can_write?: boolean
   error?: string
 }
 

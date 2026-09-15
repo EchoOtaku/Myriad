@@ -436,6 +436,7 @@ export interface SessionTitleUpdatedEvent {
 }
 
 export type ProgressEvent =
+  | WorkPlanUpdatedEvent
   | RunStartedEvent
   | TaskCreatedEvent
   | TaskAssignedEvent
@@ -458,6 +459,17 @@ export type ProgressEvent =
   | StepDebugEvent
 
 export type ProgressCallback = (event: ProgressEvent) => void
+
+export interface WorkPlanItem {
+  description: string
+  status: 'pending' | 'in_progress' | 'completed'
+}
+
+export interface WorkPlanUpdatedEvent {
+  type: 'work_plan_updated'
+  taskId: string
+  steps: WorkPlanItem[]
+}
 
 export interface ColumnDef {
   field: string

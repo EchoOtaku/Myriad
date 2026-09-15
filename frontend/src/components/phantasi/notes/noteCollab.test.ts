@@ -63,13 +63,13 @@ describe('applyCollabPeers', () => {
 })
 
 describe('shouldApplyRemoteEdit', () => {
-  it('只收下别人正在打的正文', () => {
+  it('收下标题和光标，不要求正文', () => {
     assert.equal(
       shouldApplyRemoteEdit({
         type: 'edit',
         peer_id: 'a',
         user_id: 1,
-        content_md: 'x',
+        title: '草稿',
       }),
       true,
     )

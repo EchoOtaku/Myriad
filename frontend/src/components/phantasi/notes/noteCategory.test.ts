@@ -5,6 +5,7 @@ import {
   matchesNoteCategory,
   MAX_NOTE_CATEGORY_CHARS,
   normalizeNoteCategory,
+  noteBoardHasUnfiled,
   noteCategoryHue,
   noteCategoryLabel,
   noteStoryTopic,
@@ -54,6 +55,18 @@ describe('noteCategoryLabel / hue', () => {
       hue: noteCategoryHue('ai'),
     })
     assert.deepEqual(noteStoryTopic(null, {}), { topic: null, hue: null })
+  })
+})
+
+describe('noteBoardHasUnfiled', () => {
+  it('有空 topic 才算未归类', () => {
+    assert.equal(noteBoardHasUnfiled([{ topic: '随笔' }]), false)
+    assert.equal(noteBoardHasUnfiled([{ topic: null }]), true)
+    assert.equal(noteBoardHasUnfiled([{ topic: '' }]), true)
+    assert.equal(
+      noteBoardHasUnfiled([{ topic: '随笔' }, { topic: null }]),
+      true,
+    )
   })
 })
 

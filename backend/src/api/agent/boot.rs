@@ -2,12 +2,34 @@
 use super::*;
 
 // Boot recovery for waiting tasks
+static ACTIVE_WAIT_LOOPS: once_cell::sync::Lazy<
+    std::sync::Mutex<std::collections::HashSet<String>>,
+> = once_cell::sync::Lazy::new(|| std::sync::Mutex::new(Default::default()));
+struct WaitLoopRegistration(String);
+impl WaitLoopRegistration {
+    fn claim(task_id: &str) -> Option<Self> {
+        ACTIVE_WAIT_LOOPS
+            .lock()
+            .unwrap()
+            .insert(task_id.to_owned())
+            .then(|| Self(task_id.to_owned()))
+    }
+}
+impl Drop for WaitLoopRegistration {
+    fn drop(&mut self) {
+        ACTIVE_WAIT_LOOPS.lock().unwrap().remove(&self.0);
+    }
+}
 
 /// After process restart, re-create run hubs and wait-loops for
 /// `waiting_for_input` tasks so answer/subscribe keep working and notifications
 /// stay consistent. Called once from `main` after `init_task_store`.
 pub async fn restore_waiting_runs_after_boot() {
     let waiting = crate::services::agent::executor::task_store::list_waiting_tasks_snapshot().await;
+    let waiting: Vec<_> = waiting
+        .into_iter()
+        .filter(|(_, task)| !ACTIVE_WAIT_LOOPS.lock().unwrap().contains(&task.task_id))
+        .collect();
     if waiting.is_empty() {
         tracing::info!("[Agent API] Boot restore: no waiting_for_input tasks");
         return;
@@ -20,6 +42,32 @@ pub async fn restore_waiting_runs_after_boot() {
     let ledger_db = crate::services::tapp_registry::database().await.ok();
 
     for (user_id, mut task) in waiting {
+        let is_work = task
+            .recipe
+            .as_ref()
+            .is_some_and(crate::services::agent::work_loop::is_work_recipe);
+        if is_work {
+            if let (Some(db), Some(question)) = (&ledger_db, &task.pending_question) {
+                // Never write a boot snapshot over a newer Work continuation.
+                let _ = crate::services::agent::work_loop::expire_question(
+                    db,
+                    &task.task_id,
+                    user_id,
+                    &question.question_id,
+                )
+                .await;
+                let Some(current) =
+                    crate::services::agent::executor::refresh_task_for_user(&task.task_id, user_id)
+                        .await
+                else {
+                    continue;
+                };
+                task = current;
+                if task.status != crate::services::agent::TaskStatus::WaitingForInput {
+                    continue;
+                }
+            }
+        }
         let session_id = crate::services::agent::executor::task_store::session_id_from_lane_id(
             task.lane_id.as_deref(),
         );
@@ -38,10 +86,11 @@ pub async fn restore_waiting_runs_after_boot() {
             None
         };
         // Drop already-expired questions immediately so they don't block forever.
-        if task
-            .pending_question
-            .as_ref()
-            .is_some_and(|q| q.is_expired(chrono::Utc::now()))
+        if !is_work
+            && task
+                .pending_question
+                .as_ref()
+                .is_some_and(|q| q.is_expired(chrono::Utc::now()))
         {
             tracing::warn!(
                 task_id = %task.task_id,
@@ -169,6 +218,8 @@ pub async fn restore_waiting_runs_after_boot() {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunningRecovery {
     RestoreWaiting,
+    KeepRunningWork,
+    RestoreCompletedWork,
     RetryAccepted,
     FailInterrupted,
 }
@@ -179,9 +230,17 @@ pub enum RunningRecovery {
 pub fn classify_stranded_running(
     has_waiting_task: bool,
     persisted_task_status: Option<&str>,
+    has_work_checkpoint: bool,
 ) -> RunningRecovery {
     if has_waiting_task || persisted_task_status == Some("waiting_for_input") {
         return RunningRecovery::RestoreWaiting;
+    }
+    if has_work_checkpoint {
+        match persisted_task_status {
+            Some("running") => return RunningRecovery::KeepRunningWork,
+            Some("completed") => return RunningRecovery::RestoreCompletedWork,
+            _ => {}
+        }
     }
     match persisted_task_status {
         None => RunningRecovery::RetryAccepted,
@@ -217,14 +276,52 @@ pub async fn reclaim_stranded_running_intentions(db: &DatabaseConnection) {
                     task.lane_id.as_deref(),
                 ) == session_id
         });
-        let persisted_status = match session_id.as_deref() {
-            Some(session_id) => {
-                latest_task_status_for_session(db, intent.user_id, session_id).await
-            }
+        let persisted_task = match session_id.as_deref() {
+            Some(session_id) => latest_task_for_session(db, intent.user_id, session_id).await,
             None => None,
         };
-        match classify_stranded_running(attached_waiting, persisted_status.as_deref()) {
-            RunningRecovery::RestoreWaiting => continue,
+        let has_work_checkpoint = persisted_task.as_ref().is_some_and(|task| {
+            task.recipe
+                .as_ref()
+                .and_then(|r| r.pointer("/metadata/work_loop_version"))
+                == Some(&json!(1))
+        });
+        match classify_stranded_running(
+            attached_waiting,
+            persisted_task.as_ref().map(|task| task.status.as_str()),
+            has_work_checkpoint,
+        ) {
+            RunningRecovery::RestoreWaiting | RunningRecovery::KeepRunningWork => continue,
+            RunningRecovery::RestoreCompletedWork => {
+                let task = persisted_task.as_ref().unwrap();
+                let response =
+                    crate::services::agent::work_loop::saved_response(db, &task.id, intent.user_id)
+                        .await
+                        .ok();
+                let message = response
+                    .as_ref()
+                    .map(|r| r.message.clone())
+                    .unwrap_or_else(|| "The task finished".into());
+                if let (Some(session_id), Some(response)) = (&session_id, response) {
+                    let metadata = serde_json::to_value(ApiResponse::from(response)).ok();
+                    let _ = persist_assistant_message(
+                        db,
+                        session_id,
+                        Some(&task.id),
+                        &message,
+                        metadata,
+                    )
+                    .await;
+                }
+                advance_intention_work(
+                    db,
+                    Some(&intent.id),
+                    intent.user_id,
+                    crate::services::agent::consciousness::IntentStatus::Completed,
+                    Some(message),
+                )
+                .await;
+            }
             RunningRecovery::RetryAccepted => {
                 match store
                     .reclaim_running_to_accepted(&intent.id, intent.user_id)
@@ -276,11 +373,11 @@ pub async fn reclaim_stranded_running_intentions(db: &DatabaseConnection) {
     }
 }
 
-async fn latest_task_status_for_session(
+async fn latest_task_for_session(
     db: &DatabaseConnection,
     user_id: i32,
     session_id: &str,
-) -> Option<String> {
+) -> Option<crate::models::entities::agent_tasks::Model> {
     use crate::models::entities::agent_tasks;
     agent_tasks::Entity::find()
         .filter(agent_tasks::Column::UserId.eq(user_id))
@@ -290,7 +387,6 @@ async fn latest_task_status_for_session(
         .await
         .ok()
         .flatten()
-        .map(|row| row.status)
 }
 
 pub(crate) fn wait_response_still_waiting(response_value: &Value) -> bool {
@@ -310,6 +406,9 @@ pub(crate) async fn spawn_restored_wait_loop(
     ledger_db: Option<DatabaseConnection>,
     source_intent_id: Option<String>,
 ) {
+    let Some(_registration) = WaitLoopRegistration::claim(&task_id) else {
+        return;
+    };
     loop {
         let (done_tx, done_rx) = tokio::sync::oneshot::channel::<serde_json::Value>();
         {
@@ -425,12 +524,38 @@ pub(crate) async fn spawn_restored_wait_loop(
             }
             Err(_) => {
                 let _ = take_waiting_task(&task_id, user_id).await;
-                let current_task =
+                let mut current_task =
                     crate::services::agent::executor::refresh_task_for_user(&task_id, user_id)
                         .await;
 
+                if let (Some(db), Some(task)) = (&ledger_db, &current_task) {
+                    if task
+                        .recipe
+                        .as_ref()
+                        .is_some_and(crate::services::agent::work_loop::is_work_recipe)
+                    {
+                        if let Some(question) = &task.pending_question {
+                            let _ = crate::services::agent::work_loop::expire_question(
+                                db,
+                                &task_id,
+                                user_id,
+                                &question.question_id,
+                            )
+                            .await;
+                            current_task = crate::services::agent::executor::refresh_task_for_user(
+                                &task_id, user_id,
+                            )
+                            .await;
+                        }
+                    }
+                }
+
                 if let Some(task) = current_task.as_ref() {
-                    if task.status == crate::services::agent::types::TaskStatus::WaitingForInput
+                    if !task
+                        .recipe
+                        .as_ref()
+                        .is_some_and(crate::services::agent::work_loop::is_work_recipe)
+                        && task.status == crate::services::agent::types::TaskStatus::WaitingForInput
                         && task
                             .pending_question
                             .as_ref()
@@ -501,8 +626,28 @@ pub(crate) async fn spawn_restored_wait_loop(
                             "Processing failed".into()
                         }
                     });
+                    let saved = if task
+                        .recipe
+                        .as_ref()
+                        .is_some_and(crate::services::agent::work_loop::is_work_recipe)
+                    {
+                        if let Some(db) = &ledger_db {
+                            crate::services::agent::work_loop::saved_response(db, &task_id, user_id)
+                                .await
+                                .ok()
+                                .and_then(|response| {
+                                    serde_json::to_value(ApiResponse::from(response)).ok()
+                                })
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
                     (
-                        json!({ "success": task_success, "message": message, "task": task }),
+                        saved.unwrap_or_else(
+                            || json!({ "success": task_success, "message": message, "task": task }),
+                        ),
                         task_success,
                     )
                 } else {
@@ -533,6 +678,26 @@ pub(crate) async fn spawn_restored_wait_loop(
                     )
                     .await;
                 }
+                if let Some(db) = &ledger_db {
+                    if !session_id.is_empty() {
+                        let metadata = session_metadata_with_run_identity(
+                            Some(response_value.clone()),
+                            &run_id,
+                            &task_id,
+                        );
+                        let _ = persist_assistant_message(
+                            db,
+                            &session_id,
+                            Some(&task_id),
+                            response_value
+                                .get("message")
+                                .and_then(Value::as_str)
+                                .unwrap_or("The task finished"),
+                            Some(metadata),
+                        )
+                        .await;
+                    }
+                }
                 let _ = tx
                     .send(AgentProgressEvent::TaskCompleted {
                         task_id: task_id.clone(),
@@ -549,12 +714,20 @@ pub(crate) async fn spawn_restored_wait_loop(
 #[cfg(test)]
 mod tests {
     use super::{RunningRecovery, classify_stranded_running, wait_response_still_waiting};
+    #[test]
+    fn recovery_does_not_attach_two_waiters_and_releases_on_exit() {
+        let task_id = uuid::Uuid::new_v4().to_string();
+        let first = super::WaitLoopRegistration::claim(&task_id).unwrap();
+        assert!(super::WaitLoopRegistration::claim(&task_id).is_none());
+        drop(first);
+        assert!(super::WaitLoopRegistration::claim(&task_id).is_some());
+    }
     use serde_json::json;
 
     #[test]
     fn stranded_running_without_a_task_may_retry() {
         assert_eq!(
-            classify_stranded_running(false, None),
+            classify_stranded_running(false, None, false),
             RunningRecovery::RetryAccepted
         );
     }
@@ -562,12 +735,28 @@ mod tests {
     #[test]
     fn waiting_tasks_are_restored_not_retried() {
         assert_eq!(
-            classify_stranded_running(true, Some("cancelled")),
+            classify_stranded_running(true, Some("cancelled"), false),
             RunningRecovery::RestoreWaiting
         );
         assert_eq!(
-            classify_stranded_running(false, Some("waiting_for_input")),
+            classify_stranded_running(false, Some("waiting_for_input"), false),
             RunningRecovery::RestoreWaiting
+        );
+    }
+
+    #[test]
+    fn durable_work_survives_restart_before_waiting_or_after_completion() {
+        assert_eq!(
+            classify_stranded_running(false, Some("running"), true),
+            RunningRecovery::KeepRunningWork
+        );
+        assert_eq!(
+            classify_stranded_running(false, Some("completed"), true),
+            RunningRecovery::RestoreCompletedWork
+        );
+        assert_eq!(
+            classify_stranded_running(false, Some("cancelled"), true),
+            RunningRecovery::FailInterrupted
         );
     }
 
@@ -575,7 +764,7 @@ mod tests {
     fn interrupted_executor_tasks_fail_closed() {
         for status in ["pending", "running", "cancelled", "completed", "failed"] {
             assert_eq!(
-                classify_stranded_running(false, Some(status)),
+                classify_stranded_running(false, Some(status), false),
                 RunningRecovery::FailInterrupted,
                 "{status}"
             );

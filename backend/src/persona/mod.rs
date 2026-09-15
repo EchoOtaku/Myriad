@@ -66,6 +66,14 @@ pub async fn start(db: DatabaseConnection) -> anyhow::Result<()> {
         Duration::ZERO,
         move || api::agent::tick_autonomy_work(work_db.clone()),
     );
+    // Work leases can expire after the initial boot scan. Reattach their newly
+    // recovered questions; existing local wait loops are left in place.
+    drivers.periodic(
+        "Work wait recovery",
+        Duration::from_secs(30),
+        Duration::from_secs(30),
+        api::agent::restore_waiting_runs_after_boot,
+    );
     let speak_db = db.clone();
     drivers.periodic(
         "speech intents",

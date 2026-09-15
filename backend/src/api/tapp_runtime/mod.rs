@@ -64,7 +64,7 @@ pub use reports::{
 
 // Server-side attribution: phantasi_host_attribution / federation_host_attribution / speech_host_attribution
 pub use host_attribution::{
-    phantasi_host_attribution, federation_host_attribution, speech_host_attribution,
+    federation_host_attribution, phantasi_host_attribution, speech_host_attribution,
 };
 
 // Runtime identity grants

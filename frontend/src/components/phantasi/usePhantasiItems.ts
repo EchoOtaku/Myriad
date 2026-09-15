@@ -97,7 +97,7 @@ export function usePhantasiItems(
   useEffect(() => {
     if (viewMode !== 'starred') return
     let timer: ReturnType<typeof setTimeout> | undefined
-    const unsubscribe = flags.subscribeMutations(patch => {
+    const unsubscribe = flags.subscribeMutations((_id, patch) => {
       if (typeof patch.is_starred !== 'boolean') return
       membershipDirty.current = true
       turns.current.cancel()

@@ -12,9 +12,10 @@ import { decorateNoteReadSurface } from '../notes/noteReadSurface'
 import { replaceNoteHtml } from '../notes/noteWidgetMount'
 import {
   commentAnchorStale,
-  highlightAnchoredAnnotations,
+  paintAnchoredAnnotations,
+  paintAnchoredComments,
+  unwrapTextDecorations,
 } from './commentAnchors'
-import { applyTextDecorations } from './textDecorations'
 import '../../settings/GitHubProjectBadge.css'
 import '../../github/githubRepoCard.css'
 
@@ -96,11 +97,6 @@ interface UseContentRenderOptions {
   showAnnotations: boolean
   annotations: AnnotationItem[]
   comments: CommentItem[]
-  highlightComments: (
-    html: string,
-    commentList: CommentItem[],
-    theme: ThemeKey,
-  ) => string
   theme: ThemeKey
   copyCodeLabel: string
   copyTexLabel?: string
@@ -114,7 +110,6 @@ export function useContentRender({
   showAnnotations,
   annotations,
   comments,
-  highlightComments,
   theme,
   copyCodeLabel,
   copyTexLabel,
@@ -151,30 +146,27 @@ export function useContentRender({
     const isBaseChanged = prevBaseContentRef.current !== baseContent
     prevBaseContentRef.current = baseContent
 
-    let displayHtml = baseContent
+    if (isBaseChanged || container.childElementCount === 0) {
+      replaceNoteHtml(container, baseContent)
+      decorateNoteReadSurface(container, copyCodeLabel, copyTexLabel)
+    } else {
+      unwrapTextDecorations(container)
+    }
+
     if (showAnnotations && annotations.length > 0) {
-      displayHtml = highlightAnchoredAnnotations(displayHtml, annotations)
+      paintAnchoredAnnotations(container, annotations)
     }
     const liveComments = comments.filter(
       (comment) => !commentAnchorStale(comment, item.content_revision),
     )
     if (liveComments.length > 0) {
-      displayHtml = highlightComments(displayHtml, liveComments, theme)
-    }
-
-    if (!isBaseChanged && container.childElementCount > 0) {
-      // 仅替换文本片段，不摘下 iframe 或其祖先。
-      applyTextDecorations(container, displayHtml)
-    } else {
-      replaceNoteHtml(container, displayHtml)
-      decorateNoteReadSurface(container, copyCodeLabel, copyTexLabel)
+      paintAnchoredComments(container, liveComments, theme)
     }
   }, [
     baseContent,
     showAnnotations,
     annotations,
     comments,
-    highlightComments,
     theme,
     item.content_revision,
     copyCodeLabel,

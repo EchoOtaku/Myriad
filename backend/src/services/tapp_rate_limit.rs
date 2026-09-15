@@ -508,7 +508,9 @@ mod tests {
         assert_eq!(get_rate_limit_config("speech.asr"), (45, 60));
 
         // Stricter classes stay below chatty ones.
-        assert!(get_rate_limit_config("phantasi.manage").0 < get_rate_limit_config("phantasi.write").0);
+        assert!(
+            get_rate_limit_config("phantasi.manage").0 < get_rate_limit_config("phantasi.write").0
+        );
         assert!(
             get_rate_limit_config("federation.trust").0
                 < get_rate_limit_config("federation.message").0

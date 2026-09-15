@@ -3,9 +3,9 @@
 //! 按类别组织所有能力定义
 
 mod ai;
-mod phantasi;
 mod external;
 mod model3d;
+mod phantasi;
 mod platform;
 mod report;
 mod system;

@@ -3,6 +3,7 @@ import type { CommentItem } from '../../services/phantasiApi'
 import type { PhantasiNoteDoc } from '../../types/phantasi'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as phantasiApi from '../../services/phantasiApi'
+import { loadNoteDocs } from './pageData'
 import * as mediaApi from '../../services/mediaApi'
 import { userFacingError } from '../../utils/userFacingError'
 import { RequestTurn } from './logic/requestTurn'
@@ -43,7 +44,7 @@ export function usePhantasiWorkbench(
     const signal = notesTurn.current.begin()
     setNotesLoading(true)
     try {
-      const next = await phantasiApi.listNoteDocs(signal)
+      const next = await loadNoteDocs(signal)
       if (!signal.aborted) setDocs(next)
     } catch (err) {
       if (signal.aborted) return
@@ -110,8 +111,8 @@ export function usePhantasiWorkbench(
   }, [docsEpoch, loadComments])
 
   const removeNotes = useCallback(
-    async (docs: PhantasiNoteDoc[]) => {
-      if (docs.length === 0) return
+    async (docs: PhantasiNoteDoc[]): Promise<boolean> => {
+      if (docs.length === 0) return true
       setBusy(true)
       try {
         const results = await Promise.allSettled(
@@ -129,15 +130,20 @@ export function usePhantasiWorkbench(
         if (dropped.size > 0) {
           setDocs((prev) => prev.filter((row) => !dropped.has(row.id)))
         }
-        if (results.some((result) => result.status === 'rejected')) {
-          const failed = results.find((result) => result.status === 'rejected')
-          setError(
-            userFacingError(
-              failed && failed.status === 'rejected' ? failed.reason : null,
-              labelsRef.current.noteDeleteFailed,
-            ),
+        const failed = docs.filter((_, index) => results[index]?.status === 'rejected')
+        if (failed.length > 0) {
+          const first = results.find((result) => result.status === 'rejected')
+          const detail = userFacingError(
+            first && first.status === 'rejected' ? first.reason : null,
+            labelsRef.current.noteDeleteFailed,
           )
+          const names = failed
+            .map((doc) => doc.title.trim() || `#${doc.id}`)
+            .join('、')
+          setError(`${detail}: ${names}`)
+          return false
         }
+        return true
       } finally {
         setBusy(false)
       }
@@ -151,10 +157,10 @@ export function usePhantasiWorkbench(
   )
 
   const unschedule = useCallback(
-    async (id: number) => {
+    async (id: number, revision: number) => {
       setBusy(true)
       try {
-        const next = await phantasiApi.unscheduleNoteDoc(id)
+        const next = await phantasiApi.unscheduleNoteDoc(id, { revision })
         setDocs((prev) => prev.map((row) => (row.id === id ? next : row)))
       } catch (err) {
         setError(userFacingError(err, labelsRef.current.unscheduleFailed))
@@ -214,14 +220,14 @@ export function usePhantasiWorkbench(
         if (dropped.size > 0) {
           setComments((prev) => prev.filter((row) => !dropped.has(row.id)))
         }
-        if (results.some((result) => result.status === 'rejected')) {
+        const failedIds = ids.filter((_, index) => results[index]?.status === 'rejected')
+        if (failedIds.length > 0) {
           const failed = results.find((result) => result.status === 'rejected')
-          setError(
-            userFacingError(
-              failed && failed.status === 'rejected' ? failed.reason : null,
-              labelsRef.current.commentDeleteFailed,
-            ),
+          const detail = userFacingError(
+            failed && failed.status === 'rejected' ? failed.reason : null,
+            labelsRef.current.commentDeleteFailed,
           )
+          setError(`${detail}: #${failedIds.join('、#')}`)
         }
       } finally {
         setBusy(false)

@@ -26,6 +26,7 @@ pub enum EventPlane {
 pub fn event_plane(event: &AgentProgressEvent) -> EventPlane {
     match event {
         AgentProgressEvent::RunStarted { .. }
+        | AgentProgressEvent::WorkPlanUpdated { .. }
         | AgentProgressEvent::TaskCreated { .. }
         | AgentProgressEvent::TaskAssigned { .. }
         | AgentProgressEvent::StepStarted { .. }

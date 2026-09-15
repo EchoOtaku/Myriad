@@ -17,7 +17,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOr
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::helpers::{phantasi_http_err, get_admin_user_id_from_headers};
+use super::helpers::{get_admin_user_id_from_headers, phantasi_http_err};
 use crate::api::seo::{
     notes_rss_enabled, notes_rss_is_public, public_absolute_url, public_site_identity,
     resolve_public_base_url, strip_html_snippet, xml_escape,
@@ -363,7 +363,11 @@ mod tests {
     fn phantasi_parser_reads_the_notes_feed() {
         let xml = render_notes_rss(&sample_channel());
         let feed = FeedParser::new()
-            .parse_content(&xml, "application/rss+xml", "https://ex.com/journal/notes.xml")
+            .parse_content(
+                &xml,
+                "application/rss+xml",
+                "https://ex.com/journal/notes.xml",
+            )
             .expect("parse notes rss");
         assert_eq!(feed.items.len(), 1);
         let item = &feed.items[0];

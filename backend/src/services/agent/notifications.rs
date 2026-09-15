@@ -122,7 +122,9 @@ impl NotificationType {
             | NotificationType::AgentClarification => "agent",
             NotificationType::HeartbeatResult => "heartbeat",
             NotificationType::McpServerStatus => "mcp",
-            NotificationType::PhantasiNewItems | NotificationType::PhantasiSourceError => "phantasi",
+            NotificationType::PhantasiNewItems | NotificationType::PhantasiSourceError => {
+                "phantasi"
+            }
             NotificationType::TappNotification => "tapp",
             NotificationType::UpdaterStatus => "updater",
             NotificationType::FederationMessage

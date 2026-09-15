@@ -94,7 +94,7 @@ export function usePhantasiAgentOpen(io: AgentOpenIo) {
               },
               getPage: async (page, perPage) => {
                 check()
-                return phantasiApi.getItems(
+                return phantasiApi.getItemPreviews(
                   {
                     page,
                     per_page: perPage,
@@ -108,7 +108,7 @@ export function usePhantasiAgentOpen(io: AgentOpenIo) {
           )
         }
         if (wantsLatestOnly({ articleId, articleLink, openLatest })) {
-          const data = await phantasiApi.getItems(
+          const data = await phantasiApi.getItemPreviews(
             { per_page: 1, filter: 'all' },
             undefined,
             { signal },
@@ -119,7 +119,6 @@ export function usePhantasiAgentOpen(io: AgentOpenIo) {
       }, { queue })
     }
 
-    console.log('[Phantasi] Registering agent:open-phantasi-article event listener')
     window.addEventListener('agent:open-phantasi-article', handleAgentOpenArticle)
 
     const takePending = (key: string) => {
@@ -140,11 +139,7 @@ export function usePhantasiAgentOpen(io: AgentOpenIo) {
       if (taken.reason === 'missing') return null
       sessionStorage.removeItem(key)
       if (taken.reason === 'expired') {
-        console.log(
-          key === PENDING_READING_KEY
-            ? '[Phantasi] Pending reading list expired, removing'
-            : '[Phantasi] Pending action expired, removing',
-        )
+        /* drop stale handoff */
       } else {
         console.error(
           key === PENDING_READING_KEY
@@ -158,10 +153,6 @@ export function usePhantasiAgentOpen(io: AgentOpenIo) {
 
     const pendingReading = takePending(PENDING_READING_KEY)
     if (pendingReading) {
-      console.log(
-        '[Phantasi] Found pending reading list from sessionStorage:',
-        pendingReading,
-      )
       if (pendingReading.readingList) {
         window.dispatchEvent(
           new CustomEvent('agent:set-reading-list', {
@@ -175,10 +166,6 @@ export function usePhantasiAgentOpen(io: AgentOpenIo) {
       if (pendingReading.articleId) {
         timers.push(
           window.setTimeout(() => {
-            console.log(
-              '[Phantasi] Opening first article from reading list:',
-              pendingReading.articleId,
-            )
             void handleAgentOpenArticle(
               new CustomEvent('agent:open-phantasi-article', {
                 detail: {
@@ -196,13 +183,8 @@ export function usePhantasiAgentOpen(io: AgentOpenIo) {
 
     const pendingOpen = takePending(PENDING_OPEN_KEY)
     if (pendingOpen) {
-      console.log(
-        '[Phantasi] Found pending action from sessionStorage:',
-        pendingOpen,
-      )
       timers.push(
         window.setTimeout(() => {
-          console.log('[Phantasi] Executing pending action from sessionStorage')
           void handleAgentOpenArticle(
             new CustomEvent('agent:open-phantasi-article', {
               detail: pendingOpen,
@@ -213,7 +195,6 @@ export function usePhantasiAgentOpen(io: AgentOpenIo) {
     }
 
     return () => {
-      console.log('[Phantasi] Unregistering agent:open-phantasi-article event listener')
       window.removeEventListener(
         'agent:open-phantasi-article',
         handleAgentOpenArticle,

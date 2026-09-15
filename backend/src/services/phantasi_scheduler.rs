@@ -17,8 +17,8 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
 
 use crate::models::entities::{phantasi_items, phantasi_sources};
-use crate::services::phantasi_parser::{FeedParser, ParsedFeed, calculate_reading_stats};
 use crate::services::notion_service::{NotionConfig, NotionService};
+use crate::services::phantasi_parser::{FeedParser, ParsedFeed, calculate_reading_stats};
 use crate::services::rsshub_service::RsshubService;
 
 fn phantasi_store_failed(context: &'static str, error: impl std::fmt::Display) -> String {
@@ -376,7 +376,12 @@ impl PhantasiSchedulerEngine {
                         crate::services::agent::notifications::get_notification_manager()
                     {
                         manager
-                            .notify_phantasi_source_error(source.user_id, source.id, &source.name, &e)
+                            .notify_phantasi_source_error(
+                                source.user_id,
+                                source.id,
+                                &source.name,
+                                &e,
+                            )
                             .await;
                     }
                 } else if failures > MAX_ERROR_COUNT {
@@ -457,20 +462,32 @@ impl PhantasiSchedulerEngine {
         let mut new_items: Vec<phantasi_items::ActiveModel> = Vec::new();
 
         let image_cache = crate::services::image_cache::ImageCacheService::new();
+        let newcomers: Vec<_> = feed
+            .items
+            .iter()
+            .filter(|item| !existing_guids.contains(&item.guid))
+            .cloned()
+            .collect();
+        let mut processed_images: Vec<_> = stream::iter(newcomers.iter().cloned().enumerate())
+            .map(|(index, item)| {
+                let image_cache = image_cache.clone();
+                async move {
+                    let processed = image_cache.process_image_url(item.image.as_deref()).await;
+                    (index, processed)
+                }
+            })
+            .buffer_unordered(4)
+            .collect()
+            .await;
+        processed_images.sort_by_key(|(index, _)| *index);
 
-        for item in &feed.items {
-            if existing_guids.contains(&item.guid) {
-                continue;
-            }
-
+        for (item, (_, processed_image)) in newcomers.into_iter().zip(processed_images) {
             let content_for_stats = item
                 .content
                 .as_deref()
                 .or(item.summary.as_deref())
                 .unwrap_or("");
             let (word_count, reading_time) = calculate_reading_stats(content_for_stats);
-
-            let processed_image = image_cache.process_image_url(item.image.as_deref()).await;
 
             let new_item = phantasi_items::ActiveModel {
                 source_id: Set(source.id),
@@ -518,10 +535,12 @@ impl PhantasiSchedulerEngine {
             (0_i32, Vec::new())
         } else {
             let candidate_len = new_items.len();
-            let on_conflict =
-                OnConflict::columns([phantasi_items::Column::SourceId, phantasi_items::Column::Guid])
-                    .do_nothing()
-                    .to_owned();
+            let on_conflict = OnConflict::columns([
+                phantasi_items::Column::SourceId,
+                phantasi_items::Column::Guid,
+            ])
+            .do_nothing()
+            .to_owned();
             let inserted = match phantasi_items::Entity::insert_many(new_items)
                 .on_conflict(on_conflict)
                 .exec_with_returning(db)
@@ -560,7 +579,6 @@ impl PhantasiSchedulerEngine {
         if new_count > 0 {
             let mut source_active: phantasi_sources::ActiveModel = source.clone().into();
             source_active.item_count = Set(source.item_count + new_count);
-            source_active.unread_count = Set(source.unread_count + new_count);
             source_active.updated_at = Set(now.into());
             source_active
                 .update(db)
@@ -831,6 +849,28 @@ mod tests {
         assert_eq!(
             retry_interval_minutes(i32::MAX, i32::MAX),
             BACKOFF_MAX_MINUTES
+        );
+    }
+
+    #[test]
+    fn cover_fetch_is_bounded_not_serial() {
+        let src = include_str!("phantasi_scheduler.rs");
+        let impl_src = src.split("mod tests").next().expect("impl");
+        assert!(impl_src.contains("buffer_unordered(4)"));
+        assert!(impl_src.contains("image_cache.clone()"));
+        assert!(
+            !impl_src.contains("for item in newcomers"),
+            "cover processing must not walk newcomers serially before the unordered buffer"
+        );
+    }
+
+    #[test]
+    fn fetch_does_not_write_site_unread() {
+        let src = include_str!("phantasi_scheduler.rs");
+        let impl_src = src.split("mod tests").next().expect("impl");
+        assert!(
+            !impl_src.contains("unread_count"),
+            "scheduler must not write site-wide source unread_count"
         );
     }
 }

@@ -8,7 +8,7 @@ import {
   buildPhantasiItemPageSeo,
   buildPhantasiListPageSeo,
 } from '../../utils/phantasiPageSeo'
-import { phantasiOwnItemPath } from './constants'
+import { journalItemPath } from './logic/journalRoutes'
 
 export function usePhantasiSeo(
   selectedItem: PhantasiItem | null,
@@ -33,7 +33,7 @@ export function usePhantasiSeo(
       if (selectedItem && ownState === 'unknown') {
         return {
           title: undefined,
-          path: phantasiOwnItemPath(selectedItem.id),
+          path: journalItemPath(selectedItem.id),
           noindex: true,
         }
       }

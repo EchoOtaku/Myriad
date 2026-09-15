@@ -62,6 +62,31 @@ export function resolveCommentAnchor(
   return candidates.length === 1 ? candidates[0] : null
 }
 
+export function unwrapTextDecorations(
+  root: HTMLElement,
+  selector = 'mark.user-comment-highlight, mark.phantasiai-annotation',
+): void {
+  for (const mark of [...root.querySelectorAll(selector)]) {
+    mark.replaceWith(...mark.childNodes)
+  }
+}
+
+function commentMarkColors(theme: ThemeKey): { background: string; border: string } {
+  const backgrounds = {
+    light: '#fef08a',
+    sepia: '#f5d78e',
+    dark: '#854d0e',
+    night: '#1e3a5f',
+  }
+  const borders = {
+    light: '#eab308',
+    sepia: '#ca8a04',
+    dark: '#fbbf24',
+    night: '#3b82f6',
+  }
+  return { background: backgrounds[theme], border: borders[theme] }
+}
+
 function wrapPlainTextRange(
   root: HTMLElement,
   start: number,
@@ -97,26 +122,47 @@ function wrapPlainTextRange(
   return true
 }
 
-export function highlightAnchoredComments(
-  html: string,
+const COMMENT_HIGHLIGHT = 'phantasi-comment'
+
+function cssHighlightMap(): {
+  delete: (name: string) => void
+  set: (name: string, highlight: { add: (range: Range) => void }) => void
+} | null {
+  if (!cssCustomHighlightAvailable()) return null
+  return (CSS as unknown as { highlights: { delete: (name: string) => void; set: (name: string, highlight: { add: (range: Range) => void }) => void } }).highlights
+}
+
+function HighlightCtor(): (new () => { add: (range: Range) => void }) | undefined {
+  return (globalThis as { Highlight?: new () => { add: (range: Range) => void } }).Highlight
+}
+
+/** Visual fill when the browser can paint ranges; marks stay for click / keyboard. */
+export function syncCssCommentHighlights(root: HTMLElement): void {
+  const highlights = cssHighlightMap()
+  const Highlight = HighlightCtor()
+  if (!highlights || !Highlight) return
+  highlights.delete(COMMENT_HIGHLIGHT)
+  const highlight = new Highlight()
+  for (const mark of root.querySelectorAll('mark.user-comment-highlight')) {
+    const range = root.ownerDocument.createRange()
+    range.selectNodeContents(mark)
+    highlight.add(range)
+  }
+  highlights.set(COMMENT_HIGHLIGHT, highlight)
+}
+
+export function paintAnchoredComments(
+  root: HTMLElement,
   comments: CommentItem[],
   theme: ThemeKey,
-): string {
-  if (!comments.length) return html
-  const root = new DOMParser().parseFromString(html, 'text/html').body
+): void {
+  unwrapTextDecorations(root, 'mark.user-comment-highlight')
+  if (!comments.length) {
+    cssHighlightMap()?.delete(COMMENT_HIGHLIGHT)
+    return
+  }
   const text = root.textContent ?? ''
-  const backgrounds = {
-    light: '#fef08a',
-    sepia: '#f5d78e',
-    dark: '#854d0e',
-    night: '#1e3a5f',
-  }
-  const borders = {
-    light: '#eab308',
-    sepia: '#ca8a04',
-    dark: '#fbbf24',
-    night: '#3b82f6',
-  }
+  const colors = commentMarkColors(theme)
   for (const comment of comments) {
     if (!Number.isFinite(Number(comment.id)) || comment.parent_id) continue
     const start = resolveCommentAnchor(text, comment)
@@ -133,22 +179,22 @@ export function highlightAnchoredComments(
         /^#(?:[\da-f]{3}|[\da-f]{6}|[\da-f]{8})$/i.test(comment.color)
           ? comment.color
           : undefined
-      mark.style.backgroundColor = color ?? backgrounds[theme]
-      mark.style.borderBottom = `2px solid ${color ?? borders[theme]}`
+      mark.style.backgroundColor = color ?? colors.background
+      mark.style.borderBottom = `2px solid ${color ?? colors.border}`
       mark.style.cursor = 'pointer'
       mark.style.borderRadius = '2px'
       return mark
     })
   }
-  return root.innerHTML
+  syncCssCommentHighlights(root)
 }
 
-export function highlightAnchoredAnnotations(
-  html: string,
+export function paintAnchoredAnnotations(
+  root: HTMLElement,
   annotations: AnnotationItem[],
-): string {
-  if (!annotations.length) return html
-  const root = new DOMParser().parseFromString(html, 'text/html').body
+): void {
+  unwrapTextDecorations(root, 'mark.phantasiai-annotation')
+  if (!annotations.length) return
   const text = root.textContent ?? ''
   const seen = new Set<string>()
   const ordered = annotations.toSorted((a, b) => b.term.length - a.term.length)
@@ -178,5 +224,25 @@ export function highlightAnchoredAnnotations(
       return mark
     })
   }
+}
+
+export function highlightAnchoredComments(
+  html: string,
+  comments: CommentItem[],
+  theme: ThemeKey,
+): string {
+  if (!comments.length) return html
+  const root = new DOMParser().parseFromString(html, 'text/html').body
+  paintAnchoredComments(root, comments, theme)
+  return root.innerHTML
+}
+
+export function highlightAnchoredAnnotations(
+  html: string,
+  annotations: AnnotationItem[],
+): string {
+  if (!annotations.length) return html
+  const root = new DOMParser().parseFromString(html, 'text/html').body
+  paintAnchoredAnnotations(root, annotations)
   return root.innerHTML
 }

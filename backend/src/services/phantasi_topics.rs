@@ -184,9 +184,18 @@ Excerpt: {excerpt}
 
 async fn list_existing_subscription_topics(
     db: &DatabaseConnection,
+    include_admin_only: bool,
 ) -> Result<Vec<String>, sea_orm::DbErr> {
-    let note_ids: Vec<i32> = phantasi_sources::Entity::find()
-        .filter(phantasi_sources::Column::SourceType.eq(SourceType::Note))
+    let mut hidden = phantasi_sources::Entity::find()
+        .filter(phantasi_sources::Column::SourceType.eq(SourceType::Note));
+    if !include_admin_only {
+        hidden = phantasi_sources::Entity::find().filter(
+            sea_orm::Condition::any()
+                .add(phantasi_sources::Column::SourceType.eq(SourceType::Note))
+                .add(phantasi_sources::Column::AdminOnly.eq(true)),
+        );
+    }
+    let hidden_ids: Vec<i32> = hidden
         .select_only()
         .column(phantasi_sources::Column::Id)
         .into_tuple()
@@ -199,8 +208,8 @@ async fn list_existing_subscription_topics(
         .select_only()
         .column(phantasi_items::Column::Topic)
         .distinct();
-    if !note_ids.is_empty() {
-        query = query.filter(phantasi_items::Column::SourceId.is_not_in(note_ids));
+    if !hidden_ids.is_empty() {
+        query = query.filter(phantasi_items::Column::SourceId.is_not_in(hidden_ids));
     }
 
     let rows: Vec<Option<String>> = query.into_tuple().all(db).await?;
@@ -217,8 +226,9 @@ async fn list_existing_subscription_topics(
 /// 订阅主题目录。笔记分类不进这里。
 pub async fn list_subscription_topic_names(
     db: &DatabaseConnection,
+    include_admin_only: bool,
 ) -> Result<Vec<String>, sea_orm::DbErr> {
-    list_existing_subscription_topics(db).await
+    list_existing_subscription_topics(db, include_admin_only).await
 }
 
 async fn load_subscription_item(
@@ -322,7 +332,7 @@ pub async fn suggest_subscription_item_topic(
             TopicWriteError::NoteItem => TopicSuggestError::NoteItem,
             TopicWriteError::Store => TopicSuggestError::Store,
         })?;
-    let existing = list_existing_subscription_topics(db)
+    let existing = list_existing_subscription_topics(db, true)
         .await
         .map_err(|_| TopicSuggestError::Store)?;
     let excerpt = excerpt_for_topic(item.summary.as_deref(), item.content.as_deref());
@@ -475,6 +485,17 @@ mod tests {
         assert!(!body.contains("ModelTier::Standard"));
         assert!(!body.contains("ModelTier::Lite"));
         assert!(!body.contains("lite_enabled"));
+    }
+
+    #[test]
+    fn public_topic_names_exclude_admin_only_sources() {
+        let src = include_str!("phantasi_topics.rs");
+        let start = src
+            .find("async fn list_existing_subscription_topics")
+            .expect("list_existing_subscription_topics");
+        let body = &src[start..];
+        assert!(body.contains("include_admin_only"));
+        assert!(body.contains("AdminOnly"));
     }
 
     #[test]

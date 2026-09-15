@@ -8,7 +8,7 @@ use serde_json::Value;
 use std::time::Duration;
 
 use crate::models::entities::phantasi_sources::FeedType;
-use crate::services::phantasi_parser::{ContentFormat, ParsedFeed, ParsedItem};
+use crate::services::phantasi_parser::{ParsedFeed, ParsedItem};
 
 /// Notion API 基础 URL
 const NOTION_API_BASE: &str = "https://api.notion.com/v1";
@@ -484,7 +484,6 @@ impl NotionService {
             categories,
             published_at: created_time,
             updated_at: last_edited_time,
-            content_format: ContentFormat::Html,
         })
     }
 

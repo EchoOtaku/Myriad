@@ -93,6 +93,7 @@ export function projectAgentMessage(message: ChatMessage): AgentMessage {
   )
   const workOffer = workOfferFromData(message.data)
   return {
+    workPlan: message.taskExecution?.workPlan ?? workPlanFromData(message.data),
     id: message.id,
     role: message.role,
     content,
@@ -134,6 +135,22 @@ export function projectAgentMessage(message: ChatMessage): AgentMessage {
     ...(steps ? { steps } : {}),
     ...(thought ? { thought } : {}),
   }
+}
+
+export function workPlanFromData(
+  data: unknown,
+): import('../../services/agent/types').WorkPlanItem[] | undefined {
+  if (!data || typeof data !== 'object') return undefined
+  const plan = (data as Record<string, unknown>).workPlan
+  if (!Array.isArray(plan)) return undefined
+  return plan
+    .filter(
+      (item): item is import('../../services/agent/types').WorkPlanItem =>
+        !!item &&
+        typeof item.description === 'string' &&
+        ['pending', 'in_progress', 'completed'].includes(item.status),
+    )
+    .slice(0, 12)
 }
 
 function prefixIdsMatch(

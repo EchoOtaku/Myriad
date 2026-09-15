@@ -193,7 +193,7 @@ describe('filterWorkbenchNotes', () => {
     {
       id: 1,
       title: '春天的草稿',
-      content_md: '樱花开了',
+      excerpt: '樱花开了',
       topic: '生活',
       status: 'draft',
     },

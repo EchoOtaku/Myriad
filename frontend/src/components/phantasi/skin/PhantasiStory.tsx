@@ -135,24 +135,7 @@ export const PhantasiStoryColumn = memo(({
   onToggleStar?: (item: PhantasiStoryItem) => void | false
   canStar?: boolean
 }) => {
-  if (slots.length === 0) {
-    return (
-      <>
-        <StoryCard
-          key={`${col}:1`}
-          shell
-          place={{ column: col, row: 1 }}
-          railCol={col}
-        />
-        <StoryCard
-          key={`${col}:2`}
-          shell
-          place={{ column: col, row: 2 }}
-          railCol={col}
-        />
-      </>
-    )
-  }
+  if (slots.length === 0) return null
   return (
     <>
       {slots.map((slot) => {

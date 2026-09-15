@@ -442,7 +442,9 @@ mod tests {
         got.sort_unstable();
         assert_eq!(
             got,
-            ["1x1", "1x2", "2x1", "2x2", "2x3", "2x4", "3x2", "3x3", "4x1", "4x2", "4x4"]
+            [
+                "1x1", "1x2", "2x1", "2x2", "2x3", "2x4", "3x2", "3x3", "4x1", "4x2", "4x4"
+            ]
         );
         assert_eq!(parse_widget_line(":::widget quote 3x3").unwrap().1, "3x3");
         assert_eq!(parse_widget_line(":::widget quote 9x9").unwrap().1, "2x2");

@@ -19,7 +19,10 @@ pub(crate) fn phantasi_http_err(status: StatusCode, error: impl Into<String>) ->
     HttpError::from((status, Json(AppError::fail_json(error))))
 }
 
-pub(crate) fn phantasi_store_http(context: &'static str, error: impl std::fmt::Display) -> HttpError {
+pub(crate) fn phantasi_store_http(
+    context: &'static str,
+    error: impl std::fmt::Display,
+) -> HttpError {
     tracing::error!(%error, context, "phantasi store failed");
     phantasi_http_err(
         StatusCode::INTERNAL_SERVER_ERROR,
@@ -485,7 +488,11 @@ mod tests {
     fn overlay_feed_type_keeps_parsed_atom_when_request_is_default_rss() {
         let parsed = phantasi_sources::FeedType::Atom;
         assert_eq!(
-            overlay_requested_feed_type(parsed.clone(), Some("rss"), phantasi_sources::SourceType::Rss),
+            overlay_requested_feed_type(
+                parsed.clone(),
+                Some("rss"),
+                phantasi_sources::SourceType::Rss
+            ),
             phantasi_sources::FeedType::Atom
         );
         assert_eq!(
@@ -511,6 +518,173 @@ mod tests {
                 phantasi_sources::SourceType::Rss
             ),
             phantasi_sources::FeedType::Notion
+        );
+    }
+
+    fn impl_fn<'a>(src: &'a str, name: &str) -> &'a str {
+        let start = src
+            .find(&format!("pub(crate) async fn {name}"))
+            .expect(name);
+        let body = &src[start..];
+        let end = body[1..]
+            .find("\npub(crate) async fn ")
+            .map(|index| index + 1)
+            .unwrap_or(body.len());
+        &body[..end]
+    }
+
+    #[test]
+    fn public_reads_use_optional_session_not_guest_fallback() {
+        for (src, name) in [
+            (include_str!("reading_item.rs"), "get_item"),
+            (include_str!("reading_stats.rs"), "get_stats"),
+            (include_str!("feeds_sources.rs"), "list_sources"),
+            (include_str!("feeds_list.rs"), "list_items"),
+            (include_str!("feeds_opml.rs"), "export_opml"),
+            (include_str!("feeds_sources.rs"), "list_categories"),
+            (include_str!("feeds_list.rs"), "list_subscription_topics"),
+            (include_str!("comments.rs"), "list_comments"),
+            (include_str!("comments.rs"), "list_comment_replies"),
+        ] {
+            let body = impl_fn(src, name);
+            assert!(
+                body.contains("get_optional_user_and_admin_status"),
+                "{name} must reject bad cookies instead of treating them as guests"
+            );
+            assert!(
+                !body.contains("= get_user_and_admin_status("),
+                "{name} must not use the guest-fallback extractor"
+            );
+            assert!(
+                body.contains("phantasi_module_open_to_guests"),
+                "{name} must 404 guests when the module is closed"
+            );
+        }
+    }
+
+    #[test]
+    fn shared_catalog_mutations_are_not_keyed_by_creator() {
+        for name in [
+            "add_source",
+            "update_source",
+            "delete_source",
+            "refresh_source",
+            "update_category",
+            "delete_category",
+        ] {
+            let body = impl_fn(include_str!("feeds_sources.rs"), name);
+            assert!(
+                !body.contains("UserId.eq(user_id)"),
+                "{name} must look up the shared catalog, not the creating admin"
+            );
+        }
+        let import_opml = impl_fn(include_str!("feeds_opml.rs"), "import_opml");
+        assert!(
+            !import_opml.contains("UserId.eq(user_id)"),
+            "import_opml must look up the shared catalog, not the creating admin"
+        );
+        let subscribe = include_str!("../../services/agent/executor/handlers/data_write.rs");
+        let start = subscribe
+            .find("async fn execute_phantasi_subscribe")
+            .expect("subscribe");
+        let body = &subscribe[start..];
+        let end = body[1..]
+            .find("\nasync fn ")
+            .map(|index| index + 1)
+            .unwrap_or(body.len());
+        let subscribe = &body[..end];
+        assert!(subscribe.contains("Url.eq"));
+        assert!(
+            !subscribe.contains("UserId.eq(user_id)"),
+            "Agent subscribe must dedup by URL across the shared catalog"
+        );
+    }
+
+    #[test]
+    fn list_categories_omits_creator_and_maps_response() {
+        let body = impl_fn(include_str!("feeds_sources.rs"), "list_categories");
+        assert!(body.contains("CategoryResponse"));
+        assert!(!body.contains("\"categories\": cats }"));
+    }
+
+    #[test]
+    fn list_items_defaults_to_preview() {
+        let body = impl_fn(include_str!("feeds_list.rs"), "list_items");
+        assert!(body.contains("ItemProjection::Full"));
+        assert!(
+            body.contains("query.projection != Some(phantasi_items::ItemProjection::Full)"),
+            "list_items must default to preview unless projection=full"
+        );
+        assert!(
+            body.contains("phantasi_store_http(\"count articles\""),
+            "list_items must not swallow COUNT failures"
+        );
+        assert!(
+            body.contains("try_join!"),
+            "list_items extras must fail the request, not unwrap_or_default"
+        );
+        assert!(
+            !body.contains("unwrap_or_default()"),
+            "list_items extras must not swallow store errors"
+        );
+    }
+
+    #[test]
+    fn import_opml_does_not_swallow_existing_url_lookup() {
+        let body = impl_fn(include_str!("feeds_opml.rs"), "import_opml");
+        assert!(body.contains("phantasi_store_http(\"find existing sources\""));
+        assert!(!body.contains("unwrap_or_default"));
+    }
+
+    #[test]
+    fn list_sources_unread_preview_do_not_swallow() {
+        let body = impl_fn(include_str!("feeds_sources.rs"), "list_sources");
+        assert!(body.contains("phantasi_store_http(\"source unread counts\""));
+        assert!(body.contains("phantasi_store_http(\"source previews\""));
+        assert!(
+            body.contains("pulses query failed"),
+            "pulse overlay may degrade; unread/preview must not"
+        );
+    }
+
+    #[test]
+    fn add_source_lookups_do_not_swallow() {
+        let body = impl_fn(include_str!("feeds_sources.rs"), "add_source");
+        assert!(body.contains("phantasi_store_http(\"find existing source\""));
+        assert!(body.contains("phantasi_store_http(\"reload source\""));
+        assert!(
+            !body.contains("if let Ok(Some(_))"),
+            "URL dedup must not continue subscribe after a store error"
+        );
+        assert!(
+            !body.contains("unwrap_or(source)"),
+            "reload after insert must not fall back to the stale row"
+        );
+    }
+
+    #[test]
+    fn get_item_source_store_is_not_404() {
+        let body = impl_fn(include_str!("reading_item.rs"), "get_item");
+        assert!(body.contains("phantasi_store_http(\"find article source\""));
+        assert!(body.contains("phantasi_store_http(\"count article extras\""));
+        assert!(
+            !body.contains("if let Ok(Some(source))"),
+            "source lookup must distinguish store errors from missing rows"
+        );
+        assert!(!body.contains("unwrap_or(0)"));
+    }
+
+    #[test]
+    fn source_response_omits_creator() {
+        let src = include_str!("../../models/entities/phantasi_sources.rs");
+        let start = src
+            .find("pub struct SourceResponse")
+            .expect("SourceResponse");
+        let body = &src[start..];
+        let end = body.find("impl From").unwrap_or(body.len());
+        assert!(
+            !&body[..end].contains("user_id"),
+            "public source JSON must not include the creating admin"
         );
     }
 }

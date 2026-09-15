@@ -27,8 +27,10 @@ import { noteEditorStatus } from './noteBoard'
 import { noteCategoryLabel, normalizeNoteCategory } from './noteCategory'
 import {
   NoteButton,
+  NoteChip,
   NoteDateInput,
   NoteField,
+  NoteSection,
   NoteSelect,
   NoteSwitch,
 } from './NoteControls'
@@ -1071,32 +1073,27 @@ export function NoteSettingsDrawer({
         />
       </div>
 
-      <NoteField label={t.phantasi.noteAuthors} htmlFor="note-author-add">
-        {authors.length === 0 ? (
-          <p className="note-field__hint">{t.phantasi.noteAuthorEmpty}</p>
-        ) : (
-          <ul className="phantasi-note__authors">
+      <NoteSection title={t.phantasi.noteAuthors} hint={authors.length === 0 ? t.phantasi.noteAuthorEmpty : undefined}>
+        {authors.length > 0 ? (
+          <div className="note-chips">
             {authors.map((author) => (
-              <li key={author.user_id} className="phantasi-note__author">
-                <span>{author.label}</span>
-                {author.owner ? (
-                  <span className="phantasi-note__author-role">
-                    {t.phantasi.noteAuthorOwner}
-                  </span>
-                ) : (
-                  <NoteButton
-                    variant="quiet"
-                    icon={<X />}
-                    disabled={authorBusy}
-                    onClick={() => onRemoveAuthor(author.user_id)}
-                    aria-label={t.phantasi.noteAuthorRemove}
-                    title={t.phantasi.noteAuthorRemove}
-                  />
-                )}
-              </li>
+              <NoteChip
+                key={author.user_id}
+                muted={author.owner}
+                onDismiss={
+                  author.owner || authorBusy
+                    ? undefined
+                    : () => onRemoveAuthor(author.user_id)
+                }
+                dismissLabel={t.phantasi.noteAuthorRemove}
+              >
+                {author.owner
+                  ? `${author.label} · ${t.phantasi.noteAuthorOwner}`
+                  : author.label}
+              </NoteChip>
             ))}
-          </ul>
-        )}
+          </div>
+        ) : null}
         {addableAuthors.length > 0 ? (
           <NoteSelect
             id="note-author-add"
@@ -1111,28 +1108,37 @@ export function NoteSettingsDrawer({
             }}
           />
         ) : null}
-      </NoteField>
+      </NoteSection>
 
-      <NoteField label={t.phantasi.noteTopic} htmlFor="note-topic">
+      <NoteSection title={t.phantasi.noteTopic}>
         <NoteSelect
           id="note-topic"
           value={topic ?? ''}
           options={topicOptions}
           onChange={(value) => onTopicChange(value || null)}
         />
-        <input
-          className="note-input"
-          value={draftCategory}
-          placeholder={t.phantasi.noteCategoryHint}
-          aria-label={t.phantasi.noteCategoryNew}
-          onChange={(event) => setDraftCategory(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key !== 'Enter') return
-            event.preventDefault()
-            commitDraftCategory()
-          }}
-        />
-      </NoteField>
+        <div className="note-compose">
+          <input
+            className="note-input"
+            value={draftCategory}
+            placeholder={t.phantasi.noteCategoryHint}
+            aria-label={t.phantasi.noteCategoryNew}
+            onChange={(event) => setDraftCategory(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter') return
+              event.preventDefault()
+              commitDraftCategory()
+            }}
+          />
+          <NoteButton
+            variant="outline"
+            disabled={!normalizeNoteCategory(draftCategory)}
+            onClick={commitDraftCategory}
+          >
+            {t.phantasi.noteCategoryNew}
+          </NoteButton>
+        </div>
+      </NoteSection>
 
       <NoteField label={t.phantasi.notePublishedAt} htmlFor="note-published-at">
         <NoteDateInput
@@ -1172,27 +1178,28 @@ export function NoteSettingsDrawer({
         hint={cover ? undefined : t.phantasi.noteCoverAuto}
       >
         <div className="phantasi-note__cover">
-          {coverPreview ? (
-            <img src={coverPreview} alt="" className="phantasi-note__cover-thumb" />
-          ) : (
-            <span className="phantasi-note__cover-thumb phantasi-note__cover-thumb--empty">
-              <Image />
-            </span>
-          )}
-          <div className="phantasi-note__drawer-actions">
-            <NoteButton
-              variant="outline"
-              loading={uploading}
-              onClick={onPickCover}
-            >
+          <button
+            type="button"
+            className="phantasi-note__cover-card"
+            disabled={uploading}
+            onClick={onPickCover}
+          >
+            {coverPreview ? (
+              <img src={coverPreview} alt="" className="phantasi-note__cover-thumb" />
+            ) : (
+              <span className="phantasi-note__cover-thumb phantasi-note__cover-thumb--empty">
+                <Image />
+              </span>
+            )}
+            <span className="phantasi-note__cover-action">
               {t.phantasi.noteCoverPick}
+            </span>
+          </button>
+          {cover ? (
+            <NoteButton variant="quiet" onClick={onClearCover}>
+              {t.phantasi.noteCoverClear}
             </NoteButton>
-            {cover ? (
-              <NoteButton variant="quiet" onClick={onClearCover}>
-                {t.phantasi.noteCoverClear}
-              </NoteButton>
-            ) : null}
-          </div>
+          ) : null}
         </div>
       </NoteField>
 

@@ -11,6 +11,8 @@ describe('EditSourceMode', () => {
     const src = readFileSync(join(dir, 'EditSourceMode.tsx'), 'utf8')
     assert.match(src, /phantasi-add-form/)
     assert.match(src, /SourceKindControl/)
+    assert.match(src, /FormBlock/)
+    assert.match(src, /phantasi-add-form__toggles/)
     assert.match(src, /onChange=\{pickKind\}/)
     assert.match(src, /SourceCategoryField/)
     assert.match(src, /listPickerCategories/)

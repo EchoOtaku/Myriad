@@ -501,7 +501,6 @@
   "wordCount": "Wörter",
   "audioLabel": "Audio",
   "selectedText": "Markierter Text:",
-  "myComments": "Meine Kommentare",
   "showAllComments": "Alle Kommentare zeigen",
   "readingSyncConflict": "Der Lesestatus hat sich anderswo geändert. Die Synchronisation ist pausiert. Öffnen Sie den Artikel erneut, um den neuesten Stand zu laden.",
   "readingSyncKeepLocal": "Meinen Fortschritt behalten",

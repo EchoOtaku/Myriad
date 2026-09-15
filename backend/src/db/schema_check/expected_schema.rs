@@ -1,7 +1,7 @@
 //! Aggregated expected schema tables.
 use super::types::TableDef;
 use super::{
-    tables_agent, tables_analytics, tables_phantasi, tables_core, tables_federation, tables_tapp,
+    tables_agent, tables_analytics, tables_core, tables_federation, tables_phantasi, tables_tapp,
 };
 
 pub(crate) fn get_expected_schema() -> Vec<TableDef> {

@@ -12,6 +12,7 @@ export interface AgentMessageQuestion {
 }
 
 export interface AgentMessage {
+  workPlan?: import('../../services/agent/types').WorkPlanItem[]
   id: string
   role: 'user' | 'assistant' | 'system'
   content: string
@@ -71,6 +72,7 @@ function sameMessage(x: AgentMessage, y: AgentMessage): boolean {
     x.suggestions?.length === y.suggestions?.length &&
     x.workOffer?.input === y.workOffer?.input &&
     x.thought === y.thought &&
+    JSON.stringify(x.workPlan) === JSON.stringify(y.workPlan) &&
     sameSteps(x.steps, y.steps)
   )
 }

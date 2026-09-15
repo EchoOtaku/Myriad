@@ -146,24 +146,30 @@ html.dark .managed-list-stat--danger .managed-list-stat-value {
 }
 
 
-.managed-list-filter-toolbar .choice-segmented-item.is-danger {
-  color: #b91c1c;
+.managed-list-filter-toolbar .setting-title-tag.managed-list-filter-tag,
+.managed-list-filter-expanded .setting-title-tag.managed-list-filter-tag {
+  min-height: 1.8rem;
+  padding: 0.22rem 0.5rem;
+  font-size: 0.72rem;
 }
 
-.managed-list-filter-toolbar .choice-segmented-item.is-danger:hover:not(:disabled) {
-  color: #991b1b;
-  background: rgb(239 68 68 / 8%);
+.managed-list-filter-toolbar .setting-title-tag-icon svg,
+.managed-list-filter-expanded .setting-title-tag-icon svg {
+  width: 0.8rem;
+  height: 0.8rem;
 }
 
-html.dark .managed-list-filter-toolbar .choice-segmented-item.is-danger {
-  color: #fca5a5;
+.managed-list-filter-toolbar .setting-title-select--title,
+.managed-list-filter-expanded .setting-title-select--title {
+  min-height: 1.8rem;
+  padding: 0.18rem 0.4rem 0.18rem 0.5rem;
 }
 
-html.dark
-  .managed-list-filter-toolbar
-  .choice-segmented-item.is-danger:hover:not(:disabled) {
-  color: #fecaca;
-  background: rgb(248 113 113 / 12%);
+.managed-list-filter-toolbar .setting-title-select-prefix,
+.managed-list-filter-toolbar .setting-title-select--title .field-select-trigger.field-select,
+.managed-list-filter-expanded .setting-title-select-prefix,
+.managed-list-filter-expanded .setting-title-select--title .field-select-trigger.field-select {
+  font-size: 0.72rem;
 }
 
 .managed-list-top {
@@ -228,6 +234,15 @@ html.dark
 
 .managed-list-filter-tools {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.managed-list-filter-tools-row {
+  display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.45rem 0.7rem;
@@ -236,22 +251,22 @@ html.dark
 }
 
 .managed-list-filter-toolbar {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.4rem;
-  flex: 0 1 auto;
+  gap: 0.3rem;
+  flex: 0 0 auto;
   min-width: 0;
   overflow: visible;
 }
 
-.managed-list-filter-groups + .managed-list-filter-toolbar {
-  padding-left: 0.7rem;
-  border-left: 1px solid color-mix(in srgb, currentcolor 12%, transparent);
-}
-
-html.dark .managed-list-filter-groups + .managed-list-filter-toolbar {
-  border-left-color: color-mix(in srgb, currentcolor 20%, transparent);
+.managed-list-filter-expanded {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  width: 100%;
+  min-width: 0;
 }
 
 .managed-list-query-active-dot {
@@ -636,9 +651,9 @@ html.dark .managed-list-pick.is-on .managed-list-pick-box {
   color: #0b1220;
 }
 
-.managed-list-filter-toolbar .field-select-wrap {
-  min-width: 8.5rem;
-  max-width: 14rem;
+.managed-list-filter-toolbar .setting-title-select,
+.managed-list-filter-expanded .setting-title-select {
+  max-width: min(12rem, 52vw);
 }
 
 .managed-list-row-hit {

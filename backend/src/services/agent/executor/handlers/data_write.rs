@@ -4,7 +4,9 @@
 //! 纯 URL/名称/feed 优先级规则见 [`crate::services::agent::data_write_pure`]。
 
 use super::HandlerContext;
-use crate::models::entities::{phantasi_items, phantasi_sources, phantasi_user_states, tapp_storage};
+use crate::models::entities::{
+    phantasi_items, phantasi_sources, phantasi_user_states, tapp_storage,
+};
 use crate::services::agent::data_write_pure::{
     clamp_update_interval_minutes, collect_subscribe_url_candidates, is_disallowed_subscribe_ip,
     platform_write_cap_error, platform_write_items_over_cap, sanitize_feed_name,
@@ -13,8 +15,8 @@ use crate::services::agent::data_write_pure::{
 use crate::services::agent::executor::utils::VALID_PLATFORMS;
 use crate::services::agent::executor::utils::validate_platform_name;
 use crate::services::agent::external_pure::first_i64_param;
-use crate::services::phantasi_parser::FeedParser;
 use crate::services::data_paths::platform_filtered_file;
+use crate::services::phantasi_parser::FeedParser;
 use crate::services::tapp_storage::{
     read_storage_value, sandbox_storage_entries, validate_sandbox_storage_key,
     validate_storage_value_size, write_storage_value,
@@ -353,7 +355,6 @@ async fn execute_phantasi_subscribe(
 
         // 检查是否已订阅
         let existing = phantasi_sources::Entity::find()
-            .filter(phantasi_sources::Column::UserId.eq(user_id))
             .filter(phantasi_sources::Column::Url.eq(&url))
             .one(ctx.db)
             .await
@@ -381,7 +382,7 @@ async fn execute_phantasi_subscribe(
                     .or(feed_name)
                     .unwrap_or(feed.title.clone());
 
-                // item_count / unread_count filled after insert from rows_affected
+                // item_count filled after insert from rows_affected
                 // (take(50) + ON CONFLICT skips must not over-count).
                 let new_source = phantasi_sources::ActiveModel {
                     user_id: Set(user_id),
@@ -494,7 +495,6 @@ async fn execute_phantasi_subscribe(
                 if inserted_count > 0 {
                     let mut source_active: phantasi_sources::ActiveModel = source.clone().into();
                     source_active.item_count = Set(inserted_count as i32);
-                    source_active.unread_count = Set(inserted_count as i32);
                     if let Err(e) = source_active.update(ctx.db).await {
                         tracing::warn!("[Phantasi] failed to update source counts: {}", e);
                     }
@@ -569,13 +569,16 @@ async fn execute_phantasi_mark(
         .map_err(|error| write_store_failed("find article", error))?
         .ok_or("Article not found")?;
 
-    // 验证文章所属 source 归当前用户所有，防止越权操作
+    // 共享订阅库：按可见源标状态，不按创建者
+    let is_admin = crate::services::agent::user_is_current_admin(ctx.db, user_id).await;
     let source = phantasi_sources::Entity::find_by_id(item.source_id)
-        .filter(phantasi_sources::Column::UserId.eq(user_id))
         .one(ctx.db)
         .await
         .map_err(|error| write_store_failed("find phantasi source", error))?
         .ok_or("This article cannot be changed")?;
+    if source.admin_only && !is_admin {
+        return Err("This article cannot be changed".to_string());
+    }
 
     // 查找或创建用户状态
     let existing = phantasi_user_states::Entity::find()
@@ -594,7 +597,6 @@ async fn execute_phantasi_mark(
         _ => return Err(format!("Unknown mark action: {}", action)),
     };
 
-    let was_read = existing.as_ref().map(|e| e.is_read).unwrap_or(false);
     let was_starred = existing.as_ref().map(|e| e.is_starred).unwrap_or(false);
 
     if let Some(state) = existing {
@@ -647,21 +649,6 @@ async fn execute_phantasi_mark(
             "phantasi.starred",
             format!("Starred \"{}\"", item.title),
         );
-    }
-
-    // 更新 source 的 unread_count（附带 user_id 条件，确保仅修改自己的 source）
-    if let Some(read) = is_read {
-        if read != was_read {
-            let delta = if read { -1 } else { 1 };
-            let _ = ctx
-                .db
-                .execute_raw(sea_orm::Statement::from_sql_and_values(
-                    sea_orm::DatabaseBackend::Postgres,
-                    "UPDATE phantasi_sources SET unread_count = GREATEST(unread_count + $1, 0) WHERE id = $2 AND user_id = $3",
-                    [delta.into(), source.id.into(), user_id.into()],
-                ))
-                .await;
-        }
     }
 
     let status = match action {
@@ -833,5 +820,55 @@ fn append_storage_value(existing: Value, incoming: Value) -> Value {
             Value::Array(left)
         }
         (left, right) => json!([left, right]),
+    }
+}
+
+#[cfg(test)]
+mod phantasi_mark_visibility_tests {
+    #[test]
+    fn mark_uses_visibility_not_source_owner() {
+        let src = include_str!("data_write.rs");
+        let start = src
+            .find("async fn execute_phantasi_mark")
+            .expect("execute_phantasi_mark");
+        let body = &src[start..];
+        let end = body[1..]
+            .find("\nasync fn ")
+            .map(|index| index + 1)
+            .unwrap_or(body.len());
+        let mark = &body[..end];
+        assert!(mark.contains("user_is_current_admin"));
+        assert!(mark.contains("source.admin_only"));
+        assert!(
+            !mark.contains("source.user_id") && !mark.contains("phantasi_sources::Column::UserId"),
+            "shared catalog marks visible sources, not the creator"
+        );
+        assert!(
+            !mark.contains("unread_count"),
+            "HTTP list overlays per-user unread; Agent mark must not write the site-wide column"
+        );
+    }
+
+    #[test]
+    fn subscribe_does_not_write_site_unread() {
+        let src = include_str!("data_write.rs");
+        let start = src
+            .find("async fn execute_phantasi_subscribe")
+            .expect("subscribe");
+        let body = &src[start..];
+        let end = body[1..]
+            .find("\nasync fn execute_phantasi_mark")
+            .or_else(|| body[1..].find("\nasync fn "))
+            .map(|index| index + 1)
+            .unwrap_or(body.len());
+        let subscribe = &body[..end];
+        let after_insert = subscribe
+            .split("if inserted_count > 0")
+            .nth(1)
+            .expect("subscribe count update");
+        assert!(
+            !after_insert.contains("unread_count"),
+            "Agent subscribe must not increment site-wide source unread_count after insert"
+        );
     }
 }

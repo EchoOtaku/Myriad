@@ -2,12 +2,11 @@ import type {
   CommentItem,
   CreateCommentRequest,
 } from '../../../../services/phantasiApi'
-import type { ReaderCopy, ThemeKey } from '../types'
+import type { ReaderCopy } from '../types'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as phantasiApi from '../../../../services/phantasiApi'
 import { userFacingError } from '../../../../utils/userFacingError'
 import { RequestTurn } from '../../logic/requestTurn'
-import { highlightAnchoredComments } from '../commentAnchors'
 import { useArticleTaskScope } from './useArticleTaskScope'
 
 interface UseCommentsOptions {
@@ -29,6 +28,7 @@ interface UseCommentsReturn {
   comments: CommentItem[]
   commentsLoading: boolean
   hasComments: boolean
+  canWrite: boolean
 
   showCommentPopup: boolean
   commentPopupPosition: { x: number; y: number }
@@ -67,19 +67,13 @@ interface UseCommentsReturn {
   toggleReplies: (commentId: number) => Promise<void>
   submitReply: () => Promise<void>
 
-  highlightComments: (
-    html: string,
-    commentList: CommentItem[],
-    theme: ThemeKey,
-  ) => string
-
   commentsLoadingRef: React.RefObject<boolean>
 }
 
 export function useComments({
   itemId,
   enabled,
-  isAuthenticated,
+  isAuthenticated: _isAuthenticated,
   showToastMessage,
   t,
 }: UseCommentsOptions): UseCommentsReturn {
@@ -89,6 +83,7 @@ export function useComments({
   useEffect(() => {
     const controller = new AbortController()
     itemAbort.current = controller
+    setCanWrite(false)
     return () => {
       controller.abort()
       turns.current.cancel()
@@ -97,6 +92,7 @@ export function useComments({
   const [comments, setComments] = useState<CommentItem[]>([])
   const [commentsLoading, setCommentsLoading] = useState(false)
   const [hasComments, setHasComments] = useState(false)
+  const [canWrite, setCanWrite] = useState(false)
 
   const [showCommentPopup, setShowCommentPopup] = useState(false)
   const [commentPopupPosition, setCommentPopupPosition] = useState({
@@ -143,6 +139,7 @@ export function useComments({
       if (response.success && response.comments) {
         setComments(response.comments)
         setHasComments(response.comments.length > 0)
+        setCanWrite(Boolean(response.can_write))
       }
     } catch (err) {
       if (!isCurrent() || signal.aborted) return
@@ -157,7 +154,7 @@ export function useComments({
   const submitComment = useCallback(async () => {
     if (
       !enabled ||
-      !isAuthenticated ||
+      !canWrite ||
       !selectedText ||
       !commentInput.trim() ||
       commentSubmitting
@@ -201,7 +198,7 @@ export function useComments({
   }, [
     captureTask,
     enabled,
-    isAuthenticated,
+    canWrite,
     selectedText,
     commentInput,
     commentSubmitting,
@@ -270,7 +267,7 @@ export function useComments({
   const submitReply = useCallback(async () => {
     if (
       !enabled ||
-      !isAuthenticated ||
+      !canWrite ||
       !replyingTo ||
       !replyInput.trim() ||
       replySubmitting
@@ -323,7 +320,7 @@ export function useComments({
   }, [
     captureTask,
     enabled,
-    isAuthenticated,
+    canWrite,
     replyingTo,
     replyInput,
     replySubmitting,
@@ -332,12 +329,11 @@ export function useComments({
     t,
   ])
 
-  const highlightComments = highlightAnchoredComments
-
   return {
     comments,
     commentsLoading,
     hasComments,
+    canWrite,
 
     showCommentPopup,
     commentPopupPosition,
@@ -373,8 +369,6 @@ export function useComments({
     loadReplies,
     toggleReplies,
     submitReply,
-
-    highlightComments,
 
     commentsLoadingRef,
   }

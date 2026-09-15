@@ -6,13 +6,12 @@ use super::agent_footer::*;
 use super::agent_header::*;
 use super::motion_overlay::{round_motion_style, utterance_index_in_session};
 use super::types::*;
-use super::{capability, executor, planner, response_agent, types};
+use super::{capability, executor, response_agent, types};
 
 impl Agent {
     /// 创建新的 Agent 实例
     pub async fn new(db: DatabaseConnection) -> Self {
         Self {
-            planner: planner::Planner::new().await,
             executor: executor::Executor::new(db.clone()).await,
             db,
         }
@@ -22,8 +21,7 @@ impl Agent {
     ///
     /// Chat vs Work (`process_inner`). Chat does not consume Pro and must not
     /// emit Recipe/tool calls. Work uses the native tool loop in `work_loop`
-    /// (Planner requests Pro; `resolve_ai_config` may fall back to Standard).
-    /// Escalation is on the progress Work path only.
+    /// Work requests Pro; configuration may fall back to Standard.
     ///
     /// 整个回合跑在一次 AI 配额预留里，见 [`AgentTurnBudget`]。
     pub async fn process(&self, request: UserRequest) -> Result<AgentResponse, String> {
@@ -201,6 +199,9 @@ impl Agent {
     ) -> Result<AgentResponse, String> {
         // 每次运行 mint 新 id，保证 TaskState.task_id 与 TaskCreated 唯一且可取消
         let mut recipe = recipe.clone();
+        // Saving a Work execution log as a preset creates a fixed Recipe. Its
+        // future confirmations must resume Executor, not the original loop.
+        recipe.metadata.remove("work_loop_version");
         let template_id = recipe.id.clone();
         recipe.id = uuid::Uuid::new_v4().to_string();
 
@@ -216,7 +217,7 @@ impl Agent {
         Self::validate_saved_recipe(&recipe)?;
         let granted = crate::services::agent::get_user_permissions(&self.db, user_id).await;
         for step in &recipe.steps {
-            crate::services::agent::planner::capability_allowed_for_grants(
+            crate::services::agent::tool_permissions::capability_allowed_for_grants(
                 &step.capability_id,
                 &step.params,
                 &granted,

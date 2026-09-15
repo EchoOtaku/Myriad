@@ -100,12 +100,10 @@
   user-select: none;
 }
 
-.phantasi-feeds.is-rail-grabbing .phantasi-story {
-  transform: none;
-}
-
-.phantasi-feeds.is-rail-grabbing .phantasi-feeds__items-track {
-  contain: layout style paint;
+.phantasi-feeds.is-rail-grabbing .phantasi-feeds__items-track,
+.phantasi-feeds.is-rail-grabbing .phantasi-feeds__sites-track {
+  contain: layout style;
+  will-change: transform;
 }
 
 .phantasi-feeds.is-sites-settling .phantasi-site,
@@ -138,6 +136,7 @@
   overflow: visible;
 }
 
+.phantasi-rail-title__tags,
 .phantasi-rail-title__actions {
   display: inline-flex;
   align-items: center;
@@ -222,7 +221,7 @@
 
 .phantasi-feeds__sites {
   overflow: visible;
-  touch-action: none;
+  touch-action: pan-y;
   overscroll-behavior: none;
   flex-shrink: 0;
   cursor: grab;
@@ -230,7 +229,7 @@
 
 .phantasi-feeds__items {
   overflow: visible;
-  touch-action: none;
+  touch-action: pan-y;
   overscroll-behavior: none;
   cursor: grab;
 }

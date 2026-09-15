@@ -1,4 +1,5 @@
 use super::super::HandlerContext;
+use super::phantasi::{visible_source_ids, visible_sources_query};
 use crate::models::entities::{phantasi_items, phantasi_sources, tapps};
 use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, QueryFilter, QuerySelect};
 use serde_json::{Value, json};
@@ -21,11 +22,12 @@ pub(super) async fn execute_fuzzy_search(
 
     let query_lower = query.to_lowercase();
     let mut results: Vec<Value> = Vec::new();
+    let is_admin = crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await;
 
     // 搜索 Phantasi 订阅源
     if scope == "all" || scope == "phantasi" {
         if search_type.is_none() || search_type == Some("source") {
-            let sources = phantasi_sources::Entity::find()
+            let sources = visible_sources_query(is_admin)
                 .all(ctx.db)
                 .await
                 .map_err(|e| {
@@ -87,14 +89,16 @@ pub(super) async fn execute_fuzzy_search(
 
         // 搜索 Phantasi 内容项
         if search_type.is_none() || search_type == Some("item") {
-            let items = phantasi_items::Entity::find()
-                .limit(100)
-                .all(ctx.db)
-                .await
-                .map_err(|e| {
-                    tracing::error!(error = %e, "Agent data_read database error");
-                    "Database error".to_string()
-                })?;
+            let items = phantasi_items::preview_query(phantasi_items::Entity::find().filter(
+                phantasi_items::Column::SourceId.in_subquery(visible_source_ids(is_admin)),
+            ))
+            .limit(100)
+            .all(ctx.db)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "Agent data_read database error");
+                "Database error".to_string()
+            })?;
 
             for item in items {
                 let title_lower = item.title.to_lowercase();
@@ -124,7 +128,6 @@ pub(super) async fn execute_fuzzy_search(
         let admin_id = crate::services::tapp_ownership::get_admin_user_id(ctx.db)
             .await
             .map_err(|e| e.to_string())?;
-        let is_admin = crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await;
         let mut query = tapps::Entity::find();
         if !is_admin {
             query = query.filter(
@@ -280,4 +283,26 @@ pub(super) fn calculate_fuzzy_score(query: &str, target: &str) -> f64 {
     }
 
     0.0
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn fuzzy_search_applies_admin_only_and_preview() {
+        let start = include_str!("search.rs")
+            .find("pub(super) async fn execute_fuzzy_search")
+            .expect("fuzzy search");
+        let body = &include_str!("search.rs")[start..];
+        let end = body
+            .find("pub(super) fn calculate_fuzzy_score")
+            .unwrap_or(body.len());
+        let search = &body[..end];
+        assert!(search.contains("visible_sources_query(is_admin)"));
+        assert!(search.contains("visible_source_ids(is_admin)"));
+        assert!(search.contains("preview_query"));
+        assert!(
+            !search.contains("phantasi_sources::Entity::find()\n                .all"),
+            "source search must not load admin_only rows for non-admins"
+        );
+    }
 }

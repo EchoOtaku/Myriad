@@ -587,7 +587,7 @@ pub fn detect_page_type(path: &str) -> &'static str {
         || path_lower.starts_with("/netease")
     {
         "platform"
-    } else if path_lower.starts_with("/journal") || path_lower.starts_with("/phantasi") {
+    } else if path_lower.starts_with("/journal") {
         "phantasi"
     } else if path_lower.starts_with("/tapp") {
         "tapp"

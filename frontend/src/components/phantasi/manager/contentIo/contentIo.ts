@@ -4,6 +4,7 @@ import type { NoteTransferKind, TransferNote } from './types'
 import { formatCurrent } from '../../../../i18n/localeCopy'
 import * as phantasiApi from '../../../../services/phantasiApi'
 import { userFacingError } from '../../../../utils/userFacingError'
+import { showPhantasiError } from '../../phantasiNotice'
 import { parseHaloJson, serializeHaloJson } from './halo'
 import { parseMarkdownFile, serializeMarkdownFile } from './markdown'
 import { fileSlug } from './text'
@@ -213,14 +214,16 @@ export async function importTransferFile(
               content_md: note.content_md,
               topic: note.topic ?? null,
               published_at: note.published_at,
+              revision: doc.revision,
             })
-          } catch {
-            /* 草稿还在，算导入成功 */
+          } catch (err) {
+            void showPhantasiError(err, copy.errorImportFailed)
           }
         }
         imported += 1
-      } catch {
+      } catch (err) {
         skipped += 1
+        void showPhantasiError(err, copy.errorImportFailed)
       }
     }
     onProgress(null)

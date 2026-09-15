@@ -1,16 +1,57 @@
 use super::super::HandlerContext;
 use crate::models::entities::{phantasi_items, phantasi_sources, phantasi_user_states};
 use once_cell::sync::Lazy;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, QueryTrait, Statement,
+};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
 static RE_HTML_TAG: Lazy<regex::Regex> = Lazy::new(|| regex::Regex::new(r"<[^>]+>").unwrap());
 static RE_WHITESPACE: Lazy<regex::Regex> = Lazy::new(|| regex::Regex::new(r"\s+").unwrap());
 
-pub(super) fn phantasi_query_failed(context: &'static str, error: impl std::fmt::Display) -> String {
+pub(super) fn phantasi_query_failed(
+    context: &'static str,
+    error: impl std::fmt::Display,
+) -> String {
     tracing::error!(%error, context, "phantasi query failed");
     format!("Failed to {context}")
+}
+
+pub(super) fn visible_sources_query(is_admin: bool) -> sea_orm::Select<phantasi_sources::Entity> {
+    let query = phantasi_sources::Entity::find();
+    if is_admin {
+        query
+    } else {
+        query.filter(phantasi_sources::Column::AdminOnly.eq(false))
+    }
+}
+
+pub(super) fn visible_source_ids(is_admin: bool) -> sea_orm::sea_query::SelectStatement {
+    visible_sources_query(is_admin)
+        .select_only()
+        .column(phantasi_sources::Column::Id)
+        .into_query()
+}
+
+pub(super) fn source_visible(source: &phantasi_sources::Model, is_admin: bool) -> bool {
+    is_admin || !source.admin_only
+}
+
+pub(super) fn starred_count_sql(is_admin: bool) -> &'static str {
+    if is_admin {
+        "SELECT COUNT(*)::int AS starred_count \
+         FROM phantasi_user_states s \
+         INNER JOIN phantasi_items i ON i.id = s.item_id \
+         WHERE s.user_id = $1 AND s.is_starred = TRUE"
+    } else {
+        "SELECT COUNT(*)::int AS starred_count \
+         FROM phantasi_user_states s \
+         INNER JOIN phantasi_items i ON i.id = s.item_id \
+         INNER JOIN phantasi_sources src ON src.id = i.source_id AND src.admin_only = FALSE \
+         WHERE s.user_id = $1 AND s.is_starred = TRUE"
+    }
 }
 
 fn parse_optional_i32(v: &Value) -> Option<i32> {
@@ -128,7 +169,10 @@ fn parse_phantasi_article_lookup(params: &HashMap<String, Value>) -> PhantasiArt
     }
 }
 
-fn phantasi_item_to_read_json(item: &phantasi_items::Model, source: Option<&phantasi_sources::Model>) -> Value {
+fn phantasi_item_to_read_json(
+    item: &phantasi_items::Model,
+    source: Option<&phantasi_sources::Model>,
+) -> Value {
     let src_name = source.map(|s| s.name.as_str()).unwrap_or("");
     let source_url = source.map(|s| s.url.as_str()).unwrap_or("");
     json!({
@@ -138,7 +182,6 @@ fn phantasi_item_to_read_json(item: &phantasi_items::Model, source: Option<&phan
         "link": item.link,
         "pubDate": item.published_at.to_rfc3339(),
         "publishedAt": item.published_at.to_rfc3339(),
-        "content": item.content,
         "summary": item.summary,
         "author": item.author,
         "sourceId": item.source_id,
@@ -213,13 +256,28 @@ pub(super) async fn execute_phantasi_read(
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
     let filters = parse_phantasi_read_filters(params);
+    let is_admin = crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await;
 
-    let sources = phantasi_sources::Entity::find()
+    let sources = visible_sources_query(is_admin)
         .all(ctx.db)
         .await
         .map_err(|error| phantasi_query_failed("fetch phantasi sources", error))?;
     let source_map: HashMap<i32, &phantasi_sources::Model> =
         sources.iter().map(|s| (s.id, s)).collect();
+
+    if let Some(sid) = filters.source_id {
+        if !source_map.contains_key(&sid) {
+            return Ok(json!({
+                "items": [],
+                "total": 0,
+                "sourceId": filters.source_id,
+                "sourceName": filters.source_name,
+                "matched": false,
+                "notFound": true,
+                "message": "Feed not found",
+            }));
+        }
+    }
 
     // Resolve sourceName → source ids (case-insensitive contains)
     let name_source_ids: Option<Vec<i32>> = if let Some(ref name) = filters.source_name {
@@ -256,7 +314,11 @@ pub(super) async fn execute_phantasi_read(
         }
     }
 
-    let mut query = phantasi_items::Entity::find().order_by_desc(phantasi_items::Column::PublishedAt);
+    let mut query = phantasi_items::preview_query(
+        phantasi_items::Entity::find()
+            .filter(phantasi_items::Column::SourceId.in_subquery(visible_source_ids(is_admin))),
+    )
+    .order_by_desc(phantasi_items::Column::PublishedAt);
 
     if let Some(sid) = filters.source_id {
         query = query.filter(phantasi_items::Column::SourceId.eq(sid));
@@ -321,13 +383,58 @@ pub(super) async fn execute_phantasi_read(
     }))
 }
 
+pub(super) async fn user_unread_by_source(
+    db: &impl ConnectionTrait,
+    user_id: i32,
+    is_admin: bool,
+) -> Result<HashMap<i32, i32>, String> {
+    if user_id <= 0 {
+        return Ok(HashMap::new());
+    }
+    let sql = if is_admin {
+        "SELECT i.source_id, COUNT(*)::int AS unread_count \
+         FROM phantasi_items i \
+         WHERE NOT EXISTS ( \
+           SELECT 1 FROM phantasi_user_states s \
+           WHERE s.item_id = i.id AND s.user_id = $1 AND s.is_read = TRUE \
+         ) \
+         GROUP BY i.source_id"
+    } else {
+        "SELECT i.source_id, COUNT(*)::int AS unread_count \
+         FROM phantasi_items i \
+         INNER JOIN phantasi_sources src ON src.id = i.source_id AND src.admin_only = FALSE \
+         WHERE NOT EXISTS ( \
+           SELECT 1 FROM phantasi_user_states s \
+           WHERE s.item_id = i.id AND s.user_id = $1 AND s.is_read = TRUE \
+         ) \
+         GROUP BY i.source_id"
+    };
+    let rows = db
+        .query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            sql,
+            [user_id.into()],
+        ))
+        .await
+        .map_err(|error| phantasi_query_failed("count unread by source", error))?;
+    let mut map = HashMap::new();
+    for row in rows {
+        let id: i32 = row.try_get("", "source_id").unwrap_or(0);
+        let count: i32 = row.try_get("", "unread_count").unwrap_or(0);
+        if id > 0 {
+            map.insert(id, count);
+        }
+    }
+    Ok(map)
+}
+
 pub(super) async fn execute_phantasi_sources(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
     use crate::services::agent::executor::utils::{
-        MatchKind, best_loose_match, phantasi_category_token_matches, normalize_phantasi_category_filter,
-        normalize_phantasi_source_type_filter,
+        MatchKind, best_loose_match, normalize_phantasi_category_filter,
+        normalize_phantasi_source_type_filter, phantasi_category_token_matches,
     };
 
     let query = params
@@ -351,11 +458,17 @@ pub(super) async fn execute_phantasi_sources(
         .filter(|s| !s.is_empty())
         .map(normalize_phantasi_source_type_filter);
 
-    let all_sources = phantasi_sources::Entity::find()
-        .order_by_asc(phantasi_sources::Column::Name)
+    let is_admin = crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await;
+    let mut source_query =
+        phantasi_sources::Entity::find().order_by_asc(phantasi_sources::Column::Name);
+    if !is_admin {
+        source_query = source_query.filter(phantasi_sources::Column::AdminOnly.eq(false));
+    }
+    let all_sources = source_query
         .all(ctx.db)
         .await
         .map_err(|error| phantasi_query_failed("fetch phantasi sources", error))?;
+    let unread_by_source = user_unread_by_source(ctx.db, ctx.user_id, is_admin).await?;
 
     let total_in_system = all_sources.len();
 
@@ -369,7 +482,11 @@ pub(super) async fn execute_phantasi_sources(
         }
     }
 
-    fn source_to_json(s: &phantasi_sources::Model, match_kind: Option<MatchKind>) -> Value {
+    fn source_to_json(
+        s: &phantasi_sources::Model,
+        match_kind: Option<MatchKind>,
+        unread: i32,
+    ) -> Value {
         let mut obj = json!({
             "id": s.id,
             "name": s.name,
@@ -380,7 +497,7 @@ pub(super) async fn execute_phantasi_sources(
             "feedType": feed_type_str(&s.feed_type),
             "enabled": s.enabled,
             "itemCount": s.item_count,
-            "unreadCount": s.unread_count,
+            "unreadCount": unread,
             "icon": s.icon,
             "description": s.description,
             // Prefer success timestamp for "latest update" (not last_fetched_at failures)
@@ -434,7 +551,7 @@ pub(super) async fn execute_phantasi_sources(
     let Some(needle) = query else {
         let sources: Vec<Value> = structurally_filtered
             .iter()
-            .map(|s| source_to_json(s, None))
+            .map(|s| source_to_json(s, None, unread_by_source.get(&s.id).copied().unwrap_or(0)))
             .collect();
         return Ok(json!({
             "sources": sources,
@@ -466,7 +583,13 @@ pub(super) async fn execute_phantasi_sources(
     if !scored.is_empty() {
         let sources: Vec<Value> = scored
             .iter()
-            .map(|(s, kind)| source_to_json(s, Some(*kind)))
+            .map(|(s, kind)| {
+                source_to_json(
+                    s,
+                    Some(*kind),
+                    unread_by_source.get(&s.id).copied().unwrap_or(0),
+                )
+            })
             .collect();
         return Ok(json!({
             "sources": sources,
@@ -572,15 +695,16 @@ pub(super) async fn execute_phantasi_items(
         filter_target
     };
 
-    // 读取全部订阅源；文章按 PublishedAt 降序最多 500 条
+    // 只读可见订阅源；文章按 PublishedAt 降序最多 500 条
     let mut all_items: Vec<Value> = Vec::new();
     let mut available_sources: Vec<String> = Vec::new();
     let mut all_authors: Vec<String> = Vec::new();
 
-    let sources = phantasi_sources::Entity::find()
+    let is_admin = crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await;
+    let sources = visible_sources_query(is_admin)
         .all(ctx.db)
         .await
-        .unwrap_or_default();
+        .map_err(|error| phantasi_query_failed("fetch phantasi sources", error))?;
     let source_map: std::collections::HashMap<i32, &phantasi_sources::Model> =
         sources.iter().map(|s| (s.id, s)).collect();
 
@@ -590,12 +714,15 @@ pub(super) async fn execute_phantasi_items(
         }
     }
 
-    let items = phantasi_items::Entity::find()
-        .order_by_desc(phantasi_items::Column::PublishedAt)
-        .limit(500)
-        .all(ctx.db)
-        .await
-        .unwrap_or_default();
+    let items = phantasi_items::preview_query(
+        phantasi_items::Entity::find()
+            .filter(phantasi_items::Column::SourceId.in_subquery(visible_source_ids(is_admin))),
+    )
+    .order_by_desc(phantasi_items::Column::PublishedAt)
+    .limit(500)
+    .all(ctx.db)
+    .await
+    .map_err(|error| phantasi_query_failed("fetch phantasi items", error))?;
 
     for item in items {
         let source = source_map.get(&item.source_id);
@@ -614,7 +741,7 @@ pub(super) async fn execute_phantasi_items(
             "title": item.title,
             "link": item.link,
             "pubDate": item.published_at.to_rfc3339(),
-            "content": item.content,
+            "summary": item.summary,
             "author": item.author,
             "_sourceId": item.source_id,
             "_feedTitle": src_name,
@@ -886,11 +1013,17 @@ async fn load_article_with_source(
     ctx: &HandlerContext<'_>,
     item: phantasi_items::Model,
 ) -> Result<Value, String> {
+    let is_admin = crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await;
     let source = phantasi_sources::Entity::find_by_id(item.source_id)
         .one(ctx.db)
         .await
         .map_err(|error| phantasi_query_failed("fetch phantasi source", error))?;
-    Ok(phantasi_item_to_article_json(&item, source.as_ref()))
+    match source {
+        Some(ref src) if source_visible(src, is_admin) => {
+            Ok(phantasi_item_to_article_json(&item, Some(src)))
+        }
+        _ => Err("Article not found".to_string()),
+    }
 }
 
 pub(super) async fn execute_phantasi_article(
@@ -939,10 +1072,7 @@ pub(super) async fn execute_phantasi_article(
         .order_by_desc(phantasi_items::Column::PublishedAt)
         .one(ctx.db)
         .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "Agent phantasi article fetch failed");
-            "Article not found".to_string()
-        })?;
+        .map_err(|error| phantasi_query_failed("fetch phantasi article", error))?;
 
     match item {
         Some(item) => load_article_with_source(ctx, item).await,
@@ -954,42 +1084,74 @@ pub(super) async fn execute_phantasi_stats(
     _params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
-    let total_sources = phantasi_sources::Entity::find()
-        .count(ctx.db)
-        .await
-        .map_err(|error| phantasi_query_failed("count phantasi sources", error))?
-        as i64;
-
-    let total_items = phantasi_items::Entity::find()
-        .count(ctx.db)
-        .await
-        .map_err(|error| phantasi_query_failed("count phantasi items", error))?
-        as i64;
-
     let user_id = ctx.user_id;
-    let (unread_count, starred_count) = if user_id > 0 {
-        let starred_count = phantasi_user_states::Entity::find()
-            .filter(phantasi_user_states::Column::UserId.eq(user_id))
-            .filter(phantasi_user_states::Column::IsStarred.eq(true))
-            .count(ctx.db)
-            .await
-            .map_err(|error| phantasi_query_failed("count starred items", error))?
-            as i64;
-
-        // Unread ≈ items without a is_read=true state for this user
-        let read_count = phantasi_user_states::Entity::find()
-            .filter(phantasi_user_states::Column::UserId.eq(user_id))
-            .filter(phantasi_user_states::Column::IsRead.eq(true))
-            .count(ctx.db)
-            .await
-            .map_err(|error| phantasi_query_failed("count read items", error))?
-            as i64;
-
-        let unread_count = total_items.saturating_sub(read_count);
-        (unread_count, starred_count)
+    let is_admin = crate::services::agent::user_is_current_admin(ctx.db, user_id).await;
+    let totals_sql = if is_admin {
+        "SELECT COUNT(*)::int AS total_sources, COALESCE(SUM(item_count), 0)::int AS total_items FROM phantasi_sources"
     } else {
-        // No auth context: treat all items as unread, no stars
-        (total_items, 0)
+        "SELECT COUNT(*)::int AS total_sources, COALESCE(SUM(item_count), 0)::int AS total_items FROM phantasi_sources WHERE admin_only = FALSE"
+    };
+    let totals = ctx
+        .db
+        .query_one_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            totals_sql.to_string(),
+        ))
+        .await
+        .map_err(|error| phantasi_query_failed("count sources", error))?
+        .ok_or_else(|| phantasi_query_failed("count sources", "empty totals"))?;
+    let total_sources: i64 = totals
+        .try_get::<i32>("", "total_sources")
+        .map_err(|error| phantasi_query_failed("read source count", error))?
+        as i64;
+    let total_items: i64 = totals
+        .try_get::<i32>("", "total_items")
+        .map_err(|error| phantasi_query_failed("read item count", error))?
+        as i64;
+
+    let (unread_count, starred_count) = if user_id > 0 {
+        let unread_sql = if is_admin {
+            "SELECT COUNT(*)::int AS unread_count \
+             FROM phantasi_items i \
+             WHERE NOT EXISTS ( \
+               SELECT 1 FROM phantasi_user_states s \
+               WHERE s.item_id = i.id AND s.user_id = $1 AND s.is_read = TRUE \
+             )"
+        } else {
+            "SELECT COUNT(*)::int AS unread_count \
+             FROM phantasi_items i \
+             INNER JOIN phantasi_sources src ON src.id = i.source_id AND src.admin_only = FALSE \
+             WHERE NOT EXISTS ( \
+               SELECT 1 FROM phantasi_user_states s \
+               WHERE s.item_id = i.id AND s.user_id = $1 AND s.is_read = TRUE \
+             )"
+        };
+        let (unread_row, starred_row) = tokio::try_join!(
+            ctx.db.query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                unread_sql,
+                [user_id.into()],
+            )),
+            ctx.db.query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                starred_count_sql(is_admin),
+                [user_id.into()],
+            )),
+        )
+        .map_err(|error| phantasi_query_failed("count reading stats", error))?;
+        let unread: i64 = unread_row
+            .ok_or_else(|| phantasi_query_failed("count unread", "empty unread"))?
+            .try_get::<i32>("", "unread_count")
+            .map_err(|error| phantasi_query_failed("read unread count", error))?
+            as i64;
+        let starred: i64 = starred_row
+            .ok_or_else(|| phantasi_query_failed("count starred", "empty starred"))?
+            .try_get::<i32>("", "starred_count")
+            .map_err(|error| phantasi_query_failed("read starred count", error))?
+            as i64;
+        (unread, starred)
+    } else {
+        (0, 0)
     };
 
     Ok(json!({
@@ -1020,8 +1182,8 @@ fn extract_plain_text(html: &str) -> String {
 
 #[cfg(test)]
 mod phantasi_db_helpers_tests {
-    use super::super::phantasi_generate::{outbound_web_search_allowed, parse_allow_web_search};
     use super::super::permission::install_permission_is_granted;
+    use super::super::phantasi_generate::{outbound_web_search_allowed, parse_allow_web_search};
     use super::*;
     use serde_json::json;
 
@@ -1195,6 +1357,155 @@ mod phantasi_db_helpers_tests {
             true,
             Some(&["phantasi:read".to_string(), "ai:search".to_string()])
         ));
+    }
+
+    #[test]
+    fn phantasi_stats_and_source_unread_match_host_sql() {
+        let src = include_str!("phantasi.rs");
+        let stats = {
+            let start = src
+                .find("pub(super) async fn execute_phantasi_stats")
+                .expect("execute_phantasi_stats");
+            let body = &src[start..];
+            let end = body[1..]
+                .find("\nfn extract_plain_text")
+                .or_else(|| body[1..].find("\npub(super) async fn "))
+                .map(|index| index + 1)
+                .unwrap_or(body.len());
+            &body[..end]
+        };
+        let unread = {
+            let start = src
+                .find("async fn user_unread_by_source")
+                .expect("user_unread_by_source");
+            let body = &src[start..];
+            let end = body[1..]
+                .find("\npub(super) async fn ")
+                .map(|index| index + 1)
+                .unwrap_or(body.len());
+            &body[..end]
+        };
+        assert!(stats.contains("SUM(item_count)"));
+        assert!(stats.contains("NOT EXISTS"));
+        assert!(unread.contains("NOT EXISTS"));
+        assert!(unread.contains("s.is_read = TRUE"));
+        assert!(
+            !stats.contains("phantasi_items::Entity::find()"),
+            "agent stats must not materialize item IDs"
+        );
+        assert!(stats.contains("starred_count_sql"));
+        assert!(stats.contains("(0, 0)"));
+        assert!(!stats.contains("total_items, 0"));
+        assert!(stats.contains("phantasi_query_failed(\"count sources\""));
+        assert!(stats.contains("try_join!"));
+        assert!(
+            !stats.contains(".ok()"),
+            "agent stats must not swallow store errors as zeros"
+        );
+        assert!(
+            !stats.contains("unwrap_or"),
+            "agent stats must not default failed aggregates to 0"
+        );
+    }
+
+    #[test]
+    fn article_lookup_does_not_map_store_to_not_found() {
+        let src = include_str!("phantasi.rs");
+        let start = src
+            .find("pub(super) async fn execute_phantasi_article")
+            .expect("article");
+        let body = &src[start..];
+        let end = body[1..]
+            .find("\npub(super) async fn ")
+            .map(|index| index + 1)
+            .unwrap_or(body.len());
+        let article = &body[..end];
+        assert!(article.contains("phantasi_query_failed(\"fetch phantasi article\""));
+        assert!(
+            !article.contains("\"Article not found\".to_string()\n        })?"),
+            "store errors must not be disguised as missing articles"
+        );
+        assert!(
+            article.contains("None => Err(\"Article not found\""),
+            "a missing row is still not found"
+        );
+    }
+
+    #[test]
+    fn items_catalog_load_does_not_swallow_store_errors() {
+        let src = include_str!("phantasi.rs");
+        let start = src
+            .find("pub(super) async fn execute_phantasi_items")
+            .expect("items");
+        let body = &src[start..];
+        let end = body[1..]
+            .find("\npub(super) async fn ")
+            .or_else(|| body[1..].find("\nasync fn "))
+            .map(|index| index + 1)
+            .unwrap_or(body.len());
+        let items = &body[..end];
+        assert!(items.contains("phantasi_query_failed(\"fetch phantasi sources\""));
+        assert!(items.contains("phantasi_query_failed(\"fetch phantasi items\""));
+        assert!(
+            items.contains("preview_query"),
+            "items catalog must not load full content columns"
+        );
+        let sources_fetch = items
+            .split("visible_sources_query(is_admin)")
+            .nth(1)
+            .unwrap_or("");
+        let sources_fetch = sources_fetch.split("let source_map").next().unwrap_or("");
+        assert!(
+            !sources_fetch.contains("unwrap_or_default"),
+            "item catalog load must not swallow store errors"
+        );
+    }
+
+    #[test]
+    fn agent_read_paths_use_visible_sources() {
+        let src = include_str!("phantasi.rs");
+        for name in [
+            "pub(super) async fn execute_phantasi_read",
+            "pub(super) async fn execute_phantasi_items",
+            "async fn load_article_with_source",
+            "pub(super) async fn execute_phantasi_stats",
+        ] {
+            let start = src.find(name).unwrap_or_else(|| panic!("{name}"));
+            let body = &src[start..];
+            let end = body[1..]
+                .find("\npub(super) async fn ")
+                .or_else(|| body[1..].find("\nasync fn "))
+                .map(|index| index + 1)
+                .unwrap_or(body.len());
+            let fn_body = &body[..end];
+            assert!(
+                fn_body.contains("visible_sources_query")
+                    || fn_body.contains("visible_source_ids")
+                    || fn_body.contains("source_visible")
+                    || fn_body.contains("starred_count_sql"),
+                "{name} must apply admin_only visibility"
+            );
+            if name.contains("execute_phantasi_read") || name.contains("execute_phantasi_items") {
+                assert!(
+                    fn_body.contains("preview_query"),
+                    "{name} must not load full content columns"
+                );
+            }
+        }
+        let read = {
+            let start = src
+                .find("fn phantasi_item_to_read_json")
+                .expect("read json");
+            &src[start..src.find("fn phantasi_item_to_article_json").unwrap()]
+        };
+        assert!(!read.contains("item.content"));
+        let generate = include_str!("phantasi_generate.rs");
+        assert!(generate.contains("visible_sources_query"));
+        assert!(generate.contains("visible_source_ids"));
+        let page = include_str!("pages.rs");
+        assert!(page.contains("visible_sources_query"));
+        assert!(page.contains("source_visible"));
+        assert!(page.contains("user_unread_by_source"));
     }
 
     #[test]

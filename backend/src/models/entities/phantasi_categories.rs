@@ -44,3 +44,27 @@ pub struct UpdateCategoryRequest {
     pub color: Option<String>,
     pub sort_order: Option<i32>,
 }
+
+/// 公开读 / 管理工作台用的分类。不回创建者 user_id。
+#[derive(Clone, Debug, Serialize)]
+pub struct CategoryResponse {
+    pub id: i32,
+    pub name: String,
+    pub icon: Option<String>,
+    pub color: Option<String>,
+    pub sort_order: i32,
+    pub created_at: i64,
+}
+
+impl From<Model> for CategoryResponse {
+    fn from(m: Model) -> Self {
+        Self {
+            id: m.id,
+            name: m.name,
+            icon: m.icon,
+            color: m.color,
+            sort_order: m.sort_order,
+            created_at: m.created_at.timestamp_millis(),
+        }
+    }
+}

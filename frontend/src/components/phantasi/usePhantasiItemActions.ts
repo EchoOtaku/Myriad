@@ -4,7 +4,7 @@ import type {
   PhantasiItemPreview,
   PhantasiSource,
 } from '../../types/phantasi'
-import type { PhantasiViewMode } from './logic/board'
+import type { PhantasiBoard, PhantasiViewMode } from './logic/board'
 
 import type { ArticleLoader, OpenArticleOptions } from './useArticleOpen'
 import { useCallback, useEffect, useRef } from 'react'
@@ -20,7 +20,7 @@ import { readingQueue, readingQueueFromStories } from './logic/readingQueue'
 import { phantasiItemFromWebSearch, webSearchInList } from './logic/webSearchItem'
 import {
   loadLatestStory,
-  peekFeedStoriesLoose,
+  peekFeedStories,
 } from './pageData'
 
 interface StarTarget {
@@ -51,6 +51,7 @@ export function usePhantasiItemActions({
   isAuthenticated,
   openArticle,
   viewMode,
+  board,
   selectedItem,
   setItems,
   setTotal,
@@ -67,6 +68,7 @@ export function usePhantasiItemActions({
   ) => Promise<PhantasiItem | undefined>
   isAuthenticated: boolean
   viewMode: PhantasiViewMode
+  board: PhantasiBoard
   selectedItem: PhantasiItem | null
   setItems: Dispatch<SetStateAction<PhantasiItem[]>>
   setTotal: Dispatch<SetStateAction<number>>
@@ -129,7 +131,9 @@ export function usePhantasiItemActions({
           ? 'starred'
           : viewMode === 'topic-feed'
             ? 'topic'
-            : 'feeds'
+            : board === 'notes'
+              ? 'notes'
+              : 'feeds'
       await openArticle(
         item.fromWebSearch
           ? item
@@ -139,24 +143,30 @@ export function usePhantasiItemActions({
         },
       )
     },
-    [openArticle, viewMode, itemsRef],
+    [openArticle, viewMode, board, itemsRef],
   )
 
   const openPreview = useCallback(
-    async (preview: PhantasiItemPreview, source: PhantasiSource) => {
+    async (
+      preview: PhantasiItemPreview,
+      source: PhantasiSource,
+      neighbors?: Array<{ id: number; title: string }>,
+    ) => {
       if (isSiteSource(source)) return
       await openArticle(
         (signal) => phantasiApi.getItem(preview.id, undefined, { signal }),
         {
           queue: readingQueueFromStories(
-            'feeds',
-            peekFeedStoriesLoose(source.id),
+            board === 'notes' ? 'notes' : 'feeds',
+            board === 'notes'
+              ? neighbors
+              : peekFeedStories(source.id, source.last_success_at ?? 0),
             [preview],
           ),
         },
       )
     },
-    [openArticle],
+    [openArticle, board],
   )
 
   const openLatest = useCallback(
@@ -171,24 +181,22 @@ export function usePhantasiItemActions({
         },
         {
           queue: readingQueueFromStories(
-            'feeds',
-            peekFeedStoriesLoose(source.id),
+            board === 'notes' ? 'notes' : 'feeds',
+            board === 'notes'
+              ? undefined
+              : peekFeedStories(source.id, source.last_success_at ?? 0),
             [],
           ),
         },
       )
     },
-    [openArticle],
+    [openArticle, board],
   )
 
   const navigateToArticle = useCallback(
     async (articleId: number) => {
       const webHit = webSearchInList(readingList?.currentList?.items, articleId)
       if (webHit && readingList) {
-        console.log(
-          '[Phantasi] Navigating to web search article from reading list:',
-          webHit.item.title,
-        )
         await openArticle(phantasiItemFromWebSearch(webHit.item, labels.webSearch))
         readingList.goToArticle(webHit.index)
         return

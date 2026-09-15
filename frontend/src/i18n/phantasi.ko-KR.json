@@ -501,7 +501,6 @@
   "wordCount": "단어",
   "audioLabel": "오디오",
   "selectedText": "선택한 텍스트:",
-  "myComments": "내 댓글",
   "showAllComments": "모든 댓글 보기",
   "readingSyncConflict": "읽기 상태가 다른 곳에서 바뀌었어요. 동기화를 멈췄어요. 최신 상태를 보려면 이 글을 다시 여세요.",
   "readingSyncKeepLocal": "내 진행 유지",

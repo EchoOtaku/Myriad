@@ -501,7 +501,6 @@
   "wordCount": "文字",
   "audioLabel": "オーディオ",
   "selectedText": "選択したテキスト:",
-  "myComments": "マイコメント",
   "showAllComments": "すべてのコメントを表示",
   "readingSyncConflict": "閲覧状態が別の場所で更新されたため同期を一時停止しました。記事を開き直して最新の状態を読み込んでください。",
   "readingSyncKeepLocal": "自分の進捗を残す",

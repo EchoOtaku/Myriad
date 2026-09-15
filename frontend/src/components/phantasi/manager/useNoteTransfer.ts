@@ -5,6 +5,7 @@ import type { ImportProgress } from './modes'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
+import * as phantasiApi from '../../../services/phantasiApi'
 import { showError, showSuccess } from '../../../utils/toastManager'
 import { RequestTurn, unlessAborted } from '../logic/requestTurn'
 import { exportTransferFile, importTransferFile } from './contentIo/contentIo'
@@ -60,9 +61,32 @@ export function useNoteTransfer(
       const signal = turns.current.begin()
       setActiveKind(kind)
       setLoading(true)
+      let full: PhantasiNoteDoc[]
+      try {
+        full = await Promise.all(
+          docs.map((doc) => phantasiApi.getNoteDoc(doc.id, signal)),
+        )
+      } catch (err) {
+        if (signal.aborted) {
+          setLoading(false)
+          setActiveKind(null)
+          return
+        }
+        showError(
+          err instanceof Error ? err.message : copyRef.current.errorExportFailed,
+        )
+        setLoading(false)
+        setActiveKind(null)
+        return
+      }
+      if (signal.aborted) {
+        setLoading(false)
+        setActiveKind(null)
+        return
+      }
       const result = await exportTransferFile(
         kind,
-        docs,
+        full,
         copyRef.current,
         signal,
       )

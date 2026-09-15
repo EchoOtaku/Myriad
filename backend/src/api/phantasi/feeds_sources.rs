@@ -1,212 +1,32 @@
+//! Phantasi feed sources: list, CRUD, discover, and categories.
 use crate::error::HttpError;
 use myriad_error::AppError;
 
 use axum::{
-    Json, Router,
-    extract::{Path, Query, State},
-    http::{StatusCode, header},
-    response::IntoResponse,
-    routing::{delete, get, post, put},
+    Json,
+    extract::{Path, State},
+    http::StatusCode,
 };
 use chrono::Utc;
 use futures::StreamExt;
 use reqwest::Url;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
-    QueryTrait, Statement, TransactionTrait,
+    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Statement, TransactionTrait,
 };
 use serde::Deserialize;
 use serde_json::json;
 
-use tower_http::services::ServeDir;
-use tower_http::set_header::SetResponseHeaderLayer;
-
-use crate::models::entities::phantasi_sources::SourceType;
-use crate::models::entities::{
-    phantasi_annotations, phantasi_categories, phantasi_items, phantasi_podcasts, phantasi_sources, phantasi_user_states,
-};
+use crate::models::entities::{phantasi_categories, phantasi_sources};
+use crate::services::icon_service::IconService;
 use crate::services::phantasi_parser::{FeedParser, ParseError, ParsedFeed};
 use crate::services::phantasi_scheduler::get_phantasi_scheduler;
-use crate::services::phantasi_topics::{
-    TopicSuggestError, TopicWriteError, list_subscription_topic_names, set_subscription_item_topic,
-    suggest_subscription_item_topic,
-};
-use crate::services::data_paths::paths;
-use crate::services::icon_service::IconService;
 
-use super::comments_rsshub;
 use super::helpers::{
-    phantasi_http_err, phantasi_store_http, build_feed_discovery_candidates, generate_opml,
-    get_admin_user_id_from_headers, get_user_and_admin_status, overlay_requested_feed_type,
-    parse_feed_type_label, parse_opml,
+    build_feed_discovery_candidates, get_admin_user_id_from_headers,
+    get_optional_user_and_admin_status, overlay_requested_feed_type, parse_feed_type_label,
+    phantasi_http_err, phantasi_store_http,
 };
-use super::note_docs;
-use super::notes;
-use super::reading_sync_ws;
-
-/// 创建 Phantasi API 路由
-pub fn create_phantasi_routes(app_state: crate::state::AppState) -> Router<crate::state::AppState> {
-    use axum::middleware::from_fn_with_state;
-    Router::<crate::state::AppState>::new()
-        // 订阅源管理
-        .route("/sources", get(list_sources).post(add_source))
-        .route("/sources/{id}", put(update_source).delete(delete_source))
-        .route("/sources/{id}/refresh", post(refresh_source))
-        .route("/sources/discover", post(discover_source))
-        // OPML 导入导出
-        .route("/import-opml", post(import_opml))
-        .route("/export-opml", get(export_opml))
-        // 分类管理
-        .route("/categories", get(list_categories).post(create_category))
-        .route(
-            "/categories/{id}",
-            put(update_category).delete(delete_category),
-        )
-        .route("/topics", get(list_subscription_topics))
-        // 笔记（站长自写内容；写路径一律管理员）
-        .route("/notes.xml", get(super::notes_rss::notes_rss))
-        .route(
-            "/notes/rss",
-            get(super::notes_rss::get_notes_rss_settings)
-                .put(super::notes_rss::put_notes_rss_settings),
-        )
-        .route("/notes", post(notes::create_note))
-        .route("/notes/preview", post(notes::preview_note))
-        .route(
-            "/notes/docs",
-            get(note_docs::list_note_docs).post(note_docs::create_note_doc),
-        )
-        .route(
-            "/notes/author-candidates",
-            get(note_docs::list_note_author_candidates),
-        )
-        .route(
-            "/notes/docs/for-item/{item_id}",
-            get(note_docs::get_note_doc_for_item),
-        )
-        .route(
-            "/notes/docs/{id}/authors",
-            post(note_docs::add_note_doc_author),
-        )
-        .route(
-            "/notes/docs/{id}/authors/{user_id}",
-            delete(note_docs::remove_note_doc_author),
-        )
-        .route(
-            "/notes/docs/{id}",
-            get(note_docs::get_note_doc)
-                .put(note_docs::update_note_doc)
-                .delete(note_docs::delete_note_doc),
-        )
-        .route(
-            "/notes/docs/{id}/publish",
-            post(note_docs::publish_note_doc),
-        )
-        .route(
-            "/notes/docs/{id}/schedule",
-            post(note_docs::schedule_note_doc),
-        )
-        .route(
-            "/notes/docs/{id}/unschedule",
-            post(note_docs::unschedule_note_doc),
-        )
-        .route(
-            "/notes/docs/{id}/ws",
-            get(note_docs::note_doc_websocket).route_layer(from_fn_with_state(
-                app_state.clone(),
-                crate::middleware::auth::auth_middleware,
-            )),
-        )
-        .route(
-            "/notes/{id}",
-            put(notes::update_note).delete(notes::delete_note),
-        )
-        // 文章获取
-        .route("/items", get(list_items))
-        .route("/items/{id}", get(reading_sync_ws::get_item))
-        .route("/items/{id}/topic", put(update_item_topic))
-        .route("/items/{id}/suggest-topic", post(suggest_item_topic))
-        // 阅读状态
-        .route("/items/{id}/read", post(reading_sync_ws::mark_read))
-        .route("/items/{id}/unread", post(reading_sync_ws::mark_unread))
-        .route("/items/{id}/star", post(reading_sync_ws::star_item))
-        .route("/items/{id}/unstar", post(reading_sync_ws::unstar_item))
-        .route("/mark-all-read", post(reading_sync_ws::mark_all_read))
-        // 用户评论（批注）
-        .route(
-            "/items/{id}/comments",
-            get(comments_rsshub::list_comments).post(comments_rsshub::create_comment),
-        )
-        .route("/comments", get(comments_rsshub::list_admin_comments))
-        .route(
-            "/comments/{id}",
-            put(comments_rsshub::update_comment).delete(comments_rsshub::delete_comment),
-        )
-        .route(
-            "/comments/{id}/replies",
-            get(comments_rsshub::list_comment_replies),
-        )
-        // 离线同步
-        .route("/sync-states", post(reading_sync_ws::sync_states))
-        // 统计信息
-        .route("/stats", get(reading_sync_ws::get_stats))
-        // WebSocket（通知）
-        .route(
-            "/ws",
-            get(reading_sync_ws::phantasi_websocket).route_layer(from_fn_with_state(
-                app_state.clone(),
-                crate::middleware::auth::auth_middleware,
-            )),
-        )
-        // RSSHub 实例管理
-        .route(
-            "/rsshub/instances",
-            get(comments_rsshub::list_rsshub_instances).post(comments_rsshub::add_rsshub_instance),
-        )
-        .route(
-            "/rsshub/instances/{id}",
-            put(comments_rsshub::update_rsshub_instance)
-                .delete(comments_rsshub::delete_rsshub_instance),
-        )
-        .route(
-            "/rsshub/instances/{id}/health-check",
-            post(comments_rsshub::health_check_rsshub_instance),
-        )
-        .route(
-            "/rsshub/instances/{id}/reset",
-            post(comments_rsshub::reset_rsshub_instance),
-        )
-        .route(
-            "/rsshub/health-check-all",
-            post(comments_rsshub::health_check_all_rsshub_instances),
-        )
-        // 图标静态文件：Cache-Control max-age=86400；本层无 CompressionLayer
-        .nest_service(
-            "/icons",
-            tower::ServiceBuilder::new()
-                .layer(SetResponseHeaderLayer::if_not_present(
-                    header::CACHE_CONTROL,
-                    header::HeaderValue::from_static("public, max-age=86400, immutable"),
-                ))
-                .service(ServeDir::new(&paths().phantasi_icons)),
-        )
-        // 图片缓存服务（Notion 临时 URL 等）
-        .nest_service(
-            "/image-cache",
-            tower::ServiceBuilder::new()
-                .layer(SetResponseHeaderLayer::if_not_present(
-                    header::CACHE_CONTROL,
-                    header::HeaderValue::from_static("public, max-age=604800, immutable"),
-                ))
-                .service(ServeDir::new(&paths().cache_images)),
-        )
-        // Tapp 运行时携带 Grant 头时做服务端归因与权限强制；宿主 UI 请求不受影响
-        .route_layer(from_fn_with_state(
-            app_state.clone(),
-            crate::api::tapp_runtime::phantasi_host_attribution,
-        ))
-}
 
 // 订阅源管理
 
@@ -260,8 +80,10 @@ pub(crate) async fn list_sources(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    // 获取用户 ID 和管理员状态
-    let (user_id, is_admin) = get_user_and_admin_status(&headers, &db).await;
+    let (user_id, is_admin) = get_optional_user_and_admin_status(&headers, &db).await?;
+    if user_id.is_none() && !crate::api::seo::phantasi_module_open_to_guests(&db).await {
+        return Err(phantasi_http_err(StatusCode::NOT_FOUND, "Not found"));
+    }
 
     // 获取订阅源（非管理员过滤掉 admin_only=true 的源）
     let mut query = phantasi_sources::Entity::find().order_by_asc(phantasi_sources::Column::Name);
@@ -284,7 +106,7 @@ pub(crate) async fn list_sources(
     // (a) 每源未读数：SQL 聚合，避免把所有 item_id 拉到内存再过滤
     // (b) 每源最新 8 篇预览：窗口函数 `rn <= 8`，仅加载预览字段
     // (c) 每源节律：一次窗口查询拿全部源的近两年发布时间，绝不 N+1
-    let (source_unread_counts, mut items_by_source, mut pulses_by_source) = tokio::join!(
+    let (source_unread_counts, items_by_source, mut pulses_by_source) = tokio::join!(
         // (a) 未读数：LEFT JOIN phantasi_user_states，统计无已读状态的文章数
         async {
             let mut counts: std::collections::HashMap<i32, i32> = std::collections::HashMap::new();
@@ -308,16 +130,15 @@ pub(crate) async fn list_sources(
                     values.extend(source_ids.iter().map(|&id| sea_orm::Value::Int(Some(id))));
                     let stmt =
                         Statement::from_sql_and_values(DatabaseBackend::Postgres, &sql, values);
-                    if let Ok(rows) = db.query_all_raw(stmt).await {
-                        for row in &rows {
-                            let src: i32 = row.try_get("", "source_id").unwrap_or(0);
-                            let cnt: i32 = row.try_get("", "unread_count").unwrap_or(0);
-                            counts.insert(src, cnt);
-                        }
+                    let rows = db.query_all_raw(stmt).await?;
+                    for row in &rows {
+                        let src: i32 = row.try_get("", "source_id").unwrap_or(0);
+                        let cnt: i32 = row.try_get("", "unread_count").unwrap_or(0);
+                        counts.insert(src, cnt);
                     }
                 }
             }
-            counts
+            Ok::<_, sea_orm::DbErr>(counts)
         },
         // (b) 每源最新 8 篇预览（`rn <= 8`）。
         async {
@@ -351,32 +172,31 @@ pub(crate) async fn list_sources(
                 let mut values: Vec<sea_orm::Value> = vec![uid_val.into()];
                 values.extend(source_ids.iter().map(|&id| sea_orm::Value::Int(Some(id))));
                 let stmt = Statement::from_sql_and_values(DatabaseBackend::Postgres, &sql, values);
-                if let Ok(rows) = db.query_all_raw(stmt).await {
-                    for row in &rows {
-                        let id: i32 = row.try_get("", "id").unwrap_or(0);
-                        let source_id: i32 = row.try_get("", "source_id").unwrap_or(0);
-                        let title: String = row.try_get("", "title").unwrap_or_default();
-                        let summary: Option<String> = row.try_get("", "summary").ok().flatten();
-                        let image: Option<String> = row.try_get("", "image").ok().flatten();
-                        let published_at: Option<sea_orm::entity::prelude::DateTimeWithTimeZone> =
-                            row.try_get("", "published_at").ok();
-                        let is_read: bool = row.try_get("", "is_read").unwrap_or(false);
-                        let is_starred: bool = row.try_get("", "is_starred").unwrap_or(false);
-                        let topic: Option<String> = row.try_get("", "topic").ok().flatten();
-                        map.entry(source_id).or_default().push(ItemPreview {
-                            id,
-                            title,
-                            summary,
-                            image,
-                            published_at: published_at.map(|dt| dt.timestamp_millis()),
-                            is_read,
-                            is_starred,
-                            topic,
-                        });
-                    }
+                let rows = db.query_all_raw(stmt).await?;
+                for row in &rows {
+                    let id: i32 = row.try_get("", "id").unwrap_or(0);
+                    let source_id: i32 = row.try_get("", "source_id").unwrap_or(0);
+                    let title: String = row.try_get("", "title").unwrap_or_default();
+                    let summary: Option<String> = row.try_get("", "summary").ok().flatten();
+                    let image: Option<String> = row.try_get("", "image").ok().flatten();
+                    let published_at: Option<sea_orm::entity::prelude::DateTimeWithTimeZone> =
+                        row.try_get("", "published_at").ok();
+                    let is_read: bool = row.try_get("", "is_read").unwrap_or(false);
+                    let is_starred: bool = row.try_get("", "is_starred").unwrap_or(false);
+                    let topic: Option<String> = row.try_get("", "topic").ok().flatten();
+                    map.entry(source_id).or_default().push(ItemPreview {
+                        id,
+                        title,
+                        summary,
+                        image,
+                        published_at: published_at.map(|dt| dt.timestamp_millis()),
+                        is_read,
+                        is_starred,
+                        topic,
+                    });
                 }
             }
-            map
+            Ok::<_, sea_orm::DbErr>(map)
         },
         // (c) 每源节律：ROW_NUMBER() 截到 PULSE_MAX_POINTS，窗口内按新→旧。
         // 后端算「距今天数」；`pulses` 为空时前端仍可从预览时间戳合成。
@@ -407,6 +227,10 @@ pub(crate) async fn list_sources(
             map
         }
     );
+    let source_unread_counts =
+        source_unread_counts.map_err(|error| phantasi_store_http("source unread counts", error))?;
+    let mut items_by_source =
+        items_by_source.map_err(|error| phantasi_store_http("source previews", error))?;
 
     // 构建响应，使用 SQL 计算的真实未读数
     let responses: Vec<SourceWithRecentItems> = sources
@@ -471,12 +295,12 @@ pub(crate) async fn add_source(
 
     // 检查是否已订阅
     let existing = phantasi_sources::Entity::find()
-        .filter(phantasi_sources::Column::UserId.eq(user_id))
         .filter(phantasi_sources::Column::Url.eq(url))
         .one(&db)
-        .await;
+        .await
+        .map_err(|error| phantasi_store_http("find existing source", error))?;
 
-    if let Ok(Some(_)) = existing {
+    if existing.is_some() {
         return Err(HttpError::from((
             StatusCode::CONFLICT,
             Json(AppError::fail_json("Already subscribed to this feed")),
@@ -717,9 +541,8 @@ pub(crate) async fn add_source(
             let updated_source = phantasi_sources::Entity::find_by_id(source.id)
                 .one(&db)
                 .await
-                .ok()
-                .flatten()
-                .unwrap_or(source);
+                .map_err(|error| phantasi_store_http("reload source", error))?
+                .ok_or_else(|| phantasi_store_http("reload source", "missing after save"))?;
 
             let response: phantasi_sources::SourceResponse = updated_source.into();
             Ok(Json(json!({ "success": true, "source": response })))
@@ -746,13 +569,9 @@ pub(crate) async fn update_source(
     Path(id): Path<i32>,
     Json(req): Json<phantasi_sources::UpdateSourceRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    // 更新订阅源需要管理员权限
-    let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
+    get_admin_user_id_from_headers(&headers, &db).await?;
 
-    let source = phantasi_sources::Entity::find_by_id(id)
-        .filter(phantasi_sources::Column::UserId.eq(user_id))
-        .one(&db)
-        .await;
+    let source = phantasi_sources::Entity::find_by_id(id).one(&db).await;
 
     match source {
         Ok(Some(source)) => {
@@ -862,14 +681,9 @@ pub(crate) async fn delete_source(
     headers: axum::http::HeaderMap,
     Path(id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    // 删除订阅源需要管理员权限
-    let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
+    get_admin_user_id_from_headers(&headers, &db).await?;
 
-    // 验证所有权
-    let source = phantasi_sources::Entity::find_by_id(id)
-        .filter(phantasi_sources::Column::UserId.eq(user_id))
-        .one(&db)
-        .await;
+    let source = phantasi_sources::Entity::find_by_id(id).one(&db).await;
 
     match source {
         Ok(Some(source)) => {
@@ -921,14 +735,9 @@ pub(crate) async fn refresh_source(
     headers: axum::http::HeaderMap,
     Path(id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    // 刷新订阅源需要管理员权限
-    let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
+    get_admin_user_id_from_headers(&headers, &db).await?;
 
-    // 验证所有权
-    let source = phantasi_sources::Entity::find_by_id(id)
-        .filter(phantasi_sources::Column::UserId.eq(user_id))
-        .one(&db)
-        .await;
+    let source = phantasi_sources::Entity::find_by_id(id).one(&db).await;
 
     match source {
         Ok(Some(_)) => match get_phantasi_scheduler() {
@@ -1049,131 +858,30 @@ pub(crate) async fn discover_source(
     )))
 }
 
-// OPML 导入导出
-
-/// 导入 OPML
-#[derive(Debug, Deserialize)]
-pub struct ImportOpmlRequest {
-    opml: String,
-}
-
-pub(crate) async fn import_opml(
-    State(db): State<DatabaseConnection>,
-    headers: axum::http::HeaderMap,
-    Json(req): Json<ImportOpmlRequest>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    // 导入 OPML 需要管理员权限
-    let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
-
-    // 解析 OPML
-    let feeds = parse_opml(&req.opml);
-    if feeds.is_empty() {
-        return Err(HttpError::from((
-            StatusCode::BAD_REQUEST,
-            Json(AppError::fail_json("No feeds found in OPML")),
-        )));
-    }
-
-    // 批量查询已存在的 URL（避免 N+1）
-    let feed_urls: Vec<String> = feeds.iter().map(|f| f.url.clone()).collect();
-    let existing_urls: std::collections::HashSet<String> = phantasi_sources::Entity::find()
-        .filter(phantasi_sources::Column::UserId.eq(user_id))
-        .filter(phantasi_sources::Column::Url.is_in(&feed_urls))
-        .all(&db)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|s| s.url)
-        .collect();
-
-    let now = Utc::now();
-
-    // 收集需要插入的新订阅源
-    let new_sources: Vec<phantasi_sources::ActiveModel> = feeds
-        .into_iter()
-        .filter(|feed| !existing_urls.contains(&feed.url))
-        .map(|feed| phantasi_sources::ActiveModel {
-            user_id: Set(user_id),
-            name: Set(feed.title),
-            url: Set(feed.url),
-            feed_type: Set(phantasi_sources::FeedType::Rss),
-            category: Set(feed.category),
-            site_url: Set(feed.site_url),
-            enabled: Set(true),
-            error_count: Set(0),
-            item_count: Set(0),
-            unread_count: Set(0),
-            update_interval: Set(30),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-            ..Default::default()
-        })
-        .collect();
-
-    let imported = new_sources.len();
-    let skipped = feed_urls.len() - imported;
-
-    // 批量插入新订阅源
-    if !new_sources.is_empty() {
-        if let Err(e) = phantasi_sources::Entity::insert_many(new_sources)
-            .exec(&db)
-            .await
-        {
-            return Err(phantasi_store_http("import sources", e));
-        }
-    }
-
-    Ok(Json(json!({
-        "success": true,
-        "imported": imported,
-        "skipped": skipped,
-    })))
-}
-
-/// 导出 OPML（游客可访问；非管理员不导出 admin_only 源）
-pub(crate) async fn export_opml(
-    State(db): State<DatabaseConnection>,
-    headers: axum::http::HeaderMap,
-) -> Result<impl IntoResponse, HttpError> {
-    let (_, is_admin) = get_user_and_admin_status(&headers, &db).await;
-
-    let mut query = phantasi_sources::Entity::find()
-        // 笔记源的 url 是 `myriad:notes`，不是一个可订阅的 feed。导出来别人
-        // 导进去只会得到一个永远抓不动的源。
-        .filter(phantasi_sources::Column::SourceType.ne(phantasi_sources::SourceType::Note))
-        .order_by_asc(phantasi_sources::Column::Category)
-        .order_by_asc(phantasi_sources::Column::Name);
-
-    if !is_admin {
-        query = query.filter(phantasi_sources::Column::AdminOnly.eq(false));
-    }
-
-    let sources = query.all(&db).await;
-
-    match sources {
-        Ok(sources) => {
-            let opml = generate_opml(&sources);
-            Ok((StatusCode::OK, [("Content-Type", "application/xml")], opml))
-        }
-        Err(e) => Err(phantasi_store_http("export sources", e)),
-    }
-}
-
 // 分类管理
 
-/// 获取分类列表（游客可访问）
+/// 获取分类列表（公开读：关访客门 404；坏凭据 401）
 pub(crate) async fn list_categories(
     State(db): State<DatabaseConnection>,
-    _headers: axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    // 游客可访问，获取所有分类
+    let (user_id, _) = get_optional_user_and_admin_status(&headers, &db).await?;
+    if user_id.is_none() && !crate::api::seo::phantasi_module_open_to_guests(&db).await {
+        return Err(phantasi_http_err(StatusCode::NOT_FOUND, "Not found"));
+    }
     let categories = phantasi_categories::Entity::find()
         .order_by_asc(phantasi_categories::Column::SortOrder)
         .all(&db)
         .await;
 
     match categories {
-        Ok(cats) => Ok(Json(json!({ "success": true, "categories": cats }))),
+        Ok(cats) => Ok(Json(json!({
+            "success": true,
+            "categories": cats
+                .into_iter()
+                .map(phantasi_categories::CategoryResponse::from)
+                .collect::<Vec<_>>(),
+        }))),
         Err(e) => Err(phantasi_store_http("list categories", e)),
     }
 }
@@ -1198,7 +906,10 @@ pub(crate) async fn create_category(
     };
 
     match new_cat.insert(&db).await {
-        Ok(cat) => Ok(Json(json!({ "success": true, "category": cat }))),
+        Ok(cat) => Ok(Json(json!({
+            "success": true,
+            "category": phantasi_categories::CategoryResponse::from(cat),
+        }))),
         Err(e) => Err(phantasi_store_http("save category", e)),
     }
 }
@@ -1209,13 +920,10 @@ pub(crate) async fn update_category(
     Path(id): Path<i32>,
     Json(req): Json<phantasi_categories::UpdateCategoryRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    // 更新分类需要管理员权限
-    let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
+    // 更新分类需要管理员权限。共享目录按 id，不按创建者。
+    get_admin_user_id_from_headers(&headers, &db).await?;
 
-    let cat = phantasi_categories::Entity::find_by_id(id)
-        .filter(phantasi_categories::Column::UserId.eq(user_id))
-        .one(&db)
-        .await;
+    let cat = phantasi_categories::Entity::find_by_id(id).one(&db).await;
 
     match cat {
         Ok(Some(cat)) => {
@@ -1234,7 +942,10 @@ pub(crate) async fn update_category(
             }
 
             match active.update(&db).await {
-                Ok(updated) => Ok(Json(json!({ "success": true, "category": updated }))),
+                Ok(updated) => Ok(Json(json!({
+                    "success": true,
+                    "category": phantasi_categories::CategoryResponse::from(updated),
+                }))),
                 Err(e) => Err(phantasi_store_http("update category", e)),
             }
         }
@@ -1251,16 +962,16 @@ pub(crate) async fn delete_category(
     headers: axum::http::HeaderMap,
     Path(id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    // 删除分类需要管理员权限
-    let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
+    // 删除分类需要管理员权限。共享目录按 id，不按创建者。
+    get_admin_user_id_from_headers(&headers, &db).await?;
 
-    let cat = phantasi_categories::Entity::find_by_id(id)
-        .filter(phantasi_categories::Column::UserId.eq(user_id))
-        .one(&db)
-        .await;
+    let cat = phantasi_categories::Entity::find_by_id(id).one(&db).await;
 
     match cat {
-        Ok(Some(_)) => match phantasi_categories::Entity::delete_by_id(id).exec(&db).await {
+        Ok(Some(_)) => match phantasi_categories::Entity::delete_by_id(id)
+            .exec(&db)
+            .await
+        {
             Ok(_) => Ok(Json(json!({ "success": true }))),
             Err(e) => Err(phantasi_store_http("delete category", e)),
         },
@@ -1269,394 +980,5 @@ pub(crate) async fn delete_category(
             Json(AppError::fail_json("Category not found")),
         ))),
         Err(e) => Err(phantasi_store_http("find category", e)),
-    }
-}
-
-// 订阅主题
-
-#[derive(Deserialize)]
-struct UpdateItemTopicRequest {
-    topic: Option<String>,
-}
-
-fn topic_write_http(err: TopicWriteError) -> HttpError {
-    match err {
-        TopicWriteError::NotFound => phantasi_http_err(StatusCode::NOT_FOUND, "Article not found"),
-        TopicWriteError::NoteItem => phantasi_http_err(
-            StatusCode::BAD_REQUEST,
-            "Note categories are edited in the note editor",
-        ),
-        TopicWriteError::Store => phantasi_store_http("update topic", "store failed"),
-    }
-}
-
-fn topic_suggest_http(err: TopicSuggestError) -> HttpError {
-    match err {
-        TopicSuggestError::NotFound => phantasi_http_err(StatusCode::NOT_FOUND, "Article not found"),
-        TopicSuggestError::NoteItem => phantasi_http_err(
-            StatusCode::BAD_REQUEST,
-            "Note categories are edited in the note editor",
-        ),
-        TopicSuggestError::Unavailable => {
-            phantasi_http_err(StatusCode::SERVICE_UNAVAILABLE, "AI service unavailable")
-        }
-        TopicSuggestError::Failed => {
-            phantasi_http_err(StatusCode::INTERNAL_SERVER_ERROR, "Failed to suggest topic")
-        }
-        TopicSuggestError::Store => phantasi_store_http("suggest topic", "store failed"),
-    }
-}
-
-/// 本站已有的订阅主题名。笔记分类不进这里。
-async fn list_subscription_topics(
-    State(db): State<DatabaseConnection>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    let topics = list_subscription_topic_names(&db)
-        .await
-        .map_err(|e| phantasi_store_http("list topics", e))?;
-    Ok(Json(json!({ "success": true, "topics": topics })))
-}
-
-/// 站长手填订阅文章主题。笔记走编辑器，不走这条。
-async fn update_item_topic(
-    State(db): State<DatabaseConnection>,
-    headers: axum::http::HeaderMap,
-    Path(id): Path<i32>,
-    Json(body): Json<UpdateItemTopicRequest>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    get_admin_user_id_from_headers(&headers, &db).await?;
-    let topic = set_subscription_item_topic(&db, id, body.topic.as_deref())
-        .await
-        .map_err(topic_write_http)?;
-    Ok(Json(json!({ "success": true, "topic": topic })))
-}
-
-/// 按正文建议主题并写回。站长可再手改。
-async fn suggest_item_topic(
-    State(db): State<DatabaseConnection>,
-    headers: axum::http::HeaderMap,
-    Path(id): Path<i32>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    get_admin_user_id_from_headers(&headers, &db).await?;
-    let topic = suggest_subscription_item_topic(&db, id, true)
-        .await
-        .map_err(topic_suggest_http)?;
-    Ok(Json(json!({
-        "success": true,
-        "topic": topic,
-    })))
-}
-
-// 文章获取
-
-/// 获取文章列表（游客可访问）
-/// 游客不计算已读/收藏状态以节约计算
-/// 非管理员看不到 admin_only 源下的文章
-pub(crate) async fn list_items(
-    State(db): State<DatabaseConnection>,
-    headers: axum::http::HeaderMap,
-    Query(query): Query<phantasi_items::ItemsQuery>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    // 获取可选用户 ID 与管理员状态
-    let (user_id, is_admin) = get_user_and_admin_status(&headers, &db).await;
-
-    // 可见订阅源 ID（非管理员过滤 admin_only）
-    let mut sources_q = phantasi_sources::Entity::find()
-        .select_only()
-        .column(phantasi_sources::Column::Id);
-    if !is_admin {
-        sources_q = sources_q.filter(phantasi_sources::Column::AdminOnly.eq(false));
-    }
-    let all_sources: Vec<i32> = sources_q.into_tuple().all(&db).await.unwrap_or_default();
-
-    if all_sources.is_empty() {
-        return Ok(Json(json!({
-            "success": true,
-            "items": [],
-            "total": 0,
-            "page": 1,
-            "per_page": 20,
-            "next_cursor": null
-        })));
-    }
-
-    let page = query.page.unwrap_or(1).max(1);
-    let per_page = query.per_page.unwrap_or(20).clamp(1, 100);
-    let cursor = match query
-        .cursor
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        None => None,
-        Some(raw) => match phantasi_items::decode_item_cursor(raw) {
-            Some(cursor) => Some(cursor),
-            None => {
-                return Err(phantasi_http_err(
-                    StatusCode::BAD_REQUEST,
-                    "Invalid list cursor",
-                ));
-            }
-        },
-    };
-    let filter_type = query.filter.as_deref().unwrap_or("all");
-
-    // 游客不支持 starred 和 unread 过滤（需要登录才能使用这些过滤）
-    // 对于登录用户，处理 starred 和 unread 过滤
-    let filtered_item_ids: Option<Vec<i32>> = if let Some(uid) = user_id {
-        match filter_type {
-            "starred" => {
-                // 获取用户 starred 的 item_ids
-                let ids: Vec<i32> = phantasi_user_states::Entity::find()
-                    .filter(phantasi_user_states::Column::UserId.eq(uid))
-                    .filter(phantasi_user_states::Column::IsStarred.eq(true))
-                    .select_only()
-                    .column(phantasi_user_states::Column::ItemId)
-                    .into_tuple()
-                    .all(&db)
-                    .await
-                    .unwrap_or_default();
-
-                if ids.is_empty() {
-                    return Ok(Json(json!({
-                        "success": true,
-                        "items": [],
-                        "total": 0,
-                        "page": page,
-                        "per_page": per_page,
-                        "next_cursor": null
-                    })));
-                }
-                Some(ids)
-            }
-            "unread" => {
-                // 在后续 items_query 构建阶段使用子查询过滤，此处仅标记（返回 None）
-                None
-            }
-            _ => None,
-        }
-    } else {
-        // 游客不支持 starred/unread 过滤
-        None
-    };
-
-    // 构建查询
-    let mut items_query =
-        phantasi_items::Entity::find().filter(phantasi_items::Column::SourceId.is_in(all_sources.clone()));
-
-    // 只有登录用户才应用 starred/unread 过滤
-    if user_id.is_some() {
-        match filter_type {
-            "starred" => {
-                if let Some(ref ids) = filtered_item_ids {
-                    items_query = items_query.filter(phantasi_items::Column::Id.is_in(ids.clone()));
-                }
-            }
-            "unread" => {
-                // 用子查询替代 NOT IN (ids)，避免已读文章数万条时生成巨型参数列表
-                if let Some(uid) = user_id {
-                    let read_subquery = phantasi_user_states::Entity::find()
-                        .filter(phantasi_user_states::Column::UserId.eq(uid))
-                        .filter(phantasi_user_states::Column::IsRead.eq(true))
-                        .select_only()
-                        .column(phantasi_user_states::Column::ItemId)
-                        .into_query(); // QueryTrait::into_query() 消耗 Select 返回 SelectStatement
-                    items_query =
-                        items_query.filter(phantasi_items::Column::Id.not_in_subquery(read_subquery));
-                }
-            }
-            _ => {}
-        }
-    }
-
-    // 按订阅源筛选
-    if let Some(source_id) = query.source_id {
-        items_query = items_query.filter(phantasi_items::Column::SourceId.eq(source_id));
-    }
-
-    // 按主题筛选。与 category 同级：只回该主题的订阅文章，笔记分类同名也不进来。
-    // `topic IS NULL` 的天然落空。读路径只读已有列，绝不在这里现算。
-    if let Some(topic) = query
-        .topic
-        .as_deref()
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-    {
-        items_query = items_query.filter(phantasi_items::Column::Topic.eq(topic));
-        let note_source_ids = phantasi_sources::Entity::find()
-            .filter(phantasi_sources::Column::SourceType.eq(SourceType::Note))
-            .select_only()
-            .column(phantasi_sources::Column::Id)
-            .into_query();
-        items_query =
-            items_query.filter(phantasi_items::Column::SourceId.not_in_subquery(note_source_ids));
-    }
-
-    // 按分类筛选（支持多分类：category 字段可能是逗号分隔的多个分类）
-    if let Some(ref category) = query.category {
-        // 获取该分类下的订阅源
-        // 使用 LIKE 匹配来支持多分类场景（如 "友情链接, 技术" 包含 "技术"）
-        let cat_sources: Vec<i32> = phantasi_sources::Entity::find()
-            .filter(
-                sea_orm::Condition::any()
-                    .add(phantasi_sources::Column::Category.eq(category.clone()))
-                    .add(phantasi_sources::Column::Category.starts_with(format!("{}, ", category)))
-                    .add(phantasi_sources::Column::Category.ends_with(format!(", {}", category)))
-                    .add(phantasi_sources::Column::Category.contains(format!(", {}, ", category))),
-            )
-            .select_only()
-            .column(phantasi_sources::Column::Id)
-            .into_tuple()
-            .all(&db)
-            .await
-            .unwrap_or_default();
-
-        if cat_sources.is_empty() {
-            return Ok(Json(json!({
-                "success": true,
-                "items": [],
-                "total": 0,
-                "page": page,
-                "per_page": per_page,
-                "next_cursor": null
-            })));
-        }
-        items_query = items_query.filter(phantasi_items::Column::SourceId.is_in(cat_sources));
-    }
-
-    // 排序
-    let sort_order = query.sort_order.as_deref().unwrap_or("desc");
-    items_query = phantasi_items::ordered_list_query(items_query, sort_order == "asc");
-    if let Some(ref cursor) = cursor {
-        items_query = phantasi_items::apply_item_cursor(items_query, sort_order == "asc", cursor);
-    }
-
-    // Extra row tells has-more. COUNT only on the first page; cursor pages skip it.
-    let total = if cursor.is_some() {
-        0
-    } else {
-        items_query.clone().count(&db).await.unwrap_or(0)
-    };
-
-    let preview = query.projection == Some(phantasi_items::ItemProjection::Preview);
-    if preview {
-        items_query = phantasi_items::preview_query(items_query);
-    }
-
-    let fetch = per_page as u64 + 1;
-    let items = if cursor.is_some() {
-        items_query.limit(fetch).all(&db).await
-    } else {
-        items_query
-            .offset(((page - 1) * per_page) as u64)
-            .limit(fetch)
-            .all(&db)
-            .await
-    };
-
-    match items {
-        Ok(items) => {
-            let (items, next_cursor) = phantasi_items::split_list_page(items, per_page);
-            let item_ids: Vec<i32> = items.iter().map(|i| i.id).collect();
-
-            // 性能优化：并行执行多个独立查询
-            let (states_result, sources_result, annotations_result, podcast_result) = tokio::join!(
-                // 查询用户状态（仅登录用户）
-                async {
-                    if let Some(uid) = user_id {
-                        phantasi_user_states::Entity::find()
-                            .filter(phantasi_user_states::Column::UserId.eq(uid))
-                            .filter(phantasi_user_states::Column::ItemId.is_in(item_ids.clone()))
-                            .all(&db)
-                            .await
-                            .unwrap_or_default()
-                    } else {
-                        Vec::new()
-                    }
-                },
-                // 查询订阅源信息
-                phantasi_sources::Entity::find()
-                    .filter(phantasi_sources::Column::Id.is_in(all_sources))
-                    .all(&db),
-                // 查询哪些文章有 AI 注释
-                phantasi_annotations::Entity::find()
-                    .filter(phantasi_annotations::Column::ItemId.is_in(item_ids.clone()))
-                    .select_only()
-                    .column(phantasi_annotations::Column::ItemId)
-                    .distinct()
-                    .into_tuple::<i32>()
-                    .all(&db),
-                // 查询哪些文章有 AI 播客
-                phantasi_podcasts::Entity::find()
-                    .filter(phantasi_podcasts::Column::ItemId.is_in(item_ids.clone()))
-                    .select_only()
-                    .column(phantasi_podcasts::Column::ItemId)
-                    .into_tuple::<i32>()
-                    .all(&db)
-            );
-
-            let states_map: std::collections::HashMap<i32, phantasi_user_states::Model> =
-                states_result.into_iter().map(|s| (s.item_id, s)).collect();
-
-            let sources_map: std::collections::HashMap<i32, phantasi_sources::Model> = sources_result
-                .unwrap_or_default()
-                .into_iter()
-                .map(|s| (s.id, s))
-                .collect();
-
-            let items_with_annotations: std::collections::HashSet<i32> =
-                annotations_result.unwrap_or_default().into_iter().collect();
-
-            let items_with_podcast: std::collections::HashSet<i32> =
-                podcast_result.unwrap_or_default().into_iter().collect();
-
-            // 构建响应
-            let response_items: Vec<phantasi_items::ItemResponse> = items
-                .into_iter()
-                .map(|item| {
-                    // 游客所有文章都是未读、未收藏
-                    let state = states_map.get(&item.id);
-                    let is_read = user_id.is_some() && state.map(|s| s.is_read).unwrap_or(false);
-                    let is_starred =
-                        user_id.is_some() && state.map(|s| s.is_starred).unwrap_or(false);
-                    let read_progress = if user_id.is_some() {
-                        state.and_then(|s| s.read_progress)
-                    } else {
-                        None
-                    };
-
-                    let source = sources_map.get(&item.source_id);
-                    let source_name = source.map(|s| s.name.clone());
-                    let source_icon = source.and_then(|s| s.icon.clone());
-
-                    // 获取 AI 状态
-                    let has_ai_annotations = items_with_annotations.contains(&item.id);
-                    let has_ai_podcast = items_with_podcast.contains(&item.id);
-
-                    phantasi_items::ItemResponse::from_model_with_ai(
-                        item,
-                        source_name,
-                        source_icon,
-                        is_read,
-                        is_starred,
-                        read_progress,
-                        has_ai_annotations,
-                        has_ai_podcast,
-                    )
-                })
-                .collect();
-
-            let response_items = phantasi_items::list_response_items(response_items, preview)
-                .map_err(|error| phantasi_store_http("serialize articles", error))?;
-            Ok(Json(json!({
-                "success": true,
-                "items": response_items,
-                "total": total,
-                "page": page,
-                "per_page": per_page,
-                "next_cursor": next_cursor,
-            })))
-        }
-        Err(e) => Err(phantasi_store_http("list articles", e)),
     }
 }

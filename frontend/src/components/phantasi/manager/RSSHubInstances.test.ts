@@ -22,5 +22,9 @@ describe('RSSHubInstances', () => {
     assert.match(css, /\.phantasi-rsshub-instances\.is-page/)
     assert.match(admin, /<RSSHubInstances layout="page"/)
     assert.doesNotMatch(config, /layout="page"/)
+    assert.match(
+      src,
+      /handleToggle[\s\S]*if \(!data\.success\) \{\s*showError\(data\.error \|\| phantasi\.errorSaveFailed\)/,
+    )
   })
 })

@@ -1,8 +1,54 @@
 use super::super::HandlerContext;
+use super::phantasi::{phantasi_query_failed, visible_source_ids, visible_sources_query};
 use crate::models::entities::{phantasi_items, phantasi_sources};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, EntityTrait, FromQueryResult, QueryFilter, QueryOrder, QuerySelect,
+    sea_query::{Condition, Expr, extension::postgres::PgExpr},
+};
 use serde_json::{Value, json};
 use std::collections::HashMap;
+
+#[derive(Debug, Clone, FromQueryResult)]
+struct ReadingListCandidate {
+    id: i32,
+    title: String,
+    author: Option<String>,
+    source_id: i32,
+    published_at: sea_orm::prelude::DateTimeWithTimeZone,
+    link: Option<String>,
+    summary: Option<String>,
+}
+
+fn reading_list_rows(
+    query: sea_orm::Select<phantasi_items::Entity>,
+) -> sea_orm::Selector<sea_orm::SelectModel<ReadingListCandidate>> {
+    query
+        .select_only()
+        .column(phantasi_items::Column::Id)
+        .column(phantasi_items::Column::Title)
+        .column(phantasi_items::Column::Author)
+        .column(phantasi_items::Column::SourceId)
+        .column(phantasi_items::Column::PublishedAt)
+        .column(phantasi_items::Column::Link)
+        .column(phantasi_items::Column::Summary)
+        .into_model::<ReadingListCandidate>()
+}
+
+fn keyword_ilike(keyword: &str) -> Condition {
+    let pattern = format!("%{keyword}%");
+    Condition::any()
+        .add(Expr::col(phantasi_items::Column::Title).ilike(&pattern))
+        .add(Expr::col(phantasi_items::Column::Summary).ilike(&pattern))
+}
+
+fn clip_summary(summary: &Option<String>, max_chars: usize) -> String {
+    summary
+        .as_deref()
+        .unwrap_or("")
+        .chars()
+        .take(max_chars)
+        .collect()
+}
 
 /// Opt-in flag for external/web search fallback (phantasi.generateReadingList).
 /// Accepts allowWebSearch / useWebSearch / webSearch / allowExternal / external.
@@ -113,25 +159,26 @@ pub(super) async fn execute_phantasi_generate_reading_list(
     // 计算时间范围
     let cutoff_time = chrono::Utc::now() - chrono::Duration::days(days_back);
 
-    // 加载 phantasi_sources
-    let sources = phantasi_sources::Entity::find()
+    let is_admin = crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await;
+    let sources = visible_sources_query(is_admin)
         .all(ctx.db)
         .await
-        .unwrap_or_default();
+        .map_err(|error| phantasi_query_failed("fetch phantasi sources", error))?;
     let source_map: std::collections::HashMap<i32, &phantasi_sources::Model> =
         sources.iter().map(|s| (s.id, s)).collect();
 
-    // 查询文章，按时间筛选
     let base_query = phantasi_items::Entity::find()
+        .filter(phantasi_items::Column::SourceId.in_subquery(visible_source_ids(is_admin)))
         .filter(phantasi_items::Column::PublishedAt.gte(cutoff_time))
         .order_by_desc(phantasi_items::Column::PublishedAt);
 
     // 如果指定了订阅源名称，过滤
     let base_query = if let Some(name) = source_name_filter {
+        let needle = name.to_lowercase();
         let matching_source_ids: Vec<i32> = sources
             .iter()
-            .filter(|s| s.name.to_lowercase().contains(&name.to_lowercase()))
-            .map(|s| s.id)
+            .filter(|source| source.name.to_lowercase().as_str().contains(&needle))
+            .map(|source| source.id)
             .collect();
         if !matching_source_ids.is_empty() {
             base_query.filter(phantasi_items::Column::SourceId.is_in(matching_source_ids))
@@ -147,20 +194,16 @@ pub(super) async fn execute_phantasi_generate_reading_list(
     let fetch_limit: u64 = 200;
 
     // 尝试关键词筛选
-    let mut items: Vec<phantasi_items::Model> = if !keyword.is_empty() {
-        use sea_orm::Condition;
-        let keyword_lower = format!("%{}%", keyword.to_lowercase());
-        let keyword_condition = Condition::any()
-            .add(phantasi_items::Column::Title.like(&keyword_lower))
-            .add(phantasi_items::Column::Content.like(&keyword_lower));
-
-        let keyword_items = base_query
-            .clone()
-            .filter(keyword_condition)
-            .limit(fetch_limit)
-            .all(ctx.db)
-            .await
-            .unwrap_or_default();
+    let mut items: Vec<ReadingListCandidate> = if !keyword.is_empty() {
+        let keyword_items = reading_list_rows(
+            base_query
+                .clone()
+                .filter(keyword_ilike(keyword))
+                .limit(fetch_limit),
+        )
+        .all(ctx.db)
+        .await
+        .map_err(|error| phantasi_query_failed("search reading list by keyword", error))?;
 
         tracing::info!(
             keyword = %keyword,
@@ -186,11 +229,10 @@ pub(super) async fn execute_phantasi_generate_reading_list(
             );
             let keyword_ids: std::collections::HashSet<i32> =
                 keyword_items.iter().map(|i| i.id).collect();
-            let additional = base_query
-                .limit(fetch_limit)
+            let additional = reading_list_rows(base_query.limit(fetch_limit))
                 .all(ctx.db)
                 .await
-                .unwrap_or_default();
+                .map_err(|error| phantasi_query_failed("pad reading list candidates", error))?;
 
             // 合并，去重
             let mut combined = keyword_items;
@@ -205,11 +247,10 @@ pub(super) async fn execute_phantasi_generate_reading_list(
         }
     } else {
         // 无关键词，直接取最新
-        base_query
-            .limit(fetch_limit)
+        reading_list_rows(base_query.limit(fetch_limit))
             .all(ctx.db)
             .await
-            .unwrap_or_default()
+            .map_err(|error| phantasi_query_failed("fetch reading list candidates", error))?
     };
 
     // Local miss / thin results: only call AI web search when explicitly opted in.
@@ -273,7 +314,9 @@ pub(super) async fn execute_phantasi_generate_reading_list(
                     }));
                 }
                 Ok(_) => {
-                    tracing::info!("[phantasi.generateReadingList] AI web search returned no results");
+                    tracing::info!(
+                        "[phantasi.generateReadingList] AI web search returned no results"
+                    );
                 }
                 Err(e) => {
                     tracing::warn!(error = %e, "[phantasi.generateReadingList] AI web search failed");
@@ -414,30 +457,7 @@ pub(super) async fn execute_phantasi_generate_reading_list(
         .map(|item| {
             let source = source_map.get(&item.source_id);
             // 提取纯文本摘要：简单去除HTML标签，取前50字符
-            let summary = item
-                .content
-                .as_ref()
-                .map(|c| {
-                    // 简单的HTML标签去除
-                    let mut in_tag = false;
-                    let text: String = c
-                        .chars()
-                        .filter(|&ch| {
-                            if ch == '<' {
-                                in_tag = true;
-                                return false;
-                            }
-                            if ch == '>' {
-                                in_tag = false;
-                                return false;
-                            }
-                            !in_tag && ch != '\n' && ch != '\r'
-                        })
-                        .take(50)
-                        .collect();
-                    text.trim().to_string()
-                })
-                .unwrap_or_default();
+            let summary = clip_summary(&item.summary, 50);
             json!({
                 "id": item.id,
                 "title": item.title,
@@ -539,16 +559,7 @@ JSON only."#,
                     "author": item.author,
                     "sourceName": source.map(|s| s.name.as_str()).unwrap_or(""),
                     "publishedAt": item.published_at.to_rfc3339(),
-                    "summary": item.content.as_ref()
-                        .map(|c| {
-                            // 摘要：丢掉 `<`/`>`，取前 200 字符（不是完整去标签）
-                            let text: String = c.chars()
-                                .filter(|&ch| ch != '<' && ch != '>')
-                                .take(200)
-                                .collect();
-                            text
-                        })
-                        .unwrap_or_default(),
+                    "summary": clip_summary(&item.summary, 200),
                     "relevanceReason": reason,
                     "link": item.link
                 })
@@ -633,4 +644,36 @@ fn extract_json_from_response(response: &str) -> Option<String> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn generate_searches_title_summary_ilike_without_loading_content() {
+        let src = include_str!("phantasi_generate.rs");
+        let start = src
+            .find("async fn execute_phantasi_generate_reading_list")
+            .expect("generate");
+        let end = src.find("#[cfg(test)]").unwrap_or(src.len());
+        let body = &src[start..end];
+        assert!(body.contains("keyword_ilike"));
+        assert!(body.contains("ReadingListCandidate"));
+        assert!(body.contains("clip_summary"));
+        assert!(!body.contains("phantasi_items::Column::Content"));
+        assert!(!body.contains("keyword.to_lowercase"));
+        assert!(!body.contains("Column::Title.like"));
+        assert!(!body.contains("Column::Content.like"));
+        assert!(body.contains("phantasi_query_failed(\"fetch phantasi sources\""));
+        assert!(body.contains("phantasi_query_failed(\"search reading list by keyword\""));
+        assert!(body.contains("phantasi_query_failed(\"fetch reading list candidates\""));
+        let sources_fetch = body
+            .split("visible_sources_query(is_admin)")
+            .nth(1)
+            .unwrap_or("");
+        let sources_fetch = sources_fetch.split("let source_map").next().unwrap_or("");
+        assert!(
+            !sources_fetch.contains("unwrap_or_default"),
+            "source catalog load must not swallow store errors"
+        );
+    }
 }

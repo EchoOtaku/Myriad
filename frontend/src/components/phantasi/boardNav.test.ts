@@ -26,4 +26,10 @@ describe('phantasiBoardNavItems', () => {
     assert.match(src, /title: t\.starred/)
     assert.doesNotMatch(src, /starredTitle/)
   })
+
+  it('每项带板块首页 path，岛上再点当前项才回到该项而不是 /journal', () => {
+    assert.match(src, /path: journalPathForNavId\('feeds'\)/)
+    assert.match(src, /path: journalPathForNavId\('notes'\)/)
+    assert.match(src, /path: journalPathForNavId\('sites'\)/)
+  })
 })

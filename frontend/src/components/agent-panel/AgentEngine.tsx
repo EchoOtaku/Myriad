@@ -1015,6 +1015,11 @@ export const AgentEngine: React.FC = () => {
             break
           }
 
+          case 'work_plan_updated': {
+            updateMessageExecution(assistantMessageId, { workPlan: event.steps })
+            break
+          }
+
           case 'waiting_for_input': {
             const wEvent =
               event as import('../../services/agent/types').WaitingForInputEvent

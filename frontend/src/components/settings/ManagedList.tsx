@@ -10,6 +10,7 @@ import { FieldSelect } from './items/FieldSelect'
 import { InputItem } from './items/InputItem'
 import { SettingsButton } from './items/SettingsButton'
 import { SettingTitleGuideEntry } from './SettingTitleGuideEntry'
+import { SettingTitleTag } from './SettingTitleTag'
 import './ManagedList.css'
 
 function ChromeCard({
@@ -126,6 +127,8 @@ export interface ManagedListAction {
   confirm?: string
   ariaLabel?: string
   title?: string
+  /** 筛选行：lead 跟筛选项一排；expanded 是点开后下面那一行。 */
+  slot?: 'lead' | 'expanded'
 }
 
 export interface ManagedListFilterOption {
@@ -221,6 +224,11 @@ function toneClass(tone: ManagedListTone | undefined, prefix: string): string {
   return `${prefix} ${prefix}--${tone ?? 'default'}`
 }
 
+function filterToolbarSlot(action: ManagedListAction): 'lead' | 'expanded' {
+  if (action.slot) return action.slot
+  return action.key === 'edit' || action.key === 'exit' ? 'lead' : 'expanded'
+}
+
 const ListActionButton = React.memo(({
   action,
   size = 'md',
@@ -274,6 +282,22 @@ const ListActionButton = React.memo(({
     </SettingsButton>
   )
 })
+
+const FilterToolbarTag = React.memo(({ action }: { action: ManagedListAction }) => (
+  <SettingTitleTag
+    className="managed-list-filter-tag"
+    variant={action.variant === 'danger' ? 'danger' : 'muted'}
+    icon={action.icon}
+    disabled={action.disabled || action.loading}
+    title={action.title ?? action.description}
+    onClick={() => {
+      if (action.confirm && !window.confirm(action.confirm)) return
+      action.onClick()
+    }}
+  >
+    {action.label}
+  </SettingTitleTag>
+))
 
 export const ManagedList = React.memo(({
   stats,
@@ -457,6 +481,24 @@ export const ManagedList = React.memo(({
   const showFormChip = form != null
   const hasToolbarActions = !!(toolbar && toolbar.length > 0)
   const toolbarInFilters = toolbarPlacement === 'filters'
+  const filterLeadActions = toolbarInFilters
+    ? (toolbar ?? []).filter((action) => filterToolbarSlot(action) === 'lead')
+    : []
+  const filterExpandedActions = toolbarInFilters
+    ? (toolbar ?? []).filter((action) => filterToolbarSlot(action) === 'expanded')
+    : []
+  const filterExpandedStats =
+    toolbarInFilters && stats
+      ? stats.filter(
+          (s): s is ManagedListStatMetric =>
+            s.kind !== 'switch' && s.kind !== 'choice',
+        )
+      : []
+  const hasFilterExpanded =
+    toolbarInFilters &&
+    (filterExpandedStats.length > 0 ||
+      filterExpandedActions.length > 0 ||
+      toolbarExtra != null)
   const hasTopToolbar = hasToolbarActions && !toolbarInFilters
   const topStats = toolbarInFilters ? undefined : stats
   const hasChromeBar =
@@ -531,100 +573,87 @@ export const ManagedList = React.memo(({
         {resolvedFilterGroups.length > 0 ||
         (toolbarInFilters && hasToolbarActions) ? (
           <div className="managed-list-filter-tools">
-            {resolvedFilterGroups.length > 0 ? (
-              <div className="managed-list-filter-groups">
-                {resolvedFilterGroups.map((group, gi) =>
-                  group.options.length > 0 ? (
-                    <div
-                      key={group.ariaLabel ?? `filter-group-${gi}`}
-                      className="managed-list-filter-group"
-                    >
-                      {group.icon != null || group.label != null ? (
-                        <span className="managed-list-filter-label">
-                          {group.icon != null ? (
-                            <span
-                              className="managed-list-filter-label-icon"
-                              aria-hidden
-                            >
-                              {group.icon}
-                            </span>
-                          ) : null}
-                          {group.label != null && group.label !== '' ? (
-                            <span className="managed-list-filter-label-text">
-                              {group.label}
-                            </span>
-                          ) : null}
-                        </span>
-                      ) : null}
-                      <SegmentedControl
-                        size="sm"
-                        className="managed-list-filters"
-                        ariaLabel={
-                          group.ariaLabel ??
-                          (typeof group.label === 'string'
-                            ? group.label
-                            : undefined) ??
-                          t.config.managedListFilterAria
-                        }
-                        value={group.value}
-                        options={group.options.map((opt) => ({
-                          value: opt.key,
-                          label: opt.label,
-                          count: opt.count,
-                          icon: opt.icon,
-                        }))}
-                        onChange={group.onChange}
-                      />
-                    </div>
-                  ) : null,
-                )}
-              </div>
-            ) : null}
-            {toolbarInFilters && hasToolbarActions ? (
-              <div className="managed-list-filter-toolbar">
-                {stats
-                  ?.filter(
-                    (s): s is ManagedListStatMetric =>
-                      s.kind !== 'switch' && s.kind !== 'choice',
-                  )
-                  .map((s) => (
-                    <span key={s.key} className="managed-list-filter-label">
-                      <span className="managed-list-filter-label-text">
-                        {s.value}
-                      </span>
-                    </span>
-                  ))}
+            <div className="managed-list-filter-tools-row">
+              {resolvedFilterGroups.length > 0 ? (
+                <div className="managed-list-filter-groups">
+                  {resolvedFilterGroups.map((group, gi) =>
+                    group.options.length > 0 ? (
+                      <div
+                        key={group.ariaLabel ?? `filter-group-${gi}`}
+                        className="managed-list-filter-group"
+                      >
+                        {group.icon != null || group.label != null ? (
+                          <span className="managed-list-filter-label">
+                            {group.icon != null ? (
+                              <span
+                                className="managed-list-filter-label-icon"
+                                aria-hidden
+                              >
+                                {group.icon}
+                              </span>
+                            ) : null}
+                            {group.label != null && group.label !== '' ? (
+                              <span className="managed-list-filter-label-text">
+                                {group.label}
+                              </span>
+                            ) : null}
+                          </span>
+                        ) : null}
+                        <SegmentedControl
+                          size="sm"
+                          className="managed-list-filters"
+                          ariaLabel={
+                            group.ariaLabel ??
+                            (typeof group.label === 'string'
+                              ? group.label
+                              : undefined) ??
+                            t.config.managedListFilterAria
+                          }
+                          value={group.value}
+                          options={group.options.map((opt) => ({
+                            value: opt.key,
+                            label: opt.label,
+                            count: opt.count,
+                            icon: opt.icon,
+                          }))}
+                          onChange={group.onChange}
+                        />
+                      </div>
+                    ) : null,
+                  )}
+                </div>
+              ) : null}
+              {filterLeadActions.length > 0 ? (
                 <div
-                  className="choice-segmented choice-segmented--sm is-flex managed-list-filters"
+                  className="managed-list-filter-toolbar"
                   role="toolbar"
                   aria-label={t.config.managedListActionsAria}
                 >
-                  {toolbar!.map((action) => (
-                    <button
-                      key={action.key}
-                      type="button"
-                      className={`choice-segmented-item${
-                        action.variant === 'danger' ? ' is-danger' : ''
-                      }`}
-                      disabled={action.disabled || action.loading}
-                      title={action.title ?? action.description}
-                      aria-label={action.ariaLabel ?? action.label}
-                      onClick={() => {
-                        if (action.confirm && !window.confirm(action.confirm)) {
-                          return
-                        }
-                        action.onClick()
-                      }}
-                    >
-                      {action.icon != null ? (
-                        <span className="choice-option-icon" aria-hidden>
-                          {action.icon}
-                        </span>
-                      ) : null}
-                      <span className="choice-option-label">{action.label}</span>
-                    </button>
+                  {filterLeadActions.map((action) => (
+                    <FilterToolbarTag key={action.key} action={action} />
                   ))}
                 </div>
+              ) : null}
+            </div>
+            {hasFilterExpanded ? (
+              <div
+                className="managed-list-filter-expanded"
+                role="toolbar"
+                aria-label={t.config.managedListActionsAria}
+              >
+                {filterExpandedStats.map((s) => (
+                  <SettingTitleTag
+                    key={s.key}
+                    className="managed-list-filter-tag"
+                    variant="muted"
+                    title={typeof s.label === 'string' ? s.label : undefined}
+                  >
+                    {s.value}
+                  </SettingTitleTag>
+                ))}
+                {filterExpandedActions.map((action) => (
+                  <FilterToolbarTag key={action.key} action={action} />
+                ))}
                 {toolbarExtra}
               </div>
             ) : null}

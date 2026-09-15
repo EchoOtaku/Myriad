@@ -55,25 +55,73 @@ impl Checkpoint {
     }
 
     pub fn tool_result(&mut self, call: ToolCall, output: &Value) {
-        self.history.push(ToolMessage::Tool { call, content: preview(output, RESULT_CHARS) });
+        // Local questions, declined calls and recovery results must also be
+        // retrievable after their history text is compacted.
+        self.task
+            .step_results
+            .entry(call.id.clone())
+            .or_insert_with(|| StepResult {
+                step_id: call.id.clone(),
+                success: output.get("error").is_none() && output.get("cancelled").is_none(),
+                output: Some(output.clone()),
+                error: output
+                    .get("error")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+                duration_ms: 0,
+                retry_count: 0,
+            });
+        self.history.push(ToolMessage::Tool {
+            call,
+            content: preview(output, RESULT_CHARS),
+        });
     }
 
     pub fn budget_error(&self) -> Option<&'static str> {
-        if self.rounds >= MAX_ROUNDS { Some("The task reached its model-turn limit") }
-        else if self.calls >= MAX_CALLS { Some("The task reached its tool-call limit") }
-        else if self.input_chars >= MAX_INPUT_CHARS { Some("The task reached its context budget") }
-        else if self.active_ms >= MAX_ACTIVE_MS { Some("The task reached its active-time limit") }
-        else { None }
+        if self.pending.is_empty() && self.rounds >= MAX_ROUNDS {
+            Some("The task reached its model-turn limit")
+        } else if self.calls >= MAX_CALLS {
+            Some("The task reached its tool-call limit")
+        } else if self.pending.is_empty() && self.input_chars >= MAX_INPUT_CHARS {
+            Some("The task reached its context budget")
+        } else if self.active_ms >= MAX_ACTIVE_MS {
+            Some("The task reached its active-time limit")
+        } else {
+            None
+        }
     }
 
     pub fn validate_answer(&self, answer: &UserAnswer) -> Result<(), String> {
-        let question = self.task.pending_question.as_ref().ok_or("This task has no pending question")?;
-        if self.task.status != TaskStatus::WaitingForInput || answer.task_id != self.task.task_id || answer.question_id != question.question_id {
+        let question = self
+            .task
+            .pending_question
+            .as_ref()
+            .ok_or("This task has no pending question")?;
+        if self.task.status != TaskStatus::WaitingForInput
+            || answer.task_id != self.task.task_id
+            || answer.question_id != question.question_id
+        {
             return Err("The answer does not match the current task question".into());
         }
-        if question.is_expired(chrono::Utc::now()) { return Err("The question has expired".into()); }
-        if answer.answer.chars().count() > 16_000 { return Err("The answer is too long".into()); }
-        if matches!(self.wait, Some(Wait::Approval { .. })) && !answer.skipped && !matches!(answer.answer.as_str(), "yes" | "no") {
+        // Tapp expiry is itself an authenticated terminal result, verified
+        // against its persisted interaction before apply_answer is called.
+        if !matches!(self.wait, Some(Wait::Interaction { .. }))
+            && question.is_expired(chrono::Utc::now())
+        {
+            return Err("The question has expired".into());
+        }
+        let answer_limit = if matches!(self.wait, Some(Wait::Interaction { .. })) {
+            128_000
+        } else {
+            16_000
+        };
+        if answer.answer.chars().count() > answer_limit {
+            return Err("The answer is too long".into());
+        }
+        if matches!(self.wait, Some(Wait::Approval { .. }))
+            && !answer.skipped
+            && !matches!(answer.answer.as_str(), "yes" | "no")
+        {
             return Err("Select yes or no for this operation".into());
         }
         Ok(())
@@ -86,7 +134,11 @@ impl Checkpoint {
         for message in self.history.iter_mut().take(older) {
             if let ToolMessage::Tool { call, content } = message {
                 if content.chars().count() > 1200 {
-                    *content = format!("{}\n[Saved result {}: use read_result to retrieve more.]",content.chars().take(1000).collect::<String>(),call.id);
+                    *content = format!(
+                        "{}\n[Saved result {}: use read_result to retrieve more.]",
+                        content.chars().take(1000).collect::<String>(),
+                        call.id
+                    );
                 }
             }
         }
@@ -95,19 +147,28 @@ impl Checkpoint {
 
 pub(super) fn preview(value: &Value, limit: usize) -> String {
     let text = value.to_string();
-    if text.chars().count() <= limit { return text; }
-    format!("{}\n[Result truncated; use read_result with the call id to inspect the saved output.]",text.chars().take(limit).collect::<String>())
+    if text.chars().count() <= limit {
+        return text;
+    }
+    format!(
+        "{}\n[Result truncated; use read_result with the call id to inspect the saved output.]",
+        text.chars().take(limit).collect::<String>()
+    )
 }
 
 pub(super) fn fingerprint(capability: &Capability, params: &Value) -> String {
     use sha2::{Digest, Sha256};
     // Binds approval to arguments AND the tool's current policy/schema.
-    hex::encode(Sha256::digest(serde_json::to_vec(&json!({"capability":capability,"params":params})).unwrap()))
+    hex::encode(Sha256::digest(
+        serde_json::to_vec(&json!({"capability":capability,"params":params})).unwrap(),
+    ))
 }
 
 pub(super) fn operation_key(id: &str, params: &Value) -> String {
     use sha2::{Digest, Sha256};
-    hex::encode(Sha256::digest(json!({"tool":id,"params":params}).to_string().as_bytes()))
+    hex::encode(Sha256::digest(
+        json!({"tool":id,"params":params}).to_string().as_bytes(),
+    ))
 }
 
 pub(crate) fn is_work_recipe(recipe: &Recipe) -> bool {
@@ -121,15 +182,15 @@ mod tests {
     fn approval_cannot_survive_argument_or_policy_changes() {
         let mut cap = Capability::default();
         cap.id = "note.create".into();
-        let first = fingerprint(&cap,&json!({"title":"one"}));
-        assert_ne!(first,fingerprint(&cap,&json!({"title":"two"})));
+        let first = fingerprint(&cap, &json!({"title":"one"}));
+        assert_ne!(first, fingerprint(&cap, &json!({"title":"two"})));
         cap.required_permissions.push("new:permission".into());
-        assert_ne!(first,fingerprint(&cap,&json!({"title":"one"})));
+        assert_ne!(first, fingerprint(&cap, &json!({"title":"one"})));
     }
     #[test]
     fn bounded_results_preserve_unicode_and_indicate_retrieval() {
         let value = json!("東京".repeat(30));
-        let text = preview(&value,10);
+        let text = preview(&value, 10);
         assert!(text.starts_with("\"東京東京"));
         assert!(text.contains("read_result"));
     }

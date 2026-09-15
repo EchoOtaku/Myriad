@@ -21,6 +21,7 @@ pub mod tapp_scheduled_tasks;
 pub mod tapp_task_executions;
 
 // Phantasi 阅读系统实体
+pub mod media_assets;
 pub mod phantasi_annotations;
 pub mod phantasi_categories;
 pub mod phantasi_comments;
@@ -29,7 +30,6 @@ pub mod phantasi_note_docs;
 pub mod phantasi_podcasts;
 pub mod phantasi_sources;
 pub mod phantasi_user_states;
-pub mod media_assets;
 pub mod rsshub_instances;
 
 // Agent 任务系统实体

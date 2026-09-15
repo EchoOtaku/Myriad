@@ -5,11 +5,12 @@
 //! 也只有一个能拿到。
 
 use chrono::{TimeZone, Utc};
-use myriad_phantasi_notes::{NoteDocStatus, is_due, note_guid, note_link, render_note, validate_note};
+use myriad_phantasi_notes::{
+    NoteDocStatus, is_due, note_guid, note_link, render_note, validate_note,
+};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
-    EntityTrait, PaginatorTrait, QueryFilter, Set, Statement, TransactionTrait,
-    Value as SeaValue,
+    EntityTrait, PaginatorTrait, QueryFilter, Set, Statement, TransactionTrait, Value as SeaValue,
 };
 use serde::Serialize;
 
@@ -57,7 +58,6 @@ async fn ensure_note_source<C: ConnectionTrait>(
     user_id: i32,
 ) -> Result<phantasi_sources::Model, HttpError> {
     let existing = phantasi_sources::Entity::find()
-        .filter(phantasi_sources::Column::UserId.eq(user_id))
         .filter(phantasi_sources::Column::SourceType.eq(phantasi_sources::SourceType::Note))
         .one(db)
         .await
@@ -207,18 +207,35 @@ async fn mark_doc_published<C: ConnectionTrait>(
         .and_then(millis_to_datetime)
         .or_else(|| doc.published_at.map(|dt| dt.with_timezone(&Utc)))
         .unwrap_or(now);
-    let mut active: phantasi_note_docs::ActiveModel = doc.clone().into();
+    let expected = doc.revision;
+    let mut active = <phantasi_note_docs::ActiveModel as std::default::Default>::default();
     active.item_id = Set(Some(item.id));
     active.status = Set(NoteDocStatus::Published.as_str().to_string());
     active.scheduled_at = Set(None);
     active.published_at = Set(Some(published_at.into()));
     active.last_error = Set(None);
     active.updated_at = Set(now.into());
-    active.revision = Set(doc.revision + 1);
-    doc = active
-        .update(db)
+    active.revision = Set(expected + 1);
+    let result = phantasi_note_docs::Entity::update_many()
+        .set(active)
+        .filter(phantasi_note_docs::Column::Id.eq(doc.id))
+        .filter(phantasi_note_docs::Column::Revision.eq(expected))
+        .exec(db)
         .await
         .map_err(|e| phantasi_store_http("save note doc", e))?;
+    if result.rows_affected == 0 {
+        return Err(phantasi_http_err(
+            StatusCode::CONFLICT,
+            "Note draft was updated elsewhere",
+        ));
+    }
+    doc.item_id = Some(item.id);
+    doc.status = NoteDocStatus::Published.as_str().to_string();
+    doc.scheduled_at = None;
+    doc.published_at = Some(published_at.into());
+    doc.last_error = None;
+    doc.updated_at = now.into();
+    doc.revision = expected + 1;
     Ok(doc)
 }
 
@@ -505,6 +522,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn note_source_is_shared_catalog_not_creator_keyed() {
+        let src = include_str!("note_publish.rs");
+        let start = src
+            .find("async fn ensure_note_source")
+            .expect("ensure_note_source");
+        let body = &src[start..];
+        let end = body[1..]
+            .find("\nasync fn ")
+            .map(|index| index + 1)
+            .unwrap_or(body.len());
+        let finder = &body[..end];
+        assert!(finder.contains("SourceType::Note"));
+        assert!(
+            !finder.contains("UserId.eq"),
+            "shared note source must not be keyed by the creating admin"
+        );
+    }
+
+    #[test]
     fn millis_round_trip_for_doc_timestamps() {
         let ms = 1_700_000_000_000;
         let dt = millis_to_datetime(ms).expect("valid millis");
@@ -565,7 +601,7 @@ mod tests {
             detach.contains("THEN 'draft'"),
             "published docs without an article must go back to draft"
         );
-        let delete = include_str!("../api/phantasi/feeds_articles.rs");
+        let delete = include_str!("../api/phantasi/feeds_sources.rs");
         let start = delete
             .find("pub(crate) async fn delete_source")
             .expect("delete_source");
@@ -574,7 +610,10 @@ mod tests {
             body.contains("detach_note_docs_for_source"),
             "deleting a source must detach note docs first"
         );
-        assert!(body.contains(".begin()"), "source delete must be transactional");
+        assert!(
+            body.contains(".begin()"),
+            "source delete must be transactional"
+        );
         let heal = include_str!("../db/schema_check/ensure_heals.rs");
         assert!(
             heal.contains("AND NOT EXISTS (SELECT 1 FROM phantasi_items i WHERE i.id = d.item_id)"),

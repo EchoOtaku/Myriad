@@ -27,6 +27,7 @@ import {
   RAIL_MOUNT_RESERVE,
   RAIL_MOUNT_SETTLE_EXTRA,
   railCardKeepsPaint,
+  railCardOffset,
   railCoastStep,
   railColumnSlotAt,
   railColumnSlots,
@@ -106,6 +107,8 @@ describe('railSeatScroll', () => {
   it('网站轨选中卡让出左缘一截，前一张溢出', () => {
     assert.equal(railSeatScroll(cards, 0, 44), 0)
     assert.equal(railSeatScroll(cards, 2, 44), 596)
+    assert.equal(railCardOffset(cards, 2), 640)
+    assert.equal(railCardOffset(cards, -1), 0)
   })
 })
 
@@ -180,6 +183,8 @@ describe('railCardKeepsPaint / railMountColumns', () => {
     assert.ok(settled.to >= ideal.to)
     assert.ok(settled.from <= ideal.from)
     assert.ok(settled.to - settled.from < far.to - far.from)
+    assert.equal(settled.from, Math.max(1, ideal.from - RAIL_MOUNT_SETTLE_EXTRA))
+    assert.ok(settled.from < ideal.from)
   })
 
   it('扩窗一次多挂几列，下一列仍盖住预显', () => {
@@ -656,6 +661,14 @@ describe('railCardKeepsPaint / railMountColumns', () => {
       )
       assert.equal(created.length, 4)
       assert.equal(kids.length, 4)
+      ensureStoryShells(
+        host as unknown as ParentNode,
+        8,
+        8,
+        [{ column: 8, row: 1 }],
+      )
+      assert.equal(created.length, 5)
+      assert.equal(kids.length, 5)
     } finally {
       globalThis.document = prevDoc
     }
@@ -823,6 +836,7 @@ describe('followRailScroll', () => {
     assert.equal(hint.i, 1)
     assert.equal(followRailScroll(100, drive, follow, hint), 50)
     assert.equal(hint.i, 0)
+    assert.equal(followRailScroll(0.1, [0, 0.2, 400], [0, 120, 240]), 0)
   })
 
   it('按文章卡的源起点去跟网站卡座位', () => {
@@ -875,6 +889,11 @@ describe('usePhantasiRailPan 热路', () => {
       join(dirname(fileURLToPath(import.meta.url)), 'usePhantasiRailPan.ts'),
       'utf8',
     )
+    assert.doesNotMatch(src, /rubberband/)
+    assert.match(src, /到边即停/)
+    assert.match(src, /不越界回弹/)
+    assert.match(src, /clampConversationScroll\(home \+ wheelAcc/)
+    assert.match(src, /clampConversationScroll\(target \+ dx/)
     assert.match(src, /if \(overflowLeft\) return/)
     assert.match(src, /if \(!overflowLeft\) scheduleExit/)
     assert.match(src, /if \(onLeadChangeRef\.current\) reportLead/)
@@ -884,6 +903,10 @@ describe('usePhantasiRailPan 热路', () => {
     assert.doesNotMatch(src, /samples\.shift/)
     assert.match(src, /onIdleRef/)
     assert.match(src, /beginGrab/)
+    assert.match(
+      src.slice(src.indexOf('const beginGrab'), src.indexOf('const releaseGrab')),
+      /willChange/,
+    )
     assert.match(src, /releaseGrab/)
     assert.match(src, /if \(grabOn\) return/)
     assert.match(src, /persistScroll/)
@@ -901,7 +924,10 @@ describe('usePhantasiRailPan 热路', () => {
       src.indexOf('const onWheel'),
     )
     assert.match(wheelIdle, /releaseGrab/)
-    assert.match(wheelIdle, /RAIL_WHEEL_COAST_PX_S/)
+    assert.doesNotMatch(wheelIdle, /RAIL_WHEEL_COAST_PX_S/)
+    assert.doesNotMatch(wheelIdle, /finishCoast/)
+    assert.match(wheelIdle, /current = target/)
+    assert.match(wheelIdle, /current = clampConversationScroll\(current, max\)/)
     const seek = src.slice(src.indexOf('const seek ='), src.indexOf('if (apiRef)'))
     assert.match(seek, /writeTransform/)
     assert.match(
@@ -938,7 +964,9 @@ describe('usePhantasiRailPan 热路', () => {
     assert.match(src, /notifyScroll\(syncScroll\)/)
     const tick = src.slice(src.indexOf('const tick ='), src.indexOf('const kick ='))
     assert.match(tick, /if \(!arrived\) \{\n {8}write\(true\)/)
-    assert.match(tick, /write\(true\)\n {6}stop\(\)/)
+    assert.match(tick, /write\(true\)\n {6}stop\(fromPointer \? 0 : RAIL_WHEEL_SETTLE_MS\)/)
+    assert.match(tick, /current = clampConversationScroll\(current, max\)/)
+    assert.doesNotMatch(tick, /seating = true/)
     assert.match(src, /lastLeadCol/)
     assert.match(src, /if \(col === lastLeadCol\) return/)
     assert.match(src, /if \(fresh \|\| !cards\.length\) recache/)
@@ -950,6 +978,9 @@ describe('usePhantasiRailPan 热路', () => {
     assert.match(src, /is-rail-panning/)
     assert.match(src, /pointerdown/)
     assert.match(src, /RAIL_DRAG_SLOP_PX/)
+    assert.match(src, /RAIL_FLING_SLOT_PX_S/)
+    assert.match(src, /fromPointer/)
+    assert.match(src, /stop\(fromPointer \? 0 : RAIL_WHEEL_SETTLE_MS\)/)
     assert.doesNotMatch(src, /snapSlots/)
     assert.doesNotMatch(src, /settleRailSlot/)
     assert.match(src, /if \(!cardList\)/)

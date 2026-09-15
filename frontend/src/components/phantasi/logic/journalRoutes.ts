@@ -156,18 +156,25 @@ export function navIdForJournalLocation(
   return 'feeds'
 }
 
-/** 二级导航点到当前板块时不必再跳；主题/源/文章不算已经在该板块首页。 */
+/** 这条地址是否已经落在该二级导航下（含子路径）。文章是叠层，不算停在任何板块首页。 */
 export function pathShowsNavId(pathname: string, navId: string): boolean {
   const loc = parseJournalPath(pathname)
-  if (!loc) return false
-  if (loc.kind === 'article' || loc.kind === 'topic' || loc.kind === 'source') {
-    return false
-  }
-  if (loc.kind === 'workbench') return navId === 'workbench'
-  if (loc.kind === 'starred') return navId === 'starred'
-  if (loc.kind === 'notes') return navId === 'notes'
-  if (loc.kind === 'friends') return navId === 'sites'
-  return navId === 'feeds'
+  if (!loc || loc.kind === 'article') return false
+  return navIdForJournalLocation(loc, true, true) === navId
+}
+
+/**
+ * 用户点了二级导航才改 URL。路径刚同步过来的 activeId 不得回写，
+ * 否则刷新 `/journal/notes` 时默认 `feeds` 与 URL 会互相 navigate。
+ */
+export function pathForActiveIdChange(
+  pathname: string,
+  activeId: string,
+  fromPathSync: boolean,
+): string | null {
+  if (fromPathSync) return null
+  if (pathShowsNavId(pathname, activeId)) return null
+  return journalPathForNavId(activeId)
 }
 
 export function seoListNoindex(viewMode: PhantasiViewMode): boolean {

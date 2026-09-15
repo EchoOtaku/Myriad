@@ -85,7 +85,8 @@ export type CardSize = 'bar' | 'tiny' | 'mini' | 'full'
 
 export interface PhantasiSource {
   id: number
-  user_id: number
+  /** 共享目录不再回创建者；旧包/夹具可能仍带。 */
+  user_id?: number
   name: string
   url: string
   feed_type: FeedType
@@ -177,6 +178,8 @@ export interface PhantasiNoteDoc {
   authors?: PhantasiNoteAuthor[]
   title: string
   content_md: string
+  has_body?: boolean
+  excerpt?: string | null
   topic: string | null
   image: string | null
   status: PhantasiNoteDocStatus
@@ -199,7 +202,7 @@ export interface PhantasiNoteDocInput {
 
 export interface PhantasiCategory {
   id: number
-  user_id: number
+  user_id?: number
   name: string
   icon: string | null
   color: string | null

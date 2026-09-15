@@ -680,7 +680,10 @@ mod tests {
         let defaults = DynamicConfig::default();
 
         // phantasi:write remains Basic and requires a durable login; commentWrite is Elevated.
-        assert_eq!(TappPermission::PhantasiWrite.level(), PermissionLevel::Basic);
+        assert_eq!(
+            TappPermission::PhantasiWrite.level(),
+            PermissionLevel::Basic
+        );
         assert_eq!(
             TappPermission::PhantasiCommentWrite.level(),
             PermissionLevel::Elevated
@@ -782,7 +785,10 @@ mod tests {
         let granted = TappPermissionService::filter_permissions_for_role(
             &config,
             UserRole::User,
-            &["phantasi:read".to_string(), "phantasi:commentWrite".to_string()],
+            &[
+                "phantasi:read".to_string(),
+                "phantasi:commentWrite".to_string(),
+            ],
         )
         .unwrap();
         assert_eq!(granted, vec!["phantasi:read", "phantasi:commentWrite"]);

@@ -17,7 +17,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use super::helpers::{phantasi_http_err, phantasi_store_http, get_admin_user_id_from_headers};
+use super::helpers::{get_admin_user_id_from_headers, phantasi_http_err, phantasi_store_http};
 use super::note_collab::{NoteCollabEvent, note_collab_hub};
 use crate::error::HttpError;
 use crate::middleware::auth::Claims;
@@ -59,6 +59,9 @@ pub(crate) struct NoteDocResponse {
     pub authors: Vec<NoteAuthorFace>,
     pub title: String,
     pub content_md: String,
+    pub has_body: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub excerpt: Option<String>,
     pub topic: Option<String>,
     pub image: Option<String>,
     pub status: String,
@@ -69,7 +72,16 @@ pub(crate) struct NoteDocResponse {
     pub updated_at: i64,
 }
 
+fn note_excerpt(md: &str) -> String {
+    let trimmed = md.trim();
+    if trimmed.chars().count() <= 80 {
+        return trimmed.to_string();
+    }
+    trimmed.chars().take(80).collect()
+}
+
 fn to_response(doc: phantasi_note_docs::Model) -> NoteDocResponse {
+    let has_body = !doc.content_md.trim().is_empty();
     NoteDocResponse {
         id: doc.id,
         item_id: doc.item_id,
@@ -79,6 +91,8 @@ fn to_response(doc: phantasi_note_docs::Model) -> NoteDocResponse {
         authors: Vec::new(),
         title: doc.title,
         content_md: doc.content_md,
+        has_body,
+        excerpt: None,
         topic: doc.topic,
         image: doc.image,
         status: doc.status,
@@ -90,6 +104,44 @@ fn to_response(doc: phantasi_note_docs::Model) -> NoteDocResponse {
     }
 }
 
+fn first_body_image(markdown: &str) -> Option<String> {
+    let mut search = markdown;
+    while let Some(bang) = search.find("![") {
+        let rest = &search[bang + 2..];
+        let Some(close_alt) = rest.find("](") else {
+            break;
+        };
+        let after = &rest[close_alt + 2..];
+        let Some(end) = after.find(')') else {
+            break;
+        };
+        let url = after[..end].split_whitespace().next()?.trim();
+        if !url.is_empty() && !url.starts_with('#') {
+            return Some(url.to_string());
+        }
+        search = &after[end + 1..];
+    }
+    None
+}
+
+fn to_list_response(doc: phantasi_note_docs::Model) -> NoteDocResponse {
+    let has_body = !doc.content_md.trim().is_empty();
+    let excerpt = has_body.then(|| note_excerpt(&doc.content_md));
+    let cover = doc
+        .image
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| first_body_image(&doc.content_md));
+    let mut row = to_response(doc);
+    row.content_md = String::new();
+    row.has_body = has_body;
+    row.excerpt = excerpt;
+    row.image = cover;
+    row
+}
+
 fn note_docs_with_authors(
     docs: Vec<phantasi_note_docs::Model>,
     authors: std::collections::HashMap<i32, Vec<NoteAuthorFace>>,
@@ -97,7 +149,7 @@ fn note_docs_with_authors(
     docs.into_iter()
         .map(|doc| {
             let list = authors.get(&doc.id).cloned().unwrap_or_default();
-            attach_authors(to_response(doc), list)
+            attach_authors(to_list_response(doc), list)
         })
         .collect()
 }
@@ -163,7 +215,10 @@ fn empty_to_none(value: Option<String>) -> Option<String> {
     })
 }
 
-async fn find_doc(db: &DatabaseConnection, id: i32) -> Result<phantasi_note_docs::Model, HttpError> {
+async fn find_doc(
+    db: &DatabaseConnection,
+    id: i32,
+) -> Result<phantasi_note_docs::Model, HttpError> {
     phantasi_note_docs::Entity::find_by_id(id)
         .one(db)
         .await
@@ -232,7 +287,9 @@ pub(crate) async fn get_note_doc(
 ) -> Result<Json<serde_json::Value>, HttpError> {
     get_admin_user_id_from_headers(&headers, &db).await?;
     let doc = find_doc(&db, id).await?;
-    Ok(Json(json!({ "success": true, "doc": respond_doc(&db, doc).await? })))
+    Ok(Json(
+        json!({ "success": true, "doc": respond_doc(&db, doc).await? }),
+    ))
 }
 
 /// `GET /notes/docs/for-item/{item_id}` — 给已发布笔记找或建对应文档。
@@ -248,7 +305,9 @@ pub(crate) async fn get_note_doc_for_item(
         .await
         .map_err(|e| phantasi_store_http("find note doc", e))?
     {
-        return Ok(Json(json!({ "success": true, "doc": respond_doc(&db, doc).await? })));
+        return Ok(Json(
+            json!({ "success": true, "doc": respond_doc(&db, doc).await? }),
+        ));
     }
     let item = crate::models::entities::phantasi_items::Entity::find_by_id(item_id)
         .one(&db)
@@ -376,7 +435,14 @@ pub(crate) async fn publish_note_doc(
     Json(req): Json<NoteDocWriteRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
+    let expected = expected_revision(req.revision)?;
     let mut doc = find_doc(&db, id).await?;
+    if !revision_matches(expected, doc.revision) {
+        return Err(phantasi_http_err(
+            StatusCode::CONFLICT,
+            "Note draft was updated elsewhere",
+        ));
+    }
     if let Some(title) = req.title.clone() {
         doc.title = title;
     }
@@ -392,6 +458,27 @@ pub(crate) async fn publish_note_doc(
     let published_at = req
         .published_at
         .or(doc.published_at.map(datetime_to_millis));
+    let mut active = <phantasi_note_docs::ActiveModel as std::default::Default>::default();
+    active.title = Set(doc.title.clone());
+    active.content_md = Set(doc.content_md.clone());
+    active.topic = Set(doc.topic.clone());
+    active.image = Set(doc.image.clone());
+    active.updated_at = Set(Utc::now().into());
+    active.revision = Set(expected + 1);
+    let claimed = phantasi_note_docs::Entity::update_many()
+        .set(active)
+        .filter(phantasi_note_docs::Column::Id.eq(id))
+        .filter(phantasi_note_docs::Column::Revision.eq(expected))
+        .exec(&db)
+        .await
+        .map_err(|e| phantasi_store_http("claim note publish", e))?;
+    if claimed.rows_affected == 0 {
+        return Err(phantasi_http_err(
+            StatusCode::CONFLICT,
+            "Note draft was updated elsewhere",
+        ));
+    }
+    doc.revision = expected + 1;
     ensure_note_author(&db, doc.id, user_id, doc.user_id).await?;
     let (item, saved) = publish_doc(&db, doc, published_at).await?;
     Ok(Json(json!({
@@ -426,6 +513,13 @@ pub(crate) async fn schedule_note_doc(
             phantasi_http_err(StatusCode::BAD_REQUEST, "A schedule time is required")
         }
     })?;
+    let expected = expected_revision(req.revision)?;
+    if !revision_matches(expected, doc.revision) {
+        return Err(phantasi_http_err(
+            StatusCode::CONFLICT,
+            "Note draft was updated elsewhere",
+        ));
+    }
     let title = req.title.clone().unwrap_or_else(|| doc.title.clone());
     let content_md = req
         .content_md
@@ -433,7 +527,7 @@ pub(crate) async fn schedule_note_doc(
         .unwrap_or_else(|| doc.content_md.clone());
     validate_note(&title, &content_md)
         .map_err(|err| phantasi_http_err(StatusCode::BAD_REQUEST, err.message()))?;
-    let mut active: phantasi_note_docs::ActiveModel = doc.clone().into();
+    let mut active = <phantasi_note_docs::ActiveModel as std::default::Default>::default();
     active.title = Set(title);
     active.content_md = Set(content_md);
     if req.topic.is_some() {
@@ -446,12 +540,22 @@ pub(crate) async fn schedule_note_doc(
     active.scheduled_at = Set(millis_to_datetime(at).map(|value| value.into()));
     active.published_at = Set(millis_to_datetime(at).map(|value| value.into()));
     active.updated_at = Set(Utc::now().into());
-    active.revision = Set(doc.revision + 1);
+    active.revision = Set(expected + 1);
     active.last_error = Set(None);
-    let saved = active
-        .update(&db)
+    let result = phantasi_note_docs::Entity::update_many()
+        .set(active)
+        .filter(phantasi_note_docs::Column::Id.eq(id))
+        .filter(phantasi_note_docs::Column::Revision.eq(expected))
+        .exec(&db)
         .await
         .map_err(|e| phantasi_store_http("schedule note doc", e))?;
+    if result.rows_affected == 0 {
+        return Err(phantasi_http_err(
+            StatusCode::CONFLICT,
+            "Note draft was updated elsewhere",
+        ));
+    }
+    let saved = find_doc(&db, id).await?;
     Ok(Json(json!({
         "success": true,
         "doc": credit_and_respond(&db, saved, user_id).await?,
@@ -463,25 +567,43 @@ pub(crate) async fn unschedule_note_doc(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
     Path(id): Path<i32>,
+    Json(req): Json<NoteDocWriteRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
+    let expected = expected_revision(req.revision)?;
     let doc = find_doc(&db, id).await?;
+    if !revision_matches(expected, doc.revision) {
+        return Err(phantasi_http_err(
+            StatusCode::CONFLICT,
+            "Note draft was updated elsewhere",
+        ));
+    }
     if doc.status != NoteDocStatus::Scheduled.as_str() {
         return Ok(Json(json!({
             "success": true,
             "doc": credit_and_respond(&db, doc, user_id).await?,
         })));
     }
-    let mut active: phantasi_note_docs::ActiveModel = doc.clone().into();
+    let mut active = <phantasi_note_docs::ActiveModel as std::default::Default>::default();
     active.status = Set(NoteDocStatus::Draft.as_str().to_string());
     active.scheduled_at = Set(None);
     active.last_error = Set(None);
     active.updated_at = Set(Utc::now().into());
-    active.revision = Set(doc.revision + 1);
-    let saved = active
-        .update(&db)
+    active.revision = Set(expected + 1);
+    let result = phantasi_note_docs::Entity::update_many()
+        .set(active)
+        .filter(phantasi_note_docs::Column::Id.eq(id))
+        .filter(phantasi_note_docs::Column::Revision.eq(expected))
+        .exec(&db)
         .await
         .map_err(|e| phantasi_store_http("unschedule note doc", e))?;
+    if result.rows_affected == 0 {
+        return Err(phantasi_http_err(
+            StatusCode::CONFLICT,
+            "Note draft was updated elsewhere",
+        ));
+    }
+    let saved = find_doc(&db, id).await?;
     Ok(Json(json!({
         "success": true,
         "doc": credit_and_respond(&db, saved, user_id).await?,
@@ -734,5 +856,62 @@ mod tests {
             "publish must keep the original owner"
         );
         assert!(publish.contains("ensure_note_author"));
+        assert!(publish.contains("expected_revision"));
+        assert!(publish.contains("update_many()"));
+        assert!(publish.contains("Column::Revision.eq(expected)"));
+    }
+
+    #[test]
+    fn schedule_and_unschedule_use_revision_lock() {
+        let src = include_str!("note_docs.rs");
+        let schedule = {
+            let start = src
+                .find("pub(crate) async fn schedule_note_doc")
+                .expect("schedule_note_doc");
+            let body = &src[start..];
+            let end = body[1..]
+                .find("\npub(crate) async fn ")
+                .map(|index| index + 1)
+                .unwrap_or(body.len());
+            &body[..end]
+        };
+        let unschedule = {
+            let start = src
+                .find("pub(crate) async fn unschedule_note_doc")
+                .expect("unschedule_note_doc");
+            let body = &src[start..];
+            let end = body[1..]
+                .find("\npub(crate) async fn ")
+                .map(|index| index + 1)
+                .unwrap_or(body.len());
+            &body[..end]
+        };
+        assert!(schedule.contains("expected_revision"));
+        assert!(schedule.contains("update_many()"));
+        assert!(schedule.contains("Column::Revision.eq(expected)"));
+        assert!(unschedule.contains("expected_revision"));
+        assert!(unschedule.contains("update_many()"));
+        assert!(unschedule.contains("Column::Revision.eq(expected)"));
+        assert!(unschedule.contains("Json<NoteDocWriteRequest>"));
+    }
+
+    #[test]
+    fn list_docs_strip_body() {
+        let src = include_str!("note_docs.rs");
+        let start = src.find("fn to_list_response").expect("to_list_response");
+        let body = &src[start..];
+        assert!(body.contains("row.content_md = String::new()"));
+        assert!(body.contains("note_excerpt"));
+        assert!(body.contains("first_body_image"));
+        assert!(body.contains("row.image = cover"));
+    }
+
+    #[test]
+    fn first_body_image_reads_inline_markdown() {
+        assert_eq!(
+            first_body_image("前文\n![内文](https://img.example/body.jpg)"),
+            Some("https://img.example/body.jpg".into())
+        );
+        assert_eq!(first_body_image("没有图"), None);
     }
 }

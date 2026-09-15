@@ -37,7 +37,18 @@ describe('phantasi/skin 边界', () => {
   })
 
   it('工作台是仪表盘壳：侧栏一页一项，分类标题用 SettingSection', () => {
-    const src = readFileSync(join(dir, 'PhantasiWorkbench.tsx'), 'utf8')
+    const src = [
+      'PhantasiWorkbench.tsx',
+      'PhantasiWorkbenchHome.tsx',
+      'PhantasiWorkbenchNotes.tsx',
+      'PhantasiWorkbenchComments.tsx',
+      'PhantasiWorkbenchMedia.tsx',
+      'PhantasiWorkbenchIo.tsx',
+      'PhantasiWorkbenchFeeds.tsx',
+      'PhantasiWorkbenchChrome.tsx',
+    ]
+      .map((file) => readFileSync(join(dir, file), 'utf8'))
+      .join('\n')
     assert.match(src, /phantasi-workbench__rail/)
     assert.match(src, /config-sidebar/)
     assert.match(src, /config-nav-item/)
@@ -68,7 +79,7 @@ describe('phantasi/skin 边界', () => {
     assert.match(src, /workbenchSearchCategories/)
     assert.match(src, /workbenchCategories/)
     assert.match(src, /open\('noteCategories'\)/)
-    assert.match(src, /open\('sourceCategories'\)/)
+    assert.match(src, /onPane\('sourceCategories'\)|open\('sourceCategories'\)/)
     assert.match(src, /pane === 'noteCategories'/)
     assert.match(src, /pane === 'sourceCategories'/)
     assert.doesNotMatch(src, /pane: 'categories'/)
@@ -126,7 +137,9 @@ describe('phantasi/skin 边界', () => {
     assert.doesNotMatch(src, /pane === 'wordpress'/)
     assert.doesNotMatch(src, /pane === 'pipack'/)
     assert.match(src, /admin/)
-    assert.doesNotMatch(src, /SettingGroup/)
+    assert.match(src, /SettingGroupGrid/)
+    assert.match(src, /phantasi-workbench__io-grid/)
+    assert.doesNotMatch(src, /<SettingGroup[\s/>]/)
     assert.doesNotMatch(src, /from ['"]\.\.\/manager/)
   })
 })

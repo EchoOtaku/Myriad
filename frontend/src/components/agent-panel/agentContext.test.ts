@@ -7,7 +7,7 @@ test('认得出常见路由，也认得出首页', () => {
   assert.equal(agentContextRoute(''), 'home')
   assert.equal(agentContextRoute('/journal'), 'phantasi')
   assert.equal(agentContextRoute('/journal/articles/42'), 'phantasi')
-  assert.equal(agentContextRoute('/phantasi/articles/42'), 'phantasi')
+  assert.equal(agentContextRoute('/phantasi/articles/42'), 'other')
   assert.equal(agentContextRoute('/config'), 'config')
   assert.equal(agentContextRoute('/tapp/run/abc'), 'tapp')
 })

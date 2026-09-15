@@ -1,6 +1,7 @@
 //! ActivityPub object construction, audience addressing, and delivery fan-out.
 
 use axum::{Json, http::StatusCode};
+use myriad_phantasi::article_federation_path;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::json;
 
@@ -220,7 +221,7 @@ pub(super) async fn build_ap_object(
 
             Ok(json!({
                 "type": "Article",
-                "id": format!("{}/phantasi/articles/{}", base_url, item_id),
+                "id": format!("{}{}", base_url, article_federation_path(item_id)),
                 "attributedTo": &local_actor,
                 "name": &title,
                 "content": format!("<p>{}</p>", &summary_text),

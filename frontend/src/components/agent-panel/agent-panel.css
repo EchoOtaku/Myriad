@@ -1145,7 +1145,9 @@ button.agent-panel-tag:disabled {
   touch-action: pan-x;
 }
 
-.agent-panel-work-chrome .agent-panel-swap .agent-panel-tag-text::-webkit-scrollbar {
+.agent-panel-work-chrome
+  .agent-panel-swap
+  .agent-panel-tag-text::-webkit-scrollbar {
   display: none;
 }
 
@@ -3826,4 +3828,27 @@ html.dark .agent-panel-aurora[data-status='error']::after {
   filter: drop-shadow(
     0 0 4px color-mix(in srgb, var(--color-primary, #10b981) 45%, transparent)
   );
+}
+
+/* A revisable checklist remains distinct from actual tool execution history. */
+.agent-panel-work-plan {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0;
+  margin: 0 0 0.75rem;
+  list-style: none;
+}
+
+.agent-panel-work-plan li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.agent-panel-work-plan li[data-status='completed'] {
+  opacity: 0.65;
+}
+
+.agent-panel-work-plan li[data-status='in_progress'] {
+  font-weight: 600;
 }

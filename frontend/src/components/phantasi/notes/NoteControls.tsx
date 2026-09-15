@@ -4,7 +4,7 @@
  */
 
 import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from 'react'
-import { LuChevronDown as ChevronDown } from '@lib/icons'
+import { LuChevronDown as ChevronDown, LuX as X } from '@lib/icons'
 import { useId } from 'react'
 import { ButtonSpinner } from '../../Spinner'
 import { fromDatetimeLocal, toDatetimeLocal } from './noteFields'
@@ -140,6 +140,75 @@ export function NoteField({ label, hint, htmlFor, children }: NoteFieldProps) {
   )
 }
 
+interface NoteSectionProps {
+  title: ReactNode
+  hint?: ReactNode
+  children: ReactNode
+}
+
+export function NoteSection({ title, hint, children }: NoteSectionProps) {
+  return (
+    <section className="note-section">
+      <h3 className="note-section__title">{title}</h3>
+      {hint ? <p className="note-field__hint">{hint}</p> : null}
+      <div className="note-section__body">{children}</div>
+    </section>
+  )
+}
+
+interface NoteChipProps {
+  children: ReactNode
+  active?: boolean
+  muted?: boolean
+  onClick?: () => void
+  onDismiss?: () => void
+  dismissLabel?: string
+}
+
+export function NoteChip({
+  children,
+  active = false,
+  muted = false,
+  onClick,
+  onDismiss,
+  dismissLabel,
+}: NoteChipProps) {
+  const className = [
+    'note-chip',
+    active ? 'is-on' : '',
+    muted ? 'is-muted' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+  const label = <span className="note-chip__label">{children}</span>
+  const dismiss = onDismiss ? (
+    <button
+      type="button"
+      className="note-chip__dismiss"
+      aria-label={dismissLabel}
+      onClick={onDismiss}
+    >
+      <X />
+    </button>
+  ) : null
+  if (onClick) {
+    return (
+      <span className={className}>
+        <button type="button" className="note-chip__face" onClick={onClick}>
+          {label}
+        </button>
+        {dismiss}
+      </span>
+    )
+  }
+  return (
+    <span className={className}>
+      {label}
+      {dismiss}
+    </span>
+  )
+}
+
 interface NoteSelectProps<T extends string> {
   id?: string
   value: T
@@ -185,13 +254,15 @@ interface NoteDateInputProps {
 
 export function NoteDateInput({ id, value, onChange, ...rest }: NoteDateInputProps) {
   return (
-    <input
-      id={id}
-      type="datetime-local"
-      className="note-input"
-      value={toDatetimeLocal(value ?? 0)}
-      onChange={(event) => onChange(fromDatetimeLocal(event.target.value))}
-      aria-label={rest['aria-label']}
-    />
+    <span className="note-date">
+      <input
+        id={id}
+        type="datetime-local"
+        className="note-input note-date__native"
+        value={toDatetimeLocal(value ?? 0)}
+        onChange={(event) => onChange(fromDatetimeLocal(event.target.value))}
+        aria-label={rest['aria-label']}
+      />
+    </span>
   )
 }

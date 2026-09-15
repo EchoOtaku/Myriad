@@ -186,7 +186,6 @@ pub struct UpdateSourceRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SourceResponse {
     pub id: i32,
-    pub user_id: i32,
     pub name: String,
     pub url: String,
     pub feed_type: String,
@@ -222,7 +221,6 @@ impl From<Model> for SourceResponse {
     fn from(m: Model) -> Self {
         Self {
             id: m.id,
-            user_id: m.user_id,
             name: m.name,
             url: m.url,
             feed_type: match m.feed_type {

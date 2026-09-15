@@ -301,6 +301,18 @@ html.dark .phantasi-workbench {
   gap: 0.75rem;
 }
 
+.phantasi-workbench .managed-list-filter-toolbar,
+.phantasi-workbench .managed-list-filter-expanded {
+  gap: 0.28rem;
+}
+
+.phantasi-workbench .managed-list-filter-toolbar .setting-title-tag,
+.phantasi-workbench .managed-list-filter-toolbar .setting-title-select--title,
+.phantasi-workbench .managed-list-filter-expanded .setting-title-tag,
+.phantasi-workbench .managed-list-filter-expanded .setting-title-select--title {
+  min-height: 1.8rem;
+}
+
 .phantasi-workbench .managed-list-body {
   gap: 0.55rem;
   padding: 0;
@@ -534,26 +546,99 @@ html.dark .phantasi-workbench__kpi.is-danger .phantasi-workbench__kpi-value {
   color: #fca5a5;
 }
 
+.phantasi-workbench__io-grid {
+  --sg-grid-gap: 0.7rem;
+  --sg-grid-min: 16rem;
+}
+
+.phantasi-workbench__io-grid > .phantasi-workbench__io-item {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin: 0;
+  padding: 0.55rem 0.65rem 0.6rem;
+  border: 1px solid var(--cfg-subtle-border);
+  border-radius: 0.75rem;
+  background: var(--cfg-subtle-bg);
+  box-sizing: border-box;
+}
+
+.phantasi-workbench__io-grid > .phantasi-workbench__io-item > .setting-label {
+  margin-bottom: 0.28rem;
+}
+
+.phantasi-workbench__io-grid > .phantasi-workbench__io-item > .setting-control {
+  min-width: 0;
+}
+
+.phantasi-workbench__io-grid .phantasi-add-form,
+.phantasi-workbench__io-grid .phantasi-add-form__stack,
+.phantasi-workbench__io-grid #workbench-opml {
+  min-width: 0;
+}
+
+.phantasi-workbench__io-grid .phantasi-add-form__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.phantasi-workbench__io-grid .phantasi-add-form__drop {
+  position: relative;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.2rem 0.45rem;
+  min-height: 0;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.65rem;
+  background: var(--cfg-fill);
+}
+
+.phantasi-workbench__io-grid .phantasi-add-form__drop svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.phantasi-workbench__io-grid .phantasi-add-form__drop p {
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+
+.phantasi-workbench__io-grid .phantasi-add-form__drop small {
+  flex-basis: 100%;
+  font-size: 0.625rem;
+  line-height: 1.3;
+}
+
+.phantasi-workbench__io-grid .phantasi-add-form__actions {
+  gap: 0.3rem;
+}
+
 .phantasi-workbench__transfer,
 .phantasi-workbench__transfer-actions {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.35rem;
   min-width: 0;
+}
+
+.phantasi-workbench__transfer-progress {
+  margin: 0;
 }
 
 .phantasi-workbench__drop {
   position: relative;
   display: flex;
-  flex-direction: column;
+  flex-flow: row wrap;
   align-items: center;
   justify-content: center;
-  gap: 0.28rem;
-  min-height: 7.5rem;
-  padding: 1rem 0.85rem;
+  gap: 0.2rem 0.45rem;
+  min-height: 0;
+  padding: 0.45rem 0.6rem;
   border: 1px dashed var(--cfg-subtle-border);
-  border-radius: 0.75rem;
-  background: var(--cfg-subtle-bg);
+  border-radius: 0.65rem;
+  background: var(--cfg-fill);
   color: var(--cfg-text-3);
   font: inherit;
   text-align: center;
@@ -576,22 +661,23 @@ html.dark .phantasi-workbench__kpi.is-danger .phantasi-workbench__kpi-value {
 
 .phantasi-workbench__drop svg {
   width: auto;
-  height: 1.25rem;
+  height: 1.05rem;
   overflow: visible;
 }
 
 .phantasi-workbench__drop p {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.25;
   color: inherit;
 }
 
 .phantasi-workbench__drop small {
-  font-size: 0.6875rem;
+  flex-basis: 100%;
+  font-size: 0.625rem;
   font-weight: 400;
-  line-height: 1.35;
+  line-height: 1.3;
   opacity: 0.78;
 }
 

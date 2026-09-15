@@ -8,7 +8,16 @@ const dir = dirname(fileURLToPath(import.meta.url))
 const surface = readFileSync(join(dir, 'noteReadSurface.ts'), 'utf8')
 const render = readFileSync(join(dir, '../reader/contentRender.ts'), 'utf8')
 const postprocess = readFileSync(join(dir, '../reader/contentPostprocess.ts'), 'utf8')
-const editor = readFileSync(join(dir, 'NoteEditor.tsx'), 'utf8')
+const editor = [
+  'NoteEditor.tsx',
+  'NoteEditorView.tsx',
+  'useNoteEditorSession.ts',
+  'useNoteEditorSidecar.ts',
+  'useNoteEditorPreview.ts',
+  'useNoteEditorFormat.ts',
+]
+  .map((file) => readFileSync(join(dir, file), 'utf8'))
+  .join('\n')
 
 describe('decorateNoteReadSurface', () => {
   it('图、链、代码、iframe 都跳过正文小组件', () => {

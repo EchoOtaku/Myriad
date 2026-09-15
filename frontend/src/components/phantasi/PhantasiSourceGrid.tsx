@@ -9,14 +9,19 @@ import type { PhantasiBoard, SourceSortMode } from './logic/board'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { useI18n } from '../../contexts/I18nContext'
-import * as phantasiApi from '../../services/phantasiApi'
+import { loadNoteDocs } from './pageData'
 import { refreshableSourceCount } from './logic/board'
 import { storiesFromSources } from './logic/feedStories'
+import { visibleCloudNoteDocs } from './notes/noteBoard'
 import { roleFromAuth } from './logic/score'
 import { readSourceSortMode, writeSourceSortMode } from './logic/sourceSort'
 import PhantasiControls from './manager/PhantasiControls'
 import { PhantasiSourceTitleTags } from './manager/PhantasiSourceTitleTags'
 import PhantasiBoardView from './skin/PhantasiBoard'
+import {
+  PhantasiNoteCategoryTitleTags,
+  useNoteBoardCategory,
+} from './skin/PhantasiNoteCategoryTitleTags'
 import { PhantasiViewLane } from './skin/PhantasiChip'
 import { PhantasiPageStage } from './ui/PhantasiPageStage'
 import { PhantasiRailTitle } from './ui/PhantasiRailTitle'
@@ -54,7 +59,7 @@ interface PhantasiSourceGridProps {
     signal?: AbortSignal,
   ) => Promise<{ imported: number; skipped: number }>
   onRemoveSources?: (ids: number[]) => Promise<void>
-  onOpenItem?: (item: PhantasiItemPreview, source: PhantasiSource) => void
+  onOpenItem: (item: PhantasiItemPreview, source: PhantasiSource) => void
   onPeekItem?: (item: PhantasiItemPreview) => void
   onPeekEnd?: () => void
   onToggleStar?: (item: PhantasiItemPreview) => void
@@ -102,7 +107,7 @@ export default function PhantasiSourceGrid({
     viewerRole,
     scoreNow,
   )
-  const notes = useBoardNotes(board, sources)
+  const notes = useBoardNotes(board, sources, docsEpoch)
   const [docs, setDocs] = useState<PhantasiNoteDoc[]>([])
   useEffect(() => {
     if (board !== 'notes' || !isAdmin) {
@@ -110,8 +115,7 @@ export default function PhantasiSourceGrid({
       return
     }
     const controller = new AbortController()
-    void phantasiApi
-      .listNoteDocs(controller.signal)
+    void loadNoteDocs(controller.signal)
       .then((next) => {
         if (!controller.signal.aborted) setDocs(next)
       })
@@ -119,14 +123,29 @@ export default function PhantasiSourceGrid({
         if (!controller.signal.aborted) setDocs([])
       })
     return () => controller.abort()
-  }, [board, isAdmin, notes, docsEpoch])
+    // 草稿跟 docsEpoch，不跟笔记墙投影。收藏/已读会换 notes 数组，不能重拉文档。
+  }, [board, isAdmin, docsEpoch])
+  const cloudDocs = useMemo(
+    () => (board === 'notes' ? visibleCloudNoteDocs(docs) : []),
+    [board, docs],
+  )
+  const noteCats = useNoteBoardCategory(
+    board === 'notes' ? notes : [],
+    board === 'notes' ? cloudDocs : [],
+    board === 'notes' ? sorted : [],
+  )
   const { stories, onStar, expand, jump, holdStories, releaseStories, railEpoch } =
     useFeedStories(board, sorted, onToggleStar)
   const flags = useArticleFlags()
+  const flagsRevision = flags.getSnapshot()
   const friendSeed = useRef(Math.random())
-  const friendStories = (
-    board === 'sites' ? storiesFromSources(sorted, friendSeed.current) : []
-  ).map((story) => flags.project(story))
+  const friendStories = useMemo(
+    () =>
+      (board === 'sites' ? storiesFromSources(sorted, friendSeed.current) : []).map(
+        (story) => flags.project(story),
+      ),
+    [board, flags, flagsRevision, sorted],
+  )
   const edit = useBoardEdit(
     filtered,
     onRemoveSources,
@@ -247,6 +266,7 @@ export default function PhantasiSourceGrid({
       sourceTags={board === 'feeds' ? sourceTags : undefined}
       notes={notes}
       docs={docs}
+      noteCategory={board === 'notes' ? noteCats.filter : null}
       onOpenDoc={onOpenDoc}
     />
   )
@@ -263,6 +283,16 @@ export default function PhantasiSourceGrid({
           title={
             <PhantasiRailTitle
               id={titleId}
+              tags={
+                board === 'notes' ? (
+                  <PhantasiNoteCategoryTitleTags
+                    categories={noteCats.categories}
+                    hasUnfiled={noteCats.hasUnfiled}
+                    value={noteCats.filter}
+                    onChange={noteCats.setFilter}
+                  />
+                ) : undefined
+              }
               action={sourceTags}
               pinned={edit.isEditMode}
             >

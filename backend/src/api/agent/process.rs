@@ -58,6 +58,13 @@ pub(crate) fn completed_turn_intention_status(
 ) -> crate::services::agent::consciousness::IntentStatus {
     use crate::services::agent::consciousness::IntentStatus;
     match response.response_type.as_str() {
+        _ if response
+            .task
+            .as_ref()
+            .is_some_and(|task| task.status == "waiting_for_input") =>
+        {
+            IntentStatus::Waiting
+        }
         "confirmation_required" => IntentStatus::Waiting,
         "answer" | "task_completed"
             if response.success
@@ -1223,6 +1230,28 @@ pub(crate) async fn start_answer_run(
         })?;
     let session_id =
         myriad_agent_rules::session_id_from_lane_id(task.lane_id.as_deref()).or(session_id);
+    if task
+        .recipe
+        .as_ref()
+        .is_some_and(crate::services::agent::work_loop::is_work_recipe)
+    {
+        Agent::new(db.clone())
+            .await
+            .validate_work_answer(
+                &task_id,
+                &UserAnswer {
+                    task_id: task_id.clone(),
+                    question_id: question_id.clone(),
+                    answer: answer.clone(),
+                    skipped: false,
+                },
+                user_id,
+            )
+            .await
+            .map_err(|message| {
+                HttpError::from((StatusCode::CONFLICT, Json(json!({"error":message}))))
+            })?;
+    }
     let run = create_run(user_id, session_id).await;
     let (tx, mut rx) = tokio::sync::mpsc::channel::<ProgressEvent>(256);
     let run_for_forwarder = run.clone();
@@ -1286,26 +1315,58 @@ fn spawn_answer_resume(
         };
 
         let agent = Agent::new(db.clone()).await;
-        let waiting_ctx = take_waiting_task(&task_id, user_id).await;
-        let ctx_session_id = waiting_ctx
-            .as_ref()
-            .map(|ctx| ctx.session_id.clone())
-            .or(session_from_waiting)
-            .unwrap_or_default();
-        if !ctx_session_id.is_empty() {
-            let _ = persist_user_message(&db, &ctx_session_id, &req.answer).await;
-        }
-
         let answer = UserAnswer {
             question_id: req.question_id,
             task_id: task_id.clone(),
             answer: req.answer,
             skipped: false,
         };
+        let is_work = task_for_lane
+            .as_ref()
+            .and_then(|task| task.recipe.as_ref())
+            .is_some_and(crate::services::agent::work_loop::is_work_recipe);
+        if is_work {
+            if let Err(message) = agent.validate_work_answer(&task_id, &answer, user_id).await {
+                // The lane may have queued this behind another answer. Reject
+                // locally, leaving the original run and wait context intact.
+                let _ = tx
+                    .send(AgentProgressEvent::Error {
+                        task_id: Some(task_id),
+                        message,
+                        code: "INVALID_ANSWER".into(),
+                    })
+                    .await;
+                return;
+            }
+        }
+        // Keep the original Work waiter alive until continuation succeeds.
+        // Quota rejection or a competing replica must not terminate that run.
+        let waiting_ctx = if is_work {
+            None
+        } else {
+            take_waiting_task(&task_id, user_id).await
+        };
+        let original_progress = if is_work {
+            WAITING_TASKS
+                .read()
+                .await
+                .get(&task_id)
+                .filter(|ctx| ctx.user_id == user_id)
+                .map(|ctx| ctx.progress_tx.clone())
+        } else {
+            waiting_ctx.as_ref().map(|ctx| ctx.progress_tx.clone())
+        };
+        let ctx_session_id = waiting_ctx
+            .as_ref()
+            .map(|ctx| ctx.session_id.clone())
+            .or(session_from_waiting)
+            .unwrap_or_default();
+        if !ctx_session_id.is_empty() {
+            let _ = persist_user_message(&db, &ctx_session_id, &answer.answer).await;
+        }
 
         // Existing run subscribers and this continuation observe the same progress.
-        let resume_tx = if let Some(ctx) = waiting_ctx.as_ref() {
-            let original = ctx.progress_tx.clone();
+        let resume_tx = if let Some(original) = original_progress {
             let current = tx.clone();
             let (progress, mut events) = tokio::sync::mpsc::channel::<ProgressEvent>(256);
             tokio::spawn(async move {
@@ -1336,7 +1397,12 @@ fn spawn_answer_resume(
                     .unwrap_or_else(|_| AppError::public_json("serialization failed"));
 
                 // 唤醒 `spawn_restored_wait_loop` 的 `done_tx`（不是 process_stream 本体）
-                if let Some(ctx) = waiting_ctx {
+                let completed_waiter = if is_work {
+                    take_waiting_task(&task_id, user_id).await
+                } else {
+                    waiting_ctx
+                };
+                if let Some(ctx) = completed_waiter {
                     let _ = ctx.done_tx.send(response_value.clone());
                 }
 

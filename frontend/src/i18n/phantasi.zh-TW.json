@@ -501,7 +501,6 @@
   "wordCount": "字",
   "audioLabel": "音訊",
   "selectedText": "選中的文字:",
-  "myComments": "我的評論",
   "showAllComments": "顯示全部評論",
   "readingSyncConflict": "閱讀狀態已在其他地方更新，同步已暫停。請重新開啟文章以載入最新狀態。",
   "readingSyncKeepLocal": "保留我的進度",

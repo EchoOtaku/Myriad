@@ -1,5 +1,4 @@
-import { phantasiOwnItemPath } from '../constants'
-import { JOURNAL_ROOT } from './journalRoutes'
+import { JOURNAL_ROOT, journalItemPath } from './journalRoutes'
 
 export function phantasiOpenedItemState(id: number): { phantasiOpenedItem: number } {
   return { phantasiOpenedItem: id }
@@ -61,7 +60,7 @@ export function restoreAfterFailedOpen(
     return null
   }
   if (kept?.own) {
-    return { path: phantasiOwnItemPath(kept.id), param: String(kept.id) }
+    return { path: journalItemPath(kept.id), param: String(kept.id) }
   }
   return { path: listPath, param: undefined }
 }

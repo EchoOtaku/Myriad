@@ -26,12 +26,15 @@ import { RequestTurn } from './logic/requestTurn'
 
 async function writeNoteTopic(doc: PhantasiNoteDoc, topic: string) {
   if (doc.status === 'published' && doc.item_id != null) {
+    const full = doc.content_md.trim()
+      ? doc
+      : await phantasiApi.getNoteDoc(doc.id)
     await phantasiApi.updateNote(doc.item_id, {
-      title: doc.title,
-      content_md: doc.content_md,
+      title: full.title,
+      content_md: full.content_md,
       topic,
-      image: doc.image,
-      published_at: doc.published_at ?? undefined,
+      image: full.image,
+      published_at: full.published_at ?? undefined,
     })
     return
   }

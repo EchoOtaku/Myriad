@@ -1790,9 +1790,10 @@ mod tests {
 
     #[test]
     fn create_ring_request_deserializes_category_aliases() {
-        let a: CreateRingRequest =
-            serde_json::from_str(r#"{"name":"r","ring_type":"phantasi-recommend","category":"技术"}"#)
-                .unwrap();
+        let a: CreateRingRequest = serde_json::from_str(
+            r#"{"name":"r","ring_type":"phantasi-recommend","category":"技术"}"#,
+        )
+        .unwrap();
         assert_eq!(a.category.as_deref(), Some("技术"));
 
         let b: CreateRingRequest = serde_json::from_str(

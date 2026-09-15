@@ -12,6 +12,7 @@ pub(crate) fn map_progress(
             question_id,
             question_type,
             question,
+            context,
             options,
             ..
         } => {
@@ -25,7 +26,10 @@ pub(crate) fn map_progress(
                     question_id: question_id.clone(),
                     question_type: question_type.clone(),
                 },
-                question: question.clone(),
+                question: match context.as_deref().filter(|value| !value.is_empty()) {
+                    Some(context) => format!("{question}\n\n{context}"),
+                    None => question.clone(),
+                },
                 options: options
                     .as_ref()
                     .map(|rows| {
@@ -85,7 +89,8 @@ pub(crate) fn map_progress(
         | AgentProgressEvent::PerformancePlan { .. }
         | AgentProgressEvent::MeropeStateChanged { .. }
         | AgentProgressEvent::OutfitOverlay { .. }
-        | AgentProgressEvent::MusicControl { .. } => None,
+        | AgentProgressEvent::MusicControl { .. }
+        | AgentProgressEvent::WorkPlanUpdated { .. } => None,
     }
 }
 
@@ -240,6 +245,13 @@ fn task_pending_prompt(response: &Value) -> Option<PendingPrompt> {
             .unwrap_or_default(),
         expires_at_unix: None,
     };
+    if let Some(context) = question
+        .get("context")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+    {
+        prompt.question.push_str(&format!("\n\n{context}"));
+    }
     ensure_pending_id(&mut prompt);
     Some(prompt)
 }
@@ -348,6 +360,28 @@ mod tests {
 
     fn telegram_caps() -> myriad_agent_rules::channel::ChannelCapabilities {
         telegram_dm_capabilities()
+    }
+
+    #[test]
+    fn native_confirmation_keeps_reviewable_arguments_in_channel_prompts() {
+        let event = AgentProgressEvent::WaitingForInput {
+            task_id: "t".into(),
+            question_id: "q".into(),
+            question_type: "confirmation".into(),
+            question: "Run this task?".into(),
+            context: Some("taskId: daily-report".into()),
+            options: None,
+            required: true,
+            default_value: None,
+        };
+        let (_, prompt) = map_progress(&event, "run task", &telegram_caps()).unwrap();
+        assert!(prompt.unwrap().question.contains("daily-report"));
+        let (_, prompt) = map_completed(
+            &serde_json::json!({"task":{"taskId":"t","status":"waiting_for_input","pendingQuestion":{"questionId":"q","question":"Run this task?","context":"taskId: daily-report","type":"confirmation"}}}),
+            "run task",
+            &telegram_caps(),
+        );
+        assert!(prompt.unwrap().question.contains("daily-report"));
     }
 
     #[test]

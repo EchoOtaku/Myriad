@@ -7,7 +7,16 @@ import { fileURLToPath } from 'node:url'
 const dir = dirname(fileURLToPath(import.meta.url))
 const postprocess = readFileSync(join(dir, 'contentPostprocess.ts'), 'utf8')
 const render = readFileSync(join(dir, 'contentRender.ts'), 'utf8')
-const editor = readFileSync(join(dir, '../notes/NoteEditor.tsx'), 'utf8')
+const editor = [
+  '../notes/NoteEditor.tsx',
+  '../notes/NoteEditorView.tsx',
+  '../notes/useNoteEditorSession.ts',
+  '../notes/useNoteEditorSidecar.ts',
+  '../notes/useNoteEditorPreview.ts',
+  '../notes/useNoteEditorFormat.ts',
+]
+  .map((file) => readFileSync(join(dir, file), 'utf8'))
+  .join('\n')
 
 describe('阅读器后处理', () => {
   it('读路径装饰共用一份；目录仍跳过正文小组件', () => {
@@ -30,7 +39,11 @@ describe('笔记预览和阅读器同一份准备', () => {
     assert.match(render, /prepareNoteReaderHtml\(item\.content, empty\)/)
     assert.match(render, /processRssContent/)
     assert.match(render, /useLayoutEffect\(\(\) => \{/)
-    assert.match(render, /replaceNoteHtml\(container, displayHtml\)/)
+    assert.match(render, /replaceNoteHtml\(container, baseContent\)/)
+    assert.match(render, /paintAnchoredComments\(container, liveComments, theme\)/)
+    assert.match(render, /paintAnchoredAnnotations\(container, annotations\)/)
+    assert.doesNotMatch(render, /highlightAnchoredComments/)
+    assert.doesNotMatch(render, /highlightAnchoredAnnotations/)
     assert.match(editor, /prepareNoteReaderHtml\(/)
     assert.match(editor, /decorateNoteReadSurface\(/)
     assert.match(editor, /getArticleProseClass\(/)

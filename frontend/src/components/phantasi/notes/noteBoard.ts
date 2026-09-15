@@ -4,7 +4,7 @@ import type { PhantasiItemPreview } from '../../../types/phantasi'
 
 import type { FeedStory } from '../logic/feedStories'
 
-/** 已有精选笔记的源不再另占一张源卡。 */
+/** 墙上已有笔记的源不再另占一张源卡。 */
 export function leftoverNoteSources<T extends { id: number }>(
   sources: readonly T[],
   notes: ReadonlyArray<{ source_id: number }>,
@@ -46,13 +46,20 @@ export function noteScheduleLabel(
   })
 }
 
+function noteDocHasBody(doc: {
+  content_md?: string
+  has_body?: boolean
+}): boolean {
+  return Boolean(doc.has_body) || (doc.content_md?.trim() ?? '') !== ''
+}
+
 export function visibleCloudNoteDocs<
-  T extends { status: string; title: string; content_md: string },
+  T extends { status: string; title: string; content_md?: string; has_body?: boolean },
 >(docs: T[]): T[] {
   return docs.filter(
     (doc) =>
       doc.status !== 'published' &&
-      (doc.title.trim() !== '' || doc.content_md.trim() !== ''),
+      (doc.title.trim() !== '' || noteDocHasBody(doc)),
   )
 }
 
@@ -60,7 +67,12 @@ export function visibleCloudNoteDocs<
 export function notesBoardIsEmpty(
   sourceCount: number,
   publishedCount: number,
-  docs: Array<{ status: string; title: string; content_md: string }>,
+  docs: Array<{
+    status: string
+    title: string
+    content_md?: string
+    has_body?: boolean
+  }>,
 ): boolean {
   return (
     sourceCount === 0 &&

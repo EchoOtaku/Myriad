@@ -1,8 +1,12 @@
 use super::super::HandlerContext;
-use super::phantasi::phantasi_query_failed;
+use super::phantasi::{
+    phantasi_query_failed, source_visible, user_unread_by_source, visible_sources_query,
+};
 use crate::models::entities::{phantasi_items, phantasi_sources, phantasi_user_states};
 use crate::services::agent::executor::utils::truncate_str;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait,
+};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
@@ -31,14 +35,16 @@ pub(super) async fn execute_phantasi_page_content(
         .filter(|s| !s.is_empty())
         .map(normalize_phantasi_category_filter);
     let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(20);
+    let is_admin = crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await;
 
     match level {
         "sources" => {
-            let sources = phantasi_sources::Entity::find()
+            let sources = visible_sources_query(is_admin)
                 .order_by_desc(phantasi_sources::Column::UpdatedAt)
                 .all(ctx.db)
                 .await
                 .map_err(|error| phantasi_query_failed("fetch phantasi sources", error))?;
+            let unread_by_source = user_unread_by_source(ctx.db, ctx.user_id, is_admin).await?;
 
             let filtered: Vec<&phantasi_sources::Model> = sources
                 .iter()
@@ -75,7 +81,7 @@ pub(super) async fn execute_phantasi_page_content(
                         "icon": s.icon.clone(),
                         "category": s.category.clone(),
                         "sourceType": s.source_type.as_str(),
-                        "unreadCount": s.unread_count,
+                        "unreadCount": unread_by_source.get(&s.id).copied().unwrap_or(0),
                         "itemCount": s.item_count,
                         "lastUpdated": s.updated_at.to_string()
                     })
@@ -121,18 +127,103 @@ pub(super) async fn execute_phantasi_page_content(
                 .await
                 .map_err(|error| phantasi_query_failed("fetch phantasi source", error))?
                 .ok_or("Source not found")?;
+            if !source_visible(&source, is_admin) {
+                return Err("Source not found".to_string());
+            }
 
-            let items = phantasi_items::Entity::find()
-                .filter(phantasi_items::Column::SourceId.eq(source_id as i32))
-                .order_by_desc(phantasi_items::Column::PublishedAt)
+            let mut items_query = phantasi_items::preview_query(
+                phantasi_items::Entity::find()
+                    .filter(phantasi_items::Column::SourceId.eq(source.id)),
+            )
+            .order_by_desc(phantasi_items::Column::PublishedAt);
+            match filter {
+                "unread" => {
+                    let read_subquery = phantasi_user_states::Entity::find()
+                        .filter(phantasi_user_states::Column::UserId.eq(ctx.user_id))
+                        .filter(phantasi_user_states::Column::IsRead.eq(true))
+                        .select_only()
+                        .column(phantasi_user_states::Column::ItemId)
+                        .into_query();
+                    items_query = items_query
+                        .filter(phantasi_items::Column::Id.not_in_subquery(read_subquery));
+                }
+                "starred" => {
+                    let starred_subquery = phantasi_user_states::Entity::find()
+                        .filter(phantasi_user_states::Column::UserId.eq(ctx.user_id))
+                        .filter(phantasi_user_states::Column::IsStarred.eq(true))
+                        .select_only()
+                        .column(phantasi_user_states::Column::ItemId)
+                        .into_query();
+                    items_query = items_query
+                        .filter(phantasi_items::Column::Id.in_subquery(starred_subquery));
+                }
+                _ => {}
+            }
+
+            let items = items_query
+                .limit(limit)
                 .all(ctx.db)
                 .await
                 .map_err(|error| phantasi_query_failed("fetch phantasi items", error))?;
 
+            let item_ids: Vec<i32> = items.iter().map(|item| item.id).collect();
+            let states = if item_ids.is_empty() {
+                Vec::new()
+            } else {
+                phantasi_user_states::Entity::find()
+                    .filter(phantasi_user_states::Column::UserId.eq(ctx.user_id))
+                    .filter(phantasi_user_states::Column::ItemId.is_in(item_ids))
+                    .all(ctx.db)
+                    .await
+                    .map_err(|error| {
+                        phantasi_query_failed("fetch phantasi reading states", error)
+                    })?
+            };
+            let by_item: HashMap<i32, &phantasi_user_states::Model> =
+                states.iter().map(|state| (state.item_id, state)).collect();
+
+            let source_item_ids = phantasi_items::Entity::find()
+                .filter(phantasi_items::Column::SourceId.eq(source.id))
+                .select_only()
+                .column(phantasi_items::Column::Id)
+                .into_query();
+            let (total_items, unread_count, starred_count) = tokio::try_join!(
+                async {
+                    phantasi_items::Entity::find()
+                        .filter(phantasi_items::Column::SourceId.eq(source.id))
+                        .count(ctx.db)
+                        .await
+                        .map_err(|error| phantasi_query_failed("count phantasi items", error))
+                },
+                async {
+                    let read_subquery = phantasi_user_states::Entity::find()
+                        .filter(phantasi_user_states::Column::UserId.eq(ctx.user_id))
+                        .filter(phantasi_user_states::Column::IsRead.eq(true))
+                        .select_only()
+                        .column(phantasi_user_states::Column::ItemId)
+                        .into_query();
+                    phantasi_items::Entity::find()
+                        .filter(phantasi_items::Column::SourceId.eq(source.id))
+                        .filter(phantasi_items::Column::Id.not_in_subquery(read_subquery))
+                        .count(ctx.db)
+                        .await
+                        .map_err(|error| phantasi_query_failed("count unread items", error))
+                },
+                async {
+                    phantasi_user_states::Entity::find()
+                        .filter(phantasi_user_states::Column::UserId.eq(ctx.user_id))
+                        .filter(phantasi_user_states::Column::IsStarred.eq(true))
+                        .filter(phantasi_user_states::Column::ItemId.in_subquery(source_item_ids))
+                        .count(ctx.db)
+                        .await
+                        .map_err(|error| phantasi_query_failed("count starred items", error))
+                },
+            )?;
+
             let item_list: Vec<Value> = items
                 .iter()
-                .take(limit as usize)
                 .map(|item| {
+                    let state = by_item.get(&item.id);
                     json!({
                         "id": item.id,
                         "guid": item.guid.clone(),
@@ -143,8 +234,8 @@ pub(super) async fn execute_phantasi_page_content(
                         "link": item.link.clone(),
                         "author": item.author.clone(),
                         "publishedAt": item.published_at.to_string(),
-                        "isRead": false,
-                        "isStarred": false
+                        "isRead": state.map(|s| s.is_read).unwrap_or(false),
+                        "isStarred": state.map(|s| s.is_starred).unwrap_or(false)
                     })
                 })
                 .collect();
@@ -165,13 +256,13 @@ pub(super) async fn execute_phantasi_page_content(
                     "items": item_list,
                     "metadata": {
                         "sourceId": source.id,
-                        "totalItems": items.len()
+                        "totalItems": total_items
                     }
                 },
                 "stats": {
-                    "totalItems": items.len(),
-                    "unreadCount": items.len(),
-                    "starredCount": 0
+                    "totalItems": total_items,
+                    "unreadCount": unread_count,
+                    "starredCount": starred_count
                 },
                 "navigation": {
                     "currentFilter": filter,
@@ -195,23 +286,19 @@ pub(super) async fn execute_phantasi_page_content(
                 .one(ctx.db)
                 .await
                 .map_err(|error| phantasi_query_failed("fetch phantasi source", error))?;
+            if source
+                .as_ref()
+                .is_none_or(|src| !source_visible(src, is_admin))
+            {
+                return Err("Item not found".to_string());
+            }
 
-            let user_id = params
-                .get("userId")
-                .and_then(|v| v.as_i64())
-                .map(|v| v as i32);
-
-            let user_state = if let Some(uid) = user_id {
-                phantasi_user_states::Entity::find()
-                    .filter(phantasi_user_states::Column::UserId.eq(uid))
-                    .filter(phantasi_user_states::Column::ItemId.eq(item.id))
-                    .one(ctx.db)
-                    .await
-                    .ok()
-                    .flatten()
-            } else {
-                None
-            };
+            let user_state = phantasi_user_states::Entity::find()
+                .filter(phantasi_user_states::Column::UserId.eq(ctx.user_id))
+                .filter(phantasi_user_states::Column::ItemId.eq(item.id))
+                .one(ctx.db)
+                .await
+                .map_err(|error| phantasi_query_failed("fetch reading state", error))?;
 
             let word_count = item.word_count.unwrap_or_else(|| {
                 item.content
@@ -268,8 +355,7 @@ pub(super) async fn execute_phantasi_page_content(
                     "isRead": user_state.as_ref().map(|s| s.is_read).unwrap_or(false),
                     "isStarred": user_state.as_ref().map(|s| s.is_starred).unwrap_or(false),
                     "readProgress": user_state.as_ref().and_then(|s| s.read_progress),
-                    "readAt": user_state.as_ref().and_then(|s| s.read_at.map(|t| t.to_string())),
-                    "notes": user_state.as_ref().and_then(|s| s.notes.clone())
+                    "readAt": user_state.as_ref().and_then(|s| s.read_at.map(|t| t.to_string()))
                 },
                 "navigation": {
                     "canGoBack": true,
@@ -278,7 +364,7 @@ pub(super) async fn execute_phantasi_page_content(
                 "actions": {
                     "available": [
                         "markAsRead", "toggleStar", "updateProgress",
-                        "addNote", "fetchFulltext", "shareArticle"
+                        "fetchFulltext", "shareArticle"
                     ]
                 }
             }))
@@ -294,4 +380,43 @@ pub(super) async fn execute_tapp_page_content(
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
     super::super::ui_control::execute_tapp_page_content(params, ctx).await
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn items_level_uses_session_reading_state() {
+        let src = include_str!("pages.rs");
+        let start = src.find(r#""items" =>"#).expect("items level");
+        let body = &src[start..];
+        let end = body.find(r#""detail" | "reader""#).unwrap_or(body.len());
+        let items = &body[..end];
+        assert!(items.contains("ctx.user_id"));
+        assert!(items.contains("is_read"));
+        assert!(items.contains("is_starred"));
+        assert!(!items.contains("\"isRead\": false"));
+        assert!(!items.contains("unreadCount\": items.len()"));
+        assert!(items.contains("preview_query"));
+        assert!(items.contains(".limit("));
+        assert!(
+            !items.contains(".take(limit"),
+            "items level must limit in SQL, not after loading every row"
+        );
+    }
+
+    #[test]
+    fn detail_level_reads_session_user_not_params() {
+        let src = include_str!("pages.rs");
+        let start = src.find(r#""detail" | "reader""#).expect("detail level");
+        let body = &src[start..];
+        let end = body.find("_ => Err").unwrap_or(body.len());
+        let detail = &body[..end];
+        assert!(detail.contains("ctx.user_id"));
+        assert!(!detail.contains("userId"));
+        assert!(detail.contains("phantasi_query_failed(\"fetch reading state\""));
+        assert!(
+            !detail.contains(".ok()"),
+            "reader user_state must not treat store errors as unread"
+        );
+    }
 }

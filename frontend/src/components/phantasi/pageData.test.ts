@@ -5,10 +5,8 @@ import {
   FEED_STORIES_CACHE_PREFIX,
   feedStoriesCacheKey,
   BOARD_NOTES_CACHE_PREFIX,
-  HOME_NOTES_CACHE_PREFIX,
   loadBoardNotes,
   loadFeedStories,
-  loadHomeBoardNotes,
   loadLatestStory,
   peekFeedStories,
   peekFeedStoriesLoose,
@@ -18,7 +16,6 @@ import {
 
 afterEach(() => {
   requestCache.deleteByPrefix(FEED_STORIES_CACHE_PREFIX)
-  requestCache.deleteByPrefix(HOME_NOTES_CACHE_PREFIX)
   requestCache.deleteByPrefix(BOARD_NOTES_CACHE_PREFIX)
 })
 
@@ -95,7 +92,7 @@ describe('并发同源请求合并', () => {
     }) as typeof fetch
     try {
       const controller = new AbortController()
-      const pending = loadHomeBoardNotes([{ id: 1, source_type: 'note' }], controller.signal)
+      const pending = loadBoardNotes([{ id: 1, source_type: 'note' }], controller.signal)
       controller.abort()
       await assert.rejects(pending, (err: Error) => err.name === 'AbortError')
       assert.equal(calls, 1)
@@ -104,7 +101,7 @@ describe('并发同源请求合并', () => {
     }
   })
 
-  it('笔记墙按笔记源拉已发布条目，不走首页精选分类', async () => {
+  it('笔记墙按笔记源拉已发布条目，不带分类筛选', async () => {
     const original = globalThis.fetch
     const urls: string[] = []
     globalThis.fetch = (async (input: RequestInfo | URL) => {

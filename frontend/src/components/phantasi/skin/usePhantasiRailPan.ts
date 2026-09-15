@@ -1,5 +1,6 @@
 /** 轨道只做 transform，不设 overflow、不切遮罩。前一张从左边溢出，不退场。
- *  跟手、惯性都停在该处，不吸入槽位。只有点选 / 外部对齐才坐到某一张。 */
+ *  跟手、惯性都停在该处，不吸入槽位，到边即停，不越界回弹。
+ *  只有点选 / 外部对齐才坐到某一张。 */
 
 import type { RefObject } from 'react'
 import type { ConversationExitStyle } from '../../agent-panel/conversationPan'
@@ -11,7 +12,6 @@ import {
   CONVERSATION_FADE_PX,
   conversationExitKey,
   conversationExitStyle,
-  rubberband,
   sampleVelocity,
   smoothToward,
   wheelDeltaY,
@@ -19,9 +19,9 @@ import {
 import {
   isDiscreteWheel,
   RAIL_DRAG_SLOP_PX,
+  RAIL_FLING_SLOT_PX_S,
   RAIL_OVERFLOW_LEFT_PX,
   RAIL_SEAT_PX,
-  RAIL_WHEEL_COAST_PX_S,
   RAIL_WHEEL_SETTLE_MS,
   railCardKeepsPaint,
   railCoastStep,
@@ -113,6 +113,7 @@ export function usePhantasiRailPan(
     let settleTimer = 0
     let idleTimer = 0
     let grabOn = false
+    let fromPointer = false
     let last = 0
     let wheelStarted = 0
     let wheelAcc = 0
@@ -464,6 +465,7 @@ export function usePhantasiRailPan(
     const beginGrab = () => {
       clearIdleTimer()
       paintPanning(true)
+      if (maxScroll() > 0) track.style.willChange = 'transform'
       if (grabOn) return
       grabOn = true
       onGrabRef.current?.()
@@ -478,26 +480,31 @@ export function usePhantasiRailPan(
       onIdleRef.current?.()
     }
 
-    const stop = () => {
+    const stop = (idleMs = RAIL_WHEEL_SETTLE_MS) => {
       if (frame) cancelAnimationFrame(frame)
       if (exitFrame) cancelAnimationFrame(exitFrame)
       if (scrollNotifyFrame) {
         window.cancelAnimationFrame(scrollNotifyFrame)
-        flushScrollNotify()
+        if (idleMs > 0) flushScrollNotify()
       }
       frame = 0
       exitFrame = 0
       last = 0
       persistScroll()
       clearIdleTimer()
-      idleTimer = window.setTimeout(() => {
+      const finish = () => {
         idleTimer = 0
         track.style.willChange = ''
         paintPanning(false)
         if (!grabOn) return
         grabOn = false
         onIdleRef.current?.()
-      }, RAIL_WHEEL_SETTLE_MS)
+      }
+      if (idleMs <= 0) {
+        finish()
+        return
+      }
+      idleTimer = window.setTimeout(finish, idleMs)
     }
 
     const tick = (now: number) => {
@@ -508,16 +515,9 @@ export function usePhantasiRailPan(
       if (!dragging) {
         if (current < 0 || current > max) {
           coastVel = 0
-          seating = true
-          target = clampConversationScroll(current, max)
-          current = reduce
-            ? target
-            : smoothToward(
-                current,
-                target,
-                dt,
-                railSettleTau(target - current, true),
-              )
+          seating = false
+          current = clampConversationScroll(current, max)
+          target = current
         } else if (coastVel !== 0) {
           const step = railCoastStep(current, coastVel, dt, max)
           current = step.scroll
@@ -549,7 +549,7 @@ export function usePhantasiRailPan(
       current = target
       seating = false
       write(true)
-      stop()
+      stop(fromPointer ? 0 : RAIL_WHEEL_SETTLE_MS)
     }
 
     const kick = () => {
@@ -735,8 +735,9 @@ export function usePhantasiRailPan(
         stop()
         return
       }
+      current = target
       coastVel = raw === target ? flung : 0
-      seating = raw !== target
+      seating = false
       notifyLeadAt(target)
       kick()
     }
@@ -746,19 +747,24 @@ export function usePhantasiRailPan(
       settleTimer = window.setTimeout(() => {
         settleTimer = 0
         if (viewW < 32) measure()
-        const vel = wheelVel
         wheelAcc = 0
         wheelStarted = 0
         wheelVel = 0
         const max = maxScroll()
         if (current < 0 || current > max) {
-          finishCoast(current, 0)
+          current = clampConversationScroll(current, max)
+          target = current
+          coastVel = 0
+          seating = false
+          write(true)
+          persistScroll()
+          releaseGrab()
           return
         }
-        if (!reduce && Math.abs(vel) >= RAIL_WHEEL_COAST_PX_S) {
-          finishCoast(current, vel)
-          return
-        }
+        current = target
+        coastVel = 0
+        seating = false
+        writeTransform()
         persistScroll()
         releaseGrab()
       }, RAIL_WHEEL_SETTLE_MS)
@@ -778,6 +784,7 @@ export function usePhantasiRailPan(
       event.preventDefault()
       const delta = wheelDelta(event)
       if (delta === 0) return
+      fromPointer = false
       beginGrab()
       coastVel = 0
 
@@ -787,9 +794,10 @@ export function usePhantasiRailPan(
         wheelVel = 0
         seating = false
         target = clampConversationScroll(target + delta, max)
+        current = target
         notifyLeadAt(target)
         armWheelIdle()
-        kick()
+        write(true)
         return
       }
 
@@ -802,7 +810,7 @@ export function usePhantasiRailPan(
       wheelAcc += delta
       wheelVel = wheelAcc / Math.max((now - wheelStarted) / 1000, 0.016)
       seating = false
-      target = rubberband(home + wheelAcc, max, viewW)
+      target = clampConversationScroll(home + wheelAcc, max)
       current = target
       armWheelIdle()
       write(true)
@@ -830,6 +838,7 @@ export function usePhantasiRailPan(
       if (pointerArmed || dragging) return
       pointerArmed = true
       pointerId = event.pointerId
+      fromPointer = true
       touchX = event.clientX
       coastVel = 0
       seating = false
@@ -864,7 +873,7 @@ export function usePhantasiRailPan(
       touchX = x
       if (dx === 0) return
       event.preventDefault()
-      target = rubberband(target + dx, max, viewW)
+      target = clampConversationScroll(target + dx, max)
       current = target
       pushSample(event.timeStamp, target)
       writeTransform()
@@ -888,6 +897,15 @@ export function usePhantasiRailPan(
       const flung = sampleVelocity(sampleList(), event.timeStamp)
       sampleN = 0
       sampleAt = 0
+      if (Math.abs(flung) < RAIL_FLING_SLOT_PX_S) {
+        current = target
+        coastVel = 0
+        seating = false
+        writeTransform()
+        persistScroll()
+        releaseGrab()
+        return
+      }
       finishCoast(target, flung)
     }
 

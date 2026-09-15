@@ -6,8 +6,8 @@ mod openai;
 mod schema;
 mod types;
 
-mod transport;
 pub(crate) mod tool_calling;
+mod transport;
 
 #[cfg(test)]
 pub(crate) mod probe;

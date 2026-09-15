@@ -55,10 +55,8 @@ export async function findAgentArticle<T extends AgentArticle>(
   const numericId = numericArticleId(hint.articleId)
   if (numericId != null) {
     try {
-      console.log('[Phantasi] Fetching article by ID:', numericId)
       const article = await io.getById(numericId)
       if (article) {
-        console.log('[Phantasi] Got article by ID:', article.title)
         return article
       }
     } catch (err) {
@@ -68,18 +66,14 @@ export async function findAgentArticle<T extends AgentArticle>(
 
   const localHit = local.find((item) => itemMatchesAgentHint(item, hint))
   if (localHit) {
-    console.log('[Phantasi] Found article in loaded items:', localHit.title)
     return localHit
   }
 
-  console.log('[Phantasi] Article not found locally, loading from API...')
   for (let page = 1; page <= AGENT_SCAN_MAX_PAGES; page++) {
     const data = await io.getPage(page, AGENT_SCAN_PER_PAGE)
-    console.log('[Phantasi] Loaded page', page, 'items:', data.items.length)
 
     const hit = data.items.find((item) => itemMatchesAgentHint(item, hint))
     if (hit) {
-      console.log('[Phantasi] Found article from API:', hit.title)
       return hit
     }
 

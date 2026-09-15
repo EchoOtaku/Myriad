@@ -13,13 +13,15 @@ import {
   JOURNAL_ROOT,
   WORKBENCH_PANE_PATHS,
   journalListPath,
-  journalPathForNavId,
   journalSourcePath,
   journalTopicPath,
-  navIdForJournalLocation,
   parseJournalPath,
-  pathShowsNavId,
 } from './logic/journalRoutes'
+import {
+  decideNavWrite,
+  decidePathSync,
+  type PendingPathSync,
+} from './logic/boardRouteSync'
 import { normalizeTopicName } from './logic/topics'
 
 function applyLocationState(
@@ -32,7 +34,7 @@ function applyLocationState(
 ) {
   if (loc.kind === 'article') return
   if (loc.kind === 'workbench') {
-    applyBoardEntry({ view: 'workbench', board: 'feeds' })
+    applyBoardEntry({ view: 'workbench' })
     setWorkbenchPane(loc.pane)
     setSelectedTopic(null)
     setRailFocusId(null)
@@ -94,6 +96,11 @@ export function usePhantasiBoardRoute(
   const [railFocusId, setRailFocusId] = useState<number | null>(null)
   const [workbenchPane, setWorkbenchPaneState] = useState<WorkbenchPane>('home')
   const prevActiveIdRef = useRef(activeId)
+  const activeIdRef = useRef(activeId)
+  activeIdRef.current = activeId
+  const pendingPathSyncRef = useRef<PendingPathSync | null>(null)
+  const pathnameRef = useRef(pathname)
+  pathnameRef.current = pathname
 
   const applyBoardEntry = useCallback(
     (entry: PhantasiBoardEntry) => {
@@ -117,41 +124,52 @@ export function usePhantasiBoardRoute(
   applyBoardEntryRef.current = applyBoardEntry
 
   useEffect(() => {
+    const sync = decidePathSync(pathname, isAuthenticated, isAdmin)
+    if (sync.action === 'none' || sync.action === 'keep-article') return
+    if (sync.action === 'bounce') {
+      navigate(sync.to, { replace: true })
+      return
+    }
+
     const loc = parseJournalPath(pathname)
-    if (!loc || loc.kind === 'article') return
-
-    if (loc.kind === 'starred' && !isAuthenticated) {
-      navigate(JOURNAL_ROOT, { replace: true })
-      return
+    if (loc) {
+      applyLocationState(
+        loc,
+        applyBoardEntryRef.current,
+        setSelectedTopic,
+        setRailFocusId,
+        setWorkbenchPaneState,
+        setViewMode,
+      )
     }
-    if (loc.kind === 'workbench' && !isAdmin) {
-      navigate(JOURNAL_ROOT, { replace: true })
-      return
+
+    prevActiveIdRef.current = sync.navId
+    if (activeIdRef.current !== sync.navId) {
+      pendingPathSyncRef.current = {
+        target: sync.navId,
+        from: activeIdRef.current,
+      }
+      setActiveId(sync.navId)
+    } else {
+      pendingPathSyncRef.current = null
     }
-
-    applyLocationState(
-      loc,
-      applyBoardEntryRef.current,
-      setSelectedTopic,
-      setRailFocusId,
-      setWorkbenchPaneState,
-      setViewMode,
-    )
-
-    const navId = navIdForJournalLocation(loc, isAuthenticated, isAdmin)
-    prevActiveIdRef.current = navId
-    setActiveId(navId)
   }, [pathname, isAuthenticated, isAdmin, setActiveId, navigate])
 
   useEffect(() => {
-    if (prevActiveIdRef.current === activeId) return
-    prevActiveIdRef.current = activeId
-    const entry = resolveBoardParam(activeId)
-    if (entry) applyBoardEntry(entry)
-    if (!pathShowsNavId(pathname, activeId)) {
-      navigate(journalPathForNavId(activeId))
+    const decision = decideNavWrite({
+      activeId,
+      prevActiveId: prevActiveIdRef.current,
+      pathname: pathnameRef.current,
+      pending: pendingPathSyncRef.current,
+    })
+    pendingPathSyncRef.current = decision.pending
+    prevActiveIdRef.current = decision.prevActiveId
+    if (decision.applyBoard) {
+      const entry = resolveBoardParam(activeId)
+      if (entry) applyBoardEntry(entry)
     }
-  }, [activeId, applyBoardEntry, navigate, pathname])
+    if (decision.navigateTo) navigate(decision.navigateTo)
+  }, [activeId, applyBoardEntry, navigate])
 
   useEffect(() => {
     if (isAuthenticated) return

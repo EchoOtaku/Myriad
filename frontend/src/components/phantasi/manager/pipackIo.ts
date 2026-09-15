@@ -6,6 +6,7 @@ import type { ImportProgress } from './modes/types'
 import { formatMessage, getDefaultLocale } from '../../../i18n'
 import * as phantasiApi from '../../../services/phantasiApi'
 import { userFacingError } from '../../../utils/userFacingError'
+import { showPhantasiError } from '../phantasiNotice'
 import {
   buildPipackManifest,
   categoryToPackEntry,
@@ -183,8 +184,9 @@ export async function importPipackFile(
             })
           }
         }
-      } catch {
-        // 分类失败不阻断源导入
+      } catch (err) {
+        // 分类失败不阻断源导入，但必须让人看见。
+        void showPhantasiError(err, copy.errorImportFailed)
       }
     }
 
@@ -214,8 +216,9 @@ export async function importPipackFile(
             await phantasiApi.updateRsshubInstance(created.id, { enabled: false })
           }
         }
-      } catch {
-        // 实例失败不阻断源导入
+      } catch (err) {
+        // 实例失败不阻断源导入，但必须让人看见。
+        void showPhantasiError(err, copy.errorImportFailed)
       }
     }
 
@@ -258,8 +261,9 @@ export async function importPipackFile(
           )
         }
         imported++
-      } catch {
+      } catch (err) {
         skipped++
+        void showPhantasiError(err, copy.errorImportFailed)
       }
     }
 

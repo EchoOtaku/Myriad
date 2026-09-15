@@ -9,17 +9,17 @@
 
 use std::collections::{HashMap, HashSet};
 
-use pulldown_cmark::{html, Event, Options, Parser};
+use pulldown_cmark::{Event, Options, Parser, html};
 
 mod layout;
 #[cfg(test)]
 mod merge;
 mod status;
-pub use status::{is_due, schedule_at, NoteDocStatus, ScheduleError};
+pub use status::{NoteDocStatus, ScheduleError, is_due, schedule_at};
 
 use layout::{
-    eat_fence, fence_close, fence_open, parse_note_layout, stamp_wrapper, widget_html, LayoutSeg,
-    MdFence,
+    LayoutSeg, MdFence, eat_fence, fence_close, fence_open, parse_note_layout, stamp_wrapper,
+    widget_html,
 };
 
 /// 正文长度上限（字符）。超出的部分不截断，直接拒绝 —— 悄悄截掉用户写的东西

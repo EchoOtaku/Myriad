@@ -122,8 +122,8 @@ pub const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
     ("/api/brewlia/", "/api/phantasiai/"),
     ("/api/brew/", "/api/phantasi/"),
     ("/brew/articles/", "/phantasi/articles/"),
-    ("/brew/item/", "/phantasi/item/"),
-    ("/brew/notes.xml", "/phantasi/notes.xml"),
+    ("/brew/item/", "/journal/articles/"),
+    ("/brew/notes.xml", "/journal/notes.xml"),
     ("brewlia-annotation", "phantasiai-annotation"),
     ("brew-embed-", "phantasi-embed-"),
     ("brew-article", "phantasi-article"),
@@ -217,5 +217,20 @@ mod tests {
         let raw = "brew:comment";
         let out = rewrite_stored_text(raw);
         assert_eq!(out, "brew:comment");
+    }
+
+    #[test]
+    fn stored_user_addresses_become_journal_not_phantasi_item() {
+        let out = rewrite_stored_text("/brew/item/12 /brew/notes.xml /brew/articles/12");
+        assert!(out.contains("/journal/articles/12"));
+        assert!(out.contains("/journal/notes.xml"));
+        assert!(out.contains("/phantasi/articles/12"));
+        assert!(!out.contains("/brew/item/"));
+        assert!(!out.contains("/phantasi/item/"));
+    }
+
+    #[test]
+    fn brew_write_rewrites_to_phantasi_write() {
+        assert_eq!(rewrite_stored_text("brew:write"), "phantasi:write");
     }
 }

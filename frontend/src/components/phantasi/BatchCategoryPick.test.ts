@@ -15,12 +15,23 @@ describe('BatchCategoryPick', () => {
       join(dir, '../settings/ManagedList.tsx'),
       'utf8',
     )
-    assert.match(src, /<FieldSelect/)
+    const chrome = readFileSync(join(dir, 'useListSelection.tsx'), 'utf8')
+    assert.match(src, /SettingTitleSelect/)
     assert.match(src, /searchable/)
     assert.doesNotMatch(src, /names\.length === 0/)
     assert.doesNotMatch(admin, /sourceSelect\.picked === 0/)
     assert.doesNotMatch(skin, /notesSelect\.picked === 0/)
     assert.match(list, /managed-list-filter-tools/)
+    assert.match(list, /managed-list-filter-tools-row/)
+    assert.match(list, /managed-list-filter-expanded/)
     assert.match(list, /toolbarExtra/)
+    assert.match(list, /SettingTitleTag/)
+    assert.match(list, /managed-list-filter-tag/)
+    assert.doesNotMatch(
+      list,
+      /choice-segmented choice-segmented--sm is-flex managed-list-filters/,
+    )
+    assert.match(chrome, /slot: 'lead'/)
+    assert.match(chrome, /slot: 'expanded'/)
   })
 })

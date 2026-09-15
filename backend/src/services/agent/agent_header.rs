@@ -65,8 +65,6 @@ pub(crate) struct PendingRecipeConfirmation {
 ///
 /// Chat vs Work。Work uses a persistent model/tool loop; saved Recipes use Executor.
 pub struct Agent {
-    /// 规划器（请求 Pro；`resolve_ai_config` 可回落 Standard）
-    pub(crate) planner: super::planner::Planner,
     /// 执行引擎
     pub(crate) executor: super::executor::Executor,
     /// Shared persistence used by confirmation hand-offs across backend replicas.

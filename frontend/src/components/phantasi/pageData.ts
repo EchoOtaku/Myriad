@@ -1,25 +1,20 @@
 /** skin 不进口。换源不重打轨缓存；源变更时跟 sources 一起失效。 */
 
-import type { PhantasiItemPreview } from '../../types/phantasi'
+import type { PhantasiItemPreview, PhantasiNoteDoc } from '../../types/phantasi'
 import type { FeedStory } from './logic/feedStories'
 import type { HomeBoardNote } from './logic/homeBoard'
 import * as phantasiApi from '../../services/phantasiApi'
 import { requestCache } from '../../utils/requestCache'
-import { PHANTASI_MINE_CATEGORY } from './constants'
 import {
   FEEDS_ARTICLE_MAX,
   latestStoryPreview,
   toFeedStory,
 } from './logic/feedStories'
-import {
-  noteSourceKey,
-  pickHomeBoardNotes,
-  toHomeBoardNote,
-} from './logic/homeBoard'
+import { toHomeBoardNote } from './logic/homeBoard'
 
 export const FEED_STORIES_CACHE_PREFIX = 'phantasi:feed-stories:'
-export const HOME_NOTES_CACHE_PREFIX = 'phantasi:home-notes:'
 export const BOARD_NOTES_CACHE_PREFIX = 'phantasi:board-notes:'
+export const NOTE_DOCS_CACHE_KEY = 'phantasi:note-docs'
 const BOARD_PAGE_TTL = 60_000
 const BOARD_NOTES_PAGE = 100
 
@@ -87,28 +82,19 @@ export function putFeedStories(
   )
 }
 
-export async function loadHomeBoardNotes(
-  sources: Array<{ id: number; source_type: string }>,
+export async function loadNoteDocs(
   signal?: AbortSignal,
-): Promise<HomeBoardNote[]> {
-  const key = noteSourceKey(sources)
-  if (!key) return []
-  const cacheKey = `${HOME_NOTES_CACHE_PREFIX}${key}`
-  // 请求本身不带 signal：同一份数据几个调用方合并成一次；谁不要了自己丢结果。
-  const load = async () => {
-    const res = await phantasiApi.getItemPreviews({
-      category: PHANTASI_MINE_CATEGORY,
-      sort_order: 'desc',
-      per_page: 8,
-    })
-    return pickHomeBoardNotes(res.items, sources)
-  }
-  const notes = await requestCache.fetch(cacheKey, load, BOARD_PAGE_TTL)
+): Promise<PhantasiNoteDoc[]> {
+  const docs = await requestCache.fetch(
+    NOTE_DOCS_CACHE_KEY,
+    () => phantasiApi.listNoteDocs(),
+    BOARD_PAGE_TTL,
+  )
   signal?.throwIfAborted()
-  return notes
+  return docs
 }
 
-/** 笔记墙：该笔记源上全部已发布条目。不是首页精选那 3 条。 */
+/** 笔记墙：该笔记源上全部已发布条目。 */
 export async function loadBoardNotes(
   sources: Array<{ id: number; source_type: string }>,
   signal?: AbortSignal,

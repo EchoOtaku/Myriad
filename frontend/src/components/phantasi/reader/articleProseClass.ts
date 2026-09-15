@@ -1,8 +1,13 @@
+const proseClassCache = new Map<string, string>()
+
 export function getArticleProseClass(
   isDark: boolean,
   themeTextClass: string,
 ): string {
-  return `
+  const key = `${isDark ? 1 : 0}:${themeTextClass}`
+  const cached = proseClassCache.get(key)
+  if (cached) return cached
+  const value = `
               prose prose-lg max-w-none min-w-0 ${themeTextClass}
               /* 超长 URL / 无空格串不得撑破阅读器 */
               break-words [overflow-wrap:anywhere]
@@ -743,4 +748,6 @@ export function getArticleProseClass(
               `
               }
             `
+  proseClassCache.set(key, value)
+  return value
 }

@@ -227,29 +227,37 @@ export function useReaderControls({
       .toArray() as HTMLElement[]
     if (headings.length === 0) return
 
+    let raf = 0
     const handleScrollForToc = () => {
-      // The result is the last qualifying heading in DOM order. Search from
-      // that end and stop, without caching positions that images/fonts can move.
-      const heading = headings.findLast(
-        (item) => item.getBoundingClientRect().top <= 150,
-      )
-      const currentId = heading?.id ?? ''
+      if (raf) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        // The result is the last qualifying heading in DOM order. Search from
+        // that end and stop, without caching positions that images/fonts can move.
+        const heading = headings.findLast(
+          (item) => item.getBoundingClientRect().top <= 150,
+        )
+        const currentId = heading?.id ?? ''
 
-      const prevId = activeHeadingIdRef.current
-      if (currentId !== prevId) {
-        if (currentId && prevId) {
-          setHeadingHistory((prev) => {
-            const newHistory = prev.filter((id) => id !== prevId)
-            newHistory.push(prevId)
-            return newHistory.slice(-20)
-          })
+        const prevId = activeHeadingIdRef.current
+        if (currentId !== prevId) {
+          if (currentId && prevId) {
+            setHeadingHistory((prev) => {
+              const newHistory = prev.filter((id) => id !== prevId)
+              newHistory.push(prevId)
+              return newHistory.slice(-20)
+            })
+          }
+          setActiveHeadingId(currentId)
         }
-        setActiveHeadingId(currentId)
-      }
+      })
     }
 
     article.addEventListener('scroll', handleScrollForToc, { passive: true })
-    return () => article.removeEventListener('scroll', handleScrollForToc)
+    return () => {
+      article.removeEventListener('scroll', handleScrollForToc)
+      if (raf) cancelAnimationFrame(raf)
+    }
   }, [toc])
 
   useEffect(() => {

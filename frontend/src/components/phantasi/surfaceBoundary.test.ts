@@ -32,6 +32,7 @@ describe('phantasi 舞台契约', () => {
   it('笔记文章卡走 StoryCard，不再用 salon 大方卡', () => {
     const board = read('skin/PhantasiBoard.tsx')
     const notes = read('skin/PhantasiNotes.tsx')
+    const grid = read('PhantasiSourceGrid.tsx')
     const css = read('ui/css/cards.css')
     assert.match(board, /<PhantasiNotes/)
     assert.doesNotMatch(board, /SalonNote/)
@@ -40,9 +41,20 @@ describe('phantasi 舞台契约', () => {
     assert.match(notes, /<StoryCard/)
     assert.match(notes, /phantasi-notes/)
     assert.match(notes, /usePhantasiRailPan\(/)
+    assert.doesNotMatch(notes, /phantasi-notes__cat/)
+    assert.match(grid, /PhantasiNoteCategoryTitleTags/)
     assert.match(css, /\.phantasi-notes/)
     assert.match(css, /\.phantasi-notes-track[\s\S]*?grid-auto-flow: row;/)
+    assert.match(
+      css,
+      /\.phantasi-notes-track \.phantasi-story,[\s\S]*?height: var\(--phantasi-story-h\)/,
+    )
+    assert.doesNotMatch(
+      css,
+      /\.phantasi-notes-track \.phantasi-story,[\s\S]*?height: 100%;/,
+    )
     assert.doesNotMatch(css, /phantasi-salon/)
+    assert.doesNotMatch(css, /phantasi-notes__cat/)
   })
 
   it('朋友们换页不另开舞台高度，点网站卡不去阅读器', () => {
@@ -59,7 +71,7 @@ describe('phantasi 舞台契约', () => {
   })
 
   it('文章区不走网站卡的卡槽轨', () => {
-    const feeds = read('skin/PhantasiFeeds.tsx')
+    const feeds = read('skin/PhantasiFeeds.tsx') + read('skin/PhantasiFeedsStories.tsx')
     const css = read('ui/css/cards.css')
     assert.match(feeds, /usePhantasiRailPan\(/)
     assert.match(feeds, /data-phantasi-rail-track="items"/)
@@ -141,6 +153,7 @@ describe('phantasi 舞台契约', () => {
     assert.match(title, /data-phantasi-surface=\{entering \? 'title'/)
     assert.match(title, /is-arrive/)
     assert.match(title, /phantasi-rail-title__actions/)
+    assert.match(title, /tags/)
     assert.match(title, /pinned && 'is-actions-on'/)
     assert.match(site, /data-phantasi-surface="site"/)
     assert.match(site, /arrive != null && 'is-arrive'/)

@@ -1,4 +1,10 @@
-type ReadingQueueOrigin = 'agent' | 'starred' | 'topic' | 'feeds' | 'direct'
+type ReadingQueueOrigin =
+  | 'agent'
+  | 'starred'
+  | 'topic'
+  | 'feeds'
+  | 'notes'
+  | 'direct'
 
 interface ReadingQueueItem {
   id: number
@@ -21,6 +27,16 @@ export function readingQueue(
     name,
     items: items.map((item) => ({ id: item.id, title: item.title })),
   }
+}
+
+export function notesWallNeighbors(
+  notes: Array<{ id: number; title: string }>,
+  leftoverStories: Array<{ id: number; title: string } | null | undefined>,
+): Array<{ id: number; title: string }> {
+  const leftovers = leftoverStories.flatMap((story) =>
+    story ? [{ id: story.id, title: story.title }] : [],
+  )
+  return [...notes.map((note) => ({ id: note.id, title: note.title })), ...leftovers]
 }
 
 export function readingQueueFromStories(

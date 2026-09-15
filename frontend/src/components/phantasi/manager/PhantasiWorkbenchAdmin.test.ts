@@ -9,7 +9,9 @@ const dir = dirname(fileURLToPath(import.meta.url))
 describe('PhantasiWorkbenchAdmin', () => {
   it('工作台管理面接手添加、RSSHub、订阅列表和 OPML', () => {
     const src = readFileSync(join(dir, 'PhantasiWorkbenchAdmin.tsx'), 'utf8')
-    const page = readFileSync(join(dir, '../../../views/Phantasi.tsx'), 'utf8')
+    const page =
+      readFileSync(join(dir, '../../../views/Phantasi.tsx'), 'utf8') +
+      readFileSync(join(dir, '../PhantasiWorkbenchLane.tsx'), 'utf8')
     assert.match(src, /<AddMode/)
     assert.match(src, /<RSSHubInstances layout="page"/)
     assert.match(src, /<EditSourceMode/)

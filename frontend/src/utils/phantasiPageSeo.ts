@@ -1,12 +1,10 @@
 import type { PhantasiItem, PhantasiSource } from '../types/phantasi'
 import type { PageSeoInput } from './siteMetadata'
-import {
-  phantasiOwnItemPath,
-  isOwnPhantasiSource,
-} from '../components/phantasi/constants'
+import { isOwnPhantasiSource } from '../components/phantasi/constants'
 import {
   JOURNAL_ROOT,
   isJournalSyndicationPath,
+  journalItemPath,
   seoJournalFollow,
   seoListNoindex,
 } from '../components/phantasi/logic/journalRoutes'
@@ -84,7 +82,7 @@ export function buildPhantasiItemPageSeo(opts: {
       title,
       description,
       image: pickItemImage(item),
-      path: phantasiOwnItemPath(item.id),
+      path: journalItemPath(item.id),
       noindex: false,
     }
   }

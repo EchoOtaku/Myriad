@@ -1,9 +1,4 @@
 use super::super::HandlerContext;
-use super::phantasi::{
-    execute_phantasi_article, execute_phantasi_items, execute_phantasi_read, execute_phantasi_sources,
-    execute_phantasi_stats,
-};
-use super::phantasi_generate::execute_phantasi_generate_reading_list;
 use super::catalog::{
     execute_context_reference, execute_database_query, execute_heartbeat_list,
     execute_metadata_history, execute_platform_connection, execute_profile_summary,
@@ -17,6 +12,11 @@ use super::extras_platform::{
 };
 use super::pages::{execute_phantasi_page_content, execute_tapp_page_content};
 use super::permission::{execute_permission_check, execute_tapp_widget};
+use super::phantasi::{
+    execute_phantasi_article, execute_phantasi_items, execute_phantasi_read,
+    execute_phantasi_sources, execute_phantasi_stats,
+};
+use super::phantasi_generate::execute_phantasi_generate_reading_list;
 use super::platform::{execute_platform_read, execute_platform_stats};
 use super::rsshub::execute_phantasi_discover;
 use super::search::execute_fuzzy_search;

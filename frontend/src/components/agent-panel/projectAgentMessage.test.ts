@@ -7,6 +7,7 @@ import {
   projectAgentMessage,
   projectThought,
   syncProjectedMessages,
+  workPlanFromData,
 } from './projectAgentMessage'
 
 function chat(overrides: Partial<ChatMessage> = {}): ChatMessage {
@@ -22,6 +23,35 @@ function chat(overrides: Partial<ChatMessage> = {}): ChatMessage {
 
 afterEach(() => {
   setAgentMessages([])
+})
+
+test('可修订清单使用实时进度，历史消息从持久化数据恢复', () => {
+  const before = [{ description: '查询资料', status: 'in_progress' as const }]
+  const after = [{ description: '查询资料', status: 'completed' as const }]
+  assert.deepEqual(
+    projectAgentMessage(chat({ data: { workPlan: before } })).workPlan,
+    before,
+  )
+  const current = chat({
+    data: { workPlan: before },
+    taskExecution: {
+      taskId: 't',
+      status: 'processing',
+      progress: 0,
+      steps: [],
+      workPlan: after,
+    },
+  })
+  assert.deepEqual(projectAgentMessage(current).workPlan, after)
+  syncProjectedMessages([chat({ data: { workPlan: before } })])
+  syncProjectedMessages([current])
+  assert.deepEqual(getAgentMessagesSnapshot()[0].workPlan, after)
+  assert.deepEqual(
+    workPlanFromData({
+      workPlan: [null, {}, { description: 'bad', status: 'execute' }, ...after],
+    }),
+    after,
+  )
 })
 
 test('投影只留下界面要的字段', () => {

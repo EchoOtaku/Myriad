@@ -14,6 +14,7 @@ import { useI18n } from '../../../contexts/I18nContext'
 import * as phantasiApi from '../../../services/phantasiApi'
 import { useModuleVisibilityPreferences } from '../../../utils/moduleVisibility'
 import { userFacingError } from '../../../utils/userFacingError'
+import { showPhantasiError } from '../phantasiNotice'
 import { ButtonItem, ManagedList, SwitchItem } from '../../settings'
 import { BatchCategoryPick } from '../BatchCategoryPick'
 import { getIconUrl, isFriendLinkCategory, isMineCategory } from '../constants'
@@ -169,13 +170,14 @@ export function PhantasiWorkbenchAdmin({
       .then((enabled) => {
         setNotesRssEnabled(enabled)
       })
-      .catch(() => {
+      .catch((err) => {
         setNotesRssEnabled(!next)
+        void showPhantasiError(err, phantasi.errorSaveFailed)
       })
       .finally(() => {
         setNotesRssSaving(false)
       })
-  }, [])
+  }, [phantasi.errorSaveFailed])
   const query = queryProp ?? ''
   const [kindFilter, setKindFilter] = useState<SourceKindFilter>('all')
   const [categoryFilter, setCategoryFilter] = useState('all')

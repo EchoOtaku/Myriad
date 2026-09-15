@@ -27,7 +27,7 @@ use sea_orm::{
 use serde::Deserialize;
 use serde_json::json;
 
-use super::helpers::{phantasi_http_err, phantasi_store_http, get_admin_user_id_from_headers};
+use super::helpers::{get_admin_user_id_from_headers, phantasi_http_err, phantasi_store_http};
 use crate::error::HttpError;
 use crate::models::entities::{phantasi_items, phantasi_note_docs, phantasi_sources};
 
@@ -62,13 +62,12 @@ fn validation_err(err: myriad_phantasi_notes::NoteError) -> HttpError {
     phantasi_http_err(StatusCode::BAD_REQUEST, err.message())
 }
 
-/// 校验这条 item 确实是该站长的笔记。
+/// 校验这条 item 是共享目录里的笔记。
 ///
-/// 两道关都要过：源属于当前用户，且源确实是笔记源。少了第二道，这些接口就
-/// 变成了「可以改任何抓来的文章」的后门。
-async fn find_own_note(
+/// 必须是笔记源。少了这道，这些接口就变成了「可以改任何抓来的文章」的后门。
+/// 不按源创建者过滤：第二管理员也能改。
+async fn find_catalog_note(
     db: &DatabaseConnection,
-    user_id: i32,
     item_id: i32,
 ) -> Result<(phantasi_items::Model, phantasi_sources::Model), HttpError> {
     let item = phantasi_items::Entity::find_by_id(item_id)
@@ -78,7 +77,6 @@ async fn find_own_note(
         .ok_or_else(|| phantasi_http_err(StatusCode::NOT_FOUND, "Note not found"))?;
 
     let source = phantasi_sources::Entity::find_by_id(item.source_id)
-        .filter(phantasi_sources::Column::UserId.eq(user_id))
         .filter(phantasi_sources::Column::SourceType.eq(phantasi_sources::SourceType::Note))
         .one(db)
         .await
@@ -154,7 +152,7 @@ pub(crate) async fn update_note(
     Json(req): Json<NoteWriteRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
-    let (item, _) = find_own_note(&db, user_id, id).await?;
+    let (item, _) = find_catalog_note(&db, id).await?;
     let item = crate::services::note_publish::write_note_with_doc(
         &db,
         user_id,
@@ -180,8 +178,8 @@ pub(crate) async fn delete_note(
     headers: axum::http::HeaderMap,
     Path(id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
-    let (item, source) = find_own_note(&db, user_id, id).await?;
+    get_admin_user_id_from_headers(&headers, &db).await?;
+    let (item, source) = find_catalog_note(&db, id).await?;
 
     phantasi_items::Entity::delete_by_id(item.id)
         .exec(&db)
@@ -229,8 +227,43 @@ mod tests {
     }
 
     #[test]
+    fn catalog_note_mutations_are_not_keyed_by_source_owner() {
+        let src = include_str!("notes.rs");
+        let start = src
+            .find("async fn find_catalog_note")
+            .expect("find_catalog_note");
+        let body = &src[start..];
+        let end = body[1..]
+            .find("\nasync fn ")
+            .map(|index| index + 1)
+            .unwrap_or(body.len());
+        let finder = &body[..end];
+        assert!(finder.contains("SourceType::Note"));
+        assert!(
+            !finder.contains("UserId.eq"),
+            "shared catalog notes are not keyed by the creating admin"
+        );
+        for name in ["update_note", "delete_note"] {
+            assert!(src.contains(&format!("find_catalog_note(&db")));
+            let start = src
+                .find(&format!("pub(crate) async fn {name}"))
+                .unwrap_or_else(|| panic!("{name}"));
+            let body = &src[start..];
+            let end = body[1..]
+                .find("\npub(crate) async fn ")
+                .or_else(|| body[1..].find("\n#[cfg(test)]"))
+                .map(|index| index + 1)
+                .unwrap_or(body.len());
+            assert!(
+                !&body[..end].contains("UserId.eq(user_id)"),
+                "{name} must not look up the creating admin"
+            );
+        }
+    }
+
+    #[test]
     fn public_item_list_does_not_read_note_docs() {
-        let src = include_str!("feeds_articles.rs");
+        let src = include_str!("feeds_list.rs");
         let start = src
             .find("pub(crate) async fn list_items")
             .expect("list_items");
@@ -244,6 +277,39 @@ mod tests {
         assert!(
             !list.contains("phantasi_note_docs"),
             "drafts must not leak into the public item list"
+        );
+        assert!(list.contains("SourceId.in_subquery(visible_source_ids)"));
+        assert!(list.contains("Id.in_subquery(starred_subquery)"));
+        assert!(list.contains("not_in_subquery(read_subquery)"));
+        assert!(list.contains("in_subquery(cat_source_ids)"));
+        assert!(list.contains("page_source_ids"));
+        assert!(
+            !list.contains("cat_sources"),
+            "category filter must stay a subquery, not materialize source IDs"
+        );
+        assert!(
+            !list.contains("visible_sources.all"),
+            "visibility must not materialize every source id"
+        );
+    }
+
+    #[test]
+    fn list_sources_unread_uses_per_user_sql_not_cached_column() {
+        let src = include_str!("feeds_sources.rs");
+        let start = src
+            .find("pub(crate) async fn list_sources")
+            .expect("list_sources");
+        let body = &src[start..];
+        let end = body[1..]
+            .find("\npub(crate) async fn ")
+            .map(|index| index + 1)
+            .unwrap_or(body.len());
+        let list = &body[..end];
+        assert!(list.contains("s.is_read = TRUE"));
+        assert!(list.contains("real_unread_count"));
+        assert!(
+            !list.contains("response.unread_count = source.unread_count"),
+            "list_sources unread must not reuse the cached source column"
         );
     }
 }

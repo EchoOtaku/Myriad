@@ -21,11 +21,6 @@ const MINE_ALIASES = new Set([
   'my',
 ])
 
-export const PRESET_CATEGORY_DB_VALUES: string[] = [
-  ...FRIEND_LINK_ALIASES,
-  ...MINE_ALIASES,
-]
-
 function normalizeCategoryToken(value: string): string {
   return value.trim().toLowerCase()
 }
@@ -76,10 +71,6 @@ export function phantasiMainCategory(
     (c) => !isFriendLinkCategory(c) && !isMineCategory(c),
   )
   return main || fallback
-}
-
-export function phantasiOwnItemPath(itemId: number | string): string {
-  return `/journal/articles/${encodeURIComponent(String(itemId))}`
 }
 
 export const DEFAULT_THEME_COLOR = '#6b7280'

@@ -405,7 +405,10 @@ mod tests {
             router.route_capability("platform.read"),
             AgentRole::DataWorker
         );
-        assert_eq!(router.route_capability("phantasi.items"), AgentRole::DataWorker);
+        assert_eq!(
+            router.route_capability("phantasi.items"),
+            AgentRole::DataWorker
+        );
         assert_eq!(router.route_capability("http.fetch"), AgentRole::DataWorker);
         assert_eq!(router.route_capability("steam.user"), AgentRole::DataWorker);
         assert_eq!(

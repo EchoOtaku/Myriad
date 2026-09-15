@@ -2,15 +2,14 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { makeItem } from './fixtures.ts'
 import {
-  NOTES_FEATURED_MAX,
   noteSourceKey,
-  pickHomeBoardNotes,
+  noteSourceStamp,
   toHomeBoardNote,
   toNoteStory,
 } from './homeBoard.ts'
 
 describe('toHomeBoardNote', () => {
-  it('只收精选要的字段', () => {
+  it('只收笔记墙要的字段', () => {
     const note = toHomeBoardNote(
       makeItem({
         id: 7,
@@ -34,7 +33,6 @@ describe('toHomeBoardNote', () => {
       source_icon: null,
       guid: note.guid,
     })
-    assert.equal(NOTES_FEATURED_MAX, 3)
   })
 })
 
@@ -56,37 +54,6 @@ describe('toNoteStory', () => {
   })
 })
 
-describe('pickHomeBoardNotes', () => {
-  it('只收笔记源上的条目，并截到精选上限', () => {
-    const notes = pickHomeBoardNotes(
-      [
-        makeItem({ id: 1, title: 'a', source_id: 10 }),
-        makeItem({ id: 2, title: 'b', source_id: 11 }),
-        makeItem({ id: 3, title: 'c', source_id: 10 }),
-        makeItem({ id: 4, title: 'd', source_id: 10 }),
-        makeItem({ id: 5, title: 'e', source_id: 10 }),
-      ],
-      [
-        { id: 10, source_type: 'note' },
-        { id: 11, source_type: 'rss' },
-      ],
-    )
-    assert.deepEqual(
-      notes.map((note) => note.id),
-      [1, 3, 4],
-    )
-  })
-
-  it('没有笔记源时不收', () => {
-    assert.deepEqual(
-      pickHomeBoardNotes([makeItem({ source_id: 10 })], [
-        { id: 10, source_type: 'rss' },
-      ]),
-      [],
-    )
-  })
-})
-
 describe('noteSourceKey', () => {
   it('只签名笔记源，没有则空串', () => {
     assert.equal(
@@ -98,5 +65,33 @@ describe('noteSourceKey', () => {
       '10,12',
     )
     assert.equal(noteSourceKey([{ id: 11, source_type: 'rss' }]), '')
+    assert.equal(
+      noteSourceKey([
+        { id: 12, source_type: 'note' },
+        { id: 10, source_type: 'note' },
+      ]),
+      '10,12',
+    )
+  })
+})
+
+describe('noteSourceStamp', () => {
+  it('只签名笔记源的条数和抓取戳，顺序无关，收藏位不算', () => {
+    assert.equal(
+      noteSourceStamp([
+        { id: 12, source_type: 'note', item_count: 1, last_success_at: null },
+        { id: 11, source_type: 'rss', item_count: 80, last_success_at: 9 },
+        { id: 10, source_type: 'note', item_count: 3, last_success_at: 9 },
+      ]),
+      '10:3:9,12:1:0',
+    )
+    assert.equal(
+      noteSourceStamp([
+        { id: 10, source_type: 'note', item_count: 3, last_success_at: 9 },
+      ]),
+      noteSourceStamp([
+        { id: 10, source_type: 'note', item_count: 3, last_success_at: 9 },
+      ]),
+    )
   })
 })

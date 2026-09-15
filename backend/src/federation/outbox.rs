@@ -11,6 +11,7 @@ use axum::{
     response::Response,
 };
 use myriad_error::AppError;
+use myriad_phantasi::ARTICLE_OBJECT_PREFIX;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::Deserialize;
 use serde_json::json;
@@ -313,7 +314,7 @@ impl PublicObjectKind {
         match self {
             Self::Note => format!("{base_url}/notes/{id}"),
             Self::Report => format!("{base_url}/reports/{id}"),
-            Self::PhantasiArticle => format!("{base_url}/phantasi/articles/{id}"),
+            Self::PhantasiArticle => format!("{base_url}{ARTICLE_OBJECT_PREFIX}/articles/{id}"),
             // `build_ap_object` URL-encodes tapp ids before embedding them in
             // the object URL.  Path extraction gives us the decoded segment,
             // so encode it once more for the canonical comparison.

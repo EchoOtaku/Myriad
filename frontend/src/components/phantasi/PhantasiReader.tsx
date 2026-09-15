@@ -50,6 +50,11 @@ import { hasNoteWidgetMarkup, noteWidgetTypesInHtml } from './notes/noteWidgetHt
 import { isNoteStorySource, storySourceFace } from './notes/noteSiteSource'
 import { preloadNoteWidgets, useNoteWidgetCatalog } from './notes/noteWidgetCatalog'
 import { useNoteWidgetHydration } from './notes/noteWidgetMount'
+import {
+  idleAnnotations,
+  idleComments,
+  idlePodcast,
+} from './reader/idleReaderTools'
 import { dismissReaderChrome, escapeWhileTyping } from './reader/readerPanels'
 import './ui/phantasi.css'
 import './skin/phantasi-reader.css'
@@ -138,7 +143,87 @@ export default function PhantasiReader(props: PhantasiReaderProps) {
          />
 }
 
-function ReaderArticleSession({
+type ReaderSessionProps = PhantasiReaderProps & {
+  settings: ReturnType<typeof useReaderSettings>
+  columnRef: React.RefObject<HTMLDivElement | null>
+  articleSwap: boolean
+}
+
+function ReaderArticleSession(props: ReaderSessionProps) {
+  const isNote = isNoteStorySource({
+    guid: props.item.guid,
+    source_type: props.sourceType,
+  })
+  return isNote ? <ReaderNoteSession {...props} /> : <ReaderFeedSession {...props} />
+}
+
+function ReaderNoteSession(props: ReaderSessionProps) {
+  const { t } = useI18n()
+  const showToastMessage = useCallback((message: string, duration = 2000) => {
+    showToast({
+      message,
+      type: 'info',
+      duration,
+      replaceKey: 'phantasi-reader',
+    })
+  }, [])
+  const comments = useComments({
+    itemId: props.item.id,
+    enabled: true,
+    isAuthenticated: props.isAuthenticated ?? false,
+    showToastMessage,
+    t,
+  })
+  return (
+    <ReaderSessionBody
+      {...props}
+      t={t}
+      showToastMessage={showToastMessage}
+      commentsEnabled
+      comments={comments}
+      annotations={idleAnnotations}
+      podcast={idlePodcast}
+    />
+  )
+}
+
+function ReaderFeedSession(props: ReaderSessionProps) {
+  const { t } = useI18n()
+  const showToastMessage = useCallback((message: string, duration = 2000) => {
+    showToast({
+      message,
+      type: 'info',
+      duration,
+      replaceKey: 'phantasi-reader',
+    })
+  }, [])
+  const annotations = useAnnotations({
+    itemId: props.item.id,
+    isPhantasiai: props.sourceType === 'phantasiai',
+    showToastMessage,
+    t,
+  })
+  const podcast = usePodcast({
+    itemId: props.item.id,
+    sourceId: props.item.source_id,
+    isPhantasiai: props.sourceType === 'phantasiai',
+    showToastMessage,
+    t,
+  })
+  return (
+    <ReaderSessionBody
+      {...props}
+      t={t}
+      showToastMessage={showToastMessage}
+      commentsEnabled={false}
+      comments={idleComments}
+      annotations={annotations}
+      podcast={podcast}
+    />
+  )
+}
+
+function ReaderSessionBody({
   item,
   onClose,
   onToggleStar,
@@ -155,12 +240,20 @@ function ReaderArticleSession({
   settings,
   columnRef,
   articleSwap,
-}: PhantasiReaderProps & {
-  settings: ReturnType<typeof useReaderSettings>
-  columnRef: React.RefObject<HTMLDivElement | null>
-  articleSwap: boolean
+  t,
+  showToastMessage,
+  commentsEnabled,
+  comments: commentTools,
+  annotations: annotationTools,
+  podcast: podcastTools,
+}: ReaderSessionProps & {
+  t: ReturnType<typeof useI18n>['t']
+  showToastMessage: (message: string, duration?: number) => void
+  commentsEnabled: boolean
+  comments: typeof idleComments | ReturnType<typeof useComments>
+  annotations: typeof idleAnnotations | ReturnType<typeof useAnnotations>
+  podcast: typeof idlePodcast | ReturnType<typeof usePodcast>
 }) {
-  const { t } = useI18n()
   const sourcedItem = useMemo(() => {
     const face = storySourceFace({
       guid: item.guid,
@@ -213,11 +306,6 @@ function ReaderArticleSession({
         },
       })
 
-      console.log('[PhantasiReader] Page content set:', {
-        title: item.title,
-        hasContent: !!articleContent,
-        contentLength: articleContent?.length || 0,
-      })
     }
 
     return () => {
@@ -238,10 +326,6 @@ function ReaderArticleSession({
   const [contentReady, setContentReady] = useState(articleSwap || !enableAnimations)
 
   const isPhantasiai = sourceType === 'phantasiai'
-  const commentsEnabled = isNoteStorySource({
-    guid: item.guid,
-    source_type: sourceType,
-  })
 
   const {
     fontSize,
@@ -261,15 +345,6 @@ function ReaderArticleSession({
 
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
 
-  const showToastMessage = useCallback((message: string, duration = 2000) => {
-    showToast({
-      message,
-      type: 'info',
-      duration,
-      replaceKey: 'phantasi-reader',
-    })
-  }, [])
-
   const {
     annotations,
     annotationsLoading,
@@ -288,17 +363,13 @@ function ReaderArticleSession({
     toggleAnnotations,
     scrollToAnnotation,
     hoverTimeoutRef,
-  } = useAnnotations({
-    itemId: item.id,
-    isPhantasiai,
-    showToastMessage,
-    t,
-  })
+  } = annotationTools
 
   const {
     comments,
     commentsLoading,
     hasComments,
+    canWrite,
     showCommentPopup,
     commentPopupPosition,
     selectedText,
@@ -325,14 +396,7 @@ function ReaderArticleSession({
     deleteComment,
     toggleReplies,
     submitReply,
-    highlightComments,
-  } = useComments({
-    itemId: item.id,
-    enabled: commentsEnabled,
-    isAuthenticated,
-    showToastMessage,
-    t,
-  })
+  } = commentTools
 
   const {
     podcastDialogues,
@@ -367,13 +431,7 @@ function ReaderArticleSession({
     handlePodcastPrev,
     handlePodcastNext,
     handlePodcastSeek,
-  } = usePodcast({
-    itemId: item.id,
-    sourceId: item.source_id,
-    isPhantasiai,
-    showToastMessage,
-    t,
-  })
+  } = podcastTools
 
   const sideButtonClass = 'phantasi-reader__btn'
 
@@ -425,7 +483,6 @@ function ReaderArticleSession({
     showAnnotations,
     annotations,
     comments,
-    highlightComments,
     theme,
     copyCodeLabel: t.phantasi.copyCode,
     copyTexLabel: t.phantasi.copyTex,
@@ -485,6 +542,7 @@ function ReaderArticleSession({
     setFocusedCommentIds,
     comments,
     commentsEnabled,
+    canWrite,
     isAuthenticated,
     showCommentPopup,
     showAnnotations,
@@ -815,7 +873,7 @@ function ReaderArticleSession({
       />
 
       <CommentInputPopup
-        showCommentPopup={showCommentPopup && commentsEnabled && !!isAuthenticated}
+        showCommentPopup={showCommentPopup && commentsEnabled && canWrite}
         setShowCommentPopup={setShowCommentPopup}
         commentPopupPosition={commentPopupPosition}
         selectedText={selectedText}
@@ -850,7 +908,7 @@ function ReaderArticleSession({
         toggleReplies={toggleReplies}
         commentReplies={commentReplies}
         deleteComment={deleteComment}
-        canReply={isAuthenticated}
+        canReply={canWrite}
         canDelete={(comment) =>
           isAdmin || (currentUserId != null && comment.user_id === currentUserId)
         }

@@ -13,7 +13,16 @@ import { noteWidgetInstanceId } from './noteWidgetId.ts'
 
 const dir = dirname(fileURLToPath(import.meta.url))
 const mount = readFileSync(join(dir, 'noteWidgetMount.tsx'), 'utf8')
-const editor = readFileSync(join(dir, 'NoteEditor.tsx'), 'utf8')
+const editor = [
+  'NoteEditor.tsx',
+  'NoteEditorView.tsx',
+  'useNoteEditorSession.ts',
+  'useNoteEditorSidecar.ts',
+  'useNoteEditorPreview.ts',
+  'useNoteEditorFormat.ts',
+]
+  .map((file) => readFileSync(join(dir, file), 'utf8'))
+  .join('\n')
 const reader = readFileSync(join(dir, '../PhantasiReader.tsx'), 'utf8')
 
 describe('hasNoteWidgetMarkup', () => {

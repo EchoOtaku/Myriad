@@ -501,7 +501,6 @@
   "wordCount": "mots",
   "audioLabel": "Audio",
   "selectedText": "Texte sélectionné :",
-  "myComments": "Mes commentaires",
   "showAllComments": "Afficher tous les commentaires",
   "readingSyncConflict": "L’état de lecture a changé ailleurs. La synchronisation est en pause. Rouvrez cet article pour charger le dernier état.",
   "readingSyncKeepLocal": "Garder ma progression",

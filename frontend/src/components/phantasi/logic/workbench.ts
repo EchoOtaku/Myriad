@@ -150,7 +150,8 @@ export function filterWorkbenchComments<
 export function filterWorkbenchNotes<
   T extends {
     title: string
-    content_md: string
+    content_md?: string
+    excerpt?: string | null
     topic?: string | null
     status: string
     last_error?: string | null
@@ -195,7 +196,8 @@ export function filterWorkbenchNotes<
 
 function noteSearchHaystack(doc: {
   title: string
-  content_md: string
+  content_md?: string
+  excerpt?: string | null
   topic?: string | null
   user_name?: string
   user_display_name?: string
@@ -208,7 +210,7 @@ function noteSearchHaystack(doc: {
   return [
     doc.title,
     doc.topic ?? '',
-    doc.content_md,
+    doc.excerpt ?? '',
     doc.user_display_name ?? '',
     doc.user_name ?? '',
     ...authorNames,
@@ -380,6 +382,15 @@ function firstBodyImage(markdown: string): string | null {
 }
 
 export const WORKBENCH_NOTE_EXCERPT_CHARS = 100
+
+export function workbenchNoteListExcerpt(doc: {
+  excerpt?: string | null
+  content_md?: string | null
+}): string {
+  const ready = doc.excerpt?.trim()
+  if (ready) return ready
+  return workbenchNoteExcerpt(doc.content_md)
+}
 
 export function workbenchNoteExcerpt(
   markdown: string | null | undefined,

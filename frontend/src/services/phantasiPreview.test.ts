@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { it } from 'node:test'
-import { loadFeedStories, loadHomeBoardNotes } from '../components/phantasi/pageData'
+import { loadFeedStories, loadBoardNotes } from '../components/phantasi/pageData'
 import { getItem, getItemPreviews, getItems } from './phantasiApi'
 
 it('requests explicit previews while preserving full list and detail contracts', async () => {
@@ -27,7 +27,7 @@ it('requests explicit previews while preserving full list and detail contracts',
     assert.equal((await getItem(91234)).content, '<p>detail</p>')
     await loadFeedStories(91235, 1)
     assert.equal(urls.at(-1)?.searchParams.get('projection'), 'preview')
-    await loadHomeBoardNotes([{ id: 91236, source_type: 'note' }])
+    await loadBoardNotes([{ id: 91236, source_type: 'note' }])
     assert.equal(urls.at(-1)?.searchParams.get('projection'), 'preview')
   } finally {
     globalThis.fetch = originalFetch

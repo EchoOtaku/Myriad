@@ -17,10 +17,12 @@ import { SwitchItem } from '../../../settings/items/SwitchItem'
 import { SettingTitleTag } from '../../../settings/SettingTitleTag'
 import { Spinner } from '../../../Spinner'
 import {
+  addHintKey,
   addSubmitLabelKey,
   addUrlLabelKey,
   addUrlPlaceholder,
 } from './addSource'
+import { FormBlock } from './FormBlock'
 import { SourceCategoryField } from './SourceCategoryField'
 import { SourceKindControl } from './SourceKindControl'
 import { useAddSourceForm } from './useAddSourceForm'
@@ -95,136 +97,143 @@ export function AddMode({
 
       {tab === 'single' ? (
         <form className="phantasi-add-form__stack" onSubmit={form.handleSubmit}>
-          <SourceKindControl
-            value={form.fieldKind}
-            onChange={form.pickKind}
-            disabled={form.loading}
-          />
-
-          {form.sourceType !== 'link' && form.sourceType !== 'rsshub' ? (
-            <SwitchItem
-              itemKey="phantasi-add-phantasiai"
-              size="sm"
-              label={t.phantasiaiLabel}
-              description={t.phantasiaiShortDesc}
-              value={form.sourceType === 'phantasiai'}
-              onChange={(on) => form.setSourceType(on ? 'phantasiai' : 'rss')}
+          <FormBlock title={t.sourceTypeLabel} hint={t[addHintKey(form.fieldKind)]}>
+            <SourceKindControl
+              value={form.fieldKind}
+              onChange={form.pickKind}
               disabled={form.loading}
+              hideLabel
             />
-          ) : null}
+            {form.sourceType !== 'link' && form.sourceType !== 'rsshub' ? (
+              <div className="phantasi-add-form__toggles">
+                <SwitchItem
+                  itemKey="phantasi-add-phantasiai"
+                  size="sm"
+                  label={t.phantasiaiLabel}
+                  description={t.phantasiaiShortDesc}
+                  value={form.sourceType === 'phantasiai'}
+                  onChange={(on) => form.setSourceType(on ? 'phantasiai' : 'rss')}
+                  disabled={form.loading}
+                />
+              </div>
+            ) : null}
+          </FormBlock>
 
           {form.sourceType === 'rsshub' && RSSHubConfigComponent ? (
-            <>
+            <FormBlock>
               <RSSHubConfigComponent
                 onConfigChange={form.setRsshub}
                 disabled={form.loading}
               />
-              <SwitchItem
-                itemKey="phantasi-add-rsshub-phantasiai"
-                size="sm"
-                label={t.phantasiaiLabel}
-                description={t.phantasiaiFeatures}
-                value={form.enablePhantasiaiForRsshub}
-                onChange={form.setEnablePhantasiaiForRsshub}
-                disabled={form.loading}
-              />
-            </>
+              <div className="phantasi-add-form__toggles">
+                <SwitchItem
+                  itemKey="phantasi-add-rsshub-phantasiai"
+                  size="sm"
+                  label={t.phantasiaiLabel}
+                  description={t.phantasiaiFeatures}
+                  value={form.enablePhantasiaiForRsshub}
+                  onChange={form.setEnablePhantasiaiForRsshub}
+                  disabled={form.loading}
+                />
+              </div>
+            </FormBlock>
           ) : null}
 
           {form.sourceType !== 'rsshub' ? (
-            <InputItem
-              itemKey="phantasi-add-url"
-              size="sm"
-              label={urlLabel}
-              required
-              inputType="url"
-              value={form.url}
-              onChange={(value) => {
-                form.setUrl(value)
-                form.setDiscovered(null)
-              }}
-              placeholder={addUrlPlaceholder(form.fieldKind)}
-              disabled={form.loading}
-              labelAccessory={
-                form.fieldKind === 'rss' ? (
-                  <SettingTitleTag
-                    icon={
-                      form.discovering ? <Spinner size="xs" /> : <Search />
-                    }
-                    disabled={form.discovering || !form.url.trim()}
-                    onClick={() => {
-                      void form.handleDiscover()
-                    }}
-                  >
-                    {t.discover}
-                  </SettingTitleTag>
-                ) : null
-              }
-            />
-          ) : null}
-
-          {form.feedType === 'notion' ? (
-            <InputItem
-              itemKey="phantasi-add-notion-token"
-              size="sm"
-              label="Notion Integration Token"
-              required
-              inputType="password"
-              value={form.notionToken}
-              onChange={form.setNotionToken}
-              placeholder="secret_xxx..."
-              disabled={form.loading}
-            />
-          ) : null}
-
-          {form.discovered && form.fieldKind === 'rss' ? (
-            <div className="phantasi-add-form__tags">
-              <SettingTitleTag icon={<Check />}>
-                {form.discovered.title}
-              </SettingTitleTag>
-              <SettingTitleTag variant="muted">
-                {form.discovered.feed_type.toUpperCase()}
-              </SettingTitleTag>
-              {form.sourceType === 'phantasiai' ? (
-                <SettingTitleTag variant="beta">AI</SettingTitleTag>
+            <FormBlock>
+              <InputItem
+                itemKey="phantasi-add-url"
+                size="sm"
+                label={urlLabel}
+                required
+                inputType="url"
+                value={form.url}
+                onChange={(value) => {
+                  form.setUrl(value)
+                  form.setDiscovered(null)
+                }}
+                placeholder={addUrlPlaceholder(form.fieldKind)}
+                disabled={form.loading}
+                labelAccessory={
+                  form.fieldKind === 'rss' ? (
+                    <SettingTitleTag
+                      icon={
+                        form.discovering ? <Spinner size="xs" /> : <Search />
+                      }
+                      disabled={form.discovering || !form.url.trim()}
+                      onClick={() => {
+                        void form.handleDiscover()
+                      }}
+                    >
+                      {t.discover}
+                    </SettingTitleTag>
+                  ) : null
+                }
+              />
+              {form.feedType === 'notion' ? (
+                <InputItem
+                  itemKey="phantasi-add-notion-token"
+                  size="sm"
+                  label="Notion Integration Token"
+                  required
+                  inputType="password"
+                  value={form.notionToken}
+                  onChange={form.setNotionToken}
+                  placeholder="secret_xxx..."
+                  disabled={form.loading}
+                />
               ) : null}
-            </div>
+              {form.discovered && form.fieldKind === 'rss' ? (
+                <div className="phantasi-add-form__tags">
+                  <SettingTitleTag icon={<Check />}>
+                    {form.discovered.title}
+                  </SettingTitleTag>
+                  <SettingTitleTag variant="muted">
+                    {form.discovered.feed_type.toUpperCase()}
+                  </SettingTitleTag>
+                  {form.sourceType === 'phantasiai' ? (
+                    <SettingTitleTag variant="beta">AI</SettingTitleTag>
+                  ) : null}
+                </div>
+              ) : null}
+            </FormBlock>
           ) : null}
 
-          <CompactSettingGroup>
+          <FormBlock>
+            <CompactSettingGroup>
+              <InputItem
+                itemKey="phantasi-add-name"
+                size="sm"
+                label={t.nameLabel}
+                required={form.sourceType === 'link'}
+                value={form.name}
+                onChange={form.setName}
+                placeholder={
+                  form.sourceType === 'link' ? t.enterName : t.autoFetch
+                }
+                disabled={form.loading}
+              />
+              <SourceCategoryField
+                categories={allCategories}
+                value={form.category}
+                open={form.categoryOpen}
+                onOpenChange={form.setCategoryOpen}
+                onChange={form.setCategory}
+                disabled={form.loading}
+              />
+            </CompactSettingGroup>
             <InputItem
-              itemKey="phantasi-add-name"
+              itemKey="phantasi-add-icon"
               size="sm"
-              label={t.nameLabel}
-              required={form.sourceType === 'link'}
-              value={form.name}
-              onChange={form.setName}
-              placeholder={
-                form.sourceType === 'link' ? t.enterName : t.autoFetch
-              }
+              variant="imageUpload"
+              label={t.siteIcon}
+              value={form.customIcon || form.displayIcon || ''}
+              onChange={(value) => form.setCustomIcon(value || null)}
+              uploadLabel={t.upload}
+              clearImageLabel={t.deleteIcon}
               disabled={form.loading}
             />
-            <SourceCategoryField
-              categories={allCategories}
-              value={form.category}
-              open={form.categoryOpen}
-              onOpenChange={form.setCategoryOpen}
-              onChange={form.setCategory}
-              disabled={form.loading}
-            />
-          </CompactSettingGroup>
-
-          <InputItem
-            itemKey="phantasi-add-icon"
-            size="sm"
-            variant="imageUpload"
-            label={t.siteIcon}
-            value={form.customIcon || form.displayIcon || ''}
-            onChange={(value) => form.setCustomIcon(value || null)}
-            uploadLabel={t.upload}
-            clearImageLabel={t.deleteIcon}
-            disabled={form.loading}
-          />
+          </FormBlock>
 
           {form.error ? (
             <SettingTitleTag variant="danger">{form.error}</SettingTitleTag>

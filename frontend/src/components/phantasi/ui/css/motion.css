@@ -139,6 +139,7 @@ html[data-perf-mode='exlight'] .phantasi-story.has-cover .phantasi-story__peek {
   .phantasi-story.has-cover .phantasi-story__peek,
   .phantasi-story__star,
   .phantasi-rail-title,
+  .phantasi-rail-title__tags,
   .phantasi-rail-title__actions,
   .phantasi-vacant {
     animation: none;

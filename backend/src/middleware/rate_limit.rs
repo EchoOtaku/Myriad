@@ -269,7 +269,12 @@ pub async fn rate_limit_middleware(req: Request, next: Next) -> Response {
         )
     } else if is_phantasi_list_read(&path, req.method()) {
         (
-            RATE_LIMITER.check_bucket(ip, PHANTASI_LIST_BUCKET, PHANTASI_LIST_MAX, Duration::from_secs(60)),
+            RATE_LIMITER.check_bucket(
+                ip,
+                PHANTASI_LIST_BUCKET,
+                PHANTASI_LIST_MAX,
+                Duration::from_secs(60),
+            ),
             60,
         )
     } else if is_compute_intensive(&path) {
@@ -469,7 +474,10 @@ mod tests {
         assert!(is_phantasi_list_read("/api/phantasi/items", &Method::GET));
         assert!(is_phantasi_list_read("/api/phantasi/items/", &Method::GET));
         // 单篇、标记已读、收藏都不是列表
-        assert!(!is_phantasi_list_read("/api/phantasi/items/517", &Method::GET));
+        assert!(!is_phantasi_list_read(
+            "/api/phantasi/items/517",
+            &Method::GET
+        ));
         assert!(!is_phantasi_list_read(
             "/api/phantasi/items/517/read",
             &Method::POST

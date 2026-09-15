@@ -906,45 +906,93 @@ pub async fn disconnect_runtime_interactions(runtime_id: &str) -> bool {
     disconnected
 }
 
+/// Continuations accept the persisted, authenticated Tapp outcome only. A normal
+/// answer endpoint must not be able to manufacture a completed interaction.
+pub(crate) async fn verify_task_answer(
+    db: &DatabaseConnection,
+    user_id: i32,
+    answer: &crate::services::agent::UserAnswer,
+) -> Result<(), String> {
+    let id = answer
+        .question_id
+        .strip_prefix("tapp_interaction:")
+        .ok_or("Invalid interaction question")?;
+    let interaction = load_interaction_raw(db, id)
+        .await
+        .map_err(|_| "Interaction is unavailable")?;
+    if interaction.subject_id != user_id
+        || interaction.snapshot.source.task_id.as_deref() != Some(&answer.task_id)
+    {
+        return Err("Interaction is unavailable".into());
+    }
+    let (_, skipped, expected) =
+        terminal_task_answer(&interaction).ok_or("Interaction is not finished")?;
+    let provided: Value =
+        serde_json::from_str(&answer.answer).map_err(|_| "Invalid interaction result")?;
+    if skipped != answer.skipped || expected != provided {
+        return Err("Interaction result does not match its saved outcome".into());
+    }
+    Ok(())
+}
+
+fn terminal_task_answer(interaction: &StoredInteraction) -> Option<(&'static str, bool, Value)> {
+    Some(match interaction.snapshot.state {
+        InteractionState::Completed => (
+            "completed",
+            false,
+            json!({"state":"completed","result":interaction.snapshot.result}),
+        ),
+        InteractionState::Rejected => (
+            "rejected",
+            true,
+            json!({"state":"rejected","reason":interaction.snapshot.rejection_reason}),
+        ),
+        InteractionState::Expired => (
+            "expired",
+            true,
+            json!({"state":"expired","reason":interaction.snapshot.rejection_reason}),
+        ),
+        InteractionState::Cancelled => (
+            "cancelled",
+            true,
+            json!({"state":"cancelled","reason":interaction.snapshot.rejection_reason}),
+        ),
+        _ => return None,
+    })
+}
+
+/// A result can arrive before its task commits WaitingForInput, or while the
+/// process is down. Retry delivery from durable records; the Work revision
+/// check makes competing deliveries mutually exclusive.
+pub(crate) async fn redeliver_waiting_work_results(db: &DatabaseConnection) -> Result<(), String> {
+    for payload in waiting_work_result_payloads(db).await? {
+        if let Ok(interaction) = serde_json::from_value::<StoredInteraction>(payload) {
+            resume_agent_task(db, &interaction).await;
+        }
+    }
+    Ok(())
+}
+
+pub(super) async fn waiting_work_result_payloads(
+    db: &DatabaseConnection,
+) -> Result<Vec<Value>, String> {
+    #[derive(FromQueryResult)]
+    struct ResultRow {
+        payload: Value,
+    }
+    let rows = ResultRow::find_by_statement(Statement::from_string(DatabaseBackend::Postgres,
+        "SELECT r.payload FROM tapp_runtime_registry r JOIN agent_tasks t ON t.id = r.payload #>> '{snapshot,source,taskId}' AND t.user_id = (r.payload->>'subject_id')::integer WHERE r.namespace='agent_interaction' AND r.expires_at > EXTRACT(EPOCH FROM NOW())::bigint AND r.payload #>> '{snapshot,state}' IN ('completed','rejected','expired','cancelled') AND t.status='waiting_for_input' AND t.recipe->'metadata'->>'work_loop_version'='1' AND t.pending_question->>'question_id' = 'tapp_interaction:' || (r.payload #>> '{snapshot,interactionId}') LIMIT 64"))
+        .all(db).await.map_err(|_| "Unable to redeliver Work interaction results")?;
+    Ok(rows.into_iter().map(|row| row.payload).collect())
+}
+
 async fn resume_agent_task(db: &DatabaseConnection, interaction: &StoredInteraction) {
     let Some(task_id) = interaction.snapshot.source.task_id.clone() else {
         return;
     };
     let question_id = format!("tapp_interaction:{}", interaction.snapshot.interaction_id);
-    let (state, skipped, answer_value) = match interaction.snapshot.state {
-        InteractionState::Completed => (
-            "completed",
-            false,
-            json!({
-                "state": "completed",
-                "result": interaction.snapshot.result,
-            }),
-        ),
-        InteractionState::Rejected => (
-            "rejected",
-            true,
-            json!({
-                "state": "rejected",
-                "reason": interaction.snapshot.rejection_reason,
-            }),
-        ),
-        InteractionState::Expired => (
-            "expired",
-            true,
-            json!({
-                "state": "expired",
-                "reason": interaction.snapshot.rejection_reason,
-            }),
-        ),
-        InteractionState::Cancelled => (
-            "cancelled",
-            true,
-            json!({
-                "state": "cancelled",
-                "reason": interaction.snapshot.rejection_reason,
-            }),
-        ),
-        _ => return,
+    let Some((state, skipped, answer_value)) = terminal_task_answer(interaction) else {
+        return;
     };
     let user_id = interaction.subject_id;
     let db = db.clone();

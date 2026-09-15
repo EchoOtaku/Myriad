@@ -470,7 +470,7 @@ fn permissions_for_usage_mode(mode: AgentUsageMode) -> std::collections::HashSet
                 "ai:chat",
                 "ai:search",
                 "ai:image",
-                "phantasi:read", // 读共享库 + 个人已读/收藏（phantasi.mark）
+                "phantasi:read", // 读共享库；标记已读/收藏走 phantasi:write
                 "report:read",
                 "tapp:read",
                 "system:read",
@@ -484,6 +484,7 @@ fn permissions_for_usage_mode(mode: AgentUsageMode) -> std::collections::HashSet
                     "web:scrape",
                     "tapp:write",
                     "tapp:interact",
+                    "phantasi:write",
                     "weather:read",
                     "metadata:read",
                     "proxy:read",
@@ -571,6 +572,7 @@ fn agent_perm_to_tapp(perm: &str) -> Option<crate::services::permission_service:
         "ai:generate" => Some(TappPermission::AiGenerate),
         // 读（basic）
         "phantasi:read" => Some(TappPermission::PhantasiRead),
+        "phantasi:write" => Some(TappPermission::PhantasiWrite),
         "report:read" => Some(TappPermission::ReportRead),
         "platform:read" | "steam:read" | "bilibili:read" | "bangumi:read" | "github:read"
         | "netease:read" | "weather:read" | "metadata:read" => Some(TappPermission::PlatformRead),
@@ -1172,6 +1174,7 @@ mod tests {
 
         let standard = permissions_for_usage_mode(AgentUsageMode::Standard);
         assert!(standard.contains("phantasi:read"));
+        assert!(!standard.contains("phantasi:write"));
         assert!(!standard.contains("phantasi:manage"));
         assert!(standard.contains("ai:chat"));
         assert!(!standard.contains("http:fetch"));
@@ -1181,6 +1184,7 @@ mod tests {
         assert!(elevated.contains("http:fetch"));
         assert!(elevated.contains("web:scrape"));
         assert!(elevated.contains("tapp:write"));
+        assert!(elevated.contains("phantasi:write"));
         assert!(elevated.contains("scheduler:read"));
         assert!(elevated.contains("3d:generate"));
         assert!(elevated.contains("ai:generate"));
@@ -1215,6 +1219,10 @@ mod tests {
         assert_eq!(
             agent_perm_to_tapp("phantasi:read"),
             Some(TappPermission::PhantasiRead)
+        );
+        assert_eq!(
+            agent_perm_to_tapp("phantasi:write"),
+            Some(TappPermission::PhantasiWrite)
         );
         assert_eq!(
             agent_perm_to_tapp("phantasi:manage"),

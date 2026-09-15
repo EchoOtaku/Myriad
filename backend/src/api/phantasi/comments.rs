@@ -1,4 +1,4 @@
-//! Phantasi comments (annotations) and RSSHub instance admin.
+//! Phantasi comments (annotations). RSSHub instances live in [`super::rsshub`].
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -14,13 +14,48 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::error::HttpError;
-use crate::models::entities::{phantasi_comments, phantasi_items, phantasi_sources, rsshub_instances};
-use crate::services::rsshub_service::RsshubService;
+use crate::models::entities::{phantasi_comments, phantasi_items, phantasi_sources};
+use myriad_error::AppError;
+
+use std::sync::LazyLock;
+
+use crate::services::permission_service::{
+    TappPermission, TappPermissionService, role_from_user_id,
+};
 
 use super::helpers::{
     get_admin_user_id_from_headers, get_optional_user_and_admin_status, get_user_and_admin_status,
-    get_user_id_from_headers, phantasi_http_err,
+    get_user_id_from_headers, phantasi_http_err, phantasi_store_http,
 };
+
+static COMMENT_COLOR: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$")
+        .expect("comment color regex")
+});
+
+fn comment_write_granted_for(
+    config: &crate::config::DynamicConfig,
+    user_id: i32,
+    is_admin: bool,
+) -> bool {
+    TappPermissionService::check(
+        config,
+        role_from_user_id(user_id, is_admin),
+        TappPermission::PhantasiCommentWrite,
+    )
+}
+
+async fn require_comment_write(user_id: i32, is_admin: bool) -> Result<(), HttpError> {
+    let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+    if comment_write_granted_for(&config, user_id, is_admin) {
+        Ok(())
+    } else {
+        Err(phantasi_http_err(
+            StatusCode::FORBIDDEN,
+            "Comment write is not granted",
+        ))
+    }
+}
 
 fn comment_is_public(requested: Option<bool>, inherited: Option<bool>) -> bool {
     requested.or(inherited).unwrap_or(true)
@@ -58,14 +93,16 @@ async fn visible_source(
 ) -> Result<(phantasi_items::Model, phantasi_sources::Model), HttpError> {
     let item = match phantasi_items::Entity::find_by_id(item_id).one(db).await {
         Ok(Some(item)) => item,
-        _ => return Err(item_not_found()),
+        Ok(None) => return Err(item_not_found()),
+        Err(error) => return Err(phantasi_store_http("find article", error)),
     };
     let source = match phantasi_sources::Entity::find_by_id(item.source_id)
         .one(db)
         .await
     {
         Ok(Some(source)) => source,
-        _ => return Err(item_not_found()),
+        Ok(None) => return Err(item_not_found()),
+        Err(error) => return Err(phantasi_store_http("find article source", error)),
     };
     if source.admin_only && !is_admin {
         return Err(item_not_found());
@@ -88,13 +125,16 @@ async fn visible_item(
 async fn load_user_faces(
     db: &DatabaseConnection,
     ids: &[i32],
-) -> std::collections::HashMap<i32, (Option<String>, Option<String>, Option<String>)> {
+) -> Result<
+    std::collections::HashMap<i32, (Option<String>, Option<String>, Option<String>)>,
+    HttpError,
+> {
     let mut unique = ids.to_vec();
     unique.sort_unstable();
     unique.dedup();
     unique.retain(|id| *id > 0);
     if unique.is_empty() {
-        return std::collections::HashMap::new();
+        return Ok(std::collections::HashMap::new());
     }
     let list = unique
         .iter()
@@ -109,7 +149,7 @@ async fn load_user_faces(
             ),
         ))
         .await
-        .unwrap_or_default();
+        .map_err(|error| phantasi_store_http("load comment authors", error))?;
     let mut faces = std::collections::HashMap::new();
     for row in rows {
         let Ok(id) = row.try_get::<i32>("", "id") else {
@@ -124,7 +164,7 @@ async fn load_user_faces(
             ),
         );
     }
-    faces
+    Ok(faces)
 }
 
 fn apply_user_face(
@@ -138,32 +178,27 @@ fn apply_user_face(
     }
 }
 
-fn rsshub_mutate_error(error: String) -> HttpError {
-    if error.starts_with("Failed to ") {
-        return phantasi_http_err(StatusCode::INTERNAL_SERVER_ERROR, error);
-    }
-    if error == "Instance not found" {
-        return phantasi_http_err(StatusCode::NOT_FOUND, error);
-    }
-    if error == "Permission denied" || error.starts_with("Only admins ") {
-        return phantasi_http_err(StatusCode::FORBIDDEN, error);
-    }
-    phantasi_http_err(StatusCode::BAD_REQUEST, error)
-}
-
-// 用户评论（批注）
-
 /// 文章下全部评论。能看见文章的人都能看。
 pub(crate) async fn list_comments(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
     Path(item_id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    let (_, is_admin) = get_optional_user_and_admin_status(&headers, &db).await?;
+    let (user_id, is_admin) = get_optional_user_and_admin_status(&headers, &db).await?;
+    if user_id.is_none() && !crate::api::seo::phantasi_module_open_to_guests(&db).await {
+        return Err(phantasi_http_err(StatusCode::NOT_FOUND, "Not found"));
+    }
+    let can_write = match user_id {
+        Some(uid) => {
+            let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+            comment_write_granted_for(&config, uid, is_admin)
+        }
+        None => false,
+    };
     let (_, source) = visible_source(&db, item_id, is_admin).await?;
     if source.source_type != phantasi_sources::SourceType::Note {
         return Ok(Json(
-            json!({ "success": true, "comments": [], "has_comments": false }),
+            json!({ "success": true, "comments": [], "has_comments": false, "can_write": can_write }),
         ));
     }
 
@@ -178,26 +213,27 @@ pub(crate) async fn list_comments(
         Ok(comments) => {
             if comments.is_empty() {
                 return Ok(Json(
-                    json!({ "success": true, "comments": [], "has_comments": false }),
+                    json!({ "success": true, "comments": [], "has_comments": false, "can_write": can_write }),
                 ));
             }
 
             let comment_ids: Vec<i32> = comments.iter().map(|c| c.id).collect();
             let user_ids: Vec<i32> = comments.iter().map(|c| c.user_id).collect();
-            let reply_counts: std::collections::HashMap<i32, i32> = phantasi_comments::Entity::find()
-                .filter(phantasi_comments::Column::ParentId.is_in(comment_ids.clone()))
-                .select_only()
-                .column(phantasi_comments::Column::ParentId)
-                .column_as(phantasi_comments::Column::Id.count(), "count")
-                .group_by(phantasi_comments::Column::ParentId)
-                .into_tuple::<(i32, i64)>()
-                .all(&db)
-                .await
-                .unwrap_or_default()
-                .into_iter()
-                .map(|(parent_id, count)| (parent_id, count as i32))
-                .collect();
-            let faces = load_user_faces(&db, &user_ids).await;
+            let reply_counts: std::collections::HashMap<i32, i32> =
+                phantasi_comments::Entity::find()
+                    .filter(phantasi_comments::Column::ParentId.is_in(comment_ids.clone()))
+                    .select_only()
+                    .column(phantasi_comments::Column::ParentId)
+                    .column_as(phantasi_comments::Column::Id.count(), "count")
+                    .group_by(phantasi_comments::Column::ParentId)
+                    .into_tuple::<(i32, i64)>()
+                    .all(&db)
+                    .await
+                    .map_err(|error| phantasi_store_http("count comment replies", error))?
+                    .into_iter()
+                    .map(|(parent_id, count)| (parent_id, count as i32))
+                    .collect();
+            let faces = load_user_faces(&db, &user_ids).await?;
 
             let responses: Vec<phantasi_comments::CommentResponse> = comments
                 .into_iter()
@@ -212,7 +248,8 @@ pub(crate) async fn list_comments(
             Ok(Json(json!({
                 "success": true,
                 "comments": responses,
-                "has_comments": true
+                "has_comments": true,
+                "can_write": can_write
             })))
         }
         Err(error) => {
@@ -237,21 +274,21 @@ pub(crate) async fn create_comment(
     let user_id = get_user_id_from_headers(&headers, &db).await?;
 
     let (_, is_admin) = get_user_and_admin_status(&headers, &db).await;
+    require_comment_write(user_id, is_admin).await?;
     let item = visible_item(&db, item_id, is_admin).await?;
 
     // 回复挂在同一篇文章的任意一条评论下；没写 color / is_public 时跟父评。
     let mut inherited_color: Option<String> = None;
     let mut inherited_is_public: Option<bool> = None;
     if let Some(parent_id) = req.parent_id {
-        let parent = phantasi_comments::Entity::find_by_id(parent_id)
+        let parent = match phantasi_comments::Entity::find_by_id(parent_id)
             .filter(phantasi_comments::Column::ItemId.eq(item_id))
             .one(&db)
             .await
-            .ok()
-            .flatten();
-
-        let Some(parent) = parent else {
-            return Err(comment_not_found());
+        {
+            Ok(Some(parent)) => parent,
+            Ok(None) => return Err(comment_not_found()),
+            Err(error) => return Err(phantasi_store_http("find comment", error)),
         };
         inherited_color = parent.color.clone();
         inherited_is_public = Some(parent.is_public);
@@ -261,9 +298,7 @@ pub(crate) async fn create_comment(
     let validated_color = req
         .color
         .and_then(|c| {
-            let color_regex =
-                regex::Regex::new(r"^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$").ok()?;
-            if color_regex.is_match(&c) {
+            if COMMENT_COLOR.is_match(&c) {
                 Some(c)
             } else {
                 None
@@ -346,6 +381,8 @@ pub(crate) async fn update_comment(
 ) -> Result<Json<serde_json::Value>, HttpError> {
     // 验证用户身份
     let user_id = get_user_id_from_headers(&headers, &db).await?;
+    let (_, is_admin) = get_user_and_admin_status(&headers, &db).await;
+    require_comment_write(user_id, is_admin).await?;
 
     // 获取评论并验证所有权
     let comment = phantasi_comments::Entity::find_by_id(comment_id)
@@ -367,10 +404,7 @@ pub(crate) async fn update_comment(
                 active.comment = Set(comment_text);
             }
             if let Some(color) = req.color {
-                // 验证 color 格式（仅允许十六进制颜色）
-                let color_regex =
-                    regex::Regex::new(r"^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$").ok();
-                if color_regex.is_some_and(|r| r.is_match(&color)) {
+                if COMMENT_COLOR.is_match(&color) {
                     active.color = Set(Some(color));
                 }
             }
@@ -430,9 +464,8 @@ pub(crate) async fn delete_comment(
     Path(comment_id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
     let (user_id, is_admin) = get_user_and_admin_status(&headers, &db).await;
-    let user_id = user_id.ok_or_else(|| {
-        phantasi_http_err(StatusCode::UNAUTHORIZED, "Unauthorized")
-    })?;
+    let user_id =
+        user_id.ok_or_else(|| phantasi_http_err(StatusCode::UNAUTHORIZED, "Unauthorized"))?;
 
     let comment = phantasi_comments::Entity::find_by_id(comment_id)
         .one(&db)
@@ -483,13 +516,17 @@ pub(crate) async fn list_comment_replies(
     headers: axum::http::HeaderMap,
     Path(comment_id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    let (_, is_admin) = get_optional_user_and_admin_status(&headers, &db).await?;
+    let (user_id, is_admin) = get_optional_user_and_admin_status(&headers, &db).await?;
+    if user_id.is_none() && !crate::api::seo::phantasi_module_open_to_guests(&db).await {
+        return Err(phantasi_http_err(StatusCode::NOT_FOUND, "Not found"));
+    }
     let parent = match phantasi_comments::Entity::find_by_id(comment_id)
         .one(&db)
         .await
     {
         Ok(Some(parent)) => parent,
-        _ => return Err(comment_not_found()),
+        Ok(None) => return Err(comment_not_found()),
+        Err(error) => return Err(phantasi_store_http("find comment", error)),
     };
     visible_item(&db, parent.item_id, is_admin).await?;
 
@@ -506,7 +543,7 @@ pub(crate) async fn list_comment_replies(
             }
 
             let user_ids: Vec<i32> = replies.iter().map(|reply| reply.user_id).collect();
-            let faces = load_user_faces(&db, &user_ids).await;
+            let faces = load_user_faces(&db, &user_ids).await?;
             let responses: Vec<phantasi_comments::CommentResponse> = replies
                 .into_iter()
                 .map(|reply| {
@@ -584,10 +621,7 @@ pub(crate) async fn list_admin_comments(
         .await
         .map_err(|error| {
             tracing::error!(%error, "Failed to load admin comments");
-            phantasi_http_err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to load comments",
-            )
+            phantasi_http_err(StatusCode::INTERNAL_SERVER_ERROR, "Failed to load comments")
         })?;
 
     let comments: Vec<phantasi_comments::CommentResponse> = rows
@@ -635,236 +669,21 @@ pub(crate) async fn list_admin_comments(
     Ok(Json(json!({ "success": true, "comments": comments })))
 }
 
-// RSSHub 实例管理
-
-/// 获取 RSSHub 实例列表
-pub(crate) async fn list_rsshub_instances(
-    State(db): State<DatabaseConnection>,
-    headers: axum::http::HeaderMap,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    // 验证用户身份
-    let user_id = get_user_id_from_headers(&headers, &db).await?;
-
-    let rsshub_service = RsshubService::new(db);
-
-    // 确保默认实例存在
-    if let Err(e) = rsshub_service.ensure_default_instances().await {
-        tracing::warn!("[RSSHub] Failed to ensure default instances: {}", e);
-    }
-
-    match rsshub_service.get_instances(Some(user_id)).await {
-        Ok(instances) => {
-            let responses: Vec<rsshub_instances::InstanceResponse> =
-                instances.into_iter().map(|i| i.into()).collect();
-
-            Ok(Json(json!({ "success": true, "instances": responses })))
-        }
-        Err(error) => {
-            tracing::error!(%error, "Failed to fetch RSSHub instances");
-            Err(phantasi_http_err(StatusCode::INTERNAL_SERVER_ERROR, error))
-        }
-    }
-}
-
-/// 添加 RSSHub 实例
-#[derive(Deserialize)]
-pub(crate) struct AddRsshubInstanceRequest {
-    name: String,
-    url: String,
-    access_key: Option<String>,
-    priority: Option<i32>,
-}
-
-pub(crate) async fn add_rsshub_instance(
-    State(db): State<DatabaseConnection>,
-    headers: axum::http::HeaderMap,
-    Json(req): Json<AddRsshubInstanceRequest>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    // 验证用户身份
-    let user_id = get_user_id_from_headers(&headers, &db).await?;
-    let (_, is_admin) = get_user_and_admin_status(&headers, &db).await;
-
-    let rsshub_service = RsshubService::new(db);
-
-    match rsshub_service
-        .add_instance(
-            Some(user_id),
-            req.name,
-            req.url,
-            req.access_key,
-            req.priority,
-            is_admin,
-        )
-        .await
-    {
-        Ok(instance) => {
-            let response: rsshub_instances::InstanceResponse = instance.into();
-            Ok(Json(json!({ "success": true, "instance": response })))
-        }
-        Err(error) => Err(rsshub_mutate_error(error)),
-    }
-}
-
-/// 更新 RSSHub 实例
-#[derive(Deserialize)]
-pub(crate) struct UpdateRsshubInstanceRequest {
-    name: Option<String>,
-    url: Option<String>,
-    access_key: Option<String>,
-    priority: Option<i32>,
-    enabled: Option<bool>,
-}
-
-pub(crate) async fn update_rsshub_instance(
-    State(db): State<DatabaseConnection>,
-    headers: axum::http::HeaderMap,
-    Path(id): Path<i32>,
-    Json(req): Json<UpdateRsshubInstanceRequest>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    // 验证用户身份
-    let user_id = get_user_id_from_headers(&headers, &db).await?;
-    let (_, is_admin) = get_user_and_admin_status(&headers, &db).await;
-
-    let rsshub_service = RsshubService::new(db);
-
-    match rsshub_service
-        .update_instance(
-            id,
-            Some(user_id),
-            req.name,
-            req.url,
-            req.access_key,
-            req.priority,
-            req.enabled,
-            is_admin,
-        )
-        .await
-    {
-        Ok(instance) => {
-            let response: rsshub_instances::InstanceResponse = instance.into();
-            Ok(Json(json!({ "success": true, "instance": response })))
-        }
-        Err(error) => Err(rsshub_mutate_error(error)),
-    }
-}
-
-/// 删除 RSSHub 实例
-pub(crate) async fn delete_rsshub_instance(
-    State(db): State<DatabaseConnection>,
-    headers: axum::http::HeaderMap,
-    Path(id): Path<i32>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    // 验证用户身份
-    let user_id = get_user_id_from_headers(&headers, &db).await?;
-    let (_, is_admin) = get_user_and_admin_status(&headers, &db).await;
-
-    let rsshub_service = RsshubService::new(db);
-
-    match rsshub_service
-        .delete_instance(id, Some(user_id), is_admin)
-        .await
-    {
-        Ok(()) => Ok(Json(json!({ "success": true }))),
-        Err(error) => Err(rsshub_mutate_error(error)),
-    }
-}
-
-/// 对单个实例执行健康检查
-pub(crate) async fn health_check_rsshub_instance(
-    State(db): State<DatabaseConnection>,
-    headers: axum::http::HeaderMap,
-    Path(id): Path<i32>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    // 验证用户身份
-    let user_id = get_user_id_from_headers(&headers, &db).await?;
-
-    let rsshub_service = RsshubService::new(db.clone());
-
-    // 获取实例
-    let instance = match rsshub_instances::Entity::find_by_id(id).one(&db).await {
-        Ok(Some(i)) => i,
-        Ok(None) => {
-            return Err(HttpError::from((
-                StatusCode::NOT_FOUND,
-                Json(AppError::fail_json("Instance not found")),
-            )));
-        }
-        Err(error) => {
-            tracing::error!(%error, "Failed to find RSSHub instance");
-            return Err(phantasi_http_err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to find RSSHub instance",
-            ));
-        }
-    };
-
-    // 检查权限
-    if instance.user_id != Some(user_id) && instance.user_id.is_some() {
-        return Err(HttpError::from((
-            StatusCode::FORBIDDEN,
-            Json(AppError::fail_json("Permission denied")),
-        )));
-    }
-
-    match rsshub_service.health_check(&instance).await {
-        Ok(response_time) => Ok(Json(json!({
-            "success": true,
-            "healthy": true,
-            "response_time_ms": response_time
-        }))),
-        Err(e) => Ok(Json(json!({
-            "success": true,
-            "healthy": false,
-            "error": e
-        }))),
-    }
-}
-
-/// 重置实例统计
-pub(crate) async fn reset_rsshub_instance(
-    State(db): State<DatabaseConnection>,
-    headers: axum::http::HeaderMap,
-    Path(id): Path<i32>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    // 验证用户身份
-    let user_id = get_user_id_from_headers(&headers, &db).await?;
-    let (_, is_admin) = get_user_and_admin_status(&headers, &db).await;
-
-    let rsshub_service = RsshubService::new(db);
-
-    match rsshub_service
-        .reset_instance_stats(id, Some(user_id), is_admin)
-        .await
-    {
-        Ok(()) => Ok(Json(json!({ "success": true }))),
-        Err(error) => Err(rsshub_mutate_error(error)),
-    }
-}
-
-/// 对所有实例执行健康检查
-pub(crate) async fn health_check_all_rsshub_instances(
-    State(db): State<DatabaseConnection>,
-    headers: axum::http::HeaderMap,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    // 验证用户身份
-    let user_id = get_user_id_from_headers(&headers, &db).await?;
-
-    let rsshub_service = RsshubService::new(db);
-
-    match rsshub_service.check_all_instances(Some(user_id)).await {
-        Ok(()) => Ok(Json(
-            json!({ "success": true, "message": "Health check completed" }),
-        )),
-        Err(error) => {
-            tracing::error!(%error, "Failed to check RSSHub instances");
-            Err(phantasi_http_err(StatusCode::INTERNAL_SERVER_ERROR, error))
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::helpers::build_feed_discovery_candidates;
+
+    #[test]
+    fn rsshub_handlers_live_in_rsshub_module() {
+        let src = include_str!("rsshub.rs");
+        assert!(src.contains("pub(crate) async fn list_rsshub_instances"));
+        assert!(src.contains("pub(crate) async fn add_rsshub_instance"));
+        let comments = include_str!("comments.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .unwrap_or("");
+        assert!(!comments.contains("list_rsshub_instances"));
+    }
 
     #[test]
     fn feed_discovery_candidates_cover_root_and_nested_paths() {
@@ -891,7 +710,7 @@ mod tests {
 
     #[test]
     fn comments_only_attach_to_notes() {
-        let src = include_str!("comments_rsshub.rs");
+        let src = include_str!("comments.rs");
         assert!(src.contains("SourceType::Note"));
         assert!(src.contains("Comments are only available on notes"));
         assert!(src.contains("s.source_type = 'note'"));
@@ -906,5 +725,64 @@ mod tests {
         assert!(super::can_delete_comment(3, 9, true));
         assert!(!super::can_delete_comment(3, 9, false));
     }
+
+    #[test]
+    fn host_comment_write_uses_granted_layer() {
+        let defaults = crate::config::DynamicConfig::default();
+        assert!(super::comment_write_granted_for(&defaults, 1, true));
+        assert!(!super::comment_write_granted_for(&defaults, 7, false));
+        let delegated = crate::config::DynamicConfig {
+            user_perm_phantasi_comment_write: true,
+            ..crate::config::DynamicConfig::default()
+        };
+        assert!(super::comment_write_granted_for(&delegated, 7, false));
+        assert!(!super::comment_write_granted_for(&delegated, -1, false));
+    }
+
+    fn fn_body<'a>(src: &'a str, name: &str) -> &'a str {
+        let start = src
+            .find(&format!("pub(crate) async fn {name}"))
+            .expect(name);
+        let body = &src[start..];
+        let end = body[1..]
+            .find("\npub(crate) async fn ")
+            .map(|index| index + 1)
+            .unwrap_or(body.len());
+        &body[..end]
+    }
+
+    #[test]
+    fn host_comment_write_endpoints_require_login_and_grant() {
+        let src = include_str!("comments.rs");
+        let create = fn_body(src, "create_comment");
+        let update = fn_body(src, "update_comment");
+        let list = fn_body(src, "list_comments");
+        assert!(create.contains("get_user_id_from_headers"));
+        assert!(create.contains("require_comment_write"));
+        assert!(update.contains("get_user_id_from_headers"));
+        assert!(update.contains("require_comment_write"));
+        assert!(list.contains("can_write"));
+        assert!(list.contains("comment_write_granted_for"));
+        assert!(list.contains("get_optional_user_and_admin_status"));
+    }
+
+    #[test]
+    fn comment_lookups_do_not_map_store_errors_to_404() {
+        let src = include_str!("comments.rs");
+        let visible = src
+            .split("async fn visible_source")
+            .nth(1)
+            .and_then(|rest| rest.split("async fn visible_item").next())
+            .expect("visible_source");
+        assert!(visible.contains("phantasi_store_http(\"find article\""));
+        assert!(visible.contains("Ok(None) => return Err(item_not_found())"));
+        let list = fn_body(src, "list_comments");
+        let create = fn_body(src, "create_comment");
+        assert!(list.contains("phantasi_store_http(\"count comment replies\""));
+        assert!(src.contains("phantasi_store_http(\"load comment authors\""));
+        assert!(create.contains("phantasi_store_http(\"find comment\""));
+        assert!(create.contains("Ok(None) => return Err(comment_not_found())"));
+        assert!(!create.contains(".ok()\n            .flatten()"));
+        assert!(!list.contains("unwrap_or_default()"));
+    }
 }
-use myriad_error::AppError;

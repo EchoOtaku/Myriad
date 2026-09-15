@@ -4,12 +4,14 @@ import { cx } from './cx'
 export function PhantasiRailTitle({
   id,
   children,
+  tags,
   action,
   arrive = 0,
   pinned = false,
 }: {
   id?: string
   children: string
+  tags?: ReactNode
   action?: ReactNode
   arrive?: number | false
   pinned?: boolean
@@ -32,6 +34,7 @@ export function PhantasiRailTitle({
       <h2 className="phantasi-rail-title__label" id={id}>
         {children}
       </h2>
+      {tags}
       {action ? (
         <div className="phantasi-rail-title__actions">{action}</div>
       ) : null}

@@ -269,3 +269,126 @@ html.dark .phantasi-note.phantasi-skin .note-input {
   transform: translateY(-50%);
   pointer-events: none;
 }
+
+/* ---- 分组 / 芯片 / 时间 ---- */
+
+.note-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.note-section__title {
+  margin: 0;
+  color: var(--note-ink);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.note-section__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.note-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.note-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.85rem;
+  padding: 0 0.15rem 0 0.7rem;
+  border: 1px solid var(--note-line);
+  border-radius: 999px;
+  background: var(--note-fill);
+  color: var(--note-ink);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.note-chip.is-on {
+  border-color: var(--note-ink);
+  background: var(--note-ink);
+  color: var(--note-paper);
+}
+
+.note-chip.is-muted {
+  color: var(--note-ink-2);
+}
+
+.note-chip__face {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.85rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.note-chip__label {
+  padding-right: 0.55rem;
+}
+
+.note-chip__dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.note-chip__dismiss:hover {
+  background: rgb(0 0 0 / 8%);
+}
+
+html.dark .note-chip__dismiss:hover {
+  background: rgb(255 255 255 / 12%);
+}
+
+.note-chip__dismiss svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.note-compose {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.note-compose .note-input {
+  flex: 1 1 auto;
+}
+
+.note-date {
+  display: block;
+  min-width: 0;
+}
+
+.phantasi-note.phantasi-skin .note-date__native {
+  display: block;
+  min-width: 0;
+  padding-inline-end: 0.7rem;
+}
+
+.phantasi-note.phantasi-skin .note-date__native::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.55;
+}

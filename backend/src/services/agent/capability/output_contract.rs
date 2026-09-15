@@ -534,7 +534,8 @@ mod tests {
             }
         });
         assert!(
-            check_output_contract(&schema, &json!({ "pageType": "phantasi", "width": 1024 })).is_none()
+            check_output_contract(&schema, &json!({ "pageType": "phantasi", "width": 1024 }))
+                .is_none()
         );
         assert!(
             check_output_contract(&schema, &json!({ "pageType": "unknown" }))

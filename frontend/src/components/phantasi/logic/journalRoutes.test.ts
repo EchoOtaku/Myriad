@@ -10,6 +10,7 @@ import {
   navIdForJournalLocation,
   parseJournalPath,
   pathShowsNavId,
+  pathForActiveIdChange,
   isJournalSyndicationPath,
   seoJournalFollow,
   seoListNoindex,
@@ -125,13 +126,15 @@ describe('journalListPath', () => {
 })
 
 describe('nav helpers', () => {
-  it('文章/主题/源不算已经停在板块首页', () => {
+  it('主题/源算停在订阅下；文章是叠层，刷新靠路径同步而不是把它算作板块首页', () => {
     assert.equal(pathShowsNavId('/journal', 'feeds'), true)
     assert.equal(pathShowsNavId('/journal/feeds', 'feeds'), true)
     assert.equal(pathShowsNavId('/journal/notes', 'notes'), true)
-    assert.equal(pathShowsNavId('/journal/topics/x', 'feeds'), false)
-    assert.equal(pathShowsNavId('/journal/feeds/1', 'feeds'), false)
+    assert.equal(pathShowsNavId('/journal/topics/x', 'feeds'), true)
+    assert.equal(pathShowsNavId('/journal/feeds/1', 'feeds'), true)
     assert.equal(pathShowsNavId('/journal/articles/1', 'feeds'), false)
+    assert.equal(pathShowsNavId('/journal/articles/1', 'notes'), false)
+    assert.equal(pathShowsNavId('/journal/notes', 'feeds'), false)
     assert.equal(
       navIdForJournalLocation({ kind: 'friends' }, true, false),
       'sites',
@@ -150,5 +153,24 @@ describe('nav helpers', () => {
     assert.equal(isJournalSyndicationPath('/journal/notes'), false)
     assert.equal(seoJournalFollow('/journal/feeds/4', 'sources'), true)
     assert.equal(seoJournalFollow('/journal', 'workbench'), false)
+  })
+
+  it('路径同步过来的 activeId 不得回写；点导航才改地址', () => {
+    assert.equal(pathForActiveIdChange('/journal/notes', 'feeds', true), null)
+    assert.equal(pathForActiveIdChange('/journal/friends', 'feeds', true), null)
+    assert.equal(pathForActiveIdChange('/journal/feeds/9', 'feeds', false), null)
+    assert.equal(pathForActiveIdChange('/journal/topics/ai', 'feeds', false), null)
+    assert.equal(
+      pathForActiveIdChange('/journal/articles/1', 'feeds', false),
+      '/journal',
+    )
+    assert.equal(
+      pathForActiveIdChange('/journal', 'notes', false),
+      '/journal/notes',
+    )
+    assert.equal(
+      pathForActiveIdChange('/journal/articles/1', 'notes', false),
+      '/journal/notes',
+    )
   })
 })

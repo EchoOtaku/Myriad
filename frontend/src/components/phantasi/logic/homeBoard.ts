@@ -4,8 +4,6 @@ import type { PhantasiItem } from '../../../types/phantasi'
 
 import type { FeedStory } from './feedStories'
 
-export const NOTES_FEATURED_MAX = 3
-
 export interface HomeBoardNote {
   id: number
   title: string
@@ -76,44 +74,31 @@ export function toNoteStory(
   }
 }
 
-export function pickHomeBoardNotes(
-  items: Array<
-    Pick<
-      PhantasiItem,
-      | 'id'
-      | 'title'
-      | 'summary'
-      | 'image'
-      | 'published_at'
-      | 'source_id'
-      | 'is_starred'
-      | 'topic'
-      | 'author'
-      | 'source_name'
-      | 'source_icon'
-      | 'guid'
-    >
-  >,
-  sources: Array<{ id: number; source_type: string }>,
-): HomeBoardNote[] {
-  const noteSourceIds = new Set(
-    sources
-      .filter((source) => source.source_type === 'note')
-      .map((source) => source.id),
-  )
-  if (noteSourceIds.size === 0) return []
-  return Iterator.from(items)
-    .filter((item) => noteSourceIds.has(item.source_id))
-    .take(NOTES_FEATURED_MAX)
-    .map(toHomeBoardNote)
-    .toArray()
-}
-
 export function noteSourceKey(
   sources: Array<{ id: number; source_type: string }>,
 ): string {
   return sources
     .filter((source) => source.source_type === 'note')
     .map((source) => source.id)
+    .toSorted((left, right) => left - right)
+    .join(',')
+}
+
+/** 笔记墙内容戳：源集合或抓取结果变了才换，收藏/已读不算。 */
+export function noteSourceStamp(
+  sources: Array<{
+    id: number
+    source_type: string
+    item_count?: number
+    last_success_at?: number | null
+  }>,
+): string {
+  return sources
+    .filter((source) => source.source_type === 'note')
+    .toSorted((left, right) => left.id - right.id)
+    .map(
+      (source) =>
+        `${source.id}:${source.item_count ?? 0}:${source.last_success_at ?? 0}`,
+    )
     .join(',')
 }

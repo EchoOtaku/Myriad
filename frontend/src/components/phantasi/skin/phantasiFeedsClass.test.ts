@@ -6,9 +6,17 @@ import { fileURLToPath } from 'node:url'
 
 const dir = dirname(fileURLToPath(import.meta.url))
 
+function feedsSrc(): string {
+  return [
+    readFileSync(join(dir, 'PhantasiFeeds.tsx'), 'utf8'),
+    readFileSync(join(dir, 'PhantasiFeedsStories.tsx'), 'utf8'),
+    readFileSync(join(dir, 'PhantasiFeedsSites.tsx'), 'utf8'),
+  ].join('\n')
+}
+
 describe('phantasi feeds 入场 class 链', () => {
   it('订阅页不再展开宫格', () => {
-    const src = readFileSync(join(dir, 'PhantasiFeeds.tsx'), 'utf8')
+    const src = feedsSrc()
     assert.doesNotMatch(src, /spreadSites/)
     assert.doesNotMatch(src, /setSitesMode/)
     assert.doesNotMatch(src, /foldSites/)
@@ -23,12 +31,12 @@ describe('phantasi feeds 入场 class 链', () => {
     assert.doesNotMatch(motionCss, /is-sites-open/)
   })
 
-  it('滚文章过源先点网站卡，停稳再写 focus / jump，避免整轨重绘', () => {
-    const src = readFileSync(join(dir, 'PhantasiFeeds.tsx'), 'utf8')
+    it('滚网站卡 / 文章卡松手就停，不 jump、不补跟、不补源', () => {
+    const src = feedsSrc()
     assert.match(src, /function paintSiteOn/)
     assert.match(src, /function indexSiteOnEls/)
     assert.match(src, /siteElsRef/)
-    assert.match(src, /FOCUS_FOLLOW_MS/)
+    assert.doesNotMatch(src, /FOCUS_FOLLOW_MS/)
     assert.match(src, /paintSiteOn\(\n {10}sitesTrackRef.current/)
     assert.doesNotMatch(
       src,
@@ -36,7 +44,30 @@ describe('phantasi feeds 入场 class 链', () => {
     )
     assert.match(src, /siteFollowHintRef/)
     assert.match(src, /followStopsRef\.current,\n {8}driveStopsRef\.current/)
-    assert.match(src, /skipStoryAlignRef\.current = true\n    setFocusId\(id\)/)
+    assert.doesNotMatch(src, /pendingJumpRef/)
+    assert.doesNotMatch(src, /flushPendingJump/)
+    assert.doesNotMatch(src, /flushPendingExpand/)
+    assert.doesNotMatch(
+      src.slice(src.indexOf('const onSiteIdle'), src.indexOf('const onStoryIdle')),
+      /jumpRef|setFocusId|flushStorySettle|releaseStories/,
+    )
+    assert.doesNotMatch(
+      src.slice(src.indexOf('if (settleId == null) return'), src.indexOf('const onStoryScroll')),
+      /jumpRef/,
+    )
+    assert.match(
+      src,
+      /grabbingRef.current && railDriverRef.current === 'stories'/,
+    )
+    assert.match(
+      src.slice(src.indexOf('const onSiteScroll'), src.indexOf('const onSiteGrab')),
+      /if \(!grabbingRef.current\) return/,
+    )
+    assert.match(src, /railCardOffset/)
+    assert.doesNotMatch(
+      src.slice(src.indexOf('const rebuildFollowStops'), src.indexOf('const flushStorySettle')),
+      /railSeatScroll/,
+    )
     assert.match(src, /railMountColumnsPan/)
     assert.match(src, /railMountColumnsCovered/)
     assert.doesNotMatch(src, /railMountColumnsGrab/)
@@ -75,15 +106,22 @@ describe('phantasi feeds 入场 class 链', () => {
     assert.match(pan, /eagerStoryCover/)
     assert.match(src, /storyColRef/)
     assert.match(src, /flushStorySettle/)
-    assert.match(
+    assert.doesNotMatch(
       src,
       /pendingFlushRef.current = false\n {4}dropStoryDomShells\(itemsTrackRef.current\)/,
     )
+    assert.match(
+      src,
+      /recycleStoryDomShellsOutside\(\n {6}trackRef.current,\n {6}liveTo \+ 1,\n {6}Number.POSITIVE_INFINITY,/,
+    )
     assert.match(src, /pendingFlushRef/)
     assert.match(src, /pendingFlushRef\.current = true/)
-    assert.match(src, /if \(pendingFlushRef\.current\) flushStorySettle/)
+    assert.doesNotMatch(src, /if \(pendingFlushRef\.current\) flushStorySettle/)
     assert.match(src, /id !== focusIdRef\.current/)
-    assert.match(src, /startTransition/)
+    assert.doesNotMatch(
+      src.slice(src.indexOf('const onStoryIdle'), src.indexOf('const railsReady')),
+      /flushStorySettle|releaseStories|storyWarmRef/,
+    )
     assert.match(src, /settleId/)
     assert.match(src, /railMountColumnsSettle/)
     assert.match(src, /true,\n {4}onStoryScroll,\n {4}onStoryGrab,\n {4}onStoryIdle,\n {2}\)/)
@@ -91,16 +129,34 @@ describe('phantasi feeds 入场 class 链', () => {
     assert.doesNotMatch(src, /snapSlots/)
     assert.match(src, /seatSitesRef/)
     assert.match(src, /appliedFocus\.current = settleId/)
-    assert.match(src, /appliedFocus\.current = id/)
     assert.doesNotMatch(src, /\[focusSourceId, focusId\]/)
     assert.match(src, /alignStoryGroup\(focusId\)\n  }, \[focusId\]\)/)
+    assert.match(src, /skipStoryAlignRef.current = true\n    setFocusId\(id\)/)
+    assert.match(src, /sitesApiRef.current\?\.align\(id, true\)/)
+    assert.match(src, /dropStoryDomShells\(itemsTrackRef.current\)/)
+    assert.match(src, /clearPhantasiStoryPeeks\(itemsTrackRef.current\)/)
+    assert.match(src, /const jumped =/)
+    assert.match(src, /reset \|\| jumped/)
     assert.match(src, /grabbingRef/)
     assert.match(src, /if \(grabbingRef\.current\) return/)
     assert.match(src, /dropPeek/)
     assert.match(src, /is-rail-grabbing/)
     assert.match(src, /paintGrabbing/)
     assert.match(src, /paintFollowLayer/)
-    assert.match(src, /willChange = on \? 'transform'/)
+    assert.match(src, /on \? 'transform'/)
+    assert.match(src, /willChange = value/)
+    assert.match(src, /primeStoryMount/)
+    assert.match(src, /RAIL_MOUNT_GRAB_AHEAD/)
+    assert.match(src, /grabFillRef/)
+    assert.match(src, /requestAnimationFrame/)
+    assert.match(
+      src.slice(src.indexOf('const onSiteGrab'), src.indexOf('const onStoryGrab')),
+      /paintFollowLayer\(true\)/,
+    )
+    assert.match(
+      src.slice(src.indexOf('const onSiteIdle'), src.indexOf('const onStoryIdle')),
+      /paintFollowLayer\(false\)/,
+    )
     assert.doesNotMatch(src, /setRailGrabbing/)
     assert.match(
       src,
@@ -111,26 +167,33 @@ describe('phantasi feeds 入场 class 链', () => {
     assert.match(src, /onStoryIdle/)
     assert.match(
       src,
-      /const onStoryIdle = useCallback\(\(\) => \{\n {4}if \(focusTimerRef.current\) window.clearTimeout\(focusTimerRef.current\)\n {4}paintGrabbing\(false\)\n {4}paintFollowLayer\(false\)\n {4}flushStorySettle\(\)/,
+      /const onStoryIdle = useCallback\(\(\) => \{\n {4}clearStorySettleTimers\(\)\n {4}paintGrabbing\(false\)\n {4}paintFollowLayer\(false\)/,
     )
-    assert.match(src, /const releaseAndWarm =/)
-    assert.match(src, /requestIdleCallback\(releaseAndWarm\)/)
+    assert.doesNotMatch(src, /const releaseAndWarm =/)
     assert.match(src, /reactMountStaleRef/)
     assert.match(src, /const prev = storyMountCommittedRef.current/)
     assert.match(src, /const settled = railMountColumnsSettle/)
     assert.match(src, /const stale = reactMountStaleRef.current/)
-    assert.match(src, /const covered = prev.from <= ideal.from && prev.to >= ideal.to/)
-    assert.match(src, /stale && !covered/)
-    assert.match(src, /from: ideal.from, to: ideal.to/)
+    assert.doesNotMatch(src, /const covered = prev.from <= ideal.from && prev.to >= ideal.to/)
+    assert.doesNotMatch(src, /stale && !covered/)
+    assert.match(src, /stale \|\| keepLive < ideal.to/)
+    assert.match(src, /const next = settled/)
     assert.match(src, /const syncMount = mountChanged/)
     assert.doesNotMatch(src, /const syncMount = mountChanged \|\| stale/)
     assert.match(src, /if \(syncMount\) storySetMountRef.current\(mountColsRef.current\)/)
+    assert.match(
+      src,
+      /if \(syncMount\) storySetMountRef.current\(mountColsRef.current\)\n    storySetLiveRef.current\(liveToRef.current\)\n    if \(settleId == null\) return/,
+    )
     assert.match(src, /onSiteIdle/)
+    assert.match(src, /const onSiteIdle = useCallback\(\(\) => \{\n {4}clearStorySettleTimers\(\)/)
+    assert.match(src, /const clearStorySettleTimers =/)
+    assert.match(src, /growFrameRef\.current = 0/)
     assert.match(src, /holdStoriesRef\.current/)
     assert.match(src, /releaseStoriesRef\.current/)
     assert.doesNotMatch(src, /itemsApiRef\.current\?\.refresh\(\)/)
     assert.match(src, /growFrameRef/)
-    assert.match(
+    assert.doesNotMatch(
       src,
       /growFrameRef\.current = window\.requestAnimationFrame\(\(\) => \{[\s\S]*?startTransition/,
     )
@@ -138,7 +201,16 @@ describe('phantasi feeds 入场 class 链', () => {
     assert.match(src, /railTrackScroll/)
     assert.match(src, /railLeadColumn/)
     assert.match(src, /nudge\(/)
-    assert.match(src, /pendingExpandRef\.current = dir/)
+    assert.doesNotMatch(src, /pendingExpandRef\.current = dir/)
+    assert.doesNotMatch(src, /const flushPendingExpand =/)
+    assert.doesNotMatch(src, /if \(expandDir\) expandRef/)
+    assert.doesNotMatch(src, /let expandDir:/)
+    assert.match(
+      src,
+      /paintStoryAway\(itemsTrackRef.current, ideal.from, ideal.to, prevBand, false\)/,
+    )
+    assert.match(src, /liveToRef.current = padTo\n      setLive\(padTo\)\n      setMount\(next\)/)
+    assert.doesNotMatch(src, /liveToRef.current = cap/)
     assert.match(src, /storySlotAtColumn/)
     assert.match(src, /storyColumnLeads/)
     assert.match(src, /colLeadSlotsRef\.current !== storySlots/)
@@ -175,12 +247,11 @@ describe('phantasi feeds 入场 class 链', () => {
     assert.match(src, /closest\('\.phantasi-story__star'\)/)
     assert.match(src, /storyAtRailTarget/)
     assert.match(src, /canStar=\{canStar\}/)
-    assert.match(src, /eagerBandRef\.current\.to \+ RAIL_MOUNT_GROW_AHEAD/)
+    assert.match(src, /ideal\.to \+ RAIL_MOUNT_GROW_AHEAD/)
     assert.match(src, /grabbingRef=\{grabbingRef\}/)
     assert.match(src, /if \(grabbingRef\.current\) return\n {6}const mounted/)
-    assert.match(src, /mounted.to <= bootTo \+ RAIL_MOUNT_LIVE_PAD/)
-    assert.match(src, /mounted.from > 1/)
-    assert.match(src, /mounted.to === eagerBandRef.current.to/)
+    assert.match(src, /mounted.to > bootTo \+ RAIL_MOUNT_LIVE_PAD/)
+    assert.doesNotMatch(src, /mounted.to === eagerBandRef.current.to/)
     assert.match(src, /prebuiltColsRef/)
     assert.match(src, /if \(reset\) prebuiltColsRef\.current\.clear\(\)/)
     assert.match(src, /prebuilt\.delete\(col\)/)
@@ -203,7 +274,7 @@ describe('phantasi feeds 入场 class 链', () => {
     assert.match(src, /if \(from > paintTo\) return/)
     assert.match(
       src,
-      /ensureStoryShells\(\n {10}itemsTrackRef.current,\n {10}from,\n {10}paintTo,/,
+      /ensureStoryShells\(\n {6}itemsTrackRef.current,\n {6}from,\n {6}paintTo,/,
     )
     assert.match(src, /fillGrabLive\(prevBand.to \+ 1, ideal.to\)/)
     assert.match(src, /recycleStoryDomShellsOutside/)
@@ -242,20 +313,30 @@ describe('phantasi feeds 入场 class 链', () => {
     assert.match(src, /grew && leftoverShells/)
     assert.doesNotMatch(src, /splitGrowLiveRef/)
     assert.doesNotMatch(src, /grabFillFromRef/)
-    const growArm = src.slice(
-      src.indexOf('if (growReact && !growFrameRef.current)'),
-      src.indexOf('if (railDriverRef.current === \'sites\')'),
+    assert.doesNotMatch(src, /if \(growReact && !growFrameRef.current\)/)
+    assert.doesNotMatch(
+      src.slice(
+        src.indexOf('const onStoryScroll'),
+        src.indexOf('const onSiteScroll'),
+      ),
+      /startTransition/,
     )
-    assert.match(growArm, /startTransition/)
-    assert.doesNotMatch(growArm, /eagerStoryCovers/)
-    assert.match(src, /if \(growReact && !growFrameRef.current\)/)
     assert.match(src, /ensureStoryShells/)
     assert.match(src, /paintStoryLiveCols/)
     assert.match(
       src,
-      /paint.canStar,\n {10}true,/,
+      /paint.canStar,\n {6}true,/,
     )
     assert.match(pan, /export function ensureStoryShells/)
+    assert.match(pan, /export function railCardOffset/)
+    assert.match(pan, /if \(to - from <= 0.5\) return followStops\[i\] \?\? 0/)
+    assert.doesNotMatch(
+      pan.slice(
+        pan.indexOf('function followRailAt'),
+        pan.indexOf('export function followRailScroll'),
+      ),
+      /followStops\[i \+ 1\] \?\? followStops\[i\]/,
+    )
     assert.match(pan, /export function dropStoryDomShells/)
     assert.match(src, /if \(!covers\) return/)
     assert.doesNotMatch(src, /pendingAwayRef/)
@@ -326,19 +407,21 @@ describe('phantasi feeds 入场 class 链', () => {
     assert.match(story, /storyCardInnerHtml/)
     assert.match(story, /holdCover=\{holdCover\}/)
     assert.doesNotMatch(story, /watchStoryCover/)
-    assert.match(story, /\bshell\b/)
+    assert.match(story, /if \(slots.length === 0\) return null/)
+    assert.doesNotMatch(story, /\bshell\b/)
     assert.match(story, /export const PhantasiStoryColumn/)
     assert.match(story, /prev\.col === next\.col/)
     const columnMemo = story.slice(story.lastIndexOf('prev.col === next.col'))
     assert.doesNotMatch(columnMemo, /holdCover/)
     assert.match(story, /railCol=\{slot\.column\}/)
-    assert.match(story, /railCol=\{col\}/)
+    assert.doesNotMatch(story, /railCol=\{col\}/)
     assert.match(story, /key=\{`\$\{col\}:\$\{slot.row\}`\}/)
-    assert.match(story, /key=\{`\$\{col\}:1`\}/)
-    assert.match(story, /key=\{`\$\{col\}:2`\}/)
+    assert.doesNotMatch(story, /key=\{`\$\{col\}:1`\}/)
+    assert.doesNotMatch(story, /key=\{`\$\{col\}:2`\}/)
     const card = readFileSync(join(dir, '../ui/StoryCard.tsx'), 'utf8')
     assert.match(card, /loading=\{eagerCover \? 'eager' : 'lazy'\}/)
     assert.match(card, /position: 'absolute'/)
+    assert.match(card, /height: 'var\(--phantasi-story-h\)'/)
     assert.match(card, /holdCover/)
     assert.match(card, /data-src/)
     assert.match(card, /deferCover \? null/)
@@ -394,7 +477,11 @@ describe('phantasi feeds 入场 class 链', () => {
     )
     assert.match(
       feedsCss,
-      /\.phantasi-feeds\.is-rail-grabbing \.phantasi-feeds__items-track \{\n {2}contain: layout style paint;/,
+      /\.phantasi-feeds\.is-rail-grabbing \.phantasi-feeds__items-track,\n\.phantasi-feeds\.is-rail-grabbing \.phantasi-feeds__sites-track \{\n {2}contain: layout style;\n {2}will-change: transform;/,
+    )
+    assert.doesNotMatch(
+      feedsCss,
+      /\.phantasi-feeds\.is-rail-grabbing \.phantasi-story \{\n {2}transform: none;/,
     )
     assert.match(feedsCss, /is-rail-panning/)
     assert.match(feedsCss, /overscroll-behavior: none/)
@@ -403,7 +490,7 @@ describe('phantasi feeds 入场 class 链', () => {
   })
 
   it('最新聚合卡用 mix 语气，叠卡跟源走，不铺渐变底', () => {
-    const src = readFileSync(join(dir, 'PhantasiFeeds.tsx'), 'utf8')
+    const src = feedsSrc()
     const card = readFileSync(join(dir, '../ui/SiteCard.tsx'), 'utf8')
     const css = readFileSync(join(dir, '../ui/css/cards.css'), 'utf8')
     assert.match(src, /tone="mix"/)

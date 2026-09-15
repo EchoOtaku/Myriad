@@ -262,13 +262,15 @@ export function RSSHubInstances({
         },
       )
       const data = await response.json()
-      if (data.success) {
-        setInstances((prev) =>
-          prev.map((item) =>
-            item.id === instance.id ? data.instance : item,
-          ),
-        )
+      if (!data.success) {
+        showError(data.error || phantasi.errorSaveFailed)
+        return
       }
+      setInstances((prev) =>
+        prev.map((item) =>
+          item.id === instance.id ? data.instance : item,
+        ),
+      )
     } catch {
       showError(phantasi.errorNetworkRetry)
     } finally {

@@ -12,7 +12,10 @@ export class PhantasiItemState {
   private revision = 0
   private entries = new Map<number, Entry>()
   private pending = new Map<number, ArticleFlags>()
-  private mutationListeners = new Set<(patch: ArticleFlags) => void>()
+  private sourceIds = new Map<number, number>()
+  private mutationListeners = new Set<
+    (id: number, patch: ArticleFlags, sourceId?: number) => void
+  >()
   private listeners = new Set<() => void>()
   getSnapshot = () => this.revision
   subscribe = (listener: () => void) => {
@@ -22,13 +25,17 @@ export class PhantasiItemState {
     }
   }
 
-  subscribeMutations = (listener: (patch: ArticleFlags) => void) => {
+  subscribeMutations = (
+    listener: (id: number, patch: ArticleFlags, sourceId?: number) => void,
+  ) => {
     this.mutationListeners.add(listener)
     return () => { this.mutationListeners.delete(listener) }
   }
 
-  private notifyMutation(patch: ArticleFlags) {
-    for (const listener of this.mutationListeners) listener(patch)
+  private notifyMutation(id: number, patch: ArticleFlags) {
+    for (const listener of this.mutationListeners) {
+      listener(id, patch, id === 0 ? undefined : this.sourceIds.get(id))
+    }
   }
 
   private notify() {
@@ -57,7 +64,7 @@ export class PhantasiItemState {
   commit(id: number, patch: ArticleFlags) {
     this.dropPreview(id, patch, false)
     this.observe(id, patch, this.revision)
-    this.notifyMutation(patch)
+    this.notifyMutation(id, patch)
   }
 
   private dropPreview(
@@ -91,7 +98,14 @@ export class PhantasiItemState {
     return next
   }
 
-  observe(id: number, patch: ArticleFlags, startedAt: number) {
+  observe(
+    id: number,
+    patch: ArticleFlags & { source_id?: number },
+    startedAt: number,
+  ) {
+    if (typeof patch.source_id === 'number') {
+      this.sourceIds.set(id, patch.source_id)
+    }
     const existing = this.entries.get(id)
     const value = { ...existing?.value }
     const revisions = { ...existing?.revisions }
@@ -112,7 +126,10 @@ export class PhantasiItemState {
     this.notify()
   }
 
-  observeMany(items: Array<ArticleFlags & { id: number }>, startedAt: number) {
+  observeMany(
+    items: Array<ArticleFlags & { id: number; source_id?: number }>,
+    startedAt: number,
+  ) {
     const before = this.revision
     this.batching = true
     try {
@@ -135,7 +152,7 @@ export class PhantasiItemState {
         .toArray(),
       this.revision,
     )
-    this.notifyMutation({ is_read: true })
+    this.notifyMutation(0, { is_read: true })
   }
 
   project<T extends { id: number }>(item: T): T {

@@ -1,7 +1,8 @@
 /** 批量加入分类。皮和管理面都能用，不进口 manager / skin。 */
 
+import { LuTag } from '@lib/icons'
 import { useMemo, useState } from 'react'
-import { FieldSelect } from '../settings'
+import { SettingTitleSelect } from '../settings'
 
 export function BatchCategoryPick({
   names,
@@ -33,8 +34,9 @@ export function BatchCategoryPick({
   )
 
   return (
-    <FieldSelect
-      size="sm"
+    <SettingTitleSelect
+      variant="title"
+      icon={<LuTag />}
       searchable
       disabled={disabled}
       value={value}
@@ -42,6 +44,7 @@ export function BatchCategoryPick({
       aria-label={placeholder}
       searchPlaceholder={searchPlaceholder}
       emptySearchText={emptyText}
+      className="managed-list-filter-pick"
       onChange={(next) => {
         setValue('')
         if (next) onPick(next)

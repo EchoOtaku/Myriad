@@ -2,6 +2,8 @@ import type { BoardScroll } from '../components/phantasi/logic/boardScroll'
 
 import type { PhantasiItem } from '../types/phantasi'
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -20,9 +22,8 @@ import {
 } from '../components/phantasi/articlePrefetch'
 import { phantasiBoardNavItems } from '../components/phantasi/boardNav'
 import PhantasiFilterLane from '../components/phantasi/PhantasiFilterLane'
-import PhantasiReader from '../components/phantasi/PhantasiReader'
 import PhantasiSourceGrid from '../components/phantasi/PhantasiSourceGrid'
-import { phantasiOwnItemPath } from '../components/phantasi/constants'
+import { journalItemPath } from '../components/phantasi/logic/journalRoutes'
 import { storySourceFace } from '../components/phantasi/notes/noteSiteSource'
 import {
   PHANTASI_PEEK_HANDOFF_MS,
@@ -33,8 +34,6 @@ import {
 import { clearPhantasiStoryPeeks } from '../components/phantasi/ui/StoryCard'
 import {
   filterLaneItems,
-  isSiteSource,
-  refreshableSourceCount,
   showsFilterLane,
 } from '../components/phantasi/logic/board'
 import {
@@ -43,21 +42,14 @@ import {
 } from '../components/phantasi/logic/boardScroll'
 import { shouldPopOpenedItem } from '../components/phantasi/logic/phantasiItemRoute'
 import { topicDisplayName } from '../components/phantasi/logic/topics'
-import { PhantasiCategoryAdmin } from '../components/phantasi/manager/PhantasiCategoryAdmin'
-import { PhantasiWorkbenchAdmin } from '../components/phantasi/manager/PhantasiWorkbenchAdmin'
-import { usePipack } from '../components/phantasi/manager/usePipack'
-import { useNoteTransfer } from '../components/phantasi/manager/useNoteTransfer'
-import NoteEditor from '../components/phantasi/notes/NoteEditor'
 import { PhantasiViewLane } from '../components/phantasi/skin/PhantasiChip'
 import { AnimatePresence, PhantasiPage } from '../components/phantasi/skin/PhantasiPage'
-import PhantasiWorkbench from '../components/phantasi/skin/PhantasiWorkbench'
 import {
   phantasiSearchInputRef,
   showPhantasiSearchGuide,
 } from '../components/phantasi/ui/PhantasiSearch'
 import { usePhantasiAgentOpen } from '../components/phantasi/usePhantasiAgentOpen'
 import { usePhantasiBoardRoute } from '../components/phantasi/usePhantasiBoardRoute'
-import { usePhantasiCategories } from '../components/phantasi/usePhantasiCategories'
 import { usePhantasiItemActions } from '../components/phantasi/usePhantasiItemActions'
 import { usePhantasiItemRoute } from '../components/phantasi/usePhantasiItemRoute'
 import { usePhantasiItems } from '../components/phantasi/usePhantasiItems'
@@ -67,8 +59,6 @@ import { usePhantasiSeo } from '../components/phantasi/usePhantasiSeo'
 import { usePhantasiSources } from '../components/phantasi/usePhantasiSources'
 import { usePhantasiStarred } from '../components/phantasi/usePhantasiStarred'
 import { usePhantasiSurface } from '../components/phantasi/usePhantasiSurface'
-import { usePhantasiWorkbench } from '../components/phantasi/usePhantasiWorkbench'
-import * as phantasiApi from '../services/phantasiApi'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { useSecondaryNav } from '../contexts/NavigationContext'
@@ -81,6 +71,17 @@ import {
   useModuleVisibilityPreferences,
 } from '../utils/moduleVisibility'
 import { showToast } from '../utils/toastManager'
+
+const PhantasiReader = lazy(() => import('../components/phantasi/PhantasiReader'))
+const NoteEditor = lazy(() => import('../components/phantasi/notes/NoteEditor'))
+const PhantasiWorkbenchLane = lazy(() => import('../components/phantasi/PhantasiWorkbenchLane'))
+
+function warmJournalSurfaces(admin: boolean) {
+  void import('../components/phantasi/PhantasiReader')
+  if (!admin) return
+  void import('../components/phantasi/notes/NoteEditor')
+  void import('../components/phantasi/PhantasiWorkbenchLane')
+}
 
 const EMPTY_ITEMS: PhantasiItem[] = []
 
@@ -186,6 +187,7 @@ function PhantasiSubjectPage() {
     isAuthenticated,
     openArticle: item.openArticle,
     viewMode: route.viewMode,
+    board: route.board,
     selectedItem: item.selectedItem,
     setItems: list.setItems,
     setTotal: list.setTotal,
@@ -213,64 +215,6 @@ function PhantasiSubjectPage() {
     sources.loadSources,
     sources.loadStats,
   )
-  const pack = usePipack(sources.sources, sources.reloadBoard)
-  const workbench = usePhantasiWorkbench(
-    isAdmin && route.viewMode === 'workbench',
-    notes.docsEpoch,
-    {
-      loadFailed: t.phantasi.workbenchLoadFailed,
-      noteDeleteFailed: t.errors.operationFailed,
-      unscheduleFailed: t.phantasi.workbenchUnscheduleFailed,
-      mediaLoadFailed: t.errors.mediaLoadFailed,
-      mediaUploadFailed: t.errors.mediaUploadFailed,
-      mediaDeleteFailed: t.errors.mediaDeleteFailed,
-      commentDeleteFailed: t.phantasi.workbenchCommentDeleteFailed,
-    },
-    setError,
-  )
-  const categories = usePhantasiCategories(
-    isAdmin && route.viewMode === 'workbench',
-    workbench.docs,
-    sources.sources,
-    {
-      loadFailed: t.phantasi.workbenchCategoryLoadFailed,
-      createFailed: t.phantasi.workbenchCategoryCreateFailed,
-      renameFailed: t.phantasi.workbenchCategoryRenameFailed,
-      deleteFailed: t.phantasi.workbenchCategoryDeleteFailed,
-      assignFailed: t.phantasi.workbenchAssignCategoryFailed,
-      categoryFull: t.phantasi.workbenchCategoryFull,
-      untitled: t.phantasi.workbenchNoteUntitled,
-    },
-    setError,
-    sources.updateSource,
-    () => {
-      notes.touchDocs()
-      void workbench.reloadNotes()
-    },
-  )
-  useEffect(() => {
-    if (
-      !isAdmin ||
-      route.viewMode !== 'workbench' ||
-      (route.workbenchPane !== 'noteCategories' &&
-        route.workbenchPane !== 'sourceCategories')
-    ) {
-      return
-    }
-    void categories.reload()
-    void workbench.reloadNotes()
-  }, [
-    categories.reload,
-    isAdmin,
-    route.viewMode,
-    route.workbenchPane,
-    workbench.reloadNotes,
-  ])
-  const notesIo = useNoteTransfer(workbench.docs, () => {
-    notes.touchDocs()
-    void workbench.reloadNotes()
-    sources.reloadBoard()
-  })
   usePhantasiSeo(
     item.selectedItem,
     item.selectedItemSource,
@@ -411,6 +355,18 @@ function PhantasiSubjectPage() {
 
   usePhantasiSurface(sources.booting, true)
 
+  useEffect(() => {
+    if (sources.booting) return
+    const run = () => warmJournalSurfaces(isAdmin)
+    const idle = window.requestIdleCallback
+    if (!idle) {
+      const timer = window.setTimeout(run, 1)
+      return () => window.clearTimeout(timer)
+    }
+    const id = idle(run, { timeout: 2000 })
+    return () => window.cancelIdleCallback(id)
+  }, [isAdmin, sources.booting])
+
   const [peekFace, setPeekFace] = useState<PhantasiPeekFace | null>(null)
   const peekEndTimer = useRef(0)
   useEffect(() => () => window.clearTimeout(peekEndTimer.current), [])
@@ -436,6 +392,7 @@ function PhantasiSubjectPage() {
     }) => {
       window.clearTimeout(peekEndTimer.current)
       prefetchArticleDetails([item.id])
+      void import('../components/phantasi/PhantasiReader')
       const next = toPhantasiPeekFace(item, storySourceFace(item))
       if (next) setPeekFace(next)
     },
@@ -468,138 +425,16 @@ function PhantasiSubjectPage() {
         suspended={!!item.selectedItem || notes.noteEditor !== null}
       >
         {route.viewMode === 'workbench' && isAdmin ? (
-          <PhantasiWorkbench
-            pane={route.workbenchPane}
-            onPane={route.setWorkbenchPane}
-            docs={workbench.docs}
-            media={workbench.media}
-            comments={workbench.comments}
-            notesLoading={workbench.notesLoading}
-            mediaLoading={workbench.mediaLoading}
-            commentsLoading={workbench.commentsLoading}
-            busy={workbench.busy}
-            sourceCount={sources.sources.length}
-            sources={sources.sources}
-            packBusy={pack.loading}
-            packProgress={
-              pack.progress
-                ? `${pack.progress.step}${
-                    pack.progress.total > 0
-                      ? ` ${pack.progress.current}/${pack.progress.total}`
-                      : ''
-                  }`
-                : null
-            }
-            onWrite={notes.write}
-            onOpenNote={(open) => {
-              if (open.kind === 'item') notes.edit(open.id)
-              else notes.editDoc(open.id)
-            }}
-            onDeleteNotes={(docs) => {
-              void workbench.removeNotes(docs).then(() => sources.reloadBoard())
-            }}
-            onDeleteComments={(ids) => {
-              void workbench.removeComments(ids)
-            }}
-            onOpenCommentItem={(id) => {
-              void item.openArticle((signal) =>
-                phantasiApi.getItem(id, undefined, { signal }),
-              )
-            }}
-            onUnschedule={workbench.unschedule}
-            onUpload={workbench.upload}
-            onDeleteMedia={workbench.removeMedia}
-            onExportPack={() => void pack.exportPack()}
-            onImportPack={(file) => void pack.importFromFile(file)}
-            notesBusy={notesIo.loading}
-            notesKind={notesIo.activeKind}
-            notesProgress={
-              notesIo.progress
-                ? `${notesIo.progress.step}${
-                    notesIo.progress.total > 0
-                      ? ` ${notesIo.progress.current}/${notesIo.progress.total}`
-                      : ''
-                  }`
-                : null
-            }
-            onExportNotes={(kind) => void notesIo.exportKind(kind)}
-            onImportNotes={(kind, file) => void notesIo.importKind(kind, file)}
-            canRefreshSources={refreshableSourceCount(sources.sources) > 0}
-            onRefreshSources={() =>
-              Promise.all(
-                sources.sources
-                  .filter((source) => !isSiteSource(source))
-                  .map((source) =>
-                    Promise.resolve(sources.refreshSource(source.id)),
-                  ),
-              )
-            }
-            noteCategories={categories.noteRows.map((row) => row.name)}
-            onAssignNotes={(docs, name) => {
-              void categories.assign(
-                'notes',
-                docs.map((doc) => doc.id),
-                name,
-              )
-            }}
-            admin={
-              route.workbenchPane === 'noteCategories' ||
-              route.workbenchPane === 'sourceCategories' ? (
-                <PhantasiCategoryAdmin
-                  page={
-                    route.workbenchPane === 'noteCategories'
-                      ? 'notes'
-                      : 'sources'
-                  }
-                  rows={
-                    route.workbenchPane === 'noteCategories'
-                      ? categories.noteRows
-                      : categories.sourceRows
-                  }
-                  loading={categories.loading}
-                  busy={categories.busy}
-                  onCreate={categories.create}
-                  onRename={(from, to) =>
-                    categories.rename(
-                      from,
-                      to,
-                      route.workbenchPane === 'noteCategories'
-                        ? 'notes'
-                        : 'sources',
-                    )
-                  }
-                  onDelete={(name) =>
-                    categories.remove(
-                      name,
-                      route.workbenchPane === 'noteCategories'
-                        ? 'notes'
-                        : 'sources',
-                    )
-                  }
-                />
-              ) : route.workbenchPane === 'sources' ||
-                route.workbenchPane === 'add' ||
-                route.workbenchPane === 'rsshub' ||
-                route.workbenchPane === 'feedsIo' ? (
-                <PhantasiWorkbenchAdmin
-                  pane={route.workbenchPane}
-                  extraCategories={categories.names}
-                  onAssignSources={(ids, name) => {
-                    void categories.assign('sources', ids, name)
-                  }}
-                  sources={sources.sources}
-                  onAddSource={sources.addSource}
-                  onDiscover={sources.discoverSource}
-                  onImportOpml={sources.importOpml}
-                  onExportOpml={pack.exportOpml}
-                  onUpdateSource={sources.updateSource}
-                  onRemoveSources={sources.removeSources}
-                  onRefreshSource={sources.refreshSource}
-                  onGenerateStyleTags={sources.generateStyleTags}
-                />
-              ) : null
-            }
-          />
+          <Suspense fallback={null}>
+            <PhantasiWorkbenchLane
+              sources={sources}
+              notes={notes}
+              openArticle={item.openArticle}
+              pane={route.workbenchPane}
+              onPane={route.setWorkbenchPane}
+              setError={setError}
+            />
+          </Suspense>
         ) : null}
         {route.viewMode === 'sources' && (
           <PhantasiSourceGrid
@@ -663,77 +498,81 @@ function PhantasiSubjectPage() {
 
       <AnimatePresence mode="wait">
         {item.selectedItem && (
-          <PhantasiReader
-            key="phantasi-reader"
-            item={item.selectedItem}
-            onClose={handleCloseReader}
-            onToggleStar={handleReaderStar}
-            isAuthenticated={isAuthenticated}
-            isAdmin={isAdmin}
-            currentUserId={user?.id ?? null}
-            sourceType={item.selectedItemSource?.source_type}
-            onEditNote={
-              isAdmin && item.selectedItemSource?.source_type === 'note'
-                ? () => notes.edit(item.selectedItem!.id)
-                : undefined
-            }
-            shareUrl={
-              item.selectedItemIsOwn
-                ? `${typeof window !== 'undefined' ? window.location.origin : ''}${phantasiOwnItemPath(item.selectedItem.id)}`
-                : undefined
-            }
-            onNavigateToArticle={actions.navigateToArticle}
-            readingQueue={item.queue}
-            canEditTopic={
-              isAdmin && item.selectedItemSource?.source_type !== 'note'
-            }
-            onTopicChange={(topic) => {
-              const id = item.selectedItem?.id
-              if (id == null) return
-              item.setSelectedItem((current) =>
-                current?.id === id ? { ...current, topic } : current,
-              )
-              list.setItems((rows) => {
-                if (
-                  route.viewMode === 'topic-feed' &&
-                  topic !== route.selectedTopic?.key
-                ) {
-                  return rows.filter((row) => row.id !== id)
-                }
-                return rows.map((row) =>
-                  row.id === id ? { ...row, topic } : row,
+          <Suspense fallback={null}>
+            <PhantasiReader
+              key="phantasi-reader"
+              item={item.selectedItem}
+              onClose={handleCloseReader}
+              onToggleStar={handleReaderStar}
+              isAuthenticated={isAuthenticated}
+              isAdmin={isAdmin}
+              currentUserId={user?.id ?? null}
+              sourceType={item.selectedItemSource?.source_type}
+              onEditNote={
+                isAdmin && item.selectedItemSource?.source_type === 'note'
+                  ? () => notes.edit(item.selectedItem!.id)
+                  : undefined
+              }
+              shareUrl={
+                item.selectedItemIsOwn
+                  ? `${typeof window !== 'undefined' ? window.location.origin : ''}${journalItemPath(item.selectedItem.id)}`
+                  : undefined
+              }
+              onNavigateToArticle={actions.navigateToArticle}
+              readingQueue={item.queue}
+              canEditTopic={
+                isAdmin && item.selectedItemSource?.source_type !== 'note'
+              }
+              onTopicChange={(topic) => {
+                const id = item.selectedItem?.id
+                if (id == null) return
+                item.setSelectedItem((current) =>
+                  current?.id === id ? { ...current, topic } : current,
                 )
-              })
-              sources.reloadBoard()
-            }}
-          />
+                list.setItems((rows) => {
+                  if (
+                    route.viewMode === 'topic-feed' &&
+                    topic !== route.selectedTopic?.key
+                  ) {
+                    return rows.filter((row) => row.id !== id)
+                  }
+                  return rows.map((row) =>
+                    row.id === id ? { ...row, topic } : row,
+                  )
+                })
+                sources.reloadBoard()
+              }}
+            />
+          </Suspense>
         )}
       </AnimatePresence>
 
       <AnimatePresence mode="wait">
         {notes.noteEditor !== null && (
-          <NoteEditor
-            key={
-              notes.noteEditor === 'new'
-                ? 'new'
-                : typeof notes.noteEditor === 'number'
-                  ? `item:${notes.noteEditor}`
-                  : `doc:${notes.noteEditor.docId}`
-            }
-            noteId={
-              typeof notes.noteEditor === 'number'
-                ? notes.noteEditor
-                : undefined
-            }
-            docId={
-              typeof notes.noteEditor === 'object'
-                ? notes.noteEditor.docId
-                : undefined
-            }
-            onClose={notes.close}
-            onSaved={notes.onSaved}
-            onDeleted={notes.onDeleted}
-          />
+          <Suspense fallback={null}>
+            <NoteEditor
+              key={
+                notes.noteEditor === 'new'
+                  ? 'new'
+                  : typeof notes.noteEditor === 'number'
+                    ? `item:${notes.noteEditor}`
+                    : `doc:${notes.noteEditor.docId}`
+              }
+              noteId={
+                typeof notes.noteEditor === 'number'
+                  ? notes.noteEditor
+                  : undefined
+              }
+              docId={
+                typeof notes.noteEditor === 'object'
+                  ? notes.noteEditor.docId
+                  : undefined
+              }
+              onClose={notes.close}
+              onSaved={notes.onSaved}
+              onDeleted={notes.onDeleted}
+            />
+          </Suspense>
         )}
       </AnimatePresence>
     </PhantasiPage>

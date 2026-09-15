@@ -205,8 +205,8 @@ export function registerPhantasiListHandlers(
   bridge.registerHandler('phantasiList.list', async (message) => {
     const [options = {}] = getArgs(message) as [Record<string, unknown>?]
     try {
-      const { getItems } = await import('../../../../services/phantasiApi')
-      const data = await getItems(
+      const { getItemPreviews } = await import('../../../../services/phantasiApi')
+      const data = await getItemPreviews(
         {
           per_page: (options.limit as number) || 30,
           page: (options.page as number) || 1,

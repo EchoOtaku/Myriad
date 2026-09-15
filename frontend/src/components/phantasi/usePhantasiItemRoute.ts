@@ -2,8 +2,7 @@ import type { PhantasiSource } from '../../types/phantasi'
 
 import { useEffect, useMemo, useRef } from 'react'
 import * as phantasiApi from '../../services/phantasiApi'
-import { phantasiOwnItemPath } from './constants'
-import { JOURNAL_ROOT } from './logic/journalRoutes'
+import { JOURNAL_ROOT, journalItemPath } from './logic/journalRoutes'
 import {
   phantasiItemNavigateMode,
   phantasiItemParamId,
@@ -108,7 +107,7 @@ export function usePhantasiItemRoute(
     if (mode !== 'none') {
       expectedRoute.current = { id: target }
       if (target) {
-        navigate(phantasiOwnItemPath(selectedItem.id), {
+        navigate(journalItemPath(selectedItem.id), {
           replace: mode === 'replace',
           state: phantasiOpenedItemState(selectedItem.id),
         })

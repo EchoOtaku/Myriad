@@ -66,21 +66,6 @@ pub struct ParsedItem {
     /// 发布时间
     pub published_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
-    /// 内容格式（html/markdown/text）
-    pub content_format: ContentFormat,
-}
-
-/// 内容格式类型
-#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum ContentFormat {
-    /// HTML 格式（大多数订阅源）
-    #[default]
-    Html,
-    /// Markdown 格式（部分技术博客）
-    Markdown,
-    /// 纯文本
-    Text,
 }
 
 /// 附件信息
@@ -390,7 +375,6 @@ impl FeedParser {
                                 categories: Vec::new(),
                                 published_at: None,
                                 updated_at: None,
-                                content_format: ContentFormat::default(),
                             });
                         }
                         "image" => in_image = true,
@@ -521,12 +505,6 @@ impl FeedParser {
                                         item.content.as_deref().or(item.summary.as_deref()),
                                     );
                                 }
-                                // 检测内容格式
-                                if let Some(ref content) = item.content {
-                                    item.content_format = detect_content_format(content);
-                                } else if let Some(ref summary) = item.summary {
-                                    item.content_format = detect_content_format(summary);
-                                }
                                 feed.items.push(item);
                             }
                             in_item = false;
@@ -565,15 +543,9 @@ impl FeedParser {
                 item.content = Some(normalize_html_content(&raw_content));
             }
 
-            // 重新提取图片和检测格式
             if item.image.is_none() {
                 item.image =
                     extract_image_from_html(item.content.as_deref().or(item.summary.as_deref()));
-            }
-            if let Some(ref c) = item.content {
-                item.content_format = detect_content_format(c);
-            } else if let Some(ref s) = item.summary {
-                item.content_format = detect_content_format(s);
             }
         }
 
@@ -638,7 +610,6 @@ impl FeedParser {
                                 categories: Vec::new(),
                                 published_at: None,
                                 updated_at: None,
-                                content_format: ContentFormat::default(),
                             });
                         }
                         "author" => in_author = true,
@@ -781,12 +752,6 @@ impl FeedParser {
                                         item.content.as_deref().or(item.summary.as_deref()),
                                     );
                                 }
-                                // 检测内容格式
-                                if let Some(ref content) = item.content {
-                                    item.content_format = detect_content_format(content);
-                                } else if let Some(ref summary) = item.summary {
-                                    item.content_format = detect_content_format(summary);
-                                }
                                 feed.items.push(item);
                             }
                             in_entry = false;
@@ -825,11 +790,6 @@ impl FeedParser {
             if item.image.is_none() {
                 item.image =
                     extract_image_from_html(item.content.as_deref().or(item.summary.as_deref()));
-            }
-            if let Some(ref c) = item.content {
-                item.content_format = detect_content_format(c);
-            } else if let Some(ref s) = item.summary {
-                item.content_format = detect_content_format(s);
             }
         }
 
@@ -929,17 +889,7 @@ impl FeedParser {
                     .map(|e| e.url.clone());
 
                 // JSON Feed 支持 content_html 和 content_text
-                // 根据内容来源判断格式
-                let (content, content_format) = if item.content_html.is_some() {
-                    (item.content_html, ContentFormat::Html)
-                } else if item.content_text.is_some() {
-                    // 走 detect_content_format（先 HTML 再 Markdown 计分）
-                    let text = item.content_text.as_ref().unwrap();
-                    let format = detect_content_format(text);
-                    (item.content_text, format)
-                } else {
-                    (None, ContentFormat::Text)
-                };
+                let content = item.content_html.or(item.content_text);
 
                 ParsedItem {
                     guid: item.id,
@@ -955,7 +905,6 @@ impl FeedParser {
                     categories: item.tags.unwrap_or_default(),
                     published_at: item.date_published.as_deref().and_then(parse_date),
                     updated_at: item.date_modified.as_deref().and_then(parse_date),
-                    content_format,
                 }
             })
             .collect();
@@ -1221,126 +1170,6 @@ fn decode_html_numeric_entities(input: &str) -> String {
     }
 
     result
-}
-
-/// 检测内容格式（HTML/Markdown/纯文本）
-fn detect_content_format(content: &str) -> ContentFormat {
-    let trimmed = content.trim();
-
-    // 检测 HTML 特征
-    let html_indicators = [
-        "<p>",
-        "<p ",
-        "</p>",
-        "<div>",
-        "<div ",
-        "</div>",
-        "<span>",
-        "<span ",
-        "</span>",
-        "<h1>",
-        "<h2>",
-        "<h3>",
-        "<h4>",
-        "<h5>",
-        "<h6>",
-        "<a href=",
-        "<img ",
-        "<br>",
-        "<br/>",
-        "<br />",
-        "<ul>",
-        "<ol>",
-        "<li>",
-        "<table>",
-        "<tr>",
-        "<td>",
-        "<strong>",
-        "<em>",
-        "<b>",
-        "<i>",
-        "<u>",
-        "<blockquote>",
-        "<pre>",
-        "<code>",
-        "<!DOCTYPE",
-        "<html",
-        "<!--",
-    ];
-
-    for indicator in html_indicators {
-        if trimmed.contains(indicator) {
-            return ContentFormat::Html;
-        }
-    }
-
-    // Markdown 特征计分
-    let lines: Vec<&str> = trimmed.lines().collect();
-    let mut md_score = 0;
-
-    for line in &lines {
-        let l = line.trim();
-
-        // 标题语法: # ## ### 等
-        if l.starts_with('#')
-            && l.chars().skip_while(|c| *c == '#').find(|&c| c != '#') == Some(' ')
-        {
-            md_score += 3;
-        }
-
-        // 列表: "- "/"* "/"+ " 或含 ". " 的数字开头行
-        if (l.starts_with("- ") || l.starts_with("* ") || l.starts_with("+ "))
-            || (l.len() > 2 && l.chars().next().unwrap_or(' ').is_ascii_digit() && l.contains(". "))
-        {
-            md_score += 1;
-        }
-
-        // 代码块: 行已 trim，只认行首 ```（四空格缩进已被 trim 掉）
-        if l.starts_with("```") || l.starts_with("    ") {
-            md_score += 2;
-        }
-
-        // 引用块: "> "
-        if l.starts_with("> ") {
-            md_score += 1;
-        }
-
-        // 水平线: --- *** ___
-        if l == "---" || l == "***" || l == "___" {
-            md_score += 1;
-        }
-    }
-
-    // 检测内联 Markdown 语法
-    // 链接: [text](url)
-    if trimmed.contains("](") && trimmed.contains('[') {
-        md_score += 2;
-    }
-
-    // 图片: ![alt](url)
-    if trimmed.contains("![") && trimmed.contains("](") {
-        md_score += 2;
-    }
-
-    // 粗体: **text** 或 __text__
-    if (trimmed.contains("**") && trimmed.matches("**").count() >= 2)
-        || (trimmed.contains("__") && trimmed.matches("__").count() >= 2)
-    {
-        md_score += 1;
-    }
-
-    // 行内代码: `code`
-    if trimmed.contains('`') && trimmed.matches('`').count() >= 2 {
-        md_score += 1;
-    }
-
-    // 如果有足够的 Markdown 特征
-    if md_score >= 3 {
-        return ContentFormat::Markdown;
-    }
-
-    // 默认为纯文本
-    ContentFormat::Text
 }
 
 /// 解析各种日期格式

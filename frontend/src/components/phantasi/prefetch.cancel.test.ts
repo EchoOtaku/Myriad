@@ -9,7 +9,9 @@ const viewsDir = join(phantasiDir, '../../views')
 
 describe('article prefetch cancel', () => {
   it('hover leave cancels the in-flight prefetch', () => {
-    const feeds = readFileSync(join(phantasiDir, 'skin/PhantasiFeeds.tsx'), 'utf8')
+    const feeds =
+      readFileSync(join(phantasiDir, 'skin/PhantasiFeeds.tsx'), 'utf8') +
+      readFileSync(join(phantasiDir, 'skin/PhantasiFeedsStories.tsx'), 'utf8')
     const board = readFileSync(join(phantasiDir, 'skin/PhantasiBoard.tsx'), 'utf8')
     const grid = readFileSync(join(phantasiDir, 'PhantasiSourceGrid.tsx'), 'utf8')
     const page = readFileSync(join(viewsDir, 'Phantasi.tsx'), 'utf8')

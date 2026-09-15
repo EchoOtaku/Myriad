@@ -2,10 +2,48 @@
 .phantasi-add-form__stack {
   display: flex;
   flex-direction: column;
-  gap: 0.7rem;
+  gap: 0.85rem;
   min-width: 0;
   overflow-wrap: normal;
   word-break: normal;
+}
+
+.phantasi-add-form__block,
+.phantasi-add-form__block-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.phantasi-add-form__block-title {
+  margin: 0;
+  color: var(--cfg-text-1, inherit);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+}
+
+.phantasi-add-form__block-hint {
+  margin: -0.35rem 0 0;
+  color: var(--cfg-text-3, inherit);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.phantasi-add-form__toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.15rem 0.15rem 0.2rem;
+  border: 1px solid var(--cfg-subtle-border, rgb(0 0 0 / 10%));
+  border-radius: 0.8rem;
+  background: var(--cfg-subtle-bg, rgb(0 0 0 / 3%));
+}
+
+.phantasi-add-form__toggles .setting-item {
+  margin: 0;
 }
 
 .phantasi-add-form .setting-item,
@@ -14,13 +52,13 @@
 }
 
 .phantasi-add-form .setting-label {
-  gap: 0.1rem;
+  gap: 0.15rem;
 }
 
 .phantasi-add-form .setting-label-text {
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 650;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
 .phantasi-add-form .setting-label-text .setting-title-tag {
@@ -37,14 +75,14 @@
 
 .phantasi-add-form .setting-description {
   margin-top: 0;
-  font-size: 0.625rem;
-  line-height: 1.25;
+  font-size: 0.75rem;
+  line-height: 1.35;
 }
 
 .phantasi-add-form .setting-hint {
   margin-top: 0.2rem;
-  font-size: 0.625rem;
-  line-height: 1.25;
+  font-size: 0.75rem;
+  line-height: 1.35;
 }
 
 .phantasi-add-form .setting-vertical .setting-label {
@@ -79,8 +117,8 @@
 }
 
 .phantasi-add-form .toggle-switch {
-  width: 2rem;
-  height: 1.125rem;
+  width: 2.35rem;
+  height: 1.3rem;
 }
 
 .phantasi-add-form .toggle-slider {
@@ -88,14 +126,14 @@
 }
 
 .phantasi-add-form .toggle-slider::before {
-  width: 0.7rem;
-  height: 0.7rem;
-  left: 0.12rem;
-  bottom: 0.12rem;
+  width: 0.86rem;
+  height: 0.86rem;
+  left: 0.14rem;
+  bottom: 0.14rem;
 }
 
 .phantasi-add-form .toggle-switch input:checked + .toggle-slider::before {
-  transform: translateX(0.88rem);
+  transform: translateX(1.02rem);
 }
 
 @media (width < 1024px) {
@@ -117,10 +155,11 @@
 .phantasi-add-form .field-input,
 .phantasi-add-form .field-select,
 .phantasi-add-form .field-select-trigger {
-  padding: 0.52rem 0.68rem;
+  min-height: 2.5rem;
+  padding: 0.58rem 0.8rem;
   border-width: 1px;
-  border-radius: 0.55rem;
-  font-size: 0.875rem;
+  border-radius: 0.65rem;
+  font-size: 0.9375rem;
   box-shadow: none;
 }
 
@@ -275,37 +314,48 @@ html.dark .phantasi-add-form .field-input.field-input--image:focus-within {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 0.28rem;
+  gap: 0.35rem;
   height: auto;
-  min-height: 0;
-  padding: 0.42rem 0.15rem;
+  min-height: 4.15rem;
+  padding: 0.55rem 0.2rem;
   white-space: normal;
 }
 
 .phantasi-add-form__kinds .choice-option-icon svg,
 .phantasi-add-form__kinds .choice-option-icon img {
-  width: 1.35rem;
-  height: 1.35rem;
+  width: 1.45rem;
+  height: 1.45rem;
 }
 
 .phantasi-add-form__kinds .choice-option-label {
   display: block;
   max-width: 100%;
   overflow: hidden;
-  font-size: 0.72rem;
-  font-weight: 600;
+  font-size: 0.75rem;
+  font-weight: 650;
   line-height: 1.2;
   letter-spacing: 0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.phantasi-add-form__swatch {
-  width: 1.35rem;
-  height: 1.35rem;
-  padding: 0;
+.phantasi-add-form__swatch-well {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
   border: 1px solid var(--cfg-subtle-border);
-  border-radius: 0.35rem;
+  border-radius: 0.45rem;
+  overflow: hidden;
+}
+
+.phantasi-add-form__swatch {
+  width: 1.7rem;
+  height: 1.7rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   background: none;
   cursor: pointer;
 }
@@ -333,15 +383,15 @@ html.dark .phantasi-add-form .field-input.field-input--image:focus-within {
 .phantasi-add-form__intervals.choice-segmented .choice-segmented-item:has(.choice-option-icon) {
   flex-direction: row;
   justify-content: center;
-  min-height: 1.75rem;
-  padding: 0.28rem 0.2rem;
+  min-height: 2.15rem;
+  padding: 0.4rem 0.25rem;
   white-space: nowrap;
 }
 
 .phantasi-add-form__intervals .choice-option-label {
   overflow: hidden;
-  font-size: 0.72rem;
-  font-weight: 600;
+  font-size: 0.75rem;
+  font-weight: 650;
   line-height: 1.2;
   text-overflow: ellipsis;
 }
@@ -452,7 +502,14 @@ html.dark .phantasi-add-form .field-input.field-input--image:focus-within {
 }
 
 .phantasi-feeds__add-guide .phantasi-add-form {
-  gap: 0.55rem;
+  gap: 0.75rem;
+}
+
+.phantasi-add-form .settings-btn.settings-btn--sm {
+  min-height: 2.5rem;
+  border-radius: 0.65rem;
+  font-size: 0.9375rem;
+  font-weight: 650;
 }
 
 .phantasi-feeds__add-guide:has(.phantasi-add-form.is-category-open)

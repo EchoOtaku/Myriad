@@ -665,7 +665,10 @@ pub(super) fn validate_widget_layer_sdk(
             "Tapp.federation is not on the Widget SDK",
         ),
         ("Tapp.tappList", "Tapp.tappList is not on the Widget SDK"),
-        ("Tapp.phantasiList", "Tapp.phantasiList is not on the Widget SDK"),
+        (
+            "Tapp.phantasiList",
+            "Tapp.phantasiList is not on the Widget SDK",
+        ),
         ("Tapp.component", "Tapp.component is not on the Widget SDK"),
         ("Tapp.shortcut", "Tapp.shortcut is not on the Widget SDK"),
         (

@@ -54,6 +54,9 @@ impl Agent {
         user_id: i32,
     ) -> Result<AgentResponse, String> {
         let recipe = self.resolve_resumable_recipe(task_id, user_id).await?;
+        if super::super::work_loop::is_work_recipe(&recipe) {
+            self.validate_work_answer(task_id, &answer, user_id).await?;
+        }
         AgentTurnBudget::run_continuation(
             &self.db,
             user_id,
@@ -131,6 +134,9 @@ impl Agent {
         progress_tx: tokio::sync::mpsc::Sender<types::AgentProgressEvent>,
     ) -> Result<AgentResponse, String> {
         let recipe = self.resolve_resumable_recipe(task_id, user_id).await?;
+        if super::super::work_loop::is_work_recipe(&recipe) {
+            self.validate_work_answer(task_id, &answer, user_id).await?;
+        }
         AgentTurnBudget::run_continuation(
             &self.db,
             user_id,
@@ -156,7 +162,9 @@ impl Agent {
         recipe: &Recipe,
     ) -> Result<AgentResponse, String> {
         if super::super::work_loop::is_work_recipe(recipe) {
-            return self.resume_work_loop(task_id, answer, user_id, Some(progress_tx)).await;
+            return self
+                .resume_work_loop(task_id, answer, user_id, Some(progress_tx))
+                .await;
         }
         let task_state = self
             .executor

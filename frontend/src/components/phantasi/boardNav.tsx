@@ -1,6 +1,7 @@
 /** 收藏在二级导航，仍是订阅上的筛选，不是第四板块。 */
 
 import type { SecondaryNavItem } from '../../contexts/NavigationContext'
+import { journalPathForNavId } from './logic/journalRoutes'
 import {
   LuFolderOpen,
   LuInbox,
@@ -34,6 +35,7 @@ export function phantasiBoardNavItems(
       label: t.boardFeeds,
       title: t.boardFeeds,
       ariaLabel: t.boardFeeds,
+      path: journalPathForNavId('feeds'),
     },
   ]
   if (options?.includeStarred) {
@@ -43,6 +45,7 @@ export function phantasiBoardNavItems(
       label: t.starred,
       title: t.starred,
       ariaLabel: t.starred,
+      path: journalPathForNavId('starred'),
     })
   }
   items.push(
@@ -52,6 +55,7 @@ export function phantasiBoardNavItems(
       label: t.boardNotes,
       title: t.boardNotes,
       ariaLabel: t.boardNotes,
+      path: journalPathForNavId('notes'),
     },
     {
       id: 'sites',
@@ -59,6 +63,7 @@ export function phantasiBoardNavItems(
       label: t.boardSites,
       title: t.boardSites,
       ariaLabel: t.boardSites,
+      path: journalPathForNavId('sites'),
     },
   )
   if (options?.includeWorkbench) {
@@ -68,6 +73,7 @@ export function phantasiBoardNavItems(
       label: t.boardWorkbench,
       title: t.boardWorkbench,
       ariaLabel: t.boardWorkbench,
+      path: journalPathForNavId('workbench'),
     })
   }
   return items

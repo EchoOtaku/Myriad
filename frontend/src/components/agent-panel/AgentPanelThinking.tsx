@@ -43,10 +43,11 @@ function ToolList({ steps }: { steps: AgentMessageStep[] }) {
 }
 
 export const AgentPanelThinking: React.FC<{
+  plan?: import('../../services/agent/types').WorkPlanItem[]
   steps: AgentMessageStep[]
   live?: boolean
   thought?: string
-}> = ({ steps, live = false, thought }) => {
+}> = ({ steps, live = false, thought, plan }) => {
   const { t, format } = useI18n()
   const summary = summarizeAgentSteps(steps)
   const [userOpen, setUserOpen] = useState<boolean | null>(null)
@@ -54,11 +55,29 @@ export const AgentPanelThinking: React.FC<{
   const note = thought?.trim() || undefined
   const showsSteps = steps.length > 0
 
-  if (!thinkingVisible(steps, live, note)) return null
+  if (!thinkingVisible(steps, live, note) && !plan?.length) return null
+
+  const checklist = plan?.length ? (
+    <ol className="agent-panel-work-plan">
+      {plan.map((item, index) => (
+        <li key={index} data-status={item.status}>
+          <span aria-hidden="true">
+            {item.status === 'completed'
+              ? '✓'
+              : item.status === 'in_progress'
+                ? '◉'
+                : '○'}
+          </span>
+          <span>{item.description}</span>
+        </li>
+      ))}
+    </ol>
+  ) : null
 
   if (live) {
     return (
       <div className="agent-panel-thinking" data-live="true">
+        {checklist}
         {note ? (
           <p className="agent-panel-thinking-thought" data-live="true">
             <span className="agent-panel-thinking-sweep">{note}</span>
@@ -81,6 +100,7 @@ export const AgentPanelThinking: React.FC<{
       className="agent-panel-thinking"
       data-failed={summary.failed ? 'true' : 'false'}
     >
+      {checklist}
       {note ? <p className="agent-panel-thinking-thought">{note}</p> : null}
       {showsStepList ? (
         <>

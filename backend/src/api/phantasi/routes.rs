@@ -1,0 +1,212 @@
+//! Phantasi HTTP route table: sources / list / detail / state / comments / RSSHub.
+use axum::{
+    Router,
+    http::header,
+    routing::{delete, get, post, put},
+};
+use tower_http::services::ServeDir;
+use tower_http::set_header::SetResponseHeaderLayer;
+
+use crate::services::data_paths::paths;
+
+use super::{
+    comments, feeds_list, feeds_opml, feeds_sources, note_docs, notes, reading_item, reading_mark,
+    reading_stats, reading_sync, reading_sync_ws,
+};
+
+/// 创建 Phantasi API 路由
+pub fn create_phantasi_routes(app_state: crate::state::AppState) -> Router<crate::state::AppState> {
+    use axum::middleware::from_fn_with_state;
+    Router::<crate::state::AppState>::new()
+        // 订阅源管理
+        .route(
+            "/sources",
+            get(feeds_sources::list_sources).post(feeds_sources::add_source),
+        )
+        .route(
+            "/sources/{id}",
+            put(feeds_sources::update_source).delete(feeds_sources::delete_source),
+        )
+        .route("/sources/{id}/refresh", post(feeds_sources::refresh_source))
+        .route("/sources/discover", post(feeds_sources::discover_source))
+        // OPML 导入导出
+        .route("/import-opml", post(feeds_opml::import_opml))
+        .route("/export-opml", get(feeds_opml::export_opml))
+        // 分类管理
+        .route(
+            "/categories",
+            get(feeds_sources::list_categories).post(feeds_sources::create_category),
+        )
+        .route(
+            "/categories/{id}",
+            put(feeds_sources::update_category).delete(feeds_sources::delete_category),
+        )
+        .route("/topics", get(feeds_list::list_subscription_topics))
+        // 笔记（站长自写内容；写路径一律管理员）
+        .route("/notes.xml", get(super::notes_rss::notes_rss))
+        .route(
+            "/notes/rss",
+            get(super::notes_rss::get_notes_rss_settings)
+                .put(super::notes_rss::put_notes_rss_settings),
+        )
+        .route("/notes", post(notes::create_note))
+        .route("/notes/preview", post(notes::preview_note))
+        .route(
+            "/notes/docs",
+            get(note_docs::list_note_docs).post(note_docs::create_note_doc),
+        )
+        .route(
+            "/notes/author-candidates",
+            get(note_docs::list_note_author_candidates),
+        )
+        .route(
+            "/notes/docs/for-item/{item_id}",
+            get(note_docs::get_note_doc_for_item),
+        )
+        .route(
+            "/notes/docs/{id}/authors",
+            post(note_docs::add_note_doc_author),
+        )
+        .route(
+            "/notes/docs/{id}/authors/{user_id}",
+            delete(note_docs::remove_note_doc_author),
+        )
+        .route(
+            "/notes/docs/{id}",
+            get(note_docs::get_note_doc)
+                .put(note_docs::update_note_doc)
+                .delete(note_docs::delete_note_doc),
+        )
+        .route(
+            "/notes/docs/{id}/publish",
+            post(note_docs::publish_note_doc),
+        )
+        .route(
+            "/notes/docs/{id}/schedule",
+            post(note_docs::schedule_note_doc),
+        )
+        .route(
+            "/notes/docs/{id}/unschedule",
+            post(note_docs::unschedule_note_doc),
+        )
+        .route(
+            "/notes/docs/{id}/ws",
+            get(note_docs::note_doc_websocket).route_layer(from_fn_with_state(
+                app_state.clone(),
+                crate::middleware::auth::auth_middleware,
+            )),
+        )
+        .route(
+            "/notes/{id}",
+            put(notes::update_note).delete(notes::delete_note),
+        )
+        // 文章获取
+        .route("/items", get(feeds_list::list_items))
+        .route("/items/{id}", get(reading_item::get_item))
+        .route("/items/{id}/topic", put(feeds_list::update_item_topic))
+        .route(
+            "/items/{id}/suggest-topic",
+            post(feeds_list::suggest_item_topic),
+        )
+        // 阅读状态
+        .route("/items/{id}/read", post(reading_mark::mark_read))
+        .route("/items/{id}/unread", post(reading_mark::mark_unread))
+        .route("/items/{id}/star", post(reading_mark::star_item))
+        .route("/items/{id}/unstar", post(reading_mark::unstar_item))
+        .route("/mark-all-read", post(reading_mark::mark_all_read))
+        // 用户评论（批注）
+        .route(
+            "/items/{id}/comments",
+            get(comments::list_comments).post(comments::create_comment),
+        )
+        .route("/comments", get(comments::list_admin_comments))
+        .route(
+            "/comments/{id}",
+            put(comments::update_comment).delete(comments::delete_comment),
+        )
+        .route(
+            "/comments/{id}/replies",
+            get(comments::list_comment_replies),
+        )
+        // 离线同步
+        .route("/sync-states", post(reading_sync::sync_states))
+        // 统计信息
+        .route("/stats", get(reading_stats::get_stats))
+        // WebSocket（通知）
+        .route(
+            "/ws",
+            get(reading_sync_ws::phantasi_websocket).route_layer(from_fn_with_state(
+                app_state.clone(),
+                crate::middleware::auth::auth_middleware,
+            )),
+        )
+        // RSSHub 实例管理
+        .route(
+            "/rsshub/instances",
+            get(super::rsshub::list_rsshub_instances).post(super::rsshub::add_rsshub_instance),
+        )
+        .route(
+            "/rsshub/instances/{id}",
+            put(super::rsshub::update_rsshub_instance)
+                .delete(super::rsshub::delete_rsshub_instance),
+        )
+        .route(
+            "/rsshub/instances/{id}/health-check",
+            post(super::rsshub::health_check_rsshub_instance),
+        )
+        .route(
+            "/rsshub/instances/{id}/reset",
+            post(super::rsshub::reset_rsshub_instance),
+        )
+        .route(
+            "/rsshub/health-check-all",
+            post(super::rsshub::health_check_all_rsshub_instances),
+        )
+        // 图标静态文件：Cache-Control max-age=86400；本层无 CompressionLayer
+        .nest_service(
+            "/icons",
+            tower::ServiceBuilder::new()
+                .layer(SetResponseHeaderLayer::if_not_present(
+                    header::CACHE_CONTROL,
+                    header::HeaderValue::from_static("public, max-age=86400, immutable"),
+                ))
+                .service(ServeDir::new(&paths().phantasi_icons)),
+        )
+        // 图片缓存服务（Notion 临时 URL 等）
+        .nest_service(
+            "/image-cache",
+            tower::ServiceBuilder::new()
+                .layer(SetResponseHeaderLayer::if_not_present(
+                    header::CACHE_CONTROL,
+                    header::HeaderValue::from_static("public, max-age=604800, immutable"),
+                ))
+                .service(ServeDir::new(&paths().cache_images)),
+        )
+        // Tapp 运行时携带 Grant 头时做服务端归因与权限强制；宿主 UI 请求不受影响
+        .route_layer(from_fn_with_state(
+            app_state.clone(),
+            crate::api::tapp_runtime::phantasi_host_attribution,
+        ))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn assemble_by_read_path() {
+        let routes = include_str!("routes.rs");
+        assert!(routes.contains("reading_item::get_item"));
+        assert!(routes.contains("feeds_list::list_items"));
+        assert!(routes.contains("feeds_opml::export_opml"));
+        assert!(routes.contains("reading_mark::mark_all_read"));
+        assert!(routes.contains("reading_stats::get_stats"));
+        assert!(routes.contains("comments::list_comments"));
+        assert!(routes.contains("super::rsshub::list_rsshub_instances"));
+        assert!(include_str!("reading_item.rs").contains("pub(crate) async fn get_item"));
+        assert!(!include_str!("reading_sync_ws.rs").contains("pub(crate) async fn get_item"));
+        let comments = include_str!("comments.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .unwrap_or("");
+        assert!(!comments.contains("list_rsshub_instances"));
+    }
+}

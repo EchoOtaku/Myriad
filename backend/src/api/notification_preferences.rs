@@ -120,7 +120,9 @@ mod tests {
         crate::services::agent::notifications::init_notifications(db.clone()).await;
 
         let mut first_preferences = NotificationPreferences::default();
-        first_preferences.sources.insert("phantasi".to_string(), false);
+        first_preferences
+            .sources
+            .insert("phantasi".to_string(), false);
         let _updated =
             update_notification_preferences(Extension(claims(first_user)), Json(first_preferences))
                 .await

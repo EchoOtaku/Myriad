@@ -17,6 +17,8 @@ export interface SecondaryNavItem {
   label: string
   title?: string
   ariaLabel?: string
+  /** 该项自己的板块首页。再点当前项时只回到这里，不要把整组打回 routePath。 */
+  path?: string
 }
 
 export interface SecondaryNavConfig {

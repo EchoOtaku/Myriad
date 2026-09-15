@@ -66,6 +66,12 @@ export function noteStoryTopic(
   }
 }
 
+export function noteBoardHasUnfiled(
+  items: ReadonlyArray<{ topic?: string | null | undefined }>,
+): boolean {
+  return items.some((item) => matchesNoteCategory(item.topic, NOTE_CATEGORY_NONE))
+}
+
 export function matchesNoteCategory(
   topic: string | null | undefined,
   filter: string | null,

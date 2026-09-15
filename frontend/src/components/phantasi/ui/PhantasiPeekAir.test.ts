@@ -13,7 +13,9 @@ describe('PhantasiPeekAir', () => {
     const motion = readFileSync(join(dir, 'css/motion.css'), 'utf8')
     const cards = readFileSync(join(dir, 'css/cards.css'), 'utf8')
     const page = readFileSync(join(dir, '../../../views/Phantasi.tsx'), 'utf8')
-    const feeds = readFileSync(join(dir, '../skin/PhantasiFeeds.tsx'), 'utf8')
+    const feeds =
+      readFileSync(join(dir, '../skin/PhantasiFeeds.tsx'), 'utf8') +
+      readFileSync(join(dir, '../skin/PhantasiFeedsStories.tsx'), 'utf8')
     assert.match(air, /createPortal/)
     assert.match(air, /bg-container/)
     assert.match(air, /PHANTASI_PEEK_EXIT_MS/)

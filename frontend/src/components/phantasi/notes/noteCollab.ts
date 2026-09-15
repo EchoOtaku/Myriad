@@ -57,5 +57,5 @@ export function shouldApplyRemoteDoc(
 }
 
 export function shouldApplyRemoteEdit(event: NoteCollabEvent): boolean {
-  return event.type === 'edit' && event.content_md != null
+  return event.type === 'edit'
 }

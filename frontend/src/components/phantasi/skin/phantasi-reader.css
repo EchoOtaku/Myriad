@@ -8,6 +8,11 @@
   --reader-chip: rgb(255 252 245 / 86%);
   --reader-chip-solid: #f8f5ec;
   --reader-hover: rgb(44 44 44 / 6%);
+  --phantasi-comment-mark: #fef08a;
+}
+
+::highlight(phantasi-comment) {
+  background-color: var(--phantasi-comment-mark, #fef08a);
 }
 
 [data-phantasi-reader][data-phantasi-theme='sepia'] {
@@ -18,6 +23,7 @@
   --reader-chip: rgb(255 248 232 / 86%);
   --reader-chip-solid: #f4ecd8;
   --reader-hover: rgb(61 50 41 / 6%);
+  --phantasi-comment-mark: #f5d78e;
 }
 
 [data-phantasi-reader][data-phantasi-theme='dark'] {
@@ -28,6 +34,7 @@
   --reader-chip: rgb(28 28 28 / 82%);
   --reader-chip-solid: #1a1a1a;
   --reader-hover: rgb(255 255 255 / 8%);
+  --phantasi-comment-mark: #854d0e;
 }
 
 [data-phantasi-reader][data-phantasi-theme='night'] {
@@ -38,6 +45,7 @@
   --reader-chip: rgb(18 22 28 / 82%);
   --reader-chip-solid: #0d1117;
   --reader-hover: rgb(255 255 255 / 6%);
+  --phantasi-comment-mark: #1e3a5f;
 }
 
 .phantasi-reader__mute {
