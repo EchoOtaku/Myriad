@@ -6,7 +6,7 @@
 //! 当前实现：
 //! - **模糊匹配**：trigger 子串命中 + 分词重叠（非 TF-IDF）
 //! - **参数槽位**：`${param}` 在 frontmatter 为空时从正文提取；替换在 executor 用 `step.params`
-//! - **质量加权**：仅 `get_relevant_skills` 在样本≥3 时用 Wilson 下界乘相关性；compact index 不含统计
+//! - **质量加权**：相关性分数在单测里用 Wilson 下界校验；compact index 不含统计
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -125,14 +125,6 @@ impl ModelTierHint {
             ModelTierHint::Standard => ModelTier::Standard,
         }
     }
-}
-
-/// Skill 匹配结果（带相关性分数）
-#[cfg(test)]
-#[derive(Debug, Clone)]
-pub struct SkillMatch {
-    pub skill: Skill,
-    pub relevance: f32,
 }
 
 /// Skill 注册表
@@ -306,67 +298,6 @@ impl SkillRegistry {
                 entry
             })
             .collect()
-    }
-
-    /// 获取与用户输入最相关的 Skill（子串 + 分词重叠）。
-    ///
-    /// 相比 `get_compact_index()` 的全量返回，按 trigger/描述/分类分词重叠打分后截断。
-    #[cfg(test)]
-    pub async fn get_relevant_skills(&self, user_input: &str, limit: usize) -> Vec<SkillMatch> {
-        let input_lower = user_input.to_lowercase();
-        let input_tokens = Self::simple_tokenize(&input_lower);
-        let skills = self.skills.read().await;
-
-        // 获取 skill 统计数据（成功率），用于质量加权
-        let stats_map = if let Some(evo) = super::skill_evolution::get_skill_evolution() {
-            evo.get_all_stats().await
-        } else {
-            std::collections::HashMap::new()
-        };
-
-        let mut scored: Vec<SkillMatch> = skills
-            .values()
-            .filter_map(|skill| {
-                let mut relevance =
-                    Self::compute_skill_relevance(skill, &input_lower, &input_tokens);
-                if relevance > 0.05 {
-                    // 质量加权：使用 Wilson score lower bound，对小样本更宽容
-                    // 参考: https://en.wikipedia.org/wiki/Binomial_proportion_confidence_interval#Wilson_score_interval
-                    if let Some(stats) = stats_map.get(&skill.id) {
-                        let total = stats.success_count + stats.failure_count;
-                        if total >= 3 {
-                            let n = total as f32;
-                            let p = stats.success_count as f32 / n;
-                            // z = 1.0 (较低置信度，对新 skill 更宽容)
-                            let z = 1.0_f32;
-                            let z2 = z * z;
-                            // Wilson score lower bound
-                            let wilson_lower = (p + z2 / (2.0 * n)
-                                - z * ((p * (1.0 - p) + z2 / (4.0 * n)) / n).sqrt())
-                                / (1.0 + z2 / n);
-                            // 映射到 [0.6, 1.0] 范围，避免惩罚过重
-                            // wilson_lower(z=1.0): n=3,s=2 → ≈0.38 → ×0.75
-                            // n=5,s=4 → ≈0.58 → ×0.83, n=10,s=9 → ≈0.77 → ×0.91
-                            relevance *= 0.6 + 0.4 * wilson_lower.max(0.0);
-                        }
-                    }
-                    Some(SkillMatch {
-                        skill: skill.clone(),
-                        relevance,
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        scored.sort_by(|a, b| {
-            b.relevance
-                .partial_cmp(&a.relevance)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        scored.truncate(limit);
-        scored
     }
 
     /// 计算 Skill 与用户输入的相关性分数

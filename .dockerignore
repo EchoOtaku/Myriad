@@ -45,8 +45,9 @@ frontend/node_modules/
 frontend/dist/
 frontend/.astro/
 
-# Scripts
-scripts/
+# Repo-root helper scripts only. Do not write **/scripts — that would
+# drop frontend/scripts from the frontend image (v0.4.10-class miss).
+/scripts/
 
 # Docker
 docker-compose.yml

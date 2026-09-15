@@ -142,10 +142,24 @@ jobs:
             echo "- Commit title: \`${TITLE:-n/a}\`"
           } >>"$GITHUB_STEP_SUMMARY"
 
+  # Catch missing spa-server COPY files before a broken image is published.
+  frontend-runtime-check:
+    name: Frontend image runtime closure
+    needs: resolve
+    if: needs.resolve.outputs.has_frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Verify spa-server Docker layout
+        run: node docker/check-frontend-runtime.mjs
+
   # Arch-independent frontend dist — built once, reused by both platform runtimes.
   frontend-assets:
     name: Build frontend assets
-    needs: resolve
+    needs: [resolve, frontend-runtime-check]
     if: needs.resolve.outputs.has_frontend == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -178,11 +192,12 @@ jobs:
 
   build:
     name: ${{ matrix.component }} (${{ matrix.platform }})
-    needs: [resolve, frontend-assets]
+    needs: [resolve, frontend-runtime-check, frontend-assets]
     if: |
       always()
       && needs.resolve.result == 'success'
       && needs.resolve.outputs.build_components != '[]'
+      && (needs.frontend-runtime-check.result == 'success' || needs.frontend-runtime-check.result == 'skipped')
       && (needs.frontend-assets.result == 'success' || needs.frontend-assets.result == 'skipped')
     runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     permissions:

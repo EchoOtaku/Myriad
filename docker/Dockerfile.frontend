@@ -77,21 +77,24 @@ WORKDIR /app
 RUN (addgroup -g 1000 myriad 2>/dev/null || addgroup myriad) && \
     (adduser -D -u 1000 -G myriad myriad 2>/dev/null || adduser -D -G myriad myriad)
 
-# Copy built assets from assets stage (or prebuilt build-context)
+# Copy built assets from assets stage (or prebuilt build-context).
+# Keep spa-server in scripts/ so relative imports stay the repo layout.
+# Do not flatten individual files — that is how v0.4.10 shipped without
+# astro/constants.mjs and crashed on boot.
 COPY --from=assets --chown=myriad:myriad /dist ./dist
-COPY --chown=myriad:myriad frontend/scripts/spa-server.mjs frontend/scripts/siteBrandingStamp.mjs ./
+COPY --chown=myriad:myriad frontend/scripts ./scripts
 
 # Switch to non-root user
 USER myriad
 
 EXPOSE 1102
 
-# Health check
+# Alpine/busybox wget: no GNU --no-verbose / --tries.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:1102 || exit 1
+    CMD wget -q -T 5 --spider http://127.0.0.1:1102 || exit 1
 
 # SPA fallback + stamp site title/icon from operator-configured metadata URL.
 # Proxy does not rewrite HTML. Crawler / share shells stay on backend.
 ENV DIST_DIR=/app/dist
 ENV PORT=1102
-CMD ["node", "spa-server.mjs"]
+CMD ["node", "scripts/spa-server.mjs"]

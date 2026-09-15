@@ -224,10 +224,26 @@ jobs:
             echo "- Matrix: \`$MATRIX\`"
           } >>"$GITHUB_STEP_SUMMARY"
 
+  # Catch missing spa-server COPY files before a broken image is pushed.
+  frontend-runtime-check:
+    name: Frontend image runtime closure
+    needs: [should-build, resolve]
+    if: |
+      (needs.should-build.outputs.should_build == 'true' || github.event_name == 'workflow_dispatch')
+      && needs.resolve.outputs.has_frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Verify spa-server Docker layout
+        run: node docker/check-frontend-runtime.mjs
+
   # Arch-independent frontend dist — built once, reused by both platform runtimes.
   frontend-assets:
     name: Build frontend assets
-    needs: [should-build, resolve]
+    needs: [should-build, resolve, frontend-runtime-check]
     if: |
       (needs.should-build.outputs.should_build == 'true' || github.event_name == 'workflow_dispatch')
       && needs.resolve.outputs.has_frontend == 'true'
@@ -264,11 +280,12 @@ jobs:
 
   build:
     name: ${{ matrix.component }} (${{ matrix.platform }})
-    needs: [should-build, resolve, frontend-assets]
+    needs: [should-build, resolve, frontend-runtime-check, frontend-assets]
     if: |
       always()
       && (needs.should-build.outputs.should_build == 'true' || github.event_name == 'workflow_dispatch')
       && needs.resolve.result == 'success'
+      && (needs.frontend-runtime-check.result == 'success' || needs.frontend-runtime-check.result == 'skipped')
       && (needs.frontend-assets.result == 'success' || needs.frontend-assets.result == 'skipped')
     runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     permissions:
