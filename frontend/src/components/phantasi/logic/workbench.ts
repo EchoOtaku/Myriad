@@ -53,6 +53,100 @@ export function collectWorkbenchNoteTopics(
   return [...names].toSorted((a, b) => a.localeCompare(b, 'zh'))
 }
 
+export type WorkbenchNoteAuthor = {
+  user_id: number
+  user_name?: string
+  user_display_name?: string
+}
+
+export function workbenchAuthorLabel(
+  author: { user_display_name?: string; user_name?: string },
+  fallback: string,
+): string {
+  return author.user_display_name?.trim() || author.user_name?.trim() || fallback
+}
+
+export function workbenchNoteAuthorsOf(doc: {
+  authors?: WorkbenchNoteAuthor[]
+  user_id?: number
+  user_display_name?: string
+  user_name?: string
+}): WorkbenchNoteAuthor[] {
+  if (doc.authors?.length) return doc.authors
+  if (doc.user_id == null) return []
+  return [
+    {
+      user_id: doc.user_id,
+      user_name: doc.user_name,
+      user_display_name: doc.user_display_name,
+    },
+  ]
+}
+
+export function workbenchNoteAuthorName(
+  doc: {
+    authors?: WorkbenchNoteAuthor[]
+    user_id?: number
+    user_display_name?: string
+    user_name?: string
+  },
+  fallback: string,
+): string {
+  const names = workbenchNoteAuthorsOf(doc)
+    .map((author) => workbenchAuthorLabel(author, ''))
+    .filter(Boolean)
+  return names.join(' · ') || fallback
+}
+
+export function collectWorkbenchNoteAuthors(
+  docs: ReadonlyArray<{
+    authors?: WorkbenchNoteAuthor[]
+    user_id?: number
+    user_display_name?: string
+    user_name?: string
+  }>,
+  fallback: string,
+): Array<{ key: string; label: string }> {
+  const seen = new Map<string, string>()
+  for (const doc of docs) {
+    for (const author of workbenchNoteAuthorsOf(doc)) {
+      const key = String(author.user_id)
+      if (!seen.has(key)) seen.set(key, workbenchAuthorLabel(author, fallback))
+    }
+  }
+  return [...seen.entries()]
+    .map(([key, label]) => ({ key, label }))
+    .toSorted((a, b) => a.label.localeCompare(b.label, 'zh'))
+}
+
+export function filterWorkbenchComments<
+  T extends {
+    comment: string
+    selected_text: string
+    item_title?: string
+    source_name?: string
+    user_name?: string
+    user_display_name?: string
+  },
+>(comments: readonly T[], query: string): T[] {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return [...comments]
+  return comments.filter((row) => {
+    const hay = [
+      row.comment,
+      row.selected_text,
+      row.item_title,
+      row.source_name,
+      row.user_display_name,
+      row.user_name,
+    ]
+      .filter(Boolean)
+      .join('\n')
+      .toLowerCase()
+    return hay.includes(needle)
+  })
+}
+
 export function filterWorkbenchNotes<
   T extends {
     title: string
@@ -60,6 +154,10 @@ export function filterWorkbenchNotes<
     topic?: string | null
     status: string
     last_error?: string | null
+    user_id?: number
+    user_name?: string
+    user_display_name?: string
+    authors?: WorkbenchNoteAuthor[]
   },
 >(
   docs: readonly T[],
@@ -67,6 +165,7 @@ export function filterWorkbenchNotes<
     status: WorkbenchNoteStatusFilter
     query: string
     topic?: string | null
+    author?: string | null
   },
 ): T[] {
   const needle = filter.query.trim().toLowerCase()
@@ -85,6 +184,10 @@ export function filterWorkbenchNotes<
         return false
       }
     }
+    if (filter.author != null) {
+      const ids = workbenchNoteAuthorsOf(doc).map((author) => String(author.user_id))
+      if (!ids.includes(filter.author)) return false
+    }
     if (!needle) return true
     return noteSearchHaystack(doc).includes(needle)
   })
@@ -94,8 +197,24 @@ function noteSearchHaystack(doc: {
   title: string
   content_md: string
   topic?: string | null
+  user_name?: string
+  user_display_name?: string
+  authors?: WorkbenchNoteAuthor[]
 }): string {
-  return [doc.title, doc.topic ?? '', doc.content_md].join('\n').toLowerCase()
+  const authorNames = workbenchNoteAuthorsOf(doc).flatMap((author) => [
+    author.user_display_name ?? '',
+    author.user_name ?? '',
+  ])
+  return [
+    doc.title,
+    doc.topic ?? '',
+    doc.content_md,
+    doc.user_display_name ?? '',
+    doc.user_name ?? '',
+    ...authorNames,
+  ]
+    .join('\n')
+    .toLowerCase()
 }
 
 /** 定时看预约时间，已发布看发布时间，其余看更新。 */

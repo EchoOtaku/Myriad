@@ -74,6 +74,18 @@ pub(crate) async fn get_user_and_admin_status(
     }
 }
 
+/// 公开读：无凭据当游客；带了凭据就必须是当前有效会话。
+pub(crate) async fn get_optional_user_and_admin_status(
+    headers: &axum::http::HeaderMap,
+    db: &DatabaseConnection,
+) -> Result<(Option<i32>, bool), HttpError> {
+    let Some(user_id) = get_optional_user_id_from_headers(headers, db).await? else {
+        return Ok((None, false));
+    };
+    let (_, is_admin) = get_user_and_admin_status(headers, db).await;
+    Ok((Some(user_id), is_admin))
+}
+
 /// 从请求头获取管理员用户 ID（用于管理功能）
 /// 非管理员返回 403 Forbidden
 pub(crate) async fn get_admin_user_id_from_headers(

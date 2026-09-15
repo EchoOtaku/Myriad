@@ -956,6 +956,7 @@ interface PhantasiFeedsProps {
   onReleaseStories?: () => void
   railEpoch?: number | string
   onReadySource?: (id: number | null) => void
+  onRailFocus?: (sourceId: number | null) => void
   sourceTags?: ReactNode
 }
 
@@ -980,6 +981,7 @@ function PhantasiFeeds({
   onReleaseStories,
   railEpoch = 0,
   onReadySource,
+  onRailFocus,
   sourceTags,
 }: PhantasiFeedsProps) {
   const { t, locale, format } = useI18n()
@@ -1952,6 +1954,7 @@ function PhantasiFeeds({
     setFocusId(id)
     setReadyId(id)
     onJumpSource?.(id)
+    onRailFocus?.(isLatestFeedId(id) ? null : id)
     sitesApiRef.current?.align(id)
     alignStoryGroup(id)
   }

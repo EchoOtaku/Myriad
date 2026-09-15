@@ -6,6 +6,8 @@
 //! - Tapp: site-owner public install with `visibility = all`
 //! - Phantasi: only sources categorized as site-owner original content (`我`);
 //! never index friend-links or third-party RSS items
+//! - Syndicated journal URLs (`/journal/feeds/{id}`, `/journal/topics/{topic}`)
+//! are linkable crawler shells: `noindex, follow`, no sitemap, no reprinted bodies
 //!
 //! Ordinary browsers get the SPA via the proxy. The frontend process stamps site
 //! identity into that document; the proxy only routes. Crawler UAs and
@@ -166,6 +168,8 @@ struct SeoDocument<'a> {
     description: &'a str,
     canonical: &'a str,
     noindex: bool,
+    /// Override robots when set. Default is `noindex, nofollow` / `index, follow`.
+    robots: Option<&'a str>,
     og_type: &'a str,
     image: Option<&'a str>,
     json_ld: Option<Value>,
@@ -181,11 +185,11 @@ fn json_ld_tag(value: &Value) -> String {
 }
 
 fn render_seo_html(doc: SeoDocument<'_>) -> String {
-    let robots = if doc.noindex {
+    let robots = doc.robots.unwrap_or(if doc.noindex {
         "noindex, nofollow"
     } else {
         "index, follow"
-    };
+    });
     let image = doc.image.unwrap_or("");
     let image_meta = if image.is_empty() {
         String::new()
@@ -333,9 +337,19 @@ fn infer_site_locale(texts: &[&str]) -> SiteLocale {
 /// Match proxy `is_seo_document_shell_path`. Humans with `?_spa=1` must not
 /// stay on this SEO document — the bounce script is a no-op once that query is set.
 pub(crate) fn is_seo_document_shell_path(path: &str) -> bool {
-    matches!(path, "/" | "/tapp" | "/phantasi" | "/library" | "/reports")
-        || path.starts_with("/tapp/run/")
-        || path.starts_with("/phantasi/item/")
+    matches!(
+        path,
+        "/" | "/tapp"
+            | "/journal"
+            | "/journal/feeds"
+            | "/journal/notes"
+            | "/journal/friends"
+            | "/library"
+            | "/reports"
+    ) || path.starts_with("/tapp/run/")
+        || path.starts_with("/journal/articles/")
+        || path.starts_with("/journal/feeds/")
+        || path.starts_with("/journal/topics/")
 }
 
 pub(crate) fn query_has_spa_bypass(query: Option<&str>) -> bool {
@@ -580,6 +594,30 @@ fn absolute_share_image(base: &str, raw: &str) -> Option<String> {
     None
 }
 
+fn public_http_href(raw: Option<&str>) -> Option<&str> {
+    let t = raw?.trim();
+    if t.len() > 2048 {
+        return None;
+    }
+    if !(t.starts_with("https://") || t.starts_with("http://")) {
+        return None;
+    }
+    if t.bytes()
+        .any(|b| b < 0x20 || matches!(b, b'<' | b'>' | b'"' | b'\''))
+    {
+        return None;
+    }
+    Some(t)
+}
+
+fn syndication_robots(site_noindex: bool) -> Option<&'static str> {
+    if site_noindex {
+        None
+    } else {
+        Some("noindex, follow")
+    }
+}
+
 async fn load_site_branding(db: &DatabaseConnection) -> SiteBranding {
     let config_service = crate::services::config_service::ConfigService::new(db.clone());
     let db_config = config_service.load_config().await.ok();
@@ -765,7 +803,7 @@ pub(crate) fn strip_html_snippet(raw: &str, max_len: usize) -> String {
 }
 
 fn phantasi_item_path(item_id: i32) -> String {
-    format!("/phantasi/item/{item_id}")
+    myriad_phantasi::item_path(item_id)
 }
 
 async fn resolve_phantasi_item_seo_summary(
@@ -902,7 +940,7 @@ fn render_phantasi_item_seo_html(
     }
 
     let body_inner = format!(
-        "    <h1>{name}</h1>\n    {source_line}\n    {article}<p><a href=\"{canonical}\">Read more</a> · <a href=\"/phantasi\">Phantasi</a></p>\n",
+        "    <h1>{name}</h1>\n    {source_line}\n    {article}<p><a href=\"{canonical}\">Read more</a> · <a href=\"/journal\">Journal</a></p>\n",
         name = html_escape(&summary.title),
         source_line = source_line,
         article = article_html,
@@ -915,6 +953,7 @@ fn render_phantasi_item_seo_html(
         description: desc,
         canonical: &summary.canonical_url,
         noindex: summary.noindex,
+        robots: None,
         og_type: "article",
         image: summary.image.as_deref(),
         json_ld: Some(json_ld),
@@ -1066,6 +1105,7 @@ fn render_tapp_seo_html(summary: &TappSeoSummary, chrome: &SeoChrome) -> String 
         description: desc,
         canonical: &summary.canonical_url,
         noindex: summary.noindex,
+        robots: None,
         og_type: "website",
         image: summary.image.as_deref(),
         json_ld: Some(json_ld),
@@ -1168,7 +1208,7 @@ pub async fn phantasi_item_seo_summary(
     }
 }
 
-/// GET /phantasi/item/{item_id} — crawler HTML shell (own content only; 404 otherwise).
+/// GET /journal/articles/{item_id} — crawler HTML shell (own content only; 404 otherwise).
 pub async fn phantasi_item_seo_html(
     State(db): State<DatabaseConnection>,
     headers: HeaderMap,
@@ -1300,11 +1340,55 @@ async fn own_phantasi_item_links(
     links
 }
 
+async fn own_phantasi_note_links(
+    db: &DatabaseConnection,
+    base: Option<&str>,
+) -> Vec<(String, String, Option<String>)> {
+    let mut links = Vec::new();
+    let Ok(sources) = phantasi_sources::Entity::find()
+        .filter(phantasi_sources::Column::AdminOnly.eq(false))
+        .all(db)
+        .await
+    else {
+        return links;
+    };
+    let note_source_ids: Vec<i32> = sources
+        .into_iter()
+        .filter(|s| {
+            s.source_type == phantasi_sources::SourceType::Note
+                || phantasi_source_is_own(&s.category, s.admin_only)
+        })
+        .map(|s| s.id)
+        .collect();
+    if note_source_ids.is_empty() {
+        return links;
+    }
+    let Ok(items) = phantasi_items::Entity::find()
+        .filter(phantasi_items::Column::SourceId.is_in(note_source_ids))
+        .order_by_desc(phantasi_items::Column::PublishedAt)
+        .limit(PHANTASI_LIST_SHELL_LIMIT)
+        .all(db)
+        .await
+    else {
+        return links;
+    };
+    for item in items {
+        let path = phantasi_item_path(item.id);
+        let blurb = item
+            .summary
+            .as_deref()
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| strip_html_snippet(s, 80));
+        links.push((public_absolute_url(base, &path), item.title, blurb));
+    }
+    links
+}
+
 fn module_nav_html(modules: &std::collections::HashMap<String, String>) -> String {
     let mut parts: Vec<(&str, &str)> = vec![("/", "Home")];
     for (key, path, label) in [
         ("library", "/library", "Library"),
-        ("phantasi", "/phantasi", "Phantasi"),
+        ("phantasi", "/journal", "Journal"),
         ("reports", "/reports", "Reports"),
         ("tapp", "/tapp", "Apps"),
     ] {
@@ -1438,6 +1522,7 @@ pub async fn home_seo_html(State(db): State<DatabaseConnection>, headers: Header
             description: desc,
             canonical: &canonical,
             noindex: branding.noindex,
+            robots: None,
             og_type: "profile",
             image: image.as_deref(),
             json_ld: Some(json_ld),
@@ -1498,6 +1583,7 @@ async fn module_list_seo_html(
             description: desc,
             canonical: &canonical,
             noindex: branding.noindex,
+            robots: None,
             og_type: "website",
             image: image.as_deref(),
             json_ld: None,
@@ -1531,8 +1617,24 @@ pub async fn tapp_list_seo_html(
     .await
 }
 
-/// GET /phantasi — own-content article index for crawlers.
+/// GET /journal — own-content article index for crawlers.
 pub async fn phantasi_list_seo_html(
+    State(db): State<DatabaseConnection>,
+    headers: HeaderMap,
+) -> Response {
+    journal_writing_list_seo(&db, &headers, "/journal", "Journal").await
+}
+
+/// GET /journal/feeds — same writing index; canonical path stays `/journal`.
+pub async fn journal_feeds_list_seo_html(
+    State(db): State<DatabaseConnection>,
+    headers: HeaderMap,
+) -> Response {
+    journal_writing_list_seo(&db, &headers, "/journal", "Journal").await
+}
+
+/// GET /journal/notes — own notes index for crawlers.
+pub async fn journal_notes_list_seo_html(
     State(db): State<DatabaseConnection>,
     headers: HeaderMap,
 ) -> Response {
@@ -1540,13 +1642,195 @@ pub async fn phantasi_list_seo_html(
         return module_not_found();
     }
     let base = resolve_public_base_url();
-    let links = own_phantasi_item_links(&db, base.as_deref()).await;
+    let links = own_phantasi_note_links(&db, base.as_deref()).await;
     module_list_seo_html(
         &db,
         &headers,
         "phantasi",
-        "/phantasi",
-        "Phantasi",
+        "/journal/notes",
+        "Notes",
+        "Notes from the site owner.",
+        links,
+        true,
+    )
+    .await
+}
+
+/// GET /journal/friends — thin public intro for crawlers.
+pub async fn journal_friends_list_seo_html(
+    State(db): State<DatabaseConnection>,
+    headers: HeaderMap,
+) -> Response {
+    module_list_seo_html(
+        &db,
+        &headers,
+        "phantasi",
+        "/journal/friends",
+        "Friends",
+        "Sites and friends collected here.",
+        Vec::new(),
+        false,
+    )
+    .await
+}
+
+fn render_journal_syndication_seo_html(
+    heading: &str,
+    intro: &str,
+    path: &str,
+    original_href: Option<&str>,
+    branding: &SiteBranding,
+    chrome: &SeoChrome,
+) -> String {
+    let title = format_document_title(heading, &branding.title);
+    let base = resolve_public_base_url();
+    let canonical = public_absolute_url(base.as_deref(), path);
+    let image = site_image(branding, base.as_deref());
+    let desc = if intro.trim().is_empty() {
+        branding.description.as_str()
+    } else {
+        intro
+    };
+    let original = match original_href {
+        Some(href) => format!(
+            "    <p><a href=\"{href}\" rel=\"noopener noreferrer\">Original site</a></p>\n",
+            href = html_escape(href),
+        ),
+        None => String::new(),
+    };
+    let body_inner = format!(
+        "    <h1>{heading}</h1>\n    <p>{intro}</p>\n{original}    <p><a href=\"/journal\">Journal</a></p>\n",
+        heading = html_escape(heading),
+        intro = html_escape(desc),
+        original = original,
+    );
+    render_seo_html(SeoDocument {
+        title: &title,
+        description: desc,
+        canonical: &canonical,
+        noindex: true,
+        robots: syndication_robots(branding.noindex),
+        og_type: "website",
+        image: image.as_deref(),
+        json_ld: None,
+        body_inner,
+        extra_head: "",
+        chrome,
+    })
+}
+
+/// GET /journal/feeds/{source_id} — linkable, not indexed. No reprinted entries.
+pub async fn journal_source_seo_html(
+    State(db): State<DatabaseConnection>,
+    headers: HeaderMap,
+    Path(source_id): Path<i32>,
+) -> Response {
+    if source_id <= 0 {
+        return html_response(
+            StatusCode::BAD_REQUEST,
+            simple_error_html("Bad request", "Invalid feed id."),
+        );
+    }
+    if !phantasi_module_open_to_guests(&db).await {
+        return module_not_found();
+    }
+    let source = match phantasi_sources::Entity::find_by_id(source_id)
+        .one(&db)
+        .await
+    {
+        Ok(row) => row,
+        Err(_) => {
+            return html_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                simple_error_html("Error", "Unable to load feed metadata."),
+            );
+        }
+    };
+    let Some(source) = source else {
+        return html_response(
+            StatusCode::NOT_FOUND,
+            simple_error_html("Not found", "This feed is not available."),
+        );
+    };
+    if source.admin_only || !source.enabled {
+        return html_response(
+            StatusCode::NOT_FOUND,
+            simple_error_html("Not found", "This feed is not available."),
+        );
+    }
+    let branding = load_site_branding(&db).await;
+    let chrome = seo_chrome(&branding, &headers);
+    let heading = if source.name.trim().is_empty() {
+        "Feed"
+    } else {
+        source.name.trim()
+    };
+    let intro = source
+        .description
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| strip_html_snippet(s, 160))
+        .unwrap_or_else(|| "A subscribed feed. Entries come from another site.".to_string());
+    let original = public_http_href(source.site_url.as_deref());
+    let path = format!("/journal/feeds/{source_id}");
+    html_response(
+        StatusCode::OK,
+        render_journal_syndication_seo_html(heading, &intro, &path, original, &branding, &chrome),
+    )
+}
+
+const TOPIC_KEY_MAX: usize = 80;
+
+/// GET /journal/topics/{topic} — linkable, not indexed. No reprinted entries.
+pub async fn journal_topic_seo_html(
+    State(db): State<DatabaseConnection>,
+    headers: HeaderMap,
+    Path(topic): Path<String>,
+) -> Response {
+    let key = topic.trim();
+    if key.is_empty() || key.chars().count() > TOPIC_KEY_MAX {
+        return html_response(
+            StatusCode::NOT_FOUND,
+            simple_error_html("Not found", "This topic is not available."),
+        );
+    }
+    if !phantasi_module_open_to_guests(&db).await {
+        return module_not_found();
+    }
+    let branding = load_site_branding(&db).await;
+    let chrome = seo_chrome(&branding, &headers);
+    let path = format!("/journal/topics/{}", encode_path_segment(key));
+    html_response(
+        StatusCode::OK,
+        render_journal_syndication_seo_html(
+            key,
+            "A subscribed topic. Entries come from other sites.",
+            &path,
+            None,
+            &branding,
+            &chrome,
+        ),
+    )
+}
+
+async fn journal_writing_list_seo(
+    db: &DatabaseConnection,
+    headers: &HeaderMap,
+    path: &str,
+    heading: &str,
+) -> Response {
+    if !phantasi_module_open_to_guests(db).await {
+        return module_not_found();
+    }
+    let base = resolve_public_base_url();
+    let links = own_phantasi_item_links(db, base.as_deref()).await;
+    module_list_seo_html(
+        db,
+        headers,
+        "phantasi",
+        path,
+        heading,
         "Original writing from the site owner.",
         links,
         true,
@@ -1637,7 +1921,7 @@ pub async fn llms_txt(State(db): State<DatabaseConnection>, _headers: HeaderMap)
     let mut routes: Vec<(&str, &str)> = vec![("Home", "/")];
     for (key, path, label) in [
         ("library", "/library", "Library"),
-        ("phantasi", "/phantasi", "Phantasi"),
+        ("phantasi", "/journal", "Journal"),
         ("reports", "/reports", "Reports"),
         ("tapp", "/tapp", "Tapp"),
     ] {
@@ -1727,7 +2011,7 @@ pub async fn sitemap_xml(State(db): State<DatabaseConnection>, _headers: HeaderM
 
     for (key, path, freq) in [
         ("library", "/library", "weekly"),
-        ("phantasi", "/phantasi", "weekly"),
+        ("phantasi", "/journal", "weekly"),
         ("reports", "/reports", "weekly"),
         ("tapp", "/tapp", "weekly"),
     ] {
@@ -1738,6 +2022,17 @@ pub async fn sitemap_xml(State(db): State<DatabaseConnection>, _headers: HeaderM
                 lastmod: None,
                 changefreq: Some(freq),
             });
+            // Own writing indexes only. `/journal/feeds/{id}` and `/journal/topics/*`
+            // are linkable but stay out of the sitemap.
+            if key == "phantasi" {
+                for extra in ["/journal/notes", "/journal/friends"] {
+                    urls.push(SitemapUrl {
+                        loc: format!("{base}{extra}"),
+                        lastmod: None,
+                        changefreq: Some("weekly"),
+                    });
+                }
+            }
         }
     }
 
@@ -1930,8 +2225,8 @@ mod tests {
                 title: "Hello".into(),
                 description: Some("short".into()),
                 image: None,
-                canonical_url: "https://ex.com/phantasi/item/1".into(),
-                path: "/phantasi/item/1".into(),
+                canonical_url: "https://ex.com/journal/articles/1".into(),
+                path: "/journal/articles/1".into(),
                 noindex: false,
                 indexable: true,
                 site_title: Some("Site".into()),
@@ -1966,8 +2261,8 @@ mod tests {
                 title: "Hello".into(),
                 description: Some("short".into()),
                 image: None,
-                canonical_url: "https://ex.com/phantasi/item/1".into(),
-                path: "/phantasi/item/1".into(),
+                canonical_url: "https://ex.com/journal/articles/1".into(),
+                path: "/journal/articles/1".into(),
                 noindex: false,
                 indexable: true,
                 site_title: Some("Site".into()),
@@ -2086,8 +2381,56 @@ mod tests {
         assert!(!query_has_spa_bypass(None));
         assert!(is_seo_document_shell_path("/"));
         assert!(is_seo_document_shell_path("/tapp/run/com.example"));
-        assert!(is_seo_document_shell_path("/phantasi/item/1"));
+        assert!(is_seo_document_shell_path("/journal/articles/1"));
+        assert!(is_seo_document_shell_path("/journal/notes"));
+        assert!(is_seo_document_shell_path("/journal/feeds/9"));
+        assert!(is_seo_document_shell_path("/journal/topics/ai"));
+        assert!(!is_seo_document_shell_path("/phantasi"));
+        assert!(!is_seo_document_shell_path("/phantasi/item/1"));
+        assert!(!is_seo_document_shell_path("/journal/workbench/feeds"));
+        assert!(!is_seo_document_shell_path("/journal/starred"));
         assert!(!is_seo_document_shell_path("/config"));
         assert!(!is_seo_document_shell_path("/api/seo/tapp/x"));
+    }
+
+    #[test]
+    fn syndication_shell_is_noindex_follow_without_article_body() {
+        let branding = SiteBranding {
+            title: "Site".into(),
+            description: "desc".into(),
+            favicon: String::new(),
+            og_image: String::new(),
+            noindex: false,
+            policy: String::new(),
+            ai_intro: String::new(),
+            keywords: String::new(),
+            google_site_verification: String::new(),
+        };
+        let html = render_journal_syndication_seo_html(
+            "Example Feed",
+            "A subscribed feed. Entries come from another site.",
+            "/journal/feeds/9",
+            Some("https://example.test/"),
+            &branding,
+            &SeoChrome::default(),
+        );
+        assert!(html.contains(r#"name="robots""#));
+        assert!(html.contains("noindex, follow"));
+        assert!(!html.contains("noindex, nofollow"));
+        assert!(!html.contains("<article>"));
+        assert!(html.contains("Original site"));
+        assert!(html.contains("https://example.test/"));
+        assert!(!html.contains("javascript:"));
+    }
+
+    #[test]
+    fn public_http_href_rejects_non_http() {
+        assert_eq!(
+            public_http_href(Some("https://ok.test/x")),
+            Some("https://ok.test/x")
+        );
+        assert_eq!(public_http_href(Some("javascript:alert(1)")), None);
+        assert_eq!(public_http_href(Some("/relative")), None);
+        assert_eq!(public_http_href(Some("https://x.test/\"q")), None);
     }
 }

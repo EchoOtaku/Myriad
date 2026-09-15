@@ -947,7 +947,7 @@ export function NavigationIsland() {
         },
         {
           id: 'phantasi',
-          path: '/phantasi',
+          path: '/journal',
           icon: IconPhantasi,
           tooltip: t.nav.phantasiReading,
           ariaLabel: t.nav.phantasiReading,

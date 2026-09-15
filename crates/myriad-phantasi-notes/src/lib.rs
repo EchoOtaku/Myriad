@@ -9,7 +9,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use pulldown_cmark::{html, Options, Parser};
+use pulldown_cmark::{html, Event, Options, Parser};
 
 mod layout;
 #[cfg(test)]
@@ -92,14 +92,15 @@ pub fn validate_note(title: &str, markdown: &str) -> Result<(), NoteError> {
     Ok(())
 }
 
-/// 开启的 Markdown 扩展。删除线、表格、任务列表、脚注 —— 与编辑器工具栏
-/// 能产出的语法保持一致，不多开。
+/// 开启的 Markdown 扩展。删除线、表格、任务列表、脚注、TeX 公式 ——
+/// 与编辑器工具栏能产出的语法保持一致，不多开。
 fn markdown_options() -> Options {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_TASKLISTS);
     options.insert(Options::ENABLE_FOOTNOTES);
+    options.insert(Options::ENABLE_MATH);
     options
 }
 
@@ -130,6 +131,7 @@ fn allowed_tags() -> HashSet<&'static str> {
         "ol",
         "p",
         "pre",
+        "span",
         "strong",
         "sup",
         "table",
@@ -171,6 +173,8 @@ fn allowed_attributes() -> HashMap<&'static str, HashSet<&'static str>> {
             .into_iter()
             .collect(),
     );
+    // 公式：TeX 原文挂在 data-tex，阅读器拿它去排版；标签里不再另藏一份。
+    map.insert("span", ["data-tex"].into_iter().collect());
     map
 }
 
@@ -189,6 +193,12 @@ fn allowed_classes() -> HashMap<&'static str, HashSet<&'static str>> {
         ]
         .into_iter()
         .collect(),
+    );
+    map.insert(
+        "span",
+        ["math", "math-inline", "math-display"]
+            .into_iter()
+            .collect(),
     );
     map.insert(
         "sup",
@@ -235,8 +245,21 @@ pub fn render_markdown_preview(markdown: &str) -> String {
     render_markdown_inner(markdown, true)
 }
 
+fn math_html(class: &str, tex: &str) -> String {
+    let tex = tex.trim();
+    format!(
+        "<span class=\"{class}\" data-tex=\"{}\">{}</span>",
+        escape_html(tex),
+        escape_html(tex)
+    )
+}
+
 fn pulldown_html(markdown: &str) -> String {
-    let parser = Parser::new_ext(markdown, markdown_options());
+    let parser = Parser::new_ext(markdown, markdown_options()).map(|event| match event {
+        Event::InlineMath(text) => Event::InlineHtml(math_html("math math-inline", &text).into()),
+        Event::DisplayMath(text) => Event::InlineHtml(math_html("math math-display", &text).into()),
+        other => other,
+    });
     let mut raw = String::new();
     html::push_html(&mut raw, parser);
     raw
@@ -1024,7 +1047,7 @@ pub fn note_guid(uuid: &str) -> String {
     format!("note:{uuid}")
 }
 
-/// 笔记的站内链接。与前端 `phantasiOwnItemPath` 同一口径。
+/// 笔记的站内链接。与前端 `journalItemPath` 同一口径。
 pub fn note_link(item_id: i32) -> String {
     myriad_phantasi::item_path(item_id)
 }
@@ -1057,6 +1080,52 @@ mod tests {
         let html = render_markdown("# 标题\n\n正文**加粗**。");
         assert!(html.contains("<h1>标题</h1>"));
         assert!(html.contains("<strong>加粗</strong>"));
+    }
+
+    #[test]
+    fn renders_inline_and_display_math_with_tex_attr() {
+        let html = render_markdown("行内 $E=mc^2$ 和独立的\n\n$$\n\\frac{1}{2}\n$$");
+        assert!(
+            html.contains("<span class=\"math math-inline\" data-tex=\"E=mc^2\">E=mc^2</span>"),
+            "{html}"
+        );
+        assert!(html.contains("class=\"math math-display\""), "{html}");
+        assert!(
+            html.contains(
+                "<span class=\"math math-display\" data-tex=\"\\frac{1}{2}\">\\frac{1}{2}</span>"
+            ),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn math_escapes_html_in_tex() {
+        let html = render_markdown("比 $a<b$ 和 $x\"y$");
+        assert!(html.contains("data-tex=\"a&lt;b\""), "{html}");
+        assert!(html.contains("data-tex=\"x&quot;y\""), "{html}");
+        assert!(!html.contains("<b>"), "{html}");
+    }
+
+    #[test]
+    fn math_inside_code_stays_code() {
+        let html = render_markdown("`` $E=mc^2$ ``\n\n```\n$E=mc^2$\n```");
+        assert!(!html.contains("class=\"math"), "{html}");
+        assert!(html.contains("<code>$E=mc^2$</code>"), "{html}");
+        assert!(
+            html.contains("<pre><code>$E=mc^2$\n</code></pre>") || html.contains("$E=mc^2$"),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn preview_keeps_math_and_source_ranges() {
+        let md = "见 $x^2$\n";
+        let preview = render_markdown_preview(md);
+        let published = render_markdown(md);
+        assert!(preview.contains("data-md-start="), "{preview}");
+        assert!(preview.contains("class=\"math math-inline\""), "{preview}");
+        assert!(preview.contains("data-tex=\"x^2\""), "{preview}");
+        assert_eq!(strip_preview_ranges(&preview), published);
     }
 
     #[test]
@@ -1392,8 +1461,8 @@ mod tests {
     #[test]
     fn guid_and_link_shapes() {
         assert_eq!(note_guid("abc"), "note:abc");
-        assert_eq!(note_link(12), "/phantasi/item/12");
-        assert_eq!(NOTES_RSS_PATH, "/phantasi/notes.xml");
+        assert_eq!(note_link(12), "/journal/articles/12");
+        assert_eq!(NOTES_RSS_PATH, "/journal/notes.xml");
         assert_eq!(NOTES_RSS_PREFERENCES_KEY, "phantasi_notes_rss");
     }
 

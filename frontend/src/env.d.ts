@@ -14,6 +14,17 @@ declare module 'prismjs/components/prism-*' {
   export default nothing
 }
 
+/** KaTeX 附加包只有副作用，没有类型。 */
+declare module 'katex/contrib/mhchem' {
+  const nothing: undefined
+  export default nothing
+}
+
+declare module 'katex/contrib/copy-tex' {
+  const nothing: undefined
+  export default nothing
+}
+
 interface ImportMetaEnv {
   readonly PUBLIC_API_URL: string
   readonly DEV: boolean

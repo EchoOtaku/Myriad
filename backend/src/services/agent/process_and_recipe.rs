@@ -21,7 +21,7 @@ impl Agent {
     /// 处理用户请求
     ///
     /// Chat vs Work (`process_inner`). Chat does not consume Pro and must not
-    /// emit Recipe/tool calls. Work is Planner → Recipe in `process_work`
+    /// emit Recipe/tool calls. Work uses the native tool loop in `work_loop`
     /// (Planner requests Pro; `resolve_ai_config` may fall back to Standard).
     /// Escalation is on the progress Work path only.
     ///

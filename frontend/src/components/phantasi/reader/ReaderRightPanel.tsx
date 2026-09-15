@@ -16,6 +16,7 @@ import { readerDialogTrigger } from './readerPanels'
 
 interface ExtendedReaderRightPanelProps extends ReaderRightPanelProps {
   isAuthenticated: boolean
+  commentsEnabled: boolean
   hasComments: boolean
   comments: CommentItem[]
   showCommentsPanel: boolean
@@ -43,6 +44,7 @@ export default memo(
     onMouseLeave,
     t,
     isAuthenticated,
+    commentsEnabled,
     hasComments,
     comments,
     showCommentsPanel,
@@ -83,7 +85,7 @@ export default memo(
             <div
               className={`flex flex-col items-center gap-2 p-2 rounded-2xl border ${currentTheme.border} ${currentTheme.surface}`}
             >
-              {isAuthenticated && (
+              {commentsEnabled ? (
                 <>
                   <button
                     onClick={() => setShowCommentsPanel(!showCommentsPanel)}
@@ -95,7 +97,9 @@ export default memo(
                     title={
                       hasComments
                         ? `${t.phantasi.viewComments} (${comments.length})`
-                        : t.phantasi.selectTextToComment
+                        : isAuthenticated
+                          ? t.phantasi.selectTextToComment
+                          : t.phantasi.comment
                     }
                   >
                     <MessageSquare className="w-5 h-5" />
@@ -109,7 +113,7 @@ export default memo(
                     className={`w-6 h-px ${isDark ? 'bg-white/10' : 'bg-black/10'}`}
                   />
                 </>
-              )}
+              ) : null}
 
               <button
                 onClick={cycleTheme}

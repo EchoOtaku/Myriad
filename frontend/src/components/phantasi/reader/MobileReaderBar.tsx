@@ -75,6 +75,7 @@ export const MobileReaderBar = memo(
     activeHeadingId,
     scrollToHeading,
     comments,
+    commentsEnabled,
     hasComments,
     showCommentsPanel,
     setShowCommentsPanel,
@@ -271,7 +272,7 @@ export const MobileReaderBar = memo(
                               </button>
                             )}
 
-                            {isAuthenticated && (
+                            {commentsEnabled ? (
                               <button
                                 onClick={() => openPanel('comments')}
                                 className={`phantasi-reader__btn relative${commentsOn ? ' is-on' : ''}`}
@@ -282,7 +283,9 @@ export const MobileReaderBar = memo(
                                 title={
                                   hasComments
                                     ? `${t.phantasi.viewComments} (${comments.length})`
-                                    : t.phantasi.selectTextToComment
+                                    : isAuthenticated
+                                      ? t.phantasi.selectTextToComment
+                                      : t.phantasi.comment
                                 }
                               >
                                 <MessageSquare className="w-5 h-5" />
@@ -294,7 +297,7 @@ export const MobileReaderBar = memo(
                                   </span>
                                 )}
                               </button>
-                            )}
+                            ) : null}
 
                             {isPhantasiai &&
                               (isAdmin || item.has_ai_annotations) && (

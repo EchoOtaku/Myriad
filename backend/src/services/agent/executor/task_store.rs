@@ -112,6 +112,13 @@ pub struct TaskStore {
 }
 
 impl TaskStore {
+    /// Work checkpoints are committed synchronously; never enqueue an older
+    /// asynchronous snapshot that could overwrite a resumed or cancelled run.
+    pub(crate) fn cache_committed(&mut self, user_id: i32, task: TaskState) {
+        let ids = self.user_tasks.entry(user_id).or_default();
+        if !ids.contains(&task.task_id) { ids.push(task.task_id.clone()); }
+        self.tasks.insert(task.task_id.clone(), task);
+    }
     pub fn new() -> Self {
         Self {
             tasks: HashMap::new(),
@@ -265,6 +272,7 @@ SET status = 'cancelled',
     completed_at = COALESCE(completed_at, NOW()),
     updated_at = NOW()
 WHERE status IN ('pending', 'running')
+  AND COALESCE(recipe->'metadata'->>'work_loop_version', '') != '1'
 "#,
             vec![crate::services::agent::response_agent::task_interrupted().into()],
         ))
@@ -275,6 +283,7 @@ WHERE status IN ('pending', 'running')
         })?
         .rows_affected();
 
+    crate::services::agent::work_loop::recover(db).await?;
     let pending_tasks = agent_tasks::Entity::find()
         .filter(agent_tasks::Column::Status.eq("waiting_for_input"))
         .order_by_desc(agent_tasks::Column::StartedAt)
@@ -390,6 +399,10 @@ pub use task_store_pure::session_id_from_lane_id;
 pub async fn save_task_to_db(user_id: i32, task: &TaskState) -> Result<(), String> {
     let db_guard = DB_FOR_TASKS.read().await;
     let db = db_guard.as_ref().ok_or("Database is not connected")?;
+    save_task_on(db, user_id, task).await
+}
+
+pub(crate) async fn save_task_on(db: &impl ConnectionTrait, user_id: i32, task: &TaskState) -> Result<(), String> {
 
     let status_str = task_status_to_db_str(&task.status);
 
@@ -406,6 +419,7 @@ pub async fn save_task_to_db(user_id: i32, task: &TaskState) -> Result<(), Strin
         // 更新现有任务
         let mut active_model: agent_tasks::ActiveModel = existing_task.into();
         active_model.status = Set(status_str.to_string());
+        active_model.updated_at = Set(chrono::Utc::now().into());
         active_model.current_step = Set(task.current_step as i32);
         active_model.step_results = Set(json!(task.step_results));
         active_model.completed_at = Set(task.completed_at.map(|t| t.into()));
@@ -713,6 +727,11 @@ pub async fn maybe_cleanup_tasks() {
     use std::sync::atomic::{AtomicU32, Ordering};
     static COUNTER: AtomicU32 = AtomicU32::new(0);
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    if let Some(db) = DB_FOR_TASKS.read().await.clone() {
+        if let Err(error) = crate::services::agent::work_loop::recover(&db).await {
+            tracing::warn!(%error, "Unable to recover interrupted Work tasks");
+        }
+    }
     // 每 20 次请求清理一次过期任务
     if n.is_multiple_of(20) {
         let mut store = TASK_STORE.write().await;

@@ -11,7 +11,7 @@ const editor = readFileSync(join(dir, '../notes/NoteEditor.tsx'), 'utf8')
 
 describe('阅读器后处理', () => {
   it('读路径装饰共用一份；目录仍跳过正文小组件', () => {
-    assert.match(render, /decorateNoteReadSurface\(container, copyCodeLabel\)/)
+    assert.match(render, /decorateNoteReadSurface\(container, copyCodeLabel, copyTexLabel\)/)
     assert.match(postprocess, /heading\.closest\('\.note-widget'\)/)
     const decorations = readFileSync(join(dir, 'textDecorations.ts'), 'utf8')
     const anchors = readFileSync(join(dir, 'commentAnchors.ts'), 'utf8')

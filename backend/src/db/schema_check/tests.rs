@@ -47,6 +47,7 @@ fn test_recent_month_features_in_expected_schema() {
         "federation_inbox_receipts",
         // 003
         "phantasi_note_docs",
+        "phantasi_note_authors",
         "media_assets",
     ] {
         assert!(

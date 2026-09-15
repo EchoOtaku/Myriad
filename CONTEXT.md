@@ -197,7 +197,12 @@ _Avoid_: 常驻 toast、把 duration 0 当成粘滞
 
 内部项目名是 Phantasi。用户界面叫 **手帐**（en: Journal，ja/zh-TW: 手帳，ko: 수첩）。
 AI 增强源内部叫 phantasiai，界面叫 **AI 增强**。订阅包格式叫 pipack。
-_Avoid_: Brew、Brewlia、Brewpack、手记（旧板块名）、把 Phantasi 当产品名
+
+**手帐路由**：
+用户可见地址是 `/journal`，不是内部名。板块、收藏、主题、工作台、自有文章有子路径。
+订阅源也可以有链接（`/journal/feeds/:id`、主题流），但 SEO 与自有写作分开：可链、不收录、不进 sitemap、爬虫薄壳不转载正文。
+抓来的单篇没有本站文章地址。`/api/phantasi` 与联邦对象 ID `/phantasi/articles/{id}` 仍用内部名。
+_Avoid_: Brew、Brewlia、Brewpack、手记（旧板块名）、把 Phantasi 当产品名、把用户可见 URL 写成 `/phantasi`、把订阅源当自己的文章收录、给旧址做 301 或 query 回填
 
 **板块（board）**：
 手帐的三个顶层分区：订阅、笔记、朋友们。笔记和朋友们是客厅，订阅是信箱。
@@ -239,6 +244,21 @@ _Avoid_: 友链（那是一个分类名，不是来源类型）、书签
 播客、收藏、SEO、联邦全部照常生效。与抓来的文章只差原文列和平台生成的 guid。
 _Avoid_: 手记（旧名）、博客、文章（太笼统）、草稿（那是还没发布的状态）
 
+**公式**：
+笔记 Markdown 里的 TeX 数学。行内 `$...$`，独立成段的 `$$...$$`。发布后进渲染后正文，阅读器排版。不是代码块。
+_Avoid_: LaTeX 文档、把公式写成 ```latex 代码块当渲染
+
+**工作台（workbench）**：
+手帐里管理员专属的后台，不是板块。地址是 `/journal/workbench/…`。
+管笔记、评论、媒体、订阅、分类、导入导出。皮在 `PhantasiWorkbench`，逻辑在 manager。
+_Avoid_: 管理台（那是 `/config`）、后台、CMS、把工作台当成第四个板块
+
+**评论（comment）**：
+阅读器里对选中笔记正文的批注，存在 `phantasi_comments`。只挂在笔记上，
+订阅文章没有。能看见这篇笔记的人都能看。写评仍要登录并有
+`phantasi:commentWrite`。工作台列出笔记评论，站长可删。
+_Avoid_: 批注（那是 phantasiai 的 annotations）、留言板、讨论区、给订阅文章开评论
+
 **订阅主题（subscription topic）**：
 站长或 Lite 给订阅文章起的聚类名。存在 `phantasi_items.topic`。用户可自填，
 入库时用 Lite 按正文快速归类，优先沿用已有名字。没有「其他」桶，空主题留在源里。
@@ -249,6 +269,12 @@ _Avoid_: 分类、标签、风格标签（那是源上的 `ai_style_tags`）
 站长给笔记起的归类名。存在 `phantasi_items.topic` / `phantasi_note_docs.topic`，
 可自建、可筛选。不是订阅主题，也不是源上的「我 / 友情链接」。
 _Avoid_: 主题（那是订阅聚类）、源分类
+
+**联合作者（note author）**：
+一篇笔记可多人署名。发起人是文档所有者；同时编辑（真正改稿）或主动加入的
+管理员记为联合作者。名单在 `phantasi_note_authors`。发布后写入文章 `author`。
+工作台按任一作者筛。
+_Avoid_: 协作者（那是在场编辑）、贡献者
 
 **渲染后正文**：
 `phantasi_items.content` 里那份消毒过的 HTML。全站唯一被读取的正文 —— 阅读器、

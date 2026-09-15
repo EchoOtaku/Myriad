@@ -14,7 +14,7 @@ const pathToPageId: Record<string, string> = {
   '/': 'home',
   '/library': 'library',
   '/reports': 'reports',
-  '/phantasi': 'phantasi',
+  '/journal': 'phantasi',
   '/tapp': 'tapp',
   '/config': 'config',
   '/agent/settings': 'config',

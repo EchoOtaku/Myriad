@@ -1,15 +1,21 @@
 {
   "overview": {
-    "what": "Console d’admin. L’aperçu montre brouillons et publications à venir, puis notes, médias, flux et import/export.",
-    "chain": "① Choisissez une page à gauche.\n② Sur l’aperçu, reprenez un brouillon ou voyez ce qui va paraître.\n③ Écrivez, supprimez ou recatégorisez les notes.\n④ Ajoutez, actualisez ou triez les flux.",
+    "what": "Console d’admin. L’aperçu montre brouillons et publications à venir, puis notes, commentaires, médias, flux et import/export.",
+    "chain": "① Choisissez une page à gauche.\n② Sur l’aperçu, reprenez un brouillon ou voyez ce qui va paraître.\n③ Écrivez, supprimez ou recatégorisez les notes.\n④ Relisez les commentaires et supprimez-les.\n⑤ Ajoutez, actualisez ou triez les flux.",
     "frontend": "Le mur, le mur de notes et la page amis utilisent les sources et catégories changées ici.",
     "notes": "Réservé aux administrateurs."
   },
   "notes": {
     "what": "Liste des notes. Ouvrir, supprimer, annuler une programmation, ajouter une catégorie en lot.",
-    "chain": "① Ouvrez un titre pour éditer.\n② Le mode édition sélectionne plusieurs notes.\n③ Deux catégories au plus.",
+    "chain": "① Ouvrez un titre pour éditer.\n② Filtrez par état, catégorie ou coauteur.\n③ Le mode édition sélectionne plusieurs notes. Deux catégories au plus.",
     "frontend": "Les notes publiées vont au mur. Elles n’entrent dans le RSS public qu’après activation. Les programmées partent à l’heure.",
     "notes": "Le corps et la couverture restent dans l’éditeur. Une troisième catégorie signale que c’est plein."
+  },
+  "comments": {
+    "what": "Commentaires des notes. Quiconque voit la note peut les lire. L’admin peut supprimer.",
+    "chain": "① Cherchez le texte, l’extrait ou le titre.\n② Ouvrez une ligne pour la note.\n③ Le mode édition en supprime plusieurs.",
+    "frontend": "Seul le lecteur de notes montre les commentaires. Pas les articles abonnés.",
+    "notes": "Écrire demande une connexion. Les invités lisent seulement."
   },
   "media": {
     "what": "Images et vidéos envoyées, plus les fichiers générés.",

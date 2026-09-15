@@ -802,6 +802,35 @@ pub(crate) fn tables() -> Vec<TableDef> {
             ],
         },
         TableDef {
+            name: "phantasi_note_authors".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "doc_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "role".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: Some("'author'".into()),
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+            ],
+        },
+        TableDef {
             name: "media_assets".to_string(),
             columns: vec![
                 ColumnDef {

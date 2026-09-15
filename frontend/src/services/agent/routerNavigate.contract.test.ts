@@ -36,7 +36,7 @@ describe('router.navigate allow-list', () => {
     const live = [
       '/',
       '/library',
-      '/phantasi',
+      '/journal',
       '/reports',
       '/config',
       '/agent/settings',

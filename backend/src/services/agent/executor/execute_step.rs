@@ -206,7 +206,7 @@ impl Executor {
     ///
     /// MCP tools synthesize a local `{"type": "string"}` placeholder and stay
     /// exempt.
-    fn apply_output_contract(
+    pub(crate) fn apply_output_contract(
         step: &RecipeStep,
         capability: &Capability,
         output: &Value,
@@ -1185,7 +1185,7 @@ fn apply_reference_transform(value: Value, transform: Option<&str>) -> Value {
 /// Fill `currentPath` / `context` from the turn request when the planner omitted
 /// them. `router.state` declares an empty input schema, so without this it
 /// always reports `/`.
-fn inject_request_context_params(
+pub(crate) fn inject_request_context_params(
     capability_id: &str,
     params: &mut HashMap<String, Value>,
     current_route: Option<&Value>,

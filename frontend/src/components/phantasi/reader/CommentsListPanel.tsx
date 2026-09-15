@@ -49,6 +49,8 @@ interface CommentsListPanelProps {
   commentReplies: Record<number, CommentItem[]>
 
   deleteComment: (commentId: number) => void
+  canReply: boolean
+  canDelete: (comment: CommentItem) => boolean
 
   enableAnimations: boolean
 
@@ -75,6 +77,8 @@ export default function CommentsListPanel({
   toggleReplies,
   commentReplies,
   deleteComment,
+  canReply,
+  canDelete,
   enableAnimations,
   t,
 }: CommentsListPanelProps) {
@@ -140,7 +144,7 @@ export default function CommentsListPanel({
                   id={READER_COMMENTS_TITLE_ID}
                   className={`font-medium ${currentTheme.text}`}
                 >
-                  {t.phantasi.myComments}
+                  {t.phantasi.comment}
                 </h3>
                 <span
                   className={`text-xs px-1.5 py-0.5 rounded ${isDark ? 'bg-white/10' : 'bg-black/10'} ${currentTheme.secondary}`}
@@ -164,9 +168,11 @@ export default function CommentsListPanel({
                 <div className={`text-center py-8 ${currentTheme.secondary}`}>
                   <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-30" />
                   <p className="text-sm">{t.phantasi.noComments}</p>
-                  <p className="text-xs mt-1 opacity-70">
-                    {t.phantasi.selectTextToAddComment}
-                  </p>
+                  {canReply ? (
+                    <p className="text-xs mt-1 opacity-70">
+                      {t.phantasi.selectTextToAddComment}
+                    </p>
+                  ) : null}
                 </div>
               ) : (
                 <div className="flex gap-4 pb-2">
@@ -259,20 +265,24 @@ export default function CommentsListPanel({
                             )}
                           </div>
                           <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => setReplyingTo(comment)}
-                              className={`p-1.5 rounded-md ${currentTheme.secondary} hover:${currentTheme.text} ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'} transition-all`}
-                              title={t.phantasi.reply}
-                            >
-                              <Reply className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => deleteComment(comment.id)}
-                              className="p-1.5 rounded-md text-red-500/70 hover:text-red-500 hover:bg-red-500/10 transition-all"
-                              title={t.phantasi.deleteComment}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {canReply ? (
+                              <button
+                                onClick={() => setReplyingTo(comment)}
+                                className={`p-1.5 rounded-md ${currentTheme.secondary} hover:${currentTheme.text} ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'} transition-all`}
+                                title={t.phantasi.reply}
+                              >
+                                <Reply className="w-4 h-4" />
+                              </button>
+                            ) : null}
+                            {canDelete(comment) ? (
+                              <button
+                                onClick={() => deleteComment(comment.id)}
+                                className="p-1.5 rounded-md text-red-500/70 hover:text-red-500 hover:bg-red-500/10 transition-all"
+                                title={t.phantasi.deleteComment}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -373,22 +383,28 @@ export default function CommentsListPanel({
                                 >
                                   {reply.comment}
                                 </p>
+                                {canReply || canDelete(reply) ? (
                                 <div className="absolute right-2 top-2 flex items-center gap-0.5 opacity-0 group-hover/reply:opacity-100 transition-opacity">
-                                  <button
-                                    onClick={() => setReplyingTo(reply)}
-                                    className={`p-1 rounded ${currentTheme.secondary} hover:${currentTheme.text} ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'} transition-all`}
-                                    title={t.phantasi.reply}
-                                  >
-                                    <Reply className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    onClick={() => deleteComment(reply.id)}
-                                    className="p-1 rounded text-red-500/70 hover:text-red-500 hover:bg-red-500/10 transition-all"
-                                    title={t.phantasi.deleteReply}
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                                  {canReply ? (
+                                    <button
+                                      onClick={() => setReplyingTo(reply)}
+                                      className={`p-1 rounded ${currentTheme.secondary} hover:${currentTheme.text} ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'} transition-all`}
+                                      title={t.phantasi.reply}
+                                    >
+                                      <Reply className="w-3.5 h-3.5" />
+                                    </button>
+                                  ) : null}
+                                  {canDelete(reply) ? (
+                                    <button
+                                      onClick={() => deleteComment(reply.id)}
+                                      className="p-1 rounded text-red-500/70 hover:text-red-500 hover:bg-red-500/10 transition-all"
+                                      title={t.phantasi.deleteReply}
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  ) : null}
                                 </div>
+                                ) : null}
                               </div>
                             ))}
 

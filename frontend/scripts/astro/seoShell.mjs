@@ -4,9 +4,23 @@
  * Humans stay on the SPA. Do not merge into `spaPaths`.
  */
 
-export const SEO_SHELL_EXACT = ['/', '/tapp', '/phantasi', '/library', '/reports']
+export const SEO_SHELL_EXACT = [
+  '/',
+  '/tapp',
+  '/journal',
+  '/journal/feeds',
+  '/journal/notes',
+  '/journal/friends',
+  '/library',
+  '/reports',
+]
 
-export const SEO_SHELL_PREFIXES = ['/tapp/run/', '/phantasi/item/']
+export const SEO_SHELL_PREFIXES = [
+  '/tapp/run/',
+  '/journal/articles/',
+  '/journal/feeds/',
+  '/journal/topics/',
+]
 
 export const SEO_CRAWLER_MARKERS = [
   'googlebot',

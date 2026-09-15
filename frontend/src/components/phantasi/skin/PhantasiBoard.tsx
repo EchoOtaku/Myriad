@@ -41,6 +41,7 @@ interface PhantasiBoardViewProps {
   onReleaseStories?: () => void
   railEpoch?: number | string
   onReadySource?: (id: number | null) => void
+  onRailFocus?: (sourceId: number | null) => void
   sourceTags?: ReactNode
 }
 
@@ -69,6 +70,7 @@ export default function PhantasiBoardView({
   onReleaseStories,
   railEpoch = 0,
   onReadySource,
+  onRailFocus,
   sourceTags,
 }: PhantasiBoardViewProps) {
   const { t } = useI18n()
@@ -118,6 +120,7 @@ export default function PhantasiBoardView({
         onJumpSource={onJumpSource}
         onHoldStories={onHoldStories}
         onReleaseStories={onReleaseStories}
+        onRailFocus={onRailFocus}
         railEpoch={railEpoch}
         onReadySource={onReadySource}
         sourceTags={sourceTags}

@@ -70,7 +70,7 @@ export const WelcomeWidget = memo(
           title: t.widgets.phantasiReading,
           description: t.widgets.phantasiDesc,
           features: [t.widgets.phantasiFeature],
-          path: '/phantasi',
+          path: '/journal',
           color: '#f97316',
         },
         {
@@ -183,7 +183,7 @@ export const WelcomeWidget = memo(
           </svg>
         )
       }
-      if (guide.path === '/phantasi') {
+      if (guide.path === '/journal') {
         return (
           <svg
             className={iconClass}

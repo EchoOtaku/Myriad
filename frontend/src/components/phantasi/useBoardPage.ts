@@ -24,8 +24,8 @@ import {
 } from './logic/feedStories'
 import { noteSourceKey } from './logic/homeBoard'
 import {
+  loadBoardNotes,
   loadFeedStories,
-  loadHomeBoardNotes,
   peekFeedStories,
   peekFeedStoriesLoose,
 } from './pageData'
@@ -68,7 +68,7 @@ export function useBoardNotes(
       return
     }
     const controller = new AbortController()
-    void loadHomeBoardNotes(sourcesRef.current, controller.signal)
+    void loadBoardNotes(sourcesRef.current, controller.signal)
       .then((next) => {
         if (!controller.signal.aborted) setNotes(next)
       })

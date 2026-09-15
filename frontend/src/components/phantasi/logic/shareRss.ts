@@ -2,7 +2,7 @@ import type { PhantasiSource } from '../../../types/phantasi'
 import { workbenchSourceKind } from './board'
 
 /** 与 `myriad_phantasi_notes::NOTES_RSS_PATH` 同一条公开地址。 */
-export const NOTES_RSS_PATH = '/phantasi/notes.xml'
+export const NOTES_RSS_PATH = '/journal/notes.xml'
 
 export function notesRssUrl(origin: string): string {
   const base = origin.trim().replace(/\/$/, '')

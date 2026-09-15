@@ -5,28 +5,86 @@ import type {
   PhantasiViewMode,
   WorkbenchPane,
 } from './logic/board'
+import type { JournalLocation } from './logic/journalRoutes'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { resolveBoardParam, viewForBoardEntry } from './logic/board'
 import {
-  eatSearchKeys,
-  navIdForBoardEntry,
-  resolveBoardParam,
-  resolveWorkbenchPane,
-  viewForBoardEntry,
-} from './logic/board'
+  JOURNAL_ROOT,
+  WORKBENCH_PANE_PATHS,
+  journalListPath,
+  journalPathForNavId,
+  journalSourcePath,
+  journalTopicPath,
+  navIdForJournalLocation,
+  parseJournalPath,
+  pathShowsNavId,
+} from './logic/journalRoutes'
 import { normalizeTopicName } from './logic/topics'
+
+function applyLocationState(
+  loc: JournalLocation,
+  applyBoardEntry: (entry: PhantasiBoardEntry) => void,
+  setSelectedTopic: (topic: { key: string } | null) => void,
+  setRailFocusId: (id: number | null) => void,
+  setWorkbenchPane: (pane: WorkbenchPane) => void,
+  setViewMode: (view: PhantasiViewMode) => void,
+) {
+  if (loc.kind === 'article') return
+  if (loc.kind === 'workbench') {
+    applyBoardEntry({ view: 'workbench', board: 'feeds' })
+    setWorkbenchPane(loc.pane)
+    setSelectedTopic(null)
+    setRailFocusId(null)
+    return
+  }
+  if (loc.kind === 'starred') {
+    applyBoardEntry({ view: 'starred', board: 'feeds' })
+    setSelectedTopic(null)
+    setRailFocusId(null)
+    return
+  }
+  if (loc.kind === 'topic') {
+    const key = normalizeTopicName(loc.topic)
+    applyBoardEntry({ view: 'sources', board: 'feeds' })
+    if (key) {
+      setSelectedTopic({ key })
+      setViewMode('topic-feed')
+    }
+    setRailFocusId(null)
+    return
+  }
+  if (loc.kind === 'source') {
+    applyBoardEntry({ view: 'sources', board: 'feeds' })
+    setSelectedTopic(null)
+    setRailFocusId(loc.sourceId)
+    return
+  }
+  if (loc.kind === 'notes') {
+    applyBoardEntry({ view: 'sources', board: 'notes' })
+    setSelectedTopic(null)
+    setRailFocusId(null)
+    return
+  }
+  if (loc.kind === 'friends') {
+    applyBoardEntry({ view: 'sources', board: 'sites' })
+    setSelectedTopic(null)
+    setRailFocusId(null)
+    return
+  }
+  applyBoardEntry({ view: 'sources', board: 'feeds' })
+  setSelectedTopic(null)
+  setRailFocusId(null)
+}
 
 export function usePhantasiBoardRoute(
   isAuthenticated: boolean,
   isAdmin: boolean,
-  sources: PhantasiSource[],
+  _sources: PhantasiSource[],
   activeId: string,
   setActiveId: (id: string) => void,
-  searchParams: URLSearchParams,
-  setSearchParams: (
-    next: URLSearchParams | ((prev: URLSearchParams) => URLSearchParams),
-    opts?: { replace?: boolean },
-  ) => void,
+  pathname: string,
+  navigate: (to: string, opts?: { replace?: boolean }) => void,
 ) {
   const [viewMode, setViewMode] = useState<PhantasiViewMode>('sources')
   const [board, setBoard] = useState<PhantasiBoard>('feeds')
@@ -34,7 +92,8 @@ export function usePhantasiBoardRoute(
     key: string
   } | null>(null)
   const [railFocusId, setRailFocusId] = useState<number | null>(null)
-  const [workbenchPane, setWorkbenchPane] = useState<WorkbenchPane>('home')
+  const [workbenchPane, setWorkbenchPaneState] = useState<WorkbenchPane>('home')
+  const prevActiveIdRef = useRef(activeId)
 
   const applyBoardEntry = useCallback(
     (entry: PhantasiBoardEntry) => {
@@ -54,13 +113,45 @@ export function usePhantasiBoardRoute(
     [isAuthenticated, isAdmin],
   )
 
-  const prevActiveIdRef = useRef(activeId)
+  const applyBoardEntryRef = useRef(applyBoardEntry)
+  applyBoardEntryRef.current = applyBoardEntry
+
+  useEffect(() => {
+    const loc = parseJournalPath(pathname)
+    if (!loc || loc.kind === 'article') return
+
+    if (loc.kind === 'starred' && !isAuthenticated) {
+      navigate(JOURNAL_ROOT, { replace: true })
+      return
+    }
+    if (loc.kind === 'workbench' && !isAdmin) {
+      navigate(JOURNAL_ROOT, { replace: true })
+      return
+    }
+
+    applyLocationState(
+      loc,
+      applyBoardEntryRef.current,
+      setSelectedTopic,
+      setRailFocusId,
+      setWorkbenchPaneState,
+      setViewMode,
+    )
+
+    const navId = navIdForJournalLocation(loc, isAuthenticated, isAdmin)
+    prevActiveIdRef.current = navId
+    setActiveId(navId)
+  }, [pathname, isAuthenticated, isAdmin, setActiveId, navigate])
+
   useEffect(() => {
     if (prevActiveIdRef.current === activeId) return
     prevActiveIdRef.current = activeId
     const entry = resolveBoardParam(activeId)
     if (entry) applyBoardEntry(entry)
-  }, [activeId, applyBoardEntry])
+    if (!pathShowsNavId(pathname, activeId)) {
+      navigate(journalPathForNavId(activeId))
+    }
+  }, [activeId, applyBoardEntry, navigate, pathname])
 
   useEffect(() => {
     if (isAuthenticated) return
@@ -78,82 +169,51 @@ export function usePhantasiBoardRoute(
     setActiveId('feeds')
   }, [isAdmin, activeId, setActiveId])
 
-  useEffect(() => {
-    const raw = searchParams.get('board') ?? searchParams.get('category')
-    if (!raw) return
-    const entry = resolveBoardParam(raw)
-    if (!entry) return
-
-    applyBoardEntry(entry)
-    if (entry.view === 'workbench') {
-      setWorkbenchPane(resolveWorkbenchPane(searchParams.get('pane')))
-    }
-    const navId = navIdForBoardEntry(entry, isAuthenticated, isAdmin)
-    prevActiveIdRef.current = navId
-    setActiveId(navId)
-    setSearchParams(
-      (prev) => eatSearchKeys(prev, ['board', 'category', 'pane']),
-      { replace: true },
-    )
-  }, [
-    searchParams,
-    applyBoardEntry,
-    isAuthenticated,
-    isAdmin,
-    setActiveId,
-    setSearchParams,
-  ])
-
-  const openTopic = useCallback((topicKey: string) => {
-    const key = normalizeTopicName(topicKey)
-    if (!key) return
-    setSelectedTopic({ key })
-    setViewMode('topic-feed')
-  }, [])
-
-  const focusSource = useCallback(
-    (source: PhantasiSource) => {
-      setBoard('feeds')
-      setViewMode('sources')
-      setActiveId('feeds')
-      setRailFocusId(source.id)
+  const openTopic = useCallback(
+    (topicKey: string) => {
+      const key = normalizeTopicName(topicKey)
+      if (!key) return
+      navigate(journalTopicPath(key))
     },
-    [setActiveId],
+    [navigate],
   )
 
-  useEffect(() => {
-    const topicParam = searchParams.get('topic')
-    if (topicParam) {
-      openTopic(topicParam)
-      setSearchParams((prev) => eatSearchKeys(prev, ['topic']), {
-        replace: true,
-      })
-      return
-    }
-
-    const sourceParam = searchParams.get('source')
-    if (!sourceParam) return
-    const id = Number(sourceParam)
-    if (!Number.isFinite(id)) return
-    const target = sources.find((source) => source.id === id)
-    if (!target) return
-
-    focusSource(target)
-    setSearchParams((prev) => eatSearchKeys(prev, ['source']), {
-      replace: true,
-    })
-  }, [searchParams, sources, openTopic, focusSource, setSearchParams])
+  const focusSource = useCallback(
+    (source: PhantasiSource | null) => {
+      if (!source) {
+        setRailFocusId(null)
+        navigate(JOURNAL_ROOT)
+        return
+      }
+      setRailFocusId(source.id)
+      navigate(journalSourcePath(source.id))
+    },
+    [navigate],
+  )
 
   const backFromTopic = useCallback(() => {
-    setSelectedTopic(null)
-    setViewMode('sources')
-  }, [])
+    navigate(JOURNAL_ROOT)
+  }, [navigate])
 
   const backToFeeds = useCallback(() => {
-    setBoard('feeds')
-    setViewMode('sources')
-    setActiveId('feeds')
-  }, [setActiveId])
+    navigate(JOURNAL_ROOT)
+  }, [navigate])
+
+  const setWorkbenchPane = useCallback(
+    (pane: WorkbenchPane) => {
+      setWorkbenchPaneState(pane)
+      navigate(WORKBENCH_PANE_PATHS[pane])
+    },
+    [navigate],
+  )
+
+  const listPath = journalListPath({
+    viewMode,
+    board,
+    topic: selectedTopic?.key,
+    sourceId: viewMode === 'sources' ? railFocusId : null,
+    workbenchPane,
+  })
 
   return {
     viewMode,
@@ -163,6 +223,7 @@ export function usePhantasiBoardRoute(
     railFocusId,
     workbenchPane,
     setWorkbenchPane,
+    listPath,
     openTopic,
     focusSource,
     backFromTopic,

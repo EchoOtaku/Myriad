@@ -286,6 +286,8 @@ export interface PageSeoInput {
   image?: string
   path?: string
   noindex?: boolean
+  /** 转载页：noindex 但仍 follow。缺省 noindex 时是 nofollow。 */
+  follow?: boolean
 }
 
 let baseMetadata: SiteMetadata = { ...DEFAULT_METADATA }
@@ -355,6 +357,7 @@ function applyEffectiveSeo(): void {
   ).trim()
   const pageUrl = resolvePageAbsoluteUrl(page?.path)
   const noindex = Boolean(base.site_noindex || page?.noindex)
+  const follow = Boolean(page?.follow) && !base.site_noindex
   const ogImage = pickShareImage(page?.image, base)
 
   updateTitle(title)
@@ -365,7 +368,14 @@ function applyEffectiveSeo(): void {
   const gsc = base.google_site_verification.trim()
   const gscSafe = /^[\w-]{1,128}$/.test(gsc) ? gsc : ''
   upsertMetaByName('google-site-verification', gscSafe || null)
-  upsertMetaByName('robots', noindex ? 'noindex, nofollow' : 'index, follow')
+  upsertMetaByName(
+    'robots',
+    noindex
+      ? follow
+        ? 'noindex, follow'
+        : 'noindex, nofollow'
+      : 'index, follow',
+  )
 
   upsertMetaByProperty('og:type', 'website')
   upsertMetaByProperty('og:title', title || null)

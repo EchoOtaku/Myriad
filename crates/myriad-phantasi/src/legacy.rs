@@ -24,7 +24,10 @@ pub const INDEXES: &[(&str, &str)] = &[
     ("idx_brew_sources_user_url", "idx_phantasi_sources_user_url"),
     ("idx_brew_sources_category", "idx_phantasi_sources_category"),
     ("idx_brew_sources_schedule", "idx_phantasi_sources_schedule"),
-    ("idx_brew_items_source_guid", "idx_phantasi_items_source_guid"),
+    (
+        "idx_brew_items_source_guid",
+        "idx_phantasi_items_source_guid",
+    ),
     ("idx_brew_items_published", "idx_phantasi_items_published"),
     ("idx_brew_items_timeline", "idx_phantasi_items_timeline"),
     ("idx_brew_items_topic", "idx_phantasi_items_topic"),
@@ -61,7 +64,11 @@ pub const INDEXES: &[(&str, &str)] = &[
 ];
 
 pub const FOREIGN_KEYS: &[(&str, &str, &str)] = &[
-    ("brew_items", "fk_brew_items_source", "fk_phantasi_items_source"),
+    (
+        "brew_items",
+        "fk_brew_items_source",
+        "fk_phantasi_items_source",
+    ),
     (
         "brew_user_states",
         "fk_brew_user_states_item",
@@ -130,8 +137,14 @@ pub const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
     ("brew_open_source", "phantasi_open_source"),
     ("brew_open_item", "phantasi_open_item"),
     ("brew_notes_rss", "phantasi_notes_rss"),
-    ("user_perm_brew_comment_write", "user_perm_phantasi_comment_write"),
-    ("guest_perm_brew_comment_write", "guest_perm_phantasi_comment_write"),
+    (
+        "user_perm_brew_comment_write",
+        "user_perm_phantasi_comment_write",
+    ),
+    (
+        "guest_perm_brew_comment_write",
+        "guest_perm_phantasi_comment_write",
+    ),
     ("brew:commentWrite", "phantasi:commentWrite"),
     ("brew:manage", "phantasi:manage"),
     ("brew:write", "phantasi:write"),

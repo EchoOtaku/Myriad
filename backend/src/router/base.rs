@@ -428,7 +428,7 @@ pub(super) fn build_base_api_router(
         // SEO：sitemap / robots / 公开 Tapp·Phantasi 摘要与爬虫 HTML 壳
         .route("/sitemap.xml", get(api::seo::sitemap_xml))
         .route("/api/seo/sitemap.xml", get(api::seo::sitemap_xml))
-        .route("/phantasi/notes.xml", get(api::phantasi::notes_rss))
+        .route("/journal/notes.xml", get(api::phantasi::notes_rss))
         .route("/robots.txt", get(api::seo::robots_txt))
         .route("/llms.txt", get(api::seo::llms_txt))
         .route("/api/seo/llms.txt", get(api::seo::llms_txt))
@@ -442,8 +442,25 @@ pub(super) fn build_base_api_router(
                 .route("/", get(api::seo::home_seo_html))
                 .route("/tapp", get(api::seo::tapp_list_seo_html))
                 .route("/tapp/run/{tapp_id}", get(api::seo::tapp_run_seo_html))
-                .route("/phantasi", get(api::seo::phantasi_list_seo_html))
-                .route("/phantasi/item/{item_id}", get(api::seo::phantasi_item_seo_html))
+                .route("/journal", get(api::seo::phantasi_list_seo_html))
+                .route("/journal/feeds", get(api::seo::journal_feeds_list_seo_html))
+                .route(
+                    "/journal/feeds/{source_id}",
+                    get(api::seo::journal_source_seo_html),
+                )
+                .route(
+                    "/journal/topics/{topic}",
+                    get(api::seo::journal_topic_seo_html),
+                )
+                .route("/journal/notes", get(api::seo::journal_notes_list_seo_html))
+                .route(
+                    "/journal/friends",
+                    get(api::seo::journal_friends_list_seo_html),
+                )
+                .route(
+                    "/journal/articles/{item_id}",
+                    get(api::seo::phantasi_item_seo_html),
+                )
                 .route("/library", get(api::seo::library_seo_html))
                 .route("/reports", get(api::seo::reports_seo_html))
                 .layer(from_fn(api::seo::spa_document_bypass)),

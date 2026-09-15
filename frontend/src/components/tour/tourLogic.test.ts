@@ -597,6 +597,8 @@ describe('page tours', () => {
   })
 
   it('does not register phantasi reading routes', () => {
+    assert.equal(pickTour(TOURS, '/journal', true), null)
+    assert.equal(pickTour(TOURS, '/journal/articles/1', true), null)
     assert.equal(pickTour(TOURS, '/phantasi', true), null)
     assert.equal(pickTour(TOURS, '/phantasi/item/1', true), null)
   })

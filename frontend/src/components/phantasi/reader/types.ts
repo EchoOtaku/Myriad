@@ -76,6 +76,7 @@ export interface MobileReaderBarProps {
   scrollToHeading: (id: string) => void
 
   comments: CommentItem[]
+  commentsEnabled: boolean
   hasComments: boolean
   showCommentsPanel: boolean
   setShowCommentsPanel: (show: boolean) => void

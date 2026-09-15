@@ -44,6 +44,17 @@ describe('sanitizeRssHtml (DOMPurify allowlist)', () => {
     assert.equal(/<script/i.test(out), false)
   })
 
+  it('keeps math spans and data-tex', () => {
+    const out = sanitizeRssHtml(
+      '<p>见 <span class="math math-inline" data-tex="E=mc^2">E=mc^2</span></p>'
+      + '<div class="notion-equation">$$x^2$$</div>',
+    )
+    assert.match(out, /class="[^"]*math[^"]*"/)
+    assert.match(out, /data-tex="E=mc\^2"/)
+    assert.match(out, /notion-equation/)
+    assert.doesNotMatch(out, /<math[\s>]/)
+  })
+
   it('preserves basic formatting, links, and images', () => {
     const out = sanitizeRssHtml(
       '<p>Hello <strong>world</strong> and <em>more</em></p>'

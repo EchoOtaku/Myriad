@@ -14,6 +14,12 @@ describe('comments abort', () => {
     )
     const api = readFileSync(join(dir, '../../services/phantasiApi.ts'), 'utf8')
     assert.match(hook, /getComments\(itemId, undefined, \{ signal \}\)/)
+    assert.match(hook, /if \(!enabled \|\| commentsLoadingRef\.current\) return/)
+    assert.match(hook, /is_public: true/)
+    assert.doesNotMatch(
+      hook.slice(hook.indexOf('const loadComments'), hook.indexOf('const submitComment')),
+      /isAuthenticated/,
+    )
     assert.match(hook, /getCommentReplies\(commentId, undefined, \{[\s\S]*signal/)
     assert.match(hook, /itemAbort\.current = controller/)
     assert.match(api, /signal: options\?\.signal/)

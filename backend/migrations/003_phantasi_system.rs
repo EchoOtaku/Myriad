@@ -29,7 +29,11 @@ impl MigrationTrait for Migration {
                     // 所属用户
                     .col(ColumnDef::new(PhantasiSources::UserId).integer().not_null())
                     // 订阅源名称
-                    .col(ColumnDef::new(PhantasiSources::Name).string_len(255).not_null())
+                    .col(
+                        ColumnDef::new(PhantasiSources::Name)
+                            .string_len(255)
+                            .not_null(),
+                    )
                     // 订阅源 URL
                     .col(ColumnDef::new(PhantasiSources::Url).text().not_null())
                     // varchar(20) NOT NULL default rss；本 migration 无 CHECK
@@ -201,7 +205,11 @@ impl MigrationTrait for Migration {
                     // 关联订阅源
                     .col(ColumnDef::new(PhantasiItems::SourceId).integer().not_null())
                     // varchar(512) NOT NULL
-                    .col(ColumnDef::new(PhantasiItems::Guid).string_len(512).not_null())
+                    .col(
+                        ColumnDef::new(PhantasiItems::Guid)
+                            .string_len(512)
+                            .not_null(),
+                    )
                     // 文章标题
                     .col(ColumnDef::new(PhantasiItems::Title).text().not_null())
                     // 原文链接
@@ -339,9 +347,17 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     // 用户 ID
-                    .col(ColumnDef::new(PhantasiUserStates::UserId).integer().not_null())
+                    .col(
+                        ColumnDef::new(PhantasiUserStates::UserId)
+                            .integer()
+                            .not_null(),
+                    )
                     // 文章 ID
-                    .col(ColumnDef::new(PhantasiUserStates::ItemId).integer().not_null())
+                    .col(
+                        ColumnDef::new(PhantasiUserStates::ItemId)
+                            .integer()
+                            .not_null(),
+                    )
                     // 是否已读
                     .col(
                         ColumnDef::new(PhantasiUserStates::IsRead)
@@ -449,7 +465,11 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     // 用户 ID
-                    .col(ColumnDef::new(PhantasiCategories::UserId).integer().not_null())
+                    .col(
+                        ColumnDef::new(PhantasiCategories::UserId)
+                            .integer()
+                            .not_null(),
+                    )
                     // 分类名称
                     .col(
                         ColumnDef::new(PhantasiCategories::Name)
@@ -507,7 +527,11 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     // 关联文章 ID
-                    .col(ColumnDef::new(PhantasiAnnotations::ItemId).integer().not_null())
+                    .col(
+                        ColumnDef::new(PhantasiAnnotations::ItemId)
+                            .integer()
+                            .not_null(),
+                    )
                     // varchar(20) NOT NULL default term；本 migration 无 CHECK
                     .col(
                         ColumnDef::new(PhantasiAnnotations::AnnotationType)
@@ -577,7 +601,11 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     // 关联文章 ID（唯一，每篇文章只有一个播客）
-                    .col(ColumnDef::new(PhantasiPodcasts::ItemId).integer().not_null())
+                    .col(
+                        ColumnDef::new(PhantasiPodcasts::ItemId)
+                            .integer()
+                            .not_null(),
+                    )
                     // 播客标题
                     .col(ColumnDef::new(PhantasiPodcasts::Title).text().not_null())
                     // 检测到的语言
@@ -641,11 +669,23 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     // 关联文章 ID
-                    .col(ColumnDef::new(PhantasiComments::ItemId).integer().not_null())
+                    .col(
+                        ColumnDef::new(PhantasiComments::ItemId)
+                            .integer()
+                            .not_null(),
+                    )
                     // 评论用户 ID
-                    .col(ColumnDef::new(PhantasiComments::UserId).integer().not_null())
+                    .col(
+                        ColumnDef::new(PhantasiComments::UserId)
+                            .integer()
+                            .not_null(),
+                    )
                     // 选中的原文文本
-                    .col(ColumnDef::new(PhantasiComments::SelectedText).text().not_null())
+                    .col(
+                        ColumnDef::new(PhantasiComments::SelectedText)
+                            .text()
+                            .not_null(),
+                    )
                     // 评论内容
                     .col(ColumnDef::new(PhantasiComments::Comment).text().not_null())
                     // 选中文本在原文中的起始位置（字符偏移）
@@ -884,6 +924,18 @@ CREATE INDEX IF NOT EXISTS idx_phantasi_note_docs_item
     ON phantasi_note_docs (item_id);
 CREATE INDEX IF NOT EXISTS idx_phantasi_note_docs_schedule
     ON phantasi_note_docs (status, scheduled_at);
+CREATE TABLE IF NOT EXISTS phantasi_note_authors (
+    doc_id INTEGER NOT NULL REFERENCES phantasi_note_docs(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL,
+    role VARCHAR NOT NULL DEFAULT 'author',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (doc_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_phantasi_note_authors_user
+    ON phantasi_note_authors (user_id);
+INSERT INTO phantasi_note_authors (doc_id, user_id, role)
+SELECT id, user_id, 'owner' FROM phantasi_note_docs
+ON CONFLICT (doc_id, user_id) DO NOTHING;
 CREATE TABLE IF NOT EXISTS media_assets (
     id SERIAL PRIMARY KEY,
     kind VARCHAR NOT NULL,
@@ -908,7 +960,7 @@ CREATE INDEX IF NOT EXISTS idx_media_assets_kind
         manager
             .get_connection()
             .execute_unprepared(
-                "DROP TABLE IF EXISTS media_assets; DROP TABLE IF EXISTS phantasi_note_docs",
+                "DROP TABLE IF EXISTS media_assets; DROP TABLE IF EXISTS phantasi_note_authors; DROP TABLE IF EXISTS phantasi_note_docs",
             )
             .await?;
 

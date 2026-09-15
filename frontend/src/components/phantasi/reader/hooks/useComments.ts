@@ -12,6 +12,7 @@ import { useArticleTaskScope } from './useArticleTaskScope'
 
 interface UseCommentsOptions {
   itemId: number
+  enabled: boolean
   isAuthenticated: boolean
   showToastMessage: (message: string, duration?: number) => void
   t: ReaderCopy
@@ -77,6 +78,7 @@ interface UseCommentsReturn {
 
 export function useComments({
   itemId,
+  enabled,
   isAuthenticated,
   showToastMessage,
   t,
@@ -129,7 +131,7 @@ export function useComments({
   const commentsLoadingRef = useRef(false)
 
   const loadComments = useCallback(async () => {
-    if (!isAuthenticated || commentsLoadingRef.current) return
+    if (!enabled || commentsLoadingRef.current) return
 
     const isCurrent = captureTask()
     const signal = turns.current.begin()
@@ -150,10 +152,11 @@ export function useComments({
       commentsLoadingRef.current = false
       if (isCurrent() && !signal.aborted) setCommentsLoading(false)
     }
-  }, [captureTask, isAuthenticated, itemId, showToastMessage, t.errors.commentLoadFailed])
+  }, [captureTask, enabled, itemId, showToastMessage, t.errors.commentLoadFailed])
 
   const submitComment = useCallback(async () => {
     if (
+      !enabled ||
       !isAuthenticated ||
       !selectedText ||
       !commentInput.trim() ||
@@ -173,7 +176,7 @@ export function useComments({
         context_before: selectionRange?.contextBefore ?? '',
         context_after: selectionRange?.contextAfter ?? '',
         color: '#fef08a',
-        is_public: false,
+        is_public: true,
       }
 
       const response = await phantasiApi.createComment(itemId, request)
@@ -197,6 +200,7 @@ export function useComments({
     }
   }, [
     captureTask,
+    enabled,
     isAuthenticated,
     selectedText,
     commentInput,
@@ -265,6 +269,7 @@ export function useComments({
 
   const submitReply = useCallback(async () => {
     if (
+      !enabled ||
       !isAuthenticated ||
       !replyingTo ||
       !replyInput.trim() ||
@@ -317,6 +322,7 @@ export function useComments({
     }
   }, [
     captureTask,
+    enabled,
     isAuthenticated,
     replyingTo,
     replyInput,

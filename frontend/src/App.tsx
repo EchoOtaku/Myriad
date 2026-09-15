@@ -461,9 +461,9 @@ function AppRoutes() {
             </ModuleVisibilityGuard>
           }
         />
-        {/* /phantasi/* 单路由，避免 /phantasi ↔ /phantasi/item/:id remount 丢阅读器状态。 */}
+        {/* /journal/* 单路由，避免列表 ↔ 文章 remount 丢阅读器状态。 */}
         <Route
-          path="/phantasi/*"
+          path="/journal/*"
           element={
             <ModuleVisibilityGuard moduleKey="phantasi">
               <SuspensePage>

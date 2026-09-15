@@ -6,7 +6,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{StatusCode, header},
     response::IntoResponse,
-    routing::{get, post, put},
+    routing::{delete, get, post, put},
 };
 use chrono::Utc;
 use futures::StreamExt;
@@ -14,7 +14,7 @@ use reqwest::Url;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
     DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
-    QueryTrait, Statement,
+    QueryTrait, Statement, TransactionTrait,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -78,8 +78,20 @@ pub fn create_phantasi_routes(app_state: crate::state::AppState) -> Router<crate
             get(note_docs::list_note_docs).post(note_docs::create_note_doc),
         )
         .route(
+            "/notes/author-candidates",
+            get(note_docs::list_note_author_candidates),
+        )
+        .route(
             "/notes/docs/for-item/{item_id}",
             get(note_docs::get_note_doc_for_item),
+        )
+        .route(
+            "/notes/docs/{id}/authors",
+            post(note_docs::add_note_doc_author),
+        )
+        .route(
+            "/notes/docs/{id}/authors/{user_id}",
+            delete(note_docs::remove_note_doc_author),
         )
         .route(
             "/notes/docs/{id}",
@@ -126,6 +138,7 @@ pub fn create_phantasi_routes(app_state: crate::state::AppState) -> Router<crate
             "/items/{id}/comments",
             get(comments_rsshub::list_comments).post(comments_rsshub::create_comment),
         )
+        .route("/comments", get(comments_rsshub::list_admin_comments))
         .route(
             "/comments/{id}",
             put(comments_rsshub::update_comment).delete(comments_rsshub::delete_comment),
@@ -859,17 +872,39 @@ pub(crate) async fn delete_source(
         .await;
 
     match source {
-        Ok(Some(_)) => {
+        Ok(Some(source)) => {
             // 删除本地缓存的图标
             let icon_service = IconService::new();
             if let Err(e) = icon_service.delete_icon(id).await {
                 tracing::warn!("Failed to delete icon for source {}: {}", id, e);
             }
 
-            // 删除订阅源（级联删除文章和状态）
-            match phantasi_sources::Entity::delete_by_id(id).exec(&db).await {
-                Ok(_) => Ok(Json(json!({ "success": true }))),
-                Err(e) => Err(phantasi_store_http("delete source", e)),
+            // 文章随源 CASCADE 删；笔记文档没有这条外键，先解开再删。
+            let txn = db
+                .begin()
+                .await
+                .map_err(|e| phantasi_store_http("begin source delete", e))?;
+            if let Err(error) =
+                crate::services::note_publish::detach_note_docs_for_source(&txn, source.id).await
+            {
+                if let Err(rollback) = txn.rollback().await {
+                    tracing::warn!(error = %rollback, "source delete rollback failed");
+                }
+                return Err(error);
+            }
+            match phantasi_sources::Entity::delete_by_id(id).exec(&txn).await {
+                Ok(_) => {
+                    txn.commit()
+                        .await
+                        .map_err(|e| phantasi_store_http("commit source delete", e))?;
+                    Ok(Json(json!({ "success": true })))
+                }
+                Err(e) => {
+                    if let Err(rollback) = txn.rollback().await {
+                        tracing::warn!(error = %rollback, "source delete rollback failed");
+                    }
+                    Err(phantasi_store_http("delete source", e))
+                }
             }
         }
         Ok(None) => Err(HttpError::from((

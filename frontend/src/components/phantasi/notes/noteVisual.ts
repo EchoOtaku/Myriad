@@ -5,6 +5,13 @@
  * 后半是对 contenteditable 的 DOM 操作，只在浏览器里跑。
  */
 
+import type { InputRule } from './noteInputRules'
+import {
+  asDisplayMathBlock,
+  mathIslandHtml,
+  mathMarkdown,
+  replaceMathMarkdown,
+} from './noteMath'
 import {
   decodeWidgetConfigAttr,
   eatMdFence,
@@ -33,11 +40,11 @@ function escapeHtml(value: string): string {
 }
 
 /** 反斜杠转义先挪成占位符，免得被下面的规则当记号；转回 Markdown 时还原成 `\x`。 */
-const ESCAPABLE = '\\`*_{}[]()#+-.!~<>|'
+const ESCAPABLE = '\\`*_{}[]()#+-.!~<>|$'
 const ESC_MARK = '\uE000'
 
 function stashEscapes(text: string): string {
-  return text.replaceAll(/\\([\\`*_{}[\]()#+\-.!~<>|])/g, (_m, ch: string) => {
+  return text.replaceAll(/\\([\\`*_{}[\]()#+\-.!~<>|$])/g, (_m, ch: string) => {
     const index = ESCAPABLE.indexOf(ch)
     return `${ESC_MARK}${String.fromCharCode(0xE100 + index)}`
   })
@@ -207,7 +214,8 @@ function resolveDefinedLink(
 
 /** 行内 Markdown → HTML。`  \n` 和 `\\\n` 是硬换行，普通换行只是空格。 */
 function inlineMarkdown(text: string, defs: ReadonlyMap<string, LinkDef> = EMPTY_DEFS): string {
-  const html = escapeHtml(stashEscapes(text))
+  const codes: string[] = []
+  let html = escapeHtml(stashEscapes(text))
     .replaceAll(/(?: {2,}|\\)\n/g, '<br>')
     .replaceAll('\n', ' ')
     .replace(IMAGE_RE, (_m, alt: string, src: string, dq?: string, sq?: string) =>
@@ -242,7 +250,16 @@ function inlineMarkdown(text: string, defs: ReadonlyMap<string, LinkDef> = EMPTY
       /&lt;([\w.+-]+@[\w-]+(?:\.[\w-]+)+)&gt;/g,
       '<a href="mailto:$1" data-autolink="1">$1</a>',
     )
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/`([^`]+)`/g, (_m, code: string) => {
+      codes.push(code)
+      return `\uE020${codes.length - 1}\uE021`
+    })
+  html = replaceMathMarkdown(html)
+  html = html.replace(
+    /\uE020(\d+)\uE021/g,
+    (_m, index: string) => `<code>${codes[Number(index)]}</code>`,
+  )
+  html = html
     .replace(/~~([^~]+)~~/g, '<del>$1</del>')
     .replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
@@ -266,6 +283,7 @@ function splitPlainBlocks(markdown: string): MarkdownBlock[] {
   let currentStart = 0
   let offset = 0
   const fence = { current: null as MdFence | null }
+  let mathFence = false
   const flush = () => {
     const text = current.join('\n').trimEnd()
     if (text.trim()) {
@@ -280,12 +298,27 @@ function splitPlainBlocks(markdown: string): MarkdownBlock[] {
   for (const line of lines) {
     const lineStart = offset
     offset += line.length + 1
+    if (mathFence) {
+      current.push(line)
+      if (line.trim() === '$$') {
+        mathFence = false
+        flush()
+      }
+      continue
+    }
     if (fence.current) {
       current.push(line)
       if (mdFenceClose(line, fence.current)) {
         fence.current = null
         flush()
       }
+      continue
+    }
+    if (line.trim() === '$$') {
+      flush()
+      currentStart = lineStart
+      current.push(line)
+      mathFence = true
       continue
     }
     const open = mdFenceOpen(line)
@@ -346,10 +379,6 @@ export function blocksWithOffsets(markdown: string): MarkdownBlock[] {
     blocks.push({ text: src.slice(seg.start, seg.end), start: seg.start })
   }
   return blocks
-}
-
-function blocksOf(markdown: string): string[] {
-  return blocksWithOffsets(markdown).map((block) => block.text)
 }
 
 /** 原文下标落在第几个块里（块序号从 0 起；落在两块之间算前一块）。 */
@@ -521,6 +550,8 @@ function renderPlainVisual(markdown: string, defs: ReadonlyMap<string, LinkDef>)
   return splitPlainBlocks(markdown)
     .map((block) => {
       const text = block.text
+      const displayMath = asDisplayMathBlock(text)
+      if (displayMath) return displayMath
       if (mdFenceOpen(text.split('\n')[0] ?? '')) {
         const lines = text.split('\n')
         const open = lines[0] ?? ''
@@ -601,9 +632,78 @@ function decode(value: string): string {
     .replaceAll('&amp;', '&')
 }
 
+const MATH_HOST_OPEN =
+  /<(span|div)(?=[^>]*\b(?:note-math|note-math-edit|math-inline|math-display)\b)/i
+
+/** KaTeX 水合后岛里套着一层层 span，先收成空壳再交给下面的标签规则。 */
+function collapseMathHosts(html: string): string {
+  if (!/\b(?:note-math|note-math-edit|math-inline|math-display)\b/.test(html)) {
+    return html
+  }
+  let out = ''
+  let i = 0
+  while (i < html.length) {
+    const rest = html.slice(i)
+    const found = rest.search(MATH_HOST_OPEN)
+    if (found < 0) {
+      out += rest
+      break
+    }
+    const start = i + found
+    out += html.slice(i, start)
+    const openEnd = html.indexOf('>', start)
+    if (openEnd < 0) {
+      out += html.slice(start)
+      break
+    }
+    const open = html.slice(start, openEnd + 1)
+    const tag = /<(span|div)/i.exec(open)?.[1]?.toLowerCase() ?? 'span'
+    let depth = 1
+    let j = openEnd + 1
+    const openTag = new RegExp(`<${tag}\\b`, 'gi')
+    const closeTag = new RegExp(`</${tag}>`, 'gi')
+    while (j < html.length && depth > 0) {
+      openTag.lastIndex = j
+      closeTag.lastIndex = j
+      const nextOpen = openTag.exec(html)
+      const nextClose = closeTag.exec(html)
+      if (!nextClose) {
+        j = html.length
+        break
+      }
+      if (nextOpen && nextOpen.index < nextClose.index) {
+        depth += 1
+        j = nextOpen.index + nextOpen[0].length
+      } else {
+        depth -= 1
+        j = nextClose.index + nextClose[0].length
+      }
+    }
+    out += `${open}</${tag}>`
+    i = j
+  }
+  return out
+}
+
+function serializeMathIsland(attrs: string, body: string, block = false): string {
+  const tex =
+    decode(/\bdata-tex="([^"]*)"/i.exec(attrs)?.[1] ?? '') || decode(body).trim()
+  const display =
+    /\bnote-math-display\b/.test(attrs) ||
+    /\bmath-display\b/.test(attrs) ||
+    /\bdata-tex-mode="display"/.test(attrs)
+  if (display && !block) return `$$${tex}$$`
+  return mathMarkdown(tex, display)
+}
+
 function inlineHtml(html: string): string {
   return decode(
     html
+      .replace(
+        /<(span|div)([^>]*\b(?:note-math|note-math-edit|math-inline|math-display)\b[^>]*)>([\s\S]*?)<\/\1>/gi,
+        (_m, tag: string, attrs: string, body: string) =>
+          serializeMathIsland(attrs, body, tag === 'div'),
+      )
       .replace(/<img\b([^>]*)>/gi, (_tag, attrs: string) => {
         // data-src 是 Markdown 里的原地址；src 只是给浏览器看的。
         const src =
@@ -725,7 +825,7 @@ function serializeList(body: string, ordered: boolean, listAttrs: string, indent
 
 /** 可视层 HTML → Markdown。认编辑器产出的标签，也认工具栏 execCommand。 */
 export function visualHtmlToMarkdown(html: string): string {
-  const normalized = html
+  const normalized = collapseMathHosts(html)
     .replaceAll(/<div><br\s*\/?><\/div>/gi, '<p></p>')
     .replaceAll(/\n+/g, '')
     .replaceAll(/<hr\s*\/?>/gi, '<hr></hr>')
@@ -749,8 +849,17 @@ export function visualHtmlToMarkdown(html: string): string {
             decodeWidgetConfigAttr(layoutAttr(attrs, 'data-config')),
           )
         }
+        if (
+          hasNoteClass(attrs, 'note-math') ||
+          hasNoteClass(attrs, 'note-math-edit') ||
+          hasNoteClass(attrs, 'math-display') ||
+          hasNoteClass(attrs, 'math-inline')
+        ) {
+          return serializeMathIsland(attrs, body, true)
+        }
         if (hasNoteClass(attrs, 'note-column')) return visualHtmlToMarkdown(body)
-        return inlineHtml(body)
+        const nested = visualHtmlToMarkdown(body)
+        return nested.trim() ? nested : inlineHtml(body)
       }
       if (tag === 'hr') return '---'
       if (tag.startsWith('h')) {
@@ -762,7 +871,13 @@ export function visualHtmlToMarkdown(html: string): string {
         const code = decode(unwrap(body, 'code'))
         return `\`\`\`${lang}\n${code}\n\`\`\``
       }
-      if (tag === 'blockquote') return `> ${inlineHtml(body).replaceAll('\n', '\n> ')}`
+      if (tag === 'blockquote') {
+        if (/<(?:p|h[1-6]|ul|ol|pre)\b/i.test(body)) {
+          const inner = visualHtmlToMarkdown(body).replaceAll('\n', '\n> ')
+          return inner ? `> ${inner}` : ''
+        }
+        return `> ${inlineHtml(body).replaceAll('\n', '\n> ')}`
+      }
       if (tag === 'ul' || tag === 'ol') return serializeList(body, tag === 'ol', attrs, '')
       if (tag === 'table') {
         const aligns: CellAlign[] = []
@@ -770,7 +885,10 @@ export function visualHtmlToMarkdown(html: string): string {
           const cells = [...row[1]!.matchAll(/<t[hd]([^>]*)>([\s\S]*?)<\/t[hd]>/gi)].map(
             (cell, col) => {
               if (rowIndex === 0) {
-                const align = /\balign="(left|center|right)"/i.exec(cell[1] ?? '')?.[1]
+                const raw = cell[1] ?? ''
+                const align =
+                  /\balign="(left|center|right)"/i.exec(raw)?.[1] ??
+                  /text-align:\s*(left|center|right)/i.exec(raw)?.[1]
                 aligns[col] = (align?.toLowerCase() as CellAlign) ?? null
               }
               return inlineHtml(cell[2]!).trim().replaceAll('|', String.raw`\|`)
@@ -1189,7 +1307,7 @@ export function setCodeLang(root: HTMLElement, pre: HTMLElement, lang: string): 
 export function visualOpenBlockBelow(root: HTMLElement): void {
   const block = visualBlockAt(root)
   const solid = block.matches(
-    '.note-widget, .note-columns, .note-column, img, table, hr, pre',
+    '.note-widget, .note-columns, .note-column, .note-math-display, img, table, hr, pre',
   )
   if (
     block === root
@@ -1222,6 +1340,8 @@ const INLINE_TAIL_RULES: Array<{ pattern: RegExp; render: (m: RegExpExecArray) =
     render: (m) =>
       `<a href="${escapeHtml(m[2]!)}"${m[3] ? ` title="${escapeHtml(m[3])}"` : ''}>${escapeHtml(m[1]!)}</a>`,
   },
+  { pattern: /\$\$([^$]+)\$\$$/, render: (m) => mathIslandHtml(m[1]!, true) },
+  { pattern: /(?<!\$)\$([^$\n]+)\$$/, render: (m) => mathIslandHtml(m[1]!, false) },
   { pattern: /`([^`]+)`$/, render: (m) => `<code>${escapeHtml(m[1]!)}</code>` },
   { pattern: /\*\*([^*]+)\*\*$/, render: (m) => `<strong>${escapeHtml(m[1]!)}</strong>` },
   { pattern: /~~([^~]+)~~$/, render: (m) => `<del>${escapeHtml(m[1]!)}</del>` },
@@ -1239,7 +1359,7 @@ export function inlineMarkdownTail(text: string): { length: number; html: string
 
 /** 粗看一眼像不像 Markdown：贴纯文本时决定要不要按 Markdown 解。 */
 export function looksLikeMarkdown(text: string): boolean {
-  return /!\[[^\]]*\]\([^)\s]+\)|(?<!!)\[[^\]]+\]\([^)\s]+\)|(?<!!)\[[^\]]+\]\[[^\]]*\]|(^|\n)(#{1,6} |[-*] |\d+\. |> |```|:::|\[\^?[^\]\s]+\]:)|\*\*[^*\n]+\*\*|`[^`\n]+`|~~[^~\n]+~~/.test(
+  return /!\[[^\]]*\]\([^)\s]+\)|(?<!!)\[[^\]]+\]\([^)\s]+\)|(?<!!)\[[^\]]+\]\[[^\]]*\]|(^|\n)(#{1,6} |[-*] |\d+\. |> |```|:::|\$\$|\[\^?[^\]\s]+\]:)|\*\*[^*\n]+\*\*|`[^`\n]+`|~~[^~\n]+~~|(?<!\$)\$[^$\n]+\$/.test(
     text,
   )
 }
@@ -1281,9 +1401,77 @@ export function applyInlineMarkdownAtCaret(root: HTMLElement): string | null {
 /** 贴进来的纯文本按 Markdown 解成块和行内元素插在光标处。 */
 export function pasteMarkdownIntoVisual(root: HTMLElement, text: string): string {
   const html = markdownToVisualHtml(text)
+  return pasteVisualHtml(root, html)
+}
+
+function isBlockPasteHtml(html: string): boolean {
+  return /<(?:table|ul|ol|h[1-6]|blockquote|pre|hr|div)\b/i.test(html)
+}
+
+/** 表、列表这类块贴进段落中间时，先把当前段劈开，避免 table 套进 p。 */
+function insertBlockHtmlAtCaret(root: HTMLElement, html: string): boolean {
+  const doc = root.ownerDocument
+  const sel = doc.getSelection()
+  if (!sel || sel.rangeCount === 0) return false
+  const range = sel.getRangeAt(0)
+  if (!root.contains(range.commonAncestorContainer)) return false
+  if (!range.collapsed) range.deleteContents()
+  const block = elementOf(range.startContainer)?.closest('p, h1, h2, h3, h4, h5, h6')
+  if (!block || !root.contains(block)) return false
+  if (block.closest('td, th, li, blockquote, pre')) return false
+
+  const wrap = doc.createElement('div')
+  wrap.innerHTML = html
+  const nodes = [...wrap.childNodes]
+  if (nodes.length === 0) return false
+
+  const tailRange = doc.createRange()
+  tailRange.setStart(range.startContainer, range.startOffset)
+  tailRange.setEndAfter(block.lastChild ?? block)
+  const tail = tailRange.extractContents()
+
+  let cursor: ChildNode = block
+  for (const node of nodes) {
+    cursor.after(node)
+    cursor = node
+  }
+
+  const tailHas =
+    Boolean(tail.textContent?.trim()) ||
+    Boolean(tail.querySelector?.('img, table, .note-math, .note-widget'))
+  if (tailHas) {
+    const rest = doc.createElement(block.tagName)
+    rest.append(tail)
+    cursor.after(rest)
+    cursor = rest
+  }
+
+  if (
+    !block.textContent?.trim() &&
+    !block.querySelector('img, table, .note-math, .note-widget')
+  ) {
+    block.remove()
+  }
+
+  const after = doc.createRange()
+  after.setStartAfter(cursor)
+  after.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(after)
+  return true
+}
+
+/** 已经洗过的可视层 HTML 插到光标处。只有一段就当行内，不劈开当前段落。 */
+export function pasteVisualHtml(root: HTMLElement, html: string): string {
+  if (!html.trim()) return visualHtmlToMarkdown(root.innerHTML)
   const single = /^<p>([\s\S]*)<\/p>$/.exec(html)
-  // 只有一段就当行内插，别把当前段落劈开。
-  return runVisualCommand(root, 'insertHTML', single ? single[1]! : html)
+  if (single && !isBlockPasteHtml(single[1]!)) {
+    return runVisualCommand(root, 'insertHTML', single[1]!)
+  }
+  if (isBlockPasteHtml(html) && insertBlockHtmlAtCaret(root, html)) {
+    return visualHtmlToMarkdown(root.innerHTML)
+  }
+  return runVisualCommand(root, 'insertHTML', html)
 }
 
 /** 块开头到光标的文字。 */
@@ -1302,14 +1490,7 @@ const TASK_LIST_HTML = '<ul data-task="1"><li data-task="0"><br></li></ul>'
 export function applyVisualInputRule(
   root: HTMLElement,
   block: HTMLElement,
-  rule:
-    | { kind: 'heading'; level: number }
-    | { kind: 'bullet' }
-    | { kind: 'ordered' }
-    | { kind: 'task' }
-    | { kind: 'quote' }
-    | { kind: 'code'; lang: string }
-    | { kind: 'divider' },
+  rule: InputRule,
 ): string {
   block.textContent = ''
   block.innerHTML = '<br>'
@@ -1345,6 +1526,82 @@ export function applyVisualInputRule(
     case 'divider':
       document.execCommand('insertHorizontalRule')
       break
+    case 'display-math':
+      document.execCommand('insertHTML', false, mathIslandHtml('', true))
+      break
   }
+  return visualHtmlToMarkdown(root.innerHTML)
+}
+
+export function wrapVisualMath(root: HTMLElement, display: boolean): string {
+  const selection = root.ownerDocument.getSelection()
+  const tex = selection?.toString().trim() ?? ''
+  if (tex && selection && !selection.isCollapsed) {
+    const range = selection.getRangeAt(0)
+    range.deleteContents()
+    const wrap = root.ownerDocument.createElement('div')
+    wrap.innerHTML = mathIslandHtml(tex, display)
+    const island = wrap.firstElementChild
+    if (island) range.insertNode(island)
+    return visualHtmlToMarkdown(root.innerHTML)
+  }
+  return runVisualCommand(root, 'insertHTML', mathIslandHtml('', display))
+}
+
+export function beginVisualMathEdit(
+  root: HTMLElement,
+  math: HTMLElement,
+  onDone: (md: string) => void,
+): void {
+  if (math.classList.contains('note-math-edit')) return
+  const tex = math.dataset.tex ?? ''
+  const display =
+    math.classList.contains('note-math-display') || math.classList.contains('math-display')
+  const edit = math.ownerDocument.createElement(display ? 'div' : 'span')
+  edit.className = display ? 'note-math-edit note-math-edit-display' : 'note-math-edit'
+  edit.contentEditable = 'true'
+  edit.dataset.texMode = display ? 'display' : 'inline'
+  edit.textContent = tex
+  math.replaceWith(edit)
+  const range = root.ownerDocument.createRange()
+  range.selectNodeContents(edit)
+  const sel = root.ownerDocument.getSelection()
+  sel?.removeAllRanges()
+  sel?.addRange(range)
+  edit.focus()
+  const finish = () => {
+    edit.removeEventListener('blur', finish)
+    onDone(finishVisualMathEdit(root, edit))
+  }
+  edit.addEventListener('blur', finish)
+  edit.onkeydown = (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      event.stopPropagation()
+      edit.blur()
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      edit.blur()
+    }
+  }
+}
+
+function finishVisualMathEdit(root: HTMLElement, edit: HTMLElement): string {
+  if (!edit.isConnected) return visualHtmlToMarkdown(root.innerHTML)
+  const tex = (edit.textContent ?? '').trim()
+  const display = edit.dataset.texMode === 'display'
+  if (!tex) {
+    const empty = root.ownerDocument.createElement(display ? 'p' : 'span')
+    if (display) empty.innerHTML = '<br>'
+    edit.replaceWith(empty)
+    return visualHtmlToMarkdown(root.innerHTML)
+  }
+  const wrap = root.ownerDocument.createElement('div')
+  wrap.innerHTML = mathIslandHtml(tex, display)
+  const island = wrap.firstElementChild
+  if (island) edit.replaceWith(island)
+  else edit.remove()
   return visualHtmlToMarkdown(root.innerHTML)
 }

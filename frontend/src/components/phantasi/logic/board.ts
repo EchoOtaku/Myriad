@@ -19,6 +19,7 @@ export type PhantasiViewMode = 'sources' | 'starred' | 'topic-feed' | 'workbench
 export type WorkbenchPane =
   | 'home'
   | 'notes'
+  | 'comments'
   | 'media'
   | 'sources'
   | 'add'
@@ -48,7 +49,9 @@ export function isPhantasiBoard(value: string): value is PhantasiBoard {
 }
 
 /** 入口型：不抓取、无未读、不进阅读器。 */
-export function isSiteSource(s: Pick<PhantasiSource, 'source_type'>): boolean {
+export function isSiteSource<T extends { source_type: string }>(
+  s: T,
+): s is T & { source_type: 'link' } {
   return s.source_type === 'link'
 }
 
@@ -225,6 +228,7 @@ export function workbenchEntry(): PhantasiBoardEntry {
 export const WORKBENCH_PANES = [
   'home',
   'notes',
+  'comments',
   'media',
   'sources',
   'add',

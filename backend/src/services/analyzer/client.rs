@@ -22,7 +22,7 @@ use super::types::{
 
 pub struct AiAnalyzer {
     pub(super) client: Client,
-    provider: AiProvider,
+    pub(super) provider: AiProvider,
     pub(super) api_key: String,
     pub(super) model: String,
     pub(super) base_url: Option<String>, // For OpenAI-compatible APIs

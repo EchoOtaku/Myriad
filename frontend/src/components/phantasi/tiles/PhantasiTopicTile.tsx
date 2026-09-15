@@ -306,7 +306,7 @@ export const PhantasiTopicWidget = memo(
           onOpenTopic={
             locked
               ? undefined
-              : (x) => navigate(`/phantasi?topic=${encodeURIComponent(x.key)}`)
+              : (x) => navigate(`/journal/topics/${encodeURIComponent(x.key)}`)
           }
         />
       </div>

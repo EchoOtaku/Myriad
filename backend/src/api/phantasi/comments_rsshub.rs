@@ -1,14 +1,14 @@
 //! Phantasi comments (annotations) and RSSHub instance admin.
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
 };
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
-    Statement, Value as SeaValue,
+    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Statement,
+    Value as SeaValue,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -18,9 +18,125 @@ use crate::models::entities::{phantasi_comments, phantasi_items, phantasi_source
 use crate::services::rsshub_service::RsshubService;
 
 use super::helpers::{
-    phantasi_http_err, get_optional_user_id_from_headers, get_user_and_admin_status,
-    get_user_id_from_headers,
+    get_admin_user_id_from_headers, get_optional_user_and_admin_status, get_user_and_admin_status,
+    get_user_id_from_headers, phantasi_http_err,
 };
+
+fn comment_is_public(requested: Option<bool>, inherited: Option<bool>) -> bool {
+    requested.or(inherited).unwrap_or(true)
+}
+
+fn can_delete_comment(author_id: i32, user_id: i32, is_admin: bool) -> bool {
+    is_admin || author_id == user_id
+}
+
+fn comment_not_found() -> HttpError {
+    HttpError::from((
+        StatusCode::NOT_FOUND,
+        Json(myriad_error::AppError::fail_json("Comment not found")),
+    ))
+}
+
+fn item_not_found() -> HttpError {
+    HttpError::from((
+        StatusCode::NOT_FOUND,
+        Json(myriad_error::AppError::fail_json("Article not found")),
+    ))
+}
+
+fn comments_only_on_notes() -> HttpError {
+    phantasi_http_err(
+        StatusCode::BAD_REQUEST,
+        "Comments are only available on notes",
+    )
+}
+
+async fn visible_source(
+    db: &DatabaseConnection,
+    item_id: i32,
+    is_admin: bool,
+) -> Result<(phantasi_items::Model, phantasi_sources::Model), HttpError> {
+    let item = match phantasi_items::Entity::find_by_id(item_id).one(db).await {
+        Ok(Some(item)) => item,
+        _ => return Err(item_not_found()),
+    };
+    let source = match phantasi_sources::Entity::find_by_id(item.source_id)
+        .one(db)
+        .await
+    {
+        Ok(Some(source)) => source,
+        _ => return Err(item_not_found()),
+    };
+    if source.admin_only && !is_admin {
+        return Err(item_not_found());
+    }
+    Ok((item, source))
+}
+
+async fn visible_item(
+    db: &DatabaseConnection,
+    item_id: i32,
+    is_admin: bool,
+) -> Result<phantasi_items::Model, HttpError> {
+    let (item, source) = visible_source(db, item_id, is_admin).await?;
+    if source.source_type != phantasi_sources::SourceType::Note {
+        return Err(comments_only_on_notes());
+    }
+    Ok(item)
+}
+
+async fn load_user_faces(
+    db: &DatabaseConnection,
+    ids: &[i32],
+) -> std::collections::HashMap<i32, (Option<String>, Option<String>, Option<String>)> {
+    let mut unique = ids.to_vec();
+    unique.sort_unstable();
+    unique.dedup();
+    unique.retain(|id| *id > 0);
+    if unique.is_empty() {
+        return std::collections::HashMap::new();
+    }
+    let list = unique
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
+    let rows = db
+        .query_all_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            format!(
+                "SELECT id, username, display_name, avatar_url FROM users WHERE id IN ({list})"
+            ),
+        ))
+        .await
+        .unwrap_or_default();
+    let mut faces = std::collections::HashMap::new();
+    for row in rows {
+        let Ok(id) = row.try_get::<i32>("", "id") else {
+            continue;
+        };
+        faces.insert(
+            id,
+            (
+                row.try_get::<String>("", "username").ok(),
+                row.try_get::<String>("", "display_name").ok(),
+                row.try_get::<String>("", "avatar_url").ok(),
+            ),
+        );
+    }
+    faces
+}
+
+fn apply_user_face(
+    response: &mut phantasi_comments::CommentResponse,
+    faces: &std::collections::HashMap<i32, (Option<String>, Option<String>, Option<String>)>,
+) {
+    if let Some((name, display, avatar)) = faces.get(&response.user_id) {
+        response.user_name = name.clone();
+        response.user_display_name = display.clone();
+        response.user_avatar = avatar.clone();
+    }
+}
 
 fn rsshub_mutate_error(error: String) -> HttpError {
     if error.starts_with("Failed to ") {
@@ -37,31 +153,22 @@ fn rsshub_mutate_error(error: String) -> HttpError {
 
 // 用户评论（批注）
 
-/// 获取文章的用户评论列表
-/// 登录用户可以看到自己的评论
-/// 性能优化：批量查询回复数量和用户信息，避免 N+1 问题
+/// 文章下全部评论。能看见文章的人都能看。
 pub(crate) async fn list_comments(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
     Path(item_id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    // 获取可选用户 ID（游客为 None）
-    let user_id = get_optional_user_id_from_headers(&headers, &db).await?;
+    let (_, is_admin) = get_optional_user_and_admin_status(&headers, &db).await?;
+    let (_, source) = visible_source(&db, item_id, is_admin).await?;
+    if source.source_type != phantasi_sources::SourceType::Note {
+        return Ok(Json(
+            json!({ "success": true, "comments": [], "has_comments": false }),
+        ));
+    }
 
-    // 游客无法查看评论
-    let uid = match user_id {
-        Some(id) => id,
-        None => {
-            return Ok(Json(
-                json!({ "success": true, "comments": [], "has_comments": false }),
-            ));
-        }
-    };
-
-    // 获取用户在该文章的顶级评论（parent_id 为 NULL）
     let comments = phantasi_comments::Entity::find()
         .filter(phantasi_comments::Column::ItemId.eq(item_id))
-        .filter(phantasi_comments::Column::UserId.eq(uid))
         .filter(phantasi_comments::Column::ParentId.is_null())
         .order_by_asc(phantasi_comments::Column::StartOffset)
         .all(&db)
@@ -69,16 +176,14 @@ pub(crate) async fn list_comments(
 
     match comments {
         Ok(comments) => {
-            let has_comments = !comments.is_empty();
-
             if comments.is_empty() {
                 return Ok(Json(
                     json!({ "success": true, "comments": [], "has_comments": false }),
                 ));
             }
 
-            // 性能优化：批量查询所有评论的回复数量
             let comment_ids: Vec<i32> = comments.iter().map(|c| c.id).collect();
+            let user_ids: Vec<i32> = comments.iter().map(|c| c.user_id).collect();
             let reply_counts: std::collections::HashMap<i32, i32> = phantasi_comments::Entity::find()
                 .filter(phantasi_comments::Column::ParentId.is_in(comment_ids.clone()))
                 .select_only()
@@ -92,44 +197,23 @@ pub(crate) async fn list_comments(
                 .into_iter()
                 .map(|(parent_id, count)| (parent_id, count as i32))
                 .collect();
+            let faces = load_user_faces(&db, &user_ids).await;
 
-            // 性能优化：由于所有评论都属于同一用户，只需查询一次用户信息
-            let user_info = db
-                .query_one_raw(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    "SELECT username, display_name, avatar_url FROM users WHERE id = $1",
-                    vec![SeaValue::Int(Some(uid))],
-                ))
-                .await
-                .ok()
-                .flatten();
-
-            let (user_name, user_display_name, user_avatar) = user_info
-                .map(|row| {
-                    (
-                        row.try_get::<String>("", "username").ok(),
-                        row.try_get::<String>("", "display_name").ok(),
-                        row.try_get::<String>("", "avatar_url").ok(),
-                    )
-                })
-                .unwrap_or((None, None, None));
-
-            // 构建响应
             let responses: Vec<phantasi_comments::CommentResponse> = comments
                 .into_iter()
                 .map(|comment| {
                     let mut response: phantasi_comments::CommentResponse = comment.clone().into();
                     response.reply_count = Some(*reply_counts.get(&comment.id).unwrap_or(&0));
-                    response.user_name = user_name.clone();
-                    response.user_display_name = user_display_name.clone();
-                    response.user_avatar = user_avatar.clone();
+                    apply_user_face(&mut response, &faces);
                     response
                 })
                 .collect();
 
-            Ok(Json(
-                json!({ "success": true, "comments": responses, "has_comments": has_comments }),
-            ))
+            Ok(Json(json!({
+                "success": true,
+                "comments": responses,
+                "has_comments": true
+            })))
         }
         Err(error) => {
             tracing::error!(%error, "Failed to load comments");
@@ -152,50 +236,22 @@ pub(crate) async fn create_comment(
     // 验证用户身份
     let user_id = get_user_id_from_headers(&headers, &db).await?;
 
-    // 验证文章是否存在且对当前用户可见（admin_only 源需管理员）
     let (_, is_admin) = get_user_and_admin_status(&headers, &db).await;
-    let item = match phantasi_items::Entity::find_by_id(item_id).one(&db).await {
-        Ok(Some(item)) => item,
-        _ => {
-            return Err(HttpError::from((
-                StatusCode::NOT_FOUND,
-                Json(AppError::fail_json("Article not found")),
-            )));
-        }
-    };
-    let item_visible = match phantasi_sources::Entity::find_by_id(item.source_id)
-        .one(&db)
-        .await
-    {
-        Ok(Some(source)) => !source.admin_only || is_admin,
-        _ => false,
-    };
+    let item = visible_item(&db, item_id, is_admin).await?;
 
-    if !item_visible {
-        return Err(HttpError::from((
-            StatusCode::NOT_FOUND,
-            Json(AppError::fail_json("Article not found")),
-        )));
-    }
-
-    // 如果是回复，验证父评论属于同一用户、同一文章；继承 color / is_public
-    // when the client omits them (FE createReply only sends comment + parent_id).
+    // 回复挂在同一篇文章的任意一条评论下；没写 color / is_public 时跟父评。
     let mut inherited_color: Option<String> = None;
     let mut inherited_is_public: Option<bool> = None;
     if let Some(parent_id) = req.parent_id {
         let parent = phantasi_comments::Entity::find_by_id(parent_id)
             .filter(phantasi_comments::Column::ItemId.eq(item_id))
-            .filter(phantasi_comments::Column::UserId.eq(user_id))
             .one(&db)
             .await
             .ok()
             .flatten();
 
         let Some(parent) = parent else {
-            return Err(HttpError::from((
-                StatusCode::NOT_FOUND,
-                Json(AppError::fail_json("Parent comment not found")),
-            )));
+            return Err(comment_not_found());
         };
         inherited_color = parent.color.clone();
         inherited_is_public = Some(parent.is_public);
@@ -242,8 +298,7 @@ pub(crate) async fn create_comment(
         context_before: Set(req.context_before),
         context_after: Set(req.context_after),
         color: Set(validated_color),
-        // Explicit body wins; replies inherit parent visibility when omitted.
-        is_public: Set(req.is_public.or(inherited_is_public).unwrap_or(false)),
+        is_public: Set(comment_is_public(req.is_public, inherited_is_public)),
         parent_id: Set(req.parent_id),
         content_revision: Set(Some(item.content_revision)),
         created_at: Set(now.into()),
@@ -368,24 +423,23 @@ pub(crate) async fn update_comment(
     }
 }
 
-/// 删除评论
-/// 仅评论作者可用
+/// 删除评论。作者或站长。
 pub(crate) async fn delete_comment(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
     Path(comment_id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    // 验证用户身份
-    let user_id = get_user_id_from_headers(&headers, &db).await?;
+    let (user_id, is_admin) = get_user_and_admin_status(&headers, &db).await;
+    let user_id = user_id.ok_or_else(|| {
+        phantasi_http_err(StatusCode::UNAUTHORIZED, "Unauthorized")
+    })?;
 
-    // 获取评论并验证所有权
     let comment = phantasi_comments::Entity::find_by_id(comment_id)
-        .filter(phantasi_comments::Column::UserId.eq(user_id))
         .one(&db)
         .await;
 
     match comment {
-        Ok(Some(_)) => {
+        Ok(Some(comment)) if can_delete_comment(comment.user_id, user_id, is_admin) => {
             // Cascade nested replies first (no DB self-FK on parent_id)
             if let Err(e) = phantasi_comments::Entity::delete_many()
                 .filter(phantasi_comments::Column::ParentId.eq(comment_id))
@@ -412,10 +466,7 @@ pub(crate) async fn delete_comment(
                 }
             }
         }
-        Ok(None) => Err(HttpError::from((
-            StatusCode::NOT_FOUND,
-            Json(AppError::fail_json("Comment not found")),
-        ))),
+        Ok(Some(_)) | Ok(None) => Err(comment_not_found()),
         Err(error) => {
             tracing::error!(%error, "Failed to find comment");
             Err(phantasi_http_err(
@@ -426,28 +477,24 @@ pub(crate) async fn delete_comment(
     }
 }
 
-/// 获取评论的回复列表
-/// 性能优化：由于所有回复都属于同一用户，只查询一次用户信息
+/// 某条评论下的全部回复。能看见文章就能看。
 pub(crate) async fn list_comment_replies(
     State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
     Path(comment_id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    // 验证用户身份（可选，用于获取用户 ID）
-    let uid = get_optional_user_id_from_headers(&headers, &db).await?;
-
-    // 如果未登录，返回空列表
-    let uid = match uid {
-        Some(id) => id,
-        None => {
-            return Ok(Json(json!({ "success": true, "replies": [] })));
-        }
+    let (_, is_admin) = get_optional_user_and_admin_status(&headers, &db).await?;
+    let parent = match phantasi_comments::Entity::find_by_id(comment_id)
+        .one(&db)
+        .await
+    {
+        Ok(Some(parent)) => parent,
+        _ => return Err(comment_not_found()),
     };
+    visible_item(&db, parent.item_id, is_admin).await?;
 
-    // 获取评论的回复（属于当前用户的）
     let replies = phantasi_comments::Entity::find()
         .filter(phantasi_comments::Column::ParentId.eq(comment_id))
-        .filter(phantasi_comments::Column::UserId.eq(uid))
         .order_by_asc(phantasi_comments::Column::CreatedAt)
         .all(&db)
         .await;
@@ -458,35 +505,13 @@ pub(crate) async fn list_comment_replies(
                 return Ok(Json(json!({ "success": true, "replies": [] })));
             }
 
-            // 性能优化：由于所有回复都属于同一用户，只需查询一次用户信息
-            let user_info = db
-                .query_one_raw(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    "SELECT username, display_name, avatar_url FROM users WHERE id = $1",
-                    vec![SeaValue::Int(Some(uid))],
-                ))
-                .await
-                .ok()
-                .flatten();
-
-            let (user_name, user_display_name, user_avatar) = user_info
-                .map(|row| {
-                    (
-                        row.try_get::<String>("", "username").ok(),
-                        row.try_get::<String>("", "display_name").ok(),
-                        row.try_get::<String>("", "avatar_url").ok(),
-                    )
-                })
-                .unwrap_or((None, None, None));
-
-            // 构建响应
+            let user_ids: Vec<i32> = replies.iter().map(|reply| reply.user_id).collect();
+            let faces = load_user_faces(&db, &user_ids).await;
             let responses: Vec<phantasi_comments::CommentResponse> = replies
                 .into_iter()
                 .map(|reply| {
                     let mut response: phantasi_comments::CommentResponse = reply.into();
-                    response.user_name = user_name.clone();
-                    response.user_display_name = user_display_name.clone();
-                    response.user_avatar = user_avatar.clone();
+                    apply_user_face(&mut response, &faces);
                     response
                 })
                 .collect();
@@ -501,6 +526,113 @@ pub(crate) async fn list_comment_replies(
             ))
         }
     }
+}
+
+#[derive(Deserialize, Default)]
+pub(crate) struct AdminCommentsQuery {
+    q: Option<String>,
+    source_id: Option<i32>,
+    item_id: Option<i32>,
+}
+
+/// 工作台：全站评论。仅站长。
+pub(crate) async fn list_admin_comments(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Query(query): Query<AdminCommentsQuery>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    get_admin_user_id_from_headers(&headers, &db).await?;
+
+    let needle = query
+        .q
+        .as_deref()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(|text| format!("%{text}%"));
+    let rows = db
+        .query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            SELECT
+              c.id, c.item_id, c.user_id, c.selected_text, c.comment,
+              c.start_offset, c.end_offset, c.context_before, c.context_after,
+              c.color, c.is_public, c.parent_id, c.content_revision,
+              c.created_at, c.updated_at,
+              i.title AS item_title, i.source_id, s.name AS source_name,
+              u.username, u.display_name, u.avatar_url
+            FROM phantasi_comments c
+            INNER JOIN phantasi_items i ON i.id = c.item_id
+            INNER JOIN phantasi_sources s ON s.id = i.source_id
+            INNER JOIN users u ON u.id = c.user_id
+            WHERE ($1::text IS NULL
+                OR c.comment ILIKE $1
+                OR c.selected_text ILIKE $1
+                OR i.title ILIKE $1
+                OR COALESCE(u.display_name, u.username, '') ILIKE $1)
+              AND s.source_type = 'note'
+              AND ($2::int IS NULL OR i.source_id = $2)
+              AND ($3::int IS NULL OR c.item_id = $3)
+            ORDER BY c.created_at DESC
+            LIMIT 200
+            "#,
+            vec![
+                SeaValue::String(needle),
+                SeaValue::Int(query.source_id),
+                SeaValue::Int(query.item_id),
+            ],
+        ))
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "Failed to load admin comments");
+            phantasi_http_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to load comments",
+            )
+        })?;
+
+    let comments: Vec<phantasi_comments::CommentResponse> = rows
+        .into_iter()
+        .filter_map(|row| {
+            let id = row.try_get::<i32>("", "id").ok()?;
+            let item_id = row.try_get::<i32>("", "item_id").ok()?;
+            let user_id = row.try_get::<i32>("", "user_id").ok()?;
+            let created_at = row
+                .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "created_at")
+                .ok()?;
+            let updated_at = row
+                .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "updated_at")
+                .ok()?;
+            Some(phantasi_comments::CommentResponse {
+                id,
+                item_id,
+                user_id,
+                user_name: row.try_get::<String>("", "username").ok(),
+                user_display_name: row.try_get::<String>("", "display_name").ok(),
+                user_avatar: row.try_get::<String>("", "avatar_url").ok(),
+                selected_text: row
+                    .try_get::<String>("", "selected_text")
+                    .unwrap_or_default(),
+                comment: row.try_get::<String>("", "comment").unwrap_or_default(),
+                start_offset: row.try_get::<i32>("", "start_offset").ok(),
+                end_offset: row.try_get::<i32>("", "end_offset").ok(),
+                context_before: row.try_get::<String>("", "context_before").ok(),
+                context_after: row.try_get::<String>("", "context_after").ok(),
+                color: row.try_get::<String>("", "color").ok(),
+                is_public: row.try_get::<bool>("", "is_public").unwrap_or(true),
+                parent_id: row.try_get::<i32>("", "parent_id").ok(),
+                content_revision: row.try_get::<i64>("", "content_revision").ok(),
+                created_at: created_at.timestamp_millis(),
+                updated_at: updated_at.timestamp_millis(),
+                replies: None,
+                reply_count: None,
+                item_title: row.try_get::<String>("", "item_title").ok(),
+                source_id: row.try_get::<i32>("", "source_id").ok(),
+                source_name: row.try_get::<String>("", "source_name").ok(),
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({ "success": true, "comments": comments })))
 }
 
 // RSSHub 实例管理
@@ -755,6 +887,24 @@ mod tests {
     fn feed_discovery_rejects_empty_url() {
         assert!(build_feed_discovery_candidates("").is_err());
         assert!(build_feed_discovery_candidates("   ").is_err());
+    }
+
+    #[test]
+    fn comments_only_attach_to_notes() {
+        let src = include_str!("comments_rsshub.rs");
+        assert!(src.contains("SourceType::Note"));
+        assert!(src.contains("Comments are only available on notes"));
+        assert!(src.contains("s.source_type = 'note'"));
+    }
+
+    #[test]
+    fn comments_default_public_and_owner_or_admin_can_delete() {
+        assert!(super::comment_is_public(None, None));
+        assert!(!super::comment_is_public(Some(false), Some(true)));
+        assert!(super::comment_is_public(None, Some(true)));
+        assert!(super::can_delete_comment(3, 3, false));
+        assert!(super::can_delete_comment(3, 9, true));
+        assert!(!super::can_delete_comment(3, 9, false));
     }
 }
 use myriad_error::AppError;

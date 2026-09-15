@@ -4,6 +4,13 @@ import {
   phantasiOwnItemPath,
   isOwnPhantasiSource,
 } from '../components/phantasi/constants'
+import {
+  JOURNAL_ROOT,
+  isJournalSyndicationPath,
+  seoJournalFollow,
+  seoListNoindex,
+} from '../components/phantasi/logic/journalRoutes'
+import type { PhantasiViewMode } from '../components/phantasi/logic/board'
 import { buildModulePageSeo } from './modulePageSeo'
 import { formatPageTitle } from './siteMetadata'
 
@@ -35,24 +42,38 @@ function pickItemImage(item: PhantasiItem): string | undefined {
 export function buildPhantasiListPageSeo(opts: {
   listLabel: string
   listDescription?: string
+  path: string
   moduleOpenToAll: boolean
+  viewMode?: PhantasiViewMode
 }): PageSeoInput {
-  return buildModulePageSeo({
+  const seo = buildModulePageSeo({
     label: opts.listLabel,
     description: opts.listDescription,
-    path: '/phantasi',
+    path: opts.path,
     moduleOpenToAll: opts.moduleOpenToAll,
   })
+  const hide =
+    (opts.viewMode && seoListNoindex(opts.viewMode)) ||
+    isJournalSyndicationPath(opts.path)
+  if (hide) {
+    return {
+      ...seo,
+      noindex: true,
+      follow: seoJournalFollow(opts.path, opts.viewMode ?? 'sources'),
+    }
+  }
+  return seo
 }
 
 export function buildPhantasiItemPageSeo(opts: {
   item: PhantasiItem
   source: PhantasiSource | null | undefined
   moduleOpenToAll: boolean
+  listPath?: string
 }): PageSeoInput {
   const { item, source, moduleOpenToAll } = opts
   const own = isOwnPhantasiSource(source)
-  const title = formatPageTitle(item.title || 'Phantasi')
+  const title = formatPageTitle(item.title || 'Journal')
   const description =
     plainTextSnippet(item.summary) ||
     plainTextSnippet(item.content) ||
@@ -70,8 +91,8 @@ export function buildPhantasiItemPageSeo(opts: {
 
   return {
     title,
-    description,
-    path: '/phantasi',
+    path: opts.listPath ?? JOURNAL_ROOT,
     noindex: true,
+    follow: true,
   }
 }

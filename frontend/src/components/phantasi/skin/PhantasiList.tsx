@@ -137,7 +137,7 @@ export default function PhantasiListView({
               onPeek={
                 editMode || !onPeekItem
                   ? undefined
-                  : (story) => onPeekItem({ ...item, ...story })
+                  : () => onPeekItem(item)
               }
               onPeekEnd={editMode ? undefined : onPeekEnd}
               onToggleStar={

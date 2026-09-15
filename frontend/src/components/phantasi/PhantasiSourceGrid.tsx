@@ -33,6 +33,7 @@ interface PhantasiSourceGridProps {
   sources: PhantasiSource[]
   board: PhantasiBoard
   focusSourceId?: number | null
+  onRailFocus?: (sourceId: number | null) => void
   onSourceClick: (source: PhantasiSource) => void
   onRefreshSource: (sourceId: number) => void
   onSourcesChange?: () => void
@@ -69,6 +70,7 @@ export default function PhantasiSourceGrid({
   sources,
   board,
   focusSourceId,
+  onRailFocus,
   onSourceClick,
   onRefreshSource,
   onUpdateSource,
@@ -238,6 +240,7 @@ export default function PhantasiSourceGrid({
       }
       onExpandStories={board === 'feeds' ? expand : undefined}
       onJumpSource={board === 'feeds' ? jump : undefined}
+      onRailFocus={board === 'feeds' ? onRailFocus : undefined}
       onHoldStories={board === 'feeds' ? holdStories : undefined}
       onReleaseStories={board === 'feeds' ? releaseStories : undefined}
       railEpoch={board === 'feeds' ? railEpoch : 0}

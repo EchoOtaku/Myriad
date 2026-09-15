@@ -8,7 +8,7 @@ export function applyTextDecorations(
   desired.innerHTML = decoratedHtml
   const selector = 'mark.user-comment-highlight, mark.phantasiai-annotation'
   const excluded =
-    'script, style, button, iframe, .note-widget, .phantasi-embed-card, .phantasi-embed-exempt, .phantasi-bilibili-embed, .phantasi-netease-music, .phantasi-steam-game, .phantasi-bilibili-video'
+    'script, style, button, iframe, .note-widget, .phantasi-embed-card, .phantasi-embed-exempt, .phantasi-bilibili-embed, .phantasi-netease-music, .phantasi-steam-game, .phantasi-bilibili-video, .math, .katex, .note-math, .notion-equation, .notion-inline-equation'
   const textNodes = (root: HTMLElement) => {
     const walker = doc.createTreeWalker(root, 4)
     const nodes: Text[] = []

@@ -268,7 +268,7 @@ function isBackendDevProxyPath(urlPath, userAgent) {
     path === '/sitemap.xml' ||
     path === '/robots.txt' ||
     path === '/llms.txt' ||
-    path === '/phantasi/notes.xml'
+    path === '/journal/notes.xml'
   ) {
     return true
   }

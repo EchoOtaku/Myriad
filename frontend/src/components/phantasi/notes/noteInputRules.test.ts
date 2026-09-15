@@ -36,4 +36,9 @@ describe('matchEnterRule', () => {
     assert.deepEqual(matchEnterRule('***'), { kind: 'divider' })
     assert.equal(matchEnterRule('--'), null)
   })
+
+  it('单独一行 $$ 开块级公式', () => {
+    assert.deepEqual(matchEnterRule('$$'), { kind: 'display-math' })
+    assert.equal(matchEnterRule('$'), null)
+  })
 })

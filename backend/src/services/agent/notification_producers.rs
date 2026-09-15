@@ -56,7 +56,7 @@ impl NotificationManager {
         )
         .with_metadata(serde_json::json!({
             "event_key": "phantasi.new_items",
-            "route": "/phantasi",
+            "route": "/journal",
             "source_id": source_id,
             "source_name": source_name,
             "new_count": new_count,
@@ -91,7 +91,7 @@ impl NotificationManager {
                 crate::services::agent::merope::ingest::latest_session_id_for(user_id).await
             );
         } else {
-            metadata["route"] = serde_json::json!("/phantasi");
+            metadata["route"] = serde_json::json!("/journal");
         }
         let notification = Notification::new(
             user_id,

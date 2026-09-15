@@ -70,12 +70,13 @@ Tapps, updater admin proxy, SEO JSON, …).
 | `/health` | Backend liveness (process up). Not business readiness. |
 | `/ready` | Backend readiness (live DB probe, migrations, full routes, storage). 503 when not ready. |
 | `/sitemap.xml` | Public SEO sitemap (also `/api/seo/sitemap.xml`); empty urlset when durable origin (`FRONTEND_URL`/`BASE_URL`) is unset — no client Host fallback |
-| `/phantasi/notes.xml` | Public RSS of published notes (also `/api/phantasi/notes.xml`). Off by default. 404 when the owner switch is off or Phantasi is not guest-visible. Item links are absolute only when `FRONTEND_URL`/`BASE_URL` is set |
+| `/journal/notes.xml` | Public RSS of published notes (also `/api/phantasi/notes.xml`). Off by default. 404 when the owner switch is off or Phantasi is not guest-visible. Item links are absolute only when `FRONTEND_URL`/`BASE_URL` is set |
 | `/robots.txt` | Dynamic robots; absolute `Sitemap:` line only when `FRONTEND_URL` or `BASE_URL` is set (omitted when unset) |
 | `/llms.txt` | AI-facing site index (when GEO policy allows) |
-| `/` `/tapp` `/phantasi` `/library` `/reports` | **Crawler / WeChat-Weibo in-app share UA** → backend SEO HTML shell (proxy routes only; it does not rewrite HTML); `?_spa=1` and ordinary browsers → SPA |
+| `/` `/tapp` `/journal` `/journal/feeds` `/journal/notes` `/journal/friends` `/library` `/reports` | **Crawler / WeChat-Weibo in-app share UA** → backend SEO HTML shell (proxy routes only; it does not rewrite HTML); `?_spa=1` and ordinary browsers → SPA |
 | `/tapp/run/*` | **Crawler UA only** → backend SEO HTML shell; browsers → SPA |
-| `/phantasi/item/*` | **Crawler UA only** → own Phantasi articles SEO shell (`我` category, article body); browsers → SPA |
+| `/journal/articles/*` | **Crawler UA only** → own Journal articles SEO shell (`我` category, article body); browsers → SPA |
+| `/journal/feeds/*` `/journal/topics/*` | **Crawler / in-app share UA** → thin `noindex, follow` shell (source or topic name + original-site link; no reprinted entries). Not in sitemap. Browsers → SPA |
 | `/api/seo/tapp/{id}` | Public Tapp share summary JSON |
 
 WebSocket: `proxy` detects `Upgrade: websocket` and bridges upgrades for

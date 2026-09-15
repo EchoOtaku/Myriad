@@ -4,7 +4,9 @@ import { requestCache } from '../../utils/requestCache.ts'
 import {
   FEED_STORIES_CACHE_PREFIX,
   feedStoriesCacheKey,
+  BOARD_NOTES_CACHE_PREFIX,
   HOME_NOTES_CACHE_PREFIX,
+  loadBoardNotes,
   loadFeedStories,
   loadHomeBoardNotes,
   loadLatestStory,
@@ -17,6 +19,7 @@ import {
 afterEach(() => {
   requestCache.deleteByPrefix(FEED_STORIES_CACHE_PREFIX)
   requestCache.deleteByPrefix(HOME_NOTES_CACHE_PREFIX)
+  requestCache.deleteByPrefix(BOARD_NOTES_CACHE_PREFIX)
 })
 
 describe('feedStoriesCacheKey', () => {
@@ -96,6 +99,42 @@ describe('并发同源请求合并', () => {
       controller.abort()
       await assert.rejects(pending, (err: Error) => err.name === 'AbortError')
       assert.equal(calls, 1)
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+
+  it('笔记墙按笔记源拉已发布条目，不走首页精选分类', async () => {
+    const original = globalThis.fetch
+    const urls: string[] = []
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      urls.push(String(input))
+      return Response.json({
+        items: [
+          {
+            id: 9,
+            title: '已见',
+            summary: null,
+            image: null,
+            published_at: 20,
+            source_id: 3,
+            is_starred: false,
+          },
+        ],
+        total: 1,
+        page: 1,
+        per_page: 100,
+      })
+    }) as typeof fetch
+    try {
+      const notes = await loadBoardNotes([
+        { id: 3, source_type: 'note' },
+        { id: 8, source_type: 'rss' },
+      ])
+      assert.equal(notes.length, 1)
+      assert.equal(notes[0]?.id, 9)
+      assert.match(urls[0] ?? '', /source_id=3/)
+      assert.doesNotMatch(urls[0] ?? '', /category=/)
     } finally {
       globalThis.fetch = original
     }

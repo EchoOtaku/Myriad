@@ -12,9 +12,9 @@ export interface PageRouteAnimationMeta {
 export function resolvePageRouteAnimation(
   pathname: string,
 ): PageRouteAnimationMeta {
-  if (pathname.startsWith('/phantasi')) {
+  if (pathname.startsWith('/journal')) {
     return {
-      key: '/phantasi',
+      key: '/journal',
       style: 'normal',
       variant: 'page',
       skipScroll: false,

@@ -106,7 +106,6 @@ export function resolveEditSourcePayload(input: {
   rsshubRoute?: string | null
 }): UpdateSourceRequest {
   const originalKind = editFieldKind(input.source)
-  const isNote = input.fieldKind === 'note'
   const isLink = input.fieldKind === 'link'
   const payload: UpdateSourceRequest = {
     name: input.name.trim() || undefined,
@@ -116,7 +115,7 @@ export function resolveEditSourcePayload(input: {
     admin_only: input.adminOnly,
   }
   if (input.customIcon !== null) payload.icon = input.customIcon
-  if (isNote) return payload
+  if (input.fieldKind === 'note') return payload
 
   const fieldKind = input.fieldKind
   payload.source_type = resolveSourceType(fieldKind, input.subscriptionMode)

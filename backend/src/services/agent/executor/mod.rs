@@ -46,7 +46,7 @@ pub struct Executor {
 }
 
 mod execute_core;
-mod execute_step;
-mod executor_footer;
+pub(crate) mod execute_step;
+pub(crate) mod executor_footer;
 mod path_ai_helpers;
 mod resume_and_dynamic;

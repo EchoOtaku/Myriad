@@ -3,6 +3,7 @@ import type { PhantasiSource } from '../../types/phantasi'
 import { useEffect, useMemo, useRef } from 'react'
 import * as phantasiApi from '../../services/phantasiApi'
 import { phantasiOwnItemPath } from './constants'
+import { JOURNAL_ROOT } from './logic/journalRoutes'
 import {
   phantasiItemNavigateMode,
   phantasiItemParamId,
@@ -22,6 +23,7 @@ export function usePhantasiItemRoute(
   ) => void,
   setError: (message: string) => void,
   loadFailed: string,
+  listPath = JOURNAL_ROOT,
 ) {
   const session = useArticleOpen(setError, loadFailed)
   const { selectedItem } = session
@@ -67,6 +69,7 @@ export function usePhantasiItemRoute(
             itemIdParam,
             undefined,
             kept,
+            listPath,
           )
           if (restore) {
             expectedRoute.current = { id: restore.param }
@@ -85,13 +88,14 @@ export function usePhantasiItemRoute(
                 previousRoute.current,
                 item?.id,
                 kept,
+                listPath,
               )
               if (!restore) return
               expectedRoute.current = { id: restore.param }
               navigate(restore.path, { replace: true })
             })
         }
-      } else if (!selectedItem) {
+      } else {
         session.closeArticle()
       }
       return
@@ -109,7 +113,7 @@ export function usePhantasiItemRoute(
           state: phantasiOpenedItemState(selectedItem.id),
         })
       } else {
-        navigate('/phantasi', { replace: true })
+        navigate(listPath, { replace: true })
       }
     }
   }, [
@@ -122,6 +126,7 @@ export function usePhantasiItemRoute(
     navigate,
     setError,
     loadFailed,
+    listPath,
   ])
 
   return {

@@ -6,6 +6,9 @@ import {
   registerActionHandler,
   unregisterActionHandler,
 } from '../services/agent'
+import {
+  isJournalAppPath,
+} from '../components/phantasi/logic/journalRoutes'
 import { phantasiSubject } from '../utils/phantasiSubject'
 import { useMusicPlayerControl } from './MusicPlayerContext'
 
@@ -358,8 +361,7 @@ export function AgentGlobalActions() {
 
       console.log('[AgentGlobalActions] Opening phantasi article:', params)
 
-      const isOnPhantasiPage =
-        location.pathname === '/phantasi' || location.pathname.startsWith('/phantasi/')
+      const isOnPhantasiPage = isJournalAppPath(location.pathname)
 
       if (!isOnPhantasiPage) {
         console.log(
@@ -384,7 +386,7 @@ export function AgentGlobalActions() {
           pendingAction,
         )
 
-        navigate('/phantasi')
+        navigate('/journal')
       } else {
         const event = new CustomEvent('agent:open-phantasi-article', {
           detail: {
@@ -592,8 +594,7 @@ export function AgentGlobalActions() {
           }
         : null
 
-      const isOnPhantasiPage =
-        location.pathname === '/phantasi' || location.pathname.startsWith('/phantasi/')
+      const isOnPhantasiPage = isJournalAppPath(location.pathname)
 
       if (!isOnPhantasiPage) {
         // Park in sessionStorage so Phantasi can run it after mount (avoids a pre-mount race).
@@ -617,7 +618,7 @@ export function AgentGlobalActions() {
           pendingAction,
         )
 
-        navigate('/phantasi')
+        navigate('/journal')
       } else {
         window.dispatchEvent(
           new CustomEvent('agent:set-reading-list', {

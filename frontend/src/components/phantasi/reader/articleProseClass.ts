@@ -73,9 +73,19 @@ export function getArticleProseClass(
               [&_table]:rounded-xl [&_table]:overflow-hidden
 
               /* KaTeX 数学公式 */
-              [&_.katex]:text-[1.05em]
+              [&_.katex]:text-[1.05em] [&_.katex]:text-current
+              [&_.math-inline]:mx-0.5
+              [&_.math-display]:my-5 [&_.math-display]:block
+              [&_.math-display]:overflow-x-auto [&_.math-display]:rounded-2xl
+              [&_.math-display]:px-4 [&_.math-display]:py-4
               [&_.katex-display]:my-5 [&_.katex-display]:py-4 [&_.katex-display]:px-4
               [&_.katex-display]:overflow-x-auto [&_.katex-display]:rounded-2xl
+              [&_.math-copy-wrap]:relative
+              [&_.math-copy-tex]:absolute [&_.math-copy-tex]:top-2 [&_.math-copy-tex]:right-2
+              [&_.math-copy-tex]:rounded-lg [&_.math-copy-tex]:px-2 [&_.math-copy-tex]:py-1
+              [&_.math-copy-tex]:text-[0.7em] [&_.math-copy-tex]:opacity-0
+              [&_.math-copy-wrap:hover_.math-copy-tex]:opacity-80
+              [&_.math-copy-tex[data-copied]]:opacity-100
 
               /* figure */
               prose-figure:my-6
@@ -297,6 +307,8 @@ export function getArticleProseClass(
 
                 /* 数学公式 */
                 [&_.katex-display]:bg-white/3
+                [&_.math-display]:bg-white/3
+                [&_.math-copy-tex]:bg-white/10 [&_.math-copy-tex]:text-current
 
                 /* details */
                 [&_details]:bg-white/3
@@ -529,6 +541,8 @@ export function getArticleProseClass(
 
                 /* 数学公式 */
                 [&_.katex-display]:bg-black/2
+                [&_.math-display]:bg-black/2
+                [&_.math-copy-tex]:bg-black/5 [&_.math-copy-tex]:text-current
 
                 /* details */
                 [&_details]:bg-black/2

@@ -13,6 +13,7 @@ export function usePageSeo(seo: PageSeoInput | null): void {
   const image = seo?.image
   const path = seo?.path
   const noindex = seo?.noindex
+  const follow = seo?.follow
 
   useEffect(() => {
     if (!seo) {
@@ -25,13 +26,14 @@ export function usePageSeo(seo: PageSeoInput | null): void {
       image,
       path,
       noindex,
+      follow,
     })
     return () => {
       clearPageSeo()
     }
 
   // 用展开字段做依赖，避免对象字面量每次重渲染都触发。
-  }, [title, description, image, path, noindex, seo === null])
+  }, [title, description, image, path, noindex, follow, seo === null])
 }
 
 export type { PageSeoInput }

@@ -170,7 +170,7 @@ it('Phantasi hooks reject stale opens, retry failed pages, and settle partial un
       const noop = () => {}
       useContentEvents({
         contentReady: true,
-        contentRef, hoverTimeoutRef, comments: [], isAuthenticated: false,
+        contentRef, hoverTimeoutRef, comments: [], commentsEnabled: true, isAuthenticated: false,
         showCommentPopup: false, showAnnotations: false,
         setFocusedCommentIds: ids => { chosenIds = ids },
         setShowCommentsPanel: show => { panelOpened = show },

@@ -5,7 +5,7 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from 'react'
-import type { PhantasiNoteDoc } from '../../../types/phantasi'
+import type { PhantasiNoteAuthor, PhantasiNoteDoc } from '../../../types/phantasi'
 import type { NoteCollabEvent, NoteCollabPeer } from './noteCollab'
 import type { InlineLink } from './noteDraft'
 import type {
@@ -32,6 +32,7 @@ import {
   LuMinus as Minus,
   LuPuzzle as Puzzle,
   LuQuote as Quote,
+  LuSigma as Sigma,
   LuSquareCode as SquareCode,
   LuStrikethrough as Strikethrough,
 } from '@lib/icons'
@@ -47,6 +48,7 @@ import * as phantasiApi from '../../../services/phantasiApi'
 import { federationApi } from '../../../services/federationApi'
 import { userFacingError } from '../../../utils/userFacingError'
 import { Spinner } from '../../Spinner'
+import { workbenchAuthorLabel, workbenchNoteAuthorName } from '../logic/workbench'
 import { showNoteNotice } from '../phantasiNotice'
 import { PHANTASI_MINE_CATEGORY } from '../constants'
 import {
@@ -112,6 +114,7 @@ import {
 import {
   applyInlineMarkdownAtCaret,
   applyVisualInputRule,
+  beginVisualMathEdit,
   blockIndexAt,
   columnsAddColumn,
   columnsRemove,
@@ -128,6 +131,7 @@ import {
   looksLikeMarkdown,
   markdownToVisualHtml,
   pasteMarkdownIntoVisual,
+  pasteVisualHtml,
   placeCaretAtTextOffset,
   removeImage,
   removeNoteWidget,
@@ -154,7 +158,10 @@ import {
   visualClosestClass,
   visualHtmlToMarkdown,
   visualOpenBlockBelow,
+  wrapVisualMath,
 } from './noteVisual'
+import 'katex/dist/katex.min.css'
+import { hydrateVisualMath } from './renderMath'
 import {
   decodeWidgetConfigAttr,
   NOTE_WIDGET_SIZES,
@@ -164,6 +171,11 @@ import {
 import { widgetDisplayLabel } from '../../widgetLibraryModel'
 import { WidgetInstanceSettings } from '../../widgets/shared/WidgetInstanceSettings'
 import { NoteWidgetPicker } from './NoteWidgetPicker'
+import {
+  insertPastedMarkdown,
+  pastedClipboardToMarkdown,
+  pastedClipboardToVisualHtml,
+} from './notePaste'
 import { decorateNoteReadSurface } from './noteReadSurface'
 import { preloadNoteWidgets, useNoteWidgetCatalog } from './noteWidgetCatalog'
 import { noteWidgetTypesInHtml } from './noteWidgetHtml'
@@ -326,6 +338,9 @@ export default function NoteEditor({
   } | null>(null)
   const [widgetSettingsOpen, setWidgetSettingsOpen] = useState(false)
   const [docStatus, setDocStatus] = useState<'draft' | 'scheduled' | 'published'>('draft')
+  const [authors, setAuthors] = useState<PhantasiNoteAuthor[]>([])
+  const [authorCandidates, setAuthorCandidates] = useState<PhantasiNoteAuthor[]>([])
+  const [authorBusy, setAuthorBusy] = useState(false)
   const [scheduledAt, setScheduledAt] = useState<number | null>(null)
   const [peers, setPeers] = useState<NoteCollabPeer[]>([])
   const [cloudHint, setCloudHint] = useState(false)
@@ -406,7 +421,62 @@ export default function NoteEditor({
     setDocStatus(doc.status)
     setScheduledAt(doc.scheduled_at)
     setLastError(doc.last_error ?? null)
+    if (doc.authors) setAuthors(doc.authors)
   }, [])
+
+  const authorLine = useMemo(
+    () => workbenchNoteAuthorName({ authors }, '') || null,
+    [authors],
+  )
+  const authorChips = useMemo(
+    () =>
+      authors.map((author) => ({
+        user_id: author.user_id,
+        label: workbenchAuthorLabel(author, String(author.user_id)),
+        owner: author.role === 'owner',
+      })),
+    [authors],
+  )
+  const addableAuthors = useMemo(
+    () =>
+      authorCandidates
+        .filter((candidate) => !authors.some((author) => author.user_id === candidate.user_id))
+        .map((candidate) => ({
+          value: String(candidate.user_id),
+          label: workbenchAuthorLabel(candidate, String(candidate.user_id)),
+        })),
+    [authorCandidates, authors],
+  )
+
+  const handleAddAuthor = useCallback(
+    async (userId: number) => {
+      if (cloudId == null || authorBusy) return
+      setAuthorBusy(true)
+      try {
+        setAuthors(await phantasiApi.addNoteAuthor(cloudId, userId))
+      } catch (err) {
+        showNoteNotice(userFacingError(err, t.phantasi.noteAuthorAddFailed))
+      } finally {
+        setAuthorBusy(false)
+      }
+    },
+    [authorBusy, cloudId, t.phantasi.noteAuthorAddFailed],
+  )
+
+  const handleRemoveAuthor = useCallback(
+    async (userId: number) => {
+      if (cloudId == null || authorBusy) return
+      setAuthorBusy(true)
+      try {
+        setAuthors(await phantasiApi.removeNoteAuthor(cloudId, userId))
+      } catch (err) {
+        showNoteNotice(userFacingError(err, t.phantasi.noteAuthorRemoveFailed))
+      } finally {
+        setAuthorBusy(false)
+      }
+    },
+    [authorBusy, cloudId, t.phantasi.noteAuthorRemoveFailed],
+  )
 
   const applyMergedFields = useCallback((fields: NoteCloudFields) => {
     // 远端合进来的是原文；可视层若还标着自己在改，会跳过灌 DOM。
@@ -581,6 +651,24 @@ export default function NoteEditor({
   }, [noteId, docId])
 
   useEffect(() => {
+    if (!settingsOpen || cloudId == null) return
+    const controller = new AbortController()
+    void Promise.all([
+      phantasiApi.getNoteDoc(cloudId, controller.signal),
+      phantasiApi.listNoteAuthorCandidates(controller.signal),
+    ])
+      .then(([doc, candidates]) => {
+        if (controller.signal.aborted) return
+        if (doc.authors) setAuthors(doc.authors)
+        setAuthorCandidates(candidates)
+      })
+      .catch(() => {})
+    return () => {
+      controller.abort()
+    }
+  }, [settingsOpen, cloudId])
+
+  useEffect(() => {
     const controller = new AbortController()
     void Promise.all([
       phantasiApi.getCategories(undefined, { signal: controller.signal }).catch(() => []),
@@ -671,6 +759,7 @@ export default function NoteEditor({
     }
     if (el.dataset.noteVisual === contentMd) return
     replaceNoteHtml(el, markdownToVisualHtml(contentMd))
+    hydrateVisualMath(el)
     el.dataset.noteVisual = contentMd
   }, [pane, contentMd])
 
@@ -687,7 +776,7 @@ export default function NoteEditor({
     const stamp = stale ? '' : html
     if (el.dataset.noteRead === stamp) return
     replaceNoteHtml(el, source)
-    if (source) decorateNoteReadSurface(el, t.phantasi.copyCode)
+    if (source) decorateNoteReadSurface(el, t.phantasi.copyCode, t.phantasi.copyTex)
     el.dataset.noteRead = stamp
   }, [pane, html, contentMd, t.phantasi.copyCode])
 
@@ -923,6 +1012,7 @@ export default function NoteEditor({
     const el = visualRef.current
     if (paneRef.current === 'visual' && el) {
       replaceNoteHtml(el, markdownToVisualHtml(next))
+      hydrateVisualMath(el)
       el.dataset.noteVisual = next
     }
   }, [])
@@ -1241,6 +1331,44 @@ export default function NoteEditor({
     wrap('`', '`', t.phantasi.noteToolInlineCode)
   }, [wrap, t.phantasi.noteToolInlineCode, commitVisualMd])
 
+  const finishMath = useCallback(
+    (root: HTMLElement, md: string) => {
+      commitVisualMd(md)
+      hydrateVisualMath(root)
+    },
+    [commitVisualMd],
+  )
+
+  const inlineMath = useCallback(() => {
+    const root = visualRef.current
+    if (paneRef.current === 'visual' && root) {
+      commitVisualMd(wrapVisualMath(root, false))
+      const last = [...root.querySelectorAll<HTMLElement>('.note-math-inline')].at(-1)
+      if (last && !last.dataset.tex) {
+        beginVisualMathEdit(root, last, (md) => finishMath(root, md))
+      } else {
+        hydrateVisualMath(root)
+      }
+      return
+    }
+    wrap('$', '$', t.phantasi.noteMathPlaceholder)
+  }, [wrap, t.phantasi.noteMathPlaceholder, commitVisualMd, finishMath])
+
+  const displayMath = useCallback(() => {
+    const root = visualRef.current
+    if (paneRef.current === 'visual' && root) {
+      commitVisualMd(wrapVisualMath(root, true))
+      const last = [...root.querySelectorAll<HTMLElement>('.note-math-display')].at(-1)
+      if (last && !last.dataset.tex) {
+        beginVisualMathEdit(root, last, (md) => finishMath(root, md))
+      } else {
+        hydrateVisualMath(root)
+      }
+      return
+    }
+    insertText('\n$$\n', '\n$$\n', t.phantasi.noteMathPlaceholder)
+  }, [insertText, t.phantasi.noteMathPlaceholder, commitVisualMd, finishMath])
+
   const bold = useCallback(
     () => runTool(() => wrap('**', '**', t.phantasi.noteToolBold), { command: 'bold' }),
     [runTool, wrap, t.phantasi.noteToolBold],
@@ -1544,6 +1672,9 @@ export default function NoteEditor({
         if (key === 'x') {
           e.preventDefault()
           strike()
+        } else if (key === 'm') {
+          e.preventDefault()
+          inlineMath()
         } else if (e.code === 'Digit7') {
           e.preventDefault()
           orderedList()
@@ -1573,6 +1704,7 @@ export default function NoteEditor({
     bold,
     italic,
     inlineCode,
+    inlineMath,
     strike,
     orderedList,
     bulletList,
@@ -1609,6 +1741,12 @@ export default function NoteEditor({
       icon: <Code className="h-4 w-4" />,
       label: t.phantasi.noteToolInlineCode,
       run: inlineCode,
+    },
+    {
+      key: 'inline-math',
+      icon: <Sigma className="h-4 w-4" />,
+      label: t.phantasi.noteToolInlineMath,
+      run: inlineMath,
     },
     {
       key: 'link',
@@ -1784,6 +1922,12 @@ export default function NoteEditor({
       ['code', 'table', 'divider', 'footnote'].includes(tool.key) ? onOwnLine(tool) : tool,
     ),
     onOwnLine({
+      key: 'display-math',
+      icon: <Sigma className="h-4 w-4" />,
+      label: t.phantasi.noteToolDisplayMath,
+      run: displayMath,
+    }),
+    onOwnLine({
       key: 'columns',
       icon: <Columns2 className="h-4 w-4" />,
       label: t.phantasi.noteToolColumns,
@@ -1860,6 +2004,7 @@ export default function NoteEditor({
                 spellCheck={false}
               />
               <NoteByline
+                authorLine={authorLine}
                 topic={topic}
                 publishedAt={publishedAt}
                 scheduledAt={scheduledAt}
@@ -1922,8 +2067,18 @@ export default function NoteEditor({
                       void handleUpload(file, 'body')
                       return
                     }
-                    if (pasteAsLink(e.clipboardData.getData('text/plain'))) {
+                    const html = e.clipboardData.getData('text/html')
+                    const text = e.clipboardData.getData('text/plain')
+                    if (pasteAsLink(text)) {
                       e.preventDefault()
+                      return
+                    }
+                    const converted = pastedClipboardToMarkdown(html, text)
+                    if (converted) {
+                      e.preventDefault()
+                      applyEdit((value, start, end) =>
+                        insertPastedMarkdown(value, start, end, converted),
+                      )
                     }
                   }}
                   onDrop={(e) => {
@@ -1982,8 +2137,16 @@ export default function NoteEditor({
                       e.preventDefault()
                       return
                     }
+                    const html = e.clipboardData.getData('text/html')
+                    const visual = pastedClipboardToVisualHtml(html, text)
+                    if (visual) {
+                      e.preventDefault()
+                      commitVisualMd(pasteVisualHtml(e.currentTarget, visual))
+                      hydrateVisualMath(e.currentTarget)
+                      return
+                    }
                     // 贴的是 Markdown（没带 HTML）：按 Markdown 解，图片就是图片。
-                    if (!e.clipboardData.getData('text/html') && looksLikeMarkdown(text)) {
+                    if (!html && looksLikeMarkdown(text)) {
                       e.preventDefault()
                       commitVisualMd(pasteMarkdownIntoVisual(e.currentTarget, text))
                     }
@@ -2023,6 +2186,12 @@ export default function NoteEditor({
                       if (rule) {
                         e.preventDefault()
                         commitVisualMd(applyVisualInputRule(root, blockEl, rule))
+                        if (rule.kind === 'display-math') {
+                          const last = [...root.querySelectorAll<HTMLElement>('.note-math-display')].at(-1)
+                          if (last) beginVisualMathEdit(root, last, (md) => finishMath(root, md))
+                        } else {
+                          hydrateVisualMath(root)
+                        }
                         return
                       }
                     }
@@ -2035,6 +2204,12 @@ export default function NoteEditor({
                     if (widget && root.contains(widget)) {
                       selectWidget(widget)
                       selectImage(null)
+                      return
+                    }
+                    const math = target.closest<HTMLElement>('.note-math')
+                    if (math && root.contains(math)) {
+                      e.preventDefault()
+                      beginVisualMathEdit(root, math, (md) => finishMath(root, md))
                       return
                     }
                     selectWidget(null)
@@ -2053,12 +2228,13 @@ export default function NoteEditor({
                   }}
                   onInput={(e) => {
                     const root = e.currentTarget as HTMLDivElement
-                    // 敲完 `)` / `` ` `` / `*` / `~`：光标前刚好凑成 Markdown 记号就地渲染。
+                    // 敲完 `)` / `` ` `` / `*` / `~` / `$`：光标前刚好凑成 Markdown 记号就地渲染。
                     const typed = (e.nativeEvent as InputEvent).data ?? ''
-                    if (/[)`*~]/.test(typed)) {
+                    if (/[)`*~$]/.test(typed)) {
                       const converted = applyInlineMarkdownAtCaret(root)
                       if (converted != null) {
                         commitVisualMd(converted)
+                        hydrateVisualMath(root)
                         return
                       }
                     }
@@ -2247,6 +2423,15 @@ export default function NoteEditor({
           canDelete={canDelete}
           onDelete={() => {
             void handleDelete()
+          }}
+          authors={authorChips}
+          addableAuthors={addableAuthors}
+          authorBusy={authorBusy}
+          onAddAuthor={(userId) => {
+            void handleAddAuthor(userId)
+          }}
+          onRemoveAuthor={(userId) => {
+            void handleRemoveAuthor(userId)
           }}
         />
       </div>

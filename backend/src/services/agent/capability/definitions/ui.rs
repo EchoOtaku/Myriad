@@ -177,7 +177,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Target route, e.g. /phantasi, /platform/steam, /tapp/multi"
+                    "description": "Target route, e.g. /journal, /library, /tapp"
                 },
                 "params": {
                     "type": "object",

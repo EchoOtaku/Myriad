@@ -1304,11 +1304,8 @@ mod tests {
     }
 
     #[test]
-    fn phantasi_private_comment_routes_reject_revoked_sessions() {
-        use axum::{
-            body::{Body, to_bytes},
-            http::Request,
-        };
+    fn phantasi_comment_routes_reject_revoked_sessions() {
+        use axum::{body::Body, http::Request};
         use tower::ServiceExt;
 
         ensure_jwt_secret();
@@ -1340,19 +1337,11 @@ mod tests {
                     crate::api::phantasi::create_phantasi_routes(state.clone()),
                 )
                 .with_state(state);
-            for (path, field) in [
-                ("/api/phantasi/items/1/comments", "comments"),
-                ("/api/phantasi/comments/1/replies", "replies"),
+            // 游客可读，空连接上不能走查库。这里只卡撤销/假 token 仍 401。
+            for path in [
+                "/api/phantasi/items/1/comments",
+                "/api/phantasi/comments/1/replies",
             ] {
-                let response = app
-                    .clone()
-                    .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
-                    .await
-                    .unwrap();
-                assert_eq!(response.status(), StatusCode::OK, "anonymous {path}");
-                let body = to_bytes(response.into_body(), 4096).await.unwrap();
-                let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
-                assert_eq!(body[field], serde_json::json!([]));
                 for value in [format!("Bearer {token}"), "Bearer invalid".to_string()] {
                     let response = app
                         .clone()

@@ -5,8 +5,9 @@ import { agentContextRoute, resolveAgentContext } from './agentContext'
 test('认得出常见路由，也认得出首页', () => {
   assert.equal(agentContextRoute('/'), 'home')
   assert.equal(agentContextRoute(''), 'home')
-  assert.equal(agentContextRoute('/phantasi'), 'phantasi')
-  assert.equal(agentContextRoute('/phantasi/item/42'), 'phantasi')
+  assert.equal(agentContextRoute('/journal'), 'phantasi')
+  assert.equal(agentContextRoute('/journal/articles/42'), 'phantasi')
+  assert.equal(agentContextRoute('/phantasi/articles/42'), 'phantasi')
   assert.equal(agentContextRoute('/config'), 'config')
   assert.equal(agentContextRoute('/tapp/run/abc'), 'tapp')
 })
@@ -24,7 +25,7 @@ test('认不出来的路由老实说不知道，不瞎猜', () => {
 test('有正文时报标题，没正文时只报在哪一页', () => {
   assert.deepEqual(
     resolveAgentContext({
-      pathname: '/phantasi/item/42',
+      pathname: '/journal/articles/42',
       pageTitle: '  一篇文章  ',
       hasPageContent: true,
     }),
@@ -40,7 +41,7 @@ test('有正文时报标题，没正文时只报在哪一页', () => {
 test('有正文但没标题仍然算看得到内容 —— 能总结的是正文不是标题', () => {
   assert.deepEqual(
     resolveAgentContext({
-      pathname: '/phantasi/item/42',
+      pathname: '/journal/articles/42',
       pageTitle: '   ',
       hasPageContent: true,
     }),
@@ -62,7 +63,7 @@ test('标题在但没正文时不谎称看得到内容', () => {
 test('选中的那段压过页面正文 —— 指着的东西比在哪儿具体', () => {
   assert.deepEqual(
     resolveAgentContext({
-      pathname: '/phantasi/item/42',
+      pathname: '/journal/articles/42',
       pageTitle: '一篇文章',
       hasPageContent: true,
       selection: '这一段话',
@@ -74,7 +75,7 @@ test('选中的那段压过页面正文 —— 指着的东西比在哪儿具体
 test('关掉读页之后，页面正文这一路当不存在', () => {
   assert.deepEqual(
     resolveAgentContext({
-      pathname: '/phantasi/item/42',
+      pathname: '/journal/articles/42',
       pageTitle: '一篇文章',
       hasPageContent: true,
       contextConsent: false,
@@ -85,7 +86,7 @@ test('关掉读页之后，页面正文这一路当不存在', () => {
 
 test('关掉读页不影响用户自己划出来的那段', () => {
   const context = resolveAgentContext({
-    pathname: '/phantasi/item/42',
+    pathname: '/journal/articles/42',
     pageTitle: '一篇文章',
     hasPageContent: true,
     selection: '这一段话',
@@ -98,7 +99,7 @@ test('关掉读页不影响用户自己划出来的那段', () => {
 test('没说开关就当开着 —— 站点助手读当前页是本职', () => {
   assert.equal(
     resolveAgentContext({
-      pathname: '/phantasi/item/42',
+      pathname: '/journal/articles/42',
       pageTitle: '一篇文章',
       hasPageContent: true,
     }).kind,

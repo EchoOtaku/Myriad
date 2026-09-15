@@ -15,6 +15,42 @@ import {
   withLinkDefinitions,
 } from './noteVisual.ts'
 
+describe('markdownToVisualHtml math', () => {
+  it('行内公式变成岛，转一圈还在', () => {
+    const md = '见 $E=mc^2$ 即可'
+    const html = markdownToVisualHtml(md)
+    assert.match(html, /note-math-inline/)
+    assert.match(html, /data-tex="E=mc\^2"/)
+    assert.equal(visualHtmlToMarkdown(html), md)
+  })
+
+  it('块级公式整段往返', () => {
+    const md = '$$\n\\frac{1}{2}\n$$'
+    const html = markdownToVisualHtml(md)
+    assert.match(html, /note-math-display/)
+    assert.equal(visualHtmlToMarkdown(html), md)
+  })
+
+  it('代码里的美元不当公式', () => {
+    const html = markdownToVisualHtml('`` $E=mc^2$ ``')
+    assert.doesNotMatch(html, /note-math/)
+    assert.match(html, /<code>/)
+  })
+
+  it('水合后的 KaTeX 壳也能回写成 $', () => {
+    const html =
+      '<p>见 <span class="note-math note-math-inline" data-tex="E=mc^2">' +
+      '<span class="katex"><span class="katex-html">E</span></span></span> 即可</p>'
+    assert.equal(visualHtmlToMarkdown(html), '见 $E=mc^2$ 即可')
+  })
+
+  it('阅读器的 math-inline 也能回写', () => {
+    const html =
+      '<p><span class="math math-inline" data-tex="x^2"><span class="katex">x</span></span></p>'
+    assert.equal(visualHtmlToMarkdown(html), '$x^2$')
+  })
+})
+
 describe('markdownToVisualHtml', () => {
   it('粗体斜体删除线能转过去', () => {
     const html = markdownToVisualHtml('这是 **粗** 和 *斜* 和 ~~删~~')
@@ -199,6 +235,8 @@ describe('富文本层里敲 Markdown', () => {
     assert.equal(inlineMarkdownTail('甲 `乙`')?.html, '<code>乙</code>')
     assert.equal(inlineMarkdownTail('甲 ~~乙~~')?.html, '<del>乙</del>')
     assert.equal(inlineMarkdownTail('甲 *乙*')?.html, '<em>乙</em>')
+    assert.match(inlineMarkdownTail('见 $E=mc^2$')?.html ?? '', /note-math-inline/)
+    assert.match(inlineMarkdownTail('见 $$x^2$$')?.html ?? '', /note-math-display/)
   })
 
   it('没凑成不动；`**` 不会被当成斜体', () => {

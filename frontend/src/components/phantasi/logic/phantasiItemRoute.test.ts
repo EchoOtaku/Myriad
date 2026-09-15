@@ -29,11 +29,21 @@ it('leaves a failed deep link only while still on that item URL', () => {
   assert.equal(shouldLeaveFailedItemRoute('nope', 'nope', undefined), true)
   assert.deepEqual(
     restoreAfterFailedOpen('9', '9', undefined, { id: 3, own: true }),
-    { path: '/phantasi/item/3', param: '3' },
+    { path: '/journal/articles/3', param: '3' },
   )
   assert.deepEqual(
     restoreAfterFailedOpen('9', '9', undefined, { id: 3, own: false }),
-    { path: '/phantasi', param: undefined },
+    { path: '/journal', param: undefined },
+  )
+  assert.deepEqual(
+    restoreAfterFailedOpen(
+      '9',
+      '9',
+      undefined,
+      { id: 3, own: false },
+      '/journal/notes',
+    ),
+    { path: '/journal/notes', param: undefined },
   )
   assert.equal(restoreAfterFailedOpen('9', '10', undefined, null), null)
 })

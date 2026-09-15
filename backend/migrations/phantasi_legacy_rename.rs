@@ -6,7 +6,8 @@
 
 use myriad_phantasi::legacy::{
     FOREIGN_KEYS, FUNCTIONS, INDEXES, NEW_MIGRATION_NAME, NEW_SOURCES_TABLE, OLD_MIGRATION_NAME,
-    OLD_SOURCES_TABLE, TABLES, TEXT_REPLACEMENTS, TRIGGERS, rename_json_brew_key, rewrite_stored_text,
+    OLD_SOURCES_TABLE, TABLES, TEXT_REPLACEMENTS, TRIGGERS, rename_json_brew_key,
+    rewrite_stored_text,
 };
 use sea_orm::{ConnectionTrait, DatabaseBackend, DbErr, Statement};
 use serde_json::Value;
@@ -41,16 +42,26 @@ async fn table_exists(db: &impl ConnectionTrait, table: &str) -> Result<bool, Db
     Ok(!rows.is_empty())
 }
 
-/// Rename leftover brew tables/data, then rewrite `003_brew_system` → `003_phantasi_system`.
-pub async fn rename_brew_to_phantasi_if_needed(db: &impl ConnectionTrait) -> Result<(), DbErr> {
-    let has_old = table_exists(db, OLD_SOURCES_TABLE).await?;
-    let has_new = table_exists(db, NEW_SOURCES_TABLE).await?;
+/// Whether this instance still needs the brew → phantasi rename pass.
+///
+/// `pending_old_version` means `seaql_migrations` still has `003_brew_system`.
+/// That stays true if an earlier attempt renamed tables and then failed mid-rewrite,
+/// so a later startup can finish instead of treating the DB as greenfield.
+fn rename_needed(has_old: bool, has_new: bool, pending_old_version: bool) -> Result<bool, DbErr> {
     if has_old && has_new {
         return Err(DbErr::Custom(
             "both brew_sources and phantasi_sources exist; refuse to guess".into(),
         ));
     }
-    if !has_old {
+    Ok(has_old || pending_old_version)
+}
+
+/// Rename leftover brew tables/data, then rewrite `003_brew_system` → `003_phantasi_system`.
+pub async fn rename_brew_to_phantasi_if_needed(db: &impl ConnectionTrait) -> Result<(), DbErr> {
+    let has_old = table_exists(db, OLD_SOURCES_TABLE).await?;
+    let has_new = table_exists(db, NEW_SOURCES_TABLE).await?;
+    let pending_old_version = migration_version_exists(db, OLD_MIGRATION_NAME).await?;
+    if !rename_needed(has_old, has_new, pending_old_version)? {
         return Ok(());
     }
 
@@ -65,18 +76,14 @@ async fn rename_relations(db: &impl ConnectionTrait) -> Result<(), DbErr> {
     for (old, new) in TABLES {
         let old = qident(old)?;
         let new = qident(new)?;
-        db.execute_unprepared(&format!(
-            "ALTER TABLE IF EXISTS {old} RENAME TO {new}"
-        ))
-        .await?;
+        db.execute_unprepared(&format!("ALTER TABLE IF EXISTS {old} RENAME TO {new}"))
+            .await?;
     }
     for (old, new) in INDEXES {
         let old = qident(old)?;
         let new = qident(new)?;
-        db.execute_unprepared(&format!(
-            "ALTER INDEX IF EXISTS {old} RENAME TO {new}"
-        ))
-        .await?;
+        db.execute_unprepared(&format!("ALTER INDEX IF EXISTS {old} RENAME TO {new}"))
+            .await?;
     }
     for (old_table, old_fk, new_fk) in FOREIGN_KEYS {
         let new_table = TABLES
@@ -146,6 +153,18 @@ END $$;"
     Ok(())
 }
 
+/// Stored AP / MFP text that may still say brew.
+/// `federation_published_content` has no `object_json` — that column is on
+/// `federation_activities`.
+const FEDERATION_PAYLOAD_REWRITES: &[(&str, &str, Option<&str>)] = &[
+    ("federation_published_content", "content_id", None),
+    ("federation_activities", "object_json", Some("json")),
+    ("federation_activities", "object_type", None),
+    ("federation_timeline", "content_json", Some("json")),
+    ("federation_timeline", "content_preview", None),
+    ("federation_timeline", "object_type", None),
+];
+
 fn apply_sql_replaces(expr: &str) -> String {
     let mut out = expr.to_string();
     for (from, to) in TEXT_REPLACEMENTS {
@@ -158,10 +177,7 @@ fn apply_sql_replaces(expr: &str) -> String {
 
 async fn rewrite_row_text(db: &impl ConnectionTrait) -> Result<(), DbErr> {
     let updates = [
-        (
-            "phantasi_items",
-            &["content", "image", "summary"][..],
-        ),
+        ("phantasi_items", &["content", "image", "summary"][..]),
         ("phantasi_sources", &["icon"][..]),
         ("phantasi_note_docs", &["content_md", "image"][..]),
         ("media_assets", &["url"][..]),
@@ -194,6 +210,8 @@ async fn rewrite_row_text(db: &impl ConnectionTrait) -> Result<(), DbErr> {
         )
         .await?;
     }
+    // Mapping table only: content_type / content_id. The Create envelope is
+    // `federation_activities.object_json`.
     if table_exists(db, "federation_published_content").await? {
         db.execute_unprepared(
             "UPDATE federation_published_content
@@ -201,13 +219,9 @@ async fn rewrite_row_text(db: &impl ConnectionTrait) -> Result<(), DbErr> {
               WHERE content_type = 'brew-article'",
         )
         .await?;
-        let expr = apply_sql_replaces("object_json::text");
-        db.execute_unprepared(&format!(
-            "UPDATE federation_published_content
-                SET object_json = ({expr})::jsonb
-              WHERE object_json IS NOT NULL"
-        ))
-        .await?;
+    }
+    for (table, column, restore_cast) in FEDERATION_PAYLOAD_REWRITES {
+        rewrite_column(db, table, column, *restore_cast).await?;
     }
     if table_exists(db, "federation_ring_memberships").await? {
         db.execute_unprepared(
@@ -251,7 +265,42 @@ async fn rewrite_row_text(db: &impl ConnectionTrait) -> Result<(), DbErr> {
     Ok(())
 }
 
-async fn column_exists(db: &impl ConnectionTrait, table: &str, column: &str) -> Result<bool, DbErr> {
+/// Rewrite stored brew strings in one column. `restore_cast` is `json` / `jsonb`
+/// when the column is not text; `None` writes the replaced text back as-is.
+/// Missing table or column is a no-op so a half-applied rename can resume.
+async fn rewrite_column(
+    db: &impl ConnectionTrait,
+    table: &str,
+    column: &str,
+    restore_cast: Option<&str>,
+) -> Result<(), DbErr> {
+    if !table_exists(db, table).await? || !column_exists(db, table, column).await? {
+        return Ok(());
+    }
+    let table = qident(table)?;
+    let column = qident(column)?;
+    let expr = apply_sql_replaces(&format!("{column}::text"));
+    let value = match restore_cast {
+        Some(ty) => {
+            if !ident_ok(ty) {
+                return Err(DbErr::Custom(format!("unsafe type {ty}")));
+            }
+            format!("({expr})::{ty}")
+        }
+        None => expr,
+    };
+    db.execute_unprepared(&format!(
+        "UPDATE {table} SET {column} = {value} WHERE {column} IS NOT NULL"
+    ))
+    .await?;
+    Ok(())
+}
+
+async fn column_exists(
+    db: &impl ConnectionTrait,
+    table: &str,
+    column: &str,
+) -> Result<bool, DbErr> {
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -285,7 +334,8 @@ async fn rewrite_json_documents(db: &impl ConnectionTrait) -> Result<(), DbErr> 
     if table_exists(db, "tapps").await? {
         rewrite_json_column(db, "tapps", "id", "approved_permissions").await?;
     }
-    if table_exists(db, "users").await? && column_exists(db, "users", "notification_preferences").await?
+    if table_exists(db, "users").await?
+        && column_exists(db, "users", "notification_preferences").await?
     {
         rewrite_json_column(db, "users", "id", "notification_preferences").await?;
     }
@@ -332,6 +382,20 @@ async fn rewrite_json_column(
     Ok(())
 }
 
+async fn migration_version_exists(db: &impl ConnectionTrait, version: &str) -> Result<bool, DbErr> {
+    if !table_exists(db, "seaql_migrations").await? {
+        return Ok(false);
+    }
+    let rows = db
+        .query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT 1 FROM seaql_migrations WHERE version = $1",
+            [version.into()],
+        ))
+        .await?;
+    Ok(!rows.is_empty())
+}
+
 async fn rewrite_migration_version(db: &impl ConnectionTrait) -> Result<(), DbErr> {
     if !table_exists(db, "seaql_migrations").await? {
         return Ok(());
@@ -343,4 +407,46 @@ async fn rewrite_migration_version(db: &impl ConnectionTrait) -> Result<(), DbEr
     ))
     .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rename_needed_skips_greenfield_and_finished_upgrade() {
+        assert!(!rename_needed(false, false, false).unwrap());
+        assert!(!rename_needed(false, true, false).unwrap());
+    }
+
+    #[test]
+    fn rename_needed_runs_first_pass_and_resume() {
+        assert!(rename_needed(true, false, true).unwrap());
+        assert!(rename_needed(true, false, false).unwrap());
+        assert!(rename_needed(false, true, true).unwrap());
+    }
+
+    #[test]
+    fn rename_needed_refuses_both_source_tables() {
+        let err = rename_needed(true, true, true).unwrap_err();
+        assert!(err.to_string().contains("refuse to guess"));
+    }
+
+    #[test]
+    fn published_content_is_not_an_object_json_target() {
+        assert!(
+            FEDERATION_PAYLOAD_REWRITES
+                .iter()
+                .any(|(table, column, _)| *table == "federation_activities"
+                    && *column == "object_json")
+        );
+        assert!(
+            !FEDERATION_PAYLOAD_REWRITES
+                .iter()
+                .any(
+                    |(table, column, _)| *table == "federation_published_content"
+                        && *column == "object_json"
+                )
+        );
+    }
 }

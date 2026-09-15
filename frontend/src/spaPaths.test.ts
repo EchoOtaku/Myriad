@@ -34,7 +34,7 @@ describe('spaPaths', () => {
       'tapp',
       'tapp/store',
       'tapp/run',
-      'phantasi',
+      'journal',
     ]) {
       assert.ok(prod.includes(route), route)
     }
@@ -54,7 +54,11 @@ describe('spaPaths', () => {
     assert.equal(rewriteSpaFallbackUrl('/tapp/run?x=1'), '/tapp/run/_')
     assert.equal(rewriteSpaFallbackUrl('/tapp/run/_'), '/tapp/run/_')
     assert.equal(rewriteSpaFallbackUrl('/tapp/detail/xyz'), '/tapp/detail/_')
-    assert.equal(rewriteSpaFallbackUrl('/phantasi/item/12'), '/phantasi')
+    assert.equal(rewriteSpaFallbackUrl('/journal/articles/12'), '/journal')
+    assert.equal(rewriteSpaFallbackUrl('/journal/notes'), '/journal')
+    assert.equal(rewriteSpaFallbackUrl('/journal/workbench/feeds/add'), '/journal')
+    assert.equal(rewriteSpaFallbackUrl('/phantasi'), '/phantasi')
+    assert.equal(rewriteSpaFallbackUrl('/phantasi/item/12'), '/phantasi/item/12')
     assert.equal(rewriteSpaFallbackUrl('/details'), '/')
     assert.equal(rewriteSpaFallbackUrl('/federation/chat/room-1'), '/')
     assert.equal(rewriteSpaFallbackUrl('/federation/room/abc'), '/')

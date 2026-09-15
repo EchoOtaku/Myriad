@@ -49,7 +49,17 @@ export interface NoteEditorTool {
 }
 
 /** 选中文字才用得上的放浮动条，其余是块级插入。 */
-const MARK_TOOL_KEYS = ['bold', 'italic', 'strike', 'inline-code', 'link', 'h2', 'h3', 'quote']
+const MARK_TOOL_KEYS = [
+  'bold',
+  'italic',
+  'strike',
+  'inline-code',
+  'inline-math',
+  'link',
+  'h2',
+  'h3',
+  'quote',
+]
 
 export function splitNoteTools(tools: NoteEditorTool[]): {
   marks: NoteEditorTool[]
@@ -225,6 +235,7 @@ export function NoteTopBar({
 /* ------------------------------------------------------------------ */
 
 interface NoteBylineProps {
+  authorLine: string | null
   topic: string | null
   publishedAt: number | null
   scheduledAt: number | null
@@ -232,8 +243,9 @@ interface NoteBylineProps {
   onOpenSettings: () => void
 }
 
-/** 标题下面一行淡字：分类 · 时间。点开发布设置。 */
+/** 标题下面一行淡字：联合作者 · 分类 · 时间。点开发布设置。 */
 export function NoteByline({
+  authorLine,
   topic,
   publishedAt,
   scheduledAt,
@@ -259,6 +271,12 @@ export function NoteByline({
       onClick={onOpenSettings}
       title={t.phantasi.notePublishSettings}
     >
+      {authorLine ? (
+        <>
+          <span>{authorLine}</span>
+          <span aria-hidden="true">·</span>
+        </>
+      ) : null}
       <span>{topicLabel}</span>
       {whenLabel ? (
         <>
@@ -978,6 +996,11 @@ interface NoteSettingsDrawerProps {
   onClearCover: () => void
   canDelete: boolean
   onDelete: () => void
+  authors: Array<{ user_id: number; label: string; owner: boolean }>
+  addableAuthors: Array<{ value: string; label: string }>
+  authorBusy: boolean
+  onAddAuthor: (userId: number) => void
+  onRemoveAuthor: (userId: number) => void
 }
 
 /** 分类 / 时间 / 封面 / 定时 / 删除。写作时收起来。 */
@@ -1004,6 +1027,11 @@ export function NoteSettingsDrawer({
   onClearCover,
   canDelete,
   onDelete,
+  authors,
+  addableAuthors,
+  authorBusy,
+  onAddAuthor,
+  onRemoveAuthor,
 }: NoteSettingsDrawerProps) {
   const { t } = useI18n()
   const [draftCategory, setDraftCategory] = useState('')
@@ -1042,6 +1070,48 @@ export function NoteSettingsDrawer({
           title={t.phantasi.close}
         />
       </div>
+
+      <NoteField label={t.phantasi.noteAuthors} htmlFor="note-author-add">
+        {authors.length === 0 ? (
+          <p className="note-field__hint">{t.phantasi.noteAuthorEmpty}</p>
+        ) : (
+          <ul className="phantasi-note__authors">
+            {authors.map((author) => (
+              <li key={author.user_id} className="phantasi-note__author">
+                <span>{author.label}</span>
+                {author.owner ? (
+                  <span className="phantasi-note__author-role">
+                    {t.phantasi.noteAuthorOwner}
+                  </span>
+                ) : (
+                  <NoteButton
+                    variant="quiet"
+                    icon={<X />}
+                    disabled={authorBusy}
+                    onClick={() => onRemoveAuthor(author.user_id)}
+                    aria-label={t.phantasi.noteAuthorRemove}
+                    title={t.phantasi.noteAuthorRemove}
+                  />
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {addableAuthors.length > 0 ? (
+          <NoteSelect
+            id="note-author-add"
+            value=""
+            options={[
+              { value: '', label: t.phantasi.noteAuthorAdd },
+              ...addableAuthors,
+            ]}
+            onChange={(value) => {
+              if (!value) return
+              onAddAuthor(Number(value))
+            }}
+          />
+        ) : null}
+      </NoteField>
 
       <NoteField label={t.phantasi.noteTopic} htmlFor="note-topic">
         <NoteSelect

@@ -7,6 +7,7 @@ mod schema;
 mod types;
 
 mod transport;
+pub(crate) mod tool_calling;
 
 #[cfg(test)]
 pub(crate) mod probe;

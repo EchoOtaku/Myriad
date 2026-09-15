@@ -1042,6 +1042,41 @@ CREATE INDEX IF NOT EXISTS idx_phantasi_note_docs_item
 CREATE INDEX IF NOT EXISTS idx_phantasi_note_docs_schedule
     ON phantasi_note_docs (status, scheduled_at);
 ALTER TABLE phantasi_note_docs ADD COLUMN IF NOT EXISTS last_error TEXT;
+-- 文章被级联删掉时文档没有外键，会留下 published + 空 item_id。
+UPDATE phantasi_note_docs AS d
+SET item_id = NULL,
+    status = CASE WHEN d.status = 'published' THEN 'draft' ELSE d.status END,
+    revision = d.revision + 1,
+    updated_at = NOW()
+WHERE (d.status = 'published' AND d.item_id IS NULL)
+   OR (
+     d.item_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM phantasi_items i WHERE i.id = d.item_id)
+   );
+"#,
+    )
+    .await?;
+    Ok(())
+}
+
+/// 笔记联合作者。发起人是 owner，同时写入或主动加入的管理员是 author。
+pub(crate) async fn ensure_phantasi_note_authors_table(
+    db: &DatabaseConnection,
+) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+CREATE TABLE IF NOT EXISTS phantasi_note_authors (
+    doc_id INTEGER NOT NULL REFERENCES phantasi_note_docs(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL,
+    role VARCHAR NOT NULL DEFAULT 'author',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (doc_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_phantasi_note_authors_user
+    ON phantasi_note_authors (user_id);
+INSERT INTO phantasi_note_authors (doc_id, user_id, role)
+SELECT id, user_id, 'owner' FROM phantasi_note_docs
+ON CONFLICT (doc_id, user_id) DO NOTHING;
 "#,
     )
     .await?;

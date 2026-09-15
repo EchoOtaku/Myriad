@@ -1,15 +1,21 @@
 {
   "overview": {
-    "what": "Admin console. Overview shows drafts and upcoming publishes, then notes, media, feeds, and import/export.",
-    "chain": "① Pick a page on the left.\n② On Overview, resume drafts or check upcoming publishes.\n③ Write, delete, or recategorize notes.\n④ Add, refresh, or sort feeds.",
+    "what": "Admin console. Overview shows drafts and upcoming publishes, then notes, comments, media, feeds, and import/export.",
+    "chain": "① Pick a page on the left.\n② On Overview, resume drafts or check upcoming publishes.\n③ Write, delete, or recategorize notes.\n④ Review comments and delete them.\n⑤ Add, refresh, or sort feeds.",
     "frontend": "The feed wall, note wall, and friends page use sources and categories you change here.",
     "notes": "Admins only."
   },
   "notes": {
     "what": "Note list. Open, delete, cancel a schedule, or batch-add a category.",
-    "chain": "① Open a title to edit.\n② Edit mode selects many for delete or category.\n③ Two categories max.",
+    "chain": "① Open a title to edit.\n② Filter by status, category, or any co-author.\n③ Edit mode selects many for delete or category. Two categories max.",
     "frontend": "Published notes hit the note wall. They enter the public RSS only after you turn it on. Scheduled ones go out on time.",
     "notes": "Body and cover stay in the editor. A third category prompts that it is full."
+  },
+  "comments": {
+    "what": "Comments on notes. Anyone who can see the note can read them. You can delete any.",
+    "chain": "① Search body, excerpt, or title.\n② Open a row to jump to the note.\n③ Edit mode selects many to delete.",
+    "frontend": "Only the note reader shows comments. Feed articles do not.",
+    "notes": "Writing still needs a login. Guests can only read."
   },
   "media": {
     "what": "Uploaded images and video, plus generated files.",

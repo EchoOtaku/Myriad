@@ -79,7 +79,7 @@ export function phantasiMainCategory(
 }
 
 export function phantasiOwnItemPath(itemId: number | string): string {
-  return `/phantasi/item/${encodeURIComponent(String(itemId))}`
+  return `/journal/articles/${encodeURIComponent(String(itemId))}`
 }
 
 export const DEFAULT_THEME_COLOR = '#6b7280'

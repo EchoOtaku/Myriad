@@ -75,6 +75,7 @@ fn catalog_path(path: &str) -> Option<String> {
 }
 
 /// `cache_image` 是外链缓存，不进目录。
+#[cfg(test)]
 pub fn catalogs_cache_image() -> bool {
     false
 }

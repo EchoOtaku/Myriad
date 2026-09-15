@@ -54,6 +54,32 @@ export interface PhantasiItemPreview {
   topic?: string | null
 }
 
+export interface CommentItem {
+  id: number
+  item_id: number
+  user_id: number
+  user_name?: string
+  user_display_name?: string
+  user_avatar?: string
+  selected_text: string
+  comment: string
+  start_offset?: number
+  end_offset?: number
+  context_before?: string
+  context_after?: string
+  color?: string
+  is_public: boolean
+  parent_id?: number
+  content_revision?: number
+  created_at: number
+  updated_at: number
+  replies?: CommentItem[]
+  reply_count?: number
+  item_title?: string
+  source_id?: number
+  source_name?: string
+}
+
 /** bar is entry-source only; tiny/mini/full for content. Mapping in layout.ts. DB is free varchar. */
 export type CardSize = 'bar' | 'tiny' | 'mini' | 'full'
 
@@ -135,9 +161,20 @@ export interface PhantasiNoteInput {
 
 type PhantasiNoteDocStatus = 'draft' | 'scheduled' | 'published'
 
+export interface PhantasiNoteAuthor {
+  user_id: number
+  user_name?: string
+  user_display_name?: string
+  role: string
+}
+
 export interface PhantasiNoteDoc {
   id: number
   item_id: number | null
+  user_id?: number
+  user_name?: string
+  user_display_name?: string
+  authors?: PhantasiNoteAuthor[]
   title: string
   content_md: string
   topic: string | null
@@ -251,8 +288,12 @@ export interface UpdateSourceRequest {
   description?: string
   site_url?: string
   sort_order?: number
+  /** Subscription URL; often changes with source/feed type. */
+  url?: string
   source_type?: SourceType
   feed_type?: FeedType
+  /** Only when feed_type is rsshub. Empty string clears. */
+  rsshub_route?: string
   extra_config?: {
     token?: string
     filter?: unknown

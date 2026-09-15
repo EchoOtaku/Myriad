@@ -2,7 +2,7 @@
 
 import type { ReactElement, ReactNode } from 'react'
 import type { MediaAsset } from '../../../services/mediaApi'
-import type { PhantasiNoteDoc, PhantasiSource } from '../../../types/phantasi'
+import type { CommentItem, PhantasiNoteDoc, PhantasiSource } from '../../../types/phantasi'
 import type {
   ManagedListItem,
   ManagedListTone,
@@ -28,12 +28,14 @@ import {
   LuFolderOpen,
   LuImage,
   LuList,
+  LuMessageSquare,
   LuNotebookPen,
   LuPlus,
   LuRefreshCw,
   LuSquare,
   LuTag,
   LuUpload,
+  LuUser,
   SiMarkdown,
   SiWordpress,
   TypechoIcon,
@@ -62,13 +64,16 @@ import { usePhantasiGuides } from '../guides/usePhantasiGuides'
 import { readSourceSortMode, writeSourceSortMode } from '../logic/sourceSort'
 import {
   collectWorkbenchMediaFormats,
+  collectWorkbenchNoteAuthors,
   collectWorkbenchNoteTopics,
+  filterWorkbenchComments,
   filterWorkbenchMedia,
   filterWorkbenchNotes,
   formatWorkbenchBytes,
   workbenchMediaFormatKey,
   workbenchMediaFormatLabel,
   workbenchMediaRefLabel,
+  workbenchNoteAuthorName,
   workbenchNoteCover,
   workbenchNoteExcerpt,
   workbenchNoteOpen,
@@ -107,6 +112,7 @@ const RAIL: Array<{
   label:
     | 'workbenchOverview'
     | 'workbenchNotes'
+    | 'workbenchComments'
     | 'workbenchMedia'
     | 'workbenchSources'
     | 'workbenchRsshub'
@@ -124,6 +130,12 @@ const RAIL: Array<{
     pane: 'notes',
     label: 'workbenchNotes',
     icon: <PhantasiWorkbenchIcon kind="notes" />,
+    pack: 'content',
+  },
+  {
+    pane: 'comments',
+    label: 'workbenchComments',
+    icon: <LuMessageSquare />,
     pack: 'content',
   },
   {
@@ -537,8 +549,10 @@ export default function PhantasiWorkbench({
   onPane,
   docs,
   media,
+  comments = [],
   notesLoading,
   mediaLoading,
+  commentsLoading = false,
   busy,
   sourceCount,
   sources = [],
@@ -547,6 +561,8 @@ export default function PhantasiWorkbench({
   onWrite,
   onOpenNote,
   onDeleteNotes,
+  onDeleteComments,
+  onOpenCommentItem,
   onUnschedule,
   onUpload,
   onDeleteMedia,
@@ -567,8 +583,10 @@ export default function PhantasiWorkbench({
   onPane: (pane: WorkbenchPane) => void
   docs: PhantasiNoteDoc[]
   media: MediaAsset[]
+  comments?: CommentItem[]
   notesLoading: boolean
   mediaLoading: boolean
+  commentsLoading?: boolean
   busy: boolean
   sourceCount: number
   sources?: readonly PhantasiSource[]
@@ -577,6 +595,8 @@ export default function PhantasiWorkbench({
   onWrite: () => void
   onOpenNote: (open: ReturnType<typeof workbenchNoteOpen>) => void
   onDeleteNotes: (docs: PhantasiNoteDoc[]) => void
+  onDeleteComments?: (ids: number[]) => void
+  onOpenCommentItem?: (itemId: number) => void
   onUnschedule: (id: number) => void
   onUpload: (file: File) => void
   onDeleteMedia: (id: number) => void
@@ -643,6 +663,7 @@ export default function PhantasiWorkbench({
   const [noteQuery, setNoteQuery] = useState('')
   const [noteStatus, setNoteStatus] = useState<WorkbenchNoteStatusFilter>('all')
   const [noteTopic, setNoteTopic] = useState('all')
+  const [noteAuthor, setNoteAuthor] = useState('all')
   const [sortMode, setSortMode] = useState<SourceSortMode>(readSourceSortMode)
   const mediaFormats = useMemo(
     () => collectWorkbenchMediaFormats(media),
@@ -685,14 +706,31 @@ export default function PhantasiWorkbench({
   )
     ? noteTopic
     : 'all'
+  const noteAuthors = useMemo(
+    () => collectWorkbenchNoteAuthors(docs, phantasi.anonymousUser),
+    [docs, phantasi.anonymousUser],
+  )
+  const noteAuthorOptions = useMemo(
+    () => [
+      { key: 'all', label: phantasi.noteCategoryAll },
+      ...noteAuthors,
+    ],
+    [noteAuthors, phantasi.noteCategoryAll],
+  )
+  const resolvedNoteAuthor = noteAuthorOptions.some(
+    (opt) => opt.key === noteAuthor,
+  )
+    ? noteAuthor
+    : 'all'
   const visibleNotes = useMemo(
     () =>
       filterWorkbenchNotes(docs, {
         status: noteStatus,
         query: noteQuery,
         topic: resolvedNoteTopic === 'all' ? null : resolvedNoteTopic,
+        author: resolvedNoteAuthor === 'all' ? null : resolvedNoteAuthor,
       }),
-    [docs, noteQuery, noteStatus, resolvedNoteTopic],
+    [docs, noteQuery, noteStatus, resolvedNoteAuthor, resolvedNoteTopic],
   )
   const noteIds = useMemo(
     () => visibleNotes.map((doc) => doc.id),
@@ -731,6 +769,48 @@ export default function PhantasiWorkbench({
       if (docs.length === 0) return
       notesSelect.exit()
       onDeleteNotes(docs)
+    },
+  })
+  const [commentQuery, setCommentQuery] = useState('')
+  const visibleComments = useMemo(
+    () => filterWorkbenchComments(comments, commentQuery),
+    [commentQuery, comments],
+  )
+  const commentIds = useMemo(
+    () => visibleComments.map((row) => row.id),
+    [visibleComments],
+  )
+  const commentsSelect = useListSelection(commentIds)
+  useEffect(() => {
+    if (pane !== 'comments') commentsSelect.exit()
+  }, [commentsSelect.exit, pane])
+  const commentsSelectBar = listSelectChrome({
+    selecting: commentsSelect.selecting,
+    picked: commentsSelect.picked,
+    total: commentsSelect.total,
+    allOn: commentsSelect.allOn,
+    busy,
+    labels: {
+      edit: phantasi.edit,
+      selectAll: phantasi.selectAll,
+      deselectAll: phantasi.deselectAll,
+      deleteSelected: phantasi.deleteSelected,
+      deleteConfirm: format(phantasi.workbenchDeleteSelectedCommentsConfirm, {
+        count: commentsSelect.picked,
+      }),
+      exitEdit: phantasi.exitEdit,
+      selectedLabel: phantasi.editMode,
+    },
+    onEnter: commentsSelect.enter,
+    onExit: commentsSelect.exit,
+    onSelectAll: commentsSelect.selectAll,
+    onDelete: () => {
+      const ids = visibleComments
+        .filter((row) => commentsSelect.selected.has(row.id))
+        .map((row) => row.id)
+      if (ids.length === 0) return
+      commentsSelect.exit()
+      onDeleteComments?.(ids)
     },
   })
   const feedCount = workbenchFeedSourceCount(sources)
@@ -804,7 +884,8 @@ export default function PhantasiWorkbench({
         const statusKey = workbenchNoteStatusKey(doc)
         const when = noteScheduleLabel(workbenchNoteWhen(doc), locale)
         const excerpt = workbenchNoteExcerpt(doc.content_md)
-        const facts = [doc.topic, when].filter(Boolean).join(' · ')
+        const author = workbenchNoteAuthorName(doc, '')
+        const facts = [author || null, doc.topic, when].filter(Boolean).join(' · ')
         const picking = notesSelect.selecting
         return {
           id: doc.id,
@@ -931,6 +1012,56 @@ export default function PhantasiWorkbench({
         }
       }),
     [phantasi, busy, locale, onDeleteMedia, visibleMedia],
+  )
+
+  const commentItems = useMemo<ManagedListItem[]>(
+    () =>
+      visibleComments.map((row) => {
+        const picking = commentsSelect.selecting
+        const author =
+          row.user_display_name || row.user_name || phantasi.anonymousUser
+        const when = noteScheduleLabel(row.created_at, locale)
+        const title = row.comment.trim() || row.selected_text.trim() || author
+        return {
+          id: row.id,
+          title,
+          subtitle: [row.item_title, author, when].filter(Boolean).join(' · '),
+          meta: row.selected_text.trim() || row.source_name || undefined,
+          selected: commentsSelect.selected.has(row.id),
+          onSelect: picking ? () => commentsSelect.toggle(row.id) : undefined,
+          onClick: picking
+            ? () => commentsSelect.toggle(row.id)
+            : () => onOpenCommentItem?.(row.item_id),
+          actions: picking
+            ? []
+            : [
+                {
+                  key: 'open',
+                  label: phantasi.workbenchCommentOpen,
+                  onClick: () => onOpenCommentItem?.(row.item_id),
+                },
+                {
+                  key: 'delete',
+                  label: phantasi.delete,
+                  variant: 'danger' as const,
+                  confirm: phantasi.workbenchDeleteCommentConfirm,
+                  onClick: () => onDeleteComments?.([row.id]),
+                  disabled: busy,
+                },
+              ],
+        }
+      }),
+    [
+      busy,
+      commentsSelect.selecting,
+      commentsSelect.selected,
+      commentsSelect.toggle,
+      locale,
+      onDeleteComments,
+      onOpenCommentItem,
+      phantasi,
+      visibleComments,
+    ],
   )
 
   return (
@@ -1153,6 +1284,11 @@ export default function PhantasiWorkbench({
                     onPick={() => open('notes')}
                   />
                   <Kpi
+                    value={comments.length}
+                    label={phantasi.workbenchComments}
+                    onPick={() => open('comments')}
+                  />
+                  <Kpi
                     value={media.length}
                     label={phantasi.workbenchMedia}
                     onPick={() => open('media')}
@@ -1251,6 +1387,18 @@ export default function PhantasiWorkbench({
                   value: resolvedNoteTopic,
                   onChange: setNoteTopic,
                 },
+                ...(noteAuthors.length > 0
+                  ? [
+                      {
+                        label: phantasi.workbenchNoteAuthor,
+                        icon: <LuUser />,
+                        ariaLabel: phantasi.workbenchNoteAuthor,
+                        options: noteAuthorOptions,
+                        value: resolvedNoteAuthor,
+                        onChange: setNoteAuthor,
+                      },
+                    ]
+                  : []),
               ]}
               queryCollapsible={false}
               queryChrome="plain"
@@ -1261,6 +1409,46 @@ export default function PhantasiWorkbench({
                 docs.length === 0
                   ? phantasi.workbenchNoteEmpty
                   : phantasi.workbenchNoteKindEmpty
+              }
+              maxHeight={null}
+            />
+          </WorkbenchPage>
+        ) : null}
+
+        {pane === 'comments' ? (
+          <WorkbenchPage
+            title={phantasi.workbenchComments}
+            icon={<LuMessageSquare />}
+            back={back}
+            {...bindGuide('workbench.comments', g.comments)}
+            search={
+              <InputItem
+                itemKey="workbench-comment-search"
+                label={phantasi.workbenchSearchComments}
+                value={commentQuery}
+                onChange={setCommentQuery}
+                placeholder={phantasi.workbenchSearchComments}
+                inputType="search"
+                size="sm"
+                layout="vertical"
+                autoComplete="off"
+                className="phantasi-workbench__title-search"
+              />
+            }
+          >
+            <ManagedList
+              stats={commentsSelectBar.stats}
+              toolbar={commentsSelectBar.toolbar}
+              toolbarPlacement="filters"
+              queryCollapsible={false}
+              queryChrome="plain"
+              loading={commentsLoading && comments.length === 0}
+              working={busy}
+              items={commentItems}
+              emptyText={
+                comments.length === 0
+                  ? phantasi.workbenchCommentEmpty
+                  : phantasi.workbenchCommentKindEmpty
               }
               maxHeight={null}
             />

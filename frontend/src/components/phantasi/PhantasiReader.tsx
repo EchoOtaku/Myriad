@@ -47,7 +47,7 @@ import {
 } from './reader'
 import { getIconUrl } from './constants'
 import { hasNoteWidgetMarkup, noteWidgetTypesInHtml } from './notes/noteWidgetHtml'
-import { storySourceFace } from './notes/noteSiteSource'
+import { isNoteStorySource, storySourceFace } from './notes/noteSiteSource'
 import { preloadNoteWidgets, useNoteWidgetCatalog } from './notes/noteWidgetCatalog'
 import { useNoteWidgetHydration } from './notes/noteWidgetMount'
 import { dismissReaderChrome, escapeWhileTyping } from './reader/readerPanels'
@@ -59,9 +59,10 @@ interface PhantasiReaderProps {
   onClose: () => void
   onToggleStar: () => void
   isAuthenticated?: boolean
+  currentUserId?: number | null
   isAdmin?: boolean
   sourceType?: SourceType
-  /** 自有内容用 `/phantasi/item/{id}`；缺省复制原文 link，勿把外站当本站 SEO 页分享。 */
+  /** 自有内容用 `/journal/articles/{id}`；缺省复制原文 link，勿把外站当本站 SEO 页分享。 */
   shareUrl?: string
   /** 上层只在「站长 + 笔记」时传值，阅读器不自己判断。 */
   onEditNote?: () => void
@@ -143,6 +144,7 @@ function ReaderArticleSession({
   onToggleStar,
   isAuthenticated = false,
   isAdmin = false,
+  currentUserId = null,
   sourceType,
   shareUrl,
   onEditNote,
@@ -236,6 +238,10 @@ function ReaderArticleSession({
   const [contentReady, setContentReady] = useState(articleSwap || !enableAnimations)
 
   const isPhantasiai = sourceType === 'phantasiai'
+  const commentsEnabled = isNoteStorySource({
+    guid: item.guid,
+    source_type: sourceType,
+  })
 
   const {
     fontSize,
@@ -322,6 +328,7 @@ function ReaderArticleSession({
     highlightComments,
   } = useComments({
     itemId: item.id,
+    enabled: commentsEnabled,
     isAuthenticated,
     showToastMessage,
     t,
@@ -400,6 +407,13 @@ function ReaderArticleSession({
   const [focusedCommentIds, setFocusedCommentIds] = useState<number[]>([])
   const [unresolvedCommentIds, setUnresolvedCommentIds] = useState<Set<number>>(new Set())
   useEffect(() => {
+    if (!commentsEnabled) {
+      setShowCommentsPanel(false)
+      setShowCommentPopup(false)
+    }
+  }, [commentsEnabled, setShowCommentPopup, setShowCommentsPanel])
+
+  useEffect(() => {
     if (!showCommentsPanel) setFocusedCommentIds([])
   }, [showCommentsPanel])
 
@@ -414,6 +428,7 @@ function ReaderArticleSession({
     highlightComments,
     theme,
     copyCodeLabel: t.phantasi.copyCode,
+    copyTexLabel: t.phantasi.copyTex,
   })
   const hasNoteWidgets = hasNoteWidgetMarkup(item.content)
   if (hasNoteWidgets) preloadNoteWidgets(noteWidgetTypesInHtml(item.content))
@@ -469,6 +484,7 @@ function ReaderArticleSession({
     contentRef: contentInnerRef,
     setFocusedCommentIds,
     comments,
+    commentsEnabled,
     isAuthenticated,
     showCommentPopup,
     showAnnotations,
@@ -497,13 +513,14 @@ function ReaderArticleSession({
   }, [isPhantasiai])
 
   useEffect(() => {
-    if (isAuthenticated && comments.length === 0 && !commentsLoading) {
+    if (!commentsEnabled) return
+    if (comments.length === 0 && !commentsLoading) {
       const timer = setTimeout(() => {
         loadComments()
       }, 300)
       return () => clearTimeout(timer)
     }
-  }, [isAuthenticated])
+  }, [commentsEnabled, item.id])
 
   const handleScrollToAnnotation = useCallback(
     (annotation: AnnotationItem) => {
@@ -764,6 +781,7 @@ function ReaderArticleSession({
             }}
             t={t}
             isAuthenticated={isAuthenticated || false}
+            commentsEnabled={commentsEnabled}
             hasComments={hasComments}
             comments={comments}
             showCommentsPanel={showCommentsPanel}
@@ -797,7 +815,7 @@ function ReaderArticleSession({
       />
 
       <CommentInputPopup
-        showCommentPopup={showCommentPopup && !!isAuthenticated}
+        showCommentPopup={showCommentPopup && commentsEnabled && !!isAuthenticated}
         setShowCommentPopup={setShowCommentPopup}
         commentPopupPosition={commentPopupPosition}
         selectedText={selectedText}
@@ -818,7 +836,7 @@ function ReaderArticleSession({
         unresolvedCommentIds={unresolvedCommentIds}
         currentTheme={currentTheme}
         isDark={isDark}
-        showCommentsPanel={showCommentsPanel}
+        showCommentsPanel={commentsEnabled && showCommentsPanel}
         setShowCommentsPanel={setShowCommentsPanel}
         comments={comments}
         commentsLoading={commentsLoading}
@@ -832,6 +850,10 @@ function ReaderArticleSession({
         toggleReplies={toggleReplies}
         commentReplies={commentReplies}
         deleteComment={deleteComment}
+        canReply={isAuthenticated}
+        canDelete={(comment) =>
+          isAdmin || (currentUserId != null && comment.user_id === currentUserId)
+        }
         enableAnimations={enableAnimations}
         t={t}
       />
@@ -865,6 +887,7 @@ function ReaderArticleSession({
         activeHeadingId={activeHeadingId}
         scrollToHeading={scrollToHeading}
         comments={comments}
+        commentsEnabled={commentsEnabled}
         hasComments={hasComments}
         showCommentsPanel={showCommentsPanel}
         setShowCommentsPanel={setShowCommentsPanel}

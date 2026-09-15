@@ -7,8 +7,9 @@
 use chrono::{TimeZone, Utc};
 use myriad_phantasi_notes::{NoteDocStatus, is_due, note_guid, note_link, render_note, validate_note};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    EntityTrait, PaginatorTrait, QueryFilter, Set, Statement, TransactionTrait,
+    Value as SeaValue,
 };
 use serde::Serialize;
 
@@ -115,6 +116,7 @@ async fn write_published_item<C: ConnectionTrait>(
     topic: Option<String>,
     image: Option<String>,
     published_at_ms: Option<i64>,
+    author: Option<String>,
 ) -> Result<PublishedNote, HttpError> {
     validate_note(title, content_md).map_err(validation_err)?;
     let source = ensure_note_source(db, user_id).await?;
@@ -143,6 +145,7 @@ async fn write_published_item<C: ConnectionTrait>(
         active.word_count = Set(Some(rendered.word_count));
         active.reading_time = Set(Some(rendered.reading_time));
         active.topic = Set(topic);
+        active.author = Set(author);
         if let Some(published_at) = published_at_ms.and_then(millis_to_datetime) {
             active.published_at = Set(published_at.into());
         }
@@ -172,6 +175,7 @@ async fn write_published_item<C: ConnectionTrait>(
         reading_time: Set(Some(rendered.reading_time)),
         fulltext_fetched: Set(true),
         topic: Set(topic),
+        author: Set(author),
         ..Default::default()
     };
     let item = new_item
@@ -231,6 +235,7 @@ pub async fn publish_doc(
         .await
         .map_err(|e| phantasi_store_http("begin note publish", e))?;
     let outcome = async {
+        let author = crate::services::note_authors::note_author_line(&txn, doc.id).await?;
         let item = write_published_item(
             &txn,
             doc.user_id,
@@ -240,6 +245,7 @@ pub async fn publish_doc(
             doc.topic.clone(),
             doc.image.clone(),
             published_at_ms,
+            author,
         )
         .await?;
         let saved = mark_doc_published(&txn, doc, &item, published_at_ms).await?;
@@ -410,6 +416,28 @@ pub async fn upsert_doc_for_published_item<C: ConnectionTrait>(
         .map_err(|e| phantasi_store_http("create note doc", e))
 }
 
+/// 删订阅源会 CASCADE 掉文章；笔记文档没有这条外键，先把指向这些文章的文档解开。
+pub async fn detach_note_docs_for_source<C: ConnectionTrait>(
+    db: &C,
+    source_id: i32,
+) -> Result<(), HttpError> {
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        UPDATE phantasi_note_docs AS d
+        SET item_id = NULL,
+            status = CASE WHEN d.status = 'published' THEN 'draft' ELSE d.status END,
+            revision = d.revision + 1,
+            updated_at = NOW()
+        WHERE d.item_id IN (SELECT id FROM phantasi_items WHERE source_id = $1)
+        "#,
+        [SeaValue::Int(Some(source_id))],
+    ))
+    .await
+    .map_err(|e| phantasi_store_http("detach note docs for source", e))?;
+    Ok(())
+}
+
 /// 公开笔记的写入 + 对应云端文档同步，一个事务。`create_note` / `update_note` 用。
 pub async fn write_note_with_doc(
     db: &DatabaseConnection,
@@ -435,9 +463,10 @@ pub async fn write_note_with_doc(
             topic.clone(),
             image.clone(),
             published_at_ms,
+            None,
         )
         .await?;
-        upsert_doc_for_published_item(
+        let doc = upsert_doc_for_published_item(
             &txn,
             user_id,
             &item,
@@ -448,6 +477,10 @@ pub async fn write_note_with_doc(
             published_at_ms,
         )
         .await?;
+        crate::services::note_authors::ensure_note_author(&txn, doc.id, user_id, doc.user_id)
+            .await?;
+        crate::services::note_authors::sync_published_author_line(&txn, Some(item.id), doc.id)
+            .await?;
         Ok::<_, HttpError>(item)
     }
     .await;
@@ -518,6 +551,35 @@ mod tests {
         assert!(claim.contains("Column::Status.eq(NoteDocStatus::Scheduled"));
         assert!(claim.contains("Column::Revision.eq(doc.revision)"));
         assert!(claim.contains("rows_affected == 0"));
+    }
+
+    #[test]
+    fn source_delete_unpublishes_docs_before_items_cascade() {
+        let src = include_str!("note_publish.rs");
+        let detach = body_of(src, "pub async fn detach_note_docs_for_source");
+        assert!(
+            detach.contains("item_id = NULL"),
+            "must clear the dangling article id"
+        );
+        assert!(
+            detach.contains("THEN 'draft'"),
+            "published docs without an article must go back to draft"
+        );
+        let delete = include_str!("../api/phantasi/feeds_articles.rs");
+        let start = delete
+            .find("pub(crate) async fn delete_source")
+            .expect("delete_source");
+        let body = &delete[start..];
+        assert!(
+            body.contains("detach_note_docs_for_source"),
+            "deleting a source must detach note docs first"
+        );
+        assert!(body.contains(".begin()"), "source delete must be transactional");
+        let heal = include_str!("../db/schema_check/ensure_heals.rs");
+        assert!(
+            heal.contains("AND NOT EXISTS (SELECT 1 FROM phantasi_items i WHERE i.id = d.item_id)"),
+            "boot heal must unpublish docs whose article is already gone"
+        );
     }
 
     #[test]

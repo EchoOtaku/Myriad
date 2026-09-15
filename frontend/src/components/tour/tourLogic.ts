@@ -13,6 +13,7 @@ import {
   predictExpandedControlPanelBox,
   predictRestoredLibraryDockBox,
 } from '../../utils/libraryDockStage'
+import { isJournalAppPath } from '../phantasi/logic/journalRoutes'
 import { getAgentPanelVisible } from '../agent-panel/agentPanelVisible'
 import { isAgentSettingsPath } from '../agent/settings/agentSettingsPath'
 import { expandCollapsibleAncestors } from '../settings/guides/guideAnchor'
@@ -208,7 +209,9 @@ export function pageNameForPath(
   const path = pathname.replaceAll(/\/+$/g, '') || '/'
   if ((path === '/' || path === '') && editingHome) return editMode
   if (path === '/library' || path.startsWith('/library')) return nav.library
-  if (path === '/phantasi' || path.startsWith('/phantasi')) return nav.phantasi
+  if (isJournalAppPath(path)) {
+    return nav.phantasi
+  }
   if (path === '/reports' || path.startsWith('/reports')) return nav.reports
   if (path === '/tapp' || path.startsWith('/tapp')) return nav.tapp
   if (path === '/agent/settings' || path.startsWith('/agent/settings')) {

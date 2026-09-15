@@ -70,7 +70,7 @@ describe('SpaDocument SEO slots', () => {
       'tapp',
       'tapp/store',
       'tapp/run',
-      'phantasi',
+      'journal',
     ]) {
       assert.match(spaPathsSource, new RegExp(`'${route}'`))
     }

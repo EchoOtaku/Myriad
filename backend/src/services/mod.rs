@@ -117,6 +117,7 @@ pub mod feishu_ws; // Feishu pbbp2 Frame + WSS session
 pub mod icon_service;
 pub mod image_cache; // e.g. Notion temporary URLs
 pub mod media_catalog;
+pub mod note_authors;
 pub mod note_publish;
 pub mod notion_service;
 pub mod qq_bot; // QQ C2C Gateway worker

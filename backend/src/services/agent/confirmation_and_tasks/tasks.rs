@@ -71,6 +71,9 @@ impl Agent {
         user_id: i32,
         recipe: &Recipe,
     ) -> Result<AgentResponse, String> {
+        if super::super::work_loop::is_work_recipe(recipe) {
+            return self.resume_work_loop(task_id, answer, user_id, None).await;
+        }
         let task_state = self
             .executor
             .resume_with_answer(task_id, answer, recipe, user_id, None)
@@ -152,6 +155,9 @@ impl Agent {
         progress_tx: tokio::sync::mpsc::Sender<types::AgentProgressEvent>,
         recipe: &Recipe,
     ) -> Result<AgentResponse, String> {
+        if super::super::work_loop::is_work_recipe(recipe) {
+            return self.resume_work_loop(task_id, answer, user_id, Some(progress_tx)).await;
+        }
         let task_state = self
             .executor
             .resume_with_answer(task_id, answer, recipe, user_id, Some(progress_tx))

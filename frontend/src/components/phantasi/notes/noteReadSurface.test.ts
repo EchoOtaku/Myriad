@@ -22,10 +22,11 @@ describe('decorateNoteReadSurface', () => {
   })
 
   it('预览和阅读器共用这一份，预览不再单独 highlight', () => {
-    assert.match(render, /decorateNoteReadSurface\(container, copyCodeLabel\)/)
+    assert.match(render, /decorateNoteReadSurface\(container, copyCodeLabel, copyTexLabel\)/)
     assert.match(editor, /decorateNoteReadSurface\(/)
     assert.match(editor, /getArticleProseClass\(/)
     assert.match(surface, /import\('\.\.\/\.\.\/\.\.\/utils\/codeHighlight'\)/)
+    assert.match(surface, /import\('\.\/renderMath'\)/)
     assert.doesNotMatch(surface, /import \{ highlightCodeBlocks \}/)
     assert.doesNotMatch(editor, /highlightCodeBlocks/)
     assert.doesNotMatch(postprocess, /highlightCodeBlocks/)

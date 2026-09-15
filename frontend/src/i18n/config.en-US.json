@@ -158,6 +158,7 @@
     "pageLabels": {
       "/": "Home",
       "/library": "Library",
+      "/journal": "Journal",
       "/phantasi": "Journal",
       "/reports": "Reports",
       "/config": "Settings",

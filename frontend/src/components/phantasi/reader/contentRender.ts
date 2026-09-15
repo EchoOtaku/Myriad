@@ -103,6 +103,7 @@ interface UseContentRenderOptions {
   ) => string
   theme: ThemeKey
   copyCodeLabel: string
+  copyTexLabel?: string
 }
 
 export function useContentRender({
@@ -116,6 +117,7 @@ export function useContentRender({
   highlightComments,
   theme,
   copyCodeLabel,
+  copyTexLabel,
 }: UseContentRenderOptions): string {
   // 正文版本变化才重建 base HTML；主题由 CSS 变量驱动，避免 iframe 被摘下。
   const baseContent = useMemo(
@@ -165,7 +167,7 @@ export function useContentRender({
       applyTextDecorations(container, displayHtml)
     } else {
       replaceNoteHtml(container, displayHtml)
-      decorateNoteReadSurface(container, copyCodeLabel)
+      decorateNoteReadSurface(container, copyCodeLabel, copyTexLabel)
     }
   }, [
     baseContent,
@@ -176,6 +178,7 @@ export function useContentRender({
     theme,
     item.content_revision,
     copyCodeLabel,
+    copyTexLabel,
   ])
 
   return baseContent

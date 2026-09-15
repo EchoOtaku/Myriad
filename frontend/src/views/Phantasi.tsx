@@ -13,7 +13,6 @@ import {
   useLocation,
   useMatch,
   useNavigate,
-  useSearchParams,
 } from 'react-router-dom'
 import {
   cancelArticlePrefetch,
@@ -69,6 +68,7 @@ import { usePhantasiSources } from '../components/phantasi/usePhantasiSources'
 import { usePhantasiStarred } from '../components/phantasi/usePhantasiStarred'
 import { usePhantasiSurface } from '../components/phantasi/usePhantasiSurface'
 import { usePhantasiWorkbench } from '../components/phantasi/usePhantasiWorkbench'
+import * as phantasiApi from '../services/phantasiApi'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { useSecondaryNav } from '../contexts/NavigationContext'
@@ -81,7 +81,6 @@ import {
   useModuleVisibilityPreferences,
 } from '../utils/moduleVisibility'
 import { showToast } from '../utils/toastManager'
-import { userFacingError } from '../utils/userFacingError'
 
 const EMPTY_ITEMS: PhantasiItem[] = []
 
@@ -98,17 +97,17 @@ export default function Phantasi() {
 
 function PhantasiSubjectPage() {
   usePhantasiScheduler()
-  const { t, format } = useI18n()
+  const { t } = useI18n()
   const navigate = useNavigate()
   const location = useLocation()
-  const itemIdParam = useMatch('/phantasi/item/:itemId')?.params.itemId
-  const [searchParams, setSearchParams] = useSearchParams()
+  const itemIdParam =
+    useMatch('/journal/articles/:itemId')?.params.itemId
   const { preferences: moduleVisibility } = useModuleVisibilityPreferences()
   const moduleOpenToAll = canAccessModuleVisibility(
     moduleVisibility.modules.phantasi,
     { isAuthenticated: false, isAdmin: false },
   )
-  const { isAuthenticated, isAdmin } = useAuth()
+  const { isAuthenticated, isAdmin, user } = useAuth()
   const readingList = useReadingListOptional()
   const setError = useCallback((message: string) => {
     showToast({ message, type: 'error', replaceKey: 'phantasi-page' })
@@ -132,7 +131,7 @@ function PhantasiSubjectPage() {
     [t.phantasi, isAuthenticated, isAdmin],
   )
   const { activeId, setActiveId, setExpanded } = useSecondaryNav({
-    routePath: '/phantasi',
+    routePath: '/journal',
     items: navItems,
     defaultActiveId: 'feeds',
     expandHint: t.phantasi.expandMenu,
@@ -145,8 +144,8 @@ function PhantasiSubjectPage() {
     sources.sources,
     activeId,
     setActiveId,
-    searchParams,
-    setSearchParams,
+    location.pathname,
+    navigate,
   )
 
   const list = usePhantasiItems(
@@ -170,6 +169,7 @@ function PhantasiSubjectPage() {
     navigate,
     setError,
     t.phantasi.loadArticlesFailed,
+    route.listPath,
   )
 
   usePhantasiAgentOpen({
@@ -224,6 +224,7 @@ function PhantasiSubjectPage() {
       mediaLoadFailed: t.errors.mediaLoadFailed,
       mediaUploadFailed: t.errors.mediaUploadFailed,
       mediaDeleteFailed: t.errors.mediaDeleteFailed,
+      commentDeleteFailed: t.phantasi.workbenchCommentDeleteFailed,
     },
     setError,
   )
@@ -277,6 +278,8 @@ function PhantasiSubjectPage() {
     moduleOpenToAll,
     t.nav.phantasiReading || t.nav.phantasi,
     t.widgets.phantasiDesc,
+    route.listPath,
+    route.viewMode,
   )
 
   useEffect(() => {
@@ -308,13 +311,14 @@ function PhantasiSubjectPage() {
     item.closeArticle()
     if (!itemIdParam) return
     if (shouldPopOpenedItem(location.state, openedId)) navigate(-1)
-    else navigate('/phantasi', { replace: true })
+    else navigate(route.listPath, { replace: true })
   }, [
     itemIdParam,
     item.selectedItem?.id,
     item.closeArticle,
     location.state,
     navigate,
+    route.listPath,
   ])
 
   const boardScroll = useRef<BoardScroll | null>(null)
@@ -469,8 +473,10 @@ function PhantasiSubjectPage() {
             onPane={route.setWorkbenchPane}
             docs={workbench.docs}
             media={workbench.media}
+            comments={workbench.comments}
             notesLoading={workbench.notesLoading}
             mediaLoading={workbench.mediaLoading}
+            commentsLoading={workbench.commentsLoading}
             busy={workbench.busy}
             sourceCount={sources.sources.length}
             sources={sources.sources}
@@ -491,6 +497,14 @@ function PhantasiSubjectPage() {
             }}
             onDeleteNotes={(docs) => {
               void workbench.removeNotes(docs).then(() => sources.reloadBoard())
+            }}
+            onDeleteComments={(ids) => {
+              void workbench.removeComments(ids)
+            }}
+            onOpenCommentItem={(id) => {
+              void item.openArticle((signal) =>
+                phantasiApi.getItem(id, undefined, { signal }),
+              )
             }}
             onUnschedule={workbench.unschedule}
             onUpload={workbench.upload}
@@ -592,6 +606,14 @@ function PhantasiSubjectPage() {
             sources={sources.sources}
             board={route.board}
             focusSourceId={route.railFocusId}
+            onRailFocus={(sourceId) => {
+              if (sourceId == null) {
+                route.focusSource(null)
+                return
+              }
+              const source = sources.sources.find((entry) => entry.id === sourceId)
+              if (source) route.focusSource(source)
+            }}
             onSourceClick={actions.openLatest}
             onRefreshSource={sources.refreshSource}
             onSourcesChange={sources.reloadBoard}
@@ -648,6 +670,7 @@ function PhantasiSubjectPage() {
             onToggleStar={handleReaderStar}
             isAuthenticated={isAuthenticated}
             isAdmin={isAdmin}
+            currentUserId={user?.id ?? null}
             sourceType={item.selectedItemSource?.source_type}
             onEditNote={
               isAdmin && item.selectedItemSource?.source_type === 'note'

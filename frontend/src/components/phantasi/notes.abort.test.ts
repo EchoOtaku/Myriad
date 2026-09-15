@@ -54,6 +54,9 @@ describe('note editor abort', () => {
       assert.match(chrome, new RegExp(`<${control}\\b`))
     }
     assert.match(chrome, /notePublishSettings/)
+    assert.match(chrome, /noteAuthors/)
+    assert.match(chrome, /noteAuthorOwner/)
+    assert.match(chrome, /authorLine/)
     for (const part of ['NoteTopBar', 'NoteBubble', 'NoteGutter', 'NoteFootBar', 'NoteSettingsDrawer', 'NoteByline']) {
       assert.match(chrome, new RegExp(`export function ${part}\\(`))
       assert.match(editor, new RegExp(`<${part}\\b`))

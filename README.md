@@ -274,7 +274,7 @@ MCP servers: admin AI settings; hot-reload on save.
 
 Internal name for the Journal (zh: 手帐, ja/zh-TW: 手帳, ko: 수첩). RSS, Notion, RSSHub. Default: anyone can read. Signed-in users mark read and save. Admins manage sources. Friend links can appear on the homepage.
 
-Own articles: `/phantasi/item/...`. Crawlers receive an HTML shell; browsers receive the app.
+Own articles: `/journal/articles/...`. Crawlers receive an HTML shell; browsers receive the app.
 
 ---
 

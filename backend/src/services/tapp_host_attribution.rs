@@ -418,6 +418,7 @@ mod tests {
             phantasi_permission("GET", "/api/phantasi/items/{id}/comments"),
             Some(TappPermission::PhantasiRead)
         );
+        assert_eq!(phantasi_permission("GET", "/api/phantasi/comments"), None);
         assert_eq!(
             phantasi_permission("POST", "/api/phantasi/items/{id}/comments"),
             Some(TappPermission::PhantasiCommentWrite)
@@ -427,8 +428,14 @@ mod tests {
             Some(TappPermission::PhantasiManage)
         );
         assert_eq!(phantasi_permission("GET", "/api/phantasi/ws"), None);
-        assert_eq!(phantasi_permission("POST", "/api/phantasi/sync-states"), None);
-        assert_eq!(phantasi_permission("GET", "/api/phantasi/rsshub/instances"), None);
+        assert_eq!(
+            phantasi_permission("POST", "/api/phantasi/sync-states"),
+            None
+        );
+        assert_eq!(
+            phantasi_permission("GET", "/api/phantasi/rsshub/instances"),
+            None
+        );
     }
 
     #[test]

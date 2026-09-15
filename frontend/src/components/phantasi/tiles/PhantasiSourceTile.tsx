@@ -1029,7 +1029,7 @@ export const PhantasiSourceWidget = memo(
           fontScale={fontScale}
           containerRef={containerRef}
           onOpenSource={
-            locked ? undefined : (s) => navigate(`/phantasi?source=${s.id}`)
+            locked ? undefined : (s) => navigate(`/journal/feeds/${s.id}`)
           }
         />
       </div>

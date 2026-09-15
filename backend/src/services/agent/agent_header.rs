@@ -63,7 +63,7 @@ pub(crate) struct PendingRecipeConfirmation {
 
 /// Agent 主入口
 ///
-/// Chat vs Work。Work 路径是 Planner → Executor。
+/// Chat vs Work。Work uses a persistent model/tool loop; saved Recipes use Executor.
 pub struct Agent {
     /// 规划器（请求 Pro；`resolve_ai_config` 可回落 Standard）
     pub(crate) planner: super::planner::Planner,

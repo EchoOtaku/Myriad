@@ -1,6 +1,6 @@
 /** 可视层的输入规则：行首敲 Markdown 记号加空格 / 回车，就地变成对应的块。 */
 
-type InputRule =
+export type InputRule =
   | { kind: 'heading'; level: number }
   | { kind: 'bullet' }
   | { kind: 'ordered' }
@@ -8,6 +8,7 @@ type InputRule =
   | { kind: 'quote' }
   | { kind: 'code'; lang: string }
   | { kind: 'divider' }
+  | { kind: 'display-math' }
 
 /** 空格触发。`text` 是块开头到光标的内容，不含刚敲的空格。 */
 export function matchSpaceRule(text: string): InputRule | null {
@@ -24,6 +25,7 @@ export function matchSpaceRule(text: string): InputRule | null {
 export function matchEnterRule(text: string): InputRule | null {
   const fence = /^```([\w+-]*)$/.exec(text.trim())
   if (fence) return { kind: 'code', lang: fence[1] ?? '' }
+  if (text.trim() === '$$') return { kind: 'display-math' }
   if (/^(?:-{3,}|\*{3,}|_{3,})$/.test(text.trim())) return { kind: 'divider' }
   return null
 }

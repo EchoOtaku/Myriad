@@ -9,6 +9,7 @@ interface UseContentEventsOptions {
   setFocusedCommentIds: (ids: number[]) => void
   contentRef: React.RefObject<HTMLDivElement | null>
   comments: CommentItem[]
+  commentsEnabled: boolean
   isAuthenticated: boolean
   showCommentPopup: boolean
   showAnnotations: boolean
@@ -46,6 +47,7 @@ export function useContentEvents({
   setFocusedCommentIds,
   contentRef,
   comments,
+  commentsEnabled,
   isAuthenticated,
   showCommentPopup,
   showAnnotations,
@@ -240,7 +242,7 @@ export function useContentEvents({
   }, [contentReady])
 
   const handleTextSelection = useCallback(() => {
-    if (!isAuthenticated) return
+    if (!commentsEnabled || !isAuthenticated) return
 
     const selection = window.getSelection()
     if (!selection || selection.isCollapsed || !selection.rangeCount) {
@@ -284,10 +286,10 @@ export function useContentEvents({
     }
 
     setShowCommentPopup(true)
-  }, [isAuthenticated])
+  }, [commentsEnabled, isAuthenticated])
 
   useEffect(() => {
-    if (!isAuthenticated) return
+    if (!commentsEnabled || !isAuthenticated) return
 
     let selectionTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -300,7 +302,7 @@ export function useContentEvents({
       document.removeEventListener('mouseup', handleMouseUp)
       if (selectionTimer) clearTimeout(selectionTimer)
     }
-  }, [isAuthenticated, handleTextSelection])
+  }, [commentsEnabled, isAuthenticated, handleTextSelection])
 
   useEffect(() => {
     if (!showCommentPopup) return

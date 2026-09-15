@@ -437,10 +437,6 @@ pub async fn load_local_reference(url: &str) -> Result<ImageReference, ImageGene
     ImageReference::new(bytes, media_type)
 }
 
-pub async fn persist_generated(generated: &GeneratedImage) -> Result<String, ImageGenerationError> {
-    Ok(persist_generated_with_status(generated).await?.url)
-}
-
 pub async fn persist_generated_with_status(
     generated: &GeneratedImage,
 ) -> Result<PersistedGeneratedImage, ImageGenerationError> {

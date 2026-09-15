@@ -43,6 +43,7 @@ pub mod turn;
 pub mod types;
 pub mod ui_analysis;
 pub mod web_search;
+pub(crate) mod work_loop;
 
 #[cfg(test)]
 mod behavior_contract;

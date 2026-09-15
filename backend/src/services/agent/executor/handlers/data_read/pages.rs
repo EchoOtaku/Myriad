@@ -11,7 +11,7 @@ pub(super) async fn execute_phantasi_page_content(
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
     use crate::services::agent::executor::utils::{
-        phantasi_category_token_matches, normalize_phantasi_category_filter,
+        normalize_phantasi_category_filter, phantasi_category_token_matches,
     };
 
     let level = params
@@ -177,7 +177,7 @@ pub(super) async fn execute_phantasi_page_content(
                     "currentFilter": filter,
                     "availableFilters": ["all", "unread", "starred"],
                     "canGoBack": true,
-                    "parentPath": "/phantasi"
+                    "parentPath": format!("/journal/feeds/{}", source.id)
                 }
             }))
         }
@@ -273,7 +273,7 @@ pub(super) async fn execute_phantasi_page_content(
                 },
                 "navigation": {
                     "canGoBack": true,
-                    "parentPath": format!("/phantasi/source/{}", item.source_id)
+                    "parentPath": format!("/journal/feeds/{}", item.source_id)
                 },
                 "actions": {
                     "available": [

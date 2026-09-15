@@ -79,7 +79,10 @@ export function ReaderTopicField({
       setDraft('')
       setOpen(false)
     } catch (error) {
-      showToast(userFacingError(error, t.phantasi.topicSaveFailed), 'error')
+      showToast({
+        message: userFacingError(error, t.phantasi.topicSaveFailed),
+        type: 'error',
+      })
     } finally {
       setBusy(false)
     }
@@ -93,7 +96,10 @@ export function ReaderTopicField({
       setDraft('')
       setOpen(false)
     } catch (error) {
-      showToast(userFacingError(error, t.phantasi.topicRecommendFailed), 'error')
+      showToast({
+        message: userFacingError(error, t.phantasi.topicRecommendFailed),
+        type: 'error',
+      })
     } finally {
       setBusy(false)
     }

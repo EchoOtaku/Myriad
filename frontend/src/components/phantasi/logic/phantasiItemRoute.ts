@@ -1,4 +1,5 @@
 import { phantasiOwnItemPath } from '../constants'
+import { JOURNAL_ROOT } from './journalRoutes'
 
 export function phantasiOpenedItemState(id: number): { phantasiOpenedItem: number } {
   return { phantasiOpenedItem: id }
@@ -54,6 +55,7 @@ export function restoreAfterFailedOpen(
   currentParam: string | undefined,
   openedId: number | undefined,
   kept: { id: number; own: boolean } | null,
+  listPath = JOURNAL_ROOT,
 ): { path: string; param: string | undefined } | null {
   if (!shouldLeaveFailedItemRoute(requestedParam, currentParam, openedId)) {
     return null
@@ -61,5 +63,5 @@ export function restoreAfterFailedOpen(
   if (kept?.own) {
     return { path: phantasiOwnItemPath(kept.id), param: String(kept.id) }
   }
-  return { path: '/phantasi', param: undefined }
+  return { path: listPath, param: undefined }
 }

@@ -5,6 +5,7 @@ export type { SettingGuideEntry }
 export interface PhantasiGuidesCatalog {
   overview: SettingGuideEntry
   notes: SettingGuideEntry
+  comments: SettingGuideEntry
   media: SettingGuideEntry
   sources: SettingGuideEntry
   add: SettingGuideEntry

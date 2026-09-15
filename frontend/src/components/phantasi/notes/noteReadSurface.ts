@@ -14,6 +14,7 @@ const COPIED_ICON =
 export function decorateNoteReadSurface(
   root: HTMLElement,
   copyCodeLabel: string,
+  copyTexLabel?: string,
 ): void {
   for (const img of root.querySelectorAll('img')) {
     if (img.closest('.note-widget, .phantasi-embed-card, .phantasi-embed-exempt')) continue
@@ -80,6 +81,16 @@ export function decorateNoteReadSurface(
     .then(({ highlightCodeBlocks }) => highlightCodeBlocks(root))
     .catch((err) => {
       console.error('[note-read] highlight failed', err)
+    })
+
+  void import('./renderMath')
+    .then(async ({ hydrateMath }) => {
+      await import('katex/dist/katex.min.css')
+      await import('katex/contrib/copy-tex')
+      hydrateMath(root, copyTexLabel)
+    })
+    .catch((err) => {
+      console.error('[note-read] math failed', err)
     })
 
   for (const iframe of root.querySelectorAll('iframe')) {

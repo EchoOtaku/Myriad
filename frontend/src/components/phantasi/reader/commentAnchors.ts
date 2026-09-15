@@ -11,7 +11,7 @@ interface TextAnchor {
 }
 
 const MEDIA_EXEMPT =
-  'script, style, button, iframe, [data-embed-exempt], .note-widget, .phantasi-embed-card, .phantasi-embed-exempt, .phantasi-bilibili-embed, .phantasi-netease-music, .phantasi-steam-game, .phantasi-bilibili-video'
+  'script, style, button, iframe, [data-embed-exempt], .note-widget, .phantasi-embed-card, .phantasi-embed-exempt, .phantasi-bilibili-embed, .phantasi-netease-music, .phantasi-steam-game, .phantasi-bilibili-video, .math, .katex, .note-math, .notion-equation, .notion-inline-equation'
 
 /** Marks stay elements: overlap, keyboard, and media exemption need DOM. */
 export function cssCustomHighlightAvailable(): boolean {

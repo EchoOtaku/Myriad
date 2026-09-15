@@ -1,4 +1,5 @@
 import type { MediaAsset } from '../../services/mediaApi'
+import type { CommentItem } from '../../services/phantasiApi'
 import type { PhantasiNoteDoc } from '../../types/phantasi'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as phantasiApi from '../../services/phantasiApi'
@@ -16,16 +17,20 @@ export function usePhantasiWorkbench(
     mediaLoadFailed: string
     mediaUploadFailed: string
     mediaDeleteFailed: string
+    commentDeleteFailed: string
   },
   setError: (message: string) => void,
 ) {
   const [docs, setDocs] = useState<PhantasiNoteDoc[]>([])
   const [media, setMedia] = useState<MediaAsset[]>([])
+  const [comments, setComments] = useState<CommentItem[]>([])
   const [notesLoading, setNotesLoading] = useState(false)
   const [mediaLoading, setMediaLoading] = useState(false)
+  const [commentsLoading, setCommentsLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const notesTurn = useRef(new RequestTurn())
   const mediaTurn = useRef(new RequestTurn())
+  const commentsTurn = useRef(new RequestTurn())
   const labelsRef = useRef(labels)
   labelsRef.current = labels
 
@@ -78,6 +83,31 @@ export function usePhantasiWorkbench(
     void loadMedia()
     return () => mediaTurn.current.cancel()
   }, [docsEpoch, loadMedia])
+
+  const loadComments = useCallback(async () => {
+    if (!enabled) {
+      setComments([])
+      setCommentsLoading(false)
+      return
+    }
+    const signal = commentsTurn.current.begin()
+    setCommentsLoading(true)
+    try {
+      const next = await phantasiApi.listAdminComments({ signal })
+      if (!signal.aborted) setComments(next.comments ?? [])
+    } catch (err) {
+      if (signal.aborted) return
+      setError(userFacingError(err, labelsRef.current.loadFailed))
+      setComments([])
+    } finally {
+      if (!signal.aborted) setCommentsLoading(false)
+    }
+  }, [enabled, setError])
+
+  useEffect(() => {
+    void loadComments()
+    return () => commentsTurn.current.cancel()
+  }, [docsEpoch, loadComments])
 
   const removeNotes = useCallback(
     async (docs: PhantasiNoteDoc[]) => {
@@ -165,18 +195,57 @@ export function usePhantasiWorkbench(
     [setError],
   )
 
+  const removeComments = useCallback(
+    async (ids: number[]) => {
+      if (ids.length === 0) return
+      setBusy(true)
+      try {
+        const results = await Promise.allSettled(
+          ids.map(async (id) => {
+            await phantasiApi.deleteComment(id)
+            return id
+          }),
+        )
+        const dropped = new Set(
+          results.flatMap((result) =>
+            result.status === 'fulfilled' ? [result.value] : [],
+          ),
+        )
+        if (dropped.size > 0) {
+          setComments((prev) => prev.filter((row) => !dropped.has(row.id)))
+        }
+        if (results.some((result) => result.status === 'rejected')) {
+          const failed = results.find((result) => result.status === 'rejected')
+          setError(
+            userFacingError(
+              failed && failed.status === 'rejected' ? failed.reason : null,
+              labelsRef.current.commentDeleteFailed,
+            ),
+          )
+        }
+      } finally {
+        setBusy(false)
+      }
+    },
+    [setError],
+  )
+
   return {
     docs,
     media,
+    comments,
     notesLoading,
     mediaLoading,
+    commentsLoading,
     busy,
     removeNote,
     removeNotes,
+    removeComments,
     unschedule,
     upload,
     removeMedia,
     reloadNotes: loadNotes,
     reloadMedia: loadMedia,
+    reloadComments: loadComments,
   }
 }

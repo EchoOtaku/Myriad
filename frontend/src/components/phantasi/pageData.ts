@@ -14,11 +14,14 @@ import {
 import {
   noteSourceKey,
   pickHomeBoardNotes,
+  toHomeBoardNote,
 } from './logic/homeBoard'
 
 export const FEED_STORIES_CACHE_PREFIX = 'phantasi:feed-stories:'
 export const HOME_NOTES_CACHE_PREFIX = 'phantasi:home-notes:'
+export const BOARD_NOTES_CACHE_PREFIX = 'phantasi:board-notes:'
 const BOARD_PAGE_TTL = 60_000
+const BOARD_NOTES_PAGE = 100
 
 interface CachedFeedStories {
   stamp: number
@@ -99,6 +102,36 @@ export async function loadHomeBoardNotes(
       per_page: 8,
     })
     return pickHomeBoardNotes(res.items, sources)
+  }
+  const notes = await requestCache.fetch(cacheKey, load, BOARD_PAGE_TTL)
+  signal?.throwIfAborted()
+  return notes
+}
+
+/** 笔记墙：该笔记源上全部已发布条目。不是首页精选那 3 条。 */
+export async function loadBoardNotes(
+  sources: Array<{ id: number; source_type: string }>,
+  signal?: AbortSignal,
+): Promise<HomeBoardNote[]> {
+  const ids = sources
+    .filter((source) => source.source_type === 'note')
+    .map((source) => source.id)
+    .toSorted((left, right) => left - right)
+  if (ids.length === 0) return []
+  const cacheKey = `${BOARD_NOTES_CACHE_PREFIX}${ids.join(',')}`
+  const load = async () => {
+    const pages = await Promise.all(
+      ids.map((sourceId) =>
+        phantasiApi.getItemPreviews({
+          source_id: sourceId,
+          sort_order: 'desc',
+          per_page: BOARD_NOTES_PAGE,
+        }),
+      ),
+    )
+    return pages
+      .flatMap((page) => page.items.map(toHomeBoardNote))
+      .toSorted((left, right) => (right.published_at ?? 0) - (left.published_at ?? 0))
   }
   const notes = await requestCache.fetch(cacheKey, load, BOARD_PAGE_TTL)
   signal?.throwIfAborted()

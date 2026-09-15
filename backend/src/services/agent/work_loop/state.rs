@@ -1,0 +1,136 @@
+use super::*;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashSet, VecDeque};
+
+pub(super) const MAX_ROUNDS: u32 = 32;
+pub(super) const MAX_CALLS: usize = 64;
+pub(super) const MAX_INPUT_CHARS: usize = 1_000_000;
+pub(super) const MAX_ACTIVE_MS: u64 = 20 * 60 * 1000;
+pub(super) const RESULT_CHARS: usize = 12_000;
+
+#[derive(Clone, Serialize, Deserialize)]
+pub(super) struct PendingCall {
+    pub call: ToolCall,
+    /// Resolved at model-response time; tool discovery cannot reinterpret it.
+    pub capability_id: Option<String>,
+    pub approval: Option<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub(super) enum Wait {
+    Answer { call: ToolCall },
+    Approval { fingerprint: String },
+    Interaction { call: ToolCall, step_id: String },
+    Recovery,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub(super) struct Checkpoint {
+    pub version: u32,
+    pub revision: u64,
+    pub lease_id: String,
+    pub user_id: i32,
+    pub request: UserRequest,
+    pub task: TaskState,
+    pub history: Vec<ToolMessage>,
+    pub selected: Vec<String>,
+    pub pending: VecDeque<PendingCall>,
+    pub inflight: Option<String>,
+    pub wait: Option<Wait>,
+    pub denied: HashSet<String>,
+    pub attempted_effects: HashSet<String>,
+    pub call_counts: std::collections::HashMap<String, u32>,
+    pub rounds: u32,
+    pub calls: usize,
+    pub input_chars: usize,
+    pub active_ms: u64,
+    pub plan: Value,
+    pub final_text: String,
+}
+
+impl Checkpoint {
+    pub fn context(&self) -> ExecutionContext {
+        self.task.execution_context.clone().unwrap_or_default()
+    }
+
+    pub fn tool_result(&mut self, call: ToolCall, output: &Value) {
+        self.history.push(ToolMessage::Tool { call, content: preview(output, RESULT_CHARS) });
+    }
+
+    pub fn budget_error(&self) -> Option<&'static str> {
+        if self.rounds >= MAX_ROUNDS { Some("The task reached its model-turn limit") }
+        else if self.calls >= MAX_CALLS { Some("The task reached its tool-call limit") }
+        else if self.input_chars >= MAX_INPUT_CHARS { Some("The task reached its context budget") }
+        else if self.active_ms >= MAX_ACTIVE_MS { Some("The task reached its active-time limit") }
+        else { None }
+    }
+
+    pub fn validate_answer(&self, answer: &UserAnswer) -> Result<(), String> {
+        let question = self.task.pending_question.as_ref().ok_or("This task has no pending question")?;
+        if self.task.status != TaskStatus::WaitingForInput || answer.task_id != self.task.task_id || answer.question_id != question.question_id {
+            return Err("The answer does not match the current task question".into());
+        }
+        if question.is_expired(chrono::Utc::now()) { return Err("The question has expired".into()); }
+        if answer.answer.chars().count() > 16_000 { return Err("The answer is too long".into()); }
+        if matches!(self.wait, Some(Wait::Approval { .. })) && !answer.skipped && !matches!(answer.answer.as_str(), "yes" | "no") {
+            return Err("Select yes or no for this operation".into());
+        }
+        Ok(())
+    }
+
+    /// Trim result bodies, never assistant signatures or unresolved call pairs.
+    /// Full results remain in the server checkpoint and read_result can page them.
+    pub fn prune_results(&mut self) {
+        let older = self.history.len().saturating_sub(8);
+        for message in self.history.iter_mut().take(older) {
+            if let ToolMessage::Tool { call, content } = message {
+                if content.chars().count() > 1200 {
+                    *content = format!("{}\n[Saved result {}: use read_result to retrieve more.]",content.chars().take(1000).collect::<String>(),call.id);
+                }
+            }
+        }
+    }
+}
+
+pub(super) fn preview(value: &Value, limit: usize) -> String {
+    let text = value.to_string();
+    if text.chars().count() <= limit { return text; }
+    format!("{}\n[Result truncated; use read_result with the call id to inspect the saved output.]",text.chars().take(limit).collect::<String>())
+}
+
+pub(super) fn fingerprint(capability: &Capability, params: &Value) -> String {
+    use sha2::{Digest, Sha256};
+    // Binds approval to arguments AND the tool's current policy/schema.
+    hex::encode(Sha256::digest(serde_json::to_vec(&json!({"capability":capability,"params":params})).unwrap()))
+}
+
+pub(super) fn operation_key(id: &str, params: &Value) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(json!({"tool":id,"params":params}).to_string().as_bytes()))
+}
+
+pub(crate) fn is_work_recipe(recipe: &Recipe) -> bool {
+    recipe.metadata.get("work_loop_version") == Some(&json!(1))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn approval_cannot_survive_argument_or_policy_changes() {
+        let mut cap = Capability::default();
+        cap.id = "note.create".into();
+        let first = fingerprint(&cap,&json!({"title":"one"}));
+        assert_ne!(first,fingerprint(&cap,&json!({"title":"two"})));
+        cap.required_permissions.push("new:permission".into());
+        assert_ne!(first,fingerprint(&cap,&json!({"title":"one"})));
+    }
+    #[test]
+    fn bounded_results_preserve_unicode_and_indicate_retrieval() {
+        let value = json!("東京".repeat(30));
+        let text = preview(&value,10);
+        assert!(text.starts_with("\"東京東京"));
+        assert!(text.contains("read_result"));
+    }
+}

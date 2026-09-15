@@ -105,6 +105,12 @@ pub struct CommentResponse {
     /// 回复数量
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reply_count: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub item_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_name: Option<String>,
 }
 
 impl From<Model> for CommentResponse {
@@ -130,6 +136,9 @@ impl From<Model> for CommentResponse {
             updated_at: m.updated_at.timestamp_millis(),
             replies: None,
             reply_count: None,
+            item_title: None,
+            source_id: None,
+            source_name: None,
         }
     }
 }
@@ -146,7 +155,7 @@ pub struct CreateCommentRequest {
     pub color: Option<String>,
     /// 父评论 ID（回复时指定）
     pub parent_id: Option<i32>,
-    /// 是否公开批注（默认 false；与 FE CreateCommentRequest.is_public 对齐）
+    /// 是否公开。缺省公开。
     #[serde(default)]
     pub is_public: Option<bool>,
 }

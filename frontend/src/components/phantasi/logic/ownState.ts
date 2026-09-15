@@ -1,4 +1,4 @@
-/** 源未解析前禁止据此清掉 /phantasi/item/*。 */
+/** 源未解析前禁止据此清掉 /journal/articles/*。 */
 
 import { isOwnPhantasiSource } from '../constants'
 

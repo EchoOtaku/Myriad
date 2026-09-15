@@ -51,7 +51,7 @@ test('认不出来的类型按退不回去算', () => {
 test('换过路由的操作能原路退回', () => {
   const offer = planAgentUndo({
     action: action('navigate', '/library'),
-    beforePath: '/phantasi?tag=ai',
+    beforePath: '/journal?tag=ai',
     afterPath: '/library',
     nowMs: NOW,
   })
@@ -59,27 +59,27 @@ test('换过路由的操作能原路退回', () => {
   assert.ok(offer)
   assert.equal(offer.actionType, 'navigate')
   assert.equal(offer.inverse.type, 'navigate')
-  assert.equal(offer.inverse.path, '/phantasi?tag=ai')
+  assert.equal(offer.inverse.path, '/journal?tag=ai')
   assert.equal(offer.expiresAtMs, NOW + UNDO_WINDOW_MS)
 })
 
 test('打开文章也算换路由，同样能退', () => {
   const offer = planAgentUndo({
     action: action('phantasi_open_article'),
-    beforePath: '/phantasi',
-    afterPath: '/phantasi/item/42',
+    beforePath: '/journal',
+    afterPath: '/journal/articles/42',
     nowMs: NOW,
   })
   assert.equal(offer?.actionType, 'phantasi_open_article')
-  assert.equal(offer?.inverse.path, '/phantasi')
+  assert.equal(offer?.inverse.path, '/journal')
 })
 
 test('路由没真的变过就没有可撤销的东西', () => {
   assert.equal(
     planAgentUndo({
-      action: action('navigate', '/phantasi'),
-      beforePath: '/phantasi',
-      afterPath: '/phantasi',
+      action: action('navigate', '/journal'),
+      beforePath: '/journal',
+      afterPath: '/journal',
       nowMs: NOW,
     }),
     null,
@@ -97,7 +97,7 @@ test('退不回去的操作不给假的撤销', () => {
     assert.equal(
       planAgentUndo({
         action: action(type),
-        beforePath: '/phantasi',
+        beforePath: '/journal',
         afterPath: '/library',
         nowMs: NOW,
       }),
@@ -113,7 +113,7 @@ test('只是问了一句的操作也没有可撤销的东西', () => {
     assert.equal(
       planAgentUndo({
         action: action(type),
-        beforePath: '/phantasi',
+        beforePath: '/journal',
         afterPath: '/library',
         nowMs: NOW,
       }),

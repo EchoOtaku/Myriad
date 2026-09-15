@@ -329,7 +329,7 @@ export const FriendLinksWidget = memo(
             })
           },
         )
-        navigate('/phantasi?board=sites')
+        navigate('/journal/friends')
       }
     }, [isEditMode, isPreview, navigate])
 

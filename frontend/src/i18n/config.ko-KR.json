@@ -158,6 +158,7 @@
     "pageLabels": {
       "/": "홈",
       "/library": "라이브러리",
+      "/journal": "수첩",
       "/phantasi": "수첩",
       "/reports": "리포트",
       "/config": "설정",

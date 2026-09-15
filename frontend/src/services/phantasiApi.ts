@@ -1,11 +1,13 @@
 import type {
   AddRsshubInstanceRequest,
   AddSourceRequest,
+  CommentItem,
   PhantasiCategoriesResponse,
   PhantasiCategory,
   PhantasiItem,
   PhantasiItemsQuery,
   PhantasiItemsResponse,
+  PhantasiNoteAuthor,
   PhantasiNoteDoc,
   PhantasiNoteDocInput,
   PhantasiNoteInput,
@@ -20,6 +22,8 @@ import type {
   UpdateSourceRequest,
 } from '../types/phantasi'
 import { API_URL } from '../config'
+
+export type { CommentItem }
 import { hostLocaleHeaders } from '../i18n/hostLocaleHeaders'
 import { phantasiItemState } from '../utils/phantasiItemState'
 import { PhantasiRevisionChain } from '../utils/phantasiRevisionChain'
@@ -207,6 +211,7 @@ export function invalidateSourcesCache(): void {
 function invalidateBoardPageCache(): void {
   requestCache.deleteByPrefix('phantasi:feed-stories:')
   requestCache.deleteByPrefix('phantasi:home-notes:')
+  requestCache.deleteByPrefix('phantasi:board-notes:')
 }
 
 export async function addSource(
@@ -741,6 +746,41 @@ export async function unscheduleNoteDoc(id: number): Promise<PhantasiNoteDoc> {
   return data.doc
 }
 
+export async function listNoteAuthorCandidates(
+  signal?: AbortSignal,
+): Promise<PhantasiNoteAuthor[]> {
+  const data = await request<{
+    success: boolean
+    candidates: PhantasiNoteAuthor[]
+  }>('/notes/author-candidates', { signal })
+  return data.candidates
+}
+
+export async function addNoteAuthor(
+  docId: number,
+  userId: number,
+): Promise<PhantasiNoteAuthor[]> {
+  const data = await request<{ success: boolean; authors: PhantasiNoteAuthor[] }>(
+    `/notes/docs/${docId}/authors`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId }),
+    },
+  )
+  return data.authors
+}
+
+export async function removeNoteAuthor(
+  docId: number,
+  userId: number,
+): Promise<PhantasiNoteAuthor[]> {
+  const data = await request<{ success: boolean; authors: PhantasiNoteAuthor[] }>(
+    `/notes/docs/${docId}/authors/${userId}`,
+    { method: 'DELETE' },
+  )
+  return data.authors
+}
+
 export function noteDocWsUrl(id: number): string {
   const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
   return `${proto}://${window.location.host}/api/phantasi/notes/docs/${id}/ws`
@@ -1012,29 +1052,6 @@ export function createPhantasiWebSocket(
   return ws
 }
 
-export interface CommentItem {
-  id: number
-  item_id: number
-  user_id: number
-  user_name?: string
-  user_display_name?: string
-  user_avatar?: string
-  selected_text: string
-  comment: string
-  start_offset?: number
-  end_offset?: number
-  context_before?: string
-  context_after?: string
-  color?: string
-  is_public: boolean
-  parent_id?: number
-  content_revision?: number
-  created_at: number
-  updated_at: number
-  replies?: CommentItem[]
-  reply_count?: number
-}
-
 interface CommentsResponse {
   success: boolean
   comments: CommentItem[]
@@ -1058,6 +1075,18 @@ interface UpdateCommentRequest {
   comment?: string
   color?: string
   is_public?: boolean
+}
+
+export async function listAdminComments(
+  opts?: { q?: string; sourceId?: number; itemId?: number; signal?: AbortSignal },
+): Promise<{ success: boolean; comments: CommentItem[] }> {
+  const query = new URLSearchParams()
+  const q = opts?.q?.trim()
+  if (q) query.set('q', q)
+  if (opts?.sourceId != null) query.set('source_id', String(opts.sourceId))
+  if (opts?.itemId != null) query.set('item_id', String(opts.itemId))
+  const suffix = query.size > 0 ? `?${query}` : ''
+  return request(`/comments${suffix}`, { signal: opts?.signal })
 }
 
 export async function getComments(

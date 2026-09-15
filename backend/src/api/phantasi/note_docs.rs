@@ -22,6 +22,11 @@ use super::note_collab::{NoteCollabEvent, note_collab_hub};
 use crate::error::HttpError;
 use crate::middleware::auth::Claims;
 use crate::models::entities::phantasi_note_docs;
+use crate::services::note_authors::{
+    NoteAuthorFace, add_note_author, ensure_note_author,
+    list_note_author_candidates as load_note_author_candidates, load_authors_for_docs,
+    remove_note_author, sync_published_author_line,
+};
 use crate::services::note_publish::{
     datetime_to_millis, millis_to_datetime, publish_doc, upsert_doc_for_published_item,
 };
@@ -37,10 +42,21 @@ pub(crate) struct NoteDocWriteRequest {
     pub revision: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+pub(crate) struct NoteAuthorWriteRequest {
+    pub user_id: i32,
+}
+
 #[derive(Debug, Serialize)]
 pub(crate) struct NoteDocResponse {
     pub id: i32,
     pub item_id: Option<i32>,
+    pub user_id: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_display_name: Option<String>,
+    pub authors: Vec<NoteAuthorFace>,
     pub title: String,
     pub content_md: String,
     pub topic: Option<String>,
@@ -57,6 +73,10 @@ fn to_response(doc: phantasi_note_docs::Model) -> NoteDocResponse {
     NoteDocResponse {
         id: doc.id,
         item_id: doc.item_id,
+        user_id: doc.user_id,
+        user_name: None,
+        user_display_name: None,
+        authors: Vec::new(),
         title: doc.title,
         content_md: doc.content_md,
         topic: doc.topic,
@@ -68,6 +88,50 @@ fn to_response(doc: phantasi_note_docs::Model) -> NoteDocResponse {
         last_error: doc.last_error,
         updated_at: datetime_to_millis(doc.updated_at),
     }
+}
+
+fn note_docs_with_authors(
+    docs: Vec<phantasi_note_docs::Model>,
+    authors: std::collections::HashMap<i32, Vec<NoteAuthorFace>>,
+) -> Vec<NoteDocResponse> {
+    docs.into_iter()
+        .map(|doc| {
+            let list = authors.get(&doc.id).cloned().unwrap_or_default();
+            attach_authors(to_response(doc), list)
+        })
+        .collect()
+}
+
+fn attach_authors(mut row: NoteDocResponse, authors: Vec<NoteAuthorFace>) -> NoteDocResponse {
+    if let Some(owner) = authors
+        .iter()
+        .find(|author| author.role == "owner")
+        .or_else(|| authors.first())
+    {
+        row.user_id = owner.user_id;
+        row.user_name = owner.user_name.clone();
+        row.user_display_name = owner.user_display_name.clone();
+    }
+    row.authors = authors;
+    row
+}
+
+async fn respond_doc(
+    db: &DatabaseConnection,
+    doc: phantasi_note_docs::Model,
+) -> Result<NoteDocResponse, HttpError> {
+    let mut authors = load_authors_for_docs(db, &[doc.id]).await?;
+    let list = authors.remove(&doc.id).unwrap_or_default();
+    Ok(attach_authors(to_response(doc), list))
+}
+
+async fn credit_and_respond(
+    db: &DatabaseConnection,
+    doc: phantasi_note_docs::Model,
+    actor_id: i32,
+) -> Result<NoteDocResponse, HttpError> {
+    ensure_note_author(db, doc.id, actor_id, doc.user_id).await?;
+    respond_doc(db, doc).await
 }
 
 /// 存草稿必须带 revision；对不上就是 409，不带是 400。不给「跳过锁」的口子。
@@ -118,9 +182,11 @@ pub(crate) async fn list_note_docs(
         .all(&db)
         .await
         .map_err(|e| phantasi_store_http("list note docs", e))?;
+    let ids: Vec<i32> = docs.iter().map(|doc| doc.id).collect();
+    let authors = load_authors_for_docs(&db, &ids).await?;
     Ok(Json(json!({
         "success": true,
-        "docs": docs.into_iter().map(to_response).collect::<Vec<_>>(),
+        "docs": note_docs_with_authors(docs, authors),
     })))
 }
 
@@ -152,7 +218,10 @@ pub(crate) async fn create_note_doc(
         .insert(&db)
         .await
         .map_err(|e| phantasi_store_http("create note doc", e))?;
-    Ok(Json(json!({ "success": true, "doc": to_response(doc) })))
+    Ok(Json(json!({
+        "success": true,
+        "doc": credit_and_respond(&db, doc, user_id).await?,
+    })))
 }
 
 /// `GET /notes/docs/{id}`
@@ -163,7 +232,7 @@ pub(crate) async fn get_note_doc(
 ) -> Result<Json<serde_json::Value>, HttpError> {
     get_admin_user_id_from_headers(&headers, &db).await?;
     let doc = find_doc(&db, id).await?;
-    Ok(Json(json!({ "success": true, "doc": to_response(doc) })))
+    Ok(Json(json!({ "success": true, "doc": respond_doc(&db, doc).await? })))
 }
 
 /// `GET /notes/docs/for-item/{item_id}` — 给已发布笔记找或建对应文档。
@@ -179,7 +248,7 @@ pub(crate) async fn get_note_doc_for_item(
         .await
         .map_err(|e| phantasi_store_http("find note doc", e))?
     {
-        return Ok(Json(json!({ "success": true, "doc": to_response(doc) })));
+        return Ok(Json(json!({ "success": true, "doc": respond_doc(&db, doc).await? })));
     }
     let item = crate::models::entities::phantasi_items::Entity::find_by_id(item_id)
         .one(&db)
@@ -201,7 +270,10 @@ pub(crate) async fn get_note_doc_for_item(
         Some(datetime_to_millis(item.published_at)),
     )
     .await?;
-    Ok(Json(json!({ "success": true, "doc": to_response(doc) })))
+    Ok(Json(json!({
+        "success": true,
+        "doc": credit_and_respond(&db, doc, user_id).await?,
+    })))
 }
 
 /// `PUT /notes/docs/{id}` — 存草稿。带 revision，对不上 409。
@@ -269,7 +341,10 @@ pub(crate) async fn update_note_doc(
             image: saved.image.clone(),
         },
     );
-    Ok(Json(json!({ "success": true, "doc": to_response(saved) })))
+    Ok(Json(json!({
+        "success": true,
+        "doc": credit_and_respond(&db, saved, user_id).await?,
+    })))
 }
 
 /// `DELETE /notes/docs/{id}` — 删云端文档。已发布的文章另走 DELETE /notes/{item}。
@@ -317,13 +392,13 @@ pub(crate) async fn publish_note_doc(
     let published_at = req
         .published_at
         .or(doc.published_at.map(datetime_to_millis));
-    doc.user_id = user_id;
+    ensure_note_author(&db, doc.id, user_id, doc.user_id).await?;
     let (item, saved) = publish_doc(&db, doc, published_at).await?;
     Ok(Json(json!({
         "success": true,
         "id": item.id,
         "link": item.link,
-        "doc": to_response(saved),
+        "doc": respond_doc(&db, saved).await?,
     })))
 }
 
@@ -334,7 +409,7 @@ pub(crate) async fn schedule_note_doc(
     Path(id): Path<i32>,
     Json(req): Json<NoteDocWriteRequest>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    get_admin_user_id_from_headers(&headers, &db).await?;
+    let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
     let doc = find_doc(&db, id).await?;
     if doc.status == NoteDocStatus::Published.as_str() {
         return Err(phantasi_http_err(
@@ -377,7 +452,10 @@ pub(crate) async fn schedule_note_doc(
         .update(&db)
         .await
         .map_err(|e| phantasi_store_http("schedule note doc", e))?;
-    Ok(Json(json!({ "success": true, "doc": to_response(saved) })))
+    Ok(Json(json!({
+        "success": true,
+        "doc": credit_and_respond(&db, saved, user_id).await?,
+    })))
 }
 
 /// `POST /notes/docs/{id}/unschedule`
@@ -386,10 +464,13 @@ pub(crate) async fn unschedule_note_doc(
     headers: axum::http::HeaderMap,
     Path(id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, HttpError> {
-    get_admin_user_id_from_headers(&headers, &db).await?;
+    let user_id = get_admin_user_id_from_headers(&headers, &db).await?;
     let doc = find_doc(&db, id).await?;
     if doc.status != NoteDocStatus::Scheduled.as_str() {
-        return Ok(Json(json!({ "success": true, "doc": to_response(doc) })));
+        return Ok(Json(json!({
+            "success": true,
+            "doc": credit_and_respond(&db, doc, user_id).await?,
+        })));
     }
     let mut active: phantasi_note_docs::ActiveModel = doc.clone().into();
     active.status = Set(NoteDocStatus::Draft.as_str().to_string());
@@ -401,7 +482,47 @@ pub(crate) async fn unschedule_note_doc(
         .update(&db)
         .await
         .map_err(|e| phantasi_store_http("unschedule note doc", e))?;
-    Ok(Json(json!({ "success": true, "doc": to_response(saved) })))
+    Ok(Json(json!({
+        "success": true,
+        "doc": credit_and_respond(&db, saved, user_id).await?,
+    })))
+}
+
+/// `GET /notes/author-candidates`
+pub(crate) async fn list_note_author_candidates(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    get_admin_user_id_from_headers(&headers, &db).await?;
+    Ok(Json(json!({
+        "success": true,
+        "candidates": load_note_author_candidates(&db).await?,
+    })))
+}
+
+/// `POST /notes/docs/{id}/authors`
+pub(crate) async fn add_note_doc_author(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Path(id): Path<i32>,
+    Json(req): Json<NoteAuthorWriteRequest>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    get_admin_user_id_from_headers(&headers, &db).await?;
+    let doc = find_doc(&db, id).await?;
+    let authors = add_note_author(&db, doc.id, doc.user_id, req.user_id, doc.item_id).await?;
+    Ok(Json(json!({ "success": true, "authors": authors })))
+}
+
+/// `DELETE /notes/docs/{id}/authors/{user_id}`
+pub(crate) async fn remove_note_doc_author(
+    State(db): State<DatabaseConnection>,
+    headers: axum::http::HeaderMap,
+    Path((id, user_id)): Path<(i32, i32)>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    get_admin_user_id_from_headers(&headers, &db).await?;
+    let doc = find_doc(&db, id).await?;
+    let authors = remove_note_author(&db, doc.id, user_id, doc.item_id).await?;
+    Ok(Json(json!({ "success": true, "authors": authors })))
 }
 
 /// `GET /notes/docs/{id}/ws`
@@ -422,16 +543,24 @@ pub(crate) async fn note_doc_websocket(
         .parse::<i32>()
         .map_err(|_| phantasi_http_err(StatusCode::UNAUTHORIZED, "Unauthorized"))?;
     let username = claims.username.clone();
-    let _ = find_doc(&db, id).await?;
-    Ok(ws.on_upgrade(move |socket| handle_note_doc_socket(socket, id, user_id, username)))
+    let doc = find_doc(&db, id).await?;
+    let owner_id = doc.user_id;
+    let item_id = doc.item_id;
+    Ok(ws.on_upgrade(move |socket| {
+        handle_note_doc_socket(socket, db, id, user_id, owner_id, item_id, username)
+    }))
 }
 
 async fn handle_note_doc_socket(
     mut socket: WebSocket,
+    db: DatabaseConnection,
     doc_id: i32,
     user_id: i32,
+    owner_id: i32,
+    item_id: Option<i32>,
     username: String,
 ) {
+    let mut credited = false;
     let hub = note_collab_hub();
     let mut rx = hub.subscribe(doc_id);
     let peer_id = uuid::Uuid::new_v4().to_string();
@@ -486,6 +615,15 @@ async fn handle_note_doc_socket(
                         incoming.revision = None;
                         if incoming.kind.is_empty() {
                             incoming.kind = "presence".into();
+                        }
+                        if incoming.kind == "edit" && !credited {
+                            credited = true;
+                            if ensure_note_author(&db, doc_id, user_id, owner_id)
+                                .await
+                                .is_ok()
+                            {
+                                let _ = sync_published_author_line(&db, item_id, doc_id).await;
+                            }
                         }
                         hub.publish(doc_id, incoming);
                     }
@@ -577,5 +715,24 @@ mod tests {
             !create.contains("write_published_item"),
             "cloud drafts must stay out of phantasi_items"
         );
+    }
+
+    #[test]
+    fn publish_does_not_overwrite_owner() {
+        let src = include_str!("note_docs.rs");
+        let start = src
+            .find("pub(crate) async fn publish_note_doc")
+            .expect("publish_note_doc");
+        let body = &src[start..];
+        let end = body[1..]
+            .find("\npub(crate) async fn ")
+            .map(|index| index + 1)
+            .unwrap_or(body.len());
+        let publish = &body[..end];
+        assert!(
+            !publish.contains("doc.user_id = user_id"),
+            "publish must keep the original owner"
+        );
+        assert!(publish.contains("ensure_note_author"));
     }
 }

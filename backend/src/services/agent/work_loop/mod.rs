@@ -1,0 +1,325 @@
+//! Work is an observation-driven tool loop. Fixed Recipes retain their executor.
+//! Model messages are server-only; public task state is a projection, not the
+//! continuation. Waiting, effects and model boundaries are durable checkpoints.
+mod state;
+mod store;
+mod tools;
+
+use super::{Agent, capability, executor, types::*};
+use crate::services::analyzer::tool_calling::{ToolCall, ToolDefinition, ToolMessage};
+use serde_json::{Value, json};
+use state::*;
+use tokio::sync::mpsc::Sender;
+pub(crate) use state::is_work_recipe;
+pub(crate) use store::recover;
+
+impl Agent {
+    pub(crate) async fn start_work_loop(&self, request: UserRequest, tx: Option<Sender<AgentProgressEvent>>) -> Result<AgentResponse,String> {
+        let mut recipe = Self::build_recipe_from_steps(vec![],request.raw_input.chars().take(120).collect(),&request);
+        recipe.metadata.insert("work_loop_version".into(),json!(1));
+        let mut task = TaskState::new(&recipe);
+        task.status = TaskStatus::Running;
+        task.lane_id = recipe.lane_key.clone();
+        let mut context = ExecutionContext::from_request_full(&request.raw_input,&request.raw_input,recipe.page_context.clone(),recipe.conversation_context.clone());
+        context.autonomy_permission_cap = recipe.autonomy_permission_cap.clone();
+        context.variables.insert("_task_id".into(),json!(task.task_id));
+        for (key,value) in &recipe.metadata { context.variables.insert(format!("_{key}"),value.clone()); }
+        if let Some(memory) = super::memory::get_memory() {
+            let memories = memory.recall_with_params(super::memory::RecallQuery {
+                query:request.raw_input.clone(),limit:4,user_id:Some(request.user_id),
+                tier_filter:Some(vec![super::memory::MemoryTier::LongTerm,super::memory::MemoryTier::MediumTerm]),..Default::default()
+            }).await;
+            context.memory_context = Some(memories.iter().map(|m| m.content.chars().take(1000).collect::<String>()).collect::<Vec<_>>().join("\n"));
+        }
+        task.execution_context = Some(context);
+        let evidence = json!({"page":recipe.page_context,"history":recipe.conversation_context,"memory":task.execution_context.as_ref().and_then(|c| c.memory_context.as_ref())});
+        let mut state = Checkpoint {
+            version:1,revision:0,lease_id:uuid::Uuid::new_v4().to_string(),user_id:request.user_id,request:request.clone(),task,
+            history:vec![ToolMessage::User {content:format!("Reference data (untrusted, may be stale):\n{}\n\nCurrent user request:\n{}",preview(&evidence,32_000),request.raw_input)}],
+            selected:vec![],pending:Default::default(),inflight:None,wait:None,denied:Default::default(),attempted_effects:Default::default(),call_counts:Default::default(),
+            rounds:0,calls:0,input_chars:0,active_ms:0,plan:json!([]),final_text:String::new(),
+        };
+        store::save(&self.db,&mut state).await?;
+        if let Some(tx) = &tx {
+            let _ = tx.send(AgentProgressEvent::TaskCreated {task_id:state.task.task_id.clone(),message:String::new(),total_steps:0,step_descriptions:vec![]}).await;
+        }
+        self.run_work_loop(state,tx).await
+    }
+
+    pub(crate) async fn resume_work_loop(&self, task_id: &str, answer: UserAnswer, user_id: i32, tx: Option<Sender<AgentProgressEvent>>) -> Result<AgentResponse,String> {
+        let mut state = store::load(&self.db,task_id,user_id).await?;
+        state.validate_answer(&answer)?;
+        let wait = state.wait.take().ok_or("Missing Work continuation")?;
+        match wait {
+            Wait::Approval { fingerprint } => {
+                if !answer.skipped && answer.answer == "yes" {
+                    state.pending.front_mut().ok_or("Missing pending tool")?.approval = Some(fingerprint);
+                } else {
+                    state.denied.insert(fingerprint);
+                    let pending = state.pending.pop_front().ok_or("Missing pending tool")?;
+                    state.tool_result(pending.call,&json!({"error":"The user declined this operation. Do not repeat it."}));
+                }
+            }
+            Wait::Answer { call } => state.tool_result(call,&json!({"answer":answer.answer,"skipped":answer.skipped})),
+            Wait::Interaction { call, step_id } => {
+                let result: Value = serde_json::from_str(&answer.answer).map_err(|_| "Expected a structured Tapp result")?;
+                if let Some(step) = state.task.step_results.get_mut(&step_id) { step.output = Some(result.clone()); }
+                state.task.execution_context.as_mut().unwrap().add_output(&step_id,result.clone());
+                state.tool_result(call,&result);
+            }
+            Wait::Recovery => {
+                if let Some(id) = state.inflight.take() {
+                    if state.pending.front().is_some_and(|p| p.call.id == id) {
+                        let pending = state.pending.pop_front().unwrap();
+                        state.tool_result(pending.call,&json!({"error":"Tool outcome unknown after interruption. Do not repeat the action; inspect its target first.","user_observation":answer.answer}));
+                    }
+                }
+                state.history.push(ToolMessage::User {content:format!("Continue from the saved progress. User update: {}",answer.answer)});
+            }
+        }
+        state.task.status = TaskStatus::Running;
+        state.task.pending_question = None;
+        state.lease_id = uuid::Uuid::new_v4().to_string();
+        // Atomic revision fencing claims this answer before any model/tool call.
+        store::save(&self.db,&mut state).await?;
+        self.run_work_loop(state,tx).await
+    }
+
+    async fn run_work_loop(&self, mut state: Checkpoint, tx: Option<Sender<AgentProgressEvent>>) -> Result<AgentResponse,String> {
+        let _lease = store::lease(self.db.clone(),state.task.task_id.clone(),state.lease_id.clone());
+        let emitter = executor::events::StepEventEmitter::new(tx.clone());
+        super::merope::mark_activity(&self.db,state.user_id,"working").await;
+        let result = match crate::services::ai::create_ai_analyzer_for_tier(crate::config::ModelTier::Pro).await {
+            Some(analyzer) => self.drive_work_loop(&mut state,tx.clone(),&emitter,&analyzer).await,
+            None => Err("No Work model is configured".into()),
+        };
+        if let Err(error) = result {
+            if executor::is_cancelled(&state.task.task_id).await { state.task.status = TaskStatus::Cancelled; }
+            else { state.task.status = TaskStatus::Failed; }
+            state.task.error = Some(error.clone());
+            state.final_text = error;
+            state.task.completed_at = Some(chrono::Utc::now());
+            // A stale worker must not overwrite a newer continuation.
+            store::save(&self.db,&mut state).await?;
+        }
+        super::merope::mark_activity(&self.db,state.user_id,"idle").await;
+        if state.task.status == TaskStatus::WaitingForInput {
+            if let Some(question) = &state.task.pending_question { emitter.waiting_for_input(&state.task.task_id,question).await; }
+        } else if let Some(tx) = &tx {
+            let _ = tx.send(AgentProgressEvent::SummaryToken {token:state.final_text.clone(),done:false}).await;
+            let _ = tx.send(AgentProgressEvent::SummaryToken {token:String::new(),done:true}).await;
+        }
+        if matches!(state.task.status,TaskStatus::Completed | TaskStatus::Failed) {
+            if let Some(recipe) = &state.task.recipe {
+                super::agent_footer::record_execution_memory(super::agent_footer::MemoryRecordParams {
+                    user_id:state.user_id,user_input:&state.request.raw_input,recipe,
+                    planner_steps_len:state.task.step_results.len(),success:state.task.status == TaskStatus::Completed,
+                    error_msg:state.task.error.as_deref(),log_prefix:"work-loop:",conversation_context:None,step_results:Some(&state.task.step_results),
+                }).await;
+            }
+        }
+        let data = self.extract_final_result(&state.task);
+        let frontend_action = if tx.is_none() { self.extract_frontend_action(&data) } else { None };
+        Ok(AgentResponse {
+            response_type:if state.task.status == TaskStatus::Failed {AgentResponseType::Error} else if state.task.status == TaskStatus::WaitingForInput {AgentResponseType::TaskCompleted} else {AgentResponseType::Answer},
+            message:state.final_text,data:Some(data),data_display:None,suggestions:vec![],task:Some(state.task),confirmation:None,frontend_action,performance:None,
+        })
+    }
+
+    async fn drive_work_loop(&self,state: &mut Checkpoint,tx: Option<Sender<AgentProgressEvent>>,emitter: &executor::events::StepEventEmitter, analyzer: &crate::services::analyzer::AiAnalyzer) -> Result<(),String> {
+        loop {
+            if executor::is_cancelled(&state.task.task_id).await { return Err("Task cancelled".into()); }
+            if let Some(error) = state.budget_error() { return Err(error.into()); }
+            let steering = executor::take_steering(&self.db,&state.task.task_id).await;
+            if !steering.is_empty() {
+                // Resolve the previous assistant batch before injecting user messages.
+                while let Some(pending) = state.pending.pop_front() { state.tool_result(pending.call,&json!({"cancelled":"Superseded by a new user instruction before execution"})); }
+                let instruction = steering.join("\n");
+                state.history.push(ToolMessage::User {content:instruction.clone()});
+                if let Some(context) = state.task.execution_context.as_mut() { context.user_intent.push_str(&format!("\nUser update: {instruction}")); }
+                store::save(&self.db,state).await?;
+            }
+            if let Some(pending) = state.pending.front().cloned() {
+                let started = std::time::Instant::now();
+                let paused = self.work_tool(state,pending,emitter).await?;
+                state.active_ms = state.active_ms.saturating_add(started.elapsed().as_millis() as u64);
+                store::save(&self.db,state).await?;
+                if paused { return Ok(()); }
+                continue;
+            }
+            let granted = tools::granted_for(state,&self.db).await;
+            state.prune_results();
+            let definitions = tools::definitions(state,&granted).await;
+            let system = tools::system_prompt(state,&granted).await;
+            let input_chars = system.chars().count()+serde_json::to_string(&state.history).unwrap().chars().count()+serde_json::to_string(&definitions).unwrap().chars().count();
+            if state.input_chars.saturating_add(input_chars) > MAX_INPUT_CHARS { return Err("The task reached its context budget".into()); }
+            state.input_chars += input_chars;
+            state.rounds += 1;
+            store::save(&self.db,state).await?;
+            let started = std::time::Instant::now();
+            let turn = {
+            let mut visible = String::new();
+            let mut last_emit = std::time::Instant::now();
+            let progress = state.task.progress;
+            let completed_steps = state.calls as u32;
+            let inference = analyzer.tool_turn(&system,&state.history,&definitions,8192,|text| {
+                visible.push_str(&text);
+                let snapshot = visible.clone();
+                let tx = tx.clone();
+                let emit = last_emit.elapsed().as_millis() >= 150;
+                if emit { last_emit = std::time::Instant::now(); }
+                async move { if emit { if let Some(tx) = tx { let _ = tx.send(AgentProgressEvent::Progress {progress,completed_steps,total_steps:0,message:snapshot}).await; } } }
+            });
+            tokio::pin!(inference);
+            let remaining = MAX_ACTIVE_MS.saturating_sub(state.active_ms);
+            let deadline = tokio::time::sleep(std::time::Duration::from_millis(remaining));
+            tokio::pin!(deadline);
+            let mut tick = tokio::time::interval(std::time::Duration::from_millis(500));
+            let turn = loop {
+                tokio::select! {
+                    result = &mut inference => break result.map_err(|error| error.to_string())?,
+                    _ = &mut deadline => return Err("The task reached its active-time limit".into()),
+                    _ = tick.tick() => if executor::is_cancelled(&state.task.task_id).await { return Err("Task cancelled".into()); },
+                }
+            };
+            turn
+            };
+            state.active_ms = state.active_ms.saturating_add(started.elapsed().as_millis() as u64);
+            if turn.calls.is_empty() {
+                state.final_text = turn.text.clone();
+                state.history.push(ToolMessage::Assistant {turn});
+                state.task.status = TaskStatus::Completed;
+                state.task.progress = 100;
+                state.task.completed_at = Some(chrono::Utc::now());
+                store::save(&self.db,state).await?;
+                return Ok(());
+            }
+            if !turn.text.is_empty() {
+                if let Some(tx) = &tx {
+                    let _ = tx.send(AgentProgressEvent::Progress {progress:state.task.progress,completed_steps:state.calls as u32,total_steps:0,message:turn.text.clone()}).await;
+                }
+            }
+            for call in &turn.calls {
+                if state.task.step_results.contains_key(&call.id) { return Err("Model reused an executed call id".into()); }
+                let capability_id = state.selected.iter().find(|id| tools::tool_name(id) == call.name).cloned();
+                state.pending.push_back(PendingCall {call:call.clone(),capability_id,approval:None});
+            }
+            state.history.push(ToolMessage::Assistant {turn});
+            store::save(&self.db,state).await?;
+        }
+    }
+
+    async fn work_tool(&self,state: &mut Checkpoint,pending: PendingCall,emitter: &executor::events::StepEventEmitter) -> Result<bool,String> {
+        let call = &pending.call;
+        let params: Value = match serde_json::from_str(&call.arguments) {
+            Ok(Value::Object(params)) => Value::Object(params),
+            _ => { finish_call(state,&pending,Err("Tool arguments must be a JSON object".into()),0); return Ok(false); }
+        };
+        let count_key = operation_key(&call.name,&params);
+        if state.call_counts.get(&count_key).copied().unwrap_or(0) >= 3 {
+            finish_call(state,&pending,Err("Repeated identical calls made no progress. Change the approach or explain the blocker.".into()),0);
+            return Ok(false);
+        }
+        let granted = tools::granted_for(state,&self.db).await;
+        let Some(id) = &pending.capability_id else {
+            let output = tools::local_call(state,call,&params,&granted).await;
+            if call.name == "ask_user" && output.is_ok() {
+                let question = UserQuestion::free_text(params["question"].as_str().unwrap(),params["context"].as_str().unwrap_or(""),true);
+                state.pending.pop_front(); state.calls += 1;
+                state.wait = Some(Wait::Answer {call:call.clone()});
+                state.task.set_pending_question(question);
+                return Ok(true);
+            }
+            finish_call(state,&pending,output,0);
+            return Ok(false);
+        };
+        let capability = capability::get_capability_by_id(id).await;
+        let Some(capability) = capability else { finish_call(state,&pending,Err("Tool is no longer available".into()),0); return Ok(false); };
+        let mut params_map: std::collections::HashMap<String,Value> = serde_json::from_value(params.clone()).unwrap();
+        let permission = super::planner::capability_allowed_for_grants(id,&params_map,&granted).await;
+        let validation = myriad_json_schema::validate_inline_json_value(&tools::schema(&capability.input_schema),&params);
+        if let Err(error) = permission.and(validation) { finish_call(state,&pending,Err(error),0); return Ok(false); }
+        let mut context = state.context();
+        if context.autonomy_permission_cap.is_some() {
+            let grant = super::consciousness::AutonomyGrantStore::new(self.db.clone()).find(state.user_id).await.map_err(|_| "Unable to verify autonomy grant")?;
+            if let Some(error) = super::consciousness::autonomy_execute_permission_error(state.user_id,grant.as_ref(),&granted.iter().cloned().collect::<Vec<_>>(),context.autonomy_permission_cap.as_deref(),id,&capability.required_permissions) {
+                finish_call(state,&pending,Err(error),0); return Ok(false);
+            }
+        }
+        executor::execute_step::inject_request_context_params(id,&mut params_map,context.variables.get("_current_route"),context.page_context.as_ref(),context.variables.get("_music_status"),context.variables.get("_window_state"));
+        let fingerprint = fingerprint(&capability,&json!(params_map));
+        let effect_key = operation_key(id,&json!(params_map));
+        if state.denied.contains(&fingerprint) || state.attempted_effects.contains(&effect_key) {
+            finish_call(state,&pending,Err("This operation was declined or already attempted. Inspect the existing result instead of repeating it.".into()),0); return Ok(false);
+        }
+        if let Some((message,risk)) = capability::capability_requires_confirmation_async(id).await {
+            if state.user_id == super::SYSTEM_USER_ID {
+                if matches!(risk,RiskLevel::High | RiskLevel::Critical) { finish_call(state,&pending,Err("Unattended execution cannot authorize this operation".into()),0); return Ok(false); }
+            } else if pending.approval.as_deref() != Some(&fingerprint) {
+                let mut question = UserQuestion::confirmation(&message,&format!("{}\n{}",capability.name,preview(&json!(params_map),6000)));
+                question.expires_at = Some(chrono::Utc::now()+chrono::Duration::minutes(if matches!(risk,RiskLevel::High | RiskLevel::Critical) {5} else {15}));
+                state.wait = Some(Wait::Approval {fingerprint});
+                state.task.set_pending_question(question);
+                return Ok(true);
+            }
+        }
+        let step = RecipeStep {id:call.id.clone(),order:state.calls as u32,capability_id:id.clone(),action:context.user_intent.clone(),params:params_map.clone(),depends_on:vec![],on_failure:FailureStrategy::Abort,retry:None,timeout_ms:None,model_tier:None,generator:None};
+        // Conservative: only declared DataRead operations are replay-safe. Unknown
+        // MCP/network/write outcomes need reconciliation, never automatic retries.
+        let effectful = capability.category != CapabilityCategory::DataRead;
+        if effectful { state.attempted_effects.insert(effect_key); }
+        state.inflight = Some(call.id.clone());
+        store::save(&self.db,state).await?;
+        emitter.step_started(&call.id,state.calls as u32,(state.calls+state.pending.len()) as u32,&capability.name,capability.description.clone()).await;
+        let started = std::time::Instant::now();
+        let tier = executor::Executor::resolve_tier_with_breaker(id,None);
+        let analyzer = crate::services::ai::create_ai_analyzer_for_tier(tier).await;
+        let handler = executor::handlers::HandlerContext {db:&self.db,ai_analyzer:analyzer.as_ref(),user_id:state.user_id,task_id:Some(state.task.task_id.clone()),execution_context:Some(context.clone()),autonomy_permission_cap:context.autonomy_permission_cap.clone()};
+        let timeout = super::executor_utils_pure::step_timeout_secs(None,capability.estimated_duration_ms,super::executor_utils_pure::category_timeout_fallback_secs(&capability.category),capability.requires_ai);
+        let output = executor::executor_footer::execute_capability_with_timeout_and_cancel(id,&step.action,&capability.category,&params_map,&handler,timeout,Some(&state.task.task_id)).await;
+        let duration = started.elapsed().as_millis() as u64;
+        let output = match output {
+            Ok(output) => {
+                let output = executor::frontend_ack::publish_and_await_snapshots(emitter,&state.task.task_id,&call.id,id,state.calls as u32,duration,output,&mut context,true).await;
+                executor::Executor::apply_output_contract(&step,&capability,&output).map(|_| output)
+            }
+            Err(error) => Err(error),
+        };
+        if let Some(recipe) = state.task.recipe.as_mut() { recipe.steps.push(step); }
+        state.task.execution_context = Some(context);
+        executor::Executor::record_step_to_breaker(tier,output.is_ok());
+        if let Ok(output) = &output {
+            state.task.execution_context.as_mut().unwrap().add_output(&call.id,output.clone());
+            if let Some(question) = executor::executor_footer::tapp_interaction_wait_question(output) {
+                state.task.step_results.insert(call.id.clone(),StepResult {step_id:call.id.clone(),success:true,output:Some(output.clone()),error:None,duration_ms:duration,retry_count:0});
+                state.wait = Some(Wait::Interaction {call:call.clone(),step_id:call.id.clone()});
+                state.pending.pop_front(); state.calls += 1; state.inflight = None;
+                state.task.set_pending_question(question);
+                return Ok(true);
+            }
+        }
+        if let Err(error) = &output { emitter.step_failed(&call.id,state.calls as u32,duration,error).await; }
+        if effectful && output.is_err() && !executor::is_cancelled(&state.task.task_id).await {
+            // Preserve the pending call and its in-flight identity for reconciliation.
+            state.wait = Some(Wait::Recovery);
+            state.task.set_pending_question(UserQuestion::free_text("The operation did not return a verified result. Reply to continue and check its outcome before taking further action.",&capability.name,true));
+            return Ok(true);
+        }
+        state.inflight = None;
+        finish_call(state,&pending,output,duration);
+        Ok(false)
+    }
+}
+
+fn finish_call(state: &mut Checkpoint,pending: &PendingCall,result: Result<Value,String>,duration_ms: u64) {
+    if let Ok(params) = serde_json::from_str::<Value>(&pending.call.arguments) {
+        *state.call_counts.entry(operation_key(&pending.call.name,&params)).or_default() += 1;
+    }
+    let (output,error) = match result {Ok(output)=>(Some(output),None),Err(error)=>(None,Some(error))};
+    let response = output.clone().unwrap_or_else(|| json!({"error":error}));
+    state.task.step_results.insert(pending.call.id.clone(),StepResult {step_id:pending.call.id.clone(),success:error.is_none(),output,error,duration_ms,retry_count:0});
+    state.tool_result(pending.call.clone(),&response);
+    state.pending.pop_front();
+    state.calls += 1;
+    state.task.current_step = state.calls;
+}

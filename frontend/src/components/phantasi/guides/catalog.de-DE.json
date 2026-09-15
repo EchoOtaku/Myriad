@@ -1,15 +1,21 @@
 {
   "overview": {
-    "what": "Admin-Konsole. Überblick zeigt Entwürfe und anstehende Veröffentlichungen, dann Notizen, Medien, Abos und Import/Export.",
-    "chain": "① Links eine Seite wählen.\n② Im Überblick Entwürfe fortsetzen oder anstehende Veröffentlichungen prüfen.\n③ Notizen schreiben, löschen oder umkategorisieren.\n④ Abos hinzufügen, aktualisieren oder sortieren.",
+    "what": "Admin-Konsole. Überblick zeigt Entwürfe und anstehende Veröffentlichungen, dann Notizen, Kommentare, Medien, Abos und Import/Export.",
+    "chain": "① Links eine Seite wählen.\n② Im Überblick Entwürfe fortsetzen oder anstehende Veröffentlichungen prüfen.\n③ Notizen schreiben, löschen oder umkategorisieren.\n④ Kommentare prüfen und löschen.\n⑤ Abos hinzufügen, aktualisieren oder sortieren.",
     "frontend": "Abo-Wand, Notizwand und Freunde-Seite nutzen hier geänderte Quellen und Kategorien.",
     "notes": "Nur für Administratoren."
   },
   "notes": {
     "what": "Notizenliste. Öffnen, löschen, Zeitplan aufheben, Kategorie im Stapel setzen.",
-    "chain": "① Titel öffnen zum Bearbeiten.\n② Der Bearbeiten-Modus wählt mehrere aus.\n③ Höchstens zwei Kategorien.",
+    "chain": "① Titel öffnen zum Bearbeiten.\n② Nach Status, Kategorie oder Co-Autor filtern.\n③ Der Bearbeiten-Modus wählt mehrere aus. Höchstens zwei Kategorien.",
     "frontend": "Veröffentlichte Notizen gehen an die Notizwand. Ins öffentliche RSS nur nach dem Einschalten. Geplante gehen pünktlich raus.",
     "notes": "Text und Cover bleiben im Editor. Eine dritte Kategorie meldet: voll."
+  },
+  "comments": {
+    "what": "Kommentare an Notizen. Wer die Notiz sieht, kann sie lesen. Admins können löschen.",
+    "chain": "① Text, Auszug oder Titel suchen.\n② Eine Zeile öffnet die Notiz.\n③ Der Bearbeiten-Modus löscht mehrere.",
+    "frontend": "Nur der Notizleser zeigt Kommentare. Abonnierte Artikel nicht.",
+    "notes": "Schreiben braucht Login. Gäste lesen nur."
   },
   "media": {
     "what": "Hochgeladene Bilder und Videos plus erzeugte Dateien.",

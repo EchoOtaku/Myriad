@@ -1162,6 +1162,33 @@ html.dark .phantasi-note__menu {
   gap: 0.5rem;
 }
 
+.phantasi-note__authors {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.phantasi-note__author {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: var(--note-ctl-h);
+  padding: 0 0.15rem 0 0.65rem;
+  border: 1px solid var(--note-line);
+  border-radius: 0.65rem;
+  background: var(--note-fill);
+}
+
+.phantasi-note__author-role {
+  padding-right: 0.5rem;
+  color: var(--note-ink-3);
+  font-size: 0.8125rem;
+}
+
 .phantasi-note__cover {
   display: flex;
   flex-direction: column;

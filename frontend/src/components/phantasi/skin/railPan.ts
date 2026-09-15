@@ -12,6 +12,7 @@ import {
   cloneStoryCardInner,
   storyCardFace,
   storyCardInnerHtml,
+  type StoryCardFace,
 } from './storyFace'
 
 /** 比对话轨略慢，才能看见下一张进来。 */
@@ -384,13 +385,7 @@ const livePaintCols: number[] = []
 
 function paintStoryShell(
   el: HTMLElement,
-  face: {
-    id: number
-    unread: boolean
-    cover: string | null
-    hue: string | null
-    summary: string
-  },
+  face: StoryCardFace,
   html: string,
   hold: boolean,
   showStar: boolean,

@@ -158,6 +158,7 @@
     "pageLabels": {
       "/": "Accueil",
       "/library": "Bibliothèque",
+      "/journal": "Journal",
       "/phantasi": "Journal",
       "/reports": "Rapports",
       "/config": "Réglages",
