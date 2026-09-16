@@ -13,6 +13,7 @@ import {
 } from '../constants'
 import { isSiteSource, visitFriendHref } from '../logic/board'
 import { PhantasiRailTitle } from '../ui/PhantasiRailTitle'
+import { clearPhantasiStoryPeeks, usePhantasiPeekLane } from '../ui/StoryCard'
 import { SiteCard } from '../ui/SiteCard'
 import { PhantasiStory } from './PhantasiStory'
 import { friendsSiteAutoOn, friendsStoryAutoOn } from './railCruise'
@@ -136,6 +137,18 @@ export default function PhantasiFriends({
     siteCruise.onIdle,
     loopOn ? loopCols : 0,
   )
+  const storiesById = useMemo(
+    () => new Map(stories.map((item) => [item.id, item])),
+    [stories],
+  )
+  const peekLane = usePhantasiPeekLane({
+    onPeek: (preview) => {
+      const item = storiesById.get(preview.id)
+      if (item) onPeekItem?.(item)
+    },
+    onPeekEnd,
+    blocked: () => isEditMode || !onPeekItem,
+  })
   usePhantasiRailPan(
     itemsViewRef,
     itemsTrackRef,
@@ -146,7 +159,11 @@ export default function PhantasiFriends({
     itemsApiRef,
     true,
     undefined,
-    storyCruise.onGrab,
+    () => {
+      clearPhantasiStoryPeeks(itemsTrackRef.current)
+      onPeekEnd?.()
+      storyCruise.onGrab()
+    },
     storyCruise.onIdle,
     storyLoopOn ? storyLoopCols : 0,
   )
@@ -221,7 +238,9 @@ export default function PhantasiFriends({
           <div
             className="phantasi-friends__items"
             ref={itemsViewRef}
+            data-phantasi-peek-lane
             aria-labelledby={itemsTitleId}
+            {...peekLane}
           >
             <div
               className="phantasi-friends__items-track"
@@ -243,8 +262,6 @@ export default function PhantasiFriends({
                   railCol={railCol}
                   arrive={copy === 0 && index < 8 ? index : undefined}
                   onOpen={() => openArticle(item)}
-                  onPeek={() => onPeekItem?.(item)}
-                  onPeekEnd={onPeekEnd}
                   onToggleStar={
                     onToggleStar && !isEditMode
                       ? (story) => onToggleStar(story)

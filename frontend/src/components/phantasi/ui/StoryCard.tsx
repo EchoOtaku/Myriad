@@ -1,13 +1,20 @@
 /** 不认识 phantasi_items。 */
 
-import type { CSSProperties, SyntheticEvent } from 'react'
+import type {
+  CSSProperties,
+  FocusEvent as ReactFocusEvent,
+  PointerEvent as ReactPointerEvent,
+  SyntheticEvent,
+} from 'react'
 
-import { forwardRef } from 'react'
-import { scheduleTask } from '../../../hooks/animation/core'
+import { forwardRef, useCallback, useRef } from 'react'
+import { scheduleTask } from '../../../hooks/animation'
 import { whenPhantasiMotionIdle } from '../../../hooks/animation/pages/phantasiMotion'
 import { cx } from './cx'
 import {
   notePeekPointer,
+  peekGoesToNav,
+  peekLaneIsLive,
   peekLaneKeepsAir,
   peekLaneIsSwapping,
   peekNodeFromPoint,
@@ -46,6 +53,21 @@ export function releasePhantasiStoryPeek(
   onEnd?.()
 }
 
+export function dropPhantasiPeekLane(
+  root: EventTarget | null,
+  related: EventTarget | null,
+  onEnd?: () => void,
+): void {
+  const host =
+    root && typeof (root as Element).querySelectorAll === 'function'
+      ? (root as Element)
+      : null
+  clearPhantasiStoryPeeks(host)
+  if (peekLaneKeepsAir(root, related)) return
+  if (peekSwapHoldsAir(root)) return
+  onEnd?.()
+}
+
 export function resumePhantasiStoryPeek(
   onPeek?: (item: PeekStoryPreview) => void,
 ): boolean {
@@ -65,6 +87,104 @@ export function cancelPhantasiPeekResume(): void {
   peekResumeGen += 1
   peekResumeStop?.()
   peekResumeStop = null
+}
+
+export function usePhantasiPeekLane({
+  onPeek,
+  onPeekEnd,
+  blocked,
+}: {
+  onPeek?: (item: PeekStoryPreview) => void
+  onPeekEnd?: () => void
+  blocked?: () => boolean
+}): {
+  onPointerOver: (event: ReactPointerEvent<HTMLElement>) => void
+  onPointerOut: (event: ReactPointerEvent<HTMLElement>) => void
+  onPointerLeave: (event: ReactPointerEvent<HTMLElement>) => void
+  onPointerCancel: (event: ReactPointerEvent<HTMLElement>) => void
+  onFocus: (event: ReactFocusEvent<HTMLElement>) => void
+  onBlur: (event: ReactFocusEvent<HTMLElement>) => void
+} {
+  const onPeekRef = useRef(onPeek)
+  onPeekRef.current = onPeek
+  const onPeekEndRef = useRef(onPeekEnd)
+  onPeekEndRef.current = onPeekEnd
+  const blockedRef = useRef(blocked)
+  blockedRef.current = blocked
+
+  const onPointerOver = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    if (event.pointerType === 'touch' || blockedRef.current?.()) return
+    const node = peekStoryNode(event.target)
+    if (!node) return
+    const from = event.relatedTarget
+    if (from instanceof Node && node.contains(from)) return
+    notePeekPointer(event)
+    markPhantasiStoryPeek(node, true)
+    const item = peekPreviewFromStory(node)
+    if (item) onPeekRef.current?.(item)
+  }, [])
+
+  const onPointerOut = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    if (event.pointerType === 'touch' || blockedRef.current?.()) return
+    if (!peekLaneIsLive(event.currentTarget)) return
+    notePeekPointer(event)
+    const node = peekStoryNode(event.target)
+    const to = event.relatedTarget
+    if (node && to instanceof Node && node.contains(to)) return
+    if (peekGoesToNav(to)) {
+      markPhantasiStoryPeek(node, false)
+      return
+    }
+    releasePhantasiStoryPeek(node ?? event.target, to, onPeekEndRef.current)
+  }, [])
+
+  const onPointerLeave = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    if (event.pointerType === 'touch' || blockedRef.current?.()) return
+    if (!peekLaneIsLive(event.currentTarget)) return
+    notePeekPointer(event)
+    const to = event.relatedTarget
+    if (to instanceof Node && event.currentTarget.contains(to)) return
+    if (peekGoesToNav(to)) {
+      clearPhantasiStoryPeeks(event.currentTarget)
+      return
+    }
+    dropPhantasiPeekLane(event.currentTarget, to, onPeekEndRef.current)
+  }, [])
+
+  const onPointerCancel = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    if (blockedRef.current?.()) return
+    if (!peekLaneIsLive(event.currentTarget)) return
+    markPhantasiStoryPeek(event.target, false)
+    if (peekSwapHoldsAir(event.target)) return
+    onPeekEndRef.current?.()
+  }, [])
+
+  const onFocus = useCallback((event: ReactFocusEvent<HTMLElement>) => {
+    if (blockedRef.current?.()) return
+    const node = peekStoryNode(event.target)
+    if (!node) return
+    markPhantasiStoryPeek(node, true)
+    const item = peekPreviewFromStory(node)
+    if (item) onPeekRef.current?.(item)
+  }, [])
+
+  const onBlur = useCallback((event: ReactFocusEvent<HTMLElement>) => {
+    if (blockedRef.current?.()) return
+    releasePhantasiStoryPeek(
+      event.target,
+      event.relatedTarget,
+      onPeekEndRef.current,
+    )
+  }, [])
+
+  return {
+    onPointerOver,
+    onPointerOut,
+    onPointerLeave,
+    onPointerCancel,
+    onFocus,
+    onBlur,
+  }
 }
 
 export function schedulePhantasiPeekResume(
@@ -325,56 +445,6 @@ export const StoryCard = forwardRef<
       style={style ?? undefined}
       onClick={onOpen}
       aria-pressed={picking ? picked : undefined}
-      onPointerEnter={
-        onPeek
-          ? (event) => {
-              if (event.pointerType === 'touch') return
-              notePeekPointer(event)
-              markPhantasiStoryPeek(event.currentTarget, true)
-              onPeek()
-            }
-          : undefined
-      }
-      onPointerLeave={
-        onPeekEnd
-          ? (event) => {
-              if (event.pointerType === 'touch') return
-              releasePhantasiStoryPeek(
-                event.currentTarget,
-                event.relatedTarget,
-                onPeekEnd,
-              )
-            }
-          : undefined
-      }
-      onPointerCancel={
-        onPeekEnd
-          ? (event) => {
-              markPhantasiStoryPeek(event.currentTarget, false)
-              if (peekSwapHoldsAir(event.currentTarget)) return
-              onPeekEnd()
-            }
-          : undefined
-      }
-      onFocus={
-        onPeek
-          ? (event) => {
-              markPhantasiStoryPeek(event.currentTarget, true)
-              onPeek()
-            }
-          : undefined
-      }
-      onBlur={
-        onPeekEnd
-          ? (event) => {
-              releasePhantasiStoryPeek(
-                event.currentTarget,
-                event.relatedTarget,
-                onPeekEnd,
-              )
-            }
-          : undefined
-      }
     >
         <span className="phantasi-story__kicker">
           {face.topic ? (

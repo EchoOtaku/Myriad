@@ -20,7 +20,6 @@ import {
   cancelArticlePrefetch,
   prefetchArticleDetails,
 } from '../components/phantasi/articlePrefetch'
-import { cancelIdle, scheduleIdle } from '../hooks/animation/core'
 import { phantasiBoardNavItems } from '../components/phantasi/boardNav'
 import PhantasiFilterLane from '../components/phantasi/PhantasiFilterLane'
 import PhantasiSourceGrid from '../components/phantasi/PhantasiSourceGrid'
@@ -29,18 +28,28 @@ import { storySourceFace } from '../components/phantasi/notes/noteSiteSource'
 import {
   PHANTASI_PEEK_HANDOFF_MS,
   PhantasiPeekAir,
+  samePeekFace,
   toPhantasiPeekFace,
   type PhantasiPeekFace,
 } from '../components/phantasi/ui/PhantasiPeekAir'
 import {
+  holdPhantasiPeekSwap,
   notePeekPointer,
+  peekGoesToNav,
   peekLaneIsSwapping,
   peekNodeFromPoint,
+  peekPointerMoving,
+  peekPointerWantsAir,
+  phantasiPeekHeldForSwap,
 } from '../components/phantasi/ui/peekLane'
-import { phantasiMotionBusy } from '../hooks/animation/pages/phantasiMotion'
+import {
+  onPhantasiMotion,
+  phantasiMotionBusy,
+} from '../hooks/animation/pages/phantasiMotion'
 import {
   cancelPhantasiPeekResume,
   clearPhantasiStoryPeeks,
+  resumePhantasiStoryPeek,
   schedulePhantasiPeekResume,
 } from '../components/phantasi/ui/StoryCard'
 import {
@@ -76,7 +85,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { useSecondaryNav } from '../contexts/NavigationContext'
 import { useReadingListOptional } from '../contexts/ReadingListContext'
-import { usePhantasiScheduler } from '../hooks/animation'
+import { cancelIdleTask, scheduleIdleTask } from '../hooks/animation'
 import { usePhantasiKeyboard } from '../hooks/usePhantasiKeyboard'
 import { phantasiSubject } from '../utils/phantasiSubject'
 import {
@@ -110,7 +119,6 @@ export default function Phantasi() {
 }
 
 function PhantasiSubjectPage() {
-  usePhantasiScheduler()
   const { t } = useI18n()
   const navigate = useNavigate()
   const location = useLocation()
@@ -398,24 +406,71 @@ function PhantasiSubjectPage() {
   }, [isAdmin, sources.booting])
 
   const [peekFace, setPeekFace] = useState<PhantasiPeekFace | null>(null)
+  const peekFaceRef = useRef<PhantasiPeekFace | null>(null)
+  peekFaceRef.current = peekFace
   const peekEndTimer = useRef(0)
-  const dropPeekSession = useCallback((handoff = false) => {
+  const dropPeekSession = useCallback(() => {
     window.clearTimeout(peekEndTimer.current)
-    cancelIdle('phantasi-peek-warm')
+    peekEndTimer.current = 0
+    cancelIdleTask('phantasi-peek-warm')
     cancelPhantasiPeekResume()
-    const done = (force = false) => {
-      peekEndTimer.current = 0
-      if (!force && phantasiMotionBusy()) return
-      cancelArticlePrefetch()
-      clearPhantasiStoryPeeks()
-      setPeekFace(null)
-    }
-    if (!handoff) {
-      done(true)
-      return
-    }
-    peekEndTimer.current = window.setTimeout(() => done(), PHANTASI_PEEK_HANDOFF_MS)
+    cancelArticlePrefetch()
+    clearPhantasiStoryPeeks()
+    setPeekFace(null)
   }, [])
+  const handlePeekItem = useCallback(
+    (item: {
+      id: number
+      title: string
+      image?: string | null
+      source_name?: string | null
+      source_icon?: string | null
+      source_type?: string | null
+      guid?: string | null
+    }) => {
+      window.clearTimeout(peekEndTimer.current)
+      peekEndTimer.current = 0
+      cancelIdleTask('phantasi-peek-warm')
+      const next = toPhantasiPeekFace(item, storySourceFace(item))
+      setPeekFace((prev) => (samePeekFace(prev, next) ? prev : next))
+      const id = item.id
+      scheduleIdleTask(
+        'phantasi-peek-warm',
+        () => {
+          if (phantasiMotionBusy()) return
+          prefetchArticleDetails([id])
+          void import('../components/phantasi/PhantasiReader')
+        },
+        { priority: 'low' },
+      )
+    },
+    [],
+  )
+  const settlePeekSession = useCallback(() => {
+    window.clearTimeout(peekEndTimer.current)
+    peekEndTimer.current = window.setTimeout(() => {
+      peekEndTimer.current = 0
+      if (item.selectedItem || notes.noteEditor !== null) {
+        dropPeekSession()
+        return
+      }
+      if (peekPointerWantsAir()) {
+        if (peekNodeFromPoint()) {
+          resumePhantasiStoryPeek(handlePeekItem)
+          return
+        }
+        if (
+          peekPointerMoving() ||
+          peekLaneIsSwapping() ||
+          phantasiPeekHeldForSwap()
+        ) {
+          settlePeekSession()
+        }
+        return
+      }
+      dropPeekSession()
+    }, PHANTASI_PEEK_HANDOFF_MS)
+  }, [dropPeekSession, handlePeekItem, item.selectedItem, notes.noteEditor])
   useEffect(() => () => dropPeekSession(), [dropPeekSession])
   useEffect(() => {
     if (item.selectedItem || notes.noteEditor !== null) dropPeekSession()
@@ -432,49 +487,45 @@ function PhantasiSubjectPage() {
       window.removeEventListener('pagehide', onPageHide)
     }
   }, [dropPeekSession])
-  const handlePeekItem = useCallback(
-    (item: {
-      id: number
-      title: string
-      image?: string | null
-      source_name?: string | null
-      source_icon?: string | null
-      source_type?: string | null
-      guid?: string | null
-    }) => {
-      window.clearTimeout(peekEndTimer.current)
-      cancelIdle('phantasi-peek-warm')
-      setPeekFace(toPhantasiPeekFace(item, storySourceFace(item)))
-      const id = item.id
-      scheduleIdle(
-        'phantasi-peek-warm',
-        () => {
-          if (phantasiMotionBusy()) return
-          prefetchArticleDetails([id])
-          void import('../components/phantasi/PhantasiReader')
-        },
-        'low',
-      )
-    },
-    [],
-  )
   const handlePeekEnd = useCallback(() => {
-    if (peekLaneIsSwapping() || peekNodeFromPoint()) {
-      schedulePhantasiPeekResume(handlePeekItem)
-      return
-    }
-    dropPeekSession(true)
-  }, [dropPeekSession, handlePeekItem])
+    settlePeekSession()
+  }, [settlePeekSession])
   const resumePeekAfterLane = useCallback(() => {
     if (item.selectedItem || notes.noteEditor !== null) return
+    holdPhantasiPeekSwap(240)
     schedulePhantasiPeekResume(handlePeekItem)
-  }, [handlePeekItem, item.selectedItem, notes.noteEditor])
+    settlePeekSession()
+  }, [
+    handlePeekItem,
+    item.selectedItem,
+    notes.noteEditor,
+    settlePeekSession,
+  ])
+  useEffect(() => {
+    return onPhantasiMotion((lane) => {
+      if (lane !== 'intro' && lane !== 'flip' && lane !== 'lane') return
+      holdPhantasiPeekSwap()
+      window.clearTimeout(peekEndTimer.current)
+      peekEndTimer.current = 0
+    })
+  }, [])
+  useEffect(() => {
+    const onDown = (event: PointerEvent) => {
+      if (!peekFaceRef.current) return
+      if (peekGoesToNav(event.target)) holdPhantasiPeekSwap()
+    }
+    document.addEventListener('pointerdown', onDown, true)
+    return () => document.removeEventListener('pointerdown', onDown, true)
+  }, [])
   useEffect(() => {
     if (!peekFace) return
-    const onMove = (event: PointerEvent) => notePeekPointer(event)
+    const onMove = (event: PointerEvent) => {
+      notePeekPointer(event)
+      settlePeekSession()
+    }
     document.addEventListener('pointermove', onMove, { passive: true })
     return () => document.removeEventListener('pointermove', onMove)
-  }, [peekFace])
+  }, [peekFace, settlePeekSession])
 
   if (sources.booting) {
     return <PhantasiPage lock={false} loading />

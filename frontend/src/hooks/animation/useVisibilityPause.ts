@@ -67,6 +67,3 @@ export function useVisibilityInterval(
     }
   }, [enabled, delay, immediate, scheduleNext, clearTimer])
 }
-
-// 规范名在 useSharedEventListener 的 usePageVisibility。
-export { usePageVisibility as usePageVisible } from '../useSharedEventListener'

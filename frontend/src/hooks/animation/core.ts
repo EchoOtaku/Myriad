@@ -1,4 +1,4 @@
-import { Feature, getFeatureList, hasFeature } from './pageFeatures'
+import { Feature, hasFeature } from './pageFeatures'
 
 export type Unsubscribe = () => void
 
@@ -9,7 +9,6 @@ let isActive = true
 let visibilityInitialized = false
 let messageChannelInitialized = false
 let resizeObserverInitialized = false
-let intersectionInitialized = false
 let idleSchedulerInitialized = false
 
 let _isPageVisible = true
@@ -84,10 +83,6 @@ export function scheduleTask(callback: () => void): void {
   } else {
     setTimeout(callback, 0)
   }
-}
-
-export function yieldToMain(): Promise<void> {
-  return new Promise((resolve) => scheduleTask(resolve))
 }
 
 let _cachedNow = 0
@@ -177,69 +172,6 @@ export function observeResize(
   }
 }
 
-const _intersectionObservers = new Map<string, IntersectionObserver>()
-const _intersectionCallbacks = new WeakMap<
-  Element,
-  {
-    callback: (entry: IntersectionObserverEntry) => void
-    key: string
-  }
->()
-const _intersectionElements = new Set<Element>()
-
-function getIntersectionKey(threshold: number, rootMargin: string): string {
-  return `${threshold}:${rootMargin}`
-}
-
-function getOrCreateIntersectionObserver(
-  threshold: number,
-  rootMargin: string,
-): IntersectionObserver {
-  const key = getIntersectionKey(threshold, rootMargin)
-  let observer = _intersectionObservers.get(key)
-
-  if (!observer) {
-    observer = new IntersectionObserver(
-      (entries) => {
-        if (!_isPageVisible) return
-        for (const entry of entries) {
-          const info = _intersectionCallbacks.get(entry.target)
-          if (info) info.callback(entry)
-        }
-      },
-      { threshold, rootMargin },
-    )
-    _intersectionObservers.set(key, observer)
-    intersectionInitialized = true
-  }
-
-  return observer
-}
-
-export function observeIntersection(
-  element: Element,
-  callback: (entry: IntersectionObserverEntry) => void,
-  options: { threshold?: number; rootMargin?: string } = {},
-): Unsubscribe {
-  const { threshold = 0, rootMargin = '0px' } = options
-  const key = getIntersectionKey(threshold, rootMargin)
-  const observer = getOrCreateIntersectionObserver(threshold, rootMargin)
-
-  _intersectionCallbacks.set(element, { callback, key })
-  _intersectionElements.add(element)
-  observer.observe(element)
-
-  return () => {
-    const info = _intersectionCallbacks.get(element)
-    if (info) {
-      const obs = _intersectionObservers.get(info.key)
-      obs?.unobserve(element)
-    }
-    _intersectionCallbacks.delete(element)
-    _intersectionElements.delete(element)
-  }
-}
-
 interface IdleTask {
   id: string
   task: () => void
@@ -311,7 +243,7 @@ export function scheduleIdle(
   return () => cancelIdle(id)
 }
 
-export function cancelIdle(id: string): boolean {
+function cancelIdle(id: string): boolean {
   const idx = _idleTasks.findIndex((t) => t.id === id)
   if (idx !== -1) {
     _idleTasks = _idleTasks.toSpliced(idx, 1)
@@ -416,14 +348,6 @@ export function resume(): void {
   scheduleIdleRun()
 }
 
-export function getCurrentPageId(): string | null {
-  return currentPageId
-}
-
-export function isSchedulerActive(): boolean {
-  return isActive && _isPageVisible
-}
-
 interface PageResizeManager {
   observe: (
     element: Element,
@@ -506,64 +430,4 @@ export function getPageIntervalManager(pageId: string): PageIntervalManager {
 
   _pageIntervalManagers.set(pageId, manager)
   return manager
-}
-
-export function getStats() {
-  return {
-    pageId: currentPageId,
-    pageFeatures: currentPageId ? getFeatureList(currentPageId) : [],
-    isActive,
-    isPageVisible: _isPageVisible,
-    initialized: {
-      visibility: visibilityInitialized,
-      messageChannel: messageChannelInitialized,
-      resizeObserver: resizeObserverInitialized,
-      intersection: intersectionInitialized,
-      idleScheduler: idleSchedulerInitialized,
-    },
-    counts: {
-      resizeElements: _resizeElements.size,
-      intersectionElements: _intersectionElements.size,
-      intersectionObservers: _intersectionObservers.size,
-      pendingIdleTasks: _idleTasks.length,
-      pendingReads: _reads.length,
-      pendingWrites: _writes.length,
-      visibilitySubscribers: _visibilitySubscribers.size,
-    },
-  }
-}
-
-export function destroy(): void {
-  cleanupPage()
-
-  if (_visibilityHandler && typeof document !== 'undefined') {
-    document.removeEventListener('visibilitychange', _visibilityHandler)
-    _visibilityHandler = null
-  }
-  _visibilitySubscribers.clear()
-  visibilityInitialized = false
-
-  if (_channel) {
-    _channel.port1.close()
-    _channel.port2.close()
-    _channel = null
-  }
-  messageChannelInitialized = false
-
-  if (_resizeObserver) {
-    _resizeObserver.disconnect()
-    _resizeObserver = null
-  }
-  _resizeElements.clear()
-  resizeObserverInitialized = false
-
-  for (const obs of _intersectionObservers.values()) {
-    obs.disconnect()
-  }
-  _intersectionObservers.clear()
-  _intersectionElements.clear()
-  intersectionInitialized = false
-
-  currentPageId = null
-  isActive = true
 }

@@ -60,5 +60,3 @@ export function usePageViewTracker() {
     trackUmamiPageview(path)
   }, [location.pathname, hasChecked, isStaff])
 }
-
-export default usePageViewTracker

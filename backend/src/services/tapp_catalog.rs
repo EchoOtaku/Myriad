@@ -23,6 +23,9 @@ pub struct TappListItem {
     pub icon: Option<String>,
     /// 内联 SVG 图标代码（manifest.iconSvg）
     pub icon_svg: Option<String>,
+    /// 首页快捷方式磁贴只要这个色值，不必再拉整份 details/manifest。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme_color: Option<String>,
     /// manifest.locales 透传：语言标签 → { name?, description? }
     #[serde(skip_serializing_if = "Option::is_none")]
     pub locales: Option<serde_json::Value>,
@@ -163,6 +166,7 @@ pub fn tapp_list_item_from_model(
         description: tapp.description,
         icon: tapp.icon,
         icon_svg,
+        theme_color: tapp.theme_color,
         locales,
         status,
         error_message,
@@ -420,6 +424,10 @@ mod tests {
         let item = tapp_list_item_from_model(sample_model(json!([])), true, false);
         assert_eq!(item.id, "com.example.detail");
         assert_eq!(item.icon_svg.as_deref(), Some("<svg/>"));
+        assert_eq!(item.theme_color.as_deref(), Some("#fff"));
+        let json = serde_json::to_value(&item).expect("list item json");
+        assert_eq!(json["themeColor"], "#fff");
+        assert!(json.get("manifest").is_none());
         assert!(item.locales.unwrap().is_object());
         assert_eq!(item.status, "installed");
         assert!(item.is_temporary);

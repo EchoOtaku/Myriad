@@ -6,12 +6,14 @@ import { phantasiMotionQuiet, phantasiMotionReset } from './phantasiMotion'
 
 export {
   onPhantasiMotion,
+  PHANTASI_MOTION_SLOT,
   phantasiMotionBusy,
   phantasiMotionClaim,
   phantasiMotionLane,
   phantasiMotionOwns,
   phantasiMotionRelease,
   whenPhantasiMotionIdle,
+  whenPhantasiPeekReady,
 } from './phantasiMotion'
 export { phantasiTagQuiet } from './phantasiTag'
 
@@ -80,7 +82,6 @@ export function playPhantasiVeilExit(): void {
 }
 
 /** startPage('phantasi') 由 useRouteScheduler 统一调用。 */
-export function usePhantasiScheduler(): void {}
 
 // 按 level 缓存，避免每次新对象。
 const ANIM_CONFIG_CACHE = new Map<

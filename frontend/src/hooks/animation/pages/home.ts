@@ -17,7 +17,7 @@ export function useHomeScheduler(): void {
   }, [])
 }
 
-export function useHomeVisibility(): boolean {
+function useHomeVisibility(): boolean {
   const [visible, setVisible] = useState(() => isPageVisible())
 
   useEffect(() => {
@@ -71,47 +71,6 @@ function getResizeManager() {
   return getPageResizeManager(PAGE_ID)
 }
 
-export function useHomeResize<T extends Element>(
-  ref: React.RefObject<T>,
-): { width: number; height: number } {
-  const [size, setSize] = useState({ width: 0, height: 0 })
-
-  useEffect(() => {
-    if (!hasFeature(PAGE_ID, Feature.Resize)) {
-      console.warn('[Home] Resize feature not enabled')
-      return
-    }
-
-    const el = ref.current
-    if (!el) return
-
-    const observer = getResizeManager()
-    const callback = (entry: ResizeObserverEntry) => {
-      const { width, height } = entry.contentRect
-      setSize((prev) => {
-        if (
-          Math.abs(prev.width - width) < 1 &&
-          Math.abs(prev.height - height) < 1
-        ) {
-          return prev
-        }
-        return { width, height }
-      })
-    }
-
-    observer.observe(el, callback)
-
-    const rect = el.getBoundingClientRect()
-    setSize({ width: rect.width, height: rect.height })
-
-    return () => {
-      observer.unobserve(el)
-    }
-  }, [ref])
-
-  return size
-}
-
 export function useHomeResizeObserver(): {
   observeHomeResize: (
     el: Element,
@@ -138,61 +97,6 @@ export function useHomeResizeObserver(): {
   }, [])
 
   return { observeHomeResize, unobserveHomeResize }
-}
-
-export function useHomeRaf<T extends (...args: any[]) => void>(
-  callback: T,
-  deps: React.DependencyList = [],
-): T {
-  const rafId = useRef<number | null>(null)
-  const lastArgs = useRef<any[]>([])
-
-  const throttled = useCallback((...args: any[]) => {
-    if (!hasFeature(PAGE_ID, Feature.RAF)) {
-      callback(...args)
-      return
-    }
-
-    lastArgs.current = args
-    if (rafId.current === null) {
-      rafId.current = requestAnimationFrame(() => {
-        rafId.current = null
-        callback(...lastArgs.current)
-      })
-    }
-  }, deps) as T
-
-  useEffect(() => {
-    return () => {
-      if (rafId.current !== null) {
-        cancelAnimationFrame(rafId.current)
-      }
-    }
-  }, [])
-
-  return throttled
-}
-
-export function useHomeIdle(
-  callback: () => void,
-  deps: React.DependencyList = [],
-): void {
-  useEffect(() => {
-    if (!hasFeature(PAGE_ID, Feature.Idle)) {
-      return
-    }
-
-    const id = requestIdleCallback(
-      () => {
-        if (isPageVisible()) {
-          callback()
-        }
-      },
-      { timeout: 3000 },
-    )
-
-    return () => cancelIdleCallback(id)
-  }, deps)
 }
 
 export function cleanupHome(): void {

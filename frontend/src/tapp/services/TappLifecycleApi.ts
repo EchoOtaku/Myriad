@@ -8,6 +8,7 @@ export interface TappListItem {
   description?: string
   icon?: string
   iconSvg?: string
+  themeColor?: string
   locales?: TappManifestLocales
   status: string
   errorMessage?: string

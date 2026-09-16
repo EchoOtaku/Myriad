@@ -1210,5 +1210,3 @@ export function useEvocativeWallpaper(
     rippleScale,
   ])
 }
-
-export default useEvocativeWallpaper

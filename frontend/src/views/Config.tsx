@@ -6,14 +6,11 @@ import AnimatedView from '../components/AnimatedView'
 import ConfigForm from '../components/ConfigForm'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
-import { useConfigScheduler } from '../hooks/animation'
 import { usePageSeo } from '../hooks/usePageSeo'
 import { buildPrivatePageSeo } from '../utils/modulePageSeo'
 import { hasSessionHint } from '../utils/sessionDetection'
 
 export default function Config() {
-  useConfigScheduler()
-
   const navigate = useNavigate()
   const location = useLocation()
   const { t } = useI18n()

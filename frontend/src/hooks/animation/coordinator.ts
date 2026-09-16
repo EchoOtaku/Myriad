@@ -36,11 +36,6 @@ interface WaitingItem {
   registeredAt: number
 }
 
-interface WeakRefEntry {
-  ref: WeakRef<HTMLElement>
-  animationId: string
-}
-
 class AnimationCoordinator {
   private config: CoordinatorConfig
 
@@ -156,24 +151,6 @@ class AnimationCoordinator {
     { width: number; height: number }
   >()
 
-  private intersectionObservers = new Map<string, IntersectionObserver>()
-
-  private intersectionCallbacks = new WeakMap<
-    Element,
-    {
-      callback: (entry: IntersectionObserverEntry) => void
-      observerKey: string
-    }
-  >()
-
-  private intersectionObservedElements = new Set<Element>()
-
-  private intersectionBatchQueue: IntersectionObserverEntry[] = []
-
-  private intersectionBatchScheduled: boolean = false
-
-  private visibilitySubscribers = new Set<(isVisible: boolean) => void>()
-
   private idleTaskQueue: Array<{
     id: string
     task: () => void
@@ -190,12 +167,6 @@ class AnimationCoordinator {
   // 升版本以丢掉页面就绪前已作废的回调。
   private scheduleVersions = new Map<string, number>()
 
-  private elementRefs = new Map<string, WeakRefEntry>()
-
-  private finalizationRegistry: FinalizationRegistry<string> | null = null
-
-  private weakRefCheckerId: ReturnType<typeof setInterval> | null = null
-
   constructor(config: Partial<CoordinatorConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config }
 
@@ -208,103 +179,13 @@ class AnimationCoordinator {
         this.processWaitQueue()
         this.scheduleIdleCallback()
       }
-      for (const subscriber of this.visibilitySubscribers) {
-        try {
-          subscriber(visible)
-        } catch (e) {
-          console.error('[Coordinator] Visibility subscriber error:', e)
-        }
-      }
     })
 
     // 首屏爆发 10s。
     this.activateBurstMode(10000)
-
-    this.initFinalizationRegistry()
-  }
-
-  onVisibilityChange(callback: (isVisible: boolean) => void): () => void {
-    this.visibilitySubscribers.add(callback)
-    return () => {
-      this.visibilitySubscribers.delete(callback)
-    }
-  }
-
-  getPageVisibility(): boolean {
-    return coreIsPageVisible()
-  }
-
-  private initFinalizationRegistry() {
-    if (typeof FinalizationRegistry !== 'undefined') {
-      this.finalizationRegistry = new FinalizationRegistry<string>(
-        (animationId) => {
-          this.cleanupAnimationState(animationId)
-        },
-      )
-    }
-  }
-
-  private startWeakRefChecker() {
-    if (this.weakRefCheckerId) return
-
-    // 无 FinalizationRegistry 时每 30s 轮询。
-    this.weakRefCheckerId = setInterval(() => {
-      this.checkAndCleanupWeakRefs()
-    }, 30000)
-  }
-
-  private checkAndCleanupWeakRefs() {
-    if (this.elementRefs.size === 0) return
-
-    const toCleanup: string[] = []
-
-    for (const [id, entry] of this.elementRefs) {
-      const element = entry.ref.deref()
-      if (!element) {
-        toCleanup.push(id)
-      }
-    }
-
-    for (const id of toCleanup) {
-      this.cleanupAnimationState(id)
-    }
-  }
-
-  registerElement(animationId: string, element: HTMLElement) {
-    const oldEntry = this.elementRefs.get(animationId)
-    if (oldEntry && this.finalizationRegistry) {
-      // FinalizationRegistry 无法取消旧 target。
-
-    }
-
-    const ref = new WeakRef(element)
-    this.elementRefs.set(animationId, { ref, animationId })
-
-    if (this.finalizationRegistry) {
-      this.finalizationRegistry.register(element, animationId)
-    } else {
-      this.startWeakRefChecker()
-    }
-  }
-
-  unregisterElement(animationId: string) {
-    const entry = this.elementRefs.get(animationId)
-    if (entry) {
-      this.elementRefs.delete(animationId)
-    }
-  }
-
-  isElementAlive(animationId: string): boolean {
-    const entry = this.elementRefs.get(animationId)
-    if (!entry) return true // 未注册视为仍在
-
-    const element = entry.ref.deref()
-    return element !== undefined
   }
 
   private cleanupAnimationState(animationId: string) {
-    this.elementRefs.delete(animationId)
-
     this.states.delete(animationId)
     this.listeners.delete(animationId)
     this.pendingUpdates.delete(animationId)
@@ -461,13 +342,6 @@ class AnimationCoordinator {
 
     this.processDelayedQueue()
     return true
-  }
-
-  async waitForPage(): Promise<void> {
-    if (this.isPageReady) {
-      return Promise.resolve()
-    }
-    return this.pageReadyPromise ?? Promise.resolve()
   }
 
   onPageReady(callback: () => void): Unsubscribe {
@@ -939,44 +813,6 @@ class AnimationCoordinator {
     return index * (baseDelay ?? this.config.defaultStaggerDelay)
   }
 
-  getActiveCount(): number {
-    return this.activeSlots.size
-  }
-
-  getLoad(): number {
-    const max = this.getMaxConcurrent()
-    return this.activeSlots.size / max
-  }
-
-  getWaitingCount(): number {
-    return this.waitingQueue.length
-  }
-
-  getMemoryStatus() {
-    return {
-      statesSize: this.states.size,
-      listenersSize: this.listeners.size,
-      pendingUpdatesSize: this.pendingUpdates.size,
-      pageReadyCallbacksSize: this.pageReadyCallbacks.size,
-      activeSlotsSize: this.activeSlots.size,
-      waitingQueueLength: this.waitingQueue.length,
-      waitingQueueIndexSize: this.waitingQueueIndex.size,
-      delayedQueueLength: this.delayedQueue.length,
-
-      trackedElementsCount: this.elementRefs.size,
-
-      isPageVisible: coreIsPageVisible(),
-
-      totalEntries:
-        this.states.size +
-        this.listeners.size +
-        this.activeSlots.size +
-        this.waitingQueue.length +
-        this.delayedQueue.length +
-        this.elementRefs.size,
-    }
-  }
-
   /** 瞬时槽位几乎总是 0；看 peak / totals。 */
   getConcurrencyStatus() {
     const maxConcurrent = this.getMaxConcurrent()
@@ -1048,10 +884,6 @@ class AnimationCoordinator {
 
     this.isPageReady = false
     this.currentPageId = null
-  }
-
-  triggerBurst() {
-    this.activateBurstMode(10000) // 首次加载也用 10s
   }
 
   startFpsMonitor(): void {
@@ -1171,10 +1003,6 @@ class AnimationCoordinator {
     }
   }
 
-  getFps(): number {
-    return this.currentFps
-  }
-
   isLowFps(): boolean {
     return this.isLowFpsMode
   }
@@ -1251,36 +1079,12 @@ class AnimationCoordinator {
     }
   }
 
-  getDetectedRefreshRate(): number {
-    return this.detectedRefreshRate
-  }
-
-  resetFrameStats(): void {
-    this.frameTimes.fill(0)
-    this.frameTimeIndex = 0
-    this.frameTimeCount = 0
-    this.frameTimeSum = 0
-    this.totalFrames = 0
-    this.currentFps = this.detectedRefreshRate // 不重置 detectedRefreshRate
-    this.isLowFpsMode = false
-  }
-
   batchRead(callback: () => void): void {
     coreBatchRead(callback)
   }
 
   batchWrite(callback: () => void): void {
     coreBatchWrite(callback)
-  }
-
-  yieldToMain(): Promise<void> {
-    return new Promise((resolve) => {
-      scheduleTask(resolve)
-    })
-  }
-
-  shouldYield(): boolean {
-    return this.isLowFpsMode || this.waitingQueue.length > 10
   }
 
   private initSharedResizeObserver(): void {
@@ -1413,120 +1217,8 @@ class AnimationCoordinator {
     )
   }
 
-  getObservedElementCount(): number {
-    return this.observedElements.size
-  }
-
   getCachedSize(element: Element): { width: number; height: number } | null {
     return this.elementSizeCache.get(element) ?? null
-  }
-
-  private getIntersectionObserver(
-    threshold: number,
-    rootMargin: string,
-  ): IntersectionObserver {
-    const key = `${threshold}:${rootMargin}`
-
-    let observer = this.intersectionObservers.get(key)
-    if (!observer) {
-      observer = new IntersectionObserver(
-        (entries) => {
-          if (!coreIsPageVisible()) return
-
-          for (const entry of entries) {
-            this.intersectionBatchQueue.push(entry)
-          }
-
-          this.scheduleIntersectionBatch()
-        },
-        { threshold, rootMargin },
-      )
-      this.intersectionObservers.set(key, observer)
-    }
-
-    return observer
-  }
-
-  private scheduleIntersectionBatch(): void {
-    if (
-      this.intersectionBatchScheduled ||
-      this.intersectionBatchQueue.length === 0
-    ) {
-      return
-    }
-
-    this.intersectionBatchScheduled = true
-
-    // Intersection 批量用 microtask，不用 RAF。
-    queueMicrotask(() => {
-      this.flushIntersectionBatch()
-    })
-  }
-
-  private flushIntersectionBatch(): void {
-    this.intersectionBatchScheduled = false
-
-    const batch = this.intersectionBatchQueue
-    this.intersectionBatchQueue = []
-
-    for (const entry of batch) {
-      const info = this.intersectionCallbacks.get(entry.target)
-      if (info) {
-        try {
-          info.callback(entry)
-        } catch (e) {
-          console.error('IntersectionObserver callback error:', e)
-        }
-      }
-    }
-  }
-
-  observeIntersection(
-    element: Element,
-    callback: (entry: IntersectionObserverEntry) => void,
-    options?: { threshold?: number; rootMargin?: string },
-  ): () => void {
-    if (!element) return () => {}
-
-    const threshold = options?.threshold ?? 0
-    const rootMargin = options?.rootMargin ?? '0px'
-    const observerKey = `${threshold}:${rootMargin}`
-
-    const observer = this.getIntersectionObserver(threshold, rootMargin)
-
-    this.intersectionCallbacks.set(element, { callback, observerKey })
-    this.intersectionObservedElements.add(element)
-
-    observer.observe(element)
-
-    return () => {
-      this.unobserveIntersection(element)
-    }
-  }
-
-  unobserveIntersection(element: Element): void {
-    const info = this.intersectionCallbacks.get(element)
-    if (!info) return
-
-    const observer = this.intersectionObservers.get(info.observerKey)
-    if (observer) {
-      observer.unobserve(element)
-    }
-
-    this.intersectionCallbacks.delete(element)
-    this.intersectionObservedElements.delete(element)
-
-    this.intersectionBatchQueue = this.intersectionBatchQueue.filter(
-      (entry) => entry.target !== element,
-    )
-  }
-
-  getIntersectionObservedCount(): number {
-    return this.intersectionObservedElements.size
-  }
-
-  getIntersectionObserverCount(): number {
-    return this.intersectionObservers.size
   }
 
   scheduleIdleTask(
@@ -1620,58 +1312,6 @@ class AnimationCoordinator {
       this.scheduleIdleCallback()
     }
   }
-
-  getIdleTaskCount(): number {
-    return this.idleTaskQueue.length
-  }
-
-  destroy() {
-    this.reset()
-    this.stopFpsMonitor()
-    this.stopTimeoutChecker()
-
-    if (this.weakRefCheckerId) {
-      clearInterval(this.weakRefCheckerId)
-      this.weakRefCheckerId = null
-    }
-
-    if (this.visibilityUnsubscribe) {
-      this.visibilityUnsubscribe()
-      this.visibilityUnsubscribe = null
-    }
-
-    this.visibilitySubscribers.clear()
-
-    this.elementRefs.clear()
-
-    if (this.sharedResizeObserver) {
-      this.sharedResizeObserver.disconnect()
-      this.sharedResizeObserver = null
-    }
-    this.observedElements.clear()
-    this.resizeBatchQueue.length = 0
-
-    for (const observer of this.intersectionObservers.values()) {
-      observer.disconnect()
-    }
-    this.intersectionObservers.clear()
-    this.intersectionObservedElements.clear()
-    this.intersectionBatchQueue.length = 0
-
-    if (this.idleCallbackId !== null) {
-      if (typeof cancelIdleCallback !== 'undefined') {
-        cancelIdleCallback(this.idleCallbackId)
-      } else {
-        clearTimeout(this.idleCallbackId)
-      }
-      this.idleCallbackId = null
-    }
-    this.idleTaskQueue.length = 0
-    this.registeredIdleTasks.clear()
-  }
 }
 
 export const coordinator = new AnimationCoordinator()
-
-// 构造时已爆发，不必再调 triggerBurst。
-export default AnimationCoordinator

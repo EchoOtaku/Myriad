@@ -3,15 +3,18 @@
 import type { SyntheticEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { batchWrite, scheduleTask } from '../../../hooks/animation/core'
+import {
+  batchWrite,
+  scheduleTask,
+} from '../../../hooks/animation'
 import {
   onPhantasiMotion,
-  phantasiMotionBusy,
   phantasiMotionClaim,
   phantasiMotionOwns,
   phantasiMotionQuiet,
   phantasiMotionRelease,
   whenPhantasiMotionIdle,
+  whenPhantasiPeekReady,
 } from '../../../hooks/animation/pages/phantasiMotion'
 import { getIconUrl, getImageUrl } from '../constants'
 import { cx } from './cx'
@@ -56,8 +59,17 @@ function nextLayer(): number {
   return layerSeq
 }
 
+export function samePeekFace(
+  a: PhantasiPeekFace | null,
+  b: PhantasiPeekFace | null,
+): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  return a.src === b.src && a.title === b.title && a.source === b.source
+}
+
 function sameFace(layer: Layer, face: PhantasiPeekFace): boolean {
-  return layer.face.src === face.src && layer.face.title === face.title
+  return samePeekFace(layer.face, face)
 }
 
 function hideBrokenPeekIcon(event: SyntheticEvent<HTMLImageElement>): void {
@@ -130,7 +142,7 @@ export function PhantasiPeekAir({ face }: { face: PhantasiPeekFace | null }) {
     if (!face) {
       releaseClaim()
       setLayers((current) => current.map((layer) => ({ ...layer, on: false })))
-      if (quiet || phantasiMotionBusy()) {
+      if (quiet) {
         setLayers([])
         return () => {
           cancelled = true
@@ -155,12 +167,8 @@ export function PhantasiPeekAir({ face }: { face: PhantasiPeekFace | null }) {
       )
     }
 
-    const reveal = () => {
-      if (cancelled || !face) return
-      if (!takeClaim()) {
-        stops.push(whenPhantasiMotionIdle(reveal))
-        return
-      }
+    const paint = () => {
+      if (cancelled || !face || !phantasiMotionOwns(claimId)) return
       setLayers((current) => {
         if (current.some((layer) => layer.on && sameFace(layer, face))) {
           return current
@@ -184,6 +192,21 @@ export function PhantasiPeekAir({ face }: { face: PhantasiPeekFace | null }) {
           current.filter((layer) => layer.on || sameFace(layer, face)),
         )
       }, wait)
+    }
+
+    const reveal = () => {
+      if (cancelled || !face) return
+      if (!takeClaim()) {
+        setLayers((current) => {
+          if (current.some((layer) => layer.on && sameFace(layer, face))) {
+            return current
+          }
+          return [{ id: nextLayer(), face, on: true }]
+        })
+        stops.push(whenPhantasiMotionIdle(reveal))
+        return
+      }
+      stops.push(whenPhantasiPeekReady(paint))
     }
 
     stops.push(

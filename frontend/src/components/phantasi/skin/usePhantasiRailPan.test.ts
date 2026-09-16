@@ -25,7 +25,6 @@ import {
   railCardOffset,
   railCoastStep,
   railColumnSlots,
-  railGroupStarts,
   railLeadColumn,
   railLeadIndex,
   railLiveTo,
@@ -705,23 +704,12 @@ describe('followRailScroll', () => {
   })
 
   it('按文章卡的源起点去跟网站卡座位', () => {
-    const stories = [
-      { id: 1, left: 0 },
-      { id: 2, left: 0 },
-      { id: 3, left: 400 },
-      { id: 4, left: 400 },
-    ]
-    const sites = [
-      { id: 8, left: 0 },
-      { id: 9, left: 200 },
-    ]
-    const sourceOf = (id: number) => (id <= 2 ? 8 : 9)
-    assert.deepEqual(railGroupStarts(stories, sourceOf), [
+    const storyStarts = [
       { id: 8, start: 0 },
       { id: 9, start: 400 },
-    ])
-    assert.equal(sourceAtScroll(199, railGroupStarts(stories, sourceOf)), 8)
-    assert.equal(sourceAtScroll(400, railGroupStarts(stories, sourceOf)), 9)
+    ]
+    assert.equal(sourceAtScroll(199, storyStarts), 8)
+    assert.equal(sourceAtScroll(400, storyStarts), 9)
     assert.equal(
       sourceAtScroll(
         559,
@@ -745,11 +733,7 @@ describe('followRailScroll', () => {
       3,
     )
     assert.equal(
-      followRailScroll(
-        200,
-        railGroupStarts(stories, sourceOf).map((block) => block.start),
-        sites.map((card) => card.left),
-      ),
+      followRailScroll(200, [0, 400], [0, 200]),
       100,
     )
   })

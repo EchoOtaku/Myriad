@@ -2,12 +2,10 @@ import { useMemo } from 'react'
 import AnimatedView from '../components/AnimatedView'
 import LoginForm from '../components/LoginForm'
 import { useI18n } from '../contexts/I18nContext'
-import { useLoginScheduler } from '../hooks/animation'
 import { usePageSeo } from '../hooks/usePageSeo'
 import { buildPrivatePageSeo } from '../utils/modulePageSeo'
 
 export default function Login() {
-  useLoginScheduler()
   const { t } = useI18n()
 
   usePageSeo(

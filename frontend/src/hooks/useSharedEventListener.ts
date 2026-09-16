@@ -10,8 +10,6 @@ import {
 import { rafThrottle } from '../utils/performance'
 import { VIEWPORT_DESKTOP_MIN, VIEWPORT_MQ } from '../utils/viewportBands'
 
-import { isPageVisible, onVisibility } from './animation/core'
-
 type EventCallback = (event: Event) => void
 
 interface ListenerEntry {
@@ -349,15 +347,4 @@ export function useDesktopLayoutBand(): boolean {
     return () => mq.removeEventListener('change', sync)
   }, [])
   return isDesktop
-}
-
-/** 走 coordinator 统一可见性，避免再挂一份 visibilitychange。 */
-export function usePageVisibility(): boolean {
-  const [isVisible, setIsVisible] = useState(() => isPageVisible())
-
-  useEffect(() => {
-    return onVisibility(setIsVisible)
-  }, [])
-
-  return isVisible
 }

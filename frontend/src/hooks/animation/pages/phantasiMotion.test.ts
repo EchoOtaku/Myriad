@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
+import { coordinator } from '../coordinator.ts'
+import { AnimationState } from '../types.ts'
 import {
   onPhantasiMotion,
+  PHANTASI_MOTION_SLOT,
   phantasiMotionBusy,
   phantasiMotionClaim,
   phantasiMotionLane,
@@ -11,8 +14,15 @@ import {
   phantasiMotionRelease,
   phantasiMotionReset,
   whenPhantasiMotionIdle,
+  whenPhantasiPeekReady,
   type PhantasiMotionLane,
 } from './phantasiMotion.ts'
+
+function readyPhantasiPage(): void {
+  coordinator.reset()
+  coordinator.startPageTransition('phantasi')
+  coordinator.completePageTransition('phantasi')
+}
 
 describe('phantasiMotion', () => {
   it('后来的占位作废前一次', () => {
@@ -115,5 +125,48 @@ describe('phantasiMotion', () => {
     phantasiMotionRelease(lane)
     assert.equal(resumed, 1)
     stop()
+  })
+
+  it('占位走 coordinator，peek 是 ELEMENT，换树 skip peek', () => {
+    readyPhantasiPage()
+    phantasiMotionReset()
+    const peek = phantasiMotionClaim('peek')
+    assert.equal(phantasiMotionOwns(peek), true)
+    assert.equal(
+      coordinator.getState(PHANTASI_MOTION_SLOT.peek),
+      AnimationState.READY,
+    )
+    const lane = phantasiMotionClaim('lane')
+    assert.equal(phantasiMotionOwns(peek), false)
+    assert.equal(
+      coordinator.getState(PHANTASI_MOTION_SLOT.peek),
+      AnimationState.SKIPPED,
+    )
+    assert.equal(
+      coordinator.getState(PHANTASI_MOTION_SLOT.lane),
+      AnimationState.READY,
+    )
+    phantasiMotionRelease(lane)
+    assert.equal(
+      coordinator.getState(PHANTASI_MOTION_SLOT.lane),
+      AnimationState.COMPLETED,
+    )
+  })
+
+  it('coordinator 放行 peek 槽后再画', async () => {
+    readyPhantasiPage()
+    phantasiMotionReset()
+    phantasiMotionClaim('peek')
+    let painted = 0
+    whenPhantasiPeekReady(() => {
+      painted += 1
+    })
+    assert.equal(painted, 0)
+    await Promise.resolve()
+    assert.equal(painted, 1)
+    assert.equal(
+      coordinator.getState(PHANTASI_MOTION_SLOT.peek),
+      AnimationState.RUNNING,
+    )
   })
 })

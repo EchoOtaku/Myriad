@@ -19,10 +19,7 @@ import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'
 // Live <html data-nav-layout> after first paint is owned by NavigationIsland
 // crossfade (chromeLayout). AppLayout only seeds FOUC once.
-import {
-  useIdleEffect,
-  useVisibilityInterval,
-} from '../hooks/animation/atomicHooks'
+import { useIdleEffect, useVisibilityInterval } from '../hooks/animation'
 import {
   isExlight,
   isReducedAnimation,

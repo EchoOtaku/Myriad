@@ -76,15 +76,3 @@ export function useRouteScheduler(): void {
     }
   }, [])
 }
-
-export function usePageScheduler(pageId: string): void {
-  useEffect(() => {
-    startPage(pageId)
-
-    return () => {
-      runPageCleanup(pageId)
-    }
-  }, [pageId])
-}
-
-export default useRouteScheduler

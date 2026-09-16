@@ -19,5 +19,3 @@ export function usePageReady(): boolean {
 
   return isReady
 }
-
-export default usePageReady

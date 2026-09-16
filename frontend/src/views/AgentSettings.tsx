@@ -5,14 +5,11 @@ import { AGENT_SETTINGS_PATH } from '../components/agent/settings/agentSettingsP
 import AnimatedView from '../components/AnimatedView'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
-import { useConfigScheduler } from '../hooks/animation'
 import { usePageSeo } from '../hooks/usePageSeo'
 import { buildPrivatePageSeo } from '../utils/modulePageSeo'
 import { hasSessionHint } from '../utils/sessionDetection'
 
 export default function AgentSettings() {
-  useConfigScheduler()
-
   const navigate = useNavigate()
   const { t } = useI18n()
   const { isAdmin: authIsAdmin, isAuthenticated, checkAuth } = useAuth()

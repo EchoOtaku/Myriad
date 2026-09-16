@@ -5,6 +5,7 @@ import { useCallback, useMemo, useRef } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { Spinner } from '../../Spinner'
 import { PhantasiVacant } from '../ui/Empty'
+import { clearPhantasiStoryPeeks, usePhantasiPeekLane } from '../ui/StoryCard'
 import { PhantasiStory } from './PhantasiStory'
 import { usePhantasiTimes } from './time'
 import { usePhantasiRailPan } from './usePhantasiRailPan'
@@ -52,6 +53,18 @@ export default function PhantasiListView({
     () => items.map((item) => item.id).join(','),
     [items],
   )
+  const itemsById = useMemo(
+    () => new Map(items.map((item) => [item.id, item])),
+    [items],
+  )
+  const peekLane = usePhantasiPeekLane({
+    onPeek: (preview) => {
+      const item = itemsById.get(preview.id)
+      if (item) onPeekItem?.(item)
+    },
+    onPeekEnd,
+    blocked: () => !!editMode || !onPeekItem,
+  })
   usePhantasiRailPan(
     viewRef,
     trackRef,
@@ -61,6 +74,11 @@ export default function PhantasiListView({
     undefined,
     undefined,
     true,
+    undefined,
+    () => {
+      clearPhantasiStoryPeeks(trackRef.current)
+      onPeekEnd?.()
+    },
   )
 
   const lastItemRef = useCallback(
@@ -90,7 +108,12 @@ export default function PhantasiListView({
   }
 
   return (
-    <div className="phantasi-skin phantasi-stories" ref={viewRef} data-phantasi-peek-lane>
+    <div
+      className="phantasi-skin phantasi-stories"
+      ref={viewRef}
+      data-phantasi-peek-lane
+      {...peekLane}
+    >
       <div
         className="phantasi-stories-track"
         ref={trackRef}
@@ -134,12 +157,6 @@ export default function PhantasiListView({
                 if (editMode) onItemSelectToggle?.(item.id)
                 else onItemSelect(item)
               }}
-              onPeek={
-                editMode || !onPeekItem
-                  ? undefined
-                  : () => onPeekItem(item)
-              }
-              onPeekEnd={editMode ? undefined : onPeekEnd}
               onToggleStar={
                 editMode || !onToggleStar
                   ? undefined

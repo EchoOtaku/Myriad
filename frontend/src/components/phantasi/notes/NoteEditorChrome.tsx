@@ -23,6 +23,7 @@ import {
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useI18n } from '../../../contexts/I18nContext'
+import { phantasiMotionQuiet } from '../../../hooks/animation/pages/phantasiMotion'
 import { noteEditorStatus } from './noteBoard'
 import { noteCategoryLabel, normalizeNoteCategory } from './noteCategory'
 import {
@@ -74,14 +75,6 @@ export function splitNoteTools(tools: NoteEditorTool[]): {
   return { marks, inserts }
 }
 
-function noteMotionQuiet(): boolean {
-  if (typeof window === 'undefined') return true
-  return (
-    document.documentElement.getAttribute('data-perf-mode') === 'exlight' ||
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  )
-}
-
 const DRAWER_LEAVE_MS = 220
 const MENU_LEAVE_MS = 140
 
@@ -98,7 +91,7 @@ function usePresence(
       return
     }
     if (!shown) return
-    if (noteMotionQuiet()) {
+    if (phantasiMotionQuiet()) {
       setShown(false)
       setLeaving(false)
       return

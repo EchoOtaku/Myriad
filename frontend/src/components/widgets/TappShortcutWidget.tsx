@@ -23,7 +23,6 @@ import { hasStandaloneTappIcon, TappIcon } from '../../tapp/components/TappIcon'
 import { TappIconBadge } from '../../tapp/components/TappIconBadge'
 import {
   getRecentTapps,
-  listTappDetails,
   listTapps,
 } from '../../tapp/services/TappLifecycleApi'
 import { resolveManifestText } from '../../tapp/utils/manifestLocale'
@@ -370,22 +369,18 @@ export const TappShortcutWidget = memo(
 
       let cancelled = false
       setLoading(true)
-      Promise.all([
-        listTapps(),
-        listTappDetails().catch(() => []),
-      ])
-        .then(([list, details]) => {
+      listTapps()
+        .then((list) => {
           if (cancelled) return
           const found = list.find((item) => item.id === tappId)
           if (found) {
-            const detail = details.find((d) => d.id === tappId)
             setResolved({
               id: found.id,
               name: found.name,
               description: found.description,
               icon: found.icon,
               iconSvg: found.iconSvg,
-              themeColor: detail?.theme_color,
+              themeColor: found.themeColor,
               locales: found.locales,
             })
             setMissing(false)

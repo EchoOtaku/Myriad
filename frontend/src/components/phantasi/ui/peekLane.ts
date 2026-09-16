@@ -5,6 +5,54 @@ import { phantasiMotionBusy } from '../../../hooks/animation/pages/phantasiMotio
 export const PHANTASI_PEEK_LANE =
   '[data-phantasi-peek-lane], [data-phantasi-rail-track="items"]'
 
+const PHANTASI_PEEK_NAV =
+  '.nav-container, .dynamic-island, .nav-item, .nav-group'
+
+let peekHoldUntil = 0
+let peekPointerX = 0
+let peekPointerY = 0
+let peekPointerOn = false
+let peekMovedAt = 0
+
+const PEEK_POINTER_MOVE_MS = 180
+
+function peekNow(): number {
+  return typeof performance === 'undefined' ? Date.now() : performance.now()
+}
+
+export function resetPhantasiPeekHold(): void {
+  peekHoldUntil = 0
+  peekPointerOn = false
+  peekMovedAt = 0
+}
+
+export function holdPhantasiPeekSwap(ms = 720): void {
+  peekHoldUntil = Math.max(peekHoldUntil, peekNow() + ms)
+}
+
+export function phantasiPeekHeldForSwap(): boolean {
+  return peekNow() < peekHoldUntil
+}
+
+export function peekGoesToNav(to: EventTarget | null): boolean {
+  if (!to || typeof (to as Element).closest !== 'function') return false
+  return !!(to as Element).closest(PHANTASI_PEEK_NAV)
+}
+
+export function peekLaneIsLive(root: EventTarget | null): boolean {
+  if (phantasiPeekHeldForSwap()) return false
+  if (
+    !root ||
+    (typeof (root as Node).isConnected === 'boolean' && !(root as Node).isConnected)
+  ) {
+    return false
+  }
+  if (typeof (root as Element).closest !== 'function') return false
+  const lane = asHtml((root as Element).closest('.phantasi-view-lane'))
+  if (!lane) return true
+  return lane.dataset.chipPhase !== 'exit' && !lane.hasAttribute('inert')
+}
+
 export function peekStoryNode(target: EventTarget | null): HTMLElement | null {
   if (!target || typeof (target as Element).closest !== 'function') return null
   const node = (target as Element).closest('.phantasi-story')
@@ -33,10 +81,6 @@ export function hoveredPhantasiStory(): HTMLElement | null {
   return peekStoryNode(document.querySelector('.phantasi-story:hover'))
 }
 
-let peekPointerX = 0
-let peekPointerY = 0
-let peekPointerOn = false
-
 export function notePeekPointer(event: {
   pointerType?: string
   clientX: number
@@ -46,6 +90,29 @@ export function notePeekPointer(event: {
   peekPointerX = event.clientX
   peekPointerY = event.clientY
   peekPointerOn = true
+  peekMovedAt = peekNow()
+}
+
+export function peekPointerMoving(): boolean {
+  return peekPointerOn && peekNow() - peekMovedAt < PEEK_POINTER_MOVE_MS
+}
+
+export function peekHitFromPoint(): Element | null {
+  if (typeof document === 'undefined' || !peekPointerOn) return null
+  return document.elementFromPoint(peekPointerX, peekPointerY)
+}
+
+/** 换树、指针还在走、停在岛或正悬着的文章卡上时按住。fromPoint 落到刚离开的卡不算。 */
+export function peekHitWantsAir(hit: EventTarget | null): boolean {
+  if (phantasiPeekHeldForSwap() || peekLaneIsSwapping()) return true
+  return peekGoesToNav(hit)
+}
+
+export function peekPointerWantsAir(): boolean {
+  if (phantasiPeekHeldForSwap() || peekLaneIsSwapping()) return true
+  if (hoveredPhantasiStory()) return true
+  if (peekGoesToNav(peekHitFromPoint())) return true
+  return peekPointerMoving()
 }
 
 export function peekNodeFromPoint(): HTMLElement | null {
@@ -92,13 +159,13 @@ function peekHostFrozen(from: EventTarget | null): boolean {
   )
 }
 
-/** 换页退场 / 节点被卸掉时先按住，进场后再接。 */
+/** 换树按住、退场 / inert / 节点卸掉时按住。普通离开不看 fromPoint。 */
 export function peekSwapHoldsAir(from: EventTarget | null): boolean {
+  if (phantasiPeekHeldForSwap()) return true
   if (from && typeof (from as Node).isConnected === 'boolean' && !(from as Node).isConnected) {
     return true
   }
-  if (peekHostFrozen(from) || peekLaneIsSwapping()) return true
-  return peekNodeFromPoint() != null
+  return peekHostFrozen(from) || peekLaneIsSwapping()
 }
 
 export type PeekStoryPreview = {

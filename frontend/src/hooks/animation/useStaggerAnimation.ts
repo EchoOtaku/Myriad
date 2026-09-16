@@ -116,5 +116,3 @@ export function useStaggerAnimation(
     onComplete,
   }
 }
-
-export default useStaggerAnimation

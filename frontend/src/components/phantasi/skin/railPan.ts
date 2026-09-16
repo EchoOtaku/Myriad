@@ -1050,22 +1050,6 @@ export function isDiscreteWheel(event: WheelEvent): boolean {
   return event.deltaMode !== 0
 }
 
-/** 每个分组第一张卡相对轨头的起点。 */
-export function railGroupStarts(
-  cards: ReadonlyArray<{ id: number; left: number }>,
-  groupOf: (id: number) => number | undefined,
-): Array<{ id: number; start: number }> {
-  const origin = cards[0]?.left ?? 0
-  const starts: Array<{ id: number; start: number }> = []
-  for (const card of cards) {
-    const id = groupOf(card.id)
-    if (id == null) continue
-    if (starts.at(-1)?.id === id) continue
-    starts.push({ id, start: Math.max(0, card.left - origin) })
-  }
-  return starts
-}
-
 function followRailAt(
   i: number,
   driveScroll: number,

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react'
 import { coordinator } from '../coordinator'
-import { isPageVisible, onVisibility, registerPageCleanup } from '../core'
+import { registerPageCleanup } from '../core'
 
 import { AnimationPriority, AnimationState } from '../types'
 
@@ -108,21 +108,6 @@ export function useTappStagger(
   }, [coordinatedDelay, enabled, id])
 
   return { canAnimate, onComplete }
-}
-
-export function useTappVisibility(): boolean {
-  const [visible, setVisible] = useReducer(
-    () => isPageVisible(),
-    isPageVisible(),
-  )
-
-  useEffect(() => {
-    return onVisibility(() => {
-      setVisible()
-    })
-  }, [])
-
-  return visible
 }
 
 export function cleanupTapp(): void {

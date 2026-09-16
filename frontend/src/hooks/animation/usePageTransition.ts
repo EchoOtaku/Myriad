@@ -43,14 +43,3 @@ export function usePageTransition({
     onEnterComplete,
   }
 }
-
-// Legacy export.
-export const pageTransitionManager = {
-  startExit: () => {},
-  completeExit: () => {},
-  waitForEnter: () => Promise.resolve(),
-  checkFirstLoad: () => true,
-  reset: () => {},
-}
-
-export default usePageTransition

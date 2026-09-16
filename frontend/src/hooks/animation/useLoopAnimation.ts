@@ -81,5 +81,3 @@ export function useLoopAnimation(
     stopAnimation,
   }
 }
-
-export default useLoopAnimation

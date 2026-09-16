@@ -20,7 +20,7 @@ import {
   noteStoryTopic,
 } from '../notes/noteCategory'
 import { storySourceFace } from '../notes/noteSiteSource'
-import { StoryCard } from '../ui/StoryCard'
+import { StoryCard, clearPhantasiStoryPeeks, usePhantasiPeekLane } from '../ui/StoryCard'
 import { PhantasiStory } from './PhantasiStory'
 import { usePhantasiTimes } from './time'
 import { usePhantasiRailPan } from './usePhantasiRailPan'
@@ -98,6 +98,25 @@ export default function PhantasiNotes({
       ),
     [shownLeftover, shownNotes],
   )
+  const peekById = useMemo(() => {
+    const map = new Map<number, PhantasiItemPreview>()
+    for (const note of shownNotes) {
+      map.set(note.id, toNoteStory(note, byId.get(note.source_id)))
+    }
+    for (const source of shownLeftover) {
+      const story = sourceLatestStory(source)
+      if (story) map.set(story.id, story)
+    }
+    return map
+  }, [byId, shownLeftover, shownNotes])
+  const peekLane = usePhantasiPeekLane({
+    onPeek: (preview) => {
+      const item = peekById.get(preview.id)
+      if (item) onPeekItem?.(item)
+    },
+    onPeekEnd,
+    blocked: () => isEditMode || !onPeekItem,
+  })
   usePhantasiRailPan(
     notesViewRef,
     notesTrackRef,
@@ -107,6 +126,11 @@ export default function PhantasiNotes({
     undefined,
     undefined,
     true,
+    undefined,
+    () => {
+      clearPhantasiStoryPeeks(notesTrackRef.current)
+      onPeekEnd?.()
+    },
   )
 
   const activateSource = (source: PhantasiSource) => {
@@ -156,6 +180,7 @@ export default function PhantasiNotes({
         className="phantasi-skin phantasi-notes"
         ref={notesViewRef}
         data-phantasi-peek-lane
+        {...peekLane}
       >
       <div
         className="phantasi-notes-track"
@@ -213,8 +238,6 @@ export default function PhantasiNotes({
             picking={isEditMode}
             picked={!!selectedIds?.has(note.source_id)}
             onOpen={() => openArticle(item, note.source_id)}
-            onPeek={isEditMode ? undefined : () => onPeekItem?.(item)}
-            onPeekEnd={isEditMode ? undefined : onPeekEnd}
             onToggleStar={
               isEditMode || !onToggleStar
                 ? undefined
@@ -240,8 +263,6 @@ export default function PhantasiNotes({
               picking={isEditMode}
               picked={!!selectedIds?.has(source.id)}
               onOpen={() => openArticle(story, source.id)}
-              onPeek={isEditMode ? undefined : () => onPeekItem?.(story)}
-              onPeekEnd={isEditMode ? undefined : onPeekEnd}
               onToggleStar={
                 isEditMode || !onToggleStar
                   ? undefined

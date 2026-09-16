@@ -37,10 +37,7 @@ import { ReportCardWidget } from '../components/widgets/ReportCardWidget'
 import { API_URL } from '../config'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
-import {
-  usePageReady,
-  useReportsScheduler,
-} from '../hooks/animation'
+import { usePageReady } from '../hooks/animation'
 import { isExlight } from '../hooks/useAnimationLevel'
 import { useHorizontalStripScroll } from '../hooks/useHorizontalStripScroll'
 import { usePageSeo } from '../hooks/usePageSeo'
@@ -292,8 +289,6 @@ const StagePlayingCardPlaceholder = memo(({
 })
 
 export default function Reports() {
-  useReportsScheduler()
-
   // Eager-load platform faces (not React.lazy) so data can mount synchronously.
   useEffect(() => {
     void preloadPlatformFaces(REPORT_PLATFORM_IDS).catch(() => {})

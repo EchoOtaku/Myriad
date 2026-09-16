@@ -15,14 +15,6 @@ export enum AnimationState {
   SKIPPED = 'skipped',
 }
 
-export enum ScheduleStrategy {
-  IMMEDIATE = 'immediate',
-  PRIORITY = 'priority',
-  /** 视口内才调度。 */
-  LAZY = 'lazy',
-  BATCH = 'batch',
-}
-
 export interface AnimationConfig {
   id: string
   priority: AnimationPriority
@@ -31,13 +23,6 @@ export interface AnimationConfig {
   delay?: number
   duration?: number
   canSkip?: boolean
-}
-
-export interface ElementAnimationOptions {
-  groupId?: string
-  index?: number
-  staggerDelay?: number
-  waitForPage?: boolean
 }
 
 export type AnimationListener = (state: AnimationState) => void
