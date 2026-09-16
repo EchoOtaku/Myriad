@@ -28,13 +28,6 @@ import {
   workbenchHomeUpcoming,
   workbenchPendingReviews,
 } from '../logic/workbenchHome'
-import {
-  isWorkbenchRailOptionPane,
-  readWorkbenchRailVisibility,
-  setWorkbenchRailPane,
-  type WorkbenchRailOptionPane,
-  writeWorkbenchRailVisibility,
-} from '../logic/workbenchVisibility'
 import { PhantasiWorkbenchIcon } from '../ui/PhantasiWorkbenchIcon'
 import { PageAction, WorkbenchPage } from './PhantasiWorkbenchChrome'
 import { WorkbenchCommentsPane } from './PhantasiWorkbenchComments'
@@ -237,12 +230,6 @@ export default function PhantasiWorkbench({
   const phantasi = t.phantasi
   const { catalog: g, bindGuide } = usePhantasiGuides()
   const [mobilePane, setMobilePane] = useState<'nav' | 'section'>('section')
-  const [railVisibility, setRailVisibility] = useState(readWorkbenchRailVisibility)
-  const visibleRail = RAIL.filter(
-    (item) =>
-      item.pane === 'home' ||
-      (isWorkbenchRailOptionPane(item.pane) && railVisibility[item.pane]),
-  )
   const feedCount = workbenchFeedSourceCount(sources)
   const pendingReviews = useMemo(
     () => workbenchPendingReviews(applications),
@@ -279,14 +266,6 @@ export default function PhantasiWorkbench({
   const open = (next: WorkbenchPane) => {
     onPane(next)
     setMobilePane('section')
-  }
-
-  const setRailPane = (pane: WorkbenchRailOptionPane, visible: boolean) => {
-    setRailVisibility((current) => {
-      const next = setWorkbenchRailPane(current, pane, visible)
-      writeWorkbenchRailVisibility(next)
-      return next
-    })
   }
 
   const back = (
@@ -342,30 +321,26 @@ export default function PhantasiWorkbench({
           </div>
         </div>
         <nav className="config-sidebar-scroll" aria-label={phantasi.boardWorkbench}>
-          {RAIL_PACKS.map((pack) => {
-            const items = visibleRail.filter((item) => item.pack === pack.id)
-            if (items.length === 0) return null
-            return (
-              <div key={pack.id} className="config-nav-group">
-                <div className="config-nav-group-title">{phantasi[pack.title]}</div>
-                {items.map((item) => (
-                  <NavBtn
-                    key={`${pack.id}-${item.pane}`}
-                    label={phantasi[item.label]}
-                    icon={item.icon}
-                    current={
-                      pane === item.pane ||
-                      (pane === 'add' && item.pane === 'sources') ||
-                      (pane === 'topics' && item.pane === 'sources') ||
-                      (pane === 'noteCategories' && item.pane === 'notes') ||
-                      (pane === 'sourceCategories' && item.pane === 'sources')
-                    }
-                    onPick={() => open(item.pane)}
-                  />
-                ))}
-              </div>
-            )
-          })}
+          {RAIL_PACKS.map((pack) => (
+            <div key={pack.id} className="config-nav-group">
+              <div className="config-nav-group-title">{phantasi[pack.title]}</div>
+              {RAIL.filter((item) => item.pack === pack.id).map((item) => (
+                <NavBtn
+                  key={`${pack.id}-${item.pane}`}
+                  label={phantasi[item.label]}
+                  icon={item.icon}
+                  current={
+                    pane === item.pane ||
+                    (pane === 'add' && item.pane === 'sources') ||
+                    (pane === 'topics' && item.pane === 'sources') ||
+                    (pane === 'noteCategories' && item.pane === 'notes') ||
+                    (pane === 'sourceCategories' && item.pane === 'sources')
+                  }
+                  onPick={() => open(item.pane)}
+                />
+              ))}
+            </div>
+          ))}
         </nav>
       </aside>
 
@@ -408,10 +383,8 @@ export default function PhantasiWorkbench({
               feedCount={feedCount}
               locale={locale}
               copy={phantasi}
-              railVisibility={railVisibility}
               onOpenNote={onOpenNote}
               onOpen={open}
-              onRailVisibility={setRailPane}
             />
           </WorkbenchPage>
         ) : null}

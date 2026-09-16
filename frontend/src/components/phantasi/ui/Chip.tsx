@@ -5,7 +5,6 @@ import type { ReactNode } from 'react'
 import { useLayoutEffect, useRef, useState } from 'react'
 import { phantasiMotionClaim, phantasiMotionRelease, phantasiTagQuiet } from '../../../hooks/animation/pages/phantasi'
 import { awaitLaneSwap, planChipLaneSwap } from '../../../hooks/animation/pages/phantasiChipPresence'
-import { holdPhantasiPeekSwap } from './peekLane'
 
 export function usePhantasiWaveLane(
   wave: string,
@@ -73,7 +72,6 @@ export function usePhantasiWaveLane(
     const token = occupy ? phantasiMotionClaim('lane') : null
     laneTokenRef.current = token
     const { wait, waapi, done } = play(rowRef.current)
-    holdPhantasiPeekSwap(wait + 240)
     exitingRef.current = true
     setExitHow(waapi ? 'waapi' : 'css')
     setExiting(true)

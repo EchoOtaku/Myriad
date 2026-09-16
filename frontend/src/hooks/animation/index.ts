@@ -38,6 +38,7 @@ export { usePageReady } from './usePageReady'
 
 export { usePageTransition } from './usePageTransition'
 
+export { pageIdFromPath } from './pageId'
 export { useRouteScheduler } from './useRouteScheduler'
 
 export { useStaggerAnimation } from './useStaggerAnimation'

@@ -9,53 +9,25 @@ import {
   runPageCleanup,
   startPage,
 } from './core'
+import { pageIdFromPath } from './pageId'
 
-const pathToPageId: Record<string, string> = {
-  '/': 'home',
-  '/library': 'library',
-  '/reports': 'reports',
-  '/journal': 'phantasi',
-  '/tapp': 'tapp',
-  '/config': 'config',
-  '/agent/settings': 'config',
-  '/login': 'login',
-  '/setup': 'setup',
-}
-
-function getPageIdFromPath(pathname: string): string {
-  if (pathToPageId[pathname]) {
-    return pathToPageId[pathname]
-  }
-
-  const basePath = `/${pathname.split('/')[1]}`
-  if (pathToPageId[basePath]) {
-    return pathToPageId[basePath]
-  }
-
-  return pathname.replaceAll(/^\//g, '') || 'unknown'
-}
+export { pageIdFromPath } from './pageId'
 
 /** 路由顶层调用：切页时清旧页资源并 startPage。 */
 export function useRouteScheduler(): void {
   const location = useLocation()
-  const lastPathRef = useRef<string | null>(null)
   const lastPageIdRef = useRef<string | null>(null)
 
   useEffect(() => {
-    const currentPath = location.pathname
+    const pageId = pageIdFromPath(location.pathname)
 
-    if (currentPath === lastPathRef.current) {
-      return
-    }
+    if (pageId === lastPageIdRef.current) return
 
     if (lastPageIdRef.current) {
       runPageCleanup(lastPageIdRef.current)
     }
 
-    lastPathRef.current = currentPath
-    const pageId = getPageIdFromPath(currentPath)
     lastPageIdRef.current = pageId
-
     startPage(pageId)
   }, [location.pathname])
 

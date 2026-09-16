@@ -33,3 +33,15 @@ describe('phantasiBoardNavItems', () => {
     assert.match(src, /path: journalPathForNavId\('sites'\)/)
   })
 })
+
+describe('board nav visibility wiring', () => {
+  it('页面用可见性裁二级菜单，名单仍在 boardNav', () => {
+    const page = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '../../views/Phantasi.tsx'),
+      'utf8',
+    )
+    assert.match(page, /filterBoardNavItems/)
+    assert.match(page, /phantasiBoardNavItems/)
+    assert.match(page, /BOARD_NAV_VISIBILITY_CHANGED/)
+  })
+})

@@ -29,7 +29,7 @@ export function decidePathSync(
   const loc = parseJournalPath(pathname)
   if (!loc) return { action: 'bounce', to: JOURNAL_ROOT }
   if (loc.kind === 'article') return { action: 'keep-article' }
-  if (loc.kind === 'starred' && !isAuthenticated) {
+  if (loc.kind === 'starred' && !isAdmin) {
     return { action: 'bounce', to: JOURNAL_ROOT }
   }
   if (loc.kind === 'workbench' && !isAdmin) {

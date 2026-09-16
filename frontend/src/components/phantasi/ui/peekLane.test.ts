@@ -10,7 +10,6 @@ import {
   phantasiMotionReset,
 } from '../../../hooks/animation/pages/phantasiMotion.ts'
 import {
-  holdPhantasiPeekSwap,
   notePeekPointer,
   peekGoesToNav,
   peekLaneIsLive,
@@ -20,8 +19,7 @@ import {
   peekPointerWantsAir,
   peekPreviewFromStory,
   peekSwapHoldsAir,
-  phantasiPeekHeldForSwap,
-  resetPhantasiPeekHold,
+  resetPeekPointer,
 } from './peekLane.ts'
 
 const require = createRequire(import.meta.url)
@@ -97,7 +95,7 @@ describe('peekLaneKeepsAir', () => {
 describe('peekSwapHoldsAir', () => {
   it('换页退场、inert、节点卸掉时按住壁纸', () => {
     phantasiMotionReset()
-    resetPhantasiPeekHold()
+    resetPeekPointer()
     const exiting = new JSDOM(
       `<div class="phantasi-view-lane" data-chip-phase="exit">
         <button class="phantasi-story" id="a"></button>
@@ -130,26 +128,26 @@ describe('peekSwapHoldsAir', () => {
     assert.equal(peekLaneIsSwapping(live), false)
   })
 
-  it('换树按住时离开导航也不退壁纸', () => {
-    resetPhantasiPeekHold()
+  it('去向导航或退场轨不发结束，进场活轨才算活', () => {
+    resetPeekPointer()
     const nav = new JSDOM(
       `<div class="nav-container"><button class="nav-item" id="notes">笔记</button></div>
        <div class="phantasi-view-lane" data-chip-phase="enter">
          <div data-phantasi-peek-lane id="lane"><button class="phantasi-story" id="s"></button></div>
+       </div>
+       <div class="phantasi-view-lane" data-chip-phase="exit" inert>
+         <div data-phantasi-peek-lane id="dead"><button class="phantasi-story" id="old"></button></div>
        </div>`,
     ).window.document
     assert.equal(peekGoesToNav(nav.getElementById('notes')), true)
     assert.equal(peekLaneIsLive(nav.getElementById('lane')), true)
-    holdPhantasiPeekSwap(1000)
-    assert.equal(phantasiPeekHeldForSwap(), true)
-    assert.equal(peekLaneIsLive(nav.getElementById('lane')), false)
-    assert.equal(peekSwapHoldsAir(nav.getElementById('s')), true)
-    resetPhantasiPeekHold()
-    assert.equal(phantasiPeekHeldForSwap(), false)
+    assert.equal(peekLaneIsLive(nav.getElementById('dead')), false)
+    assert.equal(peekSwapHoldsAir(nav.getElementById('old')), true)
+    assert.equal(peekSwapHoldsAir(nav.getElementById('s')), false)
   })
 
   it('指针还在走或停在导航、文章卡上时按住，停在空白才退', () => {
-    resetPhantasiPeekHold()
+    resetPeekPointer()
     const page = new JSDOM(
       `<div class="nav-container"><button class="nav-item" id="notes">笔记</button></div>
        <div data-phantasi-peek-lane>
@@ -164,7 +162,7 @@ describe('peekSwapHoldsAir', () => {
     notePeekPointer({ clientX: 12, clientY: 8 })
     assert.equal(peekPointerMoving(), true)
     assert.equal(peekPointerWantsAir(), true)
-    resetPhantasiPeekHold()
+    resetPeekPointer()
     assert.equal(peekPointerMoving(), false)
     assert.equal(peekPointerWantsAir(), false)
   })

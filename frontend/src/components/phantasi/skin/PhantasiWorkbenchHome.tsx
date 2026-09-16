@@ -13,7 +13,6 @@ import {
   workbenchHomeScheduleKind,
   type WorkbenchHomeRecent,
 } from '../logic/workbenchHome'
-import type { WorkbenchRailOptionPane, WorkbenchRailVisibility } from '../logic/workbenchVisibility'
 import { workbenchNoteCover, workbenchNoteListExcerpt, workbenchNoteOpen } from '../logic/workbench'
 import { noteScheduleLabel } from '../notes/noteBoard'
 import { displayImageUrl } from '../notes/noteImageUrl'
@@ -139,10 +138,8 @@ export function WorkbenchHome({
   feedCount,
   locale,
   copy,
-  railVisibility,
   onOpenNote,
   onOpen,
-  onRailVisibility,
 }: {
   empty: boolean
   drafts: readonly PhantasiNoteDoc[]
@@ -176,19 +173,9 @@ export function WorkbenchHome({
     workbenchMedia: string
     workbenchSources: string
     workbenchOverview: string
-    workbenchHomeOptions: string
-    workbenchRailVisibilityTitle: string
-    workbenchRailVisibilityDesc: string
-    workbenchRailShow: string
-    workbenchRailHide: string
-    workbenchNotesTransfer: string
-    workbenchFeedsTransfer: string
-    workbenchRsshub: string
   }
-  railVisibility: WorkbenchRailVisibility
   onOpenNote: (open: ReturnType<typeof workbenchNoteOpen>) => void
   onOpen: (pane: WorkbenchPane) => void
-  onRailVisibility: (pane: WorkbenchRailOptionPane, visible: boolean) => void
 }) {
   return (
     <div className="phantasi-workbench__home">
@@ -338,11 +325,7 @@ export function WorkbenchHome({
       </section>
         </>
       )}
-      <WorkbenchHomeOptions
-        visibility={railVisibility}
-        copy={copy}
-        onChange={onRailVisibility}
-      />
+      <WorkbenchHomeOptions />
     </div>
   )
 }

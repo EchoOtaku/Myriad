@@ -12,7 +12,7 @@ export interface PageRouteAnimationMeta {
 export function resolvePageRouteAnimation(
   pathname: string,
 ): PageRouteAnimationMeta {
-  if (pathname.startsWith('/journal')) {
+  if (pathname === '/journal' || pathname.startsWith('/journal/')) {
     return {
       key: '/journal',
       style: 'normal',
@@ -72,8 +72,9 @@ export function resolvePageRouteAnimation(
     }
   }
 
+  const first = pathname.split('/').filter(Boolean)[0]
   return {
-    key: pathname,
+    key: first ? `/${first}` : '/',
     style: 'normal',
     variant: 'page',
     skipScroll: false,

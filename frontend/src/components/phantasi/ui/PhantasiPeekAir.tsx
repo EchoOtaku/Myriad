@@ -68,6 +68,26 @@ export function samePeekFace(
   return a.src === b.src && a.title === b.title && a.source === b.source
 }
 
+let sessionFace: PhantasiPeekFace | null = null
+const sessionListeners = new Set<() => void>()
+
+export function readPeekFace(): PhantasiPeekFace | null {
+  return sessionFace
+}
+
+export function subscribePeekFace(fn: () => void): () => void {
+  sessionListeners.add(fn)
+  return () => {
+    sessionListeners.delete(fn)
+  }
+}
+
+export function writePeekFace(next: PhantasiPeekFace | null): void {
+  if (samePeekFace(sessionFace, next)) return
+  sessionFace = next
+  for (const fn of sessionListeners) fn()
+}
+
 function sameFace(layer: Layer, face: PhantasiPeekFace): boolean {
   return samePeekFace(layer.face, face)
 }
@@ -98,13 +118,13 @@ function PeekLede({ face }: { face: PhantasiPeekFace }) {
   )
 }
 
-function afterPaint(id: number, fn: () => void): () => void {
+function afterPaint(fn: () => void): () => void {
   let cancelled = false
   const run = () => {
-    if (!cancelled && phantasiMotionOwns(id)) fn()
+    if (!cancelled) fn()
   }
   batchWrite(() => {
-    if (cancelled || !phantasiMotionOwns(id)) return
+    if (cancelled) return
     batchWrite(run)
   })
   return () => {
@@ -158,7 +178,7 @@ export function PhantasiPeekAir({ face }: { face: PhantasiPeekFace | null }) {
     }
 
     const arm = () => {
-      if (cancelled || !face || !phantasiMotionOwns(claimId)) return
+      if (cancelled || !face) return
       setLayers((current) =>
         current.map((layer) => ({
           ...layer,
@@ -168,7 +188,7 @@ export function PhantasiPeekAir({ face }: { face: PhantasiPeekFace | null }) {
     }
 
     const paint = () => {
-      if (cancelled || !face || !phantasiMotionOwns(claimId)) return
+      if (cancelled || !face) return
       setLayers((current) => {
         if (current.some((layer) => layer.on && sameFace(layer, face))) {
           return current
@@ -185,28 +205,22 @@ export function PhantasiPeekAir({ face }: { face: PhantasiPeekFace | null }) {
         arm()
         return
       }
-      stops.push(afterPaint(claimId, arm))
+      stops.push(afterPaint(arm))
       exitTimer = window.setTimeout(() => {
-        if (cancelled || !phantasiMotionOwns(claimId)) return
+        if (cancelled) return
         setLayers((current) =>
           current.filter((layer) => layer.on || sameFace(layer, face)),
         )
       }, wait)
     }
 
-    const reveal = () => {
+    const holdClaim = () => {
       if (cancelled || !face) return
       if (!takeClaim()) {
-        setLayers((current) => {
-          if (current.some((layer) => layer.on && sameFace(layer, face))) {
-            return current
-          }
-          return [{ id: nextLayer(), face, on: true }]
-        })
-        stops.push(whenPhantasiMotionIdle(reveal))
+        stops.push(whenPhantasiMotionIdle(holdClaim))
         return
       }
-      stops.push(whenPhantasiPeekReady(paint))
+      stops.push(whenPhantasiPeekReady(() => {}))
     }
 
     stops.push(
@@ -214,22 +228,20 @@ export function PhantasiPeekAir({ face }: { face: PhantasiPeekFace | null }) {
         if (cancelled || !face) return
         if (!claimId || phantasiMotionOwns(claimId)) return
         claimId = 0
-        stops.push(whenPhantasiMotionIdle(reveal))
+        stops.push(whenPhantasiMotionIdle(holdClaim))
       }),
     )
 
+    paint()
+    scheduleTask(holdClaim)
     const image = new Image()
     image.src = face.src
-    if (image.complete && image.naturalWidth > 0) scheduleTask(reveal)
-    else {
-      image.onload = () => scheduleTask(reveal)
-      image.onerror = () => {
-        if (cancelled) return
-        setLayers((current) => current.map((layer) => ({ ...layer, on: false })))
-        exitTimer = window.setTimeout(() => {
-          if (!cancelled) setLayers([])
-        }, wait)
-      }
+    image.onerror = () => {
+      if (cancelled) return
+      setLayers((current) => current.map((layer) => ({ ...layer, on: false })))
+      exitTimer = window.setTimeout(() => {
+        if (!cancelled) setLayers([])
+      }, wait)
     }
 
     return () => {

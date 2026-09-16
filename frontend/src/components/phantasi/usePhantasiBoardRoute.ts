@@ -172,12 +172,12 @@ export function usePhantasiBoardRoute(
   }, [activeId, applyBoardEntry, navigate])
 
   useEffect(() => {
-    if (isAuthenticated) return
+    if (isAdmin) return
     setViewMode((current) => (current === 'starred' ? 'sources' : current))
     if (activeId !== 'starred') return
     prevActiveIdRef.current = 'feeds'
     setActiveId('feeds')
-  }, [isAuthenticated, activeId, setActiveId])
+  }, [isAdmin, activeId, setActiveId])
 
   useEffect(() => {
     if (isAdmin) return

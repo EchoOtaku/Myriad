@@ -154,7 +154,7 @@ export function navIdForJournalLocation(
   isAdmin: boolean,
 ): string {
   if (loc.kind === 'workbench') return isAdmin ? 'workbench' : 'feeds'
-  if (loc.kind === 'starred') return isAuthenticated ? 'starred' : 'feeds'
+  if (loc.kind === 'starred') return isAdmin ? 'starred' : 'feeds'
   if (loc.kind === 'notes') return 'notes'
   if (loc.kind === 'friends') return 'sites'
   return 'feeds'

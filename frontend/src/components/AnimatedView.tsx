@@ -2,6 +2,7 @@ import type { HTMLAttributes, ReactNode } from 'react'
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { usePageTransition } from '../hooks/animation/usePageTransition'
+import { pageIdFromPath } from '../hooks/animation/pageId'
 
 interface AnimatedViewProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode
@@ -14,7 +15,7 @@ export default function AnimatedView({
   ...rest
 }: AnimatedViewProps) {
   const location = useLocation()
-  const pageId = location.pathname.replaceAll('/', '-') || 'home'
+  const pageId = pageIdFromPath(location.pathname)
 
   const { onEnterComplete } = usePageTransition({ pageId })
 
@@ -35,7 +36,7 @@ export default function AnimatedView({
       if (rafId !== null) cancelAnimationFrame(rafId)
       hasNotified.current = false
     }
-  }, [location.pathname, onEnterComplete])
+  }, [pageId, onEnterComplete])
 
   return (
     <div className={`animated-view-container ${className}`} {...rest}>

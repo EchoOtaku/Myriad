@@ -1,63 +1,69 @@
-import type { PhantasiWorkbenchIconKind } from '../ui/PhantasiWorkbenchIcon'
-import { LuEye } from '@lib/icons'
+import { useState } from 'react'
+import {
+  LuEye,
+  LuInbox,
+  LuLink,
+  LuNotebookPen,
+  LuStar,
+} from '@lib/icons'
+import { useI18n } from '../../../contexts/I18nContext'
+import {
+  type ModuleVisibilityLevel,
+  useModuleVisibilityPreferences,
+} from '../../../utils/moduleVisibility'
 import { SegmentedControl, SettingGroup, SettingGroupGrid } from '../../settings'
 import {
-  WORKBENCH_RAIL_OPTION_PANES,
-  type WorkbenchRailOptionPane,
-  type WorkbenchRailVisibility,
-  workbenchRailAllowsHide,
-} from '../logic/workbenchVisibility'
-import { PhantasiWorkbenchIcon } from '../ui/PhantasiWorkbenchIcon'
+  JOURNAL_BOARD_NAV_OPTIONS,
+  type JournalBoardNavPane,
+  boardNavLevelsForPane,
+  effectiveBoardNavLevel,
+  readBoardNavVisibility,
+  setBoardNavPane,
+  writeBoardNavVisibility,
+} from '../logic/boardNavVisibility'
 
-const PANE_CARDS: Record<
-  WorkbenchRailOptionPane,
-  { label: WorkbenchRailOptionLabel; icon: PhantasiWorkbenchIconKind }
-> = {
-  notes: { label: 'workbenchNotes', icon: 'notes' },
-  comments: { label: 'workbenchComments', icon: 'comments' },
-  media: { label: 'workbenchMedia', icon: 'media' },
-  notesIo: { label: 'workbenchNotesTransfer', icon: 'notes-transfer' },
-  sources: { label: 'workbenchSources', icon: 'sources' },
-  reviews: { label: 'workbenchReviews', icon: 'reviews' },
-  rsshub: { label: 'workbenchRsshub', icon: 'rsshub' },
-  feedsIo: { label: 'workbenchFeedsTransfer', icon: 'feeds-transfer' },
+const PANE_ICONS: Record<(typeof JOURNAL_BOARD_NAV_OPTIONS)[number], typeof LuInbox> = {
+  feeds: LuInbox,
+  starred: LuStar,
+  notes: LuNotebookPen,
+  sites: LuLink,
 }
 
-export type WorkbenchRailOptionLabel =
-  | 'workbenchNotes'
-  | 'workbenchComments'
-  | 'workbenchMedia'
-  | 'workbenchNotesTransfer'
-  | 'workbenchSources'
-  | 'workbenchReviews'
-  | 'workbenchRsshub'
-  | 'workbenchFeedsTransfer'
+export function WorkbenchHomeOptions() {
+  const { t } = useI18n()
+  const phantasi = t.phantasi
+  const { preferences } = useModuleVisibilityPreferences()
+  const parent = preferences.modules.phantasi
+  const moduleOpen = parent === 'all'
+  const [visibility, setVisibility] = useState(readBoardNavVisibility)
+  const labels: Record<(typeof JOURNAL_BOARD_NAV_OPTIONS)[number], string> = {
+    feeds: phantasi.boardFeeds,
+    starred: phantasi.starred,
+    notes: phantasi.boardNotes,
+    sites: phantasi.boardSites,
+  }
+  const visibilityLabels: Record<ModuleVisibilityLevel, string> = {
+    all: t.config.moduleVisibilityAll,
+    authenticated: t.config.moduleVisibilityAuthenticated,
+    admin: t.config.moduleVisibilityAdmin,
+  }
 
-export function WorkbenchHomeOptions({
-  visibility,
-  copy,
-  onChange,
-}: {
-  visibility: WorkbenchRailVisibility
-  copy: {
-    workbenchHomeOptions: string
-    workbenchRailVisibilityTitle: string
-    workbenchRailVisibilityDesc: string
-    workbenchRailShow: string
-    workbenchRailHide: string
-  } & Record<WorkbenchRailOptionLabel, string>
-  onChange: (pane: WorkbenchRailOptionPane, visible: boolean) => void
-}) {
+  const onChange = (pane: JournalBoardNavPane, level: ModuleVisibilityLevel) => {
+    const next = setBoardNavPane(visibility, pane, level, parent)
+    writeBoardNavVisibility(next)
+    setVisibility(next)
+  }
+
   return (
     <section
       className="phantasi-workbench__home-options"
-      aria-label={copy.workbenchHomeOptions}
+      aria-label={phantasi.workbenchHomeOptions}
     >
-      <h3>{copy.workbenchHomeOptions}</h3>
+      <h3>{phantasi.workbenchHomeOptions}</h3>
       <SettingGroup
         toc={false}
-        title={copy.workbenchRailVisibilityTitle}
-        description={copy.workbenchRailVisibilityDesc}
+        title={phantasi.workbenchBoardNavTitle}
+        description={phantasi.workbenchBoardNavDesc}
         descriptionVisible
         icon={<LuEye size={15} />}
       >
@@ -66,33 +72,30 @@ export function WorkbenchHomeOptions({
           variant="card"
           align="stretch"
           minColumnWidth="16rem"
-          ariaLabel={copy.workbenchRailVisibilityTitle}
+          ariaLabel={phantasi.workbenchBoardNavTitle}
         >
-          {WORKBENCH_RAIL_OPTION_PANES.map((pane) => {
-            const card = PANE_CARDS[pane]
-            const visible = visibility[pane]
-            const canHide = workbenchRailAllowsHide(visibility, pane)
+          {JOURNAL_BOARD_NAV_OPTIONS.map((pane) => {
+            const Icon = PANE_ICONS[pane]
+            const selected = effectiveBoardNavLevel(visibility, pane, parent)
+            const levels = boardNavLevelsForPane(pane)
             return (
               <SettingGroup
                 key={pane}
                 toc={false}
-                title={copy[card.label]}
-                icon={<PhantasiWorkbenchIcon kind={card.icon} />}
+                title={labels[pane]}
+                icon={<Icon size={15} />}
               >
                 <SegmentedControl
                   size="sm"
-                  columns={2}
-                  value={visible ? 'show' : 'hide'}
-                  options={[
-                    { value: 'show', label: copy.workbenchRailShow },
-                    {
-                      value: 'hide',
-                      label: copy.workbenchRailHide,
-                      disabled: visible && !canHide,
-                    },
-                  ]}
-                  onChange={(next) => onChange(pane, next === 'show')}
-                  ariaLabel={copy[card.label]}
+                  columns={levels.length}
+                  disabled={!moduleOpen}
+                  value={selected}
+                  options={levels.map((level) => ({
+                    value: level,
+                    label: visibilityLabels[level],
+                  }))}
+                  onChange={(level) => onChange(pane, level)}
+                  ariaLabel={labels[pane]}
                 />
               </SettingGroup>
             )

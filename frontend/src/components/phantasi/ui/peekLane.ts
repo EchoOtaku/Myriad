@@ -8,7 +8,6 @@ export const PHANTASI_PEEK_LANE =
 const PHANTASI_PEEK_NAV =
   '.nav-container, .dynamic-island, .nav-item, .nav-group'
 
-let peekHoldUntil = 0
 let peekPointerX = 0
 let peekPointerY = 0
 let peekPointerOn = false
@@ -20,18 +19,9 @@ function peekNow(): number {
   return typeof performance === 'undefined' ? Date.now() : performance.now()
 }
 
-export function resetPhantasiPeekHold(): void {
-  peekHoldUntil = 0
+export function resetPeekPointer(): void {
   peekPointerOn = false
   peekMovedAt = 0
-}
-
-export function holdPhantasiPeekSwap(ms = 720): void {
-  peekHoldUntil = Math.max(peekHoldUntil, peekNow() + ms)
-}
-
-export function phantasiPeekHeldForSwap(): boolean {
-  return peekNow() < peekHoldUntil
 }
 
 export function peekGoesToNav(to: EventTarget | null): boolean {
@@ -40,7 +30,6 @@ export function peekGoesToNav(to: EventTarget | null): boolean {
 }
 
 export function peekLaneIsLive(root: EventTarget | null): boolean {
-  if (phantasiPeekHeldForSwap()) return false
   if (
     !root ||
     (typeof (root as Node).isConnected === 'boolean' && !(root as Node).isConnected)
@@ -103,7 +92,7 @@ export function peekHitFromPoint(): Element | null {
 }
 
 export function peekPointerWantsAir(): boolean {
-  if (phantasiPeekHeldForSwap() || peekLaneIsSwapping()) return true
+  if (peekLaneIsSwapping()) return true
   if (hoveredPhantasiStory()) return true
   if (peekGoesToNav(peekHitFromPoint())) return true
   return peekPointerMoving()
@@ -138,13 +127,16 @@ export function peekLaneIsSwapping(root?: ParentNode | null): boolean {
 
 function peekHostFrozen(from: EventTarget | null): boolean {
   if (!from || typeof (from as Element).closest !== 'function') return false
+  const lane = asHtml((from as Element).closest('.phantasi-view-lane'))
+  if (lane && (lane.dataset.chipPhase === 'exit' || lane.hasAttribute('inert'))) {
+    return true
+  }
   const host = asHtml(
     (from as Element).closest(
-      '.phantasi-view-lane, [data-phantasi-peek-lane], [data-phantasi-rail-track]',
+      '[data-phantasi-peek-lane], [data-phantasi-rail-track]',
     ),
   )
   if (!host) return false
-  if (host.dataset.chipPhase === 'exit' || host.hasAttribute('inert')) return true
   if (typeof host.ownerDocument?.defaultView?.getComputedStyle !== 'function') {
     return false
   }
@@ -153,9 +145,8 @@ function peekHostFrozen(from: EventTarget | null): boolean {
   )
 }
 
-/** 换树按住、退场 / inert / 节点卸掉时按住。普通离开不看 fromPoint。 */
+/** 退场 / inert / 节点卸掉或换树时按住。普通离开不看 fromPoint。 */
 export function peekSwapHoldsAir(from: EventTarget | null): boolean {
-  if (phantasiPeekHeldForSwap()) return true
   if (from && typeof (from as Node).isConnected === 'boolean' && !(from as Node).isConnected) {
     return true
   }

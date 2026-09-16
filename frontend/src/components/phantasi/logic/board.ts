@@ -304,25 +304,25 @@ export function resolveBoardParam(value: string): PhantasiBoardEntry | null {
   return LEGACY_NAV_TO_BOARD[value] ?? null
 }
 
-/** 二级导航高亮：登录后收藏用 starred；工作台只给管理员。 */
+/** 二级导航高亮：收藏和工作台只给管理员。 */
 export function navIdForBoardEntry(
   entry: PhantasiBoardEntry,
   isAuthenticated: boolean,
   isAdmin = false,
 ): string {
   if (entry.view === 'workbench') return isAdmin ? 'workbench' : 'feeds'
-  if (entry.view === 'starred' && isAuthenticated) return 'starred'
+  if (entry.view === 'starred') return isAdmin ? 'starred' : 'feeds'
   return entry.board
 }
 
-/** 游客没有收藏；非管理员没有工作台。 */
+/** 非管理员没有收藏页和工作台。 */
 export function viewForBoardEntry(
   entry: PhantasiBoardEntry,
   isAuthenticated: boolean,
   isAdmin = false,
 ): PhantasiViewMode {
   if (entry.view === 'workbench') return isAdmin ? 'workbench' : 'sources'
-  if (entry.view === 'starred' && !isAuthenticated) return 'sources'
+  if (entry.view === 'starred' && !isAdmin) return 'sources'
   return entry.view
 }
 
